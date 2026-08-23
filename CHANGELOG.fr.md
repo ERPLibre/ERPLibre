@@ -71,6 +71,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Magasin d'applications d'une VM graphique : .deb seul, outillage Flatpak, ou snap
 - Tunnel vers le bureau distant : la commande SSH est composée depuis ~/.ssh/config, avec la console de l'hyperviseur comme troisième voie
 - Le tableau de bord d'installation agit sur une VM sans la quitter : mise à jour par parties, redémarrage d'Odoo, suppression ; colonne d'architecture et colonnes ajustables
+- Migration : revenir à une étape depuis l'écran de reprise ou depuis une invite, et agir sur les copies COW dès leur annonce
+- L'analyse des copies de site compare chaque copie à la vue qu'elle masque
 - Un test vérifie que ce qu'importe l'outillage est bien déclaré
 
 ## Retiré
@@ -121,6 +123,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - L'installation d'un bureau graphique figeait trente minutes sur un paquet snap qui ne joignait pas le magasin
 - Le compilateur était tué faute de mémoire en bâtissant CPython sur une petite VM s390x
 - Le README ne listait ni Fedora, ni openSUSE, ni Linux Mint, ni Debian 13, toutes supportées
+- Les outils de migration COW et la mise à niveau de la base parlent la langue du système
+- Les outils d'analyse et de migration sont exécutables
 
 ## Sécurité
 

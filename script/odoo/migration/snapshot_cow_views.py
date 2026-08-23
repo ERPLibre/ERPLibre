@@ -32,6 +32,18 @@ import os
 import subprocess
 import sys
 
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+)
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
+
 # Columns worth recording. ir_ui_view does not expose the same set across 12.0
 # to 18.0, so the query keeps only those that actually exist.
 WANTED_COLUMN = [
@@ -115,7 +127,7 @@ def save(database, label, output_dir):
     file_path = os.path.join(directory, f"{label}.json")
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    print(f"✅ -> {len(lst_view)} COW view(s) recorded in {file_path}")
+    print(f"✅ -> {len(lst_view)} {t('COW view(s) recorded in')} {file_path}")
     return file_path
 
 
@@ -136,18 +148,18 @@ def diff(path_before, path_after):
     common = sorted(set(map_before) & set(map_after))
 
     print(
-        f"📊 {before.get('label')} ({before.get('count')} views)"
-        f" -> {after.get('label')} ({after.get('count')} views)"
+        f"📊 {before.get('label')} ({before.get('count')} {t('views')})"
+        f" -> {after.get('label')} ({after.get('count')} {t('views')})"
     )
 
     if removed:
-        print(f"❌ {len(removed)} COW view(s) disappeared:")
+        print(f"❌ {len(removed)} {t('COW view(s) disappeared')} :")
         for view_id in removed:
             view = map_before[view_id]
             print(f"   - id={view_id} {view.get('key')}")
 
     if added:
-        print(f"➕ {len(added)} COW view(s) appeared:")
+        print(f"➕ {len(added)} {t('COW view(s) appeared')} :")
         for view_id in added:
             view = map_after[view_id]
             print(f"   - id={view_id} {view.get('key')} ({view.get('mode')})")
@@ -160,8 +172,8 @@ def diff(path_before, path_after):
             if old.get(field) != new.get(field):
                 if field == "arch_md5":
                     lst_field.append(
-                        f"arch rewritten ({old.get('arch_len')} ->"
-                        f" {new.get('arch_len')} chars)"
+                        f"{t('arch rewritten')} ({old.get('arch_len')} ->"
+                        f" {new.get('arch_len')} {t('chars')})"
                     )
                 else:
                     lst_field.append(
@@ -171,14 +183,14 @@ def diff(path_before, path_after):
             lst_changed.append((view_id, new.get("key"), lst_field))
 
     if lst_changed:
-        print(f"✏️ {len(lst_changed)} COW view(s) changed:")
+        print(f"✏️ {len(lst_changed)} {t('COW view(s) changed')} :")
         for view_id, key, lst_field in lst_changed:
             print(f"   - id={view_id} {key}")
             for change in lst_field:
                 print(f"       {change}")
 
     if not (removed or added or lst_changed):
-        print("✅ -> No change on the website COW views.")
+        print(f"✅ -> {t('No change on the website COW views.')}")
     return 0
 
 

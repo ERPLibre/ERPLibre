@@ -50,6 +50,18 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+)
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
+
 # A view whose module counterpart cannot be found at all.
 MODE_UNKNOWN = "unknown"
 
@@ -232,6 +244,9 @@ def analyse(database, target_version):
         # The decisive test: the target expects inheritance specs but the copy
         # holds a standalone template, or the reverse.
         if is_spec is not None and target_inherits != is_spec:
+            # La clé anglaise est stockée, la traduction se fait à
+            # l'affichage : cow_drift et neutralize la relisent, et une
+            # valeur déjà traduite les obligerait à traduire en sens inverse.
             reason = (
                 "target inherits, copy holds a standalone template"
                 if target_inherits
@@ -281,24 +296,29 @@ def main():
 
     if not os.path.isdir(config.target_version):
         print(
-            f"❌ Target version directory '{config.target_version}' not found."
+            f"❌ {t('Target version directory not found')} :"
+            f" '{config.target_version}'"
         )
-        return 1
+        return 2
 
     lst_at_risk, lst_module_absent, lst_no_counterpart = analyse(
         config.database, config.target_version
     )
+    database = config.database
+    target_version = config.target_version
 
     if not lst_at_risk:
         print(
-            "✅ -> No website COW view changes mode in"
+            f"✅ -> {t('No website COW view changes shape in')}"
             f" {config.target_version}."
         )
     else:
         print(
-            f"⚠️ {len(lst_at_risk)} website COW view(s) will break when moving"
-            f" to {config.target_version}: the copy keeps an arch whose shape"
-            " no longer matches what the target module view expects."
+            f"⚠️ {len(lst_at_risk)}"
+            f" {t('website COW view(s) will break when moving to')}"
+            f" {config.target_version} :"
+            f" {t('the copy keeps an arch whose shape no longer matches what')}"
+            f" {t('the target module view expects.')}"
         )
         for (
             view_id,
@@ -310,37 +330,55 @@ def main():
         ) in lst_at_risk:
             print(
                 f"   - id={view_id} website={website_id} {key}"
-                f" : {mode} -> {target_mode} ({reason})"
+                f" : {mode} -> {target_mode} ({t(reason)})"
             )
+        # La base et la version cible sont connues ici : les remplacer par
+        # « DB » et « odooXX.0 » oblige à les retrouver, au moment précis où
+        # l'on veut juste copier-coller la commande.
         print(
-            "   Arbitrate BEFORE launching the migration. To neutralize a copy,"
-            " rename its key (UPDATE ir_ui_view SET key='zz_cow_archive.'||key,"
-            " active=false): an unmatched key is never paired with the module"
-            " view, so the copy never receives the new inherit_id. Setting"
-            " active=false alone is NOT enough -- an inactive copy that keeps"
-            " the same key still shadows the module view."
+            f"   {t('The migration offers to neutralize them, and shows what')}"
+            f" {t('each copy holds before you answer. To look now:')}"
+            f"\n     ./script/odoo/migration/cow_drift.py -d {database}"
+            f" -t {target_version}          ({t('what each copy holds')})"
+            f"\n     ./script/odoo/migration/cow_drift.py -d {database}"
+            f" -t {target_version} --shape  ({t('why it breaks')})"
+            f"\n     ./script/odoo/migration/neutralize_cow_views.py"
+            f" -d {database} -t {target_version} --apply"
+            f"   ({t('reversible with --restore')})"
+        )
+        print(
+            f"   {t('Or by hand. To neutralize a copy, rename its key')}"
+            " (UPDATE ir_ui_view SET key='zz_cow_archive.'||key,"
+            f" active=false) : {t('an unmatched key is never paired with the')}"
+            f" {t('module view, so the copy never receives the new')}"
+            f" inherit_id. {t('Setting active=false alone is NOT enough:')}"
+            f" {t('an inactive copy keeping the same key still shadows it.')}"
         )
 
     if lst_module_absent:
         print(
-            f"ℹ {len(lst_module_absent)} COW view(s) belong to a module absent"
-            f" from {config.target_version}:"
+            f"ℹ {len(lst_module_absent)}"
+            f" {t('COW view(s) belong to a module absent from')}"
+            f" {config.target_version} :"
         )
         for view_id, key, mode, website_id in lst_module_absent:
             print(f"   - id={view_id} website={website_id} {key} ({mode})")
 
     if lst_no_counterpart:
         print(
-            f"ℹ {len(lst_no_counterpart)} COW view(s) are pages or records made"
-            " from the website editor (no module view of that name): not at"
-            " risk." + ("" if config.verbose else " Use -v to list them.")
+            f"ℹ {len(lst_no_counterpart)}"
+            f" {t('COW view(s) are pages or records made in the website')}"
+            f" {t('editor (no module view of that name): not at risk.')}"
+            + ("" if config.verbose else f" {t('Use -v to list them.')}")
         )
         if config.verbose:
             for view_id, key, mode, website_id in lst_no_counterpart:
                 print(f"   - id={view_id} website={website_id} {key} ({mode})")
 
-    # Informative only: never fail the migration on a warning.
-    return 0
+    # 0 = rien à signaler, 1 = des copies casseront, 2 = l'outil a échoué.
+    # Le pilote lisait le texte anglais de cette sortie pour savoir s'il
+    # devait poser sa question : traduire le message le rendait aveugle.
+    return 1 if lst_at_risk else 0
 
 
 if __name__ == "__main__":

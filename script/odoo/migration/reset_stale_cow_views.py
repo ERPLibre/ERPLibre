@@ -61,6 +61,17 @@ import re
 import subprocess
 import sys
 
+sys.path.append(
+    os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+)
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
 
 def run_psql(database, sql):
     """Run a statement and return stdout, raising on failure."""
@@ -142,7 +153,7 @@ def require_lxml():
         return etree
     except ImportError:
         sys.exit(
-            "❌ lxml is required to resolve the xpath expressions.\n"
+            f"❌ {t('lxml is required to resolve the xpath expressions.')}\n"
             "   Run this with an interpreter that has it, e.g.\n"
             "   ./.venv.erplibre/bin/python3 " + os.path.relpath(__file__)
         )
@@ -216,8 +227,34 @@ def analyse(database):
     return findings
 
 
-def show_diff(module_view, cow_view):
-    """Module arch vs copy: what the copy would gain and lose on a reset."""
+def find_copy_by_key(views, key):
+    """(copie COW, jumelle module) pour cette clé, ou (None, None).
+
+    La détection différentielle ne voit qu'une copie dont un ENFANT casse.
+    Une copie périmée sans enfant lui échappe — mesuré : la copie de
+    `website_crm.contactus_form` était plus petite d'un tiers que sa
+    jumelle, et c'est elle qui rendait /contactus en 500. Demander sa
+    réinitialisation par clé doit donc marcher même hors détection.
+    """
+    copy = twin = None
+    for row in views.values():
+        if row.get("key") != key:
+            continue
+        if row.get("website_id"):
+            if copy is None or row["id"] < copy["id"]:
+                copy = row
+        elif twin is None or row["id"] < twin["id"]:
+            twin = row
+    return copy, twin
+
+
+def render_diff(module_view, cow_view, indent="    "):
+    """Module arch vs copy : ce qu'une réinitialisation rend et abandonne.
+
+    Rendu en texte plutôt qu'imprimé : la TUI montre exactement le même
+    diff que la ligne de commande. Deux rendus séparés dériveraient sans
+    que rien ne le signale.
+    """
     diff = difflib.unified_diff(
         module_view["arch"].splitlines(),
         cow_view["arch"].splitlines(),
@@ -225,8 +262,44 @@ def show_diff(module_view, cow_view):
         tofile=f"cow id={cow_view['id']}",
         lineterm="",
     )
-    for line in diff:
-        print(f"    {line}")
+    return "\n".join(f"{indent}{line}" for line in diff)
+
+
+def render_broken(cow_view, module_view, broken):
+    """Pourquoi ça casse : les enfants dont l'xpath ne trouve plus son point."""
+    lines = [
+        f"── id={cow_view['id']} {cow_view['key']}"
+        f" (website={cow_view.get('website_id')}) ──",
+        "",
+    ]
+    if not broken:
+        lines.append(
+            f"  {t('No child fails on this copy: it drifted without')}"
+            f" {t('breaking anything yet.')}"
+        )
+    else:
+        lines.append(
+            f"  {t('These children no longer find their anchor in the copy')}"
+            " :"
+        )
+        for child_id, expr in broken:
+            lines.append(f"      {t('child')} {child_id} : {expr}")
+    lines += [
+        "",
+        f"  {t('The anchor exists in the module view')}"
+        f" (id={module_view['id'] if module_view else '?'})"
+        f" {t('but not in this copy, frozen on an older version.')}",
+        "",
+        f"  {t('Resetting restores the module arch; the customization the')}",
+        f"  {t('copy carried is saved first, and is yours to re-apply as an')}",
+        f"  {t('INHERITING view with its own key.')}",
+    ]
+    return "\n".join(lines)
+
+
+def show_diff(module_view, cow_view):
+    """Imprimer le diff, pour la ligne de commande."""
+    print(render_diff(module_view, cow_view))
 
 
 def backup(database, cow_view, directory):
@@ -273,6 +346,16 @@ def main():
     )
     parser.add_argument("-d", "--database", required=True)
     parser.add_argument(
+        "--tui",
+        action="store_true",
+        help="browse the differences full screen",
+    )
+    parser.add_argument(
+        "--list-keys",
+        action="store_true",
+        help="print one drifted key per line, and nothing else",
+    )
+    parser.add_argument(
         "--reset",
         metavar="KEY",
         action="append",
@@ -293,72 +376,141 @@ def main():
     config = parser.parse_args()
 
     findings = analyse(config.database)
-    if not findings:
-        print("✅ No COW copy has drifted from its module view.")
-        return 0
+    # Une sortie sans décor, pour que l'appelant construise un menu : on ne
+    # connaît pas les clés de tête, et les recopier depuis un diff de mille
+    # lignes est le genre de recopie où l'on se trompe.
+    if config.list_keys:
+        for cow_view, _module_view, _broken in findings:
+            print(cow_view["key"])
+        return 1 if findings else 0
 
-    print(
-        f"⚠️  {len(findings)} COW copy(ies) drifted from their module view"
-        f" in {config.database}"
-    )
-    print(
-        "   Odoo surfaces this when the module view is rewritten (a version"
-        " bump) or when the page is rendered.\n"
-    )
+    # « Rien détecté » ne veut pas dire « rien à faire » quand une clé est
+    # demandée : la détection différentielle ne voit qu'une copie dont un
+    # ENFANT casse, et une copie périmée sans enfant lui échappe. Sortir ici
+    # faisait taire la demande — on croyait la copie réinitialisée.
+    if not findings and not (set(config.reset) - {"all"}):
+        print(f"✅ {t('No COW copy has drifted from its module view.')}")
+        return 0
+    if not findings:
+        # Le même texte que ci-dessus se lisait comme une contradiction :
+        # « aucune copie n'a dérivé », puis « ✅ réinitialisé id=2656 ».
+        # Les deux sont vrais — la détection différentielle ne voit qu'une
+        # copie dont un ENFANT casse — mais mis côte à côte sans un mot,
+        # on croit l'outil incohérent et l'on cesse de le lire.
+        print(
+            f"ℹ {t('The differential detection found nothing; resetting')}"
+            f" {t('the requested key(s) anyway.')}"
+        )
+
+    if findings:
+        print(
+            f"⚠️  {len(findings)}"
+            f" {t('COW copy(ies) drifted from their module')}"
+            f" {t('view in')} {config.database}"
+        )
+        print(
+            f"   {t('Odoo surfaces this when the module view is rewritten')}"
+            f" {t('(a version bump) or when the page is rendered.')}\n"
+        )
     for cow_view, module_view, broken in findings:
         twin = (
             f"module id={module_view['id']}"
             if module_view
-            else "NO module view with this key"
+            else t("NO module view with this key")
         )
         print(
             f"  id={cow_view['id']} key={cow_view['key']}"
             f" website_id={cow_view['website_id']}  [{twin}]"
         )
         for child_id, expr in broken:
-            print(f"      child {child_id} cannot apply: {expr}")
+            print(f"      {t('child')} {child_id} {t('cannot apply')}: {expr}")
         if module_view:
             show_diff(module_view, cow_view)
         print()
 
     if not config.reset:
         print(
-            "Nothing changed. Re-run with --reset <key> --apply to reset a"
-            " copy onto its module view."
+            f"{t('Nothing changed. Re-run with --reset <key> --apply to')}"
+            f" {t('reset a copy onto its module view.')}"
         )
         return 1
+
+    if config.tui and findings:
+        from reset_stale_cow_tui import run_tui
+
+        # False n'est pas un échec : l'écran a dit pourquoi, et le rapport
+        # texte ci-dessus porte déjà la même information.
+        run_tui(findings, config.database)
 
     wanted = set(config.reset)
     directory = config.backup_dir or os.path.join(
         "private", "odoo", "migration", config.database, "cow_reset"
     )
     done = 0
+    honoured = set()
+    missed = []
+    # Les vues brutes servent aux clés que la détection ne voit pas ; on ne
+    # les lit que si l'on va s'en servir.
+    views = fetch_views(config.database) if wanted - {"all"} else {}
     for cow_view, module_view, _broken in findings:
         if "all" not in wanted and cow_view["key"] not in wanted:
             continue
+        honoured.add(cow_view["key"])
         if not module_view:
             print(
-                f"⏭  {cow_view['key']}: no module view to reset onto,"
-                " skipped."
+                f"⏭  {cow_view['key']} :"
+                f" {t('no module view to reset onto, skipped.')}"
             )
             continue
         if not config.apply:
             print(
-                f"[dry-run] would reset id={cow_view['id']}"
-                f" ({cow_view['key']}) onto id={module_view['id']}"
+                f"[{t('dry-run')}] {t('would reset')} id={cow_view['id']}"
+                f" ({cow_view['key']}) {t('onto')} id={module_view['id']}"
             )
             continue
         path = backup(config.database, cow_view, directory)
         reset(config.database, cow_view, module_view)
         done += 1
-        print(f"✅ reset id={cow_view['id']} ({cow_view['key']})")
-        print(f"   previous arch saved to {path}")
+        print(f"✅ {t('reset')} id={cow_view['id']} ({cow_view['key']})")
+        print(f"   {t('previous arch saved to')} {path}")
+    # Une clé demandée qui ne correspond à rien N'EST PAS un succès. Elle
+    # l'était : la commande tournait, ne faisait rien, et se taisait. On a
+    # donc cru une copie réinitialisée alors que /contactus rendait encore
+    # 500 — mesuré sur une vraie migration.
+    for key in sorted(wanted - honoured - {"all"}):
+        copy, twin = find_copy_by_key(views, key)
+        if copy is None:
+            print(f"⚠️ {t('No COW copy carries this key')} : {key}")
+            missed.append(key)
+            continue
+        if twin is None:
+            print(f"⚠️ {key} : {t('no module view to reset onto, skipped.')}")
+            missed.append(key)
+            continue
+        if copy["arch"] == twin["arch"]:
+            print(f"ℹ {key} : {t('already identical to the module view.')}")
+            continue
+        if not config.apply:
+            print(
+                f"[{t('dry-run')}] {t('would reset')} id={copy['id']}"
+                f" ({key}) {t('onto')} id={twin['id']}"
+            )
+            continue
+        path = backup(config.database, copy, directory)
+        reset(config.database, copy, twin)
+        done += 1
+        print(f"✅ {t('reset')} id={copy['id']} ({key})")
+        print(f"   {t('previous arch saved to')} {path}")
+
     if config.apply and done:
         print(
-            f"\n{done} copy(ies) reset. Re-apply any real customisation as an"
-            " INHERITING view, not a copy, so it cannot go stale again."
+            f"\n{done} {t('copy(ies) reset. Re-apply any real customisation')}"
+            f" {t('as an INHERITING view, not a copy, so it cannot go stale')}"
+            f" {t('again.')}"
         )
-    return 0
+    # Une demande non honorée doit se voir jusque dans le code de sortie :
+    # l'appelant qui enchaîne ne lit pas le texte.
+    return 2 if missed else 0
 
 
 if __name__ == "__main__":

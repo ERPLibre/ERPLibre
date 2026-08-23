@@ -3860,6 +3860,2531 @@ TRANSLATIONS = {
         " module source. The classification above needs none; only the"
         " differences do. Restore it, or run this on the database.",
     },
+    "Could not archive the previous log": {
+        "fr": "Impossible d'archiver le journal précédent",
+        "en": "Could not archive the previous log",
+    },
+    "Previous migration log kept in": {
+        "fr": "Journal de la migration précédente conservé dans",
+        "en": "Previous migration log kept in",
+    },
+    "done early, before the neutralization": {
+        "fr": "faite plus tôt, avant la neutralisation",
+        "en": "done early, before the neutralization",
+    },
+    "compare each website copy with the module view it shadows": {
+        "fr": "comparer chaque copie de site web à la vue de module qu'elle"
+        " masque",
+        "en": "compare each website copy with the module view it shadows",
+    },
+    "Compare the website copies with the view they shadow": {
+        "fr": "🪞 Comparer les copies de site web à la vue qu'elles masquent",
+        "en": "🪞 Compare the website copies with the view they shadow",
+    },
+    "website copies compared with their module view,": {
+        "fr": "copies de site web comparées à leur vue de module,",
+        "en": "website copies compared with their module view,",
+    },
+    "differ.": {"fr": "diffèrent.", "en": "differ."},
+    "What do you want to do with these COW copies?": {
+        "fr": "Que voulez-vous faire de ces copies COW ?",
+        "en": "What do you want to do with these COW copies?",
+    },
+    "Enter = decide at the version bump": {
+        "fr": "Entrée = décider au palier de version",
+        "en": "Enter = decide at the version bump",
+    },
+    "what each copy holds": {
+        "fr": "ce que chaque copie porte",
+        "en": "what each copy holds",
+    },
+    "why it breaks": {
+        "fr": "pourquoi ça casse",
+        "en": "why it breaks",
+    },
+    "full screen": {
+        "fr": "plein écran",
+        "en": "full screen",
+    },
+    "neutralize now, reversible": {
+        "fr": "neutraliser maintenant, réversible",
+        "en": "neutralize now, reversible",
+    },
+    "Undo with": {
+        "fr": "Annuler avec",
+        "en": "Undo with",
+    },
+    "Nothing decided": {
+        "fr": "Rien de décidé",
+        "en": "Nothing decided",
+    },
+    "the migration will ask again at the version bump.": {
+        "fr": "la migration reposera la question au palier de version.",
+        "en": "the migration will ask again at the version bump.",
+    },
+    "Target version directory not found": {
+        "fr": "Répertoire de la version cible introuvable",
+        "en": "Target version directory not found",
+    },
+    "No website COW view changes shape in": {
+        "fr": "Aucune vue COW de site ne change de forme dans",
+        "en": "No website COW view changes shape in",
+    },
+    "website COW view(s) will break when moving to": {
+        "fr": "vue(s) COW de site casseront au passage à",
+        "en": "website COW view(s) will break when moving to",
+    },
+    "the copy keeps an arch whose shape no longer matches what": {
+        "fr": "la copie garde une arch dont la forme ne correspond plus à ce que",
+        "en": "the copy keeps an arch whose shape no longer matches what",
+    },
+    "the target module view expects.": {
+        "fr": "la vue module cible attend.",
+        "en": "the target module view expects.",
+    },
+    "The migration offers to neutralize them, and shows what": {
+        "fr": "La migration propose de les neutraliser, et montre ce que",
+        "en": "The migration offers to neutralize them, and shows what",
+    },
+    "each copy holds before you answer. To look now:": {
+        "fr": "chaque copie porte avant que vous répondiez. Pour regarder maintenant :",
+        "en": "each copy holds before you answer. To look now:",
+    },
+    "reversible with --restore": {
+        "fr": "réversible avec --restore",
+        "en": "reversible with --restore",
+    },
+    "Or by hand. To neutralize a copy, rename its key": {
+        "fr": "Ou à la main. Pour neutraliser une copie, renommer sa clé",
+        "en": "Or by hand. To neutralize a copy, rename its key",
+    },
+    "an unmatched key is never paired with the": {
+        "fr": "une clé sans correspondance n'est jamais appariée à la",
+        "en": "an unmatched key is never paired with the",
+    },
+    "module view, so the copy never receives the new": {
+        "fr": "vue module, la copie ne reçoit donc jamais le nouveau",
+        "en": "module view, so the copy never receives the new",
+    },
+    "Setting active=false alone is NOT enough:": {
+        "fr": "Mettre active=false seul ne suffit PAS :",
+        "en": "Setting active=false alone is NOT enough:",
+    },
+    "an inactive copy keeping the same key still shadows it.": {
+        "fr": "une copie inactive gardant la même clé la masque toujours.",
+        "en": "an inactive copy keeping the same key still shadows it.",
+    },
+    "COW view(s) belong to a module absent from": {
+        "fr": "vue(s) COW appartiennent à un module absent de",
+        "en": "COW view(s) belong to a module absent from",
+    },
+    "COW view(s) are pages or records made in the website": {
+        "fr": "vue(s) COW sont des pages ou des enregistrements faits dans",
+        "en": "COW view(s) are pages or records made in the website",
+    },
+    "editor (no module view of that name): not at risk.": {
+        "fr": "l'éditeur de site (aucune vue module de ce nom) : hors de danger.",
+        "en": "editor (no module view of that name): not at risk.",
+    },
+    "Use -v to list them.": {
+        "fr": "Utiliser -v pour les lister.",
+        "en": "Use -v to list them.",
+    },
+    "No view with this prefix on": {
+        "fr": "Aucune vue avec ce préfixe sur",
+        "en": "No view with this prefix on",
+    },
+    "archived COW view(s) on": {
+        "fr": "vue(s) COW archivées sur",
+        "en": "archived COW view(s) on",
+    },
+    "Their arch is intact. Restore them all with --restore,": {
+        "fr": "Leur arch est intacte. Toutes les restaurer avec --restore,",
+        "en": "Their arch is intact. Restore them all with --restore,",
+    },
+    "once the module view they shadow has the right shape.": {
+        "fr": "une fois que la vue module qu'elles masquent a la bonne forme.",
+        "en": "once the module view they shadow has the right shape.",
+    },
+    "COW view(s) restored on": {
+        "fr": "vue(s) COW restaurées sur",
+        "en": "COW view(s) restored on",
+    },
+    "No website COW view to neutralize.": {
+        "fr": "Aucune vue COW de site à neutraliser.",
+        "en": "No website COW view to neutralize.",
+    },
+    "website COW view(s) would break the bump": {
+        "fr": "vue(s) COW de site casseraient le palier",
+        "en": "website COW view(s) would break the bump",
+    },
+    "to": {
+        "fr": "vers",
+        "en": "to",
+    },
+    "Dry-run. Add --apply to rename their key to": {
+        "fr": "Simulation. Ajouter --apply pour renommer leur clé en",
+        "en": "Dry-run. Add --apply to rename their key to",
+    },
+    "and deactivate them. Reversible": {
+        "fr": "et les désactiver. Réversible",
+        "en": "and deactivate them. Reversible",
+    },
+    "with --restore; the arch stays in database.": {
+        "fr": "avec --restore ; l'arch reste en base.",
+        "en": "with --restore; the arch stays in database.",
+    },
+    "COW view(s) neutralized (key prefixed with": {
+        "fr": "vue(s) COW neutralisées (clé préfixée par",
+        "en": "COW view(s) neutralized (key prefixed with",
+    },
+    "deactivated). The arch is kept as an": {
+        "fr": "désactivées). L'arch est conservée comme",
+        "en": "deactivated). The arch is kept as an",
+    },
+    "archive; use --restore to undo.": {
+        "fr": "archive ; utiliser --restore pour annuler.",
+        "en": "archive; use --restore to undo.",
+    },
+    "target inherits, copy holds a standalone template": {
+        "fr": "la cible hérite, la copie porte un modèle autonome",
+        "en": "target inherits, copy holds a standalone template",
+    },
+    "target is a root view, copy holds inheritance specs": {
+        "fr": "la cible est une vue racine, la copie porte des specs d'héritage",
+        "en": "target is a root view, copy holds inheritance specs",
+    },
+    "No module view carries this key, so there is nothing to": {
+        "fr": "Aucune vue module ne porte cette clé, il n'y a donc rien à",
+        "en": "No module view carries this key, so there is nothing to",
+    },
+    "compare: this copy is a page made in the website editor.": {
+        "fr": "comparer : cette copie est une page faite dans l'éditeur de site.",
+        "en": "compare: this copy is a page made in the website editor.",
+    },
+    "The copy is identical to the module view.": {
+        "fr": "La copie est identique à la vue module.",
+        "en": "The copy is identical to the module view.",
+    },
+    "line(s) added": {
+        "fr": "ligne(s) ajoutée(s)",
+        "en": "line(s) added",
+    },
+    "removed": {
+        "fr": "retirée(s)",
+        "en": "removed",
+    },
+    "this is what neutralizing gives up.": {
+        "fr": "c'est ce que la neutralisation abandonne.",
+        "en": "this is what neutralizing gives up.",
+    },
+    "the module no longer declares this template": {
+        "fr": "le module ne déclare plus ce modèle",
+        "en": "the module no longer declares this template",
+    },
+    "inheritance specs (needs inherit_id)": {
+        "fr": "des specs d'héritage (exige inherit_id)",
+        "en": "inheritance specs (needs inherit_id)",
+    },
+    "a standalone template": {
+        "fr": "un modèle autonome",
+        "en": "a standalone template",
+    },
+    "Odoo changing the shape of its own template is NOT the": {
+        "fr": "Qu'Odoo change la forme de son propre modèle n'est PAS le",
+        "en": "Odoo changing the shape of its own template is NOT the",
+    },
+    "problem: on a database without a copy, the module upgrade": {
+        "fr": "problème : sur une base sans copie, la mise à jour du module",
+        "en": "problem: on a database without a copy, the module upgrade",
+    },
+    "rewrites the view and nothing breaks. It breaks here because": {
+        "fr": "réécrit la vue et rien ne casse. Ça casse ici parce qu'une",
+        "en": "rewrites the view and nothing breaks. It breaks here because",
+    },
+    "a COPY exists and froze the old shape — the copy follows the": {
+        "fr": "COPIE existe et a figé l'ancienne forme — la copie suit le",
+        "en": "a COPY exists and froze the old shape — the copy follows the",
+    },
+    "module and becomes an extension, while still holding a": {
+        "fr": "module et devient une extension, tout en portant encore un",
+        "en": "module and becomes an extension, while still holding a",
+    },
+    "standalone template. Odoo then applies that template as an": {
+        "fr": "modèle autonome. Odoo applique alors ce modèle comme une",
+        "en": "standalone template. Odoo then applies that template as an",
+    },
+    "inheritance spec and stops on « cannot be located in parent": {
+        "fr": "spec d'héritage et s'arrête sur « cannot be located in parent",
+        "en": "inheritance spec and stops on « cannot be located in parent",
+    },
+    "view ».": {
+        "fr": "view ».",
+        "en": "view ».",
+    },
+    "This copy has no module view of that name: it is a page": {
+        "fr": "Cette copie n'a aucune vue module de ce nom : c'est une page",
+        "en": "This copy has no module view of that name: it is a page",
+    },
+    "made in the website editor, and nothing holds its content.": {
+        "fr": "faite dans l'éditeur de site, et rien d'autre ne porte son contenu.",
+        "en": "made in the website editor, and nothing holds its content.",
+    },
+    "This copy is IDENTICAL to the module view it shadows: it": {
+        "fr": "Cette copie est IDENTIQUE à la vue module qu'elle masque : elle",
+        "en": "This copy is IDENTICAL to the module view it shadows: it",
+    },
+    "holds no customization, so neutralizing it loses nothing.": {
+        "fr": "ne porte aucune personnalisation, la neutraliser ne perd rien.",
+        "en": "holds no customization, so neutralizing it loses nothing.",
+    },
+    "This copy differs from the module view by": {
+        "fr": "Cette copie diffère de la vue module de",
+        "en": "This copy differs from the module view by",
+    },
+    "line(s):": {
+        "fr": "ligne(s) :",
+        "en": "line(s):",
+    },
+    "that is the customization, and all neutralizing gives up.": {
+        "fr": "c'est la personnalisation, et tout ce que la neutralisation abandonne.",
+        "en": "that is the customization, and all neutralizing gives up.",
+    },
+    "Run without --shape to read it.": {
+        "fr": "Lancer sans --shape pour la lire.",
+        "en": "Run without --shape to read it.",
+    },
+    "No website COW view is at risk.": {
+        "fr": "Aucune vue COW de site n'est en danger.",
+        "en": "No website COW view is at risk.",
+    },
+    "No COW copy has drifted from its module view.": {
+        "fr": "Aucune copie COW n'a dérivé de sa vue module.",
+        "en": "No COW copy has drifted from its module view.",
+    },
+    "COW copy(ies) drifted from their module": {
+        "fr": "copie(s) COW ont dérivé de leur vue",
+        "en": "COW copy(ies) drifted from their module",
+    },
+    "view in": {
+        "fr": "module dans",
+        "en": "view in",
+    },
+    "Odoo surfaces this when the module view is rewritten (a": {
+        "fr": "Odoo le fait apparaître quand la vue module est réécrite (un",
+        "en": "Odoo surfaces this when the module view is rewritten (a",
+    },
+    "version bump) or when the page is rendered.": {
+        "fr": "palier de version) ou quand la page est rendue.",
+        "en": "version bump) or when the page is rendered.",
+    },
+    "NO module view with this key": {
+        "fr": "AUCUNE vue module avec cette clé",
+        "en": "NO module view with this key",
+    },
+    "child": {
+        "fr": "enfant",
+        "en": "child",
+    },
+    "cannot apply": {
+        "fr": "ne peut s'appliquer",
+        "en": "cannot apply",
+    },
+    "Nothing changed. Re-run with --reset <key> --apply to": {
+        "fr": "Rien n'a changé. Relancer avec --reset <clé> --apply pour",
+        "en": "Nothing changed. Re-run with --reset <key> --apply to",
+    },
+    "reset a copy onto its module view.": {
+        "fr": "réinitialiser une copie sur sa vue module.",
+        "en": "reset a copy onto its module view.",
+    },
+    "no module view to reset onto, skipped.": {
+        "fr": "aucune vue module sur laquelle réinitialiser, ignorée.",
+        "en": "no module view to reset onto, skipped.",
+    },
+    "dry-run": {
+        "fr": "simulation",
+        "en": "dry-run",
+    },
+    "would reset": {
+        "fr": "réinitialiserait",
+        "en": "would reset",
+    },
+    "onto": {
+        "fr": "sur",
+        "en": "onto",
+    },
+    "reset": {
+        "fr": "réinitialisé",
+        "en": "reset",
+    },
+    "previous arch saved to": {
+        "fr": "arch précédente sauvegardée dans",
+        "en": "previous arch saved to",
+    },
+    "copy(ies) reset. Re-apply any real customisation": {
+        "fr": "copie(s) réinitialisée(s). Réappliquer toute vraie personnalisation",
+        "en": "copy(ies) reset. Re-apply any real customisation",
+    },
+    "as an INHERITING view, not a copy, so it cannot go stale": {
+        "fr": "comme une vue HÉRITANTE, pas une copie, pour qu'elle ne périme plus",
+        "en": "as an INHERITING view, not a copy, so it cannot go stale",
+    },
+    "again.": {
+        "fr": "à l'avenir.",
+        "en": "again.",
+    },
+    "lxml is required to resolve the xpath expressions.": {
+        "fr": "lxml est requis pour résoudre les expressions xpath.",
+        "en": "lxml is required to resolve the xpath expressions.",
+    },
+    "COW view(s) recorded in": {
+        "fr": "vue(s) COW enregistrées dans",
+        "en": "COW view(s) recorded in",
+    },
+    "COW view(s) disappeared": {
+        "fr": "vue(s) COW ont disparu",
+        "en": "COW view(s) disappeared",
+    },
+    "COW view(s) appeared": {
+        "fr": "vue(s) COW sont apparues",
+        "en": "COW view(s) appeared",
+    },
+    "arch rewritten": {
+        "fr": "arch réécrite",
+        "en": "arch rewritten",
+    },
+    "COW view(s) changed": {
+        "fr": "vue(s) COW ont changé",
+        "en": "COW view(s) changed",
+    },
+    "No change on the website COW views.": {
+        "fr": "Aucun changement sur les vues COW de site.",
+        "en": "No change on the website COW views.",
+    },
+    "Welcome to the Odoo database upgrade with ERPLibre": {
+        "fr": "Bienvenue dans la mise à niveau de base de données Odoo avec ERPLibre",
+        "en": "Welcome to the Odoo database upgrade with ERPLibre",
+    },
+    "Select the zip file of your database backup.": {
+        "fr": "Sélectionnez le fichier zip de votre sauvegarde de base de données.",
+        "en": "Select the zip file of your database backup.",
+    },
+    "Give the path of the file, or empty to use a file": {
+        "fr": "Donnez le chemin du fichier, ou rien pour utiliser un",
+        "en": "Give the path of the file, or empty to use a file",
+    },
+    "browser, or type": {
+        "fr": "navigateur de fichiers, ou tapez",
+        "en": "browser, or type",
+    },
+    "to download from production": {
+        "fr": "pour télécharger depuis la production",
+        "en": "to download from production",
+    },
+    "Cannot retrieve the database from remote, please retry the migration.": {
+        "fr": "Impossible de récupérer la base distante, veuillez relancer la migration.",
+        "en": "Cannot retrieve the database from remote, please retry the migration.",
+    },
+    "Open file": {
+        "fr": "Ouverture du fichier",
+        "en": "Open file",
+    },
+    "Detected Odoo CE version": {
+        "fr": "Version Odoo CE détectée",
+        "en": "Detected Odoo CE version",
+    },
+    "Which version do you want to upgrade to?": {
+        "fr": "Vers quelle version voulez-vous migrer ?",
+        "en": "Which version do you want to upgrade to?",
+    },
+    "Search the Odoo version": {
+        "fr": "Recherche de la version Odoo",
+        "en": "Search the Odoo version",
+    },
+    "Find the right environment, read the .zip file": {
+        "fr": "Recherche du bon environnement, lecture du fichier .zip",
+        "en": "Find the right environment, read the .zip file",
+    },
+    "Would you like to install": {
+        "fr": "Voulez-vous installer",
+        "en": "Would you like to install",
+    },
+    "You need an installed system before": {
+        "fr": "Il faut un système installé avant de",
+        "en": "You need an installed system before",
+    },
+    "continuing, check your Odoo installation.": {
+        "fr": "continuer, vérifiez votre installation Odoo.",
+        "en": "continuing, check your Odoo installation.",
+    },
+    "Install the environment if missing": {
+        "fr": "Installation de l'environnement s'il manque",
+        "en": "Install the environment if missing",
+    },
+    "Search missing modules": {
+        "fr": "Recherche des modules manquants",
+        "en": "Search missing modules",
+    },
+    "Install the missing modules, search for them or": {
+        "fr": "Installer les modules manquants, les chercher ou",
+        "en": "Install the missing modules, search for them or",
+    },
+    "ask to uninstall them (can break data)": {
+        "fr": "demander à les désinstaller (peut casser des données)",
+        "en": "ask to uninstall them (can break data)",
+    },
+    "Cannot set up the environment to begin.": {
+        "fr": "Impossible de préparer l'environnement pour commencer.",
+        "en": "Cannot set up the environment to begin.",
+    },
+    "Missing module": {
+        "fr": "Module manquant",
+        "en": "Missing module",
+    },
+    "Duplicate module": {
+        "fr": "Module en double",
+        "en": "Duplicate module",
+    },
+    "Missing or duplicate module detected at init,": {
+        "fr": "Module manquant ou en double détecté à l'init,",
+        "en": "Missing or duplicate module detected at init,",
+    },
+    "do you want to continue?": {
+        "fr": "voulez-vous continuer ?",
+        "en": "do you want to continue?",
+    },
+    "Missing or duplicate module detected at init, do": {
+        "fr": "Module manquant ou en double détecté à l'init,",
+        "en": "Missing or duplicate module detected at init, do",
+    },
+    "you want to continue?": {
+        "fr": "voulez-vous continuer ?",
+        "en": "you want to continue?",
+    },
+    "Which database name do you want to work with?": {
+        "fr": "Avec quel nom de base voulez-vous travailler ?",
+        "en": "Which database name do you want to work with?",
+    },
+    "Ignore the database neutralization": {
+        "fr": "Ignorer la neutralisation de la base",
+        "en": "Ignore the database neutralization",
+    },
+    "Working with database": {
+        "fr": "Travail sur la base",
+        "en": "Working with database",
+    },
+    "will copy": {
+        "fr": "va copier",
+        "en": "will copy",
+    },
+    "a file already exists, do you want to": {
+        "fr": "un fichier existe déjà, voulez-vous",
+        "en": "a file already exists, do you want to",
+    },
+    "continue?": {
+        "fr": "continuer ?",
+        "en": "continue?",
+    },
+    "Restore the database": {
+        "fr": "Restauration de la base",
+        "en": "Restore the database",
+    },
+    "Update all addons before neutralizing (already": {
+        "fr": "Mettre à jour tous les modules avant la neutralisation (déjà",
+        "en": "Update all addons before neutralizing (already",
+    },
+    "neutralized by Odoo if supported)": {
+        "fr": "neutralisée par Odoo si pris en charge)",
+        "en": "neutralized by Odoo if supported)",
+    },
+    "Do you need to upgrade before neutralizing the": {
+        "fr": "Faut-il mettre à jour avant de neutraliser la",
+        "en": "Do you need to upgrade before neutralizing the",
+    },
+    "database? Press enter to ignore": {
+        "fr": "base ? Entrée pour ignorer",
+        "en": "database? Press enter to ignore",
+    },
+    "Update the database before neutralizing, by module": {
+        "fr": "Mise à jour de la base avant neutralisation, par module",
+        "en": "Update the database before neutralizing, by module",
+    },
+    "Neutralize the database": {
+        "fr": "Neutralisation de la base",
+        "en": "Neutralize the database",
+    },
+    "Modules to uninstall before the migration": {
+        "fr": "Modules à désinstaller avant la migration",
+        "en": "Modules to uninstall before the migration",
+    },
+    "Uninstall modules": {
+        "fr": "Désinstallation des modules",
+        "en": "Uninstall modules",
+    },
+    "Install modules": {
+        "fr": "Installation des modules",
+        "en": "Install modules",
+    },
+    "Go to Settings / Technical / Cleanup... / Purge and": {
+        "fr": "Aller dans Configuration / Technique / Nettoyage... / Purger et",
+        "en": "Go to Settings / Technical / Cleanup... / Purge and",
+    },
+    "purge the obsolete modules": {
+        "fr": "purger les modules obsolètes",
+        "en": "purge the obsolete modules",
+    },
+    "Press enter to continue step 3": {
+        "fr": "Entrée pour continuer l'étape 3",
+        "en": "Press enter to continue step 3",
+    },
+    "Inspect zip": {
+        "fr": "Inspection du zip",
+        "en": "Inspect zip",
+    },
+    "Import database from zip": {
+        "fr": "Import de la base depuis le zip",
+        "en": "Import database from zip",
+    },
+    "Succeed update all addons": {
+        "fr": "Mise à jour de tous les modules",
+        "en": "Succeed update all addons",
+    },
+    "Clean up database before data migration": {
+        "fr": "Nettoyage de la base avant la migration des données",
+        "en": "Clean up database before data migration",
+    },
+    "Upgrade version with OpenUpgrade": {
+        "fr": "Montée de version avec OpenUpgrade",
+        "en": "Upgrade version with OpenUpgrade",
+    },
+    "Cleaning up database after upgrade": {
+        "fr": "Nettoyage de la base après la montée de version",
+        "en": "Cleaning up database after upgrade",
+    },
+    "Migration finished": {
+        "fr": "Migration terminée",
+        "en": "Migration finished",
+    },
+    "Clone to Odoo": {
+        "fr": "Clonage vers Odoo",
+        "en": "Clone to Odoo",
+    },
+    "FAILED (status": {
+        "fr": "ÉCHEC (statut",
+        "en": "FAILED (status",
+    },
+    "Stopping:": {
+        "fr": "Arrêt :",
+        "en": "Stopping:",
+    },
+    "is not usable.": {
+        "fr": "n'est pas utilisable.",
+        "en": "is not usable.",
+    },
+    "Clone Odoo": {
+        "fr": "Clonage Odoo",
+        "en": "Clone Odoo",
+    },
+    "nothing": {
+        "fr": "rien",
+        "en": "nothing",
+    },
+    "Switch Odoo": {
+        "fr": "Bascule Odoo",
+        "en": "Switch Odoo",
+    },
+    "done with update": {
+        "fr": "terminée avec mise à jour",
+        "en": "done with update",
+    },
+    "Module upgrade Odoo": {
+        "fr": "Mise à jour des modules Odoo",
+        "en": "Module upgrade Odoo",
+    },
+    "Database upgrade Odoo": {
+        "fr": "Migration de la base Odoo",
+        "en": "Database upgrade Odoo",
+    },
+    "Modules to uninstall before Odoo": {
+        "fr": "Modules à désinstaller avant Odoo",
+        "en": "Modules to uninstall before Odoo",
+    },
+    "to redo the command": {
+        "fr": "pour refaire la commande",
+        "en": "to redo the command",
+    },
+    "Error detected, press enter to continue or": {
+        "fr": "Erreur détectée, Entrée pour continuer ou",
+        "en": "Error detected, press enter to continue or",
+    },
+    "to stop": {
+        "fr": "pour arrêter",
+        "en": "to stop",
+    },
+    "Clone done for Odoo": {
+        "fr": "Clonage terminé pour Odoo",
+        "en": "Clone done for Odoo",
+    },
+    "Clone already done for Odoo": {
+        "fr": "Clonage déjà fait pour Odoo",
+        "en": "Clone already done for Odoo",
+    },
+    "Switch already done for Odoo": {
+        "fr": "Bascule déjà faite pour Odoo",
+        "en": "Switch already done for Odoo",
+    },
+    "Switch done with update for Odoo": {
+        "fr": "Bascule terminée avec mise à jour pour Odoo",
+        "en": "Switch done with update for Odoo",
+    },
+    "Module upgrade done for Odoo": {
+        "fr": "Mise à jour des modules terminée pour Odoo",
+        "en": "Module upgrade done for Odoo",
+    },
+    "Module upgrade already done for Odoo": {
+        "fr": "Mise à jour des modules déjà faite pour Odoo",
+        "en": "Module upgrade already done for Odoo",
+    },
+    "Database upgrade done for Odoo": {
+        "fr": "Migration de la base terminée pour Odoo",
+        "en": "Database upgrade done for Odoo",
+    },
+    "Database upgrade already done for Odoo": {
+        "fr": "Migration de la base déjà faite pour Odoo",
+        "en": "Database upgrade already done for Odoo",
+    },
+    "Cloning to Odoo": {
+        "fr": "Clonage vers Odoo",
+        "en": "Cloning to Odoo",
+    },
+    "from": {
+        "fr": "depuis",
+        "en": "from",
+    },
+    "Duplicate module in Odoo": {
+        "fr": "Module en double dans Odoo",
+        "en": "Duplicate module in Odoo",
+    },
+    "Duplicate module error detected, handle it": {
+        "fr": "Erreur de module en double détectée, la traiter",
+        "en": "Duplicate module error detected, handle it",
+    },
+    "manually then press enter to continue.": {
+        "fr": "manuellement puis Entrée pour continuer.",
+        "en": "manually then press enter to continue.",
+    },
+    "Missing module error detected, missing in": {
+        "fr": "Erreur de module manquant détectée, manquant dans",
+        "en": "Missing module error detected, missing in",
+    },
+    "All of the list above": {
+        "fr": "Toute la liste ci-dessus",
+        "en": "All of the list above",
+    },
+    "Add an extra custom one": {
+        "fr": "Ajouter un module personnalisé",
+        "en": "Add an extra custom one",
+    },
+    "List the missing modules to delete,": {
+        "fr": "Énumérer les modules manquants à supprimer,",
+        "en": "List the missing modules to delete,",
+    },
+    "separated by commas. The others will be": {
+        "fr": "séparés par des virgules. Les autres seront",
+        "en": "separated by commas. The others will be",
+    },
+    "migrated": {
+        "fr": "migrés",
+        "en": "migrated",
+    },
+    "Migration fix for Odoo": {
+        "fr": "Correctif de migration pour Odoo",
+        "en": "Migration fix for Odoo",
+    },
+    "Migration fix done for Odoo": {
+        "fr": "Correctif de migration terminé pour Odoo",
+        "en": "Migration fix done for Odoo",
+    },
+    "No migration fix to run for Odoo": {
+        "fr": "Aucun correctif de migration à exécuter pour Odoo",
+        "en": "No migration fix to run for Odoo",
+    },
+    "Migration fix already done for Odoo": {
+        "fr": "Correctif de migration déjà fait pour Odoo",
+        "en": "Migration fix already done for Odoo",
+    },
+    "List the module names to delete,": {
+        "fr": "Énumérer les noms de modules à supprimer,",
+        "en": "List the module names to delete,",
+    },
+    "separated by commas": {
+        "fr": "séparés par des virgules",
+        "en": "separated by commas",
+    },
+    "Missing module error": {
+        "fr": "Erreur de module manquant",
+        "en": "Missing module error",
+    },
+    "Duplicate module error": {
+        "fr": "Erreur de module en double",
+        "en": "Duplicate module error",
+    },
+    "Module error": {
+        "fr": "Erreur de module",
+        "en": "Module error",
+    },
+    "Please validate the commits after the code": {
+        "fr": "Veuillez valider les commits après la migration",
+        "en": "Please validate the commits after the code",
+    },
+    "migration.": {
+        "fr": "du code.",
+        "en": "migration.",
+    },
+    "To show the repo status": {
+        "fr": "Pour afficher l'état des dépôts",
+        "en": "To show the repo status",
+    },
+    "Please validate this path in config.conf": {
+        "fr": "Veuillez valider ce chemin dans config.conf",
+        "en": "Please validate this path in config.conf",
+    },
+    "Database migration to Odoo": {
+        "fr": "Migration de la base vers Odoo",
+        "en": "Database migration to Odoo",
+    },
+    "is now half migrated: replaying the command on": {
+        "fr": "est maintenant à moitié migrée : rejouer la commande dessus",
+        "en": "is now half migrated: replaying the command on",
+    },
+    "it would never recover, so it is NOT offered.": {
+        "fr": "ne s'en remettrait jamais, ce n'est donc PAS proposé.",
+        "en": "it would never recover, so it is NOT offered.",
+    },
+    "The clone step has been reset. Fix the": {
+        "fr": "L'étape de clonage a été réinitialisée. Corrigez la",
+        "en": "The clone step has been reset. Fix the",
+    },
+    "cause, then relaunch the migration and answer": {
+        "fr": "cause, puis relancez la migration et répondez",
+        "en": "cause, then relaunch the migration and answer",
+    },
+    "continue": {
+        "fr": "continuer",
+        "en": "continue",
+    },
+    "will be dropped and rebuilt from the previous": {
+        "fr": "sera supprimée et reconstruite depuis la version",
+        "en": "will be dropped and rebuilt from the previous",
+    },
+    "version before retrying.": {
+        "fr": "précédente avant de réessayer.",
+        "en": "version before retrying.",
+    },
+    "Do you want to upgrade all": {
+        "fr": "Voulez-vous tout mettre à jour",
+        "en": "Do you want to upgrade all",
+    },
+    "Press y/Y to upgrade all addons of the": {
+        "fr": "y/Y pour mettre à jour tous les modules de la",
+        "en": "Press y/Y to upgrade all addons of the",
+    },
+    "Open the server with Selenium": {
+        "fr": "Ouvrir le serveur avec Selenium",
+        "en": "Open the server with Selenium",
+    },
+    "Do you want to test this upgrade? Choose": {
+        "fr": "Voulez-vous tester cette migration ? Choisissez",
+        "en": "Do you want to test this upgrade? Choose",
+    },
+    "or press enter to ignore it": {
+        "fr": "ou Entrée pour ignorer",
+        "en": "or press enter to ignore it",
+    },
+    "Press enter to continue": {
+        "fr": "Entrée pour continuer",
+        "en": "Press enter to continue",
+    },
+    "Re-update i18n, purge the data and the tables": {
+        "fr": "Remise à jour de l'i18n, purge des données et des tables",
+        "en": "Re-update i18n, purge the data and the tables",
+    },
+    "except mail_test and mail_test_full": {
+        "fr": "sauf mail_test et mail_test_full",
+        "en": "except mail_test and mail_test_full",
+    },
+    "A backup can be created": {
+        "fr": "Une sauvegarde peut être créée",
+        "en": "A backup can be created",
+    },
+    "Press y/Y or type filename.zip to export, or": {
+        "fr": "y/Y ou un nom fichier.zip pour exporter, ou",
+        "en": "Press y/Y or type filename.zip to export, or",
+    },
+    "enter to continue": {
+        "fr": "Entrée pour continuer",
+        "en": "enter to continue",
+    },
+    "Test the migration, press y/Y": {
+        "fr": "Tester la migration, y/Y",
+        "en": "Test the migration, press y/Y",
+    },
+    "Documentation for this version": {
+        "fr": "Documentation de cette version",
+        "en": "Documentation for this version",
+    },
+    "Command not found": {
+        "fr": "Commande non trouvée",
+        "en": "Command not found",
+    },
+    "Execute command": {
+        "fr": "Exécution de la commande",
+        "en": "Execute command",
+    },
+    "Textual is missing from this interpreter:": {
+        "fr": "Textual manque à cet interpréteur :",
+        "en": "Textual is missing from this interpreter:",
+    },
+    "Run it with": {
+        "fr": "Le lancer avec",
+        "en": "Run it with",
+    },
+    "No leftover for theme": {
+        "fr": "Aucun reste pour le thème",
+        "en": "No leftover for theme",
+    },
+    "attachment(s) still under": {
+        "fr": "pièce(s) jointe(s) encore sous",
+        "en": "attachment(s) still under",
+    },
+    "view(s) whose key still names it": {
+        "fr": "vue(s) dont la clé le nomme encore",
+        "en": "view(s) whose key still names it",
+    },
+    "Nothing was deleted: their content may be the only trace": {
+        "fr": "Rien n'a été supprimé : leur contenu peut être la seule trace",
+        "en": "Nothing was deleted: their content may be the only trace",
+    },
+    "of a customization. Read before removing.": {
+        "fr": "d'une personnalisation. Lire avant de retirer.",
+        "en": "of a customization. Read before removing.",
+    },
+    "Installed theme(s) on": {
+        "fr": "Thème(s) installé(s) sur",
+        "en": "Installed theme(s) on",
+    },
+    "A theme carries view copies and SCSS through every": {
+        "fr": "Un thème traîne des copies de vues et des SCSS à travers chaque",
+        "en": "A theme carries view copies and SCSS through every",
+    },
+    "version bump, and a bump can rename what they rely on.": {
+        "fr": "palier de version, et un palier peut renommer ce dont ils dépendent.",
+        "en": "version bump, and a bump can rename what they rely on.",
+    },
+    "Uninstall them properly before migrating?": {
+        "fr": "Les désinstaller proprement avant de migrer ?",
+        "en": "Uninstall them properly before migrating?",
+    },
+    "Kept. Nothing was uninstalled.": {
+        "fr": "Conservés. Rien n'a été désinstallé.",
+        "en": "Kept. Nothing was uninstalled.",
+    },
+    "No customized SCSS is at risk in": {
+        "fr": "Aucun SCSS personnalisé n'est en danger dans",
+        "en": "No customized SCSS is at risk in",
+    },
+    "customized SCSS use(s) a variable that": {
+        "fr": "SCSS personnalisé(s) utilisent une variable que",
+        "en": "customized SCSS use(s) a variable that",
+    },
+    "no longer defines: the bundle will not compile.": {
+        "fr": "ne définit plus : le bundle ne compilera pas.",
+        "en": "no longer defines: the bundle will not compile.",
+    },
+    "Each one is a copy frozen on an older version. Dropping it": {
+        "fr": "Chacun est une copie figée sur une version antérieure. L'abandonner",
+        "en": "Each one is a copy frozen on an older version. Dropping it",
+    },
+    "restores the module file:": {
+        "fr": "rend le fichier du module :",
+        "en": "restores the module file:",
+    },
+    "Read it first: what it holds beyond the stale variable is": {
+        "fr": "Le lire d'abord : ce qu'il porte au-delà de la variable périmée est",
+        "en": "Read it first: what it holds beyond the stale variable is",
+    },
+    "a real customization, to re-apply as a small file.": {
+        "fr": "une vraie personnalisation, à réappliquer en petit fichier.",
+        "en": "a real customization, to re-apply as a small file.",
+    },
+    "Read the customizations above before continuing.": {
+        "fr": "Lire les personnalisations ci-dessus avant de continuer.",
+        "en": "Read the customizations above before continuing.",
+    },
+    "Missing:": {
+        "fr": "Manquantes :",
+        "en": "Missing:",
+    },
+    "No module file of that name in": {
+        "fr": "Aucun fichier de module de ce nom dans",
+        "en": "No module file of that name in",
+    },
+    "the target no longer ships it, so there is nothing to": {
+        "fr": "la cible ne le livre plus, il n'y a donc rien sur quoi",
+        "en": "the target no longer ships it, so there is nothing to",
+    },
+    "fall back on. Read the copy before dropping it.": {
+        "fr": "retomber. Lire la copie avant de l'abandonner.",
+        "en": "fall back on. Read the copy before dropping it.",
+    },
+    "The copy is identical to the module file.": {
+        "fr": "La copie est identique au fichier du module.",
+        "en": "The copy is identical to the module file.",
+    },
+    "line(s): that is what resetting gives up.": {
+        "fr": "ligne(s) : c'est ce que la réinitialisation abandonne.",
+        "en": "line(s): that is what resetting gives up.",
+    },
+    "What do you want to do with these customizations?": {
+        "fr": "Que voulez-vous faire de ces personnalisations ?",
+        "en": "What do you want to do with these customizations?",
+    },
+    "Enter = nothing": {
+        "fr": "Entrée = rien",
+        "en": "Enter = nothing",
+    },
+    "what the copy changed": {
+        "fr": "ce que la copie a changé",
+        "en": "what the copy changed",
+    },
+    "reset them onto the module file": {
+        "fr": "les réinitialiser sur le fichier du module",
+        "en": "reset them onto the module file",
+    },
+    "Full screen view unavailable.": {
+        "fr": "Vue plein écran indisponible.",
+        "en": "Full screen view unavailable.",
+    },
+    "Saved before resetting": {
+        "fr": "Sauvegardé avant réinitialisation",
+        "en": "Saved before resetting",
+    },
+    "Reset failed, nothing was changed.": {
+        "fr": "La réinitialisation a échoué, rien n'a été modifié.",
+        "en": "Reset failed, nothing was changed.",
+    },
+    "Reset done.": {
+        "fr": "Réinitialisation faite.",
+        "en": "Reset done.",
+    },
+    "This copy uses variables that": {
+        "fr": "Cette copie utilise des variables que",
+        "en": "This copy uses variables that",
+    },
+    "no longer defines": {
+        "fr": "ne définit plus",
+        "en": "no longer defines",
+    },
+    "The copy was written against an older version and frozen": {
+        "fr": "La copie a été écrite contre une version antérieure et figée",
+        "en": "The copy was written against an older version and frozen",
+    },
+    "there. The module has since renamed what it relies on.": {
+        "fr": "là. Le module a depuis renommé ce dont elle dépend.",
+        "en": "there. The module has since renamed what it relies on.",
+    },
+    "Resetting restores": {
+        "fr": "La réinitialisation rend",
+        "en": "Resetting restores",
+    },
+    "(nothing: the target no longer ships this file)": {
+        "fr": "(rien : la cible ne livre plus ce fichier)",
+        "en": "(nothing: the target no longer ships this file)",
+    },
+    "Reset command copied.": {
+        "fr": "Commande de réinitialisation copiée.",
+        "en": "Reset command copied.",
+    },
+    "Resetting needs Odoo 13.0 or later; this checkout is on": {
+        "fr": "La réinitialisation exige Odoo 13.0 ou plus ; ce checkout est sur",
+        "en": "Resetting needs Odoo 13.0 or later; this checkout is on",
+    },
+    "The prediction stands, the fix does not: run it again once": {
+        "fr": "La prédiction tient, pas la correction : relancer une fois",
+        "en": "The prediction stands, the fix does not: run it again once",
+    },
+    "the bump is done, on the upgraded database.": {
+        "fr": "le palier passé, sur la base montée de version.",
+        "en": "the bump is done, on the upgraded database.",
+    },
+    "Applying it from here fails with": {
+        "fr": "L'appliquer d'ici échoue sur",
+        "en": "Applying it from here fails with",
+    },
+    "and changes nothing.": {
+        "fr": "et ne change rien.",
+        "en": "and changes nothing.",
+    },
+    "Reset one of them onto its module view": {
+        "fr": "Réinitialiser l'une d'elles sur sa vue module",
+        "en": "Reset one of them onto its module view",
+    },
+    "Drifted COW copies": {
+        "fr": "Copies COW ayant dérivé",
+        "en": "Drifted COW copies",
+    },
+    "Which one(s) to reset onto the module view?": {
+        "fr": "Laquelle ou lesquelles réinitialiser sur la vue module ?",
+        "en": "Which one(s) to reset onto the module view?",
+    },
+    "numbers separated by commas, a = all, empty =": {
+        "fr": "numéros séparés par des virgules, a = toutes, vide =",
+        "en": "numbers separated by commas, a = all, empty =",
+    },
+    "Kept. Nothing was reset.": {
+        "fr": "Conservées. Rien n'a été réinitialisé.",
+        "en": "Kept. Nothing was reset.",
+    },
+    "Unknown choice, nothing was reset.": {
+        "fr": "Choix inconnu, rien n'a été réinitialisé.",
+        "en": "Unknown choice, nothing was reset.",
+    },
+    "Delete these leftovers, or keep them?": {
+        "fr": "Effacer ces restes, ou les garder ?",
+        "en": "Delete these leftovers, or keep them?",
+    },
+    "Enter = keep": {
+        "fr": "Entrée = garder",
+        "en": "Enter = keep",
+    },
+    "delete, after saving them": {
+        "fr": "effacer, après les avoir sauvegardés",
+        "en": "delete, after saving them",
+    },
+    "Kept. Nothing was deleted.": {
+        "fr": "Conservés. Rien n'a été effacé.",
+        "en": "Kept. Nothing was deleted.",
+    },
+    "Saved before deleting": {
+        "fr": "Sauvegardé avant effacement",
+        "en": "Saved before deleting",
+    },
+    "Deletion failed, nothing was removed.": {
+        "fr": "L'effacement a échoué, rien n'a été retiré.",
+        "en": "Deletion failed, nothing was removed.",
+    },
+    "attachment(s) deleted.": {
+        "fr": "pièce(s) jointe(s) effacée(s).",
+        "en": "attachment(s) deleted.",
+    },
+    "Request every public URL of this database now?": {
+        "fr": "Interroger maintenant toutes les URL publiques de cette base ?",
+        "en": "Request every public URL of this database now?",
+    },
+    "The sitemap listed no URL: nothing was tested.": {
+        "fr": "Le sitemap n'a listé aucune URL : rien n'a été testé.",
+        "en": "The sitemap listed no URL: nothing was tested.",
+    },
+    "public URL(s) answered without error.": {
+        "fr": "URL publique(s) ont répondu sans erreur.",
+        "en": "public URL(s) answered without error.",
+    },
+    "public URL(s) failed": {
+        "fr": "URL publique(s) ont échoué",
+        "en": "public URL(s) failed",
+    },
+    "no answer": {
+        "fr": "aucune réponse",
+        "en": "no answer",
+    },
+    "A page listed for search engines that does not answer is": {
+        "fr": "Une page listée pour les moteurs de recherche qui ne répond pas est",
+        "en": "A page listed for search engines that does not answer is",
+    },
+    "a page your visitors do not reach either.": {
+        "fr": "une page que vos visiteurs n'atteignent pas non plus.",
+        "en": "a page your visitors do not reach either.",
+    },
+    "The server never answered on": {
+        "fr": "Le serveur n'a jamais répondu sur",
+        "en": "The server never answered on",
+    },
+    "Could not read": {
+        "fr": "Impossible de lire",
+        "en": "Could not read",
+    },
+    "Starting Odoo on": {
+        "fr": "Démarrage d'Odoo sur",
+        "en": "Starting Odoo on",
+    },
+    "port": {
+        "fr": "port",
+        "en": "port",
+    },
+    "parent view(s) in cause": {
+        "fr": "vue(s) parente(s) en cause",
+        "en": "parent view(s) in cause",
+    },
+    "Those parents are copies frozen on an older version;": {
+        "fr": "Ces parents sont des copies figées sur une version antérieure ;",
+        "en": "Those parents are copies frozen on an older version;",
+    },
+    "resetting them onto the module view is the fix": {
+        "fr": "les réinitialiser sur la vue module est le correctif",
+        "en": "resetting them onto the module view is the fix",
+    },
+    "No parent view named: nothing to offer.": {
+        "fr": "Aucune vue parente nommée : rien à proposer.",
+        "en": "No parent view named: nothing to offer.",
+    },
+    "Copies to reset onto their module view": {
+        "fr": "Copies à réinitialiser sur leur vue module",
+        "en": "Copies to reset onto their module view",
+    },
+    "Which one(s) to reset?": {
+        "fr": "Laquelle ou lesquelles réinitialiser ?",
+        "en": "Which one(s) to reset?",
+    },
+    "Re-checked the": {
+        "fr": "Revérification des",
+        "en": "Re-checked the",
+    },
+    "failing URL(s) after the reset": {
+        "fr": "URL en échec après la réinitialisation",
+        "en": "failing URL(s) after the reset",
+    },
+    "Something already listens on port": {
+        "fr": "Quelque chose écoute déjà sur le port",
+        "en": "Something already listens on port",
+    },
+    "it would be tested instead of this database.": {
+        "fr": "il serait testé à la place de cette base.",
+        "en": "it would be tested instead of this database.",
+    },
+    "Enter =": {
+        "fr": "Entrée =",
+        "en": "Enter =",
+    },
+    "No COW copy carries this key": {
+        "fr": "Aucune copie COW ne porte cette clé",
+        "en": "No COW copy carries this key",
+    },
+    "already identical to the module view.": {
+        "fr": "déjà identique à la vue module.",
+        "en": "already identical to the module view.",
+    },
+    "Odoo surfaces this when the module view is rewritten": {
+        "fr": "Odoo le fait apparaître quand la vue module est réécrite",
+        "en": "Odoo surfaces this when the module view is rewritten",
+    },
+    "(a version bump) or when the page is rendered.": {
+        "fr": "(un palier de version) ou quand la page est rendue.",
+        "en": "(a version bump) or when the page is rendered.",
+    },
+    "Before starting: what already answers, and what": {
+        "fr": "Avant de commencer : ce qui répond déjà, et ce qui",
+        "en": "Before starting: what already answers, and what",
+    },
+    "does not. A page broken now will still be broken": {
+        "fr": "ne répond pas. Une page cassée maintenant le sera encore",
+        "en": "does not. A page broken now will still be broken",
+    },
+    "after — and that is not the migration.": {
+        "fr": "après — et ce ne sera pas la migration.",
+        "en": "after — and that is not the migration.",
+    },
+    "No child fails on this copy: it drifted without": {
+        "fr": "Aucun enfant n'échoue sur cette copie : elle a dérivé sans",
+        "en": "No child fails on this copy: it drifted without",
+    },
+    "breaking anything yet.": {
+        "fr": "encore rien casser.",
+        "en": "breaking anything yet.",
+    },
+    "These children no longer find their anchor in the copy": {
+        "fr": "Ces enfants ne trouvent plus leur point d'ancrage dans la copie",
+        "en": "These children no longer find their anchor in the copy",
+    },
+    "The anchor exists in the module view": {
+        "fr": "L'ancrage existe dans la vue module",
+        "en": "The anchor exists in the module view",
+    },
+    "but not in this copy, frozen on an older version.": {
+        "fr": "mais pas dans cette copie, figée sur une version antérieure.",
+        "en": "but not in this copy, frozen on an older version.",
+    },
+    "Resetting restores the module arch; the customization the": {
+        "fr": "Réinitialiser rend l'arch du module ; la personnalisation que",
+        "en": "Resetting restores the module arch; the customization the",
+    },
+    "copy carried is saved first, and is yours to re-apply as an": {
+        "fr": "la copie portait est sauvegardée d'abord, à vous de la réappliquer en",
+        "en": "copy carried is saved first, and is yours to re-apply as an",
+    },
+    "INHERITING view with its own key.": {
+        "fr": "vue HÉRITANTE avec sa propre clé.",
+        "en": "INHERITING view with its own key.",
+    },
+    "No module view carries this key: nothing to reset": {
+        "fr": "Aucune vue module ne porte cette clé : rien sur quoi",
+        "en": "No module view carries this key: nothing to reset",
+    },
+    "onto.": {
+        "fr": "réinitialiser.",
+        "en": "onto.",
+    },
+    "Browse the differences full screen": {
+        "fr": "Parcourir les différences en plein écran",
+        "en": "Browse the differences full screen",
+    },
+    "The checkout is on Odoo": {
+        "fr": "Le checkout est sur Odoo",
+        "en": "The checkout is on Odoo",
+    },
+    "and the database on": {
+        "fr": "et la base sur",
+        "en": "and the database on",
+    },
+    "Opening it with the wrong version writes to it before": {
+        "fr": "L'ouvrir avec la mauvaise version y écrit avant",
+        "en": "Opening it with the wrong version writes to it before",
+    },
+    "failing. Switch the checkout first.": {
+        "fr": "d'échouer. Basculer le checkout d'abord.",
+        "en": "failing. Switch the checkout first.",
+    },
+    "Database cleanup on": {
+        "fr": "Nettoyage de la base",
+        "en": "Database cleanup on",
+    },
+    "Cleaning": {
+        "fr": "Nettoyage de",
+        "en": "Cleaning",
+    },
+    "pass": {
+        "fr": "passe",
+        "en": "pass",
+    },
+    "purged": {
+        "fr": "purgés",
+        "en": "purged",
+    },
+    "purged;": {
+        "fr": "purgés ;",
+        "en": "purged;",
+    },
+    "could not be, and are left as they are": {
+        "fr": "n'ont pas pu l'être, et restent en l'état",
+        "en": "could not be, and are left as they are",
+    },
+    "entries purged, nothing left.": {
+        "fr": "entrées purgées, rien ne reste.",
+        "en": "entries purged, nothing left.",
+    },
+    "no such wizard in this version, skipped.": {
+        "fr": "pas d'assistant pour cela dans cette version, ignoré.",
+        "en": "no such wizard in this version, skipped.",
+    },
+    "A database can carry leftovers nothing can remove.": {
+        "fr": "Une base peut porter des restes que rien ne peut retirer.",
+        "en": "A database can carry leftovers nothing can remove.",
+    },
+    "This is a warning, not a failure.": {
+        "fr": "C'est un avertissement, pas un échec.",
+        "en": "This is a warning, not a failure.",
+    },
+    "The cleanup produced no report.": {
+        "fr": "Le nettoyage n'a produit aucun rapport.",
+        "en": "The cleanup produced no report.",
+    },
+    "Unreadable report": {
+        "fr": "Rapport illisible",
+        "en": "Unreadable report",
+    },
+    "obsolete models": {
+        "fr": "modèles obsolètes",
+        "en": "obsolete models",
+    },
+    "obsolete modules": {
+        "fr": "modules obsolètes",
+        "en": "obsolete modules",
+    },
+    "obsolete columns": {
+        "fr": "colonnes obsolètes",
+        "en": "obsolete columns",
+    },
+    "obsolete tables": {
+        "fr": "tables obsolètes",
+        "en": "obsolete tables",
+    },
+    "obsolete data entries": {
+        "fr": "entrées de données obsolètes",
+        "en": "obsolete data entries",
+    },
+    "obsolete menu entries": {
+        "fr": "entrées de menu obsolètes",
+        "en": "obsolete menu entries",
+    },
+    "missing indexes": {
+        "fr": "index manquants",
+        "en": "missing indexes",
+    },
+    "obsolete properties": {
+        "fr": "propriétés obsolètes",
+        "en": "obsolete properties",
+    },
+    "entries would be purged": {
+        "fr": "entrées seraient purgées",
+        "en": "entries would be purged",
+    },
+    "nothing was changed": {
+        "fr": "rien n'a été modifié",
+        "en": "nothing was changed",
+    },
+    "Enter = 1": {
+        "fr": "Entrée = 1",
+        "en": "Enter = 1",
+    },
+    "Enter = all, n = none": {
+        "fr": "Entrée = tous, n = aucun",
+        "en": "Enter = all, n = none",
+    },
+    "Enter = delete, after saving them": {
+        "fr": "Entrée = effacer, après les avoir sauvegardés",
+        "en": "Enter = delete, after saving them",
+    },
+    "Enter = neutralize now, reversible": {
+        "fr": "Entrée = neutraliser maintenant, réversible",
+        "en": "Enter = neutralize now, reversible",
+    },
+    "Enter = reset them onto the module file": {
+        "fr": "Entrée = les réinitialiser sur le fichier du module",
+        "en": "Enter = reset them onto the module file",
+    },
+    "Enter upgrades all addons of the": {
+        "fr": "Entrée met à jour tous les modules de la",
+        "en": "Enter upgrades all addons of the",
+    },
+    "Open it at EVERY version bump, stop asking": {
+        "fr": "L'ouvrir à CHAQUE palier de version, ne plus demander",
+        "en": "Open it at EVERY version bump, stop asking",
+    },
+    "Testing every bump, as chosen earlier.": {
+        "fr": "Test à chaque palier, comme choisi plus tôt.",
+        "en": "Testing every bump, as chosen earlier.",
+    },
+    "numbers separated by commas, Enter = all, n =": {
+        "fr": "numéros séparés par des virgules, Entrée = toutes, n =",
+        "en": "numbers separated by commas, Enter = all, n =",
+    },
+    "decide at the version bump": {
+        "fr": "décider au palier de version",
+        "en": "decide at the version bump",
+    },
+    "keep": {
+        "fr": "garder",
+        "en": "keep",
+    },
+    "The server did not serve the login page.": {
+        "fr": "Le serveur n'a pas servi la page de connexion.",
+        "en": "The server did not serve the login page.",
+    },
+    "Wrong login or password for user": {
+        "fr": "Identifiant ou mot de passe refusé pour l'utilisateur",
+        "en": "Wrong login or password for user",
+    },
+    "Could not read the menus": {
+        "fr": "Impossible de lire les menus",
+        "en": "Could not read the menus",
+    },
+    "Apps opened as the test user": {
+        "fr": "Applications ouvertes avec l'utilisateur test",
+        "en": "Apps opened as the test user",
+    },
+    "not openable this way (client or server": {
+        "fr": "non ouvrables ainsi (action client ou",
+        "en": "not openable this way (client or server",
+    },
+    "action): nothing to render.": {
+        "fr": "serveur) : rien à rendre.",
+        "en": "action): nothing to render.",
+    },
+    "opened with an empty domain: theirs": {
+        "fr": "ouvertes avec un domaine vide : le leur",
+        "en": "opened with an empty domain: theirs",
+    },
+    "needs the browser to evaluate it.": {
+        "fr": "demande le navigateur pour être évalué.",
+        "en": "needs the browser to evaluate it.",
+    },
+    "Every app opened its first page.": {
+        "fr": "Chaque application a ouvert sa première page.",
+        "en": "Every app opened its first page.",
+    },
+    "Apps that failed to open": {
+        "fr": "Applications qui n'ont pas pu s'ouvrir",
+        "en": "Apps that failed to open",
+    },
+    "reading the action": {
+        "fr": "lecture de l'action",
+        "en": "reading the action",
+    },
+    "rendering the views": {
+        "fr": "rendu des vues",
+        "en": "rendering the views",
+    },
+    "loading the first records": {
+        "fr": "chargement des premiers enregistrements",
+        "en": "loading the first records",
+    },
+    "These are back-office failures: the public smoke test": {
+        "fr": "Ce sont des échecs du back-office : le test de fumée public",
+        "en": "These are back-office failures: the public smoke test",
+    },
+    "cannot see them.": {
+        "fr": "ne peut pas les voir.",
+        "en": "cannot see them.",
+    },
+    "Could not log in as": {
+        "fr": "Connexion impossible en tant que",
+        "en": "Could not log in as",
+    },
+    "No": {
+        "fr": "Aucun",
+        "en": "No",
+    },
+    "user in": {
+        "fr": "utilisateur dans",
+        "en": "user in",
+    },
+    "the database was not neutralized, nothing to browse.": {
+        "fr": "la base n'a pas été neutralisée, rien à parcourir.",
+        "en": "the database was not neutralized, nothing to browse.",
+    },
+    "Back office not browsed": {
+        "fr": "Back-office non parcouru",
+        "en": "Back office not browsed",
+    },
+    "no test user: the database was not neutralized": {
+        "fr": "pas d'utilisateur test : la base n'a pas été neutralisée",
+        "en": "no test user: the database was not neutralized",
+    },
+    "Could not tell whether the": {
+        "fr": "Impossible de savoir si l'utilisateur",
+        "en": "Could not tell whether the",
+    },
+    "user exists in": {
+        "fr": "existe dans",
+        "en": "user exists in",
+    },
+    "could not tell whether the test user exists": {
+        "fr": "impossible de savoir si l'utilisateur test existe",
+        "en": "could not tell whether the test user exists",
+    },
+    "listing the model fields": {
+        "fr": "inventaire des champs du modèle",
+        "en": "listing the model fields",
+    },
+    "model absent from the running registry": {
+        "fr": "modèle absent du registre en cours",
+        "en": "model absent from the running registry",
+    },
+    "installed in the database, but its module code": {
+        "fr": "installé dans la base, mais le code de son module",
+        "en": "installed in the database, but its module code",
+    },
+    "is not in this addons path.": {
+        "fr": "n'est pas dans cet addons path.",
+        "en": "is not in this addons path.",
+    },
+    "Views naming a field the model no longer has": {
+        "fr": "Vues nommant un champ que le modèle n'a plus",
+        "en": "Views naming a field the model no longer has",
+    },
+    "Public pages, then the back office as the test user": {
+        "fr": "Les pages publiques, puis le back-office avec l'utilisateur test",
+        "en": "Public pages, then the back office as the test user",
+    },
+    "if the database was neutralized.": {
+        "fr": "si la base a été neutralisée.",
+        "en": "if the database was neutralized.",
+    },
+    "Portal": {
+        "fr": "Portail",
+        "en": "Portal",
+    },
+    "Portal pages opened as the test user": {
+        "fr": "Pages du portail ouvertes avec l'utilisateur test",
+        "en": "Portal pages opened as the test user",
+    },
+    "not signed in": {
+        "fr": "pas connecté",
+        "en": "not signed in",
+    },
+    "the page served was the login form": {
+        "fr": "la page servie était le formulaire de connexion",
+        "en": "the page served was the login form",
+    },
+    "server log": {
+        "fr": "journal du serveur",
+        "en": "server log",
+    },
+    "Purging modules reloads the whole registry: on a big": {
+        "fr": "Purger les modules recharge tout le registre : sur un grand",
+        "en": "Purging modules reloads the whole registry: on a big",
+    },
+    "addons path this takes minutes, not seconds.": {
+        "fr": "addons path cela prend des minutes, pas des secondes.",
+        "en": "addons path this takes minutes, not seconds.",
+    },
+    "Took": {
+        "fr": "Durée :",
+        "en": "Took",
+    },
+    "seconds.": {
+        "fr": "secondes.",
+        "en": "seconds.",
+    },
+    "pass": {
+        "fr": "passe",
+        "en": "pass",
+    },
+    "The cleanup was still running after": {
+        "fr": "Le nettoyage tournait encore après",
+        "en": "The cleanup was still running after",
+    },
+    "seconds and was stopped.": {
+        "fr": "secondes et a été arrêté.",
+        "en": "seconds and was stopped.",
+    },
+    "the whole batch": {
+        "fr": "le lot entier",
+        "en": "the whole batch",
+    },
+    "Still failing after": {
+        "fr": "Échoue toujours après",
+        "en": "Still failing after",
+    },
+    "attempts: this one needs a developer.": {
+        "fr": "tentatives : celle-ci demande un développeur.",
+        "en": "attempts: this one needs a developer.",
+    },
+    "Error detected. Choose, or ctrl+c to": {
+        "fr": "Erreur détectée. Choisissez, ou ctrl+c pour",
+        "en": "Error detected. Choose, or ctrl+c to",
+    },
+    "stop": {
+        "fr": "arrêter",
+        "en": "stop",
+    },
+    "Too many turns on this prompt: moving on.": {
+        "fr": "Trop de tours sur cette invite : on passe.",
+        "en": "Too many turns on this prompt: moving on.",
+    },
+    "Please validate git commit on repos, press to": {
+        "fr": "Veuillez valider les commits sur les dépôts, appuyez pour",
+        "en": "Please validate git commit on repos, press to",
+    },
+    "Check the migrated code, press to continue": {
+        "fr": "Vérifiez le code migré, appuyez pour continuer",
+        "en": "Check the migrated code, press to continue",
+    },
+    "Please validate the repo is ready to run": {
+        "fr": "Veuillez valider que le dépôt est prêt pour",
+        "en": "Please validate the repo is ready to run",
+    },
+    "press to continue": {
+        "fr": "appuyez pour continuer",
+        "en": "press to continue",
+    },
+    "smoke_internal_ui.py is missing": {
+        "fr": "smoke_internal_ui.py est absent",
+        "en": "smoke_internal_ui.py is missing",
+    },
+    "the test user is gone from a neutralized database: the back office was NOT checked": {
+        "fr": "l'utilisateur test a disparu d'une base neutralisée : le back-office n'a PAS été vérifié",
+        "en": "the test user is gone from a neutralized database: the back office was NOT checked",
+    },
+    "Back office NOT browsed": {
+        "fr": "Back-office NON parcouru",
+        "en": "Back office NOT browsed",
+    },
+    "Public pages, then the back office and /my as the": {
+        "fr": "Les pages publiques, puis le back-office et /my avec",
+        "en": "Public pages, then the back office and /my as the",
+    },
+    "test user (neutralized database).": {
+        "fr": "l'utilisateur test (base neutralisée).",
+        "en": "test user (neutralized database).",
+    },
+    "Public pages only:": {
+        "fr": "Pages publiques seulement :",
+        "en": "Public pages only:",
+    },
+    "was not neutralized, so there is no test user to": {
+        "fr": "n'a pas été neutralisée, il n'y a donc pas d'utilisateur test pour",
+        "en": "was not neutralized, so there is no test user to",
+    },
+    "sign in with.": {
+        "fr": "s'y connecter.",
+        "en": "sign in with.",
+    },
+    "Migration state": {
+        "fr": "État de la migration",
+        "en": "Migration state",
+    },
+    "started": {
+        "fr": "démarrée",
+        "en": "started",
+    },
+    "last written": {
+        "fr": "dernière écriture",
+        "en": "last written",
+    },
+    "current step": {
+        "fr": "étape courante",
+        "en": "current step",
+    },
+    "Test results": {
+        "fr": "Résultat des tests",
+        "en": "Test results",
+    },
+    "No tool has run yet.": {
+        "fr": "Aucun outil n'a encore tourné.",
+        "en": "No tool has run yet.",
+    },
+    "Commands that failed": {
+        "fr": "Commandes en échec",
+        "en": "Commands that failed",
+    },
+    "What was done, step by step": {
+        "fr": "Ce qui a été fait, étape par étape",
+        "en": "What was done, step by step",
+    },
+    "runs": {
+        "fr": "passages",
+        "en": "runs",
+    },
+    "nothing to report": {
+        "fr": "rien à signaler",
+        "en": "nothing to report",
+    },
+    "findings to look at": {
+        "fr": "des trouvailles à regarder",
+        "en": "findings to look at",
+    },
+    "the tool itself failed": {
+        "fr": "l'outil lui-même a échoué",
+        "en": "the tool itself failed",
+    },
+    "unknown result": {
+        "fr": "résultat inconnu",
+        "en": "unknown result",
+    },
+    "before the first step": {
+        "fr": "avant la première étape",
+        "en": "before the first step",
+    },
+    "No migration in progress.": {
+        "fr": "Aucune migration en cours.",
+        "en": "No migration in progress.",
+    },
+    "show the migration state": {
+        "fr": "afficher l'état de la migration",
+        "en": "show the migration state",
+    },
+    "Nothing to show yet.": {
+        "fr": "Rien à montrer pour l'instant.",
+        "en": "Nothing to show yet.",
+    },
+    "(b = go back a step, t = show the migration state)": {
+        "fr": "(b = revenir à une étape précédente,"
+        " t = afficher l'état de la migration)",
+        "en": "(b = go back a step, t = show the migration state)",
+    },
+    "Migration state (full screen)": {
+        "fr": "État de la migration (plein écran)",
+        "en": "Migration state (full screen)",
+    },
+    "Export a backup?": {
+        "fr": "Exporter une sauvegarde ?",
+        "en": "Export a backup?",
+    },
+    "or type filename.zip": {
+        "fr": "ou tapez nomfichier.zip",
+        "en": "or type filename.zip",
+    },
+    "The login page itself failed": {
+        "fr": "La page de connexion elle-même a échoué",
+        "en": "The login page itself failed",
+    },
+    "No CSRF token on the login page": {
+        "fr": "Aucun jeton CSRF sur la page de connexion",
+        "en": "No CSRF token on the login page",
+    },
+    "after the reset": {
+        "fr": "après la réinitialisation",
+        "en": "after the reset",
+    },
+    "The differential detection found nothing; resetting": {
+        "fr": "La détection différentielle n'a rien trouvé ; réinitialisation",
+        "en": "The differential detection found nothing; resetting",
+    },
+    "the requested key(s) anyway.": {
+        "fr": "de la ou des clés demandées malgré tout.",
+        "en": "the requested key(s) anyway.",
+    },
+    "lines": {
+        "fr": "lignes",
+        "en": "lines",
+    },
+    "press l to show": {
+        "fr": "l pour afficher",
+        "en": "press l to show",
+    },
+    "last": {
+        "fr": "dernières",
+        "en": "last",
+    },
+    "Refresh": {
+        "fr": "Rafraîchir",
+        "en": "Refresh",
+    },
+    "Logs": {
+        "fr": "Journaux",
+        "en": "Logs",
+    },
+    "Panel": {
+        "fr": "Panneau",
+        "en": "Panel",
+    },
+    "Wider": {
+        "fr": "Élargir",
+        "en": "Wider",
+    },
+    "Narrower": {
+        "fr": "Rétrécir",
+        "en": "Narrower",
+    },
+    "finished": {
+        "fr": "terminée",
+        "en": "finished",
+    },
+    "duration": {
+        "fr": "durée",
+        "en": "duration",
+    },
+    "Panels": {
+        "fr": "Panneaux",
+        "en": "Panels",
+    },
+    "summary + list + detail": {
+        "fr": "résumé + liste + détail",
+        "en": "summary + list + detail",
+    },
+    "list + detail": {
+        "fr": "liste + détail",
+        "en": "list + detail",
+    },
+    "detail only": {
+        "fr": "détail seul",
+        "en": "detail only",
+    },
+    "errors in the log": {
+        "fr": "erreurs dans le journal",
+        "en": "errors in the log",
+    },
+    "Migration quality, step by step": {
+        "fr": "Qualité de la migration, palier par palier",
+        "en": "Migration quality, step by step",
+    },
+    "database not found": {
+        "fr": "base introuvable",
+        "en": "database not found",
+    },
+    "attachment files missing from the filestore": {
+        "fr": "fichiers de pièces jointes absents du filestore",
+        "en": "attachment files missing from the filestore",
+    },
+    "From start to finish": {
+        "fr": "Du départ à l'arrivée",
+        "en": "From start to finish",
+    },
+    "not comparable: a database is missing": {
+        "fr": "non comparable : une base manque",
+        "en": "not comparable: a database is missing",
+    },
+    "probable table rename(s)": {
+        "fr": "renommage(s) de table probable(s)",
+        "en": "probable table rename(s)",
+    },
+    "table(s) lost rows": {
+        "fr": "table(s) ont perdu des lignes",
+        "en": "table(s) lost rows",
+    },
+    "attachments": {
+        "fr": "pièces jointes",
+        "en": "attachments",
+    },
+    "probably renamed to": {
+        "fr": "probablement renommée en",
+        "en": "probably renamed to",
+    },
+    "steps": {
+        "fr": "paliers",
+        "en": "steps",
+    },
+    "Migration": {
+        "fr": "🚚 Migration",
+        "en": "🚚 Migration",
+    },
+    "Quality of a migration, step by step": {
+        "fr": "📐 Qualité d'une migration, palier par palier",
+        "en": "📐 Quality of a migration, step by step",
+    },
+    "Quality": {
+        "fr": "Qualité",
+        "en": "Quality",
+    },
+    "Already inside a running screen: open it in its own": {
+        "fr": "Déjà dans un écran en cours : l'ouvrir dans son propre",
+        "en": "Already inside a running screen: open it in its own",
+    },
+    "process instead.": {
+        "fr": "processus.",
+        "en": "process instead.",
+    },
+    "Missing files": {
+        "fr": "Fichiers absents",
+        "en": "Missing files",
+    },
+    "every attachment file is present": {
+        "fr": "tous les fichiers de pièces jointes sont présents",
+        "en": "every attachment file is present",
+    },
+    "Could not read their metadata.": {
+        "fr": "Impossible de lire leurs métadonnées.",
+        "en": "Could not read their metadata.",
+    },
+    "by model and field": {
+        "fr": "par modèle et par champ",
+        "en": "by model and field",
+    },
+    "one by one": {
+        "fr": "un par un",
+        "en": "one by one",
+    },
+    "press m to list them": {
+        "fr": "m pour en voir la liste",
+        "en": "press m to list them",
+    },
+    "Pick a step to see its missing files.": {
+        "fr": "Choisissez un palier pour voir ses fichiers absents.",
+        "en": "Pick a step to see its missing files.",
+    },
+    "table(s) lost rows, unexplained": {
+        "fr": "table(s) ont perdu des lignes, sans explication",
+        "en": "table(s) lost rows, unexplained",
+    },
+    "table(s) explained by an Odoo change": {
+        "fr": "table(s) expliquées par un changement d'Odoo",
+        "en": "table(s) explained by an Odoo change",
+    },
+    "Cannot read the database: ": {
+        "fr": "Lecture impossible de la base : ",
+        "en": "Cannot read the database: ",
+    },
+    "Cannot read the package file: ": {
+        "fr": "Lecture impossible du fichier de packages : ",
+        "en": "Cannot read the package file: ",
+    },
+    "Modules missing from the default package": {
+        "fr": "📦 Modules absents du package par défaut",
+        "en": "📦 Modules missing from the default package",
+    },
+    "Show every entry": {
+        "fr": "Tout afficher",
+        "en": "Show every entry",
+    },
+    "List the known packages": {
+        "fr": "Lister les packages connus",
+        "en": "List the known packages",
+    },
+    "Already repaired: the group exists.": {
+        "fr": "Déjà réparé : le groupe existe.",
+        "en": "Already repaired: the group exists.",
+    },
+    "DMS access groups:": {
+        "fr": "Groupes d'accès DMS :",
+        "en": "DMS access groups:",
+    },
+    "DMS documents in the database": {
+        "fr": "Documents DMS dans la base",
+        "en": "DMS documents in the database",
+    },
+    "No DMS user to test visibility with.": {
+        "fr": "Aucun utilisateur DMS pour éprouver la visibilité.",
+        "en": "No DMS user to test visibility with.",
+    },
+    "Nothing written. Re-run with --apply.": {
+        "fr": "Rien d'écrit. Relancer avec --apply.",
+        "en": "Nothing written. Re-run with --apply.",
+    },
+    "Now visible to": {
+        "fr": "Désormais visibles pour",
+        "en": "Now visible to",
+    },
+    "Visible to": {
+        "fr": "Visibles pour",
+        "en": "Visible to",
+    },
+    "Would create one access group over": {
+        "fr": "Créerait un groupe d'accès sur",
+        "en": "Would create one access group over",
+    },
+    "file(s)": {
+        "fr": "fichier(s)",
+        "en": "file(s)",
+    },
+    "folder(s)": {
+        "fr": "dossier(s)",
+        "en": "folder(s)",
+    },
+    "root folder(s)": {
+        "fr": "dossier(s) racine",
+        "en": "root folder(s)",
+    },
+    "No DMS in this database, nothing to repair.": {
+        "fr": "Pas de DMS dans cette base, rien à réparer.",
+        "en": "No DMS in this database, nothing to repair.",
+    },
+    "Every one of them is visible to someone.": {
+        "fr": "Chacun est visible par quelqu'un.",
+        "en": "Every one of them is visible to someone.",
+    },
+    "No internal user to test visibility with.": {
+        "fr": "Aucun utilisateur interne pour éprouver la visibilité.",
+        "en": "No internal user to test visibility with.",
+    },
+    "The data is there; a global rule hides all of it.": {
+        "fr": "Les données sont là ; une règle globale les masque entièrement.",
+        "en": "The data is there; a global rule hides all of it.",
+    },
+    "checked against": {
+        "fr": "éprouvés avec",
+        "en": "checked against",
+    },
+    "internal user(s)": {
+        "fr": "utilisateur(s) interne(s)",
+        "en": "internal user(s)",
+    },
+    "model(s) nobody can see a single row of": {
+        "fr": "modèle(s) dont personne ne voit une seule ligne",
+        "en": "model(s) nobody can see a single row of",
+    },
+    "model(s) with a global rule and some data,": {
+        "fr": "modèle(s) avec une règle globale et des données,",
+        "en": "model(s) with a global rule and some data,",
+    },
+    "row(s)": {
+        "fr": "ligne(s)",
+        "en": "row(s)",
+    },
+    "Against OpenUpgrade": {
+        "fr": "Face à OpenUpgrade",
+        "en": "Against OpenUpgrade",
+    },
+    "NOT declared by OpenUpgrade": {
+        "fr": "NON déclarés par OpenUpgrade",
+        "en": "NOT declared by OpenUpgrade",
+    },
+    "No OpenUpgrade analysis for this step.": {
+        "fr": "Pas d'analyse OpenUpgrade pour ce palier.",
+        "en": "No OpenUpgrade analysis for this step.",
+    },
+    "became a per-company jsonb column": {
+        "fr": "passés en colonne jsonb par société",
+        "en": "became a per-company jsonb column",
+    },
+    "computed now — the field remains, the column does not": {
+        "fr": "devenus calculés — le champ demeure, la colonne non",
+        "en": "computed now — the field remains, the column does not",
+    },
+    "core module(s) analysed": {
+        "fr": "module(s) cœur analysé(s)",
+        "en": "core module(s) analysed",
+    },
+    "declared obsolete": {
+        "fr": "déclarés obsolètes",
+        "en": "declared obsolete",
+    },
+    "declared removed": {
+        "fr": "déclarés supprimés",
+        "en": "declared removed",
+    },
+    "field(s) lost": {
+        "fr": "champ(s) perdu(s)",
+        "en": "field(s) lost",
+    },
+    "model(s) lost": {
+        "fr": "modèle(s) perdu(s)",
+        "en": "model(s) lost",
+    },
+    "moved to another module": {
+        "fr": "déplacés vers un autre module",
+        "en": "moved to another module",
+    },
+    "renamed by Odoo": {
+        "fr": "renommés par Odoo",
+        "en": "renamed by Odoo",
+    },
+    "their model went away too": {
+        "fr": "leur modèle a disparu aussi",
+        "en": "their model went away too",
+    },
+    "in a module OpenUpgrade does not analyse": {
+        "fr": "dans un module qu'OpenUpgrade n'analyse pas",
+        "en": "in a module OpenUpgrade does not analyse",
+    },
+    "model(s)": {
+        "fr": "modèle(s)",
+        "en": "model(s)",
+    },
+    "other field name(s)": {
+        "fr": "autre(s) nom(s) de champ",
+        "en": "other field name(s)",
+    },
+    "Filestore of": {
+        "fr": "Filestore de",
+        "en": "Filestore of",
+    },
+    "file(s) missing": {
+        "fr": "fichier(s) absent(s)",
+        "en": "file(s) missing",
+    },
+    "file(s) on disk": {
+        "fr": "fichier(s) sur disque",
+        "en": "file(s) on disk",
+    },
+    "file(s) sit in nested filestores Odoo never reads.": {
+        "fr": "fichier(s) échoué(s) dans des filestores imbriqués qu'Odoo ne lit jamais.",
+        "en": "file(s) sit in nested filestores Odoo never reads.",
+    },
+    "intact in another database's filestore": {
+        "fr": "intacts dans le filestore d'une autre base",
+        "en": "intact in another database's filestore",
+    },
+    "its field no longer exists — nothing reads it": {
+        "fr": "leur champ n'existe plus — rien ne les lit",
+        "en": "its field no longer exists — nothing reads it",
+    },
+    "nowhere to be found — truly lost": {
+        "fr": "introuvables — réellement perdus",
+        "en": "nowhere to be found — truly lost",
+    },
+    "still in a backup zip": {
+        "fr": "encore dans une sauvegarde zip",
+        "en": "still in a backup zip",
+    },
+    "stored attachment(s)": {
+        "fr": "pièce(s) jointe(s) stockée(s)",
+        "en": "stored attachment(s)",
+    },
+    "stranded in a nested filestore Odoo never reads": {
+        "fr": "échoués dans un filestore imbriqué qu'Odoo ne lit pas",
+        "en": "stranded in a nested filestore Odoo never reads",
+    },
+    "Files": {
+        "fr": "Fichiers",
+        "en": "Files",
+    },
+    "Attachment files missing from the filestore": {
+        "fr": "🗄  Fichiers de pièces jointes absents du filestore",
+        "en": "🗄  Attachment files missing from the filestore",
+    },
+    "Scanning filestores and backups…": {
+        "fr": "Examen des filestores et des sauvegardes…",
+        "en": "Scanning filestores and backups…",
+    },
+    "Filestore restored:": {
+        "fr": "Filestore restauré :",
+        "en": "Filestore restored:",
+    },
+    "file(s) in place": {
+        "fr": "fichier(s) en place",
+        "en": "file(s) in place",
+    },
+    "Filestore restore looks wrong for": {
+        "fr": "Restauration du filestore suspecte pour",
+        "en": "Filestore restore looks wrong for",
+    },
+    "landed in a nested filestore Odoo never reads": {
+        "fr": "atterris dans un filestore imbriqué qu'Odoo ne lit jamais",
+        "en": "landed in a nested filestore Odoo never reads",
+    },
+    "To fix:": {
+        "fr": "Pour corriger :",
+        "en": "To fix:",
+    },
+    "never landed at all": {
+        "fr": "ne sont arrivés nulle part",
+        "en": "never landed at all",
+    },
+    "record still exists": {
+        "fr": "l'enregistrement existe encore",
+        "en": "record still exists",
+    },
+    "record is gone — nothing will miss it": {
+        "fr": "l'enregistrement a disparu — personne ne la cherchera",
+        "en": "record is gone — nothing will miss it",
+    },
+    "Delete these": {
+        "fr": "Supprimer ces",
+        "en": "Delete these",
+    },
+    "Directory:": {
+        "fr": "Dossier :",
+        "en": "Directory:",
+    },
+    "No nested filestore to tidy.": {
+        "fr": "Pas de filestore imbriqué à ranger.",
+        "en": "No nested filestore to tidy.",
+    },
+    "Nothing to purge.": {
+        "fr": "Rien à purger.",
+        "en": "Nothing to purge.",
+    },
+    "Nothing was deleted.": {
+        "fr": "Rien n'a été supprimé.",
+        "en": "Nothing was deleted.",
+    },
+    "Nothing was moved.": {
+        "fr": "Rien n'a été déplacé.",
+        "en": "Nothing was moved.",
+    },
+    "The purge failed.": {
+        "fr": "La purge a échoué.",
+        "en": "The purge failed.",
+    },
+    "attachment row(s) deleted.": {
+        "fr": "ligne(s) de pièce jointe supprimée(s).",
+        "en": "attachment row(s) deleted.",
+    },
+    "attachment row(s) for good?": {
+        "fr": "ligne(s) de pièce jointe, définitivement ?",
+        "en": "attachment row(s) for good?",
+    },
+    "duplicate(s) removed": {
+        "fr": "doublon(s) supprimé(s)",
+        "en": "duplicate(s) removed",
+    },
+    "file(s) to move up": {
+        "fr": "fichier(s) à remonter",
+        "en": "file(s) to move up",
+    },
+    "moved up": {
+        "fr": "remonté(s)",
+        "en": "moved up",
+    },
+    "pure duplicate(s) to delete": {
+        "fr": "doublon(s) pur(s) à supprimer",
+        "en": "pure duplicate(s) to delete",
+    },
+    "🧹 Purge attachments whose field no longer exists": {
+        "fr": "🧹 Purger les pièces jointes dont le champ n'existe plus",
+        "en": "🧹 Purge attachments whose field no longer exists",
+    },
+    "🧹 Tidy the nested filestore Odoo never reads": {
+        "fr": "🧹 Ranger le filestore imbriqué qu'Odoo ne lit pas",
+        "en": "🧹 Tidy the nested filestore Odoo never reads",
+    },
+    "The purge ran but said nothing.": {
+        "fr": "La purge a tourné sans rien annoncer.",
+        "en": "The purge ran but said nothing.",
+    },
+    "row(s) whose field is gone still hold their file": {
+        "fr": "ligne(s) à champ disparu retiennent encore leur fichier",
+        "en": "row(s) whose field is gone still hold their file",
+    },
+    "file(s) sit in a nested filestore Odoo never reads.": {
+        "fr": "fichier(s) échoué(s) dans un filestore imbriqué qu'Odoo ne lit jamais.",
+        "en": "file(s) sit in a nested filestore Odoo never reads.",
+    },
+    "such file(s) sit in OTHER databases filestores.": {
+        "fr": "fichier(s) de ce genre dorment dans les filestores d'AUTRES bases.",
+        "en": "such file(s) sit in OTHER databases filestores.",
+    },
+    "Could not inspect the attachments: ": {
+        "fr": "Inspection des pièces jointes impossible : ",
+        "en": "Could not inspect the attachments: ",
+    },
+    "Delete them?": {
+        "fr": "Les supprimer ?",
+        "en": "Delete them?",
+    },
+    "No attachment points at a field that is gone.": {
+        "fr": "Aucune pièce jointe ne pointe vers un champ disparu.",
+        "en": "No attachment points at a field that is gone.",
+    },
+    "attachment(s) point at a field that no longer exists": {
+        "fr": "pièce(s) jointe(s) pointent vers un champ qui n'existe plus",
+        "en": "attachment(s) point at a field that no longer exists",
+    },
+    "Corrected.": {
+        "fr": "Corrigé.",
+        "en": "Corrected.",
+    },
+    "No module update will fix this: the type is set once,": {
+        "fr": "Aucune mise à jour de module ne corrigera cela : le type est posé une fois,",
+        "en": "No module update will fix this: the type is set once,",
+    },
+    "The correction failed.": {
+        "fr": "La correction a échoué.",
+        "en": "The correction failed.",
+    },
+    "at creation. Re-run with --apply.": {
+        "fr": "à la création. Relancer avec --apply.",
+        "en": "at creation. Re-run with --apply.",
+    },
+    "their inheritance": {
+        "fr": "leur héritage",
+        "en": "their inheritance",
+    },
+    "view(s) whose stored type contradicts": {
+        "fr": "vue(s) dont le type stocké contredit",
+        "en": "view(s) whose stored type contradicts",
+    },
+    "Fix views whose type contradicts their": {
+        "fr": "Corriger les vues dont le type contredit leur",
+        "en": "Fix views whose type contradicts their",
+    },
+    "inheritance": {
+        "fr": "héritage",
+        "en": "inheritance",
+    },
+    "Correct them?": {
+        "fr": "Les corriger ?",
+        "en": "Correct them?",
+    },
+    "Uninstall the theme(s) the error names": {
+        "fr": "Désinstaller le(s) thème(s) que l'erreur nomme",
+        "en": "Uninstall the theme(s) the error names",
+    },
+    "Every view agrees with what Odoo expects.": {
+        "fr": "Toutes les vues s'accordent avec ce qu'Odoo attend.",
+        "en": "Every view agrees with what Odoo expects.",
+    },
+    "custom — nothing will ever rewrite it": {
+        "fr": "faite main — rien ne la réécrira jamais",
+        "en": "custom — nothing will ever rewrite it",
+    },
+    "from a module — a module update also fixes it": {
+        "fr": "d'un module — une mise à jour la répare aussi",
+        "en": "from a module — a module update also fixes it",
+    },
+    "renamed to <list>": {
+        "fr": "a renommée en <list>",
+        "en": "renamed to <list>",
+    },
+    "view(s) still carry a <tree> tag Odoo 18": {
+        "fr": "vue(s) portent encore une balise <tree> qu'Odoo 18",
+        "en": "view(s) still carry a <tree> tag Odoo 18",
+    },
+    "Census": {
+        "fr": "Recensement",
+        "en": "Census",
+    },
+    "Compared against nothing — census only.": {
+        "fr": "Comparé à rien — recensement seul.",
+        "en": "Compared against nothing — census only.",
+    },
+    "Default package:": {
+        "fr": "Package par défaut :",
+        "en": "Default package:",
+    },
+    "Every suggested module is installed.": {
+        "fr": "Tous les modules suggérés sont installés.",
+        "en": "Every suggested module is installed.",
+    },
+    "Installed modules by author": {
+        "fr": "Modules installés, par auteur",
+        "en": "Installed modules by author",
+    },
+    "Modules of": {
+        "fr": "Modules de",
+        "en": "Modules of",
+    },
+    "No default package known for this version": {
+        "fr": "Aucun package par défaut connu pour cette version",
+        "en": "No default package known for this version",
+    },
+    "Odoo": {
+        "fr": "Odoo",
+        "en": "Odoo",
+    },
+    "absent from the addons path — sync the repo first": {
+        "fr": "hors du chemin des addons — synchroniser le dépôt d'abord",
+        "en": "absent from the addons path — sync the repo first",
+    },
+    "also needs": {
+        "fr": "réclame aussi",
+        "en": "also needs",
+    },
+    "half-way — finish the pending update": {
+        "fr": "à mi-chemin — finir la mise à jour en attente",
+        "en": "half-way — finish the pending update",
+    },
+    "installed": {
+        "fr": "déjà en place",
+        "en": "installed",
+    },
+    "known": {
+        "fr": "connus",
+        "en": "known",
+    },
+    "known to the database — install it": {
+        "fr": "dans la base — à installer",
+        "en": "known to the database — install it",
+    },
+    "present but broken — fix the dependency": {
+        "fr": "en panne de dépendance — à réparer",
+        "en": "present but broken — fix the dependency",
+    },
+    "suggested module(s)": {
+        "fr": "module(s) suggéré(s)",
+        "en": "suggested module(s)",
+    },
+    "suggested module(s) not installed": {
+        "fr": "module(s) suggéré(s) non installé(s)",
+        "en": "suggested module(s) not installed",
+    },
+    "unknown author": {
+        "fr": "auteur inconnu",
+        "en": "unknown author",
+    },
+    "rows dropped, the table remains": {
+        "fr": "lignes supprimées, la table demeure",
+        "en": "rows dropped, the table remains",
+    },
+    "retired from the database": {
+        "fr": "retirée de la base",
+        "en": "retired from the database",
+    },
+    "but it gained nothing": {
+        "fr": "mais elle n'a rien reçu",
+        "en": "but it gained nothing",
+    },
+    "there": {
+        "fr": "là-bas",
+        "en": "there",
+    },
+    "lost": {
+        "fr": "perdus",
+        "en": "lost",
+    },
+    "gained": {
+        "fr": "gagnés",
+        "en": "gained",
+    },
+    "fields": {
+        "fr": "champs",
+        "en": "fields",
+    },
+    "cow": {
+        "fr": "copies COW",
+        "en": "cow",
+    },
+    "tables": {
+        "fr": "tables",
+        "en": "tables",
+    },
+    "Details": {
+        "fr": "Détails",
+        "en": "Details",
+    },
+    "summary": {
+        "fr": "résumé",
+        "en": "summary",
+    },
+    "Clean the database before testing the pages?": {
+        "fr": "Nettoyer la base avant de tester les pages ?",
+        "en": "Clean the database before testing the pages?",
+    },
+    "Auto-run: take the default answer after": {
+        "fr": "Auto-exécution : prendre la réponse par défaut après",
+        "en": "Auto-run: take the default answer after",
+    },
+    "seconds?": {
+        "fr": "secondes ?",
+        "en": "seconds?",
+    },
+    "Auto-run on: each prompt waits": {
+        "fr": "Auto-exécution activée : chaque invite attend",
+        "en": "Auto-run on: each prompt waits",
+    },
+    "seconds, then takes its default.": {
+        "fr": "secondes, puis prend son défaut.",
+        "en": "seconds, then takes its default.",
+    },
+    "(default)": {
+        "fr": "(défaut)",
+        "en": "(default)",
+    },
+    "database_cleanup is not installed on this base;": {
+        "fr": "database_cleanup n'est pas installé sur cette base ;",
+        "en": "database_cleanup is not installed on this base;",
+    },
+    "installing it first.": {
+        "fr": "installation préalable.",
+        "en": "installing it first.",
+    },
+    "Could not install database_cleanup.": {
+        "fr": "Impossible d'installer database_cleanup.",
+        "en": "Could not install database_cleanup.",
+    },
+    "Nothing to decide yet": {
+        "fr": "Rien à décider pour l'instant",
+        "en": "Nothing to decide yet",
+    },
+    "the migration will offer to neutralize these copies": {
+        "fr": "la migration proposera de neutraliser ces copies",
+        "en": "the migration will offer to neutralize these copies",
+    },
+    "at the version bump itself, showing what each one holds.": {
+        "fr": "au moment du palier lui-même, en montrant ce que chacune"
+        " contient.",
+        "en": "at the version bump itself, showing what each one holds.",
+    },
+    "Press to continue": {
+        "fr": "Appuyez pour continuer",
+        "en": "Press to continue",
+    },
+    "(b = go back to a previous step)": {
+        "fr": "(b = revenir à une étape précédente)",
+        "en": "(b = go back to a previous step)",
+    },
+    "Neutralize database, press to continue": {
+        "fr": "Neutraliser la base, appuyez pour continuer",
+        "en": "Neutralize database, press to continue",
+    },
+    "Replay from which step? (empty to cancel)": {
+        "fr": "Rejouer à partir de quelle étape ? (vide pour annuler)",
+        "en": "Replay from which step? (empty to cancel)",
+    },
+    "Rewound.": {"fr": "Rembobiné.", "en": "Rewound."},
+    "Relaunch the migration to resume from there.": {
+        "fr": "Relancez la migration pour reprendre à partir de là.",
+        "en": "Relaunch the migration to resume from there.",
+    },
+    "Go back to a step": {
+        "fr": "Revenir à une étape",
+        "en": "Go back to a step",
+    },
+    "Choose a step, Enter replays from there.": {
+        "fr": "Choisissez une étape, Entrée rejoue à partir de là.",
+        "en": "Choose a step, Enter replays from there.",
+    },
     # --- script/analyse : vues personnalisées ---
     "Customised views": {
         "fr": "Vues personnalisées",

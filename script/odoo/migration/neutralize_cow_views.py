@@ -32,7 +32,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from check_cow_views import analyse  # noqa: E402
+from check_cow_views import analyse, t  # noqa: E402
 
 DEFAULT_PREFIX = "zz_cow_archive"
 
@@ -40,7 +40,7 @@ DEFAULT_PREFIX = "zz_cow_archive"
 def run_psql(database, sql):
     """Run a statement and return stdout, raising on failure."""
     result = subprocess.run(
-        ["psql", "-d", database, "-tAc", sql],
+        ["psql", "-X", "-w", "-d", database, "-tAF", "|", "-c", sql],
         capture_output=True,
         text=True,
     )
@@ -64,6 +64,39 @@ def neutralize(database, lst_view_id, prefix):
         " RETURNING 1) SELECT count(*) FROM updated;",
     )
     return int(output or 0)
+
+
+def list_archived(database, prefix):
+    """The copies a previous neutralization put aside.
+
+    Knowing what was archived is the other half of --restore: a key renamed
+    months ago is invisible in the interface — the copy is inactive and no
+    longer pairs with anything — so without this listing the only trace is
+    someone's memory of having run --apply.
+    """
+    output = run_psql(
+        database,
+        "SELECT id, substring(key from " + str(len(prefix) + 2) + "),"
+        " COALESCE(website_id::text, ''), active,"
+        " octet_length(arch_db::text)"
+        f" FROM ir_ui_view WHERE key LIKE '{prefix}.%' ORDER BY id;",
+    )
+    lst_row = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("|")
+        if len(parts) >= 5:
+            lst_row.append(
+                {
+                    "id": int(parts[0]),
+                    "key": parts[1],
+                    "website_id": parts[2] or None,
+                    "active": parts[3] == "t",
+                    "arch_bytes": int(parts[4] or 0),
+                }
+            )
+    return lst_row
 
 
 def restore(database, prefix):
@@ -105,51 +138,97 @@ def main():
         action="store_true",
         help="undo a previous neutralization and reactivate the copies",
     )
+    parser.add_argument(
+        "--list",
+        dest="list_archived",
+        action="store_true",
+        help="list the copies a previous neutralization put aside",
+    )
     config = parser.parse_args()
+
+    try:
+        return _run(config, parser)
+    except RuntimeError as exc:
+        # Une base absente ou un PostgreSQL arrêté est une erreur d'usage, pas
+        # un défaut de l'outil : une trace d'appel ferait chercher le bogue au
+        # mauvais endroit.
+        print(f"❌ {exc}")
+        return 2
+
+
+def _run(config, parser):
+    if config.list_archived:
+        lst_row = list_archived(config.database, config.prefix)
+        if not lst_row:
+            print(
+                f"✅ -> {t('No view with this prefix on')}"
+                f" '{config.database}' : '{config.prefix}.'"
+            )
+            return 0
+        print(
+            f"ℹ {len(lst_row)} {t('archived COW view(s) on')}"
+            f" '{config.database}' :"
+        )
+        for row in lst_row:
+            state = "active" if row["active"] else "inactive"
+            print(
+                f"   - id={row['id']} website={row['website_id'] or '-'}"
+                f" {row['key']} ({state}, {row['arch_bytes']} B)"
+            )
+        print(
+            f"   {t('Their arch is intact. Restore them all with --restore,')}"
+            f" {t('once the module view they shadow has the right shape.')}"
+        )
+        return 0
 
     if config.restore:
         count = restore(config.database, config.prefix)
-        print(f"✅ -> {count} COW view(s) restored on '{config.database}'.")
+        print(
+            f"✅ -> {count} {t('COW view(s) restored on')} '{config.database}'."
+        )
         return 0
 
     if not config.target_version:
         parser.error("--target_version is required unless --restore is used")
     if not os.path.isdir(config.target_version):
         print(
-            f"❌ Target version directory '{config.target_version}' not found."
+            f"❌ {t('Target version directory not found')} :"
+            f" '{config.target_version}'"
         )
-        return 1
+        return 2
 
     lst_at_risk, _, _ = analyse(config.database, config.target_version)
     if not lst_at_risk:
-        print("✅ -> No website COW view to neutralize.")
+        print(f"✅ -> {t('No website COW view to neutralize.')}")
         return 0
 
     print(
-        f"⚠️ {len(lst_at_risk)} website COW view(s) would break the bump to"
-        f" {config.target_version}:"
+        f"⚠️ {len(lst_at_risk)} {t('website COW view(s) would break the bump')}"
+        f" {t('to')} {config.target_version} :"
     )
     lst_view_id = []
     for view_id, key, mode, target_mode, website_id, reason in lst_at_risk:
         lst_view_id.append(view_id)
         print(
             f"   - id={view_id} website={website_id} {key}"
-            f" : {mode} -> {target_mode} ({reason})"
+            f" : {mode} -> {target_mode} ({t(reason)})"
         )
 
     if not config.apply:
         print(
-            "ℹ Dry-run. Add --apply to rename their key to"
-            f" '{config.prefix}.<key>' and deactivate them. Reversible with"
-            " --restore; the arch stays in database."
+            f"ℹ {t('Dry-run. Add --apply to rename their key to')}"
+            f" '{config.prefix}.<key>' {t('and deactivate them. Reversible')}"
+            f" {t('with --restore; the arch stays in database.')}"
         )
-        return 0
+        # 1 = des copies sont à neutraliser. Le pilote lisait une phrase
+        # anglaise pour le savoir ; il devenait aveugle une fois traduite.
+        return 1
 
     count = neutralize(config.database, lst_view_id, config.prefix)
     print(
-        f"✅ -> {count} COW view(s) neutralized (key prefixed with"
-        f" '{config.prefix}.', deactivated). The arch is kept as an archive;"
-        " use --restore to undo."
+        f"✅ -> {count} {t('COW view(s) neutralized (key prefixed with')}"
+        f" '{config.prefix}.', {t('deactivated). The arch is kept as an')}"
+        f" {t('archive; use --restore to undo.')}"
     )
     return 0
 

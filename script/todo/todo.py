@@ -889,7 +889,17 @@ class TODO:
                 return False
             elif status == str(len(choices) - 1):
                 upgrade = todo_upgrade.TodoUpgrade(self)
-                upgrade.execute_odoo_upgrade()
+                try:
+                    upgrade.execute_odoo_upgrade()
+                except todo_upgrade.MigrationRewind:
+                    # L'état est déjà rembobiné et écrit : il ne reste qu'à
+                    # relancer, et l'écran de reprise repartira de l'étape
+                    # choisie. Sortir d'ici plutôt que de rappeler la méthode
+                    # évite de la reprendre au milieu de son état local.
+                    print(
+                        f"\n⏪ {t('Rewound.')}"
+                        f" {t('Relaunch the migration to resume from there.')}"
+                    )
             elif status == str(len(choices)):
                 self.upgrade_poetry()
             else:
@@ -7702,6 +7712,8 @@ class TODO:
                 )
             },
             {"prompt_description": t("Studio and hand-made x_ fields")},
+            {"section": t("Migration")},
+            {"prompt_description": t("Quality of a migration, step by step")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -7716,8 +7728,40 @@ class TODO:
                 self.execute_analyse_view_custom()
             elif status == "3":
                 self.execute_analyse_custom_field()
+            elif status == "4":
+                self.execute_analyse_migration_quality()
             else:
                 print(t("Command not found !"))
+
+    def execute_analyse_migration_quality(self):
+        """Ce qu'une migration a gagné et perdu, palier par palier.
+
+        Appelé comme les autres analyses — même interpréteur, aucun
+        sous-processus — mais l'écran plein est ouvert par l'outil
+        lui-même, qui sait retomber sur son rapport texte s'il ne peut pas.
+
+        Lecture seule de bout en bout : les bases de palier sont parfois la
+        seule copie qui reste d'un état intermédiaire.
+        """
+        from script.analyse import check_migration_quality as quality
+
+        dct = quality.read_progression()
+        if not quality.chain(dct):
+            print(f"\nℹ️  {t('No migration in progress.')}")
+            return
+        try:
+            lst = quality.survey(
+                dct, echo=lambda texte: print(f"⧖ {texte}", flush=True)
+            )
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        try:
+            from script.analyse.check_migration_quality_tui import run_tui
+        except Exception:
+            run_tui = None
+        if not (run_tui and run_tui(lst)):
+            print(quality.render_text(lst))
 
     def _analyse_select_source(self):
         """(est_une_sauvegarde, cible), ou None si l'on renonce.

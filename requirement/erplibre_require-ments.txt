@@ -29,6 +29,10 @@ urwid
 # Borne recopiée de script/todo/textual_setup.py (TEXTUAL_SPEC) : les écrans TUI
 # sont écrits pour Textual 8, qui casse son API entre majeures. Modifier les deux.
 textual>=8,<9
+# Dépendance DIRECTE, même si Textual l'installe : l'écran d'état décode
+# l'ANSI avec rich.text.Text.from_ansi. Compter sur une dépendance
+# transitive, c'est dépendre du jour où Textual changera la sienne.
+rich
 # Dépendance directe : les outils d'analyse comparent des arbres XML avec lxml.
 # Il n'arrivait que par pykeepass / openupgradelib / odoo-module-migrator, donc
 # un jour où l'un d'eux s'en passe, il disparaît sans que rien ne le réclame.
