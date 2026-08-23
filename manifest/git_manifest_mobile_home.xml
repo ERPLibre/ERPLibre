@@ -12,12 +12,20 @@
         groups="mobile"
     />
 
-    <!-- sentencepiece : tokeniseur SentencePiece pour MarianMT (NDK JNI) -->
+    <!-- sentencepiece : tokeniseur SentencePiece pour MarianMT (NDK JNI)
+         Version PUBLIÉE, et non « master ». Deux raisons, la seconde
+         bloquante : « master » fait de ce dépôt une cible mouvante, et deux
+         VM construites le même jour peuvent ne pas contenir le même code ;
+         surtout, le master d'août 2026 récupère protobuf par FetchContent et
+         bâtit son « protoc » POUR LA CIBLE Android avant de l'exécuter sur
+         l'hôte — « Exec format error », la compilation s'arrête là. Mesuré sur
+         une VM Ubuntu 24.04. La v0.2.1 livre au contraire ses .pb.cc
+         pré-générés (src/builtin_pb) et n'a besoin d'aucun protoc. -->
     <project
         name="sentencepiece"
         path="mobile/erplibre_home_mobile/android/app/src/main/cpp/sentencepiece"
         remote="google"
-        revision="master"
+        revision="refs/tags/v0.2.1"
         clone-depth="1"
         groups="mobile"
     />

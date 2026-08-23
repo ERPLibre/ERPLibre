@@ -136,6 +136,105 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         self.assertEqual(set(self.EXPECTED) - shown_keys, set())
 
 
+class TestQemuMenuNumbering(unittest.TestCase):
+    """Le menu QEMU : même piège, autre forme.
+
+    Il ne s'écrit pas en f-string mais en liste de dictionnaires, où seules les
+    entrées « prompt_description » consomment un numéro — les « section » sont
+    des titres. Le décalage y est donc encore moins visible à l'œil : insérer
+    une entrée avant la dernière renumérote tout ce qui suit, et le dispatch ne
+    proteste pas. C'est arrivé en ajoutant l'émulateur Android avant
+    « List available images ».
+    """
+
+    RE_ENTRY = re.compile(
+        r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
+    )
+    RE_DISPATCH_CALL = re.compile(
+        r'(?:el)?if status == "(\d+)":\s*\n\s*(?:status = )?self\.(\w+)\('
+    )
+
+    def setUp(self):
+        source = TODO_PY.read_text(encoding="utf-8")
+        start = source.index("def prompt_execute_qemu(self):")
+        end = source.index("def _qemu_tunnel_menu(self):", start)
+        self.body = source[start:end]
+        num = 0
+        self.shown = []
+        for kind, label in self.RE_ENTRY.findall(self.body):
+            if kind == "prompt_description":
+                num += 1
+                self.shown.append((num, label))
+        self.dispatch = [
+            (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
+        ]
+
+    def test_the_menu_was_actually_parsed(self):
+        """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
+        self.assertGreater(len(self.shown), 10)
+        self.assertEqual(len(self.shown), len(self.dispatch))
+
+    def test_numbering_is_contiguous_from_one(self):
+        self.assertEqual(
+            [n for n, _ in self.shown],
+            list(range(1, len(self.shown) + 1)),
+        )
+
+    def test_every_shown_entry_has_the_matching_dispatch(self):
+        self.assertEqual(
+            [n for n, _ in self.shown], [n for n, _ in self.dispatch]
+        )
+
+    # Où mène chaque entrée, par le début de son libellé. Une renumérotation ne
+    # touche PAS cette table ; ajouter une entrée l'exige, et c'est le seul
+    # moment où quelqu'un doit dire où elle mène.
+    EXPECTED = {
+        "Deploy VM(s)": "_qemu_deploy",
+        "Preview a deployment": "_qemu_deploy",
+        "Download a cloud image only": "_qemu_download_image",
+        "Reopen": "_qemu_reopen_monitor",
+        "List VMs": "_qemu_list_vms",
+        "Show a VM IP address": "_qemu_show_ip",
+        "Open the console on a VM": "_qemu_console",
+        "Resize a VM disk": "_qemu_resize_disk",
+        "Delete VM(s)": "_qemu_delete_vm",
+        "Clean up QEMU": "_qemu_cleanup",
+        "Test": "_qemu_test_vm",
+        "Statistics": "_qemu_stats",
+        "SSH configuration": "_qemu_ssh_config_menu",
+        "Remote desktop tunnel": "_qemu_tunnel_menu",
+        "Android emulator": "_qemu_emulator_menu",
+        "List available images": "_qemu_list_images",
+    }
+
+    def _key(self, label):
+        for key in self.EXPECTED:
+            if label.startswith(key):
+                return key
+        return label
+
+    def test_every_entry_reaches_the_method_it_names(self):
+        dct = dict(self.dispatch)
+        for num, label in self.shown:
+            key = self._key(label)
+            self.assertIn(
+                key,
+                self.EXPECTED,
+                f"entrée [{num}] « {label} » absente d'EXPECTED :"
+                " déclarez où elle mène",
+            )
+            self.assertEqual(
+                dct.get(num),
+                self.EXPECTED[key],
+                f"[{num}] « {label} » mène à {dct.get(num)}"
+                f" au lieu de {self.EXPECTED[key]}",
+            )
+
+    def test_expected_table_has_no_stale_entry(self):
+        keys = {self._key(label) for _, label in self.shown}
+        self.assertEqual(set(self.EXPECTED) - keys, set())
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 

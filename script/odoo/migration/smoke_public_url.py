@@ -138,6 +138,15 @@ def start_server(database, port, config_path="./config.conf", log_path=None):
     nomme la vue fautive faisait partie des absentes. Un fichier se relit
     entièrement, quand on veut.
     """
+    # Garder l'exécution PRÉCÉDENTE. Le journal était ouvert en « w » :
+    # relancer le test effaçait la trace de l'échec qu'on venait de voir,
+    # et il ne restait plus rien à examiner. Une seule génération suffit —
+    # c'est celle d'avant qu'on vient chercher.
+    if log_path and os.path.isfile(log_path):
+        try:
+            os.replace(log_path, log_path + ".1")
+        except OSError:
+            pass
     handle = open(log_path, "w", encoding="utf-8") if log_path else None
     server = subprocess.Popen(
         [
@@ -179,23 +188,36 @@ def read_log(log_path):
 
 
 def fetch(url, timeout=30):
-    """(statut, corps). Statut 0 quand la connexion elle-même échoue."""
+    """(statut, corps, url finale). Statut 0 si la connexion échoue.
+
+    L'URL FINALE, pas seulement celle qu'on a demandée. Sur ce site
+    chaque page traverse deux ou trois redirections — mesuré, 146 pour
+    55 pages — et quand la dernière rend 500, l'outil nommait la
+    première. On allait vérifier une page saine et l'on concluait que le
+    test se trompait.
+    """
     try:
         with urllib.request.urlopen(url, timeout=timeout) as answer:
-            return answer.getcode(), answer.read().decode(
-                "utf-8", errors="replace"
+            return (
+                answer.getcode(),
+                answer.read().decode("utf-8", errors="replace"),
+                answer.geturl(),
             )
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8", errors="replace")
+        return (
+            exc.code,
+            exc.read().decode("utf-8", errors="replace"),
+            exc.url or url,
+        )
     except Exception:
-        return 0, ""
+        return 0, "", url
 
 
 def wait_ready(base_url, timeout=180, sleep=2):
     """Attendre que le serveur réponde. False s'il n'est jamais venu."""
     deadline = time.time() + timeout
     while time.time() < deadline:
-        status, _body = fetch(base_url + "/web/login", timeout=5)
+        status, _body, _fin = fetch(base_url + "/web/login", timeout=5)
         if status:
             return True
         time.sleep(sleep)
@@ -209,7 +231,7 @@ def sitemap_urls(base_url):
     servie en local. Garder le domaine ferait interroger la production —
     c'est le genre d'erreur qui ne se voit qu'après.
     """
-    status, body = fetch(base_url + "/sitemap.xml")
+    status, body, _fin = fetch(base_url + "/sitemap.xml")
     if not status or status >= 400:
         return [], status
     lst_loc = RE_LOC.findall(body)
@@ -217,7 +239,7 @@ def sitemap_urls(base_url):
     if "<sitemapindex" in body.lower():
         lst_page = []
         for loc in lst_loc:
-            _status, sub = fetch(local_url(base_url, loc))
+            _status, sub, _fin = fetch(local_url(base_url, loc))
             lst_page.extend(RE_LOC.findall(sub))
         lst_loc = lst_page
     seen, lst_url = set(), []
@@ -252,7 +274,7 @@ def attach_missing_parents(lst_failure, lst_log):
     ce qui n'avait été rattaché à rien — mieux vaut un coupable mal attribué
     qu'un coupable perdu.
     """
-    known = {pid for _u, _s, lst in lst_failure for pid in lst}
+    known = {pid for _u, _s, lst, _f in lst_failure for pid in lst}
     extra = []
     for line in lst_log:
         # LES DEUX : le parent ET l'enfant. Mesuré sur /contactus — le
@@ -267,19 +289,22 @@ def attach_missing_parents(lst_failure, lst_log):
         return lst_failure
     rebuilt = []
     placed = False
-    for url, status, lst_parent in lst_failure:
+    for url, status, lst_parent, finale in lst_failure:
         if not lst_parent and not placed:
             lst_parent = list(extra)
             placed = True
-        rebuilt.append((url, status, lst_parent))
+        rebuilt.append((url, status, lst_parent, finale))
     if not placed and rebuilt:
-        url, status, lst_parent = rebuilt[0]
-        rebuilt[0] = (url, status, lst_parent + extra)
+        url, status, lst_parent, finale = rebuilt[0]
+        rebuilt[0] = (url, status, lst_parent + extra, finale)
     return rebuilt
 
 
 def check_urls(lst_url, timeout=30):
-    """[(url, statut, [])] pour celles qui ont échoué.
+    """[(url, statut, [vues], url finale)] pour celles qui ont échoué.
+
+    TOUJOURS quatre éléments, le dernier étant l'URL réellement atteinte.
+    Un tuple de taille variable obligerait chaque lecteur à s'en méfier.
 
     Les vues en cause sont rattachées après coup, en relisant le journal du
     serveur : elles y arrivent quand Odoo vide son tampon, pas quand la
@@ -287,9 +312,9 @@ def check_urls(lst_url, timeout=30):
     """
     lst_failure = []
     for url in lst_url:
-        status, _body = fetch(url, timeout=timeout)
+        status, _body, finale = fetch(url, timeout=timeout)
         if status == 0 or status >= 400:
-            lst_failure.append((url, status, []))
+            lst_failure.append((url, status, [], finale))
     return lst_failure
 
 
@@ -324,7 +349,7 @@ def culprit_keys(database, lst_failure):
     exactement la recopie où l'on se trompe.
     """
     lst_id = []
-    for _url, _status, lst_parent in lst_failure:
+    for _url, _status, lst_parent, _finale in lst_failure:
         for parent_id in lst_parent:
             if parent_id not in lst_id:
                 lst_id.append(parent_id)
@@ -355,9 +380,14 @@ def render(lst_url, lst_failure, lst_key=None):
         f"❌ {len(lst_failure)} {t('of')} {len(lst_url)}"
         f" {t('public URL(s) failed')} :"
     ]
-    for url, status, lst_parent in lst_failure:
+    for url, status, lst_parent, finale in lst_failure:
         label = status or t("no answer")
         lines.append(f"   [{label}] {url}")
+        # L'URL du sitemap n'est pas celle qui a échoué quand une
+        # redirection s'est interposée. Ne montrer que la première
+        # envoyait vérifier une page saine.
+        if finale and finale != url:
+            lines.append(f"       → {t('failed at')} {finale}")
         if lst_parent:
             lines.append(
                 f"       {t('parent view(s) in cause')} :"
@@ -747,7 +777,7 @@ def recheck_after_reset(
                 f"{t('The server never answered on')} {base_url}"
             )
         lst_again = check_urls(
-            [url for url, _s, _p in lst_failure], timeout=timeout
+            [echec[0] for echec in lst_failure], timeout=timeout
         )
         if internal_needs_retry(internal_report):
             reprise = internal_phase(
@@ -906,7 +936,7 @@ def main(argv=None):
         f"\n↻ {t('Re-checked the')} {len(lst_failure)}"
         f" {t('failing URL(s) after the reset')} :"
     )
-    print(render([url for url, _s, _p in lst_failure], lst_again, None))
+    print(render([echec[0] for echec in lst_failure], lst_again, None))
     return 1 if (lst_again or internal_failed) else 0
 
 

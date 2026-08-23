@@ -384,4 +384,9 @@ pycharm_open:
 
 .PHONY: pycharm_configure
 pycharm_configure:
-	./script/ide/pycharm_configuration.py --init
+# Le venv du dépôt, et non le python système : le script importe xmltodict, qui
+# vit dans .venv.erplibre. Appelé directement, il s'arrête sur
+# « ModuleNotFoundError: No module named 'xmltodict' » — et c'est cette cible
+# que le message d'échec de l'installation recommande. update_env_version.
+# pycharm_update() l'appelle déjà ainsi : une seule autorité.
+	./.venv.erplibre/bin/python ./script/ide/pycharm_configuration.py --init

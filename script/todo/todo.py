@@ -1087,14 +1087,19 @@ class TODO:
         print(f"{t('Invalid selection, using')} {default}")
         return default
 
-    # Distros publiant des images cloud par architecture (cohérent avec
-    # S390X_DISTROS / ARM64_DISTROS de deploy_qemu.py). amd64 : toutes.
+    # Repli SEULEMENT : la table qui fait autorité est ARCH_DISTRO_SUPPORT de
+    # deploy_qemu.py, lue par _qemu_arch_distros. Ces tuples ont longtemps été
+    # une copie à la main, avec le commentaire « cohérent avec deploy_qemu » en
+    # guise de garantie — et la cohérence a rompu à la première évolution :
+    # Debian a gagné s390x là-bas sans l'obtenir ici, donc l'écran ne le
+    # proposait pas. On ne les garde que pour le cas où l'import échoue.
     _QEMU_S390X_DISTROS = (
         "ubuntu",
         "almalinux",
         "rocky",
         "fedora",
         "opensuse",
+        "debian",
     )
     _QEMU_ARM64_DISTROS = (
         "ubuntu",
@@ -1124,12 +1129,24 @@ class TODO:
         }.get(machine, "amd64")
 
     def _qemu_arch_distros(self, arch):
-        """Distros supportant `arch` (None = toutes, cas amd64)."""
-        if arch == "s390x":
-            return self._QEMU_S390X_DISTROS
-        if arch == "arm64":
-            return self._QEMU_ARM64_DISTROS
-        return None
+        """Distros supportant `arch` (None = toutes, cas amd64).
+
+        Lu dans deploy_qemu.py, qui refuse aussi les combinaisons qu'il
+        n'annonce pas : une seule table, donc aucun écran ne peut proposer un
+        choix rejeté ensuite. « amd64 » n'y figure pas et rend None, ce qui
+        veut bien dire « toutes » — c'est le contrat attendu ici.
+        """
+        try:
+            table = getattr(self._qemu_import_module(), "ARCH_DISTRO_SUPPORT")
+        except Exception:
+            # Repli sur les copies locales : mieux vaut un catalogue figé
+            # qu'un écran vide si deploy_qemu.py est absent ou cassé.
+            if arch == "s390x":
+                return self._QEMU_S390X_DISTROS
+            if arch == "arm64":
+                return self._QEMU_ARM64_DISTROS
+            return None
+        return table.get(arch)
 
     def _qemu_last_run_line(self):
         """Ligne « dernière install » (distro version [arch] en durée), depuis
@@ -1298,6 +1315,11 @@ class TODO:
                     "Remote desktop tunnel (VNC/RDP through SSH)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Android emulator (start, tunnel, scrcpy)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -1340,6 +1362,8 @@ class TODO:
             elif status == "14":
                 self._qemu_tunnel_menu()
             elif status == "15":
+                self._qemu_emulator_menu()
+            elif status == "16":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -1552,10 +1576,20 @@ class TODO:
         print(f"\n  {t('Remote desktop kind:')}")
         print(f"  [1] RDP 3389 (xrdp) *")
         print(f"  [2] VNC 5901 (TigerVNC, Arch)")
-        print(f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}")
+        print(
+            f"  [3] {t('Hypervisor console (QEMU screen, no guest server)')}"
+        )
+        print(f"  [4] {t('Android emulator (adb 5555, then scrcpy)')}")
+        print(f"  [5] {t('Graphical console (virt-viewer, built-in tunnel)')}")
         kind_answer = input(f"{t('Choice')} [1]: ").strip() or "1"
         if kind_answer == "3":
-            self._qemu_console_tunnel()
+            self._qemu_console_tunnel(name, src)
+            return
+        if kind_answer == "4":
+            self._qemu_scrcpy_tunnel(name, src)
+            return
+        if kind_answer == "5":
+            self._qemu_virt_viewer(name, src)
             return
         port, kind = (5901, "VNC") if kind_answer == "2" else (3389, "RDP")
         local = port + 1
@@ -1584,7 +1618,455 @@ class TODO:
         )
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
-    def _qemu_console_tunnel(self):
+    @staticmethod
+    def _qemu_ssh_opts(src):
+        """Options ssh selon la provenance de la cible.
+
+        Une VM libvirt locale est jointe par son IP, et son IP est recyclée d'un
+        déploiement à l'autre : sa clé d'hôte change sous le même adresse, et
+        ssh refuse alors de se connecter — « Host key verification failed »,
+        vécu. C'est la raison pour laquelle le suivi d'installation et l'attente
+        de sshd emploient déjà ces deux options.
+
+        Un hôte de ~/.ssh/config, lui, est une machine que l'utilisateur a
+        configurée : on ne touche PAS à sa politique de clés. Sa clé est un
+        garde-fou qui lui appartient."""
+        if src == "ssh_config":
+            return ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8"]
+        return [
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=8",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+        ]
+
+    def _qemu_ssh_target(self, name, src):
+        """Destination ssh d'une cible du menu, selon sa provenance.
+
+        Un hôte de ~/.ssh/config se nomme tel quel — c'est lui qui porte le
+        ProxyJump, et le réécrire à la main reviendrait à le deviner. Un domaine
+        libvirt local, lui, n'a qu'une IP, et l'utilisateur des VM ERPLibre est
+        « erplibre ». Renvoie une chaîne vide quand l'IP manque."""
+        if src == "ssh_config":
+            return name
+        ip = self._qemu_resolve_ips([name]).get(name)
+        return f"erplibre@{ip}" if ip else ""
+
+    # Commande de l'émulateur dans la VM. Le chemin est ABSOLU : un
+    # « ssh hôte 'commande' » ne lit ni ~/.profile ni ~/.bashrc.
+    _QEMU_EMULATOR_BIN = "$HOME/android/emulator/emulator"
+
+    # Drapeaux passés à CHAQUE lancement, et non écrits dans le config.ini de
+    # l'AVD : l'émulateur réécrit ce fichier depuis le profil du téléphone au
+    # premier démarrage, et les hw.lcd.* y étaient effacés — l'AVD repartait en
+    # 1080x2400 densité 420, quatre fois les pixels voulus. Mesuré.
+    #
+    # La résolution et la DENSITÉ vont ensemble, et c'est contre-intuitif :
+    # 540x1140 en densité 420 est PIRE que le plein écran — 81 ms de médiane
+    # contre 40, et 57 % d'images en retard contre 37, tout étant rendu énorme.
+    # Avec la densité 240, la queue s'effondre : 99e centile à 250 ms contre
+    # 950, et 32 % d'images en retard.
+    #
+    # « -no-snapshot-save » : sans lui, un émulateur tué par pkill — ce que ce
+    # menu propose lui-même — laisse un instantané en cours, et le lancement
+    # SUIVANT meurt sur « A snapshot operation is pending and timeout has
+    # expired ». Vécu, et le message ne dit pas quoi faire.
+    # « -gpu » reste sur swangle par DÉFAUT, même quand la VM a la 3D : un
+    # « -gpu host » qui échoue ne rend pas la main, l'émulateur reste pendu, et
+    # ce n'est pas un défaut à imposer sans l'avoir mesuré sur la machine.
+    # EL_EMULATOR_GPU permet de l'essayer sans toucher au code, une fois le
+    # nœud de rendu présent dans l'invité (voir script/qemu/README).
+    _QEMU_EMULATOR_GPU = os.environ.get("EL_EMULATOR_GPU") or "swangle"
+    _QEMU_EMULATOR_FLAGS = (
+        "-no-audio -no-boot-anim -no-snapshot-save"
+        f" -gpu {_QEMU_EMULATOR_GPU}"
+        " -skin 540x1140 -prop qemu.sf.lcd_density=240"
+    )
+    _QEMU_AVD_NAME = "erplibre"
+
+    def _qemu_emulator_running(self, target, src="virsh"):
+        """Nombre d'émulateurs en cours dans la VM.
+
+        Deux sur le même AVD, et le second s'arrête sur « Running multiple
+        emulators with the same AVD is an experimental feature ». Le savoir
+        AVANT de lancer évite de lire cette phrase sans la comprendre — vécu,
+        deux fois."""
+        try:
+            res = subprocess.run(
+                ["ssh"]
+                + self._qemu_ssh_opts(src)
+                + [target, "pgrep -c qemu-system 2>/dev/null || echo 0"],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            return int((res.stdout or "0").strip().splitlines()[-1])
+        except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+            return -1
+
+    def _qemu_emulator_ready(self, target, src="virsh"):
+        """La VM a-t-elle de quoi émuler ? Rend (prêt, raison).
+
+        Le binaire ET l'AVD, en une seule lecture : sans cette vérification le
+        démarrage détaché rendait 0 sur une VM sans SDK, et le menu annonçait
+        « Démarré » quand le journal disait « not found ». Une VM déployée sans
+        cocher l'outil Émulateur Android est le cas normal, pas une panne."""
+        probe = (
+            f"test -x {self._QEMU_EMULATOR_BIN} || echo NO_SDK; "
+            f"test -d $HOME/.android/avd/{self._QEMU_AVD_NAME}.avd"
+            " || echo NO_AVD"
+        )
+        try:
+            res = subprocess.run(
+                ["ssh"] + self._qemu_ssh_opts(src) + [target, probe],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False, t("Cannot reach this VM.")
+        out = res.stdout or ""
+        if "NO_SDK" in out:
+            return False, t("No Android SDK in this VM: no emulator binary.")
+        if "NO_AVD" in out:
+            return False, t("No AVD named erplibre in this VM.")
+        return True, ""
+
+    def _qemu_emulator_menu(self):
+        """Démarre l'émulateur Android d'une VM, et donne la suite qui va avec.
+
+        La question qui décide de tout est celle de la FENÊTRE :
+          - avec fenêtre, l'écran voyage en pixels bruts par X11, et la commande
+            doit partir du poste qui possède l'affichage — donc pas d'ici ;
+          - sans fenêtre, on peut la lancer d'ici, détachée, et l'image arrive
+            ensuite par scrcpy en H.264. C'est la voie fluide.
+        """
+        print(f"\n📱 {t('Android emulator')}")
+        targets = [(h, "ssh_config") for h in self._ssh_config_hosts()]
+        if not targets:
+            targets = [(n, "virsh") for n in self._qemu_list_domains()]
+        if not targets:
+            print(f"  {t('No host in ~/.ssh/config and no local VM.')}")
+            return
+        for i, (nm, sr) in enumerate(targets, 1):
+            mark = "" if sr == "ssh_config" else f"  ({t('local VM')})"
+            print(f"  [{i}] {nm}{mark}")
+        answer = input(f"{t('Which VM?')} [1]: ").strip() or "1"
+        if not answer.isdigit() or not (1 <= int(answer) <= len(targets)):
+            print(t("Cancelled."))
+            return
+        name, src = targets[int(answer) - 1]
+        target = self._qemu_ssh_target(name, src)
+        if not target:
+            print(f"  {t('No IP for this VM; is it running?')}")
+            return
+
+        running = self._qemu_emulator_running(target, src)
+        if running > 0:
+            print(f"\n  ⚠ {t('An emulator is already running on this VM.')}")
+            print(f"  {t('Only one per AVD; close it first:')}")
+            print(f"\n    ssh {target} 'pkill -f \"[q]emu-system-x86_64\"'\n")
+            if not self._is_yes(input(t("Close it now? (y/N): "))):
+                return
+            subprocess.run(
+                ["ssh"]
+                + self._qemu_ssh_opts(src)
+                + [target, 'pkill -f "[q]emu-system-x86_64"'],
+                capture_output=True,
+                timeout=30,
+            )
+            print(f"  {t('Closed.')}")
+
+        ready, why = self._qemu_emulator_ready(target, src)
+        if not ready:
+            print(f"\n  ⚠ {why}")
+            print(f"  {t('Tick the Android emulator tool when deploying.')}")
+            return
+
+        print(f"\n  {t('Show a window?')}")
+        print(f"  [1] {t('No window - stream with scrcpy (smoother)')} *")
+        print(f"  [2] {t('Window over ssh -X (raw pixels, slower)')}")
+        kind = input(f"{t('Choice')} [1]: ").strip() or "1"
+        # Sans cette validation, TOUT ce qui n'est pas « 2 » démarrait
+        # l'émulateur : une frappe de travers (« n ») lançait le démarrage,
+        # observé. Un menu à deux crans n'a pas de troisième réponse.
+        if kind not in ("1", "2"):
+            print(t("Cancelled."))
+            return
+        emu = self._QEMU_EMULATOR_BIN
+        avd = self._QEMU_AVD_NAME
+
+        if kind == "2":
+            # L'affichage appartient au POSTE : cette commande ne peut pas
+            # partir d'ici, où il n'y a pas d'écran à lui donner.
+            print(f"\n  {t('Run this on YOUR workstation:')}")
+            print(
+                f"\n    ssh -XC {target} '{emu} -avd {avd} "
+                f"{self._QEMU_EMULATOR_FLAGS}'\n"
+            )
+            print(
+                f"  {t('X11 compression is on (-XC); the screen is 540x1140.')}"
+            )
+            return
+
+        print(f"\n  {t('Starting the emulator without a window...')}")
+        # « sg kvm » : l'appartenance au groupe est posée à l'installation, mais
+        # une VM créée avant ce correctif ne l'a pas dans sa session — sans KVM
+        # l'émulateur refuse de démarrer. setsid le détache, pour qu'il survive
+        # à la fermeture de ce ssh.
+        start = (
+            f'setsid -f sg kvm -c "{emu} -avd {avd} -no-window '
+            f"{self._QEMU_EMULATOR_FLAGS}"
+            ' > /tmp/erplibre-emulator.log 2>&1"'
+        )
+        res = subprocess.run(
+            ["ssh"] + self._qemu_ssh_opts(src) + [target, start],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if res.returncode:
+            print(f"  ⚠ {t('Could not start it:')} {res.stderr.strip()[:200]}")
+            return
+        # « setsid » détache : le code de retour ne dit RIEN de l'émulateur.
+        # Le menu annonçait « Démarré » pendant que le journal de la VM disait
+        # « not found » — mesuré sur une VM sans SDK. On attend donc de voir le
+        # processus, et à défaut on rapporte le journal.
+        for _ in range(5):
+            if self._qemu_emulator_running(target, src) > 0:
+                break
+            time.sleep(2)
+        else:
+            print(f"  ⚠ {t('It did not start; the VM log says:')}")
+            log = subprocess.run(
+                ["ssh"]
+                + self._qemu_ssh_opts(src)
+                + [target, "tail -5 /tmp/erplibre-emulator.log 2>/dev/null"],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+            for line in (log.stdout or "").strip().splitlines():
+                print(f"    {line}")
+            return
+        print(
+            f"  {t('Started. Boot takes about a minute; log in the VM:')}"
+            " /tmp/erplibre-emulator.log"
+        )
+        self._qemu_scrcpy_tunnel(name, src, started=True)
+
+    def _qemu_scrcpy_tunnel(self, name, src, started=False):
+        """Tunnel adb vers l'émulateur Android d'une VM, pour scrcpy.
+
+        Pourquoi cette voie plutôt que « ssh -X » : par X11, chaque image de
+        l'écran traverse le réseau en pixels bruts — 0,62 Mpixel par image même
+        après réduction, en rendu logiciel. scrcpy, lui, reçoit un flux H.264
+        encodé PAR l'appareil et le décode sur le poste. L'émulateur tourne
+        alors SANS fenêtre : plus de X11 du tout, ni sur l'hôte ni dans la VM.
+
+        Le port est celui de l'émulateur, pas celui du serveur adb. Un émulateur
+        écoute sur 5554 (console) et 5555 (adb), tous deux sur le localhost de
+        la VM — vérifié par « ss -ltn ». C'est 5555 qu'il faut, et non 5037 :
+        tunneler le serveur adb obligerait à tuer celui du poste, qui occupe le
+        même port.
+
+        Vérifié de bout en bout à travers le tunnel : une poignée de main adb
+        (paquet CNXN) reçoit « device::ro.product.name=sdk_gphone64_x86 » de
+        l'émulateur lui-même — c'est exactement ce que fait « adb connect ».
+        """
+        port = 5555
+        target = self._qemu_ssh_target(name, src)
+        if not target:
+            print(f"  {t('No IP for this VM; is it running?')}")
+            return
+        print(f"\n  📱 {t('Android emulator over adb + scrcpy')}")
+        if started:
+            # Inutile de redire comment le démarrer : on vient de le faire.
+            print(f"\n  {t('1. Emulator started, without a window.')}")
+        else:
+            print(
+                f"\n  {t('1. In the VM, start the emulator WITHOUT a window:')}"
+            )
+            print(
+                f"\n    ssh {target} '{self._QEMU_EMULATOR_BIN} "
+                f"-avd {self._QEMU_AVD_NAME} -no-window "
+                f"{self._QEMU_EMULATOR_FLAGS}'\n"
+            )
+        print(f"  {t('2. Open the tunnel from YOUR workstation:')}")
+        if src == "ssh_config":
+            # « localhost » est résolu par le DERNIER saut, donc par la VM
+            # elle-même : le ProxyJump de ssh_config traverse les niveaux.
+            print(f"\n    ssh -N -L {port}:localhost:{port} {name}\n")
+            print(f"  {t('(through the ProxyJump already in ~/.ssh/config)')}")
+        else:
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
+            vm_ip = target.split("@")[-1]
+            if not from_ssh:
+                print(
+                    f"  ⚠ {t('Not in an SSH session: check the host address.')}"
+                )
+            # DEUX sauts, et non un seul vers l'hyperviseur : l'émulateur
+            # n'écoute que sur le 127.0.0.1 de la VM — « ss -ltn » le montre, et
+            # l'hyperviseur reçoit un refus sur IP_VM:5555. Or « localhost » se
+            # résout sur le DERNIER hôte de la chaîne : la VM doit donc être ce
+            # dernier saut, l'hyperviseur n'étant que le relais (-J).
+            print(
+                f"\n    ssh -N -L {port}:localhost:{port}"
+                f" -J {user}@{host} erplibre@{vm_ip}\n"
+            )
+            print(
+                f"  {t('(the hypervisor only relays; -J puts the VM last)')}"
+            )
+        print(f"  {t('3. Then, still on your workstation:')}")
+        print(f"\n    adb connect localhost:{port}")
+        print(f"    scrcpy -s localhost:{port}\n")
+        print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+        print(f"  {t('scrcpy on Debian/Ubuntu:')} sudo apt install scrcpy adb")
+
+        # Ouvrir le tunnel D'ICI n'a de sens que si scrcpy tournera ici : le
+        # port ressort sur CETTE machine. On le propose donc en le disant,
+        # plutôt que de le faire d'office depuis un hyperviseur sans écran.
+        print(f"\n  {t('If scrcpy will run on THIS machine, I can open it.')}")
+        if not self._is_yes(input(t("Open the tunnel now? (y/N): "))):
+            return
+        if self._port_in_use(port):
+            print(f"  ⚠ {t('Port already in use here:')} {port}")
+            print(
+                f"  {t('Close the other tunnel first:')}"
+                f' pkill -f "{port}:localhost:{port}"'
+            )
+            return
+        # « ExitOnForwardFailure » : sans lui, un ssh détaché rend 0 alors que
+        # la redirection a échoué — un succès annoncé pour un tunnel absent.
+        cmd = (
+            ["ssh", "-f", "-N", "-o", "ExitOnForwardFailure=yes"]
+            + self._qemu_ssh_opts(src)
+            + ["-L", f"{port}:localhost:{port}", target]
+        )
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+        if res.returncode:
+            print(f"  ⚠ {t('Tunnel failed:')} {res.stderr.strip()[:200]}")
+            return
+        print(f"  ✅ {t('Tunnel open on localhost:')}{port}")
+        print(
+            f"  {t('Then:')} adb connect localhost:{port}"
+            f" && scrcpy -s localhost:{port}"
+        )
+        print(f'  {t("To close it:")} pkill -f "{port}:localhost:{port}"')
+
+    @staticmethod
+    def _port_in_use(port):
+        """Le port est-il déjà pris sur CETTE machine ?
+
+        Un second tunnel sur le même port échouerait, et le message d'ssh
+        (« bind: Address already in use ») se perd en mode détaché."""
+        with socket.socket() as sock:
+            sock.settimeout(1)
+            return sock.connect_ex(("127.0.0.1", port)) == 0
+
+    # Un paquet, quatre familles. virt-viewer porte le même nom partout, ce qui
+    # est rare et bienvenu : seule la commande d'installation change.
+    _QEMU_VIRT_VIEWER_INSTALL = (
+        ("apt-get", "sudo apt-get install -y virt-viewer"),
+        ("dnf", "sudo dnf install -y virt-viewer"),
+        ("pacman", "sudo pacman -S --needed --noconfirm virt-viewer"),
+        ("zypper", "sudo zypper --non-interactive install virt-viewer"),
+    )
+
+    def _qemu_ensure_virt_viewer(self):
+        """virt-viewer sur CETTE machine, installé s'il manque.
+
+        Installé seulement là où il va SERVIR : sur un hyperviseur sans écran,
+        poser un client graphique ne rendrait service à personne. C'est
+        l'appelant qui a vérifié l'affichage."""
+        if shutil.which("virt-viewer"):
+            return True
+        print(f"\n  {t('virt-viewer is missing here; installing it.')}")
+        for tool, cmd in self._QEMU_VIRT_VIEWER_INSTALL:
+            if shutil.which(tool):
+                print(f"  {t('Will execute:')} {cmd}")
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+                break
+        else:
+            print(f"  ⚠ {t('no known package manager here.')}")
+            return False
+        if shutil.which("virt-viewer"):
+            print(f"  ✅ virt-viewer")
+            return True
+        print(f"  ⚠ {t('virt-viewer still missing after the install.')}")
+        return False
+
+    def _qemu_virt_viewer(self, name, src):
+        """Ouvre l'écran d'une VM avec virt-viewer, qui monte SON tunnel.
+
+        C'est la voie la plus courte : virt-viewer parle à libvirt par
+        « qemu+ssh:// » et n'a besoin d'aucun « ssh -L » à tenir ouvert. Il lit
+        aussi le port de l'écran par libvirt, donc rien à deviner.
+
+        La seule question qui compte est celle de l'AFFICHAGE. virt-viewer
+        ouvre une fenêtre : il doit tourner là où il y a un écran. Deux cas, et
+        c'est l'environnement qui tranche, pas une question de plus :
+          - un affichage est là (poste de travail, ou « ssh -X ») : on installe
+            virt-viewer au besoin et on le lance, détaché ;
+          - aucun affichage : on donne la commande à lancer sur le poste, sous
+            la forme qemu+ssh, avec l'adresse par laquelle cette machine a été
+            jointe.
+        """
+        domain = name.rsplit("+", 1)[-1] if src == "ssh_config" else name
+        display = os.environ.get("DISPLAY") or os.environ.get(
+            "WAYLAND_DISPLAY"
+        )
+        if src == "ssh_config":
+            # L'hyperviseur est le ProxyJump déclaré : c'est lui qui fait
+            # tourner le QEMU de cette VM, pas la VM elle-même.
+            jump = self._ssh_proxyjump(name)
+            if not jump:
+                print(
+                    f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}"
+                )
+                print(f"  {t('Cannot tell which machine runs its QEMU.')}")
+                return
+            uri = f"qemu+ssh://{jump}/system"
+        else:
+            uri = "qemu:///system"
+
+        if display:
+            if not self._qemu_ensure_virt_viewer():
+                return
+            cmd = ["virt-viewer", "-c", uri, domain]
+            print(f"\n  {t('Opening')} : {' '.join(cmd)}")
+            try:
+                with open("/tmp/erplibre-virt-viewer.log", "ab") as log:
+                    subprocess.Popen(
+                        cmd,
+                        stdout=log,
+                        stderr=log,
+                        start_new_session=True,
+                    )
+            except OSError as exc:
+                print(f"  ⚠ {t('Could not start it:')} {exc}")
+                return
+            print(f"  {t('Window opening on your display')} ({display}).")
+            print(f"  {t('Log:')} /tmp/erplibre-virt-viewer.log")
+            return
+
+        host, from_ssh = self._qemu_self_address()
+        user = os.environ.get("USER", "user")
+        print(f"\n  {t('No display here; run this on YOUR workstation:')}")
+        print(f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n")
+        if not from_ssh:
+            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        print(f"  {t('A ~/.ssh/config alias works there too.')}")
+        print(f"  {t('It builds its own tunnel; no ssh -L to keep open.')}")
+        print(f"  {t('Missing? Install virt-viewer:')} apt / dnf / pacman"
+              " / zypper")
+
+    def _qemu_console_tunnel(self, name, src):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
 
         Les deux autres choix du menu supposent un service DANS l'invité —
@@ -1597,51 +2079,101 @@ class TODO:
         « listen=none » QEMU n'ouvre AUCUN socket, et aucun tunnel n'y peut
         rien tant que le domaine n'est pas redéfini.
         """
-        names = self._qemu_list_domains()
-        if not names:
-            print(f"  {t('No local VM.')}")
-            return
-        for i, name in enumerate(names, 1):
-            print(f"  [{i}] {name}")
-        raw = input(f"{t('Which VM?')} [1]: ").strip() or "1"
-        if not raw.isdigit() or not (1 <= int(raw) <= len(names)):
-            print(t("Cancelled."))
-            return
-        name = names[int(raw) - 1]
-        try:
-            res = subprocess.run(
-                ["sudo", "virsh", "vncdisplay", name],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
-            res = None
-        # « 127.0.0.1:0 » désigne le port 5900, « :1 » le 5901, etc.
-        port = None
-        if res and res.returncode == 0:
-            disp = res.stdout.strip().rsplit(":", 1)
-            if len(disp) == 2 and disp[1].isdigit():
-                port = 5900 + int(disp[1])
+        if src != "ssh_config":
+            jump, domain = "", name
+        else:
+            # L'écran VNC appartient à QEMU, donc à l'HYPERVISEUR — pas à
+            # l'invité. Tunneler vers la VM elle-même ne trouve rien : le
+            # socket n'existe pas de ce côté. Vécu, et c'est aussi ce qui
+            # rendait le premier jet de ce menu inutile hors machine locale.
+            #
+            # L'hyperviseur est le ProxyJump déclaré dans ssh_config, lu par
+            # « ssh -G » : c'est la seule lecture qui couvre toutes les formes
+            # d'écriture (Host, Match, wildcards, includes). Le nom composé
+            # « saut+vm » n'est qu'un libellé, il ne fait pas autorité.
+            jump = self._ssh_proxyjump(name)
+            domain = name.rsplit("+", 1)[-1]
+            if not jump:
+                print(f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}")
+                print(f"  {t('Cannot tell which machine runs its QEMU.')}")
+                return
+        port = self._qemu_vnc_port(domain, jump)
+        # Les commandes de réparation se lancent SUR l'hyperviseur : le préfixe
+        # évite de les copier sur la mauvaise machine, l'erreur naturelle ici.
+        pre = f"ssh {jump} " if jump else ""
         if not port:
             print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
             print(f"  {t('Its display is likely spice with listen=none:')}")
-            print(f"    sudo virsh dumpxml {name} | grep -A2 '<graphics'")
+            print(f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'")
             print(f"  {t('To open it on the loopback (VM restart required):')}")
-            print(f"    sudo virsh destroy {name}")
-            print(f"    sudo virsh edit {name}   # <graphics type='vnc'"
+            print(f"    {pre}sudo virsh destroy {domain}")
+            print(f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
                   " port='-1' autoport='yes' listen='127.0.0.1'/>")
-            print(f"    sudo virsh start {name}")
+            print(f"    {pre}sudo virsh start {domain}")
             print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
             return
-        host, from_ssh = self._qemu_self_address()
-        user = os.environ.get("USER", "user")
-        if not from_ssh:
-            print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+        if jump:
+            target = jump
+        else:
+            host, from_ssh = self._qemu_self_address()
+            user = os.environ.get("USER", "user")
+            if not from_ssh:
+                print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+            target = f"{user}@{host}"
         print(f"\n  {t('Run this on YOUR workstation:')}")
-        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {user}@{host}\n")
+        print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {target}\n")
+        if jump:
+            print(f"  {t('Target is the hypervisor')} ({jump}), "
+                  f"{t('not the VM: the socket is QEMU-side.')}")
         print(f"  {t('then point your VNC client at')} localhost:{port}")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    @staticmethod
+    def _ssh_proxyjump(host):
+        """ProxyJump effectif d'un hôte, tel que ssh le calcule lui-même.
+
+        « ssh -G » rend la configuration RÉSOLUE : Match, wildcards et Include
+        compris. Relire ~/.ssh/config à la main raterait tout cela.
+        """
+        try:
+            res = subprocess.run(
+                ["ssh", "-G", host], capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        for line in res.stdout.splitlines():
+            if line.startswith("proxyjump "):
+                value = line.split(None, 1)[1].strip()
+                return "" if value.lower() == "none" else value
+        return ""
+
+    @staticmethod
+    def _qemu_vnc_port(domain, jump=""):
+        """Port VNC réel d'un domaine, localement ou sur un hyperviseur distant.
+
+        Il ne se devine pas : libvirt l'attribue au démarrage. « virsh
+        vncdisplay » rend « 127.0.0.1:0 », où le suffixe est le NUMÉRO d'écran
+        — 0 vaut 5900, 1 vaut 5901.
+
+        Sans sudo d'abord : l'appartenance au groupe libvirt suffit souvent, et
+        « sudo -n » distant échouerait sur l'absence de TTY. On ne retombe sur
+        « sudo -n » que si le premier essai n'a rien donné.
+        """
+        base = ["virsh", "--connect", "qemu:///system", "vncdisplay", domain]
+        for argv in (base, ["sudo", "-n"] + base):
+            cmd = (["ssh", "-o", "BatchMode=yes", jump] + argv) if jump else argv
+            try:
+                res = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=25
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if res.returncode != 0:
+                continue
+            disp = res.stdout.strip().rsplit(":", 1)
+            if len(disp) == 2 and disp[1].isdigit():
+                return 5900 + int(disp[1])
+        return 0
 
     def _qemu_ssh_config_menu(self):
         """Écrit les entrées ~/.ssh/config du parc QEMU.
@@ -2356,14 +2888,25 @@ class TODO:
         print(f"\n{t('Target state:')}")
         print(f"  [1] {t('Open (start)')}")
         print(f"  [2] {t('Close (shut down)')}")
+        print(f"  [3] {t('Adjust hardware only (vCPU, RAM, 3D)')}")
         st = input(t("Choice: ")).strip()
         if st == "1":
             action, verb = "start", t("start")
         elif st == "2":
             action, verb = "shutdown", t("shut down")
+        elif st == "3":
+            self._qemu_adjust_hardware(resolved)
+            return
         else:
             print(t("Cancelled."))
             return
+        # Le matériel d'une VM ne se règle QUE pendant qu'elle est éteinte :
+        # démarrer est donc le dernier moment pour le faire, et le seul où la
+        # question tombe juste.
+        if action == "start" and self._is_yes(
+            input(f"\n{t('Adjust hardware before starting? (y/N): ')}")
+        ):
+            self._qemu_adjust_hardware(resolved)
         # DOUBLE validation avant d'appliquer.
         summary = f"{verb} -> {', '.join(resolved)}"
         if not self._is_yes(input(f"{t('Apply:')} {summary} ? (o/N) : ")):
@@ -2376,6 +2919,252 @@ class TODO:
             cmd = f"sudo virsh {action} {shlex.quote(real)}"
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    @staticmethod
+    def _qemu_dumpxml(name):
+        """XML PERSISTANT du domaine, ou '' — source de son état matériel.
+
+        « --inactive » n'est pas décoratif : sur une VM allumée, « dumpxml »
+        rend la vue VIVANTE, décorée de ce que libvirt a alloué au démarrage
+        (portid du réseau, vnetN, alias). C'est la définition persistante que
+        virt-xml modifie, et c'est donc elle qu'il faut lire.
+        """
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dumpxml", "--inactive", name],
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return res.stdout if res.returncode == 0 else ""
+
+    @staticmethod
+    def _qemu_autostart(name):
+        """Démarrage automatique activé ? (absent du XML : virsh seul le sait)"""
+        try:
+            res = subprocess.run(
+                ["sudo", "virsh", "dominfo", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        for line in res.stdout.splitlines():
+            if line.startswith("Autostart:"):
+                return line.split(":", 1)[1].strip() == "enable"
+        return False
+
+    def _qemu_ask_bool(self, prompt, default):
+        """Question fermée dont le DÉFAUT est l'état actuel de la VM.
+
+        Une réponse vide — ou incompréhensible — laisse la VM telle quelle :
+        sur un formulaire de matériel, le silence ne doit rien modifier.
+        """
+        ans = input(prompt).strip()
+        if self._is_yes(ans):
+            return True
+        if self._is_no(ans):
+            return False
+        return default
+
+    def _qemu_host_gpu_node(self):
+        """Nœud de rendu de l'hôte, vu par deploy_qemu (source unique), ou ''."""
+        try:
+            return self._qemu_import_module().host_gpu_node()
+        except (OSError, AttributeError, ImportError):
+            return ""
+
+    def _qemu_net_choices(self):
+        """Réseaux proposables : réseaux libvirt, puis ponts de l'hôte.
+
+        Les ponts appartenant à un réseau libvirt (virbr0 pour « default »)
+        sont écartés : les proposer offrirait DEUX fois le même chemin, dont
+        un qui contourne la gestion du réseau par libvirt.
+        """
+        tokens = []
+        nets = self._qemu_cmd_lines(
+            ["sudo", "virsh", "net-list", "--all", "--name"]
+        )
+        owned = set()
+        for net in nets:
+            tokens.append(f"network:{net}")
+            for line in self._qemu_cmd_lines(
+                ["sudo", "virsh", "net-info", net]
+            ):
+                if line.startswith("Bridge:"):
+                    owned.add(line.split(":", 1)[1].strip())
+        for line in self._qemu_cmd_lines(
+            ["ip", "-o", "link", "show", "type", "bridge"]
+        ):
+            # « 3: br0: <BROADCAST,...» -> br0
+            parts = line.split(":")
+            bridge = parts[1].strip() if len(parts) > 1 else ""
+            if bridge and bridge not in owned:
+                tokens.append(f"bridge:{bridge}")
+        return tokens
+
+    @staticmethod
+    def _qemu_cmd_lines(cmd):
+        """Lignes non vides d'une commande, ou [] si elle échoue."""
+        try:
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return []
+        if res.returncode != 0:
+            return []
+        return [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+
+    def _qemu_adjust_hardware(self, names):
+        """Règle vCPU, RAM, 3D et démarrage automatique de VM ÉTEINTES.
+
+        Les VM allumées sont écartées, en le disant : virt-xml y écrirait une
+        définition qui ne prendrait effet qu'au prochain démarrage — un
+        réglage qui paraît appliqué et ne l'est pas.
+        """
+        from script.todo import qemu_hardware as hw
+
+        off, busy = [], []
+        for name in names:
+            state = self._qemu_domstate(name)
+            (off if state == "shut off" else busy).append(name)
+        if busy:
+            print(
+                f"\n  ⚠ {t('Not shut off, hardware left untouched:')}"
+                f" {', '.join(busy)}"
+            )
+        if not off:
+            return
+        node = self._qemu_host_gpu_node()
+        gpu_txt = node or t("none (software rendering)")
+        print(f"\n{t('Host GPU:')} {gpu_txt}")
+        rows = [
+            r
+            for r in (
+                hw.hw_state(self._qemu_dumpxml(n), self._qemu_autostart(n))
+                for n in off
+            )
+            if r.get("name")
+        ]
+        if not rows:
+            print(f"  ⚠ {t('Unreadable VM definition.')}")
+            return
+        for r in rows:
+            print(f"  {r['name']:<30} {hw.hw_summary(r)}")
+        nets = self._qemu_net_choices()
+        want = self._qemu_hw_form(rows, node, nets)
+        if want is None:
+            print(t("Cancelled."))
+            return
+        if not want:
+            want = self._qemu_hw_prompts(rows, node, nets)
+        if not want:
+            print(t("Cancelled."))
+            return
+        plan = []
+        for r in rows:
+            plan += hw.hw_plan(r, want.get(r["name"]) or {}, node)
+        for entry in plan:
+            if entry.get("skip"):
+                print(f"  ⚠ {entry['what']} : {entry['skip']}")
+        cmds = [e for e in plan if e.get("cmd")]
+        if not cmds:
+            print(f"\n{t('Nothing to change.')}")
+            return
+        print(f"\n{t('Changes:')}")
+        for entry in cmds:
+            print(f"  - {entry['what']}")
+        if not self._is_yes(input(t("Apply these changes? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        for entry in cmds:
+            cmd = "sudo " + " ".join(shlex.quote(c) for c in entry["cmd"])
+            print(f"\n{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _qemu_hw_form(self, rows, node, nets=None):
+        """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
+        retomber sur les invites en ligne (textual absent), None si annulé."""
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return {}
+        try:
+            from script.todo.qemu_hardware import run_hardware_form
+
+            return run_hardware_form(rows, node, nets)
+        except ImportError:
+            return {}
+
+    def _qemu_pick(self, title, values, current, labels=None):
+        """Liste numérotée dont le DÉFAUT est la valeur actuelle.
+
+        Rendre la valeur actuelle sur une réponse vide, et sur une réponse
+        illisible : dans un formulaire de matériel, ne rien comprendre ne doit
+        rien changer.
+        """
+        labels = labels or values
+        print(f"{title} :")
+        for i, (val, lab) in enumerate(zip(values, labels), 1):
+            mark = " ←" if val == current else ""
+            print(f"      [{i}] {lab}{mark}")
+        ans = input("      " + t("Choice: ")).strip()
+        if not ans.isdigit():
+            return current
+        idx = int(ans)
+        return values[idx - 1] if 1 <= idx <= len(values) else current
+
+    def _qemu_hw_prompts(self, rows, node, nets=None):
+        """Même ajustement, en invites, quand Textual n'est pas disponible."""
+        from script.todo import qemu_hardware as hw
+
+        cpus = hw.cpu_choices(rows)
+        reseaux = hw.net_choices(rows, nets)
+        want = {}
+        for r in rows:
+            print(f"\n  {r['name']} — {hw.hw_summary(r)}")
+            vcpus = input(f"    vCPU [{r.get('vcpus')}] : ")
+            ram = input(f"    RAM [{hw.fmt_mib(r.get('mem_mib'))}] : ")
+            reason = hw.gpu_allowed(r, node)
+            if reason:
+                print(f"    ⚠ {t('3D acceleration (host GPU)')} : {reason}")
+                gpu = False
+            else:
+                gpu = self._qemu_ask_bool(
+                    f"    {t('3D acceleration (host GPU)')} ? (o/N) : ",
+                    bool(r.get("accel3d")),
+                )
+            auto = self._qemu_ask_bool(
+                f"    {t('Autostart')} ? (o/N) : ", bool(r.get("autostart"))
+            )
+            cpu = self._qemu_pick(f"    {t('CPU mode')}", cpus, r.get("cpu"))
+            heads = ""
+            if r.get("video"):
+                heads = input(f"    {t('Screens')} [{r.get('heads') or 1}] : ")
+            net = r.get("net") or ""
+            # Une seule possibilité : rien à demander. C'est le cas d'un hôte
+            # sans pont, où le réseau libvirt est la seule voie.
+            if len(reseaux) > 1:
+                net = self._qemu_pick(
+                    f"    {t('Network')}",
+                    [tok for tok, _lab in reseaux],
+                    net,
+                    labels=[lab for _tok, lab in reseaux],
+                )
+            want[r["name"]] = hw.build_want(
+                r, vcpus, ram, gpu, auto, cpu=cpu, heads=heads, net=net
+            )
+        return want
 
     @staticmethod
     def _qemu_dominfo(name):
@@ -2424,6 +3213,107 @@ class TODO:
         except (OSError, subprocess.SubprocessError, ValueError):
             return 0, 0
 
+    @staticmethod
+    def _fmt_uptime(secs):
+        """Durée depuis le démarrage, en six caractères au plus.
+
+        « _fmt_dur » s'arrête aux minutes — bon pour une installation, illisible
+        pour une VM debout depuis trois jours. Ici la précision décroît avec la
+        durée : personne ne lit les secondes d'un uptime de 19 heures."""
+        secs = int(secs)
+        if secs < 60:
+            return f"{secs}s"
+        if secs < 3600:
+            return f"{secs // 60}m"
+        if secs < 86400:
+            return f"{secs // 3600}h{(secs % 3600) // 60:02d}"
+        days = secs // 86400
+        # Au-delà de 99 jours, les heures ne rentrent plus dans la colonne — et
+        # personne ne les lit sur une machine debout depuis un an.
+        if days >= 100:
+            return f"{days}j"
+        return f"{days}j{(secs % 86400) // 3600:02d}h"
+
+    @staticmethod
+    def _qemu_domain_uptime(name):
+        """Secondes depuis le démarrage du domaine, ou None.
+
+        libvirt n'expose pas l'uptime d'un invité : ni dominfo, ni domstats, ni
+        l'agent. Mais le processus QEMU du domaine est né avec lui, et son âge
+        est donc exactement celui de la VM. « guest=<nom>, » est le motif que
+        libvirt met dans sa ligne de commande — la virgule évite qu'un nom
+        préfixe d'un autre matche à sa place."""
+        try:
+            res = subprocess.run(
+                ["pgrep", "-f", f"guest={name},"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            pid = (res.stdout or "").split()[0]
+            age = subprocess.run(
+                ["ps", "-o", "etimes=", "-p", pid],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return int((age.stdout or "").strip())
+        except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _qemu_dommemstat(name):
+        """(utilisée, totale) en KiO vues par l'INVITÉ, ou (0, 0).
+
+        « available » est ce que l'invité voit, « usable » ce qu'il peut encore
+        rendre : leur différence est son « used », à quelques mégaoctets près —
+        calibré contre le « free » de deux VM (1186 contre 1216, 4831 contre
+        4838). « unused » ne convient pas : il ignore le cache, et donnait
+        10,8 Go d'« utilisé » sur une VM qui en occupait 1,2.
+
+        La période de collecte est posée d'abord, et c'est indispensable : sans
+        elle le ballon ne rafraîchit rien, et une VM qui occupait 4,8 Go en
+        annonçait 490 Mo — vécu. « --live » ne touche pas le XML : le réglage
+        disparaît au prochain démarrage du domaine."""
+        try:
+            subprocess.run(
+                [
+                    "sudo",
+                    "virsh",
+                    "dommemstat",
+                    name,
+                    "--period",
+                    "5",
+                    "--live",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+            res = subprocess.run(
+                ["sudo", "virsh", "dommemstat", name],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 0, 0
+        stat = {}
+        for line in (res.stdout or "").splitlines():
+            parts = line.split()
+            if len(parts) == 2:
+                try:
+                    stat[parts[0]] = int(parts[1])
+                except ValueError:
+                    continue
+        total = stat.get("available", 0)
+        usable = stat.get("usable", 0)
+        if not total or not usable:
+            return 0, total
+        return max(0, total - usable), total
+
     def _qemu_list_vms_advanced(self):
         """Tableau détaillé par VM : état, vCPU, RAM allouée, disque (virtuel
         + réel), plus l'espace total disponible du stockage des images."""
@@ -2432,9 +3322,12 @@ class TODO:
             print(f"\n{t('No VM found.')}")
             return
         g = 1 << 30
+        # Largeurs serrées pour que la ligne tienne en 80 colonnes AVEC le nom
+        # entier : c'est lui qui distingue les machines, et « erplibre-ubuntu-
+        # 2604-gno » tronqué ne distingue plus rien.
         header = (
-            f"\n{'VM':<28} {'État':<10} {'vCPU':>4} {'RAM':>8} "
-            f"{'Disque':>9} {'Réel':>9}"
+            f"\n{'VM':<26} {'État':<8} {'vCPU':>4} {'RAM':>10} "
+            f"{'Disque':>7} {'Réel':>7} {'Uptime':>6}"
         )
         print(header)
         print("─" * len(header.strip()))
@@ -2447,9 +3340,27 @@ class TODO:
             if disk:
                 disk_dirs.add(os.path.dirname(disk))
             ram_g = (mem_kib * 1024) / g if mem_kib else 0
+            # « RAM » dit désormais l'USAGE et non la seule allocation : sur un
+            # hyperviseur, savoir qu'une VM de 32 Go n'en occupe que 4,7 décide
+            # s'il reste de la place pour la suivante. Deux nombres dans une
+            # colonne plutôt que deux colonnes — le tableau tient encore sur
+            # une ligne de terminal.
+            used_kib, _total_kib = self._qemu_dommemstat(name)
+            # Le total sans décimale quand il est entier — une allocation
+            # vaut 8, 12 ou 32 Go, jamais 32,0.
+            alloc = f"{ram_g:.0f}" if ram_g == int(ram_g) else f"{ram_g:.1f}"
+            ram = (
+                f"{used_kib * 1024 / g:.1f}G/{alloc}G"
+                if used_kib
+                else f"-/{alloc}G"
+            )
+            # L'uptime vient de l'âge du processus QEMU : libvirt ne l'expose
+            # nulle part, et ce processus est né avec le domaine.
+            up = self._qemu_domain_uptime(name)
             print(
-                f"{name:<28.28} {state:<10.10} {vcpus:>4} "
-                f"{ram_g:>7.1f}G {virt / g:>8.1f}G {actual / g:>8.1f}G"
+                f"{name:<26.26} {state:<8.8} {vcpus:>4} "
+                f"{ram:>10} {virt / g:>6.1f}G {actual / g:>6.1f}G "
+                f"{self._fmt_uptime(up) if up else '-':>6}"
             )
         # Espace total disponible sur le(s) stockage(s) des disques.
         for d in sorted(disk_dirs) or ["/var/lib/libvirt/images"]:
@@ -3957,13 +4868,22 @@ class TODO:
     ERPLIBRE_GIT_URL = "https://github.com/erplibre/erplibre"
 
     def _qemu_import_module(self):
-        """Importe deploy_qemu.py comme module (source de vérité des specs)."""
+        """Importe deploy_qemu.py comme module (source de vérité des specs).
+
+        Mémorisé : le catalogue interroge cette source une fois par couple
+        (distro, version), et réexécuter un fichier de 2 700 lignes à chaque
+        passage se voyait à l'écran.
+        """
+        cached = getattr(self, "_qemu_mod_cache", None)
+        if cached is not None:
+            return cached
         import importlib.util
 
         path = self._qemu_script_path()
         spec = importlib.util.spec_from_file_location("deploy_qemu", path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
+        self._qemu_mod_cache = mod
         return mod
 
     @classmethod
@@ -4432,6 +5352,30 @@ class TODO:
         ~/git/erplibre (dev)."""
         return "/opt/erplibre" if prod else "$HOME/git/erplibre"
 
+    @staticmethod
+    def _qemu_guide_dir(prod):
+        """Répertoire d'ERPLibre tel que le GUIDE de connexion l'annonce.
+
+        « ~/git/erplibre » plutôt que « $HOME/git/erplibre » : ce chemin n'est
+        pas exécuté par un script, il est lu par quelqu'un qui recopie la ligne
+        dans son shell — où les deux marchent — et le tilde est la forme qu'il
+        reconnaît. En production le chemin est absolu et la question ne se pose
+        pas."""
+        return "/opt/erplibre" if prod else "~/git/erplibre"
+
+    @staticmethod
+    def _qemu_make_target(install_cmd):
+        """Cible make qui installe Odoo dans `install_cmd`, pour le guide.
+
+        Les profils s'écrivent « make install_os && make install_odoo_18 » : la
+        cible utile est la SECONDE, celle qui installe Odoo, et c'est aussi
+        celle qu'on relance après un « git pull ». Les profils qui n'en ont pas
+        (« ERPLibre seul », « mobile », « Déploiement ») rendent une chaîne
+        vide : le guide s'arrête alors à « git pull » plutôt que d'annoncer une
+        cible qui n'est pas celle de cette VM."""
+        found = re.findall(r"make\s+(install_odoo\S*)", install_cmd or "")
+        return found[-1] if found else ""
+
     def _qemu_odoo_service_cmd(self, prod=False):
         """Snippet shell (exécuté dans la VM) qui installe ERPLibre/Odoo comme
         service systemd puis l'active. N'est ajouté QUE pour les profils Odoo.
@@ -4897,6 +5841,25 @@ class TODO:
             # images cloud démarrent en multi-user.target.
             "sudo systemctl set-default graphical.target || true; "
             f"sudo systemctl enable {de['service']} >/dev/null 2>&1 || true; "
+            # Et il faut le DÉMARRER, pas seulement l'activer. Deux raisons,
+            # toutes deux mesurées sur erplibre-ubuntu-2604-gnome :
+            #
+            #   - graphical.target était DÉJÀ atteinte quand le paquet est
+            #     arrivé, et une cible active ne rattrape pas un service ajouté
+            #     après coup : display-manager.service est resté inactif ;
+            #   - sur Debian et Ubuntu, « systemctl enable gdm » rend 0 sans
+            #     rien faire — l'unité n'a pas de « WantedBy », seulement
+            #     « Alias=display-manager.service » que le paquet a déjà posé.
+            #
+            # Résultat : GNOME installé, gdm3 installé, cible graphique par
+            # défaut… et la console de la VM restait en mode texte jusqu'au
+            # premier redémarrage. L'écran, c'est justement ce qu'on est venu
+            # chercher sur une VM graphique.
+            "if sudo systemctl start display-manager.service 2>/dev/null || "
+            f"sudo systemctl start {de['service']} 2>/dev/null; then "
+            f'echo "   {t("graphical session started")}"; '
+            f'else echo "   ⚠ {t("graphical session not started; reboot the VM")}"; '
+            "fi; "
             # xrdp là où il existe ; sur Arch c'est TigerVNC, qui se configure
             # par utilisateur et n'a pas de service à activer d'office.
             "if command -v xrdp >/dev/null 2>&1; then "
@@ -4915,6 +5878,1269 @@ class TODO:
             + self._qemu_tunnel_hint(5901, "VNC")
             + "fi; "
         )
+
+    # ------------------------------------------------------------------ #
+    # Outils de développement d'une VM graphique
+    # ------------------------------------------------------------------ #
+    # Chacun est une case à cocher, indépendante des autres, et chacun pèse sur
+    # le disque — le plan l'annonce AVANT de déployer, sinon l'installation se
+    # termine sur un disque plein après une heure d'attente.
+    #
+    # « disk_gb » compte le PIC, pas l'installé : l'archive téléchargée vit sur
+    # le disque le temps de l'extraction. PyCharm, c'est 1,2 Go d'archive et
+    # ~3 Go déplié ; Android Studio 1,5 Go et 3,5 Go, plus la place du premier
+    # SDK que l'utilisateur téléchargera.
+    #
+    # « arches » n'est pas une précaution : Google ne publie Android Studio
+    # QU'EN x86_64 (vérifié — toutes les variantes aarch64 de l'URL rendent 404,
+    # et le product-info.json de l'archive ne déclare qu'une cible
+    # « Linux/amd64 »). JetBrains, lui, publie bien une archive aarch64.
+    _QEMU_VM_TOOLS = {
+        "pycharm": {
+            "label": "PyCharm",
+            "hint": "Python IDE, opens the ERPLibre checkout",
+            "disk_gb": 5,
+            "arches": ("amd64", "arm64"),
+            "desktops": (),
+            "needs_desktop": True,
+            "families": (),
+            "phase": "before",
+        },
+        "android": {
+            "label": "Android Studio",
+            "hint": "ERPLibre mobile development (x86_64 only)",
+            "disk_gb": 8,
+            "arches": ("amd64",),
+            "desktops": (),
+            "needs_desktop": True,
+            "families": (),
+            "phase": "before",
+        },
+        "gnome_ext": {
+            "label": "GNOME extensions",
+            "hint": "suggested extensions + extension manager",
+            "disk_gb": 1,
+            "arches": (),
+            "desktops": ("gnome",),
+            "needs_desktop": True,
+            "families": (),
+            "phase": "before",
+        },
+        # Le seul outil qui ne demande PAS de bureau : il compile, il n'affiche
+        # rien. Une VM serveur le prend, une VM graphique aussi — et sur
+        # celle-ci le SDK est partagé avec Android Studio plutôt que doublé.
+        #
+        # « families » le borne à apt, et ce n'est pas un choix : l'installateur
+        # du dépôt mobile, install-android.sh, commence par
+        # « sudo apt install openjdk-17-jdk ». Ailleurs il s'arrête là. Lever
+        # cette limite se fait dans CE script-là, pas ici.
+        #
+        # Disque : ~1,5 Go de SDK et plateformes, ~2,5 Go de NDK, whisper.cpp
+        # et sentencepiece clonés, node_modules, et les artefacts Gradle.
+        "mobile": {
+            "label": "ERPLibre mobile (build)",
+            "hint": "APK debug + Vitest, validates the VM",
+            "disk_gb": 12,
+            "arches": ("amd64",),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": ("apt",),
+            # APRÈS l'installation : le build a besoin du dépôt mobile, que le
+            # manifeste ajoute, et du venv d'outils pour le synchroniser.
+            "phase": "after",
+        },
+        # Forgejo est un SERVICE, pas un outil de bureau : une VM serveur le
+        # prend aussi bien qu'une VM graphique. Son binaire est STATIQUE — le
+        # même fichier sur apt, dnf, pacman et zypper — donc aucune famille de
+        # paquets n'est exclue, et c'est ce qui le rend portable sur toutes les
+        # plateformes ERPLibre sans une branche par distribution.
+        #
+        # Les architectures, elles, sont bornées par l'amont : Forgejo publie
+        # amd64, arm64 et arm-6, et RIEN pour s390x. Sur celle-là il faudrait le
+        # bâtir en Go ; la case se grise plutôt que de poser un binaire qui ne
+        # s'exécute pas.
+        #
+        # Disque : ~115 Mo de binaire (34 Mo téléchargés en .xz), la base SQLite
+        # et les dépôts que l'utilisateur y poussera.
+        "forgejo": {
+            "label": "Forgejo (git forge)",
+            "hint": "self-hosted git forge on :3000, SQLite",
+            "disk_gb": 2,
+            "arches": ("amd64", "arm64"),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": (),
+            # APRÈS l'installation : le script vit dans le dépôt, donc après le
+            # clone. Rien d'autre ne l'y oblige — Forgejo ne dépend ni du venv
+            # ni d'Odoo.
+            "phase": "after",
+        },
+        # L'émulateur n'a pas besoin de bureau DANS la VM : il s'affiche sur
+        # l'écran de qui s'y connecte, par « ssh -X ». Il a besoin, lui, de KVM
+        # dans la VM — donc de virtualisation imbriquée sur l'hôte, ce que le
+        # bloc vérifie et annonce plutôt que de laisser découvrir.
+        #
+        # Disque : ~1,5 Go d'image système, ~2 Go de données d'AVD, plus
+        # l'émulateur lui-même.
+        "avd": {
+            "label": "Android emulator (Pixel)",
+            "hint": "AVD viewable over ssh -X",
+            "disk_gb": 6,
+            "arches": ("amd64",),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": ("apt",),
+            "phase": "after",
+        },
+    }
+
+    # Famille de paquets de chaque distribution, pour borner un outil à ce qui
+    # sait l'installer.
+    _QEMU_DISTRO_FAMILY = {
+        "ubuntu": "apt",
+        "debian": "apt",
+        "fedora": "dnf",
+        "almalinux": "dnf",
+        "rocky": "dnf",
+        "opensuse": "zypper",
+        "arch": "pacman",
+    }
+
+    @classmethod
+    def _qemu_vm_tool_choices(cls):
+        """[(clé, libellé, indice)] pour le formulaire et l'invite en ligne."""
+        return [
+            (key, t(spec["label"]), t(spec["hint"]))
+            for key, spec in cls._QEMU_VM_TOOLS.items()
+        ]
+
+    @classmethod
+    def _qemu_tools_for(cls, tools, arch, desktop, distro="", phase=""):
+        """Outils RÉELLEMENT applicables à cette VM.
+
+        Un outil demandé pour tout le parc ne convient pas forcément à chaque
+        machine : Android Studio n'existe qu'en x86_64, les extensions GNOME
+        n'ont pas de sens sous Cinnamon, et la compilation mobile ne sait
+        s'installer que sur les distributions apt. Filtrer ici plutôt que dans
+        la commande distante évite d'annoncer une installation qui ne se fera
+        pas.
+
+        `phase` restreint au moment d'exécution : « before » avant le clone,
+        « after » après l'installation. Vide, les deux sont rendus."""
+        out = []
+        for key in tools or ():
+            spec = cls._QEMU_VM_TOOLS.get(key)
+            if not spec:
+                continue
+            if spec["needs_desktop"] and not desktop:
+                continue
+            if spec["arches"] and arch not in spec["arches"]:
+                continue
+            if spec["desktops"] and desktop not in spec["desktops"]:
+                continue
+            family = cls._QEMU_DISTRO_FAMILY.get(distro, "")
+            if spec["families"] and distro and family not in spec["families"]:
+                continue
+            if phase and spec["phase"] != phase:
+                continue
+            out.append(key)
+        return out
+
+    @classmethod
+    def _qemu_tools_disk_gb(cls, tools, arch, desktop, distro=""):
+        """Go à ajouter au disque pour les outils applicables à cette VM."""
+        return sum(
+            cls._QEMU_VM_TOOLS[k]["disk_gb"]
+            for k in cls._qemu_tools_for(tools, arch, desktop, distro)
+        )
+
+    # Archive officielle JetBrains, et non un paquet de distribution : aucun ne
+    # couvre les quatre gestionnaires (Arch l'a dans extra, Debian et Ubuntu ne
+    # l'ont qu'en snap — coupé ici —, Fedora et openSUSE pas du tout).
+    #
+    # La ligne COMMUNITY, et non le produit unifié. Mesuré dans une VM :
+    # « code=PCC&latest » sert maintenant pycharm-2025.3, le build unifié, qui
+    # s'arrête sur sa licence — son journal dit « NoValidIdeLicense » puis
+    # « Get licenses: request requires authentication », et le projet ne
+    # s'ouvre jamais. Aucune ouverture, donc aucun .idea, donc rien à
+    # configurer ensuite. Community ne demande aucun compte, et elle est
+    # toujours publiée et corrigée : 2025.2.6.2 date du 2026-07-29.
+    #
+    # Aucun numéro figé ici : on prend la plus récente archive
+    # « pycharm-community- » du flux officiel des versions, pour
+    # l'architecture de la VM.
+    _QEMU_PYCHARM_FEED = (
+        "https://data.services.jetbrains.com/products/releases"
+        "?code=PCC&type=release"
+    )
+    # Repli quand le flux est injoignable : la redirection « dernière version ».
+    # Elle sert le build unifié, donc on le DIT — l'utilisateur devra ouvrir un
+    # compte JetBrains, et mieux vaut l'apprendre dans le journal qu'au premier
+    # lancement.
+    _QEMU_PYCHARM_URL = (
+        "https://download.jetbrains.com/product?code=PCC&latest&distribution="
+    )
+
+    # Android Studio n'a PAS d'URL « latest » : le répertoire de version
+    # (2026.1.3.8) et le nom de fichier (quail3-patch1) sont deux jetons
+    # INDÉPENDANTS, l'un ne se déduit pas de l'autre, et le flux updates.xml de
+    # Google ne publie ni l'un ni l'autre. On lit donc l'URL sur la page
+    # officielle, qui la porte en clair, et on retombe sur celle-ci si la page
+    # change de forme. Relevée et vérifiée (HTTP 200) le 2026-08-17.
+    _QEMU_ANDROID_URL = (
+        "https://dl.google.com/dl/android/studio/ide-zips/2026.1.3.8/"
+        "android-studio-quail3-patch1-linux.tar.gz"
+    )
+    _QEMU_ANDROID_PAGE = "https://developer.android.com/studio"
+
+    @staticmethod
+    def _qemu_desktop_entry_cmd(name, label, exec_cmd, icon, categories):
+        """Écrit un lanceur .desktop. Sans lui, un outil déplié dans /opt
+        n'existe pas pour le bureau : il ne se lance qu'en tapant son chemin.
+        """
+        return (
+            f"sudo tee /usr/share/applications/{name}.desktop >/dev/null <<DESK\n"
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Version=1.0\n"
+            f"Name={label}\n"
+            f"Exec={exec_cmd}\n"
+            f"Icon={icon}\n"
+            "Terminal=false\n"
+            f"Categories={categories}\n"
+            "StartupNotify=true\n"
+            "DESK\n"
+        )
+
+    def _qemu_jetbrains_launcher_cmd(self, root, link, alias=""):
+        """Lien vers le lanceur de l'archive, quel que soit son nom.
+
+        JetBrains a renommé « bin/pycharm.sh » en « bin/pycharm » (et
+        « studio.sh » en « studio ») : les deux existent selon la version, on
+        prend celui qui est là.
+
+        `alias` : un second nom pour la même commande. L'archive d'Android
+        Studio n'installe que « studio », mais personne ne tape « studio » —
+        on cherche « android-studio », on ne trouve rien, et on conclut que
+        l'installation a échoué alors qu'elle est bien là. Vécu."""
+        return (
+            f"b=$(ls {root}/bin/{link}.sh {root}/bin/{link} 2>/dev/null "
+            "| head -1); "
+            f'[ -n "$b" ] && sudo ln -sf "$b" /usr/local/bin/{link}; '
+            + (
+                f'[ -n "$b" ] && sudo ln -sf "$b" /usr/local/bin/{alias}; '
+                if alias
+                else ""
+            )
+        )
+
+    def _qemu_pycharm_remote_cmd(self, prod=False):
+        """Installe PyCharm et lui donne le dépôt ERPLibre comme projet.
+
+        « Configuré sur git/erplibre » veut dire deux choses, et les deux sont
+        faites ici : le lanceur du bureau OUVRE ce dépôt, et
+        pycharm_configuration.py y écrit le .idea/ du projet (interpréteur,
+        configurations d'exécution, dossiers exclus) — la même chose que
+        « make pycharm_configure », mais avec le python du venv d'outils, seul à
+        disposer de xmltodict.
+
+        Tout le bloc est gardé : un IDE qui ne s'installe pas ne doit pas faire
+        échouer l'installation d'ERPLibre, qui elle a duré une heure."""
+        el_dir = self._qemu_install_dir(prod)
+        return (
+            f'echo "== {t("Installing PyCharm (long)")} =="; '
+            "{ "
+            'case "$(uname -m)" in x86_64) jb=linux;; '
+            'aarch64|arm64) jb=linuxARM64;; *) jb="";; esac; '
+            # if/else et non « || { …; false; } » : dans un groupe, un échec
+            # n'interrompt PAS la suite (set -e est suspendu à gauche d'un
+            # « && »), et l'architecture non servie partait quand même
+            # télécharger une URL sans valeur de distribution.
+            'if [ -z "$jb" ]; then '
+            f'echo "   {t("no JetBrains build for")} $(uname -m)"; false; '
+            "else "
+            # Déjà posé ? On ne retélécharge pas. Rejouer une
+            # installation est le cas NORMAL — une qui est morte, un outil
+            # ajouté après coup — et le téléchargement en est la partie
+            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
+            # rejoue de toute façon, lui est idempotent et bon marché.
+            "if [ -x /opt/pycharm/bin/pycharm.sh ]; then "
+            f'echo "   {t("already there, download skipped")}"; '
+            "else "
+            # /var/tmp et non /tmp : sur Fedora et dérivés /tmp est un tmpfs, en
+            # RAM — 1,2 Go d'archive y tueraient une VM de 3 Go.
+            # Le flux dit quelle archive Community prendre pour cette
+            # architecture. En python plutôt qu'en shell : il fait la requête,
+            # lit le JSON et rend une ligne — sans jq, absent des images cloud.
+            "url=$(python3 - \"$jb\" <<'ELPYJB'\n"
+            "import json, sys, urllib.request\n"
+            "key = sys.argv[1]\n"
+            "try:\n"
+            f'    with urllib.request.urlopen("{self._QEMU_PYCHARM_FEED}",\n'
+            "                                 timeout=30) as fh:\n"
+            "        data = json.load(fh)\n"
+            "except Exception:\n"
+            "    sys.exit(0)\n"
+            'for rel in data.get("PCC", []):\n'
+            '    link = (rel.get("downloads") or {}).get(key, {}).get("link", "")\n'
+            '    if "pycharm-community-" in link:\n'
+            "        print(link)\n"
+            "        break\n"
+            "ELPYJB\n"
+            "); "
+            'if [ -z "$url" ]; then '
+            f'url="{self._QEMU_PYCHARM_URL}$jb"; '
+            f'echo "   {t("release feed unreachable: unified build, it will ask for a JetBrains account")}"; '
+            "fi; "
+            "tmp=$(mktemp -p /var/tmp pycharm-XXXX.tar.gz) && "
+            'curl -fsSL "$url" -o "$tmp" && '
+            "sudo mkdir -p /opt/pycharm && "
+            'sudo tar -xzf "$tmp" -C /opt/pycharm --strip-components=1; '
+            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; fi; } && { '
+            + self._qemu_jetbrains_launcher_cmd("/opt/pycharm", "pycharm")
+            + self._qemu_desktop_entry_cmd(
+                "pycharm",
+                "PyCharm (ERPLibre)",
+                f"/usr/local/bin/pycharm {el_dir}",
+                "/opt/pycharm/bin/pycharm.svg",
+                "Development;IDE;",
+            )
+            # AUCUN appel à pycharm_configuration.py ici : l'installation
+            # ERPLibre le fait déjà. update_env_version.pycharm_update() teste
+            # « os.path.exists('.idea') » puis lance le script — une seule
+            # autorité, et elle sait se taire quand le projet n'existe pas
+            # encore. Doubler l'appel ne configurait rien de plus : ça écrivait
+            # « Missing ./.idea path » dans le journal d'une VM neuve, où
+            # PyCharm n'a évidemment jamais ouvert le dépôt.
+            + f'echo "   {t("PyCharm installed:")} /opt/pycharm '
+            f'({t("command")} pycharm, {t("project")} {el_dir})"; '
+            f'echo "   {t("open the project once and close PyCharm; the .idea "
+                          "it writes is what the install configures")}"; '
+            f'}} || echo "   ⚠ {t("PyCharm not installed (see above)")}"; '
+        )
+
+    # Serveur X virtuel, par gestionnaire de paquets. Les noms ne se
+    # ressemblent pas d'une famille à l'autre — relevés dans chaque dépôt, pas
+    # devinés.
+    _QEMU_XVFB_PKG = {
+        "apt": "xvfb",
+        "dnf": "xorg-x11-server-Xvfb",
+        "zypper": "xorg-x11-server-Xvfb",
+        "pacman": "xorg-server-xvfb",
+    }
+
+    # Attente maximale du .idea, en tours de 5 s — cinq minutes. Mesuré sur une
+    # VM Ubuntu 26.04 à 16 Go : le projet est écrit en 195 s, indexation du
+    # dépôt en cours. On n'attend donc PAS la fin de cette indexation, qui dure
+    # bien plus et dont personne n'a besoin ici : pycharm_configuration.py ne
+    # réclame que le .iml et misc.xml.
+    _QEMU_PYCHARM_OPEN_TRIES = 60
+
+    def _qemu_xvfb_install_cmd(self):
+        """Pose Xvfb avec le gestionnaire de paquets présent, sans bruit."""
+        x = self._QEMU_XVFB_PKG
+        return (
+            "if command -v apt-get >/dev/null 2>&1; then "
+            "sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            f"-o DPkg::Lock::Timeout=600 install -y {x['apt']} "
+            ">/dev/null 2>&1 || true; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            f"sudo dnf install -y {x['dnf']} >/dev/null 2>&1 || true; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            "sudo zypper --non-interactive install --auto-agree-with-licenses "
+            f"{x['zypper']} >/dev/null 2>&1 || true; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            f"sudo pacman -S --needed --noconfirm {x['pacman']} "
+            ">/dev/null 2>&1 || true; fi; "
+        )
+
+    def _qemu_pycharm_project_cmd(self, prod=False):
+        """Crée le .idea/ du dépôt en ouvrant PyCharm une fois, sans écran.
+
+        C'est PyCharm, et lui seul, qui écrit ce répertoire : ni le dépôt ni
+        pycharm_configuration.py ne savent le fabriquer — ce dernier exige un
+        .iml puis un misc.xml, et s'arrête sinon. Sans cette ouverture, l'étape
+        pycharm_update() de l'installation ne trouve rien à configurer.
+
+        Xvfb parce que l'IDE réclame un affichage, même pour ouvrir un projet
+        et s'arrêter. Il tourne DANS la VM : l'hôte qui orchestre n'a besoin
+        d'aucune bibliothèque graphique, et rien ne transite par « ssh -X ».
+
+        TROIS fenêtres bloqueraient une session où personne ne peut cliquer, et
+        chacune a été rencontrée avant d'être écartée : politique de
+        confidentialité, partage de données, et surtout « faites-vous confiance
+        à ce projet ? ». C'est celle-là qui figeait tout — le journal s'arrêtait
+        1,3 s après le démarrage, sans jamais ouvrir le projet, et il a fallu
+        « idea.trust.all.projects » pour le débloquer. Le consentement, lui, est
+        écrit REFUSÉ : aucune statistique ne part.
+
+        Mesuré sur une VM Ubuntu 26.04 à 16 Go : .idea complet en 195 s, et
+        pycharm_configuration.py écrit ensuite ses exclusions dans le .iml.
+
+        Tout est gardé. Sans Xvfb, sans PyCharm, ou sans .idea au bout du
+        délai, on le dit et l'installation continue : elle n'en dépend pas,
+        elle en profite seulement.
+        """
+        el_dir = self._qemu_install_dir(prod)
+        return (
+            f'echo "== {t("Creating the PyCharm project (first open)")} =="; '
+            "{ if ! command -v pycharm >/dev/null 2>&1; then "
+            f'echo "   {t("PyCharm missing, step skipped")}"; false; '
+            "else "
+            "command -v xvfb-run >/dev/null 2>&1 || { "
+            + self._qemu_xvfb_install_cmd()
+            + "}; "
+            "if ! command -v xvfb-run >/dev/null 2>&1; then "
+            f'echo "   {t("no Xvfb here, open PyCharm by hand")}"; false; '
+            "else "
+            # Réponses aux fenêtres de première ouverture. En python plutôt
+            # qu'en shell : l'horodatage en millisecondes et le « <!--…--> » de
+            # la propriété se passeraient mal de guillemets imbriqués.
+            "python3 - <<'ELPYC' || true\n"
+            "import pathlib, time\n"
+            "h = pathlib.Path.home()\n"
+            'c = h / ".local/share/JetBrains/consentOptions"\n'
+            "c.mkdir(parents=True, exist_ok=True)\n"
+            '(c / "accepted").write_text(\n'
+            '    "rsch.send.usage.stat:1.1:0:%d\\n" % (time.time() * 1000)\n'
+            ")\n"
+            '(h / ".pycharm-headless.vmoptions").write_text(\n'
+            '    "-Djb.privacy.policy.text=<!--999.999-->\\n"\n'
+            '    "-Djb.consents.confirmation.enabled=false\\n"\n'
+            '    "-Didea.trust.all.projects=true\\n"\n'
+            '    "-Didea.suppress.statistics.report=true\\n"\n'
+            ")\n"
+            "ELPYC\n"
+            # « setsid » donne au tout son PROPRE groupe de processus, et
+            # c'est le groupe qu'on tuera. Sans lui, « $!  » est le PID de
+            # xvfb-run — un script — et le tuer n'atteint ni PyCharm, ni Xvfb,
+            # ni les cef_server qu'il a lancés. Mesuré sur
+            # erplibre-ubuntu-2604-gnome : PyCharm tournait encore 45 minutes
+            # plus tard avec 1,9 Go, et la compilation de l'APK qui suivait
+            # s'est fait tuer par le noyau, faute de mémoire.
+            # Les watches inotify AVANT d'ouvrir : le dépôt mobile pose
+            # 123 000 fichiers d'assets, et la limite par défaut est dépassée
+            # dès l'analyse — « inotify_add_watch(...): No space left on
+            # device », puis « watch root cannot be watched: -2 », puis aucun
+            # .idea écrit. Mesuré sur erplibre-ubuntu-2604-gnome, deux fois.
+            # 524288 est la valeur que JetBrains documente lui-même.
+            "cur=$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null "
+            '|| echo 0); if [ "$cur" -lt 524288 ] 2>/dev/null; then '
+            'echo "fs.inotify.max_user_watches=524288" '
+            "| sudo tee /etc/sysctl.d/60-erplibre-inotify.conf >/dev/null && "
+            "sudo sysctl -q -p /etc/sysctl.d/60-erplibre-inotify.conf "
+            f'2>/dev/null; echo "   {t("inotify watches raised for the IDE")}"; '
+            "fi; "
+            # DEUX tentatives, et c'est mesuré : la première ouverture d'un
+            # dépôt neuf indexe 212 000 fichiers, plante son configurateur
+            # d'interpréteur (« PythonSdkConfigurator - homeDir is null ») et
+            # n'écrit AUCUN .idea, même au bout de cinq minutes. La seconde, sur
+            # les caches que la première a laissés, l'écrit en 25 secondes —
+            # constaté sur deux VM différentes.
+            ": > /tmp/pycharm-first-run.log; "
+            "for attempt in 1 2; do "
+            'PYCHARM_VM_OPTIONS="$HOME/.pycharm-headless.vmoptions" '
+            f"setsid xvfb-run -a pycharm {el_dir} "
+            ">> /tmp/pycharm-first-run.log 2>&1 & "
+            "pid=$!; ok=0; "
+            f"for i in $(seq 1 {self._QEMU_PYCHARM_OPEN_TRIES}); do "
+            f"if ls {el_dir}/.idea/*.iml >/dev/null 2>&1 && "
+            f"[ -f {el_dir}/.idea/misc.xml ]; then ok=1; break; fi; "
+            "sleep 5; done; "
+            # Cinq secondes de plus : les fichiers apparaissent PENDANT leur
+            # écriture, et un TERM à l'instant où misc.xml naît le tronquerait.
+            "sleep 5; kill -TERM -$pid 2>/dev/null || "
+            "kill -TERM $pid 2>/dev/null; "
+            "for i in $(seq 1 12); do kill -0 -$pid 2>/dev/null || break; "
+            "sleep 5; done; kill -KILL -$pid 2>/dev/null; "
+            # Filet, et il a sa raison d'être : ce qui survit ici mange la
+            # mémoire de TOUTES les étapes suivantes.
+            #
+            # Par NOM de processus (« -x »), jamais par ligne de commande. Un
+            # « pkill -f /opt/pycharm » attrape aussi le ssh QUI PORTE cette
+            # installation — sa ligne de commande contient le script entier,
+            # donc ce chemin. Vécu : une installation est morte en silence, sa
+            # session ssh emportée, 48 minutes perdues. Mesuré ensuite : par
+            # nom, 3 processus réels attrapés et 0 faux ; par ligne de commande,
+            # 4 dont le ssh. Les noms sont ceux relevés dans la VM — pycharm,
+            # Xvfb, fsnotifier, cef_server — et « -u » borne au compte courant.
+            #
+            # « pgrep -c » IMPRIME 0 et rend 1 quand il ne trouve rien : un
+            # « || echo 0 » donnerait « 0\n0 », qui n'est pas « 0 ». « wc -l »
+            # rend un seul nombre et un code 0.
+            'left=$(pgrep -u "$(id -u)" -x '
+            '"pycharm|cef_server|fsnotifier|Xvfb" 2>/dev/null | wc -l); '
+            '[ "$left" = 0 ] || { '
+            f'echo "   {t("closing what survived the first open:")} $left"; '
+            'pkill -u "$(id -u)" -x '
+            '"pycharm|cef_server|fsnotifier|Xvfb" 2>/dev/null; sleep 2; }; '
+            '[ "$ok" = 1 ] && break; '
+            f'echo "   {t("no project yet, second try on the warm caches")}"; '
+            "done; "
+            '[ "$ok" = 1 ]; fi; fi; } && '
+            f'echo "   {t("project created, the install will configure it")}" '
+            f'|| echo "   ⚠ {t("no .idea: open PyCharm once, then")} '
+            'make pycharm_configure"; '
+        )
+
+    def _qemu_android_studio_remote_cmd(self):
+        """Installe Android Studio, pour le développement mobile ERPLibre.
+
+        L'émulateur, lui, exige KVM DANS la VM, donc la virtualisation
+        imbriquée : on le dit plutôt que de laisser découvrir l'échec au premier
+        lancement. Compiler et déployer sur un appareil réel par adb n'en
+        dépendent pas."""
+        return (
+            f'echo "== {t("Installing Android Studio (long)")} =="; '
+            "{ "
+            'if [ "$(uname -m)" != x86_64 ]; then '
+            f'echo "   {t("Android Studio: Google publishes x86_64 only")}"; '
+            "false; "
+            "else "
+            # Déjà posé ? On ne retélécharge pas. Rejouer une
+            # installation est le cas NORMAL — une qui est morte, un outil
+            # ajouté après coup — et le téléchargement en est la partie
+            # longue : mesuré, ~5 min pour Android Studio, autant pour
+            # PyCharm. Le reste de l'étape (lanceur, alias, raccourci)
+            # rejoue de toute façon, lui est idempotent et bon marché.
+            "if [ -x /opt/android-studio/bin/studio ]; then "
+            f'echo "   {t("already there, download skipped")}"; '
+            "else "
+            # La page officielle porte l'URL en clair ; le repli garde une
+            # version connue qui répond, pour le jour où sa forme change.
+            f"url=$(curl -fsSL --max-time 30 {self._QEMU_ANDROID_PAGE} "
+            "| grep -oE 'https://[a-z0-9.-]*gvt1\\.com/[^\"]*linux\\.tar\\.gz' "
+            "| head -1); "
+            f'[ -n "$url" ] || url="{self._QEMU_ANDROID_URL}"; '
+            "tmp=$(mktemp -p /var/tmp android-XXXX.tar.gz) && "
+            'curl -fsSL "$url" -o "$tmp" && '
+            "sudo mkdir -p /opt/android-studio && "
+            'sudo tar -xzf "$tmp" -C /opt/android-studio '
+            "--strip-components=1; "
+            'rc=$?; rm -f "$tmp"; [ $rc -eq 0 ]; fi; fi; } && { '
+            + self._qemu_jetbrains_launcher_cmd(
+                "/opt/android-studio", "studio", alias="android-studio"
+            )
+            + self._qemu_desktop_entry_cmd(
+                "android-studio",
+                "Android Studio",
+                "/usr/local/bin/studio",
+                "/opt/android-studio/bin/studio.svg",
+                "Development;IDE;",
+            )
+            +
+            # Le SDK partagé, vu depuis la SESSION graphique. install-android.sh
+            # écrit ses exports dans ~/.bashrc, que GNOME ne lit pas : Android
+            # Studio lancé depuis le menu ne verrait donc pas le SDK et
+            # proposerait d'en télécharger un second. environment.d est le
+            # canal que la session utilisateur lit vraiment.
+            "mkdir -p ~/.config/environment.d && "
+            "printf 'ANDROID_HOME=%s/android\\nANDROID_SDK_ROOT=%s/android\\n'"
+            ' "$HOME" "$HOME" '
+            "> ~/.config/environment.d/10-erplibre-android.conf; "
+            # repositories.cfg absent, et l'assistant de première ouverture
+            # s'arrête sur une erreur au lieu de proposer quoi que ce soit.
+            "mkdir -p ~/.android && touch ~/.android/repositories.cfg; "
+            + f'echo "   {t("Android Studio installed:")} /opt/android-studio '
+            f'({t("command")} studio / android-studio)"; '
+            f'echo "   {t("SDK shared through ANDROID_HOME:")} $HOME/android"; '
+            "grep -q vmx /proc/cpuinfo 2>/dev/null "
+            "|| grep -q svm /proc/cpuinfo 2>/dev/null "
+            f'|| echo "   {t("no nested KVM: the emulator will not run")}"; '
+            f'}} || echo "   ⚠ {t("Android Studio not installed (see above)")}"; '
+        )
+
+    # Extensions GNOME suggérées, par gestionnaire de paquets. Les noms ne sont
+    # pas les mêmes d'une famille à l'autre (« dashtodock » sur Debian,
+    # « dash-to-dock » sur Fedora), et aucune liste n'existe en entier partout.
+    #
+    # D'où l'installation UNE PAR UNE : apt, dnf, zypper et pacman échouent tous
+    # sur la commande ENTIÈRE dès qu'un seul nom est inconnu. Un paquet absent
+    # est donc annoncé et sauté, au lieu de faire tomber les autres avec lui.
+    _QEMU_GNOME_EXT_PKGS = {
+        "apt": (
+            "gnome-shell-extension-manager",
+            "gnome-tweaks",
+            "gnome-shell-extensions",
+            "gnome-shell-extension-dashtodock",
+            "gnome-shell-extension-appindicator",
+            "gnome-shell-extension-caffeine",
+        ),
+        "dnf": (
+            "gnome-extensions-app",
+            "gnome-tweaks",
+            "gnome-shell-extension-dash-to-dock",
+            "gnome-shell-extension-appindicator",
+            "gnome-shell-extension-caffeine",
+            "gnome-shell-extension-user-theme",
+        ),
+        "zypper": (
+            "gnome-shell-extensions",
+            "gnome-tweaks",
+            "gnome-shell-extension-dash-to-dock",
+            "gnome-shell-extension-appindicator",
+        ),
+        "pacman": (
+            "extension-manager",
+            "gnome-tweaks",
+            "gnome-shell-extensions",
+        ),
+    }
+
+    # Extensions demandées nommément, par leur UUID sur extensions.gnome.org.
+    # Aucune n'est empaquetée par une distribution : on passe donc par le site.
+    #
+    # L'archive dépend de la version de GNOME Shell, et ce n'est pas une
+    # précaution de principe : mesuré le 2026-08-17, le même point d'entrée
+    # sert gTile v59 pour GNOME 46, v62 pour GNOME 48 et v52 pour GNOME 3.38.
+    # Une URL figée poserait donc, tôt ou tard, une archive faite pour une
+    # autre version.
+    #
+    # Ce que le site fait d'une version qu'il ne connaît PAS : il sert la plus
+    # récente (vérifié — « shell_version=99 » rend l'archive des GNOME 49/50),
+    # il ne répond pas 404. Sans conséquence fâcheuse pour autant : GNOME Shell
+    # refuse de CHARGER une extension dont metadata.json ne déclare pas la
+    # version courante. Une archive mal appariée reste donc inerte et affichée
+    # « obsolète » dans le gestionnaire — elle ne casse pas la session.
+    _QEMU_GNOME_EXT_UUIDS = (
+        "gTile@vibou",
+        "freon@UshakovVasilii_Github.yahoo.com",
+        "tracker@aliakseiz.github.com",
+    )
+    _QEMU_GNOME_EXT_SITE = "https://extensions.gnome.org/download-extension"
+
+    def _qemu_gnome_ext_site_cmd(self):
+        """Installe les extensions nommées depuis extensions.gnome.org.
+
+        Celles-là, on les ACTIVE — à la différence des paquets de la
+        distribution, dont on ne connaît pas l'UUID. Deux raisons, l'une et
+        l'autre vérifiées : le site rend l'archive faite pour le GNOME Shell de
+        cette VM, et une archive mal appariée n'est de toute façon jamais
+        chargée par GNOME, qui compare metadata.json à sa propre version. Ce
+        n'est donc pas l'activation qui peut casser une session.
+
+        Le tout dans un groupe gardé : ni une panne de réseau ni une extension
+        retirée du site ne doivent faire échouer une installation d'une heure.
+        """
+        uuids = " ".join(self._QEMU_GNOME_EXT_UUIDS)
+        site = self._QEMU_GNOME_EXT_SITE
+        return (
+            "{ "
+            # « gnome-shell --version » rend « GNOME Shell 48.2 » : le dernier
+            # champ suffit, et évite une expression régulière à rallonge.
+            "v=$(gnome-shell --version 2>/dev/null | awk '{print $NF}'); "
+            'if [ -z "$v" ]; then '
+            + f'echo "   {t("GNOME Shell not found, site extensions skipped")}"; '
+            + "else "
+            # Le site attend le numéro MAJEUR depuis GNOME 40 (« 48 ») et
+            # « majeur.mineur » avant (« 3.38 ») : sans la bonne forme, il ne
+            # renvoie aucune archive.
+            "maj=${v%%.*}; "
+            'if [ "$maj" -ge 40 ] 2>/dev/null; then sv="$maj"; '
+            'else sv=$(echo "$v" | cut -d. -f1,2); fi; '
+            # gnome-extensions écrit dans ~/.local/share, mais l'activation
+            # passe par GSettings : sans bus de session — le cas d'un
+            # « ssh hôte commande » — dconf ne peut rien écrire.
+            # dbus-run-session en fournit un le temps de l'appel, et
+            # l'écriture atterrit bien dans le dconf de l'utilisateur.
+            'gx() { if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && '
+            "command -v dbus-run-session >/dev/null 2>&1; then "
+            'dbus-run-session -- gnome-extensions "$@"; '
+            'else gnome-extensions "$@"; fi; }; ' + f"for u in {uuids}; do "
+            # « || echo » DANS la substitution : un mktemp qui échoue rendrait
+            # l'affectation non nulle, et « set -e » couperait toute la suite.
+            + "z=$(mktemp -p /var/tmp gext-XXXX.zip || echo /var/tmp/gext.zip); "
+            + 'if curl -fsSL --max-time 120 "'
+            + site
+            + '/$u.shell-extension.zip?shell_version=$sv" -o "$z" '
+            + '&& gx install --force "$z" >/dev/null 2>&1; then '
+            + 'gx enable "$u" >/dev/null 2>&1 || true; '
+            + f'echo "   {t("installed and enabled:")} $u"; else '
+            + f'echo "   {t("not available for this GNOME, skipped:")} '
+            + '$u (GNOME $sv)"; fi; rm -f "$z"; done; '
+            + f'echo "   {t("log out and back in to load them")}"; '
+            + "fi; } || true; "
+        )
+
+    def _qemu_gnome_ext_remote_cmd(self):
+        """Pose les extensions GNOME suggérées.
+
+        Deux sources, et deux politiques, pour une raison :
+          - les paquets de la DISTRIBUTION sont installés sans être activés. On
+            ne connaît pas leur UUID de façon fiable, et activer à l'aveugle une
+            extension incompatible avec la version de GNOME Shell laisse la
+            session sur un écran noir — panne qu'on ne diagnostique pas depuis
+            une console série. Le gestionnaire graphique est posé pour choisir ;
+          - les extensions nommées par leur UUID sont, elles, ACTIVÉES : le site
+            rend l'archive faite pour ce GNOME-là, et une archive mal appariée
+            n'est jamais chargée par GNOME plutôt que de casser la session.
+        """
+        pkgs = self._QEMU_GNOME_EXT_PKGS
+        return (
+            f'echo "== {t("Suggested GNOME extensions")} =="; '
+            "if command -v apt-get >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['apt'])}'; "
+            "I='sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            "-o DPkg::Lock::Timeout=600 install -y'; "
+            "elif command -v dnf >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['dnf'])}'; I='sudo dnf install -y'; "
+            "elif command -v zypper >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['zypper'])}'; "
+            "I='sudo zypper --non-interactive install "
+            "--auto-agree-with-licenses'; "
+            "elif command -v pacman >/dev/null 2>&1; then "
+            f"EXT='{' '.join(pkgs['pacman'])}'; "
+            "I='sudo pacman -S --needed --noconfirm'; "
+            'else EXT=""; fi; '
+            'for p in $EXT; do $I "$p" >/dev/null 2>&1 '
+            f'|| echo "   {t("not in the repos, skipped:")} $p"; done; '
+            f'echo "   {t("Enable them from Extension Manager, or:")} '
+            'gnome-extensions enable <uuid>"; '
+            + self._qemu_gnome_ext_site_cmd()
+        )
+
+    # Diagnostic de la compilation mobile : motif rencontré dans le journal
+    # détaillé -> cause nommée. Du plus précis au plus général, le premier qui
+    # correspond gagne.
+    #
+    # Cette liste est faite pour GRANDIR. Une compilation Android échoue de
+    # cent façons, et le journal fait des dizaines de mégaoctets : sans cette
+    # traduction, « la VM est rouge » n'apprend rien et il faut tout rouvrir.
+    # Chaque panne rencontrée sur une VM mérite d'y laisser sa ligne.
+    _QEMU_MOBILE_DIAG = (
+        ("No space left on device", "disk full"),
+        ("Failed to find target with hash string", "SDK platform missing"),
+        ("SDK location not found", "SDK not found (ANDROID_HOME)"),
+        ("have not been accepted", "SDK licences not accepted"),
+        ("NDK not configured", "NDK missing"),
+        # Vécu : Capacitor 8 réclame un JDK 21 quand l'installateur amont pose
+        # un 17, et Gradle s'arrête là.
+        (
+            "Cannot find a Java installation",
+            "JDK required by the project missing",
+        ),
+        # Vécu aussi : le JDK est là, mais Gradle TOURNE sur un plus ancien.
+        ("invalid source release", "Gradle running on too old a JDK"),
+        ("cannot overwrite", "SDK already there (upstream installer replays)"),
+        # Vécu : sentencepiece bâtit protoc pour la CIBLE et l'exécute sur
+        # l'hôte. Le message est cryptique ; la cause, non.
+        ("Exec format error", "cross-compiled protoc run on the host"),
+        ("Unsupported class file major version", "JDK/Gradle mismatch"),
+        ("Could not determine java version", "JDK/Gradle mismatch"),
+        (
+            "Could not resolve all files for configuration",
+            "Gradle dependency unreachable (network?)",
+        ),
+        ("npm ERR!", "npm dependencies"),
+        ("Test Files", "Vitest tests failed"),
+        # Vécu : le manifeste rend 0 sans avoir cloné, et l'étape suivante
+        # tombe sur un cd impossible. Le motif nomme la vraie cause.
+        #
+        # SANS APOSTROPHE, et ce n'est pas cosmétique : ces motifs partent dans
+        # un « grep -q '<motif>' », entre apostrophes. « can't cd to » fermait
+        # la chaîne et rendait tout le bloc invalide — attrapé par bash -n.
+        ("cd: can", "mobile repository missing"),
+        # Vécu aussi : sans python3.12-venv, .venv.erplibre n'existe pas, et
+        # rien de ce qui suit ne peut synchroniser le manifeste.
+        ("virtual environment", "ERPLibre venv missing (incomplete install)"),
+        ("No module named", "ERPLibre venv incomplete (no pip: python3-venv)"),
+        # Vécu sur erplibre-ubuntu-2604-gnome : le noyau a tué le démon Gradle
+        # (6,8 Go de RSS sur 12 Go, sans swap), et Gradle n'en sait rien — il
+        # dit seulement que son démon « a disparu ». Le motif nomme la mémoire,
+        # et le contexte l'établit au lieu de le supposer.
+        # Vécu, et c'est en amont : « Too many zip entries 123678 (MAX=65535) ».
+        # Un APK est un ZIP classique, borné à 65 535 entrées, et le dépôt
+        # mobile embarque 122 684 fichiers sous assets/public/repos — des
+        # dépôts Odoo entiers — pour 337 fichiers qui sont l'application. Rien
+        # ici ne peut le corriger : c'est au projet mobile de ne pas les
+        # empaqueter. On le NOMME, avec le chiffre, plutôt que de laisser lire
+        # 5 000 lignes de Gradle.
+        (
+            "Too many zip entries",
+            "too many asset files for one APK (ZIP limit: 65535 entries)",
+        ),
+        ("daemon disappeared", "Gradle daemon killed: out of memory", "mmem"),
+        ("Cannot allocate memory", "out of memory", "mmem"),
+        ("Java heap space", "Gradle heap too small", "mmem"),
+        ("FAILED", "Gradle task failed"),
+    )
+
+    def _qemu_mobile_diag_cmd(self):
+        """Fonction shell qui NOMME la cause d'un échec, à partir du journal.
+
+        Un « la VM est rouge » n'apprend rien quand le journal fait des dizaines
+        de mégaoctets. On cherche donc les motifs connus, et à défaut on montre
+        les dernières lignes — c'est toujours mieux que rien.
+
+        La recherche porte sur la FIN du journal, pas sur tout. Vécu : le
+        diagnostic a annoncé « licences SDK non acceptées » quand la panne était
+        un JDK manquant — le motif venait de la revue de licences d'une étape
+        RÉUSSIE, trois étapes plus haut. Nommer la mauvaise cause coûte plus
+        cher que se taire."""
+        lines = ""
+        for entry in self._QEMU_MOBILE_DIAG:
+            pat, cause = entry[0], entry[1]
+            extra = f"{entry[2]}; " if len(entry) > 2 else ""
+            lines += (
+                f"grep -q '{pat}' \"$d\" && {{ "
+                f'echo "   {t("probable cause:")} {t(cause)}"; '
+                f'{extra}rm -f "$d"; return 0; }}; '
+            )
+        return (
+            # Le contexte mémoire, lu dans /proc et dans le journal du noyau :
+            # une cause « mémoire » se PROUVE, l'affirmer sans le compte de
+            # l'oom-killer serait une supposition de plus. Pas d'awk ni de sed
+            # ici : leurs programmes demandent des guillemets, et tout ceci
+            # voyage déjà dans un ssh entre apostrophes.
+            "mmem() { m=$(grep MemTotal /proc/meminfo | tr -dc 0-9); "
+            "w=$(grep SwapTotal /proc/meminfo | tr -dc 0-9); "
+            "k=$(sudo dmesg 2>/dev/null | grep -c oom-kill); "
+            f'echo "   {t("memory:")} $((m/1024)) {t("MB RAM,")} '
+            f'$((w/1024)) {t("MB swap, kernel OOM kills:")} $k"; }}; '
+            'mdiag() { d=$(mktemp); tail -400 "$1" > "$d"; '
+            + lines
+            + f'echo "   {t("no known pattern, last lines:")}"; '
+            'tail -12 "$1" | sed "s/^/     /"; rm -f "$d"; }; '
+        )
+
+    def _qemu_android_prologue_cmd(self):
+        """Ce que la compilation mobile et l'émulateur partagent : le journal
+        détaillé, le coureur d'étapes, le diagnostic, et l'environnement du SDK.
+
+        Écrit UNE fois même quand les deux options sont cochées — deux
+        prologues, ce serait deux journaux et deux SDK."""
+        return (
+            self._qemu_mobile_diag_cmd() +
+            # Le détail va dans un fichier À PART. Une compilation Gradle écrit
+            # des dizaines de milliers de lignes, dont des centaines portant le
+            # mot « error » sans qu'aucune ne soit une panne : les verser dans
+            # le journal d'installation rendrait son compteur d'erreurs
+            # inutilisable, et le diagnostic illisible.
+            'M="$HOME/erplibre-mobile-build.log"; : > "$M"; '
+            f'echo "   {t("detailed log in the VM:")} $M"; '
+            'mstep() { lbl="$1"; shift; echo "   -> $lbl"; '
+            'if sh -c "$*" >> "$M" 2>&1; then return 0; fi; '
+            f'echo "   ⚠ {t("FAILED:")} $lbl"; mdiag "$M"; return 1; }}; '
+            # Le SDK vit dans $HOME/android, l'emplacement qu'emploie
+            # l'installateur du dépôt. Android Studio, s'il est là, le trouvera
+            # par ANDROID_HOME : un seul SDK sur la machine, pas deux.
+            'export ANDROID_HOME="$HOME/android"; '
+            'export ANDROID_SDK_ROOT="$HOME/android"; '
+            'export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin'
+            ':$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"; '
+            # ~/.bashrc n'est pas lu par un « ssh hôte commande » : ce que
+            # l'installateur y écrit ne sert qu'aux sessions futures, pas à la
+            # compilation qui suit immédiatement.
+            #
+            # Le JDK le PLUS RÉCENT installé, et non celui des alternatives.
+            # Mesuré : avec JAVA_HOME sur le 17 que pose l'installateur amont,
+            # Gradle tourne en 17 et s'arrête sur « invalid source release: 21 »
+            # — les modules de Capacitor 8 compilent en 21. Le tri est
+            # « sort -V », donc java-21 passe après java-17, pas avant.
+            "export JAVA_HOME=$(ls -d /usr/lib/jvm/java-*-openjdk-* "
+            "2>/dev/null | sort -V | tail -1); "
+            '[ -n "$JAVA_HOME" ] || export JAVA_HOME=$(dirname $(dirname '
+            "$(readlink -f $(command -v javac 2>/dev/null "
+            "|| command -v java 2>/dev/null) 2>/dev/null) 2>/dev/null) "
+            "2>/dev/null); "
+            'export PATH="$JAVA_HOME/bin:$PATH"; '
+        )
+
+    def _qemu_android_sdk_steps(self, el_dir):
+        """Les étapes qui posent le SDK : dépôt mobile, prérequis, installateur
+        amont, plateforme réclamée par le projet. Communes aux deux options."""
+        return (
+            # Le « test -f » n'est pas une ceinture de plus : c'est la seule
+            # vérité disponible. update_manifest_local_mobile.sh finit par
+            # « kill $DAEMON_PID » et rend donc 0 même quand il n'a rien cloné —
+            # vécu, faute de .venv.erplibre. L'étape passait, et c'est le « cd »
+            # suivant qui échouait, deux étapes plus loin.
+            # Le venv d'ERPLibre d'abord, et nommément : tout ce qui suit en
+            # dépend — c'est lui qui porte « repo », qui synchronise le
+            # manifeste. Vécu avec le profil « ERPLibre seul », dont le code
+            # note lui-même « problem installing with q, the script depend on
+            # odoo » : sans venv, le manifeste rendait 0 sans rien cloner et
+            # l'échec ne se voyait que deux étapes plus loin.
+            f'mstep "{t("ERPLibre venv (everything below needs it)")}" '
+            # « activate », et non « bin/python » : sans python3-venv, le venv
+            # naît INFIRME — bin/python existe (un lien), mais ni pip ni
+            # activate ni site-packages. La sonde passait, et l'échec ne se
+            # voyait que deux étapes plus loin, en « No module named git ».
+            f"'test -f {el_dir}/.venv.erplibre/bin/activate' && "
+            f'mstep "{t("mobile repository (additive manifest)")}" '
+            f"'cd {el_dir} && ./script/manifest/update_manifest_local_mobile.sh; "
+            "test -f mobile/erplibre_home_mobile/install-android.sh' && "
+            f'mstep "{t("prerequisites of the upstream installer")}" '
+            # libpulse0 : l'émulateur a DEUX binaires qemu, et seul le
+            # « headless » se passe de PulseAudio. Celui qui ouvre une FENÊTRE —
+            # le cas d'un « ssh -X » — lie libpulse.so.0, absente des images
+            # cloud, et s'arrête sur « cannot open shared object file » même
+            # avec « -no-audio ». Mesuré : c'est la SEULE bibliothèque qui
+            # manque, tout le reste des dépendances Qt voyage dans le bundle.
+            #
+            # openjdk-21 EN PLUS du 17 que pose l'installateur amont : mesuré,
+            # Gradle s'arrête sur « Cannot find a Java installation matching
+            # {languageVersion=21} » — les modules de Capacitor 8 réclament 21.
+            # Les deux JDK cohabitent, et Gradle choisit par sa chaîne d'outils.
+            # unzip et xauth, eux, manquent des images cloud.
+            "'sudo DEBIAN_FRONTEND=noninteractive apt-get "
+            "-o DPkg::Lock::Timeout=600 install -y unzip wget xauth "
+            "libpulse0 openjdk-21-jdk' && "
+            # L'installateur amont n'est PAS idempotent : au second passage il
+            # s'arrête sur « mv: cannot overwrite latest/cmdline-tools ». Mesuré.
+            # On ne le rejoue donc que s'il reste quelque chose à poser — un
+            # déploiement qui se répète ne doit pas échouer sur une réussite
+            # précédente.
+            f'mstep "{t("Android SDK, licences, NDK")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
+            "{ [ -x $HOME/android/cmdline-tools/latest/bin/sdkmanager ] "
+            "|| ./install-android.sh; }' && "
+            f'mstep "{t("SDK platform required by the project")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && "
+            'v=$(sed -n "s/.*compileSdkVersion *= *\\([0-9]*\\).*/\\1/p" '
+            'android/variables.gradle) && [ -n "$v" ] && '
+            'yes | sdkmanager "platforms;android-$v" '
+            '"build-tools;$v.0.0"\' && '
+        )
+
+    def _qemu_mobile_build_steps(self, el_dir):
+        """Étapes de compilation de l'application mobile, puis ses tests.
+
+        C'est la seule étape qui peut faire échouer la VM, et c'est voulu : une
+        machine dont l'application ne compile pas n'est pas une machine prête.
+        Le code de sortie remonte donc jusqu'au tableau de bord.
+
+        Le dépôt mobile porte son propre installateur Android — JDK, outils en
+        ligne de commande, licences acceptées, plateformes, NDK, whisper.cpp et
+        sentencepiece. On l'appelle plutôt que de le réécrire : une seconde
+        implémentation dériverait de la première sans prévenir. Deux choses lui
+        manquent pourtant, et on les ajoute ici :
+          - unzip et wget, qu'il suppose présents et qu'aucune image cloud ne
+            livre ;
+          - la plateforme que le projet réclame VRAIMENT. Son installateur pose
+            android-34 quand android/variables.gradle demande compileSdk 36 ;
+            plutôt que de figer 36 ici, on lit le chiffre dans le fichier.
+
+        L'étape est bornée à apt (voir _QEMU_VM_TOOLS) : cet installateur
+        commence par « sudo apt install openjdk-17-jdk » et s'arrête là
+        ailleurs. La lever se fait dans ce script-là, pas ici.
+        """
+        return (
+            # Du swap AVANT de compiler, et ce n'est pas de la prudence : le
+            # démon Gradle a atteint 6,8 Go de RSS hors tas — son -Xmx1536m ne
+            # le borne pas — sur une VM de 12 Go SANS swap, et le noyau l'a tué
+            # deux fois de suite. « --max-workers=2 » n'y a rien changé :
+            # mesuré, le pic est passé de 10,3 à 11,2 Go. C'est donc de la marge
+            # qu'il faut, pas moins de parallélisme.
+            #
+            # Jamais bloquant : une image sur btrfs refuse un fichier d'échange
+            # ordinaire, et une compilation qui tient en mémoire n'en a pas
+            # besoin. On le dit et on continue.
+            "w=$(grep SwapTotal /proc/meminfo | tr -dc 0-9); "
+            'if [ "$w" -lt 2000000 ]; then '
+            "if sudo fallocate -l 4G /swapfile-erplibre 2>/dev/null && "
+            "sudo chmod 600 /swapfile-erplibre && "
+            "sudo mkswap -q /swapfile-erplibre >/dev/null 2>&1 && "
+            "sudo swapon /swapfile-erplibre 2>/dev/null; then "
+            "grep -q swapfile-erplibre /etc/fstab 2>/dev/null || "
+            'echo "/swapfile-erplibre none swap sw 0 0" '
+            "| sudo tee -a /etc/fstab >/dev/null; "
+            f'echo "   {t("4 GB of swap added for the build")}"; '
+            "else sudo rm -f /swapfile-erplibre 2>/dev/null; "
+            f'echo "   {t("no swap could be added; build may run short")}"; '
+            "fi; fi; "
+            f'mstep "{t("npm dependencies")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm ci' && "
+            f'mstep "{t("web bundle (vite build)")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm run build' && "
+            # Le transfert des dépôts du manifeste DANS l'application est
+            # vérifié, et son compte-rendu se lit dans le journal
+            # d'installation — d'où l'appel HORS mstep, qui enverrait la sortie
+            # dans le journal détaillé de la VM.
+            #
+            # Ces dépôts entrent en PACKS, et c'est ce qui rend la chose
+            # possible : un APK est un ZIP borné à 65535 entrées, quand les
+            # 139 dépôts pèsent plus de 116 000 fichiers. Un fichier par source
+            # donnait « Too many zip entries 123678 (MAX=65535) » et rien du
+            # tout ; regroupés, ils tiennent en 391 tranches — mesuré, avec
+            # 3 002 entrées dans l'APK.
+            #
+            # Lié par « && » : un transfert vide fait échouer la VM, au même
+            # titre qu'un APK manquant. Une application qui ne porte pas le code
+            # qu'elle est censée montrer n'est pas l'application demandée.
+            f'echo "   -> {t("repo transfer into the app")}" && '
+            f"(cd {el_dir} && ./script/mobile/check_bundle_transfer.py"
+            f" --workspace {el_dir}) && "
+            f'mstep "{t("native sync (capacitor)")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npx cap sync android' && "
+            # UNE seule ABI, celle de la VM — qui est aussi celle de
+            # l'émulateur. Deux raisons, la seconde décisive :
+            #   - quatre ABI, c'est quatre fois la compilation de whisper.cpp
+            #     et de sentencepiece, pour trois qui ne serviront jamais ici ;
+            #   - sentencepiece bâtit son « protoc » POUR LA CIBLE puis tente de
+            #     l'exécuter sur l'hôte. En arm64 cela donne « Exec format
+            #     error » et la compilation s'arrête — mesuré. En x86_64 la
+            #     cible et l'hôte coïncident, et le défaut ne se manifeste pas.
+            #     Un APK arm64 demandera un correctif au projet mobile.
+            f'mstep "{t("debug APK (gradle)")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile/android && "
+            "./gradlew --no-daemon assembleDebug "
+            "-Pandroid.injected.build.abi=x86_64' && "
+            f'mstep "{t("Vitest tests")}" '
+            f"'cd {el_dir}/mobile/erplibre_home_mobile && npm test' && "
+            # L'APK est la preuve, pas le code de sortie de Gradle : une tâche
+            # peut rendre 0 sans avoir rien produit.
+            # DEUX emplacements, et il faut les deux. Avec une ABI injectée,
+            # AGP écrit dans « intermediates/apk/debug » et non dans
+            # « outputs/apk/debug » : mesuré, une compilation RÉUSSIE était
+            # rapportée « aucun APK produit » parce que je ne regardais que le
+            # second. Un contrôle qui cherche au mauvais endroit ne vaut pas
+            # mieux que pas de contrôle.
+            f"apk=$(ls {el_dir}/mobile/erplibre_home_mobile/android/app/build"
+            "/outputs/apk/debug/*.apk "
+            f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
+            "/intermediates/apk/debug/*.apk 2>/dev/null | head -1); "
+            'if [ -n "$apk" ]; then '
+            f'echo "   ✅ {t("APK built:")} $apk"; '
+            # Capacitor sert la même application dans un navigateur : sur une
+            # VM graphique, c'est la voie de déverminage sans Android ni
+            # émulateur. On la NOMME plutôt que d'imposer Chromium — sur
+            # Ubuntu il n'existe qu'en snap, et snapd est justement coupé sur
+            # ces VM. Le navigateur du bureau fait l'affaire.
+            #
+            # DANS la branche de succès, et c'est tout l'enjeu : placé après le
+            # « fi », cet echo devenait la dernière commande du bloc et rendait
+            # 0 — une VM sans APK repassait au vert.
+            f'echo "   {t("browser debugging (no Android):")} '
+            f"cd {el_dir}/mobile/erplibre_home_mobile "
+            '&& npm start"; else '
+            f'echo "   ⚠ {t("no APK produced")}"; false; fi'
+        )
+
+    def _qemu_avd_steps(self, el_dir):
+        """Étapes créant un émulateur prêt à s'ouvrir depuis le poste de travail.
+
+        Le modèle n'est pas figé : on demande au SDK la liste de ses profils et
+        on retient le Pixel le plus récent au plus petit écran — ni Pro, ni XL,
+        ni pliant, ni tablette. Sur un écran distant, chaque pixel traverse le
+        réseau : le petit modèle n'est pas une coquetterie.
+
+        L'image système suit la plateforme du projet, et redescend si elle n'est
+        pas publiée — Google ne fournit pas d'image pour toutes les API.
+
+        Le rendu est réglé en logiciel DANS la configuration de l'AVD plutôt
+        qu'en option de lancement : par « ssh -X » il n'y a pas de GLX direct, et
+        l'émulateur s'ouvrirait sur un écran noir. Ainsi « emulator -avd
+        erplibre » suffit, sans rien à retenir.
+
+        Le mode est « swangle » — ANGLE sur SwiftShader — et non
+        « swiftshader_indirect », qui n'existe PLUS : l'émulateur 37.1 répond
+        « Selected GPU option 'swiftshader_indirect' is not valid, switching to
+        auto », puis « Your GPU drivers may have a bug », avant de retomber de
+        lui-même sur swangle. Il fonctionnait, en affichant deux erreurs qui
+        laissaient croire à une panne. Les modes valides sont exactement quatre,
+        que « emulator -help-gpu » énumère : auto, host, swiftshader, swangle.
+        """
+        return (
+            f'echo "   == {t("Android emulator (AVD)")} =="; '
+            # KVM dans la VM : sans lui l'émulateur x86 refuse de démarrer. On
+            # le dit ici, où c'est réparable (virtualisation imbriquée sur
+            # l'hôte), plutôt qu'au premier lancement.
+            "if [ ! -e /dev/kvm ]; then "
+            f'echo "   ⚠ {t("no /dev/kvm: nested virtualisation is off on the host")}"; '
+            "else "
+            # /dev/kvm est en root:kvm 0660 : sans appartenir au groupe,
+            # l'émulateur refuse de démarrer sur « ProbeKVM: This user doesn't
+            # have permissions to use KVM ». Mesuré. L'appartenance ne prend
+            # qu'à la prochaine session — ce qui tombe bien, la session utile
+            # est justement celle du « ssh -X » qui viendra ensuite.
+            "sudo usermod -aG kvm $(id -un) 2>/dev/null || true; "
+            f'echo "   {t("user added to the kvm group (effective at next login)")}"; '
+            "fi; "
+            f'mstep "{t("emulator and system image")}" '
+            '\'v=$(sed -n "s/.*compileSdkVersion *= *\\([0-9]*\\).*/\\1/p" '
+            f"{el_dir}/mobile/erplibre_home_mobile/android/variables.gradle); "
+            "for a in $v 36 35 34; do "
+            'img="system-images;android-$a;google_apis;x86_64"; '
+            'if yes | sdkmanager "emulator" "$img"; then '
+            'echo "$img" > $HOME/.erplibre-avd-image; break; fi; done; '
+            "test -s $HOME/.erplibre-avd-image' && "
+            f'mstep "{t("Pixel profile, smallest screen")}" '
+            # Le plus récent des Pixel simples : on trie sur le NUMÉRO, pas sur
+            # l'ordre d'affichage, et on écarte les grands modèles.
+            '\'avdmanager list device | grep -oE "pixel_[0-9]+a?" '
+            '| grep -vE "pro|xl|fold|tablet" | sort -t_ -k2 -n | tail -1 '
+            "> $HOME/.erplibre-avd-device; test -s $HOME/.erplibre-avd-device' && "
+            f'mstep "{t("create the AVD")}" '
+            "'img=$(cat $HOME/.erplibre-avd-image); "
+            "dev=$(cat $HOME/.erplibre-avd-device); "
+            'echo no | avdmanager create avd -n erplibre -k "$img" '
+            '-d "$dev" --force && '
+            # Rendu logiciel, écrit dans la config : par ssh -X il n'y a pas
+            # de GLX direct, et « auto » donnerait un écran noir. Ces deux
+            # clés-là SURVIVENT, elles ne viennent pas du profil du téléphone.
+            #
+            # L'écran, en revanche, ne s'écrit PAS ici : l'émulateur réécrit
+            # config.ini depuis le profil Pixel au premier démarrage, et les
+            # hw.lcd.* y étaient effacés — l'AVD repartait en 1080x2400
+            # densité 420. C'est donc au LANCEMENT qu'il se règle, par
+            # _QEMU_EMULATOR_FLAGS, et la commande affichée plus bas les porte.
+            'printf "hw.gpu.enabled=yes\\nhw.gpu.mode=swangle\\n" '
+            ">> $HOME/.android/avd/erplibre.avd/config.ini' && "
+            f'echo "   ✅ {t("AVD ready:")} '
+            "$(cat $HOME/.erplibre-avd-device) / "
+            '$(cat $HOME/.erplibre-avd-image)"; '
+            # La commande à copier, avec l'adresse déjà remplie : un émulateur
+            # dont on ignore comment l'ouvrir ne sert à personne.
+            "ip=$(hostname -I 2>/dev/null | awk '{print $1}'); "
+            # Chemins ABSOLUS, et c'est le point : « ssh hôte 'commande' »
+            # ne lit NI ~/.profile NI ~/.bashrc — Ubuntu place même un
+            # « return » en tête du second pour les shells non interactifs.
+            # Le PATH que l'installateur y écrit ne s'applique donc jamais
+            # à ces commandes, et « emulator » y répond « command not
+            # found ». Vécu, sur la ligne que ce message affichait lui-même.
+            f'echo "   {t("open it from your workstation:")} '
+            # « -XC » et non « -X » : la compression X11 change tout sur un
+            # écran distant. Les autres drapeaux viennent de la même autorité
+            # que le lancement du menu : écran réduit, densité qui va avec, et
+            # pas d'instantané en attente si on tue l'émulateur.
+            'ssh -XC erplibre@$ip \\"$HOME/android/emulator/emulator '
+            f'-avd erplibre {self._QEMU_EMULATOR_FLAGS}\\""; '
+            f'echo "   {t("then install the APK:")} '
+            # « -t » : l'ABI injectée fait marquer l'APK « testOnly » par AGP,
+            # et adb le refuse sans ce drapeau — « INSTALL_FAILED_TEST_ONLY ».
+            # Mesuré sur l'émulateur.
+            'ssh erplibre@$ip \\"$HOME/android/platform-tools/adb install -r -t '
+            f"{el_dir}/mobile/erplibre_home_mobile/android/app/build"
+            '/outputs/apk/debug/app-debug.apk\\""; '
+            # La voie scrcpy, nommée ici parce que c'est la première
+            # question qui vient après « ça se lance mais c'est lent » :
+            # X11 transporte des pixels bruts, scrcpy un flux H.264 encodé
+            # par l'appareil. Le détail du tunnel vit dans le menu
+            # « Remote desktop tunnel », choix 4.
+            + f'echo "   {t("smoother, without X11:")} TODO > Execute > Deploy > QEMU/KVM > tunnel > 4"'
+        )
+
+    def _qemu_forgejo_steps(self, el_dir):
+        """Pose Forgejo dans la VM, par le script dédié du dépôt.
+
+        Tout le travail est DANS le script — architecture, version, somme de
+        contrôle, compte système, configuration, service, compte
+        administrateur. Ce bloc ne fait que l'appeler : une seule autorité, et
+        la même commande sert un déploiement de VM et une installation à la
+        main sur une machine existante.
+
+        Pas de garde, comme la compilation mobile : une VM dont la forge
+        demandée n'existe pas n'est pas la VM demandée. Le script, lui, est
+        rejouable — il ne retélécharge pas un binaire déjà en place et ne
+        réécrit jamais une configuration existante.
+        """
+        return (
+            f'echo "== {t("Forgejo (git forge)")} =="; '
+            f"{el_dir}/script/forgejo/install_forgejo.sh"
+        )
+
+    def _qemu_after_remote_cmd(self, tools, prod=False):
+        """Phase d'APRÈS l'installation : prologue commun, SDK commun, puis ce
+        qui a été coché.
+
+        Un seul prologue et un seul SDK même quand les deux options le sont :
+        deux prologues, et le second tronquerait le journal détaillé du premier.
+
+        Les groupes sont joints par « && » et non par « ; ». C'est ce qui fait
+        qu'un APK manquant reste l'échec de la VM : collé par « ; », un
+        émulateur créé avec succès effacerait le verdict de la compilation."""
+        picked = [
+            k
+            for k in ("forgejo", "mobile", "avd")
+            if k in (tools or ()) and k in self._QEMU_VM_TOOLS
+        ]
+        if not picked:
+            return ""
+        el_dir = self._qemu_install_dir(prod)
+        parts = []
+        # Forgejo d'abord : une minute, contre une heure pour le SDK et l'APK.
+        # Un échec rapide se voit tôt plutôt qu'après le long.
+        if "forgejo" in picked:
+            parts.append(f"{{ {self._qemu_forgejo_steps(el_dir)}; }}")
+        groups = []
+        if "mobile" in picked:
+            groups.append(self._qemu_mobile_build_steps(el_dir))
+        if "avd" in picked:
+            groups.append(self._qemu_avd_steps(el_dir))
+        if groups:
+            # UN seul prologue et un seul SDK même quand les deux options le
+            # sont : deux prologues, et le second tronquerait le journal
+            # détaillé du premier.
+            parts.append(
+                "{ "
+                + f'echo "== {t("ERPLibre mobile, Android SDK (long)")} =="; '
+                + self._qemu_android_prologue_cmd()
+                + self._qemu_android_sdk_steps(el_dir)
+                # Chaque groupe entre ACCOLADES. Sans elles, « && » ne lie que
+                # la première commande du groupe suivant : mesuré, un APK
+                # manquant laissait tourner l'émulateur puis rendait 0 — la VM
+                # repassait au vert alors que rien n'avait compilé.
+                + " && ".join(f"{{ {g}; }}" for g in groups)
+                + "; }"
+            )
+        return " && ".join(parts) + "; "
+
+    def _qemu_mobile_remote_cmd(self, prod=False):
+        """Compilation mobile seule — la forme que testent les tests."""
+        return self._qemu_after_remote_cmd(("mobile",), prod)
+
+    def _qemu_avd_remote_cmd(self, prod=False):
+        """Émulateur seul."""
+        return self._qemu_after_remote_cmd(("avd",), prod)
+
+    def _qemu_tools_remote_cmd(self, tools, prod=False, phase="before"):
+        """Bloc des outils cochés pour cette PHASE, du plus utile au plus lourd.
+
+        « before » : posé avant le clone. Chaque outil s'y garde lui-même —
+        aucun ne fait échouer les autres, ni l'installation d'ERPLibre.
+
+        « after » : la compilation mobile, qui vient après l'installation dont
+        elle dépend, et qui elle NE se garde PAS. C'est le contrat demandé : une
+        VM dont l'application ne compile pas doit être rouge."""
+        if phase == "after":
+            # Un seul bloc pour les deux options : voir _qemu_after_remote_cmd.
+            return self._qemu_after_remote_cmd(tools, prod)
+        blocks = {
+            "gnome_ext": self._qemu_gnome_ext_remote_cmd,
+            "pycharm": lambda: self._qemu_pycharm_remote_cmd(prod),
+            "android": self._qemu_android_studio_remote_cmd,
+        }
+        return "".join(fn() for k, fn in blocks.items() if k in (tools or ()))
+
+    def _qemu_editor_pkg(self):
+        """Paquet de l'éditeur de l'hôte, à installer dans la VM.
+
+        L'éditeur atteint déjà la VM par deux chemins, tous deux posés par
+        deploy_qemu.py : « core.editor » dans son ~/.gitconfig, et la ligne
+        « éditer le serveur » du guide de connexion. Encore faut-il que le
+        binaire y soit — les images cloud n'ont ni nano ni vim garantis, et
+        certaines n'ont même pas vi. On l'ajoute donc aux outils d'amorçage, avec
+        curl, git et make, là où les dépôts viennent d'être rafraîchis.
+
+        La table des éditeurs vit dans deploy_qemu.py : une seule autorité décide
+        du paquet installé, de la commande affichée et de core.editor. Sans
+        module importable, on n'installe rien plutôt que de deviner un nom."""
+        try:
+            mod = self._qemu_import_module()
+            return mod.vm_editor(mod.invoking_home())[0]
+        except Exception:
+            return ""
+
+    def _qemu_editor_suffix(self):
+        """« vim » -> « vim » précédé d'une espace, rien du tout sinon.
+
+        La liste des outils d'amorçage est une chaîne shell entre apostrophes :
+        y concaténer une chaîne vide sans précaution laisserait une espace en
+        trop, inoffensive mais visible dans chaque log d'installation."""
+        pkg = self._qemu_editor_pkg()
+        return f" {pkg}" if pkg else ""
 
     # mise ne publie de binaire que pour ces architectures : 46 assets à la
     # v2026.8.4, aucun s390x — son propre script d'installation refuse cette
@@ -4962,6 +7188,7 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
+        tools=(),
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -4971,18 +7198,38 @@ class TODO:
         installe dans /opt/erplibre (au lieu de ~/git/erplibre) + service
         SELinux confiné. `desktop` : ajoute GNOME et son accès distant.
         `python_provider` : « mise » pour un CPython précompilé, sinon le
-        comportement par défaut du dépôt (pyenv, qui compile)."""
+        comportement par défaut du dépôt (pyenv, qui compile). `tools` : outils
+        de développement cochés (PyCharm, Android Studio, extensions GNOME),
+        posés APRÈS ERPLibre — PyCharm a besoin du venv du dépôt pour écrire la
+        configuration du projet."""
         if not branch:
             # Bureau seul : ni clone ni make, mais on garde le prologue —
             # attente de cloud-init et coupure des mises à jour automatiques,
             # sans quoi le verrou apt ferait échouer l'installation du bureau.
             if not desktop:
                 return "true"
+            # Les outils de la phase « after » vivent DANS le dépôt — la
+            # compilation mobile, l'AVD, le script Forgejo. Sans clone, ils
+            # n'existent pas ici. Les écarter en silence laissait croire qu'une
+            # case cochée avait été honorée : on la NOMME.
+            deferred = [
+                k
+                for k in (tools or ())
+                if self._QEMU_VM_TOOLS.get(k, {}).get("phase") == "after"
+            ]
+            note = (
+                f'echo "   ⚠ {t("needs the ERPLibre install, skipped:")}'
+                f' {" ".join(deferred)}"; '
+                if deferred
+                else ""
+            )
             return (
                 "set -e; "
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
                 + self._qemu_desktop_remote_cmd(desktop, app_store)
+                + self._qemu_tools_remote_cmd(tools, prod)
+                + note
             )
         if not final_cmd:
             final_cmd = f"make install_os && make {self.ERPLIBRE_ODOO_TARGET}"
@@ -5008,6 +7255,41 @@ class TODO:
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
+        tools_cmd = self._qemu_tools_remote_cmd(tools, prod, "before")
+        # La compilation mobile vient APRÈS l'installation : elle a besoin du
+        # dépôt, du venv d'outils qui synchronise le manifeste, et de node que
+        # « make install_os » installe. Liée par « && » et NON gardée, pour que
+        # son échec soit celui de la VM.
+        after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
+        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
+        # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
+        # échoue faute de venv, et il renonce. « ⚠ pas de .idea », deux fois de
+        # suite sur erplibre-ubuntu-2604-gnome. Le même appel sur un dépôt
+        # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
+        # modules.xml, vcs.xml.
+        #
+        # On ouvre donc quand l'interpréteur existe, puis on demande la
+        # configuration explicitement : l'installation est déjà passée, et
+        # pycharm_update() n'avait alors rien à configurer.
+        open_step = (
+            self._qemu_pycharm_project_cmd(prod)
+            # Le venv du dépôt, comme le fait update_env_version.
+            # pycharm_update() : le script importe xmltodict, absent du python
+            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # « No module named 'xmltodict' ».
+            + "./.venv.erplibre/bin/python "
+            "./script/ide/pycharm_configuration.py --init || true; "
+            if "pycharm" in (tools or ())
+            else ""
+        )
+        # Le groupe de PyCharm rend toujours 0 — un bonus, pas une condition —
+        # là où la phase mobile porte le verdict de la VM.
+        chain = [final_cmd]
+        if open_step:
+            chain.append(f"{{ {open_step} }}")
+        if after_cmd:
+            chain.append(f"{{ {after_cmd} }}")
+        install_chain = " && ".join(chain)
         return (
             "set -e; " + self._qemu_cloud_init_wait()
             # Coupé AVANT les apt-get ci-dessous : sinon apt-daily peut reprendre
@@ -5027,7 +7309,14 @@ class TODO:
             # la VM soit la plus rapide possible (miroirs à jour / les plus
             # rapides), puis installe. Supporte apt (Debian/Ubuntu), dnf/yum
             # (Fedora) et pacman (Arch).
-            "PKGS='curl git make'; "
+            #
+            # L'éditeur de l'hôte voyage avec eux : deploy_qemu.py a déjà écrit
+            # « core.editor » dans le ~/.gitconfig de la VM et l'a nommé dans le
+            # guide de connexion, mais aucune image cloud ne garantit vim ni
+            # nano. Le poser ici plutôt que par cloud-init : les dépôts y sont
+            # déjà rafraîchis, et une installation de paquet au premier boot
+            # retarderait le démarrage sans laisser de trace dans le suivi.
+            f"PKGS='curl git make{self._qemu_editor_suffix()}'; "
             "if command -v apt-get >/dev/null 2>&1; then "
             # Au 1er boot, cloud-init (install qemu-guest-agent) et/ou
             # apt-daily.service tiennent le verrou apt. IMPORTANT :
@@ -5091,6 +7380,16 @@ class TODO:
             '{ echo "Outil manquant apres installation: $t '
             '(reseau de la VM ?)"; exit 1; }; done; '
             + self._qemu_mise_remote_cmd(python_provider)
+            # Les outils AVANT le clone et le make, et l'ordre compte : c'est
+            # PyCharm qui écrit le .idea du dépôt, en l'ouvrant une fois, et
+            # c'est l'installation qui, ensuite, y lance
+            # pycharm_configuration.py. Posés après, ils arrivaient trop tard
+            # pour cette étape-là.
+            #
+            # Le code de sortie de la commande distante reste celui de
+            # l'installation : chaque bloc d'outil se garde lui-même et rend 0,
+            # donc aucun ne peut faire passer un make échoué pour un succès.
+            + tools_cmd
             # Clone : /opt/erplibre en PROD (racine, puis chown à l'utilisateur
             # pour que make/venv s'exécutent sans sudo), ~/git/erplibre en dev.
             + (
@@ -5100,7 +7399,7 @@ class TODO:
                     f"sudo git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} /opt/erplibre; "
                     "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; fi; "
-                    f"cd /opt/erplibre && {final_cmd}"
+                    f"cd /opt/erplibre && {install_chain}"
                 )
                 if prod
                 else (
@@ -5108,7 +7407,7 @@ class TODO:
                     "if [ ! -d ~/git/erplibre/.git ]; then "
                     f"git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
-                    f"cd ~/git/erplibre && {final_cmd}"
+                    f"cd ~/git/erplibre && {install_chain}"
                 )
             )
         )
@@ -5123,12 +7422,16 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
+        vm_tools=(),
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
         `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
         `final_cmd` : commande d'install selon le profil choisi.
-        `prod` : install /opt/erplibre + service SELinux confiné."""
+        `prod` : install /opt/erplibre + service SELinux confiné.
+        `vm_tools` : outils cochés pour tout le parc, filtrés machine par
+        machine (Android Studio n'existe qu'en x86_64, les extensions GNOME
+        n'ont pas de sens sous Cinnamon)."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -5177,14 +7480,27 @@ class TODO:
                     "version": v,
                     "arch": a,
                 }
-                if desk_map or branch_map or cmd_map:
+                # Les outils imposent une commande PAR VM même quand tout le
+                # reste est commun : ils dépendent de l'architecture de la
+                # machine et de sa saveur de bureau, que seule cette boucle
+                # connaît.
+                if desk_map or branch_map or cmd_map or vm_tools:
+                    # Le bureau de CETTE VM : sa saveur propre si la carte en
+                    # donne une, sinon celle du parc. Prendre « rien » quand la
+                    # carte est vide privait de bureau toute VM dont seule la
+                    # branche ou le profil différait — la commande par défaut,
+                    # elle, l'a toujours porté.
+                    vm_desktop = desk_map.get(
+                        name, "" if desk_map else desktop
+                    )
                     entry["remote_cmd"] = self._qemu_erplibre_remote_cmd(
                         branch_map.get(name, branch_def),
                         cmd_map.get(name, cmd_def),
                         prod,
-                        desk_map.get(name, ""),
+                        vm_desktop,
                         python_provider,
                         app_store,
+                        self._qemu_tools_for(vm_tools, a, vm_desktop, d),
                     )
                 vms.append(entry)
             else:
@@ -5230,10 +7546,12 @@ class TODO:
         desktop=False,
         python_provider="",
         app_store="deb",
+        vm_tools=(),
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
-        `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné."""
+        `final_cmd` : commande d'install ; `prod` : /opt + SELinux confiné ;
+        `vm_tools` : outils de développement cochés."""
         if ip is None:
             ip = self._qemu_vm_ip(name)
         if not ip:
@@ -5250,8 +7568,25 @@ class TODO:
                 f"{t('SSH not reachable, ERPLibre install skipped.')}"
             )
             return
+        # Distribution et architecture de CETTE VM : les outils s'y filtrent
+        # (Android Studio n'existe qu'en x86_64, la compilation mobile qu'en
+        # apt). Sans module lisible on ne filtre plus sur la distribution
+        # plutôt que d'écarter à tort.
+        try:
+            mod = self._qemu_import_module()
+            vm_distro, _v, vm_arch = self._qemu_vm_meta(name, mod)
+        except Exception:
+            vm_distro, vm_arch = "", self._qemu_vm_arch(name)
         remote = self._qemu_erplibre_remote_cmd(
-            branch, final_cmd, prod, desktop, python_provider, app_store
+            branch,
+            final_cmd,
+            prod,
+            desktop,
+            python_provider,
+            app_store,
+            self._qemu_tools_for(
+                vm_tools, vm_arch or "amd64", desktop, vm_distro or ""
+            ),
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -5313,7 +7648,24 @@ class TODO:
     # plutôt que d'écrêter, contrairement au multiplicateur x1..x4 qui, lui,
     # est un calcul automatique et se borne aux cœurs de l'hôte.
     _QEMU_CPU_PRESETS = (
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 32
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        24,
+        32,
     )
 
     @staticmethod
@@ -5686,6 +8038,18 @@ class TODO:
             print(
                 f"  {t('VM type:')} {t('Graphical (server + desktop):')} {label}"
             )
+        tools = spec.get("vm_tools") or ()
+        if tools:
+            # Les Go sont dits ici parce que c'est le dernier écran avant de
+            # créer les disques : un IDE de plus, c'est un disque plus grand,
+            # et cette page est celle qu'on relit pour s'en apercevoir.
+            named = ", ".join(
+                f"{t(self._QEMU_VM_TOOLS[k]['label'])} "
+                f"(+{self._QEMU_VM_TOOLS[k]['disk_gb']} Go)"
+                for k in tools
+                if k in self._QEMU_VM_TOOLS
+            )
+            print(f"  {t('Development tools:')} {named}")
         prov = spec.get("python_provider")
         if prov:
             print(f"  {t('Python interpreter:')} {prov}")
@@ -5711,6 +8075,9 @@ class TODO:
         timezone=None,
         locale=None,
         desktop=False,
+        prod=False,
+        install_cmd="",
+        vm_tools=(),
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -5746,6 +8113,15 @@ class TODO:
             parts += ["--locale", locale]
         if desktop:
             parts.append("--desktop")
+        # Guide affiché à la connexion SSH de la VM : dans la langue du menu, et
+        # avec la section ERPLibre seulement là où ERPLibre sera installé — une
+        # VM déployée nue n'annonce pas un dépôt qui n'existe pas.
+        parts += ["--lang", get_lang()]
+        if branch:
+            parts += ["--erplibre-dir", self._qemu_guide_dir(prod)]
+            target = self._qemu_make_target(install_cmd)
+            if target:
+                parts += ["--erplibre-make", target]
         extra = 0
         if branch:
             # ERPLibre dépasse le minimum : +5 Go de disque.
@@ -5754,6 +8130,11 @@ class TODO:
             # GNOME et ses dépendances pèsent autant qu'ERPLibre : sans cette
             # marge, le disque se remplit en pleine installation du bureau.
             extra += self.QEMU_DESKTOP_EXTRA_DISK_GB
+        # Les IDE pèsent plus lourd que tout le reste : PyCharm et Android
+        # Studio, c'est l'archive téléchargée PUIS son contenu déplié. Compté
+        # ici plutôt qu'au petit bonheur, sinon l'installation se termine sur un
+        # disque plein après une heure.
+        extra += self._qemu_tools_disk_gb(vm_tools, arch, desktop, d)
         if extra:
             bigger = self._parse_disk_gb(disk) + extra
             parts += ["--disk-size", f"{bigger}G"]
@@ -5782,7 +8163,17 @@ class TODO:
             locale=spec.get("locale"),
             # Le type suit la VM. Repli sur la valeur de spec pour la CLI,
             # qui ne pose la question qu'une fois pour tout le parc.
-            desktop=bool(vm.get("desktop", spec.get("desktop"))),
+            #
+            # La SAVEUR, et non un booléen : les extensions GNOME n'ont pas de
+            # sens sous Cinnamon, et c'est ici que se calcule la place disque
+            # des outils. « --desktop » ne regarde que la vérité de la valeur,
+            # une chaîne non vide lui va aussi bien.
+            desktop=vm.get("desktop", spec.get("desktop")) or "",
+            # Les deux servent au guide de connexion : où ERPLibre sera posé, et
+            # quelle cible make le remettra à jour.
+            prod=bool(install and install.get("prod")),
+            install_cmd=(install or {}).get("cmd") or "",
+            vm_tools=spec.get("vm_tools") or (),
         )
 
     # ---------------------------------------------------------------- #
@@ -5794,11 +8185,13 @@ class TODO:
         « all » = uniquement celles que la distro publie réellement."""
         if arch != "all":
             return [arch]
+        # Même source que _qemu_arch_distros : « all » ne doit jamais offrir
+        # une combinaison que deploy_qemu.py refusera.
         out = ["amd64"]
-        if distro in self._QEMU_ARM64_DISTROS:
-            out.append("arm64")
-        if distro in self._QEMU_S390X_DISTROS:
-            out.append("s390x")
+        for a in ("arm64", "s390x"):
+            supported = self._qemu_arch_distros(a)
+            if supported and distro in supported:
+                out.append(a)
         return out
 
     def _qemu_catalog_entries(self, mod, distros, arch):
@@ -6024,6 +8417,23 @@ class TODO:
                 self._qemu_host_timezone()
             ),
             "snap_distros": self.QEMU_SNAP_DISTROS,
+            "vm_tools": self._qemu_vm_tool_choices(),
+            "vm_tool_disk": {
+                k: v["disk_gb"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "vm_tool_arches": {
+                k: v["arches"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "vm_tool_desktops": {
+                k: v["desktops"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "vm_tool_needs_desktop": {
+                k: v["needs_desktop"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "vm_tool_families": {
+                k: v["families"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            "distro_family": dict(self._QEMU_DISTRO_FAMILY),
             "desktop_suffixes": self._qemu_desktop_suffixes(),
             "desktops": [
                 (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
@@ -6339,6 +8749,60 @@ class TODO:
             return self.QEMU_APP_STORES[int(answer) - 1][0]
         return "deb"
 
+    def _qemu_ask_vm_tools(self, vms):
+        """Outils de développement des VM graphiques : liste à cocher.
+
+        Ne montre que ce qu'au moins une VM du parc peut recevoir : les IDE
+        graphiques disparaissent d'un parc de serveurs, où ils n'auraient rien
+        pour s'afficher, et la compilation mobile reste offerte — elle compile,
+        elle n'affiche pas. La réponse vaut pour tout le parc et sera filtrée
+        machine par machine.
+
+        Saisie par numéros séparés par des espaces ou des virgules, « tous »
+        pour tout cocher, vide pour rien : quatre questions oui/non de plus
+        alourdiraient une séquence d'invites déjà longue."""
+        choices = [
+            c
+            for c in self._qemu_vm_tool_choices()
+            if any(
+                self._qemu_tools_for(
+                    (c[0],),
+                    vm.get("arch", "amd64"),
+                    vm.get("desktop", ""),
+                    vm.get("distro", ""),
+                )
+                for vm in vms
+            )
+        ]
+        if not choices:
+            return ()
+        print(f"\n{t('Development tools:')}")
+        for i, (_key, label, hint) in enumerate(choices, 1):
+            print(f"  [{i}] {label} — {hint}")
+        gb = ", ".join(
+            f"{label} +{self._QEMU_VM_TOOLS[key]['disk_gb']} Go"
+            for key, label, _hint in choices
+        )
+        # Le mobile fait échouer la VM quand l'application ne compile pas :
+        # c'est le but, mais il vaut mieux le savoir avant de cocher.
+        if any(k == "mobile" for k, _l, _h in choices):
+            print(f"  ⚠ {t('a failed mobile build marks the VM as failed')}")
+        print(f"  {t('Disk needed:')} {gb}")
+        answer = input(
+            f"{t('Numbers separated by spaces, [all], blank = none:')} "
+        ).strip()
+        if not answer:
+            return ()
+        if answer.lower() in ("all", "tous", "toutes", "*"):
+            return tuple(key for key, _l, _h in choices)
+        picked = []
+        for token in answer.replace(",", " ").split():
+            if token.isdigit() and 1 <= int(token) <= len(choices):
+                key = choices[int(token) - 1][0]
+                if key not in picked:
+                    picked.append(key)
+        return tuple(picked)
+
     def _qemu_ask_python_provider(self, arches):
         """mise (CPython précompilé) ou pyenv (compilation).
 
@@ -6435,6 +8899,7 @@ class TODO:
             _vm.setdefault("desktop", desktop)
             _vm["name"] = vm_name(_vm["name"], _vm.get("desktop"), suffixes)
         app_store = self._qemu_ask_app_store(vms)
+        vm_tools = self._qemu_ask_vm_tools(vms)
         python_provider = self._qemu_ask_python_provider(
             [vm["arch"] for vm in vms]
         )
@@ -6515,6 +8980,7 @@ class TODO:
             "timezone": timezone,
             "locale": locale,
             "desktop": desktop,
+            "vm_tools": vm_tools,
             "python_provider": python_provider,
             "app_store": app_store,
             "install": install,
@@ -6598,6 +9064,9 @@ class TODO:
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         app_store = spec.get("app_store") or "deb"
+        # Outils de développement : cochés une fois pour tout le parc, puis
+        # filtrés machine par machine (architecture, saveur de bureau).
+        vm_tools = tuple(spec.get("vm_tools") or ())
         # Branche par VM : « » sur une VM veut dire « celle du formulaire ».
         branch_map = {
             vm["name"]: (vm.get("branch") or install_branch or "")
@@ -6689,6 +9158,7 @@ class TODO:
                     desktop=desktop_map,
                     python_provider=python_provider,
                     app_store=app_store,
+                    vm_tools=vm_tools,
                 )
             else:
                 print(
@@ -6706,6 +9176,7 @@ class TODO:
                         desktop=desktop_map.get(name, ""),
                         python_provider=python_provider,
                         app_store=app_store,
+                        vm_tools=vm_tools,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install

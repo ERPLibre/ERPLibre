@@ -2244,9 +2244,192 @@ TRANSLATIONS = {
         "fr": "À lancer sur VOTRE poste :",
         "en": "Run this on YOUR workstation:",
     },
+    "Graphical console (virt-viewer, built-in tunnel)": {
+        "fr": "Console graphique (virt-viewer, tunnel intégré)",
+        "en": "Graphical console (virt-viewer, built-in tunnel)",
+    },
+    "virt-viewer is missing here; installing it.": {
+        "fr": "virt-viewer manque ici ; installation.",
+        "en": "virt-viewer is missing here; installing it.",
+    },
+    "no known package manager here.": {
+        "fr": "aucun gestionnaire de paquets connu ici.",
+        "en": "no known package manager here.",
+    },
+    "virt-viewer still missing after the install.": {
+        "fr": "virt-viewer manque toujours après l'installation.",
+        "en": "virt-viewer still missing after the install.",
+    },
+    "Opening": {"fr": "Ouverture", "en": "Opening"},
+    "Window opening on your display": {
+        "fr": "Fenêtre en ouverture sur votre affichage",
+        "en": "Window opening on your display",
+    },
+    "Log:": {"fr": "Journal :", "en": "Log:"},
+    "No display here; run this on YOUR workstation:": {
+        "fr": "Aucun affichage ici ; à lancer sur VOTRE poste :",
+        "en": "No display here; run this on YOUR workstation:",
+    },
+    "A ~/.ssh/config alias works there too.": {
+        "fr": "Un alias de ~/.ssh/config y fonctionne aussi.",
+        "en": "A ~/.ssh/config alias works there too.",
+    },
+    "It builds its own tunnel; no ssh -L to keep open.": {
+        "fr": "Il monte son propre tunnel ; aucun ssh -L à tenir ouvert.",
+        "en": "It builds its own tunnel; no ssh -L to keep open.",
+    },
+    "Missing? Install virt-viewer:": {
+        "fr": "Absent ? Installez virt-viewer :",
+        "en": "Missing? Install virt-viewer:",
+    },
+    "repo transfer into the app": {
+        "fr": "transfert des dépôts dans l'application",
+        "en": "repo transfer into the app",
+    },
+    "graphical session started": {
+        "fr": "session graphique démarrée",
+        "en": "graphical session started",
+    },
+    "graphical session not started; reboot the VM": {
+        "fr": "session graphique non démarrée ; redémarrer la VM",
+        "en": "graphical session not started; reboot the VM",
+    },
+    "Hypervisor console (QEMU screen, no guest server)": {
+        "fr": "Console de l'hyperviseur (écran QEMU, rien dans l'invitée)",
+        "en": "Hypervisor console (QEMU screen, no guest server)",
+    },
+    "then point your VNC client at": {
+        "fr": "puis pointez votre client VNC sur",
+        "en": "then point your VNC client at",
+    },
+    "Target is the hypervisor": {
+        "fr": "La cible est l'hyperviseur",
+        "en": "Target is the hypervisor",
+    },
+    "not the VM: the socket is QEMU-side.": {
+        "fr": "et non la VM : le socket est du côté de QEMU.",
+        "en": "not the VM: the socket is QEMU-side.",
+    },
+    "This VM exposes no VNC port.": {
+        "fr": "Cette VM n'expose aucun port VNC.",
+        "en": "This VM exposes no VNC port.",
+    },
+    "Its display is likely spice with listen=none:": {
+        "fr": "Son affichage est probablement spice avec listen=none :",
+        "en": "Its display is likely spice with listen=none:",
+    },
+    "To open it on the loopback (VM restart required):": {
+        "fr": "Pour l'ouvrir sur la boucle locale (redémarrage de la VM"
+        " requis) :",
+        "en": "To open it on the loopback (VM restart required):",
+    },
+    "New VMs get this by default; see deploy_qemu.": {
+        "fr": "Les VM neuves l'ont par défaut ; voir deploy_qemu.",
+        "en": "New VMs get this by default; see deploy_qemu.",
+    },
+    "No ProxyJump for this host in ~/.ssh/config.": {
+        "fr": "Aucun ProxyJump pour cet hôte dans ~/.ssh/config.",
+        "en": "No ProxyJump for this host in ~/.ssh/config.",
+    },
+    "Cannot tell which machine runs its QEMU.": {
+        "fr": "Impossible de savoir quelle machine fait tourner son QEMU.",
+        "en": "Cannot tell which machine runs its QEMU.",
+    },
     "(through the ProxyJump already in ~/.ssh/config)": {
         "fr": "(par le ProxyJump déjà dans ~/.ssh/config)",
         "en": "(through the ProxyJump already in ~/.ssh/config)",
+    },
+    "(the hypervisor only relays; -J puts the VM last)": {
+        "fr": "(l'hyperviseur ne fait que relayer ; -J met la VM en dernier)",
+        "en": "(the hypervisor only relays; -J puts the VM last)",
+    },
+    "Choice": {"fr": "Choix", "en": "Choice"},
+    "failed steps": {"fr": "étapes en échec", "en": "failed steps"},
+    "Failed steps": {"fr": "Étapes en échec", "en": "Failed steps"},
+    "Hard signals": {"fr": "Signaux durs", "en": "Hard signals"},
+    "Grouped by shape": {"fr": "Regroupé par forme", "en": "Grouped by shape"},
+    "line": {"fr": "ligne", "en": "line"},
+    "free space": {"fr": "libre", "en": "free"},
+    "silent": {"fr": "silence", "en": "silent"},
+    "needs the ERPLibre install, skipped:": {
+        "fr": "exige l'installation ERPLibre, écarté :",
+        "en": "needs the ERPLibre install, skipped:",
+    },
+    "Forgejo (git forge)": {
+        "fr": "Forgejo (forge git)",
+        "en": "Forgejo (git forge)",
+    },
+    "self-hosted git forge on :3000, SQLite": {
+        "fr": "forge git auto-hébergée sur :3000, SQLite",
+        "en": "self-hosted git forge on :3000, SQLite",
+    },
+    "no project yet, second try on the warm caches": {
+        "fr": "pas de projet encore ; seconde tentative sur les caches chauds",
+        "en": "no project yet, second try on the warm caches",
+    },
+    "already there, download skipped": {
+        "fr": "déjà présent, téléchargement évité",
+        "en": "already there, download skipped",
+    },
+    "inotify watches raised for the IDE": {
+        "fr": "watches inotify relevées pour l'IDE",
+        "en": "inotify watches raised for the IDE",
+    },
+    "closing what survived the first open:": {
+        "fr": "fermeture de ce qui a survécu à la première ouverture :",
+        "en": "closing what survived the first open:",
+    },
+    "Gradle daemon killed: out of memory": {
+        "fr": "démon Gradle tué : mémoire épuisée",
+        "en": "Gradle daemon killed: out of memory",
+    },
+    "out of memory": {"fr": "mémoire épuisée", "en": "out of memory"},
+    "Gradle heap too small": {
+        "fr": "tas Gradle trop petit",
+        "en": "Gradle heap too small",
+    },
+    "too many asset files for one APK (ZIP limit: 65535 entries)": {
+        "fr": "trop de fichiers d'assets pour un APK (limite ZIP : 65535"
+        " entrées)",
+        "en": "too many asset files for one APK (ZIP limit: 65535 entries)",
+    },
+    "4 GB of swap added for the build": {
+        "fr": "4 Go de swap ajoutés pour la compilation",
+        "en": "4 GB of swap added for the build",
+    },
+    "no swap could be added; build may run short": {
+        "fr": "swap impossible à ajouter ; la compilation peut manquer de mémoire",
+        "en": "no swap could be added; build may run short",
+    },
+    "memory:": {"fr": "mémoire :", "en": "memory:"},
+    "manifest repos not bundled (ZIP entry limit)": {
+        "fr": "dépôts du manifeste non empaquetés (limite d'entrées ZIP)",
+        "en": "manifest repos not bundled (ZIP entry limit)",
+    },
+    "MB RAM,": {"fr": "Mo de RAM,", "en": "MB RAM,"},
+    "MB swap, kernel OOM kills:": {
+        "fr": "Mo de swap, tués par le noyau (OOM) :",
+        "en": "MB swap, kernel OOM kills:",
+    },
+    "Tick the Android emulator tool when deploying.": {
+        "fr": "Cochez l'outil Émulateur Android au déploiement.",
+        "en": "Tick the Android emulator tool when deploying.",
+    },
+    "Cannot reach this VM.": {
+        "fr": "VM injoignable.",
+        "en": "Cannot reach this VM.",
+    },
+    "No Android SDK in this VM: no emulator binary.": {
+        "fr": "Pas de SDK Android dans cette VM : aucun binaire emulator.",
+        "en": "No Android SDK in this VM: no emulator binary.",
+    },
+    "No AVD named erplibre in this VM.": {
+        "fr": "Aucun AVD nommé erplibre dans cette VM.",
+        "en": "No AVD named erplibre in this VM.",
+    },
+    "It did not start; the VM log says:": {
+        "fr": "Il n'a pas démarré ; le journal de la VM dit :",
+        "en": "It did not start; the VM log says:",
     },
     "No ~/.ssh/config entry; see SSH configuration.": {
         "fr": "Aucune entrée ~/.ssh/config ; voir Configuration SSH.",
@@ -2859,6 +3042,90 @@ TRANSLATIONS = {
     "VMs to change (comma-separated): ": {
         "fr": "VM à modifier (séparées par des virgules) : ",
         "en": "VMs to change (comma-separated): ",
+    },
+    "Adjust hardware only (vCPU, RAM, 3D)": {
+        "fr": "Régler le matériel seulement (vCPU, RAM, 3D)",
+        "en": "Adjust hardware only (vCPU, RAM, 3D)",
+    },
+    "Adjust hardware before starting? (y/N): ": {
+        "fr": "Régler le matériel avant de démarrer ? (o/N) : ",
+        "en": "Adjust hardware before starting? (y/N): ",
+    },
+    "Not shut off, hardware left untouched:": {
+        "fr": "Pas éteintes, matériel inchangé :",
+        "en": "Not shut off, hardware left untouched:",
+    },
+    "Host GPU:": {
+        "fr": "GPU de l'hôte :",
+        "en": "Host GPU:",
+    },
+    "none (software rendering)": {
+        "fr": "aucun (rendu logiciel)",
+        "en": "none (software rendering)",
+    },
+    "software rendering": {
+        "fr": "rendu logiciel",
+        "en": "software rendering",
+    },
+    "Unreadable VM definition.": {
+        "fr": "Définition de VM illisible.",
+        "en": "Unreadable VM definition.",
+    },
+    "Nothing to change.": {
+        "fr": "Rien à changer.",
+        "en": "Nothing to change.",
+    },
+    "Changes:": {
+        "fr": "Changements :",
+        "en": "Changes:",
+    },
+    "Apply these changes? (y/N): ": {
+        "fr": "Appliquer ces changements ? (o/N) : ",
+        "en": "Apply these changes? (y/N): ",
+    },
+    "Autostart": {
+        "fr": "Démarrage automatique",
+        "en": "Autostart",
+    },
+    "VM hardware": {
+        "fr": "Matériel des VM",
+        "en": "VM hardware",
+    },
+    "3D": {
+        "fr": "3D",
+        "en": "3D",
+    },
+    "3D acceleration (host GPU)": {
+        "fr": "Accélération 3D (GPU de l'hôte)",
+        "en": "3D acceleration (host GPU)",
+    },
+    "Render node": {
+        "fr": "Nœud de rendu",
+        "en": "Render node",
+    },
+    "Screens": {
+        "fr": "Écrans",
+        "en": "Screens",
+    },
+    "bridge": {
+        "fr": "pont",
+        "en": "bridge",
+    },
+    "this VM has no interface": {
+        "fr": "cette VM n'a pas d'interface réseau",
+        "en": "this VM has no interface",
+    },
+    "CPU mode": {
+        "fr": "Mode CPU",
+        "en": "CPU mode",
+    },
+    "no render node on the host": {
+        "fr": "aucun nœud de rendu sur l'hôte",
+        "en": "no render node on the host",
+    },
+    "this VM has no virtual screen": {
+        "fr": "cette VM n'a pas d'écran virtuel",
+        "en": "this VM has no virtual screen",
     },
     "Unknown VM(s):": {
         "fr": "VM inconnue(s) :",
@@ -6191,6 +6458,10 @@ TRANSLATIONS = {
         "fr": "vue(s) portent encore une balise <tree> qu'Odoo 18",
         "en": "view(s) still carry a <tree> tag Odoo 18",
     },
+    "failed at": {
+        "fr": "a échoué sur",
+        "en": "failed at",
+    },
     "Census": {
         "fr": "Recensement",
         "en": "Census",
@@ -7553,6 +7824,423 @@ TRANSLATIONS = {
         "en": "no recipient: nothing was sent",
     },
     "mail_err_send_refused": {"fr": "envoi refusé :", "en": "send refused:"},
+    # QEMU — outils de développement des VM graphiques
+    "Python IDE, ERPLibre project pre-configured": {
+        "fr": "IDE Python, projet ERPLibre pré-configuré",
+        "en": "Python IDE, ERPLibre project pre-configured",
+    },
+    "ERPLibre mobile development (x86_64 only)": {
+        "fr": "développement mobile ERPLibre (x86_64 seulement)",
+        "en": "ERPLibre mobile development (x86_64 only)",
+    },
+    "GNOME extensions": {
+        "fr": "Extensions GNOME",
+        "en": "GNOME extensions",
+    },
+    "suggested extensions + extension manager": {
+        "fr": "extensions suggérées + gestionnaire d'extensions",
+        "en": "suggested extensions + extension manager",
+    },
+    "Development tools for the graphical VMs:": {
+        "fr": "Outils de développement des VM graphiques :",
+        "en": "Development tools for the graphical VMs:",
+    },
+    "Development tools (graphical VMs):": {
+        "fr": "Outils de développement (VM graphiques) :",
+        "en": "Development tools (graphical VMs):",
+    },
+    "Development tools:": {
+        "fr": "Outils de développement :",
+        "en": "Development tools:",
+    },
+    "Disk needed:": {"fr": "Disque nécessaire :", "en": "Disk needed:"},
+    "Numbers separated by spaces, [all], blank = none:": {
+        "fr": "Numéros séparés par des espaces, [tous], vide = aucun :",
+        "en": "Numbers separated by spaces, [all], blank = none:",
+    },
+    "No graphical VM: these tools are not installed.": {
+        "fr": "Aucune VM graphique : ces outils ne seront pas installés.",
+        "en": "No graphical VM: these tools are not installed.",
+    },
+    "Partly skipped (arch or desktop):": {
+        "fr": "En partie écartés (architecture ou bureau) :",
+        "en": "Partly skipped (arch or desktop):",
+    },
+    "Installing PyCharm (long)": {
+        "fr": "Installation de PyCharm (long)",
+        "en": "Installing PyCharm (long)",
+    },
+    "no JetBrains build for": {
+        "fr": "aucune archive JetBrains pour",
+        "en": "no JetBrains build for",
+    },
+    "PyCharm: project config skipped": {
+        "fr": "PyCharm : configuration du projet non écrite",
+        "en": "PyCharm: project config skipped",
+    },
+    "PyCharm installed:": {
+        "fr": "PyCharm installé :",
+        "en": "PyCharm installed:",
+    },
+    "PyCharm not installed (see above)": {
+        "fr": "PyCharm non installé (voir ci-dessus)",
+        "en": "PyCharm not installed (see above)",
+    },
+    "Installing Android Studio (long)": {
+        "fr": "Installation d'Android Studio (long)",
+        "en": "Installing Android Studio (long)",
+    },
+    "Android Studio: Google publishes x86_64 only": {
+        "fr": "Android Studio : Google ne publie que du x86_64",
+        "en": "Android Studio: Google publishes x86_64 only",
+    },
+    "SDK shared through ANDROID_HOME:": {
+        "fr": "SDK partagé via ANDROID_HOME :",
+        "en": "SDK shared through ANDROID_HOME:",
+    },
+    "Android Studio installed:": {
+        "fr": "Android Studio installé :",
+        "en": "Android Studio installed:",
+    },
+    "Android Studio not installed (see above)": {
+        "fr": "Android Studio non installé (voir ci-dessus)",
+        "en": "Android Studio not installed (see above)",
+    },
+    "no nested KVM: the emulator will not run": {
+        "fr": "pas de KVM imbriqué : l'émulateur ne démarrera pas",
+        "en": "no nested KVM: the emulator will not run",
+    },
+    "Suggested GNOME extensions": {
+        "fr": "Extensions GNOME suggérées",
+        "en": "Suggested GNOME extensions",
+    },
+    "not in the repos, skipped:": {
+        "fr": "absent des dépôts, ignoré :",
+        "en": "not in the repos, skipped:",
+    },
+    "Enable them from Extension Manager, or:": {
+        "fr": "À activer depuis le gestionnaire d'extensions, ou :",
+        "en": "Enable them from Extension Manager, or:",
+    },
+    "GNOME Shell not found, site extensions skipped": {
+        "fr": "GNOME Shell introuvable, extensions du site ignorées",
+        "en": "GNOME Shell not found, site extensions skipped",
+    },
+    "installed and enabled:": {
+        "fr": "installée et activée :",
+        "en": "installed and enabled:",
+    },
+    "not available for this GNOME, skipped:": {
+        "fr": "indisponible pour ce GNOME, ignorée :",
+        "en": "not available for this GNOME, skipped:",
+    },
+    "log out and back in to load them": {
+        "fr": "se déconnecter puis se reconnecter pour les charger",
+        "en": "log out and back in to load them",
+    },
+    "open the project once and close PyCharm; the .idea it writes is what the install configures": {
+        "fr": "ouvrir le projet une fois puis fermer PyCharm : le .idea qu'il écrit est ce que l'installation configure",
+        "en": "open the project once and close PyCharm; the .idea it writes is what the install configures",
+    },
+    "command": {"fr": "commande", "en": "command"},
+    "release feed unreachable: unified build, it will ask for a JetBrains account": {
+        "fr": "flux des versions injoignable : build unifié, il demandera un compte JetBrains",
+        "en": "release feed unreachable: unified build, it will ask for a JetBrains account",
+    },
+    "Creating the PyCharm project (first open)": {
+        "fr": "Création du projet PyCharm (première ouverture)",
+        "en": "Creating the PyCharm project (first open)",
+    },
+    "PyCharm missing, step skipped": {
+        "fr": "PyCharm absent, étape sautée",
+        "en": "PyCharm missing, step skipped",
+    },
+    "no Xvfb here, open PyCharm by hand": {
+        "fr": "pas de Xvfb ici : ouvrir PyCharm à la main",
+        "en": "no Xvfb here, open PyCharm by hand",
+    },
+    "ERPLibre mobile (build)": {
+        "fr": "ERPLibre mobile (compilation)",
+        "en": "ERPLibre mobile (build)",
+    },
+    "APK debug + Vitest, validates the VM": {
+        "fr": "APK debug + Vitest, valide la VM",
+        "en": "APK debug + Vitest, validates the VM",
+    },
+    "Building ERPLibre mobile (long)": {
+        "fr": "Compilation d'ERPLibre mobile (long)",
+        "en": "Building ERPLibre mobile (long)",
+    },
+    "detailed log in the VM:": {
+        "fr": "journal détaillé dans la VM :",
+        "en": "detailed log in the VM:",
+    },
+    "FAILED:": {"fr": "ÉCHEC :", "en": "FAILED:"},
+    "probable cause:": {"fr": "cause probable :", "en": "probable cause:"},
+    "no known pattern, last lines:": {
+        "fr": "aucun motif connu, dernières lignes :",
+        "en": "no known pattern, last lines:",
+    },
+    "a failed mobile build marks the VM as failed": {
+        "fr": "une compilation mobile en échec marque la VM en échec",
+        "en": "a failed mobile build marks the VM as failed",
+    },
+    "ERPLibre venv (everything below needs it)": {
+        "fr": "venv ERPLibre (tout ce qui suit en dépend)",
+        "en": "ERPLibre venv (everything below needs it)",
+    },
+    "mobile repository (additive manifest)": {
+        "fr": "dépôt mobile (manifeste additif)",
+        "en": "mobile repository (additive manifest)",
+    },
+    "prerequisites of the upstream installer": {
+        "fr": "prérequis de l'installateur amont",
+        "en": "prerequisites of the upstream installer",
+    },
+    "Android SDK, licences, NDK": {
+        "fr": "SDK Android, licences, NDK",
+        "en": "Android SDK, licences, NDK",
+    },
+    "SDK platform required by the project": {
+        "fr": "plateforme SDK réclamée par le projet",
+        "en": "SDK platform required by the project",
+    },
+    "npm dependencies": {
+        "fr": "dépendances npm",
+        "en": "npm dependencies",
+    },
+    "web bundle (vite build)": {
+        "fr": "bundle web (vite build)",
+        "en": "web bundle (vite build)",
+    },
+    "native sync (capacitor)": {
+        "fr": "synchronisation native (capacitor)",
+        "en": "native sync (capacitor)",
+    },
+    "debug APK (gradle)": {
+        "fr": "APK debug (gradle)",
+        "en": "debug APK (gradle)",
+    },
+    "Vitest tests": {"fr": "tests Vitest", "en": "Vitest tests"},
+    "APK built:": {"fr": "APK construit :", "en": "APK built:"},
+    "browser debugging (no Android):": {
+        "fr": "déverminage au navigateur (sans Android) :",
+        "en": "browser debugging (no Android):",
+    },
+    "no APK produced": {
+        "fr": "aucun APK produit",
+        "en": "no APK produced",
+    },
+    "disk full": {"fr": "disque plein", "en": "disk full"},
+    "SDK platform missing": {
+        "fr": "plateforme SDK absente",
+        "en": "SDK platform missing",
+    },
+    "SDK not found (ANDROID_HOME)": {
+        "fr": "SDK introuvable (ANDROID_HOME)",
+        "en": "SDK not found (ANDROID_HOME)",
+    },
+    "SDK licences not accepted": {
+        "fr": "licences SDK non acceptées",
+        "en": "SDK licences not accepted",
+    },
+    "NDK missing": {"fr": "NDK absent", "en": "NDK missing"},
+    "JDK required by the project missing": {
+        "fr": "JDK réclamé par le projet absent",
+        "en": "JDK required by the project missing",
+    },
+    "Gradle running on too old a JDK": {
+        "fr": "Gradle tourne sur un JDK trop ancien",
+        "en": "Gradle running on too old a JDK",
+    },
+    "SDK already there (upstream installer replays)": {
+        "fr": "SDK déjà là (l'installateur amont se rejoue)",
+        "en": "SDK already there (upstream installer replays)",
+    },
+    "cross-compiled protoc run on the host": {
+        "fr": "protoc compilé pour la cible, exécuté sur l'hôte",
+        "en": "cross-compiled protoc run on the host",
+    },
+    "JDK/Gradle mismatch": {
+        "fr": "JDK et Gradle incompatibles",
+        "en": "JDK/Gradle mismatch",
+    },
+    "Gradle dependency unreachable (network?)": {
+        "fr": "dépendance Gradle injoignable (réseau ?)",
+        "en": "Gradle dependency unreachable (network?)",
+    },
+    "Vitest tests failed": {
+        "fr": "tests Vitest en échec",
+        "en": "Vitest tests failed",
+    },
+    "ERPLibre venv incomplete (no pip: python3-venv)": {
+        "fr": "venv ERPLibre incomplet (pas de pip : python3-venv)",
+        "en": "ERPLibre venv incomplete (no pip: python3-venv)",
+    },
+    "mobile repository missing": {
+        "fr": "dépôt mobile absent",
+        "en": "mobile repository missing",
+    },
+    "ERPLibre venv missing (incomplete install)": {
+        "fr": "venv ERPLibre absent (installation incomplète)",
+        "en": "ERPLibre venv missing (incomplete install)",
+    },
+    "smoother, without X11:": {
+        "fr": "plus fluide, sans X11 :",
+        "en": "smoother, without X11:",
+    },
+    "Android emulator": {"fr": "Émulateur Android", "en": "Android emulator"},
+    "Android emulator (start, tunnel, scrcpy)": {
+        "fr": "Émulateur Android (démarrer, tunnel, scrcpy)",
+        "en": "Android emulator (start, tunnel, scrcpy)",
+    },
+    "An emulator is already running on this VM.": {
+        "fr": "Un émulateur tourne déjà sur cette VM.",
+        "en": "An emulator is already running on this VM.",
+    },
+    "Only one per AVD; close it first:": {
+        "fr": "Un seul par AVD ; le fermer d'abord :",
+        "en": "Only one per AVD; close it first:",
+    },
+    "Close it now? (y/N): ": {
+        "fr": "Le fermer maintenant ? (o/N) : ",
+        "en": "Close it now? (y/N): ",
+    },
+    "Closed.": {"fr": "Fermé.", "en": "Closed."},
+    "Show a window?": {
+        "fr": "Afficher une fenêtre ?",
+        "en": "Show a window?",
+    },
+    "No window - stream with scrcpy (smoother)": {
+        "fr": "Sans fenêtre — flux par scrcpy (plus fluide)",
+        "en": "No window - stream with scrcpy (smoother)",
+    },
+    "Window over ssh -X (raw pixels, slower)": {
+        "fr": "Fenêtre par ssh -X (pixels bruts, plus lent)",
+        "en": "Window over ssh -X (raw pixels, slower)",
+    },
+    "X11 compression is on (-XC); the screen is 540x1140.": {
+        "fr": "La compression X11 est active (-XC) ; l'écran fait 540x1140.",
+        "en": "X11 compression is on (-XC); the screen is 540x1140.",
+    },
+    "Starting the emulator without a window...": {
+        "fr": "Démarrage de l'émulateur sans fenêtre…",
+        "en": "Starting the emulator without a window...",
+    },
+    "Could not start it:": {
+        "fr": "Démarrage impossible :",
+        "en": "Could not start it:",
+    },
+    "Started. Boot takes about a minute; log in the VM:": {
+        "fr": "Démarré. L'amorçage prend environ une minute ; journal dans la VM :",
+        "en": "Started. Boot takes about a minute; log in the VM:",
+    },
+    "1. Emulator started, without a window.": {
+        "fr": "1. Émulateur démarré, sans fenêtre.",
+        "en": "1. Emulator started, without a window.",
+    },
+    "If scrcpy will run on THIS machine, I can open it.": {
+        "fr": "Si scrcpy tournera sur CETTE machine, je peux l'ouvrir.",
+        "en": "If scrcpy will run on THIS machine, I can open it.",
+    },
+    "Open the tunnel now? (y/N): ": {
+        "fr": "Ouvrir le tunnel maintenant ? (o/N) : ",
+        "en": "Open the tunnel now? (y/N): ",
+    },
+    "Port already in use here:": {
+        "fr": "Port déjà occupé ici :",
+        "en": "Port already in use here:",
+    },
+    "Close the other tunnel first:": {
+        "fr": "Fermer l'autre tunnel d'abord :",
+        "en": "Close the other tunnel first:",
+    },
+    "Tunnel failed:": {"fr": "Tunnel en échec :", "en": "Tunnel failed:"},
+    "Tunnel open on localhost:": {
+        "fr": "Tunnel ouvert sur localhost:",
+        "en": "Tunnel open on localhost:",
+    },
+    "Then:": {"fr": "Puis :", "en": "Then:"},
+    "To close it:": {"fr": "Pour le fermer :", "en": "To close it:"},
+    "Android emulator (adb 5555, then scrcpy)": {
+        "fr": "Émulateur Android (adb 5555, puis scrcpy)",
+        "en": "Android emulator (adb 5555, then scrcpy)",
+    },
+    "Android emulator over adb + scrcpy": {
+        "fr": "Émulateur Android par adb + scrcpy",
+        "en": "Android emulator over adb + scrcpy",
+    },
+    "1. In the VM, start the emulator WITHOUT a window:": {
+        "fr": "1. Dans la VM, démarrer l'émulateur SANS fenêtre :",
+        "en": "1. In the VM, start the emulator WITHOUT a window:",
+    },
+    "2. Open the tunnel from YOUR workstation:": {
+        "fr": "2. Ouvrir le tunnel depuis VOTRE poste :",
+        "en": "2. Open the tunnel from YOUR workstation:",
+    },
+    "3. Then, still on your workstation:": {
+        "fr": "3. Puis, toujours sur votre poste :",
+        "en": "3. Then, still on your workstation:",
+    },
+    "scrcpy on Debian/Ubuntu:": {
+        "fr": "scrcpy sur Debian/Ubuntu :",
+        "en": "scrcpy on Debian/Ubuntu:",
+    },
+    "Android emulator (Pixel)": {
+        "fr": "Émulateur Android (Pixel)",
+        "en": "Android emulator (Pixel)",
+    },
+    "AVD viewable over ssh -X": {
+        "fr": "AVD visible par ssh -X",
+        "en": "AVD viewable over ssh -X",
+    },
+    "Android emulator (AVD)": {
+        "fr": "Émulateur Android (AVD)",
+        "en": "Android emulator (AVD)",
+    },
+    "no /dev/kvm: nested virtualisation is off on the host": {
+        "fr": "pas de /dev/kvm : virtualisation imbriquée coupée sur l'hôte",
+        "en": "no /dev/kvm: nested virtualisation is off on the host",
+    },
+    "user added to the kvm group (effective at next login)": {
+        "fr": "utilisateur ajouté au groupe kvm (effectif à la prochaine session)",
+        "en": "user added to the kvm group (effective at next login)",
+    },
+    "emulator and system image": {
+        "fr": "émulateur et image système",
+        "en": "emulator and system image",
+    },
+    "Pixel profile, smallest screen": {
+        "fr": "profil Pixel, plus petit écran",
+        "en": "Pixel profile, smallest screen",
+    },
+    "create the AVD": {"fr": "création de l'AVD", "en": "create the AVD"},
+    "AVD ready:": {"fr": "AVD prêt :", "en": "AVD ready:"},
+    "open it from your workstation:": {
+        "fr": "à ouvrir depuis votre poste :",
+        "en": "open it from your workstation:",
+    },
+    "then install the APK:": {
+        "fr": "puis installer l'APK :",
+        "en": "then install the APK:",
+    },
+    "ERPLibre mobile, Android SDK (long)": {
+        "fr": "ERPLibre mobile, SDK Android (long)",
+        "en": "ERPLibre mobile, Android SDK (long)",
+    },
+    "Gradle task failed": {
+        "fr": "tâche Gradle en échec",
+        "en": "Gradle task failed",
+    },
+    "project created, the install will configure it": {
+        "fr": "projet créé, l'installation va le configurer",
+        "en": "project created, the install will configure it",
+    },
+    "no .idea: open PyCharm once, then": {
+        "fr": "pas de .idea : ouvrir PyCharm une fois, puis",
+        "en": "no .idea: open PyCharm once, then",
+    },
+    "project": {"fr": "projet", "en": "project"},
 }
 
 

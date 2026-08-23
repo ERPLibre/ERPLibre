@@ -146,6 +146,127 @@ prévisualiser un dry-run, télécharger une image, lister les VM et afficher
 l'IP d'une VM — le menu demande les paramètres et construit la commande pour
 vous.
 
+Quand une VM est graphique, le menu propose en plus une **liste à cocher
+d'outils de développement** : PyCharm Community (posé depuis l'archive
+officielle JetBrains dans `/opt/pycharm`, son lanceur ouvrant le dépôt
+ERPLibre — la ligne Community, car le build unifié 2025.3 s'arrête sur un
+écran de licence et n'ouvre jamais de projet),
+Android Studio (`/opt/android-studio`, commande `studio` ou
+`android-studio` ; x86_64 seulement — Google ne publie aucune archive Linux
+aarch64) et un jeu
+d'extensions GNOME suggérées.
+
+Les extensions empaquetées par la distribution sont installées sans être
+activées — leur UUID n'est pas connu de façon fiable, et le gestionnaire
+d'extensions est là pour choisir. Trois extensions nommées par leur UUID sont,
+elles, installées **et activées**, directement depuis extensions.gnome.org :
+**gTile**, **Freon** et **Tracker**. L'archive est prise pour la version de
+GNOME Shell qui tourne vraiment dans la VM — le même point d'entrée sert gTile
+v59 en GNOME 46 et v62 en GNOME 48, si bien qu'une URL figée poserait une
+version faite pour une autre release. Une archive mal appariée n'est de toute
+façon jamais chargée par GNOME : il compare `metadata.json` à sa propre
+version et affiche l'extension comme obsolète plutôt que de casser la session.
+
+Les outils sont posés **avant** le clone et l'installation d'ERPLibre, et
+l'ordre compte : PyCharm écrit le `.idea/` du dépôt à la première ouverture du
+projet, et l'installation qui suit y lance `pycharm_configuration.py`
+(`update_env_version.pycharm_update()`, qui se tait tant qu'il n'y a pas de
+`.idea`). Cette première ouverture est automatisée : PyCharm est lancé une fois sous
+Xvfb — un serveur d'affichage virtuel DANS la VM invitée, si bien que l'hôte
+qui orchestre n'a besoin d'aucune bibliothèque graphique — avec les fenêtres
+de confiance, de confidentialité et de partage de données répondues d'avance.
+Mesuré sur une VM Ubuntu 26.04 à 16 Go : le `.idea/` est écrit en 195 s, et
+l'installation y ajoute ensuite ses exclusions dans le `.iml`. Sans Xvfb, ou
+si l'IDE n'y arrive pas en cinq minutes, le journal le dit et l'installation
+continue.
+
+Un quatrième ne demande aucun bureau : **ERPLibre mobile (compilation)**. Il
+ajoute le dépôt mobile au manifeste — additif, donc il cohabite avec une
+installation Odoo 18 —, lance l'`install-android.sh` du dépôt lui-même (JDK 17,
+outils en ligne de commande, licences SDK acceptées, NDK, whisper.cpp et
+sentencepiece), puis compile : `npm ci`, `vite build`, `cap sync`,
+`gradlew assembleDebug`, et enfin `npm test`. **Une compilation en échec fait
+échouer la VM** : le code de sortie remonte au tableau de bord, et le journal
+NOMME la cause probable au lieu de laisser 40 Mo de journal Gradle à relire :
+disque plein, plateforme SDK absente, JDK et Gradle incompatibles, licences non
+acceptées, démon Gradle tué par le noyau (avec la RAM, le swap et le compte de
+l'oom-killer, parce qu'une cause « mémoire » se prouve au lieu de s'affirmer),
+ou trop de fichiers d'assets pour un APK. Le détail va dans
+`~/erplibre-mobile-build.log`, dans la VM, pour que le journal d'installation
+reste lisible.
+
+Cette dernière cause est corrigée, et non contournée. L'application embarque les
+dépôts du manifeste pour en parcourir le code hors ligne, et un APK est un ZIP
+borné à 65535 entrées — un fichier par source en réclamait 123 678, et la
+compilation s'arrêtait là. Ces fichiers y entrent désormais en **packs** :
+des tranches de 4 Mo, plus un `index.json` par dépôt qui dit dans quelle tranche
+se trouve un fichier, à quel offset et sur quelle longueur. La lecture demande
+un intervalle d'octets, et retombe sur la tranche entière quand le serveur du
+WebView ignore `Range` — 4 Mo au pire, et c'est pour cela que les tranches sont
+bornées. Les images matricielles restent dehors : des captures d'écran
+d'addons, dans un navigateur qui montre du texte.
+
+Les images sont empaquetées aussi, et un fichier empaqueté n'a pas d'URL propre :
+le lecteur fait un blob de ses octets. Les catalogues gettext, en revanche, sont
+écartés — 41 594 fichiers `.po`/`.pot` pour 857 Mo, soit 72 % du poids, d'un
+contenu que Weblate maintient et que personne ne lit sur un téléphone.
+`BUNDLE_KEEP_PO=1` les ramène, `BUNDLE_SKIP_IMG=1` retire les images.
+
+Mesuré sur une VM : 139 dépôts, 80 841 fichiers en 233 tranches, un APK de
+354 Mo à **2 844 entrées**, et 20 fichiers relus depuis les packs identiques
+octet pour octet à leur source. L'APK ne suit pas la charge — le texte se
+compresse, le PNG non : le code seul fait 331 Mo d'assets pour environ 130 Mo
+d'APK. L'installation vérifie le transfert avec
+`script/mobile/check_bundle_transfer.py`, qui s'exécute aussi seul, et un
+transfert manqué fait échouer la VM — une application qui ne porte pas le code
+qu'elle est censée montrer n'est pas l'application demandée.
+
+Il est borné aux distributions apt, parce que cet installateur amont commence
+par `sudo apt install openjdk-17-jdk`. Il n'exige PAS Android Studio — une
+simple VM serveur produit l'APK — et quand Android Studio est aussi coché, les
+deux partagent un seul SDK via `ANDROID_HOME`. Sans Android, la même
+application tourne dans un navigateur : `npm start`.
+
+Un cinquième, **Émulateur Android (Pixel)**, crée un AVD. Conduisez-le depuis
+le menu QEMU, *Émulateur Android (démarrage, tunnel, scrcpy)* : il démarre
+l'émulateur sans fenêtre, puis donne le tunnel adb et la commande scrcpy.
+Préférez cette voie à une fenêtre par X11 — scrcpy reçoit du H.264 encodé PAR
+l'appareil, là où `ssh -X` fait traverser chaque image en pixels bruts, en
+rendu logiciel. Si vous voulez la fenêtre, le chemin doit être ABSOLU, car
+`ssh hôte 'commande'` ne lit ni `~/.profile` ni `~/.bashrc` :
+`ssh -XC erplibre@<ip> '$HOME/android/emulator/emulator -avd erplibre -no-audio'`.
+
+Il ne demande aucun bureau dans la VM, mais il exige KVM dans l'invitée, donc
+la virtualisation imbriquée sur l'hôte ; le journal le dit quand `/dev/kvm`
+manque. Le modèle n'est pas figé : on demande au SDK ses profils et le Pixel le
+plus récent au plus petit écran gagne (ni Pro, ni XL, ni pliant, ni tablette).
+Le rendu est « swangle » dans le `config.ini` de l'AVD — « auto » ouvrirait un
+écran noir, et « swiftshader_indirect » n'existe plus, l'émulateur répondant
+`Selected GPU option ... is not valid`.
+
+Un sixième, **Forgejo**, installe une forge git auto-hébergée — le logiciel
+derrière Codeberg — depuis le binaire statique officiel du projet, et la laisse
+en service sur le port 3000, avec git par SSH sur 2222. Comme la compilation
+mobile, elle n'a besoin d'aucun bureau ; contrairement à elle, aucune famille de
+paquets n'est exclue : le binaire est statique, donc le même fichier sert apt,
+dnf, pacman et zypper. C'est ce qui la rend portable sur les plateformes
+ERPLibre sans une branche par distribution. Les architectures suivent l'amont,
+qui publie amd64, arm64 et arm-6 — la case se grise sur s390x plutôt que de
+poser un binaire qui ne s'exécutera pas.
+
+Le travail vit dans `script/forgejo/install_forgejo.sh`, appelable seul sur une
+machine existante : `./script/forgejo/install_forgejo.sh`. Il vérifie la somme
+de contrôle publiée, écrit lui-même les quatre secrets pour que le service n'ait
+jamais à réécrire sa propre configuration, et garde ses données en SQLite pour
+ne pas disputer PostgreSQL à Odoo sur la même VM. Le rejouer est sans risque et
+bon marché — 1,5 s mesuré, tout étant en place : il saute un binaire déjà à la
+bonne version, ne réécrit jamais un `app.ini` existant et ne recrée pas
+l'administrateur. `FORGEJO_VERSION`, `FORGEJO_HTTP_PORT`, `FORGEJO_ADMIN_USER`
+et quelques autres le règlent ; `--help` les énumère.
+
+Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
+de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.
+
 ## Principales options
 
 - `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
@@ -166,8 +287,39 @@ vous.
 - `--no-install-deps` — n'installe jamais les dépendances automatiquement.
 - `--dry-run` — affiche les commandes sans rien exécuter.
 - `--force` — écrase le disque de travail qcow2 existant.
+- `--gpu` — accélération 3D par le GPU de l'hôte : `auto` (défaut, activée si
+  l'hôte a un nœud de rendu), `on` (forcer), `off` (rendu logiciel).
+- `--gpu-node` — quel nœud de rendu utiliser, sur un hôte à plusieurs cartes.
+- `--lang` — langue du guide affiché à la connexion SSH, `fr` (défaut) ou
+  `en`. Le menu TODO passe la sienne.
+- `--erplibre-dir` — où ERPLibre sera installé dans la VM
+  (`~/git/erplibre`, ou `/opt/erplibre` en production). Ajoute la section
+  ERPLibre au guide de connexion ; omis, cette section est laissée de côté.
+- `--erplibre-make` — la cible make qui a installé la VM
+  (ex. `install_odoo_18`), reprise dans le guide pour la mettre à jour.
+- `--no-git-identity` — ne recopie pas les `user.name`, `user.email` et
+  `core.editor` de l'hôte dans le `~/.gitconfig` de la VM.
 
 Lancez `./script/qemu/deploy_qemu.py --help` pour la liste complète.
+
+## Guide de connexion (`/etc/motd`)
+
+Chaque VM accueille celui qui s'y connecte en SSH avec les commandes de **sa**
+distribution — `apt`, `dnf`, `zypper` ou `pacman` — et celles d'ERPLibre :
+éditer le serveur, le redémarrer, mettre à jour des modules, mettre à jour
+Odoo, inspecter l'instance, ouvrir le menu TODO. Il est écrit par cloud-init,
+donc présent dès le premier démarrage : avant l'installation d'ERPLibre, et
+encore là si elle échoue — le moment où l'on se connecte justement à la main.
+
+`--dry-run` affiche le guide généré avec le reste du user-data. Il ne
+s'affiche PAS pour un `ssh hôte 'commande'` : les journaux d'installation
+restent nets.
+
+L'identité git de l'hôte voyage avec lui, dans le `~/.gitconfig` de la VM :
+un commit fait dans la VM porte alors votre nom plutôt que
+`erplibre@<nom-de-vm>`. L'éditeur suit le même chemin — `core.editor`, la
+ligne `config.conf` du guide et le paquet installé dans la VM viennent d'une
+seule table, de sorte que le guide ne nomme jamais une commande absente.
 
 ## Gestion des VM
 
@@ -214,6 +366,53 @@ Host myvm
 Ça marche en Wi-Fi et sans arrêter la VM — l'option la plus simple pour un
 accès personnel. Préférez un pont (ci-dessous) si la VM doit être un serveur
 à part entière exposé sur le LAN.
+
+## Accélération 3D (GPU de l'hôte)
+
+Une VM graphique sans accélération rend tout par le processeur — le bureau
+comme l'émulateur Android qui tourne dedans. Le déploiement prend donc le GPU
+de l'hôte **par défaut** (`--gpu auto`) : si l'hôte expose un nœud de rendu,
+la VM reçoit un virtio-GPU avec `accel3d` et un affichage `egl-headless` qui
+porte le contexte OpenGL **à côté** de la console VNC — il n'ouvre aucun port
+et ne remplace rien. Pas de nœud de rendu, pas de 3D, et le déploiement dit
+pourquoi au lieu de retomber en silence.
+
+```bash
+ls /dev/dri/renderD*             # le GPU utilisable par QEMU — vide : pas de 3D
+sudo virsh dumpxml <nom-vm> | grep -A2 -E "accel3d|egl-headless"
+```
+
+Une VM déjà installée se règle depuis le menu TODO **pendant qu'elle est
+éteinte** : libvirt ne lit ces réglages qu'au démarrage de QEMU. `QEMU/KVM ›
+Liste des VM › [2] Changer l'état`, puis acceptez *Régler le matériel avant de
+démarrer*, ou prenez `[3] Régler le matériel seulement`. En formulaire si
+Textual est présent, en invites sinon, il règle :
+
+- **vCPU, RAM, démarrage automatique** — le dimensionnement ordinaire.
+- **Mode CPU** — `host-passthrough` (celui du parc) donne les instructions du
+  processeur hôte telles quelles : c'est lui qui rend la virtualisation
+  imbriquée possible *dans* la VM. `host-model` décrit un modèle équivalent,
+  migrable vers une autre machine.
+- **Écrans** — le `heads` du virtio-gpu, qui devient `max_outputs` sur la
+  ligne QEMU. La `vram` n'est délibérément *pas* proposée : sur un virtio-gpu,
+  libvirt l'écrit dans le XML et QEMU ne la reçoit jamais (à vérifier avec
+  `virsh domxml-to-native` : seul `max_outputs` y apparaît). Seul qxl la
+  consomme.
+- **Réseau** — les réseaux libvirt et les ponts de l'hôte, ces derniers pour
+  poser la VM sur le LAN (voir la section du pont plus bas). Le basculement
+  garde l'adresse MAC et l'emplacement PCI : l'invité retrouve *sa* carte,
+  donc son nom d'interface et son bail DHCP.
+
+Deux choses à savoir :
+
+- Un hôte qui est **lui-même une VM** n'a aucun nœud de rendu, sauf si un GPU
+  lui a été transmis. Imbriqué sans passthrough, la 3D est hors d'atteinte :
+  l'émulateur Android tourne alors sur SwiftShader, et aucune option n'y
+  change rien.
+- Quand la VM a la 3D, l'émulateur peut être essayé en `-gpu host` plutôt
+  qu'en `-gpu swangle`, son défaut : `EL_EMULATOR_GPU=host ./todo.sh`. Ça
+  reste un essai manuel — un émulateur dont le contexte GL échoue reste pendu
+  au lieu de retomber, d'où `swangle` par défaut.
 
 ## QEMU dans QEMU (imbriqué) & exposer la VM via un pont
 

@@ -294,6 +294,7 @@ def build_spec(vms, domains, form):
         "ssh_key": form["ssh_key"],
         "timezone": form.get("timezone", ""),
         "desktop": form.get("desktop", ""),
+        "vm_tools": tuple(form.get("vm_tools") or ()),
         "python_provider": form.get("python_provider", ""),
         "app_store": form.get("app_store", "deb"),
         "install": form["install"],
@@ -364,6 +365,16 @@ def run_deploy_form(ctx, run_app: bool = True):
     # {clé de saveur: suffixe de nom}, fourni par todo.py qui décrit les
     # saveurs — on ne le redéfinit pas ici.
     desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
+    # Outils de développement d'une VM graphique : [(clé, libellé, indice)] et
+    # leurs contraintes, toutes décrites dans todo.py — le formulaire ne fait
+    # que les afficher et rendre les cases cochées.
+    vm_tools = list(ctx.get("vm_tools") or [])
+    tool_disk = dict(ctx.get("vm_tool_disk") or {})
+    tool_arches = dict(ctx.get("vm_tool_arches") or {})
+    tool_desktops = dict(ctx.get("vm_tool_desktops") or {})
+    tool_needs_desktop = dict(ctx.get("vm_tool_needs_desktop") or {})
+    tool_families = dict(ctx.get("vm_tool_families") or {})
+    distro_family = dict(ctx.get("distro_family") or {})
     # Architectures pour lesquelles mise publie un binaire.
     mise_arches = set(ctx.get("mise_arches") or ())
     # [(clé, libellé)] des magasins d'applications, et les distributions qui
@@ -655,6 +666,20 @@ def run_deploy_form(ctx, run_app: bool = True):
                             for i, (_k, label) in enumerate(app_stores):
                                 yield RadioButton(label, value=i == 0)
                         yield Static("", id="storewarn")
+                    if vm_tools:
+                        # Une case par outil, et non une liste déroulante : ils
+                        # sont indépendants, et chacun se prend ou se laisse.
+                        yield Static(
+                            t("Development tools:"), classes="grouptitle"
+                        )
+                        for key, label, hint in vm_tools:
+                            gb = tool_disk.get(key, 0)
+                            yield Checkbox(
+                                f"{label} +{gb} Go — {hint}",
+                                value=key in (defaults.get("tools") or ()),
+                                id=f"f_tool_{key}",
+                            )
+                        yield Static("", id="toolwarn")
                     yield Static("ERPLibre", classes="grouptitle")
                     yield Checkbox(
                         t("Install ERPLibre"),
@@ -816,9 +841,19 @@ def run_deploy_form(ctx, run_app: bool = True):
             # Le bureau pèse sur le disque de la VM QUI LE PORTE, et d'elle
             # seule : un supplément commun mentait dès que les types
             # différaient d'une machine à l'autre.
+            tools = self._vm_tools()
             for row in self.rows:
                 if row["vm"].get("desktop"):
                     row["disk_gb"] += desktop_disk
+                # Même règle pour les outils, et pour la même raison : ils ne
+                # pèsent que sur les VM qui les reçoivent réellement. Android
+                # Studio n'existe qu'en x86_64, les extensions GNOME n'ont de
+                # sens que sous GNOME — une VM qui ne les aura pas ne doit pas
+                # se voir gonfler son disque.
+                row["disk_gb"] += sum(
+                    tool_disk.get(k, 0)
+                    for k in self._tools_for_vm(row["vm"], tools)
+                )
             # Le plan doit MONTRER qu'une VM a été personnalisée : sans marque,
             # deux lignes aux ressources différentes n'ont aucune explication à
             # l'écran, et la surcharge est oubliée à la relecture. Le drapeau
@@ -831,6 +866,73 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._render_plan()
             self._render_mise()
             self._render_store()
+            self._render_tools()
+
+        def _vm_tools(self):
+            """Clés des outils cochés, dans l'ordre de la liste."""
+            picked = []
+            for key, _label, _hint in vm_tools:
+                try:
+                    if self.query_one(f"#f_tool_{key}", Checkbox).value:
+                        picked.append(key)
+                except Exception:
+                    continue
+            return tuple(picked)
+
+        def _tools_for_vm(self, vm, tools):
+            """Outils qu'une VM donnée recevra vraiment.
+
+            Même filtre que todo.py côté déploiement : une VM ARM ne verra
+            jamais Android Studio, une VM Cinnamon jamais les extensions GNOME,
+            un serveur aucun des IDE — mais un serveur reçoit bien la
+            compilation mobile, qui n'a rien à afficher, et une distribution
+            sans apt ne la reçoit pas, son installateur n'existant que là."""
+            out = []
+            for key in tools:
+                arches = tool_arches.get(key) or ()
+                desks = tool_desktops.get(key) or ()
+                fams = tool_families.get(key) or ()
+                if tool_needs_desktop.get(key) and not vm.get("desktop"):
+                    continue
+                if arches and vm["arch"] not in arches:
+                    continue
+                if desks and vm.get("desktop") not in desks:
+                    continue
+                if fams and distro_family.get(vm["distro"], "") not in fams:
+                    continue
+                out.append(key)
+            return out
+
+        def _render_tools(self):
+            """Grise chaque case qu'AUCUNE VM retenue ne peut recevoir, et
+            NOMME ce qui sera écarté.
+
+            Une case par outil, et non un blocage en bloc : sur un parc de
+            serveurs les IDE se grisent, la compilation mobile reste offerte.
+            Cocher Android Studio sur un parc ARM ne produit rien — le dire ici
+            évite de le découvrir dans le journal d'installation."""
+            if not vm_tools:
+                return
+            for key, _label, _hint in vm_tools:
+                usable = any(
+                    self._tools_for_vm(vm, (key,)) for vm in self.vms
+                )
+                self.query_one(f"#f_tool_{key}", Checkbox).disabled = not usable
+            picked = self._vm_tools()
+            skipped = sorted(
+                {
+                    vm["name"]
+                    for vm in self.vms
+                    for k in picked
+                    if k not in self._tools_for_vm(vm, picked)
+                }
+            )
+            self.query_one("#toolwarn", Static).update(
+                f"  ⚠ {t('Partly skipped (arch or desktop):')} "
+                f"{', '.join(skipped)}"
+                if skipped
+                else ""
+            )
 
         def _render_mise(self):
             """Grise le choix quand aucune VM retenue n'est servie par mise,
@@ -1676,6 +1778,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value
+            elif str(event.checkbox.id or "").startswith("f_tool_"):
+                # Un IDE de plus, c'est un disque plus grand : le plan doit le
+                # montrer AVANT de déployer, pas après une heure d'installation.
+                self._recompute()
 
         # -- actions ---------------------------------------------------- #
         def action_select_all(self) -> None:
@@ -1734,6 +1840,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 or ctx.get("timezone")
                 or "",
                 "desktop": self._default_desktop(),
+                "vm_tools": self._vm_tools(),
                 "python_provider": self._python_provider(),
                 "app_store": self._app_store(),
                 "install": install,

@@ -46,9 +46,12 @@ Exemples
 from __future__ import annotations
 
 import argparse
+import base64
 import getpass
 import grp
+import gzip
 import hashlib
+import zlib
 import os
 import re
 import shutil
@@ -173,6 +176,13 @@ S390X_DISTROS: tuple[str, ...] = (
     "rocky",
     "fedora",
     "opensuse",
+    # Debian n'a PAS d'image cloud s390x, et n'en aura pas par cette voie :
+    # vérifié sur cloud.debian.org, les arborescences bookworm et trixie ne
+    # publient que amd64, arm64, ppc64el et riscv64. Le port s390x existe
+    # pourtant — « binary-s390x » répond 200 — et debian-installer livre
+    # kernel + initrd pour les deux versions. On y passe donc par
+    # l'INSTALLATEUR au lieu d'un qcow2 tout fait : voir uses_installer().
+    "debian",
 )
 
 # Une distro peut ne publier qu'une PARTIE de ses versions sur une
@@ -184,8 +194,32 @@ S390X_DISTROS: tuple[str, ...] = (
 # (404 sur le miroir maître), la 44 n'est pour l'instant que sur certains
 # miroirs tiers. Seule la 43 est servie par dl.fedoraproject.org — vérifié.
 ARCH_ONLY_VERSIONS: dict[str, dict[str, tuple[str, ...]]] = {
-    "s390x": {"fedora": ("43",)},
+    # Debian sur s390x passe par debian-installer, dont les images sont
+    # publiées pour bookworm et trixie — vérifié. bullseye est écartée : elle
+    # est en fin de vie et son installateur n'a pas été éprouvé ici.
+    "s390x": {"fedora": ("43",), "debian": ("12", "13")},
 }
+
+# Distros installées par debian-installer plutôt que depuis une image cloud.
+# La différence n'est pas cosmétique : pas de qcow2 à convertir, pas de seed
+# cloud-init, un disque VIERGE et un amorçage kernel+initrd.
+INSTALLER_COMBOS: tuple[tuple[str, str], ...] = (("debian", "s390x"),)
+
+# Plancher mémoire de l'installateur : il déplie un système de fichiers entier
+# en RAM, là où une image cloud arrive déjà installée.
+INSTALLER_MIN_RAM = 2048
+
+# kernel.debian / initrd.debian du port s390x. « current » suit les mises à
+# jour de l'installateur sans figer un numéro qui périmerait.
+INSTALLER_URL = (
+    "https://deb.debian.org/debian/dists/{code}/main/installer-s390x"
+    "/current/images/generic/{fichier}"
+)
+
+
+def uses_installer(distro: str, arch: str) -> bool:
+    """Vrai si cette combinaison s'installe par debian-installer."""
+    return (distro, arch) in INSTALLER_COMBOS
 
 
 def arch_versions(distro: str, arch: str, versions) -> list[str]:
@@ -224,6 +258,103 @@ def host_arch() -> str:
         "arm64": "arm64",
         "s390x": "s390x",
     }.get(machine, "amd64")
+
+
+# Nœud de rendu DRM : le fichier que le processus QEMU ouvre pour créer un
+# contexte OpenGL (virgl) et donner la 3D à la VM. Un hôte sans GPU — ou
+# lui-même virtualisé sans GPU transmis — n'expose AUCUN « renderD* », et
+# aucune option de ligne de commande ne peut y suppléer : la VM retombe alors
+# sur le rendu logiciel. On teste donc la présence du nœud, pas nos droits
+# dessus : l'accès est accordé par libvirt au démarrage du domaine (cgroup +
+# étiquette), et un test de lecture sous notre propre compte rejetterait à
+# tort un hôte où seul le groupe « render » entre.
+HOST_DRI_DIR = Path("/dev/dri")
+
+
+def host_render_nodes(directory=HOST_DRI_DIR) -> list[str]:
+    """Nœuds de rendu de l'hôte, triés (ex. ['/dev/dri/renderD128'])."""
+    directory = Path(directory)
+    try:
+        names = sorted(p.name for p in directory.iterdir())
+    except OSError:
+        return []
+    return [str(directory / n) for n in names if n.startswith("renderD")]
+
+
+def host_gpu_node(directory=HOST_DRI_DIR) -> str:
+    """Nœud de rendu à confier à QEMU, ou '' si l'hôte n'a pas de GPU.
+
+    Le premier de la liste : sur une machine à plusieurs cartes, renderD128
+    est le nœud du GPU primaire. --gpu-node force un autre choix.
+    """
+    nodes = host_render_nodes(directory)
+    return nodes[0] if nodes else ""
+
+
+def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
+    """(3D activée, message à dire) pour un mode --gpu et un nœud donnés.
+
+    Séparée du reste pour être vérifiable sans hôte : c'est ici que se décide
+    « par défaut avec GPU s'il existe », et le silence n'est pas une option —
+    une VM en rendu logiciel doit dire pourquoi.
+    """
+    mode = (mode or "auto").lower()
+    if mode == "off":
+        return False, ""
+    if not screen:
+        # Sans écran virtuel, la 3D n'a rien à accélérer. Le dire seulement
+        # quand elle a été demandée explicitement.
+        if mode == "on":
+            return (
+                False,
+                "  GPU : pas d'écran virtuel sur cette VM, 3D ignorée.",
+            )
+        return False, ""
+    if not node:
+        if mode == "on":
+            return (
+                False,
+                "  ⚠ GPU demandé mais l'hôte n'a aucun nœud de rendu"
+                " (/dev/dri/renderD*) : la VM démarrerait sans écran."
+                " Rendu logiciel.",
+            )
+        return (
+            False,
+            "  GPU : aucun sur l'hôte, rendu logiciel (virgl absent).",
+        )
+    return True, f"  GPU : 3D activée par {node} (virtio-gpu + egl-headless)."
+
+
+def gpu_apply(
+    video: list, mode: str, node: str, screen: bool
+) -> tuple[list, list, str]:
+    """(video, arguments 3D, message) — pour virt-install.
+
+    Renvoie le `--video` à garder : celui de la 3D REMPLACE le simple
+    « --video virtio », il ne s'y ajoute pas. Deux --video donneraient deux
+    écrans à la VM, et l'invité n'afficherait le bureau que sur un seul.
+    """
+    use_gpu, message = gpu_decision(mode, node, screen)
+    if not use_gpu:
+        return video, [], message
+    return [], gpu_install_args(node), message
+
+
+def gpu_install_args(node: str) -> list[str]:
+    """Arguments virt-install qui donnent la 3D à la VM.
+
+    Deux pièces indissociables : l'accélération sur le virtio-gpu, et un
+    affichage capable de contexte GL. « egl-headless » joue ce second rôle
+    SANS remplacer la console VNC — il n'ouvre aucun port, il n'existe que
+    pour porter le contexte OpenGL. C'est la recette documentée pour associer
+    3D et VNC, là où <gl enable/> ne vaut que pour SPICE.
+    """
+    return [
+        "--video",
+        "model.type=virtio,model.acceleration.accel3d=on",
+        "--graphics",
+        f"type=egl-headless,gl.rendernode={node}",
+    ]
 
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
@@ -1449,6 +1580,589 @@ def user_groups(distro: str) -> str:
     return "users, wheel"
 
 
+# --------------------------------------------------------------------------- #
+# Guide de connexion (/etc/motd) et identité git de la VM
+# --------------------------------------------------------------------------- #
+# Le catalogue couvre quatre gestionnaires de paquets, et l'opérateur change de
+# distribution d'un déploiement à l'autre. Le guide met SOUS LES YEUX, à la
+# connexion, les commandes de la machine où l'on vient d'entrer : apt là où
+# c'est apt, zypper là où c'est zypper.
+#
+# Le mécanisme est /etc/motd, et il est le même partout. Vérifié dans les images
+# cloud elles-mêmes, montées en lecture seule : sshd y est en « PrintMotd no »
+# et c'est pam_motd qui affiche le fichier. Trois conséquences tenues pour
+# acquises ici :
+#   - il suffit d'ÉCRIRE /etc/motd. Ajouter « PrintMotd yes » afficherait le
+#     guide DEUX FOIS — sshd lit /etc/motd en dur, PAM le lit aussi ;
+#   - « ssh hôte 'commande' » ne l'affiche PAS (openssh coupe les deux chemins
+#     dès qu'une commande est passée), donc le suivi d'installation reste net.
+#     Un « ssh hôte < script » l'afficherait, lui : aucun n'est utilisé ici ;
+#   - openSUSE ajoute son « Have a lot of fun... » APRÈS le guide : il vient de
+#     /usr/lib/motd.d/welcome, que pam_motd lit après le fichier. On le laisse.
+#
+# Ubuntu n'a PAS de /etc/motd (son postinst base-files ne le crée pas, à la
+# différence de Debian) : le fichier est donc créé, pas remplacé. Sur Debian il
+# écrase les cinq lignes de base-files, ce qui ne fâche pas dpkg — /etc/motd n'y
+# est ni un conffile ni même un fichier du paquet.
+
+# Étiquette lisible d'une distribution. openSUSE livre DEUX produits sous un
+# seul nom de distro (Leap, numéroté ; Tumbleweed, rolling) : la version tranche.
+DISTRO_LABELS: dict[str, str] = {
+    "ubuntu": "Ubuntu",
+    "debian": "Debian",
+    "fedora": "Fedora",
+    "almalinux": "AlmaLinux",
+    "rocky": "Rocky Linux",
+    "opensuse": "openSUSE",
+    "arch": "Arch Linux",
+}
+
+# Gestionnaire de paquets de chaque distribution du catalogue.
+DISTRO_PKG: dict[str, str] = {
+    "ubuntu": "apt",
+    "debian": "apt",
+    "fedora": "dnf",
+    "almalinux": "dnf",
+    "rocky": "dnf",
+    "opensuse": "zypper",
+    "arch": "pacman",
+}
+
+
+def distro_label(distro: str, version: str) -> str:
+    """« Ubuntu 24.04 », « openSUSE Leap 16.0 », « Arch Linux »…"""
+    name = DISTRO_LABELS.get(distro, distro)
+    if distro == "opensuse":
+        if version == "tumbleweed":
+            return f"{name} Tumbleweed"
+        return f"{name} Leap {version}"
+    if distro == "arch":
+        # Rolling release : « latest » n'apprend rien à personne.
+        return name
+    return f"{name} {version}"
+
+
+# Aide-mémoire par gestionnaire de paquets : (commande, glose fr, glose en).
+# Chaque ligne vient du manuel amont de l'outil, pas de mémoire, et doit
+# fonctionner TELLE QUELLE — c'est un guide, pas une piste à vérifier.
+#
+# dnf : les formes écrites ici valent pour dnf4 (AlmaLinux/Rocky 9 ET 10, tous
+# deux en dnf 4.x) comme pour dnf5 (Fedora 41+). Les raccourcis de dnf4 ont
+# disparu de dnf5 : « dnf history » seul, « grouplist », « whatprovides »,
+# « list installed » sans tirets y échouent tous. Les formes longues passent
+# partout, et ne coûtent rien.
+PKG_GUIDE: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "apt": (
+        ("sudo apt update", "rafraîchir l'index", "refresh the index"),
+        (
+            "sudo apt upgrade",
+            "mettre à jour le système",
+            "upgrade the system",
+        ),
+        ("sudo apt install <paquet>", "installer", "install"),
+        ("sudo apt remove <paquet>", "retirer", "remove"),
+        ("apt search <motif>", "chercher", "search"),
+        ("apt show <paquet>", "détails d'un paquet", "package details"),
+        ("apt list --installed", "lister l'installé", "list installed"),
+        ("sudo apt autoremove", "purger les orphelins", "purge orphans"),
+    ),
+    "dnf": (
+        (
+            "sudo dnf upgrade",
+            "mettre à jour le système",
+            "upgrade the system",
+        ),
+        ("sudo dnf install <paquet>", "installer", "install"),
+        ("sudo dnf remove <paquet>", "retirer", "remove"),
+        ("dnf check-update", "mises à jour disponibles", "available updates"),
+        ("dnf search <motif>", "chercher", "search"),
+        ("dnf info <paquet>", "détails d'un paquet", "package details"),
+        ("dnf list --installed", "lister l'installé", "list installed"),
+        ("dnf history list", "journal des opérations", "transaction log"),
+    ),
+    "pacman": (
+        (
+            "sudo pacman -Syu",
+            "mettre à jour le système",
+            "upgrade the system",
+        ),
+        # Jamais « -Sy » seul : la base de paquets serait à jour et le système
+        # non, donc une installation tirerait des binaires liés à des
+        # bibliothèques absentes. Arch ne supporte que la mise à jour complète,
+        # d'où la forme « -Syu <paquet> » pour installer.
+        (
+            "sudo pacman -Syu <paquet>",
+            "installer (jamais « -Sy » seul)",
+            "install (never a bare « -Sy »)",
+        ),
+        ("sudo pacman -Rns <paquet>", "retirer", "remove"),
+        ("pacman -Ss <motif>", "chercher", "search"),
+        ("pacman -Si <paquet>", "détails d'un paquet", "package details"),
+        ("pacman -Q", "lister l'installé", "list installed"),
+        ("pacman -Qdtq", "orphelins", "orphans"),
+        ("sudo pacman -Sc", "nettoyer le cache", "clean the cache"),
+    ),
+}
+
+
+def zypper_guide(rolling: bool) -> tuple[tuple[str, str, str], ...]:
+    """Aide-mémoire zypper. `rolling` : Tumbleweed plutôt que Leap.
+
+    La ligne de mise à jour n'est PAS la même, et ce n'est pas une préférence de
+    style : « up » sur Leap, dont la version est figée, et « dup » sur
+    Tumbleweed, où chaque mise à jour est un instantané complet de la
+    distribution. La doc amont est catégorique — « on Tumbleweed you will never
+    have to use zypper-up » — et « up » y laisse traîner des paquets retirés des
+    dépôts, donc des dépendances bancales. Le déploiement sait laquelle des deux
+    il installe : autant que le guide le sache aussi.
+    """
+    upgrade = (
+        ("sudo zypper dup", "mettre à jour (rolling)", "upgrade (rolling)")
+        if rolling
+        else (
+            "sudo zypper up",
+            "mettre à jour le système",
+            "upgrade the system",
+        )
+    )
+    return (
+        ("sudo zypper ref", "rafraîchir les dépôts", "refresh the repos"),
+        upgrade,
+        ("sudo zypper in <paquet>", "installer", "install"),
+        ("sudo zypper rm <paquet>", "retirer", "remove"),
+        ("zypper se <motif>", "chercher", "search"),
+        ("zypper info <paquet>", "détails d'un paquet", "package details"),
+        ("zypper se -i", "lister l'installé", "list installed"),
+        ("zypper lu", "mises à jour disponibles", "available updates"),
+        (
+            "sudo zypper ps -s",
+            "à redémarrer après MAJ",
+            "restart after upgrade",
+        ),
+    )
+
+
+# Lignes valables partout, quelle que soit la distribution.
+SYSTEM_GUIDE: tuple[tuple[str, str, str], ...] = (
+    ("hostname -I", "adresse IP de la VM", "the VM's IP address"),
+    ("df -h /", "espace disque", "disk space"),
+    ("free -h", "mémoire", "memory"),
+)
+# Ajoutées SEULEMENT quand il n'y a pas de section ERPLibre : celle-ci montre
+# déjà les deux commandes, sur un service qui existe vraiment. Sur une VM
+# déployée sans ERPLibre, elles manqueraient.
+SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
+    ("systemctl status <service>", "état d'un service", "a service's state"),
+    ("journalctl -u <service> -f", "suivre son journal", "follow its log"),
+)
+
+
+# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
+# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
+# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
+# active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
+# rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
+# d'où le « --now », qui démarre.
+DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
+    (
+        "systemctl status display-manager",
+        "état du bureau graphique",
+        "graphical desktop state",
+    ),
+    (
+        "sudo systemctl enable --now gdm",
+        "le démarrer (« --now » : enable seul ne suffit pas)",
+        'start it ("--now": enable alone does nothing)',
+    ),
+)
+
+
+def erplibre_guide(
+    el_dir: str, el_make: str = "", editor: str = ""
+) -> tuple[tuple[str, str, str], ...]:
+    """Commandes ERPLibre de la VM.
+
+    `el_dir` : racine de l'installation (~/git/erplibre en développement,
+    /opt/erplibre en production). Toutes les autres lignes sont relatives à ce
+    répertoire, d'où le « cd » en tête.
+
+    `el_make` : cible make qui a installé la VM, réutilisée pour la mettre à
+    jour. Vide, le guide s'arrête à « git pull » plutôt que d'annoncer une cible
+    qui n'est pas celle du profil retenu.
+
+    `editor` : éditeur de l'hôte, quand il a pu être déterminé. Sans lui on
+    nomme le fichier de configuration sans nommer d'éditeur — « vi » n'est pas
+    garanti sur toutes les images cloud, et un guide qui propose une commande
+    absente est pire que muet.
+    """
+    rows = [
+        (f"cd {el_dir}", "aller au dépôt", "go to the checkout"),
+        ("make todo", "menu ERPLibre (TODO)", "ERPLibre menu (TODO)"),
+    ]
+    if editor:
+        rows.append(
+            (
+                f"{editor} config.conf",
+                "éditer le serveur",
+                "edit the server",
+            )
+        )
+    else:
+        rows.append(
+            (
+                "config.conf",
+                "configuration du serveur",
+                "the server's config",
+            )
+        )
+    rows += [
+        (
+            "sudo systemctl restart erplibre",
+            "redémarrer le serveur",
+            "restart the server",
+        ),
+        ("systemctl status erplibre", "état du serveur", "server state"),
+        ("journalctl -u erplibre -f", "suivre son journal", "follow its log"),
+        ("./run.sh -d <base>", "lancer à la main", "run it by hand"),
+        (
+            "./script/addons/update_addons_all.sh <base>",
+            "mise à jour des modules",
+            "update the modules",
+        ),
+        (
+            f"git pull && make {el_make}" if el_make else "git pull",
+            (
+                "mise à jour ERPLibre/Odoo"
+                if el_make
+                else "mettre à jour le dépôt"
+            ),
+            "update ERPLibre/Odoo" if el_make else "update the checkout",
+        ),
+        ("http://<ip>:8069", "interface web", "web interface"),
+    ]
+    return tuple(rows)
+
+
+# Plancher de largeur de l'encadré. Au-dessus, il SUIT le contenu : un cadre
+# plus étroit que ce qu'il encadre serait pire qu'un cadre large. C'est au
+# contenu de rester sous 80 colonnes — un guide qui se replie sur un terminal
+# standard est illisible, et un test le vérifie pour les sept distributions.
+MOTD_MIN_WIDTH = 62
+
+
+def _pick(pair: tuple[str, str], lang: str) -> str:
+    """Membre fr ou en d'un couple de libellés."""
+    return pair[1] if lang == "en" else pair[0]
+
+
+def gloss_col(*blocks: tuple[tuple[str, str, str], ...]) -> int:
+    """Colonne où commencent les gloses de ces blocs : la commande la plus
+    longue, plus deux espaces."""
+    return max(len(cmd) for rows in blocks for cmd, _fr, _en in rows) + 2
+
+
+def motd_block(
+    title: str, rows: tuple[tuple[str, str, str], ...], lang: str, col: int
+) -> list[str]:
+    """Un bloc du guide : un titre, puis « commande <espaces> glose » alignées.
+
+    `col` est donné plutôt que déduit du bloc : les blocs de commandes courtes
+    partagent une colonne commune, sans quoi le bloc « système » se tasserait à
+    treize caractères là où celui des paquets en occupe trente. Le bloc
+    ERPLibre, lui, garde la sienne — sa commande la plus longue fait
+    43 caractères, et l'imposer au guide entier ferait déborder les lignes de
+    80 colonnes.
+    """
+    out = [f"  {title}"]
+    for cmd, gloss_fr, gloss_en in rows:
+        out.append(f"    {cmd.ljust(col)}{_pick((gloss_fr, gloss_en), lang)}")
+    return out
+
+
+def build_motd(
+    distro: str,
+    version: str,
+    arch: str,
+    lang: str = "fr",
+    el_dir: str = "",
+    el_make: str = "",
+    editor: str = "",
+    desktop: bool = False,
+) -> str:
+    """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
+
+    La section ERPLibre n'apparaît qu'avec `el_dir` : une VM déployée sans
+    installation ne doit pas annoncer un dépôt et un service qui n'existent pas.
+    Le bloc « Bureau » suit la même règle avec `desktop` : sur un serveur, ces
+    deux commandes ne mèneraient à aucune unité.
+    """
+    body: list[str] = []
+    mgr = DISTRO_PKG.get(distro, "")
+    if mgr == "zypper":
+        pkg_rows = zypper_guide(version == "tumbleweed")
+    else:
+        pkg_rows = PKG_GUIDE.get(mgr, ())
+    sys_rows = SYSTEM_GUIDE if el_dir else SYSTEM_GUIDE + SERVICE_GUIDE
+    narrow = gloss_col(pkg_rows or sys_rows, sys_rows)
+    if pkg_rows:
+        body += motd_block(
+            f"{_pick(('Paquets', 'Packages'), lang)} — {mgr}",
+            pkg_rows,
+            lang,
+            narrow,
+        )
+    if el_dir:
+        body.append("")
+        el_rows = erplibre_guide(el_dir, el_make, editor)
+        body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
+    if desktop:
+        body.append("")
+        body += motd_block(
+            _pick(("Bureau", "Desktop"), lang),
+            DESKTOP_GUIDE,
+            lang,
+            gloss_col(DESKTOP_GUIDE),
+        )
+    body.append("")
+    body += motd_block(
+        _pick(("Système", "System"), lang), sys_rows, lang, narrow
+    )
+    title = f"ERPLibre · {distro_label(distro, version)} · {arch}"
+    width = max(
+        MOTD_MIN_WIDTH, max([len(line) for line in body] + [len(title)]) + 4
+    )
+    head = [
+        "╭" + "─" * (width - 2) + "╮",
+        "│ " + title.ljust(width - 4) + " │",
+        "╰" + "─" * (width - 2) + "╯",
+    ]
+    foot = [
+        "",
+        "  "
+        + _pick(
+            (
+                "Guide écrit au déploiement par",
+                "Guide written at deploy time by",
+            ),
+            lang,
+        )
+        + " script/qemu/deploy_qemu.py",
+    ]
+    return "\n".join(head + [""] + body + foot) + "\n"
+
+
+def invoking_home() -> Path:
+    """Foyer de l'utilisateur qui a lancé le script, sudo compris.
+
+    Le script tourne sous sudo : `Path.home()` y renvoie /root, où il n'y a
+    aucune configuration git à reprendre.
+    """
+    try:
+        return Path(os.path.expanduser(f"~{invoking_user()}"))
+    except (KeyError, RuntimeError):
+        return Path.home()
+
+
+def _git_global(key: str, home: Path) -> str:
+    """Valeur d'une clé de la configuration git GLOBALE de `home`.
+
+    HOME est forcé plutôt que de lire ~/.gitconfig à la main : git accepte DEUX
+    emplacements pour sa configuration globale (~/.gitconfig et
+    ~/.config/git/config), et lui poser la question évite de trancher à sa place.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "config", "--global", "--get", key],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=dict(os.environ, HOME=str(home)),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return res.stdout.strip() if res.returncode == 0 else ""
+
+
+def host_editor(home: Path) -> str:
+    """Éditeur que l'hôte utilise, dans l'ordre où git le résout lui-même.
+
+    core.editor, puis $VISUAL/$EDITOR, puis /usr/bin/editor — le lien des
+    alternatives Debian, qui est LA réponse à « quel éditeur ce système
+    utilise-t-il » quand rien n'est configuré. Ailleurs ce lien n'existe pas et
+    on ne devine pas : mieux vaut ne rien écrire que d'imposer un éditeur.
+
+    GIT_EDITOR est volontairement IGNORÉ. Les outils qui appellent git sans
+    interaction le posent à « true » pour empêcher toute ouverture d'éditeur ;
+    le recopier dans la VM y désactiverait silencieusement l'éditeur de git.
+    """
+    editor = _git_global("core.editor", home)
+    if not editor:
+        editor = os.environ.get("VISUAL") or os.environ.get("EDITOR") or ""
+    if not editor:
+        try:
+            editor = Path("/usr/bin/editor").resolve(strict=True).name
+        except OSError:
+            editor = ""
+    return editor.strip()
+
+
+def editor_binary(editor: str) -> str:
+    """Binaire seul d'une commande d'éditeur (« code --wait » -> « code »).
+
+    Le guide affiche le binaire, pas la commande complète : les options de git
+    (attente de fermeture, fichier temporaire) n'ont pas de sens pour ouvrir un
+    fichier de configuration à la main.
+    """
+    if not editor.strip():
+        return ""
+    return editor.split()[0].rsplit("/", 1)[-1]
+
+
+# Éditeurs que la VM sait se donner : binaire de l'hôte -> (paquet, binaire dans
+# la VM). Le nom du paquet est le MÊME sur apt, dnf, zypper et pacman pour ces
+# trois-là — vérifié pour chacun ; « vi » est fourni par vim, et le paquet
+# neovim installe « nvim ».
+#
+# Cette table est la SEULE autorité, et elle décide de trois choses à la fois :
+# le paquet que l'installation ajoute, la commande que le guide affiche, et la
+# valeur de core.editor dans la VM. Les tenir liées est le point : un
+# « core.editor = code » pointant un binaire absent fait échouer « git commit »
+# (« cannot run code »), et un guide qui nomme une commande absente est pire que
+# muet. Un éditeur hors de cette table est donc ignoré — pas deviné.
+EDITOR_PACKAGES: dict[str, tuple[str, str]] = {
+    "vim": ("vim", "vim"),
+    "vi": ("vim", "vim"),
+    "nvim": ("neovim", "nvim"),
+    "neovim": ("neovim", "nvim"),
+    "nano": ("nano", "nano"),
+}
+
+
+def vm_editor(home: Path) -> tuple[str, str]:
+    """(paquet, binaire) de l'éditeur à donner à la VM, ou deux chaînes vides."""
+    return EDITOR_PACKAGES.get(editor_binary(host_editor(home)), ("", ""))
+
+
+def build_gitconfig(name: str, email: str, editor: str) -> str:
+    """~/.gitconfig de la VM. Chaîne vide si l'hôte n'a rien à transmettre.
+
+    Une VM de développement sert à produire des commits, et un commit sans
+    identité est refusé par git (« Please tell me who you are ») : reprendre
+    celle de l'hôte évite de la retaper sur chaque machine, et surtout évite les
+    commits signés d'un « erplibre@<nom-de-vm> » que personne ne reconnaît.
+
+    INDENTATION EN ESPACES, jamais en tabulation. git accepte les deux, mais ce
+    texte part dans un scalaire bloc YAML où une tabulation en tête de ligne est
+    une erreur FATALE : cloud-init rejette alors le user-data en entier et la VM
+    démarre sans utilisateur ni clé SSH, donc inaccessible.
+    """
+    lines: list[str] = []
+    if name or email:
+        lines.append("[user]")
+        if name:
+            lines.append(f"    name = {name}")
+        if email:
+            lines.append(f"    email = {email}")
+    if editor:
+        lines += ["[core]", f"    editor = {editor}"]
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+def write_files_lines(
+    entries: list[tuple[str, str, str, str]],
+) -> list[str]:
+    """Bloc « write_files » de cloud-init pour des fichiers TEXTE.
+
+    entries : (chemin, mode, contenu, propriétaire) ; propriétaire vide = root.
+
+    Deux règles YAML dont le non-respect coûte TOUTE la configuration — une
+    erreur de syntaxe fait rejeter le user-data en ENTIER, sans message sur la
+    console : la VM démarre nue, sans utilisateur ni clé SSH, inaccessible.
+      - Le mode est une CHAÎNE, entre guillemets. « permissions: 644 » non quoté
+        est lu comme 644 DÉCIMAL et appliqué tel quel, soit 0o1204 soit le bit
+        setuid allumé et des droits absurdes, sans le moindre avertissement.
+      - Le contenu est un scalaire bloc « | » indenté de six espaces, dont la
+        PREMIÈRE ligne non vide fixe l'indentation de référence : les suivantes
+        doivent être au moins aussi indentées. Les caractères d'encadrement
+        UTF-8 passent sans échappement.
+
+    Un propriétaire impose « defer: true » : write_files tourne à l'étape init,
+    AVANT la création des utilisateurs, donc le chown vers le compte de la VM
+    échouerait. Reporté à l'étape finale, il passe — et le suivi d'installation
+    attend de toute façon la fin de cloud-init avant de se connecter.
+    """
+    out = ["write_files:"]
+    for path, mode, content, owner in entries:
+        out.append(f"  - path: {path}")
+        out.append(f"    permissions: '{mode}'")
+        if owner:
+            out.append(f"    owner: {owner}:{owner}")
+            out.append("    defer: true")
+        out.append("    content: |")
+        # textwrap.indent laisse les lignes vides VIDES : six espaces résiduels
+        # survivraient au scalaire bloc et se retrouveraient dans le fichier,
+        # invisibles en revue et bien présents à l'écran.
+        out += textwrap.indent(content.rstrip("\n"), "      ").split("\n")
+    return out
+
+
+# Préfixe des fichiers d'accueil embarqués dans l'initrd de l'installateur.
+# Un préfixe, et non un répertoire : le cpio est déplié séquentiellement et les
+# répertoires parents manquants ne sont pas créés — une entrée
+# « erplibre/etc-motd » sans entrée « erplibre » ferait échouer le dépliage de
+# l'initrd ENTIER, donc l'installation. Les fichiers restent à la racine.
+INSTALLER_GUIDE_PREFIX = "erplibre-"
+
+
+def installer_guide_name(path: str) -> str:
+    """Nom dans l'initrd du fichier destiné au chemin `path` de la VM.
+
+    « /etc/motd » -> « erplibre-etc-motd ». Un nom PLAT, dérivé du chemin : les
+    deux fonctions qui s'en servent (le preseed qui copie, l'initrd qui range)
+    le calculent de la même façon, donc elles ne peuvent pas diverger.
+    """
+    return INSTALLER_GUIDE_PREFIX + path.strip("/").replace("/", "-")
+
+
+def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
+    """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
+
+    Une seule source pour les deux voies de déploiement — cloud-init l'écrit
+    par write_files, l'installateur Debian par son late_command.
+    """
+    home = invoking_home()
+    editor = "" if args.no_git_identity else vm_editor(home)[1]
+    files = [
+        (
+            "/etc/motd",
+            "0644",
+            build_motd(
+                args.distro,
+                args.version,
+                args.arch,
+                args.lang,
+                args.erplibre_dir,
+                args.erplibre_make,
+                editor,
+                bool(args.desktop),
+            ),
+            "",
+        )
+    ]
+    if args.no_git_identity:
+        return files
+    gitconfig = build_gitconfig(
+        _git_global("user.name", home),
+        _git_global("user.email", home),
+        editor,
+    )
+    if gitconfig:
+        files.append(
+            (f"/home/{args.user}/.gitconfig", "0644", gitconfig, args.user)
+        )
+    return files
+
+
 def build_cloud_config(
     args: argparse.Namespace, pw_hash: str | None, ssh_keys: list[str]
 ) -> str:
@@ -1490,6 +2204,11 @@ def build_cloud_config(
         f"  layout: {args.keyboard_layout}",
         f"  variant: {args.keyboard_variant}",
     ]
+    # Guide de connexion et identité git : posés par cloud-init, donc présents
+    # dès le PREMIER boot. C'est le point : ils sont là avant l'installation
+    # d'ERPLibre, et encore là si elle échoue — le moment où l'on se connecte
+    # justement à la main.
+    lines += write_files_lines(guide_files(args))
     # apt update/upgrade désactivés par défaut : sur un réseau lent/instable
     # ils font pendre cloud-init au 1er boot (et retardent la dispo SSH). SSH
     # est déjà présent dans les images cloud ; on l'active via runcmd sans apt.
@@ -1679,6 +2398,376 @@ def prepare_disk(
     runner.run(["qemu-img", "resize", str(disk), size], privileged=True)
 
 
+def _ip_taken(ip: str) -> bool:
+    """Adresse déjà occupée, même par une machine qui ne parle pas SSH.
+
+    Un simple essai sur le port 22 ne suffit pas : il laisse passer toute
+    machine éteinte au moment du choix, ou dont sshd est filtré. Vécu — une
+    adresse attribuée à une VM Debian neuve appartenait déjà à une machine du
+    parc, et l'installation ERPLibre s'est déroulée SUR CETTE DERNIÈRE. Le
+    journal ne le disait qu'à demi-mot : « git is already the newest
+    version », impossible sur un système que d-i vient de poser.
+
+    On interroge donc trois choses : le voisinage ARP de l'hôte, qui connaît
+    ce qui a parlé récemment ; ICMP, qui répond même sans service ; puis SSH.
+    """
+    try:
+        neigh = subprocess.run(
+            ["ip", "neigh", "show", ip],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout
+        # « FAILED » signifie justement que personne n'a répondu.
+        if ip in neigh and "FAILED" not in neigh:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        if subprocess.run(
+            ["ping", "-c", "1", "-W", "1", ip],
+            capture_output=True,
+            timeout=5,
+        ).returncode == 0:
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return _ip_reachable(ip, port=22, timeout=1.5)
+
+
+def static_net_plan(net: str | None, use_sudo: bool, name: str) -> dict[str, str] | None:
+    """Adresse fixe libre pour une VM installée par debian-installer.
+
+    L'initrd s390x ne contient QUE « netcfg-static » : le journal de d-i
+    montre « Menu item 'netcfg-static' selected », jamais netcfg-dhcp, puis
+    « Taking down interface enc1 ». Aucun DHCP n'est tenté — c'est la
+    convention IBM Z, où la configuration réseau se donne au parmfile. Il
+    faut donc fournir une adresse, et elle doit être libre.
+
+    On la prend en HAUT de la plage : dnsmasq attribue depuis le bas, donc
+    les collisions avec un bail futur sont les plus improbables là.
+    """
+    if not net:
+        return None
+    cmd = ["virsh", "-c", LIBVIRT_URI, "net-dumpxml", net]
+    if use_sudo:
+        cmd.insert(0, "sudo")
+    try:
+        xml = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=20
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
+    if not m:
+        return None
+    gateway, netmask = m.group(1), m.group(2)
+    base = gateway.rsplit(".", 1)[0]
+    taken = {gateway}
+    lease_cmd = ["virsh", "-c", LIBVIRT_URI, "net-dhcp-leases", net]
+    if use_sudo:
+        lease_cmd.insert(0, "sudo")
+    try:
+        out = subprocess.run(
+            lease_cmd, capture_output=True, text=True, timeout=20
+        ).stdout
+        taken |= set(re.findall(r"(\d+\.\d+\.\d+\.\d+)/\d+", out))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # Départ DÉTERMINISTE, tiré du nom de la VM. Un simple « première libre
+    # en partant du haut » donne la MÊME adresse à deux VM déployées en
+    # parallèle : aucune des deux n'est encore montée quand l'autre cherche,
+    # donc aucune ne voit l'autre. Vécu — debian-12 et debian-13 ont tous
+    # deux pris .250 et se sont disputé l'adresse, une seule survivant.
+    # Le nom, lui, diffère toujours, et le tirage reste stable d'un
+    # redéploiement à l'autre.
+    start = zlib.crc32(name.encode()) % 50
+    for offset in range(50):
+        last = 200 + (start + offset) % 50
+        ip = f"{base}.{last}"
+        if ip in taken or _ip_taken(ip):
+            continue
+        return {
+            "ip": ip,
+            "netmask": netmask,
+            "gateway": gateway,
+            "dns": gateway,
+        }
+    return None
+
+
+def build_preseed(
+    args: argparse.Namespace,
+    pw_hash: str | None,
+    ssh_keys: list[str],
+    static: dict[str, str] | None = None,
+) -> str:
+    """Preseed debian-installer équivalent au cloud-config des autres distros.
+
+    Il doit couvrir EXACTEMENT ce que cloud-init fait ailleurs : nom d'hôte,
+    utilisateur, clés SSH, sudo sans mot de passe, fuseau, paquets de base.
+    Tout ce qui manque ici devient une question posée à l'écran, et
+    l'installation s'arrête sur une console que personne ne regarde.
+
+    « priority=critical » suffit à ne pas poser les questions restantes ; il
+    ne dispense PAS de répondre à celles qui n'ont pas de défaut, d'où le
+    partitionnement et le miroir écrits explicitement.
+    """
+    user = args.user
+    # Sans mot de passe utilisable, d-i s'arrête sur la création du compte :
+    # « ! » est un hachage volontairement invalide — la connexion se fera par
+    # clé, comme le cloud-config le prévoit lui aussi.
+    crypted = pw_hash or "!"
+    lines = [
+        "d-i debian-installer/locale string en_US.UTF-8",
+        "d-i keyboard-configuration/xkb-keymap select us",
+        # Question propre à s390x, posée par le udeb « s390-netdevice » et
+        # inexistante ailleurs : le matériel Z offre ctc, qeth, iucv ou
+        # virtio, et d-i ne devine pas. Elle n'a AUCUNE valeur par défaut,
+        # donc « priority=critical » ne la saute pas — l'installation se
+        # figeait dessus, sur le premier choix de la liste (ctc), en
+        # n'affichant rien d'autre qu'un écran bleu. Mesuré.
+        "d-i s390-netdevice/choose_networktype select virtio",
+        # « auto » évite la question du choix d'interface : sous virtio-ccw
+        # elle s'appelle enc1 et non eth0, et le nom n'est pas devinable.
+        f"d-i netcfg/get_hostname string {args.hostname}",
+        # Adresse fixe : sans elle, netcfg-static pose la question a l'ecran
+        # et l'installation s'arrete la, indefiniment.
+        *(
+            [
+                "d-i netcfg/disable_autoconfig boolean true",
+                "d-i netcfg/disable_dhcp boolean true",
+                f"d-i netcfg/get_ipaddress string {static['ip']}",
+                f"d-i netcfg/get_netmask string {static['netmask']}",
+                f"d-i netcfg/get_gateway string {static['gateway']}",
+                f"d-i netcfg/get_nameservers string {static['dns']}",
+                "d-i netcfg/confirm_static boolean true",
+            ]
+            if static
+            else []
+        ),
+        "d-i netcfg/get_domain string localdomain",
+        "d-i netcfg/hostname string " + args.hostname,
+        "d-i mirror/country string manual",
+        "d-i mirror/http/hostname string deb.debian.org",
+        "d-i mirror/http/directory string /debian",
+        "d-i mirror/http/proxy string",
+        "d-i passwd/root-login boolean false",
+        "d-i passwd/user-fullname string ERPLibre",
+        f"d-i passwd/username string {user}",
+        f"d-i passwd/user-password-crypted password {crypted}",
+        # network-console : sur IBM Z, d-i propose systématiquement de
+        # poursuivre par SSH — la console y est historiquement limitée. Il
+        # refuse un mot de passe vide et bloque l'installation non assistée.
+        # Ce secret ne vit QUE le temps de l'installateur, sur le réseau
+        # libvirt, et disparaît avec lui : il ne donne accès à rien ensuite.
+        "d-i network-console/password password erplibre",
+        "d-i network-console/password-again password erplibre",
+        "d-i clock-setup/utc boolean true",
+        f"d-i time/zone string {args.timezone}",
+        "d-i clock-setup/ntp boolean true",
+        # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
+        # d-i pose quand même la question quand rien ne le désigne.
+        # Ce que partman voit reellement, ecrit sur la console : « No root
+        # file system is defined » ne distingue pas « disque absent » de
+        # « recette non appliquee », et les deux se corrigent differemment.
+        # Toute commande preseedee DOIT rendre 0 : d-i bloque sur « Failed to
+        # run preseeded command » sinon, et le diagnostic devient le blocage.
+        # Vecu — un « ls /dev/dasd* » sans correspondance suffisait.
+        "d-i partman/early_command string cat /proc/partitions > /dev/console"
+        " ; ls /lib/partman/automatically_partition/ > /dev/console 2>&1"
+        " ; true",
+        # partman-auto RECLAME explicitement : il n'est pas tire d'office sur
+        # s390x, ou la voie attendue est le partitionnement DASD manuel.
+        # Mesure dans l'installateur : « /lib/partman/automatically_partition/
+        # No such file or directory », et la liste des udebs recuperes montre
+        # partman-base, -utils, -partitioning, -target… mais jamais -auto.
+        # Sans lui, aucune recette ne s'applique et partman s'arrete sur
+        # « No root file system is defined ».
+        "d-i anna/choose_modules string partman-auto",
+        "d-i partman-auto/disk string /dev/vda",
+        "d-i partman-auto/method string regular",
+        "d-i partman-auto/choose_recipe select atomic",
+        "d-i partman/default_filesystem string ext4",
+        "d-i partman-partitioning/confirm_write_new_label boolean true",
+        "d-i partman/choose_partition select finish",
+        "d-i partman/confirm boolean true",
+        "d-i partman/confirm_nooverwrite boolean true",
+        "tasksel tasksel/first multiselect ssh-server",
+        "d-i pkgsel/include string openssh-server sudo python3"
+        " qemu-guest-agent ca-certificates",
+        "d-i pkgsel/upgrade select none",
+        "popularity-contest popularity-contest/participate boolean false",
+        "d-i finish-install/reboot_in_progress note",
+    ]
+    # late_command : tout ce que le preseed ne sait pas exprimer. « in-target »
+    # exécute DANS le système installé ; les redirections, elles, restent dans
+    # l'installateur et doivent donc viser /target.
+    post = [
+        f"in-target usermod -aG sudo {user}",
+        f"echo '{user} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/{user}",
+        f"chmod 440 /target/etc/sudoers.d/{user}",
+    ]
+    if ssh_keys:
+        post.append(f"mkdir -p /target/home/{user}/.ssh")
+        for key in ssh_keys:
+            post.append(
+                f"echo '{key}' >> /target/home/{user}/.ssh/authorized_keys"
+            )
+        post += [
+            f"in-target chown -R {user}:{user} /home/{user}/.ssh",
+            f"chmod 700 /target/home/{user}/.ssh",
+            f"chmod 600 /target/home/{user}/.ssh/authorized_keys",
+        ]
+    # Guide de connexion et identité git : les mêmes fichiers que sur les autres
+    # distributions, mais ici il n'y a pas de cloud-init pour les écrire. Ils
+    # voyagent DANS l'initrd, à côté du preseed, et le late_command ne fait que
+    # les copier.
+    #
+    # Pourquoi pas leur contenu dans le preseed : la valeur d'une question tient
+    # sur UNE ligne, et celle-ci fait déjà 1165 caractères avec une clé RSA-4096.
+    # Y ajouter 1,2 Kio de guide — encodé ou en trente echo, la longueur est la
+    # même — doublerait une ligne dont aucune limite n'est documentée pour
+    # cdebconf. Et une troncature ne coûterait pas le guide : elle couperait le
+    # late_command au milieu, donc ni sudoers ni clé SSH, donc une VM
+    # inaccessible.
+    for path, mode, _content, owner in guide_files(args):
+        src = "/" + installer_guide_name(path)
+        post.append(f"cp {src} /target{path} || true")
+        post.append(f"chmod {mode} /target{path} || true")
+        if owner:
+            post.append(f"in-target chown {owner}:{owner} {path} || true")
+    # Le code de sortie du late_command est celui de sa DERNIÈRE commande, et
+    # d-i s'arrête sur « Failed to run preseeded command » dès qu'il n'est pas
+    # nul. Sans ce « true », un chmod qui échoue bloque l'installation sur un
+    # écran que personne ne regarde — c'est déjà la garde de
+    # partman/early_command, quelques lignes plus haut.
+    post.append("true")
+    # Diagnostic réseau, écrit sur la console AVANT que netcfg ne décide.
+    # netcfg n'essaie aucun DHCP sur s390x et tombe droit sur l'adressage
+    # statique ; ses propres traces vont dans le syslog INTERNE de d-i, qu'on
+    # ne peut lire qu'en ouvrant un shell à la main. Ces quelques lignes
+    # atterrissent, elles, dans le journal de console — donc dans un fichier
+    # qu'il suffit de lire après coup. La sonde DHCP est celle de busybox,
+    # bornée à trois essais, et ne configure rien de durable.
+    early = [
+        # LE correctif, pas un diagnostic : on ALLUME la carte.
+        #
+        # Mesuré dans l'installateur : « enc1: <BROADCAST,MULTICAST> …
+        # qdisc noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel
+        # obtenait un bail en deux secondes. Le réseau n'a jamais été en
+        # cause ; netcfg teste l'état du lien AVANT d'essayer, ne le voit
+        # pas, saute le DHCP et demande une adresse statique.
+        #
+        # Sur s390x c'est le udeb s390-netdevice qui active le périphérique.
+        # En preseedant sa question pour qu'il ne s'affiche plus, on
+        # court-circuite aussi cette activation. On la refait donc ici, avant
+        # que netcfg ne décide.
+        "ip link set enc1 up > /dev/console 2>&1",
+        "echo '=== EL: enc1 activee avant netcfg ===' > /dev/console",
+        "ip -o link show enc1 > /dev/console 2>&1",
+        # Même garde que partman/early_command : « ip -o link show » rend 1
+        # quand l'interface n'existe pas, et le code de sortie du early_command
+        # est celui de sa dernière commande. Une ligne de DIAGNOSTIC bloquait
+        # donc l'installation qu'elle devait servir à comprendre.
+        "true",
+    ]
+    lines.append("d-i preseed/early_command string " + " ; ".join(early))
+    lines.append("d-i preseed/late_command string " + " ; ".join(post))
+    return "\n".join(lines) + "\n"
+
+
+def build_installer_initrd(
+    preseed: str,
+    initrd_src: Path,
+    out: Path,
+    runner: Runner,
+    guide: list[tuple[str, str, str, str]] | None = None,
+) -> None:
+    """Glisse le preseed DANS l'initrd de l'installateur.
+
+    Servir le preseed en HTTP est l'autre voie documentée, mais elle ajoute un
+    serveur à faire vivre pendant toute l'installation et une dépendance à
+    l'ordre d'obtention de l'adresse. Embarquer le fichier ne dépend de rien :
+    d-i lit « /preseed.cfg » à la racine de l'initrd avant même le réseau.
+
+    La méthode est celle de la documentation Debian — décompresser, ajouter le
+    fichier au cpio, recompresser — et non une concaténation d'archives, que
+    le noyau accepte mais que d-i ne parcourt pas de la même façon.
+
+    `guide` : les fichiers d'accueil de la VM (guide de connexion, identité
+    git), rangés à côté du preseed. L'initrd EST le système de fichiers de
+    l'installateur : le late_command n'a plus qu'à les copier vers /target,
+    sans avoir à transporter leur contenu dans une valeur de preseed.
+    """
+    if runner.dry_run:
+        print(f"[dry-run] preseed -> {out}")
+        for path, _mode, _content, _owner in guide or []:
+            print(f"[dry-run]   + {installer_guide_name(path)} -> {path}")
+        return
+    if not shutil.which("cpio"):
+        sys.exit(
+            "cpio est requis pour embarquer le preseed dans l'initrd.\n"
+            "  Debian/Ubuntu : sudo apt-get install cpio"
+        )
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        (work / "preseed.cfg").write_text(preseed, encoding="utf-8")
+        members = ["preseed.cfg"]
+        for path, _mode, content, _owner in guide or []:
+            name = installer_guide_name(path)
+            (work / name).write_text(content, encoding="utf-8")
+            members.append(name)
+        # network-console DÉSACTIVÉ, par le levier que d-i prévoit pour cela.
+        #
+        # Sur IBM Z, d-i propose de poursuivre par SSH — la console y est
+        # historiquement limitée. Ce n'est pas une question à laquelle
+        # répondre : le composant démarre sshd puis ATTEND une connexion de
+        # l'utilisateur « installer », indéfiniment. Preseeder son mot de
+        # passe le fait avancer d'un écran, pas davantage — mesuré.
+        #
+        # Un composant dont « .isinstallable » sort en erreur est retiré du
+        # menu. L'original le fait déjà quand sshd tourne ; on le remplace par
+        # un refus inconditionnel. Le fichier ajouté APRÈS l'original prend sa
+        # place : le noyau déplie le cpio séquentiellement et le dernier
+        # écrit gagne.
+        gate = work / "var/lib/dpkg/info"
+        gate.mkdir(parents=True, exist_ok=True)
+        target = gate / "network-console.isinstallable"
+        target.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        target.chmod(0o755)
+        plain = work / "initrd"
+        with gzip.open(initrd_src, "rb") as src, open(plain, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+        members.append("var/lib/dpkg/info/network-console.isinstallable")
+        subprocess.run(
+            ["cpio", "-H", "newc", "-o", "-A", "-F", str(plain)],
+            input="\n".join(members) + "\n",
+            text=True,
+            cwd=work,
+            check=True,
+            capture_output=True,
+        )
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(plain, "rb") as src, gzip.open(out, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+    print(f"  preseed embarqué dans {out} ({out.stat().st_size} octets)")
+
+
+def create_blank_disk(
+    disk: Path, size: str, runner: Runner, force: bool
+) -> None:
+    """Disque VIERGE : l'installateur écrit tout, il n'y a rien à convertir."""
+    if disk.exists() and not force:
+        sys.exit(
+            f"Le disque {disk} existe déjà. Utilisez --force pour l'écraser."
+        )
+    runner.run(
+        ["qemu-img", "create", "-f", "qcow2", str(disk), size],
+        privileged=True,
+    )
+
+
 def network_name(network_arg: str) -> str | None:
     """Extrait NAME de « network=NAME,... » ; None si c'est un bridge, etc."""
     for part in network_arg.split(","):
@@ -1749,6 +2838,7 @@ def virt_install(
     seed: Path,
     osinfo: str,
     runner: Runner,
+    installer: tuple[Path, Path] | None = None,
 ) -> None:
     # Émulée (TCG, pas de KVM) si l'arch demandée diffère de celle de l'hôte.
     # Deux causes d'émulation, à ne pas confondre : une architecture étrangère
@@ -1773,6 +2863,7 @@ def virt_install(
     # s390x n'a pas de port série ISA : la console est SCLP (ttysclp0), et non
     # ttyS0. Ailleurs (x86/arm64), console série classique.
     console_target = "sclp" if args.arch == "s390x" else "serial"
+    console_log = f"/var/log/libvirt/qemu/{args.name}-console.log"
     # Écran virtuel pour une VM graphique. s390x en est écarté : QEMU y expose
     # bien « virtio-gpu-ccw », mais rien ne garantit que le noyau s390x de la
     # distribution embarque le pilote DRM virtio-gpu — la VM démarrerait alors
@@ -1804,6 +2895,16 @@ def virt_install(
             # d'avant : --graphics spice,listen=none
             graphics = "vnc,listen=127.0.0.1"
             video = ["--video", "virtio"]
+    # 3D : allumée d'office quand l'hôte a un GPU (--gpu auto). Une VM
+    # graphique sans accélération rend tout par le processeur — le bureau
+    # comme l'émulateur Android qui tourne dedans — et c'est le défaut le plus
+    # coûteux qu'on puisse laisser en place sans le dire.
+    gpu_node = args.gpu_node or host_gpu_node()
+    video, gpu_args, gpu_msg = gpu_apply(
+        video, args.gpu, gpu_node, graphics != "none"
+    )
+    if gpu_msg:
+        print(gpu_msg)
     cmd = [
         "virt-install",
         # Sans --connect, un utilisateur non root vise qemu:///session : le
@@ -1817,17 +2918,45 @@ def virt_install(
         str(args.memory),
         "--vcpus",
         str(args.vcpus),
-        "--import",
+    ]
+    if installer:
+        kernel, initrd = installer
+        # « --install » et non « --boot » : virt-install écrit alors DEUX
+        # configurations — celle de l'installation, transitoire, et celle du
+        # système installé. Avec « --boot kernel=… » la VM repartirait sur
+        # l'installateur à chaque démarrage, indéfiniment.
+        #
+        # console=ttysclp0 : s390x n'a pas de port série ISA. Sans cet
+        # argument l'installateur tourne sur une console invisible, et un
+        # échec ne laisse aucune trace lisible.
+        cmd += [
+            "--install",
+            f"kernel={kernel},initrd={initrd},"
+            # PAS de « auto=true » : il vise le preseed par URL et réordonne
+            # l'installation pour monter le réseau AVANT tout le reste. Le
+            # nôtre est local, il n'y a rien à aller chercher — et c'est
+            # précisément là que netcfg dérapait.
+            "kernel_args=priority=critical "
+            "preseed/file=/preseed.cfg console=ttysclp0",
+        ]
+    else:
+        cmd.append("--import")
+    cmd += [
         "--disk",
         f"path={disk},format=qcow2,bus=virtio",
+    ]
+    # Le seed n'existe QUE sur la voie image cloud. Sous debian-installer, le
+    # preseed voyage dans l'initrd et un second disque ne ferait qu'ajouter un
+    # /dev/vdb dont partman-auto devrait être protégé.
+    if not installer:
         # Seed cloud-init attaché comme DISQUE virtio en lecture seule (et non
         # en CD-ROM) : le pilote virtio-blk est dans l'initramfs, donc le
         # volume « cidata » est visible dès init-local et cloud-init le lit.
         # En CD-ROM, l'initramfs Debian ne charge pas sr_mod à temps -> le
         # seed n'est pas vu et rien ne s'applique (Ubuntu, lui, tolère le CD).
         # Sur s390x, bus=virtio est mappé en virtio-ccw par libvirt.
-        "--disk",
-        f"path={seed},readonly=on,bus=virtio",
+        cmd += ["--disk", f"path={seed},readonly=on,bus=virtio"]
+    cmd += [
         "--osinfo",
         osinfo,
         "--network",
@@ -1835,14 +2964,21 @@ def virt_install(
         "--graphics",
         graphics,
         "--console",
-        f"pty,target_type={console_target}",
+        # Journal de console pour la voie installateur. Une console « pty »
+        # seule ne gardE rien : quand d-i échoue, il l'écrit à l'écran d'une
+        # VM que personne ne regarde, et il ne reste RIEN à lire ensuite —
+        # exactement « l'installation a échoué, pas de sortie pertinente ».
+        # Le fichier, lui, survit à l'arrêt du domaine.
+        f"pty,target_type={console_target},log.file={console_log}"
+        if installer
+        else f"pty,target_type={console_target}",
         # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
         # virsh de piloter la VM SANS réseau (ex. étendre le FS invité après
         # un redimensionnement de disque). Inoffensif si l'agent est absent.
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
-    cmd += video
+    cmd += video + gpu_args
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
         # disque (ni BIOS ni UEFI/OVMF -> aucun --boot).
@@ -1881,6 +3017,13 @@ def virt_install(
         cmd += ["--virt-type", "qemu"]
     if not args.attach_console:
         cmd.append("--noautoconsole")
+        if installer:
+            # Sans « --wait 0 », virt-install RESTE au premier plan jusqu'à la
+            # fin de l'installation. Sous émulation s390x elle se compte en
+            # heures, et le déploiement parallèle attendrait chaque VM l'une
+            # après l'autre. La configuration finale est déjà écrite : rendre
+            # la main n'abandonne rien.
+            cmd += ["--wait", "0"]
     # virtinst écrit un journal de debug dans ~/.cache/virt-manager ; sous
     # sudo, HOME/cache peut être inaccessible -> l'écriture échoue et Python
     # déverse un « Logging error » (le pavé « Fetched capabilities … »). On
@@ -1900,6 +3043,54 @@ def virt_install(
         f"HOME={cache_dir}",
     ]
     runner.run(log_env + cmd, privileged=True)
+
+
+def watch_and_restart(name: str, runner: Runner) -> None:
+    """Rallume la VM quand debian-installer a fini et l'a éteinte.
+
+    virt-install mène l'installation en DEUX temps : un amorçage transitoire
+    sur kernel+initrd, puis la configuration définitive, qui démarre sur le
+    disque. Le passage de l'un à l'autre se fait par un arrêt — l'installateur
+    redémarre, libvirt détruit le domaine transitoire — et c'est virt-install
+    qui rallume ensuite. Avec « --wait 0 » il est déjà parti : le domaine
+    reste « shut off », disque installé et XML correct, mais éteint.
+
+    On ne peut pas pour autant laisser virt-install attendre : sous émulation
+    l'installation dure des heures, et le déploiement rendrait la main à ce
+    rythme-là. Un veilleur détaché fait donc le dernier geste.
+    """
+    if runner.dry_run:
+        print(f"[dry-run] veilleur de redémarrage pour {name}")
+        return
+    sudo = "sudo " if runner.use_sudo else ""
+    # 6 h de garde : bien au-delà d'une installation émulée, et le veilleur
+    # meurt de lui-même si quelque chose a mal tourné.
+    script = (
+        f"for i in $(seq 1 720); do "
+        f"  s=$({sudo}virsh -c {LIBVIRT_URI} domstate {name} 2>/dev/null); "
+        f'  if [ "$s" = "shut off" ]; then '
+        f"    {sudo}virsh -c {LIBVIRT_URI} start {name} >/dev/null 2>&1; "
+        f"    exit 0; "
+        f"  fi; "
+        f"  sleep 30; "
+        f"done"
+    )
+    try:
+        subprocess.Popen(
+            ["/bin/sh", "-c", script],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"  ⚠ veilleur non lancé ({exc}) ; démarrer à la main :")
+        print(f"      sudo virsh start {name}")
+        return
+    print(
+        f"  Veilleur lancé : {name} sera rallumée dès que l'installateur"
+        " l'aura éteinte."
+    )
 
 
 def _ip_reachable(ip: str, port: int = 22, timeout: float = 3) -> bool:
@@ -2065,6 +3256,19 @@ def build_parser() -> argparse.ArgumentParser:
         "pas ici.",
     )
     g_vm.add_argument(
+        "--gpu",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="Accélération 3D par le GPU de l'hôte : auto (défaut, activée "
+        "si un /dev/dri/renderD* existe), on (forcer), off (rendu logiciel).",
+    )
+    g_vm.add_argument(
+        "--gpu-node",
+        default="",
+        help="Nœud de rendu à utiliser (défaut : le premier trouvé). Utile "
+        "sur un hôte à plusieurs cartes.",
+    )
+    g_vm.add_argument(
         "--osinfo", help="Force la valeur --osinfo (sinon déduite)."
     )
     g_vm.add_argument(
@@ -2148,6 +3352,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-upgrade",
         action="store_true",
         help="N'exécute pas package_upgrade au premier boot.",
+    )
+    g_cloud.add_argument(
+        "--lang",
+        choices=("fr", "en"),
+        default="fr",
+        help="Langue du guide affiché à la connexion SSH (défaut : fr). "
+        "todo.py passe la langue de son menu.",
+    )
+    g_cloud.add_argument(
+        "--erplibre-dir",
+        default="",
+        metavar="CHEMIN",
+        help="Racine d'ERPLibre dans la VM (~/git/erplibre en dev, "
+        "/opt/erplibre en prod). Ajoute la section ERPLibre au guide de "
+        "connexion. Vide, elle est omise : une VM déployée sans installation "
+        "n'annonce pas un dépôt et un service qui n'existent pas.",
+    )
+    g_cloud.add_argument(
+        "--erplibre-make",
+        default="",
+        metavar="CIBLE",
+        help="Cible make qui a installé la VM (ex. install_odoo_18), reprise "
+        "dans le guide pour la mettre à jour. Vide : le guide s'arrête à "
+        "« git pull » plutôt que d'annoncer une cible qui n'est pas la bonne.",
+    )
+    g_cloud.add_argument(
+        "--no-git-identity",
+        action="store_true",
+        help="N'injecte pas l'identité git de l'hôte (user.name, user.email, "
+        "core.editor) dans le ~/.gitconfig de la VM.",
     )
     g_cloud.add_argument(
         "--apt-update",
@@ -2382,22 +3616,80 @@ def main() -> None:
                 "nettement plus lents que l'architecture native."
             )
 
-    print(f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) ==")
-    download_image(urls, args.image_path, args.dry_run)
-    if do_verify:
-        verify_sha256(url, args.image_path, args.dry_run)
+    installer: tuple[Path, Path] | None = None
+    if uses_installer(args.distro, args.arch):
+        # Voie debian-installer : aucune image cloud n'existe pour cette
+        # combinaison, on télécharge l'installateur et on part d'un disque nu.
+        cache = args.image_path.parent
+        kernel = cache / f"debian-{args.version}-s390x-kernel"
+        initrd_src = cache / f"debian-{args.version}-s390x-initrd.gz"
+        initrd = cache / f"{args.name}-initrd.gz"
+        # Le dimensionnement du catalogue vient des images cloud, où le
+        # système est DÉJÀ installé. debian-installer, lui, déplie un système
+        # de fichiers complet en mémoire avant d'écrire quoi que ce soit :
+        # 1024 Mio est le plancher annoncé par Debian, sans marge, et un
+        # manque de mémoire s'y manifeste par un écran figé sans message.
+        # On relève le plancher, en le disant — un réglage explicite plus haut
+        # n'est jamais abaissé.
+        if args.memory < INSTALLER_MIN_RAM:
+            print(
+                f"  Mémoire portée à {INSTALLER_MIN_RAM} Mio pour"
+                f" l'installateur (catalogue : {args.memory})."
+            )
+            args.memory = INSTALLER_MIN_RAM
+        print(f"\n== 1/5 Installateur Debian {args.version} ({code}) s390x ==")
+        download_image(
+            [INSTALLER_URL.format(code=code, fichier="kernel.debian")],
+            kernel,
+            args.dry_run,
+        )
+        download_image(
+            [INSTALLER_URL.format(code=code, fichier="initrd.debian")],
+            initrd_src,
+            args.dry_run,
+        )
 
-    print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
-    prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+        print(f"\n== 2-3/5 Disque vierge {disk} ({args.disk_size}) ==")
+        create_blank_disk(disk, args.disk_size, runner, args.force)
 
-    print(f"\n== 4/5 Seed cloud-init {seed} ==")
-    cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-    build_seed(cloud_cfg, args.hostname, seed, runner)
+        print(f"\n== 4/5 Preseed embarqué dans l'initrd ==")
+        static = static_net_plan(
+            network_name(args.network), not args.dry_run, args.name
+        )
+        if static:
+            print(f"  Adresse fixe retenue : {static['ip']}"
+                  f" (passerelle {static['gateway']})")
+        else:
+            print("  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
+                  " la question à l'écran et l'installation s'arrêtera.")
+        build_installer_initrd(
+            build_preseed(args, pw_hash, ssh_keys, static),
+            initrd_src,
+            initrd,
+            runner,
+        )
+        installer = (kernel, initrd)
+    else:
+        print(
+            f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
+        )
+        download_image(urls, args.image_path, args.dry_run)
+        if do_verify:
+            verify_sha256(url, args.image_path, args.dry_run)
+
+        print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
+        prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
+
+        print(f"\n== 4/5 Seed cloud-init {seed} ==")
+        cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
+        build_seed(cloud_cfg, args.hostname, seed, runner)
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
-    virt_install(args, disk, seed, resolved_osinfo, runner)
+    virt_install(args, disk, seed, resolved_osinfo, runner, installer)
+    if installer:
+        watch_and_restart(args.name, runner)
 
     has_key = bool(ssh_keys)
     print("\nTerminé. Suivi :")
