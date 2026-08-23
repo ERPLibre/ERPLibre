@@ -3148,8 +3148,11 @@ TRANSLATIONS = {
         "en": "Watch the VMs start (no install)",
     },
     "Proxmox VE - Deploy a VM on a remote host": {
-        "fr": "Proxmox VE - Déployer une VM sur un hôte distant",
-        "en": "Proxmox VE - Deploy a VM on a remote host",
+        # 🗄 et non 💻 : l'entrée d'à côté déploie sur CETTE machine, celle-ci
+        # sur une baie ailleurs. L'icône est ce qui distingue les deux d'un
+        # coup d'œil dans le menu.
+        "fr": "🗄 Proxmox VE - Déployer une VM sur un hôte distant",
+        "en": "🗄 Proxmox VE - Deploy a VM on a remote host",
     },
     "Deploy a virtual machine on Proxmox VE!": {
         "fr": "Déployer une machine virtuelle sur Proxmox VE !",
@@ -3298,6 +3301,95 @@ TRANSLATIONS = {
     "No network bridge on this host.": {
         "fr": "Aucun pont réseau sur cet hôte.",
         "en": "No network bridge on this host.",
+    },
+    # --- Écran de déploiement Proxmox VE (formulaire TUI) ---
+    "Deploy one or more ERPLibre VMs on Proxmox VE!": {
+        "fr": "Déployer une ou plusieurs VM ERPLibre sur Proxmox VE !",
+        "en": "Deploy one or more ERPLibre VMs on Proxmox VE!",
+    },
+    "Proxmox host": {
+        "fr": "Hôte Proxmox",
+        "en": "Proxmox host",
+    },
+    "node": {
+        "fr": "nœud",
+        "en": "node",
+    },
+    "Proxmox VE": {
+        "fr": "Proxmox VE",
+        "en": "Proxmox VE",
+    },
+    "Bridge": {
+        "fr": "Pont",
+        "en": "Bridge",
+    },
+    "First VMID": {
+        "fr": "Premier VMID",
+        "en": "First VMID",
+    },
+    "Access": {
+        "fr": "Accès",
+        "en": "Access",
+    },
+    "SSH public key": {
+        "fr": "Clé publique SSH",
+        "en": "SSH public key",
+    },
+    "Start the VM after creating it": {
+        "fr": "Démarrer la VM après sa création",
+        "en": "Start the VM after creating it",
+    },
+    "Add an entry to ~/.ssh/config": {
+        "fr": "Ajouter une entrée à ~/.ssh/config",
+        "en": "Add an entry to ~/.ssh/config",
+    },
+    "Follow the installation (dashboard)": {
+        "fr": "Suivre l'installation (tableau de bord)",
+        "en": "Follow the installation (dashboard)",
+    },
+    "Text prompts": {
+        "fr": "Questions texte",
+        "en": "Text prompts",
+    },
+    "Nothing to deploy.": {
+        "fr": "Rien à déployer.",
+        "en": "Nothing to deploy.",
+    },
+    "No bridge on the host.": {
+        "fr": "Aucun pont sur l'hôte.",
+        "en": "No bridge on the host.",
+    },
+    "more RAM than the host has free": {
+        "fr": "plus de RAM que l'hôte n'en a de libre",
+        "en": "more RAM than the host has free",
+    },
+    "Loading (host, storage, bridges, VMs)...": {
+        "fr": "Chargement (hôte, stockage, ponts, VM)…",
+        "en": "Loading (host, storage, bridges, VMs)...",
+    },
+    "TUI unavailable": {
+        "fr": "Interface graphique indisponible",
+        "en": "TUI unavailable",
+    },
+    "VM": {
+        "fr": "VM",
+        "en": "VM",
+    },
+    "VMID": {
+        "fr": "VMID",
+        "en": "VMID",
+    },
+    "address": {
+        "fr": "adresse",
+        "en": "address",
+    },
+    "storage": {
+        "fr": "stockage",
+        "en": "storage",
+    },
+    "other…": {
+        "fr": "autre…",
+        "en": "other…",
     },
     "offered": {
         "fr": "proposés",
