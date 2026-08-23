@@ -225,6 +225,36 @@ class TestBatching(SyncCase):
         self.assertEqual(calls, [200, 200, 50])
 
 
+class TestThreadHeadersReachTheCache(SyncCase):
+    """La couture entre le protocole et le cache : `parse_fetch_headers`
+    peut extraire parfaitement, et `upsert_messages` stocker parfaitement,
+    sans que le synchroniseur ne relie jamais les deux."""
+
+    def _sync_une_reponse(self):
+        self.imap.add("INBOX", 1, subject="Devis")
+        self.imap.add("INBOX", 2, subject="Re: Devis")
+        original = self.imap.folders["INBOX"]["messages"][1]
+        reponse = self.imap.folders["INBOX"]["messages"][2]
+        original.msgid = "<orig@x.ca>"
+        reponse.msgid = "<r1@x.ca>"
+        reponse.in_reply_to = "<orig@x.ca>"
+        reponse.references = "<orig@x.ca>"
+        self.syncer.sync()
+        return {
+            row["uid"]: row
+            for row in self.store._db().execute(
+                "SELECT uid, msgid_hash, in_reply_to_hash FROM messages"
+            )
+        }
+
+    def test_the_reply_is_linked_to_its_original(self):
+        rows = self._sync_une_reponse()
+        self.assertEqual(rows[2]["in_reply_to_hash"], rows[1]["msgid_hash"])
+
+    def test_the_original_is_linked_to_nothing(self):
+        self.assertIsNone(self._sync_une_reponse()[1]["in_reply_to_hash"])
+
+
 class TestNoselectContainers(SyncCase):
     """Signalé depuis un vrai Gmail : « [Gmail] » n'est pas une boîte mais
     un NIVEAU de la hiérarchie, marqué `\\Noselect` dans la réponse LIST.

@@ -140,6 +140,28 @@ class MessageMeta:
     subject: str
     snippet: str
     has_body: bool = False
+    # Bruts, tels que le serveur les a envoyés. Le hachage appartient au
+    # cache, qui seul connaît le sel : `MessageMeta` traverse le TUI et les
+    # tests, où une empreinte ne servirait à rien.
+    in_reply_to: str = ""
+    references: str = ""
+
+
+def split_message_ids(value: str) -> list[str]:
+    """« <a@x> <b@y> » → ["<a@x>", "<b@y>"].
+
+    `References` est une liste séparée par des blancs, et certains serveurs
+    y glissent des virgules. On garde les jetons entre chevrons et on
+    ignore le reste : un fragment sans chevron n'est pas un Message-ID, et
+    le hacher créerait un lien vers rien.
+    """
+    if not value:
+        return []
+    return [
+        jeton
+        for jeton in value.replace(",", " ").split()
+        if jeton.startswith("<") and jeton.endswith(">")
+    ]
 
 
 def resolve_mode(account, prefs_get=None) -> str:
@@ -402,6 +424,23 @@ class Store:
         salt = self._key or b"clear"
         return hashlib.sha256(salt + (msgid or "").encode("utf-8")).hexdigest()
 
+    def _hash_or_none(self, msgid: str):
+        """L'empreinte, ou NULL si l'en-tête est absent.
+
+        Hacher la chaîne vide donnerait à TOUS les messages sans
+        `In-Reply-To` la même empreinte : ils se répondraient les uns aux
+        autres. NULL ne joint rien, ce qui est exactement le sens de
+        « ce message ne répond à personne ».
+        """
+        msgid = (msgid or "").strip()
+        return self._msgid_hash(msgid) if msgid else None
+
+    def _references_hashes(self, references: str):
+        empreintes = [
+            self._msgid_hash(m) for m in split_message_ids(references)
+        ]
+        return " ".join(empreintes) if empreintes else None
+
     def _db(self) -> sqlite3.Connection:
         if self._conn is None:
             raise StoreError(t("mail_err_cache_not_open"))
@@ -515,14 +554,17 @@ class Store:
                 self._seal(m.to),
                 self._seal(m.subject),
                 self._seal(m.snippet),
+                self._hash_or_none(m.in_reply_to),
+                self._references_hashes(m.references),
             )
             for m in metas
         ]
         db.executemany(
             "INSERT INTO messages(folder_id, uid, date, size, flags,"
             " msgid_hash, sealed_msgid, sealed_from, sealed_to,"
-            " sealed_subject, sealed_snippet)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+            " sealed_subject, sealed_snippet,"
+            " in_reply_to_hash, references_hashes)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(folder_id, uid) DO UPDATE SET"
             "   date = excluded.date, size = excluded.size,"
             "   flags = excluded.flags, msgid_hash = excluded.msgid_hash,"
@@ -530,7 +572,12 @@ class Store:
             "   sealed_from = excluded.sealed_from,"
             "   sealed_to = excluded.sealed_to,"
             "   sealed_subject = excluded.sealed_subject,"
-            "   sealed_snippet = excluded.sealed_snippet",
+            "   sealed_snippet = excluded.sealed_snippet,"
+            # Une resynchronisation doit POUVOIR remplir ces colonnes sur
+            # un message déjà en cache : c'est le seul chemin par lequel
+            # les messages d'avant la v2 les obtiendront.
+            "   in_reply_to_hash = excluded.in_reply_to_hash,"
+            "   references_hashes = excluded.references_hashes",
             rows,
         )
         db.commit()

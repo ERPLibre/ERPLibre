@@ -17,6 +17,7 @@ from script.todo.mail.store import (
     cache_root,
     folder_dirname,
     resolve_mode,
+    split_message_ids,
     sweep_orphan_ephemeral,
 )
 
@@ -220,6 +221,80 @@ class TestSchemaV2Migration(StoreCase):
         self._rouvrir()
         self._rouvrir()
         self.assertTrue(self.V2 <= self._colonnes())
+
+
+class TestThreadHashes(StoreCase):
+    """Le cache stocke des EMPREINTES des Message-ID, jamais les
+    identifiants bruts : en mode chiffré, des identifiants en clair
+    permettraient de reconstituer qui répond à qui."""
+
+    def _rows(self):
+        folder_id = self.store.upsert_folder("INBOX", "INBOX", "inbox")
+        original = meta(1)
+        original.msgid = "<orig@x.ca>"
+        reponse = meta(2)
+        reponse.msgid = "<r1@x.ca>"
+        reponse.in_reply_to = "<orig@x.ca>"
+        reponse.references = "<a@x.ca> <orig@x.ca>"
+        self.store.upsert_messages(folder_id, [original, reponse])
+        return {
+            row["uid"]: row
+            for row in self.store._db().execute(
+                "SELECT uid, msgid_hash, in_reply_to_hash, references_hashes"
+                " FROM messages"
+            )
+        }
+
+    def test_a_reply_points_at_the_message_it_answers(self):
+        rows = self._rows()
+        self.assertEqual(rows[2]["in_reply_to_hash"], rows[1]["msgid_hash"])
+
+    def test_no_raw_message_id_is_stored_in_the_clear(self):
+        rows = self._rows()
+        for colonne in ("in_reply_to_hash", "references_hashes"):
+            self.assertNotIn("orig@x.ca", rows[2][colonne] or "")
+
+    def test_a_message_answering_nobody_stores_null(self):
+        """Le piège : hacher la chaîne vide donnerait à TOUS les messages
+        sans `In-Reply-To` la même empreinte, et ils se répondraient les
+        uns aux autres. NULL ne joint rien."""
+        self.assertIsNone(self._rows()[1]["in_reply_to_hash"])
+
+    def test_every_reference_gets_its_own_hash(self):
+        self.assertEqual(len(self._rows()[2]["references_hashes"].split()), 2)
+
+    def test_a_resync_fills_the_columns_of_an_existing_row(self):
+        """Le SEUL chemin par lequel les messages d'avant la v2 les
+        obtiendront : sans cet UPDATE, une resynchronisation les laisserait
+        vides pour toujours."""
+        folder_id = self.store.upsert_folder("INBOX", "INBOX", "inbox")
+        ancien = meta(1)
+        ancien.msgid = "<orig@x.ca>"
+        self.store.upsert_messages(folder_id, [ancien])
+        ancien.in_reply_to = "<autre@x.ca>"
+        self.store.upsert_messages(folder_id, [ancien])
+        ligne = (
+            self.store._db()
+            .execute("SELECT in_reply_to_hash FROM messages WHERE uid = 1")
+            .fetchone()
+        )
+        self.assertIsNotNone(ligne["in_reply_to_hash"])
+
+
+class TestSplitMessageIds(unittest.TestCase):
+    def test_splits_on_whitespace(self):
+        self.assertEqual(split_message_ids("<a@x> <b@y>"), ["<a@x>", "<b@y>"])
+
+    def test_tolerates_commas(self):
+        self.assertEqual(split_message_ids("<a@x>, <b@y>"), ["<a@x>", "<b@y>"])
+
+    def test_drops_fragments_without_angle_brackets(self):
+        """Un fragment sans chevrons n'est pas un Message-ID : le hacher
+        créerait un lien vers rien."""
+        self.assertEqual(split_message_ids("bruit <a@x> encore"), ["<a@x>"])
+
+    def test_empty_gives_nothing(self):
+        self.assertEqual(split_message_ids(""), [])
 
 
 class TestFolders(StoreCase):
