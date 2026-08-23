@@ -185,5 +185,98 @@ class TestNoStepWritesAnotherStepsFlag(unittest.TestCase):
         )
 
 
+class TestAFailedOpenUpgradeStaysUnrecorded(unittest.TestCase):
+    """Un OpenUpgrade raté ne doit pas passer pour fait.
+
+    `lst_upgrade_odoo` n'est pas une copie : `dct_progression.get()` rend
+    l'objet stocké. L'affecter avant l'exécution le faisait persister au
+    premier `write_config()` venu — celui du chemin d'échec compris, qui
+    remet pourtant le drapeau de clonage à zéro pour forcer un nouvel
+    essai. La reprise sautait alors OpenUpgrade et laissait une base 17
+    tourner sous le code 18. Mesuré sur test_neutralize_upgrade_18 :
+    base = 17.0.1.3, et sa commande de migration déjà consignée.
+
+    Conduire `execute_odoo_upgrade` en vrai demanderait une migration
+    complète ; la faute est un ORDRE dans le source, et c'est l'ordre
+    qu'on mesure.
+    """
+
+    def arbre(self):
+        with io.open(SOURCE, encoding="utf-8") as handle:
+            return ast.parse(handle.read())
+
+    def lignes_affectation(self):
+        lignes = []
+        for noeud in ast.walk(self.arbre()):
+            if not isinstance(noeud, ast.Assign):
+                continue
+            for cible in noeud.targets:
+                if (
+                    isinstance(cible, ast.Subscript)
+                    and isinstance(cible.value, ast.Name)
+                    and cible.value.id == "lst_upgrade_odoo"
+                ):
+                    lignes.append(noeud.lineno)
+        return lignes
+
+    @staticmethod
+    def _remet_le_clone_a_zero(noeud):
+        """Ce bloc renonce-t-il en redemandant un clonage neuf ?
+
+        Le repère est l'affectation `lst_clone_odoo[index] = False` : c'est
+        elle qui distingue « je renonce, refais le clone » de l'étape de
+        clonage elle-même, qui écrit `= True` et vit ailleurs. Chercher les
+        seuls NOMS attrapait les deux, et l'ancre tombait 700 lignes trop
+        haut — le test passait alors sur n'importe quel ordre.
+        """
+        for petit in ast.walk(noeud):
+            if not isinstance(petit, ast.Assign):
+                continue
+            if not (
+                isinstance(petit.value, ast.Constant)
+                and petit.value.value is False
+            ):
+                continue
+            for cible in petit.targets:
+                if (
+                    isinstance(cible, ast.Subscript)
+                    and isinstance(cible.value, ast.Name)
+                    and cible.value.id == "lst_clone_odoo"
+                ):
+                    return True
+        return False
+
+    def ligne_abandon(self):
+        """Le `return` qui renonce après un OpenUpgrade raté."""
+        lignes = [
+            max(n.lineno for n in ast.walk(noeud) if isinstance(n, ast.Return))
+            for noeud in ast.walk(self.arbre())
+            if isinstance(noeud, ast.If)
+            and self._remet_le_clone_a_zero(noeud)
+            and any(isinstance(n, ast.Return) for n in ast.walk(noeud))
+        ]
+        return min(lignes) if lignes else None
+
+    def test_both_anchors_are_found(self):
+        # Sans cette borne, les tests suivants passeraient à vide le jour
+        # où l'une des deux formes change.
+        self.assertTrue(self.lignes_affectation())
+        self.assertIsNotNone(self.ligne_abandon())
+
+    def test_the_step_is_recorded_only_after_the_failure_path_gave_up(self):
+        abandon = self.ligne_abandon()
+        for ligne in self.lignes_affectation():
+            self.assertGreater(
+                ligne,
+                abandon,
+                "lst_upgrade_odoo est marqué fait avant que l'échec ait"
+                " pu renoncer : la reprise sautera OpenUpgrade",
+            )
+
+    def test_it_is_recorded_exactly_once(self):
+        # Deux affectations, et l'une repasserait devant l'échec.
+        self.assertEqual(len(self.lignes_affectation()), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

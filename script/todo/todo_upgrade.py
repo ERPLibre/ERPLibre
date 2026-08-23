@@ -2615,7 +2615,15 @@ class TodoUpgrade:
                     cmd_upgrade = f".venv.{erplibre_version}/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
                 else:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
-                lst_upgrade_odoo[index] = cmd_upgrade
+                # NE PAS enregistrer la commande ici. `lst_upgrade_odoo`
+                # EST la liste de `dct_progression` — `.get` rend l'objet,
+                # pas une copie — donc la muter maintenant la fait persister
+                # au premier write_config() venu, y compris celui du chemin
+                # d'échec juste en dessous. L'étape passait alors pour faite
+                # et la reprise SAUTAIT OpenUpgrade : mesuré sur
+                # test_neutralize_upgrade_18, resté en base 17.0.1.3 avec sa
+                # commande 18 déjà consignée. On l'enregistre après la
+                # réussite, où le commentaire dit déjà qu'elle appartient.
 
                 # Record the website COW views before the data migration. The
                 # upgrade silently deletes and recreates copies (measured on
@@ -2682,6 +2690,7 @@ class TodoUpgrade:
                     f"after_{next_version}",
                 )
 
+                lst_upgrade_odoo[index] = cmd_upgrade
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
                     lst_upgrade_odoo
                 )
