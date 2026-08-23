@@ -3115,6 +3115,38 @@ TRANSLATIONS = {
         "fr": "Nœud de rendu",
         "en": "Render node",
     },
+    "VM ready - taking its measurements": {
+        "fr": "VM prête — relevé en cours",
+        "en": "VM ready - taking its measurements",
+    },
+    "VM start-up": {
+        "fr": "Mise en route de la VM",
+        "en": "VM start-up",
+    },
+    "system:": {
+        "fr": "système :",
+        "en": "system:",
+    },
+    "kernel:": {
+        "fr": "noyau   :",
+        "en": "kernel: ",
+    },
+    "address:": {
+        "fr": "adresse :",
+        "en": "address:",
+    },
+    "disk:": {
+        "fr": "disque  :",
+        "en": "disk:   ",
+    },
+    "uptime:": {
+        "fr": "actif   :",
+        "en": "uptime: ",
+    },
+    "Watch the VMs start (no install)": {
+        "fr": "Suivre le démarrage des VM (sans installation)",
+        "en": "Watch the VMs start (no install)",
+    },
     "Proxmox VE hypervisor (no Odoo)": {
         "fr": "Hyperviseur Proxmox VE (sans Odoo)",
         "en": "Proxmox VE hypervisor (no Odoo)",

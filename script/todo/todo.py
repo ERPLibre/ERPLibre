@@ -5655,6 +5655,31 @@ class TODO:
         )
 
     @staticmethod
+    def _qemu_vm_ready_report():
+        """Relevé de mise en route, pour une VM où l'on n'installe RIEN.
+
+        Sans lui, la commande distante valait « true » : le suivi affichait un
+        ✅ instantané sur un journal vide, ce qui n'apprend rien de la machine
+        qu'on vient de créer. Ici, il y a une fin claire (le marqueur de sortie
+        que pose le lanceur) et de quoi juger qu'elle est prête : système,
+        noyau, adresse, disque, mémoire, et le verdict de cloud-init.
+        """
+        return (
+            f'echo "===> {t("VM start-up")}"; '
+            ". /etc/os-release 2>/dev/null || true; "
+            f'echo "   {t("system:")} ${{PRETTY_NAME:-?}}"; '
+            f'echo "   {t("kernel:")} $(uname -r) ($(uname -m))"; '
+            f'echo "   {t("address:")} '
+            "$(hostname -I 2>/dev/null | awk '{print $1}')\"; "
+            f'echo "   {t("disk:")} '
+            "$(df -h / | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}')\"; "
+            f'echo "   {t("memory:")} '
+            "$(free -h 2>/dev/null | awk 'NR==2 {print $3\"/\"$2}')\"; "
+            f'echo "   {t("uptime:")} $(uptime -p 2>/dev/null || true)"; '
+            f'echo "<=== {t("VM start-up")}"; '
+        )
+
+    @staticmethod
     def _qemu_no_auto_upgrade(prod, app_store="deb"):
         """Coupe les mises à jour automatiques sur une VM de DÉVELOPPEMENT.
 
@@ -7236,7 +7261,15 @@ class TODO:
             # attente de cloud-init et coupure des mises à jour automatiques,
             # sans quoi le verrou apt ferait échouer l'installation du bureau.
             if not desktop:
-                return "true"
+                # Rien à installer : le suivi n'a alors qu'à regarder la VM
+                # ARRIVER. Un « true » rendait un journal vide et un ✅
+                # instantané — et c'est pourquoi le suivi « ne marchait plus »
+                # dès qu'on décochait ERPLibre.
+                return (
+                    "set -e; "
+                    + self._qemu_cloud_init_wait()
+                    + self._qemu_vm_ready_report()
+                )
             # Les outils de la phase « after » vivent DANS le dépôt — la
             # compilation mobile, l'AVD, le script Forgejo. Sans clone, ils
             # n'existent pas ici. Les écarter en silence laissait croire qu'une
@@ -8970,6 +9003,15 @@ class TODO:
                 "cmd": cmd,
                 "monitor": monitor,
             }
+        else:
+            # Rien à installer : le suivi garde tout son sens — il regarde les
+            # VM arriver (cloud-init, puis relevé système) et porte le tableau
+            # d'état, de débit d'écriture, de RAM et de disque. La question
+            # était posée DANS la branche ERPLibre : refuser l'une emportait
+            # l'autre sans qu'on l'ait demandé.
+            monitor = self._is_yes_default_yes(
+                input(f"{t('Watch the VMs start (no install)')} ? (O/n) : ")
+            )
 
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
@@ -9030,6 +9072,9 @@ class TODO:
             "python_provider": python_provider,
             "app_store": app_store,
             "install": install,
+            # Au niveau du déploiement : le suivi survit à une installation
+            # décochée (voir _qemu_run_spec).
+            "monitor": monitor,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
         }
@@ -9191,8 +9236,16 @@ class TODO:
         # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
         # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
         # Il passe par la même commande distante, donc par le même suivi.
-        if install or desktop:
-            monitor = install["monitor"] if install else True
+        #
+        # Et quand il n'y a RIEN à installer, le suivi s'ouvre quand même : la
+        # commande distante regarde alors la VM arriver (cloud-init puis relevé
+        # système). Sans cela, décocher ERPLibre faisait disparaître le tableau
+        # de bord — rapporté, et c'est ce qui donnait « le suivi ne fonctionne
+        # plus ». Le choix vient du déploiement, pas de l'installation.
+        monitor = (
+            install["monitor"] if install else spec.get("monitor", True)
+        )
+        if install or desktop or monitor:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
@@ -9206,7 +9259,7 @@ class TODO:
                     app_store=app_store,
                     vm_tools=vm_tools,
                 )
-            else:
+            elif install:
                 print(
                     f"\n{t('Installing ERPLibre on each VM')} "
                     f"({install_branch})…"

@@ -80,7 +80,11 @@ def list_install_runs() -> list:
 
 
 def _launch_one(
-    ip: str, remote_cmd: str, log_path: str, name: str = ""
+    ip: str,
+    remote_cmd: str,
+    log_path: str,
+    name: str = "",
+    installs: bool = True,
 ) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie."""
@@ -102,7 +106,13 @@ def _launch_one(
     # log reste VIDE pendant tout le boot émulé et paraît « bloqué ».
     msg_wait = t("Waiting for the VM to start (boot + cloud-init)")
     msg_slow = t("(an emulated architecture can be slow; this is normal)")
-    msg_ready = t("VM ready - starting the ERPLibre install")
+    # « installation ERPLibre en cours » sur un déploiement qui n'installe
+    # RIEN était un mensonge du journal : la ligne dit maintenant ce qui suit.
+    msg_ready = (
+        t("VM ready - starting the ERPLibre install")
+        if installs
+        else t("VM ready - taking its measurements")
+    )
     msg_giveup = t(
         "cloud-init still running after 20 min - install starts anyway"
         " (it waits for cloud-init first)"
@@ -230,19 +240,26 @@ def _launch_one(
 def _log_header(vm: dict, branch: str, when: str) -> str:
     """En-tête du log : date, VM, distribution, version, architecture, branche.
     Permet d'identifier l'installation d'un coup d'œil (et de ne jamais laisser
-    le log vide pendant l'attente du boot)."""
+    le log vide pendant l'attente du boot).
+
+    Sans branche, il n'y a rien à installer : le titre le dit et la ligne
+    « Branche » disparaît, au lieu d'annoncer une installation ERPLibre qui
+    n'aura pas lieu.
+    """
     distro = vm.get("distro") or "?"
     version = vm.get("version") or ""
     arch = vm.get("arch") or "?"
     bar = "=" * 64
+    titre = t("installation") if branch else t("VM start-up")
+    ligne_branche = f"  Branche      : {branch}\n" if branch else ""
     return (
         f"{bar}\n"
-        f"  ERPLibre — {t('installation')}\n"
+        f"  ERPLibre — {titre}\n"
         f"  Date         : {when}\n"
         f"  VM           : {vm['name']}\n"
         f"  Distribution : {distro} {version}\n"
         f"  Architecture : {arch}\n"
-        f"  Branche      : {branch}\n"
+        f"{ligne_branche}"
         f"  IP           : {vm['ip']}\n"
         f"{bar}\n\n"
     )
@@ -268,7 +285,11 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # plus le même pour toutes. `remote_cmd` reste le défaut, ce qui laisse
         # intacts les appelants qui n'en fournissent qu'une.
         _launch_one(
-            vm["ip"], vm.get("remote_cmd") or remote_cmd, log_path, vm["name"]
+            vm["ip"],
+            vm.get("remote_cmd") or remote_cmd,
+            log_path,
+            vm["name"],
+            installs=bool(branch),
         )
         entries.append(
             {
@@ -411,6 +432,10 @@ def active_run():
 # avertissements connus et bénins) : on réutilise la MÊME logique de détection
 # que la suite de tests ERPLibre pour analyser les logs d'installation.
 _LST_IGNORE_WARNING = (
+    # ssh annonce l'ajout d'une clé d'hôte à chaque PREMIÈRE connexion à une
+    # VM neuve. Ce n'est pas un avertissement d'installation : compté, il
+    # allumait la colonne ⚠ sur TOUTE installation, dès sa première ligne.
+    "Warning: Permanently added",
     "have the same label:",
     "odoo.addons.code_generator.extractor_module_file: Ignore next error about"
     " ALTER TABLE DROP CONSTRAINT.",
