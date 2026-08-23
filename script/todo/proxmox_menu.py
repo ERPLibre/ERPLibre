@@ -18,9 +18,10 @@ import shlex
 import subprocess
 import time
 
+import click
+
 from script.todo import todo_prefs
 from script.todo.todo_i18n import t
-import click
 
 
 class ProxmoxMenuMixin:

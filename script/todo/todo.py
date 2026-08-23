@@ -5,8 +5,6 @@
 import ast
 import configparser
 import datetime
-import getpass
-import grp
 import inspect
 import json
 import logging
