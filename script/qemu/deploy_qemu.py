@@ -2712,7 +2712,13 @@ def build_installer_initrd(
         )
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp)
-        (work / "preseed.cfg").write_text(preseed, encoding="utf-8")
+        # Le mot de passe utilisateur y est HACHÉ (user-password-crypted).
+        # Reste celui de network-console, une valeur fixe et publique dont
+        # le composant est désactivé plus bas. Le répertoire temporaire est
+        # déjà en 0700 ; le mode explicite vaut pour qui lirait ce code.
+        cfg = work / "preseed.cfg"
+        cfg.touch(mode=0o600)
+        cfg.write_text(preseed, encoding="utf-8")
         members = ["preseed.cfg"]
         for path, _mode, content, _owner in guide or []:
             name = installer_guide_name(path)

@@ -16,6 +16,8 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
+from script.execute.execute import redact_secrets
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
@@ -138,7 +140,7 @@ def ask_master_password(arg_base, essais=MAX_ESSAIS_MOT_DE_PASSE):
         if not password_refused(sortie):
             # Autre chose est cassé : le dire, et ne pas noyer la panne
             # sous dix invites de mot de passe.
-            _logger.error(sortie.strip()[-1500:])
+            _logger.error(redact_secrets(sortie.strip()[-1500:]))
             return None
         restants = essais - tour
         if restants:
@@ -232,7 +234,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --restore"
             f" --restore_image {config.image} --database {cache_database}"
         )
-        print(check_output(arg.split(" ")).decode())
+        print(redact_secrets(check_output(arg.split(" ")).decode()))
         verify_filestore(cache_database, config.image)
 
     if config.ignore_cache:
@@ -254,8 +256,9 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
         )
     if config.neutralize:
         arg += " --neutralize"
-    print(arg)
-    print(check_output(arg.split(" ")).decode())
+    # « arg_base » porte --master_password des que la base en exige un.
+    print(redact_secrets(arg))
+    print(redact_secrets(check_output(arg.split(" ")).decode()))
     if config.ignore_cache:
         verify_filestore(config.database, config.image)
 
@@ -298,7 +301,7 @@ def main():
         for db in lst_db_cache:
             _logger.info(f"## Delete {db} ##")
             arg = f"{arg_base} --drop --database {db}"
-            out = check_output(arg.split(" ")).decode()
+            out = redact_secrets(check_output(arg.split(" ")).decode())
             print(out)
         lst_db, lst_db_cache = get_list_db_cache(arg_base)
 
@@ -308,7 +311,7 @@ def main():
         if config.database in lst_db:
             _logger.info(f"## Drop {config.database} ##")
             arg = f"{arg_base} --drop --database {config.database}"
-            out = check_output(arg.split(" ")).decode()
+            out = redact_secrets(check_output(arg.split(" ")).decode())
             print(out)
         if config.only_drop:
             return

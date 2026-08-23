@@ -183,6 +183,11 @@ class Execute:
                 line = process.stdout.readline()
                 if not line:
                     break
+                # La sortie du sous-processus passe par le meme filtre que
+                # la commande : un outil qui reaffiche ses propres arguments
+                # (« set -x », une trace, odoo_bin.sh) y remettrait le secret
+                # que la ligne 165 venait d'ecarter.
+                line = redact_secrets(line)
                 if not quiet:
                     print(line, end="")
                 if sink:
