@@ -32,7 +32,19 @@ def fill_parser(parser):
     group_login.add_argument(
         "--default_password_auth",
         default="admin",
-        help="Password to use to authenticate with admin.",
+        help=(
+            "Password to use to authenticate with admin. Prefer"
+            " --default_password_auth_env: a value given here travels"
+            " through argv, which every user on the machine can read."
+        ),
+    )
+    group_login.add_argument(
+        "--default_password_auth_env",
+        default=None,
+        help=(
+            "NAME of an environment variable holding the password. Only"
+            " the name reaches the command line; the value never does."
+        ),
     )
 
 
@@ -71,10 +83,14 @@ def run(
     email_auth = (
         default_email_auth if default_email_auth else config.default_email_auth
     )
+    # L'environnement l'emporte : /proc/<pid>/cmdline est lisible par tout
+    # utilisateur de la machine, /proc/<pid>/environ par son seul
+    # propriétaire. Le nom de la variable, lui, n'est pas un secret.
+    pass_env = getattr(config, "default_password_auth_env", None)
     pass_auth = (
-        default_password_auth
-        if default_password_auth
-        else config.default_password_auth
+        (pass_env and os.environ.get(pass_env))
+        or default_password_auth
+        or config.default_password_auth
     )
     courriel_input.clear()
     mot_de_passe_input.clear()
@@ -100,9 +116,11 @@ def run(
             )
             error_button.click()
 
-            # Remplissez le courriel et le mot de passe
-            courriel_input.send_keys(config.default_email_auth)
-            mot_de_passe_input.send_keys(config.default_password_auth)
+            # Les valeurs RÉSOLUES, pas celles du config : la reprise
+            # renvoyait le défaut « admin » dès qu'un identifiant avait été
+            # fourni autrement, et échouait sans dire pourquoi.
+            courriel_input.send_keys(email_auth)
+            mot_de_passe_input.send_keys(pass_auth)
 
             connexion_button.click()
         else:

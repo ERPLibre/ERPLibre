@@ -403,21 +403,42 @@ class TestTestMenuDispatch(unittest.TestCase):
 
 
 class TestKdbxGetExtraCommandUser(unittest.TestCase):
+    """La fonction rend (fragments, variables d'environnement).
+
+    Le mot de passe ne doit JAMAIS revenir dans les fragments : ils
+    deviennent une ligne de commande, que tout utilisateur de la machine
+    peut lire dans /proc/<pid>/cmdline. Seul le NOM d'une variable y a sa
+    place, et c'est ce que le dernier test verrouille.
+    """
+
     def test_empty_kdbx_key(self):
         todo = TODO()
         result = todo.kdbx_manager.get_extra_command_user("")
-        self.assertEqual(result, "")
+        self.assertEqual(result, ("", {}))
 
     def test_none_kdbx_key(self):
         todo = TODO()
         result = todo.kdbx_manager.get_extra_command_user(None)
-        self.assertEqual(result, "")
+        self.assertEqual(result, ("", {}))
 
     def test_kdbx_not_available(self):
         todo = TODO()
         todo.kdbx_manager.get_kdbx = MagicMock(return_value=None)
         result = todo.kdbx_manager.get_extra_command_user("some_key")
-        self.assertEqual(result, "")
+        self.assertEqual(result, ("", {}))
+
+    def test_password_never_reaches_the_command_line(self):
+        todo = TODO()
+        entry = MagicMock(username="odoo", password="s3cr3t")
+        kp = MagicMock()
+        kp.find_entries_by_title = MagicMock(return_value=entry)
+        todo.kdbx_manager.get_kdbx = MagicMock(return_value=kp)
+        fragment, env = todo.kdbx_manager.get_extra_command_user("une_cle")
+        self.assertNotIn("s3cr3t", fragment)
+        self.assertIn(
+            "--default_password_auth_env EL_WEB_LOGIN_PWD_0", fragment
+        )
+        self.assertEqual(env, {"EL_WEB_LOGIN_PWD_0": "s3cr3t"})
 
 
 class TestSetupClaudeCommit(unittest.TestCase):

@@ -341,7 +341,11 @@ else
         --email "$ADMIN_EMAIL" --must-change-password=false \
         --config "$CONF" >/dev/null \
         || die "création de l'administrateur impossible"
-    say "${Green}administrateur créé : $ADMIN_USER / $ADMIN_PASSWORD${Color_Off}"
+    # Le mot de passe n'est PAS réaffiché : cette sortie part dans les
+    # journaux d'installation et dans toute capture de CI. Celui qui a
+    # posé FORGEJO_ADMIN_PASSWORD le connaît déjà ; les autres ont le
+    # défaut, documenté en tête de ce fichier.
+    say "${Green}administrateur créé : $ADMIN_USER${Color_Off}"
 fi
 
 # --- 9. Résumé -------------------------------------------------------------
