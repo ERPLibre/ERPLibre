@@ -9442,6 +9442,214 @@ class TODO:
             pass
         print(f"\n  {t('Tunnel closed.')}")
 
+    # sshfs lit « a+b » comme un CHAÎNAGE d'hôtes — « ssh a, puis ssh b depuis
+    # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
+    # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
+    # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
+    # monter tel quel. Vécu : « read: Connection reset by peer », parce que la
+    # seconde moitié du nom est un domaine libvirt, pas un alias SSH du rebond.
+    SSHFS_CHAIN_SEP = "+"
+
+    # Options à rendre à sshfs quand on contourne l'alias : exactement celles
+    # que todo.py écrit dans l'entrée qu'il génère. Sans elles, une VM dont la
+    # clé d'hôte a changé — IP DHCP réutilisée — ferait échouer le montage.
+    SSH_FORWARD_OPTS = (
+        ("port", "Port"),
+        ("proxyjump", "ProxyJump"),
+        ("identityfile", "IdentityFile"),
+        ("identitiesonly", "IdentitiesOnly"),
+        ("stricthostkeychecking", "StrictHostKeyChecking"),
+        ("userknownhostsfile", "UserKnownHostsFile"),
+    )
+
+    # Ce que dit stderr, et ce qu'il faut aller corriger. L'ordre compte : le
+    # premier motif trouvé gagne.
+    SSH_FAILURE_HINTS = (
+        ("could not resolve hostname", "unknown host name: check HostName"),
+        ("name or service not known", "unknown host name: check HostName"),
+        ("connection timed out", "no answer: is the server up and reachable?"),
+        ("operation timed out", "no answer: is the server up and reachable?"),
+        ("no route to host", "no route: check the network or the ProxyJump"),
+        ("connection refused", "nothing listening on the SSH port"),
+        ("permission denied", "authentication refused: check User and key"),
+        ("host key verification failed", "host key changed for this address"),
+    )
+
+    @staticmethod
+    def _ssh_config_entries(path):
+        """[(alias, {hostname, user})] de ~/.ssh/config, dans l'ordre du fichier.
+
+        Pendant de `_ssh_config_hosts`, qui ne rend que les NOMS : ici le menu
+        de montage a besoin d'afficher aussi l'adresse et l'utilisateur.
+
+        « Host a b » déclare DEUX alias pour la même machine — c'est ce que
+        todo.py écrit lui-même quand une VM porte plusieurs noms. Les prendre
+        pour un seul nom donnait un alias « a b », que sshfs ne peut pas
+        monter. Les motifs génériques (« * », « web-? ») sont écartés : ils ne
+        désignent aucune machine.
+        """
+        hosts = []
+        noms = []
+        info = {}
+
+        def clore():
+            for nom in noms:
+                hosts.append((nom, dict(info)))
+
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                lignes = fh.readlines()
+        except OSError:
+            return []
+        for ligne in lignes:
+            ligne = ligne.strip()
+            if ligne.lower().startswith("host "):
+                clore()
+                noms = [
+                    m
+                    for m in ligne.split()[1:]
+                    if "*" not in m and "?" not in m and not m.startswith("!")
+                ]
+                info = {}
+            elif noms:
+                paire = ligne.split(None, 1)
+                if len(paire) == 2 and paire[0].lower() in (
+                    "hostname",
+                    "user",
+                ):
+                    info[paire[0].lower()] = paire[1].strip()
+        clore()
+        return hosts
+
+    @staticmethod
+    def _ssh_resolve(alias):
+        """Configuration RÉSOLUE de l'alias, telle que ssh la voit (ssh -G).
+
+        On délègue à ssh au lieu de relire le fichier : lui seul connaît les
+        Include, les Match, l'ordre des motifs et ses propres défauts.
+        """
+        try:
+            res = subprocess.run(
+                ["ssh", "-G", alias],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return {}
+        if res.returncode != 0:
+            return {}
+        out = {}
+        for ligne in res.stdout.splitlines():
+            cle, _, val = ligne.strip().partition(" ")
+            # ssh -G répète « identityfile » : la PREMIÈRE est celle qui compte.
+            if cle and val and cle.lower() not in out:
+                out[cle.lower()] = val
+        return out
+
+    def _sshfs_command(self, alias, mount_point, resolved=None):
+        """(commande sshfs, alias contourné ?) pour monter cet alias.
+
+        Sans « + » dans le nom, on laisse sshfs faire : c'est ssh qui lit la
+        config, et rien ne vaut mieux. Avec un « + », on résout l'alias
+        soi-même et on rend à sshfs une cible qu'il ne peut plus mal lire.
+        """
+        base = "sshfs -o follow_symlinks"
+        if self.SSHFS_CHAIN_SEP not in alias:
+            return f"{base} {alias}:/ {mount_point}", False
+        cfg = resolved if resolved is not None else self._ssh_resolve(alias)
+        host = cfg.get("hostname")
+        # Un hostname qui contient encore un « + » ne réglerait rien, et un
+        # alias non résolu vaut mieux qu'une cible inventée.
+        if not host or self.SSHFS_CHAIN_SEP in host:
+            return f"{base} {alias}:/ {mount_point}", False
+        opts = []
+        for cle, nom in self.SSH_FORWARD_OPTS:
+            val = cfg.get(cle)
+            if val and val.lower() != "none":
+                opts.append(f"-o {nom}={val}")
+        user = cfg.get("user")
+        cible = f"{user}@{host}" if user else host
+        pieces = [base] + opts + [f"{cible}:/", mount_point]
+        return " ".join(pieces), True
+
+    @classmethod
+    def _ssh_failure_hint(cls, stderr):
+        """Première ligne utile de stderr, et ce qu'elle désigne."""
+        texte = (stderr or "").lower()
+        for motif, indice in cls.SSH_FAILURE_HINTS:
+            if motif in texte:
+                return indice
+        return ""
+
+    @staticmethod
+    def _ssh_probe(alias, timeout=8):
+        """(code, stderr) d'un « ssh <alias> true » sans invite de mot de passe.
+
+        BatchMode : une invite bloquerait le menu. Un refus d'authentification
+        se distingue donc d'un hôte injoignable, et le diagnostic le dit.
+        """
+        try:
+            res = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    f"ConnectTimeout={timeout}",
+                    alias,
+                    "true",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 12,
+                env=TODO._qemu_c_env(),
+            )
+        except subprocess.TimeoutExpired:
+            return 255, "Connection timed out"
+        except (OSError, subprocess.SubprocessError) as exc:
+            return 255, str(exc)
+        return res.returncode, res.stderr.strip()
+
+    def _sshfs_diagnose(self, alias, mount_point, bypassed):
+        """Dit POURQUOI le montage a échoué, et où aller corriger.
+
+        Le message est ciblé, pas une liste de causes possibles : on interroge
+        ssh, et selon qu'il passe ou non, le fautif n'est pas le même.
+        """
+        print(f"\n  ⚠ {t('sshfs mount failed.')}")
+        if not alias:
+            print(f"  → {t('Check the SSH host and that the server is up.')}")
+            return
+        print(f"  {t('Checking SSH access…')} ({alias})")
+        code, err = self._ssh_probe(alias)
+        if code == 0:
+            print(f"  ✓ {t('SSH reaches this host: ~/.ssh/config is fine.')}")
+            if not bypassed and self.SSHFS_CHAIN_SEP in alias:
+                print(f"  → {t('sshfs reads the « + » as host chaining.')}")
+                cmd, ok = self._sshfs_command(alias, mount_point)
+                if ok:
+                    print(f"  → {t('Run this instead:')}")
+                    print(f"    {cmd}")
+                else:
+                    # Annoncer une commande puis n'en donner aucune serait
+                    # pire que se taire : on dit ce qui manque.
+                    print(
+                        f"  → {t('ssh -G resolved nothing: check ~/.ssh/config.')}"
+                    )
+            else:
+                print(f"  → {t('Is sshfs (and fuse) installed here?')}")
+            return
+        indice = self._ssh_failure_hint(err)
+        if indice:
+            print(f"  ✗ {t('SSH fails too:')} {t(indice)}")
+        else:
+            print(
+                f"  ✗ {t('SSH fails too:')} {err.splitlines()[0] if err else code}"
+            )
+        print(f"  → {t('Update ~/.ssh/config, or check the server is up.')}")
+
     def _configure_sshfs(self):
         import getpass
         import re
@@ -9458,31 +9666,7 @@ class TODO:
 
         if choice == "2":
             ssh_config_path = os.path.expanduser("~/.ssh/config")
-            hosts = []
-            if os.path.exists(ssh_config_path):
-                current_host = None
-                current_info = {}
-                with open(ssh_config_path) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.lower().startswith("host "):
-                            host_val = line.split(None, 1)[1].strip()
-                            if host_val != "*":
-                                if current_host:
-                                    hosts.append((current_host, current_info))
-                                current_host = host_val
-                                current_info = {}
-                        elif current_host:
-                            key = line.split(None, 1)
-                            if len(key) == 2:
-                                k = key[0].lower()
-                                v = key[1].strip()
-                                if k == "hostname":
-                                    current_info["hostname"] = v
-                                elif k == "user":
-                                    current_info["user"] = v
-                if current_host:
-                    hosts.append((current_host, current_info))
+            hosts = self._ssh_config_entries(ssh_config_path)
 
             if not hosts:
                 print(t("No SSH hosts found in ~/.ssh/config"))
@@ -9539,17 +9723,41 @@ class TODO:
         # une chaîne de symlinks relatifs profonds (.repo/projects -> project-
         # objects) que git ne peut pas traverser sur un montage sshfs par
         # défaut (« erreur à la lecture de .git » -> git status/commit KO).
-        cmd = f"sshfs -o follow_symlinks {target} {mount_point}"
+        # L'alias vient de ~/.ssh/config : c'est lui qui peut porter un « + »,
+        # et lui qu'on peut interroger en cas d'échec. Une saisie manuelle est
+        # rendue telle quelle — si elle contient un « + », c'est un chaînage
+        # demandé exprès.
+        alias = ssh_name if choice == "2" else ""
+        if alias:
+            cmd, bypassed = self._sshfs_command(alias, mount_point)
+        else:
+            cmd, bypassed = (
+                f"sshfs -o follow_symlinks {target} {mount_point}",
+                False,
+            )
         print(f"{t('Mounting sshfs on: ')}{mount_point}")
         print(f"{t('Will execute:')} {cmd}")
         try:
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-            print(f"{t('Mounted on: ')}{mount_point}")
-            print(f"mount | grep sshfs")
-            print(f"{t('To unmount: ')}" f"fusermount -u {mount_point}")
-            print(f"nautilus {mount_point}/home/{user}")
+            status = self.execute.exec_command_live(cmd, source_erplibre=False)
         except Exception as e:
             print(f"{t('Error mounting sshfs: ')}{e}")
+            status = 1
+        # Le reste ne s'affiche QUE si le montage a réussi : « Monté sur … »
+        # après un code 1 envoyait chercher des fichiers dans un répertoire
+        # vide, et faisait passer l'échec pour un détail.
+        if status:
+            self._sshfs_diagnose(alias, mount_point, bypassed)
+            # Le point de montage n'a jamais servi : le laisser accumulerait
+            # un répertoire vide dans /tmp à chaque tentative.
+            try:
+                os.rmdir(mount_point)
+            except OSError:
+                pass
+            return
+        print(f"{t('Mounted on: ')}{mount_point}")
+        print("mount | grep sshfs")
+        print(f"{t('To unmount: ')}" f"fusermount -u {mount_point}")
+        print(f"nautilus {mount_point}/home/{user}")
 
     def _get_ssh_params(self):
         """Prompt for SSH connection parameters. Returns dict or None on cancel."""

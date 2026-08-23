@@ -3103,6 +3103,70 @@ TRANSLATIONS = {
         "fr": "Nœud de rendu",
         "en": "Render node",
     },
+    "sshfs mount failed.": {
+        "fr": "Le montage sshfs a échoué.",
+        "en": "sshfs mount failed.",
+    },
+    "Checking SSH access…": {
+        "fr": "Vérification de l'accès SSH…",
+        "en": "Checking SSH access…",
+    },
+    "SSH reaches this host: ~/.ssh/config is fine.": {
+        "fr": "SSH joint cet hôte : ~/.ssh/config est bon.",
+        "en": "SSH reaches this host: ~/.ssh/config is fine.",
+    },
+    "sshfs reads the « + » as host chaining.": {
+        "fr": "sshfs lit le « + » comme un chaînage d'hôtes.",
+        "en": "sshfs reads the « + » as host chaining.",
+    },
+    "Run this instead:": {
+        "fr": "À lancer plutôt :",
+        "en": "Run this instead:",
+    },
+    "ssh -G resolved nothing: check ~/.ssh/config.": {
+        "fr": "« ssh -G » n'a rien résolu : vérifier ~/.ssh/config.",
+        "en": "ssh -G resolved nothing: check ~/.ssh/config.",
+    },
+    "Is sshfs (and fuse) installed here?": {
+        "fr": "sshfs (et fuse) sont-ils installés ici ?",
+        "en": "Is sshfs (and fuse) installed here?",
+    },
+    "SSH fails too:": {
+        "fr": "SSH échoue aussi :",
+        "en": "SSH fails too:",
+    },
+    "Update ~/.ssh/config, or check the server is up.": {
+        "fr": "Mettre à jour ~/.ssh/config, ou vérifier que le serveur répond.",
+        "en": "Update ~/.ssh/config, or check the server is up.",
+    },
+    "Check the SSH host and that the server is up.": {
+        "fr": "Vérifier l'hôte SSH saisi et que le serveur répond.",
+        "en": "Check the SSH host and that the server is up.",
+    },
+    "unknown host name: check HostName": {
+        "fr": "nom d'hôte inconnu : vérifier HostName",
+        "en": "unknown host name: check HostName",
+    },
+    "no answer: is the server up and reachable?": {
+        "fr": "aucune réponse : le serveur est-il allumé et joignable ?",
+        "en": "no answer: is the server up and reachable?",
+    },
+    "no route: check the network or the ProxyJump": {
+        "fr": "pas de route : vérifier le réseau ou le ProxyJump",
+        "en": "no route: check the network or the ProxyJump",
+    },
+    "nothing listening on the SSH port": {
+        "fr": "rien n'écoute sur le port SSH",
+        "en": "nothing listening on the SSH port",
+    },
+    "authentication refused: check User and key": {
+        "fr": "authentification refusée : vérifier User et la clé",
+        "en": "authentication refused: check User and key",
+    },
+    "host key changed for this address": {
+        "fr": "la clé d'hôte a changé pour cette adresse",
+        "en": "host key changed for this address",
+    },
     "no statistics yet": {
         "fr": "pas encore de statistiques",
         "en": "no statistics yet",
