@@ -30,7 +30,7 @@ from pathlib import Path
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 EPHEMERAL_PREFIX = "erplibre-mail-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -65,10 +65,45 @@ CREATE TABLE IF NOT EXISTS messages (
   sealed_to      BLOB,
   sealed_subject BLOB,
   sealed_snippet BLOB,
+  -- v2, fils de discussion. Des EMPREINTES, jamais les identifiants
+  -- bruts : `msgid_hash` existe déjà pour ça, et en mode `encrypted`
+  -- écrire des Message-ID en clair rendrait le chiffrement inutile pour
+  -- relier les messages entre eux.
+  in_reply_to_hash TEXT,
+  references_hashes TEXT,
   UNIQUE(folder_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
 """
+
+
+def _ensure_columns(conn) -> list[str]:
+    """Ajoute les colonnes manquantes de `messages`. Renvoie les ajoutées.
+
+    On lit les colonnes RÉELLES plutôt que `schema_version` : un
+    `CREATE TABLE IF NOT EXISTS` ne touche pas une table déjà présente, donc
+    un cache créé avant la v2 garde sa forme d'origine — et sa version
+    stockée n'a jamais été relue par personne, donc rien ne garantit
+    qu'elle dise la vérité. Se fier à ce qui EST plutôt qu'à ce qui est
+    déclaré rend au passage la migration rejouable sans risque.
+    """
+    presentes = {
+        row["name"] for row in conn.execute("PRAGMA table_info(messages)")
+    }
+    ajoutees = []
+    for nom in ("in_reply_to_hash", "references_hashes"):
+        if nom not in presentes:
+            conn.execute(f"ALTER TABLE messages ADD COLUMN {nom} TEXT")
+            ajoutees.append(nom)
+    # Après l'ALTER, jamais avant : sur un cache d'avant la v2 la colonne
+    # n'existe pas encore quand `executescript(SCHEMA)` tourne, et un index
+    # déclaré là-bas faisait échouer l'ouverture. Inconditionnel, pour
+    # qu'un cache NEUF — qui ne migre rien — l'obtienne aussi.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_msg_reply"
+        " ON messages(in_reply_to_hash)"
+    )
+    return ajoutees
 
 
 class StoreError(Exception):
@@ -243,8 +278,13 @@ class Store:
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(SCHEMA)
+            _ensure_columns(conn)
+            # REPLACE, pas IGNORE : un cache d'avant la v2 porte encore
+            # « 1 », et l'ignorer laisserait la version mentir sur une base
+            # qu'on vient justement de migrer.
             conn.execute(
-                "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)",
+                "INSERT OR REPLACE INTO meta(key, value)"
+                " VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
             )
             conn.commit()

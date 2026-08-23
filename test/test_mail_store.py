@@ -133,6 +133,95 @@ class TestSchema(StoreCase):
         again.close()
 
 
+class TestSchemaV2Migration(StoreCase):
+    """Les fils de discussion (phase 3) ajoutent deux colonnes.
+
+    `CREATE TABLE IF NOT EXISTS` ne touche pas une table déjà présente : un
+    cache créé avant la v2 ne les aurait JAMAIS eues sans migration, et sa
+    `schema_version` — écrite une fois, jamais relue — ne prouvait rien.
+    """
+
+    V2 = {"in_reply_to_hash", "references_hashes"}
+
+    def _colonnes(self):
+        return {
+            row["name"]
+            for row in self.store._db().execute("PRAGMA table_info(messages)")
+        }
+
+    def _index(self):
+        return {
+            row[0]
+            for row in self.store._db().execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            )
+        }
+
+    def _rendre_ancien(self):
+        """Ramène le cache ouvert à sa forme d'avant la v2."""
+        self.store._db().executescript(
+            """
+            CREATE TABLE m2 AS SELECT id, folder_id, uid, date, size, flags,
+              has_body, msgid_hash, sealed_msgid, sealed_from, sealed_to,
+              sealed_subject, sealed_snippet FROM messages;
+            DROP TABLE messages;
+            ALTER TABLE m2 RENAME TO messages;
+            UPDATE meta SET value='1' WHERE key='schema_version';
+            """
+        )
+        self.store._db().commit()
+
+    def _rouvrir(self):
+        self.store.close()
+        self.store = Store(
+            self.account,
+            mode=self.mode,
+            key=self.key,
+            base=Path(self.tmp.name),
+        )
+        self.store.open()
+
+    def test_a_fresh_cache_has_the_columns(self):
+        self.assertTrue(self.V2 <= self._colonnes())
+
+    def test_a_fresh_cache_has_the_index_too(self):
+        """L'index vivait d'abord dans SCHEMA, où il portait sur une colonne
+        que l'ancien cache n'avait pas encore : l'ouverture échouait. Le
+        déplacer après la migration risquait l'inverse — plus d'index sur un
+        cache neuf, qui ne migre rien."""
+        self.assertIn("idx_msg_reply", self._index())
+
+    def test_an_old_cache_gains_the_columns(self):
+        self._rendre_ancien()
+        self.assertFalse(self.V2 <= self._colonnes())
+        self._rouvrir()
+        self.assertTrue(self.V2 <= self._colonnes())
+
+    def test_migrating_loses_no_message(self):
+        folder_id = self.store.upsert_folder("INBOX", "INBOX", "inbox")
+        self.store.upsert_messages(folder_id, [meta(1), meta(2)])
+        self._rendre_ancien()
+        self._rouvrir()
+        apres = self.store.folder_state("INBOX")["id"]
+        self.assertEqual(len(self.store.list_messages(apres)), 2)
+
+    def test_the_version_stops_claiming_one(self):
+        self._rendre_ancien()
+        self._rouvrir()
+        ligne = (
+            self.store._db()
+            .execute("SELECT value FROM meta WHERE key='schema_version'")
+            .fetchone()
+        )
+        self.assertEqual(ligne[0], "2")
+
+    def test_migrating_twice_is_harmless(self):
+        self._rendre_ancien()
+        self._rouvrir()
+        self._rouvrir()
+        self.assertTrue(self.V2 <= self._colonnes())
+
+
 class TestFolders(StoreCase):
     def test_upsert_returns_id(self):
         fid = self.store.upsert_folder("INBOX", "INBOX", "inbox", 1, 10)
