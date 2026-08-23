@@ -19,10 +19,15 @@ except ModuleNotFoundError as e:
 VENV_ERPLIBRE = ".venv.erplibre"
 
 # Une commande construite ailleurs peut porter un secret en clair : todo.py et
-# kdbx_manager.py y mettent « --default_password_auth '<mot de passe KeePass>' »,
-# db_restore.py « --master_password=… ». Cette commande est affichée avant et
-# après l'exécution, et journalisée en erreur : le secret finissait donc dans le
-# terminal, dans les journaux et dans toute sortie CI qui les capture.
+# kdbx_manager.py y mettent « --default_password_auth '<mot de passe KeePass>' ».
+# Cette commande est affichée avant et après l'exécution, et journalisée en
+# erreur : le secret finissait donc dans le terminal, dans les journaux et dans
+# toute sortie CI qui les capture.
+#
+# Ce filtre reste le dernier rempart, pas le premier : un secret n'a rien à
+# faire sur argv, que /proc/<pid>/cmdline expose à tout utilisateur de la
+# machine et qu'aucun caviardage n'atteint. db_restore.py est passé à
+# MASTER_PWD dans l'environnement pour cette raison.
 #
 # On caviarde la VALEUR, jamais le nom de l'option : la commande reste lisible et
 # reproductible, il ne manque que ce qui ne doit pas être lu.
@@ -183,6 +188,11 @@ class Execute:
                 line = process.stdout.readline()
                 if not line:
                     break
+                # La sortie du sous-processus passe par le meme filtre que
+                # la commande : un outil qui reaffiche ses propres arguments
+                # (« set -x », une trace, odoo_bin.sh) y remettrait le secret
+                # que la ligne 165 venait d'ecarter.
+                line = redact_secrets(line)
                 if not quiet:
                     print(line, end="")
                 if sink:

@@ -16,6 +16,8 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
+from script.execute.execute import redact_secrets
+
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 _logger = logging.getLogger(__name__)
@@ -102,17 +104,23 @@ def password_refused(sortie):
     return "AccessDenied" in (sortie or "")
 
 
-def probe_master_password(arg_base):
+def probe_master_password(arg_base, mot):
     """(accepté, sortie) — éprouver le mot de passe sur `--list`.
 
     La commande la plus inoffensive : elle ne touche à rien et rend le
     même refus qu'une restauration. Valider ici évite d'échouer à
     mi-parcours, une fois la base déjà supprimée.
+
+    Le secret passe par l'environnement, jamais par argv :
+    /proc/<pid>/cmdline est lisible par tout utilisateur de la machine.
     """
+    env = os.environ.copy()
+    env["MASTER_PWD"] = mot
     done = subprocess.run(
         f"{arg_base} --list".split(" "),
         capture_output=True,
         text=True,
+        env=env,
     )
     return done.returncode == 0, (done.stdout or "") + (done.stderr or "")
 
@@ -131,14 +139,13 @@ def ask_master_password(arg_base, essais=MAX_ESSAIS_MOT_DE_PASSE):
         mot = get_master_password()
         if not mot:
             return None
-        candidat = f"{arg_base} --master_password={mot}"
-        accepte, sortie = probe_master_password(candidat)
+        accepte, sortie = probe_master_password(arg_base, mot)
         if accepte:
             return mot
         if not password_refused(sortie):
             # Autre chose est cassé : le dire, et ne pas noyer la panne
             # sous dix invites de mot de passe.
-            _logger.error(sortie.strip()[-1500:])
+            _logger.error(redact_secrets(sortie.strip()[-1500:]))
             return None
         restants = essais - tour
         if restants:
@@ -232,7 +239,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --restore"
             f" --restore_image {config.image} --database {cache_database}"
         )
-        print(check_output(arg.split(" ")).decode())
+        print(redact_secrets(check_output(arg.split(" ")).decode()))
         verify_filestore(cache_database, config.image)
 
     if config.ignore_cache:
@@ -254,8 +261,11 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
         )
     if config.neutralize:
         arg += " --neutralize"
-    print(arg)
-    print(check_output(arg.split(" ")).decode())
+    # Le secret ne traverse plus argv (il est dans MASTER_PWD), mais la
+    # commande peut porter d'autres options sensibles : on filtre quand
+    # même, le coût est nul et la garantie ne dépend alors d'aucun appelant.
+    print(redact_secrets(arg))
+    print(redact_secrets(check_output(arg.split(" ")).decode()))
     if config.ignore_cache:
         verify_filestore(config.database, config.image)
 
@@ -287,7 +297,10 @@ def main():
             if not master_password:
                 _logger.error("Missing master password, cancel transaction.")
                 sys.exit(1)
-            arg_base += f" --master_password={master_password}"
+            # Dans l'ENVIRONNEMENT, pas dans arg_base : tous les appels
+            # suivants sont des enfants de ce processus et en héritent,
+            # sans que le secret traverse jamais argv.
+            os.environ["MASTER_PWD"] = master_password
         else:
             _logger.info("No master password needed... Continue")
 
@@ -298,7 +311,7 @@ def main():
         for db in lst_db_cache:
             _logger.info(f"## Delete {db} ##")
             arg = f"{arg_base} --drop --database {db}"
-            out = check_output(arg.split(" ")).decode()
+            out = redact_secrets(check_output(arg.split(" ")).decode())
             print(out)
         lst_db, lst_db_cache = get_list_db_cache(arg_base)
 
@@ -308,7 +321,7 @@ def main():
         if config.database in lst_db:
             _logger.info(f"## Drop {config.database} ##")
             arg = f"{arg_base} --drop --database {config.database}"
-            out = check_output(arg.split(" ")).decode()
+            out = redact_secrets(check_output(arg.split(" ")).decode())
             print(out)
         if config.only_drop:
             return

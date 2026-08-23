@@ -79,8 +79,8 @@ class TestTheRetryLoop(unittest.TestCase):
             self.demandes += 1
             return next(suite, "")
 
-        def sonder(arg_base):
-            self.sondes.append(arg_base)
+        def sonder(arg_base, mot):
+            self.sondes.append((arg_base, mot))
             return next(rep, (False, "AccessDenied"))
 
         db_restore.get_master_password = demander
@@ -136,7 +136,13 @@ class TestTheRetryLoop(unittest.TestCase):
         self.branche(["bon"], [(True, "db1")])
         self.lance()
         self.assertEqual(len(self.sondes), 1)
-        self.assertIn("--master_password=bon", self.sondes[0])
+        arg_base, mot = self.sondes[0]
+        self.assertEqual(mot, "bon")
+        # Le secret est passé À CÔTÉ de la commande, jamais dedans :
+        # /proc/<pid>/cmdline est lisible par tout utilisateur de la
+        # machine. C'est la garantie que ce test tient.
+        self.assertNotIn("bon", arg_base)
+        self.assertNotIn("--master_password", arg_base)
 
     def test_each_attempt_probes_with_ITS_password(self):
         self.branche(
@@ -144,8 +150,9 @@ class TestTheRetryLoop(unittest.TestCase):
             [(False, "AccessDenied"), (True, "db1")],
         )
         self.lance()
-        self.assertIn("--master_password=un", self.sondes[0])
-        self.assertIn("--master_password=deux", self.sondes[1])
+        self.assertEqual([mot for _, mot in self.sondes], ["un", "deux"])
+        for arg_base, _ in self.sondes:
+            self.assertNotIn("--master_password", arg_base)
 
 
 class TestTheWiring(unittest.TestCase):

@@ -510,14 +510,19 @@ class TODO:
         odoo_user = instance.get("user")
         odoo_password = instance.get("password")
 
+        # Le mot de passe voyage par l'environnement, jamais par argv : la
+        # ligne de commande est lisible par tout utilisateur de la machine.
+        web_login_env = {}
         if kdbx_key:
-            extra_cmd_web_login = self.kdbx_manager.get_extra_command_user(
-                kdbx_key
-            )
+            (
+                extra_cmd_web_login,
+                web_login_env,
+            ) = self.kdbx_manager.get_extra_command_user(kdbx_key)
         elif odoo_user and odoo_password:
+            web_login_env = {"EL_WEB_LOGIN_PWD_0": odoo_password}
             extra_cmd_web_login = (
-                f" --default_email_auth {odoo_user} --default_password_auth"
-                f" '{odoo_password}'"
+                f" --default_email_auth {odoo_user}"
+                " --default_password_auth_env EL_WEB_LOGIN_PWD_0"
             )
         else:
             extra_cmd_web_login = ""
@@ -538,7 +543,9 @@ class TODO:
         if exec_run_db:
             db_name = instance.get("database")
             self.prompt_execute_selenium_and_run_db(
-                db_name, extra_cmd_web_login=extra_cmd_web_login
+                db_name,
+                extra_cmd_web_login=extra_cmd_web_login,
+                web_login_env=web_login_env,
             )
 
         bash_command = instance.get("bash_command")
@@ -554,7 +561,9 @@ class TODO:
         command = instance.get("command")
         if command:
             self.prompt_execute_selenium(
-                command=command, extra_cmd_web_login=extra_cmd_web_login
+                command=command,
+                extra_cmd_web_login=extra_cmd_web_login,
+                web_login_env=web_login_env,
             )
 
         callback = instance.get("callback")
@@ -2058,13 +2067,17 @@ class TODO:
         host, from_ssh = self._qemu_self_address()
         user = os.environ.get("USER", "user")
         print(f"\n  {t('No display here; run this on YOUR workstation:')}")
-        print(f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n")
+        print(
+            f"\n    virt-viewer -c qemu+ssh://{user}@{host}/system {domain}\n"
+        )
         if not from_ssh:
             print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
         print(f"  {t('A ~/.ssh/config alias works there too.')}")
         print(f"  {t('It builds its own tunnel; no ssh -L to keep open.')}")
-        print(f"  {t('Missing? Install virt-viewer:')} apt / dnf / pacman"
-              " / zypper")
+        print(
+            f"  {t('Missing? Install virt-viewer:')} apt / dnf / pacman"
+            " / zypper"
+        )
 
     def _qemu_console_tunnel(self, name, src):
         """Tunnel vers l'ÉCRAN QEMU d'une VM, pas vers un serveur de l'invité.
@@ -5421,7 +5434,7 @@ class TODO:
             "Group=$SVC_GROUP\n"
             "Restart=always\n"
             "RestartSec=5\n"
-            "ExecStart=$SVC_DIR/run.sh\n"
+            "ExecStart=/bin/bash $SVC_DIR/run.sh\n"
             "WorkingDirectory=$SVC_DIR\n"
             "StandardOutput=journal+console\n"
             "$SELINUX_LINE\n"
@@ -11397,16 +11410,20 @@ class TODO:
         )
 
     def prompt_execute_selenium_and_run_db(
-        self, db_name, extra_cmd_web_login=""
+        self, db_name, extra_cmd_web_login="", web_login_env=None
     ):
         cmd_server = f"./run.sh -d {db_name};bash"
         self.execute.exec_command_live(cmd_server)
         cmd_client = (
             f"sleep 3;./script/selenium/web_login.py{extra_cmd_web_login};bash"
         )
-        self.execute.exec_command_live(cmd_client)
+        self.execute.exec_command_live(
+            cmd_client, new_env=web_login_env or None
+        )
 
-    def prompt_execute_selenium(self, command=None, extra_cmd_web_login=""):
+    def prompt_execute_selenium(
+        self, command=None, extra_cmd_web_login="", web_login_env=None
+    ):
         commands = []
         if not command:
             cmd = "./script/selenium/web_login.py"
@@ -11419,13 +11436,16 @@ class TODO:
         else:
             commands.append(cmd + extra_cmd_web_login)
 
+        env = web_login_env or None
         if len(commands) == 1:
-            self.execute.exec_command_live(commands[0])
+            self.execute.exec_command_live(commands[0], new_env=env)
         elif len(commands) > 1:
             new_cmd = "parallel ::: "
             for i, cmd in enumerate(commands):
                 new_cmd += f' "sleep {1 * i};{cmd}"'
-            self.execute.exec_command_live(new_cmd)
+            # « parallel » hérite de l'environnement, et chaque entrée lit
+            # SA variable : un nom par identifiant, d'où EL_WEB_LOGIN_PWD_N.
+            self.execute.exec_command_live(new_cmd, new_env=env)
 
     def crash_diagnostic(self, e):
         # TODO show message at start if os.path.exists(ERROR_LOG_PATH)

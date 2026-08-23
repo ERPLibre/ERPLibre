@@ -98,6 +98,20 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Migration: go back to a step from the resume screen or from a prompt, and act on the COW copies as soon as they are announced
 - The website copy analysis diffs each copy against the view it shadows
 - A test checks that what the tooling imports is declared
+- Automated Odoo migration: the tool drives the whole run -- repair, replay, an auto-run that takes the default after five seconds, and a countdown that names the answer it is about to take
+- Migration state screen: « t » shows where a run stands, with coloured commands, elapsed time, the server log read for you, and one log file per step on disk
+- Migration quality: what a run gained and lost step by step, the missing files named, Odoo's own redesigns told apart from real losses, and OpenUpgrade's declared changes laid over the real ones
+- Migration repairs: the customized SCSS the next bump breaks, predicted then fixed; themes uninstalled before the first bump; DMS visibility restored; views whose stored type contradicts their parent; and the <tree> tags Odoo 18 renamed to <list>
+- Smoke tests after a migration: every public URL requested, /my and every app opened as the neutralization test user, the views behind a failing URL named, and the OCA database cleanup run first
+- Filestore check: whether the attachment files landed, whether the record still exists, and the cleanups offered on the spot
+- Analysis: the modules a database lacks against the default package, with an offer to install those that are ready, and the attachment files that are truly unrecoverable
+- Debian on s390x through debian-installer, no cloud image being published for that architecture
+- A mobile development VM: PyCharm, Android Studio, GNOME extensions, an Android emulator and an adb tunnel for scrcpy, with the mobile app built and tested inside it
+- Forgejo, a git forge installable from the deployment menu
+- VM hardware set per machine: the host GPU, the CPU mode, the screens and the network
+- virt-viewer opens a VM screen from the menu
+- The install dashboard shows the host RAM, a VM's used RAM and uptime, and how long a log has been silent
+- A VM greets its SSH login with the distribution's own commands
 
 <!-- [fr] -->
 
@@ -160,6 +174,20 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Migration : revenir à une étape depuis l'écran de reprise ou depuis une invite, et agir sur les copies COW dès leur annonce
 - L'analyse des copies de site compare chaque copie à la vue qu'elle masque
 - Un test vérifie que ce qu'importe l'outillage est bien déclaré
+- Migration Odoo automatisée : l'outil mène toute l'exécution — réparer, rejouer, un déroulement automatique qui prend le défaut au bout de cinq secondes, et un compte à rebours qui nomme la réponse qu'il va prendre
+- Écran d'état de migration : « t » montre où en est une exécution, avec les commandes en couleur, la durée écoulée, le journal du serveur lu pour vous, et un fichier de journal par étape sur disque
+- Qualité de migration : ce qu'une exécution a gagné et perdu étape par étape, les fichiers manquants nommés, les refontes propres à Odoo distinguées des vraies pertes, et les changements déclarés par OpenUpgrade superposés aux réels
+- Réparations de migration : le SCSS personnalisé que le palier suivant casse, prévu puis corrigé ; les thèmes désinstallés avant le premier palier ; la visibilité DMS rétablie ; les vues dont le type stocké contredit leur parent ; et les balises <tree> qu'Odoo 18 a renommées en <list>
+- Tests de fumée après une migration : chaque URL publique demandée, /my et chaque application ouverte sous l'utilisateur de test de neutralisation, les vues derrière une URL en échec nommées, et le nettoyage de base OCA passé d'abord
+- Vérification du filestore : si les fichiers joints sont bien arrivés, si l'enregistrement existe encore, et les nettoyages proposés sur place
+- Analyse : les modules qui manquent à une base par rapport au paquet par défaut, avec une offre d'installer ceux qui sont prêts, et les fichiers joints réellement irrécupérables
+- Debian sur s390x par debian-installer, aucune image cloud n'étant publiée pour cette architecture
+- Une VM de développement mobile : PyCharm, Android Studio, extensions GNOME, un émulateur Android et un tunnel adb pour scrcpy, l'application mobile étant compilée et testée dedans
+- Forgejo, une forge git installable depuis le menu de déploiement
+- Matériel réglé par VM : le GPU de l'hôte, le mode CPU, les écrans et le réseau
+- virt-viewer ouvre l'écran d'une VM depuis le menu
+- Le tableau de bord d'installation affiche la RAM de l'hôte, la RAM utilisée et l'uptime d'une VM, et depuis combien de temps un journal est muet
+- Une VM accueille sa connexion SSH avec les commandes propres à sa distribution
 
 <!-- [en] -->
 ## Removed
@@ -204,6 +232,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Copyright year updated to 2026
 - Canadian pacman mirrors placed first on Arch, the official geographic mirror measuring four times slower from Montréal
 - A Poetry dependency can be declined per architecture: factur-x is pinned to 3.x on s390x, where saxonche publishes no wheel, and PyMuPDF is set aside there
+- Enter targets the highest supported Odoo version, the default being computed from the menu
+- A make target runs the unit tests, with the mobile dependency declared
 
 <!-- [fr] -->
 
@@ -232,6 +262,8 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Année de copyright portée à 2026
 - Miroirs pacman canadiens placés en tête sur Arch, le miroir « géographique » officiel mesurant quatre fois plus lent depuis Montréal
 - Une dépendance Poetry peut être déclinée par architecture : factur-x est épinglé en 3.x sur s390x, où saxonche ne publie pas de roue, et PyMuPDF y est écarté
+- Entrée cible la version d'Odoo la plus élevée supportée, le défaut étant calculé depuis le menu
+- Une cible make lance les tests unitaires, avec la dépendance mobile déclarée
 
 <!-- [en] -->
 ## Fixed
@@ -255,6 +287,13 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - The README listed neither Fedora, openSUSE, Linux Mint nor Debian 13, all of them supported
 - The COW migration tools and the database upgrade speak the system language
 - The analysis and migration tools are executable
+- The forgejo installer no longer echoes the administrator password it has just set
+- The Selenium login re-sent the configured default instead of the credentials it was given, when it retried after dismissing a modal
+- db_restore asks the master password again instead of dying on a typo
+- pyproj needs the proj binary, not only its headers, and PROJ is built where the distribution lags behind
+- run.sh is launched through bash, against systemd's 203/EXEC failures
+- pykcs11 compiles with SWIG 4.3 and above
+- os-release replaces lsb_release, and an IP collision is easier to see
 
 <!-- [fr] -->
 
@@ -274,6 +313,13 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Le README ne listait ni Fedora, ni openSUSE, ni Linux Mint, ni Debian 13, toutes supportées
 - Les outils de migration COW et la mise à niveau de la base parlent la langue du système
 - Les outils d'analyse et de migration sont exécutables
+- L'installateur forgejo ne réaffiche plus le mot de passe administrateur qu'il vient de poser
+- La connexion Selenium renvoyait le défaut de configuration au lieu des identifiants reçus, lors de la reprise après une modale
+- db_restore redemande le mot de passe maître au lieu de mourir sur une faute de frappe
+- pyproj exige le binaire proj, pas seulement ses en-têtes, et PROJ est bâti là où la distribution est en retard
+- run.sh est lancé par bash, contre les échecs 203/EXEC de systemd
+- pykcs11 se compile avec SWIG 4.3 et au-delà
+- os-release remplace lsb_release, et une collision d'IP se voit mieux
 
 <!-- [en] -->
 ## Security
@@ -282,11 +328,16 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 <!-- [en] -->
 
 - Passwords and tokens are redacted before a command is displayed or logged
+- The Odoo master password no longer travels on the command line: MASTER_PWD carries it, and /proc/<pid>/environ is readable only by its owner where /proc/<pid>/cmdline is readable by every user on the machine (needs the matching commit in the odoo fork)
+- The KeePass password reaches the Selenium login the same way: the command carries the NAME of an environment variable, never the value
+- What a command PRINTS is redacted like the command itself: a tool that reprints its own arguments no longer puts the secret back into the terminal and into the log file
 
 <!-- [fr] -->
 
-- Les mots de passe et jetons sont caviardés avant l'affichage ou la
-  journalisation d'une commande
+- Les mots de passe et jetons sont caviardés avant l'affichage ou la journalisation d'une commande
+- Le mot de passe maître d'Odoo ne voyage plus sur la ligne de commande : MASTER_PWD le porte, et /proc/<pid>/environ n'est lisible que par son propriétaire là où /proc/<pid>/cmdline l'est par tout utilisateur de la machine (exige le commit correspondant dans le fork odoo)
+- Le mot de passe KeePass parvient à la connexion Selenium de la même façon : la commande porte le NOM d'une variable d'environnement, jamais la valeur
+- Ce qu'une commande AFFICHE est caviardé comme la commande elle-même : un outil qui réaffiche ses propres arguments ne remet plus le secret dans le terminal ni dans le fichier de journal
 
 <!-- [common] -->
 

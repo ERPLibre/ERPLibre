@@ -31,7 +31,7 @@ Group=${EL_USER}
 Restart=always
 RestartSec=5
 PIDFile=${EL_HOME_ERPLIBRE}/.venv.erplibre/service.pid
-ExecStart=${EL_HOME_ERPLIBRE}/run.sh
+ExecStart=/bin/bash ${EL_HOME_ERPLIBRE}/run.sh
 WorkingDirectory=${EL_HOME_ERPLIBRE}
 StandardOutput=journal+console
 

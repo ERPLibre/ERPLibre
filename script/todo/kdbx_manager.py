@@ -91,12 +91,24 @@ class KdbxManager:
 
     def get_extra_command_user(
         self, kdbx_key: str | list | None
-    ) -> str | list:
+    ) -> tuple[str | list, dict]:
+        """(fragments de commande, variables d'environnement à poser).
+
+        Le mot de passe ne rejoint PAS la ligne de commande : seul le NOM
+        d'une variable y figure. /proc/<pid>/cmdline est lisible par tout
+        utilisateur de la machine, /proc/<pid>/environ par son seul
+        propriétaire — et un mot de passe KeePass n'a rien à faire dans la
+        liste des processus.
+
+        Un nom par entrée : plusieurs identifiants partent dans UNE seule
+        commande « parallel », donc une variable unique ne suffirait pas.
+        """
         values = []
+        env = {}
         if kdbx_key:
             kp = self.get_kdbx()
             if not kp:
-                return ""
+                return "", {}
             if type(kdbx_key) is not list:
                 kdbx_keys = [kdbx_key]
             else:
@@ -111,13 +123,14 @@ class KdbxManager:
                     odoo_password = entry.password
                 except AttributeError:
                     _logger.error(f"Cannot find password from keys {key}")
+                var = f"EL_WEB_LOGIN_PWD_{len(values)}"
+                env[var] = odoo_password
                 values.append(
                     " --default_email_auth"
-                    f" {odoo_user} --default_password_auth"
-                    f" '{odoo_password}'"
+                    f" {odoo_user} --default_password_auth_env {var}"
                 )
         if len(values) == 0:
-            return ""
+            return "", {}
         elif len(values) == 1:
-            return values[0]
-        return values
+            return values[0], env
+        return values, env

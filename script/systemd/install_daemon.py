@@ -9,6 +9,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+# « ExecStart=/bin/bash …/run.sh » et non le script seul.
+#
+# Lancé seul, systemd doit EXÉCUTER le fichier, et l'échoue en « 203/EXEC »
+# dans quatre cas au moins : bit x absent, shebang qui ne résout pas, /home
+# monté noexec, SELinux refusant l'execve. Vécu sur openSUSE s390x — le
+# processus mourait en 3 ms, sans jamais entrer dans le script, ce qui rend le
+# diagnostic très pénible : aucune sortie, et un code qui ressemble à une
+# erreur d'application.
+#
+# Passé à bash, run.sh n'est plus qu'une DONNÉE lue : les quatre causes
+# disparaissent ensemble, y compris noexec et SELinux, qui ne portent que sur
+# l'execve. Rien n'est perdu au passage — le shebang du script désigne déjà
+# bash. C'est aussi ce que font install_daemon.sh et le générateur de todo.py,
+# les trois écrivant la même unité.
 UNIT_TEMPLATE = """[Unit]
 Description=ERPLibre for {user}
 Requires=postgresql.service
@@ -23,7 +37,8 @@ Group={user}
 Restart=always
 RestartSec=5
 PIDFile={home_erplibre}/.venv.erplibre/service.pid
-ExecStart={home_erplibre}/run.sh{EXEC_PARAM}
+# bash explicite : voir install_daemon.py (evite 203/EXEC).
+ExecStart=/bin/bash {home_erplibre}/run.sh{EXEC_PARAM}
 WorkingDirectory={home_erplibre}
 StandardOutput=journal+console
 

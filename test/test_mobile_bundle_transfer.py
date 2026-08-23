@@ -263,6 +263,80 @@ class TestTheCommandLine(unittest.TestCase):
         self.assertNotIn("Traceback", buf.getvalue())
 
 
+REPO = Path(__file__).resolve().parent.parent
+MOBILE = REPO / "mobile" / "erplibre_home_mobile"
+
+
+class TestTheRealBundle(unittest.TestCase):
+    """Le VRAI transfert, quand le dépôt mobile est installé et compilé.
+
+    C'est ici que ces tests DÉCLARENT leur dépendance : sans
+    mobile/erplibre_home_mobile, ils se disent ignorés plutôt que de passer en
+    silence — un test vert sans son dépôt ne prouve rien. Le lanceur
+    (script/test/run_unit_test.sh) annonce la même dépendance avant de
+    commencer.
+
+    Ce qu'ils gardent : qu'une compilation réelle produise bien des PACKS. Un
+    retour au fichier-par-source ferait disparaître le champ « chunk » des
+    index, et la limite du ZIP reviendrait — 123 678 entrées pour un plafond de
+    65 535, silencieusement, jusqu'à l'APK.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not MOBILE.is_dir():
+            # Pas de « relative_to » : il lève quand le chemin sort du
+            # dépôt, et une erreur n'est pas un « ignoré » — mesuré en
+            # simulant l'absence.
+            raise unittest.SkipTest(
+                "mobile/erplibre_home_mobile absent :"
+                " ./mobile/install_mobile_dev.sh"
+            )
+        cls.repos = MOBILE / "dist" / "repos"
+        if not (cls.repos / "manifest.json").is_file():
+            raise unittest.SkipTest(
+                "dépôt mobile présent mais pas compilé :"
+                " ./mobile/compile_and_run.sh (ou npm run build)"
+            )
+
+    def test_the_transfer_is_coherent(self):
+        rep = cbt.check(MOBILE, REPO)
+        self.assertGreater(rep["repos"], 1)
+        self.assertGreater(rep["files"], cbt.MIN_FILES)
+        self.assertGreater(rep["packs"], 0)
+
+    def test_a_sample_matches_the_source(self):
+        """La seule vérification qui prouve un transfert FIDÈLE."""
+        rep = cbt.check(MOBILE, REPO)
+        self.assertGreater(rep["compared"], 0)
+
+    def test_the_indexes_are_packed_not_file_per_source(self):
+        """Le garde-fou de la limite du ZIP : chaque fichier doit porter sa
+        tranche. Sans « chunk », c'est un fichier par source, et l'APK sera
+        refusé — mais bien plus tard, et sans dire pourquoi."""
+        man = json.loads((self.repos / "manifest.json").read_text())
+        checked = 0
+        for proj in man[:5]:
+            index = self.repos / proj["slug"] / "index.json"
+            entries = json.loads(index.read_text())
+            files = [e for e in entries if e.get("type") == "file"]
+            if not files:
+                continue
+            self.assertTrue(
+                all("chunk" in e for e in files),
+                f"{proj['slug']} : des fichiers sans tranche",
+            )
+            checked += 1
+        self.assertGreater(checked, 0, "aucun dépôt à vérifier")
+
+    def test_no_bundled_test_file_lingers_as_a_source(self):
+        """Effet de bord mesuré, et il compte : empaquetés, les 1 599 fichiers
+        de test des dépôts Odoo ne sont plus ramassés par vitest — 1 423
+        fichiers de test ramenés à 75, 35 s ramenées à 3 s."""
+        stray = list(self.repos.glob("*/**/*.test.ts"))
+        self.assertEqual([], stray)
+
+
 import contextlib as _contextlib  # noqa: E402
 import unittest.mock  # noqa: E402
 

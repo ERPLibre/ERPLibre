@@ -34,7 +34,17 @@ make db_clone_test_to_test2                   # Cloner test -> test2
 ```
 
 ## Tests
-### Suite complète
+### Unitaires python (rapides, sans base de données)
+```bash
+make test_unit                            # tout ce qui tourne sans DB ni Odoo
+make test_unit_file F=test/test_qemu_motd.py   # un seul fichier
+```
+Ils lisent le code et exécutent les fragments de shell générés par `todo.py`,
+avec `sudo`, `pgrep` et `pkill` bouchonnés — quelques secondes. Le lanceur
+annonce sa dépendance à `mobile/erplibre_home_mobile` : absent, les tests du
+transfert mobile se déclarent ignorés au lieu de passer en silence.
+
+### Suite complète (base de données requise)
 ```bash
 make test                    # Tests de base + format
 make test_full_fast          # Tests complets en parallèle

@@ -166,6 +166,29 @@ if [[ "${EL_PHASE}" != "setup" ]]; then
     "${POETRY_ODOO_PATH}" --version
     # To fix keyring problem when installation is blocked, use
     export PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring
+    # pykcs11 — tiré par endesive, donc présent dans les locks 14, 15 et 17 —
+    # ne livre AUCUN wrapper pré-généré dans son sdist : SWIG tourne à CHAQUE
+    # installation. Et ce n'est pas le SWIG du système qui tourne : le
+    # « requires = ["setuptools", "swig"] » de pykcs11 n'est pas borné, donc
+    # Poetry télécharge la DERNIÈRE version publiée sur PyPI (4.5.0 le 21 août
+    # 2026, vue dans le journal d'installation).
+    #
+    # Or SWIG a retiré en 4.3 les alias Python 2 que ses versions antérieures
+    # écrivaient dans le code généré (PyInt_FromLong, PyString_Check…), et le
+    # typemap CK_RV de pykcs11 en utilise un. D'où, sur une VM Ubuntu 26.04:
+    # « ‘PyInt_FromLong’ was not declared in this scope », 55 fois, et
+    # install_odoo_17 s'arrête. Aucune sonde locale ne peut le prévoir — le
+    # SWIG qui tourne est choisi au moment du build, pas ici.
+    #
+    # On redonne l'alias au préprocesseur, dans la forme EXACTE que SWIG 4.2
+    # écrivait : définition identique token pour token, donc aucun
+    # avertissement de redéfinition là où SWIG la fournit encore (vérifié en
+    # -Werror contre un wrapper généré par SWIG 4.2).
+    #
+    # CPPFLAGS et non CFLAGS : un .cpp passe par « compiler_so_cxx », qui lit
+    # CXXFLAGS et CPPFLAGS — CFLAGS ne l'atteint JAMAIS. Mesuré sur setuptools
+    # 84, et c'est ce qui a fait échouer le premier correctif.
+    export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }-DPyInt_FromLong(x)=PyLong_FromLong(x)"
     # « poetry install » reste à Poetry : uv ne lit pas poetry.lock
     # (astral-sh/uv#1804, « not planned ») et Poetry 2.1.3 n'a plus « export ».
     if [[ ${WITH_POETRY_INSTALLATION} -ne 0 ]]; then
