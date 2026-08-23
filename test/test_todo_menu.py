@@ -19,9 +19,8 @@ import re
 import unittest
 from pathlib import Path
 
-TODO_PY = (
-    Path(__file__).resolve().parent.parent / "script" / "todo" / "todo.py"
-)
+TODO_DIR = Path(__file__).resolve().parent.parent / "script" / "todo"
+TODO_PY = TODO_DIR / "todo.py"
 
 # « [12] {t("Deploy - …")} » en début de ligne, dans la f-string du menu.
 RE_SHOWN = re.compile(r'^\[(\d+)\] \{t\("([^"]+)"\)\}', re.M)
@@ -136,28 +135,46 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         self.assertEqual(set(self.EXPECTED) - shown_keys, set())
 
 
-class TestQemuMenuNumbering(unittest.TestCase):
-    """Le menu QEMU : même piège, autre forme.
+class MenuCoherence:
+    """Socle : un menu écrit en liste de dictionnaires est-il cohérent ?
 
-    Il ne s'écrit pas en f-string mais en liste de dictionnaires, où seules les
-    entrées « prompt_description » consomment un numéro — les « section » sont
-    des titres. Le décalage y est donc encore moins visible à l'œil : insérer
-    une entrée avant la dernière renumérote tout ce qui suit, et le dispatch ne
-    proteste pas. C'est arrivé en ajoutant l'émulateur Android avant
-    « List available images ».
+    Ce piège-là ne dépend pas du menu : seules les entrées
+    « prompt_description » consomment un numéro (les « section » sont des
+    titres), et le dispatch les renumérote à la main. Insérer une entrée avant
+    la dernière décale tout ce qui suit sans que rien ne proteste — c'est
+    arrivé en ajoutant l'émulateur Android avant « List available images ».
+
+    Depuis que les menus vivent dans leurs propres fichiers (le refactor de
+    todo.py), ce socle sert DEUX menus : QEMU/KVM et Proxmox. Un troisième
+    n'aura qu'à déclarer ses quatre attributs.
+
+    À déclarer par la sous-classe : SOURCE (le fichier), ENTRY (la ligne
+    « def prompt_execute_… »), END (le membre suivant, qui borne la lecture) et
+    EXPECTED (où mène chaque entrée, par le début de son libellé).
     """
+
+    SOURCE = None
+    ENTRY = ""
+    END = ""
+    EXPECTED = {}
+    MINIMUM = 10
 
     RE_ENTRY = re.compile(
         r'"(section|prompt_description)": t\(\s*\n?\s*"([^"]+)"'
     )
+    # Les lignes de COMMENTAIRE entre le « elif » et l'appel sont sautées :
+    # une entrée expliquée devenait invisible pour ce test, qui annonçait alors
+    # « 18 affichées, 17 dispatchées » sans qu'aucune entrée ne manque. Un test
+    # ne doit pas dépendre de l'endroit où quelqu'un met un commentaire.
     RE_DISPATCH_CALL = re.compile(
-        r'(?:el)?if status == "(\d+)":\s*\n\s*(?:status = )?self\.(\w+)\('
+        r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
+        r'\s*(?:status = )?self\.(\w+)\('
     )
 
     def setUp(self):
-        source = TODO_PY.read_text(encoding="utf-8")
-        start = source.index("def prompt_execute_qemu(self):")
-        end = source.index("def _qemu_tunnel_menu(self):", start)
+        source = self.SOURCE.read_text(encoding="utf-8")
+        start = source.index(self.ENTRY)
+        end = source.index(self.END, start)
         self.body = source[start:end]
         num = 0
         self.shown = []
@@ -171,7 +188,7 @@ class TestQemuMenuNumbering(unittest.TestCase):
 
     def test_the_menu_was_actually_parsed(self):
         """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
-        self.assertGreater(len(self.shown), 10)
+        self.assertGreater(len(self.shown), self.MINIMUM)
         self.assertEqual(len(self.shown), len(self.dispatch))
 
     def test_numbering_is_contiguous_from_one(self):
@@ -184,28 +201,6 @@ class TestQemuMenuNumbering(unittest.TestCase):
         self.assertEqual(
             [n for n, _ in self.shown], [n for n, _ in self.dispatch]
         )
-
-    # Où mène chaque entrée, par le début de son libellé. Une renumérotation ne
-    # touche PAS cette table ; ajouter une entrée l'exige, et c'est le seul
-    # moment où quelqu'un doit dire où elle mène.
-    EXPECTED = {
-        "Deploy VM(s)": "_qemu_deploy",
-        "Preview a deployment": "_qemu_deploy",
-        "Download a cloud image only": "_qemu_download_image",
-        "Reopen": "_qemu_reopen_monitor",
-        "List VMs": "_qemu_list_vms",
-        "Show a VM IP address": "_qemu_show_ip",
-        "Open the console on a VM": "_qemu_console",
-        "Resize a VM disk": "_qemu_resize_disk",
-        "Delete VM(s)": "_qemu_delete_vm",
-        "Clean up QEMU": "_qemu_cleanup",
-        "Test": "_qemu_test_vm",
-        "Statistics": "_qemu_stats",
-        "SSH configuration": "_qemu_ssh_config_menu",
-        "Remote desktop tunnel": "_qemu_tunnel_menu",
-        "Android emulator": "_qemu_emulator_menu",
-        "List available images": "_qemu_list_images",
-    }
 
     def _key(self, label):
         for key in self.EXPECTED:
@@ -233,6 +228,72 @@ class TestQemuMenuNumbering(unittest.TestCase):
     def test_expected_table_has_no_stale_entry(self):
         keys = {self._key(label) for _, label in self.shown}
         self.assertEqual(set(self.EXPECTED) - keys, set())
+
+
+class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu QEMU/KVM, désormais dans script/todo/qemu_menu.py."""
+
+    SOURCE = TODO_DIR / "qemu_menu.py"
+    ENTRY = "def prompt_execute_qemu(self):"
+    END = "def _qemu_stats(self):"
+
+    # Où mène chaque entrée, par le début de son libellé. Une renumérotation ne
+    # touche PAS cette table ; ajouter une entrée l'exige, et c'est le seul
+    # moment où quelqu'un doit dire où elle mène.
+    EXPECTED = {
+        "Deploy VM(s)": "_qemu_deploy",
+        "Preview a deployment": "_qemu_deploy",
+        "Download a cloud image only": "_qemu_download_image",
+        "Reopen": "_qemu_reopen_monitor",
+        "List VMs": "_qemu_list_vms",
+        "Show a VM IP address": "_qemu_show_ip",
+        "Open the console on a VM": "_qemu_console",
+        "Resize a VM disk": "_qemu_resize_disk",
+        "Delete VM(s)": "_qemu_delete_vm",
+        "Clean up QEMU": "_qemu_cleanup",
+        "Test": "_qemu_test_vm",
+        "Statistics": "_qemu_stats",
+        "SSH configuration": "_qemu_ssh_config_menu",
+        "Remote desktop tunnel": "_qemu_tunnel_menu",
+        "Android emulator": "_qemu_emulator_menu",
+        "List available images": "_qemu_list_images",
+    }
+
+
+class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Proxmox : dix-huit entrées, le même piège.
+
+    Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
+    c'est le même travail, et le refactor n'a pas dupliqué ce code. La table
+    le dit noir sur blanc : si quelqu'un les recopiait un jour, ce test
+    montrerait que la cible a changé.
+    """
+
+    SOURCE = TODO_DIR / "proxmox_menu.py"
+    ENTRY = "def prompt_execute_proxmox(self):"
+    END = "def _pve_fetch_image(self):"
+    MINIMUM = 15
+
+    EXPECTED = {
+        "Deploy a VM on the Proxmox host": "_pve_deploy",
+        "Preview a deployment": "_pve_deploy",
+        "Download a cloud image on the host": "_pve_fetch_image",
+        "Reopen": "_qemu_reopen_monitor",
+        "List VMs (qm list)": "_pve_list",
+        "Show a VM IP address": "_pve_vm_ip",
+        "Open the console on a VM": "_pve_console",
+        "Resize a VM disk": "_pve_resize",
+        "Delete VM(s)": "_pve_delete",
+        "Clean up (orphan disks)": "_pve_cleanup",
+        "Test a VM": "_pve_test_vm",
+        "Statistics (host and VMs)": "_pve_stats",
+        "SSH configuration": "_pve_ssh_config",
+        "Remote desktop tunnel": "_qemu_tunnel_menu",
+        "Android emulator": "_qemu_emulator_menu",
+        "List available images": "_qemu_list_images",
+        "Proxmox - example sequence": "_pve_example",
+        "Change the Proxmox host": "_pve_forget_host",
+    }
 
 
 class TestMenuLabels(unittest.TestCase):

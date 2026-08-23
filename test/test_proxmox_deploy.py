@@ -384,8 +384,13 @@ class TestLeMenu(unittest.TestCase):
         )
 
     def test_every_qemu_entry_has_its_proxmox_counterpart(self):
-        """L'équivalent des dix-sept commandes, plus le choix de l'hôte."""
-        src = open("script/todo/todo.py", encoding="utf-8").read()
+        """L'équivalent des dix-sept commandes, plus le choix de l'hôte.
+
+        Le menu vit dans son propre fichier depuis le refactor : la cohérence
+        numéro/dispatch, elle, est vérifiée par le socle commun de
+        test_todo_menu.py, qui sert les deux menus.
+        """
+        src = open("script/todo/proxmox_menu.py", encoding="utf-8").read()
         debut = src.index("    def prompt_execute_proxmox(self):")
         bloc = src[debut : src.index("    def _pve_fetch_image(self):")]
         for n in range(1, 19):
