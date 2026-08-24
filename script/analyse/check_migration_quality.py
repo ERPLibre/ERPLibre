@@ -233,6 +233,18 @@ def inspect(database):
         if len(ligne) >= 2:
             dct_origine.setdefault(ligne[0], set()).add(ligne[1])
     etat["field_module"] = {cle: sorted(v) for cle, v in dct_origine.items()}
+    # Lesquels PORTENT une donnée. Un champ `store=false` n'a jamais eu
+    # de colonne : sa disparition ne perd rien, et il pesait jusqu'à 90 %
+    # du seau « non déclarés par OpenUpgrade ». Mesuré au palier 16 → 17 :
+    # `__last_update` à lui seul comptait pour 397 des 565.
+    #
+    # `store` existe de la 12 à la 18 et n'est jamais NULL — vérifié sur
+    # les sept bases — donc le renseignement est fiable partout.
+    stockes = run_psql(
+        database,
+        "SELECT model || '.' || name FROM ir_model_fields WHERE store",
+    )
+    etat["field_stored"] = sorted(ligne[0] for ligne in stockes or [])
     # Les copies COW par leur CLÉ : c'est elle qu'on réinitialise, et
     # c'est par elle qu'on les retrouve d'une version à l'autre.
     copies = run_psql(
@@ -609,7 +621,11 @@ def declared_index(version):
 
 
 def overlay_declared(
-    version, modeles_perdus, champs_perdus, origine_champ=None
+    version,
+    modeles_perdus,
+    champs_perdus,
+    origine_champ=None,
+    champs_stockes=None,
 ):
     """Le THÉORIQUE posé sur le PRATIQUE : qui avait été annoncé ?
 
@@ -645,6 +661,7 @@ def overlay_declared(
         "company_dependent": [],
         "moved": [],
         "model_gone": [],
+        "no_data": [],
         "not_analysed": [],
         "undeclared": [],
     }
@@ -663,6 +680,22 @@ def overlay_declared(
         # réel cela triplait la liste et noyait le vrai signal.
         if partis and cle.startswith(partis):
             champs["model_gone"].append(cle)
+            continue
+        # AVANT « non analysé » : « sans donnée propre » est une raison
+        # plus forte que « hors du champ d'OpenUpgrade ». Mesuré au
+        # palier 16 → 17, le placement avant fait tomber `not_analysed`
+        # de 181 à 47 sans changer `undeclared` — le seau résiduel se
+        # réduit alors au risque réel : des champs qui AVAIENT des
+        # données, dans des modules dont OpenUpgrade ne peut rien dire.
+        #
+        # La garde `is not None` compte : un instantané sans
+        # `field_stored` — une base lue par une version antérieure de cet
+        # outil — verserait TOUT ici et n'annoncerait plus rien.
+        if champs_stockes is not None and (
+            cle.rsplit(".", 1)[-1] in SANS_DONNEE_PROPRE
+            or cle not in champs_stockes
+        ):
+            champs["no_data"].append(cle)
             continue
         origines = set((origine_champ or {}).get(cle) or [])
         if origines and not (origines & analyses):
@@ -743,6 +776,7 @@ def compare(avant, apres):
             modeles_perdus,
             champs_perdus,
             avant.get("field_module"),
+            set(avant.get("field_stored") or []) or None,
         ),
         "fields_lost": champs_perdus,
         "fields_gained": sorted(champ_apres - champ_avant),
@@ -851,6 +885,12 @@ DECLARE_MODELES = (
 
 # L'ordre range du plus rassurant au plus inquiétant : ce qu'on doit
 # regarder finit la liste, donc reste sous les yeux.
+# `id` porte une donnée mais pas la SIENNE : elle appartient à la ligne.
+# Il figure dans ir_model_fields de tout modèle, y compris abstrait, et
+# Odoo 15 cesse de l'inscrire sur ceux-là — d'où 65 « pertes » d'un coup
+# au palier 14 → 15, pour zéro octet.
+SANS_DONNEE_PROPRE = ("id",)
+
 DECLARE_CHAMPS = (
     ("del", "declared removed", "dim"),
     ("moved", "moved to another module", "dim"),
@@ -860,6 +900,7 @@ DECLARE_CHAMPS = (
         "computed now — the field remains, the column does not",
         "ok",
     ),
+    ("no_data", "held no data of their own — nothing to lose", "dim"),
     ("model_gone", "their model went away too", "dim"),
     ("not_analysed", "in a module OpenUpgrade does not analyse", "dim"),
     ("undeclared", "NOT declared by OpenUpgrade", "warn"),
@@ -920,10 +961,12 @@ def render_declared(declare, colour, limit=8):
                 f"         {paint(str(len(trouves)).rjust(5), teinte, colour)}"
                 f"  {t(libelle)}"
             )
-            if cle not in ("undeclared", "unstored"):
-                # Ces deux-là seuls méritent des noms : l'un parce qu'il
-                # faut aller voir, l'autre parce qu'on croirait à une
-                # perte. Nommer les autres noierait le rapport.
+            if cle not in ("undeclared", "unstored", "no_data"):
+                # Ces trois-là seuls méritent des noms : le premier
+                # parce qu'il faut aller voir, les deux autres parce
+                # qu'on croirait à une perte — et « __last_update ×
+                # 518 modèles » sur une ligne explique à lui seul le
+                # gros chiffre. Nommer le reste noierait le rapport.
                 continue
             plats = [
                 element[0] if isinstance(element, tuple) else element

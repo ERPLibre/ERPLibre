@@ -4085,6 +4085,18 @@ TRANSLATIONS = {
         "fr": "Entrées ~/.ssh/config orphelines :",
         "en": "Orphan ~/.ssh/config entries:",
     },
+    "Kept (still leads somewhere):": {
+        "fr": "Conservées (mènent encore quelque part) :",
+        "en": "Kept (still leads somewhere):",
+    },
+    "reached through a jump host": {
+        "fr": "joignable par un rebond",
+        "en": "reached through a jump host",
+    },
+    "a VM of the Proxmox host": {
+        "fr": "une VM de l'hôte Proxmox",
+        "en": "a VM of the Proxmox host",
+    },
     "Remove these ~/.ssh/config entries? (y/N): ": {
         "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N, défaut : non) : ",
         "en": "Remove these ~/.ssh/config entries? (y/N, default: no): ",
@@ -6776,6 +6788,10 @@ TRANSLATIONS = {
     "No duplicate index.": {
         "fr": "Aucun index en double.",
         "en": "No duplicate index.",
+    },
+    "held no data of their own — nothing to lose": {
+        "fr": "sans donnée propre — rien à perdre",
+        "en": "held no data of their own — nothing to lose",
     },
     "Configuration records a migration never recreates": {
         "fr": "Réglages qu'une migration ne recrée jamais",

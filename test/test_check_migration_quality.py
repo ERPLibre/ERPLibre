@@ -1330,5 +1330,167 @@ class TestGroupingByFieldName(unittest.TestCase):
         self.assertEqual(groupes[0], ("seul", 1, "account.account.seul"))
 
 
+class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
+    """Un champ sans colonne n'a rien perdu — et il noyait le rapport.
+
+    Mesuré sur une chaîne 12 → 18 : le seau « NON déclarés par
+    OpenUpgrade » comptait 565 champs au palier 16 → 17, dont 397
+    `__last_update` — un champ magique qu'Odoo 17 cesse d'inscrire et
+    qui n'a jamais eu de colonne. Un chiffre de tête qui fait peur pour
+    rien fait ignorer le rapport entier.
+
+    Après la règle : 565 → 57, et les 508 autres sont NOMMÉS sous
+    « sans donnée propre », en une ligne par nom de champ.
+    """
+
+    def declare(self, perdus, stockes, origines=None):
+        # Le montage de la classe parente pose l'index déclaré en
+        # cache et restreint les modules analysés : sans lui
+        # `overlay_declared` sort tout de suite et rien n'est mesuré.
+        return quality.overlay_declared(18, [], perdus, origines, stockes)
+
+    def test_an_unstored_field_is_set_aside(self):
+        # `store=false` : le champ n'a jamais eu de colonne. Sa
+        # disparition ne coûte pas un octet.
+        res = self.declare(["res.partner.calcule"], set())
+        self.assertEqual(["res.partner.calcule"], res["fields"]["no_data"])
+        self.assertEqual([], res["fields"]["undeclared"])
+
+    def test_a_stored_field_stays_a_finding(self):
+        res = self.declare(["res.partner.vrai"], {"res.partner.vrai"})
+        self.assertEqual(["res.partner.vrai"], res["fields"]["undeclared"])
+        self.assertEqual([], res["fields"]["no_data"])
+
+    def test_id_is_set_aside_even_though_it_is_stored(self):
+        # `id` porte une donnée, mais pas la SIENNE : elle appartient à
+        # la ligne. Odoo 15 cesse de l'inscrire sur les modèles
+        # abstraits — 65 « pertes » d'un coup, zéro octet.
+        res = self.declare(["res.partner.id"], {"res.partner.id"})
+        self.assertEqual(["res.partner.id"], res["fields"]["no_data"])
+
+    def test_a_field_named_id_on_another_model_too(self):
+        res = self.declare(["mail.thread.id"], {"mail.thread.id"})
+        self.assertEqual(["mail.thread.id"], res["fields"]["no_data"])
+
+    def test_without_the_information_nothing_is_set_aside(self):
+        # Un instantané pris par une version antérieure de l'outil n'a
+        # pas `field_stored`. Tout verser dans le seau calme ferait
+        # taire le rapport au lieu de l'éclaircir.
+        res = quality.overlay_declared(18, [], ["res.partner.x"], None, None)
+        self.assertEqual([], res["fields"]["no_data"])
+        self.assertEqual(["res.partner.x"], res["fields"]["undeclared"])
+
+    def test_it_comes_before_the_not_analysed_bucket(self):
+        # « sans donnée propre » est une raison plus forte que « hors du
+        # champ d'OpenUpgrade ». Mesuré : le placement avant fait tomber
+        # `not_analysed` de 181 à 47 au palier 16 → 17, sans changer
+        # `undeclared` — le seau résiduel se réduit au risque réel.
+        res = self.declare(
+            ["oca_module.model.champ"],
+            set(),
+            {"oca_module.model.champ": ["un_module_oca_inconnu"]},
+        )
+        self.assertEqual(["oca_module.model.champ"], res["fields"]["no_data"])
+        self.assertEqual([], res["fields"]["not_analysed"])
+
+    def test_the_model_gone_bucket_still_wins(self):
+        # Un champ dont le MODÈLE a disparu reste rangé là : c'est UNE
+        # trouvaille, pas une par champ.
+        res = quality.overlay_declared(
+            18, ["res.parti"], ["res.parti.champ"], None, set()
+        )
+        self.assertEqual(["res.parti.champ"], res["fields"]["model_gone"])
+        self.assertEqual([], res["fields"]["no_data"])
+
+    def test_inspect_reads_which_fields_hold_data(self):
+        # La règle ne vaut que si le renseignement est LU. En bouchonnant
+        # psql on éprouve la requête elle-même : c'est `store` qui
+        # décide, et lui seul.
+        vues = []
+
+        def faux_psql(database, sql, **kwargs):
+            vues.append(" ".join(sql.split()))
+            if "WHERE store" in " ".join(sql.split()):
+                return [["res.partner.vrai"]]
+            if "FROM ir_model_fields ORDER BY" in " ".join(sql.split()):
+                return [["res.partner.vrai"], ["res.partner.calcule"]]
+            return []
+
+        vrai = quality.run_psql
+        self.addCleanup(setattr, quality, "run_psql", vrai)
+        quality.run_psql = faux_psql
+        etat = quality.inspect("essai")
+        self.assertEqual(["res.partner.vrai"], etat["field_stored"])
+        self.assertTrue(
+            any("WHERE store" in v for v in vues),
+            "la requête doit trancher sur `store`, pas sur autre chose",
+        )
+
+    def test_the_names_are_shown_grouped_by_field(self):
+        # C'est la LIGNE « __last_update × 101 modèle(s) » qui explique le
+        # gros chiffre. Sans elle on remplace un nombre effrayant par un
+        # nombre opaque, et le lecteur reste sans réponse.
+        declare = {
+            "available": True,
+            "modules": 400,
+            "models": {"obsolete": [], "renamed": [], "undeclared": []},
+            "fields": {
+                "del": [],
+                "unstored": [],
+                "company_dependent": [],
+                "moved": [],
+                "model_gone": [],
+                "no_data": [
+                    "a.__last_update",
+                    "b.__last_update",
+                    "c.__last_update",
+                ],
+                "not_analysed": [],
+                "undeclared": [],
+            },
+        }
+        texte = "\n".join(quality.render_declared(declare, colour=False))
+        self.assertIn("__last_update", texte)
+        self.assertIn("3", texte)
+
+    def test_compare_passes_the_stored_fields_along(self):
+        # La règle vit dans `overlay_declared`, mais c'est `compare` qui
+        # lui donne de quoi trancher : sans la transmission, le seau
+        # reste vide et le rapport annonce toujours son gros chiffre.
+        commun = {
+            "exists": True,
+            "installed": [],
+            "model": ["res.partner"],
+            "table": {},
+            "view": 0,
+            "view_cow": 0,
+            "menu": 0,
+            "attachment": 0,
+            "cow": [],
+            "odoo": "18.0",
+            "database": "x",
+        }
+        avant = dict(
+            commun,
+            field=["res.partner.calcule", "res.partner.vrai"],
+            field_stored=["res.partner.vrai"],
+        )
+        apres = dict(commun, field=[])
+        diff = quality.compare(avant, apres)
+        champs = diff["declared"]["fields"]
+        self.assertEqual(["res.partner.calcule"], champs["no_data"])
+        self.assertEqual(["res.partner.vrai"], champs["undeclared"])
+
+    def test_the_bucket_has_a_label_and_a_quiet_tint(self):
+        table = dict(
+            (cle, (libelle, teinte))
+            for cle, libelle, teinte in quality.DECLARE_CHAMPS
+        )
+        self.assertIn("no_data", table)
+        libelle, teinte = table["no_data"]
+        self.assertEqual("dim", teinte, "il doit rassurer, pas attirer l'œil")
+        self.assertTrue(quality.t(libelle))
+
+
 if __name__ == "__main__":
     unittest.main()
