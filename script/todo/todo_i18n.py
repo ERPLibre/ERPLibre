@@ -3531,7 +3531,10 @@ TRANSLATIONS = {
         "fr": "« qm create » en exige un. Deux voies :",
         "en": "qm create needs one. Two ways:",
     },
-    "create an internal": {"fr": "créer un pont interne", "en": "create an internal"},
+    "create an internal": {
+        "fr": "créer un pont interne",
+        "en": "create an internal",
+    },
     "touches no physical NIC": {
         "fr": "ne touche à aucune interface physique",
         "en": "touches no physical NIC",
@@ -6698,6 +6701,42 @@ TRANSLATIONS = {
     "Dependencies between modules": {
         "fr": "🔗 Dépendances entre les modules",
         "en": "🔗 Dependencies between modules",
+    },
+    "Website copies that can no longer render": {
+        "fr": "Copies de site qui ne savent plus se rendre",
+        "en": "Website copies that can no longer render",
+    },
+    "Every website copy still renders.": {
+        "fr": "Chaque copie de site sait encore se rendre.",
+        "en": "Every website copy still renders.",
+    },
+    "Every website copy renders again.": {
+        "fr": "Chaque copie de site sait de nouveau se rendre.",
+        "en": "Every website copy renders again.",
+    },
+    "Some copies still cannot render.": {
+        "fr": "Des copies ne savent toujours pas se rendre.",
+        "en": "Some copies still cannot render.",
+    },
+    "anchor missing for view": {
+        "fr": "ancrage absent pour la vue",
+        "en": "anchor missing for view",
+    },
+    "calls a template that is gone:": {
+        "fr": "appelle un gabarit disparu :",
+        "en": "calls a template that is gone:",
+    },
+    "repair(s) available with --apply": {
+        "fr": "réparation(s) possible(s) avec --apply",
+        "en": "repair(s) available with --apply",
+    },
+    "cannot be repaired automatically": {
+        "fr": "ne se réparent pas toutes seules",
+        "en": "cannot be repaired automatically",
+    },
+    "Removing a call removes its block from the page.": {
+        "fr": "Retirer un appel retire son bloc de la page.",
+        "en": "Removing a call removes its block from the page.",
     },
     "modules installed": {
         "fr": "modules installés",
