@@ -1756,6 +1756,10 @@ TRANSLATIONS = {
         "fr": "Rien de désinstallé.",
         "en": "Nothing uninstalled.",
     },
+    "Retrying alone:": {
+        "fr": "Reprise seul :",
+        "en": "Retrying alone:",
+    },
     "The uninstall did not take:": {
         "fr": "La désinstallation n'a pas pris :",
         "en": "The uninstall did not take:",

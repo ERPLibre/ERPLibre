@@ -3875,6 +3875,17 @@ class TodoUpgrade:
         )
 
         lst_left = self.still_installed(database_name, lst_module_to_uninstall)
+        # UN SEUL nom fautif emporte tout le lot : « --uninstall » prend
+        # une liste, et Odoo annule la transaction entière au premier
+        # échec. Mesuré sur une chaîne 12 → 18 : `crm_phone` échoue sur
+        # une colonne absente de res_users et fait tomber les 22 autres
+        # avec lui — dont huit modules sans code en 13, qui sont alors
+        # montés d'un palier « installed » sans rien pour les charger.
+        #
+        # On reprend donc un par un : ce qui peut partir part, et l'on
+        # nomme précisément ce qui résiste.
+        if lst_left and len(lst_module_to_uninstall) > 1:
+            lst_left = self.uninstall_one_by_one(database_name, lst_left)
         if lst_left is None:
             # Base illisible : on ne sait pas. Le dire, plutôt que de trancher.
             print(f"⚠️  {t('Could not verify the uninstall.')}")
@@ -3900,6 +3911,27 @@ class TodoUpgrade:
             self.dct_module_per_version
         )
         self.write_config()
+
+    def uninstall_one_by_one(self, database_name, lst_module):
+        """Reprendre module par module, et rendre ce qui résiste encore.
+
+        Appelée seulement quand le lot a échoué : une commande par nom
+        coûte un démarrage d'Odoo chacune, ce qu'on ne paie pas pour
+        rien. Ce qu'on y gagne est qu'un module fautif cesse de protéger
+        les autres.
+        """
+        reste = []
+        for nom in lst_module:
+            print(f"⧖ {t('Retrying alone:')} {nom}")
+            self.todo_upgrade_execute(
+                f"./script/addons/uninstall_addons.sh {database_name} {nom}",
+                single_source_odoo=True,
+                wait_at_error=False,
+            )
+            encore = self.still_installed(database_name, [nom])
+            if encore is None or encore:
+                reste.append(nom)
+        return reste
 
     def install_from_database(
         self, lst_module_to_install, database_name, actual_version
