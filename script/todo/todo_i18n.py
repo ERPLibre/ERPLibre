@@ -4118,9 +4118,23 @@ TRANSLATIONS = {
         "fr": "Existantes, laissées intactes :",
         "en": "Existing, left untouched:",
     },
-    "ERPLibre install:": {
-        "fr": "Installation ERPLibre :",
-        "en": "ERPLibre install:",
+    # Renommée : la case commande TOUTE installation — ERPLibre, Odoo, mais
+    # aussi l'hyperviseur Proxmox VE, qui n'installe ni l'un ni l'autre.
+    "Install:": {
+        "fr": "Installation :",
+        "en": "Install:",
+    },
+    "Install software in the VM": {
+        "fr": "Installer un logiciel dans la VM",
+        "en": "Install software in the VM",
+    },
+    "Installation": {
+        "fr": "Installation",
+        "en": "Installation",
+    },
+    "Monitoring and parallelism": {
+        "fr": "Suivi et parallélisme",
+        "en": "Monitoring and parallelism",
     },
     "profile": {
         "fr": "profil",

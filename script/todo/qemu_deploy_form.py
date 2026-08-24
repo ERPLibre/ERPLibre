@@ -134,6 +134,9 @@ def run_deploy_form(ctx, run_app: bool = True):
     # que les afficher et rendre les cases cochées.
     vm_tools = list(ctx.get("vm_tools") or [])
     tool_disk = dict(ctx.get("vm_tool_disk") or {})
+    # « after » = l'outil vit DANS le dépôt ERPLibre : sans installation, il
+    # n'a rien où s'installer, bureau ou pas.
+    tool_phases = dict(ctx.get("vm_tool_phases") or {})
     tool_arches = dict(ctx.get("vm_tool_arches") or {})
     tool_desktops = dict(ctx.get("vm_tool_desktops") or {})
     tool_needs_desktop = dict(ctx.get("vm_tool_needs_desktop") or {})
@@ -311,31 +314,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                                 f"{t('Graphical (server + desktop):')} {label}",
                                 value=defaults.get("desktop", "") == key,
                             )
-                    if app_stores:
-                        yield Static(
-                            t("Application store:"), classes="grouptitle"
-                        )
-                        with RadioSet(id="f_store"):
-                            for i, (_k, label) in enumerate(app_stores):
-                                yield RadioButton(label, value=i == 0)
-                        yield Static("", id="storewarn")
-                    if vm_tools:
-                        # Une case par outil, et non une liste déroulante : ils
-                        # sont indépendants, et chacun se prend ou se laisse.
-                        yield Static(
-                            t("Development tools:"), classes="grouptitle"
-                        )
-                        for key, label, hint in vm_tools:
-                            gb = tool_disk.get(key, 0)
-                            yield Checkbox(
-                                f"{label} +{gb} Go — {hint}",
-                                value=key in (defaults.get("tools") or ()),
-                                id=f"f_tool_{key}",
-                            )
-                        yield Static("", id="toolwarn")
-                    yield Static("ERPLibre", classes="grouptitle")
+                    # La case commande TOUTE installation — ERPLibre, Odoo, mais
+                    # aussi l'hyperviseur Proxmox VE. Nommée « ERPLibre », elle
+                    # laissait croire qu'un système Proxmox s'installerait
+                    # quand même : rapporté, une VM Proxmox est restée une
+                    # Debian nue. Placée SOUS le type de VM, juste avant les
+                    # sections qu'elle commande.
+                    yield Static(
+                        t("Installation"),
+                        id="t_install",
+                        classes="grouptitle",
+                    )
                     yield Checkbox(
-                        t("Install ERPLibre"),
+                        t("Install software in the VM"),
                         value=defaults.get("install", True),
                         id="f_install",
                     )
@@ -358,11 +349,32 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("prod", False),
                         id="f_prod",
                     )
-                    yield Checkbox(
-                        t("Monitoring dashboard"),
-                        value=defaults.get("monitor", True),
-                        id="f_monitor",
-                    )
+                    if app_stores:
+                        yield Static(
+                            t("Application store:"),
+                            id="t_store",
+                            classes="grouptitle",
+                        )
+                        with RadioSet(id="f_store"):
+                            for i, (_k, label) in enumerate(app_stores):
+                                yield RadioButton(label, value=i == 0)
+                        yield Static("", id="storewarn")
+                    if vm_tools:
+                        # Une case par outil, et non une liste déroulante : ils
+                        # sont indépendants, et chacun se prend ou se laisse.
+                        yield Static(
+                            t("Development tools:"),
+                            id="t_tools",
+                            classes="grouptitle",
+                        )
+                        for key, label, hint in vm_tools:
+                            gb = tool_disk.get(key, 0)
+                            yield Checkbox(
+                                f"{label} +{gb} Go — {hint}",
+                                value=key in (defaults.get("tools") or ()),
+                                id=f"f_tool_{key}",
+                            )
+                        yield Static("", id="toolwarn")
                     yield Static(t("Timezone"), classes="grouptitle")
                     # Une liste plutôt qu'une saisie : un nom IANA mal
                     # orthographié n'est pas refusé par cloud-init, il est
@@ -397,7 +409,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # Grisé quand AUCUNE des VM retenues n'est sur une
                     # architecture que mise sert.
                     yield Static(
-                        t("Python interpreter:"), classes="grouptitle"
+                        t("Python interpreter:"),
+                        id="t_python",
+                        classes="grouptitle",
                     )
                     with RadioSet(id="f_python"):
                         yield RadioButton(
@@ -405,7 +419,25 @@ def run_deploy_form(ctx, run_app: bool = True):
                         )
                         yield RadioButton(t("pyenv (compiles from source)"))
                     yield Static("", id="miswarn")
-                    yield Static(t("Parallelism"), classes="grouptitle")
+                    # Hors de la section « Installation » : le suivi
+                    # regarde la VM ARRIVER, même quand rien ne s'installe.
+                    # Rangé dans cette section, il se serait grisé avec elle —
+                    # et décocher ERPLibre avait déjà fait disparaître le
+                    # tableau de bord une fois.
+                    yield Static(
+                        t("Monitoring and parallelism"),
+                        id="t_deploy",
+                        classes="grouptitle",
+                    )
+                    yield Checkbox(
+                        t("Monitoring dashboard"),
+                        value=defaults.get("monitor", True),
+                        id="f_monitor",
+                    )
+                    # Le parallélisme reste dans « Déploiement » : c'est le
+                    # nombre de VM menées de front, pas une option
+                    # d'installation.
+                    yield Static(f"  {t('Parallelism')}")
                     # Cochée, la case donne une exécution PAR installation :
                     # le plafond du nombre de CPU ne s'applique plus. Décochée,
                     # le nombre reprend la main, et son défaut suit l'hôte —
@@ -433,6 +465,7 @@ def run_deploy_form(ctx, run_app: bool = True):
         def on_mount(self) -> None:
             self.title = t("Deploy ERPLibre VM(s)!")
             self._reload_catalog(first_load=True)
+            self._sync_install_deps()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -629,10 +662,16 @@ def run_deploy_form(ctx, run_app: bool = True):
             évite de le découvrir dans le journal d'installation."""
             if not vm_tools:
                 return
+            installe, quelque_chose = self._install_state()
             for key, _label, _hint in vm_tools:
                 usable = any(self._tools_for_vm(vm, (key,)) for vm in self.vms)
-                self.query_one(f"#f_tool_{key}", Checkbox).disabled = (
-                    not usable
+                offert = (
+                    installe
+                    if tool_phases.get(key) == "after"
+                    else quelque_chose
+                )
+                self.query_one(f"#f_tool_{key}", Checkbox).disabled = not (
+                    usable and offert
                 )
             picked = self._vm_tools()
             skipped = sorted(
@@ -654,7 +693,10 @@ def run_deploy_form(ctx, run_app: bool = True):
             """Grise le choix quand aucune VM retenue n'est servie par mise,
             et nomme les architectures qui retomberont sur pyenv."""
             usable = self._mise_usable()
-            self.query_one("#f_python", RadioSet).disabled = not usable
+            installe, _quelque_chose = self._install_state()
+            self.query_one("#f_python", RadioSet).disabled = not (
+                usable and installe
+            )
             skipped = sorted(
                 {
                     vm["arch"]
@@ -707,12 +749,24 @@ def run_deploy_form(ctx, run_app: bool = True):
             if not app_stores:
                 return
             needed = self._app_store_needed()
-            self.query_one("#f_store", RadioSet).disabled = not needed
+            _installe, quelque_chose = self._install_state()
+            self.query_one("#f_store", RadioSet).disabled = not (
+                needed and quelque_chose
+            )
             self.query_one("#storewarn", Static).update(
                 ""
                 if needed
                 else f"  {t('No graphical VM on a snap-based distro.')}"
             )
+
+        def _install_state(self):
+            """(une installation ?, quelque chose à installer ?).
+
+            Deux réponses et non une : sans installation mais avec un bureau,
+            il se pose encore des paquets — le magasin d'applications et les
+            outils de la phase « avant » gardent un effet."""
+            installe = self.query_one("#f_install", Checkbox).value
+            return installe, bool(installe or self._default_desktop())
 
         def _mise_usable(self):
             return any(vm["arch"] in mise_arches for vm in self.vms)
@@ -893,6 +947,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self.call_after_refresh(self._after_mount_rows)
 
         def _after_mount_rows(self) -> None:
+            self._sync_install_deps()
             self._sync_free_inputs()
             self._syncing = False
 
@@ -940,6 +995,52 @@ def run_deploy_form(ctx, run_app: bool = True):
                     except Exception:
                         pass
             self._sync_free_inputs()
+
+        def _sync_install_deps(self) -> None:
+            """Grise ce que le choix d'installation rend SANS EFFET.
+
+            Trois états et non deux, parce que la commande distante en a
+            trois : rien du tout, un bureau seul, ou une installation
+            complète. Sans installation MAIS avec un bureau, le magasin
+            d'applications et les outils de la phase « avant » servent encore
+            — les griser mentirait autant que de laisser actif ce qui ne fait
+            rien. La branche, le profil et l'interpréteur Python, eux, ne
+            servent qu'à l'installation.
+
+            Le type de VM et le suivi ne sont jamais grisés : le premier est
+            l'autre moitié de la décision, le second regarde la VM arriver
+            même quand rien ne s'installe."""
+            installe, quelque_chose = self._install_state()
+            for cible, actif in (
+                ("#f_branch", installe),
+                ("#f_profile_install", installe),
+                ("#f_prod", quelque_chose),
+            ):
+                try:
+                    self.query_one(cible).disabled = not actif
+                except Exception:
+                    pass
+            # Le magasin, les outils et l'interpréteur Python ont leur PROPRE
+            # raison de se griser (architecture, bureau, distribution) : ils
+            # composent les deux dans « _render_* », qui a le dernier mot.
+            # Le titre suit ses champs : une section entière se lit inactive
+            # d'un coup d'œil, au lieu de se déduire de trois widgets ternes.
+            for cible, actif in (
+                ("#t_store", quelque_chose),
+                ("#t_tools", quelque_chose),
+                ("#t_python", installe),
+            ):
+                try:
+                    self.query_one(cible).set_class(not actif, "off")
+                except Exception:
+                    pass
+            # Les rangées portent les mêmes choix, par VM.
+            for i in range(len(self.rows)):
+                for cible in (f"#v{i}_branch", f"#v{i}_prof"):
+                    try:
+                        self.query_one(cible).disabled = not installe
+                    except Exception:
+                        pass
 
         def _render_plan(self):
             # Le JEU de VM a-t-il changé ? Si oui on remonte les widgets, sinon
@@ -1007,6 +1108,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._reload_catalog()
             elif event.radio_set.id == "f_type":
                 self._clear_overrides(("desktop",))
+                # Le type est l'autre moitié de la décision : un bureau seul
+                # garde le magasin d'applications et les outils utiles.
+                self._sync_install_deps()
                 # Recalcul : le disque annonce inclut le bureau, et la
                 # colonne Statut affiche le type de VM.
                 self._recompute()
@@ -1205,6 +1309,7 @@ def run_deploy_form(ctx, run_app: bool = True):
 
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
+                self._sync_install_deps()
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value

@@ -277,9 +277,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         value=True,
                         id="f_sshcfg",
                     )
-                    yield Static("ERPLibre", classes="grouptitle")
+                    # La case commande TOUTE installation — ERPLibre, Odoo,
+                    # mais aussi l'hyperviseur Proxmox VE d'une VM imbriquée.
+                    # Nommée « ERPLibre », elle laissait croire qu'un système
+                    # Proxmox s'installerait quand même.
+                    yield Static(
+                        t("Installation"),
+                        id="t_install",
+                        classes="grouptitle",
+                    )
                     yield Checkbox(
-                        t("Install ERPLibre"), value=True, id="f_install"
+                        t("Install software in the VM"),
+                        value=True,
+                        id="f_install",
                     )
                     yield Select(
                         [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
@@ -293,12 +303,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id="f_branch",
                     )
+                    # Hors de la section « Installation » : le suivi regarde la
+                    # VM ARRIVER, même quand rien ne s'installe. Rangé dedans,
+                    # il se serait grisé avec elle.
+                    yield Static(
+                        t("Monitoring and parallelism"),
+                        classes="grouptitle",
+                    )
                     yield Checkbox(
                         t("Follow the installation (dashboard)"),
                         value=True,
                         id="f_monitor",
                     )
-                    yield Static(t("Parallelism"), classes="grouptitle")
+                    yield Static(f"  {t('Parallelism')}")
                     yield Select(
                         [(str(n), n) for n in (1, 2, 3, 4)],
                         value=1,
@@ -316,6 +333,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
 
         def on_mount(self) -> None:
             self._reload_catalog()
+            self._sync_install_deps()
 
         # ---------------------------------------------------------------- #
         # Le plan
@@ -539,9 +557,26 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self._clear_overrides(tuple(RES_FIELDS))
                 self._refresh_after(remonter=True)
 
+        def _sync_install_deps(self) -> None:
+            """Grise ce que la case rend sans effet : la branche et le profil.
+
+            Le suivi n'en fait pas partie — il regarde la VM arriver même
+            quand rien ne s'installe."""
+            installe = self.query_one("#f_install", Checkbox).value
+            for cible in ("#f_profile_install", "#f_branch"):
+                try:
+                    self.query_one(cible).disabled = not installe
+                except Exception:
+                    pass
+            try:
+                self.query_one("#t_install").set_class(not installe, "off")
+            except Exception:
+                pass
+
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
                 # Le disque d'ERPLibre entre — ou sort — du total.
+                self._sync_install_deps()
                 self._refresh_after()
 
         def on_input_changed(self, event) -> None:

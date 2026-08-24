@@ -395,6 +395,9 @@ CSS_BASE = """
 }
 #totals { height: auto; color: $text-muted; padding: 0 1; }
 .grouptitle { color: $accent; text-style: bold; padding: 1 0 0 0; }
+/* Une section que le choix d'installation rend inerte : le titre pâlit avec
+ses champs, pour qu'elle se lise inactive d'un coup d'œil. */
+.grouptitle.off { color: $text-muted; text-style: none; }
 .freeval { display: none; width: 9; }
 /* « width: auto » sur la CARTE, pas seulement sur la rangée. Un conteneur
 Textual vaut « width: 1fr » par défaut : la carte se bornait donc au panneau,

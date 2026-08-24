@@ -866,11 +866,11 @@ class QemuDeployMixin:
             br_txt = used_br.pop() if len(used_br) == 1 else varies
             lb_txt = used_lb.pop() if len(used_lb) == 1 else varies
             print(
-                f"  {t('ERPLibre install:')} {t('branch')} {br_txt}, "
+                f"  {t('Install:')} {t('branch')} {br_txt}, "
                 f"{t('profile')} {lb_txt}, {env}"
             )
         else:
-            print(f"  {t('ERPLibre install:')} {t('no')}")
+            print(f"  {t('Install:')} {t('no')}")
         flavour = spec.get("desktop")
         if flavour:
             label = (self._QEMU_DESKTOP.get(flavour) or {}).get(
@@ -1287,6 +1287,13 @@ class QemuDeployMixin:
             },
             "vm_tool_desktops": {
                 k: v["desktops"] for k, v in self._QEMU_VM_TOOLS.items()
+            },
+            # « after » = l'outil vit DANS le dépôt ERPLibre (compilation
+            # mobile, AVD, script Forgejo) : sans installation, il n'existe
+            # pas, et la commande distante le saute en le nommant.
+            "vm_tool_phases": {
+                k: v.get("phase", "before")
+                for k, v in self._QEMU_VM_TOOLS.items()
             },
             "vm_tool_needs_desktop": {
                 k: v["needs_desktop"] for k, v in self._QEMU_VM_TOOLS.items()
