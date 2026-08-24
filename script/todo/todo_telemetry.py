@@ -17,6 +17,7 @@ import asyncio
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -180,8 +181,7 @@ def _dispatch(func) -> dict:
                         kwargs = {
                             kw.arg: kw.value.value
                             for kw in n.keywords
-                            if kw.arg
-                            and isinstance(kw.value, ast.Constant)
+                            if kw.arg and isinstance(kw.value, ast.Constant)
                         }
                         found = (n.func.attr, kwargs)
                         break
@@ -311,6 +311,7 @@ def _choices_children(func, todo_dir):
     liste de (label, méthode, kwargs) dans l'ordre affiché, ou None si le motif
     ne s'applique pas. Les entrées de CONFIG rejouent via
     execute_from_configuration ; les entrées APPENDÉES via leur méthode."""
+
     def _dict_label(dnode):
         d = {}
         for k, v in zip(dnode.keys, dnode.values):
@@ -361,9 +362,9 @@ def _choices_children(func, todo_dir):
             dnode = (
                 arg
                 if isinstance(arg, ast.Dict)
-                else var_dict.get(arg.id)
-                if isinstance(arg, ast.Name)
-                else None
+                else (
+                    var_dict.get(arg.id) if isinstance(arg, ast.Name) else None
+                )
             )
             if dnode is not None:
                 lab = _dict_label(dnode)
@@ -378,7 +379,9 @@ def _choices_children(func, todo_dir):
             or entry.get("prompt_description")
             or "?"
         )
-        children.append((lab, "execute_from_configuration", {"instance": entry}))
+        children.append(
+            (lab, "execute_from_configuration", {"instance": entry})
+        )
     len_disp = _dispatch_len(func)
     n_config = len(children)  # figé : `children` grossit dans la boucle
     n_total = n_config + len(appended)
@@ -387,6 +390,28 @@ def _choices_children(func, todo_dir):
         method = len_disp.get(n_total - 1 - pos)  # None si non mappé
         children.append((lab, method, {}))
     return children
+
+
+def _mixin_files(todo_py: Path) -> list:
+    """Les fichiers des mixins que todo.py assemble sur la classe TODO.
+
+    Lus dans ses propres imports « from script.todo.X import YMixin » : la
+    liste suit le code au lieu d'être recopiée ici, et un mixin ajouté demain
+    apparaîtra sans qu'on y pense.
+    """
+    try:
+        source = todo_py.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    noms = re.findall(
+        r"^from script\.todo\.(\w+) import \w*Mixin", source, re.MULTILINE
+    )
+    fichiers = []
+    for nom in noms:
+        chemin = todo_py.parent / f"{nom}.py"
+        if chemin.exists():
+            fichiers.append(chemin)
+    return fichiers
 
 
 def build_code_tree(todo_path=None) -> dict | None:
@@ -400,14 +425,25 @@ def build_code_tree(todo_path=None) -> dict | None:
         mod = ast.parse(p.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
         return None
-    cls = next(
-        (n for n in ast.walk(mod) if isinstance(n, ast.ClassDef)), None
-    )
+    cls = next((n for n in ast.walk(mod) if isinstance(n, ast.ClassDef)), None)
     if cls is None:
         return None
-    methods = {
-        n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)
-    }
+    methods = {n.name: n for n in cls.body if isinstance(n, ast.FunctionDef)}
+    # ET les mixins. Ce lecteur est STATIQUE : il ne voit pas la classe
+    # assemblée, seulement le fichier qu'on lui donne. Depuis que les menus
+    # QEMU/KVM et Proxmox vivent dans des mixins, leur colonne avait disparu
+    # de cet écran — la commande s'exécutait toujours, mais on ne pouvait plus
+    # la lancer d'ici ni la lire. Les fichiers sont ceux que todo.py importe,
+    # donc rien à tenir à jour à la main.
+    for voisin in _mixin_files(p):
+        try:
+            frere = ast.parse(voisin.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError):
+            continue
+        for autre in (n for n in frere.body if isinstance(n, ast.ClassDef)):
+            for membre in autre.body:
+                if isinstance(membre, ast.FunctionDef):
+                    methods.setdefault(membre.name, membre)
     labels = _menu_labels(cls)
     if "run" not in methods or not labels:
         return None
@@ -431,9 +467,7 @@ def build_code_tree(todo_path=None) -> dict | None:
                 node["children"].append(build(target))
             else:  # commande (feuille) exécutable
                 entry = (
-                    centries[num - 1]
-                    if 0 <= num - 1 < len(centries)
-                    else None
+                    centries[num - 1] if 0 <= num - 1 < len(centries) else None
                 )
                 lab = (
                     entry["label"]
@@ -629,7 +663,10 @@ def system_snapshot(prev, full=True):
     m = {}
     if cpu and pcpu and cpu[1] > pcpu[1]:
         m["cpu"] = max(
-            0, min(100, round(100 * (1 - (cpu[0] - pcpu[0]) / (cpu[1] - pcpu[1]))))
+            0,
+            min(
+                100, round(100 * (1 - (cpu[0] - pcpu[0]) / (cpu[1] - pcpu[1])))
+            ),
         )
     else:
         m["cpu"] = None
@@ -733,7 +770,8 @@ def run_tui(run_app: bool = True, state: dict | None = None):
     """TUI de télémétrie : vue Arbre (issue du code) et vue Kanban (F3), la
     disposition du Kanban défilant par F4 (colonnes / swimlanes / grille).
     Sélectionner une COMMANDE = l'exécuter. `state` restaure la vue + le
-    curseur au retour. Renvoie (action|None, state) ; run_app=False -> l'app."""
+    curseur au retour. Renvoie (action|None, state) ; run_app=False -> l'app.
+    """
     from textual.app import App, ComposeResult
     from textual.containers import (
         Container,
@@ -828,10 +866,8 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             # Vue Liste : tous les menus empilés verticalement, chaque menu
             # avec ses sections et ses commandes (icônes), pour aider le choix.
             blocks = []
-            for (label, path, cnt, cmds) in columns:
-                blocks.append(
-                    Static(f"▸ {path}  ({cnt})", classes="listmenu")
-                )
+            for label, path, cnt, cmds in columns:
+                blocks.append(Static(f"▸ {path}  ({cnt})", classes="listmenu"))
                 for section, group in _group_by_section(cmds):
                     if section:
                         blocks.append(
@@ -868,7 +904,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
             if self._kanban_mode == "swimlanes":
                 # Une rangée (swimlane) par menu de NIVEAU 1 (Execute, …).
                 groups, order = {}, []
-                for (label, path, cnt, cmds) in columns:
+                for label, path, cnt, cmds in columns:
                     parts = path.split(" › ")
                     g = parts[1] if len(parts) > 1 else "TODO"
                     if g not in groups:
@@ -878,7 +914,8 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 lanes = []
                 for g in order:
                     lane_cols = [
-                        self._col_widget(lb, cn, cm) for (lb, cn, cm) in groups[g]
+                        self._col_widget(lb, cn, cm)
+                        for (lb, cn, cm) in groups[g]
                     ]
                     lanes.append(
                         Vertical(
@@ -986,9 +1023,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         def _update_summary(self):
             total = sum(paths.values())
             src = t("tree from code") if code_tree else t("visited paths only")
-            extra = (
-                f" [{self._kanban_mode}]" if self._mode == "kanban" else ""
-            )
+            extra = f" [{self._kanban_mode}]" if self._mode == "kanban" else ""
             cur_lbl = VIEW_LABELS.get(self._mode, self._mode)
             nxt_lbl = VIEW_LABELS.get(self._next_view(), self._next_view())
             self._update_f3_hint()
@@ -1018,7 +1053,9 @@ def run_tui(run_app: bool = True, state: dict | None = None):
         def _render_system(self, m):
             lines = []
             load = (
-                " · " + t("load") + " "
+                " · "
+                + t("load")
+                + " "
                 + "/".join(f"{x:.1f}" for x in m["load"])
                 if m["load"]
                 else ""
@@ -1055,9 +1092,7 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 )
             if m["battery"]:
                 cap, status = m["battery"]
-                lines.append(
-                    f"  🔋 {t('Battery')}   : {cap} % ({status})"
-                )
+                lines.append(f"  🔋 {t('Battery')}   : {cap} % ({status})")
             temp = m["temp"]
             if temp:
                 lines.append(
@@ -1096,9 +1131,9 @@ def run_tui(run_app: bool = True, state: dict | None = None):
                 print(f"{t('Proposed install command:')}")
                 print(f"  {printable}")
                 print("  sudo sensors-detect --auto")
-                ans = input(
-                    t("Install lm-sensors now? (y/N): ")
-                ).strip().lower()
+                ans = (
+                    input(t("Install lm-sensors now? (y/N): ")).strip().lower()
+                )
                 if ans in ("o", "oui", "y", "yes"):
                     os.system(printable + " || true")
                     os.system("sudo sensors-detect --auto || true")

@@ -168,7 +168,7 @@ class MenuCoherence:
     # ne doit pas dépendre de l'endroit où quelqu'un met un commentaire.
     RE_DISPATCH_CALL = re.compile(
         r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
-        r'\s*(?:status = )?self\.(\w+)\('
+        r"\s*(?:status = )?self\.(\w+)\("
     )
 
     def setUp(self):
@@ -228,6 +228,65 @@ class MenuCoherence:
     def test_expected_table_has_no_stale_entry(self):
         keys = {self._key(label) for _, label in self.shown}
         self.assertEqual(set(self.EXPECTED) - keys, set())
+
+
+class TestLArbreDesMenus(unittest.TestCase):
+    """L'écran de télémétrie lit le CODE, pas la classe assemblée.
+
+    `build_code_tree()` parse un fichier et n'y prend que la première classe.
+    Depuis le découpage, les menus QEMU/KVM et Proxmox vivent dans des mixins :
+    leur colonne avait disparu de cet écran — les commandes s'exécutaient
+    toujours, mais on ne pouvait plus les lancer de là ni les lire. C'est ce
+    que « il manque plein d'informations qu'il y avait avant » désignait.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from script.todo.todo_telemetry import build_code_tree
+
+        cls.arbre = build_code_tree()
+
+    def _noeud(self, libelle, noeud=None):
+        noeud = noeud if noeud is not None else self.arbre
+        if noeud.get("label") == libelle:
+            return noeud
+        for enfant in noeud.get("children") or []:
+            trouve = self._noeud(libelle, enfant)
+            if trouve:
+                return trouve
+        return None
+
+    def test_the_tree_is_built_at_all(self):
+        self.assertIsNotNone(self.arbre)
+
+    def test_the_mixin_files_come_from_the_imports(self):
+        # Lus dans les imports de todo.py : un mixin ajouté demain apparaît
+        # sans qu'on pense à l'inscrire ici.
+        from script.todo.todo_telemetry import _mixin_files
+
+        noms = {f.name for f in _mixin_files(TODO_DIR / "todo.py")}
+        self.assertIn("qemu_menu.py", noms)
+        self.assertIn("proxmox_menu.py", noms)
+
+    def test_the_qemu_column_carries_its_commands(self):
+        noeud = self._noeud("QEMU/KVM")
+        self.assertIsNotNone(noeud, "colonne QEMU/KVM absente de l'arbre")
+        self.assertGreaterEqual(len(noeud.get("children") or []), 15)
+
+    def test_the_proxmox_column_too(self):
+        noeud = self._noeud("Proxmox VE")
+        self.assertIsNotNone(noeud, "colonne Proxmox VE absente de l'arbre")
+        self.assertGreaterEqual(len(noeud.get("children") or []), 15)
+
+    def test_the_breadcrumb_names_the_proxmox_menu(self):
+        # Sans étiquette, le fil d'Ariane sautait le menu Proxmox : on lisait
+        # « TODO › Execute › Deploy » en étant deux niveaux plus bas.
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("prompt_execute_proxmox", CLASSE._MENU_LABELS)
 
 
 class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
