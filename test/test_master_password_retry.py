@@ -131,8 +131,10 @@ class TestTheRetryLoop(unittest.TestCase):
         self.assertIn("OperationalError", "\n".join(journal.output))
 
     def test_the_probe_carries_the_password_and_touches_nothing(self):
-        # `--list` ne modifie rien : valider ici évite d'échouer à
-        # mi-parcours, une fois la base déjà supprimée.
+        # Valider ici évite d'échouer à mi-parcours, une fois la base
+        # déjà supprimée. La sonde demande un `drop` sur un nom qui
+        # n'existe pas : `check_super` s'exécute AVANT `db_exists`, donc
+        # elle répond sans rien toucher.
         self.branche(["bon"], [(True, "db1")])
         self.lance()
         self.assertEqual(len(self.sondes), 1)
@@ -164,17 +166,89 @@ class TestTheWiring(unittest.TestCase):
         src = self.source()
         self.assertIn("master_password = ask_master_password(arg_base)", src)
 
-    def test_the_probe_uses_list_which_changes_nothing(self):
-        src = self.source()
-        debut = src.index("def probe_master_password")
-        fin = src.index("def ask_master_password")
-        bloc = src[debut:fin]
-        self.assertIn("--list", bloc)
-        for danger in ("--drop", "--restore", "--clone"):
+    def bloc_sonde(self):
+        """Le CODE de la sonde, docstring retirée.
+
+        La docstring EXPLIQUE pourquoi `--list` et `--restore` ne
+        conviennent pas : un test qui lit tout le texte les y trouve et
+        se croit trompé. Troisième fois que ce piège se referme sur moi
+        dans ce dépôt — voir tasks/lessons.md.
+        """
+        import ast
+
+        for noeud in ast.walk(ast.parse(self.source())):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "probe_master_password"
+            ):
+                sans_texte = [
+                    n
+                    for n in noeud.body
+                    if not (
+                        isinstance(n, ast.Expr)
+                        and isinstance(n.value, ast.Constant)
+                        and isinstance(n.value.value, str)
+                    )
+                ]
+                return ast.dump(ast.Module(body=sans_texte, type_ignores=[]))
+        return ""
+
+    def test_the_scan_finds_the_probe_at_all(self):
+        # Sans cette borne, les tests suivants passeraient sur une chaîne
+        # vide le jour où la fonction est renommée.
+        self.assertTrue(self.bloc_sonde())
+
+    def test_the_probe_uses_the_only_action_that_reads_the_password(self):
+        # `--list` ne LIT jamais le mot de passe : mesuré,
+        # MASTER_PWD="ceci_est_faux" … db --list sort en 0. La sonde
+        # d'avant acceptait donc le premier mot saisi, et la boucle des
+        # dix essais ne servait à rien. Seul `drop` consulte le secret.
+        bloc = self.bloc_sonde()
+        self.assertIn("--drop", bloc)
+        self.assertNotIn("--list", bloc)
+
+    def test_it_never_names_a_database_that_could_exist(self):
+        # La sonde DEMANDE une suppression : sur un vrai nom et avec un
+        # bon mot de passe, on perdrait la base. Le nom vient d'un uuid.
+        bloc = self.bloc_sonde()
+        # L'arbre nomme les appels : `Call(func=Name(id='probe_name'))`.
+        self.assertIn("id='probe_name'", bloc)
+        # …et jamais la base que l'appelant vise.
+        self.assertNotIn("id='database'", bloc)
+
+    def test_it_never_asks_to_restore_or_clone(self):
+        bloc = self.bloc_sonde()
+        for danger in ("--restore", "--clone"):
             self.assertNotIn(danger, bloc)
 
     def test_the_bound_is_ten(self):
         self.assertEqual(db_restore.MAX_ESSAIS_MOT_DE_PASSE, 10)
+
+
+class TestTheProbeName(unittest.TestCase):
+    """Le nom que la sonde demande de supprimer.
+
+    C'est le seul endroit de cet outil où une erreur coûterait une base.
+    """
+
+    def test_it_is_prefixed_so_a_log_says_where_it_came_from(self):
+        self.assertTrue(db_restore.probe_name().startswith("el_probe_"))
+
+    def test_two_calls_never_give_the_same_name(self):
+        noms = {db_restore.probe_name() for _ in range(50)}
+        self.assertEqual(50, len(noms))
+
+    def test_it_is_long_enough_to_be_unguessable(self):
+        # Un uuid4 en hexadécimal : 32 caractères après le préfixe.
+        self.assertGreaterEqual(
+            len(db_restore.probe_name()), len("el_probe_") + 32
+        )
+
+    def test_it_is_a_legal_postgresql_identifier(self):
+        # Un nom que PostgreSQL refuserait ferait échouer la sonde pour
+        # une raison qui n'a rien à voir avec le mot de passe, et l'on
+        # redemanderait dix fois un secret parfaitement bon.
+        self.assertRegex(db_restore.probe_name(), r"^[a-z][a-z0-9_]{0,62}$")
 
 
 if __name__ == "__main__":
