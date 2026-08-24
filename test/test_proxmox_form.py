@@ -400,5 +400,80 @@ class TestEcran(unittest.TestCase):
         self.assertIsNone(self._rendu(gestes).result)
 
 
+class TestLeSuivi(unittest.TestCase):
+    """La case « Suivre l'installation » doit commander quelque chose.
+
+    Elle ne commandait rien : décochée, le tableau de bord s'ouvrait quand
+    même ; cochée sans rien à installer, il ne s'ouvrait jamais. Le suivi
+    vient du DÉPLOIEMENT, pas de l'installation — c'est la règle déjà tirée du
+    côté QEMU/KVM après le même rapport.
+    """
+
+    def _apres_creation(self, install, monitor):
+        """Rejoue l'épilogue du déploiement et dit quelle voie a été prise."""
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vus = {}
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: vus.setdefault(
+            "tableau", a
+        )
+        todo._qemu_install_erplibre_vm = lambda *a, **k: vus.setdefault(
+            "serie", a
+        )
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "add_ssh_config": False,
+            "user": "erplibre",
+            "install": install,
+            "monitor": monitor,
+        }
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        return vus
+
+    def test_ticked_without_anything_to_install_still_opens_it(self):
+        # La commande distante regarde alors la VM ARRIVER : c'est justement
+        # ce qu'on veut voir sur une VM déployée nue.
+        vus = self._apres_creation(install=None, monitor=True)
+        self.assertIn("tableau", vus)
+        self.assertNotIn("serie", vus)
+
+    def test_unticked_installs_without_the_dashboard(self):
+        vus = self._apres_creation(
+            install={"branch": "develop", "cmd": "make x", "label": "X"},
+            monitor=False,
+        )
+        self.assertIn("serie", vus)
+        self.assertNotIn("tableau", vus)
+
+    def test_unticked_and_nothing_to_install_does_nothing(self):
+        self.assertEqual(self._apres_creation(install=None, monitor=False), {})
+
+    def test_ticked_with_an_install_opens_it(self):
+        vus = self._apres_creation(
+            install={"branch": "develop", "cmd": "make x", "label": "X"},
+            monitor=True,
+        )
+        self.assertIn("tableau", vus)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

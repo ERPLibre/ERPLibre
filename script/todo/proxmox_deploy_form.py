@@ -81,6 +81,9 @@ def build_spec(vms, existants, form):
         "host": form["host"],
         "storage": form["storage"],
         "bridge": form["bridge"],
+        # Les résolveurs de l'hôte suivent la spec : une VM en adresse fixe
+        # n'a pas de DNS sans eux.
+        "nameservers": form.get("nameservers") or (),
         "res_label": form["res_label"],
         "vms": [vm for vm in vms if vm["name"] not in connus],
         "existing": [vm["name"] for vm in vms if vm["name"] in connus],
@@ -692,6 +695,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 "host": ctx["host"],
                 "storage": self._storage(),
                 "bridge": self._bridge(),
+                "nameservers": ctx.get("nameservers") or (),
                 "res_label": res_label(self.profile),
                 "ssh_key": os.path.expanduser(cle) if cle else "",
                 "start": self.query_one("#f_start", Checkbox).value,

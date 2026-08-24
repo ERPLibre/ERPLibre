@@ -316,6 +316,16 @@ class ProxmoxMenuMixin:
             print(f"  ✓ sudo")
         host = dict(host, version=version, sudo=prefixe)
         print(f"  ✓ Proxmox VE {version}")
+        # Le noyau DÉCIDE de ce qui marche : sans le noyau Proxmox, ni module
+        # bridge ni table NAT — donc aucun pont à créer et aucune VM à
+        # démarrer. Vécu sur l'hôte d'essai, où ifupdown2 répondait
+        # « Another instance of this program is already running » au lieu de
+        # « Operation not supported ». On le dit ici, une fois, plutôt que de
+        # laisser chercher.
+        noyau = pve.parse_kernel(out)
+        if noyau and "-pve" not in noyau:
+            print(f"  ⚠ {t('Still on the distribution kernel:')} {noyau}")
+            print(f"  → {t('Reboot the host: no bridge, no NAT until then.')}")
         self._pve_remember_host(host)
         return host
 
@@ -673,6 +683,11 @@ class ProxmoxMenuMixin:
         _c, cfg = self._pve_show("cat /etc/network/interfaces", quiet=True)
         infos = pve.parse_bridge_config(cfg)
         cpu, ram_libre = self._pve_capacity()
+        # Le DNS de l'hôte, pour les VM en adresse fixe : sans lui elles
+        # routent mais ne résolvent rien, et « apt update » échoue sans que
+        # rien ne l'explique. Mesuré sur la VM d'essai.
+        _c, resolv = self._pve_show(pve.RESOLV_CMD, quiet=True)
+        serveurs_dns = pve.parse_nameservers(resolv)
 
         def ipconfig(pont, vmid):
             return pve.ipconfig_for(infos.get(pont, {}), vmid)
@@ -701,6 +716,7 @@ class ProxmoxMenuMixin:
             "bridges": ponts,
             "bridge": pve.pick_bridge(ponts),
             "ipconfig": ipconfig,
+            "nameservers": serveurs_dns,
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),
@@ -767,6 +783,9 @@ class ProxmoxMenuMixin:
             "user": spec.get("user") or "erplibre",
             "start": spec.get("start", True),
             "ipconfig": vm.get("ipconfig") or "ip=dhcp",
+            # Le DNS de l'hôte : « --ipconfig0 » ne le porte pas, et une VM
+            # en adresse fixe se retrouvait sans résolveur.
+            "nameservers": spec.get("nameservers") or (),
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
@@ -784,6 +803,17 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
         from script.todo.deploy_form_lib import run_deploy_progress
 
+        # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
+        # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
+        # téléchargeait 350 Mio d'image pour finir sur « net0: invalid format
+        # - missing key » — vécu sur l'hôte d'essai.
+        for valeur, message in (
+            (spec.get("storage"), t("No storage able to hold a VM disk.")),
+            (spec.get("bridge"), t("No bridge on the host.")),
+        ):
+            if not valeur:
+                print(f"\n  ✗ {message}")
+                return
         if not dry_run and not self._pve_confirm_spec(host, spec):
             print(t("Cancelled."))
             return
@@ -793,9 +823,10 @@ class ProxmoxMenuMixin:
                 spec["sshkey_path"] = "/root/.ssh/erplibre-deploy.pub"
             else:
                 print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
-        travaux = []
+        travaux, commandes = [], {}
         for vm in spec["vms"]:
             cmds = self._pve_vm_commands(mod, vm, spec)
+            commandes[vm["name"]] = cmds
             if dry_run:
                 print(f"\n── {vm['name']} ({t('VMID')} {vm['vmid']}) ──")
                 for cmd in cmds:
@@ -821,15 +852,92 @@ class ProxmoxMenuMixin:
             print(f"  ⏭ {t('already there')} : {', '.join(spec['existing'])}")
         if not travaux:
             return
+        # Le journal AVANT de lancer : la vue de progression se referme et
+        # emporte tout ce qu'elle montrait. Rapporté — « il manque plein
+        # d'informations qu'il y avait avant, où est le fichier de log ? ».
+        # L'ancienne voie par questions imprimait chaque commande et sa
+        # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
+        session = self._pve_log_dir()
+        print(f"\n  {t('Log:')} {session}")
         resultats = run_deploy_progress(travaux, spec.get("parallelism") or 1)
         reussies = [nom for nom, code, _o, _d in resultats if code == 0]
-        for nom, code, sortie, _duree in resultats:
+        for nom, code, sortie, duree in resultats:
+            chemin = self._pve_write_log(
+                session,
+                nom,
+                spec,
+                commandes.get(nom) or [],
+                code,
+                sortie,
+                duree,
+            )
+            marque = "✓" if code == 0 else "✗"
+            print(f"  {marque} {nom} : {chemin}")
             if code:
-                print(f"\n  ✗ {nom} : {t('exit code')} {code}")
-                print("\n".join(sortie.rstrip().splitlines()[-12:]))
+                print(f"    {t('exit code')} {code}")
+                # Les dernières lignes à l'écran, le reste dans le journal :
+                # c'est l'échec qu'on veut lire tout de suite.
+                propre = pve.collapse_progress(pve.strip_ssh_noise(sortie))
+                for ligne in propre.rstrip().splitlines()[-12:]:
+                    print(f"    {ligne}")
         if not reussies:
             return
         self._pve_after_create(host, spec, reussies, cle_locale)
+
+    @staticmethod
+    def _pve_log_dir():
+        """Répertoire de journaux de CE déploiement, créé au besoin.
+
+        Même esprit que ~/.erplibre/qemu-install : une session par
+        déploiement, un fichier par VM. La vue de progression se referme ; le
+        journal reste, et c'est lui qu'on relit quand une étape a cédé."""
+        session = os.path.join(
+            os.path.expanduser("~/.erplibre/proxmox-deploy"),
+            time.strftime("%Y%m%d-%H%M%S"),
+        )
+        os.makedirs(session, exist_ok=True)
+        return session
+
+    @staticmethod
+    def _pve_write_log(session, nom, spec, cmds, code, sortie, duree):
+        """Écrit le journal d'UNE VM et rend son chemin.
+
+        Les commandes AVANT leur sortie : c'est ce qui rend l'étape rejouable
+        à la main, et c'est ainsi que les pannes de ce module ont été
+        diagnostiquées."""
+        from script.proxmox import proxmox_deploy as pve
+
+        chemin = os.path.join(session, f"{nom}.log")
+        hote = (spec.get("host") or {}).get("target", "?")
+        vm = next((v for v in spec.get("vms") or [] if v["name"] == nom), {})
+        entete = [
+            "=" * 64,
+            "  ERPLibre — création d'une VM sur Proxmox VE",
+            f"  Date      : {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"  VM        : {nom}   VMID {vm.get('vmid', '?')}",
+            f"  Hôte      : {hote}",
+            f"  Stockage  : {spec.get('storage')}   "
+            f"{t('bridge')} : {spec.get('bridge')}",
+            f"  Adresse   : {(vm.get('ipconfig') or '').replace('ip=', '')}",
+            f"  Ressources: {vm.get('vcpus', '?')} vCPU  "
+            f"{vm.get('ram', '?')} Mo  {vm.get('disk', '?')}",
+            "=" * 64,
+            "",
+            "---- commandes ----",
+        ]
+        entete += [f"  {c}" for c in cmds]
+        propre = pve.collapse_progress(pve.strip_ssh_noise(sortie or ""))
+        entete += ["", "---- sortie ----", propre.rstrip(), ""]
+        entete += [
+            (
+                f"---- fin : code {code}, {duree:.0f} s ----"
+                if isinstance(duree, (int, float))
+                else f"---- fin : code {code} ----"
+            )
+        ]
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(entete) + "\n")
+        return chemin
 
     def _pve_confirm_spec(self, host, spec):
         """Récapitulatif puis confirmation, dans le TERMINAL.
@@ -890,23 +998,45 @@ class ProxmoxMenuMixin:
                 print(f"  ✓ ~/.ssh/config : ssh {vm['name']}")
             joignables.append(vm)
         install = spec.get("install")
-        if not install or not joignables:
+        # Le suivi vient du DÉPLOIEMENT, pas de l'installation — même règle
+        # qu'en QEMU/KVM. Sans elle, la case « Suivre l'installation » ne
+        # commandait rien : décochée, le tableau de bord s'ouvrait quand
+        # même ; cochée sans rien à installer, il ne s'ouvrait jamais.
+        suivi = spec.get("monitor", True)
+        if not joignables or not (install or suivi):
             return
         noms = [vm["name"] for vm in joignables]
-        print(f"  {install.get('label') or ''}")
+        if install:
+            print(f"  {install.get('label') or ''}")
         # Une commande PAR VM dès qu'elles diffèrent : un Proxmox imbriqué
         # installe son hyperviseur, ses voisines ERPLibre. Une commande
         # unique en aurait imposé une aux deux.
-        commun = install.get("cmd") or ""
+        commun = (install or {}).get("cmd") or ""
         cartes = {
             vm["name"]: (vm.get("install_cmd") or commun) for vm in joignables
         }
-        self._qemu_install_erplibre_monitored(
-            noms,
-            install.get("branch") or "master",
-            {n: n for n in noms},
-            cartes if self._qemu_per_vm(cartes, commun) else commun,
-        )
+        finale = cartes if self._qemu_per_vm(cartes, commun) else commun
+        branche = (install or {}).get("branch") or ""
+        if suivi:
+            # Rien à installer ? La commande distante regarde alors la VM
+            # ARRIVER (cloud-init, puis relevé système) : c'est ce que le
+            # tableau de bord montre.
+            self._qemu_install_erplibre_monitored(
+                noms, branche, {n: n for n in noms}, finale
+            )
+            return
+        # Sans suivi mais avec quelque chose à installer : en série, sortie à
+        # l'écran. C'est le pendant exact de la voie QEMU/KVM.
+        print(f"\n{t('Installing ERPLibre on each VM')} ({branche})…")
+        for vm in joignables:
+            self._qemu_install_erplibre_vm(
+                vm["name"],
+                cle_locale,
+                branche,
+                pve.ip_from_ipconfig(vm.get("ipconfig") or "") or vm["name"],
+                vm.get("install_cmd") or commun,
+                False,
+            )
 
     def _pve_deploy_prompts(self, dry_run=False):
         """Déploie une VM SUR l'hôte Proxmox choisi, par questions.

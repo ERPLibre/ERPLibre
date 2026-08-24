@@ -31,6 +31,7 @@ from unittest import mock
 sys.argv = ["todo.py"]
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 # Sorties RÉELLES relevées sur l'hôte d'essai.
 PVEVERSION = (
@@ -42,6 +43,17 @@ AVERTISSEMENT = (
     "Warning: Permanently added '192.168.123.227' (ED25519) to the list "
     "of known hosts.\n"
 )
+SPEC_VM = {
+    "name": "essai",
+    "memory": 512,
+    "vcpus": 1,
+    "disk": "4G",
+    "storage": "local",
+    "bridge": "vmbr0",
+    "image": "debian-13.qcow2",
+    "user": "erplibre",
+    "start": True,
+}
 QM_LIST = """      VMID NAME                 STATUS     MEM(MB)    BOOTDISK(GB) PID
        100 vm-essai             running    2048              16.00 2726
        101 avec un espace       stopped    4096              32.00 0
@@ -149,6 +161,143 @@ class TestLectureDesSorties(unittest.TestCase):
         orph = pve.parse_orphans(liste, [100])
         self.assertEqual(1, len(orph))
         self.assertIn("999", orph[0][0])
+
+
+class TestLeBruitDeSsh(unittest.TestCase):
+    """Ce que ssh ajoute n'est pas la réponse de l'hôte.
+
+    Le cas vécu, du début à la fin : « ip -o link show type bridge » ne rend
+    RIEN sur un hôte sans pont, la sortie ne contient donc que
+    l'avertissement de ssh sur la clé — que `parse_bridges` a pris pour un nom
+    de pont. « (ED25519) » s'est retrouvé dans « --net0 virtio,bridge=… »,
+    enrobé de « sudo sh -c », et dash a répondu :
+
+        sh: 1: Syntax error: "(" unexpected
+
+    Trois lignes de code entre la cause et un message incompréhensible.
+    """
+
+    def test_the_warning_never_becomes_a_bridge(self):
+        self.assertEqual(pve.parse_bridges(AVERTISSEMENT), [])
+
+    def test_real_bridges_are_still_read(self):
+        vrai = (
+            "2: vmbr0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc "
+            "noqueue state UP mode DEFAULT group default qlen 1000\\    "
+            "link/ether bc:24:11:00:00:01\n"
+            "3: vmbr1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN\n"
+        )
+        self.assertEqual(
+            pve.parse_bridges(AVERTISSEMENT + vrai), ["vmbr0", "vmbr1"]
+        )
+
+    def test_a_veth_pair_keeps_only_its_own_name(self):
+        ligne = "7: fwln100i0@fwpr100p0: <BROADCAST,MULTICAST,UP> mtu 1500\n"
+        self.assertEqual(pve.parse_bridges(ligne), ["fwln100i0"])
+
+    def test_the_noise_is_stripped_at_the_source(self):
+        for bruit in (
+            AVERTISSEMENT,
+            "Pseudo-terminal will not be allocated because stdin is not a terminal.\n",
+            "Connection to 10.0.0.5 closed.\n",
+            "Shared connection to 10.0.0.5 closed.\n",
+            "mesg: ttyname failed: Inappropriate ioctl for device\n",
+        ):
+            self.assertEqual(pve.strip_ssh_noise(bruit), "")
+        self.assertEqual(
+            pve.strip_ssh_noise(AVERTISSEMENT + "vmbr0\n"), "vmbr0\n"
+        )
+
+    def test_the_answer_survives_the_filter(self):
+        # Un filtre qui mange la réponse serait pire que le bruit.
+        self.assertIn(
+            "pve-manager", pve.strip_ssh_noise(AVERTISSEMENT + PVEVERSION)
+        )
+
+
+class TestLeNoyau(unittest.TestCase):
+    """Tant que l'hôte tourne le noyau de la distribution, il n'a ni module
+    bridge ni table NAT : ifupdown2 répond « Operation not supported », et
+    quand /run/network manque il répond même « Another instance of this
+    program is already running » — un mensonge. Vécu sur l'hôte d'essai."""
+
+    def test_the_running_kernel_is_read_from_pveversion(self):
+        self.assertEqual(
+            pve.parse_kernel(
+                "pve-manager/9.2.11/abc (running kernel: 6.12.95+deb13-cloud-amd64)"
+            ),
+            "6.12.95+deb13-cloud-amd64",
+        )
+        self.assertEqual(
+            pve.parse_kernel(
+                "pve-manager/9.2.11/abc (running kernel: 7.0.14-12-pve)"
+            ),
+            "7.0.14-12-pve",
+        )
+        self.assertEqual(pve.parse_kernel("n'importe quoi"), "")
+
+    def test_the_bridge_creates_the_lock_directory_first(self):
+        # Sans /run/network, ifupdown2 accuse une autre instance et le pont
+        # ne monte jamais.
+        montee = pve.bridge_setup_cmds("vmbr0", "10.10.10.1/24", "enp1s0")[-1]
+        self.assertIn("mkdir -p /run/network", montee)
+        # Et l'erreur d'ifup n'est plus masquée : c'est elle qui explique.
+        self.assertNotIn("2>/dev/null", montee)
+
+
+class TestLeDns(unittest.TestCase):
+    """« --ipconfig0 » ne porte pas le DNS : une VM en adresse fixe se
+    retrouvait sans résolveur. Mesuré sur la VM d'essai — le NAT routait, mais
+    « getent hosts deb.debian.org » ne rendait rien."""
+
+    def test_the_resolved_stub_is_useless_to_a_guest(self):
+        self.assertEqual(pve.parse_nameservers("nameserver 127.0.0.53"), [])
+
+    def test_real_resolvers_are_kept_in_order(self):
+        self.assertEqual(
+            pve.parse_nameservers(
+                "nameserver 192.168.123.1\nnameserver 1.1.1.1\n"
+                "nameserver 192.168.123.1\n"
+            ),
+            ["192.168.123.1", "1.1.1.1"],
+        )
+
+    def test_a_static_address_gets_the_resolvers(self):
+        spec = dict(
+            SPEC_VM,
+            ipconfig="ip=10.10.10.150/24,gw=10.10.10.1",
+            nameservers=["192.168.123.1"],
+        )
+        ci = [c for c in pve.create_cmds(100, spec) if "--ciuser" in c][0]
+        self.assertIn("--nameserver 192.168.123.1", ci)
+
+    def test_dhcp_needs_none(self):
+        # Le bail DHCP porte déjà le DNS.
+        spec = dict(SPEC_VM, ipconfig="ip=dhcp", nameservers=["192.168.123.1"])
+        ci = [c for c in pve.create_cmds(100, spec) if "--ciuser" in c][0]
+        self.assertNotIn("--nameserver", ci)
+
+
+class TestLAvancement(unittest.TestCase):
+    """Cent lignes « transferred … » enterraient l'erreur utile : le journal du
+    premier essai réel faisait 136 lignes pour 34 utiles."""
+
+    def test_a_burst_collapses_to_one_line(self):
+        texte = (
+            "Formatting 'disk.raw'\n"
+            + "".join(
+                f"transferred {i}.0 MiB of 3.0 GiB ({i}%)\n" for i in range(50)
+            )
+            + "scsi0: successfully created disk\n"
+        )
+        propre = pve.collapse_progress(texte)
+        self.assertIn("50 lignes d'avancement", propre)
+        self.assertIn("successfully created disk", propre)
+        self.assertLess(len(propre.splitlines()), 6)
+
+    def test_what_is_not_progress_is_untouched(self):
+        texte = "400 Parameter verification failed.\nnet0: invalid format\n"
+        self.assertEqual(pve.collapse_progress(texte).strip(), texte.strip())
 
 
 class TestLesChoix(unittest.TestCase):
@@ -359,10 +508,13 @@ class TestChoixDeLHote(unittest.TestCase):
             ]
         )
         self.assertIsNone(host)
-        self.assertIn("joignable", sortie.lower())
+        # Comparé à la TRADUCTION, pas à un mot français : la langue de
+        # l'interface se change (EL_LANG), et un test qui la suppose échoue
+        # pour une raison qui n'a rien à voir avec ce qu'il vérifie.
+        self.assertIn(t("Reachable, but Proxmox VE is not there:"), sortie)
         self.assertIn("install_proxmox.sh", sortie)
         # Et surtout : ne plus envoyer chercher un problème de réseau.
-        self.assertNotIn("SSH ne passe pas", sortie)
+        self.assertNotIn(t("SSH does not get through:"), sortie)
 
     def test_an_unreachable_machine_says_ssh_does_not_get_through(self):
         panne = "ssh: connect to host 10.0.0.9 port 22: No route to host"
