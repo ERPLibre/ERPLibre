@@ -1080,6 +1080,94 @@ class ProxmoxMenuMixin:
             fh.write("\n".join(entete) + "\n")
         return chemin
 
+    def _pve_write_guide(self, cible, vm, spec, mod):
+        """Pose le guide de connexion et l'identité git DANS la VM.
+
+        La voie libvirt les livre par le « write_files » de cloud-init ;
+        « qm set » n'offre pas cela, donc une VM Proxmox n'avait AUCUN guide —
+        quelle que soit sa distribution. Rapporté sur Arch.
+
+        Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
+        la source unique, comme sa docstring le promet. Un seul appel, tous les
+        fichiers.
+        """
+        import types
+
+        from script.todo.todo_i18n import get_lang
+
+        install = spec.get("install") or {}
+        cmd_install = vm.get("install_cmd") or install.get("cmd") or ""
+        args = types.SimpleNamespace(
+            distro=vm.get("distro") or "",
+            version=vm.get("version") or "",
+            arch=vm.get("arch") or "amd64",
+            lang=get_lang(),
+            # La section ERPLibre n'apparaît que si ERPLibre y sera : un guide
+            # qui annonce un dépôt absent est un guide qui ment.
+            erplibre_dir=(
+                self._qemu_guide_dir(False)
+                if self._qemu_installs_erplibre(
+                    install.get("branch"), cmd_install
+                )
+                else ""
+            ),
+            erplibre_make=self._qemu_make_target(cmd_install),
+            desktop=bool(vm.get("desktop")),
+            no_git_identity=False,
+            user=spec.get("user") or "erplibre",
+        )
+        try:
+            fichiers = mod.guide_files(args)
+        except Exception as exc:  # pragma: no cover - dépend du module
+            print(f"  ⚠ {t('guide not written')} : {exc}")
+            return False
+        morceaux = []
+        for chemin, mode, contenu, proprio in fichiers:
+            q = shlex.quote(chemin)
+            morceaux.append(
+                f"printf '%s' {shlex.quote(contenu)} | sudo tee {q} "
+                f">/dev/null && sudo chmod {mode} {q}"
+            )
+            if proprio:
+                morceaux.append(f"sudo chown {shlex.quote(proprio)}: {q}")
+        code, _o = self._pve_ssh(cible, " && ".join(morceaux))
+        if code:
+            print(f"  ⚠ {t('guide not written')} ({code})")
+            return False
+        print(f"  ✓ {t('connection guide written')}")
+        return True
+
+    @staticmethod
+    def _pve_ssh(cible, remote, timeout=60):
+        """(code, sortie) d'une commande exécutée DANS la VM, par son alias.
+
+        Par l'alias et non par l'adresse : lui seul porte le rebond vers le
+        réseau interne de l'hôte."""
+        from script.proxmox import proxmox_deploy as pve
+
+        argv = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            cible,
+            remote,
+        ]
+        try:
+            res = subprocess.run(
+                argv, capture_output=True, text=True, timeout=timeout
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return 255, str(exc)
+        return res.returncode, pve.strip_ssh_noise(
+            (res.stdout or "") + (res.stderr or "")
+        )
+
     def _pve_print_summary(self, spec, joignables, session):
         """Sommaire final : ce qui existe, où, et comment y entrer.
 
@@ -1144,6 +1232,10 @@ class ProxmoxMenuMixin:
         # Les domaines LOCAUX : un nom partagé avec l'un d'eux fait dérailler
         # l'alias ssh et le suivi d'installation.
         locaux = set(self._qemu_list_domains())
+        try:
+            mod_qemu = self._qemu_import_module()
+        except Exception:
+            mod_qemu = None
 
         def alias_chaine(nom):
             """« hôte+vm », la convention déjà utilisée pour les VM
@@ -1208,6 +1300,10 @@ class ProxmoxMenuMixin:
                 print(f"  ✓ ~/.ssh/config : ssh {noms_alias[-1]}")
             vm["adresse"] = ip
             vm["alias"] = alias.get(vm["name"], vm["name"])
+            # Le guide AVANT l'installation : il doit être là même si rien ne
+            # s'installe, et l'installation ne le touche pas.
+            if vm["alias"] and mod_qemu:
+                self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
             joignables.append(vm)
         install = spec.get("install")
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été

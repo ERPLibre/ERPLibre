@@ -519,6 +519,97 @@ class TestLInterpretePython(unittest.TestCase):
         self.assertEqual(self._ecran(mise_arches=("s390x",))["choix"], "")
 
 
+class TestLeGuideDeConnexion(unittest.TestCase):
+    """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
+
+    Rapporté sur Arch : « pas l'écran de connexion, avec le guide qui dit de
+    prendre pacman, comme sur ubuntu ». La voie libvirt livre /etc/motd par le
+    « write_files » de cloud-init ; « qm set » n'offre pas cela. Le contenu
+    vient de la MÊME source (`guide_files`) et part par ssh.
+    """
+
+    def _ecrit(self, vm=None, install=None, distro="arch"):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vus = {}
+        todo._pve_ssh = lambda cible, remote, timeout=60: (
+            vus.update(cible=cible, remote=remote) or (0, "")
+        )
+        mod = todo._qemu_import_module()
+        vm = vm or {
+            "name": "vm-a",
+            "distro": distro,
+            "version": "latest",
+            "arch": "amd64",
+            "desktop": "",
+            "install_cmd": "",
+        }
+        spec = {"user": "erplibre", "install": install}
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok = todo._pve_write_guide("hote+vm-a", vm, spec, mod)
+        vus["ok"] = ok
+        return vus
+
+    def test_the_guide_goes_to_etc_motd_through_the_alias(self):
+        vus = self._ecrit()
+        self.assertTrue(vus["ok"])
+        # Par l'ALIAS : lui seul porte le rebond vers le réseau interne.
+        self.assertEqual(vus["cible"], "hote+vm-a")
+        self.assertIn("/etc/motd", vus["remote"])
+        self.assertIn("sudo tee", vus["remote"])
+
+    def test_an_arch_vm_is_told_about_pacman(self):
+        self.assertIn("pacman", self._ecrit(distro="arch")["remote"])
+
+    def test_a_debian_vm_is_told_about_apt(self):
+        self.assertIn("apt", self._ecrit(distro="debian")["remote"])
+
+    def test_without_erplibre_the_guide_does_not_promise_a_repository(self):
+        # Un guide qui annonce un dépôt absent est un guide qui mente.
+        sans = self._ecrit(install=None)["remote"]
+        self.assertNotIn("git/erplibre", sans)
+
+    def test_with_erplibre_it_says_where_it_lives(self):
+        avec = self._ecrit(
+            install={
+                "branch": "develop",
+                "cmd": "make install_os && make install_odoo_18",
+            }
+        )["remote"]
+        self.assertIn("git/erplibre", avec)
+
+    def test_a_failure_is_said_not_swallowed(self):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._pve_ssh = lambda *a, **k: (255, "no route")
+        mod = todo._qemu_import_module()
+        vm = {
+            "name": "vm-a",
+            "distro": "arch",
+            "version": "latest",
+            "arch": "amd64",
+            "desktop": "",
+            "install_cmd": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            ok = todo._pve_write_guide("x", vm, {"user": "erplibre"}, mod)
+        self.assertFalse(ok)
+        self.assertIn("⚠", sortie.getvalue())
+
+
 class TestLeSuivi(unittest.TestCase):
     """La case « Suivre l'installation » doit commander quelque chose.
 

@@ -3986,6 +3986,14 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "connection guide written": {
+        "fr": "guide de connexion écrit (/etc/motd)",
+        "en": "connection guide written (/etc/motd)",
+    },
+    "guide not written": {
+        "fr": "guide non écrit",
+        "en": "guide not written",
+    },
     "Quit (q) to start the ERPLibre install": {
         "fr": "Quitter (q) pour lancer l'installation d'ERPLibre",
         "en": "Quit (q) to start the ERPLibre install",
