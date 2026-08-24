@@ -192,6 +192,44 @@ class TestPasDePoubelleTropTot(unittest.TestCase):
             self.assertEqual(mon.read_pvestats([self._vm()], now=7.0), {})
 
 
+class TestLesAutresCheminsVersLaPoubelle(unittest.TestCase):
+    """Trouvés par un audit, pas à l'usage : trois autres façons d'arriver au
+    🗑 sur un seul incident. « Effacée » gèle la ligne pour de bon, donc
+    chacune valait un correctif."""
+
+    def test_a_broken_pvesh_is_not_an_answer(self):
+        # La commande est une SUITE : son code de sortie est celui du DERNIER
+        # maillon. Un pvesh en panne rendait « l'hôte a répondu, la VM n'y est
+        # plus » — et trois tours plus tard, la poubelle.
+        self.assertFalse(
+            mon._resources_parsable("permission denied\n---ERPLIBRE-DU---\n")
+        )
+        self.assertTrue(mon._resources_parsable("[]\n---ERPLIBRE-DU---\n"))
+
+    def test_a_failing_host_never_counts_as_an_answer(self):
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vm = {"name": "vm-a", "pve": {"target": "h", "sudo": "", "vmid": 1}}
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run",
+            return_value=(0, "sudo: a password is required\n"),
+        ):
+            _stats, ok = mon.read_pvestats_detail([vm], now=10.0)
+        self.assertFalse(ok, "code 0 ne prouve pas que pvesh a parlé")
+
+    def test_an_unknown_proxmox_status_is_not_a_deletion(self):
+        # Proxmox en a d'autres que les trois attendus : « prelaunch »,
+        # « suspended », « internal-error », « hibernated ».
+        for etat in ("prelaunch", "suspended", "internal-error", "hibernated"):
+            self.assertIsNone(
+                mon.PVE_ETATS.get(etat),
+                "l'état n'est pas dans la table : le repli doit être « la VM"
+                " existe », pas « gone »",
+            )
+
+    def test_the_absence_counter_is_explicit(self):
+        self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
+
+
 class TestLaBonneMachine(unittest.TestCase):
     """Le pire défaut de la série : l'installation partie AILLEURS.
 

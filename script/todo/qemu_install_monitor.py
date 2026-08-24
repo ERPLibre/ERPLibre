@@ -1348,6 +1348,19 @@ def pve_stats_cmd(adresses=()) -> str:
     )
 
 
+def _resources_parsable(text: str) -> bool:
+    """La sortie porte-t-elle une LISTE de ressources lisible ?
+
+    C'est la seule preuve que l'hôte a répondu : le code de sortie est celui
+    du dernier maillon de la suite, pas celui de « pvesh ».
+    """
+    brut, _, _ = (text or "").partition("---ERPLIBRE-DU---")
+    try:
+        return isinstance(json.loads(brut.strip() or "null"), list)
+    except ValueError:
+        return False
+
+
 def parse_odoo_probe(text: str) -> set:
     """Adresses dont le port 8069 a répondu, d'après pve_stats_cmd."""
     _, _, bloc = (text or "").partition("---ERPLIBRE-ODOO---")
@@ -1479,7 +1492,12 @@ def _read_pvestats(vms, now=None):
             pve_stats_cmd(siennes),
             40,
         )
-        if code == 0:
+        # « code == 0 » ne suffit PAS : la commande est une SUITE
+        # (pvesh ; echo ; du ; echo ; boucle), et son code est celui du DERNIER
+        # maillon. Un pvesh en panne rendait donc « l'hôte a répondu, la VM
+        # n'y est plus » — et trois tours plus tard, la poubelle. Ce qui prouve
+        # une réponse, c'est une LISTE de ressources analysable.
+        if code == 0 and _resources_parsable(sortie):
             ok = True
             releves = parse_pvestats(sortie)
             ouverts = parse_odoo_probe(sortie)
@@ -2491,13 +2509,21 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
                         # « effacée » ici gelait la ligne sur 🗑 dès le premier
                         # tour, pour toujours — vécu sur une VM Arch à peine
-                        # déployée.
+                        # déployée. Et on OUBLIE les absences déjà comptées :
+                        # elles ne prouvent une disparition que si elles se
+                        # SUIVENT, l'hôte répondant à chaque fois.
+                        self._pve_absences[nom] = 0
                         continue
                     releve = distants.get(nom)
                     if releve:
                         self._pve_absences[nom] = 0
+                        # PRÉSENTE dans le relevé : elle existe, quel que soit
+                        # le mot employé. Proxmox en a d'autres que les trois
+                        # attendus — « prelaunch », « suspended »,
+                        # « internal-error », « hibernated » — et les traduire
+                        # en « gone » mettait à la poubelle une VM bien vivante.
                         self._domstate[nom] = PVE_ETATS.get(
-                            releve.get("state"), "gone"
+                            releve.get("state"), "running"
                         )
                         continue
                     # L'hôte a répondu SANS elle : peut-être en cours de
@@ -2508,6 +2534,20 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     if self._pve_absences[nom] >= PVE_ABSENCES_AVANT_EFFACEE:
                         self._domstate[nom] = "gone"
                     continue
+                if not states:
+                    # « virsh list » n'a rien rendu : soit l'hôte n'a plus une
+                    # seule VM, soit l'appel a échoué (libvirtd qui redémarre,
+                    # sudo qui expire). On ne peut pas trancher, et conclure
+                    # « effacées » mettait TOUT le parc local à la poubelle,
+                    # définitivement. Même règle que pour l'hôte distant : on
+                    # compte avant de conclure.
+                    self._pve_absences[nom] = (
+                        self._pve_absences.get(nom, 0) + 1
+                    )
+                    if self._pve_absences[nom] >= PVE_ABSENCES_AVANT_EFFACEE:
+                        self._domstate[nom] = "gone"
+                    continue
+                self._pve_absences[nom] = 0
                 self._domstate[nom] = states.get(nom, "gone")
             # Réarmer la période du ballon sur les VM qui tournent : sans elle
             # la RAM affichée serait celle du dernier rapport du pilote, et une

@@ -519,6 +519,84 @@ class TestLInterpretePython(unittest.TestCase):
         self.assertEqual(self._ecran(mise_arches=("s390x",))["choix"], "")
 
 
+class TestLeDisquePromis(unittest.TestCase):
+    """Le plan annonçait « 25G » et « qm resize » recevait 20 G.
+
+    La voie libvirt ajoute la marge d'ERPLibre à la taille créée ; celle de
+    Proxmox la perdait entre l'écran et la commande. La VM naissait cinq
+    gigaoctets trop petite pour ce qu'on venait de lui promettre."""
+
+    def _taille(self, install, cmd_vm=""):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vm = {"disk": "20G", "install_cmd": cmd_vm}
+        return todo._pve_disk_with_margin(vm, {"install": install})
+
+    def test_the_margin_reaches_the_created_disk(self):
+        self.assertEqual(
+            self._taille(
+                {
+                    "branch": "develop",
+                    "cmd": "make install_os && make install_odoo_18",
+                }
+            ),
+            "25G",
+        )
+
+    def test_nothing_to_install_means_no_margin(self):
+        self.assertEqual(self._taille(None), "20G")
+
+    def test_a_hypervisor_profile_gets_no_margin(self):
+        # Elle est réservée au dépôt ERPLibre, qu'un Proxmox ne clonera pas.
+        self.assertEqual(
+            self._taille(
+                {
+                    "branch": "develop",
+                    "cmd": "./script/proxmox/install_proxmox.sh",
+                }
+            ),
+            "20G",
+        )
+
+
+class TestDeuxVmDuMemeNom(unittest.TestCase):
+    """Sur Proxmox, seul le VMID est unique : deux VM du même hôte peuvent
+    porter le même nom. « Changer l'état » les choisissait par NOM — cocher
+    l'une éteignait les deux."""
+
+    def test_selecting_one_twin_takes_only_that_one(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vms = [
+            {"vmid": 100, "name": "jumeau", "status": "running"},
+            {"vmid": 101, "name": "jumeau", "status": "running"},
+        ]
+        rangs = [str(i) for i in range(1, len(vms) + 1)]
+        for choix, attendu in (
+            ("1", [100]),
+            ("2", [101]),
+            ("1,2", [100, 101]),
+        ):
+            voulus = {
+                int(r)
+                for r in todo._parse_index_selection(choix, rangs)
+                if str(r).isdigit()
+            }
+            self.assertEqual(
+                [vm["vmid"] for i, vm in enumerate(vms, 1) if i in voulus],
+                attendu,
+                choix,
+            )
+
+
 class TestLeGuideDeConnexion(unittest.TestCase):
     """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
 
