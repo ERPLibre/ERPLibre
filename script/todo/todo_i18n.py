@@ -6789,6 +6789,22 @@ TRANSLATIONS = {
         "fr": "Aucun index en double.",
         "en": "No duplicate index.",
     },
+    "out of": {
+        "fr": "sur",
+        "en": "out of",
+    },
+    "Every witness is an administrator: a model only": {
+        "fr": "Tous les témoins sont administrateurs : un modèle que seuls les",
+        "en": "Every witness is an administrator: a model only",
+    },
+    "admins can read passes this test.": {
+        "fr": "administrateurs peuvent lire passe ce test.",
+        "en": "admins can read passes this test.",
+    },
+    "Reads ir_rule only — masking coded in Python escapes it.": {
+        "fr": "Ne lit qu'ir_rule — un masquage codé en Python lui échappe.",
+        "en": "Reads ir_rule only — masking coded in Python escapes it.",
+    },
     "held no data of their own — nothing to lose": {
         "fr": "sans donnée propre — rien à perdre",
         "en": "held no data of their own — nothing to lose",

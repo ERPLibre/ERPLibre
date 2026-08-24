@@ -91,6 +91,14 @@ try:
         ("share", "=", False),
     ], limit=LIMITE)
     rapport["users"] = membres.mapped("login")
+    # Les témoins ORDINAIRES : ceux qui ne sont pas administrateurs.
+    # Un modèle que seuls les administrateurs peuvent lire passe au vert
+    # si tous les témoins en sont — c'est exactement la forme du bug DMS,
+    # vue d'un autre angle. Mesuré sur une base réelle : les QUATRE
+    # utilisateurs internes étaient membres de base.group_system.
+    rapport["ordinary"] = [
+        u.login for u in membres if not u.has_group("base.group_system")
+    ]
     if not membres:
         rapport["no_user"] = True
     else:
@@ -99,6 +107,10 @@ try:
             .search([("global", "=", True), ("active", "=", True)])
             .mapped("model_id.model")
         )
+        # La COUVERTURE : combien de modèles portent une règle globale,
+        # et non combien on a pu éprouver. « 45 éprouvés » sans dire
+        # « sur 125 » laisse croire à un examen complet.
+        rapport["with_rule"] = len(vus - ATTENDUS)
         for nom in sorted(vus - ATTENDUS):
             modele = env.get(nom)
             if modele is None or modele._abstract or modele._transient:
@@ -141,12 +153,24 @@ def render(rapport):
     if rapport.get("no_user"):
         return [f"⚠ {t('No internal user to test visibility with.')}"]
     muets = rapport.get("models") or []
+    porteurs = rapport.get("with_rule")
+    sur = f" {t('out of')} {porteurs}" if porteurs else ""
     lignes = [
-        f"🔍 {rapport.get('checked', 0)}"
+        f"🔍 {rapport.get('checked', 0)}{sur}"
         f" {t('model(s) with a global rule and some data,')}"
         f" {t('checked against')} {len(rapport.get('users') or [])}"
         f" {t('internal user(s)')}"
     ]
+    # Dire ce qu'on n'a PAS pu éprouver, avant de dire ce qu'on a trouvé.
+    # Un vert qui prouve moins qu'il n'en a l'air est pire qu'un rouge.
+    if "ordinary" in rapport and not rapport["ordinary"]:
+        lignes.append(
+            f"   ⚠ {t('Every witness is an administrator: a model only')}"
+            f" {t('admins can read passes this test.')}"
+        )
+    lignes.append(
+        f"   ℹ {t('Reads ir_rule only — masking coded in Python escapes it.')}"
+    )
     if not muets:
         lignes.append(f"   ✅ {t('Every one of them is visible to someone.')}")
         return lignes
