@@ -3982,6 +3982,18 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "no disk file found for this VM": {
+        "fr": "aucun fichier de disque trouvé pour cette VM",
+        "en": "no disk file found for this VM",
+    },
+    "a running process": {
+        "fr": "un processus en cours",
+        "en": "a running process",
+    },
+    "Kept (still attached to a VM):": {
+        "fr": "Conservés (encore attachés à une VM) :",
+        "en": "Kept (still attached to a VM):",
+    },
     "Total:": {
         "fr": "Total :",
         "en": "Total:",
@@ -6725,6 +6737,54 @@ TRANSLATIONS = {
     "No duplicate index.": {
         "fr": "Aucun index en double.",
         "en": "No duplicate index.",
+    },
+    "Configuration records a migration never recreates": {
+        "fr": "Réglages qu'une migration ne recrée jamais",
+        "en": "Configuration records a migration never recreates",
+    },
+    "Every default configuration record is there.": {
+        "fr": "Chaque réglage par défaut est en place.",
+        "en": "Every default configuration record is there.",
+    },
+    "No pricelist, and the pricelist feature is on.": {
+        "fr": "Aucune liste de prix, alors que la fonctionnalité est active.",
+        "en": "No pricelist, and the pricelist feature is on.",
+    },
+    "Every quotation opens without one: raw price, no rule.": {
+        "fr": "Tout devis s'ouvre sans liste : prix brut, aucune règle.",
+        "en": "Every quotation opens without one: raw price, no rule.",
+    },
+    "No bank reconciliation model, for": {
+        "fr": "Aucun modèle de rapprochement bancaire, pour",
+        "en": "No bank reconciliation model, for",
+    },
+    "cash/bank journal(s).": {
+        "fr": "journal(aux) de trésorerie.",
+        "en": "cash/bank journal(s).",
+    },
+    "Every statement line is matched by hand.": {
+        "fr": "Chaque ligne de relevé se lettre à la main.",
+        "en": "Every statement line is matched by hand.",
+    },
+    "Use --apply to let Odoo recreate them.": {
+        "fr": "Utiliser --apply pour laisser Odoo les recréer.",
+        "en": "Use --apply to let Odoo recreate them.",
+    },
+    "pricelists:": {
+        "fr": "listes de prix :",
+        "en": "pricelists:",
+    },
+    "reconcile models:": {
+        "fr": "modèles de rapprochement :",
+        "en": "reconcile models:",
+    },
+    "Odoo recreated them.": {
+        "fr": "Odoo les a recréés.",
+        "en": "Odoo recreated them.",
+    },
+    "Still missing after the repair.": {
+        "fr": "Il en manque encore après la réparation :",
+        "en": "Still missing after the repair.",
     },
     "duplicate index pair(s)": {
         "fr": "paire(s) d'index en double",
