@@ -72,6 +72,20 @@ ANALYSES = (
         " no RPC session exposes.",
     },
     {
+        "key": "instance_state",
+        "title": "State of the instance",
+        "why": "Neutralisation, scheduler, backups, queues and who is an"
+        " administrator — read for the use you intend.",
+        "script": "script/analyse/check_instance_state.py",
+        "kinds": (KIND_DATABASE,),
+        "needs_sql": "Several checks read tables no RPC session exposes,"
+        " and the lateness of a job is computed in SQL.",
+        # Le même chiffre veut dire deux choses opposées selon qu'on
+        # ausculte une copie ou une production : l'attente ne se devine
+        # pas, elle se demande.
+        "asks_expect": True,
+    },
+    {
         "key": "cow_views",
         "title": "Customised views, website copies included",
         "why": "Every view someone changed, and every website copy that"

@@ -3553,7 +3553,34 @@ class TODO(
         if kind not in analyse["kinds"]:
             print(f"✖ {t('Not available for this source.')}")
             return
-        monitoring.run_analysis(analyse, target)
+        extra = None
+        if analyse.get("asks_expect"):
+            extra = ["--expect", self._monitoring_expect(kind)]
+        monitoring.run_analysis(analyse, target, extra=extra)
+
+    def _monitoring_expect(self, kind):
+        """Copie de développement, ou instance en service ?
+
+        Zéro cron actif est le SUCCÈS attendu d'une copie et une panne
+        totale sur une production ; zéro serveur de courriel rassure sur
+        l'une et condamne l'autre. Deviner à la place de l'utilisateur,
+        c'est afficher du rouge sur ce qu'il vient de demander — et l'on
+        cesse alors de lire le rapport.
+        """
+        from script.analyse import check_instance_state, monitoring
+
+        if kind == monitoring.KIND_LIVE:
+            return check_instance_state.LIVE
+        print()
+        print(f"[1] {t('A development copy (restored, neutralised)')}")
+        print(f"[2] {t('An instance in service')}")
+        answer = click.prompt(t("Command:"))
+        print()
+        return (
+            check_instance_state.LIVE
+            if answer == "2"
+            else check_instance_state.COPY
+        )
 
     def _monitoring_select_source(self):
         """(genre, cible), ou None si l'on renonce.
@@ -3565,17 +3592,25 @@ class TODO(
         from script.analyse import monitoring
 
         print()
-        print(f"[1] {t('A local backup .zip')}")
-        print(f"[2] {t('A remote backup (https + master password)')}")
-        print(f"[3] {t('A live remote instance')}")
+        # La base locale d'abord : c'est la provenance la plus directe, et
+        # `_analyse_select_source` du même menu range déjà la base avant la
+        # sauvegarde. Deux ordres différents dans un même menu se paient en
+        # hésitation à chaque usage.
+        print(f"[1] {t('A local database')}")
+        print(f"[2] {t('A local backup .zip')}")
+        print(f"[3] {t('A remote backup (https + master password)')}")
+        print(f"[4] {t('A live remote instance')}")
         print(f"[0] {t('Back')}")
         answer = click.prompt(t("Command:"))
         print()
         if answer == "1":
+            database = self.db_manager.select_database()
+            return (monitoring.KIND_DATABASE, database) if database else None
+        if answer == "2":
             path = self.db_manager.select_backup_path()
             database = self._monitoring_restore(path) if path else None
             return (monitoring.KIND_DATABASE, database) if database else None
-        if answer == "2":
+        if answer == "3":
             status, path, _name = (
                 self.db_manager.download_database_backup_cli()
             )
@@ -3584,7 +3619,7 @@ class TODO(
                 return None
             database = self._monitoring_restore(path)
             return (monitoring.KIND_DATABASE, database) if database else None
-        if answer == "3":
+        if answer == "4":
             return self._monitoring_live()
         return None
 

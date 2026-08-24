@@ -9584,6 +9584,30 @@ TRANSLATIONS = {
         "fr": "Odoo lève un KeyError rien qu'en les contrôlant, et plus rien ne les lira jamais.",
         "en": "Odoo raises a KeyError merely checking them, and nothing will ever read them again.",
     },
+    "A local database": {
+        "fr": "Une base de données locale",
+        "en": "A local database",
+    },
+    "State of the instance": {
+        "fr": "État de l'instance",
+        "en": "State of the instance",
+    },
+    "Neutralisation, scheduler, backups, queues and who is an administrator — read for the use you intend.": {
+        "fr": "Neutralisation, cadenceur, sauvegardes, files et qui est administrateur — lu pour l'usage que vous en faites.",
+        "en": "Neutralisation, scheduler, backups, queues and who is an administrator — read for the use you intend.",
+    },
+    "Several checks read tables no RPC session exposes, and the lateness of a job is computed in SQL.": {
+        "fr": "Plusieurs contrôles lisent des tables qu'aucune session RPC n'expose, et le retard d'une tâche se calcule en SQL.",
+        "en": "Several checks read tables no RPC session exposes, and the lateness of a job is computed in SQL.",
+    },
+    "A development copy (restored, neutralised)": {
+        "fr": "Une copie de développement (restaurée, neutralisée)",
+        "en": "A development copy (restored, neutralised)",
+    },
+    "An instance in service": {
+        "fr": "Une instance en service",
+        "en": "An instance in service",
+    },
 }
 
 

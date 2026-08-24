@@ -300,3 +300,49 @@ class TestTheScreenAnswersKeys(unittest.TestCase):
 
     def test_q_gives_up(self):
         self.assertIsNone(self._presser(monitoring.KIND_DATABASE, ["q"]))
+
+
+class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
+    """Les numéros affichés mènent-ils où ils le disent ?
+
+    `_monitoring_select_source` imprime « [2] Une sauvegarde .zip » d'un
+    côté et teste `answer == "2"` de l'autre. Rien ne relie les deux :
+    insérer « une base locale » en tête décale tout le reste à la main.
+    C'est le piège exact que `MenuCoherence` garde pour les autres menus,
+    et celui-ci n'entre pas dans son moule — il s'imprime, il ne se
+    déclare pas.
+    """
+
+    def setUp(self):
+        import re
+        from pathlib import Path
+
+        todo = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "todo"
+            / "todo.py"
+        )
+        source = todo.read_text(encoding="utf-8")
+        debut = source.index("def _monitoring_select_source(self):")
+        fin = source.index("def _monitoring_live(self):", debut)
+        self.corps = source[debut:fin]
+        self.affiches = re.findall(r'print\(f"\[(\d+)\] \{t\(', self.corps)
+        self.branches = re.findall(r'if answer == "(\d+)":', self.corps)
+
+    def test_the_menu_was_actually_parsed(self):
+        """Sur des listes vides, tout passe : mieux vaut tomber ici."""
+        self.assertGreaterEqual(len(self.affiches), 4)
+
+    def test_every_shown_entry_has_a_branch(self):
+        montres = [n for n in self.affiches if n != "0"]
+        self.assertEqual(sorted(montres), sorted(self.branches))
+
+    def test_the_numbering_is_contiguous_from_one(self):
+        montres = sorted(int(n) for n in self.affiches if n != "0")
+        self.assertEqual(montres, list(range(1, len(montres) + 1)))
+
+    def test_a_local_database_is_offered_first(self):
+        """La provenance la plus directe, et l'ordre du menu d'à côté."""
+        self.assertEqual(self.affiches[0], "1")
+        self.assertIn("A local database", self.corps.split("if answer")[0])
