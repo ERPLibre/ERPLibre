@@ -2290,6 +2290,14 @@ TRANSLATIONS = {
         "fr": "Aucun affichage ici ; à lancer sur VOTRE poste :",
         "en": "No display here; run this on YOUR workstation:",
     },
+    "Still on the distribution kernel:": {
+        "fr": "Encore sur le noyau de la distribution :",
+        "en": "Still on the distribution kernel:",
+    },
+    "Reboot the host: no bridge, no NAT until then.": {
+        "fr": "Redémarrer l'hôte : ni pont ni NAT avant cela.",
+        "en": "Reboot the host: no bridge, no NAT until then.",
+    },
     "A ~/.ssh/config alias works there too.": {
         "fr": "Un alias de ~/.ssh/config y fonctionne aussi.",
         "en": "A ~/.ssh/config alias works there too.",
@@ -6709,6 +6717,42 @@ TRANSLATIONS = {
     "Every website copy still renders.": {
         "fr": "Chaque copie de site sait encore se rendre.",
         "en": "Every website copy still renders.",
+    },
+    "No duplicate index.": {
+        "fr": "Aucun index en double.",
+        "en": "No duplicate index.",
+    },
+    "duplicate index pair(s)": {
+        "fr": "paire(s) d'index en double",
+        "en": "duplicate index pair(s)",
+    },
+    "safe to drop": {
+        "fr": "sans risque à supprimer",
+        "en": "safe to drop",
+    },
+    "drop": {
+        "fr": "supprimer",
+        "en": "drop",
+    },
+    "backed by a constraint — left alone": {
+        "fr": "adossée(s) à une contrainte — laissée(s) en place",
+        "en": "backed by a constraint — left alone",
+    },
+    "neither name follows the convention — your call": {
+        "fr": "sans convention reconnaissable — à vous de juger",
+        "en": "neither name follows the convention — your call",
+    },
+    "Use --apply to drop them.": {
+        "fr": "Utiliser --apply pour les supprimer.",
+        "en": "Use --apply to drop them.",
+    },
+    "Duplicate indexes dropped.": {
+        "fr": "Index en double supprimés.",
+        "en": "Duplicate indexes dropped.",
+    },
+    "Some duplicates are still there.": {
+        "fr": "Des doublons subsistent.",
+        "en": "Some duplicates are still there.",
     },
     "website COW view(s) will survive the bump and then fail": {
         "fr": "vue(s) COW de site passeront le palier puis échoueront",
