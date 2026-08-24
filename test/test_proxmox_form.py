@@ -467,6 +467,56 @@ class TestLeSuivi(unittest.TestCase):
     def test_unticked_and_nothing_to_install_does_nothing(self):
         self.assertEqual(self._apres_creation(install=None, monitor=False), {})
 
+    def test_the_ssh_entry_is_written_when_the_install_needs_it(self):
+        """La VM est derrière l'hôte : le rebond de ~/.ssh/config est le SEUL
+        chemin. Décoché alors qu'une installation est demandée, le suivi ne
+        pouvait pas entrer dans la VM."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        def essai(add_ssh_config, install, monitor):
+            todo = TODO.__new__(TODO)
+            ecrites = []
+            todo._write_ssh_config_entry = lambda nom, *a, **k: ecrites.append(
+                nom
+            )
+            todo._ssh_private_key = lambda k: None
+            todo._pve_guest_ip = lambda vmid, attente=120: ""
+            todo._qemu_install_erplibre_monitored = lambda *a, **k: None
+            todo._qemu_install_erplibre_vm = lambda *a, **k: None
+            spec = {
+                "host": {"target": "pve1"},
+                "vms": [
+                    {
+                        "name": "vm-a",
+                        "vmid": 100,
+                        "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                        "install_cmd": "",
+                    }
+                ],
+                "add_ssh_config": add_ssh_config,
+                "user": "erplibre",
+                "install": install,
+                "monitor": monitor,
+            }
+            with contextlib.redirect_stdout(io.StringIO()):
+                todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+            return ecrites
+
+        cmd = {"branch": "develop", "cmd": "make x", "label": "X"}
+        # Décoché mais une installation demandée : écrite quand même.
+        self.assertEqual(essai(False, cmd, False), ["vm-a"])
+        # Décoché, suivi demandé : le suivi entre aussi par le rebond.
+        self.assertEqual(essai(False, None, True), ["vm-a"])
+        # Décoché et rien à faire dans la VM : le choix est respecté.
+        self.assertEqual(essai(False, None, False), [])
+        # Coché : écrite, évidemment.
+        self.assertEqual(essai(True, None, False), ["vm-a"])
+
     def test_ticked_with_an_install_opens_it(self):
         vus = self._apres_creation(
             install={"branch": "develop", "cmd": "make x", "label": "X"},

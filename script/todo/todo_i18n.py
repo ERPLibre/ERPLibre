@@ -2290,6 +2290,10 @@ TRANSLATIONS = {
         "fr": "Aucun affichage ici ; à lancer sur VOTRE poste :",
         "en": "No display here; run this on YOUR workstation:",
     },
+    "~/.ssh/config written anyway (install)": {
+        "fr": "entrée ~/.ssh/config écrite quand même : l'installation passe par le rebond",
+        "en": "~/.ssh/config written anyway: the install needs the jump",
+    },
     "Still on the distribution kernel:": {
         "fr": "Encore sur le noyau de la distribution :",
         "en": "Still on the distribution kernel:",

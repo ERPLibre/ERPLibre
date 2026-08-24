@@ -987,7 +987,16 @@ class ProxmoxMenuMixin:
                 )
                 continue
             print(f"  ✓ {vm['name']} : {ip}")
-            if spec.get("add_ssh_config"):
+            # L'entrée ~/.ssh/config est le SEUL chemin vers cette VM : elle
+            # est derrière l'hôte Proxmox (pont interne), donc son adresse
+            # n'est pas routable d'ici et seul le rebond y mène. Décochée
+            # alors qu'une installation est demandée, l'installation suivie ne
+            # pouvait pas entrer — elle est donc écrite quand même, et on le
+            # dit. Sans installation ni suivi, le choix est respecté.
+            besoin = bool(spec.get("install")) or spec.get("monitor", True)
+            if not spec.get("add_ssh_config") and besoin:
+                print(f"  → {t('~/.ssh/config written anyway (install)')}")
+            if spec.get("add_ssh_config") or besoin:
                 self._write_ssh_config_entry(
                     vm["name"],
                     spec.get("user") or "erplibre",
