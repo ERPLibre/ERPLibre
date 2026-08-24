@@ -106,6 +106,16 @@ def run_deploy_form(ctx, run_app: bool = True):
     arches = ctx["arches"]
     domains = set(ctx.get("domains") or [])
     profiles = ctx.get("install_profiles") or []
+    # {système: (libellé, commande)} — ce qu'un système impose d'installer.
+    distro_profiles = ctx.get("distro_profiles") or {}
+    # Les commandes qui ne posent PAS ERPLibre : sa marge disque ne les suit
+    # pas. DÉDUITES des profils imposés — une seconde clé de contexte à tenir
+    # en accord avec la première aurait fini par en différer, et la marge
+    # serait revenue sans qu'on le voie. Jugé sur la commande effective de la
+    # rangée : un choix explicite compte donc autant que la règle du système.
+    no_erplibre = {
+        impose[1].strip() for impose in distro_profiles.values() if impose
+    }
     branches = ctx.get("branches") or ["master"]
     host_cpu = ctx.get("host_cpu") or 2
     free_ram = ctx.get("free_ram") or 0
@@ -497,7 +507,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                 "disk": vm["disk"],
                 "desktop": vm.get("desktop") or "",
                 "branch": vm.get("branch") or self._branch(),
-                "install_cmd": vm.get("install_cmd") or self._profile_cmd(),
+                "install_cmd": (
+                    vm.get("install_cmd") or self._row_default_cmd(index)
+                ),
                 "install_label": (
                     vm.get("install_label")
                     or (
@@ -520,16 +532,33 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._default_desktop(),
                 desktop_suffixes,
             )
+            # Ce qu'un système IMPOSE d'installer, posé sur le MODÈLE et pas
+            # seulement à l'écran : le déploiement lit « install_cmd » VM par
+            # VM, et une VM Proxmox laissée à vide recevait la commande
+            # commune — donc ERPLibre et Odoo 18 sur un hyperviseur.
+            for vm in self.vms:
+                impose = distro_profiles.get(vm["distro"])
+                if impose and not vm.get("install_cmd"):
+                    vm["install_label"], vm["install_cmd"] = (
+                        impose[0],
+                        impose[1],
+                    )
+            self.rows = plan_rows(self.vms, domains)
             # ERPLibre et GNOME pèsent chacun sur le disque, et se cumulent.
-            grow = 0
-            if self.query_one("#f_install", Checkbox).value:
-                grow += extra_disk
-            self.rows = plan_rows(self.vms, domains, grow)
+            # Le supplément d'ERPLibre ne vaut que pour les VM qui l'auront
+            # VRAIMENT : l'ajouter à une VM Proxmox gonflait son disque de
+            # cinq gigaoctets pour un dépôt qu'elle ne clonera pas.
+            installe = self.query_one("#f_install", Checkbox).value
             # Le bureau pèse sur le disque de la VM QUI LE PORTE, et d'elle
             # seule : un supplément commun mentait dès que les types
             # différaient d'une machine à l'autre.
             tools = self._vm_tools()
-            for row in self.rows:
+            for i, row in enumerate(self.rows):
+                cmd_vm = (
+                    row["vm"].get("install_cmd") or self._profile_cmd() or ""
+                )
+                if installe and cmd_vm.strip() not in no_erplibre:
+                    row["disk_gb"] += extra_disk
                 if row["vm"].get("desktop"):
                     row["disk_gb"] += desktop_disk
                 # Même règle pour les outils, et pour la même raison : ils ne
@@ -695,12 +724,25 @@ def run_deploy_form(ctx, run_app: bool = True):
             index = self.query_one("#f_profile_install", Select).value
             return profiles[index if isinstance(index, int) else 0][1]
 
+        def _row_default_cmd(self, i):
+            """Commande qu'une rangée prend d'elle-même : celle que son
+            système impose, sinon le choix commun d'en haut.
+
+            C'est le défaut CONTRE LEQUEL on compare une saisie : sur une VM
+            Proxmox, choisir Odoo 18 est une vraie surcharge même quand c'est
+            aussi la valeur commune."""
+            if i < len(self.rows):
+                impose = distro_profiles.get(self.rows[i]["vm"]["distro"])
+                if impose:
+                    return impose[1]
+            return self._profile_cmd()
+
         def _row_profile_index(self, i):
             """Rang du profil que la rangée doit AFFICHER."""
             cmd = ""
             if i < len(self.rows):
                 cmd = self.rows[i]["vm"].get("install_cmd") or ""
-            cmd = cmd or self._profile_cmd()
+            cmd = cmd or self._row_default_cmd(i)
             for k, (_lbl, c) in enumerate(profiles):
                 if c == cmd:
                     return k
@@ -1019,10 +1061,11 @@ def run_deploy_form(ctx, run_app: bool = True):
                 if field == "prof":
                     label, cmd = profiles[event.value]
                     if cmd == (
-                        vm_now.get("install_cmd") or self._profile_cmd()
+                        vm_now.get("install_cmd")
+                        or self._row_default_cmd(index)
                     ):
                         return
-                    same = cmd == self._profile_cmd()
+                    same = cmd == self._row_default_cmd(index)
                     self._set_override(
                         index, "install_cmd", "" if same else cmd
                     )
@@ -1126,9 +1169,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             if row:
                 index, field = int(row.group(1)), row.group(2)
-                self._set_override(
-                    index, field, self._read_row_free(index, field)
-                )
+                valeur = self._read_row_free(index, field)
+                # Même règle que pour les listes : poser « value= » au montage
+                # émet un Changed. L'écrire comme surcharge marquait ✎ une
+                # rangée que personne n'avait touchée — visible dès qu'une
+                # entrée du catalogue porte une taille absente des
+                # préréglages, comme les 32 G de Proxmox VE.
+                if self._row_echo(index, field, valeur):
+                    return
+                self._set_override(index, field, valeur)
                 self._recompute()
                 return
             field = INPUT_TO_FIELD.get(event.input.id)

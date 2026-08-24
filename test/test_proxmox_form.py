@@ -154,6 +154,7 @@ def contexte():
                 entree("ubuntu", "26.04"),
                 entree("debian", "13"),
                 entree("fedora", "44"),
+                entree("proxmox", "9"),
             ],
             "arm64": [entree("debian", "13", "arm64")],
         },
@@ -174,6 +175,12 @@ def contexte():
         "build_command": lambda vm, spec: [f"qm create {vm['vmid']}"],
         "branches": ["develop", "master"],
         "install_profiles": [("ERPLibre + Odoo 18", "make install_odoo_18")],
+        "distro_profiles": {
+            "proxmox": (
+                "Hyperviseur Proxmox VE (sans Odoo)",
+                "./script/proxmox/install_proxmox.sh",
+            )
+        },
         "ssh_key": "/home/x/.ssh/id_ed25519.pub",
         "cpu_presets": [2, 4, 8],
         "ram_presets": [2048, 4096, 8192],
@@ -349,6 +356,29 @@ class TestEcran(unittest.TestCase):
             pass
 
         self.assertIn("x1", self._totaux(self._rendu(rien)))
+
+    def test_a_nested_proxmox_guest_installs_its_hypervisor(self):
+        # Même défaut que sur l'écran QEMU/KVM avant correction : un Proxmox
+        # imbriqué recevait ERPLibre et Odoo 18.
+        async def gestes(app, pilote):
+            from textual.widgets import SelectionList
+
+            liste = app.query_one(SelectionList)
+            liste.select(liste.get_option_at_index(3).value)
+            await pilote.pause()
+            await pilote.pause()
+
+        app = self._rendu(gestes)
+        par = {r["vm"]["distro"]: r for r in app.rows}
+        self.assertEqual(
+            par["proxmox"]["vm"]["install_cmd"],
+            "./script/proxmox/install_proxmox.sh",
+        )
+        # Et ses voisines gardent le choix commun.
+        self.assertEqual(par["ubuntu"]["vm"]["install_cmd"], "")
+        # Cinq gigaoctets pour un dépôt qu'elle ne clonera pas.
+        self.assertEqual(par["proxmox"]["disk_gb"], 32)
+        self.assertEqual(par["ubuntu"]["disk_gb"], 42)
 
     def test_text_prompts_are_not_a_cancellation(self):
         # {} n'est pas None : l'appelant distingue « annulé » de

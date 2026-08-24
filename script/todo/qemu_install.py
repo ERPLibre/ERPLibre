@@ -69,18 +69,64 @@ class QemuInstallMixin:
         ]
         return profiles
 
+    # Un système qui IMPOSE ce qu'on installe dessus. Choisir « Proxmox VE »
+    # comme système, c'est demander qu'il soit installé : ni ERPLibre, ni
+    # Odoo n'ont leur place sur un hyperviseur, et les y poser par défaut
+    # était le contraire de ce que le choix exprimait.
+    _QEMU_DISTRO_PROFILE = {"proxmox": "Proxmox VE hypervisor (no Odoo)"}
+
+    def _qemu_distro_profile(self, distro):
+        """(libellé, commande) du profil qu'un système impose, ou None.
+
+        Une seule règle, lue par l'invite en ligne comme par le formulaire :
+        chacun la redisait, et le formulaire l'avait justement oubliée."""
+        voulu = self._QEMU_DISTRO_PROFILE.get(distro)
+        if not voulu:
+            return None
+        cible = t(voulu)
+        for entree in self._qemu_install_profiles():
+            if entree[0] == cible:
+                return entree
+        return None
+
+    def _qemu_no_erplibre_cmds(self):
+        """Les commandes d'installation qui NE posent pas ERPLibre.
+
+        Déduites de la table des systèmes imposés : le profil hyperviseur
+        Proxmox n'installe ni ERPLibre ni Odoo. Rien n'est écrit en dur ici,
+        pour qu'ajouter un système à la table suffise."""
+        cmds = set()
+        for distro in self._QEMU_DISTRO_PROFILE:
+            impose = self._qemu_distro_profile(distro)
+            if impose:
+                cmds.add(impose[1])
+        return cmds
+
+    def _qemu_installs_erplibre(self, branch, install_cmd=""):
+        """Cette VM va-t-elle VRAIMENT poser ERPLibre ?
+
+        Décidé sur la COMMANDE, pas sur la case : elle seule sait si le dépôt
+        sera cloné. C'est ce qui règle les cinq gigaoctets de marge et la
+        section ERPLibre du guide affiché à la connexion. Sans commande
+        connue, on répond oui : mieux vaut cinq gigaoctets de trop qu'une
+        installation qui remplit le disque."""
+        if not branch:
+            return False
+        if not install_cmd:
+            return True
+        return install_cmd.strip() not in self._qemu_no_erplibre_cmds()
+
     def _qemu_pick_install_profile(self, distro=""):
         """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
         finale exécutée dans ~/git/erplibre).
 
-        Sur une VM Proxmox, le profil hyperviseur passe en tête : choisir
-        « Proxmox VE » comme système, c'est demander qu'il soit installé, et
-        laisser Odoo 18 en défaut ferait poser un ERP sur un hyperviseur.
+        Le profil qu'un système impose passe en tête, et devient donc le
+        défaut de la réponse vide.
         """
         profiles = self._qemu_install_profiles()
-        if distro == "proxmox":
-            pve = t("Proxmox VE hypervisor (no Odoo)")
-            profiles.sort(key=lambda p: p[0] != pve)
+        impose = self._qemu_distro_profile(distro)
+        if impose:
+            profiles.sort(key=lambda p: p[0] != impose[0])
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")

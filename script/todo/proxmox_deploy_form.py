@@ -122,6 +122,16 @@ def run_proxmox_form(ctx, run_app: bool = True):
     profiles = ctx.get("install_profiles") or []
     stockages = ctx.get("storages") or []
     ponts = ctx.get("bridges") or []
+    # {système: (libellé, commande)} — ce qu'un système impose d'installer.
+    distro_profiles = ctx.get("distro_profiles") or {}
+    # Les commandes qui ne posent PAS ERPLibre : sa marge disque ne les suit
+    # pas. DÉDUITES des profils imposés — une seconde clé de contexte à tenir
+    # en accord avec la première aurait fini par en différer, et la marge
+    # serait revenue sans qu'on le voie. Jugé sur la commande effective de la
+    # rangée : un choix explicite compte donc autant que la règle du système.
+    no_erplibre = {
+        impose[1].strip() for impose in distro_profiles.values() if impose
+    }
 
     def entry_label(e):
         return f"{e['distro']} {e['version']}  [{e['arch']}]  {e['name']}"
@@ -344,14 +354,23 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.custom,
                 self.overrides,
             )
-            grow = (
-                ctx.get("extra_disk_gb", 0)
-                if self.query_one("#f_install", Checkbox).value
-                else 0
-            )
+            # Ce qu'un système IMPOSE d'installer, posé sur le MODÈLE : le
+            # déploiement lit « install_cmd » VM par VM.
+            for vm in self.vms:
+                impose = distro_profiles.get(vm["distro"])
+                if impose and not vm.get("install_cmd"):
+                    vm["install_label"], vm["install_cmd"] = impose
             self.rows = plan_rows(
-                self.vms, noms_pris, grow, orphelin=lambda _n: False
+                self.vms, noms_pris, orphelin=lambda _n: False
             )
+            # Le supplément d'ERPLibre ne vaut que pour les VM qui l'auront
+            # vraiment : une VM Proxmox ne clonera pas le dépôt.
+            if self.query_one("#f_install", Checkbox).value:
+                commun = (self._install() or {}).get("cmd") or ""
+                for row in self.rows:
+                    cmd_vm = row["vm"].get("install_cmd") or commun
+                    if cmd_vm.strip() not in no_erplibre:
+                        row["disk_gb"] += ctx.get("extra_disk_gb", 0)
             for row, entry in zip(self.rows, entries):
                 cle = entry_key(entry)
                 row["custom"] = bool(self.overrides.get(cle))
@@ -551,7 +570,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
             # un widget global n'en porte pas. L'exiger de tous revenait à
             # ignorer chaque réglage commun — mesuré, ni le stockage, ni la
             # RAM générale n'atteignaient le plan.
-            if re.match(r"v\d+_", ident) and not self._is_current(event.select):
+            if re.match(r"v\d+_", ident) and not self._is_current(
+                event.select
+            ):
                 return
             if ident in ("f_storage", "f_bridge"):
                 self._refresh_after()

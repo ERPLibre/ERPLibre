@@ -643,6 +643,14 @@ class ProxmoxMenuMixin:
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),
+            # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
+            # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
+            # Odoo 18, comme l'écran d'à côté avant correction.
+            "distro_profiles": {
+                d: self._qemu_distro_profile(d)
+                for d in self._QEMU_DISTRO_PROFILE
+                if self._qemu_distro_profile(d)
+            },
             "ssh_key": self._qemu_default_ssh_key(),
             "cpu_presets": self._QEMU_CPU_PRESETS,
             "ram_presets": self._QEMU_RAM_PRESETS,
@@ -825,11 +833,18 @@ class ProxmoxMenuMixin:
             return
         noms = [vm["name"] for vm in joignables]
         print(f"  {install.get('label') or ''}")
+        # Une commande PAR VM dès qu'elles diffèrent : un Proxmox imbriqué
+        # installe son hyperviseur, ses voisines ERPLibre. Une commande
+        # unique en aurait imposé une aux deux.
+        commun = install.get("cmd") or ""
+        cartes = {
+            vm["name"]: (vm.get("install_cmd") or commun) for vm in joignables
+        }
         self._qemu_install_erplibre_monitored(
             noms,
             install.get("branch") or "master",
             {n: n for n in noms},
-            install.get("cmd") or "",
+            cartes if self._qemu_per_vm(cartes, commun) else commun,
         )
 
     def _pve_deploy_prompts(self, dry_run=False):

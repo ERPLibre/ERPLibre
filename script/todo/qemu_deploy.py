@@ -787,6 +787,17 @@ class QemuDeployMixin:
             input(f"{t('Continue despite these collisions? (y/N): ')}")
         )
 
+    @staticmethod
+    def _qemu_per_vm(carte, commun):
+        """Faut-il une valeur PAR VM, ou le choix commun suffit-il ?
+
+        « len(set) > 1 » ne suffisait pas : UNE seule VM qui porte sa propre
+        valeur donne un ensemble d'un élément, et tout le parc retombait alors
+        sur le choix commun. Déployée seule, une VM Proxmox recevait ainsi
+        ERPLibre et Odoo 18 — le défaut qu'on venait de corriger dans le
+        formulaire, réintroduit à l'exécution. Même piège pour la branche."""
+        return bool(carte) and set(carte.values()) != {commun}
+
     def _qemu_print_recap(self, spec, existing):
         """État final soumis à approbation : tout ce qui va changer sur
         l'hôte, y compris ce qui ne changera PAS (VM existantes)."""
@@ -798,7 +809,12 @@ class QemuDeployMixin:
             # Le disque annoncé est celui qui sera réellement créé : ERPLibre
             # ajoute ERPLIBRE_EXTRA_DISK_GB à la demande initiale.
             gigs = self._parse_disk_gb(vm["disk"]) + (
-                self.ERPLIBRE_EXTRA_DISK_GB if branch else 0
+                self.ERPLIBRE_EXTRA_DISK_GB
+                if self._qemu_installs_erplibre(
+                    branch,
+                    vm.get("install_cmd") or (install or {}).get("cmd") or "",
+                )
+                else 0
             )
             # Ce qui S'ECARTE du choix commun se dit sur la ligne de la VM.
             # Sans cela le sommaire annoncait le profil general pour tout le
@@ -942,13 +958,14 @@ class QemuDeployMixin:
         # avec la section ERPLibre seulement là où ERPLibre sera installé — une
         # VM déployée nue n'annonce pas un dépôt qui n'existe pas.
         parts += ["--lang", get_lang()]
-        if branch:
+        pose_erplibre = self._qemu_installs_erplibre(branch, install_cmd)
+        if pose_erplibre:
             parts += ["--erplibre-dir", self._qemu_guide_dir(prod)]
             target = self._qemu_make_target(install_cmd)
             if target:
                 parts += ["--erplibre-make", target]
         extra = 0
-        if branch:
+        if pose_erplibre:
             # ERPLibre dépasse le minimum : +5 Go de disque.
             extra += self.ERPLIBRE_EXTRA_DISK_GB
         if desktop:
@@ -960,8 +977,11 @@ class QemuDeployMixin:
         # ici plutôt qu'au petit bonheur, sinon l'installation se termine sur un
         # disque plein après une heure.
         extra += self._qemu_tools_disk_gb(vm_tools, arch, desktop, d)
-        if extra:
-            bigger = self._parse_disk_gb(disk) + extra
+        # TOUJOURS, même sans supplément : sans le drapeau, deploy_qemu.py
+        # reprend la taille par défaut du catalogue. Une VM réglée à 60 G mais
+        # sans rien à installer repartait donc à 20 G, en silence.
+        bigger = self._parse_disk_gb(disk) + extra
+        if bigger:
             parts += ["--disk-size", f"{bigger}G"]
         parts.append("--dry-run" if dry_run else "-y")
         return parts
@@ -997,7 +1017,13 @@ class QemuDeployMixin:
             # Les deux servent au guide de connexion : où ERPLibre sera posé, et
             # quelle cible make le remettra à jour.
             prod=bool(install and install.get("prod")),
-            install_cmd=(install or {}).get("cmd") or "",
+            # La commande DE CETTE VM, pas seulement celle du formulaire :
+            # elle décide de la marge disque et de ce que le guide annonce.
+            # Une VM Proxmox recevait sinon les cinq gigaoctets d'ERPLibre et
+            # une cible make qu'elle n'aurait jamais.
+            install_cmd=(
+                vm.get("install_cmd") or (install or {}).get("cmd") or ""
+            ),
             vm_tools=spec.get("vm_tools") or (),
         )
 
@@ -1223,6 +1249,14 @@ class QemuDeployMixin:
             "domains": self._qemu_list_domains(),
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),
+            # Les systèmes qui IMPOSENT ce qu'on installe dessus. Sans cette
+            # table, le formulaire posait ERPLibre + Odoo 18 sur une VM
+            # Proxmox — l'invite en ligne, elle, savait déjà l'éviter.
+            "distro_profiles": {
+                d: self._qemu_distro_profile(d)
+                for d in self._QEMU_DISTRO_PROFILE
+                if self._qemu_distro_profile(d)
+            },
             "ssh_key": self._qemu_default_ssh_key(),
             "timezone": self._qemu_host_timezone(),
             "host_cpu": os.cpu_count() or 2,
@@ -1930,14 +1964,14 @@ class QemuDeployMixin:
         }
         for _n in deployed:
             branch_map.setdefault(_n, install_branch or "")
-        branch_multi = len(set(branch_map.values())) > 1
+        branch_multi = self._qemu_per_vm(branch_map, install_branch or "")
         base_cmd = install["cmd"] if install else None
         cmd_map = {
             vm["name"]: (vm.get("install_cmd") or base_cmd) for vm in pending
         }
         for _n in deployed:
             cmd_map.setdefault(_n, base_cmd)
-        cmd_multi = len(set(cmd_map.values())) > 1
+        cmd_multi = self._qemu_per_vm(cmd_map, base_cmd)
         ssh_key = spec.get("ssh_key")
         add_ssh_config = spec["add_ssh_config"]
         parallelism = spec["parallelism"]
