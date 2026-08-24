@@ -37,6 +37,9 @@ class ProxmoxMenuMixin:
     # la machine locale. Il faut donc d'abord SAVOIR OÙ, et le retenir — sans
     # quoi chacune des dix-sept commandes reposerait la question.
     _PVE_PREF_KEY = "proxmox_host"
+    # Le script qui transforme une Debian en hyperviseur. Autonome : il se
+    # laisse exécuter par un tube, sans être copié d'abord.
+    PVE_INSTALL_SCRIPT = "script/proxmox/install_proxmox.sh"
 
     def _pve_host(self, ask=True):
         """Hôte Proxmox retenu, ou None. Demande au besoin.
@@ -170,6 +173,45 @@ class ProxmoxMenuMixin:
             or "no ed25519 host key is known" in bas
         )
 
+    @staticmethod
+    def _pve_clean_output(sortie):
+        """Les lignes de la sortie qui APPRENNENT quelque chose.
+
+        « Warning: Permanently added … to the list of known hosts » arrive sur
+        stderr à chaque connexion d'un hôte en UserKnownHostsFile=/dev/null.
+        Affichée comme preuve d'un échec, elle envoyait chercher du côté de la
+        clé d'hôte un problème qui n'avait rien à voir — rapporté.
+        """
+        gardees = []
+        for ligne in (sortie or "").splitlines():
+            nue = ligne.strip()
+            if not nue or nue.startswith("Warning: Permanently added"):
+                continue
+            gardees.append(nue)
+        return gardees
+
+    def _pve_ssh_alive(self, host):
+        """(ssh passe-t-il ?, ce qu'il a dit) — sans rien exiger de la machine.
+
+        C'est la question qu'il fallait poser AVANT de conclure : une machine
+        qui répond mais n'a pas Proxmox n'est pas « injoignable », et les deux
+        pannes ne se corrigent pas du même côté."""
+        from script.proxmox import proxmox_deploy as pve
+
+        code, out = pve.run(host, "true", timeout=20)
+        lignes = self._pve_clean_output(out)
+        return code == 0, (lignes[0] if lignes else t("no answer"))
+
+    def _pve_install_hint(self, host):
+        """La commande qui poserait Proxmox VE sur cette machine.
+
+        Le script du dépôt, poussé par le tube : il est autonome, donc
+        « bash -s » suffit et il n'y a rien à copier d'abord."""
+        return (
+            f"cat {self.PVE_INSTALL_SCRIPT} | "
+            f"ssh {host['target']} sudo bash -s"
+        )
+
     def _pve_add_hostkey(self, host):
         """Enregistre la clé d'hôte, après accord explicite.
 
@@ -230,12 +272,31 @@ class ProxmoxMenuMixin:
                 code, out = pve.run(host, "pveversion", timeout=30)
                 version = pve.parse_pveversion(out)
         if not version:
-            print(f"  ✗ {t('Not a Proxmox host (or unreachable):')}")
-            premiere = (out or "").strip().splitlines()
-            print(f"    {premiere[0] if premiere else t('no answer')}")
-            print(
-                f"  → {t('Check the address, the SSH access and pveversion.')}"
-            )
+            # Un seul message confondait deux pannes : « ou il est
+            # injoignable » envoyait vérifier le réseau alors que la machine
+            # répondait, et la seule ligne montrée était l'avertissement de
+            # ssh sur la clé d'hôte. On demande donc à ssh s'il passe.
+            joignable, detail = self._pve_ssh_alive(host)
+            # Ce que « pveversion » a répondu, et non ce que la sonde a dit :
+            # « command not found » est LA preuve utile.
+            dit = self._pve_clean_output(out)
+            if joignable:
+                print(f"  ✗ {t('Reachable, but Proxmox VE is not there:')}")
+                print(
+                    f"    ssh {host['target']} : ok — pveversion : "
+                    f"{dit[0] if dit else t('absent')}"
+                )
+                print(f"  → {t('Install it:')}")
+                print(f"    {self._pve_install_hint(host)}")
+                print(
+                    f"  → {t('Or redeploy the VM with the hypervisor profile.')}"
+                )
+            else:
+                print(f"  ✗ {t('SSH does not get through:')}")
+                print(f"    {detail}")
+                print(
+                    f"  → {t('Check the address, the SSH access and pveversion.')}"
+                )
             return None
         # « qm » exige les privilèges. La voie « VM QEMU locale » donne
         # l'accès d'erplibre, pas de root : il faut donc sudo, et il faut le

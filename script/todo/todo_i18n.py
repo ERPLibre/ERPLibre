@@ -3206,6 +3206,22 @@ TRANSLATIONS = {
         "fr": "Ce n'est pas un hôte Proxmox (ou il est injoignable) :",
         "en": "Not a Proxmox host (or unreachable):",
     },
+    "Reachable, but Proxmox VE is not there:": {
+        "fr": "Machine joignable, mais Proxmox VE n'y est pas :",
+        "en": "Reachable, but Proxmox VE is not there:",
+    },
+    "SSH does not get through:": {
+        "fr": "SSH ne passe pas :",
+        "en": "SSH does not get through:",
+    },
+    "Install it:": {
+        "fr": "Pour l'installer :",
+        "en": "Install it:",
+    },
+    "Or redeploy the VM with the hypervisor profile.": {
+        "fr": "Ou redéployer la VM avec le profil hyperviseur.",
+        "en": "Or redeploy the VM with the hypervisor profile.",
+    },
     "Check the address, the SSH access and pveversion.": {
         "fr": "Vérifier l'adresse, l'accès SSH et pveversion.",
         "en": "Check the address, the SSH access and pveversion.",
