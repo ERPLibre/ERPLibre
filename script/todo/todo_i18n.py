@@ -6789,6 +6789,26 @@ TRANSLATIONS = {
         "fr": "Aucun index en double.",
         "en": "No duplicate index.",
     },
+    "attachments of fields and records already gone": {
+        "fr": "pièces jointes de champs et d'enregistrements déjà disparus",
+        "en": "attachments of fields and records already gone",
+    },
+    "their field was already gone before this step": {
+        "fr": "leur champ porteur avait déjà disparu avant ce palier",
+        "en": "their field was already gone before this step",
+    },
+    "their field was removed at this step": {
+        "fr": "leur champ porteur a été retiré à ce palier",
+        "en": "their field was removed at this step",
+    },
+    "their model left the database": {
+        "fr": "leur modèle a quitté la base",
+        "en": "their model left the database",
+    },
+    "the field is STILL there — look at these": {
+        "fr": "le champ est TOUJOURS là — à regarder",
+        "en": "the field is STILL there — look at these",
+    },
     "out of": {
         "fr": "sur",
         "en": "out of",
