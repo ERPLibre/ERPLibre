@@ -571,6 +571,40 @@ class ProxmoxMenuMixin:
         )
         return distant if code == 0 else ""
 
+    def _pve_uplink(self):
+        """Interface qui porte la route par défaut, ou '' — la sortie du NAT.
+
+        Sans elle, le pont interne existe mais ses VM ne voient pas Internet.
+        """
+        _c, sortie = self._pve_show("ip -o -4 route show default", quiet=True)
+        parts = (sortie or "").split()
+        return parts[parts.index("dev") + 1] if "dev" in parts else ""
+
+    def _pve_make_internal_bridge(self):
+        """Crée le pont INTERNE et le rend, ou ('', raison). SANS rien demander.
+
+        Appelable depuis l'écran de déploiement, où Textual tient le terminal :
+        aucune invite, aucune sortie imprimée, tout est capturé. C'est possible
+        parce que ce pont ne touche AUCUNE interface physique — il n'y a donc
+        rien à faire arbitrer. Un pont sur le LAN, lui, déplace l'adresse de
+        l'hôte et coupe la session : il reste manuel, et l'écran le dit.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        host = self._pve_host(ask=False)
+        if not host:
+            return "", t("No Proxmox host.")
+        uplink = self._pve_uplink()
+        for cmd in pve.bridge_setup_cmds(uplink=uplink):
+            code, sortie = pve.run(host, cmd, 180)
+            if code:
+                lignes = pve.strip_ssh_noise(sortie).strip().splitlines()
+                return "", (lignes[-1] if lignes else t("Step failed"))
+        _c, out = pve.run(host, "ip -o link show type bridge", 30)
+        if pve.INTERNAL_BRIDGE not in pve.parse_bridges(out):
+            return "", t("The bridge did not come up.")
+        return pve.INTERNAL_BRIDGE, ""
+
     def _pve_offer_bridge(self):
         """Aucun pont sur l'hôte : en proposer un, sans risquer l'accès.
 
@@ -602,11 +636,7 @@ class ProxmoxMenuMixin:
                 f"  ⚠ {t('This moves the host address: do it from a console.')}"
             )
             return ""
-        _c, sortie = self._pve_show("ip -o -4 route show default", quiet=True)
-        uplink = ""
-        parts = (sortie or "").split()
-        if "dev" in parts:
-            uplink = parts[parts.index("dev") + 1]
+        uplink = self._pve_uplink()
         print(f"  {t('uplink for NAT')} : {uplink or t('none')}")
         for cmd in pve.bridge_setup_cmds(uplink=uplink):
             code, _o = self._pve_show(cmd, timeout=120)
@@ -680,6 +710,15 @@ class ProxmoxMenuMixin:
         stockages = pve.parse_storages(out)
         _c, out = self._pve_show("ip -o link show type bridge", quiet=True)
         ponts = pve.parse_bridges(out)
+        if not ponts:
+            # Le terminal est encore à nous : c'est ICI qu'on peut poser la
+            # question. L'écran sait aussi le faire, mais sans pouvoir
+            # expliquer les deux voies ni montrer ce qu'il exécute.
+            if self._pve_offer_bridge():
+                _c, out = self._pve_show(
+                    "ip -o link show type bridge", quiet=True
+                )
+                ponts = pve.parse_bridges(out)
         _c, cfg = self._pve_show("cat /etc/network/interfaces", quiet=True)
         infos = pve.parse_bridge_config(cfg)
         cpu, ram_libre = self._pve_capacity()
@@ -717,6 +756,10 @@ class ProxmoxMenuMixin:
             "bridge": pve.pick_bridge(ponts),
             "ipconfig": ipconfig,
             "nameservers": serveurs_dns,
+            # De quoi créer le pont DEPUIS l'écran, sans invite : le pont
+            # interne ne touche à aucune interface physique.
+            "make_bridge": self._pve_make_internal_bridge,
+            "internal_bridge": (pve.INTERNAL_BRIDGE, pve.INTERNAL_CIDR),
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),

@@ -43,6 +43,11 @@ from script.todo.deploy_form_plan import PlanMixin, preview_screen
 # dans un stockage que seul l'hôte connaît, jamais dans /var/lib/libvirt.
 PAS_D_ORPHELIN = None
 
+# Dernier choix du sélecteur de pont : il ne désigne pas un pont, il en crée
+# un. Rapporté — l'écran refusait de déployer « aucun pont sur l'hôte » sans
+# offrir le moindre moyen d'en avoir un.
+CREER_PONT = "__creer_pont__"
+
 
 def assign_vmids(rows, used, start, ipconfig):
     """Pose un VMID libre et son adresse sur chaque VM À CRÉER.
@@ -177,6 +182,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._gen = 0
             self._shown_ids = ()
             self._syncing = False
+            # La liste des ponts GRANDIT : l'écran sait en créer un.
+            self._ponts = list(ponts)
 
         # ---------------------------------------------------------------- #
         # L'écran
@@ -248,7 +255,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         id="f_storage",
                     )
                     yield Select(
-                        [(b, b) for b in ponts],
+                        self._choix_ponts(),
                         value=(
                             ctx.get("bridge")
                             or (ponts[0] if ponts else SELECT_NULL)
@@ -334,6 +341,57 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         yield Button(t("Cancel"), id="no")
             yield Footer()
 
+        def _choix_ponts(self):
+            """Les ponts de l'hôte, plus « en créer un ».
+
+            L'entrée de création reste offerte même quand des ponts existent :
+            sur un hôte qui n'en a qu'un, sur le LAN, on peut vouloir un
+            réseau interne pour un parc d'essai."""
+            choix = [(b, b) for b in self._ponts]
+            if ctx.get("make_bridge"):
+                nom, cidr = ctx.get("internal_bridge") or ("vmbr0", "")
+                choix.append(
+                    (
+                        f"➕ {t('create an internal')} {nom} ({cidr}) + NAT",
+                        CREER_PONT,
+                    )
+                )
+            return choix
+
+        def _creer_pont(self) -> None:
+            """Crée le pont sur l'hôte, dans un FIL : l'appel dure des
+            secondes, et l'écran doit rester vivant pendant ce temps."""
+            self.notify(t("Creating the bridge on the host…"))
+
+            def travail():
+                nom, raison = ctx["make_bridge"]()
+                self.call_from_thread(self._pont_cree, nom, raison)
+
+            self.run_worker(travail, thread=True)
+
+        def _pont_cree(self, nom, raison) -> None:
+            """Retour du fil. Le sélecteur est remis d'aplomb dans les DEUX
+            cas : laissé sur « créer », il ne désignerait aucun pont."""
+            selecteur = self.query_one("#f_bridge", Select)
+            if not nom:
+                self.notify(
+                    f"{t('The bridge did not come up.')} {raison}",
+                    severity="error",
+                    timeout=12,
+                )
+                selecteur.value = (
+                    self._ponts[0] if self._ponts else SELECT_NULL
+                )
+                return
+            if nom not in self._ponts:
+                self._ponts.append(nom)
+            self._syncing = True
+            selecteur.set_options(self._choix_ponts())
+            selecteur.value = nom
+            self._syncing = False
+            self.notify(f"✓ {nom}")
+            self._refresh_after()
+
         def on_mount(self) -> None:
             self._reload_catalog()
             self._sync_install_deps()
@@ -414,7 +472,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
 
         def _bridge(self):
             valeur = self.query_one("#f_bridge", Select).value
-            return "" if valeur is SELECT_NULL else valeur
+            if valeur is SELECT_NULL or valeur == CREER_PONT:
+                # La sentinelle n'est pas un pont : la rendre ferait déployer
+                # une VM sur « __creer_pont__ ».
+                return ""
+            return valeur
 
         def _storage(self):
             valeur = self.query_one("#f_storage", Select).value
@@ -611,6 +673,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if re.match(r"v\d+_", ident) and not self._is_current(
                 event.select
             ):
+                return
+            if ident == "f_bridge" and event.value == CREER_PONT:
+                self._creer_pont()
                 return
             if ident in ("f_storage", "f_bridge"):
                 self._refresh_after()

@@ -400,6 +400,73 @@ class TestEcran(unittest.TestCase):
         self.assertIsNone(self._rendu(gestes).result)
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestCreerUnPont(unittest.TestCase):
+    """Sans pont, « qm create » est impossible — et l'écran refusait de
+    déployer sans offrir le moindre moyen d'en avoir un. Rapporté.
+
+    Le pont INTERNE se crée depuis l'écran parce qu'il ne touche à aucune
+    interface physique : il n'y a rien à faire arbitrer. Un pont sur le LAN
+    déplace l'adresse de l'hôte et coupe la session : il reste manuel.
+    """
+
+    def _ecran(self, fabrique, ponts=()):
+        from script.todo.proxmox_deploy_form import (
+            CREER_PONT,
+            run_proxmox_form,
+        )
+
+        ctx = contexte()
+        ctx["bridges"] = list(ponts)
+        ctx["bridge"] = ponts[0] if ponts else ""
+        ctx["make_bridge"] = fabrique
+        ctx["internal_bridge"] = ("vmbr0", "10.10.10.1/24")
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import Select
+
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 55)) as pilote:
+                await pilote.pause()
+                selecteur = app.query_one("#f_bridge", Select)
+                vu["choix_avant"] = [str(o[1]) for o in selecteur._options]
+                selecteur.value = CREER_PONT
+                for _ in range(30):
+                    await pilote.pause()
+                    if vu.get("fait"):
+                        break
+                    vu["fait"] = bool(app._ponts) and app._bridge()
+                await pilote.pause()
+                vu["pont"] = app._bridge()
+                vu["choix_apres"] = [str(o[1]) for o in selecteur._options]
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_the_entry_is_offered_when_no_bridge_exists(self):
+        vu = self._ecran(lambda: ("vmbr0", ""))
+        self.assertIn("__creer_pont__", vu["choix_avant"])
+
+    def test_choosing_it_creates_the_bridge_and_selects_it(self):
+        vu = self._ecran(lambda: ("vmbr0", ""))
+        self.assertEqual(vu["pont"], "vmbr0")
+        self.assertIn("vmbr0", vu["choix_apres"])
+
+    def test_a_failure_leaves_no_bridge_selected(self):
+        # Laissé sur « créer », le sélecteur ferait déployer une VM sur
+        # « __creer_pont__ » — un nom que « qm create » refuserait.
+        vu = self._ecran(lambda: ("", "Operation not supported"))
+        self.assertEqual(vu["pont"], "")
+
+    def test_the_entry_stays_offered_when_a_bridge_exists(self):
+        # Un hôte avec un seul pont sur le LAN : on peut vouloir un réseau
+        # interne pour un parc d'essai.
+        vu = self._ecran(lambda: ("vmbr0", ""), ponts=("vmbr9",))
+        self.assertIn("__creer_pont__", vu["choix_avant"])
+        self.assertIn("vmbr9", vu["choix_avant"])
+
+
 class TestLeSuivi(unittest.TestCase):
     """La case « Suivre l'installation » doit commander quelque chose.
 

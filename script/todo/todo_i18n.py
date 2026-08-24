@@ -3982,6 +3982,10 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "Creating the bridge on the host…": {
+        "fr": "Création du pont sur l'hôte…",
+        "en": "Creating the bridge on the host…",
+    },
     "no disk file found for this VM": {
         "fr": "aucun fichier de disque trouvé pour cette VM",
         "en": "no disk file found for this VM",
