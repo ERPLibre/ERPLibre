@@ -52,11 +52,38 @@ class TestRessourcesLibres(unittest.TestCase):
         self.assertEqual(lib.res_value("8", "", 2), 8)
 
 
+class TestPlaceDisque(unittest.TestCase):
+    """La demande du plan ne dit pas si ça rentre : il faut la place à côté."""
+
+    def test_it_shows_the_demand_the_room_and_the_capacity(self):
+        self.assertEqual(
+            lib.disk_note(50, 20, 270), "~50 G / 20 G libres sur 270 G"
+        )
+
+    def test_without_a_capacity_it_still_shows_the_room(self):
+        self.assertEqual(lib.disk_note(50, 20), "~50 G / 20 G libres")
+
+    def test_without_a_measure_it_invents_nothing(self):
+        # Une place inconnue ne doit pas se lire comme « 0 Go libres ».
+        self.assertEqual(lib.disk_note(50, 0, 0), "~50 G")
+        self.assertEqual(lib.disk_note(50, 0, 270), "~50 G")
+
+    def test_bytes_become_whole_gibibytes(self):
+        self.assertEqual(lib.gib(90 * (1 << 30)), 90)
+        self.assertEqual(lib.gib(0), 0)
+        # Une mesure absente ou illisible vaut zéro, pas une exception : la
+        # ligne de totaux doit s'afficher même quand l'hôte n'a rien répondu.
+        self.assertEqual(lib.gib(None), 0)
+        self.assertEqual(lib.gib("x"), 0)
+
+
 class TestEtatDuNom(unittest.TestCase):
     """Un nom déjà pris, un disque resté seul : deux gravités différentes."""
 
     def test_a_defined_vm_is_skipped(self):
-        etat, note = lib.vm_status("erplibre-debian-13", ["erplibre-debian-13"])
+        etat, note = lib.vm_status(
+            "erplibre-debian-13", ["erplibre-debian-13"]
+        )
         self.assertEqual(etat, "exists")
         self.assertTrue(note)
 
@@ -105,7 +132,9 @@ def entree(distro, version, arch="amd64"):
 
 class TestSocleDuPlan(unittest.TestCase):
     def setUp(self):
-        self.app = FauxPlan([entree("debian", "13"), entree("ubuntu", "26.04")])
+        self.app = FauxPlan(
+            [entree("debian", "13"), entree("ubuntu", "26.04")]
+        )
         self.app.rows = [
             {
                 "vm": {
@@ -190,7 +219,9 @@ def membres(chemin, classe=None):
     arbre = ast.parse(pathlib.Path(chemin).read_text(encoding="utf-8"))
     trouves = set()
     for n in ast.walk(arbre):
-        if isinstance(n, ast.ClassDef) and (classe is None or n.name == classe):
+        if isinstance(n, ast.ClassDef) and (
+            classe is None or n.name == classe
+        ):
             trouves |= {
                 m.name for m in n.body if isinstance(m, ast.FunctionDef)
             }

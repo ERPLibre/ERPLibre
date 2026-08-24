@@ -21,6 +21,7 @@ Le formulaire ne touche à rien : il rend une spec. C'est l'appelant
 """
 
 import os
+import re
 
 from script.todo.deploy_form_lib import (
     CSS_BASE,
@@ -28,7 +29,9 @@ from script.todo.deploy_form_lib import (
     RES_FIELDS,
     SELECT_TO_FIELD,
     build_vms,
+    disk_note,
     entry_key,
+    gib,
     plan_rows,
     plan_totals,
     res_row_widgets,
@@ -466,14 +469,18 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     pass
             n, cpu, ram, disque = plan_totals(self.rows)
             libre = ctx.get("free_ram") or 0
-            alerte = (
-                f"   ⚠ {t('more RAM than the host has free')}"
-                if libre and ram > libre
-                else ""
-            )
+            # La place du stockage CHOISI : elle change avec la liste, donc
+            # elle se relit à chaque rendu plutôt qu'une fois au montage.
+            place = gib((ctx.get("storage_avail") or {}).get(self._storage()))
+            alertes = []
+            if libre and ram > libre:
+                alertes.append(t("more RAM than the host has free"))
+            if place and disque > place:
+                alertes.append(t("more disk than the storage has free"))
+            alerte = f"   ⚠ {' · '.join(alertes)}" if alertes else ""
             self.query_one("#totals", Static).update(
                 f"  {n} {t('VM')}   {cpu} vCPU   {ram} Mo RAM   "
-                f"{disque} Go   [{res_label(self.profile)}]"
+                f"{disk_note(disque, place)}   {res_label(self.profile)}"
                 f"   {t('storage')} {self._storage() or '?'}"
                 f"   {t('bridge')} {self._bridge() or '?'}{alerte}"
             )
@@ -537,9 +544,15 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     self._refresh_after()
 
         def on_select_changed(self, event) -> None:
-            if self._syncing or not self._is_current(event.select):
+            if self._syncing:
                 return
             ident = event.select.id or ""
+            # La marque de génération ne concerne QUE les widgets de rangée :
+            # un widget global n'en porte pas. L'exiger de tous revenait à
+            # ignorer chaque réglage commun — mesuré, ni le stockage, ni la
+            # RAM générale n'atteignaient le plan.
+            if re.match(r"v\d+_", ident) and not self._is_current(event.select):
+                return
             if ident in ("f_storage", "f_bridge"):
                 self._refresh_after()
                 return

@@ -78,9 +78,7 @@ class TestVmid(unittest.TestCase):
 
     def test_the_address_is_derived_from_the_vmid(self):
         rows = [rangee("a"), rangee("b")]
-        assign_vmids(
-            rows, [], 100, lambda v: f"ip=10.10.10.{50 + v % 200}/24"
-        )
+        assign_vmids(rows, [], 100, lambda v: f"ip=10.10.10.{50 + v % 200}/24")
         self.assertEqual(rows[0]["vm"]["ipconfig"], "ip=10.10.10.150/24")
         self.assertEqual(rows[1]["vm"]["ipconfig"], "ip=10.10.10.151/24")
 
@@ -100,7 +98,11 @@ class TestSpec(unittest.TestCase):
             "ssh_key": "/home/x/.ssh/id_ed25519.pub",
             "start": True,
             "add_ssh_config": True,
-            "install": {"branch": "develop", "label": "Odoo 18", "cmd": "make"},
+            "install": {
+                "branch": "develop",
+                "label": "Odoo 18",
+                "cmd": "make",
+            },
             "monitor": True,
             "parallelism": 2,
         }
@@ -141,7 +143,11 @@ def contexte():
         }
 
     return {
-        "host": {"target": "erplibre@10.0.0.5", "sudo": "sudo ", "label": "pve"},
+        "host": {
+            "target": "erplibre@10.0.0.5",
+            "sudo": "sudo ",
+            "label": "pve",
+        },
         "node": "pve1",
         "catalog": {
             "amd64": [
@@ -158,6 +164,10 @@ def contexte():
         "next_vmid": 102,
         "storages": ["local-lvm", "local"],
         "storage": "local-lvm",
+        "storage_avail": {
+            "local-lvm": 90 * (1 << 30),
+            "local": 12 * (1 << 30),
+        },
         "bridges": ["vmbr0"],
         "bridge": "vmbr0",
         "ipconfig": lambda pont, vmid: f"ip=10.10.10.{50 + vmid % 200}/24",
@@ -195,6 +205,14 @@ class TestEcran(unittest.TestCase):
                 await pilote.pause()
                 await pilote.pause()
                 await gestes(app, pilote)
+                # Relevé AVANT la sortie du contexte : `run_test` démonte
+                # l'écran, et « #totals » n'existe plus après.
+                from textual.widgets import Static
+
+                widget = app.query_one("#totals", Static)
+                app.ligne_totaux = str(
+                    getattr(widget, "_content", "") or widget.render()
+                )
                 resultat["app"] = app
 
         asyncio.run(scenario())
@@ -256,9 +274,7 @@ class TestEcran(unittest.TestCase):
 
         app = self._rendu(gestes)
         self.assertEqual(len(app.rows), 4)
-        vmids = [
-            r["vm"]["vmid"] for r in app.rows if r["state"] != "exists"
-        ]
+        vmids = [r["vm"]["vmid"] for r in app.rows if r["state"] != "exists"]
         self.assertEqual(len(vmids), len(set(vmids)))
 
     def test_deploying_yields_a_spec_the_engine_can_run(self):
@@ -275,6 +291,64 @@ class TestEcran(unittest.TestCase):
             self.assertIn("vmid", vm)
             self.assertIn("ip=", vm["ipconfig"])
         self.assertEqual(spec["install"]["branch"], "develop")
+
+    def _totaux(self, app):
+        return app.ligne_totaux
+
+    def test_the_totals_line_shows_the_room_left_on_the_storage(self):
+        async def rien(app, pilote):
+            pass
+
+        ligne = self._totaux(self._rendu(rien))
+        # « pvesm status » donne déjà la place : la demande du plan s'affiche
+        # donc à côté d'elle, sans un aller-retour de plus vers l'hôte.
+        self.assertIn("/ 90 G", ligne)
+        self.assertIn("local-lvm", ligne)
+
+    def test_changing_the_storage_changes_the_room(self):
+        # La marque de génération ne vaut que pour les widgets de RANGÉE :
+        # l'exiger des widgets globaux faisait taire tous les réglages
+        # communs, stockage compris.
+        async def gestes(app, pilote):
+            from textual.widgets import Select
+
+            app.query_one("#f_storage", Select).value = "local"
+            await pilote.pause()
+            await pilote.pause()
+
+        ligne = self._totaux(self._rendu(gestes))
+        self.assertIn("/ 12 G", ligne)
+        self.assertIn("local", ligne)
+
+    def test_a_plan_bigger_than_the_storage_is_flagged(self):
+        async def gestes(app, pilote):
+            from textual.widgets import Select
+
+            app.query_one("#f_storage", Select).value = "local"
+            await pilote.pause()
+            await pilote.pause()
+
+        self.assertIn("⚠", self._totaux(self._rendu(gestes)))
+
+    def test_a_common_setting_reaches_every_vm(self):
+        async def gestes(app, pilote):
+            # « value = True » sur le bouton : action_next_button() ne
+            # déplace que la surbrillance et n'émet aucun message.
+            list(app.query("#f_profile RadioButton"))[2].value = True
+            await pilote.pause()
+            await pilote.pause()
+
+        app = self._rendu(gestes)
+        self.assertEqual(app.profile, "3")
+        self.assertTrue(all(r["vm"]["ram"] == 6144 for r in app.rows))
+
+    def test_the_resource_label_survives_the_markup(self):
+        # « [x1] » se faisait manger : Static lit le balisage Rich, et une
+        # balise inconnue disparaît avec son contenu.
+        async def rien(app, pilote):
+            pass
+
+        self.assertIn("x1", self._totaux(self._rendu(rien)))
 
     def test_text_prompts_are_not_a_cancellation(self):
         # {} n'est pas None : l'appelant distingue « annulé » de

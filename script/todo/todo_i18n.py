@@ -1253,6 +1253,14 @@ TRANSLATIONS = {
         "fr": "> RAM libre de l'hôte",
         "en": "> host free RAM",
     },
+    "> host free disk": {
+        "fr": "> disque libre de l'hôte",
+        "en": "> host free disk",
+    },
+    "free of": {
+        "fr": "libres sur",
+        "en": "free of",
+    },
     "total RAM": {
         "fr": "RAM totale",
         "en": "total RAM",
@@ -3358,6 +3366,10 @@ TRANSLATIONS = {
     "No bridge on the host.": {
         "fr": "Aucun pont sur l'hôte.",
         "en": "No bridge on the host.",
+    },
+    "more disk than the storage has free": {
+        "fr": "plus de disque que le stockage n'en a de libre",
+        "en": "more disk than the storage has free",
     },
     "more RAM than the host has free": {
         "fr": "plus de RAM que l'hôte n'en a de libre",

@@ -1215,6 +1215,7 @@ class QemuDeployMixin:
             catalog[a] = entries
 
         print(f"\n{t('Loading (VM list, branches)...')}")
+        disque_libre, disque_total = self._host_disk_gb()
         return {
             "catalog": catalog,
             "arches": arches,
@@ -1226,6 +1227,11 @@ class QemuDeployMixin:
             "timezone": self._qemu_host_timezone(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
+            # La place du système de fichiers qui portera les qcow2. Mesurée
+            # ICI, comme le reste : une lecture disque pendant que Textual
+            # affiche n'a pas sa place.
+            "free_disk": disque_libre,
+            "total_disk": disque_total,
             "base_vcpus": self._QEMU_BASE_VCPUS,
             "cpu_presets": self._QEMU_CPU_PRESETS,
             "ram_presets": self._QEMU_RAM_PRESETS,

@@ -291,6 +291,31 @@ def plan_rows(vms, domains, extra_disk_gb=0, orphelin=None):
     return rows
 
 
+def gib(nbytes) -> int:
+    """Octets -> Gio entiers. Le plan compte en Go partout ailleurs : mêler
+    des unités sur la même ligne de totaux la rendrait illisible."""
+    try:
+        return int(nbytes) // (1 << 30)
+    except (TypeError, ValueError):
+        return 0
+
+
+def disk_note(plan_gb, free_gb, total_gb=0) -> str:
+    """« ~50 G / 20 G libres sur 270 G » — la demande, le reste, la capacité.
+
+    La demande seule ne dit pas si ça rentre : c'est le rapprochement qui
+    décide, et c'est pourquoi la place s'affiche là même où la demande était
+    déjà écrite. Les deux nombres ne sont pas redondants — 20 Go libres sur
+    270 se lit autrement que 20 sur 24. Sans mesure (0), on n'invente rien :
+    la demande s'affiche seule.
+    """
+    if not free_gb:
+        return f"~{plan_gb} G"
+    if not total_gb:
+        return f"~{plan_gb} G / {free_gb} G {t('free')}"
+    return f"~{plan_gb} G / {free_gb} G {t('free of')} {total_gb} G"
+
+
 def plan_totals(rows):
     """Totaux des VM RÉELLEMENT créées (les existantes ne consomment rien de
     neuf) : (nb, vcpus, ram_mo, disque_go)."""

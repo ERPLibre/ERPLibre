@@ -47,9 +47,11 @@ from script.todo.deploy_form_lib import (  # noqa: F401
     clip_payload,
     copy_name,
     disk_gb,
+    disk_note,
     entry_key,
     expand_copies,
     fmt_dur,
+    gib,
     parse_disk,
     parse_ram,
     plan_rows,
@@ -107,6 +109,8 @@ def run_deploy_form(ctx, run_app: bool = True):
     branches = ctx.get("branches") or ["master"]
     host_cpu = ctx.get("host_cpu") or 2
     free_ram = ctx.get("free_ram") or 0
+    free_disk = ctx.get("free_disk") or 0
+    total_disk = ctx.get("total_disk") or 0
     base_vcpus = ctx.get("base_vcpus") or 2
     extra_disk = ctx.get("extra_disk_gb") or 0
     desktop_disk = ctx.get("desktop_disk_gb") or 0
@@ -919,11 +923,18 @@ def run_deploy_form(ctx, run_app: bool = True):
                 )
                 return
             n, cpus, ram, disk = plan_totals(self.rows)
-            warn = ""
+            # Une liste et non un seul avertissement : la RAM, les cœurs et le
+            # disque sont trois limites distinctes, et n'en montrer qu'une
+            # cachait les autres — on corrigeait la première pour découvrir la
+            # suivante au déploiement.
+            alertes = []
             if free_ram and ram > free_ram:
-                warn = f"   ⚠ {t('> host free RAM')}"
-            elif cpus > host_cpu:
-                warn = f"   ⚠ {t('> host cores')} ({host_cpu})"
+                alertes.append(t("> host free RAM"))
+            if free_disk and disk > free_disk:
+                alertes.append(t("> host free disk"))
+            if cpus > host_cpu:
+                alertes.append(f"{t('> host cores')} ({host_cpu})")
+            warn = f"   ⚠ {' · '.join(alertes)}" if alertes else ""
             dupes = len({vm["name"] for vm in self.vms}) != len(self.vms)
             dup_txt = (
                 f"\n  ⚠ {t('Duplicate names detected; keeping as entered.')}"
@@ -942,7 +953,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                 else ""
             )
             self.query_one("#totals", Static).update(
-                f"  {n} {t('VMs')} · {cpus} vCPU · {ram} Mo · ~{disk} G"
+                f"  {n} {t('VMs')} · {cpus} vCPU · {ram} Mo · "
+                f"{disk_note(disk, free_disk, total_disk)}"
                 f"{skip_txt}{warn}{dup_txt}"
             )
 
