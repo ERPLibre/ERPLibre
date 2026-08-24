@@ -1969,18 +1969,74 @@ class QemuManageMixin:
             self.execute.exec_command_live(cmd, source_erplibre=False)
         print(f"✅ {t('Cleanup done.')}")
 
+    def _ssh_entry_alive(self, content, nom, domains, adresses, distantes):
+        """Cette entrée mène-t-elle encore quelque part ? (raison, ou '')
+
+        Le NOM ne suffit pas à en juger — c'est le défaut qui a coûté cher :
+        après un renommage de VM, l'alias garde l'ancien nom et se faisait
+        effacer alors qu'il menait à une machine EN MARCHE. Trois autres
+        preuves valent mieux :
+
+        * son adresse est celle d'un domaine vivant ;
+        * elle porte un ProxyJump, donc elle a été écrite pour une VM
+          imbriquée ou distante, que virsh ne connaîtra jamais ;
+        * son nom est celui d'une VM de l'hôte Proxmox retenu.
+        """
+        if nom in domains:
+            return nom
+        bloc = re.search(
+            rf"(?ms)^[ \t]*Host[ \t]+{re.escape(nom)}[ \t]*\n"
+            r"((?:[ \t]+[^\n]*\n?)*)",
+            content,
+        )
+        corps = bloc.group(1) if bloc else ""
+        ip = re.search(r"(?mi)^[ \t]*HostName[ \t]+(\S+)", corps)
+        if ip and ip.group(1) in adresses:
+            return adresses[ip.group(1)]
+        if re.search(r"(?mi)^[ \t]*ProxyJump[ \t]+\S+", corps):
+            return t("reached through a jump host")
+        if nom in distantes:
+            return t("a VM of the Proxmox host")
+        return ""
+
     def _cleanup_ssh_config(self, domains):
-        """Retire les blocs « Host erplibre-* » sans VM correspondante (on ne
-        touche jamais aux autres hôtes SSH personnels)."""
+        """Retire les blocs « Host erplibre-* » qui ne mènent plus à rien (on
+        ne touche jamais aux autres hôtes SSH personnels)."""
         cfg = os.path.expanduser("~/.ssh/config")
         if not os.path.exists(cfg):
             return
         with open(cfg, encoding="utf-8") as fh:
             content = fh.read()
+        # Les adresses des domaines vivants, et les VM de l'hôte Proxmox
+        # retenu : deux preuves qu'une entrée sert encore, que le nom ignore.
+        adresses = {}
+        for nom in domains:
+            ip = self._qemu_vm_ip_now(nom)
+            if ip:
+                adresses[ip] = nom
+        distantes = set()
+        try:
+            hote = self._pve_host(ask=False)
+            if hote:
+                distantes = {
+                    v["name"] for v in self._pve_vms() if v.get("name")
+                }
+        except Exception:
+            pass
         hosts = re.findall(r"(?m)^[ \t]*Host[ \t]+(\S+)", content)
-        orphans = [
-            h for h in hosts if h.startswith("erplibre-") and h not in domains
-        ]
+        orphans, gardes = [], []
+        for h in hosts:
+            if not h.startswith("erplibre-"):
+                continue
+            raison = self._ssh_entry_alive(
+                content, h, domains, adresses, distantes
+            )
+            (gardes if raison else orphans).append((h, raison))
+        if gardes:
+            print(f"\n{t('Kept (still leads somewhere):')}")
+            for h, raison in gardes:
+                print(f"  {h}  ← {raison}")
+        orphans = [h for h, _r in orphans]
         if not orphans:
             return
         print(f"\n{t('Orphan ~/.ssh/config entries:')} {', '.join(orphans)}")
@@ -2096,6 +2152,58 @@ class QemuManageMixin:
             return False
 
     @staticmethod
+    def _qemu_host_addresses():
+        """Adresses IPv4 de L'HÔTE, à écarter des candidates d'une VM.
+
+        « virsh domifaddr --source arp » remonte la table ARP, où figurent les
+        passerelles des ponts libvirt (192.168.122.1, 192.168.123.1…). Une VM
+        n'a jamais l'adresse de son hôte : sans ce filtre, une VM RENOMMÉE —
+        dont le bail porte encore l'ancien nom d'hôte, donc sans
+        correspondance — se voyait attribuer la passerelle. Vécu sur
+        « erplibre-ubuntu-2404-MIGRATION », annoncée en 192.168.122.1 au lieu
+        de 192.168.123.170.
+        """
+        try:
+            res = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return set()
+        return set(re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", res.stdout))
+
+    @staticmethod
+    def _qemu_candidates_by_source(name):
+        """{source: [ip]} — les candidates SANS mélanger les sources.
+
+        Le bail dit ce que dnsmasq a donné, l'agent ce que la VM voit,
+        l'ARP ce qui a parlé sur le réseau (passerelles comprises). Les
+        garder séparées permet de choisir la plus sûre quand le nom d'hôte
+        ne tranche pas.
+        """
+        siennes = QemuManageMixin._qemu_host_addresses()
+        out = {}
+        for source in ("lease", "agent", "arp"):
+            try:
+                res = subprocess.run(
+                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            vues = []
+            for ip in re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout):
+                if ip != "127.0.0.1" and ip not in siennes and ip not in vues:
+                    vues.append(ip)
+            if vues:
+                out[source] = vues
+        return out
+
+    @staticmethod
     def _qemu_lease_candidates(name):
         """Toutes les IPv4 candidates de la VM, agrégées de PLUSIEURS sources :
         - lease : base DHCP de dnsmasq (peut manquer sous forte charge, ou
@@ -2108,6 +2216,7 @@ class QemuManageMixin:
         (cas observé : 30 VM émulées, bail dnsmasq vide alors que la VM a une
         IP)."""
         ips = []
+        siennes = QemuManageMixin._qemu_host_addresses()
         for source in ("lease", "agent", "arp"):
             try:
                 res = subprocess.run(
@@ -2119,8 +2228,10 @@ class QemuManageMixin:
             except (OSError, subprocess.SubprocessError):
                 continue
             for ip in re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout):
-                # Ignore la loopback (remontée par --source agent).
-                if ip != "127.0.0.1" and ip not in ips:
+                # Ignore la loopback (remontée par --source agent) et les
+                # adresses de l'HÔTE (passerelles des ponts, remontées par
+                # --source arp) : une VM n'a jamais celles-là.
+                if ip != "127.0.0.1" and ip not in ips and ip not in siennes:
                     ips.append(ip)
         return ips
 
@@ -2183,10 +2294,22 @@ class QemuManageMixin:
         une liste — trois VM figeaient le menu une demi-heure. Ici on lit le
         bail une fois, en préférant celui dont le hostname est le nom de la VM.
         """
-        cands = self._qemu_lease_candidates(name)
+        par_source = self._qemu_candidates_by_source(name)
+        cands = [ip for ips in par_source.values() for ip in ips]
         if not cands:
             return None
-        return self._qemu_lease_ip_for_host(name, cands) or cands[-1]
+        trouve = self._qemu_lease_ip_for_host(name, cands)
+        if trouve:
+            return trouve
+        # Sans correspondance de nom d'hôte — le cas d'une VM RENOMMÉE, dont
+        # le bail porte encore l'ancien nom — on prend la source la plus
+        # sûre : le bail, puis l'agent, puis la table ARP. Celle-ci contient
+        # les passerelles des ponts, et « la dernière candidate » y tombait :
+        # la VM était annoncée en 192.168.122.1.
+        for source in ("lease", "agent", "arp"):
+            if par_source.get(source):
+                return par_source[source][-1]
+        return cands[-1]
 
     def _qemu_vm_ip(self, name, timeout=600):
         """IPv4 utilisable d'une VM. Gère le cas des baux multiples (hostname

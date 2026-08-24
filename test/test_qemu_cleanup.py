@@ -172,6 +172,119 @@ class TestEffacerUneVm(unittest.TestCase):
         self.assertEqual(todo._qemu_vm_own_files("vm-a"), [])
 
 
+CONFIG_SSH = """Host exo
+    HostName 132.207.112.51
+
+Host erplibre-ubuntu-2404
+    HostName 192.168.123.170
+    User erplibre
+
+Host erplibre-partie
+    HostName 192.168.123.99
+    User erplibre
+
+Host erplibre-imbriquee
+    HostName 10.10.10.150
+    User erplibre
+    ProxyJump erplibre-proxmox-9
+
+Host erplibre-sur-proxmox
+    HostName 10.10.10.151
+    User erplibre
+"""
+
+
+class TestLesEntreesSsh(unittest.TestCase):
+    """Le nettoyage des entrées ~/.ssh/config jugeait, lui aussi, sur le NOM.
+
+    Conséquence vécue : après le renommage de la VM, son alias
+    « erplibre-ubuntu-2404 » ne correspondait plus à aucun domaine et a été
+    effacé — alors qu'il menait à une machine EN MARCHE. Trois autres preuves
+    valent mieux qu'un nom.
+    """
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.domaines = {"erplibre-ubuntu-2404-MIGRATION"}
+        self.adresses = {"192.168.123.170": "erplibre-ubuntu-2404-MIGRATION"}
+
+    def _juge(self, nom, distantes=()):
+        return self.todo._ssh_entry_alive(
+            CONFIG_SSH, nom, self.domaines, self.adresses, set(distantes)
+        )
+
+    def test_a_renamed_vm_keeps_its_alias(self):
+        # L'adresse mène à un domaine vivant : le nom n'a plus d'importance.
+        self.assertEqual(
+            self._juge("erplibre-ubuntu-2404"),
+            "erplibre-ubuntu-2404-MIGRATION",
+        )
+
+    def test_a_name_that_matches_a_domain_is_kept(self):
+        self.assertTrue(self._juge("erplibre-ubuntu-2404-MIGRATION"))
+
+    def test_a_jump_entry_is_kept(self):
+        # Écrite pour une VM imbriquée ou distante : virsh ne la connaîtra
+        # jamais, et son adresse n'est pas routable d'ici.
+        self.assertTrue(self._juge("erplibre-imbriquee"))
+
+    def test_a_vm_of_the_proxmox_host_is_kept(self):
+        self.assertTrue(
+            self._juge("erplibre-sur-proxmox", ["erplibre-sur-proxmox"])
+        )
+
+    def test_an_entry_that_leads_nowhere_is_an_orphan(self):
+        self.assertEqual(self._juge("erplibre-partie"), "")
+
+
+class TestLAdresseDUneVm(unittest.TestCase):
+    """« --source arp » remonte les passerelles des ponts : la dernière
+    candidate n'est pas la bonne.
+
+    Vécu sur la VM renommée : son bail porte encore l'ancien nom d'hôte, donc
+    aucune correspondance, et le repli sur « la dernière » annonçait
+    192.168.122.1 — la passerelle — au lieu de 192.168.123.170.
+    """
+
+    def _todo(self, par_source):
+        todo = TODO.__new__(TODO)
+        todo._qemu_candidates_by_source = lambda nom: par_source
+        todo._qemu_lease_ip_for_host = lambda nom, cands: None
+        return todo
+
+    def test_the_lease_wins_over_the_arp_table(self):
+        todo = self._todo(
+            {
+                "lease": ["192.168.123.170"],
+                "agent": ["192.168.123.170", "192.168.122.1"],
+                "arp": ["192.168.123.170", "192.168.122.1"],
+            }
+        )
+        self.assertEqual(todo._qemu_vm_ip_now("x"), "192.168.123.170")
+
+    def test_without_a_lease_the_agent_speaks(self):
+        todo = self._todo({"agent": ["10.0.0.5"], "arp": ["192.168.122.1"]})
+        self.assertEqual(todo._qemu_vm_ip_now("x"), "10.0.0.5")
+
+    def test_the_freshest_lease_of_the_source_is_taken(self):
+        # Bail précoce (« ubuntu ») puis bail définitif : c'est le dernier du
+        # BAIL qui compte, pas le dernier toutes sources confondues.
+        todo = self._todo(
+            {"lease": ["192.168.123.10", "192.168.123.11"], "arp": ["1.2.3.4"]}
+        )
+        self.assertEqual(todo._qemu_vm_ip_now("x"), "192.168.123.11")
+
+    def test_nothing_known_yields_nothing(self):
+        self.assertIsNone(self._todo({})._qemu_vm_ip_now("x"))
+
+    def test_the_hosts_own_addresses_are_never_candidates(self):
+        siennes = TODO._qemu_host_addresses()
+        self.assertIn("127.0.0.1", siennes)
+        for nom in TODO.__new__(TODO)._qemu_list_domains():
+            for ips in TODO._qemu_candidates_by_source(nom).values():
+                self.assertFalse(set(ips) & siennes, nom)
+
+
 class TestLesFichiersOuverts(unittest.TestCase):
     """Le contrôle indépendant : /proc, sans privilège."""
 
