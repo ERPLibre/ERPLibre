@@ -1309,10 +1309,14 @@ def read_domstats() -> str:
 # disque et le cumul écrit de TOUTES ses VM d'un coup. Le « du » qui suit
 # donne la taille RÉELLEMENT occupée : sur un stockage en fichiers, Proxmox
 # rapporte « disk: 0 » — il ne la calcule pas.
+#
+# « -sB1 » et NON « -sb » : le second rend la taille APPARENTE, et un disque
+# raw creux de 6 Go la donne entière. La colonne affichait donc « 6.0G/6.0G »,
+# un disque plein, quand l'invité n'avait écrit que 1,2 Go — rapporté.
 PVE_STATS_CMD = (
     "pvesh get /cluster/resources --type vm --output-format json;"
     " echo '---ERPLIBRE-DU---';"
-    " du -sb /var/lib/vz/images/*/ 2>/dev/null || true"
+    " du -sB1 /var/lib/vz/images/*/ 2>/dev/null || true"
 )
 # Une VM distante se relève moins souvent qu'une locale : chaque tour coûte
 # une poignée de main ssh (mesuré 1 s), quand « virsh domstats » coûte 0,03 s
@@ -1337,7 +1341,7 @@ def parse_pvestats(text: str) -> dict:
         ressources = json.loads(brut.strip() or "[]")
     except ValueError:
         return {}
-    # {vmid: octets} depuis « du -sb /var/lib/vz/images/<vmid>/ ».
+    # {vmid: octets} depuis « du -sB1 /var/lib/vz/images/<vmid>/ ».
     occupe = {}
     for ligne in tailles.splitlines():
         parts = ligne.split()
@@ -1402,6 +1406,46 @@ def read_pvestats(vms, now=None) -> dict:
             stats.update(parse_pvestats(sortie))
     _PVE_CACHE.update({"at": maintenant, "stats": stats})
     return dict(stats)
+
+
+def vm_ssh_prefix(vm) -> str:
+    """« ssh … » pour entrer dans CETTE VM, adresse comprise.
+
+    Une VM d'un hôte Proxmox vit derrière lui : son adresse n'est pas
+    routable d'ici, et seul le rebond y mène. On le construit explicitement
+    plutôt que de compter sur un alias ~/.ssh/config, qui peut ne pas exister
+    — ou, pire, désigner une VM LOCALE homonyme. C'est ce qui a fait ouvrir
+    la mauvaise machine avec « s ».
+    """
+    info = (vm or {}).get("pve") or {}
+    adresse = info.get("addr")
+    if info.get("target") and adresse:
+        saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
+        return (
+            f"ssh {SSH_OPTS} {saut}-J {shlex.quote(info['target'])} "
+            f"erplibre@{adresse}"
+        )
+    return f"ssh {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
+
+
+def pve_host_cmd(info, remote, tty=False) -> str:
+    """Commande shell qui exécute `remote` SUR l'hôte Proxmox d'une VM.
+
+    Chaque action du tableau de bord qui parlait à libvirt par le NOM frappait
+    la mauvaise machine dès qu'un domaine local portait le même : la console
+    ouvrait celle de la VM locale, la pause suspendait la locale. L'hôte est
+    la seule autorité pour une VM distante, et le VMID son seul identifiant.
+    """
+    sudo = (info or {}).get("sudo") or ""
+    cible = (info or {}).get("target") or ""
+    prefixe = f"{sudo}sh -c {shlex.quote(remote)}" if sudo else remote
+    saut = (
+        f"-J {shlex.quote(info['jump'])} " if (info or {}).get("jump") else ""
+    )
+    return (
+        f"ssh {'-t ' if tty else ''}{saut}{shlex.quote(cible)} "
+        f"{shlex.quote(prefixe)}"
+    )
 
 
 def arm_balloon(names) -> None:
@@ -2384,8 +2428,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
+            cmd = vm_ssh_prefix(vm)
             with self.suspend():
-                os.system(f"ssh {SSH_OPTS} erplibre@{vm['ip']} || true")
+                print(f"\n→ {cmd}\n")
+                os.system(f"{cmd} || true")
 
         def action_console(self) -> None:
             """Console série de la VM, sans quitter le suivi.
@@ -2402,18 +2448,33 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
-            name = shlex.quote(vm["name"])
+            info = vm.get("pve")
+            if info:
+                # VM d'un hôte Proxmox : sa console est « qm terminal », sur
+                # l'hôte. « virsh console <nom> » ouvrait celle du domaine
+                # LOCAL homonyme — la mauvaise machine, sans le dire.
+                cmd = pve_host_cmd(
+                    info, f"qm terminal {int(info.get('vmid') or 0)}", tty=True
+                )
+                titre = (
+                    f"qm terminal {info.get('vmid')} @ {info.get('target')}"
+                )
+                sortie = "Ctrl+O"
+            else:
+                cmd = f"sudo virsh console {shlex.quote(vm['name'])}"
+                titre = f"virsh console {vm['name']}"
+                sortie = "Ctrl+]"
             with self.suspend():
                 # La console n'affiche que ce qui arrive APRÈS l'attachement :
                 # sur une VM déjà démarrée l'écran reste noir tant qu'on n'a
                 # rien envoyé. On le dit, plutôt que de laisser croire à un gel.
-                print(f"\n→ virsh console {vm['name']}")
+                print(f"\n→ {titre}")
                 print(
                     "   Écran vide ? Appuyez sur Entrée : la console ne montre"
                     " que la sortie qui suit l'attachement."
                 )
-                print("   Ctrl+] puis Entrée pour revenir au suivi.\n")
-                os.system(f"sudo virsh console {name} || true")
+                print(f"   {sortie} puis Entrée pour revenir au suivi.\n")
+                os.system(f"{cmd} || true")
 
         def action_web(self) -> None:
             """Ouvre l'UI web de la VM (Odoo :8069) dans un navigateur CLI
@@ -2552,15 +2613,30 @@ def run_monitor(manifest_path: str, run_app: bool = True):
 
         # -- pause / reprise de tout le parc -------------------------------- #
         @staticmethod
-        def _virsh_bulk(action, names):
-            for n in names:
+        def _virsh_bulk(action, cibles):
+            """Suspend/reprend chaque VM, chacune par SON hyperviseur.
+
+            `cibles` : [(nom, info_pve|None)]. Une VM distante se suspend par
+            son VMID sur son hôte — « virsh suspend <nom> » aurait mis en
+            pause le domaine LOCAL homonyme."""
+            for nom, info in cibles:
                 try:
-                    subprocess.run(
-                        ["sudo", "virsh", action, n],
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                    )
+                    if info:
+                        vmid = int(info.get("vmid") or 0)
+                        subprocess.run(
+                            pve_host_cmd(info, f"qm {action} {vmid}"),
+                            shell=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                        )
+                    else:
+                        subprocess.run(
+                            ["sudo", "virsh", action, nom],
+                            capture_output=True,
+                            text=True,
+                            timeout=30,
+                        )
                 except (OSError, subprocess.SubprocessError):
                     pass
 
@@ -2701,8 +2777,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             with self.suspend():
                 print(f"\n=== {title} — {vm['name']} ===")
                 os.system(
-                    f"ssh {SSH_OPTS} erplibre@{vm['ip']} "
-                    f"{shlex.quote(cmd)} || true"
+                    f"{vm_ssh_prefix(vm)} " f"{shlex.quote(cmd)} || true"
                 )
                 input("\nEntrée pour revenir au suivi… ")
 
@@ -2751,7 +2826,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         async def _bulk_worker(self, action):
             want = "running" if action == "suspend" else "paused"
             targets = [
-                vm["name"]
+                (vm["name"], vm.get("pve"))
                 for vm in vms
                 if self._domstate.get(vm["name"]) == want
             ]

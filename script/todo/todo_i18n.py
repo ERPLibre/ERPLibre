@@ -3986,6 +3986,14 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "Quit (q) to start the ERPLibre install": {
+        "fr": "Quitter (q) pour lancer l'installation d'ERPLibre",
+        "en": "Quit (q) to start the ERPLibre install",
+    },
+    "Quit (q) to follow the VM starting up": {
+        "fr": "Quitter (q) pour suivre la mise en route de la VM",
+        "en": "Quit (q) to follow the VM starting up",
+    },
     "A local VM already bears this name:": {
         "fr": "Une VM locale porte déjà ce nom :",
         "en": "A local VM already bears this name:",

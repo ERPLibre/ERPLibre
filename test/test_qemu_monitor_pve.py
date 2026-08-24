@@ -178,6 +178,88 @@ class TestLaBonneMachine(unittest.TestCase):
         self.assertIn("ip=cible", script)
 
 
+class TestLeDisque(unittest.TestCase):
+    """La colonne Disque annonçait un disque PLEIN qui ne l'était pas.
+
+    Rapporté : « 6.0G/6.0G » sur une VM dont l'invité disait « 845M utilisés
+    sur 5.8G ». La mesure venait de « du -sb », qui rend la taille APPARENTE :
+    un disque raw creux la donne entière. « du -sB1 » compte les blocs
+    réellement occupés — 1,2 Go, ce qui correspond.
+    """
+
+    def test_the_command_counts_real_blocks(self):
+        self.assertIn("du -sB1", mon.PVE_STATS_CMD)
+        self.assertNotIn("du -sb", mon.PVE_STATS_CMD)
+
+    def test_the_measure_is_read_per_vmid(self):
+        texte = (
+            '[{"vmid":101,"name":"vm-a","disk":0,"maxdisk":6442450944,'
+            '"mem":1,"maxmem":2,"diskwrite":0,"status":"running","uptime":1}]\n'
+            "---ERPLIBRE-DU---\n"
+            "1268518912\t/var/lib/vz/images/101/\n"
+            "4294967296\t/var/lib/vz/images/999/\n"
+        )
+        rec = mon.parse_pvestats(texte)["vm-a"]
+        self.assertEqual(rec["disk_used"], 1268518912)
+        self.assertEqual(rec["disk_total"], 6442450944)
+        self.assertEqual(
+            mon.fmt_pair(rec["disk_used"], rec["disk_total"]), "1.2G/6.0G"
+        )
+
+
+class TestOuVaLaCommande(unittest.TestCase):
+    """Chaque action doit viser la BONNE machine.
+
+    Une VM distante et un domaine local peuvent porter le même nom : « s »
+    ouvrait la locale, la console ouvrait la console de la locale, et la pause
+    suspendait la locale. Le VMID et le rebond sont les seules désignations
+    qui ne trompent pas.
+    """
+
+    LOCALE = {"name": "vm-a", "ip": "192.168.123.118"}
+    DISTANTE = {
+        "name": "vm-a",
+        "ip": "pve1+vm-a",
+        "pve": {
+            "target": "erplibre@pve1",
+            "sudo": "sudo ",
+            "jump": "",
+            "vmid": 101,
+            "addr": "10.10.10.151",
+        },
+    }
+
+    def test_ssh_to_a_local_vm_uses_its_address(self):
+        self.assertIn(
+            "erplibre@192.168.123.118", mon.vm_ssh_prefix(self.LOCALE)
+        )
+        self.assertNotIn("-J", mon.vm_ssh_prefix(self.LOCALE))
+
+    def test_ssh_to_a_remote_vm_goes_through_the_jump(self):
+        cmd = mon.vm_ssh_prefix(self.DISTANTE)
+        self.assertIn("-J", cmd)
+        self.assertIn("erplibre@pve1", cmd)
+        self.assertIn("erplibre@10.10.10.151", cmd)
+
+    def test_without_an_address_it_falls_back_to_the_alias(self):
+        vm = {"name": "vm-a", "ip": "pve1+vm-a", "pve": {"target": "pve1"}}
+        self.assertIn("erplibre@pve1+vm-a", mon.vm_ssh_prefix(vm))
+
+    def test_the_console_of_a_remote_vm_is_qm_terminal(self):
+        cmd = mon.pve_host_cmd(
+            self.DISTANTE["pve"], "qm terminal 101", tty=True
+        )
+        self.assertIn("ssh -t", cmd)
+        self.assertIn("qm terminal 101", cmd)
+        self.assertIn("sudo", cmd)
+        # Et surtout PAS virsh, qui viserait le domaine local homonyme.
+        self.assertNotIn("virsh", cmd)
+
+    def test_a_host_without_sudo_is_not_wrapped(self):
+        cmd = mon.pve_host_cmd({"target": "root@pve1", "sudo": ""}, "qm list")
+        self.assertNotIn("sh -c", cmd)
+
+
 class TestLEtat(unittest.TestCase):
     """Une VM absente de « virsh list » passait pour EFFACÉE."""
 

@@ -967,7 +967,33 @@ class ProxmoxMenuMixin:
         # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
         session = self._pve_log_dir()
         print(f"\n  {t('Log:')} {session}")
-        resultats = run_deploy_progress(travaux, spec.get("parallelism") or 1)
+        # Comment joindre chaque VM SANS dépendre de ~/.ssh/config, qui n'est
+        # écrit qu'après : par le rebond de l'hôte, explicitement. C'est ce que
+        # « s » utilise dans la vue de progression — sans quoi il partait sur
+        # le nom de la VM, donc sur une locale homonyme (rapporté).
+        cibles_ssh = {}
+        for vm in spec["vms"]:
+            ip = pve.ip_from_ipconfig(vm.get("ipconfig") or "")
+            if ip:
+                compte = (spec.get("user") or "erplibre") + "@" + ip
+                cibles_ssh[vm["name"]] = (
+                    f"ssh -J {shlex.quote(host['target'])} "
+                    f"{shlex.quote(compte)}"
+                )
+        # Ce qui attend derrière cet écran : sans le dire, on reste devant
+        # une fenêtre « terminée » sans savoir que l'installation d'ERPLibre
+        # démarre en la quittant.
+        suite = ""
+        if spec.get("install"):
+            suite = t("Quit (q) to start the ERPLibre install")
+        elif spec.get("monitor", True):
+            suite = t("Quit (q) to follow the VM starting up")
+        resultats = run_deploy_progress(
+            travaux,
+            spec.get("parallelism") or 1,
+            ssh_cmds=cibles_ssh,
+            suite=suite,
+        )
         reussies = [nom for nom, code, _o, _d in resultats if code == 0]
         for nom, code, sortie, duree in resultats:
             chemin = self._pve_write_log(
@@ -1215,6 +1241,10 @@ class ProxmoxMenuMixin:
                     "sudo": host.get("sudo") or "",
                     "jump": host.get("jump") or "",
                     "vmid": vm.get("vmid"),
+                    # L'adresse INTERNE : elle n'est pas routable d'ici, mais
+                    # elle l'est depuis l'hôte. Avec le rebond, le tableau de
+                    # bord entre dans la VM sans dépendre de ~/.ssh/config.
+                    "addr": vm.get("adresse") or "",
                 }
                 for vm in joignables
                 if vm.get("vmid")

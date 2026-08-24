@@ -591,7 +591,9 @@ def res_row_widgets(index, vm, presets, labels=None, null=None):
     return widgets
 
 
-def run_deploy_progress(jobs, parallelism, run_app: bool = True):
+def run_deploy_progress(
+    jobs, parallelism, run_app: bool = True, ssh_cmds=None, suite=""
+):
     """Déploie `jobs` = [(id, nom, argv)] en parallèle, un bloc repliable par
     VM. Renvoie [(nom, rc, sortie, durée)]. `run_app=False` renvoie l'app.
 
@@ -680,9 +682,14 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
                 self.run_job(jid, name, parts)
 
         def _refresh_summary(self):
+            # CE QUI SUIT, dit ici : l'installation d'ERPLibre ne démarre
+            # qu'au moment où l'on quitte cet écran, et rien ne le disait —
+            # on attendait devant une fenêtre pourtant terminée.
+            fini = self._done >= len(jobs)
+            apres = f"\n  → {suite}" if (fini and suite) else ""
             self.query_one("#summary", Static).update(
                 f"  {self._done}/{len(jobs)} — "
-                f"{fmt_dur(time.time() - self._t0)}"
+                f"{fmt_dur(time.time() - self._t0)}{apres}"
             )
 
         # `thread=True` : subprocess.run est bloquant ; le faire dans un
@@ -765,10 +772,11 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
         def action_ssh(self) -> None:
             """Entre dans la VM créée, sans quitter l'écran.
 
-            Par son NOM et non par son adresse : c'est l'entrée
-            ~/.ssh/config que le déploiement vient d'écrire qui sait comment
-            l'atteindre — et pour une VM posée sur un hôte Proxmox, elle
-            porte le rebond, seul chemin vers son réseau interne.
+            La commande vient de l'APPELANT quand il sait joindre la VM : sur
+            Proxmox, l'entrée ~/.ssh/config n'est écrite qu'après le
+            déploiement, et le nom de la VM peut désigner une machine LOCALE
+            homonyme — « s » ouvrait alors la mauvaise. Le déploiement passe
+            donc « ssh -J <hôte> user@<ip> », qui ne dépend de rien.
 
             « suspend() » rend le terminal : ssh a besoin du clavier, et
             Textual le tient encore.
@@ -780,8 +788,10 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
                 return
             # La dernière créée : c'est celle qu'on regarde.
             nom = self._reussies[-1]
+            cmd = (ssh_cmds or {}).get(nom) or f"ssh {shlex_quote(nom)}"
             with self.suspend():
-                os.system(f"ssh {shlex_quote(nom)} || true")
+                print(f"\n→ {cmd}\n")
+                os.system(f"{cmd} || true")
 
         # -- presse-papiers (OSC 52 : traverse SSH) --------------------- #
         def _copy(self, text, what):
