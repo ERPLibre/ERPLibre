@@ -825,6 +825,8 @@ class ProxmoxMenuMixin:
             "internal_bridge": (pve.INTERNAL_BRIDGE, pve.INTERNAL_CIDR),
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
+            # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
+            "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
             # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
             # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et

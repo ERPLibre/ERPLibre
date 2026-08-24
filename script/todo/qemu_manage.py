@@ -2304,6 +2304,24 @@ class QemuManageMixin:
             pass
         return None, None, arch
 
+    @staticmethod
+    def _qemu_repo_branch():
+        """Branche du dépôt COURANT, ou '' — le défaut des formulaires.
+
+        On déploie le plus souvent ce qu'on a sous les yeux ; le premier nom
+        de la liste alphabétique, lui, n'a aucune raison d'être bon."""
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        nom = (res.stdout or "").strip()
+        return "" if res.returncode or nom == "HEAD" else nom
+
     def _qemu_branch_list(self):
         """Branches distantes d'ERPLibre, triées. Vide si le réseau manque.
 

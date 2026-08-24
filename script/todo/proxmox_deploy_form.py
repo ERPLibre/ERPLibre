@@ -28,6 +28,8 @@ from script.todo.deploy_form_lib import (
     FREE,
     RES_FIELDS,
     SELECT_TO_FIELD,
+    branch_default,
+    branch_order,
     build_vms,
     disk_note,
     entry_key,
@@ -126,7 +128,12 @@ def run_proxmox_form(ctx, run_app: bool = True):
     catalog = ctx["catalog"]
     noms_pris = ctx["names"]
     vmids_pris = ctx["vmids"]
-    branches = ctx.get("branches") or ["master"]
+    # Ordre et défaut partagés avec le formulaire QEMU/KVM : la liste vient
+    # de « git ls-remote », alphabétique, et commençait donc par une branche
+    # de dependabot — proposée par défaut. Rapporté.
+    branches = branch_order(
+        ctx.get("branches") or ["master"], ctx.get("branch_current")
+    )
     profiles = ctx.get("install_profiles") or []
     stockages = ctx.get("storages") or []
     ponts = ctx.get("bridges") or []
@@ -309,7 +316,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     )
                     yield Select(
                         [(b, b) for b in branches],
-                        value=branches[0],
+                        value=branch_default(
+                            branches, ctx.get("branch_current")
+                        ),
                         allow_blank=False,
                         id="f_branch",
                     )

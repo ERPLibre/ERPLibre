@@ -3986,6 +3986,14 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "s ssh · c copy log · C copy all · q quit": {
+        "fr": "s ssh · c copier le log · C copier tout · q quitter",
+        "en": "s ssh · c copy log · C copy all · q quit",
+    },
+    "No VM created yet.": {
+        "fr": "Aucune VM créée pour l'instant.",
+        "en": "No VM created yet.",
+    },
     # « models » manquait alors que ses trois voisines de la même ligne
     # étaient traduites : le rapport de qualité de migration sortait
     # « 42 modules · 812 models · 1 204 vues ».

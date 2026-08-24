@@ -41,6 +41,8 @@ from script.todo.deploy_form_lib import (  # noqa: F401
     SELECT_TO_FIELD,
     apply_overrides,
     apply_profile,
+    branch_default,
+    branch_order,
     build_spec,
     build_vms,
     clean_hostname,
@@ -116,7 +118,9 @@ def run_deploy_form(ctx, run_app: bool = True):
     no_erplibre = {
         impose[1].strip() for impose in distro_profiles.values() if impose
     }
-    branches = ctx.get("branches") or ["master"]
+    branches = branch_order(
+        ctx.get("branches") or ["master"], ctx.get("branch_current")
+    )
     host_cpu = ctx.get("host_cpu") or 2
     free_ram = ctx.get("free_ram") or 0
     free_disk = ctx.get("free_disk") or 0
@@ -332,8 +336,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                     )
                     yield Select(
                         [(b, b) for b in branches],
-                        value=(
-                            "develop" if "develop" in branches else branches[0]
+                        value=branch_default(
+                            branches, ctx.get("branch_current")
                         ),
                         allow_blank=False,
                         id="f_branch",

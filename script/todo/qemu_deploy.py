@@ -1254,6 +1254,8 @@ class QemuDeployMixin:
             "native": native,
             "domains": self._qemu_list_domains(),
             "branches": self._qemu_branch_list() or ["master"],
+            # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
+            "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
             # Les systèmes qui IMPOSENT ce qu'on installe dessus. Sans cette
             # table, le formulaire posait ERPLibre + Odoo 18 sur une VM
