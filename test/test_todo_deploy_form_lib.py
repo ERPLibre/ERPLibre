@@ -56,12 +56,18 @@ class TestPlaceDisque(unittest.TestCase):
     """La demande du plan ne dit pas si ça rentre : il faut la place à côté."""
 
     def test_it_shows_the_demand_the_room_and_the_capacity(self):
+        # Comparé à la traduction et non au français : la langue de
+        # l'interface se change (EL_LANG), et un test qui la suppose échoue
+        # pour une raison étrangère à ce qu'il vérifie.
         self.assertEqual(
-            lib.disk_note(50, 20, 270), "~50 G / 20 G libres sur 270 G"
+            lib.disk_note(50, 20, 270),
+            f"~50 G / 20 G {lib.t('free of')} 270 G",
         )
 
     def test_without_a_capacity_it_still_shows_the_room(self):
-        self.assertEqual(lib.disk_note(50, 20), "~50 G / 20 G libres")
+        self.assertEqual(
+            lib.disk_note(50, 20), f"~50 G / 20 G {lib.t('free')}"
+        )
 
     def test_without_a_measure_it_invents_nothing(self):
         # Une place inconnue ne doit pas se lire comme « 0 Go libres ».

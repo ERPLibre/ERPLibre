@@ -24,6 +24,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
+from script.todo.todo_i18n import t  # noqa: E402
 
 
 def _run_ok(stdout="", returncode=0, stderr=""):
@@ -307,7 +308,10 @@ class TestEmulatorMenu(_MenuCase):
         """
         out, calls = self._play(["1"], probe="NO_SDK\n")
         self.assertIn("SDK", out)
-        self.assertNotIn("[1]", out.split("VM locale")[-1])
+        # Découpé sur la TRADUCTION : ce test échouait dès que l'interface
+        # passait en anglais, pour une raison qui n'a rien à voir avec le
+        # diagnostic qu'il vérifie.
+        self.assertNotIn("[1]", out.split(t("local VM"))[-1])
         self.assertEqual(self._started(calls), [])
 
     def test_a_vm_without_the_avd_is_named_as_such(self):

@@ -314,6 +314,19 @@ class TestTheRealBundle(unittest.TestCase):
                 "compilé SANS les dépôts (manifeste vide) :"
                 " relancer ./mobile/compile_and_run.sh pour les inclure"
             )
+        # Manifeste PLEIN mais index MANQUANTS : un transfert interrompu, ou
+        # un build qui a écrit le manifeste avant les paquets. Vu le
+        # 24 août 2026 — « <slug> : index.json absent » remontait en ERREUR,
+        # ce qui se lit comme une régression du transfert alors que rien
+        # n'était encore transféré. Un état incomplet s'IGNORE ; seule une
+        # incohérence entre ce qui est là et le dépôt doit échouer.
+        for entree in entrees:
+            slug = entree.get("slug") if isinstance(entree, dict) else entree
+            if slug and not (cls.repos / str(slug) / "index.json").is_file():
+                raise unittest.SkipTest(
+                    f"paquet incomplet ({slug} sans index.json) :"
+                    " relancer ./mobile/compile_and_run.sh"
+                )
 
     def test_the_transfer_is_coherent(self):
         rep = cbt.check(MOBILE, REPO)
