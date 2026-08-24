@@ -9280,6 +9280,302 @@ TRANSLATIONS = {
         "en": "no .idea: open PyCharm once, then",
     },
     "project": {"fr": "projet", "en": "project"},
+    "Instance": {
+        "fr": "🛰  Instance",
+        "en": "🛰  Instance",
+    },
+    "Monitoring - a backup, a remote copy or a live instance": {
+        "fr": "🛰  Monitoring - une sauvegarde, une copie distante ou une instance vivante",
+        "en": "🛰  Monitoring - a backup, a remote copy or a live instance",
+    },
+    "Inspect an instance.": {
+        "fr": "Ausculter une instance.",
+        "en": "Inspect an instance.",
+    },
+    "A local backup .zip": {
+        "fr": "Une sauvegarde .zip locale",
+        "en": "A local backup .zip",
+    },
+    "A remote backup (https + master password)": {
+        "fr": "Une sauvegarde distante (https + mot de passe maître)",
+        "en": "A remote backup (https + master password)",
+    },
+    "A live remote instance": {
+        "fr": "Une instance vivante distante",
+        "en": "A live remote instance",
+    },
+    "An API key": {
+        "fr": "Une clé d'API",
+        "en": "An API key",
+    },
+    "A password": {
+        "fr": "Un mot de passe",
+        "en": "A password",
+    },
+    "API key: ": {
+        "fr": "Clé d'API : ",
+        "en": "API key: ",
+    },
+    "Password: ": {
+        "fr": "Mot de passe : ",
+        "en": "Password: ",
+    },
+    "User login: ": {
+        "fr": "Identifiant : ",
+        "en": "User login: ",
+    },
+    "Instance URL (ex. https://example.com): ": {
+        "fr": "URL de l'instance (ex. https://exemple.com) : ",
+        "en": "Instance URL (ex. https://example.com): ",
+    },
+    "Database name on that instance: ": {
+        "fr": "Nom de la base sur cette instance : ",
+        "en": "Database name on that instance: ",
+    },
+    "Cannot connect: ": {
+        "fr": "Connexion impossible : ",
+        "en": "Cannot connect: ",
+    },
+    "Connected as uid": {
+        "fr": "Connecté sous l'uid",
+        "en": "Connected as uid",
+    },
+    "The instance refused these credentials.": {
+        "fr": "L'instance a refusé ces identifiants.",
+        "en": "The instance refused these credentials.",
+    },
+    "Monitoring only reads; refused method:": {
+        "fr": "Le monitoring ne fait que lire ; méthode refusée :",
+        "en": "Monitoring only reads; refused method:",
+    },
+    "Database:": {
+        "fr": "Base :",
+        "en": "Database:",
+    },
+    "Live instance:": {
+        "fr": "Instance vivante :",
+        "en": "Live instance:",
+    },
+    "Database name (default=": {
+        "fr": "Nom de la base (défaut=",
+        "en": "Database name (default=",
+    },
+    "Neutralize the database (Y/n)? ": {
+        "fr": "Neutraliser la base (O/n) ? ",
+        "en": "Neutralize the database (Y/n)? ",
+    },
+    "The restore failed.": {
+        "fr": "La restauration a échoué.",
+        "en": "The restore failed.",
+    },
+    "The download did not produce a usable file.": {
+        "fr": "Le téléchargement n'a pas produit de fichier utilisable.",
+        "en": "The download did not produce a usable file.",
+    },
+    "db_restore only reads image_db/. Link it there": {
+        "fr": "db_restore ne lit que image_db/. Y poser un lien",
+        "en": "db_restore only reads image_db/. Link it there",
+    },
+    "Using the file already in image_db: ": {
+        "fr": "On prend le fichier déjà dans image_db : ",
+        "en": "Using the file already in image_db: ",
+    },
+    "Cannot link into image_db: ": {
+        "fr": "Impossible de poser le lien dans image_db : ",
+        "en": "Cannot link into image_db: ",
+    },
+    "You can log in with test / test.": {
+        "fr": "Vous pouvez vous connecter avec test / test.",
+        "en": "You can log in with test / test.",
+    },
+    "update_prod_to_dev did not finish: do not": {
+        "fr": "update_prod_to_dev n'a pas fini : ne comptez pas",
+        "en": "update_prod_to_dev did not finish: do not",
+    },
+    "count on the test/test account.": {
+        "fr": "sur le compte test/test.",
+        "en": "count on the test/test account.",
+    },
+    "database.is_neutralized is set.": {
+        "fr": "database.is_neutralized est posé.",
+        "en": "database.is_neutralized is set.",
+    },
+    "database.is_neutralized is NOT set — Odoo does not": {
+        "fr": "database.is_neutralized n'est PAS posé — Odoo ne considère pas",
+        "en": "database.is_neutralized is NOT set — Odoo does not",
+    },
+    "consider this database neutralised.": {
+        "fr": "cette base comme neutralisée.",
+        "en": "consider this database neutralised.",
+    },
+    "scheduled actions are still active.": {
+        "fr": "actions planifiées sont encore actives.",
+        "en": "scheduled actions are still active.",
+    },
+    "No scheduled action is active.": {
+        "fr": "Aucune action planifiée n'est active.",
+        "en": "No scheduled action is active.",
+    },
+    "No mail server at all: Odoo falls back to smtp_server": {
+        "fr": "Aucun serveur de courriel : Odoo retombe sur le smtp_server",
+        "en": "No mail server at all: Odoo falls back to smtp_server",
+    },
+    "from the config file. A blocking one is safer than none.": {
+        "fr": "du fichier de configuration. Un serveur bouchon vaut mieux que rien.",
+        "en": "from the config file. A blocking one is safer than none.",
+    },
+    "payment provider(s) are neither disabled nor": {
+        "fr": "fournisseur(s) de paiement ne sont ni désactivés ni",
+        "en": "payment provider(s) are neither disabled nor",
+    },
+    "in test mode.": {
+        "fr": "en mode test.",
+        "en": "in test mode.",
+    },
+    "Run": {
+        "fr": "Lancer",
+        "en": "Run",
+    },
+    "Enter to run it.": {
+        "fr": "Entrée pour le lancer.",
+        "en": "Enter to run it.",
+    },
+    "Not available for this source.": {
+        "fr": "Indisponible pour cette provenance.",
+        "en": "Not available for this source.",
+    },
+    "Migration leftovers": {
+        "fr": "Restant de migration",
+        "en": "Migration leftovers",
+    },
+    "What a migration left behind, judged without needing the step-by-step databases.": {
+        "fr": "Ce qu'une migration a laissé derrière elle, jugé sans avoir besoin des bases de palier.",
+        "en": "What a migration left behind, judged without needing the step-by-step databases.",
+    },
+    "It reads pg_catalog — indexes and real tables — which no RPC session exposes.": {
+        "fr": "Il lit pg_catalog — les index et les vraies tables — qu'aucune session RPC n'expose.",
+        "en": "It reads pg_catalog — indexes and real tables — which no RPC session exposes.",
+    },
+    "Every view someone changed, and every website copy that shadows a module view.": {
+        "fr": "Chaque vue que quelqu'un a modifiée, et chaque copie de site web qui masque une vue de module.",
+        "en": "Every view someone changed, and every website copy that shadows a module view.",
+    },
+    "Comparing a copy with the module view it hides is a join on arch_db, done in SQL.": {
+        "fr": "Comparer une copie à la vue de module qu'elle masque est une jointure sur arch_db, faite en SQL.",
+        "en": "Comparing a copy with the module view it hides is a join on arch_db, done in SQL.",
+    },
+    "Fields and models added outside any module, and which of them have no column behind them.": {
+        "fr": "Champs et modèles ajoutés hors de tout module, et lesquels n'ont aucune colonne derrière eux.",
+        "en": "Fields and models added outside any module, and which of them have no column behind them.",
+    },
+    "Telling a declared field from a real column means reading pg_attribute.": {
+        "fr": "Distinguer un champ déclaré d'une vraie colonne demande de lire pg_attribute.",
+        "en": "Telling a declared field from a real column means reading pg_attribute.",
+    },
+    "What a migration left behind, read in one database.": {
+        "fr": "Ce qu'une migration a laissé derrière elle, lu dans une seule base.",
+        "en": "What a migration left behind, read in one database.",
+    },
+    "Migration residue in": {
+        "fr": "Restant de migration dans",
+        "en": "Migration residue in",
+    },
+    "base module version:": {
+        "fr": "version du module base :",
+        "en": "base module version:",
+    },
+    "None of the checks found anything.": {
+        "fr": "Aucun contrôle n'a rien trouvé.",
+        "en": "None of the checks found anything.",
+    },
+    "This reads one database on its own — it cannot see": {
+        "fr": "Ceci ne lit qu'une base isolée — il ne peut pas voir",
+        "en": "This reads one database on its own — it cannot see",
+    },
+    "what an earlier step silently dropped.": {
+        "fr": "ce qu'un palier antérieur a laissé tomber en silence.",
+        "en": "what an earlier step silently dropped.",
+    },
+    "could not read": {
+        "fr": "lecture impossible",
+        "en": "could not read",
+    },
+    "no repair tool yet": {
+        "fr": "pas encore d'outil de réparation",
+        "en": "no repair tool yet",
+    },
+    "Modules stuck between two states": {
+        "fr": "Modules figés entre deux états",
+        "en": "Modules stuck between two states",
+    },
+    "A migration that stopped mid-flight leaves them there; Odoo will retry the transition at every start.": {
+        "fr": "Une migration arrêtée en vol les laisse ainsi ; Odoo retentera la transition à chaque démarrage.",
+        "en": "A migration that stopped mid-flight leaves them there; Odoo will retry the transition at every start.",
+    },
+    "Languages whose active flag is NULL": {
+        "fr": "Langues dont le drapeau actif est NULL",
+        "en": "Languages whose active flag is NULL",
+    },
+    "A boolean that is neither true nor false: the language is listed nowhere and cannot be re-enabled from the interface.": {
+        "fr": "Un booléen qui n'est ni vrai ni faux : la langue n'est listée nulle part et ne peut plus être réactivée depuis l'interface.",
+        "en": "A boolean that is neither true nor false: the language is listed nowhere and cannot be re-enabled from the interface.",
+    },
+    "Many-to-many tables named but missing": {
+        "fr": "Tables plusieurs-à-plusieurs nommées mais absentes",
+        "en": "Many-to-many tables named but missing",
+    },
+    "ir_model_relation still names a table PostgreSQL does not have; the next module update tries to alter it and fails.": {
+        "fr": "ir_model_relation nomme encore une table que PostgreSQL n'a pas ; la prochaine mise à jour de module tente de la modifier et échoue.",
+        "en": "ir_model_relation still names a table PostgreSQL does not have; the next module update tries to alter it and fails.",
+    },
+    "Indexes duplicated by the Odoo 17 renaming": {
+        "fr": "Index doublés par le renommage d'Odoo 17",
+        "en": "Indexes duplicated by the Odoo 17 renaming",
+    },
+    "Odoo 17 changed the naming convention without dropping the old index: both are maintained on every write.": {
+        "fr": "Odoo 17 a changé la convention de nommage sans supprimer l'ancien index : les deux sont entretenus à chaque écriture.",
+        "en": "Odoo 17 changed the naming convention without dropping the old index: both are maintained on every write.",
+    },
+    "Default pricelist missing while product is installed": {
+        "fr": "Liste de prix par défaut absente alors que product est installé",
+        "en": "Default pricelist missing while product is installed",
+    },
+    "product.list0 was declared up to Odoo 16 only; nothing recreates it, and a quotation has no price list to pick.": {
+        "fr": "product.list0 n'a été déclaré que jusqu'à Odoo 16 ; rien ne le recrée, et un devis n'a aucune liste de prix à choisir.",
+        "en": "product.list0 was declared up to Odoo 16 only; nothing recreates it, and a quotation has no price list to pick.",
+    },
+    "Views bound to a model that no longer exists": {
+        "fr": "Vues liées à un modèle qui n'existe plus",
+        "en": "Views bound to a model that no longer exists",
+    },
+    "Opening one raises; the menu that leads to it is a dead end.": {
+        "fr": "En ouvrir une lève une erreur ; le menu qui y mène est un cul-de-sac.",
+        "en": "Opening one raises; the menu that leads to it is a dead end.",
+    },
+    "Views inheriting a view that is gone": {
+        "fr": "Vues héritant d'une vue disparue",
+        "en": "Views inheriting a view that is gone",
+    },
+    "The whole inheritance chain below them stops rendering.": {
+        "fr": "Toute la chaîne d'héritage en dessous cesse de s'afficher.",
+        "en": "The whole inheritance chain below them stops rendering.",
+    },
+    "External ids pointing at a model that is gone": {
+        "fr": "Identifiants externes pointant un modèle disparu",
+        "en": "External ids pointing at a model that is gone",
+    },
+    "Every module update that resolves one of them fails.": {
+        "fr": "Chaque mise à jour de module qui en résout un échoue.",
+        "en": "Every module update that resolves one of them fails.",
+    },
+    "Attachments whose carrying field is gone": {
+        "fr": "Pièces jointes dont le champ porteur a disparu",
+        "en": "Attachments whose carrying field is gone",
+    },
+    "Odoo raises a KeyError merely checking them, and nothing will ever read them again.": {
+        "fr": "Odoo lève un KeyError rien qu'en les contrôlant, et plus rien ne les lira jamais.",
+        "en": "Odoo raises a KeyError merely checking them, and nothing will ever read them again.",
+    },
 }
 
 
