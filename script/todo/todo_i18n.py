@@ -9453,8 +9453,8 @@ TRANSLATIONS = {
         "en": "Not available for this source.",
     },
     "Migration leftovers": {
-        "fr": "Restant de migration",
-        "en": "Migration leftovers",
+        "fr": "🚚 Restant de migration",
+        "en": "🚚 Migration leftovers",
     },
     "What a migration left behind, judged without needing the step-by-step databases.": {
         "fr": "Ce qu'une migration a laissé derrière elle, jugé sans avoir besoin des bases de palier.",
@@ -9589,8 +9589,8 @@ TRANSLATIONS = {
         "en": "A local database",
     },
     "State of the instance": {
-        "fr": "État de l'instance",
-        "en": "State of the instance",
+        "fr": "🩺 État de l'instance",
+        "en": "🩺 State of the instance",
     },
     "Neutralisation, scheduler, backups, queues and who is an administrator — read for the use you intend.": {
         "fr": "Neutralisation, cadenceur, sauvegardes, files et qui est administrateur — lu pour l'usage que vous en faites.",
