@@ -1328,6 +1328,36 @@ PVE_ETATS = {"running": "running", "stopped": "shut off", "paused": "paused"}
 _PVE_CACHE = {"at": 0.0, "stats": {}}
 
 
+def pve_stats_cmd(adresses=()) -> str:
+    """PVE_STATS_CMD, plus un test du port 8069 pour les adresses données.
+
+    Dans le MÊME appel : la colonne Odoo teste ce port depuis le poste, et une
+    VM sur pont interne n'y répond jamais — elle restait « — » quel que soit
+    l'état d'Odoo. Depuis l'hôte, elle répond. Un aller-retour ssh de plus par
+    tour aurait coûté une seconde ; celui-ci est déjà payé.
+    """
+    if not adresses:
+        return PVE_STATS_CMD
+    liste = " ".join(shlex.quote(a) for a in adresses)
+    return (
+        PVE_STATS_CMD
+        + "; echo '---ERPLIBRE-ODOO---'; for a in "
+        + liste
+        + '; do timeout 2 bash -c "echo > /dev/tcp/$a/8069" 2>/dev/null'
+        + ' && echo "ODOO $a"; done'
+    )
+
+
+def parse_odoo_probe(text: str) -> set:
+    """Adresses dont le port 8069 a répondu, d'après pve_stats_cmd."""
+    _, _, bloc = (text or "").partition("---ERPLIBRE-ODOO---")
+    return {
+        ligne.split()[1]
+        for ligne in bloc.splitlines()
+        if ligne.startswith("ODOO ") and len(ligne.split()) == 2
+    }
+
+
 def parse_pvestats(text: str) -> dict:
     """Sortie de PVE_STATS_CMD -> {nom: relevé}, même forme que domstats.
 
@@ -1395,17 +1425,57 @@ def read_pvestats(vms, now=None) -> dict:
         from script.proxmox import proxmox_deploy as pve
     except ImportError:  # pragma: no cover - le module est dans le dépôt
         return {}
+    # {nom: adresse interne} — ce qui permet de tester Odoo depuis l'hôte.
+    adresses = {
+        vm["name"]: (vm.get("pve") or {}).get("addr")
+        for vm in vms or ()
+        if (vm.get("pve") or {}).get("addr")
+    }
     stats = {}
     for (target, sudo), info in hotes.items():
+        siennes = [
+            a
+            for nom, a in adresses.items()
+            if (
+                (
+                    next((v for v in vms if v["name"] == nom), {}).get("pve")
+                    or {}
+                ).get("target")
+                == target
+            )
+        ]
         code, sortie = pve.run(
             {"target": target, "sudo": sudo, "jump": info.get("jump", "")},
-            PVE_STATS_CMD,
-            30,
+            pve_stats_cmd(siennes),
+            40,
         )
         if code == 0:
-            stats.update(parse_pvestats(sortie))
+            releves = parse_pvestats(sortie)
+            ouverts = parse_odoo_probe(sortie)
+            for nom, rec in releves.items():
+                rec["odoo"] = adresses.get(nom) in ouverts
+            stats.update(releves)
     _PVE_CACHE.update({"at": maintenant, "stats": stats})
     return dict(stats)
+
+
+def web_tunnel_argv(info, port=18069, cible_port=8069):
+    """argv d'un tunnel local vers le port web d'une VM distante, ou None.
+
+    Une VM sur pont interne n'est pas routable d'ici : un navigateur ne peut
+    pas l'atteindre, et la touche « w » ouvrait une page morte. Le tunnel
+    passe par l'hôte, dure le temps de la visite, et se referme par son PID —
+    « pkill -f <motif> » tuait le shell qui l'avait lancé, le motif figurant
+    dans sa propre ligne de commande.
+    """
+    info = info or {}
+    if not (info.get("addr") and info.get("target")):
+        return None
+    argv = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes"]
+    if info.get("jump"):
+        argv += ["-J", info["jump"]]
+    argv += ["-L", f"{port}:{info['addr']}:{cible_port}", info["target"]]
+    return argv
 
 
 def vm_ssh_prefix(vm) -> str:
@@ -1588,6 +1658,19 @@ def restart_odoo_cmd() -> str:
         "else echo 'Pas de service erplibre : lancez ./run.sh dans "
         f"{EL_DIR}'; fi"
     )
+
+
+def delete_vm_cmd_pve(info, purge: bool = True) -> str:
+    """Efface une VM sur son hôte PROXMOX, par son VMID.
+
+    « virsh undefine <nom> » y aurait effacé le domaine LOCAL homonyme — le
+    même piège que partout ailleurs, avec la pire conséquence."""
+    vmid = int((info or {}).get("vmid") or 0)
+    suite = (
+        f"qm stop {vmid} --skiplock 1 || true; "
+        f"qm destroy {vmid}{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
+    )
+    return pve_host_cmd(info, suite)
 
 
 def delete_vm_cmd(name: str, with_disks: bool) -> str:
@@ -2124,7 +2207,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     name not in self._odoo_up
                     and self._domstate.get(name) != "gone"
                 ):
-                    if _port_open(vm.get("ip"), 8069):
+                    releve = (self._vmstats or {}).get(name) or {}
+                    if vm.get("pve"):
+                        # Le port a été testé DEPUIS L'HÔTE, dans l'appel des
+                        # statistiques : d'ici, une adresse de pont interne ne
+                        # répond jamais.
+                        if releve.get("odoo"):
+                            odoo[name] = True
+                    elif _port_open(vm.get("ip"), 8069):
                         odoo[name] = True
             return disks, status, self._collect_tele(), errors, odoo, wr, ram
 
@@ -2487,10 +2577,26 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             browser = self._choose_browser()
             if not browser:
                 return
-            url = f"http://{vm['ip']}:8069"
+            port = 18069
+            argv_tunnel = web_tunnel_argv(vm.get("pve"), port)
+            url = (
+                f"http://127.0.0.1:{port}"
+                if argv_tunnel
+                else f"http://{vm['ip']}:8069"
+            )
             with self.suspend():
+                proc = None
+                if argv_tunnel:
+                    print("→ " + " ".join(shlex.quote(a) for a in argv_tunnel))
+                    try:
+                        proc = subprocess.Popen(argv_tunnel)
+                        time.sleep(2)
+                    except (OSError, subprocess.SubprocessError) as exc:
+                        print(f"   ⚠ {exc}")
                 print(f"→ {browser} {url}")
                 rc = os.system(f"{browser} {shlex.quote(url)}")
+                if proc:
+                    proc.terminate()
                 # Diagnostic : sinon le navigateur « clignote » et revient au
                 # TUI sans qu'on voie l'erreur (souvent Odoo pas démarré).
                 print(f"\n[{browser}] terminé (code {rc}).")
@@ -2794,9 +2900,16 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             def confirmed(yes):
                 if not yes:
                     return
+                info = vm.get("pve")
+                cmd = (
+                    delete_vm_cmd_pve(info)
+                    if info
+                    else delete_vm_cmd(vm["name"], True)
+                )
                 with self.suspend():
                     print(f"\n=== Suppression — {vm['name']} ===")
-                    os.system(delete_vm_cmd(vm["name"], True) + " || true")
+                    print(f"→ {cmd}\n")
+                    os.system(cmd + " || true")
                     input("\nEntrée pour revenir au suivi… ")
 
             self.push_screen(

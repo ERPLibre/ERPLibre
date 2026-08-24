@@ -260,6 +260,88 @@ class TestOuVaLaCommande(unittest.TestCase):
         self.assertNotIn("sh -c", cmd)
 
 
+class TestLaColonneOdoo(unittest.TestCase):
+    """Le port 8069 se teste DEPUIS L'HÔTE, dans l'appel déjà payé.
+
+    Sondé depuis le poste, il ne répond jamais pour une VM sur pont interne :
+    la colonne restait « — » quel que soit l'état d'Odoo. Un aller-retour ssh
+    de plus par tour aurait coûté une seconde ; celui des statistiques est
+    déjà là.
+    """
+
+    def test_the_probe_rides_along_the_stats_call(self):
+        cmd = mon.pve_stats_cmd(["10.10.10.150", "10.10.10.151"])
+        self.assertIn("pvesh get /cluster/resources", cmd)
+        self.assertIn("/dev/tcp/$a/8069", cmd)
+        self.assertIn("10.10.10.151", cmd)
+
+    def test_without_addresses_nothing_is_added(self):
+        self.assertEqual(mon.pve_stats_cmd([]), mon.PVE_STATS_CMD)
+
+    def test_the_answer_is_read_per_address(self):
+        sortie = (
+            "[]\n---ERPLIBRE-DU---\n---ERPLIBRE-ODOO---\n"
+            "ODOO 10.10.10.151\n"
+        )
+        self.assertEqual(mon.parse_odoo_probe(sortie), {"10.10.10.151"})
+
+    def test_a_silent_port_yields_nothing(self):
+        self.assertEqual(
+            mon.parse_odoo_probe("[]\n---ERPLIBRE-DU---\n"), set()
+        )
+        self.assertEqual(mon.parse_odoo_probe(""), set())
+
+    def test_the_du_block_is_not_mistaken_for_a_probe(self):
+        # Les deux blocs se suivent : le lecteur doit prendre le bon.
+        sortie = (
+            "[]\n---ERPLIBRE-DU---\n1268518912\t/var/lib/vz/images/101/\n"
+            "---ERPLIBRE-ODOO---\nODOO 10.10.10.151\n"
+        )
+        self.assertEqual(mon.parse_odoo_probe(sortie), {"10.10.10.151"})
+
+
+class TestLeWebEtLaSuppression(unittest.TestCase):
+    """Les deux dernières actions qui visaient la mauvaise machine."""
+
+    INFO = {
+        "target": "erplibre-proxmox-9",
+        "sudo": "sudo ",
+        "jump": "",
+        "vmid": 101,
+        "addr": "10.10.10.151",
+    }
+
+    def test_the_web_view_tunnels_through_the_host(self):
+        argv = mon.web_tunnel_argv(self.INFO)
+        self.assertEqual(argv[-1], "erplibre-proxmox-9")
+        self.assertIn("-L", argv)
+        self.assertIn("18069:10.10.10.151:8069", argv)
+        # Pas de « -f » : le tunnel se referme par son PID, et « pkill -f »
+        # tuait le shell qui l'avait lancé.
+        self.assertNotIn("-f", argv)
+
+    def test_a_local_vm_needs_no_tunnel(self):
+        self.assertIsNone(mon.web_tunnel_argv(None))
+        self.assertIsNone(mon.web_tunnel_argv({"target": "pve1"}))
+
+    def test_the_jump_of_the_host_is_chained(self):
+        argv = mon.web_tunnel_argv(dict(self.INFO, jump="rebond"))
+        self.assertIn("-J", argv)
+        self.assertIn("rebond", argv)
+
+    def test_deleting_a_remote_vm_uses_its_vmid(self):
+        cmd = mon.delete_vm_cmd_pve(self.INFO)
+        self.assertIn("qm destroy 101", cmd)
+        self.assertIn("--purge", cmd)
+        # « virsh undefine <nom> » aurait effacé le domaine LOCAL homonyme.
+        self.assertNotIn("virsh", cmd)
+
+    def test_deleting_a_local_vm_is_unchanged(self):
+        cmd = mon.delete_vm_cmd("vm-a", True)
+        self.assertIn("virsh undefine", cmd)
+        self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", cmd)
+
+
 class TestLEtat(unittest.TestCase):
     """Une VM absente de « virsh list » passait pour EFFACÉE."""
 
