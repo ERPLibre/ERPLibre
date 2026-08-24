@@ -270,6 +270,7 @@ class QemuDeployMixin:
         python_provider="",
         app_store="deb",
         vm_tools=(),
+        pve=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -327,6 +328,11 @@ class QemuDeployMixin:
                     "version": v,
                     "arch": a,
                 }
+                # {nom: {target, sudo, vmid}} quand la VM vit sur un hôte
+                # Proxmox : le suivi lui demandera son état, virsh ne le
+                # connaît pas.
+                if (pve or {}).get(name):
+                    entry["pve"] = pve[name]
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle

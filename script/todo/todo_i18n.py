@@ -3982,6 +3982,29 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    # « models » manquait alors que ses trois voisines de la même ligne
+    # étaient traduites : le rapport de qualité de migration sortait
+    # « 42 modules · 812 models · 1 204 vues ».
+    "models": {
+        "fr": "modèles",
+        "en": "models",
+    },
+    "shutdown (clean)": {
+        "fr": "éteindre (proprement)",
+        "en": "shutdown (clean)",
+    },
+    "stop (pulls the plug)": {
+        "fr": "arrêter (coupe le courant)",
+        "en": "stop (pulls the plug)",
+    },
+    "Choice (blank = back): ": {
+        "fr": "Choix (vide = retour) : ",
+        "en": "Choice (blank = back): ",
+    },
+    "Confirm? (y/N): ": {
+        "fr": "Confirmer ? (o/N) : ",
+        "en": "Confirm? (y/N): ",
+    },
     "Creating the bridge on the host…": {
         "fr": "Création du pont sur l'hôte…",
         "en": "Creating the bridge on the host…",

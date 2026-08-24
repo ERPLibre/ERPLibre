@@ -230,6 +230,41 @@ class MenuCoherence:
         self.assertEqual(set(self.EXPECTED) - keys, set())
 
 
+class TestLaParitéProxmox(unittest.TestCase):
+    """Deux manques signalés par l'audit du découpage, comblés.
+
+    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
+    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
+    todo.json — deux capacités que son vis-à-vis avait.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (TODO_DIR / "proxmox_menu.py").read_text(encoding="utf-8")
+
+    def test_the_list_offers_to_change_the_state(self):
+        self.assertIn("_pve_change_state", self.src)
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertTrue(callable(CLASSE._pve_change_state))
+
+    def test_a_clean_shutdown_comes_before_pulling_the_plug(self):
+        # « shutdown » laisse Odoo fermer ses connexions PostgreSQL ; « stop »
+        # coupe le courant. L'ordre des choix est la seule chose qui le dit.
+        self.assertLess(
+            self.src.index("shutdown (clean)"),
+            self.src.index("stop (pulls the plug)"),
+        )
+
+    def test_the_menu_reads_its_extra_commands_from_todo_json(self):
+        self.assertIn('get_config("proxmox_from_makefile")', self.src)
+        # Et le dispatch sait les lancer, sections non comptées.
+        self.assertIn("execute_from_configuration", self.src)
+
+
 class TestLArbreDesMenus(unittest.TestCase):
     """L'écran de télémétrie lit le CODE, pas la classe assemblée.
 

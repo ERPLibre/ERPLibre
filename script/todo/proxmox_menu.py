@@ -406,6 +406,69 @@ class ProxmoxMenuMixin:
             )
         actives = sum(1 for v in vms if v["status"] == "running")
         print(f"\n  {len(vms)} VM, {actives} {t('running')}")
+        # Le pendant du sous-menu de QEMU/KVM : la liste est le bon endroit
+        # pour agir sur ce qu'on vient de lire.
+        print(f"\n  [1] {t('Change the state of one or more VMs')}")
+        if input(t("Choice (blank = back): ")).strip() == "1":
+            self._pve_change_state(vms)
+
+    def _pve_change_state(self, vms=None):
+        """Démarre ou éteint des VM de l'hôte, avec double validation.
+
+        « shutdown » et non « stop » : on demande à l'invité de s'arrêter, ce
+        qui laisse Odoo fermer ses connexions PostgreSQL. « stop » coupe le
+        courant — il est offert en second, nommé pour ce qu'il est.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        vms = vms if vms is not None else self._pve_vms()
+        if not vms:
+            print(f"\n{t('No VM on this Proxmox host.')}")
+            return
+        print(f"\n{t('Available VMs:')}")
+        for i, vm in enumerate(vms, 1):
+            print(
+                f"  [{i}] {vm['vmid']:<7} {vm['name'][:34]:<34} {vm['status']}"
+            )
+        print(f"  [all] {t('select all')}")
+        brut = input(t("Selection (numbers, or 'all'): ")).strip().lower()
+        if not brut:
+            print(t("Nothing selected."))
+            return
+        noms = [vm["name"] for vm in vms]
+        if brut in ("all", "*"):
+            choisies = list(vms)
+        else:
+            retenus = set(self._parse_index_selection(brut, noms))
+            choisies = [vm for vm in vms if vm["name"] in retenus]
+        if not choisies:
+            print(t("Nothing selected."))
+            return
+        print(
+            f"\n  [1] {t('start')}   [2] {t('shutdown (clean)')}"
+            f"   [3] {t('stop (pulls the plug)')}"
+        )
+        geste = input(t("Choice: ")).strip()
+        verbe = {"1": "start", "2": "shutdown", "3": "stop"}.get(geste)
+        if not verbe:
+            print(t("Cancelled."))
+            return
+        print(
+            f"\n  {verbe} : "
+            + ", ".join(f"{vm['name']} ({vm['vmid']})" for vm in choisies)
+        )
+        if not self._is_yes(input(t("Confirm? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        for vm in choisies:
+            code, _o = self._pve_show(f"qm {verbe} {vm['vmid']}", timeout=300)
+            marque = "✓" if code == 0 else "✗"
+            print(f"  {marque} {vm['name']}")
+        # L'état APRÈS : c'est la seule preuve que le geste a porté.
+        _c, out = self._pve_show("qm list", quiet=True)
+        for vm in pve.parse_qm_list(out):
+            if any(vm["vmid"] == c["vmid"] for c in choisies):
+                print(f"    {vm['name']:<34} {vm['status']}")
 
     def _pve_vm_ip(self):
         """Adresse d'une VM, par l'agent invité.
@@ -1073,8 +1136,27 @@ class ProxmoxMenuMixin:
             # Rien à installer ? La commande distante regarde alors la VM
             # ARRIVER (cloud-init, puis relevé système) : c'est ce que le
             # tableau de bord montre.
+            #
+            # La carte des hôtes suit : sans elle, les colonnes vivantes
+            # (état, durée, écrit/s, RAM, disque) restaient VIDES pour une VM
+            # posée sur un Proxmox distant — elles viennent de virsh, qui ne
+            # connaît pas cet hôte.
+            cartes_pve = {
+                vm["name"]: {
+                    "target": host["target"],
+                    "sudo": host.get("sudo") or "",
+                    "jump": host.get("jump") or "",
+                    "vmid": vm.get("vmid"),
+                }
+                for vm in joignables
+                if vm.get("vmid")
+            }
             self._qemu_install_erplibre_monitored(
-                noms, branche, {n: n for n in noms}, finale
+                noms,
+                branche,
+                {n: n for n in noms},
+                finale,
+                pve=cartes_pve,
             )
             return
         # Sans suivi mais avec quelque chose à installer : en série, sortie à
@@ -1384,6 +1466,11 @@ class ProxmoxMenuMixin:
             {"section": t("Host")},
             {"prompt_description": t("Change the Proxmox host")},
         ]
+        # Même extension que le menu QEMU/KVM : ce que todo.json ajoute
+        # s'affiche à la suite et se lance par son numéro.
+        supplement = self.config_file.get_config("proxmox_from_makefile")
+        if supplement:
+            choices.extend(supplement)
         help_info = self.fill_help_info(choices)
         while True:
             hote = self._pve_host(ask=False)
@@ -1432,7 +1519,18 @@ class ProxmoxMenuMixin:
                 self._pve_forget_host()
                 self._pve_pick_host()
             else:
-                print(t("Command not found !"))
+                introuvable = True
+                try:
+                    numero = int(status)
+                    # Les sections ne comptent pas dans la numérotation.
+                    reelles = [c for c in choices if not c.get("section")]
+                    if 0 < numero <= len(reelles):
+                        introuvable = False
+                        self.execute_from_configuration(reelles[numero - 1])
+                except ValueError:
+                    pass
+                if introuvable:
+                    print(t("Command not found !"))
 
     def _pve_fetch_image(self):
         """Télécharge une image cloud SUR l'hôte Proxmox.
