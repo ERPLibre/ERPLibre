@@ -467,6 +467,58 @@ class TestCreerUnPont(unittest.TestCase):
         self.assertIn("vmbr9", vu["choix_avant"])
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLInterpretePython(unittest.TestCase):
+    """L'écran Proxmox n'offrait pas le choix, donc envoyait toujours
+    « automatique » — et comme mise n'est jamais installé d'office, c'était
+    pyenv, qui COMPILE Python. Rapporté sur une VM Arch : « il utilise le
+    tar.xz pour le compiler »."""
+
+    def _ecran(self, gestes=None, mise_arches=("amd64", "arm64")):
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+
+        ctx = contexte()
+        ctx["mise_arches"] = mise_arches
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import SelectionList
+
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                liste.select(liste.get_option_at_index(0).value)
+                await pilote.pause()
+                await pilote.pause()
+                if gestes:
+                    await gestes(app, pilote)
+                vu["choix"] = app._python_provider()
+                app.action_deploy()
+                vu["spec"] = app.result or {}
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_mise_is_offered_by_default(self):
+        # Un CPython précompilé plutôt qu'une compilation de trois minutes.
+        self.assertEqual(self._ecran()["choix"], "mise")
+
+    def test_the_choice_reaches_the_spec(self):
+        async def gestes(app, pilote):
+            list(app.query("#f_python RadioButton"))[1].value = True
+            await pilote.pause()
+
+        vu = self._ecran(gestes)
+        self.assertEqual(vu["choix"], "pyenv")
+        self.assertEqual(vu["spec"].get("python_provider"), "pyenv")
+
+    def test_an_arch_mise_does_not_serve_yields_nothing(self):
+        # « mise indisponible » ne veut pas dire « l'utilisateur exige
+        # pyenv » : un choix explicite écarterait le Python de la distro.
+        self.assertEqual(self._ecran(mise_arches=("s390x",))["choix"], "")
+
+
 class TestLeSuivi(unittest.TestCase):
     """La case « Suivre l'installation » doit commander quelque chose.
 

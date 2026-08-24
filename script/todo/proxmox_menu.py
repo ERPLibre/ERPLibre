@@ -828,6 +828,12 @@ class ProxmoxMenuMixin:
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
             "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
+            # Les architectures pour lesquelles mise publie un CPython
+            # précompilé : sans ce choix, l'écran Proxmox envoyait toujours
+            # « automatique », donc pyenv, qui COMPILE Python (1 à 3 min sur
+            # une machine récente, bien plus sous émulation) — rapporté sur
+            # une VM Arch.
+            "mise_arches": self.QEMU_MISE_ARCHES,
             # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
             # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
             # Odoo 18, comme l'écran d'à côté avant correction.
@@ -1254,6 +1260,7 @@ class ProxmoxMenuMixin:
                 branche,
                 {n: alias.get(n, n) for n in noms},
                 finale,
+                python_provider=spec.get("python_provider") or "",
                 pve=cartes_pve,
             )
             return resultat

@@ -1325,7 +1325,7 @@ PVE_STATS_INTERVAL = 5.0
 # Proxmox dit « running » / « stopped » ; le suivi raisonne en états libvirt.
 # Une VM absente de la réponse de l'hôte a vraiment disparu.
 PVE_ETATS = {"running": "running", "stopped": "shut off", "paused": "paused"}
-_PVE_CACHE = {"at": 0.0, "stats": {}}
+_PVE_CACHE = {"at": 0.0, "stats": {}, "ok": False}
 
 
 def pve_stats_cmd(adresses=()) -> str:
@@ -1404,12 +1404,35 @@ def parse_pvestats(text: str) -> dict:
     return out
 
 
+# Combien de relevés SUCCESSIFS sans la VM avant de la déclarer effacée. Un
+# seul silence ne prouve rien : l'hôte peut être occupé, la VM en train de
+# démarrer, le relevé en cache d'avant sa création. Or « effacée » est un état
+# TERMINAL — la ligne gèle sur 🗑 et ne revient jamais. Vécu sur une VM Arch
+# déployée sur Proxmox : poubelle dès le premier tour.
+PVE_ABSENCES_AVANT_EFFACEE = 3
+
+
+def read_pvestats_detail(vms, now=None):
+    """(relevés, l'hôte a-t-il répondu ?).
+
+    La nuance décide de tout : sans réponse, on ne sait RIEN — et ne rien
+    savoir n'est pas la même chose que savoir que la VM a disparu.
+    """
+    stats, ok = _read_pvestats(vms, now)
+    return stats, ok
+
+
 def read_pvestats(vms, now=None) -> dict:
-    """{nom: relevé} des VM posées sur un hôte Proxmox, ou {}.
+    """{nom: relevé} des VM posées sur un hôte Proxmox, ou {}."""
+    return _read_pvestats(vms, now)[0]
+
+
+def _read_pvestats(vms, now=None):
+    """({nom: relevé}, succès). Un appel par hôte, mis en cache
+    PVE_STATS_INTERVAL secondes.
 
     Les VM concernées sont celles dont le manifeste porte un bloc « pve »
-    (adresse de l'hôte, sudo, vmid). Un appel par hôte, mis en cache
-    PVE_STATS_INTERVAL secondes.
+    (adresse de l'hôte, sudo, vmid).
     """
     hotes = {}
     for vm in vms or ():
@@ -1417,21 +1440,28 @@ def read_pvestats(vms, now=None) -> dict:
         if info.get("target"):
             hotes[(info["target"], info.get("sudo") or "")] = info
     if not hotes:
-        return {}
+        return {}, False
     maintenant = now if now is not None else time.time()
-    if maintenant - _PVE_CACHE["at"] < PVE_STATS_INTERVAL:
-        return dict(_PVE_CACHE["stats"])
+    # « at > 0 » explicitement : sans lui, un tout PREMIER relevé pris moins de
+    # cinq secondes après l'époque tombait dans un cache vide et rendait
+    # « l'hôte n'a pas répondu » sans avoir rien demandé. Invisible en
+    # production, mais c'est la logique qui est fausse.
+    if (
+        _PVE_CACHE["at"] > 0
+        and maintenant - _PVE_CACHE["at"] < PVE_STATS_INTERVAL
+    ):
+        return dict(_PVE_CACHE["stats"]), bool(_PVE_CACHE.get("ok"))
     try:
         from script.proxmox import proxmox_deploy as pve
     except ImportError:  # pragma: no cover - le module est dans le dépôt
-        return {}
+        return {}, False
     # {nom: adresse interne} — ce qui permet de tester Odoo depuis l'hôte.
     adresses = {
         vm["name"]: (vm.get("pve") or {}).get("addr")
         for vm in vms or ()
         if (vm.get("pve") or {}).get("addr")
     }
-    stats = {}
+    stats, ok = {}, False
     for (target, sudo), info in hotes.items():
         siennes = [
             a
@@ -1450,13 +1480,14 @@ def read_pvestats(vms, now=None) -> dict:
             40,
         )
         if code == 0:
+            ok = True
             releves = parse_pvestats(sortie)
             ouverts = parse_odoo_probe(sortie)
             for nom, rec in releves.items():
                 rec["odoo"] = adresses.get(nom) in ouverts
             stats.update(releves)
-    _PVE_CACHE.update({"at": maintenant, "stats": stats})
-    return dict(stats)
+    _PVE_CACHE.update({"at": maintenant, "stats": stats, "ok": ok})
+    return dict(stats), ok
 
 
 def web_tunnel_argv(info, port=18069, cible_port=8069):
@@ -1970,6 +2001,9 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # VM dont l'UI Odoo (:8069) répond déjà : une fois détectée « up »,
             # on ne re-teste plus (Odoo ne redescend pas en cours d'install).
             self._odoo_up = set()
+            # Relevés SUCCESSIFS sans la VM, par nom : « effacée » est un état
+            # terminal, il se mérite.
+            self._pve_absences = {}
             # Debounce du changement de VM : la sélection défile vite au
             # clavier ; on ne recharge le log qu'une fois le curseur STABILISÉ.
             self._pending_sel = None
@@ -2033,7 +2067,11 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     vm["name"],
                     vm.get("arch") or "?",
                     "",
-                    "⏳",
+                    # « rien encore », comme ses voisines : « ⏳ » affirmerait
+                    # qu'on attend quelque chose, alors qu'on ne sait rien du
+                    # tout — le journal n'a pas encore parlé. Le sablier
+                    # apparaît dès que l'attente est constatée.
+                    "-",
                     "—",
                     "--:--",
                     "-",
@@ -2443,14 +2481,32 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # Une VM posée sur un hôte Proxmox est ABSENTE de « virsh list » :
             # elle passait donc pour EFFACÉE, ce qui éteignait du même coup
             # ses colonnes vivantes. Son état vient de l'hôte.
-            distants = await asyncio.to_thread(read_pvestats, vms)
+            distants, hote_ok = await asyncio.to_thread(
+                read_pvestats_detail, vms
+            )
             for vm in vms:
                 nom = vm["name"]
                 if vm.get("pve"):
+                    if not hote_ok:
+                        # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
+                        # « effacée » ici gelait la ligne sur 🗑 dès le premier
+                        # tour, pour toujours — vécu sur une VM Arch à peine
+                        # déployée.
+                        continue
                     releve = distants.get(nom)
-                    self._domstate[nom] = PVE_ETATS.get(
-                        (releve or {}).get("state"), "gone"
+                    if releve:
+                        self._pve_absences[nom] = 0
+                        self._domstate[nom] = PVE_ETATS.get(
+                            releve.get("state"), "gone"
+                        )
+                        continue
+                    # L'hôte a répondu SANS elle : peut-être en cours de
+                    # création, peut-être vraiment partie. On compte.
+                    self._pve_absences[nom] = (
+                        self._pve_absences.get(nom, 0) + 1
                     )
+                    if self._pve_absences[nom] >= PVE_ABSENCES_AVANT_EFFACEE:
+                        self._domstate[nom] = "gone"
                     continue
                 self._domstate[nom] = states.get(nom, "gone")
             # Réarmer la période du ballon sur les VM qui tournent : sans elle

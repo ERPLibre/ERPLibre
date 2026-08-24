@@ -99,6 +99,7 @@ def build_spec(vms, existants, form):
         "start": form["start"],
         "add_ssh_config": form["add_ssh_config"],
         "install": form["install"],
+        "python_provider": form.get("python_provider") or "",
         "monitor": form["monitor"],
         "parallelism": form["parallelism"],
     }
@@ -322,6 +323,22 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id="f_branch",
                     )
+                    # Le même choix qu'en QEMU/KVM : mise pose un CPython
+                    # PRÉCOMPILÉ, pyenv le COMPILE. Sans cette section,
+                    # l'écran envoyait toujours « automatique » — et comme
+                    # mise n'est jamais installé d'office, c'était pyenv, donc
+                    # une compilation de Python. Rapporté sur une VM Arch.
+                    yield Static(
+                        t("Python interpreter:"),
+                        id="t_python",
+                        classes="grouptitle",
+                    )
+                    with RadioSet(id="f_python"):
+                        yield RadioButton(
+                            t("mise (precompiled, faster)"), value=True
+                        )
+                        yield RadioButton(t("pyenv (compiles from source)"))
+                    yield Static("", id="miswarn")
                     # Hors de la section « Installation » : le suivi regarde la
                     # VM ARRIVER, même quand rien ne s'installe. Rangé dedans,
                     # il se serait grisé avec elle.
@@ -472,6 +489,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 ),
             )
             self._render_plan()
+            self._render_mise()
 
         def _vmid_start(self):
             brut = self.query_one("#f_vmid", Input).value.strip()
@@ -637,6 +655,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             Le suivi n'en fait pas partie — il regarde la VM arriver même
             quand rien ne s'installe."""
             installe = self.query_one("#f_install", Checkbox).value
+            self._render_mise()
             for cible in ("#f_profile_install", "#f_branch"):
                 try:
                     self.query_one(cible).disabled = not installe
@@ -748,6 +767,53 @@ def run_proxmox_form(ctx, run_app: bool = True):
         # ---------------------------------------------------------------- #
         # Les actions
         # ---------------------------------------------------------------- #
+        def _mise_usable(self):
+            """Au moins une VM retenue tourne sur une architecture servie par
+            mise. Sinon le choix ne veut rien dire."""
+            servies = ctx.get("mise_arches") or ()
+            return any(vm["arch"] in servies for vm in self.vms)
+
+        def _python_provider(self):
+            """« mise », « pyenv », ou rien — c'est-à-dire « automatique ».
+
+            Rien, et surtout pas « pyenv », quand mise n'est servi par aucune
+            architecture retenue : « mise indisponible » ne veut pas dire
+            « l'utilisateur exige pyenv », et un choix EXPLICITE écarte le
+            Python de la distribution."""
+            if not self._mise_usable():
+                return ""
+            try:
+                index = self.query_one("#f_python", RadioSet).pressed_index
+            except Exception:
+                return ""
+            return "pyenv" if index == 1 else "mise"
+
+        def _render_mise(self):
+            """Grise le choix quand aucune VM retenue n'est servie par mise, ou
+            quand rien ne s'installe, et NOMME les architectures qui
+            retomberont sur pyenv."""
+            servies = ctx.get("mise_arches") or ()
+            try:
+                installe = self.query_one("#f_install", Checkbox).value
+                self.query_one("#f_python", RadioSet).disabled = not (
+                    self._mise_usable() and installe
+                )
+                ecartees = sorted(
+                    {
+                        vm["arch"]
+                        for vm in self.vms
+                        if vm["arch"] not in servies
+                    }
+                )
+                self.query_one("#miswarn", Static).update(
+                    f"  ⚠ {t('mise has no binary for:')} "
+                    f"{', '.join(ecartees)} — {t('those VMs use pyenv')}"
+                    if ecartees
+                    else ""
+                )
+            except Exception:
+                pass
+
         def _install(self):
             if not self.query_one("#f_install", Checkbox).value:
                 return None
@@ -777,6 +843,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 "install": self._install(),
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT : une VM sans
                 # ERPLibre se suit aussi (cloud-init, puis relevé système).
+                "python_provider": self._python_provider(),
                 "monitor": self.query_one("#f_monitor", Checkbox).value,
                 "parallelism": self.query_one("#f_par", Select).value,
             }

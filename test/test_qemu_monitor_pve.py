@@ -131,6 +131,67 @@ class TestLAppel(unittest.TestCase):
             self.assertEqual(mon.read_pvestats(self._vms(1), now=1.0), {})
 
 
+class TestPasDePoubelleTropTot(unittest.TestCase):
+    """« Effacée » est un état TERMINAL : la ligne gèle sur 🗑 pour de bon.
+
+    Rapporté sur une VM Arch déployée sur Proxmox : poubelle dès le premier
+    tour, alors que la VM venait de naître. Un relevé manquant ne prouve
+    rien — l'hôte peut être occupé, la VM en train de démarrer, le relevé en
+    cache d'avant sa création.
+    """
+
+    def setUp(self):
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+
+    def _vm(self):
+        return {
+            "name": "vm-a",
+            "pve": {
+                "target": "hote",
+                "sudo": "sudo ",
+                "vmid": 105,
+                "addr": "10.10.10.155",
+            },
+        }
+
+    def test_a_silent_host_is_not_a_deletion(self):
+        # (relevés, succès) : la nuance est tout le correctif.
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(255, "timeout")
+        ):
+            stats, ok = mon.read_pvestats_detail([self._vm()], now=1.0)
+        self.assertEqual(stats, {})
+        self.assertFalse(ok)
+
+    def test_a_host_that_answers_says_so(self):
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(0, "[]")
+        ):
+            stats, ok = mon.read_pvestats_detail([self._vm()], now=1.0)
+        self.assertEqual(stats, {})
+        self.assertTrue(ok, "l'hôte a répondu : la VM est vraiment absente")
+
+    def test_the_cache_keeps_the_verdict_too(self):
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(0, "[]")
+        ) as appel:
+            mon.read_pvestats_detail([self._vm()], now=100.0)
+            _stats, ok = mon.read_pvestats_detail([self._vm()], now=100.5)
+        self.assertEqual(appel.call_count, 1)
+        self.assertTrue(ok, "le cache rendait « échec » à chaque tour suivant")
+
+    def test_it_takes_several_absences_to_conclude(self):
+        # Trois, pas une : le nombre est explicite, pas enfoui.
+        self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
+
+    def test_the_short_reader_still_returns_only_stats(self):
+        # `read_pvestats` reste la forme courte pour la boucle des colonnes.
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(0, "[]")
+        ):
+            self.assertEqual(mon.read_pvestats([self._vm()], now=7.0), {})
+
+
 class TestLaBonneMachine(unittest.TestCase):
     """Le pire défaut de la série : l'installation partie AILLEURS.
 
