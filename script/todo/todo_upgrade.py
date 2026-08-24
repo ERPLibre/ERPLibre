@@ -2705,6 +2705,10 @@ class TodoUpgrade:
                     f"before_{next_version}",
                     f"after_{next_version}",
                 )
+                # ICI et pas avant : la réparation prend l'ancrage manquant
+                # dans la vue MODULE, qui ne porte l'arch de la cible
+                # qu'une fois la migration passée.
+                self.repair_cow_render(database_name_upgrade)
 
                 lst_upgrade_odoo[index] = cmd_upgrade
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
@@ -3654,6 +3658,30 @@ class TodoUpgrade:
             "ℹ -> List them later with:"
             f" {PYTHON_BIN} ./script/odoo/migration/neutralize_cow_views.py"
             f" -d {database_name} --list"
+        )
+
+    def repair_cow_render(self, database_name):
+        """Les copies de site qui passent le palier et rendent 500 après.
+
+        Deux ruptures qu'aucune autre étape ne voit : un ancrage que la
+        vue héritière de la CIBLE réclame et que la copie n'a jamais eu,
+        et un `t-call` vers un gabarit que la cible ne livre plus. Mesuré
+        sur une chaîne 12 → 18 : /contact rendait 500 depuis le palier
+        14 → 15, et rien ne l'a dit avant le test de fumée final.
+
+        On ne neutralise pas : la copie porte une page écrite par
+        quelqu'un. On répare, et le contenu reste.
+
+        `wait_at_error=False` : le code 1 de cet outil veut dire « j'ai
+        trouvé », pas « je suis tombé ». Sans cela le pilote ouvrirait son
+        menu d'erreur sur une réparation qui s'est bien passée.
+        """
+        outil = os.path.join(PATH_MIGRATION_GLOBAL, "fix_cow_render.py")
+        if not os.path.isfile(outil):
+            return
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{outil} -d {database_name} --apply",
+            wait_at_error=False,
         )
 
     def diff_cow_views(self, database_name, label_before, label_after):

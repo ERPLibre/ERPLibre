@@ -218,11 +218,30 @@ class TestTheExitCodesTheDriverRelieson(unittest.TestCase):
     def test_check_cow_views_reports_findings_with_1(self):
         # Le chemin qui compte demande une base ; on vérifie la décision
         # elle-même, à la source.
+        #
+        # On lit le RETURN, pas une ligne recopiée : l'outil a gagné une
+        # seconde famille de trouvailles (les copies qui rendront 500),
+        # et figer le texte faisait échouer le test sur un ajout juste.
+        # Ce qui doit rester vrai, c'est que CHAQUE famille pèse sur le
+        # code de sortie.
+        import ast
+
         path = os.path.join(
             REPO, "script", "odoo", "migration", "check_cow_views.py"
         )
         with open(path) as handle:
-            self.assertIn("return 1 if lst_at_risk else 0", handle.read())
+            arbre = ast.parse(handle.read())
+        retours = [
+            ast.dump(noeud)
+            for fonction in ast.walk(arbre)
+            if isinstance(fonction, ast.FunctionDef)
+            and fonction.name == "main"
+            for noeud in ast.walk(fonction)
+            if isinstance(noeud, ast.Return)
+        ]
+        decision = [r for r in retours if "lst_at_risk" in r]
+        self.assertEqual(1, len(decision), retours)
+        self.assertIn("lst_no_render", decision[0])
 
 
 class TestAllToolsKeepWorkingStandalone(unittest.TestCase):

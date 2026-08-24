@@ -6710,6 +6710,22 @@ TRANSLATIONS = {
         "fr": "Chaque copie de site sait encore se rendre.",
         "en": "Every website copy still renders.",
     },
+    "website COW view(s) will survive the bump and then fail": {
+        "fr": "vue(s) COW de site passeront le palier puis échoueront",
+        "en": "website COW view(s) will survive the bump and then fail",
+    },
+    "to render:": {
+        "fr": "à se rendre :",
+        "en": "to render:",
+    },
+    "Repair rather than neutralize — the copy holds a page": {
+        "fr": "Réparer plutôt que neutraliser — la copie porte une page",
+        "en": "Repair rather than neutralize — the copy holds a page",
+    },
+    "someone wrote:": {
+        "fr": "écrite par quelqu'un :",
+        "en": "someone wrote:",
+    },
     "Every website copy renders again.": {
         "fr": "Chaque copie de site sait de nouveau se rendre.",
         "en": "Every website copy renders again.",

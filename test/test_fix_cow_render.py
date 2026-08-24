@@ -351,5 +351,89 @@ class TestTheReport(unittest.TestCase):
         self.assertIn("⚠", texte)
 
 
+class TestItRunsInsideTheMigration(unittest.TestCase):
+    """La réparation doit tourner APRÈS OpenUpgrade, pas avant.
+
+    Elle prend l'ancrage manquant dans la vue MODULE, qui ne porte l'arch
+    de la version cible qu'une fois la migration passée. Lancée avant,
+    elle recopierait l'ancien ancrage — ou rien.
+    """
+
+    def pilote(self):
+        chemin = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "script",
+            "todo",
+            "todo_upgrade.py",
+        )
+        with open(chemin, encoding="utf-8") as handle:
+            return handle.read()
+
+    def corps_de_la_reparation(self):
+        """Le CODE de la méthode, docstring retirée.
+
+        La docstring nomme `wait_at_error=False` pour l'expliquer : un
+        test qui lit tout le texte le trouve même quand l'argument a
+        disparu, et croit garder ce qu'il a laissé partir. Mesuré.
+        """
+        import ast
+
+        for noeud in ast.walk(ast.parse(self.pilote())):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "repair_cow_render"
+            ):
+                sans_texte = [
+                    n
+                    for n in noeud.body
+                    if not (
+                        isinstance(n, ast.Expr)
+                        and isinstance(n.value, ast.Constant)
+                        and isinstance(n.value.value, str)
+                    )
+                ]
+                return ast.dump(ast.Module(body=sans_texte, type_ignores=[]))
+        return ""
+
+    def test_the_scan_finds_the_method_at_all(self):
+        # Sans cette borne, les tests suivants passeraient sur une chaîne
+        # vide le jour où la méthode est renommée.
+        self.assertTrue(self.corps_de_la_reparation())
+
+    def test_the_driver_calls_the_repair(self):
+        self.assertIn("repair_cow_render", self.pilote())
+
+    def test_it_applies_rather_than_only_reporting(self):
+        corps = self.corps_de_la_reparation()
+        self.assertIn("fix_cow_render.py", corps)
+        self.assertIn("--apply", corps)
+
+    def test_a_finding_does_not_open_the_error_menu(self):
+        # Le code 1 de cet outil veut dire « j'ai trouvé », pas « je suis
+        # tombé ». Sans ce drapeau le pilote s'arrête sur une réparation
+        # réussie.
+        corps = self.corps_de_la_reparation()
+        self.assertIn("wait_at_error", corps)
+        self.assertIn("value=False", corps)
+
+    def test_it_is_called_after_the_data_migration(self):
+        source = self.pilote()
+        migration = source.index("cmd_upgrade,\n                    new_env=")
+        appel = source.index("self.repair_cow_render(")
+        self.assertLess(
+            migration,
+            appel,
+            "la réparation doit suivre OpenUpgrade : avant, la vue module"
+            " porte encore l'arch de l'ancienne version",
+        )
+
+    def test_a_missing_tool_is_not_a_crash(self):
+        # Un vieux checkout n'a pas le fichier ; la migration ne doit pas
+        # s'arrêter pour autant.
+        corps = self.corps_de_la_reparation()
+        self.assertIn("isfile", corps)
+
+
 if __name__ == "__main__":
     unittest.main()
