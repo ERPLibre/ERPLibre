@@ -131,6 +131,53 @@ class TestLAppel(unittest.TestCase):
             self.assertEqual(mon.read_pvestats(self._vms(1), now=1.0), {})
 
 
+class TestLaBonneMachine(unittest.TestCase):
+    """Le pire défaut de la série : l'installation partie AILLEURS.
+
+    Vécu le 24 août 2026. Une VM déployée sur Proxmox sous le nom
+    « erplibre-ubuntu-2604 » — nom déjà porté par un domaine LOCAL. Le
+    lanceur détaché ré-résout l'adresse de la VM à chaque tour par virsh, qui
+    a répondu avec le domaine local : ERPLibre + Odoo se sont installés sur la
+    MAUVAISE machine, et le journal l'affichait sans que rien n'alerte
+    (« → 192.168.123.118 »).
+
+    Pour une VM distante, l'alias ~/.ssh/config est la seule vérité : il
+    porte le rebond par l'hôte Proxmox.
+    """
+
+    def _wrapper(self, **kw):
+        """Le script du lanceur, capturé sans rien exécuter."""
+        vus = {}
+        vrai = mon.subprocess.Popen
+
+        class FauxPopen:
+            def __init__(self, argv, *a, **k):
+                vus["argv"] = argv
+
+        mon.subprocess.Popen = FauxPopen
+        try:
+            mon._launch_one("cible", "echo bonjour", "/dev/null", "vm-a", **kw)
+        finally:
+            mon.subprocess.Popen = vrai
+        return vus["argv"][-1]
+
+    def test_a_local_vm_still_gets_its_address_refreshed(self):
+        # Le bail change en cours de route (cloud-init renomme l'hôte) : la
+        # ré-résolution est indispensable pour une VM LOCALE.
+        script = self._wrapper(pve=False)
+        self.assertIn("virsh", script)
+
+    def test_a_proxmox_vm_is_never_re_resolved(self):
+        # C'est le correctif : aucun appel à virsh, donc aucun risque de
+        # tomber sur un domaine local homonyme.
+        script = self._wrapper(pve=True)
+        self.assertNotIn("virsh", script)
+
+    def test_the_target_stays_the_alias(self):
+        script = self._wrapper(pve=True)
+        self.assertIn("ip=cible", script)
+
+
 class TestLEtat(unittest.TestCase):
     """Une VM absente de « virsh list » passait pour EFFACÉE."""
 

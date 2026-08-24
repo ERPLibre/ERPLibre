@@ -3986,6 +3986,14 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "A local VM already bears this name:": {
+        "fr": "Une VM locale porte déjà ce nom :",
+        "en": "A local VM already bears this name:",
+    },
+    "the alias goes to": {
+        "fr": "l'alias devient",
+        "en": "the alias goes to",
+    },
     "s ssh · c copy log · C copy all · q quit": {
         "fr": "s ssh · c copier le log · C copier tout · q quitter",
         "en": "s ssh · c copy log · C copy all · q quit",

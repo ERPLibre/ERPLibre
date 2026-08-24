@@ -575,14 +575,63 @@ class TestLeSuivi(unittest.TestCase):
             return ecrites
 
         cmd = {"branch": "develop", "cmd": "make x", "label": "X"}
-        # Décoché mais une installation demandée : écrite quand même.
-        self.assertEqual(essai(False, cmd, False), ["vm-a"])
+        # Deux noms : le chaîné « hôte+vm », qui dit où la machine vit, et le
+        # nom court quand aucun domaine local ne le porte déjà.
+        self.assertEqual(essai(False, cmd, False), [["pve1+vm-a", "vm-a"]])
         # Décoché, suivi demandé : le suivi entre aussi par le rebond.
-        self.assertEqual(essai(False, None, True), ["vm-a"])
+        self.assertEqual(essai(False, None, True), [["pve1+vm-a", "vm-a"]])
         # Décoché et rien à faire dans la VM : le choix est respecté.
         self.assertEqual(essai(False, None, False), [])
         # Coché : écrite, évidemment.
-        self.assertEqual(essai(True, None, False), ["vm-a"])
+        self.assertEqual(essai(True, None, False), [["pve1+vm-a", "vm-a"]])
+
+    def test_a_local_vm_of_the_same_name_keeps_its_alias(self):
+        """Le piège qui a fait installer ERPLibre sur la MAUVAISE machine.
+
+        Une VM déployée sur Proxmox sous un nom déjà porté par un domaine
+        LOCAL volait son alias ~/.ssh/config, et le suivi — qui ré-résolvait
+        l'adresse par virsh — partait installer sur la locale."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        ecrites = []
+        todo._qemu_list_domains = lambda: ["vm-a"]
+        todo._write_ssh_config_entry = lambda noms, *a, **k: ecrites.append(
+            noms
+        )
+        todo._ssh_private_key = lambda k: None
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        vus = {}
+        todo._qemu_install_erplibre_monitored = (
+            lambda noms, br, ipmap, cmd, **k: vus.update(ipmap=ipmap)
+        )
+        spec = {
+            "host": {"target": "erplibre@pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "add_ssh_config": True,
+            "user": "erplibre",
+            "install": None,
+            "monitor": True,
+        }
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        # SEUL le nom chaîné est écrit : l'alias court reste à la VM locale.
+        self.assertEqual(ecrites, [["pve1+vm-a"]])
+        # Et le suivi passe par ce nom-là, jamais par « vm-a ».
+        self.assertEqual(vus["ipmap"], {"vm-a": "pve1+vm-a"})
+        self.assertIn("pve1+vm-a", sortie.getvalue())
 
     def test_ticked_with_an_install_opens_it(self):
         vus = self._apres_creation(

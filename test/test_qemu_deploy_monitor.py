@@ -212,8 +212,13 @@ class TestLeJournal(unittest.TestCase):
 
         vus = []
         vrai_launch, vrai_dir = mon._launch_one, mon.session_dir
+        # « **kw » et non une liste figée : chaque paramètre ajouté au
+        # lanceur (comme « pve ») casserait sinon ce test, qui ne vérifie
+        # pourtant que le prologue du journal.
         mon._launch_one = (
-            lambda ip, cmd, log, name="", installs=True: vus.append(installs)
+            lambda ip, cmd, log, name="", installs=True, **kw: vus.append(
+                installs
+            )
         )
         # session_dir détournée : sans cela le test écrivait de VRAIES sessions
         # dans ~/.erplibre/qemu-install, qui polluaient l'historique que

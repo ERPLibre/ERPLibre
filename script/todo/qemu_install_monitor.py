@@ -85,9 +85,18 @@ def _launch_one(
     log_path: str,
     name: str = "",
     installs: bool = True,
+    pve: bool = False,
 ) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
-    la sortie puis écrit le marqueur de fin avec le code de sortie."""
+    la sortie puis écrit le marqueur de fin avec le code de sortie.
+
+    `pve` : la VM vit sur un hôte Proxmox. On ne RÉ-RÉSOUT alors PAS son
+    adresse par virsh — et c'est vital. Vécu le 24 août 2026 : une VM
+    « erplibre-ubuntu-2604 » déployée sur Proxmox portait le nom d'un domaine
+    LOCAL existant ; la ré-résolution a trouvé le domaine local et
+    l'installation d'ERPLibre + Odoo est partie sur la mauvaise machine, sans
+    que rien ne le dise. Pour une VM distante, l'alias ~/.ssh/config est la
+    seule vérité : il porte le rebond par l'hôte."""
     # Sonde de disponibilité : on attend que sshd réponde ET que cloud-init
     # soit TERMINÉ, via des connexions COURTES successives (jusqu'à ~20 min :
     # une architecture ÉMULÉE, s390x/arm64 sur hôte x86, boote lentement).
@@ -188,12 +197,12 @@ def _launch_one(
             f'echo "   {msg_moved} $ip -> $n" >> {log_q}; fi; '
             '[ -n "$n" ] && ip="$n"; '
         )
-        if name
+        if name and not pve
         else ""
     )
     wrapper = (
         f"ip={shlex.quote(ip)}; "
-        f"{vsh if name else ''}"
+        f"{vsh if name and not pve else ''}"
         f"echo {shlex.quote('== ' + msg_wait + ' ==')} >> {log_q}; "
         f"echo {shlex.quote('   ' + msg_slow)} >> {log_q}; "
         f"seen=0; "
@@ -290,6 +299,7 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
             log_path,
             vm["name"],
             installs=bool(branch),
+            pve=bool(vm.get("pve")),
         )
         entree = {
             "name": vm["name"],
