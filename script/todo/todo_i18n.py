@@ -3358,6 +3358,10 @@ TRANSLATIONS = {
         "fr": "Taille (+10G pour ajouter, 40G pour une cible) : ",
         "en": "Size (+10G to add, 40G for a target): ",
     },
+    "The cluster probe did not answer: cause unknown.": {
+        "fr": "La sonde du cluster n'a pas répondu : cause inconnue.",
+        "en": "The cluster probe did not answer: cause unknown.",
+    },
     "pve-cluster is down: /etc/pve is not mounted.": {
         "fr": "pve-cluster est à terre : /etc/pve n'est pas monté.",
         "en": "pve-cluster is down: /etc/pve is not mounted.",

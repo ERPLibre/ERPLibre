@@ -145,7 +145,14 @@ freeze_cloud_hosts() {
     local dossier=/etc/cloud/cloud.cfg.d
     local fichier="${dossier}/99-erplibre-hosts.cfg"
     [ -d /etc/cloud ] || return 0
-    if [ -f "${fichier}" ]; then
+    # Sur le CONTENU et non sur l'existence : « printf … > fichier » TRONQUE
+    # avant d'écrire. Une coupure au mauvais moment laisse un fichier de zéro
+    # octet, et une garde à l'existence annonce alors « déjà gelé » pour
+    # toujours — cloud-init continue de remettre 127.0.1.1 à chaque
+    # démarrage, et le défaut redevient invisible. Une redirection est de
+    # toute façon idempotente : il n'y a rien à protéger d'autre.
+    if grep -qE "^[[:space:]]*manage_etc_hosts:[[:space:]]*false" \
+        "${fichier}" 2>/dev/null; then
         say "  cloud-init ne touche déjà plus à /etc/hosts"
         return 0
     fi
@@ -213,7 +220,18 @@ fix_hosts() {
 # arrêté, l'hôte rend une entrée SQUELETTIQUE par VM — ni nom, ni mémoire, ni
 # disque, et « status: unknown ». Le tableau de bord n'a alors aucune colonne
 # vivante, et il a même pris cette entrée pour une VM disparue.
-PVE_SERVICES="pve-cluster pvestatd pvedaemon pveproxy pve-firewall"
+# pve-firewall n'y est PAS, et c'est délibéré. Sa configuration vit dans
+# /var/lib/pve-cluster/config.db, donc elle est invisible tant que /etc/pve
+# n'est pas monté — c'est-à-dire exactement dans l'état qu'on répare. Le
+# démarrer, c'est appliquer des règles qu'on ne peut pas lire sur la seule
+# voie d'accès à la machine : ce script tourne au bout d'un ssh, et une VM
+# imbriquée n'a pas d'autre porte. Une révision adversariale l'a classé
+# « isole l'hôte » par trois lentilles indépendantes.
+#
+# Il n'est de toute façon pas nécessaire au but : le stockage et le suivi
+# demandent pve-cluster et pvestatd, l'interface web pveproxy. Le pare-feu
+# repartira au prochain démarrage, quand /etc/pve sera monté à temps.
+PVE_SERVICES="pve-cluster pvestatd pvedaemon pveproxy"
 
 revive_pve_services() {
     command -v systemctl >/dev/null 2>&1 || return 0

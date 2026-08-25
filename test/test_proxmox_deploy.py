@@ -814,6 +814,46 @@ class TestPourquoiAucunStockage(unittest.TestCase):
         self.assertTrue(lu["monte"])
         self.assertEqual(lu["routables"], ["10.10.10.152"])
 
+    def test_a_probe_that_did_not_answer_says_so(self):
+        """« La sonde n'a pas répondu » n'est PAS « rien n'est monté ».
+
+        Un dépassement de délai — hostname bloqué sur un DNS injoignable —
+        rend les mêmes vides. On affirmait alors « le nom ne résout que vers
+        ? » sans avoir rien mesuré, ce qui envoyait réécrire /etc/hosts sur
+        une machine peut-être saine."""
+        self.assertFalse(pve.parse_cluster_check("timeout")["lu"])
+        self.assertFalse(pve.parse_cluster_check("")["lu"])
+        self.assertTrue(
+            pve.parse_cluster_check(self._sortie(True, True, ["10.0.0.1"]))[
+                "lu"
+            ]
+        )
+
+    def test_a_link_local_address_is_not_routable(self):
+        """Mesuré : « hostname --ip-address » peut ne rendre QUE des fe80::.
+
+        Le seul test « ne commence pas par 127. » les prenait pour routables,
+        et une APIPA en 169.254 aussi. pmxcfs n'a alors rien d'utilisable,
+        mais le diagnostic concluait l'inverse — et renvoyait vers journalctl
+        au lieu de /etc/hosts."""
+        for adresses in (
+            ["fe80::5054:ff:fecf:bba9", "fe80::fc54:ff:fe79:78a4"],
+            ["169.254.3.4"],
+            ["127.0.1.1"],
+        ):
+            with self.subTest(adresses=adresses):
+                lu = pve.parse_cluster_check(
+                    self._sortie(False, False, adresses)
+                )
+                self.assertEqual(lu["routables"], [])
+                self.assertEqual(lu["adresses"], adresses)
+
+    def test_a_real_address_among_link_locals_still_counts(self):
+        lu = pve.parse_cluster_check(
+            self._sortie(True, True, ["10.10.10.152", "fe80::1"])
+        )
+        self.assertEqual(lu["routables"], ["10.10.10.152"])
+
     def test_the_loopback_only_case(self):
         lu = pve.parse_cluster_check(self._sortie(False, False, ["127.0.1.1"]))
         self.assertFalse(lu["monte"])
@@ -876,6 +916,36 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
         m = re.search(r'PVE_SERVICES="([^"]+)"', self.src)
         self.assertIsNotNone(m)
         self.assertEqual(m.group(1).split()[0], "pve-cluster")
+
+    def test_the_firewall_is_never_started_from_outside(self):
+        """Le seul constat que trois lentilles ont trouvé indépendamment.
+
+        La configuration de pve-firewall vit dans
+        /var/lib/pve-cluster/config.db : elle est donc INVISIBLE tant que
+        /etc/pve n'est pas monté — c'est-à-dire exactement dans l'état qu'on
+        répare. Le démarrer, c'est appliquer des règles qu'on ne peut pas lire
+        sur la seule voie d'accès à la machine ; ce script tourne au bout d'un
+        ssh, et une VM imbriquée n'a pas d'autre porte.
+
+        Il n'est pas nécessaire au but : le stockage et le suivi demandent
+        pve-cluster et pvestatd, l'interface web pveproxy."""
+        import re
+
+        m = re.search(r'PVE_SERVICES="([^"]+)"', self.src)
+        self.assertIsNotNone(m)
+        self.assertNotIn("pve-firewall", m.group(1).split())
+
+    def test_the_freeze_is_guarded_on_content(self):
+        """« printf … > fichier » TRONQUE avant d'écrire.
+
+        Une coupure au mauvais moment laisse zéro octet, et une garde à
+        l'EXISTENCE annonce « déjà gelé » pour toujours : cloud-init continue
+        de remettre 127.0.1.1 à chaque démarrage et le défaut redevient
+        invisible."""
+        bloc = self.src[self.src.index("freeze_cloud_hosts() {") :]
+        bloc = bloc[: bloc.index("\nfix_hosts()")]
+        self.assertIn("manage_etc_hosts:[[:space:]]*false", bloc)
+        self.assertNotIn('[ -f "${fichier}" ]', bloc)
 
     def test_the_mount_is_verified_not_assumed(self):
         self.assertIn("/etc/pve/.version", self.src)

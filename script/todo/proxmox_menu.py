@@ -665,6 +665,15 @@ class ProxmoxMenuMixin:
 
         _c, out = pve.run(host, pve.CLUSTER_CHECK_CMD, 40)
         etat = pve.parse_cluster_check(out)
+        # « La sonde n'a pas répondu » n'est PAS « rien n'est monté ». Un
+        # dépassement de délai — hostname bloqué sur un DNS injoignable — rend
+        # les mêmes vides, et on affirmait alors « le nom ne résout que vers
+        # ? » sans avoir rien mesuré. Affirmer une cause qu'on n'a pas
+        # constatée est pire que se taire.
+        if not etat["lu"]:
+            return [
+                f"⚠ {t('The cluster probe did not answer: cause unknown.')}"
+            ]
         if etat["monte"]:
             return []
         lignes = [

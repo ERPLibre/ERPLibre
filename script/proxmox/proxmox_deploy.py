@@ -20,6 +20,7 @@ fonction PURE, vérifiable sans hôte Proxmox. Seul `run()` parle au réseau.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import shlex
@@ -302,29 +303,48 @@ CLUSTER_CHECK_CMD = (
 )
 
 
+def _usable_address(adresse: str) -> bool:
+    """Cette adresse permet-elle à pmxcfs de s'identifier ?
+
+    Ni bouclage, ni LIEN-LOCAL. Le lien-local est le piège : mesuré,
+    « hostname --ip-address » peut ne rendre QUE des fe80::, et une adresse
+    APIPA en 169.254 passait le seul test « ne commence pas par 127. ». Dans
+    les deux cas pmxcfs n'a rien d'utilisable, mais le diagnostic concluait
+    « le nom résout vers une adresse routable » — et renvoyait vers
+    journalctl au lieu de /etc/hosts, sur un hôte qu'on ne peut inspecter que
+    par ssh."""
+    try:
+        adr = ipaddress.ip_address(adresse)
+    except ValueError:
+        return False
+    return not (adr.is_loopback or adr.is_link_local)
+
+
 def parse_cluster_check(text: str) -> dict:
-    """{"actif": bool, "monte": bool, "adresses": [...]} depuis
+    """{"actif", "monte", "adresses", "routables", "lu"} depuis
     CLUSTER_CHECK_CMD.
 
-    `adresses` sans aucune adresse routable est la cause la plus fréquente :
-    pmxcfs parcourt les adresses du nom d'hôte jusqu'à en trouver une qui ne
-    soit pas de bouclage, et l'entrée « 127.0.1.1 <nom> » de l'image cloud le
-    mène dans le mur."""
+    `routables` vide est la cause la plus fréquente : pmxcfs parcourt les
+    adresses du nom d'hôte jusqu'à en trouver une qui ne soit pas de
+    bouclage, et l'entrée « 127.0.1.1 <nom> » de l'image cloud le mène dans
+    le mur.
+
+    `lu` dit si la sonde a RÉPONDU — les deux sentinelles sont là. Sans lui,
+    un simple dépassement de délai rendait « monte: False, adresses: [] », et
+    l'appelant affirmait « le nom d'hôte ne résout que vers ? » sans avoir
+    rien mesuré. Affirmer une cause qu'on n'a pas constatée est pire que se
+    taire : cela envoie réécrire /etc/hosts sur une machine peut-être
+    saine."""
     brut = strip_ssh_noise(text or "")
-    tete, _, reste = brut.partition("---ERPLIBRE-PVE-FS---")
-    milieu, _, queue = reste.partition("---ERPLIBRE-HOSTNAME-IP---")
-    adresses = [
-        a
-        for a in queue.split()
-        if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", a) or ":" in a
-    ]
+    tete, sep1, reste = brut.partition("---ERPLIBRE-PVE-FS---")
+    milieu, sep2, queue = reste.partition("---ERPLIBRE-HOSTNAME-IP---")
+    adresses = [a for a in queue.split() if a[:1].isdigit() or ":" in a]
     return {
+        "lu": bool(sep1 and sep2),
         "actif": "active" in tete and "inactive" not in tete,
         "monte": "MONTE" in milieu,
         "adresses": adresses,
-        "routables": [
-            a for a in adresses if not a.startswith("127.") and a != "::1"
-        ],
+        "routables": [a for a in adresses if _usable_address(a)],
     }
 
 
