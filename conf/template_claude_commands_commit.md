@@ -123,6 +123,24 @@ only honest subject needs an `and` joining two unrelated things, split it.
 `--oneline` has failed at the one place it is read most. Write it to fit
 rather than trimming it afterwards: drop the adjectives, keep the nouns.
 
+When the work genuinely will not fit in a sentence, do not write an amputated
+one — write **keywords that summarise**. A comma-separated list of the nouns
+that matter says more in the space than half a sentence does:
+
+```
+[FIX] proxmox : pmxcfs à terre, pvesm muet, diagnostic à la source
+[ADD] migration : copies de site, index doublés, réglages perdus
+```
+
+That form is a fallback, not a default. Prefer the sentence when it fits.
+
+**The guard rail.** `script/git/hooks/commit-msg` refuses a subject with no
+tag, one over 72 characters, and one opening on a quotation. Install it with
+`git config core.hooksPath script/git/hooks`; `git commit --no-verify` passes
+a legitimate exception. It checks only what is mechanical — whether the
+subject says what the code is about stays a judgement, and the test above is
+how you make it.
+
 ### Keep it short
 
 The body answers one question: why was this necessary. Stop once it is

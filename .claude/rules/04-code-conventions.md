@@ -33,6 +33,20 @@ après le deux-points doivent dire QUOI.
 Le sujet résume le commit ENTIER, pas sa plus grosse pièce. S'il lui faut un
 « et » entre deux choses sans rapport, c'étaient deux commits.
 
+Si le travail n'entre décidément pas dans une phrase de 72 caractères, ne pas
+en écrire une amputée : des **mots-clés qui résument**, séparés par des
+virgules, en disent plus dans la même place — `[FIX] proxmox : pmxcfs à terre,
+pvesm muet, diagnostic à la source`. C'est un repli, pas un défaut : la phrase
+reste préférable quand elle tient.
+
+Un garde-fou refuse le mécanique — tag absent, plus de 72 caractères, sujet
+qui s'ouvre sur une citation :
+
+```bash
+git config core.hooksPath script/git/hooks   # une fois par clone
+git commit --no-verify                       # exception légitime
+```
+
 Le mode d'emploi complet, avec des exemples avant/après pris dans l'historique
 de ce dépôt, est dans `conf/template_claude_commands_commit.md`.
 
