@@ -63,7 +63,7 @@ def rows(kind):
                 analyse["key"],
                 t(analyse["title"]),
                 utilisable,
-                "" if utilisable else t(analyse["needs_sql"]),
+                "" if utilisable else t(analyse["why_not"]),
             )
         )
     return lignes
@@ -79,7 +79,7 @@ def detail(key, kind):
         morceaux.append(f"▶ {t('Enter to run it.')}")
     else:
         morceaux.append(f"✖ {t('Not available for this source.')}")
-        morceaux.append(f"   {t(analyse['needs_sql'])}")
+        morceaux.append(f"   {t(analyse['why_not'])}")
     morceaux.append("")
     morceaux.append(f"   {analyse['script']}")
     return "\n".join(morceaux)

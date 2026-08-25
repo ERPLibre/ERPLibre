@@ -648,6 +648,56 @@ class ProxmoxMenuMixin:
         parts = (sortie or "").split()
         return parts[parts.index("dev") + 1] if "dev" in parts else ""
 
+    def _pve_nat_ready(self, host):
+        """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
+
+        Posée ICI, au moment d'écrire un pont NAT, et non à la connexion : le
+        noyau est vérifié quand on confirme l'hôte, mais l'hôte est ensuite
+        MÉMORISÉ — on revient des jours plus tard créer un pont, et plus
+        personne ne rappelle rien. Le garde doit être là où la conséquence
+        tombe.
+
+        Sans cette question, ifupdown2 rendait six lignes d'iptables et « code
+        de retour 1 », après avoir déjà écrit la strophe dans
+        /etc/network/interfaces. Rien dans ce bruit ne dit qu'il faut
+        redémarrer.
+
+        Le cas n'a rien d'exotique : notre propre install_proxmox.sh pose le
+        noyau Proxmox sans redémarrer — lancé par ssh, un reboot couperait la
+        session. Une Proxmox imbriquée fraîchement installée est donc TOUJOURS
+        dans cet état, sur le noyau cloud de Debian, qui est dépouillé de tout
+        netfilter."""
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(host, pve.NAT_CHECK_CMD, 40)
+        etat = pve.parse_nat_check(out)
+        if etat["nat"]:
+            return True, []
+        lignes = [
+            f"✗ {t('No NAT table on this host: the bridge would lead nowhere.')}",
+            f"  {t('Running kernel:')} {etat['kernel'] or '?'}",
+        ]
+        if etat["pve_kernel"]:
+            lignes += [
+                f"  {t('The distribution kernel carries no netfilter module.')}",
+                f"  {t('Proxmox kernel installed:')} {etat['pve_kernel']}"
+                f" — {t('taken at next boot')}",
+                f"→ ssh {host.get('target', '')} sudo reboot,"
+                f" {t('then come back here.')}",
+            ]
+        else:
+            lignes.append(
+                f"  {t('No Proxmox kernel installed: finish the install first.')}"
+            )
+        return False, lignes
+
+    def _pve_nat_reason(self, host):
+        """La même chose en UNE ligne, pour l'écran Textual."""
+        ok, lignes = self._pve_nat_ready(host)
+        if ok:
+            return ""
+        return " ".join(ligne.strip("✗→ ") for ligne in lignes[:2])
+
     def _pve_make_internal_bridge(self):
         """Crée le pont INTERNE et le rend, ou ('', raison). SANS rien demander.
 
@@ -662,6 +712,11 @@ class ProxmoxMenuMixin:
         host = self._pve_host(ask=False)
         if not host:
             return "", t("No Proxmox host.")
+        # AVANT d'écrire quoi que ce soit : une strophe posée puis un
+        # « ifup » qui échoue laisse le fichier modifié et le pont absent.
+        raison = self._pve_nat_reason(host)
+        if raison:
+            return "", raison
         uplink = self._pve_uplink()
         for cmd in pve.bridge_setup_cmds(uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
@@ -703,6 +758,13 @@ class ProxmoxMenuMixin:
             print(
                 f"  ⚠ {t('This moves the host address: do it from a console.')}"
             )
+            return ""
+        host = self._pve_host(ask=False)
+        ok, lignes = self._pve_nat_ready(host) if host else (True, [])
+        if not ok:
+            print()
+            for ligne in lignes:
+                print(f"  {ligne}")
             return ""
         uplink = self._pve_uplink()
         print(f"  {t('uplink for NAT')} : {uplink or t('none')}")
@@ -1121,35 +1183,41 @@ class ProxmoxMenuMixin:
             fh.write("\n".join(entete) + "\n")
         return chemin
 
-    def _pve_alias_names(self, nom, chaine, locaux, rebond=""):
-        """UN seul nom pour l'entrée ~/.ssh/config, et lequel.
+    def _pve_alias_names(self, nom, chaine, locaux=(), rebond=""):
+        """UN seul nom pour l'entrée ~/.ssh/config : « hôte+vm ».
 
-        Deux noms sur la même ligne « Host » — le court et le chaîné
-        « hôte+vm » — étaient un doublon dès que le court était libre : ssh
-        n'a besoin que d'un nom, et le second n'ajoutait qu'une façon de plus
-        d'écrire la même adresse. Rapporté.
+        Deux noms sur la même ligne « Host » — le chaîné et le court —
+        étaient un doublon : ssh n'a besoin que d'un nom, et le second
+        n'ajoutait qu'une façon de plus d'écrire la même adresse. Rapporté.
 
-        Le court quand il est LIBRE, c'est celui qu'on tape ; le chaîné
-        sinon, car un nom déjà pris désigne une AUTRE machine — une VM locale
-        du même nom, ou la VM d'un autre hôte Proxmox. Vécu : « ssh » partait
-        vers la machine locale qui partageait le nom.
+        Reste à choisir lequel, et c'est le chaîné. Prendre le nom court
+        quand il se trouvait libre donnait un parc INCOHÉRENT : sur un même
+        déploiement, deux VM recevaient « hôte+vm » — leurs noms étaient pris
+        par des domaines locaux — et la troisième son nom court. Rapporté
+        aussi. Une convention qui dépend de ce qui traîne dans le fichier
+        n'est pas une convention.
 
-        « Pris » se juge sur le ProxyJump du bloc et non sur sa seule
-        présence : notre propre entrée, réécrite à chaque déploiement, se
-        serait autrement prise pour une rivale — et le nom aurait basculé
-        d'une fois sur l'autre.
+        Le chaîné est donc systématique. Il dit où la machine vit, il ne peut
+        rien voler à un domaine local, et deux VM du même nom sur deux hôtes
+        Proxmox différents se distinguent d'elles-mêmes.
 
-        Rend (noms, volé) — `volé` nomme ce qui a forcé le nom chaîné, pour
-        que l'appelant le dise plutôt que de laisser la surprise."""
-        if nom in locaux:
-            return [chaine], t("a local VM")
+        Rend (noms, volé) — la seconde valeur reste pour l'appelant, qui
+        signale au passage un nom qu'une VM locale porte aussi."""
+        return [chaine], (t("a local VM") if nom in locaux else "")
+
+    def _pve_alias_perime(self, nom, rebond):
+        """Le nom court à RETIRER, s'il désigne encore cette VM-ci.
+
+        La convention a changé — le nom court d'abord, puis « hôte+vm » — et
+        rien ne retirerait l'ancien bloc : il ne porte pas le nom qu'on
+        écrit. Deux entrées mèneraient alors à la même machine, ce qu'on
+        venait justement d'enlever.
+
+        Le ProxyJump tranche : un bloc qui rebondit par CET hôte est le nôtre.
+        Celui d'une VM locale homonyme n'en a pas, et on n'y touche donc
+        jamais."""
         bloc = self._ssh_config_block(nom)
-        notre = (
-            not bloc
-            or chaine in bloc.get("names", ())
-            or (rebond and bloc.get("proxyjump") == rebond)
-        )
-        return ([nom], "") if notre else ([chaine], "~/.ssh/config")
+        return [nom] if bloc and bloc.get("proxyjump") == rebond else []
 
     def _pve_set_timezone(self, cible, spec):
         """Pose le fuseau DANS la VM, par ssh.
@@ -1286,12 +1354,38 @@ class ProxmoxMenuMixin:
             )
             if vm.get("alias"):
                 print(f"      ssh {vm['alias']}")
+            # Une VM qui vient de recevoir Proxmox tourne encore le noyau de
+            # son image cloud : celui-ci n'a AUCUN module netfilter, donc ni
+            # pont NAT ni VM à l'intérieur.
+            #
+            # Le suivi s'en charge : son enveloppe tourne sur NOTRE machine,
+            # donc elle survit au redémarrage de la VM, l'attend et vérifie le
+            # noyau avant de conclure. La note ne sert donc QUE sans suivi —
+            # la voie en série, elle, s'arrête à la fin du script. L'afficher
+            # dans les deux cas demanderait un redémarrage déjà fait.
+            if not spec.get("monitor", True) and self._pve_installs_proxmox(
+                vm, spec
+            ):
+                print(
+                    f"      ⚠ {t('reboot it to boot the Proxmox kernel:')}"
+                    f" ssh {vm.get('alias') or vm['name']} sudo reboot"
+                )
         if spec.get("install"):
             print(
                 f"  {t('Install:')} {spec['install'].get('label') or ''}"
                 f" ({spec['install'].get('branch')})"
             )
         print(f"  {t('Log:')} {session}")
+
+    @staticmethod
+    def _pve_installs_proxmox(vm, spec) -> bool:
+        """Cette VM reçoit-elle l'hyperviseur Proxmox VE ?
+
+        Jugé sur la commande EFFECTIVE de la VM — celle que son système lui
+        impose, sinon le choix commun — et non sur son nom ni sur sa
+        distribution : un parc mixte est le cas normal ici."""
+        cmd = vm.get("install_cmd") or (spec.get("install") or {}).get("cmd")
+        return "install_proxmox.sh" in (cmd or "")
 
     def _pve_confirm_spec(self, host, spec):
         """Récapitulatif puis confirmation, dans le TERMINAL.
@@ -1392,6 +1486,9 @@ class ProxmoxMenuMixin:
                     ip,
                     identity_file=self._ssh_private_key(cle_locale),
                     proxy_jump=host["target"],
+                    also_drop=self._pve_alias_perime(
+                        vm["name"], host["target"]
+                    ),
                 )
                 alias[vm["name"]] = noms_alias[0]
                 print(f"  ✓ ~/.ssh/config : ssh {noms_alias[0]}")
@@ -1427,6 +1524,21 @@ class ProxmoxMenuMixin:
         }
         finale = cartes if self._qemu_per_vm(cartes, commun) else commun
         branche = (install or {}).get("branch") or ""
+        # Même règle pour la branche et pour le type de VM : depuis que le
+        # plan les porte PAR RANGÉE, lire la seule valeur commune revenait à
+        # jeter le choix. Un parc mixte — un hyperviseur imbriqué à côté de VM
+        # ERPLibre — est justement ce qu'on déploie ici le plus souvent.
+        branches_vm = {
+            vm["name"]: (vm.get("branch") or branche) for vm in joignables
+        }
+        if self._qemu_per_vm(branches_vm, branche):
+            branche = branches_vm
+        bureau = spec.get("desktop") or ""
+        bureaux = {
+            vm["name"]: (vm.get("desktop") or bureau) for vm in joignables
+        }
+        if self._qemu_per_vm(bureaux, bureau):
+            bureau = bureaux
         if suivi:
             # Rien à installer ? La commande distante regarde alors la VM
             # ARRIVER (cloud-init, puis relevé système) : c'est ce que le
@@ -1458,7 +1570,7 @@ class ProxmoxMenuMixin:
                 # Les réglages du système invité, qui n'atteignaient pas la
                 # commande distante : la VM naissait serveur nu, sans outils.
                 prod=bool(spec.get("prod")),
-                desktop=spec.get("desktop") or "",
+                desktop=bureau,
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
@@ -1477,16 +1589,17 @@ class ProxmoxMenuMixin:
             return resultat
         # Sans suivi mais avec quelque chose à installer : en série, sortie à
         # l'écran. C'est le pendant exact de la voie QEMU/KVM.
-        print(f"\n{t('Installing ERPLibre on each VM')} ({branche})…")
+        etiquette = branche if isinstance(branche, str) else t("per VM")
+        print(f"\n{t('Installing ERPLibre on each VM')} ({etiquette})…")
         for vm in joignables:
             self._qemu_install_erplibre_vm(
                 vm["name"],
                 cle_locale,
-                branche,
+                branches_vm.get(vm["name"], ""),
                 alias.get(vm["name"], vm["name"]),
                 vm.get("install_cmd") or commun,
                 bool(spec.get("prod")),
-                desktop=spec.get("desktop") or "",
+                desktop=bureaux.get(vm["name"], ""),
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
@@ -1705,6 +1818,7 @@ class ProxmoxMenuMixin:
                 ip,
                 identity_file=cle,
                 proxy_jump=host["target"],
+                also_drop=self._pve_alias_perime(vm["name"], host["target"]),
             )
             print(
                 f"  ✓ ssh {noms[0]}   ({ip} {t('through')} {host['target']})"

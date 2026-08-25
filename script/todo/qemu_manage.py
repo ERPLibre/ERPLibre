@@ -15,6 +15,94 @@ import time
 from script.todo.todo_i18n import t
 
 
+def parse_ssh_blocks(content) -> dict:
+    """{nom: {"hostname": …, "proxyjump": …}} pour CHAQUE nom déclaré.
+
+    Une ligne « Host » peut en porter plusieurs : ils partagent alors le même
+    corps, donc la même entrée. Les motifs (« * », « ? ») sont écartés — ce
+    sont des règles, pas des machines."""
+    blocs, courant = {}, []
+    for ligne in (content or "").splitlines():
+        if re.match(r"^[ \t]*Host[ \t]+", ligne):
+            corps = {}
+            courant = [
+                n for n in ligne.split()[1:] if "*" not in n and "?" not in n
+            ]
+            for nom in courant:
+                blocs[nom] = corps
+            continue
+        if not courant:
+            continue
+        if ligne.strip() and not ligne[:1].isspace():
+            courant = []
+            continue
+        mots = ligne.split()
+        if len(mots) >= 2 and mots[0].lower() in ("hostname", "proxyjump"):
+            blocs[courant[0]][mots[0].lower()] = mots[1]
+    return blocs
+
+
+def ssh_orphans(blocs, juge, prefixe="erplibre-"):
+    """(gardées, orphelines) — chacune [(nom, raison)].
+
+    Un ProxyJump valait preuve de vie À LUI SEUL : « écrite pour une VM
+    imbriquée, que virsh ne connaîtra jamais ». Le raisonnement oubliait que
+    le rebond, lui, peut avoir disparu. Vécu : la VM Proxmox locale effacée,
+    le nettoyage a retiré son entrée — correctement — et GARDÉ les trois
+    entrées qui rebondissaient par elle. Trois culs-de-sac, présentés comme
+    « mènent encore quelque part ».
+
+    D'où le point fixe : retirer un parent peut orpheliner ses enfants, et
+    ceux-ci peuvent en orpheliner d'autres. On tourne jusqu'à ce que plus
+    rien ne bouge.
+
+    `juge(nom)` ne rend que les preuves DIRECTES — un domaine vivant, une
+    adresse qui mène à l'un d'eux, une VM de l'hôte Proxmox. Si le rebond
+    comptait comme preuve directe, une chaîne de rebonds morts se soutiendrait
+    toute seule."""
+    noms = [n for n in blocs if n.startswith(prefixe)]
+    raisons = {n: juge(n) for n in noms}
+
+    def rebond_vivant(saut):
+        if saut in blocs:
+            # Une entrée qu'on ne gère PAS — hôte personnel — n'est jamais
+            # notre affaire : on la suppose vivante plutôt que d'effacer sur
+            # une supposition.
+            return (
+                bool(raisons.get(saut)) if saut.startswith(prefixe) else True
+            )
+        # Plus AUCUNE entrée de ce nom. Deux lectures, et il faut les
+        # séparer : une adresse ou un nom DNS, ssh saura le joindre et ce
+        # n'est pas notre affaire ; un nom de NOTRE nommage, en revanche,
+        # n'existe que par son entrée — celle-ci partie, le rebond ne mène
+        # nulle part. C'est l'état exact laissé par un nettoyage précédent,
+        # qui avait retiré le parent et gardé les enfants.
+        if not saut.startswith(prefixe):
+            return True
+        return bool(juge(saut))
+
+    bouge = True
+    while bouge:
+        bouge = False
+        for nom in noms:
+            if raisons[nom]:
+                continue
+            saut = blocs[nom].get("proxyjump")
+            if saut and rebond_vivant(saut):
+                raisons[nom] = t("reached through a jump host")
+                bouge = True
+    gardes, orphelines = [], []
+    for nom in noms:
+        if raisons[nom]:
+            gardes.append((nom, raisons[nom]))
+        else:
+            saut = blocs[nom].get("proxyjump")
+            orphelines.append(
+                (nom, f"{t('its jump host is gone:')} {saut}" if saut else "")
+            )
+    return gardes, orphelines
+
+
 class QemuManageMixin:
     """Menu QEMU/KVM : g\u00e9rer les VM existantes.\n\nLe cycle de vie apr\u00e8s la cr\u00e9ation : lister, allumer et \u00e9teindre, r\u00e9gler le\nmat\u00e9riel, redimensionner (et r\u00e9tr\u00e9cir, ce qui demande de traverser le syst\u00e8me\nde fichiers invit\u00e9 par nbd), effacer, nettoyer les restes, retrouver une\nadresse IP, rouvrir le suivi d'une installation.\n\nC'est le fichier qui appelle \u00ab virsh \u00bb le plus souvent : les helpers qui le\nfont (domstate, dumpxml, c_env) vivent donc ici."""
 
@@ -1978,9 +2066,13 @@ class QemuManageMixin:
         preuves valent mieux :
 
         * son adresse est celle d'un domaine vivant ;
-        * elle porte un ProxyJump, donc elle a été écrite pour une VM
-          imbriquée ou distante, que virsh ne connaîtra jamais ;
         * son nom est celui d'une VM de l'hôte Proxmox retenu.
+
+        Le ProxyJump n'en fait PAS partie, et c'est le second défaut de cette
+        fonction : il valait preuve à lui seul, sans qu'on regarde jamais si
+        le rebond existait encore. Cette question-là se traite dans
+        `ssh_orphans`, qui seule peut la poser — la réponse dépend des autres
+        entrées, et de celles qu'on s'apprête à retirer.
         """
         if nom in domains:
             return nom
@@ -1993,8 +2085,6 @@ class QemuManageMixin:
         ip = re.search(r"(?mi)^[ \t]*HostName[ \t]+(\S+)", corps)
         if ip and ip.group(1) in adresses:
             return adresses[ip.group(1)]
-        if re.search(r"(?mi)^[ \t]*ProxyJump[ \t]+\S+", corps):
-            return t("reached through a jump host")
         if nom in distantes:
             return t("a VM of the Proxmox host")
         return ""
@@ -2023,23 +2113,25 @@ class QemuManageMixin:
                 }
         except Exception:
             pass
-        hosts = re.findall(r"(?m)^[ \t]*Host[ \t]+(\S+)", content)
-        orphans, gardes = [], []
-        for h in hosts:
-            if not h.startswith("erplibre-"):
-                continue
-            raison = self._ssh_entry_alive(
+        gardes, orphelines = ssh_orphans(
+            parse_ssh_blocks(content),
+            lambda h: self._ssh_entry_alive(
                 content, h, domains, adresses, distantes
-            )
-            (gardes if raison else orphans).append((h, raison))
+            ),
+        )
         if gardes:
             print(f"\n{t('Kept (still leads somewhere):')}")
             for h, raison in gardes:
                 print(f"  {h}  ← {raison}")
-        orphans = [h for h, _r in orphans]
-        if not orphans:
+        if not orphelines:
             return
-        print(f"\n{t('Orphan ~/.ssh/config entries:')} {', '.join(orphans)}")
+        print(f"\n{t('Orphan ~/.ssh/config entries:')}")
+        # Avec la RAISON : « son rebond n'existe plus » explique pourquoi une
+        # entrée qu'on croyait bonne s'en va, et c'est la seule chose qui
+        # permet de répondre non en connaissance de cause.
+        for h, raison in orphelines:
+            print(f"  {h}" + (f"  ← {raison}" if raison else ""))
+        orphans = [h for h, _r in orphelines]
         if not self._is_yes(
             input(t("Remove these ~/.ssh/config entries? (y/N): "))
         ):

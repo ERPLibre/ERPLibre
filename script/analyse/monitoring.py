@@ -68,7 +68,7 @@ ANALYSES = (
         " step-by-step databases.",
         "script": "script/analyse/check_migration_residue.py",
         "kinds": (KIND_DATABASE,),
-        "needs_sql": "It reads pg_catalog — indexes and real tables — which"
+        "why_not": "It reads pg_catalog — indexes and real tables — which"
         " no RPC session exposes.",
     },
     {
@@ -78,12 +78,27 @@ ANALYSES = (
         " administrator — read for the use you intend.",
         "script": "script/analyse/check_instance_state.py",
         "kinds": (KIND_DATABASE,),
-        "needs_sql": "Several checks read tables no RPC session exposes,"
+        "why_not": "Several checks read tables no RPC session exposes,"
         " and the lateness of a job is computed in SQL.",
         # Le même chiffre veut dire deux choses opposées selon qu'on
         # ausculte une copie ou une production : l'attente ne se devine
         # pas, elle se demande.
         "asks_expect": True,
+    },
+    {
+        "key": "anonymize",
+        "title": "Anonymise a copy",
+        "why": "Replace names, texts and numbers with meaningless ones so"
+        " the copy can be shared. No AI: words from a list, numbers drawn"
+        " at random, written by SQL.",
+        "script": "script/analyse/anonymize.py",
+        "kinds": (KIND_DATABASE,),
+        # La seule entrée qui ÉCRIT. Le refus d'une instance vivante n'a
+        # rien à voir avec le SQL : on ne détruit pas les données d'une
+        # production, même à la demande.
+        "why_not": "This one WRITES. It is offered only for a database"
+        " you restored here — never for an instance in service.",
+        "writes": True,
     },
     {
         "key": "cow_views",
@@ -92,7 +107,7 @@ ANALYSES = (
         " shadows a module view.",
         "script": "script/analyse/analyse_view_custom.py",
         "kinds": (KIND_DATABASE,),
-        "needs_sql": "Comparing a copy with the module view it hides is a"
+        "why_not": "Comparing a copy with the module view it hides is a"
         " join on arch_db, done in SQL.",
     },
     {
@@ -102,7 +117,7 @@ ANALYSES = (
         " them have no column behind them.",
         "script": "script/analyse/analyse_custom_field.py",
         "kinds": (KIND_DATABASE,),
-        "needs_sql": "Telling a declared field from a real column means"
+        "why_not": "Telling a declared field from a real column means"
         " reading pg_attribute.",
     },
 )

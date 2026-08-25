@@ -223,10 +223,12 @@ class TestLesEntreesSsh(unittest.TestCase):
     def test_a_name_that_matches_a_domain_is_kept(self):
         self.assertTrue(self._juge("erplibre-ubuntu-2404-MIGRATION"))
 
-    def test_a_jump_entry_is_kept(self):
-        # Écrite pour une VM imbriquée ou distante : virsh ne la connaîtra
-        # jamais, et son adresse n'est pas routable d'ici.
-        self.assertTrue(self._juge("erplibre-imbriquee"))
+    def test_a_jump_is_not_a_direct_proof(self):
+        # Un ProxyJump valait preuve À LUI SEUL. Il n'en est plus une ICI :
+        # la réponse dépend du rebond, donc des AUTRES entrées, et elle se
+        # décide dans ssh_orphans. Sinon une chaîne de rebonds morts se
+        # soutiendrait toute seule.
+        self.assertEqual(self._juge("erplibre-imbriquee"), "")
 
     def test_a_vm_of_the_proxmox_host_is_kept(self):
         self.assertTrue(
@@ -235,6 +237,126 @@ class TestLesEntreesSsh(unittest.TestCase):
 
     def test_an_entry_that_leads_nowhere_is_an_orphan(self):
         self.assertEqual(self._juge("erplibre-partie"), "")
+
+
+class TestLeRebondQuiNExistePlus(unittest.TestCase):
+    """Le nettoyage a effacé la VM Proxmox locale, retiré son entrée — c'était
+    juste — et GARDÉ les trois entrées qui rebondissaient par elle.
+
+    Trois culs-de-sac, présentés comme « mènent encore quelque part ». Deux
+    fautes : un ProxyJump valait preuve de vie sans qu'on regarde jamais si le
+    rebond existait, et chaque entrée était jugée ISOLÉMENT — retirer le
+    parent ne faisait pas réexaminer les enfants."""
+
+    CONFIG = """
+Host erplibre-vivante
+    HostName 192.168.123.170
+
+Host erplibre-proxmox-9
+    HostName 192.168.123.208
+
+Host erplibre-proxmox-9+enfant
+    HostName 10.10.10.150
+    ProxyJump erplibre-proxmox-9
+
+Host erplibre-petit-enfant
+    HostName 10.10.20.1
+    ProxyJump erplibre-proxmox-9+enfant
+
+Host erplibre-par-hote-personnel
+    HostName 10.10.30.1
+    ProxyJump mon-serveur-perso
+
+Host mon-serveur-perso
+    HostName 203.0.113.9
+"""
+
+    def _passe(self, vivants):
+        from script.todo.qemu_manage import parse_ssh_blocks, ssh_orphans
+
+        return ssh_orphans(
+            parse_ssh_blocks(self.CONFIG),
+            lambda nom: nom if nom in vivants else "",
+        )
+
+    def test_the_children_go_with_their_jump(self):
+        _gardes, orphelines = self._passe({"erplibre-vivante"})
+        noms = [n for n, _r in orphelines]
+        self.assertIn("erplibre-proxmox-9", noms)
+        self.assertIn("erplibre-proxmox-9+enfant", noms)
+
+    def test_and_so_do_the_grandchildren(self):
+        # Le point fixe : retirer un parent orpheline ses enfants, qui
+        # orphelinent les leurs. Une seule passe n'aurait vu que le premier
+        # étage.
+        _gardes, orphelines = self._passe({"erplibre-vivante"})
+        self.assertIn("erplibre-petit-enfant", [n for n, _r in orphelines])
+
+    def test_the_reason_names_the_missing_jump(self):
+        # Seule chose qui permet de répondre non en connaissance de cause.
+        _gardes, orphelines = self._passe({"erplibre-vivante"})
+        raison = dict(orphelines)["erplibre-proxmox-9+enfant"]
+        self.assertIn("erplibre-proxmox-9", raison)
+
+    def test_a_living_jump_keeps_its_children(self):
+        gardes, _orphelines = self._passe(
+            {"erplibre-vivante", "erplibre-proxmox-9"}
+        )
+        noms = [n for n, _r in gardes]
+        self.assertIn("erplibre-proxmox-9+enfant", noms)
+        self.assertIn("erplibre-petit-enfant", noms)
+
+    def test_a_jump_whose_entry_is_already_gone(self):
+        """L'état laissé par le nettoyage précédent : le parent RETIRÉ, les
+        enfants gardés.
+
+        Le rebond ne désigne alors plus rien du tout — ni entrée, ni domaine.
+        Le prendre pour « un rebond qu'on ne gère pas » laissait les trois
+        culs-de-sac en place une seconde fois."""
+        from script.todo.qemu_manage import parse_ssh_blocks, ssh_orphans
+
+        sans_parent = """
+Host erplibre-vivante
+    HostName 192.168.123.170
+
+Host erplibre-proxmox-9+enfant
+    HostName 10.10.10.150
+    ProxyJump erplibre-proxmox-9
+"""
+        _gardes, orphelines = ssh_orphans(
+            parse_ssh_blocks(sans_parent),
+            lambda nom: nom if nom == "erplibre-vivante" else "",
+        )
+        self.assertEqual(
+            [n for n, _r in orphelines], ["erplibre-proxmox-9+enfant"]
+        )
+
+    def test_a_jump_that_is_a_living_domain_without_an_entry(self):
+        # Le nom est du nôtre et n'a pas d'entrée, mais le domaine TOURNE :
+        # on ne coupe pas.
+        from script.todo.qemu_manage import parse_ssh_blocks, ssh_orphans
+
+        cfg = """
+Host erplibre-enfant
+    HostName 10.10.10.150
+    ProxyJump erplibre-hote
+"""
+        gardes, _o = ssh_orphans(
+            parse_ssh_blocks(cfg),
+            lambda nom: nom if nom == "erplibre-hote" else "",
+        )
+        self.assertEqual([n for n, _r in gardes], ["erplibre-enfant"])
+
+    def test_a_jump_we_do_not_manage_is_never_our_call(self):
+        # Hôte personnel, adresse, nom DNS : on le suppose vivant plutôt que
+        # d'effacer sur une supposition.
+        gardes, _orphelines = self._passe({"erplibre-vivante"})
+        self.assertIn("erplibre-par-hote-personnel", [n for n, _r in gardes])
+
+    def test_entries_outside_the_prefix_are_never_judged(self):
+        gardes, orphelines = self._passe({"erplibre-vivante"})
+        tous = [n for n, _r in gardes] + [n for n, _r in orphelines]
+        self.assertNotIn("mon-serveur-perso", tous)
 
 
 class TestLAdresseDUneVm(unittest.TestCase):

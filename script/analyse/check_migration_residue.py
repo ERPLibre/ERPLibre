@@ -35,8 +35,21 @@ parce qu'ils sont faux en eux-mêmes. Les mêmes bases, mêmes mesures :
     liste de prix par défaut absente  0 → 1      `product` installé, son
                                                  xmlid pas là
 
-Zéro avant, non nul après : aucun de ces quatre ne peut s'expliquer
+Zéro avant, non nul après : aucun de ces trois ne peut s'expliquer
 autrement que par la migration.
+
+Un quatrième a été RETIRÉ après vérification
+--------------------------------------------
+« ir_model_relation nomme une table absente » : 0 avant, 68 après, le
+profil idéal. Et sans la moindre conséquence. Son unique consommateur,
+`_module_data_uninstall` dans `base/models/ir_model.py`, teste
+`sql.table_exists(...)` AVANT de supprimer : la ligne périmée est
+ignorée, puis effacée. Les 68 appartiennent en outre à des modules
+INSTALLÉS, que `database_cleanup` ne touche pas — la réparation que ce
+fichier désignait n'en aurait réparé aucune.
+
+Un constat sans conséquence et sans geste possible est du bruit, quelle
+que soit la netteté du signal. Il est parti.
 
 Chaque constat nomme l'outil qui le répare. Un rapport qui montre un
 dégât sans dire quoi lancer oblige à chercher, et on ne cherche pas.
@@ -102,16 +115,6 @@ CONTROLES = (
         "repair": None,
     },
     {
-        "key": "orphan_relation",
-        "title": "Many-to-many tables named but missing",
-        "why": "ir_model_relation still names a table PostgreSQL does not"
-        " have; the next module update tries to alter it and fails.",
-        "sql": "SELECT count(*) FROM ir_model_relation r WHERE NOT EXISTS"
-        " (SELECT 1 FROM pg_class c WHERE c.relname = r.name)",
-        "gravity": "broken",
-        "repair": "script/analyse/database_cleanup.py",
-    },
-    {
         "key": "duplicate_index",
         "title": "Indexes duplicated by the Odoo 17 renaming",
         "why": "Odoo 17 changed the naming convention without dropping the"
@@ -131,10 +134,15 @@ CONTROLES = (
         "title": "Default pricelist missing while product is installed",
         "why": "product.list0 was declared up to Odoo 16 only; nothing"
         " recreates it, and a quotation has no price list to pick.",
+        # On cherche une LISTE, pas son xmlid. Mesuré : la réparation
+        # laisse Odoo créer « Par défaut » sans poser `product.list0` —
+        # chercher l'xmlid signalait donc une base parfaitement saine, et
+        # aurait signalé de même celle d'un client qui a créé la sienne à
+        # la main.
         "sql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM ir_module_module"
         " WHERE name='product' AND state='installed')"
-        " AND NOT EXISTS (SELECT 1 FROM ir_model_data"
-        " WHERE module='product' AND name='list0')"
+        " AND to_regclass('public.product_pricelist') IS NOT NULL"
+        " AND NOT EXISTS (SELECT 1 FROM product_pricelist)"
         " THEN 1 ELSE 0 END",
         "gravity": "broken",
         "repair": "script/odoo/migration/restore_config_defaults.py --apply",

@@ -619,5 +619,59 @@ class TestLeMenu(unittest.TestCase):
         self.assertEqual(0, res.returncode, res.stderr)
 
 
+class TestLaTableNat(unittest.TestCase):
+    """« Table does not exist » : six lignes d'iptables et « code de retour 1 »,
+    après avoir déjà écrit la strophe dans /etc/network/interfaces.
+
+    Rien dans ce bruit ne dit qu'il faut redémarrer. Et le cas n'a rien
+    d'exotique : notre propre install_proxmox.sh pose le noyau Proxmox sans
+    redémarrer — lancé par ssh, un reboot couperait la session. Une Proxmox
+    imbriquée fraîchement installée est donc TOUJOURS sur le noyau cloud de
+    Debian, qui est dépouillé de tout netfilter.
+
+    On demande donc à la table NAT elle-même, et non au NOM du noyau : « -pve »
+    est un indice, pas une preuve."""
+
+    def _sortie(self, kernel, nat, pve_kernel=""):
+        return (
+            f"{kernel}\n---ERPLIBRE-NAT---\n"
+            f"{'NAT-OK' if nat else 'NAT-KO'}\n"
+            f"---ERPLIBRE-PVE-KERNEL---\n{pve_kernel}\n"
+        )
+
+    def test_a_working_host(self):
+        lu = pve.parse_nat_check(
+            self._sortie("7.0.14-14-pve", True, "7.0.14-14-pve")
+        )
+        self.assertTrue(lu["nat"])
+        self.assertEqual(lu["kernel"], "7.0.14-14-pve")
+
+    def test_the_cloud_kernel_waiting_for_a_reboot(self):
+        # L'état exact rapporté : le noyau Proxmox est POSÉ, pas amorcé.
+        lu = pve.parse_nat_check(
+            self._sortie("6.12.101+deb13-cloud-amd64", False, "7.0.14-14-pve")
+        )
+        self.assertFalse(lu["nat"])
+        self.assertEqual(lu["pve_kernel"], "7.0.14-14-pve")
+
+    def test_an_unfinished_install_has_no_pve_kernel(self):
+        lu = pve.parse_nat_check(
+            self._sortie("6.12.101+deb13-cloud-amd64", False)
+        )
+        self.assertFalse(lu["nat"])
+        self.assertEqual(lu["pve_kernel"], "")
+
+    def test_ssh_noise_does_not_become_a_kernel(self):
+        brut = (
+            "Warning: Permanently added 'x' (ED25519) to the list of known"
+            " hosts.\n" + self._sortie("7.0.14-14-pve", True, "7.0.14-14-pve")
+        )
+        self.assertEqual(pve.parse_nat_check(brut)["kernel"], "7.0.14-14-pve")
+
+    def test_the_probe_asks_the_table_not_the_name(self):
+        self.assertIn("iptables -t nat", pve.NAT_CHECK_CMD)
+        self.assertIn("uname -r", pve.NAT_CHECK_CMD)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

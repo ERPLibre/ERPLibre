@@ -230,6 +230,296 @@ class TestLesAutresCheminsVersLaPoubelle(unittest.TestCase):
         self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
 
 
+class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
+    """Proxmox VE n'existe qu'après un redémarrage, et le script ne peut pas
+    survivre au sien.
+
+    install_proxmox.sh pose le noyau puis s'arrête, à raison — lancé par ssh,
+    un reboot couperait la session et ferait passer l'installation pour un
+    échec. La VM restait donc sur le noyau cloud de Debian, dépouillé de tout
+    netfilter, et on le découvrait des jours plus tard en créant un pont.
+
+    L'enveloppe, elle, tourne sur NOTRE machine : elle survit au redémarrage
+    de la VM. Elle redémarre, attend, vérifie le noyau, et ne conclut
+    qu'ensuite — le ✅ veut donc dire « hyperviseur utilisable »."""
+
+    def _joue(self, rc, faux_ssh, tours=4):
+        """Exécute le shell RÉEL, avec ssh bouchonné par une fonction."""
+        import os
+        import subprocess
+        import tempfile
+
+        log = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
+        log.close()
+        cpt = tempfile.NamedTemporaryFile("w+", delete=False)
+        cpt.write("0")
+        cpt.close()
+        shell = (
+            f"CPT={cpt.name}\n{faux_ssh}\n"
+            f"ip=10.0.0.1; rc={rc}; "
+            + mon._reboot_steps(log.name, "-pve", tours=tours)
+            + f'echo "{mon.EXIT_MARKER} $rc" >> {log.name}'
+        )
+        subprocess.run(
+            ["bash", "-c", shell],
+            env=dict(os.environ, ERPLIBRE_REBOOT_SLEEP="0"),
+            timeout=60,
+        )
+        with open(log.name, encoding="utf-8") as fh:
+            texte = fh.read()
+        etat = mon.read_status(log.name)
+        os.unlink(log.name)
+        os.unlink(cpt.name)
+        return etat, texte
+
+    # Le compteur vit dans un FICHIER : « k=$(ssh …) » tourne en sous-shell.
+    REVIENT = """ssh() {
+  case "$*" in
+    *"uname -r"*)
+      n=$(cat "$CPT"); n=$((n+1)); echo "$n" > "$CPT"
+      if [ "$n" -ge 3 ]; then echo "7.0.14-14-pve";
+      else echo "6.12.101+deb13-cloud-amd64"; fi;;
+    *reboot*) return 255;;
+  esac
+}"""
+    RESTE = """ssh() {
+  case "$*" in
+    *"uname -r"*) echo "6.12.101+deb13-cloud-amd64";;
+    *reboot*) return 255;;
+  esac
+}"""
+
+    def test_only_the_pve_kernel_ends_the_wait(self):
+        # Le piège : sshd répond encore une seconde ou deux après l'ordre de
+        # redémarrage. Lire « uname -r » et s'arrêter là donnerait l'ANCIEN
+        # noyau en croyant avoir la réponse. Ici les deux premières lectures
+        # rendent le noyau cloud et doivent être REJETÉES.
+        (etat, code), texte = self._joue(0, self.REVIENT)
+        self.assertEqual((etat, code), ("done", 0))
+        self.assertIn("7.0.14-14-pve", texte)
+
+    def test_a_machine_that_stays_on_the_old_kernel_fails(self):
+        # Sans le noyau attendu, l'hyperviseur n'a ni table NAT ni module
+        # bridge. Le dire ✅ serait le mensonge qui a coûté deux jours.
+        (etat, code), texte = self._joue(0, self.RESTE)
+        self.assertEqual(etat, "failed")
+        self.assertEqual(code, 1)
+        self.assertIn("-pve", texte)
+
+    def test_a_machine_that_never_answers_fails(self):
+        (etat, _c), _texte = self._joue(0, "ssh() { return 255; }")
+        self.assertEqual(etat, "failed")
+
+    def test_a_failed_install_is_never_rebooted(self):
+        # Redémarrer après un échec effacerait la seule machine sur laquelle
+        # on pouvait chercher.
+        (etat, code), texte = self._joue(
+            2, 'ssh() { echo "NE DEVRAIT PAS ETRE APPELE"; }'
+        )
+        self.assertEqual((etat, code), ("failed", 2))
+        self.assertNotIn("NE DEVRAIT PAS", texte)
+        self.assertNotIn("Redémarrage", texte)
+
+    def test_which_installs_ask_for_it(self):
+        self.assertEqual(
+            mon.reboot_expected("./script/proxmox/install_proxmox.sh"), "-pve"
+        )
+        self.assertEqual(
+            mon.reboot_expected("make install_os && make install_odoo_18"), ""
+        )
+        self.assertEqual(mon.reboot_expected(""), "")
+
+    def test_the_wrapper_only_reboots_when_asked(self):
+        import inspect
+
+        src = inspect.getsource(mon._launch_one)
+        self.assertIn("_reboot_steps(log_q, reboot) if reboot else", src)
+
+
+class TestTroisVmSurUnProxmox(unittest.TestCase):
+    """Rapporté à l'usage : sur trois VM d'un même Proxmox, une seule avait
+    ses colonnes vides — et les deux autres montraient les chiffres d'une
+    AUTRE machine.
+
+    Deux fautes, dont une était le miroir d'un correctif précédent."""
+
+    def test_a_reading_stands_even_when_odoo_is_not_up_yet(self):
+        # Le code de sortie de la suite distante est celui de son DERNIER
+        # maillon : la sonde Odoo. Tant qu'Odoo n'écoute pas — c'est-à-dire
+        # pendant TOUTE l'installation, précisément quand on regarde — la
+        # boucle finit en échec et le relevé, parfait, était jeté.
+        #
+        # On avait corrigé l'erreur inverse (code 0 pris pour une réponse) ;
+        # exiger 0 était la même faute, retournée.
+        sortie = (
+            '[{"vmid":101,"name":"vm-a","status":"running","maxmem":1024,'
+            '"mem":512,"maxdisk":2048,"diskwrite":10}]\n'
+            "---ERPLIBRE-DU---\n---ERPLIBRE-ODOO---\n"
+        )
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vm = {"name": "vm-a", "pve": {"target": "h", "sudo": "", "vmid": 101}}
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(1, sortie)
+        ):
+            stats, ok = mon.read_pvestats_detail([vm], now=10.0)
+        self.assertTrue(
+            ok, "un code non nul ne réfute pas une réponse lisible"
+        )
+        self.assertIn("vm-a", stats)
+
+    def test_the_odoo_flag_survives_a_partly_closed_fleet(self):
+        """Le cas rapporté, et il est le cas NORMAL.
+
+        La sonde est le dernier maillon : elle boucle sur toutes les adresses
+        et son code est celui de la DERNIÈRE. Un parc où une seule VM n'a pas
+        d'Odoo — un hyperviseur imbriqué, par exemple — finit donc en échec,
+        et le relevé entier partait, drapeaux Odoo compris. Le navigateur, lui,
+        répondait 303."""
+        sortie = (
+            '[{"vmid":100,"name":"vm-a","status":"running","maxmem":1024,'
+            '"mem":512,"maxdisk":2048,"diskwrite":10},'
+            '{"vmid":102,"name":"pve-imbrique","status":"running",'
+            '"maxmem":1024,"mem":512,"maxdisk":2048,"diskwrite":10}]\n'
+            "---ERPLIBRE-DU---\n"
+            "---ERPLIBRE-ODOO---\nODOO 10.10.10.150\n"
+        )
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vms = [
+            {
+                "name": "vm-a",
+                "pve": {
+                    "target": "h",
+                    "sudo": "",
+                    "vmid": 100,
+                    "addr": "10.10.10.150",
+                },
+            },
+            {
+                "name": "pve-imbrique",
+                "pve": {
+                    "target": "h",
+                    "sudo": "",
+                    "vmid": 102,
+                    "addr": "10.10.10.152",
+                },
+            },
+        ]
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(1, sortie)
+        ):
+            stats, ok = mon.read_pvestats_detail(vms, now=30.0)
+        self.assertTrue(ok)
+        self.assertTrue(stats["vm-a"]["odoo"], "la VM qui répond doit être 🟢")
+        self.assertFalse(
+            stats["pve-imbrique"]["odoo"], "un hyperviseur n'a pas d'Odoo"
+        )
+
+    def test_a_broken_pvesh_is_still_refuted(self):
+        # L'autre sens tient toujours : sans liste analysable, pas de réponse.
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vm = {"name": "vm-a", "pve": {"target": "h", "sudo": "", "vmid": 101}}
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run",
+            return_value=(0, "permission denied\n---ERPLIBRE-DU---\n"),
+        ):
+            _stats, ok = mon.read_pvestats_detail([vm], now=20.0)
+        self.assertFalse(ok)
+
+    def test_a_remote_vm_never_borrows_a_local_namesake(self):
+        # « virsh domstats » indexe par NOM, et un nom se partage. Mesuré :
+        # « erplibre-ubuntu-2604 » sur Proxmox affichait 1,5 Gio sur 12 et
+        # 58 Gio de disque — ceux de la machine locale du même nom — quand la
+        # vraie tournait avec 3 Gio et 25.
+        locaux = {
+            "erplibre-ubuntu-2604": {
+                "ram_used": 1 << 30,
+                "ram_total": 12 << 30,
+            },
+            "erplibre-arch-latest": {"ram_used": 5, "ram_total": 9},
+            "vm-locale": {"ram_used": 7, "ram_total": 8},
+        }
+        vms = [
+            {"name": "erplibre-ubuntu-2604", "pve": {"vmid": 100}},
+            {"name": "vm-locale"},
+        ]
+        reste = mon.drop_local_twins(dict(locaux), vms)
+        self.assertNotIn("erplibre-ubuntu-2604", reste)
+        # Une VM locale garde les siens, et une VM étrangère au manifeste
+        # n'est pas touchée.
+        self.assertIn("vm-locale", reste)
+        self.assertIn("erplibre-arch-latest", reste)
+
+    def test_a_silent_host_leaves_the_column_empty(self):
+        # Vide, c'est vrai. Une colonne vide se remarque ; une colonne juste
+        # et fausse, non — c'est ce qui a fait remonter le défaut.
+        stats = {"vm-a": {"ram_used": 1, "ram_total": 2}}
+        mon.drop_local_twins(stats, [{"name": "vm-a", "pve": {"vmid": 1}}])
+        self.assertEqual(stats, {})
+
+
+class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
+    """Le suivi se ROUVRE sur un manifeste passé — c'est fait pour.
+
+    Mais un nom de domaine se réemploie, et un VMID libéré est RÉATTRIBUÉ.
+    Effacer « le 101 » d'un run de mars, c'est effacer ce qui porte le 101
+    aujourd'hui, et « erplibre-ubuntu-2604 » de mars n'est pas celui
+    d'aujourd'hui. Même famille que tout le reste : on jugeait sur le nom.
+
+    La commande porte donc son garde. Dans la commande et non dans l'écran :
+    elle protège ainsi tous ses appelants, et la vérification se fait SUR la
+    machine, à l'instant d'effacer."""
+
+    def test_a_proxmox_delete_checks_the_vmid_still_bears_the_name(self):
+        cmd = mon.delete_vm_cmd_pve(
+            {"target": "pve9", "vmid": 101}, name="vm-a"
+        )
+        self.assertIn("qm config 101", cmd)
+        self.assertIn("exit 1", cmd)
+        self.assertIn("qm destroy 101", cmd)
+        # Le garde vient AVANT la destruction, sinon il ne garde rien.
+        self.assertLess(cmd.index("qm config 101"), cmd.index("qm destroy"))
+
+    def test_a_local_delete_checks_the_uuid(self):
+        cmd = mon.delete_vm_cmd("vm-a", True, "5d55d05a-1e77")
+        self.assertIn("virsh domuuid vm-a", cmd)
+        self.assertIn("5d55d05a-1e77", cmd)
+        self.assertLess(cmd.index("domuuid"), cmd.index("virsh destroy vm-a"))
+
+    def test_an_old_manifest_without_identity_still_deletes(self):
+        # Un manifeste écrit avant ce correctif n'a pas d'UUID. Refuser toute
+        # suppression y serait une régression : on retombe sur la protection
+        # d'avant, la confirmation à deux mains.
+        cmd = mon.delete_vm_cmd("vm-a", True)
+        self.assertNotIn("domuuid", cmd)
+        self.assertIn("virsh undefine vm-a", cmd)
+        sans_nom = mon.delete_vm_cmd_pve({"target": "pve9", "vmid": 101})
+        self.assertNotIn("qm config", sans_nom)
+        self.assertIn("qm destroy 101", sans_nom)
+
+    def test_the_guard_is_shell_correct(self):
+        """Le garde est EXÉCUTÉ, « qm » bouchonné par une fonction shell.
+
+        Il traverse ensuite deux « shlex.quote » avant d'atteindre un dash :
+        chaque niveau est une occasion de le casser, et un garde cassé
+        s'OUVRE au lieu de se fermer. Éprouvé aussi sur le vrai hôte, où il a
+        refusé un nom périmé et laissé passer le bon."""
+        import subprocess
+
+        garde = mon.pve_identity_guard(101, "vm-a")
+        for vu, attendu in (("vm-a", 0), ("autre-vm", 1)):
+            res = subprocess.run(
+                [
+                    "sh",
+                    "-c",
+                    f"qm() {{ echo 'name: {vu}'; }}; {garde} exit 0",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, attendu, f"{vu} : {res.stdout}")
+        self.assertIn("vm-a", garde)
+
+
 class TestCeQueLaConfirmationPromet(unittest.TestCase):
     """La confirmation de suppression annonçait un fichier qcow2 local à
     TOUTE VM, Proxmox comprise.

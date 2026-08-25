@@ -5,7 +5,7 @@ Color_Off='\033[0m' # Text Reset
 # This script will remove mail configuration, remove backup configuration, and force admin user to test/test
 echo "Update prod to dev on BD '$1'"
 
-./script/addons/install_addons_dev.sh "$1" user_test,disable_mail_server,disable_auto_backup
+./script/addons/install_addons_dev.sh "$1" user_test,disable_mail_server,disable_auto_backup,disable_payment_provider
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
@@ -15,7 +15,7 @@ fi
 
 echo "Update trace of prod to dev on BD '$1'"
 
-./script/addons/uninstall_addons.sh "$1" user_test,disable_mail_server,disable_auto_backup
+./script/addons/uninstall_addons.sh "$1" user_test,disable_mail_server,disable_auto_backup,disable_payment_provider
 
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
