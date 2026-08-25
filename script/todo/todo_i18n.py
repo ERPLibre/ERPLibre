@@ -4523,6 +4523,10 @@ TRANSLATIONS = {
         "fr": "Chemin de la clé publique SSH",
         "en": "SSH public key path",
     },
+    "timezone not set": {
+        "fr": "fuseau non posé",
+        "en": "timezone not set",
+    },
     "Timezone": {
         "fr": "Fuseau horaire",
         "en": "Timezone",

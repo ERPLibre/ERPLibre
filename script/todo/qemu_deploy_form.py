@@ -70,6 +70,7 @@ from script.todo.deploy_form_lib import (  # noqa: F401
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_plan import (  # noqa: F401
     PlanMixin,
     preview_screen,
@@ -127,33 +128,11 @@ def run_deploy_form(ctx, run_app: bool = True):
     total_disk = ctx.get("total_disk") or 0
     base_vcpus = ctx.get("base_vcpus") or 2
     extra_disk = ctx.get("extra_disk_gb") or 0
-    desktop_disk = ctx.get("desktop_disk_gb") or 0
     # [(clé, libellé)] — la liste vient de todo.py, source unique.
     desktops = list(ctx.get("desktops") or [])
     # {clé de saveur: suffixe de nom}, fourni par todo.py qui décrit les
     # saveurs — on ne le redéfinit pas ici.
     desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
-    # Outils de développement d'une VM graphique : [(clé, libellé, indice)] et
-    # leurs contraintes, toutes décrites dans todo.py — le formulaire ne fait
-    # que les afficher et rendre les cases cochées.
-    vm_tools = list(ctx.get("vm_tools") or [])
-    tool_disk = dict(ctx.get("vm_tool_disk") or {})
-    # « after » = l'outil vit DANS le dépôt ERPLibre : sans installation, il
-    # n'a rien où s'installer, bureau ou pas.
-    tool_phases = dict(ctx.get("vm_tool_phases") or {})
-    tool_arches = dict(ctx.get("vm_tool_arches") or {})
-    tool_desktops = dict(ctx.get("vm_tool_desktops") or {})
-    tool_needs_desktop = dict(ctx.get("vm_tool_needs_desktop") or {})
-    tool_families = dict(ctx.get("vm_tool_families") or {})
-    distro_family = dict(ctx.get("distro_family") or {})
-    # Architectures pour lesquelles mise publie un binaire.
-    mise_arches = set(ctx.get("mise_arches") or ())
-    # [(clé, libellé)] des magasins d'applications, et les distributions qui
-    # livrent snapd — la question n'a de sens que pour celles-là, graphiques.
-    app_stores = list(ctx.get("app_stores") or [])
-    snap_distros = set(ctx.get("snap_distros") or ())
-    # Fuseaux proposés, celui de l'hôte en tête (voir todo.py).
-    timezones = list(ctx.get("timezones") or [])
     defaults = ctx.get("defaults") or {}
     result = {"spec": None}
 
@@ -169,7 +148,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             f"RAM≥{e['ram']}Mo  {e['disk']}"
         )
 
-    class DeployForm(PlanMixin, App):
+    class DeployForm(ExtrasMixin, PlanMixin, App):
         # Le socle porte la mise en page et les modales ; ne reste ici que ce
         # qui nomme les widgets propres à QEMU/KVM.
         CSS = (
@@ -215,6 +194,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._syncing = False
             # Jeu de VM actuellement monté dans le panneau droit.
             self._shown_ids = ()
+            self.extras_init(ctx)
             # Génération du jeu de rangées monté. Les identifiants de widgets
             # portent un RANG, et le rang se décale quand on coche ou décoche
             # une entrée : un événement émis par un widget déjà détruit
@@ -304,20 +284,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         f"\n  {t('A VM edited on the right (marked) keeps its own.')}",
                         id="scopetarget",
                     )
-                    # Serveur par défaut : c'est ce que sert une image cloud,
-                    # et GNOME ajoute une à deux heures sur une architecture
-                    # émulée. Le plan annonce le surcoût disque.
-                    yield Static(t("VM type (default):"), classes="grouptitle")
-                    with RadioSet(id="f_type"):
-                        yield RadioButton(
-                            t("Server (no graphical interface)"),
-                            value=not defaults.get("desktop", ""),
-                        )
-                        for key, label in desktops:
-                            yield RadioButton(
-                                f"{t('Graphical (server + desktop):')} {label}",
-                                value=defaults.get("desktop", "") == key,
-                            )
+                    yield from self.compose_vm_type()
                     # La case commande TOUTE installation — ERPLibre, Odoo, mais
                     # aussi l'hyperviseur Proxmox VE. Nommée « ERPLibre », elle
                     # laissait croire qu'un système Proxmox s'installerait
@@ -348,56 +315,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                         allow_blank=not profiles,
                         id="f_profile_install",
                     )
-                    yield Checkbox(
-                        t("Production (/opt, confined)"),
-                        value=defaults.get("prod", False),
-                        id="f_prod",
-                    )
-                    if app_stores:
-                        yield Static(
-                            t("Application store:"),
-                            id="t_store",
-                            classes="grouptitle",
-                        )
-                        with RadioSet(id="f_store"):
-                            for i, (_k, label) in enumerate(app_stores):
-                                yield RadioButton(label, value=i == 0)
-                        yield Static("", id="storewarn")
-                    if vm_tools:
-                        # Une case par outil, et non une liste déroulante : ils
-                        # sont indépendants, et chacun se prend ou se laisse.
-                        yield Static(
-                            t("Development tools:"),
-                            id="t_tools",
-                            classes="grouptitle",
-                        )
-                        for key, label, hint in vm_tools:
-                            gb = tool_disk.get(key, 0)
-                            yield Checkbox(
-                                f"{label} +{gb} Go — {hint}",
-                                value=key in (defaults.get("tools") or ()),
-                                id=f"f_tool_{key}",
-                            )
-                        yield Static("", id="toolwarn")
-                    yield Static(t("Timezone"), classes="grouptitle")
-                    # Une liste plutôt qu'une saisie : un nom IANA mal
-                    # orthographié n'est pas refusé par cloud-init, il est
-                    # IGNORÉ — la VM reste en UTC et on ne s'en aperçoit
-                    # qu'aux horodatages. « libre… » garde la porte ouverte
-                    # aux six cents autres fuseaux de la base.
-                    yield Select(
-                        [(z, z) for z in timezones]
-                        + [(t("free value…"), FREE)],
-                        value=(timezones[0] if timezones else SELECT_NULL),
-                        allow_blank=False,
-                        id="f_tz_sel",
-                    )
-                    yield Input(
-                        value=ctx.get("timezone") or "",
-                        placeholder=t("Timezone for the VMs"),
-                        id="f_tz",
-                        classes="freeval",
-                    )
+                    yield from self.compose_install_extras()
+                    yield from self.compose_timezone()
                     yield Static("SSH", classes="grouptitle")
                     yield Input(
                         value=ctx.get("ssh_key") or "",
@@ -409,20 +328,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("add_ssh_config", True),
                         id="f_sshcfg",
                     )
-                    # mise pose un CPython précompilé, pyenv le compile.
-                    # Grisé quand AUCUNE des VM retenues n'est sur une
-                    # architecture que mise sert.
-                    yield Static(
-                        t("Python interpreter:"),
-                        id="t_python",
-                        classes="grouptitle",
-                    )
-                    with RadioSet(id="f_python"):
-                        yield RadioButton(
-                            t("mise (precompiled, faster)"), value=True
-                        )
-                        yield RadioButton(t("pyenv (compiles from source)"))
-                    yield Static("", id="miswarn")
+                    yield from self.compose_python()
                     # Hors de la section « Installation » : le suivi
                     # regarde la VM ARRIVER, même quand rien ne s'installe.
                     # Rangé dans cette section, il se serait grisé avec elle —
@@ -596,17 +502,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                 )
                 if installe and cmd_vm.strip() not in no_erplibre:
                     row["disk_gb"] += extra_disk
-                if row["vm"].get("desktop"):
-                    row["disk_gb"] += desktop_disk
-                # Même règle pour les outils, et pour la même raison : ils ne
-                # pèsent que sur les VM qui les reçoivent réellement. Android
-                # Studio n'existe qu'en x86_64, les extensions GNOME n'ont de
-                # sens que sous GNOME — une VM qui ne les aura pas ne doit pas
-                # se voir gonfler son disque.
-                row["disk_gb"] += sum(
-                    tool_disk.get(k, 0)
-                    for k in self._tools_for_vm(row["vm"], tools)
-                )
+                # Le bureau et les outils ne pèsent que sur les VM qui
+                # les reçoivent RÉELLEMENT : Android Studio n'existe qu'en
+                # x86_64, les extensions GNOME n'ont de sens que sous GNOME.
+                row["disk_gb"] += self._extras_disk_gb(row["vm"], tools)
             # Le plan doit MONTRER qu'une VM a été personnalisée : sans marque,
             # deux lignes aux ressources différentes n'ont aucune explication à
             # l'écran, et la surcharge est oubliée à la relecture. Le drapeau
@@ -617,163 +516,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 row["custom"] = bool(self.overrides.get(key))
                 row["locked"] = key in self.locked
             self._render_plan()
-            self._render_mise()
-            self._render_store()
-            self._render_tools()
-
-        def _vm_tools(self):
-            """Clés des outils cochés, dans l'ordre de la liste."""
-            picked = []
-            for key, _label, _hint in vm_tools:
-                try:
-                    if self.query_one(f"#f_tool_{key}", Checkbox).value:
-                        picked.append(key)
-                except Exception:
-                    continue
-            return tuple(picked)
-
-        def _tools_for_vm(self, vm, tools):
-            """Outils qu'une VM donnée recevra vraiment.
-
-            Même filtre que todo.py côté déploiement : une VM ARM ne verra
-            jamais Android Studio, une VM Cinnamon jamais les extensions GNOME,
-            un serveur aucun des IDE — mais un serveur reçoit bien la
-            compilation mobile, qui n'a rien à afficher, et une distribution
-            sans apt ne la reçoit pas, son installateur n'existant que là."""
-            out = []
-            for key in tools:
-                arches = tool_arches.get(key) or ()
-                desks = tool_desktops.get(key) or ()
-                fams = tool_families.get(key) or ()
-                if tool_needs_desktop.get(key) and not vm.get("desktop"):
-                    continue
-                if arches and vm["arch"] not in arches:
-                    continue
-                if desks and vm.get("desktop") not in desks:
-                    continue
-                if fams and distro_family.get(vm["distro"], "") not in fams:
-                    continue
-                out.append(key)
-            return out
-
-        def _render_tools(self):
-            """Grise chaque case qu'AUCUNE VM retenue ne peut recevoir, et
-            NOMME ce qui sera écarté.
-
-            Une case par outil, et non un blocage en bloc : sur un parc de
-            serveurs les IDE se grisent, la compilation mobile reste offerte.
-            Cocher Android Studio sur un parc ARM ne produit rien — le dire ici
-            évite de le découvrir dans le journal d'installation."""
-            if not vm_tools:
-                return
-            installe, quelque_chose = self._install_state()
-            for key, _label, _hint in vm_tools:
-                usable = any(self._tools_for_vm(vm, (key,)) for vm in self.vms)
-                offert = (
-                    installe
-                    if tool_phases.get(key) == "after"
-                    else quelque_chose
-                )
-                self.query_one(f"#f_tool_{key}", Checkbox).disabled = not (
-                    usable and offert
-                )
-            picked = self._vm_tools()
-            skipped = sorted(
-                {
-                    vm["name"]
-                    for vm in self.vms
-                    for k in picked
-                    if k not in self._tools_for_vm(vm, picked)
-                }
-            )
-            self.query_one("#toolwarn", Static).update(
-                f"  ⚠ {t('Partly skipped (arch or desktop):')} "
-                f"{', '.join(skipped)}"
-                if skipped
-                else ""
-            )
-
-        def _render_mise(self):
-            """Grise le choix quand aucune VM retenue n'est servie par mise,
-            et nomme les architectures qui retomberont sur pyenv."""
-            usable = self._mise_usable()
-            installe, _quelque_chose = self._install_state()
-            self.query_one("#f_python", RadioSet).disabled = not (
-                usable and installe
-            )
-            skipped = sorted(
-                {
-                    vm["arch"]
-                    for vm in self.vms
-                    if vm["arch"] not in mise_arches
-                }
-            )
-            msg = ""
-            if skipped:
-                msg = (
-                    f"  ⚠ {t('mise has no binary for:')} "
-                    f"{', '.join(skipped)} — {t('those VMs use pyenv')}"
-                )
-            self.query_one("#miswarn", Static).update(msg)
-
-        def _python_provider(self):
-            """« mise », « pyenv », ou rien — c'est-à-dire « automatique ».
-
-            Rien, et surtout pas « pyenv », quand mise n'est servi par aucune
-            architecture retenue. « mise est indisponible » ne veut pas dire
-            « l'utilisateur exige pyenv » : la nuance décide de tout, puisqu'un
-            choix EXPLICITE écarte le Python de la distribution. Sur s390x,
-            renvoyer « pyenv » forçait la compilation de CPython — celle dont
-            gcc 15.2 ne revient pas."""
-            if not self._mise_usable():
-                return ""
-            index = self.query_one("#f_python", RadioSet).pressed_index
-            return "pyenv" if index == 1 else "mise"
-
-        def _app_store(self):
-            """Magasin retenu. Sans VM concernée, la réponse est « deb » :
-            elle ne change rien, et laisser passer « snap » réactiverait snapd
-            pour rien."""
-            if not app_stores or not self._app_store_needed():
-                return "deb"
-            index = self.query_one("#f_store", RadioSet).pressed_index
-            if index is None or not (0 <= index < len(app_stores)):
-                return app_stores[0][0]
-            return app_stores[index][0]
-
-        def _app_store_needed(self):
-            """Au moins une VM graphique sur une distribution qui livre snapd."""
-            return any(
-                vm.get("desktop") and vm["distro"] in snap_distros
-                for vm in self.vms
-            )
-
-        def _render_store(self):
-            """Grise le choix quand aucune VM ne le concerne, et dit pourquoi."""
-            if not app_stores:
-                return
-            needed = self._app_store_needed()
-            _installe, quelque_chose = self._install_state()
-            self.query_one("#f_store", RadioSet).disabled = not (
-                needed and quelque_chose
-            )
-            self.query_one("#storewarn", Static).update(
-                ""
-                if needed
-                else f"  {t('No graphical VM on a snap-based distro.')}"
-            )
-
-        def _install_state(self):
-            """(une installation ?, quelque chose à installer ?).
-
-            Deux réponses et non une : sans installation mais avec un bureau,
-            il se pose encore des paquets — le magasin d'applications et les
-            outils de la phase « avant » gardent un effet."""
-            installe = self.query_one("#f_install", Checkbox).value
-            return installe, bool(installe or self._default_desktop())
-
-        def _mise_usable(self):
-            return any(vm["arch"] in mise_arches for vm in self.vms)
+            self.render_extras()
 
         def _profile_cmd(self):
             """Commande du profil choisi en haut : le défaut de chaque VM."""
@@ -810,14 +553,6 @@ def run_deploy_form(ctx, run_app: bool = True):
             """Branche du formulaire : le défaut de chaque VM."""
             value = self.query_one("#f_branch", Select).value
             return value if isinstance(value, str) else branches[0]
-
-        def _default_desktop(self):
-            """« » pour un serveur, sinon la clé de la saveur choisie."""
-            """Type de VM par défaut. Chaque rangée peut s'en écarter."""
-            index = self.query_one("#f_type", RadioSet).pressed_index
-            if index is None or index < 1 or index > len(desktops):
-                return ""
-            return desktops[index - 1][0]
 
         # -- panneau droit : une rangée de widgets par VM ---------------- #
         def _type_options(self):
@@ -999,52 +734,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                     except Exception:
                         pass
             self._sync_free_inputs()
-
-        def _sync_install_deps(self) -> None:
-            """Grise ce que le choix d'installation rend SANS EFFET.
-
-            Trois états et non deux, parce que la commande distante en a
-            trois : rien du tout, un bureau seul, ou une installation
-            complète. Sans installation MAIS avec un bureau, le magasin
-            d'applications et les outils de la phase « avant » servent encore
-            — les griser mentirait autant que de laisser actif ce qui ne fait
-            rien. La branche, le profil et l'interpréteur Python, eux, ne
-            servent qu'à l'installation.
-
-            Le type de VM et le suivi ne sont jamais grisés : le premier est
-            l'autre moitié de la décision, le second regarde la VM arriver
-            même quand rien ne s'installe."""
-            installe, quelque_chose = self._install_state()
-            for cible, actif in (
-                ("#f_branch", installe),
-                ("#f_profile_install", installe),
-                ("#f_prod", quelque_chose),
-            ):
-                try:
-                    self.query_one(cible).disabled = not actif
-                except Exception:
-                    pass
-            # Le magasin, les outils et l'interpréteur Python ont leur PROPRE
-            # raison de se griser (architecture, bureau, distribution) : ils
-            # composent les deux dans « _render_* », qui a le dernier mot.
-            # Le titre suit ses champs : une section entière se lit inactive
-            # d'un coup d'œil, au lieu de se déduire de trois widgets ternes.
-            for cible, actif in (
-                ("#t_store", quelque_chose),
-                ("#t_tools", quelque_chose),
-                ("#t_python", installe),
-            ):
-                try:
-                    self.query_one(cible).set_class(not actif, "off")
-                except Exception:
-                    pass
-            # Les rangées portent les mêmes choix, par VM.
-            for i in range(len(self.rows)):
-                for cible in (f"#v{i}_branch", f"#v{i}_prof"):
-                    try:
-                        self.query_one(cible).disabled = not installe
-                    except Exception:
-                        pass
 
         def _render_plan(self):
             # Le JEU de VM a-t-il changé ? Si oui on remonte les widgets, sinon
@@ -1231,18 +920,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             # ci-dessous sans rien recalculer, et les rangées restaient sur
             # l'ancienne version. Elles n'en gardent pas de copie — « » y
             # veut dire « celle du formulaire » — il suffit de redessiner.
-            if event.select.id == "f_tz_sel":
-                # « libre… » révèle la saisie ; un fuseau choisi la referme et
-                # y recopie le nom, seule valeur que lisent _form_values et la
-                # spec — un seul endroit porte la réponse.
-                free = event.value is FREE
-                field = self.query_one("#f_tz", Input)
-                field.display = free
-                field.disabled = not free
-                if free:
-                    field.focus()
-                elif isinstance(event.value, str):
-                    field.value = event.value
+            if self.extras_on_select(event):
                 return
             if event.select.id in ("f_branch", "f_profile_install"):
                 self._clear_overrides(
@@ -1377,15 +1055,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                     else f"x{self.profile}"
                 ),
                 "ssh_key": os.path.expanduser(key) if key else "",
-                # Un champ vidé retombe sur le fuseau de l'hôte plutôt que sur
-                # rien : sans valeur, la VM démarrerait en UTC.
-                "timezone": self.query_one("#f_tz", Input).value.strip()
-                or ctx.get("timezone")
-                or "",
-                "desktop": self._default_desktop(),
-                "vm_tools": self._vm_tools(),
-                "python_provider": self._python_provider(),
-                "app_store": self._app_store(),
+                **self.extras_values(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 # Une exécution par installation : le nombre de VM retenues

@@ -833,12 +833,11 @@ class ProxmoxMenuMixin:
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
             "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
-            # Les architectures pour lesquelles mise publie un CPython
-            # précompilé : sans ce choix, l'écran Proxmox envoyait toujours
-            # « automatique », donc pyenv, qui COMPILE Python (1 à 3 min sur
-            # une machine récente, bien plus sous émulation) — rapporté sur
-            # une VM Arch.
-            "mise_arches": self.QEMU_MISE_ARCHES,
+            # Type de VM, magasin d'applications, outils, fuseau,
+            # interpréteur Python : les réglages du système INVITÉ, qui ne
+            # regardent pas l'hyperviseur. Cet écran n'en portait que trois —
+            # une VM créée ici naissait sans bureau, sans outils et en UTC.
+            **self._qemu_guest_context(),
             # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
             # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
             # Odoo 18, comme l'écran d'à côté avant correction.
@@ -887,15 +886,30 @@ class ProxmoxMenuMixin:
         la demande initiale quand ERPLibre s'installe. Ici la marge se perdait
         entre l'écran et « qm resize ».
         """
+        from script.todo.deploy_form_extras import (
+            extras_disk_gb,
+            extras_tables,
+        )
+
         demande = vm.get("disk") or ""
-        install = spec.get("install") or {}
-        cmd = vm.get("install_cmd") or install.get("cmd") or ""
-        if not self._qemu_installs_erplibre(install.get("branch"), cmd):
-            return demande
         gigs = self._parse_disk_gb(demande)
         if not gigs:
             return demande
-        return f"{gigs + self.ERPLIBRE_EXTRA_DISK_GB}G"
+        install = spec.get("install") or {}
+        cmd = vm.get("install_cmd") or install.get("cmd") or ""
+        marge = 0
+        if self._qemu_installs_erplibre(install.get("branch"), cmd):
+            marge += self.ERPLIBRE_EXTRA_DISK_GB
+        # Le bureau et les outils pèsent aussi, et sur la VM QUI LES REÇOIT :
+        # une VM ARM n'aura pas Android Studio, un serveur aucun des IDE. Le
+        # plan les additionne déjà à l'écran ; sans eux ici, la VM naissait
+        # avec le disque d'un serveur nu et GNOME le remplissait.
+        marge += extras_disk_gb(
+            dict(vm, desktop=vm.get("desktop") or spec.get("desktop") or ""),
+            spec.get("vm_tools") or (),
+            extras_tables(self._qemu_guest_context()),
+        )
+        return f"{gigs + marge}G" if marge else demande
 
     def _pve_vm_commands(self, mod, vm, spec):
         """Les commandes de création d'UNE VM, dans l'ordre : l'image puis
@@ -1106,6 +1120,33 @@ class ProxmoxMenuMixin:
         with open(chemin, "w", encoding="utf-8") as fh:
             fh.write("\n".join(entete) + "\n")
         return chemin
+
+    def _pve_set_timezone(self, cible, spec):
+        """Pose le fuseau DANS la VM, par ssh.
+
+        La voie libvirt le donne à cloud-init, qui écrit /etc/timezone au
+        premier démarrage. « qm set » n'a pas d'équivalent : le cloud-init de
+        Proxmox ne règle que l'utilisateur, la clé et le réseau. Une VM créée
+        ici restait donc en UTC — et on ne s'en aperçoit qu'aux horodatages,
+        parfois des jours plus tard.
+
+        AVANT l'installation, pour que le journal porte déjà la bonne heure.
+        Un nom IANA, jamais un décalage : « UTC-5 » ne dit rien de l'heure
+        d'été, et timedatectl le refuse.
+        """
+        fuseau = (spec.get("timezone") or "").strip()
+        if not fuseau:
+            return False
+        code, sortie = self._pve_ssh(
+            cible, f"sudo timedatectl set-timezone {shlex.quote(fuseau)}"
+        )
+        if code:
+            # Nommé et non tu : la VM reste en UTC, et c'est une surprise
+            # qu'on veut avoir maintenant plutôt qu'au premier journal.
+            print(f"  ⚠ {t('timezone not set')} : {fuseau} ({code})")
+            return False
+        print(f"  ✓ {t('Timezone')} : {fuseau}")
+        return True
 
     def _pve_write_guide(self, cible, vm, spec, mod):
         """Pose le guide de connexion et l'identité git DANS la VM.
@@ -1331,6 +1372,8 @@ class ProxmoxMenuMixin:
             # s'installe, et l'installation ne le touche pas.
             if vm["alias"] and mod_qemu:
                 self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
+            if vm["alias"]:
+                self._pve_set_timezone(vm["alias"], spec)
             joignables.append(vm)
         install = spec.get("install")
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été
@@ -1383,8 +1426,24 @@ class ProxmoxMenuMixin:
                 branche,
                 {n: alias.get(n, n) for n in noms},
                 finale,
+                # Les réglages du système invité, qui n'atteignaient pas la
+                # commande distante : la VM naissait serveur nu, sans outils.
+                prod=bool(spec.get("prod")),
+                desktop=spec.get("desktop") or "",
                 python_provider=spec.get("python_provider") or "",
+                app_store=spec.get("app_store") or "deb",
+                vm_tools=spec.get("vm_tools") or (),
                 pve=cartes_pve,
+                # Ce que sont ces VM, pris de la SPEC. Le suivi le demandait
+                # à virsh, qui ne connaît que les domaines d'ici.
+                meta={
+                    vm["name"]: (
+                        vm.get("distro"),
+                        vm.get("version"),
+                        vm.get("arch") or "amd64",
+                    )
+                    for vm in joignables
+                },
             )
             return resultat
         # Sans suivi mais avec quelque chose à installer : en série, sortie à
@@ -1397,7 +1456,11 @@ class ProxmoxMenuMixin:
                 branche,
                 alias.get(vm["name"], vm["name"]),
                 vm.get("install_cmd") or commun,
-                False,
+                bool(spec.get("prod")),
+                desktop=spec.get("desktop") or "",
+                python_provider=spec.get("python_provider") or "",
+                app_store=spec.get("app_store") or "deb",
+                vm_tools=spec.get("vm_tools") or (),
             )
         return resultat
 
@@ -1564,6 +1627,10 @@ class ProxmoxMenuMixin:
             "install": install,
             "monitor": True,
             "python_provider": "",
+            # La voie par questions ne demande pas le fuseau — l'écran le
+            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
+            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
+            "timezone": self._qemu_host_timezone(),
         }
         joignables = self._pve_after_create(
             host, spec_finale, [nom], cle_locale

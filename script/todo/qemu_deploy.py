@@ -271,6 +271,7 @@ class QemuDeployMixin:
         app_store="deb",
         vm_tools=(),
         pve=None,
+        meta=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -279,7 +280,10 @@ class QemuDeployMixin:
         `prod` : install /opt/erplibre + service SELinux confiné.
         `vm_tools` : outils cochés pour tout le parc, filtrés machine par
         machine (Android Studio n'existe qu'en x86_64, les extensions GNOME
-        n'ont pas de sens sous Cinnamon)."""
+        n'ont pas de sens sous Cinnamon).
+        `meta` : {nom: (distro, version, arch)} quand l'appelant SAIT ce que
+        sont ces VM. Sans elle, on le demande à virsh — juste ici, donc faux
+        pour une VM qui vit sur un Proxmox distant."""
         from script.todo.qemu_install_monitor import (
             launch_installs,
             run_monitor,
@@ -316,7 +320,13 @@ class QemuDeployMixin:
         for name in names:
             ip = ip_map.get(name)
             if ip:
-                d, v, a = (
+                # Ce que l'appelant sait d'abord. Sinon virsh — mais virsh
+                # ne connaît QUE les domaines d'ici : sur une VM posée sur un
+                # Proxmox distant il ne répond rien, ou pire, il répond pour
+                # un domaine local qui porte le même nom. L'architecture
+                # décide des outils installés : une VM ARM prise pour x86_64
+                # recevait Android Studio, qui n'existe pas pour elle.
+                d, v, a = (meta or {}).get(name) or (
                     self._qemu_vm_meta(name, mod)
                     if mod
                     else (None, None, None)
@@ -1266,7 +1276,6 @@ class QemuDeployMixin:
                 if self._qemu_distro_profile(d)
             },
             "ssh_key": self._qemu_default_ssh_key(),
-            "timezone": self._qemu_host_timezone(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée
@@ -1279,47 +1288,7 @@ class QemuDeployMixin:
             "ram_presets": self._QEMU_RAM_PRESETS,
             "disk_presets": self._QEMU_DISK_PRESETS,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
-            "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
-            "mise_arches": self.QEMU_MISE_ARCHES,
-            "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
-            "timezones": self._qemu_timezone_choices(
-                self._qemu_host_timezone()
-            ),
-            "snap_distros": self.QEMU_SNAP_DISTROS,
-            "vm_tools": self._qemu_vm_tool_choices(),
-            "vm_tool_disk": {
-                k: v["disk_gb"] for k, v in self._QEMU_VM_TOOLS.items()
-            },
-            "vm_tool_arches": {
-                k: v["arches"] for k, v in self._QEMU_VM_TOOLS.items()
-            },
-            "vm_tool_desktops": {
-                k: v["desktops"] for k, v in self._QEMU_VM_TOOLS.items()
-            },
-            # « after » = l'outil vit DANS le dépôt ERPLibre (compilation
-            # mobile, AVD, script Forgejo) : sans installation, il n'existe
-            # pas, et la commande distante le saute en le nommant.
-            "vm_tool_phases": {
-                k: v.get("phase", "before")
-                for k, v in self._QEMU_VM_TOOLS.items()
-            },
-            "vm_tool_needs_desktop": {
-                k: v["needs_desktop"] for k, v in self._QEMU_VM_TOOLS.items()
-            },
-            "vm_tool_families": {
-                k: v["families"] for k, v in self._QEMU_VM_TOOLS.items()
-            },
-            "distro_family": dict(self._QEMU_DISTRO_FAMILY),
-            "desktop_suffixes": self._qemu_desktop_suffixes(),
-            "desktops": [
-                (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
-            ],
-            "defaults": {
-                "install": True,
-                "add_ssh_config": True,
-                "monitor": True,
-                "prod": False,
-            },
+            **self._qemu_guest_context(),
             # L'aperçu passe par le MÊME constructeur que le déploiement.
             "build_command": lambda vm, spec, dry: " ".join(
                 shlex.quote(p)

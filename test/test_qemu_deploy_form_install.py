@@ -16,7 +16,6 @@ actif ce qui ne fait rien.
 """
 
 import asyncio
-import re
 import sys
 import unittest
 from pathlib import Path
@@ -37,39 +36,63 @@ except Exception:  # pragma: no cover - dépend de l'environnement
 
 
 class TestSaPlace(unittest.TestCase):
-    """Lu dans la source : l'ordre du panneau est une décision, pas un hasard."""
+    """L'ordre du panneau est une décision, pas un hasard.
+
+    Relevé sur l'ÉCRAN MONTÉ et non dans la source : depuis que les réglages
+    du système invité viennent d'un socle partagé, le fichier ne contient
+    plus qu'un « yield from » là où le test cherchait un identifiant. Il
+    passait au vert sur un écran qu'il ne lisait plus — puis au rouge sans
+    qu'aucun ordre ait bougé. Le DOM, lui, dit ce que l'utilisateur voit."""
 
     @classmethod
     def setUpClass(cls):
         cls.src = FORM.read_text(encoding="utf-8")
+        cls.ordre = ordre_du_panneau(contexte()) if TEXTUAL else []
 
-    def _rang(self, motif):
-        m = re.search(re.escape(motif), self.src)
-        self.assertIsNotNone(m, motif)
-        return m.start()
+    def _rang(self, ident):
+        self.assertIn(ident, self.ordre, ident)
+        return self.ordre.index(ident)
 
+    @unittest.skipUnless(TEXTUAL, "Textual absent")
     def test_the_install_section_sits_under_the_vm_type(self):
-        self.assertLess(
-            self._rang('with RadioSet(id="f_type")'),
-            self._rang('id="t_install"'),
-        )
+        self.assertLess(self._rang("f_type"), self._rang("t_install"))
 
+    @unittest.skipUnless(TEXTUAL, "Textual absent")
     def test_and_before_the_sections_it_commands(self):
         # Magasin d'applications, outils : ils dépendent d'elle, donc ils
         # viennent après.
-        for apres in ('id="t_store"', 'id="t_tools"'):
-            self.assertLess(self._rang('id="t_install"'), self._rang(apres))
+        for apres in ("t_store", "t_tools"):
+            self.assertLess(self._rang("t_install"), self._rang(apres))
 
     def test_the_checkbox_no_longer_claims_to_be_about_erplibre(self):
-        self.assertIn('t("Install software in the VM")', self.src)
         self.assertNotIn('t("Install ERPLibre")', self.src)
 
+    @unittest.skipUnless(TEXTUAL, "Textual absent")
     def test_the_monitor_left_the_install_section(self):
         # Rangé dedans, il se serait grisé avec elle — et décocher ERPLibre
         # avait déjà fait disparaître le tableau de bord une fois.
-        self.assertLess(
-            self._rang('id="t_deploy"'), self._rang('id="f_monitor"')
+        self.assertLess(self._rang("t_deploy"), self._rang("f_monitor"))
+
+
+def ordre_du_panneau(ctx, forme="qemu"):
+    """Les identifiants du panneau gauche, dans l'ordre où ils s'affichent."""
+    from script.todo.proxmox_deploy_form import run_proxmox_form
+    from script.todo.qemu_deploy_form import run_deploy_form
+
+    vu = []
+
+    async def scenario():
+        app = (
+            run_deploy_form(ctx, run_app=False)
+            if forme == "qemu"
+            else run_proxmox_form(ctx, run_app=False)
         )
+        async with app.run_test(size=(200, 60)) as pilote:
+            await pilote.pause()
+            vu.extend(w.id for w in app.query("#fields *") if w.id)
+
+    asyncio.run(scenario())
+    return vu
 
 
 def contexte():
