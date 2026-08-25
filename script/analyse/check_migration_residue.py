@@ -134,10 +134,15 @@ CONTROLES = (
         "title": "Default pricelist missing while product is installed",
         "why": "product.list0 was declared up to Odoo 16 only; nothing"
         " recreates it, and a quotation has no price list to pick.",
+        # On cherche une LISTE, pas son xmlid. Mesuré : la réparation
+        # laisse Odoo créer « Par défaut » sans poser `product.list0` —
+        # chercher l'xmlid signalait donc une base parfaitement saine, et
+        # aurait signalé de même celle d'un client qui a créé la sienne à
+        # la main.
         "sql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM ir_module_module"
         " WHERE name='product' AND state='installed')"
-        " AND NOT EXISTS (SELECT 1 FROM ir_model_data"
-        " WHERE module='product' AND name='list0')"
+        " AND to_regclass('public.product_pricelist') IS NOT NULL"
+        " AND NOT EXISTS (SELECT 1 FROM product_pricelist)"
         " THEN 1 ELSE 0 END",
         "gravity": "broken",
         "repair": "script/odoo/migration/restore_config_defaults.py --apply",
