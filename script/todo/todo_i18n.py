@@ -4137,6 +4137,10 @@ TRANSLATIONS = {
         "fr": "Effacer ces images en double ? (o/N, défaut : non) : ",
         "en": "Delete these duplicate images? (y/N, default: no): ",
     },
+    "its jump host is gone:": {
+        "fr": "son rebond n'existe plus :",
+        "en": "its jump host is gone:",
+    },
     "Orphan ~/.ssh/config entries:": {
         "fr": "Entrées ~/.ssh/config orphelines :",
         "en": "Orphan ~/.ssh/config entries:",
