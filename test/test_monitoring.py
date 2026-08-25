@@ -63,7 +63,7 @@ class TestWhatASourceAdmits(unittest.TestCase):
 
     def test_every_analysis_says_why_it_cannot_do_live(self):
         for analyse in monitoring.ANALYSES:
-            self.assertTrue(analyse["needs_sql"].strip(), analyse["key"])
+            self.assertTrue(analyse["why_not"].strip(), analyse["key"])
 
     def test_available_and_unavailable_cover_every_analysis(self):
         for genre in (monitoring.KIND_DATABASE, monitoring.KIND_LIVE):

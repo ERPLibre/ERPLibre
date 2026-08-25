@@ -9640,6 +9640,130 @@ TRANSLATIONS = {
         "fr": "Une instance en service",
         "en": "An instance in service",
     },
+    "Anonymise a copy": {
+        "fr": "🎭 Anonymiser une copie",
+        "en": "🎭 Anonymise a copy",
+    },
+    "Replace names, texts and numbers with meaningless ones so the copy can be shared. No AI: words from a list, numbers drawn at random, written by SQL.": {
+        "fr": "Remplacer noms, textes et nombres par des valeurs sans intérêt, pour pouvoir partager la copie. Sans IA : des mots pris dans une liste, des nombres tirés au hasard, écrits en SQL.",
+        "en": "Replace names, texts and numbers with meaningless ones so the copy can be shared. No AI: words from a list, numbers drawn at random, written by SQL.",
+    },
+    "This one WRITES. It is offered only for a database you restored here — never for an instance in service.": {
+        "fr": "Celle-ci ÉCRIT. Elle n'est offerte que pour une base restaurée ici — jamais pour une instance en service.",
+        "en": "This one WRITES. It is offered only for a database you restored here — never for an instance in service.",
+    },
+    "This DESTROYS the data of": {
+        "fr": "Ceci DÉTRUIT les données de",
+        "en": "This DESTROYS the data of",
+    },
+    "there is no undo.": {
+        "fr": "il n'y a pas de retour en arrière.",
+        "en": "there is no undo.",
+    },
+    "Type the database name to confirm (empty to cancel): ": {
+        "fr": "Retapez le nom de la base pour confirmer (vide pour annuler) : ",
+        "en": "Type the database name to confirm (empty to cancel): ",
+    },
+    "Cancelled: nothing was written.": {
+        "fr": "Annulé : rien n'a été écrit.",
+        "en": "Cancelled: nothing was written.",
+    },
+    "Hybrid: the default personal-data models, adjusted": {
+        "fr": "Hybride : les modèles à données personnelles par défaut, ajustés",
+        "en": "Hybrid: the default personal-data models, adjusted",
+    },
+    "Whitelist: only the models I name": {
+        "fr": "Liste blanche : seulement les modèles que je nomme",
+        "en": "Whitelist: only the models I name",
+    },
+    "Blacklist: every model except those I name": {
+        "fr": "Liste noire : tous les modèles sauf ceux que je nomme",
+        "en": "Blacklist: every model except those I name",
+    },
+    "Models to ADD, comma separated (empty for none): ": {
+        "fr": "Modèles à AJOUTER, séparés par des virgules (vide pour aucun) : ",
+        "en": "Models to ADD, comma separated (empty for none): ",
+    },
+    "Models to EXCLUDE, comma separated: ": {
+        "fr": "Modèles à EXCLURE, séparés par des virgules : ",
+        "en": "Models to EXCLUDE, comma separated: ",
+    },
+    "A whitelist with no model would do nothing.": {
+        "fr": "Une liste blanche sans modèle ne ferait rien.",
+        "en": "A whitelist with no model would do nothing.",
+    },
+    "Python file declaring MOTS (empty for the built-in): ": {
+        "fr": "Fichier Python déclarant MOTS (vide pour la liste intégrée) : ",
+        "en": "Python file declaring MOTS (empty for the built-in): ",
+    },
+    "Nothing to anonymise with these lists.": {
+        "fr": "Rien à anonymiser avec ces listes.",
+        "en": "Nothing to anonymise with these lists.",
+    },
+    "column(s)": {
+        "fr": "colonne(s)",
+        "en": "column(s)",
+    },
+    "dry run, nothing written": {
+        "fr": "marche à blanc, rien n'est écrit",
+        "en": "dry run, nothing written",
+    },
+    "text": {
+        "fr": "texte",
+        "en": "text",
+    },
+    "numeric": {
+        "fr": "nombre",
+        "en": "numeric",
+    },
+    "translated (jsonb)": {
+        "fr": "traduit (jsonb)",
+        "en": "translated (jsonb)",
+    },
+    "unique": {
+        "fr": "unique",
+        "en": "unique",
+    },
+    "Use --apply --confirm <database> to write.": {
+        "fr": "Utiliser --apply --confirm <base> pour écrire.",
+        "en": "Use --apply --confirm <database> to write.",
+    },
+    "Replace the data of a COPY with meaningless data.": {
+        "fr": "Remplacer les données d'une COPIE par des données sans intérêt.",
+        "en": "Replace the data of a COPY with meaningless data.",
+    },
+    "comma separated, adds to the mode": {
+        "fr": "séparés par des virgules, s'ajoutent au mode",
+        "en": "comma separated, adds to the mode",
+    },
+    "comma separated, removed from it": {
+        "fr": "séparés par des virgules, retirés du mode",
+        "en": "comma separated, removed from it",
+    },
+    "python file declaring MOTS": {
+        "fr": "fichier python déclarant MOTS",
+        "en": "python file declaring MOTS",
+    },
+    "repeat the database name; --apply refuses without it": {
+        "fr": "répéter le nom de la base ; --apply refuse sans lui",
+        "en": "repeat the database name; --apply refuses without it",
+    },
+    "Refusing to write: --confirm must repeat": {
+        "fr": "Écriture refusée : --confirm doit répéter",
+        "en": "Refusing to write: --confirm must repeat",
+    },
+    "Nothing was written:": {
+        "fr": "Rien n'a été écrit :",
+        "en": "Nothing was written:",
+    },
+    "This file declares no MOTS:": {
+        "fr": "Ce fichier ne déclare aucun MOTS :",
+        "en": "This file declares no MOTS:",
+    },
+    "Unknown mode:": {
+        "fr": "Mode inconnu :",
+        "en": "Unknown mode:",
+    },
 }
 
 
