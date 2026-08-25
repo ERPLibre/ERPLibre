@@ -1121,6 +1121,36 @@ class ProxmoxMenuMixin:
             fh.write("\n".join(entete) + "\n")
         return chemin
 
+    def _pve_alias_names(self, nom, chaine, locaux, rebond=""):
+        """UN seul nom pour l'entrée ~/.ssh/config, et lequel.
+
+        Deux noms sur la même ligne « Host » — le court et le chaîné
+        « hôte+vm » — étaient un doublon dès que le court était libre : ssh
+        n'a besoin que d'un nom, et le second n'ajoutait qu'une façon de plus
+        d'écrire la même adresse. Rapporté.
+
+        Le court quand il est LIBRE, c'est celui qu'on tape ; le chaîné
+        sinon, car un nom déjà pris désigne une AUTRE machine — une VM locale
+        du même nom, ou la VM d'un autre hôte Proxmox. Vécu : « ssh » partait
+        vers la machine locale qui partageait le nom.
+
+        « Pris » se juge sur le ProxyJump du bloc et non sur sa seule
+        présence : notre propre entrée, réécrite à chaque déploiement, se
+        serait autrement prise pour une rivale — et le nom aurait basculé
+        d'une fois sur l'autre.
+
+        Rend (noms, volé) — `volé` nomme ce qui a forcé le nom chaîné, pour
+        que l'appelant le dise plutôt que de laisser la surprise."""
+        if nom in locaux:
+            return [chaine], t("a local VM")
+        bloc = self._ssh_config_block(nom)
+        notre = (
+            not bloc
+            or chaine in bloc.get("names", ())
+            or (rebond and bloc.get("proxyjump") == rebond)
+        )
+        return ([nom], "") if notre else ([chaine], "~/.ssh/config")
+
     def _pve_set_timezone(self, cible, spec):
         """Pose le fuseau DANS la VM, par ssh.
 
@@ -1335,10 +1365,16 @@ class ProxmoxMenuMixin:
             # d'installation — qui ré-résout par virsh — irait installer
             # ERPLibre sur ELLE. Vécu : « erplibre-ubuntu-2604 » déployée sur
             # Proxmox, installation partie sur la VM locale du même nom.
-            if vm["name"] in locaux:
+            noms_alias, vole = self._pve_alias_names(
+                vm["name"],
+                alias_chaine(vm["name"]),
+                locaux,
+                host["target"],
+            )
+            if vole:
                 print(
-                    f"  ⚠ {t('A local VM already bears this name:')}"
-                    f" {t('the alias goes to')} {alias_chaine(vm['name'])}"
+                    f"  ⚠ {t('This name is already taken by')} {vole} :"
+                    f" {t('the alias goes to')} {noms_alias[0]}"
                 )
             # L'entrée ~/.ssh/config est le SEUL chemin vers cette VM : elle
             # est derrière l'hôte Proxmox (pont interne), donc son adresse
@@ -1350,13 +1386,6 @@ class ProxmoxMenuMixin:
             if not spec.get("add_ssh_config") and besoin:
                 print(f"  → {t('~/.ssh/config written anyway (install)')}")
             if spec.get("add_ssh_config") or besoin:
-                # Deux noms, comme pour les VM imbriquées : le nom CHAÎNÉ
-                # « hôte+vm » dit où la machine vit et ne peut rien voler, et
-                # le nom court n'est ajouté que s'il ne désigne pas déjà une
-                # VM locale.
-                noms_alias = [alias_chaine(vm["name"])]
-                if vm["name"] not in locaux:
-                    noms_alias.append(vm["name"])
                 self._write_ssh_config_entry(
                     noms_alias,
                     spec.get("user") or "erplibre",
@@ -1364,8 +1393,8 @@ class ProxmoxMenuMixin:
                     identity_file=self._ssh_private_key(cle_locale),
                     proxy_jump=host["target"],
                 )
-                alias[vm["name"]] = noms_alias[-1]
-                print(f"  ✓ ~/.ssh/config : ssh {noms_alias[-1]}")
+                alias[vm["name"]] = noms_alias[0]
+                print(f"  ✓ ~/.ssh/config : ssh {noms_alias[0]}")
             vm["adresse"] = ip
             vm["alias"] = alias.get(vm["name"], vm["name"])
             # Le guide AVANT l'installation : il doit être là même si rien ne
@@ -1659,13 +1688,16 @@ class ProxmoxMenuMixin:
             if not ip:
                 print(f"  ⚠ {vm['name']} : {t('no address, skipped')}")
                 continue
-            noms = [f"{hote_court}+{vm['name']}"]
-            if vm["name"] not in locaux:
-                noms.append(vm["name"])
-            else:
+            noms, vole = self._pve_alias_names(
+                vm["name"],
+                f"{hote_court}+{vm['name']}",
+                locaux,
+                host["target"],
+            )
+            if vole:
                 print(
-                    f"  ⚠ {t('A local VM already bears this name:')}"
-                    f" {vm['name']}"
+                    f"  ⚠ {t('This name is already taken by')} {vole} :"
+                    f" {t('the alias goes to')} {noms[0]}"
                 )
             self._write_ssh_config_entry(
                 noms,
@@ -1675,7 +1707,7 @@ class ProxmoxMenuMixin:
                 proxy_jump=host["target"],
             )
             print(
-                f"  ✓ ssh {noms[-1]}   ({ip} {t('through')} {host['target']})"
+                f"  ✓ ssh {noms[0]}   ({ip} {t('through')} {host['target']})"
             )
 
     def _pve_test_vm(self):

@@ -4002,6 +4002,14 @@ TRANSLATIONS = {
         "fr": "Quitter (q) pour suivre la mise en route de la VM",
         "en": "Quit (q) to follow the VM starting up",
     },
+    "This name is already taken by": {
+        "fr": "Ce nom est déjà pris par",
+        "en": "This name is already taken by",
+    },
+    "a local VM": {
+        "fr": "une VM locale",
+        "en": "a local VM",
+    },
     "A local VM already bears this name:": {
         "fr": "Une VM locale porte déjà ce nom :",
         "en": "A local VM already bears this name:",
