@@ -198,11 +198,16 @@ def champ_retenu(champ, inclure_connexion=False):
         # Une relation qui aurait échappé au filtre de ttype.
         return False
     if champ.get("checked"):
-        # Une contrainte CHECK dit ce que la colonne a le droit de valoir.
-        # Mesuré : crm_lead.probability doit rester entre 0 et 100, et un
-        # tirage à 1000 fait échouer l'UPDATE — donc, transaction unique
-        # oblige, TOUTE l'anonymisation. Lire l'expression du CHECK pour
-        # tirer dedans serait deviner ; on s'abstient et on le dit.
+        # Une contrainte CHECK hors de portée. Mesuré, et la distinction
+        # compte : sur un NOMBRE toute contrainte borne la valeur —
+        # crm_lead.probability entre 0 et 100, credit * debit = 0 — et un
+        # tirage à 1000 fait échouer l'UPDATE, donc toute l'anonymisation.
+        # Sur du TEXTE, presque toutes ne garantissent que la non-nullité :
+        # `res_partner.name` n'exige d'être non nul que pour un contact, ce
+        # qu'un mot satisfait. Les écarter TOUTES laissait le champ le plus
+        # important de la base intact — une anonymisation qui n'anonymisait
+        # pas les noms. La requête ne lève donc ce drapeau, pour du texte,
+        # que sur les contraintes de FORME.
         return False
     if champ["ttype"] in TYPES_NOMBRE and champ.get("pg_type") == "jsonb":
         # Mesuré sur res_partner.credit_limit : un `float` d'Odoo peut
@@ -233,22 +238,46 @@ def litteral(texte):
     return "'" + str(texte).replace("'", "''") + "'"
 
 
+def ident(nom):
+    """Un identifiant SQL, cité.
+
+    Odoo laisse nommer un champ `user`, `order` ou `group` : ce sont des
+    mots réservés de PostgreSQL, et un identifiant nu fait échouer
+    l'analyse syntaxique — donc, transaction unique oblige, TOUTE
+    l'anonymisation. Mesuré en liste noire sur une base réelle :
+    « syntax error at or near "user" ». Les citer coûte deux caractères
+    et ferme la question pour tous les noms à venir.
+    """
+    return '"' + str(nom).replace('"', '""') + '"'
+
+
 def expression_texte(champ, mots):
     """Le SQL qui remplace un champ texte, en préservant les NULL.
 
     Un NULL qui deviendrait un mot créerait de la donnée là où il n'y en
     avait pas : la copie mentirait dans l'autre sens.
     """
-    nom = champ["name"]
-    liste = mots_pour(nom, mots)
+    nom = ident(champ["name"])
+    liste = mots_pour(champ["name"], mots)
     # Les parenthèses ne sont pas décoratives : PostgreSQL refuse
     # d'indexer un constructeur ARRAY[...] directement.
     tableau = "(ARRAY[" + ",".join(litteral(m) for m in liste) + "])"
-    tirage = f"{tableau}[(id % {len(liste)}) + 1]"
+    tirage = f'{tableau}[("id" % {len(liste)}) + 1]'
+    borne = champ.get("max_len")
     if champ.get("unique"):
         # Deux lignes qui reçoivent le même mot feraient échouer TOUT
-        # l'UPDATE sur une colonne unique.
-        tirage = f"{tirage} || '-' || id::text"
+        # l'UPDATE sur une colonne unique. L'identifiant vient EN TÊTE
+        # quand la colonne est bornée : c'est lui qui porte l'unicité, et
+        # une troncature par la droite doit le laisser intact.
+        if borne:
+            tirage = f"\"id\"::text || '-' || {tirage}"
+        else:
+            tirage = f"{tirage} || '-' || \"id\"::text"
+    if borne:
+        # varchar(n) : mesuré, 13 colonnes sont bornées sur une base
+        # réelle, dont des codes à 1, 2 et 3 caractères. « jonquille »
+        # dans un varchar(3) fait échouer l'UPDATE entier.
+        tirage = f"left({tirage}, {borne})"
     if champ.get("pg_type") == "jsonb":
         # Un objet par langue depuis Odoo 17 : on le reconstruit clé à
         # clé. Écrire une chaîne par-dessus détruirait la colonne.
@@ -262,7 +291,7 @@ def expression_texte(champ, mots):
 
 def expression_nombre(champ):
     """Le SQL qui remplace un nombre : au hasard, entre 0 et 1000."""
-    nom = champ["name"]
+    nom = ident(champ["name"])
     if champ["ttype"] == "integer":
         tirage = "floor(random() * 1001)::integer"
     else:
@@ -275,14 +304,13 @@ def sql_pour_table(table, champs, mots):
     morceaux = []
     for champ in champs:
         if champ["ttype"] in TYPES_TEXTE:
-            morceaux.append(
-                f"{champ['name']} = {expression_texte(champ, mots)}"
-            )
+            valeur = expression_texte(champ, mots)
         else:
-            morceaux.append(f"{champ['name']} = {expression_nombre(champ)}")
+            valeur = expression_nombre(champ)
+        morceaux.append(f"{ident(champ['name'])} = {valeur}")
     if not morceaux:
         return None
-    return f"UPDATE {table} SET " + ", ".join(morceaux) + ";"
+    return f"UPDATE {ident(table)} SET " + ", ".join(morceaux) + ";"
 
 
 def table_de(modele):
@@ -311,7 +339,19 @@ SELECT f.model || '\x1f' || f.name || '\x1f' || f.ttype || '\x1f'
                WHERE k.conrelid = c.oid
                  AND k.contype = 'c'
                  AND a.attnum = ANY(k.conkey)
-          ) THEN '1' ELSE '0' END
+                 AND (
+                     -- Sur un NOMBRE, toute contrainte borne la valeur :
+                     -- `credit * debit = 0`, `amount >= 0`. On s'abstient.
+                     f.ttype IN ('integer','float','monetary')
+                     -- Sur du TEXTE, presque toutes ne garantissent que la
+                     -- non-nullité, ce qu'un mot satisfait. Seules celles
+                     -- qui contraignent la FORME sont hors de portée.
+                     OR pg_get_constraintdef(k.oid) ~
+                        'char_length|~~|jsonb_typeof|similar to'
+                 )
+          ) THEN '1' ELSE '0' END || '\x1f'
+       || CASE WHEN a.atttypmod > 4
+               THEN (a.atttypmod - 4)::text ELSE '' END
   FROM ir_model_fields f
   JOIN pg_class c ON c.relname = replace(f.model, '.', '_')
                  AND c.relkind = 'r'
@@ -333,7 +373,7 @@ def inspect(database, config_path=None):
     champs = []
     for ligne in brut.splitlines():
         parts = ligne.split(SEP)
-        if len(parts) != 6:
+        if len(parts) != 7:
             continue
         champs.append(
             {
@@ -343,6 +383,11 @@ def inspect(database, config_path=None):
                 "pg_type": parts[3],
                 "unique": parts[4] == "1",
                 "checked": parts[5] == "1",
+                # varchar(n) : n, sinon None. Mesuré sur une base réelle,
+                # 13 colonnes sont bornées — dont des codes à 1, 2 et 3
+                # caractères. Y écrire « jonquille » fait échouer tout
+                # l'UPDATE, et donc toute l'anonymisation.
+                "max_len": int(parts[6]) if parts[6].isdigit() else None,
             }
         )
     return champs
@@ -446,29 +491,56 @@ def ecrire(database, etapes, config_path=None, timeout=900):
     redéclarer ici, ce serait accepter qu'elle diverge un jour.
     """
     import subprocess
+    import tempfile
 
     env = lib_analyse.pg_env(config_path, timeout=timeout)
     env["PGOPTIONS"] = f"-c statement_timeout={timeout}s"
     sql = "\n".join(etape["sql"] for etape in etapes)
-    done = subprocess.run(
-        [
-            "psql",
-            "-X",
-            "-w",
-            "-1",
-            "-v",
-            "ON_ERROR_STOP=1",
-            "-d",
-            database,
-            "-tA",
-            "-c",
-            sql,
-        ],
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=timeout + 60,
+
+    # PAR FICHIER, jamais par `-c`. Linux plafonne un seul argument à
+    # MAX_ARG_STRLEN — 32 pages, soit 131 072 octets. Mesuré sur une base
+    # réelle : le mode hybride tient dans 58 Ko et passait, la liste noire
+    # produit 342 Ko sur 410 modèles et rendait « OSError: [Errno 7]
+    # Argument list too long ». Le mode qui couvre le plus est justement
+    # celui qui cassait.
+    #
+    # `-f` plutôt que l'entrée standard : `--single-transaction` n'est
+    # documenté qu'avec `-c` ou `-f`, et c'est lui qui garantit le tout
+    # ou rien. Le perdre en silence serait pire que le message d'erreur.
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".sql",
+        prefix="el_anonymize_",
+        encoding="utf-8",
+        delete=False,
     )
+    try:
+        handle.write(sql)
+        handle.close()
+        done = subprocess.run(
+            [
+                "psql",
+                "-X",
+                "-w",
+                "-1",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-d",
+                database,
+                "-tA",
+                "-f",
+                handle.name,
+            ],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=timeout + 60,
+        )
+    finally:
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
     if done.returncode:
         detail = (done.stderr or "").strip().splitlines()
         return detail[0][:200] if detail else "psql"

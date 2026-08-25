@@ -178,9 +178,9 @@ class TestTheSqlItWrites(unittest.TestCase):
     def test_a_unique_column_gets_the_id_appended(self):
         """Deux lignes au même mot feraient échouer TOUT l'UPDATE."""
         sql = anon.expression_texte(champ("ref", unique=True), ["a"])
-        self.assertIn("id::text", sql)
+        self.assertIn('"id"::text', sql)
         self.assertNotIn(
-            "id::text", anon.expression_texte(champ("ref"), ["a"])
+            '"id"::text', anon.expression_texte(champ("ref"), ["a"])
         )
 
     def test_a_translated_column_is_rebuilt_key_by_key(self):
@@ -366,3 +366,243 @@ class TestTheRefusalToWrite(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTheSqlNeverTravelsThroughArgv(unittest.TestCase):
+    """La panne signalée : « OSError: [Errno 7] Argument list too long ».
+
+    Linux plafonne UN SEUL argument à MAX_ARG_STRLEN — 32 pages, soit
+    131 072 octets. Mesuré sur une base réelle : le mode hybride produit
+    58 Ko de SQL et passait, la liste noire en produit 342 Ko sur 410
+    modèles et cassait. Le mode qui couvre le plus était celui qui
+    échouait, donc celui qu'aucun de mes essais n'exerçait.
+
+    Le rendu de `render` reste borné, lui ; c'est bien l'exécution qu'il
+    faut regarder, et pas seulement le plan.
+    """
+
+    def _executer(self, etapes):
+        """Lancer `ecrire` avec un faux psql, et rendre ce qu'il a reçu."""
+        import script.analyse.anonymize as module
+
+        vu = {}
+        vrai_run = module.__dict__.get("subprocess")
+
+        class FauxFait:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        import subprocess as vrai_subprocess
+
+        def espion(cmd, **kwargs):
+            vu["cmd"] = list(cmd)
+            chemin = cmd[cmd.index("-f") + 1] if "-f" in cmd else None
+            if chemin:
+                with open(chemin, encoding="utf-8") as handle:
+                    vu["fichier"] = handle.read()
+                vu["chemin"] = chemin
+            return FauxFait()
+
+        vrai_env = anon.lib_analyse.pg_env
+        anon.lib_analyse.pg_env = lambda *a, **k: {"PATH": "/usr/bin"}
+        vrai_subprocess_run = vrai_subprocess.run
+        vrai_subprocess.run = espion
+        try:
+            erreur = anon.ecrire("une_base", etapes)
+        finally:
+            vrai_subprocess.run = vrai_subprocess_run
+            anon.lib_analyse.pg_env = vrai_env
+            del vrai_run
+        vu["erreur"] = erreur
+        return vu
+
+    def _gros_plan(self, combien=400):
+        """Un plan de la taille de celui qui cassait."""
+        etapes = []
+        for index in range(combien):
+            champ = {
+                "model": "m.%d" % index,
+                "name": "name",
+                "ttype": "char",
+                "pg_type": "character varying",
+                "unique": False,
+                "checked": False,
+            }
+            etapes.append(
+                {
+                    "model": champ["model"],
+                    "fields": [champ],
+                    "sql": anon.sql_pour_table("m_%d" % index, [champ], None),
+                }
+            )
+        return etapes
+
+    def test_no_single_argument_comes_close_to_the_kernel_limit(self):
+        vu = self._executer(self._gros_plan())
+        plus_gros = max(len(a) for a in vu["cmd"])
+        self.assertLess(
+            plus_gros,
+            4096,
+            "un argument porte le SQL : c'est ce qui rendait E2BIG",
+        )
+
+    def test_the_sql_goes_through_a_file_not_through_c(self):
+        vu = self._executer(self._gros_plan(3))
+        self.assertIn("-f", vu["cmd"])
+        self.assertNotIn("-c", vu["cmd"])
+        self.assertIn('UPDATE "m_0"', vu["fichier"])
+
+    def test_the_single_transaction_survives_the_change(self):
+        """`--single-transaction` n'est documenté qu'avec -c ou -f : passer
+        par l'entrée standard l'aurait perdu en silence."""
+        vu = self._executer(self._gros_plan(2))
+        self.assertIn("-1", vu["cmd"])
+        self.assertIn("ON_ERROR_STOP=1", vu["cmd"])
+
+    def test_the_temporary_file_does_not_survive(self):
+        import os as vrai_os
+
+        vu = self._executer(self._gros_plan(2))
+        self.assertFalse(vrai_os.path.exists(vu["chemin"]))
+
+
+class TestABoundedColumnIsNeverOverflowed(unittest.TestCase):
+    """`value too long for type character varying(3)`.
+
+    Mesuré sur une base réelle : 13 colonnes texte portent une longueur
+    déclarée, dont des codes à 1, 2 et 3 caractères — `res.country.code`,
+    `account.journal.code`. Y écrire « jonquille » fait échouer l'UPDATE,
+    et comme l'écriture est transactionnelle, TOUTE l'anonymisation.
+
+    Le mode hybride ne touchait aucune de ces colonnes ; la liste noire,
+    si. Le mode qui couvre le plus est celui qui cassait.
+    """
+
+    def _champ(self, **kw):
+        base = {
+            "model": "m",
+            "name": "code",
+            "ttype": "char",
+            "pg_type": "character varying",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+        }
+        base.update(kw)
+        return base
+
+    def test_a_bounded_column_is_truncated(self):
+        sql = anon.expression_texte(self._champ(max_len=3), ["jonquille"])
+        self.assertIn("left(", sql)
+        self.assertIn(", 3)", sql)
+
+    def test_an_unbounded_column_is_left_alone(self):
+        sql = anon.expression_texte(self._champ(), ["jonquille"])
+        self.assertNotIn("left(", sql)
+
+    def test_a_bounded_unique_column_keeps_the_id_in_front(self):
+        """Tronquer par la droite doit laisser l'identifiant intact :
+        c'est lui qui porte l'unicité."""
+        sql = anon.expression_texte(
+            self._champ(max_len=8, unique=True), ["jonquille"]
+        )
+        self.assertIn("left(\"id\"::text || '-'", sql)
+
+    def test_an_unbounded_unique_column_keeps_the_old_shape(self):
+        sql = anon.expression_texte(self._champ(unique=True), ["jonquille"])
+        self.assertTrue(sql.rstrip().endswith("|| '-' || \"id\"::text END"))
+
+    def test_the_length_is_read_from_the_database_not_guessed(self):
+        """`atttypmod` est la seule source : une longueur devinée serait
+        fausse dès qu'un module en change une."""
+        self.assertIn("atttypmod", anon.REQUETE_CHAMPS)
+
+
+class TestReservedWordsCannotBreakTheStatement(unittest.TestCase):
+    """`syntax error at or near "user"`.
+
+    Odoo laisse nommer un champ `user`, `order` ou `group`. Un identifiant
+    nu fait alors échouer l'analyse syntaxique — et l'écriture étant
+    transactionnelle, c'est toute l'anonymisation qui tombe. Trouvé en
+    liste noire sur une base réelle, jamais en mode hybride : les quinze
+    modèles par défaut n'en portent aucun.
+    """
+
+    def _champ(self, nom):
+        return {
+            "model": "m",
+            "name": nom,
+            "ttype": "char",
+            "pg_type": "character varying",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+        }
+
+    def test_a_column_named_like_a_keyword_is_quoted(self):
+        for nom in ("user", "order", "group", "check", "references", "limit"):
+            sql = anon.sql_pour_table("t", [self._champ(nom)], ["a"])
+            self.assertIn(f'"{nom}" =', sql, nom)
+            self.assertNotIn(f" {nom} =", sql, nom)
+
+    def test_a_table_named_like_a_keyword_is_quoted(self):
+        sql = anon.sql_pour_table("order", [self._champ("name")], ["a"])
+        self.assertTrue(sql.startswith('UPDATE "order" SET'))
+
+    def test_the_row_identifier_is_quoted_too(self):
+        """Une seule règle vaut mieux que deux : tout identifiant est cité."""
+        sql = anon.expression_texte(self._champ("name"), ["a", "b"])
+        self.assertIn('"id"', sql)
+
+    def test_a_quote_inside_an_identifier_cannot_escape(self):
+        self.assertEqual(anon.ident('a"b'), '"a""b"')
+
+
+class TestACheckDoesNotSilenceTheMainField(unittest.TestCase):
+    """La règle « écarter toute colonne sous CHECK » était trop large.
+
+    Mesuré : `res_partner.name` porte
+        CHECK ((type='contact' AND name IS NOT NULL) OR type<>'contact')
+    — une garantie de non-nullité, qu'un mot satisfait. L'écarter rendait
+    une anonymisation qui n'anonymisait pas les noms, en annonçant 255
+    colonnes écrites. Le pire des deux mondes : silencieux et faux.
+
+    Sur un NOMBRE la distinction s'inverse : `credit * debit = 0` et
+    `amount >= 0` bornent la valeur, et un tirage à 1000 les viole.
+    """
+
+    def test_the_query_tells_numbers_from_text(self):
+        """La règle vit dans le SQL : c'est là qu'elle se vérifie."""
+        requete = anon.REQUETE_CHAMPS
+        self.assertIn("f.ttype IN ('integer','float','monetary')", requete)
+        self.assertIn("pg_get_constraintdef", requete)
+
+    def test_only_shape_constraints_disqualify_text(self):
+        for motif in ("char_length", "~~", "jsonb_typeof"):
+            self.assertIn(motif, anon.REQUETE_CHAMPS, motif)
+
+    def test_a_field_the_query_cleared_is_anonymised(self):
+        """`checked=False` doit suffire : aucune seconde barrière cachée."""
+        champ = {
+            "model": "res.partner",
+            "name": "name",
+            "ttype": "char",
+            "pg_type": "character varying",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+        }
+        self.assertTrue(anon.champ_retenu(champ))
+
+    def test_a_field_the_query_flagged_is_left_alone(self):
+        champ = {
+            "model": "account.move.line",
+            "name": "credit",
+            "ttype": "monetary",
+            "pg_type": "numeric",
+            "unique": False,
+            "checked": True,
+            "max_len": None,
+        }
+        self.assertFalse(anon.champ_retenu(champ))
