@@ -198,29 +198,46 @@ fix_hosts() {
         "« hostname --ip-address » rend « ${vu:-rien} » : le nom d'hôte ne" \
         "résout toujours pas vers une adresse routable."
     say "  hostname --ip-address : $(printf '%s ' ${routables})"
-    revive_pmxcfs
+    revive_pve_services
 }
 
-# pmxcfs abandonne après cinq essais rapprochés : systemd marque l'unité
-# « failed » et n'y revient JAMAIS de lui-même — « Start request repeated too
-# quickly ». Corriger /etc/hosts ne suffit donc pas ; sans ce coup de pouce,
-# l'hôte reste sans /etc/pve, donc sans stockage, et l'écran de déploiement
-# s'arrête sur « il manque le stockage ».
+# Les services de Proxmox abandonnent après cinq essais rapprochés : systemd
+# marque l'unité « failed » et n'y revient JAMAIS de lui-même — « Start request
+# repeated too quickly ». Or ils ont TOUS échoué pendant que /etc/hosts était
+# faux. Corriger le fichier ne suffit donc pas.
 #
-# « reset-failed » d'abord, sinon le démarrage est refusé sans même être tenté.
-revive_pmxcfs() {
+# L'ordre compte : pve-cluster d'abord, il monte /etc/pve dont les autres
+# dépendent.
+#
+# pvestatd n'est pas un luxe. C'est lui qui remplit « /cluster/resources » ;
+# arrêté, l'hôte rend une entrée SQUELETTIQUE par VM — ni nom, ni mémoire, ni
+# disque, et « status: unknown ». Le tableau de bord n'a alors aucune colonne
+# vivante, et il a même pris cette entrée pour une VM disparue.
+PVE_SERVICES="pve-cluster pvestatd pvedaemon pveproxy pve-firewall"
+
+revive_pve_services() {
     command -v systemctl >/dev/null 2>&1 || return 0
-    [ -e /etc/pve/.version ] && return 0
-    say "  pve-cluster : /etc/pve n'est pas monté, relance"
+    local unite etat casse=""
+    for unite in ${PVE_SERVICES}; do
+        systemctl list-unit-files "${unite}.service" >/dev/null 2>&1 || continue
+        etat="$(systemctl is-active "${unite}" 2>/dev/null || true)"
+        [ "${etat}" = "active" ] && continue
+        casse="${casse} ${unite}"
+    done
+    [ -n "${casse}" ] || return 0
+    say "  services à relancer :${casse}"
     if [ "${DRY}" = "1" ]; then
-        say "  ${Yellow}[dry-run]${Color_Off} systemctl reset-failed" \
-            "pve-cluster && systemctl start pve-cluster"
+        say "  ${Yellow}[dry-run]${Color_Off} systemctl reset-failed puis" \
+            "start :${casse}"
         return 0
     fi
-    sudo systemctl reset-failed pve-cluster 2>/dev/null || true
-    if sudo systemctl start pve-cluster 2>&1; then
+    for unite in ${casse}; do
+        sudo systemctl reset-failed "${unite}" 2>/dev/null || true
+        sudo systemctl start "${unite}" 2>&1 || \
+            say "  ${Yellow}⚠${Color_Off} ${unite} :" \
+                "journalctl -u ${unite} -n 30"
         CHANGED=1
-    fi
+    done
     # Le montage n'est pas instantané : on le CONSTATE plutôt que de le
     # supposer, et on le dit quand il n'arrive pas.
     local i

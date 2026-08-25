@@ -1524,12 +1524,24 @@ def parse_odoo_probe(text: str) -> set:
 
 
 def parse_pvestats(text: str) -> dict:
-    """Sortie de PVE_STATS_CMD -> {nom: relevé}, même forme que domstats.
+    """Sortie de PVE_STATS_CMD -> {VMID: relevé}, même forme que domstats.
 
-    Même forme exprès : les colonnes, le débit d'écriture et la RAM se
-    calculent alors sans savoir d'où vient la mesure. Une VM sur un hôte
-    Proxmox distant n'avait aucune de ces colonnes — elles viennent de virsh,
-    qui ne sait rien de cet hôte.
+    Par VMID et non par NOM, et c'est tout le sujet. « /cluster/resources »
+    est bâti par pvestatd ; celui-ci arrêté, l'hôte rend quand même une entrée
+    par VM, mais SQUELETTIQUE :
+
+        {"id":"qemu/100","node":"…","status":"unknown","type":"qemu",
+         "vmid":100}
+
+    Ni nom, ni mémoire, ni disque. Indexée par nom, cette entrée disparaissait
+    — la VM était donc « absente du relevé » alors que l'hôte venait de la
+    nommer. Trois tours plus tard : 🗑, état TERMINAL, et le suivi annonçait
+    « 1/1 terminées » au bout de neuf secondes sur une installation qui
+    tournait. Le VMID, lui, est toujours là ; c'est d'ailleurs le seul
+    identifiant unique d'un hôte Proxmox.
+
+    Même forme que domstats exprès : les colonnes, le débit d'écriture et la
+    RAM se calculent alors sans savoir d'où vient la mesure.
     """
     brut, _, tailles = (text or "").partition("---ERPLIBRE-DU---")
     try:
@@ -1547,14 +1559,15 @@ def parse_pvestats(text: str) -> dict:
     out = {}
     maintenant = time.time()
     for r in ressources if isinstance(ressources, list) else ():
-        nom = r.get("name")
-        if not nom:
+        vmid = int(r.get("vmid") or 0)
+        if not vmid:
             continue
         total = int(r.get("maxdisk") or 0)
-        utilise = int(r.get("disk") or 0) or occupe.get(
-            int(r.get("vmid") or 0), 0
-        )
-        out[nom] = {
+        utilise = int(r.get("disk") or 0) or occupe.get(vmid, 0)
+        out[vmid] = {
+            # Le nom reste DANS le relevé : il ne sert plus de clé, mais il
+            # aide à lire un journal quand les deux divergent.
+            "name": r.get("name") or "",
             "ram_used": int(r.get("mem") or 0),
             "ram_total": int(r.get("maxmem") or 0),
             # Le relevé vient d'être fait : il n'est pas périmé, et c'est ce
@@ -1678,11 +1691,21 @@ def _read_pvestats(vms, now=None):
         # analysable. Rien d'autre, et surtout pas le code.
         if _resources_parsable(sortie):
             ok = True
+            # {VMID: relevé} -> {nom du manifeste: relevé}. La correspondance
+            # se fait ICI, où le manifeste est sous les yeux : lui seul dit
+            # quel VMID porte quel nom, et l'hôte peut très bien ne pas
+            # nommer ses VM (pvestatd arrêté).
             releves = parse_pvestats(sortie)
             ouverts = parse_odoo_probe(sortie)
-            for nom, rec in releves.items():
-                rec["odoo"] = adresses.get(nom) in ouverts
-            stats.update(releves)
+            for vm in vms or ():
+                pve_info = vm.get("pve") or {}
+                if pve_info.get("target") != target:
+                    continue
+                rec = releves.get(int(pve_info.get("vmid") or 0))
+                if not rec:
+                    continue
+                rec["odoo"] = adresses.get(vm["name"]) in ouverts
+                stats[vm["name"]] = rec
     _PVE_CACHE.update({"at": maintenant, "stats": stats, "ok": ok})
     return dict(stats), ok
 

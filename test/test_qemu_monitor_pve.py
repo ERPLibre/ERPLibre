@@ -37,9 +37,18 @@ class TestLaLecture(unittest.TestCase):
     def setUp(self):
         self.releves = mon.parse_pvestats(REPONSE)
 
-    def test_the_vm_is_keyed_by_its_name(self):
-        # Le suivi raisonne en NOMS : c'est ce que porte le manifeste.
-        self.assertEqual(list(self.releves), ["pve-suivi"])
+    def test_the_vm_is_keyed_by_its_vmid(self):
+        """Par VMID, et c'est tout le sujet.
+
+        « /cluster/resources » est bâti par pvestatd ; celui-ci arrêté, l'hôte
+        rend une entrée SQUELETTIQUE — ni nom, ni mémoire, ni disque, et
+        « status: unknown ». Indexée par nom, elle disparaissait : la VM
+        passait pour absente du relevé alors que l'hôte venait de la nommer.
+        Trois tours plus tard, 🗑 — état TERMINAL — et le suivi annonçait
+        « 1/1 terminées » au bout de neuf secondes. Vécu sur une VM Arch dans
+        un Proxmox imbriqué."""
+        self.assertEqual(list(self.releves), [100])
+        self.assertEqual(self.releves[100]["name"], "pve-suivi")
 
     def test_the_shape_matches_the_virsh_one(self):
         # Même forme exprès : `ram_pair`, `WriteWindow` et les colonnes
@@ -52,10 +61,10 @@ class TestLaLecture(unittest.TestCase):
             "disk_used",
             "disk_total",
         }
-        self.assertTrue(attendus <= set(self.releves["pve-suivi"]))
+        self.assertTrue(attendus <= set(self.releves[100]))
 
     def test_the_measures_are_the_ones_the_host_gave(self):
-        rec = self.releves["pve-suivi"]
+        rec = self.releves[100]
         self.assertEqual(rec["ram_used"], 385351680)
         self.assertEqual(rec["ram_total"], 536870912)
         self.assertEqual(rec["wr_bytes"], 328233472)
@@ -65,13 +74,13 @@ class TestLaLecture(unittest.TestCase):
     def test_a_zero_disk_falls_back_to_the_real_size(self):
         # Sur un stockage en fichiers, Proxmox NE CALCULE PAS la taille
         # occupée et rapporte 0 : la colonne aurait affiché « 0/4G ».
-        self.assertEqual(self.releves["pve-suivi"]["disk_used"], 4294971392)
-        self.assertEqual(self.releves["pve-suivi"]["disk_total"], 4294967296)
+        self.assertEqual(self.releves[100]["disk_used"], 4294971392)
+        self.assertEqual(self.releves[100]["disk_total"], 4294967296)
 
     def test_the_reading_is_fresh_so_the_ram_is_shown(self):
         # `ram_pair` refuse un relevé périmé : sans horodatage, la RAM d'une
         # VM distante ne s'afficherait jamais.
-        rec = self.releves["pve-suivi"]
+        rec = self.releves[100]
         self.assertNotEqual(mon.ram_pair(rec, rec["ram_at"]), "-")
 
     def test_garbage_yields_nothing_rather_than_raising(self):
@@ -334,6 +343,87 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
 
         src = inspect.getsource(mon._launch_one)
         self.assertIn("_reboot_steps(log_q, reboot) if reboot else", src)
+
+
+class TestUnHoteQuiNeNommePasSesVm(unittest.TestCase):
+    """pvestatd arrêté, l'hôte rend une entrée SQUELETTIQUE par VM.
+
+    Vécu sur une VM Arch dans un Proxmox imbriqué :
+
+        {"id":"qemu/100","node":"…","status":"unknown","type":"qemu",
+         "vmid":100}
+
+    Le nom manque, donc la VM passait pour absente du relevé — alors que
+    l'hôte venait de la nommer. Trois tours plus tard : 🗑, état TERMINAL, et
+    le suivi annonçait « 1/1 terminées » au bout de neuf secondes sur une
+    installation qui tournait. Une cause, deux symptômes."""
+
+    SQUELETTE = (
+        '[{"id":"qemu/100","node":"n","status":"unknown","type":"qemu",'
+        '"vmid":100}]\n'
+        "---ERPLIBRE-DU---\n"
+        "2248339456\t/var/lib/vz/images/100/\n"
+        "---ERPLIBRE-ODOO---\n"
+    )
+
+    def _lit(self, sortie, nom="vm-arch", vmid=100):
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vm = {
+            "name": nom,
+            "pve": {
+                "target": "h",
+                "sudo": "",
+                "vmid": vmid,
+                "addr": "1.2.3.4",
+            },
+        }
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(1, sortie)
+        ):
+            return mon.read_pvestats_detail([vm], now=50.0)
+
+    def test_the_vm_is_still_found(self):
+        stats, ok = self._lit(self.SQUELETTE)
+        self.assertTrue(ok)
+        self.assertIn("vm-arch", stats, "trouvée par son VMID, pas par un nom")
+
+    def test_an_unknown_status_is_not_a_deletion(self):
+        stats, _ok = self._lit(self.SQUELETTE)
+        etat = stats["vm-arch"]["state"]
+        self.assertEqual(mon.PVE_ETATS.get(etat, "running"), "running")
+
+    def test_what_the_host_does_know_is_kept(self):
+        # Le « du » est indexé par VMID : la taille occupée survit même quand
+        # tout le reste manque.
+        stats, _ok = self._lit(self.SQUELETTE)
+        self.assertEqual(stats["vm-arch"]["disk_used"], 2248339456)
+
+    def test_a_vmid_of_another_host_is_not_borrowed(self):
+        # Deux hôtes peuvent avoir un VMID 100. La correspondance ne vaut que
+        # pour les VM de CET hôte.
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vms = [
+            {
+                "name": "ici",
+                "pve": {"target": "h", "sudo": "", "vmid": 100},
+            },
+            {
+                "name": "ailleurs",
+                "pve": {"target": "autre", "sudo": "", "vmid": 100},
+            },
+        ]
+
+        # Le bouchon répond PAR HÔTE : sans cela, la même sortie servirait
+        # aux deux et le test ne prouverait rien.
+        def par_hote(info, _cmd, _timeout=40):
+            if info.get("target") == "h":
+                return 1, self.SQUELETTE
+            return 1, "[]\n---ERPLIBRE-DU---\n---ERPLIBRE-ODOO---\n"
+
+        with mock.patch("script.proxmox.proxmox_deploy.run", par_hote):
+            stats, _ok = mon.read_pvestats_detail(vms, now=60.0)
+        self.assertIn("ici", stats)
+        self.assertNotIn("ailleurs", stats)
 
 
 class TestTroisVmSurUnProxmox(unittest.TestCase):
@@ -701,7 +791,7 @@ class TestLeDisque(unittest.TestCase):
             "1268518912\t/var/lib/vz/images/101/\n"
             "4294967296\t/var/lib/vz/images/999/\n"
         )
-        rec = mon.parse_pvestats(texte)["vm-a"]
+        rec = mon.parse_pvestats(texte)[101]
         self.assertEqual(rec["disk_used"], 1268518912)
         self.assertEqual(rec["disk_total"], 6442450944)
         self.assertEqual(

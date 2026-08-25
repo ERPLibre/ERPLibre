@@ -856,11 +856,26 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
         self.assertIn("/etc/cloud/cloud.cfg.d", self.src)
         self.assertIn("freeze_cloud_hosts", self.src)
 
-    def test_a_failed_pmxcfs_is_revived(self):
-        # systemd marque l'unité « failed » après cinq essais rapprochés et
-        # n'y revient jamais seul : corriger /etc/hosts ne suffit pas.
-        self.assertIn("reset-failed pve-cluster", self.src)
-        self.assertIn("start pve-cluster", self.src)
+    def test_every_failed_pve_service_is_revived(self):
+        """systemd marque l'unité « failed » après cinq essais rapprochés et
+        n'y revient jamais seul : corriger /etc/hosts ne suffit pas.
+
+        Et ils ont TOUS échoué pendant que le fichier était faux — le journal
+        de pvestatd le dit mot pour mot : « ipcc_send_rec failed: Connection
+        refused », c'est-à-dire pve-cluster absent. Relancer le seul
+        pve-cluster laissait pvestatd mort, donc un hôte qui ne nomme même pas
+        ses VM."""
+        self.assertIn("reset-failed", self.src)
+        for unite in ("pve-cluster", "pvestatd", "pvedaemon", "pveproxy"):
+            self.assertIn(unite, self.src, unite)
+
+    def test_pve_cluster_comes_first(self):
+        # Il monte /etc/pve, dont les autres dépendent.
+        import re
+
+        m = re.search(r'PVE_SERVICES="([^"]+)"', self.src)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1).split()[0], "pve-cluster")
 
     def test_the_mount_is_verified_not_assumed(self):
         self.assertIn("/etc/pve/.version", self.src)
