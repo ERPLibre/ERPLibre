@@ -230,6 +230,80 @@ class TestLesAutresCheminsVersLaPoubelle(unittest.TestCase):
         self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
 
 
+class TestTroisVmSurUnProxmox(unittest.TestCase):
+    """Rapporté à l'usage : sur trois VM d'un même Proxmox, une seule avait
+    ses colonnes vides — et les deux autres montraient les chiffres d'une
+    AUTRE machine.
+
+    Deux fautes, dont une était le miroir d'un correctif précédent."""
+
+    def test_a_reading_stands_even_when_odoo_is_not_up_yet(self):
+        # Le code de sortie de la suite distante est celui de son DERNIER
+        # maillon : la sonde Odoo. Tant qu'Odoo n'écoute pas — c'est-à-dire
+        # pendant TOUTE l'installation, précisément quand on regarde — la
+        # boucle finit en échec et le relevé, parfait, était jeté.
+        #
+        # On avait corrigé l'erreur inverse (code 0 pris pour une réponse) ;
+        # exiger 0 était la même faute, retournée.
+        sortie = (
+            '[{"vmid":101,"name":"vm-a","status":"running","maxmem":1024,'
+            '"mem":512,"maxdisk":2048,"diskwrite":10}]\n'
+            "---ERPLIBRE-DU---\n---ERPLIBRE-ODOO---\n"
+        )
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vm = {"name": "vm-a", "pve": {"target": "h", "sudo": "", "vmid": 101}}
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(1, sortie)
+        ):
+            stats, ok = mon.read_pvestats_detail([vm], now=10.0)
+        self.assertTrue(
+            ok, "un code non nul ne réfute pas une réponse lisible"
+        )
+        self.assertIn("vm-a", stats)
+
+    def test_a_broken_pvesh_is_still_refuted(self):
+        # L'autre sens tient toujours : sans liste analysable, pas de réponse.
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vm = {"name": "vm-a", "pve": {"target": "h", "sudo": "", "vmid": 101}}
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run",
+            return_value=(0, "permission denied\n---ERPLIBRE-DU---\n"),
+        ):
+            _stats, ok = mon.read_pvestats_detail([vm], now=20.0)
+        self.assertFalse(ok)
+
+    def test_a_remote_vm_never_borrows_a_local_namesake(self):
+        # « virsh domstats » indexe par NOM, et un nom se partage. Mesuré :
+        # « erplibre-ubuntu-2604 » sur Proxmox affichait 1,5 Gio sur 12 et
+        # 58 Gio de disque — ceux de la machine locale du même nom — quand la
+        # vraie tournait avec 3 Gio et 25.
+        locaux = {
+            "erplibre-ubuntu-2604": {
+                "ram_used": 1 << 30,
+                "ram_total": 12 << 30,
+            },
+            "erplibre-arch-latest": {"ram_used": 5, "ram_total": 9},
+            "vm-locale": {"ram_used": 7, "ram_total": 8},
+        }
+        vms = [
+            {"name": "erplibre-ubuntu-2604", "pve": {"vmid": 100}},
+            {"name": "vm-locale"},
+        ]
+        reste = mon.drop_local_twins(dict(locaux), vms)
+        self.assertNotIn("erplibre-ubuntu-2604", reste)
+        # Une VM locale garde les siens, et une VM étrangère au manifeste
+        # n'est pas touchée.
+        self.assertIn("vm-locale", reste)
+        self.assertIn("erplibre-arch-latest", reste)
+
+    def test_a_silent_host_leaves_the_column_empty(self):
+        # Vide, c'est vrai. Une colonne vide se remarque ; une colonne juste
+        # et fausse, non — c'est ce qui a fait remonter le défaut.
+        stats = {"vm-a": {"ram_used": 1, "ram_total": 2}}
+        mon.drop_local_twins(stats, [{"name": "vm-a", "pve": {"vmid": 1}}])
+        self.assertEqual(stats, {})
+
+
 class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
     """Le suivi se ROUVRE sur un manifeste passé — c'est fait pour.
 

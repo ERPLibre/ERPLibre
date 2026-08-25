@@ -1705,40 +1705,6 @@ class TODO(
             pass
         return names
 
-    @classmethod
-    def _ssh_config_block(cls, name):
-        """Le bloc « Host … » qui déclare `name`, ou {}.
-
-        Rend ses noms ET ses directives : savoir qu'un nom est pris ne suffit
-        pas, il faut savoir PAR QUI. Un nom court déjà déclaré peut être notre
-        propre entrée qu'on réécrit — auquel cas il n'y a rien de volé — ou
-        celle d'une autre machine, et c'est le ProxyJump qui les distingue.
-
-        {"names": [...], "proxyjump": "...", "hostname": "..."}."""
-        path = os.path.expanduser("~/.ssh/config")
-        try:
-            with open(path, encoding="utf-8") as fh:
-                contenu = fh.read()
-        except OSError:
-            return {}
-        bloc = None
-        for line in contenu.splitlines():
-            if re.match(r"^[ \t]*Host[ \t]+", line):
-                if bloc is not None:
-                    return bloc
-                noms = line.split()[1:]
-                bloc = {"names": noms} if name in noms else None
-                continue
-            if bloc is None:
-                continue
-            # Une ligne non indentée et non vide clôt le bloc.
-            if line.strip() and not line[:1].isspace():
-                return bloc
-            mots = line.split()
-            if len(mots) >= 2 and mots[0].lower() in ("proxyjump", "hostname"):
-                bloc[mots[0].lower()] = mots[1]
-        return bloc or {}
-
     @staticmethod
     def _ssh_config_user(host):
         """`User` déclaré pour cet hôte dans ~/.ssh/config, ou "".

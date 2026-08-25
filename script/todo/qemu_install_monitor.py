@@ -1500,6 +1500,25 @@ def read_pvestats(vms, now=None) -> dict:
     return _read_pvestats(vms, now)[0]
 
 
+def drop_local_twins(stats, vms) -> dict:
+    """Retire des relevés LOCAUX ceux d'une VM qui vit ailleurs.
+
+    « virsh domstats » indexe par NOM, et un nom se partage : une VM posée
+    sur un Proxmox distant héritait des chiffres du domaine local homonyme.
+    Vécu sur trois VM — « erplibre-ubuntu-2604 » affichait 1,5 Gio de RAM sur
+    12 et 58 Gio de disque sur 65, tout cela appartenant à la machine locale
+    du même nom, pendant que la vraie tournait avec 3 Gio et 25.
+
+    Retirés AVANT d'ajouter ceux de l'hôte : ainsi un hôte muet laisse la
+    colonne VIDE — ce qui est vrai — au lieu de la remplir avec la mauvaise
+    machine. Une colonne vide se remarque ; une colonne juste et fausse, non.
+    """
+    for vm in vms or ():
+        if vm.get("pve"):
+            stats.pop(vm.get("name"), None)
+    return stats
+
+
 def _read_pvestats(vms, now=None):
     """({nom: relevé}, succès). Un appel par hôte, mis en cache
     PVE_STATS_INTERVAL secondes.
@@ -1547,17 +1566,25 @@ def _read_pvestats(vms, now=None):
                 == target
             )
         ]
-        code, sortie = pve.run(
+        _code, sortie = pve.run(
             {"target": target, "sudo": sudo, "jump": info.get("jump", "")},
             pve_stats_cmd(siennes),
             40,
         )
-        # « code == 0 » ne suffit PAS : la commande est une SUITE
-        # (pvesh ; echo ; du ; echo ; boucle), et son code est celui du DERNIER
-        # maillon. Un pvesh en panne rendait donc « l'hôte a répondu, la VM
-        # n'y est plus » — et trois tours plus tard, la poubelle. Ce qui prouve
-        # une réponse, c'est une LISTE de ressources analysable.
-        if code == 0 and _resources_parsable(sortie):
+        # Le code de sortie ne prouve RIEN, dans AUCUN sens. La commande
+        # est une SUITE (pvesh ; echo ; du ; echo ; boucle) et son code est
+        # celui du DERNIER maillon — la sonde Odoo. Un pvesh en panne rendait
+        # donc 0, « l'hôte a répondu, la VM n'y est plus », et trois tours
+        # plus tard la poubelle ; c'est ce qu'on avait corrigé. Mais
+        # l'exiger à 0 était l'erreur SYMÉTRIQUE : tant qu'Odoo n'écoute pas
+        # — c'est-à-dire pendant TOUTE l'installation, précisément quand on
+        # regarde — la boucle finit en échec et le relevé, parfait, était
+        # jeté. Mesuré sur trois VM : colonnes vides côté Proxmox, et les
+        # lignes qui avaient un homonyme LOCAL affichaient ses chiffres.
+        #
+        # Ce qui prouve une réponse, c'est une LISTE de ressources
+        # analysable. Rien d'autre, et surtout pas le code.
+        if _resources_parsable(sortie):
             ok = True
             releves = parse_pvestats(sortie)
             ouverts = parse_odoo_probe(sortie)
@@ -2367,6 +2394,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # calcule sur les relevés successifs, donc il faut échantillonner
             # à chaque tour (2 s) et non au rythme lent des états.
             stats = parse_domstats(read_domstats())
+            drop_local_twins(stats, vms)
             # Les VM d'un hôte Proxmox distant : virsh ne les voit pas, leurs
             # colonnes restaient vides. Même forme de relevé, donc la suite ne
             # change pas d'un iota.

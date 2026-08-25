@@ -15,7 +15,6 @@ aucun hôte Proxmox n'est joint.
 
 import asyncio
 import sys
-import os
 import unittest
 
 sys.argv = ["todo.py"]
@@ -735,91 +734,55 @@ class TestLEcranDUneVmProxmox(unittest.TestCase):
 
 
 class TestUnSeulNomDansSshConfig(unittest.TestCase):
-    """L'entrée portait DEUX noms sur sa ligne « Host » : le nom chaîné
-    « hôte+vm » et le nom court.
+    """L'entrée portait DEUX noms sur sa ligne « Host », puis le mauvais.
 
-    Rapporté : « Host erplibre-proxmox-9+erplibre-arch-latest
-    erplibre-arch-latest ». Le second est un doublon dès que le premier
-    suffit — ssh n'a besoin que d'un nom, et le doubler n'ajoute qu'une façon
-    de plus d'écrire la même adresse.
+    D'abord le doublon : « Host erplibre-proxmox-9+erplibre-arch-latest
+    erplibre-arch-latest ». ssh n'a besoin que d'un nom, et le second
+    n'ajoutait qu'une façon de plus d'écrire la même adresse.
 
-    Un seul, donc, et le bon : le court quand il est LIBRE, le chaîné quand
-    il désignerait une autre machine. « Pris » se juge sur le ProxyJump du
-    bloc, pas sur sa seule présence — sinon notre propre entrée, réécrite à
-    chaque déploiement, se prendrait pour une rivale et le nom basculerait
-    d'une fois sur l'autre."""
+    Puis le choix. Prendre le nom COURT quand il se trouvait libre donnait un
+    parc incohérent : sur un même déploiement de trois VM, deux recevaient
+    « hôte+vm » — leurs noms étaient pris par des domaines locaux — et la
+    troisième son nom court. Une convention qui dépend de ce qui traîne dans
+    le fichier n'est pas une convention. Le chaîné est systématique."""
 
-    def setUp(self):
+    def _choisit(self, nom, locaux=()):
         import sys
-        import tempfile
 
         sys.argv = ["todo.py"]
         from script.todo.todo import TODO
 
-        self.maison = tempfile.mkdtemp()
-        os.makedirs(os.path.join(self.maison, ".ssh"))
-        self._vrai_home = os.environ.get("HOME")
-        os.environ["HOME"] = self.maison
-        self.todo = TODO.__new__(TODO)
+        todo = TODO.__new__(TODO)
+        return todo._pve_alias_names(nom, f"pve9+{nom}", set(locaux), "pve9")
 
-    def tearDown(self):
-        import shutil
-
-        if self._vrai_home is not None:
-            os.environ["HOME"] = self._vrai_home
-        shutil.rmtree(self.maison, ignore_errors=True)
-
-    def _ecrit(self, noms, rebond=""):
-        self.todo._write_ssh_config_entry(
-            noms, "erplibre", "10.10.10.150", proxy_jump=rebond or None
-        )
-
-    def _lignes_host(self):
-        with open(
-            os.path.join(self.maison, ".ssh/config"), encoding="utf-8"
-        ) as fh:
-            return [
-                ligne.rstrip() for ligne in fh if ligne.startswith("Host ")
-            ]
-
-    def _choisit(self, nom, locaux=(), rebond="pve9"):
-        return self.todo._pve_alias_names(
-            nom, f"pve9+{nom}", set(locaux), rebond
-        )
-
-    def test_a_free_name_is_written_alone(self):
+    def test_one_name_and_it_is_the_chained_one(self):
         noms, vole = self._choisit("erplibre-arch-latest")
-        self.assertEqual(noms, ["erplibre-arch-latest"])
-        self.assertFalse(vole)
-        self._ecrit(noms, "pve9")
-        self.assertEqual(self._lignes_host(), ["Host erplibre-arch-latest"])
-
-    def test_redeploying_the_same_vm_keeps_the_same_name(self):
-        # Le piège du correctif : notre propre bloc déclare déjà le nom.
-        self._ecrit(["erplibre-arch-latest"], "pve9")
-        noms, vole = self._choisit("erplibre-arch-latest")
-        self.assertEqual(noms, ["erplibre-arch-latest"], "le nom a basculé")
+        self.assertEqual(noms, ["pve9+erplibre-arch-latest"])
         self.assertFalse(vole)
 
-    def test_a_local_vm_keeps_its_name(self):
-        # Vécu : « ssh » partait vers la machine locale du même nom.
-        noms, vole = self._choisit(
+    def test_a_fleet_gets_one_single_convention(self):
+        # Le défaut rapporté : trois VM du même déploiement, deux nommées
+        # d'une façon et la troisième d'une autre.
+        noms = [
+            self._choisit(n, locaux=("erplibre-ubuntu-2604",))[0][0]
+            for n in (
+                "erplibre-ubuntu-2604",
+                "erplibre-arch-latest",
+                "erplibre-proxmox-9",
+            )
+        ]
+        self.assertTrue(
+            all(n.startswith("pve9+") for n in noms),
+            f"un parc, une convention : {noms}",
+        )
+
+    def test_a_local_namesake_is_still_named(self):
+        # Le nom chaîné ne lui vole rien, mais on le DIT : c'est ce qui
+        # explique pourquoi « ssh <nom court> » va ailleurs.
+        _noms, vole = self._choisit(
             "erplibre-arch-latest", locaux=("erplibre-arch-latest",)
         )
-        self.assertEqual(noms, ["pve9+erplibre-arch-latest"])
         self.assertTrue(vole)
-
-    def test_another_proxmox_host_keeps_its_name(self):
-        self._ecrit(["erplibre-ubuntu-2604"], "pve7")
-        noms, vole = self._choisit("erplibre-ubuntu-2604")
-        self.assertEqual(noms, ["pve9+erplibre-ubuntu-2604"])
-        self.assertEqual(vole, "~/.ssh/config")
-        self._ecrit(noms, "pve9")
-        # Les deux machines cohabitent, chacune sous son nom.
-        self.assertEqual(
-            self._lignes_host(),
-            ["Host erplibre-ubuntu-2604", "Host pve9+erplibre-ubuntu-2604"],
-        )
 
     def test_no_deploy_path_writes_two_names_anymore(self):
         import re
@@ -1008,10 +971,9 @@ class TestLeSuivi(unittest.TestCase):
                 nom
             )
             todo._ssh_private_key = lambda k: None
-            # Hermétique : le choix du nom lit ~/.ssh/config et la liste des
-            # domaines locaux. Sans ces deux bouchons, le test dépendrait de
-            # la machine qui le lance.
-            todo._ssh_config_block = lambda nom: {}
+            # Hermétique : le choix du nom lit la liste des domaines
+            # locaux. Sans ce bouchon, le test dépendrait de la machine qui
+            # le lance.
             todo._qemu_list_domains = lambda: []
             todo._pve_guest_ip = lambda vmid, attente=120: ""
             todo._qemu_install_erplibre_monitored = lambda *a, **k: None
@@ -1036,16 +998,16 @@ class TestLeSuivi(unittest.TestCase):
             return ecrites
 
         cmd = {"branch": "develop", "cmd": "make x", "label": "X"}
-        # UN nom : le court, puisque rien ne le porte déjà. Le chaîné
-        # « hôte+vm » ne sort que lorsqu'il faut départager (voir
+        # UN nom, et le chaîné : « hôte+vm » dit où la machine vit et ne
+        # dépend pas de ce qui traîne dans ~/.ssh/config (voir
         # TestUnSeulNomDansSshConfig).
-        self.assertEqual(essai(False, cmd, False), [["vm-a"]])
+        self.assertEqual(essai(False, cmd, False), [["pve1+vm-a"]])
         # Décoché, suivi demandé : le suivi entre aussi par le rebond.
-        self.assertEqual(essai(False, None, True), [["vm-a"]])
+        self.assertEqual(essai(False, None, True), [["pve1+vm-a"]])
         # Décoché et rien à faire dans la VM : le choix est respecté.
         self.assertEqual(essai(False, None, False), [])
         # Coché : écrite, évidemment.
-        self.assertEqual(essai(True, None, False), [["vm-a"]])
+        self.assertEqual(essai(True, None, False), [["pve1+vm-a"]])
 
     def test_a_local_vm_of_the_same_name_keeps_its_alias(self):
         """Le piège qui a fait installer ERPLibre sur la MAUVAISE machine.

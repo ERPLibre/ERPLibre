@@ -1121,35 +1121,27 @@ class ProxmoxMenuMixin:
             fh.write("\n".join(entete) + "\n")
         return chemin
 
-    def _pve_alias_names(self, nom, chaine, locaux, rebond=""):
-        """UN seul nom pour l'entrée ~/.ssh/config, et lequel.
+    def _pve_alias_names(self, nom, chaine, locaux=(), rebond=""):
+        """UN seul nom pour l'entrée ~/.ssh/config : « hôte+vm ».
 
-        Deux noms sur la même ligne « Host » — le court et le chaîné
-        « hôte+vm » — étaient un doublon dès que le court était libre : ssh
-        n'a besoin que d'un nom, et le second n'ajoutait qu'une façon de plus
-        d'écrire la même adresse. Rapporté.
+        Deux noms sur la même ligne « Host » — le chaîné et le court —
+        étaient un doublon : ssh n'a besoin que d'un nom, et le second
+        n'ajoutait qu'une façon de plus d'écrire la même adresse. Rapporté.
 
-        Le court quand il est LIBRE, c'est celui qu'on tape ; le chaîné
-        sinon, car un nom déjà pris désigne une AUTRE machine — une VM locale
-        du même nom, ou la VM d'un autre hôte Proxmox. Vécu : « ssh » partait
-        vers la machine locale qui partageait le nom.
+        Reste à choisir lequel, et c'est le chaîné. Prendre le nom court
+        quand il se trouvait libre donnait un parc INCOHÉRENT : sur un même
+        déploiement, deux VM recevaient « hôte+vm » — leurs noms étaient pris
+        par des domaines locaux — et la troisième son nom court. Rapporté
+        aussi. Une convention qui dépend de ce qui traîne dans le fichier
+        n'est pas une convention.
 
-        « Pris » se juge sur le ProxyJump du bloc et non sur sa seule
-        présence : notre propre entrée, réécrite à chaque déploiement, se
-        serait autrement prise pour une rivale — et le nom aurait basculé
-        d'une fois sur l'autre.
+        Le chaîné est donc systématique. Il dit où la machine vit, il ne peut
+        rien voler à un domaine local, et deux VM du même nom sur deux hôtes
+        Proxmox différents se distinguent d'elles-mêmes.
 
-        Rend (noms, volé) — `volé` nomme ce qui a forcé le nom chaîné, pour
-        que l'appelant le dise plutôt que de laisser la surprise."""
-        if nom in locaux:
-            return [chaine], t("a local VM")
-        bloc = self._ssh_config_block(nom)
-        notre = (
-            not bloc
-            or chaine in bloc.get("names", ())
-            or (rebond and bloc.get("proxyjump") == rebond)
-        )
-        return ([nom], "") if notre else ([chaine], "~/.ssh/config")
+        Rend (noms, volé) — la seconde valeur reste pour l'appelant, qui
+        signale au passage un nom qu'une VM locale porte aussi."""
+        return [chaine], (t("a local VM") if nom in locaux else "")
 
     def _pve_set_timezone(self, cible, spec):
         """Pose le fuseau DANS la VM, par ssh.
