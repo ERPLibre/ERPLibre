@@ -10108,6 +10108,14 @@ TRANSLATIONS = {
         "fr": "désactive pas les crons, et laisse les clés de paiement en place.",
         "en": "not disable crons, and leaves payment keys in place.",
     },
+    "column(s) hold identifier paths and are left": {
+        "fr": "colonne(s) portent des chemins d'identifiants et sont laissées",
+        "en": "column(s) hold identifier paths and are left",
+    },
+    "alone:": {
+        "fr": "intactes :",
+        "en": "alone:",
+    },
 }
 
 

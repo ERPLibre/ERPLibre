@@ -106,6 +106,24 @@ CHAMPS_INTERDITS = frozenset(
 )
 CHAMPS_CONNEXION = frozenset({"login", "password"})
 
+# Des `char` d'Odoo qui portent une STRUCTURE, pas du texte. Odoo les
+# reparse, et un mot y fait lever le serveur entier :
+#   parent_path      → `int(id) for id in parent_path.split('/')`
+#                      (base/models/res_company.py:117, models.py:203)
+#   days_next_month  → `int(self.days_next_month)`
+#                      (account/models/account_payment_term.py:321)
+# `parent_path` existe sur tout modèle `_parent_store` — sept dans une
+# base ordinaire. La sonde de contenu ci-dessous les retrouverait, mais
+# les nommer coûte moins cher qu'une requête et ne dépend pas des données
+# présentes le jour où l'on passe.
+CHAMPS_STRUCTURES = frozenset({"parent_path", "days_next_month"})
+
+# Un chemin d'identifiants : « 1/ », « 1/7/12/ ». Le motif exige les
+# barres obliques — sans elles, un numéro de téléphone tout en chiffres
+# serait pris pour une structure et échapperait à l'anonymisation, ce
+# qui serait un défaut de confidentialité, pas de robustesse.
+MOTIF_CHEMIN = r"^[0-9]+(/[0-9]+)*/$"
+
 # Le point de départ du mode hybride : ce qui porte des données
 # personnelles dans une base Odoo ordinaire.
 MODELES_PAR_DEFAUT = (
@@ -196,6 +214,8 @@ def champ_retenu(champ, inclure_connexion=False):
         return False
     if champ["name"].endswith("_id") or champ["name"].endswith("_ids"):
         # Une relation qui aurait échappé au filtre de ttype.
+        return False
+    if champ["name"] in CHAMPS_STRUCTURES:
         return False
     if champ.get("checked"):
         # Une contrainte CHECK hors de portée. Mesuré, et la distinction
@@ -428,6 +448,75 @@ def plan(
     return etapes
 
 
+def colonnes_structurees(database, etapes, config_path=None):
+    """Les colonnes texte dont TOUT le contenu est un chemin d'identifiants.
+
+    Le filet général, là où `CHAMPS_STRUCTURES` ne nomme que le connu :
+    un module maison peut poser son propre champ de chemin, et il ne
+    portera pas ce nom-là. On regarde donc ce que la colonne CONTIENT.
+
+    Une colonne est écartée seulement si elle est NON VIDE et que toutes
+    ses valeurs sont des chemins. Un seul contre-exemple suffit à la
+    garder : mieux vaut anonymiser une colonne douteuse que taire une
+    donnée personnelle.
+
+    Une requête par TABLE, pas par colonne : sur une liste noire de 410
+    modèles, la différence est de 410 allers-retours au lieu de 863.
+    """
+    ecartees = {}
+    for etape in etapes:
+        textes = [
+            champ
+            for champ in etape["fields"]
+            if champ["ttype"] in TYPES_TEXTE and champ["pg_type"] != "jsonb"
+        ]
+        if not textes:
+            continue
+        morceaux = []
+        for champ in textes:
+            nom = ident(champ["name"])
+            morceaux.append(
+                f"count(*) FILTER (WHERE {nom} IS NOT NULL AND {nom} <> '')"
+                f" || ':' || count(*) FILTER (WHERE {nom} ~ {litteral(MOTIF_CHEMIN)})"
+            )
+        sql = (
+            "SELECT "
+            + " || '\x1f' || ".join(morceaux)
+            + f" FROM {ident(table_de(etape['model']))}"
+        )
+        try:
+            brut = lib_analyse.run_psql(
+                database, sql, config_path=config_path
+            ).strip()
+        except Exception:  # noqa: BLE001 - une table illisible ne bloque pas
+            continue
+        for champ, mesure in zip(textes, brut.split(SEP)):
+            try:
+                remplies, chemins = (int(x) for x in mesure.split(":"))
+            except ValueError:
+                continue
+            if remplies and remplies == chemins:
+                ecartees.setdefault(etape["model"], []).append(champ["name"])
+    return ecartees
+
+
+def sans_structurees(etapes, ecartees, mots):
+    """Refaire le plan sans les colonnes que la sonde a écartées."""
+    if not ecartees:
+        return etapes
+    propre = []
+    for etape in etapes:
+        exclues = set(ecartees.get(etape["model"], ()))
+        gardes = [c for c in etape["fields"] if c["name"] not in exclues]
+        # Pas de garde sur une liste vide : `sql_pour_table` rend None, et
+        # le `if sql` ci-dessous l'écarte. Deux vérifications pour la même
+        # chose se contredisent un jour.
+        sql = sql_pour_table(table_de(etape["model"]), gardes, mots)
+        if sql:
+            propre.append({**etape, "fields": gardes, "sql": sql})
+    return propre
+
+
 def render(etapes, applique=False, verbeux=False):
     """Le rapport. Il dit ce qui est ÉCARTÉ autant que ce qui est pris."""
     if not etapes:
@@ -606,6 +695,20 @@ def main(argv=None):
         args.include_logins,
         mots,
     )
+    # La sonde AVANT le rendu : la marche à blanc doit montrer ce que
+    # `--apply` ferait, pas une approximation plus large.
+    ecartees = colonnes_structurees(args.database, etapes, args.config)
+    etapes = sans_structurees(etapes, ecartees, mots)
+    if ecartees:
+        combien = sum(len(v) for v in ecartees.values())
+        print(
+            f"🧭 {combien} {t('column(s) hold identifier paths and are left')}"
+            f" {t('alone:')}"
+        )
+        for modele in sorted(ecartees):
+            print(f"     {modele} : {', '.join(sorted(ecartees[modele]))}")
+        print()
+
     if not args.apply:
         print(render(etapes, applique=False, verbeux=args.verbose))
         return 1 if etapes else 0

@@ -606,3 +606,131 @@ class TestACheckDoesNotSilenceTheMainField(unittest.TestCase):
             "max_len": None,
         }
         self.assertFalse(anon.champ_retenu(champ))
+
+
+class TestStructuredCharFieldsSurvive(unittest.TestCase):
+    """`ValueError: invalid literal for int() with base 10: 'bruyere'`.
+
+    Odoo déclare `parent_path` en `char`, mais y range un CHEMIN
+    D'IDENTIFIANTS — « 1/7/12/ » — qu'il reparse :
+
+        int(id) for id in company.parent_path.split('/')
+            base/models/res_company.py:117, models.py:203 et :221
+
+    Y écrire un mot fait lever le serveur au premier chargement de page.
+    Mesuré : sept modèles `_parent_store` dans une base ordinaire —
+    res.company, product.category, stock.location, hr.department,
+    website.menu, account.analytic.plan, helpdesk.ticket.category.
+
+    Même chose pour `days_next_month`, qu'Odoo passe à `int()`
+    (account/models/account_payment_term.py:321).
+    """
+
+    def _champ(self, nom):
+        return {
+            "model": "res.company",
+            "name": nom,
+            "ttype": "char",
+            "pg_type": "character varying",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+        }
+
+    def test_the_known_parsers_are_named(self):
+        self.assertIn("parent_path", anon.CHAMPS_STRUCTURES)
+        self.assertIn("days_next_month", anon.CHAMPS_STRUCTURES)
+
+    def test_they_are_never_touched_whatever_the_model(self):
+        for nom in anon.CHAMPS_STRUCTURES:
+            self.assertFalse(anon.champ_retenu(self._champ(nom)), nom)
+
+    def test_a_phone_number_is_not_mistaken_for_a_structure(self):
+        """Le motif EXIGE les barres obliques. Sans elles, un numéro tout
+        en chiffres passerait pour une structure et échapperait à
+        l'anonymisation — un défaut de confidentialité, pas de robustesse.
+        """
+        import re
+
+        motif = re.compile(anon.MOTIF_CHEMIN)
+        for valeur in ("5141234567", "0", "42", "1234-5678"):
+            self.assertIsNone(motif.match(valeur), valeur)
+        for valeur in ("1/", "1/7/12/", "3/4/"):
+            self.assertIsNotNone(motif.match(valeur), valeur)
+
+    def test_the_probe_asks_once_per_table_not_once_per_column(self):
+        """Sur 410 modèles, la différence est de 410 allers-retours au
+        lieu de 863."""
+        appels = []
+
+        def espion(database, sql, config_path=None):
+            appels.append(sql)
+            return "0:0\x1f0:0"
+
+        vrai = anon.lib_analyse.run_psql
+        anon.lib_analyse.run_psql = espion
+        etapes = [
+            {
+                "model": "res.company",
+                "fields": [self._champ("name"), self._champ("street")],
+                "sql": "x",
+            }
+        ]
+        try:
+            anon.colonnes_structurees("base", etapes)
+        finally:
+            anon.lib_analyse.run_psql = vrai
+        self.assertEqual(len(appels), 1)
+        self.assertIn('"name"', appels[0])
+        self.assertIn('"street"', appels[0])
+
+    def test_one_counter_example_is_enough_to_keep_a_column(self):
+        """Mieux vaut anonymiser une colonne douteuse que taire une
+        donnée personnelle."""
+
+        def espion(database, sql, config_path=None):
+            # 10 valeurs remplies, 9 seulement sont des chemins.
+            return "10:9"
+
+        vrai = anon.lib_analyse.run_psql
+        anon.lib_analyse.run_psql = espion
+        etapes = [
+            {"model": "m", "fields": [self._champ("chemin")], "sql": "x"}
+        ]
+        try:
+            ecartees = anon.colonnes_structurees("base", etapes)
+        finally:
+            anon.lib_analyse.run_psql = vrai
+        self.assertEqual(ecartees, {})
+
+    def test_an_all_paths_column_is_dropped_from_the_plan(self):
+        def espion(database, sql, config_path=None):
+            return "10:10"
+
+        vrai = anon.lib_analyse.run_psql
+        anon.lib_analyse.run_psql = espion
+        etapes = [
+            {
+                "model": "m",
+                "fields": [self._champ("chemin"), self._champ("nom")],
+                "sql": "x",
+            }
+        ]
+        try:
+            ecartees = anon.colonnes_structurees("base", etapes)
+        finally:
+            anon.lib_analyse.run_psql = vrai
+        # Les deux colonnes rendent le même compte ici : c'est le principe
+        # qu'on vérifie, pas la ligne exacte.
+        self.assertIn("m", ecartees)
+        propre = anon.sans_structurees(etapes, {"m": ["chemin"]}, None)
+        self.assertEqual([c["name"] for c in propre[0]["fields"]], ["nom"])
+        self.assertNotIn('"chemin"', propre[0]["sql"])
+
+    def test_a_model_entirely_dropped_leaves_no_empty_statement(self):
+        etapes = [
+            {"model": "m", "fields": [self._champ("chemin")], "sql": "x"}
+        ]
+        self.assertEqual(
+            anon.sans_structurees(etapes, {"m": ["chemin"]}, None), []
+        )
