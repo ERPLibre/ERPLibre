@@ -10008,6 +10008,90 @@ TRANSLATIONS = {
         "fr": "Mode inconnu :",
         "en": "Unknown mode:",
     },
+    "Duplicate": {
+        "fr": "Copie",
+        "en": "Copy",
+    },
+    "Duplicate a database": {
+        "fr": "Dupliquer une base de données",
+        "en": "Duplicate a database",
+    },
+    "Name of the copy (default=": {
+        "fr": "Nom de la copie (défaut=",
+        "en": "Name of the copy (default=",
+    },
+    "Neutralize the copy (Y/n)? ": {
+        "fr": "Neutraliser la copie (O/n) ? ",
+        "en": "Neutralize the copy (Y/n)? ",
+    },
+    "The copy will keep its scheduled actions, its": {
+        "fr": "La copie gardera ses actions planifiées, son",
+        "en": "The copy will keep its scheduled actions, its",
+    },
+    "outgoing mail and its payment providers.": {
+        "fr": "courriel sortant et ses fournisseurs de paiement.",
+        "en": "outgoing mail and its payment providers.",
+    },
+    "The duplication failed.": {
+        "fr": "La duplication a échoué.",
+        "en": "The duplication failed.",
+    },
+    "Cannot read the copy back: ": {
+        "fr": "Impossible de relire la copie : ",
+        "en": "Cannot read the copy back: ",
+    },
+    "Duplicate a database, filestore included.": {
+        "fr": "Dupliquer une base, filestore compris.",
+        "en": "Duplicate a database, filestore included.",
+    },
+    "the copy": {
+        "fr": "la copie",
+        "en": "the copy",
+    },
+    "disable crons, outgoing mail and payment providers": {
+        "fr": "désactiver les crons, le courriel sortant et les fournisseurs de paiement",
+        "en": "disable crons, outgoing mail and payment providers",
+    },
+    "The source and the copy cannot share a name.": {
+        "fr": "La source et la copie ne peuvent pas porter le même nom.",
+        "en": "The source and the copy cannot share a name.",
+    },
+    "No such database: ": {
+        "fr": "Base introuvable : ",
+        "en": "No such database: ",
+    },
+    "This database already exists: ": {
+        "fr": "Cette base existe déjà : ",
+        "en": "This database already exists: ",
+    },
+    "cannot neutralise: that arrived in Odoo 16.": {
+        "fr": "ne sait pas neutraliser : c'est arrivé avec Odoo 16.",
+        "en": "cannot neutralise: that arrived in Odoo 16.",
+    },
+    "Cannot find the virtualenv for this checkout.": {
+        "fr": "Venv introuvable pour ce checkout.",
+        "en": "Cannot find the virtualenv for this checkout.",
+    },
+    "Cannot find the Odoo source for this checkout.": {
+        "fr": "Sources Odoo introuvables pour ce checkout.",
+        "en": "Cannot find the Odoo source for this checkout.",
+    },
+    "neutralised": {
+        "fr": "neutralisée",
+        "en": "neutralised",
+    },
+    "Done:": {
+        "fr": "Fait :",
+        "en": "Done:",
+    },
+    "NOT neutralised: its crons run, its mail leaves and": {
+        "fr": "PAS neutralisée : ses crons tournent, son courriel part et",
+        "en": "NOT neutralised: its crons run, its mail leaves and",
+    },
+    "its payment providers can charge.": {
+        "fr": "ses fournisseurs de paiement peuvent débiter.",
+        "en": "its payment providers can charge.",
+    },
 }
 
 
