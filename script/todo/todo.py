@@ -5,8 +5,6 @@
 import ast
 import configparser
 import datetime
-import getpass
-import grp
 import inspect
 import json
 import logging
@@ -1515,6 +1513,28 @@ class TODO(
         """Réponse négative explicite, FR et EN (n/no/non). Utile pour les
         invites « défaut oui » où tout sauf « non » vaut oui."""
         return ans.strip().lower() in ("n", "no", "non")
+
+    @staticmethod
+    def _host_disk_gb(path="/var/lib/libvirt/images"):
+        """(libre, total) en Go du système de fichiers qui portera les disques.
+
+        On remonte vers le premier parent qui existe : le répertoire d'images
+        n'est créé qu'au premier déploiement, et « /var/lib/libvirt » ou « / »
+        répondent de la même partition dans la quasi-totalité des cas. (0, 0)
+        si rien ne répond — la place libre s'affiche alors comme inconnue
+        plutôt qu'inventée.
+        """
+        chemin = path
+        while chemin and not os.path.isdir(chemin):
+            parent = os.path.dirname(chemin)
+            if parent == chemin:
+                break
+            chemin = parent
+        try:
+            usage = shutil.disk_usage(chemin or "/")
+        except OSError:
+            return 0, 0
+        return usage.free // (1 << 30), usage.total // (1 << 30)
 
     @staticmethod
     def _host_free_ram_mb():

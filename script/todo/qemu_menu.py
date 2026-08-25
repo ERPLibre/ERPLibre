@@ -5,10 +5,11 @@
 
 import os
 import shutil
-
 from datetime import datetime
-from script.todo.todo_i18n import t
+
 import click
+
+from script.todo.todo_i18n import t
 
 
 class QemuMenuMixin:

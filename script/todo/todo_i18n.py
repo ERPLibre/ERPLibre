@@ -1253,6 +1253,14 @@ TRANSLATIONS = {
         "fr": "> RAM libre de l'hôte",
         "en": "> host free RAM",
     },
+    "> host free disk": {
+        "fr": "> disque libre de l'hôte",
+        "en": "> host free disk",
+    },
+    "free of": {
+        "fr": "libres sur",
+        "en": "free of",
+    },
     "total RAM": {
         "fr": "RAM totale",
         "en": "total RAM",
@@ -3148,8 +3156,11 @@ TRANSLATIONS = {
         "en": "Watch the VMs start (no install)",
     },
     "Proxmox VE - Deploy a VM on a remote host": {
-        "fr": "Proxmox VE - Déployer une VM sur un hôte distant",
-        "en": "Proxmox VE - Deploy a VM on a remote host",
+        # 🗄 et non 💻 : l'entrée d'à côté déploie sur CETTE machine, celle-ci
+        # sur une baie ailleurs. L'icône est ce qui distingue les deux d'un
+        # coup d'œil dans le menu.
+        "fr": "🗄 Proxmox VE - Déployer une VM sur un hôte distant",
+        "en": "🗄 Proxmox VE - Deploy a VM on a remote host",
     },
     "Deploy a virtual machine on Proxmox VE!": {
         "fr": "Déployer une machine virtuelle sur Proxmox VE !",
@@ -3194,6 +3205,22 @@ TRANSLATIONS = {
     "Not a Proxmox host (or unreachable):": {
         "fr": "Ce n'est pas un hôte Proxmox (ou il est injoignable) :",
         "en": "Not a Proxmox host (or unreachable):",
+    },
+    "Reachable, but Proxmox VE is not there:": {
+        "fr": "Machine joignable, mais Proxmox VE n'y est pas :",
+        "en": "Reachable, but Proxmox VE is not there:",
+    },
+    "SSH does not get through:": {
+        "fr": "SSH ne passe pas :",
+        "en": "SSH does not get through:",
+    },
+    "Install it:": {
+        "fr": "Pour l'installer :",
+        "en": "Install it:",
+    },
+    "Or redeploy the VM with the hypervisor profile.": {
+        "fr": "Ou redéployer la VM avec le profil hyperviseur.",
+        "en": "Or redeploy the VM with the hypervisor profile.",
     },
     "Check the address, the SSH access and pveversion.": {
         "fr": "Vérifier l'adresse, l'accès SSH et pveversion.",
@@ -3298,6 +3325,99 @@ TRANSLATIONS = {
     "No network bridge on this host.": {
         "fr": "Aucun pont réseau sur cet hôte.",
         "en": "No network bridge on this host.",
+    },
+    # --- Écran de déploiement Proxmox VE (formulaire TUI) ---
+    "Deploy one or more ERPLibre VMs on Proxmox VE!": {
+        "fr": "Déployer une ou plusieurs VM ERPLibre sur Proxmox VE !",
+        "en": "Deploy one or more ERPLibre VMs on Proxmox VE!",
+    },
+    "Proxmox host": {
+        "fr": "Hôte Proxmox",
+        "en": "Proxmox host",
+    },
+    "node": {
+        "fr": "nœud",
+        "en": "node",
+    },
+    "Proxmox VE": {
+        "fr": "Proxmox VE",
+        "en": "Proxmox VE",
+    },
+    "Bridge": {
+        "fr": "Pont",
+        "en": "Bridge",
+    },
+    "First VMID": {
+        "fr": "Premier VMID",
+        "en": "First VMID",
+    },
+    "Access": {
+        "fr": "Accès",
+        "en": "Access",
+    },
+    "SSH public key": {
+        "fr": "Clé publique SSH",
+        "en": "SSH public key",
+    },
+    "Start the VM after creating it": {
+        "fr": "Démarrer la VM après sa création",
+        "en": "Start the VM after creating it",
+    },
+    "Add an entry to ~/.ssh/config": {
+        "fr": "Ajouter une entrée à ~/.ssh/config",
+        "en": "Add an entry to ~/.ssh/config",
+    },
+    "Follow the installation (dashboard)": {
+        "fr": "Suivre l'installation (tableau de bord)",
+        "en": "Follow the installation (dashboard)",
+    },
+    "Text prompts": {
+        "fr": "Questions texte",
+        "en": "Text prompts",
+    },
+    "Nothing to deploy.": {
+        "fr": "Rien à déployer.",
+        "en": "Nothing to deploy.",
+    },
+    "No bridge on the host.": {
+        "fr": "Aucun pont sur l'hôte.",
+        "en": "No bridge on the host.",
+    },
+    "more disk than the storage has free": {
+        "fr": "plus de disque que le stockage n'en a de libre",
+        "en": "more disk than the storage has free",
+    },
+    "more RAM than the host has free": {
+        "fr": "plus de RAM que l'hôte n'en a de libre",
+        "en": "more RAM than the host has free",
+    },
+    "Loading (host, storage, bridges, VMs)...": {
+        "fr": "Chargement (hôte, stockage, ponts, VM)…",
+        "en": "Loading (host, storage, bridges, VMs)...",
+    },
+    "TUI unavailable": {
+        "fr": "Interface graphique indisponible",
+        "en": "TUI unavailable",
+    },
+    "VM": {
+        "fr": "VM",
+        "en": "VM",
+    },
+    "VMID": {
+        "fr": "VMID",
+        "en": "VMID",
+    },
+    "address": {
+        "fr": "adresse",
+        "en": "address",
+    },
+    "storage": {
+        "fr": "stockage",
+        "en": "storage",
+    },
+    "other…": {
+        "fr": "autre…",
+        "en": "other…",
     },
     "offered": {
         "fr": "proposés",
@@ -3998,9 +4118,23 @@ TRANSLATIONS = {
         "fr": "Existantes, laissées intactes :",
         "en": "Existing, left untouched:",
     },
-    "ERPLibre install:": {
-        "fr": "Installation ERPLibre :",
-        "en": "ERPLibre install:",
+    # Renommée : la case commande TOUTE installation — ERPLibre, Odoo, mais
+    # aussi l'hyperviseur Proxmox VE, qui n'installe ni l'un ni l'autre.
+    "Install:": {
+        "fr": "Installation :",
+        "en": "Install:",
+    },
+    "Install software in the VM": {
+        "fr": "Installer un logiciel dans la VM",
+        "en": "Install software in the VM",
+    },
+    "Installation": {
+        "fr": "Installation",
+        "en": "Installation",
+    },
+    "Monitoring and parallelism": {
+        "fr": "Suivi et parallélisme",
+        "en": "Monitoring and parallelism",
     },
     "profile": {
         "fr": "profil",

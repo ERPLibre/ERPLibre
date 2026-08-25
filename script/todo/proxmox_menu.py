@@ -18,9 +18,10 @@ import shlex
 import subprocess
 import time
 
+import click
+
 from script.todo import todo_prefs
 from script.todo.todo_i18n import t
-import click
 
 
 class ProxmoxMenuMixin:
@@ -36,6 +37,9 @@ class ProxmoxMenuMixin:
     # la machine locale. Il faut donc d'abord SAVOIR OÙ, et le retenir — sans
     # quoi chacune des dix-sept commandes reposerait la question.
     _PVE_PREF_KEY = "proxmox_host"
+    # Le script qui transforme une Debian en hyperviseur. Autonome : il se
+    # laisse exécuter par un tube, sans être copié d'abord.
+    PVE_INSTALL_SCRIPT = "script/proxmox/install_proxmox.sh"
 
     def _pve_host(self, ask=True):
         """Hôte Proxmox retenu, ou None. Demande au besoin.
@@ -141,9 +145,7 @@ class ProxmoxMenuMixin:
     def _pve_host_from_ssh_config(self):
         """Un alias de ~/.ssh/config : il porte déjà utilisateur, port et
         ProxyJump — rien à redemander, et le rebond traverse."""
-        entrees = self._ssh_config_entries(
-            os.path.expanduser("~/.ssh/config")
-        )
+        entrees = self._ssh_config_entries(os.path.expanduser("~/.ssh/config"))
         if not entrees:
             print(f"\n{t('No SSH hosts found in ~/.ssh/config')}")
             return None
@@ -169,6 +171,45 @@ class ProxmoxMenuMixin:
             "host key verification failed" in bas
             or "authenticity of host" in bas
             or "no ed25519 host key is known" in bas
+        )
+
+    @staticmethod
+    def _pve_clean_output(sortie):
+        """Les lignes de la sortie qui APPRENNENT quelque chose.
+
+        « Warning: Permanently added … to the list of known hosts » arrive sur
+        stderr à chaque connexion d'un hôte en UserKnownHostsFile=/dev/null.
+        Affichée comme preuve d'un échec, elle envoyait chercher du côté de la
+        clé d'hôte un problème qui n'avait rien à voir — rapporté.
+        """
+        gardees = []
+        for ligne in (sortie or "").splitlines():
+            nue = ligne.strip()
+            if not nue or nue.startswith("Warning: Permanently added"):
+                continue
+            gardees.append(nue)
+        return gardees
+
+    def _pve_ssh_alive(self, host):
+        """(ssh passe-t-il ?, ce qu'il a dit) — sans rien exiger de la machine.
+
+        C'est la question qu'il fallait poser AVANT de conclure : une machine
+        qui répond mais n'a pas Proxmox n'est pas « injoignable », et les deux
+        pannes ne se corrigent pas du même côté."""
+        from script.proxmox import proxmox_deploy as pve
+
+        code, out = pve.run(host, "true", timeout=20)
+        lignes = self._pve_clean_output(out)
+        return code == 0, (lignes[0] if lignes else t("no answer"))
+
+    def _pve_install_hint(self, host):
+        """La commande qui poserait Proxmox VE sur cette machine.
+
+        Le script du dépôt, poussé par le tube : il est autonome, donc
+        « bash -s » suffit et il n'y a rien à copier d'abord."""
+        return (
+            f"cat {self.PVE_INSTALL_SCRIPT} | "
+            f"ssh {host['target']} sudo bash -s"
         )
 
     def _pve_add_hostkey(self, host):
@@ -204,7 +245,9 @@ class ProxmoxMenuMixin:
         chemin = os.path.expanduser("~/.ssh/known_hosts")
         os.makedirs(os.path.dirname(chemin), exist_ok=True)
         with open(chemin, "a", encoding="utf-8") as fh:
-            fh.write(res.stdout if res.stdout.endswith("\n") else res.stdout + "\n")
+            fh.write(
+                res.stdout if res.stdout.endswith("\n") else res.stdout + "\n"
+            )
         lignes = len(res.stdout.strip().splitlines())
         print(f"  ✓ {lignes} {t('key(s) recorded in ~/.ssh/known_hosts')}")
         return True
@@ -229,10 +272,31 @@ class ProxmoxMenuMixin:
                 code, out = pve.run(host, "pveversion", timeout=30)
                 version = pve.parse_pveversion(out)
         if not version:
-            print(f"  ✗ {t('Not a Proxmox host (or unreachable):')}")
-            premiere = (out or "").strip().splitlines()
-            print(f"    {premiere[0] if premiere else t('no answer')}")
-            print(f"  → {t('Check the address, the SSH access and pveversion.')}")
+            # Un seul message confondait deux pannes : « ou il est
+            # injoignable » envoyait vérifier le réseau alors que la machine
+            # répondait, et la seule ligne montrée était l'avertissement de
+            # ssh sur la clé d'hôte. On demande donc à ssh s'il passe.
+            joignable, detail = self._pve_ssh_alive(host)
+            # Ce que « pveversion » a répondu, et non ce que la sonde a dit :
+            # « command not found » est LA preuve utile.
+            dit = self._pve_clean_output(out)
+            if joignable:
+                print(f"  ✗ {t('Reachable, but Proxmox VE is not there:')}")
+                print(
+                    f"    ssh {host['target']} : ok — pveversion : "
+                    f"{dit[0] if dit else t('absent')}"
+                )
+                print(f"  → {t('Install it:')}")
+                print(f"    {self._pve_install_hint(host)}")
+                print(
+                    f"  → {t('Or redeploy the VM with the hypervisor profile.')}"
+                )
+            else:
+                print(f"  ✗ {t('SSH does not get through:')}")
+                print(f"    {detail}")
+                print(
+                    f"  → {t('Check the address, the SSH access and pveversion.')}"
+                )
             return None
         # « qm » exige les privilèges. La voie « VM QEMU locale » donne
         # l'accès d'erplibre, pas de root : il faut donc sudo, et il faut le
@@ -243,7 +307,9 @@ class ProxmoxMenuMixin:
         if qui.strip() != "0":
             code, _o = pve.run(host, "sudo -n true", timeout=20)
             if code:
-                print(f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}")
+                print(
+                    f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}"
+                )
                 print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
                 return None
             prefixe = "sudo "
@@ -294,9 +360,7 @@ class ProxmoxMenuMixin:
             return [] if multiple else None
         print(f"\n{titre or t('VMs on this host:')}")
         for i, vm in enumerate(vms, 1):
-            print(
-                f"  [{i}] {vm['vmid']:<6} {vm['name']:<28} {vm['status']}"
-            )
+            print(f"  [{i}] {vm['vmid']:<6} {vm['name']:<28} {vm['status']}")
         if multiple:
             print(f"  [all] {t('select all')}")
         brut = input(t("Selection (number): ")).strip()
@@ -389,9 +453,7 @@ class ProxmoxMenuMixin:
         if not vm:
             return
         print(f"\n  ⚠ {t('Proxmox can only GROW a disk, never shrink it.')}")
-        taille = input(
-            t("Size (+10G to add, 40G for a target): ")
-        ).strip()
+        taille = input(t("Size (+10G to add, 40G for a target): ")).strip()
         if not re.match(r"^\+?\d+[MGT]$", taille):
             print(t("Invalid selection!"))
             return
@@ -484,7 +546,9 @@ class ProxmoxMenuMixin:
         """Recopie la clé publique SUR l'hôte : « qm set --sshkeys » attend un
         FICHIER là-bas, pas une clé en ligne."""
         try:
-            with open(os.path.expanduser(chemin_local), encoding="utf-8") as fh:
+            with open(
+                os.path.expanduser(chemin_local), encoding="utf-8"
+            ) as fh:
                 cle = fh.read().strip()
         except OSError as exc:
             print(f"  ⚠ {t('SSH key unreadable:')} {exc}")
@@ -524,11 +588,11 @@ class ProxmoxMenuMixin:
             print("        address <ip-de-l-hôte>/24")
             print("        gateway <passerelle>")
             print("        bridge-ports <interface>")
-            print(f"  ⚠ {t('This moves the host address: do it from a console.')}")
+            print(
+                f"  ⚠ {t('This moves the host address: do it from a console.')}"
+            )
             return ""
-        _c, sortie = self._pve_show(
-            "ip -o -4 route show default", quiet=True
-        )
+        _c, sortie = self._pve_show("ip -o -4 route show default", quiet=True)
         uplink = ""
         parts = (sortie or "").split()
         if "dev" in parts:
@@ -628,12 +692,26 @@ class ProxmoxMenuMixin:
             "next_vmid": pve.next_vmid(vms),
             "storages": [s["name"] for s in stockages if s.get("actif")],
             "storage": pve.pick_storage(stockages),
+            # La place libre par stockage, en octets : « pvesm status » la
+            # donne dans la même sortie, donc l'écran peut dire si le plan
+            # rentre sans un aller-retour de plus vers l'hôte.
+            "storage_avail": {
+                s["name"]: s.get("avail") or 0 for s in stockages
+            },
             "bridges": ponts,
             "bridge": pve.pick_bridge(ponts),
             "ipconfig": ipconfig,
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
             "install_profiles": self._qemu_install_profiles(),
+            # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
+            # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
+            # Odoo 18, comme l'écran d'à côté avant correction.
+            "distro_profiles": {
+                d: self._qemu_distro_profile(d)
+                for d in self._QEMU_DISTRO_PROFILE
+                if self._qemu_distro_profile(d)
+            },
             "ssh_key": self._qemu_default_ssh_key(),
             "cpu_presets": self._QEMU_CPU_PRESETS,
             "ram_presets": self._QEMU_RAM_PRESETS,
@@ -706,6 +784,9 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
         from script.todo.deploy_form_lib import run_deploy_progress
 
+        if not dry_run and not self._pve_confirm_spec(host, spec):
+            print(t("Cancelled."))
+            return
         cle_locale = spec.get("ssh_key") or self._qemu_default_ssh_key()
         if cle_locale and not dry_run:
             if self._pve_push_key(cle_locale):
@@ -738,6 +819,8 @@ class ProxmoxMenuMixin:
             return
         if spec["existing"]:
             print(f"  ⏭ {t('already there')} : {', '.join(spec['existing'])}")
+        if not travaux:
+            return
         resultats = run_deploy_progress(travaux, spec.get("parallelism") or 1)
         reussies = [nom for nom, code, _o, _d in resultats if code == 0]
         for nom, code, sortie, _duree in resultats:
@@ -747,6 +830,32 @@ class ProxmoxMenuMixin:
         if not reussies:
             return
         self._pve_after_create(host, spec, reussies, cle_locale)
+
+    def _pve_confirm_spec(self, host, spec):
+        """Récapitulatif puis confirmation, dans le TERMINAL.
+
+        L'écran a montré le plan, mais c'est ici que ça devient réel — et sur
+        une machine qui n'est pas la nôtre. La ligne dit donc où, quoi, et
+        combien, avant le mot de passe sudo que l'hôte va demander."""
+        print(f"\n  {t('Proxmox host')} : {self._pve_label(host)}")
+        print(
+            f"  {t('storage')} {spec['storage']}   "
+            f"{t('bridge')} {spec['bridge']}   [{spec['res_label']}]"
+        )
+        for vm in spec["vms"]:
+            print(
+                f"    {vm['name']:32} {t('VMID')} {vm['vmid']}   "
+                f"{vm['vcpus']} vCPU  {vm['ram']} Mo  {vm['disk']}   "
+                f"{(vm.get('ipconfig') or '').replace('ip=', '')}"
+            )
+        if spec.get("install"):
+            print(
+                f"  ERPLibre : {spec['install'].get('label') or ''}"
+                f"  ({spec['install'].get('branch')})"
+            )
+        return self._is_yes_default_yes(
+            input(f"\n{t('Deploy this VM now? (Y/n): ')}")
+        )
 
     def _pve_after_create(self, host, spec, reussies, cle_locale):
         """Ce qui suit la création : l'adresse, ~/.ssh/config, l'installation.
@@ -765,7 +874,9 @@ class ProxmoxMenuMixin:
                 print(f"\n  {t('Waiting for the VM address…')} {vm['name']}")
                 ip = self._pve_guest_ip(vm["vmid"])
             if not ip:
-                print(f"  ⚠ {vm['name']} : {t('No address yet. Try [6] later.')}")
+                print(
+                    f"  ⚠ {vm['name']} : {t('No address yet. Try [6] later.')}"
+                )
                 continue
             print(f"  ✓ {vm['name']} : {ip}")
             if spec.get("add_ssh_config"):
@@ -783,11 +894,18 @@ class ProxmoxMenuMixin:
             return
         noms = [vm["name"] for vm in joignables]
         print(f"  {install.get('label') or ''}")
+        # Une commande PAR VM dès qu'elles diffèrent : un Proxmox imbriqué
+        # installe son hyperviseur, ses voisines ERPLibre. Une commande
+        # unique en aurait imposé une aux deux.
+        commun = install.get("cmd") or ""
+        cartes = {
+            vm["name"]: (vm.get("install_cmd") or commun) for vm in joignables
+        }
         self._qemu_install_erplibre_monitored(
             noms,
             install.get("branch") or "master",
             {n: n for n in noms},
-            install.get("cmd") or "",
+            cartes if self._qemu_per_vm(cartes, commun) else commun,
         )
 
     def _pve_deploy_prompts(self, dry_run=False):
@@ -807,9 +925,10 @@ class ProxmoxMenuMixin:
         distro = self._qemu_prompt_distro()
         version = self._qemu_prompt_version(distro)
         arch = "amd64"
-        nom = input(
-            t("VM name (default: erplibre-<distro>): ")
-        ).strip() or f"erplibre-{distro}"
+        nom = (
+            input(t("VM name (default: erplibre-<distro>): ")).strip()
+            or f"erplibre-{distro}"
+        )
         memoire = (
             self._qemu_ask_ram(t("RAM in MB, blank = 4096"), 4096) or 4096
         )
@@ -852,7 +971,9 @@ class ProxmoxMenuMixin:
         # l'afficher avant de l'avoir choisi ne pouvait pas marcher.
         vmid = pve.next_vmid(self._pve_vms())
         ipconfig = pve.ipconfig_for(infos_ponts.get(pont, {}), vmid)
-        print(f"\n  {t('storage')} : {stockage}   ({len(stockages)} {t('offered')})")
+        print(
+            f"\n  {t('storage')} : {stockage}   ({len(stockages)} {t('offered')})"
+        )
         print(f"  {t('bridge')}  : {pont}")
         print(f"  {t('address')} {ipconfig}")
         print(f"  VMID    : {vmid}")
@@ -957,7 +1078,9 @@ class ProxmoxMenuMixin:
                 identity_file=cle,
                 proxy_jump=host["target"],
             )
-            print(f"  ✓ ssh {vm['name']}   ({ip} {t('through')} {host['target']})")
+            print(
+                f"  ✓ ssh {vm['name']}   ({ip} {t('through')} {host['target']})"
+            )
 
     def _pve_test_vm(self):
         """Ouvre Odoo (:8069) d'une VM Proxmox dans un navigateur en ligne.
@@ -975,7 +1098,9 @@ class ProxmoxMenuMixin:
             return
         if not self._qemu_ip_reachable(ip, port=8069, timeout=3):
             print(f"\n  ⚠ {ip}:8069 {t('unreachable from here.')}")
-            print(f"  → {t('Use [13] to add a ProxyJump entry, then a tunnel.')}")
+            print(
+                f"  → {t('Use [13] to add a ProxyJump entry, then a tunnel.')}"
+            )
             return
         navigateur = self._qemu_choose_cli_browser()
         if not navigateur:
@@ -1000,7 +1125,9 @@ class ProxmoxMenuMixin:
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
         }
         print(f"\n── {t('Example: demo-vm, Debian 13, on a Proxmox host')} ──")
-        print(f"  {pve.image_fetch_cmd('https://…/debian-13.qcow2', spec['image'])}")
+        print(
+            f"  {pve.image_fetch_cmd('https://…/debian-13.qcow2', spec['image'])}"
+        )
         for cmd in pve.create_cmds(101, spec):
             print(f"  {cmd}")
 
@@ -1059,8 +1186,16 @@ class ProxmoxMenuMixin:
                     "SSH configuration (~/.ssh/config, ProxyJump)"
                 )
             },
-            {"prompt_description": t("Remote desktop tunnel (VNC/RDP over SSH)")},
-            {"prompt_description": t("Android emulator (start, tunnel, scrcpy)")},
+            {
+                "prompt_description": t(
+                    "Remote desktop tunnel (VNC/RDP over SSH)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Android emulator (start, tunnel, scrcpy)"
+                )
+            },
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and their specs")},
             {"prompt_description": t("Proxmox - example sequence (dry-run)")},

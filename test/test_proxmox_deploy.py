@@ -36,6 +36,12 @@ from script.todo.todo import TODO  # noqa: E402
 PVEVERSION = (
     "pve-manager/9.2.11/f6997e698c7933ea (running kernel: 7.0.14-12-pve)"
 )
+# Ce que ssh écrit sur stderr à chaque connexion d'un hôte en
+# UserKnownHostsFile=/dev/null. Ce n'est pas un diagnostic.
+AVERTISSEMENT = (
+    "Warning: Permanently added '192.168.123.227' (ED25519) to the list "
+    "of known hosts.\n"
+)
 QM_LIST = """      VMID NAME                 STATUS     MEM(MB)    BOOTDISK(GB) PID
        100 vm-essai             running    2048              16.00 2726
        101 avec un espace       stopped    4096              32.00 0
@@ -334,9 +340,61 @@ class TestChoixDeLHote(unittest.TestCase):
             return host, out.getvalue()
 
     def test_a_non_proxmox_host_is_refused_with_what_was_seen(self):
-        host, sortie = self._confirm([(127, "bash: pveversion: not found")])
+        # Deux appels : « pveversion », puis la sonde qui demande à ssh s'il
+        # passe — c'est elle qui distingue les deux pannes.
+        host, sortie = self._confirm(
+            [(127, "bash: pveversion: not found"), (0, "")]
+        )
         self.assertIsNone(host)
         self.assertIn("pveversion", sortie)
+
+    def test_a_reachable_machine_without_proxmox_says_exactly_that(self):
+        """Le cas rapporté : « je n'arrive pas à me connecter, pourtant il est
+        accessible ». La machine répondait ; c'est Proxmox qui manquait, et le
+        message parlait d'injoignabilité."""
+        host, sortie = self._confirm(
+            [
+                (127, AVERTISSEMENT + "bash: pveversion: command not found"),
+                (0, AVERTISSEMENT),
+            ]
+        )
+        self.assertIsNone(host)
+        self.assertIn("joignable", sortie.lower())
+        self.assertIn("install_proxmox.sh", sortie)
+        # Et surtout : ne plus envoyer chercher un problème de réseau.
+        self.assertNotIn("SSH ne passe pas", sortie)
+
+    def test_an_unreachable_machine_says_ssh_does_not_get_through(self):
+        panne = "ssh: connect to host 10.0.0.9 port 22: No route to host"
+        host, sortie = self._confirm([(255, panne), (255, panne)])
+        self.assertIsNone(host)
+        self.assertIn("No route to host", sortie)
+        self.assertNotIn("install_proxmox.sh", sortie)
+
+    def test_the_ssh_key_warning_is_never_shown_as_the_error(self):
+        # Affichée comme preuve, elle envoyait chercher un problème de clé
+        # d'hôte qui n'existait pas — c'est ce qu'on voyait dans le rapport.
+        host, sortie = self._confirm(
+            [(127, AVERTISSEMENT), (0, AVERTISSEMENT)]
+        )
+        self.assertIsNone(host)
+        self.assertNotIn("Permanently added", sortie)
+
+    def test_only_the_lines_that_teach_something_are_kept(self):
+        self.assertEqual(
+            TODO._pve_clean_output(
+                AVERTISSEMENT + "\nbash: pveversion: command not found\n"
+            ),
+            ["bash: pveversion: command not found"],
+        )
+        self.assertEqual(TODO._pve_clean_output(AVERTISSEMENT), [])
+        self.assertEqual(TODO._pve_clean_output(""), [])
+
+    def test_the_install_hint_pipes_the_repo_script(self):
+        # Le script est autonome : « bash -s » suffit, rien à copier d'abord.
+        indice = self._todo()._pve_install_hint({"target": "pve1"})
+        self.assertIn(TODO.PVE_INSTALL_SCRIPT, indice)
+        self.assertIn("ssh pve1 sudo bash -s", indice)
 
     def test_a_non_root_access_gets_sudo(self):
         """C'est le cas de la voie « VM QEMU locale » : cloud-init crée
