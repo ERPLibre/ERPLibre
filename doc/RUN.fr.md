@@ -17,6 +17,21 @@ Simplement
 ./run.sh
 ```
 
+Sans aucun argument, ERPLibre choisit la base pour vous : s'il n'y en a
+qu'une il démarre dessus, s'il y en a plusieurs il affiche un menu
+numéroté. Il ne pose la question que devant un vrai terminal — un service
+lancé par systemd se comporte exactement comme avant.
+
+Deux options le pilotent, et aucune n'arrive jusqu'à Odoo :
+
+| option | effet |
+|---|---|
+| `--auto-erplibre` | choisir la base même quand d'autres arguments sont donnés |
+| `--no-cli-erplibre` | ne jamais afficher le menu ; une base seule est quand même retenue |
+
+Nommer soi-même une base — `-d`, `--database` — désactive tout, de même
+qu'un `db_name` posé dans le fichier de configuration.
+
 Avec des arguments
 
 ```bash

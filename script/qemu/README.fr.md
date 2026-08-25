@@ -103,6 +103,7 @@ Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 | rocky | `9`, `10` (défaut) | ✔ | ✔ | ✔ |
 | opensuse | `16.0` (défaut), `tumbleweed` | ✔ | ✔ | ✔ |
 | arch | `latest` | ✔ | — | — |
+| proxmox | `9` | ✔ | ✔ | — |
 
 Fedora ne construit s390x que pour la version courante, et sur une
 arborescence à part (`fedora-secondary`) — d'où la version unique.
@@ -116,6 +117,38 @@ installation.
 Les deux livrent un qpdf au-dessus du seuil de pikepdf : la compilation de
 qpdf, une demi-heure, ne s'y déclenche jamais — ce qui compte sous émulation
 s390x.
+
+`proxmox`, c'est Proxmox VE, et il mérite un mot : il ne publie **aucune image
+cloud** — son ISO est un installateur qui formate le disque. Le déploiement
+fait donc ce que l'amont documente lui-même pour tous les autres cas,
+*Proxmox VE sur Debian* : il télécharge l'image cloud **Debian trixie** (le
+même fichier, si bien qu'un déploiement Debian 13 et un Proxmox se partagent un
+seul téléchargement) et les paquets `pve` en font un hyperviseur — noyau
+Proxmox, interface web sur `:8006`.
+
+Le numéro de version est celui de Proxmox, pas de Debian : PVE 9 = trixie.
+arm64 est officiel depuis PVE 9 (le Release `trixie` de l'amont annonce
+`amd64 arm64`, et l'index arm64 sert bien `proxmox-ve`). s390x est absent et le
+restera par cette voie : le dépôt n'a aucun index `binary-s390x` — le catalogue
+le dit avant le déploiement plutôt que d'échouer au premier `apt`.
+
+Une VM Proxmox est un hyperviseur DANS une VM : ses propres invités demandent
+la virtualisation imbriquée à tous les étages. L'installation se fait par le
+profil « Hyperviseur Proxmox VE (sans Odoo) » du menu de déploiement, ou à la
+main dans la VM :
+
+```bash
+sudo ./script/proxmox/install_proxmox.sh --dry-run   # dit ce qu'il ferait
+sudo ./script/proxmox/install_proxmox.sh             # puis : sudo reboot
+```
+
+Trois pièges de l'image cloud, tous rencontrés sur une VM réelle et traités par
+le script : cloud-init tient encore le verrou d'`apt` au premier démarrage ;
+`grub-pc`, tiré par les paquets `pve`, demande sur quel disque s'installer et
+bloque toute la transaction sans préréponse ; et le chemin de secours UEFI
+(`\EFI\BOOT\`) reçoit les binaires GRUB de Proxmox mais pas le `grub.cfg`
+qui dit où trouver la configuration — sans quoi la VM s'arrête sur l'invite
+`grub>`, sans menu ni noyau.
 
 Fournissez un chemin d'image en argument positionnel pour surcharger
 l'emplacement de téléchargement automatique.

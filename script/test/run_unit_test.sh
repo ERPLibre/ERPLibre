@@ -42,7 +42,8 @@ FILES=("$@")
 if [[ ${#FILES[@]} -eq 0 ]]; then
     # Aucun argument : tout ce que le dépôt sait tester sans base de données.
     mapfile -t FILES < <(ls test/test_qemu_*.py test/test_mobile_*.py \
-        test/test_todo_*.py test/test_install_*.py 2>/dev/null)
+        test/test_todo_*.py test/test_install_*.py test/test_run_*.py \
+        2>/dev/null)
 fi
 
 fail=0

@@ -2,6 +2,12 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+# Annotations différées : la migration charge ce module sous le Python
+# d'Odoo 12 — 3.7 — où « dict | None » et « tuple[str, str] » n'existent
+# pas encore. Sans ceci, l'annotation est ÉVALUÉE au chargement et la
+# migration meurt sur un TypeError avant d'avoir rien fait.
+from __future__ import annotations
+
 import os
 
 

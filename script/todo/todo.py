@@ -11,10 +11,10 @@ import inspect
 import json
 import logging
 import os
-import socket
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -944,6 +944,11 @@ class TODO:
             },
             {
                 "prompt_description": t(
+                    "Proxmox VE - Deploy a VM on a remote host"
+                )
+            },
+            {
+                "prompt_description": t(
                     "Deploy - Install NTFY notification server"
                 )
             },
@@ -966,6 +971,8 @@ class TODO:
             elif status == "5":
                 self.prompt_execute_qemu()
             elif status == "6":
+                self.prompt_execute_proxmox()
+            elif status == "7":
                 self._deploy_ntfy_server()
             else:
                 print(t("Command not found !"))
@@ -1021,6 +1028,756 @@ class TODO:
     # ------------------------------------------------------------------ #
     # QEMU / KVM (libvirt) VM deployment
     # ------------------------------------------------------------------ #
+    # ----------------------------------------------------------------- #
+    # Proxmox VE : l'hyperviseur est AILLEURS
+    # ----------------------------------------------------------------- #
+    # Toute la différence avec QEMU/KVM tient là : ici on n'exécute rien sur
+    # la machine locale. Il faut donc d'abord SAVOIR OÙ, et le retenir — sans
+    # quoi chacune des dix-sept commandes reposerait la question.
+    _PVE_PREF_KEY = "proxmox_host"
+
+    def _pve_host(self, ask=True):
+        """Hôte Proxmox retenu, ou None. Demande au besoin.
+
+        Mémorisé dans les préférences : le menu compte dix-sept entrées, et
+        redemander l'hôte à chacune serait insupportable. Le choix reste
+        affiché en tête du menu, et se change par son entrée dédiée.
+        """
+        cache = getattr(self, "_pve_host_cache", None)
+        if cache:
+            return cache
+        garde = todo_prefs.get(self._PVE_PREF_KEY) or {}
+        if garde.get("target"):
+            self._pve_host_cache = garde
+            return garde
+        return self._pve_pick_host() if ask else None
+
+    def _pve_forget_host(self):
+        self._pve_host_cache = None
+        todo_prefs.set(self._PVE_PREF_KEY, {})
+
+    def _pve_remember_host(self, host):
+        self._pve_host_cache = host
+        todo_prefs.set(self._PVE_PREF_KEY, host)
+
+    @staticmethod
+    def _pve_label(host):
+        """« root@10.0.0.5 (par rebond) », pour l'afficher en tête de menu."""
+        if not host:
+            return ""
+        lab = host.get("target", "?")
+        if host.get("jump"):
+            lab += f" ({t('through')} {host['jump']})"
+        if host.get("version"):
+            lab += f" — PVE {host['version']}"
+        return lab
+
+    def _pve_pick_host(self):
+        """Choisit l'hôte Proxmox : VM locale, adresse, ou ~/.ssh/config."""
+        print(f"\n{t('Which Proxmox host?')}")
+        print(f"  [1] {t('From the local QEMU VMs')}")
+        print(f"  [2] {t('Type an address')}")
+        print(f"  [3] {t('From ~/.ssh/config')}")
+        actuel = todo_prefs.get(self._PVE_PREF_KEY) or {}
+        if actuel.get("target"):
+            print(f"  [4] {t('Keep')} : {self._pve_label(actuel)}")
+        choix = input(t("Choice: ")).strip()
+        if choix == "4" and actuel.get("target"):
+            self._pve_host_cache = actuel
+            return actuel
+        if choix == "1":
+            host = self._pve_host_from_qemu()
+        elif choix == "3":
+            host = self._pve_host_from_ssh_config()
+        elif choix == "2":
+            host = self._pve_host_manual()
+        else:
+            print(t("Cancelled."))
+            return None
+        if not host:
+            return None
+        return self._pve_confirm_host(host)
+
+    def _pve_host_manual(self):
+        """Saisie libre. « root@ » par défaut : « qm » exige les privilèges."""
+        brut = input(t("Address (user@host, default user root): ")).strip()
+        if not brut:
+            print(t("Cancelled."))
+            return None
+        cible = brut if "@" in brut else f"root@{brut}"
+        jump = input(t("SSH jump host (blank = none): ")).strip()
+        return {"target": cible, "jump": jump}
+
+    def _pve_host_from_qemu(self):
+        """Une VM Proxmox déployée ICI, prise dans la liste libvirt.
+
+        C'est le cas du parc : on déploie une VM « proxmox » avec le menu
+        QEMU/KVM, puis on déploie DEDANS. L'IP est celle du bail DHCP, pas une
+        adresse à retaper.
+        """
+        noms = self._qemu_list_domains()
+        if not noms:
+            print(f"\n{t('No VM found.')}")
+            return None
+        print(f"\n{t('Local VMs:')}")
+        ips = {}
+        for i, nom in enumerate(noms, 1):
+            ip = self._qemu_vm_ip_now(nom) or ""
+            ips[nom] = ip
+            etat = self._qemu_domstate(nom)
+            print(f"  [{i}] {nom:<32} {ip or '-':<16} {etat}")
+        sel = input(t("Selection (number): ")).strip()
+        if not sel.isdigit() or not 1 <= int(sel) <= len(noms):
+            print(t("Invalid selection!"))
+            return None
+        nom = noms[int(sel) - 1]
+        ip = ips.get(nom)
+        if not ip:
+            print(f"  ⚠ {t('No IP for this VM: is it running?')}")
+            return None
+        return {"target": f"root@{ip}", "jump": "", "vm": nom}
+
+    def _pve_host_from_ssh_config(self):
+        """Un alias de ~/.ssh/config : il porte déjà utilisateur, port et
+        ProxyJump — rien à redemander, et le rebond traverse."""
+        entrees = self._ssh_config_entries(
+            os.path.expanduser("~/.ssh/config")
+        )
+        if not entrees:
+            print(f"\n{t('No SSH hosts found in ~/.ssh/config')}")
+            return None
+        print()
+        for i, (nom, info) in enumerate(entrees, 1):
+            hn = info.get("hostname", nom)
+            u = info.get("user", "")
+            desc = nom + (f" ({hn})" if hn != nom else "")
+            print(f"  [{i}] {desc}{f' [{u}]' if u else ''}")
+        sel = input(t("Select SSH host number: ")).strip()
+        if not sel.isdigit() or not 1 <= int(sel) <= len(entrees):
+            print(t("Invalid selection!"))
+            return None
+        alias = entrees[int(sel) - 1][0]
+        # L'alias SEUL : ssh y lira l'utilisateur, le port et le ProxyJump.
+        return {"target": alias, "jump": ""}
+
+    @staticmethod
+    def _pve_hostkey_missing(sortie):
+        """La sortie de ssh dénonce-t-elle une clé d'hôte inconnue ou changée ?"""
+        bas = (sortie or "").lower()
+        return (
+            "host key verification failed" in bas
+            or "authenticity of host" in bas
+            or "no ed25519 host key is known" in bas
+        )
+
+    def _pve_add_hostkey(self, host):
+        """Enregistre la clé d'hôte, après accord explicite.
+
+        ssh-keyscan et non « StrictHostKeyChecking=no » : la clé est écrite
+        UNE fois dans known_hosts, et toute substitution ultérieure sera
+        détectée. Désactiver la vérification l'aurait masquée pour toujours.
+        """
+        cible = host["target"].split("@")[-1]
+        # Un alias de ~/.ssh/config n'est pas un nom de machine : ssh seul sait
+        # vers quoi il pointe.
+        resolu = self._ssh_resolve(host["target"])
+        nom = resolu.get("hostname") or cible
+        port = resolu.get("port") or host.get("port") or "22"
+        print(f"\n  ⚠ {t('SSH does not know this host key yet.')}")
+        print(f"  {t('Would record:')} ssh-keyscan -p {port} {nom}")
+        if not self._is_yes(input(f"  {t('Record it?')} (o/N) : ")):
+            return False
+        try:
+            res = subprocess.run(
+                ["ssh-keyscan", "-p", str(port), nom],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"  ✗ ssh-keyscan : {exc}")
+            return False
+        if res.returncode != 0 or not res.stdout.strip():
+            print(f"  ✗ {t('No host key obtained.')}")
+            return False
+        chemin = os.path.expanduser("~/.ssh/known_hosts")
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        with open(chemin, "a", encoding="utf-8") as fh:
+            fh.write(res.stdout if res.stdout.endswith("\n") else res.stdout + "\n")
+        lignes = len(res.stdout.strip().splitlines())
+        print(f"  ✓ {lignes} {t('key(s) recorded in ~/.ssh/known_hosts')}")
+        return True
+
+    def _pve_confirm_host(self, host):
+        """Vérifie que c'en est un, et le retient. Sinon, dit ce qu'il a vu.
+
+        « pveversion » est la preuve : une adresse saisie à la main peut être
+        n'importe quelle machine, et sans ce contrôle la première commande
+        « qm » échouerait sur un « command not found » qui n'explique rien.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        print(f"\n  {t('Checking')} {host['target']}…")
+        code, out = pve.run(host, "pveversion", timeout=30)
+        version = pve.parse_pveversion(out)
+        if not version and self._pve_hostkey_missing(out):
+            # Première connexion : ssh refuse un hôte dont il n'a pas la clé.
+            # On ne DÉSACTIVE pas la vérification — un hyperviseur n'est pas
+            # une VM jetable — on propose de l'enregistrer, une fois.
+            if self._pve_add_hostkey(host):
+                code, out = pve.run(host, "pveversion", timeout=30)
+                version = pve.parse_pveversion(out)
+        if not version:
+            print(f"  ✗ {t('Not a Proxmox host (or unreachable):')}")
+            premiere = (out or "").strip().splitlines()
+            print(f"    {premiere[0] if premiere else t('no answer')}")
+            print(f"  → {t('Check the address, the SSH access and pveversion.')}")
+            return None
+        # « qm » exige les privilèges. La voie « VM QEMU locale » donne
+        # l'accès d'erplibre, pas de root : il faut donc sudo, et il faut le
+        # VÉRIFIER — un sudo qui réclame un mot de passe bloquerait chaque
+        # commande du menu sur une invite que personne ne voit.
+        prefixe = ""
+        _c, qui = pve.run(host, "id -u", timeout=20)
+        if qui.strip() != "0":
+            code, _o = pve.run(host, "sudo -n true", timeout=20)
+            if code:
+                print(f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}")
+                print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
+                return None
+            prefixe = "sudo "
+            print(f"  ✓ sudo")
+        host = dict(host, version=version, sudo=prefixe)
+        print(f"  ✓ Proxmox VE {version}")
+        self._pve_remember_host(host)
+        return host
+
+    # -- Exécution sur l'hôte ------------------------------------------ #
+    def _pve_show(self, remote, timeout=120, quiet=False):
+        """Exécute `remote` sur l'hôte Proxmox et montre ce qui a été lancé.
+
+        La commande est AFFICHÉE avant sa sortie : c'est ce qui rend chaque
+        étape rejouable à la main, et c'est ainsi que les pannes de ce module
+        ont été diagnostiquées.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        host = self._pve_host()
+        if not host:
+            return 255, ""
+        if not quiet:
+            # La forme RÉELLEMENT envoyée, enrobage sudo compris : une
+            # commande affichée doit pouvoir être recopiée telle quelle.
+            reel = pve.wrap_privilege(remote, host.get("sudo") or "")
+            print(f"\n{t('Will execute:')} ssh {host['target']} {reel}")
+        code, out = pve.run(host, remote, timeout)
+        if out.strip() and not quiet:
+            print(out.rstrip())
+        if code and not quiet:
+            print(f"  ⚠ {t('exit code')} {code}")
+        return code, out
+
+    def _pve_vms(self):
+        """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
+        from script.proxmox import proxmox_deploy as pve
+
+        code, out = self._pve_show("qm list", quiet=True)
+        return pve.parse_qm_list(out) if code == 0 else []
+
+    def _pve_pick_vm(self, titre="", multiple=False):
+        """Choisit une VM de l'hôte (numéro de la liste, jamais le VMID à
+        retaper). Renvoie un dict, une liste si `multiple`, ou None."""
+        vms = self._pve_vms()
+        if not vms:
+            print(f"\n{t('No VM on this Proxmox host.')}")
+            return [] if multiple else None
+        print(f"\n{titre or t('VMs on this host:')}")
+        for i, vm in enumerate(vms, 1):
+            print(
+                f"  [{i}] {vm['vmid']:<6} {vm['name']:<28} {vm['status']}"
+            )
+        if multiple:
+            print(f"  [all] {t('select all')}")
+        brut = input(t("Selection (number): ")).strip()
+        if multiple:
+            if brut.lower() in ("all", "*"):
+                return vms
+            choisis = []
+            for jeton in re.split(r"[\s,]+", brut):
+                if jeton.isdigit() and 1 <= int(jeton) <= len(vms):
+                    choisis.append(vms[int(jeton) - 1])
+            return choisis
+        if brut.isdigit() and 1 <= int(brut) <= len(vms):
+            return vms[int(brut) - 1]
+        print(t("Invalid selection!"))
+        return None
+
+    # -- Les commandes du menu ----------------------------------------- #
+    def _pve_list(self):
+        """« qm list », mis en tableau avec le total."""
+        vms = self._pve_vms()
+        if not vms:
+            print(f"\n{t('No VM on this Proxmox host.')}")
+            return
+        print(
+            f"\n{'VMID':<7} {'Nom':<30} {'État':<10} {'RAM (Mo)':>9}"
+            f" {'Disque':>10}"
+        )
+        print("─" * 70)
+        for vm in vms:
+            print(
+                f"{vm['vmid']:<7} {vm['name'][:30]:<30} {vm['status']:<10}"
+                f" {vm['mem']:>9} {vm['disk']:>10}"
+            )
+        actives = sum(1 for v in vms if v["status"] == "running")
+        print(f"\n  {len(vms)} VM, {actives} {t('running')}")
+
+    def _pve_vm_ip(self):
+        """Adresse d'une VM, par l'agent invité.
+
+        Sans agent, Proxmox ne connaît PAS l'adresse de ses invités : il ne la
+        distribue pas lui-même. Le dire vaut mieux qu'afficher « rien ».
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        # _pve_guest_ip et non l'agent seul : il enchaîne agent PUIS voisinage
+        # de l'hôte. L'image cloud Debian n'embarque pas qemu-guest-agent, et
+        # cette entrée du menu répondait « aucune adresse » alors que « ip
+        # neigh » la connaissait — deux chemins pour la même question, dont un
+        # seul savait répondre.
+        ip = self._pve_guest_ip(vm["vmid"], attente=20)
+        if ip:
+            print(f"\n  {vm['name']} : {ip}")
+            print(f"  ssh erplibre@{ip}")
+            return
+        print(f"\n  ⚠ {t('No address for this VM.')}")
+        print(f"  → {t('Is qemu-guest-agent installed and the VM started?')}")
+        print(f"  → {t('A static address is visible right after creation.')}")
+
+    def _pve_console(self):
+        """Console série d'une VM. Demande un terminal : on passe donc par
+        l'exécuteur du dépôt, qui en a un."""
+        from script.proxmox import proxmox_deploy as pve
+
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        host = self._pve_host()
+        if not host:
+            return
+        cmd = " ".join(
+            shlex.quote(a)
+            for a in pve.ssh_argv(
+                host,
+                pve.wrap_privilege(
+                    pve.console_cmd(vm["vmid"]), host.get("sudo") or ""
+                ),
+                tty=True,
+            )
+        )
+        print(f"\n  {t('Ctrl+O to quit the serial console.')}")
+        print(f"\n{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _pve_resize(self):
+        """Agrandit un disque. Proxmox REFUSE de rétrécir : on le dit avant."""
+        from script.proxmox import proxmox_deploy as pve
+
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        print(f"\n  ⚠ {t('Proxmox can only GROW a disk, never shrink it.')}")
+        taille = input(
+            t("Size (+10G to add, 40G for a target): ")
+        ).strip()
+        if not re.match(r"^\+?\d+[MGT]$", taille):
+            print(t("Invalid selection!"))
+            return
+        self._pve_show(pve.resize_cmd(vm["vmid"], taille))
+
+    def _pve_delete(self):
+        """Efface des VM, avec DOUBLE validation — « --purge » emporte les
+        disques et les sauvegardes, il n'y a pas de retour."""
+        from script.proxmox import proxmox_deploy as pve
+
+        vms = self._pve_pick_vm(multiple=True)
+        if not vms:
+            return
+        noms = ", ".join(f"{v['vmid']} ({v['name']})" for v in vms)
+        print(f"\n  ⚠ {t('This also destroys their disks and backups.')}")
+        if not self._is_yes(input(f"{t('Apply:')} {noms} ? (o/N) : ")):
+            print(t("Cancelled."))
+            return
+        if not self._is_yes(input(t("Confirm for real? (y/N): "))):
+            print(t("Cancelled."))
+            return
+        for vm in vms:
+            for cmd in pve.destroy_cmds(vm["vmid"]):
+                self._pve_show(cmd, timeout=300)
+
+    def _pve_cleanup(self):
+        """Volumes de disque qu'aucune VM ne réclame plus.
+
+        Proxmox ne les efface pas de lui-même : une création interrompue ou un
+        « destroy » sans « --purge » en laisse. On les liste et on demande.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        code, out = self._pve_show(pve.orphan_disks_cmd(), quiet=True)
+        if code:
+            print(f"\n  ⚠ {t('exit code')} {code}")
+            return
+        vmids = [v["vmid"] for v in self._pve_vms()]
+        orphelins = pve.parse_orphans(out, vmids)
+        if not orphelins:
+            print(f"\n  ✓ {t('Nothing orphaned.')}")
+            return
+        total = sum(t2 for _v, t2 in orphelins)
+        print(f"\n{t('Orphan disks:')}")
+        for volid, taille in orphelins:
+            print(f"  {volid:<48} {taille / (1 << 30):>8.1f} Go")
+        print(f"  {t('Total:')} {total / (1 << 30):.1f} Go")
+        if not self._is_yes(input(f"{t('Free them?')} (o/N) : ")):
+            print(t("Cancelled."))
+            return
+        for volid, _taille in orphelins:
+            self._pve_show(f"pvesm free {shlex.quote(volid)}", timeout=300)
+
+    def _pve_guest_ip(self, vmid, attente=120):
+        """Adresse d'une VM Proxmox : agent invité, sinon voisinage de l'hôte.
+
+        Deux voies parce qu'aucune ne suffit seule. L'agent est le plus sûr,
+        mais l'image cloud Debian ne l'embarque pas. Le voisinage (« ip neigh »
+        sur l'hôte) marche dès que la VM a émis un paquet — un bail DHCP suffit
+        — et ne demande RIEN à l'invité.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        fin = time.time() + attente
+        mac = ""
+        while True:
+            code, out = self._pve_show(
+                pve.guest_ip_cmd(vmid), timeout=30, quiet=True
+            )
+            ips = pve.parse_guest_ips(out) if code == 0 else []
+            if ips:
+                return ips[0]
+            if not mac:
+                _c, cfg = self._pve_show(
+                    f"qm config {vmid}", timeout=30, quiet=True
+                )
+                mac = pve.mac_from_config(cfg)
+            if mac:
+                _c, neigh = self._pve_show(
+                    "ip -4 neigh show", timeout=30, quiet=True
+                )
+                ip = pve.ip_from_neigh(neigh, mac)
+                if ip:
+                    return ip
+            if time.time() >= fin:
+                return ""
+            time.sleep(5)
+
+    def _pve_push_key(self, chemin_local):
+        """Recopie la clé publique SUR l'hôte : « qm set --sshkeys » attend un
+        FICHIER là-bas, pas une clé en ligne."""
+        try:
+            with open(os.path.expanduser(chemin_local), encoding="utf-8") as fh:
+                cle = fh.read().strip()
+        except OSError as exc:
+            print(f"  ⚠ {t('SSH key unreadable:')} {exc}")
+            return ""
+        distant = "/root/.ssh/erplibre-deploy.pub"
+        code, _out = self._pve_show(
+            "mkdir -p /root/.ssh && printf '%s\\n' "
+            f"{shlex.quote(cle)} > {distant}",
+            quiet=True,
+        )
+        return distant if code == 0 else ""
+
+    def _pve_offer_bridge(self):
+        """Aucun pont sur l'hôte : en proposer un, sans risquer l'accès.
+
+        Une Proxmox installée SUR Debian n'a pas de vmbr0 — l'ISO en crée un,
+        pas la procédure sur Debian. Or « qm create » exige un pont.
+
+        On ne propose donc PAS d'ajouter l'interface physique au pont : cela
+        déplace l'adresse de la machine et coupe la session SSH en cours, sans
+        retour possible à distance. Un pont INTERNE, lui, ne touche à rien —
+        les VM s'y parlent, et le masquerading leur donne l'extérieur.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        print(f"\n  ⚠ {t('No network bridge on this host.')}")
+        print(f"  {t('qm create needs one. Two ways:')}")
+        print(
+            f"  [1] {t('create an internal')} {pve.INTERNAL_BRIDGE}"
+            f" ({pve.INTERNAL_CIDR}) + NAT — {t('touches no physical NIC')}"
+        )
+        print(f"  [2] {t('do it myself (bridge-ports <nic>, needs console)')}")
+        if input(t("Choice: ")).strip() != "1":
+            print(f"\n  {t('To bridge the LAN, on the host:')}")
+            print("    auto vmbr0")
+            print("    iface vmbr0 inet static")
+            print("        address <ip-de-l-hôte>/24")
+            print("        gateway <passerelle>")
+            print("        bridge-ports <interface>")
+            print(f"  ⚠ {t('This moves the host address: do it from a console.')}")
+            return ""
+        _c, sortie = self._pve_show(
+            "ip -o -4 route show default", quiet=True
+        )
+        uplink = ""
+        parts = (sortie or "").split()
+        if "dev" in parts:
+            uplink = parts[parts.index("dev") + 1]
+        print(f"  {t('uplink for NAT')} : {uplink or t('none')}")
+        for cmd in pve.bridge_setup_cmds(uplink=uplink):
+            code, _o = self._pve_show(cmd, timeout=120)
+            if code:
+                print(f"  ✗ {t('Step failed, stopping here.')}")
+                return ""
+        _c, out = self._pve_show("ip -o link show type bridge", quiet=True)
+        ponts = pve.parse_bridges(out)
+        if pve.INTERNAL_BRIDGE not in ponts:
+            print(f"  ✗ {t('The bridge did not come up.')}")
+            return ""
+        print(f"  ✓ {pve.INTERNAL_BRIDGE}")
+        return pve.INTERNAL_BRIDGE
+
+    def _pve_deploy(self, dry_run=False):
+        """Déploie une VM SUR l'hôte Proxmox choisi.
+
+        Le catalogue d'images est celui du dépôt (le même que QEMU/KVM) : c'est
+        une connaissance locale, indépendante de l'hyperviseur. Tout le reste
+        part sur l'hôte — téléchargement compris, puisque c'est là que le
+        disque sera écrit.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        host = self._pve_host()
+        if not host:
+            return
+        mod = self._qemu_import_module()
+        distro = self._qemu_prompt_distro()
+        version = self._qemu_prompt_version(distro)
+        arch = "amd64"
+        nom = input(
+            t("VM name (default: erplibre-<distro>): ")
+        ).strip() or f"erplibre-{distro}"
+        memoire = (
+            self._qemu_ask_ram(t("RAM in MB, blank = 4096"), 4096) or 4096
+        )
+        vcpus = (
+            self._qemu_ask_cpu(t("vCPU, blank = 2"), 2, os.cpu_count() or 2)
+            or 2
+        )
+        disque = input(t("Disk size (default 32G): ")).strip() or "32G"
+
+        code, _v = mod.DISTROS[distro][0][version][:2]
+        url = mod.image_url(distro, code, arch, version)
+        image = mod.default_image_name(distro, code, arch, version)
+
+        # Stockage et pont : demandés à l'HÔTE, jamais devinés. « local-lvm »
+        # n'existe pas partout, et un pont inventé fait échouer « qm create ».
+        _c, out = self._pve_show("pvesm status --content images", quiet=True)
+        stockages = pve.parse_storages(out)
+        _c, out = self._pve_show("ip -o link show type bridge", quiet=True)
+        ponts = pve.parse_bridges(out)
+        _c, cfg_reseau = self._pve_show(
+            "cat /etc/network/interfaces", quiet=True
+        )
+        infos_ponts = pve.parse_bridge_config(cfg_reseau)
+        stockage = pve.pick_storage(stockages)
+        pont = pve.pick_bridge(ponts)
+        if not stockage:
+            print(f"\n  ✗ {t('No storage able to hold a VM disk.')}")
+            return
+        if not pont and not dry_run:
+            pont = self._pve_offer_bridge()
+            if not pont:
+                return
+            _c, cfg_reseau = self._pve_show(
+                "cat /etc/network/interfaces", quiet=True
+            )
+            infos_ponts = pve.parse_bridge_config(cfg_reseau)
+        elif not pont:
+            pont = pve.INTERNAL_BRIDGE
+        # Le VMID D'ABORD : l'adresse d'un pont interne s'en déduit, et
+        # l'afficher avant de l'avoir choisi ne pouvait pas marcher.
+        vmid = pve.next_vmid(self._pve_vms())
+        ipconfig = pve.ipconfig_for(infos_ponts.get(pont, {}), vmid)
+        print(f"\n  {t('storage')} : {stockage}   ({len(stockages)} {t('offered')})")
+        print(f"  {t('bridge')}  : {pont}")
+        print(f"  {t('address')} {ipconfig}")
+        print(f"  VMID    : {vmid}")
+
+        cle_locale = self._qemu_default_ssh_key()
+        spec = {
+            "name": nom,
+            "memory": memoire,
+            "vcpus": vcpus,
+            "disk": disque,
+            "storage": stockage,
+            "bridge": pont,
+            "image": image,
+            "user": "erplibre",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "start": True,
+            # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
+            # interne : là, aucun serveur DHCP ne répondrait et la VM
+            # resterait muette.
+            "ipconfig": ipconfig,
+        }
+        etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
+            vmid, spec
+        )
+        if dry_run:
+            print(f"\n── {t('Would run on')} {host['target']} ──")
+            print(f"  # {t('SSH key ->')} {spec['sshkey_path']}")
+            for cmd in etapes:
+                print(f"  {cmd}")
+            return
+        if not self._is_yes_default_yes(
+            input(f"\n{t('Deploy this VM now? (Y/n): ')}")
+        ):
+            print(t("Cancelled."))
+            return
+        if cle_locale and not self._pve_push_key(cle_locale):
+            print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
+            spec.pop("sshkey_path", None)
+            etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
+                vmid, spec
+            )
+        for cmd in etapes:
+            code, _out = self._pve_show(cmd, timeout=1800)
+            if code:
+                print(f"\n  ✗ {t('Step failed, stopping here.')}")
+                return
+        # Adresse fixe : c'est nous qui l'avons donnée, inutile de la
+        # chercher. La découverte ne sert qu'au DHCP.
+        ip = pve.ip_from_ipconfig(ipconfig)
+        if ip:
+            print(f"\n  {t('address given at creation:')} {ip}")
+        else:
+            print(f"\n  {t('Waiting for the VM address…')}")
+            ip = self._pve_guest_ip(vmid)
+        if not ip:
+            print(f"  ⚠ {t('No address yet. Try [6] later.')}")
+            return
+        print(f"  ✓ {nom} : {ip}")
+        # Entrée ~/.ssh/config avec l'hôte Proxmox en REBOND : c'est ce qui
+        # rend la VM joignable d'ici, et c'est aussi ce qui permet au suivi
+        # d'installation d'y entrer (il reçoit l'alias, pas l'IP).
+        self._write_ssh_config_entry(
+            nom,
+            "erplibre",
+            ip,
+            identity_file=self._ssh_private_key(cle_locale),
+            proxy_jump=host["target"],
+        )
+        print(f"  ✓ ~/.ssh/config : ssh {nom}")
+        if self._is_yes_default_yes(
+            input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
+        ):
+            branch = self._qemu_pick_branch()
+            label, cmd = self._qemu_pick_install_profile(distro)
+            print(f"  {label}")
+            # L'ALIAS, pas l'IP : ssh y lit le ProxyJump de ~/.ssh/config.
+            self._qemu_install_erplibre_monitored(
+                [nom], branch, {nom: nom}, cmd
+            )
+
+    def _pve_ssh_config(self):
+        """Écrit une entrée ~/.ssh/config par VM de l'hôte, avec l'hôte
+        Proxmox en ProxyJump — sans quoi ces VM ne sont joignables d'ici que
+        si leur réseau est routé jusqu'à nous."""
+        host = self._pve_host()
+        if not host:
+            return
+        vms = [v for v in self._pve_vms() if v["status"] == "running"]
+        if not vms:
+            print(f"\n{t('No running VM on this Proxmox host.')}")
+            return
+        cle = self._ssh_private_key(self._qemu_default_ssh_key())
+        for vm in vms:
+            ip = self._pve_guest_ip(vm["vmid"], attente=0)
+            if not ip:
+                print(f"  ⚠ {vm['name']} : {t('no address, skipped')}")
+                continue
+            self._write_ssh_config_entry(
+                vm["name"],
+                "erplibre",
+                ip,
+                identity_file=cle,
+                proxy_jump=host["target"],
+            )
+            print(f"  ✓ ssh {vm['name']}   ({ip} {t('through')} {host['target']})")
+
+    def _pve_test_vm(self):
+        """Ouvre Odoo (:8069) d'une VM Proxmox dans un navigateur en ligne.
+
+        Même chose que pour QEMU, à ceci près que l'adresse vient de l'hôte
+        Proxmox et non de libvirt — et qu'elle n'est joignable d'ici que si son
+        réseau l'est. On le dit plutôt que d'ouvrir une page vide.
+        """
+        vm = self._pve_pick_vm()
+        if not vm:
+            return
+        ip = self._pve_guest_ip(vm["vmid"], attente=30)
+        if not ip:
+            print(f"\n  ⚠ {t('No address for this VM.')}")
+            return
+        if not self._qemu_ip_reachable(ip, port=8069, timeout=3):
+            print(f"\n  ⚠ {ip}:8069 {t('unreachable from here.')}")
+            print(f"  → {t('Use [13] to add a ProxyJump entry, then a tunnel.')}")
+            return
+        navigateur = self._qemu_choose_cli_browser()
+        if not navigateur:
+            return
+        url = f"http://{ip}:8069"
+        print(f"→ {navigateur} {url}")
+        os.system(f"{navigateur} {shlex.quote(url)}")
+
+    def _pve_example(self):
+        """Exemple de séquence, sans rien exécuter : de quoi voir ce que
+        l'outil enverrait sur l'hôte."""
+        from script.proxmox import proxmox_deploy as pve
+
+        spec = {
+            "name": "demo-vm",
+            "memory": 4096,
+            "vcpus": 2,
+            "disk": "32G",
+            "storage": "local-lvm",
+            "bridge": "vmbr0",
+            "image": "debian-13-genericcloud-amd64.qcow2",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+        }
+        print(f"\n── {t('Example: demo-vm, Debian 13, on a Proxmox host')} ──")
+        print(f"  {pve.image_fetch_cmd('https://…/debian-13.qcow2', spec['image'])}")
+        for cmd in pve.create_cmds(101, spec):
+            print(f"  {cmd}")
+
+    def _pve_stats(self):
+        """État de l'hôte et de ses VM, en une page."""
+        host = self._pve_host()
+        if not host:
+            return
+        print(f"\n══ {t('Proxmox host:')} {self._pve_label(host)} ══")
+        for titre, cmd in (
+            (t("uptime"), "uptime"),
+            (t("memory"), "free -h | head -2"),
+            (t("storages"), "pvesm status"),
+        ):
+            code, out = self._pve_show(cmd, quiet=True)
+            print(f"\n── {titre} ──")
+            print((out or "").rstrip() if code == 0 else f"  ⚠ {out.strip()}")
+        self._pve_list()
+
     def _qemu_script_path(self):
         """Chemin absolu vers script/qemu/deploy_qemu.py."""
         path = os.path.join(
@@ -1052,6 +1809,10 @@ class TODO:
         # deploy_qemu.py, qui fait autorité sur le catalogue.
         "opensuse": (["16.0", "tumbleweed"], "16.0"),
         "arch": (["latest"], "latest"),
+        # Proxmox VE : le numéro est celui de PVE, pas de Debian (9 = trixie).
+        # Une seule version au catalogue, la seule qui couvre amd64 ET arm64 —
+        # voir PROXMOX_VERSIONS dans deploy_qemu.py, qui fait autorité.
+        "proxmox": (["9"], "9"),
     }
 
     def _qemu_prompt_distro(self):
@@ -1279,6 +2040,120 @@ class TODO:
         # redémarrage avant que les modules soient chargeables.
         print(f"⚠  {t('virsh still missing; a reboot may be required.')}")
         return False
+
+    def prompt_execute_proxmox(self):
+        """Sous-menu Proxmox VE : l'équivalent du menu QEMU/KVM, mais sur un
+        hôte DISTANT. La première question est donc « lequel ? » — et la
+        réponse est retenue pour toute la session."""
+        print(f"🤖 {t('Deploy a virtual machine on Proxmox VE!')}")
+        if not self._pve_host():
+            return False
+        choices = [
+            {"section": t("Deployment")},
+            {"prompt_description": t("Deploy a VM on the Proxmox host")},
+            {
+                "prompt_description": t(
+                    "Preview a deployment (dry-run, nothing sent)"
+                )
+            },
+            {"prompt_description": t("Download a cloud image on the host")},
+            {
+                "prompt_description": t(
+                    "Reopen install monitoring (last run / history)"
+                )
+            },
+            {"section": t("Manage")},
+            {"prompt_description": t("List VMs (qm list)")},
+            {"prompt_description": t("Show a VM IP address")},
+            {"prompt_description": t("Open the console on a VM")},
+            {"prompt_description": t("Resize a VM disk")},
+            {"prompt_description": t("Delete VM(s)")},
+            {"prompt_description": t("Clean up (orphan disks)")},
+            {
+                "prompt_description": t(
+                    "Test a VM (open Odoo in a CLI browser)"
+                )
+            },
+            {"prompt_description": t("Statistics (host and VMs)")},
+            {
+                "prompt_description": t(
+                    "SSH configuration (~/.ssh/config, ProxyJump)"
+                )
+            },
+            {"prompt_description": t("Remote desktop tunnel (VNC/RDP over SSH)")},
+            {"prompt_description": t("Android emulator (start, tunnel, scrcpy)")},
+            {"section": t("Catalog")},
+            {"prompt_description": t("List available images and their specs")},
+            {"prompt_description": t("Proxmox - example sequence (dry-run)")},
+            {"section": t("Host")},
+            {"prompt_description": t("Change the Proxmox host")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            hote = self._pve_host(ask=False)
+            print(f"\n  {t('Proxmox host:')} {self._pve_label(hote) or '-'}")
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._pve_deploy()
+            elif status == "2":
+                self._pve_deploy(dry_run=True)
+            elif status == "3":
+                self._pve_fetch_image()
+            elif status == "4":
+                self._qemu_reopen_monitor()
+            elif status == "5":
+                self._pve_list()
+            elif status == "6":
+                self._pve_vm_ip()
+            elif status == "7":
+                self._pve_console()
+            elif status == "8":
+                self._pve_resize()
+            elif status == "9":
+                self._pve_delete()
+            elif status == "10":
+                self._pve_cleanup()
+            elif status == "11":
+                self._pve_test_vm()
+            elif status == "12":
+                self._pve_stats()
+            elif status == "13":
+                self._pve_ssh_config()
+            elif status == "14":
+                # Les VM Proxmox sont dans ~/.ssh/config (entrée 13) : le
+                # tunnel du menu QEMU les y trouve, rebond compris.
+                self._qemu_tunnel_menu()
+            elif status == "15":
+                self._qemu_emulator_menu()
+            elif status == "16":
+                self._qemu_list_images()
+            elif status == "17":
+                self._pve_example()
+            elif status == "18":
+                self._pve_forget_host()
+                self._pve_pick_host()
+            else:
+                print(t("Command not found !"))
+
+    def _pve_fetch_image(self):
+        """Télécharge une image cloud SUR l'hôte Proxmox.
+
+        Là et pas ici : c'est sur l'hôte que le disque sera écrit, et faire
+        descendre 325 Mio chez soi pour les renvoyer doublerait le transfert.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        mod = self._qemu_import_module()
+        distro = self._qemu_prompt_distro()
+        version = self._qemu_prompt_version(distro)
+        code = mod.DISTROS[distro][0][version][0]
+        url = mod.image_url(distro, code, "amd64", version)
+        nom = mod.default_image_name(distro, code, "amd64", version)
+        print(f"\n  {nom}\n  {url}")
+        self._pve_show(pve.image_fetch_cmd(url, nom), timeout=1800)
 
     def prompt_execute_qemu(self):
         print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
@@ -2107,7 +2982,9 @@ class TODO:
             jump = self._ssh_proxyjump(name)
             domain = name.rsplit("+", 1)[-1]
             if not jump:
-                print(f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}")
+                print(
+                    f"\n  ⚠ {t('No ProxyJump for this host in ~/.ssh/config.')}"
+                )
                 print(f"  {t('Cannot tell which machine runs its QEMU.')}")
                 return
         port = self._qemu_vnc_port(domain, jump)
@@ -2117,11 +2994,17 @@ class TODO:
         if not port:
             print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
             print(f"  {t('Its display is likely spice with listen=none:')}")
-            print(f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'")
-            print(f"  {t('To open it on the loopback (VM restart required):')}")
+            print(
+                f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'"
+            )
+            print(
+                f"  {t('To open it on the loopback (VM restart required):')}"
+            )
             print(f"    {pre}sudo virsh destroy {domain}")
-            print(f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
-                  " port='-1' autoport='yes' listen='127.0.0.1'/>")
+            print(
+                f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
+                " port='-1' autoport='yes' listen='127.0.0.1'/>"
+            )
             print(f"    {pre}sudo virsh start {domain}")
             print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
             return
@@ -2131,13 +3014,17 @@ class TODO:
             host, from_ssh = self._qemu_self_address()
             user = os.environ.get("USER", "user")
             if not from_ssh:
-                print(f"  ⚠ {t('Not in an SSH session: check the host address.')}")
+                print(
+                    f"  ⚠ {t('Not in an SSH session: check the host address.')}"
+                )
             target = f"{user}@{host}"
         print(f"\n  {t('Run this on YOUR workstation:')}")
         print(f"\n    ssh -N -L {port}:127.0.0.1:{port} {target}\n")
         if jump:
-            print(f"  {t('Target is the hypervisor')} ({jump}), "
-                  f"{t('not the VM: the socket is QEMU-side.')}")
+            print(
+                f"  {t('Target is the hypervisor')} ({jump}), "
+                f"{t('not the VM: the socket is QEMU-side.')}"
+            )
         print(f"  {t('then point your VNC client at')} localhost:{port}")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
 
@@ -2174,7 +3061,9 @@ class TODO:
         """
         base = ["virsh", "--connect", "qemu:///system", "vncdisplay", domain]
         for argv in (base, ["sudo", "-n"] + base):
-            cmd = (["ssh", "-o", "BatchMode=yes", jump] + argv) if jump else argv
+            cmd = (
+                (["ssh", "-o", "BatchMode=yes", jump] + argv) if jump else argv
+            )
             try:
                 res = subprocess.run(
                     cmd, capture_output=True, text=True, timeout=25
@@ -5063,6 +5952,19 @@ class TODO:
                     return m.group(1)
         return None
 
+    def _qemu_vm_ip_now(self, name):
+        """IP de la VM d'après le bail DHCP, SANS attendre.
+
+        `_qemu_vm_ip` patiente jusqu'à dix minutes par VM : c'est ce qu'il faut
+        après un déploiement, et exactement ce qu'il ne faut pas pour AFFICHER
+        une liste — trois VM figeaient le menu une demi-heure. Ici on lit le
+        bail une fois, en préférant celui dont le hostname est le nom de la VM.
+        """
+        cands = self._qemu_lease_candidates(name)
+        if not cands:
+            return None
+        return self._qemu_lease_ip_for_host(name, cands) or cands[-1]
+
     def _qemu_vm_ip(self, name, timeout=600):
         """IPv4 utilisable d'une VM. Gère le cas des baux multiples (hostname
         changé au boot) : renvoie en priorité le bail dont le hostname == nom
@@ -5339,13 +6241,25 @@ class TODO:
                 "make install_os && make install_dev && "
                 + self._QEMU_QEMU_PKGS,
             ),
+            (
+                t("Proxmox VE hypervisor (no Odoo)"),
+                "./script/proxmox/install_proxmox.sh",
+            ),
         ]
         return profiles
 
-    def _qemu_pick_install_profile(self):
+    def _qemu_pick_install_profile(self, distro=""):
         """Choix de CE QU'ON installe sur la VM. Renvoie (label, commande
-        finale exécutée dans ~/git/erplibre)."""
+        finale exécutée dans ~/git/erplibre).
+
+        Sur une VM Proxmox, le profil hyperviseur passe en tête : choisir
+        « Proxmox VE » comme système, c'est demander qu'il soit installé, et
+        laisser Odoo 18 en défaut ferait poser un ERP sur un hyperviseur.
+        """
         profiles = self._qemu_install_profiles()
+        if distro == "proxmox":
+            pve = t("Proxmox VE hypervisor (no Odoo)")
+            profiles.sort(key=lambda p: p[0] != pve)
         print(f"\n{t('What to install on the VM(s)?')}")
         for i, (label, _cmd) in enumerate(profiles, 1):
             print(f"  [{i}] {label}{' *' if i == 1 else ''}")
@@ -5636,6 +6550,31 @@ class TODO:
             + f'echo "   {t("cloud-init:")} $(cloud-init status 2>/dev/null '
             '| head -1)"; '
             "fi; "
+        )
+
+    @staticmethod
+    def _qemu_vm_ready_report():
+        """Relevé de mise en route, pour une VM où l'on n'installe RIEN.
+
+        Sans lui, la commande distante valait « true » : le suivi affichait un
+        ✅ instantané sur un journal vide, ce qui n'apprend rien de la machine
+        qu'on vient de créer. Ici, il y a une fin claire (le marqueur de sortie
+        que pose le lanceur) et de quoi juger qu'elle est prête : système,
+        noyau, adresse, disque, mémoire, et le verdict de cloud-init.
+        """
+        return (
+            f'echo "===> {t("VM start-up")}"; '
+            ". /etc/os-release 2>/dev/null || true; "
+            f'echo "   {t("system:")} ${{PRETTY_NAME:-?}}"; '
+            f'echo "   {t("kernel:")} $(uname -r) ($(uname -m))"; '
+            f'echo "   {t("address:")} '
+            "$(hostname -I 2>/dev/null | awk '{print $1}')\"; "
+            f'echo "   {t("disk:")} '
+            '$(df -h / | awk \'NR==2 {print $3"/"$2" ("$5")"}\')"; '
+            f'echo "   {t("memory:")} '
+            '$(free -h 2>/dev/null | awk \'NR==2 {print $3"/"$2}\')"; '
+            f'echo "   {t("uptime:")} $(uptime -p 2>/dev/null || true)"; '
+            f'echo "<=== {t("VM start-up")}"; '
         )
 
     @staticmethod
@@ -7220,7 +8159,15 @@ class TODO:
             # attente de cloud-init et coupure des mises à jour automatiques,
             # sans quoi le verrou apt ferait échouer l'installation du bureau.
             if not desktop:
-                return "true"
+                # Rien à installer : le suivi n'a alors qu'à regarder la VM
+                # ARRIVER. Un « true » rendait un journal vide et un ✅
+                # instantané — et c'est pourquoi le suivi « ne marchait plus »
+                # dès qu'on décochait ERPLibre.
+                return (
+                    "set -e; "
+                    + self._qemu_cloud_init_wait()
+                    + self._qemu_vm_ready_report()
+                )
             # Les outils de la phase « after » vivent DANS le dépôt — la
             # compilation mobile, l'AVD, le script Forgejo. Sans clone, ils
             # n'existent pas ici. Les écarter en silence laissait croire qu'une
@@ -8922,11 +9869,28 @@ class TODO:
         ans = input(
             t("Install ERPLibre into ~/git/erplibre on each VM? (Y/n): ")
         )
+        if not self._is_yes_default_yes(ans) and any(
+            v.get("distro") == "proxmox" for v in vms
+        ):
+            # C'est par cette étape que passe l'installation de Proxmox : sans
+            # elle la VM reste une Debian nue, ce qui n'est pas ce qu'on a
+            # demandé en choisissant « Proxmox VE » comme système.
+            print(
+                f"\n  ⚠ {t('Proxmox will NOT be installed: plain Debian VM.')}"
+            )
+            print(
+                f"    {t('Later, in the VM:')}"
+                " sudo ./script/proxmox/install_proxmox.sh"
+            )
         if self._is_yes_default_yes(ans):
             branch = self._qemu_pick_branch()
             # dev (~/git, SELinux relâché) vs prod (/opt, confiné)
             prod = self._qemu_ask_prod()
-            label, cmd = self._qemu_pick_install_profile()
+            label, cmd = self._qemu_pick_install_profile(
+                "proxmox"
+                if any(v.get("distro") == "proxmox" for v in vms)
+                else ""
+            )
             monitor = self._is_yes_default_yes(
                 input(t("Interactive monitoring dashboard? (y/N): "))
             )
@@ -8937,6 +9901,15 @@ class TODO:
                 "cmd": cmd,
                 "monitor": monitor,
             }
+        else:
+            # Rien à installer : le suivi garde tout son sens — il regarde les
+            # VM arriver (cloud-init, puis relevé système) et porte le tableau
+            # d'état, de débit d'écriture, de RAM et de disque. La question
+            # était posée DANS la branche ERPLibre : refuser l'une emportait
+            # l'autre sans qu'on l'ait demandé.
+            monitor = self._is_yes_default_yes(
+                input(f"{t('Watch the VMs start (no install)')} ? (O/n) : ")
+            )
 
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
@@ -8997,6 +9970,9 @@ class TODO:
             "python_provider": python_provider,
             "app_store": app_store,
             "install": install,
+            # Au niveau du déploiement : le suivi survit à une installation
+            # décochée (voir _qemu_run_spec).
+            "monitor": monitor,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
         }
@@ -9158,8 +10134,14 @@ class TODO:
         # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
         # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
         # Il passe par la même commande distante, donc par le même suivi.
-        if install or desktop:
-            monitor = install["monitor"] if install else True
+        #
+        # Et quand il n'y a RIEN à installer, le suivi s'ouvre quand même : la
+        # commande distante regarde alors la VM arriver (cloud-init puis relevé
+        # système). Sans cela, décocher ERPLibre faisait disparaître le tableau
+        # de bord — rapporté, et c'est ce qui donnait « le suivi ne fonctionne
+        # plus ». Le choix vient du déploiement, pas de l'installation.
+        monitor = install["monitor"] if install else spec.get("monitor", True)
+        if install or desktop or monitor:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
@@ -9173,7 +10155,7 @@ class TODO:
                     app_store=app_store,
                     vm_tools=vm_tools,
                 )
-            else:
+            elif install:
                 print(
                     f"\n{t('Installing ERPLibre on each VM')} "
                     f"({install_branch})…"
@@ -9442,6 +10424,214 @@ class TODO:
             pass
         print(f"\n  {t('Tunnel closed.')}")
 
+    # sshfs lit « a+b » comme un CHAÎNAGE d'hôtes — « ssh a, puis ssh b depuis
+    # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
+    # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
+    # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
+    # monter tel quel. Vécu : « read: Connection reset by peer », parce que la
+    # seconde moitié du nom est un domaine libvirt, pas un alias SSH du rebond.
+    SSHFS_CHAIN_SEP = "+"
+
+    # Options à rendre à sshfs quand on contourne l'alias : exactement celles
+    # que todo.py écrit dans l'entrée qu'il génère. Sans elles, une VM dont la
+    # clé d'hôte a changé — IP DHCP réutilisée — ferait échouer le montage.
+    SSH_FORWARD_OPTS = (
+        ("port", "Port"),
+        ("proxyjump", "ProxyJump"),
+        ("identityfile", "IdentityFile"),
+        ("identitiesonly", "IdentitiesOnly"),
+        ("stricthostkeychecking", "StrictHostKeyChecking"),
+        ("userknownhostsfile", "UserKnownHostsFile"),
+    )
+
+    # Ce que dit stderr, et ce qu'il faut aller corriger. L'ordre compte : le
+    # premier motif trouvé gagne.
+    SSH_FAILURE_HINTS = (
+        ("could not resolve hostname", "unknown host name: check HostName"),
+        ("name or service not known", "unknown host name: check HostName"),
+        ("connection timed out", "no answer: is the server up and reachable?"),
+        ("operation timed out", "no answer: is the server up and reachable?"),
+        ("no route to host", "no route: check the network or the ProxyJump"),
+        ("connection refused", "nothing listening on the SSH port"),
+        ("permission denied", "authentication refused: check User and key"),
+        ("host key verification failed", "host key changed for this address"),
+    )
+
+    @staticmethod
+    def _ssh_config_entries(path):
+        """[(alias, {hostname, user})] de ~/.ssh/config, dans l'ordre du fichier.
+
+        Pendant de `_ssh_config_hosts`, qui ne rend que les NOMS : ici le menu
+        de montage a besoin d'afficher aussi l'adresse et l'utilisateur.
+
+        « Host a b » déclare DEUX alias pour la même machine — c'est ce que
+        todo.py écrit lui-même quand une VM porte plusieurs noms. Les prendre
+        pour un seul nom donnait un alias « a b », que sshfs ne peut pas
+        monter. Les motifs génériques (« * », « web-? ») sont écartés : ils ne
+        désignent aucune machine.
+        """
+        hosts = []
+        noms = []
+        info = {}
+
+        def clore():
+            for nom in noms:
+                hosts.append((nom, dict(info)))
+
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                lignes = fh.readlines()
+        except OSError:
+            return []
+        for ligne in lignes:
+            ligne = ligne.strip()
+            if ligne.lower().startswith("host "):
+                clore()
+                noms = [
+                    m
+                    for m in ligne.split()[1:]
+                    if "*" not in m and "?" not in m and not m.startswith("!")
+                ]
+                info = {}
+            elif noms:
+                paire = ligne.split(None, 1)
+                if len(paire) == 2 and paire[0].lower() in (
+                    "hostname",
+                    "user",
+                ):
+                    info[paire[0].lower()] = paire[1].strip()
+        clore()
+        return hosts
+
+    @staticmethod
+    def _ssh_resolve(alias):
+        """Configuration RÉSOLUE de l'alias, telle que ssh la voit (ssh -G).
+
+        On délègue à ssh au lieu de relire le fichier : lui seul connaît les
+        Include, les Match, l'ordre des motifs et ses propres défauts.
+        """
+        try:
+            res = subprocess.run(
+                ["ssh", "-G", alias],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                env=TODO._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return {}
+        if res.returncode != 0:
+            return {}
+        out = {}
+        for ligne in res.stdout.splitlines():
+            cle, _, val = ligne.strip().partition(" ")
+            # ssh -G répète « identityfile » : la PREMIÈRE est celle qui compte.
+            if cle and val and cle.lower() not in out:
+                out[cle.lower()] = val
+        return out
+
+    def _sshfs_command(self, alias, mount_point, resolved=None):
+        """(commande sshfs, alias contourné ?) pour monter cet alias.
+
+        Sans « + » dans le nom, on laisse sshfs faire : c'est ssh qui lit la
+        config, et rien ne vaut mieux. Avec un « + », on résout l'alias
+        soi-même et on rend à sshfs une cible qu'il ne peut plus mal lire.
+        """
+        base = "sshfs -o follow_symlinks"
+        if self.SSHFS_CHAIN_SEP not in alias:
+            return f"{base} {alias}:/ {mount_point}", False
+        cfg = resolved if resolved is not None else self._ssh_resolve(alias)
+        host = cfg.get("hostname")
+        # Un hostname qui contient encore un « + » ne réglerait rien, et un
+        # alias non résolu vaut mieux qu'une cible inventée.
+        if not host or self.SSHFS_CHAIN_SEP in host:
+            return f"{base} {alias}:/ {mount_point}", False
+        opts = []
+        for cle, nom in self.SSH_FORWARD_OPTS:
+            val = cfg.get(cle)
+            if val and val.lower() != "none":
+                opts.append(f"-o {nom}={val}")
+        user = cfg.get("user")
+        cible = f"{user}@{host}" if user else host
+        pieces = [base] + opts + [f"{cible}:/", mount_point]
+        return " ".join(pieces), True
+
+    @classmethod
+    def _ssh_failure_hint(cls, stderr):
+        """Première ligne utile de stderr, et ce qu'elle désigne."""
+        texte = (stderr or "").lower()
+        for motif, indice in cls.SSH_FAILURE_HINTS:
+            if motif in texte:
+                return indice
+        return ""
+
+    @staticmethod
+    def _ssh_probe(alias, timeout=8):
+        """(code, stderr) d'un « ssh <alias> true » sans invite de mot de passe.
+
+        BatchMode : une invite bloquerait le menu. Un refus d'authentification
+        se distingue donc d'un hôte injoignable, et le diagnostic le dit.
+        """
+        try:
+            res = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    f"ConnectTimeout={timeout}",
+                    alias,
+                    "true",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 12,
+                env=TODO._qemu_c_env(),
+            )
+        except subprocess.TimeoutExpired:
+            return 255, "Connection timed out"
+        except (OSError, subprocess.SubprocessError) as exc:
+            return 255, str(exc)
+        return res.returncode, res.stderr.strip()
+
+    def _sshfs_diagnose(self, alias, mount_point, bypassed):
+        """Dit POURQUOI le montage a échoué, et où aller corriger.
+
+        Le message est ciblé, pas une liste de causes possibles : on interroge
+        ssh, et selon qu'il passe ou non, le fautif n'est pas le même.
+        """
+        print(f"\n  ⚠ {t('sshfs mount failed.')}")
+        if not alias:
+            print(f"  → {t('Check the SSH host and that the server is up.')}")
+            return
+        print(f"  {t('Checking SSH access…')} ({alias})")
+        code, err = self._ssh_probe(alias)
+        if code == 0:
+            print(f"  ✓ {t('SSH reaches this host: ~/.ssh/config is fine.')}")
+            if not bypassed and self.SSHFS_CHAIN_SEP in alias:
+                print(f"  → {t('sshfs reads the « + » as host chaining.')}")
+                cmd, ok = self._sshfs_command(alias, mount_point)
+                if ok:
+                    print(f"  → {t('Run this instead:')}")
+                    print(f"    {cmd}")
+                else:
+                    # Annoncer une commande puis n'en donner aucune serait
+                    # pire que se taire : on dit ce qui manque.
+                    print(
+                        f"  → {t('ssh -G resolved nothing: check ~/.ssh/config.')}"
+                    )
+            else:
+                print(f"  → {t('Is sshfs (and fuse) installed here?')}")
+            return
+        indice = self._ssh_failure_hint(err)
+        if indice:
+            print(f"  ✗ {t('SSH fails too:')} {t(indice)}")
+        else:
+            print(
+                f"  ✗ {t('SSH fails too:')} {err.splitlines()[0] if err else code}"
+            )
+        print(f"  → {t('Update ~/.ssh/config, or check the server is up.')}")
+
     def _configure_sshfs(self):
         import getpass
         import re
@@ -9458,31 +10648,7 @@ class TODO:
 
         if choice == "2":
             ssh_config_path = os.path.expanduser("~/.ssh/config")
-            hosts = []
-            if os.path.exists(ssh_config_path):
-                current_host = None
-                current_info = {}
-                with open(ssh_config_path) as f:
-                    for line in f:
-                        line = line.strip()
-                        if line.lower().startswith("host "):
-                            host_val = line.split(None, 1)[1].strip()
-                            if host_val != "*":
-                                if current_host:
-                                    hosts.append((current_host, current_info))
-                                current_host = host_val
-                                current_info = {}
-                        elif current_host:
-                            key = line.split(None, 1)
-                            if len(key) == 2:
-                                k = key[0].lower()
-                                v = key[1].strip()
-                                if k == "hostname":
-                                    current_info["hostname"] = v
-                                elif k == "user":
-                                    current_info["user"] = v
-                if current_host:
-                    hosts.append((current_host, current_info))
+            hosts = self._ssh_config_entries(ssh_config_path)
 
             if not hosts:
                 print(t("No SSH hosts found in ~/.ssh/config"))
@@ -9539,17 +10705,41 @@ class TODO:
         # une chaîne de symlinks relatifs profonds (.repo/projects -> project-
         # objects) que git ne peut pas traverser sur un montage sshfs par
         # défaut (« erreur à la lecture de .git » -> git status/commit KO).
-        cmd = f"sshfs -o follow_symlinks {target} {mount_point}"
+        # L'alias vient de ~/.ssh/config : c'est lui qui peut porter un « + »,
+        # et lui qu'on peut interroger en cas d'échec. Une saisie manuelle est
+        # rendue telle quelle — si elle contient un « + », c'est un chaînage
+        # demandé exprès.
+        alias = ssh_name if choice == "2" else ""
+        if alias:
+            cmd, bypassed = self._sshfs_command(alias, mount_point)
+        else:
+            cmd, bypassed = (
+                f"sshfs -o follow_symlinks {target} {mount_point}",
+                False,
+            )
         print(f"{t('Mounting sshfs on: ')}{mount_point}")
         print(f"{t('Will execute:')} {cmd}")
         try:
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-            print(f"{t('Mounted on: ')}{mount_point}")
-            print(f"mount | grep sshfs")
-            print(f"{t('To unmount: ')}" f"fusermount -u {mount_point}")
-            print(f"nautilus {mount_point}/home/{user}")
+            status = self.execute.exec_command_live(cmd, source_erplibre=False)
         except Exception as e:
             print(f"{t('Error mounting sshfs: ')}{e}")
+            status = 1
+        # Le reste ne s'affiche QUE si le montage a réussi : « Monté sur … »
+        # après un code 1 envoyait chercher des fichiers dans un répertoire
+        # vide, et faisait passer l'échec pour un détail.
+        if status:
+            self._sshfs_diagnose(alias, mount_point, bypassed)
+            # Le point de montage n'a jamais servi : le laisser accumulerait
+            # un répertoire vide dans /tmp à chaque tentative.
+            try:
+                os.rmdir(mount_point)
+            except OSError:
+                pass
+            return
+        print(f"{t('Mounted on: ')}{mount_point}")
+        print("mount | grep sshfs")
+        print(f"{t('To unmount: ')}" f"fusermount -u {mount_point}")
+        print(f"nautilus {mount_point}/home/{user}")
 
     def _get_ssh_params(self):
         """Prompt for SSH connection parameters. Returns dict or None on cancel."""
@@ -10209,6 +11399,7 @@ class TODO:
                     "Modules missing from the default package"
                 )
             },
+            {"prompt_description": t("Dependencies between modules")},
             {"section": t("Files")},
             {
                 "prompt_description": t(
@@ -10234,6 +11425,8 @@ class TODO:
             elif status == "5":
                 self.execute_analyse_module_package()
             elif status == "6":
+                self.execute_analyse_module_dependency()
+            elif status == "7":
                 self.execute_analyse_filestore()
             else:
                 print(t("Command not found !"))
@@ -10277,6 +11470,55 @@ class TODO:
             [
                 {"prompt_description": t("Show every entry")},
                 {"prompt_description": t("List the known packages")},
+                {"prompt_description": t("Export as JSON")},
+            ],
+            handler,
+        )
+
+    def execute_analyse_module_dependency(self):
+        """Qui dépend de qui, pour savoir ce qu'on peut retirer.
+
+        L'écran est ouvert par l'outil lui-même, qui retombe sur son
+        rapport texte s'il ne peut pas — terminal absent, Textual absent.
+
+        Pas d'option « sauvegarde .zip » : les dépendances vivent dans
+        `ir_module_module_dependency`, qu'un zip n'expose pas sans
+        restauration.
+        """
+        from script.analyse import check_module_dependency as dependency
+
+        database = self._analyse_select_database()
+        if not database:
+            return
+        print(f"⧖ {t('Reading the modules and their dependencies…')}")
+        try:
+            rapport = dependency.survey(database)
+        except Exception as exc:
+            print(f"❌ {t('Analysis failed: ')}{exc}")
+            return
+        if rapport.get("unavailable"):
+            print(f"❌ {t('Cannot read the database: ')}{database}")
+            return
+        try:
+            from script.analyse.check_module_dependency_tui import run_tui
+        except Exception:
+            run_tui = None
+        if not (run_tui and run_tui(rapport)):
+            # Borné : une base porte trois mille modules, et déverser six
+            # mille lignes dans le menu n'est pas un repli.
+            print("\n".join(dependency.render_text(rapport, limit=8, cap=40)))
+
+        def handler(rank):
+            if rank == 1:
+                print("\n".join(dependency.render_text(rapport, limit=0)))
+            else:
+                self._analyse_export_json(
+                    rapport, os.path.basename(database), "module_dependency"
+                )
+
+        self._analyse_follow_up(
+            [
+                {"prompt_description": t("Show every entry")},
                 {"prompt_description": t("Export as JSON")},
             ],
             handler,

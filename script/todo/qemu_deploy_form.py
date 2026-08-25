@@ -298,6 +298,10 @@ def build_spec(vms, domains, form):
         "python_provider": form.get("python_provider", ""),
         "app_store": form.get("app_store", "deb"),
         "install": form["install"],
+        # Au NIVEAU DU DÉPLOIEMENT, pas de l'installation : une VM sans
+        # ERPLibre se suit aussi (cloud-init, puis relevé système). Absent de
+        # cette assemblée, le choix du formulaire n'atteignait jamais la spec.
+        "monitor": form.get("monitor", True),
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
     }
@@ -1828,6 +1832,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                 }
             key = self.query_one("#f_key", Input).value.strip()
             return {
+                # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
+                # l'installation : décocher ERPLibre emportait la case avec
+                # elle, et le tableau de bord ne s'ouvrait plus du tout.
+                "monitor": self.query_one("#f_monitor", Checkbox).value,
                 "res_label": (
                     t("custom")
                     if self.profile == "custom"

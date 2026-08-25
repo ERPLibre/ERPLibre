@@ -2020,17 +2020,8 @@ class TodoUpgrade:
                 # uninstall_module_list_odoo130_to_odoo140.txt is read HERE,
                 # right before the 13 -> 14 data migration. Without this the
                 # per-bump files existed in name only and were never read.
-                lst_file, lst_detail = self.read_uninstall_module_list(
-                    next_version - 1, database_name
-                )
-                if lst_detail:
-                    print(
-                        f"✨ {t('Modules to uninstall before Odoo')}"
-                        f"{next_version} :"
-                    )
-                    self.print_uninstall_reason(lst_detail)
-                lst_module_to_uninstall = list(
-                    dict.fromkeys(list(lst_module_to_uninstall) + lst_file)
+                lst_module_to_uninstall = self.uninstall_list_for(
+                    next_version, database_name, lst_module_to_uninstall
                 )
 
                 if lst_module_to_uninstall:
@@ -2040,9 +2031,6 @@ class TodoUpgrade:
                         next_version - 1,
                     )
                     lst_module_uninstall_module[index] = True
-                    self.dct_progression["state_4_module_migrate_odoo_lst"] = (
-                        lst_module_uninstall_module
-                    )
                     self.write_config()
 
             self.dct_progression["config_state_4_uninstall_module"] = (
@@ -2087,9 +2075,6 @@ class TodoUpgrade:
                         next_version - 1,
                     )
                     lst_module_install_module[index] = True
-                    self.dct_progression["state_4_module_migrate_odoo_lst"] = (
-                        lst_module_install_module
-                    )
                     self.write_config()
 
             self.dct_progression["config_state_4_install_module"] = (
@@ -2309,8 +2294,15 @@ class TodoUpgrade:
                         # Duplicate database
                         cmd_clone_database = f"./odoo_bin.sh db --clone --from_database {last_database_name} --database {database_name_upgrade}"
                         self.todo_upgrade_execute(cmd_clone_database)
+                        # Le clone est NEUF : ce qu'on avait retiré du
+                        # précédent est revenu avec lui. La liste du palier
+                        # se rejoue donc ici, avec les modules choisis.
                         self.uninstall_from_database(
-                            lst_module_to_delete,
+                            self.uninstall_list_for(
+                                next_version,
+                                database_name,
+                                lst_module_to_delete,
+                            ),
                             database_name_upgrade,
                             next_version,
                         )
@@ -2621,7 +2613,15 @@ class TodoUpgrade:
                     cmd_upgrade = f".venv.{erplibre_version}/bin/python ./odoo{next_version}.0/OCA_OpenUpgrade/odoo-bin -c ./config.conf --update all --no-http --stop-after-init -d {database_name_upgrade}"
                 else:
                     cmd_upgrade = f"./run.sh --upgrade-path=./odoo{next_version}.0/OCA_OpenUpgrade/openupgrade_scripts/scripts --update all -c config.conf --stop-after-init --no-http --load=base,web,openupgrade_framework -d {database_name_upgrade}"
-                lst_upgrade_odoo[index] = cmd_upgrade
+                # NE PAS enregistrer la commande ici. `lst_upgrade_odoo`
+                # EST la liste de `dct_progression` — `.get` rend l'objet,
+                # pas une copie — donc la muter maintenant la fait persister
+                # au premier write_config() venu, y compris celui du chemin
+                # d'échec juste en dessous. L'étape passait alors pour faite
+                # et la reprise SAUTAIT OpenUpgrade : mesuré sur
+                # test_neutralize_upgrade_18, resté en base 17.0.1.3 avec sa
+                # commande 18 déjà consignée. On l'enregistre après la
+                # réussite, où le commentaire dit déjà qu'elle appartient.
 
                 # Record the website COW views before the data migration. The
                 # upgrade silently deletes and recreates copies (measured on
@@ -2663,6 +2663,24 @@ class TodoUpgrade:
                     self.dct_progression["state_4_clone_odoo_lst"] = (
                         lst_clone_odoo
                     )
+                    # Tout ce qui a été fait À ce clone meurt avec lui : la
+                    # base reconstruite est une copie neuve de la version
+                    # précédente et réclame la même préparation. Laisser ces
+                    # drapeaux debout sautait le SQL de pré-migration sur le
+                    # clone neuf, et OpenUpgrade retombait sur le problème
+                    # même que ce SQL existe pour écarter.
+                    lst_fix_migration_odoo[index] = []
+                    self.dct_progression["state_4_fix_migration_odoo_lst"] = (
+                        lst_fix_migration_odoo
+                    )
+                    lst_module_uninstall_module[index] = False
+                    self.dct_progression["state_4_uninstall_module"] = (
+                        lst_module_uninstall_module
+                    )
+                    lst_module_install_module[index] = False
+                    self.dct_progression["state_4_install_module"] = (
+                        lst_module_install_module
+                    )
                     self.write_config()
                     print(
                         f"\n❌ -> {t('Database migration to Odoo')}"
@@ -2688,6 +2706,7 @@ class TodoUpgrade:
                     f"after_{next_version}",
                 )
 
+                lst_upgrade_odoo[index] = cmd_upgrade
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
                     lst_upgrade_odoo
                 )
@@ -3197,6 +3216,34 @@ class TodoUpgrade:
         self.current_step = msg
         self.open_step_log(msg)
         print(f"🔷 {prefix}{sep}{t(label)}" if sep else f"🔷 {t(msg)}")
+
+    def still_installed(self, database_name, lst_module):
+        """Parmi ces modules, lesquels la base tient-elle ENCORE ?
+
+        Odoo ne signale rien quand il ne retire rien : « --uninstall » ne
+        cherche que l'état « installed » et laisse filer en silence un module
+        resté en « to remove » d'une tentative précédente. Le code de sortie
+        vaut donc 0 pour une désinstallation qui n'a pas eu lieu — c'est ainsi
+        que muk_web_theme a traversé quatre paliers en étant réputé retiré.
+
+        Rendre None, et non la liste vide, quand la base ne répond pas :
+        « je ne sais pas » et « rien ne reste » appellent des suites
+        différentes, et les confondre recrée le défaut qu'on corrige.
+        """
+        if not lst_module:
+            return []
+        noms = ", ".join(f"'{nom}'" for nom in sorted(set(lst_module)))
+        status, _cmd, output = self.todo_upgrade_execute(
+            f'psql -X -w -d {database_name} -tAc "SELECT name FROM'
+            f" ir_module_module WHERE name IN ({noms})"
+            " AND state <> 'uninstalled' ORDER BY name;\"",
+            get_output=True,
+            wait_at_error=False,
+            quiet=True,
+        )
+        if status:
+            return None
+        return [line.strip() for line in (output or []) if line.strip()]
 
     def installed_theme(self, database_name):
         """Thèmes installés, hors theme_default qui EST l'absence de thème."""
@@ -3747,6 +3794,32 @@ class TodoUpgrade:
             return []
         return lst_present
 
+    def uninstall_list_for(self, next_version, database_name, extra=()):
+        """Ce qu'il faut retirer avant `next_version`, liste du palier comprise.
+
+        DEUX endroits bâtissent le clone intermédiaire : l'étape
+        « Uninstall module », et « Choose delete missing module » qui le
+        jette et le refait depuis la version précédente. Le second ne
+        rejouait que les modules choisis là, donc la liste du palier était
+        perdue avec le clone : web_responsive revenait, et la 18 refusait
+        de charger sur l'exclusion de muk_web_theme — après que la première
+        désinstallation eut pourtant réussi. Une seule fonction, pour que
+        les deux ne puissent plus diverger.
+
+        `dict.fromkeys` dédoublonne au passage : la liste choisie porte
+        parfois deux fois le même nom.
+        """
+        lst_file, lst_detail = self.read_uninstall_module_list(
+            next_version - 1, database_name
+        )
+        if lst_detail:
+            print(
+                f"✨ {t('Modules to uninstall before Odoo')}"
+                f"{next_version} :"
+            )
+            self.print_uninstall_reason(lst_detail)
+        return list(dict.fromkeys(list(extra) + lst_file))
+
     def uninstall_from_database(
         self, lst_module_to_uninstall, database_name, actual_version
     ):
@@ -3773,12 +3846,26 @@ class TodoUpgrade:
             single_source_odoo=True,
         )
 
+        lst_left = self.still_installed(database_name, lst_module_to_uninstall)
+        if lst_left is None:
+            # Base illisible : on ne sait pas. Le dire, plutôt que de trancher.
+            print(f"⚠️  {t('Could not verify the uninstall.')}")
+            lst_left = []
+        elif lst_left:
+            self.add_comment_progression(
+                "uninstall - still installed: " + ", ".join(lst_left)
+            )
+            print(
+                f"❌ {t('The uninstall did not take:')} {', '.join(lst_left)}"
+            )
+            print(f"   {t('Odoo exits 0 even when it removes nothing.')}")
+
         # Update list installed module — only what was REALLY uninstalled, so
         # a module left in place stays counted as installed.
         self.dct_module_per_version[actual_version] = sorted(
             list(
                 set(self.dct_module_per_version[actual_version])
-                - set(lst_module_to_uninstall)
+                - (set(lst_module_to_uninstall) - set(lst_left))
             )
         )
         self.dct_progression["dct_module_per_version"] = (

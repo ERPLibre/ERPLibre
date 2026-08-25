@@ -1,0 +1,15 @@
+# Modules à retirer AVANT de monter de 17.0 vers 18.0.
+#
+# Un module par ligne, une justification après « # ».
+
+# muk_web_theme n'excluait que web_enterprise en 16 et en 17 ; la 18 y
+# ajoute web_responsive. Les deux cohabitaient donc légalement jusqu'ici,
+# et la base arrive en 18 dans un état que la 18 interdit. Le chargement
+# meurt dès que `Module.update_list()` installe un module auto_install,
+# car Odoo revérifie alors toutes les exclusions :
+#     UserError: Les modules "MuK Backend Theme" et "Web Responsive"
+#     sont incompatibles.
+# On retire web_responsive et l'on garde le thème MuK, qui porte
+# l'apparence du back-office. L'inverse marcherait aussi : les deux
+# rendent le même service, il faut simplement en choisir un.
+web_responsive  # exclu par muk_web_theme a partir de la 18.0
