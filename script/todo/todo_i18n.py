@@ -9544,9 +9544,9 @@ TRANSLATIONS = {
         "fr": "Index doublés par le renommage d'Odoo 17",
         "en": "Indexes duplicated by the Odoo 17 renaming",
     },
-    "Odoo 17 changed the naming convention without dropping the old index: both are maintained on every write.": {
-        "fr": "Odoo 17 a changé la convention de nommage sans supprimer l'ancien index : les deux sont entretenus à chaque écriture.",
-        "en": "Odoo 17 changed the naming convention without dropping the old index: both are maintained on every write.",
+    "Odoo 17 changed the naming convention without dropping the old index: both are maintained on every write. This count is a cheap signal — the repair tool compares columns and uniqueness, and is the one to trust.": {
+        "fr": "Odoo 17 a changé la convention de nommage sans supprimer l'ancien index : les deux sont entretenus à chaque écriture. Ce compte est un indicateur bon marché — l'outil de réparation compare les colonnes et l'unicité, c'est lui qui fait foi.",
+        "en": "Odoo 17 changed the naming convention without dropping the old index: both are maintained on every write. This count is a cheap signal — the repair tool compares columns and uniqueness, and is the one to trust.",
     },
     "Default pricelist missing while product is installed": {
         "fr": "Liste de prix par défaut absente alors que product est installé",

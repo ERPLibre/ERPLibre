@@ -115,7 +115,9 @@ CONTROLES = (
         "key": "duplicate_index",
         "title": "Indexes duplicated by the Odoo 17 renaming",
         "why": "Odoo 17 changed the naming convention without dropping the"
-        " old index: both are maintained on every write.",
+        " old index: both are maintained on every write. This count is a"
+        " cheap signal — the repair tool compares columns and"
+        " uniqueness, and is the one to trust.",
         "sql": "SELECT count(*) FROM pg_indexes a WHERE a.schemaname='public'"
         " AND a.indexname ~ '__[a-z0-9_]+_index$'"
         " AND EXISTS (SELECT 1 FROM pg_indexes b WHERE b.schemaname='public'"
