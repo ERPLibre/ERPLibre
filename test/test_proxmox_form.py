@@ -789,6 +789,40 @@ class TestUneProxmoxImbriqueeDoitRedemarrer(unittest.TestCase):
             self._juge({}, "make install_os && make install_odoo_18")
         )
 
+    def test_the_note_only_shows_when_nothing_reboots_it(self):
+        """Avec suivi, l'enveloppe redémarre elle-même : réclamer un
+        redémarrage déjà fait est une consigne fausse. Sans suivi, la voie en
+        série s'arrête à la fin du script, et la note est la seule chose qui
+        dit que l'hyperviseur n'est pas encore utilisable."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        def sommaire(monitor):
+            todo = TODO.__new__(TODO)
+            spec = {
+                "vms": [{"name": "pve-imbrique"}],
+                "install": {
+                    "cmd": "./script/proxmox/install_proxmox.sh",
+                    "label": "Proxmox VE",
+                    "branch": "develop",
+                },
+                "monitor": monitor,
+                "storage": "local",
+                "bridge": "vmbr0",
+            }
+            vm = dict(spec["vms"][0], alias="pve9+pve-imbrique", vmid=102)
+            tampon = io.StringIO()
+            with contextlib.redirect_stdout(tampon):
+                todo._pve_print_summary(spec, [vm], "")
+            return tampon.getvalue()
+
+        self.assertIn("reboot", sommaire(monitor=False))
+        self.assertNotIn("reboot", sommaire(monitor=True))
+
     def test_a_vm_of_its_own_overrides_the_common_choice(self):
         # Parc mixte : la commande de la VM l'emporte sur celle du parc.
         self.assertFalse(

@@ -33,6 +33,36 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 
 EXIT_MARKER = "__ERPLIBRE_EXIT__"
+
+# Installations qui posent un NOYAU : elles ne valent rien avant un
+# redémarrage, et le script ne peut pas survivre au sien. La table dit quoi
+# attendre APRÈS — un motif à trouver dans « uname -r », donc une preuve et
+# non une supposition.
+#
+# Proxmox VE en est le seul cas aujourd'hui, et il est systématique : notre
+# install_proxmox.sh pose proxmox-default-kernel sans redémarrer — lancé par
+# ssh, un reboot couperait la session et ferait passer l'installation pour un
+# échec. La VM restait donc sur le noyau cloud de Debian, dépouillé de tout
+# netfilter : ni pont NAT, ni invité. On le découvrait des jours plus tard.
+REBOOT_AFTER = (("install_proxmox.sh", "-pve"),)
+
+# Attente maximale du retour de la machine, en tours de cinq secondes.
+# Généreuse : un hyperviseur imbriqué redémarre lentement, et échouer trop
+# tôt marquerait rouge une installation qui a réussi.
+REBOOT_TOURS = 180
+
+
+def reboot_expected(remote_cmd) -> str:
+    """Motif à trouver dans « uname -r » après redémarrage, ou "".
+
+    Jugé sur la COMMANDE effective de la VM, pas sur sa distribution : un parc
+    mixte est le cas normal, et c'est ce qu'on installe qui décide."""
+    for marque, motif in REBOOT_AFTER:
+        if marque in (remote_cmd or ""):
+            return motif
+    return ""
+
+
 SSH_OPTS = (
     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
     "-o ConnectTimeout=8"
@@ -79,6 +109,56 @@ def list_install_runs() -> list:
     return runs
 
 
+def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
+    """Shell qui redémarre la VM, attend son retour, et vérifie son noyau.
+
+    Trois choses valent d'être dites.
+
+    Le redémarrage n'a lieu QUE si l'installation a réussi : redémarrer après
+    un échec effacerait la seule machine sur laquelle on pouvait chercher.
+
+    On n'attend pas que ssh « revienne » — sshd répond encore une seconde ou
+    deux après l'ordre de redémarrage, et on lirait alors l'ANCIEN noyau en
+    croyant avoir la réponse. On attend que « uname -r » porte le motif ; tant
+    qu'il porte l'ancien, la machine n'est pas revenue.
+
+    `tours` est un paramètre pour que ce shell soit ÉPROUVABLE : un garde
+    qu'on ne sait pas exécuter s'ouvre le jour où il casse.
+
+    Et l'échec est un vrai échec : sans le noyau attendu, l'hyperviseur n'a ni
+    table NAT ni module bridge. Le dire ✅ serait le mensonge qui a coûté deux
+    jours à le comprendre."""
+    msg_reboot = t("Rebooting to boot the new kernel")
+    msg_wait = t("waiting for the machine to come back")
+    msg_ok = t("kernel booted:")
+    msg_ko = t("the machine did not come back on the expected kernel:")
+    return (
+        'if [ "$rc" = 0 ]; then '
+        f"echo {shlex.quote('== ' + msg_reboot + ' ==')} >> {log_q}; "
+        # « || true » : la session MEURT avec le redémarrage, et son code 255
+        # ne dit rien de l'ordre lui-même.
+        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" '
+        # « sudo -n » : cette enveloppe tourne DÉTACHÉE, sans terminal. Un
+        # sudo qui demande son mot de passe échoue alors tout de suite au lieu
+        # d'attendre une frappe que personne ne fera.
+        "'sudo -n systemctl reboot' "
+        f">> {log_q} 2>&1 || true; "
+        f"echo {shlex.quote('   ' + msg_wait)} >> {log_q}; "
+        "krn=''; "
+        f"for i in $(seq 1 {tours}); do sleep ${{ERPLIBRE_REBOOT_SLEEP:-5}}; "
+        f'k=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
+        "'uname -r' 2>/dev/null); "
+        f'case "$k" in *{motif}*) krn="$k"; break;; esac; '
+        "if [ $((i % 6)) -eq 0 ]; then "
+        f'echo "   ... $((i*5))s" >> {log_q}; fi; '
+        "done; "
+        'if [ -n "$krn" ]; then '
+        f'echo "   {msg_ok} $krn" >> {log_q}; '
+        f'else echo "   ⚠ {msg_ko} {motif}" >> {log_q}; rc=1; fi; '
+        "fi; "
+    )
+
+
 def _launch_one(
     ip: str,
     remote_cmd: str,
@@ -86,9 +166,16 @@ def _launch_one(
     name: str = "",
     installs: bool = True,
     pve: bool = False,
+    reboot: str = "",
 ) -> None:
     """Lance une install SSH DÉTACHÉE : attend le sshd, exécute, journalise
     la sortie puis écrit le marqueur de fin avec le code de sortie.
+
+    `reboot` : motif attendu dans « uname -r » APRÈS un redémarrage. Non
+    vide, l'installation réussie est suivie d'un reboot, de l'attente du
+    retour, et d'une vérification du noyau — le succès n'est écrit qu'ensuite.
+    C'est ici et non dans la VM parce qu'un script ne survit pas à son propre
+    redémarrage : cette enveloppe, elle, tourne sur NOTRE machine.
 
     `pve` : la VM vit sur un hôte Proxmox. On ne RÉ-RÉSOUT alors PAS son
     adresse par virsh — et c'est vital. Vécu le 24 août 2026 : une VM
@@ -225,8 +312,9 @@ def _launch_one(
         f"else echo {shlex.quote('== ' + msg_giveup + ' ==')} >> {log_q}; fi; "
         f'echo "   → $ip" >> {log_q}; '
         f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" {shlex.quote(remote_cmd)} '
-        f">> {log_q} 2>&1; "
-        f'echo "{EXIT_MARKER} $?" >> {log_q}'
+        f">> {log_q} 2>&1; rc=$?; "
+        + (_reboot_steps(log_q, reboot) if reboot else "")
+        + f'echo "{EXIT_MARKER} $rc" >> {log_q}'
     )
     # setsid -f : le process survit à la fermeture du menu / du dashboard.
     # stdin sur /dev/null : SANS lui, le descripteur 0 du processus détaché
@@ -293,13 +381,17 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # ou bureau) se choisit machine par machine, le script distant n'est
         # plus le même pour toutes. `remote_cmd` reste le défaut, ce qui laisse
         # intacts les appelants qui n'en fournissent qu'une.
+        cmd_vm = vm.get("remote_cmd") or remote_cmd
         _launch_one(
             vm["ip"],
-            vm.get("remote_cmd") or remote_cmd,
+            cmd_vm,
             log_path,
             vm["name"],
             installs=bool(branch),
             pve=bool(vm.get("pve")),
+            # Une installation qui pose un NOYAU ne vaut rien avant le
+            # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
+            reboot=reboot_expected(cmd_vm),
         )
         entree = {
             "name": vm["name"],

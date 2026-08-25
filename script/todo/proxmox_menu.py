@@ -1356,13 +1356,16 @@ class ProxmoxMenuMixin:
                 print(f"      ssh {vm['alias']}")
             # Une VM qui vient de recevoir Proxmox tourne encore le noyau de
             # son image cloud : celui-ci n'a AUCUN module netfilter, donc ni
-            # pont NAT ni VM à l'intérieur. install_proxmox.sh ne redémarre
-            # pas de lui-même — lancé par ssh, un reboot couperait la session
-            # et ferait passer l'installation pour un échec. Le dire ICI, où
-            # on lit encore l'écran, plutôt qu'au bout d'un journal d'une
-            # heure : sans cela on le redécouvre en créant un pont, devant six
-            # lignes d'iptables qui ne parlent pas de redémarrage.
-            if self._pve_installs_proxmox(vm, spec):
+            # pont NAT ni VM à l'intérieur.
+            #
+            # Le suivi s'en charge : son enveloppe tourne sur NOTRE machine,
+            # donc elle survit au redémarrage de la VM, l'attend et vérifie le
+            # noyau avant de conclure. La note ne sert donc QUE sans suivi —
+            # la voie en série, elle, s'arrête à la fin du script. L'afficher
+            # dans les deux cas demanderait un redémarrage déjà fait.
+            if not spec.get("monitor", True) and self._pve_installs_proxmox(
+                vm, spec
+            ):
                 print(
                     f"      ⚠ {t('reboot it to boot the Proxmox kernel:')}"
                     f" ssh {vm.get('alias') or vm['name']} sudo reboot"

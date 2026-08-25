@@ -3370,6 +3370,22 @@ TRANSLATIONS = {
         "fr": "à redémarrer pour amorcer le noyau Proxmox :",
         "en": "reboot it to boot the Proxmox kernel:",
     },
+    "Rebooting to boot the new kernel": {
+        "fr": "Redémarrage pour amorcer le nouveau noyau",
+        "en": "Rebooting to boot the new kernel",
+    },
+    "waiting for the machine to come back": {
+        "fr": "attente du retour de la machine",
+        "en": "waiting for the machine to come back",
+    },
+    "kernel booted:": {
+        "fr": "noyau amorcé :",
+        "en": "kernel booted:",
+    },
+    "the machine did not come back on the expected kernel:": {
+        "fr": "la machine n'est pas revenue sur le noyau attendu :",
+        "en": "the machine did not come back on the expected kernel:",
+    },
     "Running kernel:": {
         "fr": "Noyau en cours :",
         "en": "Running kernel:",

@@ -230,6 +230,112 @@ class TestLesAutresCheminsVersLaPoubelle(unittest.TestCase):
         self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
 
 
+class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
+    """Proxmox VE n'existe qu'après un redémarrage, et le script ne peut pas
+    survivre au sien.
+
+    install_proxmox.sh pose le noyau puis s'arrête, à raison — lancé par ssh,
+    un reboot couperait la session et ferait passer l'installation pour un
+    échec. La VM restait donc sur le noyau cloud de Debian, dépouillé de tout
+    netfilter, et on le découvrait des jours plus tard en créant un pont.
+
+    L'enveloppe, elle, tourne sur NOTRE machine : elle survit au redémarrage
+    de la VM. Elle redémarre, attend, vérifie le noyau, et ne conclut
+    qu'ensuite — le ✅ veut donc dire « hyperviseur utilisable »."""
+
+    def _joue(self, rc, faux_ssh, tours=4):
+        """Exécute le shell RÉEL, avec ssh bouchonné par une fonction."""
+        import os
+        import subprocess
+        import tempfile
+
+        log = tempfile.NamedTemporaryFile(suffix=".log", delete=False)
+        log.close()
+        cpt = tempfile.NamedTemporaryFile("w+", delete=False)
+        cpt.write("0")
+        cpt.close()
+        shell = (
+            f"CPT={cpt.name}\n{faux_ssh}\n"
+            f"ip=10.0.0.1; rc={rc}; "
+            + mon._reboot_steps(log.name, "-pve", tours=tours)
+            + f'echo "{mon.EXIT_MARKER} $rc" >> {log.name}'
+        )
+        subprocess.run(
+            ["bash", "-c", shell],
+            env=dict(os.environ, ERPLIBRE_REBOOT_SLEEP="0"),
+            timeout=60,
+        )
+        with open(log.name, encoding="utf-8") as fh:
+            texte = fh.read()
+        etat = mon.read_status(log.name)
+        os.unlink(log.name)
+        os.unlink(cpt.name)
+        return etat, texte
+
+    # Le compteur vit dans un FICHIER : « k=$(ssh …) » tourne en sous-shell.
+    REVIENT = """ssh() {
+  case "$*" in
+    *"uname -r"*)
+      n=$(cat "$CPT"); n=$((n+1)); echo "$n" > "$CPT"
+      if [ "$n" -ge 3 ]; then echo "7.0.14-14-pve";
+      else echo "6.12.101+deb13-cloud-amd64"; fi;;
+    *reboot*) return 255;;
+  esac
+}"""
+    RESTE = """ssh() {
+  case "$*" in
+    *"uname -r"*) echo "6.12.101+deb13-cloud-amd64";;
+    *reboot*) return 255;;
+  esac
+}"""
+
+    def test_only_the_pve_kernel_ends_the_wait(self):
+        # Le piège : sshd répond encore une seconde ou deux après l'ordre de
+        # redémarrage. Lire « uname -r » et s'arrêter là donnerait l'ANCIEN
+        # noyau en croyant avoir la réponse. Ici les deux premières lectures
+        # rendent le noyau cloud et doivent être REJETÉES.
+        (etat, code), texte = self._joue(0, self.REVIENT)
+        self.assertEqual((etat, code), ("done", 0))
+        self.assertIn("7.0.14-14-pve", texte)
+
+    def test_a_machine_that_stays_on_the_old_kernel_fails(self):
+        # Sans le noyau attendu, l'hyperviseur n'a ni table NAT ni module
+        # bridge. Le dire ✅ serait le mensonge qui a coûté deux jours.
+        (etat, code), texte = self._joue(0, self.RESTE)
+        self.assertEqual(etat, "failed")
+        self.assertEqual(code, 1)
+        self.assertIn("-pve", texte)
+
+    def test_a_machine_that_never_answers_fails(self):
+        (etat, _c), _texte = self._joue(0, "ssh() { return 255; }")
+        self.assertEqual(etat, "failed")
+
+    def test_a_failed_install_is_never_rebooted(self):
+        # Redémarrer après un échec effacerait la seule machine sur laquelle
+        # on pouvait chercher.
+        (etat, code), texte = self._joue(
+            2, 'ssh() { echo "NE DEVRAIT PAS ETRE APPELE"; }'
+        )
+        self.assertEqual((etat, code), ("failed", 2))
+        self.assertNotIn("NE DEVRAIT PAS", texte)
+        self.assertNotIn("Redémarrage", texte)
+
+    def test_which_installs_ask_for_it(self):
+        self.assertEqual(
+            mon.reboot_expected("./script/proxmox/install_proxmox.sh"), "-pve"
+        )
+        self.assertEqual(
+            mon.reboot_expected("make install_os && make install_odoo_18"), ""
+        )
+        self.assertEqual(mon.reboot_expected(""), "")
+
+    def test_the_wrapper_only_reboots_when_asked(self):
+        import inspect
+
+        src = inspect.getsource(mon._launch_one)
+        self.assertIn("_reboot_steps(log_q, reboot) if reboot else", src)
+
+
 class TestTroisVmSurUnProxmox(unittest.TestCase):
     """Rapporté à l'usage : sur trois VM d'un même Proxmox, une seule avait
     ses colonnes vides — et les deux autres montraient les chiffres d'une
