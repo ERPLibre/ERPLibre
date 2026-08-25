@@ -241,8 +241,12 @@ class TestLeNoyau(unittest.TestCase):
         # ne monte jamais.
         montee = pve.bridge_setup_cmds("vmbr0", "10.10.10.1/24", "enp1s0")[-1]
         self.assertIn("mkdir -p /run/network", montee)
-        # Et l'erreur d'ifup n'est plus masquée : c'est elle qui explique.
-        self.assertNotIn("2>/dev/null", montee)
+        # Et l'erreur d'IFUP n'est pas masquée : c'est elle qui explique.
+        # Porté sur l'appel lui-même, et non sur toute la ligne : le repli qui
+        # suit sonde légitimement (« ip link show », « iptables -C »), et
+        # interdire « 2>/dev/null » partout lui interdisait d'exister.
+        ifup = montee[montee.index("ifup ") :].split("||")[0]
+        self.assertNotIn("2>", ifup)
 
 
 class TestLeDns(unittest.TestCase):
@@ -671,6 +675,115 @@ class TestLaTableNat(unittest.TestCase):
     def test_the_probe_asks_the_table_not_the_name(self):
         self.assertIn("iptables -t nat", pve.NAT_CHECK_CMD)
         self.assertIn("uname -r", pve.NAT_CHECK_CMD)
+
+
+class TestLeReseauDuPontInterne(unittest.TestCase):
+    """Le pont interne avait une adresse CODÉE EN DUR, 10.10.10.1/24.
+
+    Un Proxmox dans un Proxmox hérite du réseau interne de son parent : la VM
+    vivait en 10.10.10.152 avec 10.10.10.1 pour PASSERELLE. Lui demander de
+    poser 10.10.10.1/24 sur son propre pont, c'est prendre l'adresse de sa
+    passerelle et rendre tout le /24 local — la machine s'isole au milieu de
+    la commande qui la configure. Vécu : « ifup » n'a jamais rendu la main, et
+    la VM ne répondait plus ni en ssh ni en ping."""
+
+    IMBRIQUE = (
+        "2: eth0    inet 10.10.10.152/24 brd 10.10.10.255 scope global eth0\n"
+        "default via 10.10.10.1 dev eth0 onlink\n"
+        "10.10.10.0/24 dev eth0 proto kernel scope link src 10.10.10.152\n"
+    )
+
+    def test_a_nested_host_gets_another_subnet(self):
+        self.assertNotEqual(
+            pve.pick_internal_cidr(self.IMBRIQUE), "10.10.10.1/24"
+        )
+        self.assertEqual(
+            pve.pick_internal_cidr(self.IMBRIQUE), "10.10.20.1/24"
+        )
+
+    def test_a_fresh_host_keeps_the_usual_one(self):
+        vierge = "1: lo    inet 127.0.0.1/8 scope host lo\n"
+        self.assertEqual(pve.pick_internal_cidr(vierge), "10.10.10.1/24")
+
+    def test_a_route_alone_is_enough_to_collide(self):
+        # Une route sans adresse locale suffit : c'est le cas exact de la
+        # route par défaut « via 10.10.10.1 ».
+        seule = "default via 10.10.10.1 dev eth0\n"
+        self.assertNotEqual(pve.pick_internal_cidr(seule), "10.10.10.1/24")
+
+    def test_a_supernet_rules_out_everything_under_it(self):
+        # « 10.0.0.0/8 » couvre tous les candidats en 10.x. Un test sur les
+        # trois premiers octets l'aurait raté.
+        choisi = pve.pick_internal_cidr("10.0.0.0/8 dev x\n")
+        self.assertFalse(choisi.startswith("10."), choisi)
+
+    def test_when_nothing_is_free_it_says_so(self):
+        tout = "\n".join(
+            c.replace("1/24", "0/24") for c in pve.INTERNAL_CANDIDATES
+        )
+        self.assertEqual(pve.pick_internal_cidr(tout), "")
+
+    def test_the_chosen_subnet_reaches_every_command(self):
+        cmds = pve.bridge_setup_cmds(cidr="10.10.20.1/24", uplink="eth0")
+        texte = "\n".join(cmds)
+        self.assertIn("address 10.10.20.1/24", texte)
+        self.assertIn("10.10.20.0/24", texte)
+        self.assertNotIn("10.10.10.", texte)
+
+
+class TestLeRepliQuiNeCoupePasLaLigne(unittest.TestCase):
+    """« ifreload -a » en repli rechargeait TOUTES les interfaces.
+
+    Y compris celle qui porte la session ssh — et sur une image cloud
+    l'interface principale est décrite ailleurs (interfaces.d, netplan), donc
+    ifupdown2 la descend sans la remonter. Le repli monte donc le pont à la
+    main, sans toucher à rien d'autre."""
+
+    def test_ifreload_is_gone(self):
+        texte = "\n".join(pve.bridge_setup_cmds(uplink="eth0"))
+        self.assertNotIn("ifreload", texte)
+
+    def test_the_fallback_builds_the_bridge_itself(self):
+        derniere = pve.bridge_setup_cmds(cidr="10.10.20.1/24", uplink="eth0")[
+            -1
+        ]
+        self.assertIn("ifup vmbr0 ||", derniere)
+        self.assertIn("ip link add vmbr0 type bridge", derniere)
+        self.assertIn("ip addr add 10.10.20.1/24 dev vmbr0", derniere)
+        self.assertIn("ip link set vmbr0 up", derniere)
+
+    def test_the_masquerade_rule_is_idempotent(self):
+        # « -C » avant « -A » : rejouée, la commande n'empile pas les règles.
+        derniere = pve.bridge_setup_cmds(uplink="eth0")[-1]
+        self.assertIn("iptables -t nat -C POSTROUTING", derniere)
+        self.assertLess(
+            derniere.index("-t nat -C"), derniere.index("-t nat -A")
+        )
+
+    def test_the_fallback_is_valid_shell(self):
+        """Exécuté pour de vrai, ip/iptables/ifup bouchonnés.
+
+        Un repli qu'on ne sait pas exécuter s'ouvre le jour où il casse — et
+        celui-là tourne sur une machine qu'on ne peut plus joindre s'il rate.
+        """
+        import subprocess
+
+        derniere = pve.bridge_setup_cmds(cidr="10.10.20.1/24", uplink="eth0")[
+            -1
+        ]
+        bouchons = (
+            'ip() { [ "$1 $2" = "link show" ] && return 1; return 0; }\n'
+            "iptables() { return 1; }\n"
+            "ifup() { return 1; }\n"
+            "mkdir() { :; }\n"
+        )
+        res = subprocess.run(
+            ["bash", "-c", bouchons + derniere],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(res.stderr, "", res.stderr)
 
 
 if __name__ == "__main__":

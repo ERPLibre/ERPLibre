@@ -426,6 +426,69 @@ def pick_bridge(bridges, voulu: str = "") -> str:
 INTERNAL_BRIDGE = "vmbr0"
 INTERNAL_CIDR = "10.10.10.1/24"
 
+# Le réseau interne ne peut PAS être une constante : un Proxmox dans un
+# Proxmox hérite du réseau interne de son parent, et 10.10.10.1 y est
+# l'adresse de sa propre PASSERELLE. La poser sur son pont rend tout le /24
+# local — la passerelle devient injoignable et la machine s'isole
+# instantanément, au milieu de la commande qui la configure. Vécu : « ifup »
+# n'a jamais rendu la main et la VM ne répondait plus, ni en ssh ni en ping.
+#
+# On choisit donc un /24 que l'hôte ne connaît pas encore. La liste va du plus
+# attendu au plus improbable : un parc imbriqué descend d'un cran par étage.
+INTERNAL_CANDIDATES = (
+    "10.10.10.1/24",
+    "10.10.20.1/24",
+    "10.10.30.1/24",
+    "10.10.40.1/24",
+    "10.20.10.1/24",
+    "10.30.10.1/24",
+    "172.31.10.1/24",
+    "192.168.210.1/24",
+)
+
+# Tout ce que l'hôte sait déjà d'IPv4 : ses adresses ET ses routes. Les deux,
+# parce qu'une route sans adresse locale suffit à créer le conflit — la route
+# par défaut « via 10.10.10.1 » en est l'exemple exact.
+USED_NETS_CMD = "ip -o -4 addr show; ip -4 route show"
+
+
+def parse_used_nets(text: str) -> set:
+    """Réseaux IPv4 lus dans la sortie de USED_NETS_CMD.
+
+    Une adresse nue compte pour un /32 : c'est honnête, et le
+    chevauchement avec un /24 candidat se calcule pareil. Un préfixe plus
+    large qu'un /24 — « 10.0.0.0/8 » — écarte donc bien tous nos candidats
+    en 10.x, ce qu'un test sur les trois premiers octets aurait raté."""
+    import ipaddress
+
+    nets = set()
+    motif = r"\b(\d{1,3}(?:\.\d{1,3}){3})(?:/(\d{1,2}))?\b"
+    for adresse, prefixe in re.findall(motif, text or ""):
+        try:
+            nets.add(
+                ipaddress.ip_network(
+                    f"{adresse}/{prefixe or 32}", strict=False
+                )
+            )
+        except ValueError:
+            continue
+    return nets
+
+
+def pick_internal_cidr(text: str, candidats=INTERNAL_CANDIDATES) -> str:
+    """Le premier candidat qui ne chevauche RIEN de ce que l'hôte connaît.
+
+    Chaîne vide quand tous sont pris : le dire, plutôt que d'en écraser un.
+    Écraser, ici, c'est couper la seule voie d'accès à la machine."""
+    import ipaddress
+
+    utilises = parse_used_nets(text)
+    for candidat in candidats:
+        reseau = ipaddress.ip_network(candidat, strict=False)
+        if not any(reseau.overlaps(u) for u in utilises):
+            return candidat
+    return ""
+
 
 def parse_bridge_config(text: str) -> dict:
     """/etc/network/interfaces -> {pont: {ports, address}}.
@@ -509,7 +572,26 @@ def bridge_setup_cmds(
     # Et l'erreur d'ifup n'est PAS masquée : « 2>/dev/null » cachait
     # « operation failed with 'Operation not supported' » — le noyau cloud n'a
     # pas le module bridge, et c'est ce qu'il fallait lire.
-    cmds.append(f"mkdir -p /run/network; ifup {nom} || ifreload -a")
+    # Et SURTOUT pas « ifreload -a » en repli : il recharge TOUTES les
+    # interfaces, y compris celle qui porte la session ssh, et sur une image
+    # cloud l'interface principale est décrite ailleurs (interfaces.d, ou
+    # netplan) — ifupdown2 la descend alors sans la remonter. Le repli est
+    # donc CHIRURGICAL : on monte le pont à la main, sans toucher à rien
+    # d'autre. La strophe, elle, le rend persistant au prochain démarrage.
+    manuel = [
+        f"ip link show {nom} >/dev/null 2>&1 || ip link add {nom} type bridge",
+        f"ip addr add {cidr} dev {nom} 2>/dev/null || true",
+        f"ip link set {nom} up",
+    ]
+    if uplink:
+        regle = f"POSTROUTING -s {reseau} -o {uplink} -j MASQUERADE"
+        manuel.append(
+            f"iptables -t nat -C {regle} 2>/dev/null"
+            f" || iptables -t nat -A {regle}"
+        )
+    cmds.append(
+        f"mkdir -p /run/network; ifup {nom} || {{ " + "; ".join(manuel) + "; }"
+    )
     return cmds
 
 

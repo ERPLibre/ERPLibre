@@ -3410,6 +3410,10 @@ TRANSLATIONS = {
         "fr": "Aucun noyau Proxmox installé : terminer l'installation d'abord.",
         "en": "No Proxmox kernel installed: finish the install first.",
     },
+    "No free subnet left for an internal bridge.": {
+        "fr": "Plus aucun réseau libre pour un pont interne.",
+        "en": "No free subnet left for an internal bridge.",
+    },
     "No network bridge on this host.": {
         "fr": "Aucun pont réseau sur cet hôte.",
         "en": "No network bridge on this host.",

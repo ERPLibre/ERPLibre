@@ -648,6 +648,20 @@ class ProxmoxMenuMixin:
         parts = (sortie or "").split()
         return parts[parts.index("dev") + 1] if "dev" in parts else ""
 
+    def _pve_internal_cidr(self, host):
+        """Réseau du futur pont interne, CHOISI d'après l'hôte.
+
+        Pas une constante : un Proxmox dans un Proxmox hérite du réseau
+        interne de son parent, et 10.10.10.1 y est l'adresse de sa propre
+        PASSERELLE. La poser sur son pont rend tout le /24 local, la
+        passerelle devient injoignable, et la machine s'isole au milieu de la
+        commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
+        la VM ne répondait plus, ni en ssh ni en ping."""
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
+        return pve.pick_internal_cidr(out)
+
     def _pve_nat_ready(self, host):
         """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
 
@@ -717,8 +731,11 @@ class ProxmoxMenuMixin:
         raison = self._pve_nat_reason(host)
         if raison:
             return "", raison
+        cidr = self._pve_internal_cidr(host)
+        if not cidr:
+            return "", t("No free subnet left for an internal bridge.")
         uplink = self._pve_uplink()
-        for cmd in pve.bridge_setup_cmds(uplink=uplink):
+        for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
             if code:
                 lignes = pve.strip_ssh_noise(sortie).strip().splitlines()
@@ -741,11 +758,20 @@ class ProxmoxMenuMixin:
         """
         from script.proxmox import proxmox_deploy as pve
 
+        host = self._pve_host(ask=False)
+        # Le réseau est LU sur l'hôte avant d'être proposé : l'annoncer
+        # 10.10.10.1/24 pour en poser un autre serait mentir sur l'écran même
+        # où l'on demande l'accord.
+        cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
+        if not cidr:
+            print(f"  ✗ {t('No free subnet left for an internal bridge.')}")
+            print(f"  {t('do it myself (bridge-ports <nic>, needs console)')}")
+            return ""
         print(
             f"  [1] {t('create an internal')} {pve.INTERNAL_BRIDGE}"
-            f" ({pve.INTERNAL_CIDR}) + NAT — {t('touches no physical NIC')}"
+            f" ({cidr}) + NAT — {t('touches no physical NIC')}"
         )
         print(f"  [2] {t('do it myself (bridge-ports <nic>, needs console)')}")
         if input(t("Choice: ")).strip() != "1":
@@ -759,7 +785,6 @@ class ProxmoxMenuMixin:
                 f"  ⚠ {t('This moves the host address: do it from a console.')}"
             )
             return ""
-        host = self._pve_host(ask=False)
         ok, lignes = self._pve_nat_ready(host) if host else (True, [])
         if not ok:
             print()
@@ -768,7 +793,7 @@ class ProxmoxMenuMixin:
             return ""
         uplink = self._pve_uplink()
         print(f"  {t('uplink for NAT')} : {uplink or t('none')}")
-        for cmd in pve.bridge_setup_cmds(uplink=uplink):
+        for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, _o = self._pve_show(cmd, timeout=120)
             if code:
                 print(f"  ✗ {t('Step failed, stopping here.')}")
@@ -889,7 +914,13 @@ class ProxmoxMenuMixin:
             # De quoi créer le pont DEPUIS l'écran, sans invite : le pont
             # interne ne touche à aucune interface physique.
             "make_bridge": self._pve_make_internal_bridge,
-            "internal_bridge": (pve.INTERNAL_BRIDGE, pve.INTERNAL_CIDR),
+            # Le libellé « ➕ créer un interne vmbr0 (…) » doit annoncer le
+            # réseau qui sera RÉELLEMENT posé — il dépend de l'hôte.
+            "internal_bridge": (
+                pve.INTERNAL_BRIDGE,
+                (self._pve_internal_cidr(host) if not ponts else "")
+                or pve.INTERNAL_CIDR,
+            ),
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
