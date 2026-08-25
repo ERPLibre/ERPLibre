@@ -230,6 +230,69 @@ class TestLesAutresCheminsVersLaPoubelle(unittest.TestCase):
         self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
 
 
+class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
+    """Le suivi se ROUVRE sur un manifeste passé — c'est fait pour.
+
+    Mais un nom de domaine se réemploie, et un VMID libéré est RÉATTRIBUÉ.
+    Effacer « le 101 » d'un run de mars, c'est effacer ce qui porte le 101
+    aujourd'hui, et « erplibre-ubuntu-2604 » de mars n'est pas celui
+    d'aujourd'hui. Même famille que tout le reste : on jugeait sur le nom.
+
+    La commande porte donc son garde. Dans la commande et non dans l'écran :
+    elle protège ainsi tous ses appelants, et la vérification se fait SUR la
+    machine, à l'instant d'effacer."""
+
+    def test_a_proxmox_delete_checks_the_vmid_still_bears_the_name(self):
+        cmd = mon.delete_vm_cmd_pve(
+            {"target": "pve9", "vmid": 101}, name="vm-a"
+        )
+        self.assertIn("qm config 101", cmd)
+        self.assertIn("exit 1", cmd)
+        self.assertIn("qm destroy 101", cmd)
+        # Le garde vient AVANT la destruction, sinon il ne garde rien.
+        self.assertLess(cmd.index("qm config 101"), cmd.index("qm destroy"))
+
+    def test_a_local_delete_checks_the_uuid(self):
+        cmd = mon.delete_vm_cmd("vm-a", True, "5d55d05a-1e77")
+        self.assertIn("virsh domuuid vm-a", cmd)
+        self.assertIn("5d55d05a-1e77", cmd)
+        self.assertLess(cmd.index("domuuid"), cmd.index("virsh destroy vm-a"))
+
+    def test_an_old_manifest_without_identity_still_deletes(self):
+        # Un manifeste écrit avant ce correctif n'a pas d'UUID. Refuser toute
+        # suppression y serait une régression : on retombe sur la protection
+        # d'avant, la confirmation à deux mains.
+        cmd = mon.delete_vm_cmd("vm-a", True)
+        self.assertNotIn("domuuid", cmd)
+        self.assertIn("virsh undefine vm-a", cmd)
+        sans_nom = mon.delete_vm_cmd_pve({"target": "pve9", "vmid": 101})
+        self.assertNotIn("qm config", sans_nom)
+        self.assertIn("qm destroy 101", sans_nom)
+
+    def test_the_guard_is_shell_correct(self):
+        """Le garde est EXÉCUTÉ, « qm » bouchonné par une fonction shell.
+
+        Il traverse ensuite deux « shlex.quote » avant d'atteindre un dash :
+        chaque niveau est une occasion de le casser, et un garde cassé
+        s'OUVRE au lieu de se fermer. Éprouvé aussi sur le vrai hôte, où il a
+        refusé un nom périmé et laissé passer le bon."""
+        import subprocess
+
+        garde = mon.pve_identity_guard(101, "vm-a")
+        for vu, attendu in (("vm-a", 0), ("autre-vm", 1)):
+            res = subprocess.run(
+                [
+                    "sh",
+                    "-c",
+                    f"qm() {{ echo 'name: {vu}'; }}; {garde} exit 0",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(res.returncode, attendu, f"{vu} : {res.stdout}")
+        self.assertIn("vm-a", garde)
+
+
 class TestCeQueLaConfirmationPromet(unittest.TestCase):
     """La confirmation de suppression annonçait un fichier qcow2 local à
     TOUTE VM, Proxmox comprise.

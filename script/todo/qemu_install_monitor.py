@@ -313,6 +313,12 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # Une VM posée sur un hôte Proxmox : c'est LUI qui connaît son état.
         if vm.get("pve"):
             entree["pve"] = vm["pve"]
+        else:
+            # L'UUID du domaine, relevé MAINTENANT : c'est le seul instant où
+            # l'on sait que ce nom désigne bien cette machine. Rouvert des
+            # semaines plus tard, le suivi ne peut plus le savoir — et c'est
+            # lui qui arme le garde de la suppression.
+            entree["uuid"] = local_uuid(vm["name"])
         entries.append(entree)
     manifest = {
         "branch": branch,
@@ -322,6 +328,26 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
     manifest_path = str(logdir / "session.json")
     Path(manifest_path).write_text(json.dumps(manifest, indent=2))
     return manifest_path
+
+
+def local_uuid(name: str) -> str:
+    """UUID du domaine libvirt local, ou "" s'il est illisible.
+
+    Sans sudo d'abord : l'appartenance au groupe libvirt suffit souvent. Une
+    chaîne vide DÉSARME le garde plutôt que de bloquer — mieux vaut la
+    protection d'avant que refuser toute suppression sur un poste où virsh
+    demande un mot de passe."""
+    base = ["virsh", "--connect", "qemu:///system", "domuuid", name]
+    for argv in (base, ["sudo", "-n"] + base):
+        try:
+            res = subprocess.run(
+                argv, capture_output=True, text=True, timeout=15
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if res.returncode == 0 and res.stdout.strip():
+            return res.stdout.strip()
+    return ""
 
 
 def finished_at(log_path: str, fallback: float) -> float:
@@ -1743,15 +1769,41 @@ def restart_odoo_cmd() -> str:
     )
 
 
-def delete_vm_cmd_pve(info, purge: bool = True) -> str:
+def pve_identity_guard(vmid: int, name: str) -> str:
+    """Shell qui S'ARRÊTE si le VMID ne porte plus ce nom.
+
+    Un VMID libéré est RÉATTRIBUÉ, et le suivi se rouvre sur un manifeste qui
+    peut avoir des semaines : effacer « le 101 » d'un run de mars, c'est
+    effacer ce qui porte le 101 aujourd'hui.
+
+    Une fonction à part, et exécutable telle quelle : c'est ce qui la rend
+    vérifiable. Enfouie dans la commande, elle ne se testait qu'à travers deux
+    « shlex.quote » — et un garde qu'on ne sait pas éprouver s'OUVRE le jour
+    où il casse, au lieu de se fermer."""
+    q = shlex.quote(name)
+    return (
+        f"vu=$(qm config {int(vmid)} 2>/dev/null"
+        " | sed -n 's/^name: //p' | head -1); "
+        f'if [ "$vu" != {q} ]; then '
+        f'echo "REFUS : le VMID {int(vmid)} porte maintenant $vu,"'
+        f' "et non {name}. Rien n\'a ete efface."; exit 1; fi; '
+    )
+
+
+def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
     """Efface une VM sur son hôte PROXMOX, par son VMID.
 
     « virsh undefine <nom> » y aurait effacé le domaine LOCAL homonyme — le
-    même piège que partout ailleurs, avec la pire conséquence."""
+    même piège que partout ailleurs, avec la pire conséquence.
+
+    `name` arme le garde d'identité (voir `pve_identity_guard`) : sans lui, la
+    commande efface le VMID quoi qu'il porte aujourd'hui."""
     vmid = int((info or {}).get("vmid") or 0)
-    suite = (
+    suite = pve_identity_guard(vmid, name) if name else ""
+    suite += (
         f"qm stop {vmid} --skiplock 1 || true; "
-        f"qm destroy {vmid}{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
+        f"qm destroy {vmid}"
+        f"{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
     )
     return pve_host_cmd(info, suite)
 
@@ -1789,12 +1841,26 @@ def delete_lines(vm) -> list:
     ]
 
 
-def delete_vm_cmd(name: str, with_disks: bool) -> str:
+def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
     arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
-    disques à la demande."""
+    disques à la demande.
+
+    `uuid` arme un GARDE. Le suivi se rouvre sur un manifeste passé, et un nom
+    de domaine se réemploie : « erplibre-ubuntu-2604 » d'un run de mars n'est
+    pas forcément celui d'aujourd'hui. L'UUID, lui, naît avec le domaine et
+    meurt avec lui — c'est la seule chose qui distingue deux machines du même
+    nom."""
     q = shlex.quote(name)
-    cmd = (
+    cmd = ""
+    if uuid:
+        cmd = (
+            f"vu=$(sudo virsh domuuid {q} 2>/dev/null | tr -d '[:space:]'); "
+            f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
+            f'echo "REFUS : {name} n\'est plus le même domaine"'
+            f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
+        )
+    cmd += (
         f"sudo virsh destroy {q} 2>/dev/null; "
         f"sudo virsh undefine {q} --nvram 2>/dev/null "
         f"|| sudo virsh undefine {q}"
@@ -3081,10 +3147,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 if not yes:
                     return
                 info = vm.get("pve")
+                # Le garde d'identité voyage avec la VM : c'est ce qui
+                # rend une suppression sûre depuis un suivi ROUVERT, dont le
+                # manifeste peut avoir des semaines.
                 cmd = (
-                    delete_vm_cmd_pve(info)
+                    delete_vm_cmd_pve(info, name=vm["name"])
                     if info
-                    else delete_vm_cmd(vm["name"], True)
+                    else delete_vm_cmd(vm["name"], True, vm.get("uuid") or "")
                 )
                 with self.suspend():
                     print(f"\n=== Suppression — {vm['name']} ===")
