@@ -3358,6 +3358,30 @@ TRANSLATIONS = {
         "fr": "Taille (+10G pour ajouter, 40G pour une cible) : ",
         "en": "Size (+10G to add, 40G for a target): ",
     },
+    "pve-cluster is down: /etc/pve is not mounted.": {
+        "fr": "pve-cluster est à terre : /etc/pve n'est pas monté.",
+        "en": "pve-cluster is down: /etc/pve is not mounted.",
+    },
+    "Without it pvesm answers nothing, hence no storage.": {
+        "fr": "Sans lui, pvesm ne répond rien — d'où l'absence de stockage.",
+        "en": "Without it pvesm answers nothing, hence no storage.",
+    },
+    "The hostname only resolves to": {
+        "fr": "Le nom d'hôte ne résout que vers",
+        "en": "The hostname only resolves to",
+    },
+    "pmxcfs needs a routable address.": {
+        "fr": "pmxcfs exige une adresse routable.",
+        "en": "pmxcfs needs a routable address.",
+    },
+    "cloud-init rewrites /etc/hosts at every boot.": {
+        "fr": "cloud-init réécrit /etc/hosts à chaque démarrage.",
+        "en": "cloud-init rewrites /etc/hosts at every boot.",
+    },
+    "replay install_proxmox.sh on the host: it fixes /etc/hosts and stops cloud-init undoing it.": {
+        "fr": "rejouer install_proxmox.sh sur l'hôte : il corrige /etc/hosts et empêche cloud-init de le défaire.",
+        "en": "replay install_proxmox.sh on the host: it fixes /etc/hosts and stops cloud-init undoing it.",
+    },
     "No storage able to hold a VM disk.": {
         "fr": "Aucun stockage capable d'héberger un disque de VM.",
         "en": "No storage able to hold a VM disk.",

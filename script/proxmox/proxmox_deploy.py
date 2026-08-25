@@ -282,6 +282,52 @@ def parse_qm_list(text: str) -> list:
     return out
 
 
+# De quoi savoir POURQUOI il n'y a aucun stockage, en un aller-retour.
+#
+# « pvesm » ne parle qu'à travers /etc/pve, un système de fichiers monté par
+# pmxcfs. pmxcfs à terre, la commande répond « Connection refused » et la liste
+# est vide — l'écran conclut « il manque le stockage » alors que le défaut est
+# trois étages plus bas.
+CLUSTER_CHECK_CMD = (
+    "systemctl is-active pve-cluster 2>/dev/null || true; "
+    "echo '---ERPLIBRE-PVE-FS---'; "
+    # « .version » et non « storage.cfg » : ce dernier N'EXISTE PAS sur une
+    # installation neuve — Proxmox se contente alors de ses stockages par
+    # défaut, et « local » répond parfaitement. Le tester revenait à déclarer
+    # /etc/pve absent sur un hôte sain. « .version » est un fichier virtuel de
+    # pmxcfs : il est là si et seulement si le montage est là.
+    "test -e /etc/pve/.version && echo MONTE || echo ABSENT; "
+    "echo '---ERPLIBRE-HOSTNAME-IP---'; "
+    "hostname --ip-address 2>/dev/null || true"
+)
+
+
+def parse_cluster_check(text: str) -> dict:
+    """{"actif": bool, "monte": bool, "adresses": [...]} depuis
+    CLUSTER_CHECK_CMD.
+
+    `adresses` sans aucune adresse routable est la cause la plus fréquente :
+    pmxcfs parcourt les adresses du nom d'hôte jusqu'à en trouver une qui ne
+    soit pas de bouclage, et l'entrée « 127.0.1.1 <nom> » de l'image cloud le
+    mène dans le mur."""
+    brut = strip_ssh_noise(text or "")
+    tete, _, reste = brut.partition("---ERPLIBRE-PVE-FS---")
+    milieu, _, queue = reste.partition("---ERPLIBRE-HOSTNAME-IP---")
+    adresses = [
+        a
+        for a in queue.split()
+        if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", a) or ":" in a
+    ]
+    return {
+        "actif": "active" in tete and "inactive" not in tete,
+        "monte": "MONTE" in milieu,
+        "adresses": adresses,
+        "routables": [
+            a for a in adresses if not a.startswith("127.") and a != "::1"
+        ],
+    }
+
+
 def parse_storages(text: str) -> list:
     """Sortie de « pvesm status --content images » -> [{name, type, avail}]."""
     out = []

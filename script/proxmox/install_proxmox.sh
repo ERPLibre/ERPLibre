@@ -127,9 +127,48 @@ host_ip() {
     return 1
 }
 
+# Sans ceci, tout ce que fait fix_hosts est ANNULÉ au prochain démarrage.
+# L'image cloud Debian règle « manage_etc_hosts: True » : cloud-init réécrit
+# alors /etc/hosts depuis son gabarit à chaque boot, et y remet
+# « 127.0.1.1 <nom> ». pmxcfs, qui cherche une adresse non-bouclage pour le
+# nom d'hôte, ne démarre plus — /etc/pve n'est pas monté, « pvesm » répond
+# « Connection refused », et l'écran de déploiement conclut « il manque le
+# stockage ». Le vrai défaut est trois étages plus bas.
+#
+# Vécu, et révélé par le redémarrage désormais automatique : l'installation
+# corrigeait /etc/hosts, le reboot amorçait le noyau Proxmox, et cloud-init
+# défaisait la correction dans le même mouvement.
+#
+# Un fichier de surcharge plutôt qu'une édition de cloud.cfg : c'est la voie
+# que cloud-init documente, et une mise à jour du paquet ne l'écrase pas.
+freeze_cloud_hosts() {
+    local dossier=/etc/cloud/cloud.cfg.d
+    local fichier="${dossier}/99-erplibre-hosts.cfg"
+    [ -d /etc/cloud ] || return 0
+    if [ -f "${fichier}" ]; then
+        say "  cloud-init ne touche déjà plus à /etc/hosts"
+        return 0
+    fi
+    say "  cloud-init : gel de /etc/hosts (${fichier})"
+    if [ "${DRY}" = "1" ]; then
+        say "  ${Yellow}[dry-run]${Color_Off} manage_etc_hosts: false" \
+            "> ${fichier}"
+        return 0
+    fi
+    sudo mkdir -p "${dossier}"
+    printf '%s\n' \
+        "# Posé par ERPLibre : Proxmox exige que le nom d'hôte résolve vers" \
+        "# une adresse ROUTABLE. cloud-init y remettait 127.0.1.1 à chaque" \
+        "# démarrage, et pmxcfs ne démarrait plus." \
+        "manage_etc_hosts: false" \
+        | sudo tee "${fichier}" >/dev/null
+    CHANGED=1
+}
+
 fix_hosts() {
     local ip fqdn short
     ip="$(host_ip)" || die "aucune adresse IPv4 routable : réseau absent ?"
+    freeze_cloud_hosts
     short="$(hostname -s)"
     fqdn="$(hostname -f 2>/dev/null || echo "${short}")"
     [ "${fqdn}" = "${short}" ] && fqdn="${short}.local"
@@ -159,6 +198,42 @@ fix_hosts() {
         "« hostname --ip-address » rend « ${vu:-rien} » : le nom d'hôte ne" \
         "résout toujours pas vers une adresse routable."
     say "  hostname --ip-address : $(printf '%s ' ${routables})"
+    revive_pmxcfs
+}
+
+# pmxcfs abandonne après cinq essais rapprochés : systemd marque l'unité
+# « failed » et n'y revient JAMAIS de lui-même — « Start request repeated too
+# quickly ». Corriger /etc/hosts ne suffit donc pas ; sans ce coup de pouce,
+# l'hôte reste sans /etc/pve, donc sans stockage, et l'écran de déploiement
+# s'arrête sur « il manque le stockage ».
+#
+# « reset-failed » d'abord, sinon le démarrage est refusé sans même être tenté.
+revive_pmxcfs() {
+    command -v systemctl >/dev/null 2>&1 || return 0
+    [ -e /etc/pve/.version ] && return 0
+    say "  pve-cluster : /etc/pve n'est pas monté, relance"
+    if [ "${DRY}" = "1" ]; then
+        say "  ${Yellow}[dry-run]${Color_Off} systemctl reset-failed" \
+            "pve-cluster && systemctl start pve-cluster"
+        return 0
+    fi
+    sudo systemctl reset-failed pve-cluster 2>/dev/null || true
+    if sudo systemctl start pve-cluster 2>&1; then
+        CHANGED=1
+    fi
+    # Le montage n'est pas instantané : on le CONSTATE plutôt que de le
+    # supposer, et on le dit quand il n'arrive pas.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ -e /etc/pve/.version ] && break
+        sleep 1
+    done
+    if [ -e /etc/pve/.version ]; then
+        say "  ${Green}✓${Color_Off} /etc/pve monté"
+    else
+        say "  ${Yellow}⚠${Color_Off} /etc/pve toujours absent :" \
+            "journalctl -u pve-cluster -n 30"
+    fi
 }
 
 # --- 4. Dépôt et clé --------------------------------------------------------

@@ -786,5 +786,95 @@ class TestLeRepliQuiNeCoupePasLaLigne(unittest.TestCase):
         self.assertEqual(res.stderr, "", res.stderr)
 
 
+class TestPourquoiAucunStockage(unittest.TestCase):
+    """« Il manque le stockage » est un symptôme, pas une cause.
+
+    « pvesm » ne parle qu'à travers /etc/pve, monté par pmxcfs. pmxcfs à
+    terre, la commande répond « Connection refused », la liste est vide, et
+    l'écran s'arrête sur le symptôme — le défaut est trois étages plus bas.
+
+    Vécu sur un Proxmox imbriqué : le nom d'hôte ne résolvait que vers
+    127.0.1.1, parce que cloud-init réécrit /etc/hosts à CHAQUE démarrage. Le
+    redémarrage désormais automatique défaisait donc la correction que
+    l'installation venait de poser."""
+
+    def _sortie(self, actif, monte, adresses):
+        return (
+            f"{'active' if actif else 'inactive'}\n"
+            "---ERPLIBRE-PVE-FS---\n"
+            f"{'MONTE' if monte else 'ABSENT'}\n"
+            "---ERPLIBRE-HOSTNAME-IP---\n"
+            f"{' '.join(adresses)}\n"
+        )
+
+    def test_a_healthy_host(self):
+        lu = pve.parse_cluster_check(
+            self._sortie(True, True, ["10.10.10.152"])
+        )
+        self.assertTrue(lu["monte"])
+        self.assertEqual(lu["routables"], ["10.10.10.152"])
+
+    def test_the_loopback_only_case(self):
+        lu = pve.parse_cluster_check(self._sortie(False, False, ["127.0.1.1"]))
+        self.assertFalse(lu["monte"])
+        self.assertEqual(lu["routables"], [])
+        self.assertEqual(lu["adresses"], ["127.0.1.1"])
+
+    def test_the_probe_does_not_ask_for_storage_cfg(self):
+        """storage.cfg N'EXISTE PAS sur une installation neuve.
+
+        Proxmox se contente alors de ses stockages par défaut, et « local »
+        répond parfaitement — mesuré sur l'hôte imbriqué, où /etc/pve était
+        monté sans ce fichier. Le tester revenait à déclarer /etc/pve absent
+        sur un hôte sain."""
+        self.assertNotIn("storage.cfg", pve.CLUSTER_CHECK_CMD)
+        self.assertIn("/etc/pve/.version", pve.CLUSTER_CHECK_CMD)
+
+    def test_inactive_is_not_read_as_active(self):
+        # « inactive » contient « active » : la naïveté coûterait un
+        # diagnostic inversé.
+        lu = pve.parse_cluster_check(self._sortie(False, False, []))
+        self.assertFalse(lu["actif"])
+
+
+class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
+    """Deux gestes que l'installation ne faisait pas, et sans lesquels elle
+    laissait un hôte inutilisable."""
+
+    @classmethod
+    def setUpClass(cls):
+        from pathlib import Path as P
+
+        cls.src = P("script/proxmox/install_proxmox.sh").read_text(
+            encoding="utf-8"
+        )
+
+    def test_cloud_init_stops_rewriting_etc_hosts(self):
+        # Sans ce gel, tout ce que fait fix_hosts est ANNULÉ au prochain
+        # démarrage — celui que nous déclenchons nous-mêmes désormais.
+        self.assertIn("manage_etc_hosts: false", self.src)
+        self.assertIn("/etc/cloud/cloud.cfg.d", self.src)
+        self.assertIn("freeze_cloud_hosts", self.src)
+
+    def test_a_failed_pmxcfs_is_revived(self):
+        # systemd marque l'unité « failed » après cinq essais rapprochés et
+        # n'y revient jamais seul : corriger /etc/hosts ne suffit pas.
+        self.assertIn("reset-failed pve-cluster", self.src)
+        self.assertIn("start pve-cluster", self.src)
+
+    def test_the_mount_is_verified_not_assumed(self):
+        self.assertIn("/etc/pve/.version", self.src)
+
+    def test_the_script_is_valid_shell(self):
+        import subprocess
+
+        res = subprocess.run(
+            ["bash", "-n", "script/proxmox/install_proxmox.sh"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

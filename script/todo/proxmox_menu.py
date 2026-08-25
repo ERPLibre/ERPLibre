@@ -648,6 +648,43 @@ class ProxmoxMenuMixin:
         parts = (sortie or "").split()
         return parts[parts.index("dev") + 1] if "dev" in parts else ""
 
+    def _pve_cluster_reason(self, host):
+        """Pourquoi il n'y a AUCUN stockage. Liste vide si tout va bien.
+
+        « Il manque le stockage » est un symptôme, pas une cause : « pvesm »
+        ne parle qu'à travers /etc/pve, monté par pmxcfs. pmxcfs à terre, la
+        liste est vide et l'écran s'arrête sur le symptôme — le défaut est
+        trois étages plus bas, et il a fallu lire un journal pour le trouver.
+
+        La cause la plus fréquente sur une image cloud : le nom d'hôte ne
+        résout que vers 127.0.1.1. pmxcfs cherche une adresse NON-bouclage et
+        n'en trouve pas. Notre installeur corrige /etc/hosts, mais cloud-init
+        le réécrit à chaque démarrage — donc la correction ne survivait pas au
+        redémarrage que nous faisons maintenant nous-mêmes."""
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(host, pve.CLUSTER_CHECK_CMD, 40)
+        etat = pve.parse_cluster_check(out)
+        if etat["monte"]:
+            return []
+        lignes = [
+            f"✗ {t('pve-cluster is down: /etc/pve is not mounted.')}",
+            f"  {t('Without it pvesm answers nothing, hence no storage.')}",
+        ]
+        if not etat["routables"]:
+            lignes += [
+                f"  {t('The hostname only resolves to')}"
+                f" {' '.join(etat['adresses']) or '?'}"
+                f" — {t('pmxcfs needs a routable address.')}",
+                f"  {t('cloud-init rewrites /etc/hosts at every boot.')}",
+            ]
+        conseil = t(
+            "replay install_proxmox.sh on the host: it fixes /etc/hosts"
+            " and stops cloud-init undoing it."
+        )
+        lignes.append(f"→ {conseil}")
+        return lignes
+
     def _pve_internal_cidr(self, host):
         """Réseau du futur pont interne, CHOISI d'après l'hôte.
 
@@ -863,6 +900,12 @@ class ProxmoxMenuMixin:
         vms = self._pve_vms()
         _c, out = self._pve_show("pvesm status --content images", quiet=True)
         stockages = pve.parse_storages(out)
+        if not stockages:
+            # AVANT d'ouvrir l'écran : une fois Textual à l'affiche, ces
+            # lignes n'ont plus d'endroit où aller, et l'écran ne dirait que
+            # « aucun stockage ».
+            for ligne in self._pve_cluster_reason(host):
+                print(f"  {ligne}")
         _c, out = self._pve_show("ip -o link show type bridge", quiet=True)
         ponts = pve.parse_bridges(out)
         if not ponts:
@@ -1685,6 +1728,9 @@ class ProxmoxMenuMixin:
         pont = pve.pick_bridge(ponts)
         if not stockage:
             print(f"\n  ✗ {t('No storage able to hold a VM disk.')}")
+            # Le symptôme ne suffit pas : dire la CAUSE quand on la connaît.
+            for ligne in self._pve_cluster_reason(host):
+                print(f"  {ligne}")
             return
         if not pont and not dry_run:
             pont = self._pve_offer_bridge()
