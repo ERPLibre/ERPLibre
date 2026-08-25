@@ -26,6 +26,10 @@ tous les fragments, et lire un widget absent ne doit pas casser l'écran.
 
 from script.todo.deploy_form_lib import FREE, t
 
+# « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
+# rendrait indistinguable de la sentinelle « rien de sélectionné ».
+SERVER = "__server__"
+
 # Ce que l'écran lit du contexte. Une seule liste, parce que les deux
 # formulaires doivent en recevoir autant : c'est en fournissant un
 # sous-ensemble que l'écran Proxmox avait perdu la moitié des réglages.
@@ -122,9 +126,18 @@ class ExtrasMixin:
     `render_extras()` après chaque recalcul et `extras_values()` au moment de
     bâtir sa spec."""
 
-    def extras_init(self, ctx) -> None:
-        """À appeler dans `__init__`, avant tout `compose`."""
+    def extras_init(self, ctx, branches=(), profiles=()) -> None:
+        """À appeler dans `__init__`, avant tout `compose`.
+
+        `branches` et `profiles` viennent du formulaire et non du contexte :
+        chacun les ordonne à sa façon (branch_order) et l'écran les propose
+        dans cet ordre-là. Ce sont les mêmes listes que portent les rangées."""
         self._extras = extras_tables(ctx)
+        self._extras["branches"] = list(branches)
+        self._extras["profiles"] = list(profiles)
+        self._extras["distro_profiles"] = dict(
+            ctx.get("distro_profiles") or {}
+        )
 
     # ------------------------------------------------------------------ #
     # Les widgets
@@ -309,6 +322,165 @@ class ExtrasMixin:
 
     def _extras_disk_gb(self, vm, tools) -> int:
         return extras_disk_gb(vm, tools, self._extras)
+
+    # ------------------------------------------------------------------ #
+    # Une rangée du plan : branche, profil, type — par VM
+    # ------------------------------------------------------------------ #
+    def _branch(self) -> str:
+        """Branche du formulaire : le défaut de chaque VM."""
+        widget = self._widget("#f_branch")
+        valeur = widget.value if widget is not None else None
+        branches = self._extras["branches"]
+        return valeur if isinstance(valeur, str) else (branches or [""])[0]
+
+    def _profile_cmd(self) -> str:
+        """Commande du profil choisi en haut : le défaut de chaque VM."""
+        profiles = self._extras["profiles"]
+        widget = self._widget("#f_profile_install")
+        if not profiles or widget is None:
+            return ""
+        index = widget.value
+        return profiles[index if isinstance(index, int) else 0][1]
+
+    def _row_default_cmd(self, i) -> str:
+        """Commande qu'une rangée prend d'elle-même : celle que son système
+        impose, sinon le choix commun d'en haut.
+
+        C'est le défaut CONTRE LEQUEL on compare une saisie : sur une VM
+        Proxmox, choisir Odoo 18 est une vraie surcharge même quand c'est
+        aussi la valeur commune."""
+        if i < len(self.rows):
+            impose = self._extras["distro_profiles"].get(
+                self.rows[i]["vm"]["distro"]
+            )
+            if impose:
+                return impose[1]
+        return self._profile_cmd()
+
+    def _row_profile_index(self, i) -> int:
+        """Rang du profil que la rangée doit AFFICHER."""
+        cmd = ""
+        if i < len(self.rows):
+            cmd = self.rows[i]["vm"].get("install_cmd") or ""
+        cmd = cmd or self._row_default_cmd(i)
+        for k, (_lbl, c) in enumerate(self._extras["profiles"]):
+            if c == cmd:
+                return k
+        return 0
+
+    def _type_options(self):
+        return [(t("Server"), SERVER)] + [
+            (label, key) for key, label in self._extras["desktops"]
+        ]
+
+    def install_row_widgets(self, i, null=None):
+        """Les trois choix qu'une VM peut prendre à elle seule.
+
+        Ici et non dans un formulaire : ce sont les mêmes trois des deux
+        côtés, et ils manquaient à l'écran Proxmox — où l'on déploie pourtant
+        le plus souvent un parc MIXTE, un hyperviseur imbriqué à côté de VM
+        ERPLibre."""
+        from textual.widgets import Select, Static
+
+        tab = self._extras
+        if null is None:
+            null = getattr(Select, "NULL", Select.BLANK)
+        vm = self.rows[i]["vm"] if i < len(self.rows) else {}
+        widgets = [
+            Select(
+                [(b, b) for b in tab["branches"]],
+                classes="vmbranch",
+                # Repli sur la branche du FORMULAIRE, jamais sur branches[0] :
+                # les rangées sont remontées dès que le jeu de VM change (une
+                # entrée cochée, une copie ajoutée, un renommage), et elles
+                # retombaient alors toutes sur « develop » quel que soit le
+                # choix commun.
+                value=vm.get("branch") or self._branch(),
+                allow_blank=False,
+                id=f"v{i}_branch",
+            ),
+            (
+                Select(
+                    [(lbl, k) for k, (lbl, _c) in enumerate(tab["profiles"])],
+                    value=self._row_profile_index(i),
+                    allow_blank=False,
+                    classes="vmprof",
+                    id=f"v{i}_prof",
+                )
+                if tab["profiles"]
+                else Static("", classes="vmprof")
+            ),
+        ]
+        if tab["desktops"]:
+            widgets.append(
+                Select(
+                    self._type_options(),
+                    value=vm.get("desktop") or SERVER,
+                    allow_blank=False,
+                    id=f"v{i}_type",
+                )
+            )
+        return widgets
+
+    def extras_on_row_select(self, event, index, field, null=None) -> bool:
+        """Traite branche / profil / type d'UNE rangée. True quand c'est fait.
+
+        Ce que ces trois partagent, et qui n'est pas évident : poser
+        « value= » au montage fait émettre un Changed que Textual délivre
+        APRÈS coup, et un verrou temporel ne l'attrape pas — mesuré, les
+        champs de chaque VM se retrouvaient surchargés dès l'affichage et le
+        profil x1..x4 devenait inopérant. On compare donc à ce que le modèle
+        dit DÉJÀ : une valeur identique n'est pas une saisie, c'est l'écho.
+
+        Cas limite assumé : choisir explicitement la valeur que le profil
+        donne déjà n'enregistre pas de surcharge. La VM suivra donc le profil
+        s'il change — ce qui est aussi le plus attendu quand on n'a rien
+        changé de visible."""
+        if field not in ("branch", "prof", "type"):
+            return False
+        vm_now = self.rows[index]["vm"]
+        if field == "prof":
+            # L'écho se reconnaît à ceci : la valeur est CELLE QU'ON VIENT
+            # D'AFFICHER. Comparer les commandes ne suffisait pas — quand la
+            # commande imposée par le système n'est pas dans la liste
+            # proposée, la liste retombe sur le rang 0, et l'écho de ce
+            # rang 0 effaçait l'imposition. Un Proxmox imbriqué reprenait
+            # ainsi ERPLibre et Odoo 18, le défaut qu'on venait de corriger.
+            if event.value == self._row_profile_index(index):
+                return True
+            label, cmd = self._extras["profiles"][event.value]
+            defaut = self._row_default_cmd(index)
+            if cmd == (vm_now.get("install_cmd") or defaut):
+                return True
+            meme = cmd == defaut
+            self._set_override(index, "install_cmd", "" if meme else cmd)
+            self._set_override(index, "install_label", "" if meme else label)
+            self._recompute()
+            return True
+        if field == "branch":
+            # « la branche du formulaire » n'est pas une surcharge : la VM
+            # doit suivre si on la change en haut.
+            if event.value == (vm_now.get("branch") or self._branch()):
+                return True
+            self._set_override(
+                index,
+                "branch",
+                "" if event.value == self._branch() else event.value,
+            )
+            self._recompute()
+            return True
+        nouveau = "" if event.value == SERVER else event.value
+        if nouveau == (vm_now.get("desktop") or ""):
+            return True
+        self._set_override(index, "desktop", nouveau)
+        # « Serveur » est un choix légitime, pas un retrait : on le note
+        # explicitement pour qu'il tienne face au défaut.
+        if event.value == SERVER:
+            cle = self._row_key(index)
+            if cle is not None:
+                self.overrides.setdefault(cle, {})["desktop"] = ""
+        self._recompute()
+        return True
 
     # ------------------------------------------------------------------ #
     # Redessiner

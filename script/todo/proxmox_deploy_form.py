@@ -187,7 +187,14 @@ def run_proxmox_form(ctx, run_app: bool = True):
             + """
         SelectionList { height: 10; border: solid $panel; }
         RadioSet { height: auto; layout: horizontal; }
+        /* Ces deux règles portent « .vmrow Select » EN PLUS de leur
+        classe : « .vmrow Select » (une classe + un type) l'emporte sur
+        « .vmbranch » (une classe) par spécificité CSS. Écrites simplement,
+        elles étaient silencieusement écrasées. La branche porte des noms
+        longs (« 1.6.0 », « develop », « feature/xyz ») : trop étroite, la
+        liste les tronque et on ne sait plus ce qu'on a choisi. */
         .vmrow Select.vmbranch { width: 34; }
+        .vmrow Select.vmprof { width: 40; }
         #hostline { height: 1; color: $accent; padding: 0 1; }
         """
         )
@@ -210,7 +217,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._syncing = False
             # La liste des ponts GRANDIT : l'écran sait en créer un.
             self._ponts = list(ponts)
-            self.extras_init(ctx)
+            self.extras_init(ctx, branches, profiles)
 
         # ---------------------------------------------------------------- #
         # L'écran
@@ -594,6 +601,11 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         if item.get("instance")
                         else Static("", classes="vmcopy")
                     ),
+                    # Branche, profil, type — par VM. On déploie ici le plus
+                    # souvent un parc MIXTE : un hyperviseur Proxmox imbriqué
+                    # à côté de VM ERPLibre, et l'écran n'offrait qu'un choix
+                    # commun pour les deux.
+                    *self.install_row_widgets(i, SELECT_NULL),
                     classes="vmrow",
                 )
                 cartes.append(
@@ -739,6 +751,14 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if ident in ("f_storage", "f_bridge"):
                 self._refresh_after()
                 return
+            if ident in ("f_branch", "f_profile_install"):
+                # Un réglage commun reprend la main sur les VM non figées :
+                # c'est le sens même du mot « commun ».
+                self._clear_overrides(
+                    ("branch",) if ident == "f_branch" else ("install_cmd",)
+                )
+                self._refresh_after(remonter=True)
+                return
             # Réglage commun : « libre… » révèle la saisie, une valeur
             # s'applique à toutes les VM non figées.
             champ = SELECT_TO_FIELD.get(ident)
@@ -755,9 +775,16 @@ def run_proxmox_form(ctx, run_app: bool = True):
             # Réglage d'UNE rangée.
             if ident.startswith("v") and "_" in ident:
                 rang, champ = ident[1:].split("_", 1)
-                if not rang.isdigit() or champ not in RES_FIELDS:
+                if not rang.isdigit():
                     return
                 index = int(rang)
+                if index >= len(self.rows):
+                    return
+                if self.extras_on_row_select(event, index, champ):
+                    self._refresh_after()
+                    return
+                if champ not in RES_FIELDS:
+                    return
                 if event.value is FREE:
                     self._row_free(index, champ, True)
                     self._set_override(

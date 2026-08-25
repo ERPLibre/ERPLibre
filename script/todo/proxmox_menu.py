@@ -1427,6 +1427,21 @@ class ProxmoxMenuMixin:
         }
         finale = cartes if self._qemu_per_vm(cartes, commun) else commun
         branche = (install or {}).get("branch") or ""
+        # Même règle pour la branche et pour le type de VM : depuis que le
+        # plan les porte PAR RANGÉE, lire la seule valeur commune revenait à
+        # jeter le choix. Un parc mixte — un hyperviseur imbriqué à côté de VM
+        # ERPLibre — est justement ce qu'on déploie ici le plus souvent.
+        branches_vm = {
+            vm["name"]: (vm.get("branch") or branche) for vm in joignables
+        }
+        if self._qemu_per_vm(branches_vm, branche):
+            branche = branches_vm
+        bureau = spec.get("desktop") or ""
+        bureaux = {
+            vm["name"]: (vm.get("desktop") or bureau) for vm in joignables
+        }
+        if self._qemu_per_vm(bureaux, bureau):
+            bureau = bureaux
         if suivi:
             # Rien à installer ? La commande distante regarde alors la VM
             # ARRIVER (cloud-init, puis relevé système) : c'est ce que le
@@ -1458,7 +1473,7 @@ class ProxmoxMenuMixin:
                 # Les réglages du système invité, qui n'atteignaient pas la
                 # commande distante : la VM naissait serveur nu, sans outils.
                 prod=bool(spec.get("prod")),
-                desktop=spec.get("desktop") or "",
+                desktop=bureau,
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
@@ -1477,16 +1492,17 @@ class ProxmoxMenuMixin:
             return resultat
         # Sans suivi mais avec quelque chose à installer : en série, sortie à
         # l'écran. C'est le pendant exact de la voie QEMU/KVM.
-        print(f"\n{t('Installing ERPLibre on each VM')} ({branche})…")
+        etiquette = branche if isinstance(branche, str) else t("per VM")
+        print(f"\n{t('Installing ERPLibre on each VM')} ({etiquette})…")
         for vm in joignables:
             self._qemu_install_erplibre_vm(
                 vm["name"],
                 cle_locale,
-                branche,
+                branches_vm.get(vm["name"], ""),
                 alias.get(vm["name"], vm["name"]),
                 vm.get("install_cmd") or commun,
                 bool(spec.get("prod")),
-                desktop=spec.get("desktop") or "",
+                desktop=bureaux.get(vm["name"], ""),
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),

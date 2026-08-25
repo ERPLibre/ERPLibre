@@ -4351,6 +4351,10 @@ TRANSLATIONS = {
         "fr": "Clonage d'ERPLibre sur chaque VM",
         "en": "Cloning ERPLibre on each VM",
     },
+    "per VM": {
+        "fr": "par VM",
+        "en": "per VM",
+    },
     "Installing ERPLibre on each VM": {
         "fr": "Installation d'ERPLibre sur chaque VM",
         "en": "Installing ERPLibre on each VM",

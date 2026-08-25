@@ -70,7 +70,7 @@ from script.todo.deploy_form_lib import (  # noqa: F401
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
-from script.todo.deploy_form_extras import ExtrasMixin
+from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_plan import (  # noqa: F401
     PlanMixin,
     preview_screen,
@@ -128,8 +128,6 @@ def run_deploy_form(ctx, run_app: bool = True):
     total_disk = ctx.get("total_disk") or 0
     base_vcpus = ctx.get("base_vcpus") or 2
     extra_disk = ctx.get("extra_disk_gb") or 0
-    # [(clé, libellé)] — la liste vient de todo.py, source unique.
-    desktops = list(ctx.get("desktops") or [])
     # {clé de saveur: suffixe de nom}, fourni par todo.py qui décrit les
     # saveurs — on ne le redéfinit pas ici.
     desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
@@ -137,9 +135,6 @@ def run_deploy_form(ctx, run_app: bool = True):
     result = {"spec": None}
 
     AUTO = "__auto__"
-    # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
-    # rendrait indistinguable de la sentinelle « rien de sélectionné ».
-    SERVER = "__server__"
 
     def entry_label(e):
         star = " *" if e.get("default") else ""
@@ -194,7 +189,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._syncing = False
             # Jeu de VM actuellement monté dans le panneau droit.
             self._shown_ids = ()
-            self.extras_init(ctx)
+            self.extras_init(ctx, branches, profiles)
             # Génération du jeu de rangées monté. Les identifiants de widgets
             # portent un RANG, et le rang se décale quand on coche ou décoche
             # une entrée : un événement émis par un widget déjà détruit
@@ -518,48 +513,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._render_plan()
             self.render_extras()
 
-        def _profile_cmd(self):
-            """Commande du profil choisi en haut : le défaut de chaque VM."""
-            if not profiles:
-                return ""
-            index = self.query_one("#f_profile_install", Select).value
-            return profiles[index if isinstance(index, int) else 0][1]
-
-        def _row_default_cmd(self, i):
-            """Commande qu'une rangée prend d'elle-même : celle que son
-            système impose, sinon le choix commun d'en haut.
-
-            C'est le défaut CONTRE LEQUEL on compare une saisie : sur une VM
-            Proxmox, choisir Odoo 18 est une vraie surcharge même quand c'est
-            aussi la valeur commune."""
-            if i < len(self.rows):
-                impose = distro_profiles.get(self.rows[i]["vm"]["distro"])
-                if impose:
-                    return impose[1]
-            return self._profile_cmd()
-
-        def _row_profile_index(self, i):
-            """Rang du profil que la rangée doit AFFICHER."""
-            cmd = ""
-            if i < len(self.rows):
-                cmd = self.rows[i]["vm"].get("install_cmd") or ""
-            cmd = cmd or self._row_default_cmd(i)
-            for k, (_lbl, c) in enumerate(profiles):
-                if c == cmd:
-                    return k
-            return 0
-
-        def _branch(self):
-            """Branche du formulaire : le défaut de chaque VM."""
-            value = self.query_one("#f_branch", Select).value
-            return value if isinstance(value, str) else branches[0]
-
         # -- panneau droit : une rangée de widgets par VM ---------------- #
-        def _type_options(self):
-            return [(t("Server"), SERVER)] + [
-                (label, key) for key, label in desktops
-            ]
-
         def _mount_rows(self) -> None:
             """(Re)construit le panneau droit.
 
@@ -610,40 +564,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         if item.get("instance")
                         else Static("", classes="vmcopy")
                     ),
-                    Select(
-                        [(b, b) for b in branches],
-                        classes="vmbranch",
-                        # Repli sur la branche du FORMULAIRE, jamais sur
-                        # branches[0] : les rangées sont remontées dès que le
-                        # jeu de VM change (une entrée cochée, une copie
-                        # ajoutée, un renommage), et elles retombaient alors
-                        # toutes sur « develop » quel que soit le choix commun.
-                        value=(
-                            self.rows[i]["vm"].get("branch")
-                            if i < len(self.rows)
-                            else ""
-                        )
-                        or self._branch(),
-                        allow_blank=False,
-                        id=f"v{i}_branch",
-                    ),
-                    (
-                        Select(
-                            [(lbl, i) for i, (lbl, _c) in enumerate(profiles)],
-                            value=self._row_profile_index(i),
-                            allow_blank=False,
-                            classes="vmprof",
-                            id=f"v{i}_prof",
-                        )
-                        if profiles
-                        else Static("", classes="vmprof")
-                    ),
-                    Select(
-                        self._type_options(),
-                        value=vm.get("desktop") or SERVER,
-                        allow_blank=False,
-                        id=f"v{i}_type",
-                    ),
+                    *self.install_row_widgets(i, SELECT_NULL),
                     classes="vmrow",
                 )
                 widgets.append(
@@ -854,63 +775,18 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # profil donne déjà n'enregistre pas de surcharge. La VM
                 # suivra donc le profil s'il change — ce qui est aussi le plus
                 # attendu quand on n'a rien changé de visible.
-                vm_now = self.rows[index]["vm"]
-                if field == "prof":
-                    label, cmd = profiles[event.value]
-                    if cmd == (
-                        vm_now.get("install_cmd")
-                        or self._row_default_cmd(index)
-                    ):
-                        return
-                    same = cmd == self._row_default_cmd(index)
-                    self._set_override(
-                        index, "install_cmd", "" if same else cmd
-                    )
-                    self._set_override(
-                        index, "install_label", "" if same else label
-                    )
-                    self._recompute()
+                if self.extras_on_row_select(event, index, field):
                     return
-                if field == "branch":
-                    # « la branche du formulaire » n'est pas une surcharge :
-                    # la VM doit suivre si on la change en haut.
-                    current = vm_now.get("branch") or self._branch()
-                    if event.value == current:
-                        return
-                    self._set_override(
-                        index,
-                        "branch",
-                        "" if event.value == self._branch() else event.value,
-                    )
-                    self._recompute()
-                    return
-                if field == "type":
-                    new_desk = "" if event.value == SERVER else event.value
-                    if new_desk == (vm_now.get("desktop") or ""):
-                        return
-                elif (
-                    event.value is not FREE and event.value is not SELECT_NULL
-                ):
-                    if self._row_echo(index, field, event.value):
-                        return
-                if field == "type":
-                    self._set_override(
-                        index,
-                        "desktop",
-                        "" if event.value == SERVER else event.value,
-                    )
-                    # « Serveur » est un choix légitime, pas un retrait : on le
-                    # note explicitement pour qu'il tienne face au défaut.
-                    if event.value == SERVER:
-                        key = self._row_key(index)
-                        if key is not None:
-                            self.overrides.setdefault(key, {})["desktop"] = ""
-                elif event.value is FREE:
+                # Ne restent ici que les RESSOURCES : elles n'ont pas de
+                # défaut à comparer, mais une saisie libre à révéler.
+                if event.value is FREE:
                     self._row_free(index, field, True)
                     self._set_override(
                         index, field, self._read_row_free(index, field)
                     )
                 elif event.value is not SELECT_NULL:
+                    if self._row_echo(index, field, event.value):
+                        return
                     self._row_free(index, field, False)
                     self._set_override(index, field, event.value)
                 self._recompute()

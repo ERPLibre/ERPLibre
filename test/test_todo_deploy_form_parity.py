@@ -108,6 +108,7 @@ def releve(fabrique, ctx, gestes=None):
             vu["ids"] = {w.id for w in app.query("#fields *") if w.id}
             vu["spec"] = app._form_values()
             vu["noms"] = [r["vm"]["name"] for r in app.rows]
+            vu["rangee"] = [w.id for w in app.query("#plan *") if w.id]
             vu["disques"] = [r["disk_gb"] for r in app.rows]
 
     asyncio.run(scenario())
@@ -162,6 +163,17 @@ class TestLesDeuxEcrans(unittest.TestCase):
         vide = Vide()
         vide.extras_init({})
         return vide
+
+    def test_both_screens_offer_the_same_per_vm_choices(self):
+        """Branche, profil, type : ce qu'une VM peut prendre à elle seule.
+
+        L'écran Proxmox n'en offrait aucun, alors qu'on y déploie le plus
+        souvent un parc MIXTE — un hyperviseur imbriqué à côté de VM
+        ERPLibre — c'est-à-dire le cas où ils servent le plus."""
+        for ident in ("v0_branch", "v0_prof", "v0_type"):
+            with self.subTest(reglage=ident):
+                self.assertIn(ident, self.qemu["rangee"], "QEMU/KVM")
+                self.assertIn(ident, self.pve["rangee"], "Proxmox")
 
     def test_both_screens_bind_the_same_catalog_shortcuts(self):
         # « Versions principales » (F7) manquait à l'écran Proxmox, qui

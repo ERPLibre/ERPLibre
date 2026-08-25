@@ -598,6 +598,94 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
             )
 
 
+class TestUnParcMixte(unittest.TestCase):
+    """Le plan porte branche, profil et type PAR RANGÉE — le déploiement
+    lisait encore la seule valeur commune.
+
+    C'est le cas qu'on déploie le plus souvent sur un Proxmox : un
+    hyperviseur imbriqué à côté de VM ERPLibre. Une seule VM qui porte sa
+    propre valeur suffit à rendre la carte nécessaire — « len(set) > 1 » ne
+    l'aurait pas vu, et tout le parc serait retombé sur le commun."""
+
+    def _capture(self, vms):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        vu = {}
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._ssh_config_block = lambda nom: {}
+        todo._qemu_list_domains = lambda: []
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+
+        def prise(noms, branche, alias, finale, **kw):
+            vu.update(branche=branche, finale=finale, kw=kw)
+
+        todo._qemu_install_erplibre_monitored = prise
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": vms,
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {
+                "branch": "develop",
+                "cmd": "make install_odoo_18",
+                "label": "X",
+            },
+            "monitor": True,
+            "desktop": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(
+                spec["host"], spec, [v["name"] for v in vms], ""
+            )
+        return vu
+
+    def _vm(self, nom, **extra):
+        base = {
+            "name": nom,
+            "vmid": 100,
+            "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+            "install_cmd": "",
+        }
+        base.update(extra)
+        return base
+
+    def test_a_single_vm_with_its_own_branch_forces_the_map(self):
+        vu = self._capture(
+            [
+                self._vm("vm-a", branch="master"),
+                self._vm("vm-b", vmid=101),
+            ]
+        )
+        self.assertEqual(vu["branche"], {"vm-a": "master", "vm-b": "develop"})
+
+    def test_a_uniform_fleet_keeps_the_common_value(self):
+        vu = self._capture([self._vm("vm-a"), self._vm("vm-b", vmid=101)])
+        self.assertEqual(vu["branche"], "develop")
+
+    def test_a_per_vm_desktop_reaches_the_install(self):
+        vu = self._capture(
+            [
+                self._vm("vm-a", desktop="gnome"),
+                self._vm("vm-b", vmid=101),
+            ]
+        )
+        self.assertEqual(vu["kw"]["desktop"], {"vm-a": "gnome", "vm-b": ""})
+
+    def test_a_uniform_fleet_keeps_the_common_desktop(self):
+        vu = self._capture([self._vm("vm-a"), self._vm("vm-b", vmid=101)])
+        self.assertEqual(vu["kw"]["desktop"], "")
+
+
 class TestLEcranDUneVmProxmox(unittest.TestCase):
     """« Console de l'hyperviseur » conseillait des commandes virsh sur une
     machine qui n'a pas libvirt.
