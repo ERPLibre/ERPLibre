@@ -1483,6 +1483,13 @@ class ProxmoxMenuMixin:
                 f"  ERPLibre : {spec['install'].get('label') or ''}"
                 f"  ({spec['install'].get('branch')})"
             )
+            # La VM CLONE la branche depuis le dépôt distant : tout ce qui
+            # tourne dedans — install_proxmox.sh compris — vient de là, pas
+            # d'ici. Un correctif non poussé est invisible pour elle.
+            for ligne in self._qemu_branch_gap_lines(
+                spec["install"].get("branch") or ""
+            ):
+                print(f"  {ligne}")
         return self._is_yes_default_yes(
             input(f"\n{t('Deploy this VM now? (Y/n): ')}")
         )

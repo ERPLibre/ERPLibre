@@ -885,6 +885,12 @@ class QemuDeployMixin:
                 f"  {t('Install:')} {t('branch')} {br_txt}, "
                 f"{t('profile')} {lb_txt}, {env}"
             )
+            # La VM ne reçoit pas CE checkout : elle CLONE la branche depuis
+            # le dépôt distant. Un correctif commité ici et non poussé n'y est
+            # donc pas, et le défaut « revient » alors qu'il est corrigé —
+            # vécu deux fois de suite sur install_proxmox.sh.
+            for ligne in self._qemu_branch_gap_lines(br_txt):
+                print(f"  {ligne}")
         else:
             print(f"  {t('Install:')} {t('no')}")
         flavour = spec.get("desktop")

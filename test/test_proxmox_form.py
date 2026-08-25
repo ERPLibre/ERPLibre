@@ -686,6 +686,82 @@ class TestUnParcMixte(unittest.TestCase):
         self.assertEqual(vu["kw"]["desktop"], "")
 
 
+class TestLaVmCloneLeDepotDistant(unittest.TestCase):
+    """« Le problème est revenu » — alors qu'il était corrigé.
+
+    La VM ne reçoit pas le checkout d'ici : elle CLONE la branche depuis le
+    dépôt DISTANT. Tout ce qui tourne dedans — install_proxmox.sh, les
+    scripts d'installation, le Makefile — vient donc de là. Un correctif
+    commité ici et non poussé lui est invisible.
+
+    Vécu deux fois de suite : la correction de /etc/hosts était dans le
+    checkout depuis la veille, absente du distant, et chaque VM déployée
+    ensuite recevait l'ancien script. Il a fallu comparer les deux versions à
+    la main pour le voir. Rien ne le disait."""
+
+    def _todo(self, sortie, code=0):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        faux = mock.Mock(returncode=code, stdout=sortie)
+        return todo, faux
+
+    def test_the_gap_is_counted_and_named(self):
+        todo, faux = self._todo(
+            "abc1234 [FIX] un correctif\ndef5678 [ADD] autre chose\n"
+        )
+        with mock.patch("subprocess.run", return_value=faux):
+            nombre, sujets = todo._qemu_branch_gap("develop")
+        self.assertEqual(nombre, 2)
+        self.assertIn("[FIX] un correctif", sujets[0])
+
+    def test_nothing_to_say_when_the_remote_is_up_to_date(self):
+        todo, faux = self._todo("")
+        with mock.patch("subprocess.run", return_value=faux):
+            self.assertEqual(todo._qemu_branch_gap("develop"), (0, []))
+            self.assertEqual(todo._qemu_branch_gap_lines("develop"), [])
+
+    def test_an_unknown_remote_branch_is_not_a_gap(self):
+        # « origin/xyz » inconnu fait échouer git : ce n'est pas un écart à
+        # signaler, c'est une question qui ne se pose pas. Le dire quand même
+        # serait un avertissement à chaque déploiement d'une branche neuve.
+        todo, faux = self._todo("", code=128)
+        with mock.patch("subprocess.run", return_value=faux):
+            self.assertEqual(todo._qemu_branch_gap("nouvelle"), (0, []))
+
+    def test_no_branch_asks_nothing(self):
+        todo, _faux = self._todo("")
+        self.assertEqual(todo._qemu_branch_gap(""), (0, []))
+
+    def test_the_long_list_is_trimmed_but_counted(self):
+        todo, faux = self._todo(
+            "\n".join(f"c{i} sujet {i}" for i in range(10))
+        )
+        with mock.patch("subprocess.run", return_value=faux):
+            lignes = todo._qemu_branch_gap_lines("develop", limite=2)
+        texte = " ".join(lignes)
+        self.assertIn("10", texte, "le nombre TOTAL doit rester lisible")
+        self.assertIn("8", texte, "et ce qui n'est pas montré, dit")
+        self.assertIn("git push", texte)
+
+    def test_both_screens_say_it_before_deploying(self):
+        # L'avertissement ne vaut que là où on peut encore renoncer.
+        import inspect
+
+        from script.todo.proxmox_menu import ProxmoxMenuMixin
+        from script.todo.qemu_deploy import QemuDeployMixin
+
+        for fn in (
+            ProxmoxMenuMixin._pve_confirm_spec,
+            QemuDeployMixin._qemu_print_recap,
+        ):
+            with self.subTest(fonction=fn.__name__):
+                self.assertIn("_qemu_branch_gap_lines", inspect.getsource(fn))
+
+
 class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
     """Le pont NAT était écrit AVANT qu'on sache si le NAT existe.
 

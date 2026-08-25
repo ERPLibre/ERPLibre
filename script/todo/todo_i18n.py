@@ -3382,6 +3382,22 @@ TRANSLATIONS = {
         "fr": "rejouer install_proxmox.sh sur l'hôte : il corrige /etc/hosts et empêche cloud-init de le défaire.",
         "en": "replay install_proxmox.sh on the host: it fixes /etc/hosts and stops cloud-init undoing it.",
     },
+    "The VM clones": {
+        "fr": "La VM clone",
+        "en": "The VM clones",
+    },
+    "not this checkout.": {
+        "fr": "et non ce checkout.",
+        "en": "not this checkout.",
+    },
+    "local commit(s) are missing there:": {
+        "fr": "commit(s) local(aux) y manquent :",
+        "en": "local commit(s) are missing there:",
+    },
+    "to deploy your own work.": {
+        "fr": "pour déployer votre propre travail.",
+        "en": "to deploy your own work.",
+    },
     "No storage able to hold a VM disk.": {
         "fr": "Aucun stockage capable d'héberger un disque de VM.",
         "en": "No storage able to hold a VM disk.",
