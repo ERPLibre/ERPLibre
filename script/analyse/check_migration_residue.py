@@ -35,8 +35,21 @@ parce qu'ils sont faux en eux-mêmes. Les mêmes bases, mêmes mesures :
     liste de prix par défaut absente  0 → 1      `product` installé, son
                                                  xmlid pas là
 
-Zéro avant, non nul après : aucun de ces quatre ne peut s'expliquer
+Zéro avant, non nul après : aucun de ces trois ne peut s'expliquer
 autrement que par la migration.
+
+Un quatrième a été RETIRÉ après vérification
+--------------------------------------------
+« ir_model_relation nomme une table absente » : 0 avant, 68 après, le
+profil idéal. Et sans la moindre conséquence. Son unique consommateur,
+`_module_data_uninstall` dans `base/models/ir_model.py`, teste
+`sql.table_exists(...)` AVANT de supprimer : la ligne périmée est
+ignorée, puis effacée. Les 68 appartiennent en outre à des modules
+INSTALLÉS, que `database_cleanup` ne touche pas — la réparation que ce
+fichier désignait n'en aurait réparé aucune.
+
+Un constat sans conséquence et sans geste possible est du bruit, quelle
+que soit la netteté du signal. Il est parti.
 
 Chaque constat nomme l'outil qui le répare. Un rapport qui montre un
 dégât sans dire quoi lancer oblige à chercher, et on ne cherche pas.
@@ -100,16 +113,6 @@ CONTROLES = (
         "sql": "SELECT count(*) FROM res_lang WHERE active IS NULL",
         "gravity": "broken",
         "repair": None,
-    },
-    {
-        "key": "orphan_relation",
-        "title": "Many-to-many tables named but missing",
-        "why": "ir_model_relation still names a table PostgreSQL does not"
-        " have; the next module update tries to alter it and fails.",
-        "sql": "SELECT count(*) FROM ir_model_relation r WHERE NOT EXISTS"
-        " (SELECT 1 FROM pg_class c WHERE c.relname = r.name)",
-        "gravity": "broken",
-        "repair": "script/analyse/database_cleanup.py",
     },
     {
         "key": "duplicate_index",

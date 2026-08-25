@@ -9564,14 +9564,6 @@ TRANSLATIONS = {
         "fr": "Un booléen qui n'est ni vrai ni faux : la langue n'est listée nulle part et ne peut plus être réactivée depuis l'interface.",
         "en": "A boolean that is neither true nor false: the language is listed nowhere and cannot be re-enabled from the interface.",
     },
-    "Many-to-many tables named but missing": {
-        "fr": "Tables plusieurs-à-plusieurs nommées mais absentes",
-        "en": "Many-to-many tables named but missing",
-    },
-    "ir_model_relation still names a table PostgreSQL does not have; the next module update tries to alter it and fails.": {
-        "fr": "ir_model_relation nomme encore une table que PostgreSQL n'a pas ; la prochaine mise à jour de module tente de la modifier et échoue.",
-        "en": "ir_model_relation still names a table PostgreSQL does not have; the next module update tries to alter it and fails.",
-    },
     "Indexes duplicated by the Odoo 17 renaming": {
         "fr": "Index doublés par le renommage d'Odoo 17",
         "en": "Indexes duplicated by the Odoo 17 renaming",
