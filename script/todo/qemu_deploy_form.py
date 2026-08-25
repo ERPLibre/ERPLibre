@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import os
 import re
-import time
 
 try:
     from script.todo.todo_i18n import t
@@ -32,298 +31,46 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
-# --------------------------------------------------------------------------- #
-# Logique pure — aucune dépendance à Textual, testable telle quelle
-# --------------------------------------------------------------------------- #
-def entry_key(entry) -> tuple:
-    """Identité stable d'une VM du plan, indépendante de son rang d'affichage :
-    surcharges et verrous y survivent quand la sélection change.
+from script.todo.deploy_form_lib import (  # noqa: F401
+    CLIP_LIMIT,
+    CSS_BASE,
+    FREE,
+    INPUT_TO_FIELD,
+    RES_FIELDS,
+    RES_FMT,
+    SELECT_TO_FIELD,
+    apply_overrides,
+    apply_profile,
+    build_spec,
+    build_vms,
+    clean_hostname,
+    clip_payload,
+    copy_name,
+    disk_gb,
+    entry_key,
+    expand_copies,
+    fmt_dur,
+    parse_disk,
+    parse_ram,
+    plan_rows,
+    plan_totals,
+    positive_int,
+    res_choices,
+    res_labels,
+    res_row_widgets,
+    res_value,
+    run_deploy_progress,
+    vm_name,
+    vm_status,
+)
 
-    Le quatrième membre est le numéro d'EXEMPLAIRE. Sans lui, deux copies de
-    la même entrée de catalogue partageaient une identité : régler la première
-    réglait la seconde, et les verrous se marchaient dessus."""
-    return (
-        entry["distro"],
-        entry["version"],
-        entry["arch"],
-        entry.get("instance", 0),
-    )
-
-
-def copy_name(base: str, instance: int) -> str:
-    """Nom du n-ième exemplaire. Le premier garde le nom du catalogue, pour
-    que les déploiements d'avant gardent le leur."""
-    return base if not instance else f"{base}-{instance + 1}"
-
-
-def expand_copies(entries, copies):
-    """[entrée] + {clé de base: exemplaires en plus} -> [entrée par VM].
-
-    Chaque exemplaire est une COPIE du dictionnaire, avec son numéro et son
-    nom : rien n'est partagé, donc régler l'un ne touche pas l'autre."""
-    out = []
-    for e in entries:
-        base = (e["distro"], e["version"], e["arch"])
-        for i in range(1 + max(0, (copies or {}).get(base, 0))):
-            item = dict(e)
-            item["instance"] = i
-            item["name"] = copy_name(e["name"], i)
-            out.append(item)
-    return out
-
-
-def parse_disk(value):
-    """« 60 », « 60G », « 1T », « 1,5T » -> « <n>G », ou None si invalide.
-    Même règle que `TODO._qemu_parse_disk` : tout le reste de la chaîne
-    raisonne en gigaoctets."""
-    txt = str(value).strip().upper().replace(",", ".")
-    factor = 1
-    if txt.endswith("T"):
-        factor, txt = 1024, txt[:-1]
-    elif txt.endswith("G"):
-        txt = txt[:-1]
-    try:
-        gigs = int(float(txt) * factor)
-    except ValueError:
-        return None
-    return f"{gigs}G" if gigs > 0 else None
-
-
-def disk_gb(value) -> int:
-    """« 60G » -> 60 (best effort), pour les totaux."""
-    parsed = parse_disk(value)
-    return int(parsed[:-1]) if parsed else 0
-
-
-def positive_int(value, fallback):
-    """Entier strictement positif, sinon `fallback`.
-
-    Ces valeurs viennent de widgets : une liste déroulante sans choix rend un
-    sentinelle, une saisie libre rend du texte, éventuellement vide. Aucun des
-    deux ne doit atteindre les totaux, qui les additionnent."""
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return fallback
-    return number if number > 0 else fallback
-
-
-def parse_ram(value):
-    """« 2048 », « 128G », « 1,5G » -> mébioctets, ou 0 si invalide.
-
-    Les valeurs proposées s'affichent en G — « 2G », « 16G » — alors que la
-    saisie libre comptait en Mo. Taper « 128G », ce que l'affichage invite à
-    faire, rendait 0 : la surcharge était alors RETIRÉE et la VM revenait à la
-    valeur du catalogue, sans un mot. On accepte donc les deux écritures, un
-    nombre nu restant des mébioctets."""
-    txt = str(value or "").strip().upper().replace(",", ".")
-    factor = 1
-    if txt.endswith("GI"):
-        factor, txt = 1024, txt[:-2]
-    elif txt.endswith(("G", "T")):
-        factor = 1024 * (1024 if txt.endswith("T") else 1)
-        txt = txt[:-1]
-    elif txt.endswith(("M", "MI")):
-        txt = txt.rstrip("IM")
-    try:
-        mib = int(float(txt) * factor)
-    except ValueError:
-        return 0
-    return mib if mib > 0 else 0
-
-
-def apply_profile(
-    entries, profile, base_vcpus, host_cpu, custom=None, desktop=""
-):
-    """Applique le profil de ressources aux entrées choisies.
-
-    Reproduit à l'identique `TODO._qemu_prompt_resources` : un multiplicateur
-    monte la RAM minimale du catalogue et les vCPU en se bornant aux cœurs de
-    l'hôte ; « custom » impose les mêmes valeurs à tout le parc, une valeur
-    absente gardant celle du catalogue."""
-    out = []
-    for e in entries:
-        if profile == "custom":
-            cus = custom or {}
-            ram = positive_int(cus.get("ram"), e["ram"])
-            disk = parse_disk(cus.get("disk")) or e["disk"]
-            vcpus = positive_int(cus.get("vcpus"), base_vcpus)
-        else:
-            mult = int(profile)
-            ram = e["ram"] * mult
-            disk = e["disk"]
-            vcpus = min(base_vcpus * mult, host_cpu)
-        out.append(
-            {
-                "name": e["name"],
-                "distro": e["distro"],
-                "version": e["version"],
-                "arch": e["arch"],
-                "ram": ram,
-                "disk": disk,
-                "vcpus": vcpus,
-                # Type de VM (« » = serveur). Il vit sur la VM et non sur la
-                # spec entière depuis qu'il se choisit machine par machine ;
-                # `desktop` n'est plus que le défaut commun.
-                "desktop": desktop,
-                # Branche ERPLibre. Même raison : « » signifie « celle du
-                # formulaire », et une surcharge la remplace pour cette VM.
-                "branch": "",
-                # Profil d'installation (« ERPLibre + Odoo 18 »). Même
-                # convention : « » = celui du formulaire.
-                "install_cmd": "",
-                # Libelle du profil, pour que le recapitulatif puisse dire
-                # « Odoo 18 » sans connaitre la liste des profils.
-                "install_label": "",
-            }
-        )
-    return out
-
-
-def apply_overrides(vms, entries, overrides):
-    """Réapplique les réglages par VM (nom, vCPU, RAM, disque) après un
-    recalcul du profil. `overrides` est indexé par `entry_key`."""
-    for vm, e in zip(vms, entries):
-        for field, value in (overrides.get(entry_key(e)) or {}).items():
-            vm[field] = value
-    return vms
-
-
-def clean_hostname(value):
-    """Nom d'hote valide (RFC 1123) tire de la saisie, ou None.
-
-    Le nom d'une VM devient son NOM D'HOTE : une majuscule ou un point de
-    trop et cloud-init l'ignore en silence, la machine reste « ubuntu ».
-    Mieux vaut refuser ici que le decouvrir sur une VM deja deployee."""
-    txt = str(value or "").strip().lower()
-    if not txt or len(txt) > 63:
-        return None
-    if not re.fullmatch(r"[a-z0-9]([a-z0-9-]*[a-z0-9])?", txt):
-        return None
-    return txt
-
-
-def vm_name(base, desktop, suffixes):
-    """Nom de VM, suffixé du bureau quand il y en a un.
-
-    Le nom sert de nom d'hôte ET de clé de collision : une VM graphique et sa
-    jumelle serveur doivent donc porter des noms différents, sinon la seconde
-    est signalée « existe déjà » et silencieusement ignorée. Idempotent, le
-    nom étant recalculé à chaque frappe."""
-    suffix = (suffixes or {}).get(desktop or "")
-    if not suffix or base.endswith(f"-{suffix}"):
-        return base
-    return f"{base}-{suffix}"
-
-
-def build_vms(
-    entries,
-    profile,
-    base_vcpus,
-    host_cpu,
-    custom,
-    overrides,
-    desktop="",
-    suffixes=None,
-):
-    """Catalogue choisi + profil + surcharges -> liste de VM de la spec."""
-    vms = apply_overrides(
-        apply_profile(entries, profile, base_vcpus, host_cpu, custom, desktop),
-        entries,
-        overrides,
-    )
-    # APRÈS les surcharges : c'est là seulement que le type de chaque VM est
-    # connu, puisqu'il se choisit machine par machine.
-    for vm, e in zip(vms, entries):
-        if (overrides or {}).get(entry_key(e), {}).get("name"):
-            # Nom donne a la main : il gagne, sans suffixe ajoute. Y coller
-            # « -gnome » reviendrait a corriger l'utilisateur.
-            continue
-        vm["name"] = vm_name(vm["name"], vm.get("desktop"), suffixes)
-    return vms
-
-
-def vm_status(name, domains):
-    """État d'un nom face à l'existant : ('new'|'exists'|'orphan', message).
-
-    Les deux collisions n'ont pas la même gravité — une VM définie est
-    ignorée, un qcow2 resté seul fait échouer deploy_qemu, qui refuse
-    d'écraser sans --force."""
-    if name in domains:
-        return "exists", t("exists - skipped")
-    if os.path.exists(f"/var/lib/libvirt/images/{name}.qcow2"):
-        return "orphan", t("orphan disk - will FAIL")
-    return "new", ""
-
-
-def plan_rows(vms, domains, extra_disk_gb=0):
-    """Lignes du tableau du plan : une par VM, avec son état."""
-    rows = []
-    for vm in vms:
-        state, note = vm_status(vm["name"], domains)
-        rows.append(
-            {
-                "vm": vm,
-                "state": state,
-                "note": note,
-                "disk_gb": disk_gb(vm["disk"]) + extra_disk_gb,
-            }
-        )
-    return rows
-
-
-def plan_totals(rows):
-    """Totaux des VM RÉELLEMENT créées (les existantes ne consomment rien de
-    neuf) : (nb, vcpus, ram_mo, disque_go)."""
-    fresh = [r for r in rows if r["state"] != "exists"]
-    return (
-        len(fresh),
-        sum(r["vm"]["vcpus"] for r in fresh),
-        sum(r["vm"]["ram"] for r in fresh),
-        sum(r["disk_gb"] for r in fresh),
-    )
-
-
-def build_spec(vms, domains, form):
-    """Assemble la spec finale, dans la forme exacte que produit la CLI."""
-    known = set(domains)
-    return {
-        "res_label": form["res_label"],
-        "vms": [vm for vm in vms if vm["name"] not in known],
-        "existing": [vm["name"] for vm in vms if vm["name"] in known],
-        "ssh_key": form["ssh_key"],
-        "timezone": form.get("timezone", ""),
-        "desktop": form.get("desktop", ""),
-        "vm_tools": tuple(form.get("vm_tools") or ()),
-        "python_provider": form.get("python_provider", ""),
-        "app_store": form.get("app_store", "deb"),
-        "install": form["install"],
-        # Au NIVEAU DU DÉPLOIEMENT, pas de l'installation : une VM sans
-        # ERPLibre se suit aussi (cloud-init, puis relevé système). Absent de
-        # cette assemblée, le choix du formulaire n'atteignait jamais la spec.
-        "monitor": form.get("monitor", True),
-        "add_ssh_config": form["add_ssh_config"],
-        "parallelism": form["parallelism"],
-    }
-
-
-def fmt_dur(secs) -> str:
-    mm, ss = divmod(int(secs), 60)
-    if mm >= 60:
-        return f"{mm // 60}h{mm % 60:02d}"
-    return f"{mm}m{ss:02d}" if mm else f"{ss}s"
-
-
-# Au-delà, un OSC 52 est tronqué par certains terminaux (xterm notamment).
-# On copie alors la FIN du log — la partie qui porte l'erreur.
-CLIP_LIMIT = 100_000
-
-
-def clip_payload(text, limit=CLIP_LIMIT):
-    """(texte_à_copier, tronqué?) — on garde la fin, pas le début."""
-    if len(text) <= limit:
-        return text, False
-    return text[-limit:], True
+# Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
+# tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo.deploy_form_plan import (  # noqa: F401
+    PlanMixin,
+    preview_screen,
+    rename_screen,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -334,7 +81,6 @@ def run_deploy_form(ctx, run_app: bool = True):
     `run_app=False` renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical, VerticalScroll
-    from textual.screen import ModalScreen
     from textual.widgets import (
         Button,
         Checkbox,
@@ -391,19 +137,9 @@ def run_deploy_form(ctx, run_app: bool = True):
     result = {"spec": None}
 
     AUTO = "__auto__"
-    # Dernier choix de chaque liste de ressources : il ne porte pas de valeur,
-    # il révèle la saisie libre placée juste dessous.
-    FREE = "__free__"
     # « Serveur » est un CHOIX, pas une absence de choix : lui donner « » le
     # rendrait indistinguable de la sentinelle « rien de sélectionné ».
     SERVER = "__server__"
-    RES_FIELDS = {
-        "vcpus": ("#f_vcpus", "#c_vcpus"),
-        "ram": ("#f_ram", "#c_ram"),
-        "disk": ("#f_disk", "#c_disk"),
-    }
-    SELECT_TO_FIELD = {sel[1:]: f for f, (sel, _i) in RES_FIELDS.items()}
-    INPUT_TO_FIELD = {inp[1:]: f for f, (_s, inp) in RES_FIELDS.items()}
 
     def entry_label(e):
         star = " *" if e.get("default") else ""
@@ -412,126 +148,25 @@ def run_deploy_form(ctx, run_app: bool = True):
             f"RAM≥{e['ram']}Mo  {e['disk']}"
         )
 
-    class RenameScreen(ModalScreen):
-        """Nom d'une VM. Vide = revenir au nom automatique."""
-
-        BINDINGS = [("escape", "cancel", t("Cancel"))]
-
-        def __init__(self, name, auto):
-            super().__init__()
-            self._name = name
-            self._auto = auto
-
-        def compose(self) -> ComposeResult:
-            with Vertical(id="renbox"):
-                yield Static(t("Rename the VM"), id="rentitle")
-                yield Input(value=self._name, id="renval")
-                yield Static(
-                    f"  {t('Empty = back to the automatic name:')} "
-                    f"{self._auto}",
-                    id="renhint",
-                )
-                with Horizontal(id="renbtns"):
-                    yield Button(t("Cancel"), id="ren_no")
-                    yield Button(t("Rename"), variant="primary", id="ren_ok")
-
-        def on_button_pressed(self, event) -> None:
-            if event.button.id != "ren_ok":
-                self.dismiss(None)
-                return
-            self.dismiss(self.query_one("#renval", Input).value)
-
-        def action_cancel(self) -> None:
-            self.dismiss(None)
-
-    class PreviewScreen(ModalScreen):
-        """Aperçu des commandes qui seraient lancées (aucune exécution)."""
-
-        BINDINGS = [
-            ("escape", "close", t("Close")),
-            ("q", "close", t("Close")),
-        ]
-
-        def __init__(self, lines):
-            super().__init__()
-            self._lines = lines
-
-        def compose(self) -> ComposeResult:
-            with Vertical(id="prevbox"):
-                yield Static(
-                    f"  {t('Preview (dry-run):')}   ({t('Esc to close')})",
-                    id="prevtitle",
-                )
-                yield Static("\n\n".join(self._lines), id="prevbody")
-
-        def action_close(self) -> None:
-            self.dismiss()
-
-    class DeployForm(App):
-        CSS = """
-        #body { height: 1fr; }
-        #fields { width: 62; border: solid $accent; overflow-y: auto; }
-        #right { width: 1fr; }
-        #plan {
-            height: 1fr; border: solid $accent;
-            overflow-x: auto; scrollbar-size-horizontal: 1;
-        }
-        #totals { height: auto; color: $text-muted; padding: 0 1; }
-        .grouptitle { color: $accent; text-style: bold; padding: 1 0 0 0; }
+    class DeployForm(PlanMixin, App):
+        # Le socle porte la mise en page et les modales ; ne reste ici que ce
+        # qui nomme les widgets propres à QEMU/KVM.
+        CSS = (
+            CSS_BASE
+            + """
         SelectionList { height: 10; border: solid $panel; }
         RadioSet { height: auto; layout: horizontal; }
-        .freeval { display: none; width: 9; }
-        /* « width: auto » sur la CARTE, pas seulement sur la rangée. Un
-        conteneur Textual vaut « width: 1fr » par défaut : la carte se bornait
-        donc au panneau, et c'est ELLE que « #plan » mesure pour sa largeur
-        virtuelle. La rangée avait beau être en « auto », son débordement était
-        coupé dans une carte qui ne grandissait pas, et la barre horizontale
-        n'apparaissait jamais. */
-        .vmcard {
-            height: auto; width: auto;
-            border-bottom: solid $panel; padding: 0 1;
-        }
-        /* Une VM figée se voit à la LIGNE, pas à une case perdue au bout :
-        c'est ce qui permet de balayer le plan et de savoir d'un coup ce qui
-        échappe au profil. */
-        .vmcard.locked { background: $success 20%; }
-        .vmlock { width: 5; min-width: 5; }
-        /* La branche porte des noms longs (« 1.6.0 », « develop »,
-        « feature/xyz ») : trop étroite, la liste les tronque et on ne sait
-        plus ce qu'on a choisi. */
-
-
-        .vmcopy { width: 5; min-width: 5; }
-        .vmhead { height: 1; }
-        /* « width: auto » et le défilement du plan : sans eux, une rangée
-        plus large que le panneau est COUPÉE au lieu d'être atteignable. */
-        .vmrow { height: 3; width: auto; align-vertical: middle; }
-        .vmrow Select { width: 15; }
-        .vmrow Input { width: 11; }
         /* Ces deux règles portent « .vmrow Select » EN PLUS de leur classe :
         « .vmrow Select » (une classe + un type) l'emporte sur « .vmbranch »
         (une classe) par spécificité CSS. Écrites simplement, elles étaient
         silencieusement écrasées à 15 — et le test, qui ne vérifiait que la
-        présence de la classe, passait sans rien prouver. */
+        présence de la classe, passait sans rien prouver. La branche porte des
+        noms longs (« 1.6.0 », « develop », « feature/xyz ») : trop étroite, la
+        liste les tronque et on ne sait plus ce qu'on a choisi. */
         .vmrow Select.vmbranch { width: 34; }
         .vmrow Select.vmprof { width: 40; }
-        #reslabel { color: $text-muted; }
-        RenameScreen { align: center middle; }
-        #renbox {
-            width: 60; height: auto; padding: 1 2;
-            border: thick $accent; background: $surface;
-        }
-        #rentitle { color: $accent; text-style: bold; }
-        #renhint { color: $text-muted; }
-        #renbtns { height: auto; padding-top: 1; }
-        PreviewScreen { align: center middle; }
-        #prevbox {
-            width: 90%; height: 70%; padding: 1 2;
-            border: thick $accent; background: $surface;
-        }
-        #prevtitle { height: 1; color: $accent; text-style: bold; }
-        #prevbody { height: 1fr; overflow-y: auto; }
         """
+        )
         # Touches de fonction plutôt que ctrl+lettre : ctrl+p est pris par la
         # palette de commandes de Textual, et une lettre seule serait avalée
         # par le champ de saisie qui a le focus.
@@ -786,10 +421,6 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._reload_catalog(first_load=True)
 
         # -- catalogue et recalcul ------------------------------------- #
-        def _plan_entries(self):
-            """Entrées du plan : la sélection, dépliée en exemplaires."""
-            return expand_copies(self._selected_entries(), self.copies)
-
         def _entries(self):
             return catalog.get(self.arch, [])
 
@@ -824,6 +455,54 @@ def run_deploy_form(ctx, run_app: bool = True):
             widget = self.query_one("#f_catalog", SelectionList)
             entries = self._entries()
             return [entries[i] for i in sorted(widget.selected)]
+
+        # ------------------------------------------------------------ #
+        # Ce que le socle du plan attend de nous
+        # ------------------------------------------------------------ #
+        def _presets(self):
+            """Choix offerts par ressource. Le socle s'en sert pour savoir
+            quand une valeur est « libre »."""
+            return {
+                "vcpus": ctx["cpu_presets"],
+                "ram": ctx["ram_presets"],
+                "disk": ctx["disk_presets"],
+            }
+
+        def _auto_name(self, index):
+            """Le nom du catalogue, suffixé du bureau : ce que la VM
+            reprendrait si on effaçait son nom."""
+            return vm_name(
+                self._plan_entries()[index]["name"],
+                self.rows[index]["vm"].get("desktop"),
+                desktop_suffixes,
+            )
+
+        def _lock_fields(self, index):
+            """TOUT ce que la VM tient d'un choix commun est recopié, pas
+            seulement les ressources : la branche et le profil Odoo en font
+            partie. Les oublier laissait une VM « figée » changer de version
+            d'ERPLibre dès qu'on touchait au choix générique, ce qui vide le
+            mot de son sens.
+
+            Les deux se résolvent AVANT d'être figés : « » y signifie « celle
+            du formulaire », et geler une chaîne vide ne gèlerait rien."""
+            vm = self.rows[index]["vm"]
+            return {
+                "vcpus": vm["vcpus"],
+                "ram": vm["ram"],
+                "disk": vm["disk"],
+                "desktop": vm.get("desktop") or "",
+                "branch": vm.get("branch") or self._branch(),
+                "install_cmd": vm.get("install_cmd") or self._profile_cmd(),
+                "install_label": (
+                    vm.get("install_label")
+                    or (
+                        profiles[self._row_profile_index(index)][0]
+                        if profiles
+                        else ""
+                    )
+                ),
+            }
 
         def _recompute(self):
             entries = self._plan_entries()
@@ -918,10 +597,10 @@ def run_deploy_form(ctx, run_app: bool = True):
             if not vm_tools:
                 return
             for key, _label, _hint in vm_tools:
-                usable = any(
-                    self._tools_for_vm(vm, (key,)) for vm in self.vms
+                usable = any(self._tools_for_vm(vm, (key,)) for vm in self.vms)
+                self.query_one(f"#f_tool_{key}", Checkbox).disabled = (
+                    not usable
                 )
-                self.query_one(f"#f_tool_{key}", Checkbox).disabled = not usable
             picked = self._vm_tools()
             skipped = sorted(
                 {
@@ -1037,12 +716,6 @@ def run_deploy_form(ctx, run_app: bool = True):
             return desktops[index - 1][0]
 
         # -- panneau droit : une rangée de widgets par VM ---------------- #
-        def _row_ids(self):
-            """Identité du JEU de VM affiché. Reconstruire les widgets à chaque
-            frappe ferait perdre le focus en pleine saisie : on ne le fait que
-            si la liste elle-même a changé."""
-            return tuple(entry_key(e) for e in self._plan_entries())
-
         def _type_options(self):
             return [(t("Server"), SERVER)] + [
                 (label, key) for key, label in desktops
@@ -1079,68 +752,19 @@ def run_deploy_form(ctx, run_app: bool = True):
                         variant="success" if key in self.locked else "default",
                         classes="vmlock",
                     ),
-                    Select(
-                        [(str(c), c) for c in ctx["cpu_presets"]]
-                        + [(t("free value…"), FREE)],
-                        value=(
-                            vm["vcpus"]
-                            if vm["vcpus"] in ctx["cpu_presets"]
-                            else SELECT_NULL
-                        ),
-                        prompt="vCPU",
-                        id=f"v{i}_vcpus",
-                    ),
-                    Input(
-                        value=(
-                            ""
-                            if vm["vcpus"] in ctx["cpu_presets"]
-                            else str(vm["vcpus"])
-                        ),
-                        placeholder="vCPU",
-                        id=f"c{i}_vcpus",
-                        classes="freeval",
-                    ),
-                    Select(
-                        [(f"{m // 1024}G", m) for m in ctx["ram_presets"]]
-                        + [(t("free value…"), FREE)],
-                        value=(
-                            vm["ram"]
-                            if vm["ram"] in ctx["ram_presets"]
-                            else SELECT_NULL
-                        ),
-                        prompt=t("RAM: 2048 or 8G"),
-                        id=f"v{i}_ram",
-                    ),
-                    Input(
-                        value=(
-                            ""
-                            if vm["ram"] in ctx["ram_presets"]
-                            else str(vm["ram"])
-                        ),
-                        placeholder=t("RAM: 2048 or 8G"),
-                        id=f"c{i}_ram",
-                        classes="freeval",
-                    ),
-                    Select(
-                        [(d, d) for d in ctx["disk_presets"]]
-                        + [(t("free value…"), FREE)],
-                        value=(
-                            vm["disk"]
-                            if vm["disk"] in ctx["disk_presets"]
-                            else SELECT_NULL
-                        ),
-                        prompt=t("Disk"),
-                        id=f"v{i}_disk",
-                    ),
-                    Input(
-                        value=(
-                            ""
-                            if vm["disk"] in ctx["disk_presets"]
-                            else str(vm["disk"])
-                        ),
-                        placeholder=t("Disk"),
-                        id=f"c{i}_disk",
-                        classes="freeval",
+                    # Le triplet vCPU / RAM / disque vient du socle
+                    # commun : c'est la partie que le formulaire Proxmox pose
+                    # à l'identique, et la seule que les deux dupliquaient.
+                    *res_row_widgets(
+                        i,
+                        vm,
+                        {
+                            "vcpus": ctx["cpu_presets"],
+                            "ram": ctx["ram_presets"],
+                            "disk": ctx["disk_presets"],
+                        },
+                        labels={"vcpus": "vCPU"},
+                        null=SELECT_NULL,
                     ),
                     (
                         Button("−", id=f"m{i}", classes="vmcopy")
@@ -1271,49 +895,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                         pass
             self._sync_free_inputs()
 
-        def _sync_free_inputs(self) -> None:
-            for i, r in enumerate(self.rows):
-                vm = r["vm"]
-                for field, presets in (
-                    ("vcpus", ctx["cpu_presets"]),
-                    ("ram", ctx["ram_presets"]),
-                    ("disk", ctx["disk_presets"]),
-                ):
-                    try:
-                        widget = self.query_one(f"#c{i}_{field}", Input)
-                    except Exception:
-                        continue
-                    # Visible si la valeur EST libre, ou si la liste est
-                    # posée sur « libre… » en attente d'une saisie.
-                    try:
-                        chosen_free = (
-                            self.query_one(f"#v{i}_{field}", Select).value
-                            is FREE
-                        )
-                    except Exception:
-                        chosen_free = False
-                    free = chosen_free or vm[field] not in presets
-                    widget.display = free
-                    widget.disabled = not free
-
-        def _row_head(self, index, row):
-            """Ligne de titre d'une VM : nom, origine, état, marque de
-            personnalisation. Sans elle, deux rangées aux réglages différents
-            n'ont aucune explication à l'écran."""
-            vm = row["vm"]
-            icon = {"new": "", "exists": "⏭ ", "orphan": "❌ "}[row["state"]]
-            state = "" if row["state"] == "new" else f"  {icon}{row['note']}"
-            if row.get("locked"):
-                mark = "  🔒 figée"
-            elif row.get("custom"):
-                mark = "  ✎"
-            else:
-                mark = ""
-            return (
-                f"[b]{vm['name']}[/b]  {vm['distro']} {vm['version']} "
-                f"[{vm['arch']}]  {row['disk_gb']}G{state}{mark}"
-            )
-
         def _render_plan(self):
             # Le JEU de VM a-t-il changé ? Si oui on remonte les widgets, sinon
             # on se contente des titres : remonter à chaque frappe volerait le
@@ -1395,93 +976,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._recompute()
 
         # -- rangées du panneau droit ------------------------------- #
-        def _is_current(self, widget):
-            """Le widget appartient-il au jeu de rangées ACTUEL ?"""
-            return getattr(widget, "_el_gen", None) == self._gen
-
-        def _focused_row(self):
-            """Rang de la VM dont un widget a le focus, ou None. C'est la seule
-            désignation qui ait un sens ici : il n'y a plus de curseur unique,
-            chaque rangée est éditable directement."""
-            wid = getattr(self.focused, "id", "") or ""
-            match = re.match(r"[vch](\d+)(?:_|$)", wid)
-            if not match:
-                return None
-            index = int(match.group(1))
-            return index if 0 <= index < len(self.rows) else None
-
-        def _row_key(self, index):
-            entries = self._plan_entries()
-            return entry_key(entries[index]) if index < len(entries) else None
-
-        def _clear_overrides(self, fields) -> None:
-            """Rend au choix commun les VM NON figées, pour ces champs-là.
-
-            Le cadenas est la seule chose qui résiste. Une valeur réglée à la
-            main sur une rangée cède donc au choix global suivant : c'est ce
-            qu'on attend d'un réglage « général », et le verrou existe
-            précisément pour dire « pas celle-ci ».
-
-            Par champ, pas en bloc : changer la RAM générale n'a aucune raison
-            d'effacer le disque qu'on a réglé sur une VM.
-
-            « name » n'y figure jamais : un renommage est explicite et ne
-            découle d'aucune valeur générale."""
-            changed = False
-            for key in list(self.overrides):
-                if key in self.locked:
-                    continue
-                for field in fields:
-                    changed |= self.overrides[key].pop(field, None) is not None
-                    if field == "install_cmd":
-                        # Le libelle n'a pas de sens sans sa commande.
-                        self.overrides[key].pop("install_label", None)
-                if not self.overrides[key]:
-                    self.overrides.pop(key, None)
-            if changed:
-                # Forcer le remontage : une rangée peut porter une saisie
-                # LIBRE, que le simple rafraîchissement laisse en place — on
-                # verrait « 12 » à l'écran pendant que la VM vaut 2. Le
-                # remontage rebâtit tout depuis le modèle. Sans risque de vol
-                # de focus : ce chemin part d'un widget GLOBAL, jamais d'une
-                # rangée.
-                self._shown_ids = ()
-
-        def _set_override(self, index, field, value) -> None:
-            """Écrit — ou retire — la surcharge d'UNE VM."""
-            key = self._row_key(index)
-            if key is None:
-                return
-            if value in ("", 0, None):
-                # Saisie vidée ou invalide : on RETIRE la surcharge au lieu
-                # d'écrire un zéro, qui donnerait une VM à 0 vCPU.
-                self.overrides.get(key, {}).pop(field, None)
-                if not self.overrides.get(key):
-                    self.overrides.pop(key, None)
-            else:
-                self.overrides.setdefault(key, {})[field] = value
-
-        def _row_free(self, index, field, visible) -> None:
-            widget = self.query_one(f"#c{index}_{field}", Input)
-            widget.display = bool(visible)
-            widget.disabled = not visible
-            if visible:
-                widget.focus()
-
-        def _read_row_free(self, index, field):
-            raw = self.query_one(f"#c{index}_{field}", Input).value.strip()
-            if field == "disk":
-                return parse_disk(raw) or ""
-            if field == "ram":
-                return parse_ram(raw)
-            return positive_int(raw, 0)
-
-        def _show_free(self, field, visible) -> None:
-            """Montre ou cache la saisie libre d'une ressource."""
-            widget = self.query_one(RES_FIELDS[field][1], Input)
-            widget.display = bool(visible)
-            widget.disabled = not visible
-
         def on_selection_list_selected_changed(self, event) -> None:
             self._recompute()
 
@@ -1545,7 +1039,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 elif (
                     event.value is not FREE and event.value is not SELECT_NULL
                 ):
-                    if event.value == vm_now.get(field):
+                    if self._row_echo(index, field, event.value):
                         return
                 if field == "type":
                     self._set_override(
@@ -1611,18 +1105,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._clear_overrides((field,))
             self._recompute()
 
-        def _apply_free(self, field) -> None:
-            """Relit la saisie libre. Une valeur invalide n'écrase rien : le
-            profil retombe alors sur celle du catalogue."""
-            raw = self.query_one(RES_FIELDS[field][1], Input).value.strip()
-            if field == "disk":
-                self.custom[field] = parse_disk(raw) or ""
-            elif field == "ram":
-                self.custom[field] = parse_ram(raw)
-            else:
-                self.custom[field] = positive_int(raw, 0)
-            self._clear_overrides((field,))
-
         def on_input_changed(self, event) -> None:
             if self._syncing:
                 return
@@ -1642,87 +1124,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._apply_free(field)
                 self._recompute()
 
-        def _set_lock(self, index, on) -> None:
-            """Fige — ou libère — les ressources d'une VM.
-
-            Figer, c'est recopier les valeurs EFFECTIVES du moment dans les
-            surcharges : le profil commun ne les atteint plus. Libérer les
-            retire, et la VM retombe sous le profil. Le mécanisme est celui
-            des surcharges, déjà éprouvé ; le verrou n'en est que la commande
-            explicite, et il couvre les quatre champs d'un coup."""
-            key = self._row_key(index)
-            if key is None or index >= len(self.rows):
-                return
-            if on:
-                vm = self.rows[index]["vm"]
-                self.locked.add(key)
-                # TOUT ce que la VM tient d'un choix commun est recopié, pas
-                # seulement les ressources : la branche et le profil Odoo en
-                # font partie. Les oublier laissait une VM « figée » changer
-                # de version d'ERPLibre dès qu'on touchait au choix générique,
-                # ce qui vide le mot de son sens.
-                #
-                # Les deux se résolvent AVANT d'être figés : « » y signifie
-                # « celle du formulaire », et geler une chaîne vide ne
-                # gèlerait rien du tout.
-                self.overrides[key] = {
-                    "vcpus": vm["vcpus"],
-                    "ram": vm["ram"],
-                    "disk": vm["disk"],
-                    "desktop": vm.get("desktop") or "",
-                    "branch": vm.get("branch") or self._branch(),
-                    "install_cmd": (
-                        vm.get("install_cmd") or self._profile_cmd()
-                    ),
-                    "install_label": (
-                        vm.get("install_label")
-                        or (
-                            profiles[self._row_profile_index(index)][0]
-                            if profiles
-                            else ""
-                        )
-                    ),
-                }
-            else:
-                self.locked.discard(key)
-                self.overrides.pop(key, None)
-            self._recompute()
-            # La couleur de la ligne suit le verrou sans tout remonter : un
-            # remontage volerait le focus à la case qu'on vient de cocher.
-            cards = self.query_one("#plan", VerticalScroll).children
-            if index < len(cards):
-                cards[index].set_class(on, "locked")
-            btn = self.query_one(f"#l{index}", Button)
-            btn.label = "🔒" if on else "🔓"
-            btn.variant = "success" if on else "default"
-
-        def _add_copy(self, index, delta) -> None:
-            """Ajoute ou retire un exemplaire de l'entrée visée.
-
-            Retirer enlève le DERNIER exemplaire, et avec lui ses réglages :
-            les garder ferait resurgir d'anciennes valeurs à la copie
-            suivante, sans que rien ne l'explique."""
-            entries = self._plan_entries()
-            if index >= len(entries):
-                return
-            item = entries[index]
-            base = (item["distro"], item["version"], item["arch"])
-            count = self.copies.get(base, 0)
-            if delta > 0:
-                self.copies[base] = count + 1
-            else:
-                if count <= 0:
-                    return
-                gone = (*base, count)
-                self.overrides.pop(gone, None)
-                self.locked.discard(gone)
-                self.copies[base] = count - 1
-                if not self.copies[base]:
-                    self.copies.pop(base, None)
-            self._recompute()
-            # Le JEU de VM a changé : les rangées doivent être rebâties.
-            self._mount_rows()
-
         def on_button_pressed(self, event) -> None:
             match = re.match(r"([pm])(\d+)$", event.button.id or "")
             if match:
@@ -1740,42 +1141,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 key = self._row_key(index)
                 if key is not None:
                     self._set_lock(index, key not in self.locked)
-
-        def _rename(self, index) -> None:
-            """Renomme une VM. Le nom saisi devient une surcharge comme les
-            autres : il survit au recalcul, et F4 le retire avec le reste."""
-            key = self._row_key(index)
-            if key is None or index >= len(self.rows):
-                return
-            entries = self._plan_entries()
-            auto = vm_name(
-                entries[index]["name"],
-                self.rows[index]["vm"].get("desktop"),
-                desktop_suffixes,
-            )
-
-            def done(value):
-                if value is None:
-                    return
-                if not str(value).strip():
-                    self.overrides.get(key, {}).pop("name", None)
-                    if not self.overrides.get(key):
-                        self.overrides.pop(key, None)
-                else:
-                    clean = clean_hostname(value)
-                    if not clean:
-                        self.notify(
-                            t("Invalid name: letters, digits, hyphens."),
-                            severity="error",
-                        )
-                        return
-                    self.overrides.setdefault(key, {})["name"] = clean
-                self._recompute()
-                self._mount_rows()
-
-            self.push_screen(
-                RenameScreen(self.rows[index]["vm"]["name"], auto), done
-            )
 
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
@@ -1869,7 +1234,9 @@ def run_deploy_form(ctx, run_app: bool = True):
             if not build:
                 return
             lines = [build(vm, spec, True) for vm in spec["vms"]]
-            self.push_screen(PreviewScreen(lines or [t("Nothing selected.")]))
+            self.push_screen(
+                preview_screen()(lines or [t("Nothing selected.")])
+            )
 
         def action_dump_state(self) -> None:
             """Écrit l'état COMPLET dans un fichier, widgets ET modèle.
@@ -1969,168 +1336,3 @@ def run_deploy_form(ctx, run_app: bool = True):
 # --------------------------------------------------------------------------- #
 # Vue de progression : un bloc repliable par VM
 # --------------------------------------------------------------------------- #
-def run_deploy_progress(jobs, parallelism, run_app: bool = True):
-    """Déploie `jobs` = [(id, nom, argv)] en parallèle, un bloc repliable par
-    VM. Renvoie [(nom, rc, sortie, durée)]. `run_app=False` renvoie l'app.
-
-    Un bloc reste DÉPLIÉ tant que la VM tourne, se replie dès qu'elle réussit
-    — et reste ouvert si elle échoue, puisque c'est ce qu'on veut lire."""
-    import subprocess
-    import threading
-
-    from textual.app import App, ComposeResult
-    from textual.containers import Vertical, VerticalScroll
-    from textual.widgets import (
-        Button,
-        Collapsible,
-        Footer,
-        Header,
-        RichLog,
-        Static,
-    )
-
-    results = []
-
-    def slug(name):
-        """Identifiant de widget : Textual n'accepte ni point ni tiret en
-        tête, et les noms de VM en contiennent."""
-        return "vm_" + "".join(c if c.isalnum() else "_" for c in name)
-
-    class Progress(App):
-        CSS = """
-        #blocks { height: 1fr; }
-        RichLog { height: 14; border: solid $panel; }
-        #summary { height: auto; color: $accent; padding: 0 1; }
-        #hint { height: auto; color: $text-muted; padding: 0 1; }
-        """
-        BINDINGS = [
-            ("c", "copy_current", t("Copy log")),
-            ("C", "copy_all", t("Copy all logs")),
-            ("q", "quit", t("Quit")),
-        ]
-
-        def __init__(self):
-            super().__init__()
-            self._out = {name: "" for _jid, name, _p in jobs}
-            self._done = 0
-            self._t0 = time.time()
-            self._slots = threading.Semaphore(max(1, parallelism))
-
-        def compose(self) -> ComposeResult:
-            yield Header()
-            with VerticalScroll(id="blocks"):
-                for jid, name, _parts in jobs:
-                    with Collapsible(
-                        title=f"⏳ [{jid}] {name}",
-                        collapsed=False,
-                        id=slug(name),
-                    ):
-                        yield RichLog(
-                            id=f"log_{slug(name)}",
-                            highlight=False,
-                            markup=False,
-                            wrap=True,
-                        )
-            with Vertical():
-                yield Static("", id="summary")
-                yield Static(
-                    f"  {t('c copy log · C copy all · q quit')}", id="hint"
-                )
-                yield Button(t("Copy all logs"), id="copyall")
-            yield Footer()
-
-        def on_mount(self) -> None:
-            self.title = t("Deploying")
-            self._refresh_summary()
-            for jid, name, parts in jobs:
-                self.run_job(jid, name, parts)
-
-        def _refresh_summary(self):
-            self.query_one("#summary", Static).update(
-                f"  {self._done}/{len(jobs)} — "
-                f"{fmt_dur(time.time() - self._t0)}"
-            )
-
-        # `thread=True` : subprocess.run est bloquant ; le faire dans un
-        # thread garde la boucle d'événements Textual fluide. Le sémaphore
-        # borne les déploiements SIMULTANÉS — sans lui, demander « 4 en
-        # parallèle » en lancerait autant que de VM.
-        def run_job(self, jid, name, parts):
-            def _job() -> None:
-                with self._slots:
-                    t0 = time.time()
-                    try:
-                        res = subprocess.run(
-                            parts, capture_output=True, text=True
-                        )
-                        rc = res.returncode
-                        out = (res.stdout or "") + (res.stderr or "")
-                    except (OSError, subprocess.SubprocessError) as exc:
-                        rc, out = 1, str(exc)
-                self.call_from_thread(
-                    self._finish, jid, name, rc, out, time.time() - t0
-                )
-
-            self.run_worker(_job, thread=True, group="deploy", exclusive=False)
-
-        def _finish(self, jid, name, rc, out, secs):
-            self._out[name] = out
-            results.append((name, rc, out, secs))
-            self._done += 1
-            log = self.query_one(f"#log_{slug(name)}", RichLog)
-            for line in out.strip().splitlines():
-                log.write(line)
-            block = self.query_one(f"#{slug(name)}", Collapsible)
-            mark = "✅" if rc == 0 else "❌"
-            block.title = f"{mark} [{jid}] {name} · {fmt_dur(secs)}" + (
-                "" if rc == 0 else f" · rc={rc}"
-            )
-            # Un succès se replie (il n'y a plus rien à y lire) ; un échec
-            # reste ouvert.
-            block.collapsed = rc == 0
-            self._refresh_summary()
-
-        # -- presse-papiers (OSC 52 : traverse SSH) --------------------- #
-        def _copy(self, text, what):
-            payload, cut = clip_payload(text)
-            if not payload.strip():
-                self.notify(t("Nothing to copy."), severity="warning")
-                return
-            self.copy_to_clipboard(payload)
-            note = f"{what} — {len(payload)} {t('chars')}"
-            if cut:
-                note += f" ({t('tail only, log was truncated')})"
-            self.notify(
-                note + "\n" + t("Needs an OSC 52 capable terminal."),
-                title=t("Clipboard"),
-                timeout=8,
-            )
-
-        def action_copy_current(self) -> None:
-            focused = self.focused
-            for _jid, name, _p in jobs:
-                node = focused
-                while node is not None:
-                    if getattr(node, "id", None) == slug(name):
-                        self._copy(self._out[name], name)
-                        return
-                    node = node.parent
-            self.action_copy_all()
-
-        def action_copy_all(self) -> None:
-            blob = "\n".join(
-                f"───── {name} ─────\n{self._out[name]}"
-                for _jid, name, _p in jobs
-            )
-            self._copy(blob, t("all logs"))
-
-        def on_button_pressed(self, event) -> None:
-            if event.button.id == "copyall":
-                self.action_copy_all()
-
-    app = Progress()
-    app._results = results  # lecture par les tests headless
-    if not run_app:
-        return app
-    app.run()
-    return results
