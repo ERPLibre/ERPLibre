@@ -1430,13 +1430,24 @@ class TODO(
         return "".join(out)
 
     def _write_ssh_config_entry(
-        self, host, user, ip, proxy_jump=None, identity_file=None
+        self,
+        host,
+        user,
+        ip,
+        proxy_jump=None,
+        identity_file=None,
+        also_drop=(),
     ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
 
         `host` peut être une liste de noms : ils partagent alors un seul bloc.
-        Sert aux VM imbriquées, joignables par leur nom court ET par leur nom
-        chaîné « parent+enfant », qui montre où elles vivent.
+
+        `also_drop` : noms dont le bloc doit DISPARAÎTRE sans être réécrit.
+        Sert quand une convention de nommage change : l'ancienne entrée ne
+        désigne pas le nom qu'on écrit, donc rien ne la retirerait, et deux
+        blocs finiraient par mener à la même machine — ce qu'on venait
+        justement d'enlever. L'appelant vérifie que l'ancien bloc est BIEN le
+        sien avant de le nommer ici.
 
         `proxy_jump` : alias du rebond pour une VM imbriquée, dont l'IP n'est
         joignable que depuis son hôte. OpenSSH enchaîne les ProxyJump tout
@@ -1452,7 +1463,9 @@ class TODO(
         if os.path.exists(cfg):
             with open(cfg, encoding="utf-8") as fh:
                 existing = fh.read()
-        existing = self._ssh_config_drop_hosts(existing, names).rstrip("\n")
+        existing = self._ssh_config_drop_hosts(
+            existing, names + [n for n in also_drop if n not in names]
+        ).rstrip("\n")
         block = (
             f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"
@@ -1704,6 +1717,40 @@ class TODO(
         except OSError:
             pass
         return names
+
+    @classmethod
+    def _ssh_config_block(cls, name):
+        """Le bloc « Host … » qui déclare `name`, ou {}.
+
+        Rend ses noms ET ses directives : savoir qu'un nom est pris ne suffit
+        pas, il faut savoir PAR QUI. Le ProxyJump distingue notre propre
+        entrée — celle d'une VM derrière tel hôte — de celle d'une machine
+        qui se trouve porter le même nom.
+
+        {"names": [...], "proxyjump": "...", "hostname": "..."}."""
+        path = os.path.expanduser("~/.ssh/config")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                contenu = fh.read()
+        except OSError:
+            return {}
+        bloc = None
+        for line in contenu.splitlines():
+            if re.match(r"^[ \t]*Host[ \t]+", line):
+                if bloc is not None:
+                    return bloc
+                noms = line.split()[1:]
+                bloc = {"names": noms} if name in noms else None
+                continue
+            if bloc is None:
+                continue
+            # Une ligne non indentée et non vide clôt le bloc.
+            if line.strip() and not line[:1].isspace():
+                return bloc
+            mots = line.split()
+            if len(mots) >= 2 and mots[0].lower() in ("proxyjump", "hostname"):
+                bloc[mots[0].lower()] = mots[1]
+        return bloc or {}
 
     @staticmethod
     def _ssh_config_user(host):
@@ -3556,7 +3603,79 @@ class TODO(
         extra = None
         if analyse.get("asks_expect"):
             extra = ["--expect", self._monitoring_expect(kind)]
+        if analyse.get("writes"):
+            self._monitoring_write_flow(analyse, target)
+            return
         monitoring.run_analysis(analyse, target, extra=extra)
+
+    def _monitoring_write_flow(self, analyse, database):
+        """La seule analyse qui écrit : montrer, puis demander.
+
+        On lance TOUJOURS la marche à blanc d'abord, et l'on demande
+        ensuite. Une question posée avant de savoir ce qui sera touché
+        n'est pas un consentement : c'est un pari. Le rapport dit combien
+        de modèles et de colonnes, et lesquels sont traduits ou uniques.
+
+        La confirmation redemande le NOM de la base. Une frappe sur « o »
+        se donne par réflexe ; recopier « chezlepro_neutralize_upgrade_18 »
+        oblige à regarder ce qu'on détruit.
+        """
+        from script.analyse import monitoring
+
+        choix = self._monitoring_anonymize_options()
+        if choix is None:
+            return
+        print()
+        if monitoring.run_analysis(analyse, database, extra=choix) == 2:
+            return
+        print()
+        print(
+            f"⚠️  {t('This DESTROYS the data of')} '{database}'"
+            f" — {t('there is no undo.')}"
+        )
+        tape = input(
+            f"💬 {t('Type the database name to confirm (empty to cancel): ')}"
+        ).strip()
+        if tape != database:
+            print(f"↩️  {t('Cancelled: nothing was written.')}")
+            return
+        monitoring.run_analysis(
+            analyse, database, extra=choix + ["--apply", "--confirm", database]
+        )
+
+    def _monitoring_anonymize_options(self):
+        """Le mode et ses listes, ou None si l'on renonce."""
+        print()
+        print(f"[1] {t('Hybrid: the default personal-data models, adjusted')}")
+        print(f"[2] {t('Whitelist: only the models I name')}")
+        print(f"[3] {t('Blacklist: every model except those I name')}")
+        print(f"[0] {t('Back')}")
+        answer = click.prompt(t("Command:"))
+        print()
+        mode = {"1": "hybrid", "2": "whitelist", "3": "blacklist"}.get(answer)
+        if not mode:
+            return None
+        extra = ["--mode", mode]
+        invite = (
+            t("Models to ADD, comma separated (empty for none): ")
+            if mode != "blacklist"
+            else t("Models to EXCLUDE, comma separated: ")
+        )
+        noms = input(f"💬 {invite}").strip()
+        if noms:
+            extra += ["--exclude" if mode == "blacklist" else "--models", noms]
+        elif mode == "whitelist":
+            print(f"❌ {t('A whitelist with no model would do nothing.')}")
+            return None
+        mots = input(
+            f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
+        ).strip()
+        if mots:
+            if not os.path.isfile(os.path.expanduser(mots)):
+                print(f"❌ {t('No such file: ')}{mots}")
+                return None
+            extra += ["--words", os.path.expanduser(mots)]
+        return extra
 
     def _monitoring_expect(self, kind):
         """Copie de développement, ou instance en service ?

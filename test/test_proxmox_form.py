@@ -795,6 +795,81 @@ class TestUnSeulNomDansSshConfig(unittest.TestCase):
         )
 
 
+class TestLAncienNomSEnVa(unittest.TestCase):
+    """La convention a changé : les entrées écrites AVANT portent le nom
+    court, et rien ne les retirerait — elles ne portent pas le nom qu'on
+    écrit maintenant. Deux blocs mèneraient à la même machine, ce qu'on
+    venait justement d'enlever."""
+
+    def setUp(self):
+        import os
+        import sys
+        import tempfile
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.maison = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.maison, ".ssh"))
+        self._vrai = os.environ.get("HOME")
+        os.environ["HOME"] = self.maison
+        self.todo = TODO.__new__(TODO)
+
+    def tearDown(self):
+        import os
+        import shutil
+
+        if self._vrai is not None:
+            os.environ["HOME"] = self._vrai
+        shutil.rmtree(self.maison, ignore_errors=True)
+
+    def _hosts(self):
+        import os
+
+        with open(
+            os.path.join(self.maison, ".ssh/config"), encoding="utf-8"
+        ) as fh:
+            return [
+                ligne.rstrip() for ligne in fh if ligne.startswith("Host ")
+            ]
+
+    def test_the_old_short_entry_is_retired(self):
+        # L'état d'avant : une entrée écrite sous l'ancienne convention.
+        self.todo._write_ssh_config_entry(
+            ["vm-a"], "erplibre", "10.10.10.151", proxy_jump="pve9"
+        )
+        perime = self.todo._pve_alias_perime("vm-a", "pve9")
+        self.assertEqual(perime, ["vm-a"])
+        self.todo._write_ssh_config_entry(
+            ["pve9+vm-a"],
+            "erplibre",
+            "10.10.10.151",
+            proxy_jump="pve9",
+            also_drop=perime,
+        )
+        self.assertEqual(self._hosts(), ["Host pve9+vm-a"])
+
+    def test_a_local_vm_of_the_same_name_is_left_alone(self):
+        # Sans ProxyJump vers cet hôte, le bloc n'est pas le nôtre : on n'y
+        # touche pas, même s'il porte exactement ce nom.
+        self.todo._write_ssh_config_entry(["vm-a"], "erplibre", "192.168.1.9")
+        self.assertEqual(self.todo._pve_alias_perime("vm-a", "pve9"), [])
+        self.todo._write_ssh_config_entry(
+            ["pve9+vm-a"],
+            "erplibre",
+            "10.10.10.151",
+            proxy_jump="pve9",
+            also_drop=self.todo._pve_alias_perime("vm-a", "pve9"),
+        )
+        self.assertEqual(self._hosts(), ["Host vm-a", "Host pve9+vm-a"])
+
+    def test_another_hosts_vm_is_left_alone(self):
+        self.todo._write_ssh_config_entry(
+            ["vm-a"], "erplibre", "10.0.0.9", proxy_jump="pve7"
+        )
+        self.assertEqual(self.todo._pve_alias_perime("vm-a", "pve9"), [])
+
+
 class TestLeGuideDeConnexion(unittest.TestCase):
     """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
 

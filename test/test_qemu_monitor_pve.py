@@ -261,6 +261,53 @@ class TestTroisVmSurUnProxmox(unittest.TestCase):
         )
         self.assertIn("vm-a", stats)
 
+    def test_the_odoo_flag_survives_a_partly_closed_fleet(self):
+        """Le cas rapporté, et il est le cas NORMAL.
+
+        La sonde est le dernier maillon : elle boucle sur toutes les adresses
+        et son code est celui de la DERNIÈRE. Un parc où une seule VM n'a pas
+        d'Odoo — un hyperviseur imbriqué, par exemple — finit donc en échec,
+        et le relevé entier partait, drapeaux Odoo compris. Le navigateur, lui,
+        répondait 303."""
+        sortie = (
+            '[{"vmid":100,"name":"vm-a","status":"running","maxmem":1024,'
+            '"mem":512,"maxdisk":2048,"diskwrite":10},'
+            '{"vmid":102,"name":"pve-imbrique","status":"running",'
+            '"maxmem":1024,"mem":512,"maxdisk":2048,"diskwrite":10}]\n'
+            "---ERPLIBRE-DU---\n"
+            "---ERPLIBRE-ODOO---\nODOO 10.10.10.150\n"
+        )
+        mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})
+        vms = [
+            {
+                "name": "vm-a",
+                "pve": {
+                    "target": "h",
+                    "sudo": "",
+                    "vmid": 100,
+                    "addr": "10.10.10.150",
+                },
+            },
+            {
+                "name": "pve-imbrique",
+                "pve": {
+                    "target": "h",
+                    "sudo": "",
+                    "vmid": 102,
+                    "addr": "10.10.10.152",
+                },
+            },
+        ]
+        with mock.patch(
+            "script.proxmox.proxmox_deploy.run", return_value=(1, sortie)
+        ):
+            stats, ok = mon.read_pvestats_detail(vms, now=30.0)
+        self.assertTrue(ok)
+        self.assertTrue(stats["vm-a"]["odoo"], "la VM qui répond doit être 🟢")
+        self.assertFalse(
+            stats["pve-imbrique"]["odoo"], "un hyperviseur n'a pas d'Odoo"
+        )
+
     def test_a_broken_pvesh_is_still_refuted(self):
         # L'autre sens tient toujours : sans liste analysable, pas de réponse.
         mon._PVE_CACHE.update({"at": 0.0, "stats": {}, "ok": False})

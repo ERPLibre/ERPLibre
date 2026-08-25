@@ -1143,6 +1143,20 @@ class ProxmoxMenuMixin:
         signale au passage un nom qu'une VM locale porte aussi."""
         return [chaine], (t("a local VM") if nom in locaux else "")
 
+    def _pve_alias_perime(self, nom, rebond):
+        """Le nom court à RETIRER, s'il désigne encore cette VM-ci.
+
+        La convention a changé — le nom court d'abord, puis « hôte+vm » — et
+        rien ne retirerait l'ancien bloc : il ne porte pas le nom qu'on
+        écrit. Deux entrées mèneraient alors à la même machine, ce qu'on
+        venait justement d'enlever.
+
+        Le ProxyJump tranche : un bloc qui rebondit par CET hôte est le nôtre.
+        Celui d'une VM locale homonyme n'en a pas, et on n'y touche donc
+        jamais."""
+        bloc = self._ssh_config_block(nom)
+        return [nom] if bloc and bloc.get("proxyjump") == rebond else []
+
     def _pve_set_timezone(self, cible, spec):
         """Pose le fuseau DANS la VM, par ssh.
 
@@ -1384,6 +1398,9 @@ class ProxmoxMenuMixin:
                     ip,
                     identity_file=self._ssh_private_key(cle_locale),
                     proxy_jump=host["target"],
+                    also_drop=self._pve_alias_perime(
+                        vm["name"], host["target"]
+                    ),
                 )
                 alias[vm["name"]] = noms_alias[0]
                 print(f"  ✓ ~/.ssh/config : ssh {noms_alias[0]}")
@@ -1713,6 +1730,7 @@ class ProxmoxMenuMixin:
                 ip,
                 identity_file=cle,
                 proxy_jump=host["target"],
+                also_drop=self._pve_alias_perime(vm["name"], host["target"]),
             )
             print(
                 f"  ✓ ssh {noms[0]}   ({ip} {t('through')} {host['target']})"
