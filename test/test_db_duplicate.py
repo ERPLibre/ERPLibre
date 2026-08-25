@@ -84,18 +84,50 @@ class TestNeutralisationIsRefusedBeforeOdoo16(unittest.TestCase):
         for version in (None, "", "quatorze"):
             self.assertFalse(dup.supporte_neutralisation(version))
 
-    def test_asking_for_it_on_an_old_checkout_is_refused(self):
+    def test_an_old_checkout_falls_back_instead_of_refusing(self):
+        """De 12 à 15, le dépôt a sa technique : on l'emploie."""
         self._vrai = dup.bases_existantes
         dup.bases_existantes = lambda: {"source"}
         vraie_version = dup.lire_version
         dup.lire_version = lambda nom: "15.0"
         try:
             refus = dup.verifier("source", "neuve", True)
+            technique = dup.technique_neutralisation()
         finally:
             dup.bases_existantes = self._vrai
             dup.lire_version = vraie_version
+        self.assertEqual(
+            refus, [], "la demande a été refusée au lieu de basculer"
+        )
+        self.assertEqual(technique, dup.NEUTRALISATION_SCRIPT)
+
+    def test_the_route_is_chosen_by_the_version(self):
+        for version, attendu in (
+            ("12.0", dup.NEUTRALISATION_SCRIPT),
+            ("15.0", dup.NEUTRALISATION_SCRIPT),
+            ("16.0", dup.NEUTRALISATION_ODOO),
+            ("18.0", dup.NEUTRALISATION_ODOO),
+        ):
+            self.assertEqual(
+                dup.technique_neutralisation(version), attendu, version
+            )
+
+    def test_a_missing_script_is_the_one_case_still_refused(self):
+        """Sinon la copie sortirait brute en se croyant neutralisée."""
+        self._vrai = dup.bases_existantes
+        dup.bases_existantes = lambda: {"source"}
+        vraie_version = dup.lire_version
+        vrai_isfile = dup.os.path.isfile
+        dup.lire_version = lambda nom: "14.0"
+        dup.os.path.isfile = lambda chemin: False
+        try:
+            refus = dup.verifier("source", "neuve", True)
+        finally:
+            dup.bases_existantes = self._vrai
+            dup.lire_version = vraie_version
+            dup.os.path.isfile = vrai_isfile
         self.assertTrue(refus)
-        self.assertTrue(any("16" in r for r in refus))
+        self.assertTrue(any("update_prod_to_dev" in r for r in refus))
 
 
 class TestTheProgramHandedToOdoo(unittest.TestCase):
@@ -108,6 +140,83 @@ class TestTheProgramHandedToOdoo(unittest.TestCase):
         self.assertLess(
             code.index("parse_config"), code.index("exp_duplicate")
         )
+
+    def test_odoo_is_not_asked_to_neutralise_when_it_cannot(self):
+        """Sous 12→15, exp_duplicate_database ne prend que deux arguments :
+        lui en passer un troisième ferait échouer la duplication."""
+        # `lire_version` sert AUSSI à composer le venv : lui faire dire
+        # « 14.0 » partout rendait le chemin introuvable et `dupliquer`
+        # sortait avant d'appeler quoi que ce soit — un test vert pour
+        # rien. On ne détourne donc que la version d'Odoo.
+        vraie = dup.lire_version
+        appels = []
+        dup.lire_version = lambda nom: (
+            "14.0" if nom == ".odoo-version" else vraie(nom)
+        )
+        vrais_chemins = dup.chemins_odoo
+        dup.chemins_odoo = lambda: ("/usr/bin/python3", "/tmp")
+        vrai_run = dup.subprocess.run
+
+        class Faux:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def espion(cmd, **kw):
+            appels.append(cmd)
+            return Faux()
+
+        dup.subprocess.run = espion
+        try:
+            dup.dupliquer("a", "b", neutraliser=True)
+        finally:
+            dup.lire_version = vraie
+            dup.chemins_odoo = vrais_chemins
+            dup.subprocess.run = vrai_run
+        programme = [c for c in appels if "-c" in c]
+        self.assertTrue(programme)
+        self.assertNotIn("True", programme[0][-1])
+        # …et le script du dépôt a bien été lancé ensuite.
+        self.assertTrue(
+            any(
+                dup.SCRIPT_PROD_TO_DEV in " ".join(map(str, c)) for c in appels
+            )
+        )
+
+    def test_a_failing_script_makes_the_whole_thing_fail(self):
+        """Le cas vraiment dangereux : la copie existe, le script a
+        échoué, et l'on annoncerait « neutralisée ». Avaler ce code de
+        retour rendrait une base brute indiscernable d'une base traitée.
+        """
+        vraie = dup.lire_version
+        dup.lire_version = lambda nom: (
+            "14.0" if nom == ".odoo-version" else vraie(nom)
+        )
+        vrais_chemins = dup.chemins_odoo
+        dup.chemins_odoo = lambda: ("/usr/bin/python3", "/tmp")
+        vrai_run = dup.subprocess.run
+
+        class Reponse:
+            def __init__(self, code, sortie=""):
+                self.returncode = code
+                self.stdout = sortie
+                self.stderr = sortie
+
+        def espion(cmd, **kw):
+            # La duplication réussit, le script échoue.
+            if dup.SCRIPT_PROD_TO_DEV in " ".join(map(str, cmd)):
+                return Reponse(1, "install_addons_dev.sh a échoué")
+            return Reponse(0)
+
+        dup.subprocess.run = espion
+        try:
+            code, sortie = dup.dupliquer("a", "b", neutraliser=True)
+        finally:
+            dup.lire_version = vraie
+            dup.chemins_odoo = vrais_chemins
+            dup.subprocess.run = vrai_run
+        self.assertNotEqual(code, 0, "l'échec du script a été avalé")
+        self.assertIn("install_addons_dev", sortie)
 
     def test_neutralisation_is_passed_only_when_asked(self):
         self.assertIn("'a', 'b', True", dup.script_python("a", "b", True, "c"))

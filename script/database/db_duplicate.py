@@ -35,9 +35,30 @@ livrés par les modules INSTALLÉS. Mesuré sur une base migrée 12 → 18 :
     serveurs de courriel           0  →  1   le bouchon « invalid »
     clé Stripe présente            1  →  0
 
-La neutralisation n'existe qu'à partir d'Odoo 16 : `neutralize.py` est
-absent des versions antérieures, et `exp_duplicate_database` n'y prend
-que deux arguments. On le DIT plutôt que d'ignorer la demande.
+Deux techniques, selon la version
+---------------------------------
+`neutralize.py` n'existe qu'à partir d'Odoo 16 ; avant,
+`exp_duplicate_database` ne prend que deux arguments. De 12 à 15 on
+retombe donc sur la technique du dépôt : `update_prod_to_dev.sh`, qui
+installe puis désinstalle `user_test`, `disable_mail_server`,
+`disable_auto_backup` et `disable_payment_provider`.
+
+Les deux n'obtiennent PAS la même chose, et il faut le savoir :
+
+                              Odoo ≥ 16   script 12→15
+    database.is_neutralized      posé       non posé
+    crons désactivés             oui        non
+    serveur de courriel        bouchon    supprimés (*)
+    clés de paiement            mises à     laissées
+                                  NULL      en place
+    compte test/test             non          oui
+
+(*) supprimer tous les `ir.mail_server` fait retomber Odoo sur le
+`smtp_server` du fichier de configuration ; le bouchon d'Odoo existe
+précisément pour boucher ce trou-là.
+
+La technique employée est ANNONCÉE à chaque exécution : une copie dont
+on ignore par quel chemin elle est passée ne se juge pas.
 """
 
 from __future__ import annotations
@@ -63,8 +84,13 @@ REPO_ROOT = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 )
 
-# La neutralisation n'existe pas avant cette version.
+# La neutralisation d'Odoo n'existe pas avant cette version.
 PREMIERE_VERSION_NEUTRALISABLE = 16.0
+
+# Comment on neutralise, selon ce que la version sait faire.
+NEUTRALISATION_ODOO = "odoo"
+NEUTRALISATION_SCRIPT = "script"
+SCRIPT_PROD_TO_DEV = "./script/addons/update_prod_to_dev.sh"
 
 
 def lire_version(nom):
@@ -107,6 +133,18 @@ def supporte_neutralisation(version=_NON_FOURNI):
         return float(version) >= PREMIERE_VERSION_NEUTRALISABLE
     except (TypeError, ValueError):
         return False
+
+
+def technique_neutralisation(version=_NON_FOURNI):
+    """Par quel chemin neutraliser, pour cette version.
+
+    On ne REFUSE plus sous 12→15 : le dépôt a sa technique, et une copie
+    imparfaitement neutralisée vaut mieux qu'une copie brute. Ce qui
+    compte est de dire laquelle a servi.
+    """
+    if supporte_neutralisation(version):
+        return NEUTRALISATION_ODOO
+    return NEUTRALISATION_SCRIPT
 
 
 def nom_valide(nom):
@@ -185,25 +223,25 @@ def verifier(source, cible, neutraliser):
             # Écraser une base sans le dire est la faute qu'on ne rattrape
             # pas : le contenu d'avant n'existe plus nulle part.
             refus.append(f"{t('This database already exists: ')}{cible}")
-    if neutraliser and not supporte_neutralisation():
-        refus.append(
-            f"{t('Odoo')} {lire_version('.odoo-version')}"
-            f" {t('cannot neutralise: that arrived in Odoo 16.')}"
-        )
+    if neutraliser and technique_neutralisation() == NEUTRALISATION_SCRIPT:
+        # PAS un refus : de 12 à 15 on passe par update_prod_to_dev.sh.
+        # Le script doit exister, sinon la copie sortirait brute en se
+        # croyant neutralisée — le seul cas vraiment dangereux.
+        if not os.path.isfile(os.path.join(REPO_ROOT, SCRIPT_PROD_TO_DEV)):
+            refus.append(f"{t('Missing script: ')}{SCRIPT_PROD_TO_DEV}")
     return refus
 
 
-def dupliquer(
-    source, cible, neutraliser=False, config="config.conf", timeout=3600
-):
-    """Faire la copie. Rendre (code, sortie)."""
-    python, racine = chemins_odoo()
-    if not python or not os.path.isfile(python):
-        return 2, t("Cannot find the virtualenv for this checkout.")
-    if not racine or not os.path.isdir(racine):
-        return 2, t("Cannot find the Odoo source for this checkout.")
+def neutraliser_par_script(cible, timeout=3600):
+    """La technique du dépôt, pour Odoo 12 à 15. Rendre (code, sortie).
+
+    `update_prod_to_dev.sh` installe puis désinstalle quatre modules
+    maison. Il tourne depuis la racine du dépôt : les chemins qu'il
+    contient sont relatifs, et l'appeler d'ailleurs le fait échouer sur
+    `install_addons_dev.sh` introuvable.
+    """
     fait = subprocess.run(
-        [python, "-c", script_python(source, cible, neutraliser, config)],
+        ["bash", SCRIPT_PROD_TO_DEV, cible],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -211,6 +249,41 @@ def dupliquer(
     )
     if fait.returncode:
         return fait.returncode, (fait.stderr or fait.stdout).strip()
+    return 0, (fait.stdout or "").strip()
+
+
+def dupliquer(
+    source, cible, neutraliser=False, config="config.conf", timeout=3600
+):
+    """Faire la copie, puis la neutraliser par le chemin de la version.
+
+    La copie d'abord, la neutralisation ensuite : si la seconde échoue,
+    la base existe et l'on sait qu'elle est BRUTE. L'inverse — une base
+    à moitié neutralisée — ne se distinguerait pas d'une base traitée.
+    """
+    python, racine = chemins_odoo()
+    if not python or not os.path.isfile(python):
+        return 2, t("Cannot find the virtualenv for this checkout.")
+    if not racine or not os.path.isdir(racine):
+        return 2, t("Cannot find the Odoo source for this checkout.")
+
+    par_odoo = neutraliser and (
+        technique_neutralisation() == NEUTRALISATION_ODOO
+    )
+    fait = subprocess.run(
+        [python, "-c", script_python(source, cible, par_odoo, config)],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if fait.returncode:
+        return fait.returncode, (fait.stderr or fait.stdout).strip()
+
+    if neutraliser and not par_odoo:
+        code, sortie = neutraliser_par_script(cible, timeout=timeout)
+        if code:
+            return code, sortie
     return 0, (fait.stdout or "").strip()
 
 
@@ -234,10 +307,19 @@ def main(argv=None):
             print(f"❌ {ligne}", file=sys.stderr)
         return 2
 
-    print(
-        f"🧬 {args.source} → {args.database}"
-        f"{' (' + t('neutralised') + ')' if args.neutralize else ''}"
-    )
+    technique = technique_neutralisation()
+    if args.neutralize:
+        # DIRE par quel chemin : les deux ne posent pas les mêmes gestes,
+        # et une copie dont on ignore le traitement ne se juge pas.
+        comment = (
+            t("Odoo's own neutralisation")
+            if technique == NEUTRALISATION_ODOO
+            else f"{SCRIPT_PROD_TO_DEV} ({t('Odoo')}"
+            f" {lire_version('.odoo-version')})"
+        )
+        print(f"🧬 {args.source} → {args.database} — {comment}")
+    else:
+        print(f"🧬 {args.source} → {args.database}")
     code, sortie = dupliquer(
         args.source, args.database, args.neutralize, args.config
     )
@@ -247,6 +329,12 @@ def main(argv=None):
             print(sortie[-2000:], file=sys.stderr)
         return 2
     print(f"✅ {t('Done:')} {args.database}")
+    if args.neutralize and technique == NEUTRALISATION_SCRIPT:
+        print(
+            f"ℹ️  {t('This route does not set database.is_neutralized, does')}"
+            f" {t('not disable crons, and leaves payment keys in place.')}"
+        )
+        print(f"ℹ️  {t('You can log in with test / test.')}")
     if not args.neutralize:
         print(
             f"⚠️  {t('NOT neutralised: its crons run, its mail leaves and')}"

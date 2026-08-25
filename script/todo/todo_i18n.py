@@ -10092,6 +10092,22 @@ TRANSLATIONS = {
         "fr": "ses fournisseurs de paiement peuvent débiter.",
         "en": "its payment providers can charge.",
     },
+    "Missing script: ": {
+        "fr": "Script introuvable : ",
+        "en": "Missing script: ",
+    },
+    "Odoo's own neutralisation": {
+        "fr": "la neutralisation d'Odoo lui-même",
+        "en": "Odoo's own neutralisation",
+    },
+    "This route does not set database.is_neutralized, does": {
+        "fr": "Ce chemin ne pose pas database.is_neutralized, ne",
+        "en": "This route does not set database.is_neutralized, does",
+    },
+    "not disable crons, and leaves payment keys in place.": {
+        "fr": "désactive pas les crons, et laisse les clés de paiement en place.",
+        "en": "not disable crons, and leaves payment keys in place.",
+    },
 }
 
 
