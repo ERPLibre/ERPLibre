@@ -310,12 +310,40 @@ def expression_texte(champ, mots):
 
 
 def expression_nombre(champ):
-    """Le SQL qui remplace un nombre : au hasard, entre 0 et 1000."""
+    """Le SQL qui remplace un nombre, DANS l'étendue de la colonne.
+
+    0 à 1000 était l'intention, et c'est faux pour tout nombre qui porte
+    un sens borné. Mesuré : `resource.calendar.attendance.hour_from` est
+    un `float` qui vaut une heure de la journée — 8,00 à 13,00 dans la
+    base d'origine. Un tirage à 957 fait lever Odoo :
+
+        time(int(integral), ...)  →  ValueError: hour must be in 0..23
+            resource/models/utils.py:45
+
+    Aucune contrainte PostgreSQL ne dit cela : la borne vit dans le code.
+    La seule que les DONNÉES déclarent est leur propre étendue, et c'est
+    celle qu'on respecte. Elle protège aussi les pourcentages, les taux et
+    les quantités, sans qu'il faille les nommer un par un.
+
+    Sans étendue connue — colonne vide, ou sonde impossible — on retombe
+    sur 0 à 1000.
+    """
     nom = ident(champ["name"])
-    if champ["ttype"] == "integer":
-        tirage = "floor(random() * 1001)::integer"
+    bas, haut = champ.get("borne_min"), champ.get("borne_max")
+    entier = champ["ttype"] == "integer"
+    if bas is None or haut is None:
+        tirage = (
+            "floor(random() * 1001)::integer"
+            if entier
+            else "round((random() * 1000)::numeric, 2)"
+        )
+    elif entier:
+        # +1 pour que la borne haute soit atteignable ; si bas == haut,
+        # le tirage rend cette valeur, ce qui est sans risque : une
+        # colonne constante ne porte aucune information à masquer.
+        tirage = f"floor({bas} + random() * ({haut} - {bas} + 1))::integer"
     else:
-        tirage = "round((random() * 1000)::numeric, 2)"
+        tirage = f"round(({bas} + random() * ({haut} - {bas}))::numeric, 2)"
     return f"CASE WHEN {nom} IS NULL THEN NULL ELSE {tirage} END"
 
 
@@ -448,29 +476,36 @@ def plan(
     return etapes
 
 
-def colonnes_structurees(database, etapes, config_path=None):
-    """Les colonnes texte dont TOUT le contenu est un chemin d'identifiants.
+def sonder_colonnes(database, etapes, config_path=None):
+    """Regarder ce que les colonnes CONTIENNENT. Rendre (écartées, bornes).
 
-    Le filet général, là où `CHAMPS_STRUCTURES` ne nomme que le connu :
-    un module maison peut poser son propre champ de chemin, et il ne
-    portera pas ce nom-là. On regarde donc ce que la colonne CONTIENT.
+    Deux mesures, une seule requête par table — sur une liste noire de 410
+    modèles, la différence est de 410 allers-retours au lieu de 1 300.
 
-    Une colonne est écartée seulement si elle est NON VIDE et que toutes
-    ses valeurs sont des chemins. Un seul contre-exemple suffit à la
-    garder : mieux vaut anonymiser une colonne douteuse que taire une
-    donnée personnelle.
+    ÉCARTÉES — les colonnes texte dont TOUT le contenu est un chemin
+    d'identifiants. Le filet général, là où `CHAMPS_STRUCTURES` ne nomme
+    que le connu : un module maison peut poser le sien sans lui donner ce
+    nom. Une seule valeur non conforme suffit à garder la colonne — mieux
+    vaut anonymiser une colonne douteuse que taire une donnée personnelle.
 
-    Une requête par TABLE, pas par colonne : sur une liste noire de 410
-    modèles, la différence est de 410 allers-retours au lieu de 863.
+    BORNES — l'étendue réelle de chaque colonne numérique. C'est la seule
+    borne que les données déclarent, et elle vaut pour toutes celles que
+    le code d'Odoo impose sans que PostgreSQL en sache rien : heures de la
+    journée, pourcentages, taux.
     """
-    ecartees = {}
+    ecartees, bornes = {}, {}
     for etape in etapes:
         textes = [
             champ
             for champ in etape["fields"]
             if champ["ttype"] in TYPES_TEXTE and champ["pg_type"] != "jsonb"
         ]
-        if not textes:
+        nombres = [
+            champ
+            for champ in etape["fields"]
+            if champ["ttype"] in TYPES_NOMBRE and champ["pg_type"] != "jsonb"
+        ]
+        if not textes and not nombres:
             continue
         morceaux = []
         for champ in textes:
@@ -478,6 +513,12 @@ def colonnes_structurees(database, etapes, config_path=None):
             morceaux.append(
                 f"count(*) FILTER (WHERE {nom} IS NOT NULL AND {nom} <> '')"
                 f" || ':' || count(*) FILTER (WHERE {nom} ~ {litteral(MOTIF_CHEMIN)})"
+            )
+        for champ in nombres:
+            nom = ident(champ["name"])
+            morceaux.append(
+                f"coalesce(min({nom})::text, '') || ':'"
+                f" || coalesce(max({nom})::text, '')"
             )
         sql = (
             "SELECT "
@@ -490,24 +531,55 @@ def colonnes_structurees(database, etapes, config_path=None):
             ).strip()
         except Exception:  # noqa: BLE001 - une table illisible ne bloque pas
             continue
-        for champ, mesure in zip(textes, brut.split(SEP)):
+        mesures = brut.split(SEP)
+        if len(mesures) != len(textes) + len(nombres):
+            continue
+        for champ, mesure in zip(textes, mesures):
             try:
                 remplies, chemins = (int(x) for x in mesure.split(":"))
             except ValueError:
                 continue
             if remplies and remplies == chemins:
                 ecartees.setdefault(etape["model"], []).append(champ["name"])
-    return ecartees
+        for champ, mesure in zip(nombres, mesures[len(textes) :]):
+            bas, _, haut = mesure.partition(":")
+            if nombre_valide(bas) and nombre_valide(haut):
+                bornes.setdefault(etape["model"], {})[champ["name"]] = (
+                    bas,
+                    haut,
+                )
+    return ecartees, bornes
 
 
-def sans_structurees(etapes, ecartees, mots):
-    """Refaire le plan sans les colonnes que la sonde a écartées."""
-    if not ecartees:
-        return etapes
+def nombre_valide(texte):
+    """Un littéral numérique, et rien d'autre.
+
+    Ces valeurs viennent de la base mais retournent dans du SQL : on ne
+    les recopie qu'après avoir vérifié qu'elles sont bien des nombres.
+    """
+    try:
+        float(texte)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def appliquer_sondes(etapes, ecartees, bornes, mots):
+    """Refaire le plan sans les écartées, et avec les bornes mesurées."""
     propre = []
     for etape in etapes:
         exclues = set(ecartees.get(etape["model"], ()))
-        gardes = [c for c in etape["fields"] if c["name"] not in exclues]
+        mesures = bornes.get(etape["model"], {})
+        gardes = []
+        for champ in etape["fields"]:
+            if champ["name"] in exclues:
+                continue
+            borne = mesures.get(champ["name"])
+            gardes.append(
+                {**champ, "borne_min": borne[0], "borne_max": borne[1]}
+                if borne
+                else champ
+            )
         # Pas de garde sur une liste vide : `sql_pour_table` rend None, et
         # le `if sql` ci-dessous l'écarte. Deux vérifications pour la même
         # chose se contredisent un jour.
@@ -697,8 +769,8 @@ def main(argv=None):
     )
     # La sonde AVANT le rendu : la marche à blanc doit montrer ce que
     # `--apply` ferait, pas une approximation plus large.
-    ecartees = colonnes_structurees(args.database, etapes, args.config)
-    etapes = sans_structurees(etapes, ecartees, mots)
+    ecartees, bornes = sonder_colonnes(args.database, etapes, args.config)
+    etapes = appliquer_sondes(etapes, ecartees, bornes, mots)
     if ecartees:
         combien = sum(len(v) for v in ecartees.values())
         print(

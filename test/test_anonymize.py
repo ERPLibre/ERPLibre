@@ -677,7 +677,7 @@ class TestStructuredCharFieldsSurvive(unittest.TestCase):
             }
         ]
         try:
-            anon.colonnes_structurees("base", etapes)
+            anon.sonder_colonnes("base", etapes)
         finally:
             anon.lib_analyse.run_psql = vrai
         self.assertEqual(len(appels), 1)
@@ -698,14 +698,16 @@ class TestStructuredCharFieldsSurvive(unittest.TestCase):
             {"model": "m", "fields": [self._champ("chemin")], "sql": "x"}
         ]
         try:
-            ecartees = anon.colonnes_structurees("base", etapes)
+            ecartees, _ = anon.sonder_colonnes("base", etapes)
         finally:
             anon.lib_analyse.run_psql = vrai
         self.assertEqual(ecartees, {})
 
     def test_an_all_paths_column_is_dropped_from_the_plan(self):
         def espion(database, sql, config_path=None):
-            return "10:10"
+            # Une mesure PAR COLONNE : la sonde compte ce qu'elle
+            # reçoit et renonce si le compte ne tombe pas juste.
+            return "10:10\x1f10:10"
 
         vrai = anon.lib_analyse.run_psql
         anon.lib_analyse.run_psql = espion
@@ -717,13 +719,13 @@ class TestStructuredCharFieldsSurvive(unittest.TestCase):
             }
         ]
         try:
-            ecartees = anon.colonnes_structurees("base", etapes)
+            ecartees, _ = anon.sonder_colonnes("base", etapes)
         finally:
             anon.lib_analyse.run_psql = vrai
         # Les deux colonnes rendent le même compte ici : c'est le principe
         # qu'on vérifie, pas la ligne exacte.
         self.assertIn("m", ecartees)
-        propre = anon.sans_structurees(etapes, {"m": ["chemin"]}, None)
+        propre = anon.appliquer_sondes(etapes, {"m": ["chemin"]}, {}, None)
         self.assertEqual([c["name"] for c in propre[0]["fields"]], ["nom"])
         self.assertNotIn('"chemin"', propre[0]["sql"])
 
@@ -732,5 +734,164 @@ class TestStructuredCharFieldsSurvive(unittest.TestCase):
             {"model": "m", "fields": [self._champ("chemin")], "sql": "x"}
         ]
         self.assertEqual(
-            anon.sans_structurees(etapes, {"m": ["chemin"]}, None), []
+            anon.appliquer_sondes(etapes, {"m": ["chemin"]}, {}, None), []
         )
+
+
+class TestANumberKeepsItsMeaningfulRange(unittest.TestCase):
+    """`ValueError: hour must be in 0..23`.
+
+    `resource.calendar.attendance.hour_from` est un `float` qui vaut une
+    heure de la journée — 8,00 à 13,00 dans la base d'origine. Un tirage
+    à 957 fait lever Odoo au premier affichage d'un employé :
+
+        time(int(integral), ...)   resource/models/utils.py:45
+
+    Aucune contrainte PostgreSQL ne dit cela : la borne vit dans le code.
+    La seule que les DONNÉES déclarent est leur propre étendue, et c'est
+    la seule qu'on puisse respecter sans nommer les champs un par un.
+    """
+
+    def _champ(self, ttype="float", **kw):
+        base = {
+            "model": "resource.calendar.attendance",
+            "name": "hour_from",
+            "ttype": ttype,
+            "pg_type": "numeric",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+        }
+        base.update(kw)
+        return base
+
+    def test_a_measured_range_bounds_the_draw(self):
+        sql = anon.expression_nombre(
+            self._champ(borne_min="8.0", borne_max="13.0")
+        )
+        self.assertIn("8.0 + random() * (13.0 - 8.0)", sql)
+        self.assertNotIn("1000", sql)
+
+    def test_an_integer_can_reach_its_upper_bound(self):
+        sql = anon.expression_nombre(
+            self._champ(ttype="integer", borne_min="0", borne_max="5")
+        )
+        self.assertIn("(5 - 0 + 1)", sql)
+
+    def test_without_a_range_it_falls_back_on_a_thousand(self):
+        self.assertIn("1000", anon.expression_nombre(self._champ()))
+        self.assertIn(
+            "1001", anon.expression_nombre(self._champ(ttype="integer"))
+        )
+
+    def test_a_half_known_range_is_not_used(self):
+        """Une borne sans l'autre ne borne rien."""
+        for kw in ({"borne_min": "8.0"}, {"borne_max": "13.0"}):
+            self.assertIn("1000", anon.expression_nombre(self._champ(**kw)))
+
+    def test_a_value_that_is_not_a_number_never_reaches_the_sql(self):
+        """Ces bornes viennent de la base et retournent dans du SQL."""
+        self.assertTrue(anon.nombre_valide("8.0"))
+        self.assertTrue(anon.nombre_valide("-3"))
+        for mauvais in ("8.0); DROP TABLE x; --", "", None, "huit"):
+            self.assertFalse(anon.nombre_valide(mauvais), mauvais)
+
+    def test_the_probe_reads_the_bounds(self):
+        recu = {}
+
+        def espion(database, sql, config_path=None):
+            recu["sql"] = sql
+            return "8.0:13.0"
+
+        vrai = anon.lib_analyse.run_psql
+        anon.lib_analyse.run_psql = espion
+        etapes = [{"model": "m", "fields": [self._champ()], "sql": "x"}]
+        try:
+            _, bornes = anon.sonder_colonnes("base", etapes)
+        finally:
+            anon.lib_analyse.run_psql = vrai
+        self.assertIn("min(", recu["sql"])
+        self.assertIn("max(", recu["sql"])
+        self.assertEqual(bornes["m"]["hour_from"], ("8.0", "13.0"))
+
+    def test_an_empty_column_yields_no_bound(self):
+        def espion(database, sql, config_path=None):
+            return ":"
+
+        vrai = anon.lib_analyse.run_psql
+        anon.lib_analyse.run_psql = espion
+        etapes = [{"model": "m", "fields": [self._champ()], "sql": "x"}]
+        try:
+            _, bornes = anon.sonder_colonnes("base", etapes)
+        finally:
+            anon.lib_analyse.run_psql = vrai
+        self.assertEqual(bornes, {})
+
+    def test_the_bounds_reach_the_generated_sql(self):
+        etapes = [{"model": "m", "fields": [self._champ()], "sql": "x"}]
+        propre = anon.appliquer_sondes(
+            etapes, {}, {"m": {"hour_from": ("8.0", "13.0")}}, None
+        )
+        self.assertIn("8.0 + random()", propre[0]["sql"])
+
+
+class TestTheProbeDistrustsWhatItReads(unittest.TestCase):
+    """Ce que la sonde reçoit repart dans du SQL : elle le vérifie.
+
+    Deux mutations ont survécu au premier tour, et les deux disaient la
+    même chose : j'éprouvais les fonctions de contrôle isolément sans
+    vérifier que la sonde s'en sert. Une garde qu'on n'exerce pas ne
+    garde rien.
+    """
+
+    def _champ(self, nom="hour_from", ttype="float"):
+        return {
+            "model": "m",
+            "name": nom,
+            "ttype": ttype,
+            "pg_type": "numeric",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+        }
+
+    def _sonder(self, reponse, champs):
+        def espion(database, sql, config_path=None):
+            return reponse
+
+        vrai = anon.lib_analyse.run_psql
+        anon.lib_analyse.run_psql = espion
+        etapes = [{"model": "m", "fields": champs, "sql": "x"}]
+        try:
+            return anon.sonder_colonnes("base", etapes)
+        finally:
+            anon.lib_analyse.run_psql = vrai
+
+    def test_a_bound_that_is_not_a_number_is_refused(self):
+        """La base peut rendre autre chose qu'un nombre ; ces valeurs
+        retournent telles quelles dans un littéral SQL."""
+        for reponse in ("abc:def", "8.0); DROP TABLE x; --:13", ":13"):
+            _, bornes = self._sonder(reponse, [self._champ()])
+            self.assertEqual(bornes, {}, reponse)
+
+    def test_a_valid_bound_still_passes(self):
+        _, bornes = self._sonder("8.0:13.0", [self._champ()])
+        self.assertEqual(bornes["m"]["hour_from"], ("8.0", "13.0"))
+
+    def test_a_short_answer_is_refused_whole(self):
+        """Moins de mesures que de colonnes : `zip` tronquerait en silence
+        et attribuerait la mesure d'une colonne à une autre."""
+        champs = [self._champ("a"), self._champ("b"), self._champ("c")]
+        ecartees, bornes = self._sonder("8.0:13.0", champs)
+        self.assertEqual(bornes, {})
+        self.assertEqual(ecartees, {})
+
+    def test_a_long_answer_is_refused_too(self):
+        champs = [self._champ("a")]
+        _, bornes = self._sonder("8.0:13.0\x1f1.0:2.0", champs)
+        self.assertEqual(bornes, {})
+
+    def test_the_exact_count_is_accepted(self):
+        champs = [self._champ("a"), self._champ("b")]
+        _, bornes = self._sonder("8.0:13.0\x1f1.0:2.0", champs)
+        self.assertEqual(len(bornes["m"]), 2)
