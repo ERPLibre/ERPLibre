@@ -86,12 +86,34 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - virt-viewer opens a VM screen from the menu
 - The install dashboard shows the host RAM, a VM's used RAM and uptime, and how long a log has been silent
 - A VM greets its SSH login with the distribution's own commands
+- Proxmox VE as a deployment target: deploy a VM on a remote Proxmox host from a screen that recaps in the terminal before creating, creates the missing bridge, follows the VM and changes its state, shows its Odoo column and the web link, and deletes it from the host. Every remote VM now comes with its connection guide, which was missing from the start
+- Repairs for what an Odoo bump leaves behind: website copies that no longer render — predicted BEFORE the bump rather than found as a 500 after it — the indexes Odoo 17 creates twice, and the settings no event restores
+- Analyses that read a database rather than count it: which module depends on which, on screen; what is installed, in progress and applied; the state of an instance read for the use made of it; and the examination of a database that is not local
+- Anonymising a copy without AI: a production copy exists to reproduce a defect, so identifiers stay consistent across tables once the names are replaced
+- Per-VM statistics: writes, RAM and disk
+- Choosing the database at startup without ever blocking on the choice
+- The reboot is part of installing Proxmox VE: install_proxmox.sh lays down the kernel and stops, rightly so, because launched over ssh a reboot would cut its session and make the install look failed. The reboot now belongs to the launching wrapper, which runs on OUR machine and survives the VM's — install, reboot, wait for `uname -r` to carry the Proxmox kernel, then verify. The ✅ is written only after that, so it means "usable hypervisor"
+
+## Changed
+
+- todo.py split into nine files, one per subject, with a shared base per form. It carried 9 500 lines more than a file should and every subject went through it; the deployment forms repeated the same field-and-validation machinery, so a fix in one never reached the others. No behaviour changes
+- Branch, profile and type are chosen per VM. They were global, which meant switching everything to deploy a single machine differently
+- One shared base describes the guest system, where each form used to describe it again
 
 ## Fixed
 
 - The mobile bundle check accepted only the pack layout, when a real build ships one tar.gz per repository. It failed on `<slug> : index.json absent` and stopped `compile_and_run.sh` before the APK — since 2026-08-20, for anyone on the current mobile main. It now accepts both layouts, and proves the presence of EVERY promised file rather than a sample of twenty: streaming all 139 archives costs 6 s, and 124 350 files are accounted for
 - The bundle test guarded the ZIP entry limit by demanding a `chunk` field on every file, which is the pack layout rather than the limit itself. It now counts the entries the APK will carry — 278 against a ceiling of 65 535 — so either layout passes and a return to file-per-source still fails
 
+- The 13-to-18 migration rested on assumptions: a percent-encoded page anchor the parser could not read, web_responsive that does not survive the bump to 18, a failed OpenUpgrade that passed for done, a rebuilt clone that kept the old one's preparation, and one faulty module taking the whole uninstall batch down
+- Proxmox aimed at the wrong machine: the install went to the host instead of the VM, the disk it reported was the host's, and four screens spoke of a local machine while driving a remote one. The jump host is now the only route to a VM — aiming directly worked only while the VM had a routable address. Six further defects came from an audit rather than from use
+- One name per `~/.ssh/config` entry, and the old one leaves with the convention that replaced it
+- Monitoring no longer bins a VM before being sure, and deleting from a reopened monitor checks the VM's identity first
+- sshfs announced a mount that had not happened
+- Odoo 15 declares xlsxwriter, which report_xlsx has always needed
+- The db_restore master-password probe validated nothing
+- An analysis looked for the price list's external identifier rather than the list itself, and reported fields that had never held data
+- The NAT bridge was written before knowing whether NAT exists. Six lines of iptables and "return code 1" came after the stanza had already gone into /etc/network/interfaces, and nothing in that noise said a reboot was needed: the host was running Debian's cloud kernel, stripped of netfilter. Our own install_proxmox.sh produces that state, so a freshly installed nested Proxmox is ALWAYS in it — the guard now sits where the consequence is, not at host confirmation
 ## Removed
 
 - Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf 12.2, whose build requires C++20, while focal ships GCC 9 and publishes no `g++-10` for s390x

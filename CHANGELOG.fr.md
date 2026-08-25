@@ -88,12 +88,34 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - virt-viewer ouvre l'écran d'une VM depuis le menu
 - Le tableau de bord d'installation affiche la RAM de l'hôte, la RAM utilisée et l'uptime d'une VM, et depuis combien de temps un journal est muet
 - Une VM accueille sa connexion SSH avec les commandes propres à sa distribution
+- Proxmox VE comme cible de déploiement : déployer une VM sur un hôte Proxmox distant depuis un écran qui récapitule dans le terminal avant de créer, crée le pont manquant, suit la VM et change son état, montre sa colonne Odoo et le lien web, et la supprime depuis l'hôte. Toute VM distante vient désormais avec son guide de connexion, qui manquait depuis le début
+- Des réparations pour ce qu'un palier Odoo laisse derrière : les copies de site qui ne savent plus se rendre — prédites AVANT le palier plutôt que découvertes en 500 après — les index qu'Odoo 17 crée en double, et les réglages qu'aucun événement ne remet
+- Des analyses qui lisent une base plutôt que de la compter : qui dépend de qui, à l'écran ; ce qui est installé, en cours et appliqué ; l'état d'une instance lu pour l'usage qu'on en fait ; et l'auscultation d'une base qui n'est pas ici
+- L'anonymisation d'une copie sans IA : une copie de production sert à reproduire un défaut, les identifiants restent donc cohérents entre les tables une fois les noms remplacés
+- Les statistiques de chaque VM : écriture, RAM, disque
+- Le choix de la base au démarrage, sans jamais bloquer sur ce choix
+- Le redémarrage fait partie de l'installation de Proxmox VE : install_proxmox.sh pose le noyau puis s'arrête, à raison, car lancé par ssh un reboot couperait sa session et ferait passer l'installation pour un échec. Le redémarrage revient à l'enveloppe de lancement, qui tourne sur NOTRE machine et survit à celle de la VM — installation, reboot, attente que « uname -r » porte le noyau Proxmox, puis vérification. Le ✅ ne s'écrit qu'après, et veut donc dire « hyperviseur utilisable »
+
+## Modifié
+
+- todo.py éclaté en neuf fichiers, un par sujet, avec un socle commun par formulaire. Il portait 9 500 lignes de plus qu'un fichier ne devrait et tous les sujets y passaient ; les formulaires de déploiement répétaient la même mécanique de champs et de validation, si bien qu'une correction dans l'un ne gagnait jamais les autres. Aucun changement de comportement
+- La branche, le profil et le type se choisissent par VM. Ils étaient globaux, ce qui obligeait à tout basculer pour déployer une seule machine autrement
+- Un socle commun décrit le système invité, là où chaque formulaire le redécrivait
 
 ## Corrigé
 
 - Le vérificateur du transfert mobile n'acceptait que la disposition en packs, quand une compilation réelle livre un tar.gz par dépôt. Il échouait sur `<slug> : index.json absent` et arrêtait `compile_and_run.sh` avant l'APK — depuis le 2026-08-20, pour quiconque est sur le main mobile actuel. Il accepte désormais les deux dispositions, et prouve la présence de CHAQUE fichier promis plutôt qu'un échantillon de vingt : traverser les 139 archives coûte 6 s, et 124 350 fichiers sont comptés
 - Le test du bundle gardait la limite d'entrées du ZIP en exigeant un champ `chunk` sur chaque fichier, c'est-à-dire la disposition en packs plutôt que la limite elle-même. Il compte maintenant les entrées que portera l'APK — 278 pour un plafond de 65 535 — si bien que les deux dispositions passent et qu'un retour au fichier-par-source échoue toujours
 
+- La migration des paliers 13 à 18 tenait sur des suppositions : une ancre de page encodée en pourcent que l'analyseur ne lisait pas, web_responsive qui ne survit pas au passage en 18, un OpenUpgrade en échec qui passait pour fait, un clone rebâti qui gardait la préparation de l'ancien, et un module fautif qui emportait tout le lot de désinstallation
+- Proxmox visait la mauvaise machine : l'installation partait sur l'hôte plutôt que sur la VM, le disque annoncé était celui de l'hôte, et quatre écrans parlaient d'une machine locale alors qu'ils pilotaient une machine distante. Le rebond est désormais le seul chemin vers une VM — viser directement ne marchait que tant que la VM avait une adresse routable. Six autres défauts sont venus d'un audit, pas de l'usage
+- Un seul nom par entrée `~/.ssh/config`, et l'ancienne s'en va avec la convention qui l'a remplacée
+- Le suivi ne met plus une VM à la poubelle avant d'en être sûr, et effacer depuis un suivi rouvert vérifie d'abord l'identité de la VM
+- sshfs annonçait un montage qui n'avait pas eu lieu
+- Odoo 15 déclare xlsxwriter, dont report_xlsx a toujours eu besoin
+- La sonde du mot de passe maître de db_restore ne validait rien
+- Une analyse cherchait l'identifiant externe de la liste de prix plutôt que la liste, et signalait des champs qui n'avaient jamais porté de donnée
+- Le pont NAT s'écrivait avant de savoir si le NAT existe. Six lignes d'iptables et « code de retour 1 » arrivaient après que la strophe soit déjà posée dans /etc/network/interfaces, et rien dans ce bruit ne disait qu'il fallait redémarrer : l'hôte tournait le noyau cloud de Debian, dépouillé de netfilter. C'est notre propre install_proxmox.sh qui produit cet état, donc une Proxmox imbriquée fraîchement installée y est TOUJOURS — le garde va désormais là où la conséquence est, et non à la confirmation de l'hôte
 ## Retiré
 
 - Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9 et ne publie pas de `g++-10` pour s390x
