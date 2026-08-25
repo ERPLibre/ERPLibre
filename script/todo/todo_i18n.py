@@ -3362,6 +3362,38 @@ TRANSLATIONS = {
         "fr": "Aucun stockage capable d'héberger un disque de VM.",
         "en": "No storage able to hold a VM disk.",
     },
+    "No NAT table on this host: the bridge would lead nowhere.": {
+        "fr": "Pas de table NAT sur cet hôte : le pont ne mènerait nulle part.",
+        "en": "No NAT table on this host: the bridge would lead nowhere.",
+    },
+    "reboot it to boot the Proxmox kernel:": {
+        "fr": "à redémarrer pour amorcer le noyau Proxmox :",
+        "en": "reboot it to boot the Proxmox kernel:",
+    },
+    "Running kernel:": {
+        "fr": "Noyau en cours :",
+        "en": "Running kernel:",
+    },
+    "The distribution kernel carries no netfilter module.": {
+        "fr": "Le noyau de la distribution ne porte aucun module netfilter.",
+        "en": "The distribution kernel carries no netfilter module.",
+    },
+    "Proxmox kernel installed:": {
+        "fr": "Noyau Proxmox installé :",
+        "en": "Proxmox kernel installed:",
+    },
+    "taken at next boot": {
+        "fr": "pris au prochain démarrage",
+        "en": "taken at next boot",
+    },
+    "then come back here.": {
+        "fr": "puis revenir ici.",
+        "en": "then come back here.",
+    },
+    "No Proxmox kernel installed: finish the install first.": {
+        "fr": "Aucun noyau Proxmox installé : terminer l'installation d'abord.",
+        "en": "No Proxmox kernel installed: finish the install first.",
+    },
     "No network bridge on this host.": {
         "fr": "Aucun pont réseau sur cet hôte.",
         "en": "No network bridge on this host.",

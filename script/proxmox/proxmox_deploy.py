@@ -218,6 +218,38 @@ def parse_kernel(text: str) -> str:
     return trouve.group(1) if trouve else ""
 
 
+# Ce qu'il faut savoir AVANT d'écrire un pont NAT, en un aller-retour.
+#
+# Le noyau seul ne suffit pas à juger : « -pve » dans son nom est un indice,
+# pas une preuve, et l'inverse non plus — c'est la table NAT elle-même qu'on
+# interroge. « iptables -t nat -S » échoue avec « Table does not exist » quand
+# aucun module netfilter n'est chargeable, et réussit sinon.
+NAT_CHECK_CMD = (
+    "uname -r; echo '---ERPLIBRE-NAT---'; "
+    "iptables -t nat -S >/dev/null 2>&1 && echo NAT-OK || echo NAT-KO; "
+    "echo '---ERPLIBRE-PVE-KERNEL---'; "
+    "ls -1 /lib/modules 2>/dev/null | grep -- -pve | sort -V | tail -1"
+)
+
+
+def parse_nat_check(text: str) -> dict:
+    """{"kernel": …, "nat": bool, "pve_kernel": …} depuis NAT_CHECK_CMD.
+
+    `nat` à False sans `pve_kernel` veut dire que l'installation Proxmox n'est
+    pas allée au bout ; avec, qu'elle attend un redémarrage."""
+    brut = strip_ssh_noise(text or "")
+    parts = brut.split("---ERPLIBRE-NAT---")
+    kernel = parts[0].strip().splitlines()
+    reste = parts[1] if len(parts) > 1 else ""
+    suite = reste.split("---ERPLIBRE-PVE-KERNEL---")
+    pve_kernel = suite[1].strip().splitlines() if len(suite) > 1 else []
+    return {
+        "kernel": kernel[-1].strip() if kernel else "",
+        "nat": "NAT-OK" in (suite[0] if suite else ""),
+        "pve_kernel": pve_kernel[-1].strip() if pve_kernel else "",
+    }
+
+
 def parse_qm_list(text: str) -> list:
     """Sortie de « qm list » -> [{vmid, name, status, mem, disk}].
 

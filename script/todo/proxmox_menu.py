@@ -648,6 +648,56 @@ class ProxmoxMenuMixin:
         parts = (sortie or "").split()
         return parts[parts.index("dev") + 1] if "dev" in parts else ""
 
+    def _pve_nat_ready(self, host):
+        """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
+
+        Posée ICI, au moment d'écrire un pont NAT, et non à la connexion : le
+        noyau est vérifié quand on confirme l'hôte, mais l'hôte est ensuite
+        MÉMORISÉ — on revient des jours plus tard créer un pont, et plus
+        personne ne rappelle rien. Le garde doit être là où la conséquence
+        tombe.
+
+        Sans cette question, ifupdown2 rendait six lignes d'iptables et « code
+        de retour 1 », après avoir déjà écrit la strophe dans
+        /etc/network/interfaces. Rien dans ce bruit ne dit qu'il faut
+        redémarrer.
+
+        Le cas n'a rien d'exotique : notre propre install_proxmox.sh pose le
+        noyau Proxmox sans redémarrer — lancé par ssh, un reboot couperait la
+        session. Une Proxmox imbriquée fraîchement installée est donc TOUJOURS
+        dans cet état, sur le noyau cloud de Debian, qui est dépouillé de tout
+        netfilter."""
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(host, pve.NAT_CHECK_CMD, 40)
+        etat = pve.parse_nat_check(out)
+        if etat["nat"]:
+            return True, []
+        lignes = [
+            f"✗ {t('No NAT table on this host: the bridge would lead nowhere.')}",
+            f"  {t('Running kernel:')} {etat['kernel'] or '?'}",
+        ]
+        if etat["pve_kernel"]:
+            lignes += [
+                f"  {t('The distribution kernel carries no netfilter module.')}",
+                f"  {t('Proxmox kernel installed:')} {etat['pve_kernel']}"
+                f" — {t('taken at next boot')}",
+                f"→ ssh {host.get('target', '')} sudo reboot,"
+                f" {t('then come back here.')}",
+            ]
+        else:
+            lignes.append(
+                f"  {t('No Proxmox kernel installed: finish the install first.')}"
+            )
+        return False, lignes
+
+    def _pve_nat_reason(self, host):
+        """La même chose en UNE ligne, pour l'écran Textual."""
+        ok, lignes = self._pve_nat_ready(host)
+        if ok:
+            return ""
+        return " ".join(ligne.strip("✗→ ") for ligne in lignes[:2])
+
     def _pve_make_internal_bridge(self):
         """Crée le pont INTERNE et le rend, ou ('', raison). SANS rien demander.
 
@@ -662,6 +712,11 @@ class ProxmoxMenuMixin:
         host = self._pve_host(ask=False)
         if not host:
             return "", t("No Proxmox host.")
+        # AVANT d'écrire quoi que ce soit : une strophe posée puis un
+        # « ifup » qui échoue laisse le fichier modifié et le pont absent.
+        raison = self._pve_nat_reason(host)
+        if raison:
+            return "", raison
         uplink = self._pve_uplink()
         for cmd in pve.bridge_setup_cmds(uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
@@ -703,6 +758,13 @@ class ProxmoxMenuMixin:
             print(
                 f"  ⚠ {t('This moves the host address: do it from a console.')}"
             )
+            return ""
+        host = self._pve_host(ask=False)
+        ok, lignes = self._pve_nat_ready(host) if host else (True, [])
+        if not ok:
+            print()
+            for ligne in lignes:
+                print(f"  {ligne}")
             return ""
         uplink = self._pve_uplink()
         print(f"  {t('uplink for NAT')} : {uplink or t('none')}")
@@ -1292,12 +1354,35 @@ class ProxmoxMenuMixin:
             )
             if vm.get("alias"):
                 print(f"      ssh {vm['alias']}")
+            # Une VM qui vient de recevoir Proxmox tourne encore le noyau de
+            # son image cloud : celui-ci n'a AUCUN module netfilter, donc ni
+            # pont NAT ni VM à l'intérieur. install_proxmox.sh ne redémarre
+            # pas de lui-même — lancé par ssh, un reboot couperait la session
+            # et ferait passer l'installation pour un échec. Le dire ICI, où
+            # on lit encore l'écran, plutôt qu'au bout d'un journal d'une
+            # heure : sans cela on le redécouvre en créant un pont, devant six
+            # lignes d'iptables qui ne parlent pas de redémarrage.
+            if self._pve_installs_proxmox(vm, spec):
+                print(
+                    f"      ⚠ {t('reboot it to boot the Proxmox kernel:')}"
+                    f" ssh {vm.get('alias') or vm['name']} sudo reboot"
+                )
         if spec.get("install"):
             print(
                 f"  {t('Install:')} {spec['install'].get('label') or ''}"
                 f" ({spec['install'].get('branch')})"
             )
         print(f"  {t('Log:')} {session}")
+
+    @staticmethod
+    def _pve_installs_proxmox(vm, spec) -> bool:
+        """Cette VM reçoit-elle l'hyperviseur Proxmox VE ?
+
+        Jugé sur la commande EFFECTIVE de la VM — celle que son système lui
+        impose, sinon le choix commun — et non sur son nom ni sur sa
+        distribution : un parc mixte est le cas normal ici."""
+        cmd = vm.get("install_cmd") or (spec.get("install") or {}).get("cmd")
+        return "install_proxmox.sh" in (cmd or "")
 
     def _pve_confirm_spec(self, host, spec):
         """Récapitulatif puis confirmation, dans le TERMINAL.

@@ -16,6 +16,7 @@ aucun hôte Proxmox n'est joint.
 import asyncio
 import sys
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.proxmox_deploy_form import (  # noqa: E402
@@ -683,6 +684,119 @@ class TestUnParcMixte(unittest.TestCase):
     def test_a_uniform_fleet_keeps_the_common_desktop(self):
         vu = self._capture([self._vm("vm-a"), self._vm("vm-b", vmid=101)])
         self.assertEqual(vu["kw"]["desktop"], "")
+
+
+class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
+    """Le pont NAT était écrit AVANT qu'on sache si le NAT existe.
+
+    Résultat rapporté : la strophe posée dans /etc/network/interfaces, le
+    pont absent, et six lignes d'iptables qui ne parlent pas de redémarrage.
+    L'avertissement sur le noyau existait — mais à la CONFIRMATION de l'hôte,
+    et l'hôte est ensuite mémorisé : on revient des jours plus tard créer un
+    pont, et plus personne ne rappelle rien."""
+
+    def _todo(self, sortie):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vu = []
+        todo._pve_host = lambda ask=True: {"target": "pve9", "sudo": ""}
+        todo._pve_uplink = lambda: "eth0"
+
+        def faux_run(host, cmd, timeout=120):
+            vu.append(cmd)
+            from script.proxmox import proxmox_deploy as pve
+
+            if cmd == pve.NAT_CHECK_CMD:
+                return 0, sortie
+            return 0, ""
+
+        return todo, vu, faux_run
+
+    def _sortie(self, nat, pve_kernel="7.0.14-14-pve"):
+        return (
+            f"{'7.0.14-14-pve' if nat else '6.12.101+deb13-cloud-amd64'}\n"
+            f"---ERPLIBRE-NAT---\n{'NAT-OK' if nat else 'NAT-KO'}\n"
+            f"---ERPLIBRE-PVE-KERNEL---\n{pve_kernel}\n"
+        )
+
+    def test_nothing_is_written_when_there_is_no_nat(self):
+        todo, vu, faux = self._todo(self._sortie(nat=False))
+        with mock.patch("script.proxmox.proxmox_deploy.run", faux):
+            nom, raison = todo._pve_make_internal_bridge()
+        self.assertEqual(nom, "")
+        self.assertTrue(raison)
+        # Une seule commande : la sonde. Rien n'a touché au fichier.
+        self.assertEqual(len(vu), 1, vu)
+        self.assertNotIn(
+            "interfaces", " ".join(vu), "la strophe ne doit pas être écrite"
+        )
+
+    def test_the_reason_names_the_kernel_to_boot(self):
+        todo, _vu, faux = self._todo(self._sortie(nat=False))
+        with mock.patch("script.proxmox.proxmox_deploy.run", faux):
+            ok, lignes = todo._pve_nat_ready({"target": "pve9", "sudo": ""})
+        self.assertFalse(ok)
+        texte = " ".join(lignes)
+        self.assertIn("6.12.101+deb13-cloud-amd64", texte)
+        self.assertIn("7.0.14-14-pve", texte)
+        self.assertIn("reboot", texte)
+
+    def test_an_unfinished_install_says_so_instead(self):
+        todo, _vu, faux = self._todo(self._sortie(nat=False, pve_kernel=""))
+        with mock.patch("script.proxmox.proxmox_deploy.run", faux):
+            _ok, lignes = todo._pve_nat_ready({"target": "pve9", "sudo": ""})
+        texte = " ".join(lignes)
+        self.assertNotIn("reboot", texte, "rien à redémarrer, rien de posé")
+
+    def test_a_working_host_goes_through(self):
+        todo, vu, faux = self._todo(self._sortie(nat=True))
+        with mock.patch("script.proxmox.proxmox_deploy.run", faux):
+            todo._pve_make_internal_bridge()
+        self.assertGreater(len(vu), 1, "la création doit suivre la sonde")
+
+
+class TestUneProxmoxImbriqueeDoitRedemarrer(unittest.TestCase):
+    """Le sommaire ne disait pas qu'une VM qui vient de recevoir Proxmox
+    tourne encore le noyau de son image cloud.
+
+    On le redécouvrait des jours plus tard, en créant un pont, devant six
+    lignes d'iptables."""
+
+    def _juge(self, vm, commun=""):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO._pve_installs_proxmox(
+            vm, {"install": {"cmd": commun}} if commun else {}
+        )
+
+    def test_a_vm_that_gets_the_hypervisor(self):
+        self.assertTrue(
+            self._juge({"install_cmd": "./script/proxmox/install_proxmox.sh"})
+        )
+
+    def test_through_the_common_choice_too(self):
+        self.assertTrue(self._juge({}, "./script/proxmox/install_proxmox.sh"))
+
+    def test_an_erplibre_vm_is_left_alone(self):
+        self.assertFalse(
+            self._juge({}, "make install_os && make install_odoo_18")
+        )
+
+    def test_a_vm_of_its_own_overrides_the_common_choice(self):
+        # Parc mixte : la commande de la VM l'emporte sur celle du parc.
+        self.assertFalse(
+            self._juge(
+                {"install_cmd": "make install_odoo_18"},
+                "./script/proxmox/install_proxmox.sh",
+            )
+        )
 
 
 class TestLEcranDUneVmProxmox(unittest.TestCase):
