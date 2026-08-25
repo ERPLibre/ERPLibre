@@ -608,6 +608,7 @@ class TODO(
         "prompt_execute_deploy": "Deploy",
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
+        "prompt_execute_proxmox": "Proxmox VE",
         "prompt_configuration": "Configuration",
     }
 

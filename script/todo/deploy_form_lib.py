@@ -291,6 +291,53 @@ def plan_rows(vms, domains, extra_disk_gb=0, orphelin=None):
     return rows
 
 
+# Les branches qu'on veut voir en premier. « ls-remote » les rend par ordre
+# alphabétique : la liste commençait donc par « dependabot/pip/aiobotocore »,
+# et c'est CELLE-LÀ qui était proposée par défaut — rapporté.
+BRANCHES_EN_TETE = ("develop", "master")
+
+
+def branch_default(branches, courante=""):
+    """La branche à proposer : celle du DÉPÔT d'abord.
+
+    Déployer avec la branche qu'on a sous les yeux est le cas courant ; à
+    défaut « develop », puis « master ». Le premier de la liste alphabétique
+    n'a aucune raison d'être un bon défaut, et c'était une branche de
+    dependabot.
+    """
+    liste = list(branches or ())
+    if not liste:
+        return ""
+    for candidate in (courante,) + BRANCHES_EN_TETE:
+        if candidate and candidate in liste:
+            return candidate
+    return liste[0]
+
+
+def branch_order(branches, courante=""):
+    """La liste réordonnée : la branche du dépôt, develop, master, puis le
+    reste, et les branches de robot à la fin.
+
+    Une liste de soixante entrées qui commence par six « dependabot/pip/… »
+    demande de dérouler pour trouver ce qu'on cherche.
+    """
+    liste = list(branches or ())
+    # Dédoublonnée : la branche du dépôt EST souvent « develop », et la voir
+    # deux fois de suite ferait douter de la liste.
+    tete, vues = [], set()
+    for b in (courante,) + BRANCHES_EN_TETE:
+        if b and b in liste and b not in vues:
+            tete.append(b)
+            vues.add(b)
+    milieu, robots = [], []
+    for b in liste:
+        if b in vues:
+            continue
+        vues.add(b)
+        (robots if b.startswith("dependabot/") else milieu).append(b)
+    return tete + milieu + robots
+
+
 def gib(nbytes) -> int:
     """Octets -> Gio entiers. Le plan compte en Go partout ailleurs : mêler
     des unités sur la même ligne de totaux la rendrait illisible."""
@@ -550,7 +597,10 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
 
     Un bloc reste DÉPLIÉ tant que la VM tourne, se replie dès qu'elle réussit
     — et reste ouvert si elle échoue, puisque c'est ce qu'on veut lire."""
+    import shlex
     import subprocess
+
+    shlex_quote = shlex.quote
     import threading
 
     from textual.app import App, ComposeResult
@@ -579,6 +629,10 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
         #hint { height: auto; color: $text-muted; padding: 0 1; }
         """
         BINDINGS = [
+            # « s » comme dans le tableau de bord : une VM qui vient d'être
+            # créée est souvent joignable tout de suite, et on veut y entrer
+            # sans quitter l'écran. Rapporté comme manquant.
+            ("s", "ssh", t("SSH")),
             ("c", "copy_current", t("Copy log")),
             ("C", "copy_all", t("Copy all logs")),
             ("q", "quit", t("Quit")),
@@ -587,6 +641,10 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
         def __init__(self):
             super().__init__()
             self._out = {name: "" for _jid, name, _p in jobs}
+            # Ce qui a DÉJÀ été écrit à l'écran, pour ne pas le doubler.
+            self._ecrites = {}
+            # Les VM créées sans erreur : celles où « s » peut entrer.
+            self._reussies = []
             self._done = 0
             self._t0 = time.time()
             self._slots = threading.Semaphore(max(1, parallelism))
@@ -609,7 +667,8 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
             with Vertical():
                 yield Static("", id="summary")
                 yield Static(
-                    f"  {t('c copy log · C copy all · q quit')}", id="hint"
+                    f"  {t('s ssh · c copy log · C copy all · q quit')}",
+                    id="hint",
                 )
                 yield Button(t("Copy all logs"), id="copyall")
             yield Footer()
@@ -634,27 +693,65 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
             def _job() -> None:
                 with self._slots:
                     t0 = time.time()
+                    lignes = []
                     try:
-                        res = subprocess.run(
-                            parts, capture_output=True, text=True
+                        # « Popen » et LECTURE LIGNE À LIGNE, pas
+                        # « subprocess.run » : celui-ci ne rend la sortie
+                        # qu'à la fin du travail, et le bloc restait vide
+                        # pendant tout le déploiement — rapporté. Sur Proxmox,
+                        # une VM demande le téléchargement d'une image de
+                        # 325 Mio puis l'import du disque : plusieurs minutes
+                        # de silence, et rien à l'écran.
+                        proc = subprocess.Popen(
+                            parts,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            bufsize=1,
                         )
-                        rc = res.returncode
-                        out = (res.stdout or "") + (res.stderr or "")
                     except (OSError, subprocess.SubprocessError) as exc:
-                        rc, out = 1, str(exc)
+                        self.call_from_thread(
+                            self._finish,
+                            jid,
+                            name,
+                            1,
+                            str(exc),
+                            time.time() - t0,
+                        )
+                        return
+                    for ligne in proc.stdout:
+                        ligne = ligne.rstrip("\n")
+                        lignes.append(ligne)
+                        self.call_from_thread(self._ecrire, name, ligne)
+                    rc = proc.wait()
+                    out = "\n".join(lignes)
                 self.call_from_thread(
                     self._finish, jid, name, rc, out, time.time() - t0
                 )
 
             self.run_worker(_job, thread=True, group="deploy", exclusive=False)
 
+        def _ecrire(self, name, ligne):
+            """Une ligne, dès qu'elle arrive. Appelée depuis le fil."""
+            self._ecrites[name] = True
+            try:
+                self.query_one(f"#log_{slug(name)}", RichLog).write(ligne)
+            except Exception:
+                pass
+
         def _finish(self, jid, name, rc, out, secs):
             self._out[name] = out
             results.append((name, rc, out, secs))
             self._done += 1
-            log = self.query_one(f"#log_{slug(name)}", RichLog)
-            for line in out.strip().splitlines():
-                log.write(line)
+            if rc == 0:
+                self._reussies.append(name)
+            # La sortie est déjà à l'écran, ligne par ligne : la réécrire
+            # la doublerait. Seul un échec avant même le démarrage du
+            # processus n'a rien écrit.
+            if not self._ecrites.get(name):
+                log = self.query_one(f"#log_{slug(name)}", RichLog)
+                for line in out.strip().splitlines():
+                    log.write(line)
             block = self.query_one(f"#{slug(name)}", Collapsible)
             mark = "✅" if rc == 0 else "❌"
             block.title = f"{mark} [{jid}] {name} · {fmt_dur(secs)}" + (
@@ -664,6 +761,27 @@ def run_deploy_progress(jobs, parallelism, run_app: bool = True):
             # reste ouvert.
             block.collapsed = rc == 0
             self._refresh_summary()
+
+        def action_ssh(self) -> None:
+            """Entre dans la VM créée, sans quitter l'écran.
+
+            Par son NOM et non par son adresse : c'est l'entrée
+            ~/.ssh/config que le déploiement vient d'écrire qui sait comment
+            l'atteindre — et pour une VM posée sur un hôte Proxmox, elle
+            porte le rebond, seul chemin vers son réseau interne.
+
+            « suspend() » rend le terminal : ssh a besoin du clavier, et
+            Textual le tient encore.
+            """
+            import os
+
+            if not self._reussies:
+                self.notify(t("No VM created yet."), severity="warning")
+                return
+            # La dernière créée : c'est celle qu'on regarde.
+            nom = self._reussies[-1]
+            with self.suspend():
+                os.system(f"ssh {shlex_quote(nom)} || true")
 
         # -- presse-papiers (OSC 52 : traverse SSH) --------------------- #
         def _copy(self, text, what):

@@ -8,8 +8,9 @@ import getpass
 import logging
 import os
 import shutil
-import sys
 import subprocess
+import sys
+import uuid
 from subprocess import check_output
 
 sys.path.append(
@@ -104,12 +105,32 @@ def password_refused(sortie):
     return "AccessDenied" in (sortie or "")
 
 
-def probe_master_password(arg_base, mot):
-    """(accepté, sortie) — éprouver le mot de passe sur `--list`.
+def probe_name():
+    """Un nom de base qui ne peut appartenir à personne.
 
-    La commande la plus inoffensive : elle ne touche à rien et rend le
-    même refus qu'une restauration. Valider ici évite d'échouer à
-    mi-parcours, une fois la base déjà supprimée.
+    La sonde DEMANDE une suppression : si le nom désignait une vraie
+    base et que le mot de passe était bon, on la perdrait. Un uuid4 rend
+    la collision impossible en pratique, et le préfixe dit d'où il vient
+    à qui le verrait passer dans un journal.
+    """
+    return f"el_probe_{uuid.uuid4().hex}"
+
+
+def probe_master_password(arg_base, mot):
+    """(accepté, sortie) — éprouver le mot de passe pour de vrai.
+
+    `--list` ne lit JAMAIS le mot de passe : mesuré,
+    `MASTER_PWD="ceci_est_faux" odoo-bin db --list` sort en 0. La sonde
+    d'avant acceptait donc le premier mot saisi, juste ou faux, et la
+    boucle des dix essais ne servait à rien — le refus n'arrivait qu'au
+    `--restore`, une fois la base déjà supprimée.
+
+    Seule l'action `drop` consulte le mot de passe, et elle le fait
+    AVANT de regarder la base : `check_super` d'abord, `db_exists`
+    ensuite. Sur un nom qui n'existe pas, elle ne touche donc rien et
+    répond quand même. Mesuré sur la machine d'essai : mauvais mot de
+    passe → code 1 et `AccessDenied` dans la trace ; bon mot de passe →
+    code 0, silence, et les huit bases toujours là.
 
     Le secret passe par l'environnement, jamais par argv :
     /proc/<pid>/cmdline est lisible par tout utilisateur de la machine.
@@ -117,7 +138,7 @@ def probe_master_password(arg_base, mot):
     env = os.environ.copy()
     env["MASTER_PWD"] = mot
     done = subprocess.run(
-        f"{arg_base} --list".split(" "),
+        f"{arg_base} --drop --database {probe_name()}".split(" "),
         capture_output=True,
         text=True,
         env=env,

@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : g\u00e9rer les VM existantes.\n\nLe cycle de vie apr\u00e8s la cr\u00e9ation : lister, allumer et \u00e9teindre, r\u00e9gler le\nmat\u00e9riel, redimensionner (et r\u00e9tr\u00e9cir, ce qui demande de traverser le syst\u00e8me\nde fichiers invit\u00e9 par nbd), effacer, nettoyer les restes, retrouver une\nadresse IP, rouvrir le suivi d'une installation.\n\nC'est le fichier qui appelle \u00ab virsh \u00bb le plus souvent : les helpers qui le\nfont (domstate, dumpxml, c_env) vivent donc ici."""
 
+import glob
 import json
 import os
 import re
@@ -127,17 +128,25 @@ class QemuManageMixin:
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
     @staticmethod
-    def _qemu_dumpxml(name):
-        """XML PERSISTANT du domaine, ou '' — source de son état matériel.
+    def _qemu_dumpxml(name, inactive=True):
+        """XML du domaine, ou '' — source de son état matériel.
 
         « --inactive » n'est pas décoratif : sur une VM allumée, « dumpxml »
         rend la vue VIVANTE, décorée de ce que libvirt a alloué au démarrage
         (portid du réseau, vnetN, alias). C'est la définition persistante que
-        virt-xml modifie, et c'est donc elle qu'il faut lire.
+        virt-xml modifie, et c'est donc elle qu'il faut lire — d'où le défaut.
+
+        `inactive=False` demande justement la vue vivante : pour SAVOIR CE QUI
+        EST OUVERT, c'est elle qui compte, un disque attaché à chaud n'existant
+        que là.
         """
+        argv = ["sudo", "virsh", "dumpxml"]
+        if inactive:
+            argv.append("--inactive")
+        argv.append(name)
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dumpxml", "--inactive", name],
+                argv,
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -778,6 +787,112 @@ class QemuManageMixin:
     # ------------------------------------------------------------------ #
     # Redimensionnement du disque d'une VM
     # ------------------------------------------------------------------ #
+    # « <source file='…'/> » couvre les disques, les cdrom ET les
+    # « <backingStore> » d'une chaîne. Le nvram porte un attribut
+    # « template » : l'attendre sans attribut le manquait, et c'est le
+    # fichier le plus facile à perdre.
+    _RE_SOURCE_FILE = re.compile(r"<source file='([^']+)'")
+    _RE_NVRAM = re.compile(r"<nvram[^>]*>([^<]+)</nvram>")
+    _RE_LIBVIRT_PATH = re.compile(r"""/var/lib/libvirt/[^,\0\s'"]+""")
+
+    def _qemu_referenced_files(self, domains=None):
+        """{chemin: domaine} — TOUT ce que les domaines référencent.
+
+        L'autorité est libvirt, jamais le nom du fichier. Un domaine renommé
+        garde le nom de fichier d'avant : juger sur le nom faisait passer le
+        disque d'une VM EN MARCHE pour un orphelin. Rapporté sur
+        « erplibre-ubuntu-2404-MIGRATION », renommée depuis
+        « erplibre-ubuntu-2404 » : le nettoyage offrait ses trois fichiers —
+        disque de 63 Go, seed, nvram — au « rm -f ».
+
+        Les deux vues, persistante et vivante, pour la raison dite dans
+        `_qemu_dumpxml`.
+        """
+        refs = {}
+        for nom in (
+            domains if domains is not None else self._qemu_list_domains()
+        ):
+            for inactive in (True, False):
+                xml = self._qemu_dumpxml(nom, inactive=inactive)
+                if not xml:
+                    continue
+                trouves = self._RE_SOURCE_FILE.findall(
+                    xml
+                ) + self._RE_NVRAM.findall(xml)
+                for chemin in trouves:
+                    refs.setdefault(chemin.strip(), nom)
+        return refs
+
+    @classmethod
+    def _qemu_files_in_use(cls):
+        """Chemins de /var/lib/libvirt cités par un processus EN COURS.
+
+        Contrôle INDÉPENDANT de libvirt : un qemu lancé à la main, ou une
+        définition que libvirt aurait perdue, tient son disque ouvert quand
+        même. Devant un « rm -f » de 63 Go, deux sources valent mieux qu'une.
+        Sans privilège : /proc/<pid>/cmdline se lit, et le qemu d'une VM y
+        porte ses disques, son seed et son nvram.
+        """
+        vus = set()
+        for entree in glob.glob("/proc/[0-9]*/cmdline"):
+            try:
+                with open(entree, "rb") as fh:
+                    brut = fh.read().decode("utf-8", "replace")
+            except OSError:
+                continue
+            for chemin in cls._RE_LIBVIRT_PATH.findall(brut):
+                # Un chemin qui n'existe pas n'est pas un fichier tenu
+                # ouvert : la ligne de commande d'un processus quelconque
+                # peut contenir n'importe quoi (ce script lui-même y met son
+                # motif). On ne protège que du réel.
+                if os.path.exists(chemin):
+                    vus.add(chemin)
+        return vus
+
+    def _qemu_vm_own_files(self, name):
+        """Fichiers de CETTE VM, et d'elle seule : disques et seed.
+
+        Demandés à libvirt, jamais déduits du nom. Une VM renommée garde le
+        nom de fichier d'avant : « rm <nom>.qcow2 » ne trouvait alors rien et
+        laissait 63 Go derrière lui — le même défaut que dans le nettoyage,
+        pris par l'autre bout.
+
+        Un fichier partagé avec un AUTRE domaine (image de fond d'une chaîne
+        de qcow2) est écarté : l'effacer creverait la voisine. Le nvram aussi,
+        parce que « virsh undefine --nvram » s'en charge déjà.
+        """
+        miens = set(self._qemu_referenced_files([name]))
+        voisins = set(
+            self._qemu_referenced_files(
+                [d for d in self._qemu_list_domains() if d != name]
+            )
+        )
+        return sorted(
+            chemin
+            for chemin in miens - voisins
+            if chemin.startswith("/var/lib/libvirt/")
+            and not chemin.endswith(".fd")
+        )
+
+    def _qemu_split_orphans(self, candidats):
+        """(orphelins, protégés) — un fichier référencé n'est JAMAIS orphelin.
+
+        `candidats` et le retour sont des (taille, chemin, motif). Les
+        protégés portent, à la place du motif, ce qui les retient.
+        """
+        refs = self._qemu_referenced_files()
+        ouverts = self._qemu_files_in_use()
+        orphelins, proteges = [], []
+        for taille, chemin, motif in candidats:
+            porteur = refs.get(chemin)
+            if not porteur and chemin in ouverts:
+                porteur = t("a running process")
+            if porteur:
+                proteges.append((taille, chemin, porteur))
+            else:
+                orphelins.append((taille, chemin, motif))
+        return orphelins, proteges
+
     @staticmethod
     def _qemu_c_env():
         """Environnement forçant LC_ALL=C : la sortie des outils (virsh,
@@ -1614,10 +1729,10 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
 
-        disk_dir = "/var/lib/libvirt/images"
-        seed_dir = "/var/lib/libvirt/images/iso"
         for name in chosen:
             q = shlex.quote(name)
+            # Les fichiers AVANT l'undefine : après, plus de XML à lire.
+            fichiers = self._qemu_vm_own_files(name) if del_disks else []
             # Éteindre si en cours, puis retirer la définition (+ nvram si
             # UEFI ; repli sans l'option pour les vieilles versions de virsh).
             cmd = (
@@ -1625,10 +1740,14 @@ class QemuManageMixin:
                 f"sudo virsh undefine {q} --nvram 2>/dev/null "
                 f"|| sudo virsh undefine {q}"
             )
-            if del_disks:
-                disk = shlex.quote(f"{disk_dir}/{name}.qcow2")
-                seed = shlex.quote(f"{seed_dir}/{name}-seed.iso")
-                cmd += f"; sudo rm -f {disk} {seed}"
+            if del_disks and fichiers:
+                cmd += "; sudo rm -f " + " ".join(
+                    shlex.quote(f) for f in fichiers
+                )
+            elif del_disks:
+                # Rien à effacer : le dire, plutôt que de laisser croire que
+                # la place a été rendue.
+                print(f"  ⚠ {name} : {t('no disk file found for this VM')}")
             print(f"\n▶ {name}: {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
         print(f"\n✅ {t('Deletion done.')}")
@@ -1730,6 +1849,16 @@ class QemuManageMixin:
         # Sauvegardes de disque laissées par un redimensionnement (.qcow2.bak).
         for size, path in self._qemu_find_files(disk_dir, "*.qcow2.bak"):
             orphans.append((size, path, t("disk backup (resize)")))
+        # Le nom d'un fichier ne dit RIEN de son usage : c'est libvirt qui
+        # sait. Une VM renommée garde le nom de fichier d'avant, et le
+        # nettoyage offrait alors son disque de 63 Go au « rm -f » — rapporté.
+        orphans, proteges = self._qemu_split_orphans(orphans)
+        if proteges:
+            print(f"\n{t('Kept (still attached to a VM):')}")
+            for size, path, porteur in sorted(proteges, key=lambda o: -o[0]):
+                print(
+                    f"  {self._human_size(size):>9}  {path}" f"  ← {porteur}"
+                )
         if orphans:
             total = sum(o[0] for o in orphans)
             print(f"\n{t('Orphan files:')}")
@@ -1755,10 +1884,15 @@ class QemuManageMixin:
         # 3) Doublons d'images nommées par codename (avant /releases/).
         dups = [
             (s, p)
-            for s, p in self._qemu_find_files(
-                seed_dir, "*-server-cloudimg-*.img"
-            )
-            if not os.path.basename(p).startswith("ubuntu-")
+            for s, p, _m in self._qemu_split_orphans(
+                [
+                    (s, p, "")
+                    for s, p in self._qemu_find_files(
+                        seed_dir, "*-server-cloudimg-*.img"
+                    )
+                    if not os.path.basename(p).startswith("ubuntu-")
+                ]
+            )[0]
         ]
         self._cleanup_delete_files(
             t("Stale codename-named Ubuntu images (duplicates):"),
@@ -1770,10 +1904,17 @@ class QemuManageMixin:
         # 5) Baux DHCP périmés.
         self._cleanup_stale_leases()
         # 6) Tout le cache d'images de base (option lourde : re-téléchargement).
+        # Une image de base peut servir de FOND à un disque (backingStore) :
+        # elle est alors référencée, et l'effacer creverait la VM.
         cached = [
             (s, p)
-            for s, p in self._qemu_find_files(seed_dir, "*")
-            if not p.endswith("-seed.iso") and not p.endswith(".part")
+            for s, p, _m in self._qemu_split_orphans(
+                [
+                    (s, p, "")
+                    for s, p in self._qemu_find_files(seed_dir, "*")
+                    if not p.endswith("-seed.iso") and not p.endswith(".part")
+                ]
+            )[0]
         ]
         self._cleanup_delete_files(
             t("All cached base images (reusable):"),
@@ -1828,18 +1969,74 @@ class QemuManageMixin:
             self.execute.exec_command_live(cmd, source_erplibre=False)
         print(f"✅ {t('Cleanup done.')}")
 
+    def _ssh_entry_alive(self, content, nom, domains, adresses, distantes):
+        """Cette entrée mène-t-elle encore quelque part ? (raison, ou '')
+
+        Le NOM ne suffit pas à en juger — c'est le défaut qui a coûté cher :
+        après un renommage de VM, l'alias garde l'ancien nom et se faisait
+        effacer alors qu'il menait à une machine EN MARCHE. Trois autres
+        preuves valent mieux :
+
+        * son adresse est celle d'un domaine vivant ;
+        * elle porte un ProxyJump, donc elle a été écrite pour une VM
+          imbriquée ou distante, que virsh ne connaîtra jamais ;
+        * son nom est celui d'une VM de l'hôte Proxmox retenu.
+        """
+        if nom in domains:
+            return nom
+        bloc = re.search(
+            rf"(?ms)^[ \t]*Host[ \t]+{re.escape(nom)}[ \t]*\n"
+            r"((?:[ \t]+[^\n]*\n?)*)",
+            content,
+        )
+        corps = bloc.group(1) if bloc else ""
+        ip = re.search(r"(?mi)^[ \t]*HostName[ \t]+(\S+)", corps)
+        if ip and ip.group(1) in adresses:
+            return adresses[ip.group(1)]
+        if re.search(r"(?mi)^[ \t]*ProxyJump[ \t]+\S+", corps):
+            return t("reached through a jump host")
+        if nom in distantes:
+            return t("a VM of the Proxmox host")
+        return ""
+
     def _cleanup_ssh_config(self, domains):
-        """Retire les blocs « Host erplibre-* » sans VM correspondante (on ne
-        touche jamais aux autres hôtes SSH personnels)."""
+        """Retire les blocs « Host erplibre-* » qui ne mènent plus à rien (on
+        ne touche jamais aux autres hôtes SSH personnels)."""
         cfg = os.path.expanduser("~/.ssh/config")
         if not os.path.exists(cfg):
             return
         with open(cfg, encoding="utf-8") as fh:
             content = fh.read()
+        # Les adresses des domaines vivants, et les VM de l'hôte Proxmox
+        # retenu : deux preuves qu'une entrée sert encore, que le nom ignore.
+        adresses = {}
+        for nom in domains:
+            ip = self._qemu_vm_ip_now(nom)
+            if ip:
+                adresses[ip] = nom
+        distantes = set()
+        try:
+            hote = self._pve_host(ask=False)
+            if hote:
+                distantes = {
+                    v["name"] for v in self._pve_vms() if v.get("name")
+                }
+        except Exception:
+            pass
         hosts = re.findall(r"(?m)^[ \t]*Host[ \t]+(\S+)", content)
-        orphans = [
-            h for h in hosts if h.startswith("erplibre-") and h not in domains
-        ]
+        orphans, gardes = [], []
+        for h in hosts:
+            if not h.startswith("erplibre-"):
+                continue
+            raison = self._ssh_entry_alive(
+                content, h, domains, adresses, distantes
+            )
+            (gardes if raison else orphans).append((h, raison))
+        if gardes:
+            print(f"\n{t('Kept (still leads somewhere):')}")
+            for h, raison in gardes:
+                print(f"  {h}  ← {raison}")
+        orphans = [h for h, _r in orphans]
         if not orphans:
             return
         print(f"\n{t('Orphan ~/.ssh/config entries:')} {', '.join(orphans)}")
@@ -1955,6 +2152,58 @@ class QemuManageMixin:
             return False
 
     @staticmethod
+    def _qemu_host_addresses():
+        """Adresses IPv4 de L'HÔTE, à écarter des candidates d'une VM.
+
+        « virsh domifaddr --source arp » remonte la table ARP, où figurent les
+        passerelles des ponts libvirt (192.168.122.1, 192.168.123.1…). Une VM
+        n'a jamais l'adresse de son hôte : sans ce filtre, une VM RENOMMÉE —
+        dont le bail porte encore l'ancien nom d'hôte, donc sans
+        correspondance — se voyait attribuer la passerelle. Vécu sur
+        « erplibre-ubuntu-2404-MIGRATION », annoncée en 192.168.122.1 au lieu
+        de 192.168.123.170.
+        """
+        try:
+            res = subprocess.run(
+                ["ip", "-4", "-o", "addr", "show"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return set()
+        return set(re.findall(r"inet (\d+\.\d+\.\d+\.\d+)", res.stdout))
+
+    @staticmethod
+    def _qemu_candidates_by_source(name):
+        """{source: [ip]} — les candidates SANS mélanger les sources.
+
+        Le bail dit ce que dnsmasq a donné, l'agent ce que la VM voit,
+        l'ARP ce qui a parlé sur le réseau (passerelles comprises). Les
+        garder séparées permet de choisir la plus sûre quand le nom d'hôte
+        ne tranche pas.
+        """
+        siennes = QemuManageMixin._qemu_host_addresses()
+        out = {}
+        for source in ("lease", "agent", "arp"):
+            try:
+                res = subprocess.run(
+                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            vues = []
+            for ip in re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout):
+                if ip != "127.0.0.1" and ip not in siennes and ip not in vues:
+                    vues.append(ip)
+            if vues:
+                out[source] = vues
+        return out
+
+    @staticmethod
     def _qemu_lease_candidates(name):
         """Toutes les IPv4 candidates de la VM, agrégées de PLUSIEURS sources :
         - lease : base DHCP de dnsmasq (peut manquer sous forte charge, ou
@@ -1967,6 +2216,7 @@ class QemuManageMixin:
         (cas observé : 30 VM émulées, bail dnsmasq vide alors que la VM a une
         IP)."""
         ips = []
+        siennes = QemuManageMixin._qemu_host_addresses()
         for source in ("lease", "agent", "arp"):
             try:
                 res = subprocess.run(
@@ -1978,8 +2228,10 @@ class QemuManageMixin:
             except (OSError, subprocess.SubprocessError):
                 continue
             for ip in re.findall(r"(\d+\.\d+\.\d+\.\d+)", res.stdout):
-                # Ignore la loopback (remontée par --source agent).
-                if ip != "127.0.0.1" and ip not in ips:
+                # Ignore la loopback (remontée par --source agent) et les
+                # adresses de l'HÔTE (passerelles des ponts, remontées par
+                # --source arp) : une VM n'a jamais celles-là.
+                if ip != "127.0.0.1" and ip not in ips and ip not in siennes:
                     ips.append(ip)
         return ips
 
@@ -2042,10 +2294,22 @@ class QemuManageMixin:
         une liste — trois VM figeaient le menu une demi-heure. Ici on lit le
         bail une fois, en préférant celui dont le hostname est le nom de la VM.
         """
-        cands = self._qemu_lease_candidates(name)
+        par_source = self._qemu_candidates_by_source(name)
+        cands = [ip for ips in par_source.values() for ip in ips]
         if not cands:
             return None
-        return self._qemu_lease_ip_for_host(name, cands) or cands[-1]
+        trouve = self._qemu_lease_ip_for_host(name, cands)
+        if trouve:
+            return trouve
+        # Sans correspondance de nom d'hôte — le cas d'une VM RENOMMÉE, dont
+        # le bail porte encore l'ancien nom — on prend la source la plus
+        # sûre : le bail, puis l'agent, puis la table ARP. Celle-ci contient
+        # les passerelles des ponts, et « la dernière candidate » y tombait :
+        # la VM était annoncée en 192.168.122.1.
+        for source in ("lease", "agent", "arp"):
+            if par_source.get(source):
+                return par_source[source][-1]
+        return cands[-1]
 
     def _qemu_vm_ip(self, name, timeout=600):
         """IPv4 utilisable d'une VM. Gère le cas des baux multiples (hostname
@@ -2162,6 +2426,24 @@ class QemuManageMixin:
         except Exception:
             pass
         return None, None, arch
+
+    @staticmethod
+    def _qemu_repo_branch():
+        """Branche du dépôt COURANT, ou '' — le défaut des formulaires.
+
+        On déploie le plus souvent ce qu'on a sous les yeux ; le premier nom
+        de la liste alphabétique, lui, n'a aucune raison d'être bon."""
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        nom = (res.stdout or "").strip()
+        return "" if res.returncode or nom == "HEAD" else nom
 
     def _qemu_branch_list(self):
         """Branches distantes d'ERPLibre, triées. Vide si le réseau manque.

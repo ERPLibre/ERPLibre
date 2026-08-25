@@ -52,16 +52,74 @@ class TestRessourcesLibres(unittest.TestCase):
         self.assertEqual(lib.res_value("8", "", 2), 8)
 
 
+class TestLesBranches(unittest.TestCase):
+    """« git ls-remote » rend les branches par ordre alphabétique.
+
+    Rapporté : le formulaire Proxmox proposait « dependabot/pip/aiobotocore-
+    3.1.3 » — la première de la liste. Le bon défaut est la branche du DÉPÔT
+    qu'on a sous les yeux, puis develop, puis master.
+    """
+
+    BRANCHES = [
+        "dependabot/pip/aiobotocore-3.1.3",
+        "dependabot/pip/boto3-1.42.49",
+        "develop",
+        "dev_mobile",
+        "master",
+    ]
+
+    def test_the_checkout_branch_wins(self):
+        self.assertEqual(
+            lib.branch_default(self.BRANCHES, "dev_mobile"), "dev_mobile"
+        )
+
+    def test_without_it_develop_then_master(self):
+        self.assertEqual(lib.branch_default(self.BRANCHES, ""), "develop")
+        sans_develop = [b for b in self.BRANCHES if b != "develop"]
+        self.assertEqual(lib.branch_default(sans_develop, ""), "master")
+
+    def test_a_branch_that_no_longer_exists_is_ignored(self):
+        # On déploie une branche qui existe, pas celle qu'on avait localement.
+        self.assertEqual(
+            lib.branch_default(self.BRANCHES, "partie-en-fumée"), "develop"
+        )
+
+    def test_the_last_resort_is_the_first_but_never_by_default(self):
+        self.assertEqual(lib.branch_default(["zzz"], ""), "zzz")
+        self.assertEqual(lib.branch_default([], "develop"), "")
+
+    def test_the_list_puts_the_useful_ones_first(self):
+        ordre = lib.branch_order(self.BRANCHES, "dev_mobile")
+        self.assertEqual(ordre[:3], ["dev_mobile", "develop", "master"])
+
+    def test_the_robots_go_last(self):
+        ordre = lib.branch_order(self.BRANCHES, "develop")
+        self.assertTrue(all(b.startswith("dependabot/") for b in ordre[-2:]))
+
+    def test_nothing_is_lost_nor_duplicated(self):
+        # La branche du dépôt EST souvent « develop » : la voir deux fois
+        # ferait douter de la liste.
+        ordre = lib.branch_order(self.BRANCHES, "develop")
+        self.assertEqual(sorted(ordre), sorted(self.BRANCHES))
+        self.assertEqual(len(ordre), len(set(ordre)))
+
+
 class TestPlaceDisque(unittest.TestCase):
     """La demande du plan ne dit pas si ça rentre : il faut la place à côté."""
 
     def test_it_shows_the_demand_the_room_and_the_capacity(self):
+        # Comparé à la traduction et non au français : la langue de
+        # l'interface se change (EL_LANG), et un test qui la suppose échoue
+        # pour une raison étrangère à ce qu'il vérifie.
         self.assertEqual(
-            lib.disk_note(50, 20, 270), "~50 G / 20 G libres sur 270 G"
+            lib.disk_note(50, 20, 270),
+            f"~50 G / 20 G {lib.t('free of')} 270 G",
         )
 
     def test_without_a_capacity_it_still_shows_the_room(self):
-        self.assertEqual(lib.disk_note(50, 20), "~50 G / 20 G libres")
+        self.assertEqual(
+            lib.disk_note(50, 20), f"~50 G / 20 G {lib.t('free')}"
+        )
 
     def test_without_a_measure_it_invents_nothing(self):
         # Une place inconnue ne doit pas se lire comme « 0 Go libres ».

@@ -14,6 +14,7 @@ alors qu'il était « installed » de la 15 à la 18.
 import ast
 import io
 import os
+import re
 import sys
 import unittest
 
@@ -347,6 +348,116 @@ class TestDiscardingTheCloneDiscardsItsPreparation(unittest.TestCase):
         ):
             self.assertIn(cle, corps)
         self.assertIn("write_config", corps)
+
+
+class FauxPiloteParNom(FauxPilote):
+    """Un faux qui reproduit le VRAI mécanisme du lot.
+
+    « --uninstall » prend une liste virgulée, et Odoo annule la
+    transaction entière au premier échec : soit tout part, soit rien.
+    C'est cela qu'il faut simuler — un faux où chaque nom part
+    indépendamment ne montrerait jamais le défaut.
+    """
+
+    def __init__(self, fautifs=()):
+        super().__init__()
+        self.fautifs = set(fautifs)
+        self.partis = set()
+        self.tentes = []
+
+    def todo_upgrade_execute(self, cmd, **kwargs):
+        self.commandes.append(cmd)
+        if kwargs.get("get_output"):
+            # `still_installed` : ce qu'on demande et qui n'est pas parti.
+            #
+            # Les noms se lisent dans la clause `IN (…)` SEULE : une
+            # capture large ramassait `'uninstalled'` du `state <>` et
+            # le faux tentait alors de désinstaller un module de ce nom.
+            dedans = re.search(r"name IN \(([^)]*)\)", cmd)
+            demandes = re.findall(
+                r"'([^']+)'", dedans.group(1) if dedans else ""
+            )
+            return 0, cmd, [n for n in demandes if n not in self.partis]
+        if "uninstall_addons.sh" in cmd:
+            noms = cmd.rsplit(" ", 1)[-1].split(",")
+            self.tentes.append(list(noms))
+            if not any(n in self.fautifs for n in noms):
+                self.partis.update(noms)
+        return 0, cmd
+
+
+class TestOneBadNameNoLongerProtectsTheOthers(unittest.TestCase):
+    """Un seul module fautif emportait tout le lot.
+
+    « --uninstall » prend une liste et Odoo annule la transaction
+    entière au premier échec. Mesuré sur une chaîne 12 → 18 :
+    `crm_phone` échoue sur une colonne absente de res_users et fait
+    tomber les 22 autres — dont huit modules sans code en 13, qui sont
+    alors montés d'un palier « installed » sans rien pour les charger.
+    """
+
+    def pilote(self, fautifs, tous):
+        p = FauxPiloteParNom(fautifs)
+        p.dct_module_per_version = {12: list(tous)}
+        return p
+
+    def test_the_healthy_ones_leave_even_when_one_resists(self):
+        tous = ["bon_a", "crm_phone", "bon_b"]
+        p = self.pilote(["crm_phone"], tous)
+        p.uninstall_from_database(tous, "db", 12)
+        # Le lot d'abord, puis chacun seul…
+        self.assertEqual(tous, p.tentes[0])
+        self.assertEqual(
+            sorted(n for lot in p.tentes[1:] for n in lot),
+            ["bon_a", "bon_b", "crm_phone"],
+        )
+        # …et la comptabilité ne garde que le fautif.
+        self.assertEqual(["crm_phone"], p.dct_module_per_version[12])
+
+    def test_the_one_that_resists_is_named(self):
+        tous = ["bon_a", "crm_phone"]
+        p = self.pilote(["crm_phone"], tous)
+        p.uninstall_from_database(tous, "db", 12)
+        trace = " ".join(p.commentaires)
+        self.assertIn("crm_phone", trace)
+        self.assertNotIn("bon_a", trace)
+
+    def test_a_lone_module_is_not_tried_twice(self):
+        # La reprise coûte un démarrage d'Odoo par nom : on ne la paie
+        # pas pour rejouer exactement la même commande.
+        p = self.pilote(["seul"], ["seul"])
+        p.uninstall_from_database(["seul"], "db", 12)
+        lancements = [c for c in p.commandes if "uninstall_addons.sh" in c]
+        self.assertEqual(1, len(lancements), lancements)
+
+    def test_a_successful_batch_never_retries(self):
+        tous = ["bon_a", "bon_b"]
+        p = self.pilote([], tous)
+        p.uninstall_from_database(tous, "db", 12)
+        lancements = [c for c in p.commandes if "uninstall_addons.sh" in c]
+        self.assertEqual(1, len(lancements), lancements)
+
+    def test_the_retry_does_not_open_the_error_menu(self):
+        # Un module qui refuse de partir est une trouvaille, pas une
+        # panne du pilote : s'arrêter là ferait échouer la migration
+        # entière pour un module que l'on nomme déjà.
+        import ast
+
+        with io.open(
+            os.path.join(RACINE, "script", "todo", "todo_upgrade.py"),
+            encoding="utf-8",
+        ) as handle:
+            arbre = ast.parse(handle.read())
+        for noeud in ast.walk(arbre):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "uninstall_one_by_one"
+            ):
+                corps = ast.dump(ast.Module(body=noeud.body, type_ignores=[]))
+                self.assertIn("wait_at_error", corps)
+                self.assertIn("value=False", corps)
+                return
+        self.fail("uninstall_one_by_one introuvable")
 
 
 if __name__ == "__main__":

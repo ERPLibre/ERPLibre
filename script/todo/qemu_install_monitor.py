@@ -291,17 +291,19 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
             vm["name"],
             installs=bool(branch),
         )
-        entries.append(
-            {
-                "name": vm["name"],
-                "ip": vm["ip"],
-                "distro": vm.get("distro"),
-                "version": vm.get("version"),
-                "arch": vm.get("arch"),
-                "log": log_path,
-                "ssh": f"ssh erplibre@{vm['ip']}",
-            }
-        )
+        entree = {
+            "name": vm["name"],
+            "ip": vm["ip"],
+            "distro": vm.get("distro"),
+            "version": vm.get("version"),
+            "arch": vm.get("arch"),
+            "log": log_path,
+            "ssh": f"ssh erplibre@{vm['ip']}",
+        }
+        # Une VM posée sur un hôte Proxmox : c'est LUI qui connaît son état.
+        if vm.get("pve"):
+            entree["pve"] = vm["pve"]
+        entries.append(entree)
     manifest = {
         "branch": branch,
         "started": time.time(),
@@ -1293,6 +1295,105 @@ def read_domstats() -> str:
     return res.stdout if res.returncode == 0 else ""
 
 
+# UN appel par HÔTE : « /cluster/resources » rend l'état, la mémoire, le
+# disque et le cumul écrit de TOUTES ses VM d'un coup. Le « du » qui suit
+# donne la taille RÉELLEMENT occupée : sur un stockage en fichiers, Proxmox
+# rapporte « disk: 0 » — il ne la calcule pas.
+PVE_STATS_CMD = (
+    "pvesh get /cluster/resources --type vm --output-format json;"
+    " echo '---ERPLIBRE-DU---';"
+    " du -sb /var/lib/vz/images/*/ 2>/dev/null || true"
+)
+# Une VM distante se relève moins souvent qu'une locale : chaque tour coûte
+# une poignée de main ssh (mesuré 1 s), quand « virsh domstats » coûte 0,03 s
+# pour tout le parc. Cinq secondes suffisent à voir une installation avancer.
+PVE_STATS_INTERVAL = 5.0
+# Proxmox dit « running » / « stopped » ; le suivi raisonne en états libvirt.
+# Une VM absente de la réponse de l'hôte a vraiment disparu.
+PVE_ETATS = {"running": "running", "stopped": "shut off", "paused": "paused"}
+_PVE_CACHE = {"at": 0.0, "stats": {}}
+
+
+def parse_pvestats(text: str) -> dict:
+    """Sortie de PVE_STATS_CMD -> {nom: relevé}, même forme que domstats.
+
+    Même forme exprès : les colonnes, le débit d'écriture et la RAM se
+    calculent alors sans savoir d'où vient la mesure. Une VM sur un hôte
+    Proxmox distant n'avait aucune de ces colonnes — elles viennent de virsh,
+    qui ne sait rien de cet hôte.
+    """
+    brut, _, tailles = (text or "").partition("---ERPLIBRE-DU---")
+    try:
+        ressources = json.loads(brut.strip() or "[]")
+    except ValueError:
+        return {}
+    # {vmid: octets} depuis « du -sb /var/lib/vz/images/<vmid>/ ».
+    occupe = {}
+    for ligne in tailles.splitlines():
+        parts = ligne.split()
+        if len(parts) == 2 and parts[0].isdigit():
+            vmid = parts[1].rstrip("/").rsplit("/", 1)[-1]
+            if vmid.isdigit():
+                occupe[int(vmid)] = int(parts[0])
+    out = {}
+    maintenant = time.time()
+    for r in ressources if isinstance(ressources, list) else ():
+        nom = r.get("name")
+        if not nom:
+            continue
+        total = int(r.get("maxdisk") or 0)
+        utilise = int(r.get("disk") or 0) or occupe.get(
+            int(r.get("vmid") or 0), 0
+        )
+        out[nom] = {
+            "ram_used": int(r.get("mem") or 0),
+            "ram_total": int(r.get("maxmem") or 0),
+            # Le relevé vient d'être fait : il n'est pas périmé, et c'est ce
+            # que `ram_pair` vérifie avant d'afficher quoi que ce soit.
+            "ram_at": maintenant,
+            "wr_bytes": int(r.get("diskwrite") or 0),
+            "disk_used": utilise,
+            "disk_total": total,
+            "state": r.get("status") or "",
+            "uptime": int(r.get("uptime") or 0),
+        }
+    return out
+
+
+def read_pvestats(vms, now=None) -> dict:
+    """{nom: relevé} des VM posées sur un hôte Proxmox, ou {}.
+
+    Les VM concernées sont celles dont le manifeste porte un bloc « pve »
+    (adresse de l'hôte, sudo, vmid). Un appel par hôte, mis en cache
+    PVE_STATS_INTERVAL secondes.
+    """
+    hotes = {}
+    for vm in vms or ():
+        info = vm.get("pve") or {}
+        if info.get("target"):
+            hotes[(info["target"], info.get("sudo") or "")] = info
+    if not hotes:
+        return {}
+    maintenant = now if now is not None else time.time()
+    if maintenant - _PVE_CACHE["at"] < PVE_STATS_INTERVAL:
+        return dict(_PVE_CACHE["stats"])
+    try:
+        from script.proxmox import proxmox_deploy as pve
+    except ImportError:  # pragma: no cover - le module est dans le dépôt
+        return {}
+    stats = {}
+    for (target, sudo), info in hotes.items():
+        code, sortie = pve.run(
+            {"target": target, "sudo": sudo, "jump": info.get("jump", "")},
+            PVE_STATS_CMD,
+            30,
+        )
+        if code == 0:
+            stats.update(parse_pvestats(sortie))
+    _PVE_CACHE.update({"at": maintenant, "stats": stats})
+    return dict(stats)
+
+
 def arm_balloon(names) -> None:
     """Arme la période de collecte du ballon (5 s) sur chaque VM.
 
@@ -1931,6 +2032,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # calcule sur les relevés successifs, donc il faut échantillonner
             # à chaque tour (2 s) et non au rythme lent des états.
             stats = parse_domstats(read_domstats())
+            # Les VM d'un hôte Proxmox distant : virsh ne les voit pas, leurs
+            # colonnes restaient vides. Même forme de relevé, donc la suite ne
+            # change pas d'un iota.
+            stats.update(read_pvestats(vms))
             now_s = time.time()
             for name, rec in stats.items():
                 self._wrate.add(name, rec["wr_bytes"], now_s)
@@ -2191,13 +2296,28 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 states = await asyncio.to_thread(virsh_domstates)
             except Exception:
                 return
+            # Une VM posée sur un hôte Proxmox est ABSENTE de « virsh list » :
+            # elle passait donc pour EFFACÉE, ce qui éteignait du même coup
+            # ses colonnes vivantes. Son état vient de l'hôte.
+            distants = await asyncio.to_thread(read_pvestats, vms)
             for vm in vms:
-                self._domstate[vm["name"]] = states.get(vm["name"], "gone")
+                nom = vm["name"]
+                if vm.get("pve"):
+                    releve = distants.get(nom)
+                    self._domstate[nom] = PVE_ETATS.get(
+                        (releve or {}).get("state"), "gone"
+                    )
+                    continue
+                self._domstate[nom] = states.get(nom, "gone")
             # Réarmer la période du ballon sur les VM qui tournent : sans elle
             # la RAM affichée serait celle du dernier rapport du pilote, et une
             # installation redémarre la VM — ce qui remet la période à zéro.
+            # Les VM distantes en sont exclues : « virsh dommemstat » ne les
+            # atteint pas, et l'hôte donne déjà leur mémoire.
             vivantes = [
-                vm["name"] for vm in vms if states.get(vm["name"]) == "running"
+                vm["name"]
+                for vm in vms
+                if not vm.get("pve") and states.get(vm["name"]) == "running"
             ]
             if vivantes:
                 await asyncio.to_thread(arm_balloon, vivantes)
@@ -2210,7 +2330,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # appel virsh par VM — celui-ci est déjà le relevé lent.
             changed = False
             for vm in vms:
-                if self._domstate.get(vm["name"]) == "gone":
+                if self._domstate.get(vm["name"]) == "gone" or vm.get("pve"):
+                    # Une VM distante n'a pas de bail chez nous : son adresse
+                    # est celle que cloud-init a posée, et virsh ne la voit
+                    # pas. La chercher rendrait « gone » à chaque tour.
                     continue
                 ip = await asyncio.to_thread(virsh_ip, vm["name"])
                 if ip and ip != vm.get("ip"):

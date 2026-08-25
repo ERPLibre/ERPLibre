@@ -201,6 +201,187 @@ def declared_view_shape(module_dir, template_id):
     return None
 
 
+def run_sql(database, sql):
+    """Le texte brut d'une requête. RuntimeError si la base ne répond pas."""
+    result = subprocess.run(
+        ["psql", "-X", "-w", "-d", database, "-tA", "-c", sql],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            f"Cannot read '{database}': {result.stderr.strip()}"
+        )
+    return result.stdout
+
+
+def query_cow_archs(database):
+    """[(id, clé, mode, website_id, {langue: arch})] — arch ENTIÈRES.
+
+    `query_cow_views` tronque à 400 caractères : assez pour lire la
+    première balise, pas pour évaluer un xpath — un fragment coupé n'est
+    même pas du XML. Et `arch_db` est un jsonb par langue depuis la 17 :
+    une page cassée en fr_CA et saine en en_US, cela existe, on l'a vu.
+    """
+    jsonb = "jsonb" in run_sql(
+        database,
+        "SELECT data_type FROM information_schema.columns"
+        " WHERE table_name='ir_ui_view' AND column_name='arch_db'",
+    )
+    expr = "arch_db" if jsonb else "json_build_object('', arch_db)"
+    brut = run_sql(
+        database,
+        "SELECT coalesce(json_agg(json_build_object("
+        "'id', id, 'key', coalesce(key, ''), 'mode', mode,"
+        f" 'website_id', website_id, 'arch', {expr})), '[]')"
+        " FROM ir_ui_view WHERE website_id IS NOT NULL",
+    )
+    try:
+        lignes = json.loads(brut.strip() or "[]")
+    except ValueError:
+        return []
+    return [
+        (
+            ligne["id"],
+            ligne["key"],
+            ligne["mode"],
+            ligne["website_id"],
+            ligne["arch"] if isinstance(ligne["arch"], dict) else {},
+        )
+        for ligne in lignes
+    ]
+
+
+def installed_modules(database):
+    """Les modules installés. Sans eux le balayage des sources est vain.
+
+    Un enfant peut vivre dans N'IMPORTE quel module — `website_crm` hérite
+    de `website.contactus` — donc il faut balayer large. Mais balayer TOUT
+    l'arbre cible coûterait des milliers de fichiers pour rien : seuls les
+    modules installés produiront des vues.
+    """
+    output = run_sql(
+        database,
+        "SELECT name FROM ir_module_module WHERE state IN"
+        " ('installed', 'to upgrade')",
+    )
+    return [ligne.strip() for ligne in output.splitlines() if ligne.strip()]
+
+
+def full_key(module_name, valeur):
+    """« contactus » dans le module website devient « website.contactus »."""
+    valeur = (valeur or "").strip()
+    if not valeur:
+        return None
+    return valeur if "." in valeur else f"{module_name}.{valeur}"
+
+
+def scan_target_views(target_version, lst_module):
+    """(déclarés, héritages) tels que la version CIBLE les livre.
+
+    `déclarés` : les clés de gabarit que la cible fournit. Sert à repérer
+    un `t-call` vers un gabarit qui n'existe plus.
+
+    `héritages` : {clé parente: [expressions xpath]}. C'est le manque qui
+    a coûté quatre paliers de silence — la cible ajoute un ancrage dans
+    une vue module, sa vue héritière le vise, et la copie de site, qui
+    n'est jamais réécrite, ne l'a pas.
+    """
+    declares = set()
+    heritages = {}
+    for module_name in lst_module:
+        module_dir = find_module_dir(target_version, module_name)
+        if module_dir is None:
+            continue
+        motif = os.path.join(module_dir, "**", "*.xml")
+        for file_path in sorted(glob.glob(motif, recursive=True)):
+            try:
+                racine = ET.parse(file_path).getroot()
+            except ET.ParseError:
+                continue
+            for element in racine.iter("template"):
+                cle = full_key(module_name, element.get("id"))
+                if cle:
+                    declares.add(cle)
+                parent = full_key(module_name, element.get("inherit_id"))
+                if not parent:
+                    continue
+                exprs = [
+                    noeud.get("expr")
+                    for noeud in element.iter("xpath")
+                    if noeud.get("expr")
+                ]
+                if exprs:
+                    heritages.setdefault(parent, []).extend(exprs)
+    return declares, heritages
+
+
+def will_not_render(database, target_version):
+    """Les copies qui passeront la migration et rendront 500 ensuite.
+
+    Deux ruptures que `analyse` ne voit pas, parce qu'elles ne touchent
+    pas la FORME de la copie :
+
+      ancrage manquant   un enfant de la CIBLE vise `//t[@t-set='x']` que
+                         la copie n'a pas.
+      t-call pendant     la copie appelle un gabarit que la cible ne
+                         livre plus.
+
+    Celles-là ne se neutralisent PAS : la copie porte une page écrite par
+    quelqu'un, et la mettre de côté l'effacerait du site. Elles se
+    réparent — `fix_cow_render.py` remet l'ancrage depuis la vue module
+    et retire l'appel mort, sans toucher au contenu.
+    """
+    from fix_cow_render import dangling_calls, locates
+
+    copies = query_cow_archs(database)
+    if not copies:
+        return []
+    declares, heritages = scan_target_views(
+        target_version, installed_modules(database)
+    )
+    connus = declares | {cle for _i, cle, _m, _w, _a in copies if cle}
+    risques = []
+    for view_id, key, mode, website_id, langues in copies:
+        if not key:
+            continue
+        # Chaque langue : une page peut être cassée en fr_CA et saine en
+        # en_US, et c'est celle du site qui décide de ce qu'on voit.
+        manques = set()
+        pendants = []
+        for texte in langues.values():
+            for expr in heritages.get(key, []):
+                if not locates(texte, expr):
+                    manques.add(expr)
+            for nom in dangling_calls(texte, connus):
+                if nom not in pendants:
+                    pendants.append(nom)
+        for expr in sorted(manques):
+            risques.append(
+                (
+                    view_id,
+                    key,
+                    mode,
+                    mode,
+                    website_id,
+                    f"a child of the target needs an anchor this copy lacks:"
+                    f" {expr}",
+                )
+            )
+        for nom in pendants:
+            risques.append(
+                (
+                    view_id,
+                    key,
+                    mode,
+                    mode,
+                    website_id,
+                    f"calls a template the target no longer ships: {nom}",
+                )
+            )
+    return risques
+
+
 def analyse(database, target_version):
     """Sort COW views into three buckets by comparing with the target sources.
 
@@ -304,8 +485,28 @@ def main():
     lst_at_risk, lst_module_absent, lst_no_counterpart = analyse(
         config.database, config.target_version
     )
+    # L'autre famille de rupture : la copie garde sa forme et cesse de se
+    # RENDRE. Elle ne se neutralise pas — la copie porte une page écrite
+    # par quelqu'un — elle se répare.
+    lst_no_render = will_not_render(config.database, config.target_version)
     database = config.database
     target_version = config.target_version
+
+    if lst_no_render:
+        print(
+            f"⚠️ {len(lst_no_render)}"
+            f" {t('website COW view(s) will survive the bump and then fail')}"
+            f" {t('to render:')}"
+        )
+        for view_id, key, _mode, _cible, website_id, raison in lst_no_render:
+            print(f"   - id={view_id} website={website_id} {key}")
+            print(f"     {t(raison)}")
+        print(
+            f"   {t('Repair rather than neutralize — the copy holds a page')}"
+            f" {t('someone wrote:')}"
+            f" ./script/odoo/migration/fix_cow_render.py -d {config.database}"
+        )
+        print("")
 
     if not lst_at_risk:
         print(
@@ -378,7 +579,9 @@ def main():
     # 0 = rien à signaler, 1 = des copies casseront, 2 = l'outil a échoué.
     # Le pilote lisait le texte anglais de cette sortie pour savoir s'il
     # devait poser sa question : traduire le message le rendait aveugle.
-    return 1 if lst_at_risk else 0
+    # Les deux familles comptent : une copie qui rendra 500 est une
+    # trouvaille, même si la migration, elle, ne s'arrêtera pas.
+    return 1 if (lst_at_risk or lst_no_render) else 0
 
 
 if __name__ == "__main__":

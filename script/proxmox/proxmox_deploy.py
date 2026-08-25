@@ -80,6 +80,67 @@ def wrap_privilege(remote: str, prefix: str) -> str:
     return "sudo sh -c " + shlex.quote(remote)
 
 
+# Ce que ssh écrit de lui-même, et qui n'est pas la réponse de l'hôte. Retiré
+# à la source : un avertissement laissé dans la sortie a été pris pour un nom
+# de pont par `parse_bridges`, et « (ED25519) » s'est retrouvé dans un
+# « qm create » enrobé de « sudo sh -c » — d'où le « sh: 1: Syntax error:
+# "(" unexpected » rapporté. Filtrer chez chaque lecteur aurait laissé le
+# suivant retomber dans le piège.
+_BRUIT_SSH = (
+    "Warning: Permanently added",
+    "Pseudo-terminal will not be allocated",
+    "Connection to ",
+    "Shared connection to ",
+    "Killed by signal",
+    "mesg: ttyname failed",
+    "stdin: is not a tty",
+)
+
+
+def strip_ssh_noise(text: str) -> str:
+    """La sortie de l'hôte, débarrassée de ce que ssh y a ajouté.
+
+    Ce sont des lignes de ssh lui-même (clé d'hôte enregistrée, pseudo-terminal
+    refusé, connexion fermée) : elles n'apprennent rien sur la commande et
+    n'ont donc rien à faire dans ce qu'on analyse ou affiche.
+    """
+    gardees = [
+        ligne
+        for ligne in (text or "").splitlines()
+        if not ligne.strip().startswith(_BRUIT_SSH)
+    ]
+    return "\n".join(gardees) + ("\n" if gardees else "")
+
+
+# Les lignes d'AVANCEMENT : « transferred 1.2 GiB of 3.0 GiB (40%) » répété
+# cent fois par « qm set --import-from », les points de wget. Elles ne disent
+# qu'une chose, et la dernière la dit aussi bien.
+_RE_PROGRES = re.compile(
+    r"^\s*(transferred\s+[\d.]+|\d+K\s+\.|.*\.{10}.*\d+%)"
+)
+
+
+def collapse_progress(text: str) -> str:
+    """Ne garde que la DERNIÈRE ligne de chaque salve d'avancement.
+
+    Le journal du premier essai réel faisait 136 lignes, dont cent
+    « transferred … » : l'erreur utile se lisait au chausse-pied. Un
+    avancement compte pendant qu'il défile, pas dans un fichier qu'on relit.
+    """
+    sortie, salve = [], 0
+    for ligne in (text or "").splitlines():
+        if _RE_PROGRES.match(ligne):
+            salve += 1
+            continue
+        if salve:
+            sortie.append(f"   … {salve} lignes d'avancement …")
+            salve = 0
+        sortie.append(ligne)
+    if salve:
+        sortie.append(f"   … {salve} lignes d'avancement …")
+    return "\n".join(sortie)
+
+
 def run(host: dict, remote: str, timeout: int = 120) -> tuple:
     """(code, sortie) de `remote` exécuté sur l'hôte. Ne lève jamais.
 
@@ -98,7 +159,9 @@ def run(host: dict, remote: str, timeout: int = 120) -> tuple:
         return 255, "timeout"
     except (OSError, subprocess.SubprocessError) as exc:
         return 255, str(exc)
-    return res.returncode, (res.stdout or "") + (res.stderr or "")
+    return res.returncode, strip_ssh_noise(
+        (res.stdout or "") + (res.stderr or "")
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -113,6 +176,46 @@ def parse_pveversion(text: str) -> str:
     """
     m = re.search(r"pve-manager/(\d[\w.]*)", text or "")
     return m.group(1) if m else ""
+
+
+# D'abord le fichier de systemd-resolved, qui porte les serveurs RÉELS :
+# /etc/resolv.conf n'y renvoie qu'un stub sur 127.0.0.53, inutilisable pour un
+# invité. On tente les deux, dans cet ordre.
+RESOLV_CMD = (
+    "cat /run/systemd/resolve/resolv.conf 2>/dev/null || cat /etc/resolv.conf"
+)
+
+
+def parse_nameservers(text: str) -> list:
+    """Résolveurs UTILISABLES PAR UN INVITÉ, tirés d'un resolv.conf.
+
+    Les adresses de boucle sont écartées : « nameserver 127.0.0.53 » est le
+    stub de systemd-resolved, qui n'existe que sur l'hôte. Une VM qui le
+    reçoit n'a pas de DNS — mesuré, la VM d'essai ne résolvait rien alors que
+    le NAT marchait, et « apt update » aurait échoué sans rien expliquer.
+    """
+    serveurs = []
+    for ligne in (text or "").splitlines():
+        parts = ligne.split()
+        if len(parts) >= 2 and parts[0] == "nameserver":
+            adresse = parts[1].strip()
+            if adresse.startswith("127.") or adresse in ("::1", "localhost"):
+                continue
+            if adresse not in serveurs:
+                serveurs.append(adresse)
+    return serveurs
+
+
+def parse_kernel(text: str) -> str:
+    """Noyau ANNONCÉ par pveversion, ou ''.
+
+    « pve-manager/9.2.11/abc (running kernel: 6.12.95+deb13-cloud-amd64) » ->
+    « 6.12.95+deb13-cloud-amd64 ». Ce n'est pas un détail : tant que l'hôte
+    tourne le noyau de la distribution, il n'a ni le module bridge ni la table
+    NAT, donc pas de pont et pas de VM.
+    """
+    trouve = re.search(r"running kernel:\s*([^)\s]+)", text or "")
+    return trouve.group(1) if trouve else ""
 
 
 def parse_qm_list(text: str) -> list:
@@ -169,15 +272,24 @@ def parse_storages(text: str) -> list:
     return out
 
 
+# « 2: vmbr0: <BROADCAST,MULTICAST,UP> mtu 1500 … » — l'index, le nom, les
+# drapeaux. Exiger cette forme, et pas « quelque chose avant deux-points » :
+# n'importe quelle ligne de bruit devenait sinon un nom de pont.
+_RE_LIEN = re.compile(r"^\s*\d+:\s*([A-Za-z0-9][A-Za-z0-9._@-]*):\s*<")
+
+
 def parse_bridges(text: str) -> list:
-    """Sortie de « ip -o link show type bridge » -> ['vmbr0', …]."""
+    """Sortie de « ip -o link show type bridge » -> ['vmbr0', …].
+
+    Rien d'autre ne passe : un avertissement de ssh a déjà été pris pour un
+    pont, et son « (ED25519) » a fait échouer le « qm create » qui suivait sur
+    une erreur de syntaxe shell incompréhensible.
+    """
     ponts = []
     for ligne in (text or "").splitlines():
-        parts = ligne.split(":")
-        if len(parts) > 1:
-            nom = parts[1].strip().split("@")[0]
-            if nom:
-                ponts.append(nom)
+        trouve = _RE_LIEN.match(ligne)
+        if trouve:
+            ponts.append(trouve.group(1).split("@")[0])
     return ponts
 
 
@@ -354,7 +466,18 @@ def bridge_setup_cmds(
         )
     # ifup plutôt qu'« ifreload -a » : recharger TOUTE la configuration d'un
     # hôte distant peut emporter l'interface qui porte la session.
-    cmds.append(f"ifup {nom} 2>/dev/null || ifreload -a")
+    #
+    # « mkdir -p /run/network » d'abord : ifupdown2 y pose son verrou, et
+    # quand le répertoire manque il annonce « Another instance of this program
+    # is already running » — son lockFile() attrape aussi le fichier
+    # introuvable. Le message est un MENSONGE, et il a caché deux heures la
+    # vraie panne. Sur une Debian installée en image cloud, networking.service
+    # n'a jamais démarré, donc personne n'a créé le répertoire.
+    #
+    # Et l'erreur d'ifup n'est PAS masquée : « 2>/dev/null » cachait
+    # « operation failed with 'Operation not supported' » — le noyau cloud n'a
+    # pas le module bridge, et c'est ce qu'il fallait lire.
+    cmds.append(f"mkdir -p /run/network; ifup {nom} || ifreload -a")
     return cmds
 
 
@@ -398,7 +521,7 @@ def image_fetch_cmd(url: str, nom: str, repertoire: str = IMAGE_DIR) -> str:
         f"mkdir -p {shlex.quote(repertoire)} && "
         f"if [ -s {shlex.quote(cible)} ]; then "
         f'echo "image déjà présente : {cible}"; else '
-        f"wget -q --show-progress -O {shlex.quote(cible)} {shlex.quote(url)}; "
+        f"wget -nv -O {shlex.quote(cible)} {shlex.quote(url)}; "
         f"fi"
     )
 
@@ -446,6 +569,11 @@ def create_cmds(vmid: int, spec: dict) -> list:
     if spec.get("password"):
         ci += f" --cipassword {shlex.quote(spec['password'])}"
     ci += f" --ipconfig0 {spec.get('ipconfig') or 'ip=dhcp'}"
+    # « --ipconfig0 » ne porte PAS le DNS : une VM en adresse fixe n'a alors
+    # aucun résolveur, et rien ne le dit. En DHCP le bail s'en charge.
+    serveurs = [s for s in (spec.get("nameservers") or ()) if s]
+    if serveurs and "dhcp" not in (spec.get("ipconfig") or "dhcp"):
+        ci += f" --nameserver {shlex.quote(' '.join(serveurs))}"
     cmds.append(ci)
     # 5. La taille. L'image cloud fait 2 Gio : sans agrandissement, il ne reste
     #    rien pour installer quoi que ce soit.

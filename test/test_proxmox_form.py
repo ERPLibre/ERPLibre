@@ -400,5 +400,197 @@ class TestEcran(unittest.TestCase):
         self.assertIsNone(self._rendu(gestes).result)
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestCreerUnPont(unittest.TestCase):
+    """Sans pont, « qm create » est impossible — et l'écran refusait de
+    déployer sans offrir le moindre moyen d'en avoir un. Rapporté.
+
+    Le pont INTERNE se crée depuis l'écran parce qu'il ne touche à aucune
+    interface physique : il n'y a rien à faire arbitrer. Un pont sur le LAN
+    déplace l'adresse de l'hôte et coupe la session : il reste manuel.
+    """
+
+    def _ecran(self, fabrique, ponts=()):
+        from script.todo.proxmox_deploy_form import (
+            CREER_PONT,
+            run_proxmox_form,
+        )
+
+        ctx = contexte()
+        ctx["bridges"] = list(ponts)
+        ctx["bridge"] = ponts[0] if ponts else ""
+        ctx["make_bridge"] = fabrique
+        ctx["internal_bridge"] = ("vmbr0", "10.10.10.1/24")
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import Select
+
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 55)) as pilote:
+                await pilote.pause()
+                selecteur = app.query_one("#f_bridge", Select)
+                vu["choix_avant"] = [str(o[1]) for o in selecteur._options]
+                selecteur.value = CREER_PONT
+                for _ in range(30):
+                    await pilote.pause()
+                    if vu.get("fait"):
+                        break
+                    vu["fait"] = bool(app._ponts) and app._bridge()
+                await pilote.pause()
+                vu["pont"] = app._bridge()
+                vu["choix_apres"] = [str(o[1]) for o in selecteur._options]
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_the_entry_is_offered_when_no_bridge_exists(self):
+        vu = self._ecran(lambda: ("vmbr0", ""))
+        self.assertIn("__creer_pont__", vu["choix_avant"])
+
+    def test_choosing_it_creates_the_bridge_and_selects_it(self):
+        vu = self._ecran(lambda: ("vmbr0", ""))
+        self.assertEqual(vu["pont"], "vmbr0")
+        self.assertIn("vmbr0", vu["choix_apres"])
+
+    def test_a_failure_leaves_no_bridge_selected(self):
+        # Laissé sur « créer », le sélecteur ferait déployer une VM sur
+        # « __creer_pont__ » — un nom que « qm create » refuserait.
+        vu = self._ecran(lambda: ("", "Operation not supported"))
+        self.assertEqual(vu["pont"], "")
+
+    def test_the_entry_stays_offered_when_a_bridge_exists(self):
+        # Un hôte avec un seul pont sur le LAN : on peut vouloir un réseau
+        # interne pour un parc d'essai.
+        vu = self._ecran(lambda: ("vmbr0", ""), ponts=("vmbr9",))
+        self.assertIn("__creer_pont__", vu["choix_avant"])
+        self.assertIn("vmbr9", vu["choix_avant"])
+
+
+class TestLeSuivi(unittest.TestCase):
+    """La case « Suivre l'installation » doit commander quelque chose.
+
+    Elle ne commandait rien : décochée, le tableau de bord s'ouvrait quand
+    même ; cochée sans rien à installer, il ne s'ouvrait jamais. Le suivi
+    vient du DÉPLOIEMENT, pas de l'installation — c'est la règle déjà tirée du
+    côté QEMU/KVM après le même rapport.
+    """
+
+    def _apres_creation(self, install, monitor):
+        """Rejoue l'épilogue du déploiement et dit quelle voie a été prise."""
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vus = {}
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: vus.setdefault(
+            "tableau", a
+        )
+        todo._qemu_install_erplibre_vm = lambda *a, **k: vus.setdefault(
+            "serie", a
+        )
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "add_ssh_config": False,
+            "user": "erplibre",
+            "install": install,
+            "monitor": monitor,
+        }
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        return vus
+
+    def test_ticked_without_anything_to_install_still_opens_it(self):
+        # La commande distante regarde alors la VM ARRIVER : c'est justement
+        # ce qu'on veut voir sur une VM déployée nue.
+        vus = self._apres_creation(install=None, monitor=True)
+        self.assertIn("tableau", vus)
+        self.assertNotIn("serie", vus)
+
+    def test_unticked_installs_without_the_dashboard(self):
+        vus = self._apres_creation(
+            install={"branch": "develop", "cmd": "make x", "label": "X"},
+            monitor=False,
+        )
+        self.assertIn("serie", vus)
+        self.assertNotIn("tableau", vus)
+
+    def test_unticked_and_nothing_to_install_does_nothing(self):
+        self.assertEqual(self._apres_creation(install=None, monitor=False), {})
+
+    def test_the_ssh_entry_is_written_when_the_install_needs_it(self):
+        """La VM est derrière l'hôte : le rebond de ~/.ssh/config est le SEUL
+        chemin. Décoché alors qu'une installation est demandée, le suivi ne
+        pouvait pas entrer dans la VM."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        def essai(add_ssh_config, install, monitor):
+            todo = TODO.__new__(TODO)
+            ecrites = []
+            todo._write_ssh_config_entry = lambda nom, *a, **k: ecrites.append(
+                nom
+            )
+            todo._ssh_private_key = lambda k: None
+            todo._pve_guest_ip = lambda vmid, attente=120: ""
+            todo._qemu_install_erplibre_monitored = lambda *a, **k: None
+            todo._qemu_install_erplibre_vm = lambda *a, **k: None
+            spec = {
+                "host": {"target": "pve1"},
+                "vms": [
+                    {
+                        "name": "vm-a",
+                        "vmid": 100,
+                        "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                        "install_cmd": "",
+                    }
+                ],
+                "add_ssh_config": add_ssh_config,
+                "user": "erplibre",
+                "install": install,
+                "monitor": monitor,
+            }
+            with contextlib.redirect_stdout(io.StringIO()):
+                todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+            return ecrites
+
+        cmd = {"branch": "develop", "cmd": "make x", "label": "X"}
+        # Décoché mais une installation demandée : écrite quand même.
+        self.assertEqual(essai(False, cmd, False), ["vm-a"])
+        # Décoché, suivi demandé : le suivi entre aussi par le rebond.
+        self.assertEqual(essai(False, None, True), ["vm-a"])
+        # Décoché et rien à faire dans la VM : le choix est respecté.
+        self.assertEqual(essai(False, None, False), [])
+        # Coché : écrite, évidemment.
+        self.assertEqual(essai(True, None, False), ["vm-a"])
+
+    def test_ticked_with_an_install_opens_it(self):
+        vus = self._apres_creation(
+            install={"branch": "develop", "cmd": "make x", "label": "X"},
+            monitor=True,
+        )
+        self.assertIn("tableau", vus)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

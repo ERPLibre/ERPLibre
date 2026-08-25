@@ -270,6 +270,7 @@ class QemuDeployMixin:
         python_provider="",
         app_store="deb",
         vm_tools=(),
+        pve=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -327,6 +328,11 @@ class QemuDeployMixin:
                     "version": v,
                     "arch": a,
                 }
+                # {nom: {target, sudo, vmid}} quand la VM vit sur un hôte
+                # Proxmox : le suivi lui demandera son état, virsh ne le
+                # connaît pas.
+                if (pve or {}).get(name):
+                    entry["pve"] = pve[name]
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
@@ -1248,6 +1254,8 @@ class QemuDeployMixin:
             "native": native,
             "domains": self._qemu_list_domains(),
             "branches": self._qemu_branch_list() or ["master"],
+            # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
+            "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
             # Les systèmes qui IMPOSENT ce qu'on installe dessus. Sans cette
             # table, le formulaire posait ERPLibre + Odoo 18 sur une VM

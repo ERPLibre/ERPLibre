@@ -2705,6 +2705,10 @@ class TodoUpgrade:
                     f"before_{next_version}",
                     f"after_{next_version}",
                 )
+                # ICI et pas avant : la réparation prend l'ancrage manquant
+                # dans la vue MODULE, qui ne porte l'arch de la cible
+                # qu'une fois la migration passée.
+                self.repair_cow_render(database_name_upgrade)
 
                 lst_upgrade_odoo[index] = cmd_upgrade
                 self.dct_progression["state_4_upgrade_odoo_lst"] = (
@@ -3656,6 +3660,30 @@ class TodoUpgrade:
             f" -d {database_name} --list"
         )
 
+    def repair_cow_render(self, database_name):
+        """Les copies de site qui passent le palier et rendent 500 après.
+
+        Deux ruptures qu'aucune autre étape ne voit : un ancrage que la
+        vue héritière de la CIBLE réclame et que la copie n'a jamais eu,
+        et un `t-call` vers un gabarit que la cible ne livre plus. Mesuré
+        sur une chaîne 12 → 18 : /contact rendait 500 depuis le palier
+        14 → 15, et rien ne l'a dit avant le test de fumée final.
+
+        On ne neutralise pas : la copie porte une page écrite par
+        quelqu'un. On répare, et le contenu reste.
+
+        `wait_at_error=False` : le code 1 de cet outil veut dire « j'ai
+        trouvé », pas « je suis tombé ». Sans cela le pilote ouvrirait son
+        menu d'erreur sur une réparation qui s'est bien passée.
+        """
+        outil = os.path.join(PATH_MIGRATION_GLOBAL, "fix_cow_render.py")
+        if not os.path.isfile(outil):
+            return
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{outil} -d {database_name} --apply",
+            wait_at_error=False,
+        )
+
     def diff_cow_views(self, database_name, label_before, label_after):
         """Print what the version bump did to the website COW views."""
         directory = os.path.join(
@@ -3847,6 +3875,17 @@ class TodoUpgrade:
         )
 
         lst_left = self.still_installed(database_name, lst_module_to_uninstall)
+        # UN SEUL nom fautif emporte tout le lot : « --uninstall » prend
+        # une liste, et Odoo annule la transaction entière au premier
+        # échec. Mesuré sur une chaîne 12 → 18 : `crm_phone` échoue sur
+        # une colonne absente de res_users et fait tomber les 22 autres
+        # avec lui — dont huit modules sans code en 13, qui sont alors
+        # montés d'un palier « installed » sans rien pour les charger.
+        #
+        # On reprend donc un par un : ce qui peut partir part, et l'on
+        # nomme précisément ce qui résiste.
+        if lst_left and len(lst_module_to_uninstall) > 1:
+            lst_left = self.uninstall_one_by_one(database_name, lst_left)
         if lst_left is None:
             # Base illisible : on ne sait pas. Le dire, plutôt que de trancher.
             print(f"⚠️  {t('Could not verify the uninstall.')}")
@@ -3872,6 +3911,27 @@ class TodoUpgrade:
             self.dct_module_per_version
         )
         self.write_config()
+
+    def uninstall_one_by_one(self, database_name, lst_module):
+        """Reprendre module par module, et rendre ce qui résiste encore.
+
+        Appelée seulement quand le lot a échoué : une commande par nom
+        coûte un démarrage d'Odoo chacune, ce qu'on ne paie pas pour
+        rien. Ce qu'on y gagne est qu'un module fautif cesse de protéger
+        les autres.
+        """
+        reste = []
+        for nom in lst_module:
+            print(f"⧖ {t('Retrying alone:')} {nom}")
+            self.todo_upgrade_execute(
+                f"./script/addons/uninstall_addons.sh {database_name} {nom}",
+                single_source_odoo=True,
+                wait_at_error=False,
+            )
+            encore = self.still_installed(database_name, [nom])
+            if encore is None or encore:
+                reste.append(nom)
+        return reste
 
     def install_from_database(
         self, lst_module_to_install, database_name, actual_version

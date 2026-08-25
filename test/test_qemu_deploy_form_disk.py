@@ -113,8 +113,10 @@ class TestLigneDeTotaux(unittest.TestCase):
         ctx["host_cpu"] = 1
         ligne = self._ligne(2, ctx)["ligne"]
         self.assertEqual(ligne.count("⚠"), 1)
-        for morceau in ("RAM", "disque", "cœurs"):
-            self.assertIn(morceau, ligne, ligne)
+        from script.todo.deploy_form_lib import t
+
+        for cle in ("> host free RAM", "> host free disk", "> host cores"):
+            self.assertIn(t(cle), ligne, ligne)
 
     def test_an_unknown_measure_shows_no_room_at_all(self):
         ctx = contexte()

@@ -1756,6 +1756,10 @@ TRANSLATIONS = {
         "fr": "Rien de désinstallé.",
         "en": "Nothing uninstalled.",
     },
+    "Retrying alone:": {
+        "fr": "Reprise seul :",
+        "en": "Retrying alone:",
+    },
     "The uninstall did not take:": {
         "fr": "La désinstallation n'a pas pris :",
         "en": "The uninstall did not take:",
@@ -2289,6 +2293,18 @@ TRANSLATIONS = {
     "No display here; run this on YOUR workstation:": {
         "fr": "Aucun affichage ici ; à lancer sur VOTRE poste :",
         "en": "No display here; run this on YOUR workstation:",
+    },
+    "~/.ssh/config written anyway (install)": {
+        "fr": "entrée ~/.ssh/config écrite quand même : l'installation passe par le rebond",
+        "en": "~/.ssh/config written anyway: the install needs the jump",
+    },
+    "Still on the distribution kernel:": {
+        "fr": "Encore sur le noyau de la distribution :",
+        "en": "Still on the distribution kernel:",
+    },
+    "Reboot the host: no bridge, no NAT until then.": {
+        "fr": "Redémarrer l'hôte : ni pont ni NAT avant cela.",
+        "en": "Reboot the host: no bridge, no NAT until then.",
     },
     "A ~/.ssh/config alias works there too.": {
         "fr": "Un alias de ~/.ssh/config y fonctionne aussi.",
@@ -3531,7 +3547,10 @@ TRANSLATIONS = {
         "fr": "« qm create » en exige un. Deux voies :",
         "en": "qm create needs one. Two ways:",
     },
-    "create an internal": {"fr": "créer un pont interne", "en": "create an internal"},
+    "create an internal": {
+        "fr": "créer un pont interne",
+        "en": "create an internal",
+    },
     "touches no physical NIC": {
         "fr": "ne touche à aucune interface physique",
         "en": "touches no physical NIC",
@@ -3967,6 +3986,53 @@ TRANSLATIONS = {
         "fr": "Fichiers orphelins :",
         "en": "Orphan files:",
     },
+    "s ssh · c copy log · C copy all · q quit": {
+        "fr": "s ssh · c copier le log · C copier tout · q quitter",
+        "en": "s ssh · c copy log · C copy all · q quit",
+    },
+    "No VM created yet.": {
+        "fr": "Aucune VM créée pour l'instant.",
+        "en": "No VM created yet.",
+    },
+    # « models » manquait alors que ses trois voisines de la même ligne
+    # étaient traduites : le rapport de qualité de migration sortait
+    # « 42 modules · 812 models · 1 204 vues ».
+    "models": {
+        "fr": "modèles",
+        "en": "models",
+    },
+    "shutdown (clean)": {
+        "fr": "éteindre (proprement)",
+        "en": "shutdown (clean)",
+    },
+    "stop (pulls the plug)": {
+        "fr": "arrêter (coupe le courant)",
+        "en": "stop (pulls the plug)",
+    },
+    "Choice (blank = back): ": {
+        "fr": "Choix (vide = retour) : ",
+        "en": "Choice (blank = back): ",
+    },
+    "Confirm? (y/N): ": {
+        "fr": "Confirmer ? (o/N) : ",
+        "en": "Confirm? (y/N): ",
+    },
+    "Creating the bridge on the host…": {
+        "fr": "Création du pont sur l'hôte…",
+        "en": "Creating the bridge on the host…",
+    },
+    "no disk file found for this VM": {
+        "fr": "aucun fichier de disque trouvé pour cette VM",
+        "en": "no disk file found for this VM",
+    },
+    "a running process": {
+        "fr": "un processus en cours",
+        "en": "a running process",
+    },
+    "Kept (still attached to a VM):": {
+        "fr": "Conservés (encore attachés à une VM) :",
+        "en": "Kept (still attached to a VM):",
+    },
     "Total:": {
         "fr": "Total :",
         "en": "Total:",
@@ -4018,6 +4084,18 @@ TRANSLATIONS = {
     "Orphan ~/.ssh/config entries:": {
         "fr": "Entrées ~/.ssh/config orphelines :",
         "en": "Orphan ~/.ssh/config entries:",
+    },
+    "Kept (still leads somewhere):": {
+        "fr": "Conservées (mènent encore quelque part) :",
+        "en": "Kept (still leads somewhere):",
+    },
+    "reached through a jump host": {
+        "fr": "joignable par un rebond",
+        "en": "reached through a jump host",
+    },
+    "a VM of the Proxmox host": {
+        "fr": "une VM de l'hôte Proxmox",
+        "en": "a VM of the Proxmox host",
     },
     "Remove these ~/.ssh/config entries? (y/N): ": {
         "fr": "Retirer ces entrées de ~/.ssh/config ? (o/N, défaut : non) : ",
@@ -6698,6 +6776,146 @@ TRANSLATIONS = {
     "Dependencies between modules": {
         "fr": "🔗 Dépendances entre les modules",
         "en": "🔗 Dependencies between modules",
+    },
+    "Website copies that can no longer render": {
+        "fr": "Copies de site qui ne savent plus se rendre",
+        "en": "Website copies that can no longer render",
+    },
+    "Every website copy still renders.": {
+        "fr": "Chaque copie de site sait encore se rendre.",
+        "en": "Every website copy still renders.",
+    },
+    "No duplicate index.": {
+        "fr": "Aucun index en double.",
+        "en": "No duplicate index.",
+    },
+    "held no data of their own — nothing to lose": {
+        "fr": "sans donnée propre — rien à perdre",
+        "en": "held no data of their own — nothing to lose",
+    },
+    "Configuration records a migration never recreates": {
+        "fr": "Réglages qu'une migration ne recrée jamais",
+        "en": "Configuration records a migration never recreates",
+    },
+    "Every default configuration record is there.": {
+        "fr": "Chaque réglage par défaut est en place.",
+        "en": "Every default configuration record is there.",
+    },
+    "No pricelist, and the pricelist feature is on.": {
+        "fr": "Aucune liste de prix, alors que la fonctionnalité est active.",
+        "en": "No pricelist, and the pricelist feature is on.",
+    },
+    "Every quotation opens without one: raw price, no rule.": {
+        "fr": "Tout devis s'ouvre sans liste : prix brut, aucune règle.",
+        "en": "Every quotation opens without one: raw price, no rule.",
+    },
+    "No bank reconciliation model, for": {
+        "fr": "Aucun modèle de rapprochement bancaire, pour",
+        "en": "No bank reconciliation model, for",
+    },
+    "cash/bank journal(s).": {
+        "fr": "journal(aux) de trésorerie.",
+        "en": "cash/bank journal(s).",
+    },
+    "Every statement line is matched by hand.": {
+        "fr": "Chaque ligne de relevé se lettre à la main.",
+        "en": "Every statement line is matched by hand.",
+    },
+    "Use --apply to let Odoo recreate them.": {
+        "fr": "Utiliser --apply pour laisser Odoo les recréer.",
+        "en": "Use --apply to let Odoo recreate them.",
+    },
+    "pricelists:": {
+        "fr": "listes de prix :",
+        "en": "pricelists:",
+    },
+    "reconcile models:": {
+        "fr": "modèles de rapprochement :",
+        "en": "reconcile models:",
+    },
+    "Odoo recreated them.": {
+        "fr": "Odoo les a recréés.",
+        "en": "Odoo recreated them.",
+    },
+    "Still missing after the repair.": {
+        "fr": "Il en manque encore après la réparation :",
+        "en": "Still missing after the repair.",
+    },
+    "duplicate index pair(s)": {
+        "fr": "paire(s) d'index en double",
+        "en": "duplicate index pair(s)",
+    },
+    "safe to drop": {
+        "fr": "sans risque à supprimer",
+        "en": "safe to drop",
+    },
+    "drop": {
+        "fr": "supprimer",
+        "en": "drop",
+    },
+    "backed by a constraint — left alone": {
+        "fr": "adossée(s) à une contrainte — laissée(s) en place",
+        "en": "backed by a constraint — left alone",
+    },
+    "neither name follows the convention — your call": {
+        "fr": "sans convention reconnaissable — à vous de juger",
+        "en": "neither name follows the convention — your call",
+    },
+    "Use --apply to drop them.": {
+        "fr": "Utiliser --apply pour les supprimer.",
+        "en": "Use --apply to drop them.",
+    },
+    "Duplicate indexes dropped.": {
+        "fr": "Index en double supprimés.",
+        "en": "Duplicate indexes dropped.",
+    },
+    "Some duplicates are still there.": {
+        "fr": "Des doublons subsistent.",
+        "en": "Some duplicates are still there.",
+    },
+    "website COW view(s) will survive the bump and then fail": {
+        "fr": "vue(s) COW de site passeront le palier puis échoueront",
+        "en": "website COW view(s) will survive the bump and then fail",
+    },
+    "to render:": {
+        "fr": "à se rendre :",
+        "en": "to render:",
+    },
+    "Repair rather than neutralize — the copy holds a page": {
+        "fr": "Réparer plutôt que neutraliser — la copie porte une page",
+        "en": "Repair rather than neutralize — the copy holds a page",
+    },
+    "someone wrote:": {
+        "fr": "écrite par quelqu'un :",
+        "en": "someone wrote:",
+    },
+    "Every website copy renders again.": {
+        "fr": "Chaque copie de site sait de nouveau se rendre.",
+        "en": "Every website copy renders again.",
+    },
+    "Some copies still cannot render.": {
+        "fr": "Des copies ne savent toujours pas se rendre.",
+        "en": "Some copies still cannot render.",
+    },
+    "anchor missing for view": {
+        "fr": "ancrage absent pour la vue",
+        "en": "anchor missing for view",
+    },
+    "calls a template that is gone:": {
+        "fr": "appelle un gabarit disparu :",
+        "en": "calls a template that is gone:",
+    },
+    "repair(s) available with --apply": {
+        "fr": "réparation(s) possible(s) avec --apply",
+        "en": "repair(s) available with --apply",
+    },
+    "cannot be repaired automatically": {
+        "fr": "ne se réparent pas toutes seules",
+        "en": "cannot be repaired automatically",
+    },
+    "Removing a call removes its block from the page.": {
+        "fr": "Retirer un appel retire son bloc de la page.",
+        "en": "Removing a call removes its block from the page.",
     },
     "modules installed": {
         "fr": "modules installés",
