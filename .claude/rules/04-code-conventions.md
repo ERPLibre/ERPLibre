@@ -16,6 +16,26 @@ indentations par type de fichier.
   caractères au plus. Tags réellement utilisés : `[UPD]`, `[FIX]`, `[ADD]`,
   `[IMP]`, `[REF]`.
 
+### Le sujet
+
+Le sujet est lu cent fois pour une fois que le corps l'est — `git log
+--oneline`, un blame, une note de version, un bisect. Il a une seule tâche :
+dire **sur quoi porte le code**.
+
+L'épreuve : le lire seul, sans diff ni corps. Sait-on quelle partie du système
+est en jeu, et ce qui y est désormais différent ? Sinon il n'est pas fini.
+
+Nommer la chose, puis ce qui change pour elle. Le symptôme, le message d'erreur
+cité et la métaphore sont des PREUVES, et une preuve va dans le corps — un
+sujet bâti sur elles se lit bien et n'apprend rien. La portée dit OÙ, les mots
+après le deux-points doivent dire QUOI.
+
+Le sujet résume le commit ENTIER, pas sa plus grosse pièce. S'il lui faut un
+« et » entre deux choses sans rapport, c'étaient deux commits.
+
+Le mode d'emploi complet, avec des exemples avant/après pris dans l'historique
+de ce dépôt, est dans `conf/template_claude_commands_commit.md`.
+
 ### Tout commit assisté par IA
 
 Trois exigences, sans exception — `AI_POLICY.md` en donne la raison :

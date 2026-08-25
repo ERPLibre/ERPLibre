@@ -90,6 +90,39 @@ The same body, translated.
 Assisted-by: {MODEL}
 ```
 
+### The subject line
+
+The subject is read a hundred times for every time the body is read: in
+`git log --oneline`, in a blame, in a release note, in a bisect. It has one
+job — say what the code is about.
+
+**The test.** Read the subject alone, with no diff and no body. Can you say
+which part of the system it concerns, and what is now different about it? If
+not, it is not finished.
+
+**Name the thing, then what changed about it.** The symptom, the quoted error
+and the metaphor are EVIDENCE, and evidence belongs in the body. A subject
+built on them reads well and tells the next reader nothing:
+
+| Instead of | Write |
+|-----------|-------|
+| `[FIX] nettoyage : les enfants s'en vont avec leur rebond` | `[FIX] nettoyage : les entrées ssh qui rebondissent par une VM effacée` |
+| `[FIX] proxmox : « il manque le stockage » était le symptôme, pas la cause` | `[FIX] proxmox : signaler pmxcfs à terre, et non « aucun stockage »` |
+| `[FIX] migration: un module fautif n'emporte plus tout le lot` | `[FIX] migration: isoler l'échec d'un module dans la désinstallation` |
+
+The scope is not the subject. `proxmox` says WHERE; the words after the colon
+must say WHAT. A subject that works with its scope removed is usually the
+right one.
+
+**Summarise the whole commit, not its largest piece.** When the work has two
+faces — a guard moved and the check that proves it, a screen and the service
+under it — the subject covers both or the commit should have been two. If the
+only honest subject needs an `and` joining two unrelated things, split it.
+
+**It must be complete in 72 characters.** A subject cut mid-phrase by
+`--oneline` has failed at the one place it is read most. Write it to fit
+rather than trimming it afterwards: drop the adjectives, keep the nouns.
+
 ### Keep it short
 
 The body answers one question: why was this necessary. Stop once it is
