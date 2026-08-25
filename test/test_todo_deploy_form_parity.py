@@ -163,6 +163,25 @@ class TestLesDeuxEcrans(unittest.TestCase):
         vide.extras_init({})
         return vide
 
+    def test_both_screens_bind_the_same_catalog_shortcuts(self):
+        # « Versions principales » (F7) manquait à l'écran Proxmox, qui
+        # affiche pourtant le même catalogue, drapeau « default » compris.
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        todo = todo_muet()
+        mod = todo._qemu_import_module()
+        touches = {}
+        for nom, app in (
+            ("QEMU/KVM", run_deploy_form(todo._qemu_form_context(mod), False)),
+            ("Proxmox", run_proxmox_form(contexte_proxmox(todo), False)),
+        ):
+            touches[nom] = {
+                b[0]: b[1] for b in app.BINDINGS if b[1].startswith("select_")
+            }
+        self.assertEqual(touches["QEMU/KVM"], touches["Proxmox"])
+        self.assertIn("select_main", touches["Proxmox"].values())
+
     def test_parallelism_follows_the_host_on_both_screens(self):
         # L'écran Proxmox plafonnait à quatre choix et en proposait UN, quel
         # que soit le nombre de cœurs de l'hôte.

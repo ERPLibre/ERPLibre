@@ -1001,20 +1001,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._recompute()
 
         # -- actions ---------------------------------------------------- #
-        def action_select_all(self) -> None:
-            self.query_one("#f_catalog", SelectionList).select_all()
-
-        def action_select_none(self) -> None:
-            self.query_one("#f_catalog", SelectionList).deselect_all()
-
-        def action_select_main(self) -> None:
-            """Une VM par distro : la version marquée par défaut."""
-            widget = self.query_one("#f_catalog", SelectionList)
-            widget.deselect_all()
-            for i, e in enumerate(self._entries()):
-                if e.get("default"):
-                    widget.select(i)
-
         def action_clear_vm(self) -> None:
             """Rend au profil commun la VM dont un widget a le focus. Sans
             cette sortie, un réglage posé par erreur ne se défaisait qu'en

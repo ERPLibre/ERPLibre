@@ -1322,6 +1322,40 @@ PVE_STATS_CMD = (
 # une poignée de main ssh (mesuré 1 s), quand « virsh domstats » coûte 0,03 s
 # pour tout le parc. Cinq secondes suffisent à voir une installation avancer.
 PVE_STATS_INTERVAL = 5.0
+
+# Une VM locale DÉJÀ verte est resondée à cette cadence, pas à chaque tour.
+# La sonde est un connect() TCP par VM : à chaque tour (2 s) c'est cher pour
+# une réponse qui ne bouge presque jamais, jamais c'est un mensonge — Odoo
+# redémarre au moins une fois pendant l'installation, et il lui arrive de
+# mourir. Trente secondes bornent le mensonge à un demi-écran de journal.
+ODOO_RECHECK = 30.0
+
+
+def odoo_reading(vm, releve, deja_vert, dernier, maintenant, sonde):
+    """Odoo répond-il sur cette VM ? (état ou None, sondé ?)
+
+    None veut dire « pas de réponse ce tour-ci », et NON « Odoo est tombé » :
+    l'appelant garde alors le dernier état connu. C'est toute la différence
+    entre un hôte muet et une VM qui ne sert plus rien.
+
+    Deux voies, parce que la sonde n'a pas le même prix. Sur une VM Proxmox
+    le port a été testé DEPUIS L'HÔTE, dans l'appel des statistiques — d'ici,
+    une adresse de pont interne ne répond jamais — donc c'est gratuit et relu
+    à chaque tour. Sur une VM locale c'est un connect() TCP par VM : on la
+    refait tant qu'elle est rouge, puis seulement toutes les ODOO_RECHECK
+    secondes.
+
+    Ce qu'on ne fait plus, c'est ne jamais la refaire. « Odoo ne redescend pas
+    en cours d'install » était faux : le service redémarre au moins une fois,
+    et il lui arrive de mourir. Le 🟢 restait alors acquis pour toujours.
+    """
+    if vm.get("pve"):
+        return (bool(releve.get("odoo")) if releve else None), False
+    if deja_vert and maintenant - dernier < ODOO_RECHECK:
+        return None, False
+    return bool(sonde(vm.get("ip"), 8069)), True
+
+
 # Proxmox dit « running » / « stopped » ; le suivi raisonne en états libvirt.
 # Une VM absente de la réponse de l'hôte a vraiment disparu.
 PVE_ETATS = {"running": "running", "stopped": "shut off", "paused": "paused"}
@@ -1722,6 +1756,39 @@ def delete_vm_cmd_pve(info, purge: bool = True) -> str:
     return pve_host_cmd(info, suite)
 
 
+def delete_lines(vm) -> list:
+    """Ce qui va RÉELLEMENT disparaître, dit selon l'endroit où la VM vit.
+
+    L'écran annonçait à toute VM « son disque qcow2 EFFACÉ », puis nommait
+    /var/lib/libvirt/images/<nom>.qcow2. Sur une VM Proxmox ce fichier
+    n'existe pas : son disque vit dans un stockage que seul l'hôte connaît, et
+    la ligne désignait donc un fichier local — au mieux inexistant, au pire
+    celui d'une autre VM du même nom. C'est exactement la peur qui a fait
+    remonter le nettoyage : « le nettoyage risque d'effacer des VM en
+    production ».
+
+    Une confirmation doit nommer ce qu'elle détruit, sur la machine où elle
+    le détruit."""
+    info = vm.get("pve")
+    if not info:
+        return [
+            "La VM est arrêtée, sa définition retirée,",
+            "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
+            "",
+            f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
+        ]
+    hote = info.get("target") or "?"
+    return [
+        f"Sur l'hôte Proxmox {hote}, la VM {info.get('vmid')} est arrêtée",
+        "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
+        "",
+        f"  qm destroy {info.get('vmid')} --purge",
+        "",
+        "Aucun fichier n'est touché ici : le disque vit dans le",
+        "stockage de l'hôte.",
+    ]
+
+
 def delete_vm_cmd(name: str, with_disks: bool) -> str:
     """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
     arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
@@ -2016,9 +2083,18 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self._errcount = {}
             # Sommaire de stats déplié (clic) ou non.
             self._stats_open = False
-            # VM dont l'UI Odoo (:8069) répond déjà : une fois détectée « up »,
-            # on ne re-teste plus (Odoo ne redescend pas en cours d'install).
+            # VM dont l'UI Odoo (:8069) répond. RELUE, et non accumulée :
+            # « Odoo ne redescend pas en cours d'install » est faux — il
+            # redémarre au moins une fois (service systemd), et il lui arrive
+            # de mourir. Un 🟢 acquis pour toujours affirmait alors qu'une VM
+            # servait Odoo alors qu'elle ne servait plus rien.
             self._odoo_up = set()
+            # Dernier tour où le port d'une VM DÉJÀ verte a été retesté. Sur
+            # une VM locale la sonde est un connect() TCP par VM : la refaire
+            # à chaque tour pour rien serait cher, la refaire jamais serait
+            # faux. Sur Proxmox la question ne se pose pas — la réponse vient
+            # avec les statistiques, gratuitement.
+            self._odoo_revu = {}
             # Relevés SUCCESSIFS sans la VM, par nom : « effacée » est un état
             # terminal, il se mérite.
             self._pve_absences = {}
@@ -2229,7 +2305,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # colonnes restaient vides. Même forme de relevé, donc la suite ne
             # change pas d'un iota.
             stats.update(read_pvestats(vms))
-            now_s = time.time()
+            now_s = maintenant = time.time()
             for name, rec in stats.items():
                 self._wrate.add(name, rec["wr_bytes"], now_s)
             self._vmstats = stats
@@ -2257,21 +2333,22 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                     # peut contenir des erreurs passées inaperçues.
                     if st[0] in ("done", "failed") and name not in errors:
                         errors[name] = scan_log_errors(vm["log"])
-                # Odoo up ? On ne teste que celles pas encore confirmées up
-                # et non effacées (test TCP court sur :8069).
-                if (
-                    name not in self._odoo_up
-                    and self._domstate.get(name) != "gone"
-                ):
-                    releve = (self._vmstats or {}).get(name) or {}
-                    if vm.get("pve"):
-                        # Le port a été testé DEPUIS L'HÔTE, dans l'appel des
-                        # statistiques : d'ici, une adresse de pont interne ne
-                        # répond jamais.
-                        if releve.get("odoo"):
-                            odoo[name] = True
-                    elif _port_open(vm.get("ip"), 8069):
-                        odoo[name] = True
+                # Odoo up ? La réponse est RENDUE À CHAQUE TOUR pour les
+                # VM sondées, pas accumulée : la colonne doit pouvoir
+                # redescendre à « — ».
+                if self._domstate.get(name) != "gone":
+                    etat, sonde = odoo_reading(
+                        vm,
+                        (self._vmstats or {}).get(name) or {},
+                        name in self._odoo_up,
+                        self._odoo_revu.get(name, 0.0),
+                        maintenant,
+                        _port_open,
+                    )
+                    if sonde:
+                        self._odoo_revu[name] = maintenant
+                    if etat is not None:
+                        odoo[name] = etat
             return disks, status, self._collect_tele(), errors, odoo, wr, ram
 
         async def _tick_table(self):
@@ -2291,7 +2368,14 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             except Exception:
                 return
             self._errcount.update(errors)
-            self._odoo_up.update(odoo)
+            # Remplacement et non union : une VM sondée qui ne répond
+            # plus doit repasser à « — ». Les VM absentes du relevé (hôte
+            # muet, VM effacée) gardent leur dernier état connu.
+            for nom_vm, vivant in odoo.items():
+                if vivant:
+                    self._odoo_up.add(nom_vm)
+                else:
+                    self._odoo_up.discard(nom_vm)
             try:
                 table = self.query_one("#vms", DataTable)
                 now = time.time()
@@ -3011,12 +3095,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             self.push_screen(
                 ConfirmScreen(
                     f"Supprimer {vm['name']} ?",
-                    [
-                        "La VM est arrêtée, sa définition retirée,",
-                        "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
-                        "",
-                        f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
-                    ],
+                    delete_lines(vm),
                     "Supprimer définitivement",
                 ),
                 confirmed,

@@ -344,6 +344,32 @@ class PlanMixin:
             rename_screen()(self.rows[index]["vm"]["name"], auto), done
         )
 
+    # ---------------------------------------------------------------- #
+    # Le catalogue — les trois raccourcis de sélection
+    # ---------------------------------------------------------------- #
+    def _catalog(self):
+        from textual.widgets import SelectionList
+
+        return self.query_one("#f_catalog", SelectionList)
+
+    def action_select_all(self) -> None:
+        self._catalog().select_all()
+
+    def action_select_none(self) -> None:
+        self._catalog().deselect_all()
+
+    def action_select_main(self) -> None:
+        """Une VM par distribution : la version marquée par défaut.
+
+        Ici et non dans un formulaire : les trois gestes sont les mêmes des
+        deux côtés, et celui-ci manquait à l'écran Proxmox — qui affiche
+        pourtant le même catalogue, drapeau « default » compris."""
+        widget = self._catalog()
+        widget.deselect_all()
+        for i, e in enumerate(self._entries()):
+            if e.get("default"):
+                widget.select(i)
+
     def _auto_name(self, index):
         """Nom que la VM reprendrait si on effaçait le sien."""
         return self._plan_entries()[index]["name"]

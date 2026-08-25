@@ -598,6 +598,54 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
             )
 
 
+class TestLEcranDUneVmProxmox(unittest.TestCase):
+    """« Console de l'hyperviseur » conseillait des commandes virsh sur une
+    machine qui n'a pas libvirt.
+
+    Le tunnel lit le port VNC par « virsh vncdisplay » sur l'hyperviseur. Un
+    Proxmox VE n'a pas de libvirt : la commande échoue, et l'absence de port
+    était lue « écran fermé ». On imprimait alors « sudo virsh edit » — sur un
+    hôte où le binaire n'existe pas. Ce n'est pas un écran fermé, c'est la
+    mauvaise question : Proxmox sert son écran par un ticket, sur son
+    interface web."""
+
+    def _sortie(self, qm_present, port=0):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._ssh_proxyjump = lambda nom: "pve9"
+        todo._qemu_vnc_port = staticmethod(lambda d, j="": port)
+        todo._hypervisor_is_proxmox = lambda jump: qm_present
+        tampon = io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            todo._qemu_console_tunnel("pve9+vm-a", "ssh_config")
+        return tampon.getvalue()
+
+    def test_a_proxmox_host_is_never_told_to_run_virsh(self):
+        sortie = self._sortie(qm_present=True)
+        self.assertNotIn("virsh", sortie)
+        self.assertIn("qm terminal", sortie)
+        self.assertIn("8006", sortie, "l'interface web est le second chemin")
+
+    def test_a_libvirt_host_keeps_its_repair_commands(self):
+        # La voie libvirt ne régresse pas : sans port, ses commandes de
+        # réparation restent la bonne réponse.
+        sortie = self._sortie(qm_present=False)
+        self.assertIn("virsh edit", sortie)
+
+    def test_a_working_vnc_port_still_wins(self):
+        # La sonde ne doit pas s'exécuter quand il y a un port : ce serait un
+        # aller-retour ssh pour rien.
+        sortie = self._sortie(qm_present=True, port=5901)
+        self.assertIn("-L 5901:127.0.0.1:5901", sortie)
+        self.assertNotIn("qm terminal", sortie)
+
+
 class TestUnSeulNomDansSshConfig(unittest.TestCase):
     """L'entrée portait DEUX noms sur sa ligne « Host » : le nom chaîné
     « hôte+vm » et le nom court.

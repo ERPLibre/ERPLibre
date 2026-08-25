@@ -230,6 +230,119 @@ class TestLesAutresCheminsVersLaPoubelle(unittest.TestCase):
         self.assertGreaterEqual(mon.PVE_ABSENCES_AVANT_EFFACEE, 2)
 
 
+class TestCeQueLaConfirmationPromet(unittest.TestCase):
+    """La confirmation de suppression annonçait un fichier qcow2 local à
+    TOUTE VM, Proxmox comprise.
+
+    Sur une VM Proxmox ce fichier n'existe pas : son disque vit dans un
+    stockage que seul l'hôte connaît. La ligne désignait donc un chemin local
+    — au mieux inexistant, au pire celui d'une autre VM du même nom. C'est
+    exactement la peur qui avait fait remonter le nettoyage : « le nettoyage
+    risque d'effacer des VM en production »."""
+
+    def test_a_proxmox_vm_never_shows_a_local_path(self):
+        lignes = mon.delete_lines(
+            {"name": "vm-a", "pve": {"target": "pve9", "vmid": 101}}
+        )
+        texte = " ".join(lignes)
+        self.assertNotIn("/var/lib/libvirt", texte)
+        self.assertNotIn("qcow2", texte)
+
+    def test_it_names_the_host_and_the_vmid(self):
+        # Le nom ne suffit pas : deux VM peuvent le porter, seul le VMID est
+        # unique — et il faut savoir SUR QUELLE machine ça se passe.
+        texte = " ".join(
+            mon.delete_lines(
+                {"name": "vm-a", "pve": {"target": "pve9", "vmid": 101}}
+            )
+        )
+        self.assertIn("pve9", texte)
+        self.assertIn("101", texte)
+        self.assertIn("qm destroy 101", texte)
+
+    def test_a_local_vm_still_names_its_file(self):
+        # La voie libvirt ne régresse pas : là, le fichier EST ce qu'on efface.
+        texte = " ".join(mon.delete_lines({"name": "vm-a"}))
+        self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", texte)
+
+
+class TestQuandLeVertRedescend(unittest.TestCase):
+    """Le 🟢 était acquis pour toujours.
+
+    « Odoo ne redescend pas en cours d'install » : c'était faux. Le service
+    redémarre au moins une fois — systemd l'active à la fin du make — et il
+    lui arrive de mourir. La VM restait verte en servant plus rien, et c'est
+    précisément le moment où on veut le savoir."""
+
+    def _sonde(self, reponse):
+        return lambda _ip, _port: reponse
+
+    def test_a_local_vm_that_stopped_answering_goes_back(self):
+        etat, sonde = mon.odoo_reading(
+            {"ip": "10.0.0.1"},
+            {},
+            deja_vert=True,
+            dernier=0.0,
+            maintenant=mon.ODOO_RECHECK + 1,
+            sonde=self._sonde(False),
+        )
+        self.assertIs(etat, False)
+        self.assertTrue(sonde)
+
+    def test_a_green_local_vm_is_not_probed_every_tick(self):
+        # La sonde est un connect() TCP par VM : à chaque tour (2 s) c'est
+        # cher pour une réponse qui ne bouge presque jamais.
+        etat, sonde = mon.odoo_reading(
+            {"ip": "10.0.0.1"},
+            {},
+            deja_vert=True,
+            dernier=100.0,
+            maintenant=101.0,
+            sonde=self._sonde(False),
+        )
+        self.assertIsNone(etat, "rien de neuf ne doit être affirmé")
+        self.assertFalse(sonde)
+
+    def test_a_red_local_vm_is_probed_every_tick(self):
+        _etat, sonde = mon.odoo_reading(
+            {"ip": "10.0.0.1"},
+            {},
+            deja_vert=False,
+            dernier=100.0,
+            maintenant=101.0,
+            sonde=self._sonde(True),
+        )
+        self.assertTrue(sonde)
+
+    def test_a_proxmox_vm_is_read_every_tick_for_free(self):
+        # Le port est testé DEPUIS L'HÔTE, avec les statistiques : d'ici, une
+        # adresse de pont interne ne répond jamais.
+        def lu(odoo):
+            return mon.odoo_reading(
+                {"pve": {"vmid": 1}},
+                {"odoo": odoo},
+                deja_vert=True,
+                dernier=0.0,
+                maintenant=1.0,
+                sonde=self._sonde(True),
+            )[0]
+
+        self.assertIs(lu(True), True)
+        self.assertIs(lu(False), False)
+
+    def test_a_silent_host_is_not_a_dead_odoo(self):
+        # Sans relevé, on ne sait RIEN : l'appelant garde le dernier état.
+        etat, _s = mon.odoo_reading(
+            {"pve": {"vmid": 1}},
+            {},
+            deja_vert=True,
+            dernier=0.0,
+            maintenant=1.0,
+            sonde=self._sonde(True),
+        )
+        self.assertIsNone(etat)
+
+
 class TestLaBonneMachine(unittest.TestCase):
     """Le pire défaut de la série : l'installation partie AILLEURS.
 

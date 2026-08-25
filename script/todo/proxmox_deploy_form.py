@@ -161,7 +161,13 @@ def run_proxmox_form(ctx, run_app: bool = True):
     }
 
     def entry_label(e):
-        return f"{e['distro']} {e['version']}  [{e['arch']}]  {e['name']}"
+        # L'étoile marque la version par défaut d'une distribution : c'est
+        # elle que « F7 » retient, et sans repère le raccourci choisissait
+        # sans qu'on sache quoi.
+        star = " *" if e.get("default") else ""
+        return (
+            f"{e['distro']} {e['version']}{star}  [{e['arch']}]  {e['name']}"
+        )
 
     class ProxmoxForm(ExtrasMixin, PlanMixin, App):
         TITLE = t("Deploy one or more ERPLibre VMs on Proxmox VE!")
@@ -170,6 +176,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             ("f4", "clear_vm", t("Reset VM")),
             ("f3", "preview", t("Preview")),
             ("f6", "select_all", t("All")),
+            ("f7", "select_main", t("Main versions")),
             ("f8", "select_none", t("None")),
             ("escape", "cancel", t("Cancel")),
         ]
@@ -870,12 +877,6 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self.locked.discard(cle)
             self.overrides.pop(cle, None)
             self._refresh_after(remonter=True)
-
-        def action_select_all(self) -> None:
-            self.query_one("#f_catalog", SelectionList).select_all()
-
-        def action_select_none(self) -> None:
-            self.query_one("#f_catalog", SelectionList).deselect_all()
 
         def action_cancel(self) -> None:
             self.result = None

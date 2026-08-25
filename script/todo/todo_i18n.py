@@ -2346,6 +2346,30 @@ TRANSLATIONS = {
         "fr": "et non la VM : le socket est du côté de QEMU.",
         "en": "not the VM: the socket is QEMU-side.",
     },
+    "This hypervisor is Proxmox VE: it has no libvirt.": {
+        "fr": "Cet hyperviseur est un Proxmox VE : il n'a pas de libvirt.",
+        "en": "This hypervisor is Proxmox VE: it has no libvirt.",
+    },
+    "Its screen is served by a ticket, not by a VNC port.": {
+        "fr": "Son écran est servi par un ticket, pas par un port VNC.",
+        "en": "Its screen is served by a ticket, not by a VNC port.",
+    },
+    "Two ways in:": {
+        "fr": "Deux chemins :",
+        "en": "Two ways in:",
+    },
+    "the serial console, VMID from the Proxmox menu:": {
+        "fr": "la console série, le VMID venant du menu Proxmox :",
+        "en": "the serial console, VMID from the Proxmox menu:",
+    },
+    "the web interface, through a tunnel:": {
+        "fr": "l'interface web, par un tunnel :",
+        "en": "the web interface, through a tunnel:",
+    },
+    "TODO > Execute > Deploy > Proxmox VE does the first.": {
+        "fr": "TODO > Execute > Deploy > Proxmox VE fait le premier.",
+        "en": "TODO > Execute > Deploy > Proxmox VE does the first.",
+    },
     "This VM exposes no VNC port.": {
         "fr": "Cette VM n'expose aucun port VNC.",
         "en": "This VM exposes no VNC port.",
