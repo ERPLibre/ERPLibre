@@ -265,6 +265,8 @@ class TestTheCommandLine(unittest.TestCase):
 
 REPO = Path(__file__).resolve().parent.parent
 MOBILE = REPO / "mobile" / "erplibre_home_mobile"
+# Le plafond d'entrees d'un ZIP, et donc d'un APK.
+ZIP_ENTRY_LIMIT = 65535
 
 
 class TestTheRealBundle(unittest.TestCase):
@@ -276,10 +278,11 @@ class TestTheRealBundle(unittest.TestCase):
     (script/test/run_unit_test.sh) annonce la même dépendance avant de
     commencer.
 
-    Ce qu'ils gardent : qu'une compilation réelle produise bien des PACKS. Un
-    retour au fichier-par-source ferait disparaître le champ « chunk » des
-    index, et la limite du ZIP reviendrait — 123 678 entrées pour un plafond de
-    65 535, silencieusement, jusqu'à l'APK.
+    Ce qu'ils gardent : qu'une compilation réelle range les sources dans des
+    CONTENEURS — archives tar.gz ou tranches pack, les deux dispositions
+    conviennent. Un retour au fichier-par-source ferait revenir la limite du
+    ZIP — 123 678 entrées pour un plafond de 65 535, silencieusement, jusqu'à
+    l'APK. C'est le nombre d'entrées qui compte, pas la forme du conteneur.
     """
 
     @classmethod
@@ -320,11 +323,18 @@ class TestTheRealBundle(unittest.TestCase):
         # ce qui se lit comme une régression du transfert alors que rien
         # n'était encore transféré. Un état incomplet s'IGNORE ; seule une
         # incohérence entre ce qui est là et le dépôt doit échouer.
+        # L'index se cherche par la MÊME résolution que le vérificateur : la
+        # chercher ici en dur, sous `<slug>/index.json`, faisait sauter ces
+        # tests sur toute compilation en archives — ils regardaient ailleurs au
+        # lieu de vérifier.
         for entree in entrees:
-            slug = entree.get("slug") if isinstance(entree, dict) else entree
-            if slug and not (cls.repos / str(slug) / "index.json").is_file():
+            if not isinstance(entree, dict):
+                continue
+            try:
+                cbt.index_path(cls.repos, entree)
+            except (OSError, KeyError) as exc:
                 raise unittest.SkipTest(
-                    f"paquet incomplet ({slug} sans index.json) :"
+                    f"paquet incomplet ({exc}) :"
                     " relancer ./mobile/compile_and_run.sh"
                 )
 
@@ -332,31 +342,46 @@ class TestTheRealBundle(unittest.TestCase):
         rep = cbt.check(MOBILE, REPO)
         self.assertGreater(rep["repos"], 1)
         self.assertGreater(rep["files"], cbt.MIN_FILES)
-        self.assertGreater(rep["packs"], 0)
+        # Peu importe la disposition : ce qui doit être vrai, c'est que les
+        # sources soient dans des conteneurs et non une entrée ZIP chacune.
+        self.assertGreater(rep["packs"] + rep["archives"], 0)
 
     def test_a_sample_matches_the_source(self):
         """La seule vérification qui prouve un transfert FIDÈLE."""
         rep = cbt.check(MOBILE, REPO)
         self.assertGreater(rep["compared"], 0)
 
-    def test_the_indexes_are_packed_not_file_per_source(self):
-        """Le garde-fou de la limite du ZIP : chaque fichier doit porter sa
-        tranche. Sans « chunk », c'est un fichier par source, et l'APK sera
-        refusé — mais bien plus tard, et sans dire pourquoi."""
+    def test_the_apk_stays_under_the_zip_entry_limit(self):
+        """Le garde-fou de la limite du ZIP, énoncé comme l'invariant qu'il est.
+
+        Ce test exigeait un champ « chunk » sur chaque fichier, c'est-à-dire la
+        disposition en packs. Il échouait donc sur une compilation en archives
+        alors que la limite y est tenue — il testait la FORME au lieu de ce qui
+        importe : combien d'entrées le ZIP de l'APK va porter. Un fichier par
+        source en réclamerait 124 350 pour un plafond de 65 535."""
         man = json.loads((self.repos / "manifest.json").read_text())
-        checked = 0
-        for proj in man[:5]:
-            index = self.repos / proj["slug"] / "index.json"
-            entries = json.loads(index.read_text())
-            files = [e for e in entries if e.get("type") == "file"]
-            if not files:
+        entries_in_apk = 0
+        files = 0
+        for proj in man:
+            index = cbt.index_path(self.repos, proj)
+            listing = json.loads(index.read_text())
+            files += len([e for e in listing if e.get("type") == "file"])
+            entries_in_apk += 1  # l'index lui-même
+            if cbt.archive_path(self.repos, proj) is not None:
+                entries_in_apk += 1  # une archive
                 continue
-            self.assertTrue(
-                all("chunk" in e for e in files),
-                f"{proj['slug']} : des fichiers sans tranche",
+            entries_in_apk += len(
+                list((self.repos / proj["slug"]).glob("pack-*.bin"))
             )
-            checked += 1
-        self.assertGreater(checked, 0, "aucun dépôt à vérifier")
+        self.assertGreater(files, cbt.MIN_FILES, "aucun dépôt à vérifier")
+        self.assertLess(
+            entries_in_apk,
+            ZIP_ENTRY_LIMIT,
+            f"{entries_in_apk} entrées dans l'APK pour {files} fichiers",
+        )
+        # Et pas seulement « sous la limite » : l'écart doit rester d'un ordre
+        # de grandeur, sans quoi le prochain dépôt ajouté la ferait sauter.
+        self.assertLess(entries_in_apk, files // 10)
 
     def test_no_bundled_test_file_lingers_as_a_source(self):
         """Effet de bord mesuré, et il compte : empaquetés, les 1 599 fichiers

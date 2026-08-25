@@ -15,6 +15,13 @@
 # l'annonce donc avant de commencer.
 #
 #   ./script/test/run_unit_test.sh [fichiers...]
+#
+# NOMMER UN NOUVEAU FICHIER : sans argument, ce script ne prend que les
+# préfixes listés plus bas (test_qemu_, test_todo_, test_proxmox_…) — le reste
+# de test/ demande une base de données. Un fichier hors préfixe tombe donc dans
+# le même silence qu'un fichier absent : douze tests écrits, jamais lancés, et
+# un total qui n'a pas bougé. Choisir le préfixe de sa famille, ou l'ajouter
+# ici.
 set -uo pipefail
 
 Red='\033[0;31m'

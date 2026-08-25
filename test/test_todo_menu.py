@@ -354,6 +354,32 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Analyse, qui n'avait aucun garde.
+
+    Il en a pourtant besoin plus que les autres : ses entrées sont
+    regroupées en cinq sections, et une section ne consomme pas de numéro.
+    Ajouter « Instance » avant la dernière entrée décalait tout ce qui
+    suivait sans que rien ne proteste.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_analyse(self):"
+    END = "def execute_analyse_module_package(self):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Tables and database size": "execute_analyse_schema_size",
+        "Customised views": "execute_analyse_view_custom",
+        "Studio and hand-made": "execute_analyse_custom_field",
+        "Quality of a migration": "execute_analyse_migration_quality",
+        "Modules missing": "execute_analyse_module_package",
+        "Dependencies between": "execute_analyse_module_dependency",
+        "Attachment files missing": "execute_analyse_filestore",
+        "Monitoring - a backup": "execute_analyse_monitoring",
+    }
+
+
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Proxmox : dix-huit entrées, le même piège.
 

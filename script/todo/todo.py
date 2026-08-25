@@ -1705,6 +1705,40 @@ class TODO(
             pass
         return names
 
+    @classmethod
+    def _ssh_config_block(cls, name):
+        """Le bloc « Host … » qui déclare `name`, ou {}.
+
+        Rend ses noms ET ses directives : savoir qu'un nom est pris ne suffit
+        pas, il faut savoir PAR QUI. Un nom court déjà déclaré peut être notre
+        propre entrée qu'on réécrit — auquel cas il n'y a rien de volé — ou
+        celle d'une autre machine, et c'est le ProxyJump qui les distingue.
+
+        {"names": [...], "proxyjump": "...", "hostname": "..."}."""
+        path = os.path.expanduser("~/.ssh/config")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                contenu = fh.read()
+        except OSError:
+            return {}
+        bloc = None
+        for line in contenu.splitlines():
+            if re.match(r"^[ \t]*Host[ \t]+", line):
+                if bloc is not None:
+                    return bloc
+                noms = line.split()[1:]
+                bloc = {"names": noms} if name in noms else None
+                continue
+            if bloc is None:
+                continue
+            # Une ligne non indentée et non vide clôt le bloc.
+            if line.strip() and not line[:1].isspace():
+                return bloc
+            mots = line.split()
+            if len(mots) >= 2 and mots[0].lower() in ("proxyjump", "hostname"):
+                bloc[mots[0].lower()] = mots[1]
+        return bloc or {}
+
     @staticmethod
     def _ssh_config_user(host):
         """`User` déclaré pour cet hôte dans ~/.ssh/config, ou "".
@@ -2832,6 +2866,12 @@ class TODO(
                     "Attachment files missing from the filestore"
                 )
             },
+            {"section": t("Instance")},
+            {
+                "prompt_description": t(
+                    "Monitoring - a backup, a remote copy or a live instance"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -2854,6 +2894,8 @@ class TODO(
                 self.execute_analyse_module_dependency()
             elif status == "7":
                 self.execute_analyse_filestore()
+            elif status == "8":
+                self.execute_analyse_monitoring()
             else:
                 print(t("Command not found !"))
 
@@ -3514,6 +3556,244 @@ class TODO(
             ],
             handler,
         )
+
+    def execute_analyse_monitoring(self):
+        """Ausculter une instance dont la base n'est pas forcément ici.
+
+        Les analyses existent déjà ; ce qui manquait est le chemin d'avant.
+        Une sauvegarde, locale ou distante, se RESTAURE — après quoi tout
+        ce que le dépôt sait faire s'applique. Une instance vivante, non :
+        on n'a pas la base, on a une session, et ce que RPC laisse lire est
+        un sous-ensemble. L'écran de choix le dit au lieu de proposer des
+        analyses qui échoueraient à l'ouverture.
+        """
+        from script.analyse import monitoring, monitoring_tui
+
+        print(f"🛰  {t('Inspect an instance.')}")
+        source = self._monitoring_select_source()
+        if not source:
+            return
+        kind, target = source
+        print()
+        print(monitoring.describe_source(kind, target))
+        print()
+
+        choix = monitoring_tui.run_tui(kind, target)
+        if not choix:
+            return
+        analyse = monitoring.analysis_by_key(choix)
+        if not analyse:
+            return
+        if kind not in analyse["kinds"]:
+            print(f"✖ {t('Not available for this source.')}")
+            return
+        extra = None
+        if analyse.get("asks_expect"):
+            extra = ["--expect", self._monitoring_expect(kind)]
+        monitoring.run_analysis(analyse, target, extra=extra)
+
+    def _monitoring_expect(self, kind):
+        """Copie de développement, ou instance en service ?
+
+        Zéro cron actif est le SUCCÈS attendu d'une copie et une panne
+        totale sur une production ; zéro serveur de courriel rassure sur
+        l'une et condamne l'autre. Deviner à la place de l'utilisateur,
+        c'est afficher du rouge sur ce qu'il vient de demander — et l'on
+        cesse alors de lire le rapport.
+        """
+        from script.analyse import check_instance_state, monitoring
+
+        if kind == monitoring.KIND_LIVE:
+            return check_instance_state.LIVE
+        print()
+        print(f"[1] {t('A development copy (restored, neutralised)')}")
+        print(f"[2] {t('An instance in service')}")
+        answer = click.prompt(t("Command:"))
+        print()
+        return (
+            check_instance_state.LIVE
+            if answer == "2"
+            else check_instance_state.COPY
+        )
+
+    def _monitoring_select_source(self):
+        """(genre, cible), ou None si l'on renonce.
+
+        Le zip et la sauvegarde distante mènent tous deux à une base
+        restaurée : passé la restauration, ils ne se distinguent plus, et
+        le reste du code n'a pas à savoir d'où ils venaient.
+        """
+        from script.analyse import monitoring
+
+        print()
+        # La base locale d'abord : c'est la provenance la plus directe, et
+        # `_analyse_select_source` du même menu range déjà la base avant la
+        # sauvegarde. Deux ordres différents dans un même menu se paient en
+        # hésitation à chaque usage.
+        print(f"[1] {t('A local database')}")
+        print(f"[2] {t('A local backup .zip')}")
+        print(f"[3] {t('A remote backup (https + master password)')}")
+        print(f"[4] {t('A live remote instance')}")
+        print(f"[0] {t('Back')}")
+        answer = click.prompt(t("Command:"))
+        print()
+        if answer == "1":
+            database = self.db_manager.select_database()
+            return (monitoring.KIND_DATABASE, database) if database else None
+        if answer == "2":
+            path = self.db_manager.select_backup_path()
+            database = self._monitoring_restore(path) if path else None
+            return (monitoring.KIND_DATABASE, database) if database else None
+        if answer == "3":
+            status, path, _name = (
+                self.db_manager.download_database_backup_cli()
+            )
+            if status or not path or not os.path.isfile(path):
+                print(f"❌ {t('The download did not produce a usable file.')}")
+                return None
+            database = self._monitoring_restore(path)
+            return (monitoring.KIND_DATABASE, database) if database else None
+        if answer == "4":
+            return self._monitoring_live()
+        return None
+
+    def _monitoring_live(self):
+        """Se connecter pour de bon, ou ne pas prétendre l'être.
+
+        Une faute dans l'URL ou dans la clé ne se verrait sinon qu'à la
+        première analyse, et passerait pour un défaut de l'analyse.
+        """
+        import getpass
+
+        from script.analyse import monitoring
+
+        base_url = input(t("Instance URL (ex. https://example.com): ")).strip()
+        if not base_url:
+            return None
+        database = input(t("Database name on that instance: ")).strip()
+        if not database:
+            return None
+        login = input(t("User login: ")).strip()
+        if not login:
+            return None
+        print()
+        print(f"[1] {t('An API key')}")
+        print(f"[2] {t('A password')}")
+        genre = click.prompt(t("Command:"))
+        secret = getpass.getpass(
+            t("API key: ") if genre == "1" else t("Password: ")
+        )
+        if not secret:
+            return None
+        try:
+            uid, version = monitoring.live_connect(
+                base_url, database, login, secret
+            )
+        except Exception as exc:
+            print(f"❌ {t('Cannot connect: ')}{exc}")
+            return None
+        print(f"✅ {t('Connected as uid')} {uid}, {t('Odoo')} {version}")
+        return (monitoring.KIND_LIVE, f"{base_url} · {database}")
+
+    def _monitoring_restore(self, zip_path):
+        """Restaurer la sauvegarde, puis DIRE ce que la neutralisation a pris.
+
+        Mesuré sur sept bases dont le nom portait « neutralize » :
+        `database.is_neutralized` absent partout, jusqu'à 35 crons actifs,
+        et le domaine de courriel du client toujours en place. Poser la
+        question, recevoir oui et ne rien vérifier reproduit exactement
+        cette illusion — on relit donc la base.
+        """
+        from script.analyse import monitoring
+
+        image = self._monitoring_image_name(zip_path)
+        if not image:
+            return None
+        defaut = image
+        database = input(
+            f"💬 {t('Database name (default=')}{defaut}) : "
+        ).strip()
+        database = database or defaut
+
+        neutralise = (
+            input(f"💬 {t('Neutralize the database (Y/n)? ')}").strip().lower()
+        )
+        more_arg = ""
+        if neutralise != "n":
+            more_arg = "--neutralize "
+            database += "_neutralize"
+
+        status, _ = self._execute.exec_command_live(
+            f"python3 ./script/database/db_restore.py -d {database} "
+            f"{more_arg}--ignore_cache --image {image}",
+            return_status_and_output=True,
+            single_source_erplibre=True,
+            source_erplibre=False,
+        )
+        if status:
+            print(f"❌ {t('The restore failed.')}")
+            return None
+        if more_arg:
+            status, _ = self._execute.exec_command_live(
+                f"./script/addons/update_prod_to_dev.sh {database}",
+                return_status_and_output=True,
+                single_source_erplibre=True,
+                source_erplibre=False,
+            )
+            print()
+            print(
+                monitoring.neutralize_report(
+                    monitoring.neutralize_state(database), colour=True
+                )
+            )
+            if status:
+                # Le compte test/test vient de `user_test`, posé par ce
+                # script. S'il n'a pas fini, l'annoncer quand même enverrait
+                # se heurter à un refus d'authentification.
+                print(
+                    f"⚠  {t('update_prod_to_dev did not finish: do not')}"
+                    f" {t('count on the test/test account.')}"
+                )
+            else:
+                print(f"ℹ️  {t('You can log in with test / test.')}")
+        return database
+
+    def _monitoring_image_name(self, zip_path):
+        """db_restore veut un NOM sous image_db/, pas un chemin.
+
+        Une sauvegarde qui vient d'ailleurs n'est donc pas restaurable telle
+        quelle. Plutôt que de recopier plusieurs gigaoctets, on propose un
+        lien — et on le demande, parce que cela pose un fichier dans un
+        répertoire qui n'est pas à nous.
+        """
+        image_db = os.path.join(os.getcwd(), "image_db")
+        nom = os.path.basename(zip_path)
+        if nom.endswith(".zip"):
+            nom = nom[:-4]
+        if os.path.dirname(os.path.abspath(zip_path)) == image_db:
+            return nom
+        cible = os.path.join(image_db, f"{nom}.zip")
+        if os.path.exists(cible):
+            print(f"ℹ️  {t('Using the file already in image_db: ')}{cible}")
+            return nom
+        answer = (
+            input(
+                f"💬 {t('db_restore only reads image_db/. Link it there')}"
+                f" ({cible}) (Y/n)? "
+            )
+            .strip()
+            .lower()
+        )
+        if answer == "n":
+            return None
+        try:
+            os.makedirs(image_db, exist_ok=True)
+            os.symlink(os.path.abspath(zip_path), cible)
+        except OSError as exc:
+            print(f"❌ {t('Cannot link into image_db: ')}{exc}")
+            return None
+        print(f"🔗 {cible}")
+        return nom
 
     def prompt_execute_process(self):
         print(f"🤖 {t('Manage execution processes!')}")

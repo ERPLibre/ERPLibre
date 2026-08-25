@@ -435,12 +435,17 @@ class ProxmoxMenuMixin:
         if not brut:
             print(t("Nothing selected."))
             return
-        noms = [vm["name"] for vm in vms]
         if brut in ("all", "*"):
             choisies = list(vms)
         else:
-            retenus = set(self._parse_index_selection(brut, noms))
-            choisies = [vm for vm in vms if vm["name"] in retenus]
+            # Par RANG, jamais par nom : deux VM du même hôte peuvent
+            # porter le même nom (seul le VMID est unique sur Proxmox), et
+            # cocher l'une éteignait les deux.
+            rangs = self._parse_index_selection(
+                brut, [str(i) for i in range(1, len(vms) + 1)]
+            )
+            voulus = {int(r) for r in rangs if str(r).isdigit()}
+            choisies = [vm for i, vm in enumerate(vms, 1) if i in voulus]
         if not choisies:
             print(t("Nothing selected."))
             return
@@ -828,6 +833,11 @@ class ProxmoxMenuMixin:
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
             "branch_current": self._qemu_repo_branch(),
             "install_profiles": self._qemu_install_profiles(),
+            # Type de VM, magasin d'applications, outils, fuseau,
+            # interpréteur Python : les réglages du système INVITÉ, qui ne
+            # regardent pas l'hyperviseur. Cet écran n'en portait que trois —
+            # une VM créée ici naissait sans bureau, sans outils et en UTC.
+            **self._qemu_guest_context(),
             # Même règle qu'en QEMU/KVM : un système peut IMPOSER ce qu'on
             # installe dessus. Un Proxmox imbriqué recevait sinon ERPLibre et
             # Odoo 18, comme l'écran d'à côté avant correction.
@@ -869,6 +879,38 @@ class ProxmoxMenuMixin:
         code, out = self._pve_show("hostname", quiet=True)
         return out.strip().splitlines()[0] if code == 0 and out.strip() else ""
 
+    def _pve_disk_with_margin(self, vm, spec):
+        """Taille du disque à créer : celle du plan, marge comprise.
+
+        La même règle que la voie libvirt, qui ajoute ERPLIBRE_EXTRA_DISK_GB à
+        la demande initiale quand ERPLibre s'installe. Ici la marge se perdait
+        entre l'écran et « qm resize ».
+        """
+        from script.todo.deploy_form_extras import (
+            extras_disk_gb,
+            extras_tables,
+        )
+
+        demande = vm.get("disk") or ""
+        gigs = self._parse_disk_gb(demande)
+        if not gigs:
+            return demande
+        install = spec.get("install") or {}
+        cmd = vm.get("install_cmd") or install.get("cmd") or ""
+        marge = 0
+        if self._qemu_installs_erplibre(install.get("branch"), cmd):
+            marge += self.ERPLIBRE_EXTRA_DISK_GB
+        # Le bureau et les outils pèsent aussi, et sur la VM QUI LES REÇOIT :
+        # une VM ARM n'aura pas Android Studio, un serveur aucun des IDE. Le
+        # plan les additionne déjà à l'écran ; sans eux ici, la VM naissait
+        # avec le disque d'un serveur nu et GNOME le remplissait.
+        marge += extras_disk_gb(
+            dict(vm, desktop=vm.get("desktop") or spec.get("desktop") or ""),
+            spec.get("vm_tools") or (),
+            extras_tables(self._qemu_guest_context()),
+        )
+        return f"{gigs + marge}G" if marge else demande
+
     def _pve_vm_commands(self, mod, vm, spec):
         """Les commandes de création d'UNE VM, dans l'ordre : l'image puis
         « qm ». Sert à l'aperçu comme à l'exécution — un aperçu qui ne
@@ -884,7 +926,12 @@ class ProxmoxMenuMixin:
             "name": vm["name"],
             "memory": vm["ram"],
             "vcpus": vm["vcpus"],
-            "disk": vm["disk"],
+            # La MARGE d'ERPLibre entre dans la taille réellement créée : le
+            # plan l'annonçait (« 25G » pour un catalogue à 20 G) et « qm
+            # resize » recevait 20 G. La VM naissait cinq gigaoctets trop
+            # petite pour ce qu'on venait de lui promettre — trouvé par
+            # l'audit, pas à l'usage.
+            "disk": self._pve_disk_with_margin(vm, spec),
             "storage": spec["storage"],
             "bridge": spec["bridge"],
             "image": image,
@@ -967,7 +1014,33 @@ class ProxmoxMenuMixin:
         # sortie ; celle-ci les écrit, ce qui vaut mieux qu'un défilement.
         session = self._pve_log_dir()
         print(f"\n  {t('Log:')} {session}")
-        resultats = run_deploy_progress(travaux, spec.get("parallelism") or 1)
+        # Comment joindre chaque VM SANS dépendre de ~/.ssh/config, qui n'est
+        # écrit qu'après : par le rebond de l'hôte, explicitement. C'est ce que
+        # « s » utilise dans la vue de progression — sans quoi il partait sur
+        # le nom de la VM, donc sur une locale homonyme (rapporté).
+        cibles_ssh = {}
+        for vm in spec["vms"]:
+            ip = pve.ip_from_ipconfig(vm.get("ipconfig") or "")
+            if ip:
+                compte = (spec.get("user") or "erplibre") + "@" + ip
+                cibles_ssh[vm["name"]] = (
+                    f"ssh -J {shlex.quote(host['target'])} "
+                    f"{shlex.quote(compte)}"
+                )
+        # Ce qui attend derrière cet écran : sans le dire, on reste devant
+        # une fenêtre « terminée » sans savoir que l'installation d'ERPLibre
+        # démarre en la quittant.
+        suite = ""
+        if spec.get("install"):
+            suite = t("Quit (q) to start the ERPLibre install")
+        elif spec.get("monitor", True):
+            suite = t("Quit (q) to follow the VM starting up")
+        resultats = run_deploy_progress(
+            travaux,
+            spec.get("parallelism") or 1,
+            ssh_cmds=cibles_ssh,
+            suite=suite,
+        )
         reussies = [nom for nom, code, _o, _d in resultats if code == 0]
         for nom, code, sortie, duree in resultats:
             chemin = self._pve_write_log(
@@ -990,7 +1063,8 @@ class ProxmoxMenuMixin:
                     print(f"    {ligne}")
         if not reussies:
             return
-        self._pve_after_create(host, spec, reussies, cle_locale)
+        joignables = self._pve_after_create(host, spec, reussies, cle_locale)
+        self._pve_print_summary(spec, joignables or [], session)
 
     @staticmethod
     def _pve_log_dir():
@@ -1047,6 +1121,178 @@ class ProxmoxMenuMixin:
             fh.write("\n".join(entete) + "\n")
         return chemin
 
+    def _pve_alias_names(self, nom, chaine, locaux, rebond=""):
+        """UN seul nom pour l'entrée ~/.ssh/config, et lequel.
+
+        Deux noms sur la même ligne « Host » — le court et le chaîné
+        « hôte+vm » — étaient un doublon dès que le court était libre : ssh
+        n'a besoin que d'un nom, et le second n'ajoutait qu'une façon de plus
+        d'écrire la même adresse. Rapporté.
+
+        Le court quand il est LIBRE, c'est celui qu'on tape ; le chaîné
+        sinon, car un nom déjà pris désigne une AUTRE machine — une VM locale
+        du même nom, ou la VM d'un autre hôte Proxmox. Vécu : « ssh » partait
+        vers la machine locale qui partageait le nom.
+
+        « Pris » se juge sur le ProxyJump du bloc et non sur sa seule
+        présence : notre propre entrée, réécrite à chaque déploiement, se
+        serait autrement prise pour une rivale — et le nom aurait basculé
+        d'une fois sur l'autre.
+
+        Rend (noms, volé) — `volé` nomme ce qui a forcé le nom chaîné, pour
+        que l'appelant le dise plutôt que de laisser la surprise."""
+        if nom in locaux:
+            return [chaine], t("a local VM")
+        bloc = self._ssh_config_block(nom)
+        notre = (
+            not bloc
+            or chaine in bloc.get("names", ())
+            or (rebond and bloc.get("proxyjump") == rebond)
+        )
+        return ([nom], "") if notre else ([chaine], "~/.ssh/config")
+
+    def _pve_set_timezone(self, cible, spec):
+        """Pose le fuseau DANS la VM, par ssh.
+
+        La voie libvirt le donne à cloud-init, qui écrit /etc/timezone au
+        premier démarrage. « qm set » n'a pas d'équivalent : le cloud-init de
+        Proxmox ne règle que l'utilisateur, la clé et le réseau. Une VM créée
+        ici restait donc en UTC — et on ne s'en aperçoit qu'aux horodatages,
+        parfois des jours plus tard.
+
+        AVANT l'installation, pour que le journal porte déjà la bonne heure.
+        Un nom IANA, jamais un décalage : « UTC-5 » ne dit rien de l'heure
+        d'été, et timedatectl le refuse.
+        """
+        fuseau = (spec.get("timezone") or "").strip()
+        if not fuseau:
+            return False
+        code, sortie = self._pve_ssh(
+            cible, f"sudo timedatectl set-timezone {shlex.quote(fuseau)}"
+        )
+        if code:
+            # Nommé et non tu : la VM reste en UTC, et c'est une surprise
+            # qu'on veut avoir maintenant plutôt qu'au premier journal.
+            print(f"  ⚠ {t('timezone not set')} : {fuseau} ({code})")
+            return False
+        print(f"  ✓ {t('Timezone')} : {fuseau}")
+        return True
+
+    def _pve_write_guide(self, cible, vm, spec, mod):
+        """Pose le guide de connexion et l'identité git DANS la VM.
+
+        La voie libvirt les livre par le « write_files » de cloud-init ;
+        « qm set » n'offre pas cela, donc une VM Proxmox n'avait AUCUN guide —
+        quelle que soit sa distribution. Rapporté sur Arch.
+
+        Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
+        la source unique, comme sa docstring le promet. Un seul appel, tous les
+        fichiers.
+        """
+        import types
+
+        from script.todo.todo_i18n import get_lang
+
+        install = spec.get("install") or {}
+        cmd_install = vm.get("install_cmd") or install.get("cmd") or ""
+        args = types.SimpleNamespace(
+            distro=vm.get("distro") or "",
+            version=vm.get("version") or "",
+            arch=vm.get("arch") or "amd64",
+            lang=get_lang(),
+            # La section ERPLibre n'apparaît que si ERPLibre y sera : un guide
+            # qui annonce un dépôt absent est un guide qui ment.
+            erplibre_dir=(
+                self._qemu_guide_dir(False)
+                if self._qemu_installs_erplibre(
+                    install.get("branch"), cmd_install
+                )
+                else ""
+            ),
+            erplibre_make=self._qemu_make_target(cmd_install),
+            desktop=bool(vm.get("desktop")),
+            no_git_identity=False,
+            user=spec.get("user") or "erplibre",
+        )
+        try:
+            fichiers = mod.guide_files(args)
+        except Exception as exc:  # pragma: no cover - dépend du module
+            print(f"  ⚠ {t('guide not written')} : {exc}")
+            return False
+        morceaux = []
+        for chemin, mode, contenu, proprio in fichiers:
+            q = shlex.quote(chemin)
+            morceaux.append(
+                f"printf '%s' {shlex.quote(contenu)} | sudo tee {q} "
+                f">/dev/null && sudo chmod {mode} {q}"
+            )
+            if proprio:
+                morceaux.append(f"sudo chown {shlex.quote(proprio)}: {q}")
+        code, _o = self._pve_ssh(cible, " && ".join(morceaux))
+        if code:
+            print(f"  ⚠ {t('guide not written')} ({code})")
+            return False
+        print(f"  ✓ {t('connection guide written')}")
+        return True
+
+    @staticmethod
+    def _pve_ssh(cible, remote, timeout=60):
+        """(code, sortie) d'une commande exécutée DANS la VM, par son alias.
+
+        Par l'alias et non par l'adresse : lui seul porte le rebond vers le
+        réseau interne de l'hôte."""
+        from script.proxmox import proxmox_deploy as pve
+
+        argv = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=10",
+            cible,
+            remote,
+        ]
+        try:
+            res = subprocess.run(
+                argv, capture_output=True, text=True, timeout=timeout
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return 255, str(exc)
+        return res.returncode, pve.strip_ssh_noise(
+            (res.stdout or "") + (res.stderr or "")
+        )
+
+    def _pve_print_summary(self, spec, joignables, session):
+        """Sommaire final : ce qui existe, où, et comment y entrer.
+
+        Le pendant de celui de QEMU/KVM. Sans lui, l'écran se refermait sur la
+        vue de progression et il ne restait rien à l'écran — ni l'adresse, ni
+        la commande ssh, ni le chemin du journal."""
+        print(f"\n{'═' * 60}")
+        print(f"  {t('TOTAL summary')}")
+        print(
+            f"  {t('VMs deployed:')} {len(joignables)}/{len(spec['vms'])}"
+            f"   {t('storage')} {spec.get('storage')}"
+            f"   {t('bridge')} {spec.get('bridge')}"
+        )
+        for vm in joignables:
+            print(
+                f"    {vm['name']:<32} {t('VMID')} {vm.get('vmid', '?'):<6}"
+                f" {vm.get('adresse', '?')}"
+            )
+            if vm.get("alias"):
+                print(f"      ssh {vm['alias']}")
+        if spec.get("install"):
+            print(
+                f"  {t('Install:')} {spec['install'].get('label') or ''}"
+                f" ({spec['install'].get('branch')})"
+            )
+        print(f"  {t('Log:')} {session}")
+
     def _pve_confirm_spec(self, host, spec):
         """Récapitulatif puis confirmation, dans le TERMINAL.
 
@@ -1081,6 +1327,25 @@ class ProxmoxMenuMixin:
         entrer dans une VM qui n'est pas sur notre réseau."""
         from script.proxmox import proxmox_deploy as pve
 
+        # Les domaines LOCAUX : un nom partagé avec l'un d'eux fait dérailler
+        # l'alias ssh et le suivi d'installation.
+        locaux = set(self._qemu_list_domains())
+        try:
+            mod_qemu = self._qemu_import_module()
+        except Exception:
+            mod_qemu = None
+
+        def alias_chaine(nom):
+            """« hôte+vm », la convention déjà utilisée pour les VM
+            imbriquées : elle dit où la machine vit, et n'entre en conflit
+            avec rien."""
+            hote = (host.get("target") or "").split("@")[-1]
+            hote = re.sub(r"[^A-Za-z0-9._-]", "-", hote) or "pve"
+            return f"{hote}+{nom}"
+
+        # {nom de VM: alias à utiliser} — le suivi doit passer par l'alias
+        # qu'on a RÉELLEMENT écrit, pas par le nom.
+        alias = {}
         joignables = []
         for vm in spec["vms"]:
             if vm["name"] not in reussies:
@@ -1095,6 +1360,22 @@ class ProxmoxMenuMixin:
                 )
                 continue
             print(f"  ✓ {vm['name']} : {ip}")
+            # Un nom qui existe DÉJÀ comme domaine local est un piège : l'alias
+            # ~/.ssh/config serait volé à la VM locale, et le suivi
+            # d'installation — qui ré-résout par virsh — irait installer
+            # ERPLibre sur ELLE. Vécu : « erplibre-ubuntu-2604 » déployée sur
+            # Proxmox, installation partie sur la VM locale du même nom.
+            noms_alias, vole = self._pve_alias_names(
+                vm["name"],
+                alias_chaine(vm["name"]),
+                locaux,
+                host["target"],
+            )
+            if vole:
+                print(
+                    f"  ⚠ {t('This name is already taken by')} {vole} :"
+                    f" {t('the alias goes to')} {noms_alias[0]}"
+                )
             # L'entrée ~/.ssh/config est le SEUL chemin vers cette VM : elle
             # est derrière l'hôte Proxmox (pont interne), donc son adresse
             # n'est pas routable d'ici et seul le rebond y mène. Décochée
@@ -1106,22 +1387,34 @@ class ProxmoxMenuMixin:
                 print(f"  → {t('~/.ssh/config written anyway (install)')}")
             if spec.get("add_ssh_config") or besoin:
                 self._write_ssh_config_entry(
-                    vm["name"],
+                    noms_alias,
                     spec.get("user") or "erplibre",
                     ip,
                     identity_file=self._ssh_private_key(cle_locale),
                     proxy_jump=host["target"],
                 )
-                print(f"  ✓ ~/.ssh/config : ssh {vm['name']}")
+                alias[vm["name"]] = noms_alias[0]
+                print(f"  ✓ ~/.ssh/config : ssh {noms_alias[0]}")
+            vm["adresse"] = ip
+            vm["alias"] = alias.get(vm["name"], vm["name"])
+            # Le guide AVANT l'installation : il doit être là même si rien ne
+            # s'installe, et l'installation ne le touche pas.
+            if vm["alias"] and mod_qemu:
+                self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
+            if vm["alias"]:
+                self._pve_set_timezone(vm["alias"], spec)
             joignables.append(vm)
         install = spec.get("install")
+        # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été
+        # RÉELLEMENT joint.
+        resultat = list(joignables)
         # Le suivi vient du DÉPLOIEMENT, pas de l'installation — même règle
         # qu'en QEMU/KVM. Sans elle, la case « Suivre l'installation » ne
         # commandait rien : décochée, le tableau de bord s'ouvrait quand
         # même ; cochée sans rien à installer, il ne s'ouvrait jamais.
         suivi = spec.get("monitor", True)
         if not joignables or not (install or suivi):
-            return
+            return resultat
         noms = [vm["name"] for vm in joignables]
         if install:
             print(f"  {install.get('label') or ''}")
@@ -1149,6 +1442,10 @@ class ProxmoxMenuMixin:
                     "sudo": host.get("sudo") or "",
                     "jump": host.get("jump") or "",
                     "vmid": vm.get("vmid"),
+                    # L'adresse INTERNE : elle n'est pas routable d'ici, mais
+                    # elle l'est depuis l'hôte. Avec le rebond, le tableau de
+                    # bord entre dans la VM sans dépendre de ~/.ssh/config.
+                    "addr": vm.get("adresse") or "",
                 }
                 for vm in joignables
                 if vm.get("vmid")
@@ -1156,11 +1453,28 @@ class ProxmoxMenuMixin:
             self._qemu_install_erplibre_monitored(
                 noms,
                 branche,
-                {n: n for n in noms},
+                {n: alias.get(n, n) for n in noms},
                 finale,
+                # Les réglages du système invité, qui n'atteignaient pas la
+                # commande distante : la VM naissait serveur nu, sans outils.
+                prod=bool(spec.get("prod")),
+                desktop=spec.get("desktop") or "",
+                python_provider=spec.get("python_provider") or "",
+                app_store=spec.get("app_store") or "deb",
+                vm_tools=spec.get("vm_tools") or (),
                 pve=cartes_pve,
+                # Ce que sont ces VM, pris de la SPEC. Le suivi le demandait
+                # à virsh, qui ne connaît que les domaines d'ici.
+                meta={
+                    vm["name"]: (
+                        vm.get("distro"),
+                        vm.get("version"),
+                        vm.get("arch") or "amd64",
+                    )
+                    for vm in joignables
+                },
             )
-            return
+            return resultat
         # Sans suivi mais avec quelque chose à installer : en série, sortie à
         # l'écran. C'est le pendant exact de la voie QEMU/KVM.
         print(f"\n{t('Installing ERPLibre on each VM')} ({branche})…")
@@ -1169,10 +1483,15 @@ class ProxmoxMenuMixin:
                 vm["name"],
                 cle_locale,
                 branche,
-                pve.ip_from_ipconfig(vm.get("ipconfig") or "") or vm["name"],
+                alias.get(vm["name"], vm["name"]),
                 vm.get("install_cmd") or commun,
-                False,
+                bool(spec.get("prod")),
+                desktop=spec.get("desktop") or "",
+                python_provider=spec.get("python_provider") or "",
+                app_store=spec.get("app_store") or "deb",
+                vm_tools=spec.get("vm_tools") or (),
             )
+        return resultat
 
     def _pve_deploy_prompts(self, dry_run=False):
         """Déploie une VM SUR l'hôte Proxmox choisi, par questions.
@@ -1297,28 +1616,55 @@ class ProxmoxMenuMixin:
         if not ip:
             print(f"  ⚠ {t('No address yet. Try [6] later.')}")
             return
-        print(f"  ✓ {nom} : {ip}")
-        # Entrée ~/.ssh/config avec l'hôte Proxmox en REBOND : c'est ce qui
-        # rend la VM joignable d'ici, et c'est aussi ce qui permet au suivi
-        # d'installation d'y entrer (il reçoit l'alias, pas l'IP).
-        self._write_ssh_config_entry(
-            nom,
-            "erplibre",
-            ip,
-            identity_file=self._ssh_private_key(cle_locale),
-            proxy_jump=host["target"],
-        )
-        print(f"  ✓ ~/.ssh/config : ssh {nom}")
+        # ÉPILOGUE COMMUN avec l'écran, au lieu de le redire ici : cette voie
+        # avait vieilli en silence — pas de protection de l'alias contre un
+        # domaine local homonyme, pas de guide de connexion, pas de bloc
+        # « pve » (donc aucune colonne vivante dans le suivi), pas de
+        # sommaire. Trouvé par l'audit, jamais à l'usage.
+        install = None
         if self._is_yes_default_yes(
             input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
         ):
             branch = self._qemu_pick_branch()
             label, cmd = self._qemu_pick_install_profile(distro)
             print(f"  {label}")
-            # L'ALIAS, pas l'IP : ssh y lit le ProxyJump de ~/.ssh/config.
-            self._qemu_install_erplibre_monitored(
-                [nom], branch, {nom: nom}, cmd
-            )
+            install = {"branch": branch, "cmd": cmd, "label": label}
+        spec_finale = {
+            "host": host,
+            "storage": stockage,
+            "bridge": pont,
+            "res_label": "",
+            "vms": [
+                {
+                    "name": nom,
+                    "vmid": vmid,
+                    "distro": distro,
+                    "version": version,
+                    "arch": arch,
+                    "ram": memoire,
+                    "vcpus": vcpus,
+                    "disk": disque,
+                    "desktop": "",
+                    "install_cmd": "",
+                    "ipconfig": ipconfig,
+                }
+            ],
+            "existing": [],
+            "user": "erplibre",
+            "ssh_key": cle_locale or "",
+            "add_ssh_config": True,
+            "install": install,
+            "monitor": True,
+            "python_provider": "",
+            # La voie par questions ne demande pas le fuseau — l'écran le
+            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
+            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
+            "timezone": self._qemu_host_timezone(),
+        }
+        joignables = self._pve_after_create(
+            host, spec_finale, [nom], cle_locale
+        )
+        self._pve_print_summary(spec_finale, joignables or [], "")
 
     def _pve_ssh_config(self):
         """Écrit une entrée ~/.ssh/config par VM de l'hôte, avec l'hôte
@@ -1332,20 +1678,36 @@ class ProxmoxMenuMixin:
             print(f"\n{t('No running VM on this Proxmox host.')}")
             return
         cle = self._ssh_private_key(self._qemu_default_ssh_key())
+        # Les domaines LOCAUX : un nom partagé avec l'un d'eux ne doit pas lui
+        # voler son alias — même règle que le déploiement.
+        locaux = set(self._qemu_list_domains())
+        hote_court = (host.get("target") or "").split("@")[-1]
+        hote_court = re.sub(r"[^A-Za-z0-9._-]", "-", hote_court) or "pve"
         for vm in vms:
             ip = self._pve_guest_ip(vm["vmid"], attente=0)
             if not ip:
                 print(f"  ⚠ {vm['name']} : {t('no address, skipped')}")
                 continue
-            self._write_ssh_config_entry(
+            noms, vole = self._pve_alias_names(
                 vm["name"],
+                f"{hote_court}+{vm['name']}",
+                locaux,
+                host["target"],
+            )
+            if vole:
+                print(
+                    f"  ⚠ {t('This name is already taken by')} {vole} :"
+                    f" {t('the alias goes to')} {noms[0]}"
+                )
+            self._write_ssh_config_entry(
+                noms,
                 "erplibre",
                 ip,
                 identity_file=cle,
                 proxy_jump=host["target"],
             )
             print(
-                f"  ✓ ssh {vm['name']}   ({ip} {t('through')} {host['target']})"
+                f"  ✓ ssh {noms[0]}   ({ip} {t('through')} {host['target']})"
             )
 
     def _pve_test_vm(self):

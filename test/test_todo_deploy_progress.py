@@ -142,5 +142,80 @@ class TestLaToucheSsh(unittest.TestCase):
         self.assertEqual(vu["reussies"], [])
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestCeQuiSuit(unittest.TestCase):
+    """Rapporté : on attendait devant une fenêtre « terminée » sans savoir
+    que l'installation d'ERPLibre démarre en la quittant."""
+
+    def _sommaire(self, suite, attendre=3.0):
+        # Un travail qui DURE : sinon il finit avant le premier relevé, et le
+        # test ne prouve rien de l'avant/après.
+        jobs = [("1", "vm-a", ["bash", "-c", "sleep 2; echo ok"])]
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import Static
+
+            app = run_deploy_progress(jobs, 1, run_app=False, suite=suite)
+            async with app.run_test(size=(140, 30)) as pilote:
+                await pilote.pause()
+                vu["pendant"] = str(app.query_one("#summary", Static).render())
+                await asyncio.sleep(attendre)
+                await pilote.pause()
+                vu["apres"] = str(app.query_one("#summary", Static).render())
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_it_says_what_follows_once_everything_is_done(self):
+        vu = self._sommaire("Quitter (q) pour lancer l'installation")
+        self.assertNotIn("Quitter", vu["pendant"])
+        self.assertIn("Quitter", vu["apres"])
+
+    def test_nothing_is_promised_when_nothing_follows(self):
+        vu = self._sommaire("")
+        self.assertNotIn("→", vu["apres"])
+
+
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLaCibleSsh(unittest.TestCase):
+    """« s » utilisait le NOM de la VM. Sur Proxmox, l'entrée ~/.ssh/config
+    n'existe pas encore à ce moment — et ce nom peut désigner une machine
+    LOCALE homonyme, qui s'ouvrait alors à sa place."""
+
+    def _lance(self, ssh_cmds):
+        import contextlib
+        import os
+
+        jobs = [("1", "erplibre-ubuntu-2604", ["bash", "-c", "echo ok"])]
+        vu = []
+
+        async def scenario():
+            app = run_deploy_progress(
+                jobs, 1, run_app=False, ssh_cmds=ssh_cmds
+            )
+            async with app.run_test(size=(140, 30)) as pilote:
+                await pilote.pause()
+                await asyncio.sleep(1.2)
+                await pilote.pause()
+                vrai = os.system
+                os.system = vu.append
+                app.suspend = lambda: contextlib.nullcontext()
+                try:
+                    app.action_ssh()
+                finally:
+                    os.system = vrai
+
+        asyncio.run(scenario())
+        return vu[0] if vu else ""
+
+    def test_the_given_command_wins(self):
+        cible = "ssh -J erplibre-proxmox-9 erplibre@10.10.10.151"
+        self.assertIn(cible, self._lance({"erplibre-ubuntu-2604": cible}))
+
+    def test_without_one_it_falls_back_to_the_name(self):
+        self.assertIn("ssh erplibre-ubuntu-2604", self._lance(None))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

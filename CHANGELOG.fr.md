@@ -89,6 +89,11 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Le tableau de bord d'installation affiche la RAM de l'hôte, la RAM utilisée et l'uptime d'une VM, et depuis combien de temps un journal est muet
 - Une VM accueille sa connexion SSH avec les commandes propres à sa distribution
 
+## Corrigé
+
+- Le vérificateur du transfert mobile n'acceptait que la disposition en packs, quand une compilation réelle livre un tar.gz par dépôt. Il échouait sur `<slug> : index.json absent` et arrêtait `compile_and_run.sh` avant l'APK — depuis le 2026-08-20, pour quiconque est sur le main mobile actuel. Il accepte désormais les deux dispositions, et prouve la présence de CHAQUE fichier promis plutôt qu'un échantillon de vingt : traverser les 139 archives coûte 6 s, et 124 350 fichiers sont comptés
+- Le test du bundle gardait la limite d'entrées du ZIP en exigeant un champ `chunk` sur chaque fichier, c'est-à-dire la disposition en packs plutôt que la limite elle-même. Il compte maintenant les entrées que portera l'APK — 278 pour un plafond de 65 535 — si bien que les deux dispositions passent et qu'un retour au fichier-par-source échoue toujours
+
 ## Retiré
 
 - Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9 et ne publie pas de `g++-10` pour s390x

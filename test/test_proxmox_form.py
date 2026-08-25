@@ -15,6 +15,7 @@ aucun hôte Proxmox n'est joint.
 
 import asyncio
 import sys
+import os
 import unittest
 
 sys.argv = ["todo.py"]
@@ -467,6 +468,373 @@ class TestCreerUnPont(unittest.TestCase):
         self.assertIn("vmbr9", vu["choix_avant"])
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLInterpretePython(unittest.TestCase):
+    """L'écran Proxmox n'offrait pas le choix, donc envoyait toujours
+    « automatique » — et comme mise n'est jamais installé d'office, c'était
+    pyenv, qui COMPILE Python. Rapporté sur une VM Arch : « il utilise le
+    tar.xz pour le compiler »."""
+
+    def _ecran(self, gestes=None, mise_arches=("amd64", "arm64")):
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+
+        ctx = contexte()
+        ctx["mise_arches"] = mise_arches
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import SelectionList
+
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                liste.select(liste.get_option_at_index(0).value)
+                await pilote.pause()
+                await pilote.pause()
+                if gestes:
+                    await gestes(app, pilote)
+                vu["choix"] = app._python_provider()
+                app.action_deploy()
+                vu["spec"] = app.result or {}
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_mise_is_offered_by_default(self):
+        # Un CPython précompilé plutôt qu'une compilation de trois minutes.
+        self.assertEqual(self._ecran()["choix"], "mise")
+
+    def test_the_choice_reaches_the_spec(self):
+        async def gestes(app, pilote):
+            list(app.query("#f_python RadioButton"))[1].value = True
+            await pilote.pause()
+
+        vu = self._ecran(gestes)
+        self.assertEqual(vu["choix"], "pyenv")
+        self.assertEqual(vu["spec"].get("python_provider"), "pyenv")
+
+    def test_an_arch_mise_does_not_serve_yields_nothing(self):
+        # « mise indisponible » ne veut pas dire « l'utilisateur exige
+        # pyenv » : un choix explicite écarterait le Python de la distro.
+        self.assertEqual(self._ecran(mise_arches=("s390x",))["choix"], "")
+
+
+class TestLeDisquePromis(unittest.TestCase):
+    """Le plan annonçait « 25G » et « qm resize » recevait 20 G.
+
+    La voie libvirt ajoute la marge d'ERPLibre à la taille créée ; celle de
+    Proxmox la perdait entre l'écran et la commande. La VM naissait cinq
+    gigaoctets trop petite pour ce qu'on venait de lui promettre."""
+
+    def _taille(self, install, cmd_vm=""):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vm = {"disk": "20G", "install_cmd": cmd_vm}
+        return todo._pve_disk_with_margin(vm, {"install": install})
+
+    def test_the_margin_reaches_the_created_disk(self):
+        self.assertEqual(
+            self._taille(
+                {
+                    "branch": "develop",
+                    "cmd": "make install_os && make install_odoo_18",
+                }
+            ),
+            "25G",
+        )
+
+    def test_nothing_to_install_means_no_margin(self):
+        self.assertEqual(self._taille(None), "20G")
+
+    def test_a_hypervisor_profile_gets_no_margin(self):
+        # Elle est réservée au dépôt ERPLibre, qu'un Proxmox ne clonera pas.
+        self.assertEqual(
+            self._taille(
+                {
+                    "branch": "develop",
+                    "cmd": "./script/proxmox/install_proxmox.sh",
+                }
+            ),
+            "20G",
+        )
+
+
+class TestDeuxVmDuMemeNom(unittest.TestCase):
+    """Sur Proxmox, seul le VMID est unique : deux VM du même hôte peuvent
+    porter le même nom. « Changer l'état » les choisissait par NOM — cocher
+    l'une éteignait les deux."""
+
+    def test_selecting_one_twin_takes_only_that_one(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vms = [
+            {"vmid": 100, "name": "jumeau", "status": "running"},
+            {"vmid": 101, "name": "jumeau", "status": "running"},
+        ]
+        rangs = [str(i) for i in range(1, len(vms) + 1)]
+        for choix, attendu in (
+            ("1", [100]),
+            ("2", [101]),
+            ("1,2", [100, 101]),
+        ):
+            voulus = {
+                int(r)
+                for r in todo._parse_index_selection(choix, rangs)
+                if str(r).isdigit()
+            }
+            self.assertEqual(
+                [vm["vmid"] for i, vm in enumerate(vms, 1) if i in voulus],
+                attendu,
+                choix,
+            )
+
+
+class TestLEcranDUneVmProxmox(unittest.TestCase):
+    """« Console de l'hyperviseur » conseillait des commandes virsh sur une
+    machine qui n'a pas libvirt.
+
+    Le tunnel lit le port VNC par « virsh vncdisplay » sur l'hyperviseur. Un
+    Proxmox VE n'a pas de libvirt : la commande échoue, et l'absence de port
+    était lue « écran fermé ». On imprimait alors « sudo virsh edit » — sur un
+    hôte où le binaire n'existe pas. Ce n'est pas un écran fermé, c'est la
+    mauvaise question : Proxmox sert son écran par un ticket, sur son
+    interface web."""
+
+    def _sortie(self, qm_present, port=0):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._ssh_proxyjump = lambda nom: "pve9"
+        todo._qemu_vnc_port = staticmethod(lambda d, j="": port)
+        todo._hypervisor_is_proxmox = lambda jump: qm_present
+        tampon = io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            todo._qemu_console_tunnel("pve9+vm-a", "ssh_config")
+        return tampon.getvalue()
+
+    def test_a_proxmox_host_is_never_told_to_run_virsh(self):
+        sortie = self._sortie(qm_present=True)
+        self.assertNotIn("virsh", sortie)
+        self.assertIn("qm terminal", sortie)
+        self.assertIn("8006", sortie, "l'interface web est le second chemin")
+
+    def test_a_libvirt_host_keeps_its_repair_commands(self):
+        # La voie libvirt ne régresse pas : sans port, ses commandes de
+        # réparation restent la bonne réponse.
+        sortie = self._sortie(qm_present=False)
+        self.assertIn("virsh edit", sortie)
+
+    def test_a_working_vnc_port_still_wins(self):
+        # La sonde ne doit pas s'exécuter quand il y a un port : ce serait un
+        # aller-retour ssh pour rien.
+        sortie = self._sortie(qm_present=True, port=5901)
+        self.assertIn("-L 5901:127.0.0.1:5901", sortie)
+        self.assertNotIn("qm terminal", sortie)
+
+
+class TestUnSeulNomDansSshConfig(unittest.TestCase):
+    """L'entrée portait DEUX noms sur sa ligne « Host » : le nom chaîné
+    « hôte+vm » et le nom court.
+
+    Rapporté : « Host erplibre-proxmox-9+erplibre-arch-latest
+    erplibre-arch-latest ». Le second est un doublon dès que le premier
+    suffit — ssh n'a besoin que d'un nom, et le doubler n'ajoute qu'une façon
+    de plus d'écrire la même adresse.
+
+    Un seul, donc, et le bon : le court quand il est LIBRE, le chaîné quand
+    il désignerait une autre machine. « Pris » se juge sur le ProxyJump du
+    bloc, pas sur sa seule présence — sinon notre propre entrée, réécrite à
+    chaque déploiement, se prendrait pour une rivale et le nom basculerait
+    d'une fois sur l'autre."""
+
+    def setUp(self):
+        import sys
+        import tempfile
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.maison = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.maison, ".ssh"))
+        self._vrai_home = os.environ.get("HOME")
+        os.environ["HOME"] = self.maison
+        self.todo = TODO.__new__(TODO)
+
+    def tearDown(self):
+        import shutil
+
+        if self._vrai_home is not None:
+            os.environ["HOME"] = self._vrai_home
+        shutil.rmtree(self.maison, ignore_errors=True)
+
+    def _ecrit(self, noms, rebond=""):
+        self.todo._write_ssh_config_entry(
+            noms, "erplibre", "10.10.10.150", proxy_jump=rebond or None
+        )
+
+    def _lignes_host(self):
+        with open(
+            os.path.join(self.maison, ".ssh/config"), encoding="utf-8"
+        ) as fh:
+            return [
+                ligne.rstrip() for ligne in fh if ligne.startswith("Host ")
+            ]
+
+    def _choisit(self, nom, locaux=(), rebond="pve9"):
+        return self.todo._pve_alias_names(
+            nom, f"pve9+{nom}", set(locaux), rebond
+        )
+
+    def test_a_free_name_is_written_alone(self):
+        noms, vole = self._choisit("erplibre-arch-latest")
+        self.assertEqual(noms, ["erplibre-arch-latest"])
+        self.assertFalse(vole)
+        self._ecrit(noms, "pve9")
+        self.assertEqual(self._lignes_host(), ["Host erplibre-arch-latest"])
+
+    def test_redeploying_the_same_vm_keeps_the_same_name(self):
+        # Le piège du correctif : notre propre bloc déclare déjà le nom.
+        self._ecrit(["erplibre-arch-latest"], "pve9")
+        noms, vole = self._choisit("erplibre-arch-latest")
+        self.assertEqual(noms, ["erplibre-arch-latest"], "le nom a basculé")
+        self.assertFalse(vole)
+
+    def test_a_local_vm_keeps_its_name(self):
+        # Vécu : « ssh » partait vers la machine locale du même nom.
+        noms, vole = self._choisit(
+            "erplibre-arch-latest", locaux=("erplibre-arch-latest",)
+        )
+        self.assertEqual(noms, ["pve9+erplibre-arch-latest"])
+        self.assertTrue(vole)
+
+    def test_another_proxmox_host_keeps_its_name(self):
+        self._ecrit(["erplibre-ubuntu-2604"], "pve7")
+        noms, vole = self._choisit("erplibre-ubuntu-2604")
+        self.assertEqual(noms, ["pve9+erplibre-ubuntu-2604"])
+        self.assertEqual(vole, "~/.ssh/config")
+        self._ecrit(noms, "pve9")
+        # Les deux machines cohabitent, chacune sous son nom.
+        self.assertEqual(
+            self._lignes_host(),
+            ["Host erplibre-ubuntu-2604", "Host pve9+erplibre-ubuntu-2604"],
+        )
+
+    def test_no_deploy_path_writes_two_names_anymore(self):
+        import re
+        from pathlib import Path as P
+
+        src = P("script/todo/proxmox_menu.py").read_text(encoding="utf-8")
+        self.assertIsNone(
+            re.search(r"noms_alias\.append|noms\.append\(vm\[.name.\]\)", src),
+            "le second nom ne doit plus être ajouté",
+        )
+
+
+class TestLeGuideDeConnexion(unittest.TestCase):
+    """Une VM Proxmox n'avait AUCUN guide, quelle que soit sa distribution.
+
+    Rapporté sur Arch : « pas l'écran de connexion, avec le guide qui dit de
+    prendre pacman, comme sur ubuntu ». La voie libvirt livre /etc/motd par le
+    « write_files » de cloud-init ; « qm set » n'offre pas cela. Le contenu
+    vient de la MÊME source (`guide_files`) et part par ssh.
+    """
+
+    def _ecrit(self, vm=None, install=None, distro="arch"):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vus = {}
+        todo._pve_ssh = lambda cible, remote, timeout=60: (
+            vus.update(cible=cible, remote=remote) or (0, "")
+        )
+        mod = todo._qemu_import_module()
+        vm = vm or {
+            "name": "vm-a",
+            "distro": distro,
+            "version": "latest",
+            "arch": "amd64",
+            "desktop": "",
+            "install_cmd": "",
+        }
+        spec = {"user": "erplibre", "install": install}
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            ok = todo._pve_write_guide("hote+vm-a", vm, spec, mod)
+        vus["ok"] = ok
+        return vus
+
+    def test_the_guide_goes_to_etc_motd_through_the_alias(self):
+        vus = self._ecrit()
+        self.assertTrue(vus["ok"])
+        # Par l'ALIAS : lui seul porte le rebond vers le réseau interne.
+        self.assertEqual(vus["cible"], "hote+vm-a")
+        self.assertIn("/etc/motd", vus["remote"])
+        self.assertIn("sudo tee", vus["remote"])
+
+    def test_an_arch_vm_is_told_about_pacman(self):
+        self.assertIn("pacman", self._ecrit(distro="arch")["remote"])
+
+    def test_a_debian_vm_is_told_about_apt(self):
+        self.assertIn("apt", self._ecrit(distro="debian")["remote"])
+
+    def test_without_erplibre_the_guide_does_not_promise_a_repository(self):
+        # Un guide qui annonce un dépôt absent est un guide qui mente.
+        sans = self._ecrit(install=None)["remote"]
+        self.assertNotIn("git/erplibre", sans)
+
+    def test_with_erplibre_it_says_where_it_lives(self):
+        avec = self._ecrit(
+            install={
+                "branch": "develop",
+                "cmd": "make install_os && make install_odoo_18",
+            }
+        )["remote"]
+        self.assertIn("git/erplibre", avec)
+
+    def test_a_failure_is_said_not_swallowed(self):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._pve_ssh = lambda *a, **k: (255, "no route")
+        mod = todo._qemu_import_module()
+        vm = {
+            "name": "vm-a",
+            "distro": "arch",
+            "version": "latest",
+            "arch": "amd64",
+            "desktop": "",
+            "install_cmd": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            ok = todo._pve_write_guide("x", vm, {"user": "erplibre"}, mod)
+        self.assertFalse(ok)
+        self.assertIn("⚠", sortie.getvalue())
+
+
 class TestLeSuivi(unittest.TestCase):
     """La case « Suivre l'installation » doit commander quelque chose.
 
@@ -552,6 +920,11 @@ class TestLeSuivi(unittest.TestCase):
                 nom
             )
             todo._ssh_private_key = lambda k: None
+            # Hermétique : le choix du nom lit ~/.ssh/config et la liste des
+            # domaines locaux. Sans ces deux bouchons, le test dépendrait de
+            # la machine qui le lance.
+            todo._ssh_config_block = lambda nom: {}
+            todo._qemu_list_domains = lambda: []
             todo._pve_guest_ip = lambda vmid, attente=120: ""
             todo._qemu_install_erplibre_monitored = lambda *a, **k: None
             todo._qemu_install_erplibre_vm = lambda *a, **k: None
@@ -575,14 +948,64 @@ class TestLeSuivi(unittest.TestCase):
             return ecrites
 
         cmd = {"branch": "develop", "cmd": "make x", "label": "X"}
-        # Décoché mais une installation demandée : écrite quand même.
-        self.assertEqual(essai(False, cmd, False), ["vm-a"])
+        # UN nom : le court, puisque rien ne le porte déjà. Le chaîné
+        # « hôte+vm » ne sort que lorsqu'il faut départager (voir
+        # TestUnSeulNomDansSshConfig).
+        self.assertEqual(essai(False, cmd, False), [["vm-a"]])
         # Décoché, suivi demandé : le suivi entre aussi par le rebond.
-        self.assertEqual(essai(False, None, True), ["vm-a"])
+        self.assertEqual(essai(False, None, True), [["vm-a"]])
         # Décoché et rien à faire dans la VM : le choix est respecté.
         self.assertEqual(essai(False, None, False), [])
         # Coché : écrite, évidemment.
-        self.assertEqual(essai(True, None, False), ["vm-a"])
+        self.assertEqual(essai(True, None, False), [["vm-a"]])
+
+    def test_a_local_vm_of_the_same_name_keeps_its_alias(self):
+        """Le piège qui a fait installer ERPLibre sur la MAUVAISE machine.
+
+        Une VM déployée sur Proxmox sous un nom déjà porté par un domaine
+        LOCAL volait son alias ~/.ssh/config, et le suivi — qui ré-résolvait
+        l'adresse par virsh — partait installer sur la locale."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        ecrites = []
+        todo._qemu_list_domains = lambda: ["vm-a"]
+        todo._write_ssh_config_entry = lambda noms, *a, **k: ecrites.append(
+            noms
+        )
+        todo._ssh_private_key = lambda k: None
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        vus = {}
+        todo._qemu_install_erplibre_monitored = (
+            lambda noms, br, ipmap, cmd, **k: vus.update(ipmap=ipmap)
+        )
+        spec = {
+            "host": {"target": "erplibre@pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "add_ssh_config": True,
+            "user": "erplibre",
+            "install": None,
+            "monitor": True,
+        }
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        # SEUL le nom chaîné est écrit : l'alias court reste à la VM locale.
+        self.assertEqual(ecrites, [["pve1+vm-a"]])
+        # Et le suivi passe par ce nom-là, jamais par « vm-a ».
+        self.assertEqual(vus["ipmap"], {"vm-a": "pve1+vm-a"})
+        self.assertIn("pve1+vm-a", sortie.getvalue())
 
     def test_ticked_with_an_install_opens_it(self):
         vus = self._apres_creation(

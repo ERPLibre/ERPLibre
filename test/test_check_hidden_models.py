@@ -237,5 +237,99 @@ class TestTheWiring(unittest.TestCase):
         self.assertIn("--apply", src[debut : debut + 200])
 
 
+class TestItDeclaresWhatItCouldNotProve(unittest.TestCase):
+    """Un vert qui prouve moins qu'il n'en a l'air est pire qu'un rouge.
+
+    Mesuré sur une base réelle : l'outil éprouvait 45 modèles sur 125
+    portant une règle globale, contre 4 utilisateurs internes — et les
+    QUATRE étaient administrateurs. Un modèle que seuls les
+    administrateurs peuvent lire passait donc au vert. C'est exactement
+    la forme du bug DMS qui a motivé l'outil, vue d'un autre angle.
+
+    L'outil ne peut pas créer un témoin ordinaire — ce serait une
+    écriture. Il peut dire qu'il n'en avait pas.
+    """
+
+    def rapport(self, **extra):
+        base = {
+            "checked": 45,
+            "with_rule": 125,
+            "users": ["a", "b", "c", "d"],
+            "ordinary": ["b"],
+            "models": [],
+        }
+        base.update(extra)
+        return base
+
+    def tete(self, **extra):
+        return "\n".join(check.render(self.rapport(**extra)))
+
+    def test_it_says_how_many_it_could_not_check(self):
+        # « 45 éprouvés » sans dire « sur 125 » laisse croire à un examen
+        # complet.
+        texte = self.tete()
+        self.assertIn("45", texte)
+        self.assertIn("125", texte)
+
+    def test_without_the_coverage_it_says_only_what_it_checked(self):
+        # Un rapport d'une version antérieure n'a pas le renseignement.
+        # Inventer « sur 0 » serait pire que se taire — et « sur None »
+        # pire encore : c'est ce que produit un f-string sans garde.
+        texte = self.tete(with_rule=None)
+        self.assertIn("45", texte)
+        self.assertNotIn("125", texte)
+        self.assertNotIn("None", texte)
+        self.assertNotIn(check.t("out of"), texte.split("\n")[0])
+
+    def test_it_warns_when_every_witness_is_an_administrator(self):
+        texte = self.tete(ordinary=[])
+        self.assertIn(
+            check.t("Every witness is an administrator: a model only"), texte
+        )
+
+    def test_it_stays_quiet_when_one_witness_is_ordinary(self):
+        self.assertNotIn(
+            check.t("Every witness is an administrator: a model only"),
+            self.tete(),
+        )
+
+    def test_it_declares_what_it_cannot_see_at_all(self):
+        # La sonde part d'ir_rule : un masquage écrit en Python lui
+        # échappe par construction, et le taire ferait prendre son vert
+        # pour une garantie.
+        self.assertIn(
+            check.t(
+                "Reads ir_rule only — masking coded in Python escapes it."
+            ),
+            self.tete(),
+        )
+
+    def test_the_warning_comes_before_the_verdict(self):
+        lignes = check.render(self.rapport(ordinary=[]))
+        avertissement = next(
+            i
+            for i, x in enumerate(lignes)
+            if "administrator" in x or "administrateur" in x
+        )
+        verdict = next(i for i, x in enumerate(lignes) if "✅" in x)
+        self.assertLess(avertissement, verdict)
+
+
+class TestTheScriptCollectsWhatTheReportNeeds(unittest.TestCase):
+    def corps(self):
+        return check.build_script()
+
+    def test_it_counts_the_models_carrying_a_rule(self):
+        self.assertIn('rapport["with_rule"]', self.corps())
+
+    def test_it_separates_the_ordinary_witnesses(self):
+        corps = self.corps()
+        self.assertIn('rapport["ordinary"]', corps)
+        self.assertIn("base.group_system", corps)
+
+    def test_the_script_is_valid_python(self):
+        compile(self.corps(), "script", "exec")
+
+
 if __name__ == "__main__":
     unittest.main()

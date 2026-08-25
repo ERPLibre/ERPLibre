@@ -735,6 +735,9 @@ class QemuAccessMixin:
         # Les commandes de réparation se lancent SUR l'hyperviseur : le préfixe
         # évite de les copier sur la mauvaise machine, l'erreur naturelle ici.
         pre = f"ssh {jump} " if jump else ""
+        if not port and self._hypervisor_is_proxmox(jump):
+            self._pve_console_hint(jump, domain)
+            return
         if not port:
             print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
             print(f"  {t('Its display is likely spice with listen=none:')}")
@@ -771,6 +774,55 @@ class QemuAccessMixin:
             )
         print(f"  {t('then point your VNC client at')} localhost:{port}")
         print(f"  {t('The tunnel stays open as long as that ssh runs.')}")
+
+    @staticmethod
+    def _hypervisor_is_proxmox(jump) -> bool:
+        """Cet hyperviseur est-il un Proxmox VE ?
+
+        La question se pose quand « virsh vncdisplay » n'a rien rendu : un
+        Proxmox n'a PAS de libvirt, donc l'absence de port n'y veut pas dire
+        « écran fermé », elle veut dire « mauvaise question ». Sans cette
+        distinction, on conseillait « virsh edit » sur une machine où la
+        commande n'existe pas.
+
+        « qm » et non « pveversion » : c'est le binaire dont on parle ensuite.
+        """
+        if not jump:
+            # Un Proxmox n'est jamais l'hôte local ici : ce menu tourne sur le
+            # poste de travail, et un Proxmox se joint par ssh.
+            return False
+        try:
+            res = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", jump, "command -v qm"],
+                capture_output=True,
+                text=True,
+                timeout=25,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return res.returncode == 0 and bool(res.stdout.strip())
+
+    def _pve_console_hint(self, jump, domain) -> None:
+        """Les deux vraies façons de voir l'écran d'une VM Proxmox.
+
+        Proxmox ne sert pas son écran par un port VNC qu'on tunnelise : il le
+        sert par un TICKET, sur son interface web (« qm vncproxy » ouvre un
+        websocket authentifié, pas un socket qu'on relaie). Un « ssh -L » vers
+        un port VNC n'y trouve rien, quel que soit le port."""
+        print(
+            f"\n  ⚠ {t('This hypervisor is Proxmox VE: it has no libvirt.')}"
+        )
+        print(f"  {t('Its screen is served by a ticket, not by a VNC port.')}")
+        print(f"\n  {t('Two ways in:')}")
+        print(f"  • {t('the serial console, VMID from the Proxmox menu:')}")
+        print(f"      ssh {jump} sudo qm list   # {domain}")
+        print(f"      ssh -t {jump} sudo qm terminal <VMID>")
+        print(f"  • {t('the web interface, through a tunnel:')}")
+        print(f"      ssh -N -L 8006:127.0.0.1:8006 {jump}")
+        print(f"      https://localhost:8006  →  {t('VM')} → Console")
+        print(
+            f"\n  {t('TODO > Execute > Deploy > Proxmox VE does the first.')}"
+        )
 
     @staticmethod
     def _qemu_vnc_port(domain, jump=""):

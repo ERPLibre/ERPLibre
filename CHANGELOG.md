@@ -87,6 +87,11 @@ Recreating the virtual environment, use installation guide from tool `make`.
 - The install dashboard shows the host RAM, a VM's used RAM and uptime, and how long a log has been silent
 - A VM greets its SSH login with the distribution's own commands
 
+## Fixed
+
+- The mobile bundle check accepted only the pack layout, when a real build ships one tar.gz per repository. It failed on `<slug> : index.json absent` and stopped `compile_and_run.sh` before the APK — since 2026-08-20, for anyone on the current mobile main. It now accepts both layouts, and proves the presence of EVERY promised file rather than a sample of twenty: streaming all 139 archives costs 6 s, and 124 350 files are accounted for
+- The bundle test guarded the ZIP entry limit by demanding a `chunk` field on every file, which is the pack layout rather than the limit itself. It now counts the entries the APK will carry — 278 against a ceiling of 65 535 — so either layout passes and a return to file-per-source still fails
+
 ## Removed
 
 - Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf 12.2, whose build requires C++20, while focal ships GCC 9 and publishes no `g++-10` for s390x

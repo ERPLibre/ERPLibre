@@ -2781,6 +2781,14 @@ class TodoUpgrade:
                 # ici : /blog/<blog>/post/<billet> et /contactus, alors que
                 # le journal de migration n'avait rien signalé.
                 self.prompt_database_cleanup(database_name_upgrade)
+                # APRÈS le nettoyage : il supprime des colonnes et des
+                # tables, donc leurs index avec. Avant lui, on travaillerait
+                # sur des index qui vont disparaître.
+                self.drop_duplicate_index(database_name_upgrade, next_version)
+                self.restore_config_defaults(
+                    database_name_upgrade,
+                    index == len(lst_next_version) - 1,
+                )
                 self.prompt_smoke_public_url(database_name_upgrade)
 
                 # Le trou que ni les comptages ni le test de fumée ne
@@ -3677,6 +3685,66 @@ class TodoUpgrade:
         menu d'erreur sur une réparation qui s'est bien passée.
         """
         outil = os.path.join(PATH_MIGRATION_GLOBAL, "fix_cow_render.py")
+        if not os.path.isfile(outil):
+            return
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{outil} -d {database_name} --apply",
+            wait_at_error=False,
+        )
+
+    def drop_duplicate_index(self, database_name, next_version):
+        """Les index qu'Odoo 17 a rebaptisés sans supprimer les anciens.
+
+        `make_index_name` a changé de convention en 17 — `table_col_index`
+        est devenu `table__col_index` — et rien ne retire le premier. Les
+        deux restent, et PostgreSQL les entretient TOUS LES DEUX à chaque
+        écriture. Mesuré sur deux chaînes 12 → 18 indépendantes : 414 dans
+        l'une et 414 dans l'autre, à l'index près. Ce n'est pas un accident
+        d'exécution, c'est le chemin lui-même.
+
+        À partir de 17 seulement : avant, la convention n'a pas changé et
+        l'outil ne trouverait rien — le lancer six fois pour rien ferait
+        du bruit dans un journal qu'on lit déjà mal.
+
+        `wait_at_error=False` : avec `--apply`, le code 1 signifie « il en
+        reste », pas « je suis tombé ». Un index redondant qui survit ne
+        justifie pas d'arrêter une migration de six paliers ; l'outil
+        l'écrit, et le journal le garde.
+        """
+        if next_version < 17:
+            return
+        outil = os.path.join(PATH_MIGRATION_GLOBAL, "fix_duplicate_index.py")
+        if not os.path.isfile(outil):
+            return
+        self.todo_upgrade_execute(
+            f"{PYTHON_BIN} ./{outil} -d {database_name} --apply",
+            wait_at_error=False,
+        )
+
+    def restore_config_defaults(self, database_name, is_last_version):
+        """Les réglages par défaut qu'aucune migration ne recrée.
+
+        `product.list0` n'a été déclaré que jusqu'à Odoo 16 et
+        `account.reconciliation_model_default_rule` seulement en 12 : ils
+        naissent aujourd'hui d'un événement qu'une migration ne déclenche
+        jamais. La base arrive donc en 18 sans liste de prix par défaut, et
+        cela ne se découvre qu'au premier devis. Mesuré sur deux chaînes
+        indépendantes : absent des deux.
+
+        AU DERNIER PALIER seulement. L'outil charge le registre Odoo — une
+        quarantaine de secondes — et seul l'état final compte : recréer la
+        liste au palier 13 pour la voir disparaître au 16 ne servirait qu'à
+        allonger six fois la migration.
+
+        `wait_at_error=False` : même raison que pour les index. Le code 1
+        veut dire « il en manque encore après la réparation », ce que
+        l'outil écrit lui-même.
+        """
+        if not is_last_version:
+            return
+        outil = os.path.join(
+            PATH_MIGRATION_GLOBAL, "restore_config_defaults.py"
+        )
         if not os.path.isfile(outil):
             return
         self.todo_upgrade_execute(

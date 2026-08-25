@@ -828,6 +828,51 @@ class QemuInstallMixin:
         "arch": "pacman",
     }
 
+    def _qemu_guest_context(self):
+        """Ce que les DEUX écrans de déploiement doivent savoir du système
+        invité : type de VM, magasin d'applications, outils, fuseaux, Python.
+
+        Une seule méthode et non deux blocs jumeaux dans les constructeurs de
+        contexte : c'est en n'en remplissant qu'un que l'écran Proxmox avait
+        perdu la moitié des réglages. Rien ici ne parle d'hyperviseur — c'est
+        exactement ce qui rend le bloc commun."""
+        outils = self._QEMU_VM_TOOLS
+        return {
+            "desktops": [
+                (k, v["label"]) for k, v in self._QEMU_DESKTOP.items()
+            ],
+            "desktop_suffixes": self._qemu_desktop_suffixes(),
+            "desktop_disk_gb": self.QEMU_DESKTOP_EXTRA_DISK_GB,
+            "app_stores": [(k, t(lbl)) for k, lbl in self.QEMU_APP_STORES],
+            "snap_distros": self.QEMU_SNAP_DISTROS,
+            "timezone": self._qemu_host_timezone(),
+            "timezones": self._qemu_timezone_choices(
+                self._qemu_host_timezone()
+            ),
+            "mise_arches": self.QEMU_MISE_ARCHES,
+            "vm_tools": self._qemu_vm_tool_choices(),
+            "vm_tool_disk": {k: v["disk_gb"] for k, v in outils.items()},
+            "vm_tool_arches": {k: v["arches"] for k, v in outils.items()},
+            "vm_tool_desktops": {k: v["desktops"] for k, v in outils.items()},
+            # « after » = l'outil vit DANS le dépôt ERPLibre (compilation
+            # mobile, AVD, script Forgejo) : sans installation, il n'existe
+            # pas, et la commande distante le saute en le nommant.
+            "vm_tool_phases": {
+                k: v.get("phase", "before") for k, v in outils.items()
+            },
+            "vm_tool_needs_desktop": {
+                k: v["needs_desktop"] for k, v in outils.items()
+            },
+            "vm_tool_families": {k: v["families"] for k, v in outils.items()},
+            "distro_family": dict(self._QEMU_DISTRO_FAMILY),
+            "defaults": {
+                "install": True,
+                "add_ssh_config": True,
+                "monitor": True,
+                "prod": False,
+            },
+        }
+
     @classmethod
     def _qemu_vm_tool_choices(cls):
         """[(clé, libellé, indice)] pour le formulaire et l'invite en ligne."""

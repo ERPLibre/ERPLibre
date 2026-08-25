@@ -1492,5 +1492,100 @@ class TestFieldsThatHeldNoData(TestTheOpenUpgradeOverlay):
         self.assertTrue(quality.t(libelle))
 
 
+class TestWhyAnAttachmentWentAway(Base):
+    """« 409 pièces jointes perdues » n'en recouvrait presque aucune.
+
+    Mesuré sur une chaîne 12 → 18 : des 516 lignes parties au palier 18,
+    452 avaient perdu leur CHAMP PORTEUR aux paliers 13 et 14 — elles
+    étaient déjà illisibles, Odoo lève un KeyError en les contrôlant. Ce
+    ne sont pas des données, ce sont des débris, et la 18 les ramasse.
+
+    On ne DÉCLARE pas cette perte dans SEMANTIC_MAP : cette carte nomme
+    une TABLE, et la cause n'est pas la table, ce sont ces lignes-là.
+    Déclarée, elle rangerait toute perte future de ir_attachment sous
+    « changement d'Odoo » — cinq mille factures comprises.
+    """
+
+    def etat(self, lignes, modeles=("res.partner",)):
+        return {
+            "exists": True,
+            "attachment_row": lignes,
+            "model": list(modeles),
+        }
+
+    def test_a_field_already_gone_is_not_a_loss(self):
+        avant = self.etat({"7": ("res.partner", "image", "1", False)})
+        seaux = quality.classify_attachments(avant, self.etat({}))
+        self.assertEqual(["7"], seaux["field_debt"])
+        self.assertEqual([], seaux["undeclared"])
+
+    def test_a_field_removed_at_this_step_is_not_a_loss_either(self):
+        avant = self.etat({"7": ("res.partner", "image", "1", True)})
+        apres = self.etat({"8": ("res.partner", "image", "2", False)})
+        seaux = quality.classify_attachments(avant, apres)
+        self.assertEqual(["7"], seaux["field_dropped"])
+
+    def test_a_model_that_left_takes_its_attachments_with_it(self):
+        avant = self.etat({"7": ("mail.channel", "image", "1", True)})
+        apres = self.etat({}, modeles=["res.partner"])
+        seaux = quality.classify_attachments(avant, apres)
+        self.assertEqual(["7"], seaux["model_gone"])
+
+    def test_a_live_field_losing_its_attachment_stays_red(self):
+        # LE cas qui compte : une donnée lisible a disparu.
+        avant = self.etat({"7": ("res.partner", "image_1920", "1", True)})
+        apres = self.etat({"8": ("res.partner", "image_1920", "2", True)})
+        seaux = quality.classify_attachments(avant, apres)
+        self.assertEqual(["7"], seaux["undeclared"])
+
+    def test_an_attachment_that_stayed_is_not_counted(self):
+        lignes = {"7": ("res.partner", "image_1920", "1", True)}
+        seaux = quality.classify_attachments(
+            self.etat(lignes), self.etat(lignes)
+        )
+        self.assertEqual([], seaux["undeclared"])
+        self.assertEqual([], seaux["field_debt"])
+
+    def test_without_the_information_it_says_it_does_not_know(self):
+        # Un instantané pris par une version antérieure n'a pas
+        # `attachment_row`. Rendre des seaux vides ferait croire à une
+        # explication complète.
+        self.assertIsNone(
+            quality.classify_attachments({"exists": True}, self.etat({}))
+        )
+
+    def test_the_red_bucket_is_the_only_one_that_warns(self):
+        table = {cle: teinte for cle, _l, teinte in quality.ATTACHMENT_KIND}
+        self.assertEqual("warn", table["undeclared"])
+        for cle in ("field_debt", "field_dropped", "model_gone"):
+            self.assertEqual("dim", table[cle], cle)
+
+    def test_the_report_names_each_cause(self):
+        connu = {
+            "buckets": {"field_debt": 452, "undeclared": 1},
+            "why": "attachments of fields and records already gone",
+        }
+        texte = "\n".join(quality.render_attachment_kind(connu, colour=False))
+        self.assertIn("452", texte)
+        self.assertIn("1", texte)
+        self.assertIn(
+            quality.t("their field was already gone before this step"), texte
+        )
+
+    def test_a_bucket_at_zero_is_not_printed(self):
+        connu = {"buckets": {"field_debt": 0, "undeclared": 3}}
+        texte = "\n".join(quality.render_attachment_kind(connu, colour=False))
+        self.assertNotIn(
+            quality.t("their field was already gone before this step"), texte
+        )
+
+    def test_semantic_map_still_says_nothing_about_attachments(self):
+        # Une entrée déclarée rendrait l'outil aveugle : `explain_loss`
+        # ne compare que le nom de la table, et `pruned` ne déclenche
+        # aucune contre-vérification.
+        for entree in quality.SEMANTIC_MAP:
+            self.assertNotEqual("ir_attachment", entree.get("table"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -245,6 +245,32 @@ def inspect(database):
         "SELECT model || '.' || name FROM ir_model_fields WHERE store",
     )
     etat["field_stored"] = sorted(ligne[0] for ligne in stockes or [])
+    # Le CHAMP PORTEUR de chaque pièce jointe, et s'il existe encore.
+    #
+    # Une pièce jointe dont `res_field` ne nomme aucun champ vivant est
+    # DÉJÀ illisible : Odoo lève un KeyError en la contrôlant. Ce ne sont
+    # pas des données, ce sont des débris. Mesuré sur une chaîne 12 → 18 :
+    # la dette naît aux paliers 13 et 14, reste gelée pendant trois
+    # paliers, et la 18 ramasse 452 lignes d'un coup — qui se lisent
+    # alors comme 452 pertes.
+    #
+    # Ni le nom ni le mimetype ici : `run_psql` découpe par LIGNE et un
+    # nom de fichier peut en contenir une.
+    portees = run_psql(
+        database,
+        "SELECT a.id, coalesce(a.res_model, ''), coalesce(a.res_field, ''),"
+        " coalesce(a.res_id::text, ''),"
+        " CASE WHEN a.res_field IS NULL OR a.res_field = '' THEN '1'"
+        " WHEN EXISTS (SELECT 1 FROM ir_model_fields f"
+        " WHERE f.model = a.res_model AND f.name = a.res_field)"
+        " THEN '1' ELSE '0' END"
+        " FROM ir_attachment a",
+    )
+    etat["attachment_row"] = {
+        ligne[0]: (ligne[1], ligne[2], ligne[3], ligne[4] == "1")
+        for ligne in portees or []
+        if len(ligne) >= 5 and ligne[0].isdigit()
+    }
     # Les copies COW par leur CLÉ : c'est elle qu'on réinitialise, et
     # c'est par elle qu'on les retrouve d'une version à l'autre.
     copies = run_psql(
@@ -710,6 +736,65 @@ def overlay_declared(
     }
 
 
+def render_attachment_kind(connu, colour):
+    """Le détail par CAUSE d'une perte de pièces jointes.
+
+    Le rapport ne doit jamais dire « pièce jointe perdue » sans dire CE
+    QUI est parti avec elle : un champ déjà mort ne fait perdre rien
+    qu'un utilisateur ait pu voir, et cela se range en teinte calme. Le
+    seul cas rouge est « le champ est toujours là ».
+    """
+    from script.todo.migration_status import paint
+
+    lignes = []
+    for cle, libelle, teinte in ATTACHMENT_KIND:
+        combien = (connu.get("buckets") or {}).get(cle) or 0
+        if not combien:
+            continue
+        lignes.append(
+            f"             {paint(str(combien).rjust(5), teinte, colour)}"
+            f"  {t(libelle)}"
+        )
+    return lignes
+
+
+def classify_attachments(avant, apres):
+    """Pourquoi chaque pièce jointe partie est partie. None si on ne sait.
+
+    Python pur, sur ce que `inspect` a déjà lu : aucune requête de plus.
+    L'ORDRE des tests compte — éprouvé dans l'autre sens, les 452 du
+    palier 18 se rangeaient à tort en « champ retiré à ce palier ».
+    """
+    lignes_avant = avant.get("attachment_row")
+    lignes_apres = apres.get("attachment_row")
+    if not lignes_avant or lignes_apres is None:
+        return None
+    modeles_apres = set(apres.get("model") or [])
+    seaux = {cle: [] for cle, _l, _t in ATTACHMENT_KIND}
+    for identifiant, (modele, champ, _res, vivant) in lignes_avant.items():
+        if identifiant in lignes_apres:
+            continue
+        apres_vivant = None
+        for autre in lignes_apres.values():
+            if autre[0] == modele and autre[1] == champ:
+                apres_vivant = autre[3]
+                break
+        # L'ORDRE porte le sens. « Le champ était déjà mort » d'abord :
+        # c'est la raison la plus forte, et celle des 452 lignes du
+        # palier 18. « Le modèle a quitté la base » ensuite — plus forte
+        # que « le champ n'apparaît plus après », qui ne se déduit que
+        # d'une absence et serait vraie de toute façon.
+        if not vivant:
+            seaux["field_debt"].append(identifiant)
+        elif modele and modele not in modeles_apres:
+            seaux["model_gone"].append(identifiant)
+        elif apres_vivant is False or (champ and apres_vivant is None):
+            seaux["field_dropped"].append(identifiant)
+        else:
+            seaux["undeclared"].append(identifiant)
+    return seaux
+
+
 def explain_loss(table, version):
     """Ce qu'Odoo a fait de cette table à cette version, ou None.
 
@@ -761,6 +846,31 @@ def compare(avant, apres):
             else None
         )
         lignes_perdues[index] = (table, debut, fin, {**connu, "gained": recue})
+    # `ir_attachment` n'a pas d'entrée dans SEMANTIC_MAP et n'en aura
+    # pas : la cause n'est pas la table, ce sont ces lignes-là. On la
+    # DÉDUIT, dans le même vocabulaire, et l'on garde en rouge le seul
+    # cas qui compte — une pièce jointe dont le champ est toujours là.
+    seaux = classify_attachments(avant, apres)
+    if seaux:
+        for index, (table, debut, fin, connu) in enumerate(lignes_perdues):
+            if table != "ir_attachment" or connu:
+                continue
+            lignes_perdues[index] = (
+                table,
+                debut,
+                fin,
+                {
+                    "into": None,
+                    "kind": "pruned",
+                    "why": "attachments of fields and records already gone",
+                    "gained": None,
+                    "buckets": {
+                        cle: len(seaux.get(cle) or [])
+                        for cle, _l, _t in ATTACHMENT_KIND
+                    },
+                    "residue": len(seaux.get("undeclared") or []),
+                },
+            )
     champ_avant = set(avant.get("field") or [])
     champ_apres = set(apres.get("field") or [])
     cow_avant = set(avant.get("cow") or [])
@@ -890,6 +1000,20 @@ DECLARE_MODELES = (
 # Odoo 15 cesse de l'inscrire sur ceux-là — d'où 65 « pertes » d'un coup
 # au palier 14 → 15, pour zéro octet.
 SANS_DONNEE_PROPRE = ("id",)
+
+# Pourquoi une pièce jointe a disparu — DÉDUIT, jamais déclaré.
+#
+# SEMANTIC_MAP ne peut pas porter ceci : elle nomme une TABLE, et la
+# cause n'est pas la table, ce sont ces lignes-là. Mesuré sur une chaîne
+# 12 → 18 : des 516 lignes parties au palier 18, 452 avaient perdu leur
+# champ et 63 leur enregistrement. Une entrée « ir_attachment / pruned »
+# aurait rangé les 516 sous « perte attendue » — et la 517e avec.
+ATTACHMENT_KIND = (
+    ("field_debt", "their field was already gone before this step", "dim"),
+    ("field_dropped", "their field was removed at this step", "dim"),
+    ("model_gone", "their model left the database", "dim"),
+    ("undeclared", "the field is STILL there — look at these", "warn"),
+)
 
 DECLARE_CHAMPS = (
     ("del", "declared removed", "dim"),
@@ -1125,7 +1249,8 @@ def render_compare(diff, colour, limit=8):
                 else:
                     ou = t("retired from the database")
                 lignes.append(f"       {table:<40} {avant:>8} → {apres}  {ou}")
-                lignes.append(f"           {connu['why']}")
+                lignes.append(f"           {t(connu['why'])}")
+                lignes.extend(render_attachment_kind(connu, colour))
             if len(connues) > limit:
                 lignes.append(f"       … {len(connues) - limit} {t('more')}")
     lignes.extend(render_declared(diff.get("declared") or {}, colour, limit))

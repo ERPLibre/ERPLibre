@@ -39,6 +39,7 @@ from script.todo.deploy_form_lib import (
     res_row_widgets,
     t,
 )
+from script.todo.deploy_form_extras import ExtrasMixin
 from script.todo.deploy_form_plan import PlanMixin, preview_screen
 
 # Aucun disque orphelin à craindre : les disques d'un Proxmox distant vivent
@@ -99,6 +100,15 @@ def build_spec(vms, existants, form):
         "start": form["start"],
         "add_ssh_config": form["add_ssh_config"],
         "install": form["install"],
+        "python_provider": form.get("python_provider") or "",
+        # Ce qui décrit le SYSTÈME INVITÉ, et non l'hyperviseur : il valait
+        # déjà sur libvirt, il vaut ici. Sans ces cinq clés, une VM créée sur
+        # Proxmox naissait sans bureau, sans outils et en UTC.
+        "timezone": form.get("timezone") or "",
+        "desktop": form.get("desktop") or "",
+        "vm_tools": tuple(form.get("vm_tools") or ()),
+        "app_store": form.get("app_store") or "deb",
+        "prod": bool((form.get("install") or {}).get("prod")),
         "monitor": form["monitor"],
         "parallelism": form["parallelism"],
     }
@@ -135,6 +145,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
         ctx.get("branches") or ["master"], ctx.get("branch_current")
     )
     profiles = ctx.get("install_profiles") or []
+    # {clé de saveur: suffixe de nom} — décrit par todo.py, source unique.
+    desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
     stockages = ctx.get("storages") or []
     ponts = ctx.get("bridges") or []
     # {système: (libellé, commande)} — ce qu'un système impose d'installer.
@@ -149,15 +161,22 @@ def run_proxmox_form(ctx, run_app: bool = True):
     }
 
     def entry_label(e):
-        return f"{e['distro']} {e['version']}  [{e['arch']}]  {e['name']}"
+        # L'étoile marque la version par défaut d'une distribution : c'est
+        # elle que « F7 » retient, et sans repère le raccourci choisissait
+        # sans qu'on sache quoi.
+        star = " *" if e.get("default") else ""
+        return (
+            f"{e['distro']} {e['version']}{star}  [{e['arch']}]  {e['name']}"
+        )
 
-    class ProxmoxForm(PlanMixin, App):
+    class ProxmoxForm(ExtrasMixin, PlanMixin, App):
         TITLE = t("Deploy one or more ERPLibre VMs on Proxmox VE!")
         BINDINGS = [
             ("f5", "deploy", t("Deploy")),
             ("f4", "clear_vm", t("Reset VM")),
             ("f3", "preview", t("Preview")),
             ("f6", "select_all", t("All")),
+            ("f7", "select_main", t("Main versions")),
             ("f8", "select_none", t("None")),
             ("escape", "cancel", t("Cancel")),
         ]
@@ -191,6 +210,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self._syncing = False
             # La liste des ponts GRANDIT : l'écran sait en créer un.
             self._ponts = list(ponts)
+            self.extras_init(ctx)
 
         # ---------------------------------------------------------------- #
         # L'écran
@@ -294,6 +314,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         value=True,
                         id="f_sshcfg",
                     )
+                    yield from self.compose_vm_type()
                     # La case commande TOUTE installation — ERPLibre, Odoo,
                     # mais aussi l'hyperviseur Proxmox VE d'une VM imbriquée.
                     # Nommée « ERPLibre », elle laissait croire qu'un système
@@ -322,6 +343,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         allow_blank=False,
                         id="f_branch",
                     )
+                    yield from self.compose_install_extras()
+                    yield from self.compose_timezone()
+                    yield from self.compose_python()
                     # Hors de la section « Installation » : le suivi regarde la
                     # VM ARRIVER, même quand rien ne s'installe. Rangé dedans,
                     # il se serait grisé avec elle.
@@ -335,10 +359,21 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         id="f_monitor",
                     )
                     yield Static(f"  {t('Parallelism')}")
+                    # Cochée, la case donne une exécution PAR installation :
+                    # le plafond du nombre de CPU ne s'applique plus.
+                    # Décochée, le nombre reprend la main, et son défaut suit
+                    # l'HÔTE PROXMOX — l'écran restait figé à quatre choix et
+                    # en proposait un, quel que soit le nombre de cœurs.
+                    yield Checkbox(
+                        t("One run per install"),
+                        value=True,
+                        id="f_par_all",
+                    )
                     yield Select(
-                        [(str(n), n) for n in (1, 2, 3, 4)],
-                        value=1,
+                        [(str(n), n) for n in range(1, ctx["host_cpu"] + 1)],
+                        value=ctx["host_cpu"],
                         allow_blank=False,
+                        disabled=True,
                         id="f_par",
                     )
                 with Vertical(id="right"):
@@ -441,6 +476,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 ctx["host_cpu"],
                 self.custom,
                 self.overrides,
+                self._default_desktop(),
+                desktop_suffixes,
             )
             # Ce qu'un système IMPOSE d'installer, posé sur le MODÈLE : le
             # déploiement lit « install_cmd » VM par VM.
@@ -453,12 +490,17 @@ def run_proxmox_form(ctx, run_app: bool = True):
             )
             # Le supplément d'ERPLibre ne vaut que pour les VM qui l'auront
             # vraiment : une VM Proxmox ne clonera pas le dépôt.
-            if self.query_one("#f_install", Checkbox).value:
-                commun = (self._install() or {}).get("cmd") or ""
-                for row in self.rows:
-                    cmd_vm = row["vm"].get("install_cmd") or commun
-                    if cmd_vm.strip() not in no_erplibre:
-                        row["disk_gb"] += ctx.get("extra_disk_gb", 0)
+            installe = self.query_one("#f_install", Checkbox).value
+            commun = (self._install() or {}).get("cmd") or ""
+            outils = self._vm_tools()
+            for row in self.rows:
+                cmd_vm = row["vm"].get("install_cmd") or commun
+                if installe and cmd_vm.strip() not in no_erplibre:
+                    row["disk_gb"] += ctx.get("extra_disk_gb", 0)
+                # Le bureau et les outils ne pèsent que sur les VM qui les
+                # reçoivent RÉELLEMENT : Android Studio n'existe qu'en
+                # x86_64, les extensions GNOME n'ont de sens que sous GNOME.
+                row["disk_gb"] += self._extras_disk_gb(row["vm"], outils)
             for row, entry in zip(self.rows, entries):
                 cle = entry_key(entry)
                 row["custom"] = bool(self.overrides.get(cle))
@@ -472,6 +514,18 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 ),
             )
             self._render_plan()
+            self.render_extras()
+
+        def _auto_name(self, index):
+            """Le nom du catalogue, suffixé du bureau : ce que la VM
+            reprendrait si on effaçait le sien."""
+            from script.todo.deploy_form_lib import vm_name
+
+            return vm_name(
+                self._plan_entries()[index]["name"],
+                self.rows[index]["vm"].get("desktop"),
+                desktop_suffixes,
+            )
 
         def _vmid_start(self):
             brut = self.query_one("#f_vmid", Input).value.strip()
@@ -616,6 +670,10 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.arch = arches[event.index]
                 self._reload_catalog()
                 return
+            if event.radio_set.id in ("f_type", "f_store"):
+                # Le bureau pèse sur le disque et change le nom des VM.
+                self._refresh_after(remonter=True)
+                return
             if event.radio_set.id == "f_profile":
                 choix = ("1", "2", "3", "4", "custom")[event.index]
                 self.profile = choix
@@ -631,26 +689,16 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self._clear_overrides(tuple(RES_FIELDS))
                 self._refresh_after(remonter=True)
 
-        def _sync_install_deps(self) -> None:
-            """Grise ce que la case rend sans effet : la branche et le profil.
-
-            Le suivi n'en fait pas partie — il regarde la VM arriver même
-            quand rien ne s'installe."""
-            installe = self.query_one("#f_install", Checkbox).value
-            for cible in ("#f_profile_install", "#f_branch"):
-                try:
-                    self.query_one(cible).disabled = not installe
-                except Exception:
-                    pass
-            try:
-                self.query_one("#t_install").set_class(not installe, "off")
-            except Exception:
-                pass
-
         def on_checkbox_changed(self, event) -> None:
             if event.checkbox.id == "f_install":
                 # Le disque d'ERPLibre entre — ou sort — du total.
                 self._sync_install_deps()
+                self._refresh_after()
+            elif event.checkbox.id == "f_par_all":
+                self.query_one("#f_par", Select).disabled = event.value
+            elif str(event.checkbox.id or "").startswith("f_tool_"):
+                # Un IDE de plus, c'est un disque plus grand : le plan doit
+                # le montrer AVANT de déployer, pas après une heure.
                 self._refresh_after()
 
         def on_input_changed(self, event) -> None:
@@ -673,6 +721,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
 
         def on_select_changed(self, event) -> None:
             if self._syncing:
+                return
+            if self.extras_on_select(event):
                 return
             ident = event.select.id or ""
             # La marque de génération ne concerne QUE les widgets de rangée :
@@ -759,6 +809,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
             )
             return {
                 "branch": self.query_one("#f_branch", Select).value,
+                # /opt et service confiné, comme en QEMU/KVM : le choix ne
+                # regarde pas l'hyperviseur, il regarde le système invité.
+                "prod": self.query_one("#f_prod", Checkbox).value,
                 "label": label,
                 "cmd": cmd,
             }
@@ -775,10 +828,18 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 "start": self.query_one("#f_start", Checkbox).value,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
                 "install": self._install(),
+                **self.extras_values(),
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT : une VM sans
                 # ERPLibre se suit aussi (cloud-init, puis relevé système).
                 "monitor": self.query_one("#f_monitor", Checkbox).value,
-                "parallelism": self.query_one("#f_par", Select).value,
+                # Une exécution par installation : le nombre de VM retenues
+                # fait foi. Le déploiement le borne ensuite à ce même nombre,
+                # donc une valeur haute ne crée aucun travailleur inutile.
+                "parallelism": (
+                    max(1, len(self.vms))
+                    if self.query_one("#f_par_all", Checkbox).value
+                    else self.query_one("#f_par", Select).value
+                ),
             }
 
         def action_deploy(self) -> None:
@@ -816,12 +877,6 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self.locked.discard(cle)
             self.overrides.pop(cle, None)
             self._refresh_after(remonter=True)
-
-        def action_select_all(self) -> None:
-            self.query_one("#f_catalog", SelectionList).select_all()
-
-        def action_select_none(self) -> None:
-            self.query_one("#f_catalog", SelectionList).deselect_all()
 
         def action_cancel(self) -> None:
             self.result = None
