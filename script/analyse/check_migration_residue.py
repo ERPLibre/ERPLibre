@@ -139,9 +139,22 @@ CONTROLES = (
         # chercher l'xmlid signalait donc une base parfaitement saine, et
         # aurait signalé de même celle d'un client qui a créé la sienne à
         # la main.
+        #
+        # Et seulement si la FONCTIONNALITÉ est active, c'est-à-dire si
+        # `base.group_user` implique `product.group_product_pricelist` —
+        # la question exacte que pose la case des réglages. Sans elle,
+        # l'absence de liste est normale ; signaler quand même menait à
+        # créer une liste dans une base qui n'en veut pas, et Odoo
+        # prévenait alors à chaque ouverture des réglages qu'il allait
+        # l'archiver.
         "sql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM ir_module_module"
         " WHERE name='product' AND state='installed')"
         " AND to_regclass('public.product_pricelist') IS NOT NULL"
+        " AND EXISTS (SELECT 1 FROM res_groups_implied_rel r"
+        " JOIN ir_model_data u ON u.model='res.groups' AND u.res_id=r.gid"
+        " AND u.module='base' AND u.name='group_user'"
+        " JOIN ir_model_data g ON g.model='res.groups' AND g.res_id=r.hid"
+        " AND g.module='product' AND g.name='group_product_pricelist')"
         " AND NOT EXISTS (SELECT 1 FROM product_pricelist)"
         " THEN 1 ELSE 0 END",
         "gravity": "broken",

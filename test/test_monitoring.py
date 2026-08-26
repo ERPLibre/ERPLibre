@@ -346,3 +346,40 @@ class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
         """La provenance la plus directe, et l'ordre du menu d'à côté."""
         self.assertEqual(self.affiches[0], "1")
         self.assertIn("A local database", self.corps.split("if answer")[0])
+
+
+class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
+    """Une liste de prix absente n'est un défaut que si on l'a demandée.
+
+    Mesuré : six utilisateurs étaient membres DIRECTS de
+    `product.group_product_pricelist` — hérité d'un palier de migration —
+    alors que `base.group_user` ne l'impliquait pas. La case des réglages
+    était donc décochée, et la réparation créait quand même une liste.
+    Odoo prévenait ensuite à chaque ouverture des réglages qu'il allait
+    l'archiver.
+
+    `res.config.settings` lit ce que `base.group_user` IMPLIQUE ; le
+    contrôle pose désormais la même question.
+    """
+
+    def _controle(self):
+        for controle in residue.CONTROLES:
+            if controle["key"] == "missing_pricelist":
+                return controle
+        raise AssertionError("contrôle introuvable")
+
+    def test_it_asks_whether_the_feature_is_implied(self):
+        sql = " ".join(self._controle()["sql"].split())
+        self.assertIn("res_groups_implied_rel", sql)
+        self.assertIn("group_product_pricelist", sql)
+        self.assertIn("group_user", sql)
+
+    def test_it_does_not_settle_for_direct_membership(self):
+        """`res_groups_users_rel` dirait « quelqu'un est dans le groupe »,
+        ce qui était vrai et menait au faux positif."""
+        self.assertNotIn("res_groups_users_rel", self._controle()["sql"])
+
+    def test_it_still_requires_the_module_and_the_table(self):
+        sql = " ".join(self._controle()["sql"].split())
+        self.assertIn("ir_module_module", sql)
+        self.assertIn("to_regclass", sql)
