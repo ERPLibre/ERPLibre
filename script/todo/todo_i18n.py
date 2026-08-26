@@ -3362,6 +3362,66 @@ TRANSLATIONS = {
         "fr": "La sonde du cluster n'a pas répondu : cause inconnue.",
         "en": "The cluster probe did not answer: cause unknown.",
     },
+    "This screen can repair it (see below).": {
+        "fr": "Cet écran peut le réparer (voir ci-dessous).",
+        "en": "This screen can repair it (see below).",
+    },
+    "Repair it from here?": {
+        "fr": "Le réparer d'ici ?",
+        "en": "Repair it from here?",
+    },
+    "freeze cloud-init, fix /etc/hosts, restart pmxcfs": {
+        "fr": "geler cloud-init, corriger /etc/hosts, relancer pmxcfs",
+        "en": "freeze cloud-init, fix /etc/hosts, restart pmxcfs",
+    },
+    "leave it alone": {
+        "fr": "ne rien toucher",
+        "en": "leave it alone",
+    },
+    "Cannot tell which address reaches this host.": {
+        "fr": "Impossible de savoir quelle adresse atteint cet hôte.",
+        "en": "Cannot tell which address reaches this host.",
+    },
+    "address the node will answer for": {
+        "fr": "adresse sous laquelle le nœud répondra",
+        "en": "address the node will answer for",
+    },
+    "mounted then lost again": {
+        "fr": "monté puis reperdu",
+        "en": "mounted then lost again",
+    },
+    "restarts": {
+        "fr": "relances",
+        "en": "restarts",
+    },
+    "mounted": {
+        "fr": "monté",
+        "en": "mounted",
+    },
+    "The hostname resolves fine: only the units are down.": {
+        "fr": "Le nom d'hôte résout bien : seules les unités sont à terre.",
+        "en": "The hostname resolves fine: only the units are down.",
+    },
+    "restart pmxcfs only (the address is fine)": {
+        "fr": "relancer pmxcfs seulement (l'adresse est bonne)",
+        "en": "restart pmxcfs only (the address is fine)",
+    },
+    "would not start:": {
+        "fr": "n'a pas démarré :",
+        "en": "would not start:",
+    },
+    "Cannot tell whether it mounted (link lost).": {
+        "fr": "Impossible de constater le montage (lien perdu).",
+        "en": "Cannot tell whether it mounted (link lost).",
+    },
+    "still absent": {
+        "fr": "toujours absent",
+        "en": "still absent",
+    },
+    "The address written may not be the one pmxcfs needs.": {
+        "fr": "L'adresse écrite n'est peut-être pas celle qu'il faut à pmxcfs.",
+        "en": "The address written may not be the one pmxcfs needs.",
+    },
     "pve-cluster is down: /etc/pve is not mounted.": {
         "fr": "pve-cluster est à terre : /etc/pve n'est pas monté.",
         "en": "pve-cluster is down: /etc/pve is not mounted.",

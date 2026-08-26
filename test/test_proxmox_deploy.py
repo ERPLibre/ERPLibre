@@ -961,5 +961,437 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stderr)
 
 
+class TestReparerEtcHosts(unittest.TestCase):
+    """La réécriture de /etc/hosts, EXÉCUTÉE sur de faux fichiers.
+
+    Trois hôtes de suite sont tombés sur la même panne, et le conseil
+    « rejouer install_proxmox.sh » ne pouvait pas la corriger : la VM clone le
+    dépôt distant, donc sa copie du script est celle qui ne corrige rien.
+    L'outil répare donc lui-même — et une réécriture de /etc/hosts sur une
+    machine qu'on ne joint que par ssh doit être ÉPROUVÉE, pas relue.
+
+    Aucun bouchon de vérification ici : la commande relit elle-même ce qu'elle
+    a écrit. La première version s'en remettait à « getent hosts $short », qui
+    réussit via mDNS même quand rien n'a été écrit — et les tests bouchonnaient
+    getent à « return 0 », donc ils mesuraient le bouchon."""
+
+    def _joue(self, contenu, court="pve", passages=3, ecrivable=True):
+        """Rejoue la commande RÉELLE `passages` fois sur un faux /etc/hosts."""
+        import os
+        import subprocess
+        import tempfile
+
+        d = tempfile.mkdtemp()
+        hosts = os.path.join(d, "hosts")
+        with open(hosts, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        cmd = pve.hosts_repair_cmd("10.10.10.150").replace("/etc/hosts", hosts)
+        if not ecrivable:
+            os.chmod(d, 0o500)
+        verdicts = []
+        try:
+            for _ in range(passages):
+                res = subprocess.run(
+                    ["sh", "-c", f"hostname() {{ echo {court}; }}; " + cmd],
+                    capture_output=True,
+                    text=True,
+                )
+                verdicts.append(res.stdout.strip())
+        finally:
+            os.chmod(d, 0o700)
+        with open(hosts, encoding="utf-8") as fh:
+            brut = fh.read()
+        restes = [f for f in os.listdir(d) if f != "hosts"]
+        return {
+            "lignes": [ligne for ligne in brut.splitlines() if ligne.strip()],
+            "verdicts": verdicts,
+            "brut": brut,
+            "restes": restes,
+        }
+
+    def test_the_cloud_init_line_is_replaced(self):
+        vu = self._joue("127.0.1.1 pve pve\n127.0.0.1 localhost\n")
+        self.assertEqual(vu["verdicts"], ["HOSTS-OK"] * 3)
+        self.assertIn("10.10.10.150\tpve pve\t# erplibre-hosts", vu["lignes"])
+        self.assertFalse(
+            [ligne for ligne in vu["lignes"] if ligne.startswith("127.0.1.1")]
+        )
+
+    def test_a_refused_write_leaves_the_file_ALONE(self):
+        """Le constat le plus grave de l'attaque, mesuré sur trois états
+        réels : /etc en lecture seule, fichier immuable, quota atteint.
+
+        « sed -i » puis « printf >> » étaient DEUX écritures. Sed refusé et
+        ajout réussi, la ligne 127.0.1.1 survivait EN PREMIER et notre ligne
+        s'ajoutait une fois par tentative. Sed réussi et ajout refusé, l'hôte
+        perdait l'entrée de son nom — et sur une machine qu'on ne joint que
+        par ssh, chaque sudo attend ensuite le résolveur.
+
+        Une seule écriture, la dernière, et elle est vérifiée avant."""
+        vu = self._joue(
+            "127.0.1.1 pve.lan pve\n127.0.0.1 localhost\n", ecrivable=False
+        )
+        self.assertEqual(vu["verdicts"], ["HOSTS-KO"] * 3)
+        self.assertEqual(
+            vu["lignes"], ["127.0.1.1 pve.lan pve", "127.0.0.1 localhost"]
+        )
+        self.assertEqual(vu["restes"], [], "aucun temporaire ne doit rester")
+
+    def test_a_file_without_a_final_newline(self):
+        """cloud-init « write_files » n'en met pas.
+
+        sed PRÉSERVE l'absence — vérifié — et notre ligne se collait à la
+        précédente : « 192.168.1.9 autre-machine10.10.10.150 pve », donc le
+        nom du nœud résolvait vers l'adresse d'une AUTRE machine. awk émet un
+        saut de ligne par enregistrement, donc il normalise."""
+        vu = self._joue(
+            "127.0.0.1 localhost\n127.0.1.1 pve\n192.168.1.9 autre-machine"
+        )
+        self.assertEqual(vu["verdicts"], ["HOSTS-OK"] * 3)
+        self.assertIn("192.168.1.9 autre-machine", vu["lignes"])
+        self.assertIn("10.10.10.150\tpve\t# erplibre-hosts", vu["lignes"])
+        self.assertTrue(vu["brut"].endswith("\n"))
+
+    def test_a_real_fqdn_survives_every_pass(self):
+        """Le défaut que le TROISIÈME passage a révélé.
+
+        Rejouée, la commande ne trouve plus de ligne 127.0.1.1 — c'est elle
+        qui l'a retirée — et retombait sur « <court>.local ». Un vrai FQDN
+        était donc remplacé par un nom réservé au mDNS, au deuxième passage,
+        par la réparation elle-même."""
+        vu = self._joue(
+            "127.0.1.1\tpve.lan.example.com pve\n127.0.0.1 localhost\n"
+        )
+        self.assertIn(
+            "10.10.10.150\tpve.lan.example.com pve\t# erplibre-hosts",
+            vu["lignes"],
+        )
+        self.assertNotIn("pve.local", " ".join(vu["lignes"]))
+
+    def test_nothing_accumulates(self):
+        # En DHCP l'adresse change : sans marqueur, une ligne s'ajoutait à
+        # chaque passage sans que la précédente soit retirée.
+        for contenu in (
+            "127.0.1.1 pve pve\n",
+            "10.0.0.9\tpve.lan.example.com pve\t# erplibre-hosts\n",
+        ):
+            with self.subTest(depart=contenu.strip()):
+                vu = self._joue(contenu, passages=4)
+                marquees = [
+                    ligne
+                    for ligne in vu["lignes"]
+                    if "erplibre-hosts" in ligne
+                ]
+                self.assertEqual(len(marquees), 1, vu["lignes"])
+
+    def test_tabs_everywhere_do_not_duplicate_the_short_name(self):
+        """L'installeur Debian écrit /etc/hosts avec des TABULATIONS.
+
+        Le test du nom court cherchait des ESPACES : « pve.example.com\tpve »
+        ne contenait pas « pve » entouré d'espaces, et le rejeu écrivait
+        « pve.example.com pve pve »."""
+        vu = self._joue(
+            "127.0.0.1\tlocalhost\n127.0.1.1\tpve.example.com\tpve\n"
+        )
+        self.assertIn(
+            "10.10.10.150\tpve.example.com pve\t# erplibre-hosts",
+            vu["lignes"],
+        )
+
+    def test_a_trailing_comment_is_stripped(self):
+        vu = self._joue("127.0.1.1 pve # posé à la main\n")
+        self.assertEqual(vu["lignes"], ["10.10.10.150\tpve\t# erplibre-hosts"])
+
+    def test_the_short_name_is_always_there(self):
+        # C'est lui que pmxcfs résout : une ligne sans lui ne sert à rien.
+        vu = self._joue("127.0.1.1 autre-nom\n", court="pve")
+        self.assertIn("pve", vu["lignes"][0].split())
+
+    def test_an_unusable_address_produces_no_command(self):
+        for mauvaise in (
+            "",
+            "127.0.0.1",
+            "fe80::1",
+            "169.254.3.4",
+            "pas-une-ip",
+        ):
+            with self.subTest(ip=mauvaise):
+                self.assertEqual(pve.hosts_repair_cmd(mauvaise), "")
+
+    def test_no_sudo_in_the_body(self):
+        """wrap_privilege porte le privilège, pas le corps.
+
+        Sur un hôte root@ il n'enrobe rien — et un Proxmox installé par l'ISO
+        n'a pas forcément le paquet sudo : « sh: 1: sudo: not found », code
+        127, au milieu d'une réécriture de /etc/hosts."""
+        for cmd in (
+            pve.hosts_repair_cmd("10.0.0.1"),
+            pve.cloud_hosts_freeze_cmd(),
+            pve.mount_wait_cmd(),
+        ) + tuple(pve.pve_unit_cmd(u) for u in pve.PVE_UNITS):
+            with self.subTest(cmd=cmd[:40]):
+                self.assertNotIn("sudo", cmd)
+
+
+class TestGelerCloudInit(unittest.TestCase):
+    """Le gel EXÉCUTÉ, y compris sur le fichier tronqué à zéro octet."""
+
+    def _joue(self, etat):
+        import os
+        import subprocess
+        import tempfile
+
+        racine = tempfile.mkdtemp()
+        dossier = os.path.join(racine, "cloud.cfg.d")
+        fichier = os.path.join(dossier, "99-erplibre-hosts.cfg")
+        if etat != "sans-cloud":
+            os.makedirs(dossier)
+            if etat == "vide":
+                open(fichier, "w").close()
+            elif etat == "gele":
+                with open(fichier, "w", encoding="utf-8") as fh:
+                    fh.write("manage_etc_hosts: false\n")
+        cmd = (
+            pve.cloud_hosts_freeze_cmd()
+            .replace("/etc/cloud/cloud.cfg.d", dossier)
+            .replace(
+                "/etc/cloud", racine if etat != "sans-cloud" else "/nexistepas"
+            )
+        )
+        res = subprocess.run(["sh", "-c", cmd], capture_output=True, text=True)
+        contenu = ""
+        if os.path.exists(fichier):
+            with open(fichier, encoding="utf-8") as fh:
+                contenu = fh.read()
+        return res.stdout.strip(), contenu
+
+    def test_a_fresh_host_gets_frozen(self):
+        verdict, contenu = self._joue("neuf")
+        self.assertEqual(verdict, "FREEZE-OK")
+        self.assertIn("manage_etc_hosts: false", contenu)
+
+    def test_an_empty_file_is_rewritten(self):
+        """Le défaut que la garde à l'EXISTENCE laissait passer.
+
+        « printf … > » TRONQUE avant d'écrire : une coupure laisse zéro octet,
+        et la garde annonçait « déjà gelé » pour toujours. cloud-init
+        continuait de remettre 127.0.1.1 à chaque démarrage."""
+        verdict, contenu = self._joue("vide")
+        self.assertEqual(verdict, "FREEZE-OK")
+        self.assertIn("manage_etc_hosts: false", contenu)
+
+    def test_an_already_frozen_host_is_left_alone(self):
+        verdict, _c = self._joue("gele")
+        self.assertEqual(verdict, "FREEZE-DEJA")
+
+    def test_a_host_without_cloud_init_says_so(self):
+        verdict, _c = self._joue("sans-cloud")
+        self.assertEqual(verdict, "FREEZE-SANS-OBJET")
+
+
+class TestQuelleAdressePourLeNoeud(unittest.TestCase):
+    """L'adresse écrite doit être celle par laquelle on JOINT l'hôte.
+
+    Mesuré sur une Proxmox imbriquée : « hostname -I » rend
+    « 10.10.10.150 10.10.20.1 », et la seconde est le pont interne que notre
+    propre code vient de créer. La poser ferait s'identifier le nœud par une
+    adresse que personne ne joint."""
+
+    def test_the_server_field_of_ssh_connection(self):
+        self.assertEqual(
+            pve.ssh_server_ip("10.10.10.1 33580 10.10.10.150 22"),
+            "10.10.10.150",
+        )
+
+    def test_ssh_noise_does_not_shift_the_fields(self):
+        brut = (
+            "Warning: Permanently added 'x' (ED25519) to the list of known"
+            " hosts.\n10.10.10.1 33580 10.10.10.150 22"
+        )
+        self.assertEqual(pve.ssh_server_ip(brut), "10.10.10.150")
+
+    def test_an_empty_or_short_value_gives_nothing(self):
+        for brut in ("", "10.0.0.1 22", "n'importe quoi"):
+            with self.subTest(brut=brut):
+                self.assertEqual(pve.ssh_server_ip(brut), "")
+
+    def test_a_loopback_server_field_is_refused(self):
+        # Un tunnel local peut faire de l'hôte « 127.0.0.1 » : l'écrire dans
+        # /etc/hosts ne réglerait rien.
+        self.assertEqual(pve.ssh_server_ip("127.0.0.1 5555 127.0.0.1 22"), "")
+
+
+class TestRelancerLesUnites(unittest.TestCase):
+    """Chaque unité à part, jamais fatale, et le journal quand ça échoue.
+
+    Les bouchons ÉCHOUENT ici. La première version ne faisait jamais rater un
+    « start » : le journalctl bouchonné n'était donc jamais atteint, et
+    retirer complètement « reset-failed » de la commande laissait tous les
+    tests verts."""
+
+    def _joue(self, unite, etat, monte, existe=True, start_ok=True, **kw):
+        import os
+        import subprocess
+        import tempfile
+
+        temoin = os.path.join(tempfile.mkdtemp(), "version")
+        if monte:
+            open(temoin, "w").close()
+        bouchons = (
+            "systemctl() { "
+            '  case "$1" in '
+            f"    list-unit-files) return {0 if existe else 1};; "
+            f"    is-active) echo {etat};; "
+            '    reset-failed) echo "RESET $2";; '
+            f'    start|restart) echo "STARTED $1 $2"; '
+            f"      return {0 if start_ok else 1};; "
+            "  esac; }; "
+            "journalctl() { echo LIGNE-DE-JOURNAL; }; "
+        )
+        cmd = pve.pve_unit_cmd(unite, **kw).replace(
+            "/etc/pve/.version", temoin
+        )
+        res = subprocess.run(
+            ["sh", "-c", bouchons + cmd], capture_output=True, text=True
+        )
+        return res.returncode, res.stdout
+
+    def test_an_absent_unit_is_skipped_not_fatal(self):
+        code, out = self._joue("pveproxy", "failed", False, existe=False)
+        self.assertEqual(code, 0)
+        self.assertIn("SKIP pveproxy", out)
+
+    def test_a_failed_unit_is_RESET_then_started(self):
+        # Le reset débloque la limite de démarrage : sans lui, systemd refuse
+        # le start sans même le tenter. Son absence doit faire ROUGIR le test.
+        code, out = self._joue("pvestatd", "failed", False)
+        self.assertEqual(code, 0)
+        self.assertIn("RESET pvestatd", out)
+        self.assertIn("STARTED start", out)
+        self.assertLess(out.index("RESET"), out.index("STARTED"))
+
+    def test_a_start_that_fails_names_the_unit_and_shows_the_journal(self):
+        """La seule façon de dire la cause à quelqu'un dont l'unique accès à
+        l'hôte est cet outil."""
+        code, out = self._joue("pve-cluster", "failed", False, start_ok=False)
+        self.assertEqual(code, 0, "jamais fatale")
+        self.assertIn("KO pve-cluster", out)
+        self.assertIn("LIGNE-DE-JOURNAL", out)
+
+    def test_a_stale_mount_gets_a_restart_not_a_start(self):
+        """« start » sur une unité ACTIVE est un no-op qui rend 0.
+
+        pmxcfs tué par l'OOM killer laisse /etc/pve monté mais mort, l'unité
+        pouvant rester « active » : la réparation ne convergeait jamais et ne
+        nommait rien."""
+        code, out = self._joue("pve-cluster", "active", False)
+        self.assertEqual(code, 0)
+        self.assertIn("STARTED restart", out)
+
+    def test_an_active_unit_with_the_mount_is_left_alone(self):
+        code, out = self._joue("pve-cluster", "active", True)
+        self.assertEqual(code, 0)
+        self.assertIn("DEJA pve-cluster", out)
+
+    def test_the_dependents_are_restarted_when_the_mount_was_absent(self):
+        """Leur état actif ne prouve rien sur leur lien à pmxcfs.
+
+        pvestatd, pvedaemon et pveproxy tournaient pendant toute la panne, en
+        échouant sur ipcc_send_rec. Les laisser après avoir remonté /etc/pve
+        donnait une GUI qui répond « communication failure » juste après le ✓
+        de la réparation."""
+        for unite in ("pvestatd", "pvedaemon", "pveproxy"):
+            with self.subTest(unite=unite):
+                _c, out = self._joue(unite, "active", True, remonte=True)
+                self.assertIn("STARTED restart", out)
+                _c, sans = self._joue(unite, "active", True)
+                self.assertIn(f"DEJA {unite}", sans)
+
+    def test_the_firewall_is_not_in_the_list(self):
+        # Sa configuration vit dans config.db, invisible tant que /etc/pve
+        # n'est pas monté : on appliquerait des règles illisibles sur la seule
+        # voie d'accès à la machine.
+        self.assertNotIn("pve-firewall", pve.PVE_UNITS)
+
+    def test_rrdcached_comes_before_pve_cluster(self):
+        # pve-cluster le requiert : une limite atteinte sur rrdcached fait
+        # échouer pve-cluster sur « dependency », et reset-failed sur
+        # pve-cluster n'y change rien.
+        units = list(pve.PVE_UNITS)
+        self.assertLess(units.index("rrdcached"), units.index("pve-cluster"))
+
+
+class TestConstaterLeMontage(unittest.TestCase):
+    """Une seule observation ne prouve rien, et un silence n'est pas une
+    absence."""
+
+    def test_a_mount_that_holds(self):
+        lu = pve.parse_mount_wait("MONTE\nNRESTARTS 0\n")
+        self.assertEqual((lu["verdict"], lu["relances"]), ("MONTE", 0))
+
+    def test_a_mount_that_flaps_is_not_a_success(self):
+        # reset-failed vient d'effacer la limite de relance : un pmxcfs qui
+        # battait repart pour une salve entière, et le ✓ serait suivi d'un
+        # « pvesm ne répond plus » dix secondes après.
+        lu = pve.parse_mount_wait("BATTEMENT\nNRESTARTS 4\n")
+        self.assertEqual((lu["verdict"], lu["relances"]), ("BATTEMENT", 4))
+
+    def test_silence_is_not_absence(self):
+        # Conclure « /etc/pve n'est pas monté » d'une perte de contact envoie
+        # chercher dans journalctl une panne qui n'existe pas.
+        for brut in ("", "timeout", "ssh: connect to host … port 22"):
+            with self.subTest(brut=brut):
+                self.assertEqual(
+                    pve.parse_mount_wait(brut)["verdict"], "INCONNU"
+                )
+
+    def test_the_wait_is_a_single_round_trip(self):
+        cmd = pve.mount_wait_cmd()
+        self.assertIn("while", cmd)
+        self.assertIn("sleep", cmd)
+        self.assertEqual(cmd.count("NRESTARTS"), 1)
+
+    def _attends(self, present, disparait=False):
+        """Exécute la commande RÉELLE, sentinelle créée puis retirée."""
+        import os
+        import subprocess
+        import tempfile
+
+        temoin = os.path.join(tempfile.mkdtemp(), "version")
+        if present:
+            open(temoin, "w").close()
+        cmd = pve.mount_wait_cmd(tours=2, repos=1).replace(
+            "/etc/pve/.version", temoin
+        )
+        if disparait:
+            # Retiré PENDANT la pause de reconfirmation — la SECONDE, celle
+            # qui suit « then ». La première est dans la boucle d'attente.
+            cmd = cmd.replace(
+                "then sleep 1;", f"then rm -f {temoin}; sleep 1;", 1
+            )
+        res = subprocess.run(
+            ["sh", "-c", "systemctl() { echo 3; }; " + cmd],
+            capture_output=True,
+            text=True,
+        )
+        return pve.parse_mount_wait(res.stdout)
+
+    def test_a_mount_that_holds_is_measured(self):
+        self.assertEqual(self._attends(True)["verdict"], "MONTE")
+
+    def test_a_mount_that_disappears_is_a_flap(self):
+        """La raison d'être de la reconfirmation.
+
+        reset-failed vient d'effacer la limite de relance, donc un pmxcfs qui
+        battait repart pour une salve entière : vu une fois, il peut mourir
+        dix secondes après notre ✓."""
+        self.assertEqual(
+            self._attends(True, disparait=True)["verdict"], "BATTEMENT"
+        )
+
+    def test_a_mount_that_never_comes_is_absent(self):
+        self.assertEqual(self._attends(False)["verdict"], "ABSENT")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
