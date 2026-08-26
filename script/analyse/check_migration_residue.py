@@ -74,10 +74,12 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+from script.analyse import check_migration_quality as quality  # noqa: E402
 from script.analyse import lib_analyse  # noqa: E402
 
 COULEURS = {
     "broken": "\033[31m",
+    "step": "\033[36m",
     "watch": "\033[33m",
     "ok": "\033[32m",
     "dim": "\033[90m",
@@ -244,6 +246,83 @@ def judge(resultats):
     return trouve, illisibles
 
 
+def famille(nom):
+    """La base d'origine dont ce nom est un palier.
+
+    « test_neutralize_upgrade_14 » et « …_upgrade_18 » sont deux paliers
+    de la MÊME migration. Interroger la base 18 doit montrer l'échec du
+    palier 14 : c'est le seul endroit où il subsiste.
+    """
+    return nom.rsplit("_upgrade_", 1)[0] if "_upgrade_" in nom else nom
+
+
+def verdicts(database, path=None):
+    """(tous, ratés) pour cette base — lus dans le FICHIER, pas en SQL.
+
+    Un test de fumée qui échoue ne laisse aucune trace en base : rien
+    n'est écrit, rien n'est cassé, la requête suivante répond. Les
+    contrôles ci-dessus sont donc structurellement aveugles à ce type
+    d'échec, et c'était la moitié de ce qu'une migration peut rater.
+    """
+    dct = quality.read_progression(path or quality.DEFAULT_PROGRESSION)
+    lignee = famille(database)
+    tous = [
+        e
+        for e in quality.read_events(dct)
+        if famille(quality.event_database(e)) == lignee
+    ]
+    return tous, quality.failures(tous)
+
+
+def verdicts_block(database, colour=True, path=None):
+    """La section « Verdicts », ou rien du tout s'il n'y en a pas.
+
+    Silencieuse quand le fichier n'existe pas : devant la sauvegarde d'un
+    client, il n'y a jamais eu de migration locale, et annoncer l'absence
+    d'un fichier qu'on n'attendait pas ne renseigne personne.
+    """
+    chemin = path or quality.DEFAULT_PROGRESSION
+    tous, ratés = verdicts(database, chemin)
+    if not tous:
+        return []
+    lignes = [
+        "",
+        paint(f"🚦 {t('Verdicts the migration recorded')}", "step", colour),
+    ]
+    lignes.append(paint(f"   {t('recorded in')} {chemin}", "dim", colour))
+    lignes.append("")
+    if not ratés:
+        lignes.append(
+            paint(
+                f"✅ {str(len(tous)).rjust(6)}  {t('checks, all passed')}",
+                "ok",
+                colour,
+            )
+        )
+    for event in ratés:
+        palier = quality.event_step(event)
+        lignes.append(
+            paint(
+                f"❌ {palier.rjust(6)}  {event['name']}",
+                "broken",
+                colour,
+            )
+        )
+        lignes.append(
+            paint(f"          {event['detail'][:120]}", "dim", colour)
+        )
+    lignes.append("")
+    lignes.append(
+        paint(
+            f"   {t('These come from the file, not the database:')}"
+            f" {t('the exit code ignores them.')}",
+            "dim",
+            colour,
+        )
+    )
+    return lignes
+
+
 def render(database, resultats, version=None, colour=True):
     """Le rapport lisible. Chaque constat dit quoi lancer pour le réparer."""
     trouve, illisibles = judge(resultats)
@@ -266,7 +345,7 @@ def render(database, resultats, version=None, colour=True):
                 colour,
             )
         )
-        return "\n".join(lignes)
+        return "\n".join(lignes + verdicts_block(database, colour)).rstrip()
 
     for controle, combien in trouve:
         icone = "❌" if controle["gravity"] == "broken" else "⚠"
@@ -295,7 +374,7 @@ def render(database, resultats, version=None, colour=True):
             )
         )
         lignes.append(paint(f"          {erreur}", "dim", colour))
-    return "\n".join(lignes).rstrip()
+    return "\n".join(lignes + verdicts_block(database, colour)).rstrip()
 
 
 def main(argv=None):
@@ -329,6 +408,7 @@ def main(argv=None):
     trouve, illisibles = judge(resultats)
 
     if args.json:
+        tous_verdicts, verdicts_ratés = verdicts(args.database)
         print(
             json.dumps(
                 {
@@ -337,6 +417,11 @@ def main(argv=None):
                     "checks": resultats,
                     "found": [c["key"] for c, _ in trouve],
                     "unreadable": [c["key"] for c, _ in illisibles],
+                    "verdicts": tous_verdicts,
+                    "verdicts_failed": [
+                        {"step": quality.event_step(e), "name": e["name"]}
+                        for e in verdicts_ratés
+                    ],
                 },
                 indent=2,
                 ensure_ascii=False,

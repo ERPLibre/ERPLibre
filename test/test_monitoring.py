@@ -19,6 +19,7 @@ le DIRE. Une analyse muette qu'on prend pour rassurante est pire que pas
 d'analyse : c'est la faute que ce dépôt a déjà corrigée trois fois.
 """
 
+import io
 import os
 import sys
 import unittest
@@ -432,6 +433,139 @@ class TestTheRepairAsksItsOwnDetector(unittest.TestCase):
             'env.user.has_group(\n            "product.group_product_pricelist"',
             source,
         )
+
+
+def verdict(**champs):
+    """Un événement du journal de progression, forme réelle."""
+    brut = {
+        "at": "2026-08-26 03:19:59.846453",
+        "step": "4.1.I - Migrate database",
+        "kind": "test",
+        "name": "smoke_public_url",
+        "status": 1,
+        "detail": ".venv.erplibre/bin/python3"
+        " ./script/odoo/migration/smoke_public_url.py"
+        " -d test_neutralize_upgrade_14 --internal-required",
+    }
+    brut.update(champs)
+    return brut
+
+
+class TestTheVerdictsSection(unittest.TestCase):
+    """Ce que les contrôles SQL ne peuvent structurellement pas voir.
+
+    Un test de fumée qui échoue n'écrit rien en base : rien n'est cassé,
+    la requête suivante répond. Aucun contrôle lisant la base ne le
+    retrouvera jamais — et c'était la moitié de ce qu'une migration peut
+    rater.
+    """
+
+    def setUp(self):
+        import json
+        import shutil
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier)
+        self.chemin = os.path.join(self.dossier, "progression.json")
+        self.json = json
+
+    def ecrire(self, evenements):
+        with io.open(self.chemin, "w", encoding="utf-8") as handle:
+            self.json.dump({"lst_event": evenements}, handle)
+        return self.chemin
+
+    def test_two_steps_of_one_migration_are_the_same_lineage(self):
+        # Interroger la base 18 doit montrer l'échec du palier 14 : c'est
+        # le seul endroit où il subsiste.
+        self.assertEqual(
+            residue.famille("test_neutralize_upgrade_14"),
+            residue.famille("test_neutralize_upgrade_18"),
+        )
+
+    def test_a_plain_name_is_its_own_lineage(self):
+        self.assertEqual("copy_chezlepro3", residue.famille("copy_chezlepro3"))
+
+    def test_another_migration_verdicts_are_not_shown(self):
+        # Deux migrations partagent le fichier. Attribuer l'échec de
+        # l'une à l'autre enverrait chercher une panne qui n'existe pas.
+        chemin = self.ecrire([verdict()])
+        _tous, ratés = residue.verdicts("autre_client_upgrade_18", chemin)
+        self.assertEqual([], ratés)
+
+    def test_the_failure_of_an_earlier_step_is_shown(self):
+        chemin = self.ecrire([verdict()])
+        _tous, ratés = residue.verdicts("test_neutralize_upgrade_18", chemin)
+        self.assertEqual(["smoke_public_url"], [e["name"] for e in ratés])
+
+    def test_a_step_is_named_by_its_odoo_version(self):
+        chemin = self.ecrire([verdict()])
+        texte = "\n".join(
+            residue.verdicts_block("test_neutralize_upgrade_18", False, chemin)
+        )
+        self.assertIn("14", texte)
+        self.assertIn("smoke_public_url", texte)
+
+    def test_no_file_says_nothing_at_all(self):
+        # Devant la sauvegarde d'un client, il n'y a jamais eu de
+        # migration locale : annoncer l'absence d'un fichier qu'on
+        # n'attendait pas ne renseigne personne.
+        absent = os.path.join(self.dossier, "jamais_ecrit.json")
+        self.assertEqual([], residue.verdicts_block("base", False, absent))
+
+    def test_all_green_is_stated_not_left_silent(self):
+        chemin = self.ecrire([verdict(status=0), verdict(status=0)])
+        texte = "\n".join(
+            residue.verdicts_block("test_neutralize_upgrade_18", False, chemin)
+        )
+        self.assertIn("2", texte)
+        self.assertIn(residue.t("checks, all passed"), texte)
+
+    def test_the_report_says_these_are_not_from_the_database(self):
+        # Sans cette phrase, un verdict d'il y a quatre paliers se lirait
+        # comme un défaut présent de la base qu'on a sous les yeux.
+        chemin = self.ecrire([verdict()])
+        texte = "\n".join(
+            residue.verdicts_block("test_neutralize_upgrade_18", False, chemin)
+        )
+        self.assertIn(
+            residue.t("These come from the file, not the database:"), texte
+        )
+
+    def test_a_past_verdict_does_not_become_a_finding(self):
+        # Le code de sortie dit « la BASE porte un défaut ». Y compter un
+        # verdict passé rendrait 1 pour toujours, et le pilote traiterait
+        # une base saine comme cassée à chaque appel.
+        vide = {c["key"]: 0 for c in residue.CONTROLES}
+        trouve, _illisibles = residue.judge(vide)
+        self.assertEqual([], trouve)
+
+    def test_the_clean_report_still_carries_the_verdicts(self):
+        # Le cas qui compte : aucun résidu en base, et pourtant un test
+        # de fumée a échoué en chemin. Le rapport « rien trouvé » ne doit
+        # pas être le dernier mot.
+        chemin = self.ecrire([verdict()])
+        ancien = residue.quality.DEFAULT_PROGRESSION
+        residue.quality.DEFAULT_PROGRESSION = chemin
+        self.addCleanup(
+            setattr, residue.quality, "DEFAULT_PROGRESSION", ancien
+        )
+        vide = {c["key"]: 0 for c in residue.CONTROLES}
+        texte = residue.render(
+            "test_neutralize_upgrade_18", vide, colour=False
+        )
+        self.assertIn(residue.t("None of the checks found anything."), texte)
+        self.assertIn("smoke_public_url", texte)
+
+    def test_the_colour_it_asks_for_exists(self):
+        # `paint` retombe sur une chaîne vide suivie d'un RESET quand le
+        # genre est inconnu : cela n'annule rien et ne teinte rien.
+        chemin = self.ecrire([verdict()])
+        for ligne in residue.verdicts_block(
+            "test_neutralize_upgrade_18", True, chemin
+        ):
+            if ligne and ligne.endswith(residue.RESET):
+                self.assertNotEqual(residue.RESET, ligne.strip())
 
 
 if __name__ == "__main__":

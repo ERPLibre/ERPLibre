@@ -6977,6 +6977,209 @@ TRANSLATIONS = {
         "fr": "Qualité de la migration, palier par palier",
         "en": "Migration quality, step by step",
     },
+    # --- Écran de qualité : Verdicts, Validation, Revue ---
+    "Verdicts the migration recorded": {
+        "fr": "Verdicts enregistrés par la migration",
+        "en": "Verdicts the migration recorded",
+    },
+    "recorded in": {
+        "fr": "consignés dans",
+        "en": "recorded in",
+    },
+    "These come from the file, not the database:": {
+        "fr": "Ils viennent du fichier, non de la base :",
+        "en": "These come from the file, not the database:",
+    },
+    "the exit code ignores them.": {
+        "fr": "le code de sortie ne les compte pas.",
+        "en": "the exit code ignores them.",
+    },
+    # Les six questions de la revue : t() les reçoit par
+    # variable, un scan des littéraux ne les voyait pas.
+    "Did the migration reach the end?": {
+        "fr": "La migration est-elle allée jusqu'au bout ?",
+        "en": "Did the migration reach the end?",
+    },
+    "Does Odoo load the database?": {
+        "fr": "Odoo charge-t-il la base ?",
+        "en": "Does Odoo load the database?",
+    },
+    "What did the migration leave behind?": {
+        "fr": "Qu'est-ce que la migration a laissé derrière ?",
+        "en": "What did the migration leave behind?",
+    },
+    "Is this copy safe to open?": {
+        "fr": "Cette copie est-elle sans danger à ouvrir ?",
+        "en": "Is this copy safe to open?",
+    },
+    "Do the public pages still answer?": {
+        "fr": "Les pages publiques répondent-elles encore ?",
+        "en": "Do the public pages still answer?",
+    },
+    "Is anything left that cleanup could not drop?": {
+        "fr": "Reste-t-il ce que le nettoyage n'a pu supprimer ?",
+        "en": "Is anything left that cleanup could not drop?",
+    },
+    "Verdicts": {
+        "fr": "Verdicts",
+        "en": "Verdicts",
+    },
+    "Validation": {
+        "fr": "Validation",
+        "en": "Validation",
+    },
+    "Review": {
+        "fr": "Revue de la migration",
+        "en": "Review",
+    },
+    "no verdict recorded": {
+        "fr": "aucun verdict enregistré",
+        "en": "no verdict recorded",
+    },
+    "checks, all passed": {
+        "fr": "tests, tous réussis",
+        "en": "checks, all passed",
+    },
+    "step": {
+        "fr": "palier",
+        "en": "step",
+    },
+    "when": {
+        "fr": "quand",
+        "en": "when",
+    },
+    "status": {
+        "fr": "statut",
+        "en": "status",
+    },
+    "what it ran": {
+        "fr": "ce qu'il a lancé",
+        "en": "what it ran",
+    },
+    "1 means a public page failed — not merely a finding.": {
+        "fr": "1 signifie qu'une page publique a échoué — pas un simple constat.",
+        "en": "1 means a public page failed — not merely a finding.",
+    },
+    "1 means leftovers remain that it could not drop.": {
+        "fr": "1 signifie qu'il reste des objets qu'il n'a pu supprimer.",
+        "en": "1 means leftovers remain that it could not drop.",
+    },
+    "press r to run it again": {
+        "fr": "appuie sur r pour le relancer",
+        "en": "press r to run it again",
+    },
+    "The screen steps aside, the test takes the terminal,": {
+        "fr": "L'écran s'efface, le test prend le terminal,",
+        "en": "The screen steps aside, the test takes the terminal,",
+    },
+    "and you come back with Enter.": {
+        "fr": "et tu reviens avec Entrée.",
+        "en": "and you come back with Enter.",
+    },
+    "No known way to replay this one.": {
+        "fr": "Aucun moyen connu de rejouer celui-ci.",
+        "en": "No known way to replay this one.",
+    },
+    "The migration recorded no verdict.": {
+        "fr": "La migration n'a enregistré aucun verdict.",
+        "en": "The migration recorded no verdict.",
+    },
+    "Every recorded check returned zero.": {
+        "fr": "Chaque test enregistré a rendu zéro.",
+        "en": "Every recorded check returned zero.",
+    },
+    "Where the traces live": {
+        "fr": "Où vivent les traces",
+        "en": "Where the traces live",
+    },
+    "missing: nothing was written here": {
+        "fr": "absent : rien n'a été écrit ici",
+        "en": "missing: nothing was written here",
+    },
+    "To read the verdicts by hand:": {
+        "fr": "Pour lire les verdicts à la main :",
+        "en": "To read the verdicts by hand:",
+    },
+    "Verdicts live in lst_event of the progression file,": {
+        "fr": "Les verdicts vivent dans lst_event du fichier de",
+        "en": "Verdicts live in lst_event of the progression file,",
+    },
+    "not in command_executed, which only lists what ran.": {
+        "fr": "progression — command_executed ne liste que l'exécuté.",
+        "en": "not in command_executed, which only lists what ran.",
+    },
+    "Errors in the Odoo log": {
+        "fr": "Erreurs dans le journal d'Odoo",
+        "en": "Errors in the Odoo log",
+    },
+    "This file does not exist.": {
+        "fr": "Ce fichier n'existe pas.",
+        "en": "This file does not exist.",
+    },
+    "config.conf has an empty logfile=, so Odoo writes to": {
+        "fr": "config.conf a un logfile= vide : Odoo écrit dans le",
+        "en": "config.conf has an empty logfile=, so Odoo writes to",
+    },
+    "the terminal and its output dies with it. To keep it:": {
+        "fr": "terminal et sa sortie meurt avec lui. Pour la garder :",
+        "en": "the terminal and its output dies with it. To keep it:",
+    },
+    "last offending lines": {
+        "fr": "dernières lignes fautives",
+        "en": "last offending lines",
+    },
+    "press r to run it": {
+        "fr": "appuie sur r pour le lancer",
+        "en": "press r to run it",
+    },
+    "Read it in the Verdicts section above.": {
+        "fr": "À lire dans la section Verdicts ci-dessus.",
+        "en": "Read it in the Verdicts section above.",
+    },
+    "What none of these can see": {
+        "fr": "Ce qu'aucun d'eux ne voit",
+        "en": "What none of these can see",
+    },
+    "They all read the DATABASE. A module that kept a": {
+        "fr": "Tous lisent la BASE. Un module resté sur un type de",
+        "en": "They all read the DATABASE. A module that kept a",
+    },
+    "pre-18 view type, or an image URL Odoo no longer": {
+        "fr": "vue d'avant 18, ou une URL d'image qu'Odoo",
+        "en": "pre-18 view type, or an image URL Odoo no longer",
+    },
+    "accepts, breaks at runtime on a perfectly sound one.": {
+        "fr": "refuse désormais, casse à l'exécution sur une base saine.",
+        "en": "accepts, breaks at runtime on a perfectly sound one.",
+    },
+    "exit code:": {
+        "fr": "code de sortie :",
+        "en": "exit code:",
+    },
+    "Press Enter to go back to the screen…": {
+        "fr": "Appuie sur Entrée pour revenir à l'écran…",
+        "en": "Press Enter to go back to the screen…",
+    },
+    "Pick a line below.": {
+        "fr": "Choisis une ligne ci-dessous.",
+        "en": "Pick a line below.",
+    },
+    "Migration progression": {
+        "fr": "Progression de la migration",
+        "en": "Migration progression",
+    },
+    "Odoo log": {
+        "fr": "Journal d'Odoo",
+        "en": "Odoo log",
+    },
+    "steps, commands and their verdicts (lst_event)": {
+        "fr": "paliers, commandes et leurs verdicts (lst_event)",
+        "en": "steps, commands and their verdicts (lst_event)",
+    },
+    "set logfile= in config.conf, else output is lost": {
+        "fr": "poser logfile= dans config.conf, sinon la sortie est perdue",
+        "en": "set logfile= in config.conf, else output is lost",
+    },
     "database not found": {
         "fr": "base introuvable",
         "en": "database not found",

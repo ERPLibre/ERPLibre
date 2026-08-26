@@ -87,6 +87,170 @@ def read_progression(path=DEFAULT_PROGRESSION):
         return {}
 
 
+# Où la migration laisse une trace, et ce qu'on y trouve. Les DEUX
+# chemins sont montrés à l'écran même quand le second n'existe pas : sans
+# `logfile` dans config.conf, Odoo écrit sur le terminal et sa sortie est
+# perdue à la fermeture. Ne rien dire laisserait chercher un fichier qui
+# n'a jamais été écrit.
+JOURNAL_ODOO = "log/odoo.log"
+MOTIFS_ERREUR = ("CRITICAL", "ERROR", "Traceback")
+
+
+def read_events(dct):
+    """Les verdicts que la migration a laissés, dans l'ordre où ils sont venus.
+
+    `command_executed` dit ce qui a été LANCÉ ; `lst_event` dit ce que
+    cela a RENDU. C'est la seule trace persistante d'un échec : la sortie
+    d'Odoo, elle, part sur le terminal et disparaît avec lui.
+    """
+    lst = []
+    for brut in dct.get("lst_event") or []:
+        if not isinstance(brut, dict):
+            continue
+        try:
+            statut = int(brut.get("status") or 0)
+        except (TypeError, ValueError):
+            statut = 0
+        lst.append(
+            {
+                "at": str(brut.get("at") or ""),
+                "step": str(brut.get("step") or ""),
+                "kind": str(brut.get("kind") or ""),
+                "name": str(brut.get("name") or ""),
+                "status": statut,
+                "detail": str(brut.get("detail") or ""),
+            }
+        )
+    return lst
+
+
+def failures(events):
+    """Ceux qui n'ont pas rendu zéro, et seulement ceux-là.
+
+    On garde `kind == "test"` : les entrées `command` à 1 appartiennent au
+    dialogue du pilote — « voulez-vous effacer le module manquant » — et
+    signaler un choix comme un échec ferait ignorer la liste entière.
+    """
+    return [e for e in events if e["status"] and e["kind"] == "test"]
+
+
+def event_database(event):
+    """La base sur laquelle ce verdict portait, lue dans sa commande."""
+    for mot in event.get("detail", "").split():
+        if mot.startswith("test_") or "_upgrade_" in mot:
+            return mot
+    morceaux = event.get("detail", "").split("-d ")
+    if len(morceaux) > 1:
+        return morceaux[1].split()[0]
+    return ""
+
+
+def event_step(event, database=""):
+    """Le palier Odoo que ce verdict concernait — « 14 », « 18 ».
+
+    Le nom de la base le porte — « …_upgrade_14 » — et c'est plus sûr que
+    le champ `step`, dont la numérotation (« 4.1.I ») compte les ÉTAPES du
+    pilote et non les versions d'Odoo : elles sont décalées d'un rang.
+    """
+    base = database or event_database(event)
+    if "_upgrade_" in base:
+        suffixe = base.rsplit("_upgrade_", 1)[1]
+        if suffixe.isdigit():
+            return suffixe
+    return (event.get("step") or "").split(" ")[0][:5]
+
+
+def log_sources(path=DEFAULT_PROGRESSION, journal=JOURNAL_ODOO):
+    """[(rôle, chemin, existe, ce qu'on y lit)] — la carte des traces.
+
+    Documenter les chemins EST la fonctionnalité : il a fallu une question
+    pour découvrir que les verdicts vivaient dans `lst_event`, et que la
+    sortie d'Odoo n'était écrite nulle part.
+    """
+    return [
+        (
+            t("Migration progression"),
+            path,
+            os.path.isfile(path),
+            t("steps, commands and their verdicts (lst_event)"),
+        ),
+        (
+            t("Odoo log"),
+            journal,
+            os.path.isfile(journal),
+            t("set logfile= in config.conf, else output is lost"),
+        ),
+    ]
+
+
+def scan_log(path=JOURNAL_ODOO, limite=12):
+    """{motif: compte} et les dernières lignes fautives d'un journal Odoo.
+
+    On lit la QUEUE : un journal de migration pèse des dizaines de
+    mégaoctets et ce qu'on cherche est ce qui a échoué en dernier.
+    """
+    rapport = {
+        "path": path,
+        "exists": os.path.isfile(path),
+        "counts": {},
+        "lines": [],
+    }
+    if not rapport["exists"]:
+        return rapport
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            debut = max(0, handle.tell() - 2_000_000)
+            handle.seek(debut)
+            queue = handle.read().decode("utf-8", "replace")
+    except OSError:
+        return rapport
+    for motif in MOTIFS_ERREUR:
+        rapport["counts"][motif] = queue.count(motif)
+    for ligne in queue.splitlines():
+        if any(motif in ligne for motif in MOTIFS_ERREUR):
+            rapport["lines"].append(ligne.strip()[:200])
+    rapport["lines"] = rapport["lines"][-limite:]
+    return rapport
+
+
+# La revue : ce qu'on vérifie, dans l'ordre, et ce que chaque étape prouve.
+# Elle est ÉCRITE ici plutôt que dans une documentation à côté, parce
+# qu'une liste de contrôle qu'il faut aller chercher n'est pas suivie.
+REVUE = (
+    (
+        "Did the migration reach the end?",
+        "lst_event, and the six state_4_*_lst flags at 6/6",
+        None,
+    ),
+    (
+        "Does Odoo load the database?",
+        "./odoo_bin.sh shell -c ./config.conf -d {db} --no-http",
+        "shell",
+    ),
+    (
+        "What did the migration leave behind?",
+        "script/analyse/check_migration_residue.py -d {db}",
+        "residue",
+    ),
+    (
+        "Is this copy safe to open?",
+        "script/analyse/check_instance_state.py -d {db} --expect copy",
+        "state",
+    ),
+    (
+        "Do the public pages still answer?",
+        "script/odoo/migration/smoke_public_url.py -d {db}",
+        "smoke",
+    ),
+    (
+        "Is anything left that cleanup could not drop?",
+        "script/odoo/migration/database_cleanup.py -d {db}",
+        "cleanup",
+    ),
+)
+
+
 def chain(dct):
     """[(version, base)] du départ à l'arrivée, dans l'ordre du parcours.
 

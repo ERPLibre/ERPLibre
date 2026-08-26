@@ -13,6 +13,7 @@ Deux assemblages sépareraient les deux vues, et l'on finirait par lire deux
 """
 
 import os
+import subprocess
 import sys
 
 sys.path.append(
@@ -30,6 +31,13 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+# Les commandes se lancent depuis la RACINE : les chemins qu'elles portent
+# — « script/odoo/migration/… » — y sont relatifs, et les lancer d'ailleurs
+# les rend introuvables.
+REPO_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
+
 CSS = """
 Screen { layout: vertical; }
 #head { height: 3; padding: 0 1; background: $panel; color: $text; }
@@ -39,12 +47,17 @@ Screen { layout: vertical; }
 """
 
 
-def rows(lst_snapshot):
-    """Un palier par ligne, puis le bilan d'ensemble en dernier.
+def rows(lst_snapshot, dct=None):
+    """Un palier par ligne, le bilan, puis les trois sections de revue.
 
-    Le bilan EN DERNIER et non en tête : on descend la liste comme on a
-    vécu la migration, et la question « qu'est-ce qu'il en reste » se pose
-    une fois qu'on a vu le chemin.
+    Le bilan APRÈS les paliers et non en tête : on descend la liste comme
+    on a vécu la migration, et la question « qu'est-ce qu'il en reste » se
+    pose une fois qu'on a vu le chemin. Ce qui suit — verdicts, où lire,
+    quoi vérifier — répond à « et maintenant ».
+
+    `dct` se passe pour éviter la lecture du fichier de progression :
+    autrement la liste dépend de ce qu'une migration a laissé sur CE
+    poste, et deux exécutions ne rendent pas la même chose.
     """
     lst = []
     presents = [x for x in lst_snapshot if x.get("exists")]
@@ -95,7 +108,127 @@ def rows(lst_snapshot):
                 "diff": quality.overall(lst_snapshot),
             }
         )
+    lst.extend(extra_rows(presents, dct))
     return lst
+
+
+def extra_rows(presents, dct=None):
+    """Les trois sections sous les paliers : succès, validation, revue.
+
+    Elles vivent dans la MÊME table que les paliers plutôt que dans un
+    second panneau : on descend la colonne une seule fois, et l'ordre dit
+    la démarche — ce que la migration a rendu, où le lire, quoi vérifier
+    ensuite.
+
+    Un séparateur n'est PAS sélectionnable au sens où il n'affiche qu'un
+    titre ; le laisser dans la liste garde l'index de la table aligné sur
+    celui des lignes, ce qu'une liste filtrée perdrait.
+    """
+    dct = quality.read_progression() if dct is None else dct
+    cible = presents[-1]["database"] if presents else ""
+    lst = []
+
+    # ── Succès ──
+    evenements = quality.read_events(dct)
+    ratés = quality.failures(evenements)
+    lst.append(
+        {
+            "kind": "header",
+            "label": f"── {t('Verdicts')} ──",
+            "detail": str(len(ratés)) if ratés else "✅",
+        }
+    )
+    if not evenements:
+        lst.append(
+            {
+                "kind": "verdict-none",
+                "label": f"   {t('no verdict recorded')}",
+                "detail": "",
+            }
+        )
+    for event in ratés:
+        base = quality.event_database(event)
+        # Le PALIER dans le libellé : « smoke_public_url » quatre fois de
+        # suite ne dit pas lequel a échoué, et c'est la seule chose qu'on
+        # veut savoir en parcourant la colonne.
+        palier = quality.event_step(event, base)
+        lst.append(
+            {
+                "kind": "verdict",
+                "label": f"   ❌ {palier:<5} {event['name'][:18]}",
+                "detail": "▶",
+                "event": event,
+                "database": base or cible,
+                "command": rerun_command(event, base or cible),
+            }
+        )
+    if evenements and not ratés:
+        lst.append(
+            {
+                "kind": "verdict-ok",
+                "label": f"   ✅ {len(evenements)} {t('checks, all passed')}",
+                "detail": "",
+            }
+        )
+
+    # ── Validation ──
+    lst.append(
+        {"kind": "header", "label": f"── {t('Validation')} ──", "detail": ""}
+    )
+    for role, chemin, existe, _quoi in quality.log_sources():
+        lst.append(
+            {
+                "kind": "source",
+                "label": f"   {'📄' if existe else '∅'} {role[:24]}",
+                "detail": "",
+                "path": chemin,
+            }
+        )
+    lst.append(
+        {
+            "kind": "logscan",
+            "label": f"   🔎 {t('errors in the log')}",
+            "detail": "",
+        }
+    )
+
+    # ── Revue ──
+    lst.append(
+        {"kind": "header", "label": f"── {t('Review')} ──", "detail": ""}
+    )
+    for rang, (question, commande, clef) in enumerate(quality.REVUE, 1):
+        lst.append(
+            {
+                "kind": "review",
+                "label": f"   {rang}. {t(question)[:26]}",
+                "detail": "▶" if clef else "",
+                "question": question,
+                "command": (
+                    commande.format(db=cible) if cible and clef else ""
+                ),
+            }
+        )
+    return lst
+
+
+def rerun_command(event, database):
+    """La commande qui rejoue ce verdict, ou "" si on ne sait pas la refaire.
+
+    On la RECONSTRUIT depuis le nom de l'outil plutôt que de rejouer le
+    `detail` tel quel : celui-ci porte le chemin d'un venv de palier, qui
+    n'est plus celui du checkout courant.
+    """
+    if not database:
+        return ""
+    outils = {
+        "smoke_public_url": "script/odoo/migration/smoke_public_url.py",
+        "database_cleanup": "script/odoo/migration/database_cleanup.py",
+        "check_hidden_models": "script/odoo/migration/check_hidden_models.py",
+    }
+    chemin = outils.get(event.get("name", ""))
+    if not chemin:
+        return ""
+    return f"{chemin} -d {database}"
 
 
 def head_text(lst_snapshot):
@@ -159,6 +292,183 @@ def statistics(etat, precedent):
     ]
 
 
+EXTRA_KINDS = (
+    "header",
+    "verdict",
+    "verdict-none",
+    "verdict-ok",
+    "source",
+    "logscan",
+    "review",
+)
+
+
+def extra_pane(row, colour=False):
+    """Le panneau des trois sections ajoutées sous les paliers."""
+    genre = row["kind"]
+    if genre == "header":
+        return t("Pick a line below.")
+    if genre == "verdict":
+        return verdict_pane(row, colour)
+    if genre == "verdict-none":
+        return "\n".join(
+            [
+                t("The migration recorded no verdict."),
+                "",
+                t("Verdicts live in lst_event of the progression file,"),
+                t("not in command_executed, which only lists what ran."),
+            ]
+        )
+    if genre == "verdict-ok":
+        return t("Every recorded check returned zero.")
+    if genre == "source":
+        return source_pane(row, colour)
+    if genre == "logscan":
+        return logscan_pane(colour)
+    if genre == "review":
+        return review_pane(row, colour)
+    return ""
+
+
+def verdict_pane(row, colour=False):
+    """Ce qu'un verdict raté dit, et ce que son code de retour signifie."""
+    event = row.get("event") or {}
+    lignes = [
+        status.paint(f"❌ {event.get('name')}", "fail", colour),
+        "",
+        # Le palier est la version d'ODOO, pas le compteur du pilote :
+        # « 4.1.I » désigne la première étape du quatrième bloc, et la
+        # migration en est alors au palier 14. Les afficher tous deux sous
+        # le même mot faisait lire « palier 4.1 », qui n'existe pas.
+        f"   {t('step'):<10} {quality.event_step(event)}"
+        f"   ({event.get('step')})",
+        f"   {t('when'):<10} {event.get('at')[:19]}",
+        f"   {t('status'):<10} {event.get('status')}",
+        "",
+        f"   {t('what it ran')}",
+        f"      {event.get('detail', '')[:150]}",
+        "",
+    ]
+    sens = {
+        "smoke_public_url": t(
+            "1 means a public page failed — not merely a finding."
+        ),
+        "database_cleanup": t(
+            "1 means leftovers remain that it could not drop."
+        ),
+    }.get(event.get("name"), "")
+    if sens:
+        lignes.append(f"   {sens}")
+        lignes.append("")
+    if row.get("command"):
+        lignes.append(
+            status.paint(
+                f"   ▶ {t('press r to run it again')}", "step", colour
+            )
+        )
+        lignes.append(f"      {row['command']}")
+        lignes.append("")
+        lignes.append(
+            f"   {t('The screen steps aside, the test takes the terminal,')}"
+        )
+        lignes.append(f"   {t('and you come back with Enter.')}")
+    else:
+        lignes.append(f"   {t('No known way to replay this one.')}")
+    return "\n".join(lignes)
+
+
+def source_pane(row, colour=False):
+    """Où la migration laisse ses traces, et ce que chacune contient."""
+    lignes = [status.paint(t("Where the traces live"), "step", colour), ""]
+    for role, chemin, existe, quoi in quality.log_sources():
+        marque = "📄" if existe else "∅"
+        teinte = "ok" if existe else "warn"
+        lignes.append(f"   {marque} {status.paint(role, teinte, colour)}")
+        lignes.append(f"      {chemin}")
+        lignes.append(f"      {quoi}")
+        if not existe:
+            lignes.append(f"      {t('missing: nothing was written here')}")
+        lignes.append("")
+    lignes.append(f"   {t('To read the verdicts by hand:')}")
+    lignes.append("      python3 - <<'PY'")
+    lignes.append("      import json, io")
+    lignes.append(
+        "      d = json.load(io.open("
+        f"'{quality.DEFAULT_PROGRESSION}', encoding='utf-8'))"
+    )
+    lignes.append("      for e in d['lst_event']:")
+    lignes.append("          if e.get('status'):")
+    lignes.append("              print(e['step'], e['name'], e['status'])")
+    lignes.append("      PY")
+    return "\n".join(lignes)
+
+
+def logscan_pane(colour=False):
+    """Les erreurs du journal d'Odoo — ou pourquoi il n'y en a pas."""
+    rapport = quality.scan_log()
+    lignes = [status.paint(t("Errors in the Odoo log"), "step", colour), ""]
+    lignes.append(f"   {rapport['path']}")
+    if not rapport["exists"]:
+        lignes.append("")
+        lignes.append(
+            status.paint(
+                f"   ∅ {t('This file does not exist.')}", "warn", colour
+            )
+        )
+        lignes.append("")
+        lignes.append(
+            f"   {t('config.conf has an empty logfile=, so Odoo writes to')}"
+        )
+        lignes.append(
+            f"   {t('the terminal and its output dies with it. To keep it:')}"
+        )
+        lignes.append("")
+        lignes.append(
+            f"      logfile = {os.path.abspath(quality.JOURNAL_ODOO)}"
+        )
+        return "\n".join(lignes)
+    lignes.append("")
+    for motif, combien in rapport["counts"].items():
+        teinte = "fail" if combien else "ok"
+        lignes.append(
+            f"   {status.paint(motif.ljust(10), teinte, colour)} {combien}"
+        )
+    if rapport["lines"]:
+        lignes.append("")
+        lignes.append(f"   {t('last offending lines')}")
+        for ligne in rapport["lines"]:
+            lignes.append(f"      {ligne}")
+    return "\n".join(lignes)
+
+
+def review_pane(row, colour=False):
+    """Une étape de la revue : ce qu'elle prouve, et ce qu'elle ne prouve pas."""
+    lignes = [
+        status.paint(t(row.get("question", "")), "step", colour),
+        "",
+    ]
+    if row.get("command"):
+        lignes.append(f"   {row['command']}")
+        lignes.append("")
+        lignes.append(
+            status.paint(f"   ▶ {t('press r to run it')}", "step", colour)
+        )
+    else:
+        lignes.append(f"   {t('Read it in the Verdicts section above.')}")
+    lignes.append("")
+    lignes.append(f"   {t('What none of these can see')}")
+    lignes.append(
+        f"      {t('They all read the DATABASE. A module that kept a')}"
+    )
+    lignes.append(
+        f"      {t('pre-18 view type, or an image URL Odoo no longer')}"
+    )
+    lignes.append(
+        f"      {t('accepts, breaks at runtime on a perfectly sound one.')}"
+    )
+    return "\n".join(lignes)
+
+
 def pane_text(lst_snapshot, row, colour=False, mode=None):
     """Le détail du palier choisi, ou le bilan d'ensemble.
 
@@ -168,6 +478,8 @@ def pane_text(lst_snapshot, row, colour=False, mode=None):
     """
     if row is None:
         return t("Nothing to show yet.")
+    if row["kind"] in EXTRA_KINDS:
+        return extra_pane(row, colour)
     if row["kind"] == "missing":
         return f"⚠️  {row['data']['database']} : {t('database not found')}"
     etat = row["data"]
@@ -222,6 +534,41 @@ def mode_label(mode):
     return t(mode)
 
 
+def run_in_terminal(command, wait=True):
+    """Rendre le terminal au test, puis le reprendre. (code, a_tourné).
+
+    L'écran DOIT s'effacer : `smoke_public_url` monte une instance Odoo et
+    écrit des centaines de lignes ; les capturer les cacherait, et les
+    laisser passer par-dessus la TUI la déchirerait. Textual sait se
+    retirer — `suspend()` chez l'appelant — et c'est le seul moment où ce
+    processus peut lancer autre chose sans se battre pour l'affichage.
+
+    L'attente d'Entrée n'est pas une politesse : sans elle, l'écran se
+    reconstruit par-dessus le résultat avant qu'on ait pu le lire.
+    """
+    if not command:
+        return None, False
+    argv = command.split()
+    if argv[0].endswith(".py"):
+        argv = [sys.executable] + argv
+    print()
+    print(f"▶ {' '.join(argv)}")
+    print("─" * 72)
+    try:
+        code = subprocess.run(argv, cwd=REPO_ROOT).returncode
+    except OSError as exc:
+        print(f"❌ {exc}")
+        code = None
+    print("─" * 72)
+    print(f"↩ {t('exit code:')} {code}")
+    if wait:
+        try:
+            input(t("Press Enter to go back to the screen…"))
+        except (EOFError, KeyboardInterrupt):
+            pass
+    return code, True
+
+
 def build_app(lst_snapshot):
     """Textual est importé ICI : le module reste testable sans lui."""
     from rich.text import Text
@@ -235,6 +582,7 @@ def build_app(lst_snapshot):
             ("q,escape", "quit", t("Quit")),
             ("m", "toggle_missing", t("Missing files")),
             ("d", "cycle_detail", t("Details")),
+            ("r,enter", "run_selected", t("Run")),
         ]
 
         def __init__(self, lst_snapshot):
@@ -304,6 +652,28 @@ def build_app(lst_snapshot):
             courant = self.mode if self.mode in suite else None
             self.mode = suite[(suite.index(courant) + 1) % len(suite)]
             self._show()
+
+        def action_run_selected(self):
+            """Rejouer le test de la ligne choisie, hors de l'écran.
+
+            `suspend()` rend le terminal pour de bon : le test peut monter
+            son instance Odoo et écrire ce qu'il veut. Rien n'est capturé,
+            donc rien n'est caché.
+            """
+            row = (
+                self.lst_row[self.index]
+                if self.lst_row and self.index < len(self.lst_row)
+                else None
+            )
+            commande = row.get("command") if row else ""
+            if not commande:
+                # Une ligne sans commande n'est pas une erreur : la plupart
+                # n'en ont pas. Un bip dit « rien ici » sans interrompre.
+                self.bell()
+                return
+            with self.suspend():
+                run_in_terminal(commande)
+            self.refresh()
 
         def on_data_table_row_highlighted(self, event):
             if event.data_table.id == "left" and self.lst_row:
