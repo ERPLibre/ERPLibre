@@ -364,10 +364,6 @@ class TestTheRefusalToWrite(unittest.TestCase):
         self.assertEqual(appels, [])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestTheSqlNeverTravelsThroughArgv(unittest.TestCase):
     """La panne signalée : « OSError: [Errno 7] Argument list too long ».
 
@@ -895,3 +891,7 @@ class TestTheProbeDistrustsWhatItReads(unittest.TestCase):
         champs = [self._champ("a"), self._champ("b")]
         _, bornes = self._sonder("8.0:13.0\x1f1.0:2.0", champs)
         self.assertEqual(len(bornes["m"]), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

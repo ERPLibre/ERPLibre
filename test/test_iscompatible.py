@@ -92,3 +92,7 @@ class TestIsCompatible(unittest.TestCase):
 
     def test_not_equal_false(self):
         self.assertFalse(iscompatible("foo!=1.0.0", Version("1.0.0")))
+
+
+if __name__ == "__main__":
+    unittest.main()

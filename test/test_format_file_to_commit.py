@@ -138,3 +138,7 @@ class TestGetModifiedFiles(unittest.TestCase):
         mock_run.side_effect = subprocess.CalledProcessError(1, "git")
         files = get_modified_files()
         self.assertIsNone(files)
+
+
+if __name__ == "__main__":
+    unittest.main()

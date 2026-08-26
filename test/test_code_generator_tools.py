@@ -197,3 +197,7 @@ class TestArgsTypeParam(unittest.TestCase):
 
     def test_selection_has_selection(self):
         self.assertIn("selection", ARGS_TYPE_PARAM["Selection"])
+
+
+if __name__ == "__main__":
+    unittest.main()

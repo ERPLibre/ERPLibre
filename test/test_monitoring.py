@@ -250,10 +250,6 @@ class TestWhatAMigrationLeftBehind(unittest.TestCase):
         self.assertTrue(residue.judge(plein)[0])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestTheScreenAnswersKeys(unittest.TestCase):
     """Presser les touches, et pas seulement lire les fonctions pures.
 
@@ -436,3 +432,7 @@ class TestTheRepairAsksItsOwnDetector(unittest.TestCase):
             'env.user.has_group(\n            "product.group_product_pricelist"',
             source,
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
