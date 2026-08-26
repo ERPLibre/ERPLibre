@@ -90,7 +90,15 @@ try:
         rapport["pricelist_group"] = bool(
             fonction and employe and fonction in employe.implied_ids
         )
-        if not DRY and rapport["pricelist_group"]:
+        # Et seulement s'il n'y en a AUCUNE. `_activate_or_create_pricelists`
+        # ne compte pas une liste PARTAGÉE (company_id vide) comme
+        # appartenant à la société : appelée alors qu'une liste existe, elle
+        # en ajoute une seconde. Mesuré sur une migration où la liste avait
+        # traversé les six paliers — la réparation a créé un doublon vide à
+        # côté d'elle. Cet outil a son détecteur ; il le consulte.
+        if not DRY and rapport["pricelist_group"] and not rapport[
+            "pricelist_before"
+        ]:
             Societe._activate_or_create_pricelists()
             env.cr.commit()
         rapport["pricelist_after"] = Liste.search_count([])

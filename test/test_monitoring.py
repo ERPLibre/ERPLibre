@@ -383,3 +383,56 @@ class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
         sql = " ".join(self._controle()["sql"].split())
         self.assertIn("ir_module_module", sql)
         self.assertIn("to_regclass", sql)
+
+
+class TestTheRepairAsksItsOwnDetector(unittest.TestCase):
+    """Une réparation qui n'écoute pas son détecteur fabrique des doublons.
+
+    Mesuré sur une migration de bout en bout : la liste de prix avait
+    traversé les six paliers, PARTAGÉE entre sociétés (company_id vide).
+    `_activate_or_create_pricelists` ne compte pas une liste partagée
+    comme appartenant à la société — elle en a donc créé une seconde,
+    vide, à côté de celle du client.
+
+    Le détecteur `pricelist_missing`, lui, disait déjà « rien ne manque ».
+    Il fallait que la réparation le lui demande.
+    """
+
+    def _source(self):
+        from pathlib import Path
+
+        chemin = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "odoo"
+            / "migration"
+            / "restore_config_defaults.py"
+        )
+        return chemin.read_text(encoding="utf-8")
+
+    def _garde(self):
+        """Le texte qui précède l'APPEL, pas sa mention dans la docstring.
+
+        `index` trouvait la PREMIÈRE occurrence — celle de l'en-tête du
+        module, qui explique justement ce que fait cette méthode. Le test
+        s'évaluait alors sur un extrait de prose et échouait. `rindex`
+        prend la dernière, qui est l'appel.
+        """
+        source = self._source()
+        debut = source.rindex("_activate_or_create_pricelists()")
+        return source[max(0, debut - 400) : debut]
+
+    def test_the_repair_is_gated_on_an_empty_count(self):
+        self.assertIn("pricelist_before", self._garde())
+
+    def test_the_feature_condition_is_still_there(self):
+        self.assertIn("pricelist_group", self._garde())
+
+    def test_the_feature_is_read_from_the_implication(self):
+        """Et non de l'appartenance de celui qui exécute."""
+        source = self._source()
+        self.assertIn("implied_ids", source)
+        self.assertNotIn(
+            'env.user.has_group(\n            "product.group_product_pricelist"',
+            source,
+        )
