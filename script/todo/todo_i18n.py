@@ -3422,6 +3422,10 @@ TRANSLATIONS = {
         "fr": "L'adresse écrite n'est peut-être pas celle qu'il faut à pmxcfs.",
         "en": "The address written may not be the one pmxcfs needs.",
     },
+    "Destroy all that? (y/N): ": {
+        "fr": "Détruire tout cela ? (o/N) : ",
+        "en": "Destroy all that? (y/N): ",
+    },
     "Long tests - real VMs, hours": {
         "fr": "⏳ Tests longs - vraies VM, des heures",
         "en": "⏳ Long tests - real VMs, hours",

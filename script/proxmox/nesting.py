@@ -81,7 +81,10 @@ def nesting_plan(
     ram = ((int(ram_dispo_mo) - HOTE_RESERVE_RAM_MO) // 1024) * 1024
     disque = int(disque_libre_go) - HOTE_RESERVE_DISQUE_GO
     niveaux, arret = [], ""
-    for niveau in range(1, max(1, int(profondeur)) + 1):
+    # « max(1, …) » forçait un tour : profondeur 0 rendait un plan d'UN
+    # étage, et « --depth 0 » créait donc une VM. range(1, 1) est déjà vide,
+    # et un plan vide est la bonne réponse à une demande vide.
+    for niveau in range(1, int(profondeur) + 1):
         if niveau > 1:
             ram -= PVE_RAM_MO
             disque -= PVE_DISQUE_GO
@@ -94,8 +97,16 @@ def nesting_plan(
         niveaux.append(
             {
                 "niveau": niveau,
+                # Le plancher est VCPU_IMBRIQUE et non 1 : sur un hôte de
+                # quatre cœurs, « // 4 » donnait UN vCPU au premier étage —
+                # l'hyperviseur parent — alors que son invité en recevait
+                # deux. Un parent plus étroit que son enfant est absurde, et
+                # c'est tout l'inverse de ce que ce module raconte.
                 "vcpu": (
-                    max(1, min(VCPU_NIVEAU1_MAX, int(cpu_hote) // 4))
+                    max(
+                        VCPU_IMBRIQUE,
+                        min(VCPU_NIVEAU1_MAX, int(cpu_hote) // 4),
+                    )
                     if niveau == 1
                     else VCPU_IMBRIQUE
                 ),

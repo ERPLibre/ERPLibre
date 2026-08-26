@@ -76,7 +76,13 @@ class LongTestMenuMixin:
                     "deep_proxmox.py", f"--depth {self._longtest_depth()}"
                 )
             elif status == "3":
-                self._longtest_run("deep_proxmox.py", "--detruire")
+                # Le script demande « OUI » avant de détruire, mais il liste
+                # d'abord : on lui fait faire cette liste À BLANC pour que le
+                # choix « 3 » d'une touche ne mène pas directement à un
+                # « qm destroy --purge ».
+                self._longtest_run("deep_proxmox.py", "--detruire --dry-run")
+                if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
+                    self._longtest_run("deep_proxmox.py", "--detruire")
             else:
                 print(t("Command not found !"))
 

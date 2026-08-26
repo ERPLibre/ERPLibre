@@ -135,9 +135,27 @@ class Descente:
         self.journal = journal
         self.dry_run = dry_run
         self.etages = []
+        self.interrompu = False
+        self.niveau_courant = 1
 
     def dire(self, msg):
         dire(msg, self.journal)
+
+    def delai(self, etape):
+        """Le délai de cette étape, à l'étage courant.
+
+        Constant, il contredisait la raison d'être du script : au quatrième
+        étage un invité tournait 36 fois moins vite. Une installation de dix
+        minutes au premier étage en demande des heures au quatrième, et le
+        plafond fixe la déclarait échouée — en concluant à un mur
+        d'imbrication là où il n'y avait qu'un délai trop court.
+
+        Le facteur est CARRÉ et borné : chaque étage ajoute une couche
+        d'hyperviseur à traverser, mais un facteur illimité rendrait un
+        échec réel indiscernable d'une attente sans fin.
+        """
+        facteur = min(max(1, self.niveau_courant), 5) ** 2
+        return DELAIS[etape] * facteur
 
     # ---------------------------------------------------------------- #
     # Parler aux machines
@@ -171,12 +189,25 @@ class Descente:
         if self.dry_run:
             return 0
         debut = time.time()
+        # SANS privilège : wrap_privilege transformerait « true » en
+        # « sudo sh -c true », et un sudo qui réclame un mot de passe — le
+        # temps que cloud-init écrive /etc/sudoers.d — se lisait « jamais
+        # joignable en ssh ». Le transport marchait ; c'est le diagnostic qui
+        # était faux.
+        sonde = dict(hote, sudo="")
         while time.time() - debut < delai:
-            code, _o = pve.run(hote, "true", 30)
+            code, _o = pve.run(sonde, "true", 60)
             if code == 0:
                 return int(time.time() - debut)
             time.sleep(15)
         return None
+
+    def sudo_pret(self, hote):
+        """sudo répond-il sans mot de passe ? Nommé à part de ssh."""
+        if self.dry_run:
+            return True
+        code, _o = pve.run(hote, "true", 60)
+        return code == 0
 
     # ---------------------------------------------------------------- #
     # Les six étapes, les mêmes à chaque étage
@@ -187,7 +218,7 @@ class Descente:
         distant = "/tmp/install_proxmox.sh"
         if self.dry_run:
             print(f"      scp {local} <hôte>:{distant}")
-            print(f"      sh {distant}")
+            print(f"      bash {distant}")
             return True
         argv = pve.ssh_argv(hote, "")[:-1]  # les options, sans la commande
         cible = argv[-1]
@@ -201,10 +232,14 @@ class Descente:
         if res.returncode:
             self.dire(f"      ✗ scp : {res.stderr.strip()[:200]}")
             return False
+        # « bash » et non « sh » : le script porte « set -euo pipefail » et un
+        # shebang bash. Sur Debian /bin/sh est dash, qui répond « set: Illegal
+        # option -o pipefail » et sort à la PREMIÈRE ligne — vérifié. Chaque
+        # étage aurait échoué sur l'installation, à tous les coups.
         code, _o = self.executer(
             dict(hote, sudo=""),
-            f"sh {distant}",
-            DELAIS["install"],
+            f"bash {distant}",
+            self.delai("install"),
             "install_proxmox.sh",
             montrer=True,
         )
@@ -219,19 +254,36 @@ class Descente:
         dépouillé de tout netfilter : ni pont NAT, ni invité.
         """
         if self.dry_run:
-            print("      reboot puis attente de *-pve dans uname -r")
+            print("      reboot, puis btime changé ET *-pve dans uname -r")
             return True
+        # L'instant de démarrage AVANT : le noyau seul ne prouve rien. Rejoué
+        # sur un étage déjà installé, le script est idempotent et ne redémarre
+        # pas ; vingt secondes après l'ordre, sshd répond encore et la machine
+        # tourne DÉJÀ sur -pve. On validait donc un redémarrage qui n'avait pas
+        # eu lieu, et l'étape suivante tombait sur une machine en train de
+        # s'éteindre — avec un diagnostic sans rapport. Même piège que celui
+        # corrigé dans le suivi d'installation, refait ici.
+        _c, out = pve.run(dict(hote, sudo=""), "stat -c %Y /proc/1", 60)
+        avant = pve.strip_ssh_noise(out).strip()
         pve.run(hote, "systemctl reboot", 60)
         debut = time.time()
-        while time.time() - debut < DELAIS["reboot"]:
+        while time.time() - debut < self.delai("reboot"):
             time.sleep(20)
-            code, out = pve.run(dict(hote, sudo=""), "uname -r", 30)
-            noyau = pve.strip_ssh_noise(out).strip()
-            if code == 0 and "-pve" in noyau:
-                self.dire(
-                    f"      noyau {noyau} après {int(time.time() - debut)} s"
-                )
-                return True
+            code, out = pve.run(
+                dict(hote, sudo=""), "uname -r; stat -c %Y /proc/1", 60
+            )
+            lignes = pve.strip_ssh_noise(out).strip().splitlines()
+            if code or len(lignes) < 2:
+                continue
+            noyau, apres = lignes[0].strip(), lignes[-1].strip()
+            if "-pve" not in noyau:
+                continue
+            if avant and apres == avant:
+                continue  # elle n'a pas encore redémarré
+            self.dire(
+                f"      noyau {noyau} après {int(time.time() - debut)} s"
+            )
+            return True
         self.dire("      ✗ pas revenue sur un noyau -pve")
         return False
 
@@ -252,7 +304,7 @@ class Descente:
             (pve.hosts_repair_cmd(ip), "/etc/hosts"),
         ):
             code, sortie = self.executer(
-                hote, cmd, DELAIS["reparation"], etiquette
+                hote, cmd, self.delai("reparation"), etiquette
             )
             if code or "-KO" in pve.strip_ssh_noise(sortie):
                 self.dire(f"      ✗ {etiquette}")
@@ -262,7 +314,7 @@ class Descente:
                 hote, pve.pve_unit_cmd(unite, remonte=True), 300, unite
             )
         _c, out = self.executer(
-            hote, pve.mount_wait_cmd(), DELAIS["reparation"], "montage"
+            hote, pve.mount_wait_cmd(), self.delai("reparation"), "montage"
         )
         vu = pve.parse_mount_wait(out)
         self.dire(f"      /etc/pve : {vu['verdict']}")
@@ -281,12 +333,15 @@ class Descente:
             self.dire("      ✗ aucun stockage sur le parent")
             return None
         _c, out = self.executer(
-            parent, "ip -o link show type bridge", DELAIS["controle"], "ponts"
+            parent,
+            "ip -o link show type bridge",
+            self.delai("controle"),
+            "ponts",
         )
         ponts = pve.parse_bridges(out)
         if not ponts:
             _c, nets = self.executer(
-                parent, pve.USED_NETS_CMD, DELAIS["controle"], "réseaux"
+                parent, pve.USED_NETS_CMD, self.delai("controle"), "réseaux"
             )
             cidr = pve.pick_internal_cidr(nets) or pve.INTERNAL_CIDR
             _c, rt = self.executer(
@@ -311,10 +366,18 @@ class Descente:
             DELAIS["controle"],
             "interfaces",
         )
+        # Le DNS de l'hôte. « --ipconfig0 » ne le porte PAS : une VM en
+        # adresse fixe route mais ne résout rien, et install_proxmox.sh meurt
+        # sur « apt update » sans que rien ne l'explique. Le rapport imputerait
+        # à l'installation ce qui est un défaut de résolveur.
+        _c, resolv = self.executer(
+            parent, pve.RESOLV_CMD, self.delai("controle"), "resolv"
+        )
         return (
             stockage or "local",
             ponts[0],
             pve.parse_bridge_config(cfg).get(ponts[0], {}),
+            pve.parse_nameservers(resolv),
         )
 
     def creer_etage1(self, res):
@@ -348,18 +411,34 @@ class Descente:
 
     def creer_enfant(self, parent, niveau, res, prepare):
         """« qm create » sur le parent. Rend (vmid, adresse) ou (None, None)."""
-        stockage, pont, info_pont = prepare
+        stockage, pont, info_pont, dns = prepare
         mod = module_qemu()
         version = mod.DISTROS[DISTRO][1]
         code_img = mod.DISTROS[DISTRO][0][version][0]
         url = mod.image_url(DISTRO, code_img, "amd64", version)
         image = mod.default_image_name(DISTRO, code_img, "amd64", version)
         _c, out = self.executer(
-            parent, "qm list", DELAIS["controle"], "qm list"
+            parent, "qm list", self.delai("controle"), "qm list"
         )
         vmid = pve.next_vmid(pve.parse_qm_list(out))
         ipconfig = pve.ipconfig_for(info_pont, vmid)
         adresse = pve.ip_from_ipconfig(ipconfig)
+        # AVANT de télécharger l'image et de démarrer quoi que ce soit : sur un
+        # pont relié au LAN, ipconfig_for rend « ip=dhcp » et l'adresse est
+        # vide. Le contrôle venait après la création : on laissait une VM
+        # allumée, un disque alloué, et une machine que --detruire ne
+        # connaissait pas.
+        if not adresse and self.dry_run:
+            # En essai à blanc on n'a rien lu du parent : conclure « pas de
+            # pont interne » serait une affirmation tirée d'une mesure qui
+            # n'a pas eu lieu. On prend une adresse plausible pour dérouler
+            # le plan jusqu'au bout.
+            adresse = "10.10.10.150"
+            ipconfig = f"ip={adresse}/24,gw=10.10.10.1"
+        if not adresse:
+            self.dire("      ✗ pas d'adresse fixe : le parent n'a pas de")
+            self.dire("        pont interne, et l'enfant serait injoignable")
+            return None, None
         spec = {
             "name": nom_etage(niveau),
             "storage": stockage,
@@ -371,6 +450,7 @@ class Descente:
             "user": "erplibre",
             "ipconfig": ipconfig,
             "sshkey_path": "/root/.ssh/longtest.pub",
+            "nameservers": dns,
             "start": True,
         }
         # La clé publique doit être un FICHIER sur le parent : « --sshkeys »
@@ -390,7 +470,7 @@ class Descente:
             vmid, spec
         ):
             code, _o = self.executer(
-                parent, cmd, DELAIS["creation"], "qm create"
+                parent, cmd, self.delai("creation"), "qm create"
             )
             if code and not self.dry_run:
                 return None, None
@@ -404,6 +484,7 @@ class Descente:
         parent_alias = ""
         for res in self.plan["niveaux"]:
             niveau = res["niveau"]
+            self.niveau_courant = niveau
             debut = time.time()
             etage = {
                 "niveau": niveau,
@@ -419,6 +500,7 @@ class Descente:
                 nom = self.creer_etage1(res)
                 if not nom:
                     self.etages.append(etage)
+                    self.interrompu = True
                     break
                 alias = nom
             else:
@@ -426,32 +508,31 @@ class Descente:
                 if not prepare:
                     etage["etape"] = "parent"
                     self.etages.append(etage)
+                    self.interrompu = True
                     break
                 vmid, adresse = self.creer_enfant(parent, niveau, res, prepare)
                 if vmid is None:
                     self.etages.append(etage)
+                    self.interrompu = True
                     break
                 etage["vmid"] = vmid
+                # Le parent est noté AVANT tout autre contrôle : c'est le seul
+                # enregistrement de ce qu'on vient de créer, et --detruire s'en
+                # sert. Sans lui, une VM abandonnée juste après « qm create »
+                # n'était nommée nulle part.
+                etage["parent_alias"] = parent_alias
                 alias = alias_etage(niveau, parent_alias)
                 if not self.dry_run:
-                    if not adresse:
-                        # Sur un pont interne l'adresse est FIXE et dérivée du
-                        # VMID. Vide, c'est que le parent n'a pas de pont
-                        # interne — écrire un alias sans HostName donnerait
-                        # une entrée qui ne mène nulle part.
-                        self.dire("      ✗ pas d'adresse fixe pour l'enfant")
-                        etage["etape"] = "adresse"
-                        self.etages.append(etage)
-                        break
                     self.ecrire_alias(alias, adresse, parent_alias)
             cible = {"target": alias, "sudo": "sudo ", "jump": ""}
             etage["alias"] = alias
 
             etage["etape"] = "ssh"
-            attente = self.attendre_ssh(cible, DELAIS["ssh"])
+            attente = self.attendre_ssh(cible, self.delai("ssh"))
             if attente is None:
                 self.dire("      ✗ jamais joignable en ssh")
                 self.etages.append(etage)
+                self.interrompu = True
                 break
             etage["ssh_secondes"] = attente
             self.dire(f"      ssh après {attente} s")
@@ -466,13 +547,16 @@ class Descente:
                     self.etages.append(etage)
                     return self.rapport(interrompu=True)
 
-            etage["etape"] = "termine"
-            etage["ok"] = True
+            # En dry-run, aucune étape n'a été mesurée : les marquer
+            # « atteintes » produisait un rapport indiscernable d'une vraie
+            # réussite, JSON compris, et un code de sortie 0.
+            etage["etape"] = "plan" if self.dry_run else "termine"
+            etage["ok"] = not self.dry_run
             etage["secondes"] = int(time.time() - debut)
             self.etages.append(etage)
             self.dire(f"      ✓ étage {niveau} en {etage['secondes']} s")
             parent, parent_alias = cible, alias
-        return self.rapport()
+        return self.rapport(interrompu=self.interrompu)
 
     def ecrire_alias(self, alias, adresse, parent_alias):
         """Une entrée ~/.ssh/config pour joindre l'enfant à travers le parent."""
@@ -491,69 +575,236 @@ class Descente:
     def rapport(self, interrompu=False):
         atteint = sum(1 for e in self.etages if e["ok"])
         print("")
-        self.dire(
-            f"  profondeur atteinte : {atteint} / {self.plan['demandee']}"
-        )
+        if self.dry_run:
+            self.dire(
+                f"  plan annoncé sur {len(self.etages)} étage(s) —"
+                " rien n'a été créé"
+            )
+        else:
+            self.dire(
+                f"  profondeur atteinte : {atteint}"
+                f" / {self.plan['demandee']}"
+            )
         for e in self.etages:
-            marque = "✓" if e["ok"] else "✗"
-            detail = f"{e.get('secondes', '—')} s" if e["ok"] else e["etape"]
+            if self.dry_run:
+                marque, detail = "·", "plan"
+            else:
+                marque = "✓" if e["ok"] else "✗"
+                detail = (
+                    f"{e.get('secondes', '—')} s" if e["ok"] else e["etape"]
+                )
             self.dire(f"    {marque} étage {e['niveau']:2d}  {detail}")
         return {
             "demandee": self.plan["demandee"],
             "atteignable": self.plan["atteignable"],
             "atteinte": atteint,
             "interrompu": interrompu,
+            # Sans ce champ, un rapport d'essai à blanc se lisait comme une
+            # descente réussie — et « --detruire » s'en servait.
+            "dry_run": self.dry_run,
             "etages": self.etages,
         }
 
 
-def detruire(journal=None):
-    """Défait ce que la descente a posé, du plus profond au plus haut.
+def dernier_rapport():
+    """Le rapport JSON le plus récent, ou {}.
 
-    Du plus profond : détruire un parent d'abord emporterait ses enfants sans
-    qu'on ait pu les nommer, et laisserait des entrées ssh vers rien.
+    C'est le SEUL enregistrement de ce que la descente a créé : un couple
+    (alias du parent, VMID) par étage. Détruire d'après lui, et non d'après
+    les noms, est toute la différence entre défaire son propre travail et
+    effacer une machine qui se trouve porter un nom voisin.
     """
-    from script.todo.todo import TODO
+    dossier = os.path.expanduser("~/.erplibre/longtest")
+    try:
+        fichiers = sorted(
+            f for f in os.listdir(dossier) if f.endswith(".json")
+        )
+    except OSError:
+        return {}
+    for nom in reversed(fichiers):
+        try:
+            with open(os.path.join(dossier, nom), encoding="utf-8") as fh:
+                rapport = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if rapport.get("dry_run"):
+            continue  # un plan n'a rien créé
+        rapport["fichier"] = os.path.join(dossier, nom)
+        return rapport
+    return {}
 
-    hosts = [h for h in TODO._ssh_config_hosts() if NOM_BASE in h]
-    hosts.sort(key=lambda h: -h.count("+"))
-    dire(f"  {len(hosts)} entrée(s) ssh à défaire", journal)
-    for alias in hosts:
-        bloc = TODO._ssh_config_block(alias)
-        saut = (bloc or {}).get("proxyjump")
-        if saut:
-            parent = {"target": saut, "sudo": "sudo ", "jump": ""}
-            _c, out = pve.run(parent, "qm list", 120)
-            for vm in pve.parse_qm_list(out):
-                if NOM_BASE in (vm.get("name") or ""):
-                    dire(f"    qm destroy {vm['vmid']} sur {saut}", journal)
-                    pve.run(
-                        parent,
-                        f"qm stop {vm['vmid']} --skiplock 1 || true;"
-                        f" qm destroy {vm['vmid']} --purge 1",
-                        300,
-                    )
-    for niveau in range(1, 30):
-        nom = nom_etage(niveau)
-        if nom in hosts or niveau == 1:
-            subprocess.run(
-                ["sudo", "virsh", "destroy", nom],
-                capture_output=True,
-            )
-            subprocess.run(
-                [
-                    "sudo",
-                    "virsh",
-                    "undefine",
-                    nom,
-                    "--nvram",
-                    "--remove-all-storage",
-                ],
-                capture_output=True,
-            )
-    dire(
-        "  ✓ défait. Les entrées ssh orphelines : menu de nettoyage.", journal
+
+def a_defaire(rapport):
+    """[(niveau, parent_alias, vmid, nom)] du plus PROFOND au plus haut.
+
+    Trié sur le niveau LU dans le rapport, pas déduit du nom. La version
+    d'avant comptait les « + » de l'alias — or `alias_etage` remplace le « + »
+    du parent par un « - », donc chaque alias en portait exactement UN et le
+    tri ne triait rien. La destruction partait du plus HAUT : « qm destroy
+    --purge » sur l'étage 2 emportait le disque contenant les étages 3 et
+    suivants, sans les avoir arrêtés ni nommés.
+    """
+    etages = [
+        e
+        for e in (rapport.get("etages") or [])
+        if e.get("vmid") and e.get("parent_alias")
+    ]
+    etages.sort(key=lambda e: -int(e["niveau"]))
+    return [
+        (
+            int(e["niveau"]),
+            e["parent_alias"],
+            int(e["vmid"]),
+            nom_etage(int(e["niveau"])),
+        )
+        for e in etages
+    ]
+
+
+def detruire_une(parent_alias, vmid, nom, journal):
+    """Arrête puis détruit UNE VM, par son VMID. Rend True si elle a disparu.
+
+    Par le VMID et par égalité stricte du nom : un filtre par sous-chaîne
+    aurait pris une « deep-pve-lab » de production, et « --purge » emporte les
+    disques ET les entrées de sauvegarde.
+
+    L'arrêt est CONSTATÉ avant la destruction : « qm stop » rend la main dès
+    que la tâche est lancée, et sur un hyperviseur imbriqué mesuré 36 fois
+    plus lent, « qm destroy » arrivait alors que la VM tournait encore et
+    refusait avec « VM is running ».
+    """
+    parent = {"target": parent_alias, "sudo": "sudo ", "jump": ""}
+    code, out = pve.run(parent, "qm list", 180)
+    if code:
+        dire(f"    ✗ {parent_alias} injoignable : rien touché", journal)
+        return False
+    presentes = {
+        int(v["vmid"]): (v.get("name") or "") for v in pve.parse_qm_list(out)
+    }
+    if vmid not in presentes:
+        dire(f"    — {vmid} déjà absente de {parent_alias}", journal)
+        return True
+    if presentes[vmid] != nom:
+        dire(
+            f"    ✗ {vmid} sur {parent_alias} s'appelle"
+            f" « {presentes[vmid]} », pas « {nom} » : rien touché",
+            journal,
+        )
+        return False
+    pve.run(parent, f"qm stop {vmid} --skiplock 1 || true", 300)
+    for _ in range(20):
+        _c, etat = pve.run(parent, f"qm status {vmid}", 120)
+        if "stopped" in pve.strip_ssh_noise(etat):
+            break
+        time.sleep(6)
+    code, out = pve.run(parent, f"qm destroy {vmid} --purge 1", 600)
+    if code:
+        dire(f"    ✗ qm destroy {vmid} : code {code}", journal)
+        for ligne in pve.strip_ssh_noise(out).strip().splitlines()[-3:]:
+            dire(f"      {ligne}", journal)
+        return False
+    dire(f"    ✓ {nom} ({vmid}) sur {parent_alias}", journal)
+    return True
+
+
+def detruire_etage1(journal, dry_run=False):
+    """Le domaine libvirt du premier étage — le SEUL qui en soit un.
+
+    La boucle d'avant tournait sur trente niveaux avec une condition morte, et
+    sa branche « niveau == 1 » était vraie même quand la descente n'avait
+    jamais rien créé : « virsh undefine --remove-all-storage » partait alors
+    sur un domaine qui pouvait être n'importe quoi, sortie capturée, sans un
+    mot.
+    """
+    nom = nom_etage(1)
+    existe = subprocess.run(
+        ["sudo", "-n", "virsh", "dominfo", nom],
+        capture_output=True,
+        text=True,
     )
+    if existe.returncode:
+        dire(f"    — {nom} : aucun domaine libvirt", journal)
+        return True
+    if dry_run:
+        dire(
+            f"    [à blanc] virsh undefine {nom} --remove-all-storage", journal
+        )
+        return True
+    subprocess.run(
+        ["sudo", "virsh", "destroy", nom], capture_output=True, text=True
+    )
+    res = subprocess.run(
+        [
+            "sudo",
+            "virsh",
+            "undefine",
+            nom,
+            "--nvram",
+            "--remove-all-storage",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode:
+        dire(
+            f"    ✗ virsh undefine {nom} : {res.stderr.strip()[:160]}", journal
+        )
+        return False
+    dire(f"    ✓ {nom} (libvirt)", journal)
+    return True
+
+
+def detruire(journal=None, dry_run=False):
+    """Défait ce que le DERNIER rapport dit avoir créé, du plus profond.
+
+    Rien d'autre. La version d'avant prenait toute entrée ~/.ssh/config dont
+    le nom contenait « deep-pve », puis sur son rebond détruisait toute VM
+    dont le nom contenait « deep-pve » — une machine de labo appelée
+    « deep-pve-lab » sur un hyperviseur de production tombait dedans.
+    """
+    rapport = dernier_rapport()
+    if not rapport:
+        dire("  aucun rapport de descente : rien à défaire.", journal)
+        dire(
+            "  (les entrées ~/.ssh/config orphelines : menu de nettoyage)",
+            journal,
+        )
+        return 0
+    liste = a_defaire(rapport)
+    dire(f"  rapport : {rapport.get('fichier')}", journal)
+    dire(f"  {len(liste)} VM imbriquée(s) + l'étage 1 :", journal)
+    for niveau, parent_alias, vmid, nom in liste:
+        dire(
+            f"    étage {niveau:2d}  {nom} ({vmid}) sur {parent_alias}",
+            journal,
+        )
+    dire(f"    étage  1  {nom_etage(1)} (libvirt)", journal)
+    if dry_run:
+        dire("\n  --dry-run : rien ne sera détruit.", journal)
+        return 0
+    # Une confirmation, parce que « --purge » emporte les disques et que le
+    # menu lançait cette option d'une seule touche.
+    reponse = input("\n  Détruire tout cela ? (tapez OUI) : ").strip()
+    if reponse != "OUI":
+        dire("  annulé.", journal)
+        return 1
+    faits = sum(
+        1
+        for niveau, parent_alias, vmid, nom in liste
+        if detruire_une(parent_alias, vmid, nom, journal)
+    )
+    if not detruire_etage1(journal):
+        faits -= 1
+    dire(
+        f"\n  {faits} / {len(liste) + 1} défait(s)."
+        + (
+            ""
+            if faits == len(liste) + 1
+            else "  ⚠ il reste des machines : voir plus haut."
+        ),
+        journal,
+    )
+    return 0 if faits == len(liste) + 1 else 1
 
 
 def principal(argv=None):
@@ -570,8 +821,9 @@ def principal(argv=None):
     )
     os.makedirs(os.path.dirname(journal), exist_ok=True)
     if args.detruire:
-        detruire(journal)
-        return 0
+        # « --dry-run » était ignoré ici : la prudence naturelle avant une
+        # destruction détruisait pour de vrai.
+        return detruire(journal, dry_run=args.dry_run)
 
     coeurs, ram, disque = capacite_hote()
     print(
@@ -591,6 +843,9 @@ def principal(argv=None):
             f" {plan['atteignable']} — manque de {plan['arret']}"
         )
     if not plan["niveaux"]:
+        if args.depth < 1:
+            print(f"\n  profondeur demandée : {args.depth} — rien à faire.\n")
+            return 0
         print("\n  ✗ pas même un étage ne tient sur cette machine.\n")
         return 1
     print(f"\n  journal : {journal}")
@@ -598,11 +853,16 @@ def principal(argv=None):
         print("  --dry-run : rien ne sera créé.\n")
     descente = Descente(plan, journal, args.dry_run)
     rapport = descente.parcourir()
-    chemin = journal[:-4] + ".json"
+    chemin = journal[:-4] + ("-dryrun.json" if args.dry_run else ".json")
     with open(chemin, "w", encoding="utf-8") as fh:
         json.dump(rapport, fh, indent=2)
     print(f"\n  rapport : {chemin}\n")
-    return 0 if rapport["atteinte"] else 1
+    # En essai à blanc, c'est le PLAN qui est complet ou non — aucune
+    # profondeur n'a été atteinte. Hors essai, « non nul » ne suffisait pas :
+    # une descente morte au deuxième étage sur dix rendait 0.
+    if args.dry_run:
+        return 0 if rapport["atteignable"] == rapport["demandee"] else 1
+    return 0 if rapport["atteinte"] == rapport["demandee"] else 1
 
 
 if __name__ == "__main__":
