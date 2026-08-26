@@ -720,6 +720,46 @@ class ProxmoxMenuMixin:
         lignes.append(f"→ {t('This screen can repair it (see below).')}")
         return lignes
 
+    def _pve_depth(self, host):
+        """À quel étage d'imbrication se trouve cet hôte. 1 = machine réelle.
+
+        Comptée sur la chaîne de ProxyJump : un rebond par étage. C'est nous
+        qui écrivons ces entrées, donc la mesure est exacte pour notre parc.
+        """
+        from script.proxmox import nesting
+
+        return nesting.depth_from_jumps(
+            self._ssh_jump_depth(host.get("target") or "")
+        )
+
+    def _pve_depth_note(self, host, cpu):
+        """(cpu borné, lignes à dire). Ce que la profondeur impose.
+
+        L'écran lisait la capacité de l'HÔTE et l'offrait en entier. Sur un
+        troisième étage à 14 cœurs, il a proposé 12 vCPU — et la VM n'a jamais
+        démarré : même RIP à trois relevés deux minutes d'écart, pas un octet
+        lu de plus. Le nombre n'était pas absurde pour la machine ; il l'était
+        pour sa profondeur.
+
+        Un seul levier, le vCPU : la même VM gelait au MÊME octet avec 9 Go et
+        avec 2 Go, donc rogner la mémoire ne gagnerait rien et priverait
+        l'étage suivant.
+        """
+        from script.proxmox import nesting
+
+        profondeur = self._pve_depth(host)
+        borne, _ram, raison = nesting.capped_for_depth(profondeur, cpu, 0)
+        if profondeur <= nesting.PROFONDEUR_SURE:
+            return cpu, []
+        lignes = [
+            f"⚠ {t('Nesting level')} {profondeur} —"
+            f" {t('vendors document two, not more.')}",
+            f"  {t('Measured at level 4: 36x slower, then a frozen kernel.')}",
+        ]
+        if raison:
+            lignes.append(f"  {t('vCPU capped to')} {borne}")
+        return borne, lignes
+
     def _pve_ssh_ip(self, host):
         """Adresse par laquelle NOTRE ssh atteint l'hôte, ou "".
 
@@ -1088,6 +1128,12 @@ class ProxmoxMenuMixin:
         _c, cfg = self._pve_show("cat /etc/network/interfaces", quiet=True)
         infos = pve.parse_bridge_config(cfg)
         cpu, ram_libre = self._pve_capacity()
+        # La profondeur borne ce que l'écran offre. Ici, terminal encore à
+        # nous : une fois Textual à l'affiche, ces lignes n'auraient nulle
+        # part où aller.
+        cpu, notes_profondeur = self._pve_depth_note(host, cpu)
+        for ligne in notes_profondeur:
+            print(f"  {ligne}")
         # Le DNS de l'hôte, pour les VM en adresse fixe : sans lui elles
         # routent mais ne résolvent rien, et « apt update » échoue sans que
         # rien ne l'explique. Mesuré sur la VM d'essai.

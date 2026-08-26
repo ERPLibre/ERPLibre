@@ -28,6 +28,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import todo_prefs
 from script.todo.database_manager import DatabaseManager
+from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_deploy import QemuDeployMixin
@@ -96,6 +97,7 @@ class TODO(
     QemuManageMixin,
     QemuAccessMixin,
     ProxmoxMenuMixin,
+    LongTestMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1751,6 +1753,30 @@ class TODO(
             if len(mots) >= 2 and mots[0].lower() in ("proxyjump", "hostname"):
                 bloc[mots[0].lower()] = mots[1]
         return bloc or {}
+
+    @classmethod
+    def _ssh_jump_depth(cls, cible, maxi=12):
+        """Nombre de rebonds pour joindre `cible`, en suivant la chaîne.
+
+        C'est la mesure de PROFONDEUR d'un hôte imbriqué, et la seule dont on
+        dispose de l'extérieur. Elle est exacte pour les hôtes que nous avons
+        déployés : c'est nous qui écrivons ces entrées, un ProxyJump par
+        étage.
+
+        `maxi` borne le parcours : une boucle dans ~/.ssh/config — A qui
+        rebondit par B qui rebondit par A — tournerait sinon sans fin.
+        """
+        vus, sauts = set(), 0
+        courant = cible
+        while sauts < maxi:
+            bloc = cls._ssh_config_block(courant)
+            saut = (bloc or {}).get("proxyjump")
+            if not saut or saut in vus:
+                break
+            vus.add(saut)
+            courant = saut
+            sauts += 1
+        return sauts
 
     @staticmethod
     def _ssh_config_user(host):
@@ -4134,6 +4160,9 @@ class TODO(
             {"prompt_description": t("ERPLibre unit tests")},
             {"prompt_description": t("Mail unit tests")},
             {"prompt_description": t("Analyse unit tests")},
+            # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
+            # de vraies machines et durent des heures.
+            {"prompt_description": t("Long tests - real VMs, hours")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -4152,6 +4181,8 @@ class TODO(
                 self.execute_unit_tests("test_mail*.py")
             elif status == "5":
                 self.execute_unit_tests("test_analyse*.py")
+            elif status == "6":
+                self.prompt_execute_longtest()
             else:
                 print(t("Command not found !"))
 

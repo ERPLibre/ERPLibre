@@ -3422,6 +3422,50 @@ TRANSLATIONS = {
         "fr": "L'adresse écrite n'est peut-être pas celle qu'il faut à pmxcfs.",
         "en": "The address written may not be the one pmxcfs needs.",
     },
+    "Long tests - real VMs, hours": {
+        "fr": "⏳ Tests longs - vraies VM, des heures",
+        "en": "⏳ Long tests - real VMs, hours",
+    },
+    "Long tests: real VMs, hours. Not the unit suite.": {
+        "fr": "Tests longs : de vraies VM, des heures. Pas la suite unitaire.",
+        "en": "Long tests: real VMs, hours. Not the unit suite.",
+    },
+    "Nested Proxmox depth: plan only (dry-run)": {
+        "fr": "Profondeur Proxmox imbriqué : le plan seulement (à blanc)",
+        "en": "Nested Proxmox depth: plan only (dry-run)",
+    },
+    "Nested Proxmox depth: run it": {
+        "fr": "Profondeur Proxmox imbriqué : le lancer",
+        "en": "Nested Proxmox depth: run it",
+    },
+    "Undo what the descent created": {
+        "fr": "Défaire ce que la descente a créé",
+        "en": "Undo what the descent created",
+    },
+    "Script not found:": {
+        "fr": "Script introuvable :",
+        "en": "Script not found:",
+    },
+    "Depth (default 10): ": {
+        "fr": "Profondeur (défaut 10) : ",
+        "en": "Depth (default 10): ",
+    },
+    "Nesting level": {
+        "fr": "Étage d'imbrication",
+        "en": "Nesting level",
+    },
+    "vendors document two, not more.": {
+        "fr": "les fabricants en documentent deux, pas plus.",
+        "en": "vendors document two, not more.",
+    },
+    "Measured at level 4: 36x slower, then a frozen kernel.": {
+        "fr": "Mesuré au niveau 4 : 36x plus lent, puis noyau gelé.",
+        "en": "Measured at level 4: 36x slower, then a frozen kernel.",
+    },
+    "vCPU capped to": {
+        "fr": "vCPU borné à",
+        "en": "vCPU capped to",
+    },
     "pve-cluster is down: /etc/pve is not mounted.": {
         "fr": "pve-cluster est à terre : /etc/pve n'est pas monté.",
         "en": "pve-cluster is down: /etc/pve is not mounted.",
