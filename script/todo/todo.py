@@ -1468,6 +1468,18 @@ class TODO(
         existing = self._ssh_config_drop_hosts(
             existing, names + [n for n in also_drop if n not in names]
         ).rstrip("\n")
+        if not names:
+            # Retirer sans réécrire est un appel légitime : les machines
+            # n'existent plus. Sans ce retour, un « Host » NU était écrit dans
+            # le ~/.ssh/config de l'utilisateur — un bloc sans nom, suivi d'un
+            # « HostName » vide, qui s'applique alors à rien et brouille la
+            # lecture du fichier.
+            with open(cfg, "w", encoding="utf-8") as fh:
+                fh.write(existing + "\n" if existing else "")
+            os.chmod(cfg, 0o600)
+            retires = ", ".join(also_drop)
+            print(f"🗑  {t('Removed from ~/.ssh/config:')} {retires}")
+            return
         block = (
             f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"

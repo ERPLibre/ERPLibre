@@ -10,9 +10,14 @@ sans virtualisation. Ce fichier-ci vérifie la frontière, et que l'essai à
 blanc du test long dit quelque chose sans rien créer.
 """
 
+import contextlib
+import io
+import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.argv = ["todo.py"]
@@ -180,9 +185,14 @@ class TestLEssaiABlanc(unittest.TestCase):
         self.assertEqual(rapport["atteinte"], 0)
         self.assertTrue(all(not e["ok"] for e in rapport["etages"]))
 
-    def test_the_first_level_is_wide_and_the_others_are_not(self):
-        # 12 vCPU au quatrième étage ont gelé un noyau invité ; deux
-        # avançaient.
+    def test_the_plan_shrinks_towards_the_bottom(self):
+        """Chaque étage annoncé est plus étroit que son parent, sur les trois
+        ressources.
+
+        Deux vCPU à chaque étage imbriqué donnaient un parent aussi étroit que
+        son enfant : cent pour cent de surengagement, et l'hyperviseur à servir
+        par-dessus. Mesuré : l'installation de l'étage 4 dépassait 2 h 50
+        contre 793 s pour l'étage 3."""
         # Par expression exacte : la ligne « machine : … Mo … Go » du haut
         # contient les mêmes unités et décalait l'index d'un cran.
         import re
@@ -193,10 +203,17 @@ class TestLEssaiABlanc(unittest.TestCase):
             re.M,
         )
         self.assertEqual(len(plan), 4, plan)
-        niveaux = {int(n): int(v) for n, v, _r, _d in plan}
-        self.assertGreater(niveaux[1], 1, "le premier étage peut être large")
-        for niveau in (2, 3, 4):
-            self.assertEqual(niveaux[niveau], 2, f"étage {niveau}")
+        etages = sorted(
+            (int(n), int(v), int(r), int(d)) for n, v, r, d in plan
+        )
+        for parent, enfant in zip(etages, etages[1:]):
+            for i, quoi in ((1, "vCPU"), (2, "RAM"), (3, "disque")):
+                self.assertGreater(
+                    parent[i], enfant[i], f"étage {parent[0]} : {quoi}"
+                )
+        # Et le plus profond reçoit ce qu'un Proxmox de test demande, pas ce
+        # qui reste.
+        self.assertEqual(etages[-1][1], 2, "vCPU du plus profond")
 
 
 class TestDefaireSansEffacerAutreChose(unittest.TestCase):
@@ -270,6 +287,107 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
         self.assertIn("OUI", src)
         principal = inspect.getsource(self.dp.principal)
         self.assertIn("dry_run=args.dry_run", principal)
+
+
+class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
+    """Le rapport ne s'écrivait qu'à la FIN de la descente.
+
+    Constaté : une descente de dix étages arrêtée pendant l'installation du
+    quatrième laissait quatre machines réelles, et « --detruire » répondait
+    « aucun rapport de descente : rien à défaire ». Le seul enregistrement du
+    couple (alias du parent, VMID) mourait avec le processus — il fallait
+    retrouver ces VM à la main, c'est-à-dire par leur nom, ce que tout le
+    reste de ce fichier s'applique à ne pas faire.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.dossier = tempfile.mkdtemp(prefix="longtest-rapport-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+
+    def _descente_tuee(self, a_l_etage):
+        """Une descente dont l'installation MEURT à l'étage donné.
+
+        Rien de réel n'est touché : aucune des méthodes qui créent une machine
+        ou écrivent dans ~/.ssh/config n'est appelée pour de vrai.
+        """
+        niveaux = [
+            {"niveau": n, "vcpu": 2, "ram": 4096, "disque": 25}
+            for n in (1, 2, 3)
+        ]
+        plan = {"demandee": 3, "atteignable": 3, "niveaux": niveaux}
+        chemin = os.path.join(self.dossier, "rapport.json")
+        d = self.dp.Descente(plan, None, False, chemin)
+
+        appels = []
+        d.creer_etage1 = lambda res: "deep-pve-1"
+        d.preparer_parent = lambda parent: {"stockage": "local-lvm"}
+        d.creer_enfant = lambda parent, niveau, res, prep: (
+            100 + niveau,
+            f"10.10.10.{niveau}",
+        )
+        d.ecrire_alias = lambda *a, **k: None
+        d.attendre_ssh = lambda cible, delai: 1
+        d.redemarrer_et_verifier = lambda cible: True
+        d.reparer_pmxcfs = lambda cible: True
+
+        def installer(cible):
+            appels.append(cible)
+            if len(appels) >= a_l_etage:
+                raise KeyboardInterrupt("descente tuée")
+            return True
+
+        d.installer_proxmox = installer
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(KeyboardInterrupt):
+                d.parcourir()
+        with open(chemin, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_a_killed_descent_still_names_what_it_created(self):
+        rapport = self._descente_tuee(a_l_etage=3)
+        # Le couple (parent, VMID) des étages imbriqués créés : c'est de lui
+        # seul que « --detruire » se sert.
+        self.assertEqual(
+            self.dp.a_defaire(rapport),
+            [
+                (3, "deep-pve-1+deep-pve-2", 103, self.dp.nom_etage(3)),
+                (2, "deep-pve-1", 102, self.dp.nom_etage(2)),
+            ],
+        )
+
+    def test_the_report_exists_as_soon_as_the_first_vm_does(self):
+        """Tuée pendant l'installation de l'étage 1, il n'y a aucun VMID à
+        noter — mais le domaine libvirt existe, et sans rapport « --detruire »
+        ne le regardait même pas."""
+        rapport = self._descente_tuee(a_l_etage=1)
+        self.assertTrue(rapport["etages"])
+        self.assertEqual(self.dp.a_defaire(rapport), [])
+
+    def test_a_partial_report_never_reads_as_a_finished_descent(self):
+        rapport = self._descente_tuee(a_l_etage=3)
+        self.assertTrue(rapport["interrompu"])
+        self.assertLess(rapport["atteinte"], rapport["demandee"])
+        # Et il n'est pas écarté comme un essai à blanc : c'est bien de VRAIES
+        # machines qu'il parle.
+        self.assertFalse(rapport["dry_run"])
+
+    def test_a_dry_run_writes_no_partial_report(self):
+        """Un plan n'a rien créé : lui laisser écrire un rapport ferait
+        détruire d'après un plan."""
+        plan = {
+            "demandee": 1,
+            "atteignable": 1,
+            "niveaux": [{"niveau": 1, "vcpu": 2, "ram": 4096, "disque": 25}],
+        }
+        chemin = os.path.join(self.dossier, "blanc.json")
+        d = self.dp.Descente(plan, None, True, chemin)
+        with contextlib.redirect_stdout(io.StringIO()):
+            d._sauver({"niveau": 1, "vmid": 101, "parent_alias": "x"})
+        self.assertFalse(os.path.exists(chemin))
 
 
 class TestLeMenu(unittest.TestCase):

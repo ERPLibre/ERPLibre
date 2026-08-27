@@ -130,9 +130,10 @@ def alias_etage(niveau, parent_alias):
 class Descente:
     """Un étage après l'autre, et ce qu'on en sait."""
 
-    def __init__(self, plan, journal, dry_run=False):
+    def __init__(self, plan, journal, dry_run=False, chemin_json=None):
         self.plan = plan
         self.journal = journal
+        self.chemin_json = chemin_json
         self.dry_run = dry_run
         self.etages = []
         self.interrompu = False
@@ -520,6 +521,8 @@ class Descente:
                     self.interrompu = True
                     break
                 alias = nom
+                # Le domaine libvirt existe : le rapport doit exister aussi.
+                self._sauver(etage)
             else:
                 prepare = self.preparer_parent(parent)
                 if not prepare:
@@ -538,6 +541,7 @@ class Descente:
                 # sert. Sans lui, une VM abandonnée juste après « qm create »
                 # n'était nommée nulle part.
                 etage["parent_alias"] = parent_alias
+                self._sauver(etage)
                 alias = alias_etage(niveau, parent_alias)
                 if not self.dry_run:
                     self.ecrire_alias(alias, adresse, parent_alias)
@@ -560,6 +564,7 @@ class Descente:
                 ("pmxcfs", lambda: self.reparer_pmxcfs(cible)),
             ):
                 etage["etape"] = etape
+                self._sauver(etage)
                 if not action():
                     self.etages.append(etage)
                     return self.rapport(interrompu=True)
@@ -571,6 +576,7 @@ class Descente:
             etage["ok"] = not self.dry_run
             etage["secondes"] = int(time.time() - debut)
             self.etages.append(etage)
+            self._sauver()
             self.dire(f"      ✓ étage {niveau} en {etage['secondes']} s")
             parent, parent_alias = cible, alias
         return self.rapport(interrompu=self.interrompu)
@@ -589,8 +595,52 @@ class Descente:
             identity_file=prive,
         )
 
+    def _etat(self, interrompu, en_cours=None):
+        """Le rapport, à cet instant. `en_cours` : l'étage pas encore rangé."""
+        etages = list(self.etages)
+        if en_cours is not None and en_cours not in etages:
+            etages.append(en_cours)
+        return {
+            "demandee": self.plan["demandee"],
+            "atteignable": self.plan["atteignable"],
+            "atteinte": sum(1 for e in etages if e.get("ok")),
+            "interrompu": interrompu,
+            # Sans ce champ, un rapport d'essai à blanc se lisait comme une
+            # descente réussie — et « --detruire » s'en servait.
+            "dry_run": self.dry_run,
+            "etages": etages,
+        }
+
+    def _sauver(self, en_cours=None):
+        """Écrit le rapport PARTIEL, dès qu'une VM existe.
+
+        Il ne s'écrivait qu'à la fin. Une descente tuée au quatrième étage —
+        c'est arrivé — laissait quatre machines réelles et « --detruire »
+        répondait « aucun rapport : rien à défaire » : le seul enregistrement
+        du couple (alias du parent, VMID) mourait avec le processus. Il fallait
+        alors les retrouver et les détruire à la main, c'est-à-dire par leur
+        nom, ce que tout le reste de ce fichier s'applique à ne pas faire.
+
+        Marqué « interrompu » jusqu'au bout : un rapport partiel ne doit jamais
+        se lire comme une descente terminée.
+        """
+        if self.dry_run or not self.chemin_json:
+            return
+        temporaire = self.chemin_json + ".tmp"
+        try:
+            with open(temporaire, "w", encoding="utf-8") as fh:
+                json.dump(
+                    self._etat(interrompu=True, en_cours=en_cours),
+                    fh,
+                    indent=2,
+                )
+            os.replace(temporaire, self.chemin_json)
+        except OSError as err:
+            self.dire(f"      ⚠ rapport non écrit : {err}")
+
     def rapport(self, interrompu=False):
-        atteint = sum(1 for e in self.etages if e["ok"])
+        etat = self._etat(interrompu)
+        atteint = etat["atteinte"]
         print("")
         if self.dry_run:
             self.dire(
@@ -611,16 +661,7 @@ class Descente:
                     f"{e.get('secondes', '—')} s" if e["ok"] else e["etape"]
                 )
             self.dire(f"    {marque} étage {e['niveau']:2d}  {detail}")
-        return {
-            "demandee": self.plan["demandee"],
-            "atteignable": self.plan["atteignable"],
-            "atteinte": atteint,
-            "interrompu": interrompu,
-            # Sans ce champ, un rapport d'essai à blanc se lisait comme une
-            # descente réussie — et « --detruire » s'en servait.
-            "dry_run": self.dry_run,
-            "etages": self.etages,
-        }
+        return etat
 
 
 def dernier_rapport():
@@ -868,9 +909,9 @@ def principal(argv=None):
     print(f"\n  journal : {journal}")
     if args.dry_run:
         print("  --dry-run : rien ne sera créé.\n")
-    descente = Descente(plan, journal, args.dry_run)
-    rapport = descente.parcourir()
     chemin = journal[:-4] + ("-dryrun.json" if args.dry_run else ".json")
+    descente = Descente(plan, journal, args.dry_run, chemin)
+    rapport = descente.parcourir()
     with open(chemin, "w", encoding="utf-8") as fh:
         json.dump(rapport, fh, indent=2)
     print(f"\n  rapport : {chemin}\n")

@@ -1057,6 +1057,48 @@ class TestLAncienNomSEnVa(unittest.TestCase):
                 ligne.rstrip() for ligne in fh if ligne.startswith("Host ")
             ]
 
+    def test_dropping_the_last_entry_writes_no_nameless_block(self):
+        """Retirer sans réécrire est un appel légitime : les machines
+        n'existent plus.
+
+        Constaté dans le vrai ~/.ssh/config de l'utilisateur : l'appel écrivait
+        « Host » NU, suivi d'un « HostName » vide, puis mourait sur un
+        IndexError en annonçant l'ajout. Le bloc sans nom s'applique à rien et
+        brouille la lecture du fichier."""
+        import os
+
+        self.todo._write_ssh_config_entry(
+            ["deep-1"], "erplibre", "10.10.10.150"
+        )
+        self.todo._write_ssh_config_entry(
+            ["deep-2"], "erplibre", "10.10.10.151", proxy_jump="deep-1"
+        )
+        self.todo._write_ssh_config_entry(
+            [], "erplibre", "", also_drop=("deep-1", "deep-2")
+        )
+        self.assertEqual(self._hosts(), [])
+        with open(
+            os.path.join(self.maison, ".ssh/config"), encoding="utf-8"
+        ) as fh:
+            reste = fh.read()
+        self.assertNotIn("Host", reste)
+        self.assertNotIn("HostName", reste)
+        # Et le fichier garde ses droits : ssh refuse un config trop ouvert.
+        self.assertEqual(
+            oct(os.stat(os.path.join(self.maison, ".ssh/config")).st_mode)[
+                -3:
+            ],
+            "600",
+        )
+
+    def test_dropping_one_entry_leaves_the_others_untouched(self):
+        for nom, ip in (("garde-a", "10.0.0.1"), ("part", "10.0.0.2")):
+            self.todo._write_ssh_config_entry([nom], "erplibre", ip)
+        self.todo._write_ssh_config_entry(
+            [], "erplibre", "", also_drop=("part",)
+        )
+        self.assertEqual(self._hosts(), ["Host garde-a"])
+
     def test_the_old_short_entry_is_retired(self):
         # L'état d'avant : une entrée écrite sous l'ancienne convention.
         self.todo._write_ssh_config_entry(

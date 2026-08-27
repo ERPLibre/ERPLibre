@@ -278,6 +278,10 @@ TRANSLATIONS = {
         "fr": "Ajouté à ~/.ssh/config :",
         "en": "Added to ~/.ssh/config:",
     },
+    "Removed from ~/.ssh/config:": {
+        "fr": "Retiré de ~/.ssh/config :",
+        "en": "Removed from ~/.ssh/config:",
+    },
     "SSH address input method": {
         "fr": "Méthode de saisie de l'adresse SSH",
         "en": "SSH address input method",
