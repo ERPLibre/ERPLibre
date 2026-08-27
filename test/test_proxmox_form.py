@@ -1019,6 +1019,124 @@ class TestUnSeulNomDansSshConfig(unittest.TestCase):
         )
 
 
+class TestNeRienPerdreDansSshConfig(unittest.TestCase):
+    """~/.ssh/config contient les entrées PERSONNELLES de l'utilisateur.
+
+    Ce fichier est réécrit en entier à chaque déploiement de VM. Deux pertes
+    de données y ont été constatées, l'une capable de désactiver la
+    vérification de clé d'hôte sur un serveur de production."""
+
+    def setUp(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.retirer = TODO._ssh_config_drop_hosts
+
+    def test_a_block_with_an_unindented_body_goes_entirely(self):
+        """L'indentation est COSMÉTIQUE dans ce format, et un fichier écrit à
+        la main s'en passe souvent. La règle d'avant la prenait pour de la
+        syntaxe : seule la ligne « Host » partait."""
+        avant = (
+            "Host prod\n"
+            "    HostName prod.example.com\n"
+            "    User root\n"
+            "\n"
+            "Host deep-1\n"
+            "HostName 10.0.0.1\n"
+            "User erplibre\n"
+            "StrictHostKeyChecking no\n"
+            "UserKnownHostsFile /dev/null\n"
+            "IdentityFile ~/.ssh/id_deep\n"
+        )
+        apres = self.retirer(avant, ["deep-1"])
+        # Rien du bloc retiré ne subsiste : sans Host au-dessus, ssh
+        # rattacherait ces lignes à « prod » et la production perdrait sa
+        # vérification de clé d'hôte.
+        for orphelin in (
+            "10.0.0.1",
+            "StrictHostKeyChecking",
+            "UserKnownHostsFile",
+            "id_deep",
+        ):
+            self.assertNotIn(orphelin, apres, orphelin)
+        # Et le bloc de l'utilisateur est intact.
+        self.assertIn("HostName prod.example.com", apres)
+        self.assertIn("User root", apres)
+
+    def test_a_shared_host_line_keeps_the_names_not_dropped(self):
+        """« Host prod-db vm-a » perdait le prod-db de l'utilisateur : le bloc
+        partait en entier dès qu'UN de ses noms était repris."""
+        avant = (
+            "Host prod-db vm-a\n"
+            "    HostName db.interne\n"
+            "    ProxyJump pve9\n"
+        )
+        apres = self.retirer(avant, ["vm-a"])
+        self.assertIn("Host prod-db\n", apres)
+        self.assertNotIn("vm-a", apres)
+        # Le corps suit le nom qui reste : sinon prod-db perd son rebond.
+        self.assertIn("HostName db.interne", apres)
+        self.assertIn("ProxyJump pve9", apres)
+
+    def test_a_nickname_added_by_hand_survives_a_redeploy(self):
+        avant = "Host pve9+vm-a webtest\n    HostName 10.10.10.5\n"
+        apres = self.retirer(avant, ["pve9+vm-a"])
+        self.assertIn("Host webtest\n", apres)
+        self.assertIn("HostName 10.10.10.5", apres)
+
+    def test_all_names_dropped_removes_the_block(self):
+        avant = "Host a b\n    HostName 1.2.3.4\n\nHost garde\n    User x\n"
+        apres = self.retirer(avant, ["a", "b"])
+        self.assertNotIn("1.2.3.4", apres)
+        self.assertIn("Host garde", apres)
+
+    def test_a_match_section_is_never_swallowed(self):
+        avant = (
+            "Host part\n"
+            "    HostName 10.0.0.9\n"
+            "\n"
+            "Match host *.interne\n"
+            "    User admin\n"
+        )
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("Match host *.interne", apres)
+        self.assertIn("User admin", apres)
+        self.assertNotIn("10.0.0.9", apres)
+
+    def test_comments_before_the_next_block_are_not_swallowed(self):
+        avant = (
+            "Host part\n"
+            "    HostName 10.0.0.9\n"
+            "\n"
+            "# la machine du client, ne pas toucher\n"
+            "Host client\n"
+            "    HostName 10.0.0.10\n"
+        )
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("# la machine du client, ne pas toucher", apres)
+        self.assertIn("Host client", apres)
+
+    def test_global_directives_above_the_first_host_stay(self):
+        avant = "ServerAliveInterval 60\n\nHost part\n    HostName 10.0.0.9\n"
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("ServerAliveInterval 60", apres)
+        self.assertNotIn("10.0.0.9", apres)
+
+    def test_the_keyword_is_read_case_insensitively(self):
+        # ssh lit ses mots-clés sans égard à la casse ; nous aussi, sinon un
+        # « host » minuscule échappe au retrait et le nom vit deux fois.
+        avant = "host part\n    HostName 10.0.0.9\n"
+        self.assertNotIn("10.0.0.9", self.retirer(avant, ["part"]))
+
+    def test_hostname_is_not_mistaken_for_a_host_line(self):
+        avant = "Host garde\n    HostName part\n"
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("Host garde", apres)
+        self.assertIn("HostName part", apres)
+
+
 class TestLAncienNomSEnVa(unittest.TestCase):
     """La convention a changé : les entrées écrites AVANT portent le nom
     court, et rien ne les retirerait — elles ne portent pas le nom qu'on

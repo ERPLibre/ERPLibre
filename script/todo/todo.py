@@ -1398,34 +1398,69 @@ class TODO(
 
     @staticmethod
     def _ssh_config_drop_hosts(content, names):
-        """Retire les blocs « Host … » qui déclarent l'un de `names`.
+        """Retire de ~/.ssh/config ce qui déclare l'un de `names`.
 
         On découpe en blocs plutôt que de substituer par expression
-        régulière : une ligne Host peut porter PLUSIEURS noms, et il faut
-        alors retirer le bloc entier dès qu'un seul de ses noms est repris —
-        sinon le même nom se retrouverait défini deux fois, et ssh
-        appliquerait la première définition rencontrée."""
+        régulière : une ligne Host peut porter PLUSIEURS noms.
+
+        Deux règles, chacune corrigeant une perte de données CONSTATÉE dans
+        le fichier d'un utilisateur.
+
+        1. Seuls « Host » et « Match » clôturent un bloc. La règle d'avant —
+           « une ligne non indentée clôt le bloc » — prenait l'indentation
+           pour de la syntaxe, alors qu'elle est cosmétique dans ce format et
+           qu'un fichier écrit à la main s'en passe souvent. Sur un bloc au
+           corps non indenté, seule la ligne « Host » partait : HostName,
+           User, IdentityFile et « StrictHostKeyChecking no » restaient, sans
+           Host au-dessus, et ssh les rattachait au bloc PRÉCÉDENT. La
+           vérification de clé d'hôte se retrouvait désactivée sur un serveur
+           de production.
+
+        2. Un bloc qui déclare AUSSI des noms qu'on ne retire pas survit,
+           amputé de ceux-là seulement. Il partait en entier : « Host prod-db
+           vm-a » perdait le prod-db de l'utilisateur, et le surnom qu'on
+           ajoute à un bloc généré disparaissait au déploiement suivant.
+
+        La queue du bloc — lignes vides et commentaires — n'est pas emportée :
+        elle précède le plus souvent le bloc SUIVANT, et l'utilisateur y met
+        ses propres notes.
+        """
         drop = set(names)
-        out, block, block_names = [], [], set()
+        out, block, block_names = [], [], []
 
         def flush():
-            if block and not (block_names & drop):
+            if not block:
+                return
+            restants = [n for n in block_names if n not in drop]
+            if restants == block_names:
                 out.extend(block)
+                return
+            fin = len(block)
+            while fin > 1 and (
+                not block[fin - 1].strip()
+                or block[fin - 1].lstrip().startswith("#")
+            ):
+                fin -= 1
+            if restants:
+                tete = block[0]
+                marge = tete[: len(tete) - len(tete.lstrip())]
+                out.append(f"{marge}Host {' '.join(restants)}\n")
+                out.extend(block[1:fin])
+            out.extend(block[fin:])
 
         for line in content.splitlines(keepends=True):
-            if re.match(r"^[ \t]*Host[ \t]+", line):
+            if re.match(r"^[ \t]*Host[ \t]+", line, re.I):
                 flush()
                 block = [line]
-                block_names = set(line.split()[1:])
+                block_names = line.split()[1:]
+            elif re.match(r"^[ \t]*Match[ \t]+", line, re.I):
+                # Match ouvre une section qui n'appartient à aucun Host : la
+                # garder telle quelle, quel que soit le sort du bloc d'avant.
+                flush()
+                block, block_names = [], []
+                out.append(line)
             elif block:
-                # Une ligne non indentée et non vide clôt le bloc (Match,
-                # directive globale…) : elle n'appartient à personne.
-                if line.strip() and not line[:1].isspace():
-                    flush()
-                    block, block_names = [], set()
-                    out.append(line)
-                else:
-                    block.append(line)
+                block.append(line)
             else:
                 out.append(line)
         flush()

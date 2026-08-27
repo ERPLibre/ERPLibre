@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.argv = ["todo.py"]
@@ -388,6 +389,241 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             d._sauver({"niveau": 1, "vmid": 101, "parent_alias": "x"})
         self.assertFalse(os.path.exists(chemin))
+
+
+class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
+    """Le correctif du rapport partiel a CRÉÉ ce danger.
+
+    Avant, la descente en cours n'avait aucun rapport sur le disque et
+    « --detruire » retombait sur la précédente, terminée. Depuis qu'il s'écrit
+    VM par VM, le rapport de la descente VIVANTE est le plus récent : détruire
+    aurait emporté l'arbre sous le processus qui installait encore."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.maison = tempfile.mkdtemp(prefix="longtest-maison-")
+        self.dossier = os.path.join(self.maison, ".erplibre/longtest")
+        os.makedirs(self.dossier)
+        self._vrai = os.environ.get("HOME")
+        os.environ["HOME"] = self.maison
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+        # Un bouchon posé par un test et non repris fausse les SUIVANTS : la
+        # première version de ce fichier remplaçait dernier_rapport et le
+        # laissait en place, et le test d'après lisait le bouchon.
+        self._vrais = {
+            nom: getattr(deep_proxmox, nom)
+            for nom in ("autre_deep_proxmox", "dernier_rapport")
+        }
+
+    def tearDown(self):
+        if self._vrai is not None:
+            os.environ["HOME"] = self._vrai
+        for nom, vrai in self._vrais.items():
+            setattr(self.dp, nom, vrai)
+
+    def _ecrire(self, nom, rapport):
+        with open(
+            os.path.join(self.dossier, nom), "w", encoding="utf-8"
+        ) as fh:
+            json.dump(rapport, fh)
+
+    def test_a_living_descent_is_recognised_by_its_pid(self):
+        # Ce processus-ci exécute bien un test, pas deep_proxmox.py : c'est
+        # justement ce que le contrôle doit savoir distinguer.
+        self.assertFalse(self.dp.descente_vivante(os.getpid()))
+        self.assertFalse(self.dp.descente_vivante(None))
+        self.assertFalse(self.dp.descente_vivante(999999999))
+
+    def test_a_shell_that_merely_names_the_script_is_not_a_descent(self):
+        """Constaté sur la machine : un « pgrep -f deep_proxmox.py » posé dans
+        une boucle de surveillance donnait un shell dont la ligne de commande
+        contient le motif, et deux faux positifs sur trois."""
+        import subprocess
+
+        faux = subprocess.Popen(
+            [
+                "sh",
+                "-c",
+                "echo deep_proxmox.py --depth 10 >/dev/null; sleep 30",
+            ]
+        )
+        self.addCleanup(faux.kill)
+        self.assertFalse(self.dp._lance_ce_script(faux.pid))
+        self.assertNotIn(faux.pid, self.dp.autre_deep_proxmox())
+
+    def _fausse_descente(self):
+        """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
+
+        Un PID inventé ne prouverait rien : le contrôle lit /proc, et la seule
+        façon honnête de l'éprouver est de lui donner un processus à voir."""
+        faux = os.path.join(self.maison, "deep_proxmox.py")
+        with open(faux, "w", encoding="utf-8") as fh:
+            fh.write("import time\ntime.sleep(60)\n")
+        proc = subprocess.Popen([sys.executable, faux])
+        self.addCleanup(proc.kill)
+        for _ in range(60):
+            if self.dp._lance_ce_script(proc.pid):
+                return proc.pid
+            time.sleep(0.05)
+        self.skipTest("le processus témoin n'a pas démarré")
+
+    def test_a_living_descent_is_seen_in_proc(self):
+        pid = self._fausse_descente()
+        self.assertTrue(self.dp.descente_vivante(pid))
+        self.assertIn(pid, self.dp.autre_deep_proxmox())
+
+    def test_the_report_of_a_living_descent_is_skipped(self):
+        """Sans ce filtre, « --detruire » choisissait le rapport de la
+        descente EN COURS — le plus récent — et détruisait l'arbre sous le
+        processus qui installait encore."""
+        pid = self._fausse_descente()
+        self._ecrire(
+            "deep-pve-20260101-000000.json",
+            {
+                "dry_run": False,
+                "etages": [{"niveau": 2, "vmid": 102, "parent_alias": "a"}],
+            },
+        )
+        self._ecrire(
+            "deep-pve-20260102-000000.json",
+            {
+                "dry_run": False,
+                "pid": pid,
+                "etages": [{"niveau": 5, "vmid": 105, "parent_alias": "vif"}],
+            },
+        )
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            rapport = self.dp.dernier_rapport()
+        # Celui de la descente vivante est écarté, et on le DIT.
+        self.assertIn("descente EN COURS", sortie.getvalue())
+        self.assertEqual(rapport["etages"][0]["vmid"], 102)
+
+    def test_an_empty_later_report_never_masks_one_that_names_vms(self):
+        """Un second lancement qui meurt à l'étage 1 — « le disque existe
+        déjà » — écrivait un rapport VIDE sous un horodatage plus tardif.
+        « --detruire » annonçait « 0 VM imbriquée(s) » puis effaçait le disque
+        de l'étage 1, où vivaient les étages 2 et suivants : jamais arrêtés,
+        jamais nommés."""
+        self._ecrire(
+            "deep-pve-20260101-000000.json",
+            {
+                "dry_run": False,
+                "etages": [
+                    {"niveau": 3, "vmid": 103, "parent_alias": "a+b"},
+                    {"niveau": 2, "vmid": 102, "parent_alias": "a"},
+                ],
+            },
+        )
+        self._ecrire(
+            "deep-pve-20260102-000000.json", {"dry_run": False, "etages": []}
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            rapport = self.dp.dernier_rapport()
+        self.assertEqual(len(self.dp.a_defaire(rapport)), 2)
+        self.assertTrue(rapport["fichier"].endswith("20260101-000000.json"))
+
+    def test_a_dry_run_report_still_never_wins(self):
+        self._ecrire(
+            "deep-pve-20260101-000000.json",
+            {
+                "dry_run": False,
+                "etages": [{"niveau": 2, "vmid": 102, "parent_alias": "a"}],
+            },
+        )
+        self._ecrire(
+            "deep-pve-20260103-000000.json",
+            {
+                "dry_run": True,
+                "etages": [{"niveau": 9, "vmid": 900, "parent_alias": "z"}],
+            },
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            rapport = self.dp.dernier_rapport()
+        self.assertEqual(rapport["etages"][0]["vmid"], 102)
+
+    def test_destroying_refuses_while_a_descent_runs(self):
+        appels = []
+        self.dp.autre_deep_proxmox = lambda: [4242]
+        self.dp.dernier_rapport = lambda: appels.append("lu") or {}
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            code = self.dp.detruire(None, dry_run=False)
+        self.assertEqual(code, 1)
+        # Le rapport n'est même pas LU : on ne demande rien, on ne propose
+        # rien, et surtout on n'attend pas un « OUI » sur un arbre vivant.
+        self.assertEqual(appels, [])
+        self.assertIn("descente tourne", sortie.getvalue())
+
+
+class TestLeDecompteDeLaDestruction(unittest.TestCase):
+    """« if not detruire_etage1(…) : faits -= 1 » — un succès de l'étage 1
+    n'ajoutait RIEN, alors que le total est len(liste) + 1.
+
+    Le décompte était décalé de un dans TOUS les cas : une destruction
+    complète annonçait « il reste des machines » et sortait 1. Le seul
+    avertissement censé prévenir qu'un disque de plusieurs dizaines de Go
+    reste alloué s'affichait toujours — on apprend à ne plus le lire."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self._vrais = {
+            nom: getattr(deep_proxmox, nom)
+            for nom in (
+                "autre_deep_proxmox",
+                "dernier_rapport",
+                "detruire_une",
+                "detruire_etage1",
+            )
+        }
+        deep_proxmox.autre_deep_proxmox = lambda: []
+        deep_proxmox.dernier_rapport = lambda: {
+            "fichier": "/x.json",
+            "etages": [
+                {"niveau": 3, "vmid": 103, "parent_alias": "a+b"},
+                {"niveau": 2, "vmid": 102, "parent_alias": "a"},
+            ],
+        }
+        self._entree = (
+            __builtins__["input"]
+            if isinstance(__builtins__, dict)
+            else __builtins__.input
+        )
+
+    def tearDown(self):
+        for nom, vrai in self._vrais.items():
+            setattr(self.dp, nom, vrai)
+        import builtins
+
+        builtins.input = self._entree
+
+    def _lancer(self, etage1_ok):
+        import builtins
+
+        builtins.input = lambda _prompt="": "OUI"
+        self.dp.detruire_une = lambda *a, **k: True
+        self.dp.detruire_etage1 = lambda *a, **k: etage1_ok
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            code = self.dp.detruire(None, dry_run=False)
+        return code, sortie.getvalue()
+
+    def test_a_complete_destruction_reports_success(self):
+        code, texte = self._lancer(etage1_ok=True)
+        self.assertEqual(code, 0)
+        self.assertIn("3 / 3", texte)
+        self.assertNotIn("il reste des machines", texte)
+
+    def test_a_surviving_level_one_is_still_warned_about(self):
+        # L'avertissement doit rester CRÉDIBLE : il ne sort que quand il a
+        # quelque chose à dire.
+        code, texte = self._lancer(etage1_ok=False)
+        self.assertEqual(code, 1)
+        self.assertIn("2 / 3", texte)
+        self.assertIn("il reste des machines", texte)
 
 
 class TestLeMenu(unittest.TestCase):

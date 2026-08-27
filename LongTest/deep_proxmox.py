@@ -628,12 +628,13 @@ class Descente:
             return
         temporaire = self.chemin_json + ".tmp"
         try:
+            etat = self._etat(interrompu=True, en_cours=en_cours)
+            # Le PID de la descente qui écrit : c'est ce qui distingue un
+            # rapport ABANDONNÉ d'un rapport en cours d'écriture. Le rapport
+            # final, lui, n'en porte pas — la descente est finie.
+            etat["pid"] = os.getpid()
             with open(temporaire, "w", encoding="utf-8") as fh:
-                json.dump(
-                    self._etat(interrompu=True, en_cours=en_cours),
-                    fh,
-                    indent=2,
-                )
+                json.dump(etat, fh, indent=2)
             os.replace(temporaire, self.chemin_json)
         except OSError as err:
             self.dire(f"      ⚠ rapport non écrit : {err}")
@@ -664,13 +665,84 @@ class Descente:
         return etat
 
 
+def _lance_ce_script(pid):
+    """`pid` exécute-t-il CE script — et non pas seulement le nomme-t-il ?
+
+    Par ARGUMENT, jamais par sous-chaîne. Constaté sur cette machine : un
+    « pgrep -f deep_proxmox.py » posé dans une boucle de surveillance donne un
+    shell dont la ligne de commande contient le motif, et le contrôle comptait
+    ce shell comme une descente — deux faux positifs sur trois. Un argument
+    qui SE TERMINE par le nom du fichier, lui, ne peut venir que d'un
+    interpréteur qu'on a lancé dessus.
+    """
+    try:
+        with open(f"/proc/{int(pid)}/cmdline", "rb") as fh:
+            arguments = fh.read().split(b"\0")
+    except (OSError, ValueError):
+        return False
+    return any(a.endswith(b"deep_proxmox.py") for a in arguments)
+
+
+def descente_vivante(pid):
+    """Le processus `pid` est-il une descente EN COURS ?
+
+    Le PID seul ne suffirait pas : les numéros se réutilisent, et rien ne dit
+    qu'un rapport vieux d'une semaine ne porte pas le PID d'un shell
+    d'aujourd'hui. La ligne de commande est donc lue aussi.
+    """
+    return bool(pid) and _lance_ce_script(pid)
+
+
+def autre_deep_proxmox():
+    """Les PID des AUTRES deep_proxmox.py vivants. Le sien est exclu.
+
+    Le garde-fou du rapport — un PID dans le fichier — ne protège que les
+    descentes lancées APRÈS son écriture : celle qui tournait déjà avait
+    chargé l'ancien module en mémoire et n'écrira jamais de PID. Constaté sur
+    une descente réelle de dix étages, à l'étage 4. Ce contrôle-ci ne dépend
+    d'aucun rapport : détruire pendant qu'une descente tourne n'est jamais
+    juste, quel que soit le rapport choisi.
+
+    /proc plutôt que pgrep : « pgrep -f deep_proxmox » attrape le shell qui
+    l'invoque, et on croit alors voir survivre un processus qui n'existe pas.
+    """
+    moi = os.getpid()
+    vivants = []
+    try:
+        entrees = os.listdir("/proc")
+    except OSError:
+        return vivants
+    for entree in entrees:
+        if not entree.isdigit() or int(entree) == moi:
+            continue
+        if _lance_ce_script(entree):
+            vivants.append(int(entree))
+    return vivants
+
+
 def dernier_rapport():
-    """Le rapport JSON le plus récent, ou {}.
+    """Le rapport le plus récent qui NOMME quelque chose à défaire, ou {}.
 
     C'est le SEUL enregistrement de ce que la descente a créé : un couple
     (alias du parent, VMID) par étage. Détruire d'après lui, et non d'après
     les noms, est toute la différence entre défaire son propre travail et
     effacer une machine qui se trouve porter un nom voisin.
+
+    Deux rapports sont ÉCARTÉS, et chacun l'est pour un accident précis :
+
+    * celui d'une descente VIVANTE. Depuis que le rapport s'écrit VM par VM,
+      la descente en cours en a un sur le disque, et c'est le plus récent :
+      « --detruire » aurait détruit l'arbre sous le processus qui installait
+      encore, emportant des heures de mesure. Avant, la descente en cours
+      n'avait aucun rapport et la question ne se posait pas — le correctif a
+      créé le danger.
+
+    * celui qui n'a RIEN créé. Un second lancement qui meurt à l'étage 1 —
+      « le disque existe déjà » — écrit un rapport vide sous un horodatage
+      plus tardif. Il masquait le partiel qui nommait les VM réelles :
+      « 0 VM imbriquée(s) », puis « virsh undefine --remove-all-storage » sur
+      l'étage 1, dont le disque contient les étages 2 et suivants — jamais
+      arrêtés, jamais nommés.
     """
     dossier = os.path.expanduser("~/.erplibre/longtest")
     try:
@@ -680,14 +752,20 @@ def dernier_rapport():
     except OSError:
         return {}
     for nom in reversed(fichiers):
+        chemin = os.path.join(dossier, nom)
         try:
-            with open(os.path.join(dossier, nom), encoding="utf-8") as fh:
+            with open(chemin, encoding="utf-8") as fh:
                 rapport = json.load(fh)
         except (OSError, ValueError):
             continue
         if rapport.get("dry_run"):
             continue  # un plan n'a rien créé
-        rapport["fichier"] = os.path.join(dossier, nom)
+        if descente_vivante(rapport.get("pid")):
+            dire(f"  ⏳ descente EN COURS ({rapport['pid']}) : {nom} ignoré")
+            continue
+        if not (rapport.get("etages") or []):
+            continue  # rien créé : ne pas masquer un rapport qui nomme des VM
+        rapport["fichier"] = chemin
         return rapport
     return {}
 
@@ -820,6 +898,18 @@ def detruire(journal=None, dry_run=False):
     dont le nom contenait « deep-pve » — une machine de labo appelée
     « deep-pve-lab » sur un hyperviseur de production tombait dedans.
     """
+    # Avant tout : refuser tant qu'une descente tourne. Elle installe encore
+    # sur les machines qu'on s'apprête à détruire, et son rapport peut être
+    # celui qu'on vient de choisir.
+    autres = autre_deep_proxmox()
+    if autres:
+        dire(
+            f"  ⛔ une descente tourne ({', '.join(map(str, autres))}) :"
+            " rien ne sera détruit.",
+            journal,
+        )
+        dire("  Attendre qu'elle finisse, ou l'arrêter d'abord.", journal)
+        return 1
     rapport = dernier_rapport()
     if not rapport:
         dire("  aucun rapport de descente : rien à défaire.", journal)
@@ -851,8 +941,14 @@ def detruire(journal=None, dry_run=False):
         for niveau, parent_alias, vmid, nom in liste
         if detruire_une(parent_alias, vmid, nom, journal)
     )
-    if not detruire_etage1(journal):
-        faits -= 1
+    # « if not … : faits -= 1 » : un succès de l'étage 1 n'ajoutait RIEN,
+    # alors que le total est len(liste) + 1. Le décompte était décalé de un
+    # dans TOUS les cas — une destruction complète annonçait « il reste des
+    # machines » et sortait 1, si bien que le seul avertissement censé
+    # prévenir qu'un disque de plusieurs dizaines de Go reste alloué
+    # s'affichait toujours, et qu'on apprenait à ne plus le lire.
+    if detruire_etage1(journal):
+        faits += 1
     dire(
         f"\n  {faits} / {len(liste) + 1} défait(s)."
         + (
