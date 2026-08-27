@@ -6979,6 +6979,39 @@ TRANSLATIONS = {
     },
     # --- Écran de qualité : Verdicts, Validation, Revue ---
     # --- Trous dans les manifestes Google Repo ---
+    # --- Type de vue « tree » resté dans un module ---
+    "Is any module still on a pre-18 view type?": {
+        "fr": "Un module est-il resté sur un type de vue d'avant 18 ?",
+        "en": "Is any module still on a pre-18 view type?",
+    },
+    "View type tree, removed in Odoo 18": {
+        "fr": "Type de vue tree, supprimé dans Odoo 18",
+        "en": "View type tree, removed in Odoo 18",
+    },
+    "nothing to do below 18.0 — tree is valid there": {
+        "fr": "rien à faire sous la 18.0 — tree y est valide",
+        "en": "nothing to do below 18.0 — tree is valid there",
+    },
+    "No module carries it.": {
+        "fr": "Aucun module ne le porte.",
+        "en": "No module carries it.",
+    },
+    "modules read": {
+        "fr": "modules lus",
+        "en": "modules read",
+    },
+    "listed in the manifest, absent from disk": {
+        "fr": "listés au manifeste, absents du disque",
+        "en": "listed in the manifest, absent from disk",
+    },
+    "listed in the manifest, unparsable": {
+        "fr": "listés au manifeste, illisibles",
+        "en": "listed in the manifest, unparsable",
+    },
+    "Modules still carrying the removed tree view type.": {
+        "fr": "Modules portant encore le type de vue tree, supprimé.",
+        "en": "Modules still carrying the removed tree view type.",
+    },
     "Will every step find its addons?": {
         "fr": "Chaque palier trouvera-t-il ses addons ?",
         "en": "Will every step find its addons?",

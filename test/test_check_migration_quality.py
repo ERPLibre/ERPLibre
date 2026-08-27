@@ -1793,7 +1793,7 @@ class TestTheReviewChecklist(Base):
                 continue
             sans_base += 1
             self.assertIn("script/analyse/", commande, commande)
-        self.assertEqual(1, sans_base)
+        self.assertTrue(sans_base)
 
     def test_the_checkout_step_needs_no_database(self):
         # C'est l'angle mort des six autres : elles lisent toutes la BASE
@@ -1801,8 +1801,9 @@ class TestTheReviewChecklist(Base):
         sans_base = [
             (q, c) for q, c, k in quality.REVUE if k and "{db}" not in c
         ]
-        self.assertEqual(1, len(sans_base))
-        self.assertIn("check_manifest_gaps", sans_base[0][1])
+        self.assertTrue(sans_base)
+        for _question, commande in sans_base:
+            self.assertTrue(commande.startswith("script/analyse/"), commande)
 
     def test_the_first_step_has_nothing_to_run(self):
         # « La migration est-elle allée jusqu'au bout » se lit dans le
@@ -1880,14 +1881,17 @@ class TestTheThreeExtraSections(Base):
             self.assertNotIn("{db}", commande)
 
     def test_without_a_database_only_the_db_free_step_can_be_run(self):
-        # La revue du checkout — les manifestes — se lance justement AVANT
-        # qu'une migration existe. Exiger une base la rendait inerte au
-        # seul moment où elle sert.
+        # La revue du checkout — manifestes, types de vue — se lance
+        # justement AVANT qu'une migration existe. Exiger une base la
+        # rendait inerte au seul moment où elle sert.
         lst = qtui.extra_rows([], {})
         lancables = [r for r in lst if r["kind"] == "review" and r["command"]]
-        self.assertEqual(1, len(lancables))
-        self.assertNotIn("{db}", lancables[0]["command"])
-        self.assertNotIn(" -d ", lancables[0]["command"])
+        attendu = [c for _q, c, k in quality.REVUE if k and "{db}" not in c]
+        self.assertEqual(len(attendu), len(lancables))
+        self.assertTrue(lancables)
+        for ligne in lancables:
+            self.assertNotIn("{db}", ligne["command"])
+            self.assertNotIn(" -d ", ligne["command"])
 
     def test_a_step_that_names_a_database_stays_silent_without_one(self):
         lst = qtui.extra_rows([], {})

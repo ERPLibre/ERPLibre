@@ -253,6 +253,11 @@ REVUE = (
         "script/analyse/check_manifest_gaps.py --upstream",
         "manifest",
     ),
+    (
+        "Is any module still on a pre-18 view type?",
+        "script/analyse/check_view_type_tree.py",
+        "viewtype",
+    ),
 )
 
 
