@@ -10,12 +10,22 @@ Run them from the menu — `TODO › Execute › Test › Long tests` — or dir
 
 ## deep_proxmox.py — how deep does Proxmox-in-Proxmox go?
 
-The practicable nesting depth cannot be deduced, only measured. A manual
-measurement found, at the fourth level, a guest **36 times slower than real
-time** — 583 seconds of wall clock for 16 seconds of guest time, each ACPI
-line taking a second — then a guest kernel frozen at the **same byte**
-whatever the resources. A number obtained once, on one machine, is not a
-number: this script redoes it on demand and says exactly where it breaks.
+The practicable nesting depth cannot be deduced, only measured — and one
+measurement is not a measurement.
+
+A manual look at one fourth-level VM found a guest **36 times slower than real
+time** (583 seconds of wall clock for 16 seconds of guest time, each ACPI line
+taking a second) and then a frozen kernel: identical RIP across three samples
+two minutes apart, and **not one byte written** to disk.
+
+Running this script **refuted the conclusion drawn from it**. Its own
+fourth-level VM — 2 vCPU where the manual one had 12 — booted, installed, and
+wrote gigabytes. What looked like a nesting ceiling was a *parallelism*
+ceiling under nesting. That is exactly what the algorithm caps, and this is
+how it stopped being a guess.
+
+Which is the point of the script: a number obtained once, on one machine, in
+one chain, is an anecdote.
 
 ```
 ./LongTest/deep_proxmox.py --depth 10 --dry-run   # the plan, nothing created
@@ -49,8 +59,11 @@ level. Twelve vCPU at the fourth level froze the guest kernel in early boot;
 the same two progressed. Bringing twelve processors online costs as many
 round trips through the whole stack.
 
-Memory is **not** capped: the same VM froze at the same byte with 9 GB and
-with 2 GB, so trimming it would gain nothing and starve the level below.
+Memory is **not** capped. On that one manual VM, dropping it from 9 GB to
+2 GB moved nothing — it stopped after reading the same 32 MiB, which is simply
+the size of the boot files. Memory was not the lever; the vCPU count was. And
+trimming memory would starve the level below, which needs it to host the
+next.
 
 The plan is printed **before** anything is created, and the script never
 promises a depth it knows will not fit — better to announce six levels and

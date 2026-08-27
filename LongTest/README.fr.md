@@ -12,13 +12,24 @@ directement.
 
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?
 
-La profondeur d'imbrication praticable ne se déduit pas, elle se mesure. Une
-mesure à la main a trouvé, au quatrième étage, un invité **36 fois plus lent
-que le temps réel** — 583 secondes d'horloge pour 16 secondes de temps
-invité, chaque ligne d'ACPI prenant une seconde — puis un noyau invité gelé au
-**même octet** quelles que soient les ressources. Un chiffre obtenu une fois,
-sur une machine, n'est pas un chiffre : ce script le refait à la demande et
-dit exactement où ça casse.
+La profondeur d'imbrication praticable ne se déduit pas, elle se mesure — et
+une mesure n'est pas une mesure.
+
+Un examen à la main d'UNE VM du quatrième étage a trouvé un invité **36 fois
+plus lent que le temps réel** (583 secondes d'horloge pour 16 secondes de
+temps invité, chaque ligne d'ACPI prenant une seconde), puis un noyau gelé :
+même RIP à trois relevés deux minutes d'écart, et **pas un octet écrit** sur
+le disque.
+
+Lancer ce script a **réfuté la conclusion qu'on en avait tirée**. Sa propre VM
+du quatrième étage — 2 vCPU là où celle de la main en avait 12 — a démarré,
+s'est installée, et a écrit des gigaoctets. Ce qui ressemblait à un plafond
+d'imbrication était un plafond de *parallélisme* sous imbrication. C'est
+précisément ce que l'algorithme borne, et c'est ainsi qu'il a cessé d'être une
+supposition.
+
+D'où le script : un chiffre obtenu une fois, sur une machine, dans une chaîne,
+est une anecdote.
 
 ```
 ./LongTest/deep_proxmox.py --depth 10 --dry-run   # le plan, rien de créé
@@ -53,8 +64,11 @@ tout étage imbriqué. Douze vCPU au quatrième étage ont gelé le noyau invit�
 tout début de démarrage ; les mêmes deux avançaient. Amener douze processeurs
 en ligne coûte autant d'allers-retours à travers toute la pile.
 
-La mémoire n'est **pas** bornée : la même VM gelait au même octet avec 9 Go et
-avec 2 Go, donc la rogner ne gagnerait rien et priverait l'étage du dessous.
+La mémoire n'est **pas** bornée. Sur cette unique VM examinée à la main, la
+faire passer de 9 Go à 2 Go n'a rien déplacé : elle s'arrêtait après avoir lu
+les mêmes 32 Mio, c'est-à-dire simplement la taille des fichiers d'amorçage.
+La mémoire n'était pas le levier ; le nombre de vCPU l'était. Et la rogner
+priverait l'étage du dessous, qui en a besoin pour héberger le suivant.
 
 Le plan est affiché **avant** que quoi que ce soit ne soit créé, et le script
 ne promet jamais une profondeur qu'il sait irréalisable — mieux vaut annoncer

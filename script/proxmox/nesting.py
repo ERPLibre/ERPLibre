@@ -26,11 +26,16 @@ Deux nombres viennent de la même mesure, et méritent d'être dits :
   démarrage — même RIP à trois relevés, deux minutes d'écart, pas un octet lu
   de plus. Les mêmes 2 vCPU avançaient. D'où VCPU_IMBRIQUE = 2 : amener douze
   processeurs en ligne demande autant d'allers-retours à travers la pile ;
-* la même VM s'arrêtait ensuite au MÊME octet — 33 682 432 — quelles que
-  soient les ressources, dans la réservation des tables ACPI. Ce mur-là n'est
-  pas une question de taille, et aucun réglage ici ne le déplacera. La
-  profondeur RÉELLEMENT atteignable se mesure ; ce module ne calcule que ce
-  qui est arithmétiquement possible.
+* cette VM-là s'arrêtait après avoir lu 33 682 432 octets — 32 Mio, soit
+  simplement la taille de ses fichiers d'amorçage — et le chiffre ne bougeait
+  pas quand on lui retirait de la mémoire. La mémoire n'était donc pas le
+  levier, et c'est pourquoi ce module n'en borne pas.
+
+Une descente complète a ensuite RÉFUTÉ ce qu'on avait conclu de la première :
+son quatrième étage, à 2 vCPU, a démarré, s'est installé, et a écrit des
+gigaoctets. Le plafond était celui du parallélisme sous imbrication, pas celui
+de l'imbrication. La profondeur RÉELLEMENT atteignable se mesure — LongTest la
+mesure ; ce module ne calcule que ce qui est arithmétiquement possible.
 """
 
 # Ce qu'on laisse à la machine physique : elle fait tourner l'orchestrateur,
@@ -143,11 +148,13 @@ def capped_for_depth(profondeur: int, vcpu: int, ram_mo: int) -> tuple:
 
     Rend (vcpu, ram, raison). `raison` vide quand rien n'a été touché.
 
-    Seul le vCPU est borné, et la mesure le dit : la même VM au quatrième
-    étage gelait au MÊME octet avec 9 Go et avec 2 Go — la mémoire n'est pas
-    le levier. Douze vCPU, en revanche, gelaient plus tôt et plus dur que
-    deux. La RAM passe donc telle quelle : la rogner ne gagnerait rien et
-    priverait l'étage suivant.
+    Seul le vCPU est borné, et la mesure le dit : sur la VM examinée au
+    quatrième étage, passer de 9 Go à 2 Go n'a rien déplacé — elle s'arrêtait
+    après les mêmes 32 Mio, la taille de ses fichiers d'amorçage. Douze vCPU,
+    en revanche, gelaient là où deux avançaient, et une descente complète a
+    fini par franchir cet étage à 2 vCPU. La RAM passe donc telle quelle : la
+    rogner ne gagnerait rien et priverait l'étage suivant, qui en a besoin
+    pour héberger le sien.
 
     Pourquoi borner au lieu d'avertir seulement : l'écran lit la capacité de
     l'HÔTE et l'offre en entier. Sur un troisième étage à 14 cœurs et 9 Go, il

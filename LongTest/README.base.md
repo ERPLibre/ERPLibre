@@ -15,12 +15,22 @@ Run them from the menu — `TODO › Execute › Test › Long tests` — or dir
 
 ## deep_proxmox.py — how deep does Proxmox-in-Proxmox go?
 
-The practicable nesting depth cannot be deduced, only measured. A manual
-measurement found, at the fourth level, a guest **36 times slower than real
-time** — 583 seconds of wall clock for 16 seconds of guest time, each ACPI
-line taking a second — then a guest kernel frozen at the **same byte**
-whatever the resources. A number obtained once, on one machine, is not a
-number: this script redoes it on demand and says exactly where it breaks.
+The practicable nesting depth cannot be deduced, only measured — and one
+measurement is not a measurement.
+
+A manual look at one fourth-level VM found a guest **36 times slower than real
+time** (583 seconds of wall clock for 16 seconds of guest time, each ACPI line
+taking a second) and then a frozen kernel: identical RIP across three samples
+two minutes apart, and **not one byte written** to disk.
+
+Running this script **refuted the conclusion drawn from it**. Its own
+fourth-level VM — 2 vCPU where the manual one had 12 — booted, installed, and
+wrote gigabytes. What looked like a nesting ceiling was a *parallelism*
+ceiling under nesting. That is exactly what the algorithm caps, and this is
+how it stopped being a guess.
+
+Which is the point of the script: a number obtained once, on one machine, in
+one chain, is an anecdote.
 
 ```
 ./LongTest/deep_proxmox.py --depth 10 --dry-run   # the plan, nothing created
@@ -54,8 +64,11 @@ level. Twelve vCPU at the fourth level froze the guest kernel in early boot;
 the same two progressed. Bringing twelve processors online costs as many
 round trips through the whole stack.
 
-Memory is **not** capped: the same VM froze at the same byte with 9 GB and
-with 2 GB, so trimming it would gain nothing and starve the level below.
+Memory is **not** capped. On that one manual VM, dropping it from 9 GB to
+2 GB moved nothing — it stopped after reading the same 32 MiB, which is simply
+the size of the boot files. Memory was not the lever; the vCPU count was. And
+trimming memory would starve the level below, which needs it to host the
+next.
 
 The plan is printed **before** anything is created, and the script never
 promises a depth it knows will not fit — better to announce six levels and
@@ -75,13 +88,24 @@ directement.
 
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?
 
-La profondeur d'imbrication praticable ne se déduit pas, elle se mesure. Une
-mesure à la main a trouvé, au quatrième étage, un invité **36 fois plus lent
-que le temps réel** — 583 secondes d'horloge pour 16 secondes de temps
-invité, chaque ligne d'ACPI prenant une seconde — puis un noyau invité gelé au
-**même octet** quelles que soient les ressources. Un chiffre obtenu une fois,
-sur une machine, n'est pas un chiffre : ce script le refait à la demande et
-dit exactement où ça casse.
+La profondeur d'imbrication praticable ne se déduit pas, elle se mesure — et
+une mesure n'est pas une mesure.
+
+Un examen à la main d'UNE VM du quatrième étage a trouvé un invité **36 fois
+plus lent que le temps réel** (583 secondes d'horloge pour 16 secondes de
+temps invité, chaque ligne d'ACPI prenant une seconde), puis un noyau gelé :
+même RIP à trois relevés deux minutes d'écart, et **pas un octet écrit** sur
+le disque.
+
+Lancer ce script a **réfuté la conclusion qu'on en avait tirée**. Sa propre VM
+du quatrième étage — 2 vCPU là où celle de la main en avait 12 — a démarré,
+s'est installée, et a écrit des gigaoctets. Ce qui ressemblait à un plafond
+d'imbrication était un plafond de *parallélisme* sous imbrication. C'est
+précisément ce que l'algorithme borne, et c'est ainsi qu'il a cessé d'être une
+supposition.
+
+D'où le script : un chiffre obtenu une fois, sur une machine, dans une chaîne,
+est une anecdote.
 
 ```
 ./LongTest/deep_proxmox.py --depth 10 --dry-run   # le plan, rien de créé
@@ -116,8 +140,11 @@ tout étage imbriqué. Douze vCPU au quatrième étage ont gelé le noyau invit�
 tout début de démarrage ; les mêmes deux avançaient. Amener douze processeurs
 en ligne coûte autant d'allers-retours à travers toute la pile.
 
-La mémoire n'est **pas** bornée : la même VM gelait au même octet avec 9 Go et
-avec 2 Go, donc la rogner ne gagnerait rien et priverait l'étage du dessous.
+La mémoire n'est **pas** bornée. Sur cette unique VM examinée à la main, la
+faire passer de 9 Go à 2 Go n'a rien déplacé : elle s'arrêtait après avoir lu
+les mêmes 32 Mio, c'est-à-dire simplement la taille des fichiers d'amorçage.
+La mémoire n'était pas le levier ; le nombre de vCPU l'était. Et la rogner
+priverait l'étage du dessous, qui en a besoin pour héberger le suivant.
 
 Le plan est affiché **avant** que quoi que ce soit ne soit créé, et le script
 ne promet jamais une profondeur qu'il sait irréalisable — mieux vaut annoncer
