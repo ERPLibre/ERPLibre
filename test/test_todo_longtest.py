@@ -561,6 +561,106 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertIn("descente tourne", sortie.getvalue())
 
 
+class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
+    """« virsh undefine --remove-all-storage » efface un disque pour de bon.
+
+    Il partait sur le NOM fixe deep-pve-1, quel que soit le domaine qui le
+    porte : la VM d'une descente précédente qu'on voulait garder, ou une
+    machine sans rapport. C'est la famille de défauts la plus tenace de ce
+    travail — une ressource liée à une machine par son nom au lieu de ce qui
+    l'identifie vraiment."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.vrai_run = deep_proxmox.subprocess.run
+        # LE staticmethod, pas la fonction qu'il enveloppe : le rendre nu en
+        # ferait une méthode d'instance, et « self.uuid_libvirt(nom) »
+        # passerait deux arguments à une fonction qui en prend un. La fuite
+        # tombait sur les tests SUIVANTS.
+        self.vrai_uuid = deep_proxmox.Descente.__dict__["uuid_libvirt"]
+        self.addCleanup(setattr, deep_proxmox.subprocess, "run", self.vrai_run)
+        self.addCleanup(
+            setattr, deep_proxmox.Descente, "uuid_libvirt", self.vrai_uuid
+        )
+        self.lances = []
+
+    def _virsh(self, dominfo=0):
+        import types
+
+        def faux(argv, **kw):
+            self.lances.append(" ".join(argv[2:]))
+            code = dominfo if "dominfo" in argv else 0
+            return types.SimpleNamespace(returncode=code, stdout="", stderr="")
+
+        self.dp.subprocess.run = faux
+
+    def test_a_homonym_with_another_uuid_is_left_alone(self):
+        self._virsh()
+        self.dp.Descente.uuid_libvirt = staticmethod(lambda nom: "AUTRE-UUID")
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            res = self.dp.detruire_etage1(None, attendu="LE-NOTRE")
+        self.assertFalse(res)
+        self.assertIn("PAS notre machine", sortie.getvalue())
+        # Aucun undefine, aucun destroy : seule la lecture a eu lieu.
+        self.assertTrue(all("dominfo" in c for c in self.lances), self.lances)
+
+    def test_our_own_machine_is_destroyed(self):
+        self._virsh()
+        self.dp.Descente.uuid_libvirt = staticmethod(lambda nom: "LE-NOTRE")
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = self.dp.detruire_etage1(None, attendu="LE-NOTRE")
+        self.assertTrue(res)
+        self.assertTrue(
+            any(
+                "undefine" in c and "remove-all-storage" in c
+                for c in self.lances
+            ),
+            self.lances,
+        )
+
+    def test_an_old_report_without_a_uuid_says_so(self):
+        """On procède alors par le nom, faute de mieux — mais on le DIT,
+        plutôt que de laisser croire qu'on a vérifié."""
+        self._virsh()
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            res = self.dp.detruire_etage1(None)
+        self.assertTrue(res)
+        self.assertIn("identifié par son NOM", sortie.getvalue())
+
+    def test_an_absent_domain_is_not_an_error(self):
+        self._virsh(dominfo=1)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(self.dp.detruire_etage1(None, attendu="X"))
+
+    def test_the_name_comes_from_the_report_not_from_the_level(self):
+        """Le déduire du numéro d'étage supposait que nom_etage ne changera
+        jamais : un rapport ancien nommerait alors d'autres machines."""
+        rapport = {
+            "etages": [
+                {
+                    "niveau": 2,
+                    "vmid": 102,
+                    "parent_alias": "a",
+                    "nom": "nom-ecrit-a-la-creation",
+                }
+            ]
+        }
+        self.assertEqual(
+            self.dp.a_defaire(rapport),
+            [(2, "a", 102, "nom-ecrit-a-la-creation")],
+        )
+
+    def test_a_report_without_a_name_falls_back_on_the_level(self):
+        rapport = {"etages": [{"niveau": 3, "vmid": 103, "parent_alias": "b"}]}
+        self.assertEqual(
+            self.dp.a_defaire(rapport),
+            [(3, "b", 103, self.dp.nom_etage(3))],
+        )
+
+
 class TestLaCauseDUnMontageAbsent(unittest.TestCase):
     """« pve_unit_cmd » joint le journal de l'unité à un échec — « la seule
     façon de dire la cause à quelqu'un dont le seul accès à l'hôte est cet

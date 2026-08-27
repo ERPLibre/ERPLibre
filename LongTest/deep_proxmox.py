@@ -481,6 +481,25 @@ class Descente:
         )
         return nom
 
+    @staticmethod
+    def uuid_libvirt(nom):
+        """L'UUID du domaine `nom`, ou "". C'est lui qui l'identifie.
+
+        Un nom se réutilise ; un UUID non. Sans lui, « --detruire » effaçait
+        « deep-pve-1 » quel qu'il soit — la VM d'une descente précédente qu'on
+        voulait garder, ou une machine sans rapport qui porte ce nom.
+        """
+        try:
+            res = subprocess.run(
+                ["sudo", "-n", "virsh", "domuuid", nom],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return "" if res.returncode else res.stdout.strip()
+
     def creer_enfant(self, parent, niveau, res, prepare, noter=None):
         """« qm create » sur le parent. Rend (vmid, adresse) ou (None, None).
 
@@ -589,6 +608,10 @@ class Descente:
                     self.interrompu = True
                     break
                 alias = nom
+                etage["nom"] = nom
+                # L'UUID, et non le nom : c'est de lui que « --detruire » se
+                # servira. Un nom se réutilise, un UUID non.
+                etage["uuid"] = self.uuid_libvirt(nom)
                 # Le domaine libvirt existe : le rapport doit exister aussi.
                 self._sauver(etage)
             else:
@@ -599,9 +622,19 @@ class Descente:
                     self.interrompu = True
                     break
 
-                def noter(numero, etage=etage, parent_alias=parent_alias):
+                def noter(
+                    numero,
+                    etage=etage,
+                    parent_alias=parent_alias,
+                    niveau=niveau,
+                ):
                     etage["vmid"] = numero
                     etage["parent_alias"] = parent_alias
+                    # Le nom est ÉCRIT, non déduit du numéro d'étage à la
+                    # relecture : si nom_etage change un jour, un rapport
+                    # ancien désignerait des machines qui ne sont pas les
+                    # siennes.
+                    etage["nom"] = nom_etage(niveau)
                     self._sauver(etage)
 
                 vmid, adresse = self.creer_enfant(
@@ -880,7 +913,10 @@ def a_defaire(rapport):
             int(e["niveau"]),
             e["parent_alias"],
             int(e["vmid"]),
-            nom_etage(int(e["niveau"])),
+            # Le nom ÉCRIT par la descente. Le déduire du numéro d'étage
+            # supposait que nom_etage ne changera jamais — un rapport ancien
+            # aurait alors nommé des machines qui ne sont pas les siennes.
+            e.get("nom") or nom_etage(int(e["niveau"])),
         )
         for e in etages
     ]
@@ -932,7 +968,7 @@ def detruire_une(parent_alias, vmid, nom, journal):
     return True
 
 
-def detruire_etage1(journal, dry_run=False):
+def detruire_etage1(journal, dry_run=False, attendu=None, nom=None):
     """Le domaine libvirt du premier étage — le SEUL qui en soit un.
 
     La boucle d'avant tournait sur trente niveaux avec une condition morte, et
@@ -940,8 +976,15 @@ def detruire_etage1(journal, dry_run=False):
     jamais rien créé : « virsh undefine --remove-all-storage » partait alors
     sur un domaine qui pouvait être n'importe quoi, sortie capturée, sans un
     mot.
+
+    `attendu` : l'UUID que le rapport a noté à la création. C'est LUI qui
+    identifie la machine, pas son nom. Un nom se réutilise — la VM d'une
+    descente précédente qu'on voulait garder, ou une machine sans rapport qui
+    porte celui-là — et « --remove-all-storage » efface un disque pour de bon.
+    Un rapport ancien n'a pas d'UUID : on procède alors comme avant, par le
+    nom, faute de mieux, mais en le disant.
     """
-    nom = nom_etage(1)
+    nom = nom or nom_etage(1)
     existe = subprocess.run(
         ["sudo", "-n", "virsh", "dominfo", nom],
         capture_output=True,
@@ -950,6 +993,19 @@ def detruire_etage1(journal, dry_run=False):
     if existe.returncode:
         dire(f"    — {nom} : aucun domaine libvirt", journal)
         return True
+    if attendu:
+        vu = Descente.uuid_libvirt(nom)
+        if vu != attendu:
+            dire(
+                f"    ✗ {nom} : UUID {vu or '—'} au lieu de {attendu} —"
+                " ce n'est PAS notre machine, rien touché",
+                journal,
+            )
+            return False
+    else:
+        dire(
+            f"    ⚠ {nom} : rapport sans UUID, identifié par son NOM", journal
+        )
     if dry_run:
         dire(
             f"    [à blanc] virsh undefine {nom} --remove-all-storage", journal
@@ -1015,7 +1071,15 @@ def detruire(journal=None, dry_run=False):
             f"    étage {niveau:2d}  {nom} ({vmid}) sur {parent_alias}",
             journal,
         )
-    dire(f"    étage  1  {nom_etage(1)} (libvirt)", journal)
+    etage1_nom = next(
+        (
+            e.get("nom")
+            for e in (rapport.get("etages") or [])
+            if int(e.get("niveau", 0)) == 1
+        ),
+        None,
+    )
+    dire(f"    étage  1  {etage1_nom or nom_etage(1)} (libvirt)", journal)
     if dry_run:
         dire("\n  --dry-run : rien ne sera détruit.", journal)
         return 0
@@ -1036,7 +1100,17 @@ def detruire(journal=None, dry_run=False):
     # machines » et sortait 1, si bien que le seul avertissement censé
     # prévenir qu'un disque de plusieurs dizaines de Go reste alloué
     # s'affichait toujours, et qu'on apprenait à ne plus le lire.
-    racine = detruire_etage1(journal)
+    etage1 = next(
+        (
+            e
+            for e in (rapport.get("etages") or [])
+            if int(e.get("niveau", 0)) == 1
+        ),
+        {},
+    )
+    racine = detruire_etage1(
+        journal, attendu=etage1.get("uuid"), nom=etage1.get("nom")
+    )
     if racine:
         faits += 1
     retirer_alias(rapport, journal)
