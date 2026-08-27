@@ -326,10 +326,14 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         appels = []
         d.creer_etage1 = lambda res: "deep-pve-1"
         d.preparer_parent = lambda parent: {"stockage": "local-lvm"}
-        d.creer_enfant = lambda parent, niveau, res, prep: (
-            100 + niveau,
-            f"10.10.10.{niveau}",
-        )
+
+        def creer_enfant(parent, niveau, res, prep, noter=None):
+            # Le VRAI ordre : le VMID est annoncé AVANT que la VM existe.
+            if noter:
+                noter(100 + niveau)
+            return 100 + niveau, f"10.10.10.{niveau}"
+
+        d.creer_enfant = creer_enfant
         d.ecrire_alias = lambda *a, **k: None
         d.attendre_ssh = lambda cible, delai, parent=None: 1
         d.redemarrer_et_verifier = lambda cible: True
@@ -555,6 +559,208 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         # rien, et surtout on n'attend pas un « OUI » sur un arbre vivant.
         self.assertEqual(appels, [])
         self.assertIn("descente tourne", sortie.getvalue())
+
+
+class TestLaCauseDUnMontageAbsent(unittest.TestCase):
+    """« pve_unit_cmd » joint le journal de l'unité à un échec — « la seule
+    façon de dire la cause à quelqu'un dont le seul accès à l'hôte est cet
+    outil », dit son propre commentaire dans proxmox_deploy.py.
+
+    reparer_pmxcfs le jetait. Quand le montage échouait ensuite, il ne restait
+    qu'un « /etc/pve : ABSENT » sans cause, et il fallait retourner sur la
+    machine pour la chercher — sur un hyperviseur imbriqué mesuré 36 fois plus
+    lent que son hôte."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.d = deep_proxmox.Descente.__new__(deep_proxmox.Descente)
+        self.d.dry_run = False
+        self.d.journal = None
+        self.d.niveau_courant = 3
+        self.vrai_run = deep_proxmox.pve.run
+        self.addCleanup(setattr, deep_proxmox.pve, "run", self.vrai_run)
+        deep_proxmox.pve.run = lambda h, c, t=None: (
+            0,
+            "10.0.0.2 22 10.0.0.1 22",
+        )
+
+    def _monter(self, verdict, unite_ko=None):
+        def executer(hote, cmd, delai, etiquette=""):
+            if etiquette == "montage":
+                return 0, f"MOUNT-{verdict}"
+            if unite_ko and etiquette == unite_ko:
+                return 1, "pmxcfs-KO\nquorum_initialize failed: 2"
+            return 0, "OK"
+
+        self.d.executer = executer
+        vrai = self.dp.pve.parse_mount_wait
+        self.dp.pve.parse_mount_wait = lambda out: {
+            "verdict": "MONTE" if "MONTE" in out else "ABSENT"
+        }
+        self.addCleanup(setattr, self.dp.pve, "parse_mount_wait", vrai)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            res = self.d.reparer_pmxcfs({"target": "h", "sudo": "sudo "})
+        return res, sortie.getvalue()
+
+    def test_a_failing_unit_is_named_with_its_journal(self):
+        unite = self.dp.pve.PVE_UNITS[0]
+        res, texte = self._monter("ABSENT", unite_ko=unite)
+        self.assertFalse(res)
+        self.assertIn(unite, texte)
+        self.assertIn("quorum_initialize failed", texte)
+
+    def test_all_units_up_and_still_no_mount_is_said_so(self):
+        # Le silence ici se lisait « on n'a pas regardé ».
+        res, texte = self._monter("ABSENT")
+        self.assertFalse(res)
+        self.assertIn("toutes les unités PVE sont debout", texte)
+
+    def test_a_successful_mount_stays_quiet(self):
+        """Le contrôle NÉGATIF : ne pas déverser un journal quand tout va
+        bien. Un diagnostic qui sort toujours ne se lit plus."""
+        res, texte = self._monter("MONTE", unite_ko=self.dp.pve.PVE_UNITS[0])
+        self.assertTrue(res)
+        self.assertNotIn("↳", texte)
+
+
+class TestUneLectureRateeNeConclutRien(unittest.TestCase):
+    """De l'absence de pont, preparer_parent RECONFIGURE le réseau du parent.
+
+    Les codes de retour des lectures étaient jetés. Un « ip link show » qui
+    échoue — hoquet ssh, sudo pas encore prêt — se lisait « pas de pont », et
+    on posait un pont et un NAT sur une machine qui en avait déjà un."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.d = deep_proxmox.Descente.__new__(deep_proxmox.Descente)
+        self.d.dry_run = False
+        self.d.journal = None
+        self.d.niveau_courant = 2
+
+    def _descente_qui_lit(self, reponses):
+        """`reponses` : [(code, sortie)] rendus dans l'ordre des lectures."""
+        faites = []
+
+        def executer(hote, cmd, delai, etiquette=""):
+            faites.append(etiquette or cmd[:20])
+            return reponses[len(faites) - 1] if reponses else (0, "")
+
+        self.d.executer = executer
+        return faites
+
+    def test_an_unreadable_bridge_list_touches_nothing(self):
+        faites = self._descente_qui_lit(
+            [
+                (0, "local-lvm  lvmthin  active  1  1  1  1.00%"),
+                (255, ""),  # « ip link show » : échec de transport
+            ]
+        )
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertIsNone(self.d.preparer_parent({"target": "p"}))
+        # Rien après la lecture ratée : pas de USED_NETS_CMD, pas de « pont ».
+        self.assertEqual(faites, ["pvesm", "ponts"])
+        self.assertIn("on ne touche PAS au réseau", sortie.getvalue())
+
+    def test_an_empty_but_successful_read_does_create_the_bridge(self):
+        """Le contrôle NÉGATIF. Sans lui, ce garde-fou interdirait la seule
+        chose que preparer_parent est là pour faire."""
+        faites = self._descente_qui_lit(
+            [
+                (0, "local-lvm  lvmthin  active  1  1  1  1.00%"),
+                (0, ""),  # lu, et il n'y a vraiment aucun pont
+                (0, ""),  # USED_NETS_CMD
+                (0, "default via 10.0.0.1 dev eth0"),
+            ]
+            + [(0, "")] * 12
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.d.preparer_parent({"target": "p"})
+        self.assertIn("réseaux", faites)
+        self.assertIn("pont", faites)
+
+    def test_an_unreadable_storage_list_is_named_as_such(self):
+        faites = self._descente_qui_lit([(255, "")])
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertIsNone(self.d.preparer_parent({"target": "p"}))
+        self.assertEqual(faites, ["pvesm"])
+        texte = sortie.getvalue()
+        self.assertIn("a échoué", texte)
+        # Et NON « aucun stockage » : ce serait imputer au parent un défaut
+        # qu'on n'a pas constaté.
+        self.assertNotIn("aucun stockage", texte)
+
+
+class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
+    """Le VMID ne remontait qu'au RETOUR de creer_enfant.
+
+    Or celle-ci enchaîne six commandes sur le parent. Un échec à la quatrième
+    — « qm resize » sur un stockage plein — laissait une VM allumée et un
+    disque alloué que le rapport ne nommait nulle part : « --detruire » ne
+    pouvait pas la défaire, et il fallait la retrouver par son NOM."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.dossier = tempfile.mkdtemp(prefix="longtest-vmid-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+
+    def test_a_creation_that_dies_midway_still_names_the_vm(self):
+        niveaux = [
+            {"niveau": n, "vcpu": 2, "ram": 4096, "disque": 25} for n in (1, 2)
+        ]
+        chemin = os.path.join(self.dossier, "rapport.json")
+        d = self.dp.Descente(
+            {"demandee": 2, "atteignable": 2, "niveaux": niveaux},
+            None,
+            False,
+            chemin,
+        )
+        d.creer_etage1 = lambda res: "deep-pve-1"
+        d.preparer_parent = lambda parent: (
+            "local-lvm",
+            "vmbr1",
+            {},
+            "1.1.1.1",
+        )
+        d.ecrire_alias = lambda *a, **k: None
+        d.attendre_ssh = lambda cible, delai, parent=None: 1
+        d.installer_proxmox = lambda cible: True
+        d.redemarrer_et_verifier = lambda cible: True
+        d.reparer_pmxcfs = lambda cible: True
+
+        # La création note son VMID, puis MEURT — comme « qm resize » sur un
+        # stockage plein.
+        def creer_enfant(parent, niveau, res, prep, noter=None):
+            noter(142)
+            return None, None
+
+        d.creer_enfant = creer_enfant
+        with contextlib.redirect_stdout(io.StringIO()):
+            d.parcourir()
+        with open(chemin, encoding="utf-8") as fh:
+            rapport = json.load(fh)
+        self.assertEqual(
+            self.dp.a_defaire(rapport),
+            [(2, "deep-pve-1", 142, self.dp.nom_etage(2))],
+        )
+
+    def test_the_vmid_is_announced_before_the_creating_commands(self):
+        """Par l'ORDRE, pas par le résultat : noter après la première commande
+        laisserait déjà passer un « qm create » réussi suivi d'un échec."""
+        import inspect
+
+        src = inspect.getsource(self.dp.Descente.creer_enfant)
+        i_noter = src.index("noter(vmid)")
+        i_boucle = src.index("for cmd in [pve.image_fetch_cmd")
+        self.assertLess(i_noter, i_boucle)
 
 
 class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):

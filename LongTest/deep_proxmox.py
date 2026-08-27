@@ -327,35 +327,72 @@ class Descente:
             if code or "-KO" in pve.strip_ssh_noise(sortie):
                 self.dire(f"      ✗ {etiquette}")
                 return False
+        # « pve_unit_cmd » joint le journal de l'unité à un échec — « la seule
+        # façon de dire la cause à quelqu'un dont le seul accès à l'hôte est
+        # cet outil », dit son propre commentaire. On le JETAIT : quand le
+        # montage échouait ensuite, il ne restait qu'un « /etc/pve : ABSENT »
+        # sans cause, et il fallait retourner sur la machine pour la chercher.
+        echecs = []
         for unite in pve.PVE_UNITS:
-            self.executer(
+            code, sortie = self.executer(
                 hote, pve.pve_unit_cmd(unite, remonte=True), 300, unite
             )
+            propre = pve.strip_ssh_noise(sortie)
+            if code or "-KO" in propre:
+                echecs.append((unite, propre))
         _c, out = self.executer(
             hote, pve.mount_wait_cmd(), self.delai("reparation"), "montage"
         )
         vu = pve.parse_mount_wait(out)
         self.dire(f"      /etc/pve : {vu['verdict']}")
+        if vu["verdict"] != "MONTE":
+            for unite, propre in echecs:
+                self.dire(f"      ↳ {unite} : {propre.strip()[-400:]}")
+            if not echecs:
+                # Toutes debout et le montage absent : le dire, plutôt que de
+                # laisser croire qu'on n'a pas regardé.
+                self.dire("      ↳ toutes les unités PVE sont debout")
         return vu["verdict"] == "MONTE"
 
     def preparer_parent(self, parent):
-        """Stockage, pont et réseau interne du parent, ou None."""
-        _c, out = self.executer(
+        """Stockage, pont et réseau interne du parent, ou None.
+
+        Les codes de retour des LECTURES sont regardés, et c'est tout le
+        sujet ici. Ailleurs dans ce dépôt un code de retour ne prouve rien —
+        celui d'une commande distante composée est celui du dernier maillon.
+        Mais pour une lecture, il est la SEULE chose qui distingue « j'ai lu,
+        il n'y a rien » de « je n'ai pas pu lire ».
+
+        La différence n'est pas académique : de l'absence de pont on
+        RECONFIGURE le réseau du parent. Un « ip link show » qui échoue — un
+        hoquet ssh, un sudo pas encore prêt — se lisait « pas de pont », et on
+        posait un pont et un NAT sur une machine qui en avait déjà un.
+        """
+        code, out = self.executer(
             parent,
             "pvesm status --content images",
             DELAIS["controle"],
             "pvesm",
         )
+        if code and not self.dry_run:
+            self.dire("      ✗ « pvesm status » a échoué : rien conclu")
+            return None
         stockage = pve.pick_storage(pve.parse_storages(out))
         if not stockage and not self.dry_run:
             self.dire("      ✗ aucun stockage sur le parent")
             return None
-        _c, out = self.executer(
+        code, out = self.executer(
             parent,
             "ip -o link show type bridge",
             self.delai("controle"),
             "ponts",
         )
+        if code and not self.dry_run:
+            self.dire(
+                "      ✗ liste des ponts illisible : on ne touche PAS au"
+                " réseau du parent"
+            )
+            return None
         ponts = pve.parse_bridges(out)
         if not ponts:
             _c, nets = self.executer(
@@ -444,8 +481,16 @@ class Descente:
         )
         return nom
 
-    def creer_enfant(self, parent, niveau, res, prepare):
-        """« qm create » sur le parent. Rend (vmid, adresse) ou (None, None)."""
+    def creer_enfant(self, parent, niveau, res, prepare, noter=None):
+        """« qm create » sur le parent. Rend (vmid, adresse) ou (None, None).
+
+        `noter` reçoit le VMID AVANT la première commande qui peut créer la
+        VM. Sans lui, le VMID ne remontait qu'au RETOUR : une création qui
+        échouait à la quatrième de ses six commandes — « qm resize » sur un
+        stockage plein, par exemple — laissait une VM allumée et un disque
+        alloué que le rapport ne nommait nulle part, donc que « --detruire »
+        ne pouvait pas défaire.
+        """
         stockage, pont, info_pont, dns = prepare
         mod = module_qemu()
         version = mod.DISTROS[DISTRO][1]
@@ -501,6 +546,12 @@ class Descente:
                 DELAIS["controle"],
                 "clé",
             )
+        # Le VMID est annoncé MAINTENANT. Un numéro noté pour une VM qui
+        # n'existera jamais ne coûte rien — « --detruire » lit « qm list » et
+        # la dit absente — alors qu'une VM créée et non notée reste sur le
+        # parent, invisible.
+        if noter:
+            noter(vmid)
         for cmd in [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
             vmid, spec
         ):
@@ -547,7 +598,15 @@ class Descente:
                     self.etages.append(etage)
                     self.interrompu = True
                     break
-                vmid, adresse = self.creer_enfant(parent, niveau, res, prepare)
+
+                def noter(numero, etage=etage, parent_alias=parent_alias):
+                    etage["vmid"] = numero
+                    etage["parent_alias"] = parent_alias
+                    self._sauver(etage)
+
+                vmid, adresse = self.creer_enfant(
+                    parent, niveau, res, prepare, noter
+                )
                 if vmid is None:
                     self.etages.append(etage)
                     self.interrompu = True
