@@ -56,12 +56,12 @@ surengagement, à chaque étage, avec l'hyperviseur lui-même à servir par-dess
 Son installation dépassait deux heures et demie contre treize minutes pour
 l'étage 3, et l'extrapolation de ce rapport donnait cinq ANS pour le dixième.
 
-Le sens est donc inversé. Le plus profond reçoit ce qu'un Proxmox de test
-demande vraiment — 4 Go de mémoire, 25 Go de disque, 2 vCPU — et chaque parent
-au-dessus ajoute son propre surcoût, rien d'autre : un vCPU, 2 Gio, 10 Go. Une
-descente à dix étages demande ainsi 11 vCPU, 22 Go et 115 Go à son premier
-étage, là où la cession de haut en bas voulait 50 Go de mémoire pour la même
-profondeur.
+Le sens est donc inversé pour la **mémoire et le disque**. Le plus profond
+reçoit ce qu'un Proxmox de test demande vraiment — 4 Go de mémoire, 25 Go de
+disque — et chaque parent au-dessus ajoute son propre surcoût, rien d'autre :
+2 Gio et 10 Go. Une descente à dix étages demande ainsi 22 Go et 115 Go à son
+premier étage, là où la cession de haut en bas voulait 50 Go de mémoire pour la
+même profondeur. Le processeur, lui, suit une autre règle — voir plus bas.
 
 Trois budgets peuvent borner la profondeur, et `script/proxmox/nesting.py`
 nomme celui qui a manqué :
@@ -71,16 +71,35 @@ nomme celui qui a manqué :
   enfant ;
 * **le disque** — le disque de l'enfant vit *dans* celui du parent, qui doit
   aussi contenir son propre système ;
-* **le processeur** — chaque étage en veut un de plus que son enfant, donc dix
-  étages en demandent onze au premier. La moitié des cœurs physiques est le
-  plafond : l'orchestrateur tourne sur cette machine lui aussi.
+* **le processeur** — il ne croît *pas* avec la profondeur. Tout étage
+  imbriqué garde une largeur fixe et étroite ; seul le premier compte sur les
+  cœurs physiques. Ou la machine peut porter ce premier étage, ou elle ne peut
+  rien.
 
-Ce troisième budget est mesuré, pas supposé. Douze vCPU au quatrième étage ont
-gelé le noyau invité en tout début de démarrage — même pointeur d'instruction à
-trois relevés, deux minutes d'écart — quand deux avançaient. Le nombre n'était
-pas le fautif : cette VM avait douze vCPU sur un hôte qui en avait deux, six
-fois plus large que sa propre machine. C'est le surengagement qui gèle, pas le
-douze.
+Cette troisième règle est mesurée, et il a fallu deux descentes pour la poser
+juste. Un invité imbriqué au **quatrième** étage gèle en tout début de
+démarrage dès qu'il est large : douze vCPU la première fois, huit la seconde —
+même pointeur d'instruction à trois relevés espacés de cinq minutes, 32 Mio lus
+et plus un octet pendant 106 minutes. Deux vCPU démarrent.
+
+Le premier gel avait été imputé au **surengagement** : cette VM à douze vCPU
+tournait sur un hôte qui en avait deux. La seconde mesure l'a réfuté — huit
+vCPU sur un parent qui en avait **neuf**, charge 1,47, aucun surengagement, et
+le même gel. C'est le nombre de vCPU de l'invité imbriqué, et non son rapport à
+celui de son hôte.
+
+Au troisième étage, 9 vCPU démarrent en 117 s. Le seuil est entre le troisième
+et le quatrième étage : aucun étage imbriqué n'est donc rendu large. Une version
+précédente de cet algorithme donnait un vCPU de plus à chaque parent, ce qui
+rendait l'étage 4 large de huit — exactement le cas gelé. La règle rendait large
+ce qui doit rester étroit.
+
+D'où trois largeurs fixes : `VCPU_METAL` pour l'étage 1 (sur le métal, aucun
+risque de gel — onze vCPU y ont démarré en 42 s), `VCPU_IMBRIQUE` pour le plus
+profond, et `VCPU_INTERMEDIAIRE` entre les deux, juste assez large pour héberger
+son enfant sans être aussi étroit que lui. Ce nombre du milieu est une
+**hypothèse** : deux démarre au quatrième étage, huit gèle, et rien n'est mesuré
+entre les deux. C'est la descente qui tranche.
 
 La mémoire n'est pas le levier. Sur cette même VM examinée à la main, la faire
 passer de 9 Go à 2 Go n'a rien déplacé : elle s'arrêtait après avoir lu les

@@ -50,21 +50,64 @@ class TestLePlanDesEtages(unittest.TestCase):
 
     def test_each_parent_adds_exactly_its_own_overhead(self):
         # Ni plus ni moins : un parent plus large que nécessaire ralentit tout
-        # ce qu'il héberge, un parent trop juste ne le fait pas tourner.
+        # ce qu'il héberge, un parent trop juste ne le fait pas tourner. Vaut
+        # pour la mémoire et le disque — le processeur, lui, ne croît pas avec
+        # la profondeur, voir test_no_nested_level_is_ever_wide.
         niveaux = nesting.nesting_plan(8, **self.HOTE)["niveaux"]
         for parent, enfant in zip(niveaux, niveaux[1:]):
             self.assertEqual(parent["ram"] - enfant["ram"], nesting.PVE_RAM_MO)
             self.assertEqual(
                 parent["disque"] - enfant["disque"], nesting.PVE_DISQUE_GO
             )
-            self.assertEqual(parent["vcpu"] - enfant["vcpu"], 1)
+
+    def test_no_nested_level_is_ever_wide(self):
+        """MESURÉ, deux fois : au quatrième étage un invité large GÈLE.
+
+        Douze vCPU d'abord, sur un parent qui en avait deux : on avait imputé
+        le gel au surengagement. Puis huit vCPU sur un parent qui en avait
+        NEUF, charge 1,47, aucun surengagement — 32 Mio lus en 106 minutes,
+        même RIP à trois relevés espacés de cinq minutes. C'est le nombre de
+        vCPU de l'invité imbriqué, et rien d'autre.
+
+        Une version de ce module donnait un vCPU de plus à chaque parent, ce
+        qui rendait l'étage 4 large de huit : exactement le cas gelé. Aucun
+        étage imbriqué ne doit dépasser VCPU_INTERMEDIAIRE, à AUCUNE
+        profondeur demandée."""
+        for profondeur in range(1, 13):
+            niveaux = nesting.nesting_plan(profondeur, **self.HOTE)["niveaux"]
+            for n in niveaux[1:]:
+                self.assertLessEqual(
+                    n["vcpu"],
+                    nesting.VCPU_INTERMEDIAIRE,
+                    f"profondeur {profondeur}, étage {n['niveau']}",
+                )
+
+    def test_the_three_widths_are_where_they_belong(self):
+        niveaux = nesting.nesting_plan(6, **self.HOTE)["niveaux"]
+        # Le métal : aucun risque de gel, onze vCPU y ont démarré en 42 s.
+        self.assertEqual(niveaux[0]["vcpu"], nesting.VCPU_METAL)
+        # Le fond : le seul chiffre dont on ait la preuve qu'il démarre au
+        # quatrième étage.
+        self.assertEqual(niveaux[-1]["vcpu"], nesting.VCPU_IMBRIQUE)
+        for n in niveaux[1:-1]:
+            self.assertEqual(n["vcpu"], nesting.VCPU_INTERMEDIAIRE)
+
+    def test_a_single_level_descent_runs_on_metal(self):
+        niveaux = nesting.nesting_plan(1, **self.HOTE)["niveaux"]
+        self.assertEqual(len(niveaux), 1)
+        self.assertEqual(niveaux[0]["vcpu"], nesting.VCPU_METAL)
 
     def test_a_parent_is_never_narrower_than_its_child(self):
         """Deux vCPU hébergeant deux vCPU, c'est cent pour cent de
         surengagement — et l'hyperviseur à servir en plus. Mesuré : une VM
         démarrée au quatrième étage a lu DEUX KILO-OCTETS en onze minutes,
-        affamée par l'installation qui tournait à côté."""
-        for coeurs in (4, 8, 12, 28):
+        affamée par l'installation qui tournait à côté. L'installation de
+        l'étage 4 dépassait alors 2 h 50 contre 793 s pour l'étage 3.
+
+        « Jamais plus étroit », et non « toujours plus large » : deux étages
+        imbriqués voisins ont la même largeur, ce que le gel du quatrième
+        étage impose. C'est le PLUS PROFOND qui descend à deux."""
+        for coeurs in (6, 8, 12, 28):
             with self.subTest(coeurs=coeurs):
                 niveaux = nesting.nesting_plan(
                     6,
@@ -73,22 +116,38 @@ class TestLePlanDesEtages(unittest.TestCase):
                     disque_libre_go=400,
                 )["niveaux"]
                 for parent, enfant in zip(niveaux, niveaux[1:]):
-                    self.assertGreater(parent["vcpu"], enfant["vcpu"])
+                    self.assertGreaterEqual(parent["vcpu"], enfant["vcpu"])
                     self.assertGreater(parent["ram"], enfant["ram"])
                     self.assertGreater(parent["disque"], enfant["disque"])
 
-    def test_the_cpu_budget_can_bound_the_depth(self):
-        """Sur une petite machine, c'est le PROCESSEUR qui borne, pas la
-        mémoire : chaque étage en veut un de plus que son enfant, donc dix
-        étages demandent onze vCPU au premier."""
-        plan = nesting.nesting_plan(
+    def test_the_cpu_only_ever_refuses_outright(self):
+        """Le processeur ne borne plus une profondeur INTERMÉDIAIRE : les
+        étages imbriqués gardent une largeur fixe, seul le premier compte sur
+        le métal. Ou la machine peut le porter, ou elle ne peut rien.
+
+        Une version d'avant faisait croître la demande avec la profondeur —
+        onze vCPU pour dix étages — et bornait donc à trois étages sur huit
+        cœurs. Elle rendait aussi le quatrième étage large de huit, ce qui le
+        gelait : la borne cachait un défaut."""
+        large = nesting.nesting_plan(
             10, cpu_hote=8, ram_dispo_mo=64000, disque_libre_go=400
         )
-        self.assertEqual(plan["arret"], "vcpu")
-        self.assertLess(plan["atteignable"], 10)
+        self.assertEqual(large["atteignable"], 10)
+        self.assertEqual(large["arret"], "")
+        # Trop petite pour le premier étage : zéro, et le dire.
+        for coeurs in (1, 2, 4):
+            with self.subTest(coeurs=coeurs):
+                petite = nesting.nesting_plan(
+                    10,
+                    cpu_hote=coeurs,
+                    ram_dispo_mo=64000,
+                    disque_libre_go=400,
+                )
+                self.assertEqual(petite["atteignable"], 0)
+                self.assertEqual(petite["arret"], "vcpu")
         # Et le premier étage laisse à l'hôte ce qui lui est réservé.
         self.assertLessEqual(
-            plan["niveaux"][0]["vcpu"], 8 - nesting.HOTE_RESERVE_VCPU
+            large["niveaux"][0]["vcpu"], 8 - nesting.HOTE_RESERVE_VCPU
         )
 
     def test_the_named_resource_is_the_one_that_really_binds(self):

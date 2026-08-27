@@ -22,13 +22,19 @@ documente l'imbrication qu'à DEUX niveaux.
 
 Deux nombres viennent de la même mesure, et méritent d'être dits :
 
-* 12 vCPU au quatrième étage ont GELÉ le noyau invité en tout début de
-  démarrage — même RIP à trois relevés, deux minutes d'écart, pas un octet lu
-  de plus. Les mêmes 2 vCPU avançaient. Le nombre n'était pas le fautif : cette
-  VM avait douze vCPU sur un hôte qui en avait DEUX, six fois plus large que sa
-  propre machine. C'est le surengagement qui gèle, pas le douze — d'où le
-  dimensionnement par étage plus bas, qui donne à chaque parent un vCPU de plus
-  qu'à son enfant ;
+* au QUATRIÈME étage, un invité large GÈLE en tout début de démarrage. Mesuré
+  deux fois, à douze vCPU puis à huit : même RIP à trois relevés espacés de
+  cinq minutes, 32 Mio lus et plus un octet — 106 minutes durant, pour le
+  second. Les mêmes 2 vCPU démarrent.
+
+  On avait d'abord imputé le premier gel au SURENGAGEMENT : cette VM à douze
+  vCPU tournait sur un hôte qui en avait deux. La seconde mesure l'a réfuté —
+  huit vCPU sur un parent qui en avait NEUF, charge 1,47, aucun surengagement,
+  et le même gel. C'est bien le nombre de vCPU de l'invité imbriqué, et non son
+  rapport à celui de son hôte.
+
+  Au TROISIÈME étage, 9 vCPU démarrent en 117 s. Le seuil est donc entre le
+  troisième et le quatrième étage ; tout étage imbriqué reste étroit ;
 * cette VM-là s'arrêtait après avoir lu 33 682 432 octets — 32 Mio, soit
   simplement la taille de ses fichiers d'amorçage — et le chiffre ne bougeait
   pas quand on lui retirait de la mémoire. La mémoire n'était donc pas le
@@ -74,22 +80,40 @@ PVE_DISQUE_CIBLE_GO = 25
 
 # En dessous, un Proxmox ne démarre pas ses démons ou n'a plus la place
 # d'importer une image cloud.
+# Une profondeur qu'aucun budget ne borne. Grand, mais fini : « inf » se
+# propagerait dans min() et rendrait un float là où tout le reste compte des
+# étages entiers.
+PLAFOND_LIBRE = 10**6
 RAM_MIN_MO = 2048
 DISQUE_MIN_GO = 15
 
-# Le processeur se dimensionne DEPUIS LE BAS lui aussi, et pour la même
-# raison que la mémoire — mais celle-là s'est vue à l'usage.
+# Le processeur NE se dimensionne PAS depuis le bas, contrairement à la
+# mémoire et au disque. Trois nombres fixes, et la mesure les impose.
 #
-# Avec deux vCPU à chaque étage imbriqué, l'étage 3 avait deux vCPU pour
-# héberger un invité qui en demandait deux : cent pour cent de surengagement,
-# et l'hyperviseur lui-même à servir par-dessus. À chaque étage. Mesuré sur une
-# descente réelle : une seconde VM démarrée au quatrième étage a lu DEUX
-# KILO-OCTETS en onze minutes, affamée par l'installation qui tournait à côté.
+# Une première version donnait à chaque parent un vCPU de plus qu'à son enfant,
+# pour supprimer le surengagement : le plus profond deux, son parent trois, et
+# ainsi de suite jusqu'à onze au premier. Elle rendait donc LARGES les étages
+# du milieu — huit au quatrième, sept au cinquième. Or c'est exactement là que
+# l'invité gèle : mesuré, l'étage 4 à huit vCPU n'a pas passé son amorçage en
+# 106 minutes, sur un parent à neuf vCPU parfaitement sain. La règle rendait
+# large ce qui doit rester étroit.
 #
-# Chaque étage reçoit donc UN vCPU de plus que son enfant : le plus profond en
-# a deux, son parent trois, et ainsi de suite. Le premier étage d'une descente
-# à dix en demande onze — sur vingt-huit cœurs réels, cela passe.
+# Le plus profond : deux, le seul chiffre dont on ait la preuve qu'il démarre
+# au quatrième étage.
 VCPU_IMBRIQUE = 2
+# Les étages imbriqués intermédiaires : un de plus, pour héberger leur enfant
+# sans être aussi étroits que lui. Deux hébergeant deux, c'est cent pour cent
+# de surengagement — et l'installation de l'étage 4 dépassait alors 2 h 50
+# contre 793 s pour l'étage 3.
+#
+# Trois est une HYPOTHÈSE : on a la preuve que deux démarre au quatrième étage
+# et que huit gèle, rien entre les deux. C'est la descente qui tranchera.
+VCPU_INTERMEDIAIRE = 3
+# Le premier étage tourne sur le MÉTAL : aucun risque de gel, et son amorçage
+# est rapide — onze vCPU y ont démarré en 42 s. Il n'a pourtant qu'un enfant à
+# trois vCPU à servir ; quatre suffisent, et laissent la machine physique aux
+# autres.
+VCPU_METAL = 4
 # Ce qu'on LAISSE à la machine physique. L'orchestrateur tourne dessus, son
 # ssh vers chaque étage aussi, et la suite de tests avec.
 #
@@ -153,14 +177,14 @@ def nesting_plan(
         """Ce que le PREMIER étage doit avoir pour qu'une descente de `d`
         étages tienne : la cible du bas, plus un surcoût par étage au-dessus.
 
-        Le processeur en fait partie : chaque étage en veut un de plus que son
-        enfant, donc le premier en veut VCPU_IMBRIQUE + d - 1. Sans cette
-        condition, on annonçait dix étages sur une machine à quatre cœurs.
+        Le processeur n'en fait PAS partie de la même façon : il ne croît
+        pas avec la profondeur, puisque tout étage imbriqué reste étroit. Le
+        premier étage demande VCPU_METAL, quelle que soit la profondeur.
         """
         return (
             PVE_RAM_CIBLE_MO + (d - 1) * PVE_RAM_MO,
             PVE_DISQUE_CIBLE_GO + (d - 1) * PVE_DISQUE_GO,
-            VCPU_IMBRIQUE + d - 1,
+            VCPU_METAL if d > 1 else VCPU_IMBRIQUE,
         )
 
     budget_vcpu = int(cpu_hote) - HOTE_RESERVE_VCPU
@@ -171,7 +195,10 @@ def nesting_plan(
     plafonds = {
         "ram": (budget_ram - PVE_RAM_CIBLE_MO) // PVE_RAM_MO + 1,
         "disque": (budget_disque - PVE_DISQUE_CIBLE_GO) // PVE_DISQUE_GO + 1,
-        "vcpu": budget_vcpu - VCPU_IMBRIQUE + 1,
+        # Le processeur ne borne plus la profondeur : les étages imbriqués
+        # gardent une largeur fixe, seul le premier compte sur le métal. Il
+        # borne encore à ZÉRO une machine trop petite pour ce premier étage.
+        "vcpu": PLAFOND_LIBRE if budget_vcpu >= VCPU_METAL else 0,
     }
     plafonds = {nom: max(0, valeur) for nom, valeur in plafonds.items()}
     demandee = max(0, int(profondeur))
@@ -185,10 +212,18 @@ def nesting_plan(
     niveaux = [
         {
             "niveau": niveau,
-            # UN de plus que son enfant. Un parent aussi étroit que son
-            # enfant, c'est cent pour cent de surengagement — et l'hyperviseur
-            # à servir en plus.
-            "vcpu": VCPU_IMBRIQUE + (atteignable - niveau),
+            # Trois largeurs, et aucune ne dépend de la profondeur : le
+            # métal en premier, le fond au plus étroit, les intermédiaires
+            # juste assez larges pour héberger leur enfant.
+            "vcpu": (
+                VCPU_METAL
+                if niveau == 1
+                else (
+                    VCPU_IMBRIQUE
+                    if niveau == atteignable
+                    else VCPU_INTERMEDIAIRE
+                )
+            ),
             # Les planchers ne sont pas décoratifs : ils tiennent même si
             # quelqu'un baisse une CIBLE un jour. Sans eux, ils n'étaient plus
             # lus par personne et les tests qui les vérifiaient passaient
