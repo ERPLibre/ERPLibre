@@ -1559,7 +1559,7 @@ class TestWhatGetsRecorded(Base):
 
     def test_a_tool_run_keeps_its_verdict(self):
         obj = self.upgrade()
-        obj.run_on_terminal = lambda cmd: 1
+        obj.run_captured = lambda cmd: 1
         self.assertEqual(obj.run_tool("smoke_public_url", "cmd"), 1)
         event = obj.dct_progression["lst_event"][0]
         self.assertEqual(event["kind"], "test")

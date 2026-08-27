@@ -156,7 +156,7 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         )[1]
         # Le désinstalleur ne passe PLUS par l'exécuteur qui capture : il
         # pose une question, et un tube la rendrait invisible.
-        obj.run_on_terminal = lambda cmd: self.lst_cmd.append(cmd) or 0
+        obj.run_captured = lambda cmd: self.lst_cmd.append(cmd) or 0
         # Le doublon HONORE le défaut, comme le vrai `ask_gate` : sinon
         # les tests de défaut ne testeraient que le doublon.
         obj.ask_gate = lambda prompt, default="": answer or default
@@ -347,7 +347,10 @@ class TestTheQuestionMustBeVisible(unittest.TestCase):
         from script.todo.todo_upgrade import TodoUpgrade
 
         source = inspect.getsource(TodoUpgrade.prompt_uninstall_theme)
-        self.assertIn("run_on_terminal", source)
+        # Un pseudo-terminal convient : l'invite reste visible, et la
+        # sortie est gardée pour l'écran d'analyse. Seul le tube de
+        # `todo_upgrade_execute` la rendrait muette.
+        self.assertIn("run_captured", source)
         self.assertNotIn("todo_upgrade_execute", source)
 
     def test_asking_needs_stdout_not_just_stdin(self):
@@ -458,10 +461,10 @@ class TestTheMisleadingErrorCode(unittest.TestCase):
 
         source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
         avant = source[: source.index("check_cow_views.py")]
-        self.assertGreater(
-            avant.rfind("run_on_terminal("),
-            avant.rfind("todo_upgrade_execute("),
+        terminal = max(
+            avant.rfind("run_on_terminal("), avant.rfind("run_captured(")
         )
+        self.assertGreater(terminal, avant.rfind("todo_upgrade_execute("))
 
 
 class TestExitCodes(unittest.TestCase):

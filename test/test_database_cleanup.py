@@ -771,15 +771,14 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         from script.todo.todo_upgrade import TodoUpgrade
 
         source = inspect.getsource(TodoUpgrade.prompt_database_cleanup)
-        # `run_tool` retient le verdict PUIS délègue à `run_on_terminal` :
-        # les deux propriétés comptent, et vérifier la seconde à la source
-        # évite qu'un raccourci futur reprenne l'exécuteur qui capture.
         self.assertIn("run_tool(", source)
         self.assertNotIn("todo_upgrade_execute", source)
-        self.assertIn(
-            "self.run_on_terminal(",
-            inspect.getsource(TodoUpgrade.run_tool),
-        )
+        capture = inspect.getsource(TodoUpgrade.run_captured)
+        self.assertIn("run_captured", inspect.getsource(TodoUpgrade.run_tool))
+        # Un pseudo-terminal, jamais un tube : derrière un tube
+        # `can_ask()` rend False et l'outil cesse de poser sa question.
+        self.assertIn("pty.spawn", capture)
+        self.assertNotIn("subprocess.PIPE", capture)
 
     def test_saying_no_cleans_nothing(self):
         # Le défaut ne retire pas le choix : il ne fait qu'en proposer un.
@@ -798,7 +797,7 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
         lst_cmd = []
-        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
+        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
         upgrade.ask_gate = lambda prompt, default="": "n" or default
         with contextlib.redirect_stdout(io.StringIO()):
             upgrade.prompt_database_cleanup("db")
@@ -818,7 +817,7 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
         lst_cmd = []
-        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
+        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
         upgrade.ask_gate = lambda prompt, default="": "" or default
         with contextlib.redirect_stdout(io.StringIO()):
             upgrade.prompt_database_cleanup("db")
@@ -833,7 +832,7 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
         lst_cmd = []
-        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
+        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
         upgrade.ask_gate = lambda prompt, default="": "y" or default
         upgrade.prompt_database_cleanup("db_upgrade_18")
         self.assertEqual(len(lst_cmd), 1)

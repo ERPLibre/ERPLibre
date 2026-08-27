@@ -244,6 +244,28 @@ def event_excerpt(lignes, event, avant=18):
     return lignes[max(0, rang - avant) : fin + 1], rang
 
 
+def excerpt_has_output(extrait, rang_relatif):
+    """La sortie de l'outil est-elle DANS l'extrait, ou seulement le cadre ?
+
+    Avant que le pilote ne capture, le journal ne portait que « $ … »
+    suivi de « -> code », sans une ligne entre les deux. Le dire était
+    juste ; le dire encore quand la sortie est là serait un mensonge, et
+    le panneau enverrait chercher ailleurs ce qu'il a sous les yeux.
+    """
+    for ligne in extrait[rang_relatif + 1 :]:
+        depouille = ligne.strip()
+        if not depouille:
+            continue
+        if MARQUEUR_COMMANDE in ligne:
+            continue
+        if depouille.startswith("-> ") or depouille.startswith("[test] "):
+            continue
+        if "]   -> " in ligne or "] [test] " in ligne:
+            continue
+        return True
+    return False
+
+
 def event_database(event):
     """La base sur laquelle ce verdict portait, lue dans sa commande."""
     for mot in event.get("detail", "").split():

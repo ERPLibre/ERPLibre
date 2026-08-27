@@ -372,7 +372,7 @@ def log_excerpt_lines(row, colour=False):
             brut = handle.read().splitlines()
     except OSError:
         return []
-    extrait, _rang = quality.event_excerpt(brut, row.get("event") or {})
+    extrait, rang = quality.event_excerpt(brut, row.get("event") or {})
     lignes = [
         status.paint(f"   ── {t('step log')} ──", "step", colour),
         status.paint(f"      {chemin}", "dim", colour),
@@ -386,28 +386,23 @@ def log_excerpt_lines(row, colour=False):
     for ligne in extrait:
         lignes.append(f"      {ligne[:150]}")
     lignes.append("")
-    lignes.append(
-        status.paint(
-            f"   {t('the tool output is not in there: it goes to the')}",
-            "dim",
-            colour,
-        )
-    )
-    lignes.append(
-        status.paint(
-            f"   {t('terminal, which a pipe would make full-screen tools')}",
-            "dim",
-            colour,
-        )
-    )
-    lignes.append(
-        status.paint(
-            f"   {t('give up. What precedes is what Odoo was writing.')}",
-            "dim",
-            colour,
-        )
-    )
-    lignes.append("")
+    # Ne le dire que si c'est vrai : depuis que le pilote capture, la
+    # sortie EST là, et répéter qu'elle manque enverrait la chercher
+    # ailleurs alors qu'on l'a sous les yeux.
+    rang_relatif = None
+    if rang is not None:
+        debut = max(0, rang - 18)
+        rang_relatif = rang - debut
+    if rang_relatif is None or not quality.excerpt_has_output(
+        extrait, rang_relatif
+    ):
+        for phrase in (
+            "the tool output is not in there: it goes to the",
+            "terminal, which a pipe would make full-screen tools",
+            "give up. What precedes is what Odoo was writing.",
+        ):
+            lignes.append(status.paint(f"   {t(phrase)}", "dim", colour))
+        lignes.append("")
     return lignes
 
 

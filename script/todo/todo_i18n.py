@@ -6979,6 +6979,10 @@ TRANSLATIONS = {
     },
     # --- Écran de qualité : Verdicts, Validation, Revue ---
     # --- Journal d'étape et bascule de version ---
+    "capture unavailable": {
+        "fr": "capture indisponible",
+        "en": "capture unavailable",
+    },
     "last run": {
         "fr": "dernière exécution",
         "en": "last run",

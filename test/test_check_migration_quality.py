@@ -2042,6 +2042,60 @@ class TestTheStepLogInThePanel(Base):
         self.assertIn(chemin, texte)
         self.assertIn("40", texte)
 
+    def test_it_stays_quiet_once_the_output_is_actually_there(self):
+        # Le pilote capture désormais. Répéter que la sortie manque
+        # enverrait la chercher ailleurs alors qu'on l'a sous les yeux.
+        chemin = self.journal(
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "⧖ Démarrage d'Odoo…",
+                "❌ 3 URL sur 37 rendent 500",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ]
+        )
+        texte = qtui.extra_pane(self.ligne_verdict(chemin))
+        self.assertIn("3 URL sur 37", texte)
+        self.assertNotIn(
+            qtui.t("the tool output is not in there: it goes to the"), texte
+        )
+
+    def test_the_frame_alone_is_not_mistaken_for_output(self):
+        # « $ … » puis « -> 1 » : c'est le cadre, pas la sortie.
+        extrait = [
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+            "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+        ]
+        self.assertFalse(quality.excerpt_has_output(extrait, 0))
+
+    def test_one_line_of_output_is_enough(self):
+        extrait = [
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "une seule ligne dite par l'outil",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+        ]
+        self.assertTrue(quality.excerpt_has_output(extrait, 0))
+
+    def test_blank_lines_are_not_output(self):
+        extrait = [
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "",
+            "   ",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+        ]
+        self.assertFalse(quality.excerpt_has_output(extrait, 0))
+
+    def test_what_came_before_the_command_is_not_its_output(self):
+        # Le contexte d'Odoo précède la commande ; le compter dirait
+        # « la sortie est là » sur tous les anciens journaux.
+        extrait = [
+            "odoo: ce qui tournait avant",
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+        ]
+        self.assertFalse(quality.excerpt_has_output(extrait, 1))
+
     def test_no_log_at_all_says_so(self):
         ligne = self.ligne_verdict(None)
         ligne["log"] = None

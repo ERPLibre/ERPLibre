@@ -85,7 +85,7 @@ class Harness(unittest.TestCase):
 
         obj.prompt_reset_stale_cow_views = faux_reset
         obj.check_stale_cow_views = lambda db: None
-        obj.run_on_terminal = lambda cmd: 0
+        obj.run_captured = lambda cmd: 0
         reponses = iter(lst_answer or [])
 
         def faux_ask(prompt, default=""):
@@ -233,7 +233,7 @@ class TestTheResetReportsWhatItDid(unittest.TestCase):
         obj.write_config = lambda: None
         obj.stale_cow_keys = lambda db: ["web.layout"]
         obj.ask_gate = lambda prompt, default="": default
-        obj.run_on_terminal = lambda cmd: 0
+        obj.run_captured = lambda cmd: 0
         with redirect_stdout(io.StringIO()):
             self.assertTrue(obj.prompt_reset_stale_cow_views("db"))
 
@@ -245,7 +245,7 @@ class TestTheResetReportsWhatItDid(unittest.TestCase):
         obj.write_config = lambda: None
         obj.stale_cow_keys = lambda db: ["web.layout"]
         obj.ask_gate = lambda prompt, default="": default
-        obj.run_on_terminal = lambda cmd: 2
+        obj.run_captured = lambda cmd: 2
         with redirect_stdout(io.StringIO()):
             self.assertFalse(obj.prompt_reset_stale_cow_views("db"))
 

@@ -287,7 +287,7 @@ def verdicts(database, path=None):
 
 
 def extrait_du_journal(dct, event, colour=True, avant=6):
-    """Ce que le journal d'étape montre autour de ce verdict.
+    """(lignes, la sortie de l'outil y est-elle) autour de ce verdict.
 
     La commande seule ne dit pas POURQUOI. Le journal, lui, garde ce
     qu'Odoo écrivait au moment du test — et c'est tout ce qu'on a : la
@@ -300,19 +300,23 @@ def extrait_du_journal(dct, event, colour=True, avant=6):
     """
     chemin = status.step_log_path(dct, event.get("step"))
     if not chemin or avant <= 0:
-        return []
+        return [], False
     try:
         with open(chemin, "r", encoding="utf-8", errors="replace") as handle:
             brut = handle.read().splitlines()
     except OSError:
-        return []
-    extrait, _rang = quality.event_excerpt(brut, event, avant=avant)
+        return [], False
+    extrait, rang = quality.event_excerpt(brut, event, avant=avant)
     if not extrait:
-        return []
+        return [], False
     lignes = [paint(f"          {chemin}", "dim", colour)]
     for ligne in extrait:
         lignes.append(paint(f"            {ligne[:150]}", "dim", colour))
-    return lignes
+    debut = max(0, rang - avant) if rang is not None else 0
+    avec_sortie = rang is not None and quality.excerpt_has_output(
+        extrait, rang - debut
+    )
+    return lignes, avec_sortie
 
 
 def verdicts_block(database, colour=True, path=None, lignes_avant=6):
@@ -341,6 +345,7 @@ def verdicts_block(database, colour=True, path=None, lignes_avant=6):
             )
         )
     dct = quality.read_progression(chemin)
+    sortie_presente = False
     for event in ratés:
         version = quality.version_of(quality.event_database(event), dct)
         palier = str(version) if version else quality.event_step(event)
@@ -354,7 +359,11 @@ def verdicts_block(database, colour=True, path=None, lignes_avant=6):
         lignes.append(
             paint(f"          {event['detail'][:120]}", "dim", colour)
         )
-        lignes.extend(extrait_du_journal(dct, event, colour, lignes_avant))
+        bloc, avec_sortie = extrait_du_journal(
+            dct, event, colour, lignes_avant
+        )
+        sortie_presente = sortie_presente or avec_sortie
+        lignes.extend(bloc)
     lignes.append("")
     lignes.append(
         paint(
@@ -364,7 +373,7 @@ def verdicts_block(database, colour=True, path=None, lignes_avant=6):
             colour,
         )
     )
-    if ratés and lignes_avant > 0:
+    if ratés and lignes_avant > 0 and not sortie_presente:
         lignes.append(
             paint(
                 f"   {t('the tool output is not in the step log: it goes')}"

@@ -556,6 +556,27 @@ class TestTheStepLogInTheReport(unittest.TestCase):
         )
         self.assertNotIn("[test]", self.bloc(lignes_avant=0))
 
+    def test_the_report_stops_saying_it_once_the_output_is_captured(self):
+        # Depuis que le pilote capture par pseudo-terminal, la sortie est
+        # dans le journal : le dire encore serait faux.
+        self.ecrire_progression([verdict()])
+        self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "[2026-08-26 03:19:44.166204] $ .venv.erplibre/bin/python3"
+                " ./script/odoo/migration/smoke_public_url.py"
+                " -d test_neutralize_upgrade_14 --internal-required",
+                "❌ 3 URL sur 37 rendent 500",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ],
+        )
+        texte = self.bloc()
+        self.assertIn("3 URL sur 37", texte)
+        self.assertNotIn(
+            residue.t("the tool output is not in the step log: it goes"),
+            texte,
+        )
+
     def test_it_says_the_tool_output_is_elsewhere(self):
         # Sans cela on cherche dans le journal une sortie qui n'y a
         # jamais été écrite.

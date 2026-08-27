@@ -169,10 +169,17 @@ class TestTheMenu(unittest.TestCase):
     def test_it_goes_through_the_real_terminal(self):
         # `uninstall_addons_theme.sh` finit par poser une question ; un
         # tube la rendrait invisible et l'on répondrait à l'aveugle.
+        # `run_captured` fabrique un pseudo-terminal : l'invite s'affiche
+        # comme sur un vrai, et le journal de désinstallation est gardé.
         bloc = self.source()
         debut = bloc.index('if wait_status == "6"')
         fin = bloc.index('if wait_status == "5"')
-        self.assertIn("run_on_terminal", bloc[debut:fin])
+        fenetre = bloc[debut:fin]
+        self.assertTrue(
+            "run_captured" in fenetre or "run_on_terminal" in fenetre,
+            fenetre[:120],
+        )
+        self.assertNotIn("todo_upgrade_execute", fenetre)
 
     def test_the_label_is_translated(self):
         self.assertIn(
