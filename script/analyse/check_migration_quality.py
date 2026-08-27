@@ -248,6 +248,11 @@ REVUE = (
         "script/odoo/migration/database_cleanup.py -d {db}",
         "cleanup",
     ),
+    (
+        "Will every step find its addons?",
+        "script/analyse/check_manifest_gaps.py --upstream",
+        "manifest",
+    ),
 )
 
 

@@ -6978,6 +6978,55 @@ TRANSLATIONS = {
         "en": "Migration quality, step by step",
     },
     # --- Écran de qualité : Verdicts, Validation, Revue ---
+    # --- Trous dans les manifestes Google Repo ---
+    "Will every step find its addons?": {
+        "fr": "Chaque palier trouvera-t-il ses addons ?",
+        "en": "Will every step find its addons?",
+    },
+    "Repositories missing from a step": {
+        "fr": "Dépôts absents d'un palier",
+        "en": "Repositories missing from a step",
+    },
+    "Every repository is declared without a hole.": {
+        "fr": "Chaque dépôt est déclaré sans trou.",
+        "en": "Every repository is declared without a hole.",
+    },
+    "missing from": {
+        "fr": "absent de",
+        "en": "missing from",
+    },
+    "upstream has the branch": {
+        "fr": "la branche existe en amont",
+        "en": "upstream has the branch",
+    },
+    "Add the <project> entry to": {
+        "fr": "Ajouter l'entrée <project> dans",
+        "en": "Add the <project> entry to",
+    },
+    "holes not settled": {
+        "fr": "trous non départagés",
+        "en": "holes not settled",
+    },
+    "not asked: run with --upstream": {
+        "fr": "pas demandé : relancer avec --upstream",
+        "en": "not asked: run with --upstream",
+    },
+    "upstream unreachable": {
+        "fr": "amont injoignable",
+        "en": "upstream unreachable",
+    },
+    "holes are legitimate: no such branch upstream": {
+        "fr": "trous légitimes : pas de telle branche en amont",
+        "en": "holes are legitimate: no such branch upstream",
+    },
+    "Repositories declared for some steps but not others.": {
+        "fr": "Dépôts déclarés pour certains paliers et pas d'autres.",
+        "en": "Repositories declared for some steps but not others.",
+    },
+    "ask each remote whether the branch exists (network)": {
+        "fr": "demander à chaque amont si la branche existe (réseau)",
+        "en": "ask each remote whether the branch exists (network)",
+    },
     "Verdicts the migration recorded": {
         "fr": "Verdicts enregistrés par la migration",
         "en": "Verdicts the migration recorded",

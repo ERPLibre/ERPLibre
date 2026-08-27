@@ -204,7 +204,9 @@ def extra_rows(presents, dct=None):
                 "detail": "▶" if clef else "",
                 "question": question,
                 "command": (
-                    commande.format(db=cible) if cible and clef else ""
+                    commande.format(db=cible)
+                    if clef and (cible or "{db}" not in commande)
+                    else ""
                 ),
             }
         )
