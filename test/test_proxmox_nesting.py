@@ -86,10 +86,50 @@ class TestLePlanDesEtages(unittest.TestCase):
         )
         self.assertEqual(plan["arret"], "vcpu")
         self.assertLess(plan["atteignable"], 10)
-        # Et le premier étage ne dépasse pas la part concédée à l'hôte.
+        # Et le premier étage laisse à l'hôte ce qui lui est réservé.
         self.assertLessEqual(
-            plan["niveaux"][0]["vcpu"], 8 // nesting.VCPU_HOTE_PART
+            plan["niveaux"][0]["vcpu"], 8 - nesting.HOTE_RESERVE_VCPU
         )
+
+    def test_the_named_resource_is_the_one_that_really_binds(self):
+        """La version d'avant prenait la première d'une chaîne figée
+        ram > disque > vcpu, évaluée à la profondeur DEMANDÉE. Sur deux cœurs
+        et 20 Go elle annonçait « manque de ram » quand le processeur bornait à
+        zéro étage : l'opérateur doublait la mémoire et n'y gagnait rien."""
+        for cpu, ram, disque, attendu in (
+            (2, 20000, 5000, "vcpu"),
+            (2, 200000, 100, "vcpu"),
+            (4, 16384, 200, "vcpu"),
+            (28, 12288, 500, "ram"),
+            (28, 200000, 60, "disque"),
+        ):
+            with self.subTest(cpu=cpu, ram=ram, disque=disque):
+                plan = nesting.nesting_plan(10, cpu, ram, disque)
+                self.assertEqual(plan["arret"], attendu)
+                # Et c'est bien le plus BAS des trois plafonds.
+                self.assertEqual(
+                    plan["plafonds"][attendu], min(plan["plafonds"].values())
+                )
+                self.assertEqual(
+                    plan["atteignable"], min(10, *plan["plafonds"].values())
+                )
+
+    def test_doubling_the_named_resource_gains_a_level(self):
+        """L'épreuve utile du diagnostic : ce qu'il nomme, ajouté, PAIE."""
+        base = dict(cpu_hote=28, ram_dispo_mo=12288, disque_libre_go=500)
+        avant = nesting.nesting_plan(10, **base)
+        self.assertEqual(avant["arret"], "ram")
+        apres = nesting.nesting_plan(
+            10, **{**base, "ram_dispo_mo": base["ram_dispo_mo"] * 2}
+        )
+        self.assertGreater(apres["atteignable"], avant["atteignable"])
+
+    def test_a_huge_depth_costs_nothing(self):
+        # Le balayage décroissant tournait autant de tours que la profondeur
+        # demandée pour rendre exactement le même plan.
+        plan = nesting.nesting_plan(10**6, 28, 58000, 165)
+        self.assertEqual(plan["atteignable"], min(plan["plafonds"].values()))
+        self.assertEqual(len(plan["niveaux"]), plan["atteignable"])
 
     def test_running_out_of_ram_is_named(self):
         plan = nesting.nesting_plan(

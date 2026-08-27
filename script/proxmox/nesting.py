@@ -90,9 +90,19 @@ DISQUE_MIN_GO = 15
 # a deux, son parent trois, et ainsi de suite. Le premier étage d'une descente
 # à dix en demande onze — sur vingt-huit cœurs réels, cela passe.
 VCPU_IMBRIQUE = 2
-# Ce qu'on accepte de prendre à la machine physique : la moitié de ses cœurs.
-# L'orchestrateur tourne dessus, et la suite de tests aussi.
-VCPU_HOTE_PART = 2
+# Ce qu'on LAISSE à la machine physique. L'orchestrateur tourne dessus, son
+# ssh vers chaque étage aussi, et la suite de tests avec.
+#
+# Un nombre fixe, et non une fraction : « la moitié des cœurs » gardait
+# quatorze cœurs inutilisés sur vingt-huit, et sur une machine à deux cœurs le
+# plancher qui l'accompagnait rendait un budget de deux — soit la machine
+# entière, hôte compris.
+#
+# Deux, et pas plus : l'orchestrateur passe son temps à ATTENDRE du ssh, il ne
+# calcule rien. Quatre auraient interdit toute descente sur un hôte à quatre
+# cœurs, où un étage tient très bien. Sur une machine trop petite le plan rend
+# franchement zéro étage plutôt que de surengager l'hôte.
+HOTE_RESERVE_VCPU = 2
 
 # Au-delà, l'imbrication n'est pas un terrain documenté par les fabricants.
 # On ne refuse pas — on le DIT.
@@ -107,9 +117,18 @@ def nesting_plan(
 ) -> dict:
     """Les ressources de chaque étage, dimensionnées DEPUIS LE BAS.
 
-    Rend {"demandee", "atteignable", "niveaux": [...], "arret"}. `arret` nomme
-    ce qui a manqué — « ram » ou « disque » — quand la profondeur demandée
-    n'est pas atteinte, sinon "".
+    Rend {"demandee", "atteignable", "niveaux", "arret", "plafonds"}.
+
+    `arret` nomme la ressource qui BORNE réellement la profondeur — "ram",
+    "disque" ou "vcpu" — et "" si la profondeur demandée tient. `plafonds`
+    donne les trois profondeurs, une par ressource, pour qu'on puisse voir
+    d'un coup ce qu'il faudrait ajouter et de combien.
+
+    Nommer la bonne, c'est le sujet : la version d'avant prenait la première
+    d'une chaîne figée ram > disque > vcpu, évaluée à la profondeur DEMANDÉE.
+    Sur une machine à deux cœurs et 20 Go, elle annonçait « manque de ram »
+    quand le processeur bornait à un seul étage ; l'opérateur doublait la
+    mémoire et n'y gagnait pas un étage.
 
     Depuis le bas, et c'est tout le sujet. De haut en bas, chaque étage
     recevait ce que son parent pouvait céder : mesuré, l'étage 4 se retrouvait
@@ -144,26 +163,25 @@ def nesting_plan(
             VCPU_IMBRIQUE + d - 1,
         )
 
-    budget_vcpu = max(VCPU_IMBRIQUE, int(cpu_hote) // VCPU_HOTE_PART)
-    atteignable, arret = 0, ""
-    for d in range(max(0, int(profondeur)), 0, -1):
-        ram1, disque1, vcpu1 = besoin(d)
-        if (
-            ram1 <= budget_ram
-            and disque1 <= budget_disque
-            and vcpu1 <= budget_vcpu
-        ):
-            atteignable = d
-            break
-    if atteignable < int(profondeur):
-        # Nommer CE qui a manqué, à la profondeur demandée.
-        ram1, disque1, vcpu1 = besoin(max(1, int(profondeur)))
-        if ram1 > budget_ram:
-            arret = "ram"
-        elif disque1 > budget_disque:
-            arret = "disque"
-        else:
-            arret = "vcpu"
+    budget_vcpu = int(cpu_hote) - HOTE_RESERVE_VCPU
+    # La profondeur que chaque budget permet À LUI SEUL. C'est de l'inverse de
+    # `besoin` : un balayage décroissant donnait le même résultat, mais son
+    # coût suivait la profondeur demandée — nesting_plan(10**6, …) tournait un
+    # million de tours pour rendre le même plan.
+    plafonds = {
+        "ram": (budget_ram - PVE_RAM_CIBLE_MO) // PVE_RAM_MO + 1,
+        "disque": (budget_disque - PVE_DISQUE_CIBLE_GO) // PVE_DISQUE_GO + 1,
+        "vcpu": budget_vcpu - VCPU_IMBRIQUE + 1,
+    }
+    plafonds = {nom: max(0, valeur) for nom, valeur in plafonds.items()}
+    demandee = max(0, int(profondeur))
+    atteignable = min(demandee, *plafonds.values())
+    arret = ""
+    if atteignable < demandee:
+        # La ressource qui BORNE, c'est-à-dire celle dont le plafond est le
+        # plus bas — pas la première d'un ordre figé. En ajouter une autre ne
+        # ferait pas monter la profondeur d'un seul étage.
+        arret = min(plafonds, key=lambda nom: (plafonds[nom], nom))
     niveaux = [
         {
             "niveau": niveau,
@@ -171,8 +189,13 @@ def nesting_plan(
             # enfant, c'est cent pour cent de surengagement — et l'hyperviseur
             # à servir en plus.
             "vcpu": VCPU_IMBRIQUE + (atteignable - niveau),
-            "ram": PVE_RAM_CIBLE_MO + (atteignable - niveau) * PVE_RAM_MO,
-            "disque": PVE_DISQUE_CIBLE_GO
+            # Les planchers ne sont pas décoratifs : ils tiennent même si
+            # quelqu'un baisse une CIBLE un jour. Sans eux, ils n'étaient plus
+            # lus par personne et les tests qui les vérifiaient passaient
+            # d'eux-mêmes.
+            "ram": max(RAM_MIN_MO, PVE_RAM_CIBLE_MO)
+            + (atteignable - niveau) * PVE_RAM_MO,
+            "disque": max(DISQUE_MIN_GO, PVE_DISQUE_CIBLE_GO)
             + (atteignable - niveau) * PVE_DISQUE_GO,
         }
         for niveau in range(1, atteignable + 1)
@@ -182,6 +205,7 @@ def nesting_plan(
         "atteignable": atteignable,
         "niveaux": niveaux,
         "arret": arret,
+        "plafonds": plafonds,
     }
 
 

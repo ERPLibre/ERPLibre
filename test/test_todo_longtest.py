@@ -331,7 +331,7 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
             f"10.10.10.{niveau}",
         )
         d.ecrire_alias = lambda *a, **k: None
-        d.attendre_ssh = lambda cible, delai: 1
+        d.attendre_ssh = lambda cible, delai, parent=None: 1
         d.redemarrer_et_verifier = lambda cible: True
         d.reparer_pmxcfs = lambda cible: True
 
@@ -557,6 +557,89 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertIn("descente tourne", sortie.getvalue())
 
 
+class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
+    """L'étage 1 a redémarré pendant l'installation de l'étage 4, éteignant
+    les étages 2, 3 et 4 d'un coup.
+
+    La descente a attendu son délai entier — quarante minutes — un ssh qui ne
+    pouvait plus aboutir, puis a conclu « jamais joignable en ssh ». Le
+    diagnostic était faux : la machine n'était pas lente, sa MAISON n'existait
+    plus."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+        self.vrai_run = deep_proxmox.pve.run
+        self.addCleanup(setattr, deep_proxmox.pve, "run", self.vrai_run)
+        self.d = deep_proxmox.Descente.__new__(deep_proxmox.Descente)
+        self.d.dry_run = False
+        self.d.journal = None
+
+    def _cibles(self):
+        return (
+            {"target": "enfant", "sudo": "sudo ", "jump": ""},
+            {"target": "parent", "sudo": "sudo ", "jump": ""},
+        )
+
+    def test_it_gives_up_as_soon_as_the_parent_stops_answering(self):
+        appels = []
+
+        def faux(hote, cmd, timeout=None):
+            appels.append(hote["target"])
+            # Une borne DURE : si le garde-fou disparaissait, la boucle
+            # sonderait l'enfant jusqu'à l'expiration du délai. On la fait
+            # éclater au troisième tour plutôt que de laisser le test tourner
+            # — et ce test-ci doit échouer vite quand le code régresse.
+            if appels.count("enfant") > 2:
+                raise AssertionError(f"sondé sans fin : {appels[:6]}")
+            return 255, ""
+
+        self.dp.pve.run = faux
+        enfant, parent = self._cibles()
+        vrai_sleep = time.sleep
+        time.sleep = lambda _s: None
+        self.addCleanup(setattr, time, "sleep", vrai_sleep)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            res = self.d.attendre_ssh(enfant, 45, parent)
+        self.assertIsNone(res)
+        # DEUX sondes, et c'est tout : l'enfant, puis sa maison. Sans le
+        # garde-fou la liste comptait autant d'« enfant » que le délai le
+        # permet, et la descente attendait pour rien.
+        self.assertEqual(appels, ["enfant", "parent"])
+        self.assertIn("ne répond plus", sortie.getvalue())
+
+    def test_a_slow_child_with_a_living_parent_is_still_waited_for(self):
+        """Le contrôle NÉGATIF : un étage lent n'est pas un étage mort. Sans
+        lui, ce garde-fou abandonnerait toute descente profonde."""
+        etat = {"tours": 0}
+
+        def faux(hote, cmd, timeout=None):
+            if hote["target"] == "parent":
+                return 0, ""  # la maison tient
+            etat["tours"] += 1
+            return (0, "") if etat["tours"] >= 3 else (255, "")
+
+        self.dp.pve.run = faux
+        self.dp.time = time  # même horloge
+        enfant, parent = self._cibles()
+        vrai_sleep = time.sleep
+        time.sleep = lambda _s: None
+        self.addCleanup(setattr, time, "sleep", vrai_sleep)
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = self.d.attendre_ssh(enfant, 3600, parent)
+        self.assertIsNotNone(res)
+        self.assertEqual(etat["tours"], 3)
+
+    def test_without_a_parent_the_behaviour_is_unchanged(self):
+        # L'étage 1 n'a pas de parent : il tourne sur du métal.
+        self.dp.pve.run = lambda hote, cmd, timeout=None: (0, "")
+        enfant, _ = self._cibles()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.d.attendre_ssh(enfant, 60), 0)
+
+
 class TestLeDecompteDeLaDestruction(unittest.TestCase):
     """« if not detruire_etage1(…) : faits -= 1 » — un succès de l'étage 1
     n'ajoutait RIEN, alors que le total est len(liste) + 1.
@@ -578,9 +661,11 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
                 "dernier_rapport",
                 "detruire_une",
                 "detruire_etage1",
+                "retirer_alias",
             )
         }
         deep_proxmox.autre_deep_proxmox = lambda: []
+        deep_proxmox.retirer_alias = lambda *a, **k: None
         deep_proxmox.dernier_rapport = lambda: {
             "fichier": "/x.json",
             "etages": [
@@ -601,11 +686,11 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
 
         builtins.input = self._entree
 
-    def _lancer(self, etage1_ok):
+    def _lancer(self, etage1_ok, une=True):
         import builtins
 
         builtins.input = lambda _prompt="": "OUI"
-        self.dp.detruire_une = lambda *a, **k: True
+        self.dp.detruire_une = lambda *a, **k: une
         self.dp.detruire_etage1 = lambda *a, **k: etage1_ok
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
             code = self.dp.detruire(None, dry_run=False)
@@ -615,15 +700,67 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         code, texte = self._lancer(etage1_ok=True)
         self.assertEqual(code, 0)
         self.assertIn("3 / 3", texte)
-        self.assertNotIn("il reste des machines", texte)
+        self.assertNotIn("⚠", texte)
 
-    def test_a_surviving_level_one_is_still_warned_about(self):
-        # L'avertissement doit rester CRÉDIBLE : il ne sort que quand il a
-        # quelque chose à dire.
+    def test_unreachable_levels_go_with_the_root_disk(self):
+        """Mesuré sur un arbre réel : les étages 3 et 4 étaient injoignables
+        — leur parent était éteint — et le compte disait « 2 / 4, il reste des
+        machines ». Or « virsh undefine --remove-all-storage » sur l'étage 1
+        efface le disque où ils VIVENT. L'avertissement était faux dans
+        l'autre sens, et un avertissement faux ne se lit plus."""
+        self.dp.detruire_une = lambda *a, **k: False
+        code, texte = self._lancer(etage1_ok=True, une=False)
+        self.assertEqual(code, 0)
+        self.assertIn("3 / 3", texte)
+        self.assertIn("emporté(s) avec le disque de l'étage 1", texte)
+
+    def test_a_surviving_level_one_is_the_only_real_warning(self):
+        # Là, et là seulement, quelque chose vit encore : le disque est
+        # debout, et tout ce qu'il contient avec lui.
         code, texte = self._lancer(etage1_ok=False)
         self.assertEqual(code, 1)
-        self.assertIn("2 / 3", texte)
-        self.assertIn("il reste des machines", texte)
+        self.assertIn("l'étage 1 est DEBOUT", texte)
+
+    def test_the_ssh_aliases_of_a_destroyed_descent_are_removed(self):
+        """Elles survivaient aux machines : des entrées mortes dont le
+        ProxyJump désigne un hôte qui n'existe plus."""
+        retires = []
+        self.dp.retirer_alias = lambda rapport, journal=None: retires.append(
+            [e.get("alias") for e in rapport["etages"]]
+        )
+        self._lancer(etage1_ok=True)
+        self.assertEqual(len(retires), 1)
+
+    def test_the_aliases_are_computed_when_the_report_lacks_them(self):
+        """Un étage abandonné avant l'écriture de son alias en a tout de même
+        un : il est déterminé par (niveau, alias du parent)."""
+        vus = {}
+        import script.todo.todo as module_todo
+
+        vrai = module_todo.TODO._write_ssh_config_entry
+
+        def espion(self, host, user, ip, **kw):
+            vus["drop"] = kw.get("also_drop")
+
+        module_todo.TODO._write_ssh_config_entry = espion
+        self.addCleanup(
+            setattr, module_todo.TODO, "_write_ssh_config_entry", vrai
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            # La VRAIE fonction : setUp en a posé un bouchon pour les autres
+            # tests de cette classe.
+            self._vrais["retirer_alias"](
+                {
+                    "etages": [
+                        {"niveau": 1, "alias": "deep-pve-1"},
+                        {"niveau": 2, "parent_alias": "deep-pve-1"},
+                    ]
+                }
+            )
+        self.assertEqual(
+            vus["drop"],
+            ("deep-pve-1", self.dp.alias_etage(2, "deep-pve-1")),
+        )
 
 
 class TestLeMenu(unittest.TestCase):

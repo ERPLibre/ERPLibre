@@ -180,12 +180,20 @@ class Descente:
                 self.dire(f"        {ligne}")
         return code, sortie
 
-    def attendre_ssh(self, hote, delai):
+    def attendre_ssh(self, hote, delai, parent=None):
         """Attend que la machine réponde. Rend les secondes, ou None.
 
         Des connexions COURTES successives : cloud-init régénère les clés
         d'hôte et redémarre sshd au premier démarrage, ce qui tuerait une
         session longue.
+
+        `parent` : si l'hôte qui HÉBERGE la machine attendue cesse de
+        répondre, on abandonne tout de suite. Constaté : l'étage 1 a redémarré
+        pendant l'installation de l'étage 4, ce qui a éteint les étages 2, 3 et
+        4 d'un coup ; la descente a attendu son délai entier — quarante
+        minutes — un ssh qui ne pouvait plus aboutir, puis a rendu « jamais
+        joignable en ssh ». Le diagnostic était faux : la machine n'était pas
+        lente, sa MAISON n'existait plus.
         """
         if self.dry_run:
             return 0
@@ -196,10 +204,19 @@ class Descente:
         # joignable en ssh ». Le transport marchait ; c'est le diagnostic qui
         # était faux.
         sonde = dict(hote, sudo="")
+        sonde_parent = dict(parent, sudo="") if parent else None
         while time.time() - debut < delai:
             code, _o = pve.run(sonde, "true", 60)
             if code == 0:
                 return int(time.time() - debut)
+            if sonde_parent is not None:
+                code_parent, _p = pve.run(sonde_parent, "true", 60)
+                if code_parent != 0:
+                    self.dire(
+                        f"      ✗ l'hôte {sonde_parent['target']} ne répond"
+                        " plus : l'attente n'aboutira pas"
+                    )
+                    return None
             time.sleep(15)
         return None
 
@@ -549,7 +566,7 @@ class Descente:
             etage["alias"] = alias
 
             etage["etape"] = "ssh"
-            attente = self.attendre_ssh(cible, self.delai("ssh"))
+            attente = self.attendre_ssh(cible, self.delai("ssh"), parent)
             if attente is None:
                 self.dire("      ✗ jamais joignable en ssh")
                 self.etages.append(etage)
@@ -653,6 +670,19 @@ class Descente:
                 f"  profondeur atteinte : {atteint}"
                 f" / {self.plan['demandee']}"
             )
+            # Deux causes très différentes rendaient le même « 5 / 10 » : la
+            # machine trop petite pour dix, ou un étage tombé en route. La
+            # première n'est pas un défaut du code, la seconde si.
+            if atteint == self.plan["atteignable"] < self.plan["demandee"]:
+                self.dire(
+                    f"  (plan borné à {self.plan['atteignable']} par le"
+                    f" {self.plan['arret']} : tout le plan a tenu)"
+                )
+            elif atteint < self.plan["atteignable"]:
+                self.dire(
+                    f"  (le plan annonçait {self.plan['atteignable']} :"
+                    " un étage est tombé, voir plus haut)"
+                )
         for e in self.etages:
             if self.dry_run:
                 marque, detail = "·", "plan"
@@ -947,18 +977,64 @@ def detruire(journal=None, dry_run=False):
     # machines » et sortait 1, si bien que le seul avertissement censé
     # prévenir qu'un disque de plusieurs dizaines de Go reste alloué
     # s'affichait toujours, et qu'on apprenait à ne plus le lire.
-    if detruire_etage1(journal):
+    racine = detruire_etage1(journal)
+    if racine:
         faits += 1
+    retirer_alias(rapport, journal)
+    if racine:
+        # L'étage 1 est un DISQUE, et tout le reste vit dedans. « virsh
+        # undefine --remove-all-storage » l'a effacé : les étages injoignables
+        # — leur parent était éteint — ont disparu avec, qu'on ait pu leur
+        # parler ou non. Annoncer « il reste des machines » dans ce cas était
+        # faux dans l'autre sens, et un avertissement faux ne se lit plus.
+        reste = len(liste) + 1 - faits
+        dire(
+            f"\n  {len(liste) + 1} / {len(liste) + 1} défait(s)."
+            + (
+                f"  ({reste} injoignable(s), emporté(s) avec le disque de"
+                " l'étage 1.)"
+                if reste
+                else ""
+            ),
+            journal,
+        )
+        return 0
     dire(
         f"\n  {faits} / {len(liste) + 1} défait(s)."
-        + (
-            ""
-            if faits == len(liste) + 1
-            else "  ⚠ il reste des machines : voir plus haut."
-        ),
+        "  ⚠ l'étage 1 est DEBOUT : ce qu'il contient vit encore.",
         journal,
     )
-    return 0 if faits == len(liste) + 1 else 1
+    return 1
+
+
+def retirer_alias(rapport, journal=None):
+    """Retire de ~/.ssh/config les entrées de la descente défaite.
+
+    Sans cela, elles survivaient aux machines : des entrées mortes dont le
+    ProxyJump désigne un hôte qui n'existe plus, et qu'on retrouve plus tard
+    sans savoir à quoi elles servaient.
+    """
+    alias = []
+    for etage in rapport.get("etages") or []:
+        nom = etage.get("alias")
+        if not nom:
+            # L'étage abandonné avant l'écriture de son alias : le calculer,
+            # il est déterminé par (niveau, alias du parent).
+            parent = etage.get("parent_alias")
+            if parent:
+                nom = alias_etage(int(etage["niveau"]), parent)
+        if nom and nom not in alias:
+            alias.append(nom)
+    if not alias:
+        return
+    try:
+        from script.todo.todo import TODO
+
+        TODO.__new__(TODO)._write_ssh_config_entry(
+            [], "erplibre", "", also_drop=tuple(alias)
+        )
+    except Exception as err:  # noqa: BLE001 - jamais bloquer la destruction
+        dire(f"  ⚠ entrées ~/.ssh/config non retirées : {err}", journal)
 
 
 def principal(argv=None):
@@ -992,9 +1068,16 @@ def principal(argv=None):
             f"  {n['disque']:>5} Go"
         )
     if plan["arret"]:
+        # Les TROIS plafonds, pas seulement celui qui borne : sans eux on
+        # ajoute la ressource nommée sans savoir de combien, ni laquelle
+        # bornera ensuite.
+        plafonds = " · ".join(
+            f"{nom} {valeur}" for nom, valeur in plan["plafonds"].items()
+        )
         print(
             f"\n  ⚠ demandée {plan['demandee']}, atteignable"
-            f" {plan['atteignable']} — manque de {plan['arret']}"
+            f" {plan['atteignable']} — c'est le {plan['arret']} qui borne"
+            f"\n    profondeur permise par chaque ressource : {plafonds}"
         )
     if not plan["niveaux"]:
         if args.depth < 1:
