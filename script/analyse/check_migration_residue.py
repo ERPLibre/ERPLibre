@@ -27,7 +27,6 @@ finit par être ignoré en entier.
 Ne restent ici que les constats qui se jugent SANS point de comparaison,
 parce qu'ils sont faux en eux-mêmes. Les mêmes bases, mêmes mesures :
 
-    res_lang.active à NULL            0 → 9      un booléen NULL est un bug
     ir_model_relation sans table      0 → 68     la table m2m est nommée,
                                                  elle n'existe pas
     index doublés convention 17       0 → 414    Odoo 17 renomme, sans
@@ -35,8 +34,29 @@ parce qu'ils sont faux en eux-mêmes. Les mêmes bases, mêmes mesures :
     liste de prix par défaut absente  0 → 1      `product` installé, son
                                                  xmlid pas là
 
-Zéro avant, non nul après : aucun de ces trois ne peut s'expliquer
+Zéro avant, non nul après : aucun de ceux-là ne peut s'expliquer
 autrement que par la migration.
+
+« Zéro avant, non nul après » ne suffit pourtant pas
+----------------------------------------------------
+Un quatrième contrôle a vécu ici et n'y est plus : `res_lang.active` à
+NULL, 0 avant et 9 après. Le chiffre était juste, la conclusion fausse.
+
+Mesuré palier par palier : 0, 1, 2, 3, 5, 8, 9 — les NULL arrivent avec
+les langues que CHAQUE version ajoute au catalogue. Et c'est Odoo
+lui-même qui les écrit : `active = fields.Boolean()` sans défaut
+(res_lang.py:64) et un `res.lang.csv` sans colonne `active` — l'INSERT ne
+porte pas la colonne, PostgreSQL y met NULL.
+
+Aucune conséquence, vérifiée dans la source de la 18 : un domaine
+`('active','=',False)` compile en `(IS NULL OR = FALSE)`
+(models.py:3217-3222), l'action du menu Langues porte `active_test: False`
+(res_lang_views.xml:136), le tri passe par `COALESCE(active, FALSE)`
+(models.py:5692) et la lecture rend `bool(value)` (fields.py:1515). NULL
+et FALSE sont indiscernables partout.
+
+La leçon : la croissance mesurée doit AUSSI être inexplicable autrement.
+Ici elle s'expliquait très bien.
 
 Un quatrième a été RETIRÉ après vérification
 --------------------------------------------
@@ -106,15 +126,6 @@ CONTROLES = (
         " WHERE state IN ('to install','to upgrade','to remove')",
         "gravity": "broken",
         "repair": "script/todo/todo_upgrade.py (uninstall_one_by_one)",
-    },
-    {
-        "key": "lang_active_null",
-        "title": "Languages whose active flag is NULL",
-        "why": "A boolean that is neither true nor false: the language is"
-        " listed nowhere and cannot be re-enabled from the interface.",
-        "sql": "SELECT count(*) FROM res_lang WHERE active IS NULL",
-        "gravity": "broken",
-        "repair": None,
     },
     {
         "key": "duplicate_index",
@@ -189,7 +200,7 @@ CONTROLES = (
         "sql": "SELECT count(*) FROM ir_model_data d WHERE NOT EXISTS"
         " (SELECT 1 FROM ir_model m WHERE m.model = d.model)",
         "gravity": "broken",
-        "repair": "script/analyse/database_cleanup.py",
+        "repair": "script/odoo/migration/database_cleanup.py",
     },
     {
         "key": "attachment_field_gone",

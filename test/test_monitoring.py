@@ -24,9 +24,8 @@ import os
 import sys
 import unittest
 
-sys.path.insert(
-    0, os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-)
+REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, REPO)
 
 from script.analyse import check_migration_residue as residue  # noqa: E402
 from script.analyse import monitoring  # noqa: E402
@@ -190,9 +189,9 @@ class TestWhatAMigrationLeftBehind(unittest.TestCase):
     def test_broken_is_read_before_watch(self):
         resultats = {c["key"]: 0 for c in residue.CONTROLES}
         resultats["duplicate_index"] = 400  # watch
-        resultats["lang_active_null"] = 1  # broken
+        resultats["stuck_modules"] = 1  # broken
         trouve, _ = residue.judge(resultats)
-        self.assertEqual(trouve[0][0]["key"], "lang_active_null")
+        self.assertEqual(trouve[0][0]["key"], "stuck_modules")
 
     def test_a_check_that_could_not_run_is_not_a_check_that_found_nothing(
         self,
@@ -247,7 +246,7 @@ class TestWhatAMigrationLeftBehind(unittest.TestCase):
     def test_the_exit_code_separates_nothing_from_something(self):
         vide = {c["key"]: 0 for c in residue.CONTROLES}
         self.assertEqual(residue.judge(vide)[0], [])
-        plein = dict(vide, lang_active_null=3)
+        plein = dict(vide, stuck_modules=3)
         self.assertTrue(residue.judge(plein)[0])
 
 
@@ -449,6 +448,39 @@ def verdict(**champs):
     }
     brut.update(champs)
     return brut
+
+
+class TestTheControlsThemselves(unittest.TestCase):
+    """Un contrôle retiré ne doit pas survivre dans les tests.
+
+    « res_lang.active à NULL » a vécu ici avec la gravité « broken », et
+    c'était un faux constat : Odoo écrit lui-même ce NULL, faute de défaut
+    sur `active = fields.Boolean()`. Deux tests le nommaient encore après
+    son retrait — ils passaient, en construisant un dictionnaire avec une
+    clé inconnue de personne.
+    """
+
+    def test_every_key_a_test_names_still_exists(self):
+        import re
+
+        connues = {c["key"] for c in residue.CONTROLES}
+        source = io.open(__file__, encoding="utf-8").read()
+        nommees = set(re.findall(r'resultats\["([a-z_]+)"\]', source))
+        nommees |= set(re.findall(r"dict\(vide, ([a-z_]+)=", source))
+        self.assertTrue(nommees)
+        self.assertEqual(set(), nommees - connues)
+
+    def test_no_control_promises_a_repair_tool_that_is_missing(self):
+        import os
+
+        for controle in residue.CONTROLES:
+            morceaux = (controle["repair"] or "").split()
+            chemin = morceaux[0] if morceaux else ""
+            if chemin.startswith("script/"):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(REPO, chemin)),
+                    f"{controle['key']} → {chemin}",
+                )
 
 
 class TestTheVerdictsSection(unittest.TestCase):
