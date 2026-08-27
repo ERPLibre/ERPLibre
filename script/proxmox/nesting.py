@@ -34,8 +34,12 @@ Deux nombres viennent de la même mesure, et méritent d'être dits :
 """
 
 # Ce qu'on laisse à la machine physique : elle fait tourner l'orchestrateur,
-# le menu TODO, et le premier QEMU.
+# le menu TODO, et le premier QEMU. Un PLANCHER, complété par une part —
+# quatre gigaoctets sur une machine de soixante, c'est 6 % laissés à l'hôte,
+# et le jour où les invités touchent vraiment leur mémoire c'est l'hôte qui
+# part en swap. La mesure serait alors celle du swap, pas de l'imbrication.
 HOTE_RESERVE_RAM_MO = 4096
+HOTE_RESERVE_PART = 8  # un huitième
 HOTE_RESERVE_DISQUE_GO = 20
 
 # Ce qu'un étage garde pour lui avant de céder le reste. La RAM vient de
@@ -78,7 +82,8 @@ def nesting_plan(
     # Arrondi au gibioctet inférieur : « --memory 25203 » marche, mais un
     # nombre rond se relit, se compare d'un étage à l'autre, et évite de
     # traîner les kibioctets du hasard de la mesure jusqu'au dixième étage.
-    ram = ((int(ram_dispo_mo) - HOTE_RESERVE_RAM_MO) // 1024) * 1024
+    reserve = max(HOTE_RESERVE_RAM_MO, int(ram_dispo_mo) // HOTE_RESERVE_PART)
+    ram = ((int(ram_dispo_mo) - reserve) // 1024) * 1024
     disque = int(disque_libre_go) - HOTE_RESERVE_DISQUE_GO
     niveaux, arret = [], ""
     # « max(1, …) » forçait un tour : profondeur 0 rendait un plan d'UN

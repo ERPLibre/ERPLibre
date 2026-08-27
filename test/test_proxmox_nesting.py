@@ -84,6 +84,31 @@ class TestLePlanDesEtages(unittest.TestCase):
         for n in plan["niveaux"]:
             self.assertGreaterEqual(n["disque"], nesting.DISQUE_MIN_GO)
 
+    def test_the_host_keeps_a_share_not_just_a_floor(self):
+        """Quatre gigaoctets sur une machine de soixante, c'est 6 % laissés à
+        l'hôte : le jour où les invités touchent vraiment leur mémoire, c'est
+        lui qui part en swap — et la mesure serait celle du swap, pas de
+        l'imbrication."""
+        for dispo in (60000, 260000):
+            with self.subTest(dispo=dispo):
+                plan = nesting.nesting_plan(
+                    1, cpu_hote=28, ram_dispo_mo=dispo, disque_libre_go=500
+                )
+                reserve = dispo - plan["niveaux"][0]["ram"]
+                self.assertGreater(reserve, nesting.HOTE_RESERVE_RAM_MO)
+                self.assertGreaterEqual(
+                    reserve, dispo // nesting.HOTE_RESERVE_PART
+                )
+
+    def test_a_small_host_keeps_the_floor(self):
+        # Sur une petite machine, la part serait dérisoire : le plancher tient.
+        plan = nesting.nesting_plan(
+            1, cpu_hote=4, ram_dispo_mo=16384, disque_libre_go=200
+        )
+        self.assertEqual(
+            16384 - plan["niveaux"][0]["ram"], nesting.HOTE_RESERVE_RAM_MO
+        )
+
     def test_a_depth_of_zero_asks_for_nothing(self):
         for profondeur in (0, -1, -7):
             with self.subTest(profondeur=profondeur):

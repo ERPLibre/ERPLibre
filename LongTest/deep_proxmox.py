@@ -407,6 +407,23 @@ class Descente:
         if res_proc.returncode:
             self.dire("      ✗ la CLI QEMU/KVM a échoué")
             return None
+        # L'entrée ~/.ssh/config, que la CLI n'écrit PAS. Sans elle,
+        # « ssh deep-pve-1 » rend « Name or service not known » et la descente
+        # attendait son plein délai avant de conclure « jamais joignable » —
+        # sur une VM qui répondait parfaitement à son adresse. Vécu au premier
+        # lancement réel.
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        ip = todo._qemu_vm_ip_now(nom)
+        if not ip:
+            self.dire(f"      ✗ {nom} créée mais sans adresse")
+            return None
+        self.dire(f"      {nom} : {ip}")
+        prive = cle_publique()[:-4] if cle_publique() else None
+        todo._write_ssh_config_entry(
+            [nom], "erplibre", ip, identity_file=prive
+        )
         return nom
 
     def creer_enfant(self, parent, niveau, res, prepare):

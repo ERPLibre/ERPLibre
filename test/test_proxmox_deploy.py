@@ -947,6 +947,68 @@ class TestLInstalleurRendPmxcfsAuMonde(unittest.TestCase):
         self.assertIn("manage_etc_hosts:[[:space:]]*false", bloc)
         self.assertNotIn('[ -f "${fichier}" ]', bloc)
 
+    def test_the_first_apt_survives_the_boot_time_lock(self):
+        """Mesuré une seconde après le premier ssh d'une image cloud :
+
+            E: Could not get lock /var/lib/apt/lists/lock.
+               It is held by process 1026 (apt-get)
+
+        Ce n'est pas cloud-init — « status --wait » avait rendu la main. C'est
+        apt-daily, qui se déclenche au démarrage. Et le verrou des LISTES
+        n'est pas couvert par « DPkg::Lock::Timeout », qui ne vaut que pour
+        celui de dpkg."""
+        self.assertIn("prepare_apt", self.src)
+        bloc = self.src[self.src.index("prepare_apt() {") :]
+        bloc = bloc[: bloc.index("\ninstall_pve()")]
+        self.assertIn("apt-daily", bloc)
+        # Arrêter le minuteur n'interrompt pas l'apt-get déjà en vol : il faut
+        # RÉESSAYER, pas seulement stopper.
+        self.assertIn("for i in", bloc)
+        self.assertIn("nouvel essai", bloc)
+
+    def test_the_retry_loop_really_retries(self):
+        """Exécutée, apt_get bouchonné : elle doit insister puis rendre 0."""
+        import re
+        import subprocess
+
+        fonction = re.search(
+            r"^prepare_apt\(\) \{.*?^\}", self.src, re.M | re.S
+        )
+        self.assertIsNotNone(fonction)
+        shell = (
+            "say() { :; }; die() { exit 9; }; run() { :; }; sudo() { :; }; "
+            "sleep() { :; }; N=0; "
+            "apt_get() { N=$((N+1)); [ $N -ge 3 ] && return 0 || return 100; };"
+            + fonction.group(0)
+            + '\nprepare_apt && echo "ESSAIS $N"'
+        )
+        res = subprocess.run(
+            ["bash", "-c", shell], capture_output=True, text=True, timeout=60
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("ESSAIS 3", res.stdout)
+
+    def test_the_retry_loop_gives_up_loudly(self):
+        # Une boucle qui abandonne en silence laisserait « apt update » échoué
+        # passer pour un succès.
+        import re
+        import subprocess
+
+        fonction = re.search(
+            r"^prepare_apt\(\) \{.*?^\}", self.src, re.M | re.S
+        )
+        shell = (
+            "say() { :; }; die() { echo ABANDON; exit 9; }; run() { :; }; "
+            "sudo() { :; }; sleep() { :; }; apt_get() { return 100; };"
+            + fonction.group(0)
+            + "\nprepare_apt"
+        )
+        res = subprocess.run(
+            ["bash", "-c", shell], capture_output=True, text=True, timeout=60
+        )
+        self.assertEqual(res.returncode, 9)
+        self.assertIn("ABANDON", res.stdout)
+
     def test_the_mount_is_verified_not_assumed(self):
         self.assertIn("/etc/pve/.version", self.src)
 

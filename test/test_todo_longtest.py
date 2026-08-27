@@ -144,6 +144,25 @@ class TestLEssaiABlanc(unittest.TestCase):
                 ligne.startswith("bash "), f"lancé par autre chose : {ligne}"
             )
 
+    def test_the_first_level_gets_an_ssh_entry(self):
+        """La CLI QEMU/KVM n'écrit PAS d'entrée ~/.ssh/config.
+
+        Sans elle, « ssh deep-pve-1 » rend « Name or service not known » et la
+        descente attendait son plein délai avant de conclure « jamais
+        joignable » — sur une VM qui répondait parfaitement à son adresse.
+        Trouvé au premier lancement réel, pas par l'attaque."""
+        import inspect
+        import sys as _sys
+
+        _sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        src = inspect.getsource(deep_proxmox.Descente.creer_etage1)
+        self.assertIn("_write_ssh_config_entry", src)
+        self.assertIn("_qemu_vm_ip_now", src)
+        # Et une VM sans adresse n'est pas déclarée prête.
+        self.assertIn("créée mais sans adresse", src)
+
     def test_the_dry_run_claims_nothing_reached(self):
         """Le rapport d'un essai à blanc était indiscernable d'une réussite —
         JSON compris — et « --detruire » s'en servait."""

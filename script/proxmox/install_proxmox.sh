@@ -437,6 +437,33 @@ wait_cloud_init() {
     return 0
 }
 
+# Le premier « apt update » d'une image cloud tombe sur un verrou qui n'est
+# pas celui qu'on croit. Mesuré, une seconde après le premier ssh :
+#
+#   E: Could not get lock /var/lib/apt/lists/lock.
+#      It is held by process 1026 (apt-get)
+#
+# Ce n'est pas cloud-init — « cloud-init status --wait » avait rendu la main.
+# C'est apt-daily, le minuteur de Debian, qui se déclenche au démarrage. Et le
+# verrou des LISTES n'est pas couvert par « DPkg::Lock::Timeout », qui ne vaut
+# que pour celui de dpkg : l'attente configurée ne s'applique donc pas ici.
+#
+# On arrête les minuteurs, puis on RÉESSAIE — arrêter une unité n'interrompt
+# pas l'apt-get déjà en vol, et cloud-init peut en avoir un autre en route.
+prepare_apt() {
+    run sudo systemctl stop apt-daily.service apt-daily-upgrade.service \
+        apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
+    local i
+    for i in $(seq 1 12); do
+        if apt_get update; then
+            return 0
+        fi
+        say "  verrou apt tenu, nouvel essai dans 15 s (${i}/12)"
+        sleep 15
+    done
+    die "apt update impossible : le verrou des listes reste tenu."
+}
+
 install_pve() {
     wait_cloud_init
     preseed_debconf
@@ -453,7 +480,7 @@ install_pve() {
     # loin — pas même la désactivation, si elle attendait la fin.
     disable_enterprise
     say "\n---- apt update ----"
-    apt_get update
+    prepare_apt
     # Le noyau d'abord, comme l'amont le prescrit : c'est lui qui porte les
     # modules dont pve a besoin, et l'installer seul laisse une machine qui
     # redémarre proprement même si la suite échoue.
