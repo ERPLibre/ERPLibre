@@ -83,14 +83,41 @@ class TestLePlanDesEtages(unittest.TestCase):
                 )
 
     def test_the_three_widths_are_where_they_belong(self):
+        """Le coût d'un vCPU dépend de la PROFONDEUR de l'étage, pas d'une
+        largeur absolue.
+
+        Mesuré : le troisième vCPU ne coûte rien aux étages 2 et 3 — ssh en
+        37 s et 93 s, comme à deux vCPU — et coûte 4 h 20 au quatrième, contre
+        1 664 s à deux. Un seul vCPU de plus, l'amorçage ×9,4."""
         niveaux = nesting.nesting_plan(6, **self.HOTE)["niveaux"]
+        largeurs = {n["niveau"]: n["vcpu"] for n in niveaux}
         # Le métal : aucun risque de gel, onze vCPU y ont démarré en 42 s.
-        self.assertEqual(niveaux[0]["vcpu"], nesting.VCPU_METAL)
-        # Le fond : le seul chiffre dont on ait la preuve qu'il démarre au
-        # quatrième étage.
-        self.assertEqual(niveaux[-1]["vcpu"], nesting.VCPU_IMBRIQUE)
-        for n in niveaux[1:-1]:
-            self.assertEqual(n["vcpu"], nesting.VCPU_INTERMEDIAIRE)
+        self.assertEqual(largeurs[1], nesting.VCPU_METAL)
+        # Peu profonds : le troisième vCPU est gratuit, et il enlève le
+        # surengagement là où l'installation s'effondrait.
+        for niveau in range(2, nesting.SEUIL_ETROIT):
+            self.assertEqual(
+                largeurs[niveau], nesting.VCPU_INTERMEDIAIRE, f"étage {niveau}"
+            )
+        # À partir du seuil : le strict minimum, sans exception.
+        for niveau in range(nesting.SEUIL_ETROIT, 7):
+            self.assertEqual(
+                largeurs[niveau], nesting.VCPU_IMBRIQUE, f"étage {niveau}"
+            )
+
+    def test_the_level_above_the_threshold_keeps_its_headroom(self):
+        """C'est le seul endroit de la descente où le surengagement disparaît,
+        et c'est celui qui compte : l'étage 4 est le premier dont
+        l'installation s'effondrait, faute d'un parent plus large que lui.
+
+        Les deux combinaisons mesurées étaient (parent 2, enfant 2) — démarre
+        en 1 664 s puis l'installation ne finit pas — et (parent 3, enfant 3) —
+        démarre en 15 608 s. Celle-ci est (parent 3, enfant 2)."""
+        niveaux = nesting.nesting_plan(6, **self.HOTE)["niveaux"]
+        largeurs = {n["niveau"]: n["vcpu"] for n in niveaux}
+        parent = largeurs[nesting.SEUIL_ETROIT - 1]
+        enfant = largeurs[nesting.SEUIL_ETROIT]
+        self.assertGreater(parent, enfant)
 
     def test_a_single_level_descent_runs_on_metal(self):
         niveaux = nesting.nesting_plan(1, **self.HOTE)["niveaux"]

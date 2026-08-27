@@ -101,14 +101,25 @@ DISQUE_MIN_GO = 15
 # Le plus profond : deux, le seul chiffre dont on ait la preuve qu'il démarre
 # au quatrième étage.
 VCPU_IMBRIQUE = 2
-# Les étages imbriqués intermédiaires : un de plus, pour héberger leur enfant
+# Les étages imbriqués PEU PROFONDS : un de plus, pour héberger leur enfant
 # sans être aussi étroits que lui. Deux hébergeant deux, c'est cent pour cent
 # de surengagement — et l'installation de l'étage 4 dépassait alors 2 h 50
 # contre 793 s pour l'étage 3.
 #
-# Trois est une HYPOTHÈSE : on a la preuve que deux démarre au quatrième étage
-# et que huit gèle, rien entre les deux. C'est la descente qui tranchera.
+# « Peu profonds », et c'est la mesure qui l'impose. Ce troisième vCPU ne coûte
+# RIEN aux étages 2 et 3 — leur ssh répond en 37 s et 93 s, comme à deux vCPU —
+# et il coûte tout au quatrième : 15 608 s, soit 4 h 20, contre 1 664 s à deux
+# vCPU. Un seul vCPU de plus, l'amorçage multiplié par 9,4.
 VCPU_INTERMEDIAIRE = 3
+# Le premier étage qui doit rester au strict minimum.
+#
+# Amorçage du quatrième étage, mesuré : 1 664 s à 2 vCPU, 15 608 s à 3, jamais
+# à 8 ni à 12 — même RIP à cinq minutes d'intervalle. Le « gel » observé à 8 et
+# 12 n'est probablement pas autre chose que cette courbe poussée assez loin :
+# 1 664 × 9,4 par vCPU supplémentaire dépasse vite toute patience.
+#
+# Aux étages 2 et 3, la même largeur ne coûte rien. Le seuil est donc là.
+SEUIL_ETROIT = 4
 # Le premier étage tourne sur le MÉTAL : aucun risque de gel, et son amorçage
 # est rapide — onze vCPU y ont démarré en 42 s. Il n'a pourtant qu'un enfant à
 # trois vCPU à servir ; quatre suffisent, et laissent la machine physique aux
@@ -178,8 +189,9 @@ def nesting_plan(
         étages tienne : la cible du bas, plus un surcoût par étage au-dessus.
 
         Le processeur n'en fait PAS partie de la même façon : il ne croît
-        pas avec la profondeur, puisque tout étage imbriqué reste étroit. Le
-        premier étage demande VCPU_METAL, quelle que soit la profondeur.
+        pas avec la profondeur — il DÉCROÎT, et se stabilise à
+        VCPU_IMBRIQUE dès SEUIL_ETROIT. Le premier étage demande VCPU_METAL,
+        quelle que soit la profondeur.
         """
         return (
             PVE_RAM_CIBLE_MO + (d - 1) * PVE_RAM_MO,
@@ -212,15 +224,21 @@ def nesting_plan(
     niveaux = [
         {
             "niveau": niveau,
-            # Trois largeurs, et aucune ne dépend de la profondeur : le
-            # métal en premier, le fond au plus étroit, les intermédiaires
-            # juste assez larges pour héberger leur enfant.
+            # Le métal peut être large ; un étage imbriqué peu profond
+            # gagne son troisième vCPU pour héberger son enfant sans
+            # surengagement ; à partir de SEUIL_ETROIT, le strict minimum,
+            # parce que là ce troisième vCPU multiplie l'amorçage par 9,4.
+            #
+            # L'étage juste AU-DESSUS du seuil garde donc trois quand son
+            # enfant en a deux : c'est le seul endroit de la descente où le
+            # surengagement disparaît, et c'est celui qui compte, puisque
+            # l'étage 4 est le premier dont l'installation s'effondrait.
             "vcpu": (
                 VCPU_METAL
                 if niveau == 1
                 else (
                     VCPU_IMBRIQUE
-                    if niveau == atteignable
+                    if niveau >= SEUIL_ETROIT
                     else VCPU_INTERMEDIAIRE
                 )
             ),
