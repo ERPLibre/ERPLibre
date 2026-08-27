@@ -96,6 +96,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 from script.analyse import check_migration_quality as quality  # noqa: E402
 from script.analyse import lib_analyse  # noqa: E402
+from script.todo import migration_status as status  # noqa: E402
 
 COULEURS = {
     "broken": "\033[31m",
@@ -285,7 +286,36 @@ def verdicts(database, path=None):
     return tous, quality.failures(tous)
 
 
-def verdicts_block(database, colour=True, path=None):
+def extrait_du_journal(dct, event, colour=True, avant=6):
+    """Ce que le journal d'étape montre autour de ce verdict.
+
+    La commande seule ne dit pas POURQUOI. Le journal, lui, garde ce
+    qu'Odoo écrivait au moment du test — et c'est tout ce qu'on a : la
+    sortie de l'outil n'y est pas, parce qu'elle passe par le terminal,
+    qu'un tube ferait renoncer aux outils en plein écran. Le pilote le
+    documente à l'endroit où il l'écrit.
+
+    Silencieux quand il n'y a rien à montrer : une ligne « pas de
+    journal » par verdict noierait les quatre qui comptent.
+    """
+    chemin = status.step_log_path(dct, event.get("step"))
+    if not chemin or avant <= 0:
+        return []
+    try:
+        with open(chemin, "r", encoding="utf-8", errors="replace") as handle:
+            brut = handle.read().splitlines()
+    except OSError:
+        return []
+    extrait, _rang = quality.event_excerpt(brut, event, avant=avant)
+    if not extrait:
+        return []
+    lignes = [paint(f"          {chemin}", "dim", colour)]
+    for ligne in extrait:
+        lignes.append(paint(f"            {ligne[:150]}", "dim", colour))
+    return lignes
+
+
+def verdicts_block(database, colour=True, path=None, lignes_avant=6):
     """La section « Verdicts », ou rien du tout s'il n'y en a pas.
 
     Silencieuse quand le fichier n'existe pas : devant la sauvegarde d'un
@@ -310,8 +340,10 @@ def verdicts_block(database, colour=True, path=None):
                 colour,
             )
         )
+    dct = quality.read_progression(chemin)
     for event in ratés:
-        palier = quality.event_step(event)
+        version = quality.version_of(quality.event_database(event), dct)
+        palier = str(version) if version else quality.event_step(event)
         lignes.append(
             paint(
                 f"❌ {palier.rjust(6)}  {event['name']}",
@@ -322,6 +354,7 @@ def verdicts_block(database, colour=True, path=None):
         lignes.append(
             paint(f"          {event['detail'][:120]}", "dim", colour)
         )
+        lignes.extend(extrait_du_journal(dct, event, colour, lignes_avant))
     lignes.append("")
     lignes.append(
         paint(
@@ -331,6 +364,15 @@ def verdicts_block(database, colour=True, path=None):
             colour,
         )
     )
+    if ratés and lignes_avant > 0:
+        lignes.append(
+            paint(
+                f"   {t('the tool output is not in the step log: it goes')}"
+                f" {t('to the terminal and dies with it.')}",
+                "dim",
+                colour,
+            )
+        )
     return lignes
 
 

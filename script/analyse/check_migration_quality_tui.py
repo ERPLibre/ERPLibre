@@ -12,7 +12,9 @@ Deux assemblages sépareraient les deux vues, et l'on finirait par lire deux
 états contradictoires de la même migration.
 """
 
+import io
 import os
+import shlex
 import subprocess
 import sys
 
@@ -128,17 +130,20 @@ def extra_rows(presents, dct=None):
     cible = presents[-1]["database"] if presents else ""
     lst = []
 
-    # ── Succès ──
+    # ── Verdicts ──
     evenements = quality.read_events(dct)
+    tous = quality.verdicts(evenements)
     ratés = quality.failures(evenements)
     lst.append(
         {
             "kind": "header",
             "label": f"── {t('Verdicts')} ──",
-            "detail": str(len(ratés)) if ratés else "✅",
+            "detail": (
+                f"{len(ratés)}/{len(tous)}" if ratés else f"✅ {len(tous)}"
+            ),
         }
     )
-    if not evenements:
+    if not tous:
         lst.append(
             {
                 "kind": "verdict-none",
@@ -146,28 +151,30 @@ def extra_rows(presents, dct=None):
                 "detail": "",
             }
         )
-    for event in ratés:
+    for event in tous:
         base = quality.event_database(event)
-        # Le PALIER dans le libellé : « smoke_public_url » quatre fois de
-        # suite ne dit pas lequel a échoué, et c'est la seule chose qu'on
-        # veut savoir en parcourant la colonne.
-        palier = quality.event_step(event, base)
+        # Le PALIER dans le libellé : « smoke_public_url » sept fois de
+        # suite ne dit pas lequel on regarde, et c'est la seule chose
+        # qu'on veut savoir en parcourant la colonne. Il vient de la
+        # CHAÎNE de la migration, car la base de départ ne le porte pas
+        # dans son nom — « test_neutralize » ne dit pas 12.0.
+        version = quality.version_of(base, dct)
+        palier = str(version) if version else quality.event_step(event, base)
+        icone = "❌" if event["status"] else "✅"
         lst.append(
             {
                 "kind": "verdict",
-                "label": f"   ❌ {palier:<5} {event['name'][:18]}",
+                "label": f"   {icone} {palier:<5} {event['name'][:18]}",
                 "detail": "▶",
                 "event": event,
                 "database": base or cible,
+                "step": palier,
+                "log": status.step_log_path(dct, event.get("step")),
                 "command": rerun_command(event, base or cible),
-            }
-        )
-    if evenements and not ratés:
-        lst.append(
-            {
-                "kind": "verdict-ok",
-                "label": f"   ✅ {len(evenements)} {t('checks, all passed')}",
-                "detail": "",
+                "switch": switch_needed(base or cible, dct),
+                "capture": run_log_path(
+                    "verdict_%s_%s" % (event["name"], base or cible)
+                ),
             }
         )
 
@@ -207,6 +214,19 @@ def extra_rows(presents, dct=None):
                     commande.format(db=cible)
                     if clef and (cible or "{db}" not in commande)
                     else ""
+                ),
+                # Les étapes qui nomment une base ont le même écueil que
+                # les verdicts : le checkout doit être au bon palier.
+                "switch": (
+                    switch_needed(cible, dct) if "{db}" in commande else None
+                ),
+                # Le « shell » est un REPL : le passer par un tube lui
+                # ferait perdre son invite. Les sept autres écrivent et
+                # s'arrêtent, on peut donc en garder une copie.
+                "capture": (
+                    run_log_path(f"review_{clef}")
+                    if clef and clef != "shell"
+                    else None
                 ),
             }
         )
@@ -298,7 +318,6 @@ EXTRA_KINDS = (
     "header",
     "verdict",
     "verdict-none",
-    "verdict-ok",
     "source",
     "logscan",
     "review",
@@ -321,8 +340,6 @@ def extra_pane(row, colour=False):
                 t("not in command_executed, which only lists what ran."),
             ]
         )
-    if genre == "verdict-ok":
-        return t("Every recorded check returned zero.")
     if genre == "source":
         return source_pane(row, colour)
     if genre == "logscan":
@@ -332,11 +349,95 @@ def extra_pane(row, colour=False):
     return ""
 
 
-def verdict_pane(row, colour=False):
-    """Ce qu'un verdict raté dit, et ce que son code de retour signifie."""
-    event = row.get("event") or {}
+def log_excerpt_lines(row, colour=False):
+    """Le passage du journal d'étape qui entoure ce verdict.
+
+    Ce que le journal contient VRAIMENT, dit sans détour : la commande et
+    son code, pas la sortie de l'outil. Le pilote l'explique — ce qui
+    passe par `run_on_terminal` n'a pas de sortie capturable, un tube y
+    ferait renoncer les pleins écrans. Ce qui précède la commande est donc
+    tout ce qu'on a, et c'est déjà ce qu'Odoo écrivait au moment du test.
+
+    Le taire enverrait chercher un fichier plus complet qui n'existe pas.
+    """
+    chemin = row.get("log")
+    if not chemin:
+        return [
+            status.paint(f"   ── {t('step log')} ──", "step", colour),
+            f"      {t('no log file for this step')}",
+            "",
+        ]
+    try:
+        with io.open(chemin, encoding="utf-8", errors="replace") as handle:
+            brut = handle.read().splitlines()
+    except OSError:
+        return []
+    extrait, _rang = quality.event_excerpt(brut, row.get("event") or {})
     lignes = [
-        status.paint(f"❌ {event.get('name')}", "fail", colour),
+        status.paint(f"   ── {t('step log')} ──", "step", colour),
+        status.paint(f"      {chemin}", "dim", colour),
+        status.paint(f"      {len(brut)} {t('lines in all')}", "dim", colour),
+        "",
+    ]
+    if not extrait:
+        lignes.append(f"      {t('this verdict is not in it')}")
+        lignes.append("")
+        return lignes
+    for ligne in extrait:
+        lignes.append(f"      {ligne[:150]}")
+    lignes.append("")
+    lignes.append(
+        status.paint(
+            f"   {t('the tool output is not in there: it goes to the')}",
+            "dim",
+            colour,
+        )
+    )
+    lignes.append(
+        status.paint(
+            f"   {t('terminal, which a pipe would make full-screen tools')}",
+            "dim",
+            colour,
+        )
+    )
+    lignes.append(
+        status.paint(
+            f"   {t('give up. What precedes is what Odoo was writing.')}",
+            "dim",
+            colour,
+        )
+    )
+    lignes.append("")
+    return lignes
+
+
+def switch_needed(database, dct):
+    """(version, cible make) si le checkout n'est pas au palier de cette base.
+
+    Lancer un outil sur une base d'un autre palier n'est pas seulement
+    inutile : Odoo ÉCRIT dedans avant d'échouer. Le test de fumée s'en
+    garde déjà et sort en 2 ; l'écran, lui, peut proposer la bascule au
+    lieu de laisser relancer trois fois la même erreur.
+    """
+    version = quality.version_of(database, dct)
+    if not version:
+        return None
+    courante = quality.checkout_version()
+    if not courante or courante == version:
+        return None
+    return (version, "switch_odoo_%d" % version)
+
+
+def verdict_pane(row, colour=False):
+    """Ce qu'un verdict dit, ce que son code signifie, et ce qu'on en lit."""
+    event = row.get("event") or {}
+    rate = bool(event.get("status"))
+    lignes = [
+        status.paint(
+            f"{'❌' if rate else '✅'} {event.get('name')}",
+            "fail" if rate else "ok",
+            colour,
+        ),
         "",
         # Le palier est la version d'ODOO, pas le compteur du pilote :
         # « 4.1.I » désigne la première étape du quatrième bloc, et la
@@ -359,8 +460,25 @@ def verdict_pane(row, colour=False):
             "1 means leftovers remain that it could not drop."
         ),
     }.get(event.get("name"), "")
-    if sens:
+    if sens and rate:
         lignes.append(f"   {sens}")
+        lignes.append("")
+    lignes.extend(log_excerpt_lines(row, colour))
+    lignes.extend(run_log_lines(row, colour))
+    if row.get("command") and row.get("switch"):
+        version, cible = row["switch"]
+        lignes.append(
+            status.paint(
+                f"   ⚠ {t('the checkout is on Odoo')}"
+                f" {quality.checkout_version()}.0,"
+                f" {t('this database is on')} {version}.0",
+                "warn",
+                colour,
+            )
+        )
+        lignes.append(
+            f"      {t('r offers to run')} « make {cible} » {t('first')}"
+        )
         lignes.append("")
     if row.get("command"):
         lignes.append(
@@ -443,6 +561,40 @@ def logscan_pane(colour=False):
     return "\n".join(lignes)
 
 
+def run_log_lines(row, colour=False):
+    """Ce que la dernière exécution de cette ligne a écrit, ou l'invitation.
+
+    Le panneau défile — c'est un VerticalScroll — donc on n'ampute pas :
+    montrer vingt lignes d'un rapport qui en fait deux cents obligerait à
+    le relancer dans un terminal pour lire la suite, et l'écran n'aurait
+    servi qu'à donner envie.
+    """
+    chemin = row.get("capture")
+    if not chemin:
+        return []
+    lst, total = read_run_log(chemin)
+    if not lst:
+        if not row.get("command"):
+            return []
+        return [
+            status.paint(f"   ── {t('last run')} ──", "step", colour),
+            status.paint(
+                f"      {t('never run from here yet')}", "dim", colour
+            ),
+            "",
+        ]
+    lignes = [
+        status.paint(f"   ── {t('last run')} ──", "step", colour),
+        status.paint(f"      {chemin}", "dim", colour),
+        status.paint(f"      {total} {t('lines in all')}", "dim", colour),
+        "",
+    ]
+    for ligne in lst:
+        lignes.append(f"   {ligne}")
+    lignes.append("")
+    return lignes
+
+
 def review_pane(row, colour=False):
     """Une étape de la revue : ce qu'elle prouve, et ce qu'elle ne prouve pas."""
     lignes = [
@@ -457,7 +609,7 @@ def review_pane(row, colour=False):
         )
     else:
         lignes.append(f"   {t('Read it in the Verdicts section above.')}")
-    lignes.append("")
+    lignes.extend(run_log_lines(row, colour))
     lignes.append(f"   {t('What none of these can see')}")
     lignes.append(
         f"      {t('They all read the DATABASE. A module that kept a')}"
@@ -536,7 +688,94 @@ def mode_label(mode):
     return t(mode)
 
 
-def run_in_terminal(command, wait=True):
+# La sortie d'une exécution lancée DEPUIS l'écran, gardée pour être
+# relue. Celle des tests de la migration ne l'était pas — le pilote lance
+# par `run_on_terminal`, qui n'a pas de sortie capturable — mais ce que
+# l'on lance soi-même, on peut le garder.
+REVIEW_LOG_DIR = os.path.join(".venv.erplibre", "screen_log")
+
+
+def run_log_path(clef):
+    """Le fichier où garder la sortie de cette commande, ou None.
+
+    Une clé par ligne de l'écran, et non par commande : deux exécutions
+    de la même étape doivent se remplacer, pas s'empiler. On veut « ce
+    que ça donne maintenant », jamais un historique qu'il faudrait trier.
+    """
+    if not clef:
+        return None
+    propre = "".join(c if c.isalnum() or c in "._-" else "_" for c in clef)
+    return os.path.join(REPO_ROOT, REVIEW_LOG_DIR, propre + ".log")
+
+
+def read_run_log(chemin, limite=4000):
+    """(lignes, total) de la derniere execution, ou ([], 0)."""
+    if not chemin:
+        return [], 0
+    try:
+        with io.open(chemin, encoding="utf-8", errors="replace") as handle:
+            lst = handle.read().splitlines()
+    except OSError:
+        return [], 0
+    return lst[-limite:], len(lst)
+
+
+def ask_yes(question, defaut=True):
+    """Poser une question fermée dans le terminal rendu. Entrée = défaut.
+
+    `input()` et non une boîte de dialogue : on est DÉJÀ sorti de l'écran
+    quand la question se pose, et y rentrer pour un oui/non ferait
+    clignoter tout l'affichage entre deux commandes.
+    """
+    suffixe = " [O/n] " if defaut else " [o/N] "
+    try:
+        reponse = input(question + suffixe).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    if not reponse:
+        return defaut
+    return reponse[0] in ("o", "y")
+
+
+def run_with_switch(command, switch, wait=True, capture=None):
+    """Lancer, en proposant d'abord de basculer le checkout s'il le faut.
+
+    Sans cela on relance trois fois la même erreur : le test de fumée
+    refuse d'ouvrir une base 16 avec un checkout 18 — « l'ouvrir avec la
+    mauvaise version y écrit avant d'échouer » — et rend 2 sans rien
+    faire. La bascule est la seule suite possible, autant la proposer.
+
+    On DEMANDE au lieu de basculer d'office : `make switch_odoo_16` change
+    le checkout entier, et quelqu'un peut être en train d'y travailler.
+    """
+    if switch:
+        version, cible = switch
+        print()
+        print(
+            status.paint(
+                f"⚠ {t('the checkout is on Odoo')}"
+                f" {quality.checkout_version()}.0,"
+                f" {t('this database is on')} {version}.0",
+                "warn",
+                True,
+            )
+        )
+        print(
+            f"  {t('opening it with the wrong version writes before it fails.')}"
+        )
+        print()
+        if not ask_yes(f"  {t('run')} « make {cible} » {t('first?')}"):
+            print(f"  {t('left as is — the test will refuse and return 2.')}")
+        else:
+            code, _tourne = run_in_terminal(f"make {cible}", wait=False)
+            if code:
+                print(status.paint(f"  ✗ make {cible} → {code}", "fail", True))
+                if not ask_yes(f"  {t('run the test anyway?')}", defaut=False):
+                    return None, False
+    return run_in_terminal(command, wait=wait, capture=capture)
+
+
+def run_in_terminal(command, wait=True, capture=None):
     """Rendre le terminal au test, puis le reprendre. (code, a_tourné).
 
     L'écran DOIT s'effacer : `smoke_public_url` monte une instance Odoo et
@@ -556,6 +795,21 @@ def run_in_terminal(command, wait=True):
     print()
     print(f"▶ {' '.join(argv)}")
     print("─" * 72)
+    if capture:
+        # `tee` garde une copie SANS rien cacher : la sortie continue
+        # d'aller au terminal en direct. Le prix est la couleur — les
+        # outils la coupent quand stdout n'est plus un terminal — et
+        # c'est un bon prix pour un journal qu'on relira dans l'écran.
+        # `pipefail` pour que le code rendu soit celui de la commande,
+        # et non celui de `tee`, qui réussit toujours.
+        os.makedirs(os.path.dirname(capture), exist_ok=True)
+        argv = [
+            "bash",
+            "-o",
+            "pipefail",
+            "-c",
+            "%s 2>&1 | tee %s" % (shlex.join(argv), shlex.quote(capture)),
+        ]
     try:
         code = subprocess.run(argv, cwd=REPO_ROOT).returncode
     except OSError as exc:
@@ -585,6 +839,11 @@ def build_app(lst_snapshot):
             ("m", "toggle_missing", t("Missing files")),
             ("d", "cycle_detail", t("Details")),
             ("r,enter", "run_selected", t("Run")),
+            # La table garde les flèches et pgup/pgdn pour ses lignes ;
+            # ces deux-là ne lui appartiennent pas et restent donc
+            # disponibles pour le panneau.
+            ("ctrl+u", "pane_up", t("Pane up")),
+            ("ctrl+d", "pane_down", t("Pane down")),
         ]
 
         def __init__(self, lst_snapshot):
@@ -674,8 +933,16 @@ def build_app(lst_snapshot):
                 self.bell()
                 return
             with self.suspend():
-                run_in_terminal(commande)
+                run_with_switch(
+                    commande, row.get("switch"), capture=row.get("capture")
+                )
             self.refresh()
+
+        def action_pane_up(self):
+            self.query_one("#pane", VerticalScroll).scroll_page_up()
+
+        def action_pane_down(self):
+            self.query_one("#pane", VerticalScroll).scroll_page_down()
 
         def on_data_table_row_highlighted(self, event):
             if event.data_table.id == "left" and self.lst_row:

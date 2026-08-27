@@ -3499,8 +3499,8 @@ TRANSLATIONS = {
         "en": "vendors document two, not more.",
     },
     "Measured at level 4: 36x slower, then a frozen kernel.": {
-        "fr": "Mesuré au niveau 4 : 36x plus lent, puis noyau gelé.",
-        "en": "Measured at level 4: 36x slower, then a frozen kernel.",
+        "fr": "Mesuré au niveau 4 : 36x plus lent, et 12 vCPU gelaient.",
+        "en": "Measured at level 4: 36x slower, and 12 vCPU froze.",
     },
     "vCPU capped to": {
         "fr": "vCPU borné à",
@@ -6978,6 +6978,95 @@ TRANSLATIONS = {
         "en": "Migration quality, step by step",
     },
     # --- Écran de qualité : Verdicts, Validation, Revue ---
+    # --- Journal d'étape et bascule de version ---
+    "last run": {
+        "fr": "dernière exécution",
+        "en": "last run",
+    },
+    "never run from here yet": {
+        "fr": "jamais lancée depuis ici",
+        "en": "never run from here yet",
+    },
+    "Pane up": {
+        "fr": "Panneau ↑",
+        "en": "Pane up",
+    },
+    "Pane down": {
+        "fr": "Panneau ↓",
+        "en": "Pane down",
+    },
+    "the tool output is not in the step log: it goes": {
+        "fr": "la sortie de l'outil n'est pas dans le journal d'étape : elle part",
+        "en": "the tool output is not in the step log: it goes",
+    },
+    "to the terminal and dies with it.": {
+        "fr": "sur le terminal et meurt avec lui.",
+        "en": "to the terminal and dies with it.",
+    },
+    "r offers to run": {
+        "fr": "r propose de lancer",
+        "en": "r offers to run",
+    },
+    "first": {
+        "fr": "d'abord",
+        "en": "first",
+    },
+    "step log": {
+        "fr": "journal de l'étape",
+        "en": "step log",
+    },
+    "no log file for this step": {
+        "fr": "aucun journal pour cette étape",
+        "en": "no log file for this step",
+    },
+    "lines in all": {
+        "fr": "lignes en tout",
+        "en": "lines in all",
+    },
+    "this verdict is not in it": {
+        "fr": "ce verdict n'y figure pas",
+        "en": "this verdict is not in it",
+    },
+    "the tool output is not in there: it goes to the": {
+        "fr": "la sortie de l'outil n'y est pas : elle part sur le",
+        "en": "the tool output is not in there: it goes to the",
+    },
+    "terminal, which a pipe would make full-screen tools": {
+        "fr": "terminal, qu'un tube ferait renoncer aux outils en",
+        "en": "terminal, which a pipe would make full-screen tools",
+    },
+    "give up. What precedes is what Odoo was writing.": {
+        "fr": "plein écran. Ce qui précède est ce qu'Odoo écrivait.",
+        "en": "give up. What precedes is what Odoo was writing.",
+    },
+    "the checkout is on Odoo": {
+        "fr": "le checkout est sur Odoo",
+        "en": "the checkout is on Odoo",
+    },
+    "this database is on": {
+        "fr": "cette base est en",
+        "en": "this database is on",
+    },
+    "opening it with the wrong version writes before it fails.": {
+        "fr": "l'ouvrir avec la mauvaise version y écrit avant d'échouer.",
+        "en": "opening it with the wrong version writes before it fails.",
+    },
+    "run": {
+        "fr": "lancer",
+        "en": "run",
+    },
+    "first?": {
+        "fr": "d'abord ?",
+        "en": "first?",
+    },
+    "left as is — the test will refuse and return 2.": {
+        "fr": "laissé tel quel — le test refusera et rendra 2.",
+        "en": "left as is — the test will refuse and return 2.",
+    },
+    "run the test anyway?": {
+        "fr": "lancer le test quand même ?",
+        "en": "run the test anyway?",
+    },
     # --- Trous dans les manifestes Google Repo ---
     # --- Type de vue « tree » resté dans un module ---
     "Is any module still on a pre-18 view type?": {

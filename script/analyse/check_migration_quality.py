@@ -36,6 +36,7 @@ Codes de sortie : 0 rien à signaler, 1 des trouvailles, 2 l'outil a échoué.
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -132,6 +133,115 @@ def failures(events):
     signaler un choix comme un échec ferait ignorer la liste entière.
     """
     return [e for e in events if e["status"] and e["kind"] == "test"]
+
+
+FICHIER_VERSION = ".odoo-version"
+
+
+def checkout_version(racine=None):
+    """La version d'Odoo sur laquelle le checkout est posé, ou None.
+
+    Un entier, pas « 18.0 » : c'est ce que porte le nom des bases de
+    palier et ce que la chaîne de migration rend, et deux formes du même
+    fait finissent toujours par diverger.
+    """
+    base = racine or os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    try:
+        with open(
+            os.path.join(base, FICHIER_VERSION), encoding="utf-8"
+        ) as handle:
+            return int(float(handle.read().strip()))
+    except (OSError, ValueError):
+        return None
+
+
+def verdicts(events):
+    """TOUS les verdicts de test, réussis compris.
+
+    N'afficher que les échecs répondait à « qu'est-ce qui a raté » et à
+    rien d'autre. Or la question qu'on se pose devant une base migrée est
+    « qu'a-t-on vérifié », et un test réussi au palier 17 est une preuve
+    au même titre qu'un raté au 14 — c'est même la seule façon de voir
+    qu'un échec du 14 a été RATTRAPÉ ensuite.
+    """
+    return [e for e in events if e["kind"] == "test"]
+
+
+def version_of(database, dct):
+    """La version d'Odoo de cette base, lue dans la chaîne de la migration.
+
+    Plus sûr que le suffixe du nom : la base de DÉPART n'en porte pas —
+    « test_neutralize » ne dit pas 12.0 — et son palier retombait alors
+    sur le compteur du pilote, qui affichait « 2 ».
+    """
+    for version, base in chain(dct):
+        if base == database:
+            return version
+    return None
+
+
+# Ce que la migration écrit dans le journal d'une étape autour d'un test :
+#
+#   [2026-08-26 03:19:44.166204] $ .venv…/python3 ./script/…/smoke.py -d …
+#   [2026-08-26 03:19:59.846406]   -> 1
+#   [2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1
+#
+# Entre le « $ » et le « -> », RIEN : mesuré sur trois exécutions du même
+# test, la sortie de l'outil n'est pas capturée. Ce qui explique l'échec
+# est donc AVANT, dans ce qu'Odoo écrivait juste avant qu'on le teste —
+# et c'est pour cela que l'extrait remonte, au lieu de descendre.
+MARQUEUR_COMMANDE = "] $ "
+MOTIF_HORODATAGE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+
+
+def _horodatage(ligne):
+    """La seconde portée par cette ligne de journal, ou ""."""
+    found = MOTIF_HORODATAGE.match(ligne)
+    return found.group(1) if found else ""
+
+
+def event_tool(event):
+    """Le script que ce verdict a lancé — « smoke_public_url.py »."""
+    for mot in (event.get("detail") or "").split():
+        if mot.endswith(".py"):
+            return os.path.basename(mot)
+    return ""
+
+
+def event_excerpt(lignes, event, avant=18):
+    """(extrait, rang de la commande) — le passage qui entoure ce verdict.
+
+    Quand la migration a été rejouée, le même test apparaît plusieurs fois
+    dans le même fichier. On retient donc l'occurrence la plus PROCHE de
+    l'horodatage du verdict, et non la dernière : la dernière appartient
+    peut-être à une exécution qui n'est pas celle qu'on regarde.
+    """
+    outil = event_tool(event)
+    if not outil or not lignes:
+        return [], None
+    base = event_database(event)
+    quand = (event.get("at") or "")[:19]
+    candidats = [
+        rang
+        for rang, ligne in enumerate(lignes)
+        if MARQUEUR_COMMANDE in ligne
+        and outil in ligne
+        and (not base or base in ligne)
+    ]
+    if not candidats:
+        return [], None
+    avant_le_verdict = [
+        rang for rang in candidats if _horodatage(lignes[rang]) <= quand
+    ]
+    rang = (avant_le_verdict or candidats)[-1]
+    fin = rang
+    for suivant in range(rang, min(rang + 400, len(lignes))):
+        if "[test] " in lignes[suivant] and event["name"] in lignes[suivant]:
+            fin = suivant
+            break
+    return lignes[max(0, rang - avant) : fin + 1], rang
 
 
 def event_database(event):

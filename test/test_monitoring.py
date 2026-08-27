@@ -450,6 +450,135 @@ def verdict(**champs):
     return brut
 
 
+class TestTheStepLogInTheReport(unittest.TestCase):
+    """La commande seule ne dit pas POURQUOI."""
+
+    def setUp(self):
+        import json
+        import shutil
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier)
+        self.json = json
+        self.progression = os.path.join(self.dossier, "progression.json")
+        # `step_log_path` cherche sous private/odoo/migration/<base>/step_log
+        self.ancien = residue.status.PATH_MIGRATION_PRIVATE
+        residue.status.PATH_MIGRATION_PRIVATE = os.path.join(
+            self.dossier, "private"
+        )
+        self.addCleanup(
+            setattr,
+            residue.status,
+            "PATH_MIGRATION_PRIVATE",
+            self.ancien,
+        )
+
+    def ecrire_progression(self, evenements):
+        with io.open(self.progression, "w", encoding="utf-8") as handle:
+            self.json.dump(
+                {
+                    "lst_event": evenements,
+                    "config_database_name": "test_neutralize",
+                    "target_odoo_version": "18.0",
+                    "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+                },
+                handle,
+            )
+        return self.progression
+
+    def ecrire_journal(self, step, lignes):
+        dossier = os.path.join(
+            residue.status.PATH_MIGRATION_PRIVATE,
+            "test_neutralize",
+            "step_log",
+        )
+        os.makedirs(dossier, exist_ok=True)
+        chemin = os.path.join(dossier, residue.status.step_slug(step) + ".log")
+        with io.open(chemin, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lignes) + "\n")
+        return chemin
+
+    def bloc(self, **kw):
+        return "\n".join(
+            residue.verdicts_block(
+                "test_neutralize_upgrade_14", False, self.progression, **kw
+            )
+        )
+
+    def test_the_passage_around_the_failure_is_shown(self):
+        self.ecrire_progression([verdict()])
+        self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "odoo: ce qui precedait",
+                "[2026-08-26 03:19:44.166204] $ .venv.erplibre/bin/python3"
+                " ./script/odoo/migration/smoke_public_url.py"
+                " -d test_neutralize_upgrade_14 --internal-required",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+                "odoo: ce qui suivait",
+            ],
+        )
+        texte = self.bloc()
+        self.assertIn("odoo: ce qui precedait", texte)
+        self.assertIn("[test] smoke_public_url -> 1", texte)
+        self.assertNotIn("odoo: ce qui suivait", texte)
+
+    def test_the_log_path_is_named(self):
+        self.ecrire_progression([verdict()])
+        chemin = self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ],
+        )
+        self.assertIn(chemin, self.bloc())
+
+    def test_no_step_log_stays_silent(self):
+        # Une ligne « pas de journal » par verdict noierait ceux qui
+        # comptent.
+        self.ecrire_progression([verdict()])
+        texte = self.bloc()
+        self.assertIn("smoke_public_url", texte)
+        self.assertNotIn("step_log", texte)
+
+    def test_asking_for_none_shows_none(self):
+        self.ecrire_progression([verdict()])
+        self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ],
+        )
+        self.assertNotIn("[test]", self.bloc(lignes_avant=0))
+
+    def test_it_says_the_tool_output_is_elsewhere(self):
+        # Sans cela on cherche dans le journal une sortie qui n'y a
+        # jamais été écrite.
+        self.ecrire_progression([verdict()])
+        self.assertIn(
+            residue.t("the tool output is not in the step log: it goes"),
+            self.bloc(),
+        )
+
+    def test_an_all_green_run_does_not_carry_that_warning(self):
+        self.ecrire_progression([verdict(status=0)])
+        self.assertNotIn(
+            residue.t("the tool output is not in the step log: it goes"),
+            self.bloc(),
+        )
+
+    def test_the_step_shown_is_the_odoo_version(self):
+        # « 4.1.I » est le compteur du pilote ; la migration en est au 14.
+        self.ecrire_progression([verdict()])
+        texte = self.bloc()
+        self.assertIn("14  smoke_public_url", texte)
+
+
 class TestTheControlsThemselves(unittest.TestCase):
     """Un contrôle retiré ne doit pas survivre dans les tests.
 
@@ -464,7 +593,8 @@ class TestTheControlsThemselves(unittest.TestCase):
         import re
 
         connues = {c["key"] for c in residue.CONTROLES}
-        source = io.open(__file__, encoding="utf-8").read()
+        with io.open(__file__, encoding="utf-8") as handle:
+            source = handle.read()
         nommees = set(re.findall(r'resultats\["([a-z_]+)"\]', source))
         nommees |= set(re.findall(r"dict\(vide, ([a-z_]+)=", source))
         self.assertTrue(nommees)
