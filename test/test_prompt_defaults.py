@@ -224,6 +224,111 @@ class TestTheCountdownSpeaksThePromptsLanguage(EnvCase):
         self.assertIn("Entrée", texte)
 
 
+class TestHowLongTheCountdownLasts(EnvCase):
+    """Cinq secondes ne suffisaient pas à LIRE la question.
+
+    Le compte à rebours n'existe pas pour aller vite : il existe pour
+    qu'on puisse s'absenter. Trop court, il fait l'inverse — on répond par
+    réflexe, ou l'on subit un défaut qu'on n'a pas eu le temps de lire.
+    """
+
+    def test_the_default_leaves_time_to_read_and_decide(self):
+        self.assertGreaterEqual(auto_ask.DEFAULT_DELAY, 15)
+
+    def test_the_environment_still_wins(self):
+        # C'est le seul canal qui traverse un fork : une valeur posée par
+        # le pilote doit primer sur celle écrite ici.
+        os.environ[auto_ask.ENV_DELAY] = "3"
+        self.assertEqual(3, auto_ask.delay())
+
+
+class TestTheDatabaseNameTheFileSuggests(unittest.TestCase):
+    """« test » ne disait rien de ce qu'on migrait.
+
+    Trois migrations de suite portaient le même nom, et retrouver
+    laquelle avait échoué demandait de relire le journal. Le fichier de
+    sauvegarde porte déjà le nom du client — c'est la seule information
+    disponible au moment où la question se pose.
+    """
+
+    def nom(self, chemin, **kw):
+        from script.todo.todo_upgrade import database_name_from_file
+
+        return database_name_from_file(chemin, **kw)
+
+    def test_the_zip_extension_goes_away(self):
+        self.assertEqual("chezlepro3", self.nom("image_db/chezlepro3.zip"))
+
+    def test_an_uppercase_extension_goes_away_too(self):
+        self.assertEqual("client", self.nom("image_db/CLIENT.ZIP"))
+
+    def test_a_real_backup_name_survives_whole(self):
+        self.assertEqual(
+            "technolibre_2026_08_26_02h41m23s",
+            self.nom("image_db/technolibre_2026-08-26_02h41m23s.zip"),
+        )
+
+    def test_a_file_without_extension_still_names_a_base(self):
+        # Une sauvegarde peut être posée sans « .zip » ; elle s'ouvre
+        # quand même comme une archive.
+        self.assertEqual("technolibre", self.nom("image_db/technolibre"))
+
+    def test_spaces_and_punctuation_become_underscores(self):
+        # Le nom finit dans un createdb et dans des noms de fichiers.
+        self.assertEqual(
+            "client_final_2026", self.nom("image_db/Client Final (2026).zip")
+        )
+
+    def test_it_never_starts_with_a_digit(self):
+        # PostgreSQL refuse un identifiant nu qui commence par un chiffre.
+        nom = self.nom("image_db/2026-backup.zip")
+        self.assertFalse(nom[0].isdigit(), nom)
+
+    def test_nothing_usable_falls_back_to_the_default(self):
+        for chemin in ("", None, "image_db/.zip", "image_db/---.zip"):
+            self.assertEqual("test", self.nom(chemin))
+
+    def test_a_long_name_leaves_room_for_the_suffixes(self):
+        # Le pilote ajoute « _neutralize » puis « _upgrade_<version> ».
+        # PostgreSQL tronque à 63 octets : sans marge, deux paliers
+        # finiraient sur le MÊME nom et le second écraserait le premier.
+        from script.todo.todo_upgrade import database_name_from_file
+
+        nom = database_name_from_file("image_db/" + "a" * 90 + ".zip")
+        complet = nom + "_neutralize_upgrade_18"
+        self.assertLessEqual(len(complet), 63, complet)
+
+    def test_it_does_not_end_on_a_separator(self):
+        nom = self.nom("image_db/" + "a" * 40 + "-suite.zip")
+        self.assertFalse(nom.endswith("_"), nom)
+
+
+class TestTheMigrationUsesThatName(unittest.TestCase):
+    def test_the_prompt_offers_what_the_file_suggests(self):
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        pose = source.index("database_name_from_file(")
+        invite = source.index("Which database name do you want to work with?")
+        # Il faut le calculer AVANT de le proposer.
+        self.assertLess(pose, invite)
+
+    def test_a_remote_download_keeps_the_name_the_server_gave(self):
+        # Le serveur sait mieux que le nom du fichier téléchargé.
+        import inspect
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+        fenetre = source[
+            source.index("database_name_from_file(")
+            - 400 : source.index("database_name_from_file(")
+        ]
+        self.assertIn('default_database_name == "test"', fenetre)
+
+
 class TestTheQuestionThatCannotAnswerItself(EnvCase):
     """Celle-là engage toutes les suivantes : elle ne se prend pas seule.
 

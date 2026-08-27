@@ -164,6 +164,39 @@ class MigrationRewind(Exception):
     """
 
 
+# Le pilote suffixe le nom choisi : « _neutralize » à l'étape 1, puis
+# « _upgrade_<version> » à chaque palier. PostgreSQL tronque un
+# identifiant à 63 octets — deux paliers finiraient alors sur le MÊME
+# nom, et le second écraserait le premier sans rien dire.
+SUFFIXE_MAX = len("_neutralize_upgrade_18")
+NOM_BASE_MAX = 63 - SUFFIXE_MAX
+
+
+def database_name_from_file(chemin, defaut="test", limite=NOM_BASE_MAX):
+    """Le nom de base que suggère le fichier de sauvegarde.
+
+    « test » ne disait rien de ce qu'on migrait : trois migrations de
+    suite portaient le même nom, et retrouver laquelle avait échoué
+    demandait de relire le journal. Le fichier, lui, porte déjà le nom du
+    client — c'est la seule information qu'on ait à ce moment-là.
+
+    Le nom est ASSAINI, car il finit dans un `createdb` et dans des noms
+    de fichiers : minuscules, et tout ce qui n'est ni lettre ni chiffre
+    devient un « _ ». Un nom qui commence par un chiffre reçoit un
+    préfixe — PostgreSQL refuse un identifiant nu qui en commence un.
+    """
+    nom = os.path.basename(chemin or "")
+    if nom.lower().endswith(".zip"):
+        nom = nom[: -len(".zip")]
+    nom = re.sub(r"[^a-z0-9]+", "_", nom.lower())
+    nom = re.sub(r"_{2,}", "_", nom).strip("_")
+    if not nom:
+        return defaut
+    if nom[0].isdigit():
+        nom = "db_" + nom
+    return nom[:limite].rstrip("_") or defaut
+
+
 class TodoUpgrade:
     def __init__(self, todo):
         self.file_path = None
@@ -1369,6 +1402,13 @@ class TodoUpgrade:
 
             self.dct_progression["migration_file"] = self.file_path
             self.write_config()
+
+        # Le téléchargement distant a déjà nommé la base — le serveur sait
+        # mieux que le nom du fichier. Sinon, c'est le fichier qui parle.
+        if default_database_name == "test" and self.file_path:
+            default_database_name = database_name_from_file(
+                self.file_path, default_database_name
+            )
 
         print(f"✅ {t('Open file')} {self.file_path}")
         with zipfile.ZipFile(self.file_path, "r") as zip_ref:
