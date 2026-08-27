@@ -24,8 +24,11 @@ Deux nombres viennent de la même mesure, et méritent d'être dits :
 
 * 12 vCPU au quatrième étage ont GELÉ le noyau invité en tout début de
   démarrage — même RIP à trois relevés, deux minutes d'écart, pas un octet lu
-  de plus. Les mêmes 2 vCPU avançaient. D'où VCPU_IMBRIQUE = 2 : amener douze
-  processeurs en ligne demande autant d'allers-retours à travers la pile ;
+  de plus. Les mêmes 2 vCPU avançaient. Le nombre n'était pas le fautif : cette
+  VM avait douze vCPU sur un hôte qui en avait DEUX, six fois plus large que sa
+  propre machine. C'est le surengagement qui gèle, pas le douze — d'où le
+  dimensionnement par étage plus bas, qui donne à chaque parent un vCPU de plus
+  qu'à son enfant ;
 * cette VM-là s'arrêtait après avoir lu 33 682 432 octets — 32 Mio, soit
   simplement la taille de ses fichiers d'amorçage — et le chiffre ne bougeait
   pas quand on lui retirait de la mémoire. La mémoire n'était donc pas le
@@ -47,21 +50,49 @@ HOTE_RESERVE_RAM_MO = 4096
 HOTE_RESERVE_PART = 8  # un huitième
 HOTE_RESERVE_DISQUE_GO = 20
 
-# Ce qu'un étage garde pour lui avant de céder le reste. La RAM vient de
-# l'observation d'un Proxmox imbriqué au repos ; le disque, de la mesure d'un
-# système installé (5,6 Go) plus de la place pour écrire.
+# Ce qu'un étage garde pour LUI, en plus de ce qu'il cède à son enfant. La
+# RAM vient de l'observation d'un Proxmox imbriqué au repos ; le disque, de la
+# mesure d'un système installé (5,6 Go) plus de la place pour écrire.
 PVE_RAM_MO = 2048
 PVE_DISQUE_GO = 10
+
+# Ce dont le PLUS PROFOND a besoin — et c'est de là qu'on part.
+#
+# Le dimensionnement allait d'abord de haut en bas : chaque étage recevait tout
+# ce que son parent pouvait céder. Mesuré sur une descente réelle, l'étage 4 se
+# retrouvait avec 44 Go — onze millions de pages à cartographier, chaque défaut
+# traversant les quatre hyperviseurs empilés. Son installation dépassait deux
+# heures et demie là où l'étage 3 mettait treize minutes, et l'extrapolation
+# donnait cinq ANS pour le dixième étage.
+#
+# On part donc du bas : le plus profond reçoit ce qu'un Proxmox de test demande
+# vraiment, et chaque parent ajoute seulement son propre surcoût. Pour dix
+# étages, le premier a besoin de 4 + 9×2 = 22 Go au lieu de cinquante — et
+# chaque étage est PETIT, donc rapide.
+PVE_RAM_CIBLE_MO = 4096
+PVE_DISQUE_CIBLE_GO = 25
 
 # En dessous, un Proxmox ne démarre pas ses démons ou n'a plus la place
 # d'importer une image cloud.
 RAM_MIN_MO = 2048
 DISQUE_MIN_GO = 15
 
-# Le premier étage tourne sur la machine physique : il peut être large. Les
-# suivants non — voir la mesure dans l'en-tête.
-VCPU_NIVEAU1_MAX = 4
+# Le processeur se dimensionne DEPUIS LE BAS lui aussi, et pour la même
+# raison que la mémoire — mais celle-là s'est vue à l'usage.
+#
+# Avec deux vCPU à chaque étage imbriqué, l'étage 3 avait deux vCPU pour
+# héberger un invité qui en demandait deux : cent pour cent de surengagement,
+# et l'hyperviseur lui-même à servir par-dessus. À chaque étage. Mesuré sur une
+# descente réelle : une seconde VM démarrée au quatrième étage a lu DEUX
+# KILO-OCTETS en onze minutes, affamée par l'installation qui tournait à côté.
+#
+# Chaque étage reçoit donc UN vCPU de plus que son enfant : le plus profond en
+# a deux, son parent trois, et ainsi de suite. Le premier étage d'une descente
+# à dix en demande onze — sur vingt-huit cœurs réels, cela passe.
 VCPU_IMBRIQUE = 2
+# Ce qu'on accepte de prendre à la machine physique : la moitié de ses cœurs.
+# L'orchestrateur tourne dessus, et la suite de tests aussi.
+VCPU_HOTE_PART = 2
 
 # Au-delà, l'imbrication n'est pas un terrain documenté par les fabricants.
 # On ne refuse pas — on le DIT.
@@ -74,59 +105,81 @@ def nesting_plan(
     ram_dispo_mo: int,
     disque_libre_go: int,
 ) -> dict:
-    """Les ressources de chaque étage, et jusqu'où l'arithmétique va.
+    """Les ressources de chaque étage, dimensionnées DEPUIS LE BAS.
 
-    Rend {"demandee", "atteignable", "niveaux": [...], "arret"}. `arret`
-    nomme ce qui a manqué — « ram » ou « disque » — quand la profondeur
-    demandée n'est pas atteinte, sinon "".
+    Rend {"demandee", "atteignable", "niveaux": [...], "arret"}. `arret` nomme
+    ce qui a manqué — « ram » ou « disque » — quand la profondeur demandée
+    n'est pas atteinte, sinon "".
+
+    Depuis le bas, et c'est tout le sujet. De haut en bas, chaque étage
+    recevait ce que son parent pouvait céder : mesuré, l'étage 4 se retrouvait
+    avec 44 Go de RAM et son installation dépassait deux heures et demie
+    contre treize minutes pour l'étage 3. Sous pagination imbriquée, un gros
+    invité coûte cher à cartographier, et le coût se multiplie par étage.
+
+    Le plus profond reçoit donc ce qu'un Proxmox de test demande, et chaque
+    parent ajoute son surcoût — rien de plus. Une descente à dix étages
+    demande alors 22 Go au premier au lieu de cinquante, et chaque étage est
+    petit.
 
     On ne rend jamais un plan qu'on sait impossible : mieux vaut annoncer six
-    étages et en réussir six que d'en promettre dix et mourir au septième
-    sans savoir pourquoi.
+    étages et en réussir six que d'en promettre dix et mourir au septième sans
+    savoir pourquoi.
     """
-    # Arrondi au gibioctet inférieur : « --memory 25203 » marche, mais un
-    # nombre rond se relit, se compare d'un étage à l'autre, et évite de
-    # traîner les kibioctets du hasard de la mesure jusqu'au dixième étage.
     reserve = max(HOTE_RESERVE_RAM_MO, int(ram_dispo_mo) // HOTE_RESERVE_PART)
-    ram = ((int(ram_dispo_mo) - reserve) // 1024) * 1024
-    disque = int(disque_libre_go) - HOTE_RESERVE_DISQUE_GO
-    niveaux, arret = [], ""
-    # « max(1, …) » forçait un tour : profondeur 0 rendait un plan d'UN
-    # étage, et « --depth 0 » créait donc une VM. range(1, 1) est déjà vide,
-    # et un plan vide est la bonne réponse à une demande vide.
-    for niveau in range(1, int(profondeur) + 1):
-        if niveau > 1:
-            ram -= PVE_RAM_MO
-            disque -= PVE_DISQUE_GO
-        if ram < RAM_MIN_MO:
-            arret = "ram"
-            break
-        if disque < DISQUE_MIN_GO:
-            arret = "disque"
-            break
-        niveaux.append(
-            {
-                "niveau": niveau,
-                # Le plancher est VCPU_IMBRIQUE et non 1 : sur un hôte de
-                # quatre cœurs, « // 4 » donnait UN vCPU au premier étage —
-                # l'hyperviseur parent — alors que son invité en recevait
-                # deux. Un parent plus étroit que son enfant est absurde, et
-                # c'est tout l'inverse de ce que ce module raconte.
-                "vcpu": (
-                    max(
-                        VCPU_IMBRIQUE,
-                        min(VCPU_NIVEAU1_MAX, int(cpu_hote) // 4),
-                    )
-                    if niveau == 1
-                    else VCPU_IMBRIQUE
-                ),
-                "ram": ram,
-                "disque": disque,
-            }
+    budget_ram = ((int(ram_dispo_mo) - reserve) // 1024) * 1024
+    budget_disque = int(disque_libre_go) - HOTE_RESERVE_DISQUE_GO
+
+    def besoin(d):
+        """Ce que le PREMIER étage doit avoir pour qu'une descente de `d`
+        étages tienne : la cible du bas, plus un surcoût par étage au-dessus.
+
+        Le processeur en fait partie : chaque étage en veut un de plus que son
+        enfant, donc le premier en veut VCPU_IMBRIQUE + d - 1. Sans cette
+        condition, on annonçait dix étages sur une machine à quatre cœurs.
+        """
+        return (
+            PVE_RAM_CIBLE_MO + (d - 1) * PVE_RAM_MO,
+            PVE_DISQUE_CIBLE_GO + (d - 1) * PVE_DISQUE_GO,
+            VCPU_IMBRIQUE + d - 1,
         )
+
+    budget_vcpu = max(VCPU_IMBRIQUE, int(cpu_hote) // VCPU_HOTE_PART)
+    atteignable, arret = 0, ""
+    for d in range(max(0, int(profondeur)), 0, -1):
+        ram1, disque1, vcpu1 = besoin(d)
+        if (
+            ram1 <= budget_ram
+            and disque1 <= budget_disque
+            and vcpu1 <= budget_vcpu
+        ):
+            atteignable = d
+            break
+    if atteignable < int(profondeur):
+        # Nommer CE qui a manqué, à la profondeur demandée.
+        ram1, disque1, vcpu1 = besoin(max(1, int(profondeur)))
+        if ram1 > budget_ram:
+            arret = "ram"
+        elif disque1 > budget_disque:
+            arret = "disque"
+        else:
+            arret = "vcpu"
+    niveaux = [
+        {
+            "niveau": niveau,
+            # UN de plus que son enfant. Un parent aussi étroit que son
+            # enfant, c'est cent pour cent de surengagement — et l'hyperviseur
+            # à servir en plus.
+            "vcpu": VCPU_IMBRIQUE + (atteignable - niveau),
+            "ram": PVE_RAM_CIBLE_MO + (atteignable - niveau) * PVE_RAM_MO,
+            "disque": PVE_DISQUE_CIBLE_GO
+            + (atteignable - niveau) * PVE_DISQUE_GO,
+        }
+        for niveau in range(1, atteignable + 1)
+    ]
     return {
         "demandee": int(profondeur),
-        "atteignable": len(niveaux),
+        "atteignable": atteignable,
         "niveaux": niveaux,
         "arret": arret,
     }

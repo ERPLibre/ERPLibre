@@ -47,28 +47,44 @@ cloner le dépôt : c'est notre code qu'on veut éprouver, et le dépôt distant
 est souvent en retard sur le checkout — un correctif absent du distant a fait
 « revenir » le même défaut sur trois VM de suite.
 
-### L'algorithme de ressources
+### L'algorithme de ressources — dimensionné depuis le bas
 
-Deux choses s'épuisent en descendant, et une troisième se dégrade. Ce qui
-s'épuise est de l'arithmétique, et `script/proxmox/nesting.py` la calcule :
+La première version cédait à l'enfant ce que le parent pouvait céder, et une
+descente réelle a montré ce que cela coûte. L'étage 4 se retrouvait avec 44 Go
+de mémoire et 2 vCPU **sur un hôte qui en avait 2** — cent pour cent de
+surengagement, à chaque étage, avec l'hyperviseur lui-même à servir par-dessus.
+Son installation dépassait deux heures et demie contre treize minutes pour
+l'étage 3, et l'extrapolation de ce rapport donnait cinq ANS pour le dixième.
 
-* **la mémoire** — chaque étage garde de quoi faire tourner ses propres démons
-  (`pve-cluster`, `pvestatd`, `pvedaemon`, `pveproxy`) avant de céder le
-  reste ;
+Le sens est donc inversé. Le plus profond reçoit ce qu'un Proxmox de test
+demande vraiment — 4 Go de mémoire, 25 Go de disque, 2 vCPU — et chaque parent
+au-dessus ajoute son propre surcoût, rien d'autre : un vCPU, 2 Gio, 10 Go. Une
+descente à dix étages demande ainsi 11 vCPU, 22 Go et 115 Go à son premier
+étage, là où la cession de haut en bas voulait 50 Go de mémoire pour la même
+profondeur.
+
+Trois budgets peuvent borner la profondeur, et `script/proxmox/nesting.py`
+nomme celui qui a manqué :
+
+* **la mémoire** — chaque étage doit faire tourner ses propres démons
+  (`pve-cluster`, `pvestatd`, `pvedaemon`, `pveproxy`) *et* héberger son
+  enfant ;
 * **le disque** — le disque de l'enfant vit *dans* celui du parent, qui doit
-  aussi contenir son propre système.
+  aussi contenir son propre système ;
+* **le processeur** — chaque étage en veut un de plus que son enfant, donc dix
+  étages en demandent onze au premier. La moitié des cœurs physiques est le
+  plafond : l'orchestrateur tourne sur cette machine lui aussi.
 
-Ce qui se dégrade est mesuré, pas supposé : au-delà du deuxième étage, les
-fabricants ne documentent rien. D'où un seul nombre borné — **2 vCPU** pour
-tout étage imbriqué. Douze vCPU au quatrième étage ont gelé le noyau invité en
-tout début de démarrage ; les mêmes deux avançaient. Amener douze processeurs
-en ligne coûte autant d'allers-retours à travers toute la pile.
+Ce troisième budget est mesuré, pas supposé. Douze vCPU au quatrième étage ont
+gelé le noyau invité en tout début de démarrage — même pointeur d'instruction à
+trois relevés, deux minutes d'écart — quand deux avançaient. Le nombre n'était
+pas le fautif : cette VM avait douze vCPU sur un hôte qui en avait deux, six
+fois plus large que sa propre machine. C'est le surengagement qui gèle, pas le
+douze.
 
-La mémoire n'est **pas** bornée. Sur cette unique VM examinée à la main, la
-faire passer de 9 Go à 2 Go n'a rien déplacé : elle s'arrêtait après avoir lu
-les mêmes 32 Mio, c'est-à-dire simplement la taille des fichiers d'amorçage.
-La mémoire n'était pas le levier ; le nombre de vCPU l'était. Et la rogner
-priverait l'étage du dessous, qui en a besoin pour héberger le suivant.
+La mémoire n'est pas le levier. Sur cette même VM examinée à la main, la faire
+passer de 9 Go à 2 Go n'a rien déplacé : elle s'arrêtait après avoir lu les
+mêmes 32 Mio, c'est-à-dire simplement la taille des fichiers d'amorçage.
 
 Le plan est affiché **avant** que quoi que ce soit ne soit créé, et le script
 ne promet jamais une profondeur qu'il sait irréalisable — mieux vaut annoncer

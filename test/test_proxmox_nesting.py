@@ -18,96 +18,95 @@ from script.proxmox import nesting  # noqa: E402
 
 
 class TestLePlanDesEtages(unittest.TestCase):
-    """Deux ressources s'épuisent en descendant, et le plan doit le dire
-    AVANT de créer quoi que ce soit."""
+    """Le plan se dimensionne DEPUIS LE BAS, et c'est une correction.
+
+    De haut en bas, chaque étage recevait ce que son parent pouvait céder.
+    Mesuré sur une descente réelle : l'étage 4 se retrouvait avec 44 Go de RAM
+    et deux vCPU sur un hôte qui en avait deux — cent pour cent de
+    surengagement, à chaque étage. Son installation dépassait deux heures et
+    demie contre treize minutes pour l'étage 3, et l'extrapolation donnait cinq
+    ANS pour le dixième.
+
+    Le plus profond reçoit donc ce qu'un Proxmox de test demande, et chaque
+    parent ajoute son propre surcoût — un vCPU, deux gibioctets, dix
+    gigaoctets. Rien de plus."""
 
     # La machine réelle sur laquelle l'algorithme a été réglé.
-    HOTE = dict(cpu_hote=28, ram_dispo_mo=29549, disque_libre_go=139)
+    HOTE = dict(cpu_hote=28, ram_dispo_mo=58000, disque_libre_go=165)
 
     def test_ten_levels_fit_on_this_machine(self):
         plan = nesting.nesting_plan(10, **self.HOTE)
         self.assertEqual(plan["atteignable"], 10)
         self.assertEqual(plan["arret"], "")
 
-    def test_every_level_shrinks(self):
-        # Le disque de l'enfant vit DANS celui du parent, qui doit aussi
-        # contenir son propre système : rien ne peut rester constant.
-        niveaux = nesting.nesting_plan(6, **self.HOTE)["niveaux"]
-        for precedent, suivant in zip(niveaux, niveaux[1:]):
-            self.assertLess(suivant["ram"], precedent["ram"])
-            self.assertLess(suivant["disque"], precedent["disque"])
+    def test_the_deepest_level_gets_exactly_the_target(self):
+        """C'est de là qu'on part : ce qu'un Proxmox de test demande, pas ce
+        qui reste."""
+        plan = nesting.nesting_plan(10, **self.HOTE)
+        fond = plan["niveaux"][-1]
+        self.assertEqual(fond["ram"], nesting.PVE_RAM_CIBLE_MO)
+        self.assertEqual(fond["disque"], nesting.PVE_DISQUE_CIBLE_GO)
+        self.assertEqual(fond["vcpu"], nesting.VCPU_IMBRIQUE)
 
-    def test_the_first_level_may_be_wide_the_others_not(self):
-        """12 vCPU au quatrième étage ont GELÉ le noyau invité en tout début
-        de démarrage ; les mêmes 2 vCPU avançaient. Amener douze processeurs
-        en ligne demande autant d'allers-retours à travers la pile."""
-        niveaux = nesting.nesting_plan(4, **self.HOTE)["niveaux"]
-        # STRICTEMENT plus grand. « > VCPU_IMBRIQUE - 1 » était satisfait par
-        # la valeur imbriquée elle-même : remplacer tout le calcul du premier
-        # étage par VCPU_IMBRIQUE laissait les tests verts, donc cpu_hote
-        # n'était couvert par rien.
-        self.assertGreater(niveaux[0]["vcpu"], nesting.VCPU_IMBRIQUE)
-        for n in niveaux[1:]:
-            self.assertEqual(n["vcpu"], nesting.VCPU_IMBRIQUE)
+    def test_each_parent_adds_exactly_its_own_overhead(self):
+        # Ni plus ni moins : un parent plus large que nécessaire ralentit tout
+        # ce qu'il héberge, un parent trop juste ne le fait pas tourner.
+        niveaux = nesting.nesting_plan(8, **self.HOTE)["niveaux"]
+        for parent, enfant in zip(niveaux, niveaux[1:]):
+            self.assertEqual(parent["ram"] - enfant["ram"], nesting.PVE_RAM_MO)
+            self.assertEqual(
+                parent["disque"] - enfant["disque"], nesting.PVE_DISQUE_GO
+            )
+            self.assertEqual(parent["vcpu"] - enfant["vcpu"], 1)
 
     def test_a_parent_is_never_narrower_than_its_child(self):
-        """Sur un hôte de quatre cœurs, « // 4 » donnait UN vCPU au premier
-        étage — l'hyperviseur — alors que son invité en recevait deux."""
-        for coeurs in (2, 4, 8, 12, 28):
+        """Deux vCPU hébergeant deux vCPU, c'est cent pour cent de
+        surengagement — et l'hyperviseur à servir en plus. Mesuré : une VM
+        démarrée au quatrième étage a lu DEUX KILO-OCTETS en onze minutes,
+        affamée par l'installation qui tournait à côté."""
+        for coeurs in (4, 8, 12, 28):
             with self.subTest(coeurs=coeurs):
                 niveaux = nesting.nesting_plan(
-                    3,
+                    6,
                     cpu_hote=coeurs,
-                    ram_dispo_mo=32768,
-                    disque_libre_go=300,
+                    ram_dispo_mo=64000,
+                    disque_libre_go=400,
                 )["niveaux"]
-                self.assertGreaterEqual(
-                    niveaux[0]["vcpu"], niveaux[1]["vcpu"], f"{coeurs} cœurs"
-                )
+                for parent, enfant in zip(niveaux, niveaux[1:]):
+                    self.assertGreater(parent["vcpu"], enfant["vcpu"])
+                    self.assertGreater(parent["ram"], enfant["ram"])
+                    self.assertGreater(parent["disque"], enfant["disque"])
+
+    def test_the_cpu_budget_can_bound_the_depth(self):
+        """Sur une petite machine, c'est le PROCESSEUR qui borne, pas la
+        mémoire : chaque étage en veut un de plus que son enfant, donc dix
+        étages demandent onze vCPU au premier."""
+        plan = nesting.nesting_plan(
+            10, cpu_hote=8, ram_dispo_mo=64000, disque_libre_go=400
+        )
+        self.assertEqual(plan["arret"], "vcpu")
+        self.assertLess(plan["atteignable"], 10)
+        # Et le premier étage ne dépasse pas la part concédée à l'hôte.
+        self.assertLessEqual(
+            plan["niveaux"][0]["vcpu"], 8 // nesting.VCPU_HOTE_PART
+        )
 
     def test_running_out_of_ram_is_named(self):
         plan = nesting.nesting_plan(
-            10, cpu_hote=8, ram_dispo_mo=12288, disque_libre_go=500
+            10, cpu_hote=28, ram_dispo_mo=12288, disque_libre_go=500
         )
         self.assertEqual(plan["arret"], "ram")
         self.assertLess(plan["atteignable"], 10)
-        # Aucun étage sous le plancher : un Proxmox sous 2 Go ne démarre pas
-        # ses démons.
         for n in plan["niveaux"]:
             self.assertGreaterEqual(n["ram"], nesting.RAM_MIN_MO)
 
     def test_running_out_of_disk_is_named(self):
         plan = nesting.nesting_plan(
-            10, cpu_hote=8, ram_dispo_mo=200000, disque_libre_go=60
+            10, cpu_hote=28, ram_dispo_mo=200000, disque_libre_go=60
         )
         self.assertEqual(plan["arret"], "disque")
         for n in plan["niveaux"]:
             self.assertGreaterEqual(n["disque"], nesting.DISQUE_MIN_GO)
-
-    def test_the_host_keeps_a_share_not_just_a_floor(self):
-        """Quatre gigaoctets sur une machine de soixante, c'est 6 % laissés à
-        l'hôte : le jour où les invités touchent vraiment leur mémoire, c'est
-        lui qui part en swap — et la mesure serait celle du swap, pas de
-        l'imbrication."""
-        for dispo in (60000, 260000):
-            with self.subTest(dispo=dispo):
-                plan = nesting.nesting_plan(
-                    1, cpu_hote=28, ram_dispo_mo=dispo, disque_libre_go=500
-                )
-                reserve = dispo - plan["niveaux"][0]["ram"]
-                self.assertGreater(reserve, nesting.HOTE_RESERVE_RAM_MO)
-                self.assertGreaterEqual(
-                    reserve, dispo // nesting.HOTE_RESERVE_PART
-                )
-
-    def test_a_small_host_keeps_the_floor(self):
-        # Sur une petite machine, la part serait dérisoire : le plancher tient.
-        plan = nesting.nesting_plan(
-            1, cpu_hote=4, ram_dispo_mo=16384, disque_libre_go=200
-        )
-        self.assertEqual(
-            16384 - plan["niveaux"][0]["ram"], nesting.HOTE_RESERVE_RAM_MO
-        )
 
     def test_a_depth_of_zero_asks_for_nothing(self):
         for profondeur in (0, -1, -7):
@@ -122,32 +121,15 @@ class TestLePlanDesEtages(unittest.TestCase):
         )
         self.assertEqual(plan["atteignable"], 0)
         self.assertEqual(plan["niveaux"], [])
-        self.assertEqual(plan["arret"], "ram")
+        self.assertTrue(plan["arret"])
 
     def test_a_plan_is_never_promised_beyond_what_fits(self):
         # Mieux vaut annoncer six étages et en réussir six que d'en promettre
         # dix et mourir au septième sans savoir pourquoi.
-        # Depuis 0 et depuis les négatifs : « max(1, …) » forçait un tour,
-        # donc « --depth 0 » rendait un plan d'UN étage et créait une VM.
         for profondeur in range(-2, 13):
             plan = nesting.nesting_plan(profondeur, **self.HOTE)
             self.assertEqual(len(plan["niveaux"]), plan["atteignable"])
-            # « max(0, …) » : une demande négative ne peut pas donner un
-            # nombre d'étages négatif, elle donne zéro.
             self.assertLessEqual(plan["atteignable"], max(0, profondeur))
-
-
-class TestLaProfondeurDUnHote(unittest.TestCase):
-    """Comptée depuis la chaîne de rebonds : c'est la seule mesure dont on
-    dispose de l'extérieur, et elle est exacte pour les hôtes que nous avons
-    nous-mêmes déployés — c'est nous qui écrivons ces entrées."""
-
-    def test_no_jump_is_the_first_level(self):
-        self.assertEqual(nesting.depth_from_jumps(0), 1)
-
-    def test_each_jump_adds_a_level(self):
-        for sauts, attendu in ((1, 2), (2, 3), (3, 4), (9, 10)):
-            self.assertEqual(nesting.depth_from_jumps(sauts), attendu)
 
 
 class TestCompterLesRebonds(unittest.TestCase):
