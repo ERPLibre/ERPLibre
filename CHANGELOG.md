@@ -15,6 +15,9 @@ Recreating the virtual environment, use installation guide from tool `make`.
 
 ## Added
 
+- `long_test/` — tests that create real machines and take hours, kept out of `test/` so the unit runner stays runnable in seconds. `deep_proxmox.py` stacks Proxmox in Proxmox, `deep_qemu.py` stacks QEMU in QEMU, and they share one engine. Measured on 28 cores: three levels cost 34 minutes, the fourth 4 h 20 of boot plus 7 h 18 of install — everything there is 15 to 30 times slower, and that is where the vendors stop documenting nesting. The depth is a parameter and defaults to three, because three works
+- deep_qemu proves KVM at every level instead of assuming it: `deploy_qemu.py` never passes `--cpu host-passthrough` and, when /dev/kvm is missing, it does not fail — it sets `--virt-type qemu` and creates a fully EMULATED VM, seven and a half minutes to boot, with no exit code to say so. Unguarded, the descent would measure stacked TCG while believing it measured nesting. Each level must show `/dev/kvm`, `nested=Y` and a child domain in `type='kvm'`; what was not read counts as NO
+- Both long tests take `--hote` to start from a machine you already own, rather than creating a head VM to host a hypervisor you have on hand — that costs five minutes AND one level of nesting. The plan is then sized on the ROOT, read over ssh; the delays count ABSOLUTE depth; and the root is never a level reached, never destroyed, and its ~/.ssh/config entry is never removed
 - Support Odoo migration database and module with TODO
 - Support multi version odoo switch on same workspace
 - Script for hardening the installation

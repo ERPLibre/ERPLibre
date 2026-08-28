@@ -1142,6 +1142,94 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         self.assertEqual(args, " --hote erplibre@10.0.0.7")
 
 
+class TestAucuneEtapeNeRepondNone(unittest.TestCase):
+    """Une étape qui rend None dit « non » à l'appelant, sans dire pourquoi.
+
+    Vécu : l'extraction du moteur avait coupé `preparer_systeme` sur le
+    « return False » de sa boucle, sans son « return True » final. La descente
+    affichait « ✗ étage 1 systeme » et pas une ligne de cause — et l'essai à
+    blanc ne pouvait pas le voir, puisqu'il sort avant. Les deux piles étaient
+    cassées, aucun test ne l'a vu."""
+
+    CROCHETS = (
+        "preparer_parent",
+        "creer_enfant",
+        "installer",
+        "noyau_convient",
+        "remettre_debout",
+        "controler",
+        "preparer_systeme",
+        "redemarrer_et_verifier",
+    )
+
+    def test_no_step_can_fall_through_to_none(self):
+        """Par l'AST, sur les trois fichiers : le dernier énoncé du corps d'une
+        étape doit être un return ou un raise, jamais une boucle ou un if dont
+        on peut sortir."""
+        import ast
+
+        chutes = []
+        for chemin in (
+            "long_test/descente.py",
+            "long_test/deep_proxmox.py",
+            "long_test/deep_qemu.py",
+        ):
+            arbre = ast.parse(
+                open(os.path.join(RACINE, chemin), encoding="utf-8").read()
+            )
+            for noeud in ast.walk(arbre):
+                if (
+                    isinstance(noeud, ast.FunctionDef)
+                    and noeud.name in self.CROCHETS
+                ):
+                    dernier = noeud.body[-1]
+                    if isinstance(
+                        dernier, (ast.For, ast.While, ast.If, ast.Try)
+                    ):
+                        chutes.append(f"{chemin}:{noeud.lineno} {noeud.name}")
+        self.assertEqual(chutes, [])
+
+    def test_the_real_path_of_preparer_systeme_answers_true(self):
+        """Éprouvé sur le vrai chemin, pas seulement à blanc : c'est l'essai à
+        blanc qui masquait le défaut, en sortant avant."""
+        d = moteur.Descente.__new__(moteur.Descente)
+        d.dry_run = False
+        d.journal = None
+        d.niveau_courant = 1
+        d.executer = lambda h, c, delai, etiquette="", **k: (0, "OK")
+        vrai = moteur.pve.run
+        moteur.pve.run = lambda h, r, t=120: (0, "10.0.0.2 22 10.0.0.1 22")
+        self.addCleanup(setattr, moteur.pve, "run", vrai)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertIs(d.preparer_systeme({"target": "h"}), True)
+
+    def test_a_failing_repair_answers_false_and_says_which(self):
+        d = moteur.Descente.__new__(moteur.Descente)
+        d.dry_run = False
+        d.journal = None
+        d.niveau_courant = 1
+        d.executer = lambda h, c, delai, etiquette="", **k: (0, "hosts-KO")
+        vrai = moteur.pve.run
+        moteur.pve.run = lambda h, r, t=120: (0, "10.0.0.2 22 10.0.0.1 22")
+        self.addCleanup(setattr, moteur.pve, "run", vrai)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertIs(d.preparer_systeme({"target": "h"}), False)
+        # Et il DIT laquelle : un « ✗ » sans cause envoie chercher partout.
+        self.assertIn("gel cloud-init", sortie.getvalue())
+
+    def test_an_unknown_access_address_is_named(self):
+        d = moteur.Descente.__new__(moteur.Descente)
+        d.dry_run = False
+        d.journal = None
+        d.niveau_courant = 1
+        vrai = moteur.pve.run
+        moteur.pve.run = lambda h, r, t=120: (0, "")
+        self.addCleanup(setattr, moteur.pve, "run", vrai)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertFalse(d.preparer_systeme({"target": "h"}))
+        self.assertIn("adresse d'accès inconnue", sortie.getvalue())
+
+
 class TestPartirDunHoteExistant(unittest.TestCase):
     """Créer une VM de tête pour héberger un hyperviseur qu'on possède déjà
     coûte cinq minutes ET un étage d'imbrication — donc de la lenteur."""

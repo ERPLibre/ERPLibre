@@ -135,3 +135,60 @@ Le plan est affiché **avant** que quoi que ce soit ne soit créé, et le script
 ne promet jamais une profondeur qu'il sait irréalisable — mieux vaut annoncer
 six étages et en réussir six que d'en promettre dix et mourir au septième sans
 savoir pourquoi.
+
+## deep_qemu.py — jusqu'à quel étage une QEMU dans une QEMU tient-elle ?
+
+La même descente, une autre pile — et c'est le couple qui compte. Le
+ralentissement du quatrième étage vient du **processeur** : de ce que coûte une
+sortie de VM sous pagination imbriquée. Le *coût* par étage, lui, vient de ce
+qu'on installe. Un nœud Proxmox pose un noyau, corosync, ceph et une interface
+web ; un hôte libvirt pose `libvirtd` et `qemu-kvm`. Mesurées ensemble, les
+deux séparent ce qui tient au matériel de ce qui tient à la pile — deux choses
+que la seule mesure Proxmox confond.
+
+### Ce que ce test doit prouver avant de mesurer quoi que ce soit
+
+`deploy_qemu.py` ne passe jamais `--cpu host-passthrough`, et quand
+`/dev/kvm` manque il n'échoue **pas** : il pose `--virt-type qemu`, avertit sur
+une ligne, et crée une VM entièrement **émulée**. Sept minutes et demie de
+démarrage, et aucun code de retour ne le dit.
+
+Sans garde, ce script mesurerait de la TCG empilée en croyant mesurer de
+l'imbrication — et rendrait un chiffre plus flatteur qui ne veut rien dire.
+Chaque étage doit donc prouver, et non supposer :
+
+* `/dev/kvm` est lisible ;
+* `/sys/module/kvm_amd|kvm_intel/parameters/nested` vaut `Y` ;
+* le domaine de l'enfant est `<domain type='kvm'>`, vérifié juste après sa
+  création.
+
+**Ce qui n'a pas été lu vaut NON.** Un fichier `/sys/module` absent, c'est un
+module non chargé, pas un problème de permission. Un étage qui échoue à cela
+arrête la descente au lieu de la prolonger dans le vide.
+
+## Partir d'un hôte qu'on possède déjà
+
+Les deux scripts acceptent `--hote`. Créer une VM de tête pour héberger un
+hyperviseur qu'on a sous la main coûte cinq minutes *et* un étage
+d'imbrication — donc de la lenteur, puisque c'est justement elle qu'on mesure.
+
+```
+./long_test/deep_proxmox.py --hote root@10.0.0.5      # un Proxmox existant
+./long_test/deep_qemu.py --hote erplibre@10.0.0.7     # un hôte libvirt existant
+```
+
+Trois choses en découlent, et elles ne sont pas décoratives :
+
+* le plan se dimensionne sur la **racine**, lue par ssh — le dimensionner sur
+  la machine locale quand les étages vivent ailleurs annoncerait des étages qui
+  ne tiennent pas ;
+* les délais comptent la profondeur **absolue** : un enfant de niveau 1 posé
+  dans une racine déjà au troisième étage est en réalité au quatrième ;
+* la racine n'est **jamais** un étage atteint, et **jamais** détruite. Un hôte
+  emprunté n'a pas d'UUID libvirt local, donc `--detruire` refuse de se rabattre
+  sur son nom — `virsh undefine --remove-all-storage` efface un disque pour de
+  bon.
+
+Le menu propose l'hôte déjà retenu sans le rechercher, et défait chaque pile
+séparément : elles partagent le dossier des rapports, mais chacune ne connaît
+que les siens.

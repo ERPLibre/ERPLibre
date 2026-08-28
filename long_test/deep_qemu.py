@@ -89,6 +89,60 @@ CONTROLE_CMD = (
     " | tail -1 | sed s/^/DISQUE=/"
 )
 
+# Les listes apt AVANT toute installation. Constaté au premier lancement
+# réel : « --setup-host » a échoué en ZÉRO seconde sur « Unable to locate
+# package qemu-system-x86 », alors que le paquet existe. La VM venait de
+# démarrer, ses listes ne portaient que « bookworm-security », et un
+# apt-get update les a complétées d'un coup.
+#
+# Deux causes, une seule parade : cloud-init n'a pas fini de composer
+# /etc/apt, et apt-daily tient le verrou des listes au premier démarrage.
+# install_proxmox.sh a la même parade, et pour la même raison — arrêter les
+# minuteries, puis réessayer.
+PREPARE_APT_CMD = (
+    "systemctl stop apt-daily.service apt-daily-upgrade.service"
+    " apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1;"
+    " i=1; while [ $i -le 12 ]; do"
+    " DEBIAN_FRONTEND=noninteractive apt-get update && exit 0;"
+    " echo APT-RETRY=$i; sleep 15; i=$((i+1)); done; exit 1"
+)
+
+# Le réseau « default » de libvirt sert 192.168.122.0/24, à TOUS les étages.
+# Constaté au premier essai réel : l'étage 2, dont l'adresse était
+# 192.168.122.45 — servie par le « default » de son parent — a vu son propre
+# « net-start default » refusé net :
+#
+#   error: internal error: Network is already in use by interface enp1s0
+#
+# Un invité qui vit DANS un réseau ne peut pas servir le même. Chaque étage
+# reçoit donc son propre sous-réseau, déduit de sa PROFONDEUR : deux étages ne
+# peuvent pas tomber sur le même, et rien n'est à deviner.
+#
+# 131 et au-delà : 122 est celui de libvirt et 123 celui de la machine où ce
+# test a été écrit. Les éviter tous les deux coûte un octet.
+RESEAU_BASE = 131
+
+
+def cidr_pour(profondeur):
+    """Le troisième octet du sous-réseau d'un étage. Déterminé, jamais tiré."""
+    return f"192.168.{RESEAU_BASE + max(0, int(profondeur) - 1)}"
+
+
+def reseau_xml(prefixe, nom="default"):
+    """Le réseau NAT d'un étage, en une ligne — pas de heredoc.
+
+    Une seule ligne parce qu'elle traverse deux couches de quoting pour
+    atterrir dans dash : un heredoc n'y survivrait pas.
+    """
+    return (
+        f"<network><name>{nom}</name><forward mode='nat'/>"
+        f"<bridge name='virbr0' stp='on' delay='0'/>"
+        f"<ip address='{prefixe}.1' netmask='255.255.255.0'>"
+        f"<dhcp><range start='{prefixe}.10' end='{prefixe}.200'/></dhcp>"
+        f"</ip></network>"
+    )
+
+
 RESEAU_CMD = (
     "virsh -c qemu:///system net-info default 2>&1 | sed s/^/NET:/; "
     "systemctl is-active libvirtd 2>/dev/null | sed s/^/UNITE:/"
@@ -208,6 +262,18 @@ class Descente(descente.Descente):
             return True
         if not self._envoyer_cli(hote):
             return False
+        # Les listes d'abord. Sans elles, « --setup-host » échoue en zéro
+        # seconde sur des paquets qui existent — et le message parle de
+        # paquets introuvables, pas de listes vides.
+        code, _o = self.executer(
+            hote,
+            PREPARE_APT_CMD,
+            self.delai("install"),
+            "apt-get update",
+        )
+        if code:
+            self.dire("      ✗ listes apt : le verrou reste tenu")
+            return False
         code, _o = self.executer(
             hote,
             f"python3 {DISTANT_CLI} --setup-host --assume-yes",
@@ -234,16 +300,23 @@ class Descente(descente.Descente):
         if self.dry_run:
             print("      libvirtd + réseau default")
             return True
-        # Idempotent : sur un hôte déjà en ordre, les deux commandes ne font
-        # rien et rendent 0.
+        # Son sous-réseau à LUI, sinon « net-start default » se heurte à
+        # l'adresse que son parent lui a servie.
+        profondeur = self.profondeur_racine + max(1, self.niveau_courant)
+        xml = reseau_xml(cidr_pour(profondeur))
         self.executer(
             hote,
             "systemctl enable --now libvirtd 2>/dev/null;"
-            " virsh -c qemu:///system net-start default 2>/dev/null;"
-            " virsh -c qemu:///system net-autostart default 2>/dev/null; true",
+            " virsh -c qemu:///system net-destroy default 2>/dev/null;"
+            " virsh -c qemu:///system net-undefine default 2>/dev/null;"
+            f" printf '%s' {shlex.quote(xml)} > /tmp/reseau.xml;"
+            " virsh -c qemu:///system net-define /tmp/reseau.xml;"
+            " virsh -c qemu:///system net-start default;"
+            " virsh -c qemu:///system net-autostart default; true",
             self.delai("reparation"),
             "libvirtd",
         )
+        self.dire(f"      réseau {cidr_pour(profondeur)}.0/24")
         _c, out = self.executer(
             hote, RESEAU_CMD, self.delai("controle"), "réseau"
         )

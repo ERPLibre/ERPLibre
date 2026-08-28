@@ -409,6 +409,11 @@ class Descente:
             if code or "-KO" in pve.strip_ssh_noise(sortie):
                 self.dire(f"      ✗ {etiquette}")
                 return False
+        # Ce « return True » manquait, et l'étape échouait donc SANS RIEN
+        # DIRE : « ✗ étage 1 systeme » et pas une ligne de cause. Une fonction
+        # qui rend None là où l'appelant attend un booléen ne ment pas à
+        # moitié — elle dit « non ».
+        return True
 
     def creer_etage1(self, res):
         """Une VM locale, par la CLI QEMU/KVM. Le seul étage sur du métal."""

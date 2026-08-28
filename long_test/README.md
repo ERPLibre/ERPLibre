@@ -126,3 +126,58 @@ size of the boot files.
 The plan is printed **before** anything is created, and the script never
 promises a depth it knows will not fit — better to announce six levels and
 reach six than to promise ten and die at the seventh without knowing why.
+
+## deep_qemu.py — how deep does QEMU-in-QEMU go?
+
+The same descent, a different stack — and the pair is the point. The fourth
+level's slowdown comes from the **processor**: what a VM exit costs under
+nested paging. The per-level *cost*, though, comes from what you install. A
+Proxmox node lays down a kernel, corosync, ceph and a web UI; a libvirt host
+lays down `libvirtd` and `qemu-kvm`. Measured together, the two separate what
+is due to the hardware from what is due to the stack — two things the Proxmox
+measurement alone confounds.
+
+### What this test must prove before it measures anything
+
+`deploy_qemu.py` never passes `--cpu host-passthrough`, and when `/dev/kvm` is
+missing it does **not** fail: it sets `--virt-type qemu`, warns on one line,
+and creates a fully **emulated** VM. Seven and a half minutes to boot, and no
+exit code says so.
+
+Unguarded, this script would measure stacked TCG while believing it measured
+nesting — and return a more flattering number that means nothing. So every
+level must prove, not assume:
+
+* `/dev/kvm` is readable;
+* `/sys/module/kvm_amd|kvm_intel/parameters/nested` reads `Y`;
+* the child's domain is `<domain type='kvm'>`, checked right after creation.
+
+**What was not read counts as NO.** An absent `/sys/module` file means an
+unloaded module, not a permissions problem. A level that fails these stops the
+descent instead of prolonging it into the void.
+
+## Starting from a host you already have
+
+Both scripts take `--hote`. Creating a head VM to host a hypervisor you
+already own costs five minutes *and* one level of nesting — that is, slowness,
+which is the very thing being measured.
+
+```
+./long_test/deep_proxmox.py --hote root@10.0.0.5      # an existing Proxmox
+./long_test/deep_qemu.py --hote erplibre@10.0.0.7     # an existing libvirt host
+```
+
+Three things follow, and they are not decorative:
+
+* the plan is sized on the **root**, read over ssh — sizing it on the local
+  machine while the levels live elsewhere would announce levels that do not
+  fit;
+* the delays count **absolute** depth: a level-1 child placed in a root that
+  is already at the third level is really at the fourth;
+* the root is **never** a level reached, and **never** destroyed. A borrowed
+  host has no local libvirt UUID, so `--detruire` refuses to fall back on its
+  name — `virsh undefine --remove-all-storage` erases a disk for good.
+
+The menu offers the host already chosen without searching for it, and undoes
+each stack separately: they share the report directory, but each knows only
+its own reports.

@@ -110,6 +110,153 @@ class TestUnEtageQuiNeSaitPasHeberger(unittest.TestCase):
             self.assertNotIn(interdit, deep_qemu.CONTROLE_CMD, interdit)
 
 
+class TestLesListesAptAvantToute(unittest.TestCase):
+    """Constaté au premier lancement réel : « --setup-host » a échoué en ZÉRO
+    seconde sur « Unable to locate package qemu-system-x86 », alors que le
+    paquet existe. La VM venait de démarrer, ses listes ne portaient que
+    « bookworm-security », et un apt-get update les a complétées d'un coup.
+
+    Le message parlait de paquets introuvables, pas de listes vides : c'est
+    exactement le genre de diagnostic qui envoie chercher au mauvais endroit.
+    """
+
+    def setUp(self):
+        self.d = deep_qemu.Descente.__new__(deep_qemu.Descente)
+        self.d.dry_run = False
+        self.d.journal = None
+        self.d.niveau_courant = 1
+        self.d._envoyer_cli = lambda hote: True
+        self.faits = []
+
+    def _repond(self, code_apt=0):
+        def executer(hote, cmd, delai, etiquette="", **k):
+            self.faits.append(etiquette)
+            if etiquette == "apt-get update":
+                return code_apt, ""
+            return 0, ""
+
+        self.d.executer = executer
+
+    def test_the_lists_are_refreshed_before_the_install(self):
+        self._repond()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(self.d.installer({"target": "h"}))
+        self.assertEqual(
+            self.faits, ["apt-get update", "deploy_qemu --setup-host"]
+        )
+
+    def test_an_apt_lock_that_never_lets_go_stops_the_level(self):
+        """Installer sur des listes vides donnerait « paquet introuvable » —
+        un diagnostic qui envoie chercher au mauvais endroit."""
+        self._repond(code_apt=1)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertFalse(self.d.installer({"target": "h"}))
+        self.assertIn("verrou reste tenu", sortie.getvalue())
+        self.assertNotIn("deploy_qemu --setup-host", self.faits)
+
+    def test_the_daily_timers_are_stopped_first(self):
+        """apt-daily tient le verrou des listes au premier démarrage.
+        install_proxmox.sh a la même parade, et pour la même raison."""
+        self.assertIn("apt-daily.timer", deep_qemu.PREPARE_APT_CMD)
+        self.assertIn("apt-daily.service", deep_qemu.PREPARE_APT_CMD)
+
+    def test_it_retries_rather_than_giving_up_at_once(self):
+        self.assertIn("while", deep_qemu.PREPARE_APT_CMD)
+        self.assertIn("sleep", deep_qemu.PREPARE_APT_CMD)
+
+    def test_the_apt_probe_is_written_for_dash(self):
+        for interdit in ("[[", "pipefail", "seq "):
+            self.assertNotIn(interdit, deep_qemu.PREPARE_APT_CMD, interdit)
+
+
+class TestChaqueEtageSonSousReseau(unittest.TestCase):
+    """Le « default » de libvirt sert 192.168.122.0/24 à TOUS les étages.
+
+    Constaté au premier essai réel : l'étage 2, dont l'adresse était
+    192.168.122.45 — servie par le « default » de son parent — a vu son propre
+    « net-start default » refusé net :
+
+        error: internal error: Network is already in use by interface enp1s0
+
+    Un invité qui vit DANS un réseau ne peut pas servir le même."""
+
+    def test_two_levels_never_share_a_subnet(self):
+        vus = [deep_qemu.cidr_pour(p) for p in range(1, 11)]
+        self.assertEqual(len(set(vus)), 10, vus)
+
+    def test_it_avoids_libvirts_own_and_the_hosts(self):
+        """122 est celui de libvirt, 123 celui de la machine où ce test a été
+        écrit : tomber sur l'un ou l'autre recréerait la collision."""
+        for profondeur in range(1, 11):
+            prefixe = deep_qemu.cidr_pour(profondeur)
+            self.assertNotIn(prefixe, ("192.168.122", "192.168.123"))
+
+    def test_the_subnet_is_derived_not_drawn(self):
+        # Deux appels pour la même profondeur donnent le même : rien de tiré
+        # au hasard, sinon --detruire et le diagnostic ne se retrouveraient pas.
+        self.assertEqual(deep_qemu.cidr_pour(3), deep_qemu.cidr_pour(3))
+
+    def test_a_depth_of_zero_or_less_still_gives_a_subnet(self):
+        for profondeur in (0, -1):
+            self.assertTrue(deep_qemu.cidr_pour(profondeur).startswith("192."))
+
+    def test_the_network_xml_is_one_line(self):
+        """Elle traverse deux couches de quoting pour atterrir dans dash : un
+        heredoc n'y survivrait pas."""
+        xml = deep_qemu.reseau_xml("192.168.131")
+        self.assertNotIn("\n", xml)
+        self.assertIn("<name>default</name>", xml)
+        self.assertIn("192.168.131.1", xml)
+        self.assertIn("mode='nat'", xml)
+
+    def test_the_dhcp_range_lives_in_its_own_subnet(self):
+        xml = deep_qemu.reseau_xml("192.168.137")
+        self.assertIn("start='192.168.137.10'", xml)
+        self.assertIn("end='192.168.137.200'", xml)
+        # Et la passerelle n'est pas dans la plage servie.
+        self.assertIn("address='192.168.137.1'", xml)
+
+    def test_the_level_redefines_before_starting(self):
+        """« net-start » sur un réseau dont le sous-réseau collisionne échoue :
+        il faut le REDÉFINIR, pas seulement le démarrer."""
+        faits = []
+        d = deep_qemu.Descente.__new__(deep_qemu.Descente)
+        d.dry_run = False
+        d.journal = None
+        d.niveau_courant = 2
+        d.profondeur_racine = 0
+
+        def executer(hote, cmd, delai, etiquette="", **k):
+            faits.append(cmd)
+            return 0, "NET: Active:  yes\nUNITE:active\n"
+
+        d.executer = executer
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertTrue(d.remettre_debout({"target": "h"}))
+        pose = faits[0]
+        self.assertLess(pose.index("net-undefine"), pose.index("net-define"))
+        self.assertLess(pose.index("net-define"), pose.index("net-start"))
+        # Le sous-réseau de CET étage, pas un autre.
+        self.assertIn("192.168.132", pose)
+        self.assertIn("192.168.132.0/24", sortie.getvalue())
+
+    def test_a_borrowed_root_shifts_every_subnet(self):
+        """Partir d'une racine déjà au troisième étage : le premier enfant est
+        au quatrième, et doit prendre le sous-réseau du quatrième."""
+        faits = []
+        d = deep_qemu.Descente.__new__(deep_qemu.Descente)
+        d.dry_run = False
+        d.journal = None
+        d.niveau_courant = 1
+        d.profondeur_racine = 3
+        d.executer = lambda h, c, delai, e="", **k: (
+            faits.append(c) or (0, "NET: Active:  yes\nUNITE:active\n")
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            d.remettre_debout({"target": "h"})
+        self.assertIn(deep_qemu.cidr_pour(4), faits[0])
+
+
 class TestLeControleArreteLaDescente(unittest.TestCase):
     """Un étage sans KVM ne casse pas : il bascule en émulation et continue.
     C'est ce silence-là que le contrôle doit rompre."""
