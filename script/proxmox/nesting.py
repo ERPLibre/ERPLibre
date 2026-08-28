@@ -188,10 +188,15 @@ COUTS_PVE = Couts(
 # 5 Go, hébergeait un invité de 4 Go et il ne lui restait que 127 Mo de libre.
 # Un parent qui ne garde pas de quoi respirer sert mal son enfant, et deux
 # gibioctets d'écart plutôt qu'un lui laissent cette marge.
+# Le couple (6 Go de cible, 2 Go par étage) n'est pas arbitraire : il fait
+# tomber le PREMIER étage d'une descente à dix sur exactement 24 Go, ce qu'une
+# machine à 36 Go peut porter. Descendre plus bas au fond ne servirait à rien —
+# c'est l'écart entre parent et enfant qui compte, mesuré à 127 Mo de libre
+# quand il n'était que d'un gibioctet.
 COUTS_QEMU = Couts(
     ram_par_etage=2048,
     disque_par_etage=6,
-    ram_cible=4096,
+    ram_cible=6144,
     disque_cible=20,
     ram_min=2048,
     disque_min=12,
