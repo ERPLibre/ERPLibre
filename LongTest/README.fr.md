@@ -32,10 +32,36 @@ D'où le script : un chiffre obtenu une fois, sur une machine, dans une chaîne,
 est une anecdote.
 
 ```
-./LongTest/deep_proxmox.py --depth 10 --dry-run   # le plan, rien de créé
-./LongTest/deep_proxmox.py --depth 10             # des heures
+./LongTest/deep_proxmox.py                        # trois étages, ~30 minutes
+./LongTest/deep_proxmox.py --dry-run              # le plan, rien de créé
+./LongTest/deep_proxmox.py --depth 5              # en demander plus, sciemment
 ./LongTest/deep_proxmox.py --detruire             # défaire
 ```
+
+### Quelle profondeur vaut la peine d'être demandée
+
+La profondeur est le seul réglage, et **trois** est le défaut parce que trois
+marche. Mesuré sur une machine à 28 cœurs, une descente complète par ligne :
+
+| étage | amorçage (ssh) | installation | total |
+|------:|---------------:|-------------:|------:|
+| 1 | 0 s | 200 s | 280 s |
+| 2 | 37 s | 344 s | 495 s |
+| 3 | 93 s | 777 s | 1 064 s |
+| 4 | **15 608 s** | **26 306 s** | n'a pas abouti |
+
+Trois étages coûtent une demi-heure. Le **quatrième** a coûté 4 h 20
+d'amorçage et 7 h 18 d'installation sur la même machine — tout y est 15 à 30
+fois plus lent, pas une seule étape. Et cela tombe précisément là où les
+fabricants s'arrêtent : le quatrième étage est le *troisième* hyperviseur
+imbriqué, et AMD en documente deux.
+
+Un invité plus large aggrave brutalement : au quatrième étage, un vCPU de plus
+a multiplié l'amorçage par 9,4 (1 664 s à deux vCPU, 15 608 s à trois), et à
+huit vCPU l'invité a lu 32 Mio en 106 minutes, pointeur d'instruction
+immobile. Aux étages 2 et 3, ce même vCPU ne coûte rien.
+
+Donc : trois par défaut, cinq pour savoir, dix seulement pour voir le mur.
 
 La descente est **uniforme**. Chaque étage, le premier compris, passe par les
 mêmes six étapes : créer, attendre le ssh, installer Proxmox, redémarrer et

@@ -1174,7 +1174,13 @@ def principal(argv=None):
     parseur = argparse.ArgumentParser(
         description="Jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?"
     )
-    parseur.add_argument("--depth", type=int, default=10)
+    # Trois par défaut, et c'est une MESURE, pas une prudence : les trois
+    # premiers étages coûtent 280, 495 et 1 064 secondes — une demi-heure en
+    # tout. Le quatrième en a coûté 7 h 18 d'installation et 4 h 20 d'amorçage
+    # sur la même machine. Un défaut à dix promettait ce qu'aucune machine ne
+    # peut tenir ; la profondeur reste un paramètre, et c'est à qui la demande
+    # de savoir ce qu'il demande.
+    parseur.add_argument("--depth", type=int, default=3)
     parseur.add_argument("--dry-run", action="store_true")
     parseur.add_argument("--detruire", action="store_true")
     args = parseur.parse_args(argv)

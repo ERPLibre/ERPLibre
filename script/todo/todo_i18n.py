@@ -3454,9 +3454,9 @@ TRANSLATIONS = {
         "fr": "Script introuvable :",
         "en": "Script not found:",
     },
-    "Depth (default 10): ": {
-        "fr": "Profondeur (défaut 10) : ",
-        "en": "Depth (default 10): ",
+    "Depth (default 3): ": {
+        "fr": "Profondeur (défaut 3) : ",
+        "en": "Depth (default 3): ",
     },
     "Nesting level": {
         "fr": "Étage d'imbrication",

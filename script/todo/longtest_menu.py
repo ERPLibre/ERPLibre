@@ -87,6 +87,12 @@ class LongTestMenuMixin:
                 print(t("Command not found !"))
 
     def _longtest_depth(self):
-        """Profondeur demandée. Dix par défaut : c'est ce qu'on veut mesurer."""
-        brut = input(f"{t('Depth (default 10): ')}").strip()
-        return int(brut) if brut.isdigit() and int(brut) > 0 else 10
+        """Profondeur demandée. Trois par défaut, parce que trois marche.
+
+        Mesuré sur cette machine : les trois premiers étages prennent 280, 495
+        et 1 064 secondes — une demi-heure. Le quatrième a demandé 7 h 18
+        d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
+        jours. Dix par défaut promettait ce qu'aucune machine ne tient.
+        """
+        brut = input(f"{t('Depth (default 3): ')}").strip()
+        return int(brut) if brut.isdigit() and int(brut) > 0 else 3

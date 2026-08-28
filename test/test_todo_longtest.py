@@ -208,13 +208,70 @@ class TestLEssaiABlanc(unittest.TestCase):
             (int(n), int(v), int(r), int(d)) for n, v, r, d in plan
         )
         for parent, enfant in zip(etages, etages[1:]):
-            for i, quoi in ((1, "vCPU"), (2, "RAM"), (3, "disque")):
+            # Mémoire et disque : STRICTEMENT décroissants, chaque parent
+            # portant son enfant en plus de lui-même.
+            for i, quoi in ((2, "RAM"), (3, "disque")):
                 self.assertGreater(
                     parent[i], enfant[i], f"étage {parent[0]} : {quoi}"
                 )
+            # Le processeur : jamais plus étroit, mais pas toujours plus
+            # large. Deux étages imbriqués peu profonds ont la même largeur —
+            # au quatrième étage, un vCPU de plus multiplie l'amorçage par
+            # 9,4, alors qu'aux étages 2 et 3 il ne coûte rien.
+            self.assertGreaterEqual(
+                parent[1], enfant[1], f"étage {parent[0]} : vCPU"
+            )
         # Et le plus profond reçoit ce qu'un Proxmox de test demande, pas ce
         # qui reste.
         self.assertEqual(etages[-1][1], 2, "vCPU du plus profond")
+
+
+class TestLaProfondeurParDefaut(unittest.TestCase):
+    """Trois, et c'est une MESURE, pas une prudence.
+
+    Sur la machine où ce test a été écrit, les trois premiers étages coûtent
+    280, 495 et 1 064 secondes — une demi-heure en tout. Le quatrième a demandé
+    7 h 18 d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
+    jours. Un défaut à dix promettait ce qu'aucune machine ne peut tenir : la
+    profondeur reste un paramètre, mais le défaut doit marcher."""
+
+    def test_the_script_defaults_to_three(self):
+        import inspect
+        import sys as _sys
+
+        _sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        import deep_proxmox
+
+        src = inspect.getsource(deep_proxmox.principal)
+        self.assertIn('"--depth", type=int, default=3', src)
+
+    def test_the_menu_defaults_to_three(self):
+        import inspect
+
+        from script.todo.todo import TODO
+
+        src = inspect.getsource(TODO._longtest_depth)
+        self.assertIn("else 3", src)
+        # Et l'invite le DIT : un défaut caché se subit, il ne se choisit pas.
+        self.assertIn("Depth (default 3): ", src)
+
+    def test_the_prompt_is_translated(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        entree = TRANSLATIONS.get("Depth (default 3): ")
+        self.assertIsNotNone(entree, "invite non traduite")
+        self.assertIn("3", entree["fr"])
+
+    def test_the_default_depth_fits_a_modest_machine(self):
+        """Le défaut doit tenir là où le test sera lancé, pas seulement sur la
+        machine de celui qui l'a écrit."""
+        from script.proxmox import nesting
+
+        plan = nesting.nesting_plan(
+            3, cpu_hote=8, ram_dispo_mo=24000, disque_libre_go=120
+        )
+        self.assertEqual(plan["atteignable"], 3)
+        self.assertEqual(plan["arret"], "")
 
 
 class TestDefaireSansEffacerAutreChose(unittest.TestCase):

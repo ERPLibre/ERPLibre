@@ -28,10 +28,35 @@ Which is the point of the script: a number obtained once, on one machine, in
 one chain, is an anecdote.
 
 ```
-./LongTest/deep_proxmox.py --depth 10 --dry-run   # the plan, nothing created
-./LongTest/deep_proxmox.py --depth 10             # hours
+./LongTest/deep_proxmox.py                        # three levels, ~30 minutes
+./LongTest/deep_proxmox.py --dry-run              # the plan, nothing created
+./LongTest/deep_proxmox.py --depth 5              # ask for more, knowingly
 ./LongTest/deep_proxmox.py --detruire             # undo it
 ```
+
+### How deep is worth asking for
+
+The depth is the only setting, and **three** is the default because three
+works. Measured on a 28-core machine, one full descent per row:
+
+| level | boot (ssh) | install | total |
+|------:|-----------:|--------:|------:|
+| 1 | 0 s | 200 s | 280 s |
+| 2 | 37 s | 344 s | 495 s |
+| 3 | 93 s | 777 s | 1 064 s |
+| 4 | **15 608 s** | **26 306 s** | did not finish |
+
+Three levels cost half an hour. The **fourth** cost 4 h 20 of boot and 7 h 18
+of install on the same machine — everything there is 15 to 30 times slower, not
+just one step. And it lands exactly where the hardware vendors stop: level 4 is
+the *third* nested hypervisor, and AMD documents two.
+
+A wider guest makes it worse, sharply: at level 4, one extra vCPU multiplied
+the boot by 9.4 (1 664 s at two vCPU, 15 608 s at three), and at eight vCPU the
+guest read 32 MiB in 106 minutes with a static instruction pointer. At levels 2
+and 3 that same vCPU costs nothing.
+
+So: three by default, five if you want to know, ten only to watch the wall.
 
 The descent is **uniform**. Every level, the first included, goes through the
 same six steps: create, wait for ssh, install Proxmox, reboot and check the
