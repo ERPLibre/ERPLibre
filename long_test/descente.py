@@ -209,6 +209,22 @@ class Descente:
         """Les services de la pile répondent-ils, une fois redémarrés ?"""
         raise NotImplementedError
 
+    def rallumer_a_froid(self, parent, nom):
+        """Éteindre puis rallumer la machine DEPUIS SON PARENT. Rend True si
+        la pile sait le faire.
+
+        Un redémarrage demandé à l'invité — « systemctl reboot » — peut le
+        laisser bloqué dans son micrologiciel : constaté une fois au troisième
+        étage, pointeur d'instruction immobile pendant 46 minutes, pas un
+        octet lu. Un démarrage à FROID, lui, repart d'un processus neuf, et
+        les trois essais faits ensuite ont tous abouti.
+
+        La cause du gel n'est pas établie ; le remède ne l'attend pas. Une
+        descente ne doit pas passer six heures à guetter une machine qui ne
+        reviendra jamais, quand son parent peut la rallumer.
+        """
+        return False
+
     def controler(self, hote):
         """Cet étage peut-il HÉBERGER le suivant ?
 
@@ -337,7 +353,7 @@ class Descente:
             time.sleep(15)
         return None
 
-    def redemarrer_et_verifier(self, hote):
+    def redemarrer_et_verifier(self, hote, parent=None, nom=""):
         """Redémarre, attend le retour, exige le noyau voulu.
 
         L'installation pose le noyau sans redémarrer — lancée par ssh, un
@@ -379,6 +395,13 @@ class Descente:
                 f"      noyau {noyau} après {int(time.time() - debut)} s"
             )
             return True
+        # Une seule reprise, et seulement si le parent peut la donner : la
+        # machine est peut-être bloquée dans son micrologiciel, où un
+        # redémarrage demandé à l'invité ne la sortira jamais. Une fois, pas
+        # deux — une boucle de rallumage cacherait un vrai échec.
+        if parent and nom and self.rallumer_a_froid(parent, nom):
+            self.dire("      ↻ rallumée à froid par son parent")
+            return self.redemarrer_et_verifier(hote)
         self.dire("      ✗ pas revenue sur le noyau attendu")
         return False
 
@@ -582,7 +605,12 @@ class Descente:
             # terminé sans qu'on sache s'il pouvait héberger le suivant.
             for etape, action in (
                 ("install", lambda: self.installer(cible)),
-                ("reboot", lambda: self.redemarrer_et_verifier(cible)),
+                (
+                    "reboot",
+                    lambda: self.redemarrer_et_verifier(
+                        cible, parent, etage.get("nom", "")
+                    ),
+                ),
                 ("systeme", lambda: self.preparer_systeme(cible)),
                 ("services", lambda: self.remettre_debout(cible)),
                 ("controle", lambda: self.controler(cible)),

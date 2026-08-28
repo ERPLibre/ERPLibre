@@ -36,6 +36,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
@@ -327,6 +328,31 @@ class Descente(descente.Descente):
         )
         return vu["libvirtd"] and vu["reseau"]
 
+    def rallumer_a_froid(self, parent, nom):
+        """« virsh destroy » puis « start » : un processus QEMU neuf.
+
+        Mesuré sur la machine bloquée : à chaud elle restait 46 minutes au
+        même pointeur d'instruction, dans son micrologiciel ; à froid elle a
+        chargé son noyau en 60 à 90 secondes, trois fois de suite, à 2, 3 et
+        4 Go. Ce n'est donc pas la taille de la mémoire — c'est la façon de
+        redémarrer.
+        """
+        if self.dry_run or not parent:
+            return False
+        self.executer(
+            parent,
+            f"virsh -c qemu:///system destroy {nom} 2>/dev/null; true",
+            self.delai("controle"),
+            "extinction",
+        )
+        code, _o = self.executer(
+            parent,
+            f"virsh -c qemu:///system start {nom}",
+            self.delai("controle"),
+            "rallumage",
+        )
+        return code == 0
+
     def controler(self, hote):
         """CET étage peut-il héberger le suivant SANS l'émuler ?
 
@@ -387,6 +413,35 @@ class Descente(descente.Descente):
             )
             return None
         return ("default",)
+
+    def attendre_adresse(self, parent, nom):
+        """Le bail DHCP de l'enfant, attendu. Rend l'adresse, ou "".
+
+        ATTENDU, et non lu une fois. Constaté au troisième étage : le domaine
+        était créé, en type='kvm', et « domifaddr » ne rendait rien — l'invité
+        n'avait pas encore demandé son bail. Plus l'étage est profond, plus il
+        démarre lentement, et c'est justement ce qu'on mesure.
+
+        `deploy_qemu` attend lui-même l'adresse — 90 secondes par défaut — puis
+        rend 0 quand il ne l'a pas trouvée. Son code de sortie ne prouve donc
+        rien ici non plus.
+        """
+        debut = time.time()
+        delai = self.delai("ssh")
+        while time.time() - debut < delai:
+            _c, sortie = self.executer(
+                parent,
+                f"virsh -c qemu:///system domifaddr {nom} --source lease",
+                DELAIS["controle"],
+                "domifaddr",
+            )
+            adresse = parse_domifaddr(sortie)
+            if adresse:
+                if time.time() - debut > 20:
+                    self.dire(f"      bail après {int(time.time() - debut)} s")
+                return adresse
+            time.sleep(15)
+        return ""
 
     def creer_enfant(self, parent, niveau, res, prepare, noter=None):
         """Une VM dans le parent, par NOTRE deploy_qemu.py.
@@ -449,13 +504,7 @@ class Descente(descente.Descente):
             )
             return None, None
         self.dire(f"      domaine kvm, cpu {vu['cpu'] or '?'}")
-        _c, sortie = self.executer(
-            parent,
-            f"virsh -c qemu:///system domifaddr {nom} --source lease",
-            self.delai("ssh"),
-            "domifaddr",
-        )
-        adresse = parse_domifaddr(sortie)
+        adresse = self.attendre_adresse(parent, nom)
         if not adresse:
             self.dire("      ✗ créée, mais sans adresse : rien à joindre")
             return None, None

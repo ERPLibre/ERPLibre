@@ -405,7 +405,7 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         d.creer_enfant = creer_enfant
         d.ecrire_alias = lambda *a, **k: None
         d.attendre_ssh = lambda cible, delai, parent=None: 1
-        d.redemarrer_et_verifier = lambda cible: True
+        d.redemarrer_et_verifier = lambda cible, parent=None, nom="": True
         d.remettre_debout = lambda cible: True
         d.preparer_systeme = lambda cible: True
         d.controler = lambda cible: True
@@ -917,7 +917,7 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
         d.ecrire_alias = lambda *a, **k: None
         d.attendre_ssh = lambda cible, delai, parent=None: 1
         d.installer = lambda cible: True
-        d.redemarrer_et_verifier = lambda cible: True
+        d.redemarrer_et_verifier = lambda cible, parent=None, nom="": True
         d.remettre_debout = lambda cible: True
         d.preparer_systeme = lambda cible: True
         d.controler = lambda cible: True

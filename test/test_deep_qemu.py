@@ -308,15 +308,18 @@ class TestUneVmEmuleeNestPasUneMesure(unittest.TestCase):
         self.d.niveau_courant = 2
         self.d._envoyer_cli = lambda hote: True
 
-    def _machine(self, xml, adresse=" x y ipv4 10.0.0.9/24"):
+    def _machine(self, xml, adresse="10.0.0.9"):
+        """Chaque test une seule chose : l'attente du bail est bouchonnée ici,
+        elle a sa propre classe. Sans ce bouchon, un enfant sans adresse
+        faisait tourner la vraie boucle d'attente — des heures."""
+
         def executer(hote, cmd, delai, etiquette="", **k):
             if "dumpxml" in cmd:
                 return 0, xml
-            if "domifaddr" in cmd:
-                return 0, adresse
             return 0, ""
 
         self.d.executer = executer
+        self.d.attendre_adresse = lambda parent, nom: adresse
 
     def test_an_emulated_child_is_refused(self):
         self._machine("<domain type='qemu' id='1'><name>x</name>")
@@ -364,7 +367,7 @@ class TestUneVmEmuleeNestPasUneMesure(unittest.TestCase):
         self.assertEqual(vus, ["deep-qemu-4"])
 
     def test_a_child_without_an_address_is_refused(self):
-        self._machine("<domain type='kvm'>", adresse=" x y N/A N/A")
+        self._machine("<domain type='kvm'>", adresse="")
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
             identite, _a = self.d.creer_enfant(
                 {"target": "p"},
@@ -374,6 +377,74 @@ class TestUneVmEmuleeNestPasUneMesure(unittest.TestCase):
             )
         self.assertIsNone(identite)
         self.assertIn("sans adresse", sortie.getvalue())
+
+
+class TestLeBailSeFaitAttendre(unittest.TestCase):
+    """Constaté au troisième étage : le domaine était créé, en type='kvm', et
+    « domifaddr » ne rendait rien — l'invité n'avait pas encore demandé son
+    bail. Plus l'étage est profond, plus il démarre lentement, et c'est
+    justement ce qu'on mesure.
+
+    `deploy_qemu` attend lui-même l'adresse puis rend 0 quand il ne l'a pas
+    trouvée : son code de sortie ne prouve rien ici non plus."""
+
+    def setUp(self):
+        self.d = deep_qemu.Descente.__new__(deep_qemu.Descente)
+        self.d.dry_run = False
+        self.d.journal = None
+        self.d.niveau_courant = 3
+        self.d.profondeur_racine = 0
+        vrai = deep_qemu.time.sleep
+        deep_qemu.time.sleep = lambda _s: None
+        self.addCleanup(setattr, deep_qemu.time, "sleep", vrai)
+
+    def test_it_retries_until_the_lease_appears(self):
+        tours = {"n": 0}
+
+        def executer(hote, cmd, delai, etiquette="", **k):
+            tours["n"] += 1
+            if tours["n"] < 3:
+                return 0, " x y N/A N/A"
+            return 0, " vnet0 52:54:00:aa:bb:cc ipv4 192.168.133.42/24"
+
+        self.d.executer = executer
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                self.d.attendre_adresse({"target": "p"}, "deep-qemu-3"),
+                "192.168.133.42",
+            )
+        self.assertEqual(tours["n"], 3)
+
+    def test_a_single_probe_would_have_missed_it(self):
+        """Le contrôle qui dit pourquoi la boucle existe : au premier tour, il
+        n'y a rien à lire.
+
+        Borné DANS la sonde plutôt qu'en détournant l'horloge : détourner
+        time.time détourne aussi celle d'unittest, et le test ne finissait
+        plus. Vécu il y a dix minutes.
+        """
+        tours = {"n": 0}
+
+        def executer(hote, cmd, delai, etiquette="", **k):
+            tours["n"] += 1
+            if tours["n"] > 4:
+                raise AssertionError("sondé sans fin")
+            return 0, " x y N/A N/A"
+
+        self.d.executer = executer
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(AssertionError):
+                self.d.attendre_adresse({"target": "p"}, "deep-qemu-3")
+        # Plusieurs tours, pas un seul : c'est tout l'objet de la boucle.
+        self.assertGreater(tours["n"], 1)
+
+    def test_the_wait_grows_with_the_depth(self):
+        """Le budget est celui du ssh à cet étage : un invité au quatrième
+        démarre des dizaines de fois plus lentement qu'au premier."""
+        self.d.niveau_courant = 1
+        court = self.d.delai("ssh")
+        self.d.niveau_courant = 4
+        self.assertGreater(self.d.delai("ssh"), court)
 
 
 class TestNeDetruireQueLeSien(unittest.TestCase):
@@ -463,17 +534,35 @@ class TestLesDeuxTestsLongsSeRessemblent(unittest.TestCase):
             self.pve.FAMILLE.detruire_une, self.qemu.FAMILLE.detruire_une
         )
 
-    def test_the_qemu_stack_asks_for_less(self):
-        """libvirtd seul tient dans un gibioctet là où cinq démons PVE en
-        demandent deux."""
+    def test_the_qemu_stack_asks_for_less_disk(self):
+        """Une Debian avec qemu-kvm occupe ~3 Go là où un nœud Proxmox en
+        prend 5,6 — et l'image cloud que l'étage télécharge pour son enfant
+        pèse plus lourd que son propre système."""
         from script.proxmox import nesting
 
         pve = nesting.nesting_plan(3, 28, 39000, 150)
         qemu = nesting.nesting_plan(3, 28, 39000, 150, nesting.COUTS_QEMU)
-        self.assertLess(qemu["niveaux"][0]["ram"], pve["niveaux"][0]["ram"])
         self.assertLess(
             qemu["niveaux"][0]["disque"], pve["niveaux"][0]["disque"]
         )
+
+    def test_every_parent_keeps_room_to_breathe(self):
+        """La mémoire de la pile QEMU a été DOUBLÉE après mesure, et n'est
+        donc plus inférieure à celle de Proxmox : à cinq étages, l'étage 2
+        avait 5 Go, hébergeait un invité de 4 Go, et il ne lui restait que
+        127 Mo de libre. Ce qui compte n'est pas le plancher mais l'ÉCART —
+        un parent qui ne respire pas sert mal son enfant."""
+        from script.proxmox import nesting
+
+        niveaux = nesting.nesting_plan(5, 28, 39000, 200, nesting.COUTS_QEMU)[
+            "niveaux"
+        ]
+        for parent, enfant in zip(niveaux, niveaux[1:]):
+            self.assertGreaterEqual(
+                parent["ram"] - enfant["ram"],
+                2048,
+                f"étage {parent['niveau']} n'a pas 2 Go de marge",
+            )
 
 
 if __name__ == "__main__":
