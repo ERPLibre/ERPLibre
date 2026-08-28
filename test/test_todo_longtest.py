@@ -248,8 +248,10 @@ class TestLaProfondeurParDefaut(unittest.TestCase):
         _sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
-        src = inspect.getsource(deep_proxmox.principal)
+        src = inspect.getsource(moteur.mener)
         self.assertIn('"--depth", type=int, default=3', src)
+        # Et les deux piles passent bien par là.
+        self.assertIn("mener(", inspect.getsource(deep_proxmox.principal))
 
     def test_the_menu_defaults_to_three(self):
         import inspect
@@ -352,8 +354,9 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
         # Une confirmation explicite, pas un « o/N » : le menu lançait cette
         # option d'une seule touche.
         self.assertIn("OUI", src)
-        principal = inspect.getsource(self.dp.principal)
-        self.assertIn("dry_run=args.dry_run", principal)
+        # La ligne de commande vit dans le moteur depuis qu'elle est
+        # identique d'une pile à l'autre.
+        self.assertIn("dry_run=args.dry_run", inspect.getsource(moteur.mener))
 
 
 class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):

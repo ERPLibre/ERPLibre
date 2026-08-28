@@ -19,6 +19,7 @@ remettre les services debout, comment contrôler qu'un étage peut héberger le
 suivant. Le reste est ici, écrit une fois.
 """
 
+import argparse
 import json
 import os
 import re
@@ -30,6 +31,7 @@ import time
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 
+from script.proxmox import nesting  # noqa: E402
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
 
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
@@ -682,6 +684,82 @@ def autre_descente():
         if _lance_une_descente(entree):
             vivants.append(int(entree))
     return vivants
+
+
+def mener(argv, description, famille, classe, couts=None):
+    """La ligne de commande, le plan, la descente et le rapport.
+
+    Identique d'une pile à l'autre à quatre choses près : ce qu'on annonce, la
+    famille — qui nomme les fichiers et filtre les rapports —, la classe qui
+    porte les verbes, et ce que coûte un étage.
+    """
+    parseur = argparse.ArgumentParser(description=description)
+    # Trois par défaut, et c'est une MESURE, pas une prudence : les trois
+    # premiers étages coûtent 280, 495 et 1 064 secondes — une demi-heure en
+    # tout. Le quatrième en a coûté 7 h 18 d'installation et 4 h 20 d'amorçage
+    # sur la même machine. Un défaut à dix promettait ce qu'aucune machine ne
+    # peut tenir ; la profondeur reste un paramètre, et c'est à qui la demande
+    # de savoir ce qu'il demande.
+    parseur.add_argument("--depth", type=int, default=3)
+    parseur.add_argument("--dry-run", action="store_true")
+    parseur.add_argument("--detruire", action="store_true")
+    args = parseur.parse_args(argv)
+
+    journal = os.path.expanduser(
+        f"~/.erplibre/longtest/{famille.nom_base}"
+        f"-{time.strftime('%Y%m%d-%H%M%S')}.log"
+    )
+    os.makedirs(os.path.dirname(journal), exist_ok=True)
+    if args.detruire:
+        # « --dry-run » était ignoré ici : la prudence naturelle avant une
+        # destruction détruisait pour de vrai.
+        return detruire(famille, journal, dry_run=args.dry_run)
+
+    coeurs, ram, disque = capacite_hote()
+    print(
+        f"\n  machine : {coeurs} cœurs, {ram} Mo disponibles,"
+        f" {disque} Go de disque"
+    )
+    plan = nesting.nesting_plan(args.depth, coeurs, ram, disque, couts)
+    print(f"\n  {'étage':>5}  {'vCPU':>4}  {'RAM':>9}  {'disque':>8}")
+    for n in plan["niveaux"]:
+        print(
+            f"  {n['niveau']:>5}  {n['vcpu']:>4}  {n['ram']:>6} Mo"
+            f"  {n['disque']:>5} Go"
+        )
+    if plan["arret"]:
+        # Les TROIS plafonds, pas seulement celui qui borne : sans eux on
+        # ajoute la ressource nommée sans savoir de combien, ni laquelle
+        # bornera ensuite.
+        plafonds = " · ".join(
+            f"{nom} {valeur}" for nom, valeur in plan["plafonds"].items()
+        )
+        print(
+            f"\n  ⚠ demandée {plan['demandee']}, atteignable"
+            f" {plan['atteignable']} — c'est le {plan['arret']} qui borne"
+            f"\n    profondeur permise par chaque ressource : {plafonds}"
+        )
+    if not plan["niveaux"]:
+        if args.depth < 1:
+            print(f"\n  profondeur demandée : {args.depth} — rien à faire.\n")
+            return 0
+        print("\n  ✗ pas même un étage ne tient sur cette machine.\n")
+        return 1
+    print(f"\n  journal : {journal}")
+    if args.dry_run:
+        print("  --dry-run : rien ne sera créé.\n")
+    chemin = journal[:-4] + ("-dryrun.json" if args.dry_run else ".json")
+    descente = classe(plan, journal, args.dry_run, chemin)
+    rapport = descente.parcourir()
+    with open(chemin, "w", encoding="utf-8") as fh:
+        json.dump(rapport, fh, indent=2)
+    print(f"\n  rapport : {chemin}\n")
+    # En essai à blanc, c'est le PLAN qui est complet ou non — aucune
+    # profondeur n'a été atteinte. Hors essai, « non nul » ne suffisait pas :
+    # une descente morte au deuxième étage sur dix rendait 0.
+    if args.dry_run:
+        return 0 if rapport["atteignable"] == rapport["demandee"] else 1
+    return 0 if rapport["atteinte"] == rapport["demandee"] else 1
 
 
 class Famille:

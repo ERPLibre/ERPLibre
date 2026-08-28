@@ -144,11 +144,61 @@ HOTE_RESERVE_VCPU = 2
 PROFONDEUR_SURE = 2
 
 
+class Couts:
+    """Ce que coûte UN étage de la pile qu'on empile.
+
+    Les constantes vCPU décrivent la physique de l'imbrication — la pagination
+    imbriquée frappe un QEMU nu comme un nœud Proxmox — et valent donc pour
+    toutes les piles. Ces six nombres-ci, non : cinq démons PVE demandent
+    2 Gio quand libvirtd seul tient dans un, et un nœud Proxmox occupe 5,6 Go
+    de disque contre 3 pour une Debian et qemu-kvm.
+    """
+
+    def __init__(
+        self,
+        ram_par_etage,
+        disque_par_etage,
+        ram_cible,
+        disque_cible,
+        ram_min,
+        disque_min,
+    ):
+        self.ram_par_etage = ram_par_etage
+        self.disque_par_etage = disque_par_etage
+        self.ram_cible = ram_cible
+        self.disque_cible = disque_cible
+        self.ram_min = ram_min
+        self.disque_min = disque_min
+
+
+COUTS_PVE = Couts(
+    ram_par_etage=PVE_RAM_MO,
+    disque_par_etage=PVE_DISQUE_GO,
+    ram_cible=PVE_RAM_CIBLE_MO,
+    disque_cible=PVE_DISQUE_CIBLE_GO,
+    ram_min=RAM_MIN_MO,
+    disque_min=DISQUE_MIN_GO,
+)
+
+# Un hôte libvirt nu : libvirtd et qemu-kvm, rien d'autre. Le poste qui domine
+# n'est plus le système mais l'IMAGE CLOUD que l'étage télécharge pour créer
+# son enfant — d'où un disque cible qui n'est pas si petit.
+COUTS_QEMU = Couts(
+    ram_par_etage=1024,
+    disque_par_etage=6,
+    ram_cible=2048,
+    disque_cible=20,
+    ram_min=1024,
+    disque_min=12,
+)
+
+
 def nesting_plan(
     profondeur: int,
     cpu_hote: int,
     ram_dispo_mo: int,
     disque_libre_go: int,
+    couts: "Couts" = None,
 ) -> dict:
     """Les ressources de chaque étage, dimensionnées DEPUIS LE BAS.
 
@@ -180,6 +230,7 @@ def nesting_plan(
     étages et en réussir six que d'en promettre dix et mourir au septième sans
     savoir pourquoi.
     """
+    couts = couts or COUTS_PVE
     reserve = max(HOTE_RESERVE_RAM_MO, int(ram_dispo_mo) // HOTE_RESERVE_PART)
     budget_ram = ((int(ram_dispo_mo) - reserve) // 1024) * 1024
     budget_disque = int(disque_libre_go) - HOTE_RESERVE_DISQUE_GO
@@ -194,8 +245,8 @@ def nesting_plan(
         quelle que soit la profondeur.
         """
         return (
-            PVE_RAM_CIBLE_MO + (d - 1) * PVE_RAM_MO,
-            PVE_DISQUE_CIBLE_GO + (d - 1) * PVE_DISQUE_GO,
+            couts.ram_cible + (d - 1) * couts.ram_par_etage,
+            couts.disque_cible + (d - 1) * couts.disque_par_etage,
             VCPU_METAL if d > 1 else VCPU_IMBRIQUE,
         )
 
@@ -205,8 +256,10 @@ def nesting_plan(
     # coût suivait la profondeur demandée — nesting_plan(10**6, …) tournait un
     # million de tours pour rendre le même plan.
     plafonds = {
-        "ram": (budget_ram - PVE_RAM_CIBLE_MO) // PVE_RAM_MO + 1,
-        "disque": (budget_disque - PVE_DISQUE_CIBLE_GO) // PVE_DISQUE_GO + 1,
+        "ram": (budget_ram - couts.ram_cible) // couts.ram_par_etage + 1,
+        "disque": (budget_disque - couts.disque_cible)
+        // couts.disque_par_etage
+        + 1,
         # Le processeur ne borne plus la profondeur : les étages imbriqués
         # gardent une largeur fixe, seul le premier compte sur le métal. Il
         # borne encore à ZÉRO une machine trop petite pour ce premier étage.
@@ -246,10 +299,10 @@ def nesting_plan(
             # quelqu'un baisse une CIBLE un jour. Sans eux, ils n'étaient plus
             # lus par personne et les tests qui les vérifiaient passaient
             # d'eux-mêmes.
-            "ram": max(RAM_MIN_MO, PVE_RAM_CIBLE_MO)
-            + (atteignable - niveau) * PVE_RAM_MO,
-            "disque": max(DISQUE_MIN_GO, PVE_DISQUE_CIBLE_GO)
-            + (atteignable - niveau) * PVE_DISQUE_GO,
+            "ram": max(couts.ram_min, couts.ram_cible)
+            + (atteignable - niveau) * couts.ram_par_etage,
+            "disque": max(couts.disque_min, couts.disque_cible)
+            + (atteignable - niveau) * couts.disque_par_etage,
         }
         for niveau in range(1, atteignable + 1)
     ]
