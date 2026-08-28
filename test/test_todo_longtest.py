@@ -27,6 +27,12 @@ from script.todo.todo import TODO  # noqa: E402
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
 
+# Le moteur vit dans son propre module depuis qu'il est partagé entre
+# deep_proxmox et deep_qemu. Bouchonner « deep_proxmox.dernier_rapport » ne
+# ferait plus rien : c'est descente.detruire qui appelle descente.dernier_rapport.
+sys.path.insert(0, os.path.join(RACINE, "long_test"))
+import descente as moteur  # noqa: E402
+
 
 class TestLaFrontiere(unittest.TestCase):
     """long_test est hors de portée du lanceur unitaire, et ce n'est pas un
@@ -301,14 +307,17 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
                 {"niveau": 3, "vmid": 100, "parent_alias": "b"},
             ]
         }
-        niveaux = [n for n, _p, _v, _nom in self.dp.a_defaire(rapport)]
+        niveaux = [
+            n
+            for n, _p, _v, _nom in self.dp.a_defaire(rapport, self.dp.NOM_BASE)
+        ]
         self.assertEqual(niveaux, [4, 3, 2])
 
     def test_a_level_without_a_vmid_is_not_guessed(self):
         # Un étage abandonné avant « qm create » n'a rien créé : ne rien
         # inventer à sa place.
         rapport = {"etages": [{"niveau": 2}, {"niveau": 3, "vmid": 101}]}
-        self.assertEqual(len(self.dp.a_defaire(rapport)), 0)
+        self.assertEqual(len(self.dp.a_defaire(rapport, self.dp.NOM_BASE)), 0)
 
     def test_the_alias_chain_really_flattens_the_plus(self):
         # La cause du tri mort, énoncée pour qu'on ne la réintroduise pas.
@@ -394,7 +403,9 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         d.ecrire_alias = lambda *a, **k: None
         d.attendre_ssh = lambda cible, delai, parent=None: 1
         d.redemarrer_et_verifier = lambda cible: True
-        d.reparer_pmxcfs = lambda cible: True
+        d.remettre_debout = lambda cible: True
+        d.preparer_systeme = lambda cible: True
+        d.controler = lambda cible: True
 
         def installer(cible):
             appels.append(cible)
@@ -402,7 +413,7 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
                 raise KeyboardInterrupt("descente tuée")
             return True
 
-        d.installer_proxmox = installer
+        d.installer = installer
         with contextlib.redirect_stdout(io.StringIO()):
             with self.assertRaises(KeyboardInterrupt):
                 d.parcourir()
@@ -414,10 +425,10 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         # Le couple (parent, VMID) des étages imbriqués créés : c'est de lui
         # seul que « --detruire » se sert.
         self.assertEqual(
-            self.dp.a_defaire(rapport),
+            self.dp.a_defaire(rapport, self.dp.NOM_BASE),
             [
-                (3, "deep-pve-1+deep-pve-2", 103, self.dp.nom_etage(3)),
-                (2, "deep-pve-1", 102, self.dp.nom_etage(2)),
+                (3, "deep-pve-1+deep-pve-2", "103", self.dp.nom_etage(3)),
+                (2, "deep-pve-1", "102", self.dp.nom_etage(2)),
             ],
         )
 
@@ -427,7 +438,7 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
         ne le regardait même pas."""
         rapport = self._descente_tuee(a_l_etage=1)
         self.assertTrue(rapport["etages"])
-        self.assertEqual(self.dp.a_defaire(rapport), [])
+        self.assertEqual(self.dp.a_defaire(rapport, self.dp.NOM_BASE), [])
 
     def test_a_partial_report_never_reads_as_a_finished_descent(self):
         rapport = self._descente_tuee(a_l_etage=3)
@@ -476,7 +487,7 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         # laissait en place, et le test d'après lisait le bouchon.
         self._vrais = {
             nom: getattr(deep_proxmox, nom)
-            for nom in ("autre_deep_proxmox", "dernier_rapport")
+            for nom in ("autre_descente", "dernier_rapport")
         }
 
     def tearDown(self):
@@ -512,8 +523,8 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
             ]
         )
         self.addCleanup(faux.kill)
-        self.assertFalse(self.dp._lance_ce_script(faux.pid))
-        self.assertNotIn(faux.pid, self.dp.autre_deep_proxmox())
+        self.assertFalse(self.dp._lance_une_descente(faux.pid))
+        self.assertNotIn(faux.pid, self.dp.autre_descente())
 
     def _fausse_descente(self):
         """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
@@ -526,7 +537,7 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         proc = subprocess.Popen([sys.executable, faux])
         self.addCleanup(proc.kill)
         for _ in range(60):
-            if self.dp._lance_ce_script(proc.pid):
+            if self.dp._lance_une_descente(proc.pid):
                 return proc.pid
             time.sleep(0.05)
         self.skipTest("le processus témoin n'a pas démarré")
@@ -534,7 +545,7 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
     def test_a_living_descent_is_seen_in_proc(self):
         pid = self._fausse_descente()
         self.assertTrue(self.dp.descente_vivante(pid))
-        self.assertIn(pid, self.dp.autre_deep_proxmox())
+        self.assertIn(pid, self.dp.autre_descente())
 
     def test_the_report_of_a_living_descent_is_skipped(self):
         """Sans ce filtre, « --detruire » choisissait le rapport de la
@@ -583,7 +594,7 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         )
         with contextlib.redirect_stdout(io.StringIO()):
             rapport = self.dp.dernier_rapport()
-        self.assertEqual(len(self.dp.a_defaire(rapport)), 2)
+        self.assertEqual(len(self.dp.a_defaire(rapport, self.dp.NOM_BASE)), 2)
         self.assertTrue(rapport["fichier"].endswith("20260101-000000.json"))
 
     def test_a_dry_run_report_still_never_wins(self):
@@ -607,10 +618,10 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
 
     def test_destroying_refuses_while_a_descent_runs(self):
         appels = []
-        self.dp.autre_deep_proxmox = lambda: [4242]
-        self.dp.dernier_rapport = lambda: appels.append("lu") or {}
+        moteur.autre_descente = lambda: [4242]
+        moteur.dernier_rapport = lambda outil="": appels.append("lu") or {}
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            code = self.dp.detruire(None, dry_run=False)
+            code = self.dp.detruire(self.dp.FAMILLE, None, dry_run=False)
         self.assertEqual(code, 1)
         # Le rapport n'est même pas LU : on ne demande rien, on ne propose
         # rien, et surtout on n'attend pas un « OUI » sur un arbre vivant.
@@ -637,10 +648,13 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         # ferait une méthode d'instance, et « self.uuid_libvirt(nom) »
         # passerait deux arguments à une fonction qui en prend un. La fuite
         # tombait sur les tests SUIVANTS.
-        self.vrai_uuid = deep_proxmox.Descente.__dict__["uuid_libvirt"]
+        # Le crochet vit sur la classe de BASE, dans descente.py : c'est
+        # elle qu'il faut détourner, pas la sous-classe Proxmox.
+        self.moteur = moteur
+        self.vrai_uuid = moteur.Descente.__dict__["uuid_libvirt"]
         self.addCleanup(setattr, deep_proxmox.subprocess, "run", self.vrai_run)
         self.addCleanup(
-            setattr, deep_proxmox.Descente, "uuid_libvirt", self.vrai_uuid
+            setattr, moteur.Descente, "uuid_libvirt", self.vrai_uuid
         )
         self.lances = []
 
@@ -656,9 +670,13 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
 
     def test_a_homonym_with_another_uuid_is_left_alone(self):
         self._virsh()
-        self.dp.Descente.uuid_libvirt = staticmethod(lambda nom: "AUTRE-UUID")
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "AUTRE-UUID"
+        )
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            res = self.dp.detruire_etage1(None, attendu="LE-NOTRE")
+            res = self.dp.detruire_etage1(
+                None, "deep-pve-1", attendu="LE-NOTRE"
+            )
         self.assertFalse(res)
         self.assertIn("PAS notre machine", sortie.getvalue())
         # Aucun undefine, aucun destroy : seule la lecture a eu lieu.
@@ -666,9 +684,13 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
 
     def test_our_own_machine_is_destroyed(self):
         self._virsh()
-        self.dp.Descente.uuid_libvirt = staticmethod(lambda nom: "LE-NOTRE")
+        self.moteur.Descente.uuid_libvirt = staticmethod(
+            lambda nom: "LE-NOTRE"
+        )
         with contextlib.redirect_stdout(io.StringIO()):
-            res = self.dp.detruire_etage1(None, attendu="LE-NOTRE")
+            res = self.dp.detruire_etage1(
+                None, "deep-pve-1", attendu="LE-NOTRE"
+            )
         self.assertTrue(res)
         self.assertTrue(
             any(
@@ -683,14 +705,16 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
         plutôt que de laisser croire qu'on a vérifié."""
         self._virsh()
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            res = self.dp.detruire_etage1(None)
+            res = self.dp.detruire_etage1(None, "deep-pve-1")
         self.assertTrue(res)
         self.assertIn("identifié par son NOM", sortie.getvalue())
 
     def test_an_absent_domain_is_not_an_error(self):
         self._virsh(dominfo=1)
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertTrue(self.dp.detruire_etage1(None, attendu="X"))
+            self.assertTrue(
+                self.dp.detruire_etage1(None, "deep-pve-1", attendu="X")
+            )
 
     def test_the_name_comes_from_the_report_not_from_the_level(self):
         """Le déduire du numéro d'étage supposait que nom_etage ne changera
@@ -706,15 +730,15 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            self.dp.a_defaire(rapport),
-            [(2, "a", 102, "nom-ecrit-a-la-creation")],
+            self.dp.a_defaire(rapport, self.dp.NOM_BASE),
+            [(2, "a", "102", "nom-ecrit-a-la-creation")],
         )
 
     def test_a_report_without_a_name_falls_back_on_the_level(self):
         rapport = {"etages": [{"niveau": 3, "vmid": 103, "parent_alias": "b"}]}
         self.assertEqual(
-            self.dp.a_defaire(rapport),
-            [(3, "b", 103, self.dp.nom_etage(3))],
+            self.dp.a_defaire(rapport, self.dp.NOM_BASE),
+            [(3, "b", "103", self.dp.nom_etage(3))],
         )
 
 
@@ -759,7 +783,7 @@ class TestLaCauseDUnMontageAbsent(unittest.TestCase):
         }
         self.addCleanup(setattr, self.dp.pve, "parse_mount_wait", vrai)
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            res = self.d.reparer_pmxcfs({"target": "h", "sudo": "sudo "})
+            res = self.d.remettre_debout({"target": "h", "sudo": "sudo "})
         return res, sortie.getvalue()
 
     def test_a_failing_unit_is_named_with_its_journal(self):
@@ -889,9 +913,11 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
         )
         d.ecrire_alias = lambda *a, **k: None
         d.attendre_ssh = lambda cible, delai, parent=None: 1
-        d.installer_proxmox = lambda cible: True
+        d.installer = lambda cible: True
         d.redemarrer_et_verifier = lambda cible: True
-        d.reparer_pmxcfs = lambda cible: True
+        d.remettre_debout = lambda cible: True
+        d.preparer_systeme = lambda cible: True
+        d.controler = lambda cible: True
 
         # La création note son VMID, puis MEURT — comme « qm resize » sur un
         # stockage plein.
@@ -905,8 +931,8 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
         with open(chemin, encoding="utf-8") as fh:
             rapport = json.load(fh)
         self.assertEqual(
-            self.dp.a_defaire(rapport),
-            [(2, "deep-pve-1", 142, self.dp.nom_etage(2))],
+            self.dp.a_defaire(rapport, self.dp.NOM_BASE),
+            [(2, "deep-pve-1", "142", self.dp.nom_etage(2))],
         )
 
     def test_the_vmid_is_announced_before_the_creating_commands(self):
@@ -1003,6 +1029,187 @@ class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
             self.assertEqual(self.d.attendre_ssh(enfant, 60), 0)
 
 
+class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
+    """Le dossier des rapports et le motif « *.json » sont PARTAGÉS.
+
+    Depuis qu'il y a deux tests longs, « deep_qemu --detruire » prendrait le
+    rapport le plus récent — pouvant être celui d'une descente Proxmox — et
+    lancerait « virsh undefine » d'après des VMID de Proxmox."""
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="longtest-piles-")
+        self.dossier = os.path.join(self.maison, ".erplibre/longtest")
+        os.makedirs(self.dossier)
+        self._vrai = os.environ.get("HOME")
+        os.environ["HOME"] = self.maison
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+
+    def tearDown(self):
+        if self._vrai is not None:
+            os.environ["HOME"] = self._vrai
+
+    def _ecrire(self, nom, rapport):
+        with open(
+            os.path.join(self.dossier, nom), "w", encoding="utf-8"
+        ) as fh:
+            json.dump(rapport, fh)
+
+    def _etage(self):
+        return [{"niveau": 2, "identite": "102", "parent_alias": "a"}]
+
+    def test_each_tool_only_sees_its_own_reports(self):
+        self._ecrire(
+            "deep-pve-20260101-000000.json",
+            {
+                "dry_run": False,
+                "outil": "deep_proxmox",
+                "etages": self._etage(),
+            },
+        )
+        self._ecrire(
+            "deep-qemu-20260102-000000.json",
+            {"dry_run": False, "outil": "deep_qemu", "etages": self._etage()},
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            pve = moteur.dernier_rapport("deep_proxmox", "deep-pve")
+            qemu = moteur.dernier_rapport("deep_qemu", "deep-qemu")
+        self.assertTrue(
+            pve["fichier"].endswith("deep-pve-20260101-000000.json")
+        )
+        self.assertTrue(
+            qemu["fichier"].endswith("deep-qemu-20260102-000000.json")
+        )
+
+    def test_an_older_report_without_a_tool_is_placed_by_its_filename(self):
+        """Les rapports écrits avant que ce champ existe n'ont pas d'outil.
+        Les refuser les rendrait indéfaisables ; les accepter sans regarder
+        ramènerait le danger. Le nom de fichier tranche."""
+        self._ecrire(
+            "deep-pve-20260101-000000.json",
+            {"dry_run": False, "etages": self._etage()},
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(moteur.dernier_rapport("deep_proxmox", "deep-pve"))
+            self.assertFalse(moteur.dernier_rapport("deep_qemu", "deep-qemu"))
+
+    def test_a_report_is_never_handed_to_the_wrong_tool(self):
+        self._ecrire(
+            "deep-pve-20260103-000000.json",
+            {
+                "dry_run": False,
+                "outil": "deep_proxmox",
+                "etages": self._etage(),
+            },
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(moteur.dernier_rapport("deep_qemu", "deep-qemu"))
+
+    def test_the_lock_looks_for_every_descent_script(self):
+        """Deux descentes de piles différentes se disputent la RAM, le disque
+        et ~/.ssh/config aussi sûrement que deux de la même."""
+        import inspect
+
+        src = inspect.getsource(moteur._lance_une_descente)
+        self.assertIn("SCRIPTS", src)
+        self.assertIn("deep_proxmox.py", moteur.SCRIPTS)
+        self.assertIn("deep_qemu.py", moteur.SCRIPTS)
+
+
+class TestNeDetruirePasCeQuOnNaPasCree(unittest.TestCase):
+    """Une descente peut PARTIR d'une machine existante.
+
+    Ce qui protégeait jusqu'ici un hôte non créé était un effet de bord :
+    a_defaire exigeait deux clés que seule une descente écrit. Depuis qu'un
+    hôte emprunté peut figurer au rapport, il faut le DIRE."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
+        import deep_proxmox
+
+        self.dp = deep_proxmox
+
+    def test_a_borrowed_level_is_never_in_the_destroy_list(self):
+        rapport = {
+            "etages": [
+                {
+                    "niveau": 1,
+                    "identite": "9",
+                    "parent_alias": "x",
+                    "cree": False,
+                },
+                {
+                    "niveau": 2,
+                    "identite": "102",
+                    "parent_alias": "a",
+                    "cree": True,
+                },
+            ]
+        }
+        niveaux = [
+            n for n, _p, _i, _nom in moteur.a_defaire(rapport, "deep-pve")
+        ]
+        self.assertEqual(niveaux, [2])
+
+    def test_a_borrowed_root_is_not_undefined_by_name(self):
+        """Une descente partie d'un hôte existant n'a JAMAIS d'UUID libvirt
+        local. Le repli par le nom aurait effacé un homonyme, disques
+        compris."""
+        lances = []
+
+        def faux(argv, **kw):
+            import types
+
+            lances.append(" ".join(argv))
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        vrai = moteur.subprocess.run
+        moteur.subprocess.run = faux
+        self.addCleanup(setattr, moteur.subprocess, "run", vrai)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            res = moteur.detruire_etage1(None, "machine-a-moi", cree=False)
+        self.assertTrue(res)
+        self.assertIn("pas créé par cette descente", sortie.getvalue())
+        self.assertFalse(
+            [c for c in lances if "undefine" in c or "destroy" in c], lances
+        )
+
+    def test_a_borrowed_alias_stays_in_the_users_ssh_config(self):
+        vus = {}
+        import script.todo.todo as module_todo
+
+        vrai = module_todo.TODO._write_ssh_config_entry
+        module_todo.TODO._write_ssh_config_entry = (
+            lambda self, host, user, ip, **kw: vus.update(
+                drop=kw.get("also_drop")
+            )
+        )
+        self.addCleanup(
+            setattr, module_todo.TODO, "_write_ssh_config_entry", vrai
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            moteur.retirer_alias(
+                {
+                    "etages": [
+                        {"niveau": 1, "alias": "mon-proxmox", "cree": False},
+                        {"niveau": 2, "alias": "mon-proxmox+deep-pve-2"},
+                    ]
+                },
+                nom_base="deep-pve",
+            )
+        self.assertEqual(vus["drop"], ("mon-proxmox+deep-pve-2",))
+
+    def test_destroying_the_level_one_requires_a_name(self):
+        """« virsh undefine --remove-all-storage » ne devine pas sa cible. Le
+        repli nom_etage(1) désignait la machine numéro 1 de la pile, quelle
+        que soit celle dont parlait le rapport."""
+        import inspect
+
+        signature = inspect.signature(moteur.detruire_etage1)
+        self.assertIs(
+            signature.parameters["nom"].default, inspect.Parameter.empty
+        )
+
+
 class TestLeDecompteDeLaDestruction(unittest.TestCase):
     """« if not detruire_etage1(…) : faits -= 1 » — un succès de l'étage 1
     n'ajoutait RIEN, alors que le total est len(liste) + 1.
@@ -1017,19 +1224,26 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         import deep_proxmox
 
         self.dp = deep_proxmox
+        # Pris ET rendus sur le MOTEUR. La première version les prenait sur
+        # deep_proxmox et les rendait là aussi, alors qu'elle les posait sur
+        # descente : les bouchons fuyaient sur tous les tests suivants, qui
+        # inspectaient une lambda au lieu de la vraie fonction.
         self._vrais = {
-            nom: getattr(deep_proxmox, nom)
+            nom: getattr(moteur, nom)
             for nom in (
-                "autre_deep_proxmox",
+                "autre_descente",
                 "dernier_rapport",
-                "detruire_une",
                 "detruire_etage1",
                 "retirer_alias",
             )
         }
-        deep_proxmox.autre_deep_proxmox = lambda: []
-        deep_proxmox.retirer_alias = lambda *a, **k: None
-        deep_proxmox.dernier_rapport = lambda: {
+        self._vraie_detruire_une = self.dp.FAMILLE.detruire_une
+        self.addCleanup(
+            setattr, self.dp.FAMILLE, "detruire_une", self._vraie_detruire_une
+        )
+        moteur.autre_descente = lambda: []
+        moteur.retirer_alias = lambda *a, **k: None
+        moteur.dernier_rapport = lambda outil="", prefixe="": {
             "fichier": "/x.json",
             "etages": [
                 {"niveau": 3, "vmid": 103, "parent_alias": "a+b"},
@@ -1044,7 +1258,7 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
 
     def tearDown(self):
         for nom, vrai in self._vrais.items():
-            setattr(self.dp, nom, vrai)
+            setattr(moteur, nom, vrai)
         import builtins
 
         builtins.input = self._entree
@@ -1053,10 +1267,10 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         import builtins
 
         builtins.input = lambda _prompt="": "OUI"
-        self.dp.detruire_une = lambda *a, **k: une
-        self.dp.detruire_etage1 = lambda *a, **k: etage1_ok
+        self.dp.FAMILLE.detruire_une = lambda *a, **k: une
+        moteur.detruire_etage1 = lambda *a, **k: etage1_ok
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            code = self.dp.detruire(None, dry_run=False)
+            code = self.dp.detruire(self.dp.FAMILLE, None, dry_run=False)
         return code, sortie.getvalue()
 
     def test_a_complete_destruction_reports_success(self):
@@ -1071,7 +1285,7 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         machines ». Or « virsh undefine --remove-all-storage » sur l'étage 1
         efface le disque où ils VIVENT. L'avertissement était faux dans
         l'autre sens, et un avertissement faux ne se lit plus."""
-        self.dp.detruire_une = lambda *a, **k: False
+        self.dp.FAMILLE.detruire_une = lambda *a, **k: False
         code, texte = self._lancer(etage1_ok=True, une=False)
         self.assertEqual(code, 0)
         self.assertIn("3 / 3", texte)
@@ -1088,8 +1302,10 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
         """Elles survivaient aux machines : des entrées mortes dont le
         ProxyJump désigne un hôte qui n'existe plus."""
         retires = []
-        self.dp.retirer_alias = lambda rapport, journal=None: retires.append(
-            [e.get("alias") for e in rapport["etages"]]
+        moteur.retirer_alias = (
+            lambda rapport, journal=None, nom_base="": retires.append(
+                [e.get("alias") for e in rapport["etages"]]
+            )
         )
         self._lancer(etage1_ok=True)
         self.assertEqual(len(retires), 1)
@@ -1113,12 +1329,13 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
             # La VRAIE fonction : setUp en a posé un bouchon pour les autres
             # tests de cette classe.
             self._vrais["retirer_alias"](
-                {
+                nom_base=self.dp.NOM_BASE,
+                rapport={
                     "etages": [
                         {"niveau": 1, "alias": "deep-pve-1"},
                         {"niveau": 2, "parent_alias": "deep-pve-1"},
                     ]
-                }
+                },
             )
         self.assertEqual(
             vus["drop"],

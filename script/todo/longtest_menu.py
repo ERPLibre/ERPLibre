@@ -24,7 +24,7 @@ from script.todo.todo_i18n import t
 LONGTEST_DIR = "long_test"
 
 
-class long_testMenuMixin:
+class LongTestMenuMixin:
     def _longtest_script(self, nom):
         """Chemin d'un test long, ou "" s'il n'est pas là."""
         chemin = os.path.join(os.getcwd(), LONGTEST_DIR, nom)
