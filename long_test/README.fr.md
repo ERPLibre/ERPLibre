@@ -1,5 +1,5 @@
 
-# LongTest — des tests qui créent de vraies machines
+# long_test — des tests qui créent de vraies machines
 
 Ce ne sont pas des tests unitaires. Ils créent des machines virtuelles, y
 installent des systèmes, et durent des heures. Ils vivent ici et **non** dans
@@ -32,10 +32,10 @@ D'où le script : un chiffre obtenu une fois, sur une machine, dans une chaîne,
 est une anecdote.
 
 ```
-./LongTest/deep_proxmox.py                        # trois étages, ~30 minutes
-./LongTest/deep_proxmox.py --dry-run              # le plan, rien de créé
-./LongTest/deep_proxmox.py --depth 5              # en demander plus, sciemment
-./LongTest/deep_proxmox.py --detruire             # défaire
+./long_test/deep_proxmox.py                        # trois étages, ~30 minutes
+./long_test/deep_proxmox.py --dry-run              # le plan, rien de créé
+./long_test/deep_proxmox.py --depth 5              # en demander plus, sciemment
+./long_test/deep_proxmox.py --detruire             # défaire
 ```
 
 ### Quelle profondeur vaut la peine d'être demandée

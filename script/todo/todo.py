@@ -28,7 +28,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import todo_prefs
 from script.todo.database_manager import DatabaseManager
-from script.todo.longtest_menu import LongTestMenuMixin
+from script.todo.longtest_menu import long_testMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_deploy import QemuDeployMixin
@@ -97,7 +97,7 @@ class TODO(
     QemuManageMixin,
     QemuAccessMixin,
     ProxmoxMenuMixin,
-    LongTestMenuMixin,
+    long_testMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None

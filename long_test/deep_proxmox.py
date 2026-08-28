@@ -24,9 +24,9 @@ dépôt : c'est notre code qu'on veut éprouver, et le dépôt distant est souve
 en retard sur le checkout — un correctif absent du distant a fait « revenir »
 le même défaut sur trois VM de suite.
 
-  ./LongTest/deep_proxmox.py --depth 10 --dry-run
-  ./LongTest/deep_proxmox.py --depth 10
-  ./LongTest/deep_proxmox.py --detruire        # défait ce que la descente a posé
+  ./long_test/deep_proxmox.py --depth 10 --dry-run
+  ./long_test/deep_proxmox.py --depth 10
+  ./long_test/deep_proxmox.py --detruire        # défait ce que la descente a posé
 """
 
 import argparse

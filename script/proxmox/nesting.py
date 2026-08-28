@@ -43,7 +43,7 @@ Deux nombres viennent de la même mesure, et méritent d'être dits :
 Une descente complète a ensuite RÉFUTÉ ce qu'on avait conclu de la première :
 son quatrième étage, à 2 vCPU, a démarré, s'est installé, et a écrit des
 gigaoctets. Le plafond était celui du parallélisme sous imbrication, pas celui
-de l'imbrication. La profondeur RÉELLEMENT atteignable se mesure — LongTest la
+de l'imbrication. La profondeur RÉELLEMENT atteignable se mesure — long_test la
 mesure ; ce module ne calcule que ce qui est arithmétiquement possible.
 """
 

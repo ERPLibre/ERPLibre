@@ -3,7 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Les tests LONGS : de vraies machines, des heures.
 
-Ils vivent dans `LongTest/` et non dans `test/`, et ce n'est pas un rangement
+Ils vivent dans `long_test/` et non dans `test/`, et ce n'est pas un rangement
 de confort : le lanceur unitaire balaie `test/test_*.py` et doit rester
 lançable en quelques secondes, partout. Un test qui crée dix VM n'a rien à y
 faire — il le ferait échouer sur toute machine sans virtualisation, et
@@ -21,10 +21,10 @@ import click
 from script.todo.todo_i18n import t
 
 # Le répertoire des tests longs, à la racine du dépôt.
-LONGTEST_DIR = "LongTest"
+LONGTEST_DIR = "long_test"
 
 
-class LongTestMenuMixin:
+class long_testMenuMixin:
     def _longtest_script(self, nom):
         """Chemin d'un test long, ou "" s'il n'est pas là."""
         chemin = os.path.join(os.getcwd(), LONGTEST_DIR, nom)

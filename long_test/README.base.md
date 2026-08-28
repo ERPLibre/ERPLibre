@@ -4,7 +4,7 @@
 <!---------------------------->
 
 <!-- [en] -->
-# LongTest — tests that create real machines
+# long_test — tests that create real machines
 
 These are not unit tests. They create virtual machines, install systems on
 them, and take hours. They live here and **not** in `test/`, which the unit
@@ -33,10 +33,10 @@ Which is the point of the script: a number obtained once, on one machine, in
 one chain, is an anecdote.
 
 ```
-./LongTest/deep_proxmox.py                        # three levels, ~30 minutes
-./LongTest/deep_proxmox.py --dry-run              # the plan, nothing created
-./LongTest/deep_proxmox.py --depth 5              # ask for more, knowingly
-./LongTest/deep_proxmox.py --detruire             # undo it
+./long_test/deep_proxmox.py                        # three levels, ~30 minutes
+./long_test/deep_proxmox.py --dry-run              # the plan, nothing created
+./long_test/deep_proxmox.py --depth 5              # ask for more, knowingly
+./long_test/deep_proxmox.py --detruire             # undo it
 ```
 
 ### How deep is worth asking for
@@ -133,7 +133,7 @@ promises a depth it knows will not fit — better to announce six levels and
 reach six than to promise ten and die at the seventh without knowing why.
 
 <!-- [fr] -->
-# LongTest — des tests qui créent de vraies machines
+# long_test — des tests qui créent de vraies machines
 
 Ce ne sont pas des tests unitaires. Ils créent des machines virtuelles, y
 installent des systèmes, et durent des heures. Ils vivent ici et **non** dans
@@ -166,10 +166,10 @@ D'où le script : un chiffre obtenu une fois, sur une machine, dans une chaîne,
 est une anecdote.
 
 ```
-./LongTest/deep_proxmox.py                        # trois étages, ~30 minutes
-./LongTest/deep_proxmox.py --dry-run              # le plan, rien de créé
-./LongTest/deep_proxmox.py --depth 5              # en demander plus, sciemment
-./LongTest/deep_proxmox.py --detruire             # défaire
+./long_test/deep_proxmox.py                        # trois étages, ~30 minutes
+./long_test/deep_proxmox.py --dry-run              # le plan, rien de créé
+./long_test/deep_proxmox.py --depth 5              # en demander plus, sciemment
+./long_test/deep_proxmox.py --detruire             # défaire
 ```
 
 ### Quelle profondeur vaut la peine d'être demandée

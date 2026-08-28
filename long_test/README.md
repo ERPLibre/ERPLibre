@@ -1,5 +1,5 @@
 
-# LongTest — tests that create real machines
+# long_test — tests that create real machines
 
 These are not unit tests. They create virtual machines, install systems on
 them, and take hours. They live here and **not** in `test/`, which the unit
@@ -28,10 +28,10 @@ Which is the point of the script: a number obtained once, on one machine, in
 one chain, is an anecdote.
 
 ```
-./LongTest/deep_proxmox.py                        # three levels, ~30 minutes
-./LongTest/deep_proxmox.py --dry-run              # the plan, nothing created
-./LongTest/deep_proxmox.py --depth 5              # ask for more, knowingly
-./LongTest/deep_proxmox.py --detruire             # undo it
+./long_test/deep_proxmox.py                        # three levels, ~30 minutes
+./long_test/deep_proxmox.py --dry-run              # the plan, nothing created
+./long_test/deep_proxmox.py --depth 5              # ask for more, knowingly
+./long_test/deep_proxmox.py --detruire             # undo it
 ```
 
 ### How deep is worth asking for

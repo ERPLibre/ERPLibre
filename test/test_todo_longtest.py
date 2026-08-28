@@ -29,18 +29,18 @@ PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
 
 
 class TestLaFrontiere(unittest.TestCase):
-    """LongTest est hors de portée du lanceur unitaire, et ce n'est pas un
+    """long_test est hors de portée du lanceur unitaire, et ce n'est pas un
     rangement de confort."""
 
-    def test_the_unit_runner_does_not_sweep_LongTest(self):
+    def test_the_unit_runner_does_not_sweep_long_test(self):
         with open(
             os.path.join(RACINE, "script/test/run_unit_test.sh"),
             encoding="utf-8",
         ) as fh:
             lanceur = fh.read()
         # Le lanceur ne liste que des fichiers de test/ : rien qui parte de
-        # LongTest, sinon la suite unitaire créerait des VM.
-        self.assertNotIn("LongTest", lanceur)
+        # long_test, sinon la suite unitaire créerait des VM.
+        self.assertNotIn("long_test", lanceur)
 
     def test_the_runner_only_looks_under_test(self):
         """Le lanceur balaie TOUT test/test_*.py depuis qu'une liste de
@@ -48,24 +48,24 @@ class TestLaFrontiere(unittest.TestCase):
 
         La frontière n'est donc plus un nom mais un RÉPERTOIRE : ce qui doit
         rester hors de la suite doit vivre ailleurs que dans test/. C'est
-        exactement pourquoi LongTest est à la racine."""
+        exactement pourquoi long_test est à la racine."""
         with open(
             os.path.join(RACINE, "script/test/run_unit_test.sh"),
             encoding="utf-8",
         ) as fh:
             lanceur = fh.read()
         self.assertIn("test/test_*.py", lanceur)
-        # Aucun chemin du lanceur ne sort de test/ : sinon LongTest y
+        # Aucun chemin du lanceur ne sort de test/ : sinon long_test y
         # entrerait par la porte de service.
-        self.assertNotIn("LongTest", lanceur)
+        self.assertNotIn("long_test", lanceur)
 
     def test_the_script_is_executable_and_documented(self):
-        script = os.path.join(RACINE, "LongTest/deep_proxmox.py")
+        script = os.path.join(RACINE, "long_test/deep_proxmox.py")
         self.assertTrue(os.access(script, os.X_OK), "doit être exécutable")
         # La doc est un .base.md : un .md généré se perd au prochain
         # « make doc_markdown ».
         self.assertTrue(
-            os.path.exists(os.path.join(RACINE, "LongTest/README.base.md"))
+            os.path.exists(os.path.join(RACINE, "long_test/README.base.md"))
         )
 
 
@@ -86,7 +86,7 @@ class TestLEssaiABlanc(unittest.TestCase):
         cls.res = subprocess.run(
             [
                 PYTHON,
-                os.path.join(RACINE, "LongTest/deep_proxmox.py"),
+                os.path.join(RACINE, "long_test/deep_proxmox.py"),
                 "--depth",
                 "4",
                 "--dry-run",
@@ -160,7 +160,7 @@ class TestLEssaiABlanc(unittest.TestCase):
         import inspect
         import sys as _sys
 
-        _sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        _sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         src = inspect.getsource(deep_proxmox.Descente.creer_etage1)
@@ -239,7 +239,7 @@ class TestLaProfondeurParDefaut(unittest.TestCase):
         import inspect
         import sys as _sys
 
-        _sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        _sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         src = inspect.getsource(deep_proxmox.principal)
@@ -283,7 +283,7 @@ class TestDefaireSansEffacerAutreChose(unittest.TestCase):
     emporte les disques ET les entrées de sauvegarde."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -359,7 +359,7 @@ class TestUnRapportQuiSurvitAuProcessus(unittest.TestCase):
     """
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -461,7 +461,7 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
     aurait emporté l'arbre sous le processus qui installait encore."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -628,7 +628,7 @@ class TestLEtage1SIdentifiePasParSonNom(unittest.TestCase):
     l'identifie vraiment."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -729,7 +729,7 @@ class TestLaCauseDUnMontageAbsent(unittest.TestCase):
     lent que son hôte."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -791,7 +791,7 @@ class TestUneLectureRateeNeConclutRien(unittest.TestCase):
     on posait un pont et un NAT sur une machine qui en avait déjà un."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -862,7 +862,7 @@ class TestUneVmCreeeEstToujoursNommee(unittest.TestCase):
     pouvait pas la défaire, et il fallait la retrouver par son NOM."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -930,7 +930,7 @@ class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
     plus."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
@@ -1013,7 +1013,7 @@ class TestLeDecompteDeLaDestruction(unittest.TestCase):
     reste alloué s'affichait toujours — on apprend à ne plus le lire."""
 
     def setUp(self):
-        sys.path.insert(0, os.path.join(RACINE, "LongTest"))
+        sys.path.insert(0, os.path.join(RACINE, "long_test"))
         import deep_proxmox
 
         self.dp = deep_proxmox
