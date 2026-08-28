@@ -6979,6 +6979,99 @@ TRANSLATIONS = {
     },
     # --- Écran de qualité : Verdicts, Validation, Revue ---
     # --- Journal d'étape et bascule de version ---
+    # --- Dérive du référentiel comptable ---
+    "Did the last step add to the accounting data?": {
+        "fr": "Le dernier palier a-t-il gonflé le référentiel comptable ?",
+        "en": "Did the last step add to the accounting data?",
+    },
+    "Accounting reference data, one step to the next": {
+        "fr": "Référentiel comptable, d'un palier au suivant",
+        "en": "Accounting reference data, one step to the next",
+    },
+    "Nothing was added to the reference data.": {
+        "fr": "Rien n'a été ajouté au référentiel.",
+        "en": "Nothing was added to the reference data.",
+    },
+    "Accounts in the chart": {
+        "fr": "Comptes du plan comptable",
+        "en": "Accounts in the chart",
+    },
+    "Taxes": {
+        "fr": "Taxes",
+        "en": "Taxes",
+    },
+    "Fiscal positions": {
+        "fr": "Positions fiscales",
+        "en": "Fiscal positions",
+    },
+    "Account groups": {
+        "fr": "Groupes de comptes",
+        "en": "Account groups",
+    },
+    "Journals": {
+        "fr": "Journaux",
+        "en": "Journals",
+    },
+    "What it looks like": {
+        "fr": "À quoi cela ressemble",
+        "en": "What it looks like",
+    },
+    "accounts carry no entry at all": {
+        "fr": "comptes ne portent aucune écriture",
+        "en": "accounts carry no entry at all",
+    },
+    "taxes share a name with another": {
+        "fr": "taxes portent le nom d'une autre",
+        "en": "taxes share a name with another",
+    },
+    "fiscal positions share a name with another": {
+        "fr": "positions fiscales portent le nom d'une autre",
+        "en": "fiscal positions share a name with another",
+    },
+    "accounts fall under a group by code prefix": {
+        "fr": "comptes tombent sous un groupe par préfixe de code",
+        "en": "accounts fall under a group by code prefix",
+    },
+    "Replay the step with the fix; do not operate the": {
+        "fr": "Rejouer le palier avec le correctif ; ne pas opérer la",
+        "en": "Replay the step with the fix; do not operate the",
+    },
+    "delivered database.": {
+        "fr": "base livrée.",
+        "en": "delivered database.",
+    },
+    "What a version bump adds to the accounting data.": {
+        "fr": "Ce qu'une montée de version ajoute au référentiel comptable.",
+        "en": "What a version bump adds to the accounting data.",
+    },
+    "the step to compare against (default: the previous one)": {
+        "fr": "le palier de comparaison (défaut : le précédent)",
+        "en": "the step to compare against (default: the previous one)",
+    },
+    "No previous step found: name it with --before.": {
+        "fr": "Aucun palier précédent trouvé : le nommer avec --before.",
+        "en": "No previous step found: name it with --before.",
+    },
+    "A reloaded chart template adds every account it could not match by code. They carry no entry, and they bury the customer's own chart.": {
+        "fr": "Un gabarit de plan rechargé ajoute chaque compte qu'il n'a pu apparier par son code. Ils ne portent aucune écriture, et noient le plan du client.",
+        "en": "A reloaded chart template adds every account it could not match by code. They carry no entry, and they bury the customer's own chart.",
+    },
+    "Reloaded taxes are not renamed '[old]': the duplicates are indistinguishable in the interface.": {
+        "fr": "Les taxes rechargées ne sont pas renommées « [old] » : les doublons ne se distinguent pas dans l'interface.",
+        "en": "Reloaded taxes are not renamed '[old]': the duplicates are indistinguishable in the interface.",
+    },
+    "Each province then appears twice, under the same name.": {
+        "fr": "Chaque province apparaît alors deux fois, sous le même nom.",
+        "en": "Each province then appears twice, under the same name.",
+    },
+    "Groups are matched to accounts by code PREFIX: a grid that appears reclassifies the customer's own accounts, and the trial balance in hierarchy mode follows.": {
+        "fr": "Les groupes s'apparient aux comptes par PRÉFIXE de code : une grille qui apparaît reclasse les comptes du client, et la balance en mode hiérarchie suit.",
+        "en": "Groups are matched to accounts by code PREFIX: a grid that appears reclassifies the customer's own accounts, and the trial balance in hierarchy mode follows.",
+    },
+    "A journal added by a template reload competes with the customer's own.": {
+        "fr": "Un journal ajouté par un rechargement concurrence celui du client.",
+        "en": "A journal added by a template reload competes with the customer's own.",
+    },
     "findings": {
         "fr": "des trouvailles",
         "en": "findings",

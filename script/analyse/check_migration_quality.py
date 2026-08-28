@@ -390,6 +390,11 @@ REVUE = (
         "script/analyse/check_view_type_tree.py",
         "viewtype",
     ),
+    (
+        "Did the last step add to the accounting data?",
+        "script/analyse/check_chart_drift.py -d {db}",
+        "chartdrift",
+    ),
 )
 
 
