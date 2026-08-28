@@ -56,35 +56,118 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("Nested Proxmox depth: run it")},
+            {
+                "prompt_description": t(
+                    "Nested QEMU depth: plan only (dry-run)"
+                )
+            },
+            {"prompt_description": t("Nested QEMU depth: run it")},
             {"prompt_description": t("Undo what the descent created")},
         ]
+        # Chaque choix : le script, et s'il faut demander d'où l'on part.
+        scripts = {
+            "1": ("deep_proxmox.py", True),
+            "2": ("deep_proxmox.py", True),
+            "3": ("deep_qemu.py", True),
+            "4": ("deep_qemu.py", True),
+        }
         help_info = self.fill_help_info(choices)
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            if status == "1":
-                self._longtest_run(
-                    "deep_proxmox.py",
-                    f"--depth {self._longtest_depth()} --dry-run",
-                )
-            elif status == "2":
-                # La profondeur est DEMANDÉE : c'est le seul réglage du test,
-                # et il décide de sa durée — dix étages, c'est une nuit.
-                self._longtest_run(
-                    "deep_proxmox.py", f"--depth {self._longtest_depth()}"
-                )
-            elif status == "3":
-                # Le script demande « OUI » avant de détruire, mais il liste
-                # d'abord : on lui fait faire cette liste À BLANC pour que le
-                # choix « 3 » d'une touche ne mène pas directement à un
-                # « qm destroy --purge ».
-                self._longtest_run("deep_proxmox.py", "--detruire --dry-run")
-                if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
-                    self._longtest_run("deep_proxmox.py", "--detruire")
+            if status in scripts:
+                script, demander = scripts[status]
+                # La profondeur est DEMANDÉE : c'est le réglage qui décide de
+                # la durée — au-delà de trois étages, tout est 15 à 30 fois
+                # plus lent, et cinq se comptent en heures.
+                args = f"--depth {self._longtest_depth()}"
+                if demander:
+                    args += self._longtest_depart(script)
+                if status in ("1", "3"):
+                    args += " --dry-run"
+                self._longtest_run(script, args)
+            elif status == "5":
+                self._longtest_defaire()
             else:
                 print(t("Command not found !"))
+
+    def _longtest_defaire(self):
+        """Défaire, chaque pile la sienne.
+
+        Les deux scripts partagent le dossier des rapports mais chacun ne
+        connaît que les siens : lancer les deux ne peut pas faire détruire à
+        l'un ce que l'autre a créé.
+
+        Le script demande « OUI » avant de détruire, mais il LISTE d'abord :
+        on lui fait faire cette liste à blanc pour qu'un choix d'une touche ne
+        mène pas directement à un « qm destroy --purge ».
+        """
+        for script in ("deep_proxmox.py", "deep_qemu.py"):
+            self._longtest_run(script, "--detruire --dry-run")
+            if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
+                self._longtest_run(script, "--detruire")
+
+    def _longtest_depart(self, script):
+        """D'où part la descente : une VM neuve, ou un hôte qu'on a déjà.
+
+        Créer une machine de tête pour héberger un hyperviseur qu'on possède
+        déjà coûte cinq minutes ET un étage d'imbrication — donc de la
+        lenteur, puisque c'est justement elle qu'on mesure.
+
+        L'hôte déjà retenu est proposé sans qu'on ait à le rechercher : c'est
+        `_pve_host(ask=False)`, qui ne demande rien et ne dit rien s'il n'y en
+        a pas.
+        """
+        connu = None
+        if script == "deep_proxmox.py":
+            try:
+                connu = self._pve_host(ask=False)
+            except Exception:  # noqa: BLE001 - une préférence illisible
+                connu = None
+        print(f"\n{t('Where does the descent start?')}")
+        print(f"  [1] {t('Create a fresh QEMU VM as level one')} *")
+        if connu:
+            print(f"  [2] {t('Start from:')} {self._pve_label(connu)}")
+        print(f"  [3] {t('Start from another existing host')}")
+        choix = input(t("Choice (1-3, default 1): ")).strip()
+        if choix == "2" and connu:
+            return self._longtest_args_hote(connu)
+        if choix == "3":
+            hote = (
+                self._pve_pick_host()
+                if script == "deep_proxmox.py"
+                else self._longtest_hote_manuel()
+            )
+            if hote:
+                return self._longtest_args_hote(hote)
+            print(t("Cancelled."))
+        return ""
+
+    @staticmethod
+    def _longtest_args_hote(hote):
+        """Les options que le script attend, à partir d'un dict d'hôte."""
+        args = f" --hote {hote['target']}"
+        if hote.get("jump"):
+            args += f" --jump {hote['jump']}"
+        return args
+
+    def _longtest_hote_manuel(self):
+        """Un hôte libvirt de départ, saisi à la main.
+
+        Pas de sélecteur vérifié comme pour Proxmox : ce qu'on veut ici, c'est
+        un hôte qui porte KVM, et c'est le script qui le CONSTATE au premier
+        contrôle — /dev/kvm et l'imbrication — plutôt que le menu qui le
+        suppose.
+        """
+        cible = input(t("Address (user@host, blank = cancel): ")).strip()
+        if not cible:
+            return None
+        return {
+            "target": cible,
+            "jump": input(t("SSH jump host (blank = none): ")).strip(),
+        }
 
     def _longtest_depth(self):
         """Profondeur demandée. Trois par défaut, parce que trois marche.

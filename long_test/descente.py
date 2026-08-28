@@ -85,6 +85,50 @@ def capacite_hote():
     return coeurs, ram, disque
 
 
+CAPACITE_CMD = (
+    "nproc | sed s/^/COEURS=/; "
+    "grep MemAvailable /proc/meminfo | sed s/^/MEM=/; "
+    "df --output=avail -BG /var/lib/libvirt/images 2>/dev/null"
+    " | tail -1 | sed s/^/DISQUE=/"
+)
+
+
+def parse_capacite(texte):
+    """(cœurs, RAM en Mo, disque en Go) lus chez l'hôte, ou (0, 0, 0).
+
+    Zéro quand la ligne manque, jamais une valeur inventée : un plan
+    dimensionné sur une capacité supposée annoncerait des étages qui ne
+    tiennent pas.
+    """
+    propre = pve.strip_ssh_noise(texte or "")
+
+    def lire(motif, diviseur=1):
+        trouve = re.search(motif, propre, re.M)
+        return int(trouve.group(1)) // diviseur if trouve else 0
+
+    return (
+        lire(r"^COEURS=\s*(\d+)"),
+        # « MEM=MemAvailable:  7056288 kB » : le sed colle un « = », pas un
+        # deux-points. L'expression attendait le second et rendait zéro — un
+        # plan dimensionné sur zéro mébioctet n'annonce aucun étage.
+        lire(r"^MEM=MemAvailable:\s*(\d+)", 1024),
+        lire(r"^DISQUE=\s*(\d+)"),
+    )
+
+
+def capacite_distante(hote):
+    """Ce dont dispose la RACINE quand la descente en emprunte une.
+
+    `capacite_hote()` lit la machine LOCALE. Partir d'un hôte distant sans
+    lire le sien dimensionnerait le plan d'après une machine qui n'héberge
+    rien — on annoncerait dix étages sur un serveur qui n'en porte pas deux.
+    """
+    code, out = pve.run(dict(hote, sudo=""), CAPACITE_CMD, 120)
+    if code:
+        return 0, 0, 0
+    return parse_capacite(out)
+
+
 def module_qemu():
     """deploy_qemu.py chargé comme module : il porte le catalogue d'images."""
     import importlib.util
@@ -125,6 +169,12 @@ class Descente:
     détruire ce qu'elle n'a pas créé. Ce qu'elle ne sait pas faire, elle le
     demande à la pile qui en hérite — les six crochets plus bas.
     """
+
+    # Une descente sans racine part d'une VM qu'elle crée elle-même : c'est
+    # le cas ordinaire, et ces défauts le disent au niveau de la CLASSE plutôt
+    # que du constructeur, pour qu'une instance montée à la main les ait aussi.
+    racine = None
+    profondeur_racine = 0
 
     # Ce que chaque pile déclare.
     OUTIL = ""  # « deep_proxmox » : écrit au rapport, filtre --detruire
@@ -175,7 +225,25 @@ class Descente:
     def alias_etage(self, niveau, parent_alias):
         return alias_etage(niveau, parent_alias, self.NOM_BASE)
 
-    def __init__(self, plan, journal, dry_run=False, chemin_json=None):
+    def __init__(
+        self,
+        plan,
+        journal,
+        dry_run=False,
+        chemin_json=None,
+        racine=None,
+        profondeur_racine=0,
+    ):
+        # `racine` : un hôte qui EXISTE DÉJÀ, chez qui la descente s'installe
+        # au lieu de créer sa propre machine de tête. Il n'est pas un étage —
+        # il n'est pas compté, pas détruit, et son entrée ~/.ssh/config est
+        # celle de l'utilisateur.
+        self.racine = racine
+        # Sa profondeur d'imbrication à LUI. Sans elle, le premier enfant
+        # d'une racine déjà au troisième étage héritait des délais du premier :
+        # quatre fois trop courts, exactement le défaut que `delai` raconte
+        # avoir corrigé.
+        self.profondeur_racine = profondeur_racine
         self.plan = plan
         self.journal = journal
         self.chemin_json = chemin_json
@@ -200,7 +268,11 @@ class Descente:
         d'hyperviseur à traverser, mais un facteur illimité rendrait un
         échec réel indiscernable d'une attente sans fin.
         """
-        facteur = min(max(1, self.niveau_courant), 5) ** 2
+        # La profondeur ABSOLUE : celle de la racine plus celle de l'étage.
+        # Un enfant de niveau 1 posé dans une racine déjà au troisième étage
+        # est en réalité au quatrième, et ses délais doivent le savoir.
+        profondeur = self.profondeur_racine + max(1, self.niveau_courant)
+        facteur = min(profondeur, 5) ** 2
         return DELAIS[etape] * facteur
 
     # ---------------------------------------------------------------- #
@@ -404,8 +476,10 @@ class Descente:
         return "" if res.returncode else res.stdout.strip()
 
     def parcourir(self):
-        parent = None
-        parent_alias = ""
+        # Sans racine, le premier étage est une VM qu'on crée en local. Avec
+        # une racine, TOUS les étages sont des enfants — le premier compris.
+        parent = self.racine
+        parent_alias = (self.racine or {}).get("target", "")
         for res in self.plan["niveaux"]:
             niveau = res["niveau"]
             self.niveau_courant = niveau
@@ -420,7 +494,7 @@ class Descente:
                 f"  ── étage {niveau} : {res['vcpu']} vCPU,"
                 f" {res['ram']} Mo, {res['disque']} Go"
             )
-            if niveau == 1:
+            if parent is None:
                 nom = self.creer_etage1(res)
                 if not nom:
                     self.etages.append(etage)
@@ -546,6 +620,18 @@ class Descente:
         if en_cours is not None and en_cours not in etages:
             etages.append(en_cours)
         return {
+            # La racine EMPRUNTÉE, si la descente en avait une. Hors de
+            # « etages » : elle n'est pas un étage atteint, et l'y mettre
+            # décalait de un le compte et le code de sortie.
+            "racine": (
+                {
+                    "alias": self.racine.get("target"),
+                    "profondeur": self.profondeur_racine,
+                    "cree": False,
+                }
+                if self.racine
+                else None
+            ),
             # L'outil qui a écrit ce rapport. Sans lui, « deep_qemu
             # --detruire » prenait le rapport le plus récent — qui pouvait
             # être celui d'une descente Proxmox — et détruisait d'après lui.
@@ -686,6 +772,42 @@ def autre_descente():
     return vivants
 
 
+def joindre_racine(cible, jump=""):
+    """Le dict d'hôte d'une racine empruntée, ou None si elle ne répond pas.
+
+    `sudo` est DÉDUIT, pas supposé : sur un hôte joint en root, préfixer les
+    commandes de « sudo » échoue là où l'image n'en a pas, et sur un hôte
+    joint en utilisateur, ne pas le mettre échoue partout.
+    """
+    hote = {"target": cible, "jump": jump or "", "sudo": ""}
+    code, out = pve.run(hote, "id -u", 60)
+    if code:
+        dire(f"  ✗ {cible} : injoignable en ssh.")
+        return None
+    if pve.strip_ssh_noise(out).strip() != "0":
+        hote["sudo"] = "sudo "
+        code, _o = pve.run(hote, "true", 60)
+        if code:
+            dire(f"  ✗ {cible} : sudo demande un mot de passe.")
+            return None
+    return hote
+
+
+def profondeur_de(cible):
+    """La profondeur d'imbrication de `cible`, d'après sa chaîne de rebonds.
+
+    C'est la seule mesure dont on dispose de l'extérieur, et elle est exacte
+    pour les hôtes que nous avons déployés : c'est nous qui écrivons ces
+    entrées, un ProxyJump par étage.
+    """
+    try:
+        from script.todo.todo import TODO
+
+        return nesting.depth_from_jumps(TODO._ssh_jump_depth(cible))
+    except Exception:  # noqa: BLE001 - une profondeur inconnue vaut 1
+        return 1
+
+
 def mener(argv, description, famille, classe, couts=None):
     """La ligne de commande, le plan, la descente et le rapport.
 
@@ -703,6 +825,18 @@ def mener(argv, description, famille, classe, couts=None):
     parseur.add_argument("--depth", type=int, default=3)
     parseur.add_argument("--dry-run", action="store_true")
     parseur.add_argument("--detruire", action="store_true")
+    # Partir d'un hôte qu'on POSSÈDE DÉJÀ. Créer une VM de tête pour héberger
+    # un hyperviseur qu'on a sous la main coûte cinq minutes et un étage
+    # d'imbrication — donc de la lenteur — pour rien.
+    parseur.add_argument(
+        "--hote",
+        default="",
+        help="partir d'un hôte existant (alias ssh ou user@adresse)"
+        " au lieu de créer une VM de premier étage",
+    )
+    parseur.add_argument(
+        "--jump", default="", help="rebond ssh pour joindre --hote"
+    )
     args = parseur.parse_args(argv)
 
     journal = os.path.expanduser(
@@ -715,9 +849,25 @@ def mener(argv, description, famille, classe, couts=None):
         # destruction détruisait pour de vrai.
         return detruire(famille, journal, dry_run=args.dry_run)
 
-    coeurs, ram, disque = capacite_hote()
+    racine, profondeur_racine = None, 0
+    if args.hote:
+        racine = joindre_racine(args.hote, args.jump)
+        if racine is None:
+            return 1
+        profondeur_racine = profondeur_de(args.hote)
+        # La capacité de la RACINE, pas celle d'ici. Dimensionner le plan sur
+        # la machine locale quand les étages vivent ailleurs annoncerait des
+        # étages qui ne tiennent pas.
+        coeurs, ram, disque = capacite_distante(racine)
+        if not coeurs:
+            print(f"\n  ✗ {args.hote} : capacité illisible.\n")
+            return 1
+        print(f"\n  racine : {args.hote}, déjà au niveau {profondeur_racine}")
+    else:
+        coeurs, ram, disque = capacite_hote()
+    ou = args.hote or "machine locale"
     print(
-        f"\n  machine : {coeurs} cœurs, {ram} Mo disponibles,"
+        f"\n  {ou} : {coeurs} cœurs, {ram} Mo disponibles,"
         f" {disque} Go de disque"
     )
     plan = nesting.nesting_plan(args.depth, coeurs, ram, disque, couts)
@@ -749,7 +899,15 @@ def mener(argv, description, famille, classe, couts=None):
     if args.dry_run:
         print("  --dry-run : rien ne sera créé.\n")
     chemin = journal[:-4] + ("-dryrun.json" if args.dry_run else ".json")
-    descente = classe(plan, journal, args.dry_run, chemin)
+    descente = classe(
+        plan, journal, args.dry_run, chemin, racine, profondeur_racine
+    )
+    # La racine est-elle en état d'héberger ? Le même contrôle que celui de
+    # fin d'étage — un hôte emprunté n'a pas été préparé par nous, et rien ne
+    # garantit que sa pile est debout.
+    if racine and not args.dry_run and not descente.controler(racine):
+        print(f"\n  ✗ {args.hote} ne peut pas héberger d'étage.\n")
+        return 1
     rapport = descente.parcourir()
     with open(chemin, "w", encoding="utf-8") as fh:
         json.dump(rapport, fh, indent=2)

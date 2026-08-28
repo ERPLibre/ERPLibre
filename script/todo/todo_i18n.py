@@ -3454,6 +3454,38 @@ TRANSLATIONS = {
         "fr": "Script introuvable :",
         "en": "Script not found:",
     },
+    "Nested QEMU depth: plan only (dry-run)": {
+        "fr": "Profondeur QEMU imbriqué : le plan seulement (à blanc)",
+        "en": "Nested QEMU depth: plan only (dry-run)",
+    },
+    "Nested QEMU depth: run it": {
+        "fr": "Profondeur QEMU imbriqué : le lancer",
+        "en": "Nested QEMU depth: run it",
+    },
+    "Where does the descent start?": {
+        "fr": "D'où part la descente ?",
+        "en": "Where does the descent start?",
+    },
+    "Create a fresh QEMU VM as level one": {
+        "fr": "Créer une VM QEMU neuve comme premier étage",
+        "en": "Create a fresh QEMU VM as level one",
+    },
+    "Start from:": {
+        "fr": "Partir de :",
+        "en": "Start from:",
+    },
+    "Start from another existing host": {
+        "fr": "Partir d'un autre hôte existant",
+        "en": "Start from another existing host",
+    },
+    "Choice (1-3, default 1): ": {
+        "fr": "Choix (1-3, défaut 1) : ",
+        "en": "Choice (1-3, default 1): ",
+    },
+    "Address (user@host, blank = cancel): ": {
+        "fr": "Adresse (utilisateur@hôte, vide = annuler) : ",
+        "en": "Address (user@host, blank = cancel): ",
+    },
     "Depth (default 3): ": {
         "fr": "Profondeur (défaut 3) : ",
         "en": "Depth (default 3): ",

@@ -1032,6 +1032,204 @@ class TestNePasAttendreUneMaisonDisparue(unittest.TestCase):
             self.assertEqual(self.d.attendre_ssh(enfant, 60), 0)
 
 
+class TestLeMenuDesDeuxTests(unittest.TestCase):
+    """La liste des choix et le dispatch sont couplés PAR POSITION, sans
+    garde : ajouter une entrée sans son branchement donne un menu qui affiche
+    une option et répond « commande inconnue »."""
+
+    def setUp(self):
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.todo = TODO.__new__(TODO)
+
+    def test_every_listed_choice_has_a_branch(self):
+        """fill_help_info numérote à partir de 1 : le choix n° i doit être
+        traité, sinon le menu affiche une option et répond « commande
+        inconnue »."""
+        import inspect
+
+        src = inspect.getsource(self.todo.prompt_execute_longtest)
+        entrees = src.count('"prompt_description"')
+        self.assertGreaterEqual(entrees, 5, "le menu a perdu des entrées")
+        for i in range(1, entrees + 1):
+            self.assertIn(
+                f'"{i}"', src, f"le choix {i} est affiché mais pas traité"
+            )
+        # Et rien au-delà : un branchement sans entrée est un choix caché.
+        self.assertNotIn(f'"{entrees + 1}"', src)
+
+    def test_both_stacks_are_offered(self):
+        import inspect
+
+        src = inspect.getsource(self.todo.prompt_execute_longtest)
+        self.assertIn("deep_proxmox.py", src)
+        self.assertIn("deep_qemu.py", src)
+
+    def test_undoing_asks_each_stack_separately(self):
+        """Chacun ne connaît que ses rapports : lancer les deux ne peut pas
+        faire détruire à l'un ce que l'autre a créé."""
+        import inspect
+
+        src = inspect.getsource(self.todo._longtest_defaire)
+        self.assertIn("deep_proxmox.py", src)
+        self.assertIn("deep_qemu.py", src)
+        # À BLANC d'abord, toujours : un choix d'une touche ne doit pas mener
+        # droit à « qm destroy --purge ».
+        self.assertLess(
+            src.index("--detruire --dry-run"), src.index('"--detruire"')
+        )
+
+    def test_the_host_options_are_built_from_the_host_dict(self):
+        self.assertEqual(
+            self.todo._longtest_args_hote({"target": "pve9", "jump": ""}),
+            " --hote pve9",
+        )
+        self.assertEqual(
+            self.todo._longtest_args_hote({"target": "vm", "jump": "porte"}),
+            " --hote vm --jump porte",
+        )
+
+    def test_a_fresh_vm_is_the_default_answer(self):
+        """Toute réponse hors plage retombe sur l'option 1 : le menu ne doit
+        jamais partir d'un hôte qu'on n'a pas désigné."""
+        import builtins
+
+        vrai = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai)
+        self.todo._pve_host = lambda ask=True: None
+        for reponse in ("", "1", "n'importe quoi", "9"):
+            with self.subTest(reponse=reponse):
+                builtins.input = lambda _p="", r=reponse: r
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(
+                        self.todo._longtest_depart("deep_proxmox.py"), ""
+                    )
+
+    def test_the_known_host_is_offered_without_being_searched(self):
+        import builtins
+
+        vrai = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai)
+        demande = []
+        self.todo._pve_host = lambda ask=True: demande.append(ask) or {
+            "target": "root@10.0.0.5",
+            "jump": "",
+            "version": "9.2.11",
+        }
+        builtins.input = lambda _p="": "2"
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            args = self.todo._longtest_depart("deep_proxmox.py")
+        self.assertEqual(args, " --hote root@10.0.0.5")
+        # Sans rien demander : c'est tout l'intérêt de _pve_host(ask=False).
+        self.assertEqual(demande, [False])
+        self.assertIn("9.2.11", sortie.getvalue())
+
+    def test_a_qemu_descent_does_not_ask_for_a_proxmox(self):
+        """Le sélecteur Proxmox VÉRIFIE « pveversion » : le proposer pour une
+        descente QEMU refuserait un hôte libvirt parfaitement bon."""
+        import builtins
+
+        vrai = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai)
+        reponses = iter(["3", "erplibre@10.0.0.7", ""])
+        builtins.input = lambda _p="": next(reponses)
+        self.todo._pve_pick_host = lambda: self.fail(
+            "sélecteur Proxmox appelé"
+        )
+        with contextlib.redirect_stdout(io.StringIO()):
+            args = self.todo._longtest_depart("deep_qemu.py")
+        self.assertEqual(args, " --hote erplibre@10.0.0.7")
+
+
+class TestPartirDunHoteExistant(unittest.TestCase):
+    """Créer une VM de tête pour héberger un hyperviseur qu'on possède déjà
+    coûte cinq minutes ET un étage d'imbrication — donc de la lenteur."""
+
+    def test_the_remote_capacity_is_read_as_the_machine_writes_it(self):
+        # Sortie RÉELLE, prise sur un hôte du parc.
+        vrai = "COEURS=8\nMEM=MemAvailable:    7056288 kB\nDISQUE=   7G\n"
+        self.assertEqual(moteur.parse_capacite(vrai), (8, 6890, 7))
+
+    def test_a_missing_line_reads_as_zero_not_as_a_guess(self):
+        """Un plan dimensionné sur une capacité SUPPOSÉE annoncerait des
+        étages qui ne tiennent pas."""
+        self.assertEqual(moteur.parse_capacite(""), (0, 0, 0))
+        self.assertEqual(moteur.parse_capacite("COEURS=4\n"), (4, 0, 0))
+
+    def test_the_capacity_probe_is_written_for_dash(self):
+        for interdit in ("[[", "pipefail", "$("):
+            self.assertNotIn(interdit, moteur.CAPACITE_CMD, interdit)
+
+    def test_sudo_is_deduced_not_assumed(self):
+        """Sur un hôte joint en root, préfixer de « sudo » échoue là où
+        l'image n'en a pas ; en utilisateur, ne pas le mettre échoue
+        partout."""
+        reponses = {}
+        moteur.pve.run = lambda h, r, t=120: reponses.get(r, (0, ""))
+        self.addCleanup(setattr, moteur.pve, "run", moteur.pve.run)
+        vrai = moteur.pve.run
+
+        reponses["id -u"] = (0, "0\n")
+        self.assertEqual(moteur.joindre_racine("h")["sudo"], "")
+        reponses["id -u"] = (0, "1000\n")
+        self.assertEqual(moteur.joindre_racine("h")["sudo"], "sudo ")
+        moteur.pve.run = vrai
+
+    def test_an_unreachable_root_is_refused_not_guessed(self):
+        vrai = moteur.pve.run
+        moteur.pve.run = lambda h, r, t=120: (255, "")
+        self.addCleanup(setattr, moteur.pve, "run", vrai)
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            self.assertIsNone(moteur.joindre_racine("nulle-part"))
+        self.assertIn("injoignable", sortie.getvalue())
+
+    def test_the_delays_count_the_absolute_depth(self):
+        """Un enfant de niveau 1 posé dans une racine DÉJÀ au troisième étage
+        est en réalité au quatrième. Sans cela il héritait des délais du
+        premier : quatre fois trop courts."""
+        d = moteur.Descente.__new__(moteur.Descente)
+        d.niveau_courant = 1
+        d.profondeur_racine = 0
+        seul = d.delai("ssh")
+        d.profondeur_racine = 3
+        self.assertEqual(d.delai("ssh"), seul * 16)
+
+    def test_a_borrowed_root_is_never_a_level_that_was_reached(self):
+        """L'y compter décalerait de un le total ET le code de sortie."""
+        d = moteur.Descente.__new__(moteur.Descente)
+        d.plan = {"demandee": 2, "atteignable": 2}
+        d.etages = [{"niveau": 1, "ok": True}]
+        d.dry_run = False
+        d.OUTIL = "deep_proxmox"
+        d.racine = {"target": "mon-proxmox"}
+        d.profondeur_racine = 2
+        etat = d._etat(interrompu=False)
+        self.assertEqual(etat["atteinte"], 1)
+        self.assertEqual(len(etat["etages"]), 1)
+        # Elle est dite, mais à part — et jamais « cree ».
+        self.assertEqual(etat["racine"]["alias"], "mon-proxmox")
+        self.assertEqual(etat["racine"]["profondeur"], 2)
+        self.assertFalse(etat["racine"]["cree"])
+
+    def test_without_a_root_the_report_says_so(self):
+        d = moteur.Descente.__new__(moteur.Descente)
+        d.plan = {"demandee": 1, "atteignable": 1}
+        d.etages = []
+        d.dry_run = False
+        d.OUTIL = "deep_proxmox"
+        self.assertIsNone(d._etat(interrompu=False)["racine"])
+
+    def test_the_first_level_is_local_only_without_a_root(self):
+        """Avec une racine, TOUS les étages sont des enfants — le premier
+        compris. Sans elle, le premier est une VM créée en local."""
+        import inspect
+
+        src = inspect.getsource(moteur.Descente.parcourir)
+        self.assertIn("if parent is None:", src)
+        self.assertNotIn("if niveau == 1:", src)
+
+
 class TestDeuxPilesNeSeMelangentPas(unittest.TestCase):
     """Le dossier des rapports et le motif « *.json » sont PARTAGÉS.
 
