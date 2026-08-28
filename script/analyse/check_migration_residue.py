@@ -349,10 +349,11 @@ def verdicts_block(database, colour=True, path=None, lignes_avant=6):
     for event in ratés:
         version = quality.version_of(quality.event_database(event), dct)
         palier = str(version) if version else quality.event_step(event)
+        icone, teinte = status.verdict_mark(event["status"])
         lignes.append(
             paint(
-                f"❌ {palier.rjust(6)}  {event['name']}",
-                "broken",
+                f"{icone} {palier.rjust(6)}  {event['name']}",
+                "broken" if teinte == "fail" else "watch",
                 colour,
             )
         )

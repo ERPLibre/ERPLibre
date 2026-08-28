@@ -93,6 +93,24 @@ def paint(texte, couleur, actif=True):
 
 VERDICT_COLOUR = {0: "ok", 1: "warn", 2: "fail"}
 
+# La convention des outils de migration, écrite dans todo_upgrade.run_tool :
+# « 0 rien à signaler, 1 des trouvailles, 2 l'outil a échoué ». L'icône vit
+# à côté de la couleur pour qu'elles ne puissent pas dire deux choses
+# différentes — un écran affichait ❌ sur un 1, alors que database_cleanup
+# imprime lui-même « This is a warning, not a failure ».
+VERDICT_ICON = {0: "✅", 1: "⚠", 2: "❌"}
+
+
+def verdict_mark(statut):
+    """(icône, couleur) pour ce code de sortie. Inconnu ⇒ traité comme un échec."""
+    try:
+        code = int(statut or 0)
+    except (TypeError, ValueError):
+        code = 2
+    if code not in VERDICT_ICON:
+        code = 2
+    return VERDICT_ICON[code], VERDICT_COLOUR[code]
+
 
 def read(path=DEFAULT_PATH):
     """La progression, complétée par ce qui a été écrit SUR DISQUE.

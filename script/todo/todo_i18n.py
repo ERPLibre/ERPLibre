@@ -6979,6 +6979,14 @@ TRANSLATIONS = {
     },
     # --- Écran de qualité : Verdicts, Validation, Revue ---
     # --- Journal d'étape et bascule de version ---
+    "findings": {
+        "fr": "des trouvailles",
+        "en": "findings",
+    },
+    "the tool failed": {
+        "fr": "l'outil a échoué",
+        "en": "the tool failed",
+    },
     "capture unavailable": {
         "fr": "capture indisponible",
         "en": "capture unavailable",

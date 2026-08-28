@@ -1548,6 +1548,41 @@ class TestNothingOnThatScreenCanHang(Base):
             self.assertEqual(TodoUpgrade.ask_ui(), "tui")
 
 
+class TestWhatTheExitCodeMeans(Base):
+    """0 rien à signaler, 1 des trouvailles, 2 l'outil a échoué.
+
+    La convention est écrite dans todo_upgrade.run_tool, et elle n'est pas
+    décorative : `database_cleanup` imprime lui-même « This is a warning,
+    not a failure » avant de rendre 1. Un écran qui peint ce 1 en rouge
+    contredit l'outil, et l'on finit par ignorer les deux.
+    """
+
+    def test_zero_is_green(self):
+        self.assertEqual(("✅", "ok"), status.verdict_mark(0))
+
+    def test_one_is_a_finding_not_a_failure(self):
+        icone, teinte = status.verdict_mark(1)
+        self.assertEqual("⚠", icone)
+        self.assertEqual("warn", teinte)
+        self.assertNotEqual("fail", teinte)
+
+    def test_two_is_the_tool_itself_failing(self):
+        self.assertEqual(("❌", "fail"), status.verdict_mark(2))
+
+    def test_an_unknown_code_is_treated_as_a_failure(self):
+        # Un code qu'on ne sait pas lire ne doit pas passer pour un succès.
+        for inconnu in (3, 127, -1, "oui", None, ""):
+            icone, teinte = status.verdict_mark(inconnu)
+            if inconnu in (None, ""):
+                self.assertEqual("ok", teinte, inconnu)
+            else:
+                self.assertEqual("fail", teinte, inconnu)
+
+    def test_the_icon_and_the_colour_cannot_drift(self):
+        # Elles vivent au même endroit précisément pour cela.
+        self.assertEqual(set(status.VERDICT_ICON), set(status.VERDICT_COLOUR))
+
+
 class TestWhatGetsRecorded(Base):
     def upgrade(self):
         obj = TodoUpgrade.__new__(TodoUpgrade)

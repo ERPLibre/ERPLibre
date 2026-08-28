@@ -1923,14 +1923,14 @@ class TestEveryVerdictIsListed(Base):
         for ligne in lignes:
             self.assertIn("✅", ligne["label"])
 
-    def test_a_failure_and_a_success_sit_side_by_side(self):
+    def test_a_finding_and_a_success_sit_side_by_side(self):
         lst = qtui.extra_rows([], self.journal(1, 0))
         icones = [
-            "❌" if "❌" in r["label"] else "✅"
+            r["label"].strip().split()[0]
             for r in lst
             if r["kind"] == "verdict"
         ]
-        self.assertEqual(["❌", "✅"], icones)
+        self.assertEqual(["⚠", "✅"], icones)
 
     def test_the_header_counts_failures_over_the_total(self):
         lst = qtui.extra_rows([], self.journal(1, 0, 0))
@@ -1977,6 +1977,58 @@ class TestEveryVerdictIsListed(Base):
             r for r in qtui.extra_rows([], dct) if r["kind"] == "verdict"
         ]
         self.assertEqual(1, len(lignes))
+
+
+class TestTheScreenObeysTheConvention(Base):
+    """L'écran peignait en ❌ ce que l'outil appelle un avertissement."""
+
+    def journal(self, statut):
+        return {
+            "lst_event": [
+                evenement(
+                    status=statut,
+                    name="database_cleanup",
+                    detail="./script/odoo/migration/database_cleanup.py"
+                    " -d base_upgrade_18",
+                )
+            ],
+            "config_database_name": "base",
+            "target_odoo_version": "18.0",
+            "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+        }
+
+    def ligne(self, statut):
+        lst = qtui.extra_rows([], self.journal(statut))
+        return [r for r in lst if r["kind"] == "verdict"][0]
+
+    def test_findings_are_a_warning_in_the_column(self):
+        # database_cleanup imprime « This is a warning, not a failure »
+        # avant de rendre 1 : l'écran doit dire la même chose.
+        self.assertIn("⚠", self.ligne(1)["label"])
+        self.assertNotIn("❌", self.ligne(1)["label"])
+
+    def test_a_tool_that_failed_is_still_red(self):
+        self.assertIn("❌", self.ligne(2)["label"])
+
+    def test_nothing_to_report_stays_green(self):
+        self.assertIn("✅", self.ligne(0)["label"])
+
+    def test_the_panel_header_agrees_with_the_column(self):
+        for statut in (0, 1, 2):
+            ligne = self.ligne(statut)
+            icone = ligne["label"].strip().split()[0]
+            self.assertTrue(
+                qtui.extra_pane(ligne).startswith(icone),
+                (statut, icone, qtui.extra_pane(ligne)[:20]),
+            )
+
+    def test_the_panel_spells_out_what_the_number_means(self):
+        # « statut 1 » ne dit rien à qui ne connaît pas la convention.
+        texte = qtui.extra_pane(self.ligne(1))
+        self.assertIn(qtui.t("findings"), texte)
+
+    def test_the_meaning_covers_the_whole_convention(self):
+        self.assertEqual({0, 1, 2}, set(qtui.SENS_DU_CODE))
 
 
 class TestTheStepLogInThePanel(Base):

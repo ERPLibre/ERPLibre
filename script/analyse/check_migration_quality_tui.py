@@ -160,7 +160,7 @@ def extra_rows(presents, dct=None):
         # dans son nom — « test_neutralize » ne dit pas 12.0.
         version = quality.version_of(base, dct)
         palier = str(version) if version else quality.event_step(event, base)
-        icone = "❌" if event["status"] else "✅"
+        icone, _teinte = status.verdict_mark(event["status"])
         lst.append(
             {
                 "kind": "verdict",
@@ -349,6 +349,17 @@ def extra_pane(row, colour=False):
     return ""
 
 
+# Ce que le chiffre veut dire, pour TOUS les outils — la convention est
+# écrite dans todo_upgrade.run_tool. Le sens PROPRE à chaque outil, lui,
+# se dit plus bas : « 1 » n'a pas la même gravité pour un test de fumée
+# que pour un nettoyage.
+SENS_DU_CODE = {
+    0: "nothing to report",
+    1: "findings",
+    2: "the tool failed",
+}
+
+
 def log_excerpt_lines(row, colour=False):
     """Le passage du journal d'étape qui entoure ce verdict.
 
@@ -427,12 +438,9 @@ def verdict_pane(row, colour=False):
     """Ce qu'un verdict dit, ce que son code signifie, et ce qu'on en lit."""
     event = row.get("event") or {}
     rate = bool(event.get("status"))
+    icone, teinte = status.verdict_mark(event.get("status"))
     lignes = [
-        status.paint(
-            f"{'❌' if rate else '✅'} {event.get('name')}",
-            "fail" if rate else "ok",
-            colour,
-        ),
+        status.paint(f"{icone} {event.get('name')}", teinte, colour),
         "",
         # Le palier est la version d'ODOO, pas le compteur du pilote :
         # « 4.1.I » désigne la première étape du quatrième bloc, et la
@@ -441,7 +449,8 @@ def verdict_pane(row, colour=False):
         f"   {t('step'):<10} {quality.event_step(event)}"
         f"   ({event.get('step')})",
         f"   {t('when'):<10} {event.get('at')[:19]}",
-        f"   {t('status'):<10} {event.get('status')}",
+        f"   {t('status'):<10} {event.get('status')}"
+        f"   ({t(SENS_DU_CODE.get(event.get('status'), 'the tool failed'))})",
         "",
         f"   {t('what it ran')}",
         f"      {event.get('detail', '')[:150]}",
