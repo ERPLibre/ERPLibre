@@ -28,6 +28,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import todo_prefs
 from script.todo.database_manager import DatabaseManager
+from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
 from script.todo.qemu_deploy import QemuDeployMixin
@@ -96,6 +97,7 @@ class TODO(
     QemuManageMixin,
     QemuAccessMixin,
     ProxmoxMenuMixin,
+    LongTestMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1396,34 +1398,69 @@ class TODO(
 
     @staticmethod
     def _ssh_config_drop_hosts(content, names):
-        """Retire les blocs « Host … » qui déclarent l'un de `names`.
+        """Retire de ~/.ssh/config ce qui déclare l'un de `names`.
 
         On découpe en blocs plutôt que de substituer par expression
-        régulière : une ligne Host peut porter PLUSIEURS noms, et il faut
-        alors retirer le bloc entier dès qu'un seul de ses noms est repris —
-        sinon le même nom se retrouverait défini deux fois, et ssh
-        appliquerait la première définition rencontrée."""
+        régulière : une ligne Host peut porter PLUSIEURS noms.
+
+        Deux règles, chacune corrigeant une perte de données CONSTATÉE dans
+        le fichier d'un utilisateur.
+
+        1. Seuls « Host » et « Match » clôturent un bloc. La règle d'avant —
+           « une ligne non indentée clôt le bloc » — prenait l'indentation
+           pour de la syntaxe, alors qu'elle est cosmétique dans ce format et
+           qu'un fichier écrit à la main s'en passe souvent. Sur un bloc au
+           corps non indenté, seule la ligne « Host » partait : HostName,
+           User, IdentityFile et « StrictHostKeyChecking no » restaient, sans
+           Host au-dessus, et ssh les rattachait au bloc PRÉCÉDENT. La
+           vérification de clé d'hôte se retrouvait désactivée sur un serveur
+           de production.
+
+        2. Un bloc qui déclare AUSSI des noms qu'on ne retire pas survit,
+           amputé de ceux-là seulement. Il partait en entier : « Host prod-db
+           vm-a » perdait le prod-db de l'utilisateur, et le surnom qu'on
+           ajoute à un bloc généré disparaissait au déploiement suivant.
+
+        La queue du bloc — lignes vides et commentaires — n'est pas emportée :
+        elle précède le plus souvent le bloc SUIVANT, et l'utilisateur y met
+        ses propres notes.
+        """
         drop = set(names)
-        out, block, block_names = [], [], set()
+        out, block, block_names = [], [], []
 
         def flush():
-            if block and not (block_names & drop):
+            if not block:
+                return
+            restants = [n for n in block_names if n not in drop]
+            if restants == block_names:
                 out.extend(block)
+                return
+            fin = len(block)
+            while fin > 1 and (
+                not block[fin - 1].strip()
+                or block[fin - 1].lstrip().startswith("#")
+            ):
+                fin -= 1
+            if restants:
+                tete = block[0]
+                marge = tete[: len(tete) - len(tete.lstrip())]
+                out.append(f"{marge}Host {' '.join(restants)}\n")
+                out.extend(block[1:fin])
+            out.extend(block[fin:])
 
         for line in content.splitlines(keepends=True):
-            if re.match(r"^[ \t]*Host[ \t]+", line):
+            if re.match(r"^[ \t]*Host[ \t]+", line, re.I):
                 flush()
                 block = [line]
-                block_names = set(line.split()[1:])
+                block_names = line.split()[1:]
+            elif re.match(r"^[ \t]*Match[ \t]+", line, re.I):
+                # Match ouvre une section qui n'appartient à aucun Host : la
+                # garder telle quelle, quel que soit le sort du bloc d'avant.
+                flush()
+                block, block_names = [], []
+                out.append(line)
             elif block:
-                # Une ligne non indentée et non vide clôt le bloc (Match,
-                # directive globale…) : elle n'appartient à personne.
-                if line.strip() and not line[:1].isspace():
-                    flush()
-                    block, block_names = [], set()
-                    out.append(line)
-                else:
-                    block.append(line)
+                block.append(line)
             else:
                 out.append(line)
         flush()
@@ -1466,6 +1503,18 @@ class TODO(
         existing = self._ssh_config_drop_hosts(
             existing, names + [n for n in also_drop if n not in names]
         ).rstrip("\n")
+        if not names:
+            # Retirer sans réécrire est un appel légitime : les machines
+            # n'existent plus. Sans ce retour, un « Host » NU était écrit dans
+            # le ~/.ssh/config de l'utilisateur — un bloc sans nom, suivi d'un
+            # « HostName » vide, qui s'applique alors à rien et brouille la
+            # lecture du fichier.
+            with open(cfg, "w", encoding="utf-8") as fh:
+                fh.write(existing + "\n" if existing else "")
+            os.chmod(cfg, 0o600)
+            retires = ", ".join(also_drop)
+            print(f"🗑  {t('Removed from ~/.ssh/config:')} {retires}")
+            return
         block = (
             f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"
@@ -1751,6 +1800,30 @@ class TODO(
             if len(mots) >= 2 and mots[0].lower() in ("proxyjump", "hostname"):
                 bloc[mots[0].lower()] = mots[1]
         return bloc or {}
+
+    @classmethod
+    def _ssh_jump_depth(cls, cible, maxi=12):
+        """Nombre de rebonds pour joindre `cible`, en suivant la chaîne.
+
+        C'est la mesure de PROFONDEUR d'un hôte imbriqué, et la seule dont on
+        dispose de l'extérieur. Elle est exacte pour les hôtes que nous avons
+        déployés : c'est nous qui écrivons ces entrées, un ProxyJump par
+        étage.
+
+        `maxi` borne le parcours : une boucle dans ~/.ssh/config — A qui
+        rebondit par B qui rebondit par A — tournerait sinon sans fin.
+        """
+        vus, sauts = set(), 0
+        courant = cible
+        while sauts < maxi:
+            bloc = cls._ssh_config_block(courant)
+            saut = (bloc or {}).get("proxyjump")
+            if not saut or saut in vus:
+                break
+            vus.add(saut)
+            courant = saut
+            sauts += 1
+        return sauts
 
     @staticmethod
     def _ssh_config_user(host):
@@ -4134,6 +4207,9 @@ class TODO(
             {"prompt_description": t("ERPLibre unit tests")},
             {"prompt_description": t("Mail unit tests")},
             {"prompt_description": t("Analyse unit tests")},
+            # Hors de la suite unitaire, et le libellé le dit : ceux-là créent
+            # de vraies machines et durent des heures.
+            {"prompt_description": t("Long tests - real VMs, hours")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -4152,6 +4228,8 @@ class TODO(
                 self.execute_unit_tests("test_mail*.py")
             elif status == "5":
                 self.execute_unit_tests("test_analyse*.py")
+            elif status == "6":
+                self.prompt_execute_longtest()
             else:
                 print(t("Command not found !"))
 

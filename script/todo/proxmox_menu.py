@@ -343,10 +343,17 @@ class ProxmoxMenuMixin:
         if not host:
             return 255, ""
         if not quiet:
-            # La forme RÉELLEMENT envoyée, enrobage sudo compris : une
-            # commande affichée doit pouvoir être recopiée telle quelle.
-            reel = pve.wrap_privilege(remote, host.get("sudo") or "")
-            print(f"\n{t('Will execute:')} ssh {host['target']} {reel}")
+            # La forme RÉELLEMENT envoyée : enrobage sudo, rebond et port
+            # compris. Sans « -J », la ligne copiée rendait « no route to
+            # host » — et c'est justement quand une étape échoue au milieu
+            # d'une réparation qu'on a besoin de la rejouer à la main.
+            argv = pve.ssh_argv(
+                host, pve.wrap_privilege(remote, host.get("sudo") or "")
+            )
+            print(
+                f"\n{t('Will execute:')} "
+                + " ".join(shlex.quote(a) for a in argv)
+            )
         code, out = pve.run(host, remote, timeout)
         if out.strip() and not quiet:
             print(out.rstrip())
@@ -648,6 +655,248 @@ class ProxmoxMenuMixin:
         parts = (sortie or "").split()
         return parts[parts.index("dev") + 1] if "dev" in parts else ""
 
+    def _pve_cluster_state(self, host):
+        """L'état du cluster, LU UNE FOIS, plus ce qu'on peut en faire.
+
+        Rend (etat, quoi) où `quoi` vaut "" (rien à proposer), "hosts" (le
+        résolveur est en cause, une réécriture est justifiée) ou "unites" (le
+        nom résout déjà, seules les unités sont à terre).
+
+        Séparer les deux décisions, et non les fondre dans une garde unique :
+        interrompue après la réécriture de /etc/hosts, la réparation laissait
+        un hôte à un « systemctl start » de fonctionner — et la garde d'avant,
+        qui sortait dès que « routables » était non vide, refusait alors de le
+        finir. L'outil savait exactement quoi faire et s'y refusait
+        définitivement.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(host, pve.CLUSTER_CHECK_CMD, 40)
+        etat = pve.parse_cluster_check(out)
+        if not etat["lu"] or etat["monte"]:
+            return etat, ""
+        return etat, ("unites" if etat["routables"] else "hosts")
+
+    def _pve_cluster_reason(self, host, etat=None, quoi=None):
+        """Pourquoi il n'y a AUCUN stockage. Liste vide si tout va bien.
+
+        « Il manque le stockage » est un symptôme, pas une cause : « pvesm »
+        ne parle qu'à travers /etc/pve, monté par pmxcfs. pmxcfs à terre, la
+        liste est vide et l'écran s'arrête sur le symptôme — le défaut est
+        trois étages plus bas, et il a fallu lire un journal pour le trouver.
+
+        `etat`/`quoi` viennent de `_pve_cluster_state` quand l'appelant l'a
+        déjà interrogé : une seule sonde, et surtout un seul verdict. Sondé
+        deux fois, on annonçait une réparation que la seconde lecture
+        refusait ensuite d'offrir — une promesse suivie de rien.
+        """
+        if etat is None:
+            etat, quoi = self._pve_cluster_state(host)
+        if not etat["lu"]:
+            return [
+                f"⚠ {t('The cluster probe did not answer: cause unknown.')}"
+            ]
+        if etat["monte"]:
+            return []
+        lignes = [
+            f"✗ {t('pve-cluster is down: /etc/pve is not mounted.')}",
+            f"  {t('Without it pvesm answers nothing, hence no storage.')}",
+        ]
+        if quoi == "hosts":
+            lignes += [
+                f"  {t('The hostname only resolves to')}"
+                f" {' '.join(etat['adresses']) or '?'}"
+                f" — {t('pmxcfs needs a routable address.')}",
+                f"  {t('cloud-init rewrites /etc/hosts at every boot.')}",
+            ]
+        else:
+            # Le nom résout déjà : le résolveur n'est PAS en cause, et le dire
+            # évite d'envoyer réécrire un fichier système pour rien.
+            lignes.append(
+                f"  {t('The hostname resolves fine: only the units are down.')}"
+            )
+        # La promesse UNIQUEMENT si l'offre suivra. Sinon on disait « cet écran
+        # peut le réparer » puis plus rien du tout.
+        lignes.append(f"→ {t('This screen can repair it (see below).')}")
+        return lignes
+
+    def _pve_depth(self, host):
+        """À quel étage d'imbrication se trouve cet hôte. 1 = machine réelle.
+
+        Comptée sur la chaîne de ProxyJump : un rebond par étage. C'est nous
+        qui écrivons ces entrées, donc la mesure est exacte pour notre parc.
+        """
+        from script.proxmox import nesting
+
+        return nesting.depth_from_jumps(
+            self._ssh_jump_depth(host.get("target") or "")
+        )
+
+    def _pve_depth_note(self, host, cpu):
+        """(cpu borné, lignes à dire). Ce que la profondeur impose.
+
+        L'écran lisait la capacité de l'HÔTE et l'offrait en entier. Sur un
+        troisième étage à 14 cœurs, il a proposé 12 vCPU — et la VM n'a jamais
+        démarré : même RIP à trois relevés deux minutes d'écart, pas un octet
+        lu de plus. Le nombre n'était pas absurde pour la machine ; il l'était
+        pour sa profondeur.
+
+        Un seul levier, le vCPU : la même VM gelait au MÊME octet avec 9 Go et
+        avec 2 Go, donc rogner la mémoire ne gagnerait rien et priverait
+        l'étage suivant.
+        """
+        from script.proxmox import nesting
+
+        profondeur = self._pve_depth(host)
+        borne, _ram, raison = nesting.capped_for_depth(profondeur, cpu, 0)
+        if profondeur <= nesting.PROFONDEUR_SURE:
+            return cpu, []
+        lignes = [
+            f"⚠ {t('Nesting level')} {profondeur} —"
+            f" {t('vendors document two, not more.')}",
+            f"  {t('Measured at level 4: 36x slower, then a frozen kernel.')}",
+        ]
+        if raison:
+            lignes.append(f"  {t('vCPU capped to')} {borne}")
+        return borne, lignes
+
+    def _pve_ssh_ip(self, host):
+        """Adresse par laquelle NOTRE ssh atteint l'hôte, ou "".
+
+        Lue SANS privilège, exprès : « sudo » remet l'environnement à zéro et
+        efface $SSH_CONNECTION. Cette lecture n'a besoin d'aucun droit.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(
+            dict(host, sudo=""), 'printf %s "$SSH_CONNECTION"', 20
+        )
+        return pve.ssh_server_ip(out)
+
+    def _pve_restart_units(self, remonte):
+        """Relance les unités et rend (pivot_ok, lignes_de_cause).
+
+        `remonte` : /etc/pve était absent, donc les dépendants qui SEMBLENT
+        actifs parlaient à un pmxcfs mort. Leur état actif ne prouve rien sur
+        leur lien à pmxcfs — le même raisonnement qui impose un « restart » à
+        pve-cluster vaut pour eux, et sans cela la GUI répondait
+        « communication failure » après un ✓.
+
+        La sortie de chaque unité est LUE. pve-cluster est le pivot : les
+        trois suivantes le requièrent, donc s'il échoue, poursuivre ne produit
+        que soixante lignes de journal après la vraie cause.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        for unite in pve.PVE_UNITS:
+            _c, out = self._pve_show(
+                pve.pve_unit_cmd(unite, remonte=remonte), timeout=200
+            )
+            texte = pve.strip_ssh_noise(out)
+            if f"KO {unite}" in texte or f"SKIP {unite}" in texte:
+                if unite == "pve-cluster":
+                    lignes = [
+                        ligne
+                        for ligne in texte.strip().splitlines()
+                        if ligne.strip()
+                    ]
+                    return False, lignes[-8:]
+        return True, []
+
+    def _pve_offer_cluster_fix(self, host, etat=None, quoi=None):
+        """Propose de remettre pmxcfs debout, et le fait. Rend True si /etc/pve
+        est monté à la sortie.
+
+        Le pendant de `_pve_offer_bridge`, et pour la même raison : le terminal
+        est encore à nous, donc c'est ICI qu'on peut poser la question et
+        montrer ce qu'on exécute.
+
+        Pourquoi le faire au lieu de conseiller : le conseil était « rejouer
+        install_proxmox.sh sur l'hôte », et il ne pouvait PAS marcher. La VM
+        clone le dépôt distant, donc sa copie du script est celle du distant —
+        c'est-à-dire, tant que le correctif n'est pas poussé, celle qui ne
+        corrige rien. Trois hôtes de suite sont tombés dessus.
+        """
+        from script.proxmox import proxmox_deploy as pve
+
+        if etat is None:
+            etat, quoi = self._pve_cluster_state(host)
+        if not quoi:
+            return bool(etat["monte"])
+        print(f"\n  {t('Repair it from here?')}")
+        if quoi == "hosts":
+            print(
+                f"  [1] {t('freeze cloud-init, fix /etc/hosts, restart pmxcfs')}"
+            )
+        else:
+            print(f"  [1] {t('restart pmxcfs only (the address is fine)')}")
+        print(f"  [0] {t('leave it alone')}")
+        if input(t("Choice: ")).strip() != "1":
+            return False
+        if quoi == "hosts":
+            ip = self._pve_ssh_ip(host)
+            if not ip:
+                print(
+                    f"  ✗ {t('Cannot tell which address reaches this host.')}"
+                )
+                return False
+            print(f"  {t('address the node will answer for')} : {ip}")
+            # Le gel d'abord : sans lui la correction ne survit pas au
+            # prochain démarrage, et on aurait réparé pour une seule session.
+            for cmd in (
+                pve.cloud_hosts_freeze_cmd(),
+                pve.hosts_repair_cmd(ip),
+            ):
+                code, sortie = self._pve_show(cmd, timeout=60)
+                if code or "-KO" in pve.strip_ssh_noise(sortie):
+                    print(f"  ✗ {t('Step failed, stopping here.')}")
+                    return False
+        pivot, cause = self._pve_restart_units(remonte=True)
+        if not pivot:
+            print(f"  ✗ pve-cluster {t('would not start:')}")
+            for ligne in cause:
+                print(f"      {ligne}")
+            return False
+        _c, out = self._pve_show(pve.mount_wait_cmd(), timeout=120)
+        vu = pve.parse_mount_wait(out)
+        if vu["verdict"] == "MONTE":
+            print(f"  ✓ /etc/pve {t('mounted')}")
+            return True
+        if vu["verdict"] == "INCONNU":
+            # Un silence du lien n'est PAS une absence de montage : conclure
+            # l'inverse envoie chercher dans journalctl une panne qui n'existe
+            # pas.
+            print(f"  ⚠ {t('Cannot tell whether it mounted (link lost).')}")
+            return False
+        if vu["verdict"] == "BATTEMENT":
+            # Monté puis reperdu : le dire, parce qu'un ✓ suivi d'un « pvesm ne
+            # répond plus » dix secondes après est le pire des deux.
+            print(f"  ⚠ /etc/pve {t('mounted then lost again')}")
+        else:
+            print(f"  ✗ /etc/pve {t('still absent')}")
+        # L'adresse n'est mise en cause que quand pve-cluster a DÉMARRÉ et que
+        # le montage manque quand même : c'est le seul cas où le résolveur
+        # peut l'expliquer.
+        if quoi == "hosts":
+            print(
+                f"  {t('The address written may not be the one pmxcfs needs.')}"
+            )
+        return False
+
+    def _pve_internal_cidr(self, host):
+        """Réseau du futur pont interne, CHOISI d'après l'hôte.
+
+        Pas une constante : un Proxmox dans un Proxmox hérite du réseau
+        interne de son parent, et 10.10.10.1 y est l'adresse de sa propre
+        PASSERELLE. La poser sur son pont rend tout le /24 local, la
+        passerelle devient injoignable, et la machine s'isole au milieu de la
+        commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
+        la VM ne répondait plus, ni en ssh ni en ping."""
+        from script.proxmox import proxmox_deploy as pve
+
+        _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
+        return pve.pick_internal_cidr(out)
+
     def _pve_nat_ready(self, host):
         """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
 
@@ -717,8 +966,11 @@ class ProxmoxMenuMixin:
         raison = self._pve_nat_reason(host)
         if raison:
             return "", raison
+        cidr = self._pve_internal_cidr(host)
+        if not cidr:
+            return "", t("No free subnet left for an internal bridge.")
         uplink = self._pve_uplink()
-        for cmd in pve.bridge_setup_cmds(uplink=uplink):
+        for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
             if code:
                 lignes = pve.strip_ssh_noise(sortie).strip().splitlines()
@@ -741,11 +993,20 @@ class ProxmoxMenuMixin:
         """
         from script.proxmox import proxmox_deploy as pve
 
+        host = self._pve_host(ask=False)
+        # Le réseau est LU sur l'hôte avant d'être proposé : l'annoncer
+        # 10.10.10.1/24 pour en poser un autre serait mentir sur l'écran même
+        # où l'on demande l'accord.
+        cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
+        if not cidr:
+            print(f"  ✗ {t('No free subnet left for an internal bridge.')}")
+            print(f"  {t('do it myself (bridge-ports <nic>, needs console)')}")
+            return ""
         print(
             f"  [1] {t('create an internal')} {pve.INTERNAL_BRIDGE}"
-            f" ({pve.INTERNAL_CIDR}) + NAT — {t('touches no physical NIC')}"
+            f" ({cidr}) + NAT — {t('touches no physical NIC')}"
         )
         print(f"  [2] {t('do it myself (bridge-ports <nic>, needs console)')}")
         if input(t("Choice: ")).strip() != "1":
@@ -759,7 +1020,6 @@ class ProxmoxMenuMixin:
                 f"  ⚠ {t('This moves the host address: do it from a console.')}"
             )
             return ""
-        host = self._pve_host(ask=False)
         ok, lignes = self._pve_nat_ready(host) if host else (True, [])
         if not ok:
             print()
@@ -768,7 +1028,7 @@ class ProxmoxMenuMixin:
             return ""
         uplink = self._pve_uplink()
         print(f"  {t('uplink for NAT')} : {uplink or t('none')}")
-        for cmd in pve.bridge_setup_cmds(uplink=uplink):
+        for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, _o = self._pve_show(cmd, timeout=120)
             if code:
                 print(f"  ✗ {t('Step failed, stopping here.')}")
@@ -838,6 +1098,22 @@ class ProxmoxMenuMixin:
         vms = self._pve_vms()
         _c, out = self._pve_show("pvesm status --content images", quiet=True)
         stockages = pve.parse_storages(out)
+        if not stockages:
+            # AVANT d'ouvrir l'écran : une fois Textual à l'affiche, ces
+            # lignes n'ont plus d'endroit où aller, l'écran ne dirait que
+            # « aucun stockage », et surtout il ne pourrait pas POSER la
+            # question — le terminal est encore à nous ici.
+            #
+            # UNE sonde, passée aux deux : sondé deux fois, on annonçait une
+            # réparation que la seconde lecture refusait ensuite d'offrir.
+            etat_pve, quoi_pve = self._pve_cluster_state(host)
+            for ligne in self._pve_cluster_reason(host, etat_pve, quoi_pve):
+                print(f"  {ligne}")
+            if self._pve_offer_cluster_fix(host, etat_pve, quoi_pve):
+                _c, out = self._pve_show(
+                    "pvesm status --content images", quiet=True
+                )
+                stockages = pve.parse_storages(out)
         _c, out = self._pve_show("ip -o link show type bridge", quiet=True)
         ponts = pve.parse_bridges(out)
         if not ponts:
@@ -852,6 +1128,12 @@ class ProxmoxMenuMixin:
         _c, cfg = self._pve_show("cat /etc/network/interfaces", quiet=True)
         infos = pve.parse_bridge_config(cfg)
         cpu, ram_libre = self._pve_capacity()
+        # La profondeur borne ce que l'écran offre. Ici, terminal encore à
+        # nous : une fois Textual à l'affiche, ces lignes n'auraient nulle
+        # part où aller.
+        cpu, notes_profondeur = self._pve_depth_note(host, cpu)
+        for ligne in notes_profondeur:
+            print(f"  {ligne}")
         # Le DNS de l'hôte, pour les VM en adresse fixe : sans lui elles
         # routent mais ne résolvent rien, et « apt update » échoue sans que
         # rien ne l'explique. Mesuré sur la VM d'essai.
@@ -889,7 +1171,13 @@ class ProxmoxMenuMixin:
             # De quoi créer le pont DEPUIS l'écran, sans invite : le pont
             # interne ne touche à aucune interface physique.
             "make_bridge": self._pve_make_internal_bridge,
-            "internal_bridge": (pve.INTERNAL_BRIDGE, pve.INTERNAL_CIDR),
+            # Le libellé « ➕ créer un interne vmbr0 (…) » doit annoncer le
+            # réseau qui sera RÉELLEMENT posé — il dépend de l'hôte.
+            "internal_bridge": (
+                pve.INTERNAL_BRIDGE,
+                (self._pve_internal_cidr(host) if not ponts else "")
+                or pve.INTERNAL_CIDR,
+            ),
             "build_command": build_command,
             "branches": self._qemu_branch_list() or ["master"],
             # La branche du dépôt : c'est elle qu'on déploie le plus souvent.
@@ -1409,6 +1697,13 @@ class ProxmoxMenuMixin:
                 f"  ERPLibre : {spec['install'].get('label') or ''}"
                 f"  ({spec['install'].get('branch')})"
             )
+            # La VM CLONE la branche depuis le dépôt distant : tout ce qui
+            # tourne dedans — install_proxmox.sh compris — vient de là, pas
+            # d'ici. Un correctif non poussé est invisible pour elle.
+            for ligne in self._qemu_branch_gap_lines(
+                spec["install"].get("branch") or ""
+            ):
+                print(f"  {ligne}")
         return self._is_yes_default_yes(
             input(f"\n{t('Deploy this VM now? (Y/n): ')}")
         )
@@ -1654,7 +1949,20 @@ class ProxmoxMenuMixin:
         pont = pve.pick_bridge(ponts)
         if not stockage:
             print(f"\n  ✗ {t('No storage able to hold a VM disk.')}")
-            return
+            # Le symptôme ne suffit pas : dire la CAUSE quand on la connaît,
+            # puis proposer d'y remédier. Une seule sonde pour les deux.
+            etat_pve, quoi_pve = self._pve_cluster_state(host)
+            for ligne in self._pve_cluster_reason(host, etat_pve, quoi_pve):
+                print(f"  {ligne}")
+            if not self._pve_offer_cluster_fix(host, etat_pve, quoi_pve):
+                return
+            _c, out = self._pve_show(
+                "pvesm status --content images", quiet=True
+            )
+            stockage = pve.pick_storage(pve.parse_storages(out))
+            if not stockage:
+                print(f"  ✗ {t('No storage able to hold a VM disk.')}")
+                return
         if not pont and not dry_run:
             pont = self._pve_offer_bridge()
             if not pont:

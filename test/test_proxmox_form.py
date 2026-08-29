@@ -686,6 +686,82 @@ class TestUnParcMixte(unittest.TestCase):
         self.assertEqual(vu["kw"]["desktop"], "")
 
 
+class TestLaVmCloneLeDepotDistant(unittest.TestCase):
+    """« Le problème est revenu » — alors qu'il était corrigé.
+
+    La VM ne reçoit pas le checkout d'ici : elle CLONE la branche depuis le
+    dépôt DISTANT. Tout ce qui tourne dedans — install_proxmox.sh, les
+    scripts d'installation, le Makefile — vient donc de là. Un correctif
+    commité ici et non poussé lui est invisible.
+
+    Vécu deux fois de suite : la correction de /etc/hosts était dans le
+    checkout depuis la veille, absente du distant, et chaque VM déployée
+    ensuite recevait l'ancien script. Il a fallu comparer les deux versions à
+    la main pour le voir. Rien ne le disait."""
+
+    def _todo(self, sortie, code=0):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        faux = mock.Mock(returncode=code, stdout=sortie)
+        return todo, faux
+
+    def test_the_gap_is_counted_and_named(self):
+        todo, faux = self._todo(
+            "abc1234 [FIX] un correctif\ndef5678 [ADD] autre chose\n"
+        )
+        with mock.patch("subprocess.run", return_value=faux):
+            nombre, sujets = todo._qemu_branch_gap("develop")
+        self.assertEqual(nombre, 2)
+        self.assertIn("[FIX] un correctif", sujets[0])
+
+    def test_nothing_to_say_when_the_remote_is_up_to_date(self):
+        todo, faux = self._todo("")
+        with mock.patch("subprocess.run", return_value=faux):
+            self.assertEqual(todo._qemu_branch_gap("develop"), (0, []))
+            self.assertEqual(todo._qemu_branch_gap_lines("develop"), [])
+
+    def test_an_unknown_remote_branch_is_not_a_gap(self):
+        # « origin/xyz » inconnu fait échouer git : ce n'est pas un écart à
+        # signaler, c'est une question qui ne se pose pas. Le dire quand même
+        # serait un avertissement à chaque déploiement d'une branche neuve.
+        todo, faux = self._todo("", code=128)
+        with mock.patch("subprocess.run", return_value=faux):
+            self.assertEqual(todo._qemu_branch_gap("nouvelle"), (0, []))
+
+    def test_no_branch_asks_nothing(self):
+        todo, _faux = self._todo("")
+        self.assertEqual(todo._qemu_branch_gap(""), (0, []))
+
+    def test_the_long_list_is_trimmed_but_counted(self):
+        todo, faux = self._todo(
+            "\n".join(f"c{i} sujet {i}" for i in range(10))
+        )
+        with mock.patch("subprocess.run", return_value=faux):
+            lignes = todo._qemu_branch_gap_lines("develop", limite=2)
+        texte = " ".join(lignes)
+        self.assertIn("10", texte, "le nombre TOTAL doit rester lisible")
+        self.assertIn("8", texte, "et ce qui n'est pas montré, dit")
+        self.assertIn("git push", texte)
+
+    def test_both_screens_say_it_before_deploying(self):
+        # L'avertissement ne vaut que là où on peut encore renoncer.
+        import inspect
+
+        from script.todo.proxmox_menu import ProxmoxMenuMixin
+        from script.todo.qemu_deploy import QemuDeployMixin
+
+        for fn in (
+            ProxmoxMenuMixin._pve_confirm_spec,
+            QemuDeployMixin._qemu_print_recap,
+        ):
+            with self.subTest(fonction=fn.__name__):
+                self.assertIn("_qemu_branch_gap_lines", inspect.getsource(fn))
+
+
 class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
     """Le pont NAT était écrit AVANT qu'on sache si le NAT existe.
 
@@ -943,6 +1019,124 @@ class TestUnSeulNomDansSshConfig(unittest.TestCase):
         )
 
 
+class TestNeRienPerdreDansSshConfig(unittest.TestCase):
+    """~/.ssh/config contient les entrées PERSONNELLES de l'utilisateur.
+
+    Ce fichier est réécrit en entier à chaque déploiement de VM. Deux pertes
+    de données y ont été constatées, l'une capable de désactiver la
+    vérification de clé d'hôte sur un serveur de production."""
+
+    def setUp(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        self.retirer = TODO._ssh_config_drop_hosts
+
+    def test_a_block_with_an_unindented_body_goes_entirely(self):
+        """L'indentation est COSMÉTIQUE dans ce format, et un fichier écrit à
+        la main s'en passe souvent. La règle d'avant la prenait pour de la
+        syntaxe : seule la ligne « Host » partait."""
+        avant = (
+            "Host prod\n"
+            "    HostName prod.example.com\n"
+            "    User root\n"
+            "\n"
+            "Host deep-1\n"
+            "HostName 10.0.0.1\n"
+            "User erplibre\n"
+            "StrictHostKeyChecking no\n"
+            "UserKnownHostsFile /dev/null\n"
+            "IdentityFile ~/.ssh/id_deep\n"
+        )
+        apres = self.retirer(avant, ["deep-1"])
+        # Rien du bloc retiré ne subsiste : sans Host au-dessus, ssh
+        # rattacherait ces lignes à « prod » et la production perdrait sa
+        # vérification de clé d'hôte.
+        for orphelin in (
+            "10.0.0.1",
+            "StrictHostKeyChecking",
+            "UserKnownHostsFile",
+            "id_deep",
+        ):
+            self.assertNotIn(orphelin, apres, orphelin)
+        # Et le bloc de l'utilisateur est intact.
+        self.assertIn("HostName prod.example.com", apres)
+        self.assertIn("User root", apres)
+
+    def test_a_shared_host_line_keeps_the_names_not_dropped(self):
+        """« Host prod-db vm-a » perdait le prod-db de l'utilisateur : le bloc
+        partait en entier dès qu'UN de ses noms était repris."""
+        avant = (
+            "Host prod-db vm-a\n"
+            "    HostName db.interne\n"
+            "    ProxyJump pve9\n"
+        )
+        apres = self.retirer(avant, ["vm-a"])
+        self.assertIn("Host prod-db\n", apres)
+        self.assertNotIn("vm-a", apres)
+        # Le corps suit le nom qui reste : sinon prod-db perd son rebond.
+        self.assertIn("HostName db.interne", apres)
+        self.assertIn("ProxyJump pve9", apres)
+
+    def test_a_nickname_added_by_hand_survives_a_redeploy(self):
+        avant = "Host pve9+vm-a webtest\n    HostName 10.10.10.5\n"
+        apres = self.retirer(avant, ["pve9+vm-a"])
+        self.assertIn("Host webtest\n", apres)
+        self.assertIn("HostName 10.10.10.5", apres)
+
+    def test_all_names_dropped_removes_the_block(self):
+        avant = "Host a b\n    HostName 1.2.3.4\n\nHost garde\n    User x\n"
+        apres = self.retirer(avant, ["a", "b"])
+        self.assertNotIn("1.2.3.4", apres)
+        self.assertIn("Host garde", apres)
+
+    def test_a_match_section_is_never_swallowed(self):
+        avant = (
+            "Host part\n"
+            "    HostName 10.0.0.9\n"
+            "\n"
+            "Match host *.interne\n"
+            "    User admin\n"
+        )
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("Match host *.interne", apres)
+        self.assertIn("User admin", apres)
+        self.assertNotIn("10.0.0.9", apres)
+
+    def test_comments_before_the_next_block_are_not_swallowed(self):
+        avant = (
+            "Host part\n"
+            "    HostName 10.0.0.9\n"
+            "\n"
+            "# la machine du client, ne pas toucher\n"
+            "Host client\n"
+            "    HostName 10.0.0.10\n"
+        )
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("# la machine du client, ne pas toucher", apres)
+        self.assertIn("Host client", apres)
+
+    def test_global_directives_above_the_first_host_stay(self):
+        avant = "ServerAliveInterval 60\n\nHost part\n    HostName 10.0.0.9\n"
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("ServerAliveInterval 60", apres)
+        self.assertNotIn("10.0.0.9", apres)
+
+    def test_the_keyword_is_read_case_insensitively(self):
+        # ssh lit ses mots-clés sans égard à la casse ; nous aussi, sinon un
+        # « host » minuscule échappe au retrait et le nom vit deux fois.
+        avant = "host part\n    HostName 10.0.0.9\n"
+        self.assertNotIn("10.0.0.9", self.retirer(avant, ["part"]))
+
+    def test_hostname_is_not_mistaken_for_a_host_line(self):
+        avant = "Host garde\n    HostName part\n"
+        apres = self.retirer(avant, ["part"])
+        self.assertIn("Host garde", apres)
+        self.assertIn("HostName part", apres)
+
+
 class TestLAncienNomSEnVa(unittest.TestCase):
     """La convention a changé : les entrées écrites AVANT portent le nom
     court, et rien ne les retirerait — elles ne portent pas le nom qu'on
@@ -980,6 +1174,48 @@ class TestLAncienNomSEnVa(unittest.TestCase):
             return [
                 ligne.rstrip() for ligne in fh if ligne.startswith("Host ")
             ]
+
+    def test_dropping_the_last_entry_writes_no_nameless_block(self):
+        """Retirer sans réécrire est un appel légitime : les machines
+        n'existent plus.
+
+        Constaté dans le vrai ~/.ssh/config de l'utilisateur : l'appel écrivait
+        « Host » NU, suivi d'un « HostName » vide, puis mourait sur un
+        IndexError en annonçant l'ajout. Le bloc sans nom s'applique à rien et
+        brouille la lecture du fichier."""
+        import os
+
+        self.todo._write_ssh_config_entry(
+            ["deep-1"], "erplibre", "10.10.10.150"
+        )
+        self.todo._write_ssh_config_entry(
+            ["deep-2"], "erplibre", "10.10.10.151", proxy_jump="deep-1"
+        )
+        self.todo._write_ssh_config_entry(
+            [], "erplibre", "", also_drop=("deep-1", "deep-2")
+        )
+        self.assertEqual(self._hosts(), [])
+        with open(
+            os.path.join(self.maison, ".ssh/config"), encoding="utf-8"
+        ) as fh:
+            reste = fh.read()
+        self.assertNotIn("Host", reste)
+        self.assertNotIn("HostName", reste)
+        # Et le fichier garde ses droits : ssh refuse un config trop ouvert.
+        self.assertEqual(
+            oct(os.stat(os.path.join(self.maison, ".ssh/config")).st_mode)[
+                -3:
+            ],
+            "600",
+        )
+
+    def test_dropping_one_entry_leaves_the_others_untouched(self):
+        for nom, ip in (("garde-a", "10.0.0.1"), ("part", "10.0.0.2")):
+            self.todo._write_ssh_config_entry([nom], "erplibre", ip)
+        self.todo._write_ssh_config_entry(
+            [], "erplibre", "", also_drop=("part",)
+        )
+        self.assertEqual(self._hosts(), ["Host garde-a"])
 
     def test_the_old_short_entry_is_retired(self):
         # L'état d'avant : une entrée écrite sous l'ancienne convention.

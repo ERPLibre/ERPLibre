@@ -41,6 +41,9 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 ## Ajouté
 <!-- [en] -->
 
+- `long_test/` — tests that create real machines and take hours, kept out of `test/` so the unit runner stays runnable in seconds. `deep_proxmox.py` stacks Proxmox in Proxmox, `deep_qemu.py` stacks QEMU in QEMU, and they share one engine. Measured on 28 cores: three levels cost 34 minutes, the fourth 4 h 20 of boot plus 7 h 18 of install — everything there is 15 to 30 times slower, and that is where the vendors stop documenting nesting. The depth is a parameter and defaults to three, because three works
+- deep_qemu proves KVM at every level instead of assuming it: `deploy_qemu.py` never passes `--cpu host-passthrough` and, when /dev/kvm is missing, it does not fail — it sets `--virt-type qemu` and creates a fully EMULATED VM, seven and a half minutes to boot, with no exit code to say so. Unguarded, the descent would measure stacked TCG while believing it measured nesting. Each level must show `/dev/kvm`, `nested=Y` and a child domain in `type='kvm'`; what was not read counts as NO
+- Both long tests take `--hote` to start from a machine you already own, rather than creating a head VM to host a hypervisor you have on hand — that costs five minutes AND one level of nesting. The plan is then sized on the ROOT, read over ssh; the delays count ABSOLUTE depth; and the root is never a level reached, never destroyed, and its ~/.ssh/config entry is never removed
 - Support Odoo migration database and module with TODO
 - Support multi version odoo switch on same workspace
 - Script for hardening the installation
@@ -122,6 +125,9 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 
 <!-- [fr] -->
 
+- `long_test/` — des tests qui créent de vraies machines et durent des heures, tenus hors de `test/` pour que le lanceur unitaire reste lançable en quelques secondes. `deep_proxmox.py` empile des Proxmox dans des Proxmox, `deep_qemu.py` des QEMU dans des QEMU, et les deux partagent un moteur. Mesuré sur 28 cœurs : trois étages coûtent 34 minutes, le quatrième 4 h 20 d'amorçage plus 7 h 18 d'installation — tout y est 15 à 30 fois plus lent, et c'est là que les fabricants cessent de documenter l'imbrication. La profondeur est un paramètre et vaut trois par défaut, parce que trois marche
+- deep_qemu PROUVE KVM à chaque étage au lieu de le supposer : `deploy_qemu.py` ne passe jamais `--cpu host-passthrough` et, quand /dev/kvm manque, il n'échoue pas — il pose `--virt-type qemu` et crée une VM entièrement ÉMULÉE, sept minutes et demie de démarrage, sans qu'aucun code de retour ne le dise. Sans garde, la descente mesurerait de la TCG empilée en croyant mesurer de l'imbrication. Chaque étage doit montrer `/dev/kvm`, `nested=Y` et un domaine enfant en `type='kvm'` ; ce qui n'a pas été lu vaut NON
+- Les deux tests longs acceptent `--hote` pour partir d'une machine qu'on possède déjà, au lieu de créer une VM de tête pour héberger un hyperviseur qu'on a sous la main — cela coûte cinq minutes ET un étage d'imbrication. Le plan se dimensionne alors sur la RACINE, lue par ssh ; les délais comptent la profondeur ABSOLUE ; et la racine n'est jamais un étage atteint, jamais détruite, et son entrée ~/.ssh/config n'est jamais retirée
 - Support de la migration de base de données et de modules Odoo avec TODO
 - Support du changement multi-version Odoo sur le même espace de travail
 - Script pour le renforcement de la sécurité de l'installation

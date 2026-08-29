@@ -25,6 +25,10 @@ Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.6.0)
 - Pour les commits : suivre le format `[TYPE] description` (ex: `[FIX]`, `[UPD]`, `[ADD]`, `[REM]`)
 - Pour la documentation : modifier les `.base.md`, jamais les `.md` ou `.fr.md` directement
 - Outil mmg disponible via `source .venv.erplibre/bin/activate && mmg`
+- Les tests qui créent de VRAIES machines vivent dans `long_test/` et non dans
+  `test/` : le lanceur unitaire balaie `test/test_*.py` et doit rester lançable
+  en quelques secondes, même sans virtualisation. Ils durent des heures et se
+  défont par `--detruire` — voir `long_test/README.md`
 
 ## Core Principles
 

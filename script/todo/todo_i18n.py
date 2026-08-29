@@ -278,6 +278,10 @@ TRANSLATIONS = {
         "fr": "Ajouté à ~/.ssh/config :",
         "en": "Added to ~/.ssh/config:",
     },
+    "Removed from ~/.ssh/config:": {
+        "fr": "Retiré de ~/.ssh/config :",
+        "en": "Removed from ~/.ssh/config:",
+    },
     "SSH address input method": {
         "fr": "Méthode de saisie de l'adresse SSH",
         "en": "SSH address input method",
@@ -3358,6 +3362,190 @@ TRANSLATIONS = {
         "fr": "Taille (+10G pour ajouter, 40G pour une cible) : ",
         "en": "Size (+10G to add, 40G for a target): ",
     },
+    "The cluster probe did not answer: cause unknown.": {
+        "fr": "La sonde du cluster n'a pas répondu : cause inconnue.",
+        "en": "The cluster probe did not answer: cause unknown.",
+    },
+    "This screen can repair it (see below).": {
+        "fr": "Cet écran peut le réparer (voir ci-dessous).",
+        "en": "This screen can repair it (see below).",
+    },
+    "Repair it from here?": {
+        "fr": "Le réparer d'ici ?",
+        "en": "Repair it from here?",
+    },
+    "freeze cloud-init, fix /etc/hosts, restart pmxcfs": {
+        "fr": "geler cloud-init, corriger /etc/hosts, relancer pmxcfs",
+        "en": "freeze cloud-init, fix /etc/hosts, restart pmxcfs",
+    },
+    "leave it alone": {
+        "fr": "ne rien toucher",
+        "en": "leave it alone",
+    },
+    "Cannot tell which address reaches this host.": {
+        "fr": "Impossible de savoir quelle adresse atteint cet hôte.",
+        "en": "Cannot tell which address reaches this host.",
+    },
+    "address the node will answer for": {
+        "fr": "adresse sous laquelle le nœud répondra",
+        "en": "address the node will answer for",
+    },
+    "mounted then lost again": {
+        "fr": "monté puis reperdu",
+        "en": "mounted then lost again",
+    },
+    "restarts": {
+        "fr": "relances",
+        "en": "restarts",
+    },
+    "mounted": {
+        "fr": "monté",
+        "en": "mounted",
+    },
+    "The hostname resolves fine: only the units are down.": {
+        "fr": "Le nom d'hôte résout bien : seules les unités sont à terre.",
+        "en": "The hostname resolves fine: only the units are down.",
+    },
+    "restart pmxcfs only (the address is fine)": {
+        "fr": "relancer pmxcfs seulement (l'adresse est bonne)",
+        "en": "restart pmxcfs only (the address is fine)",
+    },
+    "would not start:": {
+        "fr": "n'a pas démarré :",
+        "en": "would not start:",
+    },
+    "Cannot tell whether it mounted (link lost).": {
+        "fr": "Impossible de constater le montage (lien perdu).",
+        "en": "Cannot tell whether it mounted (link lost).",
+    },
+    "still absent": {
+        "fr": "toujours absent",
+        "en": "still absent",
+    },
+    "The address written may not be the one pmxcfs needs.": {
+        "fr": "L'adresse écrite n'est peut-être pas celle qu'il faut à pmxcfs.",
+        "en": "The address written may not be the one pmxcfs needs.",
+    },
+    "Destroy all that? (y/N): ": {
+        "fr": "Détruire tout cela ? (o/N) : ",
+        "en": "Destroy all that? (y/N): ",
+    },
+    "Long tests - real VMs, hours": {
+        "fr": "⏳ Tests longs - vraies VM, des heures",
+        "en": "⏳ Long tests - real VMs, hours",
+    },
+    "Long tests: real VMs, hours. Not the unit suite.": {
+        "fr": "Tests longs : de vraies VM, des heures. Pas la suite unitaire.",
+        "en": "Long tests: real VMs, hours. Not the unit suite.",
+    },
+    "Nested Proxmox depth: plan only (dry-run)": {
+        "fr": "Profondeur Proxmox imbriqué : le plan seulement (à blanc)",
+        "en": "Nested Proxmox depth: plan only (dry-run)",
+    },
+    "Nested Proxmox depth: run it": {
+        "fr": "Profondeur Proxmox imbriqué : le lancer",
+        "en": "Nested Proxmox depth: run it",
+    },
+    "Undo what the descent created": {
+        "fr": "Défaire ce que la descente a créé",
+        "en": "Undo what the descent created",
+    },
+    "Script not found:": {
+        "fr": "Script introuvable :",
+        "en": "Script not found:",
+    },
+    "Nested QEMU depth: plan only (dry-run)": {
+        "fr": "Profondeur QEMU imbriqué : le plan seulement (à blanc)",
+        "en": "Nested QEMU depth: plan only (dry-run)",
+    },
+    "Nested QEMU depth: run it": {
+        "fr": "Profondeur QEMU imbriqué : le lancer",
+        "en": "Nested QEMU depth: run it",
+    },
+    "Where does the descent start?": {
+        "fr": "D'où part la descente ?",
+        "en": "Where does the descent start?",
+    },
+    "Create a fresh QEMU VM as level one": {
+        "fr": "Créer une VM QEMU neuve comme premier étage",
+        "en": "Create a fresh QEMU VM as level one",
+    },
+    "Start from:": {
+        "fr": "Partir de :",
+        "en": "Start from:",
+    },
+    "Start from another existing host": {
+        "fr": "Partir d'un autre hôte existant",
+        "en": "Start from another existing host",
+    },
+    "Choice (1-3, default 1): ": {
+        "fr": "Choix (1-3, défaut 1) : ",
+        "en": "Choice (1-3, default 1): ",
+    },
+    "Address (user@host, blank = cancel): ": {
+        "fr": "Adresse (utilisateur@hôte, vide = annuler) : ",
+        "en": "Address (user@host, blank = cancel): ",
+    },
+    "Depth (default 3): ": {
+        "fr": "Profondeur (défaut 3) : ",
+        "en": "Depth (default 3): ",
+    },
+    "Nesting level": {
+        "fr": "Étage d'imbrication",
+        "en": "Nesting level",
+    },
+    "vendors document two, not more.": {
+        "fr": "les fabricants en documentent deux, pas plus.",
+        "en": "vendors document two, not more.",
+    },
+    "Measured at level 4: 36x slower, then a frozen kernel.": {
+        "fr": "Mesuré au niveau 4 : 36x plus lent, puis noyau gelé.",
+        "en": "Measured at level 4: 36x slower, then a frozen kernel.",
+    },
+    "vCPU capped to": {
+        "fr": "vCPU borné à",
+        "en": "vCPU capped to",
+    },
+    "pve-cluster is down: /etc/pve is not mounted.": {
+        "fr": "pve-cluster est à terre : /etc/pve n'est pas monté.",
+        "en": "pve-cluster is down: /etc/pve is not mounted.",
+    },
+    "Without it pvesm answers nothing, hence no storage.": {
+        "fr": "Sans lui, pvesm ne répond rien — d'où l'absence de stockage.",
+        "en": "Without it pvesm answers nothing, hence no storage.",
+    },
+    "The hostname only resolves to": {
+        "fr": "Le nom d'hôte ne résout que vers",
+        "en": "The hostname only resolves to",
+    },
+    "pmxcfs needs a routable address.": {
+        "fr": "pmxcfs exige une adresse routable.",
+        "en": "pmxcfs needs a routable address.",
+    },
+    "cloud-init rewrites /etc/hosts at every boot.": {
+        "fr": "cloud-init réécrit /etc/hosts à chaque démarrage.",
+        "en": "cloud-init rewrites /etc/hosts at every boot.",
+    },
+    "replay install_proxmox.sh on the host: it fixes /etc/hosts and stops cloud-init undoing it.": {
+        "fr": "rejouer install_proxmox.sh sur l'hôte : il corrige /etc/hosts et empêche cloud-init de le défaire.",
+        "en": "replay install_proxmox.sh on the host: it fixes /etc/hosts and stops cloud-init undoing it.",
+    },
+    "The VM clones": {
+        "fr": "La VM clone",
+        "en": "The VM clones",
+    },
+    "not this checkout.": {
+        "fr": "et non ce checkout.",
+        "en": "not this checkout.",
+    },
+    "local commit(s) are missing there:": {
+        "fr": "commit(s) local(aux) y manquent :",
+        "en": "local commit(s) are missing there:",
+    },
+    "to deploy your own work.": {
+        "fr": "pour déployer votre propre travail.",
+        "en": "to deploy your own work.",
+    },
     "No storage able to hold a VM disk.": {
         "fr": "Aucun stockage capable d'héberger un disque de VM.",
         "en": "No storage able to hold a VM disk.",
@@ -3409,6 +3597,10 @@ TRANSLATIONS = {
     "No Proxmox kernel installed: finish the install first.": {
         "fr": "Aucun noyau Proxmox installé : terminer l'installation d'abord.",
         "en": "No Proxmox kernel installed: finish the install first.",
+    },
+    "No free subnet left for an internal bridge.": {
+        "fr": "Plus aucun réseau libre pour un pont interne.",
+        "en": "No free subnet left for an internal bridge.",
     },
     "No network bridge on this host.": {
         "fr": "Aucun pont réseau sur cet hôte.",

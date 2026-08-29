@@ -127,9 +127,55 @@ host_ip() {
     return 1
 }
 
+# Sans ceci, tout ce que fait fix_hosts est ANNULÉ au prochain démarrage.
+# L'image cloud Debian règle « manage_etc_hosts: True » : cloud-init réécrit
+# alors /etc/hosts depuis son gabarit à chaque boot, et y remet
+# « 127.0.1.1 <nom> ». pmxcfs, qui cherche une adresse non-bouclage pour le
+# nom d'hôte, ne démarre plus — /etc/pve n'est pas monté, « pvesm » répond
+# « Connection refused », et l'écran de déploiement conclut « il manque le
+# stockage ». Le vrai défaut est trois étages plus bas.
+#
+# Vécu, et révélé par le redémarrage désormais automatique : l'installation
+# corrigeait /etc/hosts, le reboot amorçait le noyau Proxmox, et cloud-init
+# défaisait la correction dans le même mouvement.
+#
+# Un fichier de surcharge plutôt qu'une édition de cloud.cfg : c'est la voie
+# que cloud-init documente, et une mise à jour du paquet ne l'écrase pas.
+freeze_cloud_hosts() {
+    local dossier=/etc/cloud/cloud.cfg.d
+    local fichier="${dossier}/99-erplibre-hosts.cfg"
+    [ -d /etc/cloud ] || return 0
+    # Sur le CONTENU et non sur l'existence : « printf … > fichier » TRONQUE
+    # avant d'écrire. Une coupure au mauvais moment laisse un fichier de zéro
+    # octet, et une garde à l'existence annonce alors « déjà gelé » pour
+    # toujours — cloud-init continue de remettre 127.0.1.1 à chaque
+    # démarrage, et le défaut redevient invisible. Une redirection est de
+    # toute façon idempotente : il n'y a rien à protéger d'autre.
+    if grep -qE "^[[:space:]]*manage_etc_hosts:[[:space:]]*false" \
+        "${fichier}" 2>/dev/null; then
+        say "  cloud-init ne touche déjà plus à /etc/hosts"
+        return 0
+    fi
+    say "  cloud-init : gel de /etc/hosts (${fichier})"
+    if [ "${DRY}" = "1" ]; then
+        say "  ${Yellow}[dry-run]${Color_Off} manage_etc_hosts: false" \
+            "> ${fichier}"
+        return 0
+    fi
+    sudo mkdir -p "${dossier}"
+    printf '%s\n' \
+        "# Posé par ERPLibre : Proxmox exige que le nom d'hôte résolve vers" \
+        "# une adresse ROUTABLE. cloud-init y remettait 127.0.1.1 à chaque" \
+        "# démarrage, et pmxcfs ne démarrait plus." \
+        "manage_etc_hosts: false" \
+        | sudo tee "${fichier}" >/dev/null
+    CHANGED=1
+}
+
 fix_hosts() {
     local ip fqdn short
     ip="$(host_ip)" || die "aucune adresse IPv4 routable : réseau absent ?"
+    freeze_cloud_hosts
     short="$(hostname -s)"
     fqdn="$(hostname -f 2>/dev/null || echo "${short}")"
     [ "${fqdn}" = "${short}" ] && fqdn="${short}.local"
@@ -159,6 +205,70 @@ fix_hosts() {
         "« hostname --ip-address » rend « ${vu:-rien} » : le nom d'hôte ne" \
         "résout toujours pas vers une adresse routable."
     say "  hostname --ip-address : $(printf '%s ' ${routables})"
+    revive_pve_services
+}
+
+# Les services de Proxmox abandonnent après cinq essais rapprochés : systemd
+# marque l'unité « failed » et n'y revient JAMAIS de lui-même — « Start request
+# repeated too quickly ». Or ils ont TOUS échoué pendant que /etc/hosts était
+# faux. Corriger le fichier ne suffit donc pas.
+#
+# L'ordre compte : pve-cluster d'abord, il monte /etc/pve dont les autres
+# dépendent.
+#
+# pvestatd n'est pas un luxe. C'est lui qui remplit « /cluster/resources » ;
+# arrêté, l'hôte rend une entrée SQUELETTIQUE par VM — ni nom, ni mémoire, ni
+# disque, et « status: unknown ». Le tableau de bord n'a alors aucune colonne
+# vivante, et il a même pris cette entrée pour une VM disparue.
+# pve-firewall n'y est PAS, et c'est délibéré. Sa configuration vit dans
+# /var/lib/pve-cluster/config.db, donc elle est invisible tant que /etc/pve
+# n'est pas monté — c'est-à-dire exactement dans l'état qu'on répare. Le
+# démarrer, c'est appliquer des règles qu'on ne peut pas lire sur la seule
+# voie d'accès à la machine : ce script tourne au bout d'un ssh, et une VM
+# imbriquée n'a pas d'autre porte. Une révision adversariale l'a classé
+# « isole l'hôte » par trois lentilles indépendantes.
+#
+# Il n'est de toute façon pas nécessaire au but : le stockage et le suivi
+# demandent pve-cluster et pvestatd, l'interface web pveproxy. Le pare-feu
+# repartira au prochain démarrage, quand /etc/pve sera monté à temps.
+PVE_SERVICES="pve-cluster pvestatd pvedaemon pveproxy"
+
+revive_pve_services() {
+    command -v systemctl >/dev/null 2>&1 || return 0
+    local unite etat casse=""
+    for unite in ${PVE_SERVICES}; do
+        systemctl list-unit-files "${unite}.service" >/dev/null 2>&1 || continue
+        etat="$(systemctl is-active "${unite}" 2>/dev/null || true)"
+        [ "${etat}" = "active" ] && continue
+        casse="${casse} ${unite}"
+    done
+    [ -n "${casse}" ] || return 0
+    say "  services à relancer :${casse}"
+    if [ "${DRY}" = "1" ]; then
+        say "  ${Yellow}[dry-run]${Color_Off} systemctl reset-failed puis" \
+            "start :${casse}"
+        return 0
+    fi
+    for unite in ${casse}; do
+        sudo systemctl reset-failed "${unite}" 2>/dev/null || true
+        sudo systemctl start "${unite}" 2>&1 || \
+            say "  ${Yellow}⚠${Color_Off} ${unite} :" \
+                "journalctl -u ${unite} -n 30"
+        CHANGED=1
+    done
+    # Le montage n'est pas instantané : on le CONSTATE plutôt que de le
+    # supposer, et on le dit quand il n'arrive pas.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ -e /etc/pve/.version ] && break
+        sleep 1
+    done
+    if [ -e /etc/pve/.version ]; then
+        say "  ${Green}✓${Color_Off} /etc/pve monté"
+    else
+        say "  ${Yellow}⚠${Color_Off} /etc/pve toujours absent :" \
+            "journalctl -u pve-cluster -n 30"
+    fi
 }
 
 # --- 4. Dépôt et clé --------------------------------------------------------
@@ -327,6 +437,33 @@ wait_cloud_init() {
     return 0
 }
 
+# Le premier « apt update » d'une image cloud tombe sur un verrou qui n'est
+# pas celui qu'on croit. Mesuré, une seconde après le premier ssh :
+#
+#   E: Could not get lock /var/lib/apt/lists/lock.
+#      It is held by process 1026 (apt-get)
+#
+# Ce n'est pas cloud-init — « cloud-init status --wait » avait rendu la main.
+# C'est apt-daily, le minuteur de Debian, qui se déclenche au démarrage. Et le
+# verrou des LISTES n'est pas couvert par « DPkg::Lock::Timeout », qui ne vaut
+# que pour celui de dpkg : l'attente configurée ne s'applique donc pas ici.
+#
+# On arrête les minuteurs, puis on RÉESSAIE — arrêter une unité n'interrompt
+# pas l'apt-get déjà en vol, et cloud-init peut en avoir un autre en route.
+prepare_apt() {
+    run sudo systemctl stop apt-daily.service apt-daily-upgrade.service \
+        apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
+    local i
+    for i in $(seq 1 12); do
+        if apt_get update; then
+            return 0
+        fi
+        say "  verrou apt tenu, nouvel essai dans 15 s (${i}/12)"
+        sleep 15
+    done
+    die "apt update impossible : le verrou des listes reste tenu."
+}
+
 install_pve() {
     wait_cloud_init
     preseed_debconf
@@ -343,7 +480,7 @@ install_pve() {
     # loin — pas même la désactivation, si elle attendait la fin.
     disable_enterprise
     say "\n---- apt update ----"
-    apt_get update
+    prepare_apt
     # Le noyau d'abord, comme l'amont le prescrit : c'est lui qui porte les
     # modules dont pve a besoin, et l'installer seul laisse une machine qui
     # redémarre proprement même si la suite échoue.

@@ -20,6 +20,7 @@ fonction PURE, vérifiable sans hôte Proxmox. Seul `run()` parle au réseau.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import shlex
@@ -282,6 +283,318 @@ def parse_qm_list(text: str) -> list:
     return out
 
 
+# De quoi savoir POURQUOI il n'y a aucun stockage, en un aller-retour.
+#
+# « pvesm » ne parle qu'à travers /etc/pve, un système de fichiers monté par
+# pmxcfs. pmxcfs à terre, la commande répond « Connection refused » et la liste
+# est vide — l'écran conclut « il manque le stockage » alors que le défaut est
+# trois étages plus bas.
+CLUSTER_CHECK_CMD = (
+    "systemctl is-active pve-cluster 2>/dev/null || true; "
+    "echo '---ERPLIBRE-PVE-FS---'; "
+    # « .version » et non « storage.cfg » : ce dernier N'EXISTE PAS sur une
+    # installation neuve — Proxmox se contente alors de ses stockages par
+    # défaut, et « local » répond parfaitement. Le tester revenait à déclarer
+    # /etc/pve absent sur un hôte sain. « .version » est un fichier virtuel de
+    # pmxcfs : il est là si et seulement si le montage est là.
+    "test -e /etc/pve/.version && echo MONTE || echo ABSENT; "
+    "echo '---ERPLIBRE-HOSTNAME-IP---'; "
+    "hostname --ip-address 2>/dev/null || true"
+)
+
+
+def _usable_address(adresse: str) -> bool:
+    """Cette adresse permet-elle à pmxcfs de s'identifier ?
+
+    Ni bouclage, ni LIEN-LOCAL. Le lien-local est le piège : mesuré,
+    « hostname --ip-address » peut ne rendre QUE des fe80::, et une adresse
+    APIPA en 169.254 passait le seul test « ne commence pas par 127. ». Dans
+    les deux cas pmxcfs n'a rien d'utilisable, mais le diagnostic concluait
+    « le nom résout vers une adresse routable » — et renvoyait vers
+    journalctl au lieu de /etc/hosts, sur un hôte qu'on ne peut inspecter que
+    par ssh."""
+    try:
+        adr = ipaddress.ip_address(adresse)
+    except ValueError:
+        return False
+    return not (adr.is_loopback or adr.is_link_local)
+
+
+def parse_cluster_check(text: str) -> dict:
+    """{"actif", "monte", "adresses", "routables", "lu"} depuis
+    CLUSTER_CHECK_CMD.
+
+    `routables` vide est la cause la plus fréquente : pmxcfs parcourt les
+    adresses du nom d'hôte jusqu'à en trouver une qui ne soit pas de
+    bouclage, et l'entrée « 127.0.1.1 <nom> » de l'image cloud le mène dans
+    le mur.
+
+    `lu` dit si la sonde a RÉPONDU — les deux sentinelles sont là. Sans lui,
+    un simple dépassement de délai rendait « monte: False, adresses: [] », et
+    l'appelant affirmait « le nom d'hôte ne résout que vers ? » sans avoir
+    rien mesuré. Affirmer une cause qu'on n'a pas constatée est pire que se
+    taire : cela envoie réécrire /etc/hosts sur une machine peut-être
+    saine."""
+    brut = strip_ssh_noise(text or "")
+    tete, sep1, reste = brut.partition("---ERPLIBRE-PVE-FS---")
+    milieu, sep2, queue = reste.partition("---ERPLIBRE-HOSTNAME-IP---")
+    # Filtré sur ce qu'EST une adresse, pas sur sa ponctuation. run() colle
+    # stderr après stdout, donc tout ce que sudo écrit atterrit dans cette
+    # queue — et « sudo: unable to resolve host pve: … » se produit
+    # précisément dans la panne qu'on diagnostique. Mesuré : l'écran affichait
+    # « le nom d'hôte ne résout que vers 127.0.1.1 sudo: pve: ». Il affirmait
+    # des adresses là où la sonde n'avait rien mesuré.
+    adresses = []
+    for jeton in queue.split():
+        try:
+            ipaddress.ip_address(jeton)
+        except ValueError:
+            continue
+        adresses.append(jeton)
+    return {
+        "lu": bool(sep1 and sep2),
+        "actif": "active" in tete and "inactive" not in tete,
+        "monte": "MONTE" in milieu,
+        "adresses": adresses,
+        "routables": [a for a in adresses if _usable_address(a)],
+    }
+
+
+# Marqueur de NOTRE ligne dans /etc/hosts. Il rend la réécriture exactement
+# idempotente : on retire ce qui porte la marque, puis on ajoute. Sans lui, la
+# garde devait s'indexer sur l'ADRESSE — et en DHCP une adresse qui change
+# ajoutait une ligne de plus à chaque passage sans retirer la précédente.
+HOSTS_MARK = "erplibre-hosts"
+
+# Services relancés par la réparation. pve-firewall n'y est PAS : sa
+# configuration vit dans /var/lib/pve-cluster/config.db, invisible tant que
+# /etc/pve n'est pas monté — c'est-à-dire exactement l'état qu'on répare. Le
+# démarrer appliquerait des règles illisibles sur la seule voie d'accès à la
+# machine.
+#
+# rrdcached d'abord : pve-cluster le requiert, et une limite de démarrage
+# atteinte sur lui fait échouer pve-cluster sur « dependency » sans que
+# reset-failed sur pve-cluster n'y change quoi que ce soit.
+PVE_UNITS = ("rrdcached", "pve-cluster", "pvestatd", "pvedaemon", "pveproxy")
+
+
+def ssh_server_ip(text: str) -> str:
+    """Adresse de l'hôte telle que NOTRE ssh l'atteint, depuis $SSH_CONNECTION.
+
+    « client_ip client_port SERVER_ip server_port » : le troisième champ. C'est
+    la seule adresse dont on SAIT qu'elle mène à la machine, rebond compris.
+
+    Les candidats habituels se trompent ici. Mesuré sur une Proxmox imbriquée :
+    « hostname -I » rend « 10.10.10.150 10.10.20.1 », et la seconde est le pont
+    interne que notre propre code vient de créer. La poser dans /etc/hosts
+    ferait s'identifier le nœud par une adresse que personne ne joint.
+    """
+    champs = strip_ssh_noise(text or "").split()
+    return champs[2] if len(champs) >= 4 and _usable_address(champs[2]) else ""
+
+
+# Deux sources pour les noms, dans cet ordre. La seconde est indispensable au
+# REJEU : au second passage il n'y a plus de ligne 127.0.1.1 — c'est nous qui
+# l'avons retirée — et sans elle un vrai FQDN était remplacé par
+# « <court>.local ». La commande n'était donc pas idempotente sur ce qu'elle
+# avait elle-même préservé. Attrapé par un test qui la rejoue deux fois.
+_NOMS_DEPUIS_LOOPBACK = (
+    r"sed -nE 's/^[[:space:]]*127\.0\.1\.1[[:space:]]+([^#]*).*$/\1/p'"
+)
+_NOMS_DEPUIS_MARQUE = (
+    r"sed -nE 's/^[^[:space:]]+[[:space:]]+([^#]*)#[[:space:]]*"
+    + HOSTS_MARK
+    + r"[[:space:]]*$/\1/p'"
+)
+# Normalise les séparateurs. L'installeur Debian écrit /etc/hosts avec des
+# TABULATIONS, et le test du nom court cherchait des ESPACES : au rejeu, la
+# ligne écrite gagnait un « srv » de plus.
+_ROGNE = r"sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'"
+
+
+def hosts_repair_cmd(ip: str) -> str:
+    """UNE écriture ATOMIQUE de /etc/hosts, ou "" sans adresse utilisable.
+
+    La première version promettait « une seule commande » et n'en tenait rien :
+    « sed -i » puis « printf >> » sont DEUX écritures, sans set -e et sans
+    retour en arrière. Une attaque adversariale l'a mesuré sur trois états
+    réels — /etc en lecture seule, fichier rendu immuable par chattr, quota
+    atteint :
+
+    * sed refusé, ajout réussi -> la ligne 127.0.1.1 survit et reste PREMIÈRE,
+      donc gagnante, et notre ligne s'ajoute UNE FOIS PAR TENTATIVE. Le
+      marqueur, censé rendre l'opération idempotente, ne retirait rien puisque
+      c'est le sed qui portait la suppression.
+    * sed réussi, ajout refusé -> l'hôte n'a PLUS d'entrée pour son nom. Sur
+      une machine qu'on ne joint que par ssh, chaque sudo attend ensuite le
+      résolveur puis répond « unable to resolve host ». C'est exactement l'état
+      « pire qu'avant » que la docstring prétendait écarter.
+
+    Donc : on construit le fichier ENTIER dans un temporaire du même
+    répertoire, on vérifie ce qu'il contient, et on ne le recopie qu'ensuite.
+    « cat > » et non « mv » : le renommage remplace l'inode et perdrait mode,
+    propriétaire et contexte SELinux de /etc/hosts.
+
+    Bénéfice supplémentaire : « sed » sans -i ajoute le saut de ligne final
+    manquant. Sans lui, un /etc/hosts non terminé par \\n — cloud-init
+    « write_files » n'en met pas — voyait notre ligne se coller à la
+    précédente, et le nom du nœud partait sur l'adresse d'une AUTRE machine.
+
+    POSIX seulement (dash), et aucun « sudo » dedans : c'est wrap_privilege
+    qui porte le privilège, et sur un hôte root@ il n'enrobe rien.
+    """
+    if not _usable_address(ip):
+        return ""
+    tmp = "/etc/hosts.erplibre.$$"
+    return (
+        "short=$(hostname -s); "
+        f"noms=$({_NOMS_DEPUIS_LOOPBACK} /etc/hosts | head -1 | {_ROGNE}); "
+        f'[ -n "$noms" ] || noms=$({_NOMS_DEPUIS_MARQUE} /etc/hosts'
+        f" | head -1 | {_ROGNE}); "
+        '[ -n "$noms" ] || noms="$short.local $short"; '
+        # Le nom court DOIT y être : c'est lui que pmxcfs résout. Le test se
+        # fait sur des séparateurs NORMALISÉS — l'installeur Debian écrit des
+        # tabulations, et « case " $noms " in *" $short "* » ne les voyait pas,
+        # d'où un « srv srv » au rejeu.
+        'case " $noms " in *" $short "*) ;; *) noms="$noms $short";; esac; '
+        # Le fichier complet d'abord, dans le MÊME répertoire : un temporaire
+        # ailleurs ne se recopierait pas forcément (montages séparés).
+        "{ "
+        # awk et non sed : « print » émet un saut de ligne par
+        # enregistrement, donc un /etc/hosts non terminé par \n est
+        # NORMALISÉ. sed, lui, préserve l'absence — vérifié — et notre ligne
+        # se collait alors à la précédente : le nom du nœud partait sur
+        # l'adresse d'une autre machine. mawk 1.3.4, celui de Debian, fait
+        # bien ce qu'on attend.
+        r"awk '!/^[ \t]*127\.0\.1\.1[ \t]/"
+        f" && !/#[ \\t]*{HOSTS_MARK}[ \\t]*$/' /etc/hosts"
+        f" && printf '%s\\t%s\\t# {HOSTS_MARK}\\n' {shlex.quote(ip)} \"$noms\""
+        f" ; }} > {tmp} || {{ rm -f {tmp}; echo HOSTS-KO; exit 0; }}; "
+        # On vérifie le TEMPORAIRE avant de toucher à l'original : notre ligne
+        # présente une seule fois, et plus aucune 127.0.1.1.
+        f"vu=$(sed -nE 's/^([^#[:space:]]+)[[:space:]].*#[[:space:]]*"
+        f"{HOSTS_MARK}[[:space:]]*$/\\1/p' {tmp}); "
+        f'if [ "$vu" != {shlex.quote(ip)} ] '
+        rf"|| grep -qE '^[[:space:]]*127\.0\.1\.1[[:space:]]' {tmp}; then "
+        f"rm -f {tmp}; echo HOSTS-KO; exit 0; fi; "
+        # La seule écriture destructive, et elle est la dernière.
+        f"cat {tmp} > /etc/hosts || {{ rm -f {tmp}; echo HOSTS-KO; exit 0; }}; "
+        f"rm -f {tmp}; echo HOSTS-OK"
+    )
+
+
+def cloud_hosts_freeze_cmd() -> str:
+    """Empêche cloud-init de réécrire /etc/hosts au prochain démarrage.
+
+    Gardé sur le CONTENU et non sur l'existence : « printf … > » TRONQUE avant
+    d'écrire, donc une coupure laisse zéro octet et une garde à l'existence
+    annonce « déjà gelé » pour toujours. Une redirection est de toute façon
+    idempotente : il n'y a rien d'autre à protéger.
+    """
+    fichier = "/etc/cloud/cloud.cfg.d/99-erplibre-hosts.cfg"
+    return (
+        "[ -d /etc/cloud ] || { echo FREEZE-SANS-OBJET; exit 0; }; "
+        f"grep -qE '^[[:space:]]*manage_etc_hosts:[[:space:]]*false' {fichier}"
+        " 2>/dev/null && { echo FREEZE-DEJA; exit 0; }; "
+        "mkdir -p /etc/cloud/cloud.cfg.d; "
+        "printf '%s\\n' "
+        "'# Posé par ERPLibre : pmxcfs exige une adresse routable.' "
+        "'manage_etc_hosts: false' "
+        f"> {fichier} && echo FREEZE-OK || echo FREEZE-KO"
+    )
+
+
+def pve_unit_cmd(unite: str, remonte: bool = False) -> str:
+    """Relance UNE unité, sans jamais être fatale.
+
+    Par unité et non toutes ensemble : « systemctl start » BLOQUE jusqu'à
+    TimeoutStartSec (90 s par défaut), et cinq unités groupées dépassent le
+    délai de l'appel — on recevrait « timeout » sans savoir laquelle.
+
+    « restart » quand pve-cluster est ACTIF mais /etc/pve absent : le montage
+    FUSE est alors périmé (pmxcfs tué par l'OOM killer), et « start » sur une
+    unité active est un no-op qui rend 0 — la réparation ne convergeait jamais
+    et ne nommait rien.
+
+    Le journal accompagne un échec : c'est la seule façon de dire la cause à
+    quelqu'un dont le seul accès à l'hôte est cet outil.
+    """
+    u = shlex.quote(unite)
+    # « active » ne prouve RIEN sur le lien à pmxcfs. Pour pve-cluster c'était
+    # déjà admis : actif sans /etc/pve, le montage FUSE est périmé et « start »
+    # est un no-op qui rend 0. Le même raisonnement vaut pour ses dépendants —
+    # pvestatd, pvedaemon et pveproxy tournaient pendant toute la panne, en
+    # échouant sur ipcc_send_rec. Les laisser en place après avoir remonté
+    # /etc/pve donnait une GUI qui répond « communication failure » juste
+    # après notre ✓. `remonte` dit que le montage était absent au diagnostic.
+    if unite == "pve-cluster":
+        actif = (
+            "[ -e /etc/pve/.version ] "
+            f'&& {{ echo "DEJA {unite}"; exit 0; }}; '
+            f"systemctl restart {u}"
+        )
+    elif remonte:
+        actif = f"systemctl restart {u}"
+    else:
+        actif = f'echo "DEJA {unite}"; exit 0'
+    return (
+        f"systemctl list-unit-files {u}.service >/dev/null 2>&1"
+        f' || {{ echo "SKIP {unite}"; exit 0; }}; '
+        f"etat=$(systemctl is-active {u} 2>/dev/null || true); "
+        f'if [ "$etat" = active ]; then {actif}; else '
+        f"systemctl reset-failed {u} 2>/dev/null || true; "
+        f"systemctl start {u}; fi "
+        f'|| {{ echo "KO {unite}"; '
+        f"journalctl -u {u} -n 20 --no-pager -o cat 2>/dev/null; }}"
+    )
+
+
+def mount_wait_cmd(tours: int = 20, repos: int = 5) -> str:
+    """Attend le montage de /etc/pve, puis le RECONFIRME.
+
+    En une seule commande : une boucle côté Python rouvrirait une connexion
+    par tour — deux poignées de main à travers un rebond, vingt fois — et si
+    le chemin vient d'être perdu, tous les tours rendraient « timeout » et on
+    accuserait pmxcfs de ce qui est une perte de contact.
+
+    Reconfirmé après une pause, parce qu'une seule observation ne prouve rien :
+    reset-failed vient d'effacer la limite de relance, donc un pmxcfs qui
+    battait repart pour une salve entière. Le voir monter puis mourir se lit
+    dans NRestarts, qu'on rend aussi.
+    """
+    return (
+        f"i=0; while [ $i -lt {int(tours)} ]; do "
+        "[ -e /etc/pve/.version ] && break; sleep 1; i=$((i+1)); done; "
+        "if [ -e /etc/pve/.version ]; then "
+        f"sleep {int(repos)}; "
+        "if [ -e /etc/pve/.version ]; then echo MONTE; "
+        "else echo BATTEMENT; fi; "
+        "else echo ABSENT; fi; "
+        "printf 'NRESTARTS %s\\n' "
+        '"$(systemctl show -p NRestarts --value pve-cluster 2>/dev/null)"'
+    )
+
+
+def parse_mount_wait(text: str) -> dict:
+    """{"verdict": MONTE|BATTEMENT|ABSENT|INCONNU, "relances": int|None}.
+
+    INCONNU quand rien de lisible n'est revenu — délai dépassé, coupure. Ce
+    n'est pas « absent » : conclure « /etc/pve n'est pas monté » d'une perte
+    de contact envoie chercher dans journalctl une panne qui n'existe pas.
+    """
+    brut = strip_ssh_noise(text or "")
+    verdict = "INCONNU"
+    for mot in ("BATTEMENT", "MONTE", "ABSENT"):
+        if mot in brut:
+            verdict = mot
+            break
+    trouve = re.search(r"NRESTARTS\s+(\d+)", brut)
+    return {
+        "verdict": verdict,
+        "relances": int(trouve.group(1)) if trouve else None,
+    }
+
+
 def parse_storages(text: str) -> list:
     """Sortie de « pvesm status --content images » -> [{name, type, avail}]."""
     out = []
@@ -426,6 +739,69 @@ def pick_bridge(bridges, voulu: str = "") -> str:
 INTERNAL_BRIDGE = "vmbr0"
 INTERNAL_CIDR = "10.10.10.1/24"
 
+# Le réseau interne ne peut PAS être une constante : un Proxmox dans un
+# Proxmox hérite du réseau interne de son parent, et 10.10.10.1 y est
+# l'adresse de sa propre PASSERELLE. La poser sur son pont rend tout le /24
+# local — la passerelle devient injoignable et la machine s'isole
+# instantanément, au milieu de la commande qui la configure. Vécu : « ifup »
+# n'a jamais rendu la main et la VM ne répondait plus, ni en ssh ni en ping.
+#
+# On choisit donc un /24 que l'hôte ne connaît pas encore. La liste va du plus
+# attendu au plus improbable : un parc imbriqué descend d'un cran par étage.
+INTERNAL_CANDIDATES = (
+    "10.10.10.1/24",
+    "10.10.20.1/24",
+    "10.10.30.1/24",
+    "10.10.40.1/24",
+    "10.20.10.1/24",
+    "10.30.10.1/24",
+    "172.31.10.1/24",
+    "192.168.210.1/24",
+)
+
+# Tout ce que l'hôte sait déjà d'IPv4 : ses adresses ET ses routes. Les deux,
+# parce qu'une route sans adresse locale suffit à créer le conflit — la route
+# par défaut « via 10.10.10.1 » en est l'exemple exact.
+USED_NETS_CMD = "ip -o -4 addr show; ip -4 route show"
+
+
+def parse_used_nets(text: str) -> set:
+    """Réseaux IPv4 lus dans la sortie de USED_NETS_CMD.
+
+    Une adresse nue compte pour un /32 : c'est honnête, et le
+    chevauchement avec un /24 candidat se calcule pareil. Un préfixe plus
+    large qu'un /24 — « 10.0.0.0/8 » — écarte donc bien tous nos candidats
+    en 10.x, ce qu'un test sur les trois premiers octets aurait raté."""
+    import ipaddress
+
+    nets = set()
+    motif = r"\b(\d{1,3}(?:\.\d{1,3}){3})(?:/(\d{1,2}))?\b"
+    for adresse, prefixe in re.findall(motif, text or ""):
+        try:
+            nets.add(
+                ipaddress.ip_network(
+                    f"{adresse}/{prefixe or 32}", strict=False
+                )
+            )
+        except ValueError:
+            continue
+    return nets
+
+
+def pick_internal_cidr(text: str, candidats=INTERNAL_CANDIDATES) -> str:
+    """Le premier candidat qui ne chevauche RIEN de ce que l'hôte connaît.
+
+    Chaîne vide quand tous sont pris : le dire, plutôt que d'en écraser un.
+    Écraser, ici, c'est couper la seule voie d'accès à la machine."""
+    import ipaddress
+
+    utilises = parse_used_nets(text)
+    for candidat in candidats:
+        reseau = ipaddress.ip_network(candidat, strict=False)
+        if not any(reseau.overlaps(u) for u in utilises):
+            return candidat
+    return ""
+
 
 def parse_bridge_config(text: str) -> dict:
     """/etc/network/interfaces -> {pont: {ports, address}}.
@@ -509,7 +885,26 @@ def bridge_setup_cmds(
     # Et l'erreur d'ifup n'est PAS masquée : « 2>/dev/null » cachait
     # « operation failed with 'Operation not supported' » — le noyau cloud n'a
     # pas le module bridge, et c'est ce qu'il fallait lire.
-    cmds.append(f"mkdir -p /run/network; ifup {nom} || ifreload -a")
+    # Et SURTOUT pas « ifreload -a » en repli : il recharge TOUTES les
+    # interfaces, y compris celle qui porte la session ssh, et sur une image
+    # cloud l'interface principale est décrite ailleurs (interfaces.d, ou
+    # netplan) — ifupdown2 la descend alors sans la remonter. Le repli est
+    # donc CHIRURGICAL : on monte le pont à la main, sans toucher à rien
+    # d'autre. La strophe, elle, le rend persistant au prochain démarrage.
+    manuel = [
+        f"ip link show {nom} >/dev/null 2>&1 || ip link add {nom} type bridge",
+        f"ip addr add {cidr} dev {nom} 2>/dev/null || true",
+        f"ip link set {nom} up",
+    ]
+    if uplink:
+        regle = f"POSTROUTING -s {reseau} -o {uplink} -j MASQUERADE"
+        manuel.append(
+            f"iptables -t nat -C {regle} 2>/dev/null"
+            f" || iptables -t nat -A {regle}"
+        )
+    cmds.append(
+        f"mkdir -p /run/network; ifup {nom} || {{ " + "; ".join(manuel) + "; }"
+    )
     return cmds
 
 

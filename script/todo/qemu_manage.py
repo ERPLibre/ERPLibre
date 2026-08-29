@@ -2537,6 +2537,67 @@ class QemuManageMixin:
         nom = (res.stdout or "").strip()
         return "" if res.returncode or nom == "HEAD" else nom
 
+    @staticmethod
+    def _qemu_branch_gap(branche):
+        """Combien de commits LOCAUX manquent à origin/<branche>, et lesquels.
+
+        Rend (nombre, [sujets]) — (0, []) quand il n'y a rien à dire, ou quand
+        la question ne se pose pas (pas de dépôt, pas de distant).
+
+        Pourquoi le déploiement s'en soucie : la VM ne reçoit PAS le checkout
+        d'ici, elle CLONE la branche depuis le dépôt distant. Tout ce qui
+        tourne dans la VM — install_proxmox.sh, les scripts d'installation, le
+        Makefile — vient donc de là.
+
+        Vécu deux fois de suite. Un correctif de install_proxmox.sh, commité
+        ici, absent du distant : chaque VM déployée ensuite recevait l'ancien
+        script, et le défaut « revenait » alors qu'il était corrigé. Rien ne
+        le disait ; il a fallu comparer les deux versions à la main.
+        """
+        if not branche:
+            return 0, []
+        try:
+            res = subprocess.run(
+                [
+                    "git",
+                    "log",
+                    "--oneline",
+                    "--no-decorate",
+                    f"origin/{branche}..HEAD",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 0, []
+        # Une branche inconnue du distant, ou aucun distant : ce n'est pas un
+        # écart à signaler, c'est une question qui ne se pose pas.
+        if res.returncode:
+            return 0, []
+        sujets = [
+            ligne.strip()
+            for ligne in (res.stdout or "").splitlines()
+            if ligne.strip()
+        ]
+        return len(sujets), sujets
+
+    def _qemu_branch_gap_lines(self, branche, limite=3):
+        """Les lignes à dire avant de déployer, ou []."""
+        nombre, sujets = self._qemu_branch_gap(branche)
+        if not nombre:
+            return []
+        lignes = [
+            f"⚠ {t('The VM clones')} origin/{branche}, "
+            f"{t('not this checkout.')}",
+            f"  {nombre} {t('local commit(s) are missing there:')}",
+        ]
+        lignes += [f"    {s}" for s in sujets[:limite]]
+        if nombre > limite:
+            lignes.append(f"    … {nombre - limite} {t('more')}")
+        lignes.append(f"  → git push {t('to deploy your own work.')}")
+        return lignes
+
     def _qemu_branch_list(self):
         """Branches distantes d'ERPLibre, triées. Vide si le réseau manque.
 
