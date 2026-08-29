@@ -16,6 +16,7 @@ recoller les fils de discussion sans le lire.
 from __future__ import annotations
 
 import base64
+import email.utils
 import functools
 import hashlib
 import os
@@ -145,6 +146,22 @@ class MessageMeta:
     # tests, où une empreinte ne servirait à rien.
     in_reply_to: str = ""
     references: str = ""
+
+
+def _addresses(value: str) -> list[str]:
+    """« Alice <a@x.ca>, b@y.ca » → ["a@x.ca", "b@y.ca"], en minuscules.
+
+    On compte les ADRESSES, pas les libellés : le même correspondant écrit
+    tantôt « Alice », tantôt « Alice Tremblay », tantôt rien. Compter les
+    libellés éclaterait une personne en trois lignes du classement.
+    """
+    if not value:
+        return []
+    return [
+        adresse.lower()
+        for _, adresse in email.utils.getaddresses([value])
+        if "@" in adresse
+    ]
 
 
 def split_message_ids(value: str) -> list[str]:
@@ -582,6 +599,145 @@ class Store:
         )
         db.commit()
         return len(rows)
+
+    # -- Statistiques (phase 3) -----------------------------------------
+
+    BUCKETS = {
+        "day": "%Y-%m-%d",
+        "week": "%Y-S%W",
+        "month": "%Y-%m",
+    }
+
+    def _filtre(self, folder_id, since, until):
+        """(fragment WHERE, paramètres). Un filtre absent ne filtre pas."""
+        clauses, params = ["date > 0"], []
+        if folder_id is not None:
+            clauses.append("folder_id = ?")
+            params.append(folder_id)
+        if since is not None:
+            clauses.append("date >= ?")
+            params.append(int(since))
+        if until is not None:
+            clauses.append("date < ?")
+            params.append(int(until))
+        return " AND ".join(clauses), params
+
+    @_locked
+    def stats_volume(
+        self, bucket="day", folder_id=None, since=None, until=None
+    ) -> list[tuple]:
+        """(étiquette, nombre, octets) par jour, semaine ou mois.
+
+        `date = 0` marque une date illisible — voir `parse_fetch_headers`,
+        où un en-tête invalide n'a jamais le droit de perdre le message.
+        Ces messages existent, mais les ranger au 1er janvier 1970
+        fabriquerait un pic qui n'a jamais eu lieu : ils sont exclus, et
+        `stats_undated` les compte à part pour qu'on puisse le DIRE.
+        """
+        forme = self.BUCKETS.get(bucket, self.BUCKETS["day"])
+        where, params = self._filtre(folder_id, since, until)
+        return [
+            (r[0], r[1], r[2] or 0)
+            for r in self._db().execute(
+                f"SELECT strftime('{forme}', date, 'unixepoch') AS tranche,"
+                f" COUNT(*), SUM(size) FROM messages WHERE {where}"
+                " GROUP BY tranche ORDER BY tranche",
+                params,
+            )
+        ]
+
+    @_locked
+    def stats_undated(self, folder_id=None) -> int:
+        clauses, params = ["date <= 0"], []
+        if folder_id is not None:
+            clauses.append("folder_id = ?")
+            params.append(folder_id)
+        return (
+            self._db()
+            .execute(
+                f"SELECT COUNT(*) FROM messages WHERE {' AND '.join(clauses)}",
+                params,
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
+    def stats_folders(self) -> list[dict]:
+        """Par dossier : total, non-lus, octets. Tout est en clair, donc SQL."""
+        return [
+            {
+                "id": r["id"],
+                "name": r["name"],
+                "display": r["display"] or r["name"],
+                "count": r["n"],
+                "unseen": r["unseen"],
+                "size": r["octets"] or 0,
+            }
+            for r in self._db().execute(
+                "SELECT f.id, f.name, f.display, COUNT(m.id) AS n,"
+                " SUM(CASE WHEN m.flags NOT LIKE '%\\Seen%' ESCAPE '\\'"
+                "          THEN 1 ELSE 0 END) AS unseen,"
+                " SUM(m.size) AS octets"
+                " FROM folders f LEFT JOIN messages m ON m.folder_id = f.id"
+                " GROUP BY f.id ORDER BY n DESC"
+            )
+        ]
+
+    @_locked
+    def stats_correspondents(
+        self, direction="from", folder_id=None, since=None, until=None
+    ) -> dict:
+        """Adresse → nombre. Le SEUL agrégat qui déchiffre.
+
+        `sealed_from`/`sealed_to` sont scellés : impossible de compter en
+        SQL. On descelle en mémoire, ligne par ligne, sans jamais réécrire
+        en clair — c'est le compromis annoncé au devis.
+        """
+        colonne = "sealed_to" if direction == "to" else "sealed_from"
+        where, params = self._filtre(folder_id, since, until)
+        compte: dict = {}
+        for (blob,) in self._db().execute(
+            f"SELECT {colonne} FROM messages WHERE {where}", params
+        ):
+            for adresse in _addresses(self._open(blob)):
+                compte[adresse] = compte.get(adresse, 0) + 1
+        return compte
+
+    @_locked
+    def stats_reply_delays(
+        self, folder_id=None, since=None, until=None
+    ) -> list[int]:
+        """Les délais, en secondes, entre un message et sa réponse.
+
+        Jointure sur les EMPREINTES : `in_reply_to_hash` d'une réponse
+        contre `msgid_hash` de l'original. Un délai négatif est écarté —
+        une date d'en-tête peut mentir, et une réponse antérieure à son
+        original n'est pas une réponse rapide, c'est une donnée fausse.
+        """
+        clauses = [
+            "reponse.in_reply_to_hash IS NOT NULL",
+            "reponse.date > 0",
+            "original.date > 0",
+        ]
+        params: list = []
+        if folder_id is not None:
+            clauses.append("reponse.folder_id = ?")
+            params.append(folder_id)
+        if since is not None:
+            clauses.append("reponse.date >= ?")
+            params.append(int(since))
+        if until is not None:
+            clauses.append("reponse.date < ?")
+            params.append(int(until))
+        lignes = self._db().execute(
+            "SELECT reponse.date - original.date"
+            " FROM messages reponse"
+            " JOIN messages original"
+            "   ON original.msgid_hash = reponse.in_reply_to_hash"
+            f" WHERE {' AND '.join(clauses)}",
+            params,
+        )
+        return [delai for (delai,) in lignes if delai > 0]
 
     @_locked
     def update_flags(self, folder_id: int, uid: int, flags: str) -> None:
