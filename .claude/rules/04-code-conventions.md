@@ -88,6 +88,10 @@ liste, et elle est vraie demain.
 - Format de commit : `[TYPE] portée : sujet`, sujet à l'impératif, 72
   caractères au plus. Tags réellement utilisés : `[UPD]`, `[FIX]`, `[ADD]`,
   `[IMP]`, `[REF]`.
+- **Nommer les fichiers à l'indexation, jamais `git add -A`** : `private/` et
+  `tasks/` ne sont pas suivis EXPRÈS, et un ratissage les commit. Il emporte
+  aussi ce qui est en cours ailleurs dans le checkout, sous un sujet qui ne le
+  couvre pas. `git add -p` quand un fichier porte deux sujets.
 
 ### Le sujet
 

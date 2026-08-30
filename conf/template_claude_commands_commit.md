@@ -244,8 +244,20 @@ configured `user.email` then fails on the committer.
 Use a heredoc rather than `-m`: a body with quotes, backticks or accented
 characters survives it unharmed.
 
+**Name the files. Never `git add -A`.** It stages everything untracked, and
+this repository keeps two directories untracked ON PURPOSE: `private/`, the
+only place allowed to hold customer data, and `tasks/`, where the convention
+sends the investigation precisely because it is not versioned. A sweep commits
+both. It also swallows whatever else is in flight in the checkout — another
+tool's output, a half-finished edit — under a subject that does not cover it.
+
+`git status --porcelain` lists what changed; stage the paths that belong to
+the subject you just wrote, and no others. When one file carries two subjects,
+`git add -p` stages the hunks that belong to this commit.
+
 ```bash
-git add -A
+git status --porcelain
+git add script/module/thing.py test/test_thing.py
 git -c user.name="Your Name" -c user.email="your@email.com" commit -F - <<'MSG'
 [TAG] scope: description
 
