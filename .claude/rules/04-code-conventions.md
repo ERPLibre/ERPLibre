@@ -36,6 +36,13 @@ propriétaire, pas ses clients. Généraliser plutôt que censurer — « sur un
 base de production », « sur un hôte qui exige une authentification sudo
 interactive » — dit la CLASSE de situation, qui est ce qui sert au lecteur.
 
+**L'exemple qui illustre un interdit s'invente.** La règle a d'abord été
+violée par ses propres tests : pour démontrer qu'une adresse et un chemin de
+compte sont refusés, ils en portaient de vrais, pris dans le parc. Choisir un
+cas réel « parce qu'il est parlant » est exactement le réflexe que la règle
+combat, et un test le fige pour toujours. Une valeur inventée démontre aussi
+bien ; vérifier qu'elle n'existe nulle part ailleurs dans le dépôt.
+
 Le récit n'est pas perdu, il change de place : l'enquête, les mesures datées
 et les impasses vivent dans `tasks/`, qui n'est pas versionné. Ni le fichier
 ni le corps du commit ne les portent.
@@ -107,11 +114,8 @@ reste préférable quand elle tient.
 
 Un garde-fou refuse le mécanique. Sur le sujet : tag absent, plus de 72
 caractères, ouverture sur une citation. Sur le corps : plus de 10 lignes pour
-une langue, une adresse IP, un courriel, un chemin de compte, et tout terme de
-`private/noms_interdits.txt` — la liste des clients et des machines, qui ne
-peut pas vivre dans git puisque c'est ce qu'elle protège. Absente, ce dernier
-contrôle est muet. Ce qui reste un jugement — « ce corps raconte-t-il
-l'enquête » — n'est vérifié par personne.
+une langue, une adresse IP, un courriel, un chemin de compte. Ce qui reste un
+jugement — « ce corps raconte-t-il l'enquête » — n'est vérifié par personne.
 
 ```bash
 git config core.hooksPath script/git/hooks   # une fois par clone

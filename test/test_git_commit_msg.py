@@ -164,9 +164,9 @@ class TestLeCorps(unittest.TestCase):
         self.assertEqual([], check(_message(corps)))
 
     def test_une_adresse_ip(self):
-        problemes = check(_message("La VM répondait en 192.168.123.170."))
+        problemes = check(_message("La VM répondait en 172.31.7.42."))
         self.assertEqual(1, len(problemes))
-        self.assertIn("192.168.123.170", problemes[0])
+        self.assertIn("172.31.7.42", problemes[0])
 
     def test_les_adresses_sans_porteur_passent(self):
         """0.0.0.0 et 127.0.0.1 ne désignent aucune machine du parc."""
@@ -187,7 +187,7 @@ class TestLeCorps(unittest.TestCase):
 
     def test_un_chemin_de_compte(self):
         problemes = check(
-            _message("Le venv vit dans /home/mathieu/git/erplibre/.")
+            _message("Le venv vit dans /home/sireine/git/erplibre/.")
         )
         self.assertEqual(1, len(problemes))
         self.assertIn("chemin de compte", problemes[0])
@@ -221,7 +221,7 @@ class TestLeCorps(unittest.TestCase):
         try:
             problemes = check(_message("Migration de AcmeCorp, six paliers."))
             self.assertEqual(1, len(problemes))
-            self.assertIn("liste privée", problemes[0])
+            self.assertIn("nom refusé", problemes[0])
         finally:
             os.unlink(commit_msg_lib.NOMS_INTERDITS)
             commit_msg_lib.NOMS_INTERDITS = origine
@@ -264,7 +264,7 @@ class TestLeCorps(unittest.TestCase):
         try:
             problemes = check(_message("Une raison.\n\nRefs: acmecorp-42"))
             self.assertEqual(1, len(problemes))
-            self.assertIn("liste privée", problemes[0])
+            self.assertIn("nom refusé", problemes[0])
         finally:
             os.unlink(commit_msg_lib.NOMS_INTERDITS)
             commit_msg_lib.NOMS_INTERDITS = origine

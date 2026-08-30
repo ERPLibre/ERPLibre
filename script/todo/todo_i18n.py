@@ -6856,6 +6856,75 @@ TRANSLATIONS = {
         "fr": "l'outil lui-même a échoué",
         "en": "the tool itself failed",
     },
+    # Contexte fourni à Claude
+    "Show the context given to Claude": {
+        "fr": "Afficher le contexte fourni à Claude",
+        "en": "Show the context given to Claude",
+    },
+    "Context given to Claude": {
+        "fr": "Contexte fourni à Claude",
+        "en": "Context given to Claude",
+    },
+    "Instructions": {
+        "fr": "Instructions",
+        "en": "Instructions",
+    },
+    "Rules": {
+        "fr": "Règles",
+        "en": "Rules",
+    },
+    "Skills": {
+        "fr": "Skills",
+        "en": "Skills",
+    },
+    "Deployed commands": {
+        "fr": "Commandes déployées",
+        "en": "Deployed commands",
+    },
+    "Git hooks": {
+        "fr": "Hooks git",
+        "en": "Git hooks",
+    },
+    "up to date": {
+        "fr": "à jour",
+        "en": "up to date",
+    },
+    "redeploy needed": {
+        "fr": "à redéployer",
+        "en": "redeploy needed",
+    },
+    "not in the repository": {
+        "fr": "absent du dépôt",
+        "en": "not in the repository",
+    },
+    "hook installed": {
+        "fr": "installé",
+        "en": "installed",
+    },
+    "hook not installed": {
+        "fr": "non installé",
+        "en": "not installed",
+    },
+    "%s identifying, %s to re-read — see .claude/rules/04-code-conventions.md": {
+        "fr": "%s identifiant, %s à relire — voir .claude/rules/04-code-conventions.md",
+        "en": "%s identifying, %s to re-read — see .claude/rules/04-code-conventions.md",
+    },
+    "do the comments say how the code works, or where it came from": {
+        "fr": "les commentaires disent-ils le fonctionnement, ou d'où ils viennent",
+        "en": "do the comments say how the code works, or where it came from",
+    },
+    "only the files added to the git index": {
+        "fr": "seulement les fichiers ajoutés à l'index git",
+        "en": "only the files added to the git index",
+    },
+    "drop the narrative signals, keep the certain findings": {
+        "fr": "laisser les signaux de récit, garder les trouvailles sûres",
+        "en": "drop the narrative signals, keep the certain findings",
+    },
+    "give a path, or --staged": {
+        "fr": "donner un chemin, ou --staged",
+        "en": "give a path, or --staged",
+    },
     "unknown result": {
         "fr": "résultat inconnu",
         "en": "unknown result",

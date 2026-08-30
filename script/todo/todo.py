@@ -2761,6 +2761,152 @@ class TODO(
         print("-" * 50)
         print(f"{t('Total:')}" f" {len(files)}")
 
+    def _claude_context_root(self):
+        """La racine du dépôt, deux niveaux au-dessus de ce fichier."""
+        return os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
+
+    def _compte_lignes(self, chemin):
+        """Le nombre de lignes d'un fichier ; 0 s'il est illisible."""
+        try:
+            with open(chemin, encoding="utf-8", errors="replace") as fh:
+                return sum(1 for _ in fh)
+        except OSError:
+            return 0
+
+    def _claude_command_state(self, deployed, template):
+        """La copie déployée d'une commande suit-elle encore le gabarit ?
+
+        La comparaison ignore les lignes qui portent une identité git : le
+        déploiement y substitue le nom et le courriel, et une égalité stricte
+        déclarerait périmée toute commande personnalisée.
+        """
+        if not os.path.isfile(template):
+            return t("not in the repository")
+        if not os.path.isfile(deployed):
+            return t("missing")
+
+        def stables(chemin):
+            with open(chemin, encoding="utf-8", errors="replace") as fh:
+                return [x for x in fh if "user.name=" not in x]
+
+        try:
+            if stables(deployed) == stables(template):
+                return t("up to date")
+        except OSError:
+            return t("missing")
+        return t("redeploy needed")
+
+    def _claude_memory_dir(self):
+        """Le répertoire de mémoire de Claude Code pour CE dépôt.
+
+        Le nom du projet est le chemin absolu dont chaque séparateur devient
+        un tiret : c'est la convention de Claude Code, pas la nôtre.
+        """
+        racine = self._claude_context_root()
+        projet = racine.replace(os.sep, "-")
+        return os.path.expanduser(
+            os.path.join("~/.claude/projects", projet, "memory")
+        )
+
+    def _show_claude_context(self):
+        """Ce que Claude reçoit avant la première question : sources et état.
+
+        Rend None. Écrit un tableau et ne modifie rien. Ne relève que ce qui
+        est versionné ou déployé ; ce que `private/` contient n'y figure pas.
+        """
+        racine = self._claude_context_root()
+        largeur = 62
+        print(f"🧠 {t('Context given to Claude')}")
+        print("-" * largeur)
+
+        instructions = os.path.join(racine, "CLAUDE.md")
+        if os.path.isfile(instructions):
+            n = self._compte_lignes(instructions)
+            print(f"{t('Instructions'):<22} CLAUDE.md  {n} {t('lines')}")
+        else:
+            print(f"{t('Instructions'):<22} CLAUDE.md  {t('missing')}")
+
+        regles = os.path.join(racine, ".claude", "rules")
+        if os.path.isdir(regles):
+            noms = sorted(f for f in os.listdir(regles) if f.endswith(".md"))
+            total = sum(
+                self._compte_lignes(os.path.join(regles, f)) for f in noms
+            )
+            print(
+                f"{t('Rules'):<22} .claude/rules/  {len(noms)}"
+                f" {t('files')}, {total} {t('lines')}"
+            )
+            for nom in noms:
+                n = self._compte_lignes(os.path.join(regles, nom))
+                print(f"{'':<22}   {nom:<28} {n} {t('lines')}")
+        else:
+            print(f"{t('Rules'):<22} .claude/rules/  {t('missing')}")
+
+        skills = os.path.join(racine, ".claude", "skills")
+        if os.path.isdir(skills):
+            noms = sorted(
+                d
+                for d in os.listdir(skills)
+                if os.path.isfile(os.path.join(skills, d, "SKILL.md"))
+            )
+            print(f"{t('Skills'):<22} .claude/skills/  {len(noms)}")
+            for nom in noms:
+                print(f"{'':<22}   {nom}")
+        else:
+            print(f"{t('Skills'):<22} .claude/skills/  {t('missing')}")
+
+        print(f"{t('Deployed commands'):<22} ~/.claude/commands/")
+        gabarits = {
+            "commit": "template_claude_commands_commit.md",
+            "todo_add_command": "template_claude_commands_todo_add_command.md",
+        }
+        for nom, gabarit in sorted(gabarits.items()):
+            etat = self._claude_command_state(
+                os.path.expanduser(f"~/.claude/commands/{nom}.md"),
+                os.path.join(racine, "conf", gabarit),
+            )
+            print(f"{'':<22}   /{nom:<26} {etat}")
+
+        chemin_hooks = self._git_hooks_path(racine)
+        print(
+            f"{t('Git hooks'):<22}"
+            f" {chemin_hooks or t('hook not installed')}"
+        )
+        if chemin_hooks:
+            absolu = os.path.join(racine, chemin_hooks)
+            for hook in ("commit-msg", "pre-commit"):
+                pose = os.access(os.path.join(absolu, hook), os.X_OK)
+                marque = (
+                    t("hook installed") if pose else t("hook not installed")
+                )
+                print(f"{'':<22}   {hook:<26} {marque}")
+
+        memoire = self._claude_memory_dir()
+        if os.path.isdir(memoire):
+            n = len([f for f in os.listdir(memoire) if f.endswith(".md")])
+            print(f"{t('Memory'):<22} ~/.claude/projects/…/memory/  {n}")
+        else:
+            print(f"{t('Memory'):<22} {t('missing')}")
+
+        print("-" * largeur)
+
+    def _git_hooks_path(self, racine):
+        """La valeur de core.hooksPath, ou None si git n'en déclare aucune."""
+        try:
+            sortie = subprocess.run(
+                ["git", "config", "--get", "core.hooksPath"],
+                capture_output=True,
+                text=True,
+                cwd=racine,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        chemin = sortie.stdout.strip()
+        return chemin or None
+
     def _setup_claude_command(
         self, command_name, template_filename, personalize=False
     ):
@@ -3694,7 +3840,7 @@ class TODO(
         de modèles et de colonnes, et lesquels sont traduits ou uniques.
 
         La confirmation redemande le NOM de la base. Une frappe sur « o »
-        se donne par réflexe ; recopier « chezlepro_neutralize_upgrade_18 »
+        se donne par réflexe ; recopier « sireine_neutralize_upgrade_18 »
         oblige à regarder ce qu'on détruit.
         """
         from script.analyse import monitoring

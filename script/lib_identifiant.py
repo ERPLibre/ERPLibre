@@ -5,7 +5,7 @@
 
 La règle est dans `.claude/rules/04-code-conventions.md` : ce qui est versionné
 ne nomme ni client, ni base réelle, ni machine, ni adresse. Deux garde-fous s'en
-servent — `script/git/hooks/commit-msg` sur le message, et
+servent — `script/git/commit_msg_lib.py` sur le message, et
 `script/analyse/check_comment_hygiene.py` sur les commentaires — et ils
 partagent CE module. Deux prédicats séparés pour la même question dérivent.
 

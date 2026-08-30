@@ -41,18 +41,18 @@ from script.todo.todo_i18n import t  # noqa: E402
 CONFIG = """Host *
     ServerAliveInterval 60
 
-Host novipro_private
+Host pro_private
     HostName 192.168.100.110
-    User mathben
+    User admin
 
-Host novipro_private+ERPLibre01
+Host pro_private+ERPLibre01
     HostName 192.168.122.50
-    User mathben
+    User admin
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     IdentityFile /home/erplibre/.ssh/id_ed25519
     IdentitiesOnly yes
-    ProxyJump novipro_private
+    ProxyJump pro_private
 
 Host erplibre-ubuntu-2604 erplibre-2604-bis
     HostName 192.168.123.165
@@ -63,11 +63,11 @@ Host web-?
 """
 
 # Sortie de « ssh -G » pour l'alias à « + », réduite à ce qui compte.
-SSH_G = """host novipro_private+erplibre01
+SSH_G = """host pro_private+erplibre01
 hostname 192.168.122.50
-user mathben
+user admin
 port 22
-proxyjump novipro_private
+proxyjump pro_private
 identityfile /home/erplibre/.ssh/id_ed25519
 identityfile ~/.ssh/id_rsa
 identitiesonly yes
@@ -93,8 +93,8 @@ class TestLectureConfig(unittest.TestCase):
     def test_it_reads_hosts_in_file_order(self):
         hosts = TODO._ssh_config_entries(self.chemin)
         noms = [n for n, _i in hosts]
-        self.assertEqual("novipro_private", noms[0])
-        self.assertIn("novipro_private+ERPLibre01", noms)
+        self.assertEqual("pro_private", noms[0])
+        self.assertIn("pro_private+ERPLibre01", noms)
 
     def test_a_host_line_with_two_patterns_gives_two_aliases(self):
         """C'est ce que le générateur du dépôt écrit (« Host {' '.join(names)} »).
@@ -119,14 +119,14 @@ class TestLectureConfig(unittest.TestCase):
 
     def test_the_plus_alias_stays_one_name(self):
         noms = [n for n, _i in TODO._ssh_config_entries(self.chemin)]
-        self.assertNotIn("novipro_private", noms[1:2] and [])
-        self.assertIn("novipro_private+ERPLibre01", noms)
+        self.assertNotIn("pro_private", noms[1:2] and [])
+        self.assertIn("pro_private+ERPLibre01", noms)
 
     def test_hostname_and_user_are_kept(self):
         hosts = dict(TODO._ssh_config_entries(self.chemin))
-        info = hosts["novipro_private+ERPLibre01"]
+        info = hosts["pro_private+ERPLibre01"]
         self.assertEqual("192.168.122.50", info["hostname"])
-        self.assertEqual("mathben", info["user"])
+        self.assertEqual("admin", info["user"])
 
     def test_a_missing_file_is_not_a_crash(self):
         self.assertEqual([], TODO._ssh_config_entries("/nexistepas/config"))
@@ -138,9 +138,9 @@ class TestResolution(unittest.TestCase):
             "subprocess.run",
             return_value=subprocess.CompletedProcess([], 0, SSH_G, ""),
         ):
-            cfg = TODO._ssh_resolve("novipro_private+ERPLibre01")
+            cfg = TODO._ssh_resolve("pro_private+ERPLibre01")
         self.assertEqual("192.168.122.50", cfg["hostname"])
-        self.assertEqual("novipro_private", cfg["proxyjump"])
+        self.assertEqual("pro_private", cfg["proxyjump"])
 
     def test_the_first_identityfile_wins(self):
         """ssh -G les répète toutes ; la première est celle qu'il essaiera."""
@@ -177,9 +177,9 @@ class TestCommandeSshfs(unittest.TestCase):
     def _resolue(self):
         return {
             "hostname": "192.168.122.50",
-            "user": "mathben",
+            "user": "admin",
             "port": "22",
-            "proxyjump": "novipro_private",
+            "proxyjump": "pro_private",
             "identityfile": "/home/erplibre/.ssh/id_ed25519",
             "identitiesonly": "yes",
             "stricthostkeychecking": "false",
@@ -188,10 +188,10 @@ class TestCommandeSshfs(unittest.TestCase):
 
     def test_a_plus_alias_becomes_a_resolved_target(self):
         cmd, contourne = self.todo._sshfs_command(
-            "novipro_private+ERPLibre01", "/tmp/mnt", self._resolue()
+            "pro_private+ERPLibre01", "/tmp/mnt", self._resolue()
         )
         self.assertTrue(contourne)
-        self.assertIn("mathben@192.168.122.50:/", cmd)
+        self.assertIn("admin@192.168.122.50:/", cmd)
         self.assertNotIn("+", cmd)
 
     def test_the_options_that_matter_travel_with_it(self):
@@ -199,7 +199,7 @@ class TestCommandeSshfs(unittest.TestCase):
         une IP DHCP recyclée fait échouer le montage sur sa clé d'hôte."""
         cmd, _ = self.todo._sshfs_command("a+b", "/tmp/mnt", self._resolue())
         for attendu in (
-            "-o ProxyJump=novipro_private",
+            "-o ProxyJump=pro_private",
             "-o Port=22",
             "-o IdentityFile=/home/erplibre/.ssh/id_ed25519",
             "-o IdentitiesOnly=yes",
@@ -250,7 +250,7 @@ class TestDiagnostic(unittest.TestCase):
                 "nothing listening on the SSH port",
             ),
             (
-                "mathben@x: Permission denied (publickey).",
+                "admin@x: Permission denied (publickey).",
                 "authentication refused: check User and key",
             ),
             (
@@ -285,8 +285,8 @@ class TestFlux(unittest.TestCase):
         todo._ssh_probe = lambda alias, timeout=8: probe
         todo._ssh_resolve = lambda alias: {
             "hostname": "192.168.122.50",
-            "user": "mathben",
-            "proxyjump": "novipro_private",
+            "user": "admin",
+            "proxyjump": "pro_private",
         }
         return todo
 
@@ -377,11 +377,11 @@ class TestFlux(unittest.TestCase):
     def test_the_plus_alias_is_bypassed_before_being_run(self):
         """Le vrai correctif : la commande lancée ne contient plus le « + »."""
         todo = self._todo(0)
-        # [1] novipro_private · [2] novipro_private+ERPLibre01 · [3] la VM
+        # [1] pro_private · [2] pro_private+ERPLibre01 · [3] la VM
         _s, _c, _r = self._joue(todo, CONFIG, "2")
         lancee = todo.lances[0]
-        self.assertIn("mathben@192.168.122.50:/", lancee)
-        self.assertIn("-o ProxyJump=novipro_private", lancee)
+        self.assertIn("admin@192.168.122.50:/", lancee)
+        self.assertIn("-o ProxyJump=pro_private", lancee)
         self.assertNotIn("+ERPLibre01", lancee)
 
 

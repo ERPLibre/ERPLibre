@@ -1754,7 +1754,7 @@ class TodoUpgrade:
             # TODO exécuter next line si status != 0 et log contient
             # psycopg2.errors.UndefinedTable: relation "discuss_channel" does not exist
             # LIGNE 1 : SELECT "discuss_channel"."id" FROM "discuss_channel" WHERE (...
-            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d ripbylop_stage_prod_17_nov_2025
+            # source ./.venv.odoo18.0_python3.12.10/bin/activate && cat script/postgresql/migration/fix_migration_postgresql_17_to_postgresql_18_module_mail_nov_2025.py | ./odoo18.0/odoo/odoo-bin shell -d riplop_stage_prod_17_nov_2025
             # psycopg2.errors.ForeignKeyViolation: insert or update on table "discuss_channel_member" violates foreign key constraint "discuss_channel_member_channel_id_fkey"
             # DÉTAIL : Key (channel_id)=(20) is not present in table "discuss_channel".
             # ./script/database/migrate/process_backup_file.py --path_backup_zip image_db/db.zip --path_output_zip image_db/dbFIX.zip --word_to_delete discuss_channel_channel_type_not_null

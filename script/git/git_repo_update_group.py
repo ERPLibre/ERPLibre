@@ -78,7 +78,7 @@ def main():
     whitelist = []
     if config.from_backup_path or config.from_backup_name:
         # script/database/get_repo_from_backup.py
-        # --backup_name bpir_prod_5_dec_2025_2026-02-04_14h27m54s.zip
+        # --backup_name pir_prod_5_dec_2025_2026-02-04_14h27m54s.zip
         if config.from_backup_path:
             cmd = f"./script/database/get_repo_from_backup.py --backup_path {config.from_backup_path}"
         else:

@@ -14,8 +14,8 @@ Le reste — « ce sujet dit-il sur quoi porte le code », « ce corps raconte-t
 l'enquête plutôt que le fonctionnement » — est un jugement, et aucun hook ne
 le rendra.
 
-Compté en CARACTÈRES et non en octets : « préchauffer » pèse 12 caractères et
-14 octets, et une limite en octets refuserait des sujets français conformes.
+Compté en CARACTÈRES et non en octets : « préchauffer » pèse 11 caractères et
+12 octets, et une limite en octets refuserait des sujets français conformes.
 """
 import re
 import sys
@@ -199,9 +199,9 @@ def _check_body(sans_trailers: str, avec_trailers: str) -> list:
     noms = sorted(set(par_motif.get("nom privé", [])))
     if noms:
         problems.append(
-            f"le corps porte un nom de la liste privée : {', '.join(noms)}.\n"
+            f"le corps porte un nom refusé : {', '.join(noms)}.\n"
             "     Généralisez — « sur une base de production » — ou retirez la\n"
-            "     phrase. La liste est dans private/noms_interdits.txt."
+            "     phrase."
         )
 
     return problems

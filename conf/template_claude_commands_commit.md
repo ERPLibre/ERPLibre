@@ -138,11 +138,8 @@ That form is a fallback, not a default. Prefer the sentence when it fits.
 
 **The guard rail.** `script/git/hooks/commit-msg` refuses a subject with no
 tag, one over 72 characters, and one opening on a quotation. It reads the body
-too: over ten lines for one language, an IP address, an e-mail, a
-`/home/<account>/` path, or any term listed in `private/noms_interdits.txt` —
-the customer and machine names, which cannot live in git because they are what
-the list protects. With no such file, that last check stays silent. Install
-the hook with `git config core.hooksPath script/git/hooks`; `git commit
+too: over ten lines for one language, an IP address, an e-mail, and a
+`/home/<account>/` path. Install the hook with `git config core.hooksPath script/git/hooks`; `git commit
 --no-verify` passes a legitimate exception. It checks only what is mechanical
 — whether the subject says what the code is about, and whether the body tells
 the story instead of the mechanism, stay judgements, and the tests above are

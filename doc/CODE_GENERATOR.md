@@ -414,3 +414,38 @@ TODO
 ```bash
 make test_code_generator_template
 ```
+
+## Comments in generated code
+
+Generated code carries comments like any other, and the same rule applies: a
+comment says HOW the code works. It never carries identifying data — no
+customer or third-party organisation, no real database name, no machine, no
+address, no label or figure taken from a customer's data — and it does not
+tell the story of the investigation that produced it.
+
+A module generated from an existing database inherits what that database
+holds: re-read its comments and docstrings before committing. A customer or
+database name gets in on its own.
+
+## Cleaning up as you go
+
+Nothing gets cleaned in one sweep. You fix the comments of the file you are
+touching, at the moment you touch it. A `pre-commit` hook lists what is worth
+re-reading in the files you staged, and never blocks the commit:
+
+```bash
+git config core.hooksPath script/git/hooks
+```
+
+The same tool runs by hand, on a file, a directory or the index. It reports
+`identifiant` findings — an address, an e-mail, an account path — which are to
+be removed, and `récit` signals —
+a witness marker, a date, the first person — which are to be RE-READ: a
+durable fact stays, the incident where it was observed goes. Exit codes follow
+the repository convention: 0 nothing to report, 1 findings, 2 the tool failed.
+
+```bash
+python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
+python3 script/analyse/check_comment_hygiene.py --staged
+python3 script/analyse/check_comment_hygiene.py script --identifying-only
+```
