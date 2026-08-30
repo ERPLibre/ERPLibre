@@ -45,5 +45,8 @@
 2. **Verify Plan**: Check in before starting implementation.
 3. **Track Progress**: Mark items complete as you go.
 4. **Explain Changes**: High-level summary at each step.
-5. **Document Results**: Add review section to `tasks/todo.md`
+5. **Document Results**: Add review section to `tasks/todo.md`. L'enquête,
+   les mesures datées, les impasses et les traces d'exécution restent LÀ.
+   `tasks/` n'est pas versionné : il porte ce que ni le code ni le commit ne
+   doivent porter. Ne les fais pas remonter.
 6. **Capture Lessons**: Update `tasks/lessons.md` after corrections
