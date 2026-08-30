@@ -1025,26 +1025,71 @@ class TestItNeverWrites(Base):
     def test_no_odoo_is_started(self):
         # Six démarrages coûteraient une heure ET écriraient dans les
         # bases. L'inspection en SQL prend moins d'une demi-seconde.
+        #
+        # La garde porte sur le CODE, fonction par fonction, et non sur le
+        # texte du fichier : la revue CITE « ./odoo_bin.sh shell » comme
+        # étape à faire soi-même, et interdire le mot interdirait de le
+        # nommer. Ce qu'on veut garantir est que rien ici ne le LANCE.
         import inspect
 
-        source = inspect.getsource(quality)
-        for interdit in ("odoo_bin", "run.sh", "--update", "-u all"):
-            self.assertNotIn(interdit, source, interdit)
+        for nom, objet in vars(quality).items():
+            if not inspect.isfunction(objet):
+                continue
+            if objet.__module__ != quality.__name__:
+                continue
+            source = inspect.getsource(objet)
+            for interdit in ("odoo_bin", "run.sh", "--update", "-u all"):
+                self.assertNotIn(interdit, source, f"{nom} → {interdit}")
+
+    def test_the_only_process_it_launches_is_psql(self):
+        # Complément du précédent : une donnée peut nommer un programme,
+        # un `subprocess.run` le lance. Il n'y en a qu'un, et c'est psql.
+        import ast
+        import inspect
+
+        arbre = ast.parse(inspect.getsource(quality))
+        lances = [
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "run"
+            and getattr(n.func.value, "id", "") == "subprocess"
+        ]
+        self.assertEqual(1, len(lances))
+        premier = lances[0].args[0]
+        self.assertEqual("psql", premier.elts[0].value)
 
 
 class TestTheFullScreen(Base):
-    def test_one_row_per_step_plus_the_overall(self):
+    def test_one_row_per_step_then_the_overall(self):
         lst = [snapshot(odoo="12.0"), snapshot(odoo="18.0")]
-        lignes = qtui.rows(lst)
-        self.assertEqual(
-            [x["kind"] for x in lignes], ["step", "step", "overall"]
-        )
+        lignes = qtui.rows(lst, {})
+        debut = [x["kind"] for x in lignes][:3]
+        self.assertEqual(debut, ["step", "step", "overall"])
 
-    def test_the_overall_comes_LAST(self):
+    def test_the_overall_closes_the_steps(self):
         # On descend la liste comme on a vécu la migration ; « qu'en
-        # reste-t-il » se pose une fois le chemin vu.
+        # reste-t-il » se pose une fois le chemin vu. Ce qui suit — les
+        # verdicts, où les lire, quoi vérifier — répond à « et après ».
         lst = [snapshot(odoo="12.0"), snapshot(odoo="18.0")]
-        self.assertEqual(qtui.rows(lst)[-1]["kind"], "overall")
+        genres = [x["kind"] for x in qtui.rows(lst, {})]
+        rang = genres.index("overall")
+        self.assertEqual(set(genres[:rang]), {"step"})
+        self.assertNotIn("step", genres[rang:])
+
+    def test_the_review_sections_come_after_the_overall(self):
+        lst = [snapshot(odoo="12.0"), snapshot(odoo="18.0")]
+        genres = [x["kind"] for x in qtui.rows(lst, {})]
+        apres = set(genres[genres.index("overall") + 1 :])
+        self.assertTrue(apres <= set(qtui.EXTRA_KINDS) | {"header"}, apres)
+
+    def test_the_screen_does_not_depend_on_this_machine(self):
+        # Sans `dct`, la liste refléterait ce qu'une migration a laissé
+        # sur CE poste : deux exécutions ne rendraient pas la même chose.
+        lst = [snapshot(odoo="12.0"), snapshot(odoo="18.0")]
+        avec = qtui.rows(lst, {"lst_event": []})
+        self.assertNotIn("verdict", [x["kind"] for x in avec])
 
     def test_a_missing_database_gets_its_own_row(self):
         lignes = qtui.rows(
@@ -1585,6 +1630,883 @@ class TestWhyAnAttachmentWentAway(Base):
         # aucune contre-vérification.
         for entree in quality.SEMANTIC_MAP:
             self.assertNotEqual("ir_attachment", entree.get("table"))
+
+
+def evenement(**champs):
+    """Un événement du journal de progression, forme réelle."""
+    brut = {
+        "at": "2026-08-26 03:19:59.846453",
+        "step": "4.1.I - Migrate database",
+        "kind": "test",
+        "name": "smoke_public_url",
+        "status": 1,
+        "detail": ".venv.erplibre/bin/python3"
+        " ./script/odoo/migration/smoke_public_url.py"
+        " -d test_neutralize_upgrade_14 --internal-required",
+    }
+    brut.update(champs)
+    return brut
+
+
+class TestTheVerdictsAreReadFromTheFile(Base):
+    """`lst_event` est la SEULE trace persistante d'un échec.
+
+    `command_executed` ne dit que ce qui a été lancé. La sortie d'Odoo,
+    elle, part sur le terminal et meurt avec lui.
+    """
+
+    def test_a_status_written_as_text_still_counts(self):
+        # Le pilote écrit parfois le code en chaîne ; le comparer à zéro
+        # sans le convertir ferait passer "0" pour un échec.
+        lus = quality.read_events({"lst_event": [evenement(status="1")]})
+        self.assertEqual(1, lus[0]["status"])
+
+    def test_a_zero_written_as_text_is_not_a_failure(self):
+        lus = quality.read_events({"lst_event": [evenement(status="0")]})
+        self.assertEqual([], quality.failures(lus))
+
+    def test_an_unreadable_status_is_read_as_success(self):
+        # Mieux vaut taire un verdict illisible que crier un faux échec.
+        lus = quality.read_events({"lst_event": [evenement(status="oui")]})
+        self.assertEqual(0, lus[0]["status"])
+
+    def test_an_entry_that_is_not_a_record_is_skipped(self):
+        lus = quality.read_events({"lst_event": ["cassé", evenement()]})
+        self.assertEqual(1, len(lus))
+
+    def test_no_list_at_all_reads_as_no_verdict(self):
+        self.assertEqual([], quality.read_events({}))
+        self.assertEqual([], quality.read_events({"lst_event": None}))
+
+    def test_a_dialogue_answer_is_not_a_failed_test(self):
+        # Les entrées `command` à 1 sont les réponses du pilote — « veux-tu
+        # effacer le module manquant ». Les compter comme des échecs
+        # noierait les vrais sous une liste qu'on cesse de lire.
+        lus = quality.read_events(
+            {
+                "lst_event": [
+                    evenement(kind="command", name="./odoo_bin.sh db --clone"),
+                    evenement(kind="test"),
+                ]
+            }
+        )
+        ratés = quality.failures(lus)
+        self.assertEqual(["smoke_public_url"], [e["name"] for e in ratés])
+
+
+class TestWhichStepAVerdictBelongsTo(Base):
+    def test_the_database_is_read_from_the_command(self):
+        self.assertEqual(
+            "test_neutralize_upgrade_14",
+            quality.event_database(evenement()),
+        )
+
+    def test_a_command_without_database_yields_nothing(self):
+        self.assertEqual("", quality.event_database(evenement(detail="")))
+
+    def test_the_step_comes_from_the_database_not_the_counter(self):
+        # `step` compte les ÉTAPES du pilote — « 4.1.I » — et non les
+        # versions d'Odoo : les deux sont décalées d'un rang. Afficher
+        # « 4.1 » à côté de « palier » nommerait la mauvaise version.
+        self.assertEqual("14", quality.event_step(evenement()))
+
+    def test_without_a_step_database_it_falls_back_to_the_counter(self):
+        seul = evenement(detail="", step="4.1.I - Migrate database")
+        self.assertEqual("4.1.I", quality.event_step(seul))
+
+
+class TestTheMapOfTraces(Base):
+    """Documenter les chemins EST la fonctionnalité."""
+
+    def test_both_places_are_named_even_when_one_is_empty(self):
+        sources = quality.log_sources(
+            path="rien.json", journal="rien_non_plus.log"
+        )
+        self.assertEqual(2, len(sources))
+        for _role, _chemin, existe, _quoi in sources:
+            self.assertFalse(existe)
+
+    def test_the_missing_journal_is_shown_not_hidden(self):
+        # Le taire laisserait chercher un fichier qu'Odoo n'a jamais
+        # écrit, faute de `logfile=` dans config.conf.
+        chemins = [c for _r, c, _e, _q in quality.log_sources()]
+        self.assertIn(quality.JOURNAL_ODOO, chemins)
+
+
+class TestScanningTheOdooLog(Base):
+    def setUp(self):
+        super().setUp()
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.dossier)
+        self.journal = os.path.join(self.dossier, "odoo.log")
+
+    def ecrire(self, texte):
+        with io.open(self.journal, "w", encoding="utf-8") as handle:
+            handle.write(texte)
+
+    def test_a_missing_file_is_not_an_error(self):
+        rapport = quality.scan_log(os.path.join(self.dossier, "absent.log"))
+        self.assertFalse(rapport["exists"])
+        self.assertEqual([], rapport["lines"])
+
+    def test_each_pattern_is_counted(self):
+        self.ecrire("INFO ok\nERROR boum\nCRITICAL pire\nTraceback (x)\n")
+        rapport = quality.scan_log(self.journal)
+        for motif in quality.MOTIFS_ERREUR:
+            self.assertEqual(1, rapport["counts"][motif], motif)
+
+    def test_a_clean_log_counts_zero_and_shows_nothing(self):
+        self.ecrire("INFO tout va bien\nINFO encore\n")
+        rapport = quality.scan_log(self.journal)
+        self.assertEqual([], rapport["lines"])
+        self.assertEqual(0, rapport["counts"]["ERROR"])
+
+    def test_only_the_last_lines_are_kept(self):
+        # Un journal de migration pèse des dizaines de mégaoctets ; ce
+        # qu'on cherche est ce qui a échoué en DERNIER.
+        self.ecrire("".join("ERROR %d\n" % i for i in range(50)))
+        rapport = quality.scan_log(self.journal, limite=3)
+        self.assertEqual(3, len(rapport["lines"]))
+        self.assertIn("ERROR 49", rapport["lines"][-1])
+
+
+class TestTheReviewChecklist(Base):
+    """Une liste de contrôle qu'il faut aller chercher n'est pas suivie."""
+
+    def test_every_step_names_a_question(self):
+        for question, _commande, _clef in quality.REVUE:
+            self.assertTrue(question.endswith("?"), question)
+
+    def test_a_runnable_step_either_names_a_database_or_reads_the_checkout(
+        self,
+    ):
+        # Une seule étape lit le CHECKOUT et non une base ; toutes les
+        # autres doivent nommer la leur, sinon elles s'exécuteraient sur
+        # celle du fichier de configuration, qui n'est pas la migrée.
+        sans_base = 0
+        for _q, commande, clef in quality.REVUE:
+            if not clef:
+                continue
+            if "{db}" in commande:
+                continue
+            sans_base += 1
+            self.assertIn("script/analyse/", commande, commande)
+        self.assertTrue(sans_base)
+
+    def test_the_checkout_step_needs_no_database(self):
+        # C'est l'angle mort des six autres : elles lisent toutes la BASE
+        # et ne peuvent pas voir un dépôt d'addons absent d'un palier.
+        sans_base = [
+            (q, c) for q, c, k in quality.REVUE if k and "{db}" not in c
+        ]
+        self.assertTrue(sans_base)
+        for _question, commande in sans_base:
+            self.assertTrue(commande.startswith("script/analyse/"), commande)
+
+    def test_the_first_step_has_nothing_to_run(self):
+        # « La migration est-elle allée jusqu'au bout » se lit dans le
+        # fichier ; aucune commande ne le rejoue.
+        self.assertIsNone(quality.REVUE[0][2])
+
+
+class TestTheThreeExtraSections(Base):
+    """Elles vivent dans la MÊME table que les paliers."""
+
+    def entetes(self, lst):
+        return [r["label"] for r in lst if r["kind"] == "header"]
+
+    def test_the_sections_come_in_the_order_of_the_work(self):
+        lst = qtui.extra_rows([], {})
+        self.assertEqual(
+            [
+                f"── {qtui.t('Verdicts')} ──",
+                f"── {qtui.t('Validation')} ──",
+                f"── {qtui.t('Review')} ──",
+            ],
+            self.entetes(lst),
+        )
+
+    def test_no_verdict_at_all_says_so(self):
+        lst = qtui.extra_rows([], {})
+        self.assertIn("verdict-none", [r["kind"] for r in lst])
+
+    def test_a_failed_verdict_names_its_step_in_the_label(self):
+        # « smoke_public_url » quatre fois de suite ne dit pas lequel a
+        # échoué, et c'est la seule chose qu'on veut savoir.
+        lst = qtui.extra_rows([], {"lst_event": [evenement()]})
+        ligne = [r for r in lst if r["kind"] == "verdict"][0]
+        self.assertIn("14", ligne["label"])
+        self.assertIn("smoke_public_url", ligne["label"])
+
+    def test_a_failed_verdict_offers_a_way_to_replay_it(self):
+        lst = qtui.extra_rows([], {"lst_event": [evenement()]})
+        ligne = [r for r in lst if r["kind"] == "verdict"][0]
+        self.assertEqual("▶", ligne["detail"])
+        self.assertTrue(ligne["command"])
+
+    def premier_entete(self, lst):
+        return [r for r in lst if r["kind"] == "header"][0]
+
+    def test_review_steps_target_the_last_database(self):
+        presents = [
+            {"database": "base_upgrade_17", "exists": True},
+            {"database": "base_upgrade_18", "exists": True},
+        ]
+        lst = qtui.extra_rows(presents, {})
+        commandes = [
+            r["command"] for r in lst if r["kind"] == "review" and r["command"]
+        ]
+        self.assertTrue(commandes)
+        nommant_une_base = [c for c in commandes if " -d " in c]
+        self.assertTrue(nommant_une_base)
+        for commande in nommant_une_base:
+            self.assertIn("base_upgrade_18", commande)
+        for commande in commandes:
+            self.assertNotIn("{db}", commande)
+
+    def test_without_a_database_only_the_db_free_step_can_be_run(self):
+        # La revue du checkout — manifestes, types de vue — se lance
+        # justement AVANT qu'une migration existe. Exiger une base la
+        # rendait inerte au seul moment où elle sert.
+        lst = qtui.extra_rows([], {})
+        lancables = [r for r in lst if r["kind"] == "review" and r["command"]]
+        attendu = [c for _q, c, k in quality.REVUE if k and "{db}" not in c]
+        self.assertEqual(len(attendu), len(lancables))
+        self.assertTrue(lancables)
+        for ligne in lancables:
+            self.assertNotIn("{db}", ligne["command"])
+            self.assertNotIn(" -d ", ligne["command"])
+
+    def test_a_step_that_names_a_database_stays_silent_without_one(self):
+        lst = qtui.extra_rows([], {})
+        for ligne in [r for r in lst if r["kind"] == "review"]:
+            if "{db}" in dict((q, c) for q, c, _k in quality.REVUE).get(
+                ligne["question"], ""
+            ):
+                self.assertEqual("", ligne["command"], ligne["question"])
+
+
+class TestEveryVerdictIsListed(Base):
+    """N'afficher que les échecs répondait à une autre question.
+
+    Devant une base migrée on se demande « qu'a-t-on vérifié », pas
+    seulement « qu'est-ce qui a raté ». Et c'est la seule façon de voir
+    qu'un échec du palier 14 a été RATTRAPÉ au 17.
+    """
+
+    def journal(self, *statuts):
+        lst = []
+        for rang, statut in enumerate(statuts):
+            version = 13 + rang
+            lst.append(
+                evenement(
+                    status=statut,
+                    detail=(
+                        "./script/odoo/migration/smoke_public_url.py"
+                        " -d base_upgrade_%d" % version
+                    ),
+                )
+            )
+        return {
+            "lst_event": lst,
+            "config_database_name": "base",
+            "target_odoo_version": "18.0",
+            "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+        }
+
+    def test_a_passing_verdict_gets_its_own_line(self):
+        lst = qtui.extra_rows([], self.journal(0, 0))
+        lignes = [r for r in lst if r["kind"] == "verdict"]
+        self.assertEqual(2, len(lignes))
+        for ligne in lignes:
+            self.assertIn("✅", ligne["label"])
+
+    def test_a_finding_and_a_success_sit_side_by_side(self):
+        lst = qtui.extra_rows([], self.journal(1, 0))
+        icones = [
+            r["label"].strip().split()[0]
+            for r in lst
+            if r["kind"] == "verdict"
+        ]
+        self.assertEqual(["⚠", "✅"], icones)
+
+    def test_the_header_counts_failures_over_the_total(self):
+        lst = qtui.extra_rows([], self.journal(1, 0, 0))
+        entete = [r for r in lst if r["kind"] == "header"][0]
+        self.assertEqual("1/3", entete["detail"])
+
+    def test_an_all_green_run_says_how_many(self):
+        lst = qtui.extra_rows([], self.journal(0, 0, 0))
+        entete = [r for r in lst if r["kind"] == "header"][0]
+        self.assertIn("3", entete["detail"])
+        self.assertIn("✅", entete["detail"])
+
+    def test_the_starting_database_gets_its_real_version(self):
+        # Elle ne porte pas « _upgrade_ » dans son nom : le palier
+        # retombait alors sur le compteur du pilote et affichait « 2 ».
+        dct = {
+            "lst_event": [
+                evenement(
+                    status=0,
+                    step="2 - Update all addons",
+                    detail="./script/odoo/migration/smoke_public_url.py -d base",
+                )
+            ],
+            "config_database_name": "base",
+            "target_odoo_version": "18.0",
+            "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+        }
+        ligne = [
+            r for r in qtui.extra_rows([], dct) if r["kind"] == "verdict"
+        ][0]
+        self.assertIn("12", ligne["label"])
+        self.assertNotIn(" 2 ", ligne["label"])
+
+    def test_a_dialogue_answer_is_still_not_a_verdict(self):
+        # Les entrées `command` à 1 sont les réponses du pilote ; les
+        # lister ferait sept faux échecs par migration.
+        dct = self.journal(0)
+        dct["lst_event"].append(
+            evenement(
+                kind="command", name="./odoo_bin.sh db --clone", status=1
+            )
+        )
+        lignes = [
+            r for r in qtui.extra_rows([], dct) if r["kind"] == "verdict"
+        ]
+        self.assertEqual(1, len(lignes))
+
+
+class TestTheScreenObeysTheConvention(Base):
+    """L'écran peignait en ❌ ce que l'outil appelle un avertissement."""
+
+    def journal(self, statut):
+        return {
+            "lst_event": [
+                evenement(
+                    status=statut,
+                    name="database_cleanup",
+                    detail="./script/odoo/migration/database_cleanup.py"
+                    " -d base_upgrade_18",
+                )
+            ],
+            "config_database_name": "base",
+            "target_odoo_version": "18.0",
+            "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+        }
+
+    def ligne(self, statut):
+        lst = qtui.extra_rows([], self.journal(statut))
+        return [r for r in lst if r["kind"] == "verdict"][0]
+
+    def test_findings_are_a_warning_in_the_column(self):
+        # database_cleanup imprime « This is a warning, not a failure »
+        # avant de rendre 1 : l'écran doit dire la même chose.
+        self.assertIn("⚠", self.ligne(1)["label"])
+        self.assertNotIn("❌", self.ligne(1)["label"])
+
+    def test_a_tool_that_failed_is_still_red(self):
+        self.assertIn("❌", self.ligne(2)["label"])
+
+    def test_nothing_to_report_stays_green(self):
+        self.assertIn("✅", self.ligne(0)["label"])
+
+    def test_the_panel_header_agrees_with_the_column(self):
+        for statut in (0, 1, 2):
+            ligne = self.ligne(statut)
+            icone = ligne["label"].strip().split()[0]
+            self.assertTrue(
+                qtui.extra_pane(ligne).startswith(icone),
+                (statut, icone, qtui.extra_pane(ligne)[:20]),
+            )
+
+    def test_the_panel_spells_out_what_the_number_means(self):
+        # « statut 1 » ne dit rien à qui ne connaît pas la convention.
+        texte = qtui.extra_pane(self.ligne(1))
+        self.assertIn(qtui.t("findings"), texte)
+
+    def test_the_meaning_covers_the_whole_convention(self):
+        self.assertEqual({0, 1, 2}, set(qtui.SENS_DU_CODE))
+
+
+class TestTheStepLogInThePanel(Base):
+    """Ce que le journal contient vraiment, dit sans détour."""
+
+    def setUp(self):
+        super().setUp()
+        import shutil
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier)
+
+    def journal(self, lignes):
+        chemin = os.path.join(self.dossier, "etape.log")
+        with io.open(chemin, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lignes) + "\n")
+        return chemin
+
+    def ligne_verdict(self, chemin, **champs):
+        return {
+            "kind": "verdict",
+            "label": "",
+            "event": evenement(**champs),
+            "log": chemin,
+            "command": "script/odoo/migration/smoke_public_url.py -d x",
+        }
+
+    def test_the_passage_around_the_verdict_is_shown(self):
+        chemin = self.journal(
+            [
+                "2026-08-26 03:19:00,000 INFO odoo: avant",
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.846406]   -> 1",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+                "2026-08-26 03:20:00,000 INFO odoo: après",
+            ]
+        )
+        texte = qtui.extra_pane(self.ligne_verdict(chemin))
+        self.assertIn("INFO odoo: avant", texte)
+        self.assertIn("[test] smoke_public_url -> 1", texte)
+        self.assertNotIn("INFO odoo: après", texte)
+
+    def test_it_says_the_tool_output_is_absent(self):
+        # Sans cela on cherche un fichier plus complet qui n'existe pas :
+        # ce qui passe par run_on_terminal n'a pas de sortie capturable.
+        chemin = self.journal(
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ]
+        )
+        texte = qtui.extra_pane(self.ligne_verdict(chemin))
+        self.assertIn(
+            qtui.t("the tool output is not in there: it goes to the"), texte
+        )
+
+    def test_the_path_and_the_size_are_documented(self):
+        chemin = self.journal(["a"] * 40)
+        texte = qtui.extra_pane(self.ligne_verdict(chemin))
+        self.assertIn(chemin, texte)
+        self.assertIn("40", texte)
+
+    def test_it_stays_quiet_once_the_output_is_actually_there(self):
+        # Le pilote capture désormais. Répéter que la sortie manque
+        # enverrait la chercher ailleurs alors qu'on l'a sous les yeux.
+        chemin = self.journal(
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "⧖ Démarrage d'Odoo…",
+                "❌ 3 URL sur 37 rendent 500",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ]
+        )
+        texte = qtui.extra_pane(self.ligne_verdict(chemin))
+        self.assertIn("3 URL sur 37", texte)
+        self.assertNotIn(
+            qtui.t("the tool output is not in there: it goes to the"), texte
+        )
+
+    def test_the_frame_alone_is_not_mistaken_for_output(self):
+        # « $ … » puis « -> 1 » : c'est le cadre, pas la sortie.
+        extrait = [
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+            "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+        ]
+        self.assertFalse(quality.excerpt_has_output(extrait, 0))
+
+    def test_one_line_of_output_is_enough(self):
+        extrait = [
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "une seule ligne dite par l'outil",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+        ]
+        self.assertTrue(quality.excerpt_has_output(extrait, 0))
+
+    def test_blank_lines_are_not_output(self):
+        extrait = [
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "",
+            "   ",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+        ]
+        self.assertFalse(quality.excerpt_has_output(extrait, 0))
+
+    def test_what_came_before_the_command_is_not_its_output(self):
+        # Le contexte d'Odoo précède la commande ; le compter dirait
+        # « la sortie est là » sur tous les anciens journaux.
+        extrait = [
+            "odoo: ce qui tournait avant",
+            "[2026-08-26 03:19:44.166204] $ ./script/x.py -d base",
+            "[2026-08-26 03:19:59.846406]   -> 1",
+        ]
+        self.assertFalse(quality.excerpt_has_output(extrait, 1))
+
+    def test_no_log_at_all_says_so(self):
+        ligne = self.ligne_verdict(None)
+        ligne["log"] = None
+        texte = qtui.extra_pane(ligne)
+        self.assertIn(qtui.t("no log file for this step"), texte)
+
+    def test_a_verdict_absent_from_the_log_says_so(self):
+        chemin = self.journal(["rien à voir", "vraiment rien"])
+        texte = qtui.extra_pane(self.ligne_verdict(chemin))
+        self.assertIn(qtui.t("this verdict is not in it"), texte)
+
+    def test_the_tool_is_read_from_the_command_not_from_the_name(self):
+        # Le nom du test se retrouve dans d'AUTRES lignes du journal — une
+        # cible make qui le mentionne, par exemple. Chercher le nom au
+        # lieu du script y accroche la mauvaise commande, et l'extrait
+        # montre alors un passage qui n'a rien à voir.
+        chemin = self.journal(
+            [
+                "[2026-08-26 03:19:44.000000] $ ./script/odoo/migration/"
+                "database_cleanup.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:50.000000] [test] database_cleanup -> 0",
+                "[2026-08-26 03:19:52.000000] $ make database_cleanup_all",
+                "[2026-08-26 03:19:55.000000]   -> 0",
+            ]
+        )
+        with io.open(chemin, encoding="utf-8") as handle:
+            brut = handle.read().splitlines()
+        _extrait, rang = quality.event_excerpt(
+            brut,
+            evenement(
+                name="database_cleanup",
+                at="2026-08-26 03:19:56.000000",
+                detail="./script/odoo/migration/database_cleanup.py"
+                " -d test_neutralize_upgrade_14",
+            ),
+        )
+        self.assertEqual(0, rang)
+
+    def test_a_verdict_launched_by_no_script_matches_nothing(self):
+        # Sans « .py » dans la commande on ne sait pas quoi chercher ;
+        # deviner accrocherait la première ligne venue.
+        chemin = self.journal(
+            ["[2026-08-26 03:19:44.000000] $ make quelque_chose"]
+        )
+        with io.open(chemin, encoding="utf-8") as handle:
+            brut = handle.read().splitlines()
+        _extrait, rang = quality.event_excerpt(
+            brut, evenement(name="quelque_chose", detail="make quelque_chose")
+        )
+        self.assertIsNone(rang)
+
+    def test_a_replayed_migration_shows_the_matching_run(self):
+        # Le même test apparaît plusieurs fois : la dernière occurrence
+        # peut appartenir à une exécution qui n'est pas celle qu'on
+        # regarde. On retient celle qui précède l'horodatage du verdict.
+        chemin = self.journal(
+            [
+                "[2026-08-23 00:43:59.331479] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-23 00:44:19.776150] [test] smoke_public_url -> 1",
+                "premiere execution finie",
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ]
+        )
+        with io.open(chemin, encoding="utf-8") as handle:
+            brut = handle.read().splitlines()
+        _extrait, rang = quality.event_excerpt(
+            brut, evenement(at="2026-08-23 00:44:19.776150")
+        )
+        self.assertEqual(0, rang)
+
+
+class TestKeepingWhatARunWrote(Base):
+    """Ce que la migration ne pouvait pas garder, l'écran le peut.
+
+    Le pilote lance par `run_on_terminal`, qui n'a pas de sortie
+    capturable — un tube y ferait renoncer les pleins écrans. Mais ce que
+    l'on lance SOI-MÊME depuis l'écran, on peut en garder une copie, et
+    la relire sans relancer.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import shutil
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier)
+
+    def fichier(self, contenu):
+        chemin = os.path.join(self.dossier, "run.log")
+        with io.open(chemin, "w", encoding="utf-8") as handle:
+            handle.write(contenu)
+        return chemin
+
+    def test_one_file_per_screen_line_not_per_run(self):
+        # Deux exécutions de la même étape se remplacent : on veut « ce
+        # que ça donne maintenant », pas un historique à trier.
+        self.assertEqual(
+            qtui.run_log_path("review_residue"),
+            qtui.run_log_path("review_residue"),
+        )
+        self.assertNotEqual(
+            qtui.run_log_path("review_residue"),
+            qtui.run_log_path("review_state"),
+        )
+
+    def test_a_key_that_could_escape_the_directory_cannot(self):
+        chemin = os.path.realpath(qtui.run_log_path("../../etc/passwd"))
+        dossier = os.path.realpath(
+            os.path.join(qtui.REPO_ROOT, qtui.REVIEW_LOG_DIR)
+        )
+        self.assertEqual(dossier, os.path.dirname(chemin))
+        self.assertNotIn(os.sep, os.path.basename(chemin))
+
+    def test_no_key_means_no_file(self):
+        self.assertIsNone(qtui.run_log_path(""))
+
+    def test_a_missing_file_reads_as_nothing(self):
+        lst, total = qtui.read_run_log(
+            os.path.join(self.dossier, "jamais_ecrit.log")
+        )
+        self.assertEqual(([], 0), (lst, total))
+
+    def test_the_total_is_told_even_when_the_tail_is_kept(self):
+        # Montrer la fin SANS dire qu'on en cache se lit « il manque des
+        # lignes ».
+        chemin = self.fichier("\n".join("l%d" % i for i in range(50)))
+        lst, total = qtui.read_run_log(chemin, limite=10)
+        self.assertEqual(10, len(lst))
+        self.assertEqual(50, total)
+
+    def test_the_whole_output_is_shown_not_a_sample(self):
+        # Le panneau DÉFILE : amputer obligerait à relancer dans un
+        # terminal pour lire la suite.
+        chemin = self.fichier("\n".join("ligne %d" % i for i in range(300)))
+        row = {
+            "kind": "review",
+            "question": "Does Odoo load the database?",
+            "command": "x",
+            "capture": chemin,
+        }
+        texte = qtui.extra_pane(row)
+        self.assertIn("ligne 0", texte)
+        self.assertIn("ligne 299", texte)
+
+    def test_a_line_never_run_says_so(self):
+        row = {
+            "kind": "review",
+            "question": "Does Odoo load the database?",
+            "command": "x",
+            "capture": os.path.join(self.dossier, "absent.log"),
+        }
+        self.assertIn(qtui.t("never run from here yet"), qtui.extra_pane(row))
+
+    def test_a_line_with_nothing_to_run_promises_no_log(self):
+        row = {
+            "kind": "review",
+            "question": "Did the migration reach the end?",
+            "command": "",
+            "capture": os.path.join(self.dossier, "absent.log"),
+        }
+        self.assertNotIn(
+            qtui.t("never run from here yet"), qtui.extra_pane(row)
+        )
+
+    def test_the_repl_step_is_not_captured(self):
+        # Le passer par un tube lui ferait perdre son invite.
+        lignes = qtui.rows([snapshot(odoo="18.0")], {})
+        shell = [
+            row
+            for row in lignes
+            if row["kind"] == "review"
+            and "shell" in (row.get("command") or "")
+        ]
+        self.assertTrue(shell)
+        self.assertIsNone(shell[0].get("capture"))
+
+    def test_every_other_runnable_step_is_captured(self):
+        lignes = qtui.rows([snapshot(odoo="18.0")], {})
+        lancables = [
+            row
+            for row in lignes
+            if row["kind"] == "review" and row.get("command")
+        ]
+        self.assertTrue(lancables)
+        sans = [r for r in lancables if not r.get("capture")]
+        self.assertEqual(1, len(sans), [r.get("command") for r in sans])
+
+
+class TestSwitchingTheCheckoutFirst(Base):
+    """Lancer un outil sur une base d'un autre palier ÉCRIT dedans."""
+
+    def dct(self):
+        return {
+            "config_database_name": "base",
+            "target_odoo_version": "18.0",
+            "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+        }
+
+    def test_the_same_version_needs_no_switch(self):
+        courante = quality.checkout_version()
+        self.assertIsNone(
+            qtui.switch_needed("base_upgrade_%d" % courante, self.dct())
+        )
+
+    def test_another_tier_names_its_make_target(self):
+        courante = quality.checkout_version()
+        autre = 16 if courante != 16 else 15
+        besoin = qtui.switch_needed("base_upgrade_%d" % autre, self.dct())
+        self.assertEqual((autre, "switch_odoo_%d" % autre), besoin)
+
+    def test_a_database_outside_the_chain_asks_for_nothing(self):
+        # On ne sait pas à quel palier elle est : proposer une bascule au
+        # hasard basculerait le checkout pour rien.
+        self.assertIsNone(qtui.switch_needed("une_autre_base", self.dct()))
+
+    def test_the_panel_warns_before_the_key_not_after(self):
+        courante = quality.checkout_version()
+        autre = 16 if courante != 16 else 15
+        ligne = {
+            "kind": "verdict",
+            "label": "",
+            "event": evenement(),
+            "log": None,
+            "command": "script/odoo/migration/smoke_public_url.py -d x",
+            "switch": (autre, "switch_odoo_%d" % autre),
+        }
+        texte = qtui.extra_pane(ligne)
+        self.assertIn("switch_odoo_%d" % autre, texte)
+        self.assertLess(
+            texte.index("switch_odoo_%d" % autre),
+            texte.index(qtui.t("press r to run it again")),
+        )
+
+
+class TestTheVerdictPanel(Base):
+    def panneau(self, **champs):
+        lst = qtui.extra_rows([], {"lst_event": [evenement(**champs)]})
+        ligne = [r for r in lst if r["kind"] == "verdict"][0]
+        return qtui.extra_pane(ligne)
+
+    def test_the_step_shown_is_the_odoo_version(self):
+        # « 4.1.I » est la première étape du quatrième bloc du pilote ; la
+        # migration en est alors au palier 14. Afficher le compteur sous
+        # le mot « palier » faisait lire une version qui n'existe pas.
+        texte = self.panneau()
+        self.assertIn(f"{qtui.t('step'):<10} 14", texte)
+
+    def test_the_pilot_counter_is_still_there_in_brackets(self):
+        # Il sert à retrouver l'entrée dans le journal ; le perdre
+        # obligerait à compter les étapes à la main.
+        self.assertIn("(4.1.I - Migrate database)", self.panneau())
+
+    def test_what_a_status_of_one_means_is_spelled_out(self):
+        # « status 1 » ne dit pas si c'est un constat ou une panne.
+        texte = self.panneau()
+        self.assertIn(
+            qtui.t("1 means a public page failed — not merely a finding."),
+            texte,
+        )
+
+    def test_a_tool_we_cannot_replay_says_so(self):
+        texte = self.panneau(name="un_outil_inconnu")
+        self.assertIn(qtui.t("No known way to replay this one."), texte)
+        self.assertNotIn(qtui.t("press r to run it again"), texte)
+
+
+class TestReplayingAVerdict(Base):
+    def test_a_known_tool_is_rebuilt_from_its_name(self):
+        self.assertEqual(
+            "script/odoo/migration/smoke_public_url.py -d base",
+            qtui.rerun_command(evenement(), "base"),
+        )
+
+    def test_the_recorded_command_is_not_replayed_as_is(self):
+        # Le `detail` porte le venv du PALIER — « .venv.erplibre/bin/python3 »
+        # d'alors — qui n'est plus celui du checkout courant.
+        commande = qtui.rerun_command(evenement(), "base")
+        self.assertNotIn(".venv", commande)
+        self.assertNotIn("--internal-required", commande)
+
+    def test_an_unknown_tool_offers_nothing(self):
+        self.assertEqual(
+            "", qtui.rerun_command(evenement(name="autre_chose"), "base")
+        )
+
+    def test_without_a_database_there_is_nothing_to_run(self):
+        self.assertEqual("", qtui.rerun_command(evenement(), ""))
+
+
+class TestRunningATestFromTheScreen(Base):
+    """Le test prend le terminal, puis le rend."""
+
+    def setUp(self):
+        super().setUp()
+        self.appels = []
+
+        class FauxRetour:
+            returncode = 0
+
+        def faux_run(argv, cwd=None):
+            self.appels.append((argv, cwd))
+            return FauxRetour()
+
+        faux = type("M", (), {"run": staticmethod(faux_run)})
+        self.addCleanup(setattr, qtui, "subprocess", qtui.subprocess)
+        qtui.subprocess = faux
+
+    def lancer(self, commande, wait=False):
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            resultat = qtui.run_in_terminal(commande, wait=wait)
+        return resultat, tampon.getvalue()
+
+    def test_nothing_to_run_runs_nothing(self):
+        (code, tourné), _sortie = self.lancer("")
+        self.assertIsNone(code)
+        self.assertFalse(tourné)
+        self.assertEqual([], self.appels)
+
+    def test_a_python_tool_runs_with_this_checkout_interpreter(self):
+        # Le lancer avec le python du système le priverait des dépendances
+        # d'ERPLibre : l'outil échouerait à l'import, pas sur la base.
+        self.lancer("script/odoo/migration/smoke_public_url.py -d base")
+        argv, _cwd = self.appels[0]
+        self.assertEqual(sys.executable, argv[0])
+
+    def test_it_runs_from_the_repository_root(self):
+        # Les chemins que la commande porte y sont relatifs ; ailleurs,
+        # ils sont introuvables.
+        self.lancer("script/odoo/migration/smoke_public_url.py -d base")
+        _argv, cwd = self.appels[0]
+        self.assertEqual(qtui.REPO_ROOT, cwd)
+        self.assertTrue(
+            os.path.isdir(os.path.join(cwd, "script", "odoo", "migration"))
+        )
+
+    def test_a_plain_command_keeps_its_own_program(self):
+        self.lancer("./odoo_bin.sh shell -d base")
+        argv, _cwd = self.appels[0]
+        self.assertEqual("./odoo_bin.sh", argv[0])
+
+    def test_the_exit_code_is_shown_not_swallowed(self):
+        (code, _t), sortie = self.lancer("./odoo_bin.sh shell")
+        self.assertEqual(0, code)
+        self.assertIn(qtui.t("exit code:"), sortie)
+
+    def test_a_missing_program_is_reported_not_raised(self):
+        def explose(argv, cwd=None):
+            raise OSError("No such file or directory")
+
+        qtui.subprocess = type("M", (), {"run": staticmethod(explose)})
+        (code, tourné), sortie = self.lancer("absent.sh")
+        self.assertIsNone(code)
+        self.assertTrue(tourné)
+        self.assertIn("No such file", sortie)
 
 
 if __name__ == "__main__":

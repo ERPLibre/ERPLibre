@@ -380,6 +380,38 @@ class TestAnalyseMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Database, qui manie des bases entières.
+
+    Il n'avait aucun garde, et c'est celui où une renumérotation coûte le
+    plus cher : sa dernière entrée EFFACE une base. Insérer « Dupliquer »
+    avant elle décale « Effacer » de [4] à [5] — si le dispatch ne suit
+    pas, taper [4] efface au lieu de copier.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_database(self):"
+    END = "def prompt_execute_analyse(self):"
+    MINIMUM = 4
+
+    # Ce menu délègue à `self.db_manager.methode()`, pas à `self.methode()`.
+    # Le motif du socle ne voit que la forme courte : sans cette surcharge
+    # il lit ZÉRO dispatch et ne compare plus rien — un garde qui passe au
+    # vert sans rien garder.
+    RE_DISPATCH_CALL = re.compile(
+        r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
+        r"\s*(?:status = )?self\.(?:\w+\.)*(\w+)\("
+    )
+
+    EXPECTED = {
+        "Create backup": "create_backup_from_database",
+        "Download database": "download_database_backup_cli",
+        "Restore from backup": "restore_from_database",
+        "Duplicate a database": "duplicate_database",
+        "Erase a database": "drop_database",
+    }
+
+
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Proxmox : dix-huit entrées, le même piège.
 

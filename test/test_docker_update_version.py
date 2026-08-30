@@ -119,3 +119,7 @@ class TestEditDockerProd(unittest.TestCase):
         for line in from_lines:
             self.assertIn("base:v3", line)
         os.unlink(path)
+
+
+if __name__ == "__main__":
+    unittest.main()

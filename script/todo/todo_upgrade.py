@@ -164,6 +164,39 @@ class MigrationRewind(Exception):
     """
 
 
+# Le pilote suffixe le nom choisi : « _neutralize » à l'étape 1, puis
+# « _upgrade_<version> » à chaque palier. PostgreSQL tronque un
+# identifiant à 63 octets — deux paliers finiraient alors sur le MÊME
+# nom, et le second écraserait le premier sans rien dire.
+SUFFIXE_MAX = len("_neutralize_upgrade_18")
+NOM_BASE_MAX = 63 - SUFFIXE_MAX
+
+
+def database_name_from_file(chemin, defaut="test", limite=NOM_BASE_MAX):
+    """Le nom de base que suggère le fichier de sauvegarde.
+
+    « test » ne disait rien de ce qu'on migrait : trois migrations de
+    suite portaient le même nom, et retrouver laquelle avait échoué
+    demandait de relire le journal. Le fichier, lui, porte déjà le nom du
+    client — c'est la seule information qu'on ait à ce moment-là.
+
+    Le nom est ASSAINI, car il finit dans un `createdb` et dans des noms
+    de fichiers : minuscules, et tout ce qui n'est ni lettre ni chiffre
+    devient un « _ ». Un nom qui commence par un chiffre reçoit un
+    préfixe — PostgreSQL refuse un identifiant nu qui en commence un.
+    """
+    nom = os.path.basename(chemin or "")
+    if nom.lower().endswith(".zip"):
+        nom = nom[: -len(".zip")]
+    nom = re.sub(r"[^a-z0-9]+", "_", nom.lower())
+    nom = re.sub(r"_{2,}", "_", nom).strip("_")
+    if not nom:
+        return defaut
+    if nom[0].isdigit():
+        nom = "db_" + nom
+    return nom[:limite].rstrip("_") or defaut
+
+
 class TodoUpgrade:
     def __init__(self, todo):
         self.file_path = None
@@ -1370,6 +1403,13 @@ class TodoUpgrade:
             self.dct_progression["migration_file"] = self.file_path
             self.write_config()
 
+        # Le téléchargement distant a déjà nommé la base — le serveur sait
+        # mieux que le nom du fichier. Sinon, c'est le fichier qui parle.
+        if default_database_name == "test" and self.file_path:
+            default_database_name = database_name_from_file(
+                self.file_path, default_database_name
+            )
+
         print(f"✅ {t('Open file')} {self.file_path}")
         with zipfile.ZipFile(self.file_path, "r") as zip_ref:
             manifest_file_1 = zip_ref.open("manifest.json")
@@ -1813,7 +1853,7 @@ class TodoUpgrade:
         # la décision se prend sur le code de retour — et la capture faisait
         # annoncer « Command returned error code: 1 » sur un rapport qui va
         # bien. 1 veut dire « des copies casseront », pas « l'outil a raté ».
-        status = self.run_on_terminal(
+        status = self.run_captured(
             f"{PYTHON_BIN} ./script/odoo/migration/check_cow_views.py"
             f" -d {database_name} -t odoo{start_version + 1}.0"
         )
@@ -1837,7 +1877,9 @@ class TodoUpgrade:
         # Appliquer depuis là lève « KeyError: 'web_editor.assets' » — c'est
         # arrivé sur une vraie migration, et l'échec est passé pour un
         # succès. La correction est proposée après le palier, plus bas.
-        self.run_on_terminal(
+        # « --report-only » éteint l'invite de l'outil : rien ici
+        # n'attend de réponse, tout est bon à garder.
+        self.run_captured(
             f"{PYTHON_BIN} ./script/odoo/migration/check_stale_scss.py"
             f" -d {database_name} -t odoo{start_version + 1}.0 --report-only"
         )
@@ -2761,7 +2803,7 @@ class TodoUpgrade:
                 # L'outil ne fait rien s'il n'y a pas de DMS, et rien non
                 # plus s'il a déjà réparé : le rejouer est sans effet.
                 if next_version == 13:
-                    self.run_on_terminal(
+                    self.run_captured(
                         f"{PYTHON_BIN}"
                         " ./script/odoo/migration/dms_access_repair.py"
                         f" -d {database_name_upgrade} --apply"
@@ -2798,10 +2840,11 @@ class TodoUpgrade:
                 # c'est vrai aussi. Pourtant plus personne n'atteint les
                 # données. Mesuré sur DMS au palier 13 : 69 fichiers et
                 # 23 Mo intacts, zéro visible, pour tous les utilisateurs.
-                self.run_on_terminal(
+                self.run_tool(
+                    "check_hidden_models",
                     f"{PYTHON_BIN}"
                     " ./script/odoo/migration/check_hidden_models.py"
-                    f" -d {database_name_upgrade}"
+                    f" -d {database_name_upgrade}",
                 )
 
                 print(f"[y] {t('Open the server with Selenium')}")
@@ -2961,7 +3004,7 @@ class TodoUpgrade:
                 # Le thème parti, la commande mérite un nouvel essai —
                 # et `repare` autorise le rejeu automatique borné.
                 for theme in themes:
-                    self.run_on_terminal(
+                    self.run_captured(
                         f"./script/addons/uninstall_addons_theme.sh"
                         f" {database_name} {theme}"
                     )
@@ -3348,13 +3391,14 @@ class TodoUpgrade:
             print(f"ℹ -> {t('Kept. Nothing was uninstalled.')}")
             return
         for theme in lst_theme:
-            # Sur le VRAI terminal : ce script finit par theme_leftover.py,
-            # qui pose une question. L'exécuteur capture la sortie par un
-            # tube — Python la met alors en tampon par blocs — et l'invite
-            # restait invisible pendant que le processus attendait une
-            # réponse. On tape Entrée à l'aveugle, plusieurs fois, et les
-            # frappes en trop vont à la question suivante.
-            self.run_on_terminal(
+            # Ce script finit par theme_leftover.py, qui pose une
+            # question. Un TUBE la rendrait invisible — Python met alors
+            # sa sortie en tampon par blocs — et l'on taperait Entrée à
+            # l'aveugle, les frappes en trop allant à la question
+            # suivante. Le pseudo-terminal de `run_captured` n'a pas ce
+            # défaut : l'invite s'affiche comme sur un terminal, et l'on
+            # garde tout de même le journal de la désinstallation.
+            self.run_captured(
                 f"./script/addons/uninstall_addons_theme.sh"
                 f" {database_name} {theme}"
             )
@@ -3536,13 +3580,106 @@ class TodoUpgrade:
             cmd += " --tui"
         self.run_on_terminal(cmd)
 
-    def run_on_terminal(self, cmd):
-        """Lance une commande en lui laissant le VRAI terminal.
+    # Les séquences ANSI d'un outil qui se croit — à juste titre — sur un
+    # terminal. Elles n'ont aucun sens dans un fichier qu'on relira, et
+    # une seule d'entre elles suffit à rendre l'extrait illisible.
+    RE_ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 
-        `todo_upgrade_execute` capture la sortie par un tube. Un plein écran
-        y voit un stdout qui n'est pas un terminal, renonce, et retombe sur
-        son rapport texte : « w » réaffichait mot pour mot ce que « v »
-        venait de montrer, sans rien signaler.
+    def run_captured(self, cmd):
+        """Lancer en gardant la sortie, SANS que la commande s'en aperçoive.
+
+        Un tube aurait suffi à capturer — et aurait changé le programme.
+        `smoke_public_url` demande `can_ask()`, qui exige stdin ET stdout
+        sur un terminal (smoke_public_url.py:63-72) : derrière un tube il
+        cesse d'offrir la réparation des vues COW, en silence. C'est
+        exactement la classe de régression que `run_on_terminal` évitait
+        en ne capturant rien du tout.
+
+        Un pseudo-terminal lève le dilemme : l'enfant voit un vrai
+        terminal — mesuré, `isatty()` rend True des deux côtés — la
+        réponse tapée lui parvient, son code de sortie est intact, et la
+        sortie passe tout de même entre nos mains avant d'aller à l'écran.
+
+        Ce qui est écrit dans le journal est nettoyé : les séquences ANSI
+        retirées, les secrets caviardés par le MÊME filtre que
+        `exec_command_live`, et les fins de ligne du terminal ramenées à
+        « \n ». Le terminal, lui, reçoit les octets tels quels.
+        """
+        import pty
+
+        self.lst_command_executed.append(cmd)
+        self.dct_progression["command_executed"] = self.lst_command_executed
+        self.write_config()
+        print(f"\n🏠 ⬇ {t('Execute command')} :\n")
+        print(cmd)
+        self.note_step_log(f"$ {cmd}")
+
+        handle = getattr(self, "step_log", None)
+        if not handle:
+            # Sans journal ouvert il n'y a rien à gagner et un pty à
+            # payer : on retombe sur le chemin ordinaire.
+            status = subprocess.call(cmd, shell=True, executable="/bin/bash")
+            self.note_step_log(f"  -> {status}")
+            return status
+
+        reste = bytearray()
+
+        def ecrire(morceau, dernier=False):
+            """Journaliser par LIGNES ENTIÈRES.
+
+            Une séquence ANSI coupée entre deux lectures laisserait ses
+            débris dans le fichier ; on n'écrit donc qu'une fois la ligne
+            complète, et le reliquat part à la fermeture.
+            """
+            reste.extend(morceau)
+            *lignes, tail = bytes(reste).split(b"\n")
+            del reste[:]
+            if dernier and tail:
+                lignes.append(tail)
+            else:
+                reste.extend(tail)
+            for ligne in lignes:
+                texte = ligne.decode("utf-8", "replace").replace("\r", "")
+                try:
+                    handle.write(
+                        execute.redact_secrets(self.RE_ANSI.sub("", texte))
+                        + "\n"
+                    )
+                except Exception:
+                    return
+
+        def lire(fd):
+            morceau = os.read(fd, 4096)
+            if morceau:
+                ecrire(morceau)
+            return morceau
+
+        try:
+            brut = pty.spawn(["/bin/bash", "-c", cmd], lire)
+            status = os.waitstatus_to_exitcode(brut)
+        except Exception as exc:  # noqa: BLE001 - un pty peut manquer
+            # Jamais au prix de l'exécution : mieux vaut la commande sans
+            # son journal que pas de commande du tout.
+            print(f"⚠ {t('capture unavailable')} : {exc}")
+            status = subprocess.call(cmd, shell=True, executable="/bin/bash")
+        else:
+            ecrire(b"", dernier=True)
+        self.note_step_log(f"  -> {status}")
+        return status
+
+    def run_on_terminal(self, cmd):
+        """Le terminal, tel quel, sans rien garder — pour les PLEINS ÉCRANS.
+
+        C'est devenu l'exception : `run_captured` garde la sortie sans que
+        la commande s'en aperçoive, et presque tout passe par lui. Deux
+        appels restent ici, et pour une raison mesurée.
+
+        `pty.spawn` crée son terminal en 0×0, et l'enfant lit sa taille
+        AVANT que le premier octet ne nous parvienne — donc avant qu'on
+        puisse la corriger. Vérifié : un programme lancé ainsi voit
+        « columns=0, lines=0 ». Sans conséquence pour un outil qui écrit
+        des lignes — aucun de ceux qu'on capture ne lit la largeur — mais
+        une application Textual s'y disposerait sur rien.
 
         Rien ne relit cette sortie — elle est REGARDÉE. Et le code de retour
         d'un afficheur ne veut pas dire « erreur » : 1 signifie « il y a des
@@ -4524,7 +4661,7 @@ class TodoUpgrade:
         exactement ce qu'on veut relire plus tard. Sans cela, « le test de
         fumée est-il passé ? » n'a pas de réponse une heure après.
         """
-        status = self.run_on_terminal(cmd)
+        status = self.run_captured(cmd)
         self.record_event("test", name, status, cmd)
         return status
 

@@ -241,3 +241,7 @@ class TestUpdatePrintLog(unittest.TestCase):
             update = Update()
         update.execute_log = ["entry1", "entry2"]
         update.print_log()
+
+
+if __name__ == "__main__":
+    unittest.main()

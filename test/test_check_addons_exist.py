@@ -177,3 +177,7 @@ class TestMainBadConfig(unittest.TestCase):
         ):
             result = main()
         self.assertEqual(result, -1)
+
+
+if __name__ == "__main__":
+    unittest.main()

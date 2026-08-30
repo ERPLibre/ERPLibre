@@ -19,13 +19,13 @@ le DIRE. Une analyse muette qu'on prend pour rassurante est pire que pas
 d'analyse : c'est la faute que ce dépôt a déjà corrigée trois fois.
 """
 
+import io
 import os
 import sys
 import unittest
 
-sys.path.insert(
-    0, os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-)
+REPO = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, REPO)
 
 from script.analyse import check_migration_residue as residue  # noqa: E402
 from script.analyse import monitoring  # noqa: E402
@@ -189,9 +189,9 @@ class TestWhatAMigrationLeftBehind(unittest.TestCase):
     def test_broken_is_read_before_watch(self):
         resultats = {c["key"]: 0 for c in residue.CONTROLES}
         resultats["duplicate_index"] = 400  # watch
-        resultats["lang_active_null"] = 1  # broken
+        resultats["stuck_modules"] = 1  # broken
         trouve, _ = residue.judge(resultats)
-        self.assertEqual(trouve[0][0]["key"], "lang_active_null")
+        self.assertEqual(trouve[0][0]["key"], "stuck_modules")
 
     def test_a_check_that_could_not_run_is_not_a_check_that_found_nothing(
         self,
@@ -246,12 +246,8 @@ class TestWhatAMigrationLeftBehind(unittest.TestCase):
     def test_the_exit_code_separates_nothing_from_something(self):
         vide = {c["key"]: 0 for c in residue.CONTROLES}
         self.assertEqual(residue.judge(vide)[0], [])
-        plein = dict(vide, lang_active_null=3)
+        plein = dict(vide, stuck_modules=3)
         self.assertTrue(residue.judge(plein)[0])
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestTheScreenAnswersKeys(unittest.TestCase):
@@ -346,3 +342,414 @@ class TestTheSourceMenuIsWrittenTwice(unittest.TestCase):
         """La provenance la plus directe, et l'ordre du menu d'à côté."""
         self.assertEqual(self.affiches[0], "1")
         self.assertIn("A local database", self.corps.split("if answer")[0])
+
+
+class TestAMissingPricelistOnlyCountsWhenTheFeatureIsOn(unittest.TestCase):
+    """Une liste de prix absente n'est un défaut que si on l'a demandée.
+
+    Mesuré : six utilisateurs étaient membres DIRECTS de
+    `product.group_product_pricelist` — hérité d'un palier de migration —
+    alors que `base.group_user` ne l'impliquait pas. La case des réglages
+    était donc décochée, et la réparation créait quand même une liste.
+    Odoo prévenait ensuite à chaque ouverture des réglages qu'il allait
+    l'archiver.
+
+    `res.config.settings` lit ce que `base.group_user` IMPLIQUE ; le
+    contrôle pose désormais la même question.
+    """
+
+    def _controle(self):
+        for controle in residue.CONTROLES:
+            if controle["key"] == "missing_pricelist":
+                return controle
+        raise AssertionError("contrôle introuvable")
+
+    def test_it_asks_whether_the_feature_is_implied(self):
+        sql = " ".join(self._controle()["sql"].split())
+        self.assertIn("res_groups_implied_rel", sql)
+        self.assertIn("group_product_pricelist", sql)
+        self.assertIn("group_user", sql)
+
+    def test_it_does_not_settle_for_direct_membership(self):
+        """`res_groups_users_rel` dirait « quelqu'un est dans le groupe »,
+        ce qui était vrai et menait au faux positif."""
+        self.assertNotIn("res_groups_users_rel", self._controle()["sql"])
+
+    def test_it_still_requires_the_module_and_the_table(self):
+        sql = " ".join(self._controle()["sql"].split())
+        self.assertIn("ir_module_module", sql)
+        self.assertIn("to_regclass", sql)
+
+
+class TestTheRepairAsksItsOwnDetector(unittest.TestCase):
+    """Une réparation qui n'écoute pas son détecteur fabrique des doublons.
+
+    Mesuré sur une migration de bout en bout : la liste de prix avait
+    traversé les six paliers, PARTAGÉE entre sociétés (company_id vide).
+    `_activate_or_create_pricelists` ne compte pas une liste partagée
+    comme appartenant à la société — elle en a donc créé une seconde,
+    vide, à côté de celle du client.
+
+    Le détecteur `pricelist_missing`, lui, disait déjà « rien ne manque ».
+    Il fallait que la réparation le lui demande.
+    """
+
+    def _source(self):
+        from pathlib import Path
+
+        chemin = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "odoo"
+            / "migration"
+            / "restore_config_defaults.py"
+        )
+        return chemin.read_text(encoding="utf-8")
+
+    def _garde(self):
+        """Le texte qui précède l'APPEL, pas sa mention dans la docstring.
+
+        `index` trouvait la PREMIÈRE occurrence — celle de l'en-tête du
+        module, qui explique justement ce que fait cette méthode. Le test
+        s'évaluait alors sur un extrait de prose et échouait. `rindex`
+        prend la dernière, qui est l'appel.
+        """
+        source = self._source()
+        debut = source.rindex("_activate_or_create_pricelists()")
+        return source[max(0, debut - 400) : debut]
+
+    def test_the_repair_is_gated_on_an_empty_count(self):
+        self.assertIn("pricelist_before", self._garde())
+
+    def test_the_feature_condition_is_still_there(self):
+        self.assertIn("pricelist_group", self._garde())
+
+    def test_the_feature_is_read_from_the_implication(self):
+        """Et non de l'appartenance de celui qui exécute."""
+        source = self._source()
+        self.assertIn("implied_ids", source)
+        self.assertNotIn(
+            'env.user.has_group(\n            "product.group_product_pricelist"',
+            source,
+        )
+
+
+def verdict(**champs):
+    """Un événement du journal de progression, forme réelle."""
+    brut = {
+        "at": "2026-08-26 03:19:59.846453",
+        "step": "4.1.I - Migrate database",
+        "kind": "test",
+        "name": "smoke_public_url",
+        "status": 1,
+        "detail": ".venv.erplibre/bin/python3"
+        " ./script/odoo/migration/smoke_public_url.py"
+        " -d test_neutralize_upgrade_14 --internal-required",
+    }
+    brut.update(champs)
+    return brut
+
+
+class TestTheStepLogInTheReport(unittest.TestCase):
+    """La commande seule ne dit pas POURQUOI."""
+
+    def setUp(self):
+        import json
+        import shutil
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier)
+        self.json = json
+        self.progression = os.path.join(self.dossier, "progression.json")
+        # `step_log_path` cherche sous private/odoo/migration/<base>/step_log
+        self.ancien = residue.status.PATH_MIGRATION_PRIVATE
+        residue.status.PATH_MIGRATION_PRIVATE = os.path.join(
+            self.dossier, "private"
+        )
+        self.addCleanup(
+            setattr,
+            residue.status,
+            "PATH_MIGRATION_PRIVATE",
+            self.ancien,
+        )
+
+    def ecrire_progression(self, evenements):
+        with io.open(self.progression, "w", encoding="utf-8") as handle:
+            self.json.dump(
+                {
+                    "lst_event": evenements,
+                    "config_database_name": "test_neutralize",
+                    "target_odoo_version": "18.0",
+                    "state_4_upgrade_odoo_lst": [1, 2, 3, 4, 5, 6],
+                },
+                handle,
+            )
+        return self.progression
+
+    def ecrire_journal(self, step, lignes):
+        dossier = os.path.join(
+            residue.status.PATH_MIGRATION_PRIVATE,
+            "test_neutralize",
+            "step_log",
+        )
+        os.makedirs(dossier, exist_ok=True)
+        chemin = os.path.join(dossier, residue.status.step_slug(step) + ".log")
+        with io.open(chemin, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lignes) + "\n")
+        return chemin
+
+    def bloc(self, **kw):
+        return "\n".join(
+            residue.verdicts_block(
+                "test_neutralize_upgrade_14", False, self.progression, **kw
+            )
+        )
+
+    def test_the_passage_around_the_failure_is_shown(self):
+        self.ecrire_progression([verdict()])
+        self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "odoo: ce qui precedait",
+                "[2026-08-26 03:19:44.166204] $ .venv.erplibre/bin/python3"
+                " ./script/odoo/migration/smoke_public_url.py"
+                " -d test_neutralize_upgrade_14 --internal-required",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+                "odoo: ce qui suivait",
+            ],
+        )
+        texte = self.bloc()
+        self.assertIn("odoo: ce qui precedait", texte)
+        self.assertIn("[test] smoke_public_url -> 1", texte)
+        self.assertNotIn("odoo: ce qui suivait", texte)
+
+    def test_the_log_path_is_named(self):
+        self.ecrire_progression([verdict()])
+        chemin = self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ],
+        )
+        self.assertIn(chemin, self.bloc())
+
+    def test_no_step_log_stays_silent(self):
+        # Une ligne « pas de journal » par verdict noierait ceux qui
+        # comptent.
+        self.ecrire_progression([verdict()])
+        texte = self.bloc()
+        self.assertIn("smoke_public_url", texte)
+        self.assertNotIn("step_log", texte)
+
+    def test_asking_for_none_shows_none(self):
+        self.ecrire_progression([verdict()])
+        self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "[2026-08-26 03:19:44.166204] $ ./script/odoo/migration/"
+                "smoke_public_url.py -d test_neutralize_upgrade_14",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ],
+        )
+        self.assertNotIn("[test]", self.bloc(lignes_avant=0))
+
+    def test_the_report_stops_saying_it_once_the_output_is_captured(self):
+        # Depuis que le pilote capture par pseudo-terminal, la sortie est
+        # dans le journal : le dire encore serait faux.
+        self.ecrire_progression([verdict()])
+        self.ecrire_journal(
+            "4.1.I - Migrate database",
+            [
+                "[2026-08-26 03:19:44.166204] $ .venv.erplibre/bin/python3"
+                " ./script/odoo/migration/smoke_public_url.py"
+                " -d test_neutralize_upgrade_14 --internal-required",
+                "❌ 3 URL sur 37 rendent 500",
+                "[2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1",
+            ],
+        )
+        texte = self.bloc()
+        self.assertIn("3 URL sur 37", texte)
+        self.assertNotIn(
+            residue.t("the tool output is not in the step log: it goes"),
+            texte,
+        )
+
+    def test_it_says_the_tool_output_is_elsewhere(self):
+        # Sans cela on cherche dans le journal une sortie qui n'y a
+        # jamais été écrite.
+        self.ecrire_progression([verdict()])
+        self.assertIn(
+            residue.t("the tool output is not in the step log: it goes"),
+            self.bloc(),
+        )
+
+    def test_an_all_green_run_does_not_carry_that_warning(self):
+        self.ecrire_progression([verdict(status=0)])
+        self.assertNotIn(
+            residue.t("the tool output is not in the step log: it goes"),
+            self.bloc(),
+        )
+
+    def test_the_step_shown_is_the_odoo_version(self):
+        # « 4.1.I » est le compteur du pilote ; la migration en est au 14.
+        self.ecrire_progression([verdict()])
+        texte = self.bloc()
+        self.assertIn("14  smoke_public_url", texte)
+
+
+class TestTheControlsThemselves(unittest.TestCase):
+    """Un contrôle retiré ne doit pas survivre dans les tests.
+
+    « res_lang.active à NULL » a vécu ici avec la gravité « broken », et
+    c'était un faux constat : Odoo écrit lui-même ce NULL, faute de défaut
+    sur `active = fields.Boolean()`. Deux tests le nommaient encore après
+    son retrait — ils passaient, en construisant un dictionnaire avec une
+    clé inconnue de personne.
+    """
+
+    def test_every_key_a_test_names_still_exists(self):
+        import re
+
+        connues = {c["key"] for c in residue.CONTROLES}
+        with io.open(__file__, encoding="utf-8") as handle:
+            source = handle.read()
+        nommees = set(re.findall(r'resultats\["([a-z_]+)"\]', source))
+        nommees |= set(re.findall(r"dict\(vide, ([a-z_]+)=", source))
+        self.assertTrue(nommees)
+        self.assertEqual(set(), nommees - connues)
+
+    def test_no_control_promises_a_repair_tool_that_is_missing(self):
+        import os
+
+        for controle in residue.CONTROLES:
+            morceaux = (controle["repair"] or "").split()
+            chemin = morceaux[0] if morceaux else ""
+            if chemin.startswith("script/"):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(REPO, chemin)),
+                    f"{controle['key']} → {chemin}",
+                )
+
+
+class TestTheVerdictsSection(unittest.TestCase):
+    """Ce que les contrôles SQL ne peuvent structurellement pas voir.
+
+    Un test de fumée qui échoue n'écrit rien en base : rien n'est cassé,
+    la requête suivante répond. Aucun contrôle lisant la base ne le
+    retrouvera jamais — et c'était la moitié de ce qu'une migration peut
+    rater.
+    """
+
+    def setUp(self):
+        import json
+        import shutil
+        import tempfile
+
+        self.dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dossier)
+        self.chemin = os.path.join(self.dossier, "progression.json")
+        self.json = json
+
+    def ecrire(self, evenements):
+        with io.open(self.chemin, "w", encoding="utf-8") as handle:
+            self.json.dump({"lst_event": evenements}, handle)
+        return self.chemin
+
+    def test_two_steps_of_one_migration_are_the_same_lineage(self):
+        # Interroger la base 18 doit montrer l'échec du palier 14 : c'est
+        # le seul endroit où il subsiste.
+        self.assertEqual(
+            residue.famille("test_neutralize_upgrade_14"),
+            residue.famille("test_neutralize_upgrade_18"),
+        )
+
+    def test_a_plain_name_is_its_own_lineage(self):
+        self.assertEqual("copy_chezlepro3", residue.famille("copy_chezlepro3"))
+
+    def test_another_migration_verdicts_are_not_shown(self):
+        # Deux migrations partagent le fichier. Attribuer l'échec de
+        # l'une à l'autre enverrait chercher une panne qui n'existe pas.
+        chemin = self.ecrire([verdict()])
+        _tous, ratés = residue.verdicts("autre_client_upgrade_18", chemin)
+        self.assertEqual([], ratés)
+
+    def test_the_failure_of_an_earlier_step_is_shown(self):
+        chemin = self.ecrire([verdict()])
+        _tous, ratés = residue.verdicts("test_neutralize_upgrade_18", chemin)
+        self.assertEqual(["smoke_public_url"], [e["name"] for e in ratés])
+
+    def test_a_step_is_named_by_its_odoo_version(self):
+        chemin = self.ecrire([verdict()])
+        texte = "\n".join(
+            residue.verdicts_block("test_neutralize_upgrade_18", False, chemin)
+        )
+        self.assertIn("14", texte)
+        self.assertIn("smoke_public_url", texte)
+
+    def test_no_file_says_nothing_at_all(self):
+        # Devant la sauvegarde d'un client, il n'y a jamais eu de
+        # migration locale : annoncer l'absence d'un fichier qu'on
+        # n'attendait pas ne renseigne personne.
+        absent = os.path.join(self.dossier, "jamais_ecrit.json")
+        self.assertEqual([], residue.verdicts_block("base", False, absent))
+
+    def test_all_green_is_stated_not_left_silent(self):
+        chemin = self.ecrire([verdict(status=0), verdict(status=0)])
+        texte = "\n".join(
+            residue.verdicts_block("test_neutralize_upgrade_18", False, chemin)
+        )
+        self.assertIn("2", texte)
+        self.assertIn(residue.t("checks, all passed"), texte)
+
+    def test_the_report_says_these_are_not_from_the_database(self):
+        # Sans cette phrase, un verdict d'il y a quatre paliers se lirait
+        # comme un défaut présent de la base qu'on a sous les yeux.
+        chemin = self.ecrire([verdict()])
+        texte = "\n".join(
+            residue.verdicts_block("test_neutralize_upgrade_18", False, chemin)
+        )
+        self.assertIn(
+            residue.t("These come from the file, not the database:"), texte
+        )
+
+    def test_a_past_verdict_does_not_become_a_finding(self):
+        # Le code de sortie dit « la BASE porte un défaut ». Y compter un
+        # verdict passé rendrait 1 pour toujours, et le pilote traiterait
+        # une base saine comme cassée à chaque appel.
+        vide = {c["key"]: 0 for c in residue.CONTROLES}
+        trouve, _illisibles = residue.judge(vide)
+        self.assertEqual([], trouve)
+
+    def test_the_clean_report_still_carries_the_verdicts(self):
+        # Le cas qui compte : aucun résidu en base, et pourtant un test
+        # de fumée a échoué en chemin. Le rapport « rien trouvé » ne doit
+        # pas être le dernier mot.
+        chemin = self.ecrire([verdict()])
+        ancien = residue.quality.DEFAULT_PROGRESSION
+        residue.quality.DEFAULT_PROGRESSION = chemin
+        self.addCleanup(
+            setattr, residue.quality, "DEFAULT_PROGRESSION", ancien
+        )
+        vide = {c["key"]: 0 for c in residue.CONTROLES}
+        texte = residue.render(
+            "test_neutralize_upgrade_18", vide, colour=False
+        )
+        self.assertIn(residue.t("None of the checks found anything."), texte)
+        self.assertIn("smoke_public_url", texte)
+
+    def test_the_colour_it_asks_for_exists(self):
+        # `paint` retombe sur une chaîne vide suivie d'un RESET quand le
+        # genre est inconnu : cela n'annule rien et ne teinte rien.
+        chemin = self.ecrire([verdict()])
+        for ligne in residue.verdicts_block(
+            "test_neutralize_upgrade_18", True, chemin
+        ):
+            if ligne and ligne.endswith(residue.RESET):
+                self.assertNotEqual(residue.RESET, ligne.strip())
+
+
+if __name__ == "__main__":
+    unittest.main()

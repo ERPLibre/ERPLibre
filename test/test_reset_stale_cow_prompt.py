@@ -44,7 +44,7 @@ class PromptCase(unittest.TestCase):
         upgrade.write_config = lambda: None
         upgrade.stale_cow_keys = lambda db: lst_key
         lst_cmd = []
-        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
+        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
         # Le doublon HONORE le défaut, comme le vrai `ask_gate` : sinon
         # les tests de défaut ne testeraient que le doublon.
         upgrade.ask_gate = lambda prompt, default="": answer or default

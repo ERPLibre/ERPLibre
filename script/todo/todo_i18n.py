@@ -3499,8 +3499,8 @@ TRANSLATIONS = {
         "en": "vendors document two, not more.",
     },
     "Measured at level 4: 36x slower, then a frozen kernel.": {
-        "fr": "Mesuré au niveau 4 : 36x plus lent, puis noyau gelé.",
-        "en": "Measured at level 4: 36x slower, then a frozen kernel.",
+        "fr": "Mesuré au niveau 4 : 36x plus lent, et 12 vCPU gelaient.",
+        "en": "Measured at level 4: 36x slower, and 12 vCPU froze.",
     },
     "vCPU capped to": {
         "fr": "vCPU borné à",
@@ -6977,6 +6977,485 @@ TRANSLATIONS = {
         "fr": "Qualité de la migration, palier par palier",
         "en": "Migration quality, step by step",
     },
+    # --- Écran de qualité : Verdicts, Validation, Revue ---
+    # --- Journal d'étape et bascule de version ---
+    # --- Dérive du référentiel comptable ---
+    "Did the last step add to the accounting data?": {
+        "fr": "Le dernier palier a-t-il gonflé le référentiel comptable ?",
+        "en": "Did the last step add to the accounting data?",
+    },
+    "Accounting reference data, one step to the next": {
+        "fr": "Référentiel comptable, d'un palier au suivant",
+        "en": "Accounting reference data, one step to the next",
+    },
+    "Nothing was added to the reference data.": {
+        "fr": "Rien n'a été ajouté au référentiel.",
+        "en": "Nothing was added to the reference data.",
+    },
+    "Accounts in the chart": {
+        "fr": "Comptes du plan comptable",
+        "en": "Accounts in the chart",
+    },
+    "Taxes": {
+        "fr": "Taxes",
+        "en": "Taxes",
+    },
+    "Fiscal positions": {
+        "fr": "Positions fiscales",
+        "en": "Fiscal positions",
+    },
+    "Account groups": {
+        "fr": "Groupes de comptes",
+        "en": "Account groups",
+    },
+    "Journals": {
+        "fr": "Journaux",
+        "en": "Journals",
+    },
+    "What it looks like": {
+        "fr": "À quoi cela ressemble",
+        "en": "What it looks like",
+    },
+    "accounts carry no entry at all": {
+        "fr": "comptes ne portent aucune écriture",
+        "en": "accounts carry no entry at all",
+    },
+    "taxes share a name with another": {
+        "fr": "taxes portent le nom d'une autre",
+        "en": "taxes share a name with another",
+    },
+    "fiscal positions share a name with another": {
+        "fr": "positions fiscales portent le nom d'une autre",
+        "en": "fiscal positions share a name with another",
+    },
+    "accounts fall under a group by code prefix": {
+        "fr": "comptes tombent sous un groupe par préfixe de code",
+        "en": "accounts fall under a group by code prefix",
+    },
+    "Replay the step with the fix; do not operate the": {
+        "fr": "Rejouer le palier avec le correctif ; ne pas opérer la",
+        "en": "Replay the step with the fix; do not operate the",
+    },
+    "delivered database.": {
+        "fr": "base livrée.",
+        "en": "delivered database.",
+    },
+    "What a version bump adds to the accounting data.": {
+        "fr": "Ce qu'une montée de version ajoute au référentiel comptable.",
+        "en": "What a version bump adds to the accounting data.",
+    },
+    "the step to compare against (default: the previous one)": {
+        "fr": "le palier de comparaison (défaut : le précédent)",
+        "en": "the step to compare against (default: the previous one)",
+    },
+    "No previous step found: name it with --before.": {
+        "fr": "Aucun palier précédent trouvé : le nommer avec --before.",
+        "en": "No previous step found: name it with --before.",
+    },
+    "A reloaded chart template adds every account it could not match by code. They carry no entry, and they bury the customer's own chart.": {
+        "fr": "Un gabarit de plan rechargé ajoute chaque compte qu'il n'a pu apparier par son code. Ils ne portent aucune écriture, et noient le plan du client.",
+        "en": "A reloaded chart template adds every account it could not match by code. They carry no entry, and they bury the customer's own chart.",
+    },
+    "Reloaded taxes are not renamed '[old]': the duplicates are indistinguishable in the interface.": {
+        "fr": "Les taxes rechargées ne sont pas renommées « [old] » : les doublons ne se distinguent pas dans l'interface.",
+        "en": "Reloaded taxes are not renamed '[old]': the duplicates are indistinguishable in the interface.",
+    },
+    "Each province then appears twice, under the same name.": {
+        "fr": "Chaque province apparaît alors deux fois, sous le même nom.",
+        "en": "Each province then appears twice, under the same name.",
+    },
+    "Groups are matched to accounts by code PREFIX: a grid that appears reclassifies the customer's own accounts, and the trial balance in hierarchy mode follows.": {
+        "fr": "Les groupes s'apparient aux comptes par PRÉFIXE de code : une grille qui apparaît reclasse les comptes du client, et la balance en mode hiérarchie suit.",
+        "en": "Groups are matched to accounts by code PREFIX: a grid that appears reclassifies the customer's own accounts, and the trial balance in hierarchy mode follows.",
+    },
+    "A journal added by a template reload competes with the customer's own.": {
+        "fr": "Un journal ajouté par un rechargement concurrence celui du client.",
+        "en": "A journal added by a template reload competes with the customer's own.",
+    },
+    "findings": {
+        "fr": "des trouvailles",
+        "en": "findings",
+    },
+    "the tool failed": {
+        "fr": "l'outil a échoué",
+        "en": "the tool failed",
+    },
+    "capture unavailable": {
+        "fr": "capture indisponible",
+        "en": "capture unavailable",
+    },
+    "last run": {
+        "fr": "dernière exécution",
+        "en": "last run",
+    },
+    "never run from here yet": {
+        "fr": "jamais lancée depuis ici",
+        "en": "never run from here yet",
+    },
+    "Pane up": {
+        "fr": "Panneau ↑",
+        "en": "Pane up",
+    },
+    "Pane down": {
+        "fr": "Panneau ↓",
+        "en": "Pane down",
+    },
+    "the tool output is not in the step log: it goes": {
+        "fr": "la sortie de l'outil n'est pas dans le journal d'étape : elle part",
+        "en": "the tool output is not in the step log: it goes",
+    },
+    "to the terminal and dies with it.": {
+        "fr": "sur le terminal et meurt avec lui.",
+        "en": "to the terminal and dies with it.",
+    },
+    "r offers to run": {
+        "fr": "r propose de lancer",
+        "en": "r offers to run",
+    },
+    "first": {
+        "fr": "d'abord",
+        "en": "first",
+    },
+    "step log": {
+        "fr": "journal de l'étape",
+        "en": "step log",
+    },
+    "no log file for this step": {
+        "fr": "aucun journal pour cette étape",
+        "en": "no log file for this step",
+    },
+    "lines in all": {
+        "fr": "lignes en tout",
+        "en": "lines in all",
+    },
+    "this verdict is not in it": {
+        "fr": "ce verdict n'y figure pas",
+        "en": "this verdict is not in it",
+    },
+    "the tool output is not in there: it goes to the": {
+        "fr": "la sortie de l'outil n'y est pas : elle part sur le",
+        "en": "the tool output is not in there: it goes to the",
+    },
+    "terminal, which a pipe would make full-screen tools": {
+        "fr": "terminal, qu'un tube ferait renoncer aux outils en",
+        "en": "terminal, which a pipe would make full-screen tools",
+    },
+    "give up. What precedes is what Odoo was writing.": {
+        "fr": "plein écran. Ce qui précède est ce qu'Odoo écrivait.",
+        "en": "give up. What precedes is what Odoo was writing.",
+    },
+    "the checkout is on Odoo": {
+        "fr": "le checkout est sur Odoo",
+        "en": "the checkout is on Odoo",
+    },
+    "this database is on": {
+        "fr": "cette base est en",
+        "en": "this database is on",
+    },
+    "opening it with the wrong version writes before it fails.": {
+        "fr": "l'ouvrir avec la mauvaise version y écrit avant d'échouer.",
+        "en": "opening it with the wrong version writes before it fails.",
+    },
+    "run": {
+        "fr": "lancer",
+        "en": "run",
+    },
+    "first?": {
+        "fr": "d'abord ?",
+        "en": "first?",
+    },
+    "left as is — the test will refuse and return 2.": {
+        "fr": "laissé tel quel — le test refusera et rendra 2.",
+        "en": "left as is — the test will refuse and return 2.",
+    },
+    "run the test anyway?": {
+        "fr": "lancer le test quand même ?",
+        "en": "run the test anyway?",
+    },
+    # --- Trous dans les manifestes Google Repo ---
+    # --- Type de vue « tree » resté dans un module ---
+    "Is any module still on a pre-18 view type?": {
+        "fr": "Un module est-il resté sur un type de vue d'avant 18 ?",
+        "en": "Is any module still on a pre-18 view type?",
+    },
+    "View type tree, removed in Odoo 18": {
+        "fr": "Type de vue tree, supprimé dans Odoo 18",
+        "en": "View type tree, removed in Odoo 18",
+    },
+    "nothing to do below 18.0 — tree is valid there": {
+        "fr": "rien à faire sous la 18.0 — tree y est valide",
+        "en": "nothing to do below 18.0 — tree is valid there",
+    },
+    "No module carries it.": {
+        "fr": "Aucun module ne le porte.",
+        "en": "No module carries it.",
+    },
+    "modules read": {
+        "fr": "modules lus",
+        "en": "modules read",
+    },
+    "listed in the manifest, absent from disk": {
+        "fr": "listés au manifeste, absents du disque",
+        "en": "listed in the manifest, absent from disk",
+    },
+    "listed in the manifest, unparsable": {
+        "fr": "listés au manifeste, illisibles",
+        "en": "listed in the manifest, unparsable",
+    },
+    "Modules still carrying the removed tree view type.": {
+        "fr": "Modules portant encore le type de vue tree, supprimé.",
+        "en": "Modules still carrying the removed tree view type.",
+    },
+    "Will every step find its addons?": {
+        "fr": "Chaque palier trouvera-t-il ses addons ?",
+        "en": "Will every step find its addons?",
+    },
+    "Repositories missing from a step": {
+        "fr": "Dépôts absents d'un palier",
+        "en": "Repositories missing from a step",
+    },
+    "Every repository is declared without a hole.": {
+        "fr": "Chaque dépôt est déclaré sans trou.",
+        "en": "Every repository is declared without a hole.",
+    },
+    "missing from": {
+        "fr": "absent de",
+        "en": "missing from",
+    },
+    "upstream has the branch": {
+        "fr": "la branche existe en amont",
+        "en": "upstream has the branch",
+    },
+    "Add the <project> entry to": {
+        "fr": "Ajouter l'entrée <project> dans",
+        "en": "Add the <project> entry to",
+    },
+    "holes not settled": {
+        "fr": "trous non départagés",
+        "en": "holes not settled",
+    },
+    "not asked: run with --upstream": {
+        "fr": "pas demandé : relancer avec --upstream",
+        "en": "not asked: run with --upstream",
+    },
+    "upstream unreachable": {
+        "fr": "amont injoignable",
+        "en": "upstream unreachable",
+    },
+    "holes are legitimate: no such branch upstream": {
+        "fr": "trous légitimes : pas de telle branche en amont",
+        "en": "holes are legitimate: no such branch upstream",
+    },
+    "Repositories declared for some steps but not others.": {
+        "fr": "Dépôts déclarés pour certains paliers et pas d'autres.",
+        "en": "Repositories declared for some steps but not others.",
+    },
+    "ask each remote whether the branch exists (network)": {
+        "fr": "demander à chaque amont si la branche existe (réseau)",
+        "en": "ask each remote whether the branch exists (network)",
+    },
+    "Verdicts the migration recorded": {
+        "fr": "Verdicts enregistrés par la migration",
+        "en": "Verdicts the migration recorded",
+    },
+    "recorded in": {
+        "fr": "consignés dans",
+        "en": "recorded in",
+    },
+    "These come from the file, not the database:": {
+        "fr": "Ils viennent du fichier, non de la base :",
+        "en": "These come from the file, not the database:",
+    },
+    "the exit code ignores them.": {
+        "fr": "le code de sortie ne les compte pas.",
+        "en": "the exit code ignores them.",
+    },
+    # Les six questions de la revue : t() les reçoit par
+    # variable, un scan des littéraux ne les voyait pas.
+    "Did the migration reach the end?": {
+        "fr": "La migration est-elle allée jusqu'au bout ?",
+        "en": "Did the migration reach the end?",
+    },
+    "Does Odoo load the database?": {
+        "fr": "Odoo charge-t-il la base ?",
+        "en": "Does Odoo load the database?",
+    },
+    "What did the migration leave behind?": {
+        "fr": "Qu'est-ce que la migration a laissé derrière ?",
+        "en": "What did the migration leave behind?",
+    },
+    "Is this copy safe to open?": {
+        "fr": "Cette copie est-elle sans danger à ouvrir ?",
+        "en": "Is this copy safe to open?",
+    },
+    "Do the public pages still answer?": {
+        "fr": "Les pages publiques répondent-elles encore ?",
+        "en": "Do the public pages still answer?",
+    },
+    "Is anything left that cleanup could not drop?": {
+        "fr": "Reste-t-il ce que le nettoyage n'a pu supprimer ?",
+        "en": "Is anything left that cleanup could not drop?",
+    },
+    "Verdicts": {
+        "fr": "Verdicts",
+        "en": "Verdicts",
+    },
+    "Validation": {
+        "fr": "Validation",
+        "en": "Validation",
+    },
+    "Review": {
+        "fr": "Revue de la migration",
+        "en": "Review",
+    },
+    "no verdict recorded": {
+        "fr": "aucun verdict enregistré",
+        "en": "no verdict recorded",
+    },
+    "checks, all passed": {
+        "fr": "tests, tous réussis",
+        "en": "checks, all passed",
+    },
+    "step": {
+        "fr": "palier",
+        "en": "step",
+    },
+    "when": {
+        "fr": "quand",
+        "en": "when",
+    },
+    "status": {
+        "fr": "statut",
+        "en": "status",
+    },
+    "what it ran": {
+        "fr": "ce qu'il a lancé",
+        "en": "what it ran",
+    },
+    "1 means a public page failed — not merely a finding.": {
+        "fr": "1 signifie qu'une page publique a échoué — pas un simple constat.",
+        "en": "1 means a public page failed — not merely a finding.",
+    },
+    "1 means leftovers remain that it could not drop.": {
+        "fr": "1 signifie qu'il reste des objets qu'il n'a pu supprimer.",
+        "en": "1 means leftovers remain that it could not drop.",
+    },
+    "press r to run it again": {
+        "fr": "appuie sur r pour le relancer",
+        "en": "press r to run it again",
+    },
+    "The screen steps aside, the test takes the terminal,": {
+        "fr": "L'écran s'efface, le test prend le terminal,",
+        "en": "The screen steps aside, the test takes the terminal,",
+    },
+    "and you come back with Enter.": {
+        "fr": "et tu reviens avec Entrée.",
+        "en": "and you come back with Enter.",
+    },
+    "No known way to replay this one.": {
+        "fr": "Aucun moyen connu de rejouer celui-ci.",
+        "en": "No known way to replay this one.",
+    },
+    "The migration recorded no verdict.": {
+        "fr": "La migration n'a enregistré aucun verdict.",
+        "en": "The migration recorded no verdict.",
+    },
+    "Every recorded check returned zero.": {
+        "fr": "Chaque test enregistré a rendu zéro.",
+        "en": "Every recorded check returned zero.",
+    },
+    "Where the traces live": {
+        "fr": "Où vivent les traces",
+        "en": "Where the traces live",
+    },
+    "missing: nothing was written here": {
+        "fr": "absent : rien n'a été écrit ici",
+        "en": "missing: nothing was written here",
+    },
+    "To read the verdicts by hand:": {
+        "fr": "Pour lire les verdicts à la main :",
+        "en": "To read the verdicts by hand:",
+    },
+    "Verdicts live in lst_event of the progression file,": {
+        "fr": "Les verdicts vivent dans lst_event du fichier de",
+        "en": "Verdicts live in lst_event of the progression file,",
+    },
+    "not in command_executed, which only lists what ran.": {
+        "fr": "progression — command_executed ne liste que l'exécuté.",
+        "en": "not in command_executed, which only lists what ran.",
+    },
+    "Errors in the Odoo log": {
+        "fr": "Erreurs dans le journal d'Odoo",
+        "en": "Errors in the Odoo log",
+    },
+    "This file does not exist.": {
+        "fr": "Ce fichier n'existe pas.",
+        "en": "This file does not exist.",
+    },
+    "config.conf has an empty logfile=, so Odoo writes to": {
+        "fr": "config.conf a un logfile= vide : Odoo écrit dans le",
+        "en": "config.conf has an empty logfile=, so Odoo writes to",
+    },
+    "the terminal and its output dies with it. To keep it:": {
+        "fr": "terminal et sa sortie meurt avec lui. Pour la garder :",
+        "en": "the terminal and its output dies with it. To keep it:",
+    },
+    "last offending lines": {
+        "fr": "dernières lignes fautives",
+        "en": "last offending lines",
+    },
+    "press r to run it": {
+        "fr": "appuie sur r pour le lancer",
+        "en": "press r to run it",
+    },
+    "Read it in the Verdicts section above.": {
+        "fr": "À lire dans la section Verdicts ci-dessus.",
+        "en": "Read it in the Verdicts section above.",
+    },
+    "What none of these can see": {
+        "fr": "Ce qu'aucun d'eux ne voit",
+        "en": "What none of these can see",
+    },
+    "They all read the DATABASE. A module that kept a": {
+        "fr": "Tous lisent la BASE. Un module resté sur un type de",
+        "en": "They all read the DATABASE. A module that kept a",
+    },
+    "pre-18 view type, or an image URL Odoo no longer": {
+        "fr": "vue d'avant 18, ou une URL d'image qu'Odoo",
+        "en": "pre-18 view type, or an image URL Odoo no longer",
+    },
+    "accepts, breaks at runtime on a perfectly sound one.": {
+        "fr": "refuse désormais, casse à l'exécution sur une base saine.",
+        "en": "accepts, breaks at runtime on a perfectly sound one.",
+    },
+    "exit code:": {
+        "fr": "code de sortie :",
+        "en": "exit code:",
+    },
+    "Press Enter to go back to the screen…": {
+        "fr": "Appuie sur Entrée pour revenir à l'écran…",
+        "en": "Press Enter to go back to the screen…",
+    },
+    "Pick a line below.": {
+        "fr": "Choisis une ligne ci-dessous.",
+        "en": "Pick a line below.",
+    },
+    "Migration progression": {
+        "fr": "Progression de la migration",
+        "en": "Migration progression",
+    },
+    "Odoo log": {
+        "fr": "Journal d'Odoo",
+        "en": "Odoo log",
+    },
+    "steps, commands and their verdicts (lst_event)": {
+        "fr": "paliers, commandes et leurs verdicts (lst_event)",
+        "en": "steps, commands and their verdicts (lst_event)",
+    },
+    "set logfile= in config.conf, else output is lost": {
+        "fr": "poser logfile= dans config.conf, sinon la sortie est perdue",
+        "en": "set logfile= in config.conf, else output is lost",
+    },
     "database not found": {
         "fr": "base introuvable",
         "en": "database not found",
@@ -10007,6 +10486,114 @@ TRANSLATIONS = {
     "Unknown mode:": {
         "fr": "Mode inconnu :",
         "en": "Unknown mode:",
+    },
+    "Duplicate": {
+        "fr": "Copie",
+        "en": "Copy",
+    },
+    "Duplicate a database": {
+        "fr": "Dupliquer une base de données",
+        "en": "Duplicate a database",
+    },
+    "Name of the copy (default=": {
+        "fr": "Nom de la copie (défaut=",
+        "en": "Name of the copy (default=",
+    },
+    "Neutralize the copy (Y/n)? ": {
+        "fr": "Neutraliser la copie (O/n) ? ",
+        "en": "Neutralize the copy (Y/n)? ",
+    },
+    "The copy will keep its scheduled actions, its": {
+        "fr": "La copie gardera ses actions planifiées, son",
+        "en": "The copy will keep its scheduled actions, its",
+    },
+    "outgoing mail and its payment providers.": {
+        "fr": "courriel sortant et ses fournisseurs de paiement.",
+        "en": "outgoing mail and its payment providers.",
+    },
+    "The duplication failed.": {
+        "fr": "La duplication a échoué.",
+        "en": "The duplication failed.",
+    },
+    "Cannot read the copy back: ": {
+        "fr": "Impossible de relire la copie : ",
+        "en": "Cannot read the copy back: ",
+    },
+    "Duplicate a database, filestore included.": {
+        "fr": "Dupliquer une base, filestore compris.",
+        "en": "Duplicate a database, filestore included.",
+    },
+    "the copy": {
+        "fr": "la copie",
+        "en": "the copy",
+    },
+    "disable crons, outgoing mail and payment providers": {
+        "fr": "désactiver les crons, le courriel sortant et les fournisseurs de paiement",
+        "en": "disable crons, outgoing mail and payment providers",
+    },
+    "The source and the copy cannot share a name.": {
+        "fr": "La source et la copie ne peuvent pas porter le même nom.",
+        "en": "The source and the copy cannot share a name.",
+    },
+    "No such database: ": {
+        "fr": "Base introuvable : ",
+        "en": "No such database: ",
+    },
+    "This database already exists: ": {
+        "fr": "Cette base existe déjà : ",
+        "en": "This database already exists: ",
+    },
+    "cannot neutralise: that arrived in Odoo 16.": {
+        "fr": "ne sait pas neutraliser : c'est arrivé avec Odoo 16.",
+        "en": "cannot neutralise: that arrived in Odoo 16.",
+    },
+    "Cannot find the virtualenv for this checkout.": {
+        "fr": "Venv introuvable pour ce checkout.",
+        "en": "Cannot find the virtualenv for this checkout.",
+    },
+    "Cannot find the Odoo source for this checkout.": {
+        "fr": "Sources Odoo introuvables pour ce checkout.",
+        "en": "Cannot find the Odoo source for this checkout.",
+    },
+    "neutralised": {
+        "fr": "neutralisée",
+        "en": "neutralised",
+    },
+    "Done:": {
+        "fr": "Fait :",
+        "en": "Done:",
+    },
+    "NOT neutralised: its crons run, its mail leaves and": {
+        "fr": "PAS neutralisée : ses crons tournent, son courriel part et",
+        "en": "NOT neutralised: its crons run, its mail leaves and",
+    },
+    "its payment providers can charge.": {
+        "fr": "ses fournisseurs de paiement peuvent débiter.",
+        "en": "its payment providers can charge.",
+    },
+    "Missing script: ": {
+        "fr": "Script introuvable : ",
+        "en": "Missing script: ",
+    },
+    "Odoo's own neutralisation": {
+        "fr": "la neutralisation d'Odoo lui-même",
+        "en": "Odoo's own neutralisation",
+    },
+    "This route does not set database.is_neutralized, does": {
+        "fr": "Ce chemin ne pose pas database.is_neutralized, ne",
+        "en": "This route does not set database.is_neutralized, does",
+    },
+    "not disable crons, and leaves payment keys in place.": {
+        "fr": "désactive pas les crons, et laisse les clés de paiement en place.",
+        "en": "not disable crons, and leaves payment keys in place.",
+    },
+    "column(s) hold identifier paths and are left": {
+        "fr": "colonne(s) portent des chemins d'identifiants et sont laissées",
+        "en": "column(s) hold identifier paths and are left",
+    },
+    "alone:": {
+        "fr": "intactes :",
+        "en": "alone:",
     },
 }
 

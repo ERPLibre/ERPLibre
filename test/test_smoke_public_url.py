@@ -433,7 +433,7 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
         lst_cmd = []
-        upgrade.run_on_terminal = lambda cmd: lst_cmd.append(cmd) or 0
+        upgrade.run_captured = lambda cmd: lst_cmd.append(cmd) or 0
         # Le doublon HONORE le défaut, comme le vrai `ask_gate`.
         upgrade.ask_gate = lambda prompt, default="": answer or default
         upgrade.prompt_smoke_public_url("db_upgrade_13")
@@ -502,7 +502,7 @@ class TestTheMigrationOffersIt(unittest.TestCase):
         upgrade.dct_progression = {}
         upgrade.lst_command_executed = []
         upgrade.write_config = lambda: None
-        upgrade.run_on_terminal = lambda cmd: 0
+        upgrade.run_captured = lambda cmd: 0
         upgrade.ask_gate = lambda prompt, default="": "n"
         out = io.StringIO()
         with contextlib.redirect_stdout(out):

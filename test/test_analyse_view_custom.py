@@ -266,10 +266,6 @@ class TestRender(unittest.TestCase):
         self.assertNotEqual(english, french)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestCowTwinDiff(unittest.TestCase):
     """Comparer une copie de site web à la vue de module qu'elle masque.
 
@@ -358,3 +354,7 @@ class TestCowTwinDiff(unittest.TestCase):
         )
         self.assertEqual(n, 0)
         self.assertNotIn("differs", row)
+
+
+if __name__ == "__main__":
+    unittest.main()

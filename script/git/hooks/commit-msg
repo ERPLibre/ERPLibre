@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Hook commit-msg : refuse un sujet hors convention.
+
+Installation :
+
+    git config core.hooksPath script/git/hooks
+
+Contournement pour un cas légitime : `git commit --no-verify`.
+"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from commit_msg_lib import check  # noqa: E402
+
+
+def main() -> int:
+    if len(sys.argv) < 2:
+        print("commit-msg : aucun fichier de message reçu", file=sys.stderr)
+        return 1
+    path = Path(sys.argv[1])
+    try:
+        message = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"commit-msg : {exc}", file=sys.stderr)
+        return 1
+
+    problems = check(message)
+    if not problems:
+        return 0
+
+    print("\n  ✗ sujet de commit hors convention\n", file=sys.stderr)
+    for problem in problems:
+        print(f"   - {problem}", file=sys.stderr)
+    print(
+        "\n  La règle : .claude/rules/04-code-conventions.md"
+        "\n  Le mode d'emploi : conf/template_claude_commands_commit.md"
+        "\n  Passer outre pour un cas légitime : git commit --no-verify\n",
+        file=sys.stderr,
+    )
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

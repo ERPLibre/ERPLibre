@@ -199,6 +199,76 @@ class DatabaseManager:
                 source_erplibre=False,
             )
 
+    def duplicate_database(self) -> None:
+        """Copier une base, et proposer de la neutraliser.
+
+        On passe par `db_duplicate.py`, donc par Odoo, et non par un
+        `CREATE DATABASE … TEMPLATE` : lui seul coupe les connexions
+        ouvertes sur la source, régénère le `database.uuid`, copie le
+        filestore et sait neutraliser pour de bon.
+
+        La neutralisation est proposée par DÉFAUT. Mesuré sur trois
+        migrations de suite : la copie gardait 33 crons actifs, aucun
+        serveur de courriel — donc le repli sur `smtp_server` de la
+        configuration — et une clé de paiement vivante. Le défaut à
+        « oui » est le seul qui protège celui qui appuie sur Entrée.
+        """
+        source = self.select_database()
+        if not source:
+            return
+        defaut = f"{source}_neutralize"
+        cible = input(
+            f"\U0001f4ac {t('Name of the copy (default=')}{defaut}) : "
+        ).strip()
+        cible = cible or defaut
+
+        reponse = (
+            input(f"\U0001f4ac {t('Neutralize the copy (Y/n)? ')}")
+            .strip()
+            .lower()
+        )
+        neutraliser = reponse != "n"
+        if not neutraliser:
+            print(
+                f"⚠️  {t('The copy will keep its scheduled actions, its')}"
+                f" {t('outgoing mail and its payment providers.')}"
+            )
+
+        commande = (
+            f"python3 ./script/database/db_duplicate.py"
+            f" -s {source} -d {cible}"
+        )
+        if neutraliser:
+            commande += " --neutralize"
+        status, _ = self._execute.exec_command_live(
+            commande,
+            return_status_and_output=True,
+            single_source_erplibre=True,
+            source_erplibre=False,
+        )
+        if status:
+            print(f"❌ {t('The duplication failed.')}")
+            return
+        # RELIRE plutôt que croire : c'est le contrôle qui manquait aux
+        # trois modules maison, dont aucun ne posait le drapeau.
+        if neutraliser:
+            self._report_neutralize(cible)
+
+    @staticmethod
+    def _report_neutralize(database: str) -> None:
+        """Dire ce que la neutralisation a réellement pris."""
+        try:
+            from script.analyse import monitoring
+
+            print()
+            print(
+                monitoring.neutralize_report(
+                    monitoring.neutralize_state(database), colour=True
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - un rapport, pas le sujet
+            print(f"ℹ️  {t('Cannot read the copy back: ')}{exc}")
+
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:

@@ -434,3 +434,7 @@ class TestConnect(unittest.TestCase):
         with patch("imaplib.IMAP4_SSL", side_effect=OSError("injoignable")):
             with self.assertRaises(ImapError):
                 connect(self._account("ssl"), "hunter2")
+
+
+if __name__ == "__main__":
+    unittest.main()

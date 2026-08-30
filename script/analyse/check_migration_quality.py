@@ -36,6 +36,7 @@ Codes de sortie : 0 rien à signaler, 1 des trouvailles, 2 l'outil a échoué.
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -85,6 +86,316 @@ def read_progression(path=DEFAULT_PROGRESSION):
             return json.load(handle)
     except (OSError, ValueError):
         return {}
+
+
+# Où la migration laisse une trace, et ce qu'on y trouve. Les DEUX
+# chemins sont montrés à l'écran même quand le second n'existe pas : sans
+# `logfile` dans config.conf, Odoo écrit sur le terminal et sa sortie est
+# perdue à la fermeture. Ne rien dire laisserait chercher un fichier qui
+# n'a jamais été écrit.
+JOURNAL_ODOO = "log/odoo.log"
+MOTIFS_ERREUR = ("CRITICAL", "ERROR", "Traceback")
+
+
+def read_events(dct):
+    """Les verdicts que la migration a laissés, dans l'ordre où ils sont venus.
+
+    `command_executed` dit ce qui a été LANCÉ ; `lst_event` dit ce que
+    cela a RENDU. C'est la seule trace persistante d'un échec : la sortie
+    d'Odoo, elle, part sur le terminal et disparaît avec lui.
+    """
+    lst = []
+    for brut in dct.get("lst_event") or []:
+        if not isinstance(brut, dict):
+            continue
+        try:
+            statut = int(brut.get("status") or 0)
+        except (TypeError, ValueError):
+            statut = 0
+        lst.append(
+            {
+                "at": str(brut.get("at") or ""),
+                "step": str(brut.get("step") or ""),
+                "kind": str(brut.get("kind") or ""),
+                "name": str(brut.get("name") or ""),
+                "status": statut,
+                "detail": str(brut.get("detail") or ""),
+            }
+        )
+    return lst
+
+
+def failures(events):
+    """Ceux qui n'ont pas rendu zéro, et seulement ceux-là.
+
+    On garde `kind == "test"` : les entrées `command` à 1 appartiennent au
+    dialogue du pilote — « voulez-vous effacer le module manquant » — et
+    signaler un choix comme un échec ferait ignorer la liste entière.
+    """
+    return [e for e in events if e["status"] and e["kind"] == "test"]
+
+
+FICHIER_VERSION = ".odoo-version"
+
+
+def checkout_version(racine=None):
+    """La version d'Odoo sur laquelle le checkout est posé, ou None.
+
+    Un entier, pas « 18.0 » : c'est ce que porte le nom des bases de
+    palier et ce que la chaîne de migration rend, et deux formes du même
+    fait finissent toujours par diverger.
+    """
+    base = racine or os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    try:
+        with open(
+            os.path.join(base, FICHIER_VERSION), encoding="utf-8"
+        ) as handle:
+            return int(float(handle.read().strip()))
+    except (OSError, ValueError):
+        return None
+
+
+def verdicts(events):
+    """TOUS les verdicts de test, réussis compris.
+
+    N'afficher que les échecs répondait à « qu'est-ce qui a raté » et à
+    rien d'autre. Or la question qu'on se pose devant une base migrée est
+    « qu'a-t-on vérifié », et un test réussi au palier 17 est une preuve
+    au même titre qu'un raté au 14 — c'est même la seule façon de voir
+    qu'un échec du 14 a été RATTRAPÉ ensuite.
+    """
+    return [e for e in events if e["kind"] == "test"]
+
+
+def version_of(database, dct):
+    """La version d'Odoo de cette base, lue dans la chaîne de la migration.
+
+    Plus sûr que le suffixe du nom : la base de DÉPART n'en porte pas —
+    « test_neutralize » ne dit pas 12.0 — et son palier retombait alors
+    sur le compteur du pilote, qui affichait « 2 ».
+    """
+    for version, base in chain(dct):
+        if base == database:
+            return version
+    return None
+
+
+# Ce que la migration écrit dans le journal d'une étape autour d'un test :
+#
+#   [2026-08-26 03:19:44.166204] $ .venv…/python3 ./script/…/smoke.py -d …
+#   [2026-08-26 03:19:59.846406]   -> 1
+#   [2026-08-26 03:19:59.847489] [test] smoke_public_url -> 1
+#
+# Entre le « $ » et le « -> », RIEN : mesuré sur trois exécutions du même
+# test, la sortie de l'outil n'est pas capturée. Ce qui explique l'échec
+# est donc AVANT, dans ce qu'Odoo écrivait juste avant qu'on le teste —
+# et c'est pour cela que l'extrait remonte, au lieu de descendre.
+MARQUEUR_COMMANDE = "] $ "
+MOTIF_HORODATAGE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+
+
+def _horodatage(ligne):
+    """La seconde portée par cette ligne de journal, ou ""."""
+    found = MOTIF_HORODATAGE.match(ligne)
+    return found.group(1) if found else ""
+
+
+def event_tool(event):
+    """Le script que ce verdict a lancé — « smoke_public_url.py »."""
+    for mot in (event.get("detail") or "").split():
+        if mot.endswith(".py"):
+            return os.path.basename(mot)
+    return ""
+
+
+def event_excerpt(lignes, event, avant=18):
+    """(extrait, rang de la commande) — le passage qui entoure ce verdict.
+
+    Quand la migration a été rejouée, le même test apparaît plusieurs fois
+    dans le même fichier. On retient donc l'occurrence la plus PROCHE de
+    l'horodatage du verdict, et non la dernière : la dernière appartient
+    peut-être à une exécution qui n'est pas celle qu'on regarde.
+    """
+    outil = event_tool(event)
+    if not outil or not lignes:
+        return [], None
+    base = event_database(event)
+    quand = (event.get("at") or "")[:19]
+    candidats = [
+        rang
+        for rang, ligne in enumerate(lignes)
+        if MARQUEUR_COMMANDE in ligne
+        and outil in ligne
+        and (not base or base in ligne)
+    ]
+    if not candidats:
+        return [], None
+    avant_le_verdict = [
+        rang for rang in candidats if _horodatage(lignes[rang]) <= quand
+    ]
+    rang = (avant_le_verdict or candidats)[-1]
+    fin = rang
+    for suivant in range(rang, min(rang + 400, len(lignes))):
+        if "[test] " in lignes[suivant] and event["name"] in lignes[suivant]:
+            fin = suivant
+            break
+    return lignes[max(0, rang - avant) : fin + 1], rang
+
+
+def excerpt_has_output(extrait, rang_relatif):
+    """La sortie de l'outil est-elle DANS l'extrait, ou seulement le cadre ?
+
+    Avant que le pilote ne capture, le journal ne portait que « $ … »
+    suivi de « -> code », sans une ligne entre les deux. Le dire était
+    juste ; le dire encore quand la sortie est là serait un mensonge, et
+    le panneau enverrait chercher ailleurs ce qu'il a sous les yeux.
+    """
+    for ligne in extrait[rang_relatif + 1 :]:
+        depouille = ligne.strip()
+        if not depouille:
+            continue
+        if MARQUEUR_COMMANDE in ligne:
+            continue
+        if depouille.startswith("-> ") or depouille.startswith("[test] "):
+            continue
+        if "]   -> " in ligne or "] [test] " in ligne:
+            continue
+        return True
+    return False
+
+
+def event_database(event):
+    """La base sur laquelle ce verdict portait, lue dans sa commande."""
+    for mot in event.get("detail", "").split():
+        if mot.startswith("test_") or "_upgrade_" in mot:
+            return mot
+    morceaux = event.get("detail", "").split("-d ")
+    if len(morceaux) > 1:
+        return morceaux[1].split()[0]
+    return ""
+
+
+def event_step(event, database=""):
+    """Le palier Odoo que ce verdict concernait — « 14 », « 18 ».
+
+    Le nom de la base le porte — « …_upgrade_14 » — et c'est plus sûr que
+    le champ `step`, dont la numérotation (« 4.1.I ») compte les ÉTAPES du
+    pilote et non les versions d'Odoo : elles sont décalées d'un rang.
+    """
+    base = database or event_database(event)
+    if "_upgrade_" in base:
+        suffixe = base.rsplit("_upgrade_", 1)[1]
+        if suffixe.isdigit():
+            return suffixe
+    return (event.get("step") or "").split(" ")[0][:5]
+
+
+def log_sources(path=DEFAULT_PROGRESSION, journal=JOURNAL_ODOO):
+    """[(rôle, chemin, existe, ce qu'on y lit)] — la carte des traces.
+
+    Documenter les chemins EST la fonctionnalité : il a fallu une question
+    pour découvrir que les verdicts vivaient dans `lst_event`, et que la
+    sortie d'Odoo n'était écrite nulle part.
+    """
+    return [
+        (
+            t("Migration progression"),
+            path,
+            os.path.isfile(path),
+            t("steps, commands and their verdicts (lst_event)"),
+        ),
+        (
+            t("Odoo log"),
+            journal,
+            os.path.isfile(journal),
+            t("set logfile= in config.conf, else output is lost"),
+        ),
+    ]
+
+
+def scan_log(path=JOURNAL_ODOO, limite=12):
+    """{motif: compte} et les dernières lignes fautives d'un journal Odoo.
+
+    On lit la QUEUE : un journal de migration pèse des dizaines de
+    mégaoctets et ce qu'on cherche est ce qui a échoué en dernier.
+    """
+    rapport = {
+        "path": path,
+        "exists": os.path.isfile(path),
+        "counts": {},
+        "lines": [],
+    }
+    if not rapport["exists"]:
+        return rapport
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            debut = max(0, handle.tell() - 2_000_000)
+            handle.seek(debut)
+            queue = handle.read().decode("utf-8", "replace")
+    except OSError:
+        return rapport
+    for motif in MOTIFS_ERREUR:
+        rapport["counts"][motif] = queue.count(motif)
+    for ligne in queue.splitlines():
+        if any(motif in ligne for motif in MOTIFS_ERREUR):
+            rapport["lines"].append(ligne.strip()[:200])
+    rapport["lines"] = rapport["lines"][-limite:]
+    return rapport
+
+
+# La revue : ce qu'on vérifie, dans l'ordre, et ce que chaque étape prouve.
+# Elle est ÉCRITE ici plutôt que dans une documentation à côté, parce
+# qu'une liste de contrôle qu'il faut aller chercher n'est pas suivie.
+REVUE = (
+    (
+        "Did the migration reach the end?",
+        "lst_event, and the six state_4_*_lst flags at 6/6",
+        None,
+    ),
+    (
+        "Does Odoo load the database?",
+        "./odoo_bin.sh shell -c ./config.conf -d {db} --no-http",
+        "shell",
+    ),
+    (
+        "What did the migration leave behind?",
+        "script/analyse/check_migration_residue.py -d {db}",
+        "residue",
+    ),
+    (
+        "Is this copy safe to open?",
+        "script/analyse/check_instance_state.py -d {db} --expect copy",
+        "state",
+    ),
+    (
+        "Do the public pages still answer?",
+        "script/odoo/migration/smoke_public_url.py -d {db}",
+        "smoke",
+    ),
+    (
+        "Is anything left that cleanup could not drop?",
+        "script/odoo/migration/database_cleanup.py -d {db}",
+        "cleanup",
+    ),
+    (
+        "Will every step find its addons?",
+        "script/analyse/check_manifest_gaps.py --upstream",
+        "manifest",
+    ),
+    (
+        "Is any module still on a pre-18 view type?",
+        "script/analyse/check_view_type_tree.py",
+        "viewtype",
+    ),
+    (
+        "Did the last step add to the accounting data?",
+        "script/analyse/check_chart_drift.py -d {db}",
+        "chartdrift",
+    ),
+)
 
 
 def chain(dct):

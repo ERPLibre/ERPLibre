@@ -74,12 +74,31 @@ try:
     if "product.pricelist" in env:
         Liste = env["product.pricelist"].sudo().with_context(active_test=False)
         rapport["pricelist_before"] = Liste.search_count([])
-        # Le groupe décide : sans lui la fonctionnalité est masquée et
-        # l'absence de liste est normale, pas une perte.
-        rapport["pricelist_group"] = env.user.has_group(
-            "product.group_product_pricelist"
+        # Ce qui décide, c'est la FONCTIONNALITÉ, pas l'appartenance de
+        # celui qui exécute. `has_group` était vrai ici parce que six
+        # utilisateurs sont membres directs du groupe — hérité d'un
+        # palier de migration — alors que la case de configuration était
+        # décochée. On créait donc une liste de prix dans une base dont
+        # la fonctionnalité est éteinte, et Odoo prévenait à chaque
+        # ouverture des réglages qu'il allait l'archiver.
+        #
+        # `res.config.settings` lit ce que `base.group_user` IMPLIQUE
+        # (res_config.py : « which groups are implied by the group
+        # Employee ») : c'est la même question qu'on pose ici.
+        fonction = env.ref("product.group_product_pricelist", False)
+        employe = env.ref("base.group_user", False)
+        rapport["pricelist_group"] = bool(
+            fonction and employe and fonction in employe.implied_ids
         )
-        if not DRY and rapport["pricelist_group"]:
+        # Et seulement s'il n'y en a AUCUNE. `_activate_or_create_pricelists`
+        # ne compte pas une liste PARTAGÉE (company_id vide) comme
+        # appartenant à la société : appelée alors qu'une liste existe, elle
+        # en ajoute une seconde. Mesuré sur une migration où la liste avait
+        # traversé les six paliers — la réparation a créé un doublon vide à
+        # côté d'elle. Cet outil a son détecteur ; il le consulte.
+        if not DRY and rapport["pricelist_group"] and not rapport[
+            "pricelist_before"
+        ]:
             Societe._activate_or_create_pricelists()
             env.cr.commit()
         rapport["pricelist_after"] = Liste.search_count([])

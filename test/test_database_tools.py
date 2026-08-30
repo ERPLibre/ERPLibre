@@ -144,3 +144,7 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
             s2 = {a["name"] for a in r2}
         self.assertEqual(s1.difference(s2), {"mod1"})
         self.assertEqual(len(s2.difference(s1)), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

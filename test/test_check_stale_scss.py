@@ -285,22 +285,38 @@ class TestTheMigrationRunsIt(unittest.TestCase):
             source.index("4 - Upgrade version with OpenUpgrade"),
         )
 
-    def test_it_gets_a_real_terminal(self):
-        # L'outil pose lui-même ses questions et peut ouvrir un plein écran :
-        # un tube les rendrait toutes injoignables, sans rien signaler.
+    def test_no_call_goes_through_the_piped_executor(self):
+        # L'outil pose lui-même ses questions : un TUBE les rendrait
+        # injoignables, sans rien signaler — Python met sa sortie en
+        # tampon par blocs et l'invite reste invisible.
+        #
+        # Les DEUX voies terminal conviennent : `run_on_terminal` laisse
+        # le vrai terminal, `run_captured` en fabrique un et garde une
+        # copie. Seul `todo_upgrade_execute` bufferise.
         import inspect
 
         from script.todo.todo_upgrade import TodoUpgrade
 
         source = inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
-        # On ne compare pas à une mise en forme — black la change — mais à
-        # l'appel le plus proche EN AMONT : c'est lui qui exécute.
-        avant = source[: source.index("check_stale_scss.py")]
-        self.assertGreater(
-            avant.rfind("run_on_terminal("),
-            avant.rfind("todo_upgrade_execute("),
-            "l'outil repasse par l'exécuteur à tube",
-        )
+        depart = 0
+        vus = 0
+        while True:
+            rang = source.find("check_stale_scss.py", depart)
+            if rang < 0:
+                break
+            vus += 1
+            avant = source[:rang]
+            # L'appel le plus proche EN AMONT : c'est lui qui exécute.
+            terminal = max(
+                avant.rfind("run_on_terminal("), avant.rfind("run_captured(")
+            )
+            self.assertGreater(
+                terminal,
+                avant.rfind("todo_upgrade_execute("),
+                "l'outil repasse par l'exécuteur à tube",
+            )
+            depart = rang + 1
+        self.assertEqual(2, vus)
 
 
 class TestTheFixCannotRunTooEarly(unittest.TestCase):

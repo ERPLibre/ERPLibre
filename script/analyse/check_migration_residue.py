@@ -27,7 +27,6 @@ finit par être ignoré en entier.
 Ne restent ici que les constats qui se jugent SANS point de comparaison,
 parce qu'ils sont faux en eux-mêmes. Les mêmes bases, mêmes mesures :
 
-    res_lang.active à NULL            0 → 9      un booléen NULL est un bug
     ir_model_relation sans table      0 → 68     la table m2m est nommée,
                                                  elle n'existe pas
     index doublés convention 17       0 → 414    Odoo 17 renomme, sans
@@ -35,8 +34,29 @@ parce qu'ils sont faux en eux-mêmes. Les mêmes bases, mêmes mesures :
     liste de prix par défaut absente  0 → 1      `product` installé, son
                                                  xmlid pas là
 
-Zéro avant, non nul après : aucun de ces trois ne peut s'expliquer
+Zéro avant, non nul après : aucun de ceux-là ne peut s'expliquer
 autrement que par la migration.
+
+« Zéro avant, non nul après » ne suffit pourtant pas
+----------------------------------------------------
+Un quatrième contrôle a vécu ici et n'y est plus : `res_lang.active` à
+NULL, 0 avant et 9 après. Le chiffre était juste, la conclusion fausse.
+
+Mesuré palier par palier : 0, 1, 2, 3, 5, 8, 9 — les NULL arrivent avec
+les langues que CHAQUE version ajoute au catalogue. Et c'est Odoo
+lui-même qui les écrit : `active = fields.Boolean()` sans défaut
+(res_lang.py:64) et un `res.lang.csv` sans colonne `active` — l'INSERT ne
+porte pas la colonne, PostgreSQL y met NULL.
+
+Aucune conséquence, vérifiée dans la source de la 18 : un domaine
+`('active','=',False)` compile en `(IS NULL OR = FALSE)`
+(models.py:3217-3222), l'action du menu Langues porte `active_test: False`
+(res_lang_views.xml:136), le tri passe par `COALESCE(active, FALSE)`
+(models.py:5692) et la lecture rend `bool(value)` (fields.py:1515). NULL
+et FALSE sont indiscernables partout.
+
+La leçon : la croissance mesurée doit AUSSI être inexplicable autrement.
+Ici elle s'expliquait très bien.
 
 Un quatrième a été RETIRÉ après vérification
 --------------------------------------------
@@ -74,10 +94,13 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+from script.analyse import check_migration_quality as quality  # noqa: E402
 from script.analyse import lib_analyse  # noqa: E402
+from script.todo import migration_status as status  # noqa: E402
 
 COULEURS = {
     "broken": "\033[31m",
+    "step": "\033[36m",
     "watch": "\033[33m",
     "ok": "\033[32m",
     "dim": "\033[90m",
@@ -106,15 +129,6 @@ CONTROLES = (
         "repair": "script/todo/todo_upgrade.py (uninstall_one_by_one)",
     },
     {
-        "key": "lang_active_null",
-        "title": "Languages whose active flag is NULL",
-        "why": "A boolean that is neither true nor false: the language is"
-        " listed nowhere and cannot be re-enabled from the interface.",
-        "sql": "SELECT count(*) FROM res_lang WHERE active IS NULL",
-        "gravity": "broken",
-        "repair": None,
-    },
-    {
         "key": "duplicate_index",
         "title": "Indexes duplicated by the Odoo 17 renaming",
         "why": "Odoo 17 changed the naming convention without dropping the"
@@ -139,9 +153,22 @@ CONTROLES = (
         # chercher l'xmlid signalait donc une base parfaitement saine, et
         # aurait signalé de même celle d'un client qui a créé la sienne à
         # la main.
+        #
+        # Et seulement si la FONCTIONNALITÉ est active, c'est-à-dire si
+        # `base.group_user` implique `product.group_product_pricelist` —
+        # la question exacte que pose la case des réglages. Sans elle,
+        # l'absence de liste est normale ; signaler quand même menait à
+        # créer une liste dans une base qui n'en veut pas, et Odoo
+        # prévenait alors à chaque ouverture des réglages qu'il allait
+        # l'archiver.
         "sql": "SELECT CASE WHEN EXISTS (SELECT 1 FROM ir_module_module"
         " WHERE name='product' AND state='installed')"
         " AND to_regclass('public.product_pricelist') IS NOT NULL"
+        " AND EXISTS (SELECT 1 FROM res_groups_implied_rel r"
+        " JOIN ir_model_data u ON u.model='res.groups' AND u.res_id=r.gid"
+        " AND u.module='base' AND u.name='group_user'"
+        " JOIN ir_model_data g ON g.model='res.groups' AND g.res_id=r.hid"
+        " AND g.module='product' AND g.name='group_product_pricelist')"
         " AND NOT EXISTS (SELECT 1 FROM product_pricelist)"
         " THEN 1 ELSE 0 END",
         "gravity": "broken",
@@ -174,7 +201,7 @@ CONTROLES = (
         "sql": "SELECT count(*) FROM ir_model_data d WHERE NOT EXISTS"
         " (SELECT 1 FROM ir_model m WHERE m.model = d.model)",
         "gravity": "broken",
-        "repair": "script/analyse/database_cleanup.py",
+        "repair": "script/odoo/migration/database_cleanup.py",
     },
     {
         "key": "attachment_field_gone",
@@ -231,6 +258,134 @@ def judge(resultats):
     return trouve, illisibles
 
 
+def famille(nom):
+    """La base d'origine dont ce nom est un palier.
+
+    « test_neutralize_upgrade_14 » et « …_upgrade_18 » sont deux paliers
+    de la MÊME migration. Interroger la base 18 doit montrer l'échec du
+    palier 14 : c'est le seul endroit où il subsiste.
+    """
+    return nom.rsplit("_upgrade_", 1)[0] if "_upgrade_" in nom else nom
+
+
+def verdicts(database, path=None):
+    """(tous, ratés) pour cette base — lus dans le FICHIER, pas en SQL.
+
+    Un test de fumée qui échoue ne laisse aucune trace en base : rien
+    n'est écrit, rien n'est cassé, la requête suivante répond. Les
+    contrôles ci-dessus sont donc structurellement aveugles à ce type
+    d'échec, et c'était la moitié de ce qu'une migration peut rater.
+    """
+    dct = quality.read_progression(path or quality.DEFAULT_PROGRESSION)
+    lignee = famille(database)
+    tous = [
+        e
+        for e in quality.read_events(dct)
+        if famille(quality.event_database(e)) == lignee
+    ]
+    return tous, quality.failures(tous)
+
+
+def extrait_du_journal(dct, event, colour=True, avant=6):
+    """(lignes, la sortie de l'outil y est-elle) autour de ce verdict.
+
+    La commande seule ne dit pas POURQUOI. Le journal, lui, garde ce
+    qu'Odoo écrivait au moment du test — et c'est tout ce qu'on a : la
+    sortie de l'outil n'y est pas, parce qu'elle passe par le terminal,
+    qu'un tube ferait renoncer aux outils en plein écran. Le pilote le
+    documente à l'endroit où il l'écrit.
+
+    Silencieux quand il n'y a rien à montrer : une ligne « pas de
+    journal » par verdict noierait les quatre qui comptent.
+    """
+    chemin = status.step_log_path(dct, event.get("step"))
+    if not chemin or avant <= 0:
+        return [], False
+    try:
+        with open(chemin, "r", encoding="utf-8", errors="replace") as handle:
+            brut = handle.read().splitlines()
+    except OSError:
+        return [], False
+    extrait, rang = quality.event_excerpt(brut, event, avant=avant)
+    if not extrait:
+        return [], False
+    lignes = [paint(f"          {chemin}", "dim", colour)]
+    for ligne in extrait:
+        lignes.append(paint(f"            {ligne[:150]}", "dim", colour))
+    debut = max(0, rang - avant) if rang is not None else 0
+    avec_sortie = rang is not None and quality.excerpt_has_output(
+        extrait, rang - debut
+    )
+    return lignes, avec_sortie
+
+
+def verdicts_block(database, colour=True, path=None, lignes_avant=6):
+    """La section « Verdicts », ou rien du tout s'il n'y en a pas.
+
+    Silencieuse quand le fichier n'existe pas : devant la sauvegarde d'un
+    client, il n'y a jamais eu de migration locale, et annoncer l'absence
+    d'un fichier qu'on n'attendait pas ne renseigne personne.
+    """
+    chemin = path or quality.DEFAULT_PROGRESSION
+    tous, ratés = verdicts(database, chemin)
+    if not tous:
+        return []
+    lignes = [
+        "",
+        paint(f"🚦 {t('Verdicts the migration recorded')}", "step", colour),
+    ]
+    lignes.append(paint(f"   {t('recorded in')} {chemin}", "dim", colour))
+    lignes.append("")
+    if not ratés:
+        lignes.append(
+            paint(
+                f"✅ {str(len(tous)).rjust(6)}  {t('checks, all passed')}",
+                "ok",
+                colour,
+            )
+        )
+    dct = quality.read_progression(chemin)
+    sortie_presente = False
+    for event in ratés:
+        version = quality.version_of(quality.event_database(event), dct)
+        palier = str(version) if version else quality.event_step(event)
+        icone, teinte = status.verdict_mark(event["status"])
+        lignes.append(
+            paint(
+                f"{icone} {palier.rjust(6)}  {event['name']}",
+                "broken" if teinte == "fail" else "watch",
+                colour,
+            )
+        )
+        lignes.append(
+            paint(f"          {event['detail'][:120]}", "dim", colour)
+        )
+        bloc, avec_sortie = extrait_du_journal(
+            dct, event, colour, lignes_avant
+        )
+        sortie_presente = sortie_presente or avec_sortie
+        lignes.extend(bloc)
+    lignes.append("")
+    lignes.append(
+        paint(
+            f"   {t('These come from the file, not the database:')}"
+            f" {t('the exit code ignores them.')}",
+            "dim",
+            colour,
+        )
+    )
+    if ratés and lignes_avant > 0 and not sortie_presente:
+        lignes.append(
+            paint(
+                f"   {t('the tool output is not in the step log: it goes')}"
+                f" {t('to the terminal and dies with it.')}",
+                "dim",
+                colour,
+            )
+        )
+    return lignes
+
+
 def render(database, resultats, version=None, colour=True):
     """Le rapport lisible. Chaque constat dit quoi lancer pour le réparer."""
     trouve, illisibles = judge(resultats)
@@ -253,7 +408,7 @@ def render(database, resultats, version=None, colour=True):
                 colour,
             )
         )
-        return "\n".join(lignes)
+        return "\n".join(lignes + verdicts_block(database, colour)).rstrip()
 
     for controle, combien in trouve:
         icone = "❌" if controle["gravity"] == "broken" else "⚠"
@@ -282,7 +437,7 @@ def render(database, resultats, version=None, colour=True):
             )
         )
         lignes.append(paint(f"          {erreur}", "dim", colour))
-    return "\n".join(lignes).rstrip()
+    return "\n".join(lignes + verdicts_block(database, colour)).rstrip()
 
 
 def main(argv=None):
@@ -316,6 +471,7 @@ def main(argv=None):
     trouve, illisibles = judge(resultats)
 
     if args.json:
+        tous_verdicts, verdicts_ratés = verdicts(args.database)
         print(
             json.dumps(
                 {
@@ -324,6 +480,11 @@ def main(argv=None):
                     "checks": resultats,
                     "found": [c["key"] for c, _ in trouve],
                     "unreadable": [c["key"] for c, _ in illisibles],
+                    "verdicts": tous_verdicts,
+                    "verdicts_failed": [
+                        {"step": quality.event_step(e), "name": e["name"]}
+                        for e in verdicts_ratés
+                    ],
                 },
                 indent=2,
                 ensure_ascii=False,

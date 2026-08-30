@@ -17,6 +17,7 @@ fi
 # main : Odoo ne les connaît pas et mourrait sur « no such option ».
 #   --auto-erplibre    arme le choix de la base à démarrer
 #   --no-cli-erplibre  interdit le menu, sans interdire le choix
+#   --erplibre-disable-warmup-http  n'envoie pas la requête de réveil
 # Sans AUCUN argument, le choix s'arme de lui-même : c'est « make run »,
 # quelqu'un devant son terminal. Ce défaut-là reste timide — il exige un
 # terminal des deux côtés — parce que systemd lance lui aussi run.sh sans
@@ -25,6 +26,7 @@ EL_ARGS=()
 EL_AUTO=0
 EL_AUTO_EXPLICITE=0
 EL_NO_CLI=0
+EL_WARMUP=1
 [ $# -eq 0 ] && EL_AUTO=1
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -33,6 +35,13 @@ while [ $# -gt 0 ]; do
       EL_AUTO_EXPLICITE=1
       ;;
     --no-cli-erplibre) EL_NO_CLI=1 ;;
+    --erplibre-disable-warmup-http) EL_WARMUP=0 ;;
+    # Rien à réveiller si personne n'écoute. On les laisse passer à Odoo,
+    # on se contente de ne pas sonder.
+    --no-http|--stop-after-init)
+      EL_WARMUP=0
+      EL_ARGS+=("$1")
+      ;;
     # Tout le reste passe tel quel, y compris les arguments vides et ceux
     # qui portent des espaces : un tableau, jamais une chaîne reconstruite.
     *) EL_ARGS+=("$1") ;;
@@ -56,6 +65,26 @@ if [ "${EL_AUTO}" = "1" ] && [ -f "${EL_LIB}" ]; then
   if [ -n "${EL_DB_NAME}" ]; then
     EL_DB=(-d "${EL_DB_NAME}")
   fi
+fi
+
+# Le réveil, EN PARALLÈLE. Odoo ne charge le registre d'une base qu'à la
+# première requête qui la concerne ; sur une base migrée cela prend des
+# dizaines de secondes, et c'est la personne qui ouvre la page qui les
+# attend. La sonde prend ce temps à sa place, se tait, et meurt avec nous.
+EL_WARMUP_PID=""
+EL_WARMUP_BIN="./script/odoo/warmup_http.py"
+if [ "${EL_WARMUP}" = "1" ] && [ "$ODOO_MODE_TEST" != "true" ] \
+   && [ -f "${EL_WARMUP_BIN}" ]; then
+  EL_WARMUP_DB=()
+  [ -n "${EL_DB_NAME}" ] && EL_WARMUP_DB=(-d "${EL_DB_NAME}")
+  # `--` sépare NOS options de celles d'Odoo : sans lui, un « -c » destiné
+  # à Odoo serait lu comme le nôtre.
+  python3 "${EL_WARMUP_BIN}" -c "${CONFIG_PATH}" "${EL_WARMUP_DB[@]}" \
+    -- "${EL_ARGS[@]}" 2>/dev/null &
+  EL_WARMUP_PID=$!
+  # Elle ne doit pas survivre au serveur qu'elle réveille. Un Ctrl-C sur
+  # run.sh doit tout emporter.
+  trap '[ -n "${EL_WARMUP_PID}" ] && kill "${EL_WARMUP_PID}" 2>/dev/null' EXIT
 fi
 
 if [ "$ODOO_MODE_TEST" = "true" ]; then

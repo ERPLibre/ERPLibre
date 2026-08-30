@@ -37,7 +37,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 
 ENV_ENABLED = "ERPLIBRE_AUTO_EXECUTE"
 ENV_DELAY = "ERPLIBRE_AUTO_DELAY"
-DEFAULT_DELAY = 5
+DEFAULT_DELAY = 15
 
 
 def enabled():

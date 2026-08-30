@@ -132,6 +132,14 @@ class TestPgEnv(unittest.TestCase):
     def test_literal_false_means_unset(self):
         # Odoo écrit « False » dans config.conf pour dire « pas de valeur ».
         # L'exporter tel quel ferait chercher un hôte nommé « False ».
+        #
+        # L'environnement est VIDÉ de ses PG* : `pg_env` part de
+        # `os.environ`, et un PGHOST exporté par le shell de qui lance les
+        # tests les ferait échouer sans que rien du code n'ait changé.
+        for cle in ("PGHOST", "PGPORT", "PGPASSWORD"):
+            if cle in os.environ:
+                ancien = os.environ.pop(cle)
+                self.addCleanup(os.environ.__setitem__, cle, ancien)
         path = self._write(
             "[options]\ndb_host = False\ndb_port = False\n"
             "db_password = False\ndb_user = erplibre\n"
@@ -304,10 +312,6 @@ class TestRunPsqlGuards(unittest.TestCase):
         with self.assertRaises(L.AnalyseError) as caught:
             L.run_psql("a; DROP DATABASE b", "SELECT 1;")
         self.assertIn("Invalid database name", str(caught.exception))
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestCanonical(unittest.TestCase):
@@ -520,3 +524,7 @@ class TestBackupWithoutManifest(unittest.TestCase):
     def test_manifest_is_the_fallback_when_the_dump_says_nothing(self):
         self.assertEqual(L.backup_version({}, {"version": "16.0"}), "16.0")
         self.assertIsNone(L.backup_version({}, {}))
+
+
+if __name__ == "__main__":
+    unittest.main()

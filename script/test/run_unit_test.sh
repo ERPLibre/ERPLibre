@@ -16,12 +16,19 @@
 #
 #   ./script/test/run_unit_test.sh [fichiers...]
 #
-# NOMMER UN NOUVEAU FICHIER : sans argument, ce script ne prend que les
-# préfixes listés plus bas (test_qemu_, test_todo_, test_proxmox_…) — le reste
-# de test/ demande une base de données. Un fichier hors préfixe tombe donc dans
-# le même silence qu'un fichier absent : douze tests écrits, jamais lancés, et
-# un total qui n'a pas bougé. Choisir le préfixe de sa famille, ou l'ajouter
-# ici.
+# TOUT test/test_*.py, et non une liste de préfixes. La liste disait prendre
+# test_qemu_, test_todo_, test_proxmox_… « le reste demandant une base de
+# données ». Mesuré : les 3670 tests du répertoire passent avec PostgreSQL
+# injoignable, et la liste laissait 2400 d'entre eux hors de la suite —
+# écrits, verts, jamais lancés. Un glob n'oublie personne ; une liste, si.
+#
+# Un fichier n'est vu que s'il finit par le bloc habituel :
+#
+#     if __name__ == "__main__":
+#         unittest.main()
+#
+# EN DERNIER, sinon tout ce qui suit est défini après l'appel et ne tourne
+# jamais. C'est arrivé quatre fois ici, pour 87 tests.
 set -uo pipefail
 
 Red='\033[0;31m'
@@ -47,11 +54,8 @@ fi
 
 FILES=("$@")
 if [[ ${#FILES[@]} -eq 0 ]]; then
-    # Aucun argument : tout ce que le dépôt sait tester sans base de données.
-    mapfile -t FILES < <(ls test/test_qemu_*.py test/test_mobile_*.py \
-        test/test_todo_*.py test/test_install_*.py test/test_run_*.py \
-        test/test_proxmox_*.py \
-        2>/dev/null)
+    # Aucun argument : tout le répertoire. Mesuré sans PostgreSQL.
+    mapfile -t FILES < <(ls test/test_*.py 2>/dev/null)
 fi
 
 fail=0

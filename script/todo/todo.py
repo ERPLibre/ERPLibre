@@ -2893,6 +2893,8 @@ class TODO(
             },
             {"section": t("Restore")},
             {"prompt_description": t("Restore from backup (.zip)")},
+            {"section": t("Duplicate")},
+            {"prompt_description": t("Duplicate a database")},
             {"section": t("Danger zone")},
             {"prompt_description": t("Erase a database")},
         ]
@@ -2910,6 +2912,8 @@ class TODO(
             elif status == "3":
                 self.db_manager.restore_from_database()
             elif status == "4":
+                self.db_manager.duplicate_database()
+            elif status == "5":
                 self.db_manager.drop_database()
             else:
                 print(t("Command not found !"))
