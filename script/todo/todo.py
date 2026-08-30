@@ -2686,6 +2686,7 @@ class TODO(
                     "RTK - CLI proxy to reduce LLM token consumption"
                 )
             },
+            {"prompt_description": t("Show the context given to Claude")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -2700,6 +2701,8 @@ class TODO(
                 self._claude_add_automation()
             elif status == "3":
                 self.prompt_execute_rtk()
+            elif status == "4":
+                self._show_claude_context()
             else:
                 print(t("Command not found !"))
 
