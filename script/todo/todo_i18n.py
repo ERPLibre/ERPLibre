@@ -6885,6 +6885,10 @@ TRANSLATIONS = {
         "fr": "Hooks git",
         "en": "Git hooks",
     },
+    "missing": {
+        "fr": "absent",
+        "en": "missing",
+    },
     "up to date": {
         "fr": "à jour",
         "en": "up to date",
