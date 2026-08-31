@@ -2813,6 +2813,22 @@ TRANSLATIONS = {
         "fr": "Outils manquants pour la réduction sûre :",
         "en": "Missing tools for safe shrink:",
     },
+    "Install them? (y/N): ": {
+        "fr": "Les installer? (y/N) : ",
+        "en": "Install them? (y/N): ",
+    },
+    "Error installing the tools: ": {
+        "fr": "Erreur lors de l'installation des outils : ",
+        "en": "Error installing the tools: ",
+    },
+    "Still missing, safe shrink cancelled:": {
+        "fr": "Manquent toujours, réduction sûre annulée :",
+        "en": "Still missing, safe shrink cancelled:",
+    },
+    "No package known here for:": {
+        "fr": "Aucun paquet connu ici pour :",
+        "en": "No package known here for:",
+    },
     "Backing up the disk before shrinking…": {
         "fr": "Sauvegarde du disque avant réduction…",
         "en": "Backing up the disk before shrinking…",

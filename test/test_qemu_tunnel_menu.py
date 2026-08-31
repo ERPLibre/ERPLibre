@@ -240,8 +240,19 @@ class TestEnsureVirtViewer(unittest.TestCase):
         self.assertEqual(1, len(self.ran))
 
     def test_every_family_is_covered(self):
-        tools = [t for t, _c in TODO._QEMU_VIRT_VIEWER_INSTALL]
-        self.assertEqual(["apt-get", "dnf", "pacman", "zypper"], tools)
+        """La table des familles a quitté ce menu pour todo_install, qui la
+        partage avec les autres installations du CLI."""
+        from script.todo import todo_install
+
+        self.assertEqual(
+            ["apt-get", "dnf", "pacman", "zypper"],
+            list(todo_install.FAMILIES),
+        )
+        for famille in todo_install.FAMILIES:
+            self.assertIn(
+                "virt-viewer",
+                todo_install.install_command(["virt-viewer"], famille=famille),
+            )
 
 
 class TestTunnelMenuTargets(_MenuCase):

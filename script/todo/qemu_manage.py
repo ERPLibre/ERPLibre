@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 
+from script.todo import todo_install
 from script.todo.todo_i18n import t
 
 
@@ -1305,6 +1306,52 @@ class QemuManageMixin:
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    # Le nom du binaire n'est presque jamais celui du paquet. Ces cinq-là
+    # portent le même nom dans les quatre familles.
+    _SHRINK_PKG = {
+        "e2fsck": "e2fsprogs",
+        "resize2fs": "e2fsprogs",
+        "dumpe2fs": "e2fsprogs",
+        "partprobe": "parted",
+        "lsblk": "util-linux",
+        "blockdev": "util-linux",
+    }
+    # Les deux qui changent de famille en famille : sgdisk vit dans « gdisk »
+    # chez Debian et Fedora, dans « gptfdisk » chez Arch et openSUSE, et
+    # qemu-nbd porte quatre noms de paquet différents.
+    _SHRINK_PKG_FAMILY = {
+        "apt-get": {"sgdisk": "gdisk", "qemu-nbd": "qemu-utils"},
+        "dnf": {"sgdisk": "gdisk", "qemu-nbd": "qemu-img"},
+        "pacman": {"sgdisk": "gptfdisk", "qemu-nbd": "qemu-img"},
+        "zypper": {"sgdisk": "gptfdisk", "qemu-nbd": "qemu-tools"},
+    }
+
+    def _qemu_install_shrink_tools(self, manquants):
+        """Poser les paquets qui fournissent les outils manquants.
+
+        Rend la liste de ce qui manque ENCORE, relue sur le disque : vide si
+        tout est là. Un refus, un gestionnaire de paquets inconnu ou une
+        installation en échec la rendent non vide, et l'appelant renonce.
+        """
+        paquets, inconnus = todo_install.resolve(
+            manquants,
+            commun=self._SHRINK_PKG,
+            par_famille=self._SHRINK_PKG_FAMILY,
+        )
+        if inconnus:
+            print(
+                f"  ⚠ {t('No package known here for:')} {', '.join(inconnus)}"
+            )
+        status = todo_install.ask_and_install(
+            self.execute,
+            todo_install.install_command(paquets),
+            t("Install them? (y/N): "),
+            self._is_yes,
+        )
+        if status:
+            print(f"  {t('Error installing the tools: ')}{status}")
+        return [b for b in self._SHRINK_TOOLS if not shutil.which(b)]
+
     def _qemu_safe_shrink(self, name, disk, new_gb):
         """Réduit le disque SANS casser l'OS, via qemu-nbd + resize2fs +
         sgdisk (sans libguestfs) : on réduit le FS (ext), puis la partition,
@@ -1317,6 +1364,12 @@ class QemuManageMixin:
         if missing:
             print(
                 f"{t('Missing tools for safe shrink:')} {', '.join(missing)}"
+            )
+            missing = self._qemu_install_shrink_tools(missing)
+        if missing:
+            print(
+                f"{t('Still missing, safe shrink cancelled:')}"
+                f" {', '.join(missing)}"
             )
             return False
         target = int(round(new_gb * (1 << 30)))
