@@ -45,12 +45,11 @@ def parse_ssh_blocks(content) -> dict:
 def ssh_orphans(blocs, juge, prefixe="erplibre-"):
     """(gardées, orphelines) — chacune [(nom, raison)].
 
-    Un ProxyJump valait preuve de vie À LUI SEUL : « écrite pour une VM
-    imbriquée, que virsh ne connaîtra jamais ». Le raisonnement oubliait que
-    le rebond, lui, peut avoir disparu. Vécu : la VM Proxmox locale effacée,
-    le nettoyage a retiré son entrée — correctement — et GARDÉ les trois
-    entrées qui rebondissaient par elle. Trois culs-de-sac, présentés comme
-    « mènent encore quelque part ».
+    Un ProxyJump ne vaut pas preuve de vie à lui seul : « écrite pour une VM
+    imbriquée, que virsh ne connaîtra jamais » oublie que le rebond, lui, peut
+    avoir disparu. Effacer la VM qui servait de rebond retire son entrée —
+    correctement — et laisse celles qui rebondissaient par elle : des
+    culs-de-sac présentés comme « mènent encore quelque part ».
 
     D'où le point fixe : retirer un parent peut orpheliner ses enfants, et
     ceux-ci peuvent en orpheliner d'autres. On tourne jusqu'à ce que plus
@@ -887,11 +886,9 @@ class QemuManageMixin:
         """{chemin: domaine} — TOUT ce que les domaines référencent.
 
         L'autorité est libvirt, jamais le nom du fichier. Un domaine renommé
-        garde le nom de fichier d'avant : juger sur le nom faisait passer le
-        disque d'une VM EN MARCHE pour un orphelin. Rapporté sur
-        « erplibre-ubuntu-2404-MIGRATION », renommée depuis
-        « erplibre-ubuntu-2404 » : le nettoyage offrait ses trois fichiers —
-        disque de 63 Go, seed, nvram — au « rm -f ».
+        garde le nom de fichier d'avant : juger sur le nom fait passer le
+        disque d'une VM EN MARCHE pour un orphelin, et offre ses trois
+        fichiers — disque, seed, nvram — au « rm -f ».
 
         Les deux vues, persistante et vivante, pour la raison dite dans
         `_qemu_dumpxml`.
@@ -2248,12 +2245,10 @@ class QemuManageMixin:
         """Adresses IPv4 de L'HÔTE, à écarter des candidates d'une VM.
 
         « virsh domifaddr --source arp » remonte la table ARP, où figurent les
-        passerelles des ponts libvirt (192.168.122.1, 192.168.123.1…). Une VM
-        n'a jamais l'adresse de son hôte : sans ce filtre, une VM RENOMMÉE —
-        dont le bail porte encore l'ancien nom d'hôte, donc sans
-        correspondance — se voyait attribuer la passerelle. Vécu sur
-        « erplibre-ubuntu-2404-MIGRATION », annoncée en 192.168.122.1 au lieu
-        de 192.168.123.170.
+        passerelles des ponts libvirt. Une VM n'a jamais l'adresse de son
+        hôte : sans ce filtre, une VM RENOMMÉE — dont le bail porte encore
+        l'ancien nom d'hôte, donc sans correspondance — se voit attribuer la
+        passerelle.
         """
         try:
             res = subprocess.run(
@@ -2304,9 +2299,9 @@ class QemuManageMixin:
         - agent : qemu-guest-agent DANS la VM (voit l'IP réelle même quand le
           bail dnsmasq est absent) ;
         - arp : table ARP de l'hôte (VM active sur le réseau).
-        On combine pour ne jamais rater une IP que le bail seul manquerait
-        (cas observé : 30 VM émulées, bail dnsmasq vide alors que la VM a une
-        IP)."""
+        On combine pour ne jamais rater une IP que le bail seul manquerait :
+        sous forte charge, le bail dnsmasq reste vide alors que la VM a bien
+        une adresse."""
         ips = []
         siennes = QemuManageMixin._qemu_host_addresses()
         for source in ("lease", "agent", "arp"):
@@ -2396,8 +2391,8 @@ class QemuManageMixin:
         # Sans correspondance de nom d'hôte — le cas d'une VM RENOMMÉE, dont
         # le bail porte encore l'ancien nom — on prend la source la plus
         # sûre : le bail, puis l'agent, puis la table ARP. Celle-ci contient
-        # les passerelles des ponts, et « la dernière candidate » y tombait :
-        # la VM était annoncée en 192.168.122.1.
+        # les passerelles des ponts, où « la dernière candidate » tombe : la
+        # VM se voit alors annoncée avec l'adresse de sa passerelle.
         for source in ("lease", "agent", "arp"):
             if par_source.get(source):
                 return par_source[source][-1]
@@ -2549,10 +2544,9 @@ class QemuManageMixin:
         tourne dans la VM — install_proxmox.sh, les scripts d'installation, le
         Makefile — vient donc de là.
 
-        Vécu deux fois de suite. Un correctif de install_proxmox.sh, commité
-        ici, absent du distant : chaque VM déployée ensuite recevait l'ancien
-        script, et le défaut « revenait » alors qu'il était corrigé. Rien ne
-        le disait ; il a fallu comparer les deux versions à la main.
+        Un correctif commité ici mais pas poussé ne part donc pas : chaque VM
+        déployée ensuite reçoit l'ancien script, et le défaut « revient »
+        alors qu'il est corrigé. Rien ne le signale, d'où ce décompte.
         """
         if not branche:
             return 0, []
