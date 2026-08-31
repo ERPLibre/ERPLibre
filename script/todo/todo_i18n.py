@@ -883,6 +883,35 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
+    # Git hooks
+    "Install git hooks (commit-msg, pre-commit)": {
+        "fr": "Installer les hooks git (commit-msg, pre-commit)",
+        "en": "Install git hooks (commit-msg, pre-commit)",
+    },
+    "Hooks directory is missing: ": {
+        "fr": "Le répertoire des hooks est absent : ",
+        "en": "Hooks directory is missing: ",
+    },
+    "Another hooks path is already set: ": {
+        "fr": "Un autre chemin de hooks est déjà configuré : ",
+        "en": "Another hooks path is already set: ",
+    },
+    "Replace it? (y/Y): ": {
+        "fr": "Le remplacer? (y/Y) : ",
+        "en": "Replace it? (y/Y): ",
+    },
+    "Execution bit added: ": {
+        "fr": "Bit d'exécution ajouté : ",
+        "en": "Execution bit added: ",
+    },
+    "Git hooks installed!": {
+        "fr": "Hooks git installés!",
+        "en": "Git hooks installed!",
+    },
+    "Error installing hooks: ": {
+        "fr": "Erreur lors de l'installation des hooks : ",
+        "en": "Error installing hooks: ",
+    },
     # Git config vim
     "Configure git local editor to vim": {
         "fr": "Configuration git local par vim",

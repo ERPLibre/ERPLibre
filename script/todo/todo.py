@@ -2524,11 +2524,21 @@ class TODO(
                 if cmd_no_found:
                     print(t("Command not found !"))
 
+    # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
+    # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
+    _GIT_HOOKS = ("commit-msg", "pre-commit")
+    _GIT_HOOKS_PATH = os.path.join("script", "git", "hooks")
+
     def prompt_execute_git(self):
         print(f"🤖 {t('Git management tools!')}")
         choices = [
             {"prompt_description": t("Local git server")},
             {"prompt_description": t("Add a remote to a local repository")},
+            {
+                "prompt_description": t(
+                    "Install git hooks (commit-msg, pre-commit)"
+                )
+            },
         ]
 
         # Append config-driven entries
@@ -2547,6 +2557,8 @@ class TODO(
                 self.prompt_execute_git_local_server()
             elif status == "2":
                 self._git_add_remote()
+            elif status == "3":
+                self._git_install_hooks()
             else:
                 cmd_no_found = True
                 try:
@@ -2578,6 +2590,51 @@ class TODO(
             print(t("Remote added successfully!"))
         except Exception as e:
             print(f"{t('Error adding remote: ')}{e}")
+
+    def _git_install_hooks(self):
+        """Pointer core.hooksPath sur les hooks du dépôt.
+
+        Le bit d'exécution fait partie de l'installation : sans lui git
+        ignore le hook sans rien dire, et le garde-fou du message de commit
+        passe inaperçu.
+        """
+        racine = self._claude_context_root()
+        absolu = os.path.join(racine, self._GIT_HOOKS_PATH)
+        if not os.path.isdir(absolu):
+            print(f"{t('Hooks directory is missing: ')}{absolu}")
+            return
+        actuel = self._git_hooks_path(racine)
+        if actuel and actuel != self._GIT_HOOKS_PATH:
+            print(f"{t('Another hooks path is already set: ')}{actuel}")
+            if not self._is_yes(input(t("Replace it? (y/Y): "))):
+                print(t("Nothing to do."))
+                return
+        for hook in self._GIT_HOOKS:
+            chemin = os.path.join(absolu, hook)
+            if os.path.isfile(chemin) and not os.access(chemin, os.X_OK):
+                os.chmod(chemin, os.stat(chemin).st_mode | 0o111)
+                print(f"{t('Execution bit added: ')}{hook}")
+        # « -C racine » et non le cwd : lancé depuis un dépôt imbriqué
+        # (odoo18.0/addons/…), git écrirait core.hooksPath là-bas et la
+        # racine resterait sans garde-fou, sans le moindre message.
+        cmd = (
+            f"git -C {shlex.quote(racine)} config"
+            f" core.hooksPath {self._GIT_HOOKS_PATH}"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        # exec_command_live RETOURNE le code de sortie, il ne lève rien : sans
+        # ce test, un « fatal: not in a git directory » annonçait quand même
+        # « Hooks git installés! ». Le rapport qui suit ne rattrape pas, il
+        # relit le bit d'exécution et non core.hooksPath.
+        status = self.execute.exec_command_live(cmd, source_erplibre=False)
+        if status:
+            print(f"{t('Error installing hooks: ')}{status}")
+            return
+        print(t("Git hooks installed!"))
+        for hook in self._GIT_HOOKS:
+            pose = os.access(os.path.join(absolu, hook), os.X_OK)
+            marque = t("hook installed") if pose else t("hook not installed")
+            print(f"   {hook:<26} {marque}")
 
     def prompt_execute_git_local_server(self):
         print(f"🤖 {t('Manage local git repository server!')}")
@@ -2879,7 +2936,7 @@ class TODO(
         )
         if chemin_hooks:
             absolu = os.path.join(racine, chemin_hooks)
-            for hook in ("commit-msg", "pre-commit"):
+            for hook in self._GIT_HOOKS:
                 pose = os.access(os.path.join(absolu, hook), os.X_OK)
                 marque = (
                     t("hook installed") if pose else t("hook not installed")

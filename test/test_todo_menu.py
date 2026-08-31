@@ -448,6 +448,29 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Git, le seul dont todo.json suit des entrées codées en dur.
+
+    Ses trois premières entrées sont écrites à la main, les suivantes viennent
+    de `git_from_makefile` et le repli générique les renumérote tout seul :
+    ajouter « Installer les hooks git » en [3] a poussé les deux entrées de
+    todo.json en [4] et [5] sans que rien ne le dise. Une quatrième entrée
+    codée en dur, oubliée dans le dispatch, ferait lancer à [4] la commande
+    du voisin sous le libellé attendu.
+    """
+
+    SOURCE = TODO_DIR / "todo.py"
+    ENTRY = "def prompt_execute_git(self):"
+    END = "def _git_install_hooks(self):"
+    MINIMUM = 2
+
+    EXPECTED = {
+        "Local git server": "prompt_execute_git_local_server",
+        "Add a remote to a local repository": "_git_add_remote",
+        "Install git hooks": "_git_install_hooks",
+    }
+
+
 class TestMenuLabels(unittest.TestCase):
     """Toute méthode de menu doit avoir son étiquette de fil d'Ariane.
 
