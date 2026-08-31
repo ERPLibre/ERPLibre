@@ -18,6 +18,7 @@ ses outils.
 """
 
 import io
+import os
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -190,6 +191,81 @@ class TestGivingUp(ShrinkToolsBase):
         self.assertEqual(len(ran), 1)
         self.assertEqual(left, ["sgdisk"])
         self.assertIn("100", out)
+
+
+class TestBackupSpace(unittest.TestCase):
+    """La sauvegarde avant réduction, et la place qu'elle demande.
+
+    Elle doublait l'occupation sans rien annoncer : sur un disque presque
+    plein la copie s'arrête à mi-course et laisse un .bak tronqué, sur un
+    système de fichiers désormais saturé. Les deux chiffres passent donc
+    avant la question, et le défaut bascule quand la place manque — une
+    entrée distraite ne doit pas remplir le disque.
+    """
+
+    GIB = 1 << 30
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+
+    def test_the_need_is_the_allocated_size_not_the_apparent_one(self):
+        """« cp --sparse=always » ne recopie pas les trous d'un qcow2 : un
+        disque de 60 Go apparents mais 8 Go alloués ne demande que 8 Go."""
+        faux = os.stat_result((0o644, 0, 0, 1, 0, 0, 60 * self.GIB, 0, 0, 0))
+        # st_blocks n'est pas dans le tuple : on le pose à part.
+        with patch("script.todo.qemu_manage.os.stat") as stat, patch(
+            "script.todo.qemu_manage.shutil.disk_usage"
+        ) as du:
+            stat.return_value = type(
+                "S", (), {"st_blocks": 8 * self.GIB // 512}
+            )()
+            du.return_value = type("U", (), {"free": 99 * self.GIB})()
+            besoin, libre = TODO._qemu_backup_need_and_free("/x/d.qcow2")
+        self.assertEqual(besoin, 8 * self.GIB)
+        self.assertEqual(libre, 99 * self.GIB)
+        self.assertNotEqual(besoin, faux.st_size)
+
+    def _decision(self, besoin, libre, answer):
+        """(question posée, sauvegarde retenue) — par le VRAI code.
+
+        Ce helper appelle _qemu_ask_backup et ne réimplémente rien : une
+        copie de la logique dans le test aurait laissé passer un défaut
+        remis à OUI sans place, ce qui est précisément le défaut à garder.
+        """
+        vu = []
+
+        def demande(invite=""):
+            vu.append(invite)
+            return answer
+
+        with patch.object(
+            TODO,
+            "_qemu_backup_need_and_free",
+            staticmethod(lambda d: (besoin, libre)),
+        ), patch("builtins.input", demande), redirect_stdout(io.StringIO()):
+            retenu = self.todo._qemu_ask_backup("/x/d.qcow2")
+        return vu[-1], retenu
+
+    def test_with_room_the_default_stays_yes(self):
+        question, retenu = self._decision(12 * self.GIB, 40 * self.GIB, "")
+        self.assertIn("(O/n", question)
+        self.assertTrue(retenu)
+
+    def test_without_room_the_default_flips_to_no(self):
+        """Le cœur du correctif : entrée vide ne doit PAS remplir le disque."""
+        question, retenu = self._decision(12 * self.GIB, 3 * self.GIB, "")
+        self.assertIn("(y/N", question)
+        self.assertFalse(retenu)
+
+    def test_without_room_insisting_still_works(self):
+        """On informe, on ne décide pas à la place de l'opérateur."""
+        _, retenu = self._decision(12 * self.GIB, 3 * self.GIB, "y")
+        self.assertTrue(retenu)
+
+    def test_a_margin_guards_the_exactly_equal_case(self):
+        """Une place égale au besoin n'en laisse aucune : refusé."""
+        _, retenu = self._decision(12 * self.GIB, 12 * self.GIB, "")
+        self.assertFalse(retenu)
 
 
 if __name__ == "__main__":

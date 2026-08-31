@@ -1350,7 +1350,58 @@ class QemuManageMixin:
         )
         if status:
             print(f"  {t('Error installing the tools: ')}{status}")
-        return [b for b in self._SHRINK_TOOLS if not shutil.which(b)]
+        reste = [b for b in self._SHRINK_TOOLS if not shutil.which(b)]
+        if not reste:
+            # Sans cette ligne, la sortie du gestionnaire de paquets est
+            # suivie directement de la question suivante, qui porte sur tout
+            # autre chose : rien ne dit que l'installation a abouti ni qu'on
+            # a changé d'étape.
+            print(f"  ✅ {t('Tools installed; on with the shrink.')}")
+        return reste
+
+    @staticmethod
+    def _qemu_backup_need_and_free(disk):
+        """(besoin, libre) en octets pour la copie de sauvegarde du disque.
+
+        Le besoin est la taille ALLOUÉE et non la taille apparente :
+        « cp --sparse=always » ne recopie pas les trous d'un qcow2. C'est une
+        borne haute — « --reflink=auto » rend la copie presque gratuite sur
+        btrfs et XFS — mais rien ne garantit le reflink, et se tromper par
+        excès est le bon sens ici : une copie qui manque de place s'arrête à
+        mi-chemin et laisse un .bak tronqué.
+        """
+        besoin = os.stat(disk).st_blocks * 512
+        libre = shutil.disk_usage(os.path.dirname(disk) or ".").free
+        return besoin, libre
+
+    def _qemu_ask_backup(self, disk):
+        """Proposer la sauvegarde du disque, chiffres en main. True si oui.
+
+        Les deux tailles passent AVANT la question : une copie qui ne tient
+        pas s'arrête à mi-course et laisse un .bak tronqué sur un système de
+        fichiers désormais plein. Quand la place manque, le défaut bascule à
+        NON — une entrée distraite ne doit pas remplir le disque — sans pour
+        autant décider à la place de l'opérateur, qui peut insister.
+        """
+        besoin, libre = self._qemu_backup_need_and_free(disk)
+        print(
+            f"\n{t('A backup doubles the space used:')}"
+            f" {self._human_size(besoin)} — {t('free here:')}"
+            f" {self._human_size(libre)}"
+        )
+        if libre > besoin * 1.05:
+            return self._is_yes_default_yes(
+                input(t("Back up the disk before shrinking? (Y/n): "))
+            )
+        print(f"⚠  {t('Not enough free space for a full backup.')}")
+        return self._is_yes(
+            input(
+                t(
+                    "Back up anyway, at the risk of filling the disk?"
+                    " (y/N): "
+                )
+            )
+        )
 
     def _qemu_safe_shrink(self, name, disk, new_gb):
         """Réduit le disque SANS casser l'OS, via qemu-nbd + resize2fs +
@@ -1377,9 +1428,7 @@ class QemuManageMixin:
         # d'échec, et de tester la VM avant de la supprimer (proposé à la fin).
         self._shrink_backup = None
         bak = None
-        if self._is_yes_default_yes(
-            input(t("Back up the disk before shrinking? (Y/n): "))
-        ):
+        if self._qemu_ask_backup(disk):
             bak = f"{disk}.bak"
             print(f"\n{t('Backing up the disk before shrinking…')}")
             if (

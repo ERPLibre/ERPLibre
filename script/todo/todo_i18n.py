@@ -2829,6 +2829,26 @@ TRANSLATIONS = {
         "fr": "Aucun paquet connu ici pour :",
         "en": "No package known here for:",
     },
+    "Tools installed; on with the shrink.": {
+        "fr": "Outils installés ; on passe à la réduction.",
+        "en": "Tools installed; on with the shrink.",
+    },
+    "A backup doubles the space used:": {
+        "fr": "Une sauvegarde double la place occupée :",
+        "en": "A backup doubles the space used:",
+    },
+    "free here:": {
+        "fr": "libre ici :",
+        "en": "free here:",
+    },
+    "Not enough free space for a full backup.": {
+        "fr": "Pas assez de place libre pour une sauvegarde complète.",
+        "en": "Not enough free space for a full backup.",
+    },
+    "Back up anyway, at the risk of filling the disk? (y/N): ": {
+        "fr": "Sauvegarder quand même, au risque de remplir le disque? (y/N) : ",
+        "en": "Back up anyway, at the risk of filling the disk? (y/N): ",
+    },
     "Backing up the disk before shrinking…": {
         "fr": "Sauvegarde du disque avant réduction…",
         "en": "Backing up the disk before shrinking…",
