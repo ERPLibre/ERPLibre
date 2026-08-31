@@ -28,6 +28,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REQUIREMENTS = os.path.join(REPO, "requirement", "erplibre_require-ments.txt")
 
 PATTERNS = (
+    "script/*.py",
     "script/analyse/*.py",
     "script/analyse/*/*.py",
     "script/odoo/migration/*.py",

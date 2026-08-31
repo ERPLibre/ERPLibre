@@ -257,7 +257,7 @@ class TestTheDatabaseNameTheFileSuggests(unittest.TestCase):
         return database_name_from_file(chemin, **kw)
 
     def test_the_zip_extension_goes_away(self):
-        self.assertEqual("chezlepro3", self.nom("image_db/chezlepro3.zip"))
+        self.assertEqual("sireine3", self.nom("image_db/sireine3.zip"))
 
     def test_an_uppercase_extension_goes_away_too(self):
         self.assertEqual("client", self.nom("image_db/CLIENT.ZIP"))

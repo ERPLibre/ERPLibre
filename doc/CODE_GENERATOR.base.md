@@ -1042,3 +1042,70 @@ Tester les générations des templates :
 ```bash
 make test_code_generator_template
 ```
+
+<!-- [en] -->
+## Comments in generated code
+
+Generated code carries comments like any other, and the same rule applies: a
+comment says HOW the code works. It never carries identifying data — no
+customer or third-party organisation, no real database name, no machine, no
+address, no label or figure taken from a customer's data — and it does not
+tell the story of the investigation that produced it.
+
+A module generated from an existing database inherits what that database
+holds: re-read its comments and docstrings before committing. A customer or
+database name gets in on its own.
+
+## Cleaning up as you go
+
+Nothing gets cleaned in one sweep. You fix the comments of the file you are
+touching, at the moment you touch it. A `pre-commit` hook lists what is worth
+re-reading in the files you staged, and never blocks the commit:
+
+<!-- [fr] -->
+## Les commentaires du code produit
+
+Le code généré porte des commentaires comme le reste, et la même règle
+s'applique : un commentaire dit COMMENT le code marche. Il ne porte jamais de
+donnée identifiante — ni client ni organisation tierce, ni nom de base réelle,
+ni machine, ni adresse, ni libellé ou chiffre tiré des données d'un client — et
+il ne raconte pas l'enquête qui l'a produit.
+
+Un module généré à partir d'une base existante hérite de ce qu'elle contient :
+relire ses commentaires et ses docstrings avant de committer. Un nom de client
+ou de base y arrive tout seul.
+
+## Le nettoyage au fur et à mesure
+
+Rien ne se nettoie en une passe. On corrige les commentaires du fichier qu'on
+touche, au moment où on le touche. Un hook `pre-commit` liste ce qui est à
+relire dans les fichiers indexés, et ne bloque jamais le commit :
+
+<!-- [common] -->
+```bash
+git config core.hooksPath script/git/hooks
+```
+
+<!-- [en] -->
+The same tool runs by hand, on a file, a directory or the index. It reports
+`identifiant` findings — an address, an e-mail, an account path — which are to
+be removed, and `récit` signals —
+a witness marker, a date, the first person — which are to be RE-READ: a
+durable fact stays, the incident where it was observed goes. Exit codes follow
+the repository convention: 0 nothing to report, 1 findings, 2 the tool failed.
+
+<!-- [fr] -->
+Le même outil se lance à la main, sur un fichier, un répertoire ou l'index. Il
+signale les trouvailles `identifiant` — adresse, courriel, chemin de compte —
+qui sont à retirer, et les signaux
+`récit` — marqueur de témoignage, date, première personne — qui sont à RELIRE :
+un fait durable reste, l'incident où on l'a observé part. Les codes de sortie
+suivent la convention du dépôt : 0 rien à signaler, 1 des trouvailles, 2
+l'outil a échoué.
+
+<!-- [common] -->
+```bash
+python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
+python3 script/analyse/check_comment_hygiene.py --staged
+python3 script/analyse/check_comment_hygiene.py script --identifying-only
+```

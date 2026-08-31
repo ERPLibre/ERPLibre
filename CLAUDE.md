@@ -19,7 +19,14 @@ Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.6.0)
   `ls -d .venv.odoo*` plutôt que de le composer de tête
 - Les scripts ERPLibre utilisent `.venv.erplibre/bin/python`
 - Le Makefile principal inclut des fragments depuis `conf/make.*.Makefile`
-- Les fichiers privés vont dans `private/` (non versionné)
+- Les fichiers privés vont dans `private/`. C'est le SEUL endroit qui a le
+  droit de porter une donnée de client — nom, base, machine, adresse,
+  chiffres. Il peut être commité, mais seulement sur un dépôt privé : sur
+  un fork public, ce qui s'y trouve devient public comme le reste
+- Partout ailleurs — code, commentaires, messages de commit, documentation
+  — aucune donnée identifiante, jamais. Ce sont les fichiers qui suivent le
+  dépôt en amont. La règle complète, avec l'épreuve qui tranche, est dans
+  `.claude/rules/04-code-conventions.md`
 - La DB PostgreSQL par défaut est sur le port 5432, mot de passe admin : `admin`
 - Port Odoo par défaut : 8069, longpolling : 8072
 - Pour les commits : suivre le format `[TYPE] description` (ex: `[FIX]`, `[UPD]`, `[ADD]`, `[REM]`)

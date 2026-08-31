@@ -26,7 +26,7 @@ class TestWhatANameMayBe(unittest.TestCase):
     """Le nom entre dans du SQL par `database_identifier` : il se filtre."""
 
     def test_ordinary_names_pass(self):
-        for nom in ("chezlepro", "el_essai", "a", "base-2024", "_interne"):
+        for nom in ("sireine", "el_essai", "a", "base-2024", "_interne"):
             self.assertTrue(dup.nom_valide(nom), nom)
 
     def test_a_name_that_could_carry_sql_is_refused(self):

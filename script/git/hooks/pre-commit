@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Hook pre-commit : montre les commentaires hors convention des fichiers indexés.
+
+Il INFORME et ne refuse jamais — le nettoyage se fait au fur et à mesure, sur
+les fichiers qu'on touche déjà, et non en une passe qui réécrirait le dépôt.
+Un hook qui bloquerait sur du style se ferait désinstaller la même semaine.
+
+Installation :
+
+    git config core.hooksPath script/git/hooks
+
+Il sort toujours en 0. Pour l'interroger à la main, sur un fichier ou un
+répertoire :
+
+    python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
+"""
+import subprocess
+import sys
+from pathlib import Path
+
+RACINE = Path(__file__).resolve().parents[3]
+OUTIL = RACINE / "script" / "analyse" / "check_comment_hygiene.py"
+
+# Au-delà, le rapport cesse d'être une invitation et devient un mur.
+PLAFOND = 12
+
+
+def main() -> int:
+    if not OUTIL.is_file():
+        return 0
+
+    try:
+        sortie = subprocess.run(
+            [sys.executable, str(OUTIL), "--staged", "--no-color"],
+            capture_output=True,
+            text=True,
+            cwd=str(RACINE),
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return 0
+
+    if sortie.returncode not in (0, 1):
+        # Jamais bloquant, mais jamais muet non plus : un outil cassé qui se
+        # tait se confond avec un dépôt propre.
+        print(
+            f"\n  ⓘ check_comment_hygiene a échoué ({sortie.returncode}) ;"
+            " les commentaires n'ont pas été relus\n",
+            file=sys.stderr,
+        )
+        return 0
+
+    if sortie.returncode != 1 or not sortie.stdout.strip():
+        return 0
+
+    lignes = sortie.stdout.rstrip("\n").split("\n")
+    trop = len(lignes) - PLAFOND
+    if trop > 0:
+        lignes = lignes[:PLAFOND] + [f"  … et {trop} lignes de plus"]
+
+    print(
+        "\n  ⓘ commentaires à relire dans ce que vous committez\n",
+        file=sys.stderr,
+    )
+    for ligne in lignes:
+        print(f"   {ligne}", file=sys.stderr)
+    print(
+        "\n  🔴 identifiant : à retirer. 🟡 récit : à relire — un fait durable"
+        "\n     reste, l'incident où on l'a vu part."
+        "\n  La règle : .claude/rules/04-code-conventions.md"
+        "\n  Le commit n'est PAS bloqué. Corrigez ce que vous touchez.\n",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

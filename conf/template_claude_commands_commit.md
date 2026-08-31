@@ -80,7 +80,9 @@ The first five cover every one of the last 400 commits. Reach for `[REM]`,
 [TAG] scope: short description in imperative mood
 
 Explain WHY the change was made — the diff already shows what. Name the
-symptom that led to it, and what was measured rather than assumed.
+failure mode, and what was measured rather than assumed, in words a
+stranger to this site can read: the software, the version, the class of
+situation — never a customer, a real database, a machine or an address.
 Wrap at 80 characters.
 
 --- FR ---
@@ -135,21 +137,24 @@ that matter says more in the space than half a sentence does:
 That form is a fallback, not a default. Prefer the sentence when it fits.
 
 **The guard rail.** `script/git/hooks/commit-msg` refuses a subject with no
-tag, one over 72 characters, and one opening on a quotation. Install it with
-`git config core.hooksPath script/git/hooks`; `git commit --no-verify` passes
-a legitimate exception. It checks only what is mechanical — whether the
-subject says what the code is about stays a judgement, and the test above is
-how you make it.
+tag, one over 72 characters, and one opening on a quotation. It reads the body
+too: over ten lines for one language, an IP address, an e-mail, and a
+`/home/<account>/` path. Install the hook with `git config core.hooksPath script/git/hooks`; `git commit
+--no-verify` passes a legitimate exception. It checks only what is mechanical
+— whether the subject says what the code is about, and whether the body tells
+the story instead of the mechanism, stay judgements, and the tests above are
+how you make them.
 
 ### Keep it short
 
 The body answers one question: why was this necessary. Stop once it is
 answered — the reader owes you nothing beyond that.
 
-**Ten lines per language. Fifteen is already long.** Past that, the reasoning
-belongs in a document or a code comment, and the commit points at it. The
-budget is per language: bilingual doubles everything, so it buys terseness,
-it does not excuse length.
+**Eight lines per language. Ten is the ceiling.** Past that, the reasoning
+belongs in `tasks/`, which is not versioned, and the commit points at it —
+never in a code comment: a comment says how the code WORKS, not what happened
+the week it was written. The budget is per language: bilingual doubles
+everything, so it buys terseness, it does not excuse length.
 
 Cut, in this order:
 
@@ -160,10 +165,25 @@ Cut, in this order:
 - Every clause that would not change what a reader does: no `this commit`,
   no `I decided to`, no summary of the summary, no restating the subject.
 
-Keep, always: the symptom that led to the change, the figure you measured
-rather than assumed, and one line naming what you verified and how. A single
-`Checked: 4 jobs, 1.63 s at parallelism 1 vs 0.58 s at 4` is worth three
-paragraphs of prose.
+Keep, always: the failure mode the change removes, the figure that bounds it,
+and one line naming what you verified and how. A single `Checked: 4 jobs,
+1.63 s at parallelism 1 vs 0.58 s at 4` is worth three paragraphs of prose.
+
+Two tests decide what survives, and they apply to every sentence of the body.
+
+**Tense and subject.** Each sentence says what the code now does or refuses,
+in the present. A sentence whose subject is an incident, a session, a machine,
+a date or a person is cut — including your own reasoning: no `my conclusion
+was wrong`, no `three faults found by running it`. That belongs in `tasks/`.
+
+**Nothing identifying.** No customer or third-party organisation, no real
+database name, no VM or host name, no IP address, no e-mail, no path carrying
+a user name, no label or figure taken from a customer's data. Generalise to
+the CLASS of situation instead of censoring: `on a production database`, `on a
+development VM`, `on a host that demands interactive sudo` — the class is what
+serves the reader; the name never was. A figure that is a durable limit or
+threshold stays (65 536 inotify watches); a reading taken during one incident
+goes.
 
 ### Bilingual body
 
@@ -197,7 +217,9 @@ the work.
 - `scope` is the Odoo technical module (`sale_order`, `account`, `stock`) or
   the area of the repository (`script todo`, `qemu ssh`, `migration`).
 - The commit stands on its own: state what was verified, and how. If a claim
-  was not checked, say so rather than implying it was.
+  was not checked, say so rather than implying it was. Standing on its own
+  means it needs no OTHER COMMIT to be understood — not that it carries the
+  whole investigation. The line budget above still binds.
 - If you cannot explain and defend every line, do not commit it.
 
 ### Size and pace
@@ -222,8 +244,20 @@ configured `user.email` then fails on the committer.
 Use a heredoc rather than `-m`: a body with quotes, backticks or accented
 characters survives it unharmed.
 
+**Name the files. Never `git add -A`.** It stages everything untracked, and
+this repository keeps two directories untracked ON PURPOSE: `private/`, the
+only place allowed to hold customer data, and `tasks/`, where the convention
+sends the investigation precisely because it is not versioned. A sweep commits
+both. It also swallows whatever else is in flight in the checkout — another
+tool's output, a half-finished edit — under a subject that does not cover it.
+
+`git status --porcelain` lists what changed; stage the paths that belong to
+the subject you just wrote, and no others. When one file carries two subjects,
+`git add -p` stages the hunks that belong to this commit.
+
 ```bash
-git add -A
+git status --porcelain
+git add script/module/thing.py test/test_thing.py
 git -c user.name="Your Name" -c user.email="your@email.com" commit -F - <<'MSG'
 [TAG] scope: description
 

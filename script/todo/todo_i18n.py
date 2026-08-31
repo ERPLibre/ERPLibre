@@ -6856,6 +6856,166 @@ TRANSLATIONS = {
         "fr": "l'outil lui-même a échoué",
         "en": "the tool itself failed",
     },
+    # Contexte fourni à Claude
+    "Show the context given to Claude": {
+        "fr": "Afficher le contexte fourni à Claude",
+        "en": "Show the context given to Claude",
+    },
+    "Context given to Claude": {
+        "fr": "Contexte fourni à Claude",
+        "en": "Context given to Claude",
+    },
+    "Instructions": {
+        "fr": "Instructions",
+        "en": "Instructions",
+    },
+    "Rules": {
+        "fr": "Règles",
+        "en": "Rules",
+    },
+    "Skills": {
+        "fr": "Skills",
+        "en": "Skills",
+    },
+    "Deployed commands": {
+        "fr": "Commandes déployées",
+        "en": "Deployed commands",
+    },
+    "Git hooks": {
+        "fr": "Hooks git",
+        "en": "Git hooks",
+    },
+    "missing": {
+        "fr": "absent",
+        "en": "missing",
+    },
+    # Garde-fou du message de commit
+    "the subject must start with a tag: %s": {
+        "fr": "le sujet doit commencer par un tag : %s",
+        "en": "the subject must start with a tag: %s",
+    },
+    "the subject is %s characters, %s at most.\n"
+    "     Do not truncate it: at that length, write KEYWORDS that\n"
+    "     summarise rather than an amputated sentence. « proxmox: pmxcfs,\n"
+    "     storage, diagnosis » beats a sentence cut short.": {
+        "fr": "le sujet fait %s caractères, %s au plus.\n"
+        "     Ne le tronquez pas : à cette longueur, écrivez des MOTS-CLÉS\n"
+        "     qui résument plutôt qu'une phrase amputée. « proxmox : pmxcfs,\n"
+        "     stockage, diagnostic » vaut mieux qu'une phrase coupée net.",
+        "en": "the subject is %s characters, %s at most.\n"
+        "     Do not truncate it: at that length, write KEYWORDS that\n"
+        "     summarise rather than an amputated sentence. « proxmox: pmxcfs,\n"
+        "     storage, diagnosis » beats a sentence cut short.",
+    },
+    "the subject opens on a quotation. A screen message is\n"
+    "     evidence: it belongs in the body. The subject names the cause.": {
+        "fr": "le sujet s'ouvre sur une citation. Un message d'écran est une\n"
+        "     preuve : elle va dans le corps. Le sujet nomme la cause.",
+        "en": "the subject opens on a quotation. A screen message is\n"
+        "     evidence: it belongs in the body. The subject names the cause.",
+    },
+    "the body is %s lines for one language, %s at most.\n"
+    "     The body says why it was necessary, then stops.\n"
+    "     The investigation, the dated measurements and the dead ends go\n"
+    "     to tasks/, which is not versioned.": {
+        "fr": "le corps fait %s lignes pour une langue, %s au plus.\n"
+        "     Le corps dit pourquoi c'était nécessaire, puis s'arrête.\n"
+        "     L'enquête, les mesures datées et les impasses vont dans\n"
+        "     tasks/, qui n'est pas versionné.",
+        "en": "the body is %s lines for one language, %s at most.\n"
+        "     The body says why it was necessary, then stops.\n"
+        "     The investigation, the dated measurements and the dead ends go\n"
+        "     to tasks/, which is not versioned.",
+    },
+    "the body carries an IP address: %s.\n"
+    "     An address designates a machine. Name the CLASS of\n"
+    "     situation — « on a host behind a NAT » — not the machine.": {
+        "fr": "le corps porte une adresse IP : %s.\n"
+        "     Une adresse désigne une machine. Nommez la CLASSE de\n"
+        "     situation — « sur un hôte derrière un NAT » — pas la machine.",
+        "en": "the body carries an IP address: %s.\n"
+        "     An address designates a machine. Name the CLASS of\n"
+        "     situation — « on a host behind a NAT » — not the machine.",
+    },
+    "the body carries an e-mail address: %s.": {
+        "fr": "le corps porte une adresse de courriel : %s.",
+        "en": "the body carries an e-mail address: %s.",
+    },
+    "the body carries an account path: %s….\n"
+    "     Write ~/ or /home/<user>/.": {
+        "fr": "le corps porte un chemin de compte : %s….\n"
+        "     Écrivez ~/ ou /home/<utilisateur>/.",
+        "en": "the body carries an account path: %s….\n"
+        "     Write ~/ or /home/<user>/.",
+    },
+    "the body carries a refused name: %s.\n"
+    "     Generalise — « on a production database » — or drop the\n"
+    "     sentence.": {
+        "fr": "le corps porte un nom refusé : %s.\n"
+        "     Généralisez — « sur une base de production » — ou retirez la\n"
+        "     phrase.",
+        "en": "the body carries a refused name: %s.\n"
+        "     Generalise — « on a production database » — or drop the\n"
+        "     sentence.",
+    },
+    "commit-msg: no message file received": {
+        "fr": "commit-msg : aucun fichier de message reçu",
+        "en": "commit-msg: no message file received",
+    },
+    "commit message off convention": {
+        "fr": "message de commit hors convention",
+        "en": "commit message off convention",
+    },
+    "\n  The rule: .claude/rules/04-code-conventions.md"
+    "\n  The manual: conf/template_claude_commands_commit.md"
+    "\n  Override for a legitimate case: git commit --no-verify\n": {
+        "fr": "\n  La règle : .claude/rules/04-code-conventions.md"
+        "\n  Le mode d'emploi : conf/template_claude_commands_commit.md"
+        "\n  Passer outre pour un cas légitime : git commit --no-verify\n",
+        "en": "\n  The rule: .claude/rules/04-code-conventions.md"
+        "\n  The manual: conf/template_claude_commands_commit.md"
+        "\n  Override for a legitimate case: git commit --no-verify\n",
+    },
+    "up to date": {
+        "fr": "à jour",
+        "en": "up to date",
+    },
+    "redeploy needed": {
+        "fr": "à redéployer",
+        "en": "redeploy needed",
+    },
+    "not in the repository": {
+        "fr": "absent du dépôt",
+        "en": "not in the repository",
+    },
+    "hook installed": {
+        "fr": "installé",
+        "en": "installed",
+    },
+    "hook not installed": {
+        "fr": "non installé",
+        "en": "not installed",
+    },
+    "%s identifying, %s to re-read — see .claude/rules/04-code-conventions.md": {
+        "fr": "%s identifiant, %s à relire — voir .claude/rules/04-code-conventions.md",
+        "en": "%s identifying, %s to re-read — see .claude/rules/04-code-conventions.md",
+    },
+    "do the comments say how the code works, or where it came from": {
+        "fr": "les commentaires disent-ils le fonctionnement, ou d'où ils viennent",
+        "en": "do the comments say how the code works, or where it came from",
+    },
+    "only the files added to the git index": {
+        "fr": "seulement les fichiers ajoutés à l'index git",
+        "en": "only the files added to the git index",
+    },
+    "drop the narrative signals, keep the certain findings": {
+        "fr": "laisser les signaux de récit, garder les trouvailles sûres",
+        "en": "drop the narrative signals, keep the certain findings",
+    },
+    "give a path, or --staged": {
+        "fr": "donner un chemin, ou --staged",
+        "en": "give a path, or --staged",
+    },
     "unknown result": {
         "fr": "résultat inconnu",
         "en": "unknown result",
