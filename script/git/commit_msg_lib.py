@@ -29,6 +29,16 @@ from lib_identifiant import (  # noqa: E402
     termes_interdits,
 )
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
+
 MAX = 72
 
 # Lignes non vides par langue. Le corps est bilingue : ce budget est celui
@@ -124,22 +134,28 @@ def _check_subject(subject: str) -> list:
             break
     if tag is None:
         problems.append(
-            f"le sujet doit commencer par un tag : {', '.join('[%s]' % t for t in TAGS)}"
+            t("the subject must start with a tag: %s")
+            % ", ".join("[%s]" % tag for tag in TAGS)
         )
 
     if len(subject) > MAX:
         problems.append(
-            f"le sujet fait {len(subject)} caractères, {MAX} au plus.\n"
-            "     Ne le tronquez pas : à cette longueur, écrivez des MOTS-CLÉS\n"
-            "     qui résument plutôt qu'une phrase amputée. « proxmox : pmxcfs,\n"
-            "     stockage, diagnostic » vaut mieux qu'une phrase coupée net."
+            t(
+                "the subject is %s characters, %s at most.\n"
+                "     Do not truncate it: at that length, write KEYWORDS that\n"
+                "     summarise rather than an amputated sentence. « proxmox: pmxcfs,\n"
+                "     storage, diagnosis » beats a sentence cut short."
+            )
+            % (len(subject), MAX)
         )
 
     rest = subject.split(":", 1)[1].strip() if ":" in subject else ""
     if rest.startswith(QUOTES):
         problems.append(
-            "le sujet s'ouvre sur une citation. Un message d'écran est une\n"
-            "     preuve : elle va dans le corps. Le sujet nomme la cause."
+            t(
+                "the subject opens on a quotation. A screen message is\n"
+                "     evidence: it belongs in the body. The subject names the cause."
+            )
         )
 
     return problems
@@ -158,11 +174,13 @@ def _check_body(sans_trailers: str, avec_trailers: str) -> list:
         pleines = [ligne for ligne in moitie.split("\n") if ligne.strip()]
         if len(pleines) > MAX_BODY:
             problems.append(
-                f"le corps fait {len(pleines)} lignes pour une langue,"
-                f" {MAX_BODY} au plus.\n"
-                "     Le corps dit pourquoi c'était nécessaire, puis s'arrête.\n"
-                "     L'enquête, les mesures datées et les impasses vont dans\n"
-                "     tasks/, qui n'est pas versionné."
+                t(
+                    "the body is %s lines for one language, %s at most.\n"
+                    "     The body says why it was necessary, then stops.\n"
+                    "     The investigation, the dated measurements and the dead ends go\n"
+                    "     to tasks/, which is not versioned."
+                )
+                % (len(pleines), MAX_BODY)
             )
             break
 
@@ -178,30 +196,39 @@ def _check_body(sans_trailers: str, avec_trailers: str) -> list:
     adresses = sorted(set(par_motif.get("adresse", [])))
     if adresses:
         problems.append(
-            f"le corps porte une adresse IP : {', '.join(adresses)}.\n"
-            "     Une adresse désigne une machine. Nommez la CLASSE de\n"
-            "     situation — « sur un hôte derrière un NAT » — pas la machine."
+            t(
+                "the body carries an IP address: %s.\n"
+                "     An address designates a machine. Name the CLASS of\n"
+                "     situation — « on a host behind a NAT » — not the machine."
+            )
+            % ", ".join(adresses)
         )
 
     courriels = sorted(set(par_motif.get("courriel", [])))
     if courriels:
         problems.append(
-            f"le corps porte une adresse de courriel : {', '.join(courriels)}."
+            t("the body carries an e-mail address: %s.") % ", ".join(courriels)
         )
 
     comptes = sorted(set(par_motif.get("compte", [])))
     if comptes:
         problems.append(
-            f"le corps porte un chemin de compte : {comptes[0]}….\n"
-            "     Écrivez ~/ ou /home/<utilisateur>/."
+            t(
+                "the body carries an account path: %s….\n"
+                "     Write ~/ or /home/<user>/."
+            )
+            % comptes[0]
         )
 
     noms = sorted(set(par_motif.get("nom privé", [])))
     if noms:
         problems.append(
-            f"le corps porte un nom refusé : {', '.join(noms)}.\n"
-            "     Généralisez — « sur une base de production » — ou retirez la\n"
-            "     phrase."
+            t(
+                "the body carries a refused name: %s.\n"
+                "     Generalise — « on a production database » — or drop the\n"
+                "     sentence."
+            )
+            % ", ".join(noms)
         )
 
     return problems

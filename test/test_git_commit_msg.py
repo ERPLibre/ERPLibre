@@ -10,6 +10,10 @@ un fixup de rebase — tout cela doit passer.
 
 La part de la convention qu'aucun hook ne juge — « ce sujet dit-il sur quoi
 porte le code » — n'est pas testée ici parce qu'elle n'est pas vérifiable.
+
+Les messages sont traduits. Les assertions qui citent du texte fixent donc la
+langue à « fr » pour la durée du module : sinon elles dépendraient de EL_LANG,
+et un poste en anglais les ferait toutes échouer.
 """
 import os
 import subprocess
@@ -17,9 +21,32 @@ import sys
 import tempfile
 import unittest
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "script", "git")
 )
+
+from script.todo import todo_i18n  # noqa: E402
+
+# Relevée AVANT d'épingler : c'est la langue que lira un hook lancé en
+# sous-processus, qui relit env_var.sh et ignore ce que ce module épingle.
+LANGUE_DEPOT = todo_i18n.get_lang()
+_LANGUE_ORIGINE = todo_i18n._current_lang
+
+EN_FRANCAIS = unittest.skipUnless(
+    LANGUE_DEPOT == "fr",
+    "le dépôt est en « %s » : ce test lit du texte français" % LANGUE_DEPOT,
+)
+
+
+def setUpModule():
+    """Fixe « fr » en mémoire. set_lang() écrirait env_var.sh, qui est suivi."""
+    todo_i18n._current_lang = "fr"
+
+
+def tearDownModule():
+    todo_i18n._current_lang = _LANGUE_ORIGINE
+
 
 import commit_msg_lib  # noqa: E402
 from commit_msg_lib import (  # noqa: E402
@@ -275,6 +302,44 @@ class TestLeCorps(unittest.TestCase):
         self.assertIn("Assisted-by", body_of(message, trailers=True))
 
 
+class TestLesDeuxLangues(unittest.TestCase):
+    """Un refus se lit dans la langue du dépôt, pas seulement en français."""
+
+    def setUp(self):
+        self.addCleanup(setattr, todo_i18n, "_current_lang", "fr")
+
+    def _en(self, message):
+        todo_i18n._current_lang = "en"
+        return check(message)
+
+    def test_le_tag_manquant_se_dit_en_anglais(self):
+        probleme = self._en("pas de tag")[0]
+        self.assertIn("must start with a tag", probleme)
+        self.assertNotIn("doit commencer", probleme)
+
+    def test_la_longueur_du_sujet_se_dit_en_anglais(self):
+        probleme = self._en("[FIX] portée : " + "a" * 80)[0]
+        self.assertIn("characters", probleme)
+        self.assertIn("KEYWORDS", probleme)
+
+    def test_les_identifiants_se_disent_en_anglais(self):
+        corps = "[FIX] portée : sujet\n\nUne raison, 10.10.10.5 et a@b.ca.\n"
+        problemes = " ".join(self._en(corps))
+        self.assertIn("IP address", problemes)
+        self.assertIn("e-mail address", problemes)
+
+    def test_les_deux_langues_signalent_AUTANT_de_problemes(self):
+        """Traduire ne doit ni ajouter ni perdre un refus."""
+        corps = "[FIX] portée : sujet\n\nUne raison, 10.10.10.5 et a@b.ca.\n"
+        todo_i18n._current_lang = "fr"
+        fr = len(check(corps))
+        self.assertEqual(fr, len(self._en(corps)))
+
+    def test_une_cle_sans_traduction_rend_la_cle(self):
+        """Le repli de t() ne doit jamais faire tomber le hook."""
+        self.assertEqual([], check("[FIX] portée : quelque chose"))
+
+
 class TestLeHookLuiMeme(unittest.TestCase):
     """Le module peut être juste et le hook faux : on l'exécute vraiment."""
 
@@ -298,10 +363,26 @@ class TestLeHookLuiMeme(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
 
     def test_il_sort_en_un_et_dit_pourquoi(self):
+        """Le code de sortie et le chemin de la règle ne sont pas traduits."""
         r = self._lancer("[FIX] portée : " + "a" * 80 + "\n")
         self.assertEqual(1, r.returncode)
+        self.assertIn(".claude/rules/04-code-conventions.md", r.stderr)
+
+    @EN_FRANCAIS
+    def test_il_dit_pourquoi_en_francais(self):
+        r = self._lancer("[FIX] portée : " + "a" * 80 + "\n")
         self.assertIn("hors convention", r.stderr)
         self.assertIn("MOTS-CLÉS", r.stderr)
+
+    def test_il_dit_pourquoi_dans_la_langue_du_depot(self):
+        """Le sous-processus rend la langue d'env_var.sh, quelle qu'elle soit."""
+        todo_i18n._current_lang = LANGUE_DEPOT
+        try:
+            attendu = todo_i18n.t("commit message off convention")
+        finally:
+            todo_i18n._current_lang = "fr"
+        r = self._lancer("[FIX] portée : " + "a" * 80 + "\n")
+        self.assertIn(attendu, r.stderr)
 
     def test_il_nomme_le_contournement(self):
         """Sans issue annoncée, un hook se contourne en le supprimant."""
@@ -313,6 +394,13 @@ class TestLeHookLuiMeme(unittest.TestCase):
             [sys.executable, HOOK], capture_output=True, text=True
         )
         self.assertEqual(1, r.returncode)
+        self.assertIn("commit-msg", r.stderr)
+
+    @EN_FRANCAIS
+    def test_sans_argument_il_le_dit_en_francais(self):
+        r = subprocess.run(
+            [sys.executable, HOOK], capture_output=True, text=True
+        )
         self.assertIn("aucun fichier", r.stderr)
 
 

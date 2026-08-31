@@ -16,10 +16,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from commit_msg_lib import check  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+try:
+    from script.todo.todo_i18n import t
+except Exception:  # pragma: no cover - repli si i18n indisponible
+
+    def t(key: str) -> str:
+        return key
+
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print("commit-msg : aucun fichier de message reçu", file=sys.stderr)
+        print(t("commit-msg: no message file received"), file=sys.stderr)
         return 1
     path = Path(sys.argv[1])
     try:
@@ -32,13 +41,15 @@ def main() -> int:
     if not problems:
         return 0
 
-    print("\n  ✗ sujet de commit hors convention\n", file=sys.stderr)
+    print("\n  ✗ %s\n" % t("commit message off convention"), file=sys.stderr)
     for problem in problems:
         print(f"   - {problem}", file=sys.stderr)
     print(
-        "\n  La règle : .claude/rules/04-code-conventions.md"
-        "\n  Le mode d'emploi : conf/template_claude_commands_commit.md"
-        "\n  Passer outre pour un cas légitime : git commit --no-verify\n",
+        t(
+            "\n  The rule: .claude/rules/04-code-conventions.md"
+            "\n  The manual: conf/template_claude_commands_commit.md"
+            "\n  Override for a legitimate case: git commit --no-verify\n"
+        ),
         file=sys.stderr,
     )
     return 1
