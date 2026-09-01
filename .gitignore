@@ -55,3 +55,7 @@ private/todo/todo_override_private.json
 # repertoire porte ce que ni le code ni les commits ne doivent porter, dont
 # des donnees de client. L'ignorer evite qu'un ratissage l'emporte.
 /tasks/
+
+# Binaire compile du service SIP : il se rebatit par l'installateur, et
+# pese douze megaoctets.
+/script/erplibre_sip_go/erplibre_sip_go
