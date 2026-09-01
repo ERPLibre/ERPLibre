@@ -50,3 +50,8 @@ screencasts
 private/todo/todo_override_private.json
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
+
+# Enquete, mesures datees et traces d'execution. NON VERSIONNE EXPRES : ce
+# repertoire porte ce que ni le code ni les commits ne doivent porter, dont
+# des donnees de client. L'ignorer evite qu'un ratissage l'emporte.
+/tasks/
