@@ -204,6 +204,7 @@ class TODO(
     def prompt_assistant(self):
         """Ce qui s'adresse à l'humain : une question, son courriel, ses SMS."""
         from script.todo.mail.menu import prompt_execute_mail
+        from script.todo.modem.menu import prompt_execute_modem
         from script.todo.sms.menu import prompt_execute_sms
 
         while True:
@@ -211,6 +212,7 @@ class TODO(
 [1] {t("mail_ai_question")}
 [2] {t("mail_menu")}
 [3] {t("sms_menu")}
+[4] {t("modem_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
             print()
@@ -222,6 +224,8 @@ class TODO(
                 prompt_execute_mail(self)
             elif status == "3":
                 prompt_execute_sms(self)
+            elif status == "4":
+                prompt_execute_modem(self)
             else:
                 print(t("Command not found !"))
 
@@ -980,6 +984,11 @@ class TODO(
                     "Deploy - Install NTFY notification server"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Deploy - Install Asterisk VoIP server (hardened)"
+                )
+            },
             {"section": t("VPN & tunnels")},
             {
                 "prompt_description": t(
@@ -1009,6 +1018,8 @@ class TODO(
             elif status == "7":
                 self._deploy_ntfy_server()
             elif status == "8":
+                self._deploy_asterisk_server()
+            elif status == "9":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
@@ -1720,6 +1731,99 @@ class TODO(
             print(f"{t('ERPLibre cloned successfully to: ')}" f"{target_path}")
         except Exception as e:
             print(f"{t('Error cloning ERPLibre: ')}{e}")
+
+    def _deploy_asterisk_server(self):
+        """Installe un serveur VoIP Asterisk, nu et durci.
+
+        Les lignes sont demandees ici plutot que laissees pour plus tard :
+        sans elles le serveur s'installe mais ne peut appeler personne, et on
+        decouvre la moitie de la configuration au premier essai rate.
+
+        Plusieurs lignes sont acceptees, pour la redondance ou pour router
+        selon le cout. Le CHOIX de la ligne pour un appel donne appartient a
+        Odoo et non au plan de numerotation : lui seul sait ce que coute
+        chaque ligne, laquelle est en alerte, et quelles minutes sont deja
+        incluses.
+
+        Les mots de passe passent par l'environnement du sous-processus et ne
+        sont ni affiches ni journalises. Ils finissent dans
+        /etc/erplibre/asterisk.env en 0600, jamais dans la base de donnees :
+        le module est publie sous AGPL-3 et son code ne peut porter aucun
+        secret.
+        """
+        import getpass
+
+        print(f"\n{t('Deploy a hardened Asterisk VoIP server (no FreePBX)')}")
+        print(t(
+            "No web admin panel is installed: it is the main attack surface"
+            " of a PBX. Anonymous SIP is refused and the dial plan accepts"
+            " North American numbers only."
+        ))
+
+        script_path = os.path.realpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..", "install", "install_asterisk.sh",
+            )
+        )
+        if not os.path.isfile(script_path):
+            print(f"{t('Asterisk install script not found: ')}{script_path}")
+            return
+
+        # Plusieurs lignes : redondance, ou routage selon le cout. On les
+        # saisit une a une jusqu'a une entree vide plutot que de demander une
+        # chaine a separateurs, ou une faute de frappe se voit mal.
+        lignes = []
+        while True:
+            rang = len(lignes) + 1
+            hote = input(
+                t("SIP trunk host #%s (blank to finish): ") % rang
+            ).strip()
+            if not hote:
+                break
+            nom = input(
+                t("Line name (default: line%s): ") % rang
+            ).strip() or f"line{rang}"
+            util = input(t("SIP trunk username: ")).strip()
+            # getpass et non input : le mot de passe ne doit rester ni a
+            # l'ecran ni dans l'historique du terminal.
+            mdp = getpass.getpass(t("SIP trunk password: "))
+            if not util or not mdp:
+                print(t("Username and password are both required."))
+                continue
+            if any(c in nom + hote + util for c in "|;"):
+                # Ces deux caracteres separent les champs : les laisser
+                # passer produirait une configuration silencieusement fausse.
+                print(t("The characters | and ; are not allowed here."))
+                continue
+            lignes.append((nom, hote, util, mdp))
+
+        if not lignes:
+            print(t(
+                "No trunk: the server will install but cannot call out."
+                " That is deliberate — a mute PBX beats an open one."
+            ))
+        else:
+            print(t("Lines to configure: %s") % ", ".join(n for n, _, _, _ in lignes))
+
+        # Les mots de passe voyagent par l'environnement du sous-processus,
+        # jamais dans la commande : elle est affichee, journalisee, et reste
+        # visible dans la liste des processus le temps de l'installation.
+        trunks = ";".join(f"{n}|{h}|{u}|{m}" for n, h, u, m in lignes)
+        cmd = f"sudo -E bash {script_path}"
+        print(f"\n{t('Will execute:')} {cmd}\n")
+        precedent = os.environ.get("AST_TRUNKS")
+        try:
+            if trunks:
+                os.environ["AST_TRUNKS"] = trunks
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        except Exception as e:
+            print(f"{t('Error installing Asterisk: ')}{e}")
+        finally:
+            if precedent is None:
+                os.environ.pop("AST_TRUNKS", None)
+            else:
+                os.environ["AST_TRUNKS"] = precedent
 
     def _deploy_ntfy_server(self):
         print(
