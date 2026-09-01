@@ -10023,6 +10023,499 @@ TRANSLATIONS = {
         "fr": "chemin d'un fichier de configuration Odoo",
         "en": "path to an Odoo config file",
     },
+    # Passerelle SMS — demonstration de bout en bout
+    #
+    # La demonstration enchaine cinq etapes : une VM, Odoo et son module,
+    # la passerelle cote serveur, le lien vers l'application mobile, puis
+    # un envoi d'essai. Chaque etape est jouable seule, parce qu'une
+    # demonstration qui echoue au milieu doit pouvoir reprendre la ou elle
+    # s'est arretee plutot que tout recommencer.
+    "sms_menu": {
+        "fr": "SMS - Passerelle mobile, demonstration de bout en bout",
+        "en": "SMS - Mobile gateway, end-to-end demonstration",
+    },
+    "sms_title": {
+        "fr": "Passerelle SMS",
+        "en": "SMS gateway",
+    },
+    "sms_run_all": {
+        "fr": "Tout enchainer, en s'arretant au premier echec",
+        "en": "Run everything, stopping at the first failure",
+    },
+    "sms_reset_local": {
+        "fr": "Repartir de zero - arrete Odoo et supprime la base",
+        "en": "Start over - stops Odoo and drops the database",
+    },
+    "sms_step_vm": {
+        "fr": "Creer la VM de demonstration",
+        "en": "Create the demonstration VM",
+    },
+    "sms_step_odoo": {
+        "fr": "Installer Odoo et le module de passerelle",
+        "en": "Install Odoo and the gateway module",
+    },
+    "sms_step_gateway": {
+        "fr": "Configurer la passerelle et son secret",
+        "en": "Configure the gateway and its secret",
+    },
+    "sms_step_mobile": {
+        "fr": "Relier l'application mobile",
+        "en": "Link the mobile application",
+    },
+    "sms_step_verify": {
+        "fr": "Verifier la chaine par un envoi d'essai",
+        "en": "Verify the chain with a test message",
+    },
+    "sms_status": {
+        "fr": "Etat de la demonstration",
+        "en": "Demonstration status",
+    },
+    "sms_open_tui": {
+        "fr": "Ouvrir le tableau de bord (TUI)",
+        "en": "Open the dashboard (TUI)",
+    },
+    "sms_manual_hint": {
+        "fr": "demande le telephone en main",
+        "en": "needs the phone in hand",
+    },
+    "sms_vm_address": {
+        "fr": "Adresse de la VM",
+        "en": "VM address",
+    },
+    "sms_blocked_by": {
+        "fr": "Etape impossible : il manque",
+        "en": "Step not possible: missing",
+    },
+    "sms_step_running": {
+        "fr": "Etape en cours",
+        "en": "Step running",
+    },
+    "sms_step_ok": {
+        "fr": "Etape reussie",
+        "en": "Step succeeded",
+    },
+    "sms_step_ko": {
+        "fr": "Etape en echec",
+        "en": "Step failed",
+    },
+    "sms_all_done": {
+        "fr": "Demonstration complete.",
+        "en": "Demonstration complete.",
+    },
+    "sms_confirm_reset": {
+        "fr": "Detruire la VM et oublier le secret ? [o/N] ",
+        "en": "Destroy the VM and forget the secret? [y/N] ",
+    },
+    "sms_ask_number": {
+        "fr": "Numero destinataire (format +1514...) : ",
+        "en": "Recipient number (format +1514...): ",
+    },
+    "sms_err_no_ip": {
+        "fr": "La VM n'a pas d'adresse : est-elle demarree ?",
+        "en": "The VM has no address: is it running?",
+    },
+    "sms_err_module_missing": {
+        "fr": "Module introuvable dans l'arbre de travail",
+        "en": "Module not found in the working tree",
+    },
+    "sms_err_secret_absent": {
+        "fr": (
+            "La fiche est creee mais Odoo n'a pas vu le secret : le telephone"
+            " serait refuse en 401."
+        ),
+        "en": (
+            "The record exists but Odoo did not see the secret: the phone"
+            " would be rejected with a 401."
+        ),
+    },
+    "sms_err_no_adb": {
+        "fr": "adb est absent : branche le renvoi a la main.",
+        "en": "adb is missing: set up the reverse tunnel by hand.",
+    },
+    "sms_module_installed": {
+        "fr": "Module copie et installe dans la VM",
+        "en": "Module copied and installed in the VM",
+    },
+    "sms_provider_set": {
+        "fr": "fournisseur regle sur la passerelle mobile",
+        "en": "provider set to the mobile gateway",
+    },
+    "sms_confirm_mobile": {
+        "fr": "Les trois valeurs sont saisies et la passerelle demarree ? [o/N] ",
+        "en": "Are the three values entered and the gateway started? [y/N] ",
+    },
+    "sms_mobile_pending": {
+        "fr": "Etape laissee en attente.",
+        "en": "Step left pending.",
+    },
+    "sms_mobile_done": {
+        "fr": "Telephone relie",
+        "en": "Phone linked",
+    },
+    "sms_err_number_format": {
+        "fr": "Numero refuse : il doit commencer par + et l'indicatif pays.",
+        "en": "Number rejected: it must start with + and the country code.",
+    },
+    "sms_dispatch_state": {
+        "fr": "Etat de l'envoi",
+        "en": "Dispatch state",
+    },
+    "sms_reset_done": {
+        "fr": "Demonstration remise a zero.",
+        "en": "Demonstration reset.",
+    },
+    "sms_tui_run": {
+        "fr": "Rejouer l'etape choisie",
+        "en": "Replay the selected step",
+    },
+    "sms_tui_run_rest": {
+        "fr": "Enchainer ce qui reste",
+        "en": "Run the remaining steps",
+    },
+    "sms_tui_clear": {
+        "fr": "Vider le journal",
+        "en": "Clear the log",
+    },
+    "sms_tui_step": {"fr": "Etape", "en": "Step"},
+    "sms_tui_detail": {"fr": "Detail", "en": "Detail"},
+    "sms_tui_busy": {
+        "fr": "Une etape tourne deja.",
+        "en": "A step is already running.",
+    },
+    "sms_tui_resume": {
+        "fr": "Entree pour revenir au tableau de bord... ",
+        "en": "Press Enter to return to the dashboard... ",
+    },
+    "sms_step_env": {
+        "fr": "Verifier l'environnement local",
+        "en": "Check the local environment",
+    },
+    "sms_mode_menu": {
+        "fr": "Mode de la demonstration",
+        "en": "Demonstration mode",
+    },
+    "sms_mode_local": {
+        "fr": "Local - sur ce poste, sans VM ni sudo (recommande)",
+        "en": "Local - on this machine, no VM and no sudo (recommended)",
+    },
+    "sms_mode_vm": {
+        "fr": "VM jetable - installation propre, ~1 h et 20 Go, exige sudo",
+        "en": "Disposable VM - clean install, ~1 h and 20 GB, needs sudo",
+    },
+    "sms_mode_ask": {
+        "fr": "Choisis le mode [1-2] : ",
+        "en": "Choose the mode [1-2]: ",
+    },
+    "sms_mode_current": {"fr": "Mode", "en": "Mode"},
+    "sms_mode_changed": {
+        "fr": "Mode change : les etapes deja faites sont oubliees.",
+        "en": "Mode changed: completed steps are forgotten.",
+    },
+    "sms_local_no_venv": {
+        "fr": "Aucun venv Odoo dans le depot (.venv.odoo*)",
+        "en": "No Odoo venv in the repository (.venv.odoo*)",
+    },
+    "sms_local_no_postgres": {
+        "fr": "PostgreSQL ne repond pas",
+        "en": "PostgreSQL does not answer",
+    },
+    "sms_local_server_running": {
+        "fr": "Serveur deja en service",
+        "en": "Server already running",
+    },
+    "sms_local_server_stopped": {
+        "fr": "Serveur arrete",
+        "en": "Server stopped",
+    },
+    "sms_local_server_died": {
+        "fr": "Le serveur s'est arrete au demarrage, voir",
+        "en": "The server died on startup, see",
+    },
+    "sms_local_server_slow": {
+        "fr": "Le serveur n'ecoute toujours pas apres 60 s, voir",
+        "en": "The server is still not listening after 60 s, see",
+    },
+    "sms_server_menu": {
+        "fr": "Serveur de demonstration - demarrer ou arreter",
+        "en": "Demonstration server - start or stop",
+    },
+    "sms_err_sudo": {
+        "fr": (
+            "Le mode VM exige sudo sans mot de passe, sinon chaque"
+            " interrogation d'adresse en redemande un. Lance `sudo -v` puis"
+            " recommence, ou ajoute-toi au groupe libvirt, ou passe en mode"
+            " local (menu Mode)."
+        ),
+        "en": (
+            "VM mode needs passwordless sudo, otherwise every address lookup"
+            " asks again. Run `sudo -v` and retry, or add yourself to the"
+            " libvirt group, or switch to local mode (Mode menu)."
+        ),
+    },
+    "sms_err_vm_absente": {
+        "fr": "La VM n'a pas ete creee : rien a interroger.",
+        "en": "The VM was not created: nothing to poll.",
+    },
+    "sms_reset_failed": {
+        "fr": (
+            "La VM n'a pas pu etre detruite : l'etat est conserve pour ne pas"
+            " la rendre invisible. Verifie `sudo virsh --connect"
+            " qemu:///system list --all`."
+        ),
+        "en": (
+            "The VM could not be destroyed: state is kept so it does not"
+            " become invisible. Check `sudo virsh --connect qemu:///system"
+            " list --all`."
+        ),
+    },
+    "sms_err_install_en_cours": {
+        "fr": (
+            "La VM repond mais ERPLibre n'y est pas encore installe."
+            " L'installation continue en arriere-plan : rejoue cette etape"
+            " dans quelques minutes."
+        ),
+        "en": (
+            "The VM answers but ERPLibre is not installed yet. The install is"
+            " still running in the background: replay this step in a few"
+            " minutes."
+        ),
+    },
+    "sms_step_confirm": {
+        "fr": "Confirmer que le SMS est bien parti",
+        "en": "Confirm the message actually went out",
+    },
+    "sms_confirm_livre": {
+        "fr": "Remis au destinataire (accuse du reseau)",
+        "en": "Delivered to the recipient (network receipt)",
+    },
+    "sms_confirm_delai": {
+        "fr": (
+            "Aucun etat definitif apres trois minutes : le telephone"
+            " n'interroge probablement pas. Dernier etat connu"
+        ),
+        "en": (
+            "No final state after three minutes: the phone is probably not"
+            " polling. Last known state"
+        ),
+    },
+    "sms_confirm_introuvable": {
+        "fr": "Envoi introuvable en base : a-t-il ete supprime ?",
+        "en": "Dispatch not found in the database: was it deleted?",
+    },
+    "sms_confirm_sans_envoi": {
+        "fr": "Aucun envoi a confirmer : joue d'abord l'etape precedente.",
+        "en": "Nothing to confirm: run the previous step first.",
+    },
+    "sms_phone_menu": {
+        "fr": "Lire les SMS du telephone",
+        "en": "Read the phone's messages",
+    },
+    "sms_phone_sent": {"fr": "Envoyes", "en": "Sent"},
+    "sms_phone_inbox": {"fr": "Recus", "en": "Received"},
+    "sms_phone_all": {"fr": "Tous", "en": "All"},
+    "sms_phone_ask": {
+        "fr": "Quelle boite ? [1] Envoyes [2] Recus [3] Tous [0] Retour : ",
+        "en": "Which box? [1] Sent [2] Received [3] All [0] Back: ",
+    },
+    "sms_phone_empty": {
+        "fr": "Aucun message dans cette boite.",
+        "en": "No message in this box.",
+    },
+    "sms_phone_no_adb": {
+        "fr": "adb est absent du PATH.",
+        "en": "adb is not on the PATH.",
+    },
+    "sms_phone_no_device": {
+        "fr": (
+            "Aucun telephone joignable : branche-le et autorise le debogage"
+            " USB."
+        ),
+        "en": "No phone reachable: plug it in and allow USB debugging.",
+    },
+    "sms_transport_current": {"fr": "Transport", "en": "Transport"},
+    "sms_transport_cable": {
+        "fr": "Cable USB - rien ne circule sur le reseau, mais le renvoi saute",
+        "en": "USB cable - nothing crosses the network, but the tunnel drops",
+    },
+    "sms_transport_wifi": {
+        "fr": (
+            "Wi-Fi - stable et sans cable, mais les messages circulent EN"
+            " CLAIR sur le reseau local"
+        ),
+        "en": (
+            "Wi-Fi - stable and cable-free, but messages travel IN THE CLEAR"
+            " on the local network"
+        ),
+    },
+    "sms_transport_ask": {
+        "fr": "Choisis le transport [1-2] : ",
+        "en": "Choose the transport [1-2]: ",
+    },
+    "sms_transport_changed": {
+        "fr": (
+            "Transport change : l'URL n'est plus la meme, le telephone doit"
+            " etre reconfigure."
+        ),
+        "en": (
+            "Transport changed: the URL is different, the phone must be"
+            " reconfigured."
+        ),
+    },
+    "sms_wifi_host": {"fr": "Adresse du poste", "en": "Workstation address"},
+    "sms_wifi_phone": {"fr": "Adresse du telephone", "en": "Phone address"},
+    "sms_wifi_same_net": {
+        "fr": "Meme reseau : le telephone peut joindre le poste.",
+        "en": "Same network: the phone can reach the workstation.",
+    },
+    "sms_wifi_other_net": {
+        "fr": (
+            "Reseaux DIFFERENTS : le telephone ne joindra pas le poste."
+            " Wi-Fi invite ? Poste en filaire ?"
+        ),
+        "en": (
+            "DIFFERENT networks: the phone will not reach the workstation."
+            " Guest Wi-Fi? Workstation on ethernet?"
+        ),
+    },
+    "sms_wifi_no_host_ip": {
+        "fr": "Adresse du poste introuvable : es-tu connecte a un reseau ?",
+        "en": "Workstation address not found: are you on a network?",
+    },
+    "sms_wifi_unknown_phone": {
+        "fr": (
+            "Adresse du telephone inconnue (pas de cable) : verification"
+            " impossible, ce n'est pas une panne."
+        ),
+        "en": (
+            "Phone address unknown (no cable): cannot verify, which is not a"
+            " failure."
+        ),
+    },
+    "sms_test_number_menu": {
+        "fr": "Numero d'essai",
+        "en": "Test number",
+    },
+    "sms_test_number_none": {"fr": "non defini", "en": "not set"},
+    "sms_test_number_current": {
+        "fr": "Numero d'essai actuel",
+        "en": "Current test number",
+    },
+    "sms_test_number_hint": {
+        "fr": (
+            "Format international, indicatif compris : +15145550142."
+            " Entree vide pour ne rien changer, « - » pour effacer."
+        ),
+        "en": (
+            "International format, country code included: +15145550142."
+            " Empty to keep, \"-\" to clear."
+        ),
+    },
+    "sms_test_number_ask": {
+        "fr": "Numero : ",
+        "en": "Number: ",
+    },
+    "sms_test_number_set": {
+        "fr": "Numero d'essai retenu :",
+        "en": "Test number set:",
+    },
+    "sms_test_number_cleared": {
+        "fr": "Numero d'essai efface.",
+        "en": "Test number cleared.",
+    },
+    "sms_test_number_file": {
+        "fr": "Modifiable aussi a la main dans",
+        "en": "Also editable by hand in",
+    },
+    "sms_call_menu": {
+        "fr": "Passer un appel d'essai",
+        "en": "Place a test call",
+    },
+    "sms_call_no_number": {
+        "fr": "Aucun numero d'essai defini : voir « Numero d'essai ».",
+        "en": "No test number set: see \"Test number\".",
+    },
+    "sms_call_warning": {
+        "fr": (
+            "Le telephone-passerelle va composer. Personne ne parlera de son"
+            " cote : Android n'injecte pas de voix dans un appel. Sois pres"
+            " de LUI, pas de ton poste."
+        ),
+        "en": (
+            "The gateway phone will dial. Nobody speaks from its side:"
+            " Android injects no voice into a call. Be next to IT, not to"
+            " your own handset."
+        ),
+    },
+    "sms_call_confirm": {
+        "fr": "Appeler ce numero maintenant ? [o/N]",
+        "en": "Call this number now? [y/N]",
+    },
+    "sms_call_queued": {
+        "fr": "Appel en file. Le telephone composera au prochain cycle.",
+        "en": "Call queued. The phone will dial on its next cycle.",
+    },
+    "sms_call_local_only": {
+        "fr": "Disponible en mode local seulement pour l'instant.",
+        "en": "Available in local mode only for now.",
+    },
+    "sms_mobile_waiting": {
+        "fr": "Attente d'une interrogation reelle du telephone (2 min)...",
+        "en": "Waiting for a real poll from the phone (2 min)...",
+    },
+    "sms_mobile_polled": {
+        "fr": "le telephone a interroge le serveur",
+        "en": "the phone polled the server",
+    },
+    "sms_diag_signature": {
+        "fr": (
+            "Odoo refuse la SIGNATURE : le secret du telephone ne correspond"
+            " pas a celui du serveur. Ressaisis-le depuis l'ecran de liaison."
+        ),
+        "en": (
+            "Odoo rejects the SIGNATURE: the phone's secret does not match the"
+            " server's. Re-enter it from the linking screen."
+        ),
+    },
+    "sms_diag_device": {
+        "fr": (
+            "Odoo ne connait pas cet APPAREIL : l'identifiant saisi ne"
+            " correspond a aucune fiche passerelle."
+        ),
+        "en": (
+            "Odoo does not know this DEVICE: the id entered matches no gateway"
+            " record."
+        ),
+    },
+    "sms_diag_clock": {
+        "fr": (
+            "HORLOGE trop decalee entre le telephone et le serveur (plus de"
+            " 5 minutes). Regle l'heure automatique sur l'appareil."
+        ),
+        "en": (
+            "CLOCK skew between phone and server exceeds 5 minutes. Turn on"
+            " automatic time on the device."
+        ),
+    },
+    "sms_diag_nonce": {
+        "fr": "Requetes rejouees : sans gravite, elles sont ignorees.",
+        "en": "Replayed requests: harmless, they are ignored.",
+    },
+    "sms_diag_silence": {
+        "fr": (
+            "Aucune requete n'atteint Odoo : ce n'est ni le secret ni"
+            " l'identifiant. Verifie le reseau — renvoi USB tombe, ou"
+            " telephone sur un autre Wi-Fi."
+        ),
+        "en": (
+            "No request reaches Odoo: neither the secret nor the id is at"
+            " fault. Check the network — USB reverse dropped, or phone on"
+            " another Wi-Fi."
+        ),
+    },
+    "sms_reset": {
+        "fr": "Repartir de zero - detruit la VM de demonstration",
+        "en": "Start over - destroys the demonstration VM",
+    },
     # Courriel
     "mail_menu": {
         "fr": "Courriel - Lire et envoyer du courriel",

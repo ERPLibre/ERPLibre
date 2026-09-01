@@ -4,3 +4,9 @@
 # bump). They describe one specific database, never a shared default, so they
 # must not be versioned. Shared defaults belong to script/odoo/migration/.
 odoo/
+
+# Configuration propre a une installation : etat de la demonstration SMS,
+# secret HMAC partage, journal et PID du serveur de demo. Rien de tout cela
+# n'est partageable, et le secret encore moins — le distant de ce depot est
+# public, et le reste de `private/` est bel et bien versionne.
+conf/
