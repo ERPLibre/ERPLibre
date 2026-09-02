@@ -830,8 +830,8 @@ TRANSLATIONS = {
         "en": "Git and shell management tools!",
     },
     "Local git server": {
-        "fr": "Serveur git local",
-        "en": "Local git server",
+        "fr": "🗄  Serveur git local",
+        "en": "🗄  Local git server",
     },
     "Manage local git repository server!": {
         "fr": "Gérer le serveur de dépôts git local!",
@@ -879,8 +879,8 @@ TRANSLATIONS = {
     },
     # Git remote add
     "Add a remote to a local repository": {
-        "fr": "Ajouter un remote vers un dépôt local",
-        "en": "Add a remote to a local repository",
+        "fr": "🔗 Ajouter un remote vers un dépôt local",
+        "en": "🔗 Add a remote to a local repository",
     },
     "Remote name (default: localhost): ": {
         "fr": "Nom du remote (défaut: localhost) : ",
@@ -941,8 +941,8 @@ TRANSLATIONS = {
         "en": "Open a new shell to see it.",
     },
     "Set merge.conflictStyle to zdiff3 (global)": {
-        "fr": "Configurer merge.conflictStyle en zdiff3 (global)",
-        "en": "Set merge.conflictStyle to zdiff3 (global)",
+        "fr": "🔀 Configurer merge.conflictStyle en zdiff3 (global)",
+        "en": "🔀 Set merge.conflictStyle to zdiff3 (global)",
     },
     "Failed to set merge.conflictStyle, see the output above.": {
         "fr": (
@@ -952,8 +952,8 @@ TRANSLATIONS = {
         "en": "Failed to set merge.conflictStyle, see the output above.",
     },
     "Install git hooks (commit-msg, pre-commit)": {
-        "fr": "Installer les hooks git (commit-msg, pre-commit)",
-        "en": "Install git hooks (commit-msg, pre-commit)",
+        "fr": "🪝 Installer les hooks git (commit-msg, pre-commit)",
+        "en": "🪝 Install git hooks (commit-msg, pre-commit)",
     },
     "Hooks directory is missing: ": {
         "fr": "Le répertoire des hooks est absent : ",
@@ -981,12 +981,12 @@ TRANSLATIONS = {
     },
     # Git config vim
     "Configure git local editor to vim": {
-        "fr": "Configuration git local par vim",
-        "en": "Configure git local editor to vim",
+        "fr": "📝 Configuration git local par vim",
+        "en": "📝 Configure git local editor to vim",
     },
     "Generate git patch to /tmp": {
-        "fr": "Générer une patch git dans /tmp",
-        "en": "Generate git patch to /tmp",
+        "fr": "🩹 Générer une patch git dans /tmp",
+        "en": "🩹 Generate git patch to /tmp",
     },
     "Git editor configured to vim successfully!": {
         "fr": "Éditeur git configuré sur vim avec succès!",
