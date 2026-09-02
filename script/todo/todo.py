@@ -3027,6 +3027,11 @@ class TODO(
                 )
             },
             {"prompt_description": t("Show the context given to Claude")},
+            {
+                "prompt_description": t(
+                    "Claude Code plugins - marketplaces and ERPLibre list"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -3043,6 +3048,8 @@ class TODO(
                 self.prompt_execute_rtk()
             elif status == "4":
                 self._show_claude_context()
+            elif status == "5":
+                self.prompt_execute_claude_plugins()
             else:
                 print(t("Command not found !"))
 
@@ -3333,6 +3340,231 @@ class TODO(
             print(t("Automation added successfully in todo.json!"))
         except Exception as e:
             print(f"{t('Error adding automation: ')}{e}")
+
+    # Les plugins qu'ERPLibre pose par défaut, chacun avec la clé qui dit à
+    # quoi il sert. Tous viennent du marketplace officiel et travaillent sur
+    # le poste : aucun n'appelle un service tiers ni ne réclame de compte.
+    _CLAUDE_PREFERRED_PLUGINS = (
+        ("superpowers", "brainstorming, subagent-driven development, TDD"),
+        ("pyright-lsp", "Python type checking and code intelligence"),
+        ("claude-security", "vulnerability scan run entirely in session"),
+        (
+            "skill-creator",
+            "write, improve and evaluate the repository skills",
+        ),
+    )
+    _CLAUDE_MARKETPLACES_DIR = "~/.claude/plugins/marketplaces"
+
+    def prompt_execute_claude_plugins(self):
+        print(f"🤖 {t('Manage Claude Code plugins and marketplaces!')}")
+        choices = [
+            {"section": t("Inventory")},
+            {"prompt_description": t("List installed plugins")},
+            {"prompt_description": t("List configured marketplaces")},
+            {"prompt_description": t("Search a plugin in the marketplaces")},
+            {
+                "prompt_description": t(
+                    "Show a plugin detail and its token cost"
+                )
+            },
+            {"section": t("Install")},
+            {"prompt_description": t("Install the ERPLibre preferred list")},
+            {"prompt_description": t("Install a plugin by name")},
+            {"prompt_description": t("Add a marketplace")},
+            {"section": t("Maintenance")},
+            {
+                "prompt_description": t(
+                    "Update the marketplaces and the plugins"
+                )
+            },
+            {"prompt_description": t("Uninstall a plugin")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._claude_plugin_exec("list")
+            elif status == "2":
+                self._claude_plugin_exec("marketplace list")
+            elif status == "3":
+                self._claude_plugin_search()
+            elif status == "4":
+                self._claude_plugin_details()
+            elif status == "5":
+                self._claude_install_preferred_plugins()
+            elif status == "6":
+                self._claude_plugin_install_by_name()
+            elif status == "7":
+                self._claude_marketplace_add()
+            elif status == "8":
+                self._claude_plugin_update()
+            elif status == "9":
+                self._claude_plugin_uninstall()
+            else:
+                print(t("Command not found !"))
+
+    def _claude_plugin_exec(self, args, quiet=False, capture=False):
+        """Lance « claude plugin <args> », ou signale que claude est absent.
+
+        Rend le code de sortie, ou le couple (code, lignes) quand capture est
+        vrai. Le code 1 sans sortie signale l'absence de l'exécutable : rien
+        n'a tourné, et l'appelant ne doit pas conclure à un échec de la
+        commande elle-même.
+        """
+        claude = shutil.which("claude")
+        if claude is None:
+            print(t("The claude command is not in the PATH."))
+            return (1, []) if capture else 1
+        return self.execute.exec_command_live(
+            f"{shlex.quote(claude)} plugin {args}",
+            source_erplibre=False,
+            quiet=quiet,
+            return_status_and_output=capture,
+        )
+
+    def _claude_plugin_is_installed(self, name):
+        """Le plugin est-il déjà posé ?
+
+        La liste est lue telle que la CLI l'écrit, et le nom y est cherché
+        comme un mot entier : « code-review » ne doit pas se reconnaître dans
+        « pr-review-toolkit ». Un doute rend faux, et l'installation qui suit
+        est de toute façon idempotente.
+        """
+        result = self._claude_plugin_exec("list", quiet=True, capture=True)
+        if not isinstance(result, tuple) or result[0] != 0:
+            return False
+        motif = re.compile(rf"(?<![\w-]){re.escape(name)}(?![\w-])")
+        return any(motif.search(ligne) for ligne in result[1])
+
+    def _claude_install_preferred_plugins(self):
+        """Pose la liste préférée d'ERPLibre après confirmation.
+
+        L'installation passe par « -y » : la sortie de TODO est un tuyau, pas
+        un terminal, et la CLI refuse sans lui toute installation qui exécute
+        une commande déclarée par un marketplace. La liste est donc affichée
+        AVANT la confirmation, qui est la seule occasion de la lire.
+        """
+        print(t("ERPLibre preferred plugins:"))
+        print("-" * 62)
+        for nom, raison in self._CLAUDE_PREFERRED_PLUGINS:
+            print(f"  {nom:<18} {t(raison)}")
+        print("-" * 62)
+        if not self._is_yes(input(t("Install these plugins? (y/Y): "))):
+            print(t("Nothing to do."))
+            return
+        for nom, _ in self._CLAUDE_PREFERRED_PLUGINS:
+            print(f"\n📦 {nom}")
+            if self._claude_plugin_is_installed(nom):
+                print(t("Already installed, skipped."))
+                continue
+            self._claude_plugin_exec(f"install {shlex.quote(nom)} -y")
+        print(f"\n{t('A restart of Claude Code applies the change.')}")
+
+    def _claude_plugin_install_by_name(self):
+        nom = input(t("Plugin name: ")).strip()
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"install {shlex.quote(nom)} -y")
+        print(t("A restart of Claude Code applies the change."))
+
+    def _claude_plugin_details(self):
+        nom = input(t("Plugin name: ")).strip()
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"details {shlex.quote(nom)}")
+
+    def _claude_plugin_uninstall(self):
+        nom = input(t("Plugin name: ")).strip()
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        if not self._is_yes(input(t("Uninstall this plugin? (y/Y): "))):
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"uninstall {shlex.quote(nom)}")
+        print(t("A restart of Claude Code applies the change."))
+
+    def _claude_marketplace_add(self):
+        source = input(
+            t("Marketplace source (URL, path or owner/repo): ")
+        ).strip()
+        if not source:
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"marketplace add {shlex.quote(source)}")
+
+    def _claude_plugin_update(self):
+        """Met à jour les marketplaces, puis les plugins déjà posés.
+
+        Les catalogues passent d'abord : « plugin update » installe la version
+        que le catalogue local annonce, et sur un catalogue périmé il ne fait
+        rien tout en sortant en 0.
+        """
+        self._claude_plugin_exec("marketplace update")
+        for nom, _ in self._CLAUDE_PREFERRED_PLUGINS:
+            if self._claude_plugin_is_installed(nom):
+                self._claude_plugin_exec(f"update {shlex.quote(nom)}")
+        print(t("A restart of Claude Code applies the change."))
+
+    def _claude_marketplace_catalog(self):
+        """Les plugins des marketplaces posés, en triplets (nom, source, mot).
+
+        Le catalogue est lu sur le disque plutôt que par la CLI : la recherche
+        reste possible hors ligne, et un marketplace dont le manifeste est
+        illisible est sauté sans faire échouer les autres.
+        """
+        racine = os.path.expanduser(self._CLAUDE_MARKETPLACES_DIR)
+        catalogue = []
+        if not os.path.isdir(racine):
+            return catalogue
+        for nom_marche in sorted(os.listdir(racine)):
+            manifeste = os.path.join(
+                racine, nom_marche, ".claude-plugin", "marketplace.json"
+            )
+            try:
+                with open(manifeste, encoding="utf-8") as fh:
+                    contenu = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            for plugin in contenu.get("plugins", []):
+                nom = plugin.get("name", "")
+                if nom:
+                    catalogue.append(
+                        (nom, nom_marche, plugin.get("description", ""))
+                    )
+        return catalogue
+
+    def _claude_plugin_search(self):
+        """Cherche un mot-clé dans le nom et la description des plugins."""
+        catalogue = self._claude_marketplace_catalog()
+        if not catalogue:
+            print(t("No marketplace is configured."))
+            return
+        mot = input(t("Keyword to search: ")).strip().lower()
+        if not mot:
+            print(t("Nothing to do."))
+            return
+        trouves = [
+            (nom, marche, desc)
+            for nom, marche, desc in catalogue
+            if mot in nom.lower() or mot in desc.lower()
+        ]
+        if not trouves:
+            print(t("No plugin matches this keyword."))
+            return
+        print("-" * 78)
+        for nom, marche, desc in trouves:
+            print(f"  {nom}@{marche}")
+            if desc:
+                print(f"      {desc[:70]}")
+        print("-" * 78)
+        print(f"{t('Total:')} {len(trouves)}")
 
     def prompt_execute_doc(self):
         print(f"🤖 {t('Looking for documentation?')}")

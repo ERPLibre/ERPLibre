@@ -1196,6 +1196,123 @@ TRANSLATIONS = {
         "fr": "Déployer les commandes Claude Code!",
         "en": "Deploy Claude Code commands!",
     },
+    # Claude Code plugins
+    "Claude Code plugins - marketplaces and ERPLibre list": {
+        "fr": "Plugins Claude Code - marketplaces et liste ERPLibre",
+        "en": "Claude Code plugins - marketplaces and ERPLibre list",
+    },
+    "Manage Claude Code plugins and marketplaces!": {
+        "fr": "Gérer les plugins et les marketplaces de Claude Code!",
+        "en": "Manage Claude Code plugins and marketplaces!",
+    },
+    "Inventory": {
+        "fr": "Inventaire",
+        "en": "Inventory",
+    },
+    "List installed plugins": {
+        "fr": "Lister les plugins installés",
+        "en": "List installed plugins",
+    },
+    "List configured marketplaces": {
+        "fr": "Lister les marketplaces configurés",
+        "en": "List configured marketplaces",
+    },
+    "Search a plugin in the marketplaces": {
+        "fr": "Chercher un plugin dans les marketplaces",
+        "en": "Search a plugin in the marketplaces",
+    },
+    "Show a plugin detail and its token cost": {
+        "fr": "Afficher le détail d'un plugin et son coût en tokens",
+        "en": "Show a plugin detail and its token cost",
+    },
+    "Install": {
+        "fr": "Installer",
+        "en": "Install",
+    },
+    "Install the ERPLibre preferred list": {
+        "fr": "Installer la liste préférée d'ERPLibre",
+        "en": "Install the ERPLibre preferred list",
+    },
+    "Install a plugin by name": {
+        "fr": "Installer un plugin par son nom",
+        "en": "Install a plugin by name",
+    },
+    "Add a marketplace": {
+        "fr": "Ajouter un marketplace",
+        "en": "Add a marketplace",
+    },
+    "Maintenance": {
+        "fr": "Maintenance",
+        "en": "Maintenance",
+    },
+    "Update the marketplaces and the plugins": {
+        "fr": "Mettre à jour les marketplaces et les plugins",
+        "en": "Update the marketplaces and the plugins",
+    },
+    "Uninstall a plugin": {
+        "fr": "Désinstaller un plugin",
+        "en": "Uninstall a plugin",
+    },
+    "The claude command is not in the PATH.": {
+        "fr": "La commande claude n'est pas dans le PATH.",
+        "en": "The claude command is not in the PATH.",
+    },
+    "ERPLibre preferred plugins:": {
+        "fr": "Plugins préférés d'ERPLibre :",
+        "en": "ERPLibre preferred plugins:",
+    },
+    "brainstorming, subagent-driven development, TDD": {
+        "fr": ("brainstorming, développement piloté par sous-agents, TDD"),
+        "en": "brainstorming, subagent-driven development, TDD",
+    },
+    "Python type checking and code intelligence": {
+        "fr": "typage Python et intelligence de code",
+        "en": "Python type checking and code intelligence",
+    },
+    "vulnerability scan run entirely in session": {
+        "fr": "analyse de vulnérabilités entièrement en session",
+        "en": "vulnerability scan run entirely in session",
+    },
+    "write, improve and evaluate the repository skills": {
+        "fr": "écrire, améliorer et évaluer les skills du dépôt",
+        "en": "write, improve and evaluate the repository skills",
+    },
+    "Install these plugins? (y/Y): ": {
+        "fr": "Installer ces plugins ? (o/O) : ",
+        "en": "Install these plugins? (y/Y): ",
+    },
+    "Already installed, skipped.": {
+        "fr": "Déjà installé, ignoré.",
+        "en": "Already installed, skipped.",
+    },
+    "Plugin name: ": {
+        "fr": "Nom du plugin : ",
+        "en": "Plugin name: ",
+    },
+    "Marketplace source (URL, path or owner/repo): ": {
+        "fr": "Source du marketplace (URL, chemin ou propriétaire/dépôt) : ",
+        "en": "Marketplace source (URL, path or owner/repo): ",
+    },
+    "Keyword to search: ": {
+        "fr": "Mot-clé à chercher : ",
+        "en": "Keyword to search: ",
+    },
+    "No marketplace is configured.": {
+        "fr": "Aucun marketplace n'est configuré.",
+        "en": "No marketplace is configured.",
+    },
+    "No plugin matches this keyword.": {
+        "fr": "Aucun plugin ne correspond à ce mot-clé.",
+        "en": "No plugin matches this keyword.",
+    },
+    "Uninstall this plugin? (y/Y): ": {
+        "fr": "Désinstaller ce plugin ? (o/O) : ",
+        "en": "Uninstall this plugin? (y/Y): ",
+    },
+    "A restart of Claude Code applies the change.": {
+        "fr": "Un redémarrage de Claude Code applique le changement.",
+        "en": "A restart of Claude Code applies the change.",
+    },
     "Show installed custom commands": {
         "fr": "Afficher les commandes personnalisées installées",
         "en": "Show installed custom commands",
