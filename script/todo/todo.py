@@ -4227,6 +4227,83 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
+    def rtk_locate(self):
+        """Localise l'exécutable rtk.
+
+        Rend le couple (chemin, visible_dans_le_PATH). Le chemin vaut None
+        quand rtk est introuvable. Le second membre est faux quand le binaire
+        existe à l'emplacement où l'installateur le dépose sans que le PATH y
+        mène : un processus garde le PATH qu'il avait au démarrage, donc une
+        installation faite pendant que TODO tourne lui reste invisible tant
+        qu'il n'est pas relancé.
+        """
+        rtk_path = shutil.which("rtk")
+        if rtk_path:
+            return rtk_path, True
+        # Emplacement par défaut de l'installateur (RTK_INSTALL_DIR le change).
+        fallback = os.path.expanduser("~/.local/bin/rtk")
+        if os.access(fallback, os.X_OK):
+            return fallback, False
+        return None, False
+
+    def rtk_exec(self, args):
+        """Lance rtk par son chemin absolu, ou signale qu'il est absent.
+
+        Le chemin absolu évite le code 127 d'un « rtk » nu quand le PATH du
+        processus ne mène pas à l'emplacement d'installation.
+        """
+        rtk_path, _ = self.rtk_locate()
+        if rtk_path is None:
+            print(t("RTK is not installed. Use option 1 to install it."))
+            return 1
+        return self.execute.exec_command_live(
+            f"{shlex.quote(rtk_path)} {args}",
+            source_erplibre=False,
+        )
+
+    def rtk_version(self, rtk_path):
+        """Rend la version qu'annonce le binaire, « ? » s'il ne répond pas."""
+        result = self.execute.exec_command_live(
+            f"{shlex.quote(rtk_path)} --version",
+            source_erplibre=False,
+            quiet=True,
+            return_status_and_output=True,
+        )
+        if isinstance(result, tuple) and result[0] == 0:
+            return " ".join(result[1]).strip()
+        return "?"
+
+    def rtk_report_path_warning(self):
+        """Dit comment rendre rtk appelable quand le PATH ne le porte pas."""
+        print(t("rtk is not in the PATH of this process, restart TODO."))
+        print(t("To make it permanent, add to your shell profile:"))
+        print('   export PATH="$HOME/.local/bin:$PATH"')
+
+    def rtk_report_install(self, exit_code):
+        """Annonce le résultat de l'installation, PATH compris.
+
+        Une installation réussie ne rend pas rtk appelable pour autant : le
+        binaire atterrit dans un répertoire que le PATH du processus courant
+        peut ignorer. Distinguer les deux cas évite de conclure à un échec
+        devant un « commande introuvable » qui ne tient qu'au PATH.
+        """
+        if exit_code:
+            print(f"❌ {t('RTK installation failed, see the output above.')}")
+            return
+        rtk_path, in_path = self.rtk_locate()
+        if rtk_path is None:
+            print(
+                "❌"
+                f" {t('Installation ended without error, but no rtk binary was found.')}"
+            )
+            return
+        print(
+            f"✅ {t('RTK is installed, version: ')}{self.rtk_version(rtk_path)}"
+        )
+        print(f"   {rtk_path}")
+        if not in_path:
+            self.rtk_report_path_warning()
+
     def rtk_install(self):
         print(f"🤖 {t('Installation method:')}")
         choices = [
@@ -4244,64 +4321,47 @@ class TODO(
         if status == "0":
             return
         elif status == "1":
-            self.execute.exec_command_live(
-                "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh",
-                source_erplibre=False,
+            command = (
+                "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/"
+                "refs/heads/master/install.sh | sh"
             )
         elif status == "2":
-            self.execute.exec_command_live(
-                "brew install rtk",
-                source_erplibre=False,
-            )
+            command = "brew install rtk"
         elif status == "3":
-            self.execute.exec_command_live(
-                "cargo install --git https://github.com/rtk-ai/rtk",
-                source_erplibre=False,
-            )
+            command = "cargo install --git https://github.com/rtk-ai/rtk"
         else:
             print(t("Command not found !"))
+            return
+        exit_code = self.execute.exec_command_live(
+            command,
+            source_erplibre=False,
+        )
+        self.rtk_report_install(exit_code)
 
     def rtk_check_version(self):
-        self.execute.exec_command_live(
-            "rtk --version",
-            source_erplibre=False,
-        )
+        self.rtk_exec("--version")
 
     def rtk_show_gain(self):
-        self.execute.exec_command_live(
-            "rtk gain",
-            source_erplibre=False,
-        )
+        self.rtk_exec("gain")
 
     def rtk_discover(self):
-        self.execute.exec_command_live(
-            "rtk discover",
-            source_erplibre=False,
-        )
+        self.rtk_exec("discover")
 
     def rtk_init_global(self):
-        self.execute.exec_command_live(
-            "rtk init --global",
-            source_erplibre=False,
-        )
+        self.rtk_exec("init --global")
 
     def rtk_check_status(self):
-        rtk_path = shutil.which("rtk")
+        rtk_path, in_path = self.rtk_locate()
         if rtk_path is None:
             print(t("RTK is not installed. Use option 1 to install it."))
             return
 
-        result = self.execute.exec_command_live(
-            "rtk --version",
-            source_erplibre=False,
-            quiet=True,
-            return_status_and_output=True,
+        print(
+            f"{t('RTK is installed, version: ')}{self.rtk_version(rtk_path)}"
         )
-        if isinstance(result, tuple) and result[0] == 0:
-            version_output = " ".join(result[1]).strip()
-            print(f"{t('RTK is installed, version: ')}{version_output}")
-        else:
-            print(f"{t('RTK is installed, version: ')}?")
+        print(f"   {rtk_path}")
+        if not in_path:
+            self.rtk_report_path_warning()
 
         config_path = os.path.expanduser("~/.config/rtk/config.toml")
         if os.path.exists(config_path):

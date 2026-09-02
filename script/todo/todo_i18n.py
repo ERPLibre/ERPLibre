@@ -367,6 +367,25 @@ TRANSLATIONS = {
         "fr": "RTK est installé, version : ",
         "en": "RTK is installed, version: ",
     },
+    "RTK installation failed, see the output above.": {
+        "fr": "L'installation de RTK a échoué, voir la sortie ci-dessus.",
+        "en": "RTK installation failed, see the output above.",
+    },
+    "Installation ended without error, but no rtk binary was found.": {
+        "fr": (
+            "L'installation s'est terminée sans erreur, mais aucun binaire"
+            " rtk n'a été trouvé."
+        ),
+        "en": "Installation ended without error, but no rtk binary was found.",
+    },
+    "rtk is not in the PATH of this process, restart TODO.": {
+        "fr": "rtk n'est pas dans le PATH de ce processus, relancer TODO.",
+        "en": "rtk is not in the PATH of this process, restart TODO.",
+    },
+    "To make it permanent, add to your shell profile:": {
+        "fr": "Pour que ce soit permanent, ajouter au profil du shell :",
+        "en": "To make it permanent, add to your shell profile:",
+    },
     "Global auto-rewrite hook: active": {
         "fr": "Hook auto-rewrite global : actif",
         "en": "Global auto-rewrite hook: active",
