@@ -2323,8 +2323,16 @@ class QemuManageMixin:
         """Nom de VM stable pour le parc, ex. erplibre-ubuntu-2404. Ajoute un
         suffixe d'architecture quand elle diffère de la native de l'hôte (ex.
         erplibre-ubuntu-2604-s390x sur un hôte amd64) pour éviter les collisions
-        de noms entre archis et rendre l'archi visible."""
-        base = f"erplibre-{distro}-{version.replace('.', '')}"
+        de noms entre archis et rendre l'archi visible.
+
+        La version « latest » ne figure pas dans le nom : une distribution en
+        publication continue n'en a qu'une, si bien que le segment ne
+        distingue aucune VM d'une autre. Une version nommée qui coexiste avec
+        d'autres au catalogue reste dans le nom, tumbleweed comprise."""
+        if version == "latest":
+            base = f"erplibre-{distro}"
+        else:
+            base = f"erplibre-{distro}-{version.replace('.', '')}"
         if arch and arch != cls._native_arch():
             base += f"-{arch}"
         return base
