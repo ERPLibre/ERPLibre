@@ -324,17 +324,45 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
 - **Rien ne quitte la machine** — aucun hôte externe, aucun trousseau système,
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
+## Statistiques
+
+`i` dans le client ouvre l'écran de statistiques ; `[5]` dans le menu Courriel
+rend les mêmes chiffres en texte, sans lancer le client. Tout est calculé
+depuis le cache local : la réponse vient hors ligne, sans mot de passe ni
+requête réseau.
+
+- **Volume** par jour, semaine ou mois — `d`, `w`, `m` changent le pas. Les
+  barres sont normalisées sur le maximum de la série, pour que la forme de la
+  distribution reste lisible qu'un mois porte douze messages ou douze mille.
+- **Par dossier** — nombre, part de non-lus, taille cumulée.
+- **Correspondants** — les expéditeurs et destinataires les plus fréquents,
+  comptés par adresse en minuscules plutôt que par libellé : une personne qui
+  signe de plusieurs façons reste une seule ligne.
+- **Délai de réponse** — la médiane entre un message et la réponse qui lui
+  répond, reliés par des empreintes de `Message-ID`.
+
+`f` restreint tous les chiffres au dossier ouvert, et l'élargit de nouveau au
+compte entier.
+
+Deux chiffres disent honnêtement ce qu'ils ignorent :
+
+- **Les messages sans date lisible** sont exclus de l'histogramme et comptés
+  sur leur propre ligne. Les ranger au 1er janvier 1970 dessinerait un pic qui
+  n'a jamais eu lieu.
+- **Les délais de réponse exigent les colonnes de fil**, apparues avec le
+  cache v2. Les messages synchronisés avant ne portent rien à relier, et
+  l'écran le dit plutôt que d'afficher un délai nul. Une resynchronisation
+  complète les remplit.
+
 ## Limites de la phase 1
 
 - **Pas d'OAuth** — Gmail, Outlook et iCloud demandent un mot de passe
   d'application (voir plus haut) ; OAuth arrive en phase 2.
-- **Pas de statistiques** — aucun compteur lu/non lu global ni tableau de
-  bord d'activité, au-delà du compte de non-lus par dossier affiché dans
-  l'arbre.
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.
 - **Pas de file d'attente hors ligne** — l'envoi exige que le compte soit
   en ligne ; rien ne se met en attente pour partir au retour du réseau.
 
-Voir le [spec de conception](../docs/superpowers/specs/2026-08-02-email-tui-design.md)
-pour ce qu'apportent les phases suivantes.
+Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
+l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
+besoin de ce qu'apportent les phases restantes.
