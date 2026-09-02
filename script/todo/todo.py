@@ -2539,6 +2539,11 @@ class TODO(
                     "Install git hooks (commit-msg, pre-commit)"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Set merge.conflictStyle to zdiff3 (global)"
+                )
+            },
         ]
 
         # Append config-driven entries
@@ -2559,6 +2564,8 @@ class TODO(
                 self._git_add_remote()
             elif status == "3":
                 self._git_install_hooks()
+            elif status == "4":
+                self._git_set_conflict_style()
             else:
                 cmd_no_found = True
                 try:
@@ -2635,6 +2642,38 @@ class TODO(
             pose = os.access(os.path.join(absolu, hook), os.X_OK)
             marque = t("hook installed") if pose else t("hook not installed")
             print(f"   {hook:<26} {marque}")
+
+    def _git_set_conflict_style(self):
+        """Poser merge.conflictStyle=zdiff3 dans la configuration globale.
+
+        zdiff3 ajoute la base commune aux marqueurs de conflit et sort de la
+        zone contestée les lignes que les deux côtés ont en commun : il reste
+        moins à arbitrer à la main. Le style demande git 2.35, que toutes les
+        plateformes supportées dépassent.
+
+        La valeur est relue après écriture : « git config » ne rend rien à
+        l'écriture, et une configuration globale en lecture seule échouerait
+        sans que le menu le sache.
+        """
+        status = self.execute.exec_command_live(
+            "git config --global merge.conflictStyle zdiff3",
+            source_erplibre=False,
+        )
+        if status:
+            print(
+                f"❌ {t('Failed to set merge.conflictStyle, see the output above.')}"
+            )
+            return
+        result = self.execute.exec_command_live(
+            "git config --global --get merge.conflictStyle",
+            source_erplibre=False,
+            quiet=True,
+            return_status_and_output=True,
+        )
+        value = (
+            " ".join(result[1]).strip() if isinstance(result, tuple) else ""
+        )
+        print(f"✅ merge.conflictStyle = {value}")
 
     def prompt_execute_git_local_server(self):
         print(f"🤖 {t('Manage local git repository server!')}")

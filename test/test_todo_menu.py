@@ -451,12 +451,11 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
 class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
     """Le menu Git, le seul dont todo.json suit des entrées codées en dur.
 
-    Ses trois premières entrées sont écrites à la main, les suivantes viennent
-    de `git_from_makefile` et le repli générique les renumérote tout seul :
-    ajouter « Installer les hooks git » en [3] a poussé les deux entrées de
-    todo.json en [4] et [5] sans que rien ne le dise. Une quatrième entrée
-    codée en dur, oubliée dans le dispatch, ferait lancer à [4] la commande
-    du voisin sous le libellé attendu.
+    Ses premières entrées sont écrites à la main, les suivantes viennent de
+    `git_from_makefile` et le repli générique les renumérote tout seul :
+    ajouter une entrée codée en dur pousse celles de todo.json d'un rang sans
+    que rien ne le dise. Une entrée codée en dur oubliée dans le dispatch
+    ferait lancer la commande du voisin sous le libellé attendu.
     """
 
     SOURCE = TODO_DIR / "todo.py"
@@ -468,6 +467,7 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Local git server": "prompt_execute_git_local_server",
         "Add a remote to a local repository": "_git_add_remote",
         "Install git hooks": "_git_install_hooks",
+        "Set merge.conflictStyle": "_git_set_conflict_style",
     }
 
 

@@ -903,6 +903,17 @@ TRANSLATIONS = {
         "en": "Error adding remote: ",
     },
     # Git hooks
+    "Set merge.conflictStyle to zdiff3 (global)": {
+        "fr": "Configurer merge.conflictStyle en zdiff3 (global)",
+        "en": "Set merge.conflictStyle to zdiff3 (global)",
+    },
+    "Failed to set merge.conflictStyle, see the output above.": {
+        "fr": (
+            "Échec du réglage de merge.conflictStyle, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "Failed to set merge.conflictStyle, see the output above.",
+    },
     "Install git hooks (commit-msg, pre-commit)": {
         "fr": "Installer les hooks git (commit-msg, pre-commit)",
         "en": "Install git hooks (commit-msg, pre-commit)",
