@@ -303,16 +303,43 @@ What it does **not** cover, and will not pretend to:
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
+## Statistics
+
+`i` in the client opens the statistics screen; `[5]` in the Mail menu prints
+the same figures as text without opening the client. Everything is computed
+from the local cache, so it answers offline, with no password and no request.
+
+- **Volume** per day, week or month — `d`, `w`, `m` change the step. The bars
+  are normalised on the series maximum, so the shape of the distribution
+  survives whether a month holds twelve messages or twelve thousand.
+- **Per folder** — count, unread share, cumulative size.
+- **Correspondents** — the most frequent senders and recipients, counted by
+  lowercased address rather than by display name, so one person writing under
+  several labels stays one row.
+- **Reply delay** — the median time between a message and the reply that
+  answers it, joined through hashed `Message-ID`s.
+
+`f` narrows every figure to the folder currently open, and again to widen it
+back to the whole account.
+
+Two figures are honest about what they cannot know:
+
+- **Messages with no readable date** are excluded from the histogram and
+  counted on their own line. Filing them under 1 January 1970 would draw a
+  spike that never happened.
+- **Reply delays need the thread columns**, added with the v2 cache. Messages
+  synchronised before that carry nothing to join, and the screen says so
+  instead of showing a null delay. A full resynchronisation fills them in.
+
 ## Phase 1 limits
 
 - **No OAuth** — Gmail, Outlook and iCloud need an app password (see
   above); OAuth is phase 2.
-- **No statistics** — no read/unread counters or activity dashboards beyond
-  the per-folder unseen count shown in the folder tree.
 - **No server-side search** — `/` filters only what's already synced to the
   local cache.
 - **No offline outbox** — sending requires the account to be online; there
   is no queue that flushes once you're back online.
 
-See the [design spec](../docs/superpowers/specs/2026-08-02-email-tui-design.md)
-for what the following phases add.
+The design spec is not tracked in this tree; recover it from history with
+`git log --all -- "docs/superpowers/specs/*"` if you need what the remaining
+phases add.

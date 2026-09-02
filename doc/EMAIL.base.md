@@ -647,32 +647,91 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
 <!-- [en] -->
+## Statistics
+
+`i` in the client opens the statistics screen; `[5]` in the Mail menu prints
+the same figures as text without opening the client. Everything is computed
+from the local cache, so it answers offline, with no password and no request.
+
+- **Volume** per day, week or month — `d`, `w`, `m` change the step. The bars
+  are normalised on the series maximum, so the shape of the distribution
+  survives whether a month holds twelve messages or twelve thousand.
+- **Per folder** — count, unread share, cumulative size.
+- **Correspondents** — the most frequent senders and recipients, counted by
+  lowercased address rather than by display name, so one person writing under
+  several labels stays one row.
+- **Reply delay** — the median time between a message and the reply that
+  answers it, joined through hashed `Message-ID`s.
+
+`f` narrows every figure to the folder currently open, and again to widen it
+back to the whole account.
+
+<!-- [fr] -->
+## Statistiques
+
+`i` dans le client ouvre l'écran de statistiques ; `[5]` dans le menu Courriel
+rend les mêmes chiffres en texte, sans lancer le client. Tout est calculé
+depuis le cache local : la réponse vient hors ligne, sans mot de passe ni
+requête réseau.
+
+- **Volume** par jour, semaine ou mois — `d`, `w`, `m` changent le pas. Les
+  barres sont normalisées sur le maximum de la série, pour que la forme de la
+  distribution reste lisible qu'un mois porte douze messages ou douze mille.
+- **Par dossier** — nombre, part de non-lus, taille cumulée.
+- **Correspondants** — les expéditeurs et destinataires les plus fréquents,
+  comptés par adresse en minuscules plutôt que par libellé : une personne qui
+  signe de plusieurs façons reste une seule ligne.
+- **Délai de réponse** — la médiane entre un message et la réponse qui lui
+  répond, reliés par des empreintes de `Message-ID`.
+
+`f` restreint tous les chiffres au dossier ouvert, et l'élargit de nouveau au
+compte entier.
+
+<!-- [en] -->
+Two figures are honest about what they cannot know:
+
+- **Messages with no readable date** are excluded from the histogram and
+  counted on their own line. Filing them under 1 January 1970 would draw a
+  spike that never happened.
+- **Reply delays need the thread columns**, added with the v2 cache. Messages
+  synchronised before that carry nothing to join, and the screen says so
+  instead of showing a null delay. A full resynchronisation fills them in.
+
+<!-- [fr] -->
+Deux chiffres disent honnêtement ce qu'ils ignorent :
+
+- **Les messages sans date lisible** sont exclus de l'histogramme et comptés
+  sur leur propre ligne. Les ranger au 1er janvier 1970 dessinerait un pic qui
+  n'a jamais eu lieu.
+- **Les délais de réponse exigent les colonnes de fil**, apparues avec le
+  cache v2. Les messages synchronisés avant ne portent rien à relier, et
+  l'écran le dit plutôt que d'afficher un délai nul. Une resynchronisation
+  complète les remplit.
+
+<!-- [en] -->
 ## Phase 1 limits
 
 - **No OAuth** — Gmail, Outlook and iCloud need an app password (see
   above); OAuth is phase 2.
-- **No statistics** — no read/unread counters or activity dashboards beyond
-  the per-folder unseen count shown in the folder tree.
 - **No server-side search** — `/` filters only what's already synced to the
   local cache.
 - **No offline outbox** — sending requires the account to be online; there
   is no queue that flushes once you're back online.
 
-See the [design spec](../docs/superpowers/specs/2026-08-02-email-tui-design.md)
-for what the following phases add.
+The design spec is not tracked in this tree; recover it from history with
+`git log --all -- "docs/superpowers/specs/*"` if you need what the remaining
+phases add.
 
 <!-- [fr] -->
 ## Limites de la phase 1
 
 - **Pas d'OAuth** — Gmail, Outlook et iCloud demandent un mot de passe
   d'application (voir plus haut) ; OAuth arrive en phase 2.
-- **Pas de statistiques** — aucun compteur lu/non lu global ni tableau de
-  bord d'activité, au-delà du compte de non-lus par dossier affiché dans
-  l'arbre.
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.
 - **Pas de file d'attente hors ligne** — l'envoi exige que le compte soit
   en ligne ; rien ne se met en attente pour partir au retour du réseau.
 
-Voir le [spec de conception](../docs/superpowers/specs/2026-08-02-email-tui-design.md)
-pour ce qu'apportent les phases suivantes.
+Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
+l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
+besoin de ce qu'apportent les phases restantes.
