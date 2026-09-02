@@ -1759,6 +1759,19 @@ PKG_GUIDE: dict[str, tuple[tuple[str, str, str], ...]] = {
 }
 
 
+# Assistant AUR posé sur l'invité Arch par l'amorçage d'installation. Les
+# formes viennent du manuel de yay : il reprend les options de pacman, sauf
+# « -Yc » qui lui est propre. Jamais sous sudo — yay appelle sudo lui-même
+# pour la seule étape qui en a besoin, et le lancer en root fait échouer
+# makepkg, qui refuse de construire sous cet utilisateur.
+AUR_GUIDE: tuple[tuple[str, str, str], ...] = (
+    ("yay -Syu", "mettre à jour dépôts + AUR", "upgrade repos and AUR"),
+    ("yay -S <paquet>", "installer depuis l'AUR", "install from the AUR"),
+    ("yay -Ss <motif>", "chercher dans l'AUR", "search the AUR"),
+    ("yay -Yc", "retirer les orphelins", "remove orphans"),
+)
+
+
 def zypper_guide(rolling: bool) -> tuple[tuple[str, str, str], ...]:
     """Aide-mémoire zypper. `rolling` : Tumbleweed plutôt que Leap.
 
@@ -1965,6 +1978,12 @@ def build_motd(
             lang,
             narrow,
         )
+    # yay arrive avec l'amorçage d'installation, pas avec l'image : une VM
+    # déployée sans installation n'annonce donc pas une commande absente.
+    # C'est la règle du bloc ERPLibre ci-dessous, appliquée au même signal.
+    if mgr == "pacman" and el_dir:
+        body.append("")
+        body += motd_block("AUR — yay", AUR_GUIDE, lang, narrow)
     if el_dir:
         body.append("")
         el_rows = erplibre_guide(el_dir, el_make, editor)

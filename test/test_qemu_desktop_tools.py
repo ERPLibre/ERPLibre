@@ -182,7 +182,12 @@ class TestToolRemoteCommand(unittest.TestCase):
         script = self.todo._qemu_erplibre_remote_cmd(
             "develop", None, False, "gnome", "", "deb", ("pycharm",)
         )
-        self.assertLess(script.index("PyCharm"), script.index("git clone"))
+        # « git clone --branch » et non « git clone » : l'amorçage Arch en
+        # pose un autre, celui de yay-bin, et il arrive plus tôt. Seul le
+        # clone du dépôt, qui seul porte une branche, est en jeu ici.
+        self.assertLess(
+            script.index("PyCharm"), script.index("git clone --branch")
+        )
         self.assertLess(
             script.index("PyCharm"), script.index("make install_os")
         )
