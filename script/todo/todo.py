@@ -26,7 +26,7 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import todo_prefs
+from script.todo import todo_install, todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -256,7 +256,7 @@ class TODO(
 [7] {t("Analyse - Odoo database analysis")}
 
 ── {t("Sources & documentation")} ──
-[8] {t("Git - Git tools")}
+[8] {t("Git - Git and shell tools")}
 [9] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
@@ -2530,7 +2530,7 @@ class TODO(
     _GIT_HOOKS_PATH = os.path.join("script", "git", "hooks")
 
     def prompt_execute_git(self):
-        print(f"🤖 {t('Git management tools!')}")
+        print(f"🤖 {t('Git and shell management tools!')}")
         choices = [
             {"prompt_description": t("Local git server")},
             {"prompt_description": t("Add a remote to a local repository")},
@@ -2550,6 +2550,17 @@ class TODO(
         config_entries = self.config_file.get_config("git_from_makefile")
         if config_entries:
             choices.extend(config_entries)
+
+        # Starship ferme la liste : c'est un outil de shell, pas de git. Son
+        # rang dépend du nombre d'entrées venues de todo.json, donc « method »
+        # porte la destination dans l'entrée elle-même — un numéro codé en dur
+        # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
+        choices.append(
+            {
+                "prompt_description": t("Install Starship on Shell"),
+                "method": "_shell_install_starship",
+            }
+        )
 
         help_info = self.fill_help_info(choices)
 
@@ -2573,7 +2584,11 @@ class TODO(
                     if 0 < int_cmd <= len(choices):
                         cmd_no_found = False
                         instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
+                        method = instance.get("method")
+                        if method:
+                            getattr(self, method)()
+                        else:
+                            self.execute_from_configuration(instance)
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -2674,6 +2689,137 @@ class TODO(
             " ".join(result[1]).strip() if isinstance(result, tuple) else ""
         )
         print(f"✅ merge.conflictStyle = {value}")
+
+    # Le shell -> (fichier de configuration, ligne d'initialisation). La ligne
+    # va en FIN de fichier : starship compose le prompt et doit passer après
+    # tout ce qui y touche.
+    _STARSHIP_SHELLS = {
+        "bash": ("~/.bashrc", 'eval "$(starship init bash)"'),
+        "zsh": ("~/.zshrc", 'eval "$(starship init zsh)"'),
+        "fish": ("~/.config/fish/config.fish", "starship init fish | source"),
+    }
+
+    # L'installateur amont pose un binaire statique. Il sert de recours parce
+    # que le paquet manque d'une partie des dépôts des plateformes supportées.
+    _STARSHIP_UPSTREAM = "curl -sS https://starship.rs/install/install.sh | sh"
+
+    @staticmethod
+    def _shell_name():
+        """Le nom du shell de l'utilisateur d'après $SHELL, '' s'il est vide."""
+        return os.path.basename(os.environ.get("SHELL", "")).strip()
+
+    def _shell_install_starship(self):
+        """Poser starship, puis l'accrocher au shell de l'utilisateur.
+
+        Deux étapes qui échouent séparément : le binaire, que le gestionnaire
+        de paquets de la distribution fournit quand il le connaît, et la ligne
+        d'initialisation dans le fichier de configuration du shell. Sans la
+        seconde, starship est installé et le prompt ne change pas.
+        """
+        if shutil.which("starship") is None:
+            self._shell_install_starship_binary()
+        if shutil.which("starship") is None:
+            print(
+                f"❌ {t('starship is not installed, shell left untouched.')}"
+            )
+            return
+        self._shell_hook_starship()
+
+    def _shell_install_starship_binary(self):
+        """Poser le binaire : le paquet de la distribution, sinon l'amont.
+
+        Un refus de l'opérateur arrête là. Un paquet inconnu ou une
+        installation en échec passent au recours amont, qui couvre les dépôts
+        où starship n'est pas empaqueté.
+        """
+        cmd = todo_install.install_command(["starship"])
+        if cmd:
+            status = todo_install.ask_and_install(
+                self.execute,
+                cmd,
+                t("Install starship? (y/N): "),
+                self._is_yes,
+            )
+            if status is None:
+                return
+            if status == 0 and shutil.which("starship"):
+                return
+        print(f"  {t('No starship package here, falling back upstream.')}")
+        todo_install.ask_and_install(
+            self.execute,
+            self._STARSHIP_UPSTREAM,
+            t("Run the upstream installer? (y/N): "),
+            self._is_yes,
+        )
+
+    def _shell_starship_present(self):
+        """Les shells dont le fichier de configuration existe déjà."""
+        return [
+            nom
+            for nom, (fichier, _ligne) in self._STARSHIP_SHELLS.items()
+            if os.path.exists(os.path.expanduser(fichier))
+        ]
+
+    def _shell_starship_target(self):
+        """Le shell à accrocher. Ne demande que devant un vrai choix.
+
+        Aucun fichier de configuration présent : bash, sans question — la pose
+        le créera. Un seul présent : celui-là, il n'y a rien à choisir. Deux
+        ou trois : à l'opérateur de trancher, le sien proposé par défaut.
+        """
+        presents = self._shell_starship_present()
+        if not presents:
+            return "bash"
+        if len(presents) == 1:
+            return presents[0]
+        courant = self._shell_name()
+        defaut = courant if courant in presents else presents[0]
+        print(f"\n{t('Which shell configuration?')}")
+        for i, nom in enumerate(presents, 1):
+            print(f"  [{i}] {nom:<5} {self._STARSHIP_SHELLS[nom][0]}")
+        sel = input(
+            f"{t('Choice (number or name, default:')} {defaut}) : "
+        ).strip()
+        if not sel:
+            return defaut
+        if sel in presents:
+            return sel
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(presents):
+                return presents[idx]
+        except ValueError:
+            pass
+        return defaut
+
+    def _shell_hook_starship(self):
+        """Ajouter la ligne d'initialisation au fichier du shell choisi.
+
+        La ligne n'est écrite qu'une fois : « starship init » cherché dans le
+        fichier couvre les trois shells, dont les lignes diffèrent. L'écriture
+        ne demande pas de confirmation — le choix du fichier, quand il y en a
+        un à faire, l'a déjà donnée.
+        """
+        shell = self._shell_starship_target()
+        chemin, ligne = self._STARSHIP_SHELLS[shell]
+        chemin = os.path.expanduser(chemin)
+        contenu = ""
+        if os.path.exists(chemin):
+            with open(chemin, encoding="utf-8") as fh:
+                contenu = fh.read()
+        if "starship init" in contenu:
+            print(f"✅ {t('starship is already hooked into: ')}{chemin}")
+            return
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        with open(chemin, "a", encoding="utf-8") as fh:
+            # Un fichier qui ne finit pas par un saut de ligne collerait la
+            # ligne d'init à la dernière commande.
+            if contenu and not contenu.endswith("\n"):
+                fh.write("\n")
+            fh.write(f"{ligne}\n")
+        print(f"✅ {t('starship hooked into: ')}{chemin}")
+        print(f"   {ligne}")
+        print(f"   {t('Open a new shell to see it.')}")
 
     def prompt_execute_git_local_server(self):
         print(f"🤖 {t('Manage local git repository server!')}")

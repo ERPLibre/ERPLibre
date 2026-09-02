@@ -821,13 +821,13 @@ TRANSLATIONS = {
         "en": "Module name is required!",
     },
     # Git section
-    "Git - Git tools": {
-        "fr": "🌿 Git - Outils Git",
-        "en": "🌿 Git - Git tools",
+    "Git - Git and shell tools": {
+        "fr": "🌿 Git - Outils Git et Shell",
+        "en": "🌿 Git - Git and shell tools",
     },
-    "Git management tools!": {
-        "fr": "Outils de gestion Git!",
-        "en": "Git management tools!",
+    "Git and shell management tools!": {
+        "fr": "Outils de gestion Git et Shell!",
+        "en": "Git and shell management tools!",
     },
     "Local git server": {
         "fr": "Serveur git local",
@@ -903,6 +903,43 @@ TRANSLATIONS = {
         "en": "Error adding remote: ",
     },
     # Git hooks
+    # Starship
+    "Install Starship on Shell": {
+        "fr": "🚀 Installer Starship sur le shell",
+        "en": "🚀 Install Starship on Shell",
+    },
+    "Install starship? (y/N): ": {
+        "fr": "Installer starship ? (o/N) : ",
+        "en": "Install starship? (y/N): ",
+    },
+    "No starship package here, falling back upstream.": {
+        "fr": "Aucun paquet starship ici, recours à l'installateur amont.",
+        "en": "No starship package here, falling back upstream.",
+    },
+    "Run the upstream installer? (y/N): ": {
+        "fr": "Lancer l'installateur amont ? (o/N) : ",
+        "en": "Run the upstream installer? (y/N): ",
+    },
+    "starship is not installed, shell left untouched.": {
+        "fr": "starship n'est pas installé, le shell reste intact.",
+        "en": "starship is not installed, shell left untouched.",
+    },
+    "Which shell configuration?": {
+        "fr": "Quel fichier de configuration de shell ?",
+        "en": "Which shell configuration?",
+    },
+    "starship is already hooked into: ": {
+        "fr": "starship est déjà accroché à : ",
+        "en": "starship is already hooked into: ",
+    },
+    "starship hooked into: ": {
+        "fr": "starship accroché à : ",
+        "en": "starship hooked into: ",
+    },
+    "Open a new shell to see it.": {
+        "fr": "Ouvrir un nouveau shell pour le voir.",
+        "en": "Open a new shell to see it.",
+    },
     "Set merge.conflictStyle to zdiff3 (global)": {
         "fr": "Configurer merge.conflictStyle en zdiff3 (global)",
         "en": "Set merge.conflictStyle to zdiff3 (global)",

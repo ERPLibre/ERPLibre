@@ -148,6 +148,10 @@ class MenuCoherence:
     todo.py), ce socle sert DEUX menus : QEMU/KVM et Proxmox. Un troisième
     n'aura qu'à déclarer ses quatre attributs.
 
+    Une entrée peut aussi porter sa destination dans « method » plutôt que
+    dans un « elif status » numéroté. Elle échappe alors à la renumérotation
+    par construction, et EXPECTED la vérifie contre cette clé.
+
     À déclarer par la sous-classe : SOURCE (le fichier), ENTRY (la ligne
     « def prompt_execute_… »), END (le membre suivant, qui borne la lecture) et
     EXPECTED (où mène chaque entrée, par le début de son libellé).
@@ -170,18 +174,33 @@ class MenuCoherence:
         r'(?:el)?if status == "(\d+)":\s*\n(?:\s*#.*\n)*'
         r"\s*(?:status = )?self\.(\w+)\("
     )
+    # Une entrée qui porte sa destination dans « method » se dispatche seule,
+    # par le repli générique. Elle n'a pas de numéro dans le code, donc aucune
+    # renumérotation ne peut la désaligner : c'est le seul moyen de placer une
+    # entrée codée en dur APRÈS des entrées venues de la configuration, dont
+    # le nombre n'est pas connu à la lecture du source.
+    RE_SELF_DISPATCH = re.compile(
+        r'"prompt_description": t\(\s*\n?\s*"([^"]+)"\s*\)?,?\s*\n'
+        r'\s*"method": "(\w+)"'
+    )
 
     def setUp(self):
         source = self.SOURCE.read_text(encoding="utf-8")
         start = source.index(self.ENTRY)
         end = source.index(self.END, start)
         self.body = source[start:end]
+        self.self_dispatch = dict(self.RE_SELF_DISPATCH.findall(self.body))
         num = 0
         self.shown = []
         for kind, label in self.RE_ENTRY.findall(self.body):
             if kind == "prompt_description":
                 num += 1
                 self.shown.append((num, label))
+        self.numbered = [
+            (n, label)
+            for n, label in self.shown
+            if label not in self.self_dispatch
+        ]
         self.dispatch = [
             (int(n), m) for n, m in self.RE_DISPATCH_CALL.findall(self.body)
         ]
@@ -189,7 +208,7 @@ class MenuCoherence:
     def test_the_menu_was_actually_parsed(self):
         """Sur une liste vide, tout test passe : mieux vaut tomber ici."""
         self.assertGreater(len(self.shown), self.MINIMUM)
-        self.assertEqual(len(self.shown), len(self.dispatch))
+        self.assertEqual(len(self.numbered), len(self.dispatch))
 
     def test_numbering_is_contiguous_from_one(self):
         self.assertEqual(
@@ -199,7 +218,7 @@ class MenuCoherence:
 
     def test_every_shown_entry_has_the_matching_dispatch(self):
         self.assertEqual(
-            [n for n, _ in self.shown], [n for n, _ in self.dispatch]
+            [n for n, _ in self.numbered], [n for n, _ in self.dispatch]
         )
 
     def _key(self, label):
@@ -218,16 +237,27 @@ class MenuCoherence:
                 f"entrée [{num}] « {label} » absente d'EXPECTED :"
                 " déclarez où elle mène",
             )
+            atteint = self.self_dispatch.get(label, dct.get(num))
             self.assertEqual(
-                dct.get(num),
+                atteint,
                 self.EXPECTED[key],
-                f"[{num}] « {label} » mène à {dct.get(num)}"
+                f"[{num}] « {label} » mène à {atteint}"
                 f" au lieu de {self.EXPECTED[key]}",
             )
 
     def test_expected_table_has_no_stale_entry(self):
         keys = {self._key(label) for _, label in self.shown}
         self.assertEqual(set(self.EXPECTED) - keys, set())
+
+    def test_self_dispatched_entries_name_a_real_method(self):
+        """« method » est une chaîne : rien ne la relie au code sans ceci."""
+        from script.todo.todo import TODO
+
+        for label, method in self.self_dispatch.items():
+            self.assertTrue(
+                hasattr(TODO, method),
+                f"« {label} » mène à {method}, qui n'existe pas",
+            )
 
 
 class TestLaParitéProxmox(unittest.TestCase):
@@ -468,6 +498,7 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Add a remote to a local repository": "_git_add_remote",
         "Install git hooks": "_git_install_hooks",
         "Set merge.conflictStyle": "_git_set_conflict_style",
+        "Install Starship on Shell": "_shell_install_starship",
     }
 
 
