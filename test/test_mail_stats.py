@@ -169,8 +169,9 @@ class TestFolders(StatsCase):
 
 class TestCorrespondents(StatsCase):
     def test_the_same_person_is_counted_once_whatever_the_case(self):
-        """« ALICE <A@X.CA> » et « Alice <a@x.ca> » sont la même personne :
-        compter les libellés l'éclaterait en deux lignes du classement."""
+        """Une même adresse écrite en majuscules et en minuscules désigne
+        une seule personne : sans repli de casse, elle occuperait deux
+        lignes du classement."""
         self.remplir()
         self.assertEqual(self.store.stats_correspondents("from")["a@x.ca"], 2)
 
