@@ -2561,6 +2561,18 @@ class TODO(
                 "method": "_shell_install_starship",
             }
         )
+        choices.append(
+            {
+                "prompt_description": t("Install Claude Code"),
+                "method": "_shell_install_claude_code",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Install opencode"),
+                "method": "_shell_install_opencode",
+            }
+        )
 
         help_info = self.fill_help_info(choices)
 
@@ -2690,23 +2702,128 @@ class TODO(
         )
         print(f"✅ merge.conflictStyle = {value}")
 
-    # Le shell -> (fichier de configuration, ligne d'initialisation). La ligne
-    # va en FIN de fichier : starship compose le prompt et doit passer après
-    # tout ce qui y touche.
-    _STARSHIP_SHELLS = {
-        "bash": ("~/.bashrc", 'eval "$(starship init bash)"'),
-        "zsh": ("~/.zshrc", 'eval "$(starship init zsh)"'),
-        "fish": ("~/.config/fish/config.fish", "starship init fish | source"),
+    # Le shell -> son fichier de configuration.
+    _SHELL_RC = {
+        "bash": "~/.bashrc",
+        "zsh": "~/.zshrc",
+        "fish": "~/.config/fish/config.fish",
+    }
+
+    # Ce que chaque shell écrit pour lancer starship. La ligne va en FIN de
+    # fichier : starship compose le prompt et doit passer après tout ce qui y
+    # touche.
+    _STARSHIP_LINE = {
+        "bash": 'eval "$(starship init bash)"',
+        "zsh": 'eval "$(starship init zsh)"',
+        "fish": "starship init fish | source",
     }
 
     # L'installateur amont pose un binaire statique. Il sert de recours parce
     # que le paquet manque d'une partie des dépôts des plateformes supportées.
     _STARSHIP_UPSTREAM = "curl -sS https://starship.rs/install/install.sh | sh"
 
+    # Les assistants posés par un installateur amont : le nom du binaire mène
+    # à (commande, répertoire d'installation). Le répertoire sert à garantir
+    # le PATH — un binaire posé hors des chemins du shell reste introuvable.
+    _UPSTREAM_TOOLS = {
+        "claude": (
+            "curl -fsSL https://claude.ai/install.sh | bash",
+            "~/.local/bin",
+        ),
+        "opencode": (
+            "curl -fsSL https://opencode.ai/install | bash",
+            "~/.opencode/bin",
+        ),
+    }
+
     @staticmethod
     def _shell_name():
         """Le nom du shell de l'utilisateur d'après $SHELL, '' s'il est vide."""
         return os.path.basename(os.environ.get("SHELL", "")).strip()
+
+    def _shell_rc_present(self):
+        """Les shells dont le fichier de configuration existe déjà."""
+        return [
+            nom
+            for nom, fichier in self._SHELL_RC.items()
+            if os.path.exists(os.path.expanduser(fichier))
+        ]
+
+    def _shell_rc_target(self):
+        """Le shell à modifier. Ne demande que devant un vrai choix.
+
+        Aucun fichier de configuration présent : bash, sans question — l'appel
+        le créera. Un seul présent : celui-là, il n'y a rien à choisir. Deux ou
+        trois : à l'opérateur de trancher, le sien proposé par défaut.
+        """
+        presents = self._shell_rc_present()
+        if not presents:
+            return "bash"
+        if len(presents) == 1:
+            return presents[0]
+        courant = self._shell_name()
+        defaut = courant if courant in presents else presents[0]
+        print(f"\n{t('Which shell configuration?')}")
+        for i, nom in enumerate(presents, 1):
+            print(f"  [{i}] {nom:<5} {self._SHELL_RC[nom]}")
+        sel = input(
+            f"{t('Choice (number or name, default:')} {defaut}) : "
+        ).strip()
+        if not sel:
+            return defaut
+        if sel in presents:
+            return sel
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(presents):
+                return presents[idx]
+        except ValueError:
+            pass
+        return defaut
+
+    def _shell_rc_append(self, shell, ligne, marqueur):
+        """Ajouter la ligne au fichier du shell si le marqueur n'y est pas.
+
+        Rend le chemin du fichier quand la ligne est écrite, None quand le
+        marqueur y était déjà. Le marqueur, et non la ligne entière, parce
+        qu'une variante écrite à la main ou par un installateur amont compte
+        autant : ce qui importe est que l'effet soit là, pas la graphie.
+        """
+        chemin = os.path.expanduser(self._SHELL_RC[shell])
+        contenu = ""
+        if os.path.exists(chemin):
+            with open(chemin, encoding="utf-8") as fh:
+                contenu = fh.read()
+        if marqueur in contenu:
+            return None
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        with open(chemin, "a", encoding="utf-8") as fh:
+            # Un fichier qui ne finit pas par un saut de ligne collerait la
+            # ligne ajoutée à la dernière commande.
+            if contenu and not contenu.endswith("\n"):
+                fh.write("\n")
+            fh.write(f"{ligne}\n")
+        return chemin
+
+    def _shell_path_line(self, shell, repertoire):
+        """La ligne qui met un répertoire dans le PATH, selon le shell."""
+        if shell == "fish":
+            return f"fish_add_path {repertoire}"
+        return f'export PATH="{repertoire}:$PATH"'
+
+    def _shell_ensure_on_path(self, shell, repertoire):
+        """Garantir que le répertoire est dans le PATH du shell choisi.
+
+        Ne fait rien si le répertoire y figure déjà, quelle que soit la
+        graphie — les installateurs amont écrivent souvent la ligne eux-mêmes.
+        """
+        ligne = self._shell_path_line(shell, repertoire)
+        chemin = self._shell_rc_append(shell, ligne, repertoire)
+        if chemin is None:
+            print(f"✅ {t('Already on the PATH: ')}{repertoire}")
+            return
+        print(f"✅ {t('PATH line added to: ')}{chemin}")
+        print(f"   {ligne}")
 
     def _shell_install_starship(self):
         """Poser starship, puis l'accrocher au shell de l'utilisateur.
@@ -2752,46 +2869,6 @@ class TODO(
             self._is_yes,
         )
 
-    def _shell_starship_present(self):
-        """Les shells dont le fichier de configuration existe déjà."""
-        return [
-            nom
-            for nom, (fichier, _ligne) in self._STARSHIP_SHELLS.items()
-            if os.path.exists(os.path.expanduser(fichier))
-        ]
-
-    def _shell_starship_target(self):
-        """Le shell à accrocher. Ne demande que devant un vrai choix.
-
-        Aucun fichier de configuration présent : bash, sans question — la pose
-        le créera. Un seul présent : celui-là, il n'y a rien à choisir. Deux
-        ou trois : à l'opérateur de trancher, le sien proposé par défaut.
-        """
-        presents = self._shell_starship_present()
-        if not presents:
-            return "bash"
-        if len(presents) == 1:
-            return presents[0]
-        courant = self._shell_name()
-        defaut = courant if courant in presents else presents[0]
-        print(f"\n{t('Which shell configuration?')}")
-        for i, nom in enumerate(presents, 1):
-            print(f"  [{i}] {nom:<5} {self._STARSHIP_SHELLS[nom][0]}")
-        sel = input(
-            f"{t('Choice (number or name, default:')} {defaut}) : "
-        ).strip()
-        if not sel:
-            return defaut
-        if sel in presents:
-            return sel
-        try:
-            idx = int(sel) - 1
-            if 0 <= idx < len(presents):
-                return presents[idx]
-        except ValueError:
-            pass
-        return defaut
-
     def _shell_hook_starship(self):
         """Ajouter la ligne d'initialisation au fichier du shell choisi.
 
@@ -2800,25 +2877,46 @@ class TODO(
         ne demande pas de confirmation — le choix du fichier, quand il y en a
         un à faire, l'a déjà donnée.
         """
-        shell = self._shell_starship_target()
-        chemin, ligne = self._STARSHIP_SHELLS[shell]
-        chemin = os.path.expanduser(chemin)
-        contenu = ""
-        if os.path.exists(chemin):
-            with open(chemin, encoding="utf-8") as fh:
-                contenu = fh.read()
-        if "starship init" in contenu:
-            print(f"✅ {t('starship is already hooked into: ')}{chemin}")
+        shell = self._shell_rc_target()
+        ligne = self._STARSHIP_LINE[shell]
+        chemin = self._shell_rc_append(shell, ligne, "starship init")
+        if chemin is None:
+            fichier = os.path.expanduser(self._SHELL_RC[shell])
+            print(f"✅ {t('starship is already hooked into: ')}{fichier}")
             return
-        os.makedirs(os.path.dirname(chemin), exist_ok=True)
-        with open(chemin, "a", encoding="utf-8") as fh:
-            # Un fichier qui ne finit pas par un saut de ligne collerait la
-            # ligne d'init à la dernière commande.
-            if contenu and not contenu.endswith("\n"):
-                fh.write("\n")
-            fh.write(f"{ligne}\n")
         print(f"✅ {t('starship hooked into: ')}{chemin}")
         print(f"   {ligne}")
+        print(f"   {t('Open a new shell to see it.')}")
+
+    def _shell_install_claude_code(self):
+        self._shell_install_upstream_tool("claude")
+
+    def _shell_install_opencode(self):
+        self._shell_install_upstream_tool("opencode")
+
+    def _shell_install_upstream_tool(self, binaire):
+        """Lancer l'installateur amont d'un assistant, puis garantir le PATH.
+
+        Ces installateurs posent leur binaire dans un répertoire du HOME que
+        le PATH d'un shell ne porte pas toujours : sans la ligne d'export, le
+        binaire est là et la commande reste introuvable. Le PATH du processus
+        courant, lui, est figé depuis son démarrage — le menu ne verra pas le
+        binaire avant d'être relancé.
+        """
+        commande, repertoire = self._UPSTREAM_TOOLS[binaire]
+        status = self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+        )
+        if status:
+            print(f"❌ {t('Installation failed, see the output above.')}")
+            return
+        self._shell_ensure_on_path(self._shell_rc_target(), repertoire)
+        pose = os.path.join(os.path.expanduser(repertoire), binaire)
+        if not os.path.exists(pose):
+            print(f"⚠ {t('Binary not found at: ')}{pose}")
+            return
+        print(f"✅ {binaire} : {pose}")
         print(f"   {t('Open a new shell to see it.')}")
 
     def prompt_execute_git_local_server(self):

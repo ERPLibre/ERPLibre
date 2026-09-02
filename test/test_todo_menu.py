@@ -499,6 +499,8 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Install git hooks": "_git_install_hooks",
         "Set merge.conflictStyle": "_git_set_conflict_style",
         "Install Starship on Shell": "_shell_install_starship",
+        "Install Claude Code": "_shell_install_claude_code",
+        "Install opencode": "_shell_install_opencode",
     }
 
 

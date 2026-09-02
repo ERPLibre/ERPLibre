@@ -908,6 +908,30 @@ TRANSLATIONS = {
         "fr": "🚀 Installer Starship sur le shell",
         "en": "🚀 Install Starship on Shell",
     },
+    "Install Claude Code": {
+        "fr": "🤖 Installer Claude Code",
+        "en": "🤖 Install Claude Code",
+    },
+    "Install opencode": {
+        "fr": "🧠 Installer opencode",
+        "en": "🧠 Install opencode",
+    },
+    "Installation failed, see the output above.": {
+        "fr": "L'installation a échoué, voir la sortie ci-dessus.",
+        "en": "Installation failed, see the output above.",
+    },
+    "Already on the PATH: ": {
+        "fr": "Déjà dans le PATH : ",
+        "en": "Already on the PATH: ",
+    },
+    "PATH line added to: ": {
+        "fr": "Ligne de PATH ajoutée à : ",
+        "en": "PATH line added to: ",
+    },
+    "Binary not found at: ": {
+        "fr": "Binaire introuvable à : ",
+        "en": "Binary not found at: ",
+    },
     "Install starship? (y/N): ": {
         "fr": "Installer starship ? (o/N) : ",
         "en": "Install starship? (y/N): ",
