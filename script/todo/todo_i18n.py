@@ -10147,6 +10147,51 @@ TRANSLATIONS = {
         "fr": "Coffre non ouvert : on abandonne.",
         "en": "Vault not opened: giving up.",
     },
+    # Écran de statistiques (phase 3).
+    "mail_stats_binding": {"fr": "Statistiques", "en": "Statistics"},
+    "mail_stats_close": {"fr": "Fermer", "en": "Close"},
+    "mail_stats_by_day": {"fr": "par jour", "en": "by day"},
+    "mail_stats_by_week": {"fr": "par semaine", "en": "by week"},
+    "mail_stats_by_month": {"fr": "par mois", "en": "by month"},
+    "mail_stats_folder_filter": {
+        "fr": "Dossier courant / tout",
+        "en": "Current folder / all",
+    },
+    "mail_stats_scope": {"fr": "Portée :", "en": "Scope:"},
+    "mail_stats_all_folders": {
+        "fr": "tous les dossiers",
+        "en": "all folders",
+    },
+    "mail_stats_total": {"fr": "Messages :", "en": "Messages:"},
+    "mail_stats_unseen": {"fr": "non lus", "en": "unread"},
+    "mail_stats_undated": {
+        "fr": "Sans date lisible, exclus de l'histogramme :",
+        "en": "With no readable date, excluded from the histogram:",
+    },
+    "mail_stats_volume": {"fr": "Volume", "en": "Volume"},
+    "mail_stats_folders": {"fr": "Par dossier", "en": "By folder"},
+    "mail_stats_senders": {"fr": "Expéditeurs", "en": "Senders"},
+    "mail_stats_recipients": {"fr": "Destinataires", "en": "Recipients"},
+    "mail_stats_reply": {"fr": "Délai de réponse", "en": "Reply delay"},
+    "mail_stats_reply_median": {"fr": "médiane", "en": "median"},
+    "mail_stats_reply_none": {
+        "fr": "aucune réponse reliée — resynchronisez pour les messages"
+        " reçus avant cette version",
+        "en": "no reply linked — resynchronise for messages received"
+        " before this version",
+    },
+    "mail_stats_error": {
+        "fr": "statistiques indisponibles :",
+        "en": "statistics unavailable:",
+    },
+    "mail_stats_no_account": {
+        "fr": "aucun compte sélectionné",
+        "en": "no account selected",
+    },
+    "mail_stats_menu": {
+        "fr": "Statistiques",
+        "en": "Statistics",
+    },
     "mail_kdbx_none_configured": {
         "fr": "Aucun fichier kdbx n'est configuré.",
         "en": "No kdbx file is configured.",
