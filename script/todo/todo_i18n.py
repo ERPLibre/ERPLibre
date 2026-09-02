@@ -4961,6 +4961,14 @@ TRANSLATIONS = {
         "fr": "Logs :",
         "en": "Logs:",
     },
+    "3D was on; retry without it:": {
+        "fr": "La 3D était active ; réessayer sans elle :",
+        "en": "3D was on; retry without it:",
+    },
+    "Full output:": {
+        "fr": "Sortie complète :",
+        "en": "Full output:",
+    },
     "Read the logs:": {
         "fr": "Lire les logs :",
         "en": "Read the logs:",
