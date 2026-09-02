@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 
 from script.todo.mail.imap_sync import Syncer
@@ -2179,8 +2180,16 @@ def run_tui(
         ]
 
         CSS = """
-        #stats_body { height: 1fr; border: solid $panel; padding: 0 1; }
+        /* `auto` et NON `1fr` sur le contenu : `1fr` le contraint à la
+           hauteur de la fenêtre, la hauteur virtuelle du conteneur devient
+           égale à la hauteur visible, et il n'y a plus rien à faire
+           défiler — le texte est tronqué, pas débordant. Le conteneur, lui,
+           prend la place restante. */
+        #stats_scroll { height: 1fr; border: solid $panel; }
+        #stats_body { height: auto; padding: 0 1; }
         #stats_head { height: auto; padding: 0 1; color: $text-muted; }
+        #stats_choix { height: auto; padding: 0 1; }
+        #stats_choix Select { width: 1fr; }
         """
 
         def __init__(self, store, folder_id=None, folder_name=""):
@@ -2194,14 +2203,71 @@ def run_tui(
             self.restreint = False
             self.details = None
             self.calcul_en_cours = False
+            # 0 = pas de borne. Exprimé en jours, converti en date au
+            # moment de la requête : une borne calculée à l'ouverture
+            # vieillirait sur un écran laissé ouvert.
+            self.periode_jours = 0
+
+        # (valeur, clé i18n). L'ordre est celui de la liste déroulante.
+        PAS = (
+            ("day", "mail_stats_by_day"),
+            ("week", "mail_stats_by_week"),
+            ("month", "mail_stats_by_month"),
+            ("year", "mail_stats_by_year"),
+        )
+        # (valeur, clé i18n, jours). Des chaînes et non des entiers : un
+        # `Select` refuse une valeur fausse au sens booléen, et « toute la
+        # période » vaudrait naturellement 0.
+        PERIODES = (
+            ("all", "mail_stats_period_all", 0),
+            ("year", "mail_stats_period_year", 365),
+            ("5years", "mail_stats_period_5years", 1825),
+            ("month", "mail_stats_period_month", 30),
+        )
 
         def compose(self):
             with Vertical():
+                with Horizontal(id="stats_choix"):
+                    yield Select(
+                        [(t(cle), valeur) for valeur, cle in self.PAS],
+                        # `Select.NULL`, PAS `Select.BLANK` : dans Textual
+                        # 8 cette dernière vaut littéralement `False`, que
+                        # le widget refuse comme valeur. Aucune sélection au
+                        # départ — le pas se déduit de l'étendue de la boîte
+                        # et la liste s'aligne dessus au premier affichage.
+                        value=Select.NULL,
+                        prompt=t("mail_stats_step"),
+                        id="stats_pas",
+                    )
+                    yield Select(
+                        [(t(cle), valeur) for valeur, cle, _ in self.PERIODES],
+                        value="all",
+                        allow_blank=False,
+                        id="stats_periode",
+                    )
+                    yield Select(
+                        [
+                            (t("mail_stats_all_folders"), "all"),
+                            (
+                                self.folder_name or t("mail_stats_folder"),
+                                "folder",
+                            ),
+                        ],
+                        value="all",
+                        allow_blank=False,
+                        id="stats_portee",
+                    )
                 yield Static("", id="stats_head")
-                yield VerticalScroll(Static("", id="stats_body"))
+                yield VerticalScroll(
+                    Static("", id="stats_body"), id="stats_scroll"
+                )
 
         def on_mount(self) -> None:
             self.refresh_stats()
+            # Le focus va au conteneur défilable, pas à la première liste :
+            # les flèches font alors défiler dès l'ouverture, et `enter`
+            # atteint la liaison de l'écran au lieu de déplier une liste.
+            self.query_one("#stats_scroll").focus()
 
         def refresh_stats(self) -> None:
             """La vue d'ensemble, et elle seule.
@@ -2213,9 +2279,17 @@ def run_tui(
             au moment précis où l'utilisateur attend une réponse.
             """
             cible = self.folder_id if self.restreint else None
+            depuis = (
+                time.time() - self.periode_jours * 86400
+                if self.periode_jours
+                else None
+            )
             try:
                 apercu = stats.build_overview(
-                    self.store, bucket=self.bucket, folder_id=cible
+                    self.store,
+                    bucket=self.bucket,
+                    folder_id=cible,
+                    since=depuis,
                 )
             except Exception as exc:
                 self.query_one("#stats_body", Static).update(
@@ -2359,8 +2433,34 @@ def run_tui(
                 Text(f"{t('mail_stats_error')} {exc}")
             )
 
+        def on_select_changed(self, event) -> None:
+            """Les listes déroulantes et les touches mènent au même état.
+
+            Deux chemins vers un seul réglage : sans cette remise à jour de
+            `self.bucket`, la liste afficherait un pas et l'écran en
+            montrerait un autre.
+            """
+            if event.value is Select.NULL:
+                return
+            if event.select.id == "stats_pas":
+                self.bucket = event.value
+            elif event.select.id == "stats_periode":
+                self.periode_jours = next(
+                    jours
+                    for valeur, _, jours in self.PERIODES
+                    if valeur == event.value
+                )
+            elif event.select.id == "stats_portee":
+                self.restreint = event.value == "folder"
+            # Toute la sélection change : les détails portaient sur l'autre.
+            self.details = None
+            self.refresh_stats()
+
         def _set_bucket(self, bucket) -> None:
             self.bucket = bucket
+            # La liste doit suivre la touche, sinon elle annonce un pas que
+            # l'écran n'utilise pas.
+            self.query_one("#stats_pas", Select).value = bucket
             self.refresh_stats()
 
         def action_bucket_day(self) -> None:
@@ -2374,6 +2474,9 @@ def run_tui(
 
         def action_toggle_folder(self) -> None:
             self.restreint = not self.restreint
+            self.query_one("#stats_portee", Select).value = (
+                "folder" if self.restreint else "all"
+            )
             # Les détails portaient sur l'autre portée : les garder
             # afficherait des correspondants qui ne sont plus ceux du
             # filtre annoncé juste au-dessus.

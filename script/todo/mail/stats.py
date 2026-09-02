@@ -155,7 +155,9 @@ def choisir_bucket(span_secondes: float) -> str:
         return "day"
     if span_secondes / (7 * 86400) <= MAX_BARRES:
         return "week"
-    return "month"
+    if span_secondes / (30 * 86400) <= MAX_BARRES:
+        return "month"
+    return "year"
 
 
 def derniers(lignes, limite: int = MAX_BARRES) -> list:
@@ -201,12 +203,12 @@ class Details:
     reply_count: int = 0
 
 
-def build_overview(store, bucket=None, folder_id=None) -> Overview:
+def build_overview(store, bucket=None, folder_id=None, since=None) -> Overview:
     """La vue d'ensemble. Aucune colonne scellée n'est ouverte ici."""
-    nombre, plus_vieux, plus_recent = store.stats_span(folder_id)
+    nombre, plus_vieux, plus_recent = store.stats_span(folder_id, since)
     if bucket is None:
         bucket = choisir_bucket(plus_recent - plus_vieux)
-    volume = store.stats_volume(bucket, folder_id)
+    volume = store.stats_volume(bucket, folder_id, since)
     dossiers = store.stats_folders()
     if folder_id is not None:
         dossiers = [d for d in dossiers if d["id"] == folder_id]

@@ -11763,6 +11763,25 @@ TRANSLATIONS = {
     "mail_stats_by_day": {"fr": "par jour", "en": "by day"},
     "mail_stats_by_week": {"fr": "par semaine", "en": "by week"},
     "mail_stats_by_month": {"fr": "par mois", "en": "by month"},
+    "mail_stats_by_year": {"fr": "par année", "en": "by year"},
+    "mail_stats_step": {"fr": "Pas", "en": "Step"},
+    "mail_stats_folder": {"fr": "Dossier ouvert", "en": "Open folder"},
+    "mail_stats_period_all": {
+        "fr": "Depuis toujours",
+        "en": "All time",
+    },
+    "mail_stats_period_year": {
+        "fr": "12 derniers mois",
+        "en": "Last 12 months",
+    },
+    "mail_stats_period_5years": {
+        "fr": "5 dernières années",
+        "en": "Last 5 years",
+    },
+    "mail_stats_period_month": {
+        "fr": "30 derniers jours",
+        "en": "Last 30 days",
+    },
     "mail_stats_folder_filter": {
         "fr": "Dossier courant / tout",
         "en": "Current folder / all",

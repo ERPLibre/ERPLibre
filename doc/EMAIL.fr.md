@@ -341,8 +341,11 @@ requête réseau.
 - **Délai de réponse** — la médiane entre un message et la réponse qui lui
   répond, reliés par des empreintes de `Message-ID`.
 
-`f` restreint tous les chiffres au dossier ouvert, et l'élargit de nouveau au
-compte entier.
+Trois listes déroulantes surmontent les chiffres — le pas (jour, semaine,
+mois, année), la période (depuis toujours, 30 derniers jours, 12 derniers
+mois, 5 dernières années) et la portée (tous les dossiers ou celui qui est
+ouvert). Les touches `d`, `w`, `m` et `f` font la même chose et gardent les
+listes accordées à l'écran.
 
 L'écran s'ouvre sur une **vue d'ensemble calculée en SQL seul** — nombres,
 chiffres par dossier et histogramme — donc il apparaît immédiatement même sur
