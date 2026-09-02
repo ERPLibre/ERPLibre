@@ -1176,6 +1176,10 @@ TRANSLATIONS = {
         "fr": "Commit - Commande de commit OCA/Odoo",
         "en": "Commit - OCA/Odoo commit command",
     },
+    "Git prepare merge - Git merge preparation command": {
+        "fr": "Git prepare merge - Commande de préparation merge git",
+        "en": "Git prepare merge - Git merge preparation command",
+    },
     "Todo Add Command - Add a command to todo.py menu": {
         "fr": "Todo Add Command - Ajouter une commande au menu todo.py",
         "en": "Todo Add Command - Add a command to todo.py menu",

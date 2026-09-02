@@ -3052,6 +3052,11 @@ class TODO(
             {"prompt_description": t("Commit - OCA/Odoo commit command")},
             {
                 "prompt_description": t(
+                    "Git prepare merge - Git merge preparation command"
+                )
+            },
+            {
+                "prompt_description": t(
                     "Todo Add Command - Add a command to todo.py menu"
                 )
             },
@@ -3072,10 +3077,15 @@ class TODO(
                 )
             elif status == "2":
                 self._setup_claude_command(
+                    "git_prepare_merge",
+                    "template_claude_commands_git_prepare_merge.md",
+                )
+            elif status == "3":
+                self._setup_claude_command(
                     "todo_add_command",
                     "template_claude_commands_todo_add_command.md",
                 )
-            elif status == "3":
+            elif status == "4":
                 self._list_claude_commands()
             else:
                 print(t("Command not found !"))
@@ -3203,6 +3213,9 @@ class TODO(
         print(f"{t('Deployed commands'):<22} ~/.claude/commands/")
         gabarits = {
             "commit": "template_claude_commands_commit.md",
+            "git_prepare_merge": (
+                "template_claude_commands_git_prepare_merge.md"
+            ),
             "todo_add_command": "template_claude_commands_todo_add_command.md",
         }
         for nom, gabarit in sorted(gabarits.items()):
