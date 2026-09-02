@@ -1905,10 +1905,48 @@ class QemuDeployMixin:
                     f"\n[{done}/{len(jobs)}] {mark} [{jid}] {jname} "
                     f"(rc={rc}, {self._fmt_dur(secs)})"
                 )
-                for line in [ln for ln in out.strip().splitlines() if ln][-4:]:
+                lignes = [ln for ln in out.strip().splitlines() if ln]
+                # Une VM qui réussit n'a rien à raconter ; une qui échoue a
+                # UNE ligne qui compte, et elle est écrite par l'outil, pas
+                # par nous. Quatre lignes ne suffisent pas à l'atteindre :
+                # l'épilogue « Échec de la commande » et sa ligne de commande
+                # les occupent, et le message de virt-install tombe juste
+                # au-dessus de la fenêtre.
+                for line in lignes[-4:] if rc == 0 else lignes[-30:]:
                     print(f"    {line}")
+                if rc != 0:
+                    chemin = self._qemu_save_failure_log(jname, out)
+                    if chemin:
+                        print(f"    {t('Full output:')} {chemin}")
+                    # La 3D est décidée DANS deploy_qemu.py, pas dans l'argv :
+                    # sa présence se lit sur la commande que le journal a
+                    # rapportée. Le menu n'expose pas « --gpu off », donc la
+                    # seule issue depuis ici est de la nommer.
+                    if "accel3d=on" in out or "egl-headless" in out:
+                        print(f"    {t('3D was on; retry without it:')}")
+                        print("      ./script/qemu/deploy_qemu.py --gpu off …")
                 outcome.append((jname, rc, out, secs))
         return outcome
+
+    @staticmethod
+    def _qemu_save_failure_log(name, out):
+        """Écrit la sortie complète d'une création ratée. Rend le chemin.
+
+        L'appelant jette `out` après la boucle : sans ce fichier, l'unique
+        trace d'un échec est ce qui a défilé à l'écran. Rend None si l'écriture
+        échoue — perdre le journal ne doit pas faire perdre le déploiement.
+        """
+        try:
+            from script.todo.qemu_install_monitor import session_dir
+
+            sur = "".join(
+                c if c.isalnum() or c in "-_." else "_" for c in name
+            )
+            chemin = session_dir() / f"{sur}-create.log"
+            chemin.write_text(out, encoding="utf-8", errors="replace")
+            return chemin
+        except Exception:
+            return None
 
     def _qemu_deploy_jobs_tui(self, jobs, workers):
         """Même chose, en blocs repliables Textual. Renvoie None si textual
