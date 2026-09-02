@@ -344,6 +344,16 @@ requête réseau.
 `f` restreint tous les chiffres au dossier ouvert, et l'élargit de nouveau au
 compte entier.
 
+L'écran s'ouvre sur une **vue d'ensemble calculée en SQL seul** — nombres,
+chiffres par dossier et histogramme — donc il apparaît immédiatement même sur
+une boîte de plusieurs centaines de milliers de messages. Les correspondants
+et les délais de réponse ouvrent chaque colonne scellée : ils ne se calculent
+donc que sur **Entrée**, dans un fil de fond, avec une progression. Le pas de
+l'histogramme se choisit d'après l'étendue réelle de la boîte : vingt ans
+d'archives s'affichent par mois et non en sept mille barres quotidiennes, et
+seules les tranches les plus récentes sont listées — les totaux au-dessus,
+eux, comptent tout, et l'écran annonce combien de tranches il a laissées.
+
 Deux chiffres disent honnêtement ce qu'ils ignorent :
 
 - **Les messages sans date lisible** sont exclus de l'histogramme et comptés

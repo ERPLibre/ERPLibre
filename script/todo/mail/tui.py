@@ -2174,6 +2174,7 @@ def run_tui(
             Binding("w", "bucket_week", t("mail_stats_by_week")),
             Binding("m", "bucket_month", t("mail_stats_by_month")),
             Binding("f", "toggle_folder", t("mail_stats_folder_filter")),
+            Binding("enter", "load_details", t("mail_stats_details")),
         ]
 
         CSS = """
@@ -2186,8 +2187,12 @@ def run_tui(
             self.store = store
             self.folder_id = folder_id
             self.folder_name = folder_name
-            self.bucket = "day"
+            # `None` : le pas se choisit d'après l'étendue de la boîte au
+            # premier affichage. Une fois qu'une touche l'a fixé, il reste.
+            self.bucket = None
             self.restreint = False
+            self.details = None
+            self.calcul_en_cours = False
 
         def compose(self):
             with Vertical():
@@ -2198,18 +2203,25 @@ def run_tui(
             self.refresh_stats()
 
         def refresh_stats(self) -> None:
+            """La vue d'ensemble, et elle seule.
+
+            Uniquement du SQL : ni correspondants ni délais de réponse. Les
+            premiers ouvrent chaque colonne scellée, les seconds joignent la
+            table avec elle-même ; sur une grande boîte ils coûtent des
+            secondes, et les payer avant le premier affichage fige l'écran
+            au moment précis où l'utilisateur attend une réponse.
+            """
             cible = self.folder_id if self.restreint else None
             try:
-                rapport = stats.build_report(
+                apercu = stats.build_overview(
                     self.store, bucket=self.bucket, folder_id=cible
                 )
             except Exception as exc:
-                # Un cache verrouillé ou corrompu ne doit pas laisser un
-                # écran vide sans explication.
                 self.query_one("#stats_body", Static).update(
                     Text(f"{t('mail_stats_error')} {exc}")
                 )
                 return
+            self.bucket = apercu.bucket
             portee = (
                 self.folder_name
                 if self.restreint and self.folder_name
@@ -2221,9 +2233,9 @@ def run_tui(
                     f"   ·   {t(f'mail_stats_by_{self.bucket}')}"
                 )
             )
-            self.query_one("#stats_body", Static).update(self._rendu(rapport))
+            self.query_one("#stats_body", Static).update(self._rendu(apercu))
 
-        def _rendu(self, rapport) -> "Text":
+        def _rendu(self, apercu) -> "Text":
             """Le rapport en texte enrichi.
 
             `Text` et non du balisage : les adresses viennent des messages,
@@ -2236,52 +2248,115 @@ def run_tui(
                 sortie.append(f"\n{t(cle)}\n", style="bold")
 
             sortie.append(
-                f"{t('mail_stats_total')} {rapport.total}"
-                f"   {tui_text.format_size(rapport.total_size)}"
-                f"   {t('mail_stats_unseen')} {rapport.unseen}"
-                f" ({rapport.unseen_share:.0%})\n"
+                f"{t('mail_stats_total')} {apercu.total}"
+                f"   {tui_text.format_size(apercu.total_size)}"
+                f"   {t('mail_stats_unseen')} {apercu.unseen}"
+                f" ({apercu.unseen_share:.0%})\n"
             )
-            if rapport.undated:
-                # Ces messages existent mais n'ont pas de date lisible : les
-                # taire ferait un total qui ne se recoupe pas avec
-                # l'histogramme.
+            if apercu.undated:
                 sortie.append(
-                    f"{t('mail_stats_undated')} {rapport.undated}\n",
+                    f"{t('mail_stats_undated')} {apercu.undated}\n",
                     style="dim",
                 )
 
             titre("mail_stats_volume")
-            for etiquette, nombre, barre in rapport.volume:
+            if apercu.tronque:
+                # Le total porte sur TOUT ; seule la liste est coupée. Le
+                # taire ferait un histogramme qui ne se recoupe pas avec le
+                # nombre affiché juste au-dessus.
+                sortie.append(
+                    f"  {t('mail_stats_truncated')} {apercu.tronque}\n",
+                    style="dim",
+                )
+            for etiquette, nombre, barre in apercu.volume:
                 sortie.append(f"  {etiquette}  {nombre:>5}  {barre}\n")
 
             titre("mail_stats_folders")
-            for dossier in rapport.folders:
+            for dossier in apercu.folders:
                 sortie.append(
                     f"  {dossier['display']}  {dossier['count']}"
                     f"  ({dossier['unseen']} {t('mail_stats_unseen')})"
                     f"  {tui_text.format_size(dossier['size'])}\n"
                 )
 
-            titre("mail_stats_senders")
-            for adresse, nombre in rapport.senders:
-                sortie.append(f"  {nombre:>5}  {adresse}\n")
+            sortie.append_text(self._rendu_details())
+            return sortie
 
-            titre("mail_stats_recipients")
-            for adresse, nombre in rapport.recipients:
-                sortie.append(f"  {nombre:>5}  {adresse}\n")
+        def _rendu_details(self) -> "Text":
+            """Les correspondants et les délais, ou l'invitation à les
+            calculer. Ils balaient toute la boîte : on ne les impose pas à
+            qui vient seulement regarder le volume."""
+            sortie = Text()
+            if self.calcul_en_cours:
+                sortie.append(f"\n{t('mail_stats_computing')}\n", style="dim")
+                return sortie
+            if self.details is None:
+                sortie.append(
+                    f"\n{t('mail_stats_details_hint')}\n", style="dim"
+                )
+                return sortie
 
-            titre("mail_stats_reply")
-            if rapport.reply_count:
+            sortie.append(f"\n{t('mail_stats_senders')}\n", style="bold")
+            for adresse, nombre in self.details.senders:
+                sortie.append(f"  {nombre:>5}  {adresse}\n")
+            sortie.append(f"\n{t('mail_stats_recipients')}\n", style="bold")
+            for adresse, nombre in self.details.recipients:
+                sortie.append(f"  {nombre:>5}  {adresse}\n")
+            sortie.append(f"\n{t('mail_stats_reply')}\n", style="bold")
+            if self.details.reply_count:
                 sortie.append(
                     f"  {t('mail_stats_reply_median')} "
-                    f"{stats.humain(rapport.reply_median)}"
-                    f"  ({rapport.reply_count})\n"
+                    f"{stats.humain(self.details.reply_median)}"
+                    f"  ({self.details.reply_count})\n"
                 )
             else:
-                # Les colonnes de fil n'existent que depuis la v2 : un cache
-                # rempli avant ne porte rien tant qu'il n'a pas resynchronisé.
                 sortie.append(f"  {t('mail_stats_reply_none')}\n", style="dim")
             return sortie
+
+        def action_load_details(self) -> None:
+            """Lance le balayage dans un fil de travail.
+
+            Sur le fil de l'interface, ces secondes gèleraient la fenêtre —
+            y compris Échap, donc sans moyen d'en sortir.
+            """
+            if self.calcul_en_cours:
+                return
+            self.calcul_en_cours = True
+            self.refresh_stats()
+            self.run_worker(self._calculer_details, thread=True)
+
+        def _calculer_details(self) -> None:
+            cible = self.folder_id if self.restreint else None
+
+            def progression(faits, total):
+                self.app.call_from_thread(self._dire_progression, faits, total)
+
+            try:
+                details = stats.build_details(
+                    self.store, folder_id=cible, progress=progression
+                )
+            except Exception as exc:
+                self.app.call_from_thread(self._details_en_erreur, exc)
+                return
+            self.app.call_from_thread(self._details_prets, details)
+
+        def _dire_progression(self, faits, total) -> None:
+            part = f"{faits}/{total}" if total else str(faits)
+            self.query_one("#stats_head", Static).update(
+                Text(f"{t('mail_stats_computing')} {part}")
+            )
+
+        def _details_prets(self, details) -> None:
+            self.details = details
+            self.calcul_en_cours = False
+            self.refresh_stats()
+
+        def _details_en_erreur(self, exc) -> None:
+            self.calcul_en_cours = False
+            self.details = None
+            self.query_one("#stats_head", Static).update(
+                Text(f"{t('mail_stats_error')} {exc}")
+            )
 
         def _set_bucket(self, bucket) -> None:
             self.bucket = bucket
@@ -2298,6 +2373,10 @@ def run_tui(
 
         def action_toggle_folder(self) -> None:
             self.restreint = not self.restreint
+            # Les détails portaient sur l'autre portée : les garder
+            # afficherait des correspondants qui ne sont plus ceux du
+            # filtre annoncé juste au-dessus.
+            self.details = None
             self.refresh_stats()
 
         def action_close_stats(self) -> None:
