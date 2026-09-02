@@ -19,9 +19,13 @@ class QemuInstallMixin:
     # Sans le groupe, virt-install retombe sur qemu:///session où « default »
     # n'existe pas : la VM échoue alors que tous les paquets sont installés.
     # L'ancien one-liner finissait par « || true » et masquait ses erreurs.
+    # Le redémarrage est consenti ICI et nulle part ailleurs : la VM vient
+    # d'être créée, personne ne la regarde, et le noyau fraîchement installé
+    # doit être chargé avant que libvirt puisse monter virbr0. Sur un poste de
+    # travail, la question se pose — voir _qemu_ensure_tools.
     _QEMU_QEMU_PKGS = (
         "./script/qemu/deploy_qemu.py --setup-host --assume-yes"
-        " --reboot-if-needed"
+        " --reboot-if-needed --assume-yes-reboot"
     )
 
     def _qemu_ask_prod(self):

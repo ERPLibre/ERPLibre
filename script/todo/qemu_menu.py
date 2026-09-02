@@ -253,7 +253,14 @@ class QemuMenuMixin:
             input(t("Install the QEMU/libvirt tools now? (Y/n): "))
         ):
             return False
-        cmd = f"sudo {self._QEMU_QEMU_PKGS}"
+        # Sans --assume-yes-reboot : accepter d'installer des paquets n'est
+        # pas accepter de perdre ce qui tourne sur la machine. Quand le noyau
+        # a été remplacé depuis le démarrage, deploy_qemu.py pose la question
+        # sur /dev/tty, et un refus laisse l'hôte avec ses paquets posés.
+        cmd = (
+            "sudo ./script/qemu/deploy_qemu.py --setup-host --assume-yes"
+            " --reboot-if-needed"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
         if shutil.which("virsh"):

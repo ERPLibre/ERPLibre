@@ -563,9 +563,7 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         # de cache fait qu'un déploiement Debian 13 et un Proxmox se
         # PARTAGENT le téléchargement (325 Mio) au lieu d'en faire deux. Sans
         # cette branche, le repli de fin nommait l'image « fedora-cloud-9 ».
-        return (
-            f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
-        )
+        return f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
     if distro == "opensuse":
@@ -1072,6 +1070,7 @@ def setup_host(
     assume_yes: bool,
     no_install: bool,
     reboot_if_needed: bool = False,
+    assume_yes_reboot: bool = False,
 ) -> None:
     """Prépare l'hôte à faire tourner des VM : paquets, démon, groupe, réseau.
 
@@ -1114,14 +1113,25 @@ def setup_host(
         # monte tout seul avec les modules du nouveau noyau. Un seul reboot
         # suffit donc à rendre l'hôte utilisable, sans repasser par ici.
         if reboot_if_needed:
-            print(
-                "\n↻ Redémarrage programmé (dans quelques secondes) : c'est la"
-                " SEULE façon de retrouver les modules du noyau.\n"
-                "  Au retour, le réseau « default » démarrera seul"
-                " (autostart déjà actif)."
+            # Le consentement à installer des paquets ne vaut PAS consentement
+            # à redémarrer : assume_yes couvre pacman, jamais la machine de
+            # celui qui l'a tapé. Une provision sans personne devant l'écran
+            # passe --assume-yes-reboot, qui dit explicitement l'autre chose.
+            if assume_yes_reboot or prompt_yes_no(
+                "\n↻ Redémarrer MAINTENANT ? C'est la seule façon de"
+                " retrouver les modules du noyau. Au retour, le réseau"
+                " « default » démarrera seul (autostart déjà actif).",
+                default=False,
+            ):
+                print("\n↻ Redémarrage programmé (dans quelques secondes).")
+                schedule_reboot(runner)
+                return
+            sys.exit(
+                "Erreur : l'hôte n'est pas prêt, redémarrage refusé.\n"
+                f"  {stale}\n"
+                "  Redémarrez quand vous le voudrez, puis relancez"
+                " --setup-host."
             )
-            schedule_reboot(runner)
-            return
         sys.exit(f"Erreur : l'hôte n'est pas prêt.\n  {stale}")
 
     if not (ok and active):
@@ -2468,18 +2478,23 @@ def _ip_taken(ip: str) -> bool:
     except (OSError, subprocess.SubprocessError):
         pass
     try:
-        if subprocess.run(
-            ["ping", "-c", "1", "-W", "1", ip],
-            capture_output=True,
-            timeout=5,
-        ).returncode == 0:
+        if (
+            subprocess.run(
+                ["ping", "-c", "1", "-W", "1", ip],
+                capture_output=True,
+                timeout=5,
+            ).returncode
+            == 0
+        ):
             return True
     except (OSError, subprocess.SubprocessError):
         pass
     return _ip_reachable(ip, port=22, timeout=1.5)
 
 
-def static_net_plan(net: str | None, use_sudo: bool, name: str) -> dict[str, str] | None:
+def static_net_plan(
+    net: str | None, use_sudo: bool, name: str
+) -> dict[str, str] | None:
     """Adresse fixe libre pour une VM installée par debian-installer.
 
     L'initrd s390x ne contient QUE « netcfg-static » : le journal de d-i
@@ -3019,9 +3034,11 @@ def virt_install(
         # VM que personne ne regarde, et il ne reste RIEN à lire ensuite —
         # exactement « l'installation a échoué, pas de sortie pertinente ».
         # Le fichier, lui, survit à l'arrêt du domaine.
-        f"pty,target_type={console_target},log.file={console_log}"
-        if installer
-        else f"pty,target_type={console_target}",
+        (
+            f"pty,target_type={console_target},log.file={console_log}"
+            if installer
+            else f"pty,target_type={console_target}"
+        ),
         # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
         # virsh de piloter la VM SANS réseau (ex. étendre le FS invité après
         # un redimensionnement de disque). Inoffensif si l'agent est absent.
@@ -3495,8 +3512,15 @@ def build_parser() -> argparse.ArgumentParser:
     g_run.add_argument(
         "--reboot-if-needed",
         action="store_true",
-        help="Avec --setup-host : redémarre si le noyau a été mis à jour "
-        "depuis le démarrage (sinon libvirt ne peut pas créer virbr0).",
+        help="Avec --setup-host : PROPOSE un redémarrage si le noyau a été "
+        "mis à jour depuis le démarrage (sinon libvirt ne peut pas créer "
+        "virbr0). La question est posée sur /dev/tty et vaut non par défaut.",
+    )
+    g_run.add_argument(
+        "--assume-yes-reboot",
+        action="store_true",
+        help="Redémarre sans poser la question. Réservé à une provision "
+        "sans personne devant l'écran ; --assume-yes ne l'implique pas.",
     )
     g_run.add_argument(
         "--list-images",
@@ -3555,6 +3579,7 @@ def main() -> None:
             args.assume_yes,
             args.no_install_deps,
             args.reboot_if_needed,
+            args.assume_yes_reboot,
         )
         return
 
@@ -3707,11 +3732,15 @@ def main() -> None:
             network_name(args.network), not args.dry_run, args.name
         )
         if static:
-            print(f"  Adresse fixe retenue : {static['ip']}"
-                  f" (passerelle {static['gateway']})")
+            print(
+                f"  Adresse fixe retenue : {static['ip']}"
+                f" (passerelle {static['gateway']})"
+            )
         else:
-            print("  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
-                  " la question à l'écran et l'installation s'arrêtera.")
+            print(
+                "  ⚠ Aucune adresse fixe déterminée : netcfg-static posera"
+                " la question à l'écran et l'installation s'arrêtera."
+            )
         build_installer_initrd(
             build_preseed(args, pw_hash, ssh_keys, static),
             initrd_src,
