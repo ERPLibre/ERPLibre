@@ -3068,6 +3068,12 @@ class TODO(
                     " command"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Todo Generate Code - Code by the OCA rules at high"
+                    " effort"
+                )
+            },
             {"prompt_description": t("Show installed custom commands")},
         ]
         help_info = self.fill_help_info(choices)
@@ -3101,6 +3107,11 @@ class TODO(
                     "template_claude_commands_todo_add_command.md",
                 )
             elif status == "4":
+                self._setup_claude_command(
+                    "todo_generate_code",
+                    "template_claude_commands_todo_generate_code.md",
+                )
+            elif status == "5":
                 self._list_claude_commands()
             else:
                 print(t("Command not found !"))
@@ -3232,6 +3243,9 @@ class TODO(
                 "template_claude_commands_git_prepare_merge.md"
             ),
             "todo_add_command": "template_claude_commands_todo_add_command.md",
+            "todo_generate_code": (
+                "template_claude_commands_todo_generate_code.md"
+            ),
             "todo_plan_max": "template_claude_commands_todo_plan_max.md",
         }
         for nom, gabarit in sorted(gabarits.items()):

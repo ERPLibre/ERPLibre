@@ -1187,6 +1187,12 @@ TRANSLATIONS = {
         ),
         "en": "Todo Add Command + Plan Max - Plan and add a todo.py command",
     },
+    "Todo Generate Code - Code by the OCA rules at high effort": {
+        "fr": (
+            "Todo Generate Code - Coder selon les règles OCA, effort élevé"
+        ),
+        "en": "Todo Generate Code - Code by the OCA rules at high effort",
+    },
     "Enter your full name: ": {
         "fr": "Entrez votre nom complet : ",
         "en": "Enter your full name: ",

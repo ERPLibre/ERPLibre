@@ -485,6 +485,75 @@ class TestSetupClaudeCommit(unittest.TestCase):
         mock_makedirs.assert_called_once()
 
 
+class TestClaudeCommandTemplates(unittest.TestCase):
+    """Chaque commande proposée par le menu doit avoir son gabarit.
+
+    Un nom de gabarit fautif ne se voit qu'à l'exécution, au moment où le
+    déploiement échoue devant l'utilisateur : rien ne relie le littéral passé
+    à `_setup_claude_command` au fichier de `conf/`.
+    """
+
+    @staticmethod
+    def _deployed_templates():
+        """Les gabarits nommés dans les appels à `_setup_claude_command`."""
+        import ast
+
+        source = Path("script/todo/todo.py").read_text(encoding="utf-8")
+        found = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            attr = getattr(node.func, "attr", None)
+            if attr != "_setup_claude_command":
+                continue
+            # (nom_de_commande, nom_de_gabarit) : les deux sont des littéraux,
+            # sans quoi le test ne peut rien affirmer.
+            args = [
+                a.value
+                for a in node.args
+                if isinstance(a, ast.Constant) and isinstance(a.value, str)
+            ]
+            if len(args) >= 2:
+                found.append(args[1])
+        return found
+
+    def test_every_menu_template_exists(self):
+        templates = self._deployed_templates()
+        self.assertGreaterEqual(len(templates), 4, templates)
+        for name in templates:
+            with self.subTest(template=name):
+                self.assertTrue(
+                    os.path.isfile(os.path.join("conf", name)),
+                    f"conf/{name} est nommé par le menu et n'existe pas",
+                )
+
+    def test_every_template_declares_its_own_name(self):
+        """Le `name:` du frontmatter donne le nom de la commande `/…` ; un
+        gabarit qui en déclare un autre déploie un fichier dont le contenu
+        parle d'une commande différente."""
+        source = Path("script/todo/todo.py").read_text(encoding="utf-8")
+        import ast
+
+        pairs = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            if getattr(node.func, "attr", None) != "_setup_claude_command":
+                continue
+            args = [
+                a.value
+                for a in node.args
+                if isinstance(a, ast.Constant) and isinstance(a.value, str)
+            ]
+            if len(args) >= 2:
+                pairs.append((args[0], args[1]))
+        self.assertTrue(pairs)
+        for command, template in pairs:
+            with self.subTest(command=command):
+                text = Path("conf", template).read_text(encoding="utf-8")
+                self.assertIn(f"name: {command}\n", text)
+
+
 class TestClaudePlugins(unittest.TestCase):
     """Le menu des plugins Claude Code.
 
