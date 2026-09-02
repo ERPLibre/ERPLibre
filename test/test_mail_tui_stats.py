@@ -275,3 +275,140 @@ class TestMenuEntry(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestScrolling(StatsScreenCase):
+    """Le contenu doit DÉBORDER pour qu'il y ait quelque chose à faire
+    défiler : avec `height: 1fr` sur le texte, la hauteur virtuelle du
+    conteneur égalait la hauteur visible et le texte était tronqué, pas
+    débordant — les touches ne faisaient rien."""
+
+    def remplir_beaucoup(self):
+        self.store.upsert_messages(
+            self.inbox,
+            [
+                MessageMeta(
+                    uid=uid,
+                    date=DEPART + uid * JOUR,
+                    size=10,
+                    flags="",
+                    msgid=f"<{uid}@e.ca>",
+                    frm="ana@e.ca",
+                    to="moi@x.ca",
+                    subject="s",
+                    snippet="",
+                )
+                for uid in range(1, 200)
+            ],
+        )
+
+    async def test_the_content_overflows_its_window(self):
+        from textual.containers import VerticalScroll
+
+        self.remplir_beaucoup()
+        app = await self._app()
+        async with app.run_test(size=(100, 25)) as pilot:
+            await self._ouvrir(pilot, app)
+            zone = app.screen.query_one("#stats_scroll", VerticalScroll)
+            self.assertGreater(zone.virtual_size.height, zone.size.height)
+
+    async def test_the_scroll_area_holds_the_focus_on_open(self):
+        """Sans ça le focus va à la première liste déroulante : les flèches
+        la parcourent au lieu de faire défiler, et `enter` la déplie au lieu
+        de lancer les détails."""
+        self.remplir_beaucoup()
+        app = await self._app()
+        async with app.run_test(size=(100, 25)) as pilot:
+            await self._ouvrir(pilot, app)
+            self.assertEqual(app.screen.focused.id, "stats_scroll")
+
+    async def test_page_down_moves_the_view(self):
+        from textual.containers import VerticalScroll
+
+        self.remplir_beaucoup()
+        app = await self._app()
+        async with app.run_test(size=(100, 25)) as pilot:
+            await self._ouvrir(pilot, app)
+            zone = app.screen.query_one("#stats_scroll", VerticalScroll)
+            depart = zone.scroll_offset.y
+            await pilot.press("pagedown")
+            await pilot.pause()
+            self.assertGreater(zone.scroll_offset.y, depart)
+
+
+class TestSelectBoxes(StatsScreenCase):
+    async def test_the_three_lists_are_there(self):
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            for ident in ("stats_pas", "stats_periode", "stats_portee"):
+                self.assertTrue(app.screen.query(f"#{ident}"))
+
+    async def test_choosing_a_step_changes_the_histogram(self):
+        from textual.widgets import Select
+
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            app.screen.query_one("#stats_pas", Select).value = "year"
+            await pilot.pause()
+            self.assertIn("année", self._entete(app))
+
+    async def test_a_key_keeps_the_list_in_step_with_the_screen(self):
+        """Deux chemins vers un seul réglage : sans mise à jour croisée, la
+        liste annoncerait un pas que l'écran n'utilise pas."""
+        from textual.widgets import Select
+
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            await pilot.press("m")
+            await pilot.pause()
+            self.assertEqual(
+                app.screen.query_one("#stats_pas", Select).value, "month"
+            )
+
+    async def test_a_period_narrows_what_is_counted(self):
+        """Les messages hors de la fenêtre choisie sortent du total."""
+        import time as horloge
+
+        from textual.widgets import Select
+
+        maintenant = int(horloge.time())
+        self.store.upsert_messages(
+            self.inbox,
+            [
+                MessageMeta(
+                    uid=90,
+                    date=maintenant - 5 * JOUR,
+                    size=10,
+                    flags="",
+                    msgid="<recent@e.ca>",
+                    frm="ana@e.ca",
+                    to="moi@x.ca",
+                    subject="s",
+                    snippet="",
+                ),
+                MessageMeta(
+                    uid=91,
+                    date=maintenant - 900 * JOUR,
+                    size=10,
+                    flags="",
+                    msgid="<vieux@e.ca>",
+                    frm="ana@e.ca",
+                    to="moi@x.ca",
+                    subject="s",
+                    snippet="",
+                ),
+            ],
+        )
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            app.screen.query_one("#stats_periode", Select).value = "month"
+            await pilot.pause()
+            corps = self._corps(app)
+            self.assertIn("Messages : 1", corps)

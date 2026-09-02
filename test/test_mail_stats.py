@@ -263,7 +263,10 @@ class TestLargeMailbox(StatsCase):
         an = 365 * 86400
         self.assertEqual(choisir_bucket(30 * 86400), "day")
         self.assertEqual(choisir_bucket(2 * an), "week")
-        self.assertEqual(choisir_bucket(19 * an), "month")
+        self.assertEqual(choisir_bucket(5 * an), "month")
+        # Dix-neuf ans font 228 mois, au-delà du plafond : l'année est le
+        # seul pas qui tienne dans un écran parcourable.
+        self.assertEqual(choisir_bucket(19 * an), "year")
 
     def test_an_empty_span_still_picks_something(self):
         from script.todo.mail.stats import choisir_bucket
