@@ -1,4 +1,11 @@
-# Code Generator
+---
+name: erplibre-code-generator
+description: >-
+  Génération de modules Odoo dans ERPLibre : créer un module, cloner un
+  module existant, où vivent le moteur et les gabarits, et l'hygiène des
+  commentaires du code produit. À charger avant de générer ou de cloner
+  un module.
+---
 
 ERPLibre inclut un système de génération de modules Odoo :
 - `script/code_generator/new_project.py` — Créer un nouveau module
@@ -20,26 +27,9 @@ ou de base y arrive tout seul.
 
 ## Le nettoyage au fur et à mesure
 
-Rien ne se nettoie en une passe : on corrige les commentaires du fichier qu'on
-touche, au moment où on le touche. Deux outils le rappellent.
-
-Le hook `pre-commit` liste ce qui est à relire dans les fichiers indexés,
-SANS bloquer le commit :
+La règle et ses deux garde-fous sont dans `.claude/rules/04-code-conventions.md`. Une invocation lui manque, utile
+sur du code généré en masse : elle ne relève que les trouvailles.
 
 ```bash
-git config core.hooksPath script/git/hooks   # une fois par clone
-```
-
-L'outil se lance aussi à la main, sur un fichier, un répertoire ou l'index :
-
-```bash
-python3 script/analyse/check_comment_hygiene.py script/todo/todo.py
-python3 script/analyse/check_comment_hygiene.py --staged
 python3 script/analyse/check_comment_hygiene.py script --identifying-only
 ```
-
-🔴 `identifiant` — adresse, courriel, chemin de compte : à retirer.
-🟡 `récit` — témoignage, date, première personne : à RELIRE, l'outil ne
-tranche pas. Un fait durable reste ; l'incident
-où on l'a observé part. Codes de sortie : 0 rien, 1 des trouvailles, 2 l'outil
-a échoué.

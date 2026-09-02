@@ -19,6 +19,9 @@ Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.6.0)
   `ls -d .venv.odoo*` plutôt que de le composer de tête
 - Les scripts ERPLibre utilisent `.venv.erplibre/bin/python`
 - Le Makefile principal inclut des fragments depuis `conf/make.*.Makefile`
+- Un module cloné depuis un module existant hérite de ses commentaires
+  et de ses docstrings : les relire avant de committer, un nom de client
+  ou de base y arrive tout seul
 - Les fichiers privés vont dans `private/`. C'est le SEUL endroit qui a le
   droit de porter une donnée de client — nom, base, machine, adresse,
   chiffres. Il peut être commité, mais seulement sur un dépôt privé : sur
@@ -29,39 +32,12 @@ Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.6.0)
   `.claude/rules/04-code-conventions.md`
 - La DB PostgreSQL par défaut est sur le port 5432, mot de passe admin : `admin`
 - Port Odoo par défaut : 8069, longpolling : 8072
-- Pour les commits : suivre le format `[TYPE] description` (ex: `[FIX]`, `[UPD]`, `[ADD]`, `[REM]`)
 - Pour la documentation : modifier les `.base.md`, jamais les `.md` ou `.fr.md` directement
 - Outil mmg disponible via `source .venv.erplibre/bin/activate && mmg`
 - Les tests qui créent de VRAIES machines vivent dans `long_test/` et non dans
   `test/` : le lanceur unitaire balaie `test/test_*.py` et doit rester lançable
   en quelques secondes, même sans virtualisation. Ils durent des heures et se
   défont par `--detruire` — voir `long_test/README.md`
-
-## Core Principles
-
-- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
-- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
-- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
-
-## Règles détaillées
-
-Les instructions détaillées sont dans `.claude/rules/` :
-
-| Fichier | Contenu |
-|---------|---------|
-| `01-versions.md` | Versions Odoo supportées, où lit-on la correspondance |
-| `04-code-conventions.md` | Où sont les configs de format, conventions Git |
-| `06-code-generator.md` | Génération de modules Odoo |
-| `07-documentation.md` | Interdit : ne pas éditer les `.md` générés |
-| `08-deployment.md` | Docker, systemd, nginx, SSL, DNS |
-| `09-workflow.md` | Workflow orchestration + task management |
-
-Chargées à la demande (`.claude/skills/`) :
-
-| Skill | Contenu |
-|-------|---------|
-| `erplibre-commands` | Commandes make et scripts : versions, run, tests, DB, Docker, repo |
-| `erplibre-doc-i18n` | Mode d'emploi mmg (`.base.md`) et i18n du CLI TODO |
 
 L'arborescence et la liste des venvs ne sont plus documentées : `ls` et
 `ls -d .venv.*` en donnent l'état réel, la doc dérivait de la réalité.
