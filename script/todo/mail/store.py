@@ -609,6 +609,7 @@ class Store:
         "day": "%Y-%m-%d",
         "week": "%Y-S%W",
         "month": "%Y-%m",
+        "year": "%Y",
     }
 
     def _filtre(self, folder_id, since, until):
@@ -665,7 +666,7 @@ class Store:
         )
 
     @_locked
-    def stats_span(self, folder_id=None) -> tuple:
+    def stats_span(self, folder_id=None, since=None) -> tuple:
         """(nombre de messages datés, date la plus ancienne, la plus récente).
 
         Trois entiers rendus par une seule requête : de quoi choisir la

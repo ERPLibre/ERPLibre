@@ -319,8 +319,10 @@ from the local cache, so it answers offline, with no password and no request.
 - **Reply delay** — the median time between a message and the reply that
   answers it, joined through hashed `Message-ID`s.
 
-`f` narrows every figure to the folder currently open, and again to widen it
-back to the whole account.
+Three drop-downs sit above the figures — step (day, week, month, year),
+period (all time, last 30 days, last 12 months, last 5 years) and scope (all
+folders or the open one). The `d`, `w`, `m` and `f` keys do the same thing and
+keep the lists in step with the screen.
 
 The screen opens on an **overview computed in SQL alone** — counts, per-folder
 figures and the histogram — so it appears at once even on a mailbox holding

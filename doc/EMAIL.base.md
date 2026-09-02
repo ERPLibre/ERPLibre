@@ -663,8 +663,10 @@ from the local cache, so it answers offline, with no password and no request.
 - **Reply delay** — the median time between a message and the reply that
   answers it, joined through hashed `Message-ID`s.
 
-`f` narrows every figure to the folder currently open, and again to widen it
-back to the whole account.
+Three drop-downs sit above the figures — step (day, week, month, year),
+period (all time, last 30 days, last 12 months, last 5 years) and scope (all
+folders or the open one). The `d`, `w`, `m` and `f` keys do the same thing and
+keep the lists in step with the screen.
 
 The screen opens on an **overview computed in SQL alone** — counts, per-folder
 figures and the histogram — so it appears at once even on a mailbox holding
@@ -694,8 +696,11 @@ requête réseau.
 - **Délai de réponse** — la médiane entre un message et la réponse qui lui
   répond, reliés par des empreintes de `Message-ID`.
 
-`f` restreint tous les chiffres au dossier ouvert, et l'élargit de nouveau au
-compte entier.
+Trois listes déroulantes surmontent les chiffres — le pas (jour, semaine,
+mois, année), la période (depuis toujours, 30 derniers jours, 12 derniers
+mois, 5 dernières années) et la portée (tous les dossiers ou celui qui est
+ouvert). Les touches `d`, `w`, `m` et `f` font la même chose et gardent les
+listes accordées à l'écran.
 
 L'écran s'ouvre sur une **vue d'ensemble calculée en SQL seul** — nombres,
 chiffres par dossier et histogramme — donc il apparaît immédiatement même sur
