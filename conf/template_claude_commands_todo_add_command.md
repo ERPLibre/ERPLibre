@@ -17,6 +17,14 @@ allowed-tools:
 - Current todo.json sections: !`python3 -c "import json; d=json.load(open('script/todo/todo.json')); print('\n'.join(d.keys()))"`
 - Current i18n keys count: !`grep -c fr.: script/todo/todo_i18n.py`
 
+## Planning first
+
+`/todo_plan_max` plans one entry at maximum effort: it asks what forks the
+design, uses the superpowers plugin when it is installed, and writes the
+specification to `tasks/todo.md`. Both commands are deployed together by
+`TODO › Execute › GPT code › Claude configs`. When such a specification
+exists, implement it rather than re-deciding the design here.
+
 ## Architecture Reference
 
 ### Files to modify

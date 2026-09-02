@@ -3064,7 +3064,8 @@ class TODO(
             },
             {
                 "prompt_description": t(
-                    "Todo Add Command - Add a command to todo.py menu"
+                    "Todo Add Command + Plan Max - Plan and add a todo.py"
+                    " command"
                 )
             },
             {"prompt_description": t("Show installed custom commands")},
@@ -3088,6 +3089,13 @@ class TODO(
                     "template_claude_commands_git_prepare_merge.md",
                 )
             elif status == "3":
+                # Les deux gabarits vont ensemble : /todo_plan_max produit la
+                # spécification que /todo_add_command implémente, et l'un sans
+                # l'autre laisse la moitié de la chaîne.
+                self._setup_claude_command(
+                    "todo_plan_max",
+                    "template_claude_commands_todo_plan_max.md",
+                )
                 self._setup_claude_command(
                     "todo_add_command",
                     "template_claude_commands_todo_add_command.md",
@@ -3224,6 +3232,7 @@ class TODO(
                 "template_claude_commands_git_prepare_merge.md"
             ),
             "todo_add_command": "template_claude_commands_todo_add_command.md",
+            "todo_plan_max": "template_claude_commands_todo_plan_max.md",
         }
         for nom, gabarit in sorted(gabarits.items()):
             etat = self._claude_command_state(

@@ -1180,9 +1180,12 @@ TRANSLATIONS = {
         "fr": "Git prepare merge - Commande de préparation merge git",
         "en": "Git prepare merge - Git merge preparation command",
     },
-    "Todo Add Command - Add a command to todo.py menu": {
-        "fr": "Todo Add Command - Ajouter une commande au menu todo.py",
-        "en": "Todo Add Command - Add a command to todo.py menu",
+    "Todo Add Command + Plan Max - Plan and add a todo.py command": {
+        "fr": (
+            "Todo Add Command + Plan Max - Planifier et ajouter une"
+            " commande au menu todo.py"
+        ),
+        "en": "Todo Add Command + Plan Max - Plan and add a todo.py command",
     },
     "Enter your full name: ": {
         "fr": "Entrez votre nom complet : ",
