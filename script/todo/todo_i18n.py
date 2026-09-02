@@ -10180,6 +10180,24 @@ TRANSLATIONS = {
         "en": "no reply linked — resynchronise for messages received"
         " before this version",
     },
+    "mail_stats_details": {
+        "fr": "Détails (balaie toute la boîte)",
+        "en": "Details (scans the whole mailbox)",
+    },
+    "mail_stats_details_hint": {
+        "fr": "Entrée : calculer les correspondants et les délais de"
+        " réponse — un balayage complet de la boîte.",
+        "en": "Enter: compute correspondents and reply delays — a full"
+        " scan of the mailbox.",
+    },
+    "mail_stats_computing": {
+        "fr": "Calcul en cours…",
+        "en": "Computing…",
+    },
+    "mail_stats_truncated": {
+        "fr": "tranches plus anciennes non affichées :",
+        "en": "older slices not shown:",
+    },
     "mail_stats_error": {
         "fr": "statistiques indisponibles :",
         "en": "statistics unavailable:",

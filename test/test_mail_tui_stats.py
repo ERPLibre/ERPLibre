@@ -109,6 +109,13 @@ class StatsScreenCase(unittest.IsolatedAsyncioTestCase):
         await pilot.press("i")
         await pilot.pause()
 
+    async def _details(self, pilot, app):
+        """Ouvre puis demande les détails, et attend le fil de travail."""
+        await self._ouvrir(pilot, app)
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
     def _corps(self, app):
         from textual.widgets import Static
 
@@ -147,14 +154,30 @@ class TestOpensAndCloses(StatsScreenCase):
 
 
 class TestWhatItShows(StatsScreenCase):
-    async def test_the_counts_and_the_histogram_are_there(self):
+    async def test_the_overview_shows_counts_and_the_histogram(self):
         self.remplir()
         app = await self._app()
         async with app.run_test() as pilot:
             await self._ouvrir(pilot, app)
-            corps = self._corps(app)
-            self.assertIn("█", corps)
-            self.assertIn("ana@e.ca", corps)
+            self.assertIn("█", self._corps(app))
+
+    async def test_the_overview_does_not_scan_the_mailbox(self):
+        """La propriété qui rend l'écran utilisable sur une grande boîte :
+        les correspondants ouvrent chaque colonne scellée, et les calculer
+        avant le premier affichage fige l'écran. Ils n'apparaissent
+        qu'après demande."""
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            self.assertNotIn("ana@e.ca", self._corps(app))
+
+    async def test_enter_computes_the_correspondents(self):
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._details(pilot, app)
+            self.assertIn("ana@e.ca", self._corps(app))
 
     async def test_a_cache_without_threads_says_so(self):
         """Les colonnes de fil datent de la v2 : un cache rempli avant n'a
@@ -178,7 +201,7 @@ class TestWhatItShows(StatsScreenCase):
         )
         app = await self._app()
         async with app.run_test() as pilot:
-            await self._ouvrir(pilot, app)
+            await self._details(pilot, app)
             self.assertIn("resynchronis", self._corps(app))
 
 
@@ -191,7 +214,7 @@ class TestUntrustedAddresses(StatsScreenCase):
         self.remplir(frm="Pub <a=b@e.ca>")
         app = await self._app()
         async with app.run_test() as pilot:
-            await self._ouvrir(pilot, app)
+            await self._details(pilot, app)
             self.assertEqual(type(app.screen).__name__, "StatsScreen")
             self.assertIn("a=b@e.ca", self._corps(app))
 
@@ -205,6 +228,19 @@ class TestFilters(StatsScreenCase):
             await pilot.press("m")
             await pilot.pause()
             self.assertIn("mois", self._entete(app))
+
+    async def test_changing_the_scope_drops_stale_details(self):
+        """Les détails portaient sur l'autre portée : les garder
+        afficherait des correspondants qui ne sont plus ceux du filtre
+        annoncé juste au-dessus."""
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._details(pilot, app)
+            self.assertIn("ana@e.ca", self._corps(app))
+            await pilot.press("f")
+            await pilot.pause()
+            self.assertNotIn("ana@e.ca", self._corps(app))
 
     async def test_f_restricts_to_the_open_folder_and_back(self):
         self.remplir()
