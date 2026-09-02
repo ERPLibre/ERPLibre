@@ -666,6 +666,16 @@ from the local cache, so it answers offline, with no password and no request.
 `f` narrows every figure to the folder currently open, and again to widen it
 back to the whole account.
 
+The screen opens on an **overview computed in SQL alone** — counts, per-folder
+figures and the histogram — so it appears at once even on a mailbox holding
+hundreds of thousands of messages. Correspondents and reply delays open every
+sealed column and are therefore computed only on **Enter**, in a background
+thread with a progress count. The histogram step is chosen from the span the
+mailbox actually covers: twenty years of archives are shown by month, not as
+seven thousand daily bars, and only the most recent slices are listed — the
+totals above them still count everything, and the screen says how many slices
+it left out.
+
 <!-- [fr] -->
 ## Statistiques
 
@@ -686,6 +696,16 @@ requête réseau.
 
 `f` restreint tous les chiffres au dossier ouvert, et l'élargit de nouveau au
 compte entier.
+
+L'écran s'ouvre sur une **vue d'ensemble calculée en SQL seul** — nombres,
+chiffres par dossier et histogramme — donc il apparaît immédiatement même sur
+une boîte de plusieurs centaines de milliers de messages. Les correspondants
+et les délais de réponse ouvrent chaque colonne scellée : ils ne se calculent
+donc que sur **Entrée**, dans un fil de fond, avec une progression. Le pas de
+l'histogramme se choisit d'après l'étendue réelle de la boîte : vingt ans
+d'archives s'affichent par mois et non en sept mille barres quotidiennes, et
+seules les tranches les plus récentes sont listées — les totaux au-dessus,
+eux, comptent tout, et l'écran annonce combien de tranches il a laissées.
 
 <!-- [en] -->
 Two figures are honest about what they cannot know:

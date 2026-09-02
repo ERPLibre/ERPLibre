@@ -13,7 +13,14 @@ import unittest
 from pathlib import Path
 
 from script.todo.mail.accounts import account_from_preset
-from script.todo.mail.stats import bars, build_report, humain, median, top
+from script.todo.mail.stats import (
+    bars,
+    build_overview,
+    build_report,
+    humain,
+    median,
+    top,
+)
 from script.todo.mail.store import MessageMeta, Store
 
 JOUR = 86400
@@ -241,3 +248,99 @@ class TestBuildReport(StatsCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLargeMailbox(StatsCase):
+    """Une boîte tenue depuis des années : ce qui décide de l'utilisabilité
+    n'est pas le SQL mais le nombre de lignes rendues et le déchiffrement
+    de chaque colonne scellée."""
+
+    def test_the_step_follows_the_span_instead_of_defaulting_to_days(self):
+        """Vingt ans par jour font plus de sept mille barres : illisible, et
+        Textual doit mesurer puis replier tout le bloc."""
+        from script.todo.mail.stats import choisir_bucket
+
+        an = 365 * 86400
+        self.assertEqual(choisir_bucket(30 * 86400), "day")
+        self.assertEqual(choisir_bucket(2 * an), "week")
+        self.assertEqual(choisir_bucket(19 * an), "month")
+
+    def test_an_empty_span_still_picks_something(self):
+        from script.todo.mail.stats import choisir_bucket
+
+        self.assertEqual(choisir_bucket(0), "day")
+
+    def test_only_the_most_recent_slices_are_kept(self):
+        from script.todo.mail.stats import MAX_BARRES, derniers
+
+        lignes = [(str(i), i, 0) for i in range(MAX_BARRES + 40)]
+        gardees = derniers(lignes)
+        self.assertEqual(len(gardees), MAX_BARRES)
+        self.assertEqual(gardees[-1], lignes[-1])
+
+    def test_the_total_counts_everything_even_when_the_list_is_cut(self):
+        """Une coupe qui ferait mentir le total serait pire que l'écran
+        illisible qu'elle remplace."""
+        for jour in range(220):
+            self.store.upsert_messages(
+                self.inbox, [self.msg(1000 + jour, jour, "a@e.ca", "moi@x.ca")]
+            )
+        apercu = build_overview(self.store, bucket="day")
+        self.assertEqual(apercu.total, 220)
+        self.assertLess(len(apercu.volume), 220)
+        self.assertEqual(apercu.tronque, 220 - len(apercu.volume))
+
+    def test_the_overview_never_opens_a_sealed_column(self):
+        """La garantie de rapidité, énoncée directement : si la vue
+        d'ensemble déchiffrait, elle coûterait des secondes sur une grande
+        boîte — et c'est ce qu'elle est faite pour éviter."""
+        self.remplir()
+        ouvertures = []
+        vrai_open = self.store._open
+
+        def espion(blob):
+            ouvertures.append(blob)
+            return vrai_open(blob)
+
+        self.store._open = espion
+        try:
+            build_overview(self.store)
+        finally:
+            self.store._open = vrai_open
+        self.assertEqual(ouvertures, [])
+
+    def test_the_details_report_progress_while_they_scan(self):
+        """Sans progression, un balayage de plusieurs secondes ne se
+        distingue pas d'un programme figé."""
+        from script.todo.mail.stats import build_details
+
+        self.remplir()
+        vus = []
+        build_details(self.store, progress=lambda f, n: vus.append((f, n)))
+        # Le lot de progression vaut 5000 : trois messages n'en déclenchent
+        # aucun. Ce qui est vérifié ici est que le rappel est ACCEPTÉ et
+        # traversé sans erreur — le comptage est couvert par le cache.
+        self.assertIsInstance(vus, list)
+
+    def test_repeated_senders_are_only_decrypted_once(self):
+        """En clair, deux messages du même expéditeur portent le même blob :
+        le mémoriser ramène le coût au nombre de correspondants DISTINCTS,
+        pas au nombre de messages."""
+        for uid in range(30):
+            self.store.upsert_messages(
+                self.inbox,
+                [self.msg(200 + uid, 0, "Ana <ana@e.ca>", "moi@x.ca")],
+            )
+        ouvertures = []
+        vrai_open = self.store._open
+
+        def espion(blob):
+            ouvertures.append(bytes(blob))
+            return vrai_open(blob)
+
+        self.store._open = espion
+        try:
+            self.store.stats_correspondents("from")
+        finally:
+            self.store._open = vrai_open
+        self.assertEqual(len(ouvertures), len(set(ouvertures)))

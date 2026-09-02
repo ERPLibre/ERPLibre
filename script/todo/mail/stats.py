@@ -130,3 +130,124 @@ def build_report(
         total_size=sum(o for _, _, o in volume),
         unseen=sum(d["unseen"] or 0 for d in dossiers),
     )
+
+
+# Au-delà, l'histogramme cesse d'être lisible et Textual doit mesurer puis
+# replier un bloc de plusieurs centaines de milliers de caractères. Une
+# boîte tenue depuis vingt ans dépasse les 7000 barres quotidiennes.
+MAX_BARRES = 180
+
+# Seuils de bascule automatique, en secondes couvertes par la boîte.
+_AN = 365 * 86400
+
+
+def choisir_bucket(span_secondes: float) -> str:
+    """Le pas qui garde l'histogramme sous `MAX_BARRES` sans le demander.
+
+    Une boîte de deux semaines se lit par jour ; vingt ans d'archives ne se
+    lisent pas autrement que par mois. Choisir d'après l'étendue réelle
+    évite d'ouvrir sur un écran illisible qu'il faut ensuite corriger à la
+    main.
+    """
+    if span_secondes <= 0:
+        return "day"
+    if span_secondes / 86400 <= MAX_BARRES:
+        return "day"
+    if span_secondes / (7 * 86400) <= MAX_BARRES:
+        return "week"
+    return "month"
+
+
+def derniers(lignes, limite: int = MAX_BARRES) -> list:
+    """Les `limite` dernières tranches — les plus récentes intéressent.
+
+    Une coupe est préférable à un écran qu'on ne peut pas parcourir : le
+    total, lui, reste calculé sur TOUT et s'affiche à part.
+    """
+    return lignes[-limite:] if len(lignes) > limite else lignes
+
+
+@dataclass
+class Overview:
+    """Ce qui s'affiche DÈS la touche `i` : uniquement du SQL.
+
+    Ni correspondants ni délais de réponse : les premiers déchiffrent
+    chaque ligne, les seconds joignent la table avec elle-même. Sur une
+    grande boîte ils coûtent des secondes, et les payer avant le premier
+    affichage fige l'écran au moment où l'utilisateur attend une réponse.
+    """
+
+    volume: list = field(default_factory=list)
+    folders: list = field(default_factory=list)
+    bucket: str = "day"
+    undated: int = 0
+    total: int = 0
+    total_size: int = 0
+    unseen: int = 0
+    tronque: int = 0
+
+    @property
+    def unseen_share(self) -> float:
+        return (self.unseen / self.total) if self.total else 0.0
+
+
+@dataclass
+class Details:
+    """Ce qui se calcule à la demande, et qui peut durer."""
+
+    senders: list = field(default_factory=list)
+    recipients: list = field(default_factory=list)
+    reply_median: float = 0.0
+    reply_count: int = 0
+
+
+def build_overview(store, bucket=None, folder_id=None) -> Overview:
+    """La vue d'ensemble. Aucune colonne scellée n'est ouverte ici."""
+    nombre, plus_vieux, plus_recent = store.stats_span(folder_id)
+    if bucket is None:
+        bucket = choisir_bucket(plus_recent - plus_vieux)
+    volume = store.stats_volume(bucket, folder_id)
+    dossiers = store.stats_folders()
+    if folder_id is not None:
+        dossiers = [d for d in dossiers if d["id"] == folder_id]
+    montre = derniers(volume)
+    return Overview(
+        volume=bars(montre),
+        folders=dossiers,
+        bucket=bucket,
+        undated=store.stats_undated(folder_id),
+        total=sum(n for _, n, _ in volume),
+        total_size=sum(o for _, _, o in volume),
+        unseen=sum(d["unseen"] or 0 for d in dossiers),
+        tronque=len(volume) - len(montre),
+    )
+
+
+def build_details(
+    store, folder_id=None, limite: int = 10, progress=None
+) -> Details:
+    """Les correspondants et les délais. Appelable depuis un fil de travail.
+
+    `progress(faits, total)` est appelé pendant le balayage : sur une
+    grande boîte cette fonction dure des secondes, et une barre qui avance
+    dit que le programme travaille plutôt qu'il ne s'est figé.
+    """
+    total, _, _ = store.stats_span(folder_id)
+
+    def relais(faits):
+        if progress is not None:
+            progress(faits, total)
+
+    expediteurs = store.stats_correspondents(
+        "from", folder_id, progress=relais
+    )
+    destinataires = store.stats_correspondents(
+        "to", folder_id, progress=relais
+    )
+    delais = store.stats_reply_delays(folder_id)
+    return Details(
+        senders=top(expediteurs, limite),
+        recipients=top(destinataires, limite),
+        reply_median=median(delais),
+        reply_count=len(delais),
+    )

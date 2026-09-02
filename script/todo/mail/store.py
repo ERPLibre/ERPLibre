@@ -664,6 +664,25 @@ class Store:
         )
 
     @_locked
+    def stats_span(self, folder_id=None) -> tuple:
+        """(nombre de messages datés, date la plus ancienne, la plus récente).
+
+        Trois entiers rendus par une seule requête : de quoi choisir la
+        granularité de l'histogramme et borner une progression sans
+        rapatrier une seule ligne de message.
+        """
+        where, params = self._filtre(folder_id, None, None)
+        ligne = (
+            self._db()
+            .execute(
+                f"SELECT COUNT(*), MIN(date), MAX(date) FROM messages WHERE {where}",
+                params,
+            )
+            .fetchone()
+        )
+        return (ligne[0] or 0, ligne[1] or 0, ligne[2] or 0)
+
+    @_locked
     def stats_folders(self) -> list[dict]:
         """Par dossier : total, non-lus, octets. Tout est en clair, donc SQL."""
         return [
@@ -687,7 +706,12 @@ class Store:
 
     @_locked
     def stats_correspondents(
-        self, direction="from", folder_id=None, since=None, until=None
+        self,
+        direction="from",
+        folder_id=None,
+        since=None,
+        until=None,
+        progress=None,
     ) -> dict:
         """Adresse → nombre. Le SEUL agrégat qui déchiffre.
 
@@ -698,11 +722,28 @@ class Store:
         colonne = "sealed_to" if direction == "to" else "sealed_from"
         where, params = self._filtre(folder_id, since, until)
         compte: dict = {}
+        # Une boîte de longue durée compte des centaines de milliers de
+        # messages pour quelques centaines de correspondants. En mode clair
+        # deux messages du même expéditeur portent le MÊME blob : le
+        # mémoriser ramène le déchiffrement et l'analyse d'adresse au
+        # nombre de correspondants distincts. En mode chiffré le nonce
+        # diffère à chaque ligne, aucun blob ne se répète, et la mémoire
+        # sert seulement de passage à vide.
+        deja: dict = {}
+        traites = 0
         for (blob,) in self._db().execute(
             f"SELECT {colonne} FROM messages WHERE {where}", params
         ):
-            for adresse in _addresses(self._open(blob)):
+            cle = bytes(blob) if blob else b""
+            adresses = deja.get(cle)
+            if adresses is None:
+                adresses = _addresses(self._open(blob))
+                deja[cle] = adresses
+            for adresse in adresses:
                 compte[adresse] = compte.get(adresse, 0) + 1
+            traites += 1
+            if progress is not None and traites % 5000 == 0:
+                progress(traites)
         return compte
 
     @_locked
