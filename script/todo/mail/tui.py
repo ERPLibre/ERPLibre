@@ -438,7 +438,12 @@ def save_attachment(raw: bytes, index: int, directory) -> "pathlib.Path":
 
 
 def parse_recipients(raw: str) -> list[str]:
-    """« a@y.ca; Alice <b@y.ca> » → deux entrées. Virgule ou point-virgule."""
+    """Un champ de destinataires → une entrée par destinataire.
+
+    La virgule et le point-virgule séparent tous deux, et les deux formes
+    d'un en-tête RFC 5322 sont acceptées : l'adresse nue et « Libellé
+    <adresse> », dont le libellé est conservé tel quel.
+    """
     if not raw:
         return []
     parts = raw.replace(";", ",").split(",")
@@ -706,7 +711,7 @@ def run_tui(
         return
 
     from script.todo import todo_prefs
-    from script.todo.mail import account_setup, tui_text
+    from script.todo.mail import account_setup, stats, tui_text
     from script.todo.mail import accounts as mail_accounts
     from script.todo.mail.accounts import PRESETS
     from script.todo.mail.secrets import SecretStore
@@ -933,8 +938,8 @@ def run_tui(
             # `priority=True`, et `_modal_binding_chain` sinon,
             # `app.py:3978`) — `h` ouvrirait
             # alors l'aide PAR-DESSUS l'écran d'écriture, le coffre, ou
-            # l'aide elle-même. Mesuré dans les deux sens sur Textual 8.2.8
-            # avant d'écrire ceci.
+            # l'aide elle-même. Le comportement diffère selon la présence
+            # de `priority` sur Textual 8.2.8.
             Binding("h", "show_help", t("mail_help_binding")),
             Binding("q", "quit", t("mail_quit_binding")),
             Binding("r", "sync_current", t("mail_sync_current_binding")),
@@ -979,6 +984,7 @@ def run_tui(
             Binding("f", "forward", t("mail_forward_binding")),
             Binding("n", "add_account", t("mail_add_account_binding")),
             Binding("l", "show_log", t("mail_log_binding")),
+            Binding("i", "show_stats", t("mail_stats_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
             Binding("minus", "shrink_pane", t("mail_pane_shrink_binding")),
@@ -1810,8 +1816,7 @@ def run_tui(
 
         def set_status(self, text: str) -> None:
             # Plusieurs appelants y glissent le message d'une exception.
-            # Mesuré : les crochets NUS passent (« [ALERT] »,
-            # « [NONEXISTENT] », « [Gmail] » s'affichent tels quels) ; ce
+            # Un crochet NU traverse le balisage sans dommage ; ce
             # qui lève `MarkupError`, c'est un crochet contenant un « = »,
             # donc ressemblant à une balise avec valeur — une URL de suivi
             # dans un message d'erreur suffit. Le statut disparaîtrait au
@@ -2036,6 +2041,20 @@ def run_tui(
         def action_show_help(self) -> None:
             self.push_screen(HelpScreen())
 
+        def action_show_stats(self) -> None:
+            if self.current_ref is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            session = self.session_for(self.current_ref.account_name)
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            self.push_screen(
+                StatsScreen(
+                    session.store,
+                    folder_id=(etat or {}).get("id"),
+                    folder_name=self.current_ref.display,
+                )
+            )
+
         def action_add_account(self) -> None:
             if self.config_file is None or self.secret_store is None:
                 self.set_status(t("mail_account_add_unavailable"))
@@ -2139,6 +2158,150 @@ def run_tui(
 
         def action_close_log(self) -> None:
             self.dismiss()
+
+    class StatsScreen(ModalScreen):
+        """Touche `i` : ce que le cache sait déjà dire du compte ouvert.
+
+        Aucune requête réseau : tout vient du cache, donc l'écran répond
+        hors ligne et instantanément. `d`, `w` et `m` changent le pas de
+        l'histogramme ; `f` restreint au dossier ouvert ou l'élargit à tout
+        le compte.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_stats", t("mail_stats_close")),
+            Binding("d", "bucket_day", t("mail_stats_by_day")),
+            Binding("w", "bucket_week", t("mail_stats_by_week")),
+            Binding("m", "bucket_month", t("mail_stats_by_month")),
+            Binding("f", "toggle_folder", t("mail_stats_folder_filter")),
+        ]
+
+        CSS = """
+        #stats_body { height: 1fr; border: solid $panel; padding: 0 1; }
+        #stats_head { height: auto; padding: 0 1; color: $text-muted; }
+        """
+
+        def __init__(self, store, folder_id=None, folder_name=""):
+            super().__init__()
+            self.store = store
+            self.folder_id = folder_id
+            self.folder_name = folder_name
+            self.bucket = "day"
+            self.restreint = False
+
+        def compose(self):
+            with Vertical():
+                yield Static("", id="stats_head")
+                yield VerticalScroll(Static("", id="stats_body"))
+
+        def on_mount(self) -> None:
+            self.refresh_stats()
+
+        def refresh_stats(self) -> None:
+            cible = self.folder_id if self.restreint else None
+            try:
+                rapport = stats.build_report(
+                    self.store, bucket=self.bucket, folder_id=cible
+                )
+            except Exception as exc:
+                # Un cache verrouillé ou corrompu ne doit pas laisser un
+                # écran vide sans explication.
+                self.query_one("#stats_body", Static).update(
+                    Text(f"{t('mail_stats_error')} {exc}")
+                )
+                return
+            portee = (
+                self.folder_name
+                if self.restreint and self.folder_name
+                else t("mail_stats_all_folders")
+            )
+            self.query_one("#stats_head", Static).update(
+                Text(
+                    f"{t('mail_stats_scope')} {portee}"
+                    f"   ·   {t(f'mail_stats_by_{self.bucket}')}"
+                )
+            )
+            self.query_one("#stats_body", Static).update(self._rendu(rapport))
+
+        def _rendu(self, rapport) -> "Text":
+            """Le rapport en texte enrichi.
+
+            `Text` et non du balisage : les adresses viennent des messages,
+            donc de n'importe qui, et un crochet dans une adresse serait lu
+            comme une balise.
+            """
+            sortie = Text()
+
+            def titre(cle):
+                sortie.append(f"\n{t(cle)}\n", style="bold")
+
+            sortie.append(
+                f"{t('mail_stats_total')} {rapport.total}"
+                f"   {tui_text.format_size(rapport.total_size)}"
+                f"   {t('mail_stats_unseen')} {rapport.unseen}"
+                f" ({rapport.unseen_share:.0%})\n"
+            )
+            if rapport.undated:
+                # Ces messages existent mais n'ont pas de date lisible : les
+                # taire ferait un total qui ne se recoupe pas avec
+                # l'histogramme.
+                sortie.append(
+                    f"{t('mail_stats_undated')} {rapport.undated}\n",
+                    style="dim",
+                )
+
+            titre("mail_stats_volume")
+            for etiquette, nombre, barre in rapport.volume:
+                sortie.append(f"  {etiquette}  {nombre:>5}  {barre}\n")
+
+            titre("mail_stats_folders")
+            for dossier in rapport.folders:
+                sortie.append(
+                    f"  {dossier['display']}  {dossier['count']}"
+                    f"  ({dossier['unseen']} {t('mail_stats_unseen')})"
+                    f"  {tui_text.format_size(dossier['size'])}\n"
+                )
+
+            titre("mail_stats_senders")
+            for adresse, nombre in rapport.senders:
+                sortie.append(f"  {nombre:>5}  {adresse}\n")
+
+            titre("mail_stats_recipients")
+            for adresse, nombre in rapport.recipients:
+                sortie.append(f"  {nombre:>5}  {adresse}\n")
+
+            titre("mail_stats_reply")
+            if rapport.reply_count:
+                sortie.append(
+                    f"  {t('mail_stats_reply_median')} "
+                    f"{stats.humain(rapport.reply_median)}"
+                    f"  ({rapport.reply_count})\n"
+                )
+            else:
+                # Les colonnes de fil n'existent que depuis la v2 : un cache
+                # rempli avant ne porte rien tant qu'il n'a pas resynchronisé.
+                sortie.append(f"  {t('mail_stats_reply_none')}\n", style="dim")
+            return sortie
+
+        def _set_bucket(self, bucket) -> None:
+            self.bucket = bucket
+            self.refresh_stats()
+
+        def action_bucket_day(self) -> None:
+            self._set_bucket("day")
+
+        def action_bucket_week(self) -> None:
+            self._set_bucket("week")
+
+        def action_bucket_month(self) -> None:
+            self._set_bucket("month")
+
+        def action_toggle_folder(self) -> None:
+            self.restreint = not self.restreint
+            self.refresh_stats()
+
+        def action_close_stats(self) -> None:
+            self.dismiss(None)
 
     class HelpScreen(ModalScreen):
         """Touche `h` : les raccourcis du client, et le peu qu'une liste de

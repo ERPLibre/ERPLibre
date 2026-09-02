@@ -150,11 +150,13 @@ class MessageMeta:
 
 
 def _addresses(value: str) -> list[str]:
-    """« Alice <a@x.ca>, b@y.ca » → ["a@x.ca", "b@y.ca"], en minuscules.
+    """Un en-tête d'adresses → la liste des adresses seules, en minuscules.
 
-    On compte les ADRESSES, pas les libellés : le même correspondant écrit
-    tantôt « Alice », tantôt « Alice Tremblay », tantôt rien. Compter les
-    libellés éclaterait une personne en trois lignes du classement.
+    Accepte les deux formes que porte un en-tête RFC 5322 — « Libellé
+    <adresse> » et l'adresse nue — et rend uniquement la partie adresse.
+    Les libellés sont écartés : un même correspondant en emploie plusieurs
+    au fil du temps, et compter les libellés éclate une personne en autant
+    de lignes du classement. La casse est repliée pour la même raison.
     """
     if not value:
         return []

@@ -129,6 +129,7 @@ def prompt_execute_mail(todo) -> None:
 [2] {t("mail_accounts_menu")}
 [3] {t("mail_sync_now")}
 [4] {t("mail_cache_menu")}
+[5] {t("mail_stats_menu")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -142,8 +143,58 @@ def prompt_execute_mail(todo) -> None:
             _sync_now(todo)
         elif status == "4":
             prompt_mail_cache(todo)
+        elif status == "5":
+            _show_stats(todo)
         else:
             print(t("Command not found !"))
+
+
+def _show_stats(todo) -> None:
+    """Les statistiques de chaque compte, en texte, sans ouvrir le TUI.
+
+    Lit le cache seul : aucun mot de passe n'est demandé et rien ne part sur
+    le réseau, donc la commande répond hors ligne. Un compte dont le cache
+    est illisible est signalé et n'empêche pas les autres.
+    """
+    from script.todo.mail import stats
+    from script.todo.mail.store import Store, resolve_mode
+
+    comptes = _load_accounts()
+    if not comptes:
+        print(t("mail_no_account"))
+        return
+    for compte in comptes:
+        print(f"\n=== {compte.name} ===")
+        magasin = Store(compte, mode=resolve_mode(compte))
+        try:
+            magasin.open()
+            rapport = stats.build_report(magasin)
+        except Exception as exc:
+            print(f"  {t('mail_stats_error')} {exc}")
+            continue
+        finally:
+            try:
+                magasin.close()
+            except Exception:
+                pass
+        print(
+            f"  {t('mail_stats_total')} {rapport.total}"
+            f"   {t('mail_stats_unseen')} {rapport.unseen}"
+            f" ({rapport.unseen_share:.0%})"
+        )
+        for etiquette, nombre, barre in rapport.volume[-14:]:
+            print(f"  {etiquette}  {nombre:>5}  {barre}")
+        print(f"  {t('mail_stats_senders')}")
+        for adresse, nombre in rapport.senders[:5]:
+            print(f"    {nombre:>5}  {adresse}")
+        if rapport.reply_count:
+            print(
+                f"  {t('mail_stats_reply')} "
+                f"{stats.humain(rapport.reply_median)}"
+                f" ({rapport.reply_count})"
+            )
+        else:
+            print(f"  {t('mail_stats_reply_none')}")
 
 
 def _open_tui(todo) -> None:
