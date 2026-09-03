@@ -2302,9 +2302,12 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     ]
     if args.no_git_identity:
         return files
+    # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par
+    # champ : remplir le seul courriel ne doit pas effacer le nom. Vide, on
+    # retombe sur l'hôte, qui reste le comportement par défaut.
     gitconfig = build_gitconfig(
-        _git_global("user.name", home),
-        _git_global("user.email", home),
+        getattr(args, "git_name", "") or _git_global("user.name", home),
+        getattr(args, "git_email", "") or _git_global("user.email", home),
         editor,
     )
     if gitconfig:
@@ -3602,6 +3605,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Cible make qui a installé la VM (ex. install_odoo_18), reprise "
         "dans le guide pour la mettre à jour. Vide : le guide s'arrête à "
         "« git pull » plutôt que d'annoncer une cible qui n'est pas la bonne.",
+    )
+    g_cloud.add_argument(
+        "--git-name",
+        default="",
+        help="Nom pour le ~/.gitconfig de la VM (défaut : celui de l'hôte).",
+    )
+    g_cloud.add_argument(
+        "--git-email",
+        default="",
+        help="Courriel pour le ~/.gitconfig de la VM (défaut : l'hôte).",
     )
     g_cloud.add_argument(
         "--no-git-identity",

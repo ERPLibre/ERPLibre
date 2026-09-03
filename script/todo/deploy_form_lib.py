@@ -396,6 +396,11 @@ def build_spec(vms, domains, form):
         # Au niveau du déploiement : la 3D est une propriété du matériel de la
         # VM, pas de ce qu'on installe dedans.
         "gpu3d": form.get("gpu3d", False),
+        # Au niveau du déploiement : l'agent choisi et l'identité git valent
+        # pour tout le parc, comme le fuseau ou le magasin d'applications.
+        "ai_agent": form.get("ai_agent", ""),
+        "git_name": form.get("git_name", ""),
+        "git_email": form.get("git_email", ""),
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
     }

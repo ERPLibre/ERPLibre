@@ -4,7 +4,9 @@
 """Menu QEMU/KVM : ce qui s'installe DANS la VM.\n\nCe fichier ne cr\u00e9e aucune VM : il fabrique les commandes distantes qu'on y\nex\u00e9cutera. Profils ERPLibre et service Odoo, bureau GNOME et ses saveurs,\nmagasins d'applications, fuseaux, miroirs de paquets, et les outils de\nd\u00e9veloppement (PyCharm, Android Studio, extensions GNOME, compilation mobile,\nAVD, Forgejo).\n\nFronti\u00e8re claire : ici on \u00e9crit du shell destin\u00e9 \u00e0 l'invit\u00e9 ; dans\nqemu_deploy.py on d\u00e9cide QUELLES VM le recevront."""
 
 import re
+import shlex
 
+from script.todo import dev_tools
 from script.todo.todo_i18n import t
 
 
@@ -843,6 +845,26 @@ class QemuInstallMixin:
         #
         # Disque : ~1,5 Go d'image système, ~2 Go de données d'AVD, plus
         # l'émulateur lui-même.
+        # Ni bureau ni famille de paquets : les quatre outils sont des
+        # installateurs amont, aucun n'est dans les dépôts des distributions
+        # supportées. Une VM serveur les prend donc aussi bien qu'une VM
+        # graphique — c'est en SSH qu'on s'en sert.
+        #
+        # Disque : les binaires sont petits (rtk et starship sont statiques,
+        # l'agent est un bundle node) ; la marge couvre leurs caches.
+        "aidev": {
+            "label": "AI coding tools",
+            "hint": "rtk, starship, and one agent",
+            "disk_gb": 2,
+            "arches": (),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": (),
+            # AVANT le clone : chaque outil s'y garde lui-même, et aucun ne
+            # doit faire échouer l'installation d'ERPLibre pour un curl qui
+            # ne répond pas.
+            "phase": "before",
+        },
         "avd": {
             "label": "Android emulator (Pixel)",
             "hint": "AVD viewable over ssh -X",
@@ -909,8 +931,30 @@ class QemuInstallMixin:
                 "add_ssh_config": True,
                 "monitor": True,
                 "prod": False,
+                # L'identité git que la VM reçoit AUJOURD'HUI, celle de
+                # l'hôte : les champs la montrent plutôt que de s'ouvrir
+                # vides, ce qui la ferait croire absente. Les laisser vides
+                # garde ce comportement, les modifier le remplace.
+                "ai_agent": dev_tools.AGENT_DEFAUT,
+                "git_name": self._qemu_host_git("user.name"),
+                "git_email": self._qemu_host_git("user.email"),
             },
         }
+
+    def _qemu_host_git(self, cle):
+        """Valeur globale « git config » de l'hôte, ou ''.
+
+        Passe par deploy_qemu, seule autorité sur cette lecture : git accepte
+        DEUX emplacements pour sa configuration globale et le script sait
+        lequel interroger. Sans module importable on ne devine pas — un champ
+        vide reprend l'identité de l'hôte au déploiement, ce qui est déjà le
+        comportement par défaut.
+        """
+        try:
+            mod = self._qemu_import_module()
+            return mod._git_global(cle, mod.invoking_home()) or ""
+        except Exception:
+            return ""
 
     @classmethod
     def _qemu_vm_tool_choices(cls):
@@ -2004,7 +2048,57 @@ class QemuInstallMixin:
         """Émulateur seul."""
         return self._qemu_after_remote_cmd(("avd",), prod)
 
-    def _qemu_tools_remote_cmd(self, tools, prod=False, phase="before"):
+    def _qemu_aidev_remote_cmd(self, agent=""):
+        """rtk, starship et UN agent, posés dans la VM.
+
+        Chaque pose est bornée dans le temps ET privée d'entrée standard. Le
+        contrat de la phase « before » veut qu'un outil ne fasse échouer ni
+        les autres ni l'installation d'ERPLibre : « || true » couvre l'échec,
+        mais pas l'ATTENTE. Un installateur amont qui pose une question
+        resterait pendu sur un SSH sans terminal, et le déploiement avec lui ;
+        « </dev/null » la lui fait rater tout de suite, « timeout » borne le
+        reste. C'est aussi pourquoi starship reçoit « -y ».
+
+        L'accroche du prompt et la ligne de PATH sont posées UNE fois :
+        sans le « grep » qui précède, chaque redéploiement d'une même VM
+        rallonge son ~/.bashrc d'une ligne identique.
+
+        Le répertoire est écrit en « $HOME » et non en « ~ » : entre
+        guillemets, le tilde n'est pas étendu par le shell, et le PATH
+        porterait alors un chemin qui n'existe pas.
+        """
+        commande, repertoire = dev_tools.AGENTS.get(
+            agent or dev_tools.AGENT_DEFAUT,
+            dev_tools.AGENTS[dev_tools.AGENT_DEFAUT],
+        )
+        repertoire = repertoire.replace("~/", "$HOME/", 1)
+        prompt = dev_tools.STARSHIP_LINE["bash"]
+        path_line = f'export PATH="{repertoire}:$PATH"'
+
+        def pose(cmd, secondes):
+            return (
+                f"timeout {secondes} sh -c {shlex.quote(cmd)}"
+                " </dev/null || true; "
+            )
+
+        def une_fois(ligne, motif):
+            return (
+                f"grep -qF {shlex.quote(motif)} ~/.bashrc 2>/dev/null"
+                f" || echo {shlex.quote(ligne)} >> ~/.bashrc; "
+            )
+
+        return (
+            f'echo "== {t("AI coding tools")} =="; '
+            + pose(dev_tools.RTK_UPSTREAM, 300)
+            + pose(dev_tools.STARSHIP_UPSTREAM_YES, 300)
+            + une_fois(prompt, "starship init bash")
+            + pose(commande, 600)
+            + une_fois(path_line, repertoire)
+        )
+
+    def _qemu_tools_remote_cmd(
+        self, tools, prod=False, phase="before", ai_agent=""
+    ):
         """Bloc des outils cochés pour cette PHASE, du plus utile au plus lourd.
 
         « before » : posé avant le clone. Chaque outil s'y garde lui-même —
@@ -2017,6 +2111,9 @@ class QemuInstallMixin:
             # Un seul bloc pour les deux options : voir _qemu_after_remote_cmd.
             return self._qemu_after_remote_cmd(tools, prod)
         blocks = {
+            # En tête : quelques secondes de curl, contre des minutes pour un
+            # IDE. Ce qui échoue vite se voit tôt.
+            "aidev": lambda: self._qemu_aidev_remote_cmd(ai_agent),
             "gnome_ext": self._qemu_gnome_ext_remote_cmd,
             "pycharm": lambda: self._qemu_pycharm_remote_cmd(prod),
             "android": self._qemu_android_studio_remote_cmd,
