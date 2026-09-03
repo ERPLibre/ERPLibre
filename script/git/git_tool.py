@@ -116,6 +116,48 @@ class GitTool:
             repo_path=repo_path, add_root=add_root
         )
 
+    def _with_root_repo(
+        self, repos: list, repo_path: str, add_root: bool
+    ) -> list:
+        """`repos` précédée du dépôt racine si `add_root`, puis triée.
+
+        TOUS les chemins de sortie passent par ici. Le dépôt racine ne
+        dépend ni du manifeste ni des sous-modules : un retour anticipé qui
+        saute cette étape rend une liste VIDE alors que la racine était
+        demandée, et l'appelant en conclut qu'il n'a rien à faire. Sur un
+        checkout sans `.repo`, le remote du dépôt principal n'était alors
+        jamais changé, sans qu'aucun message ne le signale.
+
+        Une origine absente vaut l'URL par défaut plutôt qu'une exception :
+        la liste sert à RÉÉCRIRE les remotes, et un dépôt sans origine est
+        précisément un de ceux qu'on vient corriger.
+        """
+        if not add_root:
+            return sorted(repos, key=lambda k: k.get("name"))
+        repo_root = Repo(repo_path)
+        try:
+            url = repo_root.git.remote("get-url", "origin")
+        except Exception:
+            print(
+                f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: Missing origin"
+                f" remote, use default url {DEFAULT_REMOTE_URL}. Suggest"
+                " to add a remote origin: \n> git remote add origin"
+                f" {DEFAULT_REMOTE_URL}"
+            )
+            url = DEFAULT_REMOTE_URL
+        url, url_https, url_git = self.get_url(url)
+        repos.insert(
+            0,
+            {
+                "url": url,
+                "url_https": url_https,
+                "url_git": url_git,
+                "path": repo_path,
+                "name": "",
+            },
+        )
+        return sorted(repos, key=lambda k: k.get("name"))
+
     def get_repo_info_submodule(
         self, repo_path: str = ".", add_root: bool = False
     ) -> list:
@@ -181,22 +223,7 @@ class GitTool:
             }
             repos.append(data)
 
-        if add_root:
-            repo_root = Repo(repo_path)
-            url = repo_root.git.remote("get-url", "origin")
-            url, url_https, url_git = self.get_url(url)
-
-            data = {
-                "url": url,
-                "url_https": url_https,
-                "url_git": url_git,
-                "path": repo_path,
-                "name": "",
-            }
-            repos.insert(0, data)
-        # Sort
-        repos = sorted(repos, key=lambda k: k.get("name"))
-        return repos
+        return self._with_root_repo(repos, repo_path, add_root)
 
     def get_repo_info_manifest_xml(
         self, repo_path: str = ".", add_root: bool = False, filter_group=None
@@ -219,7 +246,7 @@ class GitTool:
         filter_groups = filter_group.split(",") if filter_group else []
         manifest_file = self.get_manifest_file(repo_path=repo_path)
         if not manifest_file:
-            return []
+            return self._with_root_repo([], repo_path, add_root)
         if os.path.isabs(manifest_file):
             # This is a absolute path
             filename = manifest_file
@@ -231,7 +258,7 @@ class GitTool:
             xml_dict = xmltodict.parse(xml_as_string)
             manifest_data = xml_dict.get("manifest")
         if not manifest_data:
-            return []
+            return self._with_root_repo([], repo_path, add_root)
         if manifest_data.get("default"):
             default_remote = manifest_data.get("default").get("@remote")
         else:
@@ -274,31 +301,7 @@ class GitTool:
             }
             repos.append(data)
 
-        if add_root:
-            repo_root = Repo(repo_path)
-            try:
-                url = repo_root.git.remote("get-url", "origin")
-            except Exception as e:
-                print(
-                    f"{Fore.YELLOW}WARNING{Style.RESET_ALL}: Missing origin"
-                    f" remote, use default url {DEFAULT_REMOTE_URL}. Suggest"
-                    " to add a remote origin: \n> git remote add origin"
-                    f" {DEFAULT_REMOTE_URL}"
-                )
-                url = DEFAULT_REMOTE_URL
-            url, url_https, url_git = self.get_url(url)
-
-            data = {
-                "url": url,
-                "url_https": url_https,
-                "url_git": url_git,
-                "path": repo_path,
-                "name": "",
-            }
-            repos.insert(0, data)
-        # Sort
-        repos = sorted(repos, key=lambda k: k.get("name"))
-        return repos
+        return self._with_root_repo(repos, repo_path, add_root)
 
     def get_manifest_xml_info(
         self, repo_path: str = ".", filename=None, add_root: bool = False

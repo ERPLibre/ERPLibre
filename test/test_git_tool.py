@@ -2,10 +2,13 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import io
 import os
+import subprocess
 import tempfile
 import unittest
 from collections import OrderedDict
+from contextlib import redirect_stdout
 from unittest.mock import MagicMock, mock_open, patch
 
 from script.git.git_tool import (
@@ -263,6 +266,80 @@ class TestGetRepoInfoSubmodule(unittest.TestCase):
             self.assertEqual(result[0]["name"], "addons/test")
             self.assertIn("https://", result[0]["url_https"])
             self.assertIn("git@", result[0]["url_git"])
+
+
+class TestTheRootRepoSurvivesAMissingManifest(unittest.TestCase):
+    """Le dépôt racine ne dépend ni du manifeste ni des sous-modules.
+
+    Une liste vide là où la racine était demandée fait conclure à
+    l'appelant qu'il n'a rien à faire : sur un checkout sans `.repo`, le
+    remote du dépôt principal n'était jamais réécrit, sans message.
+    """
+
+    def _depot(self, chemin, origine="https://github.com/ERPLibre/ERPLibre"):
+        """Un vrai dépôt git, sans manifeste. Rien n'est bouchonné : la
+        lecture de l'origine passe par git, et c'est elle qu'on vérifie."""
+        subprocess.run(["git", "init", "-q", chemin], check=True)
+        if origine:
+            subprocess.run(
+                ["git", "-C", chemin, "remote", "add", "origin", origine],
+                check=True,
+            )
+        return chemin
+
+    def test_without_a_manifest_the_root_is_still_returned(self):
+        gt = GitTool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._depot(tmpdir)
+            result = gt.get_repo_info(tmpdir, add_root=True)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "")
+        self.assertEqual(
+            result[0]["url_git"], "git@github.com:ERPLibre/ERPLibre"
+        )
+
+    def test_without_the_root_asked_nothing_is_returned(self):
+        """Deux appelants internes lisent le manifeste SANS la racine : le
+        correctif ne doit rien rendre à qui n'en veut pas."""
+        gt = GitTool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._depot(tmpdir)
+            self.assertEqual(gt.get_repo_info(tmpdir), [])
+
+    def test_a_root_without_origin_falls_back_instead_of_raising(self):
+        """La liste sert à RÉÉCRIRE les remotes : un dépôt sans origine est
+        précisément un de ceux qu'on vient corriger."""
+        gt = GitTool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._depot(tmpdir, origine="")
+            with redirect_stdout(io.StringIO()):
+                result = gt.get_repo_info(tmpdir, add_root=True)
+        self.assertEqual(len(result), 1)
+        self.assertTrue(result[0]["url_git"].startswith("git@"))
+
+    def test_the_root_comes_first_alongside_the_manifest_projects(self):
+        """La racine porte un nom vide : le tri la met en tête, et le
+        script qui réécrit les remotes commence donc par elle."""
+        xml_content = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            "<manifest>\n"
+            '  <remote name="OCA" fetch="https://github.com/OCA/"/>\n'
+            '  <default remote="OCA" revision="16.0"/>\n'
+            '  <project name="web.git" path="addons/OCA_web"'
+            ' remote="OCA" groups="odoo16.0"/>\n'
+            "</manifest>\n"
+        )
+        gt = GitTool()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            self._depot(tmpdir)
+            manifeste = os.path.join(tmpdir, "manifest_test.xml")
+            with open(manifeste, "w") as fh:
+                fh.write(xml_content)
+            with patch.object(
+                GitTool, "get_manifest_file", return_value=manifeste
+            ):
+                result = gt.get_repo_info(tmpdir, add_root=True)
+        self.assertEqual([r["name"] for r in result], ["", "addons/OCA_web"])
 
 
 class TestGetManifestXmlInfo(unittest.TestCase):
