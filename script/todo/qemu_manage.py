@@ -16,6 +16,7 @@ from script.todo import todo_install
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
     sudo_prefix,
+    system_path,
     virsh_argv,
 )
 from script.todo.todo_i18n import t
@@ -399,7 +400,14 @@ class QemuManageMixin:
                 shlex.quote(c) for c in entry["cmd"]
             )
             print(f"\n{t('Will execute:')} {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            # virt-xml est un script Python du système : sans PATH assaini, il
+            # s'amorce sur l'interpréteur du venv, où les modules de la
+            # distribution n'existent pas.
+            self.execute.exec_command_live(
+                cmd,
+                source_erplibre=False,
+                new_env={"PATH": system_path()},
+            )
 
     def _qemu_hw_form(self, rows, node, nets=None):
         """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
