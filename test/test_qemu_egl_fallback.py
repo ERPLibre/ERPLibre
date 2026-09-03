@@ -137,18 +137,68 @@ class Repli(unittest.TestCase):
         self.assertIn("vm-a", milieu)
         self.assertLess(1, len(lances) - 1)
 
-    def test_gpu_on_is_not_silently_downgraded(self):
-        """« --gpu on » est une exigence : la trahir donnerait une VM qui
-        n'est pas celle qu'on a demandée."""
-        lances, exc, _ = self._lancer(gpu="on")
-        self.assertIsInstance(exc, SystemExit)
-        self.assertIn("--gpu off", str(exc))
-        self.assertEqual(1, len(lances))
+    def test_gpu_on_also_falls_back_but_says_so(self):
+        """Une VM qu'on n'a pas est pire qu'une VM sans 3D. Le repli vaut donc
+        aussi pour une 3D demandée — à condition de nommer ce qui manque, sans
+        quoi l'utilisateur croirait avoir obtenu ce qu'il a coché."""
+        lances, exc, rendu = self._lancer(gpu="on")
+        self.assertIsNone(exc, rendu)
+        self.assertIn("DEMANDÉE", rendu)
+        self.assertNotIn("accel3d", " ".join(lances[-1]))
 
     def test_another_failure_is_not_retried(self):
         lances, exc, _ = self._lancer(sortie=SORTIE_AUTRE)
         self.assertIsInstance(exc, SystemExit)
         self.assertEqual(1, len(lances))
+
+    def _sans_ecran(self, resultat):
+        """virt_install sur une VM sans console dont la 3D est demandée.
+
+        `resultat` est ce que rend le runner en mode capture. Rend les
+        commandes lancées."""
+        args = self._args(gpu="on")
+        args.desktop = False
+        lances = []
+
+        class FauxRunner:
+            dry_run = False
+            use_sudo = False
+
+            def run(self, cmd, *, privileged=False, check=True, capture=False):
+                lances.append(list(cmd))
+                return resultat if capture else None
+
+        with mock.patch.object(
+            DQ, "host_arch", return_value="amd64"
+        ), mock.patch.object(
+            DQ, "kvm_available", return_value=True
+        ), mock.patch.object(
+            DQ, "os"
+        ) as faux_os:
+            faux_os.getuid.return_value = 1000
+            with redirect_stdout(io.StringIO()):
+                DQ.virt_install(
+                    args,
+                    Path("/tmp/d.qcow2"),
+                    Path("/tmp/s.iso"),
+                    "ubuntu26.04",
+                    FauxRunner(),
+                )
+        return lances
+
+    def test_a_screenless_3d_vm_keeps_egl_as_its_only_display(self):
+        """« --graphics none » dit « aucun affichage » : le poser à côté d'un
+        egl-headless, qui EST un affichage, se contredit."""
+        rendu = " ".join(self._sans_ecran((0, ""))[0])
+        self.assertIn("egl-headless", rendu)
+        self.assertNotIn("--graphics none", rendu)
+
+    def test_dropping_the_3d_gives_the_display_back(self):
+        """Le repli doit rendre le « --graphics none » écarté pour la 3D,
+        sinon la VM repart sur le défaut de virt-install."""
+        dernier = " ".join(self._sans_ecran((1, SORTIE_EGL))[-1])
+        self.assertIn("--graphics none", dernier)
+        self.assertNotIn("egl-headless", dernier)
 
     def test_a_success_never_retries(self):
         lances, exc, _ = self._lancer(sortie="", code=0)

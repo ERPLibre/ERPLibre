@@ -339,6 +339,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("monitor", True),
                         id="f_monitor",
                     )
+                    # Indépendante du type de VM : une machine sans console
+                    # peut vouloir un virtio-gpu accéléré — rendu hors écran,
+                    # ou émulateur qui tourne dedans. Sans écran,
+                    # « egl-headless » n'ouvre aucun port.
+                    yield Checkbox(
+                        t("3D acceleration (host GPU), even without a screen"),
+                        value=defaults.get("gpu3d", False),
+                        id="f_gpu3d",
+                    )
                     # Le parallélisme reste dans « Déploiement » : c'est le
                     # nombre de VM menées de front, pas une option
                     # d'installation.
@@ -911,6 +920,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
                 "monitor": self.query_one("#f_monitor", Checkbox).value,
+                "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
                 "res_label": (
                     t("custom")
                     if self.profile == "custom"

@@ -393,6 +393,9 @@ def build_spec(vms, domains, form):
         # ERPLibre se suit aussi (cloud-init, puis relevé système). Absent de
         # cette assemblée, le choix du formulaire n'atteignait jamais la spec.
         "monitor": form.get("monitor", True),
+        # Au niveau du déploiement : la 3D est une propriété du matériel de la
+        # VM, pas de ce qu'on installe dedans.
+        "gpu3d": form.get("gpu3d", False),
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
     }

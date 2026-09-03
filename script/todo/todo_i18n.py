@@ -4993,6 +4993,17 @@ TRANSLATIONS = {
         "fr": "Conservés — le déploiement de ces VM ÉCHOUERA :",
         "en": "Kept - the deployment of these VMs will FAIL:",
     },
+    "3D acceleration (host GPU), even without a screen": {
+        "fr": "Accélération 3D (GPU de l'hôte), même sans écran",
+        "en": "3D acceleration (host GPU), even without a screen",
+    },
+    "3D acceleration (host GPU), even without a screen? (y/N): ": {
+        "fr": "Accélération 3D (GPU de l'hôte), même sans écran ? (o/N) : ",
+        "en": (
+            "3D acceleration (host GPU), even without a screen?"
+            " (y/N, default: no): "
+        ),
+    },
     "Full output:": {
         "fr": "Sortie complète :",
         "en": "Full output:",

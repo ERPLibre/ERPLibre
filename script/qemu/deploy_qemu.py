@@ -327,14 +327,10 @@ def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
     mode = (mode or "auto").lower()
     if mode == "off":
         return False, ""
-    if not screen:
-        # Sans écran virtuel, la 3D n'a rien à accélérer. Le dire seulement
-        # quand elle a été demandée explicitement.
-        if mode == "on":
-            return (
-                False,
-                "  GPU : pas d'écran virtuel sur cette VM, 3D ignorée.",
-            )
+    if not screen and mode != "on":
+        # Sans écran virtuel, « auto » s'abstient : une VM serveur n'a pas
+        # demandé de périphérique vidéo, et lui en poser un d'office change
+        # son matériel sans qu'on l'ait voulu.
         return False, ""
     if not node:
         if mode == "on":
@@ -347,6 +343,16 @@ def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
         return (
             False,
             "  GPU : aucun sur l'hôte, rendu logiciel (virgl absent).",
+        )
+    if not screen:
+        # 3D demandée sur une VM sans console : le virtio-gpu est POSÉ quand
+        # même, et « egl-headless » n'ouvre aucun port — l'invité reçoit un
+        # périphérique DRM accéléré sans écran à regarder. C'est ce qui sert
+        # au rendu hors écran et à un émulateur qui tourne dans la VM.
+        return (
+            True,
+            f"  GPU : 3D activée par {node} sans écran virtuel"
+            " (virtio-gpu accéléré, aucun port ouvert).",
         )
     return True, f"  GPU : 3D activée par {node} (virtio-gpu + egl-headless)."
 
@@ -3086,8 +3092,6 @@ def virt_install(
         osinfo,
         "--network",
         args.network,
-        "--graphics",
-        graphics,
         "--console",
         # Journal de console pour la voie installateur. Une console « pty »
         # seule ne gardE rien : quand d-i échoue, il l'écrit à l'écran d'une
@@ -3105,6 +3109,12 @@ def virt_install(
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
+    # « --graphics none » dit « aucun affichage » : le poser à côté d'un
+    # « egl-headless », qui EST un affichage, se contredit. Sur une VM sans
+    # console dont la 3D est demandée, egl-headless reste donc le seul.
+    graphics_omis = bool(gpu_args) and graphics == "none"
+    if not graphics_omis:
+        cmd += ["--graphics", graphics]
     i_gpu = len(cmd)
     cmd += video + gpu_args
     if args.arch == "s390x":
@@ -3185,20 +3195,25 @@ def virt_install(
             f"\nÉchec de la commande (code {code}) :\n"
             f"  {' '.join(log_env + cmd)}"
         )
-    if (args.gpu or "auto").lower() == "on":
-        # « --gpu on » est une exigence, pas une préférence : la trahir en
-        # silence donnerait une VM qui n'est pas celle qu'on a demandée.
-        sys.exit(
-            "\nErreur : --gpu on demandé, mais EGL ne démarre pas sur"
-            f" {gpu_node}.\n  Relancer avec --gpu off pour une VM en rendu"
-            " logiciel."
-        )
+    # Le repli vaut AUSSI pour « --gpu on ». Une VM qu'on n'a pas est pire
+    # qu'une VM sans 3D, et le repli n'est pas silencieux : il le dit, en
+    # nommant ce qui a été demandé et ce qui a été obtenu.
+    demande = (args.gpu or "auto").lower() == "on"
     print(
-        f"\n  ⚠ EGL ne démarre pas sur {gpu_node} : la 3D est retirée et la"
-        "\n    VM recréée en rendu logiciel. « --gpu off » évite cet essai."
+        f"\n  ⚠ EGL ne démarre pas sur {gpu_node} :"
+        f" {'la 3D DEMANDÉE est retirée' if demande else 'la 3D est retirée'}"
+        "\n    et la VM recréée en rendu logiciel."
+        " « --gpu off » évite cet essai."
     )
+    # Rendre l'affichage écarté plus haut : sans lui, la VM repartirait sans
+    # « --graphics none », donc avec le défaut de virt-install, qui n'est pas
+    # ce qu'on avait demandé.
+    rendu = [] if not graphics_omis else ["--graphics", graphics]
     cmd_sans_3d = (
-        cmd[:i_gpu] + video_sans_3d + cmd[i_gpu + len(video) + len(gpu_args) :]
+        cmd[:i_gpu]
+        + rendu
+        + video_sans_3d
+        + cmd[i_gpu + len(video) + len(gpu_args) :]
     )
     # Le domaine défini par l'essai raté doit partir : sans quoi virt-install
     # refuse le nom, et la VM resterait celle qui ne démarre pas.
