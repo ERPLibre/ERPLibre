@@ -19,9 +19,13 @@ class QemuInstallMixin:
     # Sans le groupe, virt-install retombe sur qemu:///session où « default »
     # n'existe pas : la VM échoue alors que tous les paquets sont installés.
     # L'ancien one-liner finissait par « || true » et masquait ses erreurs.
+    # Le redémarrage est consenti ICI et nulle part ailleurs : la VM vient
+    # d'être créée, personne ne la regarde, et le noyau fraîchement installé
+    # doit être chargé avant que libvirt puisse monter virbr0. Sur un poste de
+    # travail, la question se pose — voir _qemu_ensure_tools.
     _QEMU_QEMU_PKGS = (
         "./script/qemu/deploy_qemu.py --setup-host --assume-yes"
-        " --reboot-if-needed"
+        " --reboot-if-needed --assume-yes-reboot"
     )
 
     def _qemu_ask_prod(self):
@@ -578,6 +582,41 @@ class QemuInstallMixin:
             + self._qemu_pacman_mirror_cmd()
             + "sudo pacman -Syu --noconfirm || true; "
             "fi; "
+        )
+
+    @staticmethod
+    def _qemu_yay_install_cmd():
+        """Pose yay, l'assistant AUR, sur un invité Arch.
+
+        « yay-bin » et non « yay » : le paquet source compile son propre Go,
+        ce qui coûte plusieurs minutes et le compilateur avec ; le binaire
+        précompilé donne le même outil.
+
+        makepkg REFUSE de tourner en root et sort en erreur ; le clonage et la
+        construction restent donc sous l'utilisateur de la VM, qui appelle
+        sudo pour la seule installation finale. Le NOPASSWD posé par
+        cloud-init rend ce sudo silencieux.
+
+        yay est un bonus, pas une condition : le bloc se termine par « true »
+        pour qu'un AUR injoignable ne fasse pas échouer, sous « set -e », une
+        installation par ailleurs complète.
+        """
+        return (
+            "command -v yay >/dev/null 2>&1 || { "
+            "sudo pacman -S --needed --noconfirm base-devel git && "
+            "yd=$(mktemp -d) && "
+            "git clone --depth 1 https://aur.archlinux.org/yay-bin.git "
+            '"$yd" && ( cd "$yd" && makepkg -si --noconfirm ); '
+            # « rm -rf » sur une variable vide rend 0 en silence sous -f : le
+            # nettoyage n'a donc pas besoin de savoir si le clonage a eu lieu.
+            'rm -rf "$yd"; '
+            # « || true » ferme le groupe ENTIER, et il porte. Le groupe est
+            # le DERNIER membre de la liste « || », donc set -e s'y applique
+            # et le premier sudo en échec emporterait toute l'installation.
+            # Un membre de plus l'y suspend, et rend le bloc inoffensif.
+            "} || true; "
+            "command -v yay >/dev/null 2>&1 "
+            '&& echo "   yay installé" || echo "   ⚠ yay non installé"; '
         )
 
     def _qemu_zypper_mirror_cmd(self):

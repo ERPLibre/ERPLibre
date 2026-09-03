@@ -485,6 +485,203 @@ class TestSetupClaudeCommit(unittest.TestCase):
         mock_makedirs.assert_called_once()
 
 
+class TestClaudeCommandTemplates(unittest.TestCase):
+    """Chaque commande proposée par le menu doit avoir son gabarit.
+
+    Un nom de gabarit fautif ne se voit qu'à l'exécution, au moment où le
+    déploiement échoue devant l'utilisateur : rien ne relie le littéral passé
+    à `_setup_claude_command` au fichier de `conf/`.
+    """
+
+    @staticmethod
+    def _deployed_templates():
+        """Les gabarits nommés dans les appels à `_setup_claude_command`."""
+        import ast
+
+        source = Path("script/todo/todo.py").read_text(encoding="utf-8")
+        found = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            attr = getattr(node.func, "attr", None)
+            if attr != "_setup_claude_command":
+                continue
+            # (nom_de_commande, nom_de_gabarit) : les deux sont des littéraux,
+            # sans quoi le test ne peut rien affirmer.
+            args = [
+                a.value
+                for a in node.args
+                if isinstance(a, ast.Constant) and isinstance(a.value, str)
+            ]
+            if len(args) >= 2:
+                found.append(args[1])
+        return found
+
+    def test_every_menu_template_exists(self):
+        templates = self._deployed_templates()
+        self.assertGreaterEqual(len(templates), 4, templates)
+        for name in templates:
+            with self.subTest(template=name):
+                self.assertTrue(
+                    os.path.isfile(os.path.join("conf", name)),
+                    f"conf/{name} est nommé par le menu et n'existe pas",
+                )
+
+    def test_every_template_declares_its_own_name(self):
+        """Le `name:` du frontmatter donne le nom de la commande `/…` ; un
+        gabarit qui en déclare un autre déploie un fichier dont le contenu
+        parle d'une commande différente."""
+        source = Path("script/todo/todo.py").read_text(encoding="utf-8")
+        import ast
+
+        pairs = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.Call):
+                continue
+            if getattr(node.func, "attr", None) != "_setup_claude_command":
+                continue
+            args = [
+                a.value
+                for a in node.args
+                if isinstance(a, ast.Constant) and isinstance(a.value, str)
+            ]
+            if len(args) >= 2:
+                pairs.append((args[0], args[1]))
+        self.assertTrue(pairs)
+        for command, template in pairs:
+            with self.subTest(command=command):
+                text = Path("conf", template).read_text(encoding="utf-8")
+                self.assertIn(f"name: {command}\n", text)
+
+
+class TestClaudePlugins(unittest.TestCase):
+    """Le menu des plugins Claude Code.
+
+    Ce qui est vérifié ici ne se voit pas à la lecture : la frontière de mot
+    qui distingue deux noms dont l'un contient l'autre, le refus qui n'installe
+    rien, et l'absence de l'exécutable, qui doit se dire au lieu de passer pour
+    un échec de la commande.
+    """
+
+    def test_absent_binary_reports_without_executing(self):
+        todo = TODO()
+        todo.execute = MagicMock()
+        with patch("script.todo.todo.shutil.which", return_value=None), patch(
+            "builtins.print"
+        ):
+            self.assertEqual(todo._claude_plugin_exec("list"), 1)
+            self.assertEqual(
+                todo._claude_plugin_exec("list", capture=True), (1, [])
+            )
+        # La forme du retour suit l'appelant : un appelant qui déballe un
+        # couple ne doit pas recevoir un entier nu.
+        todo.execute.exec_command_live.assert_not_called()
+
+    def test_installed_name_matches_on_word_boundary(self):
+        todo = TODO()
+        # Chaque cas négatif CONTIENT le nom cherché comme sous-chaîne : une
+        # recherche naïve les déclarerait tous posés.
+        cases = [
+            (["code-review-toolkit@market  v1.0"], "code-review", False),
+            (["my-superpowers@market  v1.0"], "superpowers", False),
+            (["superpowers2@market  v1.0"], "superpowers", False),
+            (["code-review@market  v1.0"], "code-review", True),
+            (["No plugins installed."], "superpowers", False),
+            (["superpowers@market (enabled)"], "superpowers", True),
+        ]
+        for lines, name, expected in cases:
+            with self.subTest(name=name, lines=lines):
+                with patch.object(
+                    todo, "_claude_plugin_exec", return_value=(0, lines)
+                ):
+                    self.assertIs(
+                        todo._claude_plugin_is_installed(name), expected
+                    )
+
+    def test_unreadable_list_reports_not_installed(self):
+        """Un code de sortie non nul ne vaut pas « absent » par hasard : la
+        réinstallation qui suit est idempotente, l'inverse effacerait."""
+        todo = TODO()
+        with patch.object(
+            todo, "_claude_plugin_exec", return_value=(2, ["boom"])
+        ):
+            self.assertFalse(todo._claude_plugin_is_installed("superpowers"))
+
+    def test_refusing_the_preferred_list_installs_nothing(self):
+        todo = TODO()
+        with patch("builtins.input", return_value="n"), patch.object(
+            todo, "_claude_plugin_exec"
+        ) as mock_exec, patch("builtins.print"):
+            todo._claude_install_preferred_plugins()
+        mock_exec.assert_not_called()
+
+    def test_accepting_installs_only_what_is_missing(self):
+        todo = TODO()
+        with patch("builtins.input", return_value="y"), patch.object(
+            todo, "_claude_plugin_exec"
+        ) as mock_exec, patch.object(
+            todo,
+            "_claude_plugin_is_installed",
+            side_effect=lambda name: name == "pyright-lsp",
+        ), patch(
+            "builtins.print"
+        ):
+            todo._claude_install_preferred_plugins()
+        called = [call.args[0] for call in mock_exec.call_args_list]
+        # « -y » est obligatoire : la sortie de TODO est un tuyau, et la CLI
+        # refuse sans lui toute installation qui exécute une commande.
+        self.assertEqual(
+            called,
+            [
+                "install superpowers -y",
+                "install claude-security -y",
+                "install skill-creator -y",
+            ],
+        )
+
+    def test_catalog_skips_an_unreadable_manifest(self):
+        todo = TODO()
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, body in (
+                ("good", '{"plugins":[{"name":"a",' '"description":"d"}]}'),
+                ("broken", "{not json"),
+            ):
+                folder = os.path.join(tmp, name, ".claude-plugin")
+                os.makedirs(folder)
+                with open(
+                    os.path.join(folder, "marketplace.json"), "w"
+                ) as handle:
+                    handle.write(body)
+            with patch.object(TODO, "_CLAUDE_MARKETPLACES_DIR", tmp):
+                catalog = todo._claude_marketplace_catalog()
+        self.assertEqual(catalog, [("a", "good", "d")])
+
+    def test_catalog_is_empty_without_any_marketplace(self):
+        todo = TODO()
+        with patch.object(
+            TODO, "_CLAUDE_MARKETPLACES_DIR", "/nonexistent-marketplaces"
+        ):
+            self.assertEqual(todo._claude_marketplace_catalog(), [])
+
+    def test_search_matches_name_and_description(self):
+        todo = TODO()
+        catalog = [
+            ("pyright-lsp", "official", "Python language server"),
+            ("mongodb", "official", "Document database"),
+        ]
+        with patch.object(
+            todo, "_claude_marketplace_catalog", return_value=catalog
+        ), patch("builtins.input", return_value="python"), patch(
+            "builtins.print"
+        ) as mock_print:
+            todo._claude_plugin_search()
+        printed = " ".join(
+            str(call.args[0]) for call in mock_print.call_args_list
+        )
+        self.assertIn("pyright-lsp", printed)
+        self.assertNotIn("mongodb", printed)
+
+
 class TestSelectDatabase(unittest.TestCase):
     @patch("script.todo.database_manager.click")
     def test_select_database_returns_name(self, mock_click):

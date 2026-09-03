@@ -530,37 +530,25 @@ def _command_columns(tree, paths):
 # --------------------------------------------------------------------------- #
 # Télémétrie SYSTÈME (vue F2)
 # --------------------------------------------------------------------------- #
-def _os_id() -> str:
-    try:
-        for line in open("/etc/os-release", encoding="utf-8"):
-            if line.startswith("ID="):
-                return line.split("=", 1)[1].strip().strip('"').lower()
-    except OSError:
-        pass
-    return ""
-
-
 def sensors_install_command():
-    """Commande d'installation de lm-sensors selon l'OS (nos 4 systèmes)."""
-    apt = ["sudo", "apt-get", "install", "-y", "lm-sensors"]
-    dnf = ["sudo", "dnf", "install", "-y", "lm_sensors"]
-    pac = ["sudo", "pacman", "-S", "--needed", "--noconfirm", "lm_sensors"]
-    cmd = {
-        "ubuntu": apt,
-        "debian": apt,
-        "linuxmint": apt,
-        "fedora": dnf,
-        "arch": pac,
-    }.get(_os_id())
-    if cmd:
-        return cmd
-    if shutil.which("apt-get"):
-        return apt
-    if shutil.which("dnf"):
-        return dnf
-    if shutil.which("pacman"):
-        return pac
-    return None
+    """Commande d'installation de lm-sensors, ou None si aucun gestionnaire
+    de paquets connu.
+
+    Le paquet change de nom : « lm-sensors » chez Debian, « lm_sensors »
+    ailleurs. Cette écriture-ci ne connaissait pas zypper, et openSUSE ne
+    pouvait donc pas l'installer."""
+    # Importé ici et non en tête : l'import de todo_i18n de ce module est
+    # protégé pour qu'il tourne en autonome, et todo_install en dépend.
+    from script.todo import todo_install
+
+    return todo_install.install_command(
+        {
+            "apt-get": ["lm-sensors"],
+            "dnf": ["lm_sensors"],
+            "pacman": ["lm_sensors"],
+            "zypper": ["sensors"],
+        }
+    )
 
 
 def _first_int(path):

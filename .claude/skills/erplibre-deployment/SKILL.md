@@ -1,4 +1,11 @@
-# Déploiement
+---
+name: erplibre-deployment
+description: >-
+  Déploiement ERPLibre : Docker, systemd, nginx, SSL, DNS, plateformes
+  supportées, et le choix de l'interpréteur Python (EL_PYTHON_PROVIDER)
+  comme du gestionnaire de paquets (EL_PIP_PROVIDER). À charger pour
+  déployer, installer ou changer de fournisseur Python.
+---
 
 - **Docker** : `docker-compose.yml` (PostgreSQL 18 + PostGIS 3.6)
 - **Systemd** : `script/systemd/` pour les services

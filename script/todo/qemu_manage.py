@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import time
 
+from script.todo import todo_install
 from script.todo.todo_i18n import t
 
 
@@ -45,12 +46,11 @@ def parse_ssh_blocks(content) -> dict:
 def ssh_orphans(blocs, juge, prefixe="erplibre-"):
     """(gardées, orphelines) — chacune [(nom, raison)].
 
-    Un ProxyJump valait preuve de vie À LUI SEUL : « écrite pour une VM
-    imbriquée, que virsh ne connaîtra jamais ». Le raisonnement oubliait que
-    le rebond, lui, peut avoir disparu. Vécu : la VM Proxmox locale effacée,
-    le nettoyage a retiré son entrée — correctement — et GARDÉ les trois
-    entrées qui rebondissaient par elle. Trois culs-de-sac, présentés comme
-    « mènent encore quelque part ».
+    Un ProxyJump ne vaut pas preuve de vie à lui seul : « écrite pour une VM
+    imbriquée, que virsh ne connaîtra jamais » oublie que le rebond, lui, peut
+    avoir disparu. Effacer la VM qui servait de rebond retire son entrée —
+    correctement — et laisse celles qui rebondissaient par elle : des
+    culs-de-sac présentés comme « mènent encore quelque part ».
 
     D'où le point fixe : retirer un parent peut orpheliner ses enfants, et
     ceux-ci peuvent en orpheliner d'autres. On tourne jusqu'à ce que plus
@@ -887,11 +887,9 @@ class QemuManageMixin:
         """{chemin: domaine} — TOUT ce que les domaines référencent.
 
         L'autorité est libvirt, jamais le nom du fichier. Un domaine renommé
-        garde le nom de fichier d'avant : juger sur le nom faisait passer le
-        disque d'une VM EN MARCHE pour un orphelin. Rapporté sur
-        « erplibre-ubuntu-2404-MIGRATION », renommée depuis
-        « erplibre-ubuntu-2404 » : le nettoyage offrait ses trois fichiers —
-        disque de 63 Go, seed, nvram — au « rm -f ».
+        garde le nom de fichier d'avant : juger sur le nom fait passer le
+        disque d'une VM EN MARCHE pour un orphelin, et offre ses trois
+        fichiers — disque, seed, nvram — au « rm -f ».
 
         Les deux vues, persistante et vivante, pour la raison dite dans
         `_qemu_dumpxml`.
@@ -1308,6 +1306,103 @@ class QemuManageMixin:
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    # Le nom du binaire n'est presque jamais celui du paquet. Ces cinq-là
+    # portent le même nom dans les quatre familles.
+    _SHRINK_PKG = {
+        "e2fsck": "e2fsprogs",
+        "resize2fs": "e2fsprogs",
+        "dumpe2fs": "e2fsprogs",
+        "partprobe": "parted",
+        "lsblk": "util-linux",
+        "blockdev": "util-linux",
+    }
+    # Les deux qui changent de famille en famille : sgdisk vit dans « gdisk »
+    # chez Debian et Fedora, dans « gptfdisk » chez Arch et openSUSE, et
+    # qemu-nbd porte quatre noms de paquet différents.
+    _SHRINK_PKG_FAMILY = {
+        "apt-get": {"sgdisk": "gdisk", "qemu-nbd": "qemu-utils"},
+        "dnf": {"sgdisk": "gdisk", "qemu-nbd": "qemu-img"},
+        "pacman": {"sgdisk": "gptfdisk", "qemu-nbd": "qemu-img"},
+        "zypper": {"sgdisk": "gptfdisk", "qemu-nbd": "qemu-tools"},
+    }
+
+    def _qemu_install_shrink_tools(self, manquants):
+        """Poser les paquets qui fournissent les outils manquants.
+
+        Rend la liste de ce qui manque ENCORE, relue sur le disque : vide si
+        tout est là. Un refus, un gestionnaire de paquets inconnu ou une
+        installation en échec la rendent non vide, et l'appelant renonce.
+        """
+        paquets, inconnus = todo_install.resolve(
+            manquants,
+            commun=self._SHRINK_PKG,
+            par_famille=self._SHRINK_PKG_FAMILY,
+        )
+        if inconnus:
+            print(
+                f"  ⚠ {t('No package known here for:')} {', '.join(inconnus)}"
+            )
+        status = todo_install.ask_and_install(
+            self.execute,
+            todo_install.install_command(paquets),
+            t("Install them? (y/N): "),
+            self._is_yes,
+        )
+        if status:
+            print(f"  {t('Error installing the tools: ')}{status}")
+        reste = [b for b in self._SHRINK_TOOLS if not shutil.which(b)]
+        if not reste:
+            # Sans cette ligne, la sortie du gestionnaire de paquets est
+            # suivie directement de la question suivante, qui porte sur tout
+            # autre chose : rien ne dit que l'installation a abouti ni qu'on
+            # a changé d'étape.
+            print(f"  ✅ {t('Tools installed; on with the shrink.')}")
+        return reste
+
+    @staticmethod
+    def _qemu_backup_need_and_free(disk):
+        """(besoin, libre) en octets pour la copie de sauvegarde du disque.
+
+        Le besoin est la taille ALLOUÉE et non la taille apparente :
+        « cp --sparse=always » ne recopie pas les trous d'un qcow2. C'est une
+        borne haute — « --reflink=auto » rend la copie presque gratuite sur
+        btrfs et XFS — mais rien ne garantit le reflink, et se tromper par
+        excès est le bon sens ici : une copie qui manque de place s'arrête à
+        mi-chemin et laisse un .bak tronqué.
+        """
+        besoin = os.stat(disk).st_blocks * 512
+        libre = shutil.disk_usage(os.path.dirname(disk) or ".").free
+        return besoin, libre
+
+    def _qemu_ask_backup(self, disk):
+        """Proposer la sauvegarde du disque, chiffres en main. True si oui.
+
+        Les deux tailles passent AVANT la question : une copie qui ne tient
+        pas s'arrête à mi-course et laisse un .bak tronqué sur un système de
+        fichiers désormais plein. Quand la place manque, le défaut bascule à
+        NON — une entrée distraite ne doit pas remplir le disque — sans pour
+        autant décider à la place de l'opérateur, qui peut insister.
+        """
+        besoin, libre = self._qemu_backup_need_and_free(disk)
+        print(
+            f"\n{t('A backup doubles the space used:')}"
+            f" {self._human_size(besoin)} — {t('free here:')}"
+            f" {self._human_size(libre)}"
+        )
+        if libre > besoin * 1.05:
+            return self._is_yes_default_yes(
+                input(t("Back up the disk before shrinking? (Y/n): "))
+            )
+        print(f"⚠  {t('Not enough free space for a full backup.')}")
+        return self._is_yes(
+            input(
+                t(
+                    "Back up anyway, at the risk of filling the disk?"
+                    " (y/N): "
+                )
+            )
+        )
+
     def _qemu_safe_shrink(self, name, disk, new_gb):
         """Réduit le disque SANS casser l'OS, via qemu-nbd + resize2fs +
         sgdisk (sans libguestfs) : on réduit le FS (ext), puis la partition,
@@ -1321,15 +1416,19 @@ class QemuManageMixin:
             print(
                 f"{t('Missing tools for safe shrink:')} {', '.join(missing)}"
             )
+            missing = self._qemu_install_shrink_tools(missing)
+        if missing:
+            print(
+                f"{t('Still missing, safe shrink cancelled:')}"
+                f" {', '.join(missing)}"
+            )
             return False
         target = int(round(new_gb * (1 << 30)))
         # Sauvegarde OPTIONNELLE (défaut OUI) : permet de restaurer en cas
         # d'échec, et de tester la VM avant de la supprimer (proposé à la fin).
         self._shrink_backup = None
         bak = None
-        if self._is_yes_default_yes(
-            input(t("Back up the disk before shrinking? (Y/n): "))
-        ):
+        if self._qemu_ask_backup(disk):
             bak = f"{disk}.bak"
             print(f"\n{t('Backing up the disk before shrinking…')}")
             if (
@@ -2224,8 +2323,16 @@ class QemuManageMixin:
         """Nom de VM stable pour le parc, ex. erplibre-ubuntu-2404. Ajoute un
         suffixe d'architecture quand elle diffère de la native de l'hôte (ex.
         erplibre-ubuntu-2604-s390x sur un hôte amd64) pour éviter les collisions
-        de noms entre archis et rendre l'archi visible."""
-        base = f"erplibre-{distro}-{version.replace('.', '')}"
+        de noms entre archis et rendre l'archi visible.
+
+        La version « latest » ne figure pas dans le nom : une distribution en
+        publication continue n'en a qu'une, si bien que le segment ne
+        distingue aucune VM d'une autre. Une version nommée qui coexiste avec
+        d'autres au catalogue reste dans le nom, tumbleweed comprise."""
+        if version == "latest":
+            base = f"erplibre-{distro}"
+        else:
+            base = f"erplibre-{distro}-{version.replace('.', '')}"
         if arch and arch != cls._native_arch():
             base += f"-{arch}"
         return base
@@ -2248,12 +2355,10 @@ class QemuManageMixin:
         """Adresses IPv4 de L'HÔTE, à écarter des candidates d'une VM.
 
         « virsh domifaddr --source arp » remonte la table ARP, où figurent les
-        passerelles des ponts libvirt (192.168.122.1, 192.168.123.1…). Une VM
-        n'a jamais l'adresse de son hôte : sans ce filtre, une VM RENOMMÉE —
-        dont le bail porte encore l'ancien nom d'hôte, donc sans
-        correspondance — se voyait attribuer la passerelle. Vécu sur
-        « erplibre-ubuntu-2404-MIGRATION », annoncée en 192.168.122.1 au lieu
-        de 192.168.123.170.
+        passerelles des ponts libvirt. Une VM n'a jamais l'adresse de son
+        hôte : sans ce filtre, une VM RENOMMÉE — dont le bail porte encore
+        l'ancien nom d'hôte, donc sans correspondance — se voit attribuer la
+        passerelle.
         """
         try:
             res = subprocess.run(
@@ -2304,9 +2409,9 @@ class QemuManageMixin:
         - agent : qemu-guest-agent DANS la VM (voit l'IP réelle même quand le
           bail dnsmasq est absent) ;
         - arp : table ARP de l'hôte (VM active sur le réseau).
-        On combine pour ne jamais rater une IP que le bail seul manquerait
-        (cas observé : 30 VM émulées, bail dnsmasq vide alors que la VM a une
-        IP)."""
+        On combine pour ne jamais rater une IP que le bail seul manquerait :
+        sous forte charge, le bail dnsmasq reste vide alors que la VM a bien
+        une adresse."""
         ips = []
         siennes = QemuManageMixin._qemu_host_addresses()
         for source in ("lease", "agent", "arp"):
@@ -2396,8 +2501,8 @@ class QemuManageMixin:
         # Sans correspondance de nom d'hôte — le cas d'une VM RENOMMÉE, dont
         # le bail porte encore l'ancien nom — on prend la source la plus
         # sûre : le bail, puis l'agent, puis la table ARP. Celle-ci contient
-        # les passerelles des ponts, et « la dernière candidate » y tombait :
-        # la VM était annoncée en 192.168.122.1.
+        # les passerelles des ponts, où « la dernière candidate » tombe : la
+        # VM se voit alors annoncée avec l'adresse de sa passerelle.
         for source in ("lease", "agent", "arp"):
             if par_source.get(source):
                 return par_source[source][-1]
@@ -2549,10 +2654,9 @@ class QemuManageMixin:
         tourne dans la VM — install_proxmox.sh, les scripts d'installation, le
         Makefile — vient donc de là.
 
-        Vécu deux fois de suite. Un correctif de install_proxmox.sh, commité
-        ici, absent du distant : chaque VM déployée ensuite recevait l'ancien
-        script, et le défaut « revenait » alors qu'il était corrigé. Rien ne
-        le disait ; il a fallu comparer les deux versions à la main.
+        Un correctif commité ici mais pas poussé ne part donc pas : chaque VM
+        déployée ensuite reçoit l'ancien script, et le défaut « revient »
+        alors qu'il est corrigé. Rien ne le signale, d'où ce décompte.
         """
         if not branche:
             return 0, []

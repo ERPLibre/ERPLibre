@@ -186,8 +186,12 @@ class QemuDeployMixin:
             "{ sudo dnf clean all; sudo dnf install -y --refresh $PKGS; }; "
             "elif command -v pacman >/dev/null 2>&1; then "
             + self._qemu_pacman_prepare_cmd()
-            + "sudo pacman -S --needed --noconfirm $PKGS; "
-            "elif command -v zypper >/dev/null 2>&1; then "
+            # bash-completion n'est PAS dans une image cloud Arch, là où les
+            # images Debian et Fedora l'embarquent : sans lui, la tabulation
+            # ne complète que les noms de fichiers, pas les sous-commandes.
+            + "sudo pacman -S --needed --noconfirm $PKGS bash-completion; "
+            + self._qemu_yay_install_cmd()
+            + "elif command -v zypper >/dev/null 2>&1; then "
             # openSUSE : « --non-interactive » vaut le -y des autres, et
             # « --auto-agree-with-licenses », qui va APRÈS « install »,
             # évite un blocage sur une licence à accepter.

@@ -26,7 +26,7 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import todo_prefs
+from script.todo import todo_install, todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -256,7 +256,7 @@ class TODO(
 [7] {t("Analyse - Odoo database analysis")}
 
 ── {t("Sources & documentation")} ──
-[8] {t("Git - Git tools")}
+[8] {t("Git - Git and shell tools")}
 [9] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
@@ -2524,17 +2524,55 @@ class TODO(
                 if cmd_no_found:
                     print(t("Command not found !"))
 
+    # Les hooks que le dépôt fournit. git saute silencieusement un hook qui
+    # ne porte pas le bit d'exécution, d'où la vérification à l'installation.
+    _GIT_HOOKS = ("commit-msg", "pre-commit")
+    _GIT_HOOKS_PATH = os.path.join("script", "git", "hooks")
+
     def prompt_execute_git(self):
-        print(f"🤖 {t('Git management tools!')}")
+        print(f"🤖 {t('Git and shell management tools!')}")
         choices = [
             {"prompt_description": t("Local git server")},
             {"prompt_description": t("Add a remote to a local repository")},
+            {
+                "prompt_description": t(
+                    "Install git hooks (commit-msg, pre-commit)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Set merge.conflictStyle to zdiff3 (global)"
+                )
+            },
         ]
 
         # Append config-driven entries
         config_entries = self.config_file.get_config("git_from_makefile")
         if config_entries:
             choices.extend(config_entries)
+
+        # Starship ferme la liste : c'est un outil de shell, pas de git. Son
+        # rang dépend du nombre d'entrées venues de todo.json, donc « method »
+        # porte la destination dans l'entrée elle-même — un numéro codé en dur
+        # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
+        choices.append(
+            {
+                "prompt_description": t("Install Starship on Shell"),
+                "method": "_shell_install_starship",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Install Claude Code"),
+                "method": "_shell_install_claude_code",
+            }
+        )
+        choices.append(
+            {
+                "prompt_description": t("Install opencode"),
+                "method": "_shell_install_opencode",
+            }
+        )
 
         help_info = self.fill_help_info(choices)
 
@@ -2547,6 +2585,10 @@ class TODO(
                 self.prompt_execute_git_local_server()
             elif status == "2":
                 self._git_add_remote()
+            elif status == "3":
+                self._git_install_hooks()
+            elif status == "4":
+                self._git_set_conflict_style()
             else:
                 cmd_no_found = True
                 try:
@@ -2554,7 +2596,11 @@ class TODO(
                     if 0 < int_cmd <= len(choices):
                         cmd_no_found = False
                         instance = choices[int_cmd - 1]
-                        self.execute_from_configuration(instance)
+                        method = instance.get("method")
+                        if method:
+                            getattr(self, method)()
+                        else:
+                            self.execute_from_configuration(instance)
                 except ValueError:
                     pass
                 if cmd_no_found:
@@ -2578,6 +2624,300 @@ class TODO(
             print(t("Remote added successfully!"))
         except Exception as e:
             print(f"{t('Error adding remote: ')}{e}")
+
+    def _git_install_hooks(self):
+        """Pointer core.hooksPath sur les hooks du dépôt.
+
+        Le bit d'exécution fait partie de l'installation : sans lui git
+        ignore le hook sans rien dire, et le garde-fou du message de commit
+        passe inaperçu.
+        """
+        racine = self._claude_context_root()
+        absolu = os.path.join(racine, self._GIT_HOOKS_PATH)
+        if not os.path.isdir(absolu):
+            print(f"{t('Hooks directory is missing: ')}{absolu}")
+            return
+        actuel = self._git_hooks_path(racine)
+        if actuel and actuel != self._GIT_HOOKS_PATH:
+            print(f"{t('Another hooks path is already set: ')}{actuel}")
+            if not self._is_yes(input(t("Replace it? (y/Y): "))):
+                print(t("Nothing to do."))
+                return
+        for hook in self._GIT_HOOKS:
+            chemin = os.path.join(absolu, hook)
+            if os.path.isfile(chemin) and not os.access(chemin, os.X_OK):
+                os.chmod(chemin, os.stat(chemin).st_mode | 0o111)
+                print(f"{t('Execution bit added: ')}{hook}")
+        # « -C racine » et non le cwd : lancé depuis un dépôt imbriqué
+        # (odoo18.0/addons/…), git écrirait core.hooksPath là-bas et la
+        # racine resterait sans garde-fou, sans le moindre message.
+        cmd = (
+            f"git -C {shlex.quote(racine)} config"
+            f" core.hooksPath {self._GIT_HOOKS_PATH}"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        # exec_command_live RETOURNE le code de sortie, il ne lève rien : sans
+        # ce test, un « fatal: not in a git directory » annonçait quand même
+        # « Hooks git installés! ». Le rapport qui suit ne rattrape pas, il
+        # relit le bit d'exécution et non core.hooksPath.
+        status = self.execute.exec_command_live(cmd, source_erplibre=False)
+        if status:
+            print(f"{t('Error installing hooks: ')}{status}")
+            return
+        print(t("Git hooks installed!"))
+        for hook in self._GIT_HOOKS:
+            pose = os.access(os.path.join(absolu, hook), os.X_OK)
+            marque = t("hook installed") if pose else t("hook not installed")
+            print(f"   {hook:<26} {marque}")
+
+    def _git_set_conflict_style(self):
+        """Poser merge.conflictStyle=zdiff3 dans la configuration globale.
+
+        zdiff3 ajoute la base commune aux marqueurs de conflit et sort de la
+        zone contestée les lignes que les deux côtés ont en commun : il reste
+        moins à arbitrer à la main. Le style demande git 2.35, que toutes les
+        plateformes supportées dépassent.
+
+        La valeur est relue après écriture : « git config » ne rend rien à
+        l'écriture, et une configuration globale en lecture seule échouerait
+        sans que le menu le sache.
+        """
+        status = self.execute.exec_command_live(
+            "git config --global merge.conflictStyle zdiff3",
+            source_erplibre=False,
+        )
+        if status:
+            print(
+                f"❌ {t('Failed to set merge.conflictStyle, see the output above.')}"
+            )
+            return
+        result = self.execute.exec_command_live(
+            "git config --global --get merge.conflictStyle",
+            source_erplibre=False,
+            quiet=True,
+            return_status_and_output=True,
+        )
+        value = (
+            " ".join(result[1]).strip() if isinstance(result, tuple) else ""
+        )
+        print(f"✅ merge.conflictStyle = {value}")
+
+    # Le shell -> son fichier de configuration.
+    _SHELL_RC = {
+        "bash": "~/.bashrc",
+        "zsh": "~/.zshrc",
+        "fish": "~/.config/fish/config.fish",
+    }
+
+    # Ce que chaque shell écrit pour lancer starship. La ligne va en FIN de
+    # fichier : starship compose le prompt et doit passer après tout ce qui y
+    # touche.
+    _STARSHIP_LINE = {
+        "bash": 'eval "$(starship init bash)"',
+        "zsh": 'eval "$(starship init zsh)"',
+        "fish": "starship init fish | source",
+    }
+
+    # L'installateur amont pose un binaire statique. Il sert de recours parce
+    # que le paquet manque d'une partie des dépôts des plateformes supportées.
+    _STARSHIP_UPSTREAM = "curl -sS https://starship.rs/install/install.sh | sh"
+
+    # Les assistants posés par un installateur amont : le nom du binaire mène
+    # à (commande, répertoire d'installation). Le répertoire sert à garantir
+    # le PATH — un binaire posé hors des chemins du shell reste introuvable.
+    _UPSTREAM_TOOLS = {
+        "claude": (
+            "curl -fsSL https://claude.ai/install.sh | bash",
+            "~/.local/bin",
+        ),
+        "opencode": (
+            "curl -fsSL https://opencode.ai/install | bash",
+            "~/.opencode/bin",
+        ),
+    }
+
+    @staticmethod
+    def _shell_name():
+        """Le nom du shell de l'utilisateur d'après $SHELL, '' s'il est vide."""
+        return os.path.basename(os.environ.get("SHELL", "")).strip()
+
+    def _shell_rc_present(self):
+        """Les shells dont le fichier de configuration existe déjà."""
+        return [
+            nom
+            for nom, fichier in self._SHELL_RC.items()
+            if os.path.exists(os.path.expanduser(fichier))
+        ]
+
+    def _shell_rc_target(self):
+        """Le shell à modifier. Ne demande que devant un vrai choix.
+
+        Aucun fichier de configuration présent : bash, sans question — l'appel
+        le créera. Un seul présent : celui-là, il n'y a rien à choisir. Deux ou
+        trois : à l'opérateur de trancher, le sien proposé par défaut.
+        """
+        presents = self._shell_rc_present()
+        if not presents:
+            return "bash"
+        if len(presents) == 1:
+            return presents[0]
+        courant = self._shell_name()
+        defaut = courant if courant in presents else presents[0]
+        print(f"\n{t('Which shell configuration?')}")
+        for i, nom in enumerate(presents, 1):
+            print(f"  [{i}] {nom:<5} {self._SHELL_RC[nom]}")
+        sel = input(
+            f"{t('Choice (number or name, default:')} {defaut}) : "
+        ).strip()
+        if not sel:
+            return defaut
+        if sel in presents:
+            return sel
+        try:
+            idx = int(sel) - 1
+            if 0 <= idx < len(presents):
+                return presents[idx]
+        except ValueError:
+            pass
+        return defaut
+
+    def _shell_rc_append(self, shell, ligne, marqueur):
+        """Ajouter la ligne au fichier du shell si le marqueur n'y est pas.
+
+        Rend le chemin du fichier quand la ligne est écrite, None quand le
+        marqueur y était déjà. Le marqueur, et non la ligne entière, parce
+        qu'une variante écrite à la main ou par un installateur amont compte
+        autant : ce qui importe est que l'effet soit là, pas la graphie.
+        """
+        chemin = os.path.expanduser(self._SHELL_RC[shell])
+        contenu = ""
+        if os.path.exists(chemin):
+            with open(chemin, encoding="utf-8") as fh:
+                contenu = fh.read()
+        if marqueur in contenu:
+            return None
+        os.makedirs(os.path.dirname(chemin), exist_ok=True)
+        with open(chemin, "a", encoding="utf-8") as fh:
+            # Un fichier qui ne finit pas par un saut de ligne collerait la
+            # ligne ajoutée à la dernière commande.
+            if contenu and not contenu.endswith("\n"):
+                fh.write("\n")
+            fh.write(f"{ligne}\n")
+        return chemin
+
+    def _shell_path_line(self, shell, repertoire):
+        """La ligne qui met un répertoire dans le PATH, selon le shell."""
+        if shell == "fish":
+            return f"fish_add_path {repertoire}"
+        return f'export PATH="{repertoire}:$PATH"'
+
+    def _shell_ensure_on_path(self, shell, repertoire):
+        """Garantir que le répertoire est dans le PATH du shell choisi.
+
+        Ne fait rien si le répertoire y figure déjà, quelle que soit la
+        graphie — les installateurs amont écrivent souvent la ligne eux-mêmes.
+        """
+        ligne = self._shell_path_line(shell, repertoire)
+        chemin = self._shell_rc_append(shell, ligne, repertoire)
+        if chemin is None:
+            print(f"✅ {t('Already on the PATH: ')}{repertoire}")
+            return
+        print(f"✅ {t('PATH line added to: ')}{chemin}")
+        print(f"   {ligne}")
+
+    def _shell_install_starship(self):
+        """Poser starship, puis l'accrocher au shell de l'utilisateur.
+
+        Deux étapes qui échouent séparément : le binaire, que le gestionnaire
+        de paquets de la distribution fournit quand il le connaît, et la ligne
+        d'initialisation dans le fichier de configuration du shell. Sans la
+        seconde, starship est installé et le prompt ne change pas.
+        """
+        if shutil.which("starship") is None:
+            self._shell_install_starship_binary()
+        if shutil.which("starship") is None:
+            print(
+                f"❌ {t('starship is not installed, shell left untouched.')}"
+            )
+            return
+        self._shell_hook_starship()
+
+    def _shell_install_starship_binary(self):
+        """Poser le binaire : le paquet de la distribution, sinon l'amont.
+
+        Un refus de l'opérateur arrête là. Un paquet inconnu ou une
+        installation en échec passent au recours amont, qui couvre les dépôts
+        où starship n'est pas empaqueté.
+        """
+        cmd = todo_install.install_command(["starship"])
+        if cmd:
+            status = todo_install.ask_and_install(
+                self.execute,
+                cmd,
+                t("Install starship? (y/N): "),
+                self._is_yes,
+            )
+            if status is None:
+                return
+            if status == 0 and shutil.which("starship"):
+                return
+        print(f"  {t('No starship package here, falling back upstream.')}")
+        todo_install.ask_and_install(
+            self.execute,
+            self._STARSHIP_UPSTREAM,
+            t("Run the upstream installer? (y/N): "),
+            self._is_yes,
+        )
+
+    def _shell_hook_starship(self):
+        """Ajouter la ligne d'initialisation au fichier du shell choisi.
+
+        La ligne n'est écrite qu'une fois : « starship init » cherché dans le
+        fichier couvre les trois shells, dont les lignes diffèrent. L'écriture
+        ne demande pas de confirmation — le choix du fichier, quand il y en a
+        un à faire, l'a déjà donnée.
+        """
+        shell = self._shell_rc_target()
+        ligne = self._STARSHIP_LINE[shell]
+        chemin = self._shell_rc_append(shell, ligne, "starship init")
+        if chemin is None:
+            fichier = os.path.expanduser(self._SHELL_RC[shell])
+            print(f"✅ {t('starship is already hooked into: ')}{fichier}")
+            return
+        print(f"✅ {t('starship hooked into: ')}{chemin}")
+        print(f"   {ligne}")
+        print(f"   {t('Open a new shell to see it.')}")
+
+    def _shell_install_claude_code(self):
+        self._shell_install_upstream_tool("claude")
+
+    def _shell_install_opencode(self):
+        self._shell_install_upstream_tool("opencode")
+
+    def _shell_install_upstream_tool(self, binaire):
+        """Lancer l'installateur amont d'un assistant, puis garantir le PATH.
+
+        Ces installateurs posent leur binaire dans un répertoire du HOME que
+        le PATH d'un shell ne porte pas toujours : sans la ligne d'export, le
+        binaire est là et la commande reste introuvable. Le PATH du processus
+        courant, lui, est figé depuis son démarrage — le menu ne verra pas le
+        binaire avant d'être relancé.
+        """
+        commande, repertoire = self._UPSTREAM_TOOLS[binaire]
+        status = self.execute.exec_command_live(
+            commande,
+            source_erplibre=False,
+        )
+        if status:
+            print(f"❌ {t('Installation failed, see the output above.')}")
+            return
+        self._shell_ensure_on_path(self._shell_rc_target(), repertoire)
+        pose = os.path.join(os.path.expanduser(repertoire), binaire)
+        if not os.path.exists(pose):
+            print(f"⚠ {t('Binary not found at: ')}{pose}")
+            return
+        print(f"✅ {binaire} : {pose}")
+        print(f"   {t('Open a new shell to see it.')}")
 
     def prompt_execute_git_local_server(self):
         print(f"🤖 {t('Manage local git repository server!')}")
@@ -2687,6 +3027,11 @@ class TODO(
                 )
             },
             {"prompt_description": t("Show the context given to Claude")},
+            {
+                "prompt_description": t(
+                    "Claude Code plugins - marketplaces and ERPLibre list"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -2703,6 +3048,8 @@ class TODO(
                 self.prompt_execute_rtk()
             elif status == "4":
                 self._show_claude_context()
+            elif status == "5":
+                self.prompt_execute_claude_plugins()
             else:
                 print(t("Command not found !"))
 
@@ -2712,7 +3059,19 @@ class TODO(
             {"prompt_description": t("Commit - OCA/Odoo commit command")},
             {
                 "prompt_description": t(
-                    "Todo Add Command - Add a command to todo.py menu"
+                    "Git prepare merge - Git merge preparation command"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Todo Add Command + Plan Max - Plan and add a todo.py"
+                    " command"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Todo Generate Code - Code by the OCA rules at high"
+                    " effort"
                 )
             },
             {"prompt_description": t("Show installed custom commands")},
@@ -2732,10 +3091,27 @@ class TODO(
                 )
             elif status == "2":
                 self._setup_claude_command(
+                    "git_prepare_merge",
+                    "template_claude_commands_git_prepare_merge.md",
+                )
+            elif status == "3":
+                # Les deux gabarits vont ensemble : /todo_plan_max produit la
+                # spécification que /todo_add_command implémente, et l'un sans
+                # l'autre laisse la moitié de la chaîne.
+                self._setup_claude_command(
+                    "todo_plan_max",
+                    "template_claude_commands_todo_plan_max.md",
+                )
+                self._setup_claude_command(
                     "todo_add_command",
                     "template_claude_commands_todo_add_command.md",
                 )
-            elif status == "3":
+            elif status == "4":
+                self._setup_claude_command(
+                    "todo_generate_code",
+                    "template_claude_commands_todo_generate_code.md",
+                )
+            elif status == "5":
                 self._list_claude_commands()
             else:
                 print(t("Command not found !"))
@@ -2863,7 +3239,14 @@ class TODO(
         print(f"{t('Deployed commands'):<22} ~/.claude/commands/")
         gabarits = {
             "commit": "template_claude_commands_commit.md",
+            "git_prepare_merge": (
+                "template_claude_commands_git_prepare_merge.md"
+            ),
             "todo_add_command": "template_claude_commands_todo_add_command.md",
+            "todo_generate_code": (
+                "template_claude_commands_todo_generate_code.md"
+            ),
+            "todo_plan_max": "template_claude_commands_todo_plan_max.md",
         }
         for nom, gabarit in sorted(gabarits.items()):
             etat = self._claude_command_state(
@@ -2879,7 +3262,7 @@ class TODO(
         )
         if chemin_hooks:
             absolu = os.path.join(racine, chemin_hooks)
-            for hook in ("commit-msg", "pre-commit"):
+            for hook in self._GIT_HOOKS:
                 pose = os.access(os.path.join(absolu, hook), os.X_OK)
                 marque = (
                     t("hook installed") if pose else t("hook not installed")
@@ -2980,6 +3363,231 @@ class TODO(
             print(t("Automation added successfully in todo.json!"))
         except Exception as e:
             print(f"{t('Error adding automation: ')}{e}")
+
+    # Les plugins qu'ERPLibre pose par défaut, chacun avec la clé qui dit à
+    # quoi il sert. Tous viennent du marketplace officiel et travaillent sur
+    # le poste : aucun n'appelle un service tiers ni ne réclame de compte.
+    _CLAUDE_PREFERRED_PLUGINS = (
+        ("superpowers", "brainstorming, subagent-driven development, TDD"),
+        ("pyright-lsp", "Python type checking and code intelligence"),
+        ("claude-security", "vulnerability scan run entirely in session"),
+        (
+            "skill-creator",
+            "write, improve and evaluate the repository skills",
+        ),
+    )
+    _CLAUDE_MARKETPLACES_DIR = "~/.claude/plugins/marketplaces"
+
+    def prompt_execute_claude_plugins(self):
+        print(f"🤖 {t('Manage Claude Code plugins and marketplaces!')}")
+        choices = [
+            {"section": t("Inventory")},
+            {"prompt_description": t("List installed plugins")},
+            {"prompt_description": t("List configured marketplaces")},
+            {"prompt_description": t("Search a plugin in the marketplaces")},
+            {
+                "prompt_description": t(
+                    "Show a plugin detail and its token cost"
+                )
+            },
+            {"section": t("Install")},
+            {"prompt_description": t("Install the ERPLibre preferred list")},
+            {"prompt_description": t("Install a plugin by name")},
+            {"prompt_description": t("Add a marketplace")},
+            {"section": t("Maintenance")},
+            {
+                "prompt_description": t(
+                    "Update the marketplaces and the plugins"
+                )
+            },
+            {"prompt_description": t("Uninstall a plugin")},
+        ]
+        help_info = self.fill_help_info(choices)
+
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._claude_plugin_exec("list")
+            elif status == "2":
+                self._claude_plugin_exec("marketplace list")
+            elif status == "3":
+                self._claude_plugin_search()
+            elif status == "4":
+                self._claude_plugin_details()
+            elif status == "5":
+                self._claude_install_preferred_plugins()
+            elif status == "6":
+                self._claude_plugin_install_by_name()
+            elif status == "7":
+                self._claude_marketplace_add()
+            elif status == "8":
+                self._claude_plugin_update()
+            elif status == "9":
+                self._claude_plugin_uninstall()
+            else:
+                print(t("Command not found !"))
+
+    def _claude_plugin_exec(self, args, quiet=False, capture=False):
+        """Lance « claude plugin <args> », ou signale que claude est absent.
+
+        Rend le code de sortie, ou le couple (code, lignes) quand capture est
+        vrai. Le code 1 sans sortie signale l'absence de l'exécutable : rien
+        n'a tourné, et l'appelant ne doit pas conclure à un échec de la
+        commande elle-même.
+        """
+        claude = shutil.which("claude")
+        if claude is None:
+            print(t("The claude command is not in the PATH."))
+            return (1, []) if capture else 1
+        return self.execute.exec_command_live(
+            f"{shlex.quote(claude)} plugin {args}",
+            source_erplibre=False,
+            quiet=quiet,
+            return_status_and_output=capture,
+        )
+
+    def _claude_plugin_is_installed(self, name):
+        """Le plugin est-il déjà posé ?
+
+        La liste est lue telle que la CLI l'écrit, et le nom y est cherché
+        comme un mot entier : « code-review » ne doit pas se reconnaître dans
+        « pr-review-toolkit ». Un doute rend faux, et l'installation qui suit
+        est de toute façon idempotente.
+        """
+        result = self._claude_plugin_exec("list", quiet=True, capture=True)
+        if not isinstance(result, tuple) or result[0] != 0:
+            return False
+        motif = re.compile(rf"(?<![\w-]){re.escape(name)}(?![\w-])")
+        return any(motif.search(ligne) for ligne in result[1])
+
+    def _claude_install_preferred_plugins(self):
+        """Pose la liste préférée d'ERPLibre après confirmation.
+
+        L'installation passe par « -y » : la sortie de TODO est un tuyau, pas
+        un terminal, et la CLI refuse sans lui toute installation qui exécute
+        une commande déclarée par un marketplace. La liste est donc affichée
+        AVANT la confirmation, qui est la seule occasion de la lire.
+        """
+        print(t("ERPLibre preferred plugins:"))
+        print("-" * 62)
+        for nom, raison in self._CLAUDE_PREFERRED_PLUGINS:
+            print(f"  {nom:<18} {t(raison)}")
+        print("-" * 62)
+        if not self._is_yes(input(t("Install these plugins? (y/Y): "))):
+            print(t("Nothing to do."))
+            return
+        for nom, _ in self._CLAUDE_PREFERRED_PLUGINS:
+            print(f"\n📦 {nom}")
+            if self._claude_plugin_is_installed(nom):
+                print(t("Already installed, skipped."))
+                continue
+            self._claude_plugin_exec(f"install {shlex.quote(nom)} -y")
+        print(f"\n{t('A restart of Claude Code applies the change.')}")
+
+    def _claude_plugin_install_by_name(self):
+        nom = input(t("Plugin name: ")).strip()
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"install {shlex.quote(nom)} -y")
+        print(t("A restart of Claude Code applies the change."))
+
+    def _claude_plugin_details(self):
+        nom = input(t("Plugin name: ")).strip()
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"details {shlex.quote(nom)}")
+
+    def _claude_plugin_uninstall(self):
+        nom = input(t("Plugin name: ")).strip()
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        if not self._is_yes(input(t("Uninstall this plugin? (y/Y): "))):
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"uninstall {shlex.quote(nom)}")
+        print(t("A restart of Claude Code applies the change."))
+
+    def _claude_marketplace_add(self):
+        source = input(
+            t("Marketplace source (URL, path or owner/repo): ")
+        ).strip()
+        if not source:
+            print(t("Nothing to do."))
+            return
+        self._claude_plugin_exec(f"marketplace add {shlex.quote(source)}")
+
+    def _claude_plugin_update(self):
+        """Met à jour les marketplaces, puis les plugins déjà posés.
+
+        Les catalogues passent d'abord : « plugin update » installe la version
+        que le catalogue local annonce, et sur un catalogue périmé il ne fait
+        rien tout en sortant en 0.
+        """
+        self._claude_plugin_exec("marketplace update")
+        for nom, _ in self._CLAUDE_PREFERRED_PLUGINS:
+            if self._claude_plugin_is_installed(nom):
+                self._claude_plugin_exec(f"update {shlex.quote(nom)}")
+        print(t("A restart of Claude Code applies the change."))
+
+    def _claude_marketplace_catalog(self):
+        """Les plugins des marketplaces posés, en triplets (nom, source, mot).
+
+        Le catalogue est lu sur le disque plutôt que par la CLI : la recherche
+        reste possible hors ligne, et un marketplace dont le manifeste est
+        illisible est sauté sans faire échouer les autres.
+        """
+        racine = os.path.expanduser(self._CLAUDE_MARKETPLACES_DIR)
+        catalogue = []
+        if not os.path.isdir(racine):
+            return catalogue
+        for nom_marche in sorted(os.listdir(racine)):
+            manifeste = os.path.join(
+                racine, nom_marche, ".claude-plugin", "marketplace.json"
+            )
+            try:
+                with open(manifeste, encoding="utf-8") as fh:
+                    contenu = json.load(fh)
+            except (OSError, ValueError):
+                continue
+            for plugin in contenu.get("plugins", []):
+                nom = plugin.get("name", "")
+                if nom:
+                    catalogue.append(
+                        (nom, nom_marche, plugin.get("description", ""))
+                    )
+        return catalogue
+
+    def _claude_plugin_search(self):
+        """Cherche un mot-clé dans le nom et la description des plugins."""
+        catalogue = self._claude_marketplace_catalog()
+        if not catalogue:
+            print(t("No marketplace is configured."))
+            return
+        mot = input(t("Keyword to search: ")).strip().lower()
+        if not mot:
+            print(t("Nothing to do."))
+            return
+        trouves = [
+            (nom, marche, desc)
+            for nom, marche, desc in catalogue
+            if mot in nom.lower() or mot in desc.lower()
+        ]
+        if not trouves:
+            print(t("No plugin matches this keyword."))
+            return
+        print("-" * 78)
+        for nom, marche, desc in trouves:
+            print(f"  {nom}@{marche}")
+            if desc:
+                print(f"      {desc[:70]}")
+        print("-" * 78)
+        print(f"{t('Total:')} {len(trouves)}")
 
     def prompt_execute_doc(self):
         print(f"🤖 {t('Looking for documentation?')}")
@@ -4170,6 +4778,83 @@ class TODO(
             else:
                 print(t("Command not found !"))
 
+    def rtk_locate(self):
+        """Localise l'exécutable rtk.
+
+        Rend le couple (chemin, visible_dans_le_PATH). Le chemin vaut None
+        quand rtk est introuvable. Le second membre est faux quand le binaire
+        existe à l'emplacement où l'installateur le dépose sans que le PATH y
+        mène : un processus garde le PATH qu'il avait au démarrage, donc une
+        installation faite pendant que TODO tourne lui reste invisible tant
+        qu'il n'est pas relancé.
+        """
+        rtk_path = shutil.which("rtk")
+        if rtk_path:
+            return rtk_path, True
+        # Emplacement par défaut de l'installateur (RTK_INSTALL_DIR le change).
+        fallback = os.path.expanduser("~/.local/bin/rtk")
+        if os.access(fallback, os.X_OK):
+            return fallback, False
+        return None, False
+
+    def rtk_exec(self, args):
+        """Lance rtk par son chemin absolu, ou signale qu'il est absent.
+
+        Le chemin absolu évite le code 127 d'un « rtk » nu quand le PATH du
+        processus ne mène pas à l'emplacement d'installation.
+        """
+        rtk_path, _ = self.rtk_locate()
+        if rtk_path is None:
+            print(t("RTK is not installed. Use option 1 to install it."))
+            return 1
+        return self.execute.exec_command_live(
+            f"{shlex.quote(rtk_path)} {args}",
+            source_erplibre=False,
+        )
+
+    def rtk_version(self, rtk_path):
+        """Rend la version qu'annonce le binaire, « ? » s'il ne répond pas."""
+        result = self.execute.exec_command_live(
+            f"{shlex.quote(rtk_path)} --version",
+            source_erplibre=False,
+            quiet=True,
+            return_status_and_output=True,
+        )
+        if isinstance(result, tuple) and result[0] == 0:
+            return " ".join(result[1]).strip()
+        return "?"
+
+    def rtk_report_path_warning(self):
+        """Dit comment rendre rtk appelable quand le PATH ne le porte pas."""
+        print(t("rtk is not in the PATH of this process, restart TODO."))
+        print(t("To make it permanent, add to your shell profile:"))
+        print('   export PATH="$HOME/.local/bin:$PATH"')
+
+    def rtk_report_install(self, exit_code):
+        """Annonce le résultat de l'installation, PATH compris.
+
+        Une installation réussie ne rend pas rtk appelable pour autant : le
+        binaire atterrit dans un répertoire que le PATH du processus courant
+        peut ignorer. Distinguer les deux cas évite de conclure à un échec
+        devant un « commande introuvable » qui ne tient qu'au PATH.
+        """
+        if exit_code:
+            print(f"❌ {t('RTK installation failed, see the output above.')}")
+            return
+        rtk_path, in_path = self.rtk_locate()
+        if rtk_path is None:
+            print(
+                "❌"
+                f" {t('Installation ended without error, but no rtk binary was found.')}"
+            )
+            return
+        print(
+            f"✅ {t('RTK is installed, version: ')}{self.rtk_version(rtk_path)}"
+        )
+        print(f"   {rtk_path}")
+        if not in_path:
+            self.rtk_report_path_warning()
+
     def rtk_install(self):
         print(f"🤖 {t('Installation method:')}")
         choices = [
@@ -4187,64 +4872,47 @@ class TODO(
         if status == "0":
             return
         elif status == "1":
-            self.execute.exec_command_live(
-                "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh",
-                source_erplibre=False,
+            command = (
+                "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/"
+                "refs/heads/master/install.sh | sh"
             )
         elif status == "2":
-            self.execute.exec_command_live(
-                "brew install rtk",
-                source_erplibre=False,
-            )
+            command = "brew install rtk"
         elif status == "3":
-            self.execute.exec_command_live(
-                "cargo install --git https://github.com/rtk-ai/rtk",
-                source_erplibre=False,
-            )
+            command = "cargo install --git https://github.com/rtk-ai/rtk"
         else:
             print(t("Command not found !"))
+            return
+        exit_code = self.execute.exec_command_live(
+            command,
+            source_erplibre=False,
+        )
+        self.rtk_report_install(exit_code)
 
     def rtk_check_version(self):
-        self.execute.exec_command_live(
-            "rtk --version",
-            source_erplibre=False,
-        )
+        self.rtk_exec("--version")
 
     def rtk_show_gain(self):
-        self.execute.exec_command_live(
-            "rtk gain",
-            source_erplibre=False,
-        )
+        self.rtk_exec("gain")
 
     def rtk_discover(self):
-        self.execute.exec_command_live(
-            "rtk discover",
-            source_erplibre=False,
-        )
+        self.rtk_exec("discover")
 
     def rtk_init_global(self):
-        self.execute.exec_command_live(
-            "rtk init --global",
-            source_erplibre=False,
-        )
+        self.rtk_exec("init --global")
 
     def rtk_check_status(self):
-        rtk_path = shutil.which("rtk")
+        rtk_path, in_path = self.rtk_locate()
         if rtk_path is None:
             print(t("RTK is not installed. Use option 1 to install it."))
             return
 
-        result = self.execute.exec_command_live(
-            "rtk --version",
-            source_erplibre=False,
-            quiet=True,
-            return_status_and_output=True,
+        print(
+            f"{t('RTK is installed, version: ')}{self.rtk_version(rtk_path)}"
         )
-        if isinstance(result, tuple) and result[0] == 0:
-            version_output = " ".join(result[1]).strip()
-            print(f"{t('RTK is installed, version: ')}{version_output}")
-        else:
-            print(f"{t('RTK is installed, version: ')}?")
+        print(f"   {rtk_path}")
+        if not in_path:
+            self.rtk_report_path_warning()
 
         config_path = os.path.expanduser("~/.config/rtk/config.toml")
         if os.path.exists(config_path):

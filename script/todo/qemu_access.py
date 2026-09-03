@@ -4,11 +4,13 @@
 """Menu QEMU/KVM : atteindre une VM \u2014 SSH, tunnels, consoles, \u00e9mulateur.\n\nTout ce qui relie l'humain \u00e0 une machine d\u00e9j\u00e0 d\u00e9ploy\u00e9e : ~/.ssh/config et ses\nProxyJump, la d\u00e9couverte des VM imbriqu\u00e9es, les tunnels de bureau distant, la\nconsole s\u00e9rie et graphique (virt-viewer), et l'\u00e9mulateur Android d'une VM\ngraphique avec son tunnel adb.\n\nS\u00e9par\u00e9 du reste parce que c'est le seul bloc qui parle de R\u00c9SEAU et de\nsessions interactives, jamais de cr\u00e9ation ni de destruction de VM."""
 
 import os
+import shlex
 import shutil
 import socket
 import subprocess
 import time
 
+from script.todo import todo_install
 from script.todo.todo_i18n import t
 
 
@@ -597,34 +599,28 @@ class QemuAccessMixin:
         )
         print(f'  {t("To close it:")} pkill -f "{port}:localhost:{port}"')
 
-    # Un paquet, quatre familles. virt-viewer porte le même nom partout, ce qui
-    # est rare et bienvenu : seule la commande d'installation change.
-    _QEMU_VIRT_VIEWER_INSTALL = (
-        ("apt-get", "sudo apt-get install -y virt-viewer"),
-        ("dnf", "sudo dnf install -y virt-viewer"),
-        ("pacman", "sudo pacman -S --needed --noconfirm virt-viewer"),
-        ("zypper", "sudo zypper --non-interactive install virt-viewer"),
-    )
-
     def _qemu_ensure_virt_viewer(self):
         """virt-viewer sur CETTE machine, installé s'il manque.
 
         Installé seulement là où il va SERVIR : sur un hyperviseur sans écran,
         poser un client graphique ne rendrait service à personne. C'est
-        l'appelant qui a vérifié l'affichage."""
+        l'appelant qui a vérifié l'affichage, et c'est pourquoi celui-ci pose
+        sans demander — la seule installation du CLI dans ce cas.
+
+        virt-viewer porte le même nom de paquet dans les quatre familles, ce
+        qui est rare : seule la commande change, et todo_install la connaît."""
         if shutil.which("virt-viewer"):
             return True
         print(f"\n  {t('virt-viewer is missing here; installing it.')}")
-        for tool, cmd in self._QEMU_VIRT_VIEWER_INSTALL:
-            if shutil.which(tool):
-                print(f"  {t('Will execute:')} {cmd}")
-                self.execute.exec_command_live(cmd, source_erplibre=False)
-                break
-        else:
+        cmd = todo_install.install_command(["virt-viewer"])
+        if not cmd:
             print(f"  ⚠ {t('no known package manager here.')}")
             return False
+        lisible = shlex.join(cmd)
+        print(f"  {t('Will execute:')} {lisible}")
+        self.execute.exec_command_live(lisible, source_erplibre=False)
         if shutil.which("virt-viewer"):
-            print(f"  ✅ virt-viewer")
+            print("  ✅ virt-viewer")
             return True
         print(f"  ⚠ {t('virt-viewer still missing after the install.')}")
         return False

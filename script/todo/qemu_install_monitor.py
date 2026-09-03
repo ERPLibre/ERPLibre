@@ -1089,17 +1089,6 @@ def cli_browser() -> str | None:
     return None
 
 
-def _os_id() -> str:
-    """ID de la distribution hôte (/etc/os-release), ex. « ubuntu », « fedora »."""
-    try:
-        for line in open("/etc/os-release", encoding="utf-8"):
-            if line.startswith("ID="):
-                return line.split("=", 1)[1].strip().strip('"').lower()
-    except OSError:
-        pass
-    return ""
-
-
 # Navigateurs CLI installables via apt/dnf/pacman (nom de paquet = binaire).
 # browsh/carbonyl ne sont pas dans les dépôts standard -> non proposés ici.
 INSTALLABLE_BROWSERS = (
@@ -1111,29 +1100,17 @@ INSTALLABLE_BROWSERS = (
 
 
 def browser_install_command(browser="w3m") -> list | None:
-    """Commande d'installation du navigateur CLI `browser` adaptée à l'OS hôte :
-    apt (Ubuntu/Debian), dnf (Fedora), pacman (Arch). None si gestionnaire
-    inconnu."""
-    apt = ["sudo", "apt-get", "install", "-y", browser]
-    dnf = ["sudo", "dnf", "install", "-y", browser]
-    pac = ["sudo", "pacman", "-S", "--needed", "--noconfirm", browser]
-    by_id = {
-        "ubuntu": apt,
-        "debian": apt,
-        "linuxmint": apt,
-        "fedora": dnf,
-        "arch": pac,
-    }
-    cmd = by_id.get(_os_id())
-    if cmd:
-        return cmd
-    if shutil.which("apt-get"):
-        return apt
-    if shutil.which("dnf"):
-        return dnf
-    if shutil.which("pacman"):
-        return pac
-    return None
+    """Commande d'installation du navigateur CLI `browser`, ou None si aucun
+    gestionnaire de paquets connu.
+
+    Les navigateurs proposés portent le même nom de paquet dans les quatre
+    familles ; todo_install choisit la commande. Cette écriture-ci ne
+    connaissait pas zypper, et openSUSE ne pouvait donc en installer aucun."""
+    # Importé ici et non en tête : l'import de todo_i18n de ce module est
+    # protégé pour qu'il tourne en autonome, et todo_install en dépend.
+    from script.todo import todo_install
+
+    return todo_install.install_command([browser])
 
 
 def virsh_ip(name: str) -> str:

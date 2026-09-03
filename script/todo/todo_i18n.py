@@ -367,6 +367,25 @@ TRANSLATIONS = {
         "fr": "RTK est installé, version : ",
         "en": "RTK is installed, version: ",
     },
+    "RTK installation failed, see the output above.": {
+        "fr": "L'installation de RTK a échoué, voir la sortie ci-dessus.",
+        "en": "RTK installation failed, see the output above.",
+    },
+    "Installation ended without error, but no rtk binary was found.": {
+        "fr": (
+            "L'installation s'est terminée sans erreur, mais aucun binaire"
+            " rtk n'a été trouvé."
+        ),
+        "en": "Installation ended without error, but no rtk binary was found.",
+    },
+    "rtk is not in the PATH of this process, restart TODO.": {
+        "fr": "rtk n'est pas dans le PATH de ce processus, relancer TODO.",
+        "en": "rtk is not in the PATH of this process, restart TODO.",
+    },
+    "To make it permanent, add to your shell profile:": {
+        "fr": "Pour que ce soit permanent, ajouter au profil du shell :",
+        "en": "To make it permanent, add to your shell profile:",
+    },
     "Global auto-rewrite hook: active": {
         "fr": "Hook auto-rewrite global : actif",
         "en": "Global auto-rewrite hook: active",
@@ -802,17 +821,17 @@ TRANSLATIONS = {
         "en": "Module name is required!",
     },
     # Git section
-    "Git - Git tools": {
-        "fr": "🌿 Git - Outils Git",
-        "en": "🌿 Git - Git tools",
+    "Git - Git and shell tools": {
+        "fr": "🌿 Git - Outils Git et Shell",
+        "en": "🌿 Git - Git and shell tools",
     },
-    "Git management tools!": {
-        "fr": "Outils de gestion Git!",
-        "en": "Git management tools!",
+    "Git and shell management tools!": {
+        "fr": "Outils de gestion Git et Shell!",
+        "en": "Git and shell management tools!",
     },
     "Local git server": {
-        "fr": "Serveur git local",
-        "en": "Local git server",
+        "fr": "🗄  Serveur git local",
+        "en": "🗄  Local git server",
     },
     "Manage local git repository server!": {
         "fr": "Gérer le serveur de dépôts git local!",
@@ -860,8 +879,8 @@ TRANSLATIONS = {
     },
     # Git remote add
     "Add a remote to a local repository": {
-        "fr": "Ajouter un remote vers un dépôt local",
-        "en": "Add a remote to a local repository",
+        "fr": "🔗 Ajouter un remote vers un dépôt local",
+        "en": "🔗 Add a remote to a local repository",
     },
     "Remote name (default: localhost): ": {
         "fr": "Nom du remote (défaut: localhost) : ",
@@ -883,14 +902,115 @@ TRANSLATIONS = {
         "fr": "Erreur lors de l'ajout du remote : ",
         "en": "Error adding remote: ",
     },
+    # Git hooks
+    # Starship
+    "Install Starship on Shell": {
+        "fr": "🚀 Installer Starship sur le shell",
+        "en": "🚀 Install Starship on Shell",
+    },
+    "Install Claude Code": {
+        "fr": "🤖 Installer Claude Code",
+        "en": "🤖 Install Claude Code",
+    },
+    "Install opencode": {
+        "fr": "🧠 Installer opencode",
+        "en": "🧠 Install opencode",
+    },
+    "Installation failed, see the output above.": {
+        "fr": "L'installation a échoué, voir la sortie ci-dessus.",
+        "en": "Installation failed, see the output above.",
+    },
+    "Already on the PATH: ": {
+        "fr": "Déjà dans le PATH : ",
+        "en": "Already on the PATH: ",
+    },
+    "PATH line added to: ": {
+        "fr": "Ligne de PATH ajoutée à : ",
+        "en": "PATH line added to: ",
+    },
+    "Binary not found at: ": {
+        "fr": "Binaire introuvable à : ",
+        "en": "Binary not found at: ",
+    },
+    "Install starship? (y/N): ": {
+        "fr": "Installer starship ? (o/N) : ",
+        "en": "Install starship? (y/N): ",
+    },
+    "No starship package here, falling back upstream.": {
+        "fr": "Aucun paquet starship ici, recours à l'installateur amont.",
+        "en": "No starship package here, falling back upstream.",
+    },
+    "Run the upstream installer? (y/N): ": {
+        "fr": "Lancer l'installateur amont ? (o/N) : ",
+        "en": "Run the upstream installer? (y/N): ",
+    },
+    "starship is not installed, shell left untouched.": {
+        "fr": "starship n'est pas installé, le shell reste intact.",
+        "en": "starship is not installed, shell left untouched.",
+    },
+    "Which shell configuration?": {
+        "fr": "Quel fichier de configuration de shell ?",
+        "en": "Which shell configuration?",
+    },
+    "starship is already hooked into: ": {
+        "fr": "starship est déjà accroché à : ",
+        "en": "starship is already hooked into: ",
+    },
+    "starship hooked into: ": {
+        "fr": "starship accroché à : ",
+        "en": "starship hooked into: ",
+    },
+    "Open a new shell to see it.": {
+        "fr": "Ouvrir un nouveau shell pour le voir.",
+        "en": "Open a new shell to see it.",
+    },
+    "Set merge.conflictStyle to zdiff3 (global)": {
+        "fr": "🔀 Configurer merge.conflictStyle en zdiff3 (global)",
+        "en": "🔀 Set merge.conflictStyle to zdiff3 (global)",
+    },
+    "Failed to set merge.conflictStyle, see the output above.": {
+        "fr": (
+            "Échec du réglage de merge.conflictStyle, voir la sortie"
+            " ci-dessus."
+        ),
+        "en": "Failed to set merge.conflictStyle, see the output above.",
+    },
+    "Install git hooks (commit-msg, pre-commit)": {
+        "fr": "🪝 Installer les hooks git (commit-msg, pre-commit)",
+        "en": "🪝 Install git hooks (commit-msg, pre-commit)",
+    },
+    "Hooks directory is missing: ": {
+        "fr": "Le répertoire des hooks est absent : ",
+        "en": "Hooks directory is missing: ",
+    },
+    "Another hooks path is already set: ": {
+        "fr": "Un autre chemin de hooks est déjà configuré : ",
+        "en": "Another hooks path is already set: ",
+    },
+    "Replace it? (y/Y): ": {
+        "fr": "Le remplacer? (y/Y) : ",
+        "en": "Replace it? (y/Y): ",
+    },
+    "Execution bit added: ": {
+        "fr": "Bit d'exécution ajouté : ",
+        "en": "Execution bit added: ",
+    },
+    "Git hooks installed!": {
+        "fr": "Hooks git installés!",
+        "en": "Git hooks installed!",
+    },
+    "Error installing hooks: ": {
+        "fr": "Erreur lors de l'installation des hooks : ",
+        "en": "Error installing hooks: ",
+    },
     # Git config vim
     "Configure git local editor to vim": {
-        "fr": "Configuration git local par vim",
-        "en": "Configure git local editor to vim",
+        "fr": "📝 Configuration git local par vim",
+        "en": "📝 Configure git local editor to vim",
     },
     "Generate git patch to /tmp": {
-        "fr": "Générer une patch git dans /tmp",
-        "en": "Generate git patch to /tmp",
+        "fr": "🩹 Générer une patch git dans /tmp",
+        "en": "🩹 Generate git patch to /tmp",
     },
     "Git editor configured to vim successfully!": {
         "fr": "Éditeur git configuré sur vim avec succès!",
@@ -1056,9 +1176,22 @@ TRANSLATIONS = {
         "fr": "Commit - Commande de commit OCA/Odoo",
         "en": "Commit - OCA/Odoo commit command",
     },
-    "Todo Add Command - Add a command to todo.py menu": {
-        "fr": "Todo Add Command - Ajouter une commande au menu todo.py",
-        "en": "Todo Add Command - Add a command to todo.py menu",
+    "Git prepare merge - Git merge preparation command": {
+        "fr": "Git prepare merge - Commande de préparation merge git",
+        "en": "Git prepare merge - Git merge preparation command",
+    },
+    "Todo Add Command + Plan Max - Plan and add a todo.py command": {
+        "fr": (
+            "Todo Add Command + Plan Max - Planifier et ajouter une"
+            " commande au menu todo.py"
+        ),
+        "en": "Todo Add Command + Plan Max - Plan and add a todo.py command",
+    },
+    "Todo Generate Code - Code by the OCA rules at high effort": {
+        "fr": (
+            "Todo Generate Code - Coder selon les règles OCA, effort élevé"
+        ),
+        "en": "Todo Generate Code - Code by the OCA rules at high effort",
     },
     "Enter your full name: ": {
         "fr": "Entrez votre nom complet : ",
@@ -1071,6 +1204,123 @@ TRANSLATIONS = {
     "Deploy Claude Code commands!": {
         "fr": "Déployer les commandes Claude Code!",
         "en": "Deploy Claude Code commands!",
+    },
+    # Claude Code plugins
+    "Claude Code plugins - marketplaces and ERPLibre list": {
+        "fr": "Plugins Claude Code - marketplaces et liste ERPLibre",
+        "en": "Claude Code plugins - marketplaces and ERPLibre list",
+    },
+    "Manage Claude Code plugins and marketplaces!": {
+        "fr": "Gérer les plugins et les marketplaces de Claude Code!",
+        "en": "Manage Claude Code plugins and marketplaces!",
+    },
+    "Inventory": {
+        "fr": "Inventaire",
+        "en": "Inventory",
+    },
+    "List installed plugins": {
+        "fr": "Lister les plugins installés",
+        "en": "List installed plugins",
+    },
+    "List configured marketplaces": {
+        "fr": "Lister les marketplaces configurés",
+        "en": "List configured marketplaces",
+    },
+    "Search a plugin in the marketplaces": {
+        "fr": "Chercher un plugin dans les marketplaces",
+        "en": "Search a plugin in the marketplaces",
+    },
+    "Show a plugin detail and its token cost": {
+        "fr": "Afficher le détail d'un plugin et son coût en tokens",
+        "en": "Show a plugin detail and its token cost",
+    },
+    "Install": {
+        "fr": "Installer",
+        "en": "Install",
+    },
+    "Install the ERPLibre preferred list": {
+        "fr": "Installer la liste préférée d'ERPLibre",
+        "en": "Install the ERPLibre preferred list",
+    },
+    "Install a plugin by name": {
+        "fr": "Installer un plugin par son nom",
+        "en": "Install a plugin by name",
+    },
+    "Add a marketplace": {
+        "fr": "Ajouter un marketplace",
+        "en": "Add a marketplace",
+    },
+    "Maintenance": {
+        "fr": "Maintenance",
+        "en": "Maintenance",
+    },
+    "Update the marketplaces and the plugins": {
+        "fr": "Mettre à jour les marketplaces et les plugins",
+        "en": "Update the marketplaces and the plugins",
+    },
+    "Uninstall a plugin": {
+        "fr": "Désinstaller un plugin",
+        "en": "Uninstall a plugin",
+    },
+    "The claude command is not in the PATH.": {
+        "fr": "La commande claude n'est pas dans le PATH.",
+        "en": "The claude command is not in the PATH.",
+    },
+    "ERPLibre preferred plugins:": {
+        "fr": "Plugins préférés d'ERPLibre :",
+        "en": "ERPLibre preferred plugins:",
+    },
+    "brainstorming, subagent-driven development, TDD": {
+        "fr": ("brainstorming, développement piloté par sous-agents, TDD"),
+        "en": "brainstorming, subagent-driven development, TDD",
+    },
+    "Python type checking and code intelligence": {
+        "fr": "typage Python et intelligence de code",
+        "en": "Python type checking and code intelligence",
+    },
+    "vulnerability scan run entirely in session": {
+        "fr": "analyse de vulnérabilités entièrement en session",
+        "en": "vulnerability scan run entirely in session",
+    },
+    "write, improve and evaluate the repository skills": {
+        "fr": "écrire, améliorer et évaluer les skills du dépôt",
+        "en": "write, improve and evaluate the repository skills",
+    },
+    "Install these plugins? (y/Y): ": {
+        "fr": "Installer ces plugins ? (o/O) : ",
+        "en": "Install these plugins? (y/Y): ",
+    },
+    "Already installed, skipped.": {
+        "fr": "Déjà installé, ignoré.",
+        "en": "Already installed, skipped.",
+    },
+    "Plugin name: ": {
+        "fr": "Nom du plugin : ",
+        "en": "Plugin name: ",
+    },
+    "Marketplace source (URL, path or owner/repo): ": {
+        "fr": "Source du marketplace (URL, chemin ou propriétaire/dépôt) : ",
+        "en": "Marketplace source (URL, path or owner/repo): ",
+    },
+    "Keyword to search: ": {
+        "fr": "Mot-clé à chercher : ",
+        "en": "Keyword to search: ",
+    },
+    "No marketplace is configured.": {
+        "fr": "Aucun marketplace n'est configuré.",
+        "en": "No marketplace is configured.",
+    },
+    "No plugin matches this keyword.": {
+        "fr": "Aucun plugin ne correspond à ce mot-clé.",
+        "en": "No plugin matches this keyword.",
+    },
+    "Uninstall this plugin? (y/Y): ": {
+        "fr": "Désinstaller ce plugin ? (o/O) : ",
+        "en": "Uninstall this plugin? (y/Y): ",
+    },
+    "A restart of Claude Code applies the change.": {
+        "fr": "Un redémarrage de Claude Code applique le changement.",
+        "en": "A restart of Claude Code applies the change.",
     },
     "Show installed custom commands": {
         "fr": "Afficher les commandes personnalisées installées",
@@ -2783,6 +3033,42 @@ TRANSLATIONS = {
     "Missing tools for safe shrink:": {
         "fr": "Outils manquants pour la réduction sûre :",
         "en": "Missing tools for safe shrink:",
+    },
+    "Install them? (y/N): ": {
+        "fr": "Les installer? (y/N) : ",
+        "en": "Install them? (y/N): ",
+    },
+    "Error installing the tools: ": {
+        "fr": "Erreur lors de l'installation des outils : ",
+        "en": "Error installing the tools: ",
+    },
+    "Still missing, safe shrink cancelled:": {
+        "fr": "Manquent toujours, réduction sûre annulée :",
+        "en": "Still missing, safe shrink cancelled:",
+    },
+    "No package known here for:": {
+        "fr": "Aucun paquet connu ici pour :",
+        "en": "No package known here for:",
+    },
+    "Tools installed; on with the shrink.": {
+        "fr": "Outils installés ; on passe à la réduction.",
+        "en": "Tools installed; on with the shrink.",
+    },
+    "A backup doubles the space used:": {
+        "fr": "Une sauvegarde double la place occupée :",
+        "en": "A backup doubles the space used:",
+    },
+    "free here:": {
+        "fr": "libre ici :",
+        "en": "free here:",
+    },
+    "Not enough free space for a full backup.": {
+        "fr": "Pas assez de place libre pour une sauvegarde complète.",
+        "en": "Not enough free space for a full backup.",
+    },
+    "Back up anyway, at the risk of filling the disk? (y/N): ": {
+        "fr": "Sauvegarder quand même, au risque de remplir le disque? (y/N) : ",
+        "en": "Back up anyway, at the risk of filling the disk? (y/N): ",
     },
     "Backing up the disk before shrinking…": {
         "fr": "Sauvegarde du disque avant réduction…",
