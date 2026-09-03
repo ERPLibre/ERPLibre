@@ -97,8 +97,8 @@ TRANSLATIONS = {
         "en": "🔒 Security - Dependency security audit",
     },
     "RTK - CLI proxy to reduce LLM token consumption": {
-        "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
-        "en": "RTK - CLI proxy to reduce LLM token consumption",
+        "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
+        "en": "🪙 RTK - CLI proxy to reduce LLM token consumption",
     },
     "Language - Change language / Changer la langue": {
         "fr": "🌍 Langue - Changer la langue / Change language",
@@ -424,20 +424,20 @@ TRANSLATIONS = {
         "en": "Do you want a new instance?",
     },
     "SSH port-forwarding": {
-        "fr": "SSH port-forwarding",
-        "en": "SSH port-forwarding",
+        "fr": "🚇 SSH port-forwarding",
+        "en": "🚇 SSH port-forwarding",
     },
     "Network performance request per second": {
-        "fr": "Performance réseau en requêtes par seconde",
-        "en": "Network performance request per second",
+        "fr": "📶 Performance réseau en requêtes par seconde",
+        "en": "📶 Network performance request per second",
     },
     "Setup queue job for parallelism": {
-        "fr": "Configurer la file d'attente pour l'exécution parallèle",
-        "en": "Setup queue job for parallelism",
+        "fr": "⚡ Configurer la file d'attente pour l'exécution parallèle",
+        "en": "⚡ Setup queue job for parallelism",
     },
     "Choose your database": {
-        "fr": "Choisir sa base de données",
-        "en": "Choose your database",
+        "fr": "🗃  Choisir sa base de données",
+        "en": "🗃  Choose your database",
     },
     "Development update": {
         "fr": "Mise à jour du développement",
@@ -457,8 +457,8 @@ TRANSLATIONS = {
     },
     # Database drop / erase
     "Erase a database": {
-        "fr": "Effacer une base de données",
-        "en": "Erase a database",
+        "fr": "🗑  Effacer une base de données",
+        "en": "🗑  Erase a database",
     },
     "Erase a database — irreversible operation!": {
         "fr": "Effacer une base de données — opération irréversible !",
@@ -595,16 +595,16 @@ TRANSLATIONS = {
     },
     # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
-        "fr": "Test - Instance de base minimale",
-        "en": "Test - Minimal base instance",
+        "fr": "🧪 Test - Instance de base minimale",
+        "en": "🧪 Test - Minimal base instance",
     },
     "Open RobotLibre 🤖 minimal": {
-        "fr": "Ouvrir RobotLibre 🤖 minimal",
-        "en": "Open RobotLibre 🤖 minimal",
+        "fr": "▶  Ouvrir RobotLibre 🤖 minimal",
+        "en": "▶  Open RobotLibre 🤖 minimal",
     },
     "Open RobotLibre 🤖 with search enabled": {
-        "fr": "Ouvrir RobotLibre 🤖 en activant la recherche",
-        "en": "Open RobotLibre 🤖 with search enabled",
+        "fr": "▶  Ouvrir RobotLibre 🤖 en activant la recherche",
+        "en": "▶  Open RobotLibre 🤖 with search enabled",
     },
     "Open ERPLibre with TODO 🤖": {
         "fr": "Ouvrir ERPLibre avec TODO 🤖",
@@ -652,60 +652,63 @@ TRANSLATIONS = {
         "en": "🐛 Debug",
     },
     "Migration module coverage": {
-        "fr": "Couverture de migration des modules",
-        "en": "Migration module coverage",
+        "fr": "📈 Couverture de migration des modules",
+        "en": "📈 Migration module coverage",
     },
     "What change between version": {
-        "fr": "Quels changements entre les versions",
-        "en": "What change between version",
+        "fr": "🆕 Quels changements entre les versions",
+        "en": "🆕 What change between version",
     },
     "OCA guidelines": {
-        "fr": "Directives OCA",
-        "en": "OCA guidelines",
+        "fr": "📖 Directives OCA",
+        "en": "📖 OCA guidelines",
     },
     "OCA migration Odoo 19 milestone": {
-        "fr": "Migration OCA Odoo 19 - Jalons",
-        "en": "OCA migration Odoo 19 milestone",
+        "fr": "🎯 Migration OCA Odoo 19 - Jalons",
+        "en": "🎯 OCA migration Odoo 19 milestone",
     },
     "Download database to create backup (.zip)": {
-        "fr": "Télécharger une base de données pour créer une sauvegarde (.zip)",
-        "en": "Download database to create backup (.zip)",
+        "fr": (
+            "⬇  Télécharger une base de données pour créer une"
+            " sauvegarde (.zip)"
+        ),
+        "en": "⬇  Download database to create backup (.zip)",
     },
     "Restore from backup (.zip)": {
-        "fr": "Restaurer a partir d'une sauvegarde (.zip)",
-        "en": "Restore from backup (.zip)",
+        "fr": "♻  Restaurer a partir d'une sauvegarde (.zip)",
+        "en": "♻  Restore from backup (.zip)",
     },
     "Create backup (.zip)": {
-        "fr": "Créer une sauvegarde (.zip)",
-        "en": "Create backup (.zip)",
+        "fr": "💾 Créer une sauvegarde (.zip)",
+        "en": "💾 Create backup (.zip)",
     },
     "Kill Odoo process from actual port": {
-        "fr": "Terminer le processus Odoo du port actuel",
-        "en": "Kill Odoo process from actual port",
+        "fr": "🛑 Terminer le processus Odoo du port actuel",
+        "en": "🛑 Kill Odoo process from actual port",
     },
     "Kill git daemon server process": {
-        "fr": "Terminer le processus du serveur git daemon",
-        "en": "Kill git daemon server process",
+        "fr": "🛑 Terminer le processus du serveur git daemon",
+        "en": "🛑 Kill git daemon server process",
     },
     "Git daemon process killed.": {
         "fr": "Processus git daemon terminé.",
         "en": "Git daemon process killed.",
     },
     "Generate all configuration": {
-        "fr": "Générer toute la configuration",
-        "en": "Generate all configuration",
+        "fr": "🧱 Générer toute la configuration",
+        "en": "🧱 Generate all configuration",
     },
     "Generate from pre-configuration": {
-        "fr": "Générer a partir de la pre-configuration",
-        "en": "Generate from pre-configuration",
+        "fr": "📋 Générer a partir de la pre-configuration",
+        "en": "📋 Generate from pre-configuration",
     },
     "Generate from backup file": {
-        "fr": "Générer a partir d'un fichier de sauvegarde",
-        "en": "Generate from backup file",
+        "fr": "💾 Générer a partir d'un fichier de sauvegarde",
+        "en": "💾 Generate from backup file",
     },
     "Generate from database": {
-        "fr": "Générer a partir de la base de données",
-        "en": "Generate from database",
+        "fr": "🗄  Générer a partir de la base de données",
+        "en": "🗄  Generate from database",
     },
     "base": {
         "fr": "base",
@@ -737,24 +740,24 @@ TRANSLATIONS = {
         "en": "Test an Odoo module on a temporary database!",
     },
     "Test a module": {
-        "fr": "Tester un module",
-        "en": "Test a module",
+        "fr": "🧪 Tester un module",
+        "en": "🧪 Test a module",
     },
     "Test a module with code coverage": {
-        "fr": "Tester un module avec couverture de code",
-        "en": "Test a module with code coverage",
+        "fr": "📊 Tester un module avec couverture de code",
+        "en": "📊 Test a module with code coverage",
     },
     "ERPLibre unit tests": {
-        "fr": "Tests unitaires ERPLibre",
-        "en": "ERPLibre unit tests",
+        "fr": "⚗  Tests unitaires ERPLibre",
+        "en": "⚗  ERPLibre unit tests",
     },
     "Mail unit tests": {
-        "fr": "Tests unitaires courriel",
-        "en": "Mail unit tests",
+        "fr": "📧 Tests unitaires courriel",
+        "en": "📧 Mail unit tests",
     },
     "Analyse unit tests": {
-        "fr": "Tests unitaires analyse",
-        "en": "Analyse unit tests",
+        "fr": "🔍 Tests unitaires analyse",
+        "en": "🔍 Analyse unit tests",
     },
     "Running unit tests": {
         "fr": "Exécution des tests unitaires",
@@ -1022,8 +1025,8 @@ TRANSLATIONS = {
     },
     # GPT code - Claude automation
     "Add an automation with Claude in todo.py": {
-        "fr": "Ajouter une automatisation avec Claude dans todo.py",
-        "en": "Add an automation with Claude in todo.py",
+        "fr": "🤖 Ajouter une automatisation avec Claude dans todo.py",
+        "en": "🤖 Add an automation with Claude in todo.py",
     },
     "Description of the command to add: ": {
         "fr": "Description de la commande à ajouter : ",
@@ -1169,8 +1172,8 @@ TRANSLATIONS = {
         "en": "AI assistant tools for development!",
     },
     "Configure Claude Code configurations": {
-        "fr": "Configurer les configurations Claude Code",
-        "en": "Configure Claude Code configurations",
+        "fr": "🛠  Configurer les configurations Claude Code",
+        "en": "🛠  Configure Claude Code configurations",
     },
     "Commit - OCA/Odoo commit command": {
         "fr": "Commit - Commande de commit OCA/Odoo",
@@ -1207,8 +1210,8 @@ TRANSLATIONS = {
     },
     # Claude Code plugins
     "Claude Code plugins - marketplaces and ERPLibre list": {
-        "fr": "Plugins Claude Code - marketplaces et liste ERPLibre",
-        "en": "Claude Code plugins - marketplaces and ERPLibre list",
+        "fr": "🧩 Plugins Claude Code - marketplaces et liste ERPLibre",
+        "en": "🧩 Claude Code plugins - marketplaces and ERPLibre list",
     },
     "Manage Claude Code plugins and marketplaces!": {
         "fr": "Gérer les plugins et les marketplaces de Claude Code!",
@@ -1626,8 +1629,8 @@ TRANSLATIONS = {
         "en": "📊 Navigation telemetry (TUI)",
     },
     "Configuration": {
-        "fr": "⚙  Configuration",
-        "en": "⚙  Configuration",
+        "fr": "🔩 Configuration",
+        "en": "🔩 Configuration",
     },
     "Interface": {
         "fr": "Interface",
@@ -5007,7 +5010,7 @@ TRANSLATIONS = {
     # Récupération de fichiers dans le disque d'une VM (libguestfs)
     "Recover files from a VM disk (libguestfs)": {
         "fr": "💾 Récupérer des fichiers dans le disque d'une VM (libguestfs)",
-        "en": "Recover files from a VM disk (libguestfs)",
+        "en": "💾 Recover files from a VM disk (libguestfs)",
     },
     "guestfish is missing: libguestfs is not here.": {
         "fr": "guestfish est absent : libguestfs n'est pas installé ici.",
@@ -7411,8 +7414,8 @@ TRANSLATIONS = {
     },
     # Contexte fourni à Claude
     "Show the context given to Claude": {
-        "fr": "Afficher le contexte fourni à Claude",
-        "en": "Show the context given to Claude",
+        "fr": "🧠 Afficher le contexte fourni à Claude",
+        "en": "🧠 Show the context given to Claude",
     },
     "Context given to Claude": {
         "fr": "Contexte fourni à Claude",
@@ -10614,8 +10617,8 @@ TRANSLATIONS = {
     },
     "Android emulator": {"fr": "Émulateur Android", "en": "Android emulator"},
     "Android emulator (start, tunnel, scrcpy)": {
-        "fr": "Émulateur Android (démarrer, tunnel, scrcpy)",
-        "en": "Android emulator (start, tunnel, scrcpy)",
+        "fr": "📱 Émulateur Android (démarrer, tunnel, scrcpy)",
+        "en": "📱 Android emulator (start, tunnel, scrcpy)",
     },
     "An emulator is already running on this VM.": {
         "fr": "Un émulateur tourne déjà sur cette VM.",
@@ -11205,8 +11208,8 @@ TRANSLATIONS = {
         "en": "Copy",
     },
     "Duplicate a database": {
-        "fr": "Dupliquer une base de données",
-        "en": "Duplicate a database",
+        "fr": "📑 Dupliquer une base de données",
+        "en": "📑 Duplicate a database",
     },
     "Name of the copy (default=": {
         "fr": "Nom de la copie (défaut=",
