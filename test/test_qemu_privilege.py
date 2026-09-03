@@ -20,6 +20,7 @@ import io
 import sys
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest import mock
 
 sys.argv = ["todo.py"]
@@ -133,6 +134,52 @@ class AvertissementAvantInstallation(unittest.TestCase):
         """Le groupe est porté par le processus : la cause est ailleurs
         (démon arrêté, socket absente) et l'accuser tromperait."""
         self.assertEqual("", self._rendu(False, True, True))
+
+
+class LUriEstToujoursExplicite(unittest.TestCase):
+    """Sans « --connect », un virsh non root vise qemu:///session.
+
+    Cet hyperviseur-là est SÉPARÉ : aucune VM du système n'y existe, et
+    « list --all » y rend une liste vide, sans erreur ni avertissement. Tant
+    que les commandes passaient par sudo, l'URI de root masquait l'omission ;
+    la retirer l'a mise au jour.
+    """
+
+    def test_the_builder_always_names_the_uri(self):
+        for besoin in (True, False):
+            with mock.patch.object(qp, "needs_sudo", return_value=besoin):
+                argv = qp.virsh_argv("list", "--all")
+                self.assertIn("--connect", argv)
+                self.assertEqual(
+                    qp.LIBVIRT_URI, argv[argv.index("--connect") + 1]
+                )
+                self.assertIn(f"--connect {qp.LIBVIRT_URI}", qp.virsh_cmd("x"))
+
+    def test_sudo_only_when_the_probe_asks_for_it(self):
+        with mock.patch.object(qp, "needs_sudo", return_value=False):
+            self.assertNotIn("sudo", qp.virsh_argv("list"))
+        with mock.patch.object(qp, "needs_sudo", return_value=True):
+            self.assertEqual("sudo", qp.virsh_argv("list")[0])
+
+    def test_no_menu_call_builds_virsh_by_hand(self):
+        """Un virsh écrit à la main échapperait au constructeur, donc à
+        l'URI : c'est exactement ce qui vidait la liste des VM."""
+        for chemin in (
+            "script/todo/qemu_manage.py",
+            "script/todo/qemu_install_monitor.py",
+        ):
+            source = Path(chemin).read_text(encoding="utf-8")
+            for num, ligne in enumerate(source.splitlines(), 1):
+                if '"virsh"' not in ligne and "}virsh " not in ligne:
+                    continue
+                voisin = "\n".join(
+                    source.splitlines()[max(0, num - 4) : num + 4]
+                )
+                self.assertIn(
+                    "--connect",
+                    voisin,
+                    f"{chemin}:{num} appelle virsh sans URI",
+                )
 
 
 if __name__ == "__main__":

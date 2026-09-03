@@ -13,7 +13,11 @@ import subprocess
 import time
 
 from script.todo import todo_install
-from script.todo.qemu_privilege import sudo_prefix
+from script.todo.qemu_privilege import (
+    LIBVIRT_URI as URI,
+    sudo_prefix,
+    virsh_argv,
+)
 from script.todo.todo_i18n import t
 
 
@@ -128,7 +132,7 @@ class QemuManageMixin:
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_list_vms(self, ask_advanced=False):
-        cmd = f"{sudo_prefix()}virsh list --all"
+        cmd = f"{sudo_prefix()}virsh --connect {URI} list --all"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
         if not ask_advanced:
@@ -212,7 +216,10 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for real in resolved:
-            cmd = f"{sudo_prefix()}virsh {action} {shlex.quote(real)}"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"{action} {shlex.quote(real)}"
+            )
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -229,7 +236,7 @@ class QemuManageMixin:
         EST OUVERT, c'est elle qui compte, un disque attaché à chaud n'existant
         que là.
         """
-        argv = ["sudo", "virsh", "dumpxml"]
+        argv = virsh_argv("dumpxml")
         if inactive:
             argv.append("--inactive")
         argv.append(name)
@@ -250,7 +257,7 @@ class QemuManageMixin:
         """Démarrage automatique activé ? (absent du XML : virsh seul le sait)"""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dominfo", name],
+                virsh_argv("dominfo", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -291,15 +298,11 @@ class QemuManageMixin:
         un qui contourne la gestion du réseau par libvirt.
         """
         tokens = []
-        nets = self._qemu_cmd_lines(
-            ["sudo", "virsh", "net-list", "--all", "--name"]
-        )
+        nets = self._qemu_cmd_lines(virsh_argv("net-list", "--all", "--name"))
         owned = set()
         for net in nets:
             tokens.append(f"network:{net}")
-            for line in self._qemu_cmd_lines(
-                ["sudo", "virsh", "net-info", net]
-            ):
+            for line in self._qemu_cmd_lines(virsh_argv("net-info", net)):
                 if line.startswith("Bridge:"):
                     owned.add(line.split(":", 1)[1].strip())
         for line in self._qemu_cmd_lines(
@@ -477,7 +480,7 @@ class QemuManageMixin:
         """(vcpus, max_mem_kib) via « virsh dominfo », ou (0, 0)."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dominfo", name],
+                virsh_argv("dominfo", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -562,22 +565,14 @@ class QemuManageMixin:
         disparaît au prochain démarrage du domaine."""
         try:
             subprocess.run(
-                [
-                    "sudo",
-                    "virsh",
-                    "dommemstat",
-                    name,
-                    "--period",
-                    "5",
-                    "--live",
-                ],
+                virsh_argv("dommemstat", name, "--period", "5", "--live"),
                 capture_output=True,
                 text=True,
                 timeout=15,
                 env=QemuManageMixin._qemu_c_env(),
             )
             res = subprocess.run(
-                ["sudo", "virsh", "dommemstat", name],
+                virsh_argv("dommemstat", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -678,7 +673,8 @@ class QemuManageMixin:
             targets = [name]
         for tgt in targets:
             cmd = (
-                f"{sudo_prefix()}virsh domifaddr {shlex.quote(tgt)}"
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"domifaddr {shlex.quote(tgt)}"
                 " --source lease"
             )
             print(f"\n{t('Will execute:')} {cmd}")
@@ -697,7 +693,9 @@ class QemuManageMixin:
         print(
             f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
         )
-        cmd = f"{sudo_prefix()}virsh console {shlex.quote(name)}"
+        cmd = (
+            f"{sudo_prefix()}virsh --connect {URI} console {shlex.quote(name)}"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1001,7 +999,7 @@ class QemuManageMixin:
         """État libvirt de la VM (« running », « shut off », …) ou ''."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "domstate", name],
+                virsh_argv("domstate", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1020,7 +1018,7 @@ class QemuManageMixin:
             return name
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "domname", str(name)],
+                virsh_argv("domname", str(name)),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1042,7 +1040,8 @@ class QemuManageMixin:
         # --mode acpi,agent : envoie le SIGNAL d'extinction (bouton ACPI) puis
         # tente l'agent invité si présent — plus fiable qu'un arrêt brutal.
         cmd = (
-            f"{sudo_prefix()}virsh shutdown {shlex.quote(name)}"
+            f"{sudo_prefix()}virsh --connect {URI} "
+            f"shutdown {shlex.quote(name)}"
             " --mode acpi,agent"
         )
         print(f"{t('Will execute:')} {cmd}")
@@ -1075,7 +1074,10 @@ class QemuManageMixin:
                 )
             )
         ):
-            cmd = f"{sudo_prefix()}virsh destroy {shlex.quote(name)}"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {shlex.quote(name)}"
+            )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
             time.sleep(2)
@@ -1088,7 +1090,7 @@ class QemuManageMixin:
         ignore le seed cloud-init (…-seed.iso, en lecture seule)."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "domblklist", name, "--details"],
+                virsh_argv("domblklist", name, "--details"),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1269,7 +1271,8 @@ class QemuManageMixin:
             # Agrandissement À CHAUD : le disque virtuel grossit, le FS invité
             # devra être étendu ensuite.
             cmd = (
-                f"{sudo_prefix()}virsh blockresize {shlex.quote(name)} "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"blockresize {shlex.quote(name)} "
                 f"{shlex.quote(disk)} {new_gb:g}G"
             )
         else:
@@ -1315,7 +1318,10 @@ class QemuManageMixin:
         if self._is_yes(input(t("Start the VM now? (y/N): "))):
             # `name` est déjà le nom canonique : « virsh start <id> »
             # échouerait car l'ID disparaît quand la VM est éteinte.
-            cmd = f"{sudo_prefix()}virsh start {shlex.quote(name)}"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"start {shlex.quote(name)}"
+            )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1808,13 +1814,9 @@ class QemuManageMixin:
         def agent(payload):
             try:
                 res = subprocess.run(
-                    [
-                        "sudo",
-                        "virsh",
-                        "qemu-agent-command",
-                        name,
-                        json.dumps(payload),
-                    ],
+                    virsh_argv(
+                        "qemu-agent-command", name, json.dumps(payload)
+                    ),
                     capture_output=True,
                     text=True,
                     timeout=30,
@@ -1875,7 +1877,9 @@ class QemuManageMixin:
         )
         if not self._is_yes(input(t("Open the serial console now? (y/N): "))):
             return
-        cmd = f"{sudo_prefix()}virsh console {shlex.quote(name)}"
+        cmd = (
+            f"{sudo_prefix()}virsh --connect {URI} console {shlex.quote(name)}"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1883,7 +1887,7 @@ class QemuManageMixin:
         """Noms des VM libvirt définies (via virsh)."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "list", "--all", "--name"],
+                virsh_argv("list", "--all", "--name"),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1936,9 +1940,11 @@ class QemuManageMixin:
             # Éteindre si en cours, puis retirer la définition (+ nvram si
             # UEFI ; repli sans l'option pour les vieilles versions de virsh).
             cmd = (
-                f"{sudo_prefix()}virsh destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh undefine {q}"
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
             )
             if del_disks and fichiers:
                 cmd += "; sudo rm -f " + " ".join(
@@ -2009,7 +2015,7 @@ class QemuManageMixin:
         for name in self._qemu_list_domains():
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domiflist", name],
+                    virsh_argv("domiflist", name),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2128,7 +2134,7 @@ class QemuManageMixin:
         for name in self._qemu_list_domains():
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domblklist", name, "--details"],
+                    virsh_argv("domblklist", name, "--details"),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2161,9 +2167,11 @@ class QemuManageMixin:
         for name in ghosts:
             q = shlex.quote(name)
             cmd = (
-                f"{sudo_prefix()}virsh destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh undefine {q}"
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -2354,7 +2362,7 @@ class QemuManageMixin:
         """Vrai si une VM libvirt de ce nom est déjà définie."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dominfo", name],
+                virsh_argv("dominfo", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -2398,7 +2406,7 @@ class QemuManageMixin:
         for source in ("lease", "agent", "arp"):
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    virsh_argv("domifaddr", name, "--source", source),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2430,7 +2438,7 @@ class QemuManageMixin:
         for source in ("lease", "agent", "arp"):
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    virsh_argv("domifaddr", name, "--source", source),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2607,7 +2615,7 @@ class QemuManageMixin:
         """Architecture d'une VM (jeton amd64/arm64/s390x) via virsh dumpxml."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dumpxml", name],
+                virsh_argv("dumpxml", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
