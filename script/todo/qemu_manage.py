@@ -438,6 +438,70 @@ class QemuManageMixin:
         print("    lspci -nnk | grep -A3 -iE 'vga|3d|display'")
         self._qemu_nvidia_acl_advice()
 
+    def _qemu_vm_3d_report(self):
+        """État 3D de chaque VM définie, lu dans sa définition PERSISTANTE.
+
+        Le rapport sur l'hôte dit ce que la machine peut faire ; celui-ci
+        dit ce que chaque VM recevra au prochain démarrage, ce qui n'est
+        pas la même question. Trois valeurs y répondent ensemble et aucune
+        seule : le type de vidéo, « accel3d », et le device figé.
+
+        Ce dernier (attribut « device », depuis libvirt 12.5.0) grave le
+        device QEMU retenu pour tenir l'ABI de l'invité stable d'un
+        démarrage à l'autre, et il l'emporte sur « accel3d ». Une VM
+        démarrée une première fois sans 3D garde donc un device sans GL,
+        que cocher la 3D ensuite ne change pas : la définition et la ligne
+        de commande se contredisent alors sans que rien ne le signale.
+        """
+        from script.todo import qemu_hardware as hw
+
+        print(f"\n── {t('3D per VM')} ──")
+        noms = self._qemu_list_domains()
+        if not noms:
+            print(f"  {t('none')}")
+            return
+        figees = []
+        for nom in noms:
+            etat = hw.hw_state(self._qemu_dumpxml(nom))
+            if not etat.get("video"):
+                print(f"  ·  {nom} — {t('no video device')}")
+                continue
+            champs = [
+                f"video={etat['video']}",
+                f"accel3d={'on' if etat.get('accel3d') else 'off'}",
+                f"device={etat.get('video_device') or t('not pinned')}",
+            ]
+            if etat.get("render"):
+                champs.append(f"rendernode={etat['render']}")
+            if hw.pin_defeats_3d(etat):
+                marque = "❌"
+                figees.append(nom)
+            elif etat.get("accel3d"):
+                marque = "✅"
+            else:
+                marque = "· "
+            print(f"  {marque} {nom} — {', '.join(champs)}")
+            if nom in figees:
+                print(
+                    f"      ⚠ {t('non-GL device pinned: 3D will not start')}"
+                )
+        if figees:
+            # Le rapport ne modifie rien : la commande est ÉCRITE, jamais
+            # lancée. Elle passe par la définition persistante et non par
+            # virt-xml, dont le vocabulaire ne connaît pas partout cet
+            # attribut ; « define » l'accepte quelle que soit sa version.
+            print(f"\n  {t('To unpin, VM stopped:')}")
+            print("    v=$(mktemp) ; vm=" + figees[0])
+            print(
+                "    virsh --connect qemu:///system dumpxml --inactive"
+                " $vm > $v"
+            )
+            print(
+                "    sed -i \"s/device='virtio-vga'/device='virtio-vga-gl'/\""
+                " $v"
+            )
+            print("    virsh --connect qemu:///system define $v")
+
     # Les relevés du diagnostic : (titre, commande). Tous en LECTURE — un
     # rapport qui modifie l'hôte n'est plus un rapport, et celui-ci est fait
     # pour être envoyé à quelqu'un qui n'a pas accès à la machine.
@@ -670,6 +734,28 @@ class QemuManageMixin:
         print(f"    {t('enough: the list applies when QEMU is launched).')}")
         return True
 
+    @staticmethod
+    def _diag_section(titre, rendu):
+        """Une section du rapport, isolée : elle échoue SEULE.
+
+        Les sondes shell sont déjà protégées une à une ; les sections
+        écrites en Python ne l'étaient pas. Or le rapport s'écrit d'un
+        bloc à la FIN : une section qui lève emporte avec elle tout ce qui
+        a été relevé avant, et l'utilisateur se retrouve sans fichier —
+        au moment précis où il en a besoin. L'échec devient donc une ligne
+        du rapport, ce qui est en soi une information.
+        """
+        import io
+        from contextlib import redirect_stdout
+
+        tampon = io.StringIO()
+        try:
+            with redirect_stdout(tampon):
+                rendu()
+        except Exception as exc:
+            tampon.write(f"\n({type(exc).__name__}: {exc})\n")
+        return f"\n===== {titre} =====\n" + tampon.getvalue()
+
     def _qemu_diagnostics(self):
         """Relevé complet de l'hôte, écrit dans un fichier à transmettre.
 
@@ -702,10 +788,10 @@ class QemuManageMixin:
                 morceaux.append("(timeout)\n")
             except OSError as exc:
                 morceaux.append(f"({exc})\n")
-        tampon = io.StringIO()
-        with redirect_stdout(tampon):
-            self._qemu_gpu_3d_report()
-        morceaux.append("\n===== 3D =====\n" + tampon.getvalue())
+        morceaux.append(self._diag_section("3D", self._qemu_gpu_3d_report))
+        morceaux.append(
+            self._diag_section("3D par VM", self._qemu_vm_3d_report)
+        )
         try:
             with open(chemin, "w", encoding="utf-8") as fh:
                 fh.write("".join(morceaux))

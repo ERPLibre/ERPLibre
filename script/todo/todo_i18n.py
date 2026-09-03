@@ -5008,6 +5008,26 @@ TRANSLATIONS = {
         ),
     },
     # Récupération de fichiers dans le disque d'une VM (libguestfs)
+    "3D per VM": {
+        "fr": "3D par VM",
+        "en": "3D per VM",
+    },
+    "no video device": {
+        "fr": "aucun périphérique vidéo",
+        "en": "no video device",
+    },
+    "not pinned": {
+        "fr": "non figé",
+        "en": "not pinned",
+    },
+    "non-GL device pinned: 3D will not start": {
+        "fr": "device sans GL figé : la 3D ne démarrera pas",
+        "en": "non-GL device pinned: 3D will not start",
+    },
+    "To unpin, VM stopped:": {
+        "fr": "Pour défiger, la VM arrêtée :",
+        "en": "To unpin, VM stopped:",
+    },
     # Une VM dont libvirt a figé le device vidéo sur une variante sans GL
     # tourne sans 3D, même avec « accel3d=yes » dans sa définition.
     "frozen on": {
