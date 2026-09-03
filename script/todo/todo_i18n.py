@@ -4981,6 +4981,18 @@ TRANSLATIONS = {
         "fr": "puis se déconnecter et se reconnecter.",
         "en": "then log out and back in.",
     },
+    "Orphan disks that would fail the deployment": {
+        "fr": "Disques orphelins qui feraient échouer le déploiement",
+        "en": "Orphan disks that would fail the deployment",
+    },
+    "Delete them and continue? (y/N): ": {
+        "fr": "Les effacer et continuer ? (o/N) : ",
+        "en": "Delete them and continue? (y/N, default: no): ",
+    },
+    "Kept - the deployment of these VMs will FAIL:": {
+        "fr": "Conservés — le déploiement de ces VM ÉCHOUERA :",
+        "en": "Kept - the deployment of these VMs will FAIL:",
+    },
     "Full output:": {
         "fr": "Sortie complète :",
         "en": "Full output:",

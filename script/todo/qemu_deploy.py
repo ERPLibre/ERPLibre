@@ -782,6 +782,39 @@ class QemuDeployMixin:
                 orphans.append((name, path))
         return orphans
 
+    def _qemu_offer_orphan_removal(self, names):
+        """Propose d'effacer les qcow2 restés seuls. Rend False si on renonce.
+
+        Un disque sans VM définie vient d'une création interrompue : la VM
+        n'a jamais démarré, et le fichier ne porte donc rien. Il est tout de
+        même PROPOSÉ et non effacé d'office — le même nom peut désigner le
+        disque d'une VM retirée à la main, dont on voulait garder les données.
+
+        Sans cet effacement, deploy_qemu refuse d'écraser et la création
+        échoue, après avoir fait attendre.
+        """
+        orphans = self._qemu_orphan_disks(names)
+        if not orphans:
+            return True
+        items = []
+        for _name, path in orphans:
+            try:
+                items.append((os.path.getsize(path), path))
+            except OSError:
+                items.append((0, path))
+        self._cleanup_delete_files(
+            t("Orphan disks that would fail the deployment"),
+            items,
+            t("Delete them and continue? (y/N): "),
+        )
+        restants = self._qemu_orphan_disks(names)
+        if not restants:
+            return True
+        print(f"\n⚠  {t('Kept - the deployment of these VMs will FAIL:')}")
+        for name, _path in restants:
+            print(f"   {name}")
+        return self._is_yes(input(t("Continue anyway? (y/N): ")))
+
     def _qemu_confirm_collisions(self, existing, pending_names):
         """Signale les noms qui heurtent l'existant, et demande confirmation.
 
@@ -793,17 +826,13 @@ class QemuDeployMixin:
         orphans = self._qemu_orphan_disks(pending_names)
         if not existing and not orphans:
             return True
-        print(f"\n⚠  {t('Name collisions detected')} :")
-        skipped = t("VM already defined - SKIPPED, nothing overwritten")
-        for name in existing:
-            print(f"   {name:<28.28} {skipped}")
-        for name, path in orphans:
-            print(
-                f"   {name:<28.28} "
-                f"{t('disk present without VM - deployment will FAIL')}"
-            )
-            print(f"   {'':<28} {path}")
-            print(f"   {'':<28} {t('Remove it by hand, or rename the VM.')}")
+        if existing:
+            print(f"\n⚠  {t('Name collisions detected')} :")
+            skipped = t("VM already defined - SKIPPED, nothing overwritten")
+            for name in existing:
+                print(f"   {name:<28.28} {skipped}")
+        if orphans:
+            return self._qemu_offer_orphan_removal(pending_names)
         return self._is_yes(
             input(f"{t('Continue despite these collisions? (y/N): ')}")
         )
@@ -1333,6 +1362,15 @@ class QemuDeployMixin:
             if spec is None:
                 return
             if spec:  # None = annulé, {} = repli sur la CLI
+                # Le formulaire signale les disques orphelins mais ne peut pas
+                # les effacer : le faire demande root, et une invite de mot de
+                # passe dans une application plein écran n'a nulle part où
+                # s'afficher. La proposition vient donc ici, terminal rendu.
+                if not self._qemu_offer_orphan_removal(
+                    [vm["name"] for vm in spec.get("vms") or []]
+                ):
+                    print(t("Cancelled."))
+                    return
                 self._qemu_run_spec(spec)
                 return
 
