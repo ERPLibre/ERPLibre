@@ -26,7 +26,7 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import todo_install, todo_prefs
+from script.todo import dev_tools, todo_install, todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -2711,32 +2711,12 @@ class TODO(
         "fish": "~/.config/fish/config.fish",
     }
 
-    # Ce que chaque shell écrit pour lancer starship. La ligne va en FIN de
-    # fichier : starship compose le prompt et doit passer après tout ce qui y
-    # touche.
-    _STARSHIP_LINE = {
-        "bash": 'eval "$(starship init bash)"',
-        "zsh": 'eval "$(starship init zsh)"',
-        "fish": "starship init fish | source",
-    }
-
-    # L'installateur amont pose un binaire statique. Il sert de recours parce
-    # que le paquet manque d'une partie des dépôts des plateformes supportées.
-    _STARSHIP_UPSTREAM = "curl -sS https://starship.rs/install/install.sh | sh"
-
-    # Les assistants posés par un installateur amont : le nom du binaire mène
-    # à (commande, répertoire d'installation). Le répertoire sert à garantir
-    # le PATH — un binaire posé hors des chemins du shell reste introuvable.
-    _UPSTREAM_TOOLS = {
-        "claude": (
-            "curl -fsSL https://claude.ai/install.sh | bash",
-            "~/.local/bin",
-        ),
-        "opencode": (
-            "curl -fsSL https://opencode.ai/install | bash",
-            "~/.opencode/bin",
-        ),
-    }
+    # Ces quatre tables vivent dans dev_tools : le déploiement QEMU pose les
+    # mêmes outils DANS une VM, et deux copies d'une URL amont dérivent dès
+    # que l'une change. Les noms de classe restent, ils sont l'interface.
+    _STARSHIP_LINE = dev_tools.STARSHIP_LINE
+    _STARSHIP_UPSTREAM = dev_tools.STARSHIP_UPSTREAM
+    _UPSTREAM_TOOLS = dev_tools.AGENTS
 
     @staticmethod
     def _shell_name():
