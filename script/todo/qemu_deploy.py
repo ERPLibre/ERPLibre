@@ -975,6 +975,7 @@ class QemuDeployMixin:
         prod=False,
         install_cmd="",
         vm_tools=(),
+        gpu3d=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -1010,6 +1011,10 @@ class QemuDeployMixin:
             parts += ["--locale", locale]
         if desktop:
             parts.append("--desktop")
+        if gpu3d:
+            # « on » et non « auto » : auto s'abstient sur une VM sans écran,
+            # or c'est précisément ce que la case permet de demander.
+            parts += ["--gpu", "on"]
         # Guide affiché à la connexion SSH de la VM : dans la langue du menu, et
         # avec la section ERPLibre seulement là où ERPLibre sera installé — une
         # VM déployée nue n'annonce pas un dépôt qui n'existe pas.
@@ -1081,6 +1086,7 @@ class QemuDeployMixin:
                 vm.get("install_cmd") or (install or {}).get("cmd") or ""
             ),
             vm_tools=spec.get("vm_tools") or (),
+            gpu3d=bool(spec.get("gpu3d")),
         )
 
     def _qemu_arches_for(self, distro, arch):
@@ -1845,6 +1851,14 @@ class QemuDeployMixin:
                 input(f"{t('Watch the VMs start (no install)')} ? (O/n) : ")
             )
 
+        # Posée même sans bureau : une VM sans console peut vouloir un
+        # virtio-gpu accéléré, et c'est ce que « auto » n'accorde jamais.
+        gpu3d = self._is_yes(
+            input(
+                t("3D acceleration (host GPU), even without a screen? (y/N): ")
+            )
+        )
+
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
         )
@@ -1907,6 +1921,7 @@ class QemuDeployMixin:
             # Au niveau du déploiement : le suivi survit à une installation
             # décochée (voir _qemu_run_spec).
             "monitor": monitor,
+            "gpu3d": gpu3d,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
         }
