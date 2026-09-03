@@ -1234,9 +1234,9 @@ TRANSLATIONS = {
         "fr": "Afficher le détail d'un plugin et son coût en tokens",
         "en": "Show a plugin detail and its token cost",
     },
-    "Install": {
-        "fr": "Installer",
-        "en": "Install",
+    "Install plugins": {
+        "fr": "Installer des plugins",
+        "en": "Install plugins",
     },
     "Install the ERPLibre preferred list": {
         "fr": "Installer la liste préférée d'ERPLibre",
