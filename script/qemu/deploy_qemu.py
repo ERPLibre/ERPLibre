@@ -1656,7 +1656,35 @@ def host_timezone() -> str:
     return "UTC"
 
 
-def user_groups(distro: str) -> str:
+# Groupes qui donnent accès au GPU DANS L'INVITÉ. Le nœud de rendu y
+# appartient à « root:render » en 0660, et le compte créé par cloud-init n'en
+# fait pas partie : toute application GL retombe alors sur le rendu logiciel,
+# alors même que la négociation VIRGL entre l'hôte et l'invité a réussi. Rien
+# ne le signale — le matériel virtuel est bien accéléré, seul l'accès manque.
+#
+# En session graphique locale, logind pose une ACL sur le nœud pour
+# l'utilisateur du siège actif et la question ne se pose pas. En SSH ou en
+# tty — le cas d'une VM de ce parc — personne ne la pose.
+GPU_GROUPS = ("render", "video")
+
+
+def gpu_group_block() -> list[str]:
+    """Bloc « groups: » qui CRÉE les groupes GPU avant leur usage.
+
+    « useradd -G » échoue sur un nom de groupe inconnu, et cloud-init ne crée
+    alors pas l'utilisateur du tout : ni mot de passe ni clé SSH, la VM démarre
+    et reste inaccessible. « render » est récent et manque des images les plus
+    anciennes, donc l'ajouter sans précaution rejouerait cette panne.
+
+    Le déclarer ici le rend certain d'exister : cloud-init crée les groupes
+    AVANT les comptes, et passe sans erreur sur ceux qui existent déjà. Le
+    groupe est retrouvé par NOM par les règles udev, donc un GID choisi par
+    cloud-init plutôt que par la distribution ne change rien.
+    """
+    return ["groups:"] + [f"  - {nom}" for nom in GPU_GROUPS]
+
+
+def user_groups(distro: str, gpu: bool = False) -> str:
     """Groupes secondaires du compte créé par cloud-init.
 
     Le nom du groupe d'administration change d'une famille à l'autre, et un
@@ -1671,10 +1699,14 @@ def user_groups(distro: str) -> str:
       garantit « wheel » sur une image Minimal-VM — dans le doute on s'abstient
       plutôt que de risquer un compte non créé."""
     if distro in ("ubuntu", "debian"):
-        return "users, sudo"
-    if distro == "opensuse":
-        return "users"
-    return "users, wheel"
+        noms = ["users", "sudo"]
+    elif distro == "opensuse":
+        noms = ["users"]
+    else:
+        noms = ["users", "wheel"]
+    if gpu:
+        noms += list(GPU_GROUPS)
+    return ", ".join(noms)
 
 
 # --------------------------------------------------------------------------- #
@@ -2288,6 +2320,13 @@ def build_cloud_config(
     """Construit le contenu #cloud-config (user-data)."""
     lines: list[str] = ["#cloud-config", f"hostname: {args.hostname}"]
 
+    # « off » est le seul refus explicite ; « auto » laisse l'hôte décider
+    # s'il accélère, mais l'invité porte un virtio-gpu dans les deux cas et
+    # l'appartenance aux groupes ne coûte rien quand elle ne sert pas.
+    gpu = (getattr(args, "gpu", "auto") or "auto").lower() != "off"
+    if gpu:
+        lines += gpu_group_block()
+
     user_block = [
         "users:",
         f"  - name: {args.user}",
@@ -2300,7 +2339,7 @@ def build_cloud_config(
         # même écart, elles n'ont pas de groupe « sudo » mais « wheel ».
         # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
         # groupe : celui-ci n'est qu'une commodité.
-        f"    groups: {user_groups(args.distro)}",
+        f"    groups: {user_groups(args.distro, gpu)}",
         "    shell: /bin/bash",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
@@ -2732,6 +2771,13 @@ def build_preseed(
         f"echo '{user} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/{user}",
         f"chmod 440 /target/etc/sudoers.d/{user}",
     ]
+    # Accès au GPU, comme le cloud-config le donne aux autres distributions :
+    # sans ces groupes, toute application GL de l'invité retombe sur le rendu
+    # logiciel. « groupadd -f » ne fait rien si le groupe existe et ne rend
+    # jamais d'erreur, là où « usermod -aG » sur un nom inconnu échoue.
+    if (getattr(args, "gpu", "auto") or "auto").lower() != "off":
+        post += [f"in-target groupadd -f {nom}" for nom in GPU_GROUPS]
+        post.append(f"in-target usermod -aG {','.join(GPU_GROUPS)} {user}")
     if ssh_keys:
         post.append(f"mkdir -p /target/home/{user}/.ssh")
         for key in ssh_keys:
