@@ -72,6 +72,27 @@ def sudo_prefix() -> str:
     return "sudo " if needs_sudo() else ""
 
 
+# L'URI ne se laisse JAMAIS implicite. Pour un utilisateur non root, libvirt
+# choisit « qemu:///session », un hyperviseur séparé où AUCUNE des VM du
+# système n'existe : « virsh list --all » y rend une liste vide, sans erreur
+# et sans avertissement. Appartenir au groupe libvirt donne le DROIT d'accéder
+# à qemu:///system, mais ne change pas l'URI par défaut. Tant que les
+# commandes passaient par sudo, l'URI de root masquait l'omission.
+LIBVIRT_URI = "qemu:///system"
+
+
+def virsh_argv(*args: str) -> list:
+    """Argv d'un virsh local : sudo si besoin, URI toujours."""
+    prefixe = ["sudo"] if needs_sudo() else []
+    return prefixe + ["virsh", "--connect", LIBVIRT_URI, *args]
+
+
+def virsh_cmd(args: str = "") -> str:
+    """Même chose, en chaîne pour un shell. « args » est déjà échappé."""
+    base = f"{sudo_prefix()}virsh --connect {LIBVIRT_URI}"
+    return f"{base} {args}" if args else base
+
+
 def group_state(user: str = "") -> tuple[bool, bool]:
     """(déclaré, actif) pour le groupe libvirt.
 
