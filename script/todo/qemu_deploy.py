@@ -13,6 +13,7 @@ import subprocess
 import time
 
 from script.todo import todo_prefs
+from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
 
 
@@ -2121,4 +2122,4 @@ class QemuDeployMixin:
         print(f"{'═' * 60}")
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
         print(f"   {t('Default login:')} erplibre / erplibre")
-        print(f"   {t('Manage with:')} sudo virsh list --all")
+        print(f"   {t('Manage with:')} {sudo_prefix()}virsh list --all")
