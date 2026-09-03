@@ -21,7 +21,13 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# APPEND et non insert(0) : ce répertoire est `script/`, qui contient
+# `git/`. En tête de `sys.path`, il fait résoudre `import git` vers
+# `script/git/` au lieu de GitPython, pour tout module importé ensuite —
+# une bibliothèque tierce disparaît alors parce qu'une des nôtres porte le
+# même nom. En queue, `lib_identifiant` se trouve toujours, et les paquets
+# installés gardent la priorité qui leur revient.
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from lib_identifiant import (  # noqa: E402
     NOMS_INTERDITS,
@@ -29,7 +35,9 @@ from lib_identifiant import (  # noqa: E402
     termes_interdits,
 )
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+# Même raison : la racine du dépôt porte un `test/`, qui masquerait le
+# paquet `test` de la bibliothèque standard.
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 try:
     from script.todo.todo_i18n import t
