@@ -184,3 +184,100 @@ class LAbiFigee(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+
+class LesGroupesGpuDeLInvite(unittest.TestCase):
+    """Le compte de l'invité doit pouvoir OUVRIR le nœud de rendu.
+
+    Le matériel virtuel accéléré ne suffit pas : dans l'invité, le nœud
+    appartient à « root:render » en 0660, et un compte hors de ce groupe
+    retombe sur le rendu logiciel alors que la négociation VIRGL a réussi.
+    Rien ne le signale. En session graphique locale logind pose une ACL
+    pour l'utilisateur du siège ; en SSH ou en tty, personne ne la pose.
+    """
+
+    def _args(self, distro="ubuntu", gpu="auto"):
+        return DQ.build_parser().parse_args(
+            ["--distro", distro, "--gpu", gpu, "--hostname", "vm"]
+        )
+
+    def _cc(self, **kw):
+        return DQ.build_cloud_config(self._args(**kw), None, [])
+
+    def test_the_account_joins_the_gpu_groups(self):
+        """Sur les groupes DU COMPTE, et non sur le texte du document : le
+        bloc qui déclare les groupes y porte déjà les deux mots, si bien
+        qu'y chercher « render » passerait sans que personne n'y entre."""
+        noms = DQ.user_groups("ubuntu", gpu=True).split(", ")
+        self.assertIn("render", noms)
+        self.assertIn("video", noms)
+        self.assertNotIn("render", DQ.user_groups("ubuntu").split(", "))
+
+    def test_gpu_off_leaves_the_account_alone(self):
+        """« off » est un refus explicite : ne rien ajouter alors."""
+        cc = self._cc(gpu="off")
+        self.assertNotIn("render", cc)
+        self.assertNotIn("video", cc)
+
+    def test_the_admin_group_survives_every_distro(self):
+        """Le groupe d'administration ne doit pas être perdu en chemin :
+        sans lui la commodité disparaît, et un nom inconnu ferait bien
+        pire — cloud-init ne créerait pas le compte du tout."""
+        for distro, attendu in (
+            ("ubuntu", "sudo"),
+            ("debian", "sudo"),
+            ("arch", "wheel"),
+            ("almalinux", "wheel"),
+        ):
+            with self.subTest(distro=distro):
+                self.assertIn(
+                    attendu, DQ.user_groups(distro, gpu=True).split(", ")
+                )
+
+    def test_opensuse_still_gets_no_admin_group(self):
+        """Son cloud-init n'en met pas et « wheel » n'y est pas garanti :
+        en ajouter un risquerait un compte jamais créé."""
+        noms = DQ.user_groups("opensuse", gpu=True).split(", ")
+        self.assertNotIn("wheel", noms)
+        self.assertNotIn("sudo", noms)
+        self.assertIn("render", noms)
+
+    @unittest.skipIf(yaml is None, "PyYAML absent")
+    def test_the_groups_are_declared_before_being_used(self):
+        """« useradd -G » échoue sur un nom de groupe INCONNU, et cloud-init
+        ne crée alors pas le compte : ni mot de passe ni clé SSH, la VM
+        démarre inaccessible. « render » manque des images anciennes, donc
+        le déclarer n'est pas une précaution de style."""
+        doc = yaml.safe_load(self._cc())
+        self.assertEqual(["render", "video"], doc["groups"])
+        for nom in ("render", "video"):
+            self.assertIn(nom, doc["users"][0]["groups"].split(", "))
+
+    @unittest.skipIf(yaml is None, "PyYAML absent")
+    def test_the_document_stays_parsable_everywhere(self):
+        for distro in ("ubuntu", "debian", "arch", "almalinux", "opensuse"):
+            for gpu in ("auto", "on", "off"):
+                with self.subTest(distro=distro, gpu=gpu):
+                    doc = yaml.safe_load(self._cc(distro=distro, gpu=gpu))
+                    self.assertEqual("vm", doc["hostname"])
+
+    def test_the_preseed_creates_the_groups_before_using_them(self):
+        """Debian passe par le preseed et non par cloud-init : la parité
+        promise par build_preseed s'y perdrait sans cela. L'ORDRE compte —
+        « usermod -aG » sur un groupe absent échoue."""
+        pre = DQ.build_preseed(self._args(distro="debian"), "$6$x$y", [])
+        i_add = pre.index("groupadd -f render")
+        i_use = pre.index("usermod -aG render,video")
+        self.assertLess(i_add, i_use)
+
+    def test_the_preseed_says_nothing_when_gpu_is_off(self):
+        pre = DQ.build_preseed(
+            self._args(distro="debian", gpu="off"), "$6$x$y", []
+        )
+        self.assertNotIn("groupadd", pre)
