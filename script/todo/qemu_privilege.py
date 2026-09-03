@@ -11,6 +11,10 @@ donc un utilisateur fraîchement ajouté y figure sans que le shell courant en
 dispose. L'essai dit ce que le shell peut FAIRE, la table dit ce qui a été
 DÉCLARÉ — et c'est l'écart entre les deux qui explique « je suis pourtant
 dans le groupe ».
+
+Le même fichier porte de quoi ATTEINDRE ces outils : le PATH à assainir pour
+qu'un outil de la distribution ne s'amorce pas sur le venv, et la commande
+qui installe un paquet manquant selon le gestionnaire de l'hôte.
 """
 
 import grp
@@ -133,6 +137,32 @@ def system_env(env: dict | None = None) -> dict:
     base = dict(env or os.environ)
     base["PATH"] = system_path(base.get("PATH", ""))
     return base
+
+
+# (gestionnaire, binaire à détecter, commande d'installation). L'ordre est
+# celui de la détection : le premier binaire présent gagne.
+PKG_INSTALL = (
+    ("apt", "apt-get", "sudo apt-get install -y"),
+    ("dnf", "dnf", "sudo dnf install -y"),
+    ("pacman", "pacman", "sudo pacman -S --needed --noconfirm"),
+    ("zypper", "zypper", "sudo zypper --non-interactive install"),
+)
+
+
+def install_cmd_for(par_gestionnaire: dict) -> tuple:
+    """(commande, paquet) pour cet hôte, ou (None, None).
+
+    `par_gestionnaire` donne le nom du paquet POUR CHAQUE gestionnaire : ces
+    noms diffèrent d'une distribution à l'autre, et celui de Debian ne marche
+    presque jamais ailleurs. Rend None sur un hôte dont le gestionnaire n'est
+    pas connu — proposer une commande qui échouera vaut moins que de dire
+    qu'on ne sait pas.
+    """
+    for cle, binaire, install in PKG_INSTALL:
+        if shutil.which(binaire) and par_gestionnaire.get(cle):
+            paquet = par_gestionnaire[cle]
+            return f"{install} {paquet}", paquet
+    return None, None
 
 
 def group_state(user: str = "") -> tuple[bool, bool]:

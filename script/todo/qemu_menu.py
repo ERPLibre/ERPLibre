@@ -325,24 +325,16 @@ class QemuMenuMixin:
                     "Reopen install monitoring (last run / history)"
                 )
             },
+            # Douze entrées sous un seul titre ne se lisent plus : on cherche
+            # à la ligne près. Trois intentions les séparent — vivre avec ses
+            # VM, y entrer, réparer quand ça va mal.
             {"section": t("Manage")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
             {"prompt_description": t("Open the console on a VM")},
             {"prompt_description": t("Resize a VM disk")},
             {"prompt_description": t("Delete VM(s)")},
-            {"prompt_description": t("Clean up QEMU (orphan files)")},
-            {
-                "prompt_description": t(
-                    "Recover files from a VM disk (libguestfs)"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "Test a VM (open Odoo in a CLI browser)"
-                )
-            },
-            {"prompt_description": t("Statistics (installs, durations, VMs)")},
+            {"section": t("VM access")},
             {
                 "prompt_description": t(
                     "SSH configuration (~/.ssh/config, ProxyJump)"
@@ -358,6 +350,20 @@ class QemuMenuMixin:
                     "Android emulator (start, tunnel, scrcpy)"
                 )
             },
+            {"section": t("Troubleshoot")},
+            {"prompt_description": t("Clean up QEMU (orphan files)")},
+            {
+                "prompt_description": t(
+                    "Recover files from a VM disk (libguestfs)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Test a VM (open Odoo in a CLI browser)"
+                )
+            },
+            {"prompt_description": t("Diagnostics (report to share)")},
+            {"prompt_description": t("Statistics (installs, durations, VMs)")},
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -390,20 +396,22 @@ class QemuMenuMixin:
             elif status == "9":
                 self._qemu_delete_vm()
             elif status == "10":
-                self._qemu_cleanup()
-            elif status == "11":
-                self._qemu_recover_files()
-            elif status == "12":
-                self._qemu_test_vm()
-            elif status == "13":
-                self._qemu_stats()
-            elif status == "14":
                 self._qemu_ssh_config_menu()
-            elif status == "15":
+            elif status == "11":
                 self._qemu_tunnel_menu()
-            elif status == "16":
+            elif status == "12":
                 self._qemu_emulator_menu()
+            elif status == "13":
+                self._qemu_cleanup()
+            elif status == "14":
+                self._qemu_recover_files()
+            elif status == "15":
+                self._qemu_test_vm()
+            elif status == "16":
+                self._qemu_diagnostics()
             elif status == "17":
+                self._qemu_stats()
+            elif status == "18":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True

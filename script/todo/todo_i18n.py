@@ -5140,6 +5140,90 @@ TRANSLATIONS = {
         "fr": "Vérifier EGL lui-même sur ce nœud :",
         "en": "Check EGL itself on that node:",
     },
+    "VM access": {
+        "fr": "🔌 Accès aux VM",
+        "en": "🔌 VM access",
+    },
+    "Troubleshoot": {
+        "fr": "🩺 Dépanner",
+        "en": "🩺 Troubleshoot",
+    },
+    "Diagnostics (report to share)": {
+        "fr": "🩺 Diagnostic (rapport à transmettre)",
+        "en": "🩺 Diagnostics (report to share)",
+    },
+    "Collecting the diagnostics...": {
+        "fr": "Relevé du diagnostic en cours…",
+        "en": "Collecting the diagnostics...",
+    },
+    "Cannot write the report: ": {
+        "fr": "Impossible d'écrire le rapport : ",
+        "en": "Cannot write the report: ",
+    },
+    "Report written to: ": {
+        "fr": "Rapport écrit dans : ",
+        "en": "Report written to: ",
+    },
+    "It names this host, its paths and its addresses.": {
+        "fr": "Il nomme cette machine, ses chemins et ses adresses.",
+        "en": "It names this host, its paths and its addresses.",
+    },
+    "Read it before sharing it.": {
+        "fr": "Relisez-le avant de le transmettre.",
+        "en": "Read it before sharing it.",
+    },
+    "These tools would complete the report:": {
+        "fr": "Ces outils compléteraient le rapport :",
+        "en": "These tools would complete the report:",
+    },
+    "unknown package manager": {
+        "fr": "gestionnaire de paquets inconnu",
+        "en": "unknown package manager",
+    },
+    "Install them now? (y/N): ": {
+        "fr": "Les installer maintenant ? (o/N) : ",
+        "en": "Install them now? (y/N, default: no): ",
+    },
+    "Run the diagnostics again for a fuller report.": {
+        "fr": "Relancez le diagnostic pour un rapport plus complet.",
+        "en": "Run the diagnostics again for a fuller report.",
+    },
+    "Devices QEMU may open": {
+        "fr": "Périphériques que QEMU peut ouvrir",
+        "en": "Devices QEMU may open",
+    },
+    "Unreadable, so this may already be set:": {
+        "fr": "Illisible, donc peut-être déjà réglé :",
+        "en": "Unreadable, so this may already be set:",
+    },
+    "A list exists: ADD to it, never replace it.": {
+        "fr": "Une liste existe : y AJOUTER, ne jamais la remplacer.",
+        "en": "A list exists: ADD to it, never replace it.",
+    },
+    "In": {
+        "fr": "Dans",
+        "en": "In",
+    },
+    "Then restart the daemon and recreate the VM:": {
+        "fr": "Puis redémarrer le démon et recréer la VM :",
+        "en": "Then restart the daemon and recreate the VM:",
+    },
+    "then stop and start the VM (a guest reboot is not": {
+        "fr": "puis éteindre et rallumer la VM (un redémarrage de",
+        "en": "then stop and start the VM (a guest reboot is not",
+    },
+    "enough: the list applies when QEMU is launched).": {
+        "fr": "l'invité ne suffit pas : la liste s'applique au lancement).",
+        "en": "enough: the list applies when QEMU is launched).",
+    },
+    "package": {
+        "fr": "paquet",
+        "en": "package",
+    },
+    "Will run, as root:": {
+        "fr": "Va exécuter, en root :",
+        "en": "Will run, as root:",
+    },
     "Full output:": {
         "fr": "Sortie complète :",
         "en": "Full output:",

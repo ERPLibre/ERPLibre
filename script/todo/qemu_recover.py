@@ -18,7 +18,11 @@ import shlex
 import shutil
 import subprocess
 
-from script.todo.qemu_privilege import system_env, system_path
+from script.todo.qemu_privilege import (
+    install_cmd_for,
+    system_env,
+    system_path,
+)
 from script.todo.todo_i18n import t
 
 # Le paquet qui apporte guestfish, par gestionnaire de paquets. Il ne vit pas
@@ -35,14 +39,6 @@ GUESTFS_PACKAGES = {
     "zypper": "guestfs-tools",
 }
 
-# (gestionnaire, binaire à détecter, commande d'installation)
-GUESTFS_INSTALL = (
-    ("apt", "apt-get", "sudo apt-get install -y"),
-    ("dnf", "dnf", "sudo dnf install -y"),
-    ("pacman", "pacman", "sudo pacman -S --needed --noconfirm"),
-    ("zypper", "zypper", "sudo zypper --non-interactive install"),
-)
-
 # guestfish suffit à tout faire ; les deux autres ne font que présenter mieux
 # ce qu'il montre déjà. Les distinguer évite d'exiger un paquet complet là où
 # l'essentiel est présent.
@@ -53,14 +49,10 @@ GUESTFS_BIN_CONFORT = ("virt-filesystems", "virt-df")
 def guestfs_install_cmd():
     """(commande d'installation, paquet) pour cet hôte, ou (None, None).
 
-    Rend None sur un hôte dont le gestionnaire n'est pas connu — y compris
-    macOS, où libguestfs ne tourne pas : proposer une commande qui échouera
-    vaut moins que de dire qu'on ne sait pas.
+    macOS y rend None comme tout hôte au gestionnaire inconnu, et c'est juste :
+    libguestfs n'y tourne pas.
     """
-    for cle, binaire, install in GUESTFS_INSTALL:
-        if shutil.which(binaire):
-            return f"{install} {GUESTFS_PACKAGES[cle]}", GUESTFS_PACKAGES[cle]
-    return None, None
+    return install_cmd_for(GUESTFS_PACKAGES)
 
 
 class QemuRecoverMixin:
