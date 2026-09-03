@@ -153,7 +153,7 @@ class TODO(
 [4] {t("Fork - Open TODO in a new tab")}
 [5] {t("Navigation telemetry (TUI)")}
 [6] {t("Configuration")}
-[0] {t("Quit")}
+[0] 🚪 {t("Quit")}
 """
         while True:
             try:
