@@ -334,6 +334,11 @@ class QemuMenuMixin:
             {"prompt_description": t("Clean up QEMU (orphan files)")},
             {
                 "prompt_description": t(
+                    "Recover files from a VM disk (libguestfs)"
+                )
+            },
+            {
+                "prompt_description": t(
                     "Test a VM (open Odoo in a CLI browser)"
                 )
             },
@@ -387,16 +392,18 @@ class QemuMenuMixin:
             elif status == "10":
                 self._qemu_cleanup()
             elif status == "11":
-                self._qemu_test_vm()
+                self._qemu_recover_files()
             elif status == "12":
-                self._qemu_stats()
+                self._qemu_test_vm()
             elif status == "13":
-                self._qemu_ssh_config_menu()
+                self._qemu_stats()
             elif status == "14":
-                self._qemu_tunnel_menu()
+                self._qemu_ssh_config_menu()
             elif status == "15":
-                self._qemu_emulator_menu()
+                self._qemu_tunnel_menu()
             elif status == "16":
+                self._qemu_emulator_menu()
+            elif status == "17":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
