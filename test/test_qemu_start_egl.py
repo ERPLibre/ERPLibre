@@ -509,3 +509,91 @@ class _FauxModule:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LaSondeVideo(unittest.TestCase):
+    """La 3D d'une VM se lit sur la ligne de commande de son QEMU.
+
+    La définition dit ce qui est DEMANDÉ ; la ligne de commande dit ce qui
+    a été REÇU. Entre les deux, libvirt peut retirer l'accélération sans le
+    signaler, et « egl-headless » s'affiche dans les deux cas — chercher ce
+    seul mot fait conclure à tort que la 3D est en place. Le suffixe
+    « -gl » du device est la pièce qui tranche.
+    """
+
+    ARGV = (
+        "/usr/bin/qemu-system-x86_64",
+        "-name",
+        "guest=une-vm,debug-threads=on",
+        "-device",
+        "%s,id=video0,max_outputs=1,bus=pcie.0",
+        "-display",
+        "egl-headless,rendernode=/dev/dri/renderD128",
+        "-audiodev",
+        '{"id":"audio1","driver":"none"}',
+    )
+
+    def _sonder(self, device, argv0=None, extra=()):
+        """Sortie de la sonde devant un /proc bâti pour l'occasion."""
+        from script.todo.qemu_manage import _DIAG_VIDEO_PY
+
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = Path(tmp) / "proc" / "4242"
+            proc.mkdir(parents=True)
+            argv = list(self.ARGV)
+            argv[0] = argv0 or argv[0]
+            argv[4] = argv[4] % device
+            argv.extend(extra)
+            (proc / "cmdline").write_bytes("\0".join(argv).encode() + b"\0")
+            programme = _DIAG_VIDEO_PY.replace(
+                "/proc/", str(Path(tmp) / "proc") + "/"
+            ).replace('chemin.split("/")[2]', "chemin")
+            fini = subprocess.run(
+                [sys.executable, "-c", programme],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(fini.returncode, 0, fini.stderr)
+            return fini.stdout
+
+    def test_the_accelerated_device_is_reported(self):
+        sortie = self._sonder("virtio-vga-gl")
+        self.assertIn("une-vm", sortie)
+        self.assertIn("virtio-vga-gl", sortie)
+
+    def test_software_rendering_is_told_apart(self):
+        """L'épreuve du rapport : les deux cas ne doivent PAS se lire pareil.
+
+        « egl-headless » est présent des deux côtés ; un rapport qui ne
+        montrerait que lui laisserait croire la 3D acquise.
+        """
+        accelere = self._sonder("virtio-vga-gl")
+        logiciel = self._sonder("virtio-vga")
+        self.assertIn("egl-headless", accelere)
+        self.assertIn("egl-headless", logiciel)
+        self.assertNotEqual(accelere, logiciel)
+        self.assertNotIn("virtio-vga-gl", logiciel)
+
+    def test_a_process_merely_naming_qemu_is_ignored(self):
+        """Le tri se fait sur argv[0], et non sur la ligne entière.
+
+        Un processus quelconque peut porter « qemu-system » dans ses
+        arguments — un pager ouvert sur un journal, et la sonde elle-même,
+        dont le programme contient le mot. Les compter ferait naître des
+        VM qui n'existent pas. Le contre-exemple porte donc le motif
+        AILLEURS qu'en tête, sans quoi il ne départage rien.
+        """
+        argv = ["/var/log/qemu-system-x86_64.log"]
+        self.assertTrue(any("qemu-system" in a for a in argv))
+        self.assertEqual(
+            self._sonder("virtio-vga-gl", argv0="/usr/bin/less", extra=argv),
+            "",
+        )
+
+    def test_the_diagnostic_carries_the_probe(self):
+        from script.todo.qemu_manage import QemuManageMixin
+
+        sondes = dict(QemuManageMixin._DIAG_PROBES)
+        self.assertIn("video du qemu en cours", sondes)
