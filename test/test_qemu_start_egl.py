@@ -201,6 +201,10 @@ class LeDiagnostic(unittest.TestCase):
             class R:
                 stdout = f"sortie de {cmd}\n"
                 stderr = ""
+                # Le vrai objet de subprocess en porte un, et les helpers
+                # qui appellent virsh s'en servent pour distinguer une
+                # sortie d'un échec. L'omettre faisait mentir le double.
+                returncode = 0
 
             return R()
 
@@ -224,7 +228,16 @@ class LeDiagnostic(unittest.TestCase):
             contenu = Path(tmp, fichiers[0]).read_text(encoding="utf-8")
         # Les quatre familles qui décident d'un problème QEMU : la machine,
         # l'hyperviseur, le GPU, et l'interpréteur qui porte virt-xml.
-        for attendu in ("uname", "virsh", "dri", "virt-xml", "3D"):
+        # « 3D » couvre l'hôte, « 3D par VM » ce que chaque définition
+        # livrera : deux questions distinctes, deux sections.
+        for attendu in (
+            "uname",
+            "virsh",
+            "dri",
+            "virt-xml",
+            "===== 3D =====",
+            "===== 3D par VM =====",
+        ):
             self.assertIn(attendu, contenu)
 
     # Programmes qui ne peuvent que LIRE. « command -v » cherche un outil
@@ -247,7 +260,7 @@ class LeDiagnostic(unittest.TestCase):
         "sort",
         "echo",
     }
-    VIRSH_LECTURE = {"version", "list", "net-list"}
+    VIRSH_LECTURE = {"version", "list", "net-list", "dumpxml", "dominfo"}
 
     def test_every_probe_is_read_only(self):
         """Un rapport qui modifie l'hôte n'est plus un rapport."""
@@ -255,6 +268,12 @@ class LeDiagnostic(unittest.TestCase):
             self._lancer(tmp)
         operateurs = {";", "|", "||", "&&"}
         for cmd in self.lances:
+            # Le relevé lance deux formes : les sondes, chaînes passées au
+            # shell, et les helpers qui appellent virsh en argv-liste. Une
+            # liste est DÉJÀ découpée — la passer à shlex lèverait.
+            if isinstance(cmd, (list, tuple)):
+                self._juger(list(cmd), cmd)
+                continue
             # shlex plutôt qu'un découpage sur « | » : le motif de grep en
             # contient un, et le couper au milieu ferait juger « 3d » comme
             # s'il était un programme.
@@ -617,3 +636,115 @@ class LesPieces3D(unittest.TestCase):
             "qemu/hw-display-virtio-gpu-gl.so",
         ):
             self.assertIn(module, motifs)
+
+
+class La3DParVM(unittest.TestCase):
+    """Le rapport dit, VM par VM, ce que le prochain démarrage livrera.
+
+    Trois valeurs y répondent ENSEMBLE et aucune seule : le type de vidéo,
+    « accel3d », et le device figé par libvirt. Une VM dont l'ABI est
+    figée sur un device sans GL tourne sans 3D quoi que demande sa
+    définition, et c'est le cas qu'un rapport doit nommer.
+    """
+
+    XML = (
+        "<domain><name>{n}</name><devices><video>"
+        "<model type='virtio' heads='1' {attr}>"
+        "<acceleration accel3d='{a}'/></model></video>"
+        "<graphics type='egl-headless'>"
+        "<gl rendernode='/dev/dri/renderD128'/></graphics>"
+        "</devices></domain>"
+    )
+
+    def _rendu(self, vms):
+        """Sortie du relevé pour {nom: (device figé, accel3d)}."""
+        faux = {
+            nom: self.XML.format(
+                n=nom,
+                attr=f"device='{dev}'" if dev else "",
+                a=accel,
+            )
+            for nom, (dev, accel) in vms.items()
+        }
+        todo = TODO.__new__(TODO)
+        vus = []
+        with mock.patch.object(
+            TODO, "_qemu_list_domains", lambda s: list(faux)
+        ), mock.patch.object(
+            TODO,
+            "_qemu_dumpxml",
+            staticmethod(lambda n, inactive=True: faux[n]),
+        ), mock.patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: vus.append(
+                " ".join(str(x) for x in a)
+            ),
+        ):
+            todo._qemu_vm_3d_report()
+        return "\n".join(vus)
+
+    def test_a_non_gl_pin_is_named_and_explained(self):
+        rendu = self._rendu({"vm": ("virtio-vga", "yes")})
+        self.assertIn("❌", rendu)
+        self.assertIn("device=virtio-vga", rendu)
+        self.assertIn("accel3d=on", rendu)
+
+    def test_the_repair_is_written_not_run(self):
+        """Un rapport ne modifie rien : la commande est ÉCRITE.
+
+        Elle passe par « define » et non par virt-xml, dont le vocabulaire
+        ne connaît pas partout cet attribut.
+        """
+        rendu = self._rendu({"vm": ("virtio-vga", "yes")})
+        self.assertIn("virtio-vga-gl", rendu)
+        self.assertIn("define", rendu)
+
+    def test_a_gl_pin_is_left_alone(self):
+        """Le suffixe « -gl » distingue les deux devices : sans cette
+        lecture, une VM correctement accélérée serait accusée à tort."""
+        rendu = self._rendu({"vm": ("virtio-vga-gl", "yes")})
+        self.assertIn("✅", rendu)
+        self.assertNotIn("❌", rendu)
+        self.assertNotIn("define", rendu)
+
+    def test_a_vm_that_never_asked_for_3d_is_not_accused(self):
+        rendu = self._rendu({"vm": ("virtio-vga", "no")})
+        self.assertNotIn("❌", rendu)
+        self.assertNotIn("define", rendu)
+
+    def test_only_the_frozen_one_is_counted(self):
+        """Un lot mêlé : le bloc de réparation ne doit paraître qu'une
+        fois, et nommer une VM réellement figée."""
+        rendu = self._rendu(
+            {
+                "saine": ("virtio-vga-gl", "yes"),
+                "figee": ("virtio-vga", "yes"),
+                "sans": ("virtio-vga", "no"),
+            }
+        )
+        self.assertEqual(1, rendu.count("❌"))
+        self.assertEqual(1, rendu.count("define"))
+        self.assertIn("vm=figee", rendu)
+
+
+class LesSectionsDuRapport(unittest.TestCase):
+    """Le rapport s'écrit d'un bloc à la FIN.
+
+    Une section qui lève emporterait donc tout ce qui a été relevé avant
+    elle, et l'utilisateur se retrouverait sans fichier au moment précis
+    où il en a besoin.
+    """
+
+    def test_a_failing_section_becomes_a_line_not_a_loss(self):
+        def casse():
+            raise RuntimeError("sonde cassée")
+
+        texte = TODO._diag_section("essai", casse)
+        self.assertIn("===== essai =====", texte)
+        self.assertIn("RuntimeError", texte)
+        self.assertIn("sonde cassée", texte)
+
+    def test_a_healthy_section_keeps_its_output(self):
+        texte = TODO._diag_section("essai", lambda: print("relevé"))
+        self.assertIn("relevé", texte)
+        self.assertNotIn("Error", texte)
