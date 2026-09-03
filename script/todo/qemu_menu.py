@@ -513,8 +513,11 @@ class QemuMenuMixin:
     def _qemu_stamp(ts):
         """Horodatage court « 2026-08-01 »."""
         try:
-            return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-        except (OSError, OverflowError, ValueError):
+            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+        except (OSError, OverflowError, TypeError, ValueError):
+            # TypeError : un horodatage absent vaut None dans un résumé sans
+            # aucune installation, et une statistique ne doit pas faire
+            # tomber le menu.
             return "?"
 
     def _qemu_stats_vms(self, mon):
