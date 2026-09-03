@@ -5004,6 +5004,115 @@ TRANSLATIONS = {
             " (y/N, default: no): "
         ),
     },
+    # Récupération de fichiers dans le disque d'une VM (libguestfs)
+    "Recover files from a VM disk (libguestfs)": {
+        "fr": "💾 Récupérer des fichiers dans le disque d'une VM (libguestfs)",
+        "en": "Recover files from a VM disk (libguestfs)",
+    },
+    "guestfish is missing: libguestfs is not here.": {
+        "fr": "guestfish est absent : libguestfs n'est pas installé ici.",
+        "en": "guestfish is missing: libguestfs is not here.",
+    },
+    "Some libguestfs helpers are missing:": {
+        "fr": "Des utilitaires libguestfs manquent :",
+        "en": "Some libguestfs helpers are missing:",
+    },
+    "Unknown package manager: install libguestfs.": {
+        "fr": "Gestionnaire de paquets inconnu : installez libguestfs.",
+        "en": "Unknown package manager: install libguestfs.",
+    },
+    "Install libguestfs now? (Y/n): ": {
+        "fr": "Installer libguestfs maintenant ? (O/n) : ",
+        "en": "Install libguestfs now? (Y/n, default: yes): ",
+    },
+    "This VM is running.": {
+        "fr": "Cette VM est allumée.",
+        "en": "This VM is running.",
+    },
+    "Reading a live disk sees a possibly torn state:": {
+        "fr": "Lire un disque vivant montre un état peut-être incohérent :",
+        "en": "Reading a live disk sees a possibly torn state:",
+    },
+    "a half-written file, an unreplayed journal.": {
+        "fr": "un fichier à moitié écrit, un journal non rejoué.",
+        "en": "a half-written file, an unreplayed journal.",
+    },
+    "Read anyway (read-only, no risk for the VM)": {
+        "fr": "Lire quand même (lecture seule, sans risque pour la VM)",
+        "en": "Read anyway (read-only, no risk for the VM)",
+    },
+    "Shut the VM down cleanly, then read": {
+        "fr": "Éteindre proprement la VM, puis lire",
+        "en": "Shut the VM down cleanly, then read",
+    },
+    "No filesystem found on this disk.": {
+        "fr": "Aucun système de fichiers trouvé sur ce disque.",
+        "en": "No filesystem found on this disk.",
+    },
+    "Filesystem to mount": {
+        "fr": "Système de fichiers à monter",
+        "en": "Filesystem to mount",
+    },
+    "Empty or unreadable directory.": {
+        "fr": "Répertoire vide ou illisible.",
+        "en": "Empty or unreadable directory.",
+    },
+    "Cannot create the destination: ": {
+        "fr": "Impossible de créer la destination : ",
+        "en": "Cannot create the destination: ",
+    },
+    "Extraction failed.": {
+        "fr": "L'extraction a échoué.",
+        "en": "Extraction failed.",
+    },
+    "Extracted to: ": {
+        "fr": "Extrait vers : ",
+        "en": "Extracted to: ",
+    },
+    "Partitions and sizes": {
+        "fr": "Partitions et tailles",
+        "en": "Partitions and sizes",
+    },
+    "Free space per filesystem": {
+        "fr": "Espace libre par système de fichiers",
+        "en": "Free space per filesystem",
+    },
+    "Detected operating system": {
+        "fr": "Système d'exploitation détecté",
+        "en": "Detected operating system",
+    },
+    "Does the libguestfs appliance boot?": {
+        "fr": "L'appliance libguestfs démarre-t-elle ?",
+        "en": "Does the libguestfs appliance boot?",
+    },
+    "No disk found for this VM.": {
+        "fr": "Aucun disque trouvé pour cette VM.",
+        "en": "No disk found for this VM.",
+    },
+    "Disk:": {
+        "fr": "Disque :",
+        "en": "Disk:",
+    },
+    "Run the diagnostics first? (y/N): ": {
+        "fr": "Lancer d'abord les diagnostics ? (o/N) : ",
+        "en": "Run the diagnostics first? (y/N, default: no): ",
+    },
+    "Directory to list [/]: ": {
+        "fr": "Répertoire à lister [/] : ",
+        "en": "Directory to list [/]: ",
+    },
+    "Another directory, or Enter to extract: ": {
+        "fr": "Autre répertoire, ou Entrée pour extraire : ",
+        "en": "Another directory, or Enter to extract: ",
+    },
+    "Path to extract": {
+        "fr": "Chemin à extraire",
+        "en": "Path to extract",
+    },
+    "Destination on the host": {
+        "fr": "Destination sur l'hôte",
+        "en": "Destination on the host",
+    },
     "Full output:": {
         "fr": "Sortie complète :",
         "en": "Full output:",

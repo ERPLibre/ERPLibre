@@ -28,6 +28,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import todo_install, todo_prefs
 from script.todo.database_manager import DatabaseManager
+from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -35,7 +36,7 @@ from script.todo.qemu_deploy import QemuDeployMixin
 from script.todo.qemu_install import QemuInstallMixin
 from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
-from script.todo.kdbx_manager import KdbxManager
+from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
@@ -95,6 +96,7 @@ class TODO(
     QemuDeployMixin,
     QemuInstallMixin,
     QemuManageMixin,
+    QemuRecoverMixin,
     QemuAccessMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
