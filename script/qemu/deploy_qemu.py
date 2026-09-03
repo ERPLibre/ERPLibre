@@ -351,6 +351,23 @@ def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
     return True, f"  GPU : 3D activée par {node} (virtio-gpu + egl-headless)."
 
 
+# Ce que QEMU écrit quand le nœud de rendu existe mais qu'EGL n'y démarre
+# pas. Le fichier /dev/dri/renderD* est alors bien là — un GPU virtuel sans
+# pile EGL, un pilote sans GBM, une carte que Mesa ne sait pas ouvrir : la
+# présence du nœud ne prouve donc PAS que la 3D fonctionne, et rien ne le dit
+# avant que QEMU n'essaie.
+EGL_ECHEC = (
+    "eglInitialize failed",
+    "render node init failed",
+    "EGL_NOT_INITIALIZED",
+)
+
+
+def egl_failed(output: str) -> bool:
+    """La sortie de virt-install accuse-t-elle un EGL inutilisable ?"""
+    return any(marque in (output or "") for marque in EGL_ECHEC)
+
+
 def gpu_apply(
     video: list, mode: str, node: str, screen: bool
 ) -> tuple[list, list, str]:
@@ -663,15 +680,38 @@ class Runner:
         self.dry_run = dry_run
 
     def run(
-        self, cmd: list[str], *, privileged: bool = False, check: bool = True
-    ) -> None:
+        self,
+        cmd: list[str],
+        *,
+        privileged: bool = False,
+        check: bool = True,
+        capture: bool = False,
+    ):
+        """Lance la commande. `capture` rend (code, sortie) au lieu de sortir.
+
+        Sans `capture`, un échec termine le programme : c'est le comportement
+        voulu partout où il n'y a rien à rattraper. Avec, l'appelant décide —
+        seul l'appel qui SAIT réessayer autrement doit le demander.
+        """
         if privileged and self.use_sudo:
             cmd = ["sudo", *cmd]
         printable = " ".join(cmd)
         if self.dry_run:
             print(f"  [dry-run] {printable}")
-            return
+            return (0, "") if capture else None
         print(f"  $ {printable}")
+        if capture:
+            # La sortie est réaffichée telle quelle : le journal garde tout,
+            # et l'appelant peut lire ce que l'outil a dit.
+            res = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            if res.stdout:
+                print(res.stdout, end="")
+            return res.returncode, res.stdout or ""
         try:
             subprocess.run(cmd, check=check)
         except subprocess.CalledProcessError as exc:
@@ -2984,6 +3024,7 @@ def virt_install(
     # comme l'émulateur Android qui tourne dedans — et c'est le défaut le plus
     # coûteux qu'on puisse laisser en place sans le dire.
     gpu_node = args.gpu_node or host_gpu_node()
+    video_sans_3d = list(video)
     video, gpu_args, gpu_msg = gpu_apply(
         video, args.gpu, gpu_node, graphics != "none"
     )
@@ -3064,6 +3105,7 @@ def virt_install(
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
+    i_gpu = len(cmd)
     cmd += video + gpu_args
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
@@ -3128,7 +3170,44 @@ def virt_install(
         f"XDG_CACHE_HOME={cache_dir}",
         f"HOME={cache_dir}",
     ]
-    runner.run(log_env + cmd, privileged=True)
+    if not gpu_args:
+        runner.run(log_env + cmd, privileged=True)
+        return
+    # La 3D est le SEUL argument dont l'échec se rattrape : le nœud de rendu
+    # existe, mais QEMU n'arrive pas à y démarrer EGL. Rien ne permet de le
+    # savoir avant d'essayer, donc on essaie, et on retire la 3D si c'est
+    # elle qui a fait tomber le domaine.
+    code, sortie = runner.run(log_env + cmd, privileged=True, capture=True)
+    if code == 0:
+        return
+    if not egl_failed(sortie):
+        sys.exit(
+            f"\nÉchec de la commande (code {code}) :\n"
+            f"  {' '.join(log_env + cmd)}"
+        )
+    if (args.gpu or "auto").lower() == "on":
+        # « --gpu on » est une exigence, pas une préférence : la trahir en
+        # silence donnerait une VM qui n'est pas celle qu'on a demandée.
+        sys.exit(
+            "\nErreur : --gpu on demandé, mais EGL ne démarre pas sur"
+            f" {gpu_node}.\n  Relancer avec --gpu off pour une VM en rendu"
+            " logiciel."
+        )
+    print(
+        f"\n  ⚠ EGL ne démarre pas sur {gpu_node} : la 3D est retirée et la"
+        "\n    VM recréée en rendu logiciel. « --gpu off » évite cet essai."
+    )
+    cmd_sans_3d = (
+        cmd[:i_gpu] + video_sans_3d + cmd[i_gpu + len(video) + len(gpu_args) :]
+    )
+    # Le domaine défini par l'essai raté doit partir : sans quoi virt-install
+    # refuse le nom, et la VM resterait celle qui ne démarre pas.
+    runner.run(
+        ["virsh", "--connect", LIBVIRT_URI, "undefine", args.name, "--nvram"],
+        privileged=True,
+        check=False,
+    )
+    runner.run(log_env + cmd_sans_3d, privileged=True)
 
 
 def watch_and_restart(name: str, runner: Runner) -> None:
