@@ -17,6 +17,7 @@ Ce que ces tests gardent :
 """
 
 import io
+import os
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -180,6 +181,71 @@ class LUriEstToujoursExplicite(unittest.TestCase):
                     voisin,
                     f"{chemin}:{num} appelle virsh sans URI",
                 )
+
+
+class LePathDesOutilsSysteme(unittest.TestCase):
+    """TODO tourne dans son venv, dont le « bin » est en tête du PATH.
+
+    Ce répertoire contient un « python3 ». Un outil de la distribution amorcé
+    par « #!/usr/bin/env python3 » y trouve donc l'interpréteur du venv, où
+    les modules du système n'existent pas — l'import échoue sur un module que
+    la machine possède pourtant. Sous sudo le piège était invisible : sudo
+    réinitialise le PATH.
+    """
+
+    def test_the_project_venvs_are_dropped(self):
+        chemin = os.pathsep.join(
+            [
+                "/home/x/git/erplibre/.venv.erplibre/bin",
+                "/home/x/git/erplibre/.venv.odoo18.0_python3.12.10/bin",
+                "/usr/local/bin",
+                "/usr/bin",
+            ]
+        )
+        with mock.patch.dict(qp.os.environ, {"VIRTUAL_ENV": ""}, clear=False):
+            propre = qp.system_path(chemin)
+        self.assertNotIn(".venv", propre)
+        # L'ordre du reste ne bouge pas : il décide quel outil gagne.
+        self.assertEqual(["/usr/local/bin", "/usr/bin"], propre.split(":"))
+
+    def test_the_active_venv_is_dropped_even_without_the_name(self):
+        """Un venv hors du dépôt ne porte pas « .venv » : VIRTUAL_ENV le
+        désigne, et c'est ce nom-là qui tranche."""
+        with mock.patch.dict(
+            qp.os.environ, {"VIRTUAL_ENV": "/opt/env"}, clear=False
+        ):
+            propre = qp.system_path("/opt/env/bin:/usr/bin")
+        self.assertEqual("/usr/bin", propre)
+
+    def test_a_path_without_any_venv_is_untouched(self):
+        with mock.patch.dict(qp.os.environ, {"VIRTUAL_ENV": ""}, clear=False):
+            self.assertEqual(
+                "/usr/local/bin:/usr/bin",
+                qp.system_path("/usr/local/bin:/usr/bin"),
+            )
+
+    def test_empty_entries_do_not_become_the_current_directory(self):
+        """Une entrée vide dans PATH signifie « le répertoire courant » : la
+        recopier ferait chercher un outil système là où on se trouve."""
+        with mock.patch.dict(qp.os.environ, {"VIRTUAL_ENV": ""}, clear=False):
+            self.assertEqual("/usr/bin", qp.system_path("/usr/bin::"))
+
+    def test_the_env_carries_the_cleaned_path(self):
+        with mock.patch.dict(
+            qp.os.environ,
+            {"VIRTUAL_ENV": "/opt/env", "PATH": "/opt/env/bin:/usr/bin"},
+            clear=False,
+        ):
+            env = qp.system_env()
+        self.assertEqual("/usr/bin", env["PATH"])
+
+    def test_the_hardware_plan_uses_it(self):
+        """virt-xml est un script Python du système : sans PATH assaini, il
+        s'amorce sur l'interpréteur du venv."""
+        source = Path("script/todo/qemu_manage.py").read_text(encoding="utf-8")
+        debut = source.index("def _qemu_adjust_hardware")
+        corps = source[debut : source.index("\n    def ", debut + 10)]
+        self.assertIn("system_path()", corps)
 
 
 if __name__ == "__main__":

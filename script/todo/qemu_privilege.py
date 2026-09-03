@@ -93,6 +93,48 @@ def virsh_cmd(args: str = "") -> str:
     return f"{base} {args}" if args else base
 
 
+def system_path(path: str = "") -> str:
+    """PATH débarrassé des répertoires de venv du projet.
+
+    TODO tourne DANS son venv, dont le « bin » est en TÊTE du PATH : chaque
+    commande lancée par le menu le voit en premier, et ce répertoire contient
+    un « python3 ». Un outil système écrit en Python et amorcé par
+    « #!/usr/bin/env python3 » y trouve donc l'interpréteur du venv, où les
+    modules fournis par la distribution — PyGObject, entre autres — n'existent
+    pas, et l'import échoue sur un module que le système possède pourtant.
+
+    Sous sudo le piège ne se voyait pas : sudo réinitialise le PATH par son
+    « secure_path ». Le retirer là où il n'était pas nécessaire l'a mis au
+    jour, et l'assainissement doit donc être explicite.
+    """
+    path = path or os.environ.get("PATH", "")
+    venv = os.environ.get("VIRTUAL_ENV", "")
+    gardees = []
+    for entree in path.split(os.pathsep):
+        if not entree:
+            continue
+        # Un répertoire du venv courant, ou de n'importe quel « .venv* » du
+        # dépôt : les deux mènent au même interpréteur de trop.
+        if venv and os.path.normpath(entree).startswith(
+            os.path.normpath(venv) + os.sep
+        ):
+            continue
+        if any(
+            part.startswith(".venv")
+            for part in os.path.normpath(entree).split(os.sep)
+        ):
+            continue
+        gardees.append(entree)
+    return os.pathsep.join(gardees)
+
+
+def system_env(env: dict | None = None) -> dict:
+    """Environnement où un outil système trouve l'interpréteur système."""
+    base = dict(env or os.environ)
+    base["PATH"] = system_path(base.get("PATH", ""))
+    return base
+
+
 def group_state(user: str = "") -> tuple[bool, bool]:
     """(déclaré, actif) pour le groupe libvirt.
 

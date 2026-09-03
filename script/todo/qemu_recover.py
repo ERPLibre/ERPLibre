@@ -18,6 +18,7 @@ import shlex
 import shutil
 import subprocess
 
+from script.todo.qemu_privilege import system_env, system_path
 from script.todo.todo_i18n import t
 
 # Le paquet qui apporte guestfish, par gestionnaire de paquets. Il ne vit pas
@@ -102,6 +103,7 @@ class QemuRecoverMixin:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=system_env(),
             )
         except (OSError, subprocess.SubprocessError):
             return []
@@ -135,7 +137,9 @@ class QemuRecoverMixin:
             input(t("Install libguestfs now? (Y/n): "))
         ):
             return not manque_essentiel
-        self.execute.exec_command_live(install, source_erplibre=False)
+        self.execute.exec_command_live(
+            install, source_erplibre=False, new_env={"PATH": system_path()}
+        )
         return shutil.which(GUESTFS_BIN_ESSENTIEL) is not None
 
     def _qemu_recover_ready(self, name):
@@ -239,7 +243,9 @@ class QemuRecoverMixin:
             f"copy-out {shlex.quote(source)} {shlex.quote(dest)}",
         )
         print(f"\n{t('Will execute:')} {cmd}")
-        code = self.execute.exec_command_live(cmd, source_erplibre=False)
+        code = self.execute.exec_command_live(
+            cmd, source_erplibre=False, new_env={"PATH": system_path()}
+        )
         if code:
             print(f"  ⚠ {t('Extraction failed.')}")
             return False
@@ -274,7 +280,9 @@ class QemuRecoverMixin:
         for titre, cmd in sondes:
             print(f"\n── {titre} ──")
             print(f"{t('Will execute:')} {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            self.execute.exec_command_live(
+                cmd, source_erplibre=False, new_env={"PATH": system_path()}
+            )
 
     def _qemu_recover_files(self):
         """Récupère des fichiers dans le disque d'une VM, sans la démarrer."""
