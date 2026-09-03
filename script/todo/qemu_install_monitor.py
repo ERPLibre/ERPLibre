@@ -22,6 +22,12 @@ import shutil
 import socket
 import subprocess
 import time
+
+from script.todo.qemu_privilege import (
+    LIBVIRT_URI as URI,
+    sudo_prefix,
+    virsh_argv,
+)
 from pathlib import Path
 
 try:
@@ -1170,7 +1176,7 @@ def virsh_domstates() -> dict:
     pour tout le parc (à interroger à intervalle LENT)."""
     try:
         res = subprocess.run(
-            ["sudo", "virsh", "list", "--all"],
+            virsh_argv("list", "--all"),
             capture_output=True,
             text=True,
             timeout=15,
@@ -1389,7 +1395,7 @@ def read_domstats() -> str:
     processus à chaque tour."""
     try:
         res = subprocess.run(
-            ["sudo", "virsh", "domstats", "--balloon", "--block"],
+            virsh_argv("domstats", "--balloon", "--block"),
             capture_output=True,
             text=True,
             timeout=15,
@@ -1758,15 +1764,7 @@ def arm_balloon(names) -> None:
     for name in names or ():
         try:
             subprocess.run(
-                [
-                    "sudo",
-                    "virsh",
-                    "dommemstat",
-                    name,
-                    "--period",
-                    "5",
-                    "--live",
-                ],
+                virsh_argv("dommemstat", name, "--period", "5", "--live"),
                 capture_output=True,
                 text=True,
                 timeout=10,
@@ -1974,15 +1972,18 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     cmd = ""
     if uuid:
         cmd = (
-            f"vu=$(sudo virsh domuuid {q} 2>/dev/null | tr -d '[:space:]'); "
+            f"vu=$({sudo_prefix()}virsh --connect {URI} domuuid {q}"
+            " 2>/dev/null"
+            " | tr -d '[:space:]'); "
             f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
             f'echo "REFUS : {name} n\'est plus le même domaine"'
             f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
         )
     cmd += (
-        f"sudo virsh destroy {q} 2>/dev/null; "
-        f"sudo virsh undefine {q} --nvram 2>/dev/null "
-        f"|| sudo virsh undefine {q}"
+        f"{sudo_prefix()}virsh --connect {URI} destroy {q} 2>/dev/null; "
+        f"{sudo_prefix()}virsh --connect {URI} "
+        f"undefine {q} --nvram 2>/dev/null "
+        f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
     )
     if with_disks:
         disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
@@ -2917,7 +2918,10 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 )
                 sortie = "Ctrl+O"
             else:
-                cmd = f"sudo virsh console {shlex.quote(vm['name'])}"
+                cmd = (
+                    f"{sudo_prefix()}virsh --connect {URI} "
+                    f"console {shlex.quote(vm['name'])}"
+                )
                 titre = f"virsh console {vm['name']}"
                 sortie = "Ctrl+]"
             with self.suspend():
@@ -3104,7 +3108,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                         )
                     else:
                         subprocess.run(
-                            ["sudo", "virsh", action, nom],
+                            virsh_argv(action, nom),
                             capture_output=True,
                             text=True,
                             timeout=30,

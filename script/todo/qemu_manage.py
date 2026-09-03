@@ -13,6 +13,12 @@ import subprocess
 import time
 
 from script.todo import todo_install
+from script.todo.qemu_privilege import (
+    LIBVIRT_URI as URI,
+    sudo_prefix,
+    system_path,
+    virsh_argv,
+)
 from script.todo.todo_i18n import t
 
 
@@ -103,6 +109,33 @@ def ssh_orphans(blocs, juge, prefixe="erplibre-"):
     return gardes, orphelines
 
 
+# Programme de la sonde « video du qemu en cours » du diagnostic. Il vit
+# ici, et non dans un littéral au milieu de la table des sondes : un
+# programme Python cité dans une commande shell citée dans une chaîne
+# Python porte trois niveaux d'échappement, et le premier guillemet le
+# casse. `shlex.quote` s'occupe du seul niveau qui reste.
+_DIAG_VIDEO_PY = """
+import glob
+
+MOTS = ("vga", "virtio-gpu", "egl", "virgl", "rendernode")
+for chemin in sorted(glob.glob("/proc/[0-9]*/cmdline")):
+    try:
+        with open(chemin, "rb") as fh:
+            argv = fh.read().decode("utf-8", "replace").split(chr(0))
+    except OSError:
+        continue
+    # Le tri se fait sur argv[0] : sur la ligne entière, la sonde se
+    # verrait elle-même, son propre motif contenant « qemu-system ».
+    if not argv or "qemu-system" not in argv[0]:
+        continue
+    noms = [a[6:].split(",")[0] for a in argv if a.startswith("guest=")]
+    print(noms[0] if noms else chemin.split("/")[2])
+    for arg in argv:
+        if any(mot in arg.lower() for mot in MOTS):
+            print("    " + arg)
+"""
+
+
 class QemuManageMixin:
     """Menu QEMU/KVM : g\u00e9rer les VM existantes.\n\nLe cycle de vie apr\u00e8s la cr\u00e9ation : lister, allumer et \u00e9teindre, r\u00e9gler le\nmat\u00e9riel, redimensionner (et r\u00e9tr\u00e9cir, ce qui demande de traverser le syst\u00e8me\nde fichiers invit\u00e9 par nbd), effacer, nettoyer les restes, retrouver une\nadresse IP, rouvrir le suivi d'une installation.\n\nC'est le fichier qui appelle \u00ab virsh \u00bb le plus souvent : les helpers qui le\nfont (domstate, dumpxml, c_env) vivent donc ici."""
 
@@ -127,7 +160,7 @@ class QemuManageMixin:
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_list_vms(self, ask_advanced=False):
-        cmd = "sudo virsh list --all"
+        cmd = f"{sudo_prefix()}virsh --connect {URI} list --all"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
         if not ask_advanced:
@@ -211,9 +244,23 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for real in resolved:
-            cmd = f"sudo virsh {action} {shlex.quote(real)}"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"{action} {shlex.quote(real)}"
+            )
             print(f"\n{t('Will execute:')} {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            if action != "start":
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+                continue
+            # Un démarrage est le seul moment où la 3D écrite dans la
+            # définition se met à l'épreuve : QEMU refuse le domaine si EGL
+            # n'y démarre pas, et la VM reste inutilisable jusqu'à ce que
+            # quelqu'un défasse le réglage.
+            code, lignes = self.execute.exec_command_live(
+                cmd, source_erplibre=False, return_status_and_output=True
+            )
+            if code:
+                self._qemu_start_failed(real, cmd, "\n".join(lignes or []))
 
     @staticmethod
     def _qemu_dumpxml(name, inactive=True):
@@ -228,7 +275,7 @@ class QemuManageMixin:
         EST OUVERT, c'est elle qui compte, un disque attaché à chaud n'existant
         que là.
         """
-        argv = ["sudo", "virsh", "dumpxml"]
+        argv = virsh_argv("dumpxml")
         if inactive:
             argv.append("--inactive")
         argv.append(name)
@@ -249,7 +296,7 @@ class QemuManageMixin:
         """Démarrage automatique activé ? (absent du XML : virsh seul le sait)"""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dominfo", name],
+                virsh_argv("dominfo", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -290,15 +337,11 @@ class QemuManageMixin:
         un qui contourne la gestion du réseau par libvirt.
         """
         tokens = []
-        nets = self._qemu_cmd_lines(
-            ["sudo", "virsh", "net-list", "--all", "--name"]
-        )
+        nets = self._qemu_cmd_lines(virsh_argv("net-list", "--all", "--name"))
         owned = set()
         for net in nets:
             tokens.append(f"network:{net}")
-            for line in self._qemu_cmd_lines(
-                ["sudo", "virsh", "net-info", net]
-            ):
+            for line in self._qemu_cmd_lines(virsh_argv("net-info", net)):
                 if line.startswith("Bridge:"):
                     owned.add(line.split(":", 1)[1].strip())
         for line in self._qemu_cmd_lines(
@@ -327,6 +370,501 @@ class QemuManageMixin:
         if res.returncode != 0:
             return []
         return [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+
+    # Ce que la 3D d'une VM exige de l'hôte, en DEUX briques que le même
+    # réglage met en jeu et qu'on confond souvent :
+    #
+    #   « --graphics egl-headless » ouvre le nœud de rendu et crée un contexte
+    #   EGL par GBM — c'est Mesa qui répond, et « eglInitialize failed » vient
+    #   de là. Sans lui, le domaine ne démarre pas du tout.
+    #
+    #   « accel3d=on » confie ensuite les commandes 3D de l'invité à
+    #   virglrenderer, qui les traduit vers l'OpenGL de l'hôte. Il n'entre en
+    #   jeu qu'APRÈS qu'EGL a démarré : l'installer ne répare donc pas un EGL
+    #   qui refuse.
+    #
+    # Les fichiers plutôt que les paquets : leurs noms changent d'une
+    # distribution à l'autre, leur emplacement beaucoup moins.
+    # Les deux devices 3D sont des modules SÉPARÉS, empaquetés à part sur
+    # les distributions qui découpent QEMU. Lequel sert dépend du type de
+    # vidéo : « virtio-vga-gl » pour l'écran principal compatible VGA,
+    # « virtio-gpu-gl » pour un affichage sans VGA. Ne chercher que le
+    # second laisse le rapport tout en vert alors que le premier manque.
+    # QEMU n'annonce pas un device dont le module est absent, libvirt le
+    # remplace alors par « virtio-vga » nu, et rien ne le signale : la VM
+    # démarre sans 3D, avec l'egl-headless demandé toujours en place.
+    _GPU_3D_PIECES = (
+        ("qemu ui-egl-headless", "qemu/ui-egl-headless.so"),
+        ("qemu virtio-vga-gl", "qemu/hw-display-virtio-vga-gl.so"),
+        ("qemu virtio-gpu-gl", "qemu/hw-display-virtio-gpu-gl.so"),
+        ("virglrenderer", "libvirglrenderer.so"),
+        ("mesa libgbm", "libgbm.so"),
+        ("mesa libEGL", "libEGL.so"),
+    )
+
+    @staticmethod
+    def _qemu_lib_present(motif):
+        """Chemin du fichier s'il existe dans les emplacements habituels des
+        bibliothèques et des modules QEMU, sinon la chaîne vide."""
+        racines = (
+            "/usr/lib",
+            "/usr/lib64",
+            "/usr/lib/x86_64-linux-gnu",
+            "/usr/local/lib",
+        )
+        for racine in racines:
+            trouves = sorted(glob.glob(os.path.join(racine, motif + "*")))
+            if trouves:
+                return trouves[0]
+        return ""
+
+    def _qemu_gpu_3d_report(self):
+        """Dit ce qui manque à l'hôte pour que la 3D d'une VM démarre.
+
+        Ne modifie rien. Un nœud de rendu présent ne prouve RIEN : c'est
+        l'initialisation d'EGL dessus qui décide, et elle ne se teste qu'en
+        essayant — d'où les deux commandes suggérées à la fin.
+        """
+        print(f"\n── {t('3D on this host')} ──")
+        node = self._qemu_host_gpu_node()
+        print(f"  {t('Render node:')} {node or t('none')}")
+        for nom, motif in self._GPU_3D_PIECES:
+            chemin = self._qemu_lib_present(motif)
+            # Absent : dire ce qui a été CHERCHÉ. Une case vide laisse sans
+            # prise, le motif dit quoi installer et où regarder.
+            print(f"  {'✅' if chemin else '❌'} {nom:<24} {chemin or motif}")
+        print(f"\n  {t('Check EGL itself on that node:')}")
+        print("    eglinfo -B 2>&1 | head -20")
+        print("    lspci -nnk | grep -A3 -iE 'vga|3d|display'")
+        self._qemu_nvidia_acl_advice()
+
+    def _qemu_vm_3d_report(self):
+        """État 3D de chaque VM définie, lu dans sa définition PERSISTANTE.
+
+        Le rapport sur l'hôte dit ce que la machine peut faire ; celui-ci
+        dit ce que chaque VM recevra au prochain démarrage, ce qui n'est
+        pas la même question. Trois valeurs y répondent ensemble et aucune
+        seule : le type de vidéo, « accel3d », et le device figé.
+
+        Ce dernier (attribut « device », depuis libvirt 12.5.0) grave le
+        device QEMU retenu pour tenir l'ABI de l'invité stable d'un
+        démarrage à l'autre, et il l'emporte sur « accel3d ». Une VM
+        démarrée une première fois sans 3D garde donc un device sans GL,
+        que cocher la 3D ensuite ne change pas : la définition et la ligne
+        de commande se contredisent alors sans que rien ne le signale.
+        """
+        from script.todo import qemu_hardware as hw
+
+        print(f"\n── {t('3D per VM')} ──")
+        noms = self._qemu_list_domains()
+        if not noms:
+            print(f"  {t('none')}")
+            return
+        figees = []
+        for nom in noms:
+            etat = hw.hw_state(self._qemu_dumpxml(nom))
+            if not etat.get("video"):
+                print(f"  ·  {nom} — {t('no video device')}")
+                continue
+            champs = [
+                f"video={etat['video']}",
+                f"accel3d={'on' if etat.get('accel3d') else 'off'}",
+                f"device={etat.get('video_device') or t('not pinned')}",
+            ]
+            if etat.get("render"):
+                champs.append(f"rendernode={etat['render']}")
+            if hw.pin_defeats_3d(etat):
+                marque = "❌"
+                figees.append(nom)
+            elif etat.get("accel3d"):
+                marque = "✅"
+            else:
+                marque = "· "
+            print(f"  {marque} {nom} — {', '.join(champs)}")
+            if nom in figees:
+                print(
+                    f"      ⚠ {t('non-GL device pinned: 3D will not start')}"
+                )
+        if figees:
+            # Le rapport ne modifie rien : la commande est ÉCRITE, jamais
+            # lancée. Elle passe par la définition persistante et non par
+            # virt-xml, dont le vocabulaire ne connaît pas partout cet
+            # attribut ; « define » l'accepte quelle que soit sa version.
+            print(f"\n  {t('To unpin, VM stopped:')}")
+            print("    v=$(mktemp) ; vm=" + figees[0])
+            print(
+                "    virsh --connect qemu:///system dumpxml --inactive"
+                " $vm > $v"
+            )
+            print(
+                "    sed -i \"s/device='virtio-vga'/device='virtio-vga-gl'/\""
+                " $v"
+            )
+            print("    virsh --connect qemu:///system define $v")
+
+    # Les relevés du diagnostic : (titre, commande). Tous en LECTURE — un
+    # rapport qui modifie l'hôte n'est plus un rapport, et celui-ci est fait
+    # pour être envoyé à quelqu'un qui n'a pas accès à la machine.
+    #
+    # « head -1 » sur virt-xml n'est pas une curiosité : la ligne d'amorçage
+    # dit quel interpréteur le porte, et c'est ce qui distingue un module
+    # système absent d'un venv qui capture la commande.
+    _DIAG_PROBES = (
+        ("uname", "uname -a"),
+        ("os-release", "cat /etc/os-release 2>/dev/null | head -5"),
+        ("virtualisation", "systemd-detect-virt || true"),
+        ("kvm", "ls -l /dev/kvm 2>&1"),
+        ("dri", "ls -l /dev/dri/ 2>&1"),
+        ("gpu", "lspci -nnk 2>/dev/null | grep -A3 -iE 'vga|3d|display'"),
+        ("egl", "eglinfo -B 2>&1 | head -20"),
+        ("virsh", "virsh --connect qemu:///system version 2>&1"),
+        ("domaines", "virsh --connect qemu:///system list --all 2>&1"),
+        ("réseaux", "virsh --connect qemu:///system net-list --all 2>&1"),
+        (
+            "outils",
+            "command -v virsh virt-install virt-xml qemu-img"
+            " guestfish genisoimage cloud-localds 2>&1",
+        ),
+        ("virt-xml", "head -1 $(command -v virt-xml) 2>&1"),
+        (
+            "python",
+            "command -v python3; python3 -c 'import sys;"
+            " print(sys.executable)' 2>&1",
+        ),
+        ("modules qemu", "ls /usr/lib/qemu/ 2>/dev/null | head -30"),
+        # NVIDIA propriétaire : trois conditions que Mesa seul ne donne pas.
+        # « modeset » à N prive GBM du pilote, le greffon GBM de NVIDIA vit
+        # hors des chemins de Mesa, et QEMU doit pouvoir ouvrir /dev/nvidia*
+        # — que libvirt n'ajoute PAS d'office à la liste des périphériques
+        # autorisés, même quand il y ajoute le nœud de rendu.
+        # Ce paramètre est lisible par root SEUL : sans sudo, la sonde ne
+        # rapporte qu'un refus de permission, qui n'apprend rien. « sudo -n »
+        # ne demande jamais de mot de passe — il échoue plutôt que de bloquer
+        # un relevé, et le repli dit alors ce qui manque.
+        (
+            "nvidia modeset",
+            "sudo -n cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null"
+            " || echo '(lisible par root seul : sudo cat"
+            " /sys/module/nvidia_drm/parameters/modeset)'",
+        ),
+        ("nvidia devices", "ls -l /dev/nvidia* 2>&1"),
+        ("gbm backends", "ls -l /usr/lib/gbm/ 2>&1"),
+        # Une sortie vide est ambiguë — fichier absent, ou toutes les clés
+        # en commentaire ? Le dire, puisque « rien de réglé » signifie que
+        # les défauts de libvirt s'appliquent, et c'est une information.
+        (
+            "libvirt qemu.conf",
+            "grep -nE '^[^#]*(user|group|cgroup_device_acl|namespaces)'"
+            " /etc/libvirt/qemu.conf 2>&1 | head -20"
+            " || echo '(aucune clé active : défauts de libvirt)'",
+        ),
+        (
+            "utilisateur des VM",
+            "ps -o user=,comm= -C qemu-system-x86_64 2>&1 | sort -u",
+        ),
+        # Ce que la VM a REÇU, et non ce que sa définition demande : entre
+        # les deux, libvirt peut avoir retiré l'accélération sans le dire.
+        # « virtio-vga-gl » est le device 3D des QEMU récents ; l'ancienne
+        # forme « virtio-vga,virgl=on » ne s'écrit plus, si bien qu'un grep
+        # sur « virgl » ne rend rien sur un QEMU pourtant accéléré et fait
+        # conclure à tort qu'il manque un réglage. Le suffixe « -gl » est ce
+        # qui distingue le device 3D de celui du rendu logiciel, et c'est la
+        # seule pièce que la ligne de commande dise sans ambiguïté :
+        # « egl-headless » s'y trouve dans les deux cas.
+        (
+            "video du qemu en cours",
+            "python3 -c " + shlex.quote(_DIAG_VIDEO_PY) + " 2>&1",
+        ),
+        ("stockage", "df -h /var/lib/libvirt/images 2>&1"),
+        ("groupes", "id"),
+    )
+
+    # Ce qui manque au relevé quand un outil est absent. « eglinfo » est le
+    # seul qui éprouve EGL pour de vrai : sans lui, le rapport dit ce qui est
+    # installé, jamais si ça démarre — et c'est justement la question.
+    _DIAG_TOOLS = (
+        (
+            "eglinfo",
+            {
+                "apt": "mesa-utils",
+                "dnf": "mesa-demos",
+                "pacman": "mesa-utils",
+                "zypper": "Mesa-demo-egl",
+            },
+        ),
+        (
+            "lspci",
+            {
+                "apt": "pciutils",
+                "dnf": "pciutils",
+                "pacman": "pciutils",
+                "zypper": "pciutils",
+            },
+        ),
+    )
+
+    def _qemu_diag_offer_tools(self):
+        """Propose d'installer les outils dont le relevé manque. Rend un bool
+        disant si quelque chose a été installé.
+
+        Proposé et non imposé : un diagnostic qui pose des paquets sans
+        demander n'est plus un diagnostic.
+        """
+        from script.todo.qemu_privilege import install_cmd_for
+
+        manquants = [
+            (binaire, paquets)
+            for binaire, paquets in self._DIAG_TOOLS
+            if shutil.which(binaire) is None
+        ]
+        if not manquants:
+            return False
+        print(f"\n  {t('These tools would complete the report:')}")
+        commandes = []
+        for binaire, paquets in manquants:
+            cmd, paquet = install_cmd_for(paquets)
+            if cmd:
+                print(f"    {binaire:<10} {t('package')} {paquet}")
+                commandes.append(cmd)
+            else:
+                print(f"    {binaire:<10} {t('unknown package manager')}")
+        if not commandes:
+            return False
+        # La commande est annoncée EN ENTIER avant la question, sudo compris :
+        # « les installer ? » ne dit ni ce qui sera lancé, ni avec quels
+        # droits, et c'est ce qu'on approuve.
+        print(f"\n  {t('Will run, as root:')}")
+        for cmd in commandes:
+            print(f"    {cmd}")
+        try:
+            reponse = input(t("Install them now? (y/N): "))
+        except EOFError:
+            # Sans terminal — un lancement scripté — la question n'a personne
+            # pour y répondre. Ne rien installer, et laisser le rapport, qui
+            # est déjà écrit, faire son travail.
+            return False
+        if not self._is_yes(reponse):
+            return False
+        for cmd in commandes:
+            print(f"\n{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(
+                cmd,
+                source_erplibre=False,
+                new_env={"PATH": system_path()},
+            )
+        return True
+
+    # Ce que libvirt autorise par défaut. La liste sert de BASE à la
+    # proposition : la compléter suppose de la reprendre en entier, car la
+    # clé remplace le défaut au lieu de s'y ajouter.
+    _ACL_BASE = (
+        "/dev/null",
+        "/dev/full",
+        "/dev/zero",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/ptmx",
+        "/dev/kvm",
+    )
+    _QEMU_CONF = "/etc/libvirt/qemu.conf"
+
+    @staticmethod
+    def _qemu_nvidia_nodes():
+        """Nœuds de la carte NVIDIA présents sur l'hôte, triés.
+
+        Le répertoire /dev/nvidia-caps est écarté : ce sont des capacités MIG,
+        que la pile EGL n'ouvre pas, et les lister ferait proposer plus large
+        que nécessaire.
+        """
+        return sorted(
+            n
+            for n in glob.glob("/dev/nvidia*")
+            if os.path.exists(n) and not os.path.isdir(n)
+        )
+
+    def _qemu_acl_active(self):
+        """Le contenu ACTIF de cgroup_device_acl, ou None s'il n'y en a pas.
+
+        Rend None aussi quand le fichier est illisible : ne pas pouvoir lire
+        n'est pas la même chose que savoir qu'il n'y a rien, et la proposition
+        le dit plutôt que de conclure.
+        """
+        try:
+            with open(self._QEMU_CONF, encoding="utf-8") as fh:
+                lignes = [ln for ln in fh if not ln.lstrip().startswith("#")]
+        except OSError:
+            return None
+        texte = "".join(lignes)
+        if "cgroup_device_acl" not in texte:
+            return ""
+        return texte[texte.index("cgroup_device_acl") :]
+
+    def _qemu_nvidia_acl_advice(self):
+        """Propose la liste de périphériques quand elle explique le blocage.
+
+        Pertinent seulement si l'hôte porte une carte NVIDIA propriétaire ET
+        que sa liste ne nomme pas ces nœuds : libvirt y ajoute le nœud de
+        rendu quand le domaine le déclare, jamais ceux de la carte, et la
+        pile propriétaire ouvre les deux. Rend un bool disant s'il a parlé.
+        """
+        nodes = self._qemu_nvidia_nodes()
+        if not nodes:
+            return False
+        actif = self._qemu_acl_active()
+        if actif and all(n in actif for n in nodes):
+            return False
+        render = self._qemu_host_gpu_node()
+        entrees = list(self._ACL_BASE) + ([render] if render else []) + nodes
+        print(f"\n── {t('Devices QEMU may open')} ──")
+        if actif is None:
+            print(f"  {t('Unreadable, so this may already be set:')}")
+            print(f"    sudo grep -n cgroup_device_acl {self._QEMU_CONF}")
+        elif actif:
+            print(f"  ⚠ {t('A list exists: ADD to it, never replace it.')}")
+        print(f"  {t('In')} {self._QEMU_CONF} :")
+        print("    cgroup_device_acl = [")
+        for i in range(0, len(entrees), 3):
+            bout = ", ".join(f'"{e}"' for e in entrees[i : i + 3])
+            print(f"        {bout},")
+        print("    ]")
+        print(f"\n  {t('Then restart the daemon and recreate the VM:')}")
+        print("    systemctl is-active libvirtd virtqemud")
+        print("    sudo systemctl restart libvirtd")
+        print(f"    {t('then stop and start the VM (a guest reboot is not')}")
+        print(f"    {t('enough: the list applies when QEMU is launched).')}")
+        return True
+
+    @staticmethod
+    def _diag_section(titre, rendu):
+        """Une section du rapport, isolée : elle échoue SEULE.
+
+        Les sondes shell sont déjà protégées une à une ; les sections
+        écrites en Python ne l'étaient pas. Or le rapport s'écrit d'un
+        bloc à la FIN : une section qui lève emporte avec elle tout ce qui
+        a été relevé avant, et l'utilisateur se retrouve sans fichier —
+        au moment précis où il en a besoin. L'échec devient donc une ligne
+        du rapport, ce qui est en soi une information.
+        """
+        import io
+        from contextlib import redirect_stdout
+
+        tampon = io.StringIO()
+        try:
+            with redirect_stdout(tampon):
+                rendu()
+        except Exception as exc:
+            tampon.write(f"\n({type(exc).__name__}: {exc})\n")
+        return f"\n===== {titre} =====\n" + tampon.getvalue()
+
+    def _qemu_diagnostics(self):
+        """Relevé complet de l'hôte, écrit dans un fichier à transmettre.
+
+        Chaque sonde est bornée dans le temps : une commande qui pend ne doit
+        pas retenir le rapport, et son absence est elle-même une information.
+        """
+        import io
+        from contextlib import redirect_stdout
+
+        dossier = os.path.expanduser("~/.erplibre")
+        os.makedirs(dossier, exist_ok=True)
+        horo = time.strftime("%Y%m%d-%H%M%S")
+        chemin = os.path.join(dossier, f"qemu-diagnostic-{horo}.log")
+        morceaux = [f"# ERPLibre — diagnostic QEMU — {horo}\n"]
+        print(f"\n🩺 {t('Collecting the diagnostics...')}")
+        for titre, cmd in self._DIAG_PROBES:
+            print(f"  … {titre}")
+            morceaux.append(f"\n===== {titre} =====\n$ {cmd}\n")
+            try:
+                res = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=self._qemu_c_env(),
+                )
+                morceaux.append((res.stdout or "") + (res.stderr or ""))
+            except subprocess.TimeoutExpired:
+                morceaux.append("(timeout)\n")
+            except OSError as exc:
+                morceaux.append(f"({exc})\n")
+        morceaux.append(self._diag_section("3D", self._qemu_gpu_3d_report))
+        morceaux.append(
+            self._diag_section("3D par VM", self._qemu_vm_3d_report)
+        )
+        try:
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write("".join(morceaux))
+        except OSError as exc:
+            print(f"  ⚠ {t('Cannot write the report: ')}{exc}")
+            return
+        print(f"\n✅ {t('Report written to: ')}{chemin}")
+        # Le rapport porte le nom de la machine, des chemins de compte et des
+        # adresses : le dire, puisqu'il est fait pour être transmis.
+        print(f"   {t('It names this host, its paths and its addresses.')}")
+        print(f"   {t('Read it before sharing it.')}")
+        # Après l'écriture : le rapport existe même si l'on refuse, et une
+        # installation acceptée invite à le refaire, plus complet.
+        if self._qemu_diag_offer_tools():
+            print(f"\n  {t('Run the diagnostics again for a fuller report.')}")
+
+    def _qemu_egl_failed(self, sortie):
+        """La sortie accuse-t-elle un EGL inutilisable ?
+
+        La signature vit dans deploy_qemu.py, qui doit tenir seul en tant que
+        script : la lire là plutôt que la recopier ici évite deux vérités.
+        """
+        try:
+            return bool(self._qemu_import_module().egl_failed(sortie))
+        except Exception:
+            return False
+
+    def _qemu_start_failed(self, name, cmd, sortie):
+        """Un démarrage refusé : proposer ce qui le débloque, s'il y a lieu.
+
+        Le seul échec qui se rattrape ici est celui de la 3D : le nœud de
+        rendu existe, mais EGL n'y démarre pas, et rien ne permettait de le
+        savoir avant l'essai. Retirer l'accélération rend une VM qui démarre.
+        """
+        if not self._qemu_egl_failed(sortie):
+            return
+        print(f"\n  ⚠ {t('EGL does not start on this host GPU.')}")
+        print(
+            f"   {t('The VM cannot boot while 3D stays in its definition.')}"
+        )
+        self._qemu_gpu_3d_report()
+        if not self._is_yes_default_yes(
+            input(t("Remove the 3D and start again? (Y/n): "))
+        ):
+            return
+        from script.todo import qemu_hardware as hw
+
+        etat = hw.hw_state(
+            self._qemu_dumpxml(name), self._qemu_autostart(name)
+        )
+        if not etat.get("name"):
+            print(f"  ⚠ {t('Unreadable VM definition.')}")
+            return
+        # Seule la 3D change. build_want retombe sur l'état pour les vCPU, la
+        # RAM, les écrans, le CPU et le réseau — mais PAS pour « autostart »,
+        # qu'il lit en booléen sec : y passer None éteindrait le démarrage
+        # automatique d'une VM qu'on voulait seulement débloquer.
+        want = hw.build_want(etat, None, None, False, etat.get("autostart"))
+        plan = hw.hw_plan(etat, want)
+        for entree in plan:
+            if "cmd" not in entree:
+                continue
+            retrait = sudo_prefix() + " ".join(
+                shlex.quote(c) for c in entree["cmd"]
+            )
+            print(f"\n{t('Will execute:')} {retrait}")
+            self.execute.exec_command_live(
+                retrait,
+                source_erplibre=False,
+                new_env={"PATH": system_path()},
+            )
+        print(f"\n{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_adjust_hardware(self, names):
         """Règle vCPU, RAM, 3D et démarrage automatique de VM ÉTEINTES.
@@ -391,9 +929,18 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for entry in cmds:
-            cmd = "sudo " + " ".join(shlex.quote(c) for c in entry["cmd"])
+            cmd = sudo_prefix() + " ".join(
+                shlex.quote(c) for c in entry["cmd"]
+            )
             print(f"\n{t('Will execute:')} {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            # virt-xml est un script Python du système : sans PATH assaini, il
+            # s'amorce sur l'interpréteur du venv, où les modules de la
+            # distribution n'existent pas.
+            self.execute.exec_command_live(
+                cmd,
+                source_erplibre=False,
+                new_env={"PATH": system_path()},
+            )
 
     def _qemu_hw_form(self, rows, node, nets=None):
         """Formulaire TUI d'ajustement. Renvoie l'intention par VM, {} pour
@@ -474,7 +1021,7 @@ class QemuManageMixin:
         """(vcpus, max_mem_kib) via « virsh dominfo », ou (0, 0)."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dominfo", name],
+                virsh_argv("dominfo", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -559,22 +1106,14 @@ class QemuManageMixin:
         disparaît au prochain démarrage du domaine."""
         try:
             subprocess.run(
-                [
-                    "sudo",
-                    "virsh",
-                    "dommemstat",
-                    name,
-                    "--period",
-                    "5",
-                    "--live",
-                ],
+                virsh_argv("dommemstat", name, "--period", "5", "--live"),
                 capture_output=True,
                 text=True,
                 timeout=15,
                 env=QemuManageMixin._qemu_c_env(),
             )
             res = subprocess.run(
-                ["sudo", "virsh", "dommemstat", name],
+                virsh_argv("dommemstat", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -674,7 +1213,11 @@ class QemuManageMixin:
         else:
             targets = [name]
         for tgt in targets:
-            cmd = f"sudo virsh domifaddr {shlex.quote(tgt)} --source lease"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"domifaddr {shlex.quote(tgt)}"
+                " --source lease"
+            )
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -691,7 +1234,9 @@ class QemuManageMixin:
         print(
             f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
         )
-        cmd = f"sudo virsh console {shlex.quote(name)}"
+        cmd = (
+            f"{sudo_prefix()}virsh --connect {URI} console {shlex.quote(name)}"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -995,7 +1540,7 @@ class QemuManageMixin:
         """État libvirt de la VM (« running », « shut off », …) ou ''."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "domstate", name],
+                virsh_argv("domstate", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1014,7 +1559,7 @@ class QemuManageMixin:
             return name
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "domname", str(name)],
+                virsh_argv("domname", str(name)),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1035,7 +1580,11 @@ class QemuManageMixin:
             return True
         # --mode acpi,agent : envoie le SIGNAL d'extinction (bouton ACPI) puis
         # tente l'agent invité si présent — plus fiable qu'un arrêt brutal.
-        cmd = f"sudo virsh shutdown {shlex.quote(name)} --mode acpi,agent"
+        cmd = (
+            f"{sudo_prefix()}virsh --connect {URI} "
+            f"shutdown {shlex.quote(name)}"
+            " --mode acpi,agent"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
         print(
@@ -1066,7 +1615,10 @@ class QemuManageMixin:
                 )
             )
         ):
-            cmd = f"sudo virsh destroy {shlex.quote(name)}"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {shlex.quote(name)}"
+            )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
             time.sleep(2)
@@ -1079,7 +1631,7 @@ class QemuManageMixin:
         ignore le seed cloud-init (…-seed.iso, en lecture seule)."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "domblklist", name, "--details"],
+                virsh_argv("domblklist", name, "--details"),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1142,7 +1694,8 @@ class QemuManageMixin:
         print(f"\n{t('Current disk:')} {disk}")
         # -U : lecture sûre même VM allumée (sinon « shared write lock »).
         self.execute.exec_command_live(
-            f"sudo qemu-img info -U {shlex.quote(disk)}", source_erplibre=False
+            f"{sudo_prefix()}qemu-img info -U {shlex.quote(disk)}",
+            source_erplibre=False,
         )
         cur_bytes = self._qemu_disk_virtual_bytes(disk)
         cur_gb = cur_bytes / (1 << 30)
@@ -1259,11 +1812,15 @@ class QemuManageMixin:
             # Agrandissement À CHAUD : le disque virtuel grossit, le FS invité
             # devra être étendu ensuite.
             cmd = (
-                f"sudo virsh blockresize {shlex.quote(name)} "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"blockresize {shlex.quote(name)} "
                 f"{shlex.quote(disk)} {new_gb:g}G"
             )
         else:
-            cmd = f"sudo qemu-img resize {shlex.quote(disk)} {new_gb:g}G"
+            cmd = (
+                f"{sudo_prefix()}qemu-img resize"
+                f" {shlex.quote(disk)} {new_gb:g}G"
+            )
 
         # 4) Agrandissement : exécuter la commande + proposer d'étendre le FS.
         if cmd is not None:
@@ -1302,7 +1859,10 @@ class QemuManageMixin:
         if self._is_yes(input(t("Start the VM now? (y/N): "))):
             # `name` est déjà le nom canonique : « virsh start <id> »
             # échouerait car l'ID disparaît quand la VM est éteinte.
-            cmd = f"sudo virsh start {shlex.quote(name)}"
+            cmd = (
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"start {shlex.quote(name)}"
+            )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1795,13 +2355,9 @@ class QemuManageMixin:
         def agent(payload):
             try:
                 res = subprocess.run(
-                    [
-                        "sudo",
-                        "virsh",
-                        "qemu-agent-command",
-                        name,
-                        json.dumps(payload),
-                    ],
+                    virsh_argv(
+                        "qemu-agent-command", name, json.dumps(payload)
+                    ),
                     capture_output=True,
                     text=True,
                     timeout=30,
@@ -1862,7 +2418,9 @@ class QemuManageMixin:
         )
         if not self._is_yes(input(t("Open the serial console now? (y/N): "))):
             return
-        cmd = f"sudo virsh console {shlex.quote(name)}"
+        cmd = (
+            f"{sudo_prefix()}virsh --connect {URI} console {shlex.quote(name)}"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1870,7 +2428,7 @@ class QemuManageMixin:
         """Noms des VM libvirt définies (via virsh)."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "list", "--all", "--name"],
+                virsh_argv("list", "--all", "--name"),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -1923,9 +2481,11 @@ class QemuManageMixin:
             # Éteindre si en cours, puis retirer la définition (+ nvram si
             # UEFI ; repli sans l'option pour les vieilles versions de virsh).
             cmd = (
-                f"sudo virsh destroy {q} 2>/dev/null; "
-                f"sudo virsh undefine {q} --nvram 2>/dev/null "
-                f"|| sudo virsh undefine {q}"
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
             )
             if del_disks and fichiers:
                 cmd += "; sudo rm -f " + " ".join(
@@ -1996,7 +2556,7 @@ class QemuManageMixin:
         for name in self._qemu_list_domains():
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domiflist", name],
+                    virsh_argv("domiflist", name),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2115,7 +2675,7 @@ class QemuManageMixin:
         for name in self._qemu_list_domains():
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domblklist", name, "--details"],
+                    virsh_argv("domblklist", name, "--details"),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2148,9 +2708,11 @@ class QemuManageMixin:
         for name in ghosts:
             q = shlex.quote(name)
             cmd = (
-                f"sudo virsh destroy {q} 2>/dev/null; "
-                f"sudo virsh undefine {q} --nvram 2>/dev/null "
-                f"|| sudo virsh undefine {q}"
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh --connect {URI} "
+                f"undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -2341,7 +2903,7 @@ class QemuManageMixin:
         """Vrai si une VM libvirt de ce nom est déjà définie."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dominfo", name],
+                virsh_argv("dominfo", name),
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -2385,7 +2947,7 @@ class QemuManageMixin:
         for source in ("lease", "agent", "arp"):
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    virsh_argv("domifaddr", name, "--source", source),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2417,7 +2979,7 @@ class QemuManageMixin:
         for source in ("lease", "agent", "arp"):
             try:
                 res = subprocess.run(
-                    ["sudo", "virsh", "domifaddr", name, "--source", source],
+                    virsh_argv("domifaddr", name, "--source", source),
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -2594,7 +3156,7 @@ class QemuManageMixin:
         """Architecture d'une VM (jeton amd64/arm64/s390x) via virsh dumpxml."""
         try:
             res = subprocess.run(
-                ["sudo", "virsh", "dumpxml", name],
+                virsh_argv("dumpxml", name),
                 capture_output=True,
                 text=True,
                 timeout=15,

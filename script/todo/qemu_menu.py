@@ -239,6 +239,38 @@ class QemuMenuMixin:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _qemu_warn_libvirt_access(self):
+        """Dit, AVANT d'installer, par quelle voie les commandes passeront.
+
+        Deux voies mènent à qemu:///system : le groupe libvirt, qui ne demande
+        rien, et sudo, qui demande un mot de passe à chaque commande. Le suivi
+        d'installation, lui, tourne détaché et sans terminal : il ne peut
+        répondre à aucune invite. Le savoir avant l'installation vaut mieux que
+        de le découvrir devant la première invite de mot de passe.
+
+        Ne dit rien quand l'accès est déjà là — un avertissement qui se répète
+        sans objet finit par ne plus se lire.
+        """
+        from script.todo import qemu_privilege as qp
+
+        if qp.libvirt_reachable(force=True):
+            return
+        declare, actif = qp.group_state()
+        if actif:
+            return
+        print(f"\n⚠  {t('Recommended before installing:')}")
+        if declare:
+            # Le groupe est acquis mais la session est plus ancienne que lui :
+            # aucun usermod à refaire, seulement une session à rouvrir.
+            print(f"   {t('You are in the libvirt group, but this session')}")
+            print(f"   {t('predates it. Log out and back in, or run:')}")
+            print("     newgrp libvirt")
+        else:
+            print(f"   {t('Grant libvirt access, or every VM command will')}")
+            print(f"   {t('ask for a sudo password:')}")
+            print("     sudo usermod -aG libvirt $USER")
+            print(f"   {t('then log out and back in.')}")
+
     def _qemu_ensure_tools(self):
         """virsh absent : proposer l'installation plutôt que de laisser
         chaque commande échouer sur « sudo: virsh: command not found ».
@@ -249,6 +281,7 @@ class QemuMenuMixin:
             return True
         print(f"\n⚠  {t('virsh is missing: libvirt is not installed here.')}")
         print(f"   {t('Every VM command will fail until it is.')}")
+        self._qemu_warn_libvirt_access()
         if not self._is_yes_default_yes(
             input(t("Install the QEMU/libvirt tools now? (Y/n): "))
         ):
@@ -292,19 +325,16 @@ class QemuMenuMixin:
                     "Reopen install monitoring (last run / history)"
                 )
             },
+            # Douze entrées sous un seul titre ne se lisent plus : on cherche
+            # à la ligne près. Trois intentions les séparent — vivre avec ses
+            # VM, y entrer, réparer quand ça va mal.
             {"section": t("Manage")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
             {"prompt_description": t("Open the console on a VM")},
             {"prompt_description": t("Resize a VM disk")},
             {"prompt_description": t("Delete VM(s)")},
-            {"prompt_description": t("Clean up QEMU (orphan files)")},
-            {
-                "prompt_description": t(
-                    "Test a VM (open Odoo in a CLI browser)"
-                )
-            },
-            {"prompt_description": t("Statistics (installs, durations, VMs)")},
+            {"section": t("VM access")},
             {
                 "prompt_description": t(
                     "SSH configuration (~/.ssh/config, ProxyJump)"
@@ -320,6 +350,20 @@ class QemuMenuMixin:
                     "Android emulator (start, tunnel, scrcpy)"
                 )
             },
+            {"section": t("Troubleshoot")},
+            {"prompt_description": t("Clean up QEMU (orphan files)")},
+            {
+                "prompt_description": t(
+                    "Recover files from a VM disk (libguestfs)"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Test a VM (open Odoo in a CLI browser)"
+                )
+            },
+            {"prompt_description": t("Diagnostics (report to share)")},
+            {"prompt_description": t("Statistics (installs, durations, VMs)")},
             {"section": t("Catalog")},
             {"prompt_description": t("List available images and specs")},
         ]
@@ -352,18 +396,22 @@ class QemuMenuMixin:
             elif status == "9":
                 self._qemu_delete_vm()
             elif status == "10":
-                self._qemu_cleanup()
-            elif status == "11":
-                self._qemu_test_vm()
-            elif status == "12":
-                self._qemu_stats()
-            elif status == "13":
                 self._qemu_ssh_config_menu()
-            elif status == "14":
+            elif status == "11":
                 self._qemu_tunnel_menu()
-            elif status == "15":
+            elif status == "12":
                 self._qemu_emulator_menu()
+            elif status == "13":
+                self._qemu_cleanup()
+            elif status == "14":
+                self._qemu_recover_files()
+            elif status == "15":
+                self._qemu_test_vm()
             elif status == "16":
+                self._qemu_diagnostics()
+            elif status == "17":
+                self._qemu_stats()
+            elif status == "18":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True
@@ -473,8 +521,11 @@ class QemuMenuMixin:
     def _qemu_stamp(ts):
         """Horodatage court « 2026-08-01 »."""
         try:
-            return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
-        except (OSError, OverflowError, ValueError):
+            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+        except (OSError, OverflowError, TypeError, ValueError):
+            # TypeError : un horodatage absent vaut None dans un résumé sans
+            # aucune installation, et une statistique ne doit pas faire
+            # tomber le menu.
             return "?"
 
     def _qemu_stats_vms(self, mon):

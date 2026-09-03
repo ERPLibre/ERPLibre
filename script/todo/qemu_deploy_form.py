@@ -339,6 +339,42 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("monitor", True),
                         id="f_monitor",
                     )
+                    # Indépendante du type de VM : une machine sans console
+                    # peut vouloir un virtio-gpu accéléré — rendu hors écran,
+                    # ou émulateur qui tourne dedans. Sans écran,
+                    # « egl-headless » n'ouvre aucun port.
+                    yield Checkbox(
+                        t("3D acceleration (host GPU), even without a screen"),
+                        value=defaults.get("gpu3d", False),
+                        id="f_gpu3d",
+                    )
+                    # Révélés par la case « AI coding tools » du bloc des
+                    # outils : sans elle, ni l'agent ni l'identité git n'ont
+                    # d'objet, et trois widgets de plus encombrent un écran
+                    # déjà dense. Le nom et le courriel sont pré-remplis avec
+                    # l'identité de l'HÔTE — c'est ce que la VM reçoit
+                    # aujourd'hui, et un champ vide la ferait croire absente.
+                    yield Static(
+                        f"  {t('AI coding tools')}",
+                        id="t_ai",
+                        classes="grouptitle",
+                    )
+                    yield Select(
+                        [("Claude Code", "claude"), ("opencode", "opencode")],
+                        value=defaults.get("ai_agent") or "claude",
+                        allow_blank=False,
+                        id="f_ai_agent",
+                    )
+                    yield Input(
+                        value=defaults.get("git_name", ""),
+                        placeholder=t("Name for git"),
+                        id="f_git_name",
+                    )
+                    yield Input(
+                        value=defaults.get("git_email", ""),
+                        placeholder=t("Email for git"),
+                        id="f_git_email",
+                    )
                     # Le parallélisme reste dans « Déploiement » : c'est le
                     # nombre de VM menées de front, pas une option
                     # d'installation.
@@ -367,10 +403,25 @@ def run_deploy_form(ctx, run_app: bool = True):
                     yield Static("", id="totals")
             yield Footer()
 
+        # Les widgets que la case « AI coding tools » découvre.
+        _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
+
+        def _sync_ai(self) -> None:
+            """Montre ou cache le bloc IA selon la case des outils.
+
+            Cacher plutôt que griser : un champ grisé occupe la place et se
+            lit comme un réglage qu'on aurait le droit de changer."""
+            case = self.query("#f_tool_aidev")
+            vu = bool(case) and bool(case.first(Checkbox).value)
+            for sel in self._AI_WIDGETS:
+                for widget in self.query(sel):
+                    widget.display = vu
+
         def on_mount(self) -> None:
             self.title = t("Deploy ERPLibre VM(s)!")
             self._reload_catalog(first_load=True)
             self._sync_install_deps()
+            self._sync_ai()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -871,6 +922,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                 self._recompute()  # le disque annoncé inclut le +5 G ERPLibre
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value
+            elif event.checkbox.id == "f_tool_aidev":
+                self._sync_ai()
+                self._recompute()
             elif str(event.checkbox.id or "").startswith("f_tool_"):
                 # Un IDE de plus, c'est un disque plus grand : le plan doit le
                 # montrer AVANT de déployer, pas après une heure d'installation.
@@ -911,6 +965,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
                 "monitor": self.query_one("#f_monitor", Checkbox).value,
+                "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
+                "ai_agent": self.query_one("#f_ai_agent", Select).value,
+                "git_name": self.query_one("#f_git_name", Input).value.strip(),
+                "git_email": self.query_one(
+                    "#f_git_email", Input
+                ).value.strip(),
                 "res_label": (
                     t("custom")
                     if self.profile == "custom"

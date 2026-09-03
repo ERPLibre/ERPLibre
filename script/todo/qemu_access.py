@@ -11,6 +11,7 @@ import subprocess
 import time
 
 from script.todo import todo_install
+from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import t
 
 
@@ -730,7 +731,10 @@ class QemuAccessMixin:
         port = self._qemu_vnc_port(domain, jump)
         # Les commandes de réparation se lancent SUR l'hyperviseur : le préfixe
         # évite de les copier sur la mauvaise machine, l'erreur naturelle ici.
+        # Sur l'hyperviseur DISTANT, on ne peut pas sonder ses droits d'ici :
+        # « sudo » y reste écrit. En local, le sondage tranche.
         pre = f"ssh {jump} " if jump else ""
+        su = "sudo " if jump else sudo_prefix()
         if not port and self._hypervisor_is_proxmox(jump):
             self._pve_console_hint(jump, domain)
             return
@@ -738,17 +742,17 @@ class QemuAccessMixin:
             print(f"\n  ⚠ {t('This VM exposes no VNC port.')}")
             print(f"  {t('Its display is likely spice with listen=none:')}")
             print(
-                f"    {pre}sudo virsh dumpxml {domain} | grep -A2 '<graphics'"
+                f"    {pre}{su}virsh dumpxml {domain} | grep -A2 '<graphics'"
             )
             print(
                 f"  {t('To open it on the loopback (VM restart required):')}"
             )
-            print(f"    {pre}sudo virsh destroy {domain}")
+            print(f"    {pre}{su}virsh destroy {domain}")
             print(
-                f"    {pre}sudo virsh edit {domain}   # <graphics type='vnc'"
+                f"    {pre}{su}virsh edit {domain}   # <graphics type='vnc'"
                 " port='-1' autoport='yes' listen='127.0.0.1'/>"
             )
-            print(f"    {pre}sudo virsh start {domain}")
+            print(f"    {pre}{su}virsh start {domain}")
             print(f"\n  {t('New VMs get this by default; see deploy_qemu.')}")
             return
         if jump:

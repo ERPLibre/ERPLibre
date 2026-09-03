@@ -571,9 +571,9 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
 
     def test_a_local_delete_checks_the_uuid(self):
         cmd = mon.delete_vm_cmd("vm-a", True, "5d55d05a-1e77")
-        self.assertIn("virsh domuuid vm-a", cmd)
+        self.assertIn("domuuid vm-a", cmd)
         self.assertIn("5d55d05a-1e77", cmd)
-        self.assertLess(cmd.index("domuuid"), cmd.index("virsh destroy vm-a"))
+        self.assertLess(cmd.index("domuuid"), cmd.index("destroy vm-a"))
 
     def test_an_old_manifest_without_identity_still_deletes(self):
         # Un manifeste écrit avant ce correctif n'a pas d'UUID. Refuser toute
@@ -581,7 +581,7 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         # d'avant, la confirmation à deux mains.
         cmd = mon.delete_vm_cmd("vm-a", True)
         self.assertNotIn("domuuid", cmd)
-        self.assertIn("virsh undefine vm-a", cmd)
+        self.assertIn("undefine vm-a", cmd)
         sans_nom = mon.delete_vm_cmd_pve({"target": "pve9", "vmid": 101})
         self.assertNotIn("qm config", sans_nom)
         self.assertIn("qm destroy 101", sans_nom)
@@ -930,7 +930,7 @@ class TestLeWebEtLaSuppression(unittest.TestCase):
 
     def test_deleting_a_local_vm_is_unchanged(self):
         cmd = mon.delete_vm_cmd("vm-a", True)
-        self.assertIn("virsh undefine", cmd)
+        self.assertIn("undefine vm-a", cmd)
         self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", cmd)
 
 

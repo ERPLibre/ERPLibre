@@ -13,6 +13,7 @@ import subprocess
 import time
 
 from script.todo import todo_prefs
+from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
 
 
@@ -28,6 +29,7 @@ class QemuDeployMixin:
         python_provider="",
         app_store="deb",
         tools=(),
+        ai_agent="",
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -75,7 +77,7 @@ class QemuDeployMixin:
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
                 + self._qemu_desktop_remote_cmd(desktop, app_store)
-                + self._qemu_tools_remote_cmd(tools, prod)
+                + self._qemu_tools_remote_cmd(tools, prod, ai_agent=ai_agent)
                 + note
             )
         if not final_cmd:
@@ -102,7 +104,9 @@ class QemuDeployMixin:
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
-        tools_cmd = self._qemu_tools_remote_cmd(tools, prod, "before")
+        tools_cmd = self._qemu_tools_remote_cmd(
+            tools, prod, "before", ai_agent
+        )
         # La compilation mobile vient APRÈS l'installation : elle a besoin du
         # dépôt, du venv d'outils qui synchronise le manifeste, et de node que
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
@@ -276,6 +280,7 @@ class QemuDeployMixin:
         vm_tools=(),
         pve=None,
         meta=None,
+        ai_agent="",
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -313,6 +318,7 @@ class QemuDeployMixin:
             "" if desk_map else desktop,
             python_provider,
             app_store,
+            ai_agent=ai_agent,
         )
         try:
             mod = self._qemu_import_module()
@@ -368,6 +374,7 @@ class QemuDeployMixin:
                         python_provider,
                         app_store,
                         self._qemu_tools_for(vm_tools, a, vm_desktop, d),
+                        ai_agent,
                     )
                 vms.append(entry)
             else:
@@ -414,6 +421,7 @@ class QemuDeployMixin:
         python_provider="",
         app_store="deb",
         vm_tools=(),
+        ai_agent="",
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -454,6 +462,7 @@ class QemuDeployMixin:
             self._qemu_tools_for(
                 vm_tools, vm_arch or "amd64", desktop, vm_distro or ""
             ),
+            ai_agent,
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -781,6 +790,39 @@ class QemuDeployMixin:
                 orphans.append((name, path))
         return orphans
 
+    def _qemu_offer_orphan_removal(self, names):
+        """Propose d'effacer les qcow2 restés seuls. Rend False si on renonce.
+
+        Un disque sans VM définie vient d'une création interrompue : la VM
+        n'a jamais démarré, et le fichier ne porte donc rien. Il est tout de
+        même PROPOSÉ et non effacé d'office — le même nom peut désigner le
+        disque d'une VM retirée à la main, dont on voulait garder les données.
+
+        Sans cet effacement, deploy_qemu refuse d'écraser et la création
+        échoue, après avoir fait attendre.
+        """
+        orphans = self._qemu_orphan_disks(names)
+        if not orphans:
+            return True
+        items = []
+        for _name, path in orphans:
+            try:
+                items.append((os.path.getsize(path), path))
+            except OSError:
+                items.append((0, path))
+        self._cleanup_delete_files(
+            t("Orphan disks that would fail the deployment"),
+            items,
+            t("Delete them and continue? (y/N): "),
+        )
+        restants = self._qemu_orphan_disks(names)
+        if not restants:
+            return True
+        print(f"\n⚠  {t('Kept - the deployment of these VMs will FAIL:')}")
+        for name, _path in restants:
+            print(f"   {name}")
+        return self._is_yes(input(t("Continue anyway? (y/N): ")))
+
     def _qemu_confirm_collisions(self, existing, pending_names):
         """Signale les noms qui heurtent l'existant, et demande confirmation.
 
@@ -792,17 +834,13 @@ class QemuDeployMixin:
         orphans = self._qemu_orphan_disks(pending_names)
         if not existing and not orphans:
             return True
-        print(f"\n⚠  {t('Name collisions detected')} :")
-        skipped = t("VM already defined - SKIPPED, nothing overwritten")
-        for name in existing:
-            print(f"   {name:<28.28} {skipped}")
-        for name, path in orphans:
-            print(
-                f"   {name:<28.28} "
-                f"{t('disk present without VM - deployment will FAIL')}"
-            )
-            print(f"   {'':<28} {path}")
-            print(f"   {'':<28} {t('Remove it by hand, or rename the VM.')}")
+        if existing:
+            print(f"\n⚠  {t('Name collisions detected')} :")
+            skipped = t("VM already defined - SKIPPED, nothing overwritten")
+            for name in existing:
+                print(f"   {name:<28.28} {skipped}")
+        if orphans:
+            return self._qemu_offer_orphan_removal(pending_names)
         return self._is_yes(
             input(f"{t('Continue despite these collisions? (y/N): ')}")
         )
@@ -945,6 +983,9 @@ class QemuDeployMixin:
         prod=False,
         install_cmd="",
         vm_tools=(),
+        gpu3d=False,
+        git_name="",
+        git_email="",
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -980,6 +1021,17 @@ class QemuDeployMixin:
             parts += ["--locale", locale]
         if desktop:
             parts.append("--desktop")
+        if gpu3d:
+            # « on » et non « auto » : auto s'abstient sur une VM sans écran,
+            # or c'est précisément ce que la case permet de demander.
+            parts += ["--gpu", "on"]
+        # L'identité git de la VM. Sans ces options, deploy_qemu recopie celle
+        # de l'HÔTE : le formulaire la montre et permet de la changer, il ne
+        # la remplace pas par du vide.
+        if git_name:
+            parts += ["--git-name", git_name]
+        if git_email:
+            parts += ["--git-email", git_email]
         # Guide affiché à la connexion SSH de la VM : dans la langue du menu, et
         # avec la section ERPLibre seulement là où ERPLibre sera installé — une
         # VM déployée nue n'annonce pas un dépôt qui n'existe pas.
@@ -1051,6 +1103,9 @@ class QemuDeployMixin:
                 vm.get("install_cmd") or (install or {}).get("cmd") or ""
             ),
             vm_tools=spec.get("vm_tools") or (),
+            gpu3d=bool(spec.get("gpu3d")),
+            git_name=spec.get("git_name") or "",
+            git_email=spec.get("git_email") or "",
         )
 
     def _qemu_arches_for(self, distro, arch):
@@ -1332,6 +1387,15 @@ class QemuDeployMixin:
             if spec is None:
                 return
             if spec:  # None = annulé, {} = repli sur la CLI
+                # Le formulaire signale les disques orphelins mais ne peut pas
+                # les effacer : le faire demande root, et une invite de mot de
+                # passe dans une application plein écran n'a nulle part où
+                # s'afficher. La proposition vient donc ici, terminal rendu.
+                if not self._qemu_offer_orphan_removal(
+                    [vm["name"] for vm in spec.get("vms") or []]
+                ):
+                    print(t("Cancelled."))
+                    return
                 self._qemu_run_spec(spec)
                 return
 
@@ -1658,6 +1722,35 @@ class QemuDeployMixin:
                     picked.append(key)
         return tuple(picked)
 
+    def _qemu_ask_ai_tools(self, vm_tools):
+        """(agent, nom, courriel) — rien à poser si l'outil n'est pas coché.
+
+        Le nom et le courriel sont proposés avec l'identité de l'HÔTE, qui
+        est ce que la VM reçoit aujourd'hui : une réponse vide la garde. Sans
+        ce défaut affiché, un champ vide se lirait comme une identité absente
+        et inviterait à la ressaisir pour rien.
+        """
+        from script.todo import dev_tools
+
+        if "aidev" not in (vm_tools or ()):
+            return "", "", ""
+        noms = list(dev_tools.AGENTS)
+        print(f"  {t('AI coding tools')} :")
+        for i, nom in enumerate(noms, 1):
+            marque = " ←" if nom == dev_tools.AGENT_DEFAUT else ""
+            print(f"    [{i}] {nom}{marque}")
+        rep = input("    " + t("Choice: ")).strip()
+        agent = (
+            noms[int(rep) - 1]
+            if rep.isdigit() and 1 <= int(rep) <= len(noms)
+            else dev_tools.AGENT_DEFAUT
+        )
+        hote_nom = self._qemu_host_git("user.name")
+        hote_mail = self._qemu_host_git("user.email")
+        nom = input(f"    {t('Name for git')} [{hote_nom}] : ").strip()
+        mail = input(f"    {t('Email for git')} [{hote_mail}] : ").strip()
+        return agent, nom, mail
+
     def _qemu_ask_python_provider(self, arches):
         """mise (CPython précompilé) ou pyenv (compilation).
 
@@ -1806,6 +1899,18 @@ class QemuDeployMixin:
                 input(f"{t('Watch the VMs start (no install)')} ? (O/n) : ")
             )
 
+        # Posée même sans bureau : une VM sans console peut vouloir un
+        # virtio-gpu accéléré, et c'est ce que « auto » n'accorde jamais.
+        gpu3d = self._is_yes(
+            input(
+                t("3D acceleration (host GPU), even without a screen? (y/N): ")
+            )
+        )
+
+        # Ces trois réponses n'ont d'objet que si l'outil est coché : les
+        # poser toujours ferait trois questions de plus à qui n'en veut pas.
+        ai_agent, git_name, git_email = self._qemu_ask_ai_tools(vm_tools)
+
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
         )
@@ -1868,6 +1973,10 @@ class QemuDeployMixin:
             # Au niveau du déploiement : le suivi survit à une installation
             # décochée (voir _qemu_run_spec).
             "monitor": monitor,
+            "gpu3d": gpu3d,
+            "ai_agent": ai_agent,
+            "git_name": git_name,
+            "git_email": git_email,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
         }
@@ -1905,10 +2014,48 @@ class QemuDeployMixin:
                     f"\n[{done}/{len(jobs)}] {mark} [{jid}] {jname} "
                     f"(rc={rc}, {self._fmt_dur(secs)})"
                 )
-                for line in [ln for ln in out.strip().splitlines() if ln][-4:]:
+                lignes = [ln for ln in out.strip().splitlines() if ln]
+                # Une VM qui réussit n'a rien à raconter ; une qui échoue a
+                # UNE ligne qui compte, et elle est écrite par l'outil, pas
+                # par nous. Quatre lignes ne suffisent pas à l'atteindre :
+                # l'épilogue « Échec de la commande » et sa ligne de commande
+                # les occupent, et le message de virt-install tombe juste
+                # au-dessus de la fenêtre.
+                for line in lignes[-4:] if rc == 0 else lignes[-30:]:
                     print(f"    {line}")
+                if rc != 0:
+                    chemin = self._qemu_save_failure_log(jname, out)
+                    if chemin:
+                        print(f"    {t('Full output:')} {chemin}")
+                    # La 3D est décidée DANS deploy_qemu.py, pas dans l'argv :
+                    # sa présence se lit sur la commande que le journal a
+                    # rapportée. Le menu n'expose pas « --gpu off », donc la
+                    # seule issue depuis ici est de la nommer.
+                    if "accel3d=on" in out or "egl-headless" in out:
+                        print(f"    {t('3D was on; retry without it:')}")
+                        print("      ./script/qemu/deploy_qemu.py --gpu off …")
                 outcome.append((jname, rc, out, secs))
         return outcome
+
+    @staticmethod
+    def _qemu_save_failure_log(name, out):
+        """Écrit la sortie complète d'une création ratée. Rend le chemin.
+
+        L'appelant jette `out` après la boucle : sans ce fichier, l'unique
+        trace d'un échec est ce qui a défilé à l'écran. Rend None si l'écriture
+        échoue — perdre le journal ne doit pas faire perdre le déploiement.
+        """
+        try:
+            from script.todo.qemu_install_monitor import session_dir
+
+            sur = "".join(
+                c if c.isalnum() or c in "-_." else "_" for c in name
+            )
+            chemin = session_dir() / f"{sur}-create.log"
+            chemin.write_text(out, encoding="utf-8", errors="replace")
+            return chemin
+        except Exception:
+            return None
 
     def _qemu_deploy_jobs_tui(self, jobs, workers):
         """Même chose, en blocs repliables Textual. Renvoie None si textual
@@ -1948,6 +2095,7 @@ class QemuDeployMixin:
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         app_store = spec.get("app_store") or "deb"
+        ai_agent = spec.get("ai_agent") or ""
         # Outils de développement : cochés une fois pour tout le parc, puis
         # filtrés machine par machine (architecture, saveur de bureau).
         vm_tools = tuple(spec.get("vm_tools") or ())
@@ -2049,6 +2197,7 @@ class QemuDeployMixin:
                     python_provider=python_provider,
                     app_store=app_store,
                     vm_tools=vm_tools,
+                    ai_agent=ai_agent,
                 )
             elif install:
                 print(
@@ -2067,6 +2216,7 @@ class QemuDeployMixin:
                         python_provider=python_provider,
                         app_store=app_store,
                         vm_tools=vm_tools,
+                        ai_agent=ai_agent,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install
@@ -2083,4 +2233,4 @@ class QemuDeployMixin:
         print(f"{'═' * 60}")
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
         print(f"   {t('Default login:')} erplibre / erplibre")
-        print(f"   {t('Manage with:')} sudo virsh list --all")
+        print(f"   {t('Manage with:')} {sudo_prefix()}virsh list --all")

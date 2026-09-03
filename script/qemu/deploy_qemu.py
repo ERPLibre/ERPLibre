@@ -327,14 +327,10 @@ def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
     mode = (mode or "auto").lower()
     if mode == "off":
         return False, ""
-    if not screen:
-        # Sans écran virtuel, la 3D n'a rien à accélérer. Le dire seulement
-        # quand elle a été demandée explicitement.
-        if mode == "on":
-            return (
-                False,
-                "  GPU : pas d'écran virtuel sur cette VM, 3D ignorée.",
-            )
+    if not screen and mode != "on":
+        # Sans écran virtuel, « auto » s'abstient : une VM serveur n'a pas
+        # demandé de périphérique vidéo, et lui en poser un d'office change
+        # son matériel sans qu'on l'ait voulu.
         return False, ""
     if not node:
         if mode == "on":
@@ -348,7 +344,34 @@ def gpu_decision(mode: str, node: str, screen: bool) -> tuple[bool, str]:
             False,
             "  GPU : aucun sur l'hôte, rendu logiciel (virgl absent).",
         )
+    if not screen:
+        # 3D demandée sur une VM sans console : le virtio-gpu est POSÉ quand
+        # même, et « egl-headless » n'ouvre aucun port — l'invité reçoit un
+        # périphérique DRM accéléré sans écran à regarder. C'est ce qui sert
+        # au rendu hors écran et à un émulateur qui tourne dans la VM.
+        return (
+            True,
+            f"  GPU : 3D activée par {node} sans écran virtuel"
+            " (virtio-gpu accéléré, aucun port ouvert).",
+        )
     return True, f"  GPU : 3D activée par {node} (virtio-gpu + egl-headless)."
+
+
+# Ce que QEMU écrit quand le nœud de rendu existe mais qu'EGL n'y démarre
+# pas. Le fichier /dev/dri/renderD* est alors bien là — un GPU virtuel sans
+# pile EGL, un pilote sans GBM, une carte que Mesa ne sait pas ouvrir : la
+# présence du nœud ne prouve donc PAS que la 3D fonctionne, et rien ne le dit
+# avant que QEMU n'essaie.
+EGL_ECHEC = (
+    "eglInitialize failed",
+    "render node init failed",
+    "EGL_NOT_INITIALIZED",
+)
+
+
+def egl_failed(output: str) -> bool:
+    """La sortie de virt-install accuse-t-elle un EGL inutilisable ?"""
+    return any(marque in (output or "") for marque in EGL_ECHEC)
 
 
 def gpu_apply(
@@ -663,15 +686,38 @@ class Runner:
         self.dry_run = dry_run
 
     def run(
-        self, cmd: list[str], *, privileged: bool = False, check: bool = True
-    ) -> None:
+        self,
+        cmd: list[str],
+        *,
+        privileged: bool = False,
+        check: bool = True,
+        capture: bool = False,
+    ):
+        """Lance la commande. `capture` rend (code, sortie) au lieu de sortir.
+
+        Sans `capture`, un échec termine le programme : c'est le comportement
+        voulu partout où il n'y a rien à rattraper. Avec, l'appelant décide —
+        seul l'appel qui SAIT réessayer autrement doit le demander.
+        """
         if privileged and self.use_sudo:
             cmd = ["sudo", *cmd]
         printable = " ".join(cmd)
         if self.dry_run:
             print(f"  [dry-run] {printable}")
-            return
+            return (0, "") if capture else None
         print(f"  $ {printable}")
+        if capture:
+            # La sortie est réaffichée telle quelle : le journal garde tout,
+            # et l'appelant peut lire ce que l'outil a dit.
+            res = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            if res.stdout:
+                print(res.stdout, end="")
+            return res.returncode, res.stdout or ""
         try:
             subprocess.run(cmd, check=check)
         except subprocess.CalledProcessError as exc:
@@ -1610,7 +1656,35 @@ def host_timezone() -> str:
     return "UTC"
 
 
-def user_groups(distro: str) -> str:
+# Groupes qui donnent accès au GPU DANS L'INVITÉ. Le nœud de rendu y
+# appartient à « root:render » en 0660, et le compte créé par cloud-init n'en
+# fait pas partie : toute application GL retombe alors sur le rendu logiciel,
+# alors même que la négociation VIRGL entre l'hôte et l'invité a réussi. Rien
+# ne le signale — le matériel virtuel est bien accéléré, seul l'accès manque.
+#
+# En session graphique locale, logind pose une ACL sur le nœud pour
+# l'utilisateur du siège actif et la question ne se pose pas. En SSH ou en
+# tty — le cas d'une VM de ce parc — personne ne la pose.
+GPU_GROUPS = ("render", "video")
+
+
+def gpu_group_block() -> list[str]:
+    """Bloc « groups: » qui CRÉE les groupes GPU avant leur usage.
+
+    « useradd -G » échoue sur un nom de groupe inconnu, et cloud-init ne crée
+    alors pas l'utilisateur du tout : ni mot de passe ni clé SSH, la VM démarre
+    et reste inaccessible. « render » est récent et manque des images les plus
+    anciennes, donc l'ajouter sans précaution rejouerait cette panne.
+
+    Le déclarer ici le rend certain d'exister : cloud-init crée les groupes
+    AVANT les comptes, et passe sans erreur sur ceux qui existent déjà. Le
+    groupe est retrouvé par NOM par les règles udev, donc un GID choisi par
+    cloud-init plutôt que par la distribution ne change rien.
+    """
+    return ["groups:"] + [f"  - {nom}" for nom in GPU_GROUPS]
+
+
+def user_groups(distro: str, gpu: bool = False) -> str:
     """Groupes secondaires du compte créé par cloud-init.
 
     Le nom du groupe d'administration change d'une famille à l'autre, et un
@@ -1625,10 +1699,14 @@ def user_groups(distro: str) -> str:
       garantit « wheel » sur une image Minimal-VM — dans le doute on s'abstient
       plutôt que de risquer un compte non créé."""
     if distro in ("ubuntu", "debian"):
-        return "users, sudo"
-    if distro == "opensuse":
-        return "users"
-    return "users, wheel"
+        noms = ["users", "sudo"]
+    elif distro == "opensuse":
+        noms = ["users"]
+    else:
+        noms = ["users", "wheel"]
+    if gpu:
+        noms += list(GPU_GROUPS)
+    return ", ".join(noms)
 
 
 # --------------------------------------------------------------------------- #
@@ -2224,9 +2302,12 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     ]
     if args.no_git_identity:
         return files
+    # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par
+    # champ : remplir le seul courriel ne doit pas effacer le nom. Vide, on
+    # retombe sur l'hôte, qui reste le comportement par défaut.
     gitconfig = build_gitconfig(
-        _git_global("user.name", home),
-        _git_global("user.email", home),
+        getattr(args, "git_name", "") or _git_global("user.name", home),
+        getattr(args, "git_email", "") or _git_global("user.email", home),
         editor,
     )
     if gitconfig:
@@ -2242,6 +2323,13 @@ def build_cloud_config(
     """Construit le contenu #cloud-config (user-data)."""
     lines: list[str] = ["#cloud-config", f"hostname: {args.hostname}"]
 
+    # « off » est le seul refus explicite ; « auto » laisse l'hôte décider
+    # s'il accélère, mais l'invité porte un virtio-gpu dans les deux cas et
+    # l'appartenance aux groupes ne coûte rien quand elle ne sert pas.
+    gpu = (getattr(args, "gpu", "auto") or "auto").lower() != "off"
+    if gpu:
+        lines += gpu_group_block()
+
     user_block = [
         "users:",
         f"  - name: {args.user}",
@@ -2254,7 +2342,7 @@ def build_cloud_config(
         # même écart, elles n'ont pas de groupe « sudo » mais « wheel ».
         # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
         # groupe : celui-ci n'est qu'une commodité.
-        f"    groups: {user_groups(args.distro)}",
+        f"    groups: {user_groups(args.distro, gpu)}",
         "    shell: /bin/bash",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
@@ -2686,6 +2774,13 @@ def build_preseed(
         f"echo '{user} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/{user}",
         f"chmod 440 /target/etc/sudoers.d/{user}",
     ]
+    # Accès au GPU, comme le cloud-config le donne aux autres distributions :
+    # sans ces groupes, toute application GL de l'invité retombe sur le rendu
+    # logiciel. « groupadd -f » ne fait rien si le groupe existe et ne rend
+    # jamais d'erreur, là où « usermod -aG » sur un nom inconnu échoue.
+    if (getattr(args, "gpu", "auto") or "auto").lower() != "off":
+        post += [f"in-target groupadd -f {nom}" for nom in GPU_GROUPS]
+        post.append(f"in-target usermod -aG {','.join(GPU_GROUPS)} {user}")
     if ssh_keys:
         post.append(f"mkdir -p /target/home/{user}/.ssh")
         for key in ssh_keys:
@@ -2984,6 +3079,7 @@ def virt_install(
     # comme l'émulateur Android qui tourne dedans — et c'est le défaut le plus
     # coûteux qu'on puisse laisser en place sans le dire.
     gpu_node = args.gpu_node or host_gpu_node()
+    video_sans_3d = list(video)
     video, gpu_args, gpu_msg = gpu_apply(
         video, args.gpu, gpu_node, graphics != "none"
     )
@@ -3045,8 +3141,6 @@ def virt_install(
         osinfo,
         "--network",
         args.network,
-        "--graphics",
-        graphics,
         "--console",
         # Journal de console pour la voie installateur. Une console « pty »
         # seule ne gardE rien : quand d-i échoue, il l'écrit à l'écran d'une
@@ -3064,6 +3158,13 @@ def virt_install(
         "--channel",
         "unix,target.type=virtio,target.name=org.qemu.guest_agent.0",
     ]
+    # « --graphics none » dit « aucun affichage » : le poser à côté d'un
+    # « egl-headless », qui EST un affichage, se contredit. Sur une VM sans
+    # console dont la 3D est demandée, egl-headless reste donc le seul.
+    graphics_omis = bool(gpu_args) and graphics == "none"
+    if not graphics_omis:
+        cmd += ["--graphics", graphics]
+    i_gpu = len(cmd)
     cmd += video + gpu_args
     if args.arch == "s390x":
         # s390x (IBM Z) : machine s390-ccw-virtio, amorçage IPL/zipl depuis le
@@ -3128,7 +3229,49 @@ def virt_install(
         f"XDG_CACHE_HOME={cache_dir}",
         f"HOME={cache_dir}",
     ]
-    runner.run(log_env + cmd, privileged=True)
+    if not gpu_args:
+        runner.run(log_env + cmd, privileged=True)
+        return
+    # La 3D est le SEUL argument dont l'échec se rattrape : le nœud de rendu
+    # existe, mais QEMU n'arrive pas à y démarrer EGL. Rien ne permet de le
+    # savoir avant d'essayer, donc on essaie, et on retire la 3D si c'est
+    # elle qui a fait tomber le domaine.
+    code, sortie = runner.run(log_env + cmd, privileged=True, capture=True)
+    if code == 0:
+        return
+    if not egl_failed(sortie):
+        sys.exit(
+            f"\nÉchec de la commande (code {code}) :\n"
+            f"  {' '.join(log_env + cmd)}"
+        )
+    # Le repli vaut AUSSI pour « --gpu on ». Une VM qu'on n'a pas est pire
+    # qu'une VM sans 3D, et le repli n'est pas silencieux : il le dit, en
+    # nommant ce qui a été demandé et ce qui a été obtenu.
+    demande = (args.gpu or "auto").lower() == "on"
+    print(
+        f"\n  ⚠ EGL ne démarre pas sur {gpu_node} :"
+        f" {'la 3D DEMANDÉE est retirée' if demande else 'la 3D est retirée'}"
+        "\n    et la VM recréée en rendu logiciel."
+        " « --gpu off » évite cet essai."
+    )
+    # Rendre l'affichage écarté plus haut : sans lui, la VM repartirait sans
+    # « --graphics none », donc avec le défaut de virt-install, qui n'est pas
+    # ce qu'on avait demandé.
+    rendu = [] if not graphics_omis else ["--graphics", graphics]
+    cmd_sans_3d = (
+        cmd[:i_gpu]
+        + rendu
+        + video_sans_3d
+        + cmd[i_gpu + len(video) + len(gpu_args) :]
+    )
+    # Le domaine défini par l'essai raté doit partir : sans quoi virt-install
+    # refuse le nom, et la VM resterait celle qui ne démarre pas.
+    runner.run(
+        ["virsh", "--connect", LIBVIRT_URI, "undefine", args.name, "--nvram"],
+        privileged=True,
+        check=False,
+    )
+    runner.run(log_env + cmd_sans_3d, privileged=True)
 
 
 def watch_and_restart(name: str, runner: Runner) -> None:
@@ -3462,6 +3605,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Cible make qui a installé la VM (ex. install_odoo_18), reprise "
         "dans le guide pour la mettre à jour. Vide : le guide s'arrête à "
         "« git pull » plutôt que d'annoncer une cible qui n'est pas la bonne.",
+    )
+    g_cloud.add_argument(
+        "--git-name",
+        default="",
+        help="Nom pour le ~/.gitconfig de la VM (défaut : celui de l'hôte).",
+    )
+    g_cloud.add_argument(
+        "--git-email",
+        default="",
+        help="Courriel pour le ~/.gitconfig de la VM (défaut : l'hôte).",
     )
     g_cloud.add_argument(
         "--no-git-identity",

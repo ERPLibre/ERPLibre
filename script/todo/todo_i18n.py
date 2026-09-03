@@ -97,8 +97,8 @@ TRANSLATIONS = {
         "en": "🔒 Security - Dependency security audit",
     },
     "RTK - CLI proxy to reduce LLM token consumption": {
-        "fr": "RTK - Proxy CLI pour réduire la consommation de tokens LLM",
-        "en": "RTK - CLI proxy to reduce LLM token consumption",
+        "fr": "🪙 RTK - Proxy CLI pour réduire la consommation de tokens LLM",
+        "en": "🪙 RTK - CLI proxy to reduce LLM token consumption",
     },
     "Language - Change language / Changer la langue": {
         "fr": "🌍 Langue - Changer la langue / Change language",
@@ -424,20 +424,20 @@ TRANSLATIONS = {
         "en": "Do you want a new instance?",
     },
     "SSH port-forwarding": {
-        "fr": "SSH port-forwarding",
-        "en": "SSH port-forwarding",
+        "fr": "🚇 SSH port-forwarding",
+        "en": "🚇 SSH port-forwarding",
     },
     "Network performance request per second": {
-        "fr": "Performance réseau en requêtes par seconde",
-        "en": "Network performance request per second",
+        "fr": "📶 Performance réseau en requêtes par seconde",
+        "en": "📶 Network performance request per second",
     },
     "Setup queue job for parallelism": {
-        "fr": "Configurer la file d'attente pour l'exécution parallèle",
-        "en": "Setup queue job for parallelism",
+        "fr": "⚡ Configurer la file d'attente pour l'exécution parallèle",
+        "en": "⚡ Setup queue job for parallelism",
     },
     "Choose your database": {
-        "fr": "Choisir sa base de données",
-        "en": "Choose your database",
+        "fr": "🗃  Choisir sa base de données",
+        "en": "🗃  Choose your database",
     },
     "Development update": {
         "fr": "Mise à jour du développement",
@@ -457,8 +457,8 @@ TRANSLATIONS = {
     },
     # Database drop / erase
     "Erase a database": {
-        "fr": "Effacer une base de données",
-        "en": "Erase a database",
+        "fr": "🗑  Effacer une base de données",
+        "en": "🗑  Erase a database",
     },
     "Erase a database — irreversible operation!": {
         "fr": "Effacer une base de données — opération irréversible !",
@@ -595,16 +595,16 @@ TRANSLATIONS = {
     },
     # todo.json translatable prompt_descriptions
     "Test - Minimal base instance": {
-        "fr": "Test - Instance de base minimale",
-        "en": "Test - Minimal base instance",
+        "fr": "🧪 Test - Instance de base minimale",
+        "en": "🧪 Test - Minimal base instance",
     },
     "Open RobotLibre 🤖 minimal": {
-        "fr": "Ouvrir RobotLibre 🤖 minimal",
-        "en": "Open RobotLibre 🤖 minimal",
+        "fr": "▶  Ouvrir RobotLibre 🤖 minimal",
+        "en": "▶  Open RobotLibre 🤖 minimal",
     },
     "Open RobotLibre 🤖 with search enabled": {
-        "fr": "Ouvrir RobotLibre 🤖 en activant la recherche",
-        "en": "Open RobotLibre 🤖 with search enabled",
+        "fr": "▶  Ouvrir RobotLibre 🤖 en activant la recherche",
+        "en": "▶  Open RobotLibre 🤖 with search enabled",
     },
     "Open ERPLibre with TODO 🤖": {
         "fr": "Ouvrir ERPLibre avec TODO 🤖",
@@ -652,60 +652,63 @@ TRANSLATIONS = {
         "en": "🐛 Debug",
     },
     "Migration module coverage": {
-        "fr": "Couverture de migration des modules",
-        "en": "Migration module coverage",
+        "fr": "📈 Couverture de migration des modules",
+        "en": "📈 Migration module coverage",
     },
     "What change between version": {
-        "fr": "Quels changements entre les versions",
-        "en": "What change between version",
+        "fr": "🆕 Quels changements entre les versions",
+        "en": "🆕 What change between version",
     },
     "OCA guidelines": {
-        "fr": "Directives OCA",
-        "en": "OCA guidelines",
+        "fr": "📖 Directives OCA",
+        "en": "📖 OCA guidelines",
     },
     "OCA migration Odoo 19 milestone": {
-        "fr": "Migration OCA Odoo 19 - Jalons",
-        "en": "OCA migration Odoo 19 milestone",
+        "fr": "🎯 Migration OCA Odoo 19 - Jalons",
+        "en": "🎯 OCA migration Odoo 19 milestone",
     },
     "Download database to create backup (.zip)": {
-        "fr": "Télécharger une base de données pour créer une sauvegarde (.zip)",
-        "en": "Download database to create backup (.zip)",
+        "fr": (
+            "⬇  Télécharger une base de données pour créer une"
+            " sauvegarde (.zip)"
+        ),
+        "en": "⬇  Download database to create backup (.zip)",
     },
     "Restore from backup (.zip)": {
-        "fr": "Restaurer a partir d'une sauvegarde (.zip)",
-        "en": "Restore from backup (.zip)",
+        "fr": "♻  Restaurer a partir d'une sauvegarde (.zip)",
+        "en": "♻  Restore from backup (.zip)",
     },
     "Create backup (.zip)": {
-        "fr": "Créer une sauvegarde (.zip)",
-        "en": "Create backup (.zip)",
+        "fr": "💾 Créer une sauvegarde (.zip)",
+        "en": "💾 Create backup (.zip)",
     },
     "Kill Odoo process from actual port": {
-        "fr": "Terminer le processus Odoo du port actuel",
-        "en": "Kill Odoo process from actual port",
+        "fr": "🛑 Terminer le processus Odoo du port actuel",
+        "en": "🛑 Kill Odoo process from actual port",
     },
     "Kill git daemon server process": {
-        "fr": "Terminer le processus du serveur git daemon",
-        "en": "Kill git daemon server process",
+        "fr": "🛑 Terminer le processus du serveur git daemon",
+        "en": "🛑 Kill git daemon server process",
     },
     "Git daemon process killed.": {
         "fr": "Processus git daemon terminé.",
         "en": "Git daemon process killed.",
     },
     "Generate all configuration": {
-        "fr": "Générer toute la configuration",
-        "en": "Generate all configuration",
+        "fr": "🧱 Générer toute la configuration",
+        "en": "🧱 Generate all configuration",
     },
     "Generate from pre-configuration": {
-        "fr": "Générer a partir de la pre-configuration",
-        "en": "Generate from pre-configuration",
+        "fr": "📋 Générer a partir de la pre-configuration",
+        "en": "📋 Generate from pre-configuration",
     },
     "Generate from backup file": {
-        "fr": "Générer a partir d'un fichier de sauvegarde",
-        "en": "Generate from backup file",
+        "fr": "💾 Générer a partir d'un fichier de sauvegarde",
+        "en": "💾 Generate from backup file",
     },
     "Generate from database": {
-        "fr": "Générer a partir de la base de données",
-        "en": "Generate from database",
+        "fr": "🗄  Générer a partir de la base de données",
+        "en": "🗄  Generate from database",
     },
     "base": {
         "fr": "base",
@@ -737,24 +740,24 @@ TRANSLATIONS = {
         "en": "Test an Odoo module on a temporary database!",
     },
     "Test a module": {
-        "fr": "Tester un module",
-        "en": "Test a module",
+        "fr": "🧪 Tester un module",
+        "en": "🧪 Test a module",
     },
     "Test a module with code coverage": {
-        "fr": "Tester un module avec couverture de code",
-        "en": "Test a module with code coverage",
+        "fr": "📊 Tester un module avec couverture de code",
+        "en": "📊 Test a module with code coverage",
     },
     "ERPLibre unit tests": {
-        "fr": "Tests unitaires ERPLibre",
-        "en": "ERPLibre unit tests",
+        "fr": "⚗  Tests unitaires ERPLibre",
+        "en": "⚗  ERPLibre unit tests",
     },
     "Mail unit tests": {
-        "fr": "Tests unitaires courriel",
-        "en": "Mail unit tests",
+        "fr": "📧 Tests unitaires courriel",
+        "en": "📧 Mail unit tests",
     },
     "Analyse unit tests": {
-        "fr": "Tests unitaires analyse",
-        "en": "Analyse unit tests",
+        "fr": "🔍 Tests unitaires analyse",
+        "en": "🔍 Analyse unit tests",
     },
     "Running unit tests": {
         "fr": "Exécution des tests unitaires",
@@ -1022,8 +1025,8 @@ TRANSLATIONS = {
     },
     # GPT code - Claude automation
     "Add an automation with Claude in todo.py": {
-        "fr": "Ajouter une automatisation avec Claude dans todo.py",
-        "en": "Add an automation with Claude in todo.py",
+        "fr": "🤖 Ajouter une automatisation avec Claude dans todo.py",
+        "en": "🤖 Add an automation with Claude in todo.py",
     },
     "Description of the command to add: ": {
         "fr": "Description de la commande à ajouter : ",
@@ -1169,29 +1172,31 @@ TRANSLATIONS = {
         "en": "AI assistant tools for development!",
     },
     "Configure Claude Code configurations": {
-        "fr": "Configurer les configurations Claude Code",
-        "en": "Configure Claude Code configurations",
+        "fr": "🛠  Configurer les configurations Claude Code",
+        "en": "🛠  Configure Claude Code configurations",
     },
     "Commit - OCA/Odoo commit command": {
-        "fr": "Commit - Commande de commit OCA/Odoo",
-        "en": "Commit - OCA/Odoo commit command",
+        "fr": "💬 Commit - Commande de commit OCA/Odoo",
+        "en": "💬 Commit - OCA/Odoo commit command",
     },
     "Git prepare merge - Git merge preparation command": {
-        "fr": "Git prepare merge - Commande de préparation merge git",
-        "en": "Git prepare merge - Git merge preparation command",
+        "fr": "🤝 Git prepare merge - Commande de préparation merge git",
+        "en": "🤝 Git prepare merge - Git merge preparation command",
     },
     "Todo Add Command + Plan Max - Plan and add a todo.py command": {
         "fr": (
-            "Todo Add Command + Plan Max - Planifier et ajouter une"
+            "🧭 Todo Add Command + Plan Max - Planifier et ajouter une"
             " commande au menu todo.py"
         ),
-        "en": "Todo Add Command + Plan Max - Plan and add a todo.py command",
+        "en": (
+            "🧭 Todo Add Command + Plan Max - Plan and add a todo.py command"
+        ),
     },
     "Todo Generate Code - Code by the OCA rules at high effort": {
         "fr": (
-            "Todo Generate Code - Coder selon les règles OCA, effort élevé"
+            "🏭 Todo Generate Code - Coder selon les règles OCA, effort élevé"
         ),
-        "en": "Todo Generate Code - Code by the OCA rules at high effort",
+        "en": "🏭 Todo Generate Code - Code by the OCA rules at high effort",
     },
     "Enter your full name: ": {
         "fr": "Entrez votre nom complet : ",
@@ -1207,8 +1212,8 @@ TRANSLATIONS = {
     },
     # Claude Code plugins
     "Claude Code plugins - marketplaces and ERPLibre list": {
-        "fr": "Plugins Claude Code - marketplaces et liste ERPLibre",
-        "en": "Claude Code plugins - marketplaces and ERPLibre list",
+        "fr": "🧩 Plugins Claude Code - marketplaces et liste ERPLibre",
+        "en": "🧩 Claude Code plugins - marketplaces and ERPLibre list",
     },
     "Manage Claude Code plugins and marketplaces!": {
         "fr": "Gérer les plugins et les marketplaces de Claude Code!",
@@ -1234,9 +1239,9 @@ TRANSLATIONS = {
         "fr": "Afficher le détail d'un plugin et son coût en tokens",
         "en": "Show a plugin detail and its token cost",
     },
-    "Install": {
-        "fr": "Installer",
-        "en": "Install",
+    "Install plugins": {
+        "fr": "Installer des plugins",
+        "en": "Install plugins",
     },
     "Install the ERPLibre preferred list": {
         "fr": "Installer la liste préférée d'ERPLibre",
@@ -1323,8 +1328,8 @@ TRANSLATIONS = {
         "en": "A restart of Claude Code applies the change.",
     },
     "Show installed custom commands": {
-        "fr": "Afficher les commandes personnalisées installées",
-        "en": "Show installed custom commands",
+        "fr": "📇 Afficher les commandes personnalisées installées",
+        "en": "📇 Show installed custom commands",
     },
     "No custom commands found in ~/.claude/commands/": {
         "fr": "Aucune commande personnalisée trouvée dans ~/.claude/commands/",
@@ -1626,8 +1631,8 @@ TRANSLATIONS = {
         "en": "📊 Navigation telemetry (TUI)",
     },
     "Configuration": {
-        "fr": "⚙  Configuration",
-        "en": "⚙  Configuration",
+        "fr": "🔩 Configuration",
+        "en": "🔩 Configuration",
     },
     "Interface": {
         "fr": "Interface",
@@ -4961,6 +4966,316 @@ TRANSLATIONS = {
         "fr": "Logs :",
         "en": "Logs:",
     },
+    "3D was on; retry without it:": {
+        "fr": "La 3D était active ; réessayer sans elle :",
+        "en": "3D was on; retry without it:",
+    },
+    "Recommended before installing:": {
+        "fr": "Recommandé avant d'installer :",
+        "en": "Recommended before installing:",
+    },
+    "Grant libvirt access, or every VM command will": {
+        "fr": "Donner l'accès à libvirt, sinon chaque commande VM",
+        "en": "Grant libvirt access, or every VM command will",
+    },
+    "ask for a sudo password:": {
+        "fr": "demandera un mot de passe sudo :",
+        "en": "ask for a sudo password:",
+    },
+    "then log out and back in.": {
+        "fr": "puis se déconnecter et se reconnecter.",
+        "en": "then log out and back in.",
+    },
+    "Orphan disks that would fail the deployment": {
+        "fr": "Disques orphelins qui feraient échouer le déploiement",
+        "en": "Orphan disks that would fail the deployment",
+    },
+    "Delete them and continue? (y/N): ": {
+        "fr": "Les effacer et continuer ? (o/N) : ",
+        "en": "Delete them and continue? (y/N, default: no): ",
+    },
+    "Kept - the deployment of these VMs will FAIL:": {
+        "fr": "Conservés — le déploiement de ces VM ÉCHOUERA :",
+        "en": "Kept - the deployment of these VMs will FAIL:",
+    },
+    "3D acceleration (host GPU), even without a screen": {
+        "fr": "Accélération 3D (GPU de l'hôte), même sans écran",
+        "en": "3D acceleration (host GPU), even without a screen",
+    },
+    "3D acceleration (host GPU), even without a screen? (y/N): ": {
+        "fr": "Accélération 3D (GPU de l'hôte), même sans écran ? (o/N) : ",
+        "en": (
+            "3D acceleration (host GPU), even without a screen?"
+            " (y/N, default: no): "
+        ),
+    },
+    # Récupération de fichiers dans le disque d'une VM (libguestfs)
+    # Outils d'assistance posés dans une VM au déploiement.
+    "AI coding tools": {
+        "fr": "Outils d'assistance IA",
+        "en": "AI coding tools",
+    },
+    "rtk, starship, and one agent": {
+        "fr": "rtk, starship, et un agent",
+        "en": "rtk, starship, and one agent",
+    },
+    "Name for git": {
+        "fr": "Nom pour git",
+        "en": "Name for git",
+    },
+    "Email for git": {
+        "fr": "Courriel pour git",
+        "en": "Email for git",
+    },
+    "3D per VM": {
+        "fr": "3D par VM",
+        "en": "3D per VM",
+    },
+    "no video device": {
+        "fr": "aucun périphérique vidéo",
+        "en": "no video device",
+    },
+    "not pinned": {
+        "fr": "non figé",
+        "en": "not pinned",
+    },
+    "non-GL device pinned: 3D will not start": {
+        "fr": "device sans GL figé : la 3D ne démarrera pas",
+        "en": "non-GL device pinned: 3D will not start",
+    },
+    "To unpin, VM stopped:": {
+        "fr": "Pour défiger, la VM arrêtée :",
+        "en": "To unpin, VM stopped:",
+    },
+    # Une VM dont libvirt a figé le device vidéo sur une variante sans GL
+    # tourne sans 3D, même avec « accel3d=yes » dans sa définition.
+    "frozen on": {
+        "fr": "figée sur",
+        "en": "frozen on",
+    },
+    "Recover files from a VM disk (libguestfs)": {
+        "fr": "💾 Récupérer des fichiers dans le disque d'une VM (libguestfs)",
+        "en": "💾 Recover files from a VM disk (libguestfs)",
+    },
+    "guestfish is missing: libguestfs is not here.": {
+        "fr": "guestfish est absent : libguestfs n'est pas installé ici.",
+        "en": "guestfish is missing: libguestfs is not here.",
+    },
+    "Some libguestfs helpers are missing:": {
+        "fr": "Des utilitaires libguestfs manquent :",
+        "en": "Some libguestfs helpers are missing:",
+    },
+    "Unknown package manager: install libguestfs.": {
+        "fr": "Gestionnaire de paquets inconnu : installez libguestfs.",
+        "en": "Unknown package manager: install libguestfs.",
+    },
+    "Install libguestfs now? (Y/n): ": {
+        "fr": "Installer libguestfs maintenant ? (O/n) : ",
+        "en": "Install libguestfs now? (Y/n, default: yes): ",
+    },
+    "This VM is running.": {
+        "fr": "Cette VM est allumée.",
+        "en": "This VM is running.",
+    },
+    "Reading a live disk sees a possibly torn state:": {
+        "fr": "Lire un disque vivant montre un état peut-être incohérent :",
+        "en": "Reading a live disk sees a possibly torn state:",
+    },
+    "a half-written file, an unreplayed journal.": {
+        "fr": "un fichier à moitié écrit, un journal non rejoué.",
+        "en": "a half-written file, an unreplayed journal.",
+    },
+    "Read anyway (read-only, no risk for the VM)": {
+        "fr": "Lire quand même (lecture seule, sans risque pour la VM)",
+        "en": "Read anyway (read-only, no risk for the VM)",
+    },
+    "Shut the VM down cleanly, then read": {
+        "fr": "Éteindre proprement la VM, puis lire",
+        "en": "Shut the VM down cleanly, then read",
+    },
+    "No filesystem found on this disk.": {
+        "fr": "Aucun système de fichiers trouvé sur ce disque.",
+        "en": "No filesystem found on this disk.",
+    },
+    "Filesystem to mount": {
+        "fr": "Système de fichiers à monter",
+        "en": "Filesystem to mount",
+    },
+    "Empty or unreadable directory.": {
+        "fr": "Répertoire vide ou illisible.",
+        "en": "Empty or unreadable directory.",
+    },
+    "Cannot create the destination: ": {
+        "fr": "Impossible de créer la destination : ",
+        "en": "Cannot create the destination: ",
+    },
+    "Extraction failed.": {
+        "fr": "L'extraction a échoué.",
+        "en": "Extraction failed.",
+    },
+    "Extracted to: ": {
+        "fr": "Extrait vers : ",
+        "en": "Extracted to: ",
+    },
+    "Partitions and sizes": {
+        "fr": "Partitions et tailles",
+        "en": "Partitions and sizes",
+    },
+    "Free space per filesystem": {
+        "fr": "Espace libre par système de fichiers",
+        "en": "Free space per filesystem",
+    },
+    "Detected operating system": {
+        "fr": "Système d'exploitation détecté",
+        "en": "Detected operating system",
+    },
+    "Does the libguestfs appliance boot?": {
+        "fr": "L'appliance libguestfs démarre-t-elle ?",
+        "en": "Does the libguestfs appliance boot?",
+    },
+    "No disk found for this VM.": {
+        "fr": "Aucun disque trouvé pour cette VM.",
+        "en": "No disk found for this VM.",
+    },
+    "Disk:": {
+        "fr": "Disque :",
+        "en": "Disk:",
+    },
+    "Run the diagnostics first? (y/N): ": {
+        "fr": "Lancer d'abord les diagnostics ? (o/N) : ",
+        "en": "Run the diagnostics first? (y/N, default: no): ",
+    },
+    "Directory to list [/]: ": {
+        "fr": "Répertoire à lister [/] : ",
+        "en": "Directory to list [/]: ",
+    },
+    "Another directory, or Enter to extract: ": {
+        "fr": "Autre répertoire, ou Entrée pour extraire : ",
+        "en": "Another directory, or Enter to extract: ",
+    },
+    "Path to extract": {
+        "fr": "Chemin à extraire",
+        "en": "Path to extract",
+    },
+    "Destination on the host": {
+        "fr": "Destination sur l'hôte",
+        "en": "Destination on the host",
+    },
+    "EGL does not start on this host GPU.": {
+        "fr": "EGL ne démarre pas sur le GPU de cet hôte.",
+        "en": "EGL does not start on this host GPU.",
+    },
+    "The VM cannot boot while 3D stays in its definition.": {
+        "fr": (
+            "La VM ne démarrera pas tant que la 3D reste dans sa"
+            " définition."
+        ),
+        "en": "The VM cannot boot while 3D stays in its definition.",
+    },
+    "Remove the 3D and start again? (Y/n): ": {
+        "fr": "Retirer la 3D et redémarrer ? (O/n) : ",
+        "en": "Remove the 3D and start again? (Y/n, default: yes): ",
+    },
+    "3D on this host": {
+        "fr": "La 3D sur cet hôte",
+        "en": "3D on this host",
+    },
+    "Render node:": {
+        "fr": "Nœud de rendu :",
+        "en": "Render node:",
+    },
+    "Check EGL itself on that node:": {
+        "fr": "Vérifier EGL lui-même sur ce nœud :",
+        "en": "Check EGL itself on that node:",
+    },
+    "VM access": {
+        "fr": "🔌 Accès aux VM",
+        "en": "🔌 VM access",
+    },
+    "Troubleshoot": {
+        "fr": "🩺 Dépanner",
+        "en": "🩺 Troubleshoot",
+    },
+    "Diagnostics (report to share)": {
+        "fr": "🩺 Diagnostic (rapport à transmettre)",
+        "en": "🩺 Diagnostics (report to share)",
+    },
+    "Collecting the diagnostics...": {
+        "fr": "Relevé du diagnostic en cours…",
+        "en": "Collecting the diagnostics...",
+    },
+    "Cannot write the report: ": {
+        "fr": "Impossible d'écrire le rapport : ",
+        "en": "Cannot write the report: ",
+    },
+    "Report written to: ": {
+        "fr": "Rapport écrit dans : ",
+        "en": "Report written to: ",
+    },
+    "It names this host, its paths and its addresses.": {
+        "fr": "Il nomme cette machine, ses chemins et ses adresses.",
+        "en": "It names this host, its paths and its addresses.",
+    },
+    "Read it before sharing it.": {
+        "fr": "Relisez-le avant de le transmettre.",
+        "en": "Read it before sharing it.",
+    },
+    "These tools would complete the report:": {
+        "fr": "Ces outils compléteraient le rapport :",
+        "en": "These tools would complete the report:",
+    },
+    "unknown package manager": {
+        "fr": "gestionnaire de paquets inconnu",
+        "en": "unknown package manager",
+    },
+    "Install them now? (y/N): ": {
+        "fr": "Les installer maintenant ? (o/N) : ",
+        "en": "Install them now? (y/N, default: no): ",
+    },
+    "Run the diagnostics again for a fuller report.": {
+        "fr": "Relancez le diagnostic pour un rapport plus complet.",
+        "en": "Run the diagnostics again for a fuller report.",
+    },
+    "Devices QEMU may open": {
+        "fr": "Périphériques que QEMU peut ouvrir",
+        "en": "Devices QEMU may open",
+    },
+    "Unreadable, so this may already be set:": {
+        "fr": "Illisible, donc peut-être déjà réglé :",
+        "en": "Unreadable, so this may already be set:",
+    },
+    "A list exists: ADD to it, never replace it.": {
+        "fr": "Une liste existe : y AJOUTER, ne jamais la remplacer.",
+        "en": "A list exists: ADD to it, never replace it.",
+    },
+    "In": {
+        "fr": "Dans",
+        "en": "In",
+    },
+    "Then restart the daemon and recreate the VM:": {
+        "fr": "Puis redémarrer le démon et recréer la VM :",
+        "en": "Then restart the daemon and recreate the VM:",
+    },
+    "then stop and start the VM (a guest reboot is not": {
+        "fr": "puis éteindre et rallumer la VM (un redémarrage de",
+        "en": "then stop and start the VM (a guest reboot is not",
+    },
+    "enough: the list applies when QEMU is launched).": {
+        "fr": "l'invité ne suffit pas : la liste s'applique au lancement).",
+        "en": "enough: the list applies when QEMU is launched).",
+    },
+    "package": {
+        "fr": "paquet",
+        "en": "package",
+    },
+    "Will run, as root:": {
+        "fr": "Va exécuter, en root :",
+        "en": "Will run, as root:",
+    },
+    "Full output:": {
+        "fr": "Sortie complète :",
+        "en": "Full output:",
+    },
     "Read the logs:": {
         "fr": "Lire les logs :",
         "en": "Read the logs:",
@@ -7144,8 +7459,8 @@ TRANSLATIONS = {
     },
     # Contexte fourni à Claude
     "Show the context given to Claude": {
-        "fr": "Afficher le contexte fourni à Claude",
-        "en": "Show the context given to Claude",
+        "fr": "🧠 Afficher le contexte fourni à Claude",
+        "en": "🧠 Show the context given to Claude",
     },
     "Context given to Claude": {
         "fr": "Contexte fourni à Claude",
@@ -10347,8 +10662,8 @@ TRANSLATIONS = {
     },
     "Android emulator": {"fr": "Émulateur Android", "en": "Android emulator"},
     "Android emulator (start, tunnel, scrcpy)": {
-        "fr": "Émulateur Android (démarrer, tunnel, scrcpy)",
-        "en": "Android emulator (start, tunnel, scrcpy)",
+        "fr": "📱 Émulateur Android (démarrer, tunnel, scrcpy)",
+        "en": "📱 Android emulator (start, tunnel, scrcpy)",
     },
     "An emulator is already running on this VM.": {
         "fr": "Un émulateur tourne déjà sur cette VM.",
@@ -10938,8 +11253,8 @@ TRANSLATIONS = {
         "en": "Copy",
     },
     "Duplicate a database": {
-        "fr": "Dupliquer une base de données",
-        "en": "Duplicate a database",
+        "fr": "📑 Dupliquer une base de données",
+        "en": "📑 Duplicate a database",
     },
     "Name of the copy (default=": {
         "fr": "Nom de la copie (défaut=",
