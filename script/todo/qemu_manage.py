@@ -385,8 +385,17 @@ class QemuManageMixin:
     #
     # Les fichiers plutôt que les paquets : leurs noms changent d'une
     # distribution à l'autre, leur emplacement beaucoup moins.
+    # Les deux devices 3D sont des modules SÉPARÉS, empaquetés à part sur
+    # les distributions qui découpent QEMU. Lequel sert dépend du type de
+    # vidéo : « virtio-vga-gl » pour l'écran principal compatible VGA,
+    # « virtio-gpu-gl » pour un affichage sans VGA. Ne chercher que le
+    # second laisse le rapport tout en vert alors que le premier manque.
+    # QEMU n'annonce pas un device dont le module est absent, libvirt le
+    # remplace alors par « virtio-vga » nu, et rien ne le signale : la VM
+    # démarre sans 3D, avec l'egl-headless demandé toujours en place.
     _GPU_3D_PIECES = (
         ("qemu ui-egl-headless", "qemu/ui-egl-headless.so"),
+        ("qemu virtio-vga-gl", "qemu/hw-display-virtio-vga-gl.so"),
         ("qemu virtio-gpu-gl", "qemu/hw-display-virtio-gpu-gl.so"),
         ("virglrenderer", "libvirglrenderer.so"),
         ("mesa libgbm", "libgbm.so"),

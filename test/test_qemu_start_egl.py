@@ -597,3 +597,23 @@ class LaSondeVideo(unittest.TestCase):
 
         sondes = dict(QemuManageMixin._DIAG_PROBES)
         self.assertIn("video du qemu en cours", sondes)
+
+
+class LesPieces3D(unittest.TestCase):
+    """Le rapport 3D cherche les DEUX devices accélérés, non un seul.
+
+    « virtio-vga-gl » et « virtio-gpu-gl » sont des modules distincts, et
+    les distributions qui découpent QEMU les empaquettent séparément.
+    Celui qui sert dépend du type de vidéo demandé ; n'en chercher qu'un
+    rend un rapport tout vert à côté de la pièce absente.
+    """
+
+    def test_both_accelerated_devices_are_looked_for(self):
+        from script.todo.qemu_manage import QemuManageMixin
+
+        motifs = [m for _, m in QemuManageMixin._GPU_3D_PIECES]
+        for module in (
+            "qemu/hw-display-virtio-vga-gl.so",
+            "qemu/hw-display-virtio-gpu-gl.so",
+        ):
+            self.assertIn(module, motifs)
