@@ -381,6 +381,8 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
         "Remote desktop tunnel": "_qemu_tunnel_menu",
         "Android emulator": "_qemu_emulator_menu",
         "List available images": "_qemu_list_images",
+        "Recover files from a VM disk (libguestfs)": "_qemu_recover_files",
+        "Diagnostics (report to share)": "_qemu_diagnostics",
     }
 
 

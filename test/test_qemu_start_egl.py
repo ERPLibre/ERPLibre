@@ -526,10 +526,6 @@ class _FauxModule:
         return "eglInitialize failed" in (sortie or "")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LaSondeVideo(unittest.TestCase):
     """La 3D d'une VM se lit sur la ligne de commande de son QEMU.
 
@@ -748,3 +744,7 @@ class LesSectionsDuRapport(unittest.TestCase):
         texte = TODO._diag_section("essai", lambda: print("relevé"))
         self.assertIn("relevé", texte)
         self.assertNotIn("Error", texte)
+
+
+if __name__ == "__main__":
+    unittest.main()
