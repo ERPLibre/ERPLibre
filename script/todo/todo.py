@@ -3390,7 +3390,7 @@ class TODO(
                     "Show a plugin detail and its token cost"
                 )
             },
-            {"section": t("Install")},
+            {"section": t("Install plugins")},
             {"prompt_description": t("Install the ERPLibre preferred list")},
             {"prompt_description": t("Install a plugin by name")},
             {"prompt_description": t("Add a marketplace")},
