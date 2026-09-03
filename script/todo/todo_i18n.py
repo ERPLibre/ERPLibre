@@ -1176,25 +1176,27 @@ TRANSLATIONS = {
         "en": "🛠  Configure Claude Code configurations",
     },
     "Commit - OCA/Odoo commit command": {
-        "fr": "Commit - Commande de commit OCA/Odoo",
-        "en": "Commit - OCA/Odoo commit command",
+        "fr": "💬 Commit - Commande de commit OCA/Odoo",
+        "en": "💬 Commit - OCA/Odoo commit command",
     },
     "Git prepare merge - Git merge preparation command": {
-        "fr": "Git prepare merge - Commande de préparation merge git",
-        "en": "Git prepare merge - Git merge preparation command",
+        "fr": "🤝 Git prepare merge - Commande de préparation merge git",
+        "en": "🤝 Git prepare merge - Git merge preparation command",
     },
     "Todo Add Command + Plan Max - Plan and add a todo.py command": {
         "fr": (
-            "Todo Add Command + Plan Max - Planifier et ajouter une"
+            "🧭 Todo Add Command + Plan Max - Planifier et ajouter une"
             " commande au menu todo.py"
         ),
-        "en": "Todo Add Command + Plan Max - Plan and add a todo.py command",
+        "en": (
+            "🧭 Todo Add Command + Plan Max - Plan and add a todo.py command"
+        ),
     },
     "Todo Generate Code - Code by the OCA rules at high effort": {
         "fr": (
-            "Todo Generate Code - Coder selon les règles OCA, effort élevé"
+            "🏭 Todo Generate Code - Coder selon les règles OCA, effort élevé"
         ),
-        "en": "Todo Generate Code - Code by the OCA rules at high effort",
+        "en": "🏭 Todo Generate Code - Code by the OCA rules at high effort",
     },
     "Enter your full name: ": {
         "fr": "Entrez votre nom complet : ",
@@ -1326,8 +1328,8 @@ TRANSLATIONS = {
         "en": "A restart of Claude Code applies the change.",
     },
     "Show installed custom commands": {
-        "fr": "Afficher les commandes personnalisées installées",
-        "en": "Show installed custom commands",
+        "fr": "📇 Afficher les commandes personnalisées installées",
+        "en": "📇 Show installed custom commands",
     },
     "No custom commands found in ~/.claude/commands/": {
         "fr": "Aucune commande personnalisée trouvée dans ~/.claude/commands/",
