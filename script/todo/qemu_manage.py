@@ -222,7 +222,18 @@ class QemuManageMixin:
                 f"{action} {shlex.quote(real)}"
             )
             print(f"\n{t('Will execute:')} {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            if action != "start":
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+                continue
+            # Un démarrage est le seul moment où la 3D écrite dans la
+            # définition se met à l'épreuve : QEMU refuse le domaine si EGL
+            # n'y démarre pas, et la VM reste inutilisable jusqu'à ce que
+            # quelqu'un défasse le réglage.
+            code, lignes = self.execute.exec_command_live(
+                cmd, source_erplibre=False, return_status_and_output=True
+            )
+            if code:
+                self._qemu_start_failed(real, cmd, "\n".join(lignes or []))
 
     @staticmethod
     def _qemu_dumpxml(name, inactive=True):
@@ -332,6 +343,121 @@ class QemuManageMixin:
         if res.returncode != 0:
             return []
         return [ln.strip() for ln in res.stdout.splitlines() if ln.strip()]
+
+    # Ce que la 3D d'une VM exige de l'hôte, en DEUX briques que le même
+    # réglage met en jeu et qu'on confond souvent :
+    #
+    #   « --graphics egl-headless » ouvre le nœud de rendu et crée un contexte
+    #   EGL par GBM — c'est Mesa qui répond, et « eglInitialize failed » vient
+    #   de là. Sans lui, le domaine ne démarre pas du tout.
+    #
+    #   « accel3d=on » confie ensuite les commandes 3D de l'invité à
+    #   virglrenderer, qui les traduit vers l'OpenGL de l'hôte. Il n'entre en
+    #   jeu qu'APRÈS qu'EGL a démarré : l'installer ne répare donc pas un EGL
+    #   qui refuse.
+    #
+    # Les fichiers plutôt que les paquets : leurs noms changent d'une
+    # distribution à l'autre, leur emplacement beaucoup moins.
+    _GPU_3D_PIECES = (
+        ("qemu ui-egl-headless", "qemu/ui-egl-headless.so"),
+        ("qemu virtio-gpu-gl", "qemu/hw-display-virtio-gpu-gl.so"),
+        ("virglrenderer", "libvirglrenderer.so"),
+        ("mesa libgbm", "libgbm.so"),
+        ("mesa libEGL", "libEGL.so"),
+    )
+
+    @staticmethod
+    def _qemu_lib_present(motif):
+        """Chemin du fichier s'il existe dans les emplacements habituels des
+        bibliothèques et des modules QEMU, sinon la chaîne vide."""
+        racines = (
+            "/usr/lib",
+            "/usr/lib64",
+            "/usr/lib/x86_64-linux-gnu",
+            "/usr/local/lib",
+        )
+        for racine in racines:
+            trouves = sorted(glob.glob(os.path.join(racine, motif + "*")))
+            if trouves:
+                return trouves[0]
+        return ""
+
+    def _qemu_gpu_3d_report(self):
+        """Dit ce qui manque à l'hôte pour que la 3D d'une VM démarre.
+
+        Ne modifie rien. Un nœud de rendu présent ne prouve RIEN : c'est
+        l'initialisation d'EGL dessus qui décide, et elle ne se teste qu'en
+        essayant — d'où les deux commandes suggérées à la fin.
+        """
+        print(f"\n── {t('3D on this host')} ──")
+        node = self._qemu_host_gpu_node()
+        print(f"  {t('Render node:')} {node or t('none')}")
+        for nom, motif in self._GPU_3D_PIECES:
+            chemin = self._qemu_lib_present(motif)
+            # Absent : dire ce qui a été CHERCHÉ. Une case vide laisse sans
+            # prise, le motif dit quoi installer et où regarder.
+            print(f"  {'✅' if chemin else '❌'} {nom:<24} {chemin or motif}")
+        print(f"\n  {t('Check EGL itself on that node:')}")
+        print("    eglinfo -B 2>&1 | head -20")
+        print("    lspci -nnk | grep -A3 -iE 'vga|3d|display'")
+
+    def _qemu_egl_failed(self, sortie):
+        """La sortie accuse-t-elle un EGL inutilisable ?
+
+        La signature vit dans deploy_qemu.py, qui doit tenir seul en tant que
+        script : la lire là plutôt que la recopier ici évite deux vérités.
+        """
+        try:
+            return bool(self._qemu_import_module().egl_failed(sortie))
+        except Exception:
+            return False
+
+    def _qemu_start_failed(self, name, cmd, sortie):
+        """Un démarrage refusé : proposer ce qui le débloque, s'il y a lieu.
+
+        Le seul échec qui se rattrape ici est celui de la 3D : le nœud de
+        rendu existe, mais EGL n'y démarre pas, et rien ne permettait de le
+        savoir avant l'essai. Retirer l'accélération rend une VM qui démarre.
+        """
+        if not self._qemu_egl_failed(sortie):
+            return
+        print(f"\n  ⚠ {t('EGL does not start on this host GPU.')}")
+        print(
+            f"   {t('The VM cannot boot while 3D stays in its definition.')}"
+        )
+        self._qemu_gpu_3d_report()
+        if not self._is_yes_default_yes(
+            input(t("Remove the 3D and start again? (Y/n): "))
+        ):
+            return
+        from script.todo import qemu_hardware as hw
+
+        etat = hw.hw_state(
+            self._qemu_dumpxml(name), self._qemu_autostart(name)
+        )
+        if not etat.get("name"):
+            print(f"  ⚠ {t('Unreadable VM definition.')}")
+            return
+        # Seule la 3D change. build_want retombe sur l'état pour les vCPU, la
+        # RAM, les écrans, le CPU et le réseau — mais PAS pour « autostart »,
+        # qu'il lit en booléen sec : y passer None éteindrait le démarrage
+        # automatique d'une VM qu'on voulait seulement débloquer.
+        want = hw.build_want(etat, None, None, False, etat.get("autostart"))
+        plan = hw.hw_plan(etat, want)
+        for entree in plan:
+            if "cmd" not in entree:
+                continue
+            retrait = sudo_prefix() + " ".join(
+                shlex.quote(c) for c in entree["cmd"]
+            )
+            print(f"\n{t('Will execute:')} {retrait}")
+            self.execute.exec_command_live(
+                retrait,
+                source_erplibre=False,
+                new_env={"PATH": system_path()},
+            )
+        print(f"\n{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_adjust_hardware(self, names):
         """Règle vCPU, RAM, 3D et démarrage automatique de VM ÉTEINTES.
