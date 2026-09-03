@@ -5008,6 +5008,23 @@ TRANSLATIONS = {
         ),
     },
     # Récupération de fichiers dans le disque d'une VM (libguestfs)
+    # Outils d'assistance posés dans une VM au déploiement.
+    "AI coding tools": {
+        "fr": "Outils d'assistance IA",
+        "en": "AI coding tools",
+    },
+    "rtk, starship, and one agent": {
+        "fr": "rtk, starship, et un agent",
+        "en": "rtk, starship, and one agent",
+    },
+    "Name for git": {
+        "fr": "Nom pour git",
+        "en": "Name for git",
+    },
+    "Email for git": {
+        "fr": "Courriel pour git",
+        "en": "Email for git",
+    },
     "3D per VM": {
         "fr": "3D par VM",
         "en": "3D per VM",

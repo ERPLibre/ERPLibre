@@ -29,6 +29,7 @@ class QemuDeployMixin:
         python_provider="",
         app_store="deb",
         tools=(),
+        ai_agent="",
     ):
         """Script exécuté DANS la VM. `branch` à None n'installe QUE le bureau
         — le choix graphique ne dépend pas d'ERPLibre, et une VM peut être
@@ -76,7 +77,7 @@ class QemuDeployMixin:
                 + self._qemu_cloud_init_wait()
                 + self._qemu_no_auto_upgrade(prod, app_store)
                 + self._qemu_desktop_remote_cmd(desktop, app_store)
-                + self._qemu_tools_remote_cmd(tools, prod)
+                + self._qemu_tools_remote_cmd(tools, prod, ai_agent=ai_agent)
                 + note
             )
         if not final_cmd:
@@ -103,7 +104,9 @@ class QemuDeployMixin:
         # apt pendant l'installation. En PROD on ne touche à rien : les
         # correctifs de sécurité automatiques doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
-        tools_cmd = self._qemu_tools_remote_cmd(tools, prod, "before")
+        tools_cmd = self._qemu_tools_remote_cmd(
+            tools, prod, "before", ai_agent
+        )
         # La compilation mobile vient APRÈS l'installation : elle a besoin du
         # dépôt, du venv d'outils qui synchronise le manifeste, et de node que
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
@@ -277,6 +280,7 @@ class QemuDeployMixin:
         vm_tools=(),
         pve=None,
         meta=None,
+        ai_agent="",
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
@@ -314,6 +318,7 @@ class QemuDeployMixin:
             "" if desk_map else desktop,
             python_provider,
             app_store,
+            ai_agent=ai_agent,
         )
         try:
             mod = self._qemu_import_module()
@@ -369,6 +374,7 @@ class QemuDeployMixin:
                         python_provider,
                         app_store,
                         self._qemu_tools_for(vm_tools, a, vm_desktop, d),
+                        ai_agent,
                     )
                 vms.append(entry)
             else:
@@ -415,6 +421,7 @@ class QemuDeployMixin:
         python_provider="",
         app_store="deb",
         vm_tools=(),
+        ai_agent="",
     ):
         """Clone ERPLibre (branche donnée) dans la VM puis exécute la commande
         d'install du profil choisi (streamé). `ip` : IP déjà résolue ;
@@ -455,6 +462,7 @@ class QemuDeployMixin:
             self._qemu_tools_for(
                 vm_tools, vm_arch or "amd64", desktop, vm_distro or ""
             ),
+            ai_agent,
         )
         ssh_opts = (
             "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
@@ -976,6 +984,8 @@ class QemuDeployMixin:
         install_cmd="",
         vm_tools=(),
         gpu3d=False,
+        git_name="",
+        git_email="",
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -1015,6 +1025,13 @@ class QemuDeployMixin:
             # « on » et non « auto » : auto s'abstient sur une VM sans écran,
             # or c'est précisément ce que la case permet de demander.
             parts += ["--gpu", "on"]
+        # L'identité git de la VM. Sans ces options, deploy_qemu recopie celle
+        # de l'HÔTE : le formulaire la montre et permet de la changer, il ne
+        # la remplace pas par du vide.
+        if git_name:
+            parts += ["--git-name", git_name]
+        if git_email:
+            parts += ["--git-email", git_email]
         # Guide affiché à la connexion SSH de la VM : dans la langue du menu, et
         # avec la section ERPLibre seulement là où ERPLibre sera installé — une
         # VM déployée nue n'annonce pas un dépôt qui n'existe pas.
@@ -1087,6 +1104,8 @@ class QemuDeployMixin:
             ),
             vm_tools=spec.get("vm_tools") or (),
             gpu3d=bool(spec.get("gpu3d")),
+            git_name=spec.get("git_name") or "",
+            git_email=spec.get("git_email") or "",
         )
 
     def _qemu_arches_for(self, distro, arch):
@@ -1703,6 +1722,35 @@ class QemuDeployMixin:
                     picked.append(key)
         return tuple(picked)
 
+    def _qemu_ask_ai_tools(self, vm_tools):
+        """(agent, nom, courriel) — rien à poser si l'outil n'est pas coché.
+
+        Le nom et le courriel sont proposés avec l'identité de l'HÔTE, qui
+        est ce que la VM reçoit aujourd'hui : une réponse vide la garde. Sans
+        ce défaut affiché, un champ vide se lirait comme une identité absente
+        et inviterait à la ressaisir pour rien.
+        """
+        from script.todo import dev_tools
+
+        if "aidev" not in (vm_tools or ()):
+            return "", "", ""
+        noms = list(dev_tools.AGENTS)
+        print(f"  {t('AI coding tools')} :")
+        for i, nom in enumerate(noms, 1):
+            marque = " ←" if nom == dev_tools.AGENT_DEFAUT else ""
+            print(f"    [{i}] {nom}{marque}")
+        rep = input("    " + t("Choice: ")).strip()
+        agent = (
+            noms[int(rep) - 1]
+            if rep.isdigit() and 1 <= int(rep) <= len(noms)
+            else dev_tools.AGENT_DEFAUT
+        )
+        hote_nom = self._qemu_host_git("user.name")
+        hote_mail = self._qemu_host_git("user.email")
+        nom = input(f"    {t('Name for git')} [{hote_nom}] : ").strip()
+        mail = input(f"    {t('Email for git')} [{hote_mail}] : ").strip()
+        return agent, nom, mail
+
     def _qemu_ask_python_provider(self, arches):
         """mise (CPython précompilé) ou pyenv (compilation).
 
@@ -1859,6 +1907,10 @@ class QemuDeployMixin:
             )
         )
 
+        # Ces trois réponses n'ont d'objet que si l'outil est coché : les
+        # poser toujours ferait trois questions de plus à qui n'en veut pas.
+        ai_agent, git_name, git_email = self._qemu_ask_ai_tools(vm_tools)
+
         add_ssh_config = self._is_yes_default_yes(
             input(t("Add each VM to ~/.ssh/config? (Y/n): "))
         )
@@ -1922,6 +1974,9 @@ class QemuDeployMixin:
             # décochée (voir _qemu_run_spec).
             "monitor": monitor,
             "gpu3d": gpu3d,
+            "ai_agent": ai_agent,
+            "git_name": git_name,
+            "git_email": git_email,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
         }
@@ -2040,6 +2095,7 @@ class QemuDeployMixin:
         desktop = next((d for d in desktop_map.values() if d), "")
         python_provider = spec.get("python_provider") or ""
         app_store = spec.get("app_store") or "deb"
+        ai_agent = spec.get("ai_agent") or ""
         # Outils de développement : cochés une fois pour tout le parc, puis
         # filtrés machine par machine (architecture, saveur de bureau).
         vm_tools = tuple(spec.get("vm_tools") or ())
@@ -2141,6 +2197,7 @@ class QemuDeployMixin:
                     python_provider=python_provider,
                     app_store=app_store,
                     vm_tools=vm_tools,
+                    ai_agent=ai_agent,
                 )
             elif install:
                 print(
@@ -2159,6 +2216,7 @@ class QemuDeployMixin:
                         python_provider=python_provider,
                         app_store=app_store,
                         vm_tools=vm_tools,
+                        ai_agent=ai_agent,
                     )
 
         # Sommaire TOTAL (déploiement + résolution IP + ssh_config + install

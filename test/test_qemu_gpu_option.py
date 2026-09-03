@@ -182,10 +182,6 @@ class LAbiFigee(unittest.TestCase):
         self.assertNotIn("⚠", vivante)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 try:
     import yaml
 except ImportError:
@@ -281,3 +277,7 @@ class LesGroupesGpuDeLInvite(unittest.TestCase):
             self._args(distro="debian", gpu="off"), "$6$x$y", []
         )
         self.assertNotIn("groupadd", pre)
+
+
+if __name__ == "__main__":
+    unittest.main()
