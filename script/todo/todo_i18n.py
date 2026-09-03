@@ -5113,6 +5113,33 @@ TRANSLATIONS = {
         "fr": "Destination sur l'hôte",
         "en": "Destination on the host",
     },
+    "EGL does not start on this host GPU.": {
+        "fr": "EGL ne démarre pas sur le GPU de cet hôte.",
+        "en": "EGL does not start on this host GPU.",
+    },
+    "The VM cannot boot while 3D stays in its definition.": {
+        "fr": (
+            "La VM ne démarrera pas tant que la 3D reste dans sa"
+            " définition."
+        ),
+        "en": "The VM cannot boot while 3D stays in its definition.",
+    },
+    "Remove the 3D and start again? (Y/n): ": {
+        "fr": "Retirer la 3D et redémarrer ? (O/n) : ",
+        "en": "Remove the 3D and start again? (Y/n, default: yes): ",
+    },
+    "3D on this host": {
+        "fr": "La 3D sur cet hôte",
+        "en": "3D on this host",
+    },
+    "Render node:": {
+        "fr": "Nœud de rendu :",
+        "en": "Render node:",
+    },
+    "Check EGL itself on that node:": {
+        "fr": "Vérifier EGL lui-même sur ce nœud :",
+        "en": "Check EGL itself on that node:",
+    },
     "Full output:": {
         "fr": "Sortie complète :",
         "en": "Full output:",
