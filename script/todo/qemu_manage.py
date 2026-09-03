@@ -109,6 +109,33 @@ def ssh_orphans(blocs, juge, prefixe="erplibre-"):
     return gardes, orphelines
 
 
+# Programme de la sonde « video du qemu en cours » du diagnostic. Il vit
+# ici, et non dans un littéral au milieu de la table des sondes : un
+# programme Python cité dans une commande shell citée dans une chaîne
+# Python porte trois niveaux d'échappement, et le premier guillemet le
+# casse. `shlex.quote` s'occupe du seul niveau qui reste.
+_DIAG_VIDEO_PY = """
+import glob
+
+MOTS = ("vga", "virtio-gpu", "egl", "virgl", "rendernode")
+for chemin in sorted(glob.glob("/proc/[0-9]*/cmdline")):
+    try:
+        with open(chemin, "rb") as fh:
+            argv = fh.read().decode("utf-8", "replace").split(chr(0))
+    except OSError:
+        continue
+    # Le tri se fait sur argv[0] : sur la ligne entière, la sonde se
+    # verrait elle-même, son propre motif contenant « qemu-system ».
+    if not argv or "qemu-system" not in argv[0]:
+        continue
+    noms = [a[6:].split(",")[0] for a in argv if a.startswith("guest=")]
+    print(noms[0] if noms else chemin.split("/")[2])
+    for arg in argv:
+        if any(mot in arg.lower() for mot in MOTS):
+            print("    " + arg)
+"""
+
+
 class QemuManageMixin:
     """Menu QEMU/KVM : g\u00e9rer les VM existantes.\n\nLe cycle de vie apr\u00e8s la cr\u00e9ation : lister, allumer et \u00e9teindre, r\u00e9gler le\nmat\u00e9riel, redimensionner (et r\u00e9tr\u00e9cir, ce qui demande de traverser le syst\u00e8me\nde fichiers invit\u00e9 par nbd), effacer, nettoyer les restes, retrouver une\nadresse IP, rouvrir le suivi d'une installation.\n\nC'est le fichier qui appelle \u00ab virsh \u00bb le plus souvent : les helpers qui le\nfont (domstate, dumpxml, c_env) vivent donc ici."""
 
@@ -461,6 +488,19 @@ class QemuManageMixin:
         (
             "utilisateur des VM",
             "ps -o user=,comm= -C qemu-system-x86_64 2>&1 | sort -u",
+        ),
+        # Ce que la VM a REÇU, et non ce que sa définition demande : entre
+        # les deux, libvirt peut avoir retiré l'accélération sans le dire.
+        # « virtio-vga-gl » est le device 3D des QEMU récents ; l'ancienne
+        # forme « virtio-vga,virgl=on » ne s'écrit plus, si bien qu'un grep
+        # sur « virgl » ne rend rien sur un QEMU pourtant accéléré et fait
+        # conclure à tort qu'il manque un réglage. Le suffixe « -gl » est ce
+        # qui distingue le device 3D de celui du rendu logiciel, et c'est la
+        # seule pièce que la ligne de commande dise sans ambiguïté :
+        # « egl-headless » s'y trouve dans les deux cas.
+        (
+            "video du qemu en cours",
+            "python3 -c " + shlex.quote(_DIAG_VIDEO_PY) + " 2>&1",
         ),
         ("stockage", "df -h /var/lib/libvirt/images 2>&1"),
         ("groupes", "id"),
