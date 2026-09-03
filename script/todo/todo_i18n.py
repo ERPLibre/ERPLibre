@@ -4965,6 +4965,22 @@ TRANSLATIONS = {
         "fr": "La 3D était active ; réessayer sans elle :",
         "en": "3D was on; retry without it:",
     },
+    "Recommended before installing:": {
+        "fr": "Recommandé avant d'installer :",
+        "en": "Recommended before installing:",
+    },
+    "Grant libvirt access, or every VM command will": {
+        "fr": "Donner l'accès à libvirt, sinon chaque commande VM",
+        "en": "Grant libvirt access, or every VM command will",
+    },
+    "ask for a sudo password:": {
+        "fr": "demandera un mot de passe sudo :",
+        "en": "ask for a sudo password:",
+    },
+    "then log out and back in.": {
+        "fr": "puis se déconnecter et se reconnecter.",
+        "en": "then log out and back in.",
+    },
     "Full output:": {
         "fr": "Sortie complète :",
         "en": "Full output:",

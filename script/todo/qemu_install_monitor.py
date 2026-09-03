@@ -22,6 +22,8 @@ import shutil
 import socket
 import subprocess
 import time
+
+from script.todo.qemu_privilege import sudo_prefix
 from pathlib import Path
 
 try:
@@ -1974,15 +1976,16 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     cmd = ""
     if uuid:
         cmd = (
-            f"vu=$(sudo virsh domuuid {q} 2>/dev/null | tr -d '[:space:]'); "
+            f"vu=$({sudo_prefix()}virsh domuuid {q} 2>/dev/null"
+            " | tr -d '[:space:]'); "
             f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
             f'echo "REFUS : {name} n\'est plus le même domaine"'
             f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
         )
     cmd += (
-        f"sudo virsh destroy {q} 2>/dev/null; "
-        f"sudo virsh undefine {q} --nvram 2>/dev/null "
-        f"|| sudo virsh undefine {q}"
+        f"{sudo_prefix()}virsh destroy {q} 2>/dev/null; "
+        f"{sudo_prefix()}virsh undefine {q} --nvram 2>/dev/null "
+        f"|| {sudo_prefix()}virsh undefine {q}"
     )
     if with_disks:
         disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
@@ -2917,7 +2920,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 )
                 sortie = "Ctrl+O"
             else:
-                cmd = f"sudo virsh console {shlex.quote(vm['name'])}"
+                cmd = f"{sudo_prefix()}virsh console {shlex.quote(vm['name'])}"
                 titre = f"virsh console {vm['name']}"
                 sortie = "Ctrl+]"
             with self.suspend():

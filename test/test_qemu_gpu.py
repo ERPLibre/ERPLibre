@@ -446,7 +446,31 @@ class TestMenuGlue(unittest.TestCase):
         joined = " ".join(todo.launched)
         self.assertIn("--vcpus 4", joined)
         self.assertIn("accel3d=on", joined)
-        self.assertTrue(all(c.startswith("sudo ") for c in todo.launched))
+
+    def test_the_privilege_follows_the_probe(self):
+        """Appartenir au groupe libvirt suffit à joindre qemu:///system :
+        préfixer alors de « sudo » ne donne aucun droit de plus et réclame un
+        mot de passe pour rien. Les deux cas sont tenus ici, sans quoi la
+        réponse du sondage pourrait être ignorée sans que rien ne rougisse."""
+        for joignable, attendu in ((True, ""), (False, "sudo ")):
+            with self.subTest(joignable=joignable):
+                todo = self._todo({"vm-a": "shut off"})
+                todo._qemu_hw_form = lambda rows, node, nets=None: {
+                    "vm-a": {"vcpus": 4, "ram": 8192, "gpu": True}
+                }
+                with mock.patch(
+                    "script.todo.qemu_privilege.libvirt_reachable",
+                    return_value=joignable,
+                ), mock.patch(
+                    "script.todo.qemu_privilege.os.geteuid", return_value=1000
+                ), mock.patch(
+                    "script.todo.qemu_privilege.shutil.which",
+                    return_value="/usr/bin/virsh",
+                ):
+                    self._run(todo, ["vm-a"], ["o"])
+                self.assertTrue(todo.launched)
+                for c in todo.launched:
+                    self.assertEqual(c.startswith("sudo "), bool(attendu), c)
 
     def test_nothing_to_change_launches_nothing(self):
         todo = self._todo({"vm-a": "shut off"})

@@ -13,6 +13,7 @@ import subprocess
 import time
 
 from script.todo import todo_install
+from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import t
 
 
@@ -127,7 +128,7 @@ class QemuManageMixin:
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def _qemu_list_vms(self, ask_advanced=False):
-        cmd = "sudo virsh list --all"
+        cmd = f"{sudo_prefix()}virsh list --all"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
         if not ask_advanced:
@@ -211,7 +212,7 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for real in resolved:
-            cmd = f"sudo virsh {action} {shlex.quote(real)}"
+            cmd = f"{sudo_prefix()}virsh {action} {shlex.quote(real)}"
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -391,7 +392,9 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for entry in cmds:
-            cmd = "sudo " + " ".join(shlex.quote(c) for c in entry["cmd"])
+            cmd = sudo_prefix() + " ".join(
+                shlex.quote(c) for c in entry["cmd"]
+            )
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -674,7 +677,10 @@ class QemuManageMixin:
         else:
             targets = [name]
         for tgt in targets:
-            cmd = f"sudo virsh domifaddr {shlex.quote(tgt)} --source lease"
+            cmd = (
+                f"{sudo_prefix()}virsh domifaddr {shlex.quote(tgt)}"
+                " --source lease"
+            )
             print(f"\n{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -691,7 +697,7 @@ class QemuManageMixin:
         print(
             f"👤 {t('Default login (if set at deploy): erplibre / erplibre')}"
         )
-        cmd = f"sudo virsh console {shlex.quote(name)}"
+        cmd = f"{sudo_prefix()}virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1035,7 +1041,10 @@ class QemuManageMixin:
             return True
         # --mode acpi,agent : envoie le SIGNAL d'extinction (bouton ACPI) puis
         # tente l'agent invité si présent — plus fiable qu'un arrêt brutal.
-        cmd = f"sudo virsh shutdown {shlex.quote(name)} --mode acpi,agent"
+        cmd = (
+            f"{sudo_prefix()}virsh shutdown {shlex.quote(name)}"
+            " --mode acpi,agent"
+        )
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
         print(
@@ -1066,7 +1075,7 @@ class QemuManageMixin:
                 )
             )
         ):
-            cmd = f"sudo virsh destroy {shlex.quote(name)}"
+            cmd = f"{sudo_prefix()}virsh destroy {shlex.quote(name)}"
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
             time.sleep(2)
@@ -1142,7 +1151,8 @@ class QemuManageMixin:
         print(f"\n{t('Current disk:')} {disk}")
         # -U : lecture sûre même VM allumée (sinon « shared write lock »).
         self.execute.exec_command_live(
-            f"sudo qemu-img info -U {shlex.quote(disk)}", source_erplibre=False
+            f"{sudo_prefix()}qemu-img info -U {shlex.quote(disk)}",
+            source_erplibre=False,
         )
         cur_bytes = self._qemu_disk_virtual_bytes(disk)
         cur_gb = cur_bytes / (1 << 30)
@@ -1259,11 +1269,14 @@ class QemuManageMixin:
             # Agrandissement À CHAUD : le disque virtuel grossit, le FS invité
             # devra être étendu ensuite.
             cmd = (
-                f"sudo virsh blockresize {shlex.quote(name)} "
+                f"{sudo_prefix()}virsh blockresize {shlex.quote(name)} "
                 f"{shlex.quote(disk)} {new_gb:g}G"
             )
         else:
-            cmd = f"sudo qemu-img resize {shlex.quote(disk)} {new_gb:g}G"
+            cmd = (
+                f"{sudo_prefix()}qemu-img resize"
+                f" {shlex.quote(disk)} {new_gb:g}G"
+            )
 
         # 4) Agrandissement : exécuter la commande + proposer d'étendre le FS.
         if cmd is not None:
@@ -1302,7 +1315,7 @@ class QemuManageMixin:
         if self._is_yes(input(t("Start the VM now? (y/N): "))):
             # `name` est déjà le nom canonique : « virsh start <id> »
             # échouerait car l'ID disparaît quand la VM est éteinte.
-            cmd = f"sudo virsh start {shlex.quote(name)}"
+            cmd = f"{sudo_prefix()}virsh start {shlex.quote(name)}"
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1862,7 +1875,7 @@ class QemuManageMixin:
         )
         if not self._is_yes(input(t("Open the serial console now? (y/N): "))):
             return
-        cmd = f"sudo virsh console {shlex.quote(name)}"
+        cmd = f"{sudo_prefix()}virsh console {shlex.quote(name)}"
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
@@ -1923,9 +1936,9 @@ class QemuManageMixin:
             # Éteindre si en cours, puis retirer la définition (+ nvram si
             # UEFI ; repli sans l'option pour les vieilles versions de virsh).
             cmd = (
-                f"sudo virsh destroy {q} 2>/dev/null; "
-                f"sudo virsh undefine {q} --nvram 2>/dev/null "
-                f"|| sudo virsh undefine {q}"
+                f"{sudo_prefix()}virsh destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh undefine {q}"
             )
             if del_disks and fichiers:
                 cmd += "; sudo rm -f " + " ".join(
@@ -2148,9 +2161,9 @@ class QemuManageMixin:
         for name in ghosts:
             q = shlex.quote(name)
             cmd = (
-                f"sudo virsh destroy {q} 2>/dev/null; "
-                f"sudo virsh undefine {q} --nvram 2>/dev/null "
-                f"|| sudo virsh undefine {q}"
+                f"{sudo_prefix()}virsh destroy {q} 2>/dev/null; "
+                f"{sudo_prefix()}virsh undefine {q} --nvram 2>/dev/null "
+                f"|| {sudo_prefix()}virsh undefine {q}"
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)

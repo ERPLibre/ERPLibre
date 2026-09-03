@@ -239,6 +239,38 @@ class QemuMenuMixin:
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
+    def _qemu_warn_libvirt_access(self):
+        """Dit, AVANT d'installer, par quelle voie les commandes passeront.
+
+        Deux voies mènent à qemu:///system : le groupe libvirt, qui ne demande
+        rien, et sudo, qui demande un mot de passe à chaque commande. Le suivi
+        d'installation, lui, tourne détaché et sans terminal : il ne peut
+        répondre à aucune invite. Le savoir avant l'installation vaut mieux que
+        de le découvrir devant la première invite de mot de passe.
+
+        Ne dit rien quand l'accès est déjà là — un avertissement qui se répète
+        sans objet finit par ne plus se lire.
+        """
+        from script.todo import qemu_privilege as qp
+
+        if qp.libvirt_reachable(force=True):
+            return
+        declare, actif = qp.group_state()
+        if actif:
+            return
+        print(f"\n⚠  {t('Recommended before installing:')}")
+        if declare:
+            # Le groupe est acquis mais la session est plus ancienne que lui :
+            # aucun usermod à refaire, seulement une session à rouvrir.
+            print(f"   {t('You are in the libvirt group, but this session')}")
+            print(f"   {t('predates it. Log out and back in, or run:')}")
+            print("     newgrp libvirt")
+        else:
+            print(f"   {t('Grant libvirt access, or every VM command will')}")
+            print(f"   {t('ask for a sudo password:')}")
+            print("     sudo usermod -aG libvirt $USER")
+            print(f"   {t('then log out and back in.')}")
+
     def _qemu_ensure_tools(self):
         """virsh absent : proposer l'installation plutôt que de laisser
         chaque commande échouer sur « sudo: virsh: command not found ».
@@ -249,6 +281,7 @@ class QemuMenuMixin:
             return True
         print(f"\n⚠  {t('virsh is missing: libvirt is not installed here.')}")
         print(f"   {t('Every VM command will fail until it is.')}")
+        self._qemu_warn_libvirt_access()
         if not self._is_yes_default_yes(
             input(t("Install the QEMU/libvirt tools now? (Y/n): "))
         ):
