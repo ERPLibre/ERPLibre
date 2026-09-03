@@ -400,6 +400,278 @@ class QemuManageMixin:
         print(f"\n  {t('Check EGL itself on that node:')}")
         print("    eglinfo -B 2>&1 | head -20")
         print("    lspci -nnk | grep -A3 -iE 'vga|3d|display'")
+        self._qemu_nvidia_acl_advice()
+
+    # Les relevés du diagnostic : (titre, commande). Tous en LECTURE — un
+    # rapport qui modifie l'hôte n'est plus un rapport, et celui-ci est fait
+    # pour être envoyé à quelqu'un qui n'a pas accès à la machine.
+    #
+    # « head -1 » sur virt-xml n'est pas une curiosité : la ligne d'amorçage
+    # dit quel interpréteur le porte, et c'est ce qui distingue un module
+    # système absent d'un venv qui capture la commande.
+    _DIAG_PROBES = (
+        ("uname", "uname -a"),
+        ("os-release", "cat /etc/os-release 2>/dev/null | head -5"),
+        ("virtualisation", "systemd-detect-virt || true"),
+        ("kvm", "ls -l /dev/kvm 2>&1"),
+        ("dri", "ls -l /dev/dri/ 2>&1"),
+        ("gpu", "lspci -nnk 2>/dev/null | grep -A3 -iE 'vga|3d|display'"),
+        ("egl", "eglinfo -B 2>&1 | head -20"),
+        ("virsh", "virsh --connect qemu:///system version 2>&1"),
+        ("domaines", "virsh --connect qemu:///system list --all 2>&1"),
+        ("réseaux", "virsh --connect qemu:///system net-list --all 2>&1"),
+        (
+            "outils",
+            "command -v virsh virt-install virt-xml qemu-img"
+            " guestfish genisoimage cloud-localds 2>&1",
+        ),
+        ("virt-xml", "head -1 $(command -v virt-xml) 2>&1"),
+        (
+            "python",
+            "command -v python3; python3 -c 'import sys;"
+            " print(sys.executable)' 2>&1",
+        ),
+        ("modules qemu", "ls /usr/lib/qemu/ 2>/dev/null | head -30"),
+        # NVIDIA propriétaire : trois conditions que Mesa seul ne donne pas.
+        # « modeset » à N prive GBM du pilote, le greffon GBM de NVIDIA vit
+        # hors des chemins de Mesa, et QEMU doit pouvoir ouvrir /dev/nvidia*
+        # — que libvirt n'ajoute PAS d'office à la liste des périphériques
+        # autorisés, même quand il y ajoute le nœud de rendu.
+        # Ce paramètre est lisible par root SEUL : sans sudo, la sonde ne
+        # rapporte qu'un refus de permission, qui n'apprend rien. « sudo -n »
+        # ne demande jamais de mot de passe — il échoue plutôt que de bloquer
+        # un relevé, et le repli dit alors ce qui manque.
+        (
+            "nvidia modeset",
+            "sudo -n cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null"
+            " || echo '(lisible par root seul : sudo cat"
+            " /sys/module/nvidia_drm/parameters/modeset)'",
+        ),
+        ("nvidia devices", "ls -l /dev/nvidia* 2>&1"),
+        ("gbm backends", "ls -l /usr/lib/gbm/ 2>&1"),
+        # Une sortie vide est ambiguë — fichier absent, ou toutes les clés
+        # en commentaire ? Le dire, puisque « rien de réglé » signifie que
+        # les défauts de libvirt s'appliquent, et c'est une information.
+        (
+            "libvirt qemu.conf",
+            "grep -nE '^[^#]*(user|group|cgroup_device_acl|namespaces)'"
+            " /etc/libvirt/qemu.conf 2>&1 | head -20"
+            " || echo '(aucune clé active : défauts de libvirt)'",
+        ),
+        (
+            "utilisateur des VM",
+            "ps -o user=,comm= -C qemu-system-x86_64 2>&1 | sort -u",
+        ),
+        ("stockage", "df -h /var/lib/libvirt/images 2>&1"),
+        ("groupes", "id"),
+    )
+
+    # Ce qui manque au relevé quand un outil est absent. « eglinfo » est le
+    # seul qui éprouve EGL pour de vrai : sans lui, le rapport dit ce qui est
+    # installé, jamais si ça démarre — et c'est justement la question.
+    _DIAG_TOOLS = (
+        (
+            "eglinfo",
+            {
+                "apt": "mesa-utils",
+                "dnf": "mesa-demos",
+                "pacman": "mesa-utils",
+                "zypper": "Mesa-demo-egl",
+            },
+        ),
+        (
+            "lspci",
+            {
+                "apt": "pciutils",
+                "dnf": "pciutils",
+                "pacman": "pciutils",
+                "zypper": "pciutils",
+            },
+        ),
+    )
+
+    def _qemu_diag_offer_tools(self):
+        """Propose d'installer les outils dont le relevé manque. Rend un bool
+        disant si quelque chose a été installé.
+
+        Proposé et non imposé : un diagnostic qui pose des paquets sans
+        demander n'est plus un diagnostic.
+        """
+        from script.todo.qemu_privilege import install_cmd_for
+
+        manquants = [
+            (binaire, paquets)
+            for binaire, paquets in self._DIAG_TOOLS
+            if shutil.which(binaire) is None
+        ]
+        if not manquants:
+            return False
+        print(f"\n  {t('These tools would complete the report:')}")
+        commandes = []
+        for binaire, paquets in manquants:
+            cmd, paquet = install_cmd_for(paquets)
+            if cmd:
+                print(f"    {binaire:<10} {t('package')} {paquet}")
+                commandes.append(cmd)
+            else:
+                print(f"    {binaire:<10} {t('unknown package manager')}")
+        if not commandes:
+            return False
+        # La commande est annoncée EN ENTIER avant la question, sudo compris :
+        # « les installer ? » ne dit ni ce qui sera lancé, ni avec quels
+        # droits, et c'est ce qu'on approuve.
+        print(f"\n  {t('Will run, as root:')}")
+        for cmd in commandes:
+            print(f"    {cmd}")
+        try:
+            reponse = input(t("Install them now? (y/N): "))
+        except EOFError:
+            # Sans terminal — un lancement scripté — la question n'a personne
+            # pour y répondre. Ne rien installer, et laisser le rapport, qui
+            # est déjà écrit, faire son travail.
+            return False
+        if not self._is_yes(reponse):
+            return False
+        for cmd in commandes:
+            print(f"\n{t('Will execute:')} {cmd}")
+            self.execute.exec_command_live(
+                cmd,
+                source_erplibre=False,
+                new_env={"PATH": system_path()},
+            )
+        return True
+
+    # Ce que libvirt autorise par défaut. La liste sert de BASE à la
+    # proposition : la compléter suppose de la reprendre en entier, car la
+    # clé remplace le défaut au lieu de s'y ajouter.
+    _ACL_BASE = (
+        "/dev/null",
+        "/dev/full",
+        "/dev/zero",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/ptmx",
+        "/dev/kvm",
+    )
+    _QEMU_CONF = "/etc/libvirt/qemu.conf"
+
+    @staticmethod
+    def _qemu_nvidia_nodes():
+        """Nœuds de la carte NVIDIA présents sur l'hôte, triés.
+
+        Le répertoire /dev/nvidia-caps est écarté : ce sont des capacités MIG,
+        que la pile EGL n'ouvre pas, et les lister ferait proposer plus large
+        que nécessaire.
+        """
+        return sorted(
+            n
+            for n in glob.glob("/dev/nvidia*")
+            if os.path.exists(n) and not os.path.isdir(n)
+        )
+
+    def _qemu_acl_active(self):
+        """Le contenu ACTIF de cgroup_device_acl, ou None s'il n'y en a pas.
+
+        Rend None aussi quand le fichier est illisible : ne pas pouvoir lire
+        n'est pas la même chose que savoir qu'il n'y a rien, et la proposition
+        le dit plutôt que de conclure.
+        """
+        try:
+            with open(self._QEMU_CONF, encoding="utf-8") as fh:
+                lignes = [ln for ln in fh if not ln.lstrip().startswith("#")]
+        except OSError:
+            return None
+        texte = "".join(lignes)
+        if "cgroup_device_acl" not in texte:
+            return ""
+        return texte[texte.index("cgroup_device_acl") :]
+
+    def _qemu_nvidia_acl_advice(self):
+        """Propose la liste de périphériques quand elle explique le blocage.
+
+        Pertinent seulement si l'hôte porte une carte NVIDIA propriétaire ET
+        que sa liste ne nomme pas ces nœuds : libvirt y ajoute le nœud de
+        rendu quand le domaine le déclare, jamais ceux de la carte, et la
+        pile propriétaire ouvre les deux. Rend un bool disant s'il a parlé.
+        """
+        nodes = self._qemu_nvidia_nodes()
+        if not nodes:
+            return False
+        actif = self._qemu_acl_active()
+        if actif and all(n in actif for n in nodes):
+            return False
+        render = self._qemu_host_gpu_node()
+        entrees = list(self._ACL_BASE) + ([render] if render else []) + nodes
+        print(f"\n── {t('Devices QEMU may open')} ──")
+        if actif is None:
+            print(f"  {t('Unreadable, so this may already be set:')}")
+            print(f"    sudo grep -n cgroup_device_acl {self._QEMU_CONF}")
+        elif actif:
+            print(f"  ⚠ {t('A list exists: ADD to it, never replace it.')}")
+        print(f"  {t('In')} {self._QEMU_CONF} :")
+        print("    cgroup_device_acl = [")
+        for i in range(0, len(entrees), 3):
+            bout = ", ".join(f'"{e}"' for e in entrees[i : i + 3])
+            print(f"        {bout},")
+        print("    ]")
+        print(f"\n  {t('Then restart the daemon and recreate the VM:')}")
+        print("    systemctl is-active libvirtd virtqemud")
+        print("    sudo systemctl restart libvirtd")
+        print(f"    {t('then stop and start the VM (a guest reboot is not')}")
+        print(f"    {t('enough: the list applies when QEMU is launched).')}")
+        return True
+
+    def _qemu_diagnostics(self):
+        """Relevé complet de l'hôte, écrit dans un fichier à transmettre.
+
+        Chaque sonde est bornée dans le temps : une commande qui pend ne doit
+        pas retenir le rapport, et son absence est elle-même une information.
+        """
+        import io
+        from contextlib import redirect_stdout
+
+        dossier = os.path.expanduser("~/.erplibre")
+        os.makedirs(dossier, exist_ok=True)
+        horo = time.strftime("%Y%m%d-%H%M%S")
+        chemin = os.path.join(dossier, f"qemu-diagnostic-{horo}.log")
+        morceaux = [f"# ERPLibre — diagnostic QEMU — {horo}\n"]
+        print(f"\n🩺 {t('Collecting the diagnostics...')}")
+        for titre, cmd in self._DIAG_PROBES:
+            print(f"  … {titre}")
+            morceaux.append(f"\n===== {titre} =====\n$ {cmd}\n")
+            try:
+                res = subprocess.run(
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=self._qemu_c_env(),
+                )
+                morceaux.append((res.stdout or "") + (res.stderr or ""))
+            except subprocess.TimeoutExpired:
+                morceaux.append("(timeout)\n")
+            except OSError as exc:
+                morceaux.append(f"({exc})\n")
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            self._qemu_gpu_3d_report()
+        morceaux.append("\n===== 3D =====\n" + tampon.getvalue())
+        try:
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write("".join(morceaux))
+        except OSError as exc:
+            print(f"  ⚠ {t('Cannot write the report: ')}{exc}")
+            return
+        print(f"\n✅ {t('Report written to: ')}{chemin}")
+        # Le rapport porte le nom de la machine, des chemins de compte et des
+        # adresses : le dire, puisqu'il est fait pour être transmis.
+        print(f"   {t('It names this host, its paths and its addresses.')}")
+        print(f"   {t('Read it before sharing it.')}")
+        # Après l'écriture : le rapport existe même si l'on refuse, et une
+        # installation acceptée invite à le refaire, plus complet.
+        if self._qemu_diag_offer_tools():
+            print(f"\n  {t('Run the diagnostics again for a fuller report.')}")
 
     def _qemu_egl_failed(self, sortie):
         """La sortie accuse-t-elle un EGL inutilisable ?

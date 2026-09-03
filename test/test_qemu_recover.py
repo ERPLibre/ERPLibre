@@ -17,6 +17,7 @@ Ce que ces tests gardent :
   shell.
 """
 
+import re
 import shlex
 import sys
 import unittest
@@ -212,7 +213,8 @@ class LeMenu(unittest.TestCase):
     def test_the_config_entry_still_reaches_its_command(self):
         """L'entrée du catalogue vient de todo.json : elle n'a pas de branche
         « elif » et dépend du repli par indice. Insérer une entrée codée en
-        dur la décale, et un décalage manqué lancerait la mauvaise."""
+        dur la décale, et un décalage manqué lancerait la mauvaise. Le numéro
+        se lit sur le menu rendu plutôt qu'écrit ici en dur."""
         from unittest import mock as m
 
         from script.todo.todo_i18n import set_lang
@@ -222,10 +224,21 @@ class LeMenu(unittest.TestCase):
         todo._menu_header = lambda: "x"
         lancees = []
         todo.execute_from_configuration = lambda e: lancees.append(e)
+        # Le numéro se DÉDUIT du menu : l'entrée de config est la dernière
+        # des entrées numérotées. L'écrire en dur ferait passer le test au
+        # premier réarrangement de sections, sans rien prouver.
         with m.patch("script.todo.qemu_menu.click") as click, m.patch.object(
             todo, "_qemu_ensure_tools", return_value=True
         ), m.patch("builtins.print"):
-            click.prompt.side_effect = ["18", "0"]
+            click.prompt.side_effect = ["0"]
+            todo.prompt_execute_qemu()
+            aide = click.prompt.call_args[0][0]
+        numeros = re.findall(r"^\[(\d+)\]", aide, re.M)
+        dernier = max(int(n) for n in numeros)
+        with m.patch("script.todo.qemu_menu.click") as click, m.patch.object(
+            todo, "_qemu_ensure_tools", return_value=True
+        ), m.patch("builtins.print"):
+            click.prompt.side_effect = [str(dernier), "0"]
             todo.prompt_execute_qemu()
         self.assertEqual(1, len(lancees), lancees)
         self.assertIn("dry-run", lancees[0].get("bash_command", ""))
