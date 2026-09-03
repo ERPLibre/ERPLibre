@@ -144,6 +144,9 @@ def hw_state(xml: str, autostart=None) -> dict:
         "max_mem_mib": 0,
         "video": "",
         "accel3d": False,
+        # Device QEMU figé par libvirt (attribut « device » du <model>,
+        # depuis libvirt 12.5.0). Vide sur les versions antérieures.
+        "video_device": "",
         "egl": False,
         "render": "",
         "screen": False,
@@ -182,6 +185,7 @@ def hw_state(xml: str, autostart=None) -> dict:
             state["heads"] = int(model.get("heads") or 1)
         except ValueError:
             state["heads"] = 1
+        state["video_device"] = model.get("device") or ""
         accel = model.find("acceleration")
         state["accel3d"] = accel is not None and accel.get("accel3d") == "yes"
     for graphics in root.findall("./devices/graphics"):
@@ -195,6 +199,27 @@ def hw_state(xml: str, autostart=None) -> dict:
                 (gl.get("rendernode") or "") if gl is not None else ""
             )
     return state
+
+
+def pin_defeats_3d(state) -> bool:
+    """L'ABI figée annule-t-elle la 3D pourtant demandée ?
+
+    Depuis libvirt 12.5.0, le <model> vidéo porte un attribut « device »
+    qui GRAVE le device QEMU retenu — « virtio-vga », « virtio-vga-gl »,
+    et leurs équivalents sans VGA. Il existe pour tenir l'ABI de l'invité
+    stable d'un démarrage à l'autre, et il l'emporte sur « accel3d ».
+
+    Le mode de défaillance qu'il produit : une VM démarrée une première
+    fois sans 3D — parce que le module GL manquait, ou parce que l'option
+    n'était pas cochée — garde le device non accéléré. Cocher la 3D
+    ensuite écrit « accel3d=yes » et ne change RIEN à ce que QEMU reçoit.
+    La définition et la ligne de commande se contredisent alors sans que
+    rien ne le signale : seul le suffixe « -gl » du device dit la vérité.
+    """
+    fige = state.get("video_device") or ""
+    return (
+        bool(state.get("accel3d")) and bool(fige) and not fige.endswith("-gl")
+    )
 
 
 def net_token(kind: str, source) -> str:
@@ -486,7 +511,13 @@ def hw_summary(state: dict) -> str:
     bits = [f"{state.get('vcpus') or '?'} vCPU", fmt_mib(state.get("mem_mib"))]
     if state.get("accel3d") or state.get("render"):
         node = state.get("render") or "?"
-        bits.append(f"3D {node.rsplit('/', 1)[-1]}")
+        marque = f"3D {node.rsplit('/', 1)[-1]}"
+        # Une VM dont l'ABI est figée sur un device sans GL tourne SANS 3D,
+        # quoi que dise « accel3d ». Afficher « 3D » tout court y ferait
+        # croire l'inverse, et c'est la ligne sur laquelle on décide.
+        if pin_defeats_3d(state):
+            marque += f" ⚠ {t('frozen on')} {state['video_device']}"
+        bits.append(marque)
     elif state.get("screen"):
         bits.append(t("software rendering"))
     if (state.get("heads") or 1) > 1:

@@ -5008,6 +5008,12 @@ TRANSLATIONS = {
         ),
     },
     # Récupération de fichiers dans le disque d'une VM (libguestfs)
+    # Une VM dont libvirt a figé le device vidéo sur une variante sans GL
+    # tourne sans 3D, même avec « accel3d=yes » dans sa définition.
+    "frozen on": {
+        "fr": "figée sur",
+        "en": "frozen on",
+    },
     "Recover files from a VM disk (libguestfs)": {
         "fr": "💾 Récupérer des fichiers dans le disque d'une VM (libguestfs)",
         "en": "💾 Recover files from a VM disk (libguestfs)",

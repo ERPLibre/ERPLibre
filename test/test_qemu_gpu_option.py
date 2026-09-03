@@ -112,5 +112,75 @@ class LaSpecLaTransporte(unittest.TestCase):
         self.assertFalse(self._spec({})["gpu3d"])
 
 
+class LAbiFigee(unittest.TestCase):
+    """Une 3D demandée que l'ABI figée annule doit se voir.
+
+    Depuis libvirt 12.5.0, le <model> vidéo porte un attribut « device »
+    qui grave le device QEMU retenu, pour tenir l'ABI de l'invité stable
+    d'un démarrage à l'autre. Il l'emporte sur « accel3d » : une VM
+    démarrée une première fois sans 3D garde le device sans GL, et cocher
+    la 3D ensuite ne change rien à ce que QEMU reçoit. La définition et
+    la ligne de commande se contredisent alors en silence.
+    """
+
+    XML = (
+        "<domain><name>vm</name><vcpu>8</vcpu>"
+        "<memory unit='KiB'>33554432</memory><devices>"
+        "<video><model type='virtio' heads='1' {attr}>"
+        "<acceleration accel3d='{accel}'/></model></video>"
+        "<graphics type='egl-headless'>"
+        "<gl rendernode='/dev/dri/renderD128'/></graphics>"
+        "</devices></domain>"
+    )
+
+    def _etat(self, device="", accel="yes"):
+        from script.todo.qemu_hardware import hw_state
+
+        attr = f"device='{device}'" if device else ""
+        return hw_state(self.XML.format(attr=attr, accel=accel), False)
+
+    def test_the_pinned_device_is_read(self):
+        self.assertEqual(
+            self._etat("virtio-vga")["video_device"], "virtio-vga"
+        )
+        self.assertEqual(self._etat()["video_device"], "")
+
+    def test_a_non_gl_pin_defeats_the_requested_3d(self):
+        from script.todo.qemu_hardware import pin_defeats_3d
+
+        self.assertTrue(pin_defeats_3d(self._etat("virtio-vga")))
+
+    def test_a_gl_pin_does_not(self):
+        """Le suffixe « -gl » est ce qui distingue les deux devices.
+
+        Sans cette lecture, tout épinglage passerait pour une panne et la
+        VM correctement accélérée porterait un avertissement à tort.
+        """
+        from script.todo.qemu_hardware import pin_defeats_3d
+
+        self.assertFalse(pin_defeats_3d(self._etat("virtio-vga-gl")))
+        self.assertFalse(pin_defeats_3d(self._etat("virtio-gpu-gl")))
+
+    def test_no_pin_and_no_3d_are_not_flagged(self):
+        """Deux cas voisins qu'un test trop large confondrait : libvirt
+        antérieur à 12.5.0 n'écrit pas l'attribut, et une VM sans 3D
+        demandée n'a rien à signaler même si son device est figé."""
+        from script.todo.qemu_hardware import pin_defeats_3d
+
+        self.assertFalse(pin_defeats_3d(self._etat()))
+        self.assertFalse(pin_defeats_3d(self._etat("virtio-vga", accel="no")))
+
+    def test_the_summary_says_so(self):
+        """La ligne de résumé est celle sur laquelle on décide : elle ne
+        doit pas afficher « 3D » tout court quand la 3D ne tourne pas."""
+        from script.todo.qemu_hardware import hw_summary
+
+        figee = hw_summary(self._etat("virtio-vga"))
+        vivante = hw_summary(self._etat("virtio-vga-gl"))
+        self.assertIn("virtio-vga", figee)
+        self.assertIn("⚠", figee)
+        self.assertNotIn("⚠", vivante)
+
+
 if __name__ == "__main__":
     unittest.main()
