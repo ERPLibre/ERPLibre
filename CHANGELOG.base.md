@@ -26,16 +26,6 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 <!-- [en] -->
-**Migration notes**
-
-Recreating the virtual environment, use installation guide from tool `make`.
-
-<!-- [fr] -->
-**Notes de migration**
-
-Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outil `make`.
-
-<!-- [en] -->
 ## Added
 <!-- [fr] -->
 ## Ajouté
@@ -62,22 +52,6 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - `long_test/` — tests that create real machines and take hours, kept out of `test/` so the unit runner stays runnable in seconds. `deep_proxmox.py` stacks Proxmox in Proxmox, `deep_qemu.py` stacks QEMU in QEMU, and they share one engine. Measured on 28 cores: three levels cost 34 minutes, the fourth 4 h 20 of boot plus 7 h 18 of install — everything there is 15 to 30 times slower, and that is where the vendors stop documenting nesting. The depth is a parameter and defaults to three, because three works
 - deep_qemu proves KVM at every level instead of assuming it: `deploy_qemu.py` never passes `--cpu host-passthrough` and, when /dev/kvm is missing, it does not fail — it sets `--virt-type qemu` and creates a fully EMULATED VM, seven and a half minutes to boot, with no exit code to say so. Unguarded, the descent would measure stacked TCG while believing it measured nesting. Each level must show `/dev/kvm`, `nested=Y` and a child domain in `type='kvm'`; what was not read counts as NO
 - Both long tests take `--hote` to start from a machine you already own, rather than creating a head VM to host a hypervisor you have on hand — that costs five minutes AND one level of nesting. The plan is then sized on the ROOT, read over ssh; the delays count ABSOLUTE depth; and the root is never a level reached, never destroyed, and its ~/.ssh/config entry is never removed
-- Support Odoo migration database and module with TODO
-- Support multi version odoo switch on same workspace
-- Script for hardening the installation
-- Support Odoo versions 12.0 to 18.0
-- Separate ERPLibre python installation from Odoo python with .venv.erplibre and .venv.odoo18
-- Implement auto-installation with TODO.py
-- TODO show documentation, download database, help with code formatting
-- Performance script to mesure request per second
-- Support Mainframe architecture 390x
-- Deployment with Cloudflare and Nginx
-- Support Apache configuration like Nginx
-- Support RobotLibre code generator
-- Support ERPLibre DevOps, automation procedure about DevOps
-- ERPLibre Home Mobile Application, use TODO to compile, deploy it and personalize it
-- Support Selenium grid from selenium_lib.py
-- Add addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Deploy ERPLibre VMs with QEMU/KVM from cloud images (Ubuntu, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) on amd64, arm64 and s390x, with a menu to list, test, resize, delete and clean up
 - Graphical VMs: a server / desktop choice offering GNOME or Cinnamon (the Linux Mint desktop), with remote access through xrdp — TigerVNC on Arch
 - Textual interfaces: install dashboard, VM deployment form, migration resume
@@ -100,13 +74,10 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - AI assistant tools menu, with the Claude Code commit command
 - Deploy menu: clone ERPLibre on a remote host, configure sshfs, and make
   targets for SSH deployment
-- Database backup and erase commands, and a clearer restore naming
 - Git patch, git remote and vim configuration from the menu
-- Security check of the Python environment
 - Odoo 18 reads STL files (OpenCAD)
 - Mobile: whisper.cpp and sentencepiece in the manifest, a mobile test script,
   and the Odoo sync API contract
-- FAQ entry on wkhtmltopdf for recent distributions
 - brin_advisor and brin_cluster: recommend and apply the right PostgreSQL
   index for an Odoo model
 - Per-VM settings in the deployment form: vCPU, RAM, disk, type, ERPLibre branch, Odoo version and timezone, a lock that shields a VM from the global profile, renaming, and several copies of one entry
@@ -164,22 +135,6 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - `long_test/` — des tests qui créent de vraies machines et durent des heures, tenus hors de `test/` pour que le lanceur unitaire reste lançable en quelques secondes. `deep_proxmox.py` empile des Proxmox dans des Proxmox, `deep_qemu.py` des QEMU dans des QEMU, et les deux partagent un moteur. Mesuré sur 28 cœurs : trois étages coûtent 34 minutes, le quatrième 4 h 20 d'amorçage plus 7 h 18 d'installation — tout y est 15 à 30 fois plus lent, et c'est là que les fabricants cessent de documenter l'imbrication. La profondeur est un paramètre et vaut trois par défaut, parce que trois marche
 - deep_qemu PROUVE KVM à chaque étage au lieu de le supposer : `deploy_qemu.py` ne passe jamais `--cpu host-passthrough` et, quand /dev/kvm manque, il n'échoue pas — il pose `--virt-type qemu` et crée une VM entièrement ÉMULÉE, sept minutes et demie de démarrage, sans qu'aucun code de retour ne le dise. Sans garde, la descente mesurerait de la TCG empilée en croyant mesurer de l'imbrication. Chaque étage doit montrer `/dev/kvm`, `nested=Y` et un domaine enfant en `type='kvm'` ; ce qui n'a pas été lu vaut NON
 - Les deux tests longs acceptent `--hote` pour partir d'une machine qu'on possède déjà, au lieu de créer une VM de tête pour héberger un hyperviseur qu'on a sous la main — cela coûte cinq minutes ET un étage d'imbrication. Le plan se dimensionne alors sur la RACINE, lue par ssh ; les délais comptent la profondeur ABSOLUE ; et la racine n'est jamais un étage atteint, jamais détruite, et son entrée ~/.ssh/config n'est jamais retirée
-- Support de la migration de base de données et de modules Odoo avec TODO
-- Support du changement multi-version Odoo sur le même espace de travail
-- Script pour le renforcement de la sécurité de l'installation
-- Support des versions Odoo 12.0 à 18.0
-- Séparation de l'installation Python ERPLibre de celle d'Odoo avec .venv.erplibre et .venv.odoo18
-- Implémentation de l'auto-installation avec TODO.py
-- TODO affiche la documentation, télécharge la base de données, aide au formatage du code
-- Script de performance pour mesurer les requêtes par seconde
-- Support de l'architecture Mainframe 390x
-- Déploiement avec Cloudflare et Nginx
-- Support de la configuration Apache comme Nginx
-- Support du générateur de code RobotLibre
-- Support d'ERPLibre DevOps, procédure d'automatisation DevOps
-- Application mobile ERPLibre Home, utiliser TODO pour compiler, déployer et personnaliser
-- Support de la grille Selenium depuis selenium_lib.py
-- Ajout des addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor
 - Déploiement de VM ERPLibre en QEMU/KVM depuis des images cloud (Ubuntu, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE Tumbleweed, Arch) en amd64, arm64 et s390x, avec un menu pour lister, tester, redimensionner, supprimer et nettoyer
 - VM graphiques : un choix serveur / bureau proposant GNOME ou Cinnamon (le bureau de Linux Mint), avec accès distant par xrdp — TigerVNC sur Arch
 - Interfaces Textual : tableau de bord d'installation, formulaire de
@@ -203,14 +158,10 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Menu d'outils d'assistance IA, avec la commande de commit Claude Code
 - Menu de déploiement : cloner ERPLibre sur un hôte distant, configurer sshfs,
   et des cibles make pour le déploiement SSH
-- Commandes de sauvegarde et d'effacement de base, et un nommage plus clair à
-  la restauration
 - Correctif git, dépôt distant git et configuration vim depuis le menu
-- Vérification de sécurité de l'environnement Python
 - Odoo 18 lit les fichiers STL (OpenCAD)
 - Mobile : whisper.cpp et sentencepiece au manifeste, un script de test mobile,
   et le contrat d'API de synchronisation Odoo
-- Entrée de FAQ sur wkhtmltopdf pour les distributions récentes
 - brin_advisor et brin_cluster : recommander et appliquer le bon index
   PostgreSQL pour un modèle Odoo
 - Réglages par VM dans le formulaire de déploiement : vCPU, RAM, disque, type, branche ERPLibre, version d'Odoo et fuseau horaire, un verrou qui soustrait une VM au profil global, le renommage, et plusieurs exemplaires d'une entrée
@@ -259,6 +210,22 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - todo.py split into nine files, one per subject, with a shared base per form. It carried 9 500 lines more than a file should and every subject went through it; the deployment forms repeated the same field-and-validation machinery, so a fix in one never reached the others. No behaviour changes
 - Branch, profile and type are chosen per VM. They were global, which meant switching everything to deploy a single machine differently
 - One shared base describes the guest system, where each form used to describe it again
+- Installation supports Fedora, Debian, Ubuntu and Arch Linux
+- Repository sync and poetry install run in parallel, up to 50 % faster on a
+  slow connection
+- CybroOdoo extra modules become opt-in, tracked per Odoo version
+- Node.js 22, required by Capacitor 8 for the mobile application
+- Poetry and repo are quiet by default; EL_VERBOSE restores the output
+- A VM inherits the timezone of the host that creates it
+- First boot no longer waits on snapd, locale generation or the guest agent
+- apt picks the fastest reachable mirror before the official archive
+- Selenium: download through a network hub, SVG to PNG, error detection,
+  multiple clicks and updated drivers
+- Odoo 18 dependency: flanker
+- Copyright year updated to 2026
+- Canadian pacman mirrors placed first on Arch, the official geographic mirror measuring four times slower from Montréal
+- A Poetry dependency can be declined per architecture: factur-x is pinned to 3.x on s390x, where saxonche publishes no wheel, and PyMuPDF is set aside there
+- Enter targets the highest supported Odoo version, the default being computed from the menu
 
 <!-- [fr] -->
 
@@ -270,6 +237,22 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - todo.py éclaté en neuf fichiers, un par sujet, avec un socle commun par formulaire. Il portait 9 500 lignes de plus qu'un fichier ne devrait et tous les sujets y passaient ; les formulaires de déploiement répétaient la même mécanique de champs et de validation, si bien qu'une correction dans l'un ne gagnait jamais les autres. Aucun changement de comportement
 - La branche, le profil et le type se choisissent par VM. Ils étaient globaux, ce qui obligeait à tout basculer pour déployer une seule machine autrement
 - Un socle commun décrit le système invité, là où chaque formulaire le redécrivait
+- L'installation prend en charge Fedora, Debian, Ubuntu et Arch Linux
+- La synchronisation des dépôts et l'installation poetry tournent en
+  parallèle, jusqu'à 50 % plus rapide sur une connexion lente
+- Les modules extra CybroOdoo deviennent optionnels, suivis par version d'Odoo
+- Node.js 22, exigé par Capacitor 8 pour l'application mobile
+- Poetry et repo sont silencieux par défaut ; EL_VERBOSE rétablit la sortie
+- Une VM hérite du fuseau horaire de l'hôte qui la crée
+- Le premier démarrage n'attend plus snapd, la génération de locales ni l'agent
+- apt prend le miroir joignable le plus rapide avant le dépôt officiel
+- Selenium : téléchargement via un hub réseau, SVG vers PNG, détection
+  d'erreurs, clics multiples et pilotes à jour
+- Dépendance Odoo 18 : flanker
+- Année de copyright portée à 2026
+- Miroirs pacman canadiens placés en tête sur Arch, le miroir « géographique » officiel mesurant quatre fois plus lent depuis Montréal
+- Une dépendance Poetry peut être déclinée par architecture : factur-x est épinglé en 3.x sur s390x, où saxonche ne publie pas de roue, et PyMuPDF y est écarté
+- Entrée cible la version d'Odoo la plus élevée supportée, le défaut étant calculé depuis le menu
 
 <!-- [en] -->
 ## Fixed
@@ -300,7 +283,6 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - The unit runner took seven filename prefixes, « the rest needing a database », and ran 1131 tests where all 3703 in the directory pass with PostgreSQL unreachable; it globs test/test_*.py. Two shapes make a file silent without an error — unittest.main() placed mid-file, which exits before the second half is even defined (four files, 87 tests), and no __main__ block at all, which counts zero (eight files, 174 tests) — and a guard now refuses both, along with any return to a list of prefixes
 - The mobile bundle check accepted only the pack layout, when a real build ships one tar.gz per repository. It failed on `<slug> : index.json absent` and stopped `compile_and_run.sh` before the APK — since 2026-08-20, for anyone on the current mobile main. It now accepts both layouts, and proves the presence of EVERY promised file rather than a sample of twenty: streaming all 139 archives costs 6 s, and 124 350 files are accounted for
 - The bundle test guarded the ZIP entry limit by demanding a `chunk` field on every file, which is the pack layout rather than the limit itself. It now counts the entries the APK will carry — 278 against a ceiling of 65 535 — so either layout passes and a return to file-per-source still fails
-
 - The 13-to-18 migration rested on assumptions: a percent-encoded page anchor the parser could not read, web_responsive that does not survive the bump to 18, a failed OpenUpgrade that passed for done, a rebuilt clone that kept the old one's preparation, and one faulty module taking the whole uninstall batch down
 - Proxmox aimed at the wrong machine: the install went to the host instead of the VM, the disk it reported was the host's, and four screens spoke of a local machine while driving a remote one. The jump host is now the only route to a VM — aiming directly worked only while the VM had a routable address. Six further defects came from an audit rather than from use
 - One name per `~/.ssh/config` entry, and the old one leaves with the convention that replaced it
@@ -310,6 +292,29 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - The db_restore master-password probe validated nothing
 - An analysis looked for the price list's external identifier rather than the list itself, and reported fields that had never held data
 - The NAT bridge was written before knowing whether NAT exists. Six lines of iptables and "return code 1" came after the stanza had already gone into /etc/network/interfaces, and nothing in that noise said a reboot was needed: the host was running Debian's cloud kernel, stripped of netfilter. Our own install_proxmox.sh produces that state, so a freshly installed nested Proxmox is ALWAYS in it — the guard now sits where the consequence is, not at host confirmation
+- A failed installation is no longer reported as a success: the exit code is
+  propagated through the whole chain
+- --with_extra now applies to an already-installed environment
+- The addons path no longer points at a repository the Odoo 18 manifest never
+  clones
+- repo init receives a branch name, so a fresh install no longer fails
+- The install monitor follows a VM whose DHCP lease changes
+- Installation on Debian 13, Fedora and Ubuntu 26.04: apt lock, wkhtmltopdf,
+  SELinux and the missing C compiler
+- The s390x build chain, on Debian as on EL9, EL10, Fedora and openSUSE: missing compilers and headers, Rust for cryptography and bcrypt, qpdf for pikepdf, libclang for pymupdf, package names that change across releases, and a batch that failed on one unknown name without ever naming it
+- A graphical desktop install froze for thirty minutes on a snap package that could not reach the store
+- The compiler was killed for lack of memory while building CPython on a small s390x guest
+- The README listed neither Fedora, openSUSE, Linux Mint nor Debian 13, all of them supported
+- The COW migration tools and the database upgrade speak the system language
+- The analysis and migration tools are executable
+- The forgejo installer no longer echoes the administrator password it has just set
+- The Selenium login re-sent the configured default instead of the credentials it was given, when it retried after dismissing a modal
+- db_restore asks the master password again instead of dying on a typo
+- pyproj needs the proj binary, not only its headers, and PROJ is built where the distribution lags behind
+- run.sh is launched through bash, against systemd's 203/EXEC failures
+- pykcs11 compiles with SWIG 4.3 and above
+- os-release replaces lsb_release, and an IP collision is easier to see
+
 <!-- [fr] -->
 
 - Un déploiement dit POURQUOI il faut un mot de passe avant que sudo ne le demande, et sur quel constat. sudo ne dit jamais ce qu'il sert à faire : l'invite tombe entre deux lignes de journal, et l'on tape un mot de passe sans savoir s'il porte sur libvirt, sur un paquet ou sur un fichier — d'autant qu'appartenir au groupe `libvirt` a tout l'air de suffire. Il ne suffit pas, et libvirt n'y est pour rien : le disque et le seed cloud-init s'écrivent dans le pool par défaut de libvirt, un répertoire de root où le groupe ne donne aucun droit d'écriture. La raison est donc CONSTATÉE et non affirmée — l'écriture se teste, une ACL pouvant l'accorder là où « drwxr-xr-x root root » semble la refuser —, puis nommée avec le répertoire, son propriétaire et son mode, à côté de ce que le groupe couvre vraiment : la socket qemu:///system, sondée en essayant. Dit une fois par exécution, avant la première commande privilégiée, et en dernière ligne du récapitulatif final, qui est l'écran juste avant l'invite. Root ne s'entend rien annoncer, aucune invite ne lui étant due ; un virsh absent se lit comme absent, et non comme un groupe en défaut
@@ -335,7 +340,6 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Le lanceur unitaire ne prenait que sept préfixes de noms, « le reste demandant une base de données », et exécutait 1131 tests là où les 3703 du répertoire passent avec PostgreSQL injoignable ; il balaie test/test_*.py. Deux formes rendent un fichier muet sans erreur — unittest.main() posé en plein milieu, qui sort avant même que la seconde moitié soit définie (quatre fichiers, 87 tests), et l'absence de bloc __main__, qui compte zéro (huit fichiers, 174 tests) — et une garde refuse désormais les deux, ainsi que tout retour à une liste de préfixes
 - Le vérificateur du transfert mobile n'acceptait que la disposition en packs, quand une compilation réelle livre un tar.gz par dépôt. Il échouait sur `<slug> : index.json absent` et arrêtait `compile_and_run.sh` avant l'APK — depuis le 2026-08-20, pour quiconque est sur le main mobile actuel. Il accepte désormais les deux dispositions, et prouve la présence de CHAQUE fichier promis plutôt qu'un échantillon de vingt : traverser les 139 archives coûte 6 s, et 124 350 fichiers sont comptés
 - Le test du bundle gardait la limite d'entrées du ZIP en exigeant un champ `chunk` sur chaque fichier, c'est-à-dire la disposition en packs plutôt que la limite elle-même. Il compte maintenant les entrées que portera l'APK — 278 pour un plafond de 65 535 — si bien que les deux dispositions passent et qu'un retour au fichier-par-source échoue toujours
-
 - La migration des paliers 13 à 18 tenait sur des suppositions : une ancre de page encodée en pourcent que l'analyseur ne lisait pas, web_responsive qui ne survit pas au passage en 18, un OpenUpgrade en échec qui passait pour fait, un clone rebâti qui gardait la préparation de l'ancien, et un module fautif qui emportait tout le lot de désinstallation
 - Proxmox visait la mauvaise machine : l'installation partait sur l'hôte plutôt que sur la VM, le disque annoncé était celui de l'hôte, et quatre écrans parlaient d'une machine locale alors qu'ils pilotaient une machine distante. Le rebond est désormais le seul chemin vers une VM — viser directement ne marchait que tant que la VM avait une adresse routable. Six autres défauts sont venus d'un audit, pas de l'usage
 - Un seul nom par entrée `~/.ssh/config`, et l'ancienne s'en va avec la convention qui l'a remplacée
@@ -345,116 +349,6 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - La sonde du mot de passe maître de db_restore ne validait rien
 - Une analyse cherchait l'identifiant externe de la liste de prix plutôt que la liste, et signalait des champs qui n'avaient jamais porté de donnée
 - Le pont NAT s'écrivait avant de savoir si le NAT existe. Six lignes d'iptables et « code de retour 1 » arrivaient après que la strophe soit déjà posée dans /etc/network/interfaces, et rien dans ce bruit ne disait qu'il fallait redémarrer : l'hôte tournait le noyau cloud de Debian, dépouillé de netfilter. C'est notre propre install_proxmox.sh qui produit cet état, donc une Proxmox imbriquée fraîchement installée y est TOUJOURS — le garde va désormais là où la conséquence est, et non à la confirmation de l'hôte
-<!-- [en] -->
-## Removed
-<!-- [fr] -->
-## Retiré
-<!-- [en] -->
-
-- The residue check that called a language broken when its res_lang row has active at NULL — listed nowhere, no longer re-enablable. False in the 18 source: an ('active','=',False) domain compiles to (IS NULL OR = FALSE), the Languages menu action carries active_test: False, sorting goes through COALESCE(active, FALSE), and reading returns bool(value). Odoo writes that NULL itself, active being a Boolean with no default and res.lang.csv having no such column, which makes one NULL per language added to the catalogue — so « zero before, nonzero after » is not enough to declare a residue. A test now refuses a verdict key that nothing defines any more
-- Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf 12.2, whose build requires C++20, while focal ships GCC 9 and publishes no `g++-10` for s390x
-
-<!-- [fr] -->
-
-- Le contrôle de résidus qui jugeait cassée une langue dont la ligne res_lang porte active à NULL — listée nulle part, plus réactivable. Faux dans la source 18 : un domaine ('active','=',False) compile en (IS NULL OR = FALSE), l'action du menu Langues porte active_test: False, le tri passe par COALESCE(active, FALSE), et la lecture rend bool(value). C'est Odoo lui-même qui écrit ce NULL, active étant un booléen sans défaut et res.lang.csv n'ayant pas cette colonne, soit un NULL par langue ajoutée au catalogue — « zéro avant, non nul après » ne suffit donc pas à déclarer un résidu. Un test refuse désormais une clé de verdict que plus rien ne définit
-- Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9 et ne publie pas de `g++-10` pour s390x
-
-<!-- [en] -->
-## Changed
-<!-- [fr] -->
-## Modifié
-<!-- [en] -->
-
-- Docker support postgresql 18
-- Format script search diff file into each repository
-- Support neutralize database from Odoo
-- Installation supports Fedora, Debian, Ubuntu and Arch Linux
-- Repository sync and poetry install run in parallel, up to 50 % faster on a
-  slow connection
-- CybroOdoo extra modules become opt-in, tracked per Odoo version
-- Node.js 22, required by Capacitor 8 for the mobile application
-- Poetry and repo are quiet by default; EL_VERBOSE restores the output
-- TODO menus grouped into sections with icons, and English text used as the
-  i18n key
-- Documentation is bilingual, generated from the .base.md sources
-- A VM inherits the timezone of the host that creates it
-- First boot no longer waits on snapd, locale generation or the guest agent
-- apt picks the fastest reachable mirror before the official archive
-- Selenium: download through a network hub, SVG to PNG, error detection,
-  multiple clicks and updated drivers
-- Odoo can run on a custom database; queue_job setup and SSH forwarding
-  options in the menu
-- Killing a process by port asks before acting, with an interactive menu
-- LinuxMint 22.3 supported
-- Odoo 18 dependencies: flanker, orjson, python-magic, tldextract, PyYAML
-- Copyright year updated to 2026
-- Canadian pacman mirrors placed first on Arch, the official geographic mirror measuring four times slower from Montréal
-- A Poetry dependency can be declined per architecture: factur-x is pinned to 3.x on s390x, where saxonche publishes no wheel, and PyMuPDF is set aside there
-- Enter targets the highest supported Odoo version, the default being computed from the menu
-- A make target runs the unit tests, with the mobile dependency declared
-
-<!-- [fr] -->
-
-- Support Docker postgresql 18
-- Script de formatage recherche les fichiers diff dans chaque dépôt
-- Support de la neutralisation de base de données depuis Odoo
-- L'installation prend en charge Fedora, Debian, Ubuntu et Arch Linux
-- La synchronisation des dépôts et l'installation poetry tournent en
-  parallèle, jusqu'à 50 % plus rapide sur une connexion lente
-- Les modules extra CybroOdoo deviennent optionnels, suivis par version d'Odoo
-- Node.js 22, exigé par Capacitor 8 pour l'application mobile
-- Poetry et repo sont silencieux par défaut ; EL_VERBOSE rétablit la sortie
-- Menus TODO regroupés en sections avec icônes, et texte anglais utilisé comme
-  clé i18n
-- Documentation bilingue, générée depuis les sources .base.md
-- Une VM hérite du fuseau horaire de l'hôte qui la crée
-- Le premier démarrage n'attend plus snapd, la génération de locales ni l'agent
-- apt prend le miroir joignable le plus rapide avant le dépôt officiel
-- Selenium : téléchargement via un hub réseau, SVG vers PNG, détection
-  d'erreurs, clics multiples et pilotes à jour
-- Odoo peut tourner sur une base personnalisée ; configuration de queue_job et
-  options de redirection SSH dans le menu
-- Tuer un processus par son port demande confirmation, avec un menu interactif
-- LinuxMint 22.3 pris en charge
-- Dépendances Odoo 18 : flanker, orjson, python-magic, tldextract, PyYAML
-- Année de copyright portée à 2026
-- Miroirs pacman canadiens placés en tête sur Arch, le miroir « géographique » officiel mesurant quatre fois plus lent depuis Montréal
-- Une dépendance Poetry peut être déclinée par architecture : factur-x est épinglé en 3.x sur s390x, où saxonche ne publie pas de roue, et PyMuPDF y est écarté
-- Entrée cible la version d'Odoo la plus élevée supportée, le défaut étant calculé depuis le menu
-- Une cible make lance les tests unitaires, avec la dépendance mobile déclarée
-
-<!-- [en] -->
-## Fixed
-<!-- [fr] -->
-## Corrigé
-<!-- [en] -->
-
-- A failed installation is no longer reported as a success: the exit code is
-  propagated through the whole chain
-- --with_extra now applies to an already-installed environment
-- The addons path no longer points at a repository the Odoo 18 manifest never
-  clones
-- repo init receives a branch name, so a fresh install no longer fails
-- The install monitor follows a VM whose DHCP lease changes
-- Installation on Debian 13, Fedora and Ubuntu 26.04: apt lock, wkhtmltopdf,
-  SELinux and the missing C compiler
-- Documentation accents and the parallel markdown generation
-- The s390x build chain, on Debian as on EL9, EL10, Fedora and openSUSE: missing compilers and headers, Rust for cryptography and bcrypt, qpdf for pikepdf, libclang for pymupdf, package names that change across releases, and a batch that failed on one unknown name without ever naming it
-- A graphical desktop install froze for thirty minutes on a snap package that could not reach the store
-- The compiler was killed for lack of memory while building CPython on a small s390x guest
-- The README listed neither Fedora, openSUSE, Linux Mint nor Debian 13, all of them supported
-- The COW migration tools and the database upgrade speak the system language
-- The analysis and migration tools are executable
-- The forgejo installer no longer echoes the administrator password it has just set
-- The Selenium login re-sent the configured default instead of the credentials it was given, when it retried after dismissing a modal
-- db_restore asks the master password again instead of dying on a typo
-- pyproj needs the proj binary, not only its headers, and PROJ is built where the distribution lags behind
-- run.sh is launched through bash, against systemd's 203/EXEC failures
-- pykcs11 compiles with SWIG 4.3 and above
-- os-release replaces lsb_release, and an IP collision is easier to see
-
-<!-- [fr] -->
-
 - Une installation en échec n'est plus rapportée comme réussie : le code de
   sortie remonte toute la chaîne
 - --with_extra s'applique désormais à un environnement déjà installé
@@ -464,7 +358,6 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Le suivi d'installation suit une VM dont le bail DHCP change
 - Installation sur Debian 13, Fedora et Ubuntu 26.04 : verrou apt, wkhtmltopdf,
   SELinux et le compilateur C manquant
-- Accents de la documentation et génération markdown en parallèle
 - La chaîne de compilation s390x, sur Debian comme sur EL9, EL10, Fedora et openSUSE : compilateurs et en-têtes manquants, Rust pour cryptography et bcrypt, qpdf pour pikepdf, libclang pour pymupdf, des noms de paquets qui changent d'une version à l'autre, et un lot en échec sur un seul nom inconnu sans jamais le nommer
 - L'installation d'un bureau graphique figeait trente minutes sur un paquet snap qui ne joignait pas le magasin
 - Le compilateur était tué faute de mémoire en bâtissant CPython sur une petite VM s390x
@@ -478,6 +371,20 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - run.sh est lancé par bash, contre les échecs 203/EXEC de systemd
 - pykcs11 se compile avec SWIG 4.3 et au-delà
 - os-release remplace lsb_release, et une collision d'IP se voit mieux
+
+<!-- [en] -->
+## Removed
+<!-- [fr] -->
+## Retiré
+<!-- [en] -->
+
+- The residue check that called a language broken when its res_lang row has active at NULL — listed nowhere, no longer re-enablable. False in the 18 source: an ('active','=',False) domain compiles to (IS NULL OR = FALSE), the Languages menu action carries active_test: False, sorting goes through COALESCE(active, FALSE), and reading returns bool(value). Odoo writes that NULL itself, active being a Boolean with no default and res.lang.csv having no such column, which makes one NULL per language added to the catalogue — so « zero before, nonzero after » is not enough to declare a residue. A test now refuses a verdict key that nothing defines any more
+- Ubuntu 20.04 and 22.04 support, on every architecture: pikepdf needs qpdf 12.2, whose build requires C++20, while focal ships GCC 9 and publishes no `g++-10` for s390x
+
+<!-- [fr] -->
+
+- Le contrôle de résidus qui jugeait cassée une langue dont la ligne res_lang porte active à NULL — listée nulle part, plus réactivable. Faux dans la source 18 : un domaine ('active','=',False) compile en (IS NULL OR = FALSE), l'action du menu Langues porte active_test: False, le tri passe par COALESCE(active, FALSE), et la lecture rend bool(value). C'est Odoo lui-même qui écrit ce NULL, active étant un booléen sans défaut et res.lang.csv n'ayant pas cette colonne, soit un NULL par langue ajoutée au catalogue — « zéro avant, non nul après » ne suffit donc pas à déclarer un résidu. Un test refuse désormais une clé de verdict que plus rien ne définit
+- Le support d'Ubuntu 20.04 et 22.04, sur toutes les architectures : pikepdf réclame qpdf 12.2, dont la compilation exige C++20, quand focal livre GCC 9 et ne publie pas de `g++-10` pour s390x
 
 <!-- [en] -->
 ## Security
@@ -496,6 +403,134 @@ Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outi
 - Le mot de passe maître d'Odoo ne voyage plus sur la ligne de commande : MASTER_PWD le porte, et /proc/<pid>/environ n'est lisible que par son propriétaire là où /proc/<pid>/cmdline l'est par tout utilisateur de la machine (exige le commit correspondant dans le fork odoo)
 - Le mot de passe KeePass parvient à la connexion Selenium de la même façon : la commande porte le NOM d'une variable d'environnement, jamais la valeur
 - Ce qu'une commande AFFICHE est caviardé comme la commande elle-même : un outil qui réaffiche ses propres arguments ne remet plus le secret dans le terminal ni dans le fichier de journal
+
+<!-- [common] -->
+
+## [1.7.0] - 2026-03-11
+
+<!-- [en] -->
+**Migration notes**
+
+Recreating the virtual environment, use installation guide from tool `make`.
+
+<!-- [fr] -->
+**Notes de migration**
+
+Recréer l'environnement virtuel, utiliser le guide d'installation depuis l'outil `make`.
+
+<!-- [en] -->
+## Added
+<!-- [fr] -->
+## Ajouté
+<!-- [en] -->
+
+- Odoo 12.0 to 18.0 in a single workspace, switched without reinstalling: the manifests, the configuration and the addons paths follow the version named in `.odoo-version`
+- ERPLibre's Python separated from Odoo's — `.venv.erplibre` carries the repository's own tools, `.venv.odoo<version>` the server — so a tool of the repository no longer depends on the interpreter a given Odoo version imposes
+- Auto-installation driven from TODO: the menu lays down the environment it needs, Poetry, the Google Repo manifests and the addons included, rather than printing a command to retype
+- Migration of an Odoo database and its modules from TODO, `--neutralize` included, with the repair of the mail module that a move from PostgreSQL 17 to 18 leaves behind
+- A hardening script for the installation
+- The ERPLibre Home mobile application: TODO compiles it, deploys it, renames the software and changes its menu image
+- The RobotLibre code generator, with the queue_job channels its configuration needs
+- ERPLibre DevOps, and the automation procedure it describes
+- The Selenium grid from `selenium_lib.py`: a KeePass vault opened for the run, file downloads, dark mode, video recording and a scenario library
+- A performance script measuring the requests per second a website answers
+- Deployment: Cloudflare DNS, nginx with a non-interactive certbot, Apache templates matching the nginx ones, and a systemd unit whose working directory is configurable
+- The s390x mainframe architecture
+- Addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor, and the design-themes repository
+- Database backup and erase commands, and a clearer restore naming
+- A security check of the Python environment, from the menu
+- TODO shows the documentation, downloads a database and helps with code formatting
+- Killing an Odoo process by the port it holds, from the menu
+- CLAUDE.md and the agent information document, so an assistant reads the repository's conventions instead of guessing them
+- A FAQ entry on wkhtmltopdf for recent distributions
+
+<!-- [fr] -->
+
+- Odoo 12.0 à 18.0 dans un même espace de travail, changés sans réinstaller : les manifestes, la configuration et les chemins d'addons suivent la version nommée dans `.odoo-version`
+- Le Python d'ERPLibre séparé de celui d'Odoo — `.venv.erplibre` porte les outils du dépôt, `.venv.odoo<version>` le serveur — si bien qu'un outil du dépôt ne dépend plus de l'interpréteur qu'impose une version d'Odoo
+- L'auto-installation pilotée depuis TODO : le menu pose l'environnement dont il a besoin, Poetry, les manifestes Google Repo et les addons compris, au lieu d'afficher une commande à retaper
+- La migration d'une base Odoo et de ses modules depuis TODO, `--neutralize` compris, avec la réparation du module mail que laisse un passage de PostgreSQL 17 à 18
+- Un script de renforcement de la sécurité de l'installation
+- L'application mobile ERPLibre Home : TODO la compile, la déploie, renomme le logiciel et change son image de menu
+- Le générateur de code RobotLibre, avec les canaux queue_job que sa configuration réclame
+- ERPLibre DevOps, et la procédure d'automatisation qu'il décrit
+- La grille Selenium depuis `selenium_lib.py` : un coffre KeePass ouvert pour l'exécution, le téléchargement de fichiers, le mode sombre, l'enregistrement vidéo et une bibliothèque de scénarios
+- Un script de performance qui mesure les requêtes par seconde qu'un site répond
+- Le déploiement : DNS Cloudflare, nginx avec un certbot non interactif, gabarits Apache alignés sur ceux de nginx, et une unité systemd dont le répertoire de travail se configure
+- L'architecture mainframe s390x
+- Les addons OnlyOffice, Cetmix, OCA automation, OCA shopfloor, et le dépôt design-themes
+- Des commandes de sauvegarde et d'effacement de base, et un nommage plus clair à la restauration
+- Une vérification de sécurité de l'environnement Python, depuis le menu
+- TODO affiche la documentation, télécharge une base et aide au formatage du code
+- Tuer un processus Odoo par le port qu'il occupe, depuis le menu
+- CLAUDE.md et le document d'information des agents, pour qu'un assistant lise les conventions du dépôt au lieu de les deviner
+- Une entrée de FAQ sur wkhtmltopdf pour les distributions récentes
+
+<!-- [en] -->
+## Changed
+<!-- [fr] -->
+## Modifié
+<!-- [en] -->
+
+- Odoo 18.0 becomes the default version of a checkout
+- Docker moves to PostgreSQL 18, with the matching client
+- The documentation is bilingual, generated by mmg from the `.base.md` sources: a `.md` or `.fr.md` edited directly is lost at the next generation
+- The TODO menus are grouped into sections, and the English text serves as the i18n key rather than a code of its own
+- The formatting script looks for the changed files in every repository, hidden addons included, and skips a repository that is not installed
+- Odoo runs on a custom database, and the menu configures queue_job as well as the SSH forwarding a remote instance needs
+- Killing a process by port asks before acting, through an interactive menu
+- Neutralising a database goes through Odoo's own `--neutralize`
+- LinuxMint 22.3, Ubuntu 25.10, and macOS without Python 3.7
+- Odoo 18 dependencies: tldextract, PyYAML, pdfminer.six, and cryptography at its latest version
+- A make target runs the unit tests
+- The Makefile is split: its commands live in `conf/`, and `Common.Makefile` extends it for a project of one's own
+
+<!-- [fr] -->
+
+- Odoo 18.0 devient la version par défaut d'un checkout
+- Docker passe à PostgreSQL 18, avec le client correspondant
+- La documentation est bilingue, générée par mmg depuis les sources `.base.md` : un `.md` ou `.fr.md` modifié directement est perdu à la prochaine génération
+- Les menus TODO sont regroupés en sections, et le texte anglais sert de clé i18n plutôt qu'un code à part
+- Le script de formatage cherche les fichiers modifiés dans chaque dépôt, addons cachés compris, et saute un dépôt qui n'est pas installé
+- Odoo tourne sur une base personnalisée, et le menu configure queue_job comme la redirection SSH qu'une instance distante réclame
+- Tuer un processus par son port demande confirmation, par un menu interactif
+- La neutralisation d'une base passe par le `--neutralize` d'Odoo
+- LinuxMint 22.3, Ubuntu 25.10, et macOS sans Python 3.7
+- Dépendances Odoo 18 : tldextract, PyYAML, pdfminer.six, et cryptography à sa dernière version
+- Une cible make lance les tests unitaires
+- Le Makefile est éclaté : ses commandes vivent dans `conf/`, et `Common.Makefile` l'étend pour un projet à soi
+
+<!-- [en] -->
+## Fixed
+<!-- [fr] -->
+## Corrigé
+<!-- [en] -->
+
+- The documentation accents, and the markdown generation running in parallel
+- `git_tool` returns nothing instead of raising where `.git` is absent
+- `poetry iscompatible` no longer crashes on a version carrying a letter, an alpha or a release candidate
+- pymssql compiles again, and the Odoo 18 requirements leave pyssql out of a production install
+- wkhtmltopdf is no longer offered where it does not exist: no package is published for s390x on Ubuntu 25.10
+- Selenium: the snap Firefox path, a 60-second timeout when reaching for an element, execution in a private window, and a login that waits for Odoo 18
+- The formatting script ignores the files and directories it must not touch
+- `db_drop_all` runs its shell command, and the backup processing keeps the permissions of what it writes
+- TODO: the first import, the regeneration of `.repo/local_manifests`, the database open dialog, and a missing Odoo version reported instead of a crash
+- The code generator: creating a project, extracting a class carrying a selection, and reading a model through the Python 3.11 `ast` module rather than astor
+- Docker: the duplicated Odoo 18 build target, and the compose file pinned to an image that works
+
+<!-- [fr] -->
+
+- Les accents de la documentation, et la génération markdown qui tourne en parallèle
+- `git_tool` rend vide au lieu de lever là où `.git` est absent
+- `poetry iscompatible` ne casse plus sur une version portant une lettre, une alpha ou une candidate
+- pymssql se compile de nouveau, et les dépendances Odoo 18 laissent pyssql hors d'une installation de production
+- wkhtmltopdf n'est plus proposé là où il n'existe pas : aucun paquet n'est publié pour s390x sur Ubuntu 25.10
+- Selenium : le chemin du Firefox snap, un délai de 60 secondes pour atteindre un élément, l'exécution en fenêtre privée, et une connexion qui attend Odoo 18
+- Le script de formatage ignore les fichiers et répertoires qu'il ne doit pas toucher
+- `db_drop_all` exécute sa commande shell, et le traitement des sauvegardes garde les permissions de ce qu'il écrit
+- TODO : le premier import, la régénération de `.repo/local_manifests`, le dialogue d'ouverture de base, et une version d'Odoo manquante signalée au lieu d'un plantage
+- Le générateur de code : la création d'un projet, l'extraction d'une classe portant une sélection, et la lecture d'un modèle par le module `ast` de Python 3.11 plutôt que par astor
+- Docker : la cible de compilation Odoo 18 en double, et le fichier compose épinglé sur une image qui fonctionne
 
 <!-- [common] -->
 
@@ -1520,7 +1555,9 @@ Parce que le dépôt d'addons a changé, le fichier de configuration doit être 
 
 <!-- [common] -->
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.7.0...HEAD
+
+[1.7.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.6.0...v1.7.0
 
 [1.6.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.5.0...v1.6.0
 
