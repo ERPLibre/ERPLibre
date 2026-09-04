@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Projet
 
 ERPLibre est un fork communautaire d'Odoo Community Edition (OCE) supportant les versions 12 à 18.
-Version actuelle : **1.6.0** | Licence : **AGPL-3.0+**
-Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.6.0)
+Version actuelle : **1.7.0** | Licence : **AGPL-3.0+**
+Version Odoo par défaut : **18.0** (support officiel ERPLibre 1.7.0)
 
 ## Points d'attention pour Claude
 
