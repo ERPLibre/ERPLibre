@@ -22,7 +22,12 @@ Ce que ces tests gardent :
   démarrage — c'est ce qui rend l'hôte utilisable en UN redémarrage ;
 - l'état d'un réseau est lu en ANGLAIS : virsh traduit ses étiquettes, et un
   hôte en français lisait tout réseau comme éteint et jamais prêt ;
-- le XML déplacé garde l'identité du réseau — UUID, pont, MAC.
+- le XML déplacé garde l'identité du réseau — UUID, pont, MAC ;
+- un réseau démarré ne se compte PAS comme sa propre collision : il porte et
+  route son /24 sur son pont, et ce pont est écarté de ce que « l'hôte occupe
+  déjà ». Sans cette exclusion, le verdict était « collision » sur toute
+  machine où le réseau tournait, quel que soit son sous-réseau, et le
+  déplacement qui suivait retirait leur passerelle aux VM attachées.
 """
 
 import importlib.util
@@ -153,6 +158,120 @@ class LaCollision(unittest.TestCase):
         self.assertEqual("", DQ.network_collision("", reseaux("10.0.0.0/8")))
 
 
+class CeQueLHoteOccupe(unittest.TestCase):
+    """host_networks : ce qui compte comme « déjà pris », et ce qui non."""
+
+    # Ce que rendent « ip -4 route show » et « ip -o -4 addr show » sur un hôte
+    # dont le réseau local est ailleurs et dont le « default » de libvirt
+    # tourne. Les deux dernières lignes de chaque sortie sont celles du pont.
+    ROUTES = (
+        "default via 192.168.2.1 dev enp6s0 proto dhcp src 192.168.2.11"
+        " metric 100\n"
+        "192.168.2.0/24 dev enp6s0 proto kernel scope link src 192.168.2.11\n"
+        "192.168.122.0/24 dev virbr0 proto kernel scope link"
+        " src 192.168.122.1\n"
+    )
+    ADRESSES = (
+        "1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever\n"
+        "2: enp6s0    inet 192.168.2.11/24 brd 192.168.2.255 scope global"
+        " enp6s0\\       valid_lft forever\n"
+        "3: virbr0    inet 192.168.122.1/24 brd 192.168.122.255 scope global"
+        " virbr0\\       valid_lft forever\n"
+    )
+
+    def _host_networks(self, exclure=()):
+        sorties = {"route": self.ROUTES, "addr": self.ADRESSES}
+
+        def faux_run(args, **kwargs):
+            quoi = "route" if "route" in args else "addr"
+            return mock.Mock(stdout=sorties[quoi])
+
+        with mock.patch.object(DQ.subprocess, "run", side_effect=faux_run):
+            return {str(r) for r in DQ.host_networks(exclure_ponts=exclure)}
+
+    def test_the_network_no_longer_collides_with_itself(self):
+        """Le défaut qui déplaçait un réseau sain. Un « default » démarré
+        route son propre /24 : compté, il est en collision avec lui-même sur
+        TOUTE machine, et le déplacement qui suit retire aux VM attachées la
+        passerelle qu'elles ont dans leur bail."""
+        vus = self._host_networks(exclure=["virbr0"])
+        self.assertNotIn("192.168.122.0/24", vus)
+        self.assertEqual(
+            "",
+            DQ.network_collision("192.168.122.0/24", reseaux(*vus)),
+        )
+
+    def test_without_the_exclusion_the_verdict_was_always_collision(self):
+        """La preuve du défaut, figée : sans exclusion, le même hôte — dont le
+        réseau local est pourtant ailleurs — voit une collision."""
+        vus = self._host_networks()
+        self.assertIn("192.168.122.0/24", vus)
+
+    def test_the_other_interfaces_still_count(self):
+        """Écarter le pont n'aveugle pas sur le reste : c'est le réseau local
+        de l'hôte qui rend une collision RÉELLE, et il doit rester vu."""
+        vus = self._host_networks(exclure=["virbr0"])
+        self.assertIn("192.168.2.0/24", vus)
+        self.assertIn("127.0.0.0/8", vus)
+
+    def test_a_line_without_a_readable_device_is_kept(self):
+        """Sur « ce /24 est-il libre », le silence pèse du côté prudent : une
+        ligne dont l'interface ne se lit pas compte comme occupée. Un pont
+        inconnu ('' rendu par network_bridge) n'écarte donc rien."""
+        self.assertEqual("", DQ.interface_de_ligne("192.168.9.0/24 proto ra"))
+        vus = self._host_networks(exclure=[""])
+        self.assertIn("192.168.122.0/24", vus)
+        self.assertIn("192.168.2.0/24", vus)
+
+    def test_the_interface_is_read_from_both_grammars(self):
+        self.assertEqual(
+            "enp6s0", DQ.interface_de_ligne("192.168.2.0/24 dev enp6s0 proto")
+        )
+        self.assertEqual(
+            "virbr0",
+            DQ.interface_de_ligne("3: virbr0    inet 192.168.122.1/24 scope"),
+        )
+        # Une interface appairée porte le nom de son pair : « eth0@if12 ».
+        self.assertEqual(
+            "eth0", DQ.interface_de_ligne("5: eth0@if12    inet 10.0.0.2/24")
+        )
+
+
+class LePontDuReseau(unittest.TestCase):
+    def test_the_bridge_comes_from_the_xml(self):
+        self.assertEqual("virbr0", DQ.bridge_from_network_xml(XML_DEFAUT))
+
+    def test_no_bridge_says_nothing(self):
+        """'' plutôt qu'un nom deviné : c'est sur lui qu'on écarte une
+        interface de la recherche de collision."""
+        self.assertEqual("", DQ.bridge_from_network_xml("<network/>"))
+        self.assertEqual("", DQ.bridge_from_network_xml(""))
+
+
+class LeFichierTemporaire(unittest.TestCase):
+    """Le XML posé pour « net-define » : imprévisible, et retiré."""
+
+    def test_it_is_removed_even_when_virsh_fails(self):
+        with self.assertRaises(RuntimeError):
+            with DQ.fichier_xml_temporaire("<network/>") as chemin:
+                garde = chemin
+                raise RuntimeError("virsh a échoué")
+        self.assertFalse(Path(garde).exists())
+
+    def test_the_name_is_not_predictable(self):
+        """Un nom composé est un chemin devinable dans un répertoire où tout
+        le monde écrit : qui l'occupe d'avance choisit ce que root définit."""
+        with DQ.fichier_xml_temporaire("<network/>") as un:
+            with DQ.fichier_xml_temporaire("<network/>") as deux:
+                self.assertNotEqual(un, deux)
+
+    def test_root_can_read_it(self):
+        """virsh lit le fichier sous root, et le fichier temporaire d'un
+        utilisateur non privilégié ne l'est pas toujours."""
+        with DQ.fichier_xml_temporaire("<network/>") as chemin:
+            self.assertTrue(Path(chemin).stat().st_mode & 0o044)
+
+
 class LeSousReseauLibre(unittest.TestCase):
     def test_it_starts_above_the_two_usual_ones(self):
         """122 est celui de libvirt, 123 celui de beaucoup d'installations
@@ -226,10 +345,6 @@ class LOrdreDesGestes(unittest.TestCase):
             side_effect=lambda *a: (
                 etats.pop(0) if len(etats) > 1 else etats[0]
             ),
-        ), mock.patch.object(
-            DQ.Path, "write_text"
-        ), mock.patch.object(
-            DQ.Path, "chmod"
         ):
             with redirect_stdout(io.StringIO()) as sortie:
                 DQ.ensure_network("default", runner)

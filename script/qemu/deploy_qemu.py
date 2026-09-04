@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import getpass
 import grp
 import gzip
@@ -3123,14 +3124,54 @@ def network_state(name: str, use_sudo: bool) -> tuple[bool, bool]:
 LIBVIRT_NET_BASE = 131
 
 
-def host_networks() -> list[ipaddress.IPv4Network]:
+def interface_de_ligne(ligne: str) -> str:
+    """L'interface que porte une ligne de « ip route » ou « ip -o addr ».
+
+    Deux grammaires pour une seule question. Une route nomme son interface
+    après « dev » ; « ip -o -4 addr » la donne en deuxième champ, la ligne
+    commençant par son index (« 3: virbr0    inet … »). Le « -o » est ce qui
+    rend la seconde lisible : sans lui, l'interface est sur une ligne et ses
+    adresses sur les suivantes, plus rattachables l'une à l'autre.
+    """
+    mots = ligne.split()
+    if "dev" in mots:
+        i = mots.index("dev")
+        if i + 1 < len(mots):
+            return mots[i + 1]
+    if len(mots) >= 2 and mots[0].rstrip(":").isdigit():
+        # « eth0@if12 » sur une interface appairée : le nom est avant l'arobase.
+        return mots[1].rstrip(":").split("@")[0]
+    return ""
+
+
+def host_networks(exclure_ponts=()) -> list[ipaddress.IPv4Network]:
     """Les réseaux IPv4 que l'hôte porte ou route déjà.
 
     Les deux, adresses ET routes : une interface peut router un réseau sans y
     porter d'adresse, et c'est la ROUTE qui décide où part un paquet.
+
+    `exclure_ponts` écarte les interfaces dont le réseau EST celui qu'on
+    examine. Un réseau libvirt actif porte son propre /24 sur son pont, et le
+    route : compté comme « déjà pris par l'hôte », il se trouve en collision
+    avec lui-même. Le verdict était alors le même sur toute machine où le
+    réseau tournait, quel que soit son sous-réseau — d'où un déplacement là où
+    rien n'entrait en conflit, sous des VM qui perdaient leur passerelle. La
+    question posée est « quelqu'un D'AUTRE occupe-t-il ce /24 », et le pont du
+    réseau examiné n'est pas quelqu'un d'autre.
     """
+    # Un nom vide n'exclut RIEN : network_bridge rend '' quand le XML est
+    # illisible, et le garder dans l'ensemble écarterait toute ligne dont
+    # l'interface ne se lit pas — soit, sur une grammaire inattendue, la
+    # totalité de ce que l'hôte occupe.
+    exclure = {pont for pont in (exclure_ponts or ()) if pont}
     vus: list[ipaddress.IPv4Network] = []
-    for args in (["ip", "-4", "route", "show"], ["ip", "-4", "addr", "show"]):
+    commandes = (
+        ["ip", "-4", "route", "show"],
+        # « -o » : une adresse par ligne, sinon l'interface est sur la ligne
+        # d'en-tête et l'adresse sur la suivante, donc plus rattachables.
+        ["ip", "-o", "-4", "addr", "show"],
+    )
+    for args in commandes:
         try:
             out = subprocess.run(
                 args,
@@ -3141,17 +3182,35 @@ def host_networks() -> list[ipaddress.IPv4Network]:
             ).stdout
         except (OSError, subprocess.SubprocessError):
             continue
-        for cidr in re.findall(r"\b(\d+\.\d+\.\d+\.\d+/\d+)\b", out):
-            try:
-                vus.append(ipaddress.ip_network(cidr, strict=False))
-            except ValueError:
+        for ligne in out.splitlines():
+            if interface_de_ligne(ligne) in exclure:
                 continue
+            for cidr in re.findall(r"\b(\d+\.\d+\.\d+\.\d+/\d+)\b", ligne):
+                try:
+                    vus.append(ipaddress.ip_network(cidr, strict=False))
+                except ValueError:
+                    continue
     return vus
 
 
 def network_cidr(name: str, use_sudo: bool) -> str:
     """Le réseau servi par un réseau libvirt (« 192.168.122.0/24 »), ou ''."""
     return cidr_from_network_xml(virsh_out(["net-dumpxml", name], use_sudo))
+
+
+def bridge_from_network_xml(xml: str) -> str:
+    """Le pont déclaré par un XML de réseau libvirt (« virbr0 »), ou ''."""
+    m = re.search(r"<bridge[^>]*name='([^']+)'", xml)
+    return m.group(1) if m else ""
+
+
+def network_bridge(name: str, use_sudo: bool) -> str:
+    """Le pont que ce réseau libvirt monte, ou ''.
+
+    C'est l'interface qui portera son adresse .1 une fois le réseau démarré :
+    la seule que la recherche de collision doit s'interdire de compter.
+    """
+    return bridge_from_network_xml(virsh_out(["net-dumpxml", name], use_sudo))
 
 
 def cidr_from_network_xml(xml: str) -> str:
@@ -3235,6 +3294,44 @@ def moved_network_xml(xml: str, ancien: str, nouveau: str) -> str:
     return xml.replace(f"{ancien}.", f"{nouveau}.")
 
 
+@contextlib.contextmanager
+def fichier_xml_temporaire(contenu: str, prefixe: str = "erplibre-net-"):
+    """Un XML posé sur le disque le temps d'un « virsh net-define », puis ôté.
+
+    Créé par mkstemp, donc à un nom que personne ne peut prédire, et retiré à
+    la sortie même si virsh échoue. Un nom composé — d'un nom de réseau, par
+    exemple — est un chemin PRÉVISIBLE dans un répertoire où tout le monde
+    écrit : qui l'occupe d'avance par un lien symbolique choisit ce que root
+    va définir, et le laisser derrière donne à lire la configuration du parc.
+
+    Le fichier est lisible par tous : virsh le lit sous root, et le fichier
+    d'un utilisateur non privilégié ne l'est pas toujours. Ce qu'il contient
+    ne sort pas de la définition du réseau, que « net-dumpxml » rend à qui
+    peut déjà joindre libvirt.
+    """
+    fd, chemin = tempfile.mkstemp(prefix=prefixe, suffix=".xml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        os.chmod(chemin, 0o644)
+        yield chemin
+    finally:
+        try:
+            os.unlink(chemin)
+        except OSError:
+            pass
+
+
+def define_network_xml(xml: str, runner: Runner) -> None:
+    """Redéfinit un réseau libvirt à partir de son XML."""
+    with fichier_xml_temporaire(xml) as chemin:
+        runner.run(
+            ["virsh", "-c", LIBVIRT_URI, "net-define", chemin],
+            privileged=True,
+            check=False,
+        )
+
+
 def move_network(name: str, cidr: str, collision: str, runner: Runner) -> str:
     """Redéfinit le réseau sur un /24 libre. Rend le nouveau préfixe, ou ''.
 
@@ -3249,7 +3346,8 @@ def move_network(name: str, cidr: str, collision: str, runner: Runner) -> str:
         return ""
     ancien = cidr.rsplit(".", 1)[0].rsplit("/", 1)[0]
     libre = free_subnet(
-        host_networks() + libvirt_networks_cidrs(name, runner.use_sudo)
+        host_networks(exclure_ponts=[bridge_from_network_xml(xml)])
+        + libvirt_networks_cidrs(name, runner.use_sudo)
     )
     if not libre:
         print("  ⚠ aucun /24 libre en 192.168.x : rien n'est déplacé.")
@@ -3263,16 +3361,7 @@ def move_network(name: str, cidr: str, collision: str, runner: Runner) -> str:
         " la passerelle de cette machine, qui perdrait son accès au réseau"
         " au prochain démarrage."
     )
-    chemin = Path(tempfile.gettempdir()) / f"erplibre-net-{name}.xml"
-    chemin.write_text(moved_network_xml(xml, ancien, libre), encoding="utf-8")
-    # Lisible par root, qui exécute virsh : le fichier temporaire d'un
-    # utilisateur non privilégié ne l'est pas toujours.
-    chemin.chmod(0o644)
-    runner.run(
-        ["virsh", "-c", LIBVIRT_URI, "net-define", str(chemin)],
-        privileged=True,
-        check=False,
-    )
+    define_network_xml(moved_network_xml(xml, ancien, libre), runner)
     return libre
 
 
@@ -3315,7 +3404,10 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         return
     active, autostart = network_state(name, runner.use_sudo)
     cidr = network_cidr(name, runner.use_sudo)
-    collision = network_collision(cidr, host_networks())
+    # Son propre pont ne compte pas : un réseau démarré porte et route son /24
+    # là, et se verrait sinon en collision avec lui-même sur toute machine.
+    pont = network_bridge(name, runner.use_sudo)
+    collision = network_collision(cidr, host_networks(exclure_ponts=[pont]))
 
     if collision:
         # Un réseau ACTIF en collision est la machine DÉJÀ privée de réseau :
@@ -3337,7 +3429,9 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         libre = move_network(name, cidr, collision, runner)
         if libre:
             cidr = network_cidr(name, runner.use_sudo)
-            collision = network_collision(cidr, host_networks())
+            collision = network_collision(
+                cidr, host_networks(exclure_ponts=[pont])
+            )
 
     if active and autostart and not collision:
         print(f"  Réseau libvirt '{name}' déjà actif.")
