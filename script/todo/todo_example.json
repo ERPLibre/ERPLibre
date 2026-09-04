@@ -8,6 +8,46 @@
             "kdbx_key": "OpenAI api"
         }
     },
+    "vpn": [
+        {
+            "name": "client-acme",
+            "driver": "l2tp_ipsec",
+            "server": "vpn.acme.example",
+            "ppp_user": "ACME\\user",
+            "routes": [
+                "10.20.0.0/16"
+            ],
+            "default_route": false,
+            "mtu": 1280,
+            "use_peer_dns": true,
+            "dns_search": "acme.example",
+            "probe": "10.20.0.1"
+        },
+        {
+            "name": "client-beta",
+            "driver": "wireguard",
+            "server": "vpn.beta.example",
+            "port": 51820,
+            "wg_address": "10.7.0.2/32",
+            "wg_peer_key": "SGVsbG9Xb3JsZEV4YW1wbGVLZXkxMjM0NTY3ODkwYWI=",
+            "routes": [
+                "10.7.0.0/24",
+                "192.168.80.0/24"
+            ],
+            "probe": "10.7.0.1"
+        },
+        {
+            "name": "bastion-gamma",
+            "driver": "sshuttle",
+            "server": "user@bastion.gamma.example",
+            "port": 22,
+            "ssh_dns": true,
+            "routes": [
+                "10.90.0.0/16"
+            ],
+            "probe": "10.90.0.1"
+        }
+    ],
     "instance": [
         {
             "prompt_description": "Test - Instance de base minimale",

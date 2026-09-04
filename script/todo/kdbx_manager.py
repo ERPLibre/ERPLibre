@@ -9,20 +9,28 @@ from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
 
+# DEUX blocs, et c'est le point : tkinter ne sert QU'au sélecteur de fichier
+# quand aucun chemin n'est configuré. Réunis dans un seul `try`, l'absence de
+# tkinter mettait aussi `PyKeePass` à None — et le coffre devenait impossible
+# à ouvrir sur toute machine sans interface graphique, chemin et mot de passe
+# configurés ou non. C'est-à-dire sur tous les serveurs.
 try:
-    import tkinter as tk
-    from tkinter import filedialog
-
     from pykeepass import PyKeePass
     from pykeepass.exceptions import CredentialsError
 except ModuleNotFoundError:
     PyKeePass = None
-    tk = None
-    filedialog = None
 
     class CredentialsError(Exception):
         """Jamais levée ici : sans pykeepass, `get_kdbx` sort avant d'ouvrir
         quoi que ce soit. Définie pour que le `except` reste écrivable."""
+
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except ModuleNotFoundError:
+    tk = None
+    filedialog = None
 
 
 class KdbxManager:
@@ -74,7 +82,11 @@ class KdbxManager:
         # pas une panne : la bibliothèque lève `CredentialsError` et, sans
         # ce rattrapage, la trace remontait jusqu'à tuer le CLI. On nomme
         # aussi le coffre — l'invite ne disait pas DE QUOI elle parlait.
-        print(f"{t('kdbx_vault_is')} {kdbx_file_path}")
+        # `flush` : l'invite de getpass part vers le terminal, ce `print`
+        # vers la sortie standard — qui est un TUBE quand le menu nous lance.
+        # Sans vidage, on lisait « Mot de passe du coffre : Coffre KeePass :
+        # /chemin » — la question avant ce dont elle parle.
+        print(f"{t('kdbx_vault_is')} {kdbx_file_path}", flush=True)
         for _ in range(attempts):
             password = getpass.getpass(prompt=t("kdbx_ask_password"))
             if not password:
@@ -88,6 +100,16 @@ class KdbxManager:
             return self._kdbx
         print(t("kdbx_give_up"))
         return None
+
+    def adopt(self, kdbx) -> None:
+        """Prend pour la session une base DÉJÀ ouverte.
+
+        Sert au moment où le coffre vient d'être CRÉÉ : `create_database`
+        rend la base ouverte, et sans cela le mot de passe maître serait
+        redemandé dans la seconde qui suit — à quelqu'un qui vient de le
+        taper deux fois.
+        """
+        self._kdbx = kdbx
 
     def get_extra_command_user(
         self, kdbx_key: str | list | None

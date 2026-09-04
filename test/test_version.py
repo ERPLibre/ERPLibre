@@ -34,9 +34,7 @@ class TestRemoveDotPath(unittest.TestCase):
         self.assertEqual(remove_dot_path("./"), "")
 
     def test_nested_dot_slash(self):
-        self.assertEqual(
-            remove_dot_path("./a/./b"), "a/./b"
-        )
+        self.assertEqual(remove_dot_path("./a/./b"), "a/./b")
 
     def test_empty_string(self):
         self.assertEqual(remove_dot_path(""), "")
@@ -75,15 +73,11 @@ class TestConstants(unittest.TestCase):
 
     def test_pyproject_template(self):
         result = PYPROJECT_TEMPLATE_FILE % "odoo18.0_python3.12.10"
-        self.assertEqual(
-            result, "pyproject.odoo18.0_python3.12.10.toml"
-        )
+        self.assertEqual(result, "pyproject.odoo18.0_python3.12.10.toml")
 
     def test_poetry_lock_template(self):
         result = POETRY_LOCK_TEMPLATE_FILE % "odoo18.0_python3.12.10"
-        self.assertEqual(
-            result, "poetry.odoo18.0_python3.12.10.lock"
-        )
+        self.assertEqual(result, "poetry.odoo18.0_python3.12.10.lock")
 
     def test_addons_template(self):
         result = ADDONS_TEMPLATE_FILE % "18.0"
@@ -123,9 +117,7 @@ class TestUpdateValidateVersion(unittest.TestCase):
         self.assertEqual(update.new_version_odoo, "18.0")
         self.assertEqual(update.new_version_python, "3.12.10")
         self.assertEqual(update.new_version_poetry, "2.1.3")
-        self.assertEqual(
-            update.new_version_erplibre, "odoo18.0_python3.12.10"
-        )
+        self.assertEqual(update.new_version_erplibre, "odoo18.0_python3.12.10")
 
     def test_explicit_odoo_version(self):
         data = {}
@@ -177,7 +169,9 @@ class TestUpdateValidateVersion(unittest.TestCase):
             {"erplibre_version": "odoo18.0_python3.12.10"},
         )
         update.validate_version()
-        self.assertIn("default.dev.odoo18.0.xml", update.expected_manifest_name)
+        self.assertIn(
+            "default.dev.odoo18.0.xml", update.expected_manifest_name
+        )
         self.assertIn("requirement", update.expected_pyproject_path)
         self.assertIn("requirement", update.expected_poetry_lock_path)
         self.assertEqual(update.expected_odoo_name, "odoo18.0")

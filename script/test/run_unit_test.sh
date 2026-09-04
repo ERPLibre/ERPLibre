@@ -22,6 +22,10 @@
 # injoignable, et la liste laissait 2400 d'entre eux hors de la suite —
 # écrits, verts, jamais lancés. Un glob n'oublie personne ; une liste, si.
 #
+# La frontière est donc un RÉPERTOIRE, pas un nom : ce qui doit rester hors
+# de la suite vit ailleurs que dans test/. Une famille de tests nouvelle n'a
+# rien à déclarer ici.
+#
 # Un fichier n'est vu que s'il finit par le bloc habituel :
 #
 #     if __name__ == "__main__":
