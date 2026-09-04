@@ -129,7 +129,7 @@ Rechercher l'ancienne version, comme :
 
 <!-- [common] -->
 ```bash
-grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.6.0
+grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.8.0
 ```
 
 <!-- [en] -->
