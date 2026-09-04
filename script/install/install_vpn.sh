@@ -254,7 +254,14 @@ install_sso() {
     # Le venv appartient à l'UTILISATEUR : root n'a ni son affichage ni son
     # trousseau, et un greffon installé sous root ne lui servirait à rien.
     log "installation sous l'utilisateur ${user}"
-    runuser -u "$user" -- sh -s <<'USERPART'
+    # TOUT le travail sous l'utilisateur dans UN seul bloc, et les
+    # dépendances passées par l'environnement. Le découper en deux appels
+    # obligeait à composer depuis le shell de root un chemin contenant
+    # `$HOME`, où il désigne le mauvais home ; et une chaîne coupée par une
+    # continuation de ligne ne se recolle PAS — l'indentation de la ligne
+    # suivante en fait un argument séparé, si bien que pip ne recevait plus
+    # aucun paquet à installer et que le greffon restait sans dépendances.
+    runuser -u "$user" -- env DEPS="$SSO_PIP_DEPS" sh -s <<'USERPART'
 set -eu
 VENV="$HOME/.local/share/openconnect-sso-venv"
 # `--system-site-packages` : c'est ainsi que le venv voit le Qt et le lxml
@@ -263,16 +270,16 @@ VENV="$HOME/.local/share/openconnect-sso-venv"
 "$VENV/bin/pip" install --quiet --upgrade pip
 # `--no-deps` : les épingles du greffon sont intenables, on choisit nous-mêmes.
 "$VENV/bin/pip" install --quiet --no-deps openconnect-sso
+# `--no-warn-conflicts` : pip rapporterait un conflit sur lxml et keyring,
+# préfixé « ERROR », alors qu'il est ATTENDU — ce sont les deux épingles
+# qu'on relâche sciemment. Ce n'est pas masquer une erreur mais taire une
+# fausse alerte : l'option ne porte que sur le rapport de conflits, et une
+# vraie panne d'installation remonte toujours.
+# shellcheck disable=SC2086
+"$VENV/bin/pip" install --quiet --no-warn-conflicts $DEPS
 USERPART
-    # shellcheck disable=SC2086
-    runuser -u "$user" -- sh -c \
-        "\"\$HOME/.local/share/openconnect-sso-venv/bin/pip\" install --quiet ${SSO_PIP_DEPS}"
 
-    # pip signale ici un conflit sur lxml et keyring. Il est ATTENDU :
-    # ce sont les deux épingles qu'on relâche sciemment, l'amont étant
-    # arrêté. Le dire, plutôt que de masquer la sortie de pip — une
-    # installation qui cache ses erreurs ne se diagnostique plus.
-    log "le conflit d'épingles signalé par pip (lxml, keyring) est voulu"
+    log "épingles de lxml et keyring relâchées : voulu, voir plus haut"
     sso_patch_event_loop "$user"
     sso_verify "$user"
 }
@@ -327,6 +334,31 @@ sso_verify() {
     log "le renseigner dans oc_sso_helper si le profil ne le trouve pas"
 }
 
+sso_is_wanted() {
+    # Proposé seulement quand il servirait : le pilote openconnect est
+    # demandé, et aucun greffon n'est déjà joignable. Proposer d'installer
+    # ce qui est installé fait douter de ce qu'on lit.
+    case " ${drivers} " in
+        *" openconnect "*) ;;
+        *) return 1 ;;
+    esac
+    if command -v openconnect-sso >/dev/null \
+        || [ -x "${HOME:-/root}/.local/bin/openconnect-sso" ] \
+        || [ -x "/home/${SUDO_USER:-nobody}/.local/bin/openconnect-sso" ] \
+        || [ -x "/home/${SUDO_USER:-nobody}/.local/share/openconnect-sso-venv/bin/openconnect-sso" ]; then
+        return 1
+    fi
+    log "certaines passerelles exigent un navigateur intégré (SAML) :"
+    log "openconnect s'arrête sur « No SSO handler » sans greffon."
+    log "amont du greffon arrêté depuis 2023, voir le source et le README."
+    printf '[VPN] Installer le greffon SSO ? [o/N] '
+    read -r reponse
+    case "$reponse" in
+        [oOyY]*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 ALL_DRIVERS="l2tp_ipsec wireguard openvpn openconnect sshuttle"
 
 main() {
@@ -355,6 +387,16 @@ main() {
         verify "$driver" "$fam"
     done
     disable_autostart
+    # La question se posait dans le menu seulement, et l'invocation directe
+    # — celle que le README documente — n'offrait rien : on repartait sans
+    # le greffon sans avoir su qu'il existait.
+    #
+    # `[ -t 0 ]` : sans terminal il n'y a personne pour répondre, et un
+    # déploiement automatisé ne doit pas se bloquer sur une invite. Le
+    # drapeau reste alors le seul moyen de le demander.
+    if [ "$with_sso" -eq 0 ] && [ -t 0 ] && sso_is_wanted; then
+        with_sso=1
+    fi
     if [ "$with_sso" -eq 1 ]; then
         install_sso "$fam"
     fi
