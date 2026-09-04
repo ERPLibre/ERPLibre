@@ -11,6 +11,9 @@
 #   sudo AST_TRUNKS='principal|montreal.voip.ms|123|mdp;secours|sip.autre.ca|456|mdp2' \
 #        bash install_asterisk.sh
 #
+#   Des softphones dans le navigateur, pour le module Odoo « voip_oca » :
+#   sudo AST_WEBPHONES='1001|mdp1;1002|mdp2' bash install_asterisk.sh
+#
 # Securite — les defauts de ce script, et pourquoi :
 #
 #   PAS DE FREEPBX. Le panneau d'administration web est la surface d'attaque
@@ -33,6 +36,14 @@
 #   FAIL2BAN pose sur le journal d'Asterisk, et le service n'ecoute QUE sur
 #   les adresses du fournisseur de trunk quand elles sont fournies.
 #
+#   LE SOFTPHONE N'ECOUTE QUE SUR LA BOUCLE LOCALE. Le WebSocket voyage sur
+#   le serveur HTTP d'Asterisk, que http.conf lie a 127.0.0.1 : seul un
+#   navigateur de CETTE machine s'y connecte. C'est ce qui permet de s'en
+#   servir sans certificat — les navigateurs tiennent « localhost » pour un
+#   contexte sur, et ouvrent le micro. Depuis un autre poste, il faut un
+#   mandataire inverse en TLS et « wss:// » : sans HTTPS, aucun navigateur
+#   ne donne acces au micro, et les identifiants SIP passeraient en clair.
+#
 #   Ce script ne remplace PAS un plafond de depense chez le fournisseur. C'est
 #   le seul garde-fou qui borne reellement la perte : un compte prepaye, sans
 #   credit, limite le vol au solde depose. A configurer chez le fournisseur,
@@ -54,7 +65,13 @@ AST_TRUNK_HOST="${AST_TRUNK_HOST:-}"
 AST_TRUNK_USER="${AST_TRUNK_USER:-}"
 AST_TRUNK_PASS="${AST_TRUNK_PASS:-}"
 AST_CALLERID="${AST_CALLERID:-}"
-CONFIG_DIR="/etc/asterisk"
+# Softphones du navigateur, une par entree : "nom|motdepasse", separees par
+# des points-virgules. Le nom sert d'extension : « 1001 » se compose depuis
+# un autre softphone.
+AST_WEBPHONES="${AST_WEBPHONES:-}"
+# Surchargeable pour ecrire la configuration ailleurs qu'en place : c'est ce
+# qui rend les generateurs verifiables sans root ni Asterisk installe.
+CONFIG_DIR="${CONFIG_DIR:-/etc/asterisk}"
 SOUNDS_DIR="/var/lib/asterisk/sounds/erplibre"
 SECRET_FILE="/etc/erplibre/asterisk.env"
 
@@ -156,9 +173,14 @@ compiler_asterisk() {
         make menuselect.makeopts >/dev/null
         # On n'active que ce dont la passerelle se sert. Chaque module en
         # moins est du code qui ne tourne pas, donc une faille de moins.
+        # Les trois derniers portent le softphone du navigateur :
+        # le WebSocket sur le serveur HTTP, son transport PJSIP, et SRTP —
+        # un navigateur REFUSE un media non chiffre, il n'y a pas d'option.
         menuselect/menuselect --enable chan_pjsip --enable res_ari \
             --enable res_ari_channels --enable res_ari_playbacks \
             --enable res_stasis --enable format_wav --enable format_pcm \
+            --enable res_http_websocket \
+            --enable res_pjsip_transport_websocket --enable res_srtp \
             menuselect.makeopts
         make -j"$(nproc)" >/dev/null
         make install >/dev/null
@@ -218,7 +240,8 @@ type = transport
 protocol = udp
 bind = 0.0.0.0:${AST_SIP_PORT}
 EOF
-        if [ -z "$AST_TRUNKS" ]; then
+        ecrire_softphones
+        if [ -z "$AST_TRUNKS" ] && [ -z "$AST_WEBPHONES" ]; then
             cat <<'EOF'
 
 ; Aucune ligne fournie : le serveur est installe mais ne peut appeler
@@ -282,6 +305,66 @@ EOF
     chown root:asterisk "${CONFIG_DIR}/pjsip.conf" 2>/dev/null || true
 }
 
+ecrire_softphones() {
+    # Rien a poser tant que personne n'en a demande : un transport ouvert
+    # sans poste derriere est une porte de plus a surveiller.
+    [ -n "$AST_WEBPHONES" ] || return 0
+
+    cat <<EOF
+
+; --- Softphones du navigateur ----------------------------------------
+; Le WebSocket voyage sur le serveur HTTP d'Asterisk (http.conf), qui
+; n'ecoute que sur la boucle locale. Le "bind" ci-dessous ne sert donc pas
+; a choisir un port : c'est http.conf qui decide, et le chemin est /ws.
+[transport-ws]
+type = transport
+protocol = ws
+bind = 0.0.0.0
+EOF
+
+    local ancien_ifs="$IFS"
+    IFS=';'
+    for poste in $AST_WEBPHONES; do
+        IFS='|' read -r nom mdp <<< "$poste"
+        IFS=';'
+        [ -n "$nom" ] && [ -n "$mdp" ] || continue
+        cat <<EOF
+
+; --- Poste : ${nom} ---------------------------------------------------
+; "webrtc = yes" pose d'un coup ce qu'un navigateur exige et refuse de
+; negocier : AVPF, DTLS-SRTP avec certificat auto-genere, ICE, et le
+; multiplexage RTCP. Les detailler a la main est la source d'un appel qui
+; sonne, se connecte, et reste muet dans un sens.
+[${nom}]
+type = endpoint
+transport = transport-ws
+context = depuis-softphone
+disallow = all
+allow = opus
+allow = ulaw
+webrtc = yes
+auth = ${nom}-auth
+aors = ${nom}
+callerid = ${nom} <${nom}>
+
+[${nom}-auth]
+type = auth
+auth_type = userpass
+username = ${nom}
+password = ${mdp}
+
+[${nom}]
+type = aor
+; Un seul point de contact, et l'ancien part : un onglet rouvert laisserait
+; sinon une inscription morte, et un appel entrant partirait vers elle.
+max_contacts = 1
+remove_existing = yes
+EOF
+    done
+    IFS="$ancien_ifs"
+}
+
+
 ecrire_dialplan() {
     cat > "${CONFIG_DIR}/extensions.conf" <<'EOF'
 ; Genere par install_asterisk.sh — modifications manuelles ecrasees.
@@ -322,6 +405,8 @@ exten => _X.,1,NoOp(REFUSE : hors plan nord-americain ${EXTEN})
 EOF
 
     # Le choix de la ligne appartient a Odoo, pas au plan de numerotation :
+    ecrire_contexte_softphone
+
     # lui seul sait ce que coute chaque ligne, laquelle est en alerte, et
     # quelles minutes sont deja incluses. Ce contexte n'est qu'un repli, pour
     # qu'un appel lance a la main depuis la console aboutisse quand meme.
@@ -345,6 +430,38 @@ EOF
     chmod 0640 "${CONFIG_DIR}/extensions.conf"
     chown root:asterisk "${CONFIG_DIR}/extensions.conf" 2>/dev/null || true
 }
+
+# Ce que les postes du navigateur ont le droit de composer.
+ecrire_contexte_softphone() {
+    [ -n "$AST_WEBPHONES" ] || return 0
+    {
+        echo
+        echo "; --- Ce que les softphones du navigateur peuvent composer ---"
+        echo "; Deux permissions, et pas une de plus. Un contexte partage avec"
+        echo "; le trunk laisserait un poste compromis composer ce que le"
+        echo "; trunk accepte, c'est-a-dire tout ce qui se facture."
+        echo "[depuis-softphone]"
+        local ancien_ifs="$IFS"
+        IFS=';'
+        for poste in $AST_WEBPHONES; do
+            IFS='|' read -r nom _ <<< "$poste"
+            IFS=';'
+            [ -n "$nom" ] || continue
+            echo "; Poste a poste : de quoi eprouver le son sans depenser une minute."
+            echo "exten => ${nom},1,Dial(PJSIP/${nom},30)"
+            echo " same => n,Hangup()"
+        done
+        IFS="$ancien_ifs"
+        if [ -n "$AST_TRUNKS" ]; then
+            echo
+            echo "; Vers l'exterieur, par le meme plan nord-americain que le"
+            echo "; reste : elargir reste un geste explicite."
+            echo "exten => _1NXXNXXXXXX,1,NoOp(softphone sortant \${EXTEN})"
+            echo " same => n,Goto(erplibre-repli,\${EXTEN},1)"
+        fi
+    } >> "${CONFIG_DIR}/extensions.conf"
+}
+
 
 ecrire_ari() {
     # ARI n'ecoute que sur la boucle locale : Odoo tourne a cote, ou passe par
