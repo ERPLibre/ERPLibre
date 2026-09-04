@@ -110,7 +110,7 @@ def run_sms_tui(todo, run_app: bool = True):
                     detail = t("sms_manual_hint")
                 table.add_row(
                     ICON[etat],
-                    step.label_for(self.state.spec.mode),
+                    step.label_for(self.state.spec),
                     detail[:60],
                 )
             if 0 <= ligne < len(STEPS):

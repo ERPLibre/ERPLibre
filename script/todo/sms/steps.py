@@ -14,7 +14,7 @@ une milliseconde.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 try:
     from script.todo.todo_i18n import t
@@ -44,6 +44,19 @@ STATE_FAILED = "failed"
 
 
 @dataclass(frozen=True)
+class Variante:
+    """Ce qu'une étape devient sur un autre matériel.
+
+    Une étape ne change pas seulement de nom d'un matériel à l'autre : celle
+    qui relie l'appareil exige un humain devant un téléphone, et personne
+    devant un modem. Le libellé et ce caractère manuel vont donc ensemble.
+    """
+
+    label_key: str
+    manual: bool = False
+
+
+@dataclass(frozen=True)
 class Step:
     """Une étape de la démonstration.
 
@@ -61,23 +74,44 @@ class Step:
     manual: bool = False
     #: Étapes qui doivent être terminées avant que celle-ci ait un sens.
     requires: tuple = ()
+    #: Ce que l'étape devient selon le matériel. Absent = inchangée.
+    par_materiel: dict = field(default_factory=dict)
 
     @property
     def label(self) -> str:
         return t(self.label_key)
 
-    def label_for(self, mode: str) -> str:
-        """Le libelle a afficher pour ce mode."""
-        if mode == "local" and self.label_key_local:
+    def _variante(self, spec):
+        return self.par_materiel.get(getattr(spec, "materiel", "mobile"))
+
+    def label_for(self, spec) -> str:
+        """Le libelle a afficher pour cette configuration.
+
+        Le materiel l'emporte sur le mode : quand une etape change de nature
+        avec l'appareil, la nuance locale/VM ne la decrit plus.
+        """
+        variante = self._variante(spec)
+        if variante:
+            return t(variante.label_key)
+        if getattr(spec, "mode", "") == "local" and self.label_key_local:
             return t(self.label_key_local)
         return t(self.label_key)
+
+    def manual_for(self, spec) -> bool:
+        """Cette etape exige-t-elle un humain, sur ce materiel."""
+        variante = self._variante(spec)
+        return variante.manual if variante else self.manual
 
 
 STEPS = (
     Step("vm", "sms_step_vm", label_key_local="sms_step_env"),
     Step("odoo", "sms_step_odoo", requires=("vm",)),
     Step("gateway", "sms_step_gateway", requires=("vm", "odoo")),
-    Step("mobile", "sms_step_mobile", manual=True, requires=("gateway",)),
+    # L'identifiant reste « mobile » alors que l'etape vaut pour les deux
+    # materiels : il sert de CLE dans l'etat garde sur disque, et le
+    # renommer effacerait la progression de toute demonstration en cours.
+    Step("mobile", "sms_step_mobile", manual=True, requires=("gateway",),
+         par_materiel={"modem": Variante("sms_step_agent", manual=False)}),
     Step("verify", "sms_step_verify", requires=("gateway",)),
     Step("confirm", "sms_step_confirm", requires=("verify",)),
 )
@@ -103,7 +137,7 @@ def blocked_by(step: Step, state) -> tuple:
     au fond d'un journal SSH. Mieux vaut refuser tôt et dire laquelle manque.
     """
     return tuple(
-        BY_ID[dep].label_for(state.spec.mode)
+        BY_ID[dep].label_for(state.spec)
         for dep in step.requires
         if not state.is_done(dep)
     )
@@ -145,9 +179,9 @@ def render(state, running: str = "") -> str:
         suffixe = ""
         if etat == STATE_FAILED:
             suffixe = f"  ← {state.errors.get(step.id, '')[:60]}"
-        elif step.manual and etat == STATE_PENDING:
+        elif step.manual_for(state.spec) and etat == STATE_PENDING:
             suffixe = f"  ({t('sms_manual_hint')})"
-        libelle = step.label_for(state.spec.mode)
+        libelle = step.label_for(state.spec)
         lignes.append(f"  {marque} [{index}] {libelle}{suffixe}")
     if state.vm_ip:
         lignes += ["", f"  {t('sms_vm_address')} : {state.vm_ip}"]

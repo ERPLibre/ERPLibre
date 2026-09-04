@@ -10755,6 +10755,60 @@ TRANSLATIONS = {
         "fr": "Configurer la passerelle et son secret",
         "en": "Configure the gateway and its secret",
     },
+    "sms_step_agent": {
+        "fr": "Lancer l'agent passerelle du modem",
+        "en": "Start the modem gateway agent",
+    },
+    "sms_materiel_menu": {
+        "fr": "Materiel qui porte la carte SIM",
+        "en": "Device holding the SIM card",
+    },
+    "sms_materiel_current": {
+        "fr": "Materiel actuel",
+        "en": "Current device",
+    },
+    "sms_materiel_ask": {
+        "fr": "Materiel [1-2] : ",
+        "en": "Device [1-2]: ",
+    },
+    "sms_materiel_mobile": {
+        "fr": "Telephone Android (application ERPLibre)",
+        "en": "Android phone (ERPLibre application)",
+    },
+    "sms_materiel_modem": {
+        "fr": "Modem USB de ce poste (agent local)",
+        "en": "USB modem on this machine (local agent)",
+    },
+    "sms_materiel_changed": {
+        "fr": (
+            "Materiel change : la fiche passerelle est a refaire, les etapes"
+            " serveur tiennent."
+        ),
+        "en": (
+            "Device changed: the gateway record must be redone, the server"
+            " steps still hold."
+        ),
+    },
+    "sms_modem_ready": {
+        "fr": "Modem present, carte SIM enregistree au reseau.",
+        "en": "Modem present, SIM card registered on the network.",
+    },
+    "sms_agent_label": {
+        "fr": "Agent passerelle",
+        "en": "Gateway agent",
+    },
+    "sms_agent_running": {
+        "fr": "Agent deja en marche",
+        "en": "Agent already running",
+    },
+    "sms_agent_stopped": {
+        "fr": "Agent passerelle arrete.",
+        "en": "Gateway agent stopped.",
+    },
+    "sms_agent_died": {
+        "fr": "L'agent s'est arrete aussitot ; voir le journal.",
+        "en": "The agent stopped immediately; see the log.",
+    },
     "sms_step_mobile": {
         "fr": "Relier l'application mobile",
         "en": "Link the mobile application",

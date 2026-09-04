@@ -65,6 +65,16 @@ class DemoSpec:
     #: du sudo a chaque interrogation d'adresse. "vm" quand on veut prouver
     #: une installation propre plutot que demontrer la passerelle.
     mode: str = "local"
+    #: Le materiel qui porte la carte SIM.
+    #:
+    #: "mobile" — un telephone Android sous l'application ERPLibre. C'est le
+    #: DEFAUT, et la seule voie qui existait. Elle demande le telephone en
+    #: main : trois valeurs a saisir a l'ecran, que rien n'automatise.
+    #:
+    #: "modem"  — un modem USB de ce poste, mene par l'agent de
+    #: `script/todo/modem/passerelle.py`. Aucun geste sur un appareil : la
+    #: demonstration s'enchaine alors de bout en bout sans intervention.
+    materiel: str = "mobile"
     #: Comment le telephone joint Odoo.
     #:
     #: "cable" — renvoi USB `adb reverse`, l'URL reste 127.0.0.1. Rien ne

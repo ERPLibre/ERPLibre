@@ -46,6 +46,10 @@ gw = Gateway.search([("device_id", "=", {spec.device_id!r})], limit=1)
 values = {{
     "name": "Passerelle de demonstration",
     "device_id": {spec.device_id!r},
+    # Le materiel decide des criteres de sante : un modem juge sur ceux d'un
+    # telephone s'affiche « cadencement degrade », batterie a zero, et bride
+    # a trente segments par minute pour une limite qu'il n'a pas.
+    "kind": {spec.materiel!r},
     "company_id": company.id,
     "active": True,
     "poll_interval_seconds": 30,
