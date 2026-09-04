@@ -330,6 +330,34 @@ sudo virsh domifaddr <nom-vm>  # adresse IP de la VM / VM IP address
 definition. To fully recreate a VM with the same name, `destroy` + `undefine`
 it first, or redeploy with `--force`.
 
+## The VMs' subnet
+
+Every VM deployed here lives in the libvirt network `default`, which serves a
+/24 — `192.168.122.0/24` out of the box. The VMs take an address in it by DHCP
+and leave through its `.1`, carried by the bridge. Move that /24 under a
+running VM and it keeps a lease that leads nowhere; tear the network down and
+its tap is no longer on any bridge, which libvirt does not undo by itself.
+
+`network_qemu.py` reads that state, and puts the subnet back under the VMs:
+
+```bash
+# What the network serves, its bridge, its VMs, their leases — reads only
+./script/qemu/network_qemu.py --status
+
+# Put the subnet back: stop the attached VMs, redefine, start them again
+./script/qemu/network_qemu.py --recreate
+./script/qemu/network_qemu.py --recreate --prefix 192.168.140
+./script/qemu/network_qemu.py --recreate --force-off   # VMs that ignore ACPI
+```
+
+The default prefix is libvirt's own, `192.168.122`: it is what the `.ssh/config`
+entries and the notes written before assume. A prefix that overlaps what the
+host already routes is refused — a bridge taking the host's gateway address is
+how a machine loses its own network. A VM that ignores the shutdown cancels the
+redefinition rather than losing its bridge under it.
+
+Both are also at **TODO › Execute › Deploy › QEMU/KVM**, section **Network**.
+
 ## SSH access from another machine (ProxyJump)
 
 With the default NAT network the VM is reachable **only from the KVM host**.

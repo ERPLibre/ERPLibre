@@ -383,6 +383,8 @@ class TestQemuMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Recover files from a VM disk (libguestfs)": "_qemu_recover_files",
         "Diagnostics (report to share)": "_qemu_diagnostics",
+        "Show the libvirt network state": "_qemu_network_status",
+        "Recreate the VM subnet": "_qemu_network_recreate",
     }
 
 
