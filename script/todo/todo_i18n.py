@@ -11356,6 +11356,351 @@ TRANSLATIONS = {
         "fr": "intactes :",
         "en": "alone:",
     },
+    # VPN (script/todo/vpn_menu.py, script/vpn/)
+    "VPN & tunnels": {
+        "fr": "🔐 VPN et tunnels",
+        "en": "🔐 VPN & tunnels",
+    },
+    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)": {
+        "fr": "🚇 VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)",
+        "en": "🚇 VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)",
+    },
+    "VPN tunnels: connect, profiles, vault secrets": {
+        "fr": "Tunnels VPN : connexion, profils, secrets du coffre",
+        "en": "VPN tunnels: connect, profiles, vault secrets",
+    },
+    "Connection": {
+        "fr": "🔗 Connexion",
+        "en": "🔗 Connection",
+    },
+    "VPN - Connect a profile": {
+        "fr": "🟢 VPN - Connecter un profil",
+        "en": "🟢 VPN - Connect a profile",
+    },
+    "VPN - Disconnect a profile": {
+        "fr": "🔴 VPN - Déconnecter un profil",
+        "en": "🔴 VPN - Disconnect a profile",
+    },
+    "VPN - Status and diagnosis": {
+        "fr": "🩺 VPN - État et diagnostic",
+        "en": "🩺 VPN - Status and diagnosis",
+    },
+    "Profiles & secrets": {
+        "fr": "🗂 Profils et secrets",
+        "en": "🗂 Profiles & secrets",
+    },
+    "VPN - Add or edit a profile": {
+        "fr": "📝 VPN - Ajouter ou modifier un profil",
+        "en": "📝 VPN - Add or edit a profile",
+    },
+    "VPN - Store secrets in the vault": {
+        "fr": "🔑 VPN - Déposer les secrets dans le coffre",
+        "en": "🔑 VPN - Store secrets in the vault",
+    },
+    "VPN - Show the rendered configuration (dry-run)": {
+        "fr": "🔍 VPN - Afficher la configuration rendue (à blanc)",
+        "en": "🔍 VPN - Show the rendered configuration (dry-run)",
+    },
+    "VPN - Delete a profile": {
+        "fr": "🗑  VPN - Supprimer un profil",
+        "en": "🗑  VPN - Delete a profile",
+    },
+    "VPN - Install the client packages": {
+        "fr": "📦 VPN - Installer les paquets client",
+        "en": "📦 VPN - Install the client packages",
+    },
+    "VPN - What can this machine do?": {
+        "fr": "🧰 VPN - Ce que cette machine sait faire",
+        "en": "🧰 VPN - What can this machine do?",
+    },
+    "Which technology?": {
+        "fr": "Quelle technologie ?",
+        "en": "Which technology?",
+    },
+    "No VPN profile yet: create one first.": {
+        "fr": "Aucun profil VPN : en créer un d'abord.",
+        "en": "No VPN profile yet: create one first.",
+    },
+    "all traffic": {
+        "fr": "tout le trafic",
+        "en": "all traffic",
+    },
+    "Driver": {
+        "fr": "Pilote",
+        "en": "Driver",
+    },
+    "PPP user (the one the server authenticates)": {
+        "fr": "Utilisateur PPP (celui que le serveur authentifie)",
+        "en": "PPP user (the one the server authenticates)",
+    },
+    "MTU": {
+        "fr": "MTU",
+        "en": "MTU",
+    },
+    "Local L2TP port": {
+        "fr": "Port L2TP local",
+        "en": "Local L2TP port",
+    },
+    "Use the DNS pushed by the peer?": {
+        "fr": "Utiliser les DNS poussés par le pair ?",
+        "en": "Use the DNS pushed by the peer?",
+    },
+    "DNS search domain (optional)": {
+        "fr": "Domaine de recherche DNS (facultatif)",
+        "en": "DNS search domain (optional)",
+    },
+    "Server address (hostname or IP)": {
+        "fr": "Adresse du serveur (nom d'hôte ou IP)",
+        "en": "Server address (hostname or IP)",
+    },
+    "Networks to reach, comma-separated": {
+        "fr": "Réseaux à joindre, séparés par des virgules",
+        "en": "Networks to reach, comma-separated",
+    },
+    "Send ALL traffic through the tunnel?": {
+        "fr": "Envoyer TOUT le trafic dans le tunnel ?",
+        "en": "Send ALL traffic through the tunnel?",
+    },
+    "Witness address reachable only through the tunnel (optional)": {
+        "fr": "Adresse témoin joignable seulement par le tunnel (facultatif)",
+        "en": "Witness address reachable only through the tunnel (optional)",
+    },
+    "Advanced settings (MTU, L2TP port, DNS)? (y/N)": {
+        "fr": "Réglages avancés (MTU, port L2TP, DNS) ? (o/N)",
+        "en": "Advanced settings (MTU, L2TP port, DNS)? (y/N)",
+    },
+    "Profile name (lowercase, digits, - or _)": {
+        "fr": "Nom du profil (minuscules, chiffres, « - » ou « _ »)",
+        "en": "Profile name (lowercase, digits, - or _)",
+    },
+    "Profile number (0 to go back)": {
+        "fr": "Numéro du profil (0 pour revenir)",
+        "en": "Profile number (0 to go back)",
+    },
+    "Profile saved: ": {
+        "fr": "Profil enregistré : ",
+        "en": "Profile saved: ",
+    },
+    "Profile refused: ": {
+        "fr": "Profil refusé : ",
+        "en": "Profile refused: ",
+    },
+    "Profile deleted.": {
+        "fr": "Profil supprimé.",
+        "en": "Profile deleted.",
+    },
+    "Delete profile": {
+        "fr": "Supprimer le profil",
+        "en": "Delete profile",
+    },
+    "Next step: store its secrets in the vault.": {
+        "fr": "Étape suivante : déposer ses secrets dans le coffre.",
+        "en": "Next step: store its secrets in the vault.",
+    },
+    "Its vault entry is kept: delete it in KeePassXC.": {
+        "fr": "Son entrée du coffre est conservée : la supprimer dans KeePassXC.",
+        "en": "Its vault entry is kept: delete it in KeePassXC.",
+    },
+    "Not deletable here: this profile comes from a shared configuration file.": {
+        "fr": "Pas supprimable d'ici : ce profil vient d'un fichier de configuration partagé.",
+        "en": "Not deletable here: this profile comes from a shared configuration file.",
+    },
+    "Unknown driver: ": {
+        "fr": "Pilote inconnu : ",
+        "en": "Unknown driver: ",
+    },
+    "Unknown choice.": {
+        "fr": "Choix inconnu.",
+        "en": "Unknown choice.",
+    },
+    "The installation requires sudo.": {
+        "fr": "L'installation demande sudo.",
+        "en": "The installation requires sudo.",
+    },
+    "Run this plan? (y/N): ": {
+        "fr": "Exécuter ce plan ? (o/N) : ",
+        "en": "Run this plan? (y/N): ",
+    },
+    "No vault: nothing stored.": {
+        "fr": "Pas de coffre : rien n'a été déposé.",
+        "en": "No vault: nothing stored.",
+    },
+    "Vault entry": {
+        "fr": "Entrée du coffre",
+        "en": "Vault entry",
+    },
+    "An empty answer keeps the stored value.": {
+        "fr": "Une réponse vide garde la valeur déjà en place.",
+        "en": "An empty answer keeps the stored value.",
+    },
+    "Secrets stored in the vault.": {
+        "fr": "Secrets déposés dans le coffre.",
+        "en": "Secrets stored in the vault.",
+    },
+    "Confirm": {
+        "fr": "Confirmer",
+        "en": "Confirm",
+    },
+    "The two entries differ, nothing stored.": {
+        "fr": "Les deux saisies diffèrent, rien n'a été déposé.",
+        "en": "The two entries differ, nothing stored.",
+    },
+    "The vault MASTER password is stored in the configuration in clear text. Remove it and type it on demand.": {
+        "fr": "Le mot de passe MAÎTRE du coffre est écrit en clair dans la configuration. Le retirer et le saisir à la demande.",
+        "en": "The vault MASTER password is stored in the configuration in clear text. Remove it and type it on demand.",
+    },
+    # VPN — pilotes de la phase 2 et 3 (WireGuard, OpenVPN, OpenConnect, sshuttle)
+    "never mounted against a real server: only unit tests cover it": {
+        "fr": (
+            "jamais monté contre un vrai serveur : seuls les tests"
+            " unitaires le couvrent"
+        ),
+        "en": "never mounted against a real server: only unit tests cover it",
+    },
+    "When the far side imposes it: a router, a firewall, Windows RRAS": {
+        "fr": "Quand le site l'impose : un routeur, un pare-feu, Windows RRAS",
+        "en": "When the far side imposes it: a router, a firewall, Windows RRAS",
+    },
+    "When you control both ends: the fastest and the simplest": {
+        "fr": "Quand on tient les deux bouts : le plus rapide et le plus simple",
+        "en": "When you control both ends: the fastest and the simplest",
+    },
+    "When the site handed you a .ovpn file": {
+        "fr": "Quand le site a fourni un fichier .ovpn",
+        "en": "When the site handed you a .ovpn file",
+    },
+    "Cisco AnyConnect, Pulse, GlobalProtect, Fortinet appliances": {
+        "fr": "Boîtiers Cisco AnyConnect, Pulse, GlobalProtect, Fortinet",
+        "en": "Cisco AnyConnect, Pulse, GlobalProtect, Fortinet appliances",
+    },
+    "When all you have is SSH access: nothing to install on the far side": {
+        "fr": "Quand on n'a qu'un accès SSH : rien à installer en face",
+        "en": "When all you have is SSH access: nothing to install on the far side",
+    },
+    "IPsec pre-shared key (PSK)": {
+        "fr": "Clé pré-partagée IPsec (PSK)",
+        "en": "IPsec pre-shared key (PSK)",
+    },
+    "PPP password": {
+        "fr": "Mot de passe PPP",
+        "en": "PPP password",
+    },
+    "WireGuard private key of this machine": {
+        "fr": "Clé privée WireGuard de cette machine",
+        "en": "WireGuard private key of this machine",
+    },
+    "WireGuard pre-shared key (optional)": {
+        "fr": "Clé pré-partagée WireGuard (facultative)",
+        "en": "WireGuard pre-shared key (optional)",
+    },
+    "OpenVPN password": {
+        "fr": "Mot de passe OpenVPN",
+        "en": "OpenVPN password",
+    },
+    "VPN password": {
+        "fr": "Mot de passe du VPN",
+        "en": "VPN password",
+    },
+    "Address of this machine inside the tunnel (10.7.0.2/32)": {
+        "fr": "Adresse de cette machine dans le tunnel (10.7.0.2/32)",
+        "en": "Address of this machine inside the tunnel (10.7.0.2/32)",
+    },
+    "Public key of the peer": {
+        "fr": "Clé publique du pair",
+        "en": "Public key of the peer",
+    },
+    "WireGuard endpoint port": {
+        "fr": "Port de l'endpoint WireGuard",
+        "en": "WireGuard endpoint port",
+    },
+    "DNS server inside the tunnel (optional)": {
+        "fr": "Serveur DNS dans le tunnel (facultatif)",
+        "en": "DNS server inside the tunnel (optional)",
+    },
+    "PersistentKeepalive, in seconds": {
+        "fr": "PersistentKeepalive, en secondes",
+        "en": "PersistentKeepalive, in seconds",
+    },
+    "Path to the .ovpn file provided by the site": {
+        "fr": "Chemin du fichier .ovpn fourni par le site",
+        "en": "Path to the .ovpn file provided by the site",
+    },
+    "OpenVPN user (empty if the file authenticates by certificate)": {
+        "fr": "Utilisateur OpenVPN (vide si le fichier authentifie par certificat)",
+        "en": "OpenVPN user (empty if the file authenticates by certificate)",
+    },
+    "VPN user": {
+        "fr": "Utilisateur du VPN",
+        "en": "VPN user",
+    },
+    "Protocol (anyconnect, nc, pulse, gp, f5, fortinet, array)": {
+        "fr": "Protocole (anyconnect, nc, pulse, gp, f5, fortinet, array)",
+        "en": "Protocol (anyconnect, nc, pulse, gp, f5, fortinet, array)",
+    },
+    "Authentication group / realm (optional)": {
+        "fr": "Groupe d'authentification / royaume (facultatif)",
+        "en": "Authentication group / realm (optional)",
+    },
+    "Pinned server certificate (sha256:... , printed on first refusal)": {
+        "fr": "Certificat serveur épinglé (sha256:… , imprimé au premier refus)",
+        "en": "Pinned server certificate (sha256:... , printed on first refusal)",
+    },
+    "HTTPS port": {
+        "fr": "Port HTTPS",
+        "en": "HTTPS port",
+    },
+    "SSH port": {
+        "fr": "Port SSH",
+        "en": "SSH port",
+    },
+    "SSH target (user@host, or a ~/.ssh/config alias)": {
+        "fr": "Cible SSH (utilisateur@hôte, ou un alias de ~/.ssh/config)",
+        "en": "SSH target (user@host, or a ~/.ssh/config alias)",
+    },
+    "Also send DNS queries through the tunnel?": {
+        "fr": "Envoyer aussi les requêtes DNS dans le tunnel ?",
+        "en": "Also send DNS queries through the tunnel?",
+    },
+    "Advanced settings? (y/N)": {
+        "fr": "Réglages avancés ? (o/N)",
+        "en": "Advanced settings? (y/N)",
+    },
+    "No secret to store: this one authenticates over SSH.": {
+        "fr": "Aucun secret à déposer : celui-là s'authentifie par SSH.",
+        "en": "No secret to store: this one authenticates over SSH.",
+    },
+    "Several technologies match: ": {
+        "fr": "Plusieurs technologies correspondent : ",
+        "en": "Several technologies match: ",
+    },
+    "Authentication through a web form (SAML / SSO)?": {
+        "fr": "Authentification par formulaire web (SAML / SSO) ?",
+        "en": "Authentication through a web form (SAML / SSO)?",
+    },
+    "Browser command for SSO (empty: show the URL to open yourself)": {
+        "fr": "Programme navigateur pour le SSO (vide : afficher l'URL à ouvrir soi-même)",
+        "en": "Browser command for SSO (empty: show the URL to open yourself)",
+    },
+    "Vault permissions tightened to 0600, it was readable by others: ": {
+        "fr": "Permissions du coffre resserrées à 0600, il était lisible par d'autres : ",
+        "en": "Vault permissions tightened to 0600, it was readable by others: ",
+    },
+    "already set": {
+        "fr": "déjà en place",
+        "en": "already set",
+    },
+    "empty": {
+        "fr": "vide",
+        "en": "empty",
+    },
+    "Still missing, the tunnel will not come up: ": {
+        "fr": "Toujours manquant, le tunnel ne montera pas : ",
+        "en": "Still missing, the tunnel will not come up: ",
+    },
+    "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.": {
+        "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
+        "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
+    },
 }
 
 
