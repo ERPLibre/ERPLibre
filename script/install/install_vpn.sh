@@ -153,13 +153,46 @@ binaries_for() {
     esac
 }
 
+# Le script que openconnect appelle pour poser routes et DNS. Il vient d'un
+# paquet à part, dont le nom change de famille en famille, et il s'installe à
+# des endroits différents : c'est un FICHIER qu'on cherche, pas un binaire du
+# PATH, donc `binaries_for` ne peut pas le voir.
+#
+# Sans lui, la session s'ouvre, openconnect se lance, et l'interface tun
+# n'apparaît jamais : le montage échoue trois étages plus haut, sur un
+# symptôme qui n'accuse pas le paquet manquant.
+VPNC_SCRIPT_PATHS="
+/etc/vpnc/vpnc-script
+/usr/share/vpnc-scripts/vpnc-script
+/usr/libexec/openconnect/vpnc-script
+/usr/lib/openconnect/vpnc-script
+"
+
+verify_vpnc_script() {
+    local fam="$1" path package
+    for path in ${VPNC_SCRIPT_PATHS}; do
+        if [ -x "$path" ]; then
+            log "vpnc-script : ${path}"
+            return 0
+        fi
+    done
+    case "$fam" in
+        rhel|suse) package="vpnc-script" ;;
+        *)         package="vpnc-scripts" ;;
+    esac
+    die "vpnc-script introuvable — installer le paquet ${package}"
+}
+
 verify() {
-    local driver="$1" missing=""
+    local driver="$1" fam="$2" missing=""
     for b in $(binaries_for "$driver"); do
         command -v "$b" >/dev/null || missing="${missing} ${b}"
     done
     if [ -n "$missing" ]; then
         die "toujours absents après installation :${missing}"
+    fi
+    if [ "$driver" = "openconnect" ]; then
+        verify_vpnc_script "$fam"
     fi
     log "vérifié : tout est en place pour ${driver}"
 }
@@ -180,7 +213,7 @@ main() {
     for driver in ${drivers}; do
         log "── ${driver} ──"
         install_packages "$fam" "$(packages_for "$driver" "$fam")"
-        verify "$driver"
+        verify "$driver" "$fam"
     done
     disable_autostart
     log "Terminé. Monter un tunnel : ./script/vpn/vpn.py up --profile <nom>"
