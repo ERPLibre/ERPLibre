@@ -281,7 +281,13 @@ def cmd_check(args):
 def cmd_install(args):
     """Une SEULE invocation, même pour plusieurs pilotes : le script fait
     un `apt-get update` par appel, et cinq appels le referaient cinq
-    fois."""
+    fois.
+
+    Le délai couvre le cas le plus lourd — tous les pilotes, index des
+    dépôts rafraîchi, paquets tirés d'un miroir lent — et existe pour
+    borner l'attente, pas pour la mesurer. Sans lui, un gestionnaire de
+    paquets qui ne rend jamais la main immobilise le menu sans fin.
+    """
     names = [args.driver] if args.driver else driver_names()
     runner = Runner()
     # `--sso` en QUEUE : le script retire ce drapeau avant de traiter le
@@ -291,6 +297,7 @@ def cmd_install(args):
         f"installer les paquets de : {', '.join(names)}",
         f"bash {INSTALL_SCRIPT} {' '.join(names)}{extra}",
         check=True,
+        timeout=900,
     )
     return code
 
