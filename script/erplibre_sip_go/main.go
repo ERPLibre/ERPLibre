@@ -58,6 +58,10 @@ func main() {
 		"tenir la ligne et decrocher sur commande, au lieu de composer")
 	essai := flag.Bool("essai-audio", false,
 		"ouvrir le combiné SANS appeler, pour vérifier micro et touches")
+	navigateur := flag.String("navigateur", "",
+		"servir un softphone de navigateur en SIP sur WebSocket, « hote:port »")
+	écho := flag.Bool("echo", false,
+		"avec -navigateur : renvoyer le son au lieu de composer par la SIM")
 	flag.Parse()
 
 	niveau := slog.LevelWarn
@@ -67,7 +71,7 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr,
 		&slog.HandlerOptions{Level: niveau})))
 
-	if *numéro == "" && !*essai && !*veille {
+	if *navigateur == "" && *numéro == "" && !*essai && !*veille {
 		échouer("numéro requis : -numero 5551234567")
 	}
 
@@ -79,6 +83,22 @@ func main() {
 
 	var res Résultat
 	var err error
+	if *navigateur != "" {
+		// Ce mode ne rend pas un résultat d'appel : il sert jusqu'à l'arrêt.
+		//
+		// L'écho se DEMANDE par « -echo » : il fut un temps déduit d'une
+		// carte non fournie, ce qui interdisait un vrai appel avec la carte
+		// trouvée toute seule — le cas pourtant le plus courant, l'index
+		// d'une carte USB changeant d'un branchement à l'autre.
+		options := OptionsModem{
+			Port: *port, Carte: *carte, ModePCM: *modePCM,
+			AudMod: *audmod, Bruit: *bruit, VolumeÉcoute: *clvl,
+		}
+		if err := ServirNavigateur(ctx, *navigateur, options, *écho); err != nil {
+			échouer(err.Error())
+		}
+		return
+	}
 	if *essai {
 		res, err = EssaiCombiné(ctx, *carte, *micro, *pilote)
 		rendre(res, err)
