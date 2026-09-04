@@ -285,6 +285,12 @@ func jouerSurCarte(ctx context.Context, carte, fichier string) error {
 // des périphériques change.
 func carteOuDéfaut(carte string) (string, error) {
 	if carte != "" {
+		// Une carte NOMMÉE se vérifie aussi : « hw:2,0 » sur une machine qui
+		// n'a que deux cartes se lit comme un choix délibéré, et ne révèle
+		// son inexistence qu'à l'ouverture — soit après le décroché.
+		if err := VérifierCarte(carte); err != nil {
+			return "", err
+		}
 		return carte, nil
 	}
 	return CarteModem()
@@ -299,7 +305,7 @@ var motifCarte = regexp.MustCompile(`^\s*(\d+)\s*\[([^\]]+)\]`)
 // de la machine — donc à jouer l'annonce dans le bureau plutôt que dans
 // l'appel.
 func CarteModem() (string, error) {
-	f, err := os.Open("/proc/asound/cards")
+	f, err := os.Open(FichierCartes)
 	if err != nil {
 		return "", err
 	}
