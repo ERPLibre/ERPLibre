@@ -41,8 +41,15 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def module_path(spec: DemoSpec) -> Path:
-    return repo_root() / "odoo18.0" / "addons" / "addons" / spec.module
+def module_path(spec: DemoSpec):
+    """Le module de la demonstration, cherche dans les depots d'addons.
+
+    Rend None quand il est introuvable : c'est a l'appelant de le dire, avec
+    le nom cherche plutot qu'un chemin invente.
+    """
+    from script.todo.sms.spec import trouver_module
+
+    return trouver_module(spec.module)
 
 
 # ----------------------------------------------------------------------
@@ -285,8 +292,8 @@ def step_odoo(todo, state):
     """
     spec = state.spec
     source = module_path(spec)
-    if not source.is_dir():
-        return False, f"{t('sms_err_module_missing')} : {source}"
+    if source is None:
+        return False, f"{t('sms_err_module_missing')} : {spec.module}"
 
     cible = ssh_target(todo, spec, state)
     if not cible:

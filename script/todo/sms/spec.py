@@ -43,6 +43,27 @@ def _base() -> Path:
     return _repo_root() / "private" / "conf" / "sms"
 
 
+#: Ou Google Repo depose les depots d'addons, un dossier par depot.
+DOSSIER_ADDONS = "odoo18.0/addons"
+
+
+def trouver_module(nom: str):
+    """Le chemin du module dans l'un des depots d'addons, ou None.
+
+    On CHERCHE au lieu de composer un chemin. Les addons sont repartis par
+    Google Repo en plus de cent depots, et lequel porte un module donne ne se
+    devine pas : le supposer designait un dossier ou ce module n'a jamais ete,
+    et l'etape s'arretait sur « module introuvable » en montrant un chemin que
+    personne ne reconnaissait.
+    """
+    racine = _repo_root() / DOSSIER_ADDONS
+    for depot in sorted(racine.glob("*")):
+        chemin = depot / nom
+        if chemin.is_dir():
+            return chemin
+    return None
+
+
 BASE = _base()
 STATE_PATH = BASE / "demo.json"
 SECRET_PATH = BASE / "hmac.secret"
@@ -187,6 +208,7 @@ def load() -> DemoState:
     spec_raw = raw.get("spec") or {}
     connus = {f for f in DemoSpec.__dataclass_fields__}
     spec = DemoSpec(**{k: v for k, v in spec_raw.items() if k in connus})
+    spec = _rattraper_le_module(spec)
     return DemoState(
         spec=spec,
         done=list(raw.get("done") or []),
@@ -194,6 +216,28 @@ def load() -> DemoState:
         errors=dict(raw.get("errors") or {}),
         last_uuid=raw.get("last_uuid") or "",
     )
+
+
+def _rattraper_le_module(spec: DemoSpec) -> DemoSpec:
+    """Remplace un nom de module qui n'existe plus par celui d'aujourd'hui.
+
+    Le module a ete renomme ; un etat ecrit avant le renommage designe un
+    dossier absent, et chaque etape echoue alors sur « module introuvable ».
+    Rien dans l'interface ne permet de corriger ce nom : il faudrait editer un
+    JSON dans `private/`, ce que personne ne devinera.
+
+    On ne remplace QUE ce qui est introuvable, et seulement quand le nom par
+    defaut existe : un nom volontairement different, mais valide, est laisse
+    tel quel.
+    """
+    from dataclasses import replace
+
+    if trouver_module(spec.module):
+        return spec
+    defaut = DemoSpec.module
+    if spec.module == defaut or not trouver_module(defaut):
+        return spec
+    return replace(spec, module=defaut)
 
 
 def save(state: DemoState) -> None:
