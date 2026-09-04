@@ -37,6 +37,8 @@ from script.todo.qemu_install import QemuInstallMixin
 from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_recover import QemuRecoverMixin
+from script.todo.vpn_menu import VpnMenuMixin
+from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 
@@ -100,6 +102,7 @@ class TODO(
     QemuAccessMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
+    VpnMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -971,6 +974,12 @@ class TODO(
                     "Deploy - Install NTFY notification server"
                 )
             },
+            {"section": t("VPN & tunnels")},
+            {
+                "prompt_description": t(
+                    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -993,6 +1002,8 @@ class TODO(
                 self.prompt_execute_proxmox()
             elif status == "7":
                 self._deploy_ntfy_server()
+            elif status == "8":
+                self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
 
@@ -4942,6 +4953,11 @@ class TODO(
                     "Network performance request per second"
                 )
             },
+            {
+                "prompt_description": t(
+                    "VPN - Tunnels (L2TP/IPsec, WireGuard, OpenVPN...)"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -4954,6 +4970,8 @@ class TODO(
                 self.generate_network_port_forwarding()
             elif status == "2":
                 self.generate_network_performance_test()
+            elif status == "3":
+                self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
 
