@@ -6,11 +6,13 @@ import ast
 import unittest
 
 from script.code_generator.search_class_model import (
+    ARGS_TYPE_PARAM,
     extract_lambda,
     fill_search_field,
     search_and_replace,
-    ARGS_TYPE_PARAM,
 )
+
+
 def count_space_tab(word, group_space=4):
     """Copied from transform_python_to_code_writer (cannot import due to
     code_writer dependency not available in erplibre venv)."""
@@ -152,9 +154,7 @@ class TestFillSearchField(unittest.TestCase):
 class TestSearchAndReplace(unittest.TestCase):
     def test_replace_quoted_value(self):
         content = 'template_model_name = "old_model"'
-        result = search_and_replace(
-            content, "hooks.py", "new_model"
-        )
+        result = search_and_replace(content, "hooks.py", "new_model")
         self.assertIn('"new_model"', result)
         self.assertNotIn("old_model", result)
 
