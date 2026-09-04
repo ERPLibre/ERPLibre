@@ -905,6 +905,55 @@ class TestMateriel(SmsDemoBase):
         self.assertEqual(etat.spec.materiel, "modem")
         self.assertEqual(sorted(etat.done), ["odoo", "vm"])
 
+    def test_poser_le_meme_materiel_ne_defait_rien(self):
+        """Entrer par le menu Modem alors qu'on y etait deja garde l'acquis."""
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load()
+        menu.poser_materiel(etat, "modem")
+        for etape in ("vm", "odoo", "gateway", "mobile"):
+            etat.mark_done(etape)
+        self.assertFalse(menu.poser_materiel(etat, "modem"))
+        self.assertEqual(len(etat.done), 4)
+
+    def test_le_menu_modem_enchaine_sans_rien_demander(self):
+        """Arriver par la veut dire qu'on veut la chaine, pas un menu."""
+        from unittest.mock import patch
+
+        from script.todo.modem import menu as modem_menu
+
+        etat = self.spec_mod.load()
+        etat.mark_done("gateway")
+        self.spec_mod.save(etat)
+        with patch("script.todo.sms.menu.enchainer") as enchaine, patch(
+            "script.todo.sms.menu.prompt_execute_sms"
+        ) as ouvre:
+            modem_menu._passerelle(todo=None)
+        self.assertTrue(enchaine.called)
+        self.assertFalse(ouvre.called, "un menu s'est ouvert au lieu d'enchainer")
+        recharge = self.spec_mod.load()
+        self.assertEqual(recharge.spec.materiel, "modem")
+        self.assertNotIn("gateway", recharge.done)
+
+    def test_letape_annoncee_porte_le_nom_du_materiel(self):
+        """Annoncer « application mobile » ferait chercher un appareil absent."""
+        from dataclasses import replace
+        from unittest.mock import patch
+
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load()
+        etat.spec = replace(etat.spec, materiel="modem")
+        for etape in ("vm", "odoo", "gateway"):
+            etat.mark_done(etape)
+        dit = []
+        with patch("builtins.print", lambda *a, **k: dit.append(" ".join(map(str, a)))), \
+                patch.object(menu, "_dispatch", return_value=(True, "")):
+            menu._run_one(None, etat, self.steps.BY_ID["mobile"])
+        annonce = " ".join(dit)
+        self.assertIn("agent", annonce.lower())
+        self.assertNotIn("application mobile", annonce.lower())
+
 
 if __name__ == "__main__":
     unittest.main()
