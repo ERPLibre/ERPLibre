@@ -1659,7 +1659,8 @@ class TODO(
             return f"{secs}s"
         return f"{secs // 60}m{secs % 60:02d}s"
 
-    # Cible d'installation Odoo exécutée dans la VM (défaut ERPLibre 1.7.0).
+    # Cible d'installation Odoo exécutée dans la VM : la version que
+    # conf/supported_version_erplibre.json marque « default ».
     ERPLIBRE_ODOO_TARGET = "install_odoo_18"
     # Go ajoutés au disque quand on installe ERPLibre (le minimum d'image ne
     # laisse que ~97 Mo libres après l'installation).

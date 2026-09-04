@@ -9,6 +9,15 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+
+## [1.8.0] - 2026-09-04
+
+**Notes de migration**
+
+Recréer l'environnement virtuel, l'interpréteur Python et l'installateur de
+paquets se choisissant désormais. Utiliser le guide d'installation depuis
+l'outil `make`. Ubuntu 20.04 et 22.04 ne sont plus supportés.
+
 ## Ajouté
 
 - Déployer des VM ERPLibre en QEMU/KVM depuis des images cloud : Ubuntu, Debian, Fedora, AlmaLinux, Rocky, openSUSE, Arch, Linux Mint, et Debian sur s390x. Matériel, branche et version d'Odoo se règlent par machine
@@ -574,7 +583,9 @@ Parce que le dépôt d'addons a changé, le fichier de configuration doit être 
 - Support uniquement de python3.6 et python3.7, python3.8 cause des erreurs à l'exécution.
 
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.8.0...HEAD
+
+[1.8.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.7.0...v1.8.0
 
 [1.7.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.6.0...v1.7.0
 
