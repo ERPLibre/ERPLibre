@@ -597,6 +597,64 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             self.assertEqual(self.todo._vpn_ask_secret("PSK"), "")
 
 
+class SsoHelperOffer(MenuBase):
+    """La proposition d'installer le greffon SSO.
+
+    Elle doit être ÉCLAIRÉE et ne pas se répéter : le greffon ne sert
+    qu'aux passerelles à navigateur intégré, et proposer d'installer ce qui
+    est déjà installé fait douter de ce qu'on lit.
+    """
+
+    def installing(self, driver, absent, *answers):
+        """Déroule `_vpn_install` et rend (sortie, commandes lancées)."""
+        launched = []
+        with patch(
+            "script.todo.vpn_menu._sso_helper_seen", return_value=not absent
+        ):
+            with patch.object(
+                self.todo, "_vpn_pick_driver", return_value=DRIVERS[driver]
+            ):
+                with patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ):
+                    with self.answering(*answers):
+                        out = io.StringIO()
+                        with redirect_stdout(out):
+                            self.todo._vpn_install()
+        return out.getvalue(), launched
+
+    def test_it_is_offered_when_the_helper_is_missing(self):
+        printed, launched = self.installing("openconnect", True, "o")
+        self.assertIn("No SSO handler", printed)
+        self.assertEqual(launched, ["install --driver openconnect --with-sso"])
+
+    def test_declining_installs_only_the_packages(self):
+        _, launched = self.installing("openconnect", True, "n")
+        self.assertEqual(launched, ["install --driver openconnect"])
+
+    def test_it_is_not_offered_when_the_helper_is_there(self):
+        """Une liste de réponses VIDE : si la question était posée, le test
+        lèverait StopIteration."""
+        printed, launched = self.installing("openconnect", False)
+        self.assertNotIn("No SSO handler", printed)
+        self.assertEqual(launched, ["install --driver openconnect"])
+
+    def test_it_is_not_offered_for_a_driver_that_cannot_use_it(self):
+        """WireGuard n'a pas de formulaire web : la question serait sans
+        objet, et la liste de réponses vide le prouve."""
+        printed, launched = self.installing("wireguard", True)
+        self.assertNotIn("No SSO handler", printed)
+        self.assertEqual(launched, ["install --driver wireguard"])
+
+    def test_the_offer_says_the_upstream_is_unmaintained(self):
+        """La réponse doit être éclairée : le greffon porte une dette, et
+        la taire ferait accepter sans savoir."""
+        printed, _ = self.installing("openconnect", True, "n")
+        self.assertIn("entretenu", printed)
+
+
 class FromPreset(MenuBase):
     """Le chemin « créer un profil à partir d'un préréglage ».
 

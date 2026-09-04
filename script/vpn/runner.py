@@ -149,6 +149,19 @@ class Runner:
         une commande qui RETOURNE un secret sur sa sortie tout en parlant
         sur ses erreurs : capturer les deux ferait attendre l'utilisateur
         en silence devant une authentification qui réclame son geste.
+
+        Faute de `stdin`, l'entrée est /dev/null et JAMAIS le terminal
+        hérité. Une commande qui reçoit un terminal sur son entrée peut
+        appeler `tcsetattr` ; hors du groupe de processus d'avant-plan,
+        elle reçoit alors SIGTTOU et s'ARRÊTE — état T, que ni SIGINT ni
+        SIGTERM ne lèvent, et qui garde les verrous déjà pris. Le cas se
+        produit quand la sortie est capturée : sudo alloue un
+        pseudo-terminal pour l'entrée pendant que la sortie part dans un
+        tuyau, et le groupe d'avant-plan de ce terminal n'est pas celui de
+        la commande. Rien ici n'a besoin de lire l'humain : les questions
+        passent par `confirm`, dans CE processus, et un secret arrive par
+        `stdin`. Une invite de mot de passe sudo n'en souffre pas — sudo
+        ouvre /dev/tty, pas son entrée standard.
         """
         full = command
         if sudo is None:
@@ -173,6 +186,11 @@ class Runner:
                 full,
                 shell=True,
                 input=stdin,
+                # Rien à fournir : /dev/null, et jamais le terminal hérité
+                # (voir la docstring). Quand `input` porte un contenu,
+                # subprocess branche lui-même le tuyau et `stdin` doit
+                # rester None — les deux ensemble sont refusés.
+                stdin=subprocess.DEVNULL if stdin is None else None,
                 text=True,
                 timeout=timeout,
                 stdout=subprocess.PIPE if capture else None,
@@ -180,6 +198,12 @@ class Runner:
             )
             code, out = proc.returncode, proc.stdout or ""
         except subprocess.TimeoutExpired:
+            # Le délai rend la main à l'appelant ; il ne garantit pas que
+            # la commande soit morte. `shell=True` met un shell entre nous
+            # et le vrai travail, et subprocess ne tue que ce shell — un
+            # `sudo apt-get` lancé par lui devient orphelin et continue,
+            # verrous compris. D'où le code 124 et un échec ANNONCÉ plutôt
+            # qu'un silence : la suite se juge sur un état inconnu.
             code, out = 124, ""
             self.fail(f"{label} : délai dépassé ({timeout} s)")
             return code, out

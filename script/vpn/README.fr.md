@@ -177,6 +177,34 @@ openconnect --protocol=anyconnect --usergroup=<GROUPE> \
     | grep -E 'sso-v2|external-browser|No SSO handler'
 ```
 
+### Installer le greffon
+
+`VPN › Installer les paquets client` le propose quand le pilote est
+OpenConnect et qu'aucun greffon n'est trouvé — et se taît sinon. En ligne
+de commande :
+
+```bash
+sudo bash script/install/install_vpn.sh openconnect --sso
+```
+
+Lire ce que cette étape porte avant de l'accepter. L'amont du greffon n'est
+**plus entretenu depuis 2023**, si bien que l'installateur porte des
+contournements qui ne se résoudront pas d'eux-mêmes : ses épingles de
+version sont intenables sur un Python récent (`lxml` d'avant la 5 ne
+compile pas), Qt et `lxml` viennent de la distribution et non de PyPI, et
+un appel à `asyncio.get_event_loop()` lève depuis Python 3.12 — corrigé à
+chaque installation, puisque toute réinstallation l'effacerait. pip signale
+un conflit d'épingles sur `lxml` et `keyring` : il est attendu, ce sont les
+deux qu'on relâche sciemment.
+
+Les noms de paquets ne sont **vérifiés que sur Debian et Ubuntu** ; sur les
+autres familles ils sont donnés au mieux, et une erreur s'y lit « paquet
+introuvable » sans rien casser d'autre.
+
+Le venv appartient à l'**utilisateur**, pas à root : le greffon a besoin
+d'un affichage et d'un trousseau, que root n'a pas. L'installateur refuse
+donc de tourner sans `sudo`, dont il lit pour qui installer.
+
 ### Déléguer le formulaire web, garder le tunnel
 
 Pour une passerelle qui exige le navigateur intégré, renseigner

@@ -170,6 +170,33 @@ openconnect --protocol=anyconnect --usergroup=<GROUPE> \
     | grep -E 'sso-v2|external-browser|No SSO handler'
 ```
 
+### Installing the helper
+
+`VPN › Install the client packages` offers it when the driver is
+OpenConnect and no helper is found — and stays quiet otherwise. From the
+command line:
+
+```bash
+sudo bash script/install/install_vpn.sh openconnect --sso
+```
+
+Read what that step carries before accepting it. The helper's upstream has
+been **unmaintained since 2023**, so the installer holds workarounds that
+will not resolve on their own: its version pins are unsatisfiable on a
+recent Python (pre-5 `lxml` does not build), Qt and `lxml` come from the
+distribution rather than PyPI, and a call to `asyncio.get_event_loop()`
+raises from Python 3.12 on — patched on every install, since any
+reinstallation erases it. pip reports a pin conflict on `lxml` and
+`keyring`; it is expected, those are the two pins deliberately relaxed.
+
+Package names are **verified on Debian and Ubuntu only**; on the other
+families they are best-effort, and a mistake there reads as "package not
+found" without breaking anything else.
+
+The venv belongs to the **user**, not root: the helper needs a display and
+a keyring, which root does not have. The installer therefore refuses to run
+without `sudo`, from which it reads who to install for.
+
 ### Delegating the web form, keeping the tunnel
 
 For a gateway that insists on the embedded browser, set `oc_sso_helper` to

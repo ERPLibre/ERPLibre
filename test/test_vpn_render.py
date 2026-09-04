@@ -666,6 +666,57 @@ class DownOrder(unittest.TestCase):
         self.assertIn("rm -rf -- /dev/shm/erplibre-vpn/acme", joined)
 
 
+class NoCommandInheritsTheTerminal(unittest.TestCase):
+    """L'entrée standard d'une commande lancée par le `Runner` est /dev/null,
+    ou le contenu qu'on lui a donné — jamais le terminal de l'appelant.
+
+    Une commande qui tient un terminal sur son entrée peut appeler
+    `tcsetattr`. Hors du groupe de processus d'avant-plan, elle reçoit alors
+    SIGTTOU et passe à l'état T : ni SIGINT ni SIGTERM ne l'en sortent, elle
+    garde les verrous déjà pris, et seul root peut la relancer par SIGCONT.
+    Un gestionnaire de paquets figé de la sorte bloque tout apt de la
+    machine.
+    """
+
+    def _runner(self):
+        return Runner(dry_run=False, quiet=True)
+
+    def test_stdin_is_dev_null(self):
+        code, out = self._runner().cmd(
+            "à quoi mène l'entrée standard",
+            "readlink /proc/self/fd/0",
+            sudo=False,
+            capture=True,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(out.strip(), "/dev/null")
+
+    def test_stdin_is_not_a_terminal(self):
+        """La question que se pose le programme lancé, et non le chemin du
+        descripteur : c'est `isatty` qui décide d'un `tcsetattr`."""
+        code, _ = self._runner().cmd(
+            "l'entrée est-elle un terminal",
+            "test -t 0",
+            sudo=False,
+            check=False,
+            capture=True,
+        )
+        self.assertEqual(code, 1)
+
+    def test_given_content_still_reaches_the_command(self):
+        """Le canal des secrets reste ouvert : couper l'entrée par défaut ne
+        doit pas couper celle qu'on fournit."""
+        code, out = self._runner().cmd(
+            "relire ce qu'on donne",
+            "cat",
+            stdin="une ligne\n",
+            sudo=False,
+            capture=True,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "une ligne\n")
+
+
 class MarkedBlocks(unittest.TestCase):
     """`replace_block` décide de ce qu'on écrit dans /etc/ipsec.conf.
     Elle est pure : elle se juge sans /etc."""
