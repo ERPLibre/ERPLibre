@@ -5422,6 +5422,47 @@ TRANSLATIONS = {
         "fr": "🔌 Accès aux VM",
         "en": "🔌 VM access",
     },
+    # Menu QEMU — section « Réseau »
+    "VM network": {
+        "fr": "🌐 Réseau",
+        "en": "🌐 Network",
+    },
+    "Show the libvirt network state": {
+        "fr": "🌐 Voir l'état du réseau libvirt (sous-réseau, VM, baux)",
+        "en": "🌐 Show the libvirt network state (subnet, VMs, leases)",
+    },
+    "Recreate the VM subnet (stop, redefine, restart)": {
+        "fr": "♻️  Recréer le sous-réseau des VM (arrêter, redéfinir, relancer)",
+        "en": "♻️  Recreate the VM subnet (stop, redefine, restart)",
+    },
+    "Recreating the subnet does three things:": {
+        "fr": "Recréer le sous-réseau fait trois choses :",
+        "en": "Recreating the subnet does three things:",
+    },
+    "shut down the VMs attached to the network": {
+        "fr": "arrêter les VM attachées au réseau",
+        "en": "shut down the VMs attached to the network",
+    },
+    "redefine the network on the wanted prefix": {
+        "fr": "redéfinir le réseau sur le préfixe voulu",
+        "en": "redefine the network on the wanted prefix",
+    },
+    "start those same VMs again": {
+        "fr": "redémarrer ces mêmes VM",
+        "en": "start those same VMs again",
+    },
+    "Target prefix": {
+        "fr": "Préfixe visé",
+        "en": "Target prefix",
+    },
+    "libvirt network": {
+        "fr": "Réseau libvirt",
+        "en": "libvirt network",
+    },
+    "Power off VMs that ignore the shutdown? (y/N): ": {
+        "fr": "Couper le courant des VM qui n'obéissent pas ? (o/N) : ",
+        "en": "Power off VMs that ignore the shutdown? (y/N): ",
+    },
     "Troubleshoot": {
         "fr": "🩺 Dépanner",
         "en": "🩺 Troubleshoot",
