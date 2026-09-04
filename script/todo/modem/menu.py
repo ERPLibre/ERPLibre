@@ -27,6 +27,7 @@ from script.todo.modem import calls as calls_mod
 from script.todo.modem import device as device_mod
 from script.todo.modem import diagnostic as diag_mod
 from script.todo.modem import messaging as sms_mod
+from script.todo.modem import passerelle as passerelle_mod
 from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
 
@@ -103,6 +104,7 @@ def prompt_execute_modem(todo) -> None:
 [14] {t("modem_probe_audio")}
 [15] {t("modem_audio_rule")} — {_etat_regle_audio()}
 [16] {t("modem_audio_try")}
+[17] {t("modem_gateway_agent")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -138,6 +140,8 @@ def prompt_execute_modem(todo) -> None:
             _sonder_audio()
         elif status == "15":
             _regle_audio()
+        elif status == "17":
+            _passerelle()
         elif status == "16":
             _essai_combine()
         else:
@@ -308,6 +312,32 @@ def _etat_voip():
 
 #: Delai laisse au binaire pour raccrocher avant qu'on l'abatte.
 DELAI_ARRET = 8
+
+
+def _passerelle():
+    """Fait tourner l'agent qui relaie les SMS d'un serveur ERPLibre.
+
+    En premier plan et jusqu'a Ctrl-C : ce menu sert a l'essayer et a voir ce
+    qu'il fait. Un service systemd est ce qui le fera vivre une fois qu'il
+    aura fait ses preuves — un agent lance depuis un menu meurt avec la
+    session.
+    """
+    manquants = [
+        nom for nom in (passerelle_mod.VARIABLE_URL,
+                        passerelle_mod.VARIABLE_APPAREIL,
+                        passerelle_mod.VARIABLE_SECRET)
+        if not os.environ.get(nom)
+    ]
+    if manquants:
+        print("  " + t("modem_gateway_missing_env") + " " + ", ".join(manquants))
+        print("  " + t("modem_gateway_env_help"))
+        return
+    agent = passerelle_mod.depuis_environnement()
+    print("  " + t("modem_gateway_running"))
+    try:
+        agent.boucle(journal=lambda message: print("  " + message))
+    except KeyboardInterrupt:
+        print()
 
 
 def _lancer_interruptible(args):
