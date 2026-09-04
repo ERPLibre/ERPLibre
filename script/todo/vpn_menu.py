@@ -82,6 +82,15 @@ ANYCONNECT_NEXT_STEP = (
     " password or by web form."
 )
 
+# Ce qu'on dit avant de proposer le greffon SSO. Il faut que la réponse
+# soit éclairée : le greffon n'est utile que pour une passerelle qui exige
+# un navigateur intégré, et son amont n'est plus entretenu.
+SSO_HELPER_NOTE = (
+    "Some gateways demand an embedded browser (SAML): openconnect stops on"
+    " « No SSO handler » and a helper is needed for the web step. It is"
+    " optional, and its upstream is no longer maintained."
+)
+
 MASTER_PASSWORD_WARNING = (
     "The vault MASTER password is stored in the configuration in clear"
     " text. Remove it and type it on demand."
@@ -93,6 +102,19 @@ MASTER_PASSWORD_WARNING = (
 # numéro de menu — et c'est exactement ce qui s'est produit. La lettre dit
 # « autre question ».
 DRIVER_LETTERS = "abcdefghijklmnopqrstuvwxyz"
+
+
+def _sso_helper_seen():
+    """Le greffon SSO est-il déjà joignable sur cette machine ?
+
+    Interrogé au PILOTE, pour que le menu et le montage cherchent au même
+    endroit : deux recherches distinctes finiraient par diverger, et le
+    menu proposerait d'installer ce que le montage trouve déjà.
+    """
+    driver_cls = DRIVERS.get("openconnect")
+    if driver_cls is None:
+        return True
+    return bool(driver_cls({"name": "check"}).sso_helper)
 
 
 def match_driver(answer, names):
@@ -266,8 +288,16 @@ class VpnMenuMixin:
         driver_cls = self._vpn_pick_driver(None)
         if driver_cls is None:
             return
+        # La question n'est posée que pour le pilote qui peut s'en servir,
+        # et seulement si le greffon n'est pas déjà là : proposer
+        # d'installer ce qui est installé fait douter de ce qu'on lit.
+        options = ""
+        if driver_cls is DRIVERS.get("openconnect") and not _sso_helper_seen():
+            print(f"\n{t(SSO_HELPER_NOTE)}")
+            if self._is_yes(input(f"{t('Install it as well? (y/N)')} : ")):
+                options = " --with-sso"
         print(f"\n{t('The installation requires sudo.')}")
-        self._vpn_cli(f"install --driver {driver_cls.name}")
+        self._vpn_cli(f"install --driver {driver_cls.name}{options}")
 
     # ------------------------------------------------------------------
     # Profils

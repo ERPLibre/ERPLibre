@@ -284,9 +284,12 @@ def cmd_install(args):
     fois."""
     names = [args.driver] if args.driver else driver_names()
     runner = Runner()
+    # `--sso` en QUEUE : le script retire ce drapeau avant de traiter le
+    # reste comme une liste de pilotes.
+    extra = " --sso" if getattr(args, "with_sso", False) else ""
     code, _ = runner.cmd(
         f"installer les paquets de : {', '.join(names)}",
-        f"bash {INSTALL_SCRIPT} {' '.join(names)}",
+        f"bash {INSTALL_SCRIPT} {' '.join(names)}{extra}",
         check=True,
     )
     return code
@@ -343,6 +346,15 @@ def build_parser():
             choices=sorted(DRIVERS),
             help="Se limiter à ce pilote",
         )
+        if name == "install":
+            sp.add_argument(
+                "--with-sso",
+                action="store_true",
+                help=(
+                    "Installer aussi le greffon d'authentification par"
+                    " formulaire web (openconnect-sso)"
+                ),
+            )
     return parser
 
 

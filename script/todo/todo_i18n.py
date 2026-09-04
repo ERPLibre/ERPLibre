@@ -11763,6 +11763,26 @@ TRANSLATIONS = {
             "No terminal to type the vault password: vault left closed."
         ),
     },
+    "Some gateways demand an embedded browser (SAML): openconnect stops on"
+    " \u00ab No SSO handler \u00bb and a helper is needed for the web step. It is"
+    " optional, and its upstream is no longer maintained.": {
+        "fr": (
+            "Certaines passerelles exigent un navigateur intégré (SAML) :"
+            " openconnect s'arrête sur « No SSO handler » et un greffon est"
+            " nécessaire pour l'étape web. Il est facultatif, et son amont"
+            " n'est plus entretenu."
+        ),
+        "en": (
+            "Some gateways demand an embedded browser (SAML): openconnect"
+            " stops on « No SSO handler » and a helper is needed for the web"
+            " step. It is optional, and its upstream is no longer"
+            " maintained."
+        ),
+    },
+    "Install it as well? (y/N)": {
+        "fr": "L'installer aussi ? (o/N)",
+        "en": "Install it as well? (y/N)",
+    },
     "SSO helper": {
         "fr": "greffon SSO",
         "en": "SSO helper",

@@ -32,6 +32,9 @@ Pilotes connus :
   sshuttle      sshuttle (sur RHEL/Rocky/Alma : dépôt EPEL requis)
 
 Sans argument : tous les pilotes.
+
+  --sso   installe EN PLUS le greffon d'authentification par formulaire web
+          (openconnect-sso). Voir la section « greffon SSO » plus bas.
 USAGE
 }
 
@@ -197,6 +200,133 @@ verify() {
     log "vérifié : tout est en place pour ${driver}"
 }
 
+# ----------------------------------------------------------------------
+# Greffon SSO — authentification par formulaire web (SAML)
+#
+# Un bloc à part, et supprimable d'un seul geste, parce qu'il porte une
+# dette qu'aucun paquet de distribution ne porte pour nous.
+#
+# openconnect refuse les passerelles qui exigent un navigateur INTÉGRÉ
+# (« No SSO handler ») : les distributions le bâtissent sans webview.
+# openconnect-sso pilote un vrai navigateur et rend un cookie de session,
+# que le pilote monte ensuite lui-même.
+#
+# Son amont est ARRÊTÉ depuis 2023. Trois conséquences qui ne se
+# résoudront pas d'elles-mêmes, et que ce bloc assume :
+#
+# · ses épingles de version sont intenables sur un Python récent — lxml
+#   d'avant la 5 ne COMPILE pas — d'où `--no-deps` et des dépendances
+#   choisies à la main ;
+# · Qt et lxml viennent de la DISTRIBUTION, pas de PyPI, qui n'a pas de
+#   roues pour les Python les plus récents ;
+# · il appelle `asyncio.get_event_loop()`, qui lève depuis Python 3.12
+#   quand aucune boucle n'est courante. Le correctif ci-dessous est REJOUÉ
+#   à chaque installation, car toute réinstallation l'effacerait.
+#
+# Les noms de paquets ne sont VÉRIFIÉS que sur debian et ubuntu. Sur les
+# autres familles ils sont donnés au mieux : une erreur ici se lit
+# « paquet introuvable » et ne casse rien d'autre.
+sso_packages_for() {
+    case "$1" in
+        debian) echo "python3-pyqt6 python3-pyqt6.qtwebengine python3-lxml libxcb-cursor0 python3-venv" ;;
+        arch)   echo "python-pyqt6 python-pyqt6-webengine python-lxml xcb-util-cursor" ;;
+        rhel)   echo "python3-pyqt6 python3-pyqt6-webengine python3-lxml xcb-util-cursor" ;;
+        suse)   echo "python3-qt6 python3-lxml xcb-util-cursor" ;;
+    esac
+}
+
+# Les dépendances RÉELLES du greffon, ses épingles retirées. Qt et lxml
+# sont volontairement absents : ils viennent du système, vus par le venv
+# grâce à `--system-site-packages`.
+SSO_PIP_DEPS="attrs colorama keyring prompt-toolkit pyxdg requests structlog toml PySocks pyotp"
+
+install_sso() {
+    local fam="$1" user="${SUDO_USER:-}"
+    [ -n "$user" ] || die "greffon SSO : lancer par sudo, pas en root direct
+    (le greffon a besoin de l'affichage et du trousseau d'un UTILISATEUR,
+     que root n'a pas — d'où \$SUDO_USER)"
+
+    log "── greffon SSO (openconnect-sso) ──"
+    log "amont arrêté depuis 2023 : contournements assumés, voir le source"
+    # shellcheck disable=SC2086
+    install_packages "$fam" $(sso_packages_for "$fam")
+
+    # Le venv appartient à l'UTILISATEUR : root n'a ni son affichage ni son
+    # trousseau, et un greffon installé sous root ne lui servirait à rien.
+    log "installation sous l'utilisateur ${user}"
+    runuser -u "$user" -- sh -s <<'USERPART'
+set -eu
+VENV="$HOME/.local/share/openconnect-sso-venv"
+# `--system-site-packages` : c'est ainsi que le venv voit le Qt et le lxml
+# de la distribution, dont PyPI n'a pas de roues pour un Python récent.
+[ -x "$VENV/bin/python" ] || /usr/bin/python3 -m venv --system-site-packages "$VENV"
+"$VENV/bin/pip" install --quiet --upgrade pip
+# `--no-deps` : les épingles du greffon sont intenables, on choisit nous-mêmes.
+"$VENV/bin/pip" install --quiet --no-deps openconnect-sso
+USERPART
+    # shellcheck disable=SC2086
+    runuser -u "$user" -- sh -c \
+        "\"\$HOME/.local/share/openconnect-sso-venv/bin/pip\" install --quiet ${SSO_PIP_DEPS}"
+
+    # pip signale ici un conflit sur lxml et keyring. Il est ATTENDU :
+    # ce sont les deux épingles qu'on relâche sciemment, l'amont étant
+    # arrêté. Le dire, plutôt que de masquer la sortie de pip — une
+    # installation qui cache ses erreurs ne se diagnostique plus.
+    log "le conflit d'épingles signalé par pip (lxml, keyring) est voulu"
+    sso_patch_event_loop "$user"
+    sso_verify "$user"
+}
+
+sso_patch_event_loop() {
+    # `asyncio.get_event_loop()` ne crée plus de boucle implicite quand
+    # aucune n'est courante : depuis Python 3.12 il avertit, depuis 3.14 il
+    # lève. Le greffon l'appelle à quatre endroits, tous atteints après
+    # celui-ci — poser la boucle une fois ici les sert tous.
+    runuser -u "$1" -- /usr/bin/python3 - <<'PATCH'
+import glob, os, sys
+
+MARK = "# ERPLibre : boucle asyncio explicite"
+OLD = """        if os.name == "nt":
+            asyncio.set_event_loop(asyncio.ProactorEventLoop())
+        auth_response, selected_profile = asyncio.get_event_loop().run_until_complete("""
+NEW = """        if os.name == "nt":
+            asyncio.set_event_loop(asyncio.ProactorEventLoop())
+        else:
+            %s : depuis Python 3.12,
+            # get_event_loop() n'en crée plus une implicitement.
+            asyncio.set_event_loop(asyncio.new_event_loop())
+        auth_response, selected_profile = asyncio.get_event_loop().run_until_complete(""" % MARK
+
+root = os.path.expanduser("~/.local/share/openconnect-sso-venv")
+found = glob.glob(os.path.join(root, "lib", "python*", "site-packages",
+                               "openconnect_sso", "app.py"))
+if not found:
+    sys.exit("[VPN] ERREUR: app.py du greffon introuvable")
+for path in found:
+    with open(path) as fh:
+        source = fh.read()
+    if MARK in source:
+        print("[VPN] correctif asyncio : déjà en place")
+        continue
+    if OLD not in source:
+        print("[VPN] correctif asyncio : motif absent, version changée —"
+              " à revoir si le greffon ne démarre pas")
+        continue
+    with open(path, "w") as fh:
+        fh.write(source.replace(OLD, NEW, 1))
+    print("[VPN] correctif asyncio : appliqué")
+PATCH
+}
+
+sso_verify() {
+    local helper
+    helper="$(runuser -u "$1" -- sh -c 'echo "$HOME/.local/share/openconnect-sso-venv/bin/openconnect-sso"')"
+    runuser -u "$1" -- "$helper" --help >/dev/null 2>&1 \
+        || die "greffon SSO installé mais il ne démarre pas : ${helper}"
+    log "vérifié : ${helper}"
+    log "le renseigner dans oc_sso_helper si le profil ne le trouve pas"
+}
+
 ALL_DRIVERS="l2tp_ipsec wireguard openvpn openconnect sshuttle"
 
 main() {
@@ -205,8 +335,17 @@ main() {
     esac
     check_root "$@"
     detect_os
-    local fam drivers
+    local fam drivers with_sso=0 args=""
     fam="$(family)"
+    # `--sso` retiré de la liste avant qu'elle ne serve de liste de
+    # pilotes : sans cela il serait pris pour un nom de pilote.
+    for arg in "$@"; do
+        case "$arg" in
+            --sso) with_sso=1 ;;
+            *)     args="${args} ${arg}" ;;
+        esac
+    done
+    set -- ${args}
     # Sans argument : tout. C'est ce que « [8] Installer les paquets
     # client » demande quand on ne choisit pas de technologie.
     drivers="${*:-${ALL_DRIVERS}}"
@@ -216,6 +355,9 @@ main() {
         verify "$driver" "$fam"
     done
     disable_autostart
+    if [ "$with_sso" -eq 1 ]; then
+        install_sso "$fam"
+    fi
     log "Terminé. Monter un tunnel : ./script/vpn/vpn.py up --profile <nom>"
 }
 
