@@ -5015,6 +5015,40 @@ TRANSLATIONS = {
         "fr": "Outils d'assistance IA",
         "en": "AI coding tools",
     },
+    # Pourquoi le déploiement demande un mot de passe, dit AVANT l'invite.
+    "sudo password: asked when the deployment starts": {
+        "fr": "Mot de passe sudo : demandé au lancement du déploiement, pour",
+        "en": "sudo password: asked when the deployment starts, for",
+    },
+    "write into %s — checked: %s %s, writing refused here": {
+        "fr": "écrire dans %s — vérifié : %s %s, écriture refusée ici",
+        "en": "write into %s — checked: %s %s, writing refused here",
+    },
+    "the libvirt group opens the qemu:///system socket, not this directory": {
+        "fr": (
+            "le groupe libvirt ouvre la socket qemu:///system, pas ce"
+            " répertoire"
+        ),
+        "en": (
+            "the libvirt group opens the qemu:///system socket, not this"
+            " directory"
+        ),
+    },
+    "the system steps of the script (service, group)": {
+        "fr": "les gestes système du script (service, groupe)",
+        "en": "the system steps of the script (service, group)",
+    },
+    "the libvirt socket does not answer without sudo either: group absent"
+    " from this session, or libvirt not started": {
+        "fr": (
+            "la socket libvirt ne répond pas non plus sans sudo : groupe"
+            " absent de cette session, ou libvirt pas démarré"
+        ),
+        "en": (
+            "the libvirt socket does not answer without sudo either: group"
+            " absent from this session, or libvirt not started"
+        ),
+    },
     "Python IDE, opens the ERPLibre checkout": {
         "fr": "IDE Python, ouvre le dépôt ERPLibre",
         "en": "Python IDE, opens the ERPLibre checkout",

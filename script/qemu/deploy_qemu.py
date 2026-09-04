@@ -56,7 +56,9 @@ import zlib
 import os
 import re
 import shutil
+import pwd
 import socket
+import stat as stat_mod
 import subprocess
 import sys
 import tempfile
@@ -440,7 +442,12 @@ FEDORA_SECONDARY_MASTER = (
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
 # --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
 # façon sous sudo (virt-install). Surchargez avec --image-dir au besoin.
-DEFAULT_IMAGE_DIR = Path("/var/lib/libvirt/images/iso")
+# Le pool par défaut de libvirt, et son sous-répertoire de cache d'images.
+# Nommés ici et non dans argparse : sudo_facts() doit constater les droits du
+# répertoire que le déploiement utilisera VRAIMENT, et deux écritures du même
+# chemin divergent dès qu'on en change une.
+DEFAULT_DISK_DIR = Path("/var/lib/libvirt/images")
+DEFAULT_IMAGE_DIR = DEFAULT_DISK_DIR / "iso"
 
 # Emplacements de la base osinfo-db (détection d'un --osinfo connu).
 OSINFO_DB_DIRS: tuple[str, ...] = (
@@ -678,6 +685,98 @@ def list_images() -> None:
 
 # --------------------------------------------------------------------------- #
 # Utilitaires d'exécution
+def repertoire_a_root(chemin: Path) -> tuple | None:
+    """(chemin, propriétaire, mode) si l'écriture y est refusée, sinon None.
+
+    L'écriture se TESTE, elle ne se déduit pas du mode : une ACL ou un groupe
+    peut l'accorder là où « drwxr-xr-x root root » la refuse en apparence, et
+    l'inverse existe aussi. Le propriétaire et le mode ne sont lus qu'ENSUITE,
+    pour dire au lecteur ce qui bloque.
+    """
+    try:
+        if not chemin.is_dir() or os.access(chemin, os.W_OK):
+            return None
+        infos = chemin.stat()
+    except OSError:
+        return None
+    try:
+        utilisateur = pwd.getpwuid(infos.st_uid).pw_name
+    except (KeyError, OSError):
+        utilisateur = str(infos.st_uid)
+    try:
+        groupe = grp.getgrgid(infos.st_gid).gr_name
+    except (KeyError, OSError):
+        groupe = str(infos.st_gid)
+    return (
+        str(chemin),
+        f"{utilisateur}:{groupe}",
+        stat_mod.filemode(infos.st_mode),
+    )
+
+
+def sudo_facts(disk_dir: Path | None = None, image_dir: Path | None = None):
+    """Pourquoi root est nécessaire ici : des FAITS, constatés sur la machine.
+
+    Rend une liste de couples (clé, valeurs) et non des phrases : ce script
+    les dit en français, le menu TODO les traduit, et la vérification ne vit
+    qu'à un endroit.
+
+    Deux clés. « ecriture » : un répertoire où le déploiement doit écrire et
+    ne peut pas — c'est le vrai motif, et il tient au RÉPERTOIRE, pas à
+    libvirt. « socket » : qemu:///system répond-il sans sudo, ce qui dit ce
+    que le groupe libvirt couvre RÉELLEMENT — appartenir au groupe et en
+    disposer dans la session courante sont deux choses.
+
+    Le tout parce que sudo demande un mot de passe sans jamais dire ce qu'il
+    sert à faire : l'invite tombe entre deux lignes de journal, et on la subit
+    sans savoir si elle porte sur libvirt, sur un paquet ou sur un fichier.
+    """
+    faits = []
+    vus = set()
+    for chemin in (
+        disk_dir or DEFAULT_DISK_DIR,
+        image_dir or DEFAULT_IMAGE_DIR,
+    ):
+        bloque = repertoire_a_root(Path(chemin))
+        if bloque and bloque[0] not in vus:
+            vus.add(bloque[0])
+            faits.append(("ecriture", bloque))
+    # Trois valeurs et non deux : « absent » quand virsh n'est pas là. Rendre
+    # « non » y ferait accuser le groupe libvirt d'un défaut qui n'est pas le
+    # sien — il n'y a simplement rien à joindre encore.
+    if shutil.which("virsh") is None:
+        faits.append(("socket", ("absent",)))
+    else:
+        faits.append(("socket", ("ok" if libvirt_ready(False) else "non",)))
+    return faits
+
+
+def sudo_lignes(faits) -> list[str]:
+    """Les faits mis en phrases, en français, pour ce script."""
+    lignes = []
+    for cle, valeurs in faits:
+        if cle == "ecriture":
+            chemin, proprio, mode = valeurs
+            lignes.append(
+                f"écrire dans {chemin} — vérifié : {proprio} {mode},"
+                " écriture refusée à cet utilisateur"
+            )
+    if any(cle == "ecriture" for cle, _v in faits):
+        lignes.append(
+            "le groupe libvirt ouvre la socket qemu:///system, pas ce"
+            " répertoire"
+        )
+    else:
+        lignes.append("les gestes système du script (service, groupe)")
+    for cle, valeurs in faits:
+        if cle == "socket" and valeurs[0] == "non":
+            lignes.append(
+                "la socket libvirt ne répond pas non plus sans sudo :"
+                " groupe absent de cette session, ou libvirt pas démarré"
+            )
+    return lignes
+
+
 # --------------------------------------------------------------------------- #
 class Runner:
     """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin."""
@@ -685,6 +784,24 @@ class Runner:
     def __init__(self, use_sudo: bool, dry_run: bool) -> None:
         self.use_sudo = use_sudo
         self.dry_run = dry_run
+        # L'explication n'est due qu'UNE fois : sudo garde sa réponse quelques
+        # minutes, et la répéter à chaque étape noierait le journal.
+        self._sudo_dit = False
+
+    def _annoncer_sudo(self) -> None:
+        """Dit pourquoi root, AVANT que sudo ne réclame le mot de passe.
+
+        Avant et non après : sudo n'explique jamais ce qu'il sert à faire, et
+        un mot de passe tapé sans savoir ce qu'il autorise est donné à
+        l'aveugle. Les raisons sont constatées sur la machine, pas affirmées —
+        voir sudo_facts().
+        """
+        if self._sudo_dit:
+            return
+        self._sudo_dit = True
+        print("\n🔑 sudo va demander votre mot de passe, pour :")
+        for ligne in sudo_lignes(sudo_facts()):
+            print(f"     {ligne}")
 
     def run(
         self,
@@ -701,6 +818,7 @@ class Runner:
         seul l'appel qui SAIT réessayer autrement doit le demander.
         """
         if privileged and self.use_sudo:
+            self._annoncer_sudo()
             cmd = ["sudo", *cmd]
         printable = " ".join(cmd)
         if self.dry_run:
@@ -3712,14 +3830,14 @@ def build_parser() -> argparse.ArgumentParser:
     g_vm.add_argument(
         "--disk-dir",
         type=Path,
-        default=Path("/var/lib/libvirt/images"),
-        help="Répertoire du qcow2 de travail (défaut : /var/lib/libvirt/images).",
+        default=DEFAULT_DISK_DIR,
+        help=f"Répertoire du qcow2 de travail (défaut : {DEFAULT_DISK_DIR}).",
     )
     g_vm.add_argument(
         "--seed-dir",
         type=Path,
-        default=Path("/var/lib/libvirt/images/iso"),
-        help="Répertoire du seed.iso (défaut : .../images/iso).",
+        default=DEFAULT_IMAGE_DIR,
+        help=f"Répertoire du seed.iso (défaut : {DEFAULT_IMAGE_DIR}).",
     )
     g_vm.add_argument(
         "--network",

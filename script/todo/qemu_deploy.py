@@ -969,6 +969,52 @@ class QemuDeployMixin:
         )
         print(f"  {t('~/.ssh/config:')} {cfg}")
         print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
+        # DERNIÈRE ligne de la page, parce que l'invite de sudo tombe juste
+        # après : elle n'explique rien d'elle-même, et un mot de passe tapé
+        # sans savoir ce qu'il autorise est donné à l'aveugle.
+        for rang, ligne in enumerate(self._qemu_sudo_lines()):
+            print(f"  {ligne}" if rang == 0 else f"     {ligne}")
+
+    def _qemu_sudo_lines(self):
+        """Pourquoi le déploiement va demander le mot de passe. Vide s'il ne
+        le demandera pas.
+
+        Les FAITS viennent de deploy_qemu, seule autorité sur ce que le
+        déploiement écrit et où ; leur mise en phrase revient au menu, qui
+        parle deux langues. Root ne verra aucune invite : ne rien annoncer
+        vaut mieux qu'annoncer une question qui ne viendra pas.
+        """
+        if os.geteuid() == 0:
+            return []
+        try:
+            faits = self._qemu_import_module().sudo_facts()
+        except Exception:
+            return []
+        ecritures = [valeurs for cle, valeurs in faits if cle == "ecriture"]
+        lignes = [t("sudo password: asked when the deployment starts")]
+        for chemin, proprio, mode in ecritures:
+            lignes.append(
+                t("write into %s — checked: %s %s, writing refused here")
+                % (chemin, proprio, mode)
+            )
+        lignes.append(
+            t(
+                "the libvirt group opens the qemu:///system socket, not this"
+                " directory"
+            )
+            if ecritures
+            else t("the system steps of the script (service, group)")
+        )
+        if any(
+            cle == "socket" and valeurs[0] == "non" for cle, valeurs in faits
+        ):
+            lignes.append(
+                t(
+                    "the libvirt socket does not answer without sudo either:"
+                    " group absent from this session, or libvirt not started"
+                )
+            )
+        return lignes
 
     def _qemu_build_deploy_parts(
         self,
