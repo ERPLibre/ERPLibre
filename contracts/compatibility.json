@@ -5,7 +5,7 @@
   "matrix": [
     {
       "mobile": "2026.03.29.01",
-      "erplibre": "1.6.0",
+      "erplibre": "1.7.0",
       "odoo": "18.0",
       "sync_api_version": "1.0",
       "modules_required": [

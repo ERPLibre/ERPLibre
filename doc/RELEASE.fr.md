@@ -64,7 +64,7 @@ make docker_build_odoo_18
 Rechercher l'ancienne version, comme :
 
 ```bash
-grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.6.0
+grep --color=always --exclude-dir={.repo,.venv,.git} --exclude="*.svg" -nri v1.7.0
 ```
 
 Remplacer si nécessaire par la nouvelle version.
