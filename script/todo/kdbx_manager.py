@@ -88,7 +88,17 @@ class KdbxManager:
         # /chemin » — la question avant ce dont elle parle.
         print(f"{t('kdbx_vault_is')} {kdbx_file_path}", flush=True)
         for _ in range(attempts):
-            password = getpass.getpass(prompt=t("kdbx_ask_password"))
+            # Sans terminal, `getpass` lève — `termios.error` quand il ne
+            # peut pas couper l'écho, `EOFError` quand l'entrée standard
+            # est déjà fermée. Renoncer proprement plutôt que de laisser la
+            # trace tuer le CLI : l'appelant sait dire « coffre non
+            # joignable », et un script lancé sans terminal ne peut de
+            # toute façon pas répondre.
+            try:
+                password = getpass.getpass(prompt=t("kdbx_ask_password"))
+            except (EOFError, OSError):
+                print(t("kdbx_no_terminal"))
+                return None
             if not password:
                 print(t("kdbx_give_up"))
                 return None

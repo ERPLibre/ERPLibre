@@ -409,6 +409,37 @@ class VpnDriver:
         """Les valeurs à masquer dans tout affichage."""
         return [v for v in self.secrets.values() if v]
 
+    @classmethod
+    def wants_secrets(cls, profile: dict) -> bool:
+        """Ce profil a-t-il un secret À LIRE dans le coffre ?
+
+        Distinct de `secret_fields`, qui dit ce que la TECHNOLOGIE peut
+        avoir : un même pilote peut authentifier par mot de passe sur un
+        profil et par formulaire web sur un autre, et le second n'a rien à
+        y chercher.
+
+        Ce que cela évite : ouvrir le coffre, donc réclamer le mot de passe
+        MAÎTRE, pour un secret que le montage n'utilisera pas — et échouer
+        là où il n'y a pas de terminal pour répondre.
+        """
+        return bool(cls.secret_fields)
+
+    def secret_notes(self) -> list:
+        """Ce qu'il faut savoir AVANT de taper un secret.
+
+        Rendu par le pilote, parce que la contrainte appartient à la
+        technologie ou au concentrateur, et affiché par le menu au moment de
+        la saisie. Une contrainte annoncée après coup coûte une deuxième
+        saisie : le mode de défaillance qu'elle évite est un secret déposé
+        sous une forme que le serveur n'acceptera pas, et qui ressort en
+        « identifiants refusés » sans que la longueur soit mise en cause.
+
+        Rend des chaînes DÉJÀ traduites, et non des clés : une note porte
+        souvent un nombre, et un gabarit à trous ne se traduit pas chez
+        l'appelant.
+        """
+        return []
+
     def ensure_ready(self, runner) -> bool:
         """Noyau, binaires et secrets présents ?
 

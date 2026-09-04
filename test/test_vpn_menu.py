@@ -597,5 +597,175 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             self.assertEqual(self.todo._vpn_ask_secret("PSK"), "")
 
 
+class FromPreset(MenuBase):
+    """Le chemin « créer un profil à partir d'un préréglage ».
+
+    Le préréglage porte ce que l'établissement publie ; il ne reste qu'un
+    identifiant à taper. Le formulaire est celui de `_vpn_edit_profile`,
+    amorcé — dupliquer les questions ferait vivre deux formulaires qui
+    divergeraient au prochain champ ajouté à un pilote.
+    """
+
+    # Passerelle INVENTÉE : voir la règle du dépôt sur ce qu'un exemple
+    # a le droit de nommer.
+    PRESET = {
+        "preset": "campus",
+        "label": "Campus SSL VPN",
+        "driver": "openconnect",
+        "server": "ssl.vpn.example-campus.net",
+        "oc_protocol": "anyconnect",
+        "oc_usergroup": "SSLProfileCampus",
+        "oc_authgroup": "CampusSSL",
+        "oc_password_len": 8,
+    }
+
+    def choosing(self, *answers):
+        """Le préréglage servi sans toucher au disque, et les réponses."""
+        return patch(
+            "script.vpn.presets.load_all",
+            return_value=([dict(self.PRESET)], []),
+        ), self.answering(*answers)
+
+    def test_only_the_identity_is_left_to_type(self):
+        """Aucune question sur la technologie : le préréglage y a répondu.
+        Si le formulaire la posait, la liste de réponses serait décalée et
+        le profil ne porterait pas les bonnes valeurs."""
+        loading, answering = self.choosing(
+            "1",  # le préréglage
+            "campus_me",  # nom du profil
+            "",  # serveur : celui du préréglage
+            "someone",  # oc_user
+            "",  # protocole
+            "",  # groupe de connexion (chemin d'URL)
+            "",  # SSO ? défaut non
+            "",  # réseaux
+            "",  # tout le trafic ? défaut non
+            "",  # témoin
+            "n",  # réglages avancés ?
+        )
+        with loading:
+            with answering:
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        saved = profiles.load("campus_me")
+        self.assertIsNotNone(saved, "profil non enregistré")
+        self.assertEqual(saved["driver"], "openconnect")
+        self.assertEqual(saved["server"], self.PRESET["server"])
+        # Le chemin d'URL : le champ qui décide QUEL service du
+        # concentrateur on joint, et celui qu'on ne devine pas.
+        self.assertEqual(saved["oc_usergroup"], "SSLProfileCampus")
+        self.assertEqual(saved["oc_authgroup"], "CampusSSL")
+        self.assertEqual(saved["oc_user"], "someone")
+        # La borne du concentrateur est un réglage AVANCÉ, jamais demandé
+        # ici : elle doit venir du préréglage quand même.
+        self.assertEqual(saved["oc_password_len"], 8)
+
+    def test_going_back_saves_nothing(self):
+        loading, answering = self.choosing("0")
+        with loading:
+            with answering:
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        self.assertEqual(profiles.names(), [])
+
+    def test_an_unreadable_preset_is_reported(self):
+        with patch(
+            "script.vpn.presets.load_all",
+            return_value=([], ["campus.json : ligne 3"]),
+        ):
+            with redirect_stdout(io.StringIO()) as out:
+                self.todo._vpn_from_preset()
+        self.assertIn("campus.json", out.getvalue())
+
+    def test_replaying_refreshes_the_gateway_and_keeps_the_identity(self):
+        """Rejouer un préréglage sur un profil existant sert à le remettre à
+        jour — passerelle déménagée, groupe renommé. Ce qui est PERSONNEL et
+        qu'aucun préréglage ne porte se garde : identifiant, routes ajoutées
+        à la main, certificat épinglé."""
+        profiles.save(
+            {
+                "name": "campus_me",
+                "driver": "openconnect",
+                "server": "ssl.vpn.example-campus.net",
+                "oc_user": "someone",
+                "oc_authgroup": "OldGroup",
+                "oc_servercert": "sha256:abc",
+                "routes": ["10.60.0.0/16"],
+                "oc_password_len": 0,
+            }
+        )
+        moved = dict(
+            self.PRESET,
+            server="ssl2.vpn.example-campus.net",
+            oc_authgroup="NewGroup",
+        )
+        with patch("script.vpn.presets.load_all", return_value=([moved], [])):
+            with self.answering(
+                "1",
+                "campus_me",
+                "",  # serveur : celui du préréglage, désormais à jour
+                "",  # oc_user : gardé
+                "",  # protocole
+                "",  # groupe de connexion : celui du préréglage
+                "",  # SSO ?
+                "",  # réseaux : gardés
+                "",  # tout le trafic ?
+                "",  # témoin
+                "n",  # réglages avancés ?
+            ):
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        saved = profiles.load("campus_me")
+        # Le préréglage rafraîchit ce qu'il déclare.
+        self.assertEqual(saved["server"], "ssl2.vpn.example-campus.net")
+        self.assertEqual(saved["oc_authgroup"], "NewGroup")
+        self.assertEqual(saved["oc_password_len"], 8)
+        # Le profil garde ce qui est personnel.
+        self.assertEqual(saved["oc_user"], "someone")
+        self.assertEqual(saved["oc_servercert"], "sha256:abc")
+        self.assertEqual(saved["routes"], ["10.60.0.0/16"])
+
+    def test_replaying_over_another_technology_drags_nothing_along(self):
+        """Un profil qui change de technologie ne doit pas faire suivre une
+        clé WireGuard dans un profil OpenConnect, où rien ne la lirait."""
+        profiles.save(
+            {
+                "name": "campus_me",
+                "driver": "wireguard",
+                "server": "vpn.acme.example",
+                "wg_address": "10.7.0.2/32",
+                "wg_peer_key": WG_PUBLIC,
+                "routes": ["10.7.0.0/24"],
+            }
+        )
+        loading, answering = self.choosing(
+            "1",
+            "campus_me",
+            "",  # serveur
+            "someone",  # oc_user
+            "",  # protocole
+            "",  # groupe de connexion
+            "",  # SSO ?
+            "",  # réseaux
+            "",  # tout le trafic ?
+            "",  # témoin
+            "n",  # réglages avancés ?
+        )
+        with loading:
+            with answering:
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        saved = profiles.load("campus_me")
+        self.assertEqual(saved["driver"], "openconnect")
+        self.assertNotIn("wg_peer_key", saved)
+        self.assertNotIn("wg_address", saved)
+
+    def test_no_preset_says_where_to_put_one(self):
+        with patch("script.vpn.presets.load_all", return_value=([], [])):
+            with redirect_stdout(io.StringIO()) as out:
+                self.todo._vpn_from_preset()
+        self.assertIn("conf/vpn_presets", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

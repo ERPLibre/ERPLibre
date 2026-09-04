@@ -26,6 +26,10 @@ import shlex
 import subprocess
 import sys
 
+# Le même masque que le coffre : deux masques différents dans la même
+# sortie feraient croire à deux natures de secret.
+from script.vpn.vault import MASK
+
 # Marqueurs des blocs gérés dans les fichiers de configuration du système.
 # Reconnaissables, uniques, et ils DISENT de ne pas éditer à la main.
 BLOCK_BEGIN = "# >>> erplibre-vpn %s — généré, ne pas éditer"
@@ -79,6 +83,25 @@ class Runner:
         self.ops: list[dict] = []
         self.failures: list[str] = []
 
+    def add_secret(self, value):
+        """Masque `value` dans tout ce qui s'affichera DÉSORMAIS.
+
+        Le masquage est monté une fois pour toutes au démarrage, à partir de
+        ce que le coffre a rendu. Mais un secret peut NAÎTRE en cours de
+        route : un jeton de session obtenu par une authentification web
+        n'existe pas avant qu'elle aboutisse, et il ne doit pas moins être
+        masqué que le mot de passe qui l'a produit.
+
+        Sous huit caractères, on ne masque pas : une valeur courte se
+        retrouve par hasard dans un chemin ou un nom d'interface, et on
+        masquerait du texte utile en croyant protéger un secret.
+        """
+        value = str(value or "")
+        if len(value) < 8:
+            return
+        previous = self.redactor
+        self.redactor = lambda text: previous(text).replace(value, MASK)
+
     # ------------------------------------------------------------------
     # Affichage
     # ------------------------------------------------------------------
@@ -119,6 +142,13 @@ class Runner:
         `stdin` est le seul chemin par lequel un secret entre dans un
         processus. `secret_stdin` ne change PAS l'exécution : il dit à
         l'affichage et aux tests que ce contenu ne doit jamais être montré.
+
+        `capture` vaut True (sortie et erreurs lues, donc invisibles),
+        False (tout à l'écran, rien de lu), ou « stdout » — la sortie est
+        lue, les erreurs restent à l'écran. Ce troisième cas existe pour
+        une commande qui RETOURNE un secret sur sa sortie tout en parlant
+        sur ses erreurs : capturer les deux ferait attendre l'utilisateur
+        en silence devant une authentification qui réclame son geste.
         """
         full = command
         if sudo is None:
@@ -146,7 +176,7 @@ class Runner:
                 text=True,
                 timeout=timeout,
                 stdout=subprocess.PIPE if capture else None,
-                stderr=subprocess.STDOUT if capture else None,
+                stderr=(subprocess.STDOUT if capture is True else None),
             )
             code, out = proc.returncode, proc.stdout or ""
         except subprocess.TimeoutExpired:

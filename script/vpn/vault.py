@@ -46,6 +46,15 @@ FIELD_PSK = "psk"
 
 MASK = "********"
 
+# Ce qui tient la place d'un secret que le coffre n'a pas rendu, en mode à
+# blanc : montrer un plan ne justifie pas d'exiger le mot de passe maître.
+#
+# Une CONSTANTE partagée, et non une chaîne écrite à deux endroits : un
+# pilote qui juge un secret — sa longueur, sa forme — doit pouvoir
+# reconnaître le marqueur et se taire, sinon le plan à blanc porte un
+# verdict sur une valeur qui n'est pas celle de l'utilisateur.
+PLACEHOLDER = "<secret-du-coffre>"
+
 # Le menu a déjà le coffre ouvert quand il lance `vpn.py` : il lui passe les
 # secrets par l'ENVIRONNEMENT plutôt que de le faire redemander le mot de
 # passe maître — deux fois par connexion, puisqu'un essai à blanc précède le

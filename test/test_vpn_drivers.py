@@ -416,26 +416,53 @@ class Openconnect(unittest.TestCase):
         self.assertEqual(driver.profile["routes"], [])
 
 
+class _OpenconnectNoHelper(DRIVERS["openconnect"]):
+    """Le pilote openconnect, mais sans greffon SSO.
+
+    L'attribut de classe masque la propriété du parent, qui irait chercher
+    dans le PATH. Sans cela, « SSO sans greffon » serait vrai ou faux selon
+    la machine qui exécute la suite.
+    """
+
+    sso_helper = ""
+
+
 class OpenconnectSingleSignOn(unittest.TestCase):
     """Le cas du « formulaire web » : le concentrateur délègue à un
     fournisseur d'identité, et il n'y a aucun mot de passe à envoyer.
 
-    Le client de Cisco exige alors un navigateur embarqué, donc un écran.
-    openconnect s'en passe : mesuré dans sa bibliothèque, il écoute sur le
-    port local 29786 et attend la redirection du navigateur, lequel peut
-    être celui de l'utilisateur, ailleurs, à travers un `ssh -L`.
+    Deux chemins existent, et cette classe couvre le premier. Sans greffon,
+    openconnect s'en charge seul : il écoute sur son port local 29786 et
+    attend la redirection d'un navigateur, lequel peut être celui de
+    l'utilisateur, ailleurs, à travers un `ssh -L`. Cela ne fonctionne que
+    si le serveur annonce la méthode « navigateur externe ».
+
+    Le second chemin — le concentrateur exige un navigateur intégré, et un
+    greffon fait l'étape web — vit dans `test_vpn_presets.py`, classe
+    `DelegatedSso`.
     """
 
-    def _sso(self, **overrides):
+    def _sso(self, helper="", **overrides):
+        """Un pilote en SSO, sur le chemin CHOISI par le test.
+
+        `helper` décide : vide, c'est `--external-browser` et openconnect se
+        débrouille ; renseigné, le pilote délègue l'étape web au greffon.
+        Il est TOUJOURS explicite, jamais découvert — sinon le test dépend
+        de ce qui est installé sur la machine qui l'exécute, et le même code
+        passe ici et échoue ailleurs.
+        """
         profile = dict(
             SAMPLES["openconnect"][0],
             name="t-sso",
             driver="openconnect",
             oc_sso=True,
             oc_user="",
+            oc_sso_helper=helper,
         )
         profile.update(overrides)
-        return DRIVERS["openconnect"](profiles.validate(profile), {})
+        clean = profiles.validate(profile)
+        which = DRIVERS["openconnect"] if helper else _OpenconnectNoHelper
+        return which(clean, {})
 
     def test_a_profile_without_user_or_password_is_valid(self):
         """En SSO, c'est le fournisseur d'identité qui décide de qui on est :

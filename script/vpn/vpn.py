@@ -38,14 +38,12 @@ from script.vpn.drivers import DRIVERS, driver_names, get_driver
 from script.vpn.drivers.base import INSTALL_SCRIPT
 from script.vpn.runner import Runner
 from script.vpn.vault import (
+    PLACEHOLDER,
     VaultError,
     VpnVault,
     redact,
     secrets_from_env,
 )
-
-# Ce qu'on met à la place d'un secret qu'on n'a pas pu lire, en mode à blanc.
-PLACEHOLDER = "<secret-du-coffre>"
 
 
 def _vault():
@@ -100,7 +98,10 @@ def _build(args, want_secrets=True, secrets_required=True):
         )
         return None, None, None
     secrets = {}
-    if want_secrets:
+    # Le PROFIL décide, pas seulement la technologie : ouvrir le coffre
+    # pour un secret que ce montage n'utilisera pas réclamerait le mot de
+    # passe maître pour rien.
+    if want_secrets and driver_cls.wants_secrets(profile):
         try:
             secrets = _load_secrets(
                 profile, driver_cls, required=secrets_required

@@ -11688,6 +11688,159 @@ TRANSLATIONS = {
         "fr": "Quelle technologie ?",
         "en": "Which technology?",
     },
+    "VPN - Create a profile from a site preset": {
+        "fr": "\U0001F3DB VPN - Créer un profil à partir d'un préréglage de site",
+        "en": "\U0001F3DB VPN - Create a profile from a site preset",
+    },
+    "VPN - Import an AnyConnect profile (.xml)": {
+        "fr": "\U0001F4E5 VPN - Importer un profil AnyConnect (.xml)",
+        "en": "\U0001F4E5 VPN - Import an AnyConnect profile (.xml)",
+    },
+    "An AnyConnect profile usually sits in"
+    " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/).": {
+        "fr": (
+            "Un profil AnyConnect se trouve d'ordinaire dans"
+            " /opt/cisco/secureclient/vpn/profile/ (ou"
+            " .../anyconnect/profile/)."
+        ),
+        "en": (
+            "An AnyConnect profile usually sits in"
+            " /opt/cisco/secureclient/vpn/profile/ (or"
+            " .../anyconnect/profile/)."
+        ),
+    },
+    "Path to the .xml profile": {
+        "fr": "Chemin du profil .xml",
+        "en": "Path to the .xml profile",
+    },
+    "Gateway": {
+        "fr": "Passerelle",
+        "en": "Gateway",
+    },
+    "Connection group": {
+        "fr": "Groupe de connexion",
+        "en": "Connection group",
+    },
+    "Presets written: ": {
+        "fr": "Préréglages écrits : ",
+        "en": "Presets written: ",
+    },
+    "Next step: create a profile from one of them. The .xml carries no"
+    " username and does not say whether the service authenticates by"
+    " password or by web form.": {
+        "fr": (
+            "Étape suivante : créer un profil à partir de l'un d'eux. Le"
+            " .xml ne porte aucun identifiant et ne dit pas si le service"
+            " authentifie par mot de passe ou par formulaire web."
+        ),
+        "en": (
+            "Next step: create a profile from one of them. The .xml carries"
+            " no username and does not say whether the service"
+            " authenticates by password or by web form."
+        ),
+    },
+    "SSO helper driving a real browser (empty: openconnect-sso from"
+    " the PATH)": {
+        "fr": (
+            "Greffon SSO pilotant un vrai navigateur (vide :"
+            " openconnect-sso trouvé dans le PATH)"
+        ),
+        "en": (
+            "SSO helper driving a real browser (empty: openconnect-sso"
+            " from the PATH)"
+        ),
+    },
+    "AnyConnect version announced to the gateway": {
+        "fr": "Version AnyConnect annoncée à la passerelle",
+        "en": "AnyConnect version announced to the gateway",
+    },
+    "kdbx_no_terminal": {
+        "fr": (
+            "Pas de terminal pour saisir le mot de passe du coffre :"
+            " coffre non ouvert."
+        ),
+        "en": (
+            "No terminal to type the vault password: vault left closed."
+        ),
+    },
+    "SSO helper": {
+        "fr": "greffon SSO",
+        "en": "SSO helper",
+    },
+    "Connection group in the URL \u2014 <UserGroup> of an AnyConnect"
+    " profile (optional)": {
+        "fr": (
+            "Groupe de connexion dans l'URL \u2014 <UserGroup> d'un profil"
+            " AnyConnect (facultatif)"
+        ),
+        "en": (
+            "Connection group in the URL \u2014 <UserGroup> of an"
+            " AnyConnect profile (optional)"
+        ),
+    },
+    "No site preset available.": {
+        "fr": "Aucun préréglage de site disponible.",
+        "en": "No site preset available.",
+    },
+    "Drop a .json file in conf/vpn_presets/ (shared, nothing identifying)"
+    " or in private/vpn/presets/ (git-ignored, where a site preset goes).": {
+        "fr": (
+            "Poser un fichier .json dans conf/vpn_presets/ (partagé, rien"
+            " d'identifiant) ou dans private/vpn/presets/ (ignoré par git,"
+            " c'est là qu'un préréglage de site va)."
+        ),
+        "en": (
+            "Drop a .json file in conf/vpn_presets/ (shared, nothing"
+            " identifying) or in private/vpn/presets/ (git-ignored, where a"
+            " site preset goes)."
+        ),
+    },
+    "Unreadable preset: ": {
+        "fr": "Préréglage illisible : ",
+        "en": "Unreadable preset: ",
+    },
+    "Preset number (0 to go back)": {
+        "fr": "Numéro du préréglage (0 pour revenir)",
+        "en": "Preset number (0 to go back)",
+    },
+    "An empty answer keeps the preset value.": {
+        "fr": "Une réponse vide garde la valeur du préréglage.",
+        "en": "An empty answer keeps the preset value.",
+    },
+    "This profile already exists: the preset refreshes what it declares,"
+    " everything personal is kept.": {
+        "fr": (
+            "Ce profil existe déjà : le préréglage rafraîchit ce qu'il"
+            " déclare, tout ce qui est personnel est gardé."
+        ),
+        "en": (
+            "This profile already exists: the preset refreshes what it"
+            " declares, everything personal is kept."
+        ),
+    },
+    "Cisco AnyConnect gateway with an authentication group": {
+        "fr": "Passerelle Cisco AnyConnect avec groupe d'authentification",
+        "en": "Cisco AnyConnect gateway with an authentication group",
+    },
+    "Password characters the server compares (0: no limit)": {
+        "fr": (
+            "Caractères du mot de passe que le serveur compare (0 : aucune"
+            " limite)"
+        ),
+        "en": "Password characters the server compares (0: no limit)",
+    },
+    "This gateway compares only the first {limit} characters of"
+    " the password: store just those, a longer one is refused.": {
+        "fr": (
+            "Cette passerelle ne compare que les {limit} premiers caractères"
+            " du mot de passe : n'en déposer que ceux-là, un plus long est"
+            " refusé."
+        ),
+        "en": (
+            "This gateway compares only the first {limit} characters of the"
+            " password: store just those, a longer one is refused."
+        ),
+    },
     "No VPN profile yet: create one first.": {
         "fr": "Aucun profil VPN : en créer un d'abord.",
         "en": "No VPN profile yet: create one first.",

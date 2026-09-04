@@ -53,6 +53,169 @@ own, and `--dry-run` shows every one of them without running any.
 | `/run/erplibre-vpn/<profile>.*` | non-secret state (chosen interface, pid, log), readable without sudo |
 | `/etc/ipsec.conf`, `/etc/ipsec.secrets` | L2TP only: a marked block, removed on `down` |
 
+## Site presets
+
+A preset is a **partial profile**: everything an institution publishes and
+that is the same for everybody — gateway, protocol, authentication group,
+port, concentrator limits. It carries **no username and no secret**, which is
+exactly what lets it be handed around. Creating a profile from one leaves the
+identity to type, and nothing else.
+
+`VPN › Create a profile from a site preset` lists them, then runs the ordinary
+form pre-filled: an empty answer keeps the preset value.
+
+Presets are read from these directories, in order:
+
+| Path | Use |
+|------|-----|
+| `conf/vpn_presets/` | shipped with the repository — templates only, invented gateways, **nothing identifying** |
+| `private/vpn/presets/` | git-ignored: the mount point for a private repository of real site presets |
+| any directory in `vpn_preset_paths` | a private repository cloned somewhere else |
+
+The **latest wins** on the same identifier. That is what lets a site correct a
+shipped template — a gateway that moved, a group that was renamed — without
+editing a git-tracked file, so without a conflict on the next `git pull`.
+
+One `.json` file holds one preset (an object) or several (a list). Beyond the
+profile fields, three keys describe the preset itself: `preset` (identifier,
+lowercase, digits, `-` or `_`), `label` and an optional `hint`. An unreadable
+file is reported and skipped — a broken preset must not make the others
+unreachable.
+
+## An SSL VPN (AnyConnect), distribution by distribution
+
+The `openconnect` driver speaks AnyConnect (Cisco), Pulse/Juniper,
+GlobalProtect, Fortinet, F5 and Array. One command installs its client:
+
+```bash
+sudo bash script/install/install_vpn.sh openconnect
+./.venv.erplibre/bin/python script/vpn/vpn.py check --driver openconnect
+```
+
+| Distribution | Packages | `vpnc-script` |
+|--------------|----------|---------------|
+| Debian, Ubuntu | `openconnect vpnc-scripts` | `/usr/share/vpnc-scripts/vpnc-script` |
+| Arch, Manjaro | `openconnect` (pulls `vpnc-scripts`) | `/usr/share/vpnc-scripts/vpnc-script` |
+| Fedora, RHEL, Rocky, Alma | `openconnect` (pulls `vpnc-script`) | `/etc/vpnc/vpnc-script` |
+| openSUSE | `openconnect` (pulls `vpnc-script`) | `/etc/vpnc/vpnc-script` |
+
+`vpnc-script` is the one prerequisite that is **not** a binary on the `PATH`,
+so the installer looks for the file itself and names the package to install
+when it is missing. Without it openconnect starts, the session opens, and the
+tun interface never appears — a failure three stages above the missing
+package, on a symptom that does not accuse it.
+
+Two fields decide almost everything else. `oc_authgroup` is the
+**authentication group** the site tells you to select; a typo in it comes back
+as “login failed”, with nothing pointing at the group. `oc_password_len`
+declares that the concentrator **compares only the first N characters** of the
+password — some do, a legacy directory limit. Zero means no limit. The field
+never truncates: it says so before you store the secret, and it compares
+lengths when the tunnel comes up. Store just those N characters.
+
+On the first connection openconnect refuses an unpinned server certificate and
+**prints** the `--servercert sha256:…` line to copy into `oc_servercert`. That
+refusal is the expected first step, not a failure.
+
+## The two “groups” of an AnyConnect gateway
+
+One concentrator hosts several services, and two entirely different
+mechanisms select one. Confusing them does not raise a syntax error: it
+hands you **another service's login form**, so correct credentials are
+refused and nothing points at the group.
+
+| Profile field | openconnect | What it is |
+|---------------|-------------|------------|
+| `oc_usergroup` | `--usergroup=X` | the **URL path**: `--usergroup=X` and `https://host/X` are the same thing |
+| `oc_authgroup` | `--authgroup=X` | a value to pick in a **dropdown** the server presents |
+
+A site that hands you an `.xml` profile designates its service by the path;
+a site that shows you a list to choose from in a screenshot designates its
+own by the dropdown.
+
+In a Cisco `AnyConnectProfile` file, `<UserGroup>` is the path and
+`<HostName>` is only a display label — despite the tag name, it is not a
+hostname; `<HostAddress>` is. `VPN › Import an AnyConnect profile (.xml)`
+reads those three tags and writes presets into `private/vpn/presets/`, so
+the field that actually decides which service you reach is never retyped.
+
+## SSO / SAML: what openconnect can and cannot do
+
+When a gateway authenticates through an identity provider (Okta, Azure AD,
+Duo), there is no password to send — a web page has to be completed. Cisco
+signals this in **two** different ways, and only one of them works from a
+plain CLI:
+
+| Server announces | openconnect needs | Works with a distribution package |
+|------------------|-------------------|-----------------------------------|
+| `single-sign-on-external-browser` | `--external-browser=<cmd>` | **yes** — set `oc_external_browser` |
+| `sso-v2` (embedded browser) | a built-in webview (libwebkit2gtk) | **no** — Debian, Ubuntu, Fedora and Arch all build without it |
+
+The gateway decides which one, per tunnel group. When it asks for the
+embedded browser and openconnect has no webview, it stops on:
+
+```
+Please complete the authentication process in the AnyConnect Login window.
+No SSO handler
+Failed to complete authentication
+```
+
+`--external-browser` does **not** help there: openconnect only takes that
+path when the server announced the external-browser method. Which one a
+gateway wants can be read without sending any secret:
+
+```bash
+openconnect --protocol=anyconnect --usergroup=<GROUPE> \
+    --authenticate --dump-http-traffic <passerelle> 2>&1 \
+    | grep -E 'sso-v2|external-browser|No SSO handler'
+```
+
+### Delegating the web form, keeping the tunnel
+
+For a gateway that insists on the embedded browser, set `oc_sso_helper` to
+an `openconnect-sso` executable. The driver then splits the work:
+
+| Step | Who | Runs as | Carries |
+|------|-----|---------|---------|
+| SAML / MFA in a real browser | the helper, `--authenticate json` | **you** (needs your display and keyring) | returns `{host, cookie, fingerprint}` |
+| bringing the tunnel up | this driver, `--cookie-on-stdin` | root, via `sudo` | the cookie, on standard input only |
+
+That split is the whole point. The helper does *only* the SAML dance; the
+**profile** stays the source of truth for the interface name, the added
+routes, the state files and the diagnosis. A tunnel opened by the helper
+itself would be called `tun0`, would leave nothing in `/run`, and `status`,
+`diagnose` and `down` would not see it.
+
+Two details make the cookie fail if you neglect them, and the driver handles
+both: the **announced identity** must match on both steps (`oc_ac_version`
+goes to the helper *and* to openconnect — a cookie issued to one client
+version is refused to another), and the **fingerprint** the helper reports
+wins over `oc_servercert`, because it is the one it authenticated against.
+Many of these gateways present a chain the system store does not validate
+(`signer not found`), and `--non-inter` would refuse it without a pin.
+
+The cookie never touches a file: it lives in a variable, leaves by standard
+input, and is masked from every display the moment it exists. On a machine
+with no usable GPU — a virtual machine, typically — the embedded Chromium
+falls back to Vulkan and the window dies mid-authentication; the driver
+therefore forces software rendering unless those variables are already set.
+
+Which path is taken is decided in one place, and reads in this order:
+
+| `oc_sso` | `oc_sso_helper` resolves | Path |
+|---|---|---|
+| yes | yes | helper authenticates, this driver mounts |
+| yes | declared but not executable | **refused, and says so** — never a silent fallback |
+| yes | no | `--external-browser`, openconnect alone |
+| no | — | password from the vault |
+
+A declared helper that cannot run is an error, not an invitation to take the
+other path: falling back quietly would make the mount fail on `No SSO
+handler`, three stages above the real cause — a wrong path.
+
+`vpn.py status` and `diagnose` carry a `SSO helper` line: the resolved path,
+`absent`, or `not applicable` when the profile authenticates by password.
+
 ## The three security rules
 
 1. **No secret in an argument.** `/proc/<pid>/cmdline` is readable by every

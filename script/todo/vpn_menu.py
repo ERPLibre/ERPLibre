@@ -19,11 +19,12 @@ Deux chemins d'exécution, pour une raison :
 """
 
 import getpass
+import os
 
 import click
 
 from script.todo.todo_i18n import t
-from script.vpn import profiles
+from script.vpn import anyconnect_xml, presets, profiles
 from script.vpn.drivers import DRIVERS, get_driver
 from script.vpn.vault import VaultError, VpnVault, secrets_to_env
 
@@ -47,6 +48,39 @@ NO_ROUTE_NOTE = (
 # ce qui manque — la confrontation au terrain — et non que le code serait
 # douteux : les tests unitaires, eux, sont là.
 UNPROVEN_NOTE = "never mounted against a real server: only unit tests cover it"
+
+# Où poser un préréglage quand il n'y en a aucun. Dit les DEUX répertoires,
+# parce qu'ils ne servent pas au même usage : l'un est suivi par git et ne
+# doit rien porter d'identifiant, l'autre est ignoré et existe pour ça.
+PRESET_LOCATION_NOTE = (
+    "Drop a .json file in conf/vpn_presets/ (shared, nothing identifying)"
+    " or in private/vpn/presets/ (git-ignored, where a site preset goes)."
+)
+
+# Ce qu'on dit quand le nom tapé désigne un profil déjà là. Dit LEQUEL des
+# deux gagne, champ par champ : sans cela, on ne sait pas si rejouer un
+# préréglage remet la passerelle à jour ou efface les routes ajoutées.
+PRESET_REPLAYED_NOTE = (
+    "This profile already exists: the preset refreshes what it declares,"
+    " everything personal is kept."
+)
+
+# Où le client de Cisco dépose les profils qu'un site distribue. Le dire
+# évite d'avoir à le chercher, et c'est le seul endroit où il se trouve
+# quand le client graphique a déjà servi sur la machine.
+ANYCONNECT_LOCATION_NOTE = (
+    "An AnyConnect profile usually sits in"
+    " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/)."
+)
+
+# Ce que le fichier ne dit PAS, et qu'il reste donc à régler. Le profil
+# AnyConnect ne déclare pas la méthode d'authentification : c'est le
+# concentrateur qui l'annonce à la connexion.
+ANYCONNECT_NEXT_STEP = (
+    "Next step: create a profile from one of them. The .xml carries no"
+    " username and does not say whether the service authenticates by"
+    " password or by web form."
+)
 
 MASTER_PASSWORD_WARNING = (
     "The vault MASTER password is stored in the configuration in clear"
@@ -106,6 +140,16 @@ class VpnMenuMixin:
             {"prompt_description": t("VPN - Disconnect a profile")},
             {"prompt_description": t("VPN - Status and diagnosis")},
             {"section": t("Profiles & secrets")},
+            {
+                "prompt_description": t(
+                    "VPN - Create a profile from a site preset"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "VPN - Import an AnyConnect profile (.xml)"
+                )
+            },
             {"prompt_description": t("VPN - Add or edit a profile")},
             {"prompt_description": t("VPN - Store secrets in the vault")},
             {
@@ -132,16 +176,20 @@ class VpnMenuMixin:
             elif status == "3":
                 self._vpn_diagnose()
             elif status == "4":
-                self._vpn_edit_profile()
+                self._vpn_from_preset()
             elif status == "5":
-                self._vpn_store_secrets()
+                self._vpn_import_anyconnect()
             elif status == "6":
-                self._vpn_show_config()
+                self._vpn_edit_profile()
             elif status == "7":
-                self._vpn_delete_profile()
+                self._vpn_store_secrets()
             elif status == "8":
-                self._vpn_install()
+                self._vpn_show_config()
             elif status == "9":
+                self._vpn_delete_profile()
+            elif status == "10":
+                self._vpn_install()
+            elif status == "11":
                 self._vpn_check()
             else:
                 print(t("Command not found !"))
@@ -247,7 +295,103 @@ class VpnMenuMixin:
             return ""
         return all_profiles[int(answer) - 1]["name"]
 
-    def _vpn_edit_profile(self):
+    def _vpn_from_preset(self):
+        """Crée un profil à partir d'un préréglage de site.
+
+        Le préréglage porte ce que l'établissement publie et qui est le même
+        pour tout le monde ; il ne reste à taper que l'identifiant. Le
+        formulaire est celui de `_vpn_edit_profile`, amorcé : dupliquer les
+        questions ici ferait vivre deux formulaires qui divergeraient au
+        prochain champ ajouté à un pilote.
+        """
+        found, errors = presets.load_all()
+        for error in errors:
+            print(f"! {t('Unreadable preset: ')}{error}")
+        if not found:
+            print(t("No site preset available."))
+            print(f"  {t(PRESET_LOCATION_NOTE)}")
+            return
+        for index, preset in enumerate(found, start=1):
+            print(
+                f"[{index}] {presets.label(preset):<34}"
+                f" {preset.get('server', ''):<28}"
+                f" {t(preset.get('hint', '') or '')}"
+            )
+        answer = input(f"{t('Preset number (0 to go back)')} : ").strip()
+        if not answer.isdigit() or not 1 <= int(answer) <= len(found):
+            if answer not in ("0", ""):
+                print(t("Unknown choice."))
+            return
+        preset = found[int(answer) - 1]
+        print(f"\n{t('An empty answer keeps the preset value.')}")
+        name = input(
+            f"{t('Profile name (lowercase, digits, - or _)')} : "
+        ).strip()
+        if not name:
+            return
+        existing = profiles.load(name)
+        seed = presets.apply(preset, name)
+        if existing:
+            print(f"! {t(PRESET_REPLAYED_NOTE)}")
+            # Le PRÉRÉGLAGE gagne sur les champs qu'il déclare : rejouer un
+            # préréglage sur un profil existant sert à le remettre à jour
+            # après un déménagement de passerelle ou un groupe renommé, et
+            # garder l'ancienne valeur ne ferait rien de ce qu'on demande.
+            #
+            # Le reste vient du profil, parce que c'est ce qui est PERSONNEL
+            # et qu'aucun préréglage ne porte : l'identifiant, les routes
+            # ajoutées à la main, le certificat épinglé, l'adresse témoin.
+            #
+            # `k in seed` borne la reprise aux champs que le pilote du
+            # préréglage connaît : sur un profil qui change de technologie,
+            # recopier tout ferait suivre une clé WireGuard dans un profil
+            # OpenConnect, où rien ne la lirait jamais.
+            declared = set(preset) - set(presets.META_KEYS)
+            seed.update(
+                {
+                    key: value
+                    for key, value in existing.items()
+                    if key in seed and key not in declared
+                }
+            )
+        self._vpn_edit_profile(seed=seed)
+
+    def _vpn_import_anyconnect(self):
+        """Transforme un profil AnyConnect (`.xml`) en préréglages.
+
+        Le fichier qu'un site distribue porte déjà le nom d'hôte et le
+        groupe de connexion, et c'est ce dernier qui décide quel service du
+        concentrateur on joint. Le retaper à la main est l'occasion de se
+        tromper sur le seul champ qui compte.
+
+        Écrit dans `private/vpn/presets/`, jamais dans `conf/` : le fichier
+        nomme un établissement.
+        """
+        print(t(ANYCONNECT_LOCATION_NOTE))
+        path = input(f"{t('Path to the .xml profile')} : ").strip()
+        if not path:
+            return
+        try:
+            found = anyconnect_xml.parse_file(os.path.expanduser(path))
+        except anyconnect_xml.ProfileXmlError as error:
+            print(f"\n✗ {error}")
+            return
+
+        print()
+        for preset in found:
+            print(f"  {presets.label(preset)}")
+            print(f"    {t('Gateway')}          : {preset['server']}")
+            print(
+                f"    {t('Connection group')} :"
+                f" {preset['oc_usergroup'] or t('none')}"
+            )
+        stem = os.path.splitext(os.path.basename(path))[0]
+        stem = presets.slug_stem(stem)
+        written = presets.save(found, stem)
+        print(f"\n✓ {t('Presets written: ')}{written}")
+        print(f"  {t(ANYCONNECT_NEXT_STEP)}")
+
+    def _vpn_edit_profile(self, seed=None):
         """Crée ou modifie un profil, quelle que soit la technologie.
 
         Les questions viennent du PILOTE (`form_fields`) : ce menu ne sait
@@ -257,15 +401,30 @@ class VpnMenuMixin:
 
         Une réponse vide garde la valeur actuelle : modifier une seule route
         ne doit pas obliger à ressaisir tout le reste.
+
+        `seed` amorce le formulaire avec un profil déjà rempli — un
+        préréglage de site. Il porte alors le nom ET la technologie, donc les
+        deux questions correspondantes ne sont pas posées : le préréglage y a
+        déjà répondu, et redemander « quelle technologie ? » invite à
+        contredire le seul champ qu'on ne doit pas changer.
         """
-        name = input(f"{t('Profile name (lowercase, digits, - or _)')} : ")
-        name = name.strip()
-        if not name:
-            return
-        current = profiles.load(name) or {"name": name}
-        driver_cls = self._vpn_pick_driver(current.get("driver"))
-        if driver_cls is None:
-            return
+        if seed is not None:
+            current = dict(seed)
+            name = current["name"]
+            driver_cls = get_driver(current.get("driver"))
+            if driver_cls is None:
+                print(f"✗ {t('Unknown driver: ')}{current.get('driver')}")
+                return
+        else:
+            name = input(
+                f"{t('Profile name (lowercase, digits, - or _)')} : "
+            ).strip()
+            if not name:
+                return
+            current = profiles.load(name) or {"name": name}
+            driver_cls = self._vpn_pick_driver(current.get("driver"))
+            if driver_cls is None:
+                return
 
         # Les défauts DU PILOTE CHOISI, pour que chaque question ait un
         # défaut sensé même sur un profil qui change de technologie.
@@ -440,7 +599,12 @@ class VpnMenuMixin:
             return
 
         print(f"\n{t('Vault entry')} : {title}")
-        print(f"{t('An empty answer keeps the stored value.')}\n")
+        print(f"{t('An empty answer keeps the stored value.')}")
+        # Les contraintes du pilote AVANT la première invite : une borne de
+        # longueur annoncée après coup coûte une deuxième saisie.
+        for note in driver_cls(profile).secret_notes():
+            print(f"! {note}")
+        print()
         values = {}
         if driver_cls.user_field:
             # Recopié pour que le coffre reste LISIBLE dans KeePassXC ; le
