@@ -50,7 +50,7 @@ _ECRANS = {}
 
 def _build_screens():
     from textual.app import ComposeResult
-    from textual.containers import Horizontal, Vertical
+    from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.screen import ModalScreen
     from textual.widgets import Button, Input, Static
 
@@ -109,7 +109,49 @@ def _build_screens():
         def action_close(self) -> None:
             self.dismiss()
 
-    return {"rename": RenameScreen, "preview": PreviewScreen}
+    class HelpScreen(ModalScreen):
+        """Ce que chaque option d'installation pose VRAIMENT dans la VM.
+
+        `blocks` : [(titre, [lignes])], dans l'ordre du formulaire. Une case
+        cochée engage parfois huit poses, et son libellé n'en nomme que trois :
+        cet écran est le seul endroit où la liste complète est lisible AVANT
+        de déployer.
+
+        La fenêtre ne fait que LIRE : elle se ferme sans rien changer, ce qui
+        permet de l'ouvrir en plein remplissage du formulaire.
+        """
+
+        BINDINGS = [
+            ("escape", "close", t("Close")),
+            ("q", "close", t("Close")),
+        ]
+
+        def __init__(self, blocks, title=""):
+            super().__init__()
+            self._blocks = blocks
+            self._title = title or t("What each option installs")
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="helpbox"):
+                yield Static(
+                    f"  {self._title}   ({t('Esc to close')})",
+                    id="helptitle",
+                )
+                with VerticalScroll(id="helpbody"):
+                    for titre, lignes in self._blocks:
+                        yield Static(f"▸ {titre}", classes="helphead")
+                        for ligne in lignes:
+                            yield Static(f"    {ligne}")
+                        yield Static("")
+
+        def action_close(self) -> None:
+            self.dismiss()
+
+    return {
+        "rename": RenameScreen,
+        "preview": PreviewScreen,
+        "help": HelpScreen,
+    }
 
 
 def rename_screen():
@@ -124,6 +166,13 @@ def preview_screen():
     if not _ECRANS:
         _ECRANS.update(_build_screens())
     return _ECRANS["preview"]
+
+
+def help_screen():
+    """La fenêtre d'aide, construite au premier appel."""
+    if not _ECRANS:
+        _ECRANS.update(_build_screens())
+    return _ECRANS["help"]
 
 
 class PlanMixin:

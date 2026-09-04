@@ -85,6 +85,7 @@ def run_deploy_form(ctx, run_app: bool = True):
     """Formulaire de déploiement. Renvoie une spec, ou None si annulé.
     `run_app=False` renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
+    from textual.binding import Binding
     from textual.containers import Horizontal, Vertical, VerticalScroll
     from textual.widgets import (
         Button,
@@ -173,6 +174,12 @@ def run_deploy_form(ctx, run_app: bool = True):
             ("f6", "select_all", t("All")),
             ("f7", "select_main", t("Main versions")),
             ("f8", "select_none", t("None")),
+            ("f1", "help", t("Help")),
+            # « ? » aussi, parce que c'est la touche qu'on essaie d'abord.
+            # Cachée du pied de page : la même action deux fois s'y lirait
+            # comme deux aides. Un champ de saisie qui a le focus l'avale, et
+            # c'est pourquoi F1 existe à côté.
+            Binding("?", "help", t("Help"), show=False),
             ("escape", "cancel", t("Cancel")),
         ]
 
