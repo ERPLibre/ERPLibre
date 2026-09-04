@@ -935,6 +935,49 @@ class TestMateriel(SmsDemoBase):
         self.assertEqual(recharge.spec.materiel, "modem")
         self.assertNotIn("gateway", recharge.done)
 
+    def test_le_module_se_cherche_au_lieu_de_se_deviner(self):
+        """Plus de cent depots d'addons : lequel porte le module ne se devine pas."""
+        from script.todo.sms import spec as vrai_spec
+
+        trouve = vrai_spec.trouver_module("erplibre_mobile_gateway")
+        self.assertIsNotNone(trouve, "le module de la demonstration est introuvable")
+        self.assertTrue(trouve.is_dir())
+        self.assertIsNone(vrai_spec.trouver_module("module_qui_nexiste_pas"))
+
+    def test_letape_une_trouve_le_module_ou_il_est(self):
+        from script.todo.sms import local as backend
+
+        etat = self.spec_mod.load()
+        ok, detail = backend.step_env(None, etat)
+        self.assertTrue(ok, detail)
+
+    def test_un_module_renomme_ne_bloque_pas_pour_toujours(self):
+        """Le nom vit dans un JSON de `private/` : personne ne le corrigera."""
+        import json
+
+        from script.todo.sms import spec as vrai_spec
+
+        etat = self.spec_mod.load()
+        self.spec_mod.save(etat)
+        brut = json.loads(self.spec_mod.STATE_PATH.read_text(encoding="utf-8"))
+        brut["spec"]["module"] = "erplibre_mobile_passerelle_sms"
+        self.spec_mod.STATE_PATH.write_text(json.dumps(brut), encoding="utf-8")
+
+        repris = self.spec_mod.load()
+        self.assertEqual(repris.spec.module, vrai_spec.DemoSpec.module)
+
+    def test_un_nom_valide_mais_different_est_respecte(self):
+        """On rattrape ce qui est INTROUVABLE, pas ce qui deplait."""
+        from dataclasses import replace
+
+        from script.todo.sms import spec as vrai_spec
+
+        temoin = "erplibre_devops"
+        if vrai_spec.trouver_module(temoin) is None:
+            self.skipTest("ce depot n'a pas ce module temoin")
+        autre = replace(vrai_spec.DemoSpec(), module=temoin)
+        self.assertEqual(vrai_spec._rattraper_le_module(autre).module, temoin)
+
     def test_letape_annoncee_porte_le_nom_du_materiel(self):
         """Annoncer « application mobile » ferait chercher un appareil absent."""
         from dataclasses import replace

@@ -80,9 +80,10 @@ def step_env(todo, state):
     if not odoo_bin().exists():
         manques.append(f"odoo-bin : {odoo_bin()}")
 
-    module = repo_root() / "odoo18.0" / "addons" / "addons" / state.spec.module
-    if not module.is_dir():
-        manques.append(f"{t('sms_err_module_missing')} : {module}")
+    from script.todo.sms.spec import trouver_module
+
+    if trouver_module(state.spec.module) is None:
+        manques.append(f"{t('sms_err_module_missing')} : {state.spec.module}")
 
     # PostgreSQL : on interroge, sans rien créer.
     try:
