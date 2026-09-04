@@ -53,7 +53,8 @@ const (
 // nécessaire : les navigateurs tiennent « localhost » pour un contexte sûr et
 // y ouvrent le micro. Depuis une autre machine il faudra du « wss:// », donc
 // du TLS, donc un mandataire inverse.
-func ServirNavigateur(ctx context.Context, bind string, o OptionsModem, écho bool) error {
+func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
+	écho bool, gardien *Gardien) error {
 	hôte, portTexte, err := net.SplitHostPort(bind)
 	if err != nil {
 		return fmt.Errorf("adresse d'écoute %q : %w", bind, err)
@@ -88,7 +89,12 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem, écho bo
 	if err != nil {
 		return err
 	}
-	srv.OnRegister(accepterInscription)
+	srv.OnRegister(func(req *sip.Request, tx sip.ServerTransaction) {
+		if !gardien.Autoriser(req, tx) {
+			return
+		}
+		accepterInscription(req, tx)
+	})
 
 	dg := diago.NewDiago(ua,
 		diago.WithServer(srv),
@@ -101,6 +107,11 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem, écho bo
 	slog.Info("softphone en écoute", "ws", "ws://"+bind, "echo", écho)
 
 	return dg.Serve(ctx, func(d *diago.DialogServerSession) {
+		// L'INVITE est défié lui aussi : une inscription authentifiée ne
+		// prouve rien de l'appel qui suit, et c'est l'appel qui dépense.
+		if !gardien.AutoriserDialogue(d) {
+			return
+		}
 		// PAS de `Hangup` ici. Un softphone de navigateur se présente avec un
 		// contact en « .invalid » — la RFC 7118 le veut ainsi, il n'a aucune
 		// adresse joignable — et un BYE construit dessus part en résolution

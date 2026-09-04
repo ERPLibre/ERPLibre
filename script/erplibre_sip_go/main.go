@@ -62,6 +62,8 @@ func main() {
 		"servir un softphone de navigateur en SIP sur WebSocket, « hote:port »")
 	écho := flag.Bool("echo", false,
 		"avec -navigateur : renvoyer le son au lieu de composer par la SIM")
+	sansAuth := flag.Bool("sans-authentification", false,
+		"servir sans authentifier : n'a de sens que sur la boucle locale")
 	flag.Parse()
 
 	niveau := slog.LevelWarn
@@ -94,7 +96,12 @@ func main() {
 			Port: *port, Carte: *carte, ModePCM: *modePCM,
 			AudMod: *audmod, Bruit: *bruit, VolumeÉcoute: *clvl,
 		}
-		if err := ServirNavigateur(ctx, *navigateur, options, *écho); err != nil {
+		gardien, err := NouveauGardien(os.Getenv(VariablePostes), *sansAuth)
+		if err != nil {
+			échouer(err.Error())
+		}
+		defer gardien.Fermer()
+		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien); err != nil {
 			échouer(err.Error())
 		}
 		return
