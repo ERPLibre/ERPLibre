@@ -336,28 +336,28 @@ TRANSLATIONS = {
         "en": "Manage RTK (Rust Token Killer) for token optimization!",
     },
     "Install RTK": {
-        "fr": "Installer RTK",
-        "en": "Install RTK",
+        "fr": "📦 Installer RTK",
+        "en": "📦 Install RTK",
     },
     "Check RTK version": {
-        "fr": "Vérifier la version de RTK",
-        "en": "Check RTK version",
+        "fr": "🔢 Vérifier la version de RTK",
+        "en": "🔢 Check RTK version",
     },
     "Show cumulative token savings": {
-        "fr": "Afficher les économies de tokens cumulées",
-        "en": "Show cumulative token savings",
+        "fr": "📊 Afficher les économies de tokens cumulées",
+        "en": "📊 Show cumulative token savings",
     },
     "Discover optimization opportunities": {
-        "fr": "Identifier les opportunités d'optimisation",
-        "en": "Discover optimization opportunities",
+        "fr": "🔍 Identifier les opportunités d'optimisation",
+        "en": "🔍 Discover optimization opportunities",
     },
     "Initialize global auto-rewrite hook": {
-        "fr": "Initialiser le hook auto-rewrite global",
-        "en": "Initialize global auto-rewrite hook",
+        "fr": "🪝 Initialiser le hook auto-rewrite global",
+        "en": "🪝 Initialize global auto-rewrite hook",
     },
     "Check RTK status": {
-        "fr": "Vérifier le statut de RTK",
-        "en": "Check RTK status",
+        "fr": "🔬 Vérifier le statut de RTK",
+        "en": "🔬 Check RTK status",
     },
     "RTK is not installed. Use option 1 to install it.": {
         "fr": "RTK n'est pas installé. Utilisez l'option 1 pour l'installer.",
