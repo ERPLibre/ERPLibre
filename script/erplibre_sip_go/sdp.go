@@ -123,8 +123,20 @@ func ligneMédiaPorteLaCharge(brut []byte, charge int) bool {
 	return false
 }
 
-// RéponseSDP décrit ce qu'on annonce au navigateur.
-type RéponseSDP struct {
+// RôleDTLS dit qui mène la poignée de main.
+//
+// « passive » quand on RÉPOND : le navigateur a offert « actpass » et devient
+// client. « actpass » quand on OFFRE : c'est à lui de choisir, et il choisit
+// d'être actif. Répondre « active » dans les deux cas laisserait les deux
+// bouts attendre l'autre.
+const (
+	RôlePassif  = "passive"
+	RôleAuChoix = "actpass"
+)
+
+// DescriptionSDP décrit ce qu'on annonce au navigateur, en offre comme en
+// réponse. Les deux ne diffèrent que par le rôle DTLS.
+type DescriptionSDP struct {
 	Adresse   net.IP
 	Port      int
 	Identité  IdentitéICE
@@ -132,6 +144,8 @@ type RéponseSDP struct {
 	Mid       string
 	Bundle    bool
 	Session   uint64
+	// Rôle vaut RôlePassif par défaut : la réponse est le cas courant.
+	Rôle string
 }
 
 // Construire rend la réponse SDP, prête à partir dans le 200 OK.
@@ -140,14 +154,16 @@ type RéponseSDP struct {
 // ne produit aucun message d'erreur :
 //
 //   - « a=ice-lite », qui dit au navigateur de mener la vérification seul ;
-//   - « a=setup:passive », qui fait de nous le SERVEUR DTLS. Le navigateur
-//     offre « actpass » et devient client ; répondre « active » laisserait
-//     les deux attendre l'autre ;
+//   - « a=setup », qui décide du serveur DTLS. Voir RôleDTLS ;
 //   - « a=rtcp-mux », sans quoi le navigateur ouvre un second flux dont
 //     personne ici ne s'occupe ;
 //   - le candidat hôte, qui donne l'adresse où envoyer les vérifications.
-func (r RéponseSDP) Construire() []byte {
+func (r DescriptionSDP) Construire() []byte {
 	adresse := r.Adresse.String()
+	rôle := r.Rôle
+	if rôle == "" {
+		rôle = RôlePassif
+	}
 	lignes := []string{
 		"v=0",
 		fmt.Sprintf("o=- %d 1 IN IP4 %s", r.Session, adresse),
@@ -172,7 +188,7 @@ func (r RéponseSDP) Construire() []byte {
 		// l'expiration de son minuteur avant de conclure.
 		"a=end-of-candidates",
 		"a=fingerprint:"+r.Empreinte,
-		"a=setup:passive",
+		"a=setup:"+rôle,
 		"a=sendrecv",
 		fmt.Sprintf("a=rtpmap:%d PCMU/8000", ChargePCMU),
 		fmt.Sprintf("a=ptime:%d", PaquetisationMs),

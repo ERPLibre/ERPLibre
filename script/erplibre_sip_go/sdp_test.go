@@ -82,9 +82,9 @@ func TestUneOffreInutilisableEstRefuseeTot(t *testing.T) {
 	})
 }
 
-func réponseDeTest() RéponseSDP {
+func réponseDeTest() DescriptionSDP {
 	identité, _ := NouvelleIdentitéICE()
-	return RéponseSDP{
+	return DescriptionSDP{
 		Adresse:   net.IPv4(127, 0, 0, 1),
 		Port:      40100,
 		Identité:  identité,
@@ -166,5 +166,20 @@ func TestLIdentiteAnnonceeEstCelleDeLAgent(t *testing.T) {
 	if !strings.Contains(rendu, "a=ice-ufrag:"+réponse.Identité.Ufrag) ||
 		!strings.Contains(rendu, "a=ice-pwd:"+réponse.Identité.MotDePasse) {
 		t.Fatalf("identité annoncée différente :\n%s", rendu)
+	}
+}
+
+// En offre, c'est au navigateur de choisir son role : lui imposer « passive »
+// des deux cotes laisserait les deux bouts attendre l'autre.
+func TestUneOffreLaisseLeRoleAuNavigateur(t *testing.T) {
+	offre := réponseDeTest()
+	offre.Rôle = RôleAuChoix
+	rendu := string(offre.Construire())
+	if !strings.Contains(rendu, "a=setup:actpass") {
+		t.Fatalf("rôle imposé au lieu d'être laissé :\n%s", rendu)
+	}
+	// La réponse, elle, reste passive sans qu'on ait à le dire.
+	if !strings.Contains(string(réponseDeTest().Construire()), "a=setup:passive") {
+		t.Fatal("le défaut n'est plus « passive »")
 	}
 }
