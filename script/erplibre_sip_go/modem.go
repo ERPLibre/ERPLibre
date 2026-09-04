@@ -59,6 +59,25 @@ func OuvrirModem(chemin string) (*Modem, error) {
 		return nil, fmt.Errorf("port %s : %w", chemin, err)
 	}
 	fd := int(f.Fd())
+
+	// UN SEUL lecteur à la fois sur ce port, et le noyau l'arbitre.
+	//
+	// Un port série s'ouvre autant de fois qu'on veut, sans que rien ne le
+	// signale : deux processus entrelacent alors leurs commandes AT, et la
+	// réponse de l'un part vers l'autre. Ce qu'on observe n'est pas une
+	// erreur mais un SILENCE — un appel entrant que personne ne voit, un
+	// relevé qui n'arrive jamais — et on cherche du côté du modem, du réseau
+	// ou de l'opérateur, où il n'y a rien.
+	//
+	// Le verrou n'est PAS hérité par les processus fils et disparaît avec
+	// celui qui le tient, y compris tué : rien à nettoyer après un plantage.
+	if err := unix.Flock(fd, unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		f.Close()
+		return nil, fmt.Errorf(
+			"port %s deja tenu par un autre programme : arretez la veille, "+
+				"le clavier de composition ou le service softphone avant "+
+				"d'en lancer un second (%w)", chemin, err)
+	}
 	t, err := unix.IoctlGetTermios(fd, unix.TCGETS)
 	if err != nil {
 		f.Close()
