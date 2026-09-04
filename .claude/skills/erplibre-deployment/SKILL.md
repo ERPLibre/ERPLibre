@@ -12,6 +12,9 @@ description: >-
 - **Nginx** : `script/nginx/` pour le reverse proxy
 - **SSL** : Certbot pour les certificats
 - **DNS** : `script/deployment/update_dns_cloudflare.py`
+- **VPN** : `script/vpn/` — cinq pilotes (L2TP/IPsec PSK, WireGuard,
+  OpenVPN, OpenConnect, sshuttle), profils en JSON et secrets dans un
+  coffre KeePassXC. Mode d'emploi : `script/vpn/README.md`.
 
 Plateformes supportées : Ubuntu 24.04 / 25.10 / 26.04, Linux Mint 22.3,
 Debian 12, AlmaLinux 9+, Rocky Linux 9+, openSUSE Leap 16 et Tumbleweed,

@@ -101,6 +101,16 @@ class KdbxManager:
         print(t("kdbx_give_up"))
         return None
 
+    def adopt(self, kdbx) -> None:
+        """Prend pour la session une base DÉJÀ ouverte.
+
+        Sert au moment où le coffre vient d'être CRÉÉ : `create_database`
+        rend la base ouverte, et sans cela le mot de passe maître serait
+        redemandé dans la seconde qui suit — à quelqu'un qui vient de le
+        taper deux fois.
+        """
+        self._kdbx = kdbx
+
     def get_extra_command_user(
         self, kdbx_key: str | list | None
     ) -> tuple[str | list, dict]:
