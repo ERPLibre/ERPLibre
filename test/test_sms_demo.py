@@ -288,6 +288,9 @@ class TestI18n(SmsDemoBase):
 
         for step in self.steps.STEPS:
             self.assertIn(step.label_key, TRANSLATIONS, step.id)
+            for materiel, variante in step.par_materiel.items():
+                self.assertIn(variante.label_key, TRANSLATIONS,
+                              f"{step.id}/{materiel}")
 
 
 class TestModes(SmsDemoBase):
@@ -299,8 +302,13 @@ class TestModes(SmsDemoBase):
         self.assertEqual(self.spec_mod.load().spec.mode, "local")
 
     def test_letape_une_change_de_sens_selon_le_mode(self):
+        from dataclasses import replace
+
         step = self.steps.STEPS[0]
-        self.assertNotEqual(step.label_for("local"), step.label_for("vm"))
+        local = self.spec_mod.DemoSpec()
+        self.assertNotEqual(
+            step.label_for(local), step.label_for(replace(local, mode="vm"))
+        )
 
     def test_le_backend_suit_le_mode(self):
         from dataclasses import replace
@@ -804,6 +812,98 @@ class TestDiagnostic(SmsDemoBase):
         verif = inspect.getsource(menu._attendre_interrogation)
         self.assertIn("gateway_poll_age", verif)
         self.assertIn("refus_recents", verif)
+
+
+class TestMateriel(SmsDemoBase):
+    """Le telephone et le modem, sur le meme chemin d'etapes.
+
+    Ce n'est pas une seconde demonstration : c'est la meme, dont une seule
+    etape change de nature. Ces tests fixent laquelle, et ce qui doit rester
+    identique pour que les deux voies restent comparables.
+    """
+
+    def _spec(self, materiel):
+        from dataclasses import replace
+
+        return replace(self.spec_mod.DemoSpec(), materiel=materiel)
+
+    def test_le_defaut_est_le_telephone(self):
+        """La voie existante ne doit pas changer sous les pieds de personne."""
+        self.assertEqual(self.spec_mod.load().spec.materiel, "mobile")
+
+    def test_les_deux_materiels_suivent_les_memes_etapes(self):
+        avant = [s.id for s in self.steps.STEPS]
+        self.assertEqual(len(avant), 6)
+        self.assertEqual(avant[3], "mobile")
+
+    def test_seule_letape_de_liaison_change_de_nom(self):
+        mobile, modem = self._spec("mobile"), self._spec("modem")
+        differentes = [
+            step.id
+            for step in self.steps.STEPS
+            if step.label_for(mobile) != step.label_for(modem)
+        ]
+        self.assertEqual(differentes, ["mobile"])
+
+    def test_le_modem_ne_demande_personne(self):
+        """Un modem n'a pas d'ecran : l'etape s'enchaine seule."""
+        etape = self.steps.BY_ID["mobile"]
+        self.assertTrue(etape.manual_for(self._spec("mobile")))
+        self.assertFalse(etape.manual_for(self._spec("modem")))
+
+    def test_le_tableau_retire_la_mention_du_telephone_en_main(self):
+        from dataclasses import replace
+
+        etat = self.spec_mod.load()
+        etat.spec = replace(etat.spec, materiel="modem")
+        rendu = self.steps.render(etat)
+        self.assertIn("agent", rendu.lower())
+        self.assertNotIn("telephone en main", rendu.lower())
+
+    def test_la_fiche_declare_le_materiel_a_odoo(self):
+        """Sans cela, un modem serait juge sur les criteres d'un telephone."""
+        from script.todo.sms import gateway as gw
+
+        script = gw.render_setup_script(self._spec("modem"))
+        self.assertIn('"kind": \'modem\'', script)
+
+    def test_lagent_joint_odoo_sans_renvoi_usb(self):
+        """Il est sur le poste : il n'a ni cable ni « adb reverse » a passer."""
+        from dataclasses import replace
+
+        from script.todo.sms import agent
+
+        spec = self._spec("modem")
+        self.assertEqual(
+            agent.server_url(spec), f"http://127.0.0.1:{spec.odoo_port}"
+        )
+        self.assertEqual(
+            agent.server_url(replace(spec, mode="vm"), "192.0.2.10"),
+            f"http://192.0.2.10:{spec.odoo_port}",
+        )
+
+    def test_lagent_recoit_les_trois_variables_quil_exige(self):
+        from script.todo.modem import passerelle as agent_mod
+        from script.todo.sms import agent
+
+        environnement = agent.environnement(self._spec("modem"), "abc", "")
+        self.assertEqual(environnement[agent_mod.VARIABLE_APPAREIL], "demo-01")
+        self.assertEqual(environnement[agent_mod.VARIABLE_SECRET], "abc")
+        self.assertTrue(environnement[agent_mod.VARIABLE_URL].startswith("http"))
+
+    def test_changer_de_materiel_refait_la_fiche_pas_le_serveur(self):
+        """La fiche porte le materiel ; la VM et Odoo n'en savent rien."""
+        from unittest.mock import patch
+
+        from script.todo.sms import menu
+
+        etat = self.spec_mod.load()
+        for etape in ("vm", "odoo", "gateway", "mobile", "verify", "confirm"):
+            etat.mark_done(etape)
+        with patch("builtins.input", return_value="2"):
+            menu._choose_materiel(etat)
+        self.assertEqual(etat.spec.materiel, "modem")
+        self.assertEqual(sorted(etat.done), ["odoo", "vm"])
 
 
 if __name__ == "__main__":

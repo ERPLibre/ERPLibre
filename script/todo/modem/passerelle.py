@@ -695,3 +695,32 @@ def depuis_environnement(ouvrir=None):
         os.environ[VARIABLE_APPAREIL], ouvrir=ouvrir,
     )
     return Passerelle(transport, ModemManagerSMS(), Etat(chemin_etat()))
+
+
+def main():
+    """Point d'entree de l'agent, pour un service ou un lancement a la main.
+
+    Rend 1 sur une configuration incomplete plutot que de tourner en boucle
+    sur des interrogations vouees a echouer : un service qui redemarre sans
+    fin masque la variable manquante au lieu de la signaler.
+    """
+    import logging
+    import sys
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+    try:
+        agent = depuis_environnement()
+    except ErreurTransport as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    try:
+        agent.boucle(journal=lambda message: print(message, flush=True))
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

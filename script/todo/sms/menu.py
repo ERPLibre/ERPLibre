@@ -35,12 +35,13 @@ def prompt_execute_sms(todo) -> None:
 {steps_mod.render(state)}
 
 [1] {t("sms_run_all")}
-{_lignes_etapes(mode)}
+{_lignes_etapes(state.spec)}
 [8] {t("sms_phone_menu")}
 [9] {t("sms_call_menu")}
 [10] {t("sms_open_tui")}
 [11] {t("sms_test_number_menu")} : {state.spec.test_number or t("sms_test_number_none")}
 [12] {t("sms_mode_menu")} ({mode} / {state.spec.transport})
+[14] {t("sms_materiel_menu")} : {t("sms_materiel_" + state.spec.materiel)}
 [13] {t("sms_reset_local") if mode == "local" else t("sms_reset")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
@@ -64,6 +65,8 @@ def prompt_execute_sms(todo) -> None:
             _choose_transport(spec_mod.load())
         elif status == "13":
             _reset(todo, state)
+        elif status == "14":
+            _choose_materiel(state)
         else:
             print(t("Command not found !"))
 
@@ -73,7 +76,7 @@ def prompt_execute_sms(todo) -> None:
 # ----------------------------------------------------------------------
 
 
-def _lignes_etapes(mode: str) -> str:
+def _lignes_etapes(spec) -> str:
     """Les étapes, numérotées à la suite de « tout enchaîner ».
 
     Générées plutôt qu'écrites à la main : ajouter une étape ne doit pas
@@ -81,7 +84,7 @@ def _lignes_etapes(mode: str) -> str:
     affiché et ce qui est exécuté.
     """
     return "\n".join(
-        f"[{index + 2}] {step.label_for(mode)}"
+        f"[{index + 2}] {step.label_for(spec)}"
         for index, step in enumerate(STEPS)
     )
 
@@ -357,6 +360,11 @@ def _dispatch(todo, state, step):
     if step.id == "gateway":
         return dos.step_gateway(todo, state)
     if step.id == "mobile":
+        # Le SEUL endroit ou le materiel change ce qu'on fait : relier un
+        # telephone se fait a la main, lancer l'agent du modem ne se fait
+        # pas du tout — il part seul.
+        if state.spec.materiel == "modem":
+            return _step_modem(state)
         return _step_mobile(state)
     if step.id == "verify":
         return _step_verify(todo, state, dos)
@@ -385,6 +393,63 @@ def _choose_mode(state) -> None:
     state.reset()
     spec_mod.save(state)
     print(f"  ⚠️  {t('sms_mode_changed')}")
+
+
+def _choose_materiel(state) -> None:
+    """Telephone ou modem. Change ce que la fiche declare, donc la refait.
+
+    Les etapes serveur — VM et Odoo — tiennent : c'est la meme installation.
+    La fiche passerelle, elle, PORTE le materiel, et les criteres de sante en
+    dependent : la garder ferait juger un modem sur ceux d'un telephone.
+    """
+    from dataclasses import replace
+
+    print(f"  {t('sms_materiel_current')} : {t('sms_materiel_' + state.spec.materiel)}")
+    print(f"  [1] {t('sms_materiel_mobile')}")
+    print(f"  [2] {t('sms_materiel_modem')}")
+    choix = input(f"  {t('sms_materiel_ask')}").strip()
+    nouveau = {"1": "mobile", "2": "modem"}.get(choix)
+    if nouveau is None or nouveau == state.spec.materiel:
+        return
+    state.spec = replace(state.spec, materiel=nouveau)
+    for etape in ("gateway", "mobile", "verify", "confirm"):
+        if etape in state.done:
+            state.done.remove(etape)
+    spec_mod.save(state)
+    print(f"  ⚠️  {t('sms_materiel_changed')}")
+
+
+def _step_modem(state):
+    """Lance l'agent qui mene le modem, et attend sa premiere interrogation.
+
+    Aucune saisie, aucun appareil en main : c'est ce qui distingue cette voie
+    de celle du telephone. On refuse tot si le modem ne repond pas — decouvrir
+    au moment de l'envoi d'essai qu'aucune SIM n'est enregistree ferait
+    chercher la panne dans Odoo.
+    """
+    from script.todo.sms import agent as agent_mod
+
+    if state.spec.mode == "local":
+        vivant, detail_serveur = local_backend.start_server(state.spec)
+        print(f"  {'✅' if vivant else '❌'} Odoo : {detail_serveur}")
+        if not vivant:
+            return False, detail_serveur
+
+    pret, motif = agent_mod.modem_pret()
+    print(f"  {'✅' if pret else '❌'} {t('sms_modem_ready') if pret else motif}")
+    if not pret:
+        return False, motif
+
+    print()
+    print(agent_mod.render_agent_config(
+        state.spec, spec_mod.ensure_secret(), state.vm_ip
+    ))
+    print()
+    parti, detail = agent_mod.start_agent(state)
+    print(f"  {'✅' if parti else '❌'} {t('sms_agent_label')} : {detail}")
+    if not parti:
+        return False, detail
+    return _attendre_interrogation(state)
 
 
 def _step_mobile(state):
