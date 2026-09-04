@@ -655,6 +655,86 @@ class SsoHelperOffer(MenuBase):
         self.assertIn("entretenu", printed)
 
 
+class ChoosingTheXmlProfile(MenuBase):
+    """Le choix du fichier `.xml` : parcours d'abord, saisie ensuite.
+
+    Ni l'un ni l'autre ne suffit. Le parcours part des répertoires du
+    client de Cisco et n'aide pas si le fichier vient d'ailleurs ; le
+    chemin tapé oblige à le connaître, or personne ne retient
+    « /opt/cisco/secureclient/vpn/profile ».
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.xml = os.path.join(self.tmp.name, "campus.xml")
+        with open(self.xml, "w") as fh:
+            fh.write("<AnyConnectProfile/>")
+
+    def browsing(self, chosen, *answers, dirs=None):
+        """Déroule `_vpn_select_xml` avec un parcours qui rend `chosen`."""
+        picked = []
+
+        class FauxNavigateur:
+            def __init__(self, start, callback):
+                picked.append(start)
+                self._callback = callback
+
+            def run_main_frame(inner):
+                if chosen is not None:
+                    inner._callback(chosen)
+
+        with patch(
+            "script.todo.vpn_menu.ANYCONNECT_DIRS",
+            dirs if dirs is not None else (self.tmp.name,),
+        ):
+            with patch(
+                "script.todo.vpn_menu.todo_file_browser.FileBrowser",
+                FauxNavigateur,
+            ):
+                with self.answering(*answers):
+                    with redirect_stdout(io.StringIO()):
+                        return self.todo._vpn_select_xml(), picked
+
+    def test_the_browser_starts_in_the_cisco_directory(self):
+        path, started = self.browsing(self.xml, "")
+        self.assertEqual(path, self.xml)
+        self.assertEqual(started, [self.tmp.name])
+
+    def test_declining_the_browser_falls_back_to_typing(self):
+        path, started = self.browsing(self.xml, "n", self.xml)
+        self.assertEqual(path, self.xml)
+        self.assertEqual(started, [], "le parcours ne devait pas s'ouvrir")
+
+    def test_leaving_the_browser_empty_falls_back_to_typing(self):
+        """On peut sortir du parcours sans rien choisir : la saisie reste."""
+        path, _ = self.browsing(None, "", self.xml)
+        self.assertEqual(path, self.xml)
+
+    def test_a_path_that_is_not_a_file_does_not_pass_as_chosen(self):
+        """Le parcours peut rendre un répertoire : il ne vaut pas fichier,
+        et la saisie reprend la main."""
+        path, _ = self.browsing(self.tmp.name, "", self.xml)
+        self.assertEqual(path, self.xml)
+
+    def test_no_cisco_directory_means_no_offer(self):
+        """Ouvrir un parcours sur un chemin absent afficherait une liste
+        vide, ce qui ressemble à une panne. Liste de réponses courte : si
+        la question était posée, le test lèverait StopIteration."""
+        path, started = self.browsing(
+            self.xml, self.xml, dirs=("/nowhere/cisco",)
+        )
+        self.assertEqual(path, self.xml)
+        self.assertEqual(started, [])
+
+    def test_a_typed_path_is_expanded(self):
+        path, _ = self.browsing(None, "n", "~")
+        self.assertEqual(path, os.path.expanduser("~"))
+
+    def test_giving_up_returns_nothing(self):
+        path, _ = self.browsing(None, "n", "")
+        self.assertEqual(path, "")
+
+
 class FromPreset(MenuBase):
     """Le chemin « créer un profil à partir d'un préréglage ».
 

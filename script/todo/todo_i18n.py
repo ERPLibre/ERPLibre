@@ -11779,6 +11779,14 @@ TRANSLATIONS = {
             " maintained."
         ),
     },
+    "Found": {
+        "fr": "Trouvé",
+        "en": "Found",
+    },
+    "Browse it? (Y/n)": {
+        "fr": "Le parcourir ? (O/n)",
+        "en": "Browse it? (Y/n)",
+    },
     "Install it as well? (y/N)": {
         "fr": "L'installer aussi ? (o/N)",
         "en": "Install it as well? (y/N)",

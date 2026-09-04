@@ -23,6 +23,13 @@ import os
 
 import click
 
+try:
+    from script.todo import todo_file_browser
+except Exception:
+    # urwid peut manquer : le parcours devient indisponible, la saisie
+    # directe reste. Un menu qui ne s'ouvre plus serait pire.
+    todo_file_browser = None
+
 from script.todo.todo_i18n import t
 from script.vpn import anyconnect_xml, presets, profiles
 from script.vpn.drivers import DRIVERS, get_driver
@@ -63,6 +70,17 @@ PRESET_LOCATION_NOTE = (
 PRESET_REPLAYED_NOTE = (
     "This profile already exists: the preset refreshes what it declares,"
     " everything personal is kept."
+)
+
+# Répertoires où chercher un profil AnyConnect, dans l'ordre. Les deux
+# premiers sont ceux du client de Cisco — le nom a changé entre AnyConnect
+# et Secure Client. Les deux derniers parce qu'un site le distribue aussi
+# par courriel ou par son portail, et le fichier atterrit alors là.
+ANYCONNECT_DIRS = (
+    "/opt/cisco/secureclient/vpn/profile",
+    "/opt/cisco/anyconnect/profile",
+    "~/Downloads",
+    "~/Téléchargements",
 )
 
 # Où le client de Cisco dépose les profils qu'un site distribue. Le dire
@@ -386,6 +404,43 @@ class VpnMenuMixin:
             )
         self._vpn_edit_profile(seed=seed)
 
+    def _vpn_select_xml(self):
+        """Chemin du profil `.xml`, "" si l'utilisateur renonce.
+
+        Le parcours d'abord, la saisie ensuite, parce que ni l'un ni l'autre
+        ne suffit : le parcours part des répertoires du client de Cisco et
+        n'aide pas si le fichier vient d'ailleurs ; le chemin tapé oblige à
+        le connaître, or personne ne retient
+        « /opt/cisco/secureclient/vpn/profile ».
+
+        Le parcours n'est PROPOSÉ que si un de ces répertoires existe :
+        l'ouvrir sur un chemin absent afficherait une liste vide, ce qui
+        ressemble à une panne.
+        """
+        start = next(
+            (
+                path
+                for path in (os.path.expanduser(d) for d in ANYCONNECT_DIRS)
+                if os.path.isdir(path)
+            ),
+            "",
+        )
+        if todo_file_browser is not None and start:
+            print(f"  {t('Found')} : {start}")
+            if self._is_yes(input(f"{t('Browse it? (Y/n)')} : ") or "o"):
+                self._xml_path = ""
+                browser = todo_file_browser.FileBrowser(
+                    start, self._on_xml_selected
+                )
+                browser.run_main_frame()
+                if self._xml_path and os.path.isfile(self._xml_path):
+                    return self._xml_path
+        answer = input(f"{t('Path to the .xml profile')} : ").strip()
+        return os.path.expanduser(answer) if answer else ""
+
+    def _on_xml_selected(self, path):
+        self._xml_path = path
+
     def _vpn_import_anyconnect(self):
         """Transforme un profil AnyConnect (`.xml`) en préréglages.
 
@@ -398,11 +453,11 @@ class VpnMenuMixin:
         nomme un établissement.
         """
         print(t(ANYCONNECT_LOCATION_NOTE))
-        path = input(f"{t('Path to the .xml profile')} : ").strip()
+        path = self._vpn_select_xml()
         if not path:
             return
         try:
-            found = anyconnect_xml.parse_file(os.path.expanduser(path))
+            found = anyconnect_xml.parse_file(path)
         except anyconnect_xml.ProfileXmlError as error:
             print(f"\n✗ {error}")
             return
