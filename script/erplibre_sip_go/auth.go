@@ -4,9 +4,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/emiago/diago"
 	"github.com/emiago/sipgo/sip"
@@ -25,6 +27,14 @@ const (
 	// points-virgules. Dans l'environnement du processus et non dans un
 	// fichier du dépôt : ce code est publié sous AGPL-3.
 	VariablePostes = "VOIP_POSTES"
+
+	// DuréeDéfi borne la vie d'un défi.
+	//
+	// Le défaut de la bibliothèque est de CINQ SECONDES, ce qui ne tient pas :
+	// un client renouvelle son inscription toutes les dix minutes en rejouant
+	// le dernier nonce, et le trouve alors perimé a tout coup. Cinq minutes
+	// laissent le temps d'un aller-retour sans garder les defis indefiniment.
+	DuréeDéfi = 5 * time.Minute
 
 	// RoyaumeParDéfaut est le « realm » annoncé dans le défi. Il n'est pas
 	// secret et ne protège rien ; il sert au client à choisir le bon mot de
@@ -118,16 +128,7 @@ func (g *Gardien) Autoriser(req *sip.Request, tx sip.ServerTransaction) bool {
 		return true
 	}
 	poste := posteDemandé(req)
-	motDePasse, connu := g.comptes[poste]
-	if !connu {
-		motDePasse = motDePasseFactice
-	}
-
-	réponse, err := g.serveur.AuthorizeRequest(req, diago.DigestAuth{
-		Username: poste,
-		Password: motDePasse,
-		Realm:    g.royaume,
-	})
+	réponse, err := g.juger(req, poste)
 	if err == nil && réponse != nil && réponse.StatusCode == sip.StatusOK {
 		return true
 	}
@@ -136,9 +137,12 @@ func (g *Gardien) Autoriser(req *sip.Request, tx sip.ServerTransaction) bool {
 		return false
 	}
 	// Un défi n'est pas un échec : c'est le premier tour normal, le client
-	// rejoue aussitôt avec ses identifiants. Le distinguer d'un refus évite
-	// un journal qui crie à l'intrusion à chaque inscription.
-	if réponse.StatusCode == sip.StatusUnauthorized && req.GetHeader("Authorization") == nil {
+	// rejoue aussitôt avec ses identifiants. Ce qui les distingue est la
+	// PRÉSENCE DU DÉFI dans la réponse, et non l'absence d'identifiants dans
+	// la requête : un nonce périmé se rejoue avec des identifiants et reçoit
+	// pourtant un défi neuf.
+	if réponse.StatusCode == sip.StatusUnauthorized &&
+		réponse.GetHeader("WWW-Authenticate") != nil {
 		slog.Debug("défi envoyé", "poste", poste, "methode", req.Method)
 	} else {
 		slog.Warn("requete refusee", "poste", poste, "methode", req.Method,
@@ -160,16 +164,7 @@ func (g *Gardien) AutoriserDialogue(d *diago.DialogServerSession) bool {
 	}
 	req := d.InviteRequest
 	poste := posteDemandé(req)
-	motDePasse, connu := g.comptes[poste]
-	if !connu {
-		motDePasse = motDePasseFactice
-	}
-
-	réponse, err := g.serveur.AuthorizeRequest(req, diago.DigestAuth{
-		Username: poste,
-		Password: motDePasse,
-		Realm:    g.royaume,
-	})
+	réponse, err := g.juger(req, poste)
 	if err == nil && réponse != nil && réponse.StatusCode == sip.StatusOK {
 		return true
 	}
@@ -181,6 +176,36 @@ func (g *Gardien) AutoriserDialogue(d *diago.DialogServerSession) bool {
 		slog.Error("reponse d'authentification non transmise", "err", err)
 	}
 	return false
+}
+
+// juger authentifie une requête, en redonnant un défi neuf si besoin.
+//
+// Un nonce que le service ne connaît pas n'est PAS un refus : c'est un défi
+// périmé, ou celui d'avant un redémarrage, qu'un client rejoue de bonne foi.
+// La bibliothèque rend alors un 401 SANS « WWW-Authenticate » — un client ne
+// peut rien en faire, et attend l'expiration d'un minuteur avant de repartir
+// de zéro. On lui redonne donc un défi tout de suite, en jugeant la requête
+// comme si elle ne portait aucun identifiant.
+func (g *Gardien) juger(req *sip.Request, poste string) (*sip.Response, error) {
+	motDePasse, connu := g.comptes[poste]
+	if !connu {
+		motDePasse = motDePasseFactice
+	}
+	identifiants := diago.DigestAuth{
+		Username: poste,
+		Password: motDePasse,
+		Realm:    g.royaume,
+		Expire:   DuréeDéfi,
+	}
+
+	réponse, err := g.serveur.AuthorizeRequest(req, identifiants)
+	if !errors.Is(err, diago.ErrDigestAuthNoChallenge) {
+		return réponse, err
+	}
+	sans := req.Clone()
+	sans.RemoveHeader("Authorization")
+	slog.Debug("nonce inconnu : nouveau défi", "poste", poste)
+	return g.serveur.AuthorizeRequest(sans, identifiants)
 }
 
 // posteDemandé rend le nom sous lequel la requête se présente.

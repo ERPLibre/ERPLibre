@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/emiago/sipgo/sip"
 	"github.com/icholy/digest"
@@ -184,5 +185,42 @@ func TestLeMessageDeRefusDitCommentSeConfigurer(t *testing.T) {
 		if !strings.Contains(err.Error(), attendu) {
 			t.Fatalf("« %s » absent du message : %s", attendu, err)
 		}
+	}
+}
+
+// Un nonce que le service ne connait pas n'est PAS un refus : c'est un defi
+// perime, ou celui d'avant un redemarrage, qu'un client rejoue de bonne foi.
+// La bibliotheque rend alors un 401 SANS defi — un client ne peut rien en
+// faire et attend l'expiration d'un minuteur avant de repartir de zero.
+func TestUnNonceInconnuRedonneUnDefi(t *testing.T) {
+	gardien, err := NouveauGardien("1001:motdepasse", false)
+	if err != nil {
+		t.Fatalf("gardien : %v", err)
+	}
+	defer gardien.Fermer()
+
+	rejouée := requêteRegister(t, "1001")
+	rejouée.AppendHeader(sip.NewHeader("Authorization",
+		`Digest username="1001", realm="erplibre", nonce="nonce-d-avant-le-redemarrage", `+
+			`uri="sip:127.0.0.1", response="00000000000000000000000000000000"`))
+
+	tx := &transactionMuette{}
+	if gardien.Autoriser(rejouée, tx) {
+		t.Fatal("acceptée avec un nonce inconnu")
+	}
+	if tx.réponse == nil || tx.réponse.StatusCode != 401 {
+		t.Fatalf("réponse %v", tx.réponse)
+	}
+	if tx.réponse.GetHeader("WWW-Authenticate") == nil {
+		t.Fatal("401 sans défi : le client ne peut rien en faire et attendra " +
+			"l'expiration d'un minuteur")
+	}
+}
+
+// Cinq secondes est le defaut de la bibliotheque, et il ne tient pas : un
+// client renouvelle son inscription toutes les dix minutes.
+func TestLeDefiVitAssezLongtempsPourUnRenouvellement(t *testing.T) {
+	if DuréeDéfi < time.Minute {
+		t.Fatalf("un défi de %v sera périmé à chaque renouvellement", DuréeDéfi)
 	}
 }
