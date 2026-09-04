@@ -1,0 +1,16 @@
+[
+    {
+        "preset": "example_ssl_vpn",
+        "label": "Example campus SSL VPN (template)",
+        "hint": "Cisco AnyConnect gateway with an authentication group",
+        "driver": "openconnect",
+        "server": "ssl.vpn.example-campus.net",
+        "port": 443,
+        "oc_protocol": "anyconnect",
+        "oc_authgroup": "CampusSSL",
+        "oc_sso": false,
+        "oc_password_len": 0,
+        "routes": [],
+        "default_route": false
+    }
+]
