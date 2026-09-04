@@ -67,12 +67,25 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 	// Le matériel AVANT le service, et non au premier appel : un softphone
 	// qui s'enregistre sur un service condamné laisse croire que tout est en
 	// place, et la panne ne se découvre qu'une fois quelqu'un décroché.
+	var modem *Modem
 	if !écho {
 		carte, err := carteOuDéfaut(o.Carte)
 		if err != nil {
 			return err
 		}
-		slog.Info("carte son du modem retenue", "carte", carte)
+		// UN SEUL accès au modem, ouvert ici et partagé.
+		//
+		// Le port série ne se prête pas : deux ouvertures entrelaceraient
+		// leurs commandes AT, et une reponse partirait vers l'autre. Le
+		// verrou interne du modem serialise les acces d'un meme accès, ce qui
+		// suffit tant qu'il n'y en a qu'un.
+		modem, err = OuvrirModem(o.Port)
+		if err != nil {
+			return expliquerPort(err)
+		}
+		defer modem.Close()
+		o.Carte = carte
+		slog.Info("modem prêt", "carte", carte, "port", o.Port)
 	}
 
 	ua, err := sipgo.NewUA()
@@ -89,15 +102,57 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 	if err != nil {
 		return err
 	}
+	registre := NouveauRegistre()
+
+	// Un SEUL cache de dialogues sortants, pour toute la vie du service.
+	//
+	// Les appels entrants créent des dialogues dont NOUS sommes l'appelant.
+	// Leur BYE arrive au serveur, qui ne connaît que les dialogues qu'il a
+	// acceptés : sans ce cache partagé et sans l'intercepteur ci-dessous, le
+	// raccrochage du navigateur reçoit « Call/Transaction Does Not Exist » et
+	// l'appel cellulaire continue, facturé, apres que l'ecran a dit
+	// « termine ».
+	client, err := sipgo.NewClient(ua)
+	if err != nil {
+		return err
+	}
+	dialogues := sipgo.NewDialogClientCache(client, sip.ContactHeader{
+		Address: sip.Uri{User: "erplibre", Host: hôte},
+	})
 	srv.OnRegister(func(req *sip.Request, tx sip.ServerTransaction) {
 		if !gardien.Autoriser(req, tx) {
 			return
+		}
+		// Retenir AVANT de répondre : un poste qui reçoit son 200 OK peut
+		// être appelé dans la seconde, et l'ordre inverse laisserait une
+		// fenêtre où il se croit joignable sans l'être.
+		if _, err := registre.Inscrire(req, time.Now()); err != nil {
+			slog.Warn("inscription non retenue", "err", err)
 		}
 		accepterInscription(req, tx)
 	})
 
 	dg := diago.NewDiago(ua,
 		diago.WithServer(srv),
+		// L'intercepteur passe AVANT les gestionnaires de diago : une requête
+		// qui appartient à l'un de nos dialogues sortants y est traitée, le
+		// reste continue son chemin. Remplacer le gestionnaire de BYE au lieu
+		// de s'intercaler casserait le raccrochage des appels sortants.
+		diago.WithServerRequestMiddleware(func(suivant sipgo.RequestHandler) sipgo.RequestHandler {
+			return func(req *sip.Request, tx sip.ServerTransaction) {
+				if req.Method == sip.BYE {
+					err := dialogues.ReadBye(req, tx)
+					if err == nil {
+						slog.Info("le softphone a raccroché", "de", req.From().Address.User)
+						return
+					}
+					if !errors.Is(err, sipgo.ErrDialogDoesNotExists) {
+						slog.Warn("raccrochage du softphone mal lu", "err", err)
+					}
+				}
+				suivant(req, tx)
+			}
+		}),
 		diago.WithTransport(diago.Transport{
 			ID:        "ws",
 			Transport: "ws",
@@ -105,6 +160,12 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 			BindPort:  port,
 		}))
 	slog.Info("softphone en écoute", "ws", "ws://"+bind, "echo", écho)
+
+	// Les appels ENTRANTS : sans cette veille, composer le numéro de la SIM
+	// ne fait sonner personne, et la passerelle n'est qu'un composeur.
+	if modem != nil {
+		go VeillerSurLesEntrants(ctx, modem, o, hôte, registre, dialogues)
+	}
 
 	return dg.Serve(ctx, func(d *diago.DialogServerSession) {
 		// L'INVITE est défié lui aussi : une inscription authentifiée ne
@@ -118,7 +179,7 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 		// DNS qui échoue bruyamment. Un appel refusé se refuse par une
 		// RÉPONSE à l'INVITE, ce que fait `servirUnAppel` ; un appel déjà
 		// établi, c'est au navigateur de le raccrocher.
-		if err := servirUnAppel(ctx, d, hôte, o, écho); err != nil {
+		if err := servirUnAppel(ctx, d, hôte, o, écho, modem); err != nil {
 			slog.Error("appel du navigateur abandonné", "err", err)
 		}
 		// On rend TOUJOURS sans erreur : diago raccrocherait de lui-même, et
@@ -170,7 +231,7 @@ func ConstruireBye(invite *sip.Request) (*sip.Request, error) {
 }
 
 func servirUnAppel(ctx context.Context, d *diago.DialogServerSession, hôte string,
-	o OptionsModem, écho bool) error {
+	o OptionsModem, écho bool, modem *Modem) error {
 	offre, err := LireOffre(d.InviteRequest.Body())
 	if err != nil {
 		return err
@@ -186,7 +247,7 @@ func servirUnAppel(ctx context.Context, d *diago.DialogServerSession, hôte stri
 	// affiche « indisponible » et rien ne reste ouvert.
 	var ligne *LigneModem
 	if !écho {
-		ligne, err = OuvrirLigne(ctx, d, o)
+		ligne, err = OuvrirLigne(ctx, d, o, modem)
 		if err != nil {
 			refuser(d, err)
 			return err
@@ -221,7 +282,7 @@ func servirUnAppel(ctx context.Context, d *diago.DialogServerSession, hôte stri
 		return err
 	}
 
-	réponse := RéponseSDP{
+	réponse := DescriptionSDP{
 		Adresse:   net.ParseIP(hôte),
 		Port:      socket.Port(),
 		Identité:  locale,
@@ -348,7 +409,9 @@ func (l *LigneModem) Fermer() {
 	if err := l.modem.FermerVoixUSB(); err != nil {
 		slog.Warn("canal voix USB non refermé", "err", err)
 	}
-	_ = l.modem.Close()
+	// Le modem N'EST PAS refermé : il appartient au service et sert aussi la
+	// veille des appels entrants. Le fermer ici rendrait la passerelle sourde
+	// après le premier appel sortant.
 	l.modem = nil
 }
 
@@ -362,24 +425,15 @@ func (l *LigneModem) Fermer() {
 // passent avant le moindre flux audio, sans quoi le pont meurt et l'appel
 // devient muet sans rien dire.
 func OuvrirLigne(ctx context.Context, d *diago.DialogServerSession,
-	o OptionsModem) (*LigneModem, error) {
+	o OptionsModem, m *Modem) (*LigneModem, error) {
 
 	numéro, err := NuméroValide(d.ToUser())
 	if err != nil {
 		return nil, fmt.Errorf("numero compose (%q) : %w", d.ToUser(), err)
 	}
-
-	// La carte AVANT la composition : la chercher après le décroché ferait
-	// découvrir son absence quand quelqu'un a déjà répondu, et la minute est
-	// alors facturée pour rien.
 	carte, err := carteOuDéfaut(o.Carte)
 	if err != nil {
 		return nil, err
-	}
-
-	m, err := OuvrirModem(o.Port)
-	if err != nil {
-		return nil, expliquerPort(err)
 	}
 
 	ligne := &LigneModem{modem: m, Carte: carte}
