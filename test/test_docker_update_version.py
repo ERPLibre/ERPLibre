@@ -7,26 +7,21 @@ import tempfile
 import unittest
 from types import SimpleNamespace
 
-from script.docker.docker_update_version import edit_text, edit_docker_prod
+from script.docker.docker_update_version import edit_docker_prod, edit_text
 
 
 class TestEditText(unittest.TestCase):
     """Test docker-compose.yml image version update."""
 
     def _write_compose(self, content):
-        f = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yml", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False)
         f.write(content)
         f.close()
         return f.name
 
     def test_updates_image_after_erplibre(self):
         path = self._write_compose(
-            "services:\n"
-            "  ERPLibre:\n"
-            "    image: old:1.0\n"
-            "    ports:\n"
+            "services:\n" "  ERPLibre:\n" "    image: old:1.0\n" "    ports:\n"
         )
         config = SimpleNamespace(
             docker_compose_file=path,
@@ -64,17 +59,13 @@ class TestEditDockerProd(unittest.TestCase):
     """Test Dockerfile.prod FROM line update."""
 
     def _write_dockerfile(self, content):
-        f = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".pkg", delete=False
-        )
+        f = tempfile.NamedTemporaryFile(mode="w", suffix=".pkg", delete=False)
         f.write(content)
         f.close()
         return f.name
 
     def test_updates_from_line(self):
-        path = self._write_dockerfile(
-            "FROM base:old\nRUN apt-get update\n"
-        )
+        path = self._write_dockerfile("FROM base:old\nRUN apt-get update\n")
         config = SimpleNamespace(
             docker_compose_file="unused",
             docker_prod=path,
