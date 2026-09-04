@@ -4,3 +4,8 @@
 # bump). They describe one specific database, never a shared default, so they
 # must not be versioned. Shared defaults belong to script/odoo/migration/.
 odoo/
+
+# Mount point for a private repository of VPN site presets. Those files name
+# an institution, its gateway and its authentication group, so they belong to
+# a repository that is itself private, never to a public fork.
+vpn/presets/
