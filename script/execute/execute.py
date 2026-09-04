@@ -8,6 +8,7 @@
 # migration meurt sur un TypeError avant d'avoir rien fait.
 from __future__ import annotations
 
+import codecs
 import datetime
 import logging
 import os
@@ -183,31 +184,43 @@ class Execute:
                 executable="/bin/bash",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,  # Disable buffering for live output
-                universal_newlines=True,  # Handle line breaks correctly
+                # Octets bruts, SANS tampon. « readline » attendait le saut de
+                # ligne pour rendre la main : une invite qui n'en porte pas —
+                # « Continuer ? [o/N] » — restait donc invisible jusqu'à ce que
+                # la réponse soit déjà tapée. La question s'affichait APRÈS la
+                # réponse, et l'on répondait à l'aveugle.
+                bufsize=0,
                 env=my_env,
             )
 
             sink = getattr(self, "log_sink", None)
-            while True:
-                line = process.stdout.readline()
-                if not line:
-                    break
-                # La sortie du sous-processus passe par le meme filtre que
-                # la commande : un outil qui reaffiche ses propres arguments
+            # Le tube porte des octets, et une lecture peut couper un caractère
+            # accentué ou un emoji en deux. Le décodeur incrémental garde le
+            # morceau incomplet en attente au lieu de rendre un « ? ».
+            decoder = codecs.getincrementaldecoder("utf-8")("replace")
+            fd = process.stdout.fileno()
+            # « pending » est la ligne en cours, pas encore terminée ; « shown »
+            # compte ce qui en a déjà été envoyé au terminal, pour ne jamais
+            # afficher deux fois le même morceau d'invite quand la ligne finit
+            # par se terminer.
+            pending = ""
+            shown = 0
+
+            def retenir(ligne):
+                """Journaliser et retenir une ligne complète, caviardée."""
+                nonlocal sink
+                # La sortie du sous-processus passe par le MÊME filtre que la
+                # commande : un outil qui réaffiche ses propres arguments
                 # (« set -x », une trace, odoo_bin.sh) y remettrait le secret
-                # que la ligne 165 venait d'ecarter.
-                line = redact_secrets(line)
-                if not quiet:
-                    print(line, end="")
+                # que l'affichage de la commande venait d'écarter.
+                clean = redact_secrets(ligne)
                 if sink:
                     # Chaque ligne passe DÉJÀ ici : c'est le seul endroit où
                     # journaliser sans rien changer à ce que le terminal
                     # montre. Une erreur d'écriture ne doit jamais faire
                     # échouer la commande qu'on est en train de suivre.
                     try:
-                        sink.write(line)
+                        sink.write(clean)
                     except Exception:
                         sink = None
                 if (
@@ -216,10 +229,44 @@ class Execute:
                 ):
                     # Remove last \n char
                     output_lines.append(
-                        line.removesuffix("\r\n")
+                        clean.removesuffix("\r\n")
                         .removesuffix("\n")
                         .removesuffix("\r")
                     )
+
+            while True:
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                pending += decoder.decode(chunk)
+                while True:
+                    coupe = pending.find("\n")
+                    if coupe < 0:
+                        break
+                    ligne = pending[: coupe + 1]
+                    pending = pending[coupe + 1 :]
+                    if not quiet:
+                        print(redact_secrets(ligne[shown:]), end="")
+                    shown = 0
+                    retenir(ligne)
+                if not quiet:
+                    if len(pending) > shown:
+                        # Le reliquat sans saut de ligne EST l'invite : la
+                        # montrer tout de suite, avant que la commande ne se
+                        # bloque sur la lecture de la réponse.
+                        print(redact_secrets(pending[shown:]), end="")
+                        shown = len(pending)
+                    # Sans vidage explicite, cette invite resterait dans le
+                    # tampon de Python : second endroit où la question se
+                    # perdait, la sortie n'étant vidée qu'au saut de ligne.
+                    sys.stdout.flush()
+
+            pending += decoder.decode(b"", True)
+            if pending:
+                if not quiet:
+                    print(redact_secrets(pending[shown:]), end="")
+                    sys.stdout.flush()
+                retenir(pending)
 
             process.wait()
             exit_code = process.returncode
