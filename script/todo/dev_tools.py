@@ -21,12 +21,20 @@ RTK_UPSTREAM = (
 
 # L'installateur amont pose un binaire statique. Il sert de recours parce
 # que le paquet manque d'une partie des dépôts des plateformes supportées.
-STARSHIP_URL = "https://starship.rs/install/install.sh"
-STARSHIP_UPSTREAM = f"curl -sS {STARSHIP_URL} | sh"
+STARSHIP_URL = "https://starship.rs/install.sh"
+
+# « -f » n'est pas un ornement quand la sortie part dans un shell : sans lui,
+# curl écrit le CORPS d'une réponse d'erreur et sort avec 0, si bien qu'une
+# page HTML de 34 ko arrive sur l'entrée de « sh » et s'y interprète comme
+# un script. Le diagnostic obtenu est alors « Syntax error » sur une ligne du
+# HTML, qui ne dit ni que l'URL est fautive ni que rien n'a été installé.
+# Avec « -f », curl n'écrit rien et rend 22. « -L » suit une redirection,
+# qu'un projet amont pose sans prévenir.
+STARSHIP_UPSTREAM = f"curl -fsSL {STARSHIP_URL} | sh"
 
 # Sans terminal — une pose par SSH dans une VM — l'installateur demande une
 # confirmation que personne ne donnera. « -y » la donne d'avance.
-STARSHIP_UPSTREAM_YES = f"curl -sS {STARSHIP_URL} | sh -s -- -y"
+STARSHIP_UPSTREAM_YES = f"curl -fsSL {STARSHIP_URL} | sh -s -- -y"
 
 # Ce que chaque shell écrit pour lancer starship. La ligne va en FIN de
 # fichier : starship compose le prompt et doit passer après tout ce qui y
