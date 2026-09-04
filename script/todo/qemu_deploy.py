@@ -72,6 +72,12 @@ class QemuDeployMixin:
                 if deferred
                 else ""
             )
+            # « aidev » n'est pas dans « deferred » : ses installations, elles,
+            # ont bien lieu. C'est sa MOITIÉ de pré-configuration qui reste
+            # dehors, les hooks et les gabarits vivant dans le dépôt.
+            if "aidev" in (tools or ()):
+                saute = t("no checkout: git hooks and Claude commands skipped")
+                note += f'echo "   ⚠ {saute}"; '
             return (
                 "set -e; "
                 + self._qemu_cloud_init_wait()
@@ -96,13 +102,13 @@ class QemuDeployMixin:
             svc = self._qemu_odoo_service_cmd(prod).strip().rstrip(";")
             final_cmd = f"{final_cmd} && {{ {svc}; }}"
         # VM de DÉVELOPPEMENT uniquement : couper les mises à jour automatiques.
-        # Vécu sur erplibre-ubuntu-2404 : unattended-upgrades s'est déclenché en
-        # pleine migration Odoo 12->13 et a redémarré le cluster PostgreSQL
-        # (« received fast shutdown request » x3) -> OpenUpgrade a perdu sa
-        # connexion et la base intermédiaire est restée à moitié migrée. Effet
-        # secondaire bienvenu : les timers apt-daily ne tiennent plus le verrou
-        # apt pendant l'installation. En PROD on ne touche à rien : les
-        # correctifs de sécurité automatiques doivent rester actifs.
+        # unattended-upgrades REDÉMARRE le cluster PostgreSQL sous lui-même —
+        # « received fast shutdown request » — et une migration Odoo en cours y
+        # perd sa connexion : OpenUpgrade s'arrête et la base intermédiaire
+        # reste à moitié migrée. Effet secondaire bienvenu : les timers
+        # apt-daily ne tiennent plus le verrou apt pendant l'installation. En
+        # PROD on ne touche à rien : les correctifs de sécurité automatiques
+        # doivent rester actifs.
         no_auto_upgrade = self._qemu_no_auto_upgrade(prod, app_store)
         tools_cmd = self._qemu_tools_remote_cmd(
             tools, prod, "before", ai_agent
@@ -114,8 +120,7 @@ class QemuDeployMixin:
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
         # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
         # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
-        # échoue faute de venv, et il renonce. « ⚠ pas de .idea », deux fois de
-        # suite sur erplibre-ubuntu-2604-gnome. Le même appel sur un dépôt
+        # échoue faute de venv, et il renonce. Le même appel sur un dépôt
         # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
         # modules.xml, vcs.xml.
         #
@@ -1179,9 +1184,9 @@ class QemuDeployMixin:
 
         Le suivi d'installation tourne DÉTACHÉ, sans tty : il ne peut pas
         répondre à une demande de mot de passe. « sudo -n » y échoue sur tout
-        hôte exigeant une authentification interactive (vécu sur erplibre01 avec
-        sudo-rs), et la VM devient alors introuvable dès que son bail DHCP
-        change. Le groupe libvirt est la seule voie qui n'exige ni root ni tty.
+        hôte exigeant une authentification interactive, et la VM devient alors
+        introuvable dès que son bail DHCP change. Le groupe libvirt est la
+        seule voie qui n'exige ni root ni tty.
 
         Vérifié AVANT de créer quoi que ce soit : découvrir le problème après
         vingt minutes d'installation coûte bien plus cher qu'une question ici.

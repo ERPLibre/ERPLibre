@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Les outils d'assistance posés dans une VM au déploiement.
+"""Les outils d'assistance et leur pré-configuration, dans une VM.
 
-rtk, starship et UN agent — Claude Code ou opencode. Aucun n'est dans les
-dépôts des distributions supportées : ce sont quatre installateurs amont,
-donc quatre curl vers l'extérieur, lancés sur un SSH sans terminal.
+rtk, starship et UN agent — Claude Code ou opencode — sont des installateurs
+amont, donc autant de curl vers l'extérieur lancés sur un SSH sans terminal.
+Autour d'eux : trois paquets de terminal, les réglages git, les hooks du
+dépôt, les commandes Claude et une entrée d'historique.
+
+L'outil travaille en DEUX temps, et c'est le partage que ces tests gardent en
+premier : ce qui s'installe avant le clone, puis ce qui a besoin du dépôt.
 
 Ce que ces tests gardent :
 
@@ -13,8 +17,11 @@ Ce que ces tests gardent :
   outils, et deux copies dérivent dès que l'amont en change une ;
 - aucune pose ne peut PENDRE : « || true » couvre l'échec, pas l'attente
   d'une réponse que personne ne donnera ;
-- les lignes ajoutées au ~/.bashrc le sont UNE fois, sinon chaque
+- toute ligne ajoutée à un fichier du HOME l'est UNE fois, sinon chaque
   redéploiement d'une même VM le rallonge ;
+- la pré-configuration rend TOUJOURS 0 : c'est l'installation qui porte le
+  verdict de la VM, pas un confort ;
+- ce qui manque sans clone est NOMMÉ, jamais tu ;
 - l'identité git saisie prime sur celle de l'hôte, champ par champ.
 """
 
@@ -105,11 +112,17 @@ class LaCommandeDistante(unittest.TestCase):
     def test_no_pose_can_hang(self):
         """« || true » couvre l'ÉCHEC, pas l'ATTENTE. Un installateur qui
         pose une question resterait pendu sur un SSH sans terminal, et le
-        déploiement avec lui."""
+        déploiement avec lui.
+
+        L'invariant est vérifié pose par pose plutôt que par un compte : un
+        compte figé se contente d'être mis à jour quand une pose s'ajoute,
+        sans rien dire de la nouvelle."""
         cmd = self._cmd("claude")
-        self.assertEqual(3, cmd.count("</dev/null"))
-        self.assertEqual(3, cmd.count("timeout "))
-        self.assertEqual(3, cmd.count("|| true"))
+        bornees = [x for x in cmd.split("; ") if "timeout " in x]
+        self.assertGreaterEqual(len(bornees), 4)
+        for morceau in bornees:
+            self.assertIn("</dev/null", morceau)
+            self.assertIn("|| true", morceau)
 
     def test_starship_is_told_not_to_ask(self):
         """Sans « -y », son installateur attend une confirmation."""
@@ -117,12 +130,81 @@ class LaCommandeDistante(unittest.TestCase):
 
     def test_the_rc_lines_are_written_once(self):
         """Sans le « grep » qui précède, chaque redéploiement d'une même VM
-        rallonge son ~/.bashrc d'une ligne identique."""
+        rallonge son ~/.bashrc — ou son historique — d'une ligne identique.
+
+        Aucun ajout n'échappe à la règle : on compte les « >> » et non les
+        greps, pour qu'une ligne ajoutée sans garde fasse tomber le test."""
+        for agent in ("claude", "opencode"):
+            cmd = self._cmd(agent)
+            with self.subTest(agent=agent):
+                self.assertEqual(cmd.count(">> "), cmd.count("grep -qF"))
+                for morceau in cmd.split("; "):
+                    if ">> " in morceau:
+                        self.assertIn("grep -qF", morceau)
+
+    def test_the_local_bin_is_on_the_path_for_every_agent(self):
+        """rtk se pose dans ~/.local/bin. La ligne de l'agent ne couvre ce
+        répertoire que pour Claude Code : avec opencode, qui s'installe
+        ailleurs, rtk resterait introuvable dans la VM."""
+        for agent in ("claude", "opencode"):
+            with self.subTest(agent=agent):
+                self.assertIn(
+                    'export PATH="$HOME/.local/bin:$PATH"', self._cmd(agent)
+                )
+
+    def test_an_identical_path_line_is_not_written_twice(self):
+        """Claude Code S'INSTALLE dans ~/.local/bin : deux lignes identiques
+        n'auraient qu'un effet, et deux fois la place dans le journal."""
         cmd = self._cmd("claude")
-        self.assertEqual(2, cmd.count("grep -qF"))
-        for morceau in cmd.split(";"):
-            if ">> ~/.bashrc" in morceau:
-                self.assertIn("||", morceau)
+        self.assertEqual(1, cmd.count("$HOME/.local/bin:$PATH"))
+
+    def test_the_terminal_tools_are_posed(self):
+        """tig, htop et vim portent le même nom dans les quatre familles :
+        aucune n'a de raison de les rater."""
+        cmd = self._cmd("claude")
+        for gestionnaire in ("apt-get", "dnf", "zypper", "pacman"):
+            self.assertIn(gestionnaire, cmd)
+        self.assertEqual(4, cmd.count("tig htop vim"))
+
+    def test_the_venv_activation_reaches_the_history(self):
+        """La commande qu'on veut retrouver à la flèche du haut, dans le
+        fichier que bash relit, et une seule fois."""
+        cmd = self._cmd("claude")
+        ligne = "source .venv.erplibre/bin/activate"
+        self.assertIn(f"echo '{ligne}' >> ~/.bash_history", cmd)
+        self.assertIn(f"grep -qF '{ligne}' ~/.bash_history", cmd)
+
+    def test_the_history_keeps_the_rights_bash_gives_it(self):
+        """Créé par une redirection, le fichier suit l'umask — lisible par
+        tous sur les images visées, là où bash le crée en 600."""
+        self.assertIn("chmod 600 ~/.bash_history", self._cmd("claude"))
+
+    def test_the_rtk_hook_is_called_by_absolute_path(self):
+        """Le PATH de cette commande distante a été figé au démarrage du
+        shell SSH, avant que l'installateur ne pose le binaire : « rtk » nu
+        rendrait 127 sans dire que le hook n'a pas été écrit."""
+        cmd = self._cmd("claude")
+        self.assertIn('RTK="$(command -v rtk || echo "$HOME', cmd)
+        self.assertIn('"$RTK" init --global', cmd)
+
+    def test_git_is_configured_without_taking_the_editor_over(self):
+        """zdiff3 est posé sans condition. L'éditeur, lui, ne l'est que s'il
+        n'y en a pas : deploy_qemu transmet celui de l'hôte, et deux
+        autorités sur un même réglage en font une de trop."""
+        cmd = self._cmd("claude")
+        self.assertIn("git config --global merge.conflictStyle zdiff3", cmd)
+        self.assertIn(
+            "git config --global --get core.editor >/dev/null 2>&1"
+            " || git config --global core.editor vim",
+            cmd,
+        )
+
+    def test_the_git_settings_survive_a_vm_without_git(self):
+        """La phase « before » d'une VM sans installation ERPLibre n'a pas vu
+        l'amorçage qui pose git : hors d'un « if », « set -e » ferait tomber
+        le déploiement sur une commande introuvable."""
+        cmd = self._cmd("claude")
+        self.assertIn("if command -v git >/dev/null 2>&1; then", cmd)
 
     def test_the_path_uses_home_not_a_tilde(self):
         """Entre guillemets, le tilde n'est pas étendu : le PATH porterait
@@ -157,6 +239,111 @@ class LaCommandeDistante(unittest.TestCase):
             "develop", tools=("aidev",), ai_agent="opencode"
         )
         self.assertIn("opencode.ai", cmd)
+
+
+class LeComplementApresClone(unittest.TestCase):
+    """Ce que la pré-configuration ne peut poser qu'une fois le dépôt là."""
+
+    def _cmd(self, prod=False):
+        return TODO.__new__(TODO)._qemu_aidev_after_cmd(prod)
+
+    def test_the_hooks_point_at_the_checkout(self):
+        """« git -C » et non le cwd : le dépôt porte des dépôts imbriqués, et
+        core.hooksPath écrit dans l'un d'eux laisserait la racine sans
+        garde-fou, sans le moindre message."""
+        cmd = self._cmd()
+        self.assertIn(
+            "git -C $HOME/git/erplibre config core.hooksPath"
+            " script/git/hooks",
+            cmd,
+        )
+
+    def test_the_hooks_get_their_execution_bit(self):
+        """git saute SANS RIEN DIRE un hook qui ne l'a pas, et le garde-fou du
+        message de commit passe alors inaperçu."""
+        cmd = self._cmd()
+        for hook in TODO._GIT_HOOKS:
+            self.assertIn(f"hooks/{hook}", cmd)
+        self.assertIn("chmod +x", cmd)
+
+    def test_every_claude_command_is_deployed(self):
+        """Une commande absente de la liste est une commande que la VM n'aura
+        pas, et personne ne s'en aperçoit avant d'en avoir besoin."""
+        cmd = self._cmd()
+        for nom, gabarit in TODO._QEMU_AIDEV_CLAUDE_CMDS:
+            self.assertIn(f"conf/{gabarit}", cmd)
+            self.assertIn(f"~/.claude/commands/{nom}.md", cmd)
+
+    def test_the_two_todo_commands_travel_together(self):
+        """/todo_plan_max produit la spécification que /todo_add_command
+        implémente : l'une sans l'autre laisse la moitié de la chaîne."""
+        noms = [nom for nom, _g in TODO._QEMU_AIDEV_CLAUDE_CMDS]
+        self.assertIn("todo_plan_max", noms)
+        self.assertIn("todo_add_command", noms)
+
+    def test_the_identity_is_substituted_literally(self):
+        """En python3 et non en sed : un nom qui porterait « & » ou le
+        séparateur choisi changerait de sens dans un « s/// »."""
+        cmd = self._cmd()
+        self.assertIn("python3 -c", cmd)
+        for marque, cle in TODO._QEMU_AIDEV_PLACEHOLDERS:
+            self.assertIn(marque, cmd)
+            self.assertIn(cle, cmd)
+
+    def test_it_follows_production_to_opt(self):
+        cmd = self._cmd(True)
+        self.assertIn("/opt/erplibre/conf/", cmd)
+        self.assertNotIn("$HOME/git/erplibre", cmd)
+
+    def test_nothing_in_it_can_fail_the_vm(self):
+        """Une pré-configuration est un confort. Chaque commande se garde, et
+        la dernière — un compte-rendu — rend 0 par construction."""
+        for prod in (False, True):
+            with self.subTest(prod=prod):
+                cmd = self._cmd(prod)
+                for morceau in cmd.split("; "):
+                    if not morceau.strip() or morceau.startswith("echo "):
+                        continue
+                    self.assertIn("|| true", morceau)
+
+    def test_it_is_valid_shell(self):
+        for prod in (False, True):
+            with self.subTest(prod=prod):
+                fini = subprocess.run(
+                    ["bash", "-n"],
+                    input=self._cmd(prod),
+                    text=True,
+                    capture_output=True,
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+
+    def test_it_leads_the_after_phase(self):
+        """En tête : quelques secondes de copies, contre une minute pour
+        Forgejo et une heure pour le SDK Android."""
+        todo = TODO.__new__(TODO)
+        cmd = todo._qemu_after_remote_cmd(("aidev", "forgejo"), False)
+        self.assertLess(
+            cmd.index("core.hooksPath"), cmd.index("install_forgejo.sh")
+        )
+
+    def test_it_reaches_the_full_remote_command(self):
+        """L'épreuve du bout en bout : sans cela, la moitié « dépôt » de la
+        case resterait un réglage sans effet."""
+        todo = TODO.__new__(TODO)
+        cmd = todo._qemu_erplibre_remote_cmd("develop", tools=("aidev",))
+        self.assertIn("core.hooksPath", cmd)
+        self.assertIn("~/.claude/commands/commit.md", cmd)
+
+    def test_a_vm_without_a_checkout_says_what_it_skips(self):
+        """Écarter en silence laisse croire qu'une case cochée a été
+        honorée. Les installations, elles, ont bien lieu."""
+        todo = TODO.__new__(TODO)
+        cmd = todo._qemu_erplibre_remote_cmd(
+            "", tools=("aidev",), desktop="gnome"
+        )
+        self.assertIn("starship", cmd)
+        self.assertNotIn("core.hooksPath", cmd)
+        self.assertIn("⚠", cmd)
 
 
 class LIdentiteGit(unittest.TestCase):

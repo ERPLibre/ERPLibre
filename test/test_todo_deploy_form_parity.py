@@ -115,6 +115,19 @@ def releve(fabrique, ctx, gestes=None):
     return vu
 
 
+def liaison(entree):
+    """(touche, action) d'une entrée de BINDINGS.
+
+    Textual en accepte DEUX formes : le tuple, et l'objet Binding quand la
+    liaison porte un réglage — « show=False » pour un raccourci qui doublerait
+    une ligne du pied de page. Lire les deux ici évite qu'un écran ait à
+    choisir sa forme pour plaire à un test.
+    """
+    if isinstance(entree, tuple):
+        return entree[0], entree[1]
+    return entree.key, entree.action
+
+
 @unittest.skipUnless(TEXTUAL, "Textual absent")
 class TestLesDeuxEcrans(unittest.TestCase):
     @classmethod
@@ -188,8 +201,11 @@ class TestLesDeuxEcrans(unittest.TestCase):
             ("QEMU/KVM", run_deploy_form(todo._qemu_form_context(mod), False)),
             ("Proxmox", run_proxmox_form(contexte_proxmox(todo), False)),
         ):
+            paires = [liaison(b) for b in app.BINDINGS]
             touches[nom] = {
-                b[0]: b[1] for b in app.BINDINGS if b[1].startswith("select_")
+                touche: action
+                for touche, action in paires
+                if action.startswith("select_")
             }
         self.assertEqual(touches["QEMU/KVM"], touches["Proxmox"])
         self.assertIn("select_main", touches["Proxmox"].values())

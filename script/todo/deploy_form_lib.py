@@ -483,6 +483,14 @@ PreviewScreen { align: center middle; }
 }
 #prevtitle { height: 1; color: $accent; text-style: bold; }
 #prevbody { height: 1fr; overflow-y: auto; }
+HelpScreen { align: center middle; }
+#helpbox {
+    width: 84%; height: 80%; padding: 1 2;
+    border: thick $accent; background: $surface;
+}
+#helptitle { height: 1; color: $accent; text-style: bold; }
+#helpbody { height: 1fr; }
+.helphead { color: $accent; text-style: bold; }
 RenameScreen { align: center middle; }
 #renbox {
     width: 60; height: auto; padding: 1 2;

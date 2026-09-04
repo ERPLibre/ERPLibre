@@ -41,6 +41,7 @@ _TABLES = (
     ("timezones", list, "timezones"),
     ("timezone", str, "timezone"),
     ("vm_tools", list, "vm_tools"),
+    ("tool_help", dict, "vm_tool_help"),
     ("tool_disk", dict, "vm_tool_disk"),
     ("tool_phases", dict, "vm_tool_phases"),
     ("tool_arches", dict, "vm_tool_arches"),
@@ -50,6 +51,69 @@ _TABLES = (
     ("distro_family", dict, "distro_family"),
     ("mise_arches", set, "mise_arches"),
     ("defaults", dict, "defaults"),
+)
+
+
+# Ce que chaque réglage POSE, pour l'aide « ? ». Une clé de table en tête
+# quand le bloc n'a de sens que si l'écran offre le réglage ; None quand il le
+# porte toujours. Les textes disent l'effet dans la VM, pas la manœuvre à
+# l'écran : le libellé de la case dit déjà où cliquer.
+INSTALL_HELP = (
+    (
+        None,
+        # Le titre de la case, et non « ERPLibre » : elle commande TOUTE
+        # installation, l'hyperviseur Proxmox VE compris.
+        "Install software in the VM",
+        (
+            "clone of the checkout, then the make target of the profile",
+            "in ~/git/erplibre, or /opt/erplibre in production",
+            "unchecked: the VM stays a bare distribution",
+            "about +5 Go of disk",
+        ),
+    ),
+    (
+        None,
+        "Production (/opt, confined)",
+        (
+            "/opt/erplibre instead of ~/git/erplibre",
+            "Odoo registered as a systemd service",
+            "automatic updates left ON, unlike a dev VM",
+        ),
+    ),
+    (
+        "desktops",
+        "VM type",
+        (
+            "server: SSH only, no graphical session",
+            "graphical: the chosen desktop plus its remote access",
+            "an IDE needs a desktop, the build tools do not",
+        ),
+    ),
+    (
+        "app_stores",
+        "Application store",
+        (
+            "deb/rpm: packages of the distribution only",
+            "snap: snapd kept active where the distribution has it",
+        ),
+    ),
+    (
+        "timezones",
+        "Timezone",
+        (
+            "IANA name written by cloud-init at first boot",
+            "a misspelled name is IGNORED: the VM stays in UTC",
+        ),
+    ),
+    (
+        "mise_arches",
+        "Python interpreter",
+        (
+            "mise poses a precompiled CPython, in minutes",
+            "pyenv compiles it, which is much longer",
+            "mise publishes no binary for every architecture",
+        ),
+    ),
 )
 
 
@@ -187,7 +251,9 @@ class ExtrasMixin:
             # Une case par outil, et non une liste déroulante : ils sont
             # indépendants, et chacun se prend ou se laisse.
             yield Static(
-                t("Development tools:"), id="t_tools", classes="grouptitle"
+                f"{t('Development tools:')}   {t('(F1 or ? : details)')}",
+                id="t_tools",
+                classes="grouptitle",
             )
             for key, label, hint in tab["vm_tools"]:
                 gb = tab["tool_disk"].get(key, 0)
@@ -235,6 +301,40 @@ class ExtrasMixin:
             yield RadioButton(t("mise (precompiled, faster)"), value=True)
             yield RadioButton(t("pyenv (compiles from source)"))
         yield Static("", id="miswarn")
+
+    # ------------------------------------------------------------------ #
+    # L'aide
+    # ------------------------------------------------------------------ #
+    def extras_help_blocks(self) -> list:
+        """[(titre, lignes)] : ce que chaque option de cet écran installe.
+
+        Les réglages communs d'abord, dans l'ordre du formulaire, puis un bloc
+        par outil OFFERT — un écran qui n'en propose pas n'a rien à en dire.
+        L'aide vient de la même table que les cases : une seule autorité, et
+        rien à synchroniser.
+
+        Un outil sans texte d'aide retombe sur son indice, qui tient en une
+        ligne : mieux vaut trop court que vide. Ce repli est un filet, pas une
+        place où se cacher — un test exige une aide pour chaque outil.
+        """
+        tab = self._extras
+        blocs = []
+        for cle, titre, lignes in INSTALL_HELP:
+            if cle and not tab[cle]:
+                continue
+            blocs.append((t(titre), [t(x) for x in lignes]))
+        for key, label, hint in tab["vm_tools"]:
+            gb = tab["tool_disk"].get(key, 0)
+            lignes = list(tab["tool_help"].get(key) or [hint])
+            lignes.append(f"+{gb} Go")
+            blocs.append((label, lignes))
+        return blocs
+
+    def action_help(self) -> None:
+        """Ouvre l'aide. Esc ou q la ferme, et rien n'a bougé."""
+        from script.todo.deploy_form_plan import help_screen
+
+        self.push_screen(help_screen()(self.extras_help_blocks()))
 
     # ------------------------------------------------------------------ #
     # Lire les widgets
