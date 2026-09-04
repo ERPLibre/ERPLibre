@@ -49,3 +49,17 @@ def lire(ident):
         if m:
             res[cle] = m.group(1).strip()
     return res
+
+
+def supprimer(index, ident):
+    """Efface un message de la memoire du modem.
+
+    Elle est petite — quelques dizaines de messages sur la SIM — et une fois
+    pleine le modem refuse les suivants en silence. L'appelant n'efface
+    qu'apres avoir vu le message enregistre ailleurs : effacer avant le
+    perdrait, et un SMS entrant est la piece justificative d'un desabonnement.
+    """
+    if not mmcli_present():
+        return False
+    code, _sortie = _run(["mmcli", "-m", str(index), f"--messaging-delete-sms={ident}"])
+    return code == 0
