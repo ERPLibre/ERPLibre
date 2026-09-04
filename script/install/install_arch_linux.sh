@@ -54,7 +54,13 @@ fi
 # Dépendances de build pyenv (compilation de CPython) + outils de base
 #--------------------------------------------------
 echo -e "\n---- Dépendances pyenv (compilation Python) + outils ----"
-${PAC} git wget curl openssl zlib xz tk bzip2 readline sqlite libffi
+# « less » est le PAGINATEUR, sans rapport avec le « less » npm posé plus bas
+# (lessc, préprocesseur CSS). Il est dans core mais ni dans le groupe « base »
+# ni une dépendance ferme de git, seulement optionnelle : sans lui, git appelle
+# quand même son paginateur par défaut et log, diff, show, tag s'arrêtent sur
+# « unable to execute pager 'less' ». Debian et Ubuntu l'obtiennent par les
+# recommandations de leur paquet git, notion que pacman n'a pas.
+${PAC} git wget curl less openssl zlib xz tk bzip2 readline sqlite libffi
 retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo "pacman pyenv dependencies installation error."
