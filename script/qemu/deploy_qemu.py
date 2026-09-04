@@ -47,15 +47,19 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import getpass
 import grp
 import gzip
 import hashlib
+import ipaddress
 import zlib
 import os
 import re
 import shutil
+import pwd
 import socket
+import stat as stat_mod
 import subprocess
 import sys
 import tempfile
@@ -439,7 +443,12 @@ FEDORA_SECONDARY_MASTER = (
 # Répertoire de cache par défaut des images cloud (cohérent avec --disk-dir /
 # --seed-dir). L'écriture y nécessite root : le déploiement tourne de toute
 # façon sous sudo (virt-install). Surchargez avec --image-dir au besoin.
-DEFAULT_IMAGE_DIR = Path("/var/lib/libvirt/images/iso")
+# Le pool par défaut de libvirt, et son sous-répertoire de cache d'images.
+# Nommés ici et non dans argparse : sudo_facts() doit constater les droits du
+# répertoire que le déploiement utilisera VRAIMENT, et deux écritures du même
+# chemin divergent dès qu'on en change une.
+DEFAULT_DISK_DIR = Path("/var/lib/libvirt/images")
+DEFAULT_IMAGE_DIR = DEFAULT_DISK_DIR / "iso"
 
 # Emplacements de la base osinfo-db (détection d'un --osinfo connu).
 OSINFO_DB_DIRS: tuple[str, ...] = (
@@ -677,6 +686,98 @@ def list_images() -> None:
 
 # --------------------------------------------------------------------------- #
 # Utilitaires d'exécution
+def repertoire_a_root(chemin: Path) -> tuple | None:
+    """(chemin, propriétaire, mode) si l'écriture y est refusée, sinon None.
+
+    L'écriture se TESTE, elle ne se déduit pas du mode : une ACL ou un groupe
+    peut l'accorder là où « drwxr-xr-x root root » la refuse en apparence, et
+    l'inverse existe aussi. Le propriétaire et le mode ne sont lus qu'ENSUITE,
+    pour dire au lecteur ce qui bloque.
+    """
+    try:
+        if not chemin.is_dir() or os.access(chemin, os.W_OK):
+            return None
+        infos = chemin.stat()
+    except OSError:
+        return None
+    try:
+        utilisateur = pwd.getpwuid(infos.st_uid).pw_name
+    except (KeyError, OSError):
+        utilisateur = str(infos.st_uid)
+    try:
+        groupe = grp.getgrgid(infos.st_gid).gr_name
+    except (KeyError, OSError):
+        groupe = str(infos.st_gid)
+    return (
+        str(chemin),
+        f"{utilisateur}:{groupe}",
+        stat_mod.filemode(infos.st_mode),
+    )
+
+
+def sudo_facts(disk_dir: Path | None = None, image_dir: Path | None = None):
+    """Pourquoi root est nécessaire ici : des FAITS, constatés sur la machine.
+
+    Rend une liste de couples (clé, valeurs) et non des phrases : ce script
+    les dit en français, le menu TODO les traduit, et la vérification ne vit
+    qu'à un endroit.
+
+    Deux clés. « ecriture » : un répertoire où le déploiement doit écrire et
+    ne peut pas — c'est le vrai motif, et il tient au RÉPERTOIRE, pas à
+    libvirt. « socket » : qemu:///system répond-il sans sudo, ce qui dit ce
+    que le groupe libvirt couvre RÉELLEMENT — appartenir au groupe et en
+    disposer dans la session courante sont deux choses.
+
+    Le tout parce que sudo demande un mot de passe sans jamais dire ce qu'il
+    sert à faire : l'invite tombe entre deux lignes de journal, et on la subit
+    sans savoir si elle porte sur libvirt, sur un paquet ou sur un fichier.
+    """
+    faits = []
+    vus = set()
+    for chemin in (
+        disk_dir or DEFAULT_DISK_DIR,
+        image_dir or DEFAULT_IMAGE_DIR,
+    ):
+        bloque = repertoire_a_root(Path(chemin))
+        if bloque and bloque[0] not in vus:
+            vus.add(bloque[0])
+            faits.append(("ecriture", bloque))
+    # Trois valeurs et non deux : « absent » quand virsh n'est pas là. Rendre
+    # « non » y ferait accuser le groupe libvirt d'un défaut qui n'est pas le
+    # sien — il n'y a simplement rien à joindre encore.
+    if shutil.which("virsh") is None:
+        faits.append(("socket", ("absent",)))
+    else:
+        faits.append(("socket", ("ok" if libvirt_ready(False) else "non",)))
+    return faits
+
+
+def sudo_lignes(faits) -> list[str]:
+    """Les faits mis en phrases, en français, pour ce script."""
+    lignes = []
+    for cle, valeurs in faits:
+        if cle == "ecriture":
+            chemin, proprio, mode = valeurs
+            lignes.append(
+                f"écrire dans {chemin} — vérifié : {proprio} {mode},"
+                " écriture refusée à cet utilisateur"
+            )
+    if any(cle == "ecriture" for cle, _v in faits):
+        lignes.append(
+            "le groupe libvirt ouvre la socket qemu:///system, pas ce"
+            " répertoire"
+        )
+    else:
+        lignes.append("les gestes système du script (service, groupe)")
+    for cle, valeurs in faits:
+        if cle == "socket" and valeurs[0] == "non":
+            lignes.append(
+                "la socket libvirt ne répond pas non plus sans sudo :"
+                " groupe absent de cette session, ou libvirt pas démarré"
+            )
+    return lignes
+
+
 # --------------------------------------------------------------------------- #
 class Runner:
     """Exécute (ou affiche, en dry-run) les commandes, avec sudo au besoin."""
@@ -684,6 +785,24 @@ class Runner:
     def __init__(self, use_sudo: bool, dry_run: bool) -> None:
         self.use_sudo = use_sudo
         self.dry_run = dry_run
+        # L'explication n'est due qu'UNE fois : sudo garde sa réponse quelques
+        # minutes, et la répéter à chaque étape noierait le journal.
+        self._sudo_dit = False
+
+    def _annoncer_sudo(self) -> None:
+        """Dit pourquoi root, AVANT que sudo ne réclame le mot de passe.
+
+        Avant et non après : sudo n'explique jamais ce qu'il sert à faire, et
+        un mot de passe tapé sans savoir ce qu'il autorise est donné à
+        l'aveugle. Les raisons sont constatées sur la machine, pas affirmées —
+        voir sudo_facts().
+        """
+        if self._sudo_dit:
+            return
+        self._sudo_dit = True
+        print("\n🔑 sudo va demander votre mot de passe, pour :")
+        for ligne in sudo_lignes(sudo_facts()):
+            print(f"     {ligne}")
 
     def run(
         self,
@@ -700,6 +819,7 @@ class Runner:
         seul l'appel qui SAIT réessayer autrement doit le demander.
         """
         if privileged and self.use_sudo:
+            self._annoncer_sudo()
             cmd = ["sudo", *cmd]
         printable = " ".join(cmd)
         if self.dry_run:
@@ -1149,10 +1269,15 @@ def setup_host(
     ok = libvirt_ready(runner.use_sudo)
     print(f"  hyperviseur qemu:///system : {'OK' if ok else 'INJOIGNABLE'}")
     active, autostart = network_state("default", runner.use_sudo)
+    # Le sous-réseau est dit ICI parce que c'est de lui que les VM tireront
+    # leur adresse : déplacé, il n'est plus celui que la documentation de
+    # libvirt fait attendre.
+    cidr = network_cidr("default", runner.use_sudo)
     print(
         f"  réseau libvirt « default »  : "
         f"{'actif' if active else 'INACTIF'}"
         f" / {'autostart' if autostart else 'PAS autostart'}"
+        + (f" / {cidr}" if cidr else "")
     )
     if not active and stale:
         # Le réseau est déjà « autostart » : après le redémarrage, libvirt le
@@ -2955,32 +3080,317 @@ def network_name(network_arg: str) -> str | None:
     return None
 
 
+def c_locale_env() -> dict[str, str]:
+    """L'environnement des commandes dont on PARSE la sortie.
+
+    virsh TRADUIT ses étiquettes : sous une locale française, « net-info »
+    répond « Actif : non » et « Démarrage automatique : oui », où un motif
+    « Active: yes » lit toujours faux. Un réseau démarré passait alors pour
+    éteint, l'hôte était déclaré « pas prêt » quel que soit son état, et le
+    message invitait à redémarrer pour rien. Le même geste, pour la même
+    raison, est dans script/todo/qemu_manage.py.
+    """
+    return {**os.environ, "LC_ALL": "C", "LANG": "C"}
+
+
+def virsh_out(args: list[str], use_sudo: bool, timeout: int = 20) -> str:
+    """La sortie d'un virsh, en anglais, ou '' s'il n'a rien pu dire."""
+    cmd = (["sudo"] if use_sudo else []) + ["virsh", "-c", LIBVIRT_URI, *args]
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=c_locale_env(),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return res.stdout if res.returncode == 0 else ""
+
+
 def network_state(name: str, use_sudo: bool) -> tuple[bool, bool]:
     """(actif, autostart) d'un réseau libvirt, via « virsh net-info »."""
-    cmd = (["sudo"] if use_sudo else []) + [
-        "virsh",
-        "-c",
-        LIBVIRT_URI,
-        "net-info",
-        name,
-    ]
-    try:
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    except (OSError, subprocess.SubprocessError):
-        return (False, False)
-    active = bool(re.search(r"Active:\s*yes", res.stdout, re.IGNORECASE))
-    autostart = bool(re.search(r"Autostart:\s*yes", res.stdout, re.IGNORECASE))
+    out = virsh_out(["net-info", name], use_sudo, timeout=15)
+    active = bool(re.search(r"Active:\s*yes", out, re.IGNORECASE))
+    autostart = bool(re.search(r"Autostart:\s*yes", out, re.IGNORECASE))
     return (active, autostart)
 
 
+# Le troisième octet où commence la recherche d'un /24 libre. 122 est celui du
+# « default » de libvirt, 123 celui de beaucoup d'installations toutes faites :
+# partir au-dessus des deux coûte un octet. long_test/deep_qemu.py part du même
+# nombre, en le déduisant de la profondeur là où il ne peut pas sonder.
+LIBVIRT_NET_BASE = 131
+
+
+def interface_de_ligne(ligne: str) -> str:
+    """L'interface que porte une ligne de « ip route » ou « ip -o addr ».
+
+    Deux grammaires pour une seule question. Une route nomme son interface
+    après « dev » ; « ip -o -4 addr » la donne en deuxième champ, la ligne
+    commençant par son index (« 3: virbr0    inet … »). Le « -o » est ce qui
+    rend la seconde lisible : sans lui, l'interface est sur une ligne et ses
+    adresses sur les suivantes, plus rattachables l'une à l'autre.
+    """
+    mots = ligne.split()
+    if "dev" in mots:
+        i = mots.index("dev")
+        if i + 1 < len(mots):
+            return mots[i + 1]
+    if len(mots) >= 2 and mots[0].rstrip(":").isdigit():
+        # « eth0@if12 » sur une interface appairée : le nom est avant l'arobase.
+        return mots[1].rstrip(":").split("@")[0]
+    return ""
+
+
+def host_networks(exclure_ponts=()) -> list[ipaddress.IPv4Network]:
+    """Les réseaux IPv4 que l'hôte porte ou route déjà.
+
+    Les deux, adresses ET routes : une interface peut router un réseau sans y
+    porter d'adresse, et c'est la ROUTE qui décide où part un paquet.
+
+    `exclure_ponts` écarte les interfaces dont le réseau EST celui qu'on
+    examine. Un réseau libvirt actif porte son propre /24 sur son pont, et le
+    route : compté comme « déjà pris par l'hôte », il se trouve en collision
+    avec lui-même. Le verdict était alors le même sur toute machine où le
+    réseau tournait, quel que soit son sous-réseau — d'où un déplacement là où
+    rien n'entrait en conflit, sous des VM qui perdaient leur passerelle. La
+    question posée est « quelqu'un D'AUTRE occupe-t-il ce /24 », et le pont du
+    réseau examiné n'est pas quelqu'un d'autre.
+    """
+    # Un nom vide n'exclut RIEN : network_bridge rend '' quand le XML est
+    # illisible, et le garder dans l'ensemble écarterait toute ligne dont
+    # l'interface ne se lit pas — soit, sur une grammaire inattendue, la
+    # totalité de ce que l'hôte occupe.
+    exclure = {pont for pont in (exclure_ponts or ()) if pont}
+    vus: list[ipaddress.IPv4Network] = []
+    commandes = (
+        ["ip", "-4", "route", "show"],
+        # « -o » : une adresse par ligne, sinon l'interface est sur la ligne
+        # d'en-tête et l'adresse sur la suivante, donc plus rattachables.
+        ["ip", "-o", "-4", "addr", "show"],
+    )
+    for args in commandes:
+        try:
+            out = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=c_locale_env(),
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        for ligne in out.splitlines():
+            if interface_de_ligne(ligne) in exclure:
+                continue
+            for cidr in re.findall(r"\b(\d+\.\d+\.\d+\.\d+/\d+)\b", ligne):
+                try:
+                    vus.append(ipaddress.ip_network(cidr, strict=False))
+                except ValueError:
+                    continue
+    return vus
+
+
+def network_cidr(name: str, use_sudo: bool) -> str:
+    """Le réseau servi par un réseau libvirt (« 192.168.122.0/24 »), ou ''."""
+    return cidr_from_network_xml(virsh_out(["net-dumpxml", name], use_sudo))
+
+
+def bridge_from_network_xml(xml: str) -> str:
+    """Le pont déclaré par un XML de réseau libvirt (« virbr0 »), ou ''."""
+    m = re.search(r"<bridge[^>]*name='([^']+)'", xml)
+    return m.group(1) if m else ""
+
+
+def network_bridge(name: str, use_sudo: bool) -> str:
+    """Le pont que ce réseau libvirt monte, ou ''.
+
+    C'est l'interface qui portera son adresse .1 une fois le réseau démarré :
+    la seule que la recherche de collision doit s'interdire de compter.
+    """
+    return bridge_from_network_xml(virsh_out(["net-dumpxml", name], use_sudo))
+
+
+def cidr_from_network_xml(xml: str) -> str:
+    """Le réseau déclaré par un XML de réseau libvirt, ou ''.
+
+    Le masque est écrit en quatre octets (« 255.255.255.0 ») et non en
+    longueur de préfixe : ipaddress accepte les deux formes, le reste du code
+    n'en manipule qu'une.
+    """
+    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
+    if not m:
+        return ""
+    try:
+        return str(
+            ipaddress.ip_network(f"{m.group(1)}/{m.group(2)}", strict=False)
+        )
+    except ValueError:
+        return ""
+
+
+def network_collision(cidr: str, hote: list) -> str:
+    """Ce que l'hôte route déjà dans ce réseau, ou '' s'il est libre.
+
+    Le « default » de libvirt sert 192.168.122.0/24. Une machine qui VIT dans
+    ce réseau — toute VM déployée par ce dépôt en sert une — ne peut pas le
+    servir à son tour : l'adresse .1 du pont est celle de sa propre
+    passerelle. virsh refuse d'ailleurs le démarrage (« Network is already in
+    use by interface eth0 »), mais seulement quand la route est LÀ : au
+    démarrage de la machine, libvirtd monte ses réseaux avant que le bail DHCP
+    ne soit arrivé, plus rien ne signale la collision, et l'hôte perd sa
+    passerelle au profit du pont.
+    """
+    if not cidr:
+        return ""
+    try:
+        mien = ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        return ""
+    for autre in hote:
+        if mien.overlaps(autre):
+            return str(autre)
+    return ""
+
+
+def libvirt_networks_cidrs(name: str, use_sudo: bool) -> list:
+    """Les réseaux servis par les AUTRES réseaux libvirt de l'hôte.
+
+    Un réseau inactif ne route rien : il n'apparaît donc pas dans host_networks
+    et rien n'empêcherait de lui reprendre son sous-réseau, pour buter dessus
+    au premier démarrage des deux.
+    """
+    out = []
+    for autre in virsh_out(["net-list", "--all", "--name"], use_sudo).split():
+        if autre == name:
+            continue
+        cidr = network_cidr(autre, use_sudo)
+        if cidr:
+            try:
+                out.append(ipaddress.ip_network(cidr, strict=False))
+            except ValueError:
+                pass
+    return out
+
+
+def free_subnet(pris: list) -> str:
+    """Un préfixe « 192.168.X » qu'aucun réseau connu ne recouvre, ou ''."""
+    for troisieme in range(LIBVIRT_NET_BASE, 255):
+        candidat = ipaddress.ip_network(f"192.168.{troisieme}.0/24")
+        if not any(candidat.overlaps(autre) for autre in pris):
+            return f"192.168.{troisieme}"
+    return ""
+
+
+def moved_network_xml(xml: str, ancien: str, nouveau: str) -> str:
+    """Le XML du réseau, son sous-réseau déplacé, le reste INTACT.
+
+    Réécrit plutôt que reconstruit : l'UUID, le nom du pont et son adresse
+    MAC restent en place, si bien que le réseau garde son identité au lieu
+    d'en prendre une nouvelle — et les domaines qui le nomment le retrouvent.
+    """
+    return xml.replace(f"{ancien}.", f"{nouveau}.")
+
+
+@contextlib.contextmanager
+def fichier_xml_temporaire(contenu: str, prefixe: str = "erplibre-net-"):
+    """Un XML posé sur le disque le temps d'un « virsh net-define », puis ôté.
+
+    Créé par mkstemp, donc à un nom que personne ne peut prédire, et retiré à
+    la sortie même si virsh échoue. Un nom composé — d'un nom de réseau, par
+    exemple — est un chemin PRÉVISIBLE dans un répertoire où tout le monde
+    écrit : qui l'occupe d'avance par un lien symbolique choisit ce que root
+    va définir, et le laisser derrière donne à lire la configuration du parc.
+
+    Le fichier est lisible par tous : virsh le lit sous root, et le fichier
+    d'un utilisateur non privilégié ne l'est pas toujours. Ce qu'il contient
+    ne sort pas de la définition du réseau, que « net-dumpxml » rend à qui
+    peut déjà joindre libvirt.
+    """
+    fd, chemin = tempfile.mkstemp(prefix=prefixe, suffix=".xml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        os.chmod(chemin, 0o644)
+        yield chemin
+    finally:
+        try:
+            os.unlink(chemin)
+        except OSError:
+            pass
+
+
+def define_network_xml(xml: str, runner: Runner) -> None:
+    """Redéfinit un réseau libvirt à partir de son XML."""
+    with fichier_xml_temporaire(xml) as chemin:
+        runner.run(
+            ["virsh", "-c", LIBVIRT_URI, "net-define", chemin],
+            privileged=True,
+            check=False,
+        )
+
+
+def move_network(name: str, cidr: str, collision: str, runner: Runner) -> str:
+    """Redéfinit le réseau sur un /24 libre. Rend le nouveau préfixe, ou ''.
+
+    Une REDÉFINITION et non un démarrage : elle ne demande ni pont ni module
+    du noyau, donc elle réussit même sur une machine dont le noyau a été
+    remplacé depuis le démarrage. C'est ce qui permet d'armer l'autostart
+    avant le redémarrage sans armer une collision.
+    """
+    xml = virsh_out(["net-dumpxml", name], runner.use_sudo)
+    if not xml:
+        print(f"  ⚠ réseau « {name} » illisible : rien n'est déplacé.")
+        return ""
+    ancien = cidr.rsplit(".", 1)[0].rsplit("/", 1)[0]
+    libre = free_subnet(
+        host_networks(exclure_ponts=[bridge_from_network_xml(xml)])
+        + libvirt_networks_cidrs(name, runner.use_sudo)
+    )
+    if not libre:
+        print("  ⚠ aucun /24 libre en 192.168.x : rien n'est déplacé.")
+        return ""
+    print(
+        f"  Le réseau « {name} » sert {cidr}, que l'hôte route déjà"
+        f" ({collision})."
+    )
+    print(
+        f"  Déplacé sur {libre}.0/24 : sinon le pont prendrait l'adresse de"
+        " la passerelle de cette machine, qui perdrait son accès au réseau"
+        " au prochain démarrage."
+    )
+    define_network_xml(moved_network_xml(xml, ancien, libre), runner)
+    return libre
+
+
 def ensure_network(name: str | None, runner: Runner) -> None:
-    """Active le réseau libvirt si besoin. On vérifie d'abord son état pour
-    éviter le faux « error: network is already active » de virsh quand il
-    tourne déjà (message purement bruyant, sans conséquence)."""
+    """Rend le réseau libvirt utilisable, et SÛR pour le prochain démarrage.
+
+    Trois gestes, et leur ordre est tout :
+
+    0. ABATTRE un réseau actif qui recouvre une route de l'hôte : c'est la
+       machine déjà cassée, et son pont porte l'adresse de la passerelle.
+    1. DÉPLACER le réseau s'il recouvre ce que l'hôte route déjà. Le
+       « default » de libvirt sert 192.168.122.0/24, et toute VM déployée par
+       ce dépôt vit dans ce réseau : son pont y prendrait l'adresse .1, celle
+       de sa propre passerelle. La redéfinition ne demande ni pont ni module
+       du noyau, donc elle passe même quand le démarrage, lui, ne passe pas.
+    2. DÉMARRER, puis relire l'état plutôt que de croire le code de retour.
+    3. ARMER l'autostart SEULEMENT si le sous-réseau est libre de collision.
+       C'est le geste qui cassait la machine : armé sur un réseau en
+       collision, libvirtd le monte au démarrage AVANT que le bail DHCP de
+       l'hôte ne soit là — plus aucune route ne signale la collision, virbr0
+       prend l'adresse de la passerelle, et l'hôte n'a plus de réseau. Un
+       réseau qui n'a pas pu démarrer faute de modules du noyau reste, lui,
+       armé : c'est ce qui rend l'hôte utilisable en UN seul redémarrage.
+    """
     if not name:
         return
     if runner.dry_run:
-        print(f"  [dry-run] réseau libvirt '{name}' activé si nécessaire")
+        print(f"  [dry-run] réseau libvirt '{name}' vérifié et activé")
+        print("  [dry-run] sous-réseau déplacé s'il entre en collision")
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-start", name],
             privileged=True,
@@ -2993,16 +3403,72 @@ def ensure_network(name: str | None, runner: Runner) -> None:
         )
         return
     active, autostart = network_state(name, runner.use_sudo)
-    if active and autostart:
+    cidr = network_cidr(name, runner.use_sudo)
+    # Son propre pont ne compte pas : un réseau démarré porte et route son /24
+    # là, et se verrait sinon en collision avec lui-même sur toute machine.
+    pont = network_bridge(name, runner.use_sudo)
+    collision = network_collision(cidr, host_networks(exclure_ponts=[pont]))
+
+    if collision:
+        # Un réseau ACTIF en collision est la machine DÉJÀ privée de réseau :
+        # libvirt refuse ce démarrage quand la route est là, donc le pont a
+        # pris l'adresse de la passerelle AVANT elle, au démarrage. L'abattre
+        # est ce qui rend l'accès au réseau à l'hôte, et tout de suite.
+        if active:
+            print(
+                f"  ⚠ le réseau « {name} » est actif SUR {collision}, que"
+                " cette machine route : son pont porte l'adresse de la"
+                " passerelle. Arrêté pour rendre l'accès au réseau."
+            )
+            runner.run(
+                ["virsh", "-c", LIBVIRT_URI, "net-destroy", name],
+                privileged=True,
+                check=False,
+            )
+            active = False
+        libre = move_network(name, cidr, collision, runner)
+        if libre:
+            cidr = network_cidr(name, runner.use_sudo)
+            collision = network_collision(
+                cidr, host_networks(exclure_ponts=[pont])
+            )
+
+    if active and autostart and not collision:
         print(f"  Réseau libvirt '{name}' déjà actif.")
         return
-    print(f"  Configuration du réseau libvirt '{name}'…")
+
     if not active:
+        print(f"  Configuration du réseau libvirt '{name}'…")
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-start", name],
             privileged=True,
             check=False,
         )
+        active, autostart = network_state(name, runner.use_sudo)
+
+    if collision:
+        # Rien n'a pu le rendre sûr : le désarmer est la seule chose qui
+        # protège le prochain démarrage.
+        if autostart:
+            print(
+                f"  ⚠ autostart RETIRÉ au réseau « {name} » : il recouvre"
+                f" {collision}, et le monter au démarrage priverait cette"
+                " machine de sa passerelle."
+            )
+            runner.run(
+                [
+                    "virsh",
+                    "-c",
+                    LIBVIRT_URI,
+                    "net-autostart",
+                    "--disable",
+                    name,
+                ],
+                privileged=True,
+                check=False,
+            )
+        return
+
     if not autostart:
         runner.run(
             ["virsh", "-c", LIBVIRT_URI, "net-autostart", name],
@@ -3458,14 +3924,14 @@ def build_parser() -> argparse.ArgumentParser:
     g_vm.add_argument(
         "--disk-dir",
         type=Path,
-        default=Path("/var/lib/libvirt/images"),
-        help="Répertoire du qcow2 de travail (défaut : /var/lib/libvirt/images).",
+        default=DEFAULT_DISK_DIR,
+        help=f"Répertoire du qcow2 de travail (défaut : {DEFAULT_DISK_DIR}).",
     )
     g_vm.add_argument(
         "--seed-dir",
         type=Path,
-        default=Path("/var/lib/libvirt/images/iso"),
-        help="Répertoire du seed.iso (défaut : .../images/iso).",
+        default=DEFAULT_IMAGE_DIR,
+        help=f"Répertoire du seed.iso (défaut : {DEFAULT_IMAGE_DIR}).",
     )
     g_vm.add_argument(
         "--network",

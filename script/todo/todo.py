@@ -36,6 +36,7 @@ from script.todo.qemu_deploy import QemuDeployMixin
 from script.todo.qemu_install import QemuInstallMixin
 from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
+from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.vpn_menu import VpnMenuMixin
 from script.todo.kdbx_manager import KdbxManager
@@ -98,6 +99,7 @@ class TODO(
     QemuDeployMixin,
     QemuInstallMixin,
     QemuManageMixin,
+    QemuNetworkMixin,
     QemuRecoverMixin,
     QemuAccessMixin,
     ProxmoxMenuMixin,

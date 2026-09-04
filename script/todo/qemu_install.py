@@ -761,6 +761,10 @@ class QemuInstallMixin:
     _QEMU_VM_TOOLS = {
         "pycharm": {
             "label": "PyCharm",
+            "help": (
+                "JetBrains archive in /opt, launcher /usr/local/bin/pycharm",
+                "the checkout as project, .idea written like pycharm_configure",
+            ),
             "hint": "Python IDE, opens the ERPLibre checkout",
             "disk_gb": 5,
             "arches": ("amd64", "arm64"),
@@ -771,6 +775,10 @@ class QemuInstallMixin:
         },
         "android": {
             "label": "Android Studio",
+            "help": (
+                "Android Studio in /opt, desktop launcher and studio command",
+                "x86_64 only: Google publishes no other build",
+            ),
             "hint": "ERPLibre mobile development (x86_64 only)",
             "disk_gb": 8,
             "arches": ("amd64",),
@@ -781,6 +789,11 @@ class QemuInstallMixin:
         },
         "gnome_ext": {
             "label": "GNOME extensions",
+            "help": (
+                "the extension manager, plus the suggested extensions",
+                "distribution packages installed without being enabled",
+                "extensions named by UUID are enabled",
+            ),
             "hint": "suggested extensions + extension manager",
             "disk_gb": 1,
             "arches": (),
@@ -802,6 +815,10 @@ class QemuInstallMixin:
         # et sentencepiece clonés, node_modules, et les artefacts Gradle.
         "mobile": {
             "label": "ERPLibre mobile (build)",
+            "help": (
+                "Android SDK, then the debug APK and the Vitest run",
+                "a failed build marks the VM as failed",
+            ),
             "hint": "APK debug + Vitest, validates the VM",
             "disk_gb": 12,
             "arches": ("amd64",),
@@ -827,6 +844,11 @@ class QemuInstallMixin:
         # et les dépôts que l'utilisateur y poussera.
         "forgejo": {
             "label": "Forgejo (git forge)",
+            "help": (
+                "git forge on port 3000, SQLite database",
+                "system account, systemd service, admin account",
+                "posed by script/forgejo/install_forgejo.sh",
+            ),
             "hint": "self-hosted git forge on :3000, SQLite",
             "disk_gb": 2,
             "arches": ("amd64", "arm64"),
@@ -838,23 +860,32 @@ class QemuInstallMixin:
             # ni d'Odoo.
             "phase": "after",
         },
-        # L'émulateur n'a pas besoin de bureau DANS la VM : il s'affiche sur
-        # l'écran de qui s'y connecte, par « ssh -X ». Il a besoin, lui, de KVM
-        # dans la VM — donc de virtualisation imbriquée sur l'hôte, ce que le
-        # bloc vérifie et annonce plutôt que de laisser découvrir.
+        # Ni bureau ni famille de paquets : l'essentiel vient d'installateurs
+        # amont, qu'aucun dépôt de distribution ne porte, et les trois outils
+        # de terminal (tig, htop, vim) existent sous le même nom dans les
+        # quatre. Une VM serveur le prend donc aussi bien qu'une VM graphique
+        # — c'est en SSH qu'on s'en sert.
         #
-        # Disque : ~1,5 Go d'image système, ~2 Go de données d'AVD, plus
-        # l'émulateur lui-même.
-        # Ni bureau ni famille de paquets : les quatre outils sont des
-        # installateurs amont, aucun n'est dans les dépôts des distributions
-        # supportées. Une VM serveur les prend donc aussi bien qu'une VM
-        # graphique — c'est en SSH qu'on s'en sert.
+        # L'outil travaille en DEUX temps : les installations avant le clone,
+        # puis ce qui a besoin du dépôt — hooks git et commandes Claude. La
+        # phase déclarée ici est la première ; la seconde est un complément
+        # gardé, ajouté par _qemu_after_remote_cmd.
         #
         # Disque : les binaires sont petits (rtk et starship sont statiques,
         # l'agent est un bundle node) ; la marge couvre leurs caches.
         "aidev": {
             "label": "AI coding tools",
-            "hint": "rtk, starship, and one agent",
+            "help": (
+                "tig, htop and vim",
+                "rtk, plus its global auto-rewrite hook",
+                "starship, hooked into ~/.bashrc",
+                "the chosen agent: Claude Code or opencode",
+                "git: merge.conflictStyle zdiff3, core.editor vim if unset",
+                "git hooks of the checkout: commit-msg, pre-commit",
+                "the Claude commands: /commit, /git_prepare_merge, /todo_*",
+                "source .venv.erplibre/bin/activate in the shell history",
+            ),
+            "hint": "rtk, starship, one agent, git and Claude ready",
             "disk_gb": 2,
             "arches": (),
             "desktops": (),
@@ -865,8 +896,20 @@ class QemuInstallMixin:
             # ne répond pas.
             "phase": "before",
         },
+        # L'émulateur n'a pas besoin de bureau DANS la VM : il s'affiche sur
+        # l'écran de qui s'y connecte, par « ssh -X ». Il a besoin, lui, de KVM
+        # dans la VM — donc de virtualisation imbriquée sur l'hôte, ce que le
+        # bloc vérifie et annonce plutôt que de laisser découvrir.
+        #
+        # Disque : ~1,5 Go d'image système, ~2 Go de données d'AVD, plus
+        # l'émulateur lui-même.
         "avd": {
             "label": "Android emulator (Pixel)",
+            "help": (
+                "Android SDK, then a Pixel AVD named erplibre",
+                "software rendering: it opens over ssh -X",
+                "needs nested virtualization on the host",
+            ),
             "hint": "AVD viewable over ssh -X",
             "disk_gb": 6,
             "arches": ("amd64",),
@@ -913,6 +956,13 @@ class QemuInstallMixin:
             "mise_arches": self.QEMU_MISE_ARCHES,
             "vm_tools": self._qemu_vm_tool_choices(),
             "vm_tool_disk": {k: v["disk_gb"] for k, v in outils.items()},
+            # Ce que l'aide « ? » du formulaire affiche, outil par outil :
+            # une case cochée engage parfois huit poses, et son libellé n'en
+            # nomme que trois.
+            "vm_tool_help": {
+                k: tuple(t(x) for x in v.get("help", ()))
+                for k, v in outils.items()
+            },
             "vm_tool_arches": {k: v["arches"] for k, v in outils.items()},
             "vm_tool_desktops": {k: v["desktops"] for k, v in outils.items()},
             # « after » = l'outil vit DANS le dépôt ERPLibre (compilation
@@ -1189,23 +1239,44 @@ class QemuInstallMixin:
     # réclame que le .iml et misc.xml.
     _QEMU_PYCHARM_OPEN_TRIES = 60
 
-    def _qemu_xvfb_install_cmd(self):
-        """Pose Xvfb avec le gestionnaire de paquets présent, sans bruit."""
-        x = self._QEMU_XVFB_PKG
+    def _qemu_pkg_install_cmd(self, paquets, quiet=True):
+        """Pose des paquets avec le gestionnaire de paquets présent dans la VM.
+
+        `paquets` : une chaîne (ou une suite) quand le nom vaut pour les quatre
+        familles, ou {apt, dnf, zypper, pacman} quand il diverge de l'une à
+        l'autre. `quiet` renvoie la sortie au néant, pour ce qui n'a rien à
+        raconter.
+
+        Chaque branche rend 0, y compris celle qui échoue : les appelants
+        posent du CONFORT — un serveur X sans écran, des outils de terminal —
+        et aucun ne doit emporter l'installation d'ERPLibre. Le bloc rend 0
+        aussi sur une machine qui n'a aucun des quatre gestionnaires, ce qui
+        laisse « set -e » tranquille.
+        """
+        if isinstance(paquets, dict):
+            noms = paquets
+        else:
+            liste = paquets if isinstance(paquets, str) else " ".join(paquets)
+            noms = dict.fromkeys(("apt", "dnf", "zypper", "pacman"), liste)
+        muet = " >/dev/null 2>&1" if quiet else ""
         return (
             "if command -v apt-get >/dev/null 2>&1; then "
             "sudo DEBIAN_FRONTEND=noninteractive apt-get "
-            f"-o DPkg::Lock::Timeout=600 install -y {x['apt']} "
-            ">/dev/null 2>&1 || true; "
+            f"-o DPkg::Lock::Timeout=600 install -y {noms['apt']}"
+            f"{muet} || true; "
             "elif command -v dnf >/dev/null 2>&1; then "
-            f"sudo dnf install -y {x['dnf']} >/dev/null 2>&1 || true; "
+            f"sudo dnf install -y {noms['dnf']}{muet} || true; "
             "elif command -v zypper >/dev/null 2>&1; then "
             "sudo zypper --non-interactive install --auto-agree-with-licenses "
-            f"{x['zypper']} >/dev/null 2>&1 || true; "
+            f"{noms['zypper']}{muet} || true; "
             "elif command -v pacman >/dev/null 2>&1; then "
-            f"sudo pacman -S --needed --noconfirm {x['pacman']} "
-            ">/dev/null 2>&1 || true; fi; "
+            f"sudo pacman -S --needed --noconfirm {noms['pacman']}"
+            f"{muet} || true; fi; "
         )
+
+    def _qemu_xvfb_install_cmd(self):
+        """Pose Xvfb avec le gestionnaire de paquets présent, sans bruit."""
+        return self._qemu_pkg_install_cmd(self._QEMU_XVFB_PKG)
 
     def _qemu_pycharm_project_cmd(self, prod=False):
         """Crée le .idea/ du dépôt en ouvrant PyCharm une fois, sans écran.
@@ -2006,14 +2077,19 @@ class QemuInstallMixin:
         émulateur créé avec succès effacerait le verdict de la compilation."""
         picked = [
             k
-            for k in ("forgejo", "mobile", "avd")
+            for k in ("aidev", "forgejo", "mobile", "avd")
             if k in (tools or ()) and k in self._QEMU_VM_TOOLS
         ]
         if not picked:
             return ""
         el_dir = self._qemu_install_dir(prod)
         parts = []
-        # Forgejo d'abord : une minute, contre une heure pour le SDK et l'APK.
+        # La pré-configuration IA en tête : quelques secondes de copies, contre
+        # une minute pour Forgejo et une heure pour le SDK. Elle est aussi la
+        # seule à rendre toujours 0 — ce qui suit porte le verdict de la VM.
+        if "aidev" in picked:
+            parts.append(f"{{ {self._qemu_aidev_after_cmd(prod)}; }}")
+        # Forgejo ensuite : une minute, contre une heure pour le SDK et l'APK.
         # Un échec rapide se voit tôt plutôt qu'après le long.
         if "forgejo" in picked:
             parts.append(f"{{ {self._qemu_forgejo_steps(el_dir)}; }}")
@@ -2048,8 +2124,37 @@ class QemuInstallMixin:
         """Émulateur seul."""
         return self._qemu_after_remote_cmd(("avd",), prod)
 
+    # Les outils de terminal qui accompagnent les assistants. Ceux-là SONT
+    # empaquetés, sous le même nom dans les quatre familles : rien à résoudre.
+    _QEMU_AIDEV_PKGS = "tig htop vim"
+
+    # La commande qu'une VM neuve rend à la première flèche du haut. Le chemin
+    # est relatif : le venv est à la racine du dépôt, et c'est de là qu'on
+    # l'active, en dev comme en production.
+    _QEMU_AIDEV_HISTORY = "source .venv.erplibre/bin/activate"
+
+    # Les commandes Claude déployées dans la VM : nom de la commande -> gabarit
+    # de conf/. La même liste qu'au menu de l'hôte. Les deux « todo_ » vont
+    # ensemble — /todo_plan_max produit la spécification que /todo_add_command
+    # implémente, et l'une sans l'autre laisse la moitié de la chaîne.
+    _QEMU_AIDEV_CLAUDE_CMDS = (
+        ("commit", "template_claude_commands_commit.md"),
+        ("git_prepare_merge", "template_claude_commands_git_prepare_merge.md"),
+        ("todo_plan_max", "template_claude_commands_todo_plan_max.md"),
+        ("todo_add_command", "template_claude_commands_todo_add_command.md"),
+        (
+            "todo_generate_code",
+            "template_claude_commands_todo_generate_code.md",
+        ),
+    )
+
     def _qemu_aidev_remote_cmd(self, agent=""):
-        """rtk, starship et UN agent, posés dans la VM.
+        """Les outils d'assistance et leur pré-configuration, dans la VM.
+
+        Trois installateurs amont — rtk, starship, UN agent —, trois paquets de
+        terminal, et les réglages qui font qu'on s'en sert sans rien retaper :
+        le hook global de rtk, l'accroche du prompt, le PATH, la configuration
+        git, et une entrée d'historique pour activer le venv.
 
         Chaque pose est bornée dans le temps ET privée d'entrée standard. Le
         contrat de la phase « before » veut qu'un outil ne fasse échouer ni
@@ -2059,13 +2164,16 @@ class QemuInstallMixin:
         « </dev/null » la lui fait rater tout de suite, « timeout » borne le
         reste. C'est aussi pourquoi starship reçoit « -y ».
 
-        L'accroche du prompt et la ligne de PATH sont posées UNE fois :
-        sans le « grep » qui précède, chaque redéploiement d'une même VM
-        rallonge son ~/.bashrc d'une ligne identique.
+        Les lignes ajoutées à un fichier du HOME le sont UNE fois : sans le
+        « grep » qui précède, chaque redéploiement d'une même VM rallonge son
+        ~/.bashrc — ou son historique — d'une ligne identique.
 
         Le répertoire est écrit en « $HOME » et non en « ~ » : entre
         guillemets, le tilde n'est pas étendu par le shell, et le PATH
         porterait alors un chemin qui n'existe pas.
+
+        Ce que le dépôt seul peut donner — hooks git, commandes Claude — n'est
+        pas ici : voir _qemu_aidev_after_cmd.
         """
         commande, repertoire = dev_tools.AGENTS.get(
             agent or dev_tools.AGENT_DEFAUT,
@@ -2074,6 +2182,13 @@ class QemuInstallMixin:
         repertoire = repertoire.replace("~/", "$HOME/", 1)
         prompt = dev_tools.STARSHIP_LINE["bash"]
         path_line = f'export PATH="{repertoire}:$PATH"'
+        # rtk se pose dans ~/.local/bin, que le PATH d'un shell ne porte pas
+        # partout. La ligne de l'agent ne couvre ce répertoire que pour Claude
+        # Code ; avec opencode, qui s'installe ailleurs, rtk resterait
+        # introuvable. Les deux lignes se dédoublonnent d'elles-mêmes, le grep
+        # portant sur le répertoire.
+        local_bin = "$HOME/.local/bin"
+        local_line = f'export PATH="{local_bin}:$PATH"'
 
         def pose(cmd, secondes):
             return (
@@ -2081,19 +2196,142 @@ class QemuInstallMixin:
                 " </dev/null || true; "
             )
 
-        def une_fois(ligne, motif):
+        def une_fois(ligne, motif, fichier="~/.bashrc"):
             return (
-                f"grep -qF {shlex.quote(motif)} ~/.bashrc 2>/dev/null"
-                f" || echo {shlex.quote(ligne)} >> ~/.bashrc; "
+                f"grep -qF {shlex.quote(motif)} {fichier} 2>/dev/null"
+                f" || echo {shlex.quote(ligne)} >> {fichier}; "
             )
 
         return (
             f'echo "== {t("AI coding tools")} =="; '
+            + self._qemu_pkg_install_cmd(self._QEMU_AIDEV_PKGS)
             + pose(dev_tools.RTK_UPSTREAM, 300)
+            # Par son chemin absolu, et non par « rtk » nu : le PATH de cette
+            # commande distante a été figé au démarrage du shell SSH, avant que
+            # l'installateur ne pose le binaire. Le code 127 qu'on obtiendrait
+            # sinon ne dirait pas que le hook n'a pas été écrit.
+            + f'RTK="$(command -v rtk || echo "{local_bin}/rtk")"; '
+            + '[ -x "$RTK" ] && timeout 60 "$RTK" init --global'
+            " </dev/null >/dev/null 2>&1 || true; "
             + pose(dev_tools.STARSHIP_UPSTREAM_YES, 300)
             + une_fois(prompt, "starship init bash")
             + pose(commande, 600)
-            + une_fois(path_line, repertoire)
+            + une_fois(local_line, local_bin)
+            # Claude Code s'installe DANS ~/.local/bin : la ligne serait la
+            # même, écrite deux fois dans le journal pour un seul effet.
+            + (
+                une_fois(path_line, repertoire)
+                if repertoire != local_bin
+                else ""
+            )
+            + self._qemu_aidev_git_cmd()
+            + une_fois(
+                self._QEMU_AIDEV_HISTORY,
+                self._QEMU_AIDEV_HISTORY,
+                "~/.bash_history",
+            )
+            # bash crée son historique en 600 ; une redirection le crée selon
+            # l'umask, soit lisible par tous sur les images visées.
+            + "chmod 600 ~/.bash_history 2>/dev/null || true; "
+        )
+
+    def _qemu_aidev_git_cmd(self):
+        """Les deux réglages git globaux de la pré-configuration.
+
+        zdiff3 ajoute la base commune aux marqueurs de conflit et sort de la
+        zone contestée les lignes que les deux côtés ont en commun : il reste
+        moins à arbitrer à la main. Le style demande git 2.35, que toutes les
+        plateformes supportées dépassent.
+
+        L'éditeur, lui, n'est posé QUE s'il n'y en a pas : deploy_qemu.py
+        transmet celui de l'hôte dans le ~/.gitconfig de la VM et l'annonce
+        dans le guide de connexion, et l'écraser ici ferait deux autorités sur
+        un même réglage. vim est le repli, et son paquet vient d'être posé.
+
+        Le tout dans un « if » : la phase « before » d'une VM sans installation
+        ERPLibre n'a pas vu l'amorçage qui pose git, et « set -e » ferait
+        tomber le déploiement sur une commande introuvable.
+        """
+        return (
+            "if command -v git >/dev/null 2>&1; then "
+            "git config --global merge.conflictStyle zdiff3 || true; "
+            "git config --global --get core.editor >/dev/null 2>&1 "
+            "|| git config --global core.editor vim || true; fi; "
+        )
+
+    def _qemu_aidev_after_cmd(self, prod=False):
+        """La part de la pré-configuration qui a besoin du dépôt cloné.
+
+        Les hooks vivent dans le dépôt (`script/git/hooks`) et les gabarits des
+        commandes Claude dans `conf/` : avant le clone, ni l'un ni l'autre
+        n'existe. Le bit d'exécution fait partie de l'installation des hooks —
+        sans lui git les ignore SANS RIEN DIRE, et le garde-fou du message de
+        commit passe inaperçu.
+
+        Rendu SANS point-virgule final, comme les autres étapes de la phase
+        « après » : l'appelant enveloppe le bloc dans des accolades, et un
+        « ; ; » y est une erreur de syntaxe qui emporte tout le groupe.
+
+        Le bloc rend toujours 0. Une pré-configuration est un confort : c'est
+        l'installation qui porte le verdict de la VM, pas elle.
+        """
+        el_dir = self._qemu_install_dir(prod)
+        hooks = self._GIT_HOOKS_PATH
+        cibles = " ".join(f"{el_dir}/{hooks}/{h}" for h in self._GIT_HOOKS)
+        etapes = [
+            f'echo "== {t("AI coding tools, pre-configuration")} =="',
+            # « git -C » et non le cwd : le dépôt porte des dépôts imbriqués
+            # (odoo18.0/addons/…), et core.hooksPath écrit dans l'un d'eux
+            # laisserait la racine sans garde-fou, sans le moindre message.
+            f"git -C {el_dir} config core.hooksPath {hooks} || true",
+            f"chmod +x {cibles} 2>/dev/null || true",
+            "mkdir -p ~/.claude/commands || true",
+        ]
+        etapes += [
+            f"cp -f {el_dir}/conf/{gabarit}"
+            f" ~/.claude/commands/{nom}.md 2>/dev/null || true"
+            for nom, gabarit in self._QEMU_AIDEV_CLAUDE_CMDS
+        ]
+        etapes.append(self._qemu_aidev_identity_cmd())
+        etapes.append(
+            'echo "   ~/.claude/commands: '
+            "$(ls ~/.claude/commands/*.md 2>/dev/null | wc -l)"
+            f'/{len(self._QEMU_AIDEV_CLAUDE_CMDS)}"'
+        )
+        return "; ".join(etapes)
+
+    # Ce que le gabarit de /commit porte en exemple, et que l'identité de la
+    # VM remplace : une ligne « git -c user.name=… » qu'on recopie.
+    _QEMU_AIDEV_PLACEHOLDERS = (
+        ("Your Name", "user.name"),
+        ("your@email.com", "user.email"),
+    )
+
+    def _qemu_aidev_identity_cmd(self):
+        """Substitue l'identité git de la VM dans la commande /commit.
+
+        En python3 et non en sed : le remplacement se fait alors sur du texte
+        littéral, là où un nom qui porterait « & » ou le séparateur choisi
+        changerait de sens dans un « s/// ». python3 est présent dans toutes
+        les images visées — cloud-init, qui les amorce, en dépend lui-même.
+
+        Une identité absente laisse le gabarit tel quel : l'exemple reste
+        lisible, et rien ne prétend une identité qu'on n'a pas.
+        """
+        remplacements = "".join(
+            f'.replace("{marque}", g("{cle}") or "{marque}")'
+            for marque, cle in self._QEMU_AIDEV_PLACEHOLDERS
+        )
+        code = (
+            "import pathlib,subprocess as s;"
+            'g=lambda k:s.run(["git","config","--global","--get",k],'
+            "capture_output=True,text=True).stdout.strip();"
+            'p=pathlib.Path("~/.claude/commands/commit.md").expanduser();'
+            f"p.write_text(p.read_text(){remplacements})"
+        )
+        return (
+            "command -v python3 >/dev/null 2>&1 && "
+            f"python3 -c {shlex.quote(code)} 2>/dev/null || true"
         )
 
     def _qemu_tools_remote_cmd(
@@ -2108,7 +2346,9 @@ class QemuInstallMixin:
         elle dépend, et qui elle NE se garde PAS. C'est le contrat demandé : une
         VM dont l'application ne compile pas doit être rouge."""
         if phase == "after":
-            # Un seul bloc pour les deux options : voir _qemu_after_remote_cmd.
+            # Un seul bloc pour toutes les options : voir
+            # _qemu_after_remote_cmd. « aidev » y entre bien qu'il soit déclaré
+            # « before » — ses installations le sont, son complément non.
             return self._qemu_after_remote_cmd(tools, prod)
         blocks = {
             # En tête : quelques secondes de curl, contre des minutes pour un

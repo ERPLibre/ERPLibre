@@ -326,8 +326,9 @@ class QemuMenuMixin:
                 )
             },
             # Douze entrées sous un seul titre ne se lisent plus : on cherche
-            # à la ligne près. Trois intentions les séparent — vivre avec ses
-            # VM, y entrer, réparer quand ça va mal.
+            # à la ligne près. Quatre intentions les séparent — vivre avec ses
+            # VM, y entrer, régler le réseau qui les porte, réparer quand ça
+            # va mal.
             {"section": t("Manage")},
             {"prompt_description": t("List VMs (virsh list --all)")},
             {"prompt_description": t("Show a VM IP address")},
@@ -348,6 +349,13 @@ class QemuMenuMixin:
             {
                 "prompt_description": t(
                     "Android emulator (start, tunnel, scrcpy)"
+                )
+            },
+            {"section": t("VM network")},
+            {"prompt_description": t("Show the libvirt network state")},
+            {
+                "prompt_description": t(
+                    "Recreate the VM subnet (stop, redefine, restart)"
                 )
             },
             {"section": t("Troubleshoot")},
@@ -402,16 +410,20 @@ class QemuMenuMixin:
             elif status == "12":
                 self._qemu_emulator_menu()
             elif status == "13":
-                self._qemu_cleanup()
+                self._qemu_network_status()
             elif status == "14":
-                self._qemu_recover_files()
+                self._qemu_network_recreate()
             elif status == "15":
-                self._qemu_test_vm()
+                self._qemu_cleanup()
             elif status == "16":
-                self._qemu_diagnostics()
+                self._qemu_recover_files()
             elif status == "17":
-                self._qemu_stats()
+                self._qemu_test_vm()
             elif status == "18":
+                self._qemu_diagnostics()
+            elif status == "19":
+                self._qemu_stats()
+            elif status == "20":
                 self._qemu_list_images()
             else:
                 cmd_no_found = True

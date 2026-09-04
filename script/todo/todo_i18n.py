@@ -336,28 +336,28 @@ TRANSLATIONS = {
         "en": "Manage RTK (Rust Token Killer) for token optimization!",
     },
     "Install RTK": {
-        "fr": "Installer RTK",
-        "en": "Install RTK",
+        "fr": "📦 Installer RTK",
+        "en": "📦 Install RTK",
     },
     "Check RTK version": {
-        "fr": "Vérifier la version de RTK",
-        "en": "Check RTK version",
+        "fr": "🔢 Vérifier la version de RTK",
+        "en": "🔢 Check RTK version",
     },
     "Show cumulative token savings": {
-        "fr": "Afficher les économies de tokens cumulées",
-        "en": "Show cumulative token savings",
+        "fr": "📊 Afficher les économies de tokens cumulées",
+        "en": "📊 Show cumulative token savings",
     },
     "Discover optimization opportunities": {
-        "fr": "Identifier les opportunités d'optimisation",
-        "en": "Discover optimization opportunities",
+        "fr": "🔍 Identifier les opportunités d'optimisation",
+        "en": "🔍 Discover optimization opportunities",
     },
     "Initialize global auto-rewrite hook": {
-        "fr": "Initialiser le hook auto-rewrite global",
-        "en": "Initialize global auto-rewrite hook",
+        "fr": "🪝 Initialiser le hook auto-rewrite global",
+        "en": "🪝 Initialize global auto-rewrite hook",
     },
     "Check RTK status": {
-        "fr": "Vérifier le statut de RTK",
-        "en": "Check RTK status",
+        "fr": "🔬 Vérifier le statut de RTK",
+        "en": "🔬 Check RTK status",
     },
     "RTK is not installed. Use option 1 to install it.": {
         "fr": "RTK n'est pas installé. Utilisez l'option 1 pour l'installer.",
@@ -5015,9 +5015,239 @@ TRANSLATIONS = {
         "fr": "Outils d'assistance IA",
         "en": "AI coding tools",
     },
-    "rtk, starship, and one agent": {
-        "fr": "rtk, starship, et un agent",
-        "en": "rtk, starship, and one agent",
+    # Pourquoi le déploiement demande un mot de passe, dit AVANT l'invite.
+    "sudo password: asked when the deployment starts": {
+        "fr": "Mot de passe sudo : demandé au lancement du déploiement, pour",
+        "en": "sudo password: asked when the deployment starts, for",
+    },
+    "write into %s — checked: %s %s, writing refused here": {
+        "fr": "écrire dans %s — vérifié : %s %s, écriture refusée ici",
+        "en": "write into %s — checked: %s %s, writing refused here",
+    },
+    "the libvirt group opens the qemu:///system socket, not this directory": {
+        "fr": (
+            "le groupe libvirt ouvre la socket qemu:///system, pas ce"
+            " répertoire"
+        ),
+        "en": (
+            "the libvirt group opens the qemu:///system socket, not this"
+            " directory"
+        ),
+    },
+    "the system steps of the script (service, group)": {
+        "fr": "les gestes système du script (service, groupe)",
+        "en": "the system steps of the script (service, group)",
+    },
+    "the libvirt socket does not answer without sudo either: group absent"
+    " from this session, or libvirt not started": {
+        "fr": (
+            "la socket libvirt ne répond pas non plus sans sudo : groupe"
+            " absent de cette session, ou libvirt pas démarré"
+        ),
+        "en": (
+            "the libvirt socket does not answer without sudo either: group"
+            " absent from this session, or libvirt not started"
+        ),
+    },
+    "Python IDE, opens the ERPLibre checkout": {
+        "fr": "IDE Python, ouvre le dépôt ERPLibre",
+        "en": "Python IDE, opens the ERPLibre checkout",
+    },
+    "rtk, starship, one agent, git and Claude ready": {
+        "fr": "rtk, starship, un agent, git et Claude prêts",
+        "en": "rtk, starship, one agent, git and Claude ready",
+    },
+    "Help": {
+        "fr": "Aide",
+        "en": "Help",
+    },
+    "What each option installs": {
+        "fr": "Ce que chaque option installe",
+        "en": "What each option installs",
+    },
+    "(F1 or ? : details)": {
+        "fr": "(F1 ou ? : le détail)",
+        "en": "(F1 or ? : details)",
+    },
+    "VM type": {
+        "fr": "Type de VM",
+        "en": "VM type",
+    },
+    "Application store": {
+        "fr": "Magasin d'applications",
+        "en": "Application store",
+    },
+    "Python interpreter": {
+        "fr": "Interpréteur Python",
+        "en": "Python interpreter",
+    },
+    "clone of the checkout, then the make target of the profile": {
+        "fr": "clone du dépôt, puis la cible make du profil",
+        "en": "clone of the checkout, then the make target of the profile",
+    },
+    "in ~/git/erplibre, or /opt/erplibre in production": {
+        "fr": "dans ~/git/erplibre, ou /opt/erplibre en production",
+        "en": "in ~/git/erplibre, or /opt/erplibre in production",
+    },
+    "unchecked: the VM stays a bare distribution": {
+        "fr": "décochée : la VM reste une distribution nue",
+        "en": "unchecked: the VM stays a bare distribution",
+    },
+    "about +5 Go of disk": {
+        "fr": "environ +5 Go de disque",
+        "en": "about +5 Go of disk",
+    },
+    "/opt/erplibre instead of ~/git/erplibre": {
+        "fr": "/opt/erplibre au lieu de ~/git/erplibre",
+        "en": "/opt/erplibre instead of ~/git/erplibre",
+    },
+    "Odoo registered as a systemd service": {
+        "fr": "Odoo enregistré en service systemd",
+        "en": "Odoo registered as a systemd service",
+    },
+    "automatic updates left ON, unlike a dev VM": {
+        "fr": "mises à jour automatiques laissées ACTIVES, contrairement au dev",
+        "en": "automatic updates left ON, unlike a dev VM",
+    },
+    "server: SSH only, no graphical session": {
+        "fr": "serveur : SSH seul, sans session graphique",
+        "en": "server: SSH only, no graphical session",
+    },
+    "graphical: the chosen desktop plus its remote access": {
+        "fr": "graphique : le bureau choisi et son accès distant",
+        "en": "graphical: the chosen desktop plus its remote access",
+    },
+    "an IDE needs a desktop, the build tools do not": {
+        "fr": "un IDE demande un bureau, les outils de compilation non",
+        "en": "an IDE needs a desktop, the build tools do not",
+    },
+    "deb/rpm: packages of the distribution only": {
+        "fr": "deb/rpm : les paquets de la distribution seulement",
+        "en": "deb/rpm: packages of the distribution only",
+    },
+    "snap: snapd kept active where the distribution has it": {
+        "fr": "snap : snapd laissé actif là où la distribution l'a",
+        "en": "snap: snapd kept active where the distribution has it",
+    },
+    "IANA name written by cloud-init at first boot": {
+        "fr": "nom IANA écrit par cloud-init au premier démarrage",
+        "en": "IANA name written by cloud-init at first boot",
+    },
+    "a misspelled name is IGNORED: the VM stays in UTC": {
+        "fr": "un nom mal orthographié est IGNORÉ : la VM reste en UTC",
+        "en": "a misspelled name is IGNORED: the VM stays in UTC",
+    },
+    "mise poses a precompiled CPython, in minutes": {
+        "fr": "mise pose un CPython précompilé, en quelques minutes",
+        "en": "mise poses a precompiled CPython, in minutes",
+    },
+    "pyenv compiles it, which is much longer": {
+        "fr": "pyenv le compile, ce qui est bien plus long",
+        "en": "pyenv compiles it, which is much longer",
+    },
+    "mise publishes no binary for every architecture": {
+        "fr": "mise ne publie pas de binaire pour toutes les architectures",
+        "en": "mise publishes no binary for every architecture",
+    },
+    "JetBrains archive in /opt, launcher /usr/local/bin/pycharm": {
+        "fr": "archive JetBrains dans /opt, lanceur /usr/local/bin/pycharm",
+        "en": "JetBrains archive in /opt, launcher /usr/local/bin/pycharm",
+    },
+    "the checkout as project, .idea written like pycharm_configure": {
+        "fr": "le dépôt comme projet, .idea écrit comme pycharm_configure",
+        "en": "the checkout as project, .idea written like pycharm_configure",
+    },
+    "Android Studio in /opt, desktop launcher and studio command": {
+        "fr": "Android Studio dans /opt, lanceur de bureau et commande studio",
+        "en": "Android Studio in /opt, desktop launcher and studio command",
+    },
+    "x86_64 only: Google publishes no other build": {
+        "fr": "x86_64 seulement : Google n'en publie pas d'autre",
+        "en": "x86_64 only: Google publishes no other build",
+    },
+    "the extension manager, plus the suggested extensions": {
+        "fr": "le gestionnaire d'extensions, et les extensions suggérées",
+        "en": "the extension manager, plus the suggested extensions",
+    },
+    "distribution packages installed without being enabled": {
+        "fr": "les paquets de la distribution posés sans être activés",
+        "en": "distribution packages installed without being enabled",
+    },
+    "extensions named by UUID are enabled": {
+        "fr": "les extensions nommées par leur UUID sont activées",
+        "en": "extensions named by UUID are enabled",
+    },
+    "Android SDK, then the debug APK and the Vitest run": {
+        "fr": "le SDK Android, puis l'APK debug et la passe Vitest",
+        "en": "Android SDK, then the debug APK and the Vitest run",
+    },
+    "a failed build marks the VM as failed": {
+        "fr": "une compilation en échec fait échouer la VM",
+        "en": "a failed build marks the VM as failed",
+    },
+    "git forge on port 3000, SQLite database": {
+        "fr": "forge git sur le port 3000, base SQLite",
+        "en": "git forge on port 3000, SQLite database",
+    },
+    "system account, systemd service, admin account": {
+        "fr": "compte système, service systemd, compte administrateur",
+        "en": "system account, systemd service, admin account",
+    },
+    "posed by script/forgejo/install_forgejo.sh": {
+        "fr": "posé par script/forgejo/install_forgejo.sh",
+        "en": "posed by script/forgejo/install_forgejo.sh",
+    },
+    "tig, htop and vim": {
+        "fr": "tig, htop et vim",
+        "en": "tig, htop and vim",
+    },
+    "rtk, plus its global auto-rewrite hook": {
+        "fr": "rtk, et son hook global de réécriture",
+        "en": "rtk, plus its global auto-rewrite hook",
+    },
+    "starship, hooked into ~/.bashrc": {
+        "fr": "starship, accroché au ~/.bashrc",
+        "en": "starship, hooked into ~/.bashrc",
+    },
+    "the chosen agent: Claude Code or opencode": {
+        "fr": "l'agent choisi : Claude Code ou opencode",
+        "en": "the chosen agent: Claude Code or opencode",
+    },
+    "git: merge.conflictStyle zdiff3, core.editor vim if unset": {
+        "fr": "git : merge.conflictStyle zdiff3, core.editor vim s'il est vide",
+        "en": "git: merge.conflictStyle zdiff3, core.editor vim if unset",
+    },
+    "git hooks of the checkout: commit-msg, pre-commit": {
+        "fr": "les hooks git du dépôt : commit-msg, pre-commit",
+        "en": "git hooks of the checkout: commit-msg, pre-commit",
+    },
+    "the Claude commands: /commit, /git_prepare_merge, /todo_*": {
+        "fr": "les commandes Claude : /commit, /git_prepare_merge, /todo_*",
+        "en": "the Claude commands: /commit, /git_prepare_merge, /todo_*",
+    },
+    "source .venv.erplibre/bin/activate in the shell history": {
+        "fr": "source .venv.erplibre/bin/activate dans l'historique du shell",
+        "en": "source .venv.erplibre/bin/activate in the shell history",
+    },
+    "Android SDK, then a Pixel AVD named erplibre": {
+        "fr": "le SDK Android, puis un AVD Pixel nommé erplibre",
+        "en": "Android SDK, then a Pixel AVD named erplibre",
+    },
+    "software rendering: it opens over ssh -X": {
+        "fr": "rendu logiciel : il s'ouvre par ssh -X",
+        "en": "software rendering: it opens over ssh -X",
+    },
+    "needs nested virtualization on the host": {
+        "fr": "demande la virtualisation imbriquée sur l'hôte",
+        "en": "needs nested virtualization on the host",
+    },
+    "AI coding tools, pre-configuration": {
+        "fr": "Outils d'assistance IA, pré-configuration",
+        "en": "AI coding tools, pre-configuration",
+    },
+    "no checkout: git hooks and Claude commands skipped": {
+        "fr": "sans dépôt : hooks git et commandes Claude sautés",
+        "en": "no checkout: git hooks and Claude commands skipped",
     },
     "Name for git": {
         "fr": "Nom pour git",
@@ -5191,6 +5421,47 @@ TRANSLATIONS = {
     "VM access": {
         "fr": "🔌 Accès aux VM",
         "en": "🔌 VM access",
+    },
+    # Menu QEMU — section « Réseau »
+    "VM network": {
+        "fr": "🌐 Réseau",
+        "en": "🌐 Network",
+    },
+    "Show the libvirt network state": {
+        "fr": "🌐 Voir l'état du réseau libvirt (sous-réseau, VM, baux)",
+        "en": "🌐 Show the libvirt network state (subnet, VMs, leases)",
+    },
+    "Recreate the VM subnet (stop, redefine, restart)": {
+        "fr": "♻️  Recréer le sous-réseau des VM (arrêter, redéfinir, relancer)",
+        "en": "♻️  Recreate the VM subnet (stop, redefine, restart)",
+    },
+    "Recreating the subnet does three things:": {
+        "fr": "Recréer le sous-réseau fait trois choses :",
+        "en": "Recreating the subnet does three things:",
+    },
+    "shut down the VMs attached to the network": {
+        "fr": "arrêter les VM attachées au réseau",
+        "en": "shut down the VMs attached to the network",
+    },
+    "redefine the network on the wanted prefix": {
+        "fr": "redéfinir le réseau sur le préfixe voulu",
+        "en": "redefine the network on the wanted prefix",
+    },
+    "start those same VMs again": {
+        "fr": "redémarrer ces mêmes VM",
+        "en": "start those same VMs again",
+    },
+    "Target prefix": {
+        "fr": "Préfixe visé",
+        "en": "Target prefix",
+    },
+    "libvirt network": {
+        "fr": "Réseau libvirt",
+        "en": "libvirt network",
+    },
+    "Power off VMs that ignore the shutdown? (y/N): ": {
+        "fr": "Couper le courant des VM qui n'obéissent pas ? (o/N) : ",
+        "en": "Power off VMs that ignore the shutdown? (y/N): ",
     },
     "Troubleshoot": {
         "fr": "🩺 Dépanner",
