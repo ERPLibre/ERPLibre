@@ -25,6 +25,24 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+<!-- [common] -->
+
+## [1.8.0] - 2026-09-04
+
+<!-- [en] -->
+**Migration notes**
+
+Recreating the virtual environment, the Python interpreter and the package
+installer being chosen now. Use the installation guide from tool `make`.
+Ubuntu 20.04 and 22.04 are no longer supported.
+
+<!-- [fr] -->
+**Notes de migration**
+
+Recréer l'environnement virtuel, l'interpréteur Python et l'installateur de
+paquets se choisissant désormais. Utiliser le guide d'installation depuis
+l'outil `make`. Ubuntu 20.04 et 22.04 ne sont plus supportés.
+
 <!-- [en] -->
 ## Added
 <!-- [fr] -->
@@ -1304,7 +1322,9 @@ Parce que le dépôt d'addons a changé, le fichier de configuration doit être 
 
 <!-- [common] -->
 
-[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/ERPLibre/ERPLibre/compare/v1.8.0...HEAD
+
+[1.8.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.7.0...v1.8.0
 
 [1.7.0]: https://github.com/ERPLibre/ERPLibre/compare/v1.6.0...v1.7.0
 
