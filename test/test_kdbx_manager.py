@@ -42,7 +42,11 @@ class KdbxCase(unittest.TestCase):
         vues = []
         with patch("getpass.getpass", side_effect=list(reponses)), patch(
             "builtins.print",
-            side_effect=lambda *a: vues.append(" ".join(map(str, a))),
+            # `**k` : un bouchon de `print` doit accepter la signature de
+            # `print`. Sans lui, ajouter un `flush=True` dans le code
+            # testé faisait échouer six tests sur une différence qui n'a
+            # rien à voir avec ce qu'ils vérifient.
+            side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
         ):
             resultat = self._manager().get_kdbx()
         return resultat, "\n".join(vues)
@@ -106,7 +110,11 @@ class TestRecoveryAndSuccess(KdbxCase):
         vues = []
         with patch(
             "builtins.print",
-            side_effect=lambda *a: vues.append(" ".join(map(str, a))),
+            # `**k` : un bouchon de `print` doit accepter la signature de
+            # `print`. Sans lui, ajouter un `flush=True` dans le code
+            # testé faisait échouer six tests sur une différence qui n'a
+            # rien à voir avec ce qu'ils vérifient.
+            side_effect=lambda *a, **k: vues.append(" ".join(map(str, a))),
         ):
             resultat = self._manager("mauvais").get_kdbx()
         self.assertIsNone(resultat)

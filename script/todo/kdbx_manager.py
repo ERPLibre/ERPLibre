@@ -82,7 +82,11 @@ class KdbxManager:
         # pas une panne : la bibliothèque lève `CredentialsError` et, sans
         # ce rattrapage, la trace remontait jusqu'à tuer le CLI. On nomme
         # aussi le coffre — l'invite ne disait pas DE QUOI elle parlait.
-        print(f"{t('kdbx_vault_is')} {kdbx_file_path}")
+        # `flush` : l'invite de getpass part vers le terminal, ce `print`
+        # vers la sortie standard — qui est un TUBE quand le menu nous lance.
+        # Sans vidage, on lisait « Mot de passe du coffre : Coffre KeePass :
+        # /chemin » — la question avant ce dont elle parle.
+        print(f"{t('kdbx_vault_is')} {kdbx_file_path}", flush=True)
         for _ in range(attempts):
             password = getpass.getpass(prompt=t("kdbx_ask_password"))
             if not password:
