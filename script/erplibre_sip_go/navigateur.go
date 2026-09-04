@@ -159,7 +159,12 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 			BindHost:  hôte,
 			BindPort:  port,
 		}))
-	slog.Info("softphone en écoute", "ws", "ws://"+bind, "echo", écho)
+	slog.Info("softphone en écoute", "ws", "ws://"+bind, "echo", écho,
+		// Un exécutable déjà lancé garde son image en mémoire : le remplacer
+		// sur disque ne le change pas. Sans cette empreinte, rien dans le
+		// journal ne distingue le binaire en cours de celui qu'on vient de
+		// reconstruire, et les essais se rejouent sur l'ancien.
+		"binaire", EmpreinteBinaire())
 
 	// Les appels ENTRANTS : sans cette veille, composer le numéro de la SIM
 	// ne fait sonner personne, et la passerelle n'est qu'un composeur.
