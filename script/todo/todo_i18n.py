@@ -1873,22 +1873,8 @@ TRANSLATIONS = {
         "en": '📥 Read SMS messages',
     },
     'modem_gateway_agent': {
-        "fr": '🔗 Passerelle SMS — relayer les SMS d\'un serveur ERPLibre',
-        "en": '🔗 SMS gateway — relay SMS from an ERPLibre server',
-    },
-    'modem_gateway_missing_env': {
-        "fr": "Variables absentes de l'environnement :",
-        "en": 'Variables missing from the environment:',
-    },
-    'modem_gateway_env_help': {
-        "fr": ("Le secret ne se met ni en base ni dans le depot : il se lit "
-               "dans l'environnement du processus."),
-        "en": ('The secret goes neither in the database nor in the repository: '
-               'it is read from the process environment.'),
-    },
-    'modem_gateway_running': {
-        "fr": 'Passerelle en marche. Ctrl-C pour arreter.',
-        "en": 'Gateway running. Ctrl-C to stop.',
+        "fr": '🔗 Passerelle SMS — demonstration de bout en bout',
+        "en": '🔗 SMS gateway — end-to-end demonstration',
     },
     'modem_number': {
         "fr": 'Numero',

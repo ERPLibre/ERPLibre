@@ -27,7 +27,6 @@ from script.todo.modem import calls as calls_mod
 from script.todo.modem import device as device_mod
 from script.todo.modem import diagnostic as diag_mod
 from script.todo.modem import messaging as sms_mod
-from script.todo.modem import passerelle as passerelle_mod
 from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
 
@@ -141,7 +140,7 @@ def prompt_execute_modem(todo) -> None:
         elif status == "15":
             _regle_audio()
         elif status == "17":
-            _passerelle()
+            _passerelle(todo)
         elif status == "16":
             _essai_combine()
         else:
@@ -314,30 +313,35 @@ def _etat_voip():
 DELAI_ARRET = 8
 
 
-def _passerelle():
-    """Fait tourner l'agent qui relaie les SMS d'un serveur ERPLibre.
+def _passerelle(todo):
+    """Enchaine la demonstration de passerelle SMS, sur le modem de ce poste.
 
-    En premier plan et jusqu'a Ctrl-C : ce menu sert a l'essayer et a voir ce
-    qu'il fait. Un service systemd est ce qui le fera vivre une fois qu'il
-    aura fait ses preuves — un agent lance depuis un menu meurt avec la
-    session.
+    Les six memes etapes que « TODO › Assistant › SMS », jouees d'affilee et
+    arretees au premier echec. Pas un menu : arriver ici veut dire qu'on veut
+    la chaine, pas la choisir. Ce qui suppose de reprendre une etape seule, ou
+    de changer le numero d'essai, se fait dans l'Assistant, sur le meme etat.
+
+    Le materiel est impose a l'entree, sans le demander : qui arrive par le
+    menu du modem a deja choisi. Si la demonstration etait posee sur le
+    telephone, la fiche passerelle est a refaire, et `poser_materiel` le dit.
+
+    Le tableau est affiche avant ET apres : avant pour voir d'ou l'on part —
+    la demonstration se reprend souvent a mi-chemin — apres pour voir ou elle
+    s'est arretee, ce que le defilement des etapes ne montre plus.
     """
-    manquants = [
-        nom for nom in (passerelle_mod.VARIABLE_URL,
-                        passerelle_mod.VARIABLE_APPAREIL,
-                        passerelle_mod.VARIABLE_SECRET)
-        if not os.environ.get(nom)
-    ]
-    if manquants:
-        print("  " + t("modem_gateway_missing_env") + " " + ", ".join(manquants))
-        print("  " + t("modem_gateway_env_help"))
-        return
-    agent = passerelle_mod.depuis_environnement()
-    print("  " + t("modem_gateway_running"))
-    try:
-        agent.boucle(journal=lambda message: print("  " + message))
-    except KeyboardInterrupt:
-        print()
+    from script.todo.sms import menu as sms_menu
+    from script.todo.sms import spec as sms_spec
+    from script.todo.sms import steps as sms_steps
+
+    etat = sms_spec.load()
+    if sms_menu.poser_materiel(etat, "modem"):
+        print("  ⚠️  " + t("sms_materiel_changed"))
+    print()
+    print(sms_steps.render(etat))
+    print()
+    sms_menu.enchainer(todo, etat)
+    print()
+    print(sms_steps.render(etat))
 
 
 def _lancer_interruptible(args):

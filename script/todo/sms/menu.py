@@ -49,7 +49,7 @@ def prompt_execute_sms(todo) -> None:
         if status == "0":
             return
         if status == "1":
-            _run_all(todo, state)
+            enchainer(todo, state)
         elif status in ("2", "3", "4", "5", "6", "7"):
             _run_one(todo, state, STEPS[int(status) - 2])
         elif status == "8":
@@ -307,15 +307,18 @@ def _read_phone() -> None:
 def _run_one(todo, state, step) -> bool:
     """Joue une étape, enregistre son issue, et la raconte.
 
-    Renvoie True si l'étape a réussi — `_run_all` s'en sert pour s'arrêter au
-    premier échec plutôt que d'empiler des erreurs dérivées.
+    Renvoie True si l'étape a réussi — `enchainer` s'en sert pour s'arrêter
+    au premier échec plutôt que d'empiler des erreurs dérivées.
     """
     manquant = steps_mod.blocked_by(step, state)
     if manquant:
         print(f"  ❌ {t('sms_blocked_by')} : {', '.join(manquant)}")
         return False
 
-    print(f"  ⏳ {t('sms_step_running')} : {step.label}")
+    # `label_for` et non `label` : sur un modem, l'etape de liaison porte un
+    # autre nom, et annoncer celui du telephone ferait chercher un appareil
+    # que personne n'a en main.
+    print(f"  ⏳ {t('sms_step_running')} : {step.label_for(state.spec)}")
     try:
         ok, message = _dispatch(todo, state, step)
     except KeyboardInterrupt:
@@ -395,28 +398,41 @@ def _choose_mode(state) -> None:
     print(f"  ⚠️  {t('sms_mode_changed')}")
 
 
-def _choose_materiel(state) -> None:
-    """Telephone ou modem. Change ce que la fiche declare, donc la refait.
+def poser_materiel(state, materiel: str) -> bool:
+    """Pose le materiel et oublie ce qu'il invalide. Rend True s'il a change.
 
     Les etapes serveur — VM et Odoo — tiennent : c'est la meme installation.
     La fiche passerelle, elle, PORTE le materiel, et les criteres de sante en
     dependent : la garder ferait juger un modem sur ceux d'un telephone.
+
+    Un seul endroit sait cela, parce que deux chemins y mènent — le choix
+    explicite, et l'entree du menu Modem qui impose son materiel. Deux listes
+    d'etapes a oublier finiraient par diverger, et l'une des deux laisserait
+    une coche verte sur une fiche a refaire.
     """
     from dataclasses import replace
 
+    if materiel == state.spec.materiel:
+        return False
+    state.spec = replace(state.spec, materiel=materiel)
+    for etape in ("gateway", "mobile", "verify", "confirm"):
+        if etape in state.done:
+            state.done.remove(etape)
+    spec_mod.save(state)
+    return True
+
+
+def _choose_materiel(state) -> None:
+    """Telephone ou modem."""
     print(f"  {t('sms_materiel_current')} : {t('sms_materiel_' + state.spec.materiel)}")
     print(f"  [1] {t('sms_materiel_mobile')}")
     print(f"  [2] {t('sms_materiel_modem')}")
     choix = input(f"  {t('sms_materiel_ask')}").strip()
     nouveau = {"1": "mobile", "2": "modem"}.get(choix)
-    if nouveau is None or nouveau == state.spec.materiel:
+    if nouveau is None:
         return
-    state.spec = replace(state.spec, materiel=nouveau)
-    for etape in ("gateway", "mobile", "verify", "confirm"):
-        if etape in state.done:
-            state.done.remove(etape)
-    spec_mod.save(state)
-    print(f"  ⚠️  {t('sms_materiel_changed')}")
+    if poser_materiel(state, nouveau):
+        print(f"  ⚠️  {t('sms_materiel_changed')}")
 
 
 def _step_modem(state):
@@ -584,7 +600,12 @@ def _etat_envoi(dos, state, todo, uuid):
     return dos.dispatch_state(state.spec, uuid, todo=todo, state=state)
 
 
-def _run_all(todo, state) -> None:
+def enchainer(todo, state) -> None:
+    """Joue les etapes qui restent, et s'arrete au premier echec.
+
+    Publique parce que deux entrees y menent : « tout enchainer » de ce menu,
+    et celle du menu Modem qui n'ouvre rien et lance directement la chaine.
+    """
     for step in STEPS:
         if state.is_done(step.id):
             continue
