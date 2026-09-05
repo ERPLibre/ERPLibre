@@ -62,8 +62,23 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("Nested QEMU depth: run it")},
+            {"prompt_description": t("Download cache: plan only (dry-run)")},
+            {"prompt_description": t("Download cache: two VMs, measure")},
+            {
+                "prompt_description": t(
+                    "Download cache: measure, then cut the upstream"
+                )
+            },
             {"prompt_description": t("Undo what the descent created")},
         ]
+        # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
+        # Ses entrées sont donc traitées à part plutôt que pliées dans la
+        # table des piles imbriquées.
+        cache = {
+            "5": "--dry-run",
+            "6": "",
+            "7": "--hors-ligne",
+        }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
             "1": ("deep_proxmox.py", True),
@@ -77,6 +92,9 @@ class LongTestMenuMixin:
             print()
             if status == "0":
                 return False
+            if status in cache:
+                self._longtest_run("qemu_cache.py", cache[status])
+                continue
             if status in scripts:
                 script, demander = scripts[status]
                 # La profondeur est DEMANDÉE : c'est le réglage qui décide de
@@ -88,7 +106,7 @@ class LongTestMenuMixin:
                 if status in ("1", "3"):
                     args += " --dry-run"
                 self._longtest_run(script, args)
-            elif status == "5":
+            elif status == "8":
                 self._longtest_defaire()
             else:
                 print(t("Command not found !"))
@@ -104,7 +122,7 @@ class LongTestMenuMixin:
         on lui fait faire cette liste à blanc pour qu'un choix d'une touche ne
         mène pas directement à un « qm destroy --purge ».
         """
-        for script in ("deep_proxmox.py", "deep_qemu.py"):
+        for script in ("deep_proxmox.py", "deep_qemu.py", "qemu_cache.py"):
             self._longtest_run(script, "--detruire --dry-run")
             if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
                 self._longtest_run(script, "--detruire")

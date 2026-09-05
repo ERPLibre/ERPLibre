@@ -1465,6 +1465,18 @@ TRANSLATIONS = {
         "fr": "Utiliser le cache de téléchargement de l'hôte ?",
         "en": "Use the host download cache?",
     },
+    "Download cache: plan only (dry-run)": {
+        "fr": "📦 Cache de téléchargement : le plan seul (à blanc)",
+        "en": "📦 Download cache: plan only (dry-run)",
+    },
+    "Download cache: two VMs, measure": {
+        "fr": "📦 Cache de téléchargement : deux VM, et la mesure",
+        "en": "📦 Download cache: two VMs, measure",
+    },
+    "Download cache: measure, then cut the upstream": {
+        "fr": "📦 Cache de téléchargement : mesurer, puis couper l'amont",
+        "en": "📦 Download cache: measure, then cut the upstream",
+    },
     # QEMU / KVM (libvirt) VM deployment
     "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
         "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
