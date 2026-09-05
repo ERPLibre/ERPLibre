@@ -26,6 +26,7 @@ préfixes est donc le premier contrôle, pas le dernier.
 import json
 import os
 import re
+import shlex
 import subprocess
 
 import click
@@ -39,6 +40,8 @@ CACHE_CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
 CACHE_SERVICE = "erplibre-go-qemu-cache.service"
 CACHE_CONF = "/etc/erplibre_go_qemu_cache/env"
 CACHE_TABLE = "erplibre_qemu_cache"
+CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
+CACHE_SET = "bypass"
 LONGTEST = "long_test/qemu_cache.py"
 
 
@@ -127,6 +130,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Install or reinstall")},
             {"prompt_description": t("Cache - Diagnose: does it serve?")},
             {"prompt_description": t("Cache - Service state")},
+            {"prompt_description": t("Cache - VMs kept out of the cache")},
             {"prompt_description": t("Cache - Guide: how it works")},
             {"prompt_description": t("Cache - Tests and performance report")},
         ]
@@ -143,8 +147,10 @@ class QemuCacheMenuMixin:
             elif status == "3":
                 self._cache_service()
             elif status == "4":
-                self._cache_guide()
+                self._cache_exceptions()
             elif status == "5":
+                self._cache_guide()
+            elif status == "6":
                 self._cache_tests()
             else:
                 print(t("Command not found !"))
@@ -188,6 +194,21 @@ class QemuCacheMenuMixin:
         )[:4]:
             if ligne.strip():
                 print(f"  · {ligne.strip()}")
+
+        # Une VM exceptée ne traverse pas le cache, et c'est voulu ; une
+        # exception dont la VM n'existe plus ne l'est pas, et elle est
+        # invisible partout ailleurs — la machine qui hérite de la MAC
+        # télécharge normalement, le journal reste seulement muet sur elle.
+        exceptions = self._cache_bypass_lire()
+        if exceptions:
+            orphelines = self._cache_bypass_orphelines(exceptions)
+            marque = "⚠" if orphelines else "·"
+            print(
+                f"  {marque} {t('Exceptions:')} {len(exceptions)}"
+                f" ({len(orphelines)} {t('with no VM left')})"
+            )
+            if orphelines:
+                print(f"    {t('Remove them from entry 4 of this menu.')}")
 
         compte = self._cache_compte_issues()
         if compte:
@@ -303,7 +324,109 @@ class QemuCacheMenuMixin:
             )
 
     # ------------------------------------------------------------------
-    # [4] Guide
+    # [4] Exceptions : les VM soustraites au détournement
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _cache_bypass_lire(cls):
+        """Les exceptions posées, en couples (MAC, nom de VM).
+
+        Lues par le BINAIRE et non par ce fichier : lui seul sait normaliser
+        une adresse et sauter une ligne fautive, et une seconde lecture écrite
+        ici dériverait de la sienne.
+        """
+        if not os.path.isfile(CACHE_BIN):
+            return []
+        sortie = cls._cache_lire(
+            f"{CACHE_BIN} --bypass-list --bypass-file {CACHE_BYPASS}"
+        )
+        out = []
+        for ligne in sortie.split("\n"):
+            champs = ligne.split(None, 1)
+            if champs and ":" in champs[0]:
+                out.append((champs[0], champs[1] if len(champs) > 1 else ""))
+        return out
+
+    @staticmethod
+    def _cache_domaines():
+        """Les noms de domaine que libvirt connaît, VM éteintes comprises."""
+        sortie = QemuCacheMenuMixin._cache_lire(
+            "virsh -c qemu:///system list --all --name"
+        )
+        return {l.strip() for l in sortie.split("\n") if l.strip()}
+
+    @classmethod
+    def _cache_bypass_orphelines(cls, entrees=None):
+        """Les exceptions dont la VM n'existe plus.
+
+        C'est LE danger de cette liste. Une adresse MAC se réattribue : une
+        exception laissée derrière une VM détruite soustrairait au cache une
+        machine neuve qui hériterait de l'adresse, sans que personne l'ait
+        demandé et sans que rien ne le dise. Une entrée sans nom ne peut pas
+        être jugée — elle a été posée à la main — et n'est jamais orpheline.
+        """
+        vivants = cls._cache_domaines()
+        return [
+            (mac, nom)
+            for mac, nom in (
+                entrees if entrees is not None else cls._cache_bypass_lire()
+            )
+            if nom and nom not in vivants
+        ]
+
+    def _cache_bypass_retirer(self, mac):
+        cmd = bypass_retrait_cmd(mac)
+        print(f"\n{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_exceptions(self):
+        print(f"\n🎫 {t('VMs kept out of the download cache')}\n")
+        if not os.path.isfile(CACHE_BIN):
+            print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
+            return
+        entrees = self._cache_bypass_lire()
+        if not entrees:
+            print(f"  {t('No exception: every VM goes through the cache.')}")
+            print(f"  {t('Tick the box when deploying to add one.')}\n")
+            return
+
+        orphelines = dict(self._cache_bypass_orphelines(entrees))
+        print(f"  {'MAC':<20}{t('VM')}")
+        print("  " + "─" * 52)
+        for mac, nom in entrees:
+            marque = " ⚠ " + t("VM gone") if mac in orphelines else ""
+            print(f"  {mac:<20}{nom or '—'}{marque}")
+        print()
+        if orphelines:
+            print(f"  ⚠ {t('A freed MAC gets reused: such an entry would')}")
+            print(f"    {t('quietly keep a NEW VM out of the cache.')}\n")
+
+        choices = [
+            {"prompt_description": t("Exceptions - Remove the stale ones")},
+            {"prompt_description": t("Exceptions - Remove one by its MAC")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            if status == "1":
+                if not orphelines:
+                    print(t("Nothing is stale."))
+                    continue
+                for mac in orphelines:
+                    self._cache_bypass_retirer(mac)
+                return True
+            if status == "2":
+                mac = click.prompt(t("MAC to give back to the cache")).strip()
+                if mac:
+                    self._cache_bypass_retirer(mac)
+                return True
+            print(t("Command not found !"))
+
+    # ------------------------------------------------------------------
+    # [5] Guide
     # ------------------------------------------------------------------
 
     def _cache_guide(self):
@@ -347,19 +470,29 @@ class QemuCacheMenuMixin:
             t("    orchestrator's disk. Watch it with the diagnosis entry."),
             "",
             f"  {t('Turning it off')}",
+            t("    Interception is transparent and covers the whole bridge:"),
             t(
-                "    Interception is transparent and covers the whole bridge: a VM"
+                "    a VM cannot opt out from the inside. Omitting the authority"
             ),
             t(
-                "    cannot opt out of it. Omitting the authority does not bypass"
+                "    does not bypass anything — the VM is redirected all the same"
+            ),
+            t("    and fails on « self-signed certificate in chain »."),
+            "",
+            t("    For ONE VM: tick « keep this VM out of the cache » when"),
+            t(
+                "    deploying, or pass --cache-bypass. Its MAC address is fixed"
             ),
             t(
-                "    the cache — the VM is redirected all the same, and fails on"
+                "    before creation and an exception is posted on the host, so"
             ),
-            t("    « self-signed certificate in certificate chain »."),
-            t("    The only true bypass stops the service:"),
+            t(
+                "    nothing redirects it. Entry 4 lists them; an exception whose"
+            ),
+            t("    VM is gone must be removed, a freed MAC being reused."),
+            "",
+            t("    For EVERY VM: stop the service, entry 3 or"),
             f"      systemctl stop {CACHE_SERVICE}",
-            t("    or entry 3 of this menu, which does it for you."),
             t("    The rules leave with it, so no VM stays redirected."),
             "",
             f"  {t('Proxmox')}",
@@ -379,7 +512,7 @@ class QemuCacheMenuMixin:
             print(ligne)
 
     # ------------------------------------------------------------------
-    # [5] Tests
+    # [6] Tests
     # ------------------------------------------------------------------
 
     def _cache_tests(self):
@@ -421,3 +554,38 @@ class QemuCacheMenuMixin:
                 self._longtest_run("qemu_cache.py", args[status])
             else:
                 print(t("Command not found !"))
+
+
+def bypass_retrait_cmd(mac):
+    """La commande qui retire une exception du fichier ET du noyau.
+
+    Les deux, parce qu'ils ne disent pas la même chose : le fichier est ce que
+    le service reposera au prochain démarrage, l'ensemble du noyau est ce qui
+    s'applique en ce moment. N'en faire qu'un laisse l'exception vivante
+    jusqu'au redémarrage, ou la fait revenir après.
+    """
+    return (
+        f"sudo {CACHE_BIN} --bypass-del {shlex.quote(mac)}"
+        f" --bypass-file {CACHE_BYPASS} | sudo nft -f -"
+    )
+
+
+def bypass_menage(execute):
+    """Retire les exceptions dont la VM n'existe plus. Rend leur nombre.
+
+    Appelée après une suppression de VM. Sans ce ménage, une adresse MAC
+    libérée puis réattribuée soustrairait au cache une machine neuve que
+    personne n'a exceptée, et rien ne le dirait : ni la VM, qui télécharge
+    normalement, ni le cache, dont le journal reste simplement muet à son
+    sujet.
+
+    Ne fait rien quand le cache n'est pas posé : il n'y a alors aucune liste.
+    """
+    if not os.path.isfile(CACHE_BIN):
+        return 0
+    orphelines = QemuCacheMenuMixin._cache_bypass_orphelines()
+    for mac, _nom in orphelines:
+        execute.exec_command_live(
+            bypass_retrait_cmd(mac), source_erplibre=False
+        )
+    return len(orphelines)

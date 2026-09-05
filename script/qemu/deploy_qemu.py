@@ -56,6 +56,8 @@ import ipaddress
 import os
 import pwd
 import re
+import secrets
+import shlex
 import shutil
 import socket
 import stat as stat_mod
@@ -2458,6 +2460,149 @@ def cache_family(distro: str) -> str:
     }.get(distro, "")
 
 
+# ---------------------------------------------------------------------------
+# Soustraire une VM au cache : l'exception par adresse MAC
+# ---------------------------------------------------------------------------
+
+# Le détournement du cache est TRANSPARENT et vaut pour tout le pont. Ne pas
+# donner l'autorité à une VM ne la dispense donc pas d'être interceptée : elle
+# reçoit un certificat qu'elle ne reconnaît pas et échoue sur « self-signed
+# certificate in certificate chain ». La seule exception qui vaille est posée
+# sur l'HÔTE, et elle a besoin d'un identifiant stable — l'adresse MAC, fixée
+# dans la définition du domaine, là où l'adresse IP vient d'un bail.
+#
+# D'où l'ordre imposé ici : la MAC est CHOISIE avant la création, l'exception
+# est posée, et la VM démarre ensuite. L'inverse — créer puis lire la MAC —
+# laisserait la fenêtre où cloud-init télécharge déjà.
+CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
+CACHE_SERVICE = "erplibre-go-qemu-cache.service"
+
+# Le préfixe que QEMU/KVM se voit attribuer. S'en écarter ferait passer la VM
+# pour une machine d'un autre constructeur auprès de ce qui lit les OUI.
+MAC_PREFIXE = "52:54:00"
+
+
+def mac_du_network(network: str) -> str:
+    """La MAC déjà demandée dans l'argument --network, ou "".
+
+    Une MAC posée à la main l'emporte : l'appelant sait ce qu'il veut, et lui
+    en substituer une autre casserait une réservation DHCP.
+    """
+    for champ in network.split(","):
+        cle, _, valeur = champ.partition("=")
+        if cle.strip() == "mac":
+            return valeur.strip()
+    return ""
+
+
+def macs_deja_prises(runner: Runner) -> set[str]:
+    """Les MAC que portent les domaines existants, en minuscules.
+
+    Libvirt refuse une MAC en double, mais l'erreur arrive au moment de la
+    création, après le téléchargement de l'image. La lire avant coûte deux
+    appels et rend le refus immédiat.
+    """
+    code, sortie = runner.run(
+        ["virsh", "-c", LIBVIRT_URI, "list", "--all", "--name"],
+        privileged=True,
+        check=False,
+        capture=True,
+    )
+    if code:
+        return set()
+    prises: set[str] = set()
+    for nom in (sortie or "").split("\n"):
+        nom = nom.strip()
+        if not nom:
+            continue
+        code, xml = runner.run(
+            ["virsh", "-c", LIBVIRT_URI, "domiflist", nom],
+            privileged=True,
+            check=False,
+            capture=True,
+        )
+        if code:
+            continue
+        prises.update(
+            m.lower()
+            for m in re.findall(
+                r"\b([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})\b", xml or ""
+            )
+        )
+    return prises
+
+
+def mac_neuve(prises: set[str]) -> str:
+    """Une MAC du préfixe QEMU qu'aucun domaine ne porte.
+
+    Le tirage est aléatoire sur trois octets : la collision est improbable,
+    mais elle n'apparaîtrait qu'à la création, une fois l'image téléchargée.
+    Une poignée d'essais suffit à la rendre impossible en pratique.
+    """
+    for _ in range(64):
+        octets = [secrets.randbelow(256) for _ in range(3)]
+        mac = MAC_PREFIXE + ":" + ":".join(f"{o:02x}" for o in octets)
+        if mac not in prises:
+            return mac
+    raise RuntimeError("aucune adresse MAC libre après 64 tirages")
+
+
+def network_avec_mac(network: str, mac: str) -> str:
+    """Ajoute « mac=… » à l'argument --network, sans toucher au reste."""
+    if mac_du_network(network):
+        return network
+    return f"{network},mac={mac}"
+
+
+def cache_bypass_apply(args: argparse.Namespace, runner: Runner) -> str:
+    """Pose l'exception et rend la MAC retenue, ou "" si rien n'est à faire.
+
+    Rend "" sans se plaindre quand le cache n'est pas là ou ne tourne pas :
+    dans ce cas rien n'intercepte, et la VM télécharge en direct — ce que
+    l'appelant demandait. Se plaindre alors serait exiger d'installer un cache
+    pour pouvoir s'en passer.
+
+    L'exception est écrite dans un fichier ET posée à chaud dans l'ensemble
+    nftables. Le fichier la fait survivre au redémarrage du service ;
+    l'ensemble évite d'avoir à reposer les règles, ce qui couperait les
+    téléchargements des autres VM en cours.
+    """
+    if not getattr(args, "cache_bypass", False):
+        return ""
+    if not os.path.isfile(CACHE_BIN):
+        print(
+            "  cache absent de cet hôte : rien n'intercepte, rien à excepter"
+        )
+        return ""
+    code, _ = runner.run(
+        ["systemctl", "is-active", "--quiet", CACHE_SERVICE],
+        check=False,
+        capture=True,
+    )
+    if code and not args.dry_run:
+        print("  cache arrêté : rien n'intercepte, rien à excepter")
+        return ""
+
+    mac = mac_du_network(args.network) or mac_neuve(macs_deja_prises(runner))
+    args.network = network_avec_mac(args.network, mac)
+
+    geste = (
+        f"{shlex.quote(CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
+        f" --bypass-name {shlex.quote(args.name)}"
+    )
+    if shutil.which("nft"):
+        # Le binaire écrit le fichier et rend sur sa sortie le geste à chaud.
+        runner.run(["sh", "-c", f"{geste} | nft -f -"], privileged=True)
+    else:
+        # Sans nft, les règles sont des « -A » iptables sans ensemble nommé :
+        # l'exception ne peut entrer qu'en reposant la chaîne entière, ce que
+        # fait le redémarrage du service.
+        runner.run(["sh", "-c", geste], privileged=True)
+        runner.run(["systemctl", "restart", CACHE_SERVICE], privileged=True)
+    print(f"  VM soustraite au cache : {mac}")
+    return mac
+
+
 def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """L'autorité du cache, posée par cloud-init à l'étape init.
 
@@ -2472,6 +2617,12 @@ def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     démarrage et la commande de confiance.
     """
     if not args.cache_ca:
+        return []
+    # Les deux ensemble n'ont pas de sens : une VM exceptée ne rencontre
+    # jamais le cache, et lui faire approuver cette autorité poserait dans son
+    # magasin une signature dont rien ne se sert. L'exception l'emporte, étant
+    # la demande la plus précise.
+    if getattr(args, "cache_bypass", False):
         return []
     famille = cache_family(args.distro)
     if famille not in CACHE_TRUST:
@@ -4209,6 +4360,15 @@ def build_parser() -> argparse.ArgumentParser:
         "passent par le cache. Absent, rien n'est posé.",
     )
     g_cloud.add_argument(
+        "--cache-bypass",
+        action="store_true",
+        help="Soustrait CETTE VM au cache de téléchargement : une exception "
+        "par adresse MAC est posée sur l'hôte avant la création, et la VM "
+        "télécharge en direct. Sans cela, retirer --cache-ca ne suffit pas — "
+        "le détournement est transparent et la VM échouerait sur un "
+        "certificat inconnu.",
+    )
+    g_cloud.add_argument(
         "--apt-update",
         action="store_true",
         help="Exécute « apt update » au 1er boot (package_update). Désactivé "
@@ -4524,6 +4684,8 @@ def main() -> None:
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
+    # Avant la création, et non après : la VM télécharge dès cloud-init.
+    cache_bypass_apply(args, runner)
     virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:
         watch_and_restart(args.name, runner)

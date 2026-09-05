@@ -1038,6 +1038,7 @@ class QemuDeployMixin:
         git_name="",
         git_email="",
         cache_ca="",
+        cache_bypass=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -1077,7 +1078,12 @@ class QemuDeployMixin:
             # « on » et non « auto » : auto s'abstient sur une VM sans écran,
             # or c'est précisément ce que la case permet de demander.
             parts += ["--gpu", "on"]
-        if cache_ca:
+        if cache_bypass:
+            # L'exception l'emporte sur l'autorité : la VM ne rencontrera
+            # jamais le cache, lui faire approuver cette signature ne servirait
+            # à rien. deploy_qemu.py pose l'exception AVANT de créer la VM.
+            parts.append("--cache-bypass")
+        elif cache_ca:
             # L'autorité du cache de téléchargement de l'hôte. La VM
             # l'approuve dès son premier démarrage, sans quoi le détournement
             # lui présente un certificat qu'elle rejette.
@@ -1177,6 +1183,7 @@ class QemuDeployMixin:
             cache_ca=(
                 self._qemu_cache_ca_path() if self._qemu_cache_active() else ""
             ),
+            cache_bypass=bool(spec.get("cache_bypass")),
         )
 
     # Où l'installateur du cache pose son autorité. Un test compare cette
@@ -1463,6 +1470,10 @@ class QemuDeployMixin:
             # affiche. Absent, le formulaire n'offre pas la case.
             "cache_ca": self._qemu_cache_ca_path(),
             "cache_active": self._qemu_cache_active(),
+            # La case « hors cache » ne s'offre que là où elle a un effet.
+            # Sans service actif rien n'intercepte, et une case sans effet
+            # est ce que ce menu a déjà eu, à tort.
+            "cache_offert": self._qemu_cache_active(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée
@@ -2029,6 +2040,14 @@ class QemuDeployMixin:
             )
         )
 
+        # Posée seulement quand un cache tourne : ailleurs, la réponse ne
+        # changerait rien et la question ferait croire le contraire.
+        cache_bypass = False
+        if self._qemu_cache_active():
+            cache_bypass = self._is_yes(
+                input(t("Keep this VM out of the download cache? (y/N): "))
+            )
+
         # Ces trois réponses n'ont d'objet que si l'outil est coché : les
         # poser toujours ferait trois questions de plus à qui n'en veut pas.
         ai_agent, git_name, git_email = self._qemu_ask_ai_tools(vm_tools)
@@ -2096,6 +2115,7 @@ class QemuDeployMixin:
             # décochée (voir _qemu_run_spec).
             "monitor": monitor,
             "gpu3d": gpu3d,
+            "cache_bypass": cache_bypass,
             "ai_agent": ai_agent,
             "git_name": git_name,
             "git_email": git_email,

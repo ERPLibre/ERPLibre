@@ -13,12 +13,9 @@ import subprocess
 import time
 
 from script.todo import todo_install
-from script.todo.qemu_privilege import (
-    LIBVIRT_URI as URI,
-    sudo_prefix,
-    system_path,
-    virsh_argv,
-)
+from script.todo.qemu_cache_menu import bypass_menage
+from script.todo.qemu_privilege import LIBVIRT_URI as URI
+from script.todo.qemu_privilege import sudo_prefix, system_path, virsh_argv
 from script.todo.todo_i18n import t
 
 
@@ -2497,6 +2494,14 @@ class QemuManageMixin:
                 print(f"  ⚠ {name} : {t('no disk file found for this VM')}")
             print(f"\n▶ {name}: {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
+        # Une exception du cache survit à la VM qu'elle nommait, et une MAC
+        # libérée se réattribue : l'exception soustrairait alors au cache une
+        # machine neuve, sans que personne l'ait demandé et sans que rien ne le
+        # dise. Le ménage est fait ICI parce que c'est le seul endroit qui SAIT
+        # que la VM vient de disparaître.
+        retirees = bypass_menage(self.execute)
+        if retirees:
+            print(f"  {t('Cache exceptions removed:')} {retirees}")
         print(f"\n✅ {t('Deletion done.')}")
 
     @staticmethod

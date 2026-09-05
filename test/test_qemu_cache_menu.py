@@ -36,6 +36,7 @@ CLES = (
     "Cache - Install or reinstall",
     "Cache - Diagnose: does it serve?",
     "Cache - Service state",
+    "Cache - VMs kept out of the cache",
     "Cache - Guide: how it works",
     "Cache - Tests and performance report",
     "Install the download cache shared by the QEMU VMs of this host",
@@ -65,6 +66,15 @@ CLES = (
     "Service - Detailed state (status)",
     "Service - Logs (log)",
     "Access log, last requests:",
+    # Les exceptions par adresse MAC : une VM soustraite au détournement.
+    "VMs kept out of the download cache",
+    "Exceptions - Remove the stale ones",
+    "Exceptions - Remove one by its MAC",
+    "No exception: every VM goes through the cache.",
+    "MAC to give back to the cache",
+    "VM gone",
+    "Keep this VM out of the download cache",
+    "Keep this VM out of the download cache? (y/N): ",
 )
 
 CACHE_PY = RACINE / "script" / "todo" / "qemu_cache_menu.py"
@@ -180,10 +190,13 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 5)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 6)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
+
+    def test_le_menu_des_exceptions(self):
+        self.verifier("_cache_exceptions", "_cache_guide", 2)
 
     def test_letat_du_service_est_la_troisieme(self):
         """Sous le diagnostic, comme demandé : le décalage du guide et des
@@ -191,8 +204,9 @@ class TestSousMenusDuCache(unittest.TestCase):
         corps = corps_de("prompt_execute_qemu_cache", "_cache_systemctl")
         for numero, methode in (
             ("3", "_cache_service"),
-            ("4", "_cache_guide"),
-            ("5", "_cache_tests"),
+            ("4", "_cache_exceptions"),
+            ("5", "_cache_guide"),
+            ("6", "_cache_tests"),
         ):
             self.assertRegex(
                 corps,
@@ -281,7 +295,10 @@ class TestClesI18n(unittest.TestCase):
             "Cache - Install or reinstall": "📥",
             "Cache - Diagnose: does it serve?": "🔍",
             "Cache - Service state": "⚙",
+            "Cache - VMs kept out of the cache": "🎫",
             "Cache - Guide: how it works": "📖",
+            "Exceptions - Remove the stale ones": "🧹",
+            "Exceptions - Remove one by its MAC": "✂",
             "Service - Start (start)": "▶",
             "Service - Start at boot (enable)": "🔗",
             "Service - Do not start at boot (disable)": "🚫",

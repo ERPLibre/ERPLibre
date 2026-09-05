@@ -6,14 +6,14 @@
 
 Trois propriétés, chacune pour une panne :
 
-  1. la case n'est offerte que si l'hôte porte l'autorité du cache — une case
-     sans effet possible est une question à laquelle rien ne répond ;
-  2. le drapeau `--cache-ca` n'apparaît QUE si elle est cochée, et le chemin
-     est relu à chaque commande : désinstaller le cache entre deux
-     déploiements ne doit pas laisser une VM approuver une autorité disparue ;
+  1. la case n'est offerte que là où elle a un effet — une case qui ne change
+     rien apprend au lecteur une chose fausse ;
+  2. cochée, la commande porte « --cache-bypass » et JAMAIS l'autorité en
+     même temps : une VM exceptée ne rencontrera pas le cache, et cette
+     signature n'aurait rien à faire dans son magasin ;
   3. le chemin de l'autorité est le MÊME que celui où l'installateur la pose.
-     Les deux séparés, la case s'offrirait sans que la VM reçoive quoi que ce
-     soit — et rien ne le dirait.
+     Les deux séparés, la VM approuverait un fichier qui n'existe pas — et
+     rien ne le dirait.
 
 L'écran Proxmox n'a pas cette case, et c'est voulu : sa VM naît sur un hôte
 distant, que le cache local ne sert pas.
@@ -36,23 +36,46 @@ from script.todo.qemu_deploy import QemuDeployMixin  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 
-class TestPasDeCaseTrompeuse(unittest.TestCase):
-    """La case a été RETIRÉE, et c'est le correctif.
+class TestLaCaseNePrometQueCeQuElleTient(unittest.TestCase):
+    """Une case a existé qui ne tenait pas sa promesse, et c'est l'histoire
+    de celle-ci.
 
-    L'interception est transparente et couvre tout le pont : une VM ne peut
-    pas s'y soustraire. Décocher n'omettait que l'AUTORITÉ, si bien que la VM
-    était détournée quand même et échouait sur « self-signed certificate in
-    certificate chain » à chaque téléchargement HTTPS. Une case qui fabrique
-    une machine cassée vaut moins que pas de case du tout.
+    Décocher n'omettait que l'AUTORITÉ. L'interception étant transparente et
+    couvrant tout le pont, la VM était détournée quand même et échouait sur
+    « self-signed certificate in certificate chain » à chaque téléchargement
+    HTTPS : la case fabriquait une machine cassée.
+
+    La case revient parce qu'elle a désormais de quoi tenir : une exception
+    par adresse MAC, posée sur l'hôte avant la création. Ce qui se vérifie
+    ici, c'est donc le lien — cochée, la commande porte « --cache-bypass »,
+    et jamais l'autorité en même temps.
     """
 
-    def test_aucune_case_dans_les_deux_ecrans(self):
-        for ecran in (QEMU_FORM, PROXMOX_FORM):
-            self.assertNotIn(
-                "f_cache",
-                ecran.read_text(encoding="utf-8"),
-                f"{ecran.name} offre une case qui casserait la VM décochée",
-            )
+    def test_la_case_mene_a_lexception_et_non_au_seul_retrait(self):
+        src = QEMU_FORM.read_text(encoding="utf-8")
+        self.assertIn("f_cache_bypass", src, "la case a disparu du formulaire")
+        self.assertIn(
+            "cache_bypass",
+            QEMU_DEPLOY.read_text(encoding="utf-8"),
+            "la case ne mène à rien dans la commande",
+        )
+
+    def test_lecran_proxmox_ne_loffre_pas(self):
+        """Sa VM naît sur un hôte distant, que le cache local ne sert pas."""
+        self.assertNotIn(
+            "cache_bypass", PROXMOX_FORM.read_text(encoding="utf-8")
+        )
+
+    def test_la_case_nest_offerte_que_si_le_cache_tourne(self):
+        """Sans service actif rien n'intercepte : une case qui ne change rien
+        apprend au lecteur une chose fausse."""
+        src = QEMU_FORM.read_text(encoding="utf-8")
+        bloc = src[: src.index("f_cache_bypass")]
+        self.assertIn(
+            'defaults.get("cache_offert")',
+            bloc[-400:],
+            "la case s'affiche sans égard à l'état du cache",
+        )
 
     def test_lautorite_suit_le_service_et_non_une_case(self):
         src = QEMU_DEPLOY.read_text(encoding="utf-8")

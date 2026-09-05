@@ -1451,6 +1451,111 @@ TRANSLATIONS = {
         "fr": "Journal d'accès, dernières requêtes :",
         "en": "Access log, last requests:",
     },
+    "    Interception is transparent and covers the whole bridge:": {
+        "fr": "    Le détournement est transparent et vaut pour tout le pont :",
+        "en": "    Interception is transparent and covers the whole bridge:",
+    },
+    "    a VM cannot opt out from the inside. Omitting the authority": {
+        "fr": "    une VM ne peut pas s'y soustraire de l'intérieur. Retirer l'autorité",
+        "en": "    a VM cannot opt out from the inside. Omitting the authority",
+    },
+    "    does not bypass anything — the VM is redirected all the same": {
+        "fr": "    ne contourne rien — la VM est détournée quand même et échoue",
+        "en": "    does not bypass anything — the VM is redirected all the same",
+    },
+    "    and fails on « self-signed certificate in chain ».": {
+        "fr": "    sur « self-signed certificate in certificate chain ».",
+        "en": "    and fails on « self-signed certificate in chain ».",
+    },
+    "    For ONE VM: tick « keep this VM out of the cache » when": {
+        "fr": "    Pour UNE VM : cocher « soustraire cette VM au cache » au",
+        "en": "    For ONE VM: tick « keep this VM out of the cache » when",
+    },
+    "    deploying, or pass --cache-bypass. Its MAC address is fixed": {
+        "fr": "    déploiement, ou passer --cache-bypass. Son adresse MAC est fixée",
+        "en": "    deploying, or pass --cache-bypass. Its MAC address is fixed",
+    },
+    "    before creation and an exception is posted on the host, so": {
+        "fr": "    avant la création et une exception est posée sur l'hôte : plus",
+        "en": "    before creation and an exception is posted on the host, so",
+    },
+    "    nothing redirects it. Entry 4 lists them; an exception whose": {
+        "fr": "    rien ne la détourne. L'entrée 4 les liste ; une exception dont",
+        "en": "    nothing redirects it. Entry 4 lists them; an exception whose",
+    },
+    "    VM is gone must be removed, a freed MAC being reused.": {
+        "fr": "    la VM n'existe plus est à retirer, une MAC libérée se réattribuant.",
+        "en": "    VM is gone must be removed, a freed MAC being reused.",
+    },
+    "    For EVERY VM: stop the service, entry 3 or": {
+        "fr": "    Pour TOUTES les VM : arrêter le service, entrée 3 ou",
+        "en": "    For EVERY VM: stop the service, entry 3 or",
+    },
+    "Cache - VMs kept out of the cache": {
+        "fr": "🎫 Cache - Les VM soustraites au cache",
+        "en": "🎫 Cache - VMs kept out of the cache",
+    },
+    "Exceptions - Remove the stale ones": {
+        "fr": "🧹 Exceptions - Retirer celles dont la VM n'existe plus",
+        "en": "🧹 Exceptions - Remove the stale ones",
+    },
+    "Exceptions - Remove one by its MAC": {
+        "fr": "✂ Exceptions - En retirer une par sa MAC",
+        "en": "✂ Exceptions - Remove one by its MAC",
+    },
+    "VMs kept out of the download cache": {
+        "fr": "Les VM soustraites au cache de téléchargement",
+        "en": "VMs kept out of the download cache",
+    },
+    "VM gone": {
+        "fr": "VM disparue",
+        "en": "VM gone",
+    },
+    "No exception: every VM goes through the cache.": {
+        "fr": "Aucune exception : toutes les VM passent par le cache.",
+        "en": "No exception: every VM goes through the cache.",
+    },
+    "Tick the box when deploying to add one.": {
+        "fr": "Cocher la case au déploiement pour en poser une.",
+        "en": "Tick the box when deploying to add one.",
+    },
+    "A freed MAC gets reused: such an entry would": {
+        "fr": "Une MAC libérée se réattribue : une telle entrée soustrairait",
+        "en": "A freed MAC gets reused: such an entry would",
+    },
+    "quietly keep a NEW VM out of the cache.": {
+        "fr": "au cache une VM NEUVE, sans que rien ne le dise.",
+        "en": "quietly keep a NEW VM out of the cache.",
+    },
+    "Nothing is stale.": {
+        "fr": "Rien n'est orphelin.",
+        "en": "Nothing is stale.",
+    },
+    "MAC to give back to the cache": {
+        "fr": "MAC à rendre au cache",
+        "en": "MAC to give back to the cache",
+    },
+    "Keep this VM out of the download cache? (y/N): ": {
+        "fr": "Soustraire cette VM au cache de téléchargement ? (o/N) : ",
+        "en": "Keep this VM out of the download cache? (y/N): ",
+    },
+    "Keep this VM out of the download cache": {
+        "fr": "Soustraire cette VM au cache de téléchargement",
+        "en": "Keep this VM out of the download cache",
+    },
+    "Cache exceptions removed:": {
+        "fr": "Exceptions du cache retirées :",
+        "en": "Cache exceptions removed:",
+    },
+    "Exceptions:": {"fr": "Exceptions :", "en": "Exceptions:"},
+    "with no VM left": {
+        "fr": "sans VM",
+        "en": "with no VM left",
+    },
+    "Remove them from entry 4 of this menu.": {
+        "fr": "Les retirer depuis l'entrée 4 de ce menu.",
+        "en": "Remove them from entry 4 of this menu.",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

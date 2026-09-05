@@ -64,6 +64,7 @@ VERSION = "latest"
 
 CLI = os.path.join(RACINE, "script/qemu/deploy_qemu.py")
 CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
+CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
 SERVICE = "erplibre-go-qemu-cache.service"
 CONF = "/etc/erplibre_go_qemu_cache/env"
 SERVICE_USER = "elqcache"
@@ -399,19 +400,24 @@ def deployer(nom, journal, dry_run=False, avec_cache=True):
     ce que coûte une installation quand rien n'est gardé. Un gain ne veut rien
     dire sans lui.
 
-    Omettre l'autorité NE SUFFIT PAS à contourner le cache : l'interception
-    est transparente et vaut pour tout le pont. Une VM sans l'autorité est
-    quand même détournée, reçoit un certificat qu'elle ne reconnaît pas, et
-    échoue sur « self-signed certificate in certificate chain ». Le témoin
-    ARRÊTE donc le service — c'est le seul contournement vrai, les règles
-    partant avec lui.
+    Omettre l'autorité NE SUFFIT PAS : l'interception est transparente et vaut
+    pour tout le pont, si bien qu'une VM sans autorité est détournée quand
+    même et échoue sur « self-signed certificate in certificate chain ». Le
+    témoin demande donc « --cache-bypass », qui pose une exception par adresse
+    MAC sur l'hôte avant la création. Elle ne vise QUE cette VM : le cache
+    continue de servir les autres pendant la mesure, là où éteindre le service
+    couperait tout le monde.
     """
     cmd = (
         f"sudo python3 {shlex.quote(CLI)} --distro {DISTRO}"
         f" --version {VERSION} --name {nom}"
         f" --vcpus 2 --memory 4096 --disk-size 20G"
         f" --ssh-key {shlex.quote(cle_publique())}"
-        + (f" --cache-ca {shlex.quote(CA)}" if avec_cache else "")
+        + (
+            f" --cache-ca {shlex.quote(CA)}"
+            if avec_cache
+            else " --cache-bypass"
+        )
         + f" --password erplibre --assume-yes"
     )
     if dry_run:
@@ -709,7 +715,35 @@ def detruire(dry_run=False):
     # Une coupure oubliée par un test interrompu : la retirer fait partie du
     # ménage, et l'opération est sans effet si elle n'existe pas.
     rebrancher_lamont(journal, dry_run)
+    defaire_les_exceptions(sorted(machines), journal, dry_run)
     return 0
+
+
+def defaire_les_exceptions(noms, journal, dry_run=False):
+    """Rend au cache les VM que le témoin en avait soustraites.
+
+    Une adresse MAC libérée se réattribue : l'exception laissée derrière une
+    VM détruite soustrairait au cache une machine neuve que personne n'a
+    exceptée, et rien ne le dirait — la VM télécharge normalement, le journal
+    du cache reste simplement muet à son sujet.
+    """
+    code, sortie = executer(f"sudo -n {CACHE_BIN} --bypass-list", 30, journal)
+    if code:
+        return
+    for ligne in (sortie or "").split("\n"):
+        champs = ligne.split(None, 1)
+        if len(champs) < 2 or champs[1].strip() not in noms:
+            continue
+        mac = champs[0]
+        if dry_run:
+            dire(f"  [à blanc] exception retirée : {mac}", journal)
+            continue
+        executer(
+            f"sudo -n {CACHE_BIN} --bypass-del {mac} | sudo -n nft -f -",
+            30,
+            journal,
+        )
+        dire(f"  exception retirée : {mac}", journal)
 
 
 # --------------------------------------------------------------------------
@@ -771,27 +805,7 @@ def main(argv=None):
     if acces and os.path.exists(acces):
         decalage = os.path.getsize(acces)
 
-    if args.sans_cache and not args.dry_run:
-        # Le seul contournement vrai : sans service, pas de règles, donc pas
-        # d'interception. Le « finally » plus bas le rallume quoi qu'il
-        # arrive : un cache laissé éteint se découvrirait au déploiement
-        # suivant, et pas ici.
-        dire("", journal)
-        dire("  ── Témoin : le service du cache est arrêté ──", journal)
-        code, _ = executer(f"sudo -n systemctl stop {SERVICE}", 60, journal)
-        if code:
-            dire(
-                "  ✗ le service n'a pas pu être arrêté : témoin impossible",
-                journal,
-            )
-            return 1
-
-    try:
-        return _boucle(args, rapport, journal, acces, decalage)
-    finally:
-        if args.sans_cache and not args.dry_run:
-            executer(f"sudo -n systemctl start {SERVICE}", 60, journal)
-            dire("  cache rallumé", journal)
+    return _boucle(args, rapport, journal, acces, decalage)
 
 
 def _boucle(args, rapport, journal, acces, decalage):

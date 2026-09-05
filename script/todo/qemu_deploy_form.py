@@ -360,6 +360,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("gpu3d", False),
                         id="f_gpu3d",
                     )
+                    # Offerte seulement là où elle a un effet : sans cache
+                    # actif, rien n'intercepte, et une case qui ne change
+                    # rien apprend au lecteur une chose fausse.
+                    if defaults.get("cache_offert"):
+                        yield Checkbox(
+                            t("Keep this VM out of the download cache"),
+                            value=defaults.get("cache_bypass", False),
+                            id="f_cache_bypass",
+                        )
                     # Révélés par la case « AI coding tools » du bloc des
                     # outils : sans elle, ni l'agent ni l'identité git n'ont
                     # d'objet, et trois widgets de plus encombrent un écran
@@ -978,6 +987,13 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
                 "monitor": self.query_one("#f_monitor", Checkbox).value,
                 "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
+                # La case n'existe que si le cache tourne : la chercher
+                # toujours ferait lever le formulaire là où il n'y a pas de
+                # cache, c'est-à-dire sur la plupart des hôtes.
+                "cache_bypass": bool(
+                    self.query("#f_cache_bypass")  # type: ignore[union-attr]
+                    and self.query_one("#f_cache_bypass", Checkbox).value
+                ),
                 "ai_agent": self.query_one("#f_ai_agent", Select).value,
                 "git_name": self.query_one("#f_git_name", Input).value.strip(),
                 "git_email": self.query_one(
