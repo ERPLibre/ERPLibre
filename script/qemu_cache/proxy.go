@@ -208,6 +208,17 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	}
 
 	resp, upErr := p.fetch(r, u)
+	// Une redirection est SUIVIE quand le nom du fichier demandé porte déjà
+	// son identité, et le contenu est gardé sous l'URL DEMANDÉE.
+	//
+	// Sans cela, un paquet publié derrière une redirection n'entre jamais au
+	// cache : la cible est une URL SIGNÉE qui change à chaque requête, si bien
+	// que la machine suivante ne retrouve rien et retélécharge. Rendre la
+	// redirection au client suppose une cible stable, ce qu'une signature à
+	// péremption n'est pas.
+	if upErr == nil && class == ClassImmutable && r.Method == "GET" {
+		resp = p.suivreRedirections(r, resp)
+	}
 	if upErr != nil {
 		// L'amont est injoignable : DNS muet, connexion refusée, délai
 		// dépassé. C'est ici, et seulement ici, qu'une copie périmée sort —
@@ -335,6 +346,39 @@ func (p *Proxy) offlineMiss(
 		Outcome: OutcomeOfflineMiss, Status: http.StatusGatewayTimeout,
 	})
 	log.Printf("hors ligne, absent du cache : %s", u)
+}
+
+// maxRedirections borne la chaîne : une boucle de redirections tournerait
+// jusqu'à épuiser la mémoire, et aucune publication légitime n'en enchaîne
+// autant.
+const maxRedirections = 5
+
+// suivreRedirections rend la réponse FINALE d'une chaîne de redirections, ou
+// la dernière obtenue si quelque chose s'y oppose.
+//
+// Le corps de chaque étape est refermé : une redirection en porte un, court,
+// que personne ne lira. Une erreur en route rend l'étape courante plutôt que
+// rien : le client verra la redirection et se débrouillera, ce qui est le
+// comportement d'avant.
+func (p *Proxy) suivreRedirections(
+	r *http.Request, resp *http.Response,
+) *http.Response {
+	for i := 0; i < maxRedirections; i++ {
+		if resp.StatusCode < 300 || resp.StatusCode > 399 {
+			return resp
+		}
+		cible, err := resp.Location()
+		if err != nil || cible == nil {
+			return resp
+		}
+		suivante, err := p.fetch(r, cible)
+		if err != nil {
+			return resp
+		}
+		resp.Body.Close()
+		resp = suivante
+	}
+	return resp
 }
 
 func (p *Proxy) fetch(r *http.Request, u *url.URL) (*http.Response, error) {

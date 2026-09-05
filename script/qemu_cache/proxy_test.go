@@ -267,3 +267,93 @@ func TestLeClientPatientLestUniquementSurLesEnTetes(t *testing.T) {
 		t.Error("le délai de poignée de main ne doit pas changer")
 	}
 }
+
+// Un paquet publié derrière une redirection vers une URL SIGNÉE.
+//
+// La cible change à chaque requête — c'est ce que fait une signature à
+// péremption. Rendre la redirection au client, en comptant qu'il la
+// redemandera au travers du cache, suppose une cible stable : ici la machine
+// suivante ne retrouve rien et retélécharge le paquet en entier.
+func TestPaquetDerriereUneRedirectionSignee(t *testing.T) {
+	var telechargements, signature int64
+	contenu := strings.Repeat("charge utile", 64)
+
+	stockage := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt64(&telechargements, 1)
+			io.WriteString(w, contenu)
+		}))
+	t.Cleanup(stockage.Close)
+
+	publication := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			n := atomic.AddInt64(&signature, 1)
+			http.Redirect(w, r,
+				stockage.URL+"/objet?signature="+string(rune('a'+n)),
+				http.StatusFound)
+		}))
+	t.Cleanup(publication.Close)
+
+	u, _ := url.Parse(publication.URL)
+	p := proxyDeTest(t)
+	chemin := "/paquets/releases/download/1.0/outil_1.0_amd64.deb"
+
+	for i := 1; i <= 3; i++ {
+		w := demande(t, p, u.Host, chemin)
+		if w.Code != 200 {
+			t.Fatalf("requête %d : code %d, attendu 200", i, w.Code)
+		}
+		if w.Body.String() != contenu {
+			t.Fatalf("requête %d : corps de %d octets", i, w.Body.Len())
+		}
+	}
+	if n := atomic.LoadInt64(&telechargements); n != 1 {
+		t.Errorf("le paquet est descendu %d fois, attendu 1 :"+
+			" la redirection empêche le cache de servir", n)
+	}
+}
+
+// Un index, lui, garde l'ancien comportement : la redirection lui est rendue,
+// et il la redemandera. Rien n'est gardé d'un index tant que l'amont répond,
+// donc suivre la chaîne n'apporterait rien et masquerait au client l'hôte qui
+// lui a réellement répondu.
+func TestUnIndexRecoitSaRedirection(t *testing.T) {
+	cible := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			io.WriteString(w, "base")
+		}))
+	t.Cleanup(cible.Close)
+	publication := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, cible.URL+"/vraie.db", http.StatusFound)
+		}))
+	t.Cleanup(publication.Close)
+
+	u, _ := url.Parse(publication.URL)
+	w := demande(t, proxyDeTest(t), u.Host, "/arch/core/os/x86_64/core.db")
+	if w.Code != http.StatusFound {
+		t.Errorf("code %d, attendu 302 : la redirection a été suivie", w.Code)
+	}
+}
+
+// Une boucle de redirections doit rendre la main plutôt que tourner.
+func TestUneBoucleDeRedirectionsSarrete(t *testing.T) {
+	var vues int64
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt64(&vues, 1)
+			http.Redirect(w, r, srv.URL+"/tourne.deb", http.StatusFound)
+		}))
+	t.Cleanup(srv.Close)
+
+	u, _ := url.Parse(srv.URL)
+	w := demande(t, proxyDeTest(t), u.Host, "/tourne.deb")
+	if w.Code != http.StatusFound {
+		t.Errorf("code %d, attendu 302 au bout de la chaîne", w.Code)
+	}
+	if n := atomic.LoadInt64(&vues); n > maxRedirections+1 {
+		t.Errorf("%d requêtes pour une boucle, borne %d",
+			n, maxRedirections+1)
+	}
+}
