@@ -1389,9 +1389,205 @@ TRANSLATIONS = {
         "en": "NTFY install script not found: ",
     },
     # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
-    "QEMU cache - Install the download mirror for local VMs": {
-        "fr": "📦 Cache QEMU - Installer le miroir de téléchargement des VM locales",
-        "en": "📦 QEMU cache - Install the download mirror for local VMs",
+    "QEMU cache - Download mirror for local VMs": {
+        "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
+        "en": "📦 QEMU cache - Download mirror for local VMs",
+    },
+    "QEMU download cache for local VMs": {
+        "fr": "Cache de téléchargement QEMU pour les VM locales",
+        "en": "QEMU download cache for local VMs",
+    },
+    "Cache - Install or reinstall": {
+        "fr": "📥 Cache - Installer ou réinstaller",
+        "en": "📥 Cache - Install or reinstall",
+    },
+    "Cache - Diagnose: does it serve?": {
+        "fr": "🔍 Cache - Diagnostic : sert-il vraiment ?",
+        "en": "🔍 Cache - Diagnose: does it serve?",
+    },
+    "Cache - Guide: how it works": {
+        "fr": "📖 Cache - Guide : comment il fonctionne",
+        "en": "📖 Cache - Guide: how it works",
+    },
+    "Cache - Tests and performance report": {
+        "fr": "🧪 Cache - Tests et rapport de performance",
+        "en": "🧪 Cache - Tests and performance report",
+    },
+    "Diagnosis of the QEMU download cache": {
+        "fr": "Diagnostic du cache de téléchargement QEMU",
+        "en": "Diagnosis of the QEMU download cache",
+    },
+    "Service:": {"fr": "Service :", "en": "Service:"},
+    "Service is running": {"fr": "actif", "en": "running"},
+    "Service is stopped": {"fr": "arrêté", "en": "stopped"},
+    "Not installed:": {"fr": "Non installé :", "en": "Not installed:"},
+    "Install it from entry 1 of this menu.": {
+        "fr": "L'installer depuis l'entrée 1 de ce menu.",
+        "en": "Install it from entry 1 of this menu.",
+    },
+    "Redirection:": {"fr": "Détournement :", "en": "Redirection:"},
+    "the cache": {"fr": "le cache", "en": "the cache"},
+    "No redirection rule is posted": {
+        "fr": "Aucune règle de détournement n'est posée",
+        "en": "No redirection rule is posted",
+    },
+    "MISMATCH — rules on": {
+        "fr": "DÉSACCORD — règles sur",
+        "en": "MISMATCH — rules on",
+    },
+    "libvirt serves": {"fr": "libvirt sert", "en": "libvirt serves"},
+    "Reinstall: the cache reads libvirt by itself.": {
+        "fr": "Réinstaller : le cache lit libvirt tout seul.",
+        "en": "Reinstall: the cache reads libvirt by itself.",
+    },
+    "Authority:": {"fr": "Autorité :", "en": "Authority:"},
+    "What the cache has done:": {
+        "fr": "Ce que le cache a fait :",
+        "en": "What the cache has done:",
+    },
+    "The access log is empty: nothing has gone through the cache.": {
+        "fr": "Le journal d'accès est vide : rien n'a traversé le cache.",
+        "en": "The access log is empty: nothing has gone through the cache.",
+    },
+    "A VM that installs while this stays at zero does not use it.": {
+        "fr": "Une VM qui installe pendant que cela reste à zéro ne l'utilise pas.",
+        "en": "A VM that installs while this stays at zero does not use it.",
+    },
+    "How the QEMU download cache works": {
+        "fr": "Comment fonctionne le cache de téléchargement QEMU",
+        "en": "How the QEMU download cache works",
+    },
+    "  Two VMs of the same distribution pull the same packages.": {
+        "fr": "  Deux VM de la même distribution tirent les mêmes paquets.",
+        "en": "  Two VMs of the same distribution pull the same packages.",
+    },
+    "  The cache keeps what comes down and serves the copy to the next.": {
+        "fr": "  Le cache garde ce qui descend et sert la copie à la suivante.",
+        "en": "  The cache keeps what comes down and serves the copy to the next.",
+    },
+    "What is served from disk": {
+        "fr": "Ce qui est servi du disque",
+        "en": "What is served from disk",
+    },
+    "    A package file: its name carries its version, so it never changes.": {
+        "fr": "    Un fichier de paquet : son nom porte sa version, il ne change jamais.",
+        "en": "    A package file: its name carries its version, so it never changes.",
+    },
+    "    The host name is ignored: a rotating mirror list still hits.": {
+        "fr": "    Le nom d'hôte est ignoré : une liste de miroirs qui tourne sert quand même.",
+        "en": "    The host name is ignored: a rotating mirror list still hits.",
+    },
+    "What is always taken from upstream": {
+        "fr": "Ce qui est toujours repris à l'amont",
+        "en": "What is always taken from upstream",
+    },
+    "    A repository index: it names the versions that exist right now.": {
+        "fr": "    Un index de dépôt : il nomme les versions qui existent en ce moment.",
+        "en": "    A repository index: it names the versions that exist right now.",
+    },
+    "    Serving a stale one makes an install fail on a withdrawn package.": {
+        "fr": "    En servir un périmé fait échouer une installation sur un paquet retiré.",
+        "en": "    Serving a stale one makes an install fail on a withdrawn package.",
+    },
+    "    It is stored anyway, and only comes back out when upstream is mute.": {
+        "fr": "    Il est stocké quand même, et ne ressort que si l'amont est muet.",
+        "en": "    It is stored anyway, and only comes back out when upstream is mute.",
+    },
+    "Where things live": {
+        "fr": "Où vivent les choses",
+        "en": "Where things live",
+    },
+    "Objects:": {"fr": "Objets :", "en": "Objects:"},
+    "Settings:": {"fr": "Réglages :", "en": "Settings:"},
+    "Access log:": {"fr": "Journal d'accès :", "en": "Access log:"},
+    "No eviction is written": {
+        "fr": "Aucune éviction n'est écrite",
+        "en": "No eviction is written",
+    },
+    "    This cache never shrinks by itself, and it lives on the": {
+        "fr": "    Ce cache ne diminue jamais de lui-même, et il vit sur le",
+        "en": "    This cache never shrinks by itself, and it lives on the",
+    },
+    "    orchestrator's disk. Watch it with the diagnosis entry.": {
+        "fr": "    disque de l'orchestrateur. Le surveiller par le diagnostic.",
+        "en": "    orchestrator's disk. Watch it with the diagnosis entry.",
+    },
+    "Turning it off for one VM": {
+        "fr": "Le désactiver pour une VM",
+        "en": "Turning it off for one VM",
+    },
+    "    The deployment form carries a checkbox, offered only where the": {
+        "fr": "    Le formulaire de déploiement porte une case, offerte seulement si",
+        "en": "    The deployment form carries a checkbox, offered only where the",
+    },
+    "    host holds the authority. Unticked, the VM downloads directly.": {
+        "fr": "    l'hôte porte l'autorité. Décochée, la VM télécharge en direct.",
+        "en": "    host holds the authority. Unticked, the VM downloads directly.",
+    },
+    "    On the command line, drop --cache-ca from deploy_qemu.py.": {
+        "fr": "    En ligne de commande, retirer --cache-ca de deploy_qemu.py.",
+        "en": "    On the command line, drop --cache-ca from deploy_qemu.py.",
+    },
+    "    To stop it for every VM: systemctl stop": {
+        "fr": "    Pour l'arrêter pour toutes les VM : systemctl stop",
+        "en": "    To stop it for every VM: systemctl stop",
+    },
+    "    The rules leave with the service, so no VM stays redirected.": {
+        "fr": "    Les règles partent avec le service : aucune VM ne reste détournée.",
+        "en": "    The rules leave with the service, so no VM stays redirected.",
+    },
+    "Proxmox": {"fr": "Proxmox", "en": "Proxmox"},
+    "    A Proxmox VM is born on a REMOTE host: its traffic never": {
+        "fr": "    Une VM Proxmox naît sur un hôte DISTANT : son trafic ne traverse",
+        "en": "    A Proxmox VM is born on a REMOTE host: its traffic never",
+    },
+    "    crosses this bridge, so this cache cannot serve it. Install the": {
+        "fr": "    jamais ce pont, donc ce cache ne peut pas la servir. Installer le",
+        "en": "    crosses this bridge, so this cache cannot serve it. Install the",
+    },
+    "    cache ON that host instead — the script is generic, and Proxmox": {
+        "fr": "    cache SUR cet hôte-là — le script est générique, et Proxmox",
+        "en": "    cache ON that host instead — the script is generic, and Proxmox",
+    },
+    "    is a Debian. Reserve: a bridge switched onto the LAN is only": {
+        "fr": "    est un Debian. Réserve : un pont commuté sur le LAN n'est vu",
+        "en": "    is a Debian. Reserve: a bridge switched onto the LAN is only",
+    },
+    "    seen by the rules when br_netfilter is enabled.": {
+        "fr": "    par les règles que si br_netfilter est actif.",
+        "en": "    seen by the rules when br_netfilter is enabled.",
+    },
+    "Cache tests: real VMs, several minutes": {
+        "fr": "Tests du cache : de vraies VM, quelques minutes",
+        "en": "Cache tests: real VMs, several minutes",
+    },
+    "Test - The plan only (dry-run)": {
+        "fr": "📋 Test - Le plan seul (à blanc)",
+        "en": "📋 Test - The plan only (dry-run)",
+    },
+    "Test - Two VMs, measure the gain": {
+        "fr": "📊 Test - Deux VM, mesurer le gain",
+        "en": "📊 Test - Two VMs, measure the gain",
+    },
+    "Test - Add the offline counter-proof": {
+        "fr": "🔌 Test - Ajouter la contre-épreuve hors ligne",
+        "en": "🔌 Test - Add the offline counter-proof",
+    },
+    "Test - Control run: two VMs WITHOUT the cache": {
+        "fr": "⚖ Test - Témoin : deux VM SANS le cache",
+        "en": "⚖ Test - Control run: two VMs WITHOUT the cache",
+    },
+    "Test - Performance report": {
+        "fr": "📈 Test - Rapport de performance",
+        "en": "📈 Test - Performance report",
+    },
+    "Test - Undo the machines created": {
+        "fr": "🧹 Test - Défaire les machines créées",
+        "en": "🧹 Test - Undo the machines created",
+    },
+    "The control run measures what NOT caching costs.": {
+        "fr": "Le témoin mesure ce que coûte l'ABSENCE de cache.",
+        "en": "The control run measures what NOT caching costs.",
     },
     "Install the download cache shared by the QEMU VMs of this host": {
         "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",

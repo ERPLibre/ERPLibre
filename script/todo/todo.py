@@ -32,6 +32,7 @@ from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
+from script.todo.qemu_cache_menu import QemuCacheMenuMixin
 from script.todo.qemu_deploy import QemuDeployMixin
 from script.todo.qemu_install import QemuInstallMixin
 from script.todo.qemu_manage import QemuManageMixin
@@ -94,6 +95,7 @@ class TODO(
     # L'ordre est celui de la lecture, pas de la résolution : aucun nom n'est
     # défini deux fois (une classe unique jusqu'ici), donc aucune priorité à
     # arbitrer. Chaque fichier porte un sujet, et son en-tête dit sa frontière.
+    QemuCacheMenuMixin,
     QemuMenuMixin,
     QemuDeployMixin,
     QemuInstallMixin,
@@ -977,7 +979,7 @@ class TODO(
             },
             {
                 "prompt_description": t(
-                    "QEMU cache - Install the download mirror for local VMs"
+                    "QEMU cache - Download mirror for local VMs"
                 )
             },
             {"section": t("VPN & tunnels")},
@@ -1009,7 +1011,7 @@ class TODO(
             elif status == "7":
                 self._deploy_ntfy_server()
             elif status == "8":
-                self._deploy_qemu_cache()
+                self.prompt_execute_qemu_cache()
             elif status == "9":
                 self.prompt_execute_vpn()
             else:

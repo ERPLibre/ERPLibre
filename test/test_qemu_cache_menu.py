@@ -30,7 +30,12 @@ import todo_i18n  # noqa: E402
 # Les clés que l'entrée emploie. Les tenir ICI, et non les relire du code,
 # fait échouer le test quand une clé disparaît du dictionnaire.
 CLES = (
-    "QEMU cache - Install the download mirror for local VMs",
+    "QEMU cache - Download mirror for local VMs",
+    "QEMU download cache for local VMs",
+    "Cache - Install or reinstall",
+    "Cache - Diagnose: does it serve?",
+    "Cache - Guide: how it works",
+    "Cache - Tests and performance report",
     "Install the download cache shared by the QEMU VMs of this host",
     "HTTP port of the cache (default: 8898): ",
     "TLS port of the cache (default: 8899): ",
@@ -63,7 +68,7 @@ class TestEntreeDuCache(unittest.TestCase):
 
     def test_entree_affichee(self):
         self.assertIn(
-            "QEMU cache - Install the download mirror for local VMs",
+            "QEMU cache - Download mirror for local VMs",
             self.corps,
             "l'entrée du cache ne s'affiche pas dans le menu Déploiement",
         )
@@ -71,8 +76,8 @@ class TestEntreeDuCache(unittest.TestCase):
     def test_entree_dispatchee(self):
         self.assertRegex(
             self.corps,
-            r'elif status == "8":\s*\n\s*self\._deploy_qemu_cache\(\)',
-            "l'entrée 8 ne mène pas à _deploy_qemu_cache",
+            r'elif status == "8":\s*\n\s*self\.prompt_execute_qemu_cache\(\)',
+            "l'entrée 8 ne mène pas au sous-menu du cache",
         )
 
     def test_vpn_decale_en_neuf(self):
@@ -143,17 +148,24 @@ class TestClesI18n(unittest.TestCase):
             sans_traduction, [], f"non traduites : {sans_traduction}"
         )
 
-    def test_icone_de_lentree(self):
+    def test_icones_des_entrees(self):
         """L'icône vit DANS la chaîne traduite, comme partout ailleurs dans le
         menu : les deux langues doivent donc la porter."""
-        entree = todo_i18n.TRANSLATIONS[
-            "QEMU cache - Install the download mirror for local VMs"
-        ]
-        for langue in ("fr", "en"):
-            self.assertTrue(
-                entree[langue].startswith("📦"),
-                f"le {langue} ne porte pas l'icône : {entree[langue]}",
-            )
+        attendues = {
+            "QEMU cache - Download mirror for local VMs": "📦",
+            "Cache - Install or reinstall": "📥",
+            "Cache - Diagnose: does it serve?": "🔍",
+            "Cache - Guide: how it works": "📖",
+            "Cache - Tests and performance report": "🧪",
+        }
+        for cle, icone in attendues.items():
+            entree = todo_i18n.TRANSLATIONS[cle]
+            for langue in ("fr", "en"):
+                self.assertTrue(
+                    entree[langue].startswith(icone),
+                    f"« {cle} » en {langue} ne porte pas {icone} :"
+                    f" {entree[langue]}",
+                )
 
     def test_aucune_cle_en_double(self):
         """Une clé en double écrase silencieusement la précédente."""
