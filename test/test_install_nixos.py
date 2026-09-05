@@ -138,12 +138,48 @@ class LeModule(unittest.TestCase):
             with self.subTest(marque=marque):
                 self.assertIn(marque, script)
 
+    def test_what_npm_cannot_install_is_declared_instead(self):
+        """Les quatre autres scripts posent lessc et rtlcss par « npm install
+        -g ». Ici le préfixe npm EST le store, en lecture seule : le geste
+        échoue. nixpkgs porte les deux, et une déclaration ne s'installe
+        pas — elle tient."""
+        self.assertIn("nodePackages.less", self.src)
+        self.assertIn("nodePackages.rtlcss", self.src)
+        self.assertNotIn("npm install -g", self.src)
+
+    def test_the_pager_and_the_less_compiler_are_two_things(self):
+        """« less » le paginateur et « less » le compilateur LESS portent le
+        même nom et ne se remplacent pas : les deux sont déclarés."""
+        lignes = [x.strip() for x in self.src.splitlines()]
+        self.assertIn("less", lignes)
+        self.assertIn("nodePackages.less", lignes)
+
+    def test_postgis_is_a_server_plugin_not_a_package(self):
+        """Déclarée hors du serveur, l'extension ne serait pas chargeable par
+        « CREATE EXTENSION »."""
+        self.assertIn("extensions = ps:", self.src)
+        self.assertIn("postgis", self.src)
+
     def test_a_compiler_outside_a_nix_shell_finds_the_headers(self):
         """Sans ces variables, ce qui n'a pas de roue amont ne se compile pas :
         gcc ne cherche ni en-têtes ni bibliothèques dans le profil système."""
         for var in ("CPATH", "LIBRARY_PATH", "PKG_CONFIG_PATH"):
             with self.subTest(var=var):
                 self.assertIn(var, self.src)
+
+    def test_the_variables_reach_a_non_interactive_ssh(self):
+        """« environment.variables » n'écrit que dans /etc/set-environment,
+        que seul un shell de CONNEXION lit. Le déploiement, lui, installe par
+        « ssh hôte 'commande' » : la variable y serait vide."""
+        self.assertIn("environment.sessionVariables", self.src)
+        self.assertNotIn("environment.variables", self.src)
+
+    def test_the_headers_are_linked_into_the_profile(self):
+        """Le profil ne porte pas « /include » par défaut : sans cette ligne,
+        déclarer une sortie « .dev » ne met les en-têtes nulle part, et
+        « fatal error: lber.h » reste entier."""
+        self.assertIn("environment.pathsToLink", self.src)
+        self.assertIn('"/include"', self.src)
 
 
 if __name__ == "__main__":

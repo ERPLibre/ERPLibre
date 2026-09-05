@@ -56,6 +56,8 @@
     readline
     sqlite
     util-linux
+    openldap
+    cyrus_sasl
   ];
 
   # ── La base de données ───────────────────────────────────────────────────
@@ -64,6 +66,10 @@
   # qu'un rôle ordinaire ne peut pas faire.
   services.postgresql = {
     enable = true;
+    # PostGIS comme les quatre autres scripts de distribution le posent. Ici
+    # c'est une extension DU SERVEUR, pas un paquet du système : déclarée
+    # ailleurs, elle ne serait pas chargeable par « CREATE EXTENSION ».
+    extensions = ps: with ps; [ postgis ];
     ensureUsers = [
       {
         name = "@EL_USER@";
@@ -104,18 +110,40 @@
     libxslt.dev
     libffi
     libffi.dev
+    # python-ldap n'a PAS de roue amont : il compile, et réclame lber.h
+    # (openldap) plus sasl.h. Sans ces sorties « .dev », « poetry install »
+    # s'arrête sur « fatal error: lber.h: No such file or directory ».
+    openldap
+    openldap.dev
+    cyrus_sasl
+    cyrus_sasl.dev
+    # « less » est le PAGINATEUR ; « nodePackages.less » est lessc, le
+    # compilateur LESS des assets Odoo. Les quatre autres scripts les posent
+    # tous deux, l'un par le gestionnaire du système et l'autre par « npm
+    # install -g » — geste impossible ici, le préfixe npm étant le store, en
+    # lecture seule. nixpkgs les porte : ils se déclarent comme le reste.
     less
+    nodePackages.less
+    nodePackages.rtlcss
+    sshpass
     curl
     wget
     unzip
     wkhtmltopdf
   ];
 
-  # Un compilateur lancé hors d'un nix-shell ne cherche les en-têtes ni les
-  # bibliothèques dans le profil du système : ces trois variables les lui
-  # donnent, et c'est ce qui permet à « poetry install » de bâtir ce qui n'a
-  # pas de roue.
-  environment.variables = {
+  # Le profil du système ne porte PAS « /include » : la liste par défaut de
+  # ce qui y est lié ne contient ni les en-têtes ni les fichiers pkg-config.
+  # Sans cette ligne, déclarer une sortie « .dev » ne met rien nulle part, et
+  # « fatal error: lber.h: No such file or directory » reste entier.
+  environment.pathsToLink = [ "/include" "/lib/pkgconfig" ];
+
+  # « sessionVariables » et NON « variables » : la seconde n'écrit que dans
+  # /etc/set-environment, que seul un shell de CONNEXION lit. Or le
+  # déploiement installe par « ssh hôte 'commande' », qui n'en est pas un —
+  # la variable y serait vide. sessionVariables passe par pam_env, que toute
+  # session traverse, y compris celle-là.
+  environment.sessionVariables = {
     CPATH = "/run/current-system/sw/include";
     LIBRARY_PATH = "/run/current-system/sw/lib";
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";

@@ -60,7 +60,19 @@ fi
 echo -e "\n---- nixos-rebuild switch ----"
 # La reconstruction télécharge et bâtit : elle est LONGUE au premier passage,
 # et c'est elle qui pose PostgreSQL, node, le compilateur, nix-ld et envfs.
-sudo nixos-rebuild switch
+#
+# Son code de retour n'est PAS le verdict. « switch-to-configuration » rend 4
+# quand une unité n'a pas pu redémarrer, alors que le système est bel et bien
+# activé : sur une VM cloud-init, cloud-config est un service à un coup, et
+# toute reconstruction ultérieure le trouve mort. Prendre ce 4 pour un échec
+# ferait échouer chaque redéploiement d'une machine déjà installée. C'est la
+# vérification ci-dessous qui tranche, sur l'état du système.
+if sudo nixos-rebuild switch; then
+  echo "  reconstruction appliquée"
+else
+  echo "  ⚠ nixos-rebuild rend $? : une unité n'a pas redémarré."
+  echo "    Le système peut être activé quand même — vérification ci-dessous."
+fi
 
 echo -e "\n---- Vérification ----"
 manque=0
