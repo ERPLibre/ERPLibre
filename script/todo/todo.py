@@ -2387,130 +2387,79 @@ class TODO(
                     parts.append(f"{cle}={shlex.quote(str(valeur))}")
         return " ".join(parts)
 
-    def _deploy_ssh_check(self):
+    def _deploy_ssh_verb(self, cible_make, demander=None):
+        """Joue un verbe de déploiement sur l'hôte, et dit ce qu'il lance.
+
+        Les onze verbes ne diffèrent que par leur cible « make » et, pour
+        deux d'entre eux, par une question de plus. Onze copies du même corps
+        se corrigent une par une, et la onzième s'oublie : la citation des
+        valeurs, l'annonce avant exécution et la garde sur l'abandon vivent
+        donc à un seul endroit.
+
+        `demander` est posée APRÈS la connexion, dans l'ordre où l'écran les
+        enchaîne. Elle rend les variables de plus, ou None pour renoncer.
+        """
         params = self._get_ssh_params()
         if not params:
             return
-        cmd = self._build_ssh_make_cmd("ssh_check", params)
+        extra = {}
+        if demander is not None:
+            extra = demander()
+            if extra is None:
+                return
+        cmd = self._build_ssh_make_cmd(cible_make, params, extra=extra)
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(
             cmd, source_erplibre=False, single_source_erplibre=True
         )
+
+    def _deploy_ssh_check(self):
+        self._deploy_ssh_verb("ssh_check")
 
     def _deploy_ssh_push(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_push", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_push")
 
     def _deploy_ssh_install(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_install", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_install")
 
     def _deploy_ssh_run(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_run", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_run")
 
     def _deploy_ssh_stop(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_stop", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_stop")
 
     def _deploy_ssh_restart(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_restart", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_restart")
 
     def _deploy_ssh_status(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_status", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_status")
 
     def _deploy_ssh_logs(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_logs", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_logs")
 
     def _deploy_ssh_make(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        target = click.prompt(t("Make target to run remotely: ")).strip()
-        if not target:
+        self._deploy_ssh_verb("ssh_make", demander=self._ask_make_target)
+
+    def _ask_make_target(self):
+        cible = click.prompt(t("Make target to run remotely: ")).strip()
+        if not cible:
             print(t("SSH host is required!"))
-            return
-        cmd = self._build_ssh_make_cmd(
-            "ssh_make", params, extra={"SSH_TARGET": target}
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+            return None
+        return {"SSH_TARGET": cible}
 
     def _deploy_ssh_install_systemd(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_install_systemd", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_install_systemd")
 
     def _deploy_ssh_install_nginx(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
+        self._deploy_ssh_verb("ssh_install_nginx", demander=self._ask_domain)
+
+    def _ask_domain(self):
         domain = click.prompt(t("Domain name (e.g.: example.com): ")).strip()
         if not domain:
             print(t("SSH host is required!"))
-            return
+            return None
         email = click.prompt(t("Admin email for SSL certificate: ")).strip()
-        cmd = self._build_ssh_make_cmd(
-            "ssh_install_nginx",
-            params,
-            extra={"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email},
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        return {"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email}
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")

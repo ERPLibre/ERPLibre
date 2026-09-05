@@ -17,6 +17,7 @@ import shlex
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
@@ -99,6 +100,124 @@ class TestCeQuiEntreDansLaLigne(unittest.TestCase):
     def test_the_target_leads_the_line(self):
         commande = construire(None, "ssh_logs", {"SSH_HOST": "m.example"})
         self.assertTrue(commande.startswith("make ssh_logs "), commande)
+
+
+# Chaque verbe et la cible « make » qu'il doit atteindre. La liste est le
+# contrat : un verbe qui se tromperait de cible redémarrerait Odoo là où on
+# demandait un journal, et rien d'autre ne le dirait.
+VERBES = {
+    "_deploy_ssh_check": "ssh_check",
+    "_deploy_ssh_push": "ssh_push",
+    "_deploy_ssh_install": "ssh_install",
+    "_deploy_ssh_run": "ssh_run",
+    "_deploy_ssh_stop": "ssh_stop",
+    "_deploy_ssh_restart": "ssh_restart",
+    "_deploy_ssh_status": "ssh_status",
+    "_deploy_ssh_logs": "ssh_logs",
+    "_deploy_ssh_make": "ssh_make",
+    "_deploy_ssh_install_systemd": "ssh_install_systemd",
+    "_deploy_ssh_install_nginx": "ssh_install_nginx",
+}
+
+CONNEXION = {"SSH_HOST": "machine.example"}
+
+
+class Espion:
+    """Ce que le menu aurait lancé, sans rien lancer."""
+
+    def __init__(self):
+        self.jouees = []
+
+    def exec_command_live(self, commande, **_kwargs):
+        self.jouees.append(commande)
+
+
+def menu_factice(params=CONNEXION):
+    """Un menu sans son constructeur : ces verbes n'en lisent rien.
+
+    `params` à None simule l'abandon de la connexion.
+    """
+    menu = TODO.__new__(TODO)
+    menu.execute = Espion()
+    menu._get_ssh_params = lambda: params
+    return menu
+
+
+class TestLesOnzeVerbesAtteignentLeurCible(unittest.TestCase):
+    def test_the_list_covers_every_verb(self):
+        """Une liste incomplète rendrait les autres épreuves vertes sans
+        rien prouver du verbe oublié."""
+        self.assertEqual(11, len(VERBES))
+        for methode in VERBES:
+            self.assertTrue(hasattr(TODO, methode), methode)
+
+    def test_every_verb_reaches_its_own_make_target(self):
+        for methode, cible in VERBES.items():
+            with self.subTest(verbe=methode):
+                menu = menu_factice()
+                with patch(
+                    "script.todo.todo.click.prompt",
+                    side_effect=["run", "admin@site.example"],
+                ):
+                    getattr(menu, methode)()
+                self.assertEqual(1, len(menu.execute.jouees))
+                self.assertTrue(
+                    menu.execute.jouees[0].startswith(f"make {cible} "),
+                    menu.execute.jouees[0],
+                )
+
+    def test_giving_up_the_connection_runs_nothing(self):
+        for methode in VERBES:
+            with self.subTest(verbe=methode):
+                menu = menu_factice(params=None)
+                with patch(
+                    "script.todo.todo.click.prompt", side_effect=AssertionError
+                ):
+                    getattr(menu, methode)()
+                self.assertEqual([], menu.execute.jouees)
+
+
+class TestLOrdreDesQuestions(unittest.TestCase):
+    """Deux verbes posent une question à eux, après la connexion."""
+
+    def test_the_connection_comes_before_the_verbs_own_question(self):
+        ordre = []
+        menu = TODO.__new__(TODO)
+        menu.execute = Espion()
+        menu._get_ssh_params = lambda: ordre.append("connexion") or CONNEXION
+        with patch(
+            "script.todo.todo.click.prompt",
+            side_effect=lambda *a, **k: ordre.append("verbe") or "run",
+        ):
+            menu._deploy_ssh_make()
+        self.assertEqual(["connexion", "verbe"], ordre)
+
+    def test_an_empty_answer_to_the_verbs_question_runs_nothing(self):
+        for methode in ("_deploy_ssh_make", "_deploy_ssh_install_nginx"):
+            with self.subTest(verbe=methode):
+                menu = menu_factice()
+                with patch(
+                    "script.todo.todo.click.prompt", return_value="   "
+                ):
+                    getattr(menu, methode)()
+                self.assertEqual([], menu.execute.jouees)
+
+    def test_the_nginx_verb_carries_the_domain_and_the_email(self):
+        menu = menu_factice()
+        with patch(
+            "script.todo.todo.click.prompt",
+            side_effect=["site.example", "admin@site.example"],
+        ):
+            menu._deploy_ssh_install_nginx()
+        mots = jouee(menu.execute.jouees[0])
+        self.assertIn("SSH_DOMAIN=site.example", mots)
+        self.assertIn("SSH_ADMIN_EMAIL=admin@site.example", mots)
+
+    def test_the_make_verb_carries_the_target_it_was_given(self):
+        menu = menu_factice()
+        with patch("script.todo.todo.click.prompt", return_value="db_restore"):
+            menu._deploy_ssh_make()
+        self.assertIn("SSH_TARGET=db_restore", jouee(menu.execute.jouees[0]))
 
 
 if __name__ == "__main__":
