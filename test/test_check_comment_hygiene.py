@@ -134,6 +134,67 @@ class TestLeTemoignage(unittest.TestCase):
         self.assertEqual(2, len({t[1].lower() for t in trouves}))
 
 
+class TestLeGo(unittest.TestCase):
+    """Go est entré dans le dépôt, et l'outil ne le lisait pas.
+
+    Sondé avec des motifs interdits, il restait muet sur un « .go » et sortait
+    0 : les commentaires du cache de téléchargement n'ont donc jamais été
+    relus par personne d'autre que leur auteur.
+    """
+
+    def texte(self, source):
+        """Le texte recollé de tous les blocs. Un bloc est un dict :
+        « line », « text », « lines », « offsets »."""
+        return " ".join(b["text"] for b in hygiene.blocs_go(source))
+
+    def test_un_commentaire_de_ligne(self):
+        trouve = hygiene.inspect("x.go", "// Vécu : la panne\npackage main\n")
+        self.assertTrue(trouve, "un commentaire Go n'est pas inspecté")
+
+    def test_une_url_en_chaine_nouvre_rien(self):
+        """« https:// » porte deux barres obliques : c'est LE piège du Go."""
+        source = 'package main\n\nconst a = "https://vecu.example/hier"\n'
+        self.assertEqual(hygiene.blocs_go(source), [])
+
+    def test_une_chaine_brute_nouvre_rien(self):
+        """L'accent grave délimite une chaîne où rien ne s'échappe."""
+        source = (
+            "package main\n\nconst a = `https://mesure.example/nous avons`\n"
+        )
+        self.assertEqual(hygiene.blocs_go(source), [])
+
+    def test_un_commentaire_apres_une_chaine(self):
+        source = (
+            'package main\n\nconst a = "https://x.example" // Vécu : ici\n'
+        )
+        trouve = hygiene.recits(self.texte(source))
+        self.assertTrue(trouve, "le commentaire qui suit une URL est perdu")
+
+    def test_un_bloc_sur_plusieurs_lignes(self):
+        source = (
+            "package main\n\n/*\nVécu : la semaine où\nnous avons vu.\n*/\n"
+        )
+        self.assertTrue(
+            hygiene.blocs_go(source), "un commentaire /* */ n'est pas lu"
+        )
+        texte = self.texte(source)
+        self.assertIn("Vécu", texte)
+        self.assertIn("nous avons", texte)
+
+    def test_un_bloc_sur_une_seule_ligne(self):
+        source = "package main\n\nvar x = 1 /* Vécu : ici */\nvar y = 2\n"
+        self.assertTrue(hygiene.blocs_go(source))
+        self.assertIn("Vécu", self.texte(source))
+
+    def test_le_code_apres_un_bloc_ferme_est_relu(self):
+        """Un « // » qui suit un bloc fermé sur la même ligne compte encore."""
+        source = "package main\n\nvar x = 1 /* rien */ // Vécu : là\n"
+        self.assertIn("Vécu", self.texte(source))
+
+    def test_le_suffixe_est_balaye(self):
+        self.assertIn(".go", hygiene.SUFFIXES)
+
+
 class TestLesIdentifiants(unittest.TestCase):
     def test_un_courriel(self):
         self.assertIn(

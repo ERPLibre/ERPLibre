@@ -62,7 +62,7 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
-SUFFIXES = (".py", ".sh", ".bash")
+SUFFIXES = (".py", ".sh", ".bash", ".go")
 
 # Ce qui vient d'ailleurs ou n'est pas du source : le dépôt ne le réécrit pas.
 EXCLUS = (
@@ -244,10 +244,70 @@ def blocs_shell(source):
     return _regroupe(commentaires)
 
 
+def blocs_go(source):
+    """Les commentaires d'un fichier Go, les consécutifs regroupés.
+
+    Trois pièges, et le premier est celui qui compte : « // » ouvre un
+    commentaire SAUF dans une chaîne — et « https:// » en porte deux. Go a
+    trois formes de chaîne, dont la brute entre accents graves, où la barre
+    oblique inverse n'échappe rien. Les commentaires de bloc « /* … */ »
+    couvrent plusieurs lignes, chacune comptant pour ce qu'elle dit.
+    """
+    commentaires = []
+    en_bloc = False
+    for numero, ligne in enumerate(source.split("\n"), start=1):
+        if en_bloc:
+            fin = ligne.find("*/")
+            texte = (ligne if fin < 0 else ligne[:fin]).strip()
+            if texte:
+                commentaires.append((numero, texte.lstrip("*").strip()))
+            if fin >= 0:
+                en_bloc = False
+            continue
+        quote = None
+        precedent = ""
+        index = 0
+        while index < len(ligne):
+            caractere = ligne[index]
+            if precedent == "\\" and quote in ('"', "'"):
+                # La chaîne brute ignore l'échappement : seules les deux
+                # autres formes le connaissent.
+                precedent = ""
+                index += 1
+                continue
+            if quote:
+                if caractere == quote:
+                    quote = None
+            elif caractere in "\"'`":
+                quote = caractere
+            elif caractere == "/" and ligne[index : index + 2] == "//":
+                texte = ligne[index:].lstrip("/").strip()
+                if texte:
+                    commentaires.append((numero, texte))
+                break
+            elif caractere == "/" and ligne[index : index + 2] == "/*":
+                reste = ligne[index + 2 :]
+                fin = reste.find("*/")
+                texte = (reste if fin < 0 else reste[:fin]).strip()
+                if texte:
+                    commentaires.append((numero, texte))
+                if fin < 0:
+                    en_bloc = True
+                    break
+                index += 2 + fin + 2
+                precedent = ""
+                continue
+            precedent = caractere
+            index += 1
+    return _regroupe(commentaires)
+
+
 def blocs(chemin, source):
     """Les commentaires d'un fichier, selon son suffixe."""
     if chemin.endswith(".py"):
         return blocs_python(source)
+    if chemin.endswith(".go"):
+        return blocs_go(source)
     return blocs_shell(source)
 
 
