@@ -46,6 +46,48 @@ class TestLaLigneSsh(unittest.TestCase):
         self.assertIn("-t", argv)
         self.assertNotIn("BatchMode=yes", argv)
 
+    def test_a_record_without_an_identity_is_unchanged(self):
+        """Ce que produit une fiche nue ne bouge pas d'un octet.
+
+        Onze verbes de déploiement passent par cette ligne : une option
+        ajoutée pour les fiches qui en portent une ne doit pas apparaître
+        chez celles qui n'en portent pas."""
+        self.assertEqual(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=10",
+                "appliance",
+                "vrai",
+            ],
+            A.ssh_argv({"target": "appliance"}, "vrai"),
+        )
+
+    def test_the_key_travels_only_when_the_record_carries_one(self):
+        """Contrôle positif : la clé n'est pas systématique."""
+        self.assertNotIn("-i", A.ssh_argv({"target": "appliance"}, "vrai"))
+        argv = A.ssh_argv(
+            {"target": "appliance", "identity": "~/.ssh/deploiement"}, "vrai"
+        )
+        self.assertEqual("~/.ssh/deploiement", argv[argv.index("-i") + 1])
+
+    def test_the_options_keep_a_fixed_order(self):
+        """ssh les lit dans n'importe quel ordre, une comparaison non."""
+        argv = A.ssh_argv(
+            {
+                "target": "appliance",
+                "port": "2222",
+                "identity": "cle",
+                "jump": "rebond",
+            },
+            "vrai",
+        )
+        self.assertLess(argv.index("-p"), argv.index("-i"))
+        self.assertLess(argv.index("-i"), argv.index("-J"))
+        self.assertEqual(["appliance", "vrai"], argv[-2:])
+
     def test_the_remote_command_stays_one_argument(self):
         """Le découper laisserait ssh recoller les morceaux à sa façon."""
         argv = A.ssh_argv({"target": "appliance"}, "a && b || c")

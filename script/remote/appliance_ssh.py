@@ -26,7 +26,12 @@ def ssh_argv(host: dict, remote: str, tty: bool = False) -> list:
 
     `host` : {"target": "root@203.0.113.5", "jump": "rebond", "port": "22"} —
     « target » suffit quand l'alias vient de ~/.ssh/config, qui porte déjà
-    l'utilisateur, le port et le ProxyJump.
+    l'utilisateur, le port, la clé et le ProxyJump. « identity » impose une
+    clé précise quand la fiche vient d'ailleurs que de ~/.ssh/config.
+
+    L'ordre des options est FIXE — port, clé, rebond — pour qu'une même fiche
+    rende toujours la même ligne : c'est ce qui permet de comparer deux
+    versions de cette fonction octet pour octet.
     """
     argv = ["ssh"]
     if not tty:
@@ -34,6 +39,12 @@ def ssh_argv(host: dict, remote: str, tty: bool = False) -> list:
     argv += ["-o", "ConnectTimeout=10"]
     if host.get("port"):
         argv += ["-p", str(host["port"])]
+    if host.get("identity"):
+        # « -i » seul, sans IdentitiesOnly=yes : les autres chemins qui
+        # joignent la même machine présentent la clé de cette façon, et
+        # ajouter la restriction ici ferait échouer par ce chemin une
+        # connexion que l'agent ssh fait aboutir par l'autre.
+        argv += ["-i", str(host["identity"])]
     if host.get("jump"):
         argv += ["-J", host["jump"]]
     if tty:
