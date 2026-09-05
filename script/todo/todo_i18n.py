@@ -1255,10 +1255,6 @@ TRANSLATIONS = {
         "fr": "Ajouter un marketplace",
         "en": "Add a marketplace",
     },
-    "Maintenance": {
-        "fr": "Maintenance",
-        "en": "Maintenance",
-    },
     "Update the marketplaces and the plugins": {
         "fr": "Mettre à jour les marketplaces et les plugins",
         "en": "Update the marketplaces and the plugins",
@@ -4123,7 +4119,6 @@ TRANSLATIONS = {
         "en": "This moves the host address: do it from a console.",
     },
     "uplink for NAT": {"fr": "sortie pour le NAT", "en": "uplink for NAT"},
-    "none": {"fr": "aucune", "en": "none"},
     "The bridge did not come up.": {
         "fr": "Le pont n'est pas monté.",
         "en": "The bridge did not come up.",
@@ -7311,10 +7306,6 @@ TRANSLATIONS = {
     "Cleaning": {
         "fr": "Nettoyage de",
         "en": "Cleaning",
-    },
-    "pass": {
-        "fr": "passe",
-        "en": "pass",
     },
     "purged": {
         "fr": "purgés",
