@@ -238,3 +238,54 @@ func TestLAcquittementViseLaConnexionOuverte(t *testing.T) {
 		t.Fatalf("Call-ID : %v", ack.CallID())
 	}
 }
+
+// Le dernier de la famille « .invalid » : INVITE, acquittement et raccrochage
+// visent tous le contact du softphone, qui ne mene nulle part. Sans ce BYE, le
+// correspondant raccroche et Odoo garde l'appel affiche comme en cours.
+func TestLeRaccrochageViseLaConnexionOuverte(t *testing.T) {
+	inscription := Inscription{
+		Contact:   sip.Uri{User: "1001", Host: "pik9osg0rrih.invalid"},
+		Source:    "192.168.1.38:48774",
+		Transport: "ws",
+	}
+	invite := ConstruireInviteEntrant(inscription, "127.0.0.1", "15145550142", nil)
+	invite.AppendHeader(sip.NewHeader("Call-ID", "appel-de-test"))
+	cseq := sip.CSeqHeader{SeqNo: 3, MethodName: sip.INVITE}
+	invite.AppendHeader(&cseq)
+
+	réponse := sip.NewResponseFromRequest(invite, 200, "OK", nil)
+	réponse.AppendHeader(&sip.ContactHeader{
+		Address: sip.Uri{User: "1001", Host: "pik9osg0rrih.invalid"},
+		Params:  sip.NewParams(),
+	})
+	àNous := sip.NewParams()
+	àNous.Add("tag", "tag-du-softphone")
+	réponse.RemoveHeader("To")
+	réponse.AppendHeader(&sip.ToHeader{
+		Address: sip.Uri{User: "1001", Host: "127.0.0.1"}, Params: àNous,
+	})
+
+	bye := ConstruireByeSortant(invite, réponse, inscription.Source)
+
+	if bye.Destination() != inscription.Source {
+		t.Fatalf("destination %q : le raccrochage part en résolution DNS",
+			bye.Destination())
+	}
+	if bye.Method != sip.BYE {
+		t.Fatalf("méthode %v", bye.Method)
+	}
+	if to := bye.To(); to == nil {
+		t.Fatal("BYE sans To")
+	} else if tag, _ := to.Params.Get("tag"); tag != "tag-du-softphone" {
+		t.Fatalf("tag du To : %q — le dialogue ne sera pas reconnu", tag)
+	}
+	if id := bye.CallID(); id == nil || id.Value() != "appel-de-test" {
+		t.Fatalf("Call-ID : %v", bye.CallID())
+	}
+	// PAS de CSeq ici : la bibliotheque le pose et l'incremente a l'ecriture,
+	// a partir du dernier numero du dialogue. En poser un ferait sauter un
+	// cran, et le softphone jetterait la requete.
+	if bye.CSeq() != nil {
+		t.Fatalf("CSeq posé à l'avance (%v) : il sautera un cran", bye.CSeq())
+	}
+}

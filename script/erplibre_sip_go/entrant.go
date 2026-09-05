@@ -290,7 +290,18 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 		case <-défiler.Done():
 		}
 	}()
-	return RelierAuModem(défiler, socket, sécurité, o.Carte)
+
+	err = RelierAuModem(défiler, socket, sécurité, o.Carte)
+
+	// Le correspondant a raccroché : c'est à NOUS de le dire au softphone.
+	// Rien d'autre ne le fera — il ne voit que du silence, et Odoo garde
+	// l'appel affiché comme en cours. On ne le fait que si le dialogue tient
+	// encore : quand c'est LUI qui a raccroché, son BYE nous est déjà
+	// parvenu et en renvoyer un serait répondre à une porte fermée.
+	if session.Context().Err() == nil {
+		raccrocherLAppelant(ctx, session, inscription.Source)
+	}
+	return err
 }
 
 // ConstruireInviteEntrant prépare l'INVITE qui fait sonner le softphone.
@@ -351,6 +362,64 @@ func sonner(ctx context.Context, dialogues *sipgo.DialogClientCache,
 	}
 	slog.Info("softphone décroché", "poste", inscription.Poste)
 	return session, nil
+}
+
+// raccrocherLAppelant met fin au dialogue vers le softphone.
+func raccrocherLAppelant(ctx context.Context, session *sipgo.DialogClientSession,
+	destination string) {
+
+	if session.InviteResponse == nil {
+		return
+	}
+	bye := ConstruireByeSortant(session.InviteRequest, session.InviteResponse,
+		destination)
+	minuté, arrêter := context.WithTimeout(ctx, DélaiRaccrochage)
+	defer arrêter()
+	if err := session.WriteBye(minuté, bye); err != nil {
+		slog.Warn("raccrochage du softphone", "err", err)
+		return
+	}
+	slog.Info("softphone raccroché : la ligne est retombée")
+}
+
+// ConstruireByeSortant prépare le BYE d'un appel que NOUS avons présenté.
+//
+// Le dernier de la famille : INVITE, acquittement et maintenant raccrochage
+// visent tous le contact du softphone, en « .invalid », et partent en
+// résolution DNS. La destination est donc imposée ici aussi — la connexion
+// WebSocket déjà ouverte, comme la RFC 5626 le prescrit.
+//
+// Le numéro de séquence n'est pas incrémenté ici : la bibliothèque le fait à
+// l'écriture, à partir du dernier numéro du dialogue. L'avancer une seconde
+// fois ferait sauter un cran et le softphone jetterait la requête.
+func ConstruireByeSortant(invite *sip.Request, réponse *sip.Response,
+	destination string) *sip.Request {
+
+	cible := &invite.Recipient
+	if contact := réponse.Contact(); contact != nil {
+		cible = &contact.Address
+	}
+	bye := sip.NewRequest(sip.BYE, *cible.Clone())
+	bye.SipVersion = invite.SipVersion
+
+	sauts := sip.MaxForwardsHeader(70)
+	bye.AppendHeader(&sauts)
+	if h := invite.From(); h != nil {
+		bye.AppendHeader(sip.HeaderClone(h))
+	}
+	// Le « To » vient de la RÉPONSE : c'est là que le softphone a posé sa
+	// moitié de l'identifiant du dialogue.
+	if h := réponse.To(); h != nil {
+		bye.AppendHeader(sip.HeaderClone(h))
+	}
+	if h := invite.CallID(); h != nil {
+		bye.AppendHeader(sip.HeaderClone(h))
+	}
+
+	bye.SetTransport(invite.Transport())
+	bye.SetSource(invite.Source())
+	bye.SetDestination(destination)
+	return bye
 }
 
 // ConstruireAckEntrant prépare l'acquittement du 200 OK du softphone.
