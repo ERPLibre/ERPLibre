@@ -36,34 +36,31 @@ from script.todo.qemu_deploy import QemuDeployMixin  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 
-class TestOffreDeLaCase(unittest.TestCase):
-    def setUp(self):
-        self.source = QEMU_FORM.read_text(encoding="utf-8")
+class TestPasDeCaseTrompeuse(unittest.TestCase):
+    """La case a été RETIRÉE, et c'est le correctif.
 
-    def test_case_conditionnee_a_lautorite(self):
-        self.assertRegex(
-            self.source,
-            r'if ctx\.get\("cache_ca"\):\s*\n\s*yield Checkbox\(',
-            "la case s'affiche sans vérifier que l'hôte a un cache",
-        )
+    L'interception est transparente et couvre tout le pont : une VM ne peut
+    pas s'y soustraire. Décocher n'omettait que l'AUTORITÉ, si bien que la VM
+    était détournée quand même et échouait sur « self-signed certificate in
+    certificate chain » à chaque téléchargement HTTPS. Une case qui fabrique
+    une machine cassée vaut moins que pas de case du tout.
+    """
 
-    def test_defaut_suit_letat_du_service(self):
-        self.assertIn('value=bool(ctx.get("cache_active"))', self.source)
+    def test_aucune_case_dans_les_deux_ecrans(self):
+        for ecran in (QEMU_FORM, PROXMOX_FORM):
+            self.assertNotIn(
+                "f_cache",
+                ecran.read_text(encoding="utf-8"),
+                f"{ecran.name} offre une case qui casserait la VM décochée",
+            )
 
-    def test_lecture_gardee_du_widget(self):
-        """La case n'existe pas sur un hôte sans cache : la lire sans garde
-        casserait l'écran au moment de valider."""
-        self.assertIn(
-            'getattr(self._widget("#f_cache"), "value", False)', self.source
-        )
-
-    def test_ecran_proxmox_epargne(self):
-        """Une VM Proxmox naît ailleurs : le cache local ne peut pas la
-        servir, et lui offrir la case promettrait un gain inexistant."""
+    def test_lautorite_suit_le_service_et_non_une_case(self):
+        src = QEMU_DEPLOY.read_text(encoding="utf-8")
+        self.assertIn("_qemu_cache_active()", src)
         self.assertNotIn(
-            "f_cache",
-            PROXMOX_FORM.read_text(encoding="utf-8"),
-            "l'écran Proxmox offre une case que son hôte distant ignore",
+            'spec.get("use_cache")',
+            src,
+            "l'autorité dépend encore d'un choix qui ne peut pas être tenu",
         )
 
 
@@ -81,23 +78,25 @@ class TestCommandeProduite(unittest.TestCase):
             "disk": "20G",
         }
 
-    def parts(self, spec, ca=""):
+    def parts(self, spec, ca="", actif=True):
         # « TODO.__new__ » sans __init__ : l'idiome des tests du dépôt, qui
         # donne toutes les méthodes du menu sans ouvrir d'écran.
         todo = TODO.__new__(TODO)
-        # L'autorité n'est pas celle de la machine de test : la détection est
-        # remplacée, ce qui laisse le reste du chemin intact.
+        # Ni l'autorité ni le service ne sont ceux de la machine de test : la
+        # détection est remplacée, le reste du chemin reste intact.
         todo._qemu_cache_ca_path = lambda: ca
+        todo._qemu_cache_active = lambda: actif and bool(ca)
         return todo._qemu_deploy_parts_for(self.vm(), spec, dry_run=True)
 
-    def test_sans_la_case_aucun_drapeau(self):
-        parts = self.parts({"install": None}, ca="/tmp/ca.crt")
+    def test_service_arrete_aucun_drapeau(self):
+        """Sans interception, l'autorité n'a rien à faire dans la VM."""
+        parts = self.parts({"install": None}, ca="/tmp/ca.crt", actif=False)
         self.assertNotIn("--cache-ca", parts)
 
-    def test_avec_la_case_le_drapeau_et_le_chemin(self):
-        parts = self.parts(
-            {"install": None, "use_cache": True}, ca="/tmp/essai-ca.crt"
-        )
+    def test_service_actif_le_drapeau_et_le_chemin(self):
+        """Le service tourne : la VM SERA détournée, donc elle doit approuver
+        l'autorité, quoi qu'on ait coché."""
+        parts = self.parts({"install": None}, ca="/tmp/essai-ca.crt")
         self.assertIn("--cache-ca", parts)
         self.assertEqual(
             parts[parts.index("--cache-ca") + 1],
@@ -105,11 +104,11 @@ class TestCommandeProduite(unittest.TestCase):
             "le chemin de l'autorité ne suit pas le drapeau",
         )
 
-    def test_case_cochee_mais_cache_disparu(self):
+    def test_cache_disparu_entre_temps(self):
         """Le chemin est relu à CHAQUE commande : un cache désinstallé entre
         le formulaire et le déploiement ne doit pas faire approuver une
         autorité qui n'existe plus."""
-        parts = self.parts({"install": None, "use_cache": True}, ca="")
+        parts = self.parts({"install": None}, ca="")
         self.assertNotIn("--cache-ca", parts)
 
 

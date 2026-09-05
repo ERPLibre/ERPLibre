@@ -1163,12 +1163,19 @@ class QemuDeployMixin:
             gpu3d=bool(spec.get("gpu3d")),
             git_name=spec.get("git_name") or "",
             git_email=spec.get("git_email") or "",
-            # Le cache est celui de CET hôte : sa valeur ne suit donc pas la
-            # VM mais la spec, et le chemin est relu à chaque commande plutôt
-            # que gardé — désinstaller le cache entre deux déploiements ne doit
-            # pas laisser une VM approuver une autorité disparue.
+            # L'autorité est posée dès que le service TOURNE, sans égard à
+            # la case : l'interception est transparente et vaut pour tout le
+            # pont, si bien qu'une VM privée de l'autorité est quand même
+            # détournée et échoue sur « self-signed certificate in
+            # certificate chain » à chaque téléchargement HTTPS. Le seul
+            # contournement vrai est d'arrêter le service, qui emporte ses
+            # règles avec lui.
+            #
+            # Le chemin est relu à chaque commande : désinstaller le cache
+            # entre deux déploiements ne doit pas laisser une VM approuver une
+            # autorité disparue.
             cache_ca=(
-                self._qemu_cache_ca_path() if spec.get("use_cache") else ""
+                self._qemu_cache_ca_path() if self._qemu_cache_active() else ""
             ),
         )
 
@@ -2073,19 +2080,6 @@ class QemuDeployMixin:
             except ValueError:
                 parallelism = default_par
 
-        use_cache = False
-        if self._qemu_cache_ca_path():
-            actif = self._qemu_cache_active()
-            # Non traduit : ces deux formes sont les mêmes dans les deux
-            # langues, et t() sur une clé absente rendrait la clé.
-            defaut = "(Y/n)" if actif else "(y/N)"
-            ans = input(f"{t('Use the host download cache?')} {defaut}: ")
-            use_cache = (
-                self._is_yes_default_yes(ans)
-                if actif
-                else ans.strip().lower().startswith(("y", "o"))
-            )
-
         spec = {
             "res_label": res_label,
             "vms": pending,
@@ -2106,10 +2100,6 @@ class QemuDeployMixin:
             "git_name": git_name,
             "git_email": git_email,
             "add_ssh_config": add_ssh_config,
-            # Demandé SEULEMENT si l'hôte porte l'autorité du cache : une
-            # question sans effet possible n'a pas à être posée. Le défaut suit
-            # l'état du service, comme la case du formulaire.
-            "use_cache": use_cache,
             "parallelism": parallelism,
         }
 

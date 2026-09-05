@@ -317,15 +317,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_profile_install",
                     )
                     yield from self.compose_install_extras()
-                    # Offerte SEULEMENT si l'hôte porte l'autorité du cache :
-                    # une case qui ne peut rien faire est une question sans
-                    # réponse. Cochée par défaut quand le service tourne.
-                    if ctx.get("cache_ca"):
-                        yield Checkbox(
-                            t("Use the host download cache"),
-                            value=bool(ctx.get("cache_active")),
-                            id="f_cache",
-                        )
+                    # Aucune case pour le cache : l'interception est
+                    # transparente et vaut pour tout le pont, donc une VM ne
+                    # peut pas s'y soustraire. Décocher aurait produit une VM
+                    # détournée SANS l'autorité, cassée sur chaque
+                    # téléchargement HTTPS. Le seul contournement est
+                    # d'arrêter le service, ce que le guide dit.
                     yield from self.compose_timezone()
                     yield Static("SSH", classes="grouptitle")
                     yield Input(
@@ -995,11 +992,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 **self.extras_values(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
-                # Gardé : la case n'existe pas quand l'hôte n'a pas
-                # de cache, et lire un widget absent casserait l'écran.
-                "use_cache": bool(
-                    getattr(self._widget("#f_cache"), "value", False)
-                ),
                 # Une exécution par installation : le nombre de VM retenues
                 # fait foi. Le déploiement le borne ensuite à ce même nombre,
                 # donc une valeur haute ne crée jamais de travailleur inutile.

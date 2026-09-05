@@ -398,6 +398,13 @@ def deployer(nom, journal, dry_run=False, avec_cache=True):
     Sans le cache, la VM télécharge en direct : c'est le TÉMOIN, la mesure de
     ce que coûte une installation quand rien n'est gardé. Un gain ne veut rien
     dire sans lui.
+
+    Omettre l'autorité NE SUFFIT PAS à contourner le cache : l'interception
+    est transparente et vaut pour tout le pont. Une VM sans l'autorité est
+    quand même détournée, reçoit un certificat qu'elle ne reconnaît pas, et
+    échoue sur « self-signed certificate in certificate chain ». Le témoin
+    ARRÊTE donc le service — c'est le seul contournement vrai, les règles
+    partant avec lui.
     """
     cmd = (
         f"sudo python3 {shlex.quote(CLI)} --distro {DISTRO}"
@@ -764,6 +771,32 @@ def main(argv=None):
     if acces and os.path.exists(acces):
         decalage = os.path.getsize(acces)
 
+    if args.sans_cache and not args.dry_run:
+        # Le seul contournement vrai : sans service, pas de règles, donc pas
+        # d'interception. Le « finally » plus bas le rallume quoi qu'il
+        # arrive : un cache laissé éteint se découvrirait au déploiement
+        # suivant, et pas ici.
+        dire("", journal)
+        dire("  ── Témoin : le service du cache est arrêté ──", journal)
+        code, _ = executer(f"sudo -n systemctl stop {SERVICE}", 60, journal)
+        if code:
+            dire(
+                "  ✗ le service n'a pas pu être arrêté : témoin impossible",
+                journal,
+            )
+            return 1
+
+    try:
+        return _boucle(args, rapport, journal, acces, decalage)
+    finally:
+        if args.sans_cache and not args.dry_run:
+            executer(f"sudo -n systemctl start {SERVICE}", 60, journal)
+            dire("  cache rallumé", journal)
+
+
+def _boucle(args, rapport, journal, acces, decalage):
+    """Les deux VM, la mesure, et ce qui suit. Séparé pour que le témoin
+    puisse rallumer le service quoi qu'il arrive."""
     fenetres = []
     for rang in (1, 2):
         dire("", journal)
