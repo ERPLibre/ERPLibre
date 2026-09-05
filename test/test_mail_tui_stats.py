@@ -273,10 +273,6 @@ class TestMenuEntry(unittest.TestCase):
         mock_stats.assert_called_once()
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestScrolling(StatsScreenCase):
     """Le contenu doit DÉBORDER pour qu'il y ait quelque chose à faire
     défiler : avec `height: 1fr` sur le texte, la hauteur virtuelle du
@@ -620,3 +616,7 @@ class TestOutboxScreen(StatsScreenCase):
 
             texte = str(app.screen.query_one("#outbox_hint", Static).content)
             self.assertTrue(texte.strip())
+
+
+if __name__ == "__main__":
+    unittest.main()
