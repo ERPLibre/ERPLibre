@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
-"""Le cache de téléchargement des VM QEMU : poser, constater, comprendre, mesurer.
+"""Le cache des VM QEMU : poser, constater, conduire, comprendre, mesurer.
 
-Quatre gestes qui ne se ressemblent pas. L'installation touche au système et
-demande sudo ; le diagnostic ne fait que LIRE ; le guide n'exécute rien ; les
-tests créent de vraies machines. Les mêler dans une seule entrée obligeait à
-lancer une installation pour savoir si le cache tournait.
+Cinq gestes qui ne se ressemblent pas. L'installation touche au système et
+demande sudo ; le diagnostic ne fait que LIRE ; conduire le service allume et
+éteint ; le guide n'exécute rien ; les tests créent de vraies machines. Les
+mêler dans une seule entrée obligeait à lancer une installation pour savoir
+si le cache tournait.
+
+Le service a son propre sous-menu parce que l'ARRÊTER est le seul moyen de
+désactiver le cache : l'unité retire ses règles en partant. Retirer l'autorité
+d'une VM ne la soustrait pas au détournement, cela lui fait seulement refuser
+un certificat qu'elle ne reconnaît plus.
 
 Le diagnostic existe pour une panne précise, et elle est silencieuse : le
 réseau libvirt « default » ne sert pas toujours 192.168.122.0/24 — il est
@@ -120,6 +126,7 @@ class QemuCacheMenuMixin:
         choices = [
             {"prompt_description": t("Cache - Install or reinstall")},
             {"prompt_description": t("Cache - Diagnose: does it serve?")},
+            {"prompt_description": t("Cache - Service state")},
             {"prompt_description": t("Cache - Guide: how it works")},
             {"prompt_description": t("Cache - Tests and performance report")},
         ]
@@ -134,8 +141,10 @@ class QemuCacheMenuMixin:
             elif status == "2":
                 self._cache_diagnostic()
             elif status == "3":
-                self._cache_guide()
+                self._cache_service()
             elif status == "4":
+                self._cache_guide()
+            elif status == "5":
                 self._cache_tests()
             else:
                 print(t("Command not found !"))
@@ -196,7 +205,105 @@ class QemuCacheMenuMixin:
         print()
 
     # ------------------------------------------------------------------
-    # [3] Guide
+    # [3] État du service
+    # ------------------------------------------------------------------
+
+    def _cache_systemctl(self, verbe, montrer=True):
+        """Un geste systemd, la commande annoncée avant d'être lancée.
+
+        Arrêter n'éteint pas seulement le service : l'unité retire ses règles
+        en partant, donc plus aucune VM n'est détournée. C'est ce qui fait de
+        « stop » le seul moyen vrai de désactiver le cache, et c'est dit à
+        l'écran plutôt que dans une note qu'on ne lit pas.
+        """
+        cmd = f"sudo systemctl {verbe} {CACHE_SERVICE}"
+        print(f"\n{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+        if montrer:
+            print(f"\n  {t('Service:')} {self._cache_etat_court()}")
+
+    def _cache_etat_court(self):
+        """« actif, au démarrage » et ce qu'il en manque, en une ligne."""
+        actif = self._cache_actif()
+        # « is-enabled » rend un mot par ligne : enabled, enabled-runtime,
+        # disabled, static, masked. Comparer le MOT et non l'y chercher —
+        # une sous-chaîne ferait passer « masked » pour un service au boot le
+        # jour où systemd ajoute un état composé.
+        au_boot = self._cache_lire(
+            f"systemctl is-enabled {CACHE_SERVICE}"
+        ).split("\n")[0].strip() in ("enabled", "enabled-runtime")
+        return (
+            f"{t('Service is running') if actif else t('Service is stopped')}"
+            f", {t('starts at boot') if au_boot else t('not at boot')}"
+        )
+
+    def _cache_service(self):
+        print(f"\n⚙ {t('State of the cache service')}")
+        print(f"  {self._cache_etat_court()}")
+        print(
+            f"  {t('Stopping it removes the rules: no VM is redirected.')}\n"
+        )
+        choices = [
+            {"prompt_description": t("Service - Start (start)")},
+            {"prompt_description": t("Service - Start at boot (enable)")},
+            {
+                "prompt_description": t(
+                    "Service - Do not start at boot (disable)"
+                )
+            },
+            {"prompt_description": t("Service - Stop (stop)")},
+            {"prompt_description": t("Service - Detailed state (status)")},
+            {"prompt_description": t("Service - Logs (log)")},
+        ]
+        verbes = {"1": "start", "2": "enable", "3": "disable", "4": "stop"}
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            if status in verbes:
+                self._cache_systemctl(verbes[status])
+            elif status == "5":
+                self._cache_systemctl("status --no-pager", montrer=False)
+            elif status == "6":
+                self._cache_journal_service()
+            else:
+                print(t("Command not found !"))
+
+    def _cache_journal_service(self):
+        """Deux journaux, et ils ne disent pas la même chose.
+
+        Celui de systemd porte ce que le service dit de lui-même — démarrages,
+        erreurs, hôtes retenus en tunnel. Le journal d'ACCÈS porte ce qu'il a
+        servi, une ligne par requête : c'est celui qui prouve qu'une VM le
+        traverse.
+        """
+        cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 40 --no-pager"
+        print(f"\n{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+        chemin = self._cache_journal()
+        if not chemin or not os.path.exists(chemin):
+            return
+        print(f"\n  {t('Access log, last requests:')} {chemin}")
+        try:
+            with open(chemin, encoding="utf-8", errors="replace") as fh:
+                lignes = fh.readlines()[-10:]
+        except OSError:
+            return
+        for ligne in lignes:
+            try:
+                d = json.loads(ligne)
+            except ValueError:
+                continue
+            print(
+                f"    {d.get('outcome', '?'):<13}"
+                f"{str(d.get('url', '')).rsplit('/', 1)[-1][:58]}"
+            )
+
+    # ------------------------------------------------------------------
+    # [4] Guide
     # ------------------------------------------------------------------
 
     def _cache_guide(self):
@@ -239,19 +346,21 @@ class QemuCacheMenuMixin:
             t("    This cache never shrinks by itself, and it lives on the"),
             t("    orchestrator's disk. Watch it with the diagnosis entry."),
             "",
-            f"  {t('Turning it off for one VM')}",
+            f"  {t('Turning it off')}",
             t(
-                "    The deployment form carries a checkbox, offered only where the"
+                "    Interception is transparent and covers the whole bridge: a VM"
             ),
             t(
-                "    host holds the authority. Unticked, the VM downloads directly."
+                "    cannot opt out of it. Omitting the authority does not bypass"
             ),
-            t("    On the command line, drop --cache-ca from deploy_qemu.py."),
-            t("    To stop it for every VM: systemctl stop"),
-            f"      {CACHE_SERVICE}",
             t(
-                "    The rules leave with the service, so no VM stays redirected."
+                "    the cache — the VM is redirected all the same, and fails on"
             ),
+            t("    « self-signed certificate in certificate chain »."),
+            t("    The only true bypass stops the service:"),
+            f"      systemctl stop {CACHE_SERVICE}",
+            t("    or entry 3 of this menu, which does it for you."),
+            t("    The rules leave with it, so no VM stays redirected."),
             "",
             f"  {t('Proxmox')}",
             t("    A Proxmox VM is born on a REMOTE host: its traffic never"),
@@ -270,7 +379,7 @@ class QemuCacheMenuMixin:
             print(ligne)
 
     # ------------------------------------------------------------------
-    # [4] Tests
+    # [5] Tests
     # ------------------------------------------------------------------
 
     def _cache_tests(self):

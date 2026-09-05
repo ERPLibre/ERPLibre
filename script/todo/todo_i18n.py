@@ -1405,6 +1405,52 @@ TRANSLATIONS = {
         "fr": "🔍 Cache - Diagnostic : sert-il vraiment ?",
         "en": "🔍 Cache - Diagnose: does it serve?",
     },
+    "    or entry 3 of this menu, which does it for you.": {
+        "fr": "    ou l'entrée 3 de ce menu, qui le fait pour vous.",
+        "en": "    or entry 3 of this menu, which does it for you.",
+    },
+    "Cache - Service state": {
+        "fr": "⚙ Cache - État du service",
+        "en": "⚙ Cache - Service state",
+    },
+    "State of the cache service": {
+        "fr": "État du service du cache",
+        "en": "State of the cache service",
+    },
+    "Stopping it removes the rules: no VM is redirected.": {
+        "fr": "L'arrêter retire les règles : plus aucune VM n'est détournée.",
+        "en": "Stopping it removes the rules: no VM is redirected.",
+    },
+    "starts at boot": {"fr": "démarre au boot", "en": "starts at boot"},
+    "not at boot": {"fr": "pas au boot", "en": "not at boot"},
+    "Service - Start (start)": {
+        "fr": "▶ Service - Démarrer (start)",
+        "en": "▶ Service - Start (start)",
+    },
+    "Service - Start at boot (enable)": {
+        "fr": "🔗 Service - Démarrer au boot (enable)",
+        "en": "🔗 Service - Start at boot (enable)",
+    },
+    "Service - Do not start at boot (disable)": {
+        "fr": "🚫 Service - Ne plus démarrer au boot (disable)",
+        "en": "🚫 Service - Do not start at boot (disable)",
+    },
+    "Service - Stop (stop)": {
+        "fr": "⏹ Service - Arrêter (stop)",
+        "en": "⏹ Service - Stop (stop)",
+    },
+    "Service - Detailed state (status)": {
+        "fr": "📋 Service - État détaillé (status)",
+        "en": "📋 Service - Detailed state (status)",
+    },
+    "Service - Logs (log)": {
+        "fr": "📜 Service - Journal (log)",
+        "en": "📜 Service - Logs (log)",
+    },
+    "Access log, last requests:": {
+        "fr": "Journal d'accès, dernières requêtes :",
+        "en": "Access log, last requests:",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",
@@ -1512,29 +1558,30 @@ TRANSLATIONS = {
         "fr": "    disque de l'orchestrateur. Le surveiller par le diagnostic.",
         "en": "    orchestrator's disk. Watch it with the diagnosis entry.",
     },
-    "Turning it off for one VM": {
-        "fr": "Le désactiver pour une VM",
-        "en": "Turning it off for one VM",
+    "Turning it off": {"fr": "Le désactiver", "en": "Turning it off"},
+    "    Interception is transparent and covers the whole bridge: a VM": {
+        "fr": "    L'interception est transparente et couvre tout le pont : une VM",
+        "en": "    Interception is transparent and covers the whole bridge: a VM",
     },
-    "    The deployment form carries a checkbox, offered only where the": {
-        "fr": "    Le formulaire de déploiement porte une case, offerte seulement si",
-        "en": "    The deployment form carries a checkbox, offered only where the",
+    "    cannot opt out of it. Omitting the authority does not bypass": {
+        "fr": "    ne peut pas s'y soustraire. Omettre l'autorité ne contourne pas",
+        "en": "    cannot opt out of it. Omitting the authority does not bypass",
     },
-    "    host holds the authority. Unticked, the VM downloads directly.": {
-        "fr": "    l'hôte porte l'autorité. Décochée, la VM télécharge en direct.",
-        "en": "    host holds the authority. Unticked, the VM downloads directly.",
+    "    the cache — the VM is redirected all the same, and fails on": {
+        "fr": "    le cache — la VM est détournée quand même, et échoue sur",
+        "en": "    the cache — the VM is redirected all the same, and fails on",
     },
-    "    On the command line, drop --cache-ca from deploy_qemu.py.": {
-        "fr": "    En ligne de commande, retirer --cache-ca de deploy_qemu.py.",
-        "en": "    On the command line, drop --cache-ca from deploy_qemu.py.",
+    "    « self-signed certificate in certificate chain ».": {
+        "fr": "    « self-signed certificate in certificate chain ».",
+        "en": "    « self-signed certificate in certificate chain ».",
     },
-    "    To stop it for every VM: systemctl stop": {
-        "fr": "    Pour l'arrêter pour toutes les VM : systemctl stop",
-        "en": "    To stop it for every VM: systemctl stop",
+    "    The only true bypass stops the service:": {
+        "fr": "    Le seul contournement vrai arrête le service :",
+        "en": "    The only true bypass stops the service:",
     },
-    "    The rules leave with the service, so no VM stays redirected.": {
-        "fr": "    Les règles partent avec le service : aucune VM ne reste détournée.",
-        "en": "    The rules leave with the service, so no VM stays redirected.",
+    "    The rules leave with it, so no VM stays redirected.": {
+        "fr": "    Les règles partent avec lui : aucune VM ne reste détournée.",
+        "en": "    The rules leave with it, so no VM stays redirected.",
     },
     "Proxmox": {"fr": "Proxmox", "en": "Proxmox"},
     "    A Proxmox VM is born on a REMOTE host: its traffic never": {
@@ -1656,14 +1703,6 @@ TRANSLATIONS = {
     "No eviction is written: this cache never shrinks by itself": {
         "fr": "Aucune éviction n'est écrite : ce cache ne diminue jamais de lui-même",
         "en": "No eviction is written: this cache never shrinks by itself",
-    },
-    "Use the host download cache": {
-        "fr": "Utiliser le cache de téléchargement de l'hôte",
-        "en": "Use the host download cache",
-    },
-    "Use the host download cache?": {
-        "fr": "Utiliser le cache de téléchargement de l'hôte ?",
-        "en": "Use the host download cache?",
     },
     "Download cache: plan only (dry-run)": {
         "fr": "📦 Cache de téléchargement : le plan seul (à blanc)",

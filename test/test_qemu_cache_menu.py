@@ -16,6 +16,7 @@ français qui affiche de l'anglais est le symptôme d'une clé oubliée, et rien
 ne lève.
 """
 
+import ast
 import re
 import sys
 import unittest
@@ -34,6 +35,7 @@ CLES = (
     "QEMU download cache for local VMs",
     "Cache - Install or reinstall",
     "Cache - Diagnose: does it serve?",
+    "Cache - Service state",
     "Cache - Guide: how it works",
     "Cache - Tests and performance report",
     "Install the download cache shared by the QEMU VMs of this host",
@@ -51,7 +53,46 @@ CLES = (
     "The cache install failed, nothing is started",
     "QEMU cache install script not found: ",
     "No eviction is written: this cache never shrinks by itself",
+    # Le sous-menu du service : allumer, éteindre, lire.
+    "State of the cache service",
+    "Stopping it removes the rules: no VM is redirected.",
+    "starts at boot",
+    "not at boot",
+    "Service - Start (start)",
+    "Service - Start at boot (enable)",
+    "Service - Do not start at boot (disable)",
+    "Service - Stop (stop)",
+    "Service - Detailed state (status)",
+    "Service - Logs (log)",
+    "Access log, last requests:",
 )
+
+CACHE_PY = RACINE / "script" / "todo" / "qemu_cache_menu.py"
+
+
+def corps_de(nom, suivant):
+    """Le corps d'une méthode de qemu_cache_menu.py, dispatch compris."""
+    src = CACHE_PY.read_text(encoding="utf-8")
+    debut = src.index(f"def {nom}(self):")
+    return src[debut : src.index(f"def {suivant}(self", debut)]
+
+
+def affichage_et_dispatch(corps):
+    """Rend (nombre d'entrées affichées, numéros atteignables, triés).
+
+    Un numéro s'atteint de deux façons : une branche « status == "N" », ou
+    une entrée d'une table qui associe le numéro à un verbe. Ne compter que
+    les branches ferait passer pour un trou ce qu'une table couvre.
+
+    Le zéro sort : il ferme le menu et n'est jamais affiché.
+    """
+    affichees = len(re.findall(r'"prompt_description": t\(', corps))
+    numeros = set(re.findall(r'if status == "(\d+)":', corps))
+    table = re.search(r"verbes = \{([^}]*)\}", corps)
+    if table:
+        numeros |= set(re.findall(r'"(\d+)":', table.group(1)))
+    numeros.discard("0")
+    return affichees, sorted(int(n) for n in numeros)
 
 
 def corps_du_sous_menu():
@@ -118,6 +159,90 @@ class TestEntreeDuCache(unittest.TestCase):
         )
 
 
+class TestSousMenusDuCache(unittest.TestCase):
+    """Affichage et dispatch sont écrits deux fois, et rien ne les relie.
+
+    La liste de `prompt_description` numérote l'écran ; la chaîne d'`elif
+    status` décide où l'on va. Une entrée insérée au milieu de l'une sans
+    l'autre envoie l'opérateur ailleurs qu'où il a lu, ou rend la dernière
+    entrée inatteignable — dans les deux cas sans un mot d'erreur.
+    """
+
+    def verifier(self, nom, suivant, attendues):
+        affichees, numeros = affichage_et_dispatch(corps_de(nom, suivant))
+        self.assertEqual(
+            affichees, attendues, f"{nom} n'affiche pas {attendues} entrées"
+        )
+        self.assertEqual(
+            numeros,
+            list(range(1, attendues + 1)),
+            f"{nom} : le dispatch {numeros} ne suit pas l'affichage",
+        )
+
+    def test_le_menu_du_cache(self):
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 5)
+
+    def test_le_menu_du_service(self):
+        self.verifier("_cache_service", "_cache_journal_service", 6)
+
+    def test_letat_du_service_est_la_troisieme(self):
+        """Sous le diagnostic, comme demandé : le décalage du guide et des
+        tests est la moitié du changement, et c'est celle qui casse."""
+        corps = corps_de("prompt_execute_qemu_cache", "_cache_systemctl")
+        for numero, methode in (
+            ("3", "_cache_service"),
+            ("4", "_cache_guide"),
+            ("5", "_cache_tests"),
+        ):
+            self.assertRegex(
+                corps,
+                rf'elif status == "{numero}":\s*\n\s*self\.{methode}\(\)',
+                f"l'entrée {numero} ne mène pas à {methode}",
+            )
+
+    def test_les_quatre_verbes_systemd(self):
+        """start, enable, disable et stop, et pas un cinquième par erreur."""
+        corps = corps_de("_cache_service", "_cache_journal_service")
+        verbes = re.search(r"verbes = \{([^}]*)\}", corps)
+        self.assertIsNotNone(verbes, "la table des verbes a disparu")
+        self.assertEqual(
+            re.findall(r'"(\w+)"', verbes.group(1))[1::2],
+            ["start", "enable", "disable", "stop"],
+        )
+
+
+class TestToutesLesClesDuFichier(unittest.TestCase):
+    """La liste CLES est tenue à la main, donc elle oublie.
+
+    Ce contrôle-ci ne tient aucune liste : il relève par l'ARBRE tout appel
+    « t("…") » du module et vérifie que le dictionnaire répond. Une clé
+    absente ne lève pas — t() rend sa propre chaîne anglaise — et le symptôme
+    est un menu français qui affiche une ligne en anglais, ce qu'aucun test de
+    numérotation ne voit.
+    """
+
+    def test_chaque_appel_a_sa_traduction(self):
+        arbre = ast.parse(CACHE_PY.read_text(encoding="utf-8"))
+        cles = {
+            n.args[0].value
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id == "t"
+            and n.args
+            and isinstance(n.args[0], ast.Constant)
+            and isinstance(n.args[0].value, str)
+        }
+        self.assertGreater(len(cles), 50, "le relevé n'a presque rien trouvé")
+        manquantes = sorted(c for c in cles if c not in todo_i18n.TRANSLATIONS)
+        self.assertEqual(
+            manquantes,
+            [],
+            "clés employées mais absentes du dictionnaire — le menu français"
+            f" affichera l'anglais : {manquantes}",
+        )
+
+
 class TestClesI18n(unittest.TestCase):
     def test_cles_presentes(self):
         manquantes = [c for c in CLES if c not in todo_i18n.TRANSLATIONS]
@@ -155,7 +280,14 @@ class TestClesI18n(unittest.TestCase):
             "QEMU cache - Download mirror for local VMs": "📦",
             "Cache - Install or reinstall": "📥",
             "Cache - Diagnose: does it serve?": "🔍",
+            "Cache - Service state": "⚙",
             "Cache - Guide: how it works": "📖",
+            "Service - Start (start)": "▶",
+            "Service - Start at boot (enable)": "🔗",
+            "Service - Do not start at boot (disable)": "🚫",
+            "Service - Stop (stop)": "⏹",
+            "Service - Detailed state (status)": "📋",
+            "Service - Logs (log)": "📜",
             "Cache - Tests and performance report": "🧪",
         }
         for cle, icone in attendues.items():
