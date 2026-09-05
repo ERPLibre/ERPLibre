@@ -111,6 +111,33 @@ class TestLaCharge(unittest.TestCase):
             QC.DELAI_CHARGE["erplibre"], QC.DELAI_CHARGE["minimum"]
         )
 
+    def test_la_charge_attend_cloud_init_avant_tout(self):
+        """cloud-init réécrit la liste des dépôts à son premier démarrage.
+
+        Une mise à jour lancée pendant ce remplacement récupère une partie des
+        index et s'arrête là SANS échouer : l'installation qui suit ne trouve
+        plus les paquets de « main », et le message accuse le paquet plutôt que
+        le moment. sshd répond bien avant que cloud-init ait fini.
+        """
+        for d in sorted(QC.systemes_mesurables()):
+            cmd = QC.commande_de_charge(d, "minimum")
+            self.assertTrue(
+                cmd.startswith(QC.ATTENDRE_CLOUD_INIT),
+                f"« {d} » touche au gestionnaire de paquets sans attendre",
+            )
+
+    def test_lattente_tolere_un_cloud_init_en_erreur(self):
+        """Il sort en erreur pour un module accessoire — un fuseau que
+        l'invité ne connaît pas — et ce n'est pas une raison de renoncer."""
+        self.assertIn("|| true", QC.ATTENDRE_CLOUD_INIT)
+
+    def test_apt_ne_cache_plus_ses_echecs(self):
+        """« apt-get update » rend ZÉRO même quand un index n'a pas pu être
+        récupéré : il n'émet qu'un avertissement, que « -qq » cachait."""
+        rafraichir = QC.PAQUETS_MINIMUM["apt"][0]
+        self.assertIn("APT::Update::Error-Mode=any", rafraichir)
+        self.assertNotIn("-qq", rafraichir)
+
     def test_le_plan_a_blanc_montre_la_commande_exacte(self):
         """Un plan qui montre autre chose que ce qui sera lancé n'est pas un
         plan."""

@@ -116,7 +116,12 @@ PAQUETS_MINIMUM = {
         "sudo pacman -S --needed --noconfirm base-devel git python rust cmake",
     ),
     "apt": (
-        "sudo apt-get update -qq",
+        # « apt-get update » rend ZÉRO même quand un index n'a pas pu être
+        # récupéré : il n'émet qu'un avertissement, que « -qq » cachait. Le lot
+        # suivant échouait alors sur « Unable to locate package
+        # build-essential », très loin de sa cause. « Error-Mode=any » fait de
+        # tout index manquant une erreur, donc un arrêt qui se lit.
+        "sudo apt-get update -o APT::Update::Error-Mode=any",
         "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y"
         " build-essential git python3 rustc cargo cmake",
     ),
@@ -130,6 +135,47 @@ PAQUETS_MINIMUM = {
     ),
 }
 
+# Ce qui doit être fini AVANT de toucher au gestionnaire de paquets.
+#
+# cloud-init réécrit la liste des dépôts à son premier démarrage — il y
+# substitue un miroir géographique. Une mise à jour lancée pendant ce
+# remplacement récupère une partie des index et s'arrête là, sans échouer :
+# l'installation qui suit ne trouve alors plus les paquets de « main », et le
+# message accuse le paquet plutôt que le moment. sshd répond bien avant que
+# cloud-init ait fini, si bien que rien n'empêche d'arriver trop tôt.
+#
+# Le code de sortie est ignoré à dessein : cloud-init sort en erreur pour un
+# module accessoire — un fuseau que l'invité ne connaît pas, par exemple — et
+# ce n'est pas une raison de renoncer à la mesure.
+# Un travail de fond tient le verrou du gestionnaire de paquets juste après le
+# démarrage — sur Ubuntu, « apt-daily » se déclenche au boot et cloud-init ne
+# l'attend pas. « DPkg::Lock::Timeout » ne le couvre pas : mesuré, deux mises à
+# jour concurrentes échouent toutes les deux en moins d'une seconde, avec ou
+# sans l'option, car elle ignore le verrou des LISTES.
+#
+# La reprise vaut donc pour toutes les familles sans connaître leur mécanisme
+# de verrou. Elle ne masque rien : une source réellement en panne épuise les
+# tentatives et rend le même code d'erreur, message visible, cinq minutes plus
+# tard.
+REPRISES = 20
+PAUSE_REPRISE = 15
+
+
+def avec_reprises(commande):
+    """La commande, réessayée tant qu'un verrou la refuse."""
+    return (
+        f"n=0; until {commande}; do n=$((n+1));"
+        f" [ $n -ge {REPRISES} ] && exit 1;"
+        ' echo "  reprise $n : le gestionnaire de paquets est occupé";'
+        f" sleep {PAUSE_REPRISE}; done"
+    )
+
+
+ATTENDRE_CLOUD_INIT = (
+    "if command -v cloud-init >/dev/null 2>&1; then"
+    " sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 || true; fi"
+)
+
 # La charge réelle : le dépôt cloné dans la VM, puis la cible qui l'installe.
 # La même paire que le déploiement emploie — clone puis « make » — pour que ce
 # qui est mesuré ici soit ce qui se passe vraiment.
@@ -142,6 +188,17 @@ DELAI_SSH = 600
 # La charge minimale se compte en minutes, ERPLibre en heures : un délai
 # unique ferait échouer l'une ou laisserait l'autre pendre indéfiniment.
 DELAI_CHARGE = {"minimum": 2400, "erplibre": 14400}
+
+# Le gabarit des VM, par charge : (vCPU, Mo, disque).
+#
+# Le lot minimal se contente de peu — il télécharge, il ne bâtit pas. ERPLibre
+# compile son interpréteur et pose ses dépendances : deux cœurs y passeraient
+# des heures de plus, et ERPLibre seul occupe plusieurs gigaoctets, ce qui ne
+# laisse rien à Odoo sur un disque de vingt.
+GABARIT = {
+    "minimum": (2, 4096, "20G"),
+    "erplibre": (4, 8192, "40G"),
+}
 
 
 def journal_neuf():
@@ -544,6 +601,7 @@ def deployer(
     avec_cache=True,
     distro=DISTRO,
     version=VERSION,
+    charge="minimum",
 ):
     """Une VM Arch, branchée sur le cache ou non. Rend son adresse, ou ''.
 
@@ -559,10 +617,11 @@ def deployer(
     continue de servir les autres pendant la mesure, là où éteindre le service
     couperait tout le monde.
     """
+    vcpus, memoire, disque = GABARIT.get(charge, GABARIT["minimum"])
     cmd = (
         f"sudo python3 {shlex.quote(CLI)} --distro {distro}"
         f" --version {version} --name {nom}"
-        f" --vcpus 2 --memory 4096 --disk-size 20G"
+        f" --vcpus {vcpus} --memory {memoire} --disk-size {disque}"
         f" --ssh-key {shlex.quote(cle_publique())}"
         + (
             f" --cache-ca {shlex.quote(CA)}"
@@ -646,7 +705,10 @@ def commande_de_charge(distro, charge):
     if famille not in PAQUETS_MINIMUM:
         return ""
     rafraichir, installer = PAQUETS_MINIMUM[famille]
-    minimum = f"{rafraichir} && {installer}"
+    minimum = (
+        f"{ATTENDRE_CLOUD_INIT} && {avec_reprises(rafraichir)}"
+        f" && {avec_reprises(installer)}"
+    )
     if charge != "erplibre":
         return minimum
     # Le dépôt d'abord : « make » n'existe pas avant le clone, et git vient
@@ -872,7 +934,12 @@ def contre_epreuve(
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
         adresse = deployer(
-            nom, journal, dry_run, distro=distro, version=version
+            nom,
+            journal,
+            dry_run,
+            distro=distro,
+            version=version,
+            charge=charge,
         )
         if not adresse:
             return False
@@ -1097,6 +1164,7 @@ def _boucle(args, rapport, journal, acces, decalage):
             avec_cache=not args.sans_cache,
             distro=args.distro,
             version=args.version,
+            charge=args.charge,
         )
         if not adresse:
             return 1
