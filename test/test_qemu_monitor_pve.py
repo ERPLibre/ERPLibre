@@ -45,8 +45,7 @@ class TestLaLecture(unittest.TestCase):
         « status: unknown ». Indexée par nom, elle disparaissait : la VM
         passait pour absente du relevé alors que l'hôte venait de la nommer.
         Trois tours plus tard, 🗑 — état TERMINAL — et le suivi annonçait
-        « 1/1 terminées » au bout de neuf secondes. Vécu sur une VM Arch dans
-        un Proxmox imbriqué."""
+        « 1/1 terminées » au bout de neuf secondes."""
         self.assertEqual(list(self.releves), [100])
         self.assertEqual(self.releves[100]["name"], "pve-suivi")
 
@@ -143,10 +142,9 @@ class TestLAppel(unittest.TestCase):
 class TestPasDePoubelleTropTot(unittest.TestCase):
     """« Effacée » est un état TERMINAL : la ligne gèle sur 🗑 pour de bon.
 
-    Rapporté sur une VM Arch déployée sur Proxmox : poubelle dès le premier
-    tour, alors que la VM venait de naître. Un relevé manquant ne prouve
-    rien — l'hôte peut être occupé, la VM en train de démarrer, le relevé en
-    cache d'avant sa création.
+    Une VM à peine née tombait à la poubelle dès le premier tour. Un relevé
+    manquant ne prouve rien — l'hôte peut être occupé, la VM en train de
+    démarrer, le relevé en cache d'avant sa création.
     """
 
     def setUp(self):
@@ -348,7 +346,7 @@ class TestLeRedemarrageQuiFaitPartieDeLInstallation(unittest.TestCase):
 class TestUnHoteQuiNeNommePasSesVm(unittest.TestCase):
     """pvestatd arrêté, l'hôte rend une entrée SQUELETTIQUE par VM.
 
-    Vécu sur une VM Arch dans un Proxmox imbriqué :
+    L'entrée se réduit alors à :
 
         {"id":"qemu/100","node":"…","status":"unknown","type":"qemu",
          "vmid":100}
@@ -427,9 +425,8 @@ class TestUnHoteQuiNeNommePasSesVm(unittest.TestCase):
 
 
 class TestTroisVmSurUnProxmox(unittest.TestCase):
-    """Rapporté à l'usage : sur trois VM d'un même Proxmox, une seule avait
-    ses colonnes vides — et les deux autres montraient les chiffres d'une
-    AUTRE machine.
+    """Sur plusieurs VM d'un même Proxmox, l'une a ses colonnes vides et les
+    autres montrent les chiffres d'une AUTRE machine.
 
     Deux fautes, dont une était le miroir d'un correctif précédent."""
 
@@ -516,10 +513,10 @@ class TestTroisVmSurUnProxmox(unittest.TestCase):
         self.assertFalse(ok)
 
     def test_a_remote_vm_never_borrows_a_local_namesake(self):
-        # « virsh domstats » indexe par NOM, et un nom se partage. Mesuré :
-        # « erplibre-ubuntu-2604 » sur Proxmox affichait 1,5 Gio sur 12 et
-        # 58 Gio de disque — ceux de la machine locale du même nom — quand la
-        # vraie tournait avec 3 Gio et 25.
+        # « virsh domstats » indexe par NOM, et un nom se partage : une VM
+        # distante affichait la mémoire et le disque de la machine LOCALE du
+        # même nom. Des chiffres justes, appartenant à une autre machine —
+        # pire qu'une colonne vide, car rien ne les signale.
         locaux = {
             "erplibre-ubuntu-2604": {
                 "ram_used": 1 << 30,
@@ -730,12 +727,10 @@ class TestQuandLeVertRedescend(unittest.TestCase):
 class TestLaBonneMachine(unittest.TestCase):
     """Le pire défaut de la série : l'installation partie AILLEURS.
 
-    Vécu le 24 août 2026. Une VM déployée sur Proxmox sous le nom
-    « erplibre-ubuntu-2604 » — nom déjà porté par un domaine LOCAL. Le
-    lanceur détaché ré-résout l'adresse de la VM à chaque tour par virsh, qui
-    a répondu avec le domaine local : ERPLibre + Odoo se sont installés sur la
-    MAUVAISE machine, et le journal l'affichait sans que rien n'alerte
-    (« → 198.51.100.118 »).
+    Une VM déployée sur Proxmox sous un nom que porte DÉJÀ un domaine local.
+    Le lanceur détaché ré-résout l'adresse à chaque tour par virsh, qui
+    répond avec le domaine local : ERPLibre + Odoo s'installent sur la
+    MAUVAISE machine, et le journal affiche l'adresse sans que rien n'alerte.
 
     Pour une VM distante, l'alias ~/.ssh/config est la seule vérité : il
     porte le rebond par l'hôte Proxmox.
@@ -777,8 +772,9 @@ class TestLaBonneMachine(unittest.TestCase):
 class TestLeDisque(unittest.TestCase):
     """La colonne Disque annonçait un disque PLEIN qui ne l'était pas.
 
-    Rapporté : « 6.0G/6.0G » sur une VM dont l'invité disait « 845M utilisés
-    sur 5.8G ». La mesure venait de « du -sb », qui rend la taille APPARENTE :
+    « 6.0G/6.0G » s'affichait pour une VM dont l'invité disait « 845M
+    utilisés sur 5.8G ». La mesure venait de « du -sb », qui rend la taille
+    APPARENTE :
     un disque raw creux la donne entière. « du -sB1 » compte les blocs
     réellement occupés — 1,2 Go, ce qui correspond.
     """
