@@ -48,3 +48,18 @@ EL_LANG="fr"
 # 0 = silencieux (défaut), 1 = logs détaillés. On respecte une valeur déjà
 # passée en environnement : EL_VERBOSE=1 make install_odoo_18
 EL_VERBOSE="${EL_VERBOSE:-0}"
+
+# NixOS : donner aux roues manylinux les bibliotheques que nix-ld declare.
+#
+# nix-ld fournit l'editeur de liens (/lib64/ld-linux-x86-64.so.2) aux binaires
+# etrangers qu'il LANCE. Mais un « .so » de roue manylinux n'est pas lance :
+# il est charge par dlopen depuis le CPython du systeme, qui est un binaire de
+# Nix et ne lit pas NIX_LD_LIBRARY_PATH. Sans cette ligne, l'installation
+# reussit et « import psycopg2 » echoue APRES, sur « libz.so.1: cannot open
+# shared object file » -- une erreur qui ne parle ni de pip ni de Nix.
+#
+# Rien ailleurs : la variable n'est posee que la ou nix-ld existe, et ne
+# masque donc aucune bibliotheque sur les autres systemes.
+if [ -n "${NIX_LD_LIBRARY_PATH:-}" ]; then
+  export LD_LIBRARY_PATH="${NIX_LD_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi

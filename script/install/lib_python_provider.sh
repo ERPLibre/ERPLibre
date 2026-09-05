@@ -85,7 +85,15 @@ el_distro_python_exec() {
   # Des chemins SYSTEME, jamais « command -v » : dans un venv activé celui-ci
   # rend le python DU VENV, et l'on bâtirait un venv depuis un venv. Le PATH
   # d'une session interactive n'a rien à faire dans cette décision.
-  for exe in "/usr/bin/python${want%.*}" "/usr/local/bin/python${want%.*}"; do
+  # Le profil du systeme AVANT /usr/bin, et c'est NixOS qui l'impose : la-bas
+  # /usr/bin est servi par envfs, qui repond a open() et a execve() mais PAS a
+  # stat(). Le test « -x » y reussit donc, l'interpreteur s'execute, et
+  # « python -m venv » echoue quand meme -- il stat son propre interpreteur
+  # pour le recopier : « Error: [Errno 2] No such file or directory ». Le
+  # chemin du profil, lui, est un vrai lien symbolique. Ailleurs il n'existe
+  # pas, et la boucle passe a la suite sans rien couter.
+  for exe in "/run/current-system/sw/bin/python${want%.*}" \
+    "/usr/bin/python${want%.*}" "/usr/local/bin/python${want%.*}"; do
     if el_python_is_compatible "${exe}" "${want}"; then
       echo "${exe}"
       return 0

@@ -39,6 +39,13 @@ if [[ "${OS_KERNEL}" == "Linux" ]]; then
     ./script/install/install_debian_dependency.sh
   elif [[ "${ID}" == "arch" ]]; then
     ./script/install/install_arch_linux.sh
+  elif [[ "${ID}" == "nixos" ]]; then
+    # NixOS ne pose pas de paquets : il applique une declaration. Sans cette
+    # branche, l'aiguillage tombait dans le « else » et appelait le script
+    # Debian, qui sortait en erreur des la detection du systeme -- avant meme
+    # d'essayer apt-get, absent de toute facon.
+    echo "\n---- NixOS installation process started ----"
+    ./script/install/install_nixos_dependency.sh
   elif [[ "${ID}" == opensuse* || "${ID_LIKE}" == *"suse"* ]]; then
     # openSUSE Tumbleweed / Leap, SLES : gestionnaire zypper.
     echo "\n---- SUSE installation process started ----"
@@ -50,7 +57,7 @@ if [[ "${OS_KERNEL}" == "Linux" ]]; then
     ./script/install/install_fedora_dependency.sh
   else
     ./script/install/install_debian_dependency.sh
-    echo "Your Linux system is not supported, only support Ubuntu 24.04, 25.10, 26.04, Linux Mint 22.3, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE, Arch."
+    echo "Your Linux system is not supported, only support Ubuntu 24.04, 25.10, 26.04, Linux Mint 22.3, Debian, Fedora, AlmaLinux, Rocky Linux, openSUSE, Arch, NixOS."
   fi
 elif [[ "${OS_KERNEL}" == "Darwin" ]]; then
   echo "\n---- Darwin installation process started ----"
