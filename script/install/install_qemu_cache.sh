@@ -20,8 +20,14 @@ set -e
 
 EL_HTTP_PORT="${EL_HTTP_PORT:-8898}"
 EL_TLS_PORT="${EL_TLS_PORT:-8899}"
-EL_BRIDGE="${EL_BRIDGE:-virbr0}"
-EL_SUBNET="${EL_SUBNET:-192.168.122.0/24}"
+# Vides par défaut : le pont et le sous-réseau sont LUS dans libvirt plus bas.
+# Les supposer est le défaut qui rend l'installation silencieusement inutile —
+# un hôte dont le réseau par défaut a été déplacé sur un /24 libre, ce qui
+# arrive dès que 192.168.122 entre en collision, voit ses VM échapper au
+# détournement sans que rien ne le signale.
+EL_BRIDGE="${EL_BRIDGE:-}"
+EL_SUBNET="${EL_SUBNET:-}"
+EL_NET="${EL_NET:-default}"
 EL_CACHE_DIR="${EL_CACHE_DIR:-/var/cache/erplibre_go_qemu_cache}"
 EL_CA_DIR="${EL_CA_DIR:-/var/lib/erplibre_go_qemu_cache}"
 EL_ACCESS_LOG="${EL_ACCESS_LOG:-/var/log/erplibre_go_qemu_cache.jsonl}"
@@ -80,6 +86,37 @@ is_fedora_like() {
     fedora | rhel | centos | almalinux | rocky) return 0 ;;
     *) echo "$OS_LIKE" | grep -qE "fedora|rhel" && return 0 || return 1 ;;
   esac
+}
+
+# ---------------------------------------------------------------------------
+# Le réseau que les VM utilisent VRAIMENT
+# ---------------------------------------------------------------------------
+
+# detecter_reseau remplit EL_BRIDGE et EL_SUBNET depuis libvirt.
+#
+# Le réseau « default » ne sert pas toujours 192.168.122.0/24 : il est déplacé
+# sur un /24 libre quand ce préfixe entre en collision avec ce que l'hôte
+# route déjà — le cas de tout orchestrateur qui est lui-même une VM. Poser des
+# règles sur le mauvais préfixe laisse une installation qui réussit, des
+# règles bien présentes dans le noyau, et un cache que personne ne traverse.
+detecter_reseau() {
+  local xml adresse masque
+  xml="$(virsh -c qemu:///system net-dumpxml "$EL_NET" 2>/dev/null)" || {
+    die "réseau libvirt « ${EL_NET} » introuvable — virsh -c qemu:///system net-list"
+  }
+  [ -n "$EL_BRIDGE" ] || EL_BRIDGE="$(echo "$xml" |
+    sed -n "s/.*<bridge name='\([^']*\)'.*/\1/p" | head -1)"
+  if [ -z "$EL_SUBNET" ]; then
+    adresse="$(echo "$xml" | sed -n "s/.*<ip address='\([^']*\)'.*/\1/p" | head -1)"
+    masque="$(echo "$xml" | sed -n "s/.*netmask='\([^']*\)'.*/\1/p" | head -1)"
+    [ "$masque" = "255.255.255.0" ] || die \
+      "le réseau « ${EL_NET} » ne sert pas un /24 (masque ${masque:-inconnu}) :" \
+      "passer EL_SUBNET à la main"
+    EL_SUBNET="${adresse%.*}.0/24"
+  fi
+  [ -n "$EL_BRIDGE" ] && [ -n "$EL_SUBNET" ] || die \
+    "pont ou sous-réseau illisibles dans le réseau « ${EL_NET} »"
+  log "réseau lu dans libvirt : ${EL_BRIDGE}, ${EL_SUBNET}"
 }
 
 # ---------------------------------------------------------------------------
@@ -261,6 +298,7 @@ UNITE
 main() {
   check_root
   detect_os
+  detecter_reseau
   assurer_go
   compiler
   preparer_etat

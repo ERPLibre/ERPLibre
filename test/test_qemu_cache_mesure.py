@@ -110,11 +110,20 @@ class TestVerdict(unittest.TestCase):
             "un paquet publié entre les deux VM a été pris pour une panne",
         )
 
-    def test_une_seconde_vm_muette_ne_prouve_rien_mais_ne_ment_pas(self):
-        """Aucune demande de paquet : rien à reprocher. Le verdict ne doit pas
-        inventer un succès dont il n'a aucune preuve — il constate seulement
-        qu'aucune faute n'a eu lieu."""
-        self.assertTrue(QC.verdict([ligne(PAQUET_A, True)], [], None))
+    def test_une_mesure_vide_est_un_echec(self):
+        """Le cas qui a coûté vingt minutes : un détournement posé sur le
+        mauvais sous-réseau laisse les VM sortir en direct. Le cache ne voit
+        rien, le verdict n'a « aucune faute » à signaler — et rendre vrai
+        déclarerait un succès qu'il n'a jamais mesuré."""
+        self.assertFalse(
+            QC.verdict([], [], None),
+            "un cache que personne ne traverse est déclaré bon",
+        )
+
+    def test_une_seconde_vm_muette_est_un_echec(self):
+        """La première a rempli, la seconde n'a rien demandé : il n'y a pas
+        de mesure, donc pas de succès."""
+        self.assertFalse(QC.verdict([ligne(PAQUET_A, True)], [], None))
 
     def test_le_melange(self):
         premier = [ligne(PAQUET_A, True), ligne(PAQUET_B, True)]

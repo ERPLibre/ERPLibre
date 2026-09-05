@@ -169,9 +169,42 @@ def prealables(journal):
         manques.append("libvirt injoignable — virsh -c qemu:///system list")
     if not os.path.isfile(CLI):
         manques.append(f"deploy_qemu.py absent ({CLI})")
+    ecart = desaccord_de_reseau()
+    if ecart:
+        manques.append(ecart)
     for m in manques:
         dire(f"  ✗ {m}", journal)
     return not manques
+
+
+def desaccord_de_reseau():
+    """Les règles visent-elles le sous-réseau que libvirt sert VRAIMENT ?
+
+    Le réseau « default » ne sert pas toujours 192.168.122.0/24 : il est
+    déplacé sur un /24 libre dès que ce préfixe entre en collision, ce qui est
+    le cas de tout orchestrateur qui est lui-même une VM. Des règles posées
+    sur l'autre préfixe existent, l'installation réussit, et aucune VM ne
+    traverse le cache. Rend un message, ou "" si l'accord est fait.
+    """
+    code, xml = executer("virsh -c qemu:///system net-dumpxml default", 30)
+    if code:
+        return ""
+    m = re.search(r"<ip address='([\d.]+)'", xml or "")
+    if not m:
+        return ""
+    servi = m.group(1).rsplit(".", 1)[0] + ".0/24"
+    code, regles = executer(
+        "sudo -n nft list table ip erplibre_qemu_cache", 30
+    )
+    if code:
+        return ""
+    if servi not in (regles or ""):
+        return (
+            f"le détournement ne vise pas le réseau des VM : libvirt sert"
+            f" {servi}, les règles disent autre chose — réinstaller le cache"
+            " depuis TODO › Déploiement › Cache QEMU"
+        )
+    return ""
 
 
 def journal_du_cache():
@@ -335,6 +368,31 @@ def verdict(premier, second, journal):
 
     dire("", journal)
     dire("  ── Mesure ──", journal)
+
+    # Une mesure VIDE n'est pas un succès. Sans cette garde, un cache que
+    # personne ne traverse rend « aucune faute » et le test sort en 0 : c'est
+    # exactement ce qu'un détournement posé sur le mauvais sous-réseau
+    # produit, l'installation ayant par ailleurs tout réussi.
+    if not p1 and not p2:
+        dire(
+            "  ✗ ÉCHEC : aucun fichier de paquet n'a traversé le cache.",
+            journal,
+        )
+        dire(
+            "    Les VM ne passent pas par lui. Comparer le sous-réseau des",
+            journal,
+        )
+        dire("    règles avec celui que libvirt sert vraiment :", journal)
+        dire("      sudo nft list table ip erplibre_qemu_cache", journal)
+        dire("      virsh -c qemu:///system net-dumpxml default", journal)
+        return False
+    if not p2:
+        dire(
+            "  ✗ ÉCHEC : la première VM a rempli le cache, la seconde ne lui"
+            " a rien demandé.",
+            journal,
+        )
+        return False
     dire(f"  1re VM : {len(p1)} fichiers de paquets demandés", journal)
     dire(
         f"  2e VM  : {len(p2)} demandés, dont {len(neufs)} inconnus du cache",
