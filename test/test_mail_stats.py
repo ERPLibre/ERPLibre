@@ -246,10 +246,6 @@ class TestBuildReport(StatsCase):
         self.assertEqual([d["name"] for d in rapport.folders], ["INBOX"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestLargeMailbox(StatsCase):
     """Une boîte tenue depuis des années : ce qui décide de l'utilisabilité
     n'est pas le SQL mais le nombre de lignes rendues et le déchiffrement
@@ -347,3 +343,7 @@ class TestLargeMailbox(StatsCase):
         finally:
             self.store._open = vrai_open
         self.assertEqual(len(ouvertures), len(set(ouvertures)))
+
+
+if __name__ == "__main__":
+    unittest.main()
