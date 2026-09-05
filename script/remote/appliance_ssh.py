@@ -88,6 +88,23 @@ def strip_ssh_noise(text: str) -> str:
     return "\n".join(gardees) + ("\n" if gardees else "")
 
 
+# Ce que ssh dit quand il ne CONNAÎT pas encore la clé d'une machine, ou
+# qu'elle a changé. Trois formulations selon la version et le type de clé ;
+# les chercher toutes évite de conclure « injoignable » sur une machine qui
+# répond très bien et n'attend qu'un accord.
+_CLE_INCONNUE = (
+    "host key verification failed",
+    "authenticity of host",
+    "no ed25519 host key is known",
+)
+
+
+def hostkey_missing(text: str) -> bool:
+    """La sortie de ssh dénonce-t-elle une clé d'hôte inconnue ou changée ?"""
+    bas = (text or "").lower()
+    return any(motif in bas for motif in _CLE_INCONNUE)
+
+
 # Les lignes d'AVANCEMENT : « transferred 1.2 GiB of 3.0 GiB (40%) » répété
 # cent fois par une copie de disque, les points d'un téléchargement. Elles ne
 # disent qu'une chose, et la dernière la dit aussi bien.

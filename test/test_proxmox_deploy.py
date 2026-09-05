@@ -30,6 +30,7 @@ from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.proxmox import proxmox_deploy as pve  # noqa: E402
+from script.remote import appliance_ssh  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -473,8 +474,8 @@ class TestChoixDeLHote(unittest.TestCase):
             "The authenticity of host '10.0.0.1' can't be established.",
             "No ED25519 host key is known for 10.0.0.1",
         ):
-            self.assertTrue(TODO._pve_hostkey_missing(texte), texte)
-        self.assertFalse(TODO._pve_hostkey_missing("Permission denied"))
+            self.assertTrue(appliance_ssh.hostkey_missing(texte), texte)
+        self.assertFalse(appliance_ssh.hostkey_missing("Permission denied"))
 
     def _confirm(self, reponses):
         """reponses : [(code, sortie)] pour chaque appel à pve.run."""

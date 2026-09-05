@@ -96,6 +96,34 @@ class TestCeQueSshAjouteEstRetire(unittest.TestCase):
         self.assertEqual("", A.strip_ssh_noise(None))
 
 
+class TestLaCleDHoteInconnue(unittest.TestCase):
+    """Conclure « injoignable » sur une machine qui n'attend qu'un accord."""
+
+    FORMULATIONS = (
+        "Host key verification failed.",
+        "The authenticity of host 'x' can't be established.",
+        "No ED25519 host key is known for x and you have requested strict"
+        " checking.",
+    )
+
+    def test_every_wording_is_recognised(self):
+        """Trois selon la version de ssh et le type de clé ; en manquer une
+        fait conclure à une panne de réseau sur un accord qui manque."""
+        self.assertTrue(self.FORMULATIONS, "aucun cas : rien n'est prouvé")
+        for texte in self.FORMULATIONS:
+            with self.subTest(texte=texte[:32]):
+                self.assertTrue(A.hostkey_missing(texte))
+
+    def test_the_case_does_not_matter(self):
+        self.assertTrue(A.hostkey_missing("HOST KEY VERIFICATION FAILED"))
+
+    def test_another_failure_is_not_mistaken_for_it(self):
+        """Contrôle positif : le prédicat doit aussi savoir dire non."""
+        for texte in ("Permission denied (publickey).", "", None):
+            with self.subTest(texte=texte):
+                self.assertFalse(A.hostkey_missing(texte))
+
+
 class TestLAvancementSeReplie(unittest.TestCase):
     """Un avancement compte pendant qu'il défile, pas dans un journal relu."""
 

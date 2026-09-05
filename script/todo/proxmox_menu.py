@@ -20,6 +20,7 @@ import time
 
 import click
 
+from script.remote import appliance_ssh
 from script.todo import todo_prefs
 from script.todo.todo_i18n import t
 
@@ -164,31 +165,20 @@ class ProxmoxMenuMixin:
         return {"target": alias, "jump": ""}
 
     @staticmethod
-    def _pve_hostkey_missing(sortie):
-        """La sortie de ssh dénonce-t-elle une clé d'hôte inconnue ou changée ?"""
-        bas = (sortie or "").lower()
-        return (
-            "host key verification failed" in bas
-            or "authenticity of host" in bas
-            or "no ed25519 host key is known" in bas
-        )
-
-    @staticmethod
     def _pve_clean_output(sortie):
         """Les lignes de la sortie qui APPRENNENT quelque chose.
 
-        « Warning: Permanently added … to the list of known hosts » arrive sur
-        stderr à chaque connexion d'un hôte en UserKnownHostsFile=/dev/null.
-        Affichée comme preuve d'un échec, elle envoyait chercher du côté de la
-        clé d'hôte un problème qui n'avait rien à voir — rapporté.
+        Le transport retire déjà ce que ssh écrit de lui-même, mais ce filtre
+        reste : rien n'oblige un appelant à passer par lui, et une ligne
+        « Warning: Permanently added … » affichée comme preuve d'un échec
+        envoie chercher du côté de la clé d'hôte un problème qui n'a rien à
+        voir. La LISTE de ce bruit, elle, n'est écrite qu'à un endroit.
         """
-        gardees = []
-        for ligne in (sortie or "").splitlines():
-            nue = ligne.strip()
-            if not nue or nue.startswith("Warning: Permanently added"):
-                continue
-            gardees.append(nue)
-        return gardees
+        return [
+            ligne.strip()
+            for ligne in appliance_ssh.strip_ssh_noise(sortie).splitlines()
+            if ligne.strip()
+        ]
 
     def _pve_ssh_alive(self, host):
         """(ssh passe-t-il ?, ce qu'il a dit) — sans rien exiger de la machine.
@@ -264,7 +254,7 @@ class ProxmoxMenuMixin:
         print(f"\n  {t('Checking')} {host['target']}…")
         code, out = pve.run(host, "pveversion", timeout=30)
         version = pve.parse_pveversion(out)
-        if not version and self._pve_hostkey_missing(out):
+        if not version and appliance_ssh.hostkey_missing(out):
             # Première connexion : ssh refuse un hôte dont il n'a pas la clé.
             # On ne DÉSACTIVE pas la vérification — un hyperviseur n'est pas
             # une VM jetable — on propose de l'enregistrer, une fois.
