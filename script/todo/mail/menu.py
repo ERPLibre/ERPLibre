@@ -13,6 +13,7 @@ import getpass
 import logging
 import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import click
@@ -216,30 +217,50 @@ def _open_tui(todo) -> None:
 
 
 def _sync_now(todo) -> None:
-    from script.todo.mail.tui import open_sessions
+    from script.todo.mail.tui import SYNC_PARALLELE, open_sessions
 
     accounts = _load_accounts()
     if not accounts:
         print(t("mail_no_account"))
         return
     sessions = open_sessions(accounts, secret_store_for(todo))
-    try:
-        for session in sessions:
-            if not session.online:
-                print(f"{session.account.name} : {session.error}")
-                continue
+
+    def une(session) -> str:
+        """Une passe pour un compte, rendue en texte. Ne lève jamais : un
+        compte qui échoue ne doit pas emporter ceux qui avancent avec lui."""
+        if not session.online:
+            return f"{session.account.name} : {session.error}"
+        try:
             report = session.sync()
-            print(
-                f"{session.account.name} : {report.new_messages}"
-                f" {t('mail_new_messages')}"
+        except Exception as exc:
+            return f"{session.account.name} : {exc}"
+        lignes = [
+            f"{session.account.name} : {report.new_messages}"
+            f" {t('mail_new_messages')}"
+        ]
+        lignes += [f"  {e}" for e in report.errors]
+        if report.purged:
+            lignes.append(
+                f"  {t('mail_folders_resynced')}"
+                f" {', '.join(report.purged)}"
             )
-            for error in report.errors:
-                print(f"  {error}")
-            if report.purged:
-                print(
-                    f"  {t('mail_folders_resynced')}"
-                    f" {', '.join(report.purged)}"
-                )
+        return "\n".join(lignes)
+
+    try:
+        # Chaque compte a son socket et son cache verrouillé : les faire
+        # avancer ensemble transforme une attente réseau en série en une
+        # seule attente. Le rendu reste groupé PAR COMPTE — un entrelacement
+        # de lignes venues de plusieurs comptes serait illisible.
+        vivantes = list(sessions)
+        if len(vivantes) <= 1:
+            for session in vivantes:
+                print(une(session))
+        else:
+            with ThreadPoolExecutor(
+                max_workers=min(SYNC_PARALLELE, len(vivantes))
+            ) as pool:
+                for texte in pool.map(une, vivantes):
+                    print(texte)
     finally:
         for session in sessions:
             session.close()
