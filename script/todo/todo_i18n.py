@@ -1556,6 +1556,14 @@ TRANSLATIONS = {
         "fr": "Les retirer depuis l'entrée 4 de ce menu.",
         "en": "Remove them from entry 4 of this menu.",
     },
+    "This destroys the machines of this test and their disks.": {
+        "fr": "Cela détruit les machines de ce test et leurs disques.",
+        "en": "This destroys the machines of this test and their disks.",
+    },
+    "Destroy the machines of this test?": {
+        "fr": "Détruire les machines de ce test ?",
+        "en": "Destroy the machines of this test?",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

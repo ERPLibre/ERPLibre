@@ -22,6 +22,7 @@ from unittest import mock
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
+from script.todo import todo_i18n  # noqa: E402
 from script.todo.todo import TODO  # noqa: E402
 
 
@@ -82,6 +83,43 @@ class TestConfirmationDesTestsLongs(unittest.TestCase):
             todo._longtest_run("qemu_cache.py", "--detruire", demander=False)
         self.assertFalse(confirm.called)
         self.assertEqual(len(todo.execute.commandes), 1)
+
+    def test_la_question_dit_ce_qui_va_arriver(self):
+        """Détruire n'est pas lancer.
+
+        L'invite était la même pour les deux : « Cela crée de vraies VM…
+        Lancer ce test long ? » s'affichait devant « --detruire », qui efface
+        des machines et leurs disques. On répondait oui à autre chose que ce
+        qui allait arriver, et c'est l'acte le moins rattrapable des deux.
+        """
+        todo, patch = menu()
+        with patch as confirm:
+            todo._longtest_run("qemu_cache.py", "--detruire")
+        pose = confirm.call_args.args[0]
+        self.assertIn("Détruire", pose, f"question posée : {pose}")
+        self.assertNotIn("Lancer", pose)
+
+    def test_une_creation_pose_toujours_la_sienne(self):
+        todo, patch = menu()
+        with patch as confirm:
+            todo._longtest_run("qemu_cache.py", "--sans-cache")
+        pose = confirm.call_args.args[0]
+        self.assertIn("Lancer", pose, f"question posée : {pose}")
+
+    def test_les_deux_avertissements_different(self):
+        """L'un annonce une création, l'autre un effacement : les confondre
+        est ce qui rend une confirmation machinale."""
+        from script.todo.longtest_menu import LongTestMenuMixin as L
+
+        creer = L._longtest_question("")
+        defaire = L._longtest_question("--detruire")
+        self.assertNotEqual(creer, defaire)
+        for cle in creer + defaire:
+            self.assertIn(
+                cle,
+                todo_i18n.TRANSLATIONS,
+                f"« {cle} » n'est pas une clé de traduction",
+            )
 
     def test_la_commande_reste_affichee(self):
         """Elle l'était déjà, et c'est ce qui rend la question répondable."""

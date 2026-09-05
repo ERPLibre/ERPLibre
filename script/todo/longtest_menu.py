@@ -35,6 +35,23 @@ class LongTestMenuMixin:
     # confirmer sans lire ne protège plus rien le jour où elle compte.
     _LONGTEST_SANS_EFFET = ("--dry-run", "--rapport")
 
+    @staticmethod
+    def _longtest_question(args):
+        """L'avertissement et la question qui vont avec ces arguments.
+
+        Rend un couple de CLÉS de traduction, jamais du texte : l'invite est
+        bilingue comme le reste du menu.
+        """
+        if "--detruire" in (args or ""):
+            return (
+                "This destroys the machines of this test and their disks.",
+                "Destroy the machines of this test?",
+            )
+        return (
+            "This creates real VMs and takes a while.",
+            "Run this long test?",
+        )
+
     def _longtest_run(self, nom, args="", demander=None):
         """Lance un test long, sortie en DIRECT.
 
@@ -59,10 +76,13 @@ class LongTestMenuMixin:
                 d in (args or "") for d in self._LONGTEST_SANS_EFFET
             )
         if demander:
-            # Ces tests créent de vraies machines et durent : une frappe ne
-            # doit pas suffire à les lancer.
-            print(f"  {t('This creates real VMs and takes a while.')}")
-            if not click.confirm(t("Run this long test?")):
+            # Une frappe ne doit suffire ni à créer de vraies machines, ni à
+            # en effacer. La question doit dire LAQUELLE des deux on fait :
+            # confirmer « lancer ce test long » devant une destruction fait
+            # répondre oui à autre chose que ce qui va arriver.
+            avertissement, question = self._longtest_question(args)
+            print(f"  {t(avertissement)}")
+            if not click.confirm(t(question)):
                 return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
