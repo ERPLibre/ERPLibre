@@ -1418,8 +1418,8 @@ class TODO(
         On découpe en blocs plutôt que de substituer par expression
         régulière : une ligne Host peut porter PLUSIEURS noms.
 
-        Deux règles, chacune corrigeant une perte de données CONSTATÉE dans
-        le fichier d'un utilisateur.
+        Deux règles, chacune empêchant une perte de données dans le
+        fichier.
 
         1. Seuls « Host » et « Match » clôturent un bloc. La règle d'avant —
            « une ligne non indentée clôt le bloc » — prenait l'indentation
@@ -1822,9 +1822,8 @@ class TODO(
         """Nombre de rebonds pour joindre `cible`, en suivant la chaîne.
 
         C'est la mesure de PROFONDEUR d'un hôte imbriqué, et la seule dont on
-        dispose de l'extérieur. Elle est exacte pour les hôtes que nous avons
-        déployés : c'est nous qui écrivons ces entrées, un ProxyJump par
-        étage.
+        dispose de l'extérieur. Elle est exacte pour les hôtes que ce dépôt
+        déploie : c'est lui qui écrit ces entrées, un ProxyJump par étage.
 
         `maxi` borne le parcours : une boucle dans ~/.ssh/config — A qui
         rebondit par B qui rebondit par A — tournerait sinon sans fin.
@@ -1990,8 +1989,9 @@ class TODO(
     # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
     # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
     # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
-    # monter tel quel. Vécu : « read: Connection reset by peer », parce que la
-    # seconde moitié du nom est un domaine libvirt, pas un alias SSH du rebond.
+    # monter tel quel. Le montage s'arrête alors sur « read: Connection reset
+    # by peer », la seconde moitié du nom étant un domaine libvirt et non un
+    # alias SSH du rebond.
     SSHFS_CHAIN_SEP = "+"
 
     # Options à rendre à sshfs quand on contourne l'alias : exactement celles
@@ -4613,9 +4613,9 @@ class TODO(
     def _monitoring_restore(self, zip_path):
         """Restaurer la sauvegarde, puis DIRE ce que la neutralisation a pris.
 
-        Mesuré sur sept bases dont le nom portait « neutralize » :
-        `database.is_neutralized` absent partout, jusqu'à 35 crons actifs,
-        et le domaine de courriel du client toujours en place. Poser la
+        Un nom qui porte « neutralize » ne prouve rien : la marque
+        `database.is_neutralized` peut manquer, des dizaines de crons rester
+        actifs et le domaine de courriel d'origine tenir encore. Poser la
         question, recevoir oui et ne rien vérifier reproduit exactement
         cette illusion — on relit donc la base.
         """
