@@ -515,52 +515,147 @@ class QemuCacheMenuMixin:
     # [6] Tests
     # ------------------------------------------------------------------
 
+    # Les trois essais, dans l'ordre où l'assistant les propose et les
+    # enchaîne. Le préfixe est celui que le script donne aux machines de ce
+    # mode ; un test vérifie que les deux tables disent la même chose, faute
+    # de quoi le menu annoncerait des VM qui ne sont pas celles qui naissent.
+    _CACHE_ESSAIS = (
+        ("", "el-cache-test", "The cache: two VMs, measure the gain"),
+        (
+            "--hors-ligne",
+            "el-offline-test",
+            "The offline counter-proof",
+        ),
+        (
+            "--sans-cache",
+            "el-no-cache-test",
+            "The control: two VMs WITHOUT the cache",
+        ),
+    )
+
+    _CACHE_CHARGES = (
+        ("minimum", "Minimum: a batch of packages, minutes"),
+        ("erplibre", "ERPLibre + Odoo 18: the real thing, hours"),
+    )
+
+    @staticmethod
+    def _cache_systemes():
+        """Les systèmes que le TEST accepte, lus du test lui-même.
+
+        Chargé à l'appel et non au démarrage du menu : le script du test tire
+        le catalogue du déploiement, qui est lourd, et personne ne doit le
+        payer pour afficher un menu qu'il ne visite pas.
+        """
+        import importlib.util
+
+        chemin = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            LONGTEST,
+        )
+        spec = importlib.util.spec_from_file_location(
+            "qemu_cache_long", chemin
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return [
+            (d, module.distro_label(d, module.DISTROS[d][1]))
+            for d in sorted(module.systemes_mesurables())
+        ]
+
+    def _cache_choisir(self, titre, options):
+        """Une question numérotée, le premier choix par défaut.
+
+        Rend l'indice choisi, ou None si l'on renonce. Les trois questions de
+        l'assistant partagent cette forme : une seule façon de répondre, et
+        « 0 » ramène en arrière partout.
+        """
+        print(f"\n{titre}")
+        for i, libelle in enumerate(options, 1):
+            print(f"  [{i}] {libelle}")
+        print(f"  [0] {t('Back')}")
+        while True:
+            reponse = click.prompt(t("Choice"), default="1").strip()
+            if reponse == "0":
+                return None
+            if reponse.isdigit() and 1 <= int(reponse) <= len(options):
+                return int(reponse) - 1
+            print(t("Command not found !"))
+
+    def _cache_assistant(self):
+        """Trois questions, puis les essais choisis, l'un après l'autre.
+
+        Une seule confirmation à la fin, et non une par essai : la question
+        porte sur le LOT, et la reposer trois fois la rendrait machinale
+        — c'est ce qui fait qu'on cesse de la lire.
+        """
+        essais = self._cache_choisir(
+            t("Which test?"),
+            [t(e[2]) for e in self._CACHE_ESSAIS]
+            + [t("All three, one after another")],
+        )
+        if essais is None:
+            return
+        choisis = (
+            list(self._CACHE_ESSAIS)
+            if essais == len(self._CACHE_ESSAIS)
+            else [self._CACHE_ESSAIS[essais]]
+        )
+
+        charge = self._cache_choisir(
+            t("Which load?"), [t(c[1]) for c in self._CACHE_CHARGES]
+        )
+        if charge is None:
+            return
+        charge = self._CACHE_CHARGES[charge][0]
+
+        systemes = self._cache_systemes()
+        systeme = self._cache_choisir(
+            t("Which system?"), [libelle for _d, libelle in systemes]
+        )
+        if systeme is None:
+            return
+        distro = systemes[systeme][0]
+
+        commun = f"--distro {distro} --charge {charge}"
+        print(f"\n{t('About to run, one after another:')}")
+        for options, prefixe, _libelle in choisis:
+            ligne = f"{LONGTEST} {commun} {options}".rstrip()
+            print(f"  {ligne}")
+            print(f"    {t('Machines created:')} {prefixe}-1, -2…")
+        if charge == "erplibre":
+            # Des heures et non des minutes : une VM qui installe ERPLibre
+            # entier n'a rien à voir avec le lot de paquets, et découvrir la
+            # différence en cours de route est trop tard.
+            print(
+                f"\n  ⚠ {t('The real load takes hours per VM, not minutes.')}"
+            )
+        if not click.confirm(t("Run these long tests?")):
+            return
+        for options, _prefixe, _libelle in choisis:
+            self._longtest_run(
+                "qemu_cache.py", f"{commun} {options}".rstrip(), demander=False
+            )
+
     def _cache_tests(self):
         print(f"\n{t('Cache tests: real VMs, several minutes')}\n")
         choices = [
+            {"prompt_description": t("Test - Choose and run")},
             {"prompt_description": t("Test - The plan only (dry-run)")},
-            {"prompt_description": t("Test - Two VMs, measure the gain")},
-            {"prompt_description": t("Test - Add the offline counter-proof")},
-            {
-                "prompt_description": t(
-                    "Test - Control run: two VMs WITHOUT the cache"
-                )
-            },
             {"prompt_description": t("Test - Performance report")},
             {"prompt_description": t("Test - Undo the machines created")},
         ]
-        args = {
-            "1": "--dry-run",
-            "2": "",
-            "3": "--hors-ligne",
-            "4": "--sans-cache",
-            "5": "--rapport",
-            "6": "--detruire",
-        }
+        args = {"2": "--dry-run", "3": "--rapport", "4": "--detruire"}
         help_info = self.fill_help_info(choices)
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
-            if status in args:
-                # Chaque mode a ses propres machines : le dire AVANT, sans
-                # quoi trois lots de VM apparaissent dans « virsh list » sans
-                # qu'on sache lequel vient de quel essai.
-                prefixe = {
-                    "2": "el-cache-test",
-                    "3": "el-offline-test",
-                    "4": "el-no-cache-test",
-                }.get(status)
-                if prefixe:
-                    print(f"  {t('Machines created:')} {prefixe}-1, -2…")
-                if status == "4":
-                    # Le témoin ne prouve rien sur le cache : il mesure ce que
-                    # son absence coûte. Le dire évite qu'un résultat lent
-                    # passe pour une panne.
-                    print(
-                        f"  {t('The control run measures what NOT caching costs.')}"
-                    )
+            if status == "1":
+                self._cache_assistant()
+            elif status in args:
                 self._longtest_run("qemu_cache.py", args[status])
             else:
                 print(t("Command not found !"))

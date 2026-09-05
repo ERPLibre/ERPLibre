@@ -21,6 +21,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parent.parent
 TODO_PY = RACINE / "script" / "todo" / "todo.py"
@@ -223,6 +224,78 @@ class TestSousMenusDuCache(unittest.TestCase):
             re.findall(r'"(\w+)"', verbes.group(1))[1::2],
             ["start", "enable", "disable", "stop"],
         )
+
+
+class TestLAssistantDesTests(unittest.TestCase):
+    """Trois questions — quel essai, quelle charge, quel système — puis les
+    essais choisis, l'un après l'autre.
+
+    Deux propriétés que rien d'autre ne tient. « Les trois » doit lancer TROIS
+    commandes, chacune portant le système et la charge choisis : en oublier un
+    ferait mesurer autre chose que ce qui a été demandé, sans rien dire. Et la
+    confirmation porte sur le LOT : la reposer à chaque essai la rendrait
+    machinale, ce qui est exactement ce qui fait qu'on cesse de la lire.
+    """
+
+    def assistant(self, reponses):
+        from script.todo.todo import TODO
+
+        lancees = []
+
+        class Faux(TODO):
+            def __init__(self):
+                self.execute = self
+
+            def exec_command_live(self, cmd, **_kw):
+                lancees.append(cmd)
+
+        it = iter(reponses)
+        # « click.confirm » et « longtest_menu.click.confirm » sont le MÊME
+        # objet : un seul mock les couvre, et c'est ce qui rend le compte
+        # d'appels lisible — une question en tout, pas une par essai.
+        with mock.patch(
+            "click.prompt", side_effect=lambda *a, **k: next(it)
+        ), mock.patch("click.confirm", return_value=True) as confirme:
+            Faux()._cache_assistant()
+        return lancees, confirme
+
+    def test_les_trois_lancent_trois_commandes(self):
+        lancees, _c = self.assistant(["4", "1", "2"])
+        self.assertEqual(len(lancees), 3, f"lancées : {lancees}")
+        options = {"", "--hors-ligne", "--sans-cache"}
+        for attendu in options:
+            self.assertTrue(
+                any(c.rstrip().endswith(attendu) for c in lancees)
+                or attendu == "",
+                f"« {attendu} » n'a pas été lancé : {lancees}",
+            )
+
+    def test_le_systeme_et_la_charge_suivent_chaque_essai(self):
+        lancees, _c = self.assistant(["4", "2", "3"])
+        for cmd in lancees:
+            self.assertIn("--distro debian", cmd)
+            self.assertIn("--charge erplibre", cmd)
+
+    def test_un_seul_essai_ne_lance_que_lui(self):
+        lancees, _c = self.assistant(["3", "1", "2"])
+        self.assertEqual(len(lancees), 1)
+        self.assertIn("--sans-cache", lancees[0])
+
+    def test_une_seule_question_pour_tout_le_lot(self):
+        """Trois essais, une question. La reposer à chaque essai la rendrait
+        machinale, ce qui est exactement ce qui fait qu'on cesse de la lire."""
+        lancees, confirme = self.assistant(["4", "1", "2"])
+        self.assertEqual(len(lancees), 3)
+        self.assertEqual(
+            confirme.call_count,
+            1,
+            f"{confirme.call_count} confirmations pour trois essais",
+        )
+
+    def test_renoncer_ne_lance_rien(self):
+        for reponses in (["0"], ["4", "0"], ["4", "1", "0"]):
+            lancees, _c = self.assistant(reponses)
+            self.assertEqual(lancees, [], f"réponses {reponses}")
 
 
 class TestToutesLesClesDuFichier(unittest.TestCase):

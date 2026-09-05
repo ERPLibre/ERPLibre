@@ -1568,6 +1568,58 @@ TRANSLATIONS = {
         "fr": "Machines créées :",
         "en": "Machines created:",
     },
+    "Test - Choose and run": {
+        "fr": "🧭 Test - Choisir et lancer",
+        "en": "🧭 Test - Choose and run",
+    },
+    "Which test?": {
+        "fr": "Quel essai ?",
+        "en": "Which test?",
+    },
+    "The cache: two VMs, measure the gain": {
+        "fr": "Le cache : deux VM, mesurer le gain",
+        "en": "The cache: two VMs, measure the gain",
+    },
+    "The offline counter-proof": {
+        "fr": "La contre-épreuve hors ligne",
+        "en": "The offline counter-proof",
+    },
+    "The control: two VMs WITHOUT the cache": {
+        "fr": "Le témoin : deux VM SANS le cache",
+        "en": "The control: two VMs WITHOUT the cache",
+    },
+    "All three, one after another": {
+        "fr": "Les trois, l'un après l'autre",
+        "en": "All three, one after another",
+    },
+    "Which load?": {
+        "fr": "Quelle charge ?",
+        "en": "Which load?",
+    },
+    "Minimum: a batch of packages, minutes": {
+        "fr": "Minimum : un lot de paquets, quelques minutes",
+        "en": "Minimum: a batch of packages, minutes",
+    },
+    "ERPLibre + Odoo 18: the real thing, hours": {
+        "fr": "ERPLibre + Odoo 18 : l'installation réelle, des heures",
+        "en": "ERPLibre + Odoo 18: the real thing, hours",
+    },
+    "Which system?": {
+        "fr": "Quel système ?",
+        "en": "Which system?",
+    },
+    "About to run, one after another:": {
+        "fr": "Va exécuter, l'un après l'autre :",
+        "en": "About to run, one after another:",
+    },
+    "The real load takes hours per VM, not minutes.": {
+        "fr": "La charge réelle prend des heures par VM, pas des minutes.",
+        "en": "The real load takes hours per VM, not minutes.",
+    },
+    "Run these long tests?": {
+        "fr": "Lancer ces tests longs ?",
+        "en": "Run these long tests?",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",
