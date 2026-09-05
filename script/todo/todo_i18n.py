@@ -1589,6 +1589,14 @@ TRANSLATIONS = {
         "fr": "Le témoin mesure ce que coûte l'ABSENCE de cache.",
         "en": "The control run measures what NOT caching costs.",
     },
+    "This creates real VMs and takes a while.": {
+        "fr": "Cela crée de vraies VM et prend du temps.",
+        "en": "This creates real VMs and takes a while.",
+    },
+    "Run this long test?": {
+        "fr": "Lancer ce test long ?",
+        "en": "Run this long test?",
+    },
     "Install the download cache shared by the QEMU VMs of this host": {
         "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",
         "en": "Install the download cache shared by the QEMU VMs of this host",
