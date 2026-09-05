@@ -5,6 +5,7 @@ package main
 
 import (
 	"crypto/x509"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,12 +131,12 @@ func TestRefusRetenu(t *testing.T) {
 	if r.Has("api.example") {
 		t.Fatal("un hôte est exclu avant tout refus")
 	}
-	r.Add("api.example")
+	r.Add("api.example", errRefus)
 	if !r.Has("api.example") {
 		t.Error("le refus n'est pas retenu")
 	}
 	// Deux fois le même hôte ne double pas l'entrée.
-	r.Add("api.example")
+	r.Add("api.example", errRefus)
 	if n := len(r.List()); n != 1 {
 		t.Errorf("%d hôtes retenus, attendu 1", n)
 	}
@@ -201,11 +202,14 @@ func TestPremierEnregistrementNonTLS(t *testing.T) {
 // du service — donc jamais caché, y compris pour toutes les VM suivantes, qui
 // elles font confiance. Observé sur le miroir d'une distribution, dont tout le
 // trafic est reparti à l'amont pendant des heures.
+// errRefus tient lieu de la raison rendue par la bibliothèque.
+var errRefus = errors.New("essai")
+
 func TestUnRefusApprisSoublie(t *testing.T) {
 	r := NewRefusals(DefaultExclusions)
 	r.Oubli = 40 * time.Millisecond
 
-	r.Add("miroir.example")
+	r.Add("miroir.example", errRefus)
 	if !r.Has("miroir.example") {
 		t.Fatal("le refus n'est pas retenu du tout")
 	}
@@ -230,9 +234,9 @@ func TestUnRefusDeclareNeSoubliePas(t *testing.T) {
 func TestReapprendreRepousseLOubli(t *testing.T) {
 	r := NewRefusals(nil)
 	r.Oubli = 80 * time.Millisecond
-	r.Add("epingleur.example")
+	r.Add("epingleur.example", errRefus)
 	time.Sleep(50 * time.Millisecond)
-	r.Add("epingleur.example")
+	r.Add("epingleur.example", errRefus)
 	time.Sleep(50 * time.Millisecond)
 	if !r.Has("epingleur.example") {
 		t.Error("un refus réappris a été oublié trop tôt")
@@ -244,7 +248,7 @@ func TestReapprendreRepousseLOubli(t *testing.T) {
 func TestOubliNulRendLaMemoireDefinitive(t *testing.T) {
 	r := NewRefusals(nil)
 	r.Oubli = 0
-	r.Add("h.example")
+	r.Add("h.example", errRefus)
 	time.Sleep(5 * time.Millisecond)
 	if !r.Has("h.example") {
 		t.Error("un oubli nul oublie quand même")
@@ -255,7 +259,7 @@ func TestOubliNulRendLaMemoireDefinitive(t *testing.T) {
 func TestLaListeNeMontrePasCeQuiEstOublie(t *testing.T) {
 	r := NewRefusals([]string{"declare.example"})
 	r.Oubli = 30 * time.Millisecond
-	r.Add("appris.example")
+	r.Add("appris.example", errRefus)
 	time.Sleep(50 * time.Millisecond)
 	for _, h := range r.List() {
 		if h == "appris.example" {

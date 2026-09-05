@@ -266,11 +266,17 @@ func (r *Refusals) Has(host string) bool {
 	return true
 }
 
-func (r *Refusals) Add(host string) {
+// Add retient un refus et DIT pourquoi.
+//
+// La raison est celle que la bibliothèque rend, jamais une interprétation :
+// « certificat refusé » a longtemps été écrit là où l'erreur disait autre
+// chose, et l'on cherchait une autorité manquante alors que la poignée de main
+// échouait pour un motif sans rapport.
+func (r *Refusals) Add(host string, raison error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, deja := r.apprises[host]; !deja {
-		log.Printf("tunnel opaque retenu pour %s : certificat refusé", host)
+		log.Printf("tunnel opaque retenu pour %s : %v", host, raison)
 	}
 	r.apprises[host] = time.Now()
 }
@@ -347,9 +353,9 @@ func (t *TLSFront) handle(c net.Conn) {
 	}
 	tc := tls.Server(peeked, cfg)
 	if err := tc.Handshake(); err != nil {
-		// Le client a rejeté notre autorité. L'hôte est retenu : la requête
-		// suivante vers lui n'essaiera plus.
-		t.Refusals.Add(host)
+		// Le client n'a pas accepté la poignée de main. L'hôte est retenu :
+		// la requête suivante vers lui n'essaiera plus, jusqu'à l'oubli.
+		t.Refusals.Add(host, err)
 		return
 	}
 	defer tc.Close()
