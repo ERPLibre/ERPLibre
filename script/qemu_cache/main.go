@@ -58,6 +58,11 @@ func main() {
 			"nom de la VM, écrit à côté de la MAC ajoutée")
 		bypassDel = flag.String("bypass-del", "",
 			"rendre cette adresse MAC au détournement")
+		gitMirrorDir = flag.String("git-mirror-dir", "",
+			"racine des dépôts git tenus en miroir ; vide, git est"+
+				" simplement relayé vers l'amont")
+		gitMirrorFresh = flag.Duration("git-mirror-fresh", 60*time.Second,
+			"délai en deçà duquel un dépôt n'est pas re-interrogé")
 		bypassList = flag.Bool("bypass-list", false,
 			"dire les exceptions en place, une « MAC nom » par ligne")
 		showVersion = flag.Bool("version", false, "dire la version, puis sortir")
@@ -161,14 +166,25 @@ func main() {
 		return
 	}
 
-	if err := serve(store, *caDir, rules, *logPath, *exclude, *verbose); err != nil {
+	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
+	if *gitMirrorDir != "" && !miroir.Actif() {
+		// Le dire plutôt que de laisser croire à un miroir : sans le
+		// programme de git, le service marche mais git repart à l'amont à
+		// chaque VM, ce qui est exactement ce que le miroir devait éviter.
+		log.Printf(
+			"miroir git demandé mais « git-http-backend » est introuvable :"+
+				" git sera relayé vers l'amont (%s)", *gitMirrorDir)
+	}
+	if err := serve(
+		store, *caDir, rules, *logPath, *exclude, *verbose, miroir,
+	); err != nil {
 		log.Fatalf("le cache s'arrête : %v", err)
 	}
 }
 
 func serve(
 	store *Store, caDir string, rules RuleSet,
-	logPath, exclude string, verbose bool,
+	logPath, exclude string, verbose bool, miroir *GitMirror,
 ) error {
 	if err := os.MkdirAll(store.Dir, 0o755); err != nil {
 		return err
@@ -190,6 +206,7 @@ func serve(
 	defer alog.Close()
 
 	proxy := NewProxy(store, alog)
+	proxy.Git = miroir
 	proxy.Verbose = verbose
 
 	refusals := NewRefusals(append(DefaultExclusions, splitList(exclude)...))

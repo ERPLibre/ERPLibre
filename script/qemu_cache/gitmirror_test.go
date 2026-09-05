@@ -1,0 +1,238 @@
+// © 2026 TechnoLibre (http://www.technolibre.ca)
+// License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestDepotDeURL(t *testing.T) {
+	cas := []struct {
+		brut, depot, reste string
+	}{
+		{"https://h/o/d.git/info/refs?service=git-upload-pack",
+			"https://h/o/d.git", "/info/refs"},
+		{"https://h/o/d/info/refs?service=git-upload-pack",
+			"https://h/o/d", "/info/refs"},
+		{"https://h/o/d.git/git-upload-pack", "https://h/o/d.git",
+			"/git-upload-pack"},
+	}
+	for _, c := range cas {
+		u, _ := url.Parse(c.brut)
+		depot, reste, ok := DepotDeURL(u)
+		if !ok || depot != c.depot || reste != c.reste {
+			t.Errorf("%s → (%q, %q, %v)", c.brut, depot, reste, ok)
+		}
+	}
+}
+
+func TestDepotDeURLRefuse(t *testing.T) {
+	for _, brut := range []string{
+		"https://h/o/d.git/objects/ab/cd",
+		"https://h/info/refs",
+		"https://h/miroir/core.db",
+	} {
+		u, _ := url.Parse(brut)
+		if _, _, ok := DepotDeURL(u); ok {
+			t.Errorf("%s pris pour une négociation", brut)
+		}
+	}
+}
+
+// Le chemin du miroir porte l'HÔTE : deux forges peuvent servir « /odoo/odoo »,
+// et les confondre donnerait à l'une le contenu de l'autre.
+func TestCheminMiroirSepareLesForges(t *testing.T) {
+	g := &GitMirror{Dir: "/var/x"}
+	a, err := g.CheminMiroir("https://github.com/odoo/odoo.git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := g.CheminMiroir("https://autre.example/odoo/odoo.git")
+	if a == b {
+		t.Error("deux forges partagent un miroir")
+	}
+	if !strings.HasSuffix(a, ".git") {
+		t.Errorf("le miroir n'est pas un dépôt nu : %s", a)
+	}
+	// « .git » écrit ou non par l'amont donne le même miroir.
+	c, _ := g.CheminMiroir("https://github.com/odoo/odoo")
+	if a != c {
+		t.Errorf("« .git » change le miroir : %s contre %s", a, c)
+	}
+}
+
+// Un chemin qui remonte écrirait hors de la racine.
+func TestCheminMiroirRefuseCeQuiRemonte(t *testing.T) {
+	g := &GitMirror{Dir: "/var/x"}
+	for _, brut := range []string{
+		"https://h/../../etc/passwd",
+		"https://h/o/../../..",
+		"https://h/",
+		"pas une url",
+	} {
+		if chemin, err := g.CheminMiroir(brut); err == nil {
+			t.Errorf("%s accepté et rendu %q", brut, chemin)
+		}
+	}
+}
+
+func TestMiroirEteintQuandRienNestConfigure(t *testing.T) {
+	if (&GitMirror{}).Actif() {
+		t.Error("un miroir sans répertoire se dit actif")
+	}
+	// Un répertoire sans le programme de git ne sert à rien : mieux vaut le
+	// relais vers l'amont, qui fonctionne.
+	g := &GitMirror{Dir: "/var/x", Backend: "/nexiste/pas"}
+	if g.Actif() {
+		t.Error("un miroir sans git-http-backend se dit actif")
+	}
+}
+
+// amontGit monte un dépôt nu ET le serveur qui le publie, comme le ferait une
+// forge. L'URL rendue est celle qu'un client — ou le miroir — interroge.
+func amontGit(t *testing.T) (string, *httptest.Server) {
+	t.Helper()
+	if TrouverBackend() == "" {
+		t.Skip("git-http-backend absent de cette machine")
+	}
+	nu := depotDEssai(t)
+	racine := filepath.Dir(nu)
+	h := &cgi.Handler{
+		Path: TrouverBackend(),
+		Dir:  racine,
+		Env: []string{
+			"GIT_PROJECT_ROOT=" + racine,
+			"GIT_HTTP_EXPORT_ALL=1",
+		},
+		InheritEnv: []string{"PATH"},
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	return srv.URL + "/" + filepath.Base(nu), srv
+}
+
+// depotDEssai fabrique un dépôt nu local, servi comme s'il était l'amont.
+func depotDEssai(t *testing.T) string {
+	t.Helper()
+	racine := t.TempDir()
+	nu := filepath.Join(racine, "amont.git")
+	travail := filepath.Join(racine, "travail")
+	lancer := func(dir string, args ...string) {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		c.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@e",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@e")
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v : %v : %s", args, err, out)
+		}
+	}
+	lancer(racine, "init", "-q", "--bare", "--initial-branch=main", nu)
+	lancer(racine, "init", "-q", "--initial-branch=main", travail)
+	if err := os.WriteFile(
+		filepath.Join(travail, "f.txt"), []byte("bonjour"), 0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	lancer(travail, "add", "f.txt")
+	lancer(travail, "commit", "-qm", "premier")
+	lancer(travail, "push", "-q", nu, "HEAD:refs/heads/main")
+	return nu
+}
+
+// L'épreuve qui compte : un client clone à travers le miroir, sans que rien
+// dans l'invité soit configuré, et le dépôt arrive complet.
+func TestClonerAuTraversDuMiroir(t *testing.T) {
+	if TrouverBackend() == "" {
+		t.Skip("git-http-backend absent de cette machine")
+	}
+	amont, _ := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: 2 * time.Minute}
+
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			u := &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+			_, reste, ok := DepotDeURL(u)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			// Tout chemin demandé désigne le dépôt qui joue l'amont : ce test
+			// mesure le miroir, pas le routage.
+			chemin, pret := g.Assurer(r.Context(), amont)
+			if !pret {
+				http.Error(w, "miroir indisponible", 502)
+				return
+			}
+			g.Servir(w, r, chemin, reste)
+		}))
+	defer srv.Close()
+
+	for essai := 1; essai <= 2; essai++ {
+		dest := filepath.Join(t.TempDir(), "copie")
+		c := exec.Command("git", "clone", "-q", srv.URL+"/essai.git", dest)
+		c.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("clone %d : %v : %s", essai, err, out)
+		}
+		contenu, err := os.ReadFile(filepath.Join(dest, "f.txt"))
+		if err != nil || string(contenu) != "bonjour" {
+			t.Fatalf("clone %d : contenu %q, err %v", essai, contenu, err)
+		}
+	}
+}
+
+// Un amont muet mais un miroir déjà là : le miroir sert. C'est ce qui rend un
+// déploiement sans réseau possible pour git, ce qu'aucun cache de réponses ne
+// peut faire de ce protocole.
+func TestUnMiroirExistantSertQuandLAmontEstMuet(t *testing.T) {
+	amont, srvAmont := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: time.Minute}
+	if _, pret := g.Assurer(context.Background(), amont); !pret {
+		t.Fatal("le miroir n'a pas pu être créé")
+	}
+	// L'amont disparaît : le serveur qui le publiait est fermé, exactement ce
+	// que voit une VM quand le réseau tombe.
+	srvAmont.Close()
+	g.Frais = 0 // forcer une tentative de rafraîchissement
+	chemin, pret := g.Assurer(context.Background(), amont)
+	if !pret {
+		t.Error("le miroir refuse de servir alors qu'il existe")
+	}
+	if _, err := os.Stat(filepath.Join(chemin, "HEAD")); err != nil {
+		t.Errorf("le miroir a été effacé : %v", err)
+	}
+}
+
+// Un amont muet SANS miroir doit rendre faux : l'appelant retombe alors sur le
+// relais, qui donnera au client la vraie erreur du réseau plutôt qu'une erreur
+// inventée ici.
+func TestAucunMiroirEtAucunAmont(t *testing.T) {
+	g := &GitMirror{Dir: t.TempDir(), Delai: 20 * time.Second}
+	chemin, pret := g.Assurer(
+		context.Background(), "https://127.0.0.1:1/nexiste/pas.git")
+	if pret {
+		t.Errorf("se dit prêt avec %q", chemin)
+	}
+	// Aucun DÉPÔT ne doit rester derrière : un clonage à moitié fait serait
+	// pris pour un miroir valide à la requête suivante. Un répertoire vide,
+	// lui, ne trompe personne.
+	filepath.Walk(g.Dir, func(p string, info os.FileInfo, err error) error {
+		if err == nil && info != nil && info.Name() == "HEAD" {
+			t.Errorf("un miroir incomplet subsiste : %s", p)
+		}
+		return nil
+	})
+}

@@ -27,6 +27,7 @@ const (
 	OutcomeOfflineMiss = "offline-miss" // amont muet, rien en réserve
 	OutcomePassthrough = "passthrough"  // méthode ou requête non cachable
 	OutcomeError       = "error"        // amont joignable, mais en erreur
+	OutcomeMirror      = "mirror"       // servi d'un dépôt git tenu sur l'hôte
 )
 
 // AccessLog écrit une ligne JSON par requête. Un format à une ligne par
@@ -95,6 +96,9 @@ type Proxy struct {
 	// renonce, prenait ce calcul pour un amont injoignable et rendait un 504 :
 	// « repo sync » échouait alors sur un dépôt parfaitement joignable.
 	ClientPatient *http.Client
+	// Git tient les dépôts en miroir sur l'hôte. Nul ou éteint, la
+	// négociation git est simplement relayée vers l'amont.
+	Git *GitMirror
 	// Verbose fait parler chaque requête sur la sortie standard, ce qu'un
 	// service systemd envoie au journal.
 	Verbose bool
@@ -204,6 +208,24 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	if cacheable && class == ClassImmutable {
 		if p.serveFromStore(w, r, u, key, class, OutcomeHit) {
 			return
+		}
+	}
+
+	// La négociation git n'est pas relayée quand un miroir peut la servir :
+	// c'est un DÉPÔT que l'on tient, pas des réponses, aucune réponse de ce
+	// protocole ne se réutilisant d'un client à l'autre.
+	if p.Git.Actif() && EstGitSmart(u) && !strings.HasSuffix(
+		u.Path, "/git-receive-pack",
+	) {
+		if depot, reste, ok := DepotDeURL(u); ok {
+			if chemin, pret := p.Git.Assurer(r.Context(), depot); pret {
+				p.record(accessLine{
+					URL: u.String(), Method: r.Method, Class: class.String(),
+					Outcome: OutcomeMirror, Status: http.StatusOK,
+				})
+				p.Git.Servir(w, r, chemin, reste)
+				return
+			}
 		}
 	}
 
