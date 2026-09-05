@@ -298,6 +298,22 @@ func (r *Refusals) List() []string {
 	return out
 }
 
+// estRefusTLS dit si l'échec vient d'une DÉCISION du client.
+//
+// Le pair qui refuse envoie une alerte, que la bibliothèque rend comme une
+// « remote error ». Tout le reste — coupure, fin de flux, délai — est du
+// transport, et ne dit rien de ce que le client pense de notre autorité.
+func estRefusTLS(err error) bool {
+	if err == nil {
+		return false
+	}
+	var alerte tls.AlertError
+	if errors.As(err, &alerte) {
+		return true
+	}
+	return strings.Contains(err.Error(), "remote error: tls:")
+}
+
 // TLSFront écoute le port vers lequel le 443 des invités est détourné.
 type TLSFront struct {
 	CA       *CA
@@ -353,9 +369,20 @@ func (t *TLSFront) handle(c net.Conn) {
 	}
 	tc := tls.Server(peeked, cfg)
 	if err := tc.Handshake(); err != nil {
-		// Le client n'a pas accepté la poignée de main. L'hôte est retenu :
-		// la requête suivante vers lui n'essaiera plus, jusqu'à l'oubli.
-		t.Refusals.Add(host, err)
+		// Un REFUS et une COUPURE ne disent pas la même chose, et les
+		// confondre coûte cher. Le client qui rejette notre autorité envoie
+		// une alerte TLS : c'est une décision, et l'hôte doit passer en
+		// tunnel. Une connexion coupée en cours de route — « connection reset
+		// by peer », une fin de flux — n'est qu'un incident de transport, que
+		// la requête suivante ne reproduira pas.
+		//
+		// Les traiter pareil condamnait un miroir de distribution au tunnel
+		// sur une seule coupure, et tout son trafic repartait à l'amont.
+		if estRefusTLS(err) {
+			t.Refusals.Add(host, err)
+		} else {
+			log.Printf("poignée de main interrompue pour %s : %v", host, err)
+		}
 		return
 	}
 	defer tc.Close()

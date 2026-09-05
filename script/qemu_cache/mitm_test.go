@@ -4,8 +4,12 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,8 +204,9 @@ func TestPremierEnregistrementNonTLS(t *testing.T) {
 // Une VM dont le magasin de confiance n'est pas encore posé refuse la première
 // poignée de main. L'hôte se retrouvait alors condamné au tunnel pour la vie
 // du service — donc jamais caché, y compris pour toutes les VM suivantes, qui
-// elles font confiance. Observé sur le miroir d'une distribution, dont tout le
-// trafic est reparti à l'amont pendant des heures.
+// elles font confiance. Le miroir d'une distribution s'en trouve soustrait au
+// cache, et tout son trafic repart à l'amont.
+
 // errRefus tient lieu de la raison rendue par la bibliothèque.
 var errRefus = errors.New("essai")
 
@@ -265,5 +270,115 @@ func TestLaListeNeMontrePasCeQuiEstOublie(t *testing.T) {
 		if h == "appris.example" {
 			t.Error("un refus oublié figure encore dans la liste")
 		}
+	}
+}
+
+// Un REFUS et une COUPURE ne disent pas la même chose.
+//
+// Le code les confondait : « connection reset by peer » était journalisé
+// « certificat refusé » et faisait passer l'hôte en tunnel opaque. Un miroir
+// de distribution se retrouve alors soustrait au cache sur une seule coupure,
+// et tout son trafic repart à l'amont.
+func TestUneCoupureNestPasUnRefus(t *testing.T) {
+	coupures := []error{
+		errors.New("read tcp 10.0.0.1:8899->10.0.0.2:33918: read:" +
+			" connection reset by peer"),
+		io.EOF,
+		errors.New("read tcp: i/o timeout"),
+		nil,
+	}
+	for _, err := range coupures {
+		if estRefusTLS(err) {
+			t.Errorf("%v pris pour un refus du client", err)
+		}
+	}
+}
+
+func TestUneAlerteEstUnRefus(t *testing.T) {
+	refus := []error{
+		errors.New("remote error: tls: bad certificate"),
+		errors.New("remote error: tls: unknown certificate authority"),
+		tls.AlertError(42),
+	}
+	for _, err := range refus {
+		if !estRefusTLS(err) {
+			t.Errorf("%v n'est pas reconnu comme un refus", err)
+		}
+	}
+}
+
+// L'erreur enveloppée compte autant : la bibliothèque en emballe parfois.
+func TestUnRefusEnveloppeEstReconnu(t *testing.T) {
+	err := fmt.Errorf("poignée de main : %w", tls.AlertError(48))
+	if !estRefusTLS(err) {
+		t.Error("un refus enveloppé n'est pas reconnu")
+	}
+}
+
+// clientHelloBrut fabrique un ClientHello valide portant ce nom, sans rien
+// engager : les octets sont capturés sur un tuyau, puis rejoués à la main.
+func clientHelloBrut(t *testing.T, nom string) []byte {
+	t.Helper()
+	a, b := net.Pipe()
+	defer a.Close()
+	go func() {
+		tc := tls.Client(a, &tls.Config{ServerName: nom})
+		_ = tc.Handshake()
+	}()
+	b.SetReadDeadline(time.Now().Add(2 * time.Second))
+	brut, err := readFirstRecord(b)
+	b.Close()
+	if err != nil {
+		t.Fatalf("ClientHello : %v", err)
+	}
+	return brut
+}
+
+// Le contrôle précédent vérifie la RÈGLE ; celui-ci vérifie qu'elle est
+// branchée. Sans lui, remettre les deux cas dans le même sac laisse les tests
+// verts et recondamne un miroir au tunnel dès la première coupure.
+func TestUneCoupureNeCondamnePasLHote(t *testing.T) {
+	ca, err := LoadOrCreateCA(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	refus := NewRefusals(nil)
+	front := &TLSFront{CA: ca, Refusals: refus, Proxy: proxyDeTest(t)}
+	hello := clientHelloBrut(t, "miroir.example")
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	fini := make(chan struct{})
+	go func() {
+		if c, err := ln.Accept(); err == nil {
+			front.handle(c)
+		}
+		close(fini)
+	}()
+
+	c, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Le ClientHello part, puis la connexion est coupée BRUTALEMENT : c'est
+	// la coupure de transport que le code prenait pour un rejet d'autorité.
+	// Aucune alerte n'est émise — ce serait l'autre cas.
+	if _, err := c.Write(hello); err != nil {
+		t.Fatal(err)
+	}
+	c.(*net.TCPConn).SetLinger(0)
+	c.Close()
+
+	select {
+	case <-fini:
+	case <-time.After(3 * time.Second):
+		t.Fatal("la connexion n'a pas été traitée")
+	}
+	if refus.Has("miroir.example") {
+		t.Error("une coupure a condamné l'hôte au tunnel opaque")
 	}
 }
