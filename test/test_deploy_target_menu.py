@@ -216,5 +216,101 @@ class TestLEnteteDuMenu(EcranCase):
         self.assertNotIn("@", sortie.getvalue())
 
 
+class Espion:
+    """Ce que le menu aurait lancé, sans rien lancer."""
+
+    def __init__(self):
+        self.jouees = []
+
+    def exec_command_live(self, commande, **_kwargs):
+        self.jouees.append(commande)
+
+
+class TestLesVerbesNeRedemandentPlus(EcranCase):
+    """Onze commandes reposaient cinq questions chacune, sans rien retenir.
+
+    C'est le point d'arrivée : la fiche remplace la saisie, et une épreuve
+    fait LEVER toute invite pour prouver qu'il n'en reste aucune.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.ecran.execute = Espion()
+        D.save(
+            {
+                "name": "un",
+                "target": "compte@un.example",
+                "port": "2222",
+                "path": "/opt/erplibre",
+            }
+        )
+        D.select("un")
+
+    def jouer_verbe(self, methode="_deploy_ssh_check", **reponses):
+        sortie = io.StringIO()
+        with redirect_stdout(sortie):
+            getattr(self.ecran, methode)()
+        return sortie.getvalue()
+
+    def test_a_selected_target_is_asked_nothing_at_all(self):
+        with patch("builtins.input", side_effect=AssertionError):
+            with patch(
+                "script.todo.todo.click.prompt", side_effect=AssertionError
+            ):
+                self.jouer_verbe()
+        ligne = self.ecran.execute.jouees[0]
+        self.assertIn("SSH_HOST=un.example", ligne)
+        self.assertIn("SSH_USER=compte", ligne)
+        self.assertIn("SSH_PORT=2222", ligne)
+        self.assertIn("SSH_PATH=/opt/erplibre", ligne)
+
+    def test_the_account_never_reaches_the_host_variable(self):
+        """Le Makefile recompose « compte@hôte » : sans la coupe, il
+        composerait « erplibre@compte@un.example »."""
+        with patch("builtins.input", side_effect=AssertionError):
+            self.jouer_verbe()
+        ligne = self.ecran.execute.jouees[0]
+        self.assertNotIn("SSH_HOST=compte@", ligne)
+
+    def test_an_alias_gets_its_account_from_the_ssh_config(self):
+        """make ne lit pas ce fichier ; sans cette relecture, un alias qui
+        déclare « User root » se ferait joindre sous le compte par défaut."""
+        D.save({"name": "alias", "target": "monalias"})
+        D.select("alias")
+        with patch.object(
+            TODO, "_ssh_config_user", staticmethod(lambda hote: "root")
+        ):
+            with patch("builtins.input", side_effect=AssertionError):
+                self.jouer_verbe()
+        self.assertIn("SSH_USER=root", self.ecran.execute.jouees[0])
+
+    def test_an_alias_without_a_declared_account_omits_the_variable(self):
+        """Omise, le défaut du Makefile s'applique ; écrite vide, elle
+        composerait « @monalias »."""
+        D.save({"name": "alias", "target": "monalias"})
+        D.select("alias")
+        with patch.object(
+            TODO, "_ssh_config_user", staticmethod(lambda hote: "")
+        ):
+            with patch("builtins.input", side_effect=AssertionError):
+                self.jouer_verbe()
+        self.assertNotIn("SSH_USER=", self.ecran.execute.jouees[0])
+
+    def test_with_no_target_the_chooser_opens(self):
+        D.select("")
+        with patch("builtins.input", side_effect=["1", "0"]):
+            self.jouer_verbe()
+        self.assertEqual(1, len(self.ecran.execute.jouees))
+        self.assertEqual("un", D.selected()["name"])
+
+    def test_giving_up_the_choice_runs_nothing(self):
+        """La garde des onze appelants ne bouge pas : None veut toujours
+        dire « on renonce »."""
+        D.select("")
+        with patch("builtins.input", side_effect=["0"]):
+            self.jouer_verbe()
+        self.assertEqual([], self.ecran.execute.jouees)
+
+
 if __name__ == "__main__":
     unittest.main()

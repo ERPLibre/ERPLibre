@@ -1179,26 +1179,6 @@ TRANSLATIONS = {
         "en": "Not deletable here: this target comes from a shared"
         " configuration file.",
     },
-    "Remote host (user@hostname or hostname): ": {
-        "fr": "Hôte distant (user@hostname ou hostname) : ",
-        "en": "Remote host (user@hostname or hostname): ",
-    },
-    "SSH user (default: erplibre): ": {
-        "fr": "Utilisateur SSH (défaut: erplibre) : ",
-        "en": "SSH user (default: erplibre): ",
-    },
-    "SSH port (default: 22): ": {
-        "fr": "Port SSH (défaut: 22) : ",
-        "en": "SSH port (default: 22): ",
-    },
-    "SSH key path (default: ~/.ssh/id_rsa, empty for none): ": {
-        "fr": "Chemin de la clé SSH (défaut: ~/.ssh/id_rsa, vide pour aucune) : ",
-        "en": "SSH key path (default: ~/.ssh/id_rsa, empty for none): ",
-    },
-    "Remote path (default: ~/erplibre_deploy_2): ": {
-        "fr": "Chemin distant (défaut: ~/erplibre_deploy_2) : ",
-        "en": "Remote path (default: ~/erplibre_deploy_2): ",
-    },
     "Make target to run remotely: ": {
         "fr": "Cible make à exécuter à distance : ",
         "en": "Make target to run remotely: ",

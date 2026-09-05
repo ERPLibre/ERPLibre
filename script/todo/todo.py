@@ -2356,34 +2356,39 @@ class TODO(
         print(f"nautilus {mount_point}/home/{user}")
 
     def _get_ssh_params(self):
-        """Prompt for SSH connection parameters. Returns dict or None on cancel."""
-        host = click.prompt(
-            t("Remote host (user@hostname or hostname): ")
-        ).strip()
-        if not host:
-            print(t("SSH host is required!"))
+        """Les SSH_* de la cible retenue, ou None si personne n'en choisit.
+
+        Plus une seule invite ici. Les cinq questions que CHAQUE verbe
+        reposait — adresse, compte, port, clé, chemin — vivent maintenant
+        dans une fiche écrite une fois, et onze commandes cessent de
+        redemander ce qu'on vient de leur dire.
+
+        Sans cible retenue, l'écran de choix s'ouvre : c'est la seule
+        question qui reste, et elle ne se pose qu'une fois. Y renoncer rend
+        None, exactement comme une adresse laissée vide, de sorte que la
+        garde des onze appelants n'a pas à changer.
+        """
+        cible = deploy_target.selected()
+        if cible is None:
+            self._deploy_ssh_targets()
+            cible = deploy_target.selected()
+        if cible is None:
             return None
-        user = (
-            click.prompt(t("SSH user (default: erplibre): ")).strip()
-            or "erplibre"
-        )
-        port = click.prompt(t("SSH port (default: 22): ")).strip() or "22"
-        key = click.prompt(
-            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): ")
-        ).strip()
-        path = (
-            click.prompt(
-                t("Remote path (default: ~/erplibre_deploy_2): ")
-            ).strip()
-            or "~/erplibre_deploy_2"
-        )
-        return {
-            "SSH_HOST": host,
-            "SSH_USER": user,
-            "SSH_PORT": port,
-            "SSH_KEY": key,
-            "SSH_PATH": path,
-        }
+        return deploy_target.make_vars(cible, resolve=self._ssh_config_resolve)
+
+    @classmethod
+    def _ssh_config_resolve(cls, host):
+        """Ce que ~/.ssh/config déclare pour cet alias, à l'usage de make.
+
+        make recompose « compte@hôte » et ne lit pas ce fichier : sans cette
+        relecture, un alias déclarant « User root » se ferait joindre sous le
+        compte par défaut, et la commande échouerait sur des droits au lieu
+        de dire qu'elle s'est trompée de compte.
+
+        Le port n'y figure pas, et c'est voulu : le Makefile ne le pose plus
+        d'office, donc ssh applique lui-même celui de l'alias.
+        """
+        return {"user": cls._ssh_config_user(host)}
 
     def _build_ssh_make_cmd(self, target, params, extra=None):
         """Ligne « make » complète, chaque valeur citée pour le shell.
