@@ -214,7 +214,7 @@ def render_capabilities(caps: Sequence[Capability]) -> str:
         detail = f"{etat}{'  ' + cap.why if cap.why else ''}"
         lignes.append(_line(marque, cap.name, detail))
         if not cap.present and cap.remedy:
-            lignes.append(_line(" ", "", f"{t('To install:')} {cap.remedy}"))
+            lignes.append(_line(" ", "", f"{t('Remedy:')} {cap.remedy}"))
     return _section(t("Capabilities"), lignes)
 
 

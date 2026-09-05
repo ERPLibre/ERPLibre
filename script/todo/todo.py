@@ -28,6 +28,7 @@ from script.config import config_file
 from script.execute import execute
 from script.todo import dev_tools, host_os, todo_install, todo_prefs
 from script.todo.database_manager import DatabaseManager
+from script.todo.devstack_menu import DevstackMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
@@ -104,6 +105,7 @@ class TODO(
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     VpnMenuMixin,
+    DevstackMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -271,11 +273,12 @@ class TODO(
 
 ── {t("Deployment, network & security")} ──
 [12] {t("Deploy - Deploy ERPLibre locally")}
-[13] {t("Network - Network tools")}
-[14] {t("Security - Dependency security audit")}
+[13] {t("Devstack - development and test stack")}
+[14] {t("Network - Network tools")}
+[15] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[15] {t("Language - Change language / Changer la langue")}
+[16] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -332,14 +335,18 @@ class TODO(
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_devstack()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "15":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "16":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -617,6 +624,7 @@ class TODO(
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
+        "prompt_execute_devstack": "Devstack",
         "prompt_configuration": "Configuration",
     }
 

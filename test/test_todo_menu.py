@@ -104,6 +104,7 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "GPT code": "prompt_execute_gpt_code",
         "Automation": "prompt_execute_function",
         "Deploy": "prompt_execute_deploy",
+        "Devstack": "prompt_execute_devstack",
         "Network": "prompt_execute_network",
         "Security": "prompt_execute_security",
         "Language": "_change_language",

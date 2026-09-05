@@ -11996,9 +11996,9 @@ TRANSLATIONS = {
         "fr": "présent",
         "en": "present",
     },
-    "To install:": {
-        "fr": "Pour installer :",
-        "en": "To install:",
+    "Remedy:": {
+        "fr": "Remède :",
+        "en": "Remedy:",
     },
     "Nothing was probed": {
         "fr": "Rien n'a été sondé",
@@ -12016,6 +12016,27 @@ TRANSLATIONS = {
     "Configure the vault path": {
         "fr": "Configurer le chemin du coffre",
         "en": "Configure the vault path",
+    },
+    # Devstack - le menu (devstack_menu.py)
+    "Devstack": {
+        "fr": "Devstack",
+        "en": "Devstack",
+    },
+    "Devstack - development and test stack": {
+        "fr": "Devstack - pile de développement et de test",
+        "en": "Devstack - development and test stack",
+    },
+    "Host OS:": {
+        "fr": "OS de l'hôte :",
+        "en": "Host OS:",
+    },
+    "Host doctor - what can this machine do?": {
+        "fr": "Docteur de l'hôte - qu'est-ce que cette machine sait faire ?",
+        "en": "Host doctor - what can this machine do?",
+    },
+    "Probe failed:": {
+        "fr": "La sonde a échoué :",
+        "en": "Probe failed:",
     },
 }
 
