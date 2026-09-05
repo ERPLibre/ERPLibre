@@ -1872,6 +1872,81 @@ TRANSLATIONS = {
         "fr": '📥 Lire les SMS',
         "en": '📥 Read SMS messages',
     },
+    # Repondeur du modem
+    'modem_answering': {
+        "fr": '📼 Repondeur — messages, annonce, sonneries',
+        "en": '📼 Answering machine — messages, greeting, rings',
+    },
+    'modem_ans_menu': {
+        "fr": 'Repondeur du modem',
+        "en": 'Modem answering machine',
+    },
+    'modem_ans_list': {
+        "fr": '📋 Ecouter les messages',
+        "en": '📋 Listen to messages',
+    },
+    'modem_ans_greeting': {
+        "fr": '🎙️  Enregistrer l\'annonce',
+        "en": '🎙️  Record the greeting',
+    },
+    'modem_ans_greeting_play': {
+        "fr": '🔊 Ecouter l\'annonce',
+        "en": '🔊 Play the greeting',
+    },
+    'modem_ans_rings': {
+        "fr": '🔔 Nombre de sonneries avant de decrocher',
+        "en": '🔔 Rings before answering',
+    },
+    'modem_ans_toggle': {
+        "fr": '⏻ Activer ou desactiver le repondeur',
+        "en": '⏻ Turn the answering machine on or off',
+    },
+    'modem_ans_none': {
+        "fr": 'Aucun message.',
+        "en": 'No messages.',
+    },
+    'modem_ans_play': {
+        "fr": 'Numero du message a ecouter (0 pour revenir)',
+        "en": 'Number of the message to play (0 to go back)',
+    },
+    'modem_ans_delete': {
+        "fr": 'Effacer ce message ? (o/N)',
+        "en": 'Delete this message? (y/N)',
+    },
+    'modem_ans_deleted': {
+        "fr": 'Message efface.',
+        "en": 'Message deleted.',
+    },
+    'modem_ans_rings_ask': {
+        "fr": 'Sonneries avant de decrocher (1 a 5)',
+        "en": 'Rings before answering (1 to 5)',
+    },
+    'modem_ans_rings_why': {
+        "fr": ('La boite vocale de l\'operateur prend l\'appel vers trente '
+               'secondes, et une sonnerie en dure six : au-dela de cinq, le '
+               'repondeur ne decrocherait jamais.'),
+        "en": ('The operator voicemail takes the call at about thirty seconds, '
+               'and one ring lasts six: past five, the answering machine would '
+               'never pick up.'),
+    },
+    'modem_ans_recording': {
+        "fr": 'Parlez apres le signal — %s secondes.',
+        "en": 'Speak after the tone — %s seconds.',
+    },
+    'modem_ans_recorded': {
+        "fr": 'Annonce enregistree : %s',
+        "en": 'Greeting recorded: %s',
+    },
+    'modem_ans_seconds': {
+        "fr": 'Duree de l\'annonce en secondes',
+        "en": 'Greeting length in seconds',
+    },
+    'modem_ans_restart': {
+        "fr": ('Le service lit ses reglages au demarrage : relancez '
+               'erplibre-sip-go pour qu\'ils prennent effet.'),
+        "en": ('The service reads its settings at startup: restart '
+               'erplibre-sip-go for them to take effect.'),
+    },
     'modem_gateway_agent': {
         "fr": '🔗 Passerelle SMS — demonstration de bout en bout',
         "en": '🔗 SMS gateway — end-to-end demonstration',
