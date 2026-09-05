@@ -2452,7 +2452,12 @@ class TODO(
         )
 
     def _deploy_ssh_check(self):
-        self._deploy_ssh_verb("ssh_check")
+        # Ne passe plus par make : « ssh_check » faisait écho à une phrase
+        # qu'il composait lui-même, ce qui prouve que ssh a abouti et rien
+        # d'autre — ni que le produit est là, ni à quelle version, ni si le
+        # compte peut s'élever. Ces trois réponses décident de ce que les dix
+        # autres verbes peuvent faire.
+        self._deploy_ssh_probe()
 
     def _deploy_ssh_push(self):
         self._deploy_ssh_verb("ssh_push")

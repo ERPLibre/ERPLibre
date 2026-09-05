@@ -13,7 +13,8 @@ numérotées qui se suivent invitent à retaper le numéro de la précédente ; 
 lettre dit « autre question ».
 """
 
-from script.remote import deploy_target, host_memory
+from script.remote import deploy_target, host_memory, host_probe
+from script.todo import devstack_report as R
 from script.todo.todo_i18n import t
 
 # Le nom court du produit, pour le libellé d'une fiche déjà sondée.
@@ -70,6 +71,35 @@ class DeployTargetMenuMixin:
                 print(f"✓ {t('Selection forgotten.')}")
             elif reponse:
                 self._deploy_target_choose(cibles, reponse)
+
+    def _deploy_ssh_probe(self):
+        """Sonde la cible retenue, dit ce qui tient, et l'écrit sur la fiche.
+
+        Le privilège est CONSTATÉ et non exigé : neuf verbes sur onze s'en
+        passent, et refuser la machine pour les deux autres les fermerait
+        tous. Ce qui est constaté vit avec la fiche, pour que rouvrir l'écran
+        sans re-sonder puisse dire ce qu'on savait, et depuis quand.
+        """
+        cible = deploy_target.selected()
+        if cible is None:
+            self._deploy_ssh_targets()
+            cible = deploy_target.selected()
+        if cible is None:
+            return
+        print(f"\n  {t('Checking')} {cible['target']}…")
+        verdict = host_probe.diagnose(
+            deploy_target.fiche(cible),
+            deploy_target.probe_command(cible["path"]),
+            deploy_target.parse_version,
+            privilege=host_probe.OPTIONAL,
+        )
+        verdicts = couches(verdict)
+        print(R.render_layers(verdicts))
+        print(R.report(R.aggregate_layers(verdicts)))
+        try:
+            deploy_target.record_probe(cible, verdict)
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
 
     @staticmethod
     def _deploy_target_choose(cibles, reponse):
@@ -168,3 +198,71 @@ def _demander(libelle, defaut):
     """Question à réponse par défaut. Vide = on garde `defaut`."""
     montre = f" [{defaut}]" if defaut else ""
     return input(f"{libelle}{montre} : ").strip() or defaut
+
+
+def couches(verdict):
+    """Le verdict de la sonde, réparti sur les couches qu'il concerne.
+
+    Un code unique perdrait ce qui sert le plus. « ssh passe, c'est le
+    produit qui manque » et « rien ne répond » se corrigent de deux côtés
+    opposés, et l'un des deux n'a rien à voir avec le réseau.
+
+    Le privilège absent est une ABSENCE et non une panne : deux verbes sur
+    onze en ont besoin, et refuser la machine pour eux fermerait les neuf
+    autres, qui marchent.
+    """
+    if verdict.kind == host_probe.HOSTKEY:
+        return (
+            R.layer_verdict(
+                "transport",
+                R.DS_REFUSED,
+                t("Host key not known yet."),
+                t("Record it, then check again."),
+            ),
+        )
+    if verdict.kind == host_probe.UNREACHABLE:
+        return (
+            R.layer_verdict(
+                "transport",
+                R.DS_ERR,
+                verdict.detail or t("No answer."),
+                t("Check the address and the SSH access."),
+            ),
+        )
+    passe = R.layer_verdict("transport", R.DS_OK, t("SSH gets through."))
+    if verdict.kind == host_probe.PRODUCT_ABSENT:
+        return (
+            passe,
+            R.layer_verdict(
+                "service",
+                R.DS_ERR,
+                verdict.detail or t("ERPLibre is not at that path."),
+                t("Push the files, then install."),
+            ),
+        )
+    if verdict.kind not in (
+        host_probe.OK,
+        host_probe.NO_PRIVILEGE,
+        host_probe.NEEDS_ROOT,
+    ):
+        # Le vocabulaire est clos : un septième verdict se dirait ici plutôt
+        # que de tomber en silence dans la branche du succès.
+        return (
+            R.layer_verdict("transport", R.DS_ERR, t("Unexpected verdict.")),
+        )
+    service = R.layer_verdict(
+        "service", R.DS_OK, f"ERPLibre {verdict.version}"
+    )
+    if verdict.kind == host_probe.OK:
+        dit = t("Elevation available.") if verdict.sudo else t("Root account.")
+        return (passe, service, R.layer_verdict("host", R.DS_OK, dit))
+    return (
+        passe,
+        service,
+        R.layer_verdict(
+            "host",
+            R.DS_SKIP,
+            t("No passwordless sudo."),
+            t("Two verbs need it; the nine others do not."),
+        ),
+    )

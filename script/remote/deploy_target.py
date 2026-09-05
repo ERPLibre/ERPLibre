@@ -30,6 +30,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
+from datetime import datetime, timezone
 
 from script import lib_valid as valid
 
@@ -44,7 +46,7 @@ from script.lib_valid import (  # noqa: F401
     SERVER_RE,
     ValidationError,
 )
-from script.remote import host_probe
+from script.remote import appliance_ssh, host_probe
 from script.todo import todo_prefs
 
 # La clé de section, dans les trois fichiers de configuration.
@@ -309,6 +311,78 @@ def selected(config=None) -> dict | None:
 def select(name: str) -> None:
     """Retient le nom de la cible, ou l'oublie si `name` est vide."""
     todo_prefs.set(PREF_KEY, str(name or ""))
+
+
+# Le fichier que TOUT checkout ERPLibre porte, et rien d'autre. C'est la
+# preuve du produit : une adresse saisie à la main peut désigner n'importe
+# quelle machine, et un chemin quelconque n'importe quel dossier.
+VERSION_FILE = ".erplibre-semver-version"
+# La version est reconnue à sa FORME. « cat » sur un dossier qui n'est pas un
+# ERPLibre peut rendre n'importe quoi, et prendre ce n'importe quoi pour une
+# version ferait annoncer le produit présent là où il n'est pas.
+_RE_VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+
+
+def remote_path(path: str) -> str:
+    """Le chemin cité pour le shell distant, en laissant vivre le tilde.
+
+    Tout citer empêcherait « ~ » de désigner le compte visé — c'est le shell
+    d'en face qui sait où il est. Ne rien citer couperait un chemin qui porte
+    une espace. On cite donc ce qui SUIT le tilde, et lui seul reste nu.
+    """
+    propre = str(path or "")
+    if propre.startswith("~/"):
+        return "~/" + shlex.quote(propre[2:])
+    return shlex.quote(propre)
+
+
+def probe_command(path: str) -> str:
+    """La commande qui PROUVE qu'un ERPLibre vit à ce chemin.
+
+    L'erreur du shell distant est GARDÉE, et non jetée : « No such file or
+    directory » nomme le chemin exact qu'on a cherché, ce qui est justement
+    la réponse utile quand le produit n'est pas là. Elle ne risque pas de
+    passer pour une version — `parse_version` reconnaît celle-ci à sa forme,
+    et non au simple fait qu'une ligne soit là.
+    """
+    return f"cat {remote_path(path)}/{VERSION_FILE}"
+
+
+def parse_version(sortie: str) -> str:
+    """La version lue sur la machine, ou « » si ce n'en est pas une."""
+    propre = appliance_ssh.strip_ssh_noise(sortie or "")
+    for ligne in propre.splitlines():
+        ligne = ligne.strip()
+        if _RE_VERSION.match(ligne):
+            return ligne
+    return ""
+
+
+def stamp(now=None) -> str:
+    """L'horodatage UTC à la seconde que porte une cible sondée.
+
+    Injectable pour qu'une épreuve puisse figer l'instant : sans cela, elle
+    comparerait à une horloge qui avance pendant qu'elle lit.
+    """
+    moment = now or datetime.now(timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def record_probe(target: dict, verdict, now=None) -> dict:
+    """Écrit sur la cible ce que la sonde a constaté, et la rend.
+
+    Le constat vit AVEC la fiche : rouvrir l'écran sans re-sonder doit
+    pouvoir dire ce qu'on savait, et depuis quand.
+    """
+    return save(
+        dict(
+            target,
+            verdict=verdict.kind,
+            version=verdict.version,
+            sudo=verdict.sudo.strip(),
+            last_probe=stamp(now),
+        )
+    )
 
 
 def fiche(target: dict) -> dict:

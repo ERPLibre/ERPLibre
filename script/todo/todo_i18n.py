@@ -1101,6 +1101,46 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
+    "Layers": {"fr": "Couches", "en": "Layers"},
+    "Host key not known yet.": {
+        "fr": "Clé d'hôte pas encore connue.",
+        "en": "Host key not known yet.",
+    },
+    "Record it, then check again.": {
+        "fr": "L'enregistrer, puis revérifier.",
+        "en": "Record it, then check again.",
+    },
+    "No answer.": {"fr": "Aucune réponse.", "en": "No answer."},
+    "Check the address and the SSH access.": {
+        "fr": "Vérifier l'adresse et l'accès SSH.",
+        "en": "Check the address and the SSH access.",
+    },
+    "SSH gets through.": {"fr": "SSH passe.", "en": "SSH gets through."},
+    "ERPLibre is not at that path.": {
+        "fr": "ERPLibre n'est pas à ce chemin.",
+        "en": "ERPLibre is not at that path.",
+    },
+    "Push the files, then install.": {
+        "fr": "Pousser les fichiers, puis installer.",
+        "en": "Push the files, then install.",
+    },
+    "Unexpected verdict.": {
+        "fr": "Verdict inattendu.",
+        "en": "Unexpected verdict.",
+    },
+    "Elevation available.": {
+        "fr": "Élévation disponible.",
+        "en": "Elevation available.",
+    },
+    "Root account.": {"fr": "Compte root.", "en": "Root account."},
+    "No passwordless sudo.": {
+        "fr": "Pas de sudo sans mot de passe.",
+        "en": "No passwordless sudo.",
+    },
+    "Two verbs need it; the nine others do not.": {
+        "fr": "Deux verbes en ont besoin ; les neuf autres, non.",
+        "en": "Two verbs need it; the nine others do not.",
+    },
     "Remember it on the target? (y/N)": {
         "fr": "La retenir sur la cible ? (o/N)",
         "en": "Remember it on the target? (y/N)",

@@ -246,7 +246,8 @@ class TestLesVerbesNeRedemandentPlus(EcranCase):
         )
         D.select("un")
 
-    def jouer_verbe(self, methode="_deploy_ssh_check", **reponses):
+    # « check » ne passe plus par make : on prend un verbe qui y passe.
+    def jouer_verbe(self, methode="_deploy_ssh_run", **reponses):
         sortie = io.StringIO()
         with redirect_stdout(sortie):
             getattr(self.ecran, methode)()
@@ -371,6 +372,125 @@ class TestLeDomaineAppartientALaCible(EcranCase):
         dit = self.nginx(("compte@site.example", "admin@site.example"))
         self.assertIn("✗", dit)
         self.assertEqual([], self.ecran.execute.jouees)
+
+
+class TestLaSondeDeLaCible(EcranCase):
+    """Vérifier la connexion, c'est répondre à trois questions.
+
+    ssh aboutit-il, le produit est-il là et à quelle version, le compte
+    peut-il s'élever. Ces trois réponses décident de ce que les dix autres
+    verbes peuvent faire ; « echo » n'en donnait aucune.
+    """
+
+    def setUp(self):
+        super().setUp()
+        D.save(
+            {"name": "un", "target": "compte@un.example", "path": "/opt/el"}
+        )
+        D.select("un")
+
+    def sonder(self, **reponses):
+        """Joue la vérification avec un exécuteur ssh de banc."""
+        journal = []
+
+        def run(host, remote, timeout=0):
+            journal.append(remote)
+            for motif, reponse in reponses.items():
+                if motif in remote:
+                    return reponse
+            return 127, "command not found"
+
+        sortie = io.StringIO()
+        with patch("script.remote.host_probe.appliance_ssh.run", run):
+            with redirect_stdout(sortie):
+                self.ecran._deploy_ssh_check()
+        return sortie.getvalue(), journal
+
+    def test_a_healthy_host_is_said_layer_by_layer(self):
+        affiche, _ = self.sonder(cat=(0, "1.8.0\n"), id=(0, "0\n"))
+        self.assertIn("transport", affiche)
+        self.assertIn("ERPLibre 1.8.0", affiche)
+
+    def test_what_was_found_is_written_onto_the_target(self):
+        """Rouvrir l'écran sans re-sonder doit pouvoir dire ce qu'on savait
+        et depuis quand."""
+        self.sonder(cat=(0, "1.8.0\n"), id=(0, "0\n"))
+        cible = D.load("un")
+        self.assertEqual("ok", cible["verdict"])
+        self.assertEqual("1.8.0", cible["version"])
+        self.assertTrue(cible["last_probe"].endswith("Z"), cible["last_probe"])
+
+    def test_the_elevation_found_is_kept_for_the_other_verbs(self):
+        self.sonder(cat=(0, "1.8.0\n"), id=(0, "1000\n"), sudo=(0, ""))
+        self.assertEqual("sudo ", D.load("un")["sudo"])
+
+    def test_a_host_without_sudo_is_not_closed(self):
+        """Neuf verbes sur onze s'en passent : les fermer tous pour les
+        deux autres serait pire que de le dire."""
+        affiche, _ = self.sonder(
+            cat=(0, "1.8.0\n"),
+            id=(0, "1000\n"),
+            sudo=(1, "sudo: a password is required"),
+        )
+        self.assertIn("ERPLibre 1.8.0", affiche)
+        self.assertEqual("no-privilege", D.load("un")["verdict"])
+
+    def test_reachable_without_the_product_points_at_the_product(self):
+        affiche, _ = self.sonder(cat=(0, ""), true=(0, ""))
+        self.assertIn("transport", affiche)
+        self.assertEqual("product-absent", D.load("un")["verdict"])
+
+    def test_an_unreachable_host_points_at_the_network(self):
+        affiche, _ = self.sonder(
+            cat=(255, "ssh: connect to host: timeout"),
+            true=(255, "ssh: connect to host: timeout"),
+        )
+        self.assertIn("timeout", affiche)
+        self.assertEqual("unreachable", D.load("un")["verdict"])
+
+    def test_the_probe_reads_the_targets_own_path(self):
+        """Sonder le chemin par défaut dirait « absent » d'un ERPLibre
+        parfaitement installé ailleurs."""
+        _affiche, journal = self.sonder(cat=(0, "1.8.0\n"), id=(0, "0\n"))
+        self.assertIn("/opt/el/.erplibre-semver-version", journal[0])
+
+    def test_the_remote_error_names_the_path_that_was_looked_for(self):
+        """C'est la réponse utile quand le produit n'est pas là : elle dit
+        OÙ l'on a cherché, ce qu'un message générique ne dit pas."""
+        affiche, _ = self.sonder(
+            cat=(
+                1,
+                "cat: /opt/el/.erplibre-semver-version: No such file"
+                " or directory",
+            ),
+            true=(0, ""),
+        )
+        self.assertIn("/opt/el/.erplibre-semver-version", affiche)
+        self.assertEqual("product-absent", D.load("un")["verdict"])
+
+    def test_a_shell_error_is_never_taken_for_a_version(self):
+        """La version se reconnaît à sa FORME, pas au fait qu'une ligne
+        soit là — c'est ce qui permet de garder l'erreur."""
+        self.sonder(
+            cat=(1, "cat: 1.8.0: No such file or directory"), true=(0, "")
+        )
+        self.assertEqual("product-absent", D.load("un")["verdict"])
+        self.assertEqual("", D.load("un")["version"])
+
+    def test_something_that_merely_begins_like_a_version_is_refused(self):
+        """La ligne doit être une version ENTIÈRE. Un fichier quelconque
+        peut commencer par des chiffres et des points sans en être une, et
+        l'accepter ferait annoncer le produit présent là où il n'est pas."""
+        for ligne in ("1.2.3.tar.gz", "1.8.0-dev build 42", "1.8.0 1.9.0"):
+            with self.subTest(ligne=ligne):
+                D.save(dict(D.load("un"), verdict="", version=""))
+                self.sonder(cat=(0, ligne + "\n"), true=(0, ""))
+                self.assertEqual("product-absent", D.load("un")["verdict"])
+
+    def test_a_stray_file_is_not_taken_for_a_version(self):
+        """« cat » sur un dossier quelconque peut rendre n'importe quoi."""
+        self.sonder(cat=(0, "ceci n'est pas une version\n"), true=(0, ""))
+        self.assertEqual("product-absent", D.load("un")["verdict"])
 
 
 if __name__ == "__main__":

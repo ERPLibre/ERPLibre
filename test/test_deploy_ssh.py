@@ -107,8 +107,11 @@ class TestCeQuiEntreDansLaLigne(unittest.TestCase):
 # Chaque verbe et la cible « make » qu'il doit atteindre. La liste est le
 # contrat : un verbe qui se tromperait de cible redémarrerait Odoo là où on
 # demandait un journal, et rien d'autre ne le dirait.
+#
+# « SSH - Check connection » n'y figure PAS : il ne passe plus par make, il
+# sonde. Il garde son rang et son nom dans le menu, et ce qu'il vérifie
+# s'éprouve avec la cible, là où la sonde est bouchonnée.
 VERBES = {
-    "_deploy_ssh_check": "ssh_check",
     "_deploy_ssh_push": "ssh_push",
     "_deploy_ssh_install": "ssh_install",
     "_deploy_ssh_run": "ssh_run",
@@ -161,13 +164,15 @@ class SansInventaire(unittest.TestCase):
         self.addCleanup(patcheur.stop)
 
 
-class TestLesOnzeVerbesAtteignentLeurCible(SansInventaire):
+class TestChaqueVerbeAtteintSaCible(SansInventaire):
     def test_the_list_covers_every_verb(self):
         """Une liste incomplète rendrait les autres épreuves vertes sans
         rien prouver du verbe oublié."""
-        self.assertEqual(11, len(VERBES))
+        self.assertEqual(10, len(VERBES))
         for methode in VERBES:
             self.assertTrue(hasattr(TODO, methode), methode)
+        # Le onzième existe toujours, et c'est la sonde.
+        self.assertTrue(hasattr(TODO, "_deploy_ssh_check"))
 
     def test_every_verb_reaches_its_own_make_target(self):
         for methode, cible in VERBES.items():
