@@ -16,8 +16,10 @@ répond, donc elle les VERRA. Un critère fondé sur « zéro octet d'amont »
 déclarerait le cache en panne alors qu'il fonctionne.
 """
 
+import argparse
 import importlib.util
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -232,7 +234,14 @@ class TestCeQuIlFautDefaire(unittest.TestCase):
     """
 
     def rapports(self, *contenus):
-        """Écrit des rapports datés dans un faux dépôt de rapports."""
+        """Écrit des rapports datés dans un faux dépôt de rapports.
+
+        Le balayage des machines VIVANTES est neutralisé ici : sans cela ces
+        contrôles liraient le libvirt de la machine qui les exécute, et
+        passeraient ou tomberaient selon ce qui y tourne. Le balayage a ses
+        propres contrôles, où il est la chose mesurée.
+        """
+        import contextlib
         import json as _json
         import tempfile
         from unittest import mock
@@ -241,9 +250,17 @@ class TestCeQuIlFautDefaire(unittest.TestCase):
         for i, c in enumerate(contenus):
             nom = f"qemu_cache-2026090{i + 1}-000000.json"
             (Path(d) / nom).write_text(_json.dumps(c), encoding="utf-8")
-        return d, mock.patch.object(
-            QC.os.path, "expanduser", lambda p: d if "longtest" in p else p
-        )
+
+        @contextlib.contextmanager
+        def isole():
+            with mock.patch.object(
+                QC.os.path,
+                "expanduser",
+                lambda p: d if "longtest" in p else p,
+            ), mock.patch.object(QC, "machines_vivantes", return_value=[]):
+                yield
+
+        return d, isole()
 
     def test_un_uuid_connu_survit_a_un_rapport_muet(self):
         d, patch = self.rapports(
@@ -281,14 +298,10 @@ class TestCeQuIlFautDefaire(unittest.TestCase):
         self.assertEqual(len(lus), 1)
         self.assertEqual(sorted(machines), ["vm-1"])
 
-    def test_aucun_rapport(self):
-        import tempfile
-        from unittest import mock
-
-        d = tempfile.mkdtemp()
-        with mock.patch.object(
-            QC.os.path, "expanduser", lambda p: d if "longtest" in p else p
-        ):
+    def test_aucun_rapport_et_aucune_machine(self):
+        """Rien à lire, rien qui vit : il n'y a rien à défaire."""
+        d, patch = self.rapports()
+        with patch:
             machines, lus = QC.machines_a_defaire()
         self.assertEqual((machines, lus), ({}, []))
 
@@ -351,6 +364,92 @@ class TestUnPlanNestPasUneMesure(unittest.TestCase):
             [r["durees"] for r in vus],
             [{"vm-1": 12.5}],
             "un plan à blanc revient dans le rapport de performance",
+        )
+
+
+class TestUnPrefixeParMode(unittest.TestCase):
+    """Les trois modes ne doivent plus se disputer les mêmes machines.
+
+    Ils créent tous une « première » et une « seconde » VM. Sous un préfixe
+    unique, lancer le témoin après la mesure butait sur « machine(s) d'un
+    essai précédent encore là » alors qu'il s'agissait d'une AUTRE expérience,
+    et il fallait tout défaire pour comparer — ce que la comparaison exige
+    justement de ne pas faire.
+    """
+
+    def mode(self, **kw):
+        base = {"sans_cache": False, "hors_ligne": False}
+        base.update(kw)
+        return argparse.Namespace(**base)
+
+    def test_les_trois_preflxes_different(self):
+        noms = {
+            QC.base_des_noms(self.mode()),
+            QC.base_des_noms(self.mode(sans_cache=True)),
+            QC.base_des_noms(self.mode(hors_ligne=True)),
+        }
+        self.assertEqual(
+            len(noms), 3, f"des modes partagent un préfixe : {noms}"
+        )
+
+    def test_le_temoin_se_nomme_sans_cache(self):
+        self.assertEqual(
+            QC.base_des_noms(self.mode(sans_cache=True)), "el-no-cache-test"
+        )
+
+    def test_le_mode_normal_garde_son_nom(self):
+        """Les rapports déjà écrits le nomment : le changer les orphelinerait."""
+        self.assertEqual(QC.base_des_noms(self.mode()), "el-cache-test")
+
+    def test_le_prealable_ne_regarde_que_son_propre_prefixe(self):
+        """Une machine d'une autre expérience n'entre en conflit avec rien."""
+        vivantes = "el-cache-test-1\nel-no-cache-test-1\nautre-vm\n"
+        with unittest.mock.patch.object(
+            QC, "executer", return_value=(0, vivantes)
+        ):
+            self.assertEqual(
+                QC.machines_vivantes("el-no-cache-test"),
+                ["el-no-cache-test-1"],
+            )
+
+    def test_la_destruction_balaie_les_trois(self):
+        """Les rapports sont bornés : une machine plus ancienne que la fenêtre
+        ne serait jamais défaite et bloquerait tous les essais suivants."""
+        vivantes = "el-cache-test-9\nel-offline-test-9\nel-no-cache-test-9\n"
+        with unittest.mock.patch.object(
+            QC, "executer", return_value=(0, vivantes)
+        ), unittest.mock.patch.object(
+            QC.os.path, "expanduser", return_value="/inexistant"
+        ):
+            machines, _ = QC.machines_a_defaire()
+        self.assertEqual(
+            sorted(machines),
+            ["el-cache-test-9", "el-no-cache-test-9", "el-offline-test-9"],
+        )
+
+
+class TestLeMenuNommeLesMemesMachines(unittest.TestCase):
+    """Le menu annonce le préfixe, le script le décide : deux copies.
+
+    Elles dérivent en silence — le menu annoncerait des machines qui ne sont
+    pas celles qui apparaissent dans « virsh list », ce qui est pire que de
+    n'annoncer rien.
+    """
+
+    def test_les_prefixes_annonces_sont_ceux_du_script(self):
+        src = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "todo"
+            / "qemu_cache_menu.py"
+        ).read_text(encoding="utf-8")
+        bloc = src[src.index('"2": "el-') :]
+        bloc = bloc[: bloc.index("}")]
+        annonces = set(re.findall(r'"(el-[a-z-]+)"', bloc))
+        self.assertEqual(
+            annonces,
+            {QC.NOM_BASE, QC.NOM_BASE_SANS_CACHE, QC.NOM_BASE_HORS_LIGNE},
+            "le menu et le script ne nomment pas les mêmes machines",
         )
 
 

@@ -544,6 +544,16 @@ class QemuCacheMenuMixin:
             if status == "0":
                 return False
             if status in args:
+                # Chaque mode a ses propres machines : le dire AVANT, sans
+                # quoi trois lots de VM apparaissent dans « virsh list » sans
+                # qu'on sache lequel vient de quel essai.
+                prefixe = {
+                    "2": "el-cache-test",
+                    "3": "el-offline-test",
+                    "4": "el-no-cache-test",
+                }.get(status)
+                if prefixe:
+                    print(f"  {t('Machines created:')} {prefixe}-1, -2…")
                 if status == "4":
                     # Le témoin ne prouve rien sur le cache : il mesure ce que
                     # son absence coûte. Le dire évite qu'un résultat lent

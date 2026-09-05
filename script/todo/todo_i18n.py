@@ -1564,6 +1564,10 @@ TRANSLATIONS = {
         "fr": "Détruire les machines de ce test ?",
         "en": "Destroy the machines of this test?",
     },
+    "Machines created:": {
+        "fr": "Machines créées :",
+        "en": "Machines created:",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

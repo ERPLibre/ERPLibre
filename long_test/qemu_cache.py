@@ -58,7 +58,18 @@ from descente import (  # noqa: E402
 )
 
 OUTIL = "qemu_cache"
+
+# Un préfixe de nom par MODE, et non un seul pour les trois.
+#
+# Les trois modes créent des machines qui jouent le même rôle — la première,
+# la seconde — et un préfixe unique les faisait se disputer les mêmes noms :
+# lancer le témoin après la mesure butait sur « machine(s) d'un essai
+# précédent encore là », alors qu'il s'agissait d'une AUTRE expérience. Séparés,
+# les trois cohabitent et le rapport les montre côte à côte, ce qui est
+# précisément la comparaison qu'on cherche.
 NOM_BASE = "el-cache-test"
+NOM_BASE_SANS_CACHE = "el-no-cache-test"
+NOM_BASE_HORS_LIGNE = "el-offline-test"
 DISTRO = "arch"
 VERSION = "latest"
 
@@ -109,17 +120,17 @@ def machines_a_defaire(limite=20):
     d'un rapport qui en a un l'emportant sur l'absence d'un autre. Rend
     {nom: uuid ou ""} et la liste des fichiers lus.
     """
+    machines, lus = {}, []
     rep = os.path.expanduser("~/.erplibre/longtest")
-    if not os.path.isdir(rep):
-        return {}, []
-    fichiers = sorted(
-        (
+    fichiers = (
+        sorted(
             f
             for f in os.listdir(rep)
             if f.startswith(OUTIL) and f.endswith(".json")
-        )
-    )[-limite:]
-    machines, lus = {}, []
+        )[-limite:]
+        if os.path.isdir(rep)
+        else []
+    )
     for nom in fichiers:
         chemin = os.path.join(rep, nom)
         try:
@@ -135,6 +146,16 @@ def machines_a_defaire(limite=20):
             # Un UUID connu ne se perd jamais au profit d'un rapport muet.
             if uuids.get(vm) or vm not in machines:
                 machines[vm] = uuids.get(vm, machines.get(vm, ""))
+
+    # Les rapports ne suffisent pas, et le balayage qui suit se fait DANS TOUS
+    # LES CAS — dossier de rapports absent compris, qui est justement l'état
+    # où une machine vivante n'est nommée nulle part. Ils sont bornés à
+    # `limite` : une machine nommée par un rapport plus ancien que cette
+    # fenêtre ne serait jamais défaite et bloquerait tous les essais suivants
+    # sans qu'aucune commande sache la retirer. Ce qui VIT tranche.
+    for prefixe in (NOM_BASE, NOM_BASE_SANS_CACHE, NOM_BASE_HORS_LIGNE):
+        for vm in machines_vivantes(prefixe):
+            machines.setdefault(vm, "")
     return machines, lus
 
 
@@ -280,7 +301,7 @@ def executer(cmd, delai, journal=None, montrer=False):
 # --------------------------------------------------------------------------
 
 
-def prealables(journal):
+def prealables(journal, base=NOM_BASE):
     """Ce qui doit être vrai AVANT de créer la moindre machine.
 
     Chaque manque est dit avec son remède : découvrir au bout de vingt minutes
@@ -306,7 +327,7 @@ def prealables(journal):
     ecart = desaccord_de_reseau()
     if ecart:
         manques.append(ecart)
-    restes = machines_vivantes()
+    restes = machines_vivantes(base)
     if restes:
         # Sans cette garde, la création bute sur le disque de la machine
         # restante et rend un « existe déjà » qui ne dit pas quoi faire.
@@ -319,15 +340,33 @@ def prealables(journal):
     return not manques
 
 
-def machines_vivantes():
-    """Les machines de CE test qui existent encore, par leur nom."""
+def base_des_noms(args):
+    """Le préfixe des VM de ce mode.
+
+    Lu des arguments et non d'une variable globale : c'est ce qui permet aux
+    trois modes de cohabiter sans qu'aucun ne bloque les autres.
+    """
+    if getattr(args, "sans_cache", False):
+        return NOM_BASE_SANS_CACHE
+    if getattr(args, "hors_ligne", False):
+        return NOM_BASE_HORS_LIGNE
+    return NOM_BASE
+
+
+def machines_vivantes(base=NOM_BASE):
+    """Les machines de CE mode qui existent encore, par leur nom.
+
+    De ce mode SEULEMENT : une machine laissée par une autre expérience
+    n'entre en conflit avec rien, et refuser de partir à cause d'elle
+    obligerait à tout défaire pour lancer une mesure indépendante.
+    """
     code, sortie = executer("virsh -c qemu:///system list --all --name", 30)
     if code:
         return []
     return [
         l.strip()
         for l in (sortie or "").split("\n")
-        if l.strip().startswith(NOM_BASE)
+        if l.strip().startswith(base)
     ]
 
 
@@ -661,7 +700,7 @@ def rebrancher_lamont(journal, dry_run=False):
     )
 
 
-def contre_epreuve(journal, rapport, dry_run=False):
+def contre_epreuve(journal, rapport, dry_run=False, base=NOM_BASE):
     """Une troisième VM, l'amont du cache coupé. Elle doit réussir.
 
     C'est ce qui distingue un cache d'une simple accélération : sans réseau,
@@ -672,7 +711,7 @@ def contre_epreuve(journal, rapport, dry_run=False):
     if not couper_lamont(journal, dry_run):
         return False
     try:
-        nom = f"{NOM_BASE}-3"
+        nom = f"{base}-3"
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
         adresse = deployer(nom, journal, dry_run)
@@ -812,9 +851,10 @@ def main(argv=None):
     if args.detruire:
         return detruire(args.dry_run)
 
+    base = base_des_noms(args)
     journal = journal_neuf()
     dire(f"  journal : {journal}", journal)
-    if not args.dry_run and not prealables(journal):
+    if not args.dry_run and not prealables(journal, base):
         return 1
 
     acces = journal_du_cache()
@@ -850,13 +890,13 @@ def main(argv=None):
 
 
 def _boucle(args, rapport, journal, acces, decalage):
-    """Les deux VM, la mesure, et ce qui suit. Séparé pour que le témoin
-    puisse rallumer le service quoi qu'il arrive."""
+    """Les deux VM, la mesure, et ce qui suit."""
+    base = base_des_noms(args)
     fenetres = []
     for rang in (1, 2):
         dire("", journal)
         dire(f"  ── VM {rang} ──", journal)
-        nom = f"{NOM_BASE}-{rang}"
+        nom = f"{base}-{rang}"
         # NOTÉ AVANT la création : une création échouée à mi-chemin laisserait
         # sinon une machine que le rapport ne nomme nulle part.
         rapport["vms"].append(nom)
@@ -907,7 +947,10 @@ def _boucle(args, rapport, journal, acces, decalage):
         ok = verdict(fenetres[0], fenetres[1], journal)
 
     if args.hors_ligne:
-        ok = contre_epreuve(journal, rapport, args.dry_run) and ok
+        ok = (
+            contre_epreuve(journal, rapport, args.dry_run, base_des_noms(args))
+            and ok
+        )
 
     rapport["fin"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     rapport["cache"] = not args.sans_cache
