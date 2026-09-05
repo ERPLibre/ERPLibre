@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -53,6 +54,27 @@ var errMiss = errors.New("cache: absent")
 // portent pas le même corps.
 func Key(method, rawURL string) string {
 	sum := sha256.Sum256([]byte(method + " " + rawURL))
+	return hex.EncodeToString(sum[:])
+}
+
+// KeySansHote range un objet sous son CHEMIN, l'hôte écarté.
+//
+// Une liste de miroirs tourne : pacman tire un fichier de « fastly », le
+// suivant de « geo », et une clé qui porte l'hôte réduit alors le cache à
+// néant — même fichier, autre nom, défaut de cache. Le chemin, lui, identifie
+// le fichier sur TOUS les miroirs d'une même distribution :
+// « /core/os/x86_64/bash-5.3-1-x86_64.pkg.tar.zst » nomme le même octet
+// partout, sa version et son architecture étant dans son nom.
+//
+// Réservé aux fichiers dont le NOM porte l'identité — paquets, index de
+// dépôt. L'appliquer à tout ferait entrer en collision les « /index.html » de
+// deux sites sans rapport.
+func KeySansHote(method string, u *url.URL) string {
+	chemin := u.Path
+	if u.RawQuery != "" {
+		chemin += "?" + u.RawQuery
+	}
+	sum := sha256.Sum256([]byte(method + " path " + chemin))
 	return hex.EncodeToString(sum[:])
 }
 

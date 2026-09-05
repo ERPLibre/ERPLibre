@@ -96,10 +96,15 @@ type Proxy struct {
 // milieu. Les délais portent donc sur l'établissement et sur l'attente des
 // en-têtes, jamais sur la durée du corps.
 func NewProxy(store *Store, alog *AccessLog) *Proxy {
+	// Les délais sont bornés par la PATIENCE DU CLIENT, pas par la nôtre.
+	// pacman abandonne un fichier après dix secondes sous un octet par
+	// seconde ; si notre repli sur la copie stockée arrive plus tard, il
+	// n'arrive jamais — et un pare-feu qui jette les paquets sans les refuser
+	// fait justement pendre l'établissement jusqu'au délai.
 	tr := &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		DialContext:           (&net.Dialer{Timeout: 4 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 8 * time.Second,
 		MaxIdleConnsPerHost:   8,
 		Proxy:                 http.ProxyFromEnvironment,
 	}
@@ -167,7 +172,13 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		return
 	}
 	class := Classify(u)
+	// La clé écarte l'hôte quand le NOM du fichier l'identifie partout : une
+	// liste de miroirs tourne, et une clé qui porte l'hôte ferait manquer le
+	// cache au fichier déjà gardé sous un autre nom de miroir.
 	key := Key(r.Method, u.String())
+	if PortableParChemin(u) {
+		key = KeySansHote(r.Method, u)
+	}
 	cacheable := CacheableMethod(r.Method) && class != ClassNoStore
 
 	// Une requête partielle n'est servie du cache que si le corps ENTIER y

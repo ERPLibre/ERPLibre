@@ -87,3 +87,50 @@ func TestClassifyURLNulle(t *testing.T) {
 		t.Errorf("une URL absente vaut « %s », attendu « no-store »", got)
 	}
 }
+
+// Un même fichier, deux miroirs : le cache doit le reconnaître.
+//
+// Une liste de miroirs tourne, et pacman a réellement tiré « extra.db » de
+// « geo » alors que le cache ne détenait que la copie de « fastly » — même
+// fichier, autre nom d'hôte, défaut de cache et 504 hors ligne.
+func TestMemeCheminSurDeuxMiroirs(t *testing.T) {
+	a, _ := url.Parse("https://fastly.example/core/os/x86_64/bash-5.3-1-x86_64.pkg.tar.zst")
+	b, _ := url.Parse("https://geo.example/core/os/x86_64/bash-5.3-1-x86_64.pkg.tar.zst")
+	if !PortableParChemin(a) {
+		t.Fatal("un paquet n'est pas reconnu portable")
+	}
+	if KeySansHote("GET", a) != KeySansHote("GET", b) {
+		t.Error("deux miroirs du même fichier donnent deux clés")
+	}
+	if Key("GET", a.String()) == Key("GET", b.String()) {
+		t.Error("la clé complète devrait, elle, distinguer les deux URL")
+	}
+}
+
+// L'index aussi : c'est lui qui a échoué hors ligne.
+func TestIndexPortableEntreMiroirs(t *testing.T) {
+	a, _ := url.Parse("https://fastly.example/extra/os/x86_64/extra.db")
+	b, _ := url.Parse("https://geo.example/extra/os/x86_64/extra.db")
+	if !PortableParChemin(a) {
+		t.Fatal("un index de dépôt n'est pas reconnu portable")
+	}
+	if KeySansHote("GET", a) != KeySansHote("GET", b) {
+		t.Error("deux miroirs du même index donnent deux clés")
+	}
+}
+
+// Mais pas n'importe quoi : « /index.html » ne nomme rien, et deux sites sans
+// rapport en portent un.
+func TestUnePageQuelconqueNestPasPortable(t *testing.T) {
+	for _, brut := range []string{
+		"https://a.example/index.html",
+		"https://a.example/quelque-chose",
+		"https://a.example/simple/requests/",
+		"https://a.example/core.db?miroir=2",
+	} {
+		u, _ := url.Parse(brut)
+		if PortableParChemin(u) {
+			t.Errorf("%s est jugé portable, à tort", brut)
+		}
+	}
+}

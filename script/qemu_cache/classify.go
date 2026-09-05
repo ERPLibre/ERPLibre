@@ -117,6 +117,37 @@ func Classify(u *url.URL) Class {
 	return ClassVolatile
 }
 
+// PortableParChemin dit si le NOM du fichier suffit à l'identifier sur
+// n'importe quel miroir de la même distribution.
+//
+// Vrai pour un paquet — sa version et son architecture sont dans son nom — et
+// pour un index de dépôt, dont le chemin est le même partout. Faux pour le
+// reste : « /index.html » n'identifie rien.
+func PortableParChemin(u *url.URL) bool {
+	if u == nil || u.RawQuery != "" {
+		return false
+	}
+	name := strings.ToLower(path.Base(u.Path))
+	for _, s := range immutableSuffixes {
+		if strings.HasSuffix(name, s) {
+			return true
+		}
+	}
+	for _, s := range volatileSuffixes {
+		if strings.HasSuffix(name, s) {
+			return true
+		}
+	}
+	for _, n := range volatileNames {
+		// « index.html » et « index.json » nomment n'importe quoi : ils sont
+		// dans la table des index, mais pas portables pour autant.
+		if name == n && !strings.HasPrefix(n, "index.") {
+			return true
+		}
+	}
+	return false
+}
+
 // CacheableMethod : seules les lectures entrent au cache. Un POST ou un PUT
 // change un état à l'amont et n'a pas de copie qui vaille.
 func CacheableMethod(method string) bool {
