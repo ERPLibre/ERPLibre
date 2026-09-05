@@ -647,6 +647,36 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
 <!-- [en] -->
+## Search
+
+`/` searches the **whole cache**, not just the messages currently loaded.
+Subject, sender, recipient and snippet are matched.
+
+In `clear` cache mode an FTS5 index answers in milliseconds and the list
+follows every keystroke. In `encrypted` mode no index exists — one would
+store in the open exactly what the cache seals — so the search decrypts row
+by row. Measured on 200,000 messages: 0.00 s indexed against 4.4 s scanned
+for a term that matches nothing. The list therefore stops following each
+keystroke there and waits for **Enter**, saying so in the status bar.
+
+The result is the same either way; only the cost differs.
+
+<!-- [fr] -->
+## Recherche
+
+`/` cherche dans **tout le cache**, et non dans les seuls messages chargés.
+Sujet, expéditeur, destinataire et extrait sont comparés.
+
+En mode de cache `clear`, un index FTS5 répond en millisecondes et la liste
+suit chaque frappe. En mode `encrypted` aucun index n'existe — il stockerait
+en clair ce que le cache scelle — et la recherche déchiffre ligne à ligne.
+Mesuré sur 200 000 messages : 0,00 s avec index contre 4,4 s en balayage
+pour un terme qui ne correspond à rien. La liste cesse donc d'y suivre la
+frappe et attend **Entrée**, ce que la barre d'état annonce.
+
+Le résultat est le même des deux côtés ; seul le coût change.
+
+<!-- [en] -->
 ## Statistics
 
 `i` in the client opens the statistics screen; `[5]` in the Mail menu prints
