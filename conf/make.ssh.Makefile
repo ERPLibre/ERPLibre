@@ -5,7 +5,10 @@
 # Connection variables (override on command line or via environment)
 SSH_HOST ?=
 SSH_USER ?= erplibre
-SSH_PORT ?= 22
+# Vide, et non « 22 » : posé en dur, « -p 22 » ÉCRASE le Port qu'un alias de
+# ~/.ssh/config déclare, et une machine qui n'écoute pas sur 22 devient
+# injoignable par ces verbes alors que « ssh <alias> » la joint.
+SSH_PORT ?=
 SSH_KEY  ?=
 SSH_PATH ?= ~/erplibre_deploy_2
 # Machine de rebond. Une cible qui n'est joignable qu'à travers elle reste
@@ -17,8 +20,13 @@ SSH_TARGET ?= run
 
 # Build SSH/rsync options from variables. L'espace est DANS le $(if ...) :
 # posée dehors, elle reste dans la ligne quand l'option est vide.
-_SSH_OPTS = $(if $(SSH_KEY), -i $(SSH_KEY))$(if $(SSH_JUMP), -J $(SSH_JUMP))
-_SSH_CMD  = ssh -p $(SSH_PORT) -o StrictHostKeyChecking=accept-new$(_SSH_OPTS)
+# Une option par ligne, puis concaténées SANS séparateur : « += » y
+# glisserait une espace, qui resterait dans la ligne quand l'option est vide.
+_OPT_PORT = $(if $(SSH_PORT), -p $(SSH_PORT))
+_OPT_KEY  = $(if $(SSH_KEY), -i $(SSH_KEY))
+_OPT_JUMP = $(if $(SSH_JUMP), -J $(SSH_JUMP))
+_SSH_OPTS = $(_OPT_PORT)$(_OPT_KEY)$(_OPT_JUMP)
+_SSH_CMD  = ssh -o StrictHostKeyChecking=accept-new$(_SSH_OPTS)
 # rsync reçoit la MÊME ligne. Deux définitions identiques divergent au
 # premier réglage ajouté d'un seul côté, et la copie est justement le verbe
 # où l'oubli se voit le plus tard.
@@ -26,7 +34,7 @@ _RSYNC_SSH = $(_SSH_CMD)
 
 define _require_host
 	@test -n "$(SSH_HOST)" || \
-		(echo "Error: SSH_HOST is required. Usage: make $@ SSH_HOST=hostname [SSH_USER=erplibre] [SSH_PORT=22] [SSH_KEY=~/.ssh/id_rsa] [SSH_JUMP=bastion]" && exit 1)
+		(echo "Error: SSH_HOST is required. Usage: make $@ SSH_HOST=hostname [SSH_USER=erplibre] [SSH_PORT=2222] [SSH_KEY=~/.ssh/id_rsa] [SSH_JUMP=bastion]" && exit 1)
 endef
 
 # Test SSH connectivity
