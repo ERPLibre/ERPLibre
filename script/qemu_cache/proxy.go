@@ -87,9 +87,10 @@ type Proxy struct {
 	Log    *AccessLog
 	Client *http.Client
 	// ClientPatient sert les échanges où l'amont CALCULE avant de répondre.
-	// Un serveur git énumère ses références à la demande — mesuré à seize
-	// secondes avant le premier octet sur un dépôt chargé, quand un miroir de
-	// paquets répond en quelques centaines de millisecondes. Le délai court,
+	// Un serveur git énumère ses références à la demande, ce qui demande des
+	// dizaines de secondes avant le premier octet sur un dépôt chargé, quand
+	// un miroir de paquets répond en quelques centaines de millisecondes. Le
+	// délai court,
 	// qui existe pour que le repli hors ligne arrive avant que le client
 	// renonce, prenait ce calcul pour un amont injoignable et rendait un 504 :
 	// « repo sync » échouait alors sur un dépôt parfaitement joignable.

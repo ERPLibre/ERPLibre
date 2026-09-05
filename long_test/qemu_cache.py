@@ -149,9 +149,9 @@ PAQUETS_MINIMUM = {
 # ce n'est pas une raison de renoncer à la mesure.
 # Un travail de fond tient le verrou du gestionnaire de paquets juste après le
 # démarrage — sur Ubuntu, « apt-daily » se déclenche au boot et cloud-init ne
-# l'attend pas. « DPkg::Lock::Timeout » ne le couvre pas : mesuré, deux mises à
-# jour concurrentes échouent toutes les deux en moins d'une seconde, avec ou
-# sans l'option, car elle ignore le verrou des LISTES.
+# l'attend pas. « DPkg::Lock::Timeout » ne couvre pas le verrou des LISTES :
+# deux mises à jour concurrentes échouent toutes les deux en moins d'une
+# seconde, que l'option soit posée ou non.
 #
 # La reprise vaut donc pour toutes les familles sans connaître leur mécanisme
 # de verrou. Elle ne masque rien : une source réellement en panne épuise les
@@ -758,17 +758,20 @@ def poser_les_paquets(
 
 
 def paquets_seulement(lignes):
-    """Les seules lignes qui portent un fichier de paquet.
+    """Les lignes qui portent un fichier FIGÉ : paquet, roue, archive, image.
 
-    L'index et les pages sont écartés : ils ne sont JAMAIS servis du cache
-    quand l'amont répond, et les compter ferait échouer un test qui mesure
-    autre chose.
+    Le critère du test porte sur ce qui ne change jamais — un fichier dont le
+    nom porte sa version doit venir du disque à la seconde demande. L'index et
+    les pages sont écartés : ils ne sont JAMAIS servis du cache quand l'amont
+    répond, et les compter ferait échouer un test qui mesure autre chose.
+
+    La décision est celle du CACHE, relue dans son journal, et non une liste
+    d'extensions tenue ici. Celle-ci ne connaissait que les paquets d'Arch : sur
+    Ubuntu ou Fedora, la mesure ne trouvait donc aucun fichier et déclarait que
+    rien n'avait traversé le cache, alors qu'il venait de servir une
+    installation entière.
     """
-    return [
-        l
-        for l in lignes
-        if str(l.get("url", "")).endswith((".pkg.tar.zst", ".pkg.tar.xz"))
-    ]
+    return [l for l in lignes if l.get("class") == "immutable"]
 
 
 def verdict(premier, second, journal):

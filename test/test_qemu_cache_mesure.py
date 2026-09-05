@@ -42,13 +42,19 @@ def charger():
 QC = charger()
 
 
-def ligne(url, upstream, octets=1000, issue="stored"):
+def ligne(url, upstream, octets=1000, issue="stored", classe="immutable"):
+    """Une ligne du journal d'accès du cache.
+
+    La CLASSE est ce que le filtre lit désormais : c'est le cache qui décide
+    si un fichier est figé, et la tenir ici en dur revenait à laisser un index
+    se faire passer pour un paquet.
+    """
     return {
         "url": url,
         "upstream": upstream,
         "bytes": octets,
         "outcome": issue,
-        "class": "immutable",
+        "class": classe,
     }
 
 
@@ -68,14 +74,35 @@ class TestFiltre(unittest.TestCase):
     def test_les_index_sont_ecartes(self):
         """Un index n'est JAMAIS servi du cache quand l'amont répond : le
         compter ferait échouer un test qui mesure autre chose."""
-        lignes = [ligne(INDEX, True), ligne(PAQUET_A, True)]
+        lignes = [ligne(INDEX, True, classe="volatile"), ligne(PAQUET_A, True)]
         gardees = QC.paquets_seulement(lignes)
         self.assertEqual(len(gardees), 1)
         self.assertEqual(gardees[0]["url"], PAQUET_A)
 
-    def test_les_deux_extensions_de_paquet(self):
-        vieux = PAQUET_A.replace(".pkg.tar.zst", ".pkg.tar.xz")
-        self.assertEqual(len(QC.paquets_seulement([ligne(vieux, True)])), 1)
+    def test_toutes_les_familles_de_paquets(self):
+        """Le filtre ne connaissait que les extensions d'Arch : sur Ubuntu ou
+        Fedora, la mesure ne trouvait AUCUN fichier et déclarait que rien
+        n'avait traversé le cache, alors qu'il venait de servir une
+        installation entière. Il lit maintenant la classe que le cache pose."""
+        for url in (
+            PAQUET_A.replace(".pkg.tar.zst", ".pkg.tar.xz"),
+            "http://miroir.example/pool/main/b/bash/bash_5.2-1_amd64.deb",
+            "http://miroir.example/Packages/b/bash-5.2-1.fc43.x86_64.rpm",
+            "https://pypi.example/ab/cd/requests-2.33.0-py3-none-any.whl",
+        ):
+            self.assertEqual(
+                len(QC.paquets_seulement([ligne(url, True)])),
+                1,
+                f"« {url} » n'est pas compté comme fichier figé",
+            )
+
+    def test_le_filtre_ne_lit_pas_lextension(self):
+        """Un fichier que le cache dit volatile est écarté quel que soit son
+        nom : la décision lui appartient, et une seconde table dériverait."""
+        self.assertEqual(
+            QC.paquets_seulement([ligne(PAQUET_A, True, classe="volatile")]),
+            [],
+        )
 
     def test_une_url_absente_ne_casse_pas(self):
         self.assertEqual(QC.paquets_seulement([{"upstream": True}]), [])
