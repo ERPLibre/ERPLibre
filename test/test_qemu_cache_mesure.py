@@ -21,6 +21,7 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -290,6 +291,67 @@ class TestCeQuIlFautDefaire(unittest.TestCase):
         ):
             machines, lus = QC.machines_a_defaire()
         self.assertEqual((machines, lus), ({}, []))
+
+
+class TestUnPlanNestPasUneMesure(unittest.TestCase):
+    """Un essai à blanc écrit un rapport, et le comparatif le comptait.
+
+    Le plan ne crée aucune VM et n'installe aucun paquet : ses durées valent
+    zéro. Comptées comme des mesures, elles montrent dans le tableau des
+    exécutions qui n'ont jamais eu lieu et tirent la moyenne vers le bas — un
+    témoin à blanc faisait ainsi croire à une comparaison qui n'existait pas.
+    """
+
+    def test_un_rapport_marque_a_blanc_est_ecarte(self):
+        self.assertFalse(
+            QC.mesure_reelle({"dry_run": True, "durees": {"vm-1": 42.0}})
+        )
+
+    def test_un_rapport_ancien_se_trahit_par_ses_zeros(self):
+        """Les rapports d'avant la marque : une installation de paquets qui
+        prend zéro seconde n'a pas eu lieu."""
+        self.assertFalse(
+            QC.mesure_reelle({"durees": {"vm-1": 0.0, "vm-2": 0.0}})
+        )
+
+    def test_une_vraie_mesure_passe(self):
+        self.assertTrue(
+            QC.mesure_reelle({"durees": {"vm-1": 19.6, "vm-2": 20.6}})
+        )
+
+    def test_un_rapport_sans_duree_ne_mesure_rien(self):
+        self.assertFalse(QC.mesure_reelle({}))
+
+    def test_le_comparatif_applique_bien_le_filtre(self):
+        """Le contrôle précédent vérifie la RÈGLE ; celui-ci vérifie qu'elle
+        est branchée. Sans lui, retirer l'appel laisse les tests verts et
+        remet les lignes fantômes dans le tableau."""
+        with tempfile.TemporaryDirectory() as rep:
+            rapports = {
+                "qemu_cache-20260101-000001.json": {
+                    "outil": "qemu_cache",
+                    "debut": "2026-01-01T00:00:01",
+                    "dry_run": True,
+                    "durees": {"vm-1": 0.0},
+                },
+                "qemu_cache-20260101-000002.json": {
+                    "outil": "qemu_cache",
+                    "debut": "2026-01-01T00:00:02",
+                    "durees": {"vm-1": 12.5},
+                },
+            }
+            for nom, contenu in rapports.items():
+                with open(Path(rep) / nom, "w", encoding="utf-8") as fh:
+                    json.dump(contenu, fh)
+            with unittest.mock.patch.object(
+                QC.os.path, "expanduser", return_value=rep
+            ):
+                vus = QC.rapports_recents()
+        self.assertEqual(
+            [r["durees"] for r in vus],
+            [{"vm-1": 12.5}],
+            "un plan à blanc revient dans le rapport de performance",
+        )
 
 
 if __name__ == "__main__":

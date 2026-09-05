@@ -157,10 +157,24 @@ def rapports_recents(limite=12):
                 d = json.load(fh)
         except (OSError, ValueError):
             continue
-        if d.get("durees"):
-            d["_fichier"] = nom
-            out.append(d)
+        if not mesure_reelle(d):
+            continue
+        d["_fichier"] = nom
+        out.append(d)
     return out
+
+
+def mesure_reelle(rapport):
+    """Ce rapport porte-t-il une mesure, ou seulement un plan ?
+
+    La marque « dry_run » tranche pour les rapports récents. Les plus anciens
+    ne la portent pas : une durée nulle partout les trahit, car une
+    installation de paquets qui prend zéro seconde n'a pas eu lieu.
+    """
+    if rapport.get("dry_run"):
+        return False
+    durees = rapport.get("durees") or {}
+    return any(d > 0 for d in durees.values())
 
 
 def rapport_comparatif():
@@ -551,6 +565,28 @@ def verdict(premier, second, journal):
         )
         return False
     dire(f"  1re VM : {len(p1)} fichiers de paquets demandés", journal)
+
+    # Un cache déjà chaud sert AUSSI la première VM. Le critère reste tenu,
+    # mais la démonstration change : ce n'est plus « la première remplit, la
+    # seconde est servie », c'est « un cache chaud sert les deux ». Le dire,
+    # sans quoi deux colonnes identiques passent pour une anomalie.
+    amont1 = sum(l.get("bytes", 0) for l in p1 if l.get("upstream"))
+    if p1 and not amont1:
+        dire(
+            "  ⚠ le cache était DÉJÀ chaud : la 1re VM n'a rien tiré de"
+            " l'amont.",
+            journal,
+        )
+        dire(
+            "    Le critère tient, mais le remplissage n'est pas démontré"
+            " ici.",
+            journal,
+        )
+        dire(
+            "    Pour l'exiger, vider le cache avant :"
+            " /var/cache/erplibre_go_qemu_cache",
+            journal,
+        )
     dire(
         f"  2e VM  : {len(p2)} demandés, dont {len(neufs)} inconnus du cache",
         journal,
@@ -797,6 +833,11 @@ def main(argv=None):
         "debut": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "vms": [],
         "cache": not args.sans_cache,
+        # Un plan à blanc ne crée rien et ne mesure rien. Il écrit pourtant un
+        # rapport, et sans cette marque le comparatif compte ses durées de
+        # zéro comme des mesures : il montre alors des exécutions qui n'ont
+        # jamais eu lieu et tire la moyenne vers le bas.
+        "dry_run": bool(args.dry_run),
         "journal": journal,
     }
     ecrire_rapport(rapport)
