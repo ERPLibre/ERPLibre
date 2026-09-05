@@ -31,7 +31,7 @@ l'opérateur — et déploie une troisième VM. Elle doit réussir sur l'index
 stocké, et le journal doit dire sur quel instantané elle se bâtit.
 
 ```
-./long_test/qemu_cache.py                 # deux VM, ~40 minutes
+./long_test/qemu_cache.py                 # deux VM
 ./long_test/qemu_cache.py --dry-run       # le plan, rien de créé
 ./long_test/qemu_cache.py --hors-ligne    # + la troisième VM, amont coupé
 ./long_test/qemu_cache.py --detruire      # défaire

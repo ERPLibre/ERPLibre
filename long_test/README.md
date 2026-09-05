@@ -177,7 +177,7 @@ account, not by a blanket rule that would take down the ssh session running
 the test — and deploys a third VM, which must build from the stored index.
 
 ```
-./long_test/qemu_cache.py                 # two VMs, ~40 minutes
+./long_test/qemu_cache.py                 # two VMs
 ./long_test/qemu_cache.py --dry-run       # the plan, nothing created
 ./long_test/qemu_cache.py --hors-ligne    # + the third VM, upstream cut
 ./long_test/qemu_cache.py --detruire      # undo it
@@ -185,6 +185,18 @@ the test — and deploys a third VM, which must build from the stored index.
 
 It needs the cache installed and running — `TODO › Deployment › QEMU cache` —
 and it refuses to create anything before saying which prerequisite is missing.
+Among those prerequisites: the rules must target the subnet libvirt actually
+serves, which is not always 192.168.122.0/24.
+
+What governs the duration is the FIRST VM's download, everything else being
+boot and install: minutes on a machine with nested KVM and a nearby mirror,
+much longer on a slow link. The second VM does not download at all — that is
+what is being measured.
+
+One limit the counter-proof exposes: with upstream cut, the repository
+database SIGNATURES are missing from the cache, the mirror answering 404 for
+them, so the cache returns its named 504. pacman treats them as optional and
+carries on. A distribution that required them would stop there.
 
 ## Starting from a host you already have
 
