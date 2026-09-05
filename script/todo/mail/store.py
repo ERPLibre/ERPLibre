@@ -147,6 +147,11 @@ class MessageMeta:
     # tests, où une empreinte ne servirait à rien.
     in_reply_to: str = ""
     references: str = ""
+    # Remplis à la RELECTURE seulement : le cache seul connaît le sel, donc
+    # personne ne peut les fournir en entrée. Ils servent au regroupement
+    # par fil, qui doit pouvoir travailler sans rouvrir la base.
+    msgid_hash: str = ""
+    in_reply_to_hash: str = ""
 
 
 def _fts_query(texte: str) -> str:
@@ -1006,6 +1011,13 @@ class Store:
             subject=self._open(row["sealed_subject"]),
             snippet=self._open(row["sealed_snippet"]),
             has_body=bool(row["has_body"]),
+            msgid_hash=row["msgid_hash"] or "",
+            in_reply_to_hash=(
+                row["in_reply_to_hash"]
+                if "in_reply_to_hash" in row.keys()
+                else ""
+            )
+            or "",
         )
 
     @_locked

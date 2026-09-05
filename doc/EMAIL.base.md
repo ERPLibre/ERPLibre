@@ -647,6 +647,40 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
 <!-- [en] -->
+## List views
+
+`g` cycles the message list through three views:
+
+- **flat, by date** — the default;
+- **by thread** — replies sit under the message they answer, indented, and
+  ordered by date within their thread. Roots keep the order the flat view
+  gave them, so switching does not reshuffle everything;
+- **unread only**.
+
+A reply whose original is not in the selection stays visible as a root
+rather than disappearing, and a cache filled before threading was added
+behaves exactly like the flat view. The list keeps its scrollbar gutter
+reserved at all times, so its width does not shift under the cursor.
+
+<!-- [fr] -->
+## Vues de la liste
+
+`g` fait défiler trois vues de la liste des messages :
+
+- **à plat, par date** — celle par défaut ;
+- **par fil** — les réponses se placent sous le message auquel elles
+  répondent, en retrait, dans l'ordre des dates à l'intérieur du fil. Les
+  racines gardent l'ordre de la vue à plat : changer de vue ne rebat donc
+  pas toute la liste ;
+- **non lus seulement**.
+
+Une réponse dont l'original n'est pas dans la sélection reste visible comme
+racine plutôt que de disparaître, et un cache rempli avant l'arrivée des
+fils se comporte comme la vue à plat. La liste réserve en permanence la
+gouttière de sa barre de défilement, pour que sa largeur ne bouge pas sous
+le curseur.
+
+<!-- [en] -->
 ## Syncing several accounts
 
 Accounts sync side by side, four at a time. Each holds its own socket and

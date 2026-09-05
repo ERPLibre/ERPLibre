@@ -849,6 +849,12 @@ def run_tui(
     class MailApp(App):
         CSS = """
         #panes { height: 1fr; }
+        /* La gouttière est RÉSERVÉE en permanence : sans elle la barre
+           apparaît et disparaît selon le nombre de messages, la largeur du
+           tableau change sous le curseur, et rien n'indique qu'une liste
+           courte l'est vraiment. */
+        #list { scrollbar-gutter: stable; }
+        #folders { scrollbar-gutter: stable; }
         #preview { padding: 0 1; }
         #status { height: 1; background: $panel; }
         #search_row { display: none; height: auto; }
@@ -992,6 +998,7 @@ def run_tui(
             Binding("n", "add_account", t("mail_add_account_binding")),
             Binding("l", "show_log", t("mail_log_binding")),
             Binding("i", "show_stats", t("mail_stats_binding")),
+            Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
             Binding("minus", "shrink_pane", t("mail_pane_shrink_binding")),
@@ -1172,6 +1179,13 @@ def run_tui(
             )
             self.refresh_list()
 
+        def action_cycle_list_mode(self) -> None:
+            self.list_mode = tui_text.next_list_mode(
+                getattr(self, "list_mode", "flat")
+            )
+            self.set_status(t(f"mail_list_mode_{self.list_mode}"))
+            self.refresh_list()
+
         def visible_metas(self) -> list:
             """Les messages à afficher : le dossier, ou le résultat.
 
@@ -1198,18 +1212,35 @@ def run_tui(
                 # la liste : on retombe sur ce qui est chargé.
                 return tui_text.filter_messages(self.metas, self.query)
 
+        def lignes_a_afficher(self) -> list:
+            """(message, niveau d'indentation) pour le mode courant.
+
+            Le niveau vaut 0 partout sauf en mode fil : la colonne du sujet
+            le porte, ce qui évite une colonne de plus dans une largeur
+            déjà comptée.
+            """
+            metas = self.visible_metas()
+            mode = getattr(self, "list_mode", "flat")
+            if mode == "threads":
+                return tui_text.group_threads(metas)
+            if mode == "unread":
+                return [(m, 0) for m in tui_text.only_unread(metas)]
+            return [(m, 0) for m in metas]
+
         def refresh_list(self) -> None:
             import time
 
             table = self.query_one("#list", DataTable)
             table.clear()
             now = int(time.time())
-            for meta in self.visible_metas():
+            for meta, niveau in self.lignes_a_afficher():
                 table.add_row(
                     "●" if tui_text.is_unread(meta.flags) else " ",
                     tui_text.truncate(tui_text.short_addr(meta.frm), 22),
                     tui_text.truncate(
-                        meta.subject or t("mail_no_subject"), 48
+                        ("  ↳ " * niveau)
+                        + (meta.subject or t("mail_no_subject")),
+                        48,
                     ),
                     tui_text.format_date(meta.date, now),
                     key=str(meta.uid),
@@ -1262,10 +1293,13 @@ def run_tui(
             table = self.query_one("#list", DataTable)
             if table.cursor_row is None or not self.metas:
                 return None
-            shown = self.visible_metas()
+            # Le MÊME ordre que l'affichage : en mode fil, `visible_metas`
+            # seul rendrait le message d'une autre ligne que celle où le
+            # curseur se trouve.
+            shown = self.lignes_a_afficher()
             if table.cursor_row >= len(shown):
                 return None
-            return shown[table.cursor_row]
+            return shown[table.cursor_row][0]
 
         # -- événements -------------------------------------------------
 
