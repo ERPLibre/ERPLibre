@@ -1101,6 +1101,84 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
+    "SSH - Choose the target machine": {
+        "fr": "🎯 SSH - Choisir la machine visée",
+        "en": "🎯 SSH - Choose the target machine",
+    },
+    "Deployment targets": {
+        "fr": "Cibles de déploiement",
+        "en": "Deployment targets",
+    },
+    "No target selected yet.": {
+        "fr": "Aucune cible retenue pour l'instant.",
+        "en": "No target selected yet.",
+    },
+    "None yet: [a] adds the first one.": {
+        "fr": "Aucune pour l'instant : [a] ajoute la première.",
+        "en": "None yet: [a] adds the first one.",
+    },
+    "Add": {"fr": "Ajouter", "en": "Add"},
+    "Edit": {"fr": "Modifier", "en": "Edit"},
+    "Delete": {"fr": "Supprimer", "en": "Delete"},
+    "Forget the selection": {
+        "fr": "Oublier la sélection",
+        "en": "Forget the selection",
+    },
+    "Selection forgotten.": {
+        "fr": "Sélection oubliée.",
+        "en": "Selection forgotten.",
+    },
+    "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Target name (lowercase, digits, - or _)": {
+        "fr": "Nom de la cible (minuscules, chiffres, - ou _)",
+        "en": "Target name (lowercase, digits, - or _)",
+    },
+    "Address: user@host, or a ~/.ssh/config alias": {
+        "fr": "Adresse : compte@hôte, ou un alias de ~/.ssh/config",
+        "en": "Address: user@host, or a ~/.ssh/config alias",
+    },
+    "Jump host (empty: connect directly)": {
+        "fr": "Machine de rebond (vide : connexion directe)",
+        "en": "Jump host (empty: connect directly)",
+    },
+    "SSH port (empty: let ssh decide)": {
+        "fr": "Port SSH (vide : laisser ssh décider)",
+        "en": "SSH port (empty: let ssh decide)",
+    },
+    "Private key path (empty: ~/.ssh/config decides)": {
+        "fr": "Chemin de la clé privée (vide : ~/.ssh/config décide)",
+        "en": "Private key path (empty: ~/.ssh/config decides)",
+    },
+    "Remote path where ERPLibre lives": {
+        "fr": "Chemin distant où vit ERPLibre",
+        "en": "Remote path where ERPLibre lives",
+    },
+    "Domain served over HTTPS (empty: not served)": {
+        "fr": "Domaine servi en HTTPS (vide : pas servi)",
+        "en": "Domain served over HTTPS (empty: not served)",
+    },
+    "Admin email for the certificate": {
+        "fr": "Courriel d'administration pour le certificat",
+        "en": "Admin email for the certificate",
+    },
+    "Target refused: ": {"fr": "Cible refusée : ", "en": "Target refused: "},
+    "Target saved: ": {
+        "fr": "Cible enregistrée : ",
+        "en": "Target saved: ",
+    },
+    "It becomes the selected target.": {
+        "fr": "Elle devient la cible retenue.",
+        "en": "It becomes the selected target.",
+    },
+    "Delete target": {"fr": "Supprimer la cible", "en": "Delete target"},
+    "Target deleted.": {"fr": "Cible supprimée.", "en": "Target deleted."},
+    "Not deletable here: this target comes from a shared configuration"
+    " file.": {
+        "fr": "Pas supprimable ici : cette cible vient d'un fichier de"
+        " configuration partagé.",
+        "en": "Not deletable here: this target comes from a shared"
+        " configuration file.",
+    },
     "Remote host (user@hostname or hostname): ": {
         "fr": "Hôte distant (user@hostname ou hostname) : ",
         "en": "Remote host (user@hostname or hostname): ",

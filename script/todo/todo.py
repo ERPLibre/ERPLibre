@@ -26,8 +26,16 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, host_os, todo_install, todo_prefs
+from script.remote import deploy_target, host_memory
+from script.todo import (
+    deploy_target_menu,
+    dev_tools,
+    host_os,
+    todo_install,
+    todo_prefs,
+)
 from script.todo.database_manager import DatabaseManager
+from script.todo.deploy_target_menu import DeployTargetMenuMixin
 from script.todo.devstack_menu import DevstackMenuMixin
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -106,6 +114,7 @@ class TODO(
     LongTestMenuMixin,
     VpnMenuMixin,
     DevstackMenuMixin,
+    DeployTargetMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1054,6 +1063,7 @@ class TODO(
     def prompt_execute_deploy_ssh(self):
         """Sous-menu : opérations de déploiement sur un hôte distant via SSH."""
         print(f"🤖 {t('Deploy ERPLibre to a remote host over SSH!')}")
+        self._deploy_ssh_show_target()
         choices = [
             {"prompt_description": t("SSH - Check connection")},
             {"prompt_description": t("SSH - Sync files (rsync)")},
@@ -1066,6 +1076,13 @@ class TODO(
             {"prompt_description": t("SSH - Run make target")},
             {"prompt_description": t("SSH - Install systemd service")},
             {"prompt_description": t("SSH - Configure nginx + SSL")},
+            # DOUZIÈME, et déclarée par « method » : posée ailleurs, elle
+            # décalerait les onze rangs que les « elif » ci-dessous codent en
+            # dur, et « voir les journaux » redémarrerait Odoo.
+            {
+                "prompt_description": t("SSH - Choose the target machine"),
+                "method": "_deploy_ssh_targets",
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -1096,7 +1113,7 @@ class TODO(
                 self._deploy_ssh_install_systemd()
             elif status == "11":
                 self._deploy_ssh_install_nginx()
-            else:
+            elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 
     @staticmethod
@@ -2386,6 +2403,22 @@ class TODO(
                 if valeur:
                     parts.append(f"{cle}={shlex.quote(str(valeur))}")
         return " ".join(parts)
+
+    def _deploy_ssh_show_target(self):
+        """Nomme la cible retenue en tête d'écran, ou dit qu'il n'y en a pas.
+
+        Onze entrées agissent sur une machine distante, dont cinq
+        l'installent ou la redémarrent : lire à qui l'on parle AVANT de
+        choisir est ce qui évite de le découvrir après.
+        """
+        retenue = deploy_target.selected()
+        if retenue:
+            libelle = host_memory.label(
+                deploy_target.fiche(retenue), deploy_target_menu.PRODUIT
+            )
+            print(f"   🎯 {libelle}")
+        else:
+            print(f"   {t('No target selected yet.')}")
 
     def _deploy_ssh_verb(self, cible_make, demander=None):
         """Joue un verbe de déploiement sur l'hôte, et dit ce qu'il lance.
