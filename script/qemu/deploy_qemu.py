@@ -53,11 +53,10 @@ import grp
 import gzip
 import hashlib
 import ipaddress
-import zlib
 import os
+import pwd
 import re
 import shutil
-import pwd
 import socket
 import stat as stat_mod
 import subprocess
@@ -68,6 +67,7 @@ import time
 import urllib.error
 import urllib.request
 import warnings
+import zlib
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -2749,10 +2749,9 @@ def static_net_plan(
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
-    if not m:
+    gateway, netmask = ip_netmask_from_network_xml(xml)
+    if not gateway:
         return None
-    gateway, netmask = m.group(1), m.group(2)
     base = gateway.rsplit(".", 1)[0]
     taken = {gateway}
     lease_cmd = ["virsh", "-c", LIBVIRT_URI, "net-dhcp-leases", net]
@@ -3213,6 +3212,20 @@ def network_bridge(name: str, use_sudo: bool) -> str:
     return bridge_from_network_xml(virsh_out(["net-dumpxml", name], use_sudo))
 
 
+def ip_netmask_from_network_xml(xml: str) -> tuple:
+    """(adresse portée par l'hôte, masque) d'un XML de réseau libvirt.
+
+    Rend ('', '') si le XML ne déclare pas de bloc <ip>. Unique lecteur de ce
+    motif : il en existait deux copies, et une correction n'en atteignait
+    qu'une. Le masque est écrit en quatre octets et non en longueur de
+    préfixe — ipaddress accepte les deux, le reste du code n'en voit qu'une.
+    """
+    trouve = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
+    if not trouve:
+        return "", ""
+    return trouve.group(1), trouve.group(2)
+
+
 def cidr_from_network_xml(xml: str) -> str:
     """Le réseau déclaré par un XML de réseau libvirt, ou ''.
 
@@ -3220,13 +3233,11 @@ def cidr_from_network_xml(xml: str) -> str:
     longueur de préfixe : ipaddress accepte les deux formes, le reste du code
     n'en manipule qu'une.
     """
-    m = re.search(r"<ip address='([\d.]+)' netmask='([\d.]+)'", xml)
-    if not m:
+    adresse, masque = ip_netmask_from_network_xml(xml)
+    if not adresse:
         return ""
     try:
-        return str(
-            ipaddress.ip_network(f"{m.group(1)}/{m.group(2)}", strict=False)
-        )
+        return str(ipaddress.ip_network(f"{adresse}/{masque}", strict=False))
     except ValueError:
         return ""
 

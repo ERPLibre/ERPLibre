@@ -127,6 +127,44 @@ class LaLecture(unittest.TestCase):
         self.assertEqual("", DQ.cidr_from_network_xml("<network/>"))
 
 
+class LUniqueLecteurDuBlocIp(unittest.TestCase):
+    """Le motif « <ip address=… netmask=…> » n'a qu'un seul lecteur.
+
+    Il en existait deux copies, et une correction n'en atteignait qu'une.
+    Ces épreuves tiennent l'unicité ET l'accord des deux appelants.
+    """
+
+    def test_it_reads_the_address_and_the_netmask(self):
+        self.assertEqual(
+            ("192.168.122.1", "255.255.255.0"),
+            DQ.ip_netmask_from_network_xml(XML_DEFAUT),
+        )
+
+    def test_a_xml_without_an_ip_block_answers_empty(self):
+        for xml in ("", "<network/>", "<network><name>x</name></network>"):
+            with self.subTest(xml=xml):
+                self.assertEqual(("", ""), DQ.ip_netmask_from_network_xml(xml))
+
+    def test_the_pattern_is_written_once(self):
+        """Deux copies dérivent : c'est ce qui est arrivé."""
+        source = (
+            Path(__file__).resolve().parent.parent
+            / "script"
+            / "qemu"
+            / "deploy_qemu.py"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(1, source.count("<ip address='"))
+
+    def test_both_callers_agree_with_the_shared_reader(self):
+        """Contrôle positif : le lecteur sert, il n'est pas décoratif."""
+        adresse, masque = DQ.ip_netmask_from_network_xml(XML_DEFAUT)
+        self.assertTrue(adresse and masque)
+        self.assertIn(
+            adresse.rsplit(".", 1)[0],
+            DQ.cidr_from_network_xml(XML_DEFAUT),
+        )
+
+
 class LaCollision(unittest.TestCase):
     def test_the_default_network_collides_inside_a_deployed_vm(self):
         """Une VM de ce dépôt reçoit 192.168.122.x de son hôte, et son propre
