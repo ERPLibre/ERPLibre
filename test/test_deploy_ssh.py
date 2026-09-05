@@ -14,9 +14,11 @@ Les valeurs piégées de ces épreuves sont INVENTÉES. Choisir un vrai chemin
 
 import os
 import shlex
+import io
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -218,6 +220,37 @@ class TestLOrdreDesQuestions(unittest.TestCase):
         with patch("script.todo.todo.click.prompt", return_value="db_restore"):
             menu._deploy_ssh_make()
         self.assertIn("SSH_TARGET=db_restore", jouee(menu.execute.jouees[0]))
+
+
+class TestLesTroisManquesSeDisentAutrement(unittest.TestCase):
+    """Trois manques, trois messages : les confondre envoie corriger le
+    mauvais champ, et l'utilisateur retape une adresse qui allait bien."""
+
+    def manque(self, methode, reponse):
+        menu = menu_factice()
+        sortie = io.StringIO()
+        with patch("script.todo.todo.click.prompt", return_value=reponse):
+            with redirect_stdout(sortie):
+                getattr(menu, methode)()
+        self.assertEqual([], menu.execute.jouees)
+        return sortie.getvalue()
+
+    def test_a_missing_make_target_does_not_blame_the_host(self):
+        dit = self.manque("_deploy_ssh_make", "   ")
+        self.assertNotIn("host", dit.lower())
+        self.assertNotIn("hôte", dit.lower())
+
+    def test_a_missing_domain_does_not_blame_the_host_either(self):
+        dit = self.manque("_deploy_ssh_install_nginx", "   ")
+        self.assertNotIn("host", dit.lower())
+        self.assertNotIn("hôte", dit.lower())
+
+    def test_the_two_messages_are_not_the_same(self):
+        """Contrôle positif : deux manques différents, deux phrases."""
+        self.assertNotEqual(
+            self.manque("_deploy_ssh_make", "  "),
+            self.manque("_deploy_ssh_install_nginx", "  "),
+        )
 
 
 if __name__ == "__main__":

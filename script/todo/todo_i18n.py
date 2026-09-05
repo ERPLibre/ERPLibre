@@ -1101,6 +1101,14 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
+    "A make target is required!": {
+        "fr": "Une cible make est obligatoire !",
+        "en": "A make target is required!",
+    },
+    "A domain name is required!": {
+        "fr": "Un nom de domaine est obligatoire !",
+        "en": "A domain name is required!",
+    },
     "SSH - Choose the target machine": {
         "fr": "🎯 SSH - Choisir la machine visée",
         "en": "🎯 SSH - Choose the target machine",

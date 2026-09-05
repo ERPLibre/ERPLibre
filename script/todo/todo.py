@@ -2481,7 +2481,7 @@ class TODO(
     def _ask_make_target(self):
         cible = click.prompt(t("Make target to run remotely: ")).strip()
         if not cible:
-            print(t("SSH host is required!"))
+            print(t("A make target is required!"))
             return None
         return {"SSH_TARGET": cible}
 
@@ -2494,7 +2494,7 @@ class TODO(
     def _ask_domain(self):
         domain = click.prompt(t("Domain name (e.g.: example.com): ")).strip()
         if not domain:
-            print(t("SSH host is required!"))
+            print(t("A domain name is required!"))
             return None
         email = click.prompt(t("Admin email for SSL certificate: ")).strip()
         return {"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email}
