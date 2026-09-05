@@ -25,6 +25,11 @@ from script.vm.backend import LIBVIRT, PVE, VerbNotImplemented
 # parle à une autre instance n'a pas à recompiler celui-ci.
 LIBVIRT_URI = "qemu:///system"
 
+# Ce qu'on sait faire à l'alimentation d'une VM, vocabulaire clos. Une
+# action hors liste se voit ici, et non en composant une commande que
+# l'hyperviseur rejettera sans qu'on sache laquelle des VM a échoué.
+POWER_ACTIONS = ("suspend", "resume")
+
 
 def host_command(handle, remote: str, tty: bool = False) -> str:
     """Commande shell qui exécute `remote` SUR l'hôte qui porte la VM.
@@ -273,3 +278,34 @@ def ssh_prefix(handle, user: str = "erplibre", options: str = "") -> str:
         chaine = ",".join(shlex.quote(saut) for saut in rebonds)
         return f"{debut}-J {chaine} {user}@{handle.address}"
     return f"{debut}{user}@{handle.alias or handle.address}"
+
+
+def power_command(
+    handle, action: str, sudo: str = "", uri: str = LIBVIRT_URI
+) -> str:
+    """Suspend ou reprend la VM, LÀ OÙ ELLE VIT.
+
+    « virsh suspend <nom> » mettait en pause le domaine LOCAL homonyme. La
+    pause est le pire endroit pour se tromper de machine : rien ne casse, rien
+    n'alerte, et la VM figée est celle qu'on n'a pas regardée.
+
+    Rend une CHAÎNE dans les deux cas, comme la suppression : les deux
+    formes — argv ici, chaîne là-bas — obligeaient l'appelant à savoir
+    laquelle il tenait, donc à connaître le backend.
+    """
+    if handle is None:
+        raise VerbNotImplemented("power_command : aucune identité.")
+    if action not in POWER_ACTIONS:
+        connues = ", ".join(POWER_ACTIONS)
+        raise VerbNotImplemented(
+            f"power_command : action « {action} » inconnue."
+            f" Connues : {connues}."
+        )
+    if handle.backend == PVE:
+        return host_command(handle, f"qm {action} {int(handle.key)}")
+    if handle.backend == LIBVIRT:
+        q = shlex.quote(handle.key)
+        return f"{sudo}virsh --connect {uri} {action} {q}"
+    raise VerbNotImplemented(
+        f"power_command : backend « {handle.backend} » inconnu."
+    )

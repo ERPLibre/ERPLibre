@@ -3014,27 +3014,24 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         def _virsh_bulk(action, cibles):
             """Suspend/reprend chaque VM, chacune par SON hyperviseur.
 
-            `cibles` : [(nom, info_pve|None)]. Une VM distante se suspend par
-            son VMID sur son hôte — « virsh suspend <nom> » aurait mis en
-            pause le domaine LOCAL homonyme."""
-            for nom, info in cibles:
+            `cibles` : des identités. La pause est le pire endroit pour se
+            tromper de machine — rien ne casse, rien n'alerte, et la VM
+            figée est celle qu'on n'a pas regardée.
+
+            Le délai est celui de la plus lente : une commande distante
+            traverse un ou deux rebonds avant d'atteindre l'hyperviseur.
+            """
+            for handle in cibles:
                 try:
-                    if info:
-                        vmid = int(info.get("vmid") or 0)
-                        subprocess.run(
-                            pve_host_cmd(info, f"qm {action} {vmid}"),
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                            timeout=60,
-                        )
-                    else:
-                        subprocess.run(
-                            virsh_argv(action, nom),
-                            capture_output=True,
-                            text=True,
-                            timeout=30,
-                        )
+                    subprocess.run(
+                        vm_verbs.power_command(
+                            handle, action, sudo_prefix(), URI
+                        ),
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
                 except (OSError, subprocess.SubprocessError):
                     pass
 
@@ -3230,7 +3227,7 @@ def run_monitor(manifest_path: str, run_app: bool = True):
         async def _bulk_worker(self, action):
             want = "running" if action == "suspend" else "paused"
             targets = [
-                (vm["name"], vm.get("pve"))
+                handle_of(vm)
                 for vm in vms
                 if self._domstate.get(vm["name"]) == want
             ]

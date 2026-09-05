@@ -449,5 +449,65 @@ class TestLaLigneSshVersLaVm(unittest.TestCase):
             V.ssh_prefix(None)
 
 
+class TestLAlimentation(unittest.TestCase):
+    """La pause est le pire endroit pour se tromper de machine : rien ne
+    casse, rien n'alerte, et la VM figée est celle qu'on n'a pas regardée."""
+
+    def test_a_remote_vm_is_paused_on_its_own_host(self):
+        cmd = V.power_command(DISTANTE, "suspend")
+        self.assertIn("hote.exemple", cmd)
+        self.assertIn("qm suspend 101", cmd)
+        self.assertNotIn("virsh", cmd)
+
+    def test_a_local_vm_is_paused_by_libvirt(self):
+        """Contrôle positif : la pause locale existe toujours."""
+        cmd = V.power_command(LOCALE, "suspend", uri="qemu:///system")
+        self.assertIn("virsh --connect qemu:///system suspend", cmd)
+        self.assertIn("essai", cmd)
+
+    def test_both_actions_reach_both_backends(self):
+        for action in V.POWER_ACTIONS:
+            for handle in (DISTANTE, LOCALE):
+                with self.subTest(action=action, backend=handle.backend):
+                    self.assertIn(action, V.power_command(handle, action))
+
+    def test_an_unknown_action_names_the_known_ones(self):
+        """Composer « qm eteindre 101 » ferait échouer la VM en silence, au
+        milieu d'un lot, sans dire laquelle."""
+        with self.assertRaises(B.VerbNotImplemented) as pris:
+            V.power_command(LOCALE, "eteindre")
+        self.assertIn("suspend", str(pris.exception))
+
+    def test_both_backends_answer_with_a_string(self):
+        """Deux formes — argv ici, chaîne là-bas — obligeaient l'appelant à
+        savoir laquelle il tenait, donc à connaître le backend."""
+        for handle in (DISTANTE, LOCALE):
+            with self.subTest(backend=handle.backend):
+                self.assertIsInstance(V.power_command(handle, "suspend"), str)
+
+    def test_a_name_that_would_split_the_command_cannot(self):
+        """La chaîne part dans un shell : c'est son DÉCOUPAGE qui décide, et
+        non la présence du texte. Relire la chaîne ne prouve rien — un nom
+        cité contient le piège sans l'exécuter."""
+        piege = B.libvirt_handle("vm; touch /tmp/rien-de-reel")
+        cmd = V.power_command(piege, "suspend")
+        mots = subprocess.run(
+            ["bash", "-c", cmd.replace("virsh ", "printf '%s\\n' ", 1)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+        self.assertIn("vm; touch /tmp/rien-de-reel", mots)
+        self.assertEqual(4, len(mots), mots)
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.power_command(None, "suspend")
+
+    def test_an_unknown_backend_is_refused(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.power_command(LOCALE._replace(backend="lima"), "suspend")
+
+
 if __name__ == "__main__":
     unittest.main()
