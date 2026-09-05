@@ -22,10 +22,10 @@ import functools
 import hashlib
 import os
 import shutil
-import time
 import sqlite3
 import stat
 import threading
+import time
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +33,7 @@ from pathlib import Path
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 EPHEMERAL_PREFIX = "erplibre-mail-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -77,6 +77,19 @@ CREATE TABLE IF NOT EXISTS messages (
   UNIQUE(folder_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
+-- v4 : file d'attente d'envoi. Le message brut est SCELLÉ comme le reste —
+-- il porte le corps entier, et un cache chiffré qui laisserait ses envois
+-- en clair protégerait tout sauf ce qu'on vient d'écrire.
+CREATE TABLE IF NOT EXISTS outbox (
+  id            INTEGER PRIMARY KEY,
+  created_at    INTEGER NOT NULL,
+  sealed_raw    BLOB NOT NULL,
+  sealed_to     BLOB,
+  sealed_subject BLOB,
+  held          INTEGER NOT NULL DEFAULT 0,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  last_error    TEXT
+);
 """
 
 
@@ -701,6 +714,87 @@ class Store:
         self._indexer_apres(db, folder_id, metas)
         db.commit()
         return len(rows)
+
+    # -- File d'attente d'envoi (v4) ------------------------------------
+
+    @_locked
+    def queue_message(self, raw: bytes, recipients: str, subject: str) -> int:
+        """Met un message en attente. Rend son identifiant."""
+        db = self._db()
+        curseur = db.execute(
+            "INSERT INTO outbox(created_at, sealed_raw, sealed_to,"
+            " sealed_subject) VALUES(?,?,?,?)",
+            (
+                int(time.time()),
+                self._crypto.seal(raw),
+                self._seal(recipients),
+                self._seal(subject),
+            ),
+        )
+        db.commit()
+        return curseur.lastrowid
+
+    @_locked
+    def outbox(self) -> list[dict]:
+        """La file, du plus ancien au plus récent — l'ordre d'envoi."""
+        return [
+            {
+                "id": r["id"],
+                "created_at": r["created_at"],
+                "to": self._open(r["sealed_to"]),
+                "subject": self._open(r["sealed_subject"]),
+                "held": bool(r["held"]),
+                "attempts": r["attempts"],
+                "last_error": r["last_error"] or "",
+            }
+            for r in self._db().execute(
+                "SELECT * FROM outbox ORDER BY created_at, id"
+            )
+        ]
+
+    @_locked
+    def queued_raw(self, queue_id: int) -> bytes | None:
+        ligne = (
+            self._db()
+            .execute("SELECT sealed_raw FROM outbox WHERE id = ?", (queue_id,))
+            .fetchone()
+        )
+        return self._crypto.open(bytes(ligne[0])) if ligne else None
+
+    @_locked
+    def set_held(self, queue_id: int, held: bool) -> None:
+        """Retient un message, ou le relâche.
+
+        Un message retenu ne part JAMAIS seul : c'est le sens de la
+        retenue. Le relâcher est un geste, pas un délai qui expire.
+        """
+        db = self._db()
+        db.execute(
+            "UPDATE outbox SET held = ? WHERE id = ?",
+            (1 if held else 0, queue_id),
+        )
+        db.commit()
+
+    @_locked
+    def drop_queued(self, queue_id: int) -> None:
+        db = self._db()
+        db.execute("DELETE FROM outbox WHERE id = ?", (queue_id,))
+        db.commit()
+
+    @_locked
+    def record_send_failure(self, queue_id: int, message: str) -> None:
+        """Compte l'échec et garde SON texte.
+
+        Un compteur seul dirait qu'on a essayé cinq fois sans jamais dire
+        pourquoi ça échoue, ce qui n'aide personne à corriger.
+        """
+        db = self._db()
+        db.execute(
+            "UPDATE outbox SET attempts = attempts + 1, last_error = ?"
+            " WHERE id = ?",
+            (message[:500], queue_id),
+        )
+        db.commit()
 
     # -- Statistiques (phase 3) -----------------------------------------
 

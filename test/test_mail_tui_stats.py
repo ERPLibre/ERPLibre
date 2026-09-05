@@ -553,3 +553,70 @@ class TestFolderScreen(StatsScreenCase):
             await pilot.press("F")
             await pilot.pause()
             self.assertNotEqual(type(app.screen).__name__, "FolderScreen")
+
+
+class TestOutboxScreen(StatsScreenCase):
+    """L'écran de la file, touche `o`, avec son bouton à gauche."""
+
+    def _mettre_en_file(self, sujet="Devis"):
+        from script.todo.mail.smtp_send import build_message
+        from script.todo.mail.tui import deliver
+
+        deliver(
+            Session(self.account, self.store, None, password="x"),
+            build_message(self.account, "a@y.ca", sujet, "Bonjour"),
+        )
+
+    async def test_o_opens_the_outbox(self):
+        self.remplir()
+        self._mettre_en_file()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("o")
+            await pilot.pause()
+            self.assertEqual(type(app.screen).__name__, "OutboxScreen")
+
+    async def test_each_message_carries_its_button_on_the_left(self):
+        from textual.widgets import Button
+
+        self.remplir()
+        self._mettre_en_file()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("o")
+            await pilot.pause()
+            self.assertTrue(app.screen.query(Button))
+
+    async def test_the_button_holds_then_releases(self):
+        """La retenue se lève par un geste, jamais par un délai."""
+        from textual.widgets import Button
+
+        self.remplir()
+        self._mettre_en_file()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("o")
+            await pilot.pause()
+            bouton = app.screen.query(Button).first()
+            await pilot.click(bouton)
+            await pilot.pause()
+            self.assertTrue(self.store.outbox()[0]["held"])
+            await pilot.click(app.screen.query(Button).first())
+            await pilot.pause()
+            self.assertFalse(self.store.outbox()[0]["held"])
+
+    async def test_an_empty_outbox_says_so(self):
+        """Un écran vide sans phrase se lit comme un écran cassé."""
+        self.remplir()
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("o")
+            await pilot.pause()
+            from textual.widgets import Static
+
+            texte = str(app.screen.query_one("#outbox_hint", Static).content)
+            self.assertTrue(texte.strip())

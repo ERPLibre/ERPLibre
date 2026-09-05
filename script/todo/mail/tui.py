@@ -561,6 +561,55 @@ def resolve_sent_folder(session) -> str:
     return session.account.sent_folder
 
 
+def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
+    """Envoie ce qui attend. Rend (partis, retenus, échoués).
+
+    Appelée à chaque passe de synchronisation : le retour du réseau est
+    exactement le moment où la file doit se vider, sans que personne ait à
+    y penser. Un message RETENU est sauté — c'est le sens de la retenue,
+    et seul un geste la lève.
+
+    Ne lève jamais : un envoi qui échoue reste en file avec son erreur, et
+    n'empêche pas les suivants de partir.
+    """
+    from script.todo.mail.smtp_send import connect as smtp_connect
+    from script.todo.mail.smtp_send import send as smtp_send_fn
+
+    if not session.online:
+        return (0, 0, 0)
+    send_fn = send_fn or smtp_send_fn
+    connect_fn = connect_fn or smtp_connect
+    partis = retenus = echoues = 0
+    for entree in session.store.outbox():
+        if entree["held"]:
+            retenus += 1
+            continue
+        brut = session.store.queued_raw(entree["id"])
+        if brut is None:
+            session.store.drop_queued(entree["id"])
+            continue
+        transport = None
+        try:
+            import email
+
+            message = email.message_from_bytes(brut)
+            transport = connect_fn(session.account, session.password)
+            send_fn(session.account, message, transport)
+        except Exception as exc:
+            session.store.record_send_failure(entree["id"], str(exc))
+            echoues += 1
+            continue
+        finally:
+            if transport is not None:
+                try:
+                    transport.quit()
+                except Exception:
+                    pass
+        session.store.drop_queued(entree["id"])
+        partis += 1
+    return (partis, retenus, echoues)
+
+
 def deliver(session, msg, send_fn=None, connect_fn=None) -> str:
     """Envoie, puis dépose une copie dans Envoyés. Rend le texte de statut.
 
@@ -570,10 +619,19 @@ def deliver(session, msg, send_fn=None, connect_fn=None) -> str:
     """
     from script.todo.mail.smtp_send import SmtpError, without_bcc
     from script.todo.mail.smtp_send import connect as smtp_connect
+    from script.todo.mail.smtp_send import recipients
     from script.todo.mail.smtp_send import send as smtp_send_fn
 
     if not session.online:
-        raise SmtpError(t("mail_offline_cannot_send"))
+        # Mise en file plutôt qu'un refus : le message est écrit, le perdre
+        # parce que le réseau manque serait le pire des trois résultats
+        # possibles. Il part au retour, sauf s'il est retenu.
+        session.store.queue_message(
+            msg.as_bytes(),
+            ", ".join(recipients(msg)),
+            msg.get("Subject", ""),
+        )
+        return t("mail_queued")
 
     send_fn = send_fn or smtp_send_fn
     transport = None
@@ -1006,6 +1064,7 @@ def run_tui(
             Binding("i", "show_stats", t("mail_stats_binding")),
             Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
             Binding("F", "manage_folders", t("mail_folder_binding")),
+            Binding("o", "show_outbox", t("mail_outbox_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
             Binding("minus", "shrink_pane", t("mail_pane_shrink_binding")),
@@ -1981,6 +2040,22 @@ def run_tui(
             """Une passe pour UN compte. Ne lève jamais : un compte qui
             échoue ne doit pas emporter ceux qui avancent en parallèle."""
             self.set_status(f"{t('mail_syncing')} {session.account.name}…")
+            # La file part AVANT la relecture : le retour du réseau est
+            # exactement le moment où elle doit se vider, et un message
+            # envoyé apparaît alors dans la passe qui suit.
+            try:
+                partis, _, echoues = flush_outbox(session)
+                if partis or echoues:
+                    self.set_status(
+                        f"{t('mail_outbox_flushed')} {partis}"
+                        + (
+                            f" — {t('mail_outbox_failed')} {echoues}"
+                            if echoues
+                            else ""
+                        )
+                    )
+            except Exception:
+                _logger.exception("vidange de la file a échoué")
             try:
                 report = session.sync()
             except Exception as exc:
@@ -2148,6 +2223,14 @@ def run_tui(
         def action_show_help(self) -> None:
             self.push_screen(HelpScreen())
 
+        def action_show_outbox(self) -> None:
+            if self.current_ref is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            self.push_screen(
+                OutboxScreen(self.session_for(self.current_ref.account_name))
+            )
+
         def action_manage_folders(self) -> None:
             if self.current_ref is None:
                 self.set_status(t("mail_stats_no_account"))
@@ -2277,6 +2360,97 @@ def run_tui(
 
         def action_close_log(self) -> None:
             self.dismiss()
+
+    class OutboxScreen(ModalScreen):
+        """Touche `o` : ce qui attend de partir.
+
+        Chaque ligne porte à sa GAUCHE un bouton qui retient le message ou
+        le relâche. Un message retenu ne part jamais seul : seul ce bouton
+        lève la retenue, jamais un délai qui expire.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_outbox", t("mail_outbox_close")),
+        ]
+
+        CSS = """
+        #outbox_list { height: 1fr; border: solid $panel; }
+        #outbox_hint { height: auto; padding: 0 1; color: $text-muted; }
+        .outbox_row { height: auto; }
+        .outbox_row Button { width: 12; }
+        .outbox_row Static { width: 1fr; padding: 0 1; }
+        """
+
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+
+        def compose(self):
+            with Vertical():
+                yield Static("", id="outbox_hint")
+                yield VerticalScroll(id="outbox_list")
+
+        def on_mount(self) -> None:
+            self.reload_outbox()
+
+        def reload_outbox(self) -> None:
+            zone = self.query_one("#outbox_list", VerticalScroll)
+            zone.remove_children()
+            try:
+                entrees = self.session.store.outbox()
+            except Exception as exc:
+                self.query_one("#outbox_hint", Static).update(
+                    Text(f"{t('mail_outbox_error')} {exc}")
+                )
+                return
+            self.query_one("#outbox_hint", Static).update(
+                Text(
+                    t("mail_outbox_empty")
+                    if not entrees
+                    else f"{t('mail_outbox_count')} {len(entrees)}"
+                )
+            )
+            for entree in entrees:
+                zone.mount(self._ligne(entree))
+
+        def _ligne(self, entree):
+            libelle = (
+                t("mail_outbox_release")
+                if entree["held"]
+                else t("mail_outbox_hold")
+            )
+            ligne = Horizontal(classes="outbox_row")
+            bouton = Button(libelle, id=f"hold_{entree['id']}")
+            # `Text` et non du balisage : destinataire et sujet viennent du
+            # message, donc de qui l'a écrit.
+            texte = Text()
+            texte.append(entree["subject"] or t("mail_no_subject"))
+            texte.append(f"\n{entree['to']}", style="dim")
+            if entree["last_error"]:
+                texte.append(
+                    f"\n{t('mail_outbox_last_error')} {entree['last_error']}"
+                    f" ({entree['attempts']})",
+                    style="dim",
+                )
+            ligne.compose_add_child(bouton)
+            ligne.compose_add_child(Static(texte))
+            return ligne
+
+        def on_button_pressed(self, event) -> None:
+            ident = str(event.button.id or "")
+            if not ident.startswith("hold_"):
+                return
+            queue_id = int(ident.removeprefix("hold_"))
+            entrees = {e["id"]: e for e in self.session.store.outbox()}
+            entree = entrees.get(queue_id)
+            if entree is None:
+                self.reload_outbox()
+                return
+            self.session.store.set_held(queue_id, not entree["held"])
+            self.reload_outbox()
+
+        def action_close_outbox(self) -> None:
+            self.dismiss(None)
 
     class FolderScreen(ModalScreen):
         """Touche `F` : créer, renommer et supprimer un dossier.
