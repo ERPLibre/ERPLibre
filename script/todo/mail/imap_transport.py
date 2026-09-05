@@ -302,6 +302,24 @@ class ImaplibTransport:
                 "STORE -FLAGS",
             )
 
+    def create_folder(self, name: str) -> None:
+        self._ok(self.client.create(f'"{name}"'), f"CREATE {name}")
+
+    def rename_folder(self, ancien: str, nouveau: str) -> None:
+        self._ok(
+            self.client.rename(f'"{ancien}"', f'"{nouveau}"'),
+            f"RENAME {ancien}",
+        )
+
+    def delete_folder(self, name: str) -> None:
+        """Détruit le dossier ET son contenu sur le SERVEUR.
+
+        IMAP n'a pas de corbeille pour les dossiers : ce qui part ici ne se
+        récupère que depuis une sauvegarde du serveur. L'appelant demande
+        confirmation ; cette méthode, elle, ne discute pas.
+        """
+        self._ok(self.client.delete(f'"{name}"'), f"DELETE {name}")
+
     def append(self, folder: str, raw: bytes, flags: list[str]) -> None:
         self._ok(
             self.client.append(

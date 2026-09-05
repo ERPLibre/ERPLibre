@@ -11762,6 +11762,38 @@ TRANSLATIONS = {
         "fr": "cache chiffré : Entrée pour chercher dans toute la boîte",
         "en": "encrypted cache: press Enter to search the whole mailbox",
     },
+    "mail_folder_binding": {"fr": "Dossiers", "en": "Folders"},
+    "mail_folder_close": {"fr": "Fermer", "en": "Close"},
+    "mail_folder_create": {"fr": "Créer", "en": "Create"},
+    "mail_folder_rename": {"fr": "Renommer", "en": "Rename"},
+    "mail_folder_delete": {"fr": "Supprimer", "en": "Delete"},
+    "mail_folder_name": {"fr": "Dossier", "en": "Folder"},
+    "mail_folder_hint": {
+        "fr": "n créer · r renommer · d supprimer · Échap fermer",
+        "en": "n create · r rename · d delete · Esc close",
+    },
+    "mail_folder_ask_new": {
+        "fr": "Nom du nouveau dossier, puis Entrée",
+        "en": "Name of the new folder, then Enter",
+    },
+    "mail_folder_ask_rename": {
+        "fr": "Nouveau nom, puis Entrée",
+        "en": "New name, then Enter",
+    },
+    "mail_folder_ask_delete": {
+        "fr": "DÉTRUIT sur le serveur, sans corbeille. Tapez le mot pour",
+        "en": "DESTROYED on the server, no trash. Type the word for",
+    },
+    "mail_folder_not_confirmed": {
+        "fr": "mot de confirmation incorrect : rien n'a été supprimé",
+        "en": "wrong confirmation word: nothing was deleted",
+    },
+    "mail_folder_done": {"fr": "Fait.", "en": "Done."},
+    "mail_folder_error": {"fr": "échec :", "en": "failed:"},
+    "mail_folder_needs_network": {
+        "fr": "gestion des dossiers : le compte doit être en ligne",
+        "en": "folder management: the account must be online",
+    },
     "mail_list_mode_binding": {"fr": "Vue liste", "en": "List view"},
     "mail_list_mode_flat": {
         "fr": "Liste : à plat, par date",

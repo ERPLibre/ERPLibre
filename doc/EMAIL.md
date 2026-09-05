@@ -303,6 +303,23 @@ What it does **not** cover, and will not pretend to:
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
+## Managing folders
+
+`F` opens the folder screen: `n` creates, `r` renames, `d` deletes, `Esc`
+closes.
+
+Deletion destroys the folder **and its contents on the server**. IMAP has no
+trash for folders, so what leaves this way comes back only from a server
+backup. It therefore asks you to type a word rather than to confirm: a
+closed question gets answered by reflex. The word carries no accent, so it
+can be typed on any keyboard layout.
+
+Every operation reaches the server first and the cache second. If the server
+refuses, the cache must not describe a state that exists nowhere — a folder
+missing from the remote tree but present in ours would never resynchronise.
+Renaming carries the messages and their bodies across, so the next pass does
+not download again what is already there.
+
 ## List views
 
 `g` cycles the message list through three views:
