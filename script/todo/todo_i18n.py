@@ -12004,6 +12004,19 @@ TRANSLATIONS = {
         "fr": "Rien n'a été sondé",
         "en": "Nothing was probed",
     },
+    # Devstack - hôte et capacités (host_os.py)
+    "This menu is not available on {os}": {
+        "fr": "Ce menu n'est pas disponible sur {os}",
+        "en": "This menu is not available on {os}",
+    },
+    "Load the kvm module, or join the kvm group": {
+        "fr": "Charger le module kvm, ou entrer dans le groupe kvm",
+        "en": "Load the kvm module, or join the kvm group",
+    },
+    "Configure the vault path": {
+        "fr": "Configurer le chemin du coffre",
+        "en": "Configure the vault path",
+    },
 }
 
 

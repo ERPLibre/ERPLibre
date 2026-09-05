@@ -26,7 +26,7 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, todo_install, todo_prefs
+from script.todo import dev_tools, host_os, todo_install, todo_prefs
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -1093,19 +1093,13 @@ class TODO(
 
     @staticmethod
     def _native_arch():
-        """Architecture native de l'hôte, en jeton de deploy_qemu.py
-        (amd64/arm64/s390x). Défaut amd64 si indéterminée."""
-        try:
-            machine = os.uname().machine
-        except (AttributeError, OSError):
-            machine = ""
-        return {
-            "x86_64": "amd64",
-            "amd64": "amd64",
-            "aarch64": "arm64",
-            "arm64": "arm64",
-            "s390x": "s390x",
-        }.get(machine, "amd64")
+        """Architecture native de l'hôte, en jeton amd64/arm64/s390x.
+
+        Reste une méthode : une dizaine d'appelants la lisent sur la classe,
+        et des tests la remplacent pour figer l'architecture. Le calcul, lui,
+        vit dans host_os — il en existait deux copies identiques.
+        """
+        return host_os.arch_token()
 
     @staticmethod
     def _port_in_use(port):
