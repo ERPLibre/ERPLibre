@@ -169,6 +169,17 @@ PROXMOX_VERSIONS: dict[str, tuple[str, str, int, str]] = {
 PROXMOX_DEBIAN_BASE: dict[str, str] = {"9": "13"}
 
 # distro -> (table des versions, version par défaut).
+# NixOS ne publie AUCUNE image cloud : sa page de téléchargement offre des ISO,
+# des AMI Amazon et Docker, rien d'autre. L'image vient donc d'un tiers qui la
+# reconstruit depuis nixpkgs — d'où le TAG épinglé et la somme figée plus bas,
+# et d'où image_source_note(), qui le dit à l'écran avant de déployer.
+#
+# 40 Go et 2 Go de RAM là où Arch demande 20 et 1 : le store Nix garde chaque
+# génération du système et ne se purge qu'à la main (nix-collect-garbage).
+NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
+}
+
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
@@ -177,6 +188,7 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
+    "nixos": (NIXOS_VERSIONS, "25.11"),
     "proxmox": (PROXMOX_VERSIONS, "9"),
 }
 
@@ -412,6 +424,18 @@ def gpu_install_args(node: str) -> list[str]:
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
+# Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
+# qui bouge changerait le système de base d'un déploiement à l'autre, et
+# celle-ci n'est signée par personne — la somme ci-dessous est donc la nôtre,
+# relevée une fois à la revue, et vérifiée à chaque téléchargement.
+NIXOS_IMAGE_TAG = "2026.01.18-0057"
+NIXOS_IMAGE_BASE = (
+    "https://github.com/cloudnull/nixos-openstack/releases/download"
+)
+NIXOS_IMAGE_SHA256 = (
+    "9c7df1786106b3bcbed514d5c16e05b735a42642d3de0c51a690e7d8aba4ebc4"
+)
+
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
 # Debian : cloud.debian.org est un redirecteur qui, selon le réseau, peut
 # renvoyer vers un miroir injoignable. On essaie donc plusieurs bases dans
@@ -536,6 +560,10 @@ def image_candidates(
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
+    if distro == "nixos":
+        # Un seul asset, sans architecture dans son nom : le tiers ne publie
+        # que x86_64, ce que ARCH_DISTRO_SUPPORT borne déjà.
+        return [f"{NIXOS_IMAGE_BASE}/{NIXOS_IMAGE_TAG}/nixos.qcow2"]
     raise ValueError(f"URL indisponible pour la distro {distro!r}")
 
 
@@ -583,6 +611,25 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     )
 
 
+def image_source_note(distro: str) -> tuple[str, str] | None:
+    """(url, tag) quand l'image ne vient PAS de la distribution elle-même.
+
+    None pour tout le reste : on ne commente que ce qui sort de l'ordinaire,
+    et commenter chaque image noierait la seule qui le mérite.
+
+    NixOS ne publie aucune image cloud — sa page de téléchargement n'offre que
+    des ISO, des AMI Amazon et Docker. Celle-ci est donc reconstruite par un
+    tiers, à partir de nixpkgs. Ça se dit AVANT de déployer, pas après : le
+    système de base d'une VM n'est pas un détail d'implémentation.
+    """
+    if distro != "nixos":
+        return None
+    return (
+        f"{NIXOS_IMAGE_BASE}/{NIXOS_IMAGE_TAG}/nixos.qcow2",
+        NIXOS_IMAGE_TAG,
+    )
+
+
 def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
     """Nom de fichier local pour le cache d'image."""
     a = distro_arch(distro, arch)
@@ -598,6 +645,10 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
+    if distro == "nixos":
+        # Le TAG est dans le nom : changer NIXOS_IMAGE_TAG retélécharge, au
+        # lieu de réutiliser une image qui ne répond plus à sa somme.
+        return f"nixos-{NIXOS_IMAGE_TAG}-{a}.qcow2"
     if distro == "opensuse":
         if version == "tumbleweed":
             return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
@@ -1593,6 +1644,39 @@ def download_image(
     )
 
 
+def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
+    """Vérifie une image contre la somme que le DÉPÔT porte pour elle.
+
+    Sans rapport avec --verify, qui lit un SHA256SUMS publié par la
+    distribution : ici l'amont n'en publie aucun, la somme a été relevée une
+    fois à la revue, et c'est la seule chose qui distingue l'image revue de
+    n'importe quel fichier servi sous la même URL. Elle se vérifie donc
+    TOUJOURS, sans drapeau à passer.
+
+    Une somme qui ne correspond pas ARRÊTE le déploiement : continuer
+    reviendrait à installer un système que personne n'a regardé.
+    """
+    if distro != "nixos" or dry_run:
+        return
+    attendu = NIXOS_IMAGE_SHA256
+    digest = hashlib.sha256()
+    with open(image, "rb") as fh:
+        for morceau in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(morceau)
+    obtenu = digest.hexdigest()
+    if obtenu != attendu:
+        sys.exit(
+            f"Erreur : l'image {image} ne correspond pas à la somme que le "
+            f"dépôt porte pour elle.\n"
+            f"  attendu : {attendu}\n"
+            f"  obtenu  : {obtenu}\n"
+            "  Supprimez le fichier pour le retélécharger. S'il revient "
+            "différent, l'amont a republié sous le même tag : le relire "
+            "avant de figer la nouvelle somme."
+        )
+    print(f"  Somme sha256 conforme à celle du dépôt ({attendu[:12]}…).")
+
+
 def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
     """Vérifie l'empreinte via le SHA256SUMS publié dans le même répertoire."""
     if dry_run:
@@ -1884,6 +1968,7 @@ DISTRO_LABELS: dict[str, str] = {
     "rocky": "Rocky Linux",
     "opensuse": "openSUSE",
     "arch": "Arch Linux",
+    "nixos": "NixOS",
     "proxmox": "Proxmox VE",
 }
 
@@ -1896,6 +1981,7 @@ DISTRO_PKG: dict[str, str] = {
     "rocky": "dnf",
     "opensuse": "zypper",
     "arch": "pacman",
+    "nixos": "nix",
     # Debian dessous : c'est apt qui sert, et le guide de connexion le dit.
     "proxmox": "apt",
 }
@@ -1924,6 +2010,30 @@ def distro_label(distro: str, version: str) -> str:
 # « list installed » sans tirets y échouent tous. Les formes longues passent
 # partout, et ne coûtent rien.
 PKG_GUIDE: dict[str, tuple[tuple[str, str, str], ...]] = {
+    # Rien ne s'y installe « pour de bon » par une commande : ce qui doit
+    # rester se DÉCLARE, et le guide le dit dans cet ordre.
+    "nix": (
+        (
+            "nix-shell -p <paquet>",
+            "essayer, le temps d'un shell",
+            "try it, for one shell",
+        ),
+        (
+            "/etc/nixos/configuration.nix",
+            "y déclarer ce qui reste",
+            "declare there what stays",
+        ),
+        (
+            "sudo nixos-rebuild switch",
+            "appliquer la déclaration",
+            "apply the declaration",
+        ),
+        (
+            "sudo nix-collect-garbage -d",
+            "libérer les générations",
+            "free the generations kept",
+        ),
+    ),
     "apt": (
         ("sudo apt update", "rafraîchir l'index", "refresh the index"),
         (
@@ -4346,6 +4456,7 @@ def main() -> None:
         )
         print(f"  Destination : {args.image_path}")
         download_image(urls, args.image_path, args.dry_run)
+        verify_pinned_sha256(args.distro, args.image_path, args.dry_run)
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
         print("\nTerminé (téléchargement seul).")
@@ -4448,6 +4559,7 @@ def main() -> None:
             f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
         )
         download_image(urls, args.image_path, args.dry_run)
+        verify_pinned_sha256(args.distro, args.image_path, args.dry_run)
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
 

@@ -969,11 +969,57 @@ class QemuDeployMixin:
         )
         print(f"  {t('~/.ssh/config:')} {cfg}")
         print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
+        # Avant la ligne du mot de passe : le système de base d'une VM se dit
+        # AVANT de la créer, pas dans un journal d'installation.
+        for rang, ligne in enumerate(self._qemu_image_lines(spec)):
+            print(f"  {ligne}" if rang == 0 else f"     {ligne}")
         # DERNIÈRE ligne de la page, parce que l'invite de sudo tombe juste
         # après : elle n'explique rien d'elle-même, et un mot de passe tapé
         # sans savoir ce qu'il autorise est donné à l'aveugle.
         for rang, ligne in enumerate(self._qemu_sudo_lines()):
             print(f"  {ligne}" if rang == 0 else f"     {ligne}")
+
+    def _qemu_image_lines(self, spec):
+        """Ce qu'il faut savoir de l'image des VM retenues. Vide s'il n'y a
+        rien de particulier à en dire.
+
+        Les FAITS viennent de deploy_qemu, seule autorité sur l'image qu'il
+        télécharge ; leur mise en phrase revient au menu, qui parle deux
+        langues. Une distribution dont l'image vient d'un tiers se dit ici, et
+        une distribution où l'installation ERPLibre échouera encore aussi :
+        les deux se découvrent sinon après le déploiement.
+        """
+        distros = {vm.get("distro") for vm in spec.get("vms") or ()}
+        try:
+            mod = self._qemu_import_module()
+        except Exception:
+            return []
+        lignes = []
+        for distro in sorted(d for d in distros if d):
+            note = mod.image_source_note(distro)
+            if not note:
+                continue
+            url, tag = note
+            lignes.append(
+                t(
+                    "%s: image rebuilt by a third party, not published by the"
+                    " distribution"
+                )
+                % distro
+            )
+            lignes.append(url)
+            lignes.append(
+                t("release pinned to %s, sha256 fixed in the repository") % tag
+            )
+        if spec.get("install") and "nixos" in distros:
+            lignes.append(
+                "⚠ "
+                + t(
+                    "ERPLibre does not install on NixOS yet: the VM is"
+                    " created, the install fails"
+                )
+            )
+        return lignes
 
     def _qemu_sudo_lines(self):
         """Pourquoi le déploiement va demander le mot de passe. Vide s'il ne
