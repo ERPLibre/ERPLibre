@@ -20,3 +20,15 @@ from script.posture.registry import (  # noqa: F401
     get_posture,
     posture_names,
 )
+from script.posture.spec import (  # noqa: F401
+    OK,
+    POSTURE_KEY,
+    REAL_DATA_KEY,
+    REAL_DATA_UNCONFINED,
+    SPEC_VERDICTS,
+    UNKNOWN_POSTURE,
+    check,
+    posture_name,
+    posture_of,
+    real_data,
+)
