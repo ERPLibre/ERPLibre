@@ -219,5 +219,78 @@ class TestConventionsDuTestLong(unittest.TestCase):
         )
 
 
+class TestCeQuIlFautDefaire(unittest.TestCase):
+    """Un échec ne doit pas faire perdre le moyen de défaire ce qui existe.
+
+    Le nom d'une machine est noté AVANT sa création, pour qu'une création
+    interrompue à mi-chemin laisse une trace. Une exécution qui échoue tout de
+    suite écrit donc un rapport qui NOMME une machine sans la connaître, et
+    s'en tenir au dernier rapport ferait retomber la destruction sur le nom —
+    ce que ce dépôt a appris à ne plus faire, « --remove-all-storage »
+    effaçant un disque pour de bon.
+    """
+
+    def rapports(self, *contenus):
+        """Écrit des rapports datés dans un faux dépôt de rapports."""
+        import json as _json
+        import tempfile
+        from unittest import mock
+
+        d = tempfile.mkdtemp()
+        for i, c in enumerate(contenus):
+            nom = f"qemu_cache-2026090{i + 1}-000000.json"
+            (Path(d) / nom).write_text(_json.dumps(c), encoding="utf-8")
+        return d, mock.patch.object(
+            QC.os.path, "expanduser", lambda p: d if "longtest" in p else p
+        )
+
+    def test_un_uuid_connu_survit_a_un_rapport_muet(self):
+        d, patch = self.rapports(
+            {"vms": ["vm-1"], "uuids": {"vm-1": "UUID-1"}},
+            {"vms": ["vm-1"]},  # l'échec qui suit, sans UUID
+        )
+        with patch:
+            machines, lus = QC.machines_a_defaire()
+        self.assertEqual(len(lus), 2)
+        self.assertEqual(
+            machines.get("vm-1"),
+            "UUID-1",
+            "l'échec le plus récent a fait perdre l'UUID qui permet de"
+            " détruire sans risque",
+        )
+
+    def test_les_machines_de_plusieurs_essais_sont_reunies(self):
+        d, patch = self.rapports(
+            {"vms": ["vm-1", "vm-2"], "uuids": {"vm-1": "U1", "vm-2": "U2"}},
+            {"vms": ["vm-3"], "uuids": {"vm-3": "U3"}},
+        )
+        with patch:
+            machines, _ = QC.machines_a_defaire()
+        self.assertEqual(
+            sorted(machines),
+            ["vm-1", "vm-2", "vm-3"],
+            "s'en tenir au dernier rapport laisserait vivantes les machines"
+            " d'un essai antérieur",
+        )
+
+    def test_un_rapport_sans_machine_est_saute(self):
+        d, patch = self.rapports({"vms": []}, {"vms": ["vm-1"]})
+        with patch:
+            machines, lus = QC.machines_a_defaire()
+        self.assertEqual(len(lus), 1)
+        self.assertEqual(sorted(machines), ["vm-1"])
+
+    def test_aucun_rapport(self):
+        import tempfile
+        from unittest import mock
+
+        d = tempfile.mkdtemp()
+        with mock.patch.object(
+            QC.os.path, "expanduser", lambda p: d if "longtest" in p else p
+        ):
+            machines, lus = QC.machines_a_defaire()
+        self.assertEqual((machines, lus), ({}, []))
+
+
 if __name__ == "__main__":
     unittest.main()

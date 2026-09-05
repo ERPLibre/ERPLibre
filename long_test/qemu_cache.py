@@ -94,34 +94,47 @@ def chemin_rapport(horodatage=None):
     )
 
 
-def dernier_rapport():
-    """Le rapport le plus récent qui NOMME des VM, ou {}.
+def machines_a_defaire(limite=20):
+    """Tout ce que les rapports récents nomment, avec l'UUID quand il existe.
 
-    Détruire d'après le rapport, et non d'après les noms, est la différence
-    entre défaire son propre travail et effacer la machine d'un voisin qui
-    porterait un nom voisin.
+    Le rapport le plus récent ne suffit pas. Une exécution qui échoue à la
+    création écrit un rapport qui NOMME une machine sans la connaître : le nom
+    y est noté avant la création, justement pour qu'une création interrompue à
+    mi-chemin laisse une trace. Ce rapport-là masquerait celui d'une exécution
+    antérieure qui, elle, détient l'UUID — et la destruction retomberait sur
+    le nom, ce que ce dépôt a appris à ne plus faire.
+
+    Les rapports sont donc parcourus du plus ANCIEN au plus récent, l'UUID
+    d'un rapport qui en a un l'emportant sur l'absence d'un autre. Rend
+    {nom: uuid ou ""} et la liste des fichiers lus.
     """
     rep = os.path.expanduser("~/.erplibre/longtest")
     if not os.path.isdir(rep):
-        return {}
+        return {}, []
     fichiers = sorted(
         (
             f
             for f in os.listdir(rep)
             if f.startswith(OUTIL) and f.endswith(".json")
-        ),
-        reverse=True,
-    )
+        )
+    )[-limite:]
+    machines, lus = {}, []
     for nom in fichiers:
+        chemin = os.path.join(rep, nom)
         try:
-            with open(os.path.join(rep, nom), encoding="utf-8") as fh:
+            with open(chemin, encoding="utf-8") as fh:
                 data = json.load(fh)
         except (OSError, ValueError):
             continue
-        if data.get("vms"):
-            data["_fichier"] = os.path.join(rep, nom)
-            return data
-    return {}
+        if not data.get("vms"):
+            continue
+        lus.append(chemin)
+        uuids = data.get("uuids") or {}
+        for vm in data["vms"]:
+            # Un UUID connu ne se perd jamais au profit d'un rapport muet.
+            if uuids.get(vm) or vm not in machines:
+                machines[vm] = uuids.get(vm, machines.get(vm, ""))
+    return machines, lus
 
 
 def rapports_recents(limite=12):
@@ -278,9 +291,29 @@ def prealables(journal):
     ecart = desaccord_de_reseau()
     if ecart:
         manques.append(ecart)
+    restes = machines_vivantes()
+    if restes:
+        # Sans cette garde, la création bute sur le disque de la machine
+        # restante et rend un « existe déjà » qui ne dit pas quoi faire.
+        manques.append(
+            f"machine(s) d'un essai précédent encore là : {', '.join(restes)}"
+            f" — les défaire d'abord : {sys.argv[0]} --detruire"
+        )
     for m in manques:
         dire(f"  ✗ {m}", journal)
     return not manques
+
+
+def machines_vivantes():
+    """Les machines de CE test qui existent encore, par leur nom."""
+    code, sortie = executer("virsh -c qemu:///system list --all --name", 30)
+    if code:
+        return []
+    return [
+        l.strip()
+        for l in (sortie or "").split("\n")
+        if l.strip().startswith(NOM_BASE)
+    ]
 
 
 def desaccord_de_reseau():
@@ -643,20 +676,28 @@ def ecrire_rapport(rapport):
 
 
 def detruire(dry_run=False):
-    """Défait ce que le dernier rapport nomme, et lui seul."""
+    """Défait ce que les rapports récents nomment, chacun une fois.
+
+    À travers TOUS les rapports et non le dernier : une exécution qui échoue
+    en écrit un neuf, et s'en tenir à celui-là laisserait vivantes les
+    machines d'une exécution antérieure — celles-là mêmes qui font échouer la
+    suivante en occupant leur disque.
+    """
     journal = journal_neuf()
-    rapport = dernier_rapport()
-    if not rapport:
+    machines, lus = machines_a_defaire()
+    if not machines:
         dire("  rien à défaire : aucun rapport ne nomme de VM.", journal)
         return 0
-    dire(f"  rapport : {rapport['_fichier']}", journal)
-    uuids = rapport.get("uuids", {})
-    for nom in rapport.get("vms", []):
+    dire(
+        f"  {len(lus)} rapport(s) lus, {len(machines)} machine(s) nommée(s)",
+        journal,
+    )
+    for nom in sorted(machines):
         # L'UUID noté à la création, et non le nom : un nom se réutilise, et
         # « --remove-all-storage » efface un disque pour de bon. La fonction
         # du dépôt refuse d'agir quand l'UUID ne correspond pas.
         detruire_etage1(
-            journal, nom, dry_run=dry_run, attendu=uuids.get(nom) or None
+            journal, nom, dry_run=dry_run, attendu=machines[nom] or None
         )
     # Une coupure oubliée par un test interrompu : la retirer fait partie du
     # ménage, et l'opération est sans effet si elle n'existe pas.
