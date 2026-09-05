@@ -101,16 +101,28 @@ def with_defaults(target: dict) -> dict:
 
 
 def load_all(config=None) -> list[dict]:
-    """Toutes les cibles, dans l'ordre de fusion. Jamais None.
+    """Toutes les cibles, une par nom, dans l'ordre de fusion. Jamais None.
 
     Une entrée sans nom est écartée : elle serait impossible à choisir, à
     modifier et à supprimer, et resterait là sans que rien ne la nomme.
+
+    DÉDUPLIQUÉES PAR NOM, la dernière l'emportant. La fusion ÉTEND les
+    listes : corriger une cible venue du fichier partagé ajoutait une
+    seconde entrée du même nom au lieu de la remplacer, et la lecture
+    rendait toujours l'ancienne — la correction s'annonçait faite sans
+    l'être. La dernière est celle du fichier privé, qui est bien celle qui
+    doit primer ; elle garde la place de celle qu'elle remplace, pour que le
+    rang affiché ne bouge pas sous les doigts.
     """
     cfg = config or ConfigFile()
     data = cfg.get_config(CONFIG_KEY)
     if not isinstance(data, list):
         return []
-    return [t for t in data if isinstance(t, dict) and t.get("name")]
+    par_nom = {}
+    for cible in data:
+        if isinstance(cible, dict) and cible.get("name"):
+            par_nom[cible["name"]] = cible
+    return list(par_nom.values())
 
 
 def load(name: str, config=None) -> dict | None:

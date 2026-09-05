@@ -285,6 +285,43 @@ class TestLAllerRetourSurDisque(CibleSurDisque):
         self.assertEqual(["equipe", "essai"], sorted(D.names()))
         self.assertEqual(["essai"], [t["name"] for t in D.private_targets()])
 
+    def test_correcting_a_shared_target_replaces_it(self):
+        """Sans la déduplication, la fusion AJOUTE une seconde entrée du même
+        nom, la lecture rend l'ancienne, et la correction s'annonce faite
+        sans l'être."""
+        with open(self.base, "w") as fh:
+            json.dump(
+                {D.CONFIG_KEY: [{"name": "equipe", "target": "m.example"}]}, fh
+            )
+        D.save({"name": "equipe", "target": "corrigee.example"})
+        self.assertEqual(["equipe"], D.names())
+        self.assertEqual("corrigee.example", D.load("equipe")["target"])
+
+    def test_a_correction_keeps_the_rank_of_what_it_replaces(self):
+        """Le rang est ce qu'on tape : le voir bouger ferait choisir
+        l'autre."""
+        with open(self.base, "w") as fh:
+            json.dump(
+                {
+                    D.CONFIG_KEY: [
+                        {"name": "aa", "target": "a.example"},
+                        {"name": "bb", "target": "b.example"},
+                    ]
+                },
+                fh,
+            )
+        D.save({"name": "aa", "target": "corrigee.example"})
+        self.assertEqual(["aa", "bb"], D.names())
+
+    def test_deleting_a_correction_brings_the_shared_one_back(self):
+        with open(self.base, "w") as fh:
+            json.dump(
+                {D.CONFIG_KEY: [{"name": "equipe", "target": "m.example"}]}, fh
+            )
+        D.save({"name": "equipe", "target": "corrigee.example"})
+        self.assertTrue(D.delete("equipe"))
+        self.assertEqual("m.example", D.load("equipe")["target"])
+
     def test_an_entry_without_a_name_is_filtered_out(self):
         """Impossible à choisir, à modifier et à supprimer."""
         with open(self.base, "w") as fh:
