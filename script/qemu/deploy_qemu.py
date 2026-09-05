@@ -1743,6 +1743,51 @@ def nested_module() -> str:
     return "kvm_amd" if " svm" in info else "kvm_intel"
 
 
+def hostname_valide(nom: str) -> str:
+    """Un nom d'hôte acceptable, tiré du nom de la VM.
+
+    Tout ce qui n'est ni lettre, ni chiffre, ni tiret devient un tiret ; les
+    tirets de tête et de queue tombent, un nom d'hôte ne pouvant pas en porter.
+    Vide au bout du compte, « vm » sert de repli plutôt que de laisser passer
+    un nom que l'invité refusera.
+    """
+    propre = re.sub(r"[^A-Za-z0-9-]", "-", nom).strip("-")
+    propre = re.sub(r"-{2,}", "-", propre)
+    return propre[:63] or "vm"
+
+
+# La table des alias de fuseaux, telle que tzdata la publie. Nommée ici pour
+# qu'un test puisse en fournir une autre sans dépendre du tzdata de la machine
+# qui l'exécute.
+TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
+
+
+def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
+    """Le nom canonique d'un fuseau, quand le système sait le dire.
+
+    Un alias hérité comme « Canada/Eastern » n'existe plus dans le tzdata de
+    plusieurs distributions récentes, qui l'ont relégué à un paquet séparé. La
+    VM refuse alors le fuseau, cloud-init marque son exécution en erreur et la
+    machine reste en UTC — ce qui ne se voit qu'après coup, sur des horodatages
+    à +0000.
+
+    La table des alias est « /usr/share/zoneinfo/tzdata.zi », dont chaque ligne
+    de lien s'écrit « L <canonique> <alias> ». Absente ou illisible, le nom est
+    rendu tel quel : un fuseau non traduit vaut mieux qu'un déploiement refusé.
+    """
+    if not tz:
+        return tz
+    try:
+        with open(table, encoding="utf-8") as fh:
+            for ligne in fh:
+                champs = ligne.split()
+                if len(champs) >= 3 and champs[0] == "L" and champs[2] == tz:
+                    return champs[1]
+    except OSError:
+        pass
+    return tz
+
+
 def host_timezone() -> str:
     """Fuseau de l'hôte, au format zoneinfo (« America/Montreal »).
 
@@ -1763,13 +1808,13 @@ def host_timezone() -> str:
             timeout=5,
         ).stdout.strip()
         if out:
-            return out
+            return canonical_timezone(out)
     except (OSError, subprocess.SubprocessError):
         pass
     try:
         tz = Path("/etc/timezone").read_text(encoding="utf-8").strip()
         if tz:
-            return tz
+            return canonical_timezone(tz)
     except OSError:
         pass
     try:
@@ -1777,7 +1822,9 @@ def host_timezone() -> str:
         target = Path("/etc/localtime").resolve()
         parts = target.parts
         if "zoneinfo" in parts:
-            return "/".join(parts[parts.index("zoneinfo") + 1 :])
+            return canonical_timezone(
+                "/".join(parts[parts.index("zoneinfo") + 1 :])
+            )
     except OSError:
         pass
     return "UTC"
@@ -4580,7 +4627,11 @@ def main() -> None:
             "Erreur : --name est requis pour déployer une VM "
             "(ou utilisez --download-only)."
         )
-    args.hostname = args.hostname or args.name
+    # Un nom d'hôte ne connaît que lettres, chiffres et tirets : le souligné
+    # y est refusé, et la VM garde alors le nom générique de son image sans que
+    # rien d'autre qu'un avertissement de cloud-init ne le dise. Le nom de
+    # DOMAINE, lui, peut le porter — les deux ne se ressemblent qu'en général.
+    args.hostname = args.hostname or hostname_valide(args.name)
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
