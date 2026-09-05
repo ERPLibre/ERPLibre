@@ -21,6 +21,7 @@ import functools
 import hashlib
 import os
 import shutil
+import time
 import sqlite3
 import stat
 import threading
@@ -598,6 +599,42 @@ class Store:
             (*fields.values(), name),
         )
         db.commit()
+
+    @_locked
+    def forget_folder(self, name: str) -> None:
+        """Retire le dossier du cache, messages et corps compris.
+
+        Le serveur ne l'a plus : le garder localement afficherait dans
+        l'arbre un dossier que la prochaine synchronisation ne retrouverait
+        jamais, et qu'aucune action ne pourrait ouvrir.
+        """
+        db = self._db()
+        ligne = db.execute(
+            "SELECT id FROM folders WHERE name = ?", (name,)
+        ).fetchone()
+        if ligne:
+            db.execute("DELETE FROM messages WHERE folder_id = ?", (ligne[0],))
+        shutil.rmtree(self.root / folder_dirname(name), ignore_errors=True)
+        db.execute("DELETE FROM folders WHERE name = ?", (name,))
+        db.commit()
+
+    @_locked
+    def rename_folder(self, ancien: str, nouveau: str) -> None:
+        """Suit un renommage côté serveur, sans reperdre les messages.
+
+        Le nom est la clé du dossier ET le nom de son répertoire de corps :
+        les deux suivent, sinon la prochaine passe téléchargerait de
+        nouveau tout ce qui est déjà là.
+        """
+        db = self._db()
+        db.execute(
+            "UPDATE folders SET name = ? WHERE name = ?", (nouveau, ancien)
+        )
+        db.commit()
+        source = self.root / folder_dirname(ancien)
+        cible = self.root / folder_dirname(nouveau)
+        if source.exists() and not cible.exists():
+            source.rename(cible)
 
     @_locked
     def purge_folder(self, name: str) -> None:
