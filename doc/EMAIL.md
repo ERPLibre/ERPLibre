@@ -303,6 +303,26 @@ What it does **not** cover, and will not pretend to:
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
+## The outbox
+
+Writing a message while the account is offline no longer refuses: the
+message is queued. Losing what someone has just written because the network
+is down is the worst of the three possible outcomes.
+
+The queue empties on its own at the next sync — the moment the network comes
+back is exactly when it should go. Order is preserved: two messages of one
+exchange would otherwise arrive reversed.
+
+`o` opens the queue. Each line carries a button on its **left** that holds
+the message or releases it. A held message never leaves on its own; only
+that button lifts the hold, never a delay that expires. A send that fails
+keeps the message in the queue with the reason and the number of attempts,
+and does not block those behind it.
+
+Queued messages are sealed with the same key as the rest of the cache: an
+encrypted cache that left its outgoing mail in the open would protect
+everything except what was just written.
+
 ## Managing folders
 
 `F` opens the folder screen: `n` creates, `r` renames, `d` deletes, `Esc`

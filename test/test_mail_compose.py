@@ -359,9 +359,21 @@ class TestDeliver(DeliverCase):
         self.assertTrue(status.startswith("[b red]"))
         self.assertIn("dossier Envoyés introuvable", status)
 
-    def test_offline_session_refuses(self):
-        with self.assertRaises(SmtpError):
-            deliver(self.session(online=False), self.msg)
+    def test_an_offline_send_is_queued_not_refused(self):
+        """Le message est écrit : le perdre parce que le réseau manque
+        serait le pire des trois résultats possibles. Il attend, et part au
+        retour du réseau."""
+        statut = deliver(self.session(online=False), self.msg)
+        file = self.store.outbox()
+        self.assertEqual(len(file), 1)
+        self.assertEqual(file[0]["subject"], self.msg.get("Subject"))
+        self.assertFalse(file[0]["held"])
+        self.assertTrue(statut)
+
+    def test_a_queued_message_keeps_its_recipients(self):
+        """Sans eux, le message ne saurait plus à qui partir."""
+        deliver(self.session(online=False), self.msg)
+        self.assertIn("a@y.ca", self.store.outbox()[0]["to"])
 
     def test_send_failure_is_propagated(self):
         def boom(acc, m, tr):

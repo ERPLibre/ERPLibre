@@ -324,6 +324,26 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
 - **Rien ne quitte la machine** — aucun hôte externe, aucun trousseau système,
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
+## La file d'envoi
+
+Écrire un message alors que le compte est hors ligne ne refuse plus : le
+message est mis en file. Perdre ce que quelqu'un vient d'écrire parce que le
+réseau manque est le pire des trois résultats possibles.
+
+La file se vide d'elle-même à la synchronisation suivante — le retour du
+réseau est exactement le moment où elle doit partir. L'ordre est conservé :
+deux messages d'un même échange arriveraient sinon inversés.
+
+`o` ouvre la file. Chaque ligne porte à sa **gauche** un bouton qui retient
+le message ou le relâche. Un message retenu ne part jamais seul ; seul ce
+bouton lève la retenue, jamais un délai qui expire. Un envoi qui échoue
+laisse le message en file avec sa raison et son nombre de tentatives, et
+n'arrête pas ceux qui le suivent.
+
+Les messages en attente sont scellés par la même clé que le reste du cache :
+un cache chiffré qui laisserait ses envois en clair protégerait tout sauf ce
+qu'on vient d'écrire.
+
 ## Gérer les dossiers
 
 `F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime, Échap
