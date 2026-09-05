@@ -45,6 +45,7 @@ from script.lib_valid import (  # noqa: F401
     ValidationError,
 )
 from script.remote import host_probe
+from script.todo import todo_prefs
 
 # La clé de section, dans les trois fichiers de configuration.
 CONFIG_KEY = "deploy_targets"
@@ -261,6 +262,29 @@ def _constate(full: dict) -> None:
             " Attendu 2026-01-31T14:05:00Z."
         )
     full["last_probe"] = date
+
+
+# La cible RETENUE est une préférence d'écran, pas une donnée de site : elle
+# vit donc avec les autres préférences et non dans l'inventaire. Seul le NOM
+# est gardé — recopier la fiche la ferait vieillir dès qu'on modifie la
+# cible, et l'écran nommerait une machine qui a changé d'adresse.
+PREF_KEY = "deploy_ssh_target"
+
+
+def selected(config=None) -> dict | None:
+    """La cible retenue, RELUE de l'inventaire, ou None.
+
+    Rend None aussi quand le nom retenu ne désigne plus rien : une cible
+    supprimée ne doit pas faire échouer l'écran, seulement se faire
+    redemander.
+    """
+    nom = todo_prefs.get(PREF_KEY) or ""
+    return load(str(nom), config) if nom else None
+
+
+def select(name: str) -> None:
+    """Retient le nom de la cible, ou l'oublie si `name` est vide."""
+    todo_prefs.set(PREF_KEY, str(name or ""))
 
 
 def fiche(target: dict) -> dict:

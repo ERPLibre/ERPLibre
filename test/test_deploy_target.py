@@ -298,5 +298,49 @@ class TestLAllerRetourSurDisque(CibleSurDisque):
         self.assertIsNone(D.load("essai"))
 
 
+class TestLaCibleRetenue(CibleSurDisque):
+    """Le NOM est retenu ; la fiche est relue à chaque fois."""
+
+    def setUp(self):
+        super().setUp()
+        self.prefs = {}
+        patcheur = patch.multiple(
+            "script.remote.deploy_target.todo_prefs",
+            get=lambda cle, defaut=None: self.prefs.get(cle, defaut),
+            set=lambda cle, valeur: self.prefs.__setitem__(cle, valeur),
+        )
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+    def test_nothing_selected_answers_none(self):
+        """Un None dit à l'écran qu'il a une question à poser."""
+        self.assertIsNone(D.selected())
+
+    def test_what_is_selected_comes_back(self):
+        D.save(VALIDE)
+        D.select("essai")
+        self.assertEqual("compte@machine.example", D.selected()["target"])
+
+    def test_editing_the_target_moves_the_selection_with_it(self):
+        """LA raison de ne garder que le nom : une fiche recopiée
+        nommerait encore l'ancienne adresse après une modification."""
+        D.save(VALIDE)
+        D.select("essai")
+        D.save(dict(VALIDE, target="autre.example"))
+        self.assertEqual("autre.example", D.selected()["target"])
+
+    def test_a_deleted_target_is_asked_for_again_and_does_not_crash(self):
+        D.save(VALIDE)
+        D.select("essai")
+        D.delete("essai")
+        self.assertIsNone(D.selected())
+
+    def test_forgetting_takes_an_empty_name(self):
+        D.save(VALIDE)
+        D.select("essai")
+        D.select("")
+        self.assertIsNone(D.selected())
+
+
 if __name__ == "__main__":
     unittest.main()
