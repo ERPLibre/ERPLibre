@@ -183,7 +183,7 @@ class TestKeyringBranch(unittest.TestCase):
     def test_set_and_get_through_keyring(self):
         vault = {}
         with patch(
-            "script.todo.mail.secrets.keyring_is_safe", return_value=True
+            "script.vault.store.keyring_is_safe", return_value=True
         ), patch(
             "keyring.set_password",
             side_effect=lambda s, u, p: vault.__setitem__((s, u), p),
@@ -197,7 +197,7 @@ class TestKeyringBranch(unittest.TestCase):
         # `keyring.get_keyring` est patché AUSSI : le message d'erreur passe par
         # keyring_backend_name(), qui interrogerait sinon le vrai trousseau.
         with patch(
-            "script.todo.mail.secrets.keyring_is_safe", return_value=False
+            "script.vault.store.keyring_is_safe", return_value=False
         ), patch("keyring.get_keyring", return_value=MagicMock()):
             with self.assertRaises(SecretError) as ctx:
                 self.store.set("keyring:perso", "hunter2")
@@ -223,6 +223,59 @@ class TestRefParsing(unittest.TestCase):
     def test_no_backend_available_raises(self):
         with self.assertRaises(SecretError):
             self.store.set("keyring:perso", "x")
+
+
+class TestUnEssaiABlancNeToucheAAucunSecret(unittest.TestCase):
+    """L'analogue en-processus du « --check » : ni lecture, ni écriture.
+
+    Le refus LÈVE et ne rend jamais None. Un None se lirait comme « ce
+    secret n'existe pas », et l'appelant enchaînerait en le créant ou en
+    déclarant le compte non configuré — une annonce aurait alors décidé.
+    """
+
+    def test_reading_is_refused_and_not_answered_empty(self):
+        coffre = SecretStore(dry_run=True)
+        with self.assertRaises(SecretError):
+            coffre.get("kdbx:Groupe/entree")
+
+    def test_writing_and_deleting_are_refused(self):
+        coffre = SecretStore(dry_run=True)
+        for appel in (
+            lambda: coffre.set("kdbx:Groupe/entree", "x"),
+            lambda: coffre.delete("kdbx:Groupe/entree"),
+        ):
+            with self.assertRaises(SecretError):
+                appel()
+
+    def test_it_refuses_before_touching_the_vault(self):
+        """Déverrouiller pour annoncer réclamerait la phrase de passe."""
+        ouvertures = []
+
+        class CoffreQuiCompte:
+            def get_kdbx(self):
+                ouvertures.append(1)
+                raise AssertionError("un essai à blanc n'ouvre pas le coffre")
+
+        coffre = SecretStore(kdbx_manager=CoffreQuiCompte(), dry_run=True)
+        with self.assertRaises(SecretError):
+            coffre.get("kdbx:Groupe/entree")
+        self.assertEqual([], ouvertures)
+
+    def test_listing_the_backends_stays_allowed(self):
+        """Nommer les magasins disponibles ne lit aucun secret."""
+        coffre = SecretStore(dry_run=True, use_keyring=False)
+        self.assertEqual([], coffre.available_backends())
+
+    def test_the_default_store_still_reads(self):
+        """Contrôle positif : sans « dry_run », rien ne change.
+
+        Sans lui, une implémentation qui refuserait TOUJOURS passerait les
+        quatre épreuves ci-dessus.
+        """
+        coffre = SecretStore(use_keyring=False)
+        with self.assertRaises(SecretError) as leve:
+            coffre.get("kdbx:Groupe/entree")
+        self.assertNotIn("essai", str(leve.exception).lower())
 
 
 if __name__ == "__main__":

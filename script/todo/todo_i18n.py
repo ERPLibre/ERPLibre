@@ -12038,6 +12038,11 @@ TRANSLATIONS = {
         "fr": "La sonde a échoué :",
         "en": "Probe failed:",
     },
+    # Coffre - essai à blanc (script/vault/store.py)
+    "A dry run touches no secret": {
+        "fr": "Un essai à blanc ne touche à aucun secret",
+        "en": "A dry run touches no secret",
+    },
 }
 
 
