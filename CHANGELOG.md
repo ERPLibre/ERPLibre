@@ -9,6 +9,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## Added
+
+- A download cache shared by the QEMU VMs of a host, installed from **Deployment › QEMU cache**. Two VMs of the same distribution stop pulling the same hundreds of megabytes twice: a package file is served from disk, while an index is always taken from upstream, so a withdrawn package can never turn into a « failed retrieving file … 404 ». An index is stored all the same and only comes back out when upstream is unreachable, which is what makes an offline deployment possible. Interception is transparent on the bridge, and a deployment form checkbox posts the certificate authority a VM must trust — without it the VM rejects the certificate and every HTTPS download fails. The cache never shrinks by itself: `--status` says what it occupies
+- `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
+
+## Changed
+
+- The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
+
+## Fixed
+
+- The « - Default » label appears again at the version and environment menus: both reads asked for a capitalised key the version file never writes, and a missing key returns nothing without a word
+
 
 ## [1.8.0] - 2026-09-04
 

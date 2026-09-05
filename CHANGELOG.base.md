@@ -25,6 +25,44 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+<!-- [en] -->
+## Added
+<!-- [fr] -->
+## Ajouté
+<!-- [en] -->
+
+- A download cache shared by the QEMU VMs of a host, installed from **Deployment › QEMU cache**. Two VMs of the same distribution stop pulling the same hundreds of megabytes twice: a package file is served from disk, while an index is always taken from upstream, so a withdrawn package can never turn into a « failed retrieving file … 404 ». An index is stored all the same and only comes back out when upstream is unreachable, which is what makes an offline deployment possible. Interception is transparent on the bridge, and a deployment form checkbox posts the certificate authority a VM must trust — without it the VM rejects the certificate and every HTTPS download fails. The cache never shrinks by itself: `--status` says what it occupies
+- `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
+
+<!-- [fr] -->
+
+- Un cache de téléchargement partagé par les VM QEMU d'un hôte, installé depuis **Déploiement › Cache QEMU**. Deux VM de la même distribution cessent de tirer deux fois les mêmes centaines de mégaoctets : un fichier de paquet est servi du disque, tandis qu'un index est toujours repris à l'amont, si bien qu'un paquet retiré ne peut jamais devenir un « failed retrieving file … 404 ». L'index est stocké quand même et ne ressort que si l'amont est injoignable, ce qui rend un déploiement hors ligne possible. L'interception est transparente sur le pont, et une case du formulaire de déploiement pose l'autorité de certification qu'une VM doit approuver — sans elle, la VM rejette le certificat et tout téléchargement HTTPS échoue. Le cache ne diminue jamais de lui-même : `--status` dit ce qu'il occupe
+- `long_test/qemu_cache.py` mesure si le cache sert vraiment la seconde VM, et `--hors-ligne` coupe l'amont du seul service du cache pour prouver qu'une troisième se bâtit encore sur l'index stocké
+
+<!-- [en] -->
+## Changed
+<!-- [fr] -->
+## Modifié
+<!-- [en] -->
+
+- The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
+
+<!-- [fr] -->
+
+- Le contrôle d'hygiène des commentaires lit le Go, et non les seuls `#` : `//` hors d'une chaîne, la chaîne brute entre accents graves, et les blocs `/* … */`
+
+<!-- [en] -->
+## Fixed
+<!-- [fr] -->
+## Corrigé
+<!-- [en] -->
+
+- The « - Default » label appears again at the version and environment menus: both reads asked for a capitalised key the version file never writes, and a missing key returns nothing without a word
+
+<!-- [fr] -->
+
+- L'étiquette « - Default » reparaît aux menus des versions et des environnements : les deux lectures demandaient une clé à majuscule que le fichier des versions n'écrit pas, et une clé absente ne rend rien sans rien dire
+
 <!-- [common] -->
 
 ## [1.8.0] - 2026-09-04
