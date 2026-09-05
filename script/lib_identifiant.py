@@ -30,14 +30,29 @@ IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 # Les blocs de documentation de la RFC 5737, qui existent pour l'exemple.
 IPV4_DOCUMENTAIRES = ("192.0.2.", "198.51.100.", "203.0.113.")
 
-EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]*[\w-]\b")
+# Le dernier label est ALPHABÉTIQUE. Sans cette borne, un « compte@adresse »
+# vaut un courriel en plus de l'adresse qu'il porte, qui compte alors double,
+# et une épingle pip « paquet.git@v8.0.19 » vaut un compte.
+EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b")
 
-# L'adresse du propriétaire du dépôt n'est pas une donnée de client.
-EMAIL_PERMIS = re.compile(r"@(?:technolibre|erplibre)\.", re.IGNORECASE)
+# Ce qui ne désigne personne : le compte de service d'une forge en URL ssh,
+# l'adresse du propriétaire du dépôt, et les noms que la RFC 2606 réserve à
+# l'exemple — l'équivalent, pour les noms, de la RFC 5737 pour les adresses.
+EMAIL_PERMIS = re.compile(
+    r"^git@"
+    r"|@(?:technolibre|erplibre)\."
+    r"|\.(?:example|invalid|test|localhost)$"
+    r"|@example\.(?:com|net|org)$",
+    re.IGNORECASE,
+)
 
 # Un segment entre chevrons ou une variable est un gabarit, pas un compte.
 HOME = re.compile(r"/(?:home|Users)/(?![<$\"'{])([\w.-]+)/")
-HOME_PERMIS = frozenset({"runner", "user", "utilisateur", "USER"})
+# Des RÔLES que le dépôt définit lui-même — le compte de service dans les
+# conteneurs, celui des exemples — et non des personnes.
+HOME_PERMIS = frozenset(
+    {"runner", "user", "utilisateur", "USER", "odoo", "erplibre", "test"}
+)
 
 
 def adresse_de_machine(valeur):

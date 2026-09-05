@@ -162,6 +162,63 @@ class TestLesIdentifiants(unittest.TestCase):
     def test_sans_liste_privee_rien_nest_refuse(self):
         self.assertEqual([], hygiene.identifiants("migration de AcmeCorp"))
 
+    # Ce qui ressemble à un courriel sans en être un. Sans la borne
+    # alphabétique du dernier label, chacun compte pour une trouvaille, et
+    # un « compte@adresse » en compte deux : le courriel et l'adresse.
+    FAUX_COURRIELS = (
+        "root@198.51.100.5",
+        "paquet.git@v8.0.19",
+        "outil.git@22.3.0",
+    )
+
+    # Ce que la RFC 2606 réserve à l'exemple, et le compte de service
+    # d'une forge en URL ssh : rien de tout cela ne désigne quelqu'un.
+    COURRIELS_PERMIS = (
+        "git@forge.invalid:proprio/depot.git",
+        "personne@example.com",
+        "compte@rebond.gamma.example",
+        "quelquun@machine.localhost",
+    )
+
+    def test_ce_qui_ressemble_a_un_courriel_nen_est_pas_un(self):
+        self.assertTrue(self.FAUX_COURRIELS, "aucun cas : rien n'est prouvé")
+        for texte in self.FAUX_COURRIELS:
+            with self.subTest(texte=texte):
+                genres_vus = {t[0] for t in hygiene.identifiants(texte)}
+                self.assertNotIn("courriel", genres_vus)
+
+    def test_les_noms_reserves_a_l_exemple_passent(self):
+        self.assertTrue(self.COURRIELS_PERMIS, "aucun cas : rien n'est prouvé")
+        for texte in self.COURRIELS_PERMIS:
+            with self.subTest(texte=texte):
+                genres_vus = {t[0] for t in hygiene.identifiants(texte)}
+                self.assertNotIn("courriel", genres_vus)
+
+    def test_un_vrai_courriel_reste_trouve(self):
+        # Le contrôle positif : sans lui, un motif qui ne trouve plus RIEN
+        # ferait passer les deux épreuves ci-dessus.
+        for texte in (
+            "personne@exemple.ca",
+            "a@b.ca",
+            "prenom.nom@societe.fr",
+        ):
+            with self.subTest(texte=texte):
+                genres_vus = {t[0] for t in hygiene.identifiants(texte)}
+                self.assertIn("courriel", genres_vus)
+
+    def test_les_roles_du_depot_ne_sont_pas_des_personnes(self):
+        for role in ("odoo", "erplibre", "test"):
+            with self.subTest(role=role):
+                chemin = "/home/%s/git/" % role
+                self.assertEqual([], hygiene.identifiants(chemin), chemin)
+
+    def test_un_compte_nomme_reste_trouve(self):
+        # Contrôle positif du précédent.
+        self.assertIn(
+            "compte",
+            {t[0] for t in hygiene.identifiants("/home/prenomnom/git/")},
+        )
+
 
 class TestCeQuiEstLu(unittest.TestCase):
     """Les commentaires et les docstrings, et rien d'autre du code."""
