@@ -31,6 +31,9 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+# Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
+# tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
     CLIP_LIMIT,
     CSS_BASE,
@@ -67,10 +70,6 @@ from script.todo.deploy_form_lib import (  # noqa: F401
     vm_name,
     vm_status,
 )
-
-# Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
-# tel quel : les appelants historiques importent encore ces noms ICI.
-from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_plan import (  # noqa: F401
     PlanMixin,
     preview_screen,
@@ -318,6 +317,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_profile_install",
                     )
                     yield from self.compose_install_extras()
+                    # Offerte SEULEMENT si l'hôte porte l'autorité du cache :
+                    # une case qui ne peut rien faire est une question sans
+                    # réponse. Cochée par défaut quand le service tourne.
+                    if ctx.get("cache_ca"):
+                        yield Checkbox(
+                            t("Use the host download cache"),
+                            value=bool(ctx.get("cache_active")),
+                            id="f_cache",
+                        )
                     yield from self.compose_timezone()
                     yield Static("SSH", classes="grouptitle")
                     yield Input(
@@ -987,6 +995,11 @@ def run_deploy_form(ctx, run_app: bool = True):
                 **self.extras_values(),
                 "install": install,
                 "add_ssh_config": self.query_one("#f_sshcfg", Checkbox).value,
+                # Gardé : la case n'existe pas quand l'hôte n'a pas
+                # de cache, et lire un widget absent casserait l'écran.
+                "use_cache": bool(
+                    getattr(self._widget("#f_cache"), "value", False)
+                ),
                 # Une exécution par installation : le nombre de VM retenues
                 # fait foi. Le déploiement le borne ensuite à ce même nombre,
                 # donc une valeur haute ne crée jamais de travailleur inutile.

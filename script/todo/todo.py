@@ -38,10 +38,9 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.vpn_menu import VpnMenuMixin
-from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
+from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 VENV_ERPLIBRE = ".venv.erplibre"
@@ -976,6 +975,11 @@ class TODO(
                     "Deploy - Install NTFY notification server"
                 )
             },
+            {
+                "prompt_description": t(
+                    "QEMU cache - Install the download mirror for local VMs"
+                )
+            },
             {"section": t("VPN & tunnels")},
             {
                 "prompt_description": t(
@@ -1005,6 +1009,8 @@ class TODO(
             elif status == "7":
                 self._deploy_ntfy_server()
             elif status == "8":
+                self._deploy_qemu_cache()
+            elif status == "9":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
@@ -1760,6 +1766,82 @@ class TODO(
             print(f"\n{t('NTFY server installed and started successfully!')}")
         except Exception as e:
             print(f"{t('Error installing NTFY server: ')}{e}")
+
+    def _deploy_qemu_cache(self):
+        """Pose le miroir de téléchargement partagé par les VM QEMU de l'hôte.
+
+        Idempotente : l'installateur recompile, réécrit l'unité et redémarre le
+        service, qu'il existe déjà ou non.
+
+        Ce que l'entrée ANNONCE avant de demander sudo, et pourquoi : elle fait
+        écrire des règles sur le pont de l'hôte. Une règle trop large y prive la
+        machine de son propre réseau, et l'invite de sudo tombe entre deux
+        lignes de journal sans dire ce qu'elle sert à faire."""
+        print(
+            f"\n{t('Install the download cache shared by the QEMU VMs of this host')}"
+        )
+
+        http_port = (
+            input(t("HTTP port of the cache (default: 8898): ")).strip()
+            or "8898"
+        )
+        tls_port = (
+            input(t("TLS port of the cache (default: 8899): ")).strip()
+            or "8899"
+        )
+        cache_dir = (
+            input(
+                t(
+                    "Cache directory (default: /var/cache/erplibre_go_qemu_cache): "
+                )
+            ).strip()
+            or "/var/cache/erplibre_go_qemu_cache"
+        )
+
+        script_path = os.path.realpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "install",
+                "install_qemu_cache.sh",
+            )
+        )
+        if not os.path.isfile(script_path):
+            print(f"{t('QEMU cache install script not found: ')}{script_path}")
+            return
+
+        print(f"\n{t('Will write network rules on the host bridge:')}")
+        print(f"  {t('Only what leaves the VM subnet is redirected')}")
+        print(f"  {t('The rules exist only while the service runs')}")
+        if not shutil.which("go"):
+            print(f"  {t('Go is absent; the installer lays it down')}")
+        print(
+            f"  {t('No eviction is written: this cache never shrinks by itself')}"
+        )
+
+        cmd = (
+            f"sudo EL_HTTP_PORT={http_port}"
+            f" EL_TLS_PORT={tls_port}"
+            f" EL_CACHE_DIR={cache_dir}"
+            f" bash {script_path}"
+        )
+        print(f"\n{t('Will execute:')} {cmd}\n")
+        if not click.confirm(t("Install the QEMU download cache?")):
+            return
+
+        print(
+            f"\n{t('Installing the QEMU download cache (requires sudo)...')}"
+        )
+        try:
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+        except Exception as e:
+            print(f"{t('The cache install failed, nothing is started')} : {e}")
+            return
+        print(f"\n{t('QEMU download cache installed and started')}")
+        print(
+            f"{t('Certificate authority a VM must trust: ')}"
+            "/var/lib/erplibre_go_qemu_cache/ca.crt"
+        )
 
     @staticmethod
     def _ssh_config_hosts():

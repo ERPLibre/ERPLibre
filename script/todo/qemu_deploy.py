@@ -1037,6 +1037,7 @@ class QemuDeployMixin:
         gpu3d=False,
         git_name="",
         git_email="",
+        cache_ca="",
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -1076,6 +1077,11 @@ class QemuDeployMixin:
             # « on » et non « auto » : auto s'abstient sur une VM sans écran,
             # or c'est précisément ce que la case permet de demander.
             parts += ["--gpu", "on"]
+        if cache_ca:
+            # L'autorité du cache de téléchargement de l'hôte. La VM
+            # l'approuve dès son premier démarrage, sans quoi le détournement
+            # lui présente un certificat qu'elle rejette.
+            parts += ["--cache-ca", cache_ca]
         # L'identité git de la VM. Sans ces options, deploy_qemu recopie celle
         # de l'HÔTE : le formulaire la montre et permet de la changer, il ne
         # la remplace pas par du vide.
@@ -1157,7 +1163,60 @@ class QemuDeployMixin:
             gpu3d=bool(spec.get("gpu3d")),
             git_name=spec.get("git_name") or "",
             git_email=spec.get("git_email") or "",
+            # Le cache est celui de CET hôte : sa valeur ne suit donc pas la
+            # VM mais la spec, et le chemin est relu à chaque commande plutôt
+            # que gardé — désinstaller le cache entre deux déploiements ne doit
+            # pas laisser une VM approuver une autorité disparue.
+            cache_ca=(
+                self._qemu_cache_ca_path() if spec.get("use_cache") else ""
+            ),
         )
+
+    # Où l'installateur du cache pose son autorité. Un test compare cette
+    # valeur au défaut du script d'installation : les deux séparées, la case
+    # s'offrirait sans que la VM reçoive rien.
+    QEMU_CACHE_CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
+    QEMU_CACHE_SERVICE = "erplibre-go-qemu-cache.service"
+
+    @classmethod
+    def _qemu_cache_ca_path(cls):
+        """Chemin de l'autorité du cache, ou '' si le cache n'est pas posé.
+
+        L'existence du FICHIER suffit à décider : une autorité approuvée alors
+        que le cache est arrêté ne coûte rien à la VM, qui télécharge en
+        direct. C'est l'inverse qui casse — un détournement actif sans
+        autorité dans l'invité.
+        """
+        return cls.QEMU_CACHE_CA if os.path.isfile(cls.QEMU_CACHE_CA) else ""
+
+    @classmethod
+    def _qemu_cache_active(cls):
+        """Le service du cache tourne-t-il ? Sert au DÉFAUT de la case.
+
+        Jamais à l'offrir : c'est le fichier d'autorité qui décide de son
+        existence, et l'état d'un service change entre l'affichage du
+        formulaire et le déploiement.
+        """
+        if not cls._qemu_cache_ca_path():
+            return False
+        try:
+            return (
+                subprocess.run(
+                    [
+                        "systemctl",
+                        "is-active",
+                        "--quiet",
+                        cls.QEMU_CACHE_SERVICE,
+                    ],
+                    check=False,
+                    timeout=5,
+                ).returncode
+                == 0
+            )
+        except (OSError, subprocess.SubprocessError):
+            # Hôte sans systemd, ou systemctl injoignable : on ne prétend pas
+            # savoir, et la case s'offre décochée.
+            return False
 
     def _qemu_arches_for(self, distro, arch):
         """Architectures à déployer pour cette distro selon le choix global.
@@ -1392,6 +1451,11 @@ class QemuDeployMixin:
                 if self._qemu_distro_profile(d)
             },
             "ssh_key": self._qemu_default_ssh_key(),
+            # Le cache de téléchargement de CET hôte. Lu ici, comme le reste
+            # des mesures : l'écran ne doit rien interroger pendant qu'il
+            # affiche. Absent, le formulaire n'offre pas la case.
+            "cache_ca": self._qemu_cache_ca_path(),
+            "cache_active": self._qemu_cache_active(),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée
@@ -2009,6 +2073,19 @@ class QemuDeployMixin:
             except ValueError:
                 parallelism = default_par
 
+        use_cache = False
+        if self._qemu_cache_ca_path():
+            actif = self._qemu_cache_active()
+            # Non traduit : ces deux formes sont les mêmes dans les deux
+            # langues, et t() sur une clé absente rendrait la clé.
+            defaut = "(Y/n)" if actif else "(y/N)"
+            ans = input(f"{t('Use the host download cache?')} {defaut}: ")
+            use_cache = (
+                self._is_yes_default_yes(ans)
+                if actif
+                else ans.strip().lower().startswith(("y", "o"))
+            )
+
         spec = {
             "res_label": res_label,
             "vms": pending,
@@ -2029,6 +2106,10 @@ class QemuDeployMixin:
             "git_name": git_name,
             "git_email": git_email,
             "add_ssh_config": add_ssh_config,
+            # Demandé SEULEMENT si l'hôte porte l'autorité du cache : une
+            # question sans effet possible n'a pas à être posée. Le défaut suit
+            # l'état du service, comme la case du formulaire.
+            "use_cache": use_cache,
             "parallelism": parallelism,
         }
 

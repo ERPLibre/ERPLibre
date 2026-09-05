@@ -1392,6 +1392,79 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
+    # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
+    "QEMU cache - Install the download mirror for local VMs": {
+        "fr": "📦 Cache QEMU - Installer le miroir de téléchargement des VM locales",
+        "en": "📦 QEMU cache - Install the download mirror for local VMs",
+    },
+    "Install the download cache shared by the QEMU VMs of this host": {
+        "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",
+        "en": "Install the download cache shared by the QEMU VMs of this host",
+    },
+    "HTTP port of the cache (default: 8898): ": {
+        "fr": "Port HTTP du cache (défaut : 8898) : ",
+        "en": "HTTP port of the cache (default: 8898): ",
+    },
+    "TLS port of the cache (default: 8899): ": {
+        "fr": "Port TLS du cache (défaut : 8899) : ",
+        "en": "TLS port of the cache (default: 8899): ",
+    },
+    "Cache directory (default: /var/cache/erplibre_go_qemu_cache): ": {
+        "fr": "Répertoire du cache (défaut : /var/cache/erplibre_go_qemu_cache) : ",
+        "en": "Cache directory (default: /var/cache/erplibre_go_qemu_cache): ",
+    },
+    "Will write network rules on the host bridge:": {
+        "fr": "Va écrire des règles réseau sur le pont de l'hôte :",
+        "en": "Will write network rules on the host bridge:",
+    },
+    "Only what leaves the VM subnet is redirected": {
+        "fr": "Seul ce qui sort du sous-réseau des VM est détourné",
+        "en": "Only what leaves the VM subnet is redirected",
+    },
+    "The rules exist only while the service runs": {
+        "fr": "Les règles n'existent que pendant que le service tourne",
+        "en": "The rules exist only while the service runs",
+    },
+    "Go is absent; the installer lays it down": {
+        "fr": "Go est absent ; l'installateur le pose",
+        "en": "Go is absent; the installer lays it down",
+    },
+    "Install the QEMU download cache?": {
+        "fr": "Installer le cache de téléchargement QEMU ?",
+        "en": "Install the QEMU download cache?",
+    },
+    "Installing the QEMU download cache (requires sudo)...": {
+        "fr": "Installation du cache de téléchargement QEMU (sudo requis)...",
+        "en": "Installing the QEMU download cache (requires sudo)...",
+    },
+    "QEMU download cache installed and started": {
+        "fr": "Cache de téléchargement QEMU installé et démarré",
+        "en": "QEMU download cache installed and started",
+    },
+    "Certificate authority a VM must trust: ": {
+        "fr": "Autorité de certification qu'une VM doit approuver : ",
+        "en": "Certificate authority a VM must trust: ",
+    },
+    "The cache install failed, nothing is started": {
+        "fr": "L'installation du cache a échoué, rien n'est démarré",
+        "en": "The cache install failed, nothing is started",
+    },
+    "QEMU cache install script not found: ": {
+        "fr": "Script d'installation du cache QEMU introuvable : ",
+        "en": "QEMU cache install script not found: ",
+    },
+    "No eviction is written: this cache never shrinks by itself": {
+        "fr": "Aucune éviction n'est écrite : ce cache ne diminue jamais de lui-même",
+        "en": "No eviction is written: this cache never shrinks by itself",
+    },
+    "Use the host download cache": {
+        "fr": "Utiliser le cache de téléchargement de l'hôte",
+        "en": "Use the host download cache",
+    },
+    "Use the host download cache?": {
+        "fr": "Utiliser le cache de téléchargement de l'hôte ?",
+        "en": "Use the host download cache?",
+    },
     # QEMU / KVM (libvirt) VM deployment
     "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
         "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",

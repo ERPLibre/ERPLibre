@@ -53,11 +53,10 @@ import grp
 import gzip
 import hashlib
 import ipaddress
-import zlib
 import os
+import pwd
 import re
 import shutil
-import pwd
 import socket
 import stat as stat_mod
 import subprocess
@@ -68,6 +67,7 @@ import time
 import urllib.error
 import urllib.request
 import warnings
+import zlib
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -2400,6 +2400,115 @@ def installer_guide_name(path: str) -> str:
     return INSTALLER_GUIDE_PREFIX + path.strip("/").replace("/", "-")
 
 
+# Où chaque famille de distribution range ses ancres de confiance, et par
+# quelle commande elle les relit. La même table vit dans
+# script/qemu_cache/rules.go, côté cache ; un test les compare, la dérive
+# entre deux copies étant le seul risque de cette duplication.
+#
+# Les familles portent le nom de leur gestionnaire de paquets, comme
+# « _QEMU_DISTRO_FAMILY » du menu.
+# Trois valeurs par famille : où poser l'ancre, quelle commande relit le
+# magasin, et quel FAISCEAU cette commande régénère.
+CACHE_TRUST = {
+    "pacman": (
+        "/etc/ca-certificates/trust-source/anchors",
+        "trust extract-compat",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ),
+    "apt": (
+        "/usr/local/share/ca-certificates",
+        "update-ca-certificates",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ),
+    "dnf": (
+        "/etc/pki/ca-trust/source/anchors",
+        "update-ca-trust",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+    ),
+    "zypper": (
+        "/etc/pki/trust/anchors",
+        "update-ca-certificates",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ),
+}
+
+# pip embarque son propre jeu de certificats et IGNORE le magasin système ;
+# npm fait de même. Poser l'autorité suffit à pacman et à apt, pas à eux.
+#
+# Les variables visent le FAISCEAU, non le certificat du cache : pointer
+# celui-là ferait perdre à pip toutes les autres autorités — il échouerait sur
+# le premier hôte que le cache ne déchiffre pas, et le jour où le cache
+# disparaît alors que la VM garde sa variable.
+CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
+
+CACHE_CERT_NAME = "erplibre-cache.crt"
+
+
+def cache_family(distro: str) -> str:
+    """Famille de gestionnaire de paquets d'une distribution du catalogue."""
+    return {
+        "ubuntu": "apt",
+        "debian": "apt",
+        "linuxmint": "apt",
+        "fedora": "dnf",
+        "almalinux": "dnf",
+        "rocky": "dnf",
+        "opensuse": "zypper",
+        "arch": "pacman",
+    }.get(distro, "")
+
+
+def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
+    """L'autorité du cache, posée par cloud-init à l'étape init.
+
+    Rend une liste vide quand aucune autorité n'est demandée, ou quand la
+    distribution n'est pas dans la table : mieux vaut une VM qui télécharge
+    en direct qu'une VM dont le magasin de confiance a reçu un fichier au
+    mauvais endroit, où il ne servirait à rien sans que rien ne le dise.
+
+    Le fichier est écrit à l'étape INIT, donc avant « runcmd » et avant tout
+    téléchargement : ce dépôt n'installe aucun paquet par cloud-init et laisse
+    « package_update » à faux, si bien que rien ne sort sur le réseau entre le
+    démarrage et la commande de confiance.
+    """
+    if not args.cache_ca:
+        return []
+    famille = cache_family(args.distro)
+    if famille not in CACHE_TRUST:
+        return []
+    try:
+        with open(args.cache_ca, encoding="utf-8") as fh:
+            pem = fh.read()
+    except OSError:
+        # Une autorité illisible ne doit pas faire échouer un déploiement :
+        # sans elle, la VM télécharge en direct, ce qui marche.
+        return []
+    if "BEGIN CERTIFICATE" not in pem:
+        return []
+    anchors = CACHE_TRUST[famille][0]
+    return [(f"{anchors}/{CACHE_CERT_NAME}", "0644", pem, "")]
+
+
+def cache_runcmd(args: argparse.Namespace) -> list[str]:
+    """Ce qui rend l'autorité effective, et ce que pip et npm exigent en plus.
+
+    Deux gestes, dans cet ordre : relire le magasin de confiance, puis écrire
+    les variables dans /etc/environment — que PAM lit pour TOUTE session ssh,
+    interactive ou non, ce qui est la seule façon d'atteindre le bootstrap
+    d'installation lancé par commande distante.
+    """
+    if not cache_files(args):
+        return []
+    _, commande, faisceau = CACHE_TRUST[cache_family(args.distro)]
+    lignes = [f"  - {commande} || true"]
+    for var in CACHE_ENV_VARS:
+        lignes.append(
+            f"  - sh -c 'grep -q ^{var}= /etc/environment"
+            f" || echo {var}={faisceau} >> /etc/environment'"
+        )
+    return lignes
+
+
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
 
@@ -2494,7 +2603,7 @@ def build_cloud_config(
     # dès le PREMIER boot. C'est le point : ils sont là avant l'installation
     # d'ERPLibre, et encore là si elle échoue — le moment où l'on se connecte
     # justement à la main.
-    lines += write_files_lines(guide_files(args))
+    lines += write_files_lines(guide_files(args) + cache_files(args))
     # apt update/upgrade désactivés par défaut : sur un réseau lent/instable
     # ils font pendre cloud-init au 1er boot (et retardent la dispo SSH). SSH
     # est déjà présent dans les images cloud ; on l'active via runcmd sans apt.
@@ -2517,8 +2626,11 @@ def build_cloud_config(
     # Active et démarre SSH quel que soit le nom du service (ssh sur
     # Debian/Ubuntu, sshd sur Fedora/Arch) — sans quoi la VM peut booter
     # sans SSH accessible.
+    lines += ["runcmd:"]
+    # En TÊTE : ce qui suit peut télécharger, et sans magasin de confiance à
+    # jour un invité rejette le certificat que le cache présente.
+    lines += cache_runcmd(args)
     lines += [
-        "runcmd:",
         "  - systemctl enable --now ssh 2>/dev/null"
         " || systemctl enable --now sshd 2>/dev/null || true",
         # Getty sur la console qui EXISTE VRAIMENT.
@@ -4087,6 +4199,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="N'injecte pas l'identité git de l'hôte (user.name, user.email, "
         "core.editor) dans le ~/.gitconfig de la VM.",
+    )
+    g_cloud.add_argument(
+        "--cache-ca",
+        default="",
+        help="Chemin, SUR L'HÔTE, du certificat de l'autorité du cache de "
+        "téléchargement (erplibre_go_qemu_cache). Fourni, la VM approuve "
+        "cette autorité dès son premier démarrage et ses téléchargements "
+        "passent par le cache. Absent, rien n'est posé.",
     )
     g_cloud.add_argument(
         "--apt-update",
