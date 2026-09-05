@@ -537,16 +537,6 @@ class TestChoixDeLHote(unittest.TestCase):
         self.assertIsNone(host)
         self.assertNotIn("Permanently added", sortie)
 
-    def test_only_the_lines_that_teach_something_are_kept(self):
-        self.assertEqual(
-            TODO._pve_clean_output(
-                AVERTISSEMENT + "\nbash: pveversion: command not found\n"
-            ),
-            ["bash: pveversion: command not found"],
-        )
-        self.assertEqual(TODO._pve_clean_output(AVERTISSEMENT), [])
-        self.assertEqual(TODO._pve_clean_output(""), [])
-
     def test_the_install_hint_pipes_the_repo_script(self):
         # Le script est autonome : « bash -s » suffit, rien à copier d'abord.
         indice = self._todo()._pve_install_hint({"target": "pve1"})

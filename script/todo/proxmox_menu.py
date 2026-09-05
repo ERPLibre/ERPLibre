@@ -20,7 +20,7 @@ import time
 
 import click
 
-from script.remote import appliance_ssh, host_memory
+from script.remote import appliance_ssh, host_memory, host_probe
 from script.todo import todo_prefs
 from script.todo.todo_i18n import t
 
@@ -158,34 +158,6 @@ class ProxmoxMenuMixin:
         # L'alias SEUL : ssh y lira l'utilisateur, le port et le ProxyJump.
         return {"target": alias, "jump": ""}
 
-    @staticmethod
-    def _pve_clean_output(sortie):
-        """Les lignes de la sortie qui APPRENNENT quelque chose.
-
-        Le transport retire déjà ce que ssh écrit de lui-même, mais ce filtre
-        reste : rien n'oblige un appelant à passer par lui, et une ligne
-        « Warning: Permanently added … » affichée comme preuve d'un échec
-        envoie chercher du côté de la clé d'hôte un problème qui n'a rien à
-        voir. La LISTE de ce bruit, elle, n'est écrite qu'à un endroit.
-        """
-        return [
-            ligne.strip()
-            for ligne in appliance_ssh.strip_ssh_noise(sortie).splitlines()
-            if ligne.strip()
-        ]
-
-    def _pve_ssh_alive(self, host):
-        """(ssh passe-t-il ?, ce qu'il a dit) — sans rien exiger de la machine.
-
-        C'est la question qu'il fallait poser AVANT de conclure : une machine
-        qui répond mais n'a pas Proxmox n'est pas « injoignable », et les deux
-        pannes ne se corrigent pas du même côté."""
-        from script.proxmox import proxmox_deploy as pve
-
-        code, out = pve.run(host, "true", timeout=20)
-        lignes = self._pve_clean_output(out)
-        return code == 0, (lignes[0] if lignes else t("no answer"))
-
     def _pve_install_hint(self, host):
         """La commande qui poserait Proxmox VE sur cette machine.
 
@@ -246,59 +218,49 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         print(f"\n  {t('Checking')} {host['target']}…")
-        code, out = pve.run(host, "pveversion", timeout=30)
-        version = pve.parse_pveversion(out)
-        if not version and appliance_ssh.hostkey_missing(out):
+        verdict = host_probe.diagnose(
+            host, "pveversion", pve.parse_pveversion, run=pve.run
+        )
+        if verdict.kind == host_probe.HOSTKEY:
             # Première connexion : ssh refuse un hôte dont il n'a pas la clé.
             # On ne DÉSACTIVE pas la vérification — un hyperviseur n'est pas
             # une VM jetable — on propose de l'enregistrer, une fois.
             if self._pve_add_hostkey(host):
-                code, out = pve.run(host, "pveversion", timeout=30)
-                version = pve.parse_pveversion(out)
-        if not version:
-            # Un seul message confondait deux pannes : « ou il est
-            # injoignable » envoyait vérifier le réseau alors que la machine
-            # répondait, et la seule ligne montrée était l'avertissement de
-            # ssh sur la clé d'hôte. On demande donc à ssh s'il passe.
-            joignable, detail = self._pve_ssh_alive(host)
-            # Ce que « pveversion » a répondu, et non ce que la sonde a dit :
-            # « command not found » est LA preuve utile.
-            dit = self._pve_clean_output(out)
-            if joignable:
-                print(f"  ✗ {t('Reachable, but Proxmox VE is not there:')}")
-                print(
-                    f"    ssh {host['target']} : ok — pveversion : "
-                    f"{dit[0] if dit else t('absent')}"
+                verdict = host_probe.diagnose(
+                    host, "pveversion", pve.parse_pveversion, run=pve.run
                 )
-                print(f"  → {t('Install it:')}")
-                print(f"    {self._pve_install_hint(host)}")
-                print(
-                    f"  → {t('Or redeploy the VM with the hypervisor profile.')}"
-                )
-            else:
-                print(f"  ✗ {t('SSH does not get through:')}")
-                print(f"    {detail}")
-                print(
-                    f"  → {t('Check the address, the SSH access and pveversion.')}"
-                )
+        if verdict.kind == host_probe.PRODUCT_ABSENT:
+            print(f"  ✗ {t('Reachable, but Proxmox VE is not there:')}")
+            print(
+                f"    ssh {host['target']} : ok — pveversion : "
+                f"{verdict.detail or t('absent')}"
+            )
+            print(f"  → {t('Install it:')}")
+            print(f"    {self._pve_install_hint(host)}")
+            print(
+                f"  → {t('Or redeploy the VM with the hypervisor profile.')}"
+            )
             return None
-        # « qm » exige les privilèges. La voie « VM QEMU locale » donne
-        # l'accès d'erplibre, pas de root : il faut donc sudo, et il faut le
-        # VÉRIFIER — un sudo qui réclame un mot de passe bloquerait chaque
-        # commande du menu sur une invite que personne ne voit.
-        prefixe = ""
-        _c, qui = pve.run(host, "id -u", timeout=20)
-        if qui.strip() != "0":
-            code, _o = pve.run(host, "sudo -n true", timeout=20)
-            if code:
-                print(
-                    f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}"
-                )
-                print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
-                return None
-            prefixe = "sudo "
+        if verdict.kind in (host_probe.UNREACHABLE, host_probe.HOSTKEY):
+            print(f"  ✗ {t('SSH does not get through:')}")
+            print(f"    {verdict.detail or t('no answer')}")
+            print(
+                f"  → {t('Check the address, the SSH access and pveversion.')}"
+            )
+            return None
+        if verdict.kind == host_probe.NEEDS_ROOT:
+            # « qm » exige les privilèges. La voie « VM QEMU locale » donne
+            # l'accès d'erplibre, pas de root, et un sudo qui réclame un mot
+            # de passe bloquerait chaque commande sur une invite invisible.
+            print(
+                f"  ✗ {t('qm needs root: no root, and sudo asks for a password.')}"
+            )
+            print(f"  → {t('Connect as root@, or allow NOPASSWD sudo.')}")
+            return None
+        if verdict.sudo:
             print(f"  ✓ sudo")
-        host = dict(host, version=version, sudo=prefixe)
+        version = verdict.version
+        host = dict(host, version=version, sudo=verdict.sudo)
         print(f"  ✓ Proxmox VE {version}")
         # Le noyau DÉCIDE de ce qui marche : sans le noyau Proxmox, ni module
         # bridge ni table NAT — donc aucun pont à créer et aucune VM à
@@ -306,7 +268,7 @@ class ProxmoxMenuMixin:
         # « Another instance of this program is already running » au lieu de
         # « Operation not supported ». On le dit ici, une fois, plutôt que de
         # laisser chercher.
-        noyau = pve.parse_kernel(out)
+        noyau = pve.parse_kernel(verdict.raw)
         if noyau and "-pve" not in noyau:
             print(f"  ⚠ {t('Still on the distribution kernel:')} {noyau}")
             print(f"  → {t('Reboot the host: no bridge, no NAT until then.')}")
