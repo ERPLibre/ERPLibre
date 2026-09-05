@@ -20,7 +20,7 @@ import time
 
 import click
 
-from script.remote import appliance_ssh
+from script.remote import appliance_ssh, host_memory
 from script.todo import todo_prefs
 from script.todo.todo_i18n import t
 
@@ -42,41 +42,35 @@ class ProxmoxMenuMixin:
     # laisse exécuter par un tube, sans être copié d'abord.
     PVE_INSTALL_SCRIPT = "script/proxmox/install_proxmox.sh"
 
+    def _pve_memoire(self):
+        """La mémoire d'hôte de CETTE appliance, créée à la demande."""
+        memoire = getattr(self, "_pve_memoire_cache", None)
+        if memoire is None:
+            memoire = host_memory.HostMemory(self._PVE_PREF_KEY, "PVE")
+            self._pve_memoire_cache = memoire
+        return memoire
+
     def _pve_host(self, ask=True):
         """Hôte Proxmox retenu, ou None. Demande au besoin.
 
-        Mémorisé dans les préférences : le menu compte dix-sept entrées, et
+        Le menu compte dix-sept entrées qui parlent toutes à la même machine :
         redemander l'hôte à chacune serait insupportable. Le choix reste
         affiché en tête du menu, et se change par son entrée dédiée.
         """
-        cache = getattr(self, "_pve_host_cache", None)
-        if cache:
-            return cache
-        garde = todo_prefs.get(self._PVE_PREF_KEY) or {}
-        if garde.get("target"):
-            self._pve_host_cache = garde
-            return garde
+        retenu = self._pve_memoire().get()
+        if retenu:
+            return retenu
         return self._pve_pick_host() if ask else None
 
     def _pve_forget_host(self):
-        self._pve_host_cache = None
-        todo_prefs.set(self._PVE_PREF_KEY, {})
+        self._pve_memoire().forget()
 
     def _pve_remember_host(self, host):
-        self._pve_host_cache = host
-        todo_prefs.set(self._PVE_PREF_KEY, host)
+        self._pve_memoire().remember(host)
 
-    @staticmethod
-    def _pve_label(host):
-        """« root@203.0.113.5 (par rebond) », pour l'afficher en tête de menu."""
-        if not host:
-            return ""
-        lab = host.get("target", "?")
-        if host.get("jump"):
-            lab += f" ({t('through')} {host['jump']})"
-        if host.get("version"):
-            lab += f" — PVE {host['version']}"
-        return lab
+    def _pve_label(self, host):
+        """« compte@adresse (par rebond) — PVE 9.2 », en tête de menu."""
+        return self._pve_memoire().label(host)
 
     def _pve_pick_host(self):
         """Choisit l'hôte Proxmox : VM locale, adresse, ou ~/.ssh/config."""
