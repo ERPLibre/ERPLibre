@@ -324,6 +324,20 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
 - **Rien ne quitte la machine** — aucun hôte externe, aucun trousseau système,
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
+## Recherche
+
+`/` cherche dans **tout le cache**, et non dans les seuls messages chargés.
+Sujet, expéditeur, destinataire et extrait sont comparés.
+
+En mode de cache `clear`, un index FTS5 répond en millisecondes et la liste
+suit chaque frappe. En mode `encrypted` aucun index n'existe — il stockerait
+en clair ce que le cache scelle — et la recherche déchiffre ligne à ligne.
+Mesuré sur 200 000 messages : 0,00 s avec index contre 4,4 s en balayage
+pour un terme qui ne correspond à rien. La liste cesse donc d'y suivre la
+frappe et attend **Entrée**, ce que la barre d'état annonce.
+
+Le résultat est le même des deux côtés ; seul le coût change.
+
 ## Statistiques
 
 `i` dans le client ouvre l'écran de statistiques ; `[5]` dans le menu Courriel

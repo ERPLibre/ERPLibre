@@ -11,6 +11,7 @@ from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.crypto import CryptoError, new_key
 from script.todo.mail.store import (
     EPHEMERAL_PREFIX,
+    SCHEMA_VERSION,
     MessageMeta,
     Store,
     StoreError,
@@ -214,7 +215,10 @@ class TestSchemaV2Migration(StoreCase):
             .execute("SELECT value FROM meta WHERE key='schema_version'")
             .fetchone()
         )
-        self.assertEqual(ligne[0], "2")
+        # Comparé à la constante et non à un littéral : la version monte à
+        # chaque schéma, et ce test porte sur le fait qu'elle CESSE de
+        # mentir, pas sur sa valeur du jour.
+        self.assertEqual(ligne[0], str(SCHEMA_VERSION))
 
     def test_migrating_twice_is_harmless(self):
         self._rendre_ancien()

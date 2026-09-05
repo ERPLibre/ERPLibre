@@ -303,6 +303,20 @@ What it does **not** cover, and will not pretend to:
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
+## Search
+
+`/` searches the **whole cache**, not just the messages currently loaded.
+Subject, sender, recipient and snippet are matched.
+
+In `clear` cache mode an FTS5 index answers in milliseconds and the list
+follows every keystroke. In `encrypted` mode no index exists — one would
+store in the open exactly what the cache seals — so the search decrypts row
+by row. Measured on 200,000 messages: 0.00 s indexed against 4.4 s scanned
+for a term that matches nothing. The list therefore stops following each
+keystroke there and waits for **Enter**, saying so in the status bar.
+
+The result is the same either way; only the cost differs.
+
 ## Statistics
 
 `i` in the client opens the statistics screen; `[5]` in the Mail menu prints
