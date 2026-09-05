@@ -2370,15 +2370,22 @@ class TODO(
         }
 
     def _build_ssh_make_cmd(self, target, params, extra=None):
-        """Build a make SSH command string from params dict."""
+        """Ligne « make » complète, chaque valeur citée pour le shell.
+
+        Les guillemets posés à la main ne protègent que d'une espace : une
+        valeur portant elle-même un guillemet, un point-virgule ou un accent
+        grave refermait la citation et le reste devenait des commandes. Le
+        danger grandit à mesure que ces valeurs cessent d'être retapées à
+        chaque fois pour être relues d'un fichier.
+
+        La citation est SIMPLE, ce qui laisse le tilde intact : c'est le
+        shell distant qui sait où est le compte visé, pas celui d'ici.
+        """
         parts = [f"make {target}"]
-        for k, v in params.items():
-            if v:
-                parts.append(f'{k}="{v}"')
-        if extra:
-            for k, v in extra.items():
-                if v:
-                    parts.append(f'{k}="{v}"')
+        for source in (params, extra or {}):
+            for cle, valeur in source.items():
+                if valeur:
+                    parts.append(f"{cle}={shlex.quote(str(valeur))}")
         return " ".join(parts)
 
     def _deploy_ssh_check(self):
