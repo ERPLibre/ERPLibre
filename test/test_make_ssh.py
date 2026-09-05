@@ -132,6 +132,16 @@ class TestLaLigneSshExacte(MakeDisponible):
         self.assertNotIn(f"{self.PREFIXE}  ", recette("ssh_check"))
 
 
+class TestLaVerificationExecuteCeQuelleAnnonce(MakeDisponible):
+    def test_uname_is_run_and_not_printed(self):
+        """Enfermé dans la chaîne de « echo », il s'affichait au lieu de
+        s'exécuter : la commande annonçait un contrôle qu'elle ne faisait
+        pas, et rendait 0 sur une machine dont on ne savait rien."""
+        sortie = recette("ssh_check")
+        self.assertIn("' && uname -a", sortie)
+        self.assertNotIn("uname -a'", sortie)
+
+
 class TestLaGardeSurLHote(MakeDisponible):
     def test_every_verb_refuses_to_run_without_a_host(self):
         """Sans elle, ssh tenterait « erplibre@ » et le dirait mal."""

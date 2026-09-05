@@ -41,7 +41,7 @@ endef
 .PHONY: ssh_check
 ssh_check:
 	$(call _require_host)
-	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) "echo 'SSH connection to $(SSH_HOST) OK && uname -a'"
+	$(_SSH_CMD) $(SSH_USER)@$(SSH_HOST) "echo 'SSH connection to $(SSH_HOST) OK' && uname -a"
 
 # Sync project files to remote (excludes venvs, addons, odoo sources, git)
 .PHONY: ssh_push
