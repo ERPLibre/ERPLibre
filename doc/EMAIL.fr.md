@@ -324,6 +324,23 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
 - **Rien ne quitte la machine** — aucun hôte externe, aucun trousseau système,
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
+## Gérer les dossiers
+
+`F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime, Échap
+ferme.
+
+La suppression détruit le dossier **et son contenu sur le serveur**. IMAP
+n'a pas de corbeille pour les dossiers : ce qui part ainsi ne revient que
+d'une sauvegarde du serveur. Elle demande donc de taper un mot plutôt que
+de confirmer — une question fermée se valide par réflexe. Le mot est sans
+accent, pour se taper sur n'importe quelle disposition de clavier.
+
+Chaque opération atteint le serveur d'abord, le cache ensuite. S'il refuse,
+le cache ne doit pas décrire un état qui n'existe nulle part : un dossier
+absent de l'arbre distant et présent dans le nôtre ne se resynchroniserait
+jamais. Le renommage emporte les messages et leurs corps, pour que la passe
+suivante ne retélécharge pas ce qui est déjà là.
+
 ## Vues de la liste
 
 `g` fait défiler trois vues de la liste des messages :

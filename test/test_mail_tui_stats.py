@@ -465,3 +465,91 @@ class TestListModes(StatsScreenCase):
             self.assertEqual(
                 str(table.styles.scrollbar_gutter).lower(), "stable"
             )
+
+
+class TestFolderScreen(StatsScreenCase):
+    """L'écran de gestion des dossiers, touche `F`."""
+
+    class FauxTransport:
+        def __init__(self):
+            self.faits = []
+
+        def create_folder(self, name):
+            self.faits.append(("create", name))
+
+        def rename_folder(self, ancien, nouveau):
+            self.faits.append(("rename", ancien, nouveau))
+
+        def delete_folder(self, name):
+            self.faits.append(("delete", name))
+
+    async def _ouvrir_dossiers(self):
+        from types import SimpleNamespace
+
+        self.remplir()
+        app = await self._app()
+        transport = self.FauxTransport()
+        session = app.session_for("perso")
+        # `online` est calculé depuis `syncer` et n'a pas de setter :
+        # poser le syncer suffit, et décrit mieux la réalité.
+        session.syncer = SimpleNamespace(transport=transport)
+        return app, transport
+
+    async def test_F_opens_the_folder_screen(self):
+        app, _ = await self._ouvrir_dossiers()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("F")
+            await pilot.pause()
+            self.assertEqual(type(app.screen).__name__, "FolderScreen")
+
+    async def test_deleting_needs_the_exact_word(self):
+        """Une saisie approximative ne doit RIEN détruire : le serveur n'a
+        pas de corbeille pour les dossiers."""
+        from script.todo.mail.tui import MOT_SUPPRESSION
+
+        app, transport = await self._ouvrir_dossiers()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("F")
+            await pilot.pause()
+            ecran = app.screen
+            ecran.action_start_delete()
+            await pilot.pause()
+            champ = ecran.query_one("#folder_input")
+            champ.value = "supprim"
+            await champ.action_submit()
+            await pilot.pause()
+            self.assertEqual(transport.faits, [])
+            self.assertNotEqual(MOT_SUPPRESSION, "supprim")
+
+    async def test_deleting_with_the_word_reaches_the_server(self):
+        from script.todo.mail.tui import MOT_SUPPRESSION
+
+        app, transport = await self._ouvrir_dossiers()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("F")
+            await pilot.pause()
+            ecran = app.screen
+            ecran.action_start_delete()
+            await pilot.pause()
+            champ = ecran.query_one("#folder_input")
+            champ.value = MOT_SUPPRESSION
+            await champ.action_submit()
+            await pilot.pause()
+            self.assertTrue(
+                any(f[0] == "delete" for f in transport.faits), transport.faits
+            )
+
+    async def test_an_offline_account_is_refused_not_crashed(self):
+        """Créer ou détruire passe par le serveur : hors ligne, l'écran ne
+        pourrait qu'échouer à chaque geste."""
+        self.remplir()
+        app = await self._app()
+        app.session_for("perso").syncer = None
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("F")
+            await pilot.pause()
+            self.assertNotEqual(type(app.screen).__name__, "FolderScreen")

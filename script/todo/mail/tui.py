@@ -28,6 +28,12 @@ from script.todo.mail.store import Store, sweep_orphan_ephemeral
 # fournisseurs refusent les connexions simultanées et le gain disparaît.
 SYNC_PARALLELE = 4
 
+# Le mot à taper pour détruire un dossier. SANS ACCENT : il doit se taper
+# sur n'importe quelle disposition de clavier, y compris celle d'un poste
+# qu'on emprunte. Une question fermée se valide par réflexe ; un mot
+# recopié oblige à lire ce qu'on détruit.
+MOT_SUPPRESSION = "supprimer"
+
 try:
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
@@ -999,6 +1005,7 @@ def run_tui(
             Binding("l", "show_log", t("mail_log_binding")),
             Binding("i", "show_stats", t("mail_stats_binding")),
             Binding("g", "cycle_list_mode", t("mail_list_mode_binding")),
+            Binding("F", "manage_folders", t("mail_folder_binding")),
             Binding("v", "cycle_layout", t("mail_layout_binding")),
             Binding("plus", "grow_pane", t("mail_pane_grow_binding")),
             Binding("minus", "shrink_pane", t("mail_pane_shrink_binding")),
@@ -2141,6 +2148,18 @@ def run_tui(
         def action_show_help(self) -> None:
             self.push_screen(HelpScreen())
 
+        def action_manage_folders(self) -> None:
+            if self.current_ref is None:
+                self.set_status(t("mail_stats_no_account"))
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if not session.online:
+                # Créer ou détruire un dossier passe par le serveur : hors
+                # ligne, l'écran ne pourrait qu'échouer à chaque geste.
+                self.set_status(t("mail_folder_needs_network"))
+                return
+            self.push_screen(FolderScreen(session))
+
         def action_show_stats(self) -> None:
             if self.current_ref is None:
                 self.set_status(t("mail_stats_no_account"))
@@ -2258,6 +2277,150 @@ def run_tui(
 
         def action_close_log(self) -> None:
             self.dismiss()
+
+    class FolderScreen(ModalScreen):
+        """Touche `F` : créer, renommer et supprimer un dossier.
+
+        La suppression détruit le dossier ET son contenu sur le SERVEUR,
+        sans corbeille : IMAP n'en a pas pour les dossiers. Elle exige donc
+        de taper un mot, pas de confirmer.
+        """
+
+        BINDINGS = [
+            Binding("escape", "close_folders", t("mail_folder_close")),
+            Binding("n", "start_create", t("mail_folder_create")),
+            Binding("r", "start_rename", t("mail_folder_rename")),
+            Binding("d", "start_delete", t("mail_folder_delete")),
+        ]
+
+        CSS = """
+        #folder_list { height: 1fr; border: solid $panel; }
+        #folder_hint { height: auto; padding: 0 1; color: $text-muted; }
+        #folder_input { display: none; }
+        #folder_input.visible { display: block; }
+        """
+
+        def __init__(self, session):
+            super().__init__()
+            self.session = session
+            self.action = None
+
+        def compose(self):
+            with Vertical():
+                yield Static("", id="folder_hint")
+                yield DataTable(id="folder_list")
+                yield Input(id="folder_input")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#folder_list", DataTable)
+            table.cursor_type = "row"
+            table.add_columns(t("mail_folder_name"), t("mail_stats_total"))
+            self.reload_folders()
+            self.query_one("#folder_hint", Static).update(
+                Text(t("mail_folder_hint"))
+            )
+
+        def reload_folders(self) -> None:
+            table = self.query_one("#folder_list", DataTable)
+            table.clear()
+            try:
+                dossiers = self.session.store.folders()
+            except Exception as exc:
+                self.query_one("#folder_hint", Static).update(
+                    Text(f"{t('mail_folder_error')} {exc}")
+                )
+                return
+            for dossier in dossiers:
+                table.add_row(
+                    dossier["display"] or dossier["name"],
+                    str(dossier["total"] or 0),
+                    key=dossier["name"],
+                )
+            self.dossiers = [d["name"] for d in dossiers]
+
+        def selection(self):
+            table = self.query_one("#folder_list", DataTable)
+            noms = getattr(self, "dossiers", [])
+            if table.cursor_row is None or table.cursor_row >= len(noms):
+                return None
+            return noms[table.cursor_row]
+
+        def _demander(self, action, invite, valeur="") -> None:
+            self.action = action
+            champ = self.query_one("#folder_input", Input)
+            champ.value = valeur
+            champ.placeholder = invite
+            champ.add_class("visible")
+            champ.focus()
+            self.query_one("#folder_hint", Static).update(Text(invite))
+
+        def action_start_create(self) -> None:
+            self._demander("create", t("mail_folder_ask_new"))
+
+        def action_start_rename(self) -> None:
+            courant = self.selection()
+            if courant is None:
+                return
+            self._demander("rename", t("mail_folder_ask_rename"), courant)
+
+        def action_start_delete(self) -> None:
+            courant = self.selection()
+            if courant is None:
+                return
+            self._demander(
+                "delete",
+                f"{t('mail_folder_ask_delete')} « {courant} » — "
+                f"{MOT_SUPPRESSION}",
+            )
+
+        def on_input_submitted(self, event) -> None:
+            saisie = (event.value or "").strip()
+            action, self.action = self.action, None
+            champ = self.query_one("#folder_input", Input)
+            champ.remove_class("visible")
+            champ.value = ""
+            if not action or not saisie:
+                return
+            try:
+                self._appliquer(action, saisie)
+            except Exception as exc:
+                self.query_one("#folder_hint", Static).update(
+                    Text(f"{t('mail_folder_error')} {exc}")
+                )
+                return
+            self.reload_folders()
+            self.query_one("#folder_hint", Static).update(
+                Text(t("mail_folder_done"))
+            )
+
+        def _appliquer(self, action, saisie) -> None:
+            """Le serveur D'ABORD, le cache ensuite.
+
+            Si le serveur refuse, le cache ne doit pas décrire un état qui
+            n'existe nulle part — un dossier absent de l'arbre distant et
+            présent dans le nôtre ne se resynchronise jamais.
+            """
+            transport = self.session.syncer.transport
+            if action == "create":
+                transport.create_folder(saisie)
+                self.session.store.upsert_folder(saisie, saisie, None)
+            elif action == "rename":
+                courant = self.selection()
+                if courant is None or courant == saisie:
+                    return
+                transport.rename_folder(courant, saisie)
+                self.session.store.rename_folder(courant, saisie)
+            elif action == "delete":
+                if saisie.lower() != MOT_SUPPRESSION:
+                    raise ValueError(t("mail_folder_not_confirmed"))
+                courant = self.selection()
+                if courant is None:
+                    return
+                transport.delete_folder(courant)
+                self.session.store.forget_folder(courant)
+
+        def action_close_folders(self) -> None:
+            self.dismiss(None)
 
     class StatsScreen(ModalScreen):
         """Touche `i` : ce que le cache sait déjà dire du compte ouvert.

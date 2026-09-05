@@ -647,6 +647,42 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
 <!-- [en] -->
+## Managing folders
+
+`F` opens the folder screen: `n` creates, `r` renames, `d` deletes, `Esc`
+closes.
+
+Deletion destroys the folder **and its contents on the server**. IMAP has no
+trash for folders, so what leaves this way comes back only from a server
+backup. It therefore asks you to type a word rather than to confirm: a
+closed question gets answered by reflex. The word carries no accent, so it
+can be typed on any keyboard layout.
+
+Every operation reaches the server first and the cache second. If the server
+refuses, the cache must not describe a state that exists nowhere — a folder
+missing from the remote tree but present in ours would never resynchronise.
+Renaming carries the messages and their bodies across, so the next pass does
+not download again what is already there.
+
+<!-- [fr] -->
+## Gérer les dossiers
+
+`F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime, Échap
+ferme.
+
+La suppression détruit le dossier **et son contenu sur le serveur**. IMAP
+n'a pas de corbeille pour les dossiers : ce qui part ainsi ne revient que
+d'une sauvegarde du serveur. Elle demande donc de taper un mot plutôt que
+de confirmer — une question fermée se valide par réflexe. Le mot est sans
+accent, pour se taper sur n'importe quelle disposition de clavier.
+
+Chaque opération atteint le serveur d'abord, le cache ensuite. S'il refuse,
+le cache ne doit pas décrire un état qui n'existe nulle part : un dossier
+absent de l'arbre distant et présent dans le nôtre ne se resynchroniserait
+jamais. Le renommage emporte les messages et leurs corps, pour que la passe
+suivante ne retélécharge pas ce qui est déjà là.
+
+<!-- [en] -->
 ## List views
 
 `g` cycles the message list through three views:
