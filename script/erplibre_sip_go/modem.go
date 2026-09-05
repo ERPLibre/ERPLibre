@@ -38,7 +38,25 @@ type Modem struct {
 	// un +CLCC corrompu se lit comme une ligne qui a raccroché, et l'appel
 	// se termine tout seul.
 	parole sync.Mutex
+
+	// Une CONVERSATION à la fois, ce qui n'est pas la même chose qu'une
+	// commande à la fois. La SIM ne porte qu'un appel voix ; deux chemins
+	// s'en servent — la veille des entrants et la composition sortante — et
+	// rien ne les arbitrait. Le raccrochage du premier tombait alors sur le
+	// second, qui perdait sa ligne quelques secondes après l'avoir prise,
+	// sans qu'aucune erreur ne le dise.
+	ligne sync.Mutex
 }
+
+// PrendreLaLigne réserve l'unique conversation de la SIM.
+//
+// Rend faux quand elle est déjà tenue, plutôt que d'attendre : un appel qu'on
+// ne peut pas passer se refuse tout de suite, une attente muette laissant
+// sonner un correspondant que personne ne prendra.
+func (m *Modem) PrendreLaLigne() bool { return m.ligne.TryLock() }
+
+// RendreLaLigne libère la conversation. À n'appeler qu'après avoir raccroché.
+func (m *Modem) RendreLaLigne() { m.ligne.Unlock() }
 
 // OuvrirModem ouvre le port en mode BRUT.
 //
