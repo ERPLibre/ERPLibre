@@ -59,6 +59,12 @@ def identity_guard(handle) -> str:
     vérifiable. Enfouie dans la commande, elle ne s'éprouvait qu'à travers
     deux « shlex.quote » — et un garde qu'on ne sait pas éprouver s'OUVRE le
     jour où il casse, au lieu de se fermer.
+
+    Les valeurs passent par des VARIABLES de shell, assignées une fois et
+    citées. Interpolées dans le message, elles y étaient relues par le shell :
+    un nom portant une substitution de commande la faisait exécuter, à
+    l'endroit précis où le garde annonce qu'il n'a rien fait — et sur l'hôte,
+    sous élévation. Une variable se développe sans être réévaluée.
     """
     if not handle or not handle.proof:
         return ""
@@ -73,26 +79,27 @@ def identity_guard(handle) -> str:
 
 def _guard_pve(handle) -> str:
     """Le VMID adresse, le nom prouve."""
-    q = shlex.quote(handle.proof)
     return (
-        f"vu=$(qm config {int(handle.key)} 2>/dev/null"
+        f"el_attendu={shlex.quote(handle.proof)}; "
+        f"el_vu=$(qm config {int(handle.key)} 2>/dev/null"
         " | sed -n 's/^name: //p' | head -1); "
-        f'if [ "$vu" != {q} ]; then '
-        f'echo "REFUS : le VMID {int(handle.key)} porte maintenant $vu,"'
-        f' "et non {handle.proof}. Rien n\'a ete efface."; exit 1; fi; '
+        'if [ "$el_vu" != "$el_attendu" ]; then '
+        f'echo "REFUS : le VMID {int(handle.key)} porte maintenant $el_vu,"'
+        ' "et non $el_attendu. Rien n\'a ete efface."; exit 1; fi; '
     )
 
 
 def _guard_libvirt(handle, sudo: str = "", uri: str = LIBVIRT_URI) -> str:
     """Le nom adresse, l'UUID prouve : il naît et meurt avec le domaine."""
-    q = shlex.quote(handle.key)
     return (
-        f"vu=$({sudo}virsh --connect {uri} domuuid {q}"
+        f"el_nom={shlex.quote(handle.key)}; "
+        f"el_attendu={shlex.quote(handle.proof)}; "
+        f'el_vu=$({sudo}virsh --connect {uri} domuuid "$el_nom"'
         " 2>/dev/null"
         " | tr -d '[:space:]'); "
-        f'if [ "$vu" != {shlex.quote(handle.proof)} ]; then '
-        f'echo "REFUS : {handle.key} n\'est plus le même domaine"'
-        f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
+        'if [ "$el_vu" != "$el_attendu" ]; then '
+        'echo "REFUS : $el_nom n\'est plus le même domaine"'
+        ' "($el_vu). Rien n\'a été effacé."; exit 1; fi; '
     )
 
 

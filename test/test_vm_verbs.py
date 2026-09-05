@@ -13,6 +13,7 @@ surtout sur son garde d'identité, parce qu'un garde qu'on ne sait pas
 """
 
 import os
+import subprocess
 import sys
 import unittest
 
@@ -21,6 +22,15 @@ sys.path.append(RACINE)
 
 from script.vm import backend as B  # noqa: E402
 from script.vm import verbs as V  # noqa: E402
+
+
+def _sans_qm(garde):
+    """Le garde, « qm » remplacé par « true » : la sonde ne répond rien, le
+    refus se déclenche, et c'est son MESSAGE qu'on veut lire."""
+    return garde.replace(
+        "qm config 101 2>/dev/null | sed -n 's/^name: //p' | head -1", "true"
+    )
+
 
 LOCALE = B.handle_of({"name": "essai", "uuid": "abc-123"})
 DISTANTE = B.handle_of(
@@ -51,6 +61,66 @@ class TestLeGardeDIdentite(unittest.TestCase):
         toute opération sur un poste où la preuve n'a pas pu être relevée."""
         self.assertEqual("", V.identity_guard(LOCALE._replace(proof="")))
         self.assertEqual("", V.identity_guard(None))
+
+    def test_a_name_carrying_a_substitution_is_never_run(self):
+        """Le nom était interpolé BRUT dans le message du garde, donc relu
+        par le shell : une substitution s'y exécutait à l'endroit précis où
+        le garde annonce qu'il n'a rien fait — et sur l'hôte, sous
+        élévation. La valeur piégée est inventée."""
+        piege = "essai$(id -u)"
+        garde = V.identity_guard(DISTANTE._replace(proof=piege))
+        joue = subprocess.run(
+            ["sh", "-c", _sans_qm(garde) + " exit 0"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertIn(piege, joue.stdout)
+
+    def test_a_quote_in_the_name_cannot_close_the_message(self):
+        piege = 'essai"; touch /tmp/rien-de-reel; echo "'
+        garde = V.identity_guard(DISTANTE._replace(proof=piege))
+        joue = subprocess.run(
+            ["sh", "-c", _sans_qm(garde) + " exit 0"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertIn(piege, joue.stdout)
+        self.assertNotIn("touch", joue.stderr)
+
+    def test_the_remote_guard_refuses_a_reused_key_and_passes_the_right_one(
+        self,
+    ):
+        """Le contrôle qui compte : le garde doit s'ARRÊTER. Il traverse
+        deux « shlex.quote » avant d'atteindre un shell, et chaque niveau
+        est une occasion de le casser — un garde cassé s'ouvre."""
+        garde = V.identity_guard(DISTANTE)
+        for vu, attendu in (("essai", 0), ("autre", 1)):
+            with self.subTest(vu=vu):
+                joue = subprocess.run(
+                    [
+                        "sh",
+                        "-c",
+                        f"qm() {{ echo 'name: {vu}'; }}; {garde} exit 0",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(attendu, joue.returncode, joue.stdout)
+
+    def test_the_local_guard_refuses_a_reused_name(self):
+        garde = V.identity_guard(LOCALE)
+        for vu, attendu in (("abc-123", 0), ("def-456", 1)):
+            with self.subTest(vu=vu):
+                joue = subprocess.run(
+                    [
+                        "sh",
+                        "-c",
+                        f"virsh() {{ echo '{vu}'; }}; {garde} exit 0",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(attendu, joue.returncode, joue.stdout)
 
     def test_an_unknown_backend_says_so_instead_of_guessing(self):
         with self.assertRaises(B.VerbNotImplemented):

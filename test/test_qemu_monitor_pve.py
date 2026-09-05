@@ -570,9 +570,13 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         self.assertLess(cmd.index("qm config 101"), cmd.index("qm destroy"))
 
     def test_a_local_delete_checks_the_uuid(self):
+        """Que le garde REFUSE bien se prouve en l'exécutant, et cette
+        preuve-là vit avec le verbe (test_vm_verbs). Ici on vérifie que le
+        relais produit une commande gardée, sans épingler son rendu."""
         cmd = mon.delete_vm_cmd("vm-a", True, "5d55d05a-1e77")
-        self.assertIn("domuuid vm-a", cmd)
+        self.assertIn("vm-a", cmd)
         self.assertIn("5d55d05a-1e77", cmd)
+        self.assertIn("domuuid", cmd)
         self.assertLess(cmd.index("domuuid"), cmd.index("destroy vm-a"))
 
     def test_an_old_manifest_without_identity_still_deletes(self):
