@@ -443,8 +443,8 @@ class TestLeMenuNommeLesMemesMachines(unittest.TestCase):
             / "todo"
             / "qemu_cache_menu.py"
         ).read_text(encoding="utf-8")
-        bloc = src[src.index('"2": "el-') :]
-        bloc = bloc[: bloc.index("}")]
+        bloc = src[src.index("_CACHE_ESSAIS = (") :]
+        bloc = bloc[: bloc.index("_CACHE_CHARGES")]
         annonces = set(re.findall(r'"(el-[a-z-]+)"', bloc))
         self.assertEqual(
             annonces,

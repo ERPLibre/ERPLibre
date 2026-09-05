@@ -49,12 +49,23 @@ import time
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RACINE, "long_test"))
+sys.path.insert(0, RACINE)
 
 from descente import (  # noqa: E402
     Descente,
     cle_publique,
     detruire_etage1,
     dire,
+)
+
+# Le catalogue des systèmes vient du DÉPLOIEMENT et n'est pas recopié ici :
+# distributions, versions par défaut, gestionnaire de paquets et libellés y
+# sont déjà tenus à jour, et une seconde table dériverait en silence — le test
+# proposerait alors un système que le déploiement ne sait pas installer.
+from script.qemu.deploy_qemu import (  # noqa: E402
+    DISTRO_PKG,
+    DISTROS,
+    distro_label,
 )
 
 OUTIL = "qemu_cache"
@@ -81,14 +92,50 @@ CONF = "/etc/erplibre_go_qemu_cache/env"
 SERVICE_USER = "elqcache"
 TABLE_BLOCAGE = "erplibre_qemu_cache_test"
 
-# Un lot fixe et volumineux : la mesure exige que les DEUX VM demandent les
-# MÊMES fichiers. Installer ERPLibre servirait aussi, mais coûterait des
-# heures pour une comparaison que ce lot rend en minutes.
-PAQUETS = "base-devel git python rust cmake"
+# La CHARGE : ce que les deux VM téléchargent, et donc ce que la mesure
+# regarde. Elle doit être identique d'une VM à l'autre, sans quoi la
+# comparaison ne compare rien.
+#
+# « minimum » est un lot volumineux mais court : un compilateur, rust et cmake
+# pèsent quelques centaines de mégaoctets, ce qui suffit à faire apparaître le
+# gain en quelques minutes. « erplibre » installe ce que l'on déploie vraiment,
+# et coûte des heures : c'est la mesure du cas réel, pas celle qu'on lance
+# pour vérifier que le cache fonctionne.
+#
+# Les noms de paquets changent par famille, et se tromper de nom fait échouer
+# l'installation loin de sa cause. Chaque entrée est (rafraîchir, installer).
+PAQUETS_MINIMUM = {
+    "pacman": (
+        "sudo pacman -Syu --noconfirm",
+        "sudo pacman -S --needed --noconfirm base-devel git python rust cmake",
+    ),
+    "apt": (
+        "sudo apt-get update -qq",
+        "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y"
+        " build-essential git python3 rustc cargo cmake",
+    ),
+    "dnf": (
+        "sudo dnf -y makecache",
+        "sudo dnf -y install gcc gcc-c++ make git python3 rust cargo cmake",
+    ),
+    "zypper": (
+        "sudo zypper -n refresh",
+        "sudo zypper -n install gcc gcc-c++ make git python3 rust cargo cmake",
+    ),
+}
+
+# La charge réelle : le dépôt cloné dans la VM, puis la cible qui l'installe.
+# La même paire que le déploiement emploie — clone puis « make » — pour que ce
+# qui est mesuré ici soit ce qui se passe vraiment.
+DEPOT = "https://github.com/erplibre/erplibre"
+BRANCHE = "master"
+CIBLE_ERPLIBRE = "make install_os && make install_odoo_18"
 
 DELAI_CREATION = 1800
 DELAI_SSH = 600
-DELAI_PAQUETS = 2400
+# La charge minimale se compte en minutes, ERPLibre en heures : un délai
+# unique ferait échouer l'une ou laisserait l'autre pendre indéfiniment.
+DELAI_CHARGE = {"minimum": 2400, "erplibre": 14400}
 
 
 def journal_neuf():
@@ -217,17 +264,28 @@ def rapport_comparatif():
 
     print("\n  ── Rapport de performance ──\n")
     print(
-        f"  {'exécution':<22}{'cache':<8}{'VM':<18}{'durée':>8}{'amont':>14}{'du cache':>14}"
+        f"  {'exécution':<18}{'système':<14}{'charge':<10}{'cache':<7}"
+        f"{'VM':<20}{'durée':>7}{'amont':>12}{'du cache':>12}"
     )
-    print("  " + "─" * 82)
+    print("  " + "─" * 100)
     for r in rapports[:6]:
         etiquette = r["debut"][:16].replace("T", " ")
+        # Le système et la charge sont RÉPÉTÉS sur chaque ligne de la même
+        # exécution : deux mesures ne se comparent que si les deux coïncident,
+        # et un lecteur qui ne voit la valeur qu'en tête de bloc compare des
+        # colonnes sans regarder si elles portent sur la même chose.
+        systeme = r.get("distro") or "?"
+        if r.get("version"):
+            systeme = f"{systeme} {r['version']}"
+        charge = r.get("charge") or "minimum"
         for nom, duree in (r.get("durees") or {}).items():
             o = (r.get("octets") or {}).get(nom, {})
             print(
-                f"  {etiquette:<22}{'oui' if r.get('cache') else 'non':<8}"
-                f"{nom:<18}{duree:>7.0f}s"
-                f"{humain(o.get('amont', 0)):>14}{humain(o.get('cache', 0)):>14}"
+                f"  {etiquette:<18}{systeme:<14}{charge:<10}"
+                f"{'oui' if r.get('cache') else 'non':<7}"
+                f"{nom:<20}{duree:>6.0f}s"
+                f"{humain(o.get('amont', 0)):>12}"
+                f"{humain(o.get('cache', 0)):>12}"
             )
             etiquette = ""
 
@@ -446,7 +504,14 @@ def lignes_depuis(chemin, decalage):
 # --------------------------------------------------------------------------
 
 
-def deployer(nom, journal, dry_run=False, avec_cache=True):
+def deployer(
+    nom,
+    journal,
+    dry_run=False,
+    avec_cache=True,
+    distro=DISTRO,
+    version=VERSION,
+):
     """Une VM Arch, branchée sur le cache ou non. Rend son adresse, ou ''.
 
     Sans le cache, la VM télécharge en direct : c'est le TÉMOIN, la mesure de
@@ -462,8 +527,8 @@ def deployer(nom, journal, dry_run=False, avec_cache=True):
     couperait tout le monde.
     """
     cmd = (
-        f"sudo python3 {shlex.quote(CLI)} --distro {DISTRO}"
-        f" --version {VERSION} --name {nom}"
+        f"sudo python3 {shlex.quote(CLI)} --distro {distro}"
+        f" --version {version} --name {nom}"
         f" --vcpus 2 --memory 4096 --disk-size 20G"
         f" --ssh-key {shlex.quote(cle_publique())}"
         + (
@@ -518,21 +583,72 @@ def attendre_ssh(adresse, journal):
     return False
 
 
-def poser_les_paquets(adresse, journal, dry_run=False):
-    """Le lot fixe, dans la VM. C'est CE trafic que la mesure regarde."""
+def systemes_mesurables():
+    """Les systèmes sur lesquels cette mesure a un sens.
+
+    Ceux du catalogue dont la famille de paquets est connue, moins Proxmox :
+    c'est un hyperviseur, on n'y installe ni ERPLibre ni un lot de paquets de
+    développement, et le déploiement lui impose déjà son propre profil.
+    """
+    return {
+        d
+        for d in DISTROS
+        if DISTRO_PKG.get(d) in PAQUETS_MINIMUM and d != "proxmox"
+    }
+
+
+def famille_de(distro):
+    """Le gestionnaire de paquets d'une distribution, ou "" hors catalogue."""
+    return DISTRO_PKG.get(distro, "")
+
+
+def commande_de_charge(distro, charge):
+    """Ce qui sera lancé DANS la VM, ou "" si la famille est inconnue.
+
+    Rendue par une fonction et non écrite au point d'appel : le plan à blanc
+    doit montrer la commande EXACTE que l'exécution réelle lancera, faute de
+    quoi le plan cesse d'être un plan.
+    """
+    famille = famille_de(distro)
+    if famille not in PAQUETS_MINIMUM:
+        return ""
+    rafraichir, installer = PAQUETS_MINIMUM[famille]
+    minimum = f"{rafraichir} && {installer}"
+    if charge != "erplibre":
+        return minimum
+    # Le dépôt d'abord : « make » n'existe pas avant le clone, et git vient
+    # du lot minimal — les deux charges partagent donc leur début, ce qui
+    # rend leurs mesures comparables sur cette portion.
+    return (
+        f"{minimum} && mkdir -p ~/git"
+        f" && git clone --branch {BRANCHE} {DEPOT} ~/git/erplibre"
+        f" && cd ~/git/erplibre && {CIBLE_ERPLIBRE}"
+    )
+
+
+def poser_les_paquets(
+    adresse, journal, dry_run=False, distro=DISTRO, charge="minimum"
+):
+    """La charge, dans la VM. C'est CE trafic que la mesure regarde."""
+    commande = commande_de_charge(distro, charge)
+    if not commande:
+        dire(
+            f"  ✗ {distro} n'a pas de famille connue : charge impossible",
+            journal,
+        )
+        return False
     if dry_run:
-        dire(f"  [à blanc] pacman -S {PAQUETS} sur {adresse}", journal)
+        dire(f"  [à blanc] sur {adresse} : {commande}", journal)
         return True
     code, sortie = dans_la_vm(
         adresse,
-        f"sudo pacman -Syu --noconfirm && sudo pacman -S --needed"
-        f" --noconfirm {PAQUETS}",
-        DELAI_PAQUETS,
+        commande,
+        DELAI_CHARGE.get(charge, DELAI_CHARGE["minimum"]),
         journal,
         montrer=True,
     )
     if code:
-        dire(f"  ✗ pacman rend {code} sur {adresse}", journal)
+        dire(f"  ✗ la charge rend {code} sur {adresse}", journal)
         # La sortie est le seul indice quand le cache est en cause : un
         # certificat rejeté, un 504 du cache hors ligne.
         for ligne in (sortie or "").splitlines()[-15:]:
@@ -700,7 +816,15 @@ def rebrancher_lamont(journal, dry_run=False):
     )
 
 
-def contre_epreuve(journal, rapport, dry_run=False, base=NOM_BASE):
+def contre_epreuve(
+    journal,
+    rapport,
+    dry_run=False,
+    base=NOM_BASE,
+    distro=DISTRO,
+    version=VERSION,
+    charge="minimum",
+):
     """Une troisième VM, l'amont du cache coupé. Elle doit réussir.
 
     C'est ce qui distingue un cache d'une simple accélération : sans réseau,
@@ -714,13 +838,15 @@ def contre_epreuve(journal, rapport, dry_run=False, base=NOM_BASE):
         nom = f"{base}-3"
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
-        adresse = deployer(nom, journal, dry_run)
+        adresse = deployer(
+            nom, journal, dry_run, distro=distro, version=version
+        )
         if not adresse:
             return False
         noter_uuid(rapport, nom, dry_run)
         if not dry_run and not attendre_ssh(adresse, journal):
             return False
-        ok = poser_les_paquets(adresse, journal, dry_run)
+        ok = poser_les_paquets(adresse, journal, dry_run, distro, charge)
         if ok:
             dire(
                 "  ✓ la troisième VM s'est bâtie sans que le cache joigne"
@@ -844,7 +970,31 @@ def main(argv=None):
         action="store_true",
         help="comparer les dernières exécutions, avec et sans cache",
     )
+    parseur.add_argument(
+        "--distro",
+        default=DISTRO,
+        choices=sorted(systemes_mesurables()),
+        help=f"système des VM du test (défaut : {DISTRO})",
+    )
+    parseur.add_argument(
+        "--version",
+        default="",
+        help="version du système ; vide, celle que le déploiement donne par"
+        " défaut à cette distribution",
+    )
+    parseur.add_argument(
+        "--charge",
+        default="minimum",
+        choices=("minimum", "erplibre"),
+        help="ce que les VM téléchargent : « minimum » un lot de paquets qui"
+        " se compte en minutes, « erplibre » l'installation réelle d'ERPLibre"
+        " et d'Odoo 18, qui se compte en heures",
+    )
     args = parseur.parse_args(argv)
+    # Vide veut dire « celle du catalogue » : la recopier ici la figerait, et
+    # le test installerait une version que le déploiement ne propose plus.
+    if not args.version:
+        args.version = DISTROS[args.distro][1]
 
     if args.rapport:
         return rapport_comparatif()
@@ -873,6 +1023,12 @@ def main(argv=None):
         "debut": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "vms": [],
         "cache": not args.sans_cache,
+        # Le système et la charge SONT la mesure : deux exécutions qui ne les
+        # partagent pas ne se comparent pas, et le tableau doit pouvoir le
+        # dire plutôt que d'aligner des durées sans rapport.
+        "distro": args.distro,
+        "version": args.version,
+        "charge": args.charge,
         # Un plan à blanc ne crée rien et ne mesure rien. Il écrit pourtant un
         # rapport, et sans cette marque le comparatif compte ses durées de
         # zéro comme des mesures : il montre alors des exécutions qui n'ont
@@ -902,7 +1058,12 @@ def _boucle(args, rapport, journal, acces, decalage):
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
         adresse = deployer(
-            nom, journal, args.dry_run, avec_cache=not args.sans_cache
+            nom,
+            journal,
+            args.dry_run,
+            avec_cache=not args.sans_cache,
+            distro=args.distro,
+            version=args.version,
         )
         if not adresse:
             return 1
@@ -910,7 +1071,9 @@ def _boucle(args, rapport, journal, acces, decalage):
         if not args.dry_run and not attendre_ssh(adresse, journal):
             return 1
         debut = time.time()
-        if not poser_les_paquets(adresse, journal, args.dry_run):
+        if not poser_les_paquets(
+            adresse, journal, args.dry_run, args.distro, args.charge
+        ):
             return 1
         duree = time.time() - debut
         lignes, decalage = ([], decalage)
@@ -948,7 +1111,15 @@ def _boucle(args, rapport, journal, acces, decalage):
 
     if args.hors_ligne:
         ok = (
-            contre_epreuve(journal, rapport, args.dry_run, base_des_noms(args))
+            contre_epreuve(
+                journal,
+                rapport,
+                args.dry_run,
+                base_des_noms(args),
+                args.distro,
+                args.version,
+                args.charge,
+            )
             and ok
         )
 
