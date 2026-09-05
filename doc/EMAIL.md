@@ -303,6 +303,21 @@ What it does **not** cover, and will not pretend to:
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
+## List views
+
+`g` cycles the message list through three views:
+
+- **flat, by date** — the default;
+- **by thread** — replies sit under the message they answer, indented, and
+  ordered by date within their thread. Roots keep the order the flat view
+  gave them, so switching does not reshuffle everything;
+- **unread only**.
+
+A reply whose original is not in the selection stays visible as a root
+rather than disappearing, and a cache filled before threading was added
+behaves exactly like the flat view. The list keeps its scrollbar gutter
+reserved at all times, so its width does not shift under the cursor.
+
 ## Syncing several accounts
 
 Accounts sync side by side, four at a time. Each holds its own socket and

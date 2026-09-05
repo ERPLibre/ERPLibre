@@ -412,3 +412,56 @@ class TestSelectBoxes(StatsScreenCase):
             await pilot.pause()
             corps = self._corps(app)
             self.assertIn("Messages : 1", corps)
+
+
+class TestListModes(StatsScreenCase):
+    """La touche `g` fait défiler les modes d'affichage de la liste."""
+
+    async def _app_liste(self):
+        self.remplir()
+        return await self._app()
+
+    async def test_g_announces_the_mode_it_switched_to(self):
+        app = await self._app_liste()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("g")
+            await pilot.pause()
+            self.assertEqual(app.list_mode, "threads")
+
+    async def test_g_cycles_back_to_flat(self):
+        from script.todo.mail.tui_text import LIST_MODES
+
+        app = await self._app_liste()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            for _ in range(len(LIST_MODES)):
+                await pilot.press("g")
+                await pilot.pause()
+            self.assertEqual(app.list_mode, LIST_MODES[0])
+
+    async def test_the_cursor_still_points_at_the_shown_message(self):
+        """En mode fil l'ordre change : lire `visible_metas` au lieu des
+        lignes affichées rendrait le message d'une AUTRE ligne que celle où
+        le curseur se trouve."""
+        app = await self._app_liste()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("g")
+            await pilot.pause()
+            lignes = app.lignes_a_afficher()
+            table = app.query_one("#list")
+            if lignes and table.cursor_row is not None:
+                attendu = lignes[table.cursor_row][0]
+                self.assertEqual(app.current_meta().uid, attendu.uid)
+
+    async def test_the_list_keeps_a_gutter_for_its_scrollbar(self):
+        """Sans gouttière réservée, la largeur du tableau change selon le
+        nombre de messages, sous le curseur."""
+        app = await self._app_liste()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            table = app.query_one("#list")
+            self.assertEqual(
+                str(table.styles.scrollbar_gutter).lower(), "stable"
+            )
