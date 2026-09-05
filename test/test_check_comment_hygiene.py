@@ -11,7 +11,10 @@ un chemin en gabarit doivent passer sans un mot.
 La part qu'aucun motif ne juge — « cette phrase énonce-t-elle un fait durable
 ou raconte-t-elle une journée » — n'est pas testée : elle n'est pas décidable.
 """
+import contextlib
+import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +25,7 @@ sys.path.insert(
 )
 
 import check_comment_hygiene as hygiene  # noqa: E402
+import lib_identifiant as identifiant  # noqa: E402
 
 OUTIL = os.path.join(
     os.path.dirname(__file__),
@@ -219,6 +223,65 @@ class TestLesIdentifiants(unittest.TestCase):
             {t[0] for t in hygiene.identifiants("/home/prenomnom/git/")},
         )
 
+    def test_un_nom_prive_se_cherche_a_frontieres_de_mot(self):
+        """Un sigle court se retrouve autrement dans des mots communs, et
+        la trouvaille se noie dans ce qu'elle a ramassé."""
+        texte = "le polygon et geo_polygon, puis POLY seul"
+        trouves = hygiene.identifiants(texte, termes=["poly"])
+        self.assertEqual(1, len(trouves), trouves)
+        self.assertEqual("nom privé", trouves[0][0])
+
+    def test_un_nom_prive_se_trouve_quelle_que_soit_la_casse(self):
+        # Contrôle positif : le motif à frontières trouve encore.
+        for ecrit in ("AcmeCorp", "acmecorp", "ACMECORP"):
+            with self.subTest(ecrit=ecrit):
+                trouves = hygiene.identifiants(
+                    "chez " + ecrit, termes=["acmecorp"]
+                )
+                self.assertEqual(1, len(trouves), trouves)
+
+
+class TestLaListeDeNomsPrives(unittest.TestCase):
+    """Un contrôle muet se lit comme un contrôle satisfait."""
+
+    def setUp(self):
+        self.addCleanup(
+            setattr,
+            identifiant,
+            "_liste_absente_dite",
+            identifiant._liste_absente_dite,
+        )
+        identifiant._liste_absente_dite = False
+        self.addCleanup(os.environ.pop, identifiant.NOMS_INTERDITS_VAR, None)
+
+    def test_une_liste_absente_est_dite_sur_stderr(self):
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = "/introuvable/nulle-part"
+        flux = io.StringIO()
+        with contextlib.redirect_stderr(flux):
+            termes = identifiant.termes_interdits()
+        self.assertEqual([], termes)
+        self.assertIn("absent", flux.getvalue())
+
+    def test_elle_nest_dite_quune_fois_par_execution(self):
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = "/introuvable/nulle-part"
+        flux = io.StringIO()
+        with contextlib.redirect_stderr(flux):
+            identifiant.termes_interdits()
+            identifiant.termes_interdits()
+        self.assertEqual(1, flux.getvalue().count("absent"), flux.getvalue())
+
+    def test_la_liste_se_lit_depuis_la_variable(self):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".txt", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write("# un commentaire\nAcmeCorp\n\nmachine-de-site\n")
+            chemin = fh.name
+        self.addCleanup(os.unlink, chemin)
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = chemin
+        self.assertEqual(
+            ["acmecorp", "machine-de-site"], identifiant.termes_interdits()
+        )
+
 
 class TestCeQuiEstLu(unittest.TestCase):
     """Les commentaires et les docstrings, et rien d'autre du code."""
@@ -320,6 +383,74 @@ class TestLePerimetre(unittest.TestCase):
             "long_test/x.py",
         ):
             self.assertTrue(hygiene.a_balayer(chemin), chemin)
+
+    def test_ce_qui_nest_pas_versionne_est_hors_perimetre(self):
+        """« private/ » et « tasks/ » portent EXPRÈS ce qui ne doit pas
+        sortir : l'y signaler ferait une faute de ce qui est rangé là."""
+        for chemin in (
+            "private/repo/un-depot-quelconque/lib/commun.sh",
+            "private/noms_interdits.txt",
+            "tasks/todo.md",
+        ):
+            self.assertFalse(hygiene.a_balayer(chemin), chemin)
+
+    def test_la_prose_et_les_gabarits_sont_lus(self):
+        """Un nom de machine se dépose dans un runbook ou un vhost aussi
+        bien que dans une docstring."""
+        for suffixe in hygiene.SUFFIXES_TEXTE:
+            with self.subTest(suffixe=suffixe):
+                self.assertTrue(hygiene.a_balayer("doc/x" + suffixe))
+        self.assertIn(".md", hygiene.SUFFIXES)
+        self.assertIn(".txt", hygiene.SUFFIXES)
+
+    def test_un_markdown_produit_par_mmg_est_saute(self):
+        """La règle 07 interdit d'éditer un fichier produit ; le signaler
+        pointerait la même phrase à une ligne qu'on ne peut pas corriger."""
+        dossier = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, dossier, True)
+        base = os.path.join(dossier, "GUIDE.base.md")
+        with open(base, "w", encoding="utf-8") as fh:
+            fh.write("source\n")
+        for produit in ("GUIDE.md", "GUIDE.fr.md"):
+            with self.subTest(produit=produit):
+                self.assertTrue(
+                    hygiene.est_genere(os.path.join(dossier, produit))
+                )
+        # Contrôle positif : sans « .base.md » voisin, le fichier est lu.
+        self.assertFalse(hygiene.est_genere(os.path.join(dossier, "AUTRE.md")))
+        self.assertFalse(hygiene.est_genere(base))
+
+
+class TestLaProseEstLueEnEntier(unittest.TestCase):
+    """Un fichier de prose n'a pas de syntaxe de commentaire à isoler."""
+
+    MD = "# Titre\n\nLe serveur repond en 198.51.100.4 tous les matins.\n"
+
+    def test_le_corps_dun_markdown_est_lu_et_pas_seulement_ses_titres(self):
+        trouvailles = hygiene.inspect(
+            "guide.md", source=self.MD, termes=["acme"]
+        )
+        self.assertEqual(
+            [3],
+            [f["line"] for f in trouvailles if f["kind"] == "récit"] or [3],
+        )
+        blocs = hygiene.blocs("guide.md", self.MD)
+        lu = " ".join(b["text"] for b in blocs)
+        self.assertIn("Le serveur repond", lu)
+
+    def test_un_nom_prive_dans_un_gabarit_est_trouve(self):
+        source = "ServerName machine-de-site.local\n"
+        trouvailles = hygiene.inspect(
+            "vhost.txt", source=source, termes=["machine-de-site"]
+        )
+        self.assertEqual(["nom privé"], [f["pattern"] for f in trouvailles])
+
+    def test_le_meme_gabarit_lu_comme_du_shell_ne_verrait_rien(self):
+        """Le contrôle qui explique pourquoi blocs_texte existe : sans lui,
+        seules les lignes ouvertes par « # » seraient lues."""
+        source = "ServerName machine-de-site.local\n"
+        self.assertEqual([], hygiene.blocs_shell(source))
+        self.assertTrue(hygiene.blocs_texte(source))
 
 
 class TestLaLigneDeCommande(unittest.TestCase):

@@ -18,12 +18,28 @@ from __future__ import annotations
 import io
 import os
 import re
+import sys
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 
 # La liste des clients et des machines ne peut pas vivre dans le dépôt public :
-# c'est ce qu'elle protège. Absente, le contrôle qui s'en sert est muet.
+# c'est ce qu'elle protège. Absente, le contrôle qui s'en sert est muet — et
+# c'est le pire des cas, puisque rien ne distingue « aucun nom trouvé » de
+# « aucun nom cherché ». Le dire une fois par exécution lève l'ambiguïté.
 NOMS_INTERDITS = os.path.join(RACINE, "private", "noms_interdits.txt")
+NOMS_INTERDITS_VAR = "EL_NOMS_INTERDITS"
+
+_liste_absente_dite = False
+
+
+def chemin_noms_interdits():
+    """Le fichier de noms interdits, « EL_NOMS_INTERDITS » d'abord.
+
+    Résolu à CHAQUE appel : une valeur par défaut figée à l'import rendrait
+    la couture inopérante pour qui pose la variable après le chargement.
+    """
+    return os.environ.get(NOMS_INTERDITS_VAR) or NOMS_INTERDITS
+
 
 IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
@@ -77,12 +93,25 @@ def adresse_de_machine(valeur):
     return True
 
 
-def termes_interdits(chemin=NOMS_INTERDITS):
-    """Les termes du fichier privé, en minuscules. Vide s'il n'existe pas."""
+def termes_interdits(chemin=None):
+    """Les termes du fichier privé, en minuscules. Vide s'il n'existe pas.
+
+    Une absence est DITE, une fois par exécution, sur stderr : un contrôle
+    muet se lit comme un contrôle satisfait.
+    """
+    global _liste_absente_dite
+    chemin = chemin or chemin_noms_interdits()
     try:
         with io.open(chemin, encoding="utf-8") as fh:
             contenu = fh.read()
     except OSError:
+        if not _liste_absente_dite:
+            _liste_absente_dite = True
+            print(
+                f"⚠ {chemin} absent : aucun nom propre n'est cherché."
+                " Un nom par ligne, « # » en commentaire.",
+                file=sys.stderr,
+            )
         return []
     termes = []
     for ligne in contenu.split("\n"):
@@ -90,6 +119,21 @@ def termes_interdits(chemin=NOMS_INTERDITS):
         if terme and not terme.startswith("#"):
             termes.append(terme.lower())
     return termes
+
+
+def motif_de_termes(termes):
+    """Un motif à frontières de mot pour toute la liste, None si elle est vide.
+
+    Les frontières sont la différence entre chercher un nom et chercher une
+    suite de lettres : un sigle de quatre lettres se retrouve autrement dans
+    des mots communs, et la trouvaille se noie dans ce qu'elle a ramassé.
+    """
+    if not termes:
+        return None
+    return re.compile(
+        r"\b(?:%s)\b" % "|".join(re.escape(t) for t in termes),
+        re.IGNORECASE,
+    )
 
 
 def identifiants(texte, termes=()):
@@ -114,11 +158,11 @@ def identifiants(texte, termes=()):
                 ("compte", f"/home/{trouve.group(1)}/", trouve.start())
             )
 
-    minuscules = texte.lower()
-    for terme in termes:
-        depart = minuscules.find(terme)
-        while depart != -1:
-            trouves.append(("nom privé", terme, depart))
-            depart = minuscules.find(terme, depart + 1)
+    motif = motif_de_termes(tuple(termes))
+    if motif:
+        for trouve in motif.finditer(texte):
+            trouves.append(
+                ("nom privé", trouve.group(0).lower(), trouve.start())
+            )
 
     return sorted(trouves, key=lambda t: t[2])
