@@ -2855,25 +2855,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             vm = self._vm_by_name(self._selected)
             if not vm:
                 return
-            info = vm.get("pve")
-            if info:
-                # VM d'un hôte Proxmox : sa console est « qm terminal », sur
-                # l'hôte. « virsh console <nom> » ouvrait celle du domaine
-                # LOCAL homonyme — la mauvaise machine, sans le dire.
-                cmd = pve_host_cmd(
-                    info, f"qm terminal {int(info.get('vmid') or 0)}", tty=True
-                )
-                titre = (
-                    f"qm terminal {info.get('vmid')} @ {info.get('target')}"
-                )
-                sortie = "Ctrl+O"
-            else:
-                cmd = (
-                    f"{sudo_prefix()}virsh --connect {URI} "
-                    f"console {shlex.quote(vm['name'])}"
-                )
-                titre = f"virsh console {vm['name']}"
-                sortie = "Ctrl+]"
+            # L'identité choisit l'outil ET la séquence de sortie : elles
+            # ne sont pas les mêmes selon qui attache, et la donner fausse
+            # laisse l'utilisateur enfermé dans une console.
+            ouverture = vm_verbs.console(
+                handle_of(vm), sudo=sudo_prefix(), uri=URI
+            )
+            cmd, titre, sortie = ouverture
             with self.suspend():
                 # La console n'affiche que ce qui arrive APRÈS l'attachement :
                 # sur une VM déjà démarrée l'écran reste noir tant qu'on n'a

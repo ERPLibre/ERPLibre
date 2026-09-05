@@ -17,6 +17,7 @@ garde utilisable par un backend qui n'existe pas encore.
 from __future__ import annotations
 
 import shlex
+from typing import NamedTuple
 
 from script.vm.backend import LIBVIRT, PVE, VerbNotImplemented
 
@@ -156,3 +157,51 @@ def _delete_libvirt(handle, with_disks: bool, sudo: str, uri: str) -> str:
         )
         cmd += f"; sudo rm -f {disk} {seed}"
     return cmd
+
+
+class Console(NamedTuple):
+    """Comment ouvrir la console d'une VM, et comment en SORTIR.
+
+    La séquence d'échappement appartient au backend et non à l'écran : elle
+    n'est pas la même selon l'outil qui attache, et la donner fausse laisse
+    l'utilisateur enfermé dans une console dont il ne sait plus sortir.
+    """
+
+    command: str
+    label: str
+    escape: str
+
+
+def console(handle, sudo: str = "", uri: str = LIBVIRT_URI) -> Console:
+    """De quoi ouvrir la console série de la VM.
+
+    C'est le seul recours quand SSH ne répond pas : elle ne dépend ni du
+    réseau de la VM, ni de sshd, ni d'une IP. Elle montre donc un démarrage
+    bloqué ou un cloud-init encore en cours, que le suivi ne peut que
+    constater de loin.
+
+    Le piège est le même que partout : « virsh console <nom> » ouvre celle du
+    domaine LOCAL homonyme, la mauvaise machine, sans le dire.
+    """
+    if handle is None:
+        raise VerbNotImplemented("console : aucune identité.")
+    if handle.backend == PVE:
+        vmid = int(handle.key)
+        hote = handle.host.get("target") or "?"
+        return Console(
+            command=host_command(handle, f"qm terminal {vmid}", tty=True),
+            label=f"qm terminal {vmid} @ {hote}",
+            # « qm terminal » relaie une console série : c'est Ctrl+O qui la
+            # rend, et non la séquence de virsh.
+            escape="Ctrl+O",
+        )
+    if handle.backend == LIBVIRT:
+        q = shlex.quote(handle.key)
+        return Console(
+            command=f"{sudo}virsh --connect {uri} console {q}",
+            label=f"virsh console {handle.key}",
+            escape="Ctrl+]",
+        )
+    raise VerbNotImplemented(
+        f"console : backend « {handle.backend} » inconnu."
+    )

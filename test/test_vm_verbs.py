@@ -240,5 +240,61 @@ class TestIlNeSondeRien(unittest.TestCase):
             self.assertNotIn(interdit, noms)
 
 
+class TestLaConsole(unittest.TestCase):
+    """Le seul recours quand SSH ne répond pas — donc le pire endroit pour
+    se tromper de machine."""
+
+    def test_a_remote_console_goes_through_the_host(self):
+        """« virsh console <nom> » ouvrait celle du domaine LOCAL homonyme,
+        la mauvaise machine, sans le dire."""
+        ouverture = V.console(DISTANTE)
+        self.assertIn("hote.exemple", ouverture.command)
+        self.assertIn("qm terminal 101", ouverture.command)
+        self.assertNotIn("virsh", ouverture.command)
+
+    def test_a_local_console_speaks_to_libvirt(self):
+        """Contrôle positif : la console locale existe toujours."""
+        ouverture = V.console(LOCALE, sudo="", uri="qemu:///system")
+        self.assertIn(
+            "virsh --connect qemu:///system console", ouverture.command
+        )
+        self.assertIn("essai", ouverture.command)
+
+    def test_a_remote_console_asks_for_a_tty(self):
+        """Sans lui, la console n'a pas de clavier."""
+        self.assertIn("ssh -t ", V.console(DISTANTE).command)
+
+    def test_the_escape_sequence_is_not_the_same_on_both(self):
+        """La donner fausse laisse l'utilisateur enfermé dans une console
+        dont il ne sait plus sortir. C'est l'outil qui attache qui décide,
+        pas l'écran."""
+        self.assertNotEqual(
+            V.console(DISTANTE).escape, V.console(LOCALE).escape
+        )
+        for handle in (DISTANTE, LOCALE):
+            with self.subTest(backend=handle.backend):
+                self.assertTrue(V.console(handle).escape)
+
+    def test_the_label_names_the_machine_it_opens(self):
+        """L'écran l'affiche avant d'attacher : c'est la dernière occasion
+        de voir qu'on vise la mauvaise."""
+        self.assertIn("hote.exemple", V.console(DISTANTE).label)
+        self.assertIn("101", V.console(DISTANTE).label)
+        self.assertIn("essai", V.console(LOCALE).label)
+
+    def test_the_local_console_uses_the_uri_it_is_given(self):
+        self.assertIn(
+            "qemu:///session", V.console(LOCALE, uri="qemu:///session").command
+        )
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.console(None)
+
+    def test_an_unknown_backend_is_refused(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.console(LOCALE._replace(backend="lima"))
+
+
 if __name__ == "__main__":
     unittest.main()
