@@ -193,16 +193,42 @@ func (c *CA) leafFor(host string) (*tls.Certificate, error) {
 // déclare pas d'avance : la première poignée de main échoue, l'hôte est
 // retenu, et toutes les suivantes passent en tunnel opaque. La première
 // requête est perdue, c'est le prix de n'avoir rien à configurer.
+// Un refus APPRIS s'oublie, un refus DÉCLARÉ jamais.
+//
+// Les deux ne disent pas la même chose. Un hôte déclaré épingle son autorité
+// pour toujours, et le réessayer coûterait une requête à chaque fois. Un refus
+// appris, lui, peut n'avoir rien de définitif : une VM dont le magasin de
+// confiance n'est pas encore posé refuse la première poignée de main, et
+// l'hôte se retrouvait alors condamné au tunnel POUR LA VIE DU SERVICE — donc
+// à ne plus jamais être caché, y compris pour toutes les VM suivantes, qui
+// elles font confiance.
+//
+// L'oubli remet le doute : au bout du délai, une poignée de main est retentée.
+// Un vrai épingleur la refuse à nouveau et le refus est réappris, au prix
+// d'une requête perdue par délai. Un hôte qui n'avait qu'un magasin en retard
+// redevient cachable.
 type Refusals struct {
-	mu    sync.RWMutex
-	hosts map[string]bool
+	mu       sync.RWMutex
+	declares map[string]bool
+	apprises map[string]time.Time
+	// Oubli borne la mémoire d'un refus appris. Nul, il ne s'oublie jamais.
+	Oubli time.Duration
 }
 
+// OubliParDefaut : assez long pour ne pas retenter à chaque requête, assez
+// court pour qu'une VM qui gagne la confiance en cours de démarrage ne
+// condamne pas son miroir pour la journée.
+const OubliParDefaut = 5 * time.Minute
+
 func NewRefusals(static []string) *Refusals {
-	r := &Refusals{hosts: map[string]bool{}}
+	r := &Refusals{
+		declares: map[string]bool{},
+		apprises: map[string]time.Time{},
+		Oubli:    OubliParDefaut,
+	}
 	for _, h := range static {
 		if h = strings.TrimSpace(strings.ToLower(h)); h != "" {
-			r.hosts[h] = true
+			r.declares[h] = true
 		}
 	}
 	return r
@@ -217,35 +243,50 @@ var DefaultExclusions = []string{
 }
 
 func (r *Refusals) Has(host string) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.hosts[host] {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.declares[host] {
 		return true
 	}
 	// Un suffixe couvre un domaine entier : « .snapcraft.io » vaut pour tous
 	// ses sous-domaines.
-	for h := range r.hosts {
+	for h := range r.declares {
 		if strings.HasPrefix(h, ".") && strings.HasSuffix(host, h) {
 			return true
 		}
 	}
-	return false
+	quand, appris := r.apprises[host]
+	if !appris {
+		return false
+	}
+	if r.Oubli > 0 && time.Since(quand) >= r.Oubli {
+		delete(r.apprises, host)
+		return false
+	}
+	return true
 }
 
 func (r *Refusals) Add(host string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.hosts[host] {
-		r.hosts[host] = true
+	if _, deja := r.apprises[host]; !deja {
 		log.Printf("tunnel opaque retenu pour %s : certificat refusé", host)
 	}
+	r.apprises[host] = time.Now()
 }
 
 func (r *Refusals) List() []string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]string, 0, len(r.hosts))
-	for h := range r.hosts {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.declares)+len(r.apprises))
+	for h := range r.declares {
+		out = append(out, h)
+	}
+	for h, quand := range r.apprises {
+		if r.Oubli > 0 && time.Since(quand) >= r.Oubli {
+			delete(r.apprises, h)
+			continue
+		}
 		out = append(out, h)
 	}
 	return out

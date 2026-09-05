@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCreationEtRelectureDeLAutorite(t *testing.T) {
@@ -190,5 +191,75 @@ func TestEmpreinteLisible(t *testing.T) {
 func TestPremierEnregistrementNonTLS(t *testing.T) {
 	if _, err := peekSNI([]byte{0x17, 0x03, 0x03, 0x00, 0x01, 0x00}); err == nil {
 		t.Error("un enregistrement qui n'est pas un handshake est accepté")
+	}
+}
+
+// Un refus APPRIS s'oublie ; un refus DÉCLARÉ jamais.
+//
+// Une VM dont le magasin de confiance n'est pas encore posé refuse la première
+// poignée de main. L'hôte se retrouvait alors condamné au tunnel pour la vie
+// du service — donc jamais caché, y compris pour toutes les VM suivantes, qui
+// elles font confiance. Observé sur le miroir d'une distribution, dont tout le
+// trafic est reparti à l'amont pendant des heures.
+func TestUnRefusApprisSoublie(t *testing.T) {
+	r := NewRefusals(DefaultExclusions)
+	r.Oubli = 40 * time.Millisecond
+
+	r.Add("miroir.example")
+	if !r.Has("miroir.example") {
+		t.Fatal("le refus n'est pas retenu du tout")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if r.Has("miroir.example") {
+		t.Error("le refus appris ne s'oublie pas : l'hôte reste condamné")
+	}
+}
+
+func TestUnRefusDeclareNeSoubliePas(t *testing.T) {
+	r := NewRefusals([]string{"api.snapcraft.io"})
+	r.Oubli = time.Millisecond
+	time.Sleep(5 * time.Millisecond)
+	if !r.Has("api.snapcraft.io") {
+		t.Error("un hôte déclaré a été oublié : une requête sera perdue à" +
+			" chaque fois")
+	}
+}
+
+// Réapprendre repousse l'oubli : un vrai épingleur refuse à chaque essai, et
+// ne doit pas être retenté à la requête suivante.
+func TestReapprendreRepousseLOubli(t *testing.T) {
+	r := NewRefusals(nil)
+	r.Oubli = 80 * time.Millisecond
+	r.Add("epingleur.example")
+	time.Sleep(50 * time.Millisecond)
+	r.Add("epingleur.example")
+	time.Sleep(50 * time.Millisecond)
+	if !r.Has("epingleur.example") {
+		t.Error("un refus réappris a été oublié trop tôt")
+	}
+}
+
+// Un oubli nul rend la mémoire définitive : c'est le comportement d'avant, que
+// l'on doit pouvoir retrouver.
+func TestOubliNulRendLaMemoireDefinitive(t *testing.T) {
+	r := NewRefusals(nil)
+	r.Oubli = 0
+	r.Add("h.example")
+	time.Sleep(5 * time.Millisecond)
+	if !r.Has("h.example") {
+		t.Error("un oubli nul oublie quand même")
+	}
+}
+
+// La liste rendue ne doit pas porter ce qui est déjà oublié.
+func TestLaListeNeMontrePasCeQuiEstOublie(t *testing.T) {
+	r := NewRefusals([]string{"declare.example"})
+	r.Oubli = 30 * time.Millisecond
+	r.Add("appris.example")
+	time.Sleep(50 * time.Millisecond)
+	for _, h := range r.List() {
+		if h == "appris.example" {
+			t.Error("un refus oublié figure encore dans la liste")
+		}
 	}
 }
