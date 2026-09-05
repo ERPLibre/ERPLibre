@@ -11963,6 +11963,47 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
+    # Devstack - vocabulaire de rapport (devstack_report.py)
+    "Done": {
+        "fr": "Fait",
+        "en": "Done",
+    },
+    "Failed": {
+        "fr": "Échoué",
+        "en": "Failed",
+    },
+    "Refused": {
+        "fr": "Refusé",
+        "en": "Refused",
+    },
+    "Dependency absent - skipped": {
+        "fr": "Dépendance absente - sauté",
+        "en": "Dependency absent - skipped",
+    },
+    "Not implemented by this backend": {
+        "fr": "Non implémenté par ce backend",
+        "en": "Not implemented by this backend",
+    },
+    "Unexpected exit code": {
+        "fr": "Code de sortie inattendu",
+        "en": "Unexpected exit code",
+    },
+    "Capabilities": {
+        "fr": "Capacités",
+        "en": "Capabilities",
+    },
+    "present": {
+        "fr": "présent",
+        "en": "present",
+    },
+    "To install:": {
+        "fr": "Pour installer :",
+        "en": "To install:",
+    },
+    "Nothing was probed": {
+        "fr": "Rien n'a été sondé",
+        "en": "Nothing was probed",
+    },
 }
 
 
