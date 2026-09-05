@@ -36,7 +36,8 @@ const (
 
 // VeillerSurLesEntrants présente au softphone les appels qui arrivent.
 func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
-	hôte string, registre *Registre, dialogues *sipgo.DialogClientCache) {
+	hôte string, registre *Registre, dialogues *sipgo.DialogClientCache,
+	répondeur RéglagesRépondeur) {
 
 	if err := m.AnnoncerAppelant(); err != nil {
 		// Sans CLIP l'appel se présente sans numéro : on continue, un appel
@@ -87,7 +88,8 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 		}
 		enCours = true
 		slog.Info("appel entrant", "de", numéro)
-		if err := présenterAuSoftphone(ctx, m, o, hôte, registre, dialogues, numéro); err != nil {
+		if err := présenterAuSoftphone(ctx, m, o, hôte, registre, dialogues,
+			numéro, répondeur); err != nil {
 			slog.Error("appel entrant non presente", "de", numéro, "err", err)
 			if err := m.Raccrocher(); err != nil {
 				slog.Warn("raccrochage", "err", err)
@@ -139,7 +141,7 @@ func décrireLaLigne(appels []ÉtatAppel) {
 // présenterAuSoftphone fait sonner le navigateur, puis relie les deux bouts.
 func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 	hôte string, registre *Registre, dialogues *sipgo.DialogClientCache,
-	numéro string) error {
+	numéro string, répondeur RéglagesRépondeur) error {
 
 	// L'operateur renvoie vers sa messagerie au bout de quelques dizaines de
 	// secondes : le temps que met le softphone a decrocher est donc ce qui
@@ -147,7 +149,7 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 	sonnerieÀ := time.Now()
 
 	inscription, joignable := premierJoignable(registre)
-	if !joignable {
+	if !joignable && !répondeur.Actif {
 		return fmt.Errorf("aucun poste inscrit : personne a faire sonner")
 	}
 
@@ -195,6 +197,12 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 	}
 	defer libérer()
 
+	// Personne d'inscrit, mais un répondeur : il prend l'appel sans qu'on
+	// monte le média ni ICE, dont rien n'aurait l'usage.
+	if !joignable {
+		return prendreLeMessageSurLaLigne(ctx, m, o, répondeur, numéro)
+	}
+
 	locale, err := NouvelleIdentitéICE()
 	if err != nil {
 		return err
@@ -228,8 +236,23 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 		Rôle:      RôleAuChoix,
 	}
 
-	session, err := sonner(défiler, dialogues, inscription, hôte, numéro, offre.Construire())
+	// La sonnerie du softphone est BORNÉE par le répondeur quand il en existe
+	// un : au-delà, la boîte vocale de l'opérateur prend l'appel et le
+	// message nous échappe. C'est une course, et on choisit de la gagner.
+	sonnerie := défiler
+	if répondeur.Actif {
+		minuté, fin := context.WithTimeout(défiler, répondeur.DélaiAvantDécroché())
+		defer fin()
+		sonnerie = minuté
+	}
+
+	session, err := sonner(sonnerie, dialogues, inscription, hôte, numéro, offre.Construire())
 	if err != nil {
+		if répondeur.Actif {
+			slog.Info("le softphone n'a pas pris : le repondeur decroche",
+				"de", numéro, "sonneries", répondeur.Normaliser().Sonneries)
+			return prendreLeMessageSurLaLigne(ctx, m, o, répondeur, numéro)
+		}
 		return err
 	}
 	defer session.Close()
@@ -511,4 +534,60 @@ func premierJoignable(registre *Registre) (Inscription, bool) {
 		return Inscription{}, false
 	}
 	return joignables[0], true
+}
+
+// prendreLeMessageSurLaLigne décroche à la place de personne et enregistre.
+//
+// Le décroché est ici et non chez l'appelant : il ne se produit QU'UNE FOIS
+// le softphone renoncé, et décrocher plus tôt ferait payer une communication
+// que personne n'écoute — la même règle que pour un appel présenté.
+//
+// La ligne est raccrochée par la défausse de l'appelant, avec le canal voix :
+// deux chemins qui raccrochent laisseraient l'un des deux le faire en trop.
+func prendreLeMessageSurLaLigne(ctx context.Context, m *Modem, o OptionsModem,
+	r RéglagesRépondeur, numéro string) error {
+
+	carte, err := carteOuDéfaut(o.Carte)
+	if err != nil {
+		return fmt.Errorf("repondeur sans carte son : %w", err)
+	}
+	if err := m.Répondre(); err != nil {
+		return fmt.Errorf("decrochage du repondeur (ATA) : %w", err)
+	}
+	// La ligne a-t-elle VRAIMENT été prise ? « OK » à l'ATA ne prouve rien :
+	// un appel déjà renvoyé vers la messagerie de l'opérateur répond OK et
+	// retombe aussitôt. On enregistrerait alors sa musique d'attente.
+	if appels, err := m.Appels(); err == nil && !uneLigneTient(appels) {
+		return fmt.Errorf(
+			"la ligne ne tient plus apres le decroche du repondeur : " +
+				"l'appel est probablement parti vers la messagerie")
+	}
+	// Le canal voix se RÉAFFIRME au décroché : l'ouverture faite avant la
+	// sonnerie ne survit pas à l'établissement de la voix, et sans cela on
+	// enregistre le silence d'un canal qui n'est plus routé vers l'USB.
+	if err := m.RéaffirmerVoixUSB(o.ModePCM); err != nil {
+		slog.Warn("canal voix USB non réaffirmé", "err", err)
+	}
+	message, err := PrendreLeMessage(ctx, carte, r, numéro)
+	if err != nil || message == nil {
+		return err
+	}
+	// Le téléversement est fait ICI et non par une file : un message qui ne
+	// monte pas reste sur disque avec son compagnon, et le démarrage suivant
+	// le rattrape. Une file en mémoire le perdrait au premier redémarrage.
+	if err := TéléverserMessage(OuvrirLienOdoo(), message); err != nil {
+		slog.Warn("message non televerse : il attend sur disque",
+			"fichier", message.Fichier, "err", err)
+	}
+	return nil
+}
+
+// uneLigneTient dit si un appel VOIX est encore établi.
+func uneLigneTient(appels []ÉtatAppel) bool {
+	for _, a := range appels {
+		if a.Voix() {
+			return true
+		}
+	}
+	return false
 }
