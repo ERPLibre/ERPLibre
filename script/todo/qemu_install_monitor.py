@@ -22,13 +22,12 @@ import shutil
 import socket
 import subprocess
 import time
-
-from script.todo.qemu_privilege import (
-    LIBVIRT_URI as URI,
-    sudo_prefix,
-    virsh_argv,
-)
 from pathlib import Path
+
+from script.todo.qemu_privilege import LIBVIRT_URI as URI
+from script.todo.qemu_privilege import sudo_prefix, virsh_argv
+from script.vm import verbs as vm_verbs
+from script.vm.backend import LIBVIRT, PVE, VmHandle, handle_of
 
 try:
     from script.todo.todo_i18n import t
@@ -1735,20 +1734,11 @@ def vm_ssh_prefix(vm) -> str:
 def pve_host_cmd(info, remote, tty=False) -> str:
     """Commande shell qui exécute `remote` SUR l'hôte Proxmox d'une VM.
 
-    Chaque action du tableau de bord qui parlait à libvirt par le NOM frappait
-    la mauvaise machine dès qu'un domaine local portait le même : la console
-    ouvrait celle de la VM locale, la pause suspendait la locale. L'hôte est
-    la seule autorité pour une VM distante, et le VMID son seul identifiant.
+    Relais vers `script.vm.verbs.host_command`, qui le fait pour tous les
+    backends. Ce nom reste pour les appelants qui le connaissent ici.
     """
-    sudo = (info or {}).get("sudo") or ""
-    cible = (info or {}).get("target") or ""
-    prefixe = f"{sudo}sh -c {shlex.quote(remote)}" if sudo else remote
-    saut = (
-        f"-J {shlex.quote(info['jump'])} " if (info or {}).get("jump") else ""
-    )
-    return (
-        f"ssh {'-t ' if tty else ''}{saut}{shlex.quote(cible)} "
-        f"{shlex.quote(prefixe)}"
+    return vm_verbs.host_command(
+        VmHandle(PVE, "", "", "", dict(info or {})), remote, tty
     )
 
 
@@ -1889,40 +1879,24 @@ def restart_odoo_cmd() -> str:
 def pve_identity_guard(vmid: int, name: str) -> str:
     """Shell qui S'ARRÊTE si le VMID ne porte plus ce nom.
 
-    Un VMID libéré est RÉATTRIBUÉ, et le suivi se rouvre sur un manifeste qui
-    peut avoir des semaines : effacer « le 101 » d'un run de mars, c'est
-    effacer ce qui porte le 101 aujourd'hui.
-
-    Une fonction à part, et exécutable telle quelle : c'est ce qui la rend
-    vérifiable. Enfouie dans la commande, elle ne se testait qu'à travers deux
-    « shlex.quote » — et un garde qu'on ne sait pas éprouver s'OUVRE le jour
-    où il casse, au lieu de se fermer."""
-    q = shlex.quote(name)
-    return (
-        f"vu=$(qm config {int(vmid)} 2>/dev/null"
-        " | sed -n 's/^name: //p' | head -1); "
-        f'if [ "$vu" != {q} ]; then '
-        f'echo "REFUS : le VMID {int(vmid)} porte maintenant $vu,"'
-        f' "et non {name}. Rien n\'a ete efface."; exit 1; fi; '
+    Relais vers `script.vm.verbs.identity_guard`, qui pose la même question
+    à chaque backend avec la clé et la preuve qui lui sont propres.
+    """
+    return vm_verbs.identity_guard(
+        VmHandle(PVE, name, str(int(vmid)), name, {})
     )
 
 
 def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
     """Efface une VM sur son hôte PROXMOX, par son VMID.
 
-    « virsh undefine <nom> » y aurait effacé le domaine LOCAL homonyme — le
-    même piège que partout ailleurs, avec la pire conséquence.
-
-    `name` arme le garde d'identité (voir `pve_identity_guard`) : sans lui, la
-    commande efface le VMID quoi qu'il porte aujourd'hui."""
-    vmid = int((info or {}).get("vmid") or 0)
-    suite = pve_identity_guard(vmid, name) if name else ""
-    suite += (
-        f"qm stop {vmid} --skiplock 1 || true; "
-        f"qm destroy {vmid}"
-        f"{' --purge 1 --destroy-unreferenced-disks 1' if purge else ''}"
-    )
-    return pve_host_cmd(info, suite)
+    Relais vers `script.vm.verbs.delete_command`. `name` arme le garde
+    d'identité ; sans lui, la commande efface le VMID quoi qu'il porte
+    aujourd'hui.
+    """
+    info = dict(info or {})
+    handle = VmHandle(PVE, name, str(int(info.get("vmid") or 0)), name, info)
+    return vm_verbs.delete_command(handle, with_disks=purge)
 
 
 def delete_lines(vm) -> list:
@@ -1938,20 +1912,20 @@ def delete_lines(vm) -> list:
 
     Une confirmation doit nommer ce qu'elle détruit, sur la machine où elle
     le détruit."""
-    info = vm.get("pve")
-    if not info:
+    handle = handle_of(vm)
+    if handle is None or handle.backend == LIBVIRT:
         return [
             "La VM est arrêtée, sa définition retirée,",
             "et son disque qcow2 EFFACÉ. Rien n'est récupérable.",
             "",
             f"  /var/lib/libvirt/images/{vm['name']}.qcow2",
         ]
-    hote = info.get("target") or "?"
+    hote = handle.host.get("target") or "?"
     return [
-        f"Sur l'hôte Proxmox {hote}, la VM {info.get('vmid')} est arrêtée",
+        f"Sur l'hôte Proxmox {hote}, la VM {handle.key} est arrêtée",
         "puis DÉTRUITE avec ses disques. Rien n'est récupérable.",
         "",
-        f"  qm destroy {info.get('vmid')} --purge",
+        f"  qm destroy {handle.key} --purge",
         "",
         "Aucun fichier n'est touché ici : le disque vit dans le",
         "stockage de l'hôte.",
@@ -1959,37 +1933,14 @@ def delete_lines(vm) -> list:
 
 
 def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
-    """Efface la VM sur l'HÔTE. Même séquence que « TODO._qemu_delete_vm » :
-    arrêt, retrait de la définition (nvram si UEFI, repli sinon), puis les
-    disques à la demande.
+    """Efface la VM sur l'HÔTE local : arrêt, retrait de la définition, puis
+    les disques à la demande.
 
-    `uuid` arme un GARDE. Le suivi se rouvre sur un manifeste passé, et un nom
-    de domaine se réemploie : « erplibre-ubuntu-2604 » d'un run de mars n'est
-    pas forcément celui d'aujourd'hui. L'UUID, lui, naît avec le domaine et
-    meurt avec lui — c'est la seule chose qui distingue deux machines du même
-    nom."""
-    q = shlex.quote(name)
-    cmd = ""
-    if uuid:
-        cmd = (
-            f"vu=$({sudo_prefix()}virsh --connect {URI} domuuid {q}"
-            " 2>/dev/null"
-            " | tr -d '[:space:]'); "
-            f'if [ "$vu" != {shlex.quote(uuid)} ]; then '
-            f'echo "REFUS : {name} n\'est plus le même domaine"'
-            f' "($vu). Rien n\'a été effacé."; exit 1; fi; '
-        )
-    cmd += (
-        f"{sudo_prefix()}virsh --connect {URI} destroy {q} 2>/dev/null; "
-        f"{sudo_prefix()}virsh --connect {URI} "
-        f"undefine {q} --nvram 2>/dev/null "
-        f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
-    )
-    if with_disks:
-        disk = shlex.quote(f"/var/lib/libvirt/images/{name}.qcow2")
-        seed = shlex.quote(f"/var/lib/libvirt/images/iso/{name}-seed.iso")
-        cmd += f"; sudo rm -f {disk} {seed}"
-    return cmd
+    Relais vers `script.vm.verbs.delete_command`. `uuid` arme le garde : un
+    nom de domaine se réemploie, l'UUID naît et meurt avec le domaine.
+    """
+    handle = VmHandle(LIBVIRT, name, name, uuid or "", {})
+    return vm_verbs.delete_command(handle, with_disks, sudo_prefix(), URI)
 
 
 def run_monitor(manifest_path: str, run_app: bool = True):
@@ -3270,14 +3221,15 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             def confirmed(yes):
                 if not yes:
                     return
-                info = vm.get("pve")
                 # Le garde d'identité voyage avec la VM : c'est ce qui
                 # rend une suppression sûre depuis un suivi ROUVERT, dont le
-                # manifeste peut avoir des semaines.
-                cmd = (
-                    delete_vm_cmd_pve(info, name=vm["name"])
-                    if info
-                    else delete_vm_cmd(vm["name"], True, vm.get("uuid") or "")
+                # manifeste peut avoir des semaines. L'identité choisit le
+                # backend ; l'écran n'a plus à savoir lequel.
+                cmd = vm_verbs.delete_command(
+                    handle_of(vm),
+                    with_disks=True,
+                    sudo=sudo_prefix(),
+                    uri=URI,
                 )
                 with self.suspend():
                     print(f"\n=== Suppression — {vm['name']} ===")
