@@ -516,5 +516,72 @@ class TestLeMenuNeRefabriquePasLesNoms(unittest.TestCase):
         self.assertIn("module.nom_de_base(", self.menu_source())
 
 
+class TestLeGainSeCalculeParCondition(unittest.TestCase):
+    """Comparer une installation d'ERPLibre à un lot de paquets ne mesure que
+    le mélange.
+
+    Le rapport annonçait 46 % de gain en moyennant une seconde VM d'Ubuntu qui
+    installe ERPLibre en six minutes avec une seconde VM d'Arch qui pose cinq
+    paquets en vingt secondes. À condition égale, le même essai en donne 21 %.
+    """
+
+    def rapport(self, distro, charge, cache, duree):
+        return {
+            "debut": "2026-01-01T00:00:00",
+            "distro": distro,
+            "charge": charge,
+            "cache": cache,
+            "durees": {f"vm-1": duree, f"vm-2": duree},
+            "octets": {},
+        }
+
+    def sortie(self, rapports):
+        import contextlib
+        import io as _io
+
+        tampon = _io.StringIO()
+        with unittest.mock.patch.object(
+            QC, "rapports_recents", return_value=rapports
+        ), contextlib.redirect_stdout(tampon):
+            QC.rapport_comparatif()
+        return tampon.getvalue()
+
+    def test_deux_conditions_ne_se_melangent_pas(self):
+        texte = self.sortie(
+            [
+                self.rapport("ubuntu", "erplibre", True, 360),
+                self.rapport("ubuntu", "erplibre", False, 450),
+                self.rapport("arch", "minimum", True, 20),
+                self.rapport("arch", "minimum", False, 30),
+            ]
+        )
+        self.assertIn("ubuntu · erplibre", texte)
+        self.assertIn("arch · minimum", texte)
+        # 450 → 360 : vingt pour cent. 30 → 20 : trente-trois.
+        self.assertIn("20 %", texte)
+        self.assertIn("33 %", texte)
+
+    def test_une_condition_sans_temoin_ne_produit_pas_de_gain(self):
+        texte = self.sortie(
+            [
+                self.rapport("ubuntu", "erplibre", True, 360),
+                self.rapport("arch", "minimum", False, 30),
+            ]
+        )
+        self.assertNotIn("gain", texte)
+        self.assertIn("MÊME système", texte)
+
+    def test_le_temoin_dune_autre_condition_ne_sert_pas(self):
+        """Le piège exact : un témoin Arch faisait croire à une comparaison
+        pour une exécution Ubuntu."""
+        texte = self.sortie(
+            [
+                self.rapport("ubuntu", "erplibre", True, 360),
+                self.rapport("arch", "minimum", False, 450),
+            ]
+        )
+        self.assertNotIn("gain", texte)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -322,9 +322,6 @@ def rapport_comparatif():
         print("    ./long_test/qemu_cache.py --sans-cache\n")
         return 1
 
-    avec = [r for r in rapports if r.get("cache")]
-    sans = [r for r in rapports if not r.get("cache")]
-
     print("\n  ── Rapport de performance ──\n")
     print(
         f"  {'exécution':<18}{'cache':<7}{'VM':<40}"
@@ -348,31 +345,51 @@ def rapport_comparatif():
             )
             etiquette = ""
 
-    if avec and sans:
-        da = moyenne_seconde_vm(avec)
-        ds = moyenne_seconde_vm(sans)
-        print()
-        if da and ds:
-            print(f"  seconde VM, avec cache : {da:.0f} s")
-            print(f"  seconde VM, sans cache : {ds:.0f} s")
-            if ds > da:
-                print(
-                    f"  gain : {ds - da:.0f} s, soit {100 * (ds - da) / ds:.0f} %"
-                )
-            else:
-                # Un gain nul est un RÉSULTAT, pas une erreur : sur un lien
-                # rapide, le temps est dominé par l'installation et non par
-                # le téléchargement.
-                print(
-                    "  aucun gain de TEMPS : sur ce lien, le téléchargement ne"
-                    " domine pas.\n  Le gain porte alors sur les octets, colonne"
-                    " « amont »."
-                )
-    else:
-        manque = "sans cache" if avec else "avec cache"
-        print(f"\n  Il manque une exécution {manque} pour comparer :")
+    # Le gain se calcule PAR CONDITION, jamais sur l'ensemble : une même
+    # moyenne mêlerait une installation d'ERPLibre sur Ubuntu, qui dure des
+    # minutes, à un lot de paquets sur Arch, qui dure vingt secondes. Le
+    # rapport annoncerait alors un gain qui ne mesure que le mélange.
+    conditions = {}
+    for r in rapports:
+        cle = (r.get("distro") or "?", r.get("charge") or "minimum")
+        conditions.setdefault(cle, {"avec": [], "sans": []})[
+            "avec" if r.get("cache") else "sans"
+        ].append(r)
+
+    compare = False
+    for (distro, charge), groupe in sorted(conditions.items()):
+        da = moyenne_seconde_vm(groupe["avec"])
+        ds = moyenne_seconde_vm(groupe["sans"])
+        if not (da and ds):
+            continue
+        compare = True
+        print(f"\n  {distro} · {charge} — seconde VM")
+        print(f"    avec cache : {da:.0f} s")
+        print(f"    sans cache : {ds:.0f} s")
+        if ds > da:
+            print(
+                f"    gain : {ds - da:.0f} s,"
+                f" soit {100 * (ds - da) / ds:.0f} %"
+            )
+        else:
+            # Un gain nul est un RÉSULTAT, pas une erreur : sur un lien
+            # rapide, le temps est dominé par l'installation et non par le
+            # téléchargement.
+            print(
+                "    aucun gain de TEMPS : sur ce lien, le téléchargement ne"
+                " domine pas.\n    Le gain porte alors sur les octets, colonne"
+                " « amont »."
+            )
+    if not compare:
+        print("\n  Aucune condition ne réunit une exécution avec cache et son")
+        print("  témoin. Lancer les deux sur le MÊME système et la même")
+        print("  charge, par exemple :")
         print(
-            "    ./long_test/qemu_cache.py" + (" --sans-cache" if avec else "")
+            "    ./long_test/qemu_cache.py --distro ubuntu --charge erplibre"
+        )
+        print(
+            "    ./long_test/qemu_cache.py --distro ubuntu --charge erplibre"
+            " --sans-cache"
         )
     print()
     return 0
