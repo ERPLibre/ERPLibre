@@ -60,12 +60,47 @@ def dire(msg, journal=None):
             fh.write(ligne + "\n")
 
 
+CAPACITE_FORCEE = "EL_LONGTEST_CAPACITY"
+
+
+def capacite_forcee(brut):
+    """Le triple que « EL_LONGTEST_CAPACITY » impose, ou None s'il est absent.
+
+    Attend « cœurs,RAM_Mo,disque_Go ». Une valeur illisible LÈVE au lieu de
+    se rabattre sur la machine : un essai à blanc qui se croit forcé et lit
+    en fait le disque local rend un plan sans rapport avec ce qu'on relit.
+    """
+    if not brut:
+        return None
+    morceaux = brut.split(",")
+    if len(morceaux) != 3:
+        raise ValueError(
+            f"{CAPACITE_FORCEE} attend « cœurs,RAM_Mo,disque_Go » :"
+            f" {brut!r} porte {len(morceaux)} champ(s)"
+        )
+    try:
+        coeurs, ram, disque = (int(x.strip()) for x in morceaux)
+    except ValueError:
+        raise ValueError(
+            f"{CAPACITE_FORCEE} attend trois entiers : {brut!r}"
+        ) from None
+    return coeurs, ram, disque
+
+
 def capacite_hote():
     """(cœurs, RAM disponible en Mo, disque libre en Go) de la machine réelle.
 
     « available » et non « free » : c'est ce que le noyau promet de rendre sans
     mettre la machine à genoux.
+
+    « EL_LONGTEST_CAPACITY » impose le triple. Le plan se déduit de ce que la
+    machine offre, donc un essai à blanc sur une station étroite rend une
+    descente vide et sort en 1 : la couture tient l'épreuve du PLAN sur une
+    capacité connue, là où la mesure tient la descente réelle.
     """
+    force = capacite_forcee(os.environ.get(CAPACITE_FORCEE))
+    if force:
+        return force
     coeurs = os.cpu_count() or 2
     ram = 0
     try:

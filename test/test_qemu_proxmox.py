@@ -38,6 +38,37 @@ from unittest import mock
 RACINE = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = RACINE / "script/proxmox/install_proxmox.sh"
 
+DISQUE_BOUCHON_COURT = "vdz"
+DISQUE_BOUCHON = f"/dev/{DISQUE_BOUCHON_COURT}"
+
+# Les commandes que la cible garantit et que la station de test peut ne pas
+# avoir. Le script s'installe SUR Debian, où « hostname » est de priorité
+# requise ; ailleurs il manque, et comme fix_hosts le lit dans une
+# substitution — exécutée même en dry-run, la valeur étant nécessaire — le
+# script sort en 127 dès la première section et TOUT ce qui suit n'est
+# jamais rendu. Un bouchon par test l'emporte sur celui-ci.
+STUBS_DEFAUT = {
+    "hostname": (
+        'case "$1" in\n'
+        "  -s) echo pve-test ;;\n"
+        "  -f) echo pve-test.local ;;\n"
+        "  *) echo pve-test ;;\n"
+        "esac"
+    ),
+    # preseed_debconf s'ouvre sur « command -v debconf-set-selections ||
+    # return 0 » : absente, la fonction se retire en silence et les deux
+    # préréponses qui empêchent apt de rester pendu ne sont jamais rendues.
+    "debconf-set-selections": "cat > /dev/null",
+    # boot_disk() lit le disque d'amorçage RÉEL de la station. Le fixer
+    # tient la préréponse grub-pc sur la logique du script plutôt que sur
+    # le partitionnement de qui lance les tests : « / » sur LVM, sur btrfs
+    # ou dans un conteneur rend un pkname vide, et la préréponse disparaît.
+    # Le nom est inventé, et absent du reste du dépôt : s'il n'apparaît pas
+    # dans la sortie, c'est que le bouchon n'a pas servi.
+    "findmnt": f"echo {DISQUE_BOUCHON}3",
+    "lsblk": f"echo {DISQUE_BOUCHON_COURT}",
+}
+
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
@@ -192,7 +223,7 @@ class TestLeScript(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bin_dir = pathlib.Path(tmp) / "bin"
             bin_dir.mkdir()
-            for nom, corps in (stubs or {}).items():
+            for nom, corps in dict(STUBS_DEFAUT, **(stubs or {})).items():
                 (bin_dir / nom).write_text(f"#!/bin/bash\n{corps}\n")
                 (bin_dir / nom).chmod(0o755)
             osrel = pathlib.Path(tmp) / "os-release"
@@ -307,7 +338,9 @@ class TestLeScript(unittest.TestCase):
         proceeding ». Mesuré : dpkg s'arrête et emporte la transaction."""
         res = self._lance(["--dry-run"])
         self.assertIn("grub-pc/install_devices", res.stdout)
-        self.assertRegex(res.stdout, r"install_devices multiselect /dev/\w+")
+        self.assertIn(
+            f"install_devices multiselect {DISQUE_BOUCHON}", res.stdout
+        )
 
     def test_apt_waits_for_the_lock_instead_of_giving_up(self):
         """Sur une VM fraîche, cloud-init tient encore le verrou : mesuré,

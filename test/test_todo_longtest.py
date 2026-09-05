@@ -26,6 +26,10 @@ from script.todo.todo import TODO  # noqa: E402
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = os.path.join(RACINE, ".venv.erplibre/bin/python")
+# Capacité imposée à l'essai à blanc : « cœurs,RAM_Mo,disque_Go ».
+# Assez large pour que les quatre étages tiennent, quelle que soit la
+# station qui lance la suite.
+CAPACITE_ESSAI = "16,32000,400"
 
 # Le moteur vit dans son propre module depuis qu'il est partagé entre
 # deep_proxmox et deep_qemu. Bouchonner « deep_proxmox.dernier_rapport » ne
@@ -101,7 +105,18 @@ class TestLEssaiABlanc(unittest.TestCase):
             text=True,
             timeout=180,
             cwd=RACINE,
-            env=dict(os.environ, PYTHONPATH=RACINE, HOME=cls.maison),
+            env=dict(
+                os.environ,
+                PYTHONPATH=RACINE,
+                HOME=cls.maison,
+                # Le plan se déduit de ce que la machine offre : une station
+                # étroite rend une descente vide, l'essai à blanc sort en 1,
+                # et les six épreuves de cette classe n'ont plus de plan à
+                # lire. La capacité est donc IMPOSÉE — ce que ces tests
+                # gardent est l'arithmétique du plan, pas le disque libre
+                # de qui les lance. Large de quoi tenir les quatre étages.
+                EL_LONGTEST_CAPACITY=CAPACITE_ESSAI,
+            ),
         )
 
     @classmethod
