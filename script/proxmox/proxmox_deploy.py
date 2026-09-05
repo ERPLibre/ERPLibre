@@ -24,7 +24,6 @@ import ipaddress
 import json
 import re
 import shlex
-import subprocess
 
 # Réglages par défaut d'une VM Proxmox. Chacun a sa raison :
 #
@@ -46,123 +45,17 @@ VMID_MIN = 100
 DISK_CONTENT = ("images", "rootdir")
 
 
-def ssh_argv(host: dict, remote: str, tty: bool = False) -> list:
-    """Commande ssh complète pour exécuter `remote` sur l'hôte Proxmox.
-
-    `host` : {"target": "root@203.0.113.5", "jump": "rebond", "port": "22"} —
-    « target » suffit quand l'alias vient de ~/.ssh/config, qui porte déjà
-    l'utilisateur, le port et le ProxyJump.
-    """
-    argv = ["ssh"]
-    if not tty:
-        argv += ["-o", "BatchMode=yes"]
-    argv += ["-o", "ConnectTimeout=10"]
-    if host.get("port"):
-        argv += ["-p", str(host["port"])]
-    if host.get("jump"):
-        argv += ["-J", host["jump"]]
-    if tty:
-        argv.append("-t")
-    argv += [host["target"], remote]
-    return argv
-
-
-def wrap_privilege(remote: str, prefix: str) -> str:
-    """Enveloppe la commande pour qu'elle tourne en root, si nécessaire.
-
-    « sudo sh -c '<tout>' » et non « sudo <tout> » : les commandes de ce module
-    sont des SUITES (« mkdir && if … fi », une boucle for, une redirection).
-    Préfixer par sudo n'élèverait que le premier mot, et la redirection
-    resterait celle du shell non privilégié — donc « permission denied » sur
-    /root ou /boot/efi.
-    """
-    if not prefix:
-        return remote
-    return "sudo sh -c " + shlex.quote(remote)
-
-
-# Ce que ssh écrit de lui-même, et qui n'est pas la réponse de l'hôte. Retiré
-# à la source : un avertissement laissé dans la sortie a été pris pour un nom
-# de pont par `parse_bridges`, et « (ED25519) » s'est retrouvé dans un
-# « qm create » enrobé de « sudo sh -c » — d'où le « sh: 1: Syntax error:
-# "(" unexpected » rapporté. Filtrer chez chaque lecteur aurait laissé le
-# suivant retomber dans le piège.
-_BRUIT_SSH = (
-    "Warning: Permanently added",
-    "Pseudo-terminal will not be allocated",
-    "Connection to ",
-    "Shared connection to ",
-    "Killed by signal",
-    "mesg: ttyname failed",
-    "stdin: is not a tty",
+# Le transport ssh vit dans script/remote/ : il ne sait rien de Proxmox, et
+# une seconde appliance en aurait fait une copie. Ces noms restent lisibles
+# ici — une quarantaine d'appels et leurs tests les nomment ainsi, et un test
+# qui REMPLACE `run` le fait sur ce module.
+from script.remote.appliance_ssh import (  # noqa: E402,F401
+    collapse_progress,
+    run,
+    ssh_argv,
+    strip_ssh_noise,
+    wrap_privilege,
 )
-
-
-def strip_ssh_noise(text: str) -> str:
-    """La sortie de l'hôte, débarrassée de ce que ssh y a ajouté.
-
-    Ce sont des lignes de ssh lui-même (clé d'hôte enregistrée, pseudo-terminal
-    refusé, connexion fermée) : elles n'apprennent rien sur la commande et
-    n'ont donc rien à faire dans ce qu'on analyse ou affiche.
-    """
-    gardees = [
-        ligne
-        for ligne in (text or "").splitlines()
-        if not ligne.strip().startswith(_BRUIT_SSH)
-    ]
-    return "\n".join(gardees) + ("\n" if gardees else "")
-
-
-# Les lignes d'AVANCEMENT : « transferred 1.2 GiB of 3.0 GiB (40%) » répété
-# cent fois par « qm set --import-from », les points de wget. Elles ne disent
-# qu'une chose, et la dernière la dit aussi bien.
-_RE_PROGRES = re.compile(
-    r"^\s*(transferred\s+[\d.]+|\d+K\s+\.|.*\.{10}.*\d+%)"
-)
-
-
-def collapse_progress(text: str) -> str:
-    """Ne garde que la DERNIÈRE ligne de chaque salve d'avancement.
-
-    Le journal du premier essai réel faisait 136 lignes, dont cent
-    « transferred … » : l'erreur utile se lisait au chausse-pied. Un
-    avancement compte pendant qu'il défile, pas dans un fichier qu'on relit.
-    """
-    sortie, salve = [], 0
-    for ligne in (text or "").splitlines():
-        if _RE_PROGRES.match(ligne):
-            salve += 1
-            continue
-        if salve:
-            sortie.append(f"   … {salve} lignes d'avancement …")
-            salve = 0
-        sortie.append(ligne)
-    if salve:
-        sortie.append(f"   … {salve} lignes d'avancement …")
-    return "\n".join(sortie)
-
-
-def run(host: dict, remote: str, timeout: int = 120) -> tuple:
-    """(code, sortie) de `remote` exécuté sur l'hôte. Ne lève jamais.
-
-    `host["sudo"]` non vide -> la commande passe par sudo : « qm » exige les
-    privilèges, et l'accès offert par une VM du parc est celui d'`erplibre`.
-    """
-    remote = wrap_privilege(remote, host.get("sudo") or "")
-    try:
-        res = subprocess.run(
-            ssh_argv(host, remote),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return 255, "timeout"
-    except (OSError, subprocess.SubprocessError) as exc:
-        return 255, str(exc)
-    return res.returncode, strip_ssh_noise(
-        (res.stdout or "") + (res.stderr or "")
-    )
 
 
 # --------------------------------------------------------------------------- #
