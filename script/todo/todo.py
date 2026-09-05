@@ -1533,6 +1533,46 @@ class TODO(
         flush()
         return "".join(out)
 
+    # Ce qu'on fait de la clé d'hôte, une politique par ligne écrite.
+    _SSH_HOST_KEY_LINES = {
+        # Machines jetables dont l'IP se réutilise entre deux VM : vérifier
+        # refuserait une machine neuve à chaque fois, et known_hosts se
+        # remplirait d'entrées mortes. Ne protège de rien, et l'assume.
+        "throwaway": (
+            "    StrictHostKeyChecking no\n"
+            "    UserKnownHostsFile /dev/null\n"
+        ),
+        # La première connexion est acceptée et RETENUE : un changement
+        # ultérieur est alors refusé, ce que « no » ne fait jamais.
+        "accept-new": "    StrictHostKeyChecking accept-new\n",
+        # Rien n'est accepté qui ne soit déjà connu.
+        "strict": "    StrictHostKeyChecking yes\n",
+    }
+
+    # Les redirections, par genre. Le genre choisit la directive ; la
+    # spécification est recopiée telle quelle, après contrôle.
+    _SSH_FORWARD_DIRECTIVES = {
+        "local": "LocalForward",
+        "remote": "RemoteForward",
+        "dynamic": "DynamicForward",
+    }
+
+    @classmethod
+    def _genre_de_redirection(cls, genre):
+        """La directive OpenSSH d'un genre de redirection, ou une erreur.
+
+        Refuser un genre inconnu ICI plutôt que d'écrire une ligne que ssh
+        rejettera : il refuse alors le FICHIER entier, donc toutes les
+        machines, pour une seule entrée mal formée.
+        """
+        directive = cls._SSH_FORWARD_DIRECTIVES.get(genre)
+        if directive is None:
+            connus = ", ".join(cls._SSH_FORWARD_DIRECTIVES)
+            raise ValueError(
+                f"forwards : genre « {genre} » inconnu. Connus : {connus}."
+            )
+        return directive
+
     @staticmethod
     def _ssh_config_value(valeur, champ):
         """Une valeur destinée à une ligne de ~/.ssh/config, ou une erreur.
@@ -1561,6 +1601,9 @@ class TODO(
         proxy_jump=None,
         identity_file=None,
         also_drop=(),
+        host_keys=None,
+        forward_agent=None,
+        forwards=(),
     ):
         """Écrit/remplace un bloc « Host <host> » dans ~/.ssh/config.
 
@@ -1579,7 +1622,19 @@ class TODO(
 
         `identity_file` : clé PRIVÉE à présenter. Sans elle, ssh propose
         toutes les identités de l'agent et un parc un peu fourni déclenche
-        « Too many authentication failures » avant d'arriver à la bonne."""
+        « Too many authentication failures » avant d'arriver à la bonne.
+
+        `host_keys`, `forward_agent` et `forwards` viennent d'une POSTURE.
+        Laissés à None, le bloc est identique au caractère près à celui qui
+        s'écrivait avant qu'ils existent : une machine déployée sans posture
+        ne doit pas changer de configuration parce que la notion est
+        apparue.
+
+        `forward_agent` À FAUX écrit un refus, il n'omet pas la ligne.
+        OpenSSH ne transfère pas l'agent par défaut, donc omettre suffirait
+        techniquement — mais le fichier ne dirait alors pas la différence
+        entre « on l'a interdit » et « personne n'y a pensé », et c'est
+        justement la ligne qu'on relira le jour où on se le demandera."""
         names = [host] if isinstance(host, str) else list(host)
         controle = self._ssh_config_value
         names = [controle(n, "Host") for n in names]
@@ -1588,6 +1643,15 @@ class TODO(
         ip = controle(ip, "HostName")
         proxy_jump = controle(proxy_jump, "ProxyJump")
         identity_file = controle(identity_file, "IdentityFile")
+        if host_keys is not None and host_keys not in self._SSH_HOST_KEY_LINES:
+            connues = ", ".join(self._SSH_HOST_KEY_LINES)
+            raise ValueError(
+                f"host_keys : « {host_keys} » inconnu. Connus : {connues}."
+            )
+        redirections = [
+            (self._genre_de_redirection(genre), controle(spec, "Forward"))
+            for genre, spec in forwards
+        ]
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""
@@ -1613,9 +1677,11 @@ class TODO(
             f"Host {' '.join(names)}\n"
             f"    HostName {ip}\n"
             f"    User {user}\n"
-            # IP DHCP réutilisées entre VM -> on évite l'erreur de clé d'hôte.
-            f"    StrictHostKeyChecking no\n"
-            f"    UserKnownHostsFile /dev/null\n"
+            # Sans posture, « throwaway » : c'est ce qui s'écrivait avant
+            # que la notion existe, et des IP DHCP réutilisées entre VM
+            # feraient sinon échouer la connexion sur un changement de clé
+            # qui n'en est pas un.
+            + self._SSH_HOST_KEY_LINES[host_keys or "throwaway"]
         )
         if identity_file:
             # IdentitiesOnly : sans lui, IdentityFile s'AJOUTE aux clés de
@@ -1627,6 +1693,10 @@ class TODO(
             )
         if proxy_jump:
             block += f"    ProxyJump {proxy_jump}\n"
+        if forward_agent is not None:
+            block += f"    ForwardAgent {'yes' if forward_agent else 'no'}\n"
+        for directive, spec in redirections:
+            block += f"    {directive} {spec}\n"
         content = (existing + "\n\n" + block) if existing else block
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)

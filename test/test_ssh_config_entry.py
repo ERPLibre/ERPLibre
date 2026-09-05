@@ -293,5 +293,149 @@ class TestUneValeurNePeutPasAjouterDeDirective(ConfigSsh):
         self.assertIn("User erplibre-2", contenu)
 
 
+class TestLesOptionsDePosture(ConfigSsh):
+    """Trois options viennent d'une posture, et sans elle rien ne bouge."""
+
+    def test_the_defaults_write_what_was_written_before(self):
+        """Une machine déployée sans posture ne doit pas changer de
+        configuration parce que la notion est apparue."""
+        avant = self.ecrire("essai", "erplibre", IP, identity_file=CLE)
+        self.setUp()
+        apres = self.ecrire(
+            "essai",
+            "erplibre",
+            IP,
+            identity_file=CLE,
+            host_keys=None,
+            forward_agent=None,
+            forwards=(),
+        )
+        self.assertEqual(avant, apres)
+
+    def test_throwaway_is_what_the_default_already_did(self):
+        avant = self.ecrire("essai", "erplibre", IP)
+        self.setUp()
+        self.assertEqual(
+            avant, self.ecrire("essai", "erplibre", IP, host_keys="throwaway")
+        )
+
+    def test_accept_new_keeps_the_key_instead_of_ignoring_it(self):
+        """« no » n'a jamais refusé un changement de clé ; « accept-new »
+        retient la première et refuse la suivante."""
+        contenu = self.ecrire("essai", "erplibre", IP, host_keys="accept-new")
+        self.assertIn("StrictHostKeyChecking accept-new", contenu)
+        self.assertNotIn("UserKnownHostsFile /dev/null", contenu)
+
+    def test_strict_accepts_nothing_unknown(self):
+        contenu = self.ecrire("essai", "erplibre", IP, host_keys="strict")
+        self.assertIn("StrictHostKeyChecking yes", contenu)
+        self.assertNotIn("UserKnownHostsFile /dev/null", contenu)
+
+    def test_an_unknown_policy_names_the_known_ones(self):
+        with self.assertRaises(ValueError) as pris:
+            self.ecrire("essai", "erplibre", IP, host_keys="peut-etre")
+        self.assertIn("throwaway", str(pris.exception))
+
+
+class TestLeRefusDeTransfererLAgent(ConfigSsh):
+    """Un refus s'écrit ; il ne s'omet pas."""
+
+    def test_refusing_writes_the_line(self):
+        """OpenSSH ne transfère pas par défaut, donc omettre suffirait —
+        mais le fichier ne dirait plus la différence entre « on l'a
+        interdit » et « personne n'y a pensé »."""
+        contenu = self.ecrire("essai", "erplibre", IP, forward_agent=False)
+        self.assertIn("ForwardAgent no", contenu)
+
+    def test_allowing_writes_the_line_too(self):
+        contenu = self.ecrire("essai", "erplibre", IP, forward_agent=True)
+        self.assertIn("ForwardAgent yes", contenu)
+
+    def test_saying_nothing_writes_nothing(self):
+        """Contrôle positif : la ligne n'est pas systématique."""
+        self.assertNotIn("ForwardAgent", self.ecrire("essai", "erplibre", IP))
+
+
+class TestLesRedirections(ConfigSsh):
+    def test_each_kind_writes_its_directive(self):
+        contenu = self.ecrire(
+            "essai",
+            "erplibre",
+            IP,
+            forwards=(
+                ("local", "8069 localhost:8069"),
+                ("remote", "9000 localhost:9000"),
+                ("dynamic", "1080"),
+            ),
+        )
+        self.assertIn("LocalForward 8069 localhost:8069", contenu)
+        self.assertIn("RemoteForward 9000 localhost:9000", contenu)
+        self.assertIn("DynamicForward 1080", contenu)
+
+    def test_no_forward_writes_no_line(self):
+        contenu = self.ecrire("essai", "erplibre", IP)
+        self.assertNotIn("Forward", contenu)
+
+    def test_an_unknown_kind_is_refused_before_the_file_is_touched(self):
+        """ssh refuse le FICHIER entier sur une directive inconnue, donc
+        toutes les machines pour une seule entrée mal formée."""
+        self.ecrire("garde", "erplibre", IP)
+        avant = self.lire()
+        with self.assertRaises(ValueError) as pris:
+            self.ecrire("essai", "erplibre", IP, forwards=(("lateral", "1"),))
+        self.assertIn("local", str(pris.exception))
+        self.assertEqual(avant, self.lire())
+
+    def test_a_forward_cannot_add_a_directive_either(self):
+        with self.assertRaises(ValueError):
+            self.ecrire(
+                "essai",
+                "erplibre",
+                IP,
+                forwards=(("local", "1\n    ProxyCommand /tmp/rien"),),
+            )
+
+
+class TestLaCoutureAvecLeRegistre(ConfigSsh):
+    """Le registre décide, l'écrivain applique : ils doivent s'accorder."""
+
+    def test_every_policy_of_the_registry_is_understood_here(self):
+        from script import posture
+
+        self.assertTrue(posture.HOST_KEY_POLICIES)
+        for politique in posture.HOST_KEY_POLICIES:
+            with self.subTest(politique=politique):
+                self.setUp()
+                contenu = self.ecrire(
+                    "essai", "erplibre", IP, host_keys=politique
+                )
+                self.assertIn("StrictHostKeyChecking", contenu)
+
+    def test_the_two_vocabularies_are_the_same_set(self):
+        """Une politique connue d'un seul côté est soit une option morte,
+        soit une exception au moment du déploiement."""
+        from script import posture
+
+        self.assertEqual(
+            set(posture.HOST_KEY_POLICIES),
+            set(TODO._SSH_HOST_KEY_LINES),
+        )
+
+    def test_a_posture_drives_the_block_it_describes(self):
+        """Le bout en bout : une posture, et le bloc qu'elle produit."""
+        from script import posture
+
+        stricte = posture.get_posture("paranoid")
+        contenu = self.ecrire(
+            "essai" + stricte.name_suffix,
+            "erplibre",
+            IP,
+            host_keys=stricte.host_keys,
+            forward_agent=stricte.forward_agent,
+        )
+        self.assertIn("Host essai-paranoid", contenu)
+        self.assertIn("ForwardAgent no", contenu)
+
+
 if __name__ == "__main__":
     unittest.main()
