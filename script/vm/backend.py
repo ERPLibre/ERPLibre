@@ -71,10 +71,46 @@ class VmHandle(NamedTuple):
     name: str
     key: str
     proof: str
+    # OÙ le service écoute. Distinct de la clé : une VM d'un hôte distant
+    # s'adresse par son VMID et écoute sur une adresse que seul l'hôte
+    # route. Vide quand elle n'est pas encore connue — ce qui n'est pas
+    # « injoignable », et l'appelant doit pouvoir distinguer les deux.
+    address: str = ""
     # Vue IMMUABLE par défaut : un dictionnaire nu serait partagé par toutes
     # les fiches qui l'omettent, et l'une d'elles finirait par le remplir
     # pour toutes les autres.
     host: dict = MappingProxyType({})
+
+
+def pve_handle(info, name: str = "") -> VmHandle:
+    """L'identité d'une VM d'hôte Proxmox, depuis la fiche de son hôte.
+
+    UN SEUL endroit compose cette fiche. Chaque appelant qui la composait
+    lui-même le faisait par position, et un champ ajouté au milieu les
+    décalait tous en silence — l'hôte se retrouvant dans l'adresse, la
+    commande partant vers une cible vide.
+    """
+    info = dict(info or {})
+    return VmHandle(
+        backend=PVE,
+        name=name,
+        key=str(int(info.get("vmid") or 0)),
+        proof=name,
+        address=str(info.get("addr") or ""),
+        host=info,
+    )
+
+
+def libvirt_handle(name: str, uuid: str = "", ip: str = "") -> VmHandle:
+    """L'identité d'une VM locale. Même raison qu'au-dessus."""
+    return VmHandle(
+        backend=LIBVIRT,
+        name=name,
+        key=name,
+        proof=str(uuid or ""),
+        address=str(ip or ""),
+        host={},
+    )
 
 
 def handle_of(entry) -> VmHandle | None:
@@ -95,21 +131,9 @@ def handle_of(entry) -> VmHandle | None:
         # Le VMID adresse ; le nom prouve. Un VMID libéré est réattribué,
         # donc effacer « le 101 » d'un manifeste de mars, c'est effacer ce
         # qui porte le 101 aujourd'hui.
-        return VmHandle(
-            backend=PVE,
-            name=nom,
-            key=str(int(info.get("vmid") or 0)),
-            proof=nom,
-            host=dict(info),
-        )
+        return pve_handle(info, nom)
     # Le nom adresse — c'est virsh qui l'impose — et l'UUID prouve.
-    return VmHandle(
-        backend=LIBVIRT,
-        name=nom,
-        key=nom,
-        proof=str(entry.get("uuid") or ""),
-        host={},
-    )
+    return libvirt_handle(nom, uuid=entry.get("uuid"), ip=entry.get("ip"))
 
 
 def addresses_by_name(handle) -> bool:

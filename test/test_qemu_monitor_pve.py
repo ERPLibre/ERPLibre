@@ -563,6 +563,10 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         self.assertIn("qm config 101", cmd)
         self.assertIn("exit 1", cmd)
         self.assertIn("qm destroy 101", cmd)
+        # Et elle part vers CET hôte. Sans cette ligne, une fiche d'hôte
+        # perdue en chemin laissait la commande viser une cible VIDE, et
+        # rien ne le disait.
+        self.assertIn("pve9", cmd)
         # Le garde vient AVANT la destruction, sinon il ne garde rien.
         self.assertLess(cmd.index("qm config 101"), cmd.index("qm destroy"))
 

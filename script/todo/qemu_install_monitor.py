@@ -27,7 +27,12 @@ from pathlib import Path
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.vm import verbs as vm_verbs
-from script.vm.backend import LIBVIRT, PVE, VmHandle, handle_of
+from script.vm.backend import (
+    LIBVIRT,
+    handle_of,
+    libvirt_handle,
+    pve_handle,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -1694,20 +1699,14 @@ def _read_pvestats(vms, now=None):
 def web_tunnel_argv(info, port=18069, cible_port=8069):
     """argv d'un tunnel local vers le port web d'une VM distante, ou None.
 
-    Une VM sur pont interne n'est pas routable d'ici : un navigateur ne peut
-    pas l'atteindre, et la touche « w » ouvrait une page morte. Le tunnel
-    passe par l'hôte, dure le temps de la visite, et se referme par son PID —
-    « pkill -f <motif> » tuait le shell qui l'avait lancé, le motif figurant
-    dans sa propre ligne de commande.
+    Relais vers `script.vm.verbs.web_access`, qui rend aussi l'URL — les
+    deux se décidaient séparément et pouvaient donc se contredire.
     """
-    info = info or {}
-    if not (info.get("addr") and info.get("target")):
-        return None
-    argv = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes"]
-    if info.get("jump"):
-        argv += ["-J", info["jump"]]
-    argv += ["-L", f"{port}:{info['addr']}:{cible_port}", info["target"]]
-    return argv
+    info = dict(info or {})
+    return (
+        list(vm_verbs.web_access(pve_handle(info), port, cible_port).tunnel)
+        or None
+    )
 
 
 def vm_ssh_prefix(vm) -> str:
@@ -1736,9 +1735,7 @@ def pve_host_cmd(info, remote, tty=False) -> str:
     Relais vers `script.vm.verbs.host_command`, qui le fait pour tous les
     backends. Ce nom reste pour les appelants qui le connaissent ici.
     """
-    return vm_verbs.host_command(
-        VmHandle(PVE, "", "", "", dict(info or {})), remote, tty
-    )
+    return vm_verbs.host_command(pve_handle(info), remote, tty)
 
 
 def arm_balloon(names) -> None:
@@ -1881,9 +1878,7 @@ def pve_identity_guard(vmid: int, name: str) -> str:
     Relais vers `script.vm.verbs.identity_guard`, qui pose la même question
     à chaque backend avec la clé et la preuve qui lui sont propres.
     """
-    return vm_verbs.identity_guard(
-        VmHandle(PVE, name, str(int(vmid)), name, {})
-    )
+    return vm_verbs.identity_guard(pve_handle({"vmid": vmid}, name))
 
 
 def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
@@ -1894,7 +1889,7 @@ def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
     aujourd'hui.
     """
     info = dict(info or {})
-    handle = VmHandle(PVE, name, str(int(info.get("vmid") or 0)), name, info)
+    handle = pve_handle(info, name)
     return vm_verbs.delete_command(handle, with_disks=purge)
 
 
@@ -1938,7 +1933,7 @@ def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
     Relais vers `script.vm.verbs.delete_command`. `uuid` arme le garde : un
     nom de domaine se réemploie, l'UUID naît et meurt avec le domaine.
     """
-    handle = VmHandle(LIBVIRT, name, name, uuid or "", {})
+    handle = libvirt_handle(name, uuid=uuid)
     return vm_verbs.delete_command(handle, with_disks, sudo_prefix(), URI)
 
 
@@ -2886,12 +2881,12 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             if not browser:
                 return
             port = 18069
-            argv_tunnel = web_tunnel_argv(vm.get("pve"), port)
-            url = (
-                f"http://127.0.0.1:{port}"
-                if argv_tunnel
-                else f"http://{vm['ip']}:8069"
-            )
+            # L'URL et le tunnel viennent ENSEMBLE : décidés séparément, ils
+            # pouvaient se contredire — une page en 127.0.0.1 sans tunnel,
+            # ou l'inverse. Le repli garde l'adresse du déploiement.
+            acces = vm_verbs.web_access(handle_of(vm), port)
+            argv_tunnel = list(acces.tunnel)
+            url = acces.url or f"http://{vm['ip']}:8069"
             with self.suspend():
                 proc = None
                 if argv_tunnel:

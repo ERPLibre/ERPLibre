@@ -188,5 +188,54 @@ class TestIlNeCommandeRien(unittest.TestCase):
             self.assertNotIn(interdit, noms)
 
 
+class TestLesFabriquesRemplissentTout(unittest.TestCase):
+    """Un seul endroit compose une fiche, et il la compose ENTIÈRE.
+
+    Chaque appelant qui la composait lui-même le faisait par position. Un
+    champ ajouté au milieu les décalait tous en silence : l'hôte se
+    retrouvait dans l'adresse, et la commande partait vers une cible vide
+    sans que rien ne le dise. Ces épreuves nomment chaque champ.
+    """
+
+    def test_the_remote_factory_fills_every_field(self):
+        handle = V.pve_handle(
+            {"vmid": 101, "target": "hote.exemple", "addr": "198.51.100.7"},
+            "essai",
+        )
+        self.assertEqual(V.PVE, handle.backend)
+        self.assertEqual("essai", handle.name)
+        self.assertEqual("101", handle.key)
+        self.assertEqual("essai", handle.proof)
+        self.assertEqual("198.51.100.7", handle.address)
+        self.assertEqual("hote.exemple", handle.host["target"])
+
+    def test_the_local_factory_fills_every_field(self):
+        handle = V.libvirt_handle("essai", uuid="abc-123", ip="192.0.2.10")
+        self.assertEqual(V.LIBVIRT, handle.backend)
+        self.assertEqual("essai", handle.name)
+        self.assertEqual("essai", handle.key)
+        self.assertEqual("abc-123", handle.proof)
+        self.assertEqual("192.0.2.10", handle.address)
+        self.assertEqual({}, dict(handle.host))
+
+    def test_the_factories_and_the_reader_agree(self):
+        """Deux chemins vers la même fiche finiraient par diverger."""
+        self.assertEqual(
+            V.handle_of(DISTANTE), V.pve_handle(DISTANTE["pve"], "essai")
+        )
+        self.assertEqual(
+            V.handle_of(LOCALE),
+            V.libvirt_handle("essai", uuid="abc-123", ip="192.0.2.10"),
+        )
+
+    def test_a_bare_factory_call_leaves_no_field_undefined(self):
+        """Une fiche minimale doit rester utilisable, pas à moitié faite."""
+        for handle in (V.pve_handle({}), V.libvirt_handle("essai")):
+            with self.subTest(backend=handle.backend):
+                self.assertIsInstance(handle.address, str)
+                self.assertIsInstance(handle.proof, str)
+                self.assertIsInstance(dict(handle.host), dict)
+
+
 if __name__ == "__main__":
     unittest.main()

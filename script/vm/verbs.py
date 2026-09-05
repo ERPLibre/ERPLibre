@@ -205,3 +205,43 @@ def console(handle, sudo: str = "", uri: str = LIBVIRT_URI) -> Console:
     raise VerbNotImplemented(
         f"console : backend « {handle.backend} » inconnu."
     )
+
+
+class WebAccess(NamedTuple):
+    """Comment atteindre le service web d'une VM depuis ICI.
+
+    `tunnel` vide veut dire que l'adresse est joignable telle quelle. Une
+    URL vide veut dire qu'on ne sait pas encore où elle écoute — ce qui
+    n'est pas « la page est morte », et l'écran doit pouvoir le dire.
+    """
+
+    url: str
+    tunnel: tuple
+
+
+def web_access(handle, port: int = 18069, service: int = 8069) -> WebAccess:
+    """L'URL du service web, et le tunnel qu'il faut pour l'atteindre.
+
+    Une VM sur un pont interne n'est pas routable d'ici : un navigateur ne
+    peut pas l'atteindre, et la page reste morte sans que rien ne dise
+    pourquoi. Le tunnel passe par l'hôte et dure le temps de la visite.
+
+    Il se referme par son PID et non par « pkill -f <motif> » : le motif
+    figure dans la ligne de commande du shell qui l'a lancé, qui se faisait
+    donc tuer avec lui.
+    """
+    if handle is None:
+        raise VerbNotImplemented("web_access : aucune identité.")
+    if not handle.address:
+        return WebAccess("", ())
+    if handle.backend == PVE and handle.host.get("target"):
+        argv = ["ssh", "-N", "-o", "ExitOnForwardFailure=yes"]
+        if handle.host.get("jump"):
+            argv += ["-J", handle.host["jump"]]
+        argv += [
+            "-L",
+            f"{port}:{handle.address}:{service}",
+            handle.host["target"],
+        ]
+        return WebAccess(f"http://127.0.0.1:{port}", tuple(argv))
+    return WebAccess(f"http://{handle.address}:{service}", ())

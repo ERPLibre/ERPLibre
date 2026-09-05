@@ -16,6 +16,8 @@ from script.vm.backend import (  # noqa: F401
     VmHandle,
     addresses_by_name,
     handle_of,
+    libvirt_handle,
+    pve_handle,
     is_armed,
     same_machine,
 )

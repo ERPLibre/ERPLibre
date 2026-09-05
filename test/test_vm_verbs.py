@@ -296,5 +296,79 @@ class TestLaConsole(unittest.TestCase):
             V.console(LOCALE._replace(backend="lima"))
 
 
+class TestLAccesWeb(unittest.TestCase):
+    """Une VM sur pont interne n'est pas routable d'ici."""
+
+    AVEC_ADRESSE = B.pve_handle(
+        {"vmid": 101, "target": "hote.exemple", "addr": "198.51.100.7"},
+        "essai",
+    )
+
+    def test_a_reachable_address_needs_no_tunnel(self):
+        acces = V.web_access(B.libvirt_handle("essai", ip="192.0.2.10"))
+        self.assertEqual("http://192.0.2.10:8069", acces.url)
+        self.assertEqual((), acces.tunnel)
+
+    def test_an_internal_address_is_reached_through_a_tunnel(self):
+        """Sans lui le navigateur ouvrait une page morte, et rien ne disait
+        pourquoi."""
+        acces = V.web_access(self.AVEC_ADRESSE)
+        self.assertEqual("http://127.0.0.1:18069", acces.url)
+        self.assertIn("-L", acces.tunnel)
+        self.assertIn("18069:198.51.100.7:8069", acces.tunnel)
+        self.assertIn("hote.exemple", acces.tunnel)
+
+    def test_the_url_and_the_tunnel_always_agree(self):
+        """Décidés séparément, ils pouvaient se contredire : une page en
+        127.0.0.1 sans tunnel, ou l'inverse."""
+        cas = (
+            self.AVEC_ADRESSE,
+            B.libvirt_handle("essai", ip="192.0.2.10"),
+            B.pve_handle({"vmid": 101, "target": "hote.exemple"}, "essai"),
+        )
+        for handle in cas:
+            with self.subTest(backend=handle.backend):
+                acces = V.web_access(handle)
+                boucle = acces.url.startswith("http://127.0.0.1")
+                self.assertEqual(boucle, bool(acces.tunnel))
+
+    def test_the_jump_travels_into_the_tunnel(self):
+        avec = B.pve_handle(
+            {
+                "vmid": 101,
+                "target": "hote.exemple",
+                "addr": "198.51.100.7",
+                "jump": "bastion.exemple",
+            },
+            "essai",
+        )
+        self.assertIn("-J", V.web_access(avec).tunnel)
+        self.assertIn("bastion.exemple", V.web_access(avec).tunnel)
+
+    def test_an_unknown_address_is_said_and_not_composed(self):
+        """« http://None:8069 » est une page morte annoncée comme vivante."""
+        acces = V.web_access(
+            B.pve_handle({"vmid": 101, "target": "hote.exemple"}, "essai")
+        )
+        self.assertEqual("", acces.url)
+        self.assertEqual((), acces.tunnel)
+
+    def test_the_ports_are_the_ones_given(self):
+        acces = V.web_access(self.AVEC_ADRESSE, port=19000, service=8070)
+        self.assertEqual("http://127.0.0.1:19000", acces.url)
+        self.assertIn("19000:198.51.100.7:8070", acces.tunnel)
+
+    def test_the_tunnel_fails_loudly_rather_than_silently(self):
+        """Sans ExitOnForwardFailure, ssh reste ouvert sur un port déjà
+        pris, et la page s'ouvre sur le service de quelqu'un d'autre."""
+        self.assertIn(
+            "ExitOnForwardFailure=yes", V.web_access(self.AVEC_ADRESSE).tunnel
+        )
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.web_access(None)
+
+
 if __name__ == "__main__":
     unittest.main()
