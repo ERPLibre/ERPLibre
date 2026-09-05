@@ -11863,6 +11863,10 @@ TRANSLATIONS = {
         "en": "Vault not opened: giving up.",
     },
     # Écran de statistiques (phase 3).
+    "mail_search_press_enter": {
+        "fr": "cache chiffré : Entrée pour chercher dans toute la boîte",
+        "en": "encrypted cache: press Enter to search the whole mailbox",
+    },
     "mail_stats_binding": {"fr": "Statistiques", "en": "Statistics"},
     "mail_stats_close": {"fr": "Fermer", "en": "Close"},
     "mail_stats_by_day": {"fr": "par jour", "en": "by day"},

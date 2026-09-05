@@ -197,6 +197,13 @@ def is_unread(flags: str | None) -> bool:
     return "\\seen" not in (flags or "").lower()
 
 
+def fold(text: str) -> str:
+    """Repli public : minuscules et accents retirés, pour comparer deux
+    textes saisis par des humains. Le cache s'en sert aussi, d'où le nom
+    sans souligné."""
+    return _fold(text)
+
+
 def _fold(text: str) -> str:
     """Sans accents ni casse : « revise » doit trouver « révisé »."""
     stripped = unicodedata.normalize("NFKD", text or "")

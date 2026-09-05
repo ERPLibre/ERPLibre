@@ -1166,13 +1166,39 @@ def run_tui(
             )
             self.refresh_list()
 
+        def visible_metas(self) -> list:
+            """Les messages à afficher : le dossier, ou le résultat.
+
+            Sans requête, la page chargée. Avec une requête, le CACHE
+            ENTIER — `filter_messages` ne voyait que les 500 messages de la
+            page courante et rendait « aucun résultat » sur une boîte qui
+            en contenait des milliers, sans jamais dire qu'elle n'avait pas
+            regardé plus loin.
+            """
+            if not self.query:
+                return list(self.metas)
+            if not getattr(self, "recherche_complete", True):
+                return tui_text.filter_messages(self.metas, self.query)
+            if self.current_ref is None:
+                return tui_text.filter_messages(self.metas, self.query)
+            session = self.session_for(self.current_ref.account_name)
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            try:
+                return session.store.search(
+                    self.query, folder_id=(etat or {}).get("id")
+                )
+            except Exception:
+                # Un cache verrouillé ou un index absent ne doit pas vider
+                # la liste : on retombe sur ce qui est chargé.
+                return tui_text.filter_messages(self.metas, self.query)
+
         def refresh_list(self) -> None:
             import time
 
             table = self.query_one("#list", DataTable)
             table.clear()
             now = int(time.time())
-            for meta in tui_text.filter_messages(self.metas, self.query):
+            for meta in self.visible_metas():
                 table.add_row(
                     "●" if tui_text.is_unread(meta.flags) else " ",
                     tui_text.truncate(tui_text.short_addr(meta.frm), 22),
@@ -1230,7 +1256,7 @@ def run_tui(
             table = self.query_one("#list", DataTable)
             if table.cursor_row is None or not self.metas:
                 return None
-            shown = tui_text.filter_messages(self.metas, self.query)
+            shown = self.visible_metas()
             if table.cursor_row >= len(shown):
                 return None
             return shown[table.cursor_row]
@@ -1255,7 +1281,34 @@ def run_tui(
                 # pour rien dès que le champ change de valeur.
                 return
             self.query = event.value
+            # Sans index, chaque frappe déchiffrerait toute la boîte : plus
+            # de quatre secondes par lettre sur une grande boîte, sur le fil
+            # de l'interface. On s'en tient alors à ce qui est chargé, et
+            # Entrée lance la recherche complète.
+            self.recherche_complete = self.search_is_live()
             self.refresh_list()
+            if not self.recherche_complete and event.value:
+                self.set_status(t("mail_search_press_enter"))
+
+        def on_input_submitted(self, event) -> None:
+            if event.input.id != "search":
+                return
+            self.recherche_complete = True
+            self.refresh_list()
+
+        def search_is_live(self) -> bool:
+            """Vrai si la recherche peut suivre la frappe.
+
+            L'index répond en millisecondes ; le balayage déchiffré coûte
+            des secondes et ne peut pas se rejouer à chaque lettre.
+            """
+            if self.current_ref is None:
+                return True
+            try:
+                session = self.session_for(self.current_ref.account_name)
+                return session.store.search_is_indexed()
+            except Exception:
+                return False
 
         def show_preview(self) -> None:
             meta = self.current_meta()

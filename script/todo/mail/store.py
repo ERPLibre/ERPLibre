@@ -32,7 +32,7 @@ from pathlib import Path
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 EPHEMERAL_PREFIX = "erplibre-mail-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -147,6 +147,54 @@ class MessageMeta:
     # tests, où une empreinte ne servirait à rien.
     in_reply_to: str = ""
     references: str = ""
+
+
+def _fts_query(texte: str) -> str:
+    """Une saisie libre → une requête FTS5 sûre.
+
+    Chaque mot devient un préfixe entre guillemets : l'utilisateur tape des
+    mots, pas la syntaxe de FTS5, et un caractère comme `"` ou `*` y ferait
+    lever une erreur de syntaxe au lieu de chercher.
+    """
+    mots = [m.replace('"', "") for m in texte.split()]
+    return " ".join(f'"{m}"*' for m in mots if m)
+
+
+def _ensure_fts(conn, mode: str) -> bool:
+    """Crée l'index plein texte, et SEULEMENT en mode clair.
+
+    FTS5 stocke en clair ce qu'il indexe. Le poser sur un cache chiffré
+    rendrait lisibles les sujets et les extraits que la base principale
+    scelle : le chiffrement ne protégerait plus que la moitié du dossier.
+    En mode chiffré la recherche déchiffre à la volée, plus lentement, ce
+    que l'écran annonce plutôt que de le laisser deviner.
+    """
+    if mode != "clear":
+        return False
+    # Les colonnes RÉELLES décident, comme pour la migration : une table
+    # créée par une version antérieure aurait moins de colonnes, et
+    # `IF NOT EXISTS` la laisserait telle quelle — la recherche
+    # répondrait alors différemment selon l'âge du cache.
+    attendues = ["subject", "snippet", "frm", "adr_to"]
+    presentes = [
+        row[1] for row in conn.execute("PRAGMA table_info(messages_fts)")
+    ]
+    definition = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'messages_fts'"
+    ).fetchone()
+    # Une table `content=''` ne stocke rien et REFUSE les DELETE : une
+    # resynchronisation ne pourrait alors pas remplacer l'entrée d'un
+    # message déjà indexé. Les colonnes ne suffisent pas à distinguer les
+    # deux formes, d'où la lecture de la définition elle-même.
+    sans_contenu = bool(definition) and "content=''" in (definition[0] or "")
+    if presentes and (presentes != attendues or sans_contenu):
+        conn.execute("DROP TABLE messages_fts")
+        presentes = []
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts"
+        f" USING fts5({', '.join(attendues)})"
+    )
+    return not presentes
 
 
 def _addresses(value: str) -> list[str]:
@@ -321,6 +369,7 @@ class Store:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(SCHEMA)
             _ensure_columns(conn)
+            neuf = _ensure_fts(conn, self.mode)
             # REPLACE, pas IGNORE : un cache d'avant la v2 porte encore
             # « 1 », et l'ignorer laisserait la version mentir sur une base
             # qu'on vient justement de migrer.
@@ -342,6 +391,12 @@ class Store:
         # un handle sans schéma — et le open() suivant, voyant `_conn` non nul,
         # réussirait en silence sur une base inutilisable.
         self._conn = conn
+        if neuf:
+            # Un index vide répondrait « aucun résultat » sur une boîte
+            # pleine, ce qui se lit comme une absence et non comme un index
+            # à construire. On le remplit avec ce que le cache contient
+            # déjà, sans rien redemander au serveur.
+            self._reindexer()
         if db_path.exists():
             os.chmod(db_path, 0o600)
 
@@ -579,6 +634,7 @@ class Store:
             )
             for m in metas
         ]
+        self._indexer(db, folder_id, metas)
         db.executemany(
             "INSERT INTO messages(folder_id, uid, date, size, flags,"
             " msgid_hash, sealed_msgid, sealed_from, sealed_to,"
@@ -600,6 +656,7 @@ class Store:
             "   references_hashes = excluded.references_hashes",
             rows,
         )
+        self._indexer_apres(db, folder_id, metas)
         db.commit()
         return len(rows)
 
@@ -783,6 +840,150 @@ class Store:
             params,
         )
         return [delai for (delai,) in lignes if delai > 0]
+
+    def _indexer(self, db, folder_id: int, metas: list) -> None:
+        """Range sujet et extrait dans l'index plein texte.
+
+        Appelée AVANT l'insertion : l'identifiant de ligne d'un message déjà
+        connu ne change pas, et celui d'un message neuf n'existe pas encore
+        — on le retrouve donc après coup par `(folder_id, uid)`. Un index
+        qui n'existe pas (mode chiffré) fait de cette fonction un passage à
+        vide.
+        """
+        if self.mode != "clear":
+            return
+        for m in metas:
+            ligne = db.execute(
+                "SELECT id FROM messages WHERE folder_id = ? AND uid = ?",
+                (folder_id, m.uid),
+            ).fetchone()
+            if ligne is not None:
+                db.execute(
+                    "DELETE FROM messages_fts WHERE rowid = ?", (ligne[0],)
+                )
+        db.commit()
+
+    def _indexer_apres(self, db, folder_id: int, metas: list) -> None:
+        """Le second temps : les identifiants existent, on peut indexer."""
+        if self.mode != "clear":
+            return
+        for m in metas:
+            ligne = db.execute(
+                "SELECT id FROM messages WHERE folder_id = ? AND uid = ?",
+                (folder_id, m.uid),
+            ).fetchone()
+            if ligne is None:
+                continue
+            db.execute(
+                "INSERT INTO messages_fts(rowid, subject, snippet,"
+                " frm, adr_to) VALUES(?,?,?,?,?)",
+                (
+                    ligne[0],
+                    m.subject or "",
+                    m.snippet or "",
+                    m.frm or "",
+                    m.to or "",
+                ),
+            )
+
+    def _reindexer(self) -> None:
+        """Remplit l'index depuis les lignes déjà en cache.
+
+        Sans ce rattrapage, un cache existant chercherait dans un index
+        vide : la recherche rendrait zéro résultat sur une boîte pleine,
+        ce qui se lit comme « rien ne correspond » et non comme « l'index
+        n'existe pas encore ».
+        """
+        if self.mode != "clear":
+            return
+        db = self._db()
+        db.execute("DELETE FROM messages_fts")
+        for row in db.execute(
+            "SELECT id, sealed_subject, sealed_snippet, sealed_from,"
+            " sealed_to FROM messages"
+        ).fetchall():
+            db.execute(
+                "INSERT INTO messages_fts(rowid, subject, snippet,"
+                " frm, adr_to) VALUES(?,?,?,?,?)",
+                (
+                    row[0],
+                    self._open(row[1]),
+                    self._open(row[2]),
+                    self._open(row[3]),
+                    self._open(row[4]),
+                ),
+            )
+        db.commit()
+
+    @_locked
+    def search(self, query: str, folder_id=None, limit: int = 500) -> list:
+        """Cherche dans TOUT le cache, pas seulement dans ce qui est chargé.
+
+        En mode clair l'index FTS5 répond ; en mode chiffré il n'existe pas
+        et on déchiffre ligne à ligne, ce qui coûte du temps sur une grande
+        boîte. `search_is_indexed` dit lequel des deux a servi, pour que
+        l'écran puisse l'annoncer.
+        """
+        query = (query or "").strip()
+        if not query:
+            return []
+        if self.mode == "clear":
+            return self._search_fts(query, folder_id, limit)
+        return self._search_scan(query, folder_id, limit)
+
+    def search_is_indexed(self) -> bool:
+        """Vrai si la recherche passe par l'index plutôt que par un
+        balayage. Ce n'est pas une préférence : c'est la conséquence du mode
+        de cache, et l'écran le dit."""
+        return self.mode == "clear"
+
+    def _search_fts(self, query, folder_id, limit) -> list:
+        motif = _fts_query(query)
+        if not motif:
+            # Une saisie qui ne laisse aucun terme utilisable — un
+            # guillemet seul — donnerait une requête vide, que FTS5 refuse
+            # par une erreur de syntaxe. Aucun terme, aucun résultat.
+            return []
+        clauses = ["messages_fts MATCH ?"]
+        params: list = [motif]
+        if folder_id is not None:
+            clauses.append("m.folder_id = ?")
+            params.append(folder_id)
+        params.append(limit)
+        rows = (
+            self._db()
+            .execute(
+                "SELECT m.* FROM messages_fts"
+                " JOIN messages m ON m.id = messages_fts.rowid"
+                f" WHERE {' AND '.join(clauses)}"
+                " ORDER BY m.date DESC LIMIT ?",
+                params,
+            )
+            .fetchall()
+        )
+        return [self._row_to_meta(r) for r in rows]
+
+    def _search_scan(self, query, folder_id, limit) -> list:
+        from script.todo.mail.tui_text import fold
+
+        aiguille = fold(query)
+        clauses, params = ["1=1"], []
+        if folder_id is not None:
+            clauses.append("folder_id = ?")
+            params.append(folder_id)
+        trouves = []
+        for row in self._db().execute(
+            f"SELECT * FROM messages WHERE {' AND '.join(clauses)}"
+            " ORDER BY date DESC",
+            params,
+        ):
+            meta = self._row_to_meta(row)
+            foin = f"{meta.subject} {meta.frm} {meta.to} {meta.snippet}"
+            if aiguille in fold(foin):
+                trouves.append(meta)
+                if len(trouves) >= limit:
+                    break
+        return trouves
 
     @_locked
     def update_flags(self, folder_id: int, uid: int, flags: str) -> None:
