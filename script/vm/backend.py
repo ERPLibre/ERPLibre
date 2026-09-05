@@ -76,13 +76,17 @@ class VmHandle(NamedTuple):
     # route. Vide quand elle n'est pas encore connue — ce qui n'est pas
     # « injoignable », et l'appelant doit pouvoir distinguer les deux.
     address: str = ""
+    # Le nom qu'un ~/.ssh/config sait résoudre seul, quand il existe. Pour
+    # une VM d'hôte distant ce n'est PAS son adresse : celle-ci n'est
+    # routable que depuis l'hôte, l'alias porte le chemin complet.
+    alias: str = ""
     # Vue IMMUABLE par défaut : un dictionnaire nu serait partagé par toutes
     # les fiches qui l'omettent, et l'une d'elles finirait par le remplir
     # pour toutes les autres.
     host: dict = MappingProxyType({})
 
 
-def pve_handle(info, name: str = "") -> VmHandle:
+def pve_handle(info, name: str = "", alias: str = "") -> VmHandle:
     """L'identité d'une VM d'hôte Proxmox, depuis la fiche de son hôte.
 
     UN SEUL endroit compose cette fiche. Chaque appelant qui la composait
@@ -97,6 +101,7 @@ def pve_handle(info, name: str = "") -> VmHandle:
         key=str(int(info.get("vmid") or 0)),
         proof=name,
         address=str(info.get("addr") or ""),
+        alias=str(alias or ""),
         host=info,
     )
 
@@ -131,7 +136,7 @@ def handle_of(entry) -> VmHandle | None:
         # Le VMID adresse ; le nom prouve. Un VMID libéré est réattribué,
         # donc effacer « le 101 » d'un manifeste de mars, c'est effacer ce
         # qui porte le 101 aujourd'hui.
-        return pve_handle(info, nom)
+        return pve_handle(info, nom, alias=entry.get("ip"))
     # Le nom adresse — c'est virsh qui l'impose — et l'UUID prouve.
     return libvirt_handle(nom, uuid=entry.get("uuid"), ip=entry.get("ip"))
 

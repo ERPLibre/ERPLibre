@@ -1712,21 +1712,10 @@ def web_tunnel_argv(info, port=18069, cible_port=8069):
 def vm_ssh_prefix(vm) -> str:
     """« ssh … » pour entrer dans CETTE VM, adresse comprise.
 
-    Une VM d'un hôte Proxmox vit derrière lui : son adresse n'est pas
-    routable d'ici, et seul le rebond y mène. On le construit explicitement
-    plutôt que de compter sur un alias ~/.ssh/config, qui peut ne pas exister
-    — ou, pire, désigner une VM LOCALE homonyme. C'est ce qui a fait ouvrir
-    la mauvaise machine avec « s ».
+    Relais vers `script.vm.verbs.ssh_prefix`, qui compose les rebonds pour
+    tous les backends.
     """
-    info = (vm or {}).get("pve") or {}
-    adresse = info.get("addr")
-    if info.get("target") and adresse:
-        saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
-        return (
-            f"ssh {SSH_OPTS} {saut}-J {shlex.quote(info['target'])} "
-            f"erplibre@{adresse}"
-        )
-    return f"ssh {SSH_OPTS} erplibre@{(vm or {}).get('ip')}"
+    return vm_verbs.ssh_prefix(handle_of(vm), options=SSH_OPTS)
 
 
 def pve_host_cmd(info, remote, tty=False) -> str:

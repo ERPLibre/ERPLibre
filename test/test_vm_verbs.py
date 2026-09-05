@@ -13,6 +13,8 @@ surtout sur son garde d'identité, parce qu'un garde qu'on ne sait pas
 """
 
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import unittest
@@ -368,6 +370,83 @@ class TestLAccesWeb(unittest.TestCase):
     def test_no_identity_is_refused_rather_than_guessed(self):
         with self.assertRaises(B.VerbNotImplemented):
             V.web_access(None)
+
+
+class TestLaLigneSshVersLaVm(unittest.TestCase):
+    """« s » ouvrait la mauvaise machine : un domaine LOCAL homonyme."""
+
+    DISTANTE_AVEC_REBOND = B.pve_handle(
+        {
+            "target": "pve1.exemple",
+            "jump": "bastion.exemple",
+            "vmid": 101,
+            "addr": "10.10.10.151",
+        },
+        "vm-a",
+        alias="pve1+vm-a",
+    )
+
+    def test_a_local_vm_is_reached_directly(self):
+        handle = B.libvirt_handle("vm-a", ip="198.51.100.118")
+        ligne = V.ssh_prefix(handle)
+        self.assertIn("erplibre@198.51.100.118", ligne)
+        self.assertNotIn("-J", ligne)
+
+    def test_a_remote_vm_goes_through_its_host(self):
+        """Son adresse n'est routable que de là."""
+        handle = B.pve_handle(
+            {"target": "pve1.exemple", "vmid": 101, "addr": "10.10.10.151"},
+            "vm-a",
+        )
+        ligne = V.ssh_prefix(handle)
+        self.assertIn("-J pve1.exemple", ligne)
+        self.assertIn("erplibre@10.10.10.151", ligne)
+
+    def test_two_hops_are_separated_by_a_comma(self):
+        """Répéter « -J » ne les accumule pas."""
+        ligne = V.ssh_prefix(self.DISTANTE_AVEC_REBOND)
+        self.assertIn("-J bastion.exemple,pve1.exemple", ligne)
+        self.assertEqual(1, ligne.count("-J"))
+
+    def test_ssh_itself_accepts_the_line_and_keeps_both_hops(self):
+        """L'épreuve qui manquait. Le texte se relisait très bien ; ssh, lui,
+        refusait la ligne entière — « Only a single -J option is permitted »,
+        code 255 — et toute VM derrière un rebond était injoignable."""
+        if not shutil.which("ssh"):
+            raise unittest.SkipTest("ssh absent")
+        ligne = V.ssh_prefix(self.DISTANTE_AVEC_REBOND)
+        vu = subprocess.run(
+            shlex.split(ligne.replace("ssh ", "ssh -G ", 1)),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(0, vu.returncode, vu.stderr)
+        self.assertIn(
+            "proxyjump bastion.exemple,pve1.exemple", vu.stdout.lower()
+        )
+
+    def test_without_a_routable_address_it_falls_back_to_the_alias(self):
+        """Un hôte connu dont l'adresse interne reste inconnue : l'alias de
+        ~/.ssh/config porte alors le chemin complet."""
+        handle = B.pve_handle(
+            {"target": "pve1.exemple"}, "vm-a", alias="pve1+vm-a"
+        )
+        self.assertIn("erplibre@pve1+vm-a", V.ssh_prefix(handle))
+        self.assertNotIn("-J", V.ssh_prefix(handle))
+
+    def test_the_user_is_the_one_given(self):
+        handle = B.libvirt_handle("vm-a", ip="198.51.100.118")
+        self.assertIn("root@198.51.100.118", V.ssh_prefix(handle, "root"))
+
+    def test_the_options_lead_the_line(self):
+        handle = B.libvirt_handle("vm-a", ip="198.51.100.118")
+        ligne = V.ssh_prefix(handle, options="-o ConnectTimeout=8")
+        self.assertTrue(ligne.startswith("ssh -o ConnectTimeout=8 "), ligne)
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.ssh_prefix(None)
 
 
 if __name__ == "__main__":

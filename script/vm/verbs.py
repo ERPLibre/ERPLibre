@@ -245,3 +245,31 @@ def web_access(handle, port: int = 18069, service: int = 8069) -> WebAccess:
         ]
         return WebAccess(f"http://127.0.0.1:{port}", tuple(argv))
     return WebAccess(f"http://{handle.address}:{service}", ())
+
+
+def ssh_prefix(handle, user: str = "erplibre", options: str = "") -> str:
+    """« ssh … » pour entrer dans CETTE VM, adresse comprise.
+
+    Une VM d'hôte distant vit derrière lui : son adresse n'est routable que
+    de là, et seuls les rebonds y mènent. On les compose explicitement
+    plutôt que de compter sur un alias ~/.ssh/config, qui peut ne pas
+    exister — ou, pire, désigner une VM LOCALE homonyme.
+
+    LES REBONDS SE SÉPARENT PAR DES VIRGULES. Répéter « -J » ne les
+    accumule pas : ssh refuse la ligne entière — « Only a single -J option
+    is permitted » — et rend 255. Toute VM dont l'hôte est lui-même derrière
+    un rebond était donc injoignable, sans que l'erreur dise laquelle des
+    deux machines posait problème.
+    """
+    if handle is None:
+        raise VerbNotImplemented("ssh_prefix : aucune identité.")
+    debut = f"ssh {options} " if options else "ssh "
+    rebonds = [
+        saut
+        for saut in (handle.host.get("jump"), handle.host.get("target"))
+        if saut
+    ]
+    if rebonds and handle.address:
+        chaine = ",".join(shlex.quote(saut) for saut in rebonds)
+        return f"{debut}-J {chaine} {user}@{handle.address}"
+    return f"{debut}{user}@{handle.alias or handle.address}"
