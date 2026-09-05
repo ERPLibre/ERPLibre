@@ -212,3 +212,7 @@ class TestIndexIsRebuilt(SearchCase):
         )
         self.store.open()
         self.assertEqual(len(self.sujets("ana")), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
