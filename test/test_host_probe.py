@@ -115,6 +115,63 @@ class TestLesQuatreVerdicts(unittest.TestCase):
             )
 
 
+class TestLePrivilegeNegociable(unittest.TestCase):
+    """Toutes les appliances n'exigent pas le privilège au même titre."""
+
+    SANS_SUDO = dict(
+        produit=(0, "produit 9.2\n"),
+        id=(0, "1000\n"),
+        sudo=(1, "sudo: a password is required"),
+    )
+
+    def test_required_is_the_default_and_still_refuses(self):
+        """Le défaut ne bouge pas : une appliance l'exige à chaque commande."""
+        run = RunFaux(**self.SANS_SUDO)
+        verdict = P.diagnose(HOTE, SONDE, version_de, run=run)
+        self.assertEqual(P.NEEDS_ROOT, verdict.kind)
+
+    def test_optional_states_the_lack_without_closing_the_host(self):
+        """Neuf verbes sur onze n'en ont pas besoin : les interdire tous
+        pour les deux qui le demandent ferme un hôte parfaitement sain."""
+        run = RunFaux(**self.SANS_SUDO)
+        verdict = P.diagnose(
+            HOTE, SONDE, version_de, run=run, privilege=P.OPTIONAL
+        )
+        self.assertEqual(P.NO_PRIVILEGE, verdict.kind)
+        self.assertEqual("9.2", verdict.version)
+
+    def test_optional_measures_it_and_does_not_ignore_it(self):
+        """Contrôle positif : le préfixe est pris quand il est là."""
+        run = RunFaux(
+            produit=(0, "produit 9.2\n"), id=(0, "1000\n"), sudo=(0, "")
+        )
+        verdict = P.diagnose(
+            HOTE, SONDE, version_de, run=run, privilege=P.OPTIONAL
+        )
+        self.assertEqual(P.OK, verdict.kind)
+        self.assertEqual("sudo ", verdict.sudo)
+
+    def test_skip_neither_measures_nor_pays_the_round_trips(self):
+        run = RunFaux(**self.SANS_SUDO)
+        verdict = P.diagnose(
+            HOTE, SONDE, version_de, run=run, privilege=P.SKIP
+        )
+        self.assertEqual(P.OK, verdict.kind)
+        self.assertEqual("", verdict.sudo)
+        self.assertEqual(1, len(run.appels), run.appels)
+
+    def test_an_unknown_mode_is_refused_rather_than_guessed(self):
+        """« Optional » capitalisé se comporterait comme « required » et
+        refuserait un hôte que l'appelant voulait accepter."""
+        with self.assertRaises(ValueError):
+            P.diagnose(
+                HOTE, SONDE, version_de, run=RunFaux(), privilege="Optional"
+            )
+
+    def test_the_sixth_verdict_joined_the_closed_vocabulary(self):
+        self.assertIn(P.NO_PRIVILEGE, P.VERDICTS)
+
+
 class TestCeQueLeVerdictPorte(unittest.TestCase):
     def test_the_detail_is_what_the_probe_said(self):
         """« command not found » est la preuve utile ; « ok » ne l'est pas."""

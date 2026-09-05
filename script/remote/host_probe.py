@@ -19,6 +19,12 @@ répond pas » et « elle répond mais le produit n'y est pas » : le premier
 envoie vérifier le réseau, le second envoie installer, et les corriger se
 fait de deux côtés opposés. S'y ajoutent la clé d'hôte pas encore connue —
 qui n'est pas une panne mais un accord qui manque — et le privilège absent.
+
+Le privilège absent se dit de DEUX façons, selon ce que l'appelant en exige :
+NEEDS_ROOT quand il le fallait — l'hôte est inutilisable —, NO_PRIVILEGE
+quand il était bienvenu sans être requis — l'hôte est utilisable, et ce qui
+demande root ne l'est pas. Les confondre ferme un hôte sain, ou laisse
+découvrir le refus au milieu d'une installation.
 """
 
 from __future__ import annotations
@@ -34,7 +40,26 @@ HOSTKEY = "hostkey"
 PRODUCT_ABSENT = "product-absent"
 UNREACHABLE = "unreachable"
 NEEDS_ROOT = "needs-root"
-VERDICTS = (OK, HOSTKEY, PRODUCT_ABSENT, UNREACHABLE, NEEDS_ROOT)
+NO_PRIVILEGE = "no-privilege"
+VERDICTS = (
+    OK,
+    HOSTKEY,
+    PRODUCT_ABSENT,
+    UNREACHABLE,
+    NEEDS_ROOT,
+    NO_PRIVILEGE,
+)
+
+# Ce que l'appelant EXIGE du privilège, et non ce qu'il en constate. Toutes
+# les appliances ne le demandent pas au même titre : administrer un
+# hyperviseur l'exige à chaque commande, alors qu'un déploiement lit sa
+# version, pousse ses fichiers et lit ses journaux sans lui, et n'en a besoin
+# que pour deux verbes sur onze. Refuser l'hôte dans le second cas
+# interdirait neuf verbes qui marchent.
+REQUIRED = "required"
+OPTIONAL = "optional"
+SKIP = "skip"
+PRIVILEGE_MODES = (REQUIRED, OPTIONAL, SKIP)
 
 
 class Verdict(NamedTuple):
@@ -97,6 +122,7 @@ def diagnose(
     probe: str,
     parse: Callable,
     run: Callable = None,
+    privilege: str = REQUIRED,
 ) -> Verdict:
     """Sonde l'hôte et NOMME ce qu'il a trouvé, sans rien afficher.
 
@@ -106,7 +132,17 @@ def diagnose(
 
     Rendre HOSTKEY n'est pas un refus : c'est un accord qui manque, et
     l'appelant peut l'obtenir puis re-sonder.
+
+    `privilege` dit ce que l'appelant EXIGE : « required » refuse l'hôte qui
+    ne peut pas s'élever, « optional » le constate sans le refuser, « skip »
+    ne le mesure pas — et épargne alors un à deux allers-retours, qui sont
+    autant de secondes d'attente devant un menu.
     """
+    if privilege not in PRIVILEGE_MODES:
+        raise ValueError(
+            f"privilege={privilege!r} : attendu l'un de"
+            f" {', '.join(PRIVILEGE_MODES)}."
+        )
     run = run or appliance_ssh.run
     _code, sortie = run(host, probe, timeout=30)
     version = parse(sortie)
@@ -126,7 +162,10 @@ def diagnose(
                 raw=sortie,
             )
         return Verdict(UNREACHABLE, detail=dit, raw=sortie)
+    if privilege == SKIP:
+        return Verdict(OK, version=version, raw=sortie)
     prefixe, obtenu = privilege_prefix(host, run=run)
     if not obtenu:
-        return Verdict(NEEDS_ROOT, version=version, raw=sortie)
+        manque = NEEDS_ROOT if privilege == REQUIRED else NO_PRIVILEGE
+        return Verdict(manque, version=version, raw=sortie)
     return Verdict(OK, version=version, sudo=prefixe, raw=sortie)
