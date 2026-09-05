@@ -62,6 +62,8 @@ func main() {
 		"servir un softphone de navigateur en SIP sur WebSocket, « hote:port »")
 	écho := flag.Bool("echo", false,
 		"avec -navigateur : renvoyer le son au lieu de composer par la SIM")
+	répondeurConf := flag.String("repondeur", "",
+		"fichier JSON de reglages du repondeur ; absent, aucun repondeur")
 	sansAuth := flag.Bool("sans-authentification", false,
 		"servir sans authentifier : n'a de sens que sur la boucle locale")
 	flag.Parse()
@@ -101,7 +103,27 @@ func main() {
 			échouer(err.Error())
 		}
 		defer gardien.Fermer()
-		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien); err != nil {
+		// Les réglages sont lus AU DÉMARRAGE et refusés bruyamment : un
+		// répondeur mal configuré ne se découvre autrement qu'au premier
+		// appel manqué, c'est-à-dire une fois le message perdu.
+		répondeur, err := ChargerRéglagesRépondeur(*répondeurConf)
+		if err != nil {
+			échouer(err.Error())
+		}
+		// Odoo FAIT AUTORITÉ quand il répond, le disque quand il se tait.
+		// C'est précisément pendant une panne du serveur que quelqu'un
+		// laisse un message, et la ligne ne doit pas devenir muette avec lui.
+		lien := OuvrirLienOdoo()
+		répondeur = RéglagesDepuisOdoo(lien, répondeur)
+		if répondeur.Actif {
+			slog.Info("repondeur actif", "sonneries", répondeur.Sonneries,
+				"annonce", répondeur.Annonce, "dossier", répondeur.Dossier,
+				"odoo", lien != nil)
+		}
+		// Ce qu'une panne d'Odoo a laissé sur disque monte maintenant : c'est
+		// le seul moment où l'on sait qu'il vient peut-être de revenir.
+		TéléverserCeQuiAttend(lien, répondeur.Dossier)
+		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien, répondeur); err != nil {
 			échouer(err.Error())
 		}
 		return

@@ -54,7 +54,7 @@ const (
 // y ouvrent le micro. Depuis une autre machine il faudra du « wss:// », donc
 // du TLS, donc un mandataire inverse.
 func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
-	écho bool, gardien *Gardien) error {
+	écho bool, gardien *Gardien, répondeur RéglagesRépondeur) error {
 	hôte, portTexte, err := net.SplitHostPort(bind)
 	if err != nil {
 		return fmt.Errorf("adresse d'écoute %q : %w", bind, err)
@@ -169,7 +169,7 @@ func ServirNavigateur(ctx context.Context, bind string, o OptionsModem,
 	// Les appels ENTRANTS : sans cette veille, composer le numéro de la SIM
 	// ne fait sonner personne, et la passerelle n'est qu'un composeur.
 	if modem != nil {
-		go VeillerSurLesEntrants(ctx, modem, o, hôte, registre, dialogues)
+		go VeillerSurLesEntrants(ctx, modem, o, hôte, registre, dialogues, répondeur)
 	}
 
 	return dg.Serve(ctx, func(d *diago.DialogServerSession) {
