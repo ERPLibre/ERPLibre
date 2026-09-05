@@ -15,7 +15,8 @@ sait l'écrire en une ligne.
 
 Une FICHE D'HÔTE est le dictionnaire que `script/remote/appliance_ssh.py`
 consomme — « target », plus « jump », « port » et « sudo » au besoin. Elle
-peut porter « version », que la sonde du produit y dépose.
+peut porter « version », que la sonde du produit y dépose, et « name »
+quand elle vient d'un inventaire où plusieurs fiches coexistent.
 """
 
 from __future__ import annotations
@@ -68,10 +69,18 @@ class HostMemory:
         todo_prefs.set(self._pref_key, {})
 
     def label(self, host: dict) -> str:
-        """« compte@adresse (par rebond) — PVE 9.2 », pour une tête de menu."""
+        """« nom — compte@adresse (par rebond) — PVE 9.2 », en tête de menu.
+
+        Le nom passe DEVANT l'adresse : quand plusieurs fiches coexistent,
+        c'est lui qu'on a choisi et lui qu'on relit pour vérifier qu'on
+        s'adresse à la bonne machine. Une fiche qui n'en porte pas rend la
+        même chaîne qu'avant, au caractère près.
+        """
         if not host:
             return ""
         libelle = host.get("target", "?")
+        if host.get("name"):
+            libelle = f"{host['name']} — {libelle}"
         if host.get("jump"):
             libelle += f" ({t('through')} {host['jump']})"
         if host.get("version") and self._version_label:

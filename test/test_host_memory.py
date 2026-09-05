@@ -106,6 +106,31 @@ class TestLeLibelle(MemoireCase):
         libelle = memoire.label({"target": "machine", "version": "9.2"})
         self.assertEqual("machine", libelle)
 
+    def test_a_record_without_a_name_reads_exactly_as_before(self):
+        """Le portail : une appliance à fiche unique ne change pas d'un
+        caractère parce qu'un inventaire existe ailleurs."""
+        memoire = HostMemory("appliance-a", "PVE")
+        self.assertEqual("machine", memoire.label({"target": "machine"}))
+        self.assertEqual(
+            "machine — PVE 9.2",
+            memoire.label({"target": "machine", "version": "9.2"}),
+        )
+
+    def test_the_name_comes_before_the_address(self):
+        """C'est le nom qu'on a choisi, et qu'on relit pour vérifier."""
+        memoire = HostMemory("appliance-a")
+        libelle = memoire.label({"name": "essai", "target": "machine"})
+        self.assertTrue(libelle.startswith("essai"), libelle)
+        self.assertIn("machine", libelle)
+
+    def test_an_empty_name_adds_nothing(self):
+        """Une fiche dont le champ existe mais est vide n'ouvre pas sur
+        un tiret cadratin orphelin."""
+        memoire = HostMemory("appliance-a")
+        self.assertEqual(
+            "machine", memoire.label({"name": "", "target": "machine"})
+        )
+
     def test_a_missing_target_is_said_and_not_crashed(self):
         self.assertEqual("?", HostMemory("appliance-a").label({"jump": ""}))
 
