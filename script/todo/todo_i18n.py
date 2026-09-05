@@ -10152,6 +10152,19 @@ TRANSLATIONS = {
         "fr": "cache chiffré : Entrée pour chercher dans toute la boîte",
         "en": "encrypted cache: press Enter to search the whole mailbox",
     },
+    "mail_list_mode_binding": {"fr": "Vue liste", "en": "List view"},
+    "mail_list_mode_flat": {
+        "fr": "Liste : à plat, par date",
+        "en": "List: flat, by date",
+    },
+    "mail_list_mode_threads": {
+        "fr": "Liste : par fil de discussion",
+        "en": "List: by thread",
+    },
+    "mail_list_mode_unread": {
+        "fr": "Liste : non lus seulement",
+        "en": "List: unread only",
+    },
     "mail_stats_binding": {"fr": "Statistiques", "en": "Statistics"},
     "mail_stats_close": {"fr": "Fermer", "en": "Close"},
     "mail_stats_by_day": {"fr": "par jour", "en": "by day"},

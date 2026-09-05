@@ -223,3 +223,49 @@ def filter_messages(metas: list, query: str) -> list:
         for m in metas
         if needle in _fold(f"{m.subject} {m.frm} {m.to} {m.snippet}")
     ]
+
+
+# Modes d'affichage de la liste, dans l'ordre où la touche les fait défiler.
+LIST_MODES = ("flat", "threads", "unread")
+
+
+def next_list_mode(courant: str) -> str:
+    """Le mode suivant, en boucle. Une valeur inconnue repart du premier."""
+    try:
+        return LIST_MODES[(LIST_MODES.index(courant) + 1) % len(LIST_MODES)]
+    except ValueError:
+        return LIST_MODES[0]
+
+
+def group_threads(metas: list) -> list:
+    """Regroupe les réponses sous le message qu'elles répondent.
+
+    Un fil sort d'un bloc : sa racine, puis ses réponses par date. Les
+    racines gardent l'ordre où elles arrivaient — le plus récent d'abord —
+    de sorte qu'activer les fils ne rebat pas la liste entière.
+
+    Une réponse dont l'original n'est PAS dans la sélection reste une
+    racine : la masquer ferait disparaître un message que l'utilisateur
+    voit dans les autres modes.
+    """
+    par_empreinte = {m.msgid_hash: m for m in metas if m.msgid_hash}
+    enfants: dict = {}
+    racines = []
+    for meta in metas:
+        parent = meta.in_reply_to_hash
+        if parent and parent in par_empreinte and parent != meta.msgid_hash:
+            enfants.setdefault(parent, []).append(meta)
+        else:
+            racines.append(meta)
+    sortie = []
+    for racine in racines:
+        sortie.append((racine, 0))
+        for enfant in sorted(
+            enfants.get(racine.msgid_hash, []), key=lambda m: m.date
+        ):
+            sortie.append((enfant, 1))
+    return sortie
+
+
+def only_unread(metas: list) -> list:
+    return [m for m in metas if is_unread(m.flags)]
