@@ -443,7 +443,7 @@ class TODO(
                 label += " - Installed"
             if odoo_version == odoo_installed_version:
                 label += " - Actual"
-            if version_info.get("Default"):
+            if version_info.get("default"):
                 label += " - Default"
             if version_info.get("is_deprecated"):
                 label += " - Deprecated"
@@ -5199,7 +5199,7 @@ class TODO(
             label = f"{key_s}: {erplibre_version}"
             if odoo_version == odoo_installed_version:
                 label += f" - {t('Current')}"
-            if version_info.get("Default"):
+            if version_info.get("default"):
                 label += f" - {t('Default')}"
 
             environments[key_s] = {
