@@ -3,7 +3,10 @@
 
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // RuleSet décrit le détournement à poser sur le pont de l'orchestrateur.
 //
@@ -19,6 +22,11 @@ type RuleSet struct {
 	// HTTPPort et TLSPort sont les deux écoutes du cache.
 	HTTPPort int
 	TLSPort  int
+	// Bypass : les adresses MAC soustraites au détournement, déjà
+	// canoniques. Vide, l'ensemble existe quand même — il est peuplé à
+	// chaud, et une règle qui viserait un ensemble absent ferait échouer
+	// TOUT le jeu de règles, donc le démarrage du service.
+	Bypass []string
 }
 
 // TableName : une table à nous, effaçable d'un geste, plutôt que des règles
@@ -34,11 +42,29 @@ const TableName = "erplibre_qemu_cache"
 // rien en faire. Seul ce qui SORT du sous-réseau est intercepté. Une règle
 // réseau posée trop large sur le pont d'un hôte est la classe de panne qui
 // prive une machine de son propre réseau.
+//
+// L'exception par MAC passe AVANT les deux détournements, sans quoi elle
+// n'aurait aucun effet : la première règle qui rend un verdict l'emporte.
+// « accept » clôt cette chaîne-ci et non le hook : les chaînes des autres
+// tables — le masquage de libvirt, notamment — sont évaluées ensuite, donc
+// une VM exceptée garde son réseau normal.
 func (r RuleSet) NftLines() []string {
-	return []string{
+	lignes := []string{
 		fmt.Sprintf("table ip %s {", TableName),
+		fmt.Sprintf("  set %s {", BypassSetName),
+		"    type ether_addr",
+	}
+	if len(r.Bypass) > 0 {
+		lignes = append(lignes, fmt.Sprintf(
+			"    elements = { %s }", strings.Join(r.Bypass, ", ")))
+	}
+	lignes = append(lignes,
+		"  }",
 		"  chain prerouting {",
 		"    type nat hook prerouting priority dstnat; policy accept;",
+		fmt.Sprintf(
+			`    iifname "%s" ether saddr @%s accept`,
+			r.Bridge, BypassSetName),
 		fmt.Sprintf(
 			`    iifname "%s" ip saddr %s ip daddr != %s tcp dport 80 redirect to :%d`,
 			r.Bridge, r.Subnet, r.Subnet, r.HTTPPort),
@@ -47,7 +73,8 @@ func (r RuleSet) NftLines() []string {
 			r.Bridge, r.Subnet, r.Subnet, r.TLSPort),
 		"  }",
 		"}",
-	}
+	)
+	return lignes
 }
 
 // NftDeleteLine rend le geste de retrait. Une seule table à effacer, donc un
@@ -59,8 +86,20 @@ func (r RuleSet) NftDeleteLine() string {
 // IptablesLines rend l'équivalent pour un hôte qui n'a pas nft. Le script
 // d'installation choisit selon ce qui répond ; les deux jeux disent la même
 // chose.
+//
+// Les exceptions sont émises en tête : iptables n'a pas d'ensemble nommé, la
+// chaîne est bâtie par « -A » successifs, et un RETURN posé après les
+// redirections ne serait jamais atteint. Le corollaire est qu'ici une
+// exception neuve demande de reposer les règles, là où nft en ajoute une à
+// chaud.
 func (r RuleSet) IptablesLines() []string {
-	return []string{
+	var lignes []string
+	for _, mac := range r.Bypass {
+		lignes = append(lignes, fmt.Sprintf(
+			"iptables -t nat -A PREROUTING -i %s -m mac --mac-source %s "+
+				"-j RETURN", r.Bridge, mac))
+	}
+	return append(lignes,
 		fmt.Sprintf(
 			"iptables -t nat -A PREROUTING -i %s -s %s ! -d %s "+
 				"-p tcp --dport 80 -j REDIRECT --to-ports %d",
@@ -69,7 +108,7 @@ func (r RuleSet) IptablesLines() []string {
 			"iptables -t nat -A PREROUTING -i %s -s %s ! -d %s "+
 				"-p tcp --dport 443 -j REDIRECT --to-ports %d",
 			r.Bridge, r.Subnet, r.Subnet, r.TLSPort),
-	}
+	)
 }
 
 // GuestEnvLines rend ce qu'une VM doit poser en plus de l'autorité.

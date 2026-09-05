@@ -141,3 +141,95 @@ func TestCommandeDeConfiance(t *testing.T) {
 		t.Error("une famille inconnue est pourtant acceptée")
 	}
 }
+
+// L'exception doit passer AVANT les détournements : nftables rend le verdict
+// de la première règle qui correspond, et une exception placée après ne
+// serait jamais atteinte.
+func TestExceptionAvantDetournement(t *testing.T) {
+	r := RuleSet{
+		Bridge: "virbr0", Subnet: "192.168.122.0/24",
+		HTTPPort: 8898, TLSPort: 8899,
+		Bypass: []string{"52:54:00:aa:bb:cc"},
+	}
+	lignes := r.NftLines()
+	iException, iRedirect := -1, -1
+	for i, l := range lignes {
+		if strings.Contains(l, "ether saddr @"+BypassSetName) {
+			iException = i
+		}
+		if iRedirect < 0 && strings.Contains(l, "redirect to :") {
+			iRedirect = i
+		}
+	}
+	if iException < 0 {
+		t.Fatal("aucune règle d'exception rendue")
+	}
+	if iRedirect < 0 {
+		t.Fatal("aucun détournement rendu")
+	}
+	if iException > iRedirect {
+		t.Errorf("l'exception (ligne %d) suit le détournement (ligne %d)",
+			iException, iRedirect)
+	}
+}
+
+// L'ensemble existe même vide : une règle qui viserait un ensemble absent
+// ferait échouer le jeu ENTIER, donc le démarrage du service — un cache muet
+// là où l'on n'a jamais demandé d'exception.
+func TestEnsembleRenduMemeVide(t *testing.T) {
+	r := RuleSet{Bridge: "virbr0", Subnet: "192.168.122.0/24",
+		HTTPPort: 8898, TLSPort: 8899}
+	texte := strings.Join(r.NftLines(), "\n")
+	if !strings.Contains(texte, "set "+BypassSetName+" {") {
+		t.Error("l'ensemble n'est pas déclaré quand aucune MAC n'est exceptée")
+	}
+	if !strings.Contains(texte, "type ether_addr") {
+		t.Error("l'ensemble n'a pas de type")
+	}
+	if strings.Contains(texte, "elements =") {
+		t.Error("un ensemble vide ne doit pas déclarer d'éléments")
+	}
+}
+
+func TestElementsRendusQuandIlYEnA(t *testing.T) {
+	r := RuleSet{Bridge: "virbr0", Subnet: "192.168.122.0/24",
+		HTTPPort: 8898, TLSPort: 8899,
+		Bypass: []string{"52:54:00:aa:bb:cc", "52:54:00:11:22:33"}}
+	texte := strings.Join(r.NftLines(), "\n")
+	if !strings.Contains(texte,
+		"elements = { 52:54:00:aa:bb:cc, 52:54:00:11:22:33 }") {
+		t.Errorf("éléments mal rendus :\n%s", texte)
+	}
+}
+
+// iptables n'a pas d'ensemble nommé : la chaîne se bâtit par « -A »
+// successifs, et un RETURN posé après les redirections ne serait jamais
+// atteint.
+func TestIptablesExceptionEnTete(t *testing.T) {
+	r := RuleSet{Bridge: "virbr0", Subnet: "192.168.122.0/24",
+		HTTPPort: 8898, TLSPort: 8899,
+		Bypass: []string{"52:54:00:aa:bb:cc"}}
+	lignes := r.IptablesLines()
+	if len(lignes) != 3 {
+		t.Fatalf("%d lignes rendues, trois attendues : %v", len(lignes), lignes)
+	}
+	if !strings.Contains(lignes[0], "--mac-source 52:54:00:aa:bb:cc") ||
+		!strings.Contains(lignes[0], "-j RETURN") {
+		t.Errorf("la première ligne n'est pas l'exception : %q", lignes[0])
+	}
+	for _, l := range lignes[1:] {
+		if !strings.Contains(l, "REDIRECT") {
+			t.Errorf("ligne inattendue : %q", l)
+		}
+	}
+}
+
+// Sans exception, le jeu iptables est celui d'avant : trois lignes là où deux
+// suffisent trahirait une ligne vide rendue pour rien.
+func TestIptablesSansExceptionInchange(t *testing.T) {
+	r := RuleSet{Bridge: "virbr0", Subnet: "192.168.122.0/24",
+		HTTPPort: 8898, TLSPort: 8899}
+	if n := len(r.IptablesLines()); n != 2 {
+		t.Errorf("%d lignes sans exception, deux attendues", n)
+	}
+}

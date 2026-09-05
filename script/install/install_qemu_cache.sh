@@ -32,6 +32,7 @@ EL_CACHE_DIR="${EL_CACHE_DIR:-/var/cache/erplibre_go_qemu_cache}"
 EL_CA_DIR="${EL_CA_DIR:-/var/lib/erplibre_go_qemu_cache}"
 EL_ACCESS_LOG="${EL_ACCESS_LOG:-/var/log/erplibre_go_qemu_cache.jsonl}"
 EL_EXCLUDE="${EL_EXCLUDE:-}"
+EL_BYPASS_FILE="${EL_BYPASS_FILE:-/etc/erplibre_go_qemu_cache/bypass}"
 
 BIN="/usr/local/bin/erplibre_go_qemu_cache"
 CONF_DIR="/etc/erplibre_go_qemu_cache"
@@ -211,6 +212,15 @@ preparer_etat() {
   fi
   mkdir -p "$EL_CACHE_DIR" "$EL_CA_DIR" "$CONF_DIR"
   touch "$EL_ACCESS_LOG"
+  # La liste des exceptions appartient à root : elle décide qui échappe au
+  # cache, et le compte du service ne doit pas pouvoir s'y ajouter.
+  mkdir -p "$(dirname "$EL_BYPASS_FILE")"
+  [ -f "$EL_BYPASS_FILE" ] || cat >"$EL_BYPASS_FILE" <<'BYPASS'
+# Exceptions du cache de téléchargement des VM QEMU.
+# Une ligne « <MAC> <nom de la VM> » par machine que le détournement doit
+# ignorer. Relu à chaque démarrage du service.
+BYPASS
+  chmod 0644 "$EL_BYPASS_FILE"
   chown -R "${SERVICE_USER}:${SERVICE_USER}" "$EL_CACHE_DIR" "$EL_CA_DIR" "$EL_ACCESS_LOG"
   chmod 0755 "$EL_CACHE_DIR" "$EL_CA_DIR"
 }
@@ -238,6 +248,7 @@ EL_BRIDGE=${EL_BRIDGE}
 EL_SUBNET=${EL_SUBNET}
 EL_ACCESS_LOG=${EL_ACCESS_LOG}
 EL_EXCLUDE=${EL_EXCLUDE}
+EL_BYPASS_FILE=${EL_BYPASS_FILE}
 CONF
   chmod 0644 "${CONF_DIR}/env"
 }
@@ -246,9 +257,9 @@ CONF
 # iptables sinon. Les deux jeux de règles viennent du binaire.
 regles_apply_cmd() {
   if command -v nft >/dev/null 2>&1; then
-    echo "${BIN} --print-nft --bridge \${EL_BRIDGE} --subnet \${EL_SUBNET} --http-port \${EL_HTTP_PORT} --tls-port \${EL_TLS_PORT} | nft -f -"
+    echo "${BIN} --print-nft --bridge \${EL_BRIDGE} --subnet \${EL_SUBNET} --http-port \${EL_HTTP_PORT} --tls-port \${EL_TLS_PORT} --bypass-file \${EL_BYPASS_FILE} | nft -f -"
   else
-    echo "${BIN} --print-iptables --bridge \${EL_BRIDGE} --subnet \${EL_SUBNET} --http-port \${EL_HTTP_PORT} --tls-port \${EL_TLS_PORT} | sh -s"
+    echo "${BIN} --print-iptables --bridge \${EL_BRIDGE} --subnet \${EL_SUBNET} --http-port \${EL_HTTP_PORT} --tls-port \${EL_TLS_PORT} --bypass-file \${EL_BYPASS_FILE} | sh -s"
   fi
 }
 
@@ -256,7 +267,7 @@ regles_clear_cmd() {
   if command -v nft >/dev/null 2>&1; then
     echo "nft delete table ip erplibre_qemu_cache 2>/dev/null || true"
   else
-    echo "${BIN} --print-iptables --bridge \${EL_BRIDGE} --subnet \${EL_SUBNET} --http-port \${EL_HTTP_PORT} --tls-port \${EL_TLS_PORT} | sed 's/ -A / -D /' | sh -s || true"
+    echo "${BIN} --print-iptables --bridge \${EL_BRIDGE} --subnet \${EL_SUBNET} --http-port \${EL_HTTP_PORT} --tls-port \${EL_TLS_PORT} --bypass-file \${EL_BYPASS_FILE} | sed 's/ -A / -D /' | sh -s || true"
   fi
 }
 

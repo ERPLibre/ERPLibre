@@ -49,6 +49,17 @@ func main() {
 			"écrire les règles nft seules, à passer à « nft -f - »")
 		printIptables = flag.Bool("print-iptables", false,
 			"écrire les commandes iptables seules, une par ligne")
+		bypassFile = flag.String("bypass-file",
+			"/etc/erplibre_go_qemu_cache/bypass",
+			"liste des VM soustraites au détournement, une MAC par ligne")
+		bypassAdd = flag.String("bypass-add", "",
+			"soustraire cette adresse MAC au détournement")
+		bypassName = flag.String("bypass-name", "",
+			"nom de la VM, écrit à côté de la MAC ajoutée")
+		bypassDel = flag.String("bypass-del", "",
+			"rendre cette adresse MAC au détournement")
+		bypassList = flag.Bool("bypass-list", false,
+			"dire les exceptions en place, une « MAC nom » par ligne")
 		showVersion = flag.Bool("version", false, "dire la version, puis sortir")
 	)
 	flag.Parse()
@@ -58,9 +69,19 @@ func main() {
 		return
 	}
 
+	bypass := BypassFile{Path: *bypassFile}
+	// Les exceptions entrent dans les règles dès leur RENDU : le service les
+	// repose telles quelles à chaque démarrage, et une exception ne survit
+	// donc pas au seul noyau.
+	exceptions, err := bypass.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "exceptions illisibles : %v\n", err)
+		os.Exit(1)
+	}
 	rules := RuleSet{
 		Bridge: *bridge, Subnet: *subnet,
 		HTTPPort: *httpPort, TLSPort: *tlsPort,
+		Bypass: MACs(exceptions),
 	}
 	store := &Store{Dir: *cacheDir}
 
@@ -76,6 +97,42 @@ func main() {
 	if *printIptables {
 		for _, l := range rules.IptablesLines() {
 			fmt.Println(l)
+		}
+		return
+	}
+
+	// Les trois gestes de la liste écrivent le fichier et rendent sur la
+	// SORTIE le geste à chaud correspondant, à tuber dans « nft -f - ». Ce
+	// paquet ne touche pas au pare-feu : c'est l'invariant qui rend les
+	// règles vérifiables par un test sans privilège.
+	if *bypassAdd != "" {
+		mac, err := bypass.Add(*bypassAdd, *bypassName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "exception refusée : %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "exception posée : %s %s\n", mac, *bypassName)
+		fmt.Println(BypassAddElement(mac))
+		return
+	}
+	if *bypassDel != "" {
+		mac, avait, err := bypass.Del(*bypassDel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "exception refusée : %v\n", err)
+			os.Exit(1)
+		}
+		if !avait {
+			fmt.Fprintf(os.Stderr, "aucune exception pour %s\n", mac)
+		}
+		// Le geste à chaud est rendu même si le fichier ne l'avait pas :
+		// l'ensemble du noyau peut porter ce que le fichier a perdu, et le
+		// retrait doit alors pouvoir le rattraper.
+		fmt.Println(BypassDelElement(mac))
+		return
+	}
+	if *bypassList {
+		for _, e := range exceptions {
+			fmt.Printf("%s %s\n", e.MAC, e.Name)
 		}
 		return
 	}
@@ -181,6 +238,15 @@ func printStatus(store *Store, caDir string, rules RuleSet) error {
 		fmt.Printf("empreinte   : %s\n", ca.Fingerprint())
 	} else {
 		fmt.Printf("empreinte   : autorité absente\n")
+	}
+	if len(rules.Bypass) == 0 {
+		fmt.Printf("exceptions  : aucune\n")
+	} else {
+		fmt.Printf("exceptions  : %d VM soustraite(s) au détournement\n",
+			len(rules.Bypass))
+		for _, m := range rules.Bypass {
+			fmt.Printf("              %s\n", m)
+		}
 	}
 	fmt.Printf("\nAucune éviction n'est écrite : ce cache ne diminue jamais\n")
 	fmt.Printf("de lui-même, et il vit sur le disque de l'orchestrateur.\n")
