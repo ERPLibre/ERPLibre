@@ -1533,6 +1533,26 @@ class TODO(
         flush()
         return "".join(out)
 
+    @staticmethod
+    def _ssh_config_value(valeur, champ):
+        """Une valeur destinée à une ligne de ~/.ssh/config, ou une erreur.
+
+        Dans ce fichier, une LIGNE est une directive : il n'y a ni
+        guillemets ni échappement qui protégeraient. Un saut de ligne dans
+        une valeur y ajoute donc une directive que ssh appliquera à l'hôte
+        en cours — un ProxyCommand, une autre identité, n'importe laquelle —
+        et le bloc lu ensuite ne ressemblera plus à ce qui a été écrit.
+
+        Le contrôle est ici parce que c'est le SEUL endroit qui écrit : cinq
+        appelants y mènent, et le poser chez chacun en laisserait un dehors.
+        """
+        texte = "" if valeur is None else str(valeur)
+        if "\n" in texte or "\r" in texte:
+            raise ValueError(
+                f"{champ} : une valeur de ~/.ssh/config tient sur une ligne."
+            )
+        return texte
+
     def _write_ssh_config_entry(
         self,
         host,
@@ -1561,6 +1581,13 @@ class TODO(
         toutes les identités de l'agent et un parc un peu fourni déclenche
         « Too many authentication failures » avant d'arriver à la bonne."""
         names = [host] if isinstance(host, str) else list(host)
+        controle = self._ssh_config_value
+        names = [controle(n, "Host") for n in names]
+        also_drop = [controle(n, "Host") for n in also_drop]
+        user = controle(user, "User")
+        ip = controle(ip, "HostName")
+        proxy_jump = controle(proxy_jump, "ProxyJump")
+        identity_file = controle(identity_file, "IdentityFile")
         cfg = os.path.expanduser("~/.ssh/config")
         os.makedirs(os.path.dirname(cfg), exist_ok=True)
         existing = ""

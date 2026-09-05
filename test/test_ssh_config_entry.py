@@ -226,5 +226,72 @@ class TestCeQueLesCinqSitesEcrivent(ConfigSsh):
                     self.assertNotEqual("Host", ligne.strip())
 
 
+class TestUneValeurNePeutPasAjouterDeDirective(ConfigSsh):
+    """Dans ce fichier, une LIGNE est une directive.
+
+    Il n'y a ni guillemets ni échappement : un saut de ligne dans une valeur
+    ajoute une directive que ssh appliquera à l'hôte en cours. La valeur
+    piégée est inventée — un test fige pour toujours ce qu'il cite.
+    """
+
+    PIEGE = "essai\n    ProxyCommand /tmp/rien-de-reel"
+
+    def test_every_written_value_refuses_a_second_line(self):
+        champs = (
+            ("host", (self.PIEGE, "erplibre", IP), {}),
+            ("host dans une liste", ([self.PIEGE], "erplibre", IP), {}),
+            ("user", ("essai", self.PIEGE, IP), {}),
+            ("ip", ("essai", "erplibre", self.PIEGE), {}),
+            (
+                "proxy_jump",
+                ("essai", "erplibre", IP),
+                {"proxy_jump": self.PIEGE},
+            ),
+            (
+                "identity_file",
+                ("essai", "erplibre", IP),
+                {"identity_file": self.PIEGE},
+            ),
+            (
+                "also_drop",
+                ([], "erplibre", IP),
+                {"also_drop": (self.PIEGE,)},
+            ),
+        )
+        self.assertEqual(7, len(champs))
+        for nom, args, kwargs in champs:
+            with self.subTest(champ=nom):
+                with self.assertRaises(ValueError):
+                    self.ecrire(*args, **kwargs)
+
+    def test_a_carriage_return_is_refused_too(self):
+        """Certains éditeurs en produisent, et ssh coupe la ligne dessus."""
+        with self.assertRaises(ValueError):
+            self.ecrire("essai\r    ProxyCommand /tmp/rien", "erplibre", IP)
+
+    def test_the_file_is_left_untouched_when_a_value_is_refused(self):
+        """Refuser après avoir réécrit le fichier aurait effacé un bloc
+        pour rien."""
+        self.ecrire("garde", "erplibre", IP)
+        avant = self.lire()
+        with self.assertRaises(ValueError):
+            self.ecrire(self.PIEGE, "erplibre", IP)
+        self.assertEqual(avant, self.lire())
+
+    def test_the_refusal_names_the_field(self):
+        """« une valeur est refusée » n'aide pas à trouver laquelle."""
+        with self.assertRaises(ValueError) as pris:
+            self.ecrire("essai", "erplibre", IP, proxy_jump=self.PIEGE)
+        self.assertIn("ProxyJump", str(pris.exception))
+
+    def test_an_ordinary_value_still_goes_through(self):
+        """Contrôle positif : tout refuser passerait les épreuves ci-dessus."""
+        contenu = self.ecrire(
+            "essai.exemple-1", "erplibre-2", IP, identity_file=CLE
+        )
+        self.assertIn("Host essai.exemple-1", contenu)
+        self.assertIn("User erplibre-2", contenu)
+
+
 if __name__ == "__main__":
     unittest.main()
