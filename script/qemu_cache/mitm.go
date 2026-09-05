@@ -327,31 +327,55 @@ func serveConn(c net.Conn, h http.Handler) {
 		Handler:           h,
 		ReadHeaderTimeout: 30 * time.Second,
 	}
-	// Le serveur ferme la connexion lui-même ; l'écouteur ne rend qu'elle,
-	// puis une fin de flux qui termine « Serve ».
-	srv.Serve(&oneConn{c: c})
+	// « Serve » traite chaque connexion dans une GOROUTINE puis reboucle sur
+	// « Accept ». Un écouteur qui rendrait la fin de flux tout de suite ferait
+	// donc rendre la main à « Serve » — et à l'appelant, dont le « defer
+	// Close » couperait la connexion pendant que le handler y écrit encore :
+	// le client reçoit « Empty reply from server », sans une ligne au journal.
+	//
+	// Le second « Accept » attend donc la fermeture de la connexion servie.
+	srv.Serve(&oneConn{c: c, fini: make(chan struct{})})
 }
 
 // oneConn présente une connexion unique sous la forme d'un écouteur.
 type oneConn struct {
 	c    net.Conn
-	once sync.Once
-	done bool
+	fini chan struct{}
+	pris bool
 	mu   sync.Mutex
 }
 
 func (l *oneConn) Accept() (net.Conn, error) {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.done {
+	if l.pris {
+		l.mu.Unlock()
+		// La connexion est déjà partie : on attend qu'elle soit refermée
+		// avant d'annoncer la fin, sans quoi « Serve » rendrait la main
+		// pendant que la réponse s'écrit.
+		<-l.fini
 		return nil, io.EOF
 	}
-	l.done = true
-	return l.c, nil
+	l.pris = true
+	l.mu.Unlock()
+	return &connSignalee{Conn: l.c, fini: l.fini}, nil
 }
 
 func (l *oneConn) Close() error   { return nil }
 func (l *oneConn) Addr() net.Addr { return l.c.LocalAddr() }
+
+// connSignalee prévient l'écouteur de sa fermeture, qui est le seul moment où
+// « Serve » peut rendre la main sans couper une réponse.
+type connSignalee struct {
+	net.Conn
+	une  sync.Once
+	fini chan struct{}
+}
+
+func (c *connSignalee) Close() error {
+	err := c.Conn.Close()
+	c.une.Do(func() { close(c.fini) })
+	return err
+}
 
 // tunnel relie l'invité à sa destination sans rien comprendre à ce qui passe.
 func (t *TLSFront) tunnel(c net.Conn, host string) {
