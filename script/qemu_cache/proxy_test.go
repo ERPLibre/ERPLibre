@@ -196,3 +196,74 @@ func TestPostNonCache(t *testing.T) {
 		t.Errorf("l'amont a reçu %d requêtes, attendu 2 : un POST a été caché", n)
 	}
 }
+
+// Un transport qui note le client par lequel la requête est passée.
+type transportTemoin struct {
+	nom  string
+	vues *[]string
+}
+
+func (t transportTemoin) RoundTrip(r *http.Request) (*http.Response, error) {
+	*t.vues = append(*t.vues, t.nom)
+	return &http.Response{
+		StatusCode: 200,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    r,
+	}, nil
+}
+
+// Le délai court existe pour que le repli hors ligne arrive AVANT que le
+// client renonce. Il prenait le calcul d'un serveur git pour un amont
+// injoignable — mesuré à seize secondes avant le premier octet — et rendait un
+// 504 sur un dépôt parfaitement joignable, faisant échouer « repo sync ».
+func TestGitPasseParLeClientPatient(t *testing.T) {
+	var vues []string
+	p := &Proxy{
+		Client: &http.Client{
+			Transport: transportTemoin{"court", &vues},
+		},
+		ClientPatient: &http.Client{
+			Transport: transportTemoin{"patient", &vues},
+		},
+	}
+	cas := []struct {
+		brut    string
+		attendu string
+	}{
+		{"https://git.example/o/d.git/info/refs?service=git-upload-pack",
+			"patient"},
+		{"https://git.example/o/d.git/git-upload-pack", "patient"},
+		{"https://miroir.example/core/os/x86_64/bash-5.2-1-x86_64.pkg.tar.zst",
+			"court"},
+		{"https://miroir.example/core/os/x86_64/core.db", "court"},
+	}
+	for _, c := range cas {
+		vues = nil
+		u, _ := url.Parse(c.brut)
+		r, _ := http.NewRequest("GET", c.brut, nil)
+		if _, err := p.fetch(r, u); err != nil {
+			t.Fatalf("%s : %v", c.brut, err)
+		}
+		if len(vues) != 1 || vues[0] != c.attendu {
+			t.Errorf("%s passé par %v, attendu « %s »",
+				c.brut, vues, c.attendu)
+		}
+	}
+}
+
+// Les deux clients ne se distinguent que par leur patience : un amont
+// injoignable reste détecté à l'établissement, en quatre secondes, dans les
+// deux cas.
+func TestLeClientPatientLestUniquementSurLesEnTetes(t *testing.T) {
+	p := NewProxy(&Store{Dir: t.TempDir()}, nil)
+	court := p.Client.Transport.(*http.Transport)
+	patient := p.ClientPatient.Transport.(*http.Transport)
+	if patient.ResponseHeaderTimeout <= court.ResponseHeaderTimeout {
+		t.Errorf("le client patient n'attend pas plus : %v contre %v",
+			patient.ResponseHeaderTimeout, court.ResponseHeaderTimeout)
+	}
+	if patient.TLSHandshakeTimeout != court.TLSHandshakeTimeout {
+		t.Error("le délai de poignée de main ne doit pas changer")
+	}
+}

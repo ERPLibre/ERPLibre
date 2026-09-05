@@ -134,3 +134,42 @@ func TestUnePageQuelconqueNestPasPortable(t *testing.T) {
 		}
 	}
 }
+
+// Le protocole « smart » de git est une NÉGOCIATION : le serveur calcule sa
+// réponse d'après ce que le client détient déjà. Rien n'y est réutilisable, et
+// servir une réponse gardée ferait croire à des références disparues.
+func TestGitSmartNestJamaisGarde(t *testing.T) {
+	for _, brut := range []string{
+		"https://git.example/org/depot.git/info/refs?service=git-upload-pack",
+		"https://git.example/org/depot.git/git-upload-pack",
+		"https://git.example/org/depot.git/git-receive-pack",
+	} {
+		u, _ := url.Parse(brut)
+		if !EstGitSmart(u) {
+			t.Errorf("%s n'est pas reconnu comme négociation git", brut)
+		}
+		if got := Classify(u); got != ClassNoStore {
+			t.Errorf("%s classé « %s », attendu « no-store »", brut, got)
+		}
+	}
+}
+
+// Le protocole « dumb », lui, sert des fichiers : un objet porte son empreinte
+// dans son nom et se garde comme n'importe quel fichier figé.
+func TestLesObjetsGitRestentCachables(t *testing.T) {
+	for _, brut := range []string{
+		"https://git.example/org/depot.git/objects/ab/cdef0123456789",
+		"https://git.example/org/depot.git/objects/pack/pack-abc.pack",
+	} {
+		u, _ := url.Parse(brut)
+		if EstGitSmart(u) {
+			t.Errorf("%s pris pour une négociation, à tort", brut)
+		}
+	}
+}
+
+func TestEstGitSmartURLNulle(t *testing.T) {
+	if EstGitSmart(nil) {
+		t.Error("une URL absente est prise pour du git")
+	}
+}

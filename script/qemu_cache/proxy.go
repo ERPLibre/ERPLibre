@@ -86,6 +86,14 @@ type Proxy struct {
 	Store  *Store
 	Log    *AccessLog
 	Client *http.Client
+	// ClientPatient sert les échanges où l'amont CALCULE avant de répondre.
+	// Un serveur git énumère ses références à la demande — mesuré à seize
+	// secondes avant le premier octet sur un dépôt chargé, quand un miroir de
+	// paquets répond en quelques centaines de millisecondes. Le délai court,
+	// qui existe pour que le repli hors ligne arrive avant que le client
+	// renonce, prenait ce calcul pour un amont injoignable et rendait un 504 :
+	// « repo sync » échouait alors sur un dépôt parfaitement joignable.
+	ClientPatient *http.Client
 	// Verbose fait parler chaque requête sur la sortie standard, ce qu'un
 	// service systemd envoie au journal.
 	Verbose bool
@@ -108,17 +116,23 @@ func NewProxy(store *Store, alog *AccessLog) *Proxy {
 		MaxIdleConnsPerHost:   8,
 		Proxy:                 http.ProxyFromEnvironment,
 	}
+	// Le même transport, la seule attente des en-têtes allongée : un serveur
+	// injoignable est toujours détecté à l'établissement, en quatre secondes.
+	trPatient := tr.Clone()
+	trPatient.ResponseHeaderTimeout = 120 * time.Second
+
+	// Une redirection est RENDUE au client plutôt que suivie : il la
+	// redemandera au travers du cache, et la copie reste rangée sous l'URL que
+	// l'invité a réellement demandée.
+	sansSuivre := func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	return &Proxy{
-		Store: store,
-		Log:   alog,
-		Client: &http.Client{
-			Transport: tr,
-			// Une redirection est RENDUE au client plutôt que suivie : il la
-			// redemandera au travers du cache, et la copie reste rangée sous
-			// l'URL que l'invité a réellement demandée.
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+		Store:  store,
+		Log:    alog,
+		Client: &http.Client{Transport: tr, CheckRedirect: sansSuivre},
+		ClientPatient: &http.Client{
+			Transport: trPatient, CheckRedirect: sansSuivre,
 		},
 	}
 }
@@ -332,6 +346,9 @@ func (p *Proxy) fetch(r *http.Request, u *url.URL) (*http.Response, error) {
 	// différemment selon l'agent, et un paquet servi à un agent n'est pas
 	// forcément celui servi à un autre.
 	out.Header.Del("Accept-Encoding")
+	if EstGitSmart(u) {
+		return p.ClientPatient.Do(out)
+	}
 	return p.Client.Do(out)
 }
 

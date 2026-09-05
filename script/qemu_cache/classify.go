@@ -76,6 +76,35 @@ var volatileSuffixes = []string{
 	".xml.gz", ".xml.zck", ".sqlite.bz2", ".sqlite.gz",
 }
 
+// Chemins du protocole « smart HTTP » de git. Ce sont des points de
+// NÉGOCIATION : le serveur calcule sa réponse en fonction de ce que le client
+// détient déjà. Rien n'y est réutilisable d'une requête à l'autre, et servir
+// une réponse gardée y ferait croire à des références qui n'existent plus.
+//
+// Les fichiers du protocole « dumb », eux, restent cachables : un objet
+// « .../objects/ab/cdef… » porte son empreinte dans son nom.
+var gitSmartPaths = []string{
+	"/info/refs", "/git-upload-pack", "/git-receive-pack",
+}
+
+// EstGitSmart dit si l'URL vise l'un de ces points de négociation.
+//
+// Sert deux fois. Le contenu n'est ni gardé ni servi du cache. Et l'amont y a
+// droit à BEAUCOUP plus de patience : un serveur git énumère ses références à
+// la demande, ce qui prend des dizaines de secondes sur un dépôt chargé, là où
+// un miroir de paquets répond en quelques centaines de millisecondes.
+func EstGitSmart(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	for _, s := range gitSmartPaths {
+		if strings.HasSuffix(u.Path, s) {
+			return true
+		}
+	}
+	return false
+}
+
 // Classify tranche pour une URL, sans regarder la réponse : la décision doit
 // être prise AVANT d'interroger l'amont, puisqu'elle décide s'il faut
 // l'interroger.
@@ -85,6 +114,9 @@ var volatileSuffixes = []string{
 // est une requête inutile, jamais une réponse fausse.
 func Classify(u *url.URL) Class {
 	if u == nil {
+		return ClassNoStore
+	}
+	if EstGitSmart(u) {
 		return ClassNoStore
 	}
 	name := strings.ToLower(path.Base(u.Path))
