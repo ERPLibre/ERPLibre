@@ -151,6 +151,20 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 		return fmt.Errorf("aucun poste inscrit : personne a faire sonner")
 	}
 
+	// La SIM ne porte qu'une conversation : un appel sortant en cours a la
+	// ligne, et la lui prendre couperait quelqu'un qui parle.
+	if !m.PrendreLaLigne() {
+		return fmt.Errorf("la ligne porte deja une conversation")
+	}
+	rendue := false
+	rendre := func() {
+		if !rendue {
+			rendue = true
+			m.RendreLaLigne()
+		}
+	}
+	defer rendre()
+
 	// Le canal voix AVANT que la voix ne s'établisse : le modem fige son
 	// routage au décroché et refuse la commande ensuite. Même contrainte qu'à
 	// l'appel sortant, dans l'autre sens.
@@ -159,6 +173,27 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 		slog.Warn("canal voix USB non ouvert", "err", err)
 		voixOuverte = false
 	}
+
+	// Rendre le matériel est une chose, prévenir le softphone en est une
+	// autre, et l'ORDRE compte : le second passe par le réseau et peut
+	// prendre des secondes, pendant lesquelles la ligne est déjà libre. Les
+	// faire dans l'autre ordre raccroche la SIM APRÈS qu'un appel suivant l'a
+	// prise, et c'est cet appel-là qui tombe.
+	libérée := false
+	libérer := func() {
+		if libérée {
+			return
+		}
+		libérée = true
+		if err := m.Raccrocher(); err != nil {
+			slog.Warn("raccrochage", "err", err)
+		}
+		if voixOuverte {
+			_ = m.FermerVoixUSB()
+		}
+		rendre()
+	}
+	defer libérer()
 
 	locale, err := NouvelleIdentitéICE()
 	if err != nil {
@@ -236,15 +271,6 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 					"probablement parti vers la messagerie pendant la sonnerie")
 		}
 	}
-	defer func() {
-		if err := m.Raccrocher(); err != nil {
-			slog.Warn("raccrochage", "err", err)
-		}
-		if voixOuverte {
-			_ = m.FermerVoixUSB()
-		}
-	}()
-
 	if o.VolumeÉcoute >= 0 {
 		if err := m.RéglerVolumeÉcoute(o.VolumeÉcoute); err != nil {
 			slog.Warn("volume d'écoute refusé", "err", err)
@@ -292,6 +318,7 @@ func présenterAuSoftphone(ctx context.Context, m *Modem, o OptionsModem,
 	}()
 
 	err = RelierAuModem(défiler, socket, sécurité, o.Carte)
+	libérer()
 
 	// Le correspondant a raccroché : c'est à NOUS de le dire au softphone.
 	// Rien d'autre ne le fera — il ne voit que du silence, et Odoo garde

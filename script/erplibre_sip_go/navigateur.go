@@ -417,6 +417,7 @@ func (l *LigneModem) Fermer() {
 	// Le modem N'EST PAS refermé : il appartient au service et sert aussi la
 	// veille des appels entrants. Le fermer ici rendrait la passerelle sourde
 	// après le premier appel sortant.
+	l.modem.RendreLaLigne()
 	l.modem = nil
 }
 
@@ -439,6 +440,15 @@ func OuvrirLigne(ctx context.Context, d *diago.DialogServerSession,
 	carte, err := carteOuDéfaut(o.Carte)
 	if err != nil {
 		return nil, err
+	}
+
+	// La SIM ne porte qu'une conversation : un appel entrant présenté au
+	// softphone la tient, et composer par-dessus couperait celui qui parle.
+	// Le refus est immédiat, et son message dit ce qui occupe la ligne.
+	if !m.PrendreLaLigne() {
+		return nil, fmt.Errorf(
+			"la ligne porte deja une conversation : raccrochez avant d'en " +
+				"passer une autre")
 	}
 
 	ligne := &LigneModem{modem: m, Carte: carte}
