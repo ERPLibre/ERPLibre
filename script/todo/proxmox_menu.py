@@ -67,7 +67,7 @@ class ProxmoxMenuMixin:
 
     @staticmethod
     def _pve_label(host):
-        """« root@10.0.0.5 (par rebond) », pour l'afficher en tête de menu."""
+        """« root@203.0.113.5 (par rebond) », pour l'afficher en tête de menu."""
         if not host:
             return ""
         lab = host.get("target", "?")

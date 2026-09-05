@@ -173,8 +173,8 @@ hyperviseur qu'on a sous la main coûte cinq minutes *et* un étage
 d'imbrication — donc de la lenteur, puisque c'est justement elle qu'on mesure.
 
 ```
-./long_test/deep_proxmox.py --hote root@10.0.0.5      # un Proxmox existant
-./long_test/deep_qemu.py --hote erplibre@10.0.0.7     # un hôte libvirt existant
+./long_test/deep_proxmox.py --hote root@203.0.113.5      # un Proxmox existant
+./long_test/deep_qemu.py --hote erplibre@203.0.113.7     # un hôte libvirt existant
 ```
 
 Trois choses en découlent, et elles ne sont pas décoratives :

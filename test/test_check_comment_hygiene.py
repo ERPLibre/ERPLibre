@@ -421,6 +421,70 @@ class TestLePerimetre(unittest.TestCase):
         self.assertFalse(hygiene.est_genere(base))
 
 
+class TestLesDefautsDeLEditeur(unittest.TestCase):
+    """Un réseau que l'éditeur documente est un fait, pas une adresse."""
+
+    def test_les_candidats_du_pont_interne_sont_tous_couverts(self):
+        """Les deux listes vivent dans deux fichiers ; sans cette épreuve
+        elles dérivent, et un candidat ajouté demain sort en rouge alors
+        qu'il est un défaut du produit."""
+        from script.proxmox import proxmox_deploy as pve
+
+        self.assertTrue(
+            pve.INTERNAL_CANDIDATES, "liste vide : rien n'est prouvé"
+        )
+        for cidr in pve.INTERNAL_CANDIDATES:
+            with self.subTest(cidr=cidr):
+                adresse = cidr.split("/")[0]
+                self.assertFalse(
+                    identifiant.adresse_de_machine(adresse),
+                    f"{adresse} est un défaut du produit et sort en rouge",
+                )
+
+    def test_le_reseau_par_defaut_de_libvirt_est_couvert(self):
+        from script.todo import qemu_network
+
+        self.assertFalse(
+            identifiant.adresse_de_machine(qemu_network.PREFIXE_LIBVIRT + ".1")
+        )
+
+    def test_une_adresse_quelconque_reste_trouvee(self):
+        # Contrôle positif : la liste blanche ne doit pas tout absoudre.
+        self.assertTrue(identifiant.adresse_de_machine("172.20.99.5"))
+
+
+class TestLaDeclarationDExemple(unittest.TestCase):
+    """Un test doit PORTER la donnée qu'il fait détecter, sans être une fuite."""
+
+    def test_une_valeur_declaree_nest_plus_signalee(self):
+        source = (
+            "# hygiene-exemple: 172.20.99.5\n# Le noeud 172.20.99.5 repond.\n"
+        )
+        self.assertEqual([], hygiene.inspect("x.py", source=source, termes=[]))
+
+    def test_la_meme_valeur_non_declaree_est_signalee(self):
+        # Contrôle positif : sans lui, l'épreuve ci-dessus passerait sur un
+        # détecteur qui ne détecte plus rien.
+        source = "# Le noeud 172.20.99.5 repond.\n"
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(["adresse"], [f["pattern"] for f in trouvailles])
+
+    def test_une_declaration_ne_couvre_pas_une_autre_valeur(self):
+        source = (
+            "# hygiene-exemple: 172.20.99.5\n# Le noeud 172.20.99.6 repond.\n"
+        )
+        trouvailles = hygiene.inspect("x.py", source=source, termes=[])
+        self.assertEqual(["172.20.99.6"], [f["excerpt"] for f in trouvailles])
+
+    def test_un_nom_propre_ne_se_declare_pas_invente(self):
+        """Un nom de client ne s'invente pas : il se retire."""
+        source = "# hygiene-exemple: acmecorp\n# Migration de acmecorp.\n"
+        trouvailles = hygiene.inspect(
+            "x.py", source=source, termes=["acmecorp"]
+        )
+        self.assertIn("nom privé", [f["pattern"] for f in trouvailles])
+
+
 class TestLaProseEstLueEnEntier(unittest.TestCase):
     """Un fichier de prose n'a pas de syntaxe de commentaire à isoler."""
 

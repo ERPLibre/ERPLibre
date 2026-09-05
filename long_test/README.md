@@ -163,8 +163,8 @@ already own costs five minutes *and* one level of nesting — that is, slowness,
 which is the very thing being measured.
 
 ```
-./long_test/deep_proxmox.py --hote root@10.0.0.5      # an existing Proxmox
-./long_test/deep_qemu.py --hote erplibre@10.0.0.7     # an existing libvirt host
+./long_test/deep_proxmox.py --hote root@203.0.113.5      # an existing Proxmox
+./long_test/deep_qemu.py --hote erplibre@203.0.113.7     # an existing libvirt host
 ```
 
 Three things follow, and they are not decorative:

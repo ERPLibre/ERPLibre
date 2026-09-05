@@ -49,7 +49,7 @@ DISK_CONTENT = ("images", "rootdir")
 def ssh_argv(host: dict, remote: str, tty: bool = False) -> list:
     """Commande ssh complète pour exécuter `remote` sur l'hôte Proxmox.
 
-    `host` : {"target": "root@10.0.0.5", "jump": "rebond", "port": "22"} —
+    `host` : {"target": "root@203.0.113.5", "jump": "rebond", "port": "22"} —
     « target » suffit quand l'alias vient de ~/.ssh/config, qui porte déjà
     l'utilisateur, le port et le ProxyJump.
     """

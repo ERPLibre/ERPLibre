@@ -1103,14 +1103,14 @@ class TestReparerEtcHosts(unittest.TestCase):
         """cloud-init « write_files » n'en met pas.
 
         sed PRÉSERVE l'absence — vérifié — et notre ligne se collait à la
-        précédente : « 192.168.1.9 autre-machine10.10.10.150 pve », donc le
+        précédente : « 192.0.2.9 autre-machine10.10.10.150 pve », donc le
         nom du nœud résolvait vers l'adresse d'une AUTRE machine. awk émet un
         saut de ligne par enregistrement, donc il normalise."""
         vu = self._joue(
-            "127.0.0.1 localhost\n127.0.1.1 pve\n192.168.1.9 autre-machine"
+            "127.0.0.1 localhost\n127.0.1.1 pve\n192.0.2.9 autre-machine"
         )
         self.assertEqual(vu["verdicts"], ["HOSTS-OK"] * 3)
-        self.assertIn("192.168.1.9 autre-machine", vu["lignes"])
+        self.assertIn("192.0.2.9 autre-machine", vu["lignes"])
         self.assertIn("10.10.10.150\tpve\t# erplibre-hosts", vu["lignes"])
         self.assertTrue(vu["brut"].endswith("\n"))
 

@@ -47,7 +47,8 @@ sys.path.append(RACINE)
 sys.path.append(os.path.join(RACINE, "script"))
 
 # Réexportés pour que ce module reste le seul point d'entrée de l'outil.
-from lib_identifiant import (  # noqa: E402,F401
+from lib_identifiant import exemples_declares  # noqa: E402,F401
+from lib_identifiant import (
     NOMS_INTERDITS,
     adresse_de_machine,
     identifiants,
@@ -336,10 +337,14 @@ def inspect(chemin, source=None, termes=None):
         with io.open(chemin, encoding="utf-8", errors="replace") as fh:
             source = fh.read()
 
+    # Les déclarations se lisent sur le fichier ENTIER : un test déclare en
+    # tête la valeur qu'il porte plus bas, là où elle sert.
+    exemples = exemples_declares(source)
+
     trouvailles = []
     for bloc in blocs(chemin, source):
         familles = (
-            ("identifiant", identifiants(bloc["text"], termes)),
+            ("identifiant", identifiants(bloc["text"], termes, exemples)),
             ("récit", recits(bloc["text"])),
         )
         for genre, trouves in familles:

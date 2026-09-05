@@ -5,7 +5,7 @@
 #
 # Usage:
 #   sudo bash install_ntfy.sh
-#   sudo NTFY_PORT=8080 NTFY_BASE_URL=http://192.168.1.100:8080 bash install_ntfy.sh
+#   sudo NTFY_PORT=8080 NTFY_BASE_URL=http://192.0.2.100:8080 bash install_ntfy.sh
 
 set -e
 

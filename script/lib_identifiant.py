@@ -46,6 +46,25 @@ IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 # Les blocs de documentation de la RFC 5737, qui existent pour l'exemple.
 IPV4_DOCUMENTAIRES = ("192.0.2.", "198.51.100.", "203.0.113.")
 
+# Un réseau qu'un ÉDITEUR documente comme son défaut est un fait durable et
+# non l'adresse de quelqu'un. Le réécrire en adresse d'exemple rendrait faux
+# ce qu'il documente ; changer la constante de déploiement pour satisfaire un
+# vérificateur serait pire, puisque cela changerait ce que le code configure.
+# Les deux dernières familles viennent du dépôt lui-même ; un test épingle
+# qu'elles couvrent bien INTERNAL_CANDIDATES, sans quoi les deux dérivent.
+IPV4_DEFAUTS_EDITEUR = (
+    "192.168.122.",  # réseau « default » de libvirt
+    "10.10.10.",  # ces huit-là : proxmox_deploy.INTERNAL_CANDIDATES,
+    "10.10.20.",  # le pont interne descend d'un cran par étage imbriqué
+    "10.10.30.",
+    "10.10.40.",
+    "10.20.10.",
+    "10.30.10.",
+    "172.31.10.",
+    "192.168.210.",
+    "10.7.0.",  # plage du tunnel dans les gabarits VPN
+)
+
 # Le dernier label est ALPHABÉTIQUE. Sans cette borne, un « compte@adresse »
 # vaut un courriel en plus de l'adresse qu'il porte, qui compte alors double,
 # et une épingle pip « paquet.git@v8.0.19 » vaut un compte.
@@ -71,6 +90,23 @@ HOME_PERMIS = frozenset(
 )
 
 
+# Un fichier DÉCLARE qu'une valeur y est inventée : « hygiene-exemple: <valeur> »,
+# en commentaire, n'importe où. C'est ce qui permet à un test de PORTER la donnée
+# qu'il doit faire détecter — sans elle il ne prouverait rien — sans que le
+# vérificateur la prenne pour une fuite. Une déclaration ne vaut que dans le
+# fichier qui la porte, et jamais pour un nom propre : un nom de client ne
+# s'invente pas, il se retire.
+MARQUEUR_EXEMPLE = re.compile(r"hygiene-exemple\s*:\s*(\S+)")
+
+
+def exemples_declares(source):
+    """Les valeurs qu'un fichier déclare inventées, par « hygiene-exemple »."""
+    return {
+        trouve.group(1).strip("\"'.,;)")
+        for trouve in MARQUEUR_EXEMPLE.finditer(source)
+    }
+
+
 def adresse_de_machine(valeur):
     """Cette suite de quatre nombres désigne-t-elle une machine du parc ?
 
@@ -88,7 +124,7 @@ def adresse_de_machine(valeur):
         return False
     if nombres[0] in (0, 127, 255) or nombres[3] == 0:
         return False
-    if valeur.startswith(IPV4_DOCUMENTAIRES):
+    if valeur.startswith(IPV4_DOCUMENTAIRES + IPV4_DEFAUTS_EDITEUR):
         return False
     return True
 
@@ -136,19 +172,25 @@ def motif_de_termes(termes):
     )
 
 
-def identifiants(texte, termes=()):
+def identifiants(texte, termes=(), exemples=()):
     """Les données identifiantes d'un texte : (motif, extrait, position).
 
     Chaque OCCURRENCE est rendue, et non chaque valeur : la même adresse citée
-    à deux endroits est à corriger aux deux.
+    à deux endroits est à corriger aux deux. `exemples` porte ce que le fichier
+    déclare inventé ; la déclaration ne couvre PAS les noms propres.
     """
     trouves = []
+    exemples = frozenset(exemples)
 
     for trouve in IPV4.finditer(texte):
+        if trouve.group(0) in exemples:
+            continue
         if adresse_de_machine(trouve.group(0)):
             trouves.append(("adresse", trouve.group(0), trouve.start()))
 
     for trouve in EMAIL.finditer(texte):
+        if trouve.group(0) in exemples:
+            continue
         if not EMAIL_PERMIS.search(trouve.group(0)):
             trouves.append(("courriel", trouve.group(0), trouve.start()))
 
