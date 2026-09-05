@@ -27,6 +27,7 @@ from script.todo.modem import calls as calls_mod
 from script.todo.modem import device as device_mod
 from script.todo.modem import diagnostic as diag_mod
 from script.todo.modem import messaging as sms_mod
+from script.todo.modem import repondeur as rep_mod
 from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
 
@@ -46,8 +47,11 @@ def _bandeau():
     e = device_mod.etat(index)
     voix_ok, voix_motif = calls_mod.voix_disponible()
     port = udev_mod.port_reserve()
-    reserve = (t("modem_port_reserved") + " " + os.path.basename(port)
-               if port else t("modem_port_shared"))
+    reserve = (
+        t("modem_port_reserved") + " " + os.path.basename(port)
+        if port
+        else t("modem_port_shared")
+    )
     return (
         f"  {e.get('modele', '?')} — {e.get('firmware', '?')}\n"
         f"  {t('modem_line')}: {e.get('numero', '?')}"
@@ -55,8 +59,8 @@ def _bandeau():
         f"  |  {t('modem_signal')}: {e.get('signal', '?')}%\n"
         # Le motif et non un simple oui/non : « carte detectee » sur une
         # carte qu'un serveur audio tient ouverte est vrai et inutile.
-        f"  {t('modem_voice')}: " + (t("modem_voice_ok") if voix_ok
-                                     else voix_motif.split(".")[0])
+        f"  {t('modem_voice')}: "
+        + (t("modem_voice_ok") if voix_ok else voix_motif.split(".")[0])
         + f"  |  {t('modem_at_port')}: {reserve}"
     )
 
@@ -65,20 +69,29 @@ def _bandeau_voip():
     """Les deux technologies côte à côte : on voit ce qui est en place."""
     if ast_mod.installe():
         lignes = ast_mod.lignes_configurees()
-        ast = (t("asterisk_running") if ast_mod.actif()
-               else t("asterisk_stopped")) + " — " + (", ".join(lignes) or "—")
+        ast = (
+            (
+                t("asterisk_running")
+                if ast_mod.actif()
+                else t("asterisk_stopped")
+            )
+            + " — "
+            + (", ".join(lignes) or "—")
+        )
     else:
         ast = t("voip_not_installed")
 
     if sipgo_mod.installe():
         c = sipgo_mod.config()
-        sip = (t("voip_configured") + " — " + (c.get("VOIP_TRUNK") or "?")
-               if sipgo_mod.configure() else t("voip_no_trunk"))
+        sip = (
+            t("voip_configured") + " — " + (c.get("VOIP_TRUNK") or "?")
+            if sipgo_mod.configure()
+            else t("voip_no_trunk")
+        )
     else:
         sip = t("voip_not_installed")
 
-    return (f"  Asterisk         : {ast}\n"
-            f"  erplibre_sip_go  : {sip}")
+    return f"  Asterisk         : {ast}\n" f"  erplibre_sip_go  : {sip}"
 
 
 def prompt_execute_modem(todo) -> None:
@@ -104,6 +117,7 @@ def prompt_execute_modem(todo) -> None:
 [15] {t("modem_audio_rule")} — {_etat_regle_audio()}
 [16] {t("modem_audio_try")}
 [17] {t("modem_gateway_agent")}
+[18] {t("modem_answering")} — {_etat_repondeur()}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -143,6 +157,8 @@ def prompt_execute_modem(todo) -> None:
             _passerelle(todo)
         elif status == "16":
             _essai_combine()
+        elif status == "18":
+            _repondeur()
         else:
             print(t("Command not found !"))
 
@@ -202,7 +218,9 @@ def _appeler():
         return
     # La confirmation répète le numéro NORMALISÉ : c'est lui qui partira, pas
     # la suite de chiffres telle qu'elle a été tapée.
-    if not click.confirm(f"  {t('modem_call_confirm')} +{norm} ?", default=False):
+    if not click.confirm(
+        f"  {t('modem_call_confirm')} +{norm} ?", default=False
+    ):
         return
     ok, sortie = calls_mod.appeler(norm)
     print("  " + ("✔ " if ok else "✖ ") + (sortie or "").strip()[:300])
@@ -220,8 +238,10 @@ def _lister_appels():
         return
     for a in appels:
         sens = t("modem_out") if a["sortant"] else t("modem_in")
-        print(f"  {a['index']}  {sens:9} {a['numero']:16} "
-              f"{calls_mod.libelle_etat(a['etat'])}")
+        print(
+            f"  {a['index']}  {sens:9} {a['numero']:16} "
+            f"{calls_mod.libelle_etat(a['etat'])}"
+        )
 
 
 def _envoyer_sms():
@@ -249,8 +269,139 @@ def _lister_sms():
         return
     for ident, sens in messages[:20]:
         d = sms_mod.lire(ident)
-        print(f"  {sens:9} {d.get('numero', '?'):16} "
-              f"{(d.get('texte') or '')[:60]}")
+        print(
+            f"  {sens:9} {d.get('numero', '?'):16} "
+            f"{(d.get('texte') or '')[:60]}"
+        )
+
+
+def _etat_repondeur() -> str:
+    """Une ligne d'etat : allume ou non, apres combien, et combien attendent.
+
+    Le compte des messages est dans le libelle du menu plutot que derriere une
+    entree : un repondeur ne sert que si l'on sait, sans chercher, qu'il y a
+    quelque chose a ecouter.
+    """
+    reglages = rep_mod.lire()
+    attente = len(rep_mod.lister())
+    if not reglages.get("actif"):
+        etat = "eteint"
+    else:
+        etat = "%s sonneries" % rep_mod.borner_sonneries(
+            reglages.get("sonneries")
+        )
+    if attente:
+        return "%s, %s message(s)" % (etat, attente)
+    return etat
+
+
+def _repondeur():
+    while True:
+        reglages = rep_mod.lire()
+        annonce = reglages.get("annonce") or "aucune"
+        help_info = f"""  {t("modem_ans_menu")} — {_etat_repondeur()}
+  annonce : {annonce}
+
+[1] {t("modem_ans_list")}
+[2] {t("modem_ans_greeting")}
+[3] {t("modem_ans_greeting_play")}
+[4] {t("modem_ans_rings")}
+[5] {t("modem_ans_toggle")}
+[0] {t("Back")}"""
+        choix = click.prompt(help_info)
+        print()
+        if choix == "0":
+            return
+        elif choix == "1":
+            _repondeur_messages()
+        elif choix == "2":
+            _repondeur_enregistrer_annonce()
+        elif choix == "3":
+            _repondeur_jouer_annonce()
+        elif choix == "4":
+            _repondeur_sonneries()
+        elif choix == "5":
+            _repondeur_basculer()
+        else:
+            print(t("Command not found !"))
+
+
+def _repondeur_messages():
+    """Liste, ecoute, puis propose d'effacer ce qu'on vient d'entendre.
+
+    L'effacement est propose APRES l'ecoute et non a cote : c'est le moment ou
+    l'on sait si le message servait, et le seul ou le choix est eclaire.
+    """
+    messages = rep_mod.lister()
+    if not messages:
+        print("  " + t("modem_ans_none"))
+        return
+    for index, message in enumerate(messages, start=1):
+        print(
+            "  [%d] %s  %s  %ss"
+            % (
+                index,
+                (message.get("debut") or "")[:19],
+                (message.get("numero") or "inconnu"),
+                message.get("duree_secondes") or 0,
+            )
+        )
+    print()
+    choix = input("  " + t("modem_ans_play") + " > ").strip()
+    if not choix.isdigit() or not 1 <= int(choix) <= len(messages):
+        return
+    message = messages[int(choix) - 1]
+    succes, plainte = rep_mod.jouer(message.get("fichier") or "")
+    if not succes:
+        print("  " + plainte)
+        return
+    if input("  " + t("modem_ans_delete") + " > ").strip().lower() in (
+        "o",
+        "y",
+    ):
+        rep_mod.effacer(message)
+        print("  " + t("modem_ans_deleted"))
+
+
+def _repondeur_enregistrer_annonce():
+    secondes = input("  " + t("modem_ans_seconds") + " [20] > ").strip()
+    try:
+        secondes = max(3, min(60, int(secondes)))
+    except ValueError:
+        secondes = 20
+    print("  " + t("modem_ans_recording") % secondes)
+    succes, resultat = rep_mod.enregistrer_annonce(secondes)
+    if not succes:
+        print("  " + resultat)
+        return
+    rep_mod.regler(annonce=resultat)
+    print("  " + t("modem_ans_recorded") % resultat)
+    print("  " + t("modem_ans_restart"))
+
+
+def _repondeur_jouer_annonce():
+    annonce = rep_mod.lire().get("annonce") or ""
+    succes, plainte = rep_mod.jouer(annonce)
+    if not succes:
+        print("  " + plainte)
+
+
+def _repondeur_sonneries():
+    print("  " + t("modem_ans_rings_why"))
+    saisie = input("  " + t("modem_ans_rings_ask") + " > ").strip()
+    if not saisie:
+        return
+    sonneries = rep_mod.borner_sonneries(saisie)
+    rep_mod.regler(sonneries=sonneries)
+    print("  %s : %s" % (t("modem_ans_rings"), sonneries))
+    print("  " + t("modem_ans_restart"))
+
+
+def _repondeur_basculer():
+    reglages = rep_mod.lire()
+    rep_mod.regler(actif=not reglages.get("actif"))
+    print("  %s : %s" % (t("modem_ans_menu"), _etat_repondeur()))
+    print("  " + t("modem_ans_restart"))
 
 
 def _choisir_technologie():
@@ -288,10 +439,20 @@ def _etat_voip():
     if not ast_mod.installe():
         print("    " + t("voip_not_installed"))
     else:
-        print("    " + (t("asterisk_running") if ast_mod.actif()
-                        else t("asterisk_stopped")))
-        print("    " + t("asterisk_lines") + " : "
-              + (", ".join(ast_mod.lignes_configurees()) or "—"))
+        print(
+            "    "
+            + (
+                t("asterisk_running")
+                if ast_mod.actif()
+                else t("asterisk_stopped")
+            )
+        )
+        print(
+            "    "
+            + t("asterisk_lines")
+            + " : "
+            + (", ".join(ast_mod.lignes_configurees()) or "—")
+        )
     print()
     print("  erplibre_sip_go")
     if not sipgo_mod.installe():
@@ -305,8 +466,12 @@ def _etat_voip():
     print("    " + t("voip_user") + " : " + (c.get("VOIP_USER") or "—"))
     # On dit si le secret est posé, jamais sa valeur : un secret qui traverse
     # une couche d'affichage finit par s'afficher.
-    print("    " + t("voip_secret") + " : "
-          + ("✔" if c.get("mot_de_passe_pose") else "✖"))
+    print(
+        "    "
+        + t("voip_secret")
+        + " : "
+        + ("✔" if c.get("mot_de_passe_pose") else "✖")
+    )
 
 
 #: Delai laisse au binaire pour raccrocher avant qu'on l'abatte.
@@ -365,7 +530,8 @@ def _lancer_interruptible(args):
     """
     interactif = sys.stdin.isatty()
     proc = subprocess.Popen(
-        args, preexec_fn=os.setpgrp if interactif else None,
+        args,
+        preexec_fn=os.setpgrp if interactif else None,
         start_new_session=not interactif,
     )
     fd = sys.stdin.fileno()
@@ -478,7 +644,9 @@ def _appel_voip(todo):
     # seul argument -c, qu'un shell redécouperait sans les guillemets.
     ligne = shlex.join(args)
     print("  " + t("Will execute:") + " " + ligne)
-    if not click.confirm(f"  {t('modem_call_confirm')} +{norm} ?", default=False):
+    if not click.confirm(
+        f"  {t('modem_call_confirm')} +{norm} ?", default=False
+    ):
         return
 
     if combine:
@@ -500,7 +668,9 @@ def _appel_voip(todo):
 
 
 def _etat_regle_audio():
-    return t("modem_audio_set") if audio_mod.posee() else t("modem_audio_unset")
+    return (
+        t("modem_audio_set") if audio_mod.posee() else t("modem_audio_unset")
+    )
 
 
 def _essai_combine():
@@ -529,8 +699,12 @@ def _regle_audio():
     bascule par megarde.
     """
     posee = audio_mod.posee()
-    print("  " + t("modem_audio_state") + " : "
-          + (t("modem_audio_set") if posee else t("modem_audio_unset")))
+    print(
+        "  "
+        + t("modem_audio_state")
+        + " : "
+        + (t("modem_audio_set") if posee else t("modem_audio_unset"))
+    )
     idx, _nom = calls_mod.carte_son()
     if idx is not None:
         libre, motif = audio_mod.carte_libre(f"hw:{idx},0")
@@ -546,7 +720,7 @@ def _regle_audio():
     if not click.confirm("  " + question, default=False):
         print("  " + t("modem_audio_unchanged"))
         return
-    ok, message = (audio_mod.retirer() if posee else audio_mod.poser())
+    ok, message = audio_mod.retirer() if posee else audio_mod.poser()
     print("  " + ("✔ " if ok else "✖ ") + message)
 
 
@@ -577,7 +751,9 @@ def _sonder_audio():
     args = sipgo_mod.commande_sonde(norm, mode, annonce)
     print()
     print("  " + t("Will execute:") + " " + shlex.join(args))
-    if not click.confirm(f"  {t('modem_call_confirm')} +{norm} ?", default=False):
+    if not click.confirm(
+        f"  {t('modem_call_confirm')} +{norm} ?", default=False
+    ):
         return
 
     code, sortie, journal = sipgo_mod.sonder(norm, mode, annonce)
@@ -604,8 +780,10 @@ def _sonder_audio():
         print(f"    ✖ {t('modem_probe_down')} : {descente['erreur']}")
     else:
         marque = "✔" if descente.get("vivant") else "·"
-        print(f"    {marque} {t('modem_probe_down')} : rms"
-              f" {descente.get('rms', 0):.1f}")
+        print(
+            f"    {marque} {t('modem_probe_down')} : rms"
+            f" {descente.get('rms', 0):.1f}"
+        )
 
     # La montee ne se mesure pas ici : on la demande.
     if annonce:
@@ -638,8 +816,12 @@ def _basculer_uac():
         print("  " + t("modem_uac_absent") % len(params))
         return
     actif = diag_mod.uac_actif(params)
-    print("  " + t("modem_uac_state") + " : "
-          + (t("modem_uac_on") if actif else t("modem_uac_off")))
+    print(
+        "  "
+        + t("modem_uac_state")
+        + " : "
+        + (t("modem_uac_on") if actif else t("modem_uac_off"))
+    )
     print("  " + t("modem_uac_warn"))
     cible = not actif
     question = t("modem_uac_enable") if cible else t("modem_uac_disable")
@@ -669,12 +851,20 @@ def _regle_udev():
         etat = t("modem_udev_stale")
     print("  " + t("modem_udev_state") + " : " + etat)
     port = udev_mod.port_reserve()
-    print("  " + t("modem_at_port") + " : "
-          + (os.path.basename(port) if port else t("modem_port_shared")))
+    print(
+        "  "
+        + t("modem_at_port")
+        + " : "
+        + (os.path.basename(port) if port else t("modem_port_shared"))
+    )
     # Une regle posee n'est pas une preuve : on OUVRE le port pour le savoir.
     libre, motif = udev_mod.port_libre()
-    print("  " + t("modem_port_open") + " : "
-          + (("✔ " if libre else "✖ ") + motif))
+    print(
+        "  "
+        + t("modem_port_open")
+        + " : "
+        + (("✔ " if libre else "✖ ") + motif)
+    )
     print()
     print("  [1] " + t("modem_udev_install"))
     print("  [2] " + t("modem_udev_remove"))
@@ -685,5 +875,8 @@ def _regle_udev():
         print("  " + ("✔ " if ok else "✖ ") + message.strip()[:300])
     elif choix == "2":
         ok, message = udev_mod.retirer()
-        print("  " + ("✔ " if ok else "✖ ")
-              + (message.strip()[:200] or t("modem_udev_removed")))
+        print(
+            "  "
+            + ("✔ " if ok else "✖ ")
+            + (message.strip()[:200] or t("modem_udev_removed"))
+        )
