@@ -124,6 +124,112 @@ def dernier_rapport():
     return {}
 
 
+def rapports_recents(limite=12):
+    """Les rapports d'exécution, du plus récent au plus ancien."""
+    rep = os.path.expanduser("~/.erplibre/longtest")
+    if not os.path.isdir(rep):
+        return []
+    out = []
+    for nom in sorted(
+        (
+            f
+            for f in os.listdir(rep)
+            if f.startswith(OUTIL) and f.endswith(".json")
+        ),
+        reverse=True,
+    )[:limite]:
+        try:
+            with open(os.path.join(rep, nom), encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if d.get("durees"):
+            d["_fichier"] = nom
+            out.append(d)
+    return out
+
+
+def rapport_comparatif():
+    """Ce que le cache fait gagner, mesuré et non annoncé.
+
+    Deux exécutions suffisent : une avec cache, une sans. Sans le témoin, un
+    temps ne dit rien — une installation rapide peut l'être parce que le
+    miroir est proche, pas parce qu'un cache a servi.
+    """
+    rapports = rapports_recents()
+    if not rapports:
+        print("\n  Aucune exécution mesurée. Lancer le test, puis le témoin :")
+        print("    ./long_test/qemu_cache.py")
+        print("    ./long_test/qemu_cache.py --sans-cache\n")
+        return 1
+
+    avec = [r for r in rapports if r.get("cache")]
+    sans = [r for r in rapports if not r.get("cache")]
+
+    print("\n  ── Rapport de performance ──\n")
+    print(
+        f"  {'exécution':<22}{'cache':<8}{'VM':<18}{'durée':>8}{'amont':>14}{'du cache':>14}"
+    )
+    print("  " + "─" * 82)
+    for r in rapports[:6]:
+        etiquette = r["debut"][:16].replace("T", " ")
+        for nom, duree in (r.get("durees") or {}).items():
+            o = (r.get("octets") or {}).get(nom, {})
+            print(
+                f"  {etiquette:<22}{'oui' if r.get('cache') else 'non':<8}"
+                f"{nom:<18}{duree:>7.0f}s"
+                f"{humain(o.get('amont', 0)):>14}{humain(o.get('cache', 0)):>14}"
+            )
+            etiquette = ""
+
+    if avec and sans:
+        da = moyenne_seconde_vm(avec)
+        ds = moyenne_seconde_vm(sans)
+        print()
+        if da and ds:
+            print(f"  seconde VM, avec cache : {da:.0f} s")
+            print(f"  seconde VM, sans cache : {ds:.0f} s")
+            if ds > da:
+                print(
+                    f"  gain : {ds - da:.0f} s, soit {100 * (ds - da) / ds:.0f} %"
+                )
+            else:
+                # Un gain nul est un RÉSULTAT, pas une erreur : sur un lien
+                # rapide, le temps est dominé par l'installation et non par
+                # le téléchargement.
+                print(
+                    "  aucun gain de TEMPS : sur ce lien, le téléchargement ne"
+                    " domine pas.\n  Le gain porte alors sur les octets, colonne"
+                    " « amont »."
+                )
+    else:
+        manque = "sans cache" if avec else "avec cache"
+        print(f"\n  Il manque une exécution {manque} pour comparer :")
+        print(
+            "    ./long_test/qemu_cache.py" + (" --sans-cache" if avec else "")
+        )
+    print()
+    return 0
+
+
+def moyenne_seconde_vm(rapports):
+    """La durée de la SECONDE VM, celle que le cache doit servir."""
+    valeurs = []
+    for r in rapports:
+        for nom, d in (r.get("durees") or {}).items():
+            if nom.endswith("-2"):
+                valeurs.append(d)
+    return sum(valeurs) / len(valeurs) if valeurs else 0
+
+
+def humain(n):
+    for unite in ("o", "Kio", "Mio", "Gio"):
+        if n < 1024 or unite == "Gio":
+            return f"{n:.0f} {unite}" if unite == "o" else f"{n:.1f} {unite}"
+        n /= 1024
+    return f"{n:.1f} Tio"
+
+
 def executer(cmd, delai, journal=None, montrer=False):
     """Une commande locale. Rend (code, sortie)."""
     if journal:
@@ -253,15 +359,20 @@ def lignes_depuis(chemin, decalage):
 # --------------------------------------------------------------------------
 
 
-def deployer(nom, journal, dry_run=False):
-    """Une VM Arch branchée sur le cache. Rend son adresse, ou ''."""
+def deployer(nom, journal, dry_run=False, avec_cache=True):
+    """Une VM Arch, branchée sur le cache ou non. Rend son adresse, ou ''.
+
+    Sans le cache, la VM télécharge en direct : c'est le TÉMOIN, la mesure de
+    ce que coûte une installation quand rien n'est gardé. Un gain ne veut rien
+    dire sans lui.
+    """
     cmd = (
         f"sudo python3 {shlex.quote(CLI)} --distro {DISTRO}"
         f" --version {VERSION} --name {nom}"
         f" --vcpus 2 --memory 4096 --disk-size 20G"
         f" --ssh-key {shlex.quote(cle_publique())}"
-        f" --cache-ca {shlex.quote(CA)}"
-        f" --password erplibre --assume-yes"
+        + (f" --cache-ca {shlex.quote(CA)}" if avec_cache else "")
+        + f" --password erplibre --assume-yes"
     )
     if dry_run:
         dire(f"  [à blanc] {cmd}", journal)
@@ -565,8 +676,21 @@ def main(argv=None):
         action="store_true",
         help="ajoute une troisième VM, l'amont du cache coupé",
     )
+    parseur.add_argument(
+        "--sans-cache",
+        action="store_true",
+        help="le TÉMOIN : deux VM qui ne passent pas par le cache, pour"
+        " mesurer ce que son absence coûte",
+    )
+    parseur.add_argument(
+        "--rapport",
+        action="store_true",
+        help="comparer les dernières exécutions, avec et sans cache",
+    )
     args = parseur.parse_args(argv)
 
+    if args.rapport:
+        return rapport_comparatif()
     if args.detruire:
         return detruire(args.dry_run)
 
@@ -590,6 +714,7 @@ def main(argv=None):
         "outil": OUTIL,
         "debut": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "vms": [],
+        "cache": not args.sans_cache,
         "journal": journal,
     }
     ecrire_rapport(rapport)
@@ -607,7 +732,9 @@ def main(argv=None):
         # sinon une machine que le rapport ne nomme nulle part.
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
-        adresse = deployer(nom, journal, args.dry_run)
+        adresse = deployer(
+            nom, journal, args.dry_run, avec_cache=not args.sans_cache
+        )
         if not adresse:
             return 1
         noter_uuid(rapport, nom, args.dry_run)
@@ -621,12 +748,32 @@ def main(argv=None):
         if acces:
             lignes, decalage = lignes_depuis(acces, decalage)
         fenetres.append(lignes)
+        # La durée est la seule matière d'une comparaison avec le témoin :
+        # gardée dans le rapport, elle survit à la session.
+        rapport.setdefault("durees", {})[nom] = round(duree, 1)
+        rapport.setdefault("octets", {})[nom] = {
+            "amont": sum(
+                l.get("bytes", 0) for l in lignes if l.get("upstream")
+            ),
+            "cache": sum(
+                l.get("bytes", 0) for l in lignes if not l.get("upstream")
+            ),
+        }
+        ecrire_rapport(rapport)
         dire(f"  VM {rang} : paquets posés en {duree:.0f} s", journal)
 
     ok = True
     if args.dry_run:
         dire("", journal)
         dire("  [à blanc] la mesure comparerait les deux fenêtres.", journal)
+    elif args.sans_cache:
+        # Le témoin ne prouve rien sur le cache : il MESURE ce que coûte son
+        # absence. Lui appliquer le critère n'aurait aucun sens.
+        dire("", journal)
+        dire("  ── Témoin : sans cache ──", journal)
+        for nom, d in (rapport.get("durees") or {}).items():
+            dire(f"  {nom} : {d:.0f} s", journal)
+        dire("  Comparer avec « --rapport ».", journal)
     else:
         ok = verdict(fenetres[0], fenetres[1], journal)
 
@@ -634,6 +781,7 @@ def main(argv=None):
         ok = contre_epreuve(journal, rapport, args.dry_run) and ok
 
     rapport["fin"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    rapport["cache"] = not args.sans_cache
     rapport["verdict"] = "ok" if ok else "échec"
     ecrire_rapport(rapport)
     dire("", journal)
