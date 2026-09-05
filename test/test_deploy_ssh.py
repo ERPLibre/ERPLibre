@@ -145,7 +145,23 @@ def menu_factice(params=CONNEXION):
     return menu
 
 
-class TestLesOnzeVerbesAtteignentLeurCible(unittest.TestCase):
+class SansInventaire(unittest.TestCase):
+    """Aucune cible retenue, quelle que soit la station qui lance.
+
+    Sans cette isolation, ces épreuves liraient les préférences réelles :
+    vertes chez qui n'a rien choisi, elles emprunteraient un autre chemin
+    chez qui a une cible portant déjà un domaine.
+    """
+
+    def setUp(self):
+        patcheur = patch(
+            "script.remote.deploy_target.selected", return_value={}
+        )
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+
+class TestLesOnzeVerbesAtteignentLeurCible(SansInventaire):
     def test_the_list_covers_every_verb(self):
         """Une liste incomplète rendrait les autres épreuves vertes sans
         rien prouver du verbe oublié."""
@@ -179,7 +195,7 @@ class TestLesOnzeVerbesAtteignentLeurCible(unittest.TestCase):
                 self.assertEqual([], menu.execute.jouees)
 
 
-class TestLOrdreDesQuestions(unittest.TestCase):
+class TestLOrdreDesQuestions(SansInventaire):
     """Deux verbes posent une question à eux, après la connexion."""
 
     def test_the_connection_comes_before_the_verbs_own_question(self):
@@ -222,7 +238,7 @@ class TestLOrdreDesQuestions(unittest.TestCase):
         self.assertIn("SSH_TARGET=db_restore", jouee(menu.execute.jouees[0]))
 
 
-class TestLesTroisManquesSeDisentAutrement(unittest.TestCase):
+class TestLesTroisManquesSeDisentAutrement(SansInventaire):
     """Trois manques, trois messages : les confondre envoie corriger le
     mauvais champ, et l'utilisateur retape une adresse qui allait bien."""
 

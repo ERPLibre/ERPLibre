@@ -312,5 +312,66 @@ class TestLesVerbesNeRedemandentPlus(EcranCase):
         self.assertEqual([], self.ecran.execute.jouees)
 
 
+class TestLeDomaineAppartientALaCible(EcranCase):
+    """Un renouvellement de certificat n'est pas une nouvelle saisie."""
+
+    def setUp(self):
+        super().setUp()
+        self.ecran.execute = Espion()
+
+    def nginx(self, invites=(), clavier=()):
+        """`invites` répond aux questions, `clavier` au oui/non final.
+
+        Deux listes séparées : une seule, partagée par les deux patchs,
+        servirait la même réponse aux deux et masquerait l'enchaînement.
+        """
+        sortie = io.StringIO()
+        with patch("builtins.input", side_effect=list(clavier)):
+            with patch(
+                "script.todo.todo.click.prompt", side_effect=list(invites)
+            ):
+                with redirect_stdout(sortie):
+                    self.ecran._deploy_ssh_install_nginx()
+        return sortie.getvalue()
+
+    def test_a_target_carrying_a_domain_is_asked_nothing(self):
+        D.save(
+            {
+                "name": "un",
+                "target": "compte@un.example",
+                "domain": "site.example",
+                "admin_email": "admin@site.example",
+            }
+        )
+        D.select("un")
+        self.nginx()
+        ligne = self.ecran.execute.jouees[0]
+        self.assertIn("SSH_DOMAIN=site.example", ligne)
+        self.assertIn("SSH_ADMIN_EMAIL=admin@site.example", ligne)
+
+    def test_what_is_typed_can_be_written_onto_the_target(self):
+        D.save({"name": "un", "target": "compte@un.example"})
+        D.select("un")
+        self.nginx(("site.example", "admin@site.example"), ("y",))
+        self.assertEqual("site.example", D.load("un")["domain"])
+        self.assertEqual("admin@site.example", D.load("un")["admin_email"])
+
+    def test_a_no_leaves_the_target_alone(self):
+        """Un certificat posé une fois pour essai n'a pas à s'inscrire."""
+        D.save({"name": "un", "target": "compte@un.example"})
+        D.select("un")
+        self.nginx(("site.example", "admin@site.example"), ("n",))
+        self.assertEqual("", D.load("un")["domain"])
+        self.assertEqual(1, len(self.ecran.execute.jouees))
+
+    def test_a_malformed_domain_is_refused_before_the_connection(self):
+        """certbot le dirait après un aller-retour ssh, et le dirait mal."""
+        D.save({"name": "un", "target": "compte@un.example"})
+        D.select("un")
+        dit = self.nginx(("compte@site.example", "admin@site.example"))
+        self.assertIn("✗", dit)
+        self.assertEqual([], self.ecran.execute.jouees)
+
+
 if __name__ == "__main__":
     unittest.main()

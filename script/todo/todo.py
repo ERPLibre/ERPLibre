@@ -2492,12 +2492,61 @@ class TODO(
         self._deploy_ssh_verb("ssh_install_nginx", demander=self._ask_domain)
 
     def _ask_domain(self):
-        domain = click.prompt(t("Domain name (e.g.: example.com): ")).strip()
+        """Le domaine et le courriel : lus sur la cible, demandés sinon.
+
+        Un renouvellement de certificat cesse d'être une nouvelle saisie —
+        c'est la même machine et le même domaine, et la cible les porte déjà.
+        Ce qui est saisi est refusé ICI s'il est mal formé, plutôt qu'au bout
+        d'une connexion ssh par certbot, qui dira mal pourquoi.
+        """
+        retenue = deploy_target.selected() or {}
+        domain = retenue.get("domain") or ""
+        email = retenue.get("admin_email") or ""
+        if not domain:
+            domain = click.prompt(
+                t("Domain name (e.g.: example.com): ")
+            ).strip()
         if not domain:
             print(t("A domain name is required!"))
             return None
-        email = click.prompt(t("Admin email for SSL certificate: ")).strip()
-        return {"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email}
+        if not email:
+            email = click.prompt(
+                t("Admin email for SSL certificate: ")
+            ).strip()
+        try:
+            propre = deploy_target.validate_service(domain, email)
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
+            return None
+        self._remember_service(retenue, propre)
+        return {
+            "SSH_DOMAIN": propre["domain"],
+            "SSH_ADMIN_EMAIL": propre["admin_email"],
+        }
+
+    def _remember_service(self, retenue, propre):
+        """Propose d'écrire sur la cible ce qu'on vient de saisir.
+
+        PROPOSE, et n'écrit pas d'office : un certificat posé une fois pour
+        essai n'a pas à s'inscrire sur la fiche. Ne demande rien quand la
+        cible porte déjà ces valeurs — la question serait sans objet.
+        """
+        if not retenue.get("name"):
+            return
+        if (retenue.get("domain") or "") == propre["domain"] and (
+            retenue.get("admin_email") or ""
+        ) == propre["admin_email"]:
+            return
+        if not self._is_yes(
+            input(f"{t('Remember it on the target? (y/N)')} : ")
+        ):
+            return
+        try:
+            deploy_target.save(dict(retenue, **propre))
+        except deploy_target.ValidationError as erreur:
+            print(f"✗ {t('Target refused: ')}{erreur}")
+            return
+        print(f"✓ {t('Target saved: ')}{retenue['name']}")
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")

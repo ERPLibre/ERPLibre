@@ -203,19 +203,31 @@ def validate(target: dict) -> dict:
     _port(full)
     valid.path(full, "identity", "Clé privée", required=False)
     valid.path(full, "path", "Chemin distant")
-    # Le domaine est un nom d'hôte SEUL : « compte@domaine » finirait dans la
-    # requête de certificat et dans la configuration nginx.
-    valid.text(full, "domain", "Domaine", required=False, pattern=HOST_RE)
+    full.update(validate_service(full.get("domain"), full.get("admin_email")))
+
+    _constate(full)
+    return full
+
+
+def validate_service(domain, admin_email) -> dict:
+    """Le domaine servi et son courriel, validés SEULS.
+
+    Séparés du reste pour que l'écran qui les demande au moment de poser un
+    certificat puisse les refuser avant de partir en ssh, sans avoir une
+    cible entière sous la main. Le domaine est un nom d'hôte seul :
+    « compte@domaine » finirait dans la requête de certificat et dans la
+    configuration nginx.
+    """
+    fiche = {"domain": domain, "admin_email": admin_email}
+    valid.text(fiche, "domain", "Domaine", required=False, pattern=HOST_RE)
     valid.text(
-        full,
+        fiche,
         "admin_email",
         "Courriel d'administration",
         required=False,
         pattern=_EMAIL_RE,
     )
-
-    _constate(full)
-    return full
+    return fiche
 
 
 def _port(full: dict) -> None:

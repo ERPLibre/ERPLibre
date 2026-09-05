@@ -1101,6 +1101,10 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
+    "Remember it on the target? (y/N)": {
+        "fr": "La retenir sur la cible ? (o/N)",
+        "en": "Remember it on the target? (y/N)",
+    },
     "A make target is required!": {
         "fr": "Une cible make est obligatoire !",
         "en": "A make target is required!",
