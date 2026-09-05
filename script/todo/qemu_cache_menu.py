@@ -515,22 +515,15 @@ class QemuCacheMenuMixin:
     # [6] Tests
     # ------------------------------------------------------------------
 
-    # Les trois essais, dans l'ordre où l'assistant les propose et les
-    # enchaîne. Le préfixe est celui que le script donne aux machines de ce
-    # mode ; un test vérifie que les deux tables disent la même chose, faute
-    # de quoi le menu annoncerait des VM qui ne sont pas celles qui naissent.
+    # Les trois essais, dans l'ordre où l'assistant les propose et les enchaîne.
+    # Chaque entrée est (option de ligne de commande, libellé) : le NOM des
+    # machines n'est pas écrit ici, il est demandé au script. Une seconde
+    # fabrique du nom dériverait, et le menu annoncerait alors des VM qui ne
+    # sont pas celles qui naissent — pire que de ne rien annoncer.
     _CACHE_ESSAIS = (
-        ("", "el-cache-test", "The cache: two VMs, measure the gain"),
-        (
-            "--hors-ligne",
-            "el-offline-test",
-            "The offline counter-proof",
-        ),
-        (
-            "--sans-cache",
-            "el-no-cache-test",
-            "The control: two VMs WITHOUT the cache",
-        ),
+        ("", "The cache: two VMs, measure the gain"),
+        ("--hors-ligne", "The offline counter-proof"),
+        ("--sans-cache", "The control: two VMs WITHOUT the cache"),
     )
 
     _CACHE_CHARGES = (
@@ -539,12 +532,16 @@ class QemuCacheMenuMixin:
     )
 
     @staticmethod
-    def _cache_systemes():
-        """Les systèmes que le TEST accepte, lus du test lui-même.
+    def _cache_module_test():
+        """Le script du test long, chargé comme module.
 
-        Chargé à l'appel et non au démarrage du menu : le script du test tire
-        le catalogue du déploiement, qui est lourd, et personne ne doit le
-        payer pour afficher un menu qu'il ne visite pas.
+        À l'appel et non au démarrage du menu : il tire le catalogue du
+        déploiement, qui est lourd, et personne ne doit le payer pour afficher
+        un menu qu'il ne visite pas.
+
+        C'est LUI qui décide des systèmes offerts et du nom des machines. Le
+        menu ne recopie ni l'un ni l'autre : ce qui est annoncé à l'écran est
+        alors, par construction, ce qui va se passer.
         """
         import importlib.util
 
@@ -559,10 +556,28 @@ class QemuCacheMenuMixin:
         )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        return module
+
+    @classmethod
+    def _cache_systemes(cls):
+        """Les systèmes que le TEST accepte, avec leur libellé."""
+        module = cls._cache_module_test()
         return [
             (d, module.distro_label(d, module.DISTROS[d][1]))
             for d in sorted(module.systemes_mesurables())
         ]
+
+    @classmethod
+    def _cache_nom_des_machines(cls, options, distro, charge):
+        """Le début du nom des VM de cet essai, demandé au script."""
+        module = cls._cache_module_test()
+        prefixe = {
+            "--sans-cache": module.NOM_BASE_SANS_CACHE,
+            "--hors-ligne": module.NOM_BASE_HORS_LIGNE,
+        }.get(options, module.NOM_BASE)
+        return module.nom_de_base(
+            prefixe, distro, module.DISTROS[distro][1], charge
+        )
 
     def _cache_choisir(self, titre, options):
         """Une question numérotée, le premier choix par défaut.
@@ -592,7 +607,7 @@ class QemuCacheMenuMixin:
         """
         essais = self._cache_choisir(
             t("Which test?"),
-            [t(e[2]) for e in self._CACHE_ESSAIS]
+            [t(e[1]) for e in self._CACHE_ESSAIS]
             + [t("All three, one after another")],
         )
         if essais is None:
@@ -620,10 +635,11 @@ class QemuCacheMenuMixin:
 
         commun = f"--distro {distro} --charge {charge}"
         print(f"\n{t('About to run, one after another:')}")
-        for options, prefixe, _libelle in choisis:
+        for options, _libelle in choisis:
             ligne = f"{LONGTEST} {commun} {options}".rstrip()
             print(f"  {ligne}")
-            print(f"    {t('Machines created:')} {prefixe}-1, -2…")
+            nom = self._cache_nom_des_machines(options, distro, charge)
+            print(f"    {t('Machines created:')} {nom}-1, -2…")
         if charge == "erplibre":
             # Des heures et non des minutes : une VM qui installe ERPLibre
             # entier n'a rien à voir avec le lot de paquets, et découvrir la
@@ -633,7 +649,7 @@ class QemuCacheMenuMixin:
             )
         if not click.confirm(t("Run these long tests?")):
             return
-        for options, _prefixe, _libelle in choisis:
+        for options, _libelle in choisis:
             self._longtest_run(
                 "qemu_cache.py", f"{commun} {options}".rstrip(), demander=False
             )

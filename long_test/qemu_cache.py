@@ -70,17 +70,23 @@ from script.qemu.deploy_qemu import (  # noqa: E402
 
 OUTIL = "qemu_cache"
 
-# Un préfixe de nom par MODE, et non un seul pour les trois.
+# Le nom d'une VM du test porte TOUT ce qui la distingue : le mode, le système
+# et la charge. Trois champs séparés par des tirets, chacun pouvant grouper ses
+# mots par des soulignés — « el-cache-ubuntu_2404-erplibre_odoo_18-1 ».
 #
-# Les trois modes créent des machines qui jouent le même rôle — la première,
-# la seconde — et un préfixe unique les faisait se disputer les mêmes noms :
-# lancer le témoin après la mesure butait sur « machine(s) d'un essai
-# précédent encore là », alors qu'il s'agissait d'une AUTRE expérience. Séparés,
-# les trois cohabitent et le rapport les montre côte à côte, ce qui est
-# précisément la comparaison qu'on cherche.
-NOM_BASE = "el-cache-test"
-NOM_BASE_SANS_CACHE = "el-no-cache-test"
-NOM_BASE_HORS_LIGNE = "el-offline-test"
+# Il y a deux raisons, et la seconde est la vraie. Lire « virsh list » doit
+# suffire à savoir d'où vient chaque machine. Et surtout, deux essais qui ne
+# portent pas sur la même chose ne se disputent plus les mêmes noms : mesurer
+# Ubuntu alors qu'un essai Arch survit ne bute plus sur « machine(s) d'un essai
+# précédent encore là », alors que ces machines n'avaient rien à voir.
+NOM_BASE = "el-cache"
+NOM_BASE_SANS_CACHE = "el-no-cache"
+NOM_BASE_HORS_LIGNE = "el-offline"
+
+# Ce que la charge met dans le nom. Une table plutôt qu'une déduction : le
+# nom doit dire quelle version d'Odoo a été installée, et personne ne devine
+# « erplibre_odoo_18 » à partir de « erplibre ».
+NOM_DE_CHARGE = {"minimum": "minimum", "erplibre": "erplibre_odoo_18"}
 DISTRO = "arch"
 VERSION = "latest"
 
@@ -264,26 +270,22 @@ def rapport_comparatif():
 
     print("\n  ── Rapport de performance ──\n")
     print(
-        f"  {'exécution':<18}{'système':<14}{'charge':<10}{'cache':<7}"
-        f"{'VM':<20}{'durée':>7}{'amont':>12}{'du cache':>12}"
+        f"  {'exécution':<18}{'cache':<7}{'VM':<40}"
+        f"{'durée':>7}{'amont':>12}{'du cache':>12}"
     )
-    print("  " + "─" * 100)
+    print("  " + "─" * 98)
+    # Ni colonne « système » ni colonne « charge » : le NOM de la machine les
+    # porte désormais tous les deux, et les répéter à côté volerait la largeur
+    # dont ce nom a besoin. Les rapports d'avant ce nommage montrent un nom
+    # court — c'est exactement ce qu'ils savaient de leur propre essai.
     for r in rapports[:6]:
         etiquette = r["debut"][:16].replace("T", " ")
-        # Le système et la charge sont RÉPÉTÉS sur chaque ligne de la même
-        # exécution : deux mesures ne se comparent que si les deux coïncident,
-        # et un lecteur qui ne voit la valeur qu'en tête de bloc compare des
-        # colonnes sans regarder si elles portent sur la même chose.
-        systeme = r.get("distro") or "?"
-        if r.get("version"):
-            systeme = f"{systeme} {r['version']}"
-        charge = r.get("charge") or "minimum"
         for nom, duree in (r.get("durees") or {}).items():
             o = (r.get("octets") or {}).get(nom, {})
             print(
-                f"  {etiquette:<18}{systeme:<14}{charge:<10}"
+                f"  {etiquette:<18}"
                 f"{'oui' if r.get('cache') else 'non':<7}"
-                f"{nom:<20}{duree:>6.0f}s"
+                f"{nom:<40}{duree:>6.0f}s"
                 f"{humain(o.get('amont', 0)):>12}"
                 f"{humain(o.get('cache', 0)):>12}"
             )
@@ -398,17 +400,48 @@ def prealables(journal, base=NOM_BASE):
     return not manques
 
 
-def base_des_noms(args):
-    """Le préfixe des VM de ce mode.
-
-    Lu des arguments et non d'une variable globale : c'est ce qui permet aux
-    trois modes de cohabiter sans qu'aucun ne bloque les autres.
-    """
+def prefixe_du_mode(args):
+    """Le champ « mode » du nom, seul. C'est lui que le démontage balaie."""
     if getattr(args, "sans_cache", False):
         return NOM_BASE_SANS_CACHE
     if getattr(args, "hors_ligne", False):
         return NOM_BASE_HORS_LIGNE
     return NOM_BASE
+
+
+def segment_systeme(distro, version):
+    """« ubuntu_2404 », « arch », « opensuse_160 ».
+
+    Le point saute, comme dans les noms de VM du parc. « latest » saute aussi :
+    une distribution en publication continue n'en a qu'une, si bien que le
+    segment ne distinguerait aucune machine d'une autre.
+    """
+    if not version or version == "latest":
+        return distro
+    return f"{distro}_{version.replace('.', '')}"
+
+
+def nom_de_base(prefixe, distro, version, charge):
+    """Le début du nom, commun aux VM d'un même essai. Le rang s'ajoute après.
+
+    Fonction PURE, sans arguments de ligne de commande : le menu s'en sert pour
+    annoncer les machines qui vont naître, et annoncer un nom qui ne serait pas
+    celui qui naît vaut moins que de ne rien annoncer.
+    """
+    return (
+        f"{prefixe}-{segment_systeme(distro, version)}"
+        f"-{NOM_DE_CHARGE.get(charge, charge)}"
+    )
+
+
+def base_des_noms(args):
+    """Le début du nom des VM de CET essai, mode, système et charge compris."""
+    return nom_de_base(
+        prefixe_du_mode(args),
+        getattr(args, "distro", DISTRO),
+        getattr(args, "version", "") or VERSION,
+        getattr(args, "charge", "minimum"),
+    )
 
 
 def machines_vivantes(base=NOM_BASE):

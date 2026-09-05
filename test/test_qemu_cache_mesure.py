@@ -378,7 +378,13 @@ class TestUnPrefixeParMode(unittest.TestCase):
     """
 
     def mode(self, **kw):
-        base = {"sans_cache": False, "hors_ligne": False}
+        base = {
+            "sans_cache": False,
+            "hors_ligne": False,
+            "distro": "arch",
+            "version": "latest",
+            "charge": "minimum",
+        }
         base.update(kw)
         return argparse.Namespace(**base)
 
@@ -393,13 +399,39 @@ class TestUnPrefixeParMode(unittest.TestCase):
         )
 
     def test_le_temoin_se_nomme_sans_cache(self):
-        self.assertEqual(
-            QC.base_des_noms(self.mode(sans_cache=True)), "el-no-cache-test"
+        self.assertTrue(
+            QC.base_des_noms(self.mode(sans_cache=True)).startswith(
+                "el-no-cache-"
+            )
         )
 
-    def test_le_mode_normal_garde_son_nom(self):
-        """Les rapports déjà écrits le nomment : le changer les orphelinerait."""
-        self.assertEqual(QC.base_des_noms(self.mode()), "el-cache-test")
+    def test_le_nom_porte_le_systeme_et_la_charge(self):
+        """Lire « virsh list » doit suffire à savoir d'où vient une machine,
+        et deux essais qui ne portent pas sur la même chose ne doivent plus se
+        disputer les mêmes noms."""
+        self.assertEqual(
+            QC.base_des_noms(
+                self.mode(distro="ubuntu", version="24.04", charge="erplibre")
+            ),
+            "el-cache-ubuntu_2404-erplibre_odoo_18",
+        )
+
+    def test_latest_ne_figure_pas_dans_le_nom(self):
+        """Une distribution en publication continue n'a qu'une version : le
+        segment ne distinguerait aucune machine d'une autre."""
+        self.assertEqual(
+            QC.base_des_noms(self.mode(distro="arch", version="latest")),
+            "el-cache-arch-minimum",
+        )
+
+    def test_un_essai_ne_bloque_pas_un_essai_different(self):
+        """Le grief exact : mesurer Ubuntu butait sur des machines Arch."""
+        arch = QC.base_des_noms(self.mode())
+        ubuntu = QC.base_des_noms(
+            self.mode(distro="ubuntu", version="24.04", charge="erplibre")
+        )
+        self.assertFalse(ubuntu.startswith(arch))
+        self.assertFalse(arch.startswith(ubuntu))
 
     def test_le_prealable_ne_regarde_que_son_propre_prefixe(self):
         """Une machine d'une autre expérience n'entre en conflit avec rien."""
@@ -428,29 +460,33 @@ class TestUnPrefixeParMode(unittest.TestCase):
         )
 
 
-class TestLeMenuNommeLesMemesMachines(unittest.TestCase):
-    """Le menu annonce le préfixe, le script le décide : deux copies.
+class TestLeMenuNeRefabriquePasLesNoms(unittest.TestCase):
+    """Le menu annonce les machines qui vont naître : il les DEMANDE.
 
-    Elles dérivent en silence — le menu annoncerait des machines qui ne sont
-    pas celles qui apparaissent dans « virsh list », ce qui est pire que de
-    n'annoncer rien.
+    Deux fabriques de noms dériveraient en silence, et le menu annoncerait
+    alors des VM qui ne sont pas celles qui apparaissent dans « virsh list » —
+    pire que de ne rien annoncer. Ce contrôle interdit donc au menu d'écrire un
+    préfixe en dur.
     """
 
-    def test_les_prefixes_annonces_sont_ceux_du_script(self):
-        src = (
+    def menu_source(self):
+        return (
             Path(__file__).resolve().parent.parent
             / "script"
             / "todo"
             / "qemu_cache_menu.py"
         ).read_text(encoding="utf-8")
-        bloc = src[src.index("_CACHE_ESSAIS = (") :]
-        bloc = bloc[: bloc.index("_CACHE_CHARGES")]
-        annonces = set(re.findall(r'"(el-[a-z-]+)"', bloc))
+
+    def test_aucun_prefixe_ecrit_en_dur(self):
+        trouves = set(re.findall(r'"(el-[a-z-]+)"', self.menu_source()))
         self.assertEqual(
-            annonces,
-            {QC.NOM_BASE, QC.NOM_BASE_SANS_CACHE, QC.NOM_BASE_HORS_LIGNE},
-            "le menu et le script ne nomment pas les mêmes machines",
+            trouves,
+            set(),
+            f"le menu écrit des noms de machine en dur : {trouves}",
         )
+
+    def test_le_menu_appelle_la_fabrique_du_script(self):
+        self.assertIn("module.nom_de_base(", self.menu_source())
 
 
 if __name__ == "__main__":
