@@ -38,10 +38,9 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.vpn_menu import VpnMenuMixin
-from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
+from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 VENV_ERPLIBRE = ".venv.erplibre"
@@ -816,6 +815,33 @@ class TODO(
         help_info += help_end
         return help_info
 
+    def _menu_dispatch_extra(self, choices, status):
+        """Joue l'entrée que « status » désigne parmi celles qu'aucun « elif »
+        codé en dur ne traite, et rend True si elle a été jouée.
+
+        Prend la liste affichée et le numéro tapé. Les sections ne consomment
+        pas de numéro : le rang se calcule sur les entrées réelles, comme
+        fill_help_info les numérote — sans ce filtre, une greffe posée après
+        une deuxième section joue la commande d'à côté. Une entrée qui porte
+        « method » appelle cette méthode de la classe ; les autres passent par
+        execute_from_configuration. Rend False sur un numéro hors borne ou non
+        numérique, à charge de l'appelant de le dire.
+        """
+        try:
+            rang = int(status)
+        except ValueError:
+            return False
+        reelles = [c for c in choices if not c.get("section")]
+        if not 0 < rang <= len(reelles):
+            return False
+        entree = reelles[rang - 1]
+        methode = entree.get("method")
+        if methode:
+            getattr(self, methode)()
+        else:
+            self.execute_from_configuration(entree)
+        return True
+
     def prompt_execute_instance(self):
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
@@ -983,6 +1009,14 @@ class TODO(
                 )
             },
         ]
+        # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
+        # ajoutée ici s'affiche APRÈS les huit entrées codées en dur, donc son
+        # numéro dépasse la chaîne d'elif et le repli la joue. Sans cette clé,
+        # étendre Deploy demande de modifier ce fichier et de décaler la
+        # chaîne à la main.
+        config_entries = self.config_file.get_config("deploy_from_makefile")
+        if config_entries:
+            choices.extend(config_entries)
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -1006,7 +1040,7 @@ class TODO(
                 self._deploy_ntfy_server()
             elif status == "8":
                 self.prompt_execute_vpn()
-            else:
+            elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 
     def prompt_execute_deploy_ssh(self):
