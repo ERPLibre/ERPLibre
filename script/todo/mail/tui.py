@@ -16,10 +16,16 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 from script.todo.mail.imap_sync import Syncer
 from script.todo.mail.store import Store, sweep_orphan_ephemeral
+
+# Comptes synchronisés de front. Un fil par compte transforme des attentes
+# réseau en série en une seule attente ; au-delà d'une poignée, les
+# fournisseurs refusent les connexions simultanées et le gain disparaît.
+SYNC_PARALLELE = 4
 
 try:
     from script.todo.todo_i18n import t
@@ -1903,64 +1909,70 @@ def run_tui(
             self._sync(self.sessions)
 
         def _sync(self, sessions) -> None:
-            # Sérialise TOUTE la passe, pas seulement l'appel réseau : deux
-            # `run_worker(thread=True)` (auto-refresh et `r`/`R` manuel)
-            # partageraient sinon le même socket imaplib, qui n'est pas
-            # thread-safe.
+            # Sérialise la PASSE, pas les comptes : deux passes concurrentes
+            # (rafraîchissement automatique et `r`/`R`) partageraient le
+            # socket imaplib d'un même compte, qui n'est pas sûr à
+            # plusieurs fils. Deux comptes DIFFÉRENTS ont chacun leur socket
+            # et leur cache verrouillé : ceux-là peuvent avancer ensemble.
             with self._sync_lock:
-                for session in sessions:
-                    if session is None or not session.online:
-                        continue
-                    self.set_status(
-                        f"{t('mail_syncing')} {session.account.name}…"
-                    )
-                    try:
-                        report = session.sync()
-                    except Exception as exc:
-                        _logger.exception(
-                            "sync de %s a échoué", session.account.name
-                        )
-                        self.set_status(f"{session.account.name} : {exc}")
-                        # Le statut ci-dessus est ÉPHÉMÈRE (le prochain
-                        # message l'efface) : `LogScreen` (touche `l`)
-                        # existe précisément pour regarder APRÈS coup, donc
-                        # la panne la plus grave — la synchronisation
-                        # entière qui a levé, pas seulement un dossier —
-                        # doit y rester lisible, dans la même forme que les
-                        # entrées de `report.errors` ci-dessous.
-                        self.session_errors[session.account.name] = [str(exc)]
-                        continue
-                    # La DERNIÈRE passe l'emporte, même vide : un compte qui
-                    # se remet à synchroniser proprement ne doit pas garder
-                    # affichée, dans `LogScreen`, une erreur qui ne décrit
-                    # plus l'état courant.
-                    self.session_errors[session.account.name] = list(
-                        report.errors
-                    )
-                    message = (
-                        f"{session.account.name} : {report.new_messages}"
-                        f" {t('mail_new_messages')}"
-                    )
-                    if report.errors:
-                        # Le premier message d'erreur EN ENTIER, pas
-                        # seulement leur compte : un « 1 erreur » n'a jamais
-                        # dit à personne ce qui a échoué. Le journal (voir
-                        # `imap_sync.Syncer.sync`) garde les autres au cas où
-                        # il y en aurait plus d'un.
-                        message += f" — {report.errors[0]}"
-                        extra = len(report.errors) - 1
-                        if extra:
-                            message += f" (+{extra} {t('mail_errors')})"
-                    if report.purged:
-                        message += (
-                            f" — {t('mail_folders_resynced')}"
-                            f" {', '.join(report.purged)}"
-                        )
-                    self.set_status(message)
+                vivantes = [s for s in sessions if s is not None and s.online]
+                if not vivantes:
+                    pass
+                elif len(vivantes) == 1:
+                    self._sync_une(vivantes[0])
+                else:
+                    self.set_status(f"{t('mail_syncing')} {len(vivantes)}…")
+                    with ThreadPoolExecutor(
+                        max_workers=min(SYNC_PARALLELE, len(vivantes))
+                    ) as pool:
+                        # Plafonné : un compte par fil est utile, trente
+                        # connexions simultanées se font refuser par les
+                        # fournisseurs et n'accélèrent rien.
+                        for futur in as_completed(
+                            [pool.submit(self._sync_une, s) for s in vivantes]
+                        ):
+                            futur.result()
                 if self._thread_id_differs():
                     self.call_from_thread(self.reload_folders)
                 else:
                     self.reload_folders()
+
+        def _sync_une(self, session) -> None:
+            """Une passe pour UN compte. Ne lève jamais : un compte qui
+            échoue ne doit pas emporter ceux qui avancent en parallèle."""
+            self.set_status(f"{t('mail_syncing')} {session.account.name}…")
+            try:
+                report = session.sync()
+            except Exception as exc:
+                _logger.exception("sync de %s a échoué", session.account.name)
+                self.set_status(f"{session.account.name} : {exc}")
+                # Le statut est ÉPHÉMÈRE : `LogScreen` (touche `l`) existe
+                # pour regarder après coup, donc la panne la plus grave —
+                # la passe entière qui a levé — y reste lisible, dans la
+                # même forme que les entrées de `report.errors`.
+                self.session_errors[session.account.name] = [str(exc)]
+                return
+            # La DERNIÈRE passe l'emporte, même vide : un compte qui se
+            # remet à synchroniser proprement ne doit pas garder affichée
+            # une erreur qui ne décrit plus l'état courant.
+            self.session_errors[session.account.name] = list(report.errors)
+            message = (
+                f"{session.account.name} : {report.new_messages}"
+                f" {t('mail_new_messages')}"
+            )
+            if report.errors:
+                # Le premier message EN ENTIER, pas seulement leur compte :
+                # un « 1 erreur » n'a jamais dit ce qui a échoué.
+                message += f" — {report.errors[0]}"
+                extra = len(report.errors) - 1
+                if extra:
+                    message += f" (+{extra} {t('mail_errors')})"
+            if report.purged:
+                message += (
+                    f" — {t('mail_folders_resynced')}"
+                    f" {', '.join(report.purged)}"
+                )
+            self.set_status(message)
 
         def action_save_attachment(self) -> None:
             meta = self.current_meta()

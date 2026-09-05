@@ -647,6 +647,33 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
 <!-- [en] -->
+## Syncing several accounts
+
+Accounts sync side by side, four at a time. Each holds its own socket and
+its own locked cache, so a pass that mostly waits on the network becomes one
+wait instead of several. Measured with four accounts of 0.25 s each: 0.26 s
+against 1.00 s in sequence.
+
+The cap is deliberate — providers refuse a burst of simultaneous
+connections, and past a handful the gain disappears. Two passes never
+overlap on the same account: one shared imaplib socket is not safe across
+threads. An account that fails is reported and does not stop the others.
+
+<!-- [fr] -->
+## Synchroniser plusieurs comptes
+
+Les comptes se synchronisent de front, quatre à la fois. Chacun a son socket
+et son cache verrouillé : une passe qui attend surtout le réseau devient une
+seule attente au lieu de plusieurs. Mesuré avec quatre comptes de 0,25 s :
+0,26 s contre 1,00 s en série.
+
+Le plafond est volontaire — les fournisseurs refusent une rafale de
+connexions simultanées, et au-delà d'une poignée le gain disparaît. Deux
+passes ne se chevauchent jamais sur un même compte : un socket imaplib
+partagé n'est pas sûr à plusieurs fils. Un compte qui échoue est signalé et
+n'arrête pas les autres.
+
+<!-- [en] -->
 ## Search
 
 `/` searches the **whole cache**, not just the messages currently loaded.

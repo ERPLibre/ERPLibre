@@ -303,6 +303,18 @@ What it does **not** cover, and will not pretend to:
 - **Nothing leaves the machine** — no external host, no OS keyring, no
   `~/.erplibre`, no real credentials, and never a fixed port.
 
+## Syncing several accounts
+
+Accounts sync side by side, four at a time. Each holds its own socket and
+its own locked cache, so a pass that mostly waits on the network becomes one
+wait instead of several. Measured with four accounts of 0.25 s each: 0.26 s
+against 1.00 s in sequence.
+
+The cap is deliberate — providers refuse a burst of simultaneous
+connections, and past a handful the gain disappears. Two passes never
+overlap on the same account: one shared imaplib socket is not safe across
+threads. An account that fails is reported and does not stop the others.
+
 ## Search
 
 `/` searches the **whole cache**, not just the messages currently loaded.

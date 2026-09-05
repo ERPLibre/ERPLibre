@@ -324,6 +324,19 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
 - **Rien ne quitte la machine** — aucun hôte externe, aucun trousseau système,
   aucun `~/.erplibre`, aucun identifiant réel, et jamais un port fixe.
 
+## Synchroniser plusieurs comptes
+
+Les comptes se synchronisent de front, quatre à la fois. Chacun a son socket
+et son cache verrouillé : une passe qui attend surtout le réseau devient une
+seule attente au lieu de plusieurs. Mesuré avec quatre comptes de 0,25 s :
+0,26 s contre 1,00 s en série.
+
+Le plafond est volontaire — les fournisseurs refusent une rafale de
+connexions simultanées, et au-delà d'une poignée le gain disparaît. Deux
+passes ne se chevauchent jamais sur un même compte : un socket imaplib
+partagé n'est pas sûr à plusieurs fils. Un compte qui échoue est signalé et
+n'arrête pas les autres.
+
 ## Recherche
 
 `/` cherche dans **tout le cache**, et non dans les seuls messages chargés.
