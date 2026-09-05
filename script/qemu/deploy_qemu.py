@@ -1834,6 +1834,21 @@ def user_groups(distro: str, gpu: bool = False) -> str:
     return ", ".join(noms)
 
 
+def user_shell(distro: str) -> str:
+    """Shell de connexion du compte créé par cloud-init.
+
+    sshd REFUSE un compte dont le shell n'existe pas — « User <x> not allowed
+    because shell /bin/bash does not exist », avant même l'authentification,
+    et la VM est alors inaccessible bien qu'elle démarre et porte la clé.
+
+    NixOS ne peuple pas /bin : il n'y met que « sh », lui-même lien vers le
+    bash du store. C'est donc bash qu'on obtient, en mode POSIX, et non dash.
+    Ailleurs /bin/bash existe et reste préférable : sur Debian et Ubuntu,
+    /bin/sh EST dash, sans historique ni complétion.
+    """
+    return "/bin/sh" if distro == "nixos" else "/bin/bash"
+
+
 # --------------------------------------------------------------------------- #
 # Guide de connexion (/etc/motd) et identité git de la VM
 # --------------------------------------------------------------------------- #
@@ -2468,7 +2483,7 @@ def build_cloud_config(
         # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
         # groupe : celui-ci n'est qu'une commodité.
         f"    groups: {user_groups(args.distro, gpu)}",
-        "    shell: /bin/bash",
+        f"    shell: {user_shell(args.distro)}",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
     if pw_hash:
@@ -2587,9 +2602,20 @@ def build_cloud_config(
 # network-config (cloud-init v2) : DHCP sur toute interface « e* ». Les images
 # Debian genericcloud ne configurent pas toujours le réseau sans ça (le NIC
 # reste down -> pas d'IP), contrairement à Ubuntu. Inoffensif pour Ubuntu.
-# La clé est « eth0 » car le renderer cloud-init d'Arch utilise la CLÉ comme
-# nom d'interface (en ignorant « match ») et l'image Arch nomme son NIC eth0 ;
-# Debian/Fedora/Ubuntu utilisent bien « match: name: e* » (leur en*).
+# La clé n'est pas partout un nom d'interface. Les renderers netplan et ENI
+# (Ubuntu, Debian) la tiennent pour une étiquette et désignent l'interface par
+# le « match » ; le renderer networkd (Arch, NixOS) IGNORE le « match » et
+# écrit la clé telle quelle en « Name= ». L'image Arch nomme son NIC eth0, ce
+# que la clé couvre ; une image qui le nomme enp0s2 reçoit un « Name=eth0 »
+# qui ne correspond à rien, systemd-networkd-wait-online attend alors sans
+# fin, et TOUT ce qui suit network-online.target reste en file — sshd-keygen,
+# cloud-init.service, cloud-config.service, sshd lui-même. La VM démarre,
+# applique la clé SSH, et n'est jamais joignable.
+#
+# Un glob en clé réglerait networkd et CASSERAIT netplan, qui refuse net :
+# « Definition ID 'e*' must not use globbing », cloud-init.service en échec,
+# aucun compte créé. Aucune valeur ne contente les deux renderers, d'où
+# network_config_for().
 NETWORK_CONFIG = (
     "version: 2\n"
     "ethernets:\n"
@@ -2601,10 +2627,36 @@ NETWORK_CONFIG = (
 )
 
 
+def network_config_for(distro: str) -> str | None:
+    """Le network-config à mettre dans le seed, ou None pour n'en pas mettre.
+
+    None n'est pas « pas de réseau » : privée de configuration réseau par sa
+    source de données, cloud-init produit son repli — DHCP sur la première
+    interface trouvée, désignée par son VRAI nom. C'est ce qu'il faut là où
+    le renderer prend la clé pour un nom d'interface et où ce nom n'est pas
+    connu d'avance.
+
+    NixOS est dans ce cas : son image nomme le NIC selon la machine émulée
+    (enp0s2 en q35, ens3 en i440fx). Arch a le même renderer mais nomme le
+    sien eth0, ce que la clé du document couvre : il garde donc le document,
+    et son réseau ne change pas.
+    """
+    return None if distro == "nixos" else NETWORK_CONFIG
+
+
 def build_seed(
-    cloud_cfg: str, hostname: str, seed_dest: Path, runner: Runner
+    cloud_cfg: str,
+    hostname: str,
+    seed_dest: Path,
+    runner: Runner,
+    network_config: str | None = NETWORK_CONFIG,
 ) -> None:
-    """Génère le seed.iso (cidata) et le copie vers seed_dest."""
+    """Génère le seed.iso (cidata) et le copie vers seed_dest.
+
+    `network_config` à None n'écrit PAS de document réseau dans le seed, et
+    c'est un réglage à part entière : cloud-init produit alors son repli,
+    DHCP sur la première interface trouvée. Voir network_config_for().
+    """
     meta_data = f"instance-id: {hostname}\nlocal-hostname: {hostname}\n"
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -2618,18 +2670,23 @@ def build_seed(
             print("  [dry-run] user-data qui serait généré :")
             print(textwrap.indent(cloud_cfg, "      "))
             print("  [dry-run] network-config :")
-            print(textwrap.indent(NETWORK_CONFIG, "      "))
+            print(
+                textwrap.indent(network_config, "      ")
+                if network_config
+                else "      (aucun : repli DHCP de cloud-init)"
+            )
         else:
             ud.write_text(cloud_cfg)
             md.write_text(meta_data)
-            nc.write_text(NETWORK_CONFIG)
+            if network_config:
+                nc.write_text(network_config)
 
         if runner.dry_run or shutil.which("cloud-localds"):
+            reseau = ["--network-config", str(nc)] if network_config else []
             runner.run(
                 [
                     "cloud-localds",
-                    "--network-config",
-                    str(nc),
+                    *reseau,
                     str(local_iso),
                     str(ud),
                     str(md),
@@ -4399,7 +4456,13 @@ def main() -> None:
 
         print(f"\n== 4/5 Seed cloud-init {seed} ==")
         cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-        build_seed(cloud_cfg, args.hostname, seed, runner)
+        build_seed(
+            cloud_cfg,
+            args.hostname,
+            seed,
+            runner,
+            network_config_for(args.distro),
+        )
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
