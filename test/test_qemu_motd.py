@@ -38,6 +38,7 @@ COMBOS = (
     ("opensuse", "16.0", "amd64"),
     ("opensuse", "tumbleweed", "amd64"),
     ("arch", "latest", "amd64"),
+    ("nixos", "25.11", "amd64"),
 )
 
 # Largeur d'un terminal standard. Au-delà, le guide se replie et devient
@@ -55,6 +56,7 @@ class TestMotdContent(unittest.TestCase):
             "rocky": "dnf",
             "opensuse": "zypper",
             "arch": "pacman",
+            "nixos": "nix",
         }
         for distro, version, arch in COMBOS:
             motd = dq.build_motd(distro, version, arch)

@@ -5763,6 +5763,32 @@ TRANSLATIONS = {
         "fr": "Outils d'assistance IA",
         "en": "AI coding tools",
     },
+    # Ce qu'il faut savoir de l'image d'une VM, dit avant de la créer.
+    "%s: image rebuilt by a third party, not published by the distribution": {
+        "fr": (
+            "%s : image reconstruite par un tiers, non publiée par la"
+            " distribution"
+        ),
+        "en": (
+            "%s: image rebuilt by a third party, not published by the"
+            " distribution"
+        ),
+    },
+    "release pinned to %s, sha256 fixed in the repository": {
+        "fr": "release épinglée sur %s, sha256 figée dans le dépôt",
+        "en": "release pinned to %s, sha256 fixed in the repository",
+    },
+    "ERPLibre does not install on NixOS yet: the VM is created, the install"
+    " fails": {
+        "fr": (
+            "ERPLibre ne s'installe pas encore sur NixOS : la VM est créée,"
+            " l'installation échoue"
+        ),
+        "en": (
+            "ERPLibre does not install on NixOS yet: the VM is created, the"
+            " install fails"
+        ),
+    },
     # Pourquoi le déploiement demande un mot de passe, dit AVANT l'invite.
     "sudo password: asked when the deployment starts": {
         "fr": "Mot de passe sudo : demandé au lancement du déploiement, pour",

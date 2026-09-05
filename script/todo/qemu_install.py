@@ -816,7 +816,10 @@ class QemuInstallMixin:
             "arches": ("amd64", "arm64"),
             "desktops": (),
             "needs_desktop": True,
-            "families": (),
+            # L'archive JetBrains est liée dynamiquement : elle ne s'exécute pas
+            # sur un système sans /lib64/ld-linux. Les quatre familles
+            # impératives, donc, et pas « toutes ».
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
         "android": {
@@ -830,7 +833,8 @@ class QemuInstallMixin:
             "arches": ("amd64",),
             "desktops": (),
             "needs_desktop": True,
-            "families": (),
+            # Même raison que PyCharm : archive amont liée dynamiquement.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
         "gnome_ext": {
@@ -845,7 +849,9 @@ class QemuInstallMixin:
             "arches": (),
             "desktops": ("gnome",),
             "needs_desktop": True,
-            "families": (),
+            # Les paquets viennent des dépôts de la distribution, et le
+            # gestionnaire d'extensions n'existe qu'à travers eux.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
         # Le seul outil qui ne demande PAS de bureau : il compile, il n'affiche
@@ -900,7 +906,10 @@ class QemuInstallMixin:
             "arches": ("amd64", "arm64"),
             "desktops": (),
             "needs_desktop": False,
-            "families": (),
+            # Binaire statique, mais son installateur écrit dans /usr/local,
+            # crée un compte système et pose une unité systemd à la main :
+            # rien de tout cela n'a de sens sur un système déclaratif.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             # APRÈS l'installation : le script vit dans le dépôt, donc après le
             # clone. Rien d'autre ne l'y oblige — Forgejo ne dépend ni du venv
             # ni d'Odoo.
@@ -936,7 +945,10 @@ class QemuInstallMixin:
             "arches": (),
             "desktops": (),
             "needs_desktop": False,
-            "families": (),
+            # Trois installateurs « curl | sh » qui posent des binaires liés
+            # dynamiquement, et des paquets par le gestionnaire du
+            # système : aucun des deux gestes n'existe sur NixOS.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             # AVANT le clone : chaque outil s'y garde lui-même, et aucun ne
             # doit faire échouer l'installation d'ERPLibre pour un curl qui
             # ne répond pas.
@@ -976,6 +988,7 @@ class QemuInstallMixin:
         "rocky": "dnf",
         "opensuse": "zypper",
         "arch": "pacman",
+        "nixos": "nix",
     }
 
     def _qemu_guest_context(self):
