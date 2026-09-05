@@ -48,5 +48,19 @@ requirement/ignore_requirements.txt
 screenshots
 screencasts
 private/todo/todo_override_private.json
+
+# « tasks/ » porte l'enquête, les mesures datées et les impasses : la règle 09
+# le veut hors du dépôt. « private/repo/ » accueille les dépôts tiers qu'on
+# clone à côté, autant qu'il en faut : chacun garde son propre « .git », et
+# aucun n'a à être nommé ici. Le « .gitkeep » suivi fait exister le dossier
+# sur un clone neuf, sans rien révéler de ce qu'on y met. Les nommer ici les
+# met hors de portée d'un « git add -A », que la règle interdit déjà — mais
+# une règle n'est pas un mécanisme, et l'accident ne se commet qu'une fois.
+tasks/
+private/repo/
+# La liste de noms est ce qu'elle protège : la committer sur un dépôt
+# public publierait exactement ce qu'elle sert à retenir. Un fork privé
+# qui veut la suivre passe par « git add -f », geste délibéré.
+private/noms_interdits.txt
 .erplibre.error.txt
 /mobile/erplibre_home_mobile/
