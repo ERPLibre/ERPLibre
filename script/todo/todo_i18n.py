@@ -10266,10 +10266,10 @@ TRANSLATIONS = {
     "mail_stats_reply": {"fr": "Délai de réponse", "en": "Reply delay"},
     "mail_stats_reply_median": {"fr": "médiane", "en": "median"},
     "mail_stats_reply_none": {
-        "fr": "aucune réponse reliée — resynchronisez pour les messages"
-        " reçus avant cette version",
-        "en": "no reply linked — resynchronise for messages received"
-        " before this version",
+        "fr": "aucune réponse reliée — Courriel › Cache › Taille et purge"
+        " pour resynchroniser les messages reçus avant cette version",
+        "en": "no reply linked — Mail › Cache › Size and purge to"
+        " resynchronise messages received before this version",
     },
     "mail_stats_details": {
         "fr": "Détails (balaie toute la boîte)",
