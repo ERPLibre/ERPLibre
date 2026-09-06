@@ -119,14 +119,16 @@ class LaCommandeDistante(unittest.TestCase):
         /etc/nix/nix.conf d'une ligne identique."""
         self.assertIn("grep -qF 'experimental-features", self.cmd)
 
-    def test_the_rc_line_is_written_once(self):
-        """Même invariant sur ~/.bashrc."""
-        self.assertIn("grep -qF 'for f in /etc/profile.d/nix.sh", self.cmd)
+    def test_nothing_is_added_to_the_user_rc_file(self):
+        """L'installateur écrit lui-même /etc/bash.bashrc et
+        /etc/profile.d/nix.sh : c'est de là que « ssh hôte \'commande\' »
+        tient son PATH.
 
-    def test_both_profile_scripts_are_sourced(self):
-        """L'installateur écrit l'un OU l'autre selon sa version."""
-        self.assertIn("/etc/profile.d/nix.sh", self.cmd)
-        self.assertIn("/etc/profile.d/nix-daemon.sh", self.cmd)
+        Une ligne de plus dans le ~/.bashrc de l'utilisateur serait posée
+        APRÈS le « return » que ce fichier exécute pour tout shell non
+        interactif — donc jamais atteinte dans le seul cas qu'elle
+        prétendait couvrir, et sans objet dans les autres."""
+        self.assertNotIn(".bashrc", self.cmd)
 
     def test_the_verdict_looks_at_the_binary(self):
         """Toutes les poses rendent 0 par construction : leur code de retour
@@ -138,8 +140,8 @@ class LaCommandeDistante(unittest.TestCase):
         « set -e », une seule commande non gardée y suffirait.
 
         Le bloc est joué pour de vrai, avec les commandes qui SORTENT de la
-        machine remplacées par un échec — un test unitaire ne télécharge rien
-        et n'écrit rien hors de son répertoire temporaire."""
+        machine remplacées par un échec — un test unitaire ne télécharge rien.
+        Le HOME temporaire reste VIDE : le bloc n'écrit chez personne."""
         neutre = (
             "curl(){ return 1; }; sudo(){ return 1; }; "
             "timeout(){ return 1; }; systemctl(){ return 1; }; "
@@ -152,8 +154,7 @@ class LaCommandeDistante(unittest.TestCase):
                 env={"PATH": os.environ["PATH"], "HOME": maison},
             )
             self.assertEqual(0, fini.returncode, fini.stderr)
-            rc = Path(maison, ".bashrc")
-            self.assertIn("/etc/profile.d/nix.sh", rc.read_text())
+            self.assertEqual([], list(Path(maison).iterdir()))
 
     def test_it_is_valid_shell(self):
         """Une commande mal citée casse tout le bloc des outils, pas
