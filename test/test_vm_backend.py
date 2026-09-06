@@ -309,5 +309,79 @@ class TestQuiPorteLaMachine(unittest.TestCase):
                 )
 
 
+class TestRegrouperParMachinePorteuse(unittest.TestCase):
+    """UN relevé par hôte, et non par VM.
+
+    Chaque aller-retour coûte une poignée de main ssh ; un hôte rapporte
+    toutes ses VM d'un coup. Interroger VM par VM multiplierait ce coût par
+    leur nombre, sur le chemin qui se rejoue à chaque tour du suivi.
+    """
+
+    def fiches(self, *entrees):
+        return [V.handle_of(entree) for entree in entrees]
+
+    def test_two_vms_of_one_host_share_a_group(self):
+        groupes = V.group_by_host(
+            self.fiches(
+                {"name": "a", "pve": {"vmid": 1, "target": "h1"}},
+                {"name": "b", "pve": {"vmid": 2, "target": "h1"}},
+            )
+        )
+        self.assertEqual(1, len(groupes))
+        self.assertEqual(["a", "b"], [f.name for f in groupes[("h1", "")]])
+
+    def test_two_hosts_are_two_groups(self):
+        groupes = V.group_by_host(
+            self.fiches(
+                {"name": "a", "pve": {"vmid": 1, "target": "h1"}},
+                {"name": "b", "pve": {"vmid": 2, "target": "h2"}},
+            )
+        )
+        self.assertEqual(2, len(groupes))
+
+    def test_two_accounts_on_one_machine_are_two_connections(self):
+        """Les fondre ferait jouer la commande sous le mauvais compte."""
+        groupes = V.group_by_host(
+            self.fiches(
+                {"name": "a", "pve": {"vmid": 1, "target": "h1"}},
+                {
+                    "name": "b",
+                    "pve": {"vmid": 2, "target": "h1", "sudo": "sudo "},
+                },
+            )
+        )
+        self.assertEqual([("h1", ""), ("h1", "sudo ")], sorted(groupes))
+
+    def test_a_local_vm_belongs_to_no_host(self):
+        """Il n'y a personne à qui la demander."""
+        groupes = V.group_by_host(
+            self.fiches(
+                {"name": "a", "ip": "192.0.2.10"},
+                {"name": "b", "pve": {"vmid": 2, "target": "h1"}},
+            )
+        )
+        self.assertEqual([("h1", "")], list(groupes))
+
+    def test_an_absence_in_the_list_is_skipped(self):
+        """`handle_of` rend None sur une entrée illisible : la laisser
+        passer ferait tomber le relevé de tout le parc."""
+        self.assertEqual({}, V.group_by_host([None]))
+
+    def test_nothing_gives_nothing(self):
+        self.assertEqual({}, V.group_by_host([]))
+        self.assertEqual({}, V.group_by_host(None))
+
+    def test_the_order_of_encounter_is_kept(self):
+        """Le rang décide de l'ordre des appels, donc de ce qui s'affiche
+        en premier quand un hôte est lent."""
+        groupes = V.group_by_host(
+            self.fiches(
+                {"name": "a", "pve": {"vmid": 1, "target": "h2"}},
+                {"name": "b", "pve": {"vmid": 2, "target": "h1"}},
+            )
+        )
+        self.assertEqual([("h2", ""), ("h1", "")], list(groupes))
+
+
 if __name__ == "__main__":
     unittest.main()

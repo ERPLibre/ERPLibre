@@ -15,6 +15,7 @@ from script.vm.backend import (  # noqa: F401
     VmBackendError,
     VmHandle,
     addresses_by_name,
+    group_by_host,
     handle_of,
     libvirt_handle,
     pve_handle,

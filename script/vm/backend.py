@@ -194,6 +194,34 @@ def is_hosted(handle) -> bool:
     return bool(handle) and handle.backend == PVE
 
 
+def group_by_host(handles) -> dict:
+    """Les fiches regroupées par MACHINE PORTEUSE, dans l'ordre rencontré.
+
+    UN relevé par hôte, et non par VM. Chaque aller-retour coûte une poignée
+    de main ssh ; un hôte rapporte toutes ses VM d'un coup. Interroger VM par
+    VM multiplierait ce coût par leur nombre, sur le chemin le plus chaud du
+    suivi — celui qui se rejoue à chaque tour.
+
+    La clé est le couple (cible, élévation) : deux comptes différents sur la
+    même machine sont deux connexions, et les fondre en une ferait jouer la
+    commande sous le mauvais.
+
+    Les fiches que personne ne porte n'y figurent pas : il n'y a pas d'hôte
+    à qui les demander.
+    """
+    groupes = {}
+    for handle in handles or ():
+        if not is_hosted(handle):
+            continue
+        cible = handle.host.get("target") or ""
+        if not cible:
+            continue
+        groupes.setdefault((cible, handle.host.get("sudo") or ""), []).append(
+            handle
+        )
+    return groupes
+
+
 def same_machine(left, right) -> bool:
     """Ces deux identités désignent-elles la même machine ?
 

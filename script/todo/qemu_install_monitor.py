@@ -29,6 +29,7 @@ from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.vm import verbs as vm_verbs
 from script.vm.backend import (
     LIBVIRT,
+    group_by_host,
     handle_of,
     is_hosted,
     libvirt_handle,
@@ -1610,7 +1611,7 @@ def drop_local_twins(stats, vms) -> dict:
     machine. Une colonne vide se remarque ; une colonne juste et fausse, non.
     """
     for vm in vms or ():
-        if vm.get("pve"):
+        if is_hosted(handle_of(vm)):
             stats.pop(vm.get("name"), None)
     return stats
 
@@ -1622,12 +1623,10 @@ def _read_pvestats(vms, now=None):
     Les VM concernées sont celles dont le manifeste porte un bloc « pve »
     (adresse de l'hôte, sudo, vmid).
     """
-    hotes = {}
-    for vm in vms or ():
-        info = vm.get("pve") or {}
-        if info.get("target"):
-            hotes[(info["target"], info.get("sudo") or "")] = info
-    if not hotes:
+    groupes = group_by_host(
+        [fiche for fiche in (handle_of(vm) for vm in vms or ()) if fiche]
+    )
+    if not groupes:
         return {}, False
     maintenant = now if now is not None else time.time()
     # « at > 0 » explicitement : sans lui, un tout PREMIER relevé pris moins de
@@ -1643,27 +1642,17 @@ def _read_pvestats(vms, now=None):
         from script.proxmox import proxmox_deploy as pve
     except ImportError:  # pragma: no cover - le module est dans le dépôt
         return {}, False
-    # {nom: adresse interne} — ce qui permet de tester Odoo depuis l'hôte.
-    adresses = {
-        vm["name"]: (vm.get("pve") or {}).get("addr")
-        for vm in vms or ()
-        if (vm.get("pve") or {}).get("addr")
-    }
     stats, ok = {}, False
-    for (target, sudo), info in hotes.items():
-        siennes = [
-            a
-            for nom, a in adresses.items()
-            if (
-                (
-                    next((v for v in vms if v["name"] == nom), {}).get("pve")
-                    or {}
-                ).get("target")
-                == target
-            )
-        ]
+    for (target, sudo), fiches in groupes.items():
+        # Les adresses internes de CET hôte : c'est de là que le port d'Odoo
+        # se teste, une adresse de pont interne ne répondant qu'à lui.
+        siennes = [fiche.address for fiche in fiches if fiche.address]
         _code, sortie = pve.run(
-            {"target": target, "sudo": sudo, "jump": info.get("jump", "")},
+            {
+                "target": target,
+                "sudo": sudo,
+                "jump": fiches[0].host.get("jump", ""),
+            },
             pve_stats_cmd(siennes),
             40,
         )
@@ -1688,15 +1677,12 @@ def _read_pvestats(vms, now=None):
             # nommer ses VM (pvestatd arrêté).
             releves = parse_pvestats(sortie)
             ouverts = parse_odoo_probe(sortie)
-            for vm in vms or ():
-                pve_info = vm.get("pve") or {}
-                if pve_info.get("target") != target:
-                    continue
-                rec = releves.get(int(pve_info.get("vmid") or 0))
+            for fiche in fiches:
+                rec = releves.get(int(fiche.key))
                 if not rec:
                     continue
-                rec["odoo"] = adresses.get(vm["name"]) in ouverts
-                stats[vm["name"]] = rec
+                rec["odoo"] = bool(fiche.address) and fiche.address in ouverts
+                stats[fiche.name] = rec
     _PVE_CACHE.update({"at": maintenant, "stats": stats, "ok": ok})
     return dict(stats), ok
 
@@ -2706,15 +2692,16 @@ def run_monitor(manifest_path: str, run_app: bool = True):
                 states = await asyncio.to_thread(virsh_domstates)
             except Exception:
                 return
-            # Une VM posée sur un hôte Proxmox est ABSENTE de « virsh list » :
-            # elle passait donc pour EFFACÉE, ce qui éteignait du même coup
-            # ses colonnes vivantes. Son état vient de l'hôte.
+            # Une VM que porte une autre machine est ABSENTE de
+            # « virsh list » : elle passait donc pour EFFACÉE, ce qui
+            # éteignait du même coup ses colonnes vivantes. Son état vient de
+            # l'hôte, seule autorité pour elle.
             distants, hote_ok = await asyncio.to_thread(
                 read_pvestats_detail, vms
             )
             for vm in vms:
                 nom = vm["name"]
-                if vm.get("pve"):
+                if is_hosted(handle_of(vm)):
                     if not hote_ok:
                         # L'hôte n'a pas répondu : on ne sait RIEN. Conclure
                         # « effacée » ici gelait la ligne sur 🗑 dès le premier
