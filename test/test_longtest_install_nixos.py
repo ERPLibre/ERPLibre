@@ -80,6 +80,36 @@ class LeCheminEprouve(unittest.TestCase):
         self.assertIn('"303"', SRC)
 
 
+class LePlan(unittest.TestCase):
+    """Ce que la machine doit avoir AVANT qu'on crée quoi que ce soit."""
+
+    def test_the_free_space_asked_for_is_what_gets_written(self):
+        """Un qcow2 n'est pas préalloué : il ne prend que ce qu'on y écrit.
+        Comparer les 40 Go du disque VIRTUEL à l'espace libre faisait refuser
+        le test sur une machine qui pouvait parfaitement le mener."""
+        self.assertIn("DISQUE_ECRIT_GO", SRC)
+        i = SRC.index("if disque <")
+        self.assertIn("DISQUE_ECRIT_GO", SRC[i : i + 120])
+        self.assertNotIn("if disque < DISQUE_GO", SRC)
+
+    def test_the_written_figure_is_smaller_than_the_virtual_disk(self):
+        """Si l'un rattrapait l'autre, la distinction n'aurait plus d'objet et
+        le seuil serait faux dans l'autre sens."""
+        vals = {}
+        for ligne in SRC.splitlines():
+            for nom in ("DISQUE_GO", "DISQUE_ECRIT_GO"):
+                if ligne.startswith(f"{nom} = "):
+                    vals[nom] = int(ligne.split("=")[1])
+        self.assertLess(vals["DISQUE_ECRIT_GO"], vals["DISQUE_GO"])
+
+    def test_it_refuses_before_creating_anything(self):
+        """Annoncer un plan qui ne tient pas coûte une heure pour rien : le
+        contrôle passe AVANT la création."""
+        self.assertLess(SRC.index("def plan_tient"), SRC.index("def mener"))
+        i = SRC.index("if not args.dry_run and not plan_tient")
+        self.assertLess(i, SRC.index("nom, uuid = creer_vm"))
+
+
 class LEssaiABlanc(unittest.TestCase):
     def test_it_creates_nothing_and_says_so(self):
         fini = subprocess.run(

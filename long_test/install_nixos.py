@@ -72,11 +72,16 @@ OUTIL = "install_nixos"
 # veut mesurer la limite basse.
 MEMOIRE_MO = 4096
 VCPUS = 4
-# Le disque : mesuré 12 Go occupés à la fin d'une installation complète — le
-# store Nix en tient 5,5, le venv et le dépôt le reste. 40 Go est le minimum
-# que le catalogue annonce, et il garde la marge des générations du store, que
-# rien ne purge tout seul.
+# Le disque VIRTUEL de la VM : 40 Go, le minimum que le catalogue annonce. Il
+# garde la marge des générations du store Nix, que rien ne purge tout seul.
 DISQUE_GO = 40
+
+# Ce que l'installation ÉCRIT vraiment, mesuré à la fin d'une installation
+# complète : 12 Go, dont 5,5 pour le store. C'est ce chiffre-là qu'il faut
+# comparer à l'espace libre de l'hôte, et non les 40 Go ci-dessus : un qcow2
+# n'est pas préalloué, il ne prend que ce qu'on y écrit. Les confondre faisait
+# refuser le test sur une machine qui pouvait parfaitement le mener.
+DISQUE_ECRIT_GO = 12
 
 # Ce qu'il faut à la machine AVANT de commencer, en plus de la VM elle-même.
 # Annoncer un plan qui ne tient pas coûte une heure pour rien.
@@ -339,8 +344,11 @@ def plan_tient(journal, memoire=MEMOIRE_MO):
     manque = []
     if ram < memoire + MARGE_RAM_MO:
         manque.append(f"RAM (il en faut {memoire + MARGE_RAM_MO} Mo)")
-    if disque < DISQUE_GO + MARGE_DISQUE_GO:
-        manque.append(f"disque (il en faut {DISQUE_GO + MARGE_DISQUE_GO} Go)")
+    if disque < DISQUE_ECRIT_GO + MARGE_DISQUE_GO:
+        manque.append(
+            f"disque (il en faut {DISQUE_ECRIT_GO + MARGE_DISQUE_GO} Go"
+            f" libres ; le disque virtuel fait {DISQUE_GO} Go, creux)"
+        )
     if manque:
         dire(f"  ✗ pas assez de {' ni de '.join(manque)}", journal)
         return False
