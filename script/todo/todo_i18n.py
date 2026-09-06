@@ -5083,6 +5083,40 @@ TRANSLATIONS = {
         "fr": "rtk, starship, un agent, git et Claude prêts",
         "en": "rtk, starship, one agent, git and Claude ready",
     },
+    # Nix posé dans une VM qui n'est pas NixOS, et l'installateur qui porte
+    # NixOS sur une autre machine.
+    "nix + nixos-anywhere": {
+        "fr": "nix + nixos-anywhere",
+        "en": "nix + nixos-anywhere",
+    },
+    "nix, flakes, and nixos-anywhere to install NixOS elsewhere": {
+        "fr": "nix, flakes et nixos-anywhere pour installer NixOS ailleurs",
+        "en": "nix, flakes, and nixos-anywhere to install NixOS elsewhere",
+    },
+    "the official multi-user installer, nix as a daemon": {
+        "fr": "l'installateur officiel multi-utilisateur, nix en démon",
+        "en": "the official multi-user installer, nix as a daemon",
+    },
+    "experimental-features: nix-command and flakes": {
+        "fr": "experimental-features : nix-command et flakes",
+        "en": "experimental-features: nix-command and flakes",
+    },
+    "nixos-anywhere, by nix profile install": {
+        "fr": "nixos-anywhere, par nix profile install",
+        "en": "nixos-anywhere, by nix profile install",
+    },
+    "it installs NixOS on any machine reachable over SSH": {
+        "fr": "il installe NixOS sur toute machine joignable en SSH",
+        "en": "it installs NixOS on any machine reachable over SSH",
+    },
+    "nixos-anywhere ready": {
+        "fr": "nixos-anywhere prêt",
+        "en": "nixos-anywhere ready",
+    },
+    "nixos-anywhere missing, see the log above": {
+        "fr": "nixos-anywhere absent, voir le journal ci-dessus",
+        "en": "nixos-anywhere missing, see the log above",
+    },
     "Help": {
         "fr": "Aide",
         "en": "Help",
