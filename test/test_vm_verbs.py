@@ -607,5 +607,109 @@ class TestEcrireEtRelireLaMemeIdentite(unittest.TestCase):
             V.identity_fields(LOCALE._replace(backend="lima"))
 
 
+class TestLeCanalDExecution(unittest.TestCase):
+    """Par où le script détaché entre dans la VM pour y travailler."""
+
+    DISTANTE_COMPLETE = B.handle_of(
+        {
+            "name": "vm-a",
+            "ip": "pve1+vm-a",
+            "pve": {"vmid": 101, "target": "pve1", "addr": "10.10.10.151"},
+        }
+    )
+
+    def test_a_local_vm_is_entered_by_its_address(self):
+        handle = B.libvirt_handle("vm-a", ip="192.0.2.10")
+        self.assertEqual("192.0.2.10", V.exec_address(handle))
+
+    def test_a_remote_vm_is_entered_by_its_alias(self):
+        """Son adresse interne n'est routable que depuis l'hôte : l'attendre
+        d'ici, c'est attendre vingt minutes pour rien."""
+        self.assertEqual("pve1+vm-a", V.exec_address(self.DISTANTE_COMPLETE))
+
+    def test_the_entry_address_is_not_the_service_address(self):
+        """Les deux vivent dans la même fiche, à un champ près."""
+        self.assertNotEqual(
+            V.exec_address(self.DISTANTE_COMPLETE),
+            self.DISTANTE_COMPLETE.address,
+        )
+
+    def test_a_remote_vm_without_an_alias_falls_back_on_its_address(self):
+        """Mieux vaut essayer que ne rien tenter du tout."""
+        handle = B.pve_handle(
+            {"vmid": 101, "target": "pve1", "addr": "10.10.10.151"}, "vm-a"
+        )
+        self.assertEqual("10.10.10.151", V.exec_address(handle))
+
+    def test_the_prefix_carries_the_account(self):
+        """Sans lui, ssh se connecte sous le compte local de la station."""
+        self.assertIn("erplibre@", V.exec_prefix(LOCALE))
+        self.assertIn("root@", V.exec_prefix(LOCALE, user="root"))
+
+    def test_the_address_stays_a_shell_variable(self):
+        """Figée ici, elle ne se ré-résout plus : le script détaché suit un
+        bail qui bouge, et une adresse morte ferait attendre en vain."""
+        handle = B.libvirt_handle("vm-a", ip="192.0.2.10")
+        prefixe = V.exec_prefix(handle)
+        self.assertIn("$ip", prefixe)
+        self.assertNotIn("192.0.2.10", prefixe)
+
+    def test_the_options_land_before_the_target(self):
+        prefixe = V.exec_prefix(LOCALE, options="-o BatchMode=yes")
+        self.assertTrue(prefixe.startswith("ssh -o BatchMode=yes "), prefixe)
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        for verbe in (V.exec_address, V.exec_prefix):
+            with self.subTest(verbe=verbe.__name__):
+                with self.assertRaises(B.VerbNotImplemented):
+                    verbe(None)
+
+    def test_an_unknown_backend_has_no_channel_yet(self):
+        """Un backend qui n'a pas déclaré comment on entre chez lui doit le
+        DIRE : composer un « ssh » au hasard le ferait joindre autre chose."""
+        with self.assertRaises(B.VerbNotImplemented):
+            V.exec_prefix(LOCALE._replace(backend="lima"))
+
+
+class TestLesVieuxManifestesSOuvrentEncore(unittest.TestCase):
+    """Le suivi se rouvre sur un manifeste qui peut avoir des semaines.
+
+    Il a été écrit avant que rien de tout ceci n'existe : ni UUID, ni
+    adresse interne, ni alias distinct. Refuser de le lire, ou le lire de
+    travers, perdrait le suivi d'une installation en cours.
+    """
+
+    ANCIENS = (
+        ("locale nue", {"name": "vm-a", "ip": "192.0.2.10"}),
+        (
+            "locale armée",
+            {"name": "vm-b", "ip": "192.0.2.11", "uuid": "abc-123"},
+        ),
+        (
+            "distante sans adresse interne",
+            {
+                "name": "vm-c",
+                "ip": "pve1+vm-c",
+                "pve": {"target": "pve1", "vmid": 7},
+            },
+        ),
+    )
+
+    def test_every_old_shape_still_yields_a_usable_channel(self):
+        self.assertEqual(3, len(self.ANCIENS))
+        for nom, entree in self.ANCIENS:
+            with self.subTest(forme=nom):
+                handle = B.handle_of(entree)
+                self.assertIsNotNone(handle)
+                self.assertEqual(entree["ip"], V.exec_address(handle))
+                self.assertIn("$ip", V.exec_prefix(handle))
+
+    def test_an_old_local_entry_is_refreshed_and_a_remote_one_is_not(self):
+        """C'est ce qui décide de ré-résoudre par virsh, et se tromper y
+        fait installer sur le domaine local homonyme."""
+        self.assertTrue(B.resolves_locally(B.handle_of(self.ANCIENS[0][1])))
+        self.assertFalse(B.resolves_locally(B.handle_of(self.ANCIENS[2][1])))
+
+
 if __name__ == "__main__":
     unittest.main()

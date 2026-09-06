@@ -19,7 +19,12 @@ from __future__ import annotations
 import shlex
 from typing import NamedTuple
 
-from script.vm.backend import LIBVIRT, PVE, VerbNotImplemented
+from script.vm.backend import (
+    LIBVIRT,
+    PVE,
+    VerbNotImplemented,
+    is_hosted,
+)
 
 # L'URI libvirt par défaut. Passée en paramètre partout : un backend qui
 # parle à une autre instance n'a pas à recompiler celui-ci.
@@ -352,4 +357,41 @@ def identity_fields(handle) -> dict:
         return {"uuid": handle.proof}
     raise VerbNotImplemented(
         f"identity_fields : backend « {handle.backend} » inconnu."
+    )
+
+
+def exec_address(handle) -> str:
+    """L'adresse par laquelle on ENTRE dans la VM pour y travailler.
+
+    Ce n'est pas celle où son service écoute. Une VM d'hôte distant écoute
+    sur une adresse que seul l'hôte route ; d'ici on passe par l'alias de
+    ~/.ssh/config, qui porte le rebond. Les confondre fait attendre vingt
+    minutes une adresse qui ne répondra jamais, sur une VM parfaitement
+    saine.
+    """
+    if handle is None:
+        raise VerbNotImplemented("exec_address : aucune identité.")
+    if is_hosted(handle):
+        return handle.alias or handle.address
+    return handle.address or handle.alias
+
+
+def exec_prefix(handle, options: str = "", user: str = "erplibre") -> str:
+    """Le début de commande qui exécute DANS la VM, commande non comprise.
+
+    L'adresse y est une VARIABLE de shell et non une valeur : le script
+    détaché la ré-résout en cours de route quand le bail bouge, et la figer
+    ici ferait attendre une adresse morte. C'est l'appelant qui définit
+    « ip », une fois, avec `exec_address`.
+
+    C'est LA couture qu'un backend sans adresse impose : là où celui-ci rend
+    « ssh … », un autre rendra une commande qui joint la VM par son NOM.
+    """
+    if handle is None:
+        raise VerbNotImplemented("exec_prefix : aucune identité.")
+    if handle.backend in (LIBVIRT, PVE):
+        espace = f"{options} " if options else ""
+        return f'ssh {espace}"{user}@$ip"'
+    raise VerbNotImplemented(
+        f"exec_prefix : backend « {handle.backend} » inconnu."
     )
