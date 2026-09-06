@@ -36,13 +36,17 @@ fabrique, le venv, les modules qui n'ont pas de roue et doivent se compiler,
 l'absence des manuels HTML — leur retour ramènerait une construction Sphinx
 de trois mille pages à chaque installation —, puis Odoo qui répond.
 
-CE QU'IL INSTALLE : LE DÉPÔT PUBLIÉ
+CE QU'IL INSTALLE : LE DÉPÔT PUBLIÉ, ENVOYÉ PAR LE CODE LOCAL
 
-Le clone vient du dépôt public, sur la branche demandée — « develop » par
-défaut. C'est voulu : le test mesure ce qu'un utilisateur reçoit, pas ce
-qu'un checkout local contient. La conséquence se dit avant de lancer : un
-correctif encore sur une branche non fusionnée n'est PAS dans la VM, et le
-test échouera sur ce que ce correctif répare.
+Deux moitiés, et il faut les distinguer. La COMMANDE vient du checkout où
+l'on est — c'est celle du menu, importée. Le CLONE qu'elle fait dans la VM
+vient du dépôt PUBLIC, sur la branche demandée, « develop » par défaut.
+
+C'est voulu : le test mesure ce qu'un utilisateur reçoit. Mais la
+conséquence se dit avant de lancer plutôt que de se découvrir sur un rouge —
+un correctif encore sur une branche non fusionnée voyage dans la commande et
+PAS dans le clone. Éprouvé : l'amorçage passe, le clone se fait, et le make
+s'arrête sur le « /bin/bash » que le dépôt publié exige encore.
 
   ./long_test/install_nixos.py                 # crée la VM, installe, juge
   ./long_test/install_nixos.py --dry-run       # le plan et les commandes
