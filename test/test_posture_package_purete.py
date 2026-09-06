@@ -21,6 +21,7 @@ l'atomicité, le mode et la trace que l'écriture du dépôt tient déjà.
 
 import ast
 import os
+import re
 import sys
 import unittest
 
@@ -30,9 +31,10 @@ sys.path.append(RACINE)
 PAQUET = os.path.join(RACINE, "script", "posture")
 
 # Ce que le paquet a le droit d'importer, en plus de la bibliothèque
-# standard et de lui-même. Vide aujourd'hui : la politique réseau se dit
-# sans rien emprunter au dépôt.
-DEPENDANCES_PERMISES = ()
+# standard et de lui-même. Le contrôle des valeurs est partagé avec tout le
+# dépôt EXPRÈS : un contrôle recopié diverge de sa copie au premier
+# correctif, et celui-ci est déjà en service ailleurs.
+DEPENDANCES_PERMISES = ("script.lib_valid",)
 
 # Les appels qu'aucun module ne fait. `print` et `input` décideraient de la
 # langue et du flux à la place de l'écran ; `t` ferait descendre l'i18n dans
@@ -44,6 +46,13 @@ APPELS_INTERDITS = ("print", "input", "t", "open")
 # backend. Le registre porte la même liste pour lui seul, avec son propre
 # message ; celle-ci vaut pour ce qui n'est pas encore écrit.
 HYPERVISEURS = ("qemu", "proxmox", "lima", "virsh", "pveversion", "libvirt")
+
+# Une adresse est une donnée de site : elle vit dans la configuration
+# privée, que le dépôt public ne suit pas. « 0.0.0.0 » est la seule
+# exception, quel que soit le préfixe qui la suit : elle ne désigne aucune
+# machine, et le paquet la nomme justement pour la refuser.
+ADRESSE_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+ADRESSES_PERMISES = ("0.0.0.0",)
 
 
 def modules():
@@ -141,6 +150,26 @@ class TestLePaquetNeSaitRienDeLHyperviseur(unittest.TestCase):
                     # Message court : l'échec par défaut recracherait le
                     # fichier entier.
                     self.assertNotIn(mot, source, f"« {mot} » nommé")
+
+
+class TestAucuneAdresseNeSyRange(unittest.TestCase):
+    """Le tableau de symboles est l'endroit où une adresse veut atterrir."""
+
+    def test_no_module_carries_an_address(self):
+        for chemin in modules():
+            with self.subTest(module=os.path.basename(chemin)):
+                with open(chemin, encoding="utf-8") as handle:
+                    source = handle.read()
+                for trouve in ADRESSE_RE.finditer(source):
+                    if trouve.group() in ADRESSES_PERMISES:
+                        continue
+                    self.fail(f"adresse « {trouve.group()} » dans le paquet")
+
+    def test_the_pattern_recognises_one(self):
+        """Contrôle positif : une expression qui ne trouve jamais rien
+        ferait passer l'épreuve d'à côté sur n'importe quel fichier."""
+        self.assertTrue(ADRESSE_RE.search("route 198.51.100.4 refusée"))
+        self.assertFalse(ADRESSE_RE.search("Odoo 18.0 sous Python 3.12.10"))
 
 
 if __name__ == "__main__":
