@@ -232,8 +232,42 @@ class QemuDeployMixin:
             "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
-            "else echo 'Aucun gestionnaire de paquets "
-            "(apt/dnf/pacman/zypper/yum)'; exit 1; fi; "
+            # NixOS n'a aucun des cinq, et c'est là que l'installation
+            # s'arrêtait : « Aucun gestionnaire de paquets », avant même le
+            # clone. Le système est DÉCLARATIF, mais l'amorçage est le seul
+            # moment où on ne peut pas l'être — le module qui déclare git et
+            # make vit DANS le dépôt qu'il faut git pour cloner.
+            #
+            # Le profil de l'utilisateur tranche ce nœud : les outils y sont
+            # posés pour la durée du clone, et « make install_os » les
+            # redéclare ensuite pour le système entier. Rien n'est écrit dans
+            # /etc/nixos avant que le dépôt ne soit là pour le faire.
+            #
+            # « <nixpkgs> » et non un canal : l'utilisateur n'en a aucun sur
+            # cette image, là où NIX_PATH est posé pour tout le monde et
+            # pointe les canaux de root.
+            #
+            # Les noms sont ceux de nixpkgs, où make s'appelle gnumake — $PKGS
+            # porte les noms des quatre autres familles et ne vaut pas ici.
+            #
+            # python3 s'y ajoute, et seulement ici : les images des quatre
+            # autres familles l'embarquent — cloud-init est écrit en Python et
+            # le pose sur le PATH. Sur NixOS il vit dans le store, hors PATH,
+            # et « make install_os » s'arrêtait sur « env: python3: No such
+            # file or directory » à sa première recette. Sa version importe
+            # peu : l'installation choisit ensuite le Python d'Odoo, que le
+            # module déclare et que le profil du système porte, cherché avant
+            # celui de l'utilisateur.
+            + "elif command -v nix-env >/dev/null 2>&1; then "
+            "nix-env -f '<nixpkgs>' -iA git gnumake curl python3"
+            f"{self._qemu_editor_suffix()}; "
+            # Le PATH de cette commande distante a été figé à l'ouverture du
+            # shell SSH, avant que nix-env ne pose quoi que ce soit : sans
+            # cette ligne, le contrôle juste en dessous déclare git manquant
+            # sur une machine où il vient d'être installé.
+            'export PATH="$HOME/.nix-profile/bin:$PATH"; '
+            + "else echo 'Aucun gestionnaire de paquets "
+            "(apt/dnf/pacman/zypper/yum/nix)'; exit 1; fi; "
             # Vérifie explicitement que tout est là : erreur nette plutôt
             # qu'un « command not found » cryptique plus loin.
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
