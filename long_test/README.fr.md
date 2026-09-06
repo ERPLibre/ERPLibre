@@ -207,10 +207,46 @@ Une limite que la contre-épreuve met au jour : amont coupé, les SIGNATURES
 des bases de dépôt manquent au cache, le miroir y répondant 404, et le cache
 rend donc son 504 nommé. pacman les traite comme optionnelles et poursuit.
 Une distribution qui les exigerait s'arrêterait là.
+## install_nixos.py — ERPLibre s'installe-t-il sur NixOS ?
+
+Pas une profondeur : une machine, une question binaire. Les deux autres
+mesurent jusqu'où l'imbrication tient ; celui-ci demande si le chemin que le
+menu emprunte aboutit sur un système **déclaratif**, où rien ne s'installe
+commande par commande.
+
+Il envoie la commande distante du menu, `_qemu_erplibre_remote_cmd`, prise
+telle quelle. Un test qui installerait par ses propres soins prouverait *son*
+chemin, pas celui du produit — et c'est justement là que se cachaient les
+pannes : un amorçage sans branche nix, un Makefile qui présumait `/bin/bash`,
+des chemins de compilation lus d'une session plus vieille que le module
+qu'elle venait d'appliquer.
+
+Le bloc part en **une** session ssh, comme le déploiement le fait. C'est la
+condition qui expose la panne du premier passage : la session est ouverte
+avant que `make install_os` n'applique le module, donc avant que `pam_env` ne
+pose `CPATH`, et les paquets sans roue amont s'y arrêtaient. Rejouer
+l'installation dans une session neuve réussit et donne raison à tort.
+
+Le verdict est l'**état de la machine**, pas un code de retour :
+`nixos-rebuild switch` rend 4 sur un système pourtant activé, et chaque bloc
+d'outil du menu rend 0 par construction. On contrôle donc ce que fabrique
+`envfs` (`/bin/bash`, `/usr/bin/env`, `/usr/bin/python3.x`), le venv, les
+quatre modules sans roue qui doivent se compiler — psycopg2, python-ldap,
+pycups, mysqlclient —, l'absence des manuels HTML, et Odoo qui répond.
+
+```
+./long_test/install_nixos.py                 # crée la VM, installe, juge
+./long_test/install_nixos.py --dry-run       # le plan et les commandes
+./long_test/install_nixos.py --hote nixos-1  # sur une machine qu'on a déjà
+./long_test/install_nixos.py --detruire      # défaire ce qui a été posé
+```
+
+`--hote` attend une machine qui porte **déjà** NixOS : le script y installe
+ERPLibre, il n'y installe pas le système.
 
 ## Partir d'un hôte qu'on possède déjà
 
-Les deux scripts acceptent `--hote`. Créer une VM de tête pour héberger un
+Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un
 hyperviseur qu'on a sous la main coûte cinq minutes *et* un étage
 d'imbrication — donc de la lenteur, puisque c'est justement elle qu'on mesure.
 
