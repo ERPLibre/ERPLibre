@@ -85,14 +85,24 @@ def identity_guard(handle) -> str:
     l'endroit précis où le garde annonce qu'il n'a rien fait — et sur l'hôte,
     sous élévation. Une variable se développe sans être réévaluée.
     """
-    if not handle or not handle.proof:
+    if handle is None:
+        raise VerbNotImplemented("identity_guard : aucune identité.")
+    # LE BACKEND D'ABORD, la preuve ensuite. Répondre « désarmé » sur un
+    # backend qu'on ne connaît pas serait un échec OUVERT : on ne sait même
+    # pas ce qui prouverait son identité, donc pas davantage que sa preuve
+    # manque.
+    if handle.backend not in (PVE, LIBVIRT, LIMA):
+        raise VerbNotImplemented(
+            f"identity_guard : backend « {handle.backend} » inconnu."
+        )
+    if not handle.proof:
         return ""
     if handle.backend == PVE:
         return _guard_pve(handle)
     if handle.backend == LIBVIRT:
         return _guard_libvirt(handle)
     raise VerbNotImplemented(
-        f"identity_guard : backend « {handle.backend} » inconnu."
+        f"identity_guard : backend « {handle.backend} » sans preuve connue."
     )
 
 
@@ -250,6 +260,12 @@ def web_access(handle, port: int = 18069, service: int = 8069) -> WebAccess:
     """
     if handle is None:
         raise VerbNotImplemented("web_access : aucune identité.")
+    if handle.backend not in (LIBVIRT, PVE, LIMA):
+        # Composer une URL pour un backend inconnu, c'est affirmer qu'on
+        # sait où son service écoute. On ne le sait pas.
+        raise VerbNotImplemented(
+            f"web_access : backend « {handle.backend} » inconnu."
+        )
     if not handle.address:
         return WebAccess("", ())
     if handle.backend == PVE and handle.host.get("target"):
@@ -281,6 +297,30 @@ def ssh_prefix(handle, user: str = "erplibre", options: str = "") -> str:
     """
     if handle is None:
         raise VerbNotImplemented("ssh_prefix : aucune identité.")
+    if handle.backend == LIMA:
+        # On n'entre pas par ssh dans une instance qui n'a pas d'adresse.
+        # Son outil ouvre lui-même un shell, et la forme diffère selon
+        # qu'on veut une session ou une commande : ce verbe ne peut pas
+        # rendre les deux, et en choisir une en silence donnerait à
+        # l'appelant une ligne qui marche une fois sur deux.
+        raise VerbNotImplemented(
+            "ssh_prefix : cette VM ne s'atteint pas par ssh ;"
+            " voir exec_prefix."
+        )
+    if handle.backend not in (LIBVIRT, PVE):
+        # Un quatrième nom n'hérite du chemin d'aucun des trois. Le laisser
+        # tomber ici composait une ligne ssh pour une machine dont personne
+        # n'a dit qu'elle en acceptait une.
+        raise VerbNotImplemented(
+            f"ssh_prefix : backend « {handle.backend} » inconnu."
+        )
+    if not (handle.address or handle.alias):
+        # Sans adresse ni alias, la ligne composée serait « ssh compte@ » —
+        # une cible VIDE que ssh refuse par un message qui ne nomme aucune
+        # machine. Le silence est ici le pire des rendus.
+        raise VerbNotImplemented(
+            "ssh_prefix : aucune adresse ni alias pour joindre cette VM."
+        )
     debut = f"ssh {options} " if options else "ssh "
     rebonds = [
         saut

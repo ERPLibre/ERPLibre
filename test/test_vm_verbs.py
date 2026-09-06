@@ -62,7 +62,14 @@ class TestLeGardeDIdentite(unittest.TestCase):
         """Désarmement ASSUMÉ : mieux vaut la prudence d'avant que refuser
         toute opération sur un poste où la preuve n'a pas pu être relevée."""
         self.assertEqual("", V.identity_guard(LOCALE._replace(proof="")))
-        self.assertEqual("", V.identity_guard(None))
+
+    def test_no_handle_at_all_is_a_refusal_and_not_a_disarming(self):
+        """Les deux se ressemblent et ne sont pas la même chose. « Sa preuve
+        manque » se constate sur une machine qu'on désigne ; « aucune
+        machine désignée » est une faute de l'appelant, et la lui rendre
+        comme un désarmement la lui cacherait."""
+        with self.assertRaises(B.VerbNotImplemented):
+            V.identity_guard(None)
 
     def test_a_name_carrying_a_substitution_is_never_run(self):
         """Le nom était interpolé BRUT dans le message du garde, donc relu
@@ -447,6 +454,17 @@ class TestLaLigneSshVersLaVm(unittest.TestCase):
     def test_no_identity_is_refused_rather_than_guessed(self):
         with self.assertRaises(B.VerbNotImplemented):
             V.ssh_prefix(None)
+
+    def test_the_backend_without_ssh_is_told_where_to_go(self):
+        """Le refus général dirait « backend inconnu », ce qui serait FAUX :
+        il est parfaitement connu, il ne s'atteint simplement pas ainsi. Un
+        refus qui se trompe de raison envoie chercher au mauvais endroit —
+        c'est tout le sujet de ce dépôt."""
+        with self.assertRaises(B.VerbNotImplemented) as pris:
+            V.ssh_prefix(B.lima_handle("essai"))
+        message = str(pris.exception)
+        self.assertIn("exec_prefix", message)
+        self.assertNotIn("inconnu", message)
 
 
 class TestLAlimentation(unittest.TestCase):
