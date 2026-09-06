@@ -1736,6 +1736,22 @@ TRANSLATIONS = {
         "fr": "    efface un — il revient au prochain besoin.",
         "en": "    removes one — it comes back at the next need.",
     },
+    "    and served locally. A mirror already held serves with no": {
+        "fr": "    place, et servi localement. Un miroir déjà détenu sert sans",
+        "en": "    and served locally. A mirror already held serves with no",
+    },
+    "    network at all — but NOT what the cache may not decrypt:": {
+        "fr": "    aucun réseau — mais PAS ce que le cache n'a pas le droit de",
+        "en": "    network at all — but NOT what the cache may not decrypt:",
+    },
+    "    npm and poetry carry their own trust store, so they are": {
+        "fr": "    déchiffrer : npm et poetry portent leur propre magasin, passent",
+        "en": "    npm and poetry carry their own trust store, so they are",
+    },
+    "    tunnelled, and a tunnel carries nothing once cut.": {
+        "fr": "    en tunnel, et un tunnel ne porte rien une fois coupé.",
+        "en": "    tunnelled, and a tunnel carries nothing once cut.",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

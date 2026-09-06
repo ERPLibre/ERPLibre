@@ -621,7 +621,10 @@ class QemuCacheMenuMixin:
             t(
                 "    reusable. A bare mirror per upstream repo is kept instead,"
             ),
-            t("    and served locally — which also works with no network."),
+            t("    and served locally. A mirror already held serves with no"),
+            t("    network at all — but NOT what the cache may not decrypt:"),
+            t("    npm and poetry carry their own trust store, so they are"),
+            t("    tunnelled, and a tunnel carries nothing once cut."),
             t("    A mirror is COMPLETE: it weighs what the upstream repo"),
             t("    weighs, history included, and a few repositories make"),
             t("    most of the total. Entry 5 lists them heaviest first and"),
