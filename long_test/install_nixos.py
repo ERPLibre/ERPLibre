@@ -33,7 +33,8 @@ LE VERDICT EST LA VÉRIFICATION, PAS UN CODE DE RETOUR
 le système EST activé, et chaque bloc d'outil du menu rend 0 par
 construction. On juge donc sur l'état de la machine : les chemins que envfs
 fabrique, le venv, les modules qui n'ont pas de roue et doivent se compiler,
-puis Odoo qui répond.
+l'absence des manuels HTML — leur retour ramènerait une construction Sphinx
+de trois mille pages à chaque installation —, puis Odoo qui répond.
 
 CE QU'IL INSTALLE : LE DÉPÔT PUBLIÉ
 
