@@ -87,6 +87,25 @@ def family() -> str | None:
     return None
 
 
+def conseil_sans_gestionnaire() -> str:
+    """Ce qu'on peut faire là où aucune famille impérative ne gouverne, ou "".
+
+    « Aucun gestionnaire connu » est VRAI sur NixOS et n'y mène nulle part :
+    rien ne s'y installe par une commande, tout s'y déclare. Le dire seul
+    ferme la porte ; nommer les deux gestes qui marchent l'ouvre — le shell
+    jetable pour essayer, la déclaration pour ce qui reste.
+
+    Vide ailleurs : sur une machine dont on ne sait rien, inventer un conseil
+    vaut moins que de se taire.
+    """
+    if os_id() != "nixos":
+        return ""
+    return t(
+        "NixOS: nix-shell -p <package> for one shell,"
+        " or declare it in /etc/nixos/configuration.nix"
+    )
+
+
 def install_command(paquets, famille=None) -> list | None:
     """La commande d'installation, en liste d'arguments. None si personne.
 
@@ -149,6 +168,9 @@ def ask_and_install(execute, cmd, question, is_yes, prefix="  "):
     """
     if not cmd:
         print(f"{prefix}⚠ {t('no known package manager here.')}")
+        conseil = conseil_sans_gestionnaire()
+        if conseil:
+            print(f"{prefix}  {conseil}")
         return None
     if not show_and_ask(cmd, question, is_yes, prefix=prefix):
         print(t("Nothing to do."))

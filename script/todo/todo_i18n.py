@@ -3283,6 +3283,18 @@ TRANSLATIONS = {
         "fr": "virt-viewer manque ici ; installation.",
         "en": "virt-viewer is missing here; installing it.",
     },
+    # Là où « aucun gestionnaire » est vrai ET sans issue.
+    "NixOS: nix-shell -p <package> for one shell, or declare it in"
+    " /etc/nixos/configuration.nix": {
+        "fr": (
+            "NixOS : nix-shell -p <paquet> le temps d'un shell, ou le"
+            " déclarer dans /etc/nixos/configuration.nix"
+        ),
+        "en": (
+            "NixOS: nix-shell -p <package> for one shell, or declare it in"
+            " /etc/nixos/configuration.nix"
+        ),
+    },
     "no known package manager here.": {
         "fr": "aucun gestionnaire de paquets connu ici.",
         "en": "no known package manager here.",
