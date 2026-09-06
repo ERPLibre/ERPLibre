@@ -1406,6 +1406,9 @@ class ProxmoxMenuMixin:
             "storage": spec["storage"],
             "bridge": spec["bridge"],
             "image": image,
+            # L'image qui n'a pas de secteur d'amorçage BIOS : le catalogue le
+            # sait, ce menu le transmet, et « qm create » en tire l'OVMF.
+            "uefi": mod.requiert_uefi(vm.get("distro") or ""),
             "user": spec.get("user") or "erplibre",
             "start": spec.get("start", True),
             "ipconfig": vm.get("ipconfig") or "ip=dhcp",
@@ -2335,6 +2338,7 @@ class ProxmoxMenuMixin:
             "storage": stockage,
             "bridge": pont,
             "image": image,
+            "uefi": mod.requiert_uefi(distro),
             "user": "erplibre",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
             "start": True,

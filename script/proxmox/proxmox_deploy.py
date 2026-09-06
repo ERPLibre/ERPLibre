@@ -970,18 +970,29 @@ def create_cmds(vmid: int, spec: dict) -> list:
     # posé dans les deux cas, donc la console série ne se perd jamais ; seule
     # la nature de l'écran change.
     vga = "virtio-gl" if spec.get("gpu3d") else "serial0"
+    # UEFI seulement pour les images qui n'ont pas de secteur d'amorçage BIOS,
+    # jamais par défaut : mesuré sur un Proxmox 9, une VM NixOS créée en
+    # SeaBIOS se déclare « running » avec une console MUETTE, quand la même en
+    # OVMF démarre. Debian 13, sur le même hôte, démarre en SeaBIOS — d'où un
+    # marqueur par distribution plutôt qu'un défaut renversé pour tous.
+    #
+    # Secure Boot désactivé (« pre-enrolled-keys=0 ») pour la raison qui vaut
+    # déjà côté qemu : un chargeur non signé par les clés Microsoft est refusé,
+    # et l'image ne démarre pas du tout.
+    uefi = bool(spec.get("uefi"))
     cmds = [
         # 1. La coquille : processeur, mémoire, réseau, contrôleur, agent.
         "qm create {id} --name {nom} --memory {mem} --cores {cpu}"
         " --cpu host --ostype l26 --scsihw virtio-scsi-single"
         " --net0 virtio,bridge={pont} --agent enabled=1"
-        " --serial0 socket --vga {vga}".format(
+        " --serial0 socket --vga {vga}{bios}".format(
             id=vmid,
             nom=shlex.quote(nom),
             mem=int(spec["memory"]),
             cpu=int(spec["vcpus"]),
             pont=spec["bridge"],
             vga=vga,
+            bios=" --bios ovmf" if uefi else "",
         ),
         # 2. Le disque, importé DEPUIS l'image cloud. « import-from » (PVE 8+)
         #    remplace l'ancien « qm importdisk » en une seule étape et attache
@@ -994,6 +1005,15 @@ def create_cmds(vmid: int, spec: dict) -> list:
         f"qm set {vmid} --ide2 {stockage}:cloudinit"
         f" --boot order=scsi0 --bootdisk scsi0",
     ]
+    if uefi:
+        # Le disque EFI porte les variables du firmware. Sans lui, « --bios
+        # ovmf » démarre quand même mais ne retient RIEN : l'entrée d'amorçage
+        # que l'invité écrit à sa première installation est perdue au
+        # redémarrage suivant.
+        cmds.append(
+            f"qm set {vmid} --efidisk0"
+            f" {stockage}:0,efitype=4m,pre-enrolled-keys=0"
+        )
     # 4. cloud-init : utilisateur, clé, réseau. La clé est un FICHIER sur
     #    l'hôte — « --sshkeys » n'accepte pas la clé en ligne.
     ci = (
