@@ -211,20 +211,45 @@ type Refusals struct {
 	mu       sync.RWMutex
 	declares map[string]bool
 	apprises map[string]time.Time
+	echecs   map[string]int
 	// Oubli borne la mémoire d'un refus appris. Nul, il ne s'oublie jamais.
 	Oubli time.Duration
+	// Seuil : combien de poignées de main de suite doivent échouer avant de
+	// conclure. Nul, la valeur par défaut s'applique.
+	Seuil int
 }
 
-// OubliParDefaut : assez long pour ne pas retenter à chaque requête, assez
-// court pour qu'une VM qui gagne la confiance en cours de démarrage ne
-// condamne pas son miroir pour la journée.
-const OubliParDefaut = 5 * time.Minute
+// SeuilParDefaut : trois échecs de suite avant de renoncer à déchiffrer.
+//
+// Un client qui ne nous fera jamais confiance échoue à CHAQUE fois ; une
+// coupure de transport, elle, ne se répète pas. Compter permet de servir les
+// deux sans les distinguer à la première vue — ce qui est impossible, npm
+// rejetant notre certificat sans envoyer d'alerte : le serveur ne voit qu'un
+// EOF, exactement comme sur une VM qui démarre et coupe.
+const SeuilParDefaut = 3
+
+// OubliParDefaut : NUL, c'est-à-dire jamais.
+//
+// Un refus appris est une ALERTE TLS : le client a REGARDÉ notre certificat et
+// l'a rejeté. Ceux qui font cela portent leur propre magasin de confiance —
+// npm, poetry, snapd — et ne changeront pas d'avis à la requête suivante. Les
+// oublier périodiquement les fait ré-intercepter, donc échouer de nouveau, et
+// une installation qui traverse plusieurs de ces outils s'arrête au premier.
+//
+// Ce qui NE doit pas être appris, c'est une coupure de transport — elle ne dit
+// rien de ce que le client pense de nous. C'est estRefusTLS qui fait ce tri,
+// et c'est lui qui rendait l'oubli nécessaire tant qu'il n'existait pas.
+//
+// Le champ reste réglable : un déploiement qui veut retenter garde la main.
+const OubliParDefaut = 0
 
 func NewRefusals(static []string) *Refusals {
 	r := &Refusals{
 		declares: map[string]bool{},
 		apprises: map[string]time.Time{},
+		echecs:   map[string]int{},
 		Oubli:    OubliParDefaut,
+		Seuil:    SeuilParDefaut,
 	}
 	for _, h := range static {
 		if h = strings.TrimSpace(strings.ToLower(h)); h != "" {
@@ -266,19 +291,43 @@ func (r *Refusals) Has(host string) bool {
 	return true
 }
 
-// Add retient un refus et DIT pourquoi.
+// Echec note une poignée de main manquée et dit si l'hôte passe en tunnel.
 //
-// La raison est celle que la bibliothèque rend, jamais une interprétation :
-// « certificat refusé » a longtemps été écrit là où l'erreur disait autre
-// chose, et l'on cherchait une autorité manquante alors que la poignée de main
-// échouait pour un motif sans rapport.
-func (r *Refusals) Add(host string, raison error) {
+// Une ALERTE tranche tout de suite : le client a regardé notre certificat et
+// l'a rejeté, il n'y a rien à réessayer. Tout le reste — coupure, fin de flux —
+// doit se RÉPÉTER pour compter : un client qui ne nous fera jamais confiance
+// échoue à chaque fois, une VM qui démarre coupe une fois puis réussit.
+//
+// La raison journalisée est celle que la bibliothèque rend, jamais une
+// interprétation : « certificat refusé » a longtemps été écrit là où l'erreur
+// disait autre chose, et l'on cherchait une autorité manquante alors que la
+// poignée de main échouait pour un motif sans rapport.
+func (r *Refusals) Echec(host string, raison error) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	seuil := r.Seuil
+	if seuil < 1 {
+		seuil = SeuilParDefaut
+	}
+	r.echecs[host]++
+	if !estRefusTLS(raison) && r.echecs[host] < seuil {
+		return false
+	}
 	if _, deja := r.apprises[host]; !deja {
-		log.Printf("tunnel opaque retenu pour %s : %v", host, raison)
+		log.Printf("tunnel opaque retenu pour %s (%d échec(s)) : %v",
+			host, r.echecs[host], raison)
 	}
 	r.apprises[host] = time.Now()
+	return true
+}
+
+// Reussite efface le compte d'un hôte : la coupure d'avant n'était qu'un
+// incident, et deux incidents éloignés ne doivent pas s'additionner jusqu'au
+// seuil.
+func (r *Refusals) Reussite(host string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.echecs, host)
 }
 
 func (r *Refusals) List() []string {
@@ -378,13 +427,12 @@ func (t *TLSFront) handle(c net.Conn) {
 		//
 		// Les traiter pareil condamnait un miroir de distribution au tunnel
 		// sur une seule coupure, et tout son trafic repartait à l'amont.
-		if estRefusTLS(err) {
-			t.Refusals.Add(host, err)
-		} else {
+		if !t.Refusals.Echec(host, err) {
 			log.Printf("poignée de main interrompue pour %s : %v", host, err)
 		}
 		return
 	}
+	t.Refusals.Reussite(host)
 	defer tc.Close()
 
 	// Chaque requête de la connexion est servie comme du HTTPS : le schéma

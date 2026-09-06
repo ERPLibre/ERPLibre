@@ -128,6 +128,9 @@ func TestFeuillePourUneAdresseIP(t *testing.T) {
 	}
 }
 
+// errRefus est l'alerte qu'envoie un client qui a REGARDÉ notre certificat.
+var errRefus = errors.New("remote error: tls: unknown certificate authority")
+
 // Le repli ne se déclare pas d'avance : un hôte qui refuse le certificat est
 // retenu, et la requête suivante vers lui n'essaie plus de le déchiffrer.
 func TestRefusRetenu(t *testing.T) {
@@ -135,12 +138,12 @@ func TestRefusRetenu(t *testing.T) {
 	if r.Has("api.example") {
 		t.Fatal("un hôte est exclu avant tout refus")
 	}
-	r.Add("api.example", errRefus)
+	r.Echec("api.example", errRefus)
 	if !r.Has("api.example") {
 		t.Error("le refus n'est pas retenu")
 	}
 	// Deux fois le même hôte ne double pas l'entrée.
-	r.Add("api.example", errRefus)
+	r.Echec("api.example", errRefus)
 	if n := len(r.List()); n != 1 {
 		t.Errorf("%d hôtes retenus, attendu 1", n)
 	}
@@ -199,77 +202,58 @@ func TestPremierEnregistrementNonTLS(t *testing.T) {
 	}
 }
 
-// Un refus APPRIS s'oublie ; un refus DÉCLARÉ jamais.
+// Une coupure isolée ne condamne pas ; une coupure QUI SE RÉPÈTE, oui.
 //
-// Une VM dont le magasin de confiance n'est pas encore posé refuse la première
-// poignée de main. L'hôte se retrouvait alors condamné au tunnel pour la vie
-// du service — donc jamais caché, y compris pour toutes les VM suivantes, qui
-// elles font confiance. Le miroir d'une distribution s'en trouve soustrait au
-// cache, et tout son trafic repart à l'amont.
-
-// errRefus tient lieu de la raison rendue par la bibliothèque.
-var errRefus = errors.New("essai")
-
-func TestUnRefusApprisSoublie(t *testing.T) {
-	r := NewRefusals(DefaultExclusions)
-	r.Oubli = 40 * time.Millisecond
-
-	r.Add("miroir.example", errRefus)
-	if !r.Has("miroir.example") {
-		t.Fatal("le refus n'est pas retenu du tout")
-	}
-	time.Sleep(60 * time.Millisecond)
-	if r.Has("miroir.example") {
-		t.Error("le refus appris ne s'oublie pas : l'hôte reste condamné")
-	}
-}
-
-func TestUnRefusDeclareNeSoubliePas(t *testing.T) {
-	r := NewRefusals([]string{"api.snapcraft.io"})
-	r.Oubli = time.Millisecond
-	time.Sleep(5 * time.Millisecond)
-	if !r.Has("api.snapcraft.io") {
-		t.Error("un hôte déclaré a été oublié : une requête sera perdue à" +
-			" chaque fois")
-	}
-}
-
-// Réapprendre repousse l'oubli : un vrai épingleur refuse à chaque essai, et
-// ne doit pas être retenté à la requête suivante.
-func TestReapprendreRepousseLOubli(t *testing.T) {
+// Les deux se ressemblent au serveur : npm rejette notre certificat sans
+// envoyer d'alerte, si bien qu'on ne voit qu'un EOF — exactement ce que
+// produit une VM qui démarre et coupe. Seule la répétition les sépare.
+func TestUneCoupureIsoleeNeCondamnePas(t *testing.T) {
 	r := NewRefusals(nil)
-	r.Oubli = 80 * time.Millisecond
-	r.Add("epingleur.example", errRefus)
-	time.Sleep(50 * time.Millisecond)
-	r.Add("epingleur.example", errRefus)
-	time.Sleep(50 * time.Millisecond)
-	if !r.Has("epingleur.example") {
-		t.Error("un refus réappris a été oublié trop tôt")
-	}
-}
-
-// Un oubli nul rend la mémoire définitive : c'est le comportement d'avant, que
-// l'on doit pouvoir retrouver.
-func TestOubliNulRendLaMemoireDefinitive(t *testing.T) {
-	r := NewRefusals(nil)
-	r.Oubli = 0
-	r.Add("h.example", errRefus)
-	time.Sleep(5 * time.Millisecond)
-	if !r.Has("h.example") {
-		t.Error("un oubli nul oublie quand même")
-	}
-}
-
-// La liste rendue ne doit pas porter ce qui est déjà oublié.
-func TestLaListeNeMontrePasCeQuiEstOublie(t *testing.T) {
-	r := NewRefusals([]string{"declare.example"})
-	r.Oubli = 30 * time.Millisecond
-	r.Add("appris.example", errRefus)
-	time.Sleep(50 * time.Millisecond)
-	for _, h := range r.List() {
-		if h == "appris.example" {
-			t.Error("un refus oublié figure encore dans la liste")
+	coupure := errors.New("read: connection reset by peer")
+	for i := 1; i < r.Seuil; i++ {
+		if r.Echec("miroir.example", coupure) {
+			t.Fatalf("condamné dès l'échec %d, seuil %d", i, r.Seuil)
 		}
+	}
+	if r.Has("miroir.example") {
+		t.Error("condamné avant le seuil")
+	}
+}
+
+func TestUneCoupureRepeteeFinitParCondamner(t *testing.T) {
+	r := NewRefusals(nil)
+	coupure := errors.New("EOF")
+	for i := 0; i < r.Seuil; i++ {
+		r.Echec("npm.example", coupure)
+	}
+	if !r.Has("npm.example") {
+		t.Error("un client qui échoue à chaque fois n'est jamais mis en" +
+			" tunnel : son installation s'arrêtera là")
+	}
+}
+
+// Une réussite efface le compte : deux incidents éloignés ne doivent pas
+// s'additionner jusqu'au seuil.
+func TestUneReussiteEffaceLeCompte(t *testing.T) {
+	r := NewRefusals(nil)
+	coupure := errors.New("EOF")
+	for i := 1; i < r.Seuil; i++ {
+		r.Echec("h.example", coupure)
+	}
+	r.Reussite("h.example")
+	for i := 1; i < r.Seuil; i++ {
+		r.Echec("h.example", coupure)
+	}
+	if r.Has("h.example") {
+		t.Error("des incidents éloignés se sont additionnés")
+	}
+}
+
+// Une ALERTE tranche tout de suite : le client a REGARDÉ notre certificat.
+func TestUneAlerteCondamneDesLePremierEchec(t *testing.T) {
+	r := NewRefusals(nil)
+	if !r.Echec("epingleur.example", errors.New("remote error: tls: bad certificate")) {
+		t.Error("une alerte n'est pas retenue immédiatement")
 	}
 }
 
