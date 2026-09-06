@@ -20,9 +20,12 @@ millisecondes. Ce qu'ils tiennent :
 """
 
 import ast
+import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -133,6 +136,100 @@ class LEssaiABlanc(unittest.TestCase):
         """Un rapport d'essai à blanc n'a rien créé : le confondre avec un
         vrai ferait détruire d'après une liste vide."""
         self.assertIn("-dryrun.json", SRC)
+
+
+class LeDefaire(unittest.TestCase):
+    """La forme du rapport n'est pas libre : c'est le CONTRAT du défaire
+    partagé de descente.py, et rien dans le langage ne l'impose.
+
+    Le rapport écrit d'abord n'avait pas d'« etages » — dernier_rapport
+    l'écartait comme « rien créé », « --detruire » répondait « rien à
+    défaire », et la VM survivait à ce qui devait l'effacer."""
+
+    ETAGE = {
+        "niveau": 1,
+        "nom": "long-nixos-000000",
+        "uuid": "aaaa-bbbb",
+        "alias": "long-nixos-000000",
+        "cree": True,
+    }
+
+    def setUp(self):
+        self.maison = tempfile.mkdtemp(prefix="longtest-nixos-")
+        self.dossier = os.path.join(self.maison, ".erplibre/longtest")
+        os.makedirs(self.dossier)
+        self.addCleanup(shutil.rmtree, self.maison, ignore_errors=True)
+
+    def _defaire(self, rapport):
+        """Le script, à blanc, sur un HOME qui ne contient que ce rapport."""
+        with open(
+            os.path.join(self.dossier, "long-nixos-19990101-000000.json"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            json.dump(rapport, fh)
+        env = dict(os.environ, HOME=self.maison)
+        fini = subprocess.run(
+            [
+                str(RACINE / ".venv.erplibre/bin/python"),
+                str(SCRIPT),
+                "--detruire",
+                "--dry-run",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            cwd=RACINE,
+            env=env,
+        )
+        return fini.stdout
+
+    def test_the_machine_named_is_the_one_the_report_carries(self):
+        """Et non un nom recalculé : le script nomme ses VM avec l'heure, là
+        où le repli du défaire partagé dirait « long-nixos-1 »."""
+        sortie = self._defaire(
+            {
+                "outil": "install_nixos",
+                "dry_run": False,
+                "pid": 1,
+                "etages": [self.ETAGE],
+            }
+        )
+        self.assertIn("long-nixos-000000", sortie)
+        self.assertNotIn("long-nixos-1 ", sortie)
+        # Une seule machine : aucune imbriquée.
+        self.assertIn("0 VM imbriquée(s)", sortie)
+        self.assertIn("rien ne sera détruit", sortie)
+
+    def test_a_report_without_that_shape_finds_nothing(self):
+        """La preuve que le contrat compte : la forme écrite d'abord."""
+        sortie = self._defaire(
+            {
+                "outil": "install_nixos",
+                "dry_run": False,
+                "vm": {"nom": "long-nixos-000000", "uuid": "aaaa"},
+            }
+        )
+        self.assertIn("rien à défaire", sortie)
+
+    def test_a_dry_run_report_is_never_used_to_destroy(self):
+        """Un plan n'a rien créé : détruire d'après lui viserait des machines
+        qui n'existent pas, ou pire, celles d'une autre course."""
+        sortie = self._defaire(
+            {
+                "outil": "install_nixos",
+                "dry_run": True,
+                "pid": 1,
+                "etages": [self.ETAGE],
+            }
+        )
+        self.assertIn("rien à défaire", sortie)
+
+    def test_the_report_carries_the_pid_of_its_run(self):
+        """Sans lui, « --detruire » lancé pendant une installation prendrait
+        le rapport de la course EN COURS — le plus récent — et détruirait la
+        machine sous elle."""
+        self.assertIn('"pid": os.getpid()', SRC)
 
 
 class LeVerrouEtLeMenu(unittest.TestCase):
