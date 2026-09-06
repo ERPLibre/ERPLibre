@@ -409,5 +409,50 @@ class TestClesI18n(unittest.TestCase):
             )
 
 
+class TestLesIssuesDuJournalSontToutesMontrees(unittest.TestCase):
+    """Le diagnostic répond « le cache sert-il ? » : il ne peut rien taire.
+
+    La version d'avant écrivait cinq issues en dur. Deux sont apparues depuis —
+    le tunnel opaque et le miroir git — et l'écran les taisait, alors que le
+    miroir portait à lui seul le tiers des lignes du journal. Une liste fermée
+    dérive dès qu'on ne la relit pas.
+
+    Ce contrôle lit les issues que le CACHE définit, en Go, et exige que
+    l'ordre d'affichage les nomme toutes.
+    """
+
+    def issues_du_cache(self):
+        src = (RACINE / "script" / "qemu_cache" / "proxy.go").read_text(
+            encoding="utf-8"
+        )
+        bloc = src[
+            src.index("Outcome") : src.index("\n)", src.index("Outcome"))
+        ]
+        return set(re.findall(r'Outcome\w+\s*=\s*"([a-z-]+)"', bloc))
+
+    def test_lordre_nomme_toutes_les_issues(self):
+        from script.todo.qemu_cache_menu import ORDRE_ISSUES
+
+        issues = self.issues_du_cache()
+        self.assertGreaterEqual(len(issues), 6, "le relevé n'a rien trouvé")
+        manquantes = sorted(issues - set(ORDRE_ISSUES))
+        self.assertEqual(
+            manquantes,
+            [],
+            "des issues du journal ne seraient pas montrées à leur rang :"
+            f" {manquantes}",
+        )
+
+    def test_le_diagnostic_ne_filtre_pas_sur_cet_ordre(self):
+        """Une issue inconnue de l'ordre doit quand même paraître : c'est ce
+        qui empêche la liste de retaire quelque chose un jour."""
+        src = (RACINE / "script" / "todo" / "qemu_cache_menu.py").read_text(
+            encoding="utf-8"
+        )
+        bloc = src[src.index("def _cache_diagnostic") :]
+        bloc = bloc[: bloc.index("\n    @")]
+        self.assertIn("set(compte) - set(ORDRE_ISSUES)", bloc)
+
+
 if __name__ == "__main__":
     unittest.main()

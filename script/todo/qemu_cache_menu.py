@@ -42,6 +42,21 @@ CACHE_CONF = "/etc/erplibre_go_qemu_cache/env"
 CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
 CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
+
+# L'ordre d'affichage des issues du journal. Ce n'est PAS une liste de ce qui
+# existe : tout ce que le journal porte est montré, ce qui n'est pas nommé ici
+# venant à la fin. Une liste fermée avait déjà tu les deux issues les plus
+# nombreuses, faute d'avoir été relue quand elles sont apparues.
+ORDRE_ISSUES = (
+    "hit",
+    "mirror",
+    "stored",
+    "stale",
+    "offline-miss",
+    "fetched",
+    "passthrough",
+    "error",
+)
 CACHE_SET = "bypass"
 LONGTEST = "long_test/qemu_cache.py"
 
@@ -227,7 +242,14 @@ class QemuCacheMenuMixin:
         compte = self._cache_compte_issues()
         if compte:
             print(f"\n  {t('What the cache has done:')}")
-            for issue in ("hit", "stored", "stale", "offline-miss", "fetched"):
+            # L'ordre est celui de la lecture — ce qui a servi d'abord, ce qui
+            # est sorti ensuite. Mais TOUT ce que le journal porte est montré,
+            # y compris une issue que cette liste ne connaît pas : la version
+            # d'avant en écrivait cinq en dur et taisait les deux plus
+            # nombreuses, dont celle qui porte le trafic git.
+            for issue in ORDRE_ISSUES + tuple(
+                sorted(set(compte) - set(ORDRE_ISSUES))
+            ):
                 if issue in compte:
                     print(f"    {issue:<14} {compte[issue]}")
         else:
