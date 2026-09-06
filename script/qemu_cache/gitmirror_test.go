@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -446,4 +447,60 @@ func TestRetirerEffaceLeMiroir(t *testing.T) {
 	if _, pret := g.Assurer(context.Background(), amont); !pret {
 		t.Error("le miroir ne se refait pas après effacement")
 	}
+}
+
+// Un miroir qui existe est déjà servable : quand l'amont ne répond pas, il
+// doit sortir TOUT DE SUITE, pas au terme du délai d'un clonage.
+//
+// Sans ce délai propre, un amont coupé faisait attendre chaque dépôt jusqu'à
+// son terme : pour les trois cents dépôts d'une installation, des heures pour
+// un déploiement que le disque pouvait servir en entier.
+func TestUnRafraichissementNattendPasCommeUnClonage(t *testing.T) {
+	amont, srv := amontGit(t)
+	g := &GitMirror{
+		Dir:      t.TempDir(),
+		Delai:    30 * time.Minute,
+		DelaiMaj: 2 * time.Second,
+	}
+	if _, pret := g.Assurer(context.Background(), amont); !pret {
+		t.Fatal("le miroir n'a pas pu être créé")
+	}
+	// L'amont devient MUET : il accepte la connexion et ne répond jamais,
+	// exactement ce que fait un paquet jeté sans être refusé.
+	srv.Close()
+	muet, err := net.Listen("tcp", hoteDe(t, amont))
+	if err != nil {
+		t.Skipf("le port de l'amont n'a pas pu être repris : %v", err)
+	}
+	defer muet.Close()
+	go func() {
+		for {
+			c, err := muet.Accept()
+			if err != nil {
+				return
+			}
+			_ = c // accepté, jamais répondu
+		}
+	}()
+
+	g.Frais = 0
+	debut := time.Now()
+	chemin, pret := g.Assurer(context.Background(), amont)
+	ecoule := time.Since(debut)
+	if !pret || chemin == "" {
+		t.Fatal("le miroir existant n'a pas été servi")
+	}
+	if ecoule > 20*time.Second {
+		t.Errorf("le rafraîchissement a duré %v : le délai du clonage a"+
+			" été appliqué", ecoule)
+	}
+}
+
+func hoteDe(t *testing.T, brut string) string {
+	t.Helper()
+	u, err := url.Parse(brut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u.Host
 }

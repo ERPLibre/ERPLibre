@@ -56,9 +56,17 @@ type GitMirror struct {
 	// Backend est le chemin de « git-http-backend ». Vide, il est cherché aux
 	// endroits usuels.
 	Backend string
-	// Delai borne un clonage ou une récupération. Un dépôt Odoo complet
-	// descend en minutes, pas en secondes.
+	// Delai borne un CLONAGE. Un dépôt Odoo complet descend en minutes, pas
+	// en secondes, et l'abandonner à mi-chemin ne laisse rien d'utilisable.
 	Delai time.Duration
+	// DelaiMaj borne un RAFRAÎCHISSEMENT, et il est court à dessein.
+	//
+	// Un miroir qui existe est déjà servable : si l'amont ne répond pas, la
+	// bonne réponse est de servir ce qu'on a, tout de suite. Avec le délai du
+	// clonage, un amont coupé ferait attendre chaque dépôt jusqu'à son terme —
+	// pour les trois cents dépôts d'une installation, des heures d'attente
+	// pour un déploiement qui aurait pu être servi en entier depuis le disque.
+	DelaiMaj time.Duration
 	// PlancherLibre est la place qu'on refuse d'entamer. En dessous, aucun
 	// NOUVEAU miroir n'est créé et la requête repart vers l'amont : le cache
 	// perd son avance, il ne remplit pas le disque de l'orchestrateur.
@@ -212,7 +220,9 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 		g.noter(chemin)
 		return chemin, true
 	}
-	if err := g.git(ctx, chemin, "remote", "update", "--prune"); err != nil {
+	if err := g.gitBorne(
+		ctx, g.delaiMaj(), chemin, "remote", "update", "--prune",
+	); err != nil {
 		// L'amont est muet : le miroir d'hier vaut mieux que rien, et c'est
 		// exactement ce qui permet de déployer sans réseau.
 		return chemin, true
@@ -240,15 +250,38 @@ func (g *GitMirror) noter(chemin string) {
 	g.vus[chemin] = time.Now()
 }
 
+// DelaiMajParDefaut : de quoi laisser un amont sain répondre, pas de quoi
+// attendre un amont absent.
+const DelaiMajParDefaut = 45 * time.Second
+
+func (g *GitMirror) delaiMaj() time.Duration {
+	if g.DelaiMaj > 0 {
+		return g.DelaiMaj
+	}
+	return DelaiMajParDefaut
+}
+
 func (g *GitMirror) git(ctx context.Context, dir string, args ...string) error {
 	delai := g.Delai
 	if delai <= 0 {
 		delai = 30 * time.Minute
 	}
+	return g.gitBorne(ctx, delai, dir, args...)
+}
+
+func (g *GitMirror) gitBorne(
+	ctx context.Context, delai time.Duration, dir string, args ...string,
+) error {
 	ctx, annule := context.WithTimeout(ctx, delai)
 	defer annule()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	// Le délai tue « git », mais git délègue le réseau à un auxiliaire —
+	// « git-remote-https » — qui SURVIT et garde le tube ouvert. Sans ce
+	// second délai, la lecture de la sortie attend cet auxiliaire, donc pour
+	// toujours quand l'amont accepte la connexion et ne répond jamais : le
+	// délai qu'on vient de poser ne borne alors plus rien.
+	cmd.WaitDelay = 5 * time.Second
 	// Aucune invite : un dépôt privé doit ÉCHOUER et retomber sur le relais,
 	// et non bloquer le service en attendant un mot de passe que personne ne
 	// tapera jamais.
