@@ -113,6 +113,22 @@ class LeModule(unittest.TestCase):
         self.assertIn("services.envfs.enable = true;", self.src)
         self.assertIn("programs.nix-ld.enable = true;", self.src)
 
+    def test_what_compiles_here_is_also_given_to_the_loader(self):
+        """Un module compilé sur place n'a pas de RPATH : son « .so » ne
+        retrouve sa bibliothèque à l'IMPORT que par LD_LIBRARY_PATH, donc par
+        ce que nix-ld déclare. Déclarer l'en-tête sans la bibliothèque fait
+        réussir la compilation et échouer l'import."""
+        entetes = ("openldap", "cups", "libmysqlclient")
+        loader = self.src.split("programs.nix-ld.libraries")[1].split("];")[0]
+        for lib in entetes:
+            with self.subTest(lib=lib):
+                self.assertIn(lib, loader)
+
+    def test_pg_config_is_its_own_derivation(self):
+        """Il n'est ni dans postgresql ni dans sa sortie « .dev », et
+        psycopg2 s'arrête sur « pg_config executable not found »."""
+        self.assertIn("postgresql.pg_config", self.src)
+
     def test_the_dynamic_loader_gets_what_the_wheels_ask(self):
         """Une roue manylinux qui ne trouve pas sa bibliothèque échoue à
         l'IMPORT, pas à l'installation : bien plus tard, et sans rapport

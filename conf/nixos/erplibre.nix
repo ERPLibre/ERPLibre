@@ -58,6 +58,8 @@
     util-linux
     openldap
     cyrus_sasl
+    cups
+    libmysqlclient
   ];
 
   # ── La base de données ───────────────────────────────────────────────────
@@ -117,6 +119,20 @@
     openldap.dev
     cyrus_sasl
     cyrus_sasl.dev
+    # « pg_config » est une dérivation à PART dans nixpkgs : il n'est ni dans
+    # postgresql ni dans sa sortie « .dev », et psycopg2 s'arrête sur
+    # « Error: pg_config executable not found ».
+    postgresql.pg_config
+    # pycups veut cups/http.h, mysqlclient veut mysql.h. Les quatre autres
+    # scripts posent les mêmes (libcups2-dev, cups-devel,
+    # mariadb-connector-c-devel, mariadb-libs).
+    cups
+    # « cups.lib » porte libcups.so, que « out » n'a pas : sans elle la
+    # compilation de pycups PASSE et l'édition de liens échoue sur « -lcups ».
+    cups.lib
+    cups.dev
+    libmysqlclient
+    libmysqlclient.dev
     # « less » est le PAGINATEUR ; « nodePackages.less » est lessc, le
     # compilateur LESS des assets Odoo. Les quatre autres scripts les posent
     # tous deux, l'un par le gestionnaire du système et l'autre par « npm
