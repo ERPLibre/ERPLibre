@@ -203,6 +203,12 @@ pycups, mysqlclient —, l'absence des manuels HTML, et Odoo qui répond.
 `--hote` attend une machine qui porte **déjà** NixOS : le script y installe
 ERPLibre, il n'y installe pas le système.
 
+Le clone vient du dépôt **publié**, sur la branche demandée (`develop` par
+défaut). C'est voulu : le test mesure ce qu'un utilisateur reçoit, pas ce
+qu'un checkout local contient. À dire avant de lancer : un correctif encore
+sur une branche non fusionnée n'est *pas* dans la VM, et le test échouera sur
+ce que ce correctif répare.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les trois scripts acceptent `--hote`. Créer une VM de tête pour héberger un
