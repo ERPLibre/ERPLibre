@@ -9,6 +9,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## Added
+
+- NixOS 25.11 as a deployable system, alongside the eight others. It is the only one no distribution publishes a cloud image for: the image is rebuilt by a third party, so its release is pinned, its sha256 verified at every download, and its origin printed before anything is created. cloud-init receives no network configuration there — its networkd renderer takes the key of a block as an interface NAME, where netplan honours a `match:` — and the account is created with `/bin/sh`, sshd refusing an account whose shell does not exist
+- ERPLibre installed on NixOS, its dependencies DECLARED in `conf/nixos/erplibre.nix` and applied by `nixos-rebuild`, where the four other families install them one command at a time. `services.envfs` answers `/usr/bin/env` and `programs.nix-ld` gives manylinux wheels the dynamic loader they ask for; the headers of what has no wheel are linked into the system profile, and its libraries reach the loader too, a module compiled on the machine carrying no RPATH. Checked on a VM: the 362-package lock installs, and Odoo initialises a database and answers over HTTP
+- A `nix + nixos-anywhere` option on the OTHER distributions, the reverse of picking NixOS: it leaves an ordinary VM able to install NixOS onto any machine reachable over SSH. Nix is called by absolute path, the remote shell's PATH being frozen before the installer drops the binary, and the flake features are repeated on the command line, writing `nix.conf` needing a sudo that may fail
+
+## Fixed
+
+- The timezone a deployed VM inherits from its host is translated to its canonical name. Ubuntu 24.04 cloud images no longer carry the legacy aliases — `Canada/*`, `US/*`, `Asia/Calcutta` — moved to a `tzdata-legacy` package they do not install: cloud-init refused the zone, the VM stayed on UTC, and the only sign was cloud-init reporting an error, the offset showing up in timestamps long afterwards. The alias table is the host's own `tzdata.zi`, not a copy kept in the code
+
 
 ## [1.8.0] - 2026-09-04
 

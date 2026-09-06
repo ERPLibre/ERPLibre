@@ -9,6 +9,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## Ajouté
+
+- NixOS 25.11 parmi les systèmes déployables, à côté des huit autres. C'est le seul dont aucune distribution ne publie d'image cloud : l'image est rebâtie par un tiers, donc sa version est épinglée, sa somme sha256 vérifiée à chaque téléchargement, et son origine dite avant que rien ne soit créé. cloud-init n'y reçoit aucune configuration réseau — son moteur networkd prend la clé d'un bloc pour un NOM d'interface, là où netplan honore un `match:` — et le compte y est créé avec `/bin/sh`, sshd refusant un compte dont le shell n'existe pas
+- ERPLibre installé sur NixOS, ses dépendances DÉCLARÉES dans `conf/nixos/erplibre.nix` puis appliquées par `nixos-rebuild`, là où les quatre autres familles les installent commande par commande. `services.envfs` répond à `/usr/bin/env` et `programs.nix-ld` donne aux roues manylinux le chargeur dynamique qu'elles réclament ; les en-têtes de ce qui n'a pas de roue sont liés au profil du système, et leurs bibliothèques vont aussi au chargeur, un module compilé sur la machine ne portant pas de RPATH. Vérifié sur une VM : le verrou de 362 paquets s'installe, et Odoo initialise une base et répond en HTTP
+- Une option `nix + nixos-anywhere` sur les AUTRES distributions, l'inverse de choisir NixOS : elle laisse une VM ordinaire capable d'installer NixOS sur toute machine joignable en SSH. Nix est appelé par son chemin absolu, le PATH du shell distant étant figé avant que l'installateur ne pose le binaire, et les fonctions des flakes sont redonnées sur la ligne de commande, l'écriture de `nix.conf` réclamant un sudo qui peut manquer
+
+## Corrigé
+
+- Le fuseau horaire qu'une VM déployée hérite de son hôte est traduit en son nom canonique. Les images cloud d'Ubuntu 24.04 ne portent plus les alias historiques — `Canada/*`, `US/*`, `Asia/Calcutta` — déplacés dans un paquet `tzdata-legacy` qu'elles n'installent pas : cloud-init refusait le fuseau, la VM restait en UTC, et le seul signe était un cloud-init en erreur, le décalage n'apparaissant qu'aux horodatages longtemps après. La table des alias est le `tzdata.zi` de l'hôte, et non une copie figée dans le code
+
 
 ## [1.8.0] - 2026-09-04
 
