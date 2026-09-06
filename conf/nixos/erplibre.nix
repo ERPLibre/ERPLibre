@@ -154,6 +154,19 @@
   # « fatal error: lber.h: No such file or directory » reste entier.
   environment.pathsToLink = [ "/include" "/lib/pkgconfig" ];
 
+  # Les manuels HTML, et EUX SEULS, sont écartés.
+  #
+  # NixOS installe la sortie « doc » de CHAQUE paquet du système
+  # (environment.extraOutputsToInstall vaut « man info doc »). Celle de
+  # CPython n'est pas dans le cache binaire : le premier « nixos-rebuild »
+  # la BÂTIT — un Sphinx qui lit puis écrit 3 000 pages. Sur une VM de 4 Go
+  # et 4 cœurs, cela domine le temps d'installation ; sur une de 2 Go, la
+  # machine cesse de répondre pendant la construction.
+  #
+  # « documentation.doc » et non « documentation » : les pages de manuel et
+  # info restent, elles se lisent depuis un terminal et ne coûtent rien.
+  documentation.doc.enable = false;
+
   # « sessionVariables » et NON « variables » : la seconde n'écrit que dans
   # /etc/set-environment, que seul un shell de CONNEXION lit. Or le
   # déploiement installe par « ssh hôte 'commande' », qui n'en est pas un —
