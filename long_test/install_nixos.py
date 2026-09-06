@@ -371,7 +371,17 @@ def mener(argv):
     args = parseur.parse_args(argv)
 
     journal = journal_du_jour()
-    famille = Famille(OUTIL, NOM_BASE, None)
+
+    # `detruire_une` défait une VM IMBRIQUÉE chez son parent. Il n'y en a
+    # aucune ici — une seule machine, au premier étage — donc le défaire
+    # partagé ne l'appelle jamais. On le dit quand même plutôt que de poser
+    # None : le jour où il serait appelé, le journal nommerait la raison au
+    # lieu de s'arrêter sur « NoneType is not callable ».
+    def pas_d_imbrique(parent_alias, identite, nom, log=None):
+        dire(f"      ✗ {nom} : ce test ne crée pas de VM imbriquée", log)
+        return False
+
+    famille = Famille(OUTIL, NOM_BASE, pas_d_imbrique)
     if args.detruire:
         return detruire(famille, journal, dry_run=args.dry_run)
 
@@ -379,13 +389,20 @@ def mener(argv):
     if args.dry_run:
         dire("  --dry-run : rien ne sera créé.", journal)
 
+    # La forme du rapport n'est pas libre : c'est le CONTRAT du défaire
+    # partagé (descente.py). « etages » vide fait écarter le rapport par
+    # dernier_rapport — « rien créé » — et la VM survivrait au --detruire.
+    # « pid » est ce qui empêche de détruire la machine d'une installation
+    # EN COURS : sans lui, le rapport de la course en cours est le plus
+    # récent, donc celui qu'on choisit.
     rapport = {
         "outil": OUTIL,
         "distro": DISTRO,
         "branche": args.branche,
         "dry_run": args.dry_run,
+        "pid": os.getpid(),
         "etapes": {},
-        "vm": {},
+        "etages": [],
     }
     chemin = journal[:-4] + ("-dryrun.json" if args.dry_run else ".json")
 
@@ -402,12 +419,21 @@ def mener(argv):
         nom, uuid = creer_vm(nom, journal, args.dry_run, args.memory)
         if not nom:
             return 1
-        rapport["vm"] = {"nom": nom, "uuid": uuid, "niveau": 1}
-        cible = nom if args.dry_run else ""
+        # Écrit AVANT la suite : une course qui meurt en cours
+        # d'installation laisse quand même de quoi la défaire.
+        rapport["etages"] = [
+            {
+                "niveau": 1,
+                "nom": nom,
+                "uuid": uuid,
+                "alias": nom,
+                "cree": True,
+            }
+        ]
+        cible = nom
         if not args.dry_run:
-            cible = nom if adresse_de(nom, journal) else ""
-            if not cible:
-                _ecrire(chemin, rapport, journal)
+            _ecrire(chemin, rapport, journal)
+            if not adresse_de(nom, journal):
                 return 1
 
     if args.dry_run:
