@@ -303,3 +303,40 @@ func TestApresPrefetchLeMiroirEstPret(t *testing.T) {
 		t.Errorf("occupation : %d dépôts, %d octets", depots, octets)
 	}
 }
+
+// Le plancher protège le disque de l'orchestrateur.
+//
+// Un miroir est COMPLET là où « repo sync » clone en profondeur un : le
+// facteur entre les deux est celui de l'historique, et il ne se devine pas.
+// Sans plancher, une seule installation qui tire trois cents dépôts peut
+// remplir le disque de la machine qui héberge toutes les VM.
+func TestLePlancherRefuseUnMiroirDeplus(t *testing.T) {
+	amont, _ := amontGit(t)
+	g := &GitMirror{
+		Dir:   t.TempDir(),
+		Delai: 30 * time.Second,
+		// Plus que tout disque n'en offre : aucun miroir NEUF ne doit passer.
+		PlancherLibre: 1 << 62,
+	}
+	if chemin, pret := g.Assurer(context.Background(), amont); pret {
+		t.Errorf("un miroir a été créé sous le plancher : %s", chemin)
+	}
+	if depots, _ := g.Occupation(); depots != 0 {
+		t.Errorf("%d dépôt(s) créés malgré le plancher", depots)
+	}
+}
+
+// Un miroir DÉJÀ tenu continue d'être servi : une mise à jour ne coûte que ce
+// qui a changé, et le refuser priverait de tout ce qui est déjà là.
+func TestLePlancherNEmpechePasDeServirLexistant(t *testing.T) {
+	amont, _ := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	if _, pret := g.Assurer(context.Background(), amont); !pret {
+		t.Fatal("le miroir n'a pas pu être créé")
+	}
+	g.PlancherLibre = 1 << 62
+	g.Frais = 0
+	if _, pret := g.Assurer(context.Background(), amont); !pret {
+		t.Error("un miroir existant est refusé à cause du plancher")
+	}
+}

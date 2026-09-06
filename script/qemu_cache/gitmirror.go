@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/cgi"
 	"net/url"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -56,6 +58,15 @@ type GitMirror struct {
 	// Delai borne un clonage ou une récupération. Un dépôt Odoo complet
 	// descend en minutes, pas en secondes.
 	Delai time.Duration
+	// PlancherLibre est la place qu'on refuse d'entamer. En dessous, aucun
+	// NOUVEAU miroir n'est créé et la requête repart vers l'amont : le cache
+	// perd son avance, il ne remplit pas le disque de l'orchestrateur.
+	//
+	// Un miroir est complet là où « repo sync » clone en profondeur un : le
+	// facteur entre les deux est celui de l'historique, et il ne se devine
+	// pas. Les miroirs DÉJÀ tenus continuent d'être rafraîchis et servis —
+	// une mise à jour ne coûte que ce qui a changé.
+	PlancherLibre int64
 
 	mu      sync.Mutex
 	verrous map[string]*sync.Mutex
@@ -182,6 +193,12 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 		return chemin, true
 	}
 	if !existe {
+		if !g.placeSuffisante() {
+			log.Printf(
+				"miroir refusé pour %s : moins de %s libres sur le disque",
+				depot, HumanBytes(g.PlancherLibre))
+			return "", false
+		}
 		if err := os.MkdirAll(filepath.Dir(chemin), 0o755); err != nil {
 			return "", false
 		}
@@ -406,4 +423,27 @@ func DepotsDuFichier(chemin string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// PlancherParDefaut : ce qu'on laisse au disque de l'orchestrateur. Assez pour
+// qu'une VM en cours de déploiement finisse, et pour que le système respire.
+const PlancherParDefaut int64 = 10 << 30
+
+// placeSuffisante dit s'il reste de quoi créer un miroir de plus.
+//
+// La place est relue à CHAQUE appel : le disque se remplit pendant qu'on le
+// remplit, et une valeur retenue au démarrage ne dirait rien de l'état où l'on
+// est rendu.
+func (g *GitMirror) placeSuffisante() bool {
+	plancher := g.PlancherLibre
+	if plancher <= 0 {
+		plancher = PlancherParDefaut
+	}
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(g.Dir, &st); err != nil {
+		// Illisible : on laisse passer plutôt que de bloquer sur une mesure
+		// qu'on ne sait pas faire.
+		return true
+	}
+	return int64(st.Bavail)*int64(st.Bsize) > plancher
 }
