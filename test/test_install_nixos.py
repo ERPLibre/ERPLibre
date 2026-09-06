@@ -235,10 +235,6 @@ class LeModule(unittest.TestCase):
         self.assertIn('"/include"', self.src)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LHoteSansGestionnaire(unittest.TestCase):
     """Ce que le menu répond sur un système où rien ne s'installe.
 
@@ -279,3 +275,7 @@ class LHoteSansGestionnaire(unittest.TestCase):
                 src = (RACINE / chemin).read_text(encoding="utf-8")
                 i = src.index("no known package manager here.")
                 self.assertIn("conseil_sans_gestionnaire", src[i : i + 400])
+
+
+if __name__ == "__main__":
+    unittest.main()
