@@ -9,12 +9,14 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
 
-from script.todo import todo_prefs
+from script.todo import host_os, todo_prefs, vm_backend_choice
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
+from script.vm import backend as vm_backend
 
 
 class QemuDeployMixin:
@@ -118,7 +120,7 @@ class QemuDeployMixin:
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
         # son échec soit celui de la VM.
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
-        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
+        # APRÈS le make : sur un dépôt cloné mais pas installé,
         # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
         # échoue faute de venv, et il renonce. Le même appel sur un dépôt
         # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
@@ -131,7 +133,7 @@ class QemuDeployMixin:
             self._qemu_pycharm_project_cmd(prod)
             # Le venv du dépôt, comme le fait update_env_version.
             # pycharm_update() : le script importe xmltodict, absent du python
-            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # système : « make pycharm_configure » s'arrête sur
             # « No module named 'xmltodict' ».
             + "./.venv.erplibre/bin/python "
             "./script/ide/pycharm_configuration.py --init || true; "
@@ -934,8 +936,7 @@ class QemuDeployMixin:
             )
             # La VM ne reçoit pas CE checkout : elle CLONE la branche depuis
             # le dépôt distant. Un correctif commité ici et non poussé n'y est
-            # donc pas, et le défaut « revient » alors qu'il est corrigé —
-            # vécu deux fois de suite sur install_proxmox.sh.
+            # donc pas, et le défaut « revient » alors qu'il est corrigé.
             for ligne in self._qemu_branch_gap_lines(br_txt):
                 print(f"  {ligne}")
         else:
@@ -1120,7 +1121,21 @@ class QemuDeployMixin:
 
         POINT DE PASSAGE UNIQUE des deux interfaces : le formulaire TUI et les
         invites en ligne produisent la même spec, donc forcément la même
-        commande. C'est ce qui rend leur divergence vérifiable par un test."""
+        commande. C'est ce qui rend leur divergence vérifiable par un test.
+
+        C'est donc AUSSI l'endroit où un backend que ce chemin ne sait pas
+        piloter doit s'arrêter. Ce chemin est libvirt de bout en bout — il
+        vérifie /dev/kvm puis énumère les domaines par virsh — et laisser
+        passer une autre description produirait un déploiement libvirt sous
+        un faux nom, ou une exception au milieu du travail. Le refus nomme
+        le backend, et il est inatteignable par l'écran d'aujourd'hui : il
+        attend celui de demain."""
+        demande = spec.get("backend") or vm_backend.LIBVIRT
+        if demande != vm_backend.LIBVIRT:
+            raise vm_backend.VerbNotImplemented(
+                f"Déploiement : ce chemin ne pilote que"
+                f" « {vm_backend.LIBVIRT} », pas « {demande} »."
+            )
         install = spec.get("install")
         return self._qemu_build_deploy_parts(
             vm["distro"],
@@ -1294,8 +1309,8 @@ class QemuDeployMixin:
 
         « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
         VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
-        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
-        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
+        Une VM s390x sur un hôte s390x lui-même invité KVM sort en
+        « <domain type='qemu'> » et démarre en 7 min 30. Le savoir avant
         d'attendre vaut mieux que de chercher la cause après."""
         try:
             mod = self._qemu_import_module()
@@ -1350,7 +1365,11 @@ class QemuDeployMixin:
 
         TOUT ce qui exige sudo (liste des domaines) ou le réseau (branches)
         est fait ICI, pendant que le terminal est encore à nous : une invite
-        de mot de passe pendant que Textual affiche casserait l'écran."""
+        de mot de passe pendant que Textual affiche casserait l'écran.
+
+        Le backend employé se résout ICI pour la même raison : la sonde du
+        PATH est une lecture de la machine, et l'écran ne doit pas en faire
+        au milieu de son affichage."""
         native = self._native_arch()
         arches = ["amd64", "arm64", "s390x"]
         if native not in arches:
@@ -1392,6 +1411,14 @@ class QemuDeployMixin:
                 if self._qemu_distro_profile(d)
             },
             "ssh_key": self._qemu_default_ssh_key(),
+            # Le backend employé, résolu ici : l'écran l'AFFICHE et ne le
+            # choisit pas. Un choix qu'on ne peut pas honorer — ce chemin ne
+            # pilote que le local — vaut moins qu'un choix absent.
+            "backend": vm_backend_choice.effective(
+                todo_prefs.get("vm_backend"),
+                host_os.host_os(),
+                bool(shutil.which("limactl")),
+            ),
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée
@@ -1857,7 +1884,7 @@ class QemuDeployMixin:
 
     def _qemu_ask_locale(self):
         """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
-        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
+        locale-gen dans l'invité, 36 s sur s390x — payé à chaque
         déploiement pour un confort dont une VM jetable n'a pas besoin."""
         default = "C.UTF-8"
         answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
