@@ -13,8 +13,9 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - A download cache shared by the QEMU VMs of a host, installed from **Deployment › QEMU cache**. Two VMs of the same distribution stop pulling the same hundreds of megabytes twice: a package file is served from disk, while an index is always taken from upstream, so a withdrawn package can never turn into a « failed retrieving file … 404 ». An index is stored all the same and only comes back out when upstream is unreachable, which is what makes an offline deployment possible. The cache never shrinks by itself: `--status` says what it occupies
 - Interception is transparent and covers the whole host bridge, so a VM cannot opt out from the inside. Every VM trusts the cache's authority as long as the service runs. To take ONE machine out, tick « keep this VM out of the download cache » when deploying: its MAC address is fixed before creation and an exception is posted on the host. To take them all out, stop the service — its rules leave with it
-- The measurement is not limited to Arch: any catalogue system whose package family is known, and either a batch of packages or the real install of ERPLibre and Odoo 18. Measured on Ubuntu 24.04 with that real install, the second VM pulled **zero byte** of package from the network and finished 19 % faster
-- Git traffic is NOT cached, and cannot be: its protocol is a negotiation, the server computing its answer from what the client already holds. On an ERPLibre install it accounts for the bulk of what still goes upstream, which is why an offline deployment works for packages but not for a full install
+- The measurement is not limited to Arch: any catalogue system whose package family is known, and either a batch of packages or the real install of ERPLibre and Odoo 18. Measured on Ubuntu 24.04 with that real install, the second VM pulled **zero byte** of package from the network and finished 19 % faster. Verified on the seven systems of the catalogue
+- Git is MIRRORED rather than cached: its protocol is a negotiation, the server computing its answer from what the client already holds, so no answer is reusable. A bare mirror per upstream repository is kept on the host and served locally, which also works with no network at all. Measured on a full ERPLibre install: the second VM pulled **zero** git request from upstream, where git had been four fifths of the traffic. **Deployment › QEMU cache › Git mirrors** fills them ahead from the manifests, so the first VM does not pay every clone
+- A mirror is COMPLETE where `repo sync` clones at depth one, so it costs tens of gigabytes. Below ten gigabytes free, no new mirror is created and the request goes back upstream. The diagnosis says what the objects and the mirrors each occupy
 - `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
 
 ## Changed
@@ -24,6 +25,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Fixed
 
 - The « - Default » label appears again at the version and environment menus: both reads asked for a capitalised key the version file never writes, and a missing key returns nothing without a word
+- Fedora VMs boot again: the firmware loads and starts their loader, then freezes without writing a byte — no console, no DHCP lease, a machine "running" that does nothing. Fedora is booted in legacy BIOS, where the same image starts its kernel; `--bios` still wins when asked
+- A VM receives a hostname it can accept — an underscore, which a libvirt domain name tolerates, made it keep its image's generic name — and a timezone its own distribution knows, a legacy alias having left it in UTC
 
 
 ## [1.8.0] - 2026-09-04
