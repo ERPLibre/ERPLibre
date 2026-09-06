@@ -20,5 +20,6 @@ from script.vm.backend import (  # noqa: F401
     pve_handle,
     resolves_locally,
     is_armed,
+    is_hosted,
     same_machine,
 )

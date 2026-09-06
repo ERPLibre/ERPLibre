@@ -30,6 +30,7 @@ from script.vm import verbs as vm_verbs
 from script.vm.backend import (
     LIBVIRT,
     handle_of,
+    is_hosted,
     libvirt_handle,
     pve_handle,
     resolves_locally,
@@ -1457,7 +1458,7 @@ def odoo_reading(vm, releve, deja_vert, dernier, maintenant, sonde):
     en cours d'install » était faux : le service redémarre au moins une fois,
     et il lui arrive de mourir. Le 🟢 restait alors acquis pour toujours.
     """
-    if vm.get("pve"):
+    if is_hosted(handle_of(vm)):
         return (bool(releve.get("odoo")) if releve else None), False
     if deja_vert and maintenant - dernier < ODOO_RECHECK:
         return None, False

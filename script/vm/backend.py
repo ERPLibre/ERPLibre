@@ -122,21 +122,28 @@ def handle_of(entry) -> VmHandle | None:
     """L'identité que porte une entrée de manifeste, ou None.
 
     Lit la forme que les manifestes ont AUJOURD'HUI : une entrée qui porte
-    « pve » vit sur un hôte Proxmox, les autres sont locales. None quand
-    l'entrée ne porte pas même un nom — elle ne désigne alors rien, et le
-    dire vaut mieux que de rendre une identité vide qui commanderait au
-    hasard.
+    « pve » vit sur un hôte Proxmox, les autres sont locales.
+
+    None quand rien n'est ADRESSABLE, et non quand un champ manque. Ce qui
+    adresse n'est pas le même des deux côtés : une VM locale sans nom ne
+    désigne rien, puisque virsh l'appelle par son nom ; une VM d'hôte
+    distant s'adresse par son VMID et reste donc commandable sans nom —
+    simplement DÉSARMÉE, ce que `is_armed` dit. Les confondre refuserait de
+    lire une entrée parfaitement utilisable, ou pire, la ferait passer pour
+    locale.
     """
     entry = entry or {}
     nom = str(entry.get("name") or "")
-    if not nom:
-        return None
     info = entry.get("pve") or {}
     if info:
+        if not (nom or int(info.get("vmid") or 0)):
+            return None
         # Le VMID adresse ; le nom prouve. Un VMID libéré est réattribué,
         # donc effacer « le 101 » d'un manifeste de mars, c'est effacer ce
         # qui porte le 101 aujourd'hui.
         return pve_handle(info, nom, alias=entry.get("ip"))
+    if not nom:
+        return None
     # Le nom adresse — c'est virsh qui l'impose — et l'UUID prouve.
     return libvirt_handle(nom, uuid=entry.get("uuid"), ip=entry.get("ip"))
 
@@ -169,6 +176,22 @@ def resolves_locally(handle) -> bool:
     rien dire, puisque le domaine trouvé répond très bien.
     """
     return bool(handle) and handle.backend == LIBVIRT
+
+
+def is_hosted(handle) -> bool:
+    """Une AUTRE machine porte-t-elle cette VM ?
+
+    C'est le fait dont découle tout ce qui suit : ses commandes passent par
+    quelqu'un d'autre, et son service ne se sonde pas d'ici — son adresse
+    interne ne répond qu'à l'hôte, qui la teste donc pour nous.
+
+    Distinct de `resolves_locally`, et pas seulement par la formulation. Les
+    deux répondent aujourd'hui l'inverse l'une de l'autre parce qu'il n'y a
+    que deux backends ; un backend LOCAL qui n'est pas libvirt les fera
+    diverger, et les confondre lui ferait alors prendre le mauvais chemin
+    sans que rien ne le dise.
+    """
+    return bool(handle) and handle.backend == PVE
 
 
 def same_machine(left, right) -> bool:

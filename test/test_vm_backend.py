@@ -70,6 +70,26 @@ class TestQuandLIdentiteManque(unittest.TestCase):
         self.assertIsNone(V.handle_of(None))
         self.assertIsNone(V.handle_of({"uuid": "abc-123"}))
 
+    def test_a_remote_entry_without_a_name_is_still_addressable(self):
+        """Ce qui adresse n'est pas le même des deux côtés : le VMID suffit
+        à commander, et l'absence de nom la laisse seulement DÉSARMÉE. La
+        refuser ferait passer pour locale une VM qui ne l'est pas."""
+        handle = V.handle_of({"pve": {"vmid": 101, "target": "hote"}})
+        self.assertIsNotNone(handle)
+        self.assertEqual(V.PVE, handle.backend)
+        self.assertEqual("101", handle.key)
+        self.assertFalse(V.is_armed(handle))
+        self.assertTrue(V.is_hosted(handle))
+
+    def test_a_remote_entry_with_neither_name_nor_vmid_designates_nothing(
+        self,
+    ):
+        self.assertIsNone(V.handle_of({"pve": {"target": "hote"}}))
+
+    def test_a_local_entry_without_a_name_still_designates_nothing(self):
+        """virsh l'appelle par son nom : sans lui, il n'y a rien à viser."""
+        self.assertIsNone(V.handle_of({"uuid": "abc-123", "ip": "192.0.2.10"}))
+
     def test_a_local_entry_without_a_uuid_is_unarmed(self):
         """Une preuve vide DÉSARME au lieu de bloquer — mieux vaut la
         prudence d'avant que refuser toute opération sur un poste où on n'a
@@ -260,6 +280,33 @@ class TestQuiSaitRelireLAdresse(unittest.TestCase):
             with self.subTest(backend=nom):
                 handle = V.handle_of(LOCALE)._replace(backend=nom)
                 self.assertIsInstance(V.resolves_locally(handle), bool)
+
+
+class TestQuiPorteLaMachine(unittest.TestCase):
+    """Le fait dont découlent les autres : ses commandes passent par
+    quelqu'un d'autre, et son service ne se sonde pas d'ici."""
+
+    def test_a_remote_vm_is_hosted(self):
+        self.assertTrue(V.is_hosted(V.handle_of(DISTANTE)))
+
+    def test_a_local_vm_is_not(self):
+        self.assertFalse(V.is_hosted(V.handle_of(LOCALE)))
+
+    def test_an_absence_is_not_hosted(self):
+        self.assertFalse(V.is_hosted(None))
+
+    def test_it_is_not_merely_the_opposite_of_resolving_locally(self):
+        """Les deux répondent l'inverse l'une de l'autre tant qu'il n'y a
+        que deux backends. Un backend LOCAL qui n'est pas libvirt les fera
+        diverger — cette épreuve tombera alors, et c'est voulu : elle dira
+        qu'il faut décider pour lui plutôt que d'hériter d'un silence."""
+        self.assertEqual(2, len(V.BACKENDS))
+        for entree in (LOCALE, DISTANTE):
+            handle = V.handle_of(entree)
+            with self.subTest(backend=handle.backend):
+                self.assertNotEqual(
+                    V.is_hosted(handle), V.resolves_locally(handle)
+                )
 
 
 if __name__ == "__main__":
