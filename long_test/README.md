@@ -8,6 +8,26 @@ on any machine, including one without virtualisation.
 
 Run them from the menu — `TODO › Execute › Test › Long tests` — or directly.
 
+## lima_confront.py — the backend nobody has ever run
+
+The Lima backend was written with no machine to test it on. Its unit tests
+hold what it COMPOSES and what it PARSES, not what `limactl` does with any of
+it. It therefore declares itself unproven, and this script is what will lift
+that mention — not a code review.
+
+Four questions, none deducible from the code: which SHAPE the inventory
+answers in, whether it carries anything that could PROVE an identity, whether
+a compound command really survives the exec channel, and whether the rendered
+configuration actually starts.
+
+It exits 20 — dependency absent — where `limactl` is not installed.
+
+```
+./long_test/lima_confront.py              # the four questions
+./long_test/lima_confront.py --dry-run    # what it would do, nothing done
+./long_test/lima_confront.py --detruire   # remove the trial instance
+```
+
 ## deep_proxmox.py — how deep does Proxmox-in-Proxmox go?
 
 The practicable nesting depth cannot be deduced, only measured — and one

@@ -10,6 +10,26 @@ compris sans virtualisation.
 Ils se lancent depuis le menu — `TODO › Execute › Test › Tests longs` — ou
 directement.
 
+## lima_confront.py — le backend que personne n'a jamais lancé
+
+Le backend Lima a été écrit sans machine pour l'éprouver. Ses tests unitaires
+tiennent ce qu'il COMPOSE et ce qu'il ANALYSE, pas ce que « limactl » en fait.
+Il se déclare donc non éprouvé, et ce script est ce qui lèvera la mention —
+pas une relecture.
+
+Quatre questions dont aucune ne se déduit du code : sous quelle FORME
+l'inventaire répond, s'il porte de quoi PROUVER une identité, si une suite de
+commandes traverse vraiment le canal d'exec, et si la configuration rendue
+démarre.
+
+Il rend 20 — dépendance absente — là où « limactl » n'est pas installé.
+
+```
+./long_test/lima_confront.py              # les quatre questions
+./long_test/lima_confront.py --dry-run    # ce qui serait fait, rien de fait
+./long_test/lima_confront.py --detruire   # retirer l'instance d'essai
+```
+
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?
 
 La profondeur d'imbrication praticable ne se déduit pas, elle se mesure — et
