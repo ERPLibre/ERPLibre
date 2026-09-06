@@ -290,9 +290,13 @@ class TestMobileBuild(unittest.TestCase):
     def test_it_runs_on_a_server_vm(self):
         """Elle compile, elle n'affiche rien : un bureau serait du gaspillage.
         L'émulateur non plus n'en a pas besoin — il s'affiche par ssh -X, et
-        les outils d'assistance encore moins : on s'en sert en SSH."""
+        les outils d'assistance encore moins : on s'en sert en SSH. nix et
+        nixos-anywhere non plus : ils installent NixOS sur une AUTRE machine,
+        depuis une ligne de commande."""
         got = self.todo._qemu_tools_for(self.all, "amd64", "", "ubuntu")
-        self.assertEqual(["mobile", "forgejo", "aidev", "avd"], got)
+        self.assertEqual(
+            ["mobile", "forgejo", "aidev", "nixanywhere", "avd"], got
+        )
         # Forgejo est là pour la même raison que la compilation : un
         # service ne demande pas d'écran.
 
