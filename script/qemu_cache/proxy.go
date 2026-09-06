@@ -219,11 +219,14 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	) {
 		if depot, reste, ok := DepotDeURL(u); ok {
 			if chemin, pret := p.Git.Assurer(r.Context(), depot); pret {
+				// Le relevé vient APRÈS : c'est la seule façon de dire ce que
+				// la réponse a réellement pesé, et ce chemin porte l'essentiel
+				// du trafic d'une installation.
+				n := p.Git.Servir(w, r, chemin, reste)
 				p.record(accessLine{
 					URL: u.String(), Method: r.Method, Class: class.String(),
-					Outcome: OutcomeMirror, Status: http.StatusOK,
+					Outcome: OutcomeMirror, Status: http.StatusOK, Bytes: n,
 				})
-				p.Git.Servir(w, r, chemin, reste)
 				return
 			}
 		}

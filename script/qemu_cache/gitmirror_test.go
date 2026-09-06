@@ -340,3 +340,41 @@ func TestLePlancherNEmpechePasDeServirLexistant(t *testing.T) {
 		t.Error("un miroir existant est refusé à cause du plancher")
 	}
 }
+
+// Ce que le miroir sert doit être COMPTÉ.
+//
+// La passerelle CGI écrit directement dans la réponse : le journal notait zéro
+// octet pour tout ce que le miroir servait, et c'est le chemin qui porte
+// l'essentiel du trafic d'une installation. Un outil dont le journal EST la
+// mesure ne peut pas avoir un chemin muet.
+func TestCeQueLeMiroirSertEstCompte(t *testing.T) {
+	amont, _ := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	chemin, pret := g.Assurer(context.Background(), amont)
+	if !pret {
+		t.Fatal("le miroir n'a pas pu être créé")
+	}
+
+	var pese int64
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			u := &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+			_, reste, ok := DepotDeURL(u)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			pese += g.Servir(w, r, chemin, reste)
+		}))
+	defer srv.Close()
+
+	dest := filepath.Join(t.TempDir(), "copie")
+	c := exec.Command("git", "clone", "-q", srv.URL+"/essai.git", dest)
+	c.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("clone : %v : %s", err, out)
+	}
+	if pese <= 0 {
+		t.Error("le miroir a servi un clone entier et le journal dirait zéro")
+	}
+}

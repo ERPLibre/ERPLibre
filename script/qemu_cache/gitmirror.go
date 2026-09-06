@@ -278,9 +278,27 @@ func court(s string) string {
 // dans PATH_INFO, la racine dans GIT_PROJECT_ROOT, et rend le protocole exact,
 // version 0 comme version 2. Le réimplémenter reviendrait à le suivre à chaque
 // version.
+// compteur retient ce qu'une réponse a réellement pesé.
+//
+// La passerelle CGI écrit directement dans la réponse : sans ce compteur, le
+// journal note zéro octet pour tout ce que le miroir sert. Un outil dont le
+// journal EST la mesure ne peut pas avoir un chemin qui ne compte pas — c'est
+// justement celui qui porte l'essentiel du trafic d'une installation.
+type compteur struct {
+	http.ResponseWriter
+	n int64
+}
+
+func (c *compteur) Write(p []byte) (int, error) {
+	n, err := c.ResponseWriter.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// Servir répond depuis le miroir et rend ce que la réponse a pesé.
 func (g *GitMirror) Servir(
 	w http.ResponseWriter, r *http.Request, chemin, reste string,
-) {
+) int64 {
 	racine := filepath.Dir(chemin)
 	h := &cgi.Handler{
 		Path: g.backend(),
@@ -301,7 +319,9 @@ func (g *GitMirror) Servir(
 		RawQuery: r.URL.RawQuery,
 	}
 	r2.RequestURI = ""
-	h.ServeHTTP(w, r2)
+	c := &compteur{ResponseWriter: w}
+	h.ServeHTTP(c, r2)
+	return c.n
 }
 
 // Occupation rend (nombre de dépôts, octets) du miroir.
