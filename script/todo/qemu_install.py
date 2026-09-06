@@ -2422,10 +2422,6 @@ class QemuInstallMixin:
         doit réussir quand même.
         """
         nix = "/nix/var/nix/profiles/default/bin/nix"
-        # L'installateur écrit l'un OU l'autre selon sa version ; les deux
-        # portent le PATH et les variables du démon.
-        profils = "/etc/profile.d/nix.sh /etc/profile.d/nix-daemon.sh"
-        source_line = f'for f in {profils}; do [ -e "$f" ] && . "$f"; done'
         outil = "$HOME/.nix-profile/bin/nixos-anywhere"
 
         def pose(cmd, secondes):
@@ -2454,10 +2450,13 @@ class QemuInstallMixin:
             + pose(self._QEMU_NIX_UPSTREAM, 900)
             + conf
             + installe
-            + (
-                f"grep -qF {shlex.quote(source_line)} ~/.bashrc 2>/dev/null"
-                f" || echo {shlex.quote(source_line)} >> ~/.bashrc; "
-            )
+            # Rien n'est ajouté à ~/.bashrc, et c'est délibéré : l'installateur
+            # écrit lui-même /etc/bash.bashrc, /etc/profile.d/nix.sh et les
+            # fichiers zsh et fish. Une ligne de plus dans le ~/.bashrc de
+            # l'utilisateur serait posée APRÈS le « return » que ce fichier
+            # exécute pour tout shell non interactif — donc jamais atteinte par
+            # « ssh hôte 'commande' », le seul cas qu'elle prétendait couvrir.
+            #
             # Le verdict porte sur le BINAIRE, pas sur le code de retour des
             # poses : toutes rendent 0 par construction.
             + f'[ -x "{outil}" ]'
