@@ -18,6 +18,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Corrigé
 
 - Le fuseau horaire qu'une VM déployée hérite de son hôte est traduit en son nom canonique. Les images cloud d'Ubuntu 24.04 ne portent plus les alias historiques — `Canada/*`, `US/*`, `Asia/Calcutta` — déplacés dans un paquet `tzdata-legacy` qu'elles n'installent pas : cloud-init refusait le fuseau, la VM restait en UTC, et le seul signe était un cloud-init en erreur, le décalage n'apparaissant qu'aux horodatages longtemps après. La table des alias est le `tzdata.zi` de l'hôte, et non une copie figée dans le code
+- Le locale et le clavier qu'une VM déployée reçoit s'appliquent désormais sur Debian, où les deux échouaient en silence. Un locale se génère à partir de `/etc/locale.gen` et de nulle part ailleurs : `update-locale` refusait celui qui n'y était pas et la VM restait en C.UTF-8 ; le module clavier finit par un `console-setup` que l'image genericcloud ne porte pas, alors `/etc/default/keyboard` — le fichier que localed et X relisent — est écrit directement. Chaque déploiement Debian imprimait `cloud-init: status: error`, et un mot qui s'affiche toujours n'avertit plus de rien
 
 
 ## [1.8.0] - 2026-09-04

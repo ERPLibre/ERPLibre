@@ -18,6 +18,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Fixed
 
 - The timezone a deployed VM inherits from its host is translated to its canonical name. Ubuntu 24.04 cloud images no longer carry the legacy aliases — `Canada/*`, `US/*`, `Asia/Calcutta` — moved to a `tzdata-legacy` package they do not install: cloud-init refused the zone, the VM stayed on UTC, and the only sign was cloud-init reporting an error, the offset showing up in timestamps long afterwards. The alias table is the host's own `tzdata.zi`, not a copy kept in the code
+- The locale and the keyboard a deployed VM is given now apply on Debian, where both silently failed. A locale is generated from `/etc/locale.gen` and nowhere else, so `update-locale` refused one that was not there and the VM stayed on C.UTF-8; the keyboard module ends on a `console-setup` the genericcloud image does not carry, so `/etc/default/keyboard` — the file localed and X read — is written directly instead. Every Debian deployment used to print `cloud-init: status: error`, and a word that always shows warns of nothing
 
 
 ## [1.8.0] - 2026-09-04
