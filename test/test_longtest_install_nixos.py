@@ -138,6 +138,44 @@ class LEssaiABlanc(unittest.TestCase):
         self.assertIn("-dryrun.json", SRC)
 
 
+class RienNInterrompLaCourse(unittest.TestCase):
+    """Un test lancé pour des heures sans surveillance doit rendre un
+    VERDICT, pas une trace d'exception.
+
+    `subprocess.run(..., timeout=...)` lève TimeoutExpired quand la commande
+    dépasse son délai — et c'est le cas normal ici, pas l'exception : un ssh
+    pendu, une création qui traîne, une installation qui n'en finit pas."""
+
+    def test_every_bounded_call_is_caught(self):
+        arbre = ast.parse(SRC)
+        # Les appels bornés, et la ligne de chacun.
+        bornes = []
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Call):
+                continue
+            cible = ast.unparse(noeud.func)
+            if cible != "subprocess.run":
+                continue
+            if any(m.arg == "timeout" for m in noeud.keywords):
+                bornes.append(noeud.lineno)
+        self.assertGreaterEqual(len(bornes), 4)
+        # Les lignes couvertes par un « try ».
+        couvertes = set()
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.Try):
+                for corps in noeud.body:
+                    for interne in ast.walk(corps):
+                        if hasattr(interne, "lineno"):
+                            couvertes.add(interne.lineno)
+        for ligne in bornes:
+            with self.subTest(ligne=ligne):
+                self.assertIn(ligne, couvertes)
+
+    def test_a_timeout_is_reported_not_raised(self):
+        """Ce que le journal doit porter à la place de la trace."""
+        self.assertIn("installation interrompue", SRC)
+
+
 class LeDefaire(unittest.TestCase):
     """La forme du rapport n'est pas libre : c'est le CONTRAT du défaire
     partagé de descente.py, et rien dans le langage ne l'impose.
