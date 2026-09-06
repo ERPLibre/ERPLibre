@@ -180,6 +180,25 @@ NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
 }
 
+# Les images qui n'ont AUCUN secteur d'amorçage BIOS : elles ne démarrent que
+# par UEFI.
+#
+# Ce chemin-ci amorce en UEFI pour TOUT LE MONDE et n'a donc jamais eu besoin
+# de le savoir ; celui de Proxmox part en SeaBIOS, et c'est lui qui lit cette
+# liste. Mesuré sur un Proxmox 9 : en SeaBIOS, une VM NixOS se déclare
+# « running » et sa console reste muette ; la même en OVMF démarre — systemd,
+# cloud-init, réseau.
+#
+# La liste reste COURTE plutôt que de basculer le défaut de tous : Debian 13,
+# mesurée sur le même hôte, démarre en SeaBIOS sans rien lui devoir.
+DISTROS_UEFI_SEUL: tuple[str, ...] = ("nixos",)
+
+
+def requiert_uefi(distro: str) -> bool:
+    """L'image de `distro` refuse-t-elle un amorçage BIOS hérité ?"""
+    return distro in DISTROS_UEFI_SEUL
+
+
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
