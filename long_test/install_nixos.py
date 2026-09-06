@@ -145,11 +145,18 @@ def attendre_ssh(cible, journal, jump="", delai=DELAI_SSH):
     l'authentification échoue."""
     fin = time.time() + delai
     while time.time() < fin:
-        fini = subprocess.run(
-            ssh_base(cible, jump) + ["true"],
-            capture_output=True,
-            timeout=30,
-        )
+        try:
+            fini = subprocess.run(
+                ssh_base(cible, jump) + ["true"],
+                capture_output=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            # Un ssh pendu est un tour d'attente de plus, pas la fin de la
+            # course : sans ce rattrapage, une trace d'exception remplaçait
+            # le verdict d'un test lancé pour des heures sans surveillance.
+            time.sleep(5)
+            continue
         if fini.returncode == 0:
             return True
         time.sleep(5)
@@ -183,16 +190,26 @@ def creer_vm(nom, journal, dry_run, memoire=MEMOIRE_MO):
     if dry_run:
         dire("      " + " ".join(shlex.quote(a) for a in argv), journal)
         return nom, ""
-    fini = subprocess.run(argv, timeout=DELAI_SSH * 3)
+    try:
+        fini = subprocess.run(argv, timeout=DELAI_SSH * 3)
+    except (OSError, subprocess.SubprocessError) as souci:
+        dire(f"      ✗ la création de la VM s'est arrêtée : {souci}", journal)
+        return None, ""
     if fini.returncode:
         dire("      ✗ la création de la VM a échoué", journal)
         return None, ""
-    uuid = subprocess.run(
-        ["sudo", "-n", "virsh", "domuuid", nom],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    # L'UUID manquant n'annule PAS la création : la VM existe, et le défaire
+    # saura la reprendre par son nom, en le disant.
+    try:
+        uuid = subprocess.run(
+            ["sudo", "-n", "virsh", "domuuid", nom],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        dire(f"      ⚠ {nom} : UUID illisible, le nom devra suffire", journal)
+        return nom, ""
     return nom, ("" if uuid.returncode else uuid.stdout.strip())
 
 
@@ -226,15 +243,26 @@ def installer(cible, branche, journal, jump="", dry_run=False):
         dire("      " + bloc[:200] + " …", journal)
         return True, 0
     debut = time.time()
-    with open(journal, "a", encoding="utf-8") as fh:
-        fini = subprocess.run(
-            ssh_base(cible, jump) + ["bash -s"],
-            input=bloc,
-            text=True,
-            stdout=fh,
-            stderr=subprocess.STDOUT,
-            timeout=DELAI_INSTALL,
+    try:
+        with open(journal, "a", encoding="utf-8") as fh:
+            fini = subprocess.run(
+                ssh_base(cible, jump) + ["bash -s"],
+                input=bloc,
+                text=True,
+                stdout=fh,
+                stderr=subprocess.STDOUT,
+                timeout=DELAI_INSTALL,
+            )
+    except (OSError, subprocess.SubprocessError) as souci:
+        # Une installation qui expire est un FAIT à rapporter, pas une trace
+        # d'exception : la vérification qui suit dira ce que la machine a
+        # tout de même reçu, et c'est elle qui tranche.
+        secondes = int(time.time() - debut)
+        dire(
+            f"      ✗ installation interrompue après {secondes} s : {souci}",
+            journal,
         )
+        return False, secondes
     secondes = int(time.time() - debut)
     # Le code de retour est NOTÉ, pas cru : la vérification tranche.
     dire(f"      installation : code={fini.returncode}, {secondes} s", journal)
@@ -300,7 +328,13 @@ def verifier(cible, journal, jump=""):
     )
     resultats["sans_manuels_html"] = doc == "0"
 
-    resultats["odoo_repond"] = odoo_repond(cible, journal, jump)
+    # Sans venv, il n'y a rien à démarrer : sonder cinq minutes une machine
+    # dont on sait déjà qu'elle n'a pas d'installation ne dit rien de plus.
+    if resultats["venv"]:
+        resultats["odoo_repond"] = odoo_repond(cible, journal, jump)
+    else:
+        dire("      — Odoo non sondé : pas de venv", journal)
+        resultats["odoo_repond"] = False
 
     for nom, ok in resultats.items():
         dire(f"      {'✓' if ok else '✗'} {nom}", journal)
@@ -311,12 +345,19 @@ def odoo_repond(cible, journal, jump=""):
     """Odoo démarré par le dépôt, et un code HTTP qui prouve un registre
     chargé. Le serveur est lancé ICI plutôt que supposé en service : une VM de
     développement n'en installe pas forcément un."""
-    subprocess.run(
-        ssh_base(cible, jump)
-        + ["cd git/erplibre && nohup ./run.sh >/tmp/odoo-longtest.log 2>&1 &"],
-        capture_output=True,
-        timeout=60,
-    )
+    try:
+        subprocess.run(
+            ssh_base(cible, jump)
+            + [
+                "cd git/erplibre &&"
+                " nohup ./run.sh >/tmp/odoo-longtest.log 2>&1 &"
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        dire("      ✗ le lancement d'Odoo n'a pas abouti", journal)
+        return False
     fin = time.time() + DELAI_HTTP
     while time.time() < fin:
         code = sonder(
