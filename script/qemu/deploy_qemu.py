@@ -1825,6 +1825,43 @@ def nested_module() -> str:
     return "kvm_amd" if " svm" in info else "kvm_intel"
 
 
+def canonical_timezone(zone: str) -> str:
+    """Le nom du fuseau tel que l'INVITÉ saura le lire.
+
+    Les images cloud n'embarquent que le tzdata courant. Ubuntu 24.04 a
+    déplacé les alias historiques — Canada/*, US/*, Brazil/*… — dans un paquet
+    « tzdata-legacy » qu'elles n'installent pas : cloud-init refuse alors le
+    fuseau (« Invalid timezone Canada/Eastern, no file found at
+    /usr/share/zoneinfo/... »), la VM RESTE en UTC, et cloud-init se déclare
+    en erreur sans que rien d'autre n'échoue. Le défaut ne se voit qu'aux
+    horodatages, longtemps après.
+
+    La table des alias est celle de l'HÔTE (/usr/share/zoneinfo/tzdata.zi,
+    ligne « L <canonique> <alias> »), et non une copie écrite ici : elle suit
+    les mises à jour de tzdata sans qu'on s'en occupe. Sans ce fichier — un
+    hôte macOS, une image trop maigre — le nom passe inchangé : mieux vaut le
+    fuseau demandé qu'un fuseau deviné.
+    """
+    if not zone:
+        return zone
+    try:
+        lignes = Path("/usr/share/zoneinfo/tzdata.zi").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return zone
+    alias = {}
+    for ligne in lignes.splitlines():
+        morceaux = ligne.split()
+        if len(morceaux) >= 3 and morceaux[0] == "L":
+            alias[morceaux[2]] = morceaux[1]
+    # Deux tours : un alias peut pointer un alias. Au-delà, la table est
+    # incohérente et le nom d'origine vaut mieux qu'une boucle.
+    for _ in range(2):
+        zone = alias.get(zone, zone)
+    return zone
+
+
 def host_timezone() -> str:
     """Fuseau de l'hôte, au format zoneinfo (« America/Montreal »).
 
@@ -2605,7 +2642,10 @@ def build_cloud_config(
 
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
-    lines.append(f"timezone: {args.timezone}")
+    # Canonicalisé ICI, au plus près de l'écriture : un fuseau passé
+    # explicitement en ligne de commande mérite la même traduction que celui
+    # de l'hôte.
+    lines.append(f"timezone: {canonical_timezone(args.timezone)}")
     if getattr(args, "distro", "ubuntu") == "ubuntu":
         lines += apt_mirror_lines(
             getattr(args, "arch", "amd64"), getattr(args, "apt_mirror", None)
@@ -3022,7 +3062,7 @@ def build_preseed(
         "d-i network-console/password password erplibre",
         "d-i network-console/password-again password erplibre",
         "d-i clock-setup/utc boolean true",
-        f"d-i time/zone string {args.timezone}",
+        f"d-i time/zone string {canonical_timezone(args.timezone)}",
         "d-i clock-setup/ntp boolean true",
         # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
         # d-i pose quand même la question quand rien ne le désigne.
