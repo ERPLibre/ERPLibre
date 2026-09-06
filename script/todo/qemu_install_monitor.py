@@ -2767,7 +2767,8 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             vivantes = [
                 vm["name"]
                 for vm in vms
-                if not vm.get("pve") and states.get(vm["name"]) == "running"
+                if resolves_locally(handle_of(vm))
+                and states.get(vm["name"]) == "running"
             ]
             if vivantes:
                 await asyncio.to_thread(arm_balloon, vivantes)
@@ -2780,10 +2781,13 @@ def run_monitor(manifest_path: str, run_app: bool = True):
             # appel virsh par VM — celui-ci est déjà le relevé lent.
             changed = False
             for vm in vms:
-                if self._domstate.get(vm["name"]) == "gone" or vm.get("pve"):
-                    # Une VM distante n'a pas de bail chez nous : son adresse
-                    # est celle que cloud-init a posée, et virsh ne la voit
-                    # pas. La chercher rendrait « gone » à chaque tour.
+                if self._domstate.get(
+                    vm["name"]
+                ) == "gone" or not resolves_locally(handle_of(vm)):
+                    # Une VM que l'hyperviseur local ne connaît pas n'a pas de
+                    # bail chez nous : son adresse est celle que cloud-init a
+                    # posée, et virsh ne la voit pas. La chercher rendrait
+                    # « gone » à chaque tour.
                     continue
                 ip = await asyncio.to_thread(virsh_ip, vm["name"])
                 if ip and ip != vm.get("ip"):
