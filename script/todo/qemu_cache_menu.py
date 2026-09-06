@@ -41,6 +41,7 @@ CACHE_SERVICE = "erplibre-go-qemu-cache.service"
 CACHE_CONF = "/etc/erplibre_go_qemu_cache/env"
 CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
+CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
 CACHE_SET = "bypass"
 LONGTEST = "long_test/qemu_cache.py"
 
@@ -189,9 +190,19 @@ class QemuCacheMenuMixin:
             print(f"    {t('Reinstall: the cache reads libvirt by itself.')}")
 
         print(f"  · {t('Authority:')} {CACHE_CA}")
-        for ligne in self._cache_lire(f"{CACHE_BIN} --status", delai=60).split(
-            "\n"
-        )[:4]:
+        # Le répertoire du miroir est passé au relevé : sans lui, le binaire
+        # ne mesure que les objets, et les dépôts git — qui pèsent bien plus —
+        # disparaissent du seul endroit où l'on surveille la place.
+        releve = self._cache_lire(
+            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}",
+            delai=60,
+        )
+        for ligne in [
+            l
+            for l in releve.split("\n")
+            if l.strip()
+            and not l.startswith(("autorité", "empreinte", "exceptions"))
+        ][:5]:
             if ligne.strip():
                 print(f"  · {ligne.strip()}")
 
@@ -464,10 +475,24 @@ class QemuCacheMenuMixin:
             f"    {t('Authority:')} {CACHE_CA}",
             f"    {t('Settings:')}  {CACHE_CONF}",
             f"    {t('Access log:')} {self._cache_journal() or '—'}",
+            f"    {t('Git mirrors:')} {CACHE_MIROIR_GIT}",
+            "",
+            f"  {t('Git is mirrored, not cached')}",
+            t("    Git's protocol is a negotiation: the server computes its"),
+            t(
+                "    answer from what the client already holds, so no answer is"
+            ),
+            t(
+                "    reusable. A bare mirror per upstream repo is kept instead,"
+            ),
+            t("    and served locally — which also works with no network."),
+            t("    A mirror is COMPLETE: it weighs what the upstream repo"),
+            t("    weighs, history included."),
             "",
             f"  {t('No eviction is written')}",
-            t("    This cache never shrinks by itself, and it lives on the"),
-            t("    orchestrator's disk. Watch it with the diagnosis entry."),
+            t("    Neither the objects nor the mirrors shrink by themselves,"),
+            t("    and both live on the orchestrator's disk. The diagnosis"),
+            t("    entry says what each of the two occupies."),
             "",
             f"  {t('Turning it off')}",
             t("    Interception is transparent and covers the whole bridge:"),

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -193,10 +194,39 @@ func (w *Writer) cleanup() {
 
 // Stat parcourt le cache. Coûteux sur un grand cache, donc appelé à la
 // demande et non à chaque requête.
+// horsCasier écarte, à la racine du magasin, tout répertoire qui n'est pas un
+// casier à lui.
+//
+// Les objets sont rangés sous deux niveaux de deux caractères hexadécimaux.
+// Ce qui vit à côté — les dépôts git tenus en miroir, par exemple — n'a rien à
+// faire dans un parcours du magasin : le traverser coûterait un appel système
+// par fichier de chaque dépôt, à chaque relevé et à chaque démarrage.
+func horsCasier(racine, chemin string, info os.FileInfo) bool {
+	if !info.IsDir() || filepath.Dir(chemin) != filepath.Clean(racine) {
+		return false
+	}
+	nom := filepath.Base(chemin)
+	if len(nom) != 2 {
+		return true
+	}
+	for _, c := range nom {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Store) Stat() (Stats, error) {
 	var st Stats
 	err := filepath.Walk(s.Dir, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil || info == nil {
+			return nil
+		}
+		if horsCasier(s.Dir, p, info) {
+			return filepath.SkipDir
+		}
+		if info.IsDir() {
 			return nil
 		}
 		if filepath.Ext(p) != ".body" {
@@ -220,7 +250,13 @@ func (s *Store) Stat() (Stats, error) {
 func (s *Store) SweepPartials() int {
 	n := 0
 	filepath.Walk(s.Dir, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil || info == nil {
+			return nil
+		}
+		if horsCasier(s.Dir, p, info) {
+			return filepath.SkipDir
+		}
+		if info.IsDir() {
 			return nil
 		}
 		name := filepath.Base(p)

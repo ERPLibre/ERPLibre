@@ -340,7 +340,8 @@ main() {
   log "détournement : ${EL_BRIDGE}, depuis ${EL_SUBNET}, sortie du /24 seule"
   log "autorité à faire approuver dans chaque VM :"
   log "  ${EL_CA_DIR}/ca.crt"
-  "$BIN" --status --cache-dir "$EL_CACHE_DIR" --ca-dir "$EL_CA_DIR" || true
+  "$BIN" --status --cache-dir "$EL_CACHE_DIR" --ca-dir "$EL_CA_DIR" \
+    --git-mirror-dir "$EL_GIT_MIRROR_DIR" || true
 }
 
 main "$@"

@@ -142,8 +142,10 @@ func main() {
 		return
 	}
 
+	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
+
 	if *status {
-		if err := printStatus(store, *caDir, rules); err != nil {
+		if err := printStatus(store, *caDir, rules, miroir); err != nil {
 			fmt.Fprintf(os.Stderr, "état illisible : %v\n", err)
 			os.Exit(1)
 		}
@@ -166,7 +168,6 @@ func main() {
 		return
 	}
 
-	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
 	if *gitMirrorDir != "" && !miroir.Actif() {
 		// Le dire plutôt que de laisser croire à un miroir : sans le
 		// programme de git, le service marche mais git repart à l'amont à
@@ -237,7 +238,9 @@ func serve(
 	return <-errc
 }
 
-func printStatus(store *Store, caDir string, rules RuleSet) error {
+func printStatus(
+	store *Store, caDir string, rules RuleSet, miroirStatut *GitMirror,
+) error {
 	st, err := store.Stat()
 	if err != nil {
 		return err
@@ -255,6 +258,10 @@ func printStatus(store *Store, caDir string, rules RuleSet) error {
 		fmt.Printf("empreinte   : %s\n", ca.Fingerprint())
 	} else {
 		fmt.Printf("empreinte   : autorité absente\n")
+	}
+	if depots, octets := miroirStatut.Occupation(); depots > 0 {
+		fmt.Printf("dépôts git  : %d en miroir, %s\n",
+			depots, HumanBytes(octets))
 	}
 	if len(rules.Bypass) == 0 {
 		fmt.Printf("exceptions  : aucune\n")

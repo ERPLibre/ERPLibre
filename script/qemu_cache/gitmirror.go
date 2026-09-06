@@ -286,3 +286,30 @@ func (g *GitMirror) Servir(
 	r2.RequestURI = ""
 	h.ServeHTTP(w, r2)
 }
+
+// Occupation rend (nombre de dépôts, octets) du miroir.
+//
+// Le disque de l'orchestrateur est surveillé À LA MAIN — aucune éviction n'est
+// écrite, ici pas plus qu'ailleurs — et un miroir est COMPLET : il pèse ce que
+// pèse le dépôt amont, historique compris. Le relevé doit donc le dire, sans
+// quoi la place disparaît sans que rien ne l'annonce.
+func (g *GitMirror) Occupation() (int, int64) {
+	if g == nil || g.Dir == "" {
+		return 0, 0
+	}
+	depots, octets := 0, int64(0)
+	filepath.Walk(g.Dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil {
+			return nil
+		}
+		if info.IsDir() {
+			if strings.HasSuffix(p, ".git") {
+				depots++
+			}
+			return nil
+		}
+		octets += info.Size()
+		return nil
+	})
+	return depots, octets
+}

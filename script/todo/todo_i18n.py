@@ -1620,6 +1620,50 @@ TRANSLATIONS = {
         "fr": "Lancer ces tests longs ?",
         "en": "Run these long tests?",
     },
+    "Git mirrors:": {
+        "fr": "Miroirs git :",
+        "en": "Git mirrors:",
+    },
+    "Git is mirrored, not cached": {
+        "fr": "Git est mis en miroir, pas caché",
+        "en": "Git is mirrored, not cached",
+    },
+    "    Git's protocol is a negotiation: the server computes its": {
+        "fr": "    Le protocole git est une négociation : le serveur calcule sa",
+        "en": "    Git's protocol is a negotiation: the server computes its",
+    },
+    "    answer from what the client already holds, so no answer is": {
+        "fr": "    réponse d'après ce que le client détient déjà, si bien qu'aucune",
+        "en": "    answer from what the client already holds, so no answer is",
+    },
+    "    reusable. A bare mirror per upstream repo is kept instead,": {
+        "fr": "    réponse ne se réutilise. Un miroir nu par dépôt amont est tenu à la",
+        "en": "    reusable. A bare mirror per upstream repo is kept instead,",
+    },
+    "    and served locally — which also works with no network.": {
+        "fr": "    place, et servi localement — ce qui marche aussi sans réseau.",
+        "en": "    and served locally — which also works with no network.",
+    },
+    "    A mirror is COMPLETE: it weighs what the upstream repo": {
+        "fr": "    Un miroir est COMPLET : il pèse ce que pèse le dépôt amont,",
+        "en": "    A mirror is COMPLETE: it weighs what the upstream repo",
+    },
+    "    weighs, history included.": {
+        "fr": "    historique compris.",
+        "en": "    weighs, history included.",
+    },
+    "    Neither the objects nor the mirrors shrink by themselves,": {
+        "fr": "    Ni les objets ni les miroirs ne diminuent d'eux-mêmes, et les deux",
+        "en": "    Neither the objects nor the mirrors shrink by themselves,",
+    },
+    "    and both live on the orchestrator's disk. The diagnosis": {
+        "fr": "    vivent sur le disque de l'orchestrateur. Le diagnostic dit ce",
+        "en": "    and both live on the orchestrator's disk. The diagnosis",
+    },
+    "    entry says what each of the two occupies.": {
+        "fr": "    qu'occupe chacun des deux.",
+        "en": "    entry says what each of the two occupies.",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",
