@@ -18,6 +18,7 @@ from script.vm.backend import (  # noqa: F401
     handle_of,
     libvirt_handle,
     pve_handle,
+    resolves_locally,
     is_armed,
     same_machine,
 )

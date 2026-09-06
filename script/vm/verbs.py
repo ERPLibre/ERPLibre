@@ -309,3 +309,47 @@ def power_command(
     raise VerbNotImplemented(
         f"power_command : backend « {handle.backend} » inconnu."
     )
+
+
+def arm(handle, probe=None):
+    """Relève la preuve d'identité MAINTENANT, et rend la fiche armée.
+
+    C'est le seul instant où l'on sait que ce nom désigne cette machine :
+    on vient de la créer. Rouvert des semaines plus tard, un manifeste ne
+    peut plus le savoir, et c'est cette preuve-là qui armera le garde de la
+    suppression.
+
+    `probe` est la fonction qui va CHERCHER la preuve sur la machine —
+    injectée, donc éprouvable sans hyperviseur. Une preuve déjà là n'est pas
+    re-relevée ; un backend dont la preuve se déduit du nom n'a rien à
+    sonder du tout.
+
+    Une sonde muette laisse la fiche DÉSARMÉE plutôt que d'échouer : mieux
+    vaut la protection d'avant que refuser de créer la machine.
+    """
+    if handle is None:
+        raise VerbNotImplemented("arm : aucune identité.")
+    if handle.proof or probe is None:
+        return handle
+    if handle.backend != LIBVIRT:
+        return handle
+    return handle._replace(proof=str(probe(handle.key) or ""))
+
+
+def identity_fields(handle) -> dict:
+    """Ce qu'une entrée de manifeste doit porter pour RETROUVER la machine.
+
+    L'inverse de `handle_of` : ce que celui-ci lit, celui-là l'écrit. Les
+    deux se font face, et une épreuve d'aller-retour tient leur accord —
+    sans quoi une identité écrite d'une façon et relue d'une autre désigne
+    tranquillement autre chose.
+    """
+    if handle is None:
+        raise VerbNotImplemented("identity_fields : aucune identité.")
+    if handle.backend == PVE:
+        return {"pve": dict(handle.host)}
+    if handle.backend == LIBVIRT:
+        return {"uuid": handle.proof}
+    raise VerbNotImplemented(
+        f"identity_fields : backend « {handle.backend} » inconnu."
+    )

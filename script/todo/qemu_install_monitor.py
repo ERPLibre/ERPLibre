@@ -32,6 +32,7 @@ from script.vm.backend import (
     handle_of,
     libvirt_handle,
     pve_handle,
+    resolves_locally,
 )
 
 try:
@@ -398,7 +399,10 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
             log_path,
             vm["name"],
             installs=bool(branch),
-            pve=bool(vm.get("pve")),
+            # Ré-résoudre l'adresse par virsh ne vaut que pour une VM que
+            # l'hyperviseur LOCAL connaît : ailleurs, il trouve le domaine
+            # homonyme d'ici.
+            pve=not resolves_locally(handle_of(vm)),
             # Une installation qui pose un NOYAU ne vaut rien avant le
             # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
             reboot=reboot_expected(cmd_vm),
@@ -412,15 +416,15 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
             "log": log_path,
             "ssh": f"ssh erplibre@{vm['ip']}",
         }
-        # Une VM posée sur un hôte Proxmox : c'est LUI qui connaît son état.
-        if vm.get("pve"):
-            entree["pve"] = vm["pve"]
-        else:
-            # L'UUID du domaine, relevé MAINTENANT : c'est le seul instant où
-            # l'on sait que ce nom désigne bien cette machine. Rouvert des
-            # semaines plus tard, le suivi ne peut plus le savoir — et c'est
-            # lui qui arme le garde de la suppression.
-            entree["uuid"] = local_uuid(vm["name"])
+        # La preuve d'identité est relevée MAINTENANT : c'est le seul
+        # instant où l'on sait que ce nom désigne bien cette machine.
+        # Rouvert des semaines plus tard, le suivi ne peut plus le savoir —
+        # et c'est elle qui armera le garde de la suppression.
+        entree.update(
+            vm_verbs.identity_fields(
+                vm_verbs.arm(handle_of(vm), probe=local_uuid)
+            )
+        )
         entries.append(entree)
     manifest = {
         "branch": branch,

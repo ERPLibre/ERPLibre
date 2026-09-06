@@ -161,6 +161,16 @@ def is_armed(handle) -> bool:
     return bool(handle) and bool(handle.proof)
 
 
+def resolves_locally(handle) -> bool:
+    """L'adresse de cette VM se relit-elle par l'hyperviseur LOCAL ?
+
+    Faux dès qu'un hôte la porte : ré-résoudre par virsh y trouve le domaine
+    local homonyme, et l'installation part sur la mauvaise machine — sans
+    rien dire, puisque le domaine trouvé répond très bien.
+    """
+    return bool(handle) and handle.backend == LIBVIRT
+
+
 def same_machine(left, right) -> bool:
     """Ces deux identités désignent-elles la même machine ?
 

@@ -237,5 +237,30 @@ class TestLesFabriquesRemplissentTout(unittest.TestCase):
                 self.assertIsInstance(dict(handle.host), dict)
 
 
+class TestQuiSaitRelireLAdresse(unittest.TestCase):
+    """Ré-résoudre par l'hyperviseur local ne vaut que pour ses propres VM.
+
+    Ailleurs, virsh trouve le domaine homonyme d'ICI et l'installation part
+    sur la mauvaise machine — sans rien dire, puisque le domaine trouvé
+    répond très bien.
+    """
+
+    def test_a_local_vm_is_resolved_locally(self):
+        self.assertTrue(V.resolves_locally(V.handle_of(LOCALE)))
+
+    def test_a_remote_vm_is_not(self):
+        self.assertFalse(V.resolves_locally(V.handle_of(DISTANTE)))
+
+    def test_an_absence_is_not_resolved_either(self):
+        self.assertFalse(V.resolves_locally(None))
+
+    def test_it_answers_for_every_backend_of_the_vocabulary(self):
+        """Un backend neuf doit décider, pas hériter du silence."""
+        for nom in V.BACKENDS:
+            with self.subTest(backend=nom):
+                handle = V.handle_of(LOCALE)._replace(backend=nom)
+                self.assertIsInstance(V.resolves_locally(handle), bool)
+
+
 if __name__ == "__main__":
     unittest.main()

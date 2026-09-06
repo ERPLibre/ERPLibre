@@ -509,5 +509,103 @@ class TestLAlimentation(unittest.TestCase):
             V.power_command(LOCALE._replace(backend="lima"), "suspend")
 
 
+class TestArmerLaPreuve(unittest.TestCase):
+    """Le seul instant où l'on sait que ce nom désigne cette machine."""
+
+    def test_a_local_vm_gets_its_uuid_from_the_probe(self):
+        vus = []
+        arme = V.arm(
+            B.libvirt_handle("essai"),
+            probe=lambda nom: vus.append(nom) or "abc-123",
+        )
+        self.assertEqual(["essai"], vus)
+        self.assertEqual("abc-123", arme.proof)
+        self.assertTrue(B.is_armed(arme))
+
+    def test_a_remote_vm_needs_no_probe_at_all(self):
+        """Sa preuve est son nom : elle est déjà là."""
+
+        def refus(nom):
+            raise AssertionError("la sonde ne doit pas être appelée")
+
+        arme = V.arm(DISTANTE, probe=refus)
+        self.assertEqual(DISTANTE, arme)
+
+    def test_an_existing_proof_is_not_probed_again(self):
+        def refus(nom):
+            raise AssertionError("la sonde ne doit pas être appelée")
+
+        self.assertEqual(LOCALE, V.arm(LOCALE, probe=refus))
+
+    def test_a_silent_probe_leaves_it_disarmed_rather_than_failing(self):
+        """Mieux vaut la protection d'avant que refuser de créer la
+        machine."""
+        arme = V.arm(B.libvirt_handle("essai"), probe=lambda nom: "")
+        self.assertEqual("", arme.proof)
+        self.assertFalse(B.is_armed(arme))
+
+    def test_a_nameless_remote_vm_is_not_probed_locally_either(self):
+        """Sa preuve manque, mais la sonde locale répondrait sur le VMID —
+        et un « 101 » n'est pas un UUID de domaine d'ici."""
+
+        def refus(cle):
+            raise AssertionError(f"sonde locale appelée sur « {cle} »")
+
+        nu = B.pve_handle({"vmid": 101, "target": "hote.exemple"})
+        self.assertFalse(B.is_armed(nu))
+        self.assertEqual(nu, V.arm(nu, probe=refus))
+
+    def test_without_a_probe_nothing_is_invented(self):
+        nu = B.libvirt_handle("essai")
+        self.assertEqual(nu, V.arm(nu))
+
+    def test_no_identity_is_refused_rather_than_guessed(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.arm(None)
+
+
+class TestEcrireEtRelireLaMemeIdentite(unittest.TestCase):
+    """`identity_fields` écrit ce que `handle_of` lit. Les deux se font
+    face : écrite d'une façon et relue d'une autre, une identité désigne
+    tranquillement autre chose."""
+
+    def entree(self, handle):
+        """L'entrée de manifeste minimale, telle que l'écrivain la compose."""
+        entree = {
+            "name": handle.name,
+            "ip": handle.alias or handle.address,
+        }
+        entree.update(V.identity_fields(handle))
+        return entree
+
+    def test_a_remote_identity_survives_the_round_trip(self):
+        handle = B.pve_handle(
+            {"vmid": 101, "target": "hote.exemple", "addr": "198.51.100.7"},
+            "essai",
+            alias="hote+essai",
+        )
+        self.assertEqual(handle, B.handle_of(self.entree(handle)))
+
+    def test_a_local_identity_survives_the_round_trip(self):
+        handle = B.libvirt_handle("essai", uuid="abc-123", ip="192.0.2.10")
+        self.assertEqual(handle, B.handle_of(self.entree(handle)))
+
+    def test_a_disarmed_identity_survives_too(self):
+        """Un manifeste écrit sans preuve doit se relire tel quel, et non
+        se retrouver armé par accident."""
+        handle = B.libvirt_handle("essai", ip="192.0.2.10")
+        relu = B.handle_of(self.entree(handle))
+        self.assertEqual(handle, relu)
+        self.assertFalse(B.is_armed(relu))
+
+    def test_the_written_fields_are_the_ones_the_reader_looks_for(self):
+        self.assertIn("uuid", V.identity_fields(LOCALE))
+        self.assertIn("pve", V.identity_fields(DISTANTE))
+
+    def test_an_unknown_backend_writes_nothing_and_says_so(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.identity_fields(LOCALE._replace(backend="lima"))
+
+
 if __name__ == "__main__":
     unittest.main()
