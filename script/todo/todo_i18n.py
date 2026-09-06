@@ -1724,6 +1724,18 @@ TRANSLATIONS = {
         "fr": "Effacer ce miroir ?",
         "en": "Remove this mirror?",
     },
+    "    weighs, history included, and a few repositories make": {
+        "fr": "    historique compris, et quelques dépôts font l'essentiel du",
+        "en": "    weighs, history included, and a few repositories make",
+    },
+    "    most of the total. Entry 5 lists them heaviest first and": {
+        "fr": "    total. L'entrée 5 les liste du plus lourd au plus léger et en",
+        "en": "    most of the total. Entry 5 lists them heaviest first and",
+    },
+    "    removes one — it comes back at the next need.": {
+        "fr": "    efface un — il revient au prochain besoin.",
+        "en": "    removes one — it comes back at the next need.",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",
