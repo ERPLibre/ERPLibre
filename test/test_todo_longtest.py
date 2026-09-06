@@ -529,6 +529,52 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
         self.assertNotIn(faux.pid, self.dp.autre_descente())
 
+    def _argv0(self, nom):
+        """Un processus vivant dont argv[0] est `nom`, sans rien exécuter de
+        vrai.
+
+        `executable` sépare le binaire RÉELLEMENT lancé de ce que la ligne de
+        commande annonce : c'est elle que /proc publie, et donc elle que le
+        contrôle lit. Le faire par « sh -c 'exec -a …' » n'éprouvait rien — la
+        ligne de commande restait celle du shell, et le test passait à vide.
+        """
+        import subprocess
+
+        faux = subprocess.Popen([nom, "30"], executable=shutil.which("sleep"))
+        self.addCleanup(faux.kill)
+        # Le noyau publie la nouvelle ligne de commande à l'exec, pas au fork.
+        for _ in range(100):
+            try:
+                with open(f"/proc/{faux.pid}/cmdline", "rb") as fh:
+                    if fh.read().startswith(nom.encode()):
+                        break
+            except OSError:
+                pass
+            time.sleep(0.02)
+        return faux
+
+    def test_a_file_whose_name_merely_ends_like_one_is_not_a_descent(self):
+        """« endswith » prenait « test_longtest_install_nixos.py » pour
+        « install_nixos.py » : le fichier de tests se déclarait descente en
+        cours, et « --detruire » refusait de travailler tant qu'il tournait.
+
+        Le piège n'est pas propre à ce nom-là : tout script dont le nom
+        termine celui d'un test long y tombait."""
+        faux = self._argv0("/tmp/test_longtest_install_nixos.py")
+        self.assertFalse(self.dp._lance_une_descente(faux.pid))
+
+    def test_the_real_path_of_a_script_is_still_recognised(self):
+        """Le basename ne doit pas rendre le contrôle aveugle : un
+        interpréteur reçoit le CHEMIN du script, pas son nom nu."""
+        for chemin in (
+            "long_test/install_nixos.py",
+            "/home/x/long_test/deep_qemu.py",
+            "./deep_proxmox.py",
+        ):
+            with self.subTest(chemin=chemin):
+                faux = self._argv0(chemin)
+                self.assertTrue(self.dp._lance_une_descente(faux.pid))
+
     def _fausse_descente(self):
         """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
 
