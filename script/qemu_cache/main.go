@@ -68,6 +68,10 @@ func main() {
 			"fichier de dépôts, un par ligne, à tenir en miroir d'avance")
 		gitPrefetchJobs = flag.Int("git-mirror-jobs", 4,
 			"dépôts clonés en parallèle par le pré-remplissage")
+		gitList = flag.Bool("git-mirror-list", false,
+			"dire les dépôts tenus en miroir, du plus lourd au plus léger")
+		gitRemove = flag.String("git-mirror-remove", "",
+			"effacer le miroir de ce dépôt ; il se refera au prochain besoin")
 		bypassList = flag.Bool("bypass-list", false,
 			"dire les exceptions en place, une « MAC nom » par ligne")
 		showVersion = flag.Bool("version", false, "dire la version, puis sortir")
@@ -149,6 +153,40 @@ func main() {
 
 	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
 
+	if *gitList {
+		depots := miroir.Depots()
+		if len(depots) == 0 {
+			fmt.Println("aucun dépôt en miroir")
+			return
+		}
+		var total int64
+		for _, d := range depots {
+			total += d.Octets
+			fmt.Printf("%10s  %s  %s\n",
+				HumanBytes(d.Octets), d.Maj.Format("2006-01-02"), d.Nom)
+		}
+		fmt.Printf("%10s  %d dépôts\n", HumanBytes(total), len(depots))
+		return
+	}
+	if *gitRemove != "" {
+		// Le nom suffit : on ne demande pas à l'opérateur de retrouver le
+		// chemin d'un répertoire qu'il n'a pas choisi.
+		cible := *gitRemove
+		if !strings.HasPrefix(cible, miroir.Dir) {
+			for _, d := range miroir.Depots() {
+				if d.Nom == strings.TrimSuffix(cible, ".git") {
+					cible = d.Chemin
+					break
+				}
+			}
+		}
+		if err := miroir.Retirer(cible); err != nil {
+			fmt.Fprintf(os.Stderr, "effacement : %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("miroir effacé : %s\n", cible)
+		return
+	}
 	if *gitPrefetch != "" {
 		if !miroir.Actif() {
 			fmt.Fprintln(os.Stderr,

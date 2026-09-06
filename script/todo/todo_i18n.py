@@ -1700,6 +1700,30 @@ TRANSLATIONS = {
         "fr": "Remplir les miroirs git maintenant ?",
         "en": "Fill the git mirrors now?",
     },
+    "Mirrors - Fill them from the manifests": {
+        "fr": "📥 Miroirs - Les remplir depuis les manifestes",
+        "en": "📥 Mirrors - Fill them from the manifests",
+    },
+    "Mirrors - List them, heaviest first": {
+        "fr": "📋 Miroirs - Les lister, du plus lourd au plus léger",
+        "en": "📋 Mirrors - List them, heaviest first",
+    },
+    "Mirrors - Remove one": {
+        "fr": "🧹 Miroirs - En effacer un",
+        "en": "🧹 Mirrors - Remove one",
+    },
+    "Repository to remove (as listed)": {
+        "fr": "Dépôt à effacer (tel qu'affiché)",
+        "en": "Repository to remove (as listed)",
+    },
+    "It will be mirrored again when a VM needs it.": {
+        "fr": "Il sera remis en miroir dès qu'une VM en aura besoin.",
+        "en": "It will be mirrored again when a VM needs it.",
+    },
+    "Remove this mirror?": {
+        "fr": "Effacer ce miroir ?",
+        "en": "Remove this mirror?",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

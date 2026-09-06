@@ -478,12 +478,70 @@ class QemuCacheMenuMixin:
         os.makedirs(os.path.dirname(fichier), exist_ok=True)
         with open(fichier, "w", encoding="utf-8") as fh:
             fh.write("\n".join(liste) + "\n")
+        choices = [
+            {
+                "prompt_description": t(
+                    "Mirrors - Fill them from the manifests"
+                )
+            },
+            {"prompt_description": t("Mirrors - List them, heaviest first")},
+            {"prompt_description": t("Mirrors - Remove one")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            if status == "1":
+                self._cache_miroir_remplir(liste)
+            elif status == "2":
+                self._cache_miroir_lister()
+            elif status == "3":
+                self._cache_miroir_retirer()
+            else:
+                print(t("Command not found !"))
+
+    def _cache_miroir_remplir(self, liste):
+        fichier = os.path.join(
+            os.path.expanduser("~/.erplibre"), "miroirs_git.txt"
+        )
+        os.makedirs(os.path.dirname(fichier), exist_ok=True)
+        with open(fichier, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(liste) + "\n")
         cmd = (
             f"sudo {CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
             f" --git-mirror-prefetch {fichier}"
         )
         print(f"{t('Will execute:')} {cmd}")
         if not click.confirm(t("Fill the git mirrors now?")):
+            return
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_miroir_lister(self):
+        """Du plus lourd au plus léger : c'est ce qu'on cherche quand on
+        surveille la place, et quelques dépôts font l'essentiel du total."""
+        cmd = (
+            f"{CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" --git-mirror-list"
+        )
+        print(f"{t('Will execute:')} {cmd}\n")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_miroir_retirer(self):
+        """Effacer un miroir est sans danger : il se refait au prochain
+        besoin, au prix du clonage. C'est ce qui permet de rendre de la place
+        sans tout perdre."""
+        nom = click.prompt(t("Repository to remove (as listed)")).strip()
+        if not nom:
+            return
+        cmd = (
+            f"sudo {CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" --git-mirror-remove {shlex.quote(nom)}"
+        )
+        print(f"\n{t('Will execute:')} {cmd}")
+        print(f"  {t('It will be mirrored again when a VM needs it.')}")
+        if not click.confirm(t("Remove this mirror?")):
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -466,4 +467,78 @@ func (g *GitMirror) placeSuffisante() bool {
 		return true
 	}
 	return int64(st.Bavail)*int64(st.Bsize) > plancher
+}
+
+// Depot décrit un miroir tenu sur le disque.
+type Depot struct {
+	// Chemin est le répertoire du dépôt nu.
+	Chemin string
+	// Nom est ce qu'il vaut mieux montrer : « github.com/OCA/server-tools ».
+	Nom string
+	// Octets est ce qu'il occupe, Maj la dernière fois qu'il a été rafraîchi.
+	Octets int64
+	Maj    time.Time
+}
+
+// Depots rend les miroirs tenus, du plus lourd au plus léger.
+//
+// Par la TAILLE et non par le nom : la place se surveille à la main — aucune
+// éviction n'est écrite — et ce qu'on cherche en la surveillant, c'est ce qui
+// pèse. Trois dépôts font ici les trois quarts du total ; les lister par ordre
+// alphabétique obligerait à les chercher.
+func (g *GitMirror) Depots() []Depot {
+	if g == nil || g.Dir == "" {
+		return nil
+	}
+	var out []Depot
+	filepath.Walk(g.Dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || !info.IsDir() ||
+			!strings.HasSuffix(p, ".git") {
+			return nil
+		}
+		d := Depot{
+			Chemin: p,
+			Nom: strings.TrimSuffix(
+				strings.TrimPrefix(p, g.Dir+string(os.PathSeparator)), ".git"),
+			Maj: info.ModTime(),
+		}
+		filepath.Walk(p, func(_ string, i os.FileInfo, e error) error {
+			if e == nil && i != nil && !i.IsDir() {
+				d.Octets += i.Size()
+			}
+			return nil
+		})
+		out = append(out, d)
+		// Un dépôt nu n'en contient pas d'autre : inutile de descendre.
+		return filepath.SkipDir
+	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Octets > out[j].Octets })
+	return out
+}
+
+// Retirer efface un miroir. Il se refera au prochain besoin, au prix du
+// clonage — c'est la propriété qui rend l'effacement sans danger.
+//
+// Le chemin est vérifié comme appartenant à la racine des miroirs : un appel
+// mal formé ne doit pas pouvoir effacer autre chose.
+func (g *GitMirror) Retirer(chemin string) error {
+	if g == nil || g.Dir == "" {
+		return fmt.Errorf("miroir éteint")
+	}
+	abs, err := filepath.Abs(chemin)
+	if err != nil {
+		return err
+	}
+	racine, err := filepath.Abs(g.Dir)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(abs, racine+string(os.PathSeparator)) ||
+		!strings.HasSuffix(abs, ".git") {
+		return fmt.Errorf("hors des miroirs : %s", chemin)
+	}
+	v := g.verrou(abs)
+	v.Lock()
+	defer v.Unlock()
+	return os.RemoveAll(abs)
 }

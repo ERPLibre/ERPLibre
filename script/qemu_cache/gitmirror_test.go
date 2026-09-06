@@ -378,3 +378,72 @@ func TestCeQueLeMiroirSertEstCompte(t *testing.T) {
 		t.Error("le miroir a servi un clone entier et le journal dirait zéro")
 	}
 }
+
+// La liste est triée par TAILLE : c'est ce qu'on cherche quand on surveille
+// la place à la main, et trois dépôts font les trois quarts du total.
+func TestLesDepotsSontTriesParTaille(t *testing.T) {
+	g := &GitMirror{Dir: t.TempDir()}
+	for nom, poids := range map[string]int{
+		"h/petit.git": 10, "h/gros.git": 5000, "h/moyen.git": 500,
+	} {
+		d := filepath.Join(g.Dir, nom)
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(d, "HEAD"), make([]byte, poids), 0o644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+	depots := g.Depots()
+	if len(depots) != 3 {
+		t.Fatalf("%d dépôts vus", len(depots))
+	}
+	for i, attendu := range []string{"h/gros", "h/moyen", "h/petit"} {
+		if depots[i].Nom != attendu {
+			t.Errorf("rang %d : %q, attendu %q", i, depots[i].Nom, attendu)
+		}
+	}
+	if depots[0].Octets <= depots[2].Octets {
+		t.Error("les tailles ne sont pas mesurées")
+	}
+}
+
+// Effacer un miroir est sans danger : il se refait au prochain besoin. Mais
+// l'effacement doit rester DANS les miroirs — un appel mal formé ne doit pas
+// pouvoir emporter autre chose.
+func TestRetirerRefuseCeQuiEstDehors(t *testing.T) {
+	g := &GitMirror{Dir: t.TempDir()}
+	dehors := filepath.Join(t.TempDir(), "ailleurs.git")
+	if err := os.MkdirAll(dehors, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, cible := range []string{dehors, "/etc", g.Dir, g.Dir + "/x"} {
+		if err := g.Retirer(cible); err == nil {
+			t.Errorf("%s a été accepté", cible)
+		}
+	}
+	if _, err := os.Stat(dehors); err != nil {
+		t.Errorf("un répertoire hors des miroirs a été effacé : %v", err)
+	}
+}
+
+func TestRetirerEffaceLeMiroir(t *testing.T) {
+	amont, _ := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	chemin, pret := g.Assurer(context.Background(), amont)
+	if !pret {
+		t.Fatal("le miroir n'a pas pu être créé")
+	}
+	if err := g.Retirer(chemin); err != nil {
+		t.Fatalf("effacement : %v", err)
+	}
+	if depots, _ := g.Occupation(); depots != 0 {
+		t.Errorf("%d dépôt(s) subsistent", depots)
+	}
+	// Et il se refait : c'est ce qui rend l'effacement sans danger.
+	if _, pret := g.Assurer(context.Background(), amont); !pret {
+		t.Error("le miroir ne se refait pas après effacement")
+	}
+}

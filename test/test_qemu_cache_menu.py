@@ -198,7 +198,10 @@ class TestSousMenusDuCache(unittest.TestCase):
         self.verifier("_cache_service", "_cache_journal_service", 6)
 
     def test_le_menu_des_exceptions(self):
-        self.verifier("_cache_exceptions", "_cache_guide", 2)
+        self.verifier("_cache_exceptions", "_cache_miroir_git", 2)
+
+    def test_le_menu_des_miroirs(self):
+        self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 3)
 
     def test_letat_du_service_est_la_troisieme(self):
         """Sous le diagnostic, comme demandé : le décalage du guide et des
