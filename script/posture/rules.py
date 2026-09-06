@@ -173,6 +173,63 @@ def _refuse_la_posture(posture, destinations):
         )
 
 
+# Ce qui manque encore pour qu'un rendu CONFINE quoi que ce soit. Le
+# vocabulaire est clos : un manque de plus se déclare ici, où les appelants
+# le verront, plutôt que dans une phrase libre.
+#
+# `no-rendering` : le rendu refuse cette posture, il n'y a rien à appliquer.
+# `no-applier` : rien ne porte le texte jusqu'à une machine.
+# `not-at-boot` : rien ne le recharge à chaque démarrage, avant que le
+#   réseau monte — une machine redémarrée repart sans règles.
+# `tool-unverified` : rien ne vérifie que l'analyseur existe dans l'image ;
+#   absent, le chargement échoue et la machine tourne sans aucune règle.
+# `containers-unproven` : la chaîne forward est rendue, jamais confrontée à
+#   un conteneur vivant qui tente une sortie hors liste.
+NO_RENDERING = "no-rendering"
+NO_APPLIER = "no-applier"
+NOT_AT_BOOT = "not-at-boot"
+TOOL_UNVERIFIED = "tool-unverified"
+CONTAINERS_UNPROVEN = "containers-unproven"
+UNENFORCED_TOKENS = (
+    NO_RENDERING,
+    NO_APPLIER,
+    NOT_AT_BOOT,
+    TOOL_UNVERIFIED,
+    CONTAINERS_UNPROVEN,
+)
+
+# Ce que le rendu ne fournit PAS, mais que la posture tient déjà par la
+# nature de son réseau : « nat » ne promet que la sortie, que la traduction
+# d'adresses donne, et un réseau isolé n'a pas de route du tout. Ni l'une ni
+# l'autre n'attend quoi que ce soit d'un jeu de règles.
+TENUES_PAR_LE_RESEAU = ("nat", "none")
+
+
+def unenforced(posture) -> tuple:
+    """Ce que le rendu de règles ne tient PAS de cette posture.
+
+    Un mécanisme muet sur ce qu'il n'applique pas est ce qui fait croire à
+    un confinement qui n'existe pas. Rend la LISTE des manques, en jetons
+    non traduits, et l'appelant décide.
+
+    Un tuple VIDE veut dire que cette posture n'attend rien de ce mécanisme
+    — soit parce que la nature de son réseau la tient déjà, soit parce que
+    tout ce qui manquait a été construit. Une épreuve tient l'équivalence
+    avec `egress_enforced` : tant qu'un jeton reste, elle REFUSE la bascule
+    du drapeau ; le jour où il n'en reste aucun, elle l'EXIGE.
+
+    Une posture absente ne promet rien, donc rien ne manque.
+    """
+    if posture is None:
+        return ()
+    if posture.egress in TENUES_PAR_LE_RESEAU:
+        return ()
+    if not posture.destinations_bounded:
+        # Seul jeton : le reste porterait sur un rendu qui n'existe pas.
+        return (NO_RENDERING,)
+    return (NO_APPLIER, NOT_AT_BOOT, TOOL_UNVERIFIED, CONTAINERS_UNPROVEN)
+
+
 def render_egress(posture, destinations=()) -> str:
     """Le contenu du fichier de règles, ou une ValidationError qui dit non.
 

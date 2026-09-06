@@ -296,6 +296,99 @@ class TestLeRaccourciEstRefuseAussi(unittest.TestCase):
         self.assertIn("D'où viennent les sources", texte)
 
 
+class TestDireEnJetonsCeQuiManque(unittest.TestCase):
+    """Un mécanisme muet sur ce qu'il n'applique pas fait croire à un
+    confinement qui n'existe pas."""
+
+    def test_a_posture_held_by_its_own_network_expects_nothing(self):
+        """« nat » ne promet que la sortie, que la traduction d'adresses
+        donne ; un réseau isolé n'a pas de route du tout. Ni l'une ni
+        l'autre n'attend un jeu de règles."""
+        for nom in ("open", "local-only"):
+            with self.subTest(posture=nom):
+                self.assertEqual((), rules.unenforced(R.get_posture(nom)))
+
+    def test_bounding_ports_only_gets_the_single_token_that_fits(self):
+        """Les autres jetons porteraient sur un rendu qui n'existe pas."""
+        self.assertEqual(
+            (rules.NO_RENDERING,),
+            rules.unenforced(R.get_posture("connected")),
+        )
+
+    def test_the_rendered_posture_names_what_is_still_missing(self):
+        manques = rules.unenforced(R.get_posture("paranoid"))
+        for jeton in (
+            rules.NO_APPLIER,
+            rules.NOT_AT_BOOT,
+            rules.TOOL_UNVERIFIED,
+            rules.CONTAINERS_UNPROVEN,
+        ):
+            with self.subTest(jeton=jeton):
+                self.assertIn(jeton, manques)
+
+    def test_no_posture_at_all_promises_nothing(self):
+        self.assertEqual((), rules.unenforced(None))
+
+    def test_every_token_is_in_the_closed_vocabulary(self):
+        self.assertTrue(rules.UNENFORCED_TOKENS, "vocabulaire vidé")
+        for nom in R.posture_names():
+            for jeton in rules.unenforced(R.get_posture(nom)):
+                with self.subTest(posture=nom, jeton=jeton):
+                    self.assertIn(jeton, rules.UNENFORCED_TOKENS)
+
+    def test_the_wording_of_the_tokens_is_pinned(self):
+        """Écrits en toutes lettres, et non par leur constante : un écran
+        les affichera et un rapport les comparera, si bien qu'un jeton
+        renommé casse un consommateur sans qu'aucune constante bouge."""
+        self.assertEqual(
+            (
+                "no-rendering",
+                "no-applier",
+                "not-at-boot",
+                "tool-unverified",
+                "containers-unproven",
+            ),
+            rules.UNENFORCED_TOKENS,
+        )
+
+
+class TestLeJetonCommandeLaBascule(unittest.TestCase):
+    """L'équivalence qui rend la bascule mécanique au lieu d'optimiste.
+
+    Tant qu'un jeton reste, elle REFUSE de voir `egress_enforced` passer à
+    vrai. Le jour où il n'en reste aucun, elle l'EXIGE. C'est le même geste
+    que la règle des données réelles : déduire au lieu de déclarer, pour
+    qu'aucun champ ne puisse annoncer un confinement que rien ne tient.
+    """
+
+    def test_the_flag_and_the_tokens_say_the_same_thing(self):
+        for nom in R.posture_names():
+            posture = R.get_posture(nom)
+            with self.subTest(posture=nom):
+                self.assertEqual(
+                    posture.egress_enforced,
+                    rules.unenforced(posture) == (),
+                    f"« {nom} » : {rules.unenforced(posture)}",
+                )
+
+    def test_both_sides_of_the_equivalence_are_exercised(self):
+        """Contrôle positif : si toutes les postures tombaient du même
+        côté, l'équivalence tiendrait sans rien prouver."""
+        reponses = {
+            rules.unenforced(R.get_posture(nom)) == ()
+            for nom in R.posture_names()
+        }
+        self.assertEqual({True, False}, reponses)
+
+    def test_the_strict_posture_is_still_refused_and_the_tokens_say_why(self):
+        """Le compteur du travail, vu du mécanisme : le jour où ces quatre
+        jetons disparaissent, la posture stricte accepte les données
+        réelles, et cette épreuve tombe avec eux."""
+        stricte = R.get_posture("paranoid")
+        self.assertFalse(R.allows_real_data(stricte))
+        self.assertEqual(4, len(rules.unenforced(stricte)))
+
+
 class TestElleNAppliqueRien(unittest.TestCase):
     def test_the_module_runs_nothing(self):
         """Un rendu qui exécute ne se relit plus avant d'être posé, et ne
