@@ -49,9 +49,9 @@ DISK_CONTENT = ("images", "rootdir")
 def ssh_argv(host: dict, remote: str, tty: bool = False) -> list:
     """Commande ssh complète pour exécuter `remote` sur l'hôte Proxmox.
 
-    `host` : {"target": "root@10.0.0.5", "jump": "rebond", "port": "22"} —
-    « target » suffit quand l'alias vient de ~/.ssh/config, qui porte déjà
-    l'utilisateur, le port et le ProxyJump.
+    `host` : {"target": "root@hyperviseur", "jump": "rebond", "port": "22"}
+    — « target » suffit quand l'alias vient de ~/.ssh/config, qui porte
+    déjà l'utilisateur, le port et le ProxyJump.
     """
     argv = ["ssh"]
     if not tty:
@@ -384,8 +384,8 @@ def ssh_server_ip(text: str) -> str:
     « client_ip client_port SERVER_ip server_port » : le troisième champ. C'est
     la seule adresse dont on SAIT qu'elle mène à la machine, rebond compris.
 
-    Les candidats habituels se trompent ici. Mesuré sur une Proxmox imbriquée :
-    « hostname -I » rend « 10.10.10.150 10.10.20.1 », et la seconde est le pont
+    Les candidats habituels se trompent ici. Sur une Proxmox imbriquée,
+    « hostname -I » rend PLUSIEURS adresses, et l'une d'elles est le pont
     interne que notre propre code vient de créer. La poser dans /etc/hosts
     ferait s'identifier le nœud par une adresse que personne ne joint.
     """
@@ -740,8 +740,8 @@ INTERNAL_BRIDGE = "vmbr0"
 INTERNAL_CIDR = "10.10.10.1/24"
 
 # Le réseau interne ne peut PAS être une constante : un Proxmox dans un
-# Proxmox hérite du réseau interne de son parent, et 10.10.10.1 y est
-# l'adresse de sa propre PASSERELLE. La poser sur son pont rend tout le /24
+# Proxmox hérite du réseau interne de son parent, et l'adresse de
+# INTERNAL_CIDR y est celle de sa propre PASSERELLE. La poser sur son pont rend tout le /24
 # local — la passerelle devient injoignable et la machine s'isole
 # instantanément, au milieu de la commande qui la configure. Vécu : « ifup »
 # n'a jamais rendu la main et la VM ne répondait plus, ni en ssh ni en ping.
@@ -760,8 +760,8 @@ INTERNAL_CANDIDATES = (
 )
 
 # Tout ce que l'hôte sait déjà d'IPv4 : ses adresses ET ses routes. Les deux,
-# parce qu'une route sans adresse locale suffit à créer le conflit — la route
-# par défaut « via 10.10.10.1 » en est l'exemple exact.
+# parce qu'une route sans adresse locale suffit à créer le conflit — une
+# route par défaut « via » la passerelle d'un parent en est l'exemple exact.
 USED_NETS_CMD = "ip -o -4 addr show; ip -4 route show"
 
 
@@ -926,7 +926,7 @@ def ipconfig_for(pont_info: dict, vmid: int) -> str:
 
 
 def ip_from_ipconfig(ipconfig: str) -> str:
-    """Adresse fixe d'un « ip=10.10.10.150/24,gw=… », ou '' si c'est du DHCP.
+    """Adresse fixe d'un « ip=192.0.2.50/24,gw=… », ou '' si c'est du DHCP.
 
     Quand c'est NOUS qui avons attribué l'adresse, la chercher ensuite est
     absurde : elle est connue avant que la VM ne démarre. La découverte (agent
