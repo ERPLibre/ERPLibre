@@ -232,6 +232,12 @@ pycups, mysqlclient — the absence of the HTML manuals, and Odoo answering.
 `--hote` expects a machine that **already runs NixOS**: the script installs
 ERPLibre there, it does not install the system.
 
+It clones from the **published** repository, on the branch asked for
+(`develop` by default). That is deliberate — the test measures what a user
+receives, not what a local checkout holds. Say it before running: a fix still
+on an unmerged branch is *not* in the VM, and the test will fail on whatever
+that fix repairs.
+
 ## Starting from a host you already have
 
 The three scripts take `--hote`. Creating a head VM to host a hypervisor you

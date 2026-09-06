@@ -35,6 +35,14 @@ construction. On juge donc sur l'état de la machine : les chemins que envfs
 fabrique, le venv, les modules qui n'ont pas de roue et doivent se compiler,
 puis Odoo qui répond.
 
+CE QU'IL INSTALLE : LE DÉPÔT PUBLIÉ
+
+Le clone vient du dépôt public, sur la branche demandée — « develop » par
+défaut. C'est voulu : le test mesure ce qu'un utilisateur reçoit, pas ce
+qu'un checkout local contient. La conséquence se dit avant de lancer : un
+correctif encore sur une branche non fusionnée n'est PAS dans la VM, et le
+test échouera sur ce que ce correctif répare.
+
   ./long_test/install_nixos.py                 # crée la VM, installe, juge
   ./long_test/install_nixos.py --dry-run       # le plan et les commandes
   ./long_test/install_nixos.py --hote nixos-1  # sur une machine qu'on a déjà
