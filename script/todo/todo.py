@@ -735,6 +735,18 @@ class TODO(
                 ("cli", "Classic questions (line by line)"),
             ),
         ),
+        # « Non éprouvé » est dit EN TOUTES LETTRES et non par une étoile :
+        # dans cet écran, l'étoile marque déjà la valeur courante, et une
+        # seconde étoile s'y lirait « c'est celle-là qui est active ».
+        "vm_backend": (
+            "VM backend",
+            (
+                ("auto", "Automatic (decided by the system)"),
+                ("libvirt", "libvirt/QEMU - this machine"),
+                ("pve", "Proxmox VE - a remote host"),
+                ("lima", "Lima - for macOS, never run against the tool"),
+            ),
+        ),
     }
 
     def _pref_label(self, key):
@@ -789,6 +801,12 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {
+                    "prompt_description": (
+                        f"{t('VM backend')}  "
+                        f"({self._pref_label('vm_backend')})"
+                    )
+                },
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -805,6 +823,8 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
+                self._pref_edit("vm_backend")
+            elif status == "6":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:

@@ -1105,6 +1105,35 @@ TRANSLATIONS = {
         "fr": "Deploy › Proxmox VE joint un hôte distant depuis ici.",
         "en": "Deploy › Proxmox VE reaches a remote host from here.",
     },
+    "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
+    "Automatic (decided by the system)": {
+        "fr": "Automatique (décidé par le système)",
+        "en": "Automatic (decided by the system)",
+    },
+    "libvirt/QEMU - this machine": {
+        "fr": "libvirt/QEMU - cette machine",
+        "en": "libvirt/QEMU - this machine",
+    },
+    "Proxmox VE - a remote host": {
+        "fr": "Proxmox VE - un hôte distant",
+        "en": "Proxmox VE - a remote host",
+    },
+    "Lima - for macOS, never run against the tool": {
+        "fr": "Lima - pour macOS, jamais confronté à l'outil",
+        "en": "Lima - for macOS, never run against the tool",
+    },
+    "Here it drives the same hypervisor as libvirt; it earns its place on"
+    " macOS.": {
+        "fr": "Ici il pilote le même hyperviseur que libvirt ; c'est sur"
+        " macOS qu'il gagne sa place.",
+        "en": "Here it drives the same hypervisor as libvirt; it earns its"
+        " place on macOS.",
+    },
+    "libvirt does not exist here: no /dev/kvm, and no Linux bridges.": {
+        "fr": "libvirt n'existe pas ici : ni /dev/kvm, ni ponts Linux.",
+        "en": "libvirt does not exist here: no /dev/kvm, and no Linux"
+        " bridges.",
+    },
     "Layers": {"fr": "Couches", "en": "Layers"},
     "Host key not known yet.": {
         "fr": "Clé d'hôte pas encore connue.",
