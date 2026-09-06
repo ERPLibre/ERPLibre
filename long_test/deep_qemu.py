@@ -109,9 +109,8 @@ PREPARE_APT_CMD = (
 )
 
 # Le réseau « default » de libvirt sert 192.168.122.0/24, à TOUS les étages.
-# Constaté au premier essai réel : l'étage 2, dont l'adresse était
-# 192.168.122.45 — servie par le « default » de son parent — a vu son propre
-# « net-start default » refusé net :
+# Un étage dont l'adresse vient du « default » de son parent voit donc son
+# propre « net-start default » refusé net :
 #
 #   error: internal error: Network is already in use by interface enp1s0
 #
@@ -119,8 +118,8 @@ PREPARE_APT_CMD = (
 # reçoit donc son propre sous-réseau, déduit de sa PROFONDEUR : deux étages ne
 # peuvent pas tomber sur le même, et rien n'est à deviner.
 #
-# 131 et au-delà : 122 est celui de libvirt et 123 celui de la machine où ce
-# test a été écrit. Les éviter tous les deux coûte un octet.
+# 131 et au-delà : 122 est le sous-réseau de libvirt, et 123 celui qu'une
+# machine de développement porte souvent. Les éviter coûte un octet.
 RESEAU_BASE = 131
 
 
