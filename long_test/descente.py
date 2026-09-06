@@ -37,7 +37,7 @@ from script.proxmox import proxmox_deploy as pve  # noqa: E402
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
 # descentes de piles différentes se disputeraient la RAM, le disque et
 # ~/.ssh/config aussi sûrement que deux de la même.
-SCRIPTS = ("deep_proxmox.py", "deep_qemu.py")
+SCRIPTS = ("deep_proxmox.py", "deep_qemu.py", "install_nixos.py")
 
 # Une étape bloquée ne doit pas bloquer le test : chaque appel est borné, et le
 # journal dit lequel a expiré. Généreux, parce que chaque étage est plus lent

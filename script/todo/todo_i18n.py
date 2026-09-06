@@ -3749,6 +3749,31 @@ TRANSLATIONS = {
         "fr": "Profondeur QEMU imbriqué : le plan seulement (à blanc)",
         "en": "Nested QEMU depth: plan only (dry-run)",
     },
+    # ERPLibre installé sur NixOS, de bout en bout.
+    "ERPLibre on NixOS: plan only (dry-run)": {
+        "fr": "ERPLibre sur NixOS : le plan seulement (à blanc)",
+        "en": "ERPLibre on NixOS: plan only (dry-run)",
+    },
+    "ERPLibre on NixOS: run it": {
+        "fr": "ERPLibre sur NixOS : le lancer",
+        "en": "ERPLibre on NixOS: run it",
+    },
+    "Where does the install run?": {
+        "fr": "Où l'installation se fait-elle ?",
+        "en": "Where does the install run?",
+    },
+    "Create a fresh NixOS VM": {
+        "fr": "Créer une VM NixOS neuve",
+        "en": "Create a fresh NixOS VM",
+    },
+    "Use a NixOS machine you already have": {
+        "fr": "Partir d'une machine NixOS qu'on possède déjà",
+        "en": "Use a NixOS machine you already have",
+    },
+    "Choice (1-2, default 1): ": {
+        "fr": "Choix (1-2, défaut 1) : ",
+        "en": "Choice (1-2, default 1): ",
+    },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
         "en": "Nested QEMU depth: run it",

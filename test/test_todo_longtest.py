@@ -1067,18 +1067,32 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         self.assertIn("deep_qemu.py", src)
 
     def test_undoing_asks_each_stack_separately(self):
-        """Chacun ne connaît que ses rapports : lancer les deux ne peut pas
+        """Chacun ne connaît que ses rapports : lancer les trois ne peut pas
         faire détruire à l'un ce que l'autre a créé."""
         import inspect
 
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
         src = inspect.getsource(self.todo._longtest_defaire)
-        self.assertIn("deep_proxmox.py", src)
-        self.assertIn("deep_qemu.py", src)
+        self.assertIn("SCRIPTS_DEFAISABLES", src)
+        for script in ("deep_proxmox.py", "deep_qemu.py", "install_nixos.py"):
+            with self.subTest(script=script):
+                self.assertIn(script, SCRIPTS_DEFAISABLES)
         # À BLANC d'abord, toujours : un choix d'une touche ne doit pas mener
         # droit à « qm destroy --purge ».
         self.assertLess(
             src.index("--detruire --dry-run"), src.index('"--detruire"')
         )
+
+    def test_the_two_copies_of_the_list_agree(self):
+        """Le verrou (long_test/descente.py) et le défaire (le menu) portent
+        chacun la liste des tests longs, faute de pouvoir la partager : le
+        menu lance ces scripts en sous-processus et n'importe jamais
+        long_test/, qui traîne avec lui le module Proxmox. Deux copies
+        dérivent — celle-ci est tenue par ce test."""
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
+        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DEFAISABLES))
 
     def test_the_host_options_are_built_from_the_host_dict(self):
         self.assertEqual(

@@ -156,9 +156,44 @@ level must prove, not assume:
 unloaded module, not a permissions problem. A level that fails these stops the
 descent instead of prolonging it into the void.
 
+## install_nixos.py — ERPLibre s'installe-t-il sur NixOS ?
+
+Not a depth: one machine, one binary question. The other two measure how far
+nesting goes; this one asks whether the path the menu takes reaches the end on
+a **declarative** system, where nothing is installed one command at a time.
+
+It sends the menu's own remote command, `_qemu_erplibre_remote_cmd`, taken as
+it is. A test that installed by its own means would prove *its* path, not the
+product's — and that is exactly where the failures hid: a bootstrap with no
+nix branch, a Makefile assuming `/bin/bash`, compile paths read from a session
+older than the module it had just applied.
+
+The block goes in **one** ssh session, as the deployment does. That is the
+condition that exposes the first-pass failure: the session opens before
+`make install_os` applies the module, so before `pam_env` sets `CPATH`, and
+the packages with no upstream wheel stopped there. Replaying the install in a
+fresh session succeeds and proves the wrong thing.
+
+The verdict is the **state of the machine**, not a return code:
+`nixos-rebuild switch` returns 4 on a system that is nonetheless activated,
+and every tool block of the menu returns 0 by construction. So it checks what
+`envfs` makes (`/bin/bash`, `/usr/bin/env`, `/usr/bin/python3.x`), the venv,
+the four modules that have no wheel and must compile — psycopg2, python-ldap,
+pycups, mysqlclient — the absence of the HTML manuals, and Odoo answering.
+
+```
+./long_test/install_nixos.py                 # create the VM, install, judge
+./long_test/install_nixos.py --dry-run       # the plan and the commands
+./long_test/install_nixos.py --hote nixos-1  # on a machine you already have
+./long_test/install_nixos.py --detruire      # undo it
+```
+
+`--hote` expects a machine that **already runs NixOS**: the script installs
+ERPLibre there, it does not install the system.
+
 ## Starting from a host you already have
 
-Both scripts take `--hote`. Creating a head VM to host a hypervisor you
+The three scripts take `--hote`. Creating a head VM to host a hypervisor you
 already own costs five minutes *and* one level of nesting — that is, slowness,
 which is the very thing being measured.
 
