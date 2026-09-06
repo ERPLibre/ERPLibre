@@ -1,9 +1,10 @@
 
-# QEMU/KVM — Linux VM deployment (Ubuntu / Debian / Fedora)
+# QEMU/KVM — Linux VM deployment
 
 `deploy_qemu.py` deploys a Linux VM (libvirt/KVM) from an official cloud
 image, using `qemu-img` + `cloud-init` + `virt-install`. Pick the
-distribution with `--distro` (`ubuntu` default, `debian`, `fedora`) and the
+distribution with `--distro` (`ubuntu` default, plus `debian`, `fedora`,
+`almalinux`, `rocky`, `opensuse`, `arch`, `nixos` and `proxmox`) and the
 release with `--version`; run `--list-images` to see the full catalogue with
 minimum specs. It:
 
@@ -258,12 +259,29 @@ version, never overwrites an existing `app.ini`, and does not recreate the
 administrator. `FORGEJO_VERSION`, `FORGEJO_HTTP_PORT`, `FORGEJO_ADMIN_USER` and
 a few others tune it; `--help` lists them.
 
+A seventh, **AI coding tools**, pre-configures the shell one works in: tig,
+htop and vim, rtk with its global hook, starship, one agent — Claude Code
+or opencode — the git settings, the checkout hooks and the Claude commands.
+Nothing there fails the VM: each pose is time-bounded and given no standard
+input, because a `curl | sh` that asks a question would hang a deployment
+that has no terminal to answer it.
+
+An eighth, **nix + nixos-anywhere**, is the reverse of picking NixOS in the
+catalogue: it leaves an ordinary VM able to INSTALL NixOS onto another
+machine reachable over SSH. The official multi-user installer, flakes
+enabled, and `nixos-anywhere` in the user profile. It greys out on NixOS,
+where nix already is the system, and outside amd64/arm64.
+
 Each tool is filtered per VM — by architecture, desktop flavour and package
 family — and its disk cost is added to the plan before anything is created.
 
 ## Main options
 
-- `--distro` — `ubuntu` (default), `debian` or `fedora`.
+- `--distro` — `ubuntu` (default), `debian`, `fedora`, `almalinux`,
+  `rocky`, `opensuse`, `arch`, `nixos` or `proxmox`. NixOS is the one
+  image no distribution publishes: it is rebuilt by a third party, so the
+  release is pinned and its sha256 verified at every download, and the
+  origin is printed before anything is created.
 - `--version` — release for the distro (default: the distro's default).
 - `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
