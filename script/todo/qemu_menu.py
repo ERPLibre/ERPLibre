@@ -9,6 +9,8 @@ from datetime import datetime
 
 import click
 
+from script.todo import host_os
+from script.todo.devstack_report import DS_OK
 from script.todo.todo_i18n import t
 
 
@@ -306,6 +308,19 @@ class QemuMenuMixin:
 
     def prompt_execute_qemu(self):
         print(f"🤖 {t('Deploy a QEMU/KVM virtual machine (libvirt)!')}")
+        # Ce menu pilote libvirt EN LOCAL, et libvirt n'y existe pas : pas
+        # de /dev/kvm, et son réseau virtuel est bâti sur les ponts Linux et
+        # netfilter, qui n'ont pas d'équivalent. Le menu y était atteignable
+        # et entièrement inerte — il installait des paquets déclarés vides
+        # et ne créait jamais rien.
+        #
+        # Le menu Proxmox, LUI, n'est pas gardé : il parle à un hôte distant
+        # par ssh, et marche donc de partout.
+        if host_os.refuse_host(host_os.MACOS) != DS_OK:
+            print(
+                f"   {t('Deploy › Proxmox VE reaches a remote host from here.')}"
+            )
+            return False
         script_path = self._qemu_script_path()
         if not os.path.isfile(script_path):
             print(f"{t('QEMU deploy script not found: ')}{script_path}")
@@ -531,7 +546,7 @@ class QemuMenuMixin:
 
     @staticmethod
     def _qemu_stamp(ts):
-        """Horodatage court « 2026-08-01 »."""
+        """Horodatage court, au format « AAAA-MM-JJ »."""
         try:
             return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
         except (OSError, OverflowError, TypeError, ValueError):

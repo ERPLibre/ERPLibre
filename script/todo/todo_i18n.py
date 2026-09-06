@@ -1101,6 +1101,10 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
+    "Deploy › Proxmox VE reaches a remote host from here.": {
+        "fr": "Deploy › Proxmox VE joint un hôte distant depuis ici.",
+        "en": "Deploy › Proxmox VE reaches a remote host from here.",
+    },
     "Layers": {"fr": "Couches", "en": "Layers"},
     "Host key not known yet.": {
         "fr": "Clé d'hôte pas encore connue.",
