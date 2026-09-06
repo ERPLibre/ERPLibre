@@ -17,10 +17,13 @@ sur le vrai répertoire personnel, et une épreuve qui appellerait `set()`
 """
 
 import ast
+import io
 import os
 import re
 import sys
 import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
@@ -199,6 +202,184 @@ class TestElleNEcritAucunePreference(unittest.TestCase):
         ]
         for interdit in ("set", "reset", "write_text"):
             self.assertNotIn(interdit, appels)
+
+
+class TestLEcranDesBackends(unittest.TestCase):
+    """Deux marques, et elles ne disent pas la même chose : « ← » ce qui est
+    CHOISI, l'étoile ce qui n'a jamais été confronté au vrai outil. Une
+    seule marque pour les deux ferait lire « non éprouvé » sur le backend
+    actif."""
+
+    def lignes(self, pref, hote, limactl=False):
+        return C.render(pref, hote, limactl)
+
+    def test_every_offered_value_gets_a_line(self):
+        lignes = self.lignes(C.AUTO, H.ARCH)
+        for rang in range(1, len(C.CHOIX) + 1):
+            with self.subTest(rang=rang):
+                self.assertTrue(
+                    any(l.startswith(f"  [{rang}] ") for l in lignes)
+                )
+
+    def test_the_chosen_one_is_marked_and_the_others_are_not(self):
+        lignes = self.lignes(VM.LIMA, H.ARCH)
+        marquees = [l for l in lignes if "←" in l]
+        self.assertEqual(1, len(marquees))
+        self.assertIn("Lima", marquees[0])
+
+    def test_the_unproven_one_carries_the_star_and_the_others_do_not(self):
+        lignes = self.lignes(C.AUTO, H.ARCH)
+        etoilees = [
+            l
+            for l in lignes
+            if l.startswith("  [") and l.rstrip().endswith("*")
+        ]
+        self.assertEqual(1, len(etoilees))
+        self.assertIn("Lima", etoilees[0])
+
+    def test_the_star_never_lands_on_a_proven_backend(self):
+        """C'est la confusion que les deux marques existent pour éviter."""
+        for pref in C.CHOIX:
+            for hote in (H.ARCH, H.MACOS):
+                with self.subTest(pref=pref, hote=hote):
+                    for ligne in self.lignes(pref, hote, True):
+                        if "libvirt/QEMU" in ligne or "Proxmox VE" in ligne:
+                            self.assertNotIn("*", ligne)
+
+    def test_the_legend_appears_only_when_a_star_does(self):
+        """Une légende sans étoile est du bruit, et une étoile sans légende
+        est une marque que personne ne sait lire. L'épreuve est
+        STRUCTURELLE : chercher le texte reviendrait à épingler la langue
+        dans laquelle il s'affiche."""
+        lignes = self.lignes(C.AUTO, H.ARCH)
+        self.assertTrue(any(l.rstrip().endswith("*") for l in lignes))
+        self.assertTrue(any(l.startswith("  * ") for l in lignes))
+
+    def test_without_a_star_there_is_no_legend(self):
+        """Contrôle positif : le jour où tout est éprouvé, la légende part
+        d'elle-même — aucun écran à retoucher."""
+        tout_eprouve = dict.fromkeys(VM.BACKENDS, True)
+        with patch.dict(VM.PROVEN, tout_eprouve, clear=True):
+            lignes = self.lignes(C.AUTO, H.ARCH)
+        self.assertFalse(any(l.rstrip().endswith("*") for l in lignes))
+        self.assertFalse(any(l.startswith("  * ") for l in lignes))
+
+    def test_the_automatic_line_shows_what_automatic_gives(self):
+        """Et NON ce que la préférence courante donne : sur une machine où
+        l'on a choisi autre chose, les deux diffèrent, et afficher le second
+        ferait croire qu'automatique mène là aussi."""
+        lignes = self.lignes(VM.LIMA, H.ARCH)
+        auto = next(l for l in lignes if l.startswith("  [1] "))
+        self.assertIn(VM.LIBVIRT, auto)
+        self.assertNotIn(VM.LIMA, auto)
+
+    def test_the_automatic_line_borrows_no_star_and_no_advice(self):
+        """Ils appartiennent au backend ; les lui emprunter les afficherait
+        deux fois."""
+        auto = next(
+            l
+            for l in self.lignes(C.AUTO, H.MACOS, True)
+            if l.startswith("  [1] ")
+        )
+        self.assertNotIn("*", auto)
+
+    def test_the_advice_sits_on_its_own_line(self):
+        """Accolé, il déborde du terminal dès que le libellé est long, et
+        c'est la fin de la phrase qui disparaît."""
+        lignes = self.lignes(C.AUTO, H.ARCH)
+        conseils = [
+            l for l in lignes if l.startswith("        ") and l.strip()
+        ]
+        self.assertTrue(conseils)
+        for ligne in conseils:
+            with self.subTest(ligne=ligne[:40]):
+                self.assertNotIn("[", ligne)
+
+    def test_the_screen_says_what_is_in_use(self):
+        for pref, hote, outil, attendu in (
+            (C.AUTO, H.ARCH, False, VM.LIBVIRT),
+            (C.AUTO, H.MACOS, True, VM.LIMA),
+            (C.AUTO, H.MACOS, False, VM.PVE),
+        ):
+            with self.subTest(hote=hote, outil=outil):
+                rendu = "\n".join(self.lignes(pref, hote, outil))
+                self.assertIn(attendu, rendu.split("In use")[-1] + rendu)
+
+    def test_no_line_is_absurdly_long(self):
+        """Un terminal de 100 colonnes reste lisible."""
+        for pref in C.CHOIX:
+            for hote in (H.ARCH, H.MACOS):
+                for ligne in self.lignes(pref, hote, True):
+                    with self.subTest(ligne=ligne[:40]):
+                        self.assertLessEqual(len(ligne), 100, ligne)
+
+
+class TestLEcranQuiDemande(unittest.TestCase):
+    """Le tour complet : afficher, choisir, retenir.
+
+    Les préférences sont INJECTÉES : `todo_prefs._path()` fait un `mkdir`
+    sur le vrai répertoire personnel, et une épreuve qui appellerait `set()`
+    écrirait dans les réglages de la personne qui la lance.
+    """
+
+    def setUp(self):
+        from script.todo.todo import TODO
+
+        self.prefs = {"vm_backend": C.AUTO}
+        patcheur = patch.multiple(
+            "script.todo.vm_backend_menu.todo_prefs",
+            get=lambda cle, defaut=None: self.prefs.get(cle, defaut),
+            set=lambda cle, valeur: self.prefs.__setitem__(cle, valeur),
+        )
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
+        hote = patch(
+            "script.todo.vm_backend_menu.host_os.host_os", return_value=H.ARCH
+        )
+        hote.start()
+        self.addCleanup(hote.stop)
+        outil = patch(
+            "script.todo.vm_backend_menu.shutil.which", return_value=None
+        )
+        outil.start()
+        self.addCleanup(outil.stop)
+        self.ecran = TODO.__new__(TODO)
+
+    def jouer(self, *reponses):
+        sortie = io.StringIO()
+        with patch("builtins.input", side_effect=list(reponses)):
+            with redirect_stdout(sortie):
+                self.ecran._deploy_vm_backends()
+        return sortie.getvalue()
+
+    def test_it_says_the_choice_does_not_route_anything(self):
+        """Sans cette phrase, choisir un backend et voir le déploiement
+        partir ailleurs se lit comme une panne, alors que c'est ce qui est
+        promis."""
+        affiche = self.jouer("0")
+        self.assertTrue(affiche.strip())
+        self.assertIn("préselectionne", affiche)
+
+    def test_a_number_is_remembered(self):
+        self.jouer("4", "0")
+        self.assertEqual(VM.LIMA, self.prefs["vm_backend"])
+
+    def test_it_says_what_is_in_use_after_the_choice(self):
+        affiche = self.jouer("2", "0")
+        self.assertEqual(VM.LIBVIRT, self.prefs["vm_backend"])
+        self.assertIn("✓", affiche)
+
+    def test_a_number_out_of_range_changes_nothing(self):
+        for reponse in ("0" + "9", "42", "abc", "-1"):
+            with self.subTest(reponse=reponse):
+                self.prefs["vm_backend"] = C.AUTO
+                self.jouer(reponse, "0")
+                self.assertEqual(C.AUTO, self.prefs["vm_backend"])
+
+    def test_an_empty_answer_redisplays_rather_than_leaving(self):
+        """Une entrée vide par mégarde ne doit pas fermer l'écran."""
+        affiche = self.jouer("", "0")
+        self.assertEqual(2, affiche.count("Backends de VM"))
 
 
 if __name__ == "__main__":

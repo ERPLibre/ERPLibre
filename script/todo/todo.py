@@ -49,6 +49,7 @@ from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
+from script.todo.vm_backend_menu import VmBackendMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -115,6 +116,7 @@ class TODO(
     VpnMenuMixin,
     DevstackMenuMixin,
     DeployTargetMenuMixin,
+    VmBackendMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -1046,6 +1048,18 @@ class TODO(
                 )
             },
         ]
+        # NEUVIÈME, déclarée par « method ». Posée plus haut, elle
+        # décalerait les huit rangs que les « elif » codent en dur — et une
+        # épreuve cherche les chaînes littérales des rangs 6 et 7, qu'une
+        # renumérotation pourtant correcte ferait disparaître.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - VM backends (which one this machine uses)"
+                ),
+                "method": "_deploy_vm_backends",
+            }
+        )
         # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
         # ajoutée ici s'affiche APRÈS les huit entrées codées en dur, donc son
         # numéro dépasse la chaîne d'elif et le repli la joue. Sans cette clé,

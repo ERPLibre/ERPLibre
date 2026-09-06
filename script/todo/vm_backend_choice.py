@@ -18,6 +18,7 @@ sous la main, et rien ici ne sonde la machine au milieu d'un écran.
 from __future__ import annotations
 
 from script.todo import host_os
+from script.todo.todo_i18n import t
 from script.vm import backend as vm
 
 # Ce que la préférence peut valoir. « auto » n'est pas un backend : c'est
@@ -61,3 +62,63 @@ def conseil(backend: str, jeton_hote: str) -> str:
             "libvirt does not exist here: no /dev/kvm, and no Linux bridges."
         )
     return ""
+
+
+# La légende de l'étoile, reprise mot pour mot des pilotes de tunnel : elle
+# dit ce qui MANQUE — la confrontation au terrain — et non que le code serait
+# douteux. Les épreuves unitaires, elles, sont là.
+UNPROVEN_NOTE = "never run against the real tool: only unit tests cover it"
+
+# Largeur de la colonne des libellés. Une seule source : l'étoile et le
+# conseil s'alignent dessus, et deux valeurs voisines cessent de s'aligner
+# entre elles au premier libellé plus long.
+LARGEUR = 46
+
+
+def render(pref: str, jeton_hote: str, limactl: bool = False) -> list:
+    """L'écran des backends, en lignes prêtes à imprimer.
+
+    Fonction PURE : elle reçoit l'hôte et ses capacités, donc l'écran de
+    macOS se relit depuis n'importe où.
+
+    DEUX MARQUES, ET ELLES NE DISENT PAS LA MÊME CHOSE. « ← » désigne ce qui
+    est CHOISI ; l'étoile, ce qui n'a jamais été confronté au vrai outil. Une
+    seule marque pour les deux ferait lire « non éprouvé » sur le backend
+    actif.
+
+    La ligne « automatique » ne porte NI étoile NI conseil : ils
+    appartiennent au backend, et les lui emprunter les afficherait deux fois
+    — une fois sur elle, une fois sur celui qu'elle désigne. Elle dit à quoi
+    elle se résout, ce qui est sa seule information propre.
+
+    Le conseil va sur SA ligne : accolé, il déborde du terminal dès que le
+    libellé est long, et c'est la fin de la phrase qui disparaît.
+    """
+    from script.todo.todo import TODO
+
+    _titre, options = TODO._PREF_CHOICES["vm_backend"]
+    employe = effective(pref, jeton_hote, limactl)
+    lignes, etoile_posee = [], False
+    for rang, (valeur, label) in enumerate(options, 1):
+        marque = f"  ← {t('chosen')}" if valeur == pref else ""
+        if valeur == AUTO:
+            # Ce que « automatique » donnerait, et NON ce que la préférence
+            # courante donne : sur une machine où l'on a choisi autre chose,
+            # les deux diffèrent, et afficher le second ferait croire
+            # qu'automatique mène là aussi.
+            lignes.append(
+                f"  [{rang}] {t(label)} →"
+                f" {effective(AUTO, jeton_hote, limactl)}{marque}"
+            )
+            continue
+        etoile = " *" if not vm.is_proven(valeur) else ""
+        etoile_posee = etoile_posee or bool(etoile)
+        lignes.append(f"  [{rang}] {t(label)}{etoile}{marque}")
+        cle = conseil(valeur, jeton_hote)
+        if cle:
+            lignes.append(f"        {t(cle)}")
+    lignes.append("")
+    lignes.append(f"  {t('In use:')} {employe}")
+    if etoile_posee:
+        lignes.append(f"  * {t(UNPROVEN_NOTE)}")
+    return lignes

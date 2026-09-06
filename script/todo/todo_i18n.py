@@ -1106,6 +1106,22 @@ TRANSLATIONS = {
         "en": "Deploy › Proxmox VE reaches a remote host from here.",
     },
     "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
+    "VM backends": {"fr": "Backends de VM", "en": "VM backends"},
+    "Deploy - VM backends (which one this machine uses)": {
+        "fr": "🖥  Deploy - Backends de VM (lequel cette machine emploie)",
+        "en": "🖥  Deploy - VM backends (which one this machine uses)",
+    },
+    "This choice informs and preselects; no deployment path drives another backend yet.": {
+        "fr": "Ce choix informe et préselectionne ; aucun chemin de déploiement ne pilote encore un autre backend.",
+        "en": "This choice informs and preselects; no deployment path drives another backend yet.",
+    },
+    "chosen": {"fr": "choisi", "en": "chosen"},
+    "In use:": {"fr": "Employé :", "en": "In use:"},
+    "never run against the real tool: only unit tests cover it": {
+        "fr": "jamais confronté au vrai outil : seules des épreuves"
+        " unitaires le couvrent",
+        "en": "never run against the real tool: only unit tests cover" " it",
+    },
     "Automatic (decided by the system)": {
         "fr": "Automatique (décidé par le système)",
         "en": "Automatic (decided by the system)",

@@ -295,11 +295,12 @@ class MenuCoherence:
 
 
 class TestLaParitéProxmox(unittest.TestCase):
-    """Deux manques signalés par l'audit du découpage, comblés.
+    """Deux capacités que le menu QEMU/KVM a et que celui-ci doit avoir.
 
-    Le menu Proxmox n'offrait pas de changer l'état d'une VM (QEMU/KVM l'a
-    dans « Lister les VM »), et n'acceptait pas les commandes ajoutées par
-    todo.json — deux capacités que son vis-à-vis avait.
+    Changer l'état d'une VM — que l'autre offre dans « Lister les VM » — et
+    accepter les commandes ajoutées par todo.json. Deux menus qui visent le
+    même travail et divergent sur ce qu'ils savent faire obligent à savoir
+    lequel on a ouvert avant de chercher une entrée.
     """
 
     @classmethod
@@ -564,6 +565,11 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
         "Proxmox VE - Deploy a VM": "prompt_execute_proxmox",
         "Deploy - Install NTFY": "_deploy_ntfy_server",
         "VPN - Tunnels": "prompt_execute_vpn",
+        # NEUVIÈME, déclarée par « method » : son rang n'entre pas dans le
+        # calcul, et c'est pourquoi les huit qui la précèdent n'ont pas
+        # bougé — dont les rangs 6 et 7, qu'une épreuve Proxmox cherche en
+        # chaînes littérales.
+        "Deploy - VM backends": "_deploy_vm_backends",
     }
 
 
