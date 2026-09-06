@@ -21,6 +21,7 @@ from typing import NamedTuple
 
 from script.vm.backend import (
     LIBVIRT,
+    LIMA,
     PVE,
     VerbNotImplemented,
     is_hosted,
@@ -45,8 +46,15 @@ def host_command(handle, remote: str, tty: bool = False) -> str:
     autorité pour une VM distante, et sa clé le seul identifiant.
     """
     info = (handle.host if handle else None) or {}
-    sudo = info.get("sudo") or ""
     cible = info.get("target") or ""
+    if not cible:
+        # Sans porteuse, il n'y a personne à qui parler. Composer quand même
+        # donnait « ssh '' <commande> » : une cible VIDE, que ssh refuse par
+        # un message qui ne nomme aucune machine.
+        raise VerbNotImplemented(
+            "host_command : aucune machine porteuse à qui parler."
+        )
+    sudo = info.get("sudo") or ""
     prefixe = f"{sudo}sh -c {shlex.quote(remote)}" if sudo else remote
     saut = f"-J {shlex.quote(info['jump'])} " if info.get("jump") else ""
     return (
@@ -355,6 +363,10 @@ def identity_fields(handle) -> dict:
         return {"pve": dict(handle.host)}
     if handle.backend == LIBVIRT:
         return {"uuid": handle.proof}
+    if handle.backend == LIMA:
+        # Un drapeau, et non une preuve : il n'y en a pas encore. Il dit
+        # seulement quel backend relira cette entrée.
+        return {"lima": True}
     raise VerbNotImplemented(
         f"identity_fields : backend « {handle.backend} » inconnu."
     )
@@ -371,6 +383,11 @@ def exec_address(handle) -> str:
     """
     if handle is None:
         raise VerbNotImplemented("exec_address : aucune identité.")
+    if handle.backend == LIMA:
+        # On entre par le NOM. C'est tout l'apport de ce backend, et sur un
+        # système sans réseau d'hyperviseur à interroger, c'est le seul
+        # moyen : il n'y a aucun bail à relire.
+        return handle.key
     if is_hosted(handle):
         return handle.alias or handle.address
     return handle.address or handle.alias
@@ -392,6 +409,15 @@ def exec_prefix(handle, options: str = "", user: str = "erplibre") -> str:
     if handle.backend in (LIBVIRT, PVE):
         espace = f"{options} " if options else ""
         return f'ssh {espace}"{user}@$ip"'
+    if handle.backend == LIMA:
+        # « bash -c » est indispensable ICI et inutile pour ssh : le premier
+        # exécute des ARGUMENTS, si bien qu'une suite (« a && b ») lui
+        # arriverait comme une liste de mots ; le second passe la commande
+        # au shell distant de lui-même.
+        #
+        # Ni compte ni adresse : l'instance appartient à l'utilisateur qui
+        # la lance, et le nom suffit à la joindre.
+        return f"limactl shell {shlex.quote(handle.key)} -- bash -c"
     raise VerbNotImplemented(
         f"exec_prefix : backend « {handle.backend} » inconnu."
     )

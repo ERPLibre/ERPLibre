@@ -126,7 +126,7 @@ class TestLeGardeDIdentite(unittest.TestCase):
 
     def test_an_unknown_backend_says_so_instead_of_guessing(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.identity_guard(LOCALE._replace(backend="lima"))
+            V.identity_guard(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLaSuppression(unittest.TestCase):
@@ -169,7 +169,7 @@ class TestLaSuppression(unittest.TestCase):
 
     def test_an_unknown_backend_is_refused(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.delete_command(LOCALE._replace(backend="lima"))
+            V.delete_command(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLaCommandeSurLHote(unittest.TestCase):
@@ -295,7 +295,7 @@ class TestLaConsole(unittest.TestCase):
 
     def test_an_unknown_backend_is_refused(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.console(LOCALE._replace(backend="lima"))
+            V.console(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLAccesWeb(unittest.TestCase):
@@ -506,7 +506,9 @@ class TestLAlimentation(unittest.TestCase):
 
     def test_an_unknown_backend_is_refused(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.power_command(LOCALE._replace(backend="lima"), "suspend")
+            V.power_command(
+                LOCALE._replace(backend="jamais-un-backend"), "suspend"
+            )
 
 
 class TestArmerLaPreuve(unittest.TestCase):
@@ -604,7 +606,7 @@ class TestEcrireEtRelireLaMemeIdentite(unittest.TestCase):
 
     def test_an_unknown_backend_writes_nothing_and_says_so(self):
         with self.assertRaises(B.VerbNotImplemented):
-            V.identity_fields(LOCALE._replace(backend="lima"))
+            V.identity_fields(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLeCanalDExecution(unittest.TestCase):
@@ -668,7 +670,7 @@ class TestLeCanalDExecution(unittest.TestCase):
         """Un backend qui n'a pas déclaré comment on entre chez lui doit le
         DIRE : composer un « ssh » au hasard le ferait joindre autre chose."""
         with self.assertRaises(B.VerbNotImplemented):
-            V.exec_prefix(LOCALE._replace(backend="lima"))
+            V.exec_prefix(LOCALE._replace(backend="jamais-un-backend"))
 
 
 class TestLesVieuxManifestesSOuvrentEncore(unittest.TestCase):
@@ -709,6 +711,107 @@ class TestLesVieuxManifestesSOuvrentEncore(unittest.TestCase):
         fait installer sur le domaine local homonyme."""
         self.assertTrue(B.resolves_locally(B.handle_of(self.ANCIENS[0][1])))
         self.assertFalse(B.resolves_locally(B.handle_of(self.ANCIENS[2][1])))
+
+
+class TestLeBackendSansAdresse(unittest.TestCase):
+    """Joindre une VM par son NOM, sans bail à relire.
+
+    C'est le seul apport de ce backend sur un hôte qui a déjà libvirt, et
+    c'est celui qui compte là où il n'y a aucun réseau d'hyperviseur à
+    interroger.
+
+    RIEN ICI N'A TOURNÉ contre un vrai « limactl » : ces épreuves tiennent ce
+    qu'on COMPOSE, pas ce que l'outil en fait. La confrontation est dans
+    `long_test/`.
+    """
+
+    LIMA = B.lima_handle("essai")
+
+    def test_it_is_entered_by_its_name(self):
+        self.assertEqual("essai", V.exec_address(self.LIMA))
+
+    def test_its_channel_names_no_address_at_all(self):
+        prefixe = V.exec_prefix(self.LIMA)
+        self.assertNotIn("$ip", prefixe)
+        self.assertNotIn("ssh", prefixe)
+        self.assertIn("essai", prefixe)
+
+    def test_the_composed_line_splits_into_the_expected_words(self):
+        """« limactl shell » exécute des ARGUMENTS : sans « bash -c », une
+        suite arriverait comme une liste de mots. On fait découper la ligne
+        par un vrai shell plutôt que de relire la chaîne."""
+        suite = "a && b || c"
+        ligne = f"{V.exec_prefix(self.LIMA)} {shlex.quote(suite)}"
+        mots = subprocess.run(
+            ["bash", "-c", ligne.replace("limactl ", "printf '%s\\n' ", 1)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+        self.assertEqual(["shell", "essai", "--", "bash", "-c", suite], mots)
+
+    def test_a_name_that_would_split_the_line_cannot(self):
+        piege = B.lima_handle("essai; touch /tmp/rien-de-reel")
+        self.assertNotIn(
+            "; touch /tmp/rien-de-reel bash", V.exec_prefix(piege)
+        )
+        mots = subprocess.run(
+            [
+                "bash",
+                "-c",
+                V.exec_prefix(piege).replace("limactl ", "printf '%s\\n' ", 1),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.splitlines()
+        self.assertIn("essai; touch /tmp/rien-de-reel", mots)
+
+    def test_its_identity_survives_the_round_trip(self):
+        entree = {"name": "essai", "ip": ""}
+        entree.update(V.identity_fields(self.LIMA))
+        self.assertEqual(self.LIMA, B.handle_of(entree))
+
+    def test_it_is_disarmed_and_says_so(self):
+        """Un nom d'instance se réutilise. Fabriquer une preuve serait pire
+        que de dire qu'il n'y en a pas : la suppression retombe alors sur la
+        confirmation à deux mains, ce qui est la protection d'avant."""
+        self.assertFalse(B.is_armed(self.LIMA))
+        self.assertEqual("", V.identity_guard(self.LIMA))
+
+    def test_the_verbs_it_cannot_do_yet_say_so(self):
+        """« pas encore » se distingue d'une panne : l'écran peut retirer
+        l'entrée proprement au lieu d'envoyer chercher ce qui ne va pas."""
+        for verbe, args in (
+            (V.delete_command, ()),
+            (V.console, ()),
+            (V.power_command, ("suspend",)),
+            (V.host_command, ("echo",)),
+        ):
+            with self.subTest(verbe=verbe.__name__):
+                with self.assertRaises(B.VerbNotImplemented):
+                    verbe(self.LIMA, *args)
+
+
+class TestCeQuiATourneContreUneVraieMachine(unittest.TestCase):
+    """« Non éprouvé » ne veut pas dire douteux : il veut dire NON
+    CONFRONTÉ. Un écran qui ne le dit pas laisse croire l'inverse."""
+
+    def test_the_two_hypervisors_are_proven(self):
+        self.assertTrue(B.is_proven(B.LIBVIRT))
+        self.assertTrue(B.is_proven(B.PVE))
+
+    def test_the_new_backend_is_not(self):
+        self.assertFalse(B.is_proven(B.LIMA))
+
+    def test_an_unknown_backend_is_not_proven_by_default(self):
+        """Le doute penche du côté qui ne promet rien."""
+        self.assertFalse(B.is_proven("jamais-un-backend"))
+
+    def test_every_backend_of_the_vocabulary_has_an_answer(self):
+        for nom in B.BACKENDS:
+            with self.subTest(backend=nom):
+                self.assertIn(nom, B.PROVEN)
 
 
 if __name__ == "__main__":
