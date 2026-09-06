@@ -2563,6 +2563,89 @@ def build_gitconfig(name: str, email: str, editor: str) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+# Les images cloud dont le module « keyboard » de cloud-init ne peut pas
+# aboutir : il finit par « systemctl restart console-setup », service qui
+# n'existe que si le paquet console-setup est installé, et l'image
+# genericcloud de Debian ne le porte pas. Le réglage EST écrit avant cet
+# échec — dans /etc/default/keyboard, que localed et X relisent — mais
+# cloud-init se déclare en erreur, et ce mot masque les vraies pannes dans le
+# compte-rendu de déploiement.
+DISTROS_CLAVIER_PAR_FICHIER = ("debian",)
+
+# Un locale se génère à partir de /etc/locale.gen et de nulle part ailleurs :
+# « locale-gen xx_YY.UTF-8 » ne prend pas son argument pour une demande, il
+# ne relit que ce fichier. Une famille qui n'a pas ce fichier — Fedora, la
+# famille RHEL, openSUSE — embarque ses locales déjà générées.
+LOCALE_A_GENERER = re.compile(r"^[a-z]{2,3}_[A-Z]{2}(\.|@|$)")
+
+
+def locale_bootcmd_lines(locale: str) -> list[str]:
+    """« bootcmd » qui GÉNÈRE le locale avant que cloud-init ne l'applique.
+
+    Sur Debian, « update-locale LANG=xx_YY.UTF-8 » refuse un locale absent de
+    ceux qui sont générés — « invalid locale settings » — et le module
+    « locale » se solde par une erreur : la VM reste en C.UTF-8, sans autre
+    signe que le compte-rendu de cloud-init, et le décalage ne se voit qu'aux
+    messages, longtemps après.
+
+    « bootcmd » et non « runcmd » : il tourne à l'étape init, AVANT les
+    modules de configuration dont « locale » fait partie. runcmd viendrait
+    après, et n'aurait plus rien à rattraper.
+
+    Il tourne aussi à CHAQUE démarrage, d'où le premier grep : sans lui,
+    /etc/locale.gen s'allonge d'une ligne identique par boot.
+
+    La ligne est DÉCOMMENTÉE plutôt qu'ajoutée : le fichier porte déjà le
+    catalogue entier en commentaires, et l'ajouter en produirait un doublon —
+    cloud-init décommente ensuite la même, à l'étape d'après. Le doublon est
+    inoffensif mais il ment sur qui a écrit quoi. L'ajout reste le recours
+    pour un locale que le catalogue ne porte pas.
+    """
+    if not locale or not LOCALE_A_GENERER.match(locale):
+        return []
+    ligne = f"{locale} UTF-8"
+    corps = (
+        "[ -f /etc/locale.gen ] || exit 0; "
+        f"grep -qxF '{ligne}' /etc/locale.gen && exit 0; "
+        f"sed -i 's/^#[[:space:]]*{ligne}$/{ligne}/' /etc/locale.gen; "
+        f"grep -qxF '{ligne}' /etc/locale.gen "
+        f"|| echo '{ligne}' >> /etc/locale.gen; locale-gen"
+    )
+    return ["bootcmd:", f'  - [ sh, -c, "{corps}" ]']
+
+
+def keyboard_lines(distro: str, layout: str, variant: str) -> list[str]:
+    """Bloc « keyboard » de cloud-init, ou rien là où il échouerait."""
+    if distro in DISTROS_CLAVIER_PAR_FICHIER:
+        return []
+    return ["keyboard:", f"  layout: {layout}", f"  variant: {variant}"]
+
+
+def keyboard_files(
+    distro: str, layout: str, variant: str
+) -> list[tuple[str, str, str, str]]:
+    """/etc/default/keyboard écrit directement, là où cloud-init échoue.
+
+    C'est le fichier que le module de cloud-init aurait écrit, et celui que
+    localed et X relisent : le clavier d'une VM graphique est le même,
+    l'erreur de déploiement en moins.
+
+    La disposition de la CONSOLE texte n'est perdue pour personne : sur cette
+    image, ni console-setup ni systemd-vconsole-setup n'existent, et aucun
+    des deux chemins ne l'appliquait. Ce que cloud-init y écrivait était une
+    valeur que rien ne lisait.
+    """
+    if distro not in DISTROS_CLAVIER_PAR_FICHIER:
+        return []
+    contenu = (
+        "XKBMODEL=pc105\n"
+        f"XKBLAYOUT={layout}\n"
+        f"XKBVARIANT={variant}\n"
+        "XKBOPTIONS=\n"
+    )
+    return [("/etc/default/keyboard", "0644", contenu, "")]
+
+
 def write_files_lines(
     entries: list[tuple[str, str, str, str]],
 ) -> list[str]:
@@ -2999,16 +3082,25 @@ def build_cloud_config(
             getattr(args, "apt_mirror", None),
             fixe=bool(getattr(args, "cache_ca", None)),
         )
-    lines += [
-        "keyboard:",
-        f"  layout: {args.keyboard_layout}",
-        f"  variant: {args.keyboard_variant}",
-    ]
+    distro = getattr(args, "distro", "ubuntu")
+    lines += locale_bootcmd_lines(args.locale)
+    lines += keyboard_lines(
+        distro, args.keyboard_layout, args.keyboard_variant
+    )
     # Guide de connexion et identité git : posés par cloud-init, donc présents
     # dès le PREMIER boot. C'est le point : ils sont là avant l'installation
     # d'ERPLibre, et encore là si elle échoue — le moment où l'on se connecte
     # justement à la main.
-    lines += write_files_lines(guide_files(args) + cache_files(args))
+    # Trois sources pour un seul bloc « write_files » : le guide de
+    # connexion, le clavier là où cloud-init ne sait pas le poser, et les
+    # fichiers du cache. write_files_lines reçoit UNE liste et n'émet qu'une
+    # clé : les concaténer ne peut pas produire le doublon qui ferait perdre
+    # le premier bloc en silence.
+    lines += write_files_lines(
+        guide_files(args)
+        + keyboard_files(distro, args.keyboard_layout, args.keyboard_variant)
+        + cache_files(args)
+    )
     # apt update/upgrade désactivés par défaut : sur un réseau lent/instable
     # ils font pendre cloud-init au 1er boot (et retardent la dispo SSH). SSH
     # est déjà présent dans les images cloud ; on l'active via runcmd sans apt.
