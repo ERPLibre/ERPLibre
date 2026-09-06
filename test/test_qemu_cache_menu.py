@@ -38,6 +38,7 @@ CLES = (
     "Cache - Diagnose: does it serve?",
     "Cache - Service state",
     "Cache - VMs kept out of the cache",
+    "Cache - Git mirrors: fill them ahead",
     "Cache - Guide: how it works",
     "Cache - Tests and performance report",
     "Install the download cache shared by the QEMU VMs of this host",
@@ -191,7 +192,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 6)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 7)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
@@ -206,8 +207,9 @@ class TestSousMenusDuCache(unittest.TestCase):
         for numero, methode in (
             ("3", "_cache_service"),
             ("4", "_cache_exceptions"),
-            ("5", "_cache_guide"),
-            ("6", "_cache_tests"),
+            ("5", "_cache_miroir_git"),
+            ("6", "_cache_guide"),
+            ("7", "_cache_tests"),
         ):
             self.assertRegex(
                 corps,
@@ -369,6 +371,7 @@ class TestClesI18n(unittest.TestCase):
             "Cache - Diagnose: does it serve?": "🔍",
             "Cache - Service state": "⚙",
             "Cache - VMs kept out of the cache": "🎫",
+            "Cache - Git mirrors: fill them ahead": "🪞",
             "Cache - Guide: how it works": "📖",
             "Exceptions - Remove the stale ones": "🧹",
             "Exceptions - Remove one by its MAC": "✂",

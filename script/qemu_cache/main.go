@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -63,6 +64,10 @@ func main() {
 				" simplement relayé vers l'amont")
 		gitMirrorFresh = flag.Duration("git-mirror-fresh", 60*time.Second,
 			"délai en deçà duquel un dépôt n'est pas re-interrogé")
+		gitPrefetch = flag.String("git-mirror-prefetch", "",
+			"fichier de dépôts, un par ligne, à tenir en miroir d'avance")
+		gitPrefetchJobs = flag.Int("git-mirror-jobs", 4,
+			"dépôts clonés en parallèle par le pré-remplissage")
 		bypassList = flag.Bool("bypass-list", false,
 			"dire les exceptions en place, une « MAC nom » par ligne")
 		showVersion = flag.Bool("version", false, "dire la version, puis sortir")
@@ -143,6 +148,36 @@ func main() {
 	}
 
 	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
+
+	if *gitPrefetch != "" {
+		if !miroir.Actif() {
+			fmt.Fprintln(os.Stderr,
+				"miroir git éteint : passer --git-mirror-dir")
+			os.Exit(1)
+		}
+		depots, err := DepotsDuFichier(*gitPrefetch)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "liste illisible : %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%d dépôts à tenir en miroir sous %s\n",
+			len(depots), miroir.Dir)
+		reussis, echoues := miroir.Prefetch(
+			context.Background(), depots, *gitPrefetchJobs,
+			func(l string) { fmt.Println(l) },
+		)
+		_, octets := miroir.Occupation()
+		fmt.Printf("%d en miroir, %d en échec, %s occupés\n",
+			reussis, echoues, HumanBytes(octets))
+		// Un dépôt mort ne fait pas échouer l'opération : sur une liste de
+		// trois cents, il y en a toujours un — privé, déplacé, retiré — et
+		// rendre une erreur ferait passer pour ratée une avance qui a pris.
+		// Seule une liste dont RIEN n'a été tenu est un échec.
+		if reussis == 0 && echoues > 0 {
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *status {
 		if err := printStatus(store, *caDir, rules, miroir); err != nil {

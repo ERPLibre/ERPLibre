@@ -1664,6 +1664,42 @@ TRANSLATIONS = {
         "fr": "    qu'occupe chacun des deux.",
         "en": "    entry says what each of the two occupies.",
     },
+    "Cache - Git mirrors: fill them ahead": {
+        "fr": "🪞 Cache - Miroirs git : prendre l'avance",
+        "en": "🪞 Cache - Git mirrors: fill them ahead",
+    },
+    "Git mirrors of the ERPLibre manifests": {
+        "fr": "Miroirs git des manifestes ERPLibre",
+        "en": "Git mirrors of the ERPLibre manifests",
+    },
+    "Already mirrored:": {
+        "fr": "Déjà en miroir :",
+        "en": "Already mirrored:",
+    },
+    "Declared by the manifests:": {
+        "fr": "Déclarés par les manifestes :",
+        "en": "Declared by the manifests:",
+    },
+    "No repository found in manifest/": {
+        "fr": "Aucun dépôt trouvé dans manifest/",
+        "en": "No repository found in manifest/",
+    },
+    "A mirror is complete: this can take tens of GiB": {
+        "fr": "Un miroir est complet : cela peut prendre des dizaines de Gio",
+        "en": "A mirror is complete: this can take tens of GiB",
+    },
+    "and hours on the first run. Nothing erases it.": {
+        "fr": "et des heures au premier passage. Rien ne l'efface.",
+        "en": "and hours on the first run. Nothing erases it.",
+    },
+    "Free space:": {
+        "fr": "Place libre :",
+        "en": "Free space:",
+    },
+    "Fill the git mirrors now?": {
+        "fr": "Remplir les miroirs git maintenant ?",
+        "en": "Fill the git mirrors now?",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

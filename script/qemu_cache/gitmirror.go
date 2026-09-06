@@ -313,3 +313,97 @@ func (g *GitMirror) Occupation() (int, int64) {
 	})
 	return depots, octets
 }
+
+// Prefetch tient en miroir toute une liste de dépôts, d'avance.
+//
+// À la demande, le miroir se remplit au fil des requêtes : la PREMIÈRE machine
+// paie chaque clonage, et pour un dépôt qui en tire trois cents cela déplace
+// le coût plutôt que de le supprimer. Le pré-remplissage le paie une fois, à
+// l'heure choisie par l'opérateur.
+//
+// Les dépôts sont pris à PLUSIEURS à la fois : un clonage passe l'essentiel de
+// son temps à attendre le réseau, et les enchaîner un par un tiendrait des
+// heures là où la bande passante n'est pas le facteur.
+//
+// Un dépôt qui échoue ne fait pas échouer les autres : sur une liste de cette
+// taille, il y a toujours un dépôt privé, déplacé ou retiré, et tout arrêter
+// pour lui perdrait le travail déjà fait. Rend (réussis, échoués).
+func (g *GitMirror) Prefetch(
+	ctx context.Context, depots []string, parallele int, dire func(string),
+) (int, int) {
+	if parallele < 1 {
+		parallele = 1
+	}
+	type resultat struct {
+		depot string
+		ok    bool
+	}
+	taches := make(chan string)
+	sorties := make(chan resultat)
+
+	var wg sync.WaitGroup
+	for i := 0; i < parallele; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for d := range taches {
+				_, ok := g.Assurer(ctx, d)
+				sorties <- resultat{d, ok}
+			}
+		}()
+	}
+	go func() {
+		defer close(taches)
+		for _, d := range depots {
+			select {
+			case taches <- d:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	go func() { wg.Wait(); close(sorties) }()
+
+	reussis, echoues, vus := 0, 0, 0
+	for r := range sorties {
+		vus++
+		if r.ok {
+			reussis++
+		} else {
+			echoues++
+		}
+		if dire != nil {
+			etat := "✓"
+			if !r.ok {
+				etat = "✗"
+			}
+			dire(fmt.Sprintf("  %s %d/%d %s", etat, vus, len(depots), r.depot))
+		}
+	}
+	return reussis, echoues
+}
+
+// DepotsDuFichier lit une liste de dépôts, un par ligne.
+//
+// Les lignes vides et les commentaires sautent, les doublons aussi : un même
+// dépôt figure dans plusieurs manifestes, et le cloner deux fois ne ferait que
+// perdre du temps.
+func DepotsDuFichier(chemin string) ([]string, error) {
+	data, err := os.ReadFile(chemin)
+	if err != nil {
+		return nil, err
+	}
+	vus := map[string]bool{}
+	var out []string
+	for _, l := range strings.Split(string(data), "\n") {
+		l = strings.TrimSpace(l)
+		if l == "" || strings.HasPrefix(l, "#") {
+			continue
+		}
+		if !vus[l] {
+			vus[l] = true
+			out = append(out, l)
+		}
+	}
+	return out, nil
+}

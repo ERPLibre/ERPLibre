@@ -236,3 +236,70 @@ func TestAucunMiroirEtAucunAmont(t *testing.T) {
 		return nil
 	})
 }
+
+func TestDepotsDuFichier(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "liste")
+	contenu := strings.Join([]string{
+		"# un commentaire",
+		"",
+		"https://h/a.git",
+		"  https://h/b.git  ",
+		"https://h/a.git", // le même dépôt figure dans plusieurs manifestes
+	}, "\n")
+	if err := os.WriteFile(f, []byte(contenu), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DepotsDuFichier(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attendu := []string{"https://h/a.git", "https://h/b.git"}
+	if len(got) != len(attendu) {
+		t.Fatalf("%d dépôts, %d attendus : %v", len(got), len(attendu), got)
+	}
+	for i := range attendu {
+		if got[i] != attendu[i] {
+			t.Errorf("dépôt %d : %q, attendu %q", i, got[i], attendu[i])
+		}
+	}
+}
+
+// Un dépôt qui échoue ne doit pas emporter les autres : sur une liste de
+// trois cents, il y a toujours un dépôt privé, déplacé ou retiré, et tout
+// arrêter pour lui perdrait le travail déjà fait.
+func TestUnDepotEnEchecNEmportePasLesAutres(t *testing.T) {
+	bon, _ := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	depots := []string{
+		bon,
+		"https://127.0.0.1:1/absent.git",
+		bon + "-autre",
+	}
+	reussis, echoues := g.Prefetch(context.Background(), depots, 3, nil)
+	if reussis < 1 {
+		t.Errorf("%d réussite(s) : le dépôt joignable n'a pas été pris",
+			reussis)
+	}
+	if echoues < 1 {
+		t.Error("aucun échec compté alors qu'un dépôt est injoignable")
+	}
+	if reussis+echoues != len(depots) {
+		t.Errorf("%d + %d ne fait pas %d", reussis, echoues, len(depots))
+	}
+}
+
+// Le pré-remplissage rend le miroir prêt : la machine suivante n'a plus qu'à
+// être servie, ce qui est tout l'objet de l'avance.
+func TestApresPrefetchLeMiroirEstPret(t *testing.T) {
+	amont, _ := amontGit(t)
+	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	if r, e := g.Prefetch(
+		context.Background(), []string{amont}, 2, nil,
+	); r != 1 || e != 0 {
+		t.Fatalf("pré-remplissage : %d réussis, %d échoués", r, e)
+	}
+	depots, octets := g.Occupation()
+	if depots != 1 || octets == 0 {
+		t.Errorf("occupation : %d dépôts, %d octets", depots, octets)
+	}
+}

@@ -132,6 +132,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Diagnose: does it serve?")},
             {"prompt_description": t("Cache - Service state")},
             {"prompt_description": t("Cache - VMs kept out of the cache")},
+            {"prompt_description": t("Cache - Git mirrors: fill them ahead")},
             {"prompt_description": t("Cache - Guide: how it works")},
             {"prompt_description": t("Cache - Tests and performance report")},
         ]
@@ -150,8 +151,10 @@ class QemuCacheMenuMixin:
             elif status == "4":
                 self._cache_exceptions()
             elif status == "5":
-                self._cache_guide()
+                self._cache_miroir_git()
             elif status == "6":
+                self._cache_guide()
+            elif status == "7":
                 self._cache_tests()
             else:
                 print(t("Command not found !"))
@@ -437,7 +440,82 @@ class QemuCacheMenuMixin:
             print(t("Command not found !"))
 
     # ------------------------------------------------------------------
-    # [5] Guide
+    # [5] Miroirs git
+    # ------------------------------------------------------------------
+
+    def _cache_miroir_git(self):
+        """Prendre l'avance sur les clonages, plutôt que les subir.
+
+        À la demande, le miroir se remplit au fil des requêtes : la PREMIÈRE
+        machine paie chaque clonage. Pour un dépôt qui en tire trois cents, ce
+        n'est pas un coût qu'on supprime, c'est un coût qu'on déplace — sur la
+        machine qui, justement, attend.
+        """
+        print(f"\n🪞 {t('Git mirrors of the ERPLibre manifests')}\n")
+        if not os.path.isfile(CACHE_BIN):
+            print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
+            return
+        depots, octets = self._cache_miroir_occupation()
+        print(f"  {t('Already mirrored:')} {depots}, {octets}")
+
+        racine = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        liste = depots_des_manifestes(racine)
+        if not liste:
+            print(f"  ✗ {t('No repository found in manifest/')}\n")
+            return
+        print(f"  {t('Declared by the manifests:')} {len(liste)}")
+        # Un miroir est COMPLET : le dire en gigaoctets, pas en dépôts. Aucune
+        # éviction n'est écrite, et la place ne se rend pas toute seule.
+        print(f"\n  ⚠ {t('A mirror is complete: this can take tens of GiB')}")
+        print(f"    {t('and hours on the first run. Nothing erases it.')}")
+        print(f"    {t('Free space:')} {self._cache_place_libre()}\n")
+
+        fichier = os.path.join(
+            os.path.expanduser("~/.erplibre"), "miroirs_git.txt"
+        )
+        os.makedirs(os.path.dirname(fichier), exist_ok=True)
+        with open(fichier, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(liste) + "\n")
+        cmd = (
+            f"sudo {CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" --git-mirror-prefetch {fichier}"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        if not click.confirm(t("Fill the git mirrors now?")):
+            return
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    @classmethod
+    def _cache_miroir_occupation(cls):
+        """(nombre de dépôts, taille lisible) du miroir, lus du binaire."""
+        for ligne in cls._cache_lire(
+            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}",
+            delai=120,
+        ).split("\n"):
+            if ligne.startswith("dépôts git"):
+                valeur = ligne.split(":", 1)[1].strip()
+                nombre = valeur.split()[0]
+                return nombre, valeur.split(",", 1)[-1].strip()
+        return "0", "0 o"
+
+    @staticmethod
+    def _cache_place_libre():
+        """Ce qui reste sur le système de fichiers qui porte le cache."""
+        try:
+            st = os.statvfs(os.path.dirname(CACHE_MIROIR_GIT))
+        except OSError:
+            return "?"
+        libre = st.f_bavail * st.f_frsize
+        for unite in ("o", "Kio", "Mio", "Gio", "Tio"):
+            if libre < 1024 or unite == "Tio":
+                return f"{libre:.1f} {unite}"
+            libre /= 1024
+        return "?"
+
+    # ------------------------------------------------------------------
+    # [6] Guide
     # ------------------------------------------------------------------
 
     def _cache_guide(self):
@@ -537,7 +615,7 @@ class QemuCacheMenuMixin:
             print(ligne)
 
     # ------------------------------------------------------------------
-    # [6] Tests
+    # [7] Tests
     # ------------------------------------------------------------------
 
     # Les trois essais, dans l'ordre où l'assistant les propose et les enchaîne.
@@ -735,3 +813,42 @@ def bypass_menage(execute):
             bypass_retrait_cmd(mac), source_erplibre=False
         )
     return len(orphelines)
+
+
+def depots_des_manifestes(racine):
+    """Les dépôts git que les manifestes du dépôt déclarent, sans doublon.
+
+    Un manifeste Google Repo nomme des « remote » — l'URL de base d'une forge —
+    et des « project » qui s'y rattachent. L'URL complète est la concaténation
+    des deux, et un même projet figure dans plusieurs manifestes, un par
+    version d'Odoo.
+
+    Un manifeste illisible est SAUTÉ plutôt que fatal : la liste sert à prendre
+    de l'avance, et en perdre une partie vaut mieux que de ne rien prendre.
+    """
+    import glob
+    import xml.etree.ElementTree as ET
+
+    vus = set()
+    out = []
+    for fichier in sorted(
+        glob.glob(os.path.join(racine, "manifest", "*.xml"))
+    ):
+        try:
+            arbre = ET.parse(fichier).getroot()
+        except (ET.ParseError, OSError):
+            continue
+        bases = {
+            e.get("name"): (e.get("fetch") or "")
+            for e in arbre.findall("remote")
+        }
+        for projet in arbre.findall("project"):
+            base = bases.get(projet.get("remote"), "")
+            nom = projet.get("name") or ""
+            if not base or not nom:
+                continue
+            url = base.rstrip("/") + "/" + nom.lstrip("/")
+            if url not in vus:
+                vus.add(url)
+                out.append(url)
+    return out
