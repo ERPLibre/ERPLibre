@@ -1762,6 +1762,25 @@ def hostname_valide(nom: str) -> str:
 TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
 
 
+# Distributions dont la chaîne UEFI ne démarre pas sur les OVMF courants.
+#
+# L'image de Fedora charge et DÉMARRE son chargeur — le micrologiciel l'annonce
+# — puis se fige sans écrire un octet sur le disque. La même image en BIOS
+# démarre son noyau normalement : ce n'est donc ni l'image, ni la partition
+# EFI, dont le chemin de repli est bien là. Ni l'entropie ni la machine q35 n'y
+# changent rien.
+#
+# Le symptôme visible depuis le déploiement est muet : aucune console, aucun
+# bail DHCP, une VM « en cours d'exécution » qui ne fait rien. D'où cette table
+# plutôt qu'un diagnostic à refaire.
+BIOS_OBLIGATOIRE = {"fedora"}
+
+
+def amorcage_bios(distro: str, demande: bool) -> bool:
+    """Faut-il amorcer en BIOS ? La demande explicite l'emporte toujours."""
+    return bool(demande) or distro in BIOS_OBLIGATOIRE
+
+
 def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
     """Le nom canonique d'un fuseau, quand le système sait le dire.
 
@@ -3964,11 +3983,10 @@ def virt_install(
     elif not args.bios:
         # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
         # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
-        # boucle « Booting... » en SeaBIOS. UEFI (OVMF) fonctionne pour
-        # Ubuntu/Debian/Fedora. --bios force l'ancien BIOS si OVMF est absent.
+        # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
+        # certaines distributions exigent — voir BIOS_OBLIGATOIRE.
         # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
         # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
-        # Ubuntu/Debian/Fedora bootent aussi sans Secure Boot.
         cmd += [
             "--boot",
             "uefi,firmware.feature0.name=secure-boot,"
@@ -4284,8 +4302,9 @@ def build_parser() -> argparse.ArgumentParser:
     g_vm.add_argument(
         "--bios",
         action="store_true",
-        help="Force l'amorçage BIOS hérité au lieu d'UEFI (par défaut UEFI ; "
-        "n'utiliser que si le firmware OVMF est absent).",
+        help="Force l'amorçage BIOS hérité au lieu d'UEFI. UEFI est le "
+        "défaut, sauf pour les distributions dont la chaîne UEFI ne démarre "
+        "pas (Fedora), où le BIOS est retenu d'office.",
     )
 
     g_cloud = p.add_argument_group("cloud-init")
@@ -4632,6 +4651,7 @@ def main() -> None:
     # rien d'autre qu'un avertissement de cloud-init ne le dise. Le nom de
     # DOMAINE, lui, peut le porter — les deux ne se ressemblent qu'en général.
     args.hostname = args.hostname or hostname_valide(args.name)
+    args.bios = amorcage_bios(args.distro, args.bios)
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
