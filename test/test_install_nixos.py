@@ -190,6 +190,18 @@ class LeModule(unittest.TestCase):
         self.assertIn("environment.sessionVariables", self.src)
         self.assertNotIn("environment.variables", self.src)
 
+    def test_the_html_manuals_are_left_out(self):
+        """NixOS installe la sortie « doc » de CHAQUE paquet du système
+        (extraOutputsToInstall vaut « man info doc »). Celle de CPython n'est
+        pas dans le cache binaire : le premier rebuild la BÂTIT, un Sphinx de
+        trois mille pages qui domine le temps d'installation et fait cesser de
+        répondre une machine étroite.
+
+        « documentation.doc » et non « documentation » : les pages de manuel
+        et info restent, elles se lisent depuis un terminal."""
+        self.assertIn("documentation.doc.enable = false;", self.src)
+        self.assertNotIn("documentation.enable", self.src)
+
     def test_the_install_reads_the_paths_off_the_filesystem(self):
         """Une session reçoit les variables du module à son OUVERTURE, par
         pam_env. L'installation applique le module (« make install_os ») puis
