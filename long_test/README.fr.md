@@ -30,6 +30,29 @@ Il rend 20 — dépendance absente — là où « limactl » n'est pas installé
 ./long_test/lima_confront.py --detruire   # retirer l'instance d'essai
 ```
 
+## egress_confront.py — la chaîne forward que personne n'a jamais tentée
+
+Les règles de sortie sont éprouvées sur ce qu'elles COMPOSENT, et le vrai
+`nft` accepte le fichier rendu. Rien de cela ne dit que la chaîne FORWARD
+attrape ce qu'un conteneur émet : un verrou accroché à la sortie de l'hôte
+laisse passer le trafic d'un conteneur, et les règles affichent complet
+pendant que la donnée sort par la fenêtre.
+
+Trois questions : une destination NOMMÉE est-elle joignable depuis un
+conteneur, une destination HORS LISTE est-elle refusée, et ce refus survit-il
+au redémarrage du moteur de conteneurs — qui écrit ses propres règles à son
+démarrage.
+
+Il demande le privilège : charger un jeu de règles et lire une table en
+exigent, et `nft -c`, qui ne fait que l'analyse, échoue déjà sans lui. Il rend
+20 là où l'outillage manque.
+
+```
+./long_test/egress_confront.py             # les trois questions
+./long_test/egress_confront.py --dry-run   # ce qui serait fait, rien de fait
+./long_test/egress_confront.py --detruire  # retirer table et conteneur
+```
+
 ## deep_proxmox.py — jusqu'à quel étage un Proxmox dans un Proxmox tient-il ?
 
 La profondeur d'imbrication praticable ne se déduit pas, elle se mesure — et
