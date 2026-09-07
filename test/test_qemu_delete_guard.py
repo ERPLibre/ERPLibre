@@ -94,7 +94,7 @@ class TestLeGardeEstSurLeChemin(unittest.TestCase):
         """L'ORDRE est la seule chose qui compte pour un préfixe de shell :
         après l'undefine, le garde ne garde plus rien."""
         todo = todo_avec()
-        jouer(todo, ["1", "n", "y"])
+        jouer(todo, ["1", "n", "machine-a"])
         self.assertEqual(1, len(todo.execute.vues), todo.execute.vues)
         cmd = todo.execute.vues[0]
         self.assertLess(cmd.index("REFUS"), cmd.index("undefine"))
@@ -103,14 +103,14 @@ class TestLeGardeEstSurLeChemin(unittest.TestCase):
         """Une preuve relevée juste avant d'effacer serait comparée à
         elle-même et ne prouverait rien."""
         todo = todo_avec()
-        jouer(todo, ["1", "n", "y"])
+        jouer(todo, ["1", "n", "machine-a"])
         self.assertIn(
             "aaaaaaaa-1111-2222-3333-444444444444", todo.execute.vues[0]
         )
 
     def test_it_addresses_by_name_and_proves_by_uuid(self):
         todo = todo_avec()
-        jouer(todo, ["2", "n", "y"])
+        jouer(todo, ["2", "n", "machine-b"])
         cmd = todo.execute.vues[0]
         self.assertIn("undefine machine-b", cmd)
         self.assertIn("bbbbbbbb-1111-2222-3333-444444444444", cmd)
@@ -197,7 +197,7 @@ class TestUnMenuNeDesarmePas(unittest.TestCase):
         """Elle ne DISPARAÎT pas de la liste : la cacher laisserait croire
         qu'elle n'existe pas."""
         todo = todo_avec("machine-sans-preuve\n")
-        vu = jouer(todo, ["1", "n", "y"])
+        vu = jouer(todo, ["1", "n", "machine-a"])
         self.assertEqual([], todo.execute.vues)
         self.assertIn("machine-sans-preuve", vu)
 
@@ -218,7 +218,7 @@ class TestUnMenuNeDesarmePas(unittest.TestCase):
             "machine-sans-preuve\n"
             "bbbbbbbb-1111-2222-3333-444444444444 machine-b\n"
         )
-        jouer(todo, ["all", "n", "y"])
+        jouer(todo, ["all", "n", "2"])
         self.assertEqual(1, len(todo.execute.vues))
         self.assertIn("machine-b", todo.execute.vues[0])
 
@@ -230,14 +230,14 @@ class TestLesDisquesRestentLus(unittest.TestCase):
 
     def test_the_files_come_from_the_inspection_not_from_the_name(self):
         todo = todo_avec(fichiers=["/var/lib/libvirt/images/autre-nom.qcow2"])
-        jouer(todo, ["1", "y", "y"])
+        jouer(todo, ["1", "y", "machine-a"])
         cmd = todo.execute.vues[0]
         self.assertIn("autre-nom.qcow2", cmd)
         self.assertNotIn("machine-a.qcow2", cmd)
 
     def test_no_disk_asked_means_no_removal(self):
         todo = todo_avec(fichiers=["/var/lib/libvirt/images/autre-nom.qcow2"])
-        jouer(todo, ["1", "n", "y"])
+        jouer(todo, ["1", "n", "machine-a"])
         self.assertNotIn("rm -f", todo.execute.vues[0])
 
     def test_the_verb_is_asked_not_to_guess(self):
@@ -341,12 +341,91 @@ class TestLesDomainesFantomes(unittest.TestCase):
         self.assertEqual([], todo.execute.vues)
 
 
-class TestRienNestFaitSansConfirmation(unittest.TestCase):
-    def test_a_refused_confirmation_runs_nothing(self):
+class TestCeQueLeGardeNAttrapePas(unittest.TestCase):
+    """Il compare une preuve : il voit un nom qui a changé de porteur,
+    jamais un « 3 » tapé pour un « 2 ». Cet indice-là désigne un domaine
+    RÉEL, correctement identifié, et la preuve concorde."""
+
+    def test_one_machine_needs_its_name_typed(self):
         todo = todo_avec()
-        jouer(todo, ["1", "n", "n"])
+        jouer(todo, ["1", "n", "machine-a"])
+        self.assertEqual(1, len(todo.execute.vues))
+
+    def test_a_name_off_by_one_character_deletes_nothing(self):
+        """« o » se tape par réflexe ; recopier un nom oblige à regarder."""
+        todo = todo_avec()
+        jouer(todo, ["1", "n", "machine-b"])
+        self.assertEqual([], todo.execute.vues)
+        todo = todo_avec()
+        jouer(todo, ["1", "n", "machine-A"])
         self.assertEqual([], todo.execute.vues)
 
+    def test_a_single_key_no_longer_deletes(self):
+        """La forme d'avant : une touche, et deux machines partaient."""
+        for touche in ("y", "o", "Y", ""):
+            with self.subTest(touche=touche):
+                todo = todo_avec()
+                jouer(todo, ["1", "n", touche])
+                self.assertEqual([], todo.execute.vues)
+
+    def test_several_machines_need_their_count(self):
+        """Retaper cinq noms est inutilisable ; le nombre ne se donne pas
+        de réflexe, puisqu'il faut avoir lu le bloc pour le connaître."""
+        todo = todo_avec()
+        jouer(todo, ["all", "n", "2"])
+        self.assertEqual(2, len(todo.execute.vues))
+
+    def test_a_wrong_count_deletes_nothing(self):
+        """L'erreur qui compte ici : un ensemble plus large qu'on croyait."""
+        todo = todo_avec()
+        jouer(todo, ["all", "n", "1"])
+        self.assertEqual([], todo.execute.vues)
+
+    def test_the_block_names_each_machine_and_its_proof(self):
+        """Le nombre ne veut rien dire si l'on n'a pas vu la liste.
+
+        La confirmation est REFUSÉE ici, exprès : la commande jouée est
+        elle-même imprimée et porte l'UUID, si bien qu'une épreuve qui
+        confirme se satisferait de cet écho et ne lirait jamais le bloc."""
+        todo = todo_avec()
+        vu = jouer(todo, ["all", "n", "0"])
+        self.assertEqual([], todo.execute.vues)
+        for attendu in (
+            "machine-a",
+            "machine-b",
+            "aaaaaaaa-1111-2222-3333-444444444444",
+            "bbbbbbbb-1111-2222-3333-444444444444",
+        ):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, vu)
+
+    def test_the_block_names_the_files_when_disks_are_asked(self):
+        """Ce qui va être effacé se lit AVANT la question. Confirmation
+        REFUSÉE : sans cela, le « rm » de la commande imprimée fournirait
+        le chemin à lui seul."""
+        todo = todo_avec(fichiers=["/var/lib/libvirt/images/autre.qcow2"])
+        vu = jouer(todo, ["1", "y", "pas-le-nom"])
+        self.assertEqual([], todo.execute.vues)
+        self.assertIn("autre.qcow2", vu)
+
+    def test_and_says_nothing_of_them_when_they_are_kept(self):
+        """Contrôle positif : les nommer toujours ferait croire qu'ils
+        partent quand ils restent."""
+        todo = todo_avec(fichiers=["/var/lib/libvirt/images/autre.qcow2"])
+        vu = jouer(todo, ["1", "n", "pas-le-nom"])
+        self.assertNotIn("autre.qcow2", vu)
+
+    def test_a_machine_without_proof_says_so_in_the_block(self):
+        """Un crochet VIDE se lirait comme un UUID qui n'a pas voulu
+        s'imprimer ; le dire annonce que la machine sera refusée."""
+        todo = todo_avec("machine-sans-preuve\n")
+        vu = jouer(todo, ["1", "n", "machine-sans-preuve"])
+        self.assertIn("machine-sans-preuve", vu)
+        self.assertNotIn("[]", vu)
+        self.assertEqual([], todo.execute.vues)
+
+
+class TestRienNestFaitSansConfirmation(unittest.TestCase):
     def test_an_empty_selection_runs_nothing(self):
         todo = todo_avec()
         jouer(todo, [""])

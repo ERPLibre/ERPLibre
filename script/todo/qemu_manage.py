@@ -2445,6 +2445,32 @@ class QemuManageMixin:
             return []
         return [n for n in res.stdout.split() if n.strip()]
 
+    def _qemu_confirm_deletion(self, chosen) -> bool:
+        """La confirmation, et elle n'est pas une touche.
+
+        UNE MACHINE : son nom se RETAPE. C'est la règle du dépôt pour ce qui
+        détruit, et la raison est déjà écrite ailleurs — recopier un nom
+        long oblige à regarder ce qu'on détruit, là où « o » se tape par
+        réflexe.
+
+        PLUSIEURS : retaper cinq noms est inutilisable, et le repli est leur
+        NOMBRE. Il ne se donne pas de réflexe puisqu'il faut avoir lu le
+        bloc pour le connaître, et il attrape l'erreur qui compte ici — un
+        ensemble plus large qu'on croyait.
+
+        Le nombre plutôt qu'un mot : un mot appartiendrait à une langue, et
+        l'écran en parle deux.
+        """
+        if len(chosen) == 1:
+            tape = input(
+                t("Type the VM name to confirm (empty to cancel): ")
+            ).strip()
+            return tape == chosen[0]
+        tape = input(
+            f"{t('Type how many VMs are deleted')} ({len(chosen)}): "
+        ).strip()
+        return tape == str(len(chosen))
+
     def _qemu_list_domains_proved(self):
         """Les domaines AVEC leur preuve d'identité, en un seul appel.
 
@@ -2499,12 +2525,22 @@ class QemuManageMixin:
             input(t("Also delete disk images (qcow2 + seed ISO)? (y/N): "))
         )
 
-        print(f"\n{t('Will delete:')} {', '.join(chosen)}")
+        # CE QUE LE GARDE N'ATTRAPE PAS. Il compare une preuve : il voit un
+        # nom qui a changé de porteur, jamais un « 3 » tapé pour un « 2 ».
+        # Cet indice-là désigne un domaine RÉEL, correctement identifié, et
+        # la preuve concorde. Seule une saisie voit cette erreur.
+        print(f"\n{t('Will delete:')}")
+        for name in chosen:
+            handle = preuves.get(name)
+            preuve = handle.proof if handle else ""
+            print(f"  {name}  [{preuve or t('no proof')}]")
+            for chemin in self._qemu_vm_own_files(name) if del_disks else []:
+                print(f"      {chemin}")
         if del_disks:
             print(f"  + {t('disk images and seed ISOs')}")
         else:
             print(f"  ({t('disks kept')})")
-        if not self._is_yes(input(t("Confirm deletion? (y/N): "))):
+        if not self._qemu_confirm_deletion(chosen):
             print(t("Cancelled."))
             return
 

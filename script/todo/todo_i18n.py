@@ -1127,6 +1127,18 @@ TRANSLATIONS = {
         "fr": "Règles de sortie qui seraient posées :",
         "en": "Egress rules that would be posed:",
     },
+    "Type the VM name to confirm (empty to cancel): ": {
+        "fr": "Retaper le nom de la VM pour confirmer (vide pour renoncer) : ",
+        "en": "Type the VM name to confirm (empty to cancel): ",
+    },
+    "Type how many VMs are deleted": {
+        "fr": "Retaper combien de VM sont effacées",
+        "en": "Type how many VMs are deleted",
+    },
+    "no proof": {
+        "fr": "aucune preuve",
+        "en": "no proof",
+    },
     "no identity proof; refused": {
         "fr": "aucune preuve d'identité ; refusé",
         "en": "no identity proof; refused",
