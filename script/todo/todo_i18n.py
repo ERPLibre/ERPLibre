@@ -1127,6 +1127,10 @@ TRANSLATIONS = {
         "fr": "Règles de sortie qui seraient posées :",
         "en": "Egress rules that would be posed:",
     },
+    "no identity proof; refused": {
+        "fr": "aucune preuve d'identité ; refusé",
+        "en": "no identity proof; refused",
+    },
     "Egress rules loaded.": {
         "fr": "Règles de sortie chargées.",
         "en": "Egress rules loaded.",
