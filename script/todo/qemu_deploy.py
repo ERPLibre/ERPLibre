@@ -38,6 +38,15 @@ EGRESS_SSH_OPTS = (
 )
 
 
+# Ce que l'aperçu met à la place d'un chemin de fichier. Il CALCULE les
+# règles — c'est ainsi qu'une posture inhonorable se refuse avant qu'aucune
+# machine n'existe — et il n'ÉCRIT rien : un fichier temporaire créé pour
+# afficher son nom serait retiré avant que quiconque le lise. Les chevrons
+# disent que ce n'est pas un chemin.
+APERCU_REGLES = "<egress.nft>"
+APERCU_UNITE = "<egress.service>"
+
+
 class EgressFiles(NamedTuple):
     """Les deux fichiers rendus, ou deux chaînes vides.
 
@@ -1795,10 +1804,33 @@ class QemuDeployMixin:
         et pas un de plus.
         """
         machines = spec.get("vms") or []
+        # Les règles se CALCULENT, et rien ne s'écrit. Le refus d'une
+        # posture que le site ne peut pas honorer arrive donc ici, avant
+        # qu'aucune machine n'existe — ce qui est tout l'intérêt d'un
+        # aperçu. Il ne s'interrompt pas pour autant : un essai à blanc
+        # doit rester lançable, et le dire vaut mieux que se taire.
+        regles = ""
+        try:
+            regles = self._qemu_egress_rules(spec)
+        except Exception as souci:
+            print(f"\n⛔ {t('Egress rules cannot be rendered:')} {souci}")
+        egress = (
+            EgressFiles(APERCU_REGLES, APERCU_UNITE)
+            if regles
+            else EgressFiles("", "")
+        )
         print(f"\n{t('Preview (dry-run):')}")
         for vm in machines:
-            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=True)
+            parts = self._qemu_deploy_parts_for(
+                vm, spec, dry_run=True, egress=egress
+            )
             print("  " + " ".join(shlex.quote(p) for p in parts))
+        if regles:
+            # Le contenu, comme l'écriture atomique le montre à blanc
+            # ailleurs : un nom de fichier n'apprend rien, les règles si.
+            print(f"\n{t('Egress rules that would be posed:')}")
+            for ligne in regles.rstrip("\n").splitlines():
+                print(f"      │ {ligne}")
 
     def _qemu_collect_vms_cli(self, mod):
         """Invites en ligne : architecture, catalogue, ressources, noms.

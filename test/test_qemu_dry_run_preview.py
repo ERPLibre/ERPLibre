@@ -62,8 +62,24 @@ RETIRES_A_BLANC = ("sudo", "--no-wait-ip", "-y")
 AJOUTE_A_BLANC = ("--dry-run",)
 
 
-def menu():
-    return TODO.__new__(TODO)
+# Un carnet de banc : un réseau de documentation par rôle connu (RFC 5737).
+def carnet_de_banc():
+    from script.posture import allowlist
+
+    return {
+        nom: [f"198.51.100.{index + 10}/32"]
+        for index, nom in enumerate(allowlist.symbol_names())
+    }
+
+
+def menu(carnet=None):
+    todo = TODO.__new__(TODO)
+    todo.config_file = type(
+        "ConfigDeBanc",
+        (),
+        {"get_config": staticmethod(lambda _cle: carnet)},
+    )()
+    return todo
 
 
 def spec_de(**extra):
@@ -222,6 +238,80 @@ class TestChaqueVoieTransmetLaSpecEntiere(unittest.TestCase):
             self.assertEqual(1, len(appel.args))
             self.assertIsInstance(appel.args[0], ast.Name)
             self.assertEqual("spec", appel.args[0].id)
+
+
+class TestLApercuMontreLeConfinement(unittest.TestCase):
+    """Ce que les phases 3-4 ont construit était TU par l'aperçu : la
+    commande montrée n'avait ni fichier de règles, ni unité."""
+
+    def apercu(self, posture="open", carnet=None):
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        tampon = tampon_io.StringIO()
+        with redirect_stdout(tampon):
+            menu(carnet)._qemu_print_dry_run(spec_de(posture=posture))
+        return tampon.getvalue()
+
+    def test_a_bounded_posture_shows_both_flags(self):
+        vu = self.apercu("paranoid", carnet_de_banc())
+        self.assertIn("--egress-file", vu)
+        self.assertIn("--egress-unit", vu)
+
+    def test_a_free_posture_shows_neither(self):
+        """Contrôle positif : les montrer toujours mentirait autant que ne
+        les montrer jamais."""
+        vu = self.apercu("open", carnet_de_banc())
+        self.assertNotIn("--egress", vu)
+
+    def test_the_rules_themselves_are_shown(self):
+        """Un nom de fichier n'apprend rien ; les règles si."""
+        vu = self.apercu("paranoid", carnet_de_banc())
+        self.assertIn("policy drop;", vu)
+        self.assertIn("# forge :", vu)
+
+    def test_the_path_reads_as_a_placeholder_and_not_a_path(self):
+        """Un fichier temporaire créé pour afficher son nom serait retiré
+        avant que quiconque le lise."""
+        vu = self.apercu("paranoid", carnet_de_banc())
+        self.assertIn("<egress.nft>", vu)
+        self.assertNotIn("/tmp/", vu)
+
+    def test_a_posture_the_site_cannot_honour_is_said_not_hidden(self):
+        """Le refus arrive AVANT qu'aucune machine n'existe : c'est tout
+        l'intérêt d'un aperçu."""
+        vu = self.apercu("paranoid", carnet={})
+        self.assertIn("dns-resolver", vu)
+
+    def test_and_the_preview_still_runs(self):
+        """Un essai à blanc doit rester lançable ; s'interrompre sur un
+        refus le rendrait inutilisable là où il sert le plus."""
+        vu = self.apercu("paranoid", carnet={})
+        self.assertIn("deploy_qemu", vu)
+        self.assertNotIn("--egress", vu)
+
+    def test_the_preview_writes_no_file(self):
+        """Il CALCULE les règles et n'en écrit aucune : l'écriture est le
+        seul geste qu'un essai à blanc retient."""
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "_qemu_print_dry_run"
+        ][0]
+        appels = [
+            noeud.func.attr
+            for noeud in ast.walk(corps)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+        ]
+        self.assertIn("_qemu_egress_rules", appels)
+        self.assertNotIn("_qemu_egress_file", appels)
 
 
 class TestLEcartLiciteEstBorne(unittest.TestCase):

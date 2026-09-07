@@ -1119,6 +1119,14 @@ TRANSLATIONS = {
         "fr": "Rien n'y est installé.",
         "en": "Nothing is installed there.",
     },
+    "Egress rules cannot be rendered:": {
+        "fr": "Les règles de sortie ne peuvent pas être rendues :",
+        "en": "Egress rules cannot be rendered:",
+    },
+    "Egress rules that would be posed:": {
+        "fr": "Règles de sortie qui seraient posées :",
+        "en": "Egress rules that would be posed:",
+    },
     "Egress rules loaded.": {
         "fr": "Règles de sortie chargées.",
         "en": "Egress rules loaded.",
