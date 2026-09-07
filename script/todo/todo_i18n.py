@@ -12831,6 +12831,439 @@ TRANSLATIONS = {
     # « models », « still waiting for » et « Type an address » servent aussi
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
+    # Transform data - fichiers externes
+    'Transform data - Transform external files': {
+        "fr": '🪄 Transform data - Transformer des fichiers externes',
+        "en": '🪄 Transform data - Transform external files',
+    },
+    'External files: read, describe, then draw a copy.': {
+        "fr": 'Fichiers externes : lire, décrire, puis en tirer une copie.',
+        "en": 'External files: read, describe, then draw a copy.',
+    },
+    'Environment': {
+        "fr": 'Environnement',
+        "en": 'Environment',
+    },
+    'Open a file and read its report': {
+        "fr": 'Ouvrir un fichier et lire son rapport',
+        "en": 'Open a file and read its report',
+    },
+    'Install the reading environment': {
+        "fr": "Installer l'environnement de lecture",
+        "en": 'Install the reading environment',
+    },
+    'What can this machine read?': {
+        "fr": 'Que sait lire cette machine ?',
+        "en": 'What can this machine read?',
+    },
+    'Copies produced': {
+        "fr": 'Copies produites',
+        "en": 'Copies produced',
+    },
+    'A dedicated environment is required to read this format.': {
+        "fr": 'Un environnement dédié est nécessaire pour lire ce format.',
+        "en": 'A dedicated environment is required to read this format.',
+    },
+    'Create it now? (Y/n): ': {
+        "fr": 'Le créer maintenant ? (O/n) : ',
+        "en": 'Create it now? (Y/n): ',
+    },
+    'The environment is ready.': {
+        "fr": "L'environnement est prêt.",
+        "en": 'The environment is ready.',
+    },
+    'Creation finished but the libraries are still missing.': {
+        "fr": 'Création terminée mais les bibliothèques manquent toujours.',
+        "en": 'Creation finished but the libraries are still missing.',
+    },
+    'python -m venv exited with': {
+        "fr": 'python -m venv a rendu',
+        "en": 'python -m venv exited with',
+    },
+    'Access files need a system package.': {
+        "fr": 'Les fichiers Access demandent un paquet système.',
+        "en": 'Access files need a system package.',
+    },
+    'readable': {
+        "fr": 'lisible',
+        "en": 'readable',
+    },
+    'not readable': {
+        "fr": 'non lisible',
+        "en": 'not readable',
+    },
+    'Contents do not match the extension: read as ': {
+        "fr": "Le contenu ne correspond pas à l'extension : lu comme ",
+        "en": 'Contents do not match the extension: read as ',
+    },
+    'Encoding detected by ': {
+        "fr": 'Encodage détecté par ',
+        "en": 'Encoding detected by ',
+    },
+    'Delimiter detected by ': {
+        "fr": 'Délimiteur détecté par ',
+        "en": 'Delimiter detected by ',
+    },
+    'bom': {
+        "fr": 'BOM',
+        "en": 'BOM',
+    },
+    'chardet': {
+        "fr": 'chardet',
+        "en": 'chardet',
+    },
+    'sniffer': {
+        "fr": 'sniffer',
+        "en": 'sniffer',
+    },
+    'mesure': {
+        "fr": 'mesure',
+        "en": 'measurement',
+    },
+    'repli': {
+        "fr": 'repli',
+        "en": 'fallback',
+    },
+    'sheet(s)': {
+        "fr": 'feuille(s)',
+        "en": 'sheet(s)',
+    },
+    'chart sheet(s)': {
+        "fr": 'feuille(s) graphique',
+        "en": 'chart sheet(s)',
+    },
+    'hidden': {
+        "fr": 'masquée',
+        "en": 'hidden',
+    },
+    'formula(s)': {
+        "fr": 'formule(s)',
+        "en": 'formula(s)',
+    },
+    'formula(s) holding a text literal': {
+        "fr": 'formule(s) portant un littéral texte',
+        "en": 'formula(s) holding a text literal',
+    },
+    'distinct value(s)': {
+        "fr": 'valeur(s) distincte(s)',
+        "en": 'distinct value(s)',
+    },
+    'VBA macros present': {
+        "fr": 'Macros VBA présentes',
+        "en": 'VBA macros present',
+    },
+    'No VBA macro': {
+        "fr": 'Aucune macro VBA',
+        "en": 'No VBA macro',
+    },
+    'pivot table(s)': {
+        "fr": 'tableau(x) croisé(s)',
+        "en": 'pivot table(s)',
+    },
+    'chart(s) with cached series': {
+        "fr": 'graphique(s) à séries en cache',
+        "en": 'chart(s) with cached series',
+    },
+    'image(s) and drawing(s)': {
+        "fr": 'image(s) et dessin(s)',
+        "en": 'image(s) and drawing(s)',
+    },
+    'external link(s)': {
+        "fr": 'lien(s) externe(s)',
+        "en": 'external link(s)',
+    },
+    'cell hyperlink(s)': {
+        "fr": 'hyperlien(s) de cellule',
+        "en": 'cell hyperlink(s)',
+    },
+    'comment(s)': {
+        "fr": 'commentaire(s)',
+        "en": 'comment(s)',
+    },
+    'comment author(s)': {
+        "fr": 'auteur(s) de commentaire',
+        "en": 'comment author(s)',
+    },
+    'header(s)/footer(s)': {
+        "fr": 'en-tête(s)/pied(s)',
+        "en": 'header(s)/footer(s)',
+    },
+    'validation(s)': {
+        "fr": 'validation(s)',
+        "en": 'validation(s)',
+    },
+    'conditional format(s)': {
+        "fr": 'mise(s) en forme conditionnelle(s)',
+        "en": 'conditional format(s)',
+    },
+    'Text outside cells': {
+        "fr": 'Texte hors cellules',
+        "en": 'Text outside cells',
+    },
+    'Author': {
+        "fr": 'Auteur',
+        "en": 'Author',
+    },
+    'Link targets': {
+        "fr": 'Cibles des liens',
+        "en": 'Link targets',
+    },
+    'named range(s)': {
+        "fr": 'plage(s) nommée(s)',
+        "en": 'named range(s)',
+    },
+    'Anonymisable': {
+        "fr": 'Anonymisable',
+        "en": 'Anonymisable',
+    },
+    'word(s) in the pool': {
+        "fr": 'mot(s) dans le vivier',
+        "en": 'word(s) in the pool',
+    },
+    'Left intact': {
+        "fr": 'Laissé intact',
+        "en": 'Left intact',
+    },
+    'date(s)': {
+        "fr": 'date(s)',
+        "en": 'date(s)',
+    },
+    'boolean(s)': {
+        "fr": 'booléen(s)',
+        "en": 'boolean(s)',
+    },
+    'error value(s)': {
+        "fr": "valeur(s) d'erreur",
+        "en": 'error value(s)',
+    },
+    'binary value(s)': {
+        "fr": 'valeur(s) binaire(s)',
+        "en": 'binary value(s)',
+    },
+    'This format stores no formula readable here.': {
+        "fr": 'Ce format ne stocke aucune formule lisible ici.',
+        "en": 'This format stores no formula readable here.',
+    },
+    'Saved queries are not readable in pure Python.': {
+        "fr": 'Les requêtes enregistrées ne sont pas lisibles en pur Python.',
+        "en": 'Saved queries are not readable in pure Python.',
+    },
+    'Only 20 fallback words are available: randomwordfr is missing.': {
+        "fr": 'Seuls 20 mots de repli sont disponibles : randomwordfr est absent.',
+        "en": 'Only 20 fallback words are available: randomwordfr is missing.',
+    },
+    '0 to cancel': {
+        "fr": '0 pour annuler',
+        "en": '0 to cancel',
+    },
+    'Anonymise this file? (y/N): ': {
+        "fr": 'Anonymiser ce fichier ? (o/N) : ',
+        "en": 'Anonymise this file? (y/N): ',
+    },
+    'Convert at the same time? (xlsx/csv/json/xml, empty = keep): ': {
+        "fr": 'Convertir en même temps ? (xlsx/csv/json/xml, vide = garder) : ',
+        "en": 'Convert at the same time? (xlsx/csv/json/xml, empty = keep): ',
+    },
+    'Sheets to process (empty = all): ': {
+        "fr": 'Feuilles à traiter (vide = toutes) : ',
+        "en": 'Sheets to process (empty = all): ',
+    },
+    'Columns to leave untouched (empty = none): ': {
+        "fr": 'Colonnes à laisser intactes (vide = aucune) : ',
+        "en": 'Columns to leave untouched (empty = none): ',
+    },
+    'Replace numbers? (Y/n): ': {
+        "fr": 'Remplacer les nombres ? (O/n) : ',
+        "en": 'Replace numbers? (Y/n): ',
+    },
+    'Replace text? (Y/n): ': {
+        "fr": 'Remplacer le texte ? (O/n) : ',
+        "en": 'Replace text? (Y/n): ',
+    },
+    'Anonymise the header row too? (y/N): ': {
+        "fr": "Anonymiser aussi la ligne d'en-tête ? (o/N) : ",
+        "en": 'Anonymise the header row too? (y/N): ',
+    },
+    'Random seed (empty = not reproducible): ': {
+        "fr": 'Graine aléatoire (vide = non reproductible) : ',
+        "en": 'Random seed (empty = not reproducible): ',
+    },
+    'Mapping table to reuse (empty = a new one): ': {
+        "fr": 'Table de correspondance à réutiliser (vide = nouvelle) : ',
+        "en": 'Mapping table to reuse (empty = a new one): ',
+    },
+    'Keep the VBA macros in the copy? (y/N): ': {
+        "fr": 'Garder les macros VBA dans la copie ? (o/N) : ',
+        "en": 'Keep the VBA macros in the copy? (y/N): ',
+    },
+    'Keep the charts in the copy? (y/N): ': {
+        "fr": 'Garder les graphiques dans la copie ? (o/N) : ',
+        "en": 'Keep the charts in the copy? (y/N): ',
+    },
+    'Preview — nothing written yet': {
+        "fr": "Aperçu — rien n'est encore écrit",
+        "en": 'Preview — nothing written yet',
+    },
+    'Write? (Y/n): ': {
+        "fr": 'Écrire ? (O/n) : ',
+        "en": 'Write? (Y/n): ',
+    },
+    'Destination': {
+        "fr": 'Destination',
+        "en": 'Destination',
+    },
+    'Enter to accept, p to browse, or type a path: ': {
+        "fr": 'Entrée pour accepter, p pour parcourir, ou taper un chemin : ',
+        "en": 'Enter to accept, p to browse, or type a path: ',
+    },
+    'Written: ': {
+        "fr": 'Écrit : ',
+        "en": 'Written: ',
+    },
+    'cell(s) replaced': {
+        "fr": 'cellule(s) remplacée(s)',
+        "en": 'cell(s) replaced',
+    },
+    'formula(s) left intact': {
+        "fr": 'formule(s) laissée(s) intacte(s)',
+        "en": 'formula(s) left intact',
+    },
+    'cell(s) left out of scope': {
+        "fr": 'cellule(s) laissée(s) hors portée',
+        "en": 'cell(s) left out of scope',
+    },
+    'element(s) outside cells wiped': {
+        "fr": 'élément(s) hors cellules effacé(s)',
+        "en": 'element(s) outside cells wiped',
+    },
+    'column(s) left alone: they hold identifiers': {
+        "fr": 'colonne(s) laissée(s) : elles portent des identifiants',
+        "en": 'column(s) left alone: they hold identifiers',
+    },
+    'The original was not modified.': {
+        "fr": "L'original n'a pas été modifié.",
+        "en": 'The original was not modified.',
+    },
+    'These files would be overwritten: ': {
+        "fr": 'Ces fichiers seraient écrasés : ',
+        "en": 'These files would be overwritten: ',
+    },
+    'This file already exists. Type its name in full to overwrite: ': {
+        "fr": "Ce fichier existe déjà. Taper son nom en entier pour l'écraser : ",
+        "en": 'This file already exists. Type its name in full to overwrite: ',
+    },
+    'Name does not match, nothing was written.': {
+        "fr": "Le nom ne correspond pas, rien n'a été écrit.",
+        "en": 'Name does not match, nothing was written.',
+    },
+    'Mapping table written: ': {
+        "fr": 'Table de correspondance écrite : ',
+        "en": 'Mapping table written: ',
+    },
+    'This table re-identifies the copy; keep it in private/.': {
+        "fr": 'Cette table ré-identifie la copie ; la garder dans private/.',
+        "en": 'This table re-identifies the copy; keep it in private/.',
+    },
+    'The file name is not anonymised; the default does not reuse it.': {
+        "fr": "Le nom du fichier n'est pas anonymisé ; le défaut ne le reprend pas.",
+        "en": 'The file name is not anonymised; the default does not reuse it.',
+    },
+    'Delete all copies in private/transform/? (y/N): ': {
+        "fr": 'Supprimer toutes les copies de private/transform/ ? (o/N) : ',
+        "en": 'Delete all copies in private/transform/? (y/N): ',
+    },
+    'private/ is tracked by git — this file will show in « git status ».': {
+        "fr": 'private/ est suivi par git — ce fichier apparaîtra dans « git status ».',
+        "en": 'private/ is tracked by git — this file will show in « git status ».',
+    },
+    'Cached formula results are dropped; the sheet recomputes on open.': {
+        "fr": "Les résultats de formule en cache sont perdus ; la feuille recalcule à l'ouverture.",
+        "en": 'Cached formula results are dropped; the sheet recomputes on open.',
+    },
+    'Document properties were cleared on the copy.': {
+        "fr": 'Les propriétés du document ont été vidées sur la copie.',
+        "en": 'Document properties were cleared on the copy.',
+    },
+    'Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.': {
+        "fr": 'Les tableaux croisés et les caches de graphique sont supprimés : ils portent une copie non anonymisée de la source.',
+        "en": 'Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.',
+    },
+    'Images and drawings are not carried over to the copy.': {
+        "fr": 'Les images et les dessins ne sont pas repris dans la copie.',
+        "en": 'Images and drawings are not carried over to the copy.',
+    },
+    'Charts are not carried over to the copy.': {
+        "fr": 'Les graphiques ne sont pas repris dans la copie.',
+        "en": 'Charts are not carried over to the copy.',
+    },
+    'Charts are kept: their caches are cleaned through private attributes.': {
+        "fr": 'Les graphiques sont conservés : leurs caches sont nettoyés par des attributs privés.',
+        "en": 'Charts are kept: their caches are cleaned through private attributes.',
+    },
+    'External links were dropped; formulas that used them show #REF!.': {
+        "fr": "Les liens externes sont retirés ; les formules qui s'en servaient affichent #REF!.",
+        "en": 'External links were dropped; formulas that used them show #REF!.',
+    },
+    'Range and table names are kept so formulas resolve; they may hold identifying strings.': {
+        "fr": 'Les noms de plages et de tableaux sont conservés pour que les formules résolvent ; ils peuvent porter des chaînes identifiantes.',
+        "en": 'Range and table names are kept so formulas resolve; they may hold identifying strings.',
+    },
+    'Sheet names are kept so formulas resolve; they may identify.': {
+        "fr": 'Les noms de feuille sont conservés pour que les formules résolvent ; ils peuvent identifier.',
+        "en": 'Sheet names are kept so formulas resolve; they may identify.',
+    },
+    'The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.': {
+        "fr": "Le projet VBA et ce qui l'accompagne (contrôles de formulaire, ActiveX, formes VML, ruban, images EMF) sont recopiés tels quels et n'ont pas été relus.",
+        "en": 'The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.',
+    },
+    'Format not recognised: ': {
+        "fr": 'Format non reconnu : ',
+        "en": 'Format not recognised: ',
+    },
+    'Recognised format, unreadable here — re-save it as .xlsx.': {
+        "fr": 'Format reconnu, illisible ici — le ré-enregistrer en .xlsx.',
+        "en": 'Recognised format, unreadable here — re-save it as .xlsx.',
+    },
+    'Protected by a password, or not a workbook — unreadable here.': {
+        "fr": 'Protégé par un mot de passe, ou pas un classeur — illisible ici.',
+        "en": 'Protected by a password, or not a workbook — unreadable here.',
+    },
+    'Empty file.': {
+        "fr": 'Fichier vide.',
+        "en": 'Empty file.',
+    },
+    'Not readable: check the permissions.': {
+        "fr": 'Illisible : vérifier les droits.',
+        "en": 'Not readable: check the permissions.',
+    },
+    'Not an ordinary file.': {
+        "fr": 'Pas un fichier ordinaire.',
+        "en": 'Not an ordinary file.',
+    },
+    'The destination is the source file; nothing was written.': {
+        "fr": "La destination est le fichier source ; rien n'a été écrit.",
+        "en": 'The destination is the source file; nothing was written.',
+    },
+    'The destination directory exists and is not empty.': {
+        "fr": "Le répertoire de destination existe et n'est pas vide.",
+        "en": 'The destination directory exists and is not empty.',
+    },
+    'The selection matches no sheet; nothing was written.': {
+        "fr": "La sélection ne correspond à aucune feuille ; rien n'a été écrit.",
+        "en": 'The selection matches no sheet; nothing was written.',
+    },
+    'Nothing was anonymised: every region was excluded.': {
+        "fr": "Rien n'a été anonymisé : toutes les régions ont été exclues.",
+        "en": 'Nothing was anonymised: every region was excluded.',
+    },
+    'Nothing to anonymise in this file.': {
+        "fr": 'Rien à anonymiser dans ce fichier.',
+        "en": 'Nothing to anonymise in this file.',
+    },
+    'Not enough room to write.': {
+        "fr": 'Pas assez de place pour écrire.',
+        "en": 'Not enough room to write.',
+    },
 }
 
 

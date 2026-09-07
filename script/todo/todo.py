@@ -40,6 +40,7 @@ from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
+from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
 
@@ -104,6 +105,7 @@ class TODO(
     QemuAccessMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
+    TransformMenuMixin,
     VpnMenuMixin,
     AssistantMenuMixin,
 ):
@@ -235,22 +237,23 @@ class TODO(
 ── {t("Data")} ──
 [6] {t("Database - Database tools")}
 [7] {t("Analyse - Odoo database analysis")}
+[8] {t("Transform data - Transform external files")}
 
 ── {t("Sources & documentation")} ──
-[8] {t("Git - Git and shell tools")}
-[9] {t("Doc - Documentation search")}
+[9] {t("Git - Git and shell tools")}
+[10] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[10] {t("GPT code - AI assistant tools")}
-[11] {t("Automation - Demonstration of developed features")}
+[11] {t("GPT code - AI assistant tools")}
+[12] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[12] {t("Deploy - Deploy ERPLibre locally")}
-[13] {t("Network - Network tools")}
-[14] {t("Security - Dependency security audit")}
+[13] {t("Deploy - Deploy ERPLibre locally")}
+[14] {t("Network - Network tools")}
+[15] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[15] {t("Language - Change language / Changer la langue")}
+[16] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -287,34 +290,38 @@ class TODO(
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "15":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "16":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -584,6 +591,7 @@ class TODO(
         "prompt_execute_config": "Config",
         "prompt_execute_database": "Database",
         "prompt_execute_analyse": "Analyse",
+        "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",

@@ -1,0 +1,28 @@
+# Lecteurs de fichiers externes pour « TODO › Execute › Transform data ».
+#
+# Bornes PROPRES à ce venv et indépendantes de .odoo-version : chacune
+# existe pour ce que la bibliothèque fait ici, pas parce que
+# pyproject.toml la déclare. Changer de version d'Odoo ne doit pas
+# déplacer ce fichier, ni l'inverse.
+#
+# La borne openpyxl est EXACTE et non minimale : le nettoyage hors
+# cellules touche _external_links, _charts, _pivots, _images et
+# conditional_formatting._cf_rules, qui n'ont pas d'équivalent public en
+# 3.1.2. Le test de fuite de test_transform_external.py est ce qui
+# surveille cette borne à la montée de version.
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+xlrd==2.0.1
+access-parser==0.0.6
+chardet==5.2.0
+defusedxml==0.7.1
+# SANS Pillow, openpyxl retire xl/media/ en silence et ws._images reste
+# toujours vide : les images disparaissent de la copie sans que rien ne
+# puisse les compter ni l'annoncer. Il les rend VISIBLES au moteur, qui
+# les efface ensuite.
+Pillow==12.2.0
+# 1404 mots français, hors réseau, un seul fichier. Le dictionnaire de la
+# règle du texte ; import « randomwordfr », pas le nom du paquet. Déjà
+# dans requirement/erplibre_require-ments.txt, donc .venv.erplibre l'a —
+# ce venv-ci en a besoin pour son propre compte.
+python-randomword-fr==1.0.0

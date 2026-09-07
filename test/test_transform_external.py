@@ -1,0 +1,1208 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+
+"""Transformer un fichier externe : ce qui compte est ce qui NE sort PAS.
+
+Remplacer une cellule est facile. Ce qui produit un fichier faussement
+propre, c'est de croire qu'un classeur ne porte de la donnée que dans ses
+cellules. Un `.xlsx` en porte dans une douzaine d'autres endroits, et deux
+d'entre eux — le cache d'un tableau croisé et un lien externe — en portent
+une COPIE entière.
+
+Le test de fuite est donc le cœur de ce fichier. Il pose 24 marqueurs
+inventés, un par vecteur : 19 disparaissent, et 5 restent — ces cinq étant
+référencés par des formules que la règle préserve, et qu'on ne peut donc
+pas supprimer sans casser ce qu'on vient de garantir. Il assert la liste
+EXACTE des survivants et non « rien d'autre » : c'est ce qui le fait tomber
+quand une montée de version d'openpyxl rouvre un vecteur.
+
+Trois pièges que seule l'exécution a donnés, et que ce fichier fige :
+`isinstance(True, int)` vaut True, donc une case à cocher deviendrait un
+montant ; `xlrd` stocke une erreur par son CODE ENTIER, donc `#REF!`
+deviendrait un montant plausible et `#NULL!` un zéro légitime ; et
+`csv.reader` ne rend que des chaînes, donc une colonne de montants
+deviendrait des mots.
+
+La suite tourne sous `.venv.erplibre`, qui n'a pas openpyxl : tout ce qui
+en dépend est derrière `skipUnless` et se DIT ignoré, jamais vert en
+silence.
+"""
+
+import datetime
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import tempfile
+import unittest
+import zipfile
+
+from script.data import external_file as noyau
+from script.data import external_file_formats as formats
+from script.todo import todo_i18n, transform_setup
+
+VIVIER = noyau.vivier_de_mots()
+
+
+def _options(**extra):
+    base = {
+        "vivier": VIVIER,
+        "nombres": True,
+        "texte": True,
+        "entetes": False,
+        "feuilles": None,
+        "etiquettes": {},
+        "colonnes_intactes": set(),
+        "bornes": {},
+    }
+    base.update(extra)
+    return base
+
+
+class TestNombre(unittest.TestCase):
+    """Le signe, le zéro, le type, et l'étendue mesurée."""
+
+    def setUp(self):
+        self.rng = random.Random(1234)
+
+    def test_positif_reste_positif(self):
+        for _ in range(50):
+            self.assertGreater(noyau.nouveau_nombre(7, self.rng), 0)
+
+    def test_negatif_reste_negatif(self):
+        for _ in range(50):
+            self.assertLess(noyau.nouveau_nombre(-7, self.rng), 0)
+
+    def test_zero_reste_zero(self):
+        # Zéro n'a pas de signe à préserver, et un zéro qui devient 743
+        # fabrique de la donnée là où il n'y en avait pas.
+        self.assertEqual(noyau.nouveau_nombre(0, self.rng), 0)
+        self.assertEqual(noyau.nouveau_nombre(0.0, self.rng), 0.0)
+
+    def test_entier_rend_entier(self):
+        valeur = noyau.nouveau_nombre(5, self.rng)
+        self.assertIsInstance(valeur, int)
+        self.assertNotIsInstance(valeur, bool)
+
+    def test_flottant_rend_flottant(self):
+        self.assertIsInstance(noyau.nouveau_nombre(5.5, self.rng), float)
+
+    def test_repli_zero_mille_sans_bornes(self):
+        for _ in range(200):
+            self.assertLessEqual(abs(noyau.nouveau_nombre(5, self.rng)), 1000)
+
+    def test_tirage_dans_les_bornes(self):
+        for _ in range(200):
+            valeur = noyau.nouveau_nombre(2024, self.rng, bornes=(2000, 2030))
+            self.assertGreaterEqual(valeur, 2000)
+            self.assertLessEqual(valeur, 2030)
+
+    def test_colonne_zero_un_ne_rend_jamais_743(self):
+        """La leçon d'anonymize.py : un taux à 743 fait lever l'ORM."""
+        for _ in range(200):
+            valeur = noyau.nouveau_nombre(0.15, self.rng, bornes=(0.0, 1.0))
+            self.assertGreaterEqual(valeur, 0.0)
+            self.assertLessEqual(valeur, 1.0)
+
+    def test_bornes_negatives_gardent_le_signe_et_l_etendue(self):
+        for _ in range(200):
+            valeur = noyau.nouveau_nombre(-3, self.rng, bornes=(-50, 200))
+            self.assertLess(valeur, 0)
+            self.assertGreaterEqual(valeur, -50)
+
+    def test_meme_valeur_meme_sortie(self):
+        """Sans table, une clé de jointure se désagrège ligne à ligne."""
+        table = noyau.Correspondance()
+        premier = noyau.nouveau_nombre(4711, self.rng, table=table)
+        for _ in range(20):
+            self.assertEqual(
+                noyau.nouveau_nombre(4711, self.rng, table=table),
+                premier,
+            )
+
+    def test_types_distincts_ne_se_confondent_pas(self):
+        table = noyau.Correspondance()
+        noyau.nouveau_nombre(5, self.rng, table=table)
+        noyau.nouveau_nombre(5.0, self.rng, table=table)
+        self.assertEqual(len(table.nombres), 2)
+
+
+class TestPiegesDeType(unittest.TestCase):
+    """Les gardes, dans l'ordre où ils doivent se déclencher."""
+
+    def setUp(self):
+        self.rng = random.Random(7)
+        self.table = noyau.Correspondance()
+        self.options = _options()
+
+    def _anon(self, valeur, **extra):
+        options = _options(**extra)
+        return noyau.anonymise_cellule(valeur, options, self.table, self.rng)
+
+    def test_booleen_traverse_intact(self):
+        # isinstance(True, int) vaut True : sans garde explicite, toute
+        # case à cocher deviendrait un montant.
+        self.assertIs(self._anon(True), noyau._INTACTE)
+        self.assertIs(self._anon(False), noyau._INTACTE)
+
+    def test_date_traverse_intacte(self):
+        for valeur in (
+            datetime.datetime(2020, 1, 2, 3, 4),
+            datetime.date(2020, 1, 2),
+            datetime.time(3, 4),
+        ):
+            self.assertIs(self._anon(valeur), noyau._INTACTE)
+
+    def test_vide_traverse_intact(self):
+        self.assertIs(self._anon(None), noyau._INTACTE)
+        self.assertIs(self._anon(""), noyau._INTACTE)
+
+    def test_formule_traverse_intacte(self):
+        self.assertIs(self._anon('=IF(A1="x",1,0)'), noyau._INTACTE)
+
+    def test_les_sept_valeurs_erreur_traversent_intactes(self):
+        for erreur in noyau.VALEURS_ERREUR:
+            self.assertIs(
+                self._anon(erreur),
+                noyau._INTACTE,
+                f"{erreur} doit rester intacte",
+            )
+
+    def test_il_y_a_bien_sept_valeurs_erreur(self):
+        self.assertEqual(len(noyau.VALEURS_ERREUR), 7)
+
+    def test_binaire_est_vide_pas_recopie(self):
+        # Une colonne OLE d'Access peut porter un document entier.
+        self.assertIsNone(self._anon(b"\x00document"))
+        self.assertIsNone(self._anon(bytearray(b"\x01")))
+
+    def test_texte_refuse_ne_touche_rien(self):
+        self.assertIs(self._anon("Alpha", texte=False), noyau._INTACTE)
+
+    def test_nombres_refuses_ne_touchent_rien(self):
+        self.assertIs(self._anon(42, nombres=False), noyau._INTACTE)
+
+
+class TestNormalisationXls(unittest.TestCase):
+    """xlrd porte le type dans ctype, jamais dans la valeur."""
+
+    def test_code_23_rend_ref(self):
+        self.assertEqual(noyau.normaliser_xls(5, 23, 0), "#REF!")
+
+    def test_code_0_rend_null(self):
+        """Le piège : « 0 reste 0 » en ferait un zéro légitime."""
+        self.assertEqual(noyau.normaliser_xls(5, 0, 0), "#NULL!")
+
+    def test_les_sept_codes_sont_couverts(self):
+        self.assertEqual(
+            set(noyau.CODES_ERREUR_XLS.values()), set(noyau.VALEURS_ERREUR)
+        )
+
+    def test_booleen_rend_un_vrai_booleen(self):
+        self.assertIs(noyau.normaliser_xls(4, 1, 0), True)
+        self.assertIs(noyau.normaliser_xls(4, 0, 0), False)
+
+    def test_vide_rend_none(self):
+        self.assertIsNone(noyau.normaliser_xls(0, "", 0))
+        self.assertIsNone(noyau.normaliser_xls(6, "", 0))
+
+    def test_texte_traverse(self):
+        self.assertEqual(noyau.normaliser_xls(1, "Alpha", 0), "Alpha")
+
+
+class TestCoercition(unittest.TestCase):
+    """Un champ CSV ou un attribut XML arrive sans type."""
+
+    def test_nombres_reconnus(self):
+        self.assertEqual(noyau.coercer_texte("4711"), 4711)
+        self.assertEqual(noyau.coercer_texte("-320"), -320)
+        self.assertEqual(noyau.coercer_texte("0.15"), 0.15)
+        self.assertEqual(noyau.coercer_texte("0"), 0)
+
+    def test_zeros_de_tete_restent_du_texte(self):
+        # « 007 » est un code, pas une quantité.
+        self.assertEqual(noyau.coercer_texte("007"), "007")
+
+    def test_ce_que_float_accepterait_a_tort(self):
+        for texte in ("1e5", "NaN", "inf", "-inf", "1,5", " 1 2 "):
+            self.assertEqual(noyau.coercer_texte(texte), texte)
+
+    def test_non_chaine_traverse(self):
+        self.assertEqual(noyau.coercer_texte(5), 5)
+        self.assertIsNone(noyau.coercer_texte(None))
+
+
+class TestVivierEtMots(unittest.TestCase):
+    """L'attribution est indexée, jamais tirée."""
+
+    def test_vivier_mesure(self):
+        # 1404 mots dans randomwordfr, 1366 après translittération des
+        # accents et rejet de ce qui n'est pas un mot simple.
+        self.assertEqual(len(VIVIER), 1366)
+
+    def test_vivier_sans_accent_ni_espace(self):
+        for mot in VIVIER:
+            self.assertRegex(mot, r"^[a-z_]+$")
+
+    def test_vivier_trie_et_dedoublonne(self):
+        # TRIÉ : l'ordre d'un set varie d'un processus à l'autre, et une
+        # table réutilisée rendrait d'autres mots pour les mêmes valeurs.
+        self.assertEqual(list(VIVIER), sorted(VIVIER))
+        self.assertEqual(len(VIVIER), len(set(VIVIER)))
+
+    def test_deux_appels_rendent_la_meme_sequence(self):
+        self.assertEqual(noyau.vivier_de_mots(), noyau.vivier_de_mots())
+
+    def test_meme_source_meme_mot(self):
+        table = noyau.Correspondance()
+        premier = noyau.nouveau_mot("Alpha", table, VIVIER)
+        self.assertEqual(noyau.nouveau_mot("Alpha", table, VIVIER), premier)
+
+    def test_valeurs_distinctes_rendent_mots_distincts(self):
+        """La propriété que le tirage ne donnait pas.
+
+        Sur 20 mots tirés au hasard, six valeurs distinctes ont déjà 56 %
+        de chance d'en partager un, et deux clients qui partagent un mot
+        fusionnent en une seule clé.
+        """
+        table = noyau.Correspondance()
+        sorties = {
+            noyau.nouveau_mot(f"valeur-{i}", table, VIVIER)
+            for i in range(len(VIVIER) + 1)
+        }
+        self.assertEqual(len(sorties), len(VIVIER) + 1)
+
+    def test_au_dela_du_vivier_ce_sont_des_PAIRES(self):
+        table = noyau.Correspondance()
+        for i in range(len(VIVIER) + 3):
+            dernier = noyau.nouveau_mot(f"v{i}", table, VIVIER)
+        self.assertIn("_", dernier)
+        self.assertFalse(dernier.startswith("mot_"))
+        gauche, droite = dernier.split("_", 1)
+        self.assertIn(gauche, VIVIER)
+        self.assertIn(droite, VIVIER)
+
+    def test_repli_a_vingt_mots_annonce(self):
+        capacites = formats.capabilities()
+        self.assertIn("mots", capacites)
+
+
+class TestGraine(unittest.TestCase):
+    def test_meme_graine_meme_passage(self):
+        sorties = []
+        for _ in range(2):
+            rng = random.Random(42)
+            table = noyau.Correspondance()
+            sorties.append(
+                [
+                    noyau.anonymise_cellule(v, _options(), table, rng)
+                    for v in (10, -10, "Alpha", 3.5, "Beta", 77)
+                ]
+            )
+        self.assertEqual(sorties[0], sorties[1])
+
+
+class TestPortee(unittest.TestCase):
+    """La portée se décide sur les coordonnées, jamais sur la valeur."""
+
+    def test_ligne_un_hors_portee_par_defaut(self):
+        self.assertFalse(noyau.cellule_en_portee("F", 1, 1, _options()))
+        self.assertTrue(
+            noyau.cellule_en_portee("F", 1, 1, _options(entetes=True))
+        )
+
+    def test_feuille_non_listee_hors_portee(self):
+        options = _options(feuilles=["Autre"])
+        self.assertFalse(noyau.cellule_en_portee("F", 2, 1, options))
+        self.assertTrue(noyau.cellule_en_portee("Autre", 2, 1, options))
+
+    def test_colonne_exclue_sur_toutes_ses_lignes(self):
+        options = _options(
+            etiquettes={("F", 2): "montant"},
+            colonnes_intactes={"montant"},
+        )
+        for ligne in (2, 3, 900):
+            self.assertFalse(noyau.cellule_en_portee("F", ligne, 2, options))
+
+    def test_colonne_par_index_en_repli(self):
+        options = _options(colonnes_intactes={"3"})
+        self.assertFalse(noyau.cellule_en_portee("F", 2, 3, options))
+
+
+class TestPlancherStructurel(unittest.TestCase):
+    """anonymize.py refuse par le NOM avant de lire une valeur."""
+
+    def test_id_nu(self):
+        self.assertTrue(noyau.colonne_plancher("id"))
+        self.assertTrue(noyau.colonne_plancher("ID"))
+
+    def test_suffixes_de_relation(self):
+        for etiquette in (
+            "partner_id",
+            "partner_ids",
+            "partner_id/id",
+            "partner_id/.id",
+        ):
+            self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
+
+    def test_champs_interdits_repris_d_anonymize(self):
+        for etiquette in ("state", "sequence", "active", "display_name"):
+            self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
+
+    def test_une_colonne_ordinaire_passe(self):
+        for etiquette in ("montant", "nom", "identifiant_client", ""):
+            self.assertFalse(noyau.colonne_plancher(etiquette), etiquette)
+
+    def test_plancher_actif_avec_les_reponses_par_defaut(self):
+        """Appuyer sur Entrée ne doit pas détruire partner_id/id."""
+        options = _options(etiquettes={("F", 1): "partner_id/id"})
+        self.assertFalse(noyau.cellule_en_portee("F", 2, 1, options))
+
+
+class TestSerialisationHorsTableur(unittest.TestCase):
+    def test_dates_en_iso(self):
+        self.assertEqual(
+            noyau.valeur_hors_tableur(datetime.date(2020, 1, 2)),
+            "2020-01-02",
+        )
+
+    def test_none_reste_none(self):
+        self.assertIsNone(noyau.valeur_hors_tableur(None))
+
+    def test_objet_a_texte_rend_son_texte(self):
+        """Un ArrayFormula ne définit pas __str__ : un csv.writer naïf
+        graverait son adresse mémoire dans le fichier."""
+
+        class FausseFormule:
+            text = "=SUM(A1:A2)"
+
+        self.assertEqual(
+            noyau.valeur_hors_tableur(FausseFormule()), "=SUM(A1:A2)"
+        )
+
+    def test_booleen_et_erreur_traversent(self):
+        self.assertIs(noyau.valeur_hors_tableur(True), True)
+        self.assertEqual(noyau.valeur_hors_tableur("#REF!"), "#REF!")
+
+
+class TestNomDeFichier(unittest.TestCase):
+    def test_separateur_remplace(self):
+        pris = set()
+        self.assertNotIn("/", noyau.nom_de_fichier_sur("Ventes/2024", pris))
+
+    def test_nom_vide_numerote(self):
+        pris = set()
+        self.assertTrue(
+            noyau.nom_de_fichier_sur("///", pris).startswith("feuille_")
+        )
+
+    def test_deux_noms_reduits_au_meme_se_distinguent(self):
+        pris = set()
+        premier = noyau.nom_de_fichier_sur("a/b", pris)
+        second = noyau.nom_de_fichier_sur("a:b", pris)
+        self.assertNotEqual(premier, second)
+
+
+class TestPorteEntree(unittest.TestCase):
+    """Refuser avant qu'une bibliothèque rapporte une exception."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _fichier(self, nom, octets=b"x"):
+        chemin = os.path.join(self.base, nom)
+        with open(chemin, "wb") as fh:
+            fh.write(octets)
+        return chemin
+
+    def test_repertoire_refuse(self):
+        self.assertEqual(noyau.verifier_source(self.base), "pas_un_fichier")
+
+    def test_absent_refuse(self):
+        self.assertEqual(
+            noyau.verifier_source(os.path.join(self.base, "rien")),
+            "pas_un_fichier",
+        )
+
+    def test_taille_nulle_refusee(self):
+        self.assertEqual(
+            noyau.verifier_source(self._fichier("vide.csv", b"")), "vide"
+        )
+
+    def test_fichier_ordinaire_accepte(self):
+        self.assertIsNone(
+            noyau.verifier_source(self._fichier("bon.csv", b"a,b\n"))
+        )
+
+    def test_detect_format_par_les_octets(self):
+        ole2 = self._fichier(
+            "menteur.xlsx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1rest"
+        )
+        # Un OLE2 sous une extension OOXML : protégé ou non conforme,
+        # jamais passé à openpyxl, qui rendrait le même BadZipFile pour un
+        # classeur chiffré et pour un fichier corrompu.
+        self.assertEqual(noyau.detect_format(ole2), "protege")
+
+        vrai_xls = self._fichier(
+            "vieux.xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1rest"
+        )
+        self.assertEqual(noyau.detect_format(vrai_xls), "xls")
+
+    def test_divergence_signalee(self):
+        html = self._fichier("export.xls", b"<html><body>t</body></html>")
+        self.assertTrue(
+            noyau.format_divergent(html, noyau.detect_format(html))
+        )
+
+    def test_has_macros_ne_leve_sur_rien(self):
+        """.xlsb passe par cette fonction et par elle seule."""
+        for nom, octets in (
+            ("ole.xlsb", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+            ("tronque.xlsx", b"PK\x03\x04tronque"),
+            ("texte.xlsx", b"pas un zip"),
+        ):
+            self.assertFalse(noyau.has_macros(self._fichier(nom, octets)), nom)
+
+    def test_has_macros_vrai_sur_un_zip_qui_en_porte(self):
+        chemin = os.path.join(self.base, "avec.xlsm")
+        with zipfile.ZipFile(chemin, "w") as z:
+            z.writestr("xl/vbaProject.bin", b"\x00")
+        self.assertTrue(noyau.has_macros(chemin))
+
+
+class TestBoutEnBoutStdlib(unittest.TestCase):
+    """CSV, JSON et XML : aucun openpyxl, donc lançables partout."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _ecrire(self, nom, contenu):
+        chemin = os.path.join(self.base, nom)
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        return chemin
+
+    def test_csv_bout_en_bout(self):
+        source = self._ecrire(
+            "clients.csv",
+            "id,nom,montant,taux\n1,Alpha,4711,0.15\n"
+            "2,Beta,-320,0.20\n3,Alpha,4711,0.15\n",
+        )
+        sortie = os.path.join(self.base, "out.csv")
+        bilan = formats.ecrire(source, sortie, {"graine": "7"})
+        lignes = [
+            l.split(",")
+            for l in open(sortie, encoding="utf-8").read().splitlines()
+        ]
+        # L'en-tête est intact par défaut.
+        self.assertEqual(lignes[0], ["id", "nom", "montant", "taux"])
+        # Le plancher protège « id ».
+        self.assertEqual([l[0] for l in lignes[1:]], ["1", "2", "3"])
+        # Le même client rend le même mot dans les deux lignes.
+        self.assertEqual(lignes[1][1], lignes[3][1])
+        self.assertNotEqual(lignes[1][1], lignes[2][1])
+        # Un montant reste un nombre, du même signe.
+        self.assertGreater(float(lignes[1][2]), 0)
+        self.assertLess(float(lignes[2][2]), 0)
+        # Le taux reste dans l'étendue mesurée de sa colonne.
+        for ligne in lignes[1:]:
+            self.assertLessEqual(float(ligne[3]), 0.20)
+            self.assertGreaterEqual(float(ligne[3]), 0.15)
+        self.assertGreater(bilan["remplacees"], 0)
+
+    def test_csv_la_source_n_est_pas_modifiee(self):
+        source = self._ecrire("s.csv", "a,b\n1,Alpha\n")
+        avant = (os.path.getmtime(source), os.path.getsize(source))
+        formats.ecrire(
+            source, os.path.join(self.base, "o.csv"), {"graine": "1"}
+        )
+        self.assertEqual(
+            avant, (os.path.getmtime(source), os.path.getsize(source))
+        )
+
+    def test_csv_une_seule_colonne_ne_leve_pas(self):
+        """csv.Sniffer lève sur cette forme, la plus courante ici."""
+        source = self._ecrire("noms.csv", "nom\nAlpha\nBeta\nGamma\n")
+        rapport = formats.report(source)
+        self.assertEqual(rapport["delimiteur"], ",")
+        self.assertEqual(rapport["delimiteur_source"], "repli")
+
+    def test_csv_dents_de_scie_ne_leve_pas(self):
+        source = self._ecrire("scie.csv", "a,b,c\n1,2\n3,4,5,6\n")
+        rapport = formats.report(source)
+        self.assertTrue(rapport["feuilles"])
+
+    def test_csv_encodage_sans_chardet(self):
+        chemin = os.path.join(self.base, "bom.csv")
+        with open(chemin, "wb") as fh:
+            fh.write("﻿a,b\n1,Alpha\n".encode("utf-8"))
+        rapport = formats.report(chemin)
+        self.assertEqual(rapport["encodage_source"], "bom")
+        self.assertEqual(rapport["encodage"], "utf-8-sig")
+
+    def test_json_cles_preservees_valeurs_anonymisees(self):
+        source = self._ecrire(
+            "d.json",
+            json.dumps(
+                [
+                    {"id": 1, "nom": "Alpha", "montant": 4711},
+                    {"id": 2, "nom": "Beta", "montant": -320},
+                ]
+            ),
+        )
+        sortie = os.path.join(self.base, "o.json")
+        formats.ecrire(source, sortie, {"graine": "3"})
+        arbre = json.load(open(sortie, encoding="utf-8"))
+        self.assertEqual(sorted(arbre[0].keys()), ["id", "montant", "nom"])
+        self.assertNotEqual(arbre[0]["nom"], "Alpha")
+        self.assertGreater(arbre[0]["montant"], 0)
+        self.assertLess(arbre[1]["montant"], 0)
+
+    def test_xml_texte_et_attributs_par_la_meme_table(self):
+        source = self._ecrire(
+            "d.xml",
+            '<racine><ligne ref="Alpha"><nom>Alpha</nom>'
+            "<n>4711</n></ligne></racine>",
+        )
+        sortie = os.path.join(self.base, "o.xml")
+        formats.ecrire(source, sortie, {"graine": "5"})
+        import xml.etree.ElementTree as ET
+
+        racine = ET.parse(sortie).getroot()
+        ligne = racine.find("ligne")
+        # Balises et noms d'attribut sont de la structure et restent.
+        self.assertEqual(racine.tag, "racine")
+        self.assertIn("ref", ligne.attrib)
+        # Le MÊME identifiant en attribut et en texte rend le même mot,
+        # sinon la jointure entre les deux casse.
+        self.assertEqual(ligne.attrib["ref"], ligne.find("nom").text)
+        self.assertNotEqual(ligne.attrib["ref"], "Alpha")
+
+    def test_plan_n_ecrit_rien(self):
+        source = self._ecrire("p.csv", "a,b\n1,Alpha\n")
+        avant = (os.path.getmtime(source), os.path.getsize(source))
+        apercu = formats.plan(source, {"graine": "1"})
+        self.assertEqual(
+            avant, (os.path.getmtime(source), os.path.getsize(source))
+        )
+        self.assertIn("remplacees", apercu)
+        self.assertIn("colonnes_ecartees", apercu)
+
+    def test_destination_egale_source_refusee(self):
+        source = self._ecrire("s.csv", "a,b\n1,Alpha\n")
+        avant = open(source, encoding="utf-8").read()
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats.ecrire(source, source, {"graine": "1"})
+        self.assertEqual(capture.exception.cle, "destination_source")
+        self.assertEqual(open(source, encoding="utf-8").read(), avant)
+
+    def test_destination_lien_vers_la_source_refusee(self):
+        source = self._ecrire("s.csv", "a,b\n1,Alpha\n")
+        lien = os.path.join(self.base, "lien.csv")
+        os.symlink(source, lien)
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats.ecrire(source, lien, {"graine": "1"})
+        self.assertEqual(capture.exception.cle, "destination_source")
+
+    def test_feuille_inconnue_refusee(self):
+        source = self._ecrire("s.csv", "a,b\n1,Alpha\n")
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats.ecrire(
+                source,
+                os.path.join(self.base, "o.csv"),
+                {"feuilles": ["Introuvable"]},
+            )
+        self.assertEqual(capture.exception.cle, "aucune_feuille")
+
+    def test_aucun_temporaire_ne_subsiste_apres_un_echec(self):
+        cible = os.path.join(self.base, "sortie", "o.csv")
+
+        def graveur_qui_echoue(_chemin):
+            raise OSError("disque plein")
+
+        with self.assertRaises(OSError):
+            formats._ecrire_atomique(cible, graveur_qui_echoue)
+        restes = [
+            n
+            for n in os.listdir(os.path.dirname(cible))
+            if n.startswith(".transform-")
+        ]
+        self.assertEqual(restes, [])
+
+    def test_repertoire_de_destination_non_vide_refuse(self):
+        plein = os.path.join(self.base, "plein")
+        os.makedirs(plein)
+        open(os.path.join(plein, "deja"), "w").close()
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats._preparer_repertoire(plein)
+        self.assertEqual(capture.exception.cle, "repertoire_non_vide")
+
+    def test_table_portable_entre_deux_fichiers(self):
+        """Le même client doit rendre le même mot dans tout un lot.
+
+        L'attribution étant indexée par ordre de première rencontre, deux
+        fichiers listant les mêmes clients dans un ORDRE DIFFÉRENT leur
+        donneraient des mots différents sans table partagée.
+        """
+        premier = self._ecrire("a.csv", "nom\nAlpha\nBeta\n")
+        second = self._ecrire("b.csv", "nom\nBeta\nAlpha\n")
+        table = os.path.join(self.base, "t.json")
+        formats.ecrire(
+            premier,
+            os.path.join(self.base, "a.out.csv"),
+            {"table_chemin": table},
+        )
+        formats.ecrire(
+            second,
+            os.path.join(self.base, "b.out.csv"),
+            {"table_chemin": table},
+        )
+        lus = {}
+        for nom, fichier in (
+            ("a", "a.out.csv"),
+            ("b", "b.out.csv"),
+        ):
+            lignes = (
+                open(os.path.join(self.base, fichier), encoding="utf-8")
+                .read()
+                .splitlines()[1:]
+            )
+            lus[nom] = lignes
+        # a.csv liste Alpha puis Beta ; b.csv l'inverse.
+        self.assertEqual(lus["a"][0], lus["b"][1])
+        self.assertEqual(lus["a"][1], lus["b"][0])
+
+    def test_la_table_est_en_0600(self):
+        source = self._ecrire("s.csv", "nom\nAlpha\n")
+        table = os.path.join(self.base, "t.json")
+        formats.ecrire(
+            source,
+            os.path.join(self.base, "o.csv"),
+            {"table_chemin": table},
+        )
+        self.assertEqual(os.stat(table).st_mode & 0o777, 0o600)
+
+    def test_conversion_csv_vers_json(self):
+        source = self._ecrire("s.csv", "nom,n\nAlpha,5\n")
+        sortie = os.path.join(self.base, "o.json")
+        formats.ecrire(source, sortie, {"conversion": "json", "graine": "1"})
+        arbre = json.load(open(sortie, encoding="utf-8"))
+        self.assertTrue(arbre)
+
+
+def _cles_du_menu(traduites_seulement=True):
+    """Les clés littérales passées à `t()` dans le module du menu."""
+    import ast
+
+    chemin = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "script",
+        "todo",
+        "transform_menu.py",
+    )
+    arbre = ast.parse(open(chemin, encoding="utf-8").read())
+    cles = []
+    for noeud in ast.walk(arbre):
+        if (
+            isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Name)
+            and noeud.func.id == "t"
+            and noeud.args
+            and isinstance(noeud.args[0], ast.Constant)
+            and isinstance(noeud.args[0].value, str)
+        ):
+            valeur = noeud.args[0].value
+            if valeur in cles:
+                continue
+            if traduites_seulement and valeur not in (todo_i18n.TRANSLATIONS):
+                continue
+            cles.append(valeur)
+    return cles
+
+
+class TestI18n(unittest.TestCase):
+    """Aucune clé ne doit s'afficher en anglais faute de traduction."""
+
+    def test_chaque_cle_erreur_du_moteur_est_traduite(self):
+        """Le garde AST ne peut pas couvrir le moteur.
+
+        Les clés du moteur sont des constantes dans un dict JSON, jamais
+        passées à `t()` chez lui — c'est le menu qui traduit. Et `t()`
+        rend la clé quand elle manque, sans lever : sans cette
+        vérification, un francophone lirait de l'anglais et aucun test ne
+        tomberait.
+        """
+        manquantes = [
+            valeur
+            for valeur in noyau.ERREURS.values()
+            if valeur not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual(manquantes, [])
+
+    def test_chaque_cle_du_menu_est_traduite(self):
+        manquantes = [
+            cle
+            for cle in _cles_du_menu(traduites_seulement=False)
+            if cle not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual(manquantes, [])
+
+    def test_les_deux_langues_sont_remplies(self):
+        for cle in list(noyau.ERREURS.values()):
+            entree = todo_i18n.TRANSLATIONS[cle]
+            self.assertTrue(entree.get("fr"), cle)
+            self.assertTrue(entree.get("en"), cle)
+
+    def test_les_libelles_correspondent_a_leur_parseur(self):
+        """Un « (O/n) » lu par _is_yes promet oui et vaut non.
+
+        La convention du dépôt : `(Y/n)` / `(O/n)` se lit par
+        `_is_yes_default_yes`, `(y/N)` / `(o/N)` par `_is_yes`.
+        """
+        # SEULEMENT les clés de ce module : le dépôt en compte des
+        # milliers, et d'autres menus formulent légitimement autrement.
+        verifiees = 0
+        for cle in _cles_du_menu():
+            entree = todo_i18n.TRANSLATIONS[cle]
+            if "(Y/n)" in cle:
+                self.assertIn("(O/n)", entree["fr"], cle)
+                verifiees += 1
+            if "(y/N)" in cle:
+                self.assertIn("(o/N)", entree["fr"], cle)
+                verifiees += 1
+        self.assertGreater(verifiees, 4, "le test ne vérifie rien")
+
+
+class TestEnvironnement(unittest.TestCase):
+    def test_formats_stdlib_disponibles_sans_venv(self):
+        for fmt in ("csv", "json", "xml", "macros"):
+            self.assertTrue(transform_setup.available(fmt), fmt)
+
+    def test_interpreteur_toujours_executable(self):
+        for fmt in ("csv", "xlsx", None):
+            self.assertTrue(
+                os.path.isfile(transform_setup.engine_python(fmt)), fmt
+            )
+
+    def test_paquet_systeme_delegue_a_todo_install(self):
+        """Aucune cascade apt/dnf/pacman/zypper de plus ici.
+
+        Et pas d'entrée `pacman` : mdbtools n'est pas dans les dépôts
+        officiels d'Arch, seulement l'AUR. `install_command` doit alors
+        rendre None plutôt qu'une commande qui échoue APRÈS le mot de
+        passe sudo.
+        """
+        self.assertNotIn("pacman", transform_setup.PAQUETS_ACCESS)
+        commande = transform_setup.system_packages_cmd()
+        self.assertTrue(commande is None or "mdbtools" in commande)
+
+    def test_creation_refusee_n_installe_rien(self):
+        lances = []
+        fait = transform_setup.create(
+            ask=lambda _: "n", executeur=lances.append
+        )
+        self.assertFalse(fait)
+        self.assertEqual(lances, [])
+
+    def test_capabilities_nomme_xlsb_illisible(self):
+        self.assertFalse(transform_setup.capabilities()["xlsb"])
+
+
+# ----------------------------------------------------------------------
+# Ce qui exige openpyxl. Ignoré et DIT quand il manque.
+# ----------------------------------------------------------------------
+MARQUEURS = {
+    "props_creator": "ZQXCREATOR",
+    "props_modif": "ZQXMODIF",
+    "props_title": "ZQXTITLE",
+    "props_keywords": "ZQXKEYWORD",
+    "custom_prop": "ZQXCUSTOM",
+    "comment_text": "ZQXCOMTEXT",
+    "comment_author": "ZQXCOMAUTH",
+    "hyperlink": "ZQXHYPER",
+    "header": "ZQXHEADER",
+    "footer": "ZQXFOOTER",
+    "validation": "ZQXVALID",
+    "condformat": "ZQXCONDF",
+    "chart_title": "ZQXCHTITLE",
+    "axis_x_title": "ZQXAXISX",
+    "axis_y_title": "ZQXAXISY",
+    "series_name": "ZQXSERIES",
+    "cat_cache": "ZQXCATCACHE",
+    "cell_value": "ZQXCELL",
+    "defined_value": "ZQXNAMEVAL",
+}
+
+# Les quatre familles référencées par une formule. On ne peut pas les
+# supprimer sans casser ce que la règle de la formule vient de préserver :
+# elles sont RAPPORTÉES, pas effacées.
+MARQUEURS_CLASSE_B = {
+    "defined_global": "ZQXNAMEGLOB",
+    "defined_local": "ZQXNAMELOC",
+    "table_name": "ZQXTABLE",
+    "formula_literal": "ZQXFORMULA",
+    "sheet_name": "ZQXSHEET",
+}
+
+TOUS_MARQUEURS = dict(MARQUEURS)
+TOUS_MARQUEURS.update(MARQUEURS_CLASSE_B)
+
+
+def _fabriquer_fixture(chemin):
+    """Un classeur portant un marqueur inventé dans chaque vecteur.
+
+    Le graphique DOIT être bâti par `add_data()` + `set_categories()` : un
+    `Series()` construit à la main puis appendu n'écrit ni `<cat>`, ni
+    `<val>`, ni `strRef` : les balises de `<ser>` se limitent alors à
+    `idx`, `order`, `tx`, `spPr`. Une fixture bâtie ainsi ne porte pas le
+    vecteur de cache, et le test rapporterait « effacé » sur un marqueur
+    qui n'a jamais été écrit.
+    """
+    from openpyxl import Workbook
+    from openpyxl.chart import BarChart, Reference, Series
+    from openpyxl.comments import Comment
+    from openpyxl.formatting.rule import CellIsRule
+    from openpyxl.packaging.custom import (
+        CustomPropertyList,
+        StringProperty,
+    )
+    from openpyxl.styles import PatternFill
+    from openpyxl.workbook.defined_name import DefinedName
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+
+    M = TOUS_MARQUEURS
+    classeur = Workbook()
+    onglet = classeur.active
+    onglet.title = M["sheet_name"]
+
+    onglet["A1"] = "etiquette"
+    onglet["B1"] = "montant"
+    onglet["A2"] = M["cell_value"]
+    onglet["B2"] = 4711
+    onglet["A3"] = "autre"
+    onglet["B3"] = 12
+    onglet["C2"] = f'=IF(A2="{M["formula_literal"]}",1,0)'
+
+    classeur.properties.creator = M["props_creator"]
+    classeur.properties.lastModifiedBy = M["props_modif"]
+    classeur.properties.title = M["props_title"]
+    classeur.properties.keywords = M["props_keywords"]
+
+    proprietes = CustomPropertyList()
+    proprietes.append(StringProperty(name="client", value=M["custom_prop"]))
+    classeur.custom_doc_props = proprietes
+
+    onglet["A2"].comment = Comment(M["comment_text"], M["comment_author"])
+    onglet["A3"].hyperlink = f"https://{M['hyperlink']}.example/rapport.xlsx"
+    onglet.oddHeader.center.text = M["header"]
+    onglet.oddFooter.left.text = M["footer"]
+
+    validation = DataValidation(
+        type="list", formula1=f'"{M["validation"]},autre"'
+    )
+    onglet.add_data_validation(validation)
+    validation.add("D2:D10")
+
+    onglet.conditional_formatting.add(
+        "E2:E10",
+        CellIsRule(
+            operator="equal",
+            formula=[f'"{M["condformat"]}"'],
+            fill=PatternFill(start_color="FFEE1111", end_color="FFEE1111"),
+        ),
+    )
+    onglet.auto_filter.ref = "A1:B3"
+
+    classeur.defined_names.add(
+        DefinedName(M["defined_global"], attr_text=f'"{M["defined_value"]}"')
+    )
+    onglet.defined_names.add(
+        DefinedName(M["defined_local"], attr_text=f"'{onglet.title}'!$A$1")
+    )
+
+    onglet["G1"] = M["table_name"]
+    onglet["G2"] = "x"
+    tableau = Table(displayName=M["table_name"], ref="G1:G2")
+    tableau.tableStyleInfo = TableStyleInfo(name="TableStyleMedium9")
+    onglet.add_table(tableau)
+
+    graphique = BarChart()
+    graphique.title = M["chart_title"]
+    graphique.x_axis.title = M["axis_x_title"]
+    graphique.y_axis.title = M["axis_y_title"]
+    graphique.add_data(
+        Reference(onglet, min_col=2, min_row=1, max_row=3),
+        titles_from_data=True,
+    )
+    graphique.set_categories(
+        Reference(onglet, min_col=1, min_row=2, max_row=3)
+    )
+    graphique.series.append(
+        Series(
+            Reference(onglet, min_col=2, min_row=2, max_row=3),
+            title=M["series_name"],
+        )
+    )
+    onglet.add_chart(graphique, "J2")
+
+    classeur.save(chemin)
+    _injecter_cache(chemin)
+    return chemin
+
+
+def _injecter_cache(chemin):
+    """Poser un cache de catégories, qu'openpyxl n'écrit pas lui-même.
+
+    C'est Excel qui remplit `strCache`, et les balises du graphique sont
+    écrites SANS préfixe « c: » — mesuré. Viser `<c:cat>` ne trouverait
+    rien, et le vecteur resterait absent de la fixture.
+    """
+    temporaire = chemin + ".tmp"
+    cache = (
+        "<cat><strRef><f>ref</f><strCache>"
+        '<ptCount val="1"/><pt idx="0"><v>'
+        + TOUS_MARQUEURS["cat_cache"]
+        + "</v></pt></strCache></strRef></cat>"
+    )
+    with zipfile.ZipFile(chemin) as entree, zipfile.ZipFile(
+        temporaire, "w", zipfile.ZIP_DEFLATED
+    ) as sortie:
+        for item in entree.infolist():
+            octets = entree.read(item.filename)
+            if item.filename.startswith("xl/charts/chart"):
+                texte = octets.decode("utf-8")
+                assert "<cat>" in texte, (
+                    "openpyxl n'a pas écrit <cat> : la fixture ne porte"
+                    " pas le vecteur de cache, la mesure serait creuse"
+                )
+                debut = texte.index("<cat>")
+                fin = texte.index("</cat>") + len("</cat>")
+                octets = (texte[:debut] + cache + texte[fin:]).encode("utf-8")
+            sortie.writestr(item, octets)
+    os.replace(temporaire, chemin)
+
+
+# Le processus de test tourne sous `.venv.erplibre`, qui n'a PAS openpyxl :
+# c'est la contrainte de `run_unit_test.sh`. La fabrication de la fixture et
+# l'écriture passent donc par le venv dédié, en SOUS-PROCESSUS — ce qui
+# éprouve du même coup le protocole JSON du moteur. Le balayage, lui, reste
+# ici : il ne demande que `zipfile`.
+_AMORCE = (
+    "import importlib.util, sys;"
+    "s = importlib.util.spec_from_file_location('fx', sys.argv[1]);"
+    "m = importlib.util.module_from_spec(s);"
+    "s.loader.exec_module(m);"
+    "m._fabriquer_fixture(sys.argv[2])"
+)
+
+
+def _racine():
+    return os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _sous_processus(arguments):
+    """Lancer sous l'interpréteur du venv dédié. Rend le CompletedProcess."""
+    environnement = dict(os.environ)
+    environnement["PYTHONPATH"] = _racine()
+    return subprocess.run(
+        [transform_setup.engine_python("xlsx")] + list(arguments),
+        capture_output=True,
+        text=True,
+        cwd=_racine(),
+        env=environnement,
+    )
+
+
+def _fabriquer_par_sous_processus(chemin):
+    acheve = _sous_processus(
+        ["-c", _AMORCE, os.path.abspath(__file__), chemin]
+    )
+    if acheve.returncode:
+        raise AssertionError(
+            "la fixture n'a pas pu être fabriquée :\n" + acheve.stderr
+        )
+    return chemin
+
+
+def _ecrire_par_sous_processus(source, destination, options):
+    acheve = _sous_processus(
+        [
+            os.path.join("script", "data", "external_file.py"),
+            "--apply",
+            source,
+            "--out",
+            destination,
+            "--options",
+            json.dumps(options),
+        ]
+    )
+    try:
+        resultat = json.loads(acheve.stdout or "")
+    except ValueError:
+        raise AssertionError(
+            "stdout ne porte pas de JSON :\n"
+            + (acheve.stdout or "")[:400]
+            + "\n"
+            + acheve.stderr[-800:]
+        )
+    if "erreur" in resultat:
+        raise AssertionError(f"{resultat['erreur']} {resultat.get('detail')}")
+    return resultat
+
+
+def _balayer(chemin):
+    """{clé de marqueur: [parties du zip]} — TOUTES les parties."""
+    trouves = {}
+    with zipfile.ZipFile(chemin) as archive:
+        for nom in archive.namelist():
+            texte = archive.read(nom).decode("utf-8", "ignore")
+            for cle, marqueur in TOUS_MARQUEURS.items():
+                if marqueur in texte:
+                    trouves.setdefault(cle, []).append(nom)
+    return trouves
+
+
+@unittest.skipUnless(
+    transform_setup.available("xlsx"),
+    "openpyxl absent : bâtir .venv.todo.external_data"
+    " (TODO › Transform data › Install the reading environment)",
+)
+class TestFuiteXlsx(unittest.TestCase):
+    """Le test qui garde toute la fonctionnalité.
+
+    Son résultat est MESURÉ, pas espéré. La version précédente de ce
+    nettoyage était annoncée « vérifiée » et laissait passer trois
+    vecteurs sur quatre : les caches de graphique, les titres d'axes et
+    les hyperliens de cellule.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.source = _fabriquer_par_sous_processus(
+            os.path.join(self.base, "source.xlsx")
+        )
+
+    def test_la_fixture_porte_bien_tous_les_marqueurs(self):
+        """Sans cette garde, un « effacé » peut ne rien prouver."""
+        presents = set(_balayer(self.source))
+        manquants = sorted(set(TOUS_MARQUEURS) - presents)
+        self.assertEqual(manquants, [])
+
+    def _anonymiser(self, **options):
+        sortie = os.path.join(self.base, "sortie.xlsx")
+        _ecrire_par_sous_processus(
+            self.source, sortie, {"graine": "11", **options}
+        )
+        return sortie
+
+    def test_les_seuls_survivants_sont_les_quatre_familles(self):
+        survivants = set(_balayer(self._anonymiser()))
+        self.assertEqual(
+            survivants,
+            set(MARQUEURS_CLASSE_B),
+            "la liste EXACTE : un vecteur rouvert doit faire tomber ce"
+            " test, pas passer inaperçu",
+        )
+
+    def test_dix_neuf_marqueurs_sur_vingt_quatre_sont_effaces(self):
+        efface = set(TOUS_MARQUEURS) - set(_balayer(self._anonymiser()))
+        self.assertEqual(len(TOUS_MARQUEURS), 24)
+        self.assertEqual(len(efface), 19)
+
+    def test_la_constante_d_une_plage_nommee_passe_par_la_table(self):
+        """Le NOM survit par nécessité, la VALEUR doit partir.
+
+        Mesurée comme survivante tant qu'on ne remplace pas la constante :
+        c'est ce que la classe (b) exige, et le nom reste résolvable.
+        """
+        survivants = _balayer(self._anonymiser())
+        self.assertNotIn("defined_value", survivants)
+        self.assertIn("defined_global", survivants)
+
+    def test_les_proprietes_du_document_sont_videes(self):
+        sortie = self._anonymiser()
+        with zipfile.ZipFile(sortie) as archive:
+            coeur = archive.read("docProps/core.xml").decode("utf-8")
+        # `creator` vaut « openpyxl » par DÉFAUT : sans creator=None,
+        # l'élément ne disparaît pas, il est rempli.
+        self.assertNotIn("dc:creator", coeur)
+        self.assertNotIn("cp:lastModifiedBy", coeur)
+
+    def test_les_parties_qui_portent_une_copie_disparaissent(self):
+        with zipfile.ZipFile(self._anonymiser()) as archive:
+            noms = archive.namelist()
+        for prefixe in (
+            "xl/pivotCache",
+            "xl/externalLinks",
+            "xl/comments/",
+            "xl/media/",
+        ):
+            self.assertFalse(
+                [n for n in noms if n.startswith(prefixe)], prefixe
+            )
+
+    def test_les_graphiques_partent_par_defaut(self):
+        with zipfile.ZipFile(self._anonymiser()) as archive:
+            noms = archive.namelist()
+        self.assertFalse([n for n in noms if n.startswith("xl/charts")])
+
+    def test_graphiques_gardes_le_nom_de_serie_part_quand_meme(self):
+        """`s.tx = None` est indispensable : le nom a DEUX formes.
+
+        `<tx><v>littéral</v>` quand il est tapé,
+        `<tx><strRef><f>réf</f>` quand il vient des données. Ni l'une ni
+        l'autre n'est un cache : vider strCache/numCache les laisserait
+        toutes deux en place.
+        """
+        sortie = self._anonymiser(garder_graphiques=True)
+        survivants = _balayer(sortie)
+        self.assertNotIn("series_name", survivants)
+        self.assertNotIn("cat_cache", survivants)
+        self.assertNotIn("chart_title", survivants)
+        self.assertNotIn("axis_x_title", survivants)
+
+    def test_graphiques_gardes_le_nom_de_feuille_fuit_en_plus(self):
+        """La référence <f> d'une série porte 'feuille'!$B$1.
+
+        Le chemin par défaut l'évite : c'est une raison de plus d'en
+        faire le défaut.
+        """
+        sortie = self._anonymiser(garder_graphiques=True)
+        parties = _balayer(sortie).get("sheet_name", [])
+        self.assertTrue([p for p in parties if p.startswith("xl/charts")])
+
+    def test_les_formules_survivent_et_les_valeurs_changent(self):
+        """Lu par zipfile : le processus de test n'a pas openpyxl."""
+        with zipfile.ZipFile(self._anonymiser()) as archive:
+            feuille = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        # La formule est conservée telle quelle par la règle.
+        self.assertIn(TOUS_MARQUEURS["formula_literal"], feuille)
+        # La valeur de cellule, elle, a changé — les chaînes vivent dans
+        # sharedStrings.xml, qui est balayé par _balayer().
+        self.assertNotIn("cell_value", _balayer(self._anonymiser()))
+
+    def test_la_source_n_est_pas_modifiee(self):
+        avant = (
+            os.path.getmtime(self.source),
+            os.path.getsize(self.source),
+        )
+        self._anonymiser()
+        self.assertEqual(
+            avant,
+            (
+                os.path.getmtime(self.source),
+                os.path.getsize(self.source),
+            ),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
