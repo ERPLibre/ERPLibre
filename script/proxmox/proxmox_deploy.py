@@ -936,21 +936,40 @@ def ip_from_ipconfig(ipconfig: str) -> str:
     return m.group(1) if m else ""
 
 
-def image_fetch_cmd(url: str, nom: str, repertoire: str = IMAGE_DIR) -> str:
+def image_fetch_cmd(
+    url: str, nom: str, repertoire: str = IMAGE_DIR, sha256: str = ""
+) -> str:
     """Télécharge l'image cloud SUR l'hôte Proxmox, une seule fois.
 
     C'est là que le disque de la VM sera écrit : faire descendre l'image chez
     soi pour la renvoyer ensuite doublerait le transfert. Le test de présence
     évite de retélécharger 325 Mio à chaque VM.
+
+    `sha256` : la somme que le dépôt porte pour cette image, quand il en a
+    une. Elle ne concerne que ce qu'aucune distribution ne publie — une image
+    rebâtie par un tiers —, et c'est la seule chose qui distingue celle qui a
+    été revue de n'importe quel fichier servi sous la même URL.
+
+    Vérifiée AUSSI quand l'image était déjà là : le cas qu'on veut prendre
+    est précisément celui d'un fichier substitué ou tronqué entre deux
+    déploiements, et le test de présence seul ne regarde que la taille.
+
+    Une somme qui ne correspond pas fait ÉCHOUER la commande, donc la suite :
+    continuer reviendrait à installer un système que personne n'a regardé.
     """
     cible = f"{repertoire}/{nom}"
-    return (
+    cmd = (
         f"mkdir -p {shlex.quote(repertoire)} && "
         f"if [ -s {shlex.quote(cible)} ]; then "
         f'echo "image déjà présente : {cible}"; else '
         f"wget -nv -O {shlex.quote(cible)} {shlex.quote(url)}; "
         f"fi"
     )
+    if sha256:
+        cmd += (
+            f" && echo {shlex.quote(f'{sha256}  {cible}')}" " | sha256sum -c -"
+        )
+    return cmd
 
 
 def snippet_name(vmid: int) -> str:
