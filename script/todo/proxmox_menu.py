@@ -676,6 +676,33 @@ class ProxmoxMenuMixin:
                 return ""
             time.sleep(5)
 
+    def _pve_user_data(self, mod, distro, nom, cle_locale):
+        """Le user-data du DÉPÔT pour une VM Proxmox, ou "".
+
+        Le même que le chemin qemu envoie : un bloc « users: » explicite, avec
+        le nom du compte, son shell, son sudo et ses clés. « --ciuser » et
+        « --sshkeys » de Proxmox s'en remettent au compte par DÉFAUT de
+        l'image, et une image qui en déclare un autre les ignore — mesuré sur
+        NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait avec ce
+        compte-là, sans la clé, donc injoignable.
+
+        Rend "" quand la clé publique est illisible : mieux vaut retomber sur
+        la forme d'avant, qui pose au moins un compte, que d'écrire un
+        user-data sans aucun moyen d'entrer.
+        """
+        try:
+            with open(os.path.expanduser(cle_locale), encoding="utf-8") as fh:
+                cle = fh.read().strip()
+        except OSError as exc:
+            print(f"  ⚠ {t('SSH key unreadable:')} {exc}")
+            return ""
+        if not cle:
+            return ""
+        args = mod.build_parser().parse_args(
+            ["--distro", distro, "--hostname", nom, "--user", "erplibre"]
+        )
+        return mod.build_cloud_config(args, None, [cle])
+
     def _pve_push_key(self, chemin_local):
         """Recopie la clé publique SUR l'hôte : « qm set --sshkeys » attend un
         FICHIER là-bas, pas une clé en ligne."""
@@ -1422,6 +1449,14 @@ class ProxmoxMenuMixin:
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
+        # Le user-data du dépôt, pour TOUTES les distributions. La clé locale
+        # vient de la spec de l'écran ; sans elle, on retombe sur la forme
+        # d'avant, qui pose au moins un compte.
+        cle_locale = spec.get("ssh_key_local") or self._qemu_default_ssh_key()
+        if cle_locale:
+            detail["user_data"] = self._pve_user_data(
+                mod, vm.get("distro") or "", vm.get("name") or "", cle_locale
+            )
         return [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
             vm["vmid"], detail
         )
@@ -2341,6 +2376,9 @@ class ProxmoxMenuMixin:
             "uefi": mod.requiert_uefi(distro),
             "user": "erplibre",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            # Le user-data du dépôt, pour TOUTES les distributions : un seul
+            # cloud-init à comprendre, et celui-là est déjà éprouvé.
+            "user_data": self._pve_user_data(mod, distro, nom, cle_locale),
             "start": True,
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
