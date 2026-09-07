@@ -24,6 +24,7 @@ from script.vm.backend import (  # noqa: F401
     is_proven,
     libvirt_handle,
     lima_handle,
+    parse_uuid_listing,
     pve_handle,
     resolves_locally,
     same_machine,
