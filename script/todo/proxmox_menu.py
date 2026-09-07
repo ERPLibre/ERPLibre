@@ -67,7 +67,8 @@ class ProxmoxMenuMixin:
 
     @staticmethod
     def _pve_label(host):
-        """« root@10.0.0.5 (par rebond) », pour l'afficher en tête de menu."""
+        """« root@hyperviseur (par rebond) », pour l'afficher en tête de
+        menu."""
         if not host:
             return ""
         lab = host.get("target", "?")
@@ -963,8 +964,8 @@ class ProxmoxMenuMixin:
         """Réseau du futur pont interne, CHOISI d'après l'hôte.
 
         Pas une constante : un Proxmox dans un Proxmox hérite du réseau
-        interne de son parent, et 10.10.10.1 y est l'adresse de sa propre
-        PASSERELLE. La poser sur son pont rend tout le /24 local, la
+        interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
+        de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
         commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
         la VM ne répondait plus, ni en ssh ni en ping."""
@@ -1070,9 +1071,9 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         host = self._pve_host(ask=False)
-        # Le réseau est LU sur l'hôte avant d'être proposé : l'annoncer
-        # 10.10.10.1/24 pour en poser un autre serait mentir sur l'écran même
-        # où l'on demande l'accord.
+        # Le réseau est LU sur l'hôte avant d'être proposé : annoncer le
+        # réseau par défaut pour en poser un autre serait mentir sur
+        # l'écran même où l'on demande l'accord.
         cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
