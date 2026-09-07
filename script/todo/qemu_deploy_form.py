@@ -132,6 +132,11 @@ def run_deploy_form(ctx, run_app: bool = True):
     # saveurs — on ne le redéfinit pas ici.
     desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
     defaults = ctx.get("defaults") or {}
+    # Le cache est-il en marche sur cet hôte ? Lu du CONTEXTE, comme les
+    # autres mesures de la machine, et non de « defaults » : celui-là ne porte
+    # que ce qu'on veut PRÉ-COCHER, et il est vide au premier affichage — la
+    # case ne paraissait donc jamais, quel que soit l'état du cache.
+    cache_offert = bool(ctx.get("cache_offert"))
     result = {"spec": None}
 
     AUTO = "__auto__"
@@ -363,7 +368,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # Offerte seulement là où elle a un effet : sans cache
                     # actif, rien n'intercepte, et une case qui ne change
                     # rien apprend au lecteur une chose fausse.
-                    if defaults.get("cache_offert"):
+                    if cache_offert:
                         yield Checkbox(
                             t("Keep this VM out of the download cache"),
                             value=defaults.get("cache_bypass", False),
