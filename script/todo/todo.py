@@ -4660,9 +4660,9 @@ class TODO(
         n'est pas un consentement : c'est un pari. Le rapport dit combien
         de modèles et de colonnes, et lesquels sont traduits ou uniques.
 
-        La confirmation redemande le NOM de la base. Une frappe sur « o »
-        se donne par réflexe ; recopier « sireine_neutralize_upgrade_18 »
-        oblige à regarder ce qu'on détruit.
+        La confirmation redemande le NOM de la base. Recopier un nom
+        long oblige à regarder ce qu'on détruit, là où « o » se tape
+        par réflexe.
         """
         from script.analyse import monitoring
 
