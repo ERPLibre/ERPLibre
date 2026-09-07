@@ -314,6 +314,53 @@ class TestLApercuMontreLeConfinement(unittest.TestCase):
         self.assertNotIn("_qemu_egress_file", appels)
 
 
+class TestLApercuTientLaPorte(unittest.TestCase):
+    """L'invariant du point de passage unique n'était gardé que sur le VRAI
+    chemin. Rien ne le tenait sur l'aperçu — qui est justement celui qui
+    avait divergé. Sans cette épreuve, les corrections d'à côté se défont
+    au prochain remaniement, en silence."""
+
+    @staticmethod
+    def _appels(nom_appel):
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "_qemu_print_dry_run"
+        ]
+        assert len(corps) == 1, "_qemu_print_dry_run introuvable"
+        return [
+            noeud
+            for noeud in ast.walk(corps[0])
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == nom_appel
+        ]
+
+    def test_it_goes_through_the_gate_exactly_once(self):
+        """Deux appels, ou zéro, et l'aperçu cesse d'être celui du run."""
+        self.assertEqual(1, len(self._appels("_qemu_deploy_parts_for")))
+
+    def test_and_it_hands_the_confinement_over(self):
+        """Le mot-clé retiré, l'aperçu reste vert et tait de nouveau les
+        deux drapeaux — c'est la panne que cette épreuve existe pour
+        empêcher."""
+        appel = self._appels("_qemu_deploy_parts_for")[0]
+        self.assertIn("egress", [mot.arg for mot in appel.keywords])
+
+    def test_and_it_asks_for_the_dry_run_argv(self):
+        """Sans le drapeau, l'aperçu montrerait la commande élevée."""
+        appel = self._appels("_qemu_deploy_parts_for")[0]
+        mots = {mot.arg: mot.value for mot in appel.keywords}
+        self.assertIn("dry_run", mots)
+        self.assertIs(True, getattr(mots["dry_run"], "value", None))
+
+
 class TestLEcartLiciteEstBorne(unittest.TestCase):
     def deux_argv(self, spec=None):
         todo = menu()
