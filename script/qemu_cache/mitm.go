@@ -516,6 +516,7 @@ func (t *TLSFront) tunnel(c net.Conn, host string) {
 	t.Proxy.record(accessLine{
 		Method: "CONNECT", URL: "tcp://" + dst, Class: "tunnel",
 		Outcome: OutcomePassthrough, Upstream: true,
+		Client: clientDe(c.RemoteAddr().String()),
 	})
 
 	done := make(chan struct{}, 2)

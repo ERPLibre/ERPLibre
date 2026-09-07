@@ -243,6 +243,23 @@ class QemuCacheMenuMixin:
             if orphelines:
                 print(f"    {t('Remove them from entry 4 of this menu.')}")
 
+        # Par MACHINE, et pas seulement en tout. Un doute sur
+        # l'accélération ne s'instruit pas sur un total : il faut pouvoir
+        # séparer ce qu'une VM a tiré du réseau de ce qu'une autre a été
+        # servie du disque, et le journal ne le disait pas.
+        par_vm = self._cache_par_machine()
+        if par_vm:
+            print(f"\n  {t('What each VM pulled:')}")
+            print(
+                f"    {t('address'):<18}{t('from disk'):>12}"
+                f"{t('upstream'):>12}"
+            )
+            for adresse, (disque, amont) in par_vm:
+                print(
+                    f"    {adresse:<18}{self._cache_humain(disque):>12}"
+                    f"{self._cache_humain(amont):>12}"
+                )
+
         compte = self._cache_compte_issues()
         if compte:
             print(f"\n  {t('What the cache has done:')}")
@@ -264,6 +281,52 @@ class QemuCacheMenuMixin:
                 f"    {t('A VM that installs while this stays at zero does not use it.')}"
             )
         print()
+
+    @staticmethod
+    def _cache_humain(n):
+        for unite in ("o", "Kio", "Mio", "Gio"):
+            if n < 1024 or unite == "Gio":
+                return (
+                    f"{n:.0f} {unite}" if unite == "o" else f"{n:.1f} {unite}"
+                )
+            n /= 1024
+        return f"{n:.1f} Tio"
+
+    @classmethod
+    def _cache_par_machine(cls, limite=8):
+        """(adresse, (octets du disque, octets de l'amont)) par VM.
+
+        Les plus gros consommateurs d'abord : c'est ce qu'on cherche quand on
+        se demande si une machine a été servie ou si elle a téléchargé. Les
+        lignes sans client viennent d'un journal écrit avant que le champ
+        existe — elles sont écartées plutôt que rangées sous un nom faux.
+        """
+        chemin = cls._cache_journal()
+        if not chemin or not os.path.exists(chemin):
+            return []
+        par = {}
+        try:
+            with open(chemin, encoding="utf-8", errors="replace") as fh:
+                for ligne in fh:
+                    try:
+                        d = json.loads(ligne)
+                    except ValueError:
+                        continue
+                    client = d.get("client")
+                    if not client:
+                        continue
+                    disque, amont = par.get(client, (0, 0))
+                    octets = d.get("bytes", 0) or 0
+                    if d.get("upstream"):
+                        amont += octets
+                    else:
+                        disque += octets
+                    par[client] = (disque, amont)
+        except OSError:
+            return []
+        return sorted(par.items(), key=lambda kv: -(kv[1][0] + kv[1][1]))[
+            :limite
+        ]
 
     # ------------------------------------------------------------------
     # [3] État du service

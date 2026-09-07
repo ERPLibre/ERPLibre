@@ -475,5 +475,101 @@ class TestLesIssuesDuJournalSontToutesMontrees(unittest.TestCase):
         self.assertIn("set(compte) - set(ORDRE_ISSUES)", bloc)
 
 
+class TestCeQueChaqueMachineATire(unittest.TestCase):
+    """Un doute sur l'accélération ne s'instruit pas sur un total.
+
+    Le journal disait ce que le cache avait fait, jamais POUR QUI. On ne
+    pouvait donc pas séparer ce qu'une VM a tiré du réseau de ce qu'une autre a
+    été servie du disque — et répondre demandait d'aller lire le journal à la
+    main, hors de l'outil.
+    """
+
+    def journal(self, lignes):
+        import json as _json
+        import tempfile
+
+        f = tempfile.NamedTemporaryFile(
+            "w", suffix=".jsonl", delete=False, encoding="utf-8"
+        )
+        for l in lignes:
+            f.write(_json.dumps(l) + "\n")
+        f.close()
+        self.addCleanup(lambda: Path(f.name).unlink(missing_ok=True))
+        return f.name
+
+    def par_machine(self, lignes, **kw):
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        chemin = self.journal(lignes)
+        with mock.patch.object(M, "_cache_journal", return_value=chemin):
+            return M._cache_par_machine(**kw)
+
+    def test_le_disque_et_lamont_sont_separes(self):
+        got = self.par_machine(
+            [
+                {"client": "10.0.0.1", "bytes": 100, "upstream": True},
+                {"client": "10.0.0.1", "bytes": 900, "upstream": False},
+                {"client": "10.0.0.2", "bytes": 50, "upstream": True},
+            ]
+        )
+        self.assertEqual(
+            dict(got), {"10.0.0.1": (900, 100), "10.0.0.2": (0, 50)}
+        )
+
+    def test_les_plus_gros_dabord(self):
+        """C'est la machine qui a le plus consommé qu'on cherche."""
+        got = self.par_machine(
+            [
+                {"client": "petit", "bytes": 10, "upstream": False},
+                {"client": "gros", "bytes": 10000, "upstream": False},
+                {"client": "moyen", "bytes": 500, "upstream": True},
+            ]
+        )
+        self.assertEqual([a for a, _ in got], ["gros", "moyen", "petit"])
+
+    def test_une_ligne_sans_client_est_ecartee(self):
+        """Le journal d'avant n'avait pas ce champ : ranger ses lignes sous un
+        nom inventé donnerait un relevé faux, pas un relevé incomplet."""
+        got = self.par_machine(
+            [
+                {"bytes": 5000, "upstream": True},
+                {"client": "10.0.0.1", "bytes": 7, "upstream": False},
+            ]
+        )
+        self.assertEqual(dict(got), {"10.0.0.1": (7, 0)})
+
+    def test_la_liste_est_bornee(self):
+        got = self.par_machine(
+            [
+                {"client": f"10.0.0.{i}", "bytes": i, "upstream": False}
+                for i in range(1, 30)
+            ],
+            limite=3,
+        )
+        self.assertEqual(len(got), 3)
+
+    def test_un_journal_absent_ne_casse_pas(self):
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        with mock.patch.object(M, "_cache_journal", return_value=""):
+            self.assertEqual(M._cache_par_machine(), [])
+        with mock.patch.object(
+            M, "_cache_journal", return_value="/nexiste/pas.jsonl"
+        ):
+            self.assertEqual(M._cache_par_machine(), [])
+
+    def test_le_cache_note_le_client(self):
+        """L'autre moitié : le service doit écrire le champ que ceci lit."""
+        src = (RACINE / "script" / "qemu_cache" / "proxy.go").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('Client string `json:"client,omitempty"`', src)
+        self.assertGreaterEqual(
+            src.count("Client: clientDe(") + src.count("Client: client,"),
+            4,
+            "un chemin du journal n'écrit pas le client",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

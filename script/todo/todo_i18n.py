@@ -1812,6 +1812,18 @@ TRANSLATIONS = {
         "fr": "    servi » — et rend ce qui ne sert plus, ou tout.",
         "en": "    — and gives back what has not served for a while, or all.",
     },
+    "What each VM pulled:": {
+        "fr": "Ce que chaque VM a tiré :",
+        "en": "What each VM pulled:",
+    },
+    "from disk": {
+        "fr": "du disque",
+        "en": "from disk",
+    },
+    "upstream": {
+        "fr": "de l'amont",
+        "en": "upstream",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",

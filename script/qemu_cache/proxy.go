@@ -60,6 +60,22 @@ type accessLine struct {
 	// Upstream dit si l'octet a traversé le réseau. C'est le champ que la
 	// mesure regarde.
 	Upstream bool `json:"upstream"`
+	// Client est l'adresse de l'invité qui a demandé.
+	//
+	// Sans elle, le journal dit ce que le cache a fait mais pas POUR QUI. Un
+	// doute sur l'accélération reste alors sans réponse : rien ne sépare ce
+	// qu'une VM a tiré du réseau de ce qu'une autre a été servie du disque.
+	// Le port est retiré — il change à chaque connexion et empêcherait tout
+	// regroupement.
+	Client string `json:"client,omitempty"`
+}
+
+// clientDe rend l'adresse de l'invité, sans son port.
+func clientDe(adresse string) string {
+	if h, _, err := net.SplitHostPort(adresse); err == nil {
+		return h
+	}
+	return adresse
 }
 
 func (a *AccessLog) Write(l accessLine) {
@@ -226,6 +242,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 				p.record(accessLine{
 					URL: u.String(), Method: r.Method, Class: class.String(),
 					Outcome: OutcomeMirror, Status: http.StatusOK, Bytes: n,
+					Client: clientDe(r.RemoteAddr),
 				})
 				return
 			}
@@ -251,7 +268,9 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		if cacheable && p.serveFromStore(w, r, u, key, class, OutcomeStale) {
 			return
 		}
-		p.offlineMiss(w, u, class, r.Method, upErr)
+		p.offlineMiss(
+			w, u, class, r.Method, clientDe(r.RemoteAddr), upErr,
+		)
 		return
 	}
 	defer resp.Body.Close()
@@ -312,6 +331,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	p.record(accessLine{
 		Method: r.Method, URL: u.String(), Class: class.String(),
 		Outcome: outcome, Status: resp.StatusCode, Bytes: n, Upstream: true,
+		Client: clientDe(r.RemoteAddr),
 	})
 }
 
@@ -340,6 +360,7 @@ func (p *Proxy) serveFromStore(
 	p.record(accessLine{
 		Method: r.Method, URL: u.String(), Class: class.String(),
 		Outcome: outcome, Status: http.StatusOK, Bytes: m.Size, Upstream: false,
+		Client: clientDe(r.RemoteAddr),
 	})
 	if p.Verbose {
 		log.Printf("%s %s -> %s (%s)", r.Method, u, outcome, HumanBytes(m.Size))
@@ -351,7 +372,8 @@ func (p *Proxy) serveFromStore(
 // client n'a aucun moyen de savoir qu'un cache s'est interposé, et le message
 // est la seule chance de le lui apprendre.
 func (p *Proxy) offlineMiss(
-	w http.ResponseWriter, u *url.URL, class Class, method string, cause error,
+	w http.ResponseWriter, u *url.URL, class Class, method, client string,
+	cause error,
 ) {
 	msg := fmt.Sprintf(
 		"erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
@@ -369,6 +391,7 @@ func (p *Proxy) offlineMiss(
 	p.record(accessLine{
 		Method: method, URL: u.String(), Class: class.String(),
 		Outcome: OutcomeOfflineMiss, Status: http.StatusGatewayTimeout,
+		Client: client,
 	})
 	log.Printf("hors ligne, absent du cache : %s", u)
 }
