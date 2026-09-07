@@ -953,6 +953,36 @@ def image_fetch_cmd(url: str, nom: str, repertoire: str = IMAGE_DIR) -> str:
     )
 
 
+def snippet_name(vmid: int) -> str:
+    """Le nom de l'extrait cloud-init d'une VM.
+
+    Porté par le VMID et non par le nom de la VM : deux VM peuvent porter le
+    même nom sur deux nœuds, jamais le même VMID sur un cluster. Un extrait
+    écrasé par un homonyme donnerait à une VM le compte d'une autre.
+    """
+    return f"erplibre-{int(vmid)}.yml"
+
+
+def snippet_write_cmd(storage: str, nom: str, contenu: str) -> str:
+    """Écrit un extrait cloud-init SUR l'hôte Proxmox, à l'endroit qu'il dit.
+
+    Le chemin n'est pas déduit : « pvesm path » le demande à Proxmox. Un
+    stockage « dir » range ses extraits sous son propre répertoire, et le
+    supposer en /var/lib/vz marcherait pour « local » et pour lui seul.
+
+    « printf '%s' » et non « echo » : le contenu est un YAML de plusieurs
+    dizaines de lignes, et echo interprète les séquences d'échappement sur
+    certains shells — un « \n » dans un mot de passe haché suffirait à le
+    corrompre en silence.
+    """
+    cible = f"{storage}:snippets/{nom}"
+    return (
+        f"f=$(pvesm path {shlex.quote(cible)}) && "
+        'mkdir -p "$(dirname "$f")" && '
+        f"printf '%s' {shlex.quote(contenu)} > \"$f\""
+    )
+
+
 def create_cmds(vmid: int, spec: dict) -> list:
     """Séquence complète de création d'une VM, dans l'ordre.
 
@@ -994,7 +1024,16 @@ def create_cmds(vmid: int, spec: dict) -> list:
         # 3. Le lecteur cloud-init, et l'ordre d'amorçage. Sans « boot order »,
         #    Proxmox laisse le disque importé hors de la liste et la VM démarre
         #    sur le réseau.
-        f"qm set {vmid} --ide2 {stockage}:cloudinit"
+        #
+        #    Sur le bus SCSI et non en IDE, contrairement à ce que la
+        #    documentation de Proxmox montre : une image cloud bâtie pour
+        #    virtio seul n'a pas de pilote ATA, et le lecteur IDE lui est
+        #    INVISIBLE. Mesuré sur une image NixOS — /sys/block ne portait pas
+        #    de « sr0 », /dev/disk/by-label pas de « cidata », et cloud-init
+        #    passait aux sources RÉSEAU faute de trouver la locale : la VM
+        #    démarrait sans compte ni clé. Le même lecteur en scsi1 apparaît,
+        #    et le contrôleur virtio-scsi est déjà là pour le disque.
+        f"qm set {vmid} --scsi1 {stockage}:cloudinit"
         f" --boot order=scsi0 --bootdisk scsi0",
     ]
     if uefi:
@@ -1006,15 +1045,37 @@ def create_cmds(vmid: int, spec: dict) -> list:
             f"qm set {vmid} --efidisk0"
             f" {stockage}:0,efitype=4m,pre-enrolled-keys=0"
         )
-    # 4. cloud-init : utilisateur, clé, réseau. La clé est un FICHIER sur
-    #    l'hôte — « --sshkeys » n'accepte pas la clé en ligne.
-    ci = (
-        f"qm set {vmid} --ciuser {shlex.quote(spec.get('user') or 'erplibre')}"
-    )
-    if spec.get("sshkey_path"):
-        ci += f" --sshkeys {shlex.quote(spec['sshkey_path'])}"
-    if spec.get("password"):
-        ci += f" --cipassword {shlex.quote(spec['password'])}"
+    # 4. cloud-init. Deux formes, et la première est celle qu'on veut.
+    #
+    # « --cicustom user= » quand un user-data est fourni : c'est CELUI du
+    # dépôt, le même que le chemin qemu envoie, avec son bloc « users: »
+    # explicite. « --ciuser » et « --sshkeys » s'en remettent au compte par
+    # DÉFAUT de l'image, et une image qui en déclare un autre les ignore —
+    # mesuré sur NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait
+    # avec ce compte-là, sans la clé, donc injoignable.
+    #
+    # Le réseau reste à Proxmox (« --ipconfig0 ») : « --cicustom user= » ne
+    # remplace que la moitié utilisateur du cloud-init.
+    if spec.get("user_data"):
+        cmds.append(
+            snippet_write_cmd(stockage, snippet_name(vmid), spec["user_data"])
+        )
+        ci = (
+            f"qm set {vmid} --cicustom"
+            f" user={stockage}:snippets/{snippet_name(vmid)}"
+        )
+    else:
+        # La forme d'avant, gardée pour qui n'a pas de user-data à donner.
+        # La clé est un FICHIER sur l'hôte — « --sshkeys » n'accepte pas la
+        # clé en ligne.
+        ci = (
+            f"qm set {vmid} --ciuser"
+            f" {shlex.quote(spec.get('user') or 'erplibre')}"
+        )
+        if spec.get("sshkey_path"):
+            ci += f" --sshkeys {shlex.quote(spec['sshkey_path'])}"
+        if spec.get("password"):
+            ci += f" --cipassword {shlex.quote(spec['password'])}"
     ci += f" --ipconfig0 {spec.get('ipconfig') or 'ip=dhcp'}"
     # « --ipconfig0 » ne porte PAS le DNS : une VM en adresse fixe n'a alors
     # aucun résolveur, et rien ne le dit. En DHCP le bail s'en charge.
