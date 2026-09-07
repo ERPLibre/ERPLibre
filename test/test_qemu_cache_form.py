@@ -288,5 +288,49 @@ class TestLaCaseEstVraimentLa(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestRienDeCollecteNeSePerd(unittest.TestCase):
+    """Une liste blanche perd ce qu'on oublie d'y écrire, et sans un mot.
+
+    Le formulaire collecte ses champs, puis « build_spec » assemble la spec —
+    clé par clé, nommées à la main. Un champ ajouté au formulaire et pas à
+    cette assemblée est réglé par l'opérateur, affiché, relu… et jeté. La
+    trace en porte déjà deux : le suivi et la 3D, chacun réparé après coup.
+
+    Le contrôle ne vérifie plus une clé mais la PROPRIÉTÉ : tout ce que le
+    formulaire collecte doit se retrouver dans la spec.
+    """
+
+    def test_toute_cle_collectee_arrive_dans_la_spec(self):
+        import asyncio
+
+        from script.todo.deploy_form_lib import build_spec
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(contexte_du_formulaire(), cache_offert=True)
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                valeurs = app._form_values()
+                vu["perdues"] = sorted(
+                    set(valeurs) - set(build_spec([], set(), valeurs))
+                )
+                vu["collectees"] = len(valeurs)
+
+        asyncio.run(scenario())
+        self.assertGreater(
+            vu["collectees"], 10, "le relevé n'a presque rien trouvé"
+        )
+        self.assertEqual(
+            vu["perdues"],
+            [],
+            "des réglages du formulaire n'atteignent jamais le déploiement :"
+            f" {vu['perdues']}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
