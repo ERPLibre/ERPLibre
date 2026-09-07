@@ -1107,6 +1107,10 @@ TRANSLATIONS = {
     },
     "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
     "Backend:": {"fr": "Backend :", "en": "Backend:"},
+    "This machine carries real data": {
+        "fr": "Cette machine porte des données réelles",
+        "en": "This machine carries real data",
+    },
     "Network posture": {
         "fr": "Posture réseau",
         "en": "Network posture",

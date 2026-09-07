@@ -410,6 +410,12 @@ def build_spec(vms, domains, form):
         # invites en ligne n'en posent pas, et leur déploiement doit valoir
         # exactement ce qu'il valait.
         "posture": form.get("posture") or DEFAULT_POSTURE,
+        # Au niveau du déploiement, et INDÉPENDANT de la posture comme du
+        # chemin d'installation : ce que la machine PORTE ne se déduit ni de
+        # ce que son réseau atteint, ni d'où le code est posé. Faux par
+        # défaut — l'inverse ferait d'un formulaire incomplet une machine
+        # qu'on croit protégée.
+        "real_data": bool(form.get("real_data", False)),
         # Au niveau du déploiement : l'agent choisi et l'identité git valent
         # pour tout le parc, comme le fuseau ou le magasin d'applications.
         "ai_agent": form.get("ai_agent", ""),

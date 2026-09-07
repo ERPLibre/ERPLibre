@@ -1399,6 +1399,18 @@ class QemuDeployMixin:
         un faux nom, ou une exception au milieu du travail. Le refus nomme
         le backend, et il est inatteignable par l'écran d'aujourd'hui : il
         attend celui de demain."""
+        # LA RÈGLE D'OR, au seul endroit que les deux interfaces
+        # traversent. Le refus arrive AVANT que la machine existe, ce qui
+        # est le seul moment où il ne coûte rien. Une posture inconnue est
+        # refusée elle aussi : replier sur la plus libre déploierait en
+        # sortie libre un spec qui demandait du confinement.
+        verdict = posture_spec.check(spec)
+        if verdict != posture_spec.OK:
+            raise vm_backend.VmBackendError(
+                f"Déploiement refusé : {verdict}."
+                f" Posture « {posture_spec.posture_name(spec)} »,"
+                f" données réelles : {posture_spec.real_data(spec)}."
+            )
         demande = spec.get("backend") or vm_backend.LIBVIRT
         if demande != vm_backend.LIBVIRT:
             raise vm_backend.VerbNotImplemented(
