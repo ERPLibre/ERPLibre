@@ -68,6 +68,14 @@ func main() {
 			"fichier de dépôts, un par ligne, à tenir en miroir d'avance")
 		gitPrefetchJobs = flag.Int("git-mirror-jobs", 4,
 			"dépôts clonés en parallèle par le pré-remplissage")
+		ageReport = flag.Bool("age-report", false,
+			"dire ce que le cache occupe, groupé par âge du dernier usage")
+		agePar = flag.String("age-par", "semaine",
+			"découpage du relevé par âge : jour, semaine ou mois")
+		purgeTout = flag.Bool("purge", false,
+			"effacer TOUT le cache : objets et dépôts en miroir")
+		purgeAvant = flag.String("purge-older-than", "",
+			"n'effacer que ce qui n'a pas servi depuis ce délai (ex. 30j, 12h)")
 		gitList = flag.Bool("git-mirror-list", false,
 			"dire les dépôts tenus en miroir, du plus lourd au plus léger")
 		gitRemove = flag.String("git-mirror-remove", "",
@@ -153,6 +161,45 @@ func main() {
 
 	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
 
+	if *ageReport {
+		gran, err := LireGranularite(*agePar)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		printAge(store, miroir, gran)
+		return
+	}
+	if *purgeTout || *purgeAvant != "" {
+		avant := time.Now()
+		if *purgeAvant != "" {
+			d, err := LireDuree(*purgeAvant)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			avant = time.Now().Add(-d)
+			fmt.Printf("efface ce qui n'a pas servi depuis %s (avant %s)\n",
+				*purgeAvant, avant.Format("2006-01-02 15:04"))
+		} else {
+			fmt.Println("efface TOUT le cache")
+		}
+		if *dryRun {
+			printPurgeABlanc(store, miroir, avant)
+			return
+		}
+		n, oct, err := store.Purger(avant)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "purge des objets : %v\n", err)
+		}
+		fmt.Printf("objets effacés : %d, %s rendus\n", n, HumanBytes(oct))
+		nd, octd, err := miroir.PurgerMiroirs(avant)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "purge des miroirs : %v\n", err)
+		}
+		fmt.Printf("dépôts effacés : %d, %s rendus\n", nd, HumanBytes(octd))
+		return
+	}
 	if *gitList {
 		depots := miroir.Depots()
 		if len(depots) == 0 {

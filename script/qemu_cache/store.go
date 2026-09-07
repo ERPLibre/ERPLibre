@@ -103,6 +103,18 @@ func (s *Store) Get(key string) (*Meta, *os.File, error) {
 	if err != nil {
 		return nil, nil, errMiss
 	}
+	// La date du corps est remise à MAINTENANT parce qu'on va le servir.
+	//
+	// C'est ce qui permet à un nettoyage par âge de vouloir dire « ce qui ne
+	// sert plus » et non « ce qui est entré il y a longtemps ». Un paquet
+	// servi tous les jours depuis un an n'est pas vieux : l'effacer
+	// obligerait à le retélécharger le lendemain, ce qui est exactement le
+	// contraire de ce qu'un cache est là pour faire.
+	//
+	// L'échec est ignoré : un magasin en lecture seule doit servir, pas
+	// refuser parce qu'il n'a pas pu noter une date.
+	maintenant := time.Now()
+	_ = os.Chtimes(bodyPath, maintenant, maintenant)
 	st, err := f.Stat()
 	if err != nil || st.Size() != m.Size {
 		// Un corps dont la taille ne correspond plus est une écriture
