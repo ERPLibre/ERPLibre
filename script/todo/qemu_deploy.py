@@ -1740,12 +1740,15 @@ class QemuDeployMixin:
             return
         res_label, vms = got
 
-        if dry_run:
-            self._qemu_print_dry_run(vms)
-            return
-
+        # Les options AVANT l'aperçu, et non l'inverse : posé plus haut, il
+        # n'avait aucune spec à montrer et en fabriquait une réduite. La
+        # collecte n'est pas la question qui engage — celle-là vient après
+        # le plan, et l'aperçu ne la pose jamais puisqu'il ne fait rien.
         spec = self._qemu_collect_options_cli(vms, res_label)
         if not spec:
+            return
+        if dry_run:
+            self._qemu_print_dry_run(spec)
             return
         self._qemu_run_spec(spec)
 
@@ -1768,7 +1771,9 @@ class QemuDeployMixin:
             return None
         if dry_run:
             # L'entrée « aperçu » du menu ne crée rien, même depuis la TUI.
-            self._qemu_print_dry_run(spec["vms"])
+            # La spec ENTIÈRE : elle est là, complète, et n'en transmettre
+            # que les machines était une perte pure.
+            self._qemu_print_dry_run(spec)
             return None
         self._qemu_print_recap(spec, spec.get("existing") or [])
         if not self._confirm_or_discard(t("Deploy these VMs now? (Y/n): ")):
@@ -1776,13 +1781,22 @@ class QemuDeployMixin:
             return None
         return spec
 
-    def _qemu_print_dry_run(self, vms):
-        """Aperçu : les commandes deploy_qemu, sans rien créer (ni sudo, ni
-        installation). Passe par le point de passage unique, donc montre
-        exactement ce qui serait lancé."""
-        spec = {"vms": vms, "ssh_key": self._qemu_default_ssh_key()}
+    def _qemu_print_dry_run(self, spec):
+        """Aperçu : les commandes deploy_qemu, sans rien créer.
+
+        La SPEC ENTIÈRE, et non les seules machines. Le constructeur lit une
+        douzaine de champs — fuseau, locale, bureau, outils, 3D, identité
+        git, backend, commande d'installation — et une spec réduite les
+        perdait tous : l'aperçu affirmait montrer ce qui serait lancé et
+        montrait autre chose.
+
+        Passe par le point de passage unique, donc l'écart avec le vrai
+        déploiement est celui que borne test/test_qemu_dry_run_preview.py,
+        et pas un de plus.
+        """
+        machines = spec.get("vms") or []
         print(f"\n{t('Preview (dry-run):')}")
-        for vm in vms:
+        for vm in machines:
             parts = self._qemu_deploy_parts_for(vm, spec, dry_run=True)
             print("  " + " ".join(shlex.quote(p) for p in parts))
 

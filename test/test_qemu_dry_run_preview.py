@@ -70,6 +70,160 @@ def spec_de(**extra):
     return build_spec([VM_UNE], [], dict(FORM, **extra))
 
 
+class TestLApercuMontreCeQueLaSpecPorte(unittest.TestCase):
+    """Une spec réduite perdait une douzaine de champs, et l'aperçu
+    affirmait montrer ce qui serait lancé."""
+
+    def apercu(self, **extra):
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        spec = spec_de(**extra)
+        tampon = tampon_io.StringIO()
+        with redirect_stdout(tampon):
+            menu()._qemu_print_dry_run(spec)
+        return tampon.getvalue()
+
+    def test_what_it_prints_is_what_the_gate_returns(self):
+        """L'invariant qui ne peut pas se tromper sur l'orthographe d'une
+        option : la ligne imprimée EST l'argv de la porte, mot pour mot."""
+        import shlex
+
+        spec = spec_de(timezone="Etc/UTC", gpu3d=True, git_name="Banc")
+        attendu = menu()._qemu_deploy_parts_for(VM_UNE, spec, dry_run=True)
+        vu = self.apercu(timezone="Etc/UTC", gpu3d=True, git_name="Banc")
+        lignes = [l.strip() for l in vu.splitlines() if "deploy_qemu" in l]
+        self.assertEqual(1, len(lignes), vu)
+        self.assertEqual(attendu, shlex.split(lignes[0]))
+
+    def test_the_fields_a_reduced_spec_lost_are_back(self):
+        """Chacun était perdu, un par un. Les noms d'option sont ceux que
+        le constructeur écrit, pas ceux qu'on croit."""
+        vu = self.apercu(
+            timezone="Etc/UTC",
+            desktop="gnome",
+            gpu3d=True,
+            git_name="Banc",
+            git_email="banc@exemple.invalid",
+        )
+        for attendu in (
+            "--timezone Etc/UTC",
+            "--desktop",
+            "--gpu on",
+            "--git-name Banc",
+            "--git-email banc@exemple.invalid",
+        ):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, vu)
+
+    def test_a_reduced_spec_would_carry_none_of_them(self):
+        """Contrôle négatif : ce que l'aperçu fabriquait avant. Sans lui,
+        l'épreuve d'à côté pourrait passer sur un argv qui les porte pour
+        une autre raison."""
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        reduite = {
+            "vms": [VM_UNE],
+            "ssh_key": "",
+        }
+        tampon = tampon_io.StringIO()
+        with redirect_stdout(tampon):
+            menu()._qemu_print_dry_run(reduite)
+        vu = tampon.getvalue()
+        for absent in ("--timezone", "--git-name", "--gpu on"):
+            with self.subTest(absent=absent):
+                self.assertNotIn(absent, vu)
+
+    def test_a_spec_without_machines_prints_no_command(self):
+        """Elle ne doit pas lever : l'aperçu se demande avant tout choix."""
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        tampon = tampon_io.StringIO()
+        with redirect_stdout(tampon):
+            menu()._qemu_print_dry_run({})
+        self.assertNotIn("deploy_qemu", tampon.getvalue())
+
+    def test_the_preview_shows_one_line_per_machine(self):
+        vu = self.apercu()
+        lignes = [l for l in vu.splitlines() if "deploy_qemu" in l]
+        self.assertEqual(1, len(lignes), vu)
+
+    def test_it_takes_the_spec_and_not_a_list_of_machines(self):
+        """La signature EST l'invariant : recevoir une liste laisserait
+        refabriquer une spec réduite à l'intérieur."""
+        import inspect
+
+        signature = inspect.signature(TODO._qemu_print_dry_run)
+        self.assertEqual(["self", "spec"], list(signature.parameters))
+
+
+class TestChaqueVoieTransmetLaSpecEntiere(unittest.TestCase):
+    """Deux appels, deux fautes distinctes : l'un jouait l'aperçu AVANT la
+    collecte des options — il n'y avait rien à montrer, par construction —
+    et l'autre avait la spec complète en main sans la transmettre."""
+
+    @staticmethod
+    def _corps(nom):
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        trouves = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == nom
+        ]
+        assert len(trouves) == 1, nom
+        return trouves[0]
+
+    @staticmethod
+    def _rang(corps, attribut):
+        import ast
+
+        for noeud in ast.walk(corps):
+            if (
+                isinstance(noeud, ast.Call)
+                and isinstance(noeud.func, ast.Attribute)
+                and noeud.func.attr == attribut
+            ):
+                return noeud.lineno
+        return None
+
+    def test_the_line_path_collects_the_options_first(self):
+        """Avant la collecte, l'aperçu n'a rien à montrer et fabrique une
+        spec réduite : l'ordre EST la correction."""
+        corps = self._corps("_qemu_deploy")
+        collecte = self._rang(corps, "_qemu_collect_options_cli")
+        apercu = self._rang(corps, "_qemu_print_dry_run")
+        self.assertIsNotNone(collecte)
+        self.assertIsNotNone(apercu)
+        self.assertLess(collecte, apercu)
+
+    def test_no_caller_hands_over_only_the_machines(self):
+        """« spec["vms"] » à la place de « spec » est une perte pure, et
+        elle ne se voit sur aucun écran."""
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        appels = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "_qemu_print_dry_run"
+        ]
+        self.assertEqual(2, len(appels), "les deux voies")
+        for appel in appels:
+            self.assertEqual(1, len(appel.args))
+            self.assertIsInstance(appel.args[0], ast.Name)
+            self.assertEqual("spec", appel.args[0].id)
+
+
 class TestLEcartLiciteEstBorne(unittest.TestCase):
     def deux_argv(self, spec=None):
         todo = menu()
