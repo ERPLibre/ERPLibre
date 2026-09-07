@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Rendre les règles depuis la spec, les poser, et refuser AVANT de créer.
+
+Le déploiement ne connaît pas les postures : il reçoit un fichier déjà rendu
+et le passe. C'est ce qui garde le rendu éprouvable sans machine, et le
+déploiement libre de savoir ce qu'est une liste blanche.
+
+CE QUI EST REFUSÉ ICI EST L'INVERSE DE CE QUI EST VIDE. Une posture qui
+n'attend pas de règles rend une chaîne vide, et la plupart des déploiements
+sont dans ce cas. Une posture qui EN attend et dont le site n'a pas nommé
+les adresses est refusée : la laisser passer déploierait une machine qui ne
+joint pas sa forge, et le manque se découvrirait sur la machine.
+
+Le carnet du site est une donnée de SITE. Celui qu'on lit ici est de banc,
+et ses adresses sont des plages de documentation (RFC 5737).
+"""
+
+import os
+import sys
+import unittest
+
+RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(RACINE)
+
+sys.argv = ["todo.py"]
+
+from script.lib_valid import ValidationError  # noqa: E402
+from script.posture import allowlist as A  # noqa: E402
+from script.posture import registry as R  # noqa: E402
+from script.posture import rules as RULES  # noqa: E402
+from script.todo.deploy_form_lib import build_spec  # noqa: E402
+from script.todo.todo import TODO  # noqa: E402
+from script.vm import backend as VM  # noqa: E402
+
+FORM = {
+    "res_label": "x1",
+    "ssh_key": "",
+    "install": None,
+    "add_ssh_config": False,
+    "parallelism": 1,
+}
+
+VM_UNE = {
+    "distro": "ubuntu",
+    "version": "24.04",
+    "arch": "amd64",
+    "name": "essai",
+    "ram": 4096,
+    "vcpus": 2,
+    "disk": "30G",
+}
+
+# Un carnet de banc : un réseau de documentation par rôle connu.
+CARNET = {
+    nom: [f"198.51.100.{index + 10}/32"]
+    for index, nom in enumerate(A.symbol_names())
+}
+
+
+def menu(carnet=None):
+    """Un TODO nu, dont la configuration rend le carnet demandé."""
+    todo = TODO.__new__(TODO)
+    todo.config_file = type(
+        "ConfigDeBanc",
+        (),
+        {"get_config": staticmethod(lambda _cle: carnet)},
+    )()
+    return todo
+
+
+def spec_de(posture):
+    return build_spec([VM_UNE], [], dict(FORM, posture=posture))
+
+
+class TestCeQuiEstRenduEtCeQuiNeLEstPas(unittest.TestCase):
+    def test_a_posture_that_bounds_nothing_renders_nothing(self):
+        """La plupart des déploiements sont là, et ne doivent rien payer."""
+        for nom in ("open", "connected", "local-only"):
+            with self.subTest(posture=nom):
+                self.assertEqual(
+                    "", menu(CARNET)._qemu_egress_rules(spec_de(nom))
+                )
+
+    def test_a_mute_spec_renders_nothing_either(self):
+        spec = build_spec([VM_UNE], [], FORM)
+        self.assertEqual("", menu(CARNET)._qemu_egress_rules(spec))
+
+    def test_a_bounded_posture_renders_what_the_renderer_renders(self):
+        """Le déploiement ne compose rien : il relaie le rendu, mot pour
+        mot. Une recopie divergerait au premier correctif."""
+        from script.posture import destinations as D
+
+        posture = R.get_posture("paranoid")
+        attendu = RULES.render_egress(
+            posture, D.destinations_for(posture, CARNET)
+        )
+        self.assertEqual(
+            attendu, menu(CARNET)._qemu_egress_rules(spec_de("paranoid"))
+        )
+
+
+class TestCeQuiEstRefuseAvantDeRienCreer(unittest.TestCase):
+    def test_an_unknown_posture_is_refused_by_name(self):
+        """Replier sur la plus libre déploierait en sortie libre une spec
+        qui demandait du confinement — le sens inverse de la demande."""
+        with self.assertRaises(VM.VmBackendError) as pris:
+            menu(CARNET)._qemu_egress_rules(spec_de("restricted"))
+        self.assertIn("restricted", str(pris.exception))
+
+    def test_a_role_the_site_never_addressed_is_refused_by_name(self):
+        ampute = {k: v for k, v in CARNET.items() if k != "forge"}
+        with self.assertRaises(ValidationError) as pris:
+            menu(ampute)._qemu_egress_rules(spec_de("paranoid"))
+        self.assertIn("forge", str(pris.exception))
+
+    def test_no_address_book_at_all_is_refused(self):
+        with self.assertRaises(ValidationError):
+            menu(None)._qemu_egress_rules(spec_de("paranoid"))
+
+    def test_the_refusal_lands_before_the_block_is_entered(self):
+        """Le fichier temporaire ne doit pas exister quand le refus tombe :
+        c'est ce qui garantit qu'aucune machine n'a été touchée."""
+        with self.assertRaises(ValidationError):
+            with menu(None)._qemu_egress_file(spec_de("paranoid")):
+                self.fail("le bloc ne devait pas s'ouvrir")
+
+
+class TestLeFichierTemporaire(unittest.TestCase):
+    def test_nothing_to_pose_yields_no_path(self):
+        with menu(CARNET)._qemu_egress_file(spec_de("open")) as chemin:
+            self.assertEqual("", chemin)
+
+    def test_it_is_written_readable_by_root_alone(self):
+        """Il nomme les adresses internes du site."""
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
+            self.assertTrue(os.path.exists(chemin))
+            self.assertEqual(0o600, os.stat(chemin).st_mode & 0o777)
+
+    def test_it_carries_the_rendered_rules(self):
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
+            with open(chemin, encoding="utf-8") as fichier:
+                texte = fichier.read()
+        self.assertIn("policy drop;", texte)
+        self.assertIn("# forge :", texte)
+
+    def test_it_is_gone_once_the_block_closes(self):
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
+            garde = chemin
+        self.assertFalse(os.path.exists(garde))
+
+    def test_it_is_gone_even_when_the_deployment_breaks(self):
+        """Il porte les adresses internes du site : il ne traîne pas."""
+        garde = {}
+        with self.assertRaises(RuntimeError):
+            with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
+                garde["chemin"] = chemin
+                raise RuntimeError("le parc s'arrête au milieu")
+        self.assertFalse(os.path.exists(garde["chemin"]))
+
+    def test_the_name_says_nothing_about_the_site(self):
+        """Un nom composé serait un chemin PRÉVISIBLE ; celui-ci ne l'est
+        pas, et ne nomme ni la machine ni la posture."""
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
+            self.assertNotIn("paranoid", chemin)
+            self.assertNotIn("essai", chemin)
+
+
+class TestLaCommandePosee(unittest.TestCase):
+    def test_without_a_file_the_command_is_the_one_from_before(self):
+        parts = menu(CARNET)._qemu_deploy_parts_for(
+            VM_UNE, spec_de("open"), dry_run=True
+        )
+        self.assertNotIn("--egress-file", parts)
+
+    def test_the_flag_names_the_file_that_was_written(self):
+        todo = menu(CARNET)
+        spec = spec_de("paranoid")
+        with todo._qemu_egress_file(spec) as chemin:
+            parts = todo._qemu_deploy_parts_for(
+                VM_UNE, spec, dry_run=True, egress=chemin
+            )
+            self.assertEqual(chemin, parts[parts.index("--egress-file") + 1])
+
+    def test_the_flag_comes_last_and_changes_nothing_before_it(self):
+        """Le reste de la commande ne bouge pas d'un mot : une option qui
+        déborde sur le cas courant coûte plus qu'elle n'apporte."""
+        todo = menu(CARNET)
+        spec = spec_de("paranoid")
+        nu = todo._qemu_deploy_parts_for(VM_UNE, spec, dry_run=True)
+        with todo._qemu_egress_file(spec) as chemin:
+            avec = todo._qemu_deploy_parts_for(
+                VM_UNE, spec, dry_run=True, egress=chemin
+            )
+        self.assertEqual(nu, avec[: len(nu)])
+        self.assertEqual(["--egress-file", chemin], avec[len(nu) :])
+
+    def test_the_run_path_actually_hands_the_file_over(self):
+        """Le maillon qu'aucune épreuve ne pouvait tenir autrement : le
+        déploiement réel crée des machines, donc il ne se joue pas ici.
+
+        L'épreuve lit l'ARBRE et non le texte : elle trouve l'appel,
+        et tombe s'il disparaît autant que s'il perd son argument. Sans
+        elle, retirer « egress= » de la boucle laisse tout vert et ne pose
+        plus jamais de règles.
+        """
+        import ast
+
+        source = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(source, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "_qemu_run_spec"
+        ]
+        self.assertEqual(1, len(corps), "_qemu_run_spec introuvable")
+        appels = [
+            noeud
+            for noeud in ast.walk(corps[0])
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "_qemu_deploy_parts_for"
+        ]
+        self.assertEqual(1, len(appels), "l'appel du déploiement a bougé")
+        self.assertIn("egress", [mot.arg for mot in appels[0].keywords])
+
+    def test_the_run_path_opens_the_block_that_writes_the_file(self):
+        """L'autre moitié du même maillon : passer « egress » ne sert à
+        rien si personne n'ouvre le bloc qui écrit le fichier."""
+        import ast
+
+        source = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(source, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "_qemu_run_spec"
+        ][0]
+        ouvertures = [
+            noeud
+            for noeud in ast.walk(corps)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+            and noeud.func.attr == "_qemu_egress_file"
+        ]
+        self.assertEqual(1, len(ouvertures))
+
+    def test_the_flag_is_the_one_the_deployment_script_declares(self):
+        """Un drapeau que l'autre côté ne connaît pas ferait échouer le
+        déploiement sur « unrecognized arguments », après la création."""
+        import importlib.util
+        from pathlib import Path
+
+        chemin = Path(RACINE) / "script/qemu/deploy_qemu.py"
+        spec_mod = importlib.util.spec_from_file_location("dq_flag", chemin)
+        module = importlib.util.module_from_spec(spec_mod)
+        sys.modules["dq_flag"] = module
+        spec_mod.loader.exec_module(module)
+        analyse = module.build_parser().parse_args(
+            ["--name", "banc", "--egress-file", "/x.nft"]
+        )
+        self.assertEqual("/x.nft", analyse.egress_file)
+
+
+if __name__ == "__main__":
+    unittest.main()

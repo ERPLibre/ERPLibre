@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : d\u00e9cider et lancer un d\u00e9ploiement.\n\nLe chemin complet d'une cr\u00e9ation : les ressources (pr\u00e9r\u00e9glages vCPU/RAM/disque\net saisie libre), le plan et son r\u00e9capitulatif, les v\u00e9rifications de l'h\u00f4te\n(groupe libvirt, KVM), le contexte du formulaire TUI, la collecte en ligne, et\nl'ex\u00e9cution d'une spec \u2014 la M\u00caME structure quelle que soit l'interface, ce qui\npermet aux invites et au formulaire de partager tout le reste.\n\nFronti\u00e8re claire : ici on d\u00e9cide ; dans qemu_install.py on \u00e9crit ce qui sera\nex\u00e9cut\u00e9 dans l'invit\u00e9."""
 
+import contextlib
 import getpass
 import grp
 import json
@@ -11,9 +12,13 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 
+from script.posture import destinations as posture_destinations
 from script.posture import registry as posture_registry
+from script.posture import rules as posture_rules
+from script.posture import spec as posture_spec
 from script.todo import host_os, todo_prefs, vm_backend_choice
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
@@ -1117,7 +1122,64 @@ class QemuDeployMixin:
         parts.append("--dry-run" if dry_run else "-y")
         return parts
 
-    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False):
+    # La clé sous laquelle le site nomme l'adresse de chaque rôle. Le
+    # dépôt sait de QUOI une machine a besoin ; ceci dit OÙ, et c'est une
+    # donnée de site — elle vit dans la configuration privée, le seul des
+    # trois fichiers fusionnés qui ne soit pas suivi.
+    EGRESS_BOOK_KEY = "egress_destinations"
+
+    def _qemu_egress_rules(self, spec):
+        """Le texte des règles que cette spec demande, ou une chaîne vide.
+
+        Vide n'est pas un échec : trois postures sur quatre n'ont pas de
+        liste bornée, et la plupart des déploiements ne posent rien.
+
+        Ce qui est refusé ici, c'est l'inverse — une posture qui EN attend
+        et dont le site n'a pas nommé les adresses. La laisser passer
+        déploierait une machine qui ne joint pas sa forge, et le manque se
+        découvrirait sur la machine plutôt que devant l'écran.
+        """
+        posture = posture_spec.posture_of(spec)
+        if posture is None:
+            raise vm_backend.VmBackendError(
+                f"Déploiement : posture « {posture_spec.posture_name(spec)} »"
+                " inconnue. Déployer en sortie libre une spec qui demandait"
+                " du confinement serait le sens inverse de la demande."
+            )
+        if not posture_destinations.has_bounded_list(posture):
+            return ""
+        carnet = self.config_file.get_config(self.EGRESS_BOOK_KEY) or {}
+        cibles = posture_destinations.destinations_for(posture, carnet)
+        return posture_rules.render_egress(posture, cibles)
+
+    @contextlib.contextmanager
+    def _qemu_egress_file(self, spec):
+        """Le chemin d'un fichier de règles, le temps du bloc.
+
+        Chaîne vide quand la posture n'en attend pas : un déploiement qui ne
+        confine rien ne doit pas payer un fichier.
+
+        Écrit par mkstemp — un nom composé serait un chemin PRÉVISIBLE — et
+        retiré dans tous les cas, y compris quand le déploiement s'arrête au
+        milieu. Le contenu nomme les adresses internes du site : il ne
+        traîne pas après coup.
+        """
+        texte = self._qemu_egress_rules(spec)
+        if not texte:
+            yield ""
+            return
+        descripteur, chemin = tempfile.mkstemp(
+            prefix="erplibre-egress-", suffix=".nft"
+        )
+        try:
+            with os.fdopen(descripteur, "w", encoding="utf-8") as fichier:
+                fichier.write(texte)
+            yield chemin
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(chemin)
+
+    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False, egress=""):
         """Commande deploy_qemu.py d'une VM de la spec.
 
         POINT DE PASSAGE UNIQUE des deux interfaces : le formulaire TUI et les
@@ -1138,7 +1200,7 @@ class QemuDeployMixin:
                 f" « {vm_backend.LIBVIRT} », pas « {demande} »."
             )
         install = spec.get("install")
-        return self._qemu_build_deploy_parts(
+        parts = self._qemu_build_deploy_parts(
             vm["distro"],
             vm["version"],
             vm["arch"],
@@ -1174,6 +1236,12 @@ class QemuDeployMixin:
             git_name=spec.get("git_name") or "",
             git_email=spec.get("git_email") or "",
         )
+        # Le fichier de règles est POSÉ par le déploiement, pas rendu par
+        # lui : il reçoit un chemin déjà écrit, et n'a rien à savoir des
+        # postures. Absent, la commande est celle d'avant, mot pour mot.
+        if egress:
+            parts += ["--egress-file", egress]
+        return parts
 
     def _qemu_arches_for(self, distro, arch):
         """Architectures à déployer pour cette distro selon le choix global.
@@ -2202,37 +2270,45 @@ class QemuDeployMixin:
         parallelism = spec["parallelism"]
         n_jobs = len(pending)
 
-        # Jobs numérotés (k/N) : l'ID suit l'ORDRE de préparation, stable même
-        # si les résultats reviennent dans le désordre (exécution parallèle).
-        jobs = []  # (id, name, parts)
-        for k, vm in enumerate(pending, 1):
-            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=False)
-            jobs.append((f"{k}/{n_jobs}", vm["name"], parts))
+        # Le fichier de règles vit exactement le temps du déploiement :
+        # il porte les adresses internes du site, et il est retiré même
+        # si le parc s'arrête au milieu. Vide quand la posture n'attend
+        # rien, ce qui est le cas de la plupart des déploiements.
+        with self._qemu_egress_file(spec) as egress:
+            # Jobs numérotés (k/N) : l'ID suit l'ORDRE de
+            # préparation, stable même si les résultats reviennent
+            # dans le désordre (exécution parallèle).
+            jobs = []  # (id, name, parts)
+            for k, vm in enumerate(pending, 1):
+                parts = self._qemu_deploy_parts_for(
+                    vm, spec, dry_run=False, egress=egress
+                )
+                jobs.append((f"{k}/{n_jobs}", vm["name"], parts))
 
-        deploy_start = time.time()
-        n_ok = 0
-        if jobs:
-            workers = min(parallelism, len(jobs))
-            print(
-                f"\n{t('Deploying')} {len(jobs)} VM "
-                f"({t('parallel jobs:')} {workers})…"
-            )
-            if todo_prefs.get("qemu_deploy_progress") == "tui":
-                outcome = self._qemu_deploy_jobs_tui(jobs, workers)
-            else:
-                outcome = None
-            if outcome is None:
-                outcome = self._qemu_deploy_jobs_cli(jobs, workers)
-            for name, rc, _out, _secs in outcome:
-                if rc == 0:
-                    deployed.append(name)
-                    n_ok += 1
-            print(
-                f"\n{t('Deploy summary:')} {n_ok} OK, "
-                f"{len(jobs) - n_ok} {t('failed')}, "
-                f"{len(jobs)} {t('VMs')}, "
-                f"{self._fmt_dur(time.time() - deploy_start)}"
-            )
+            deploy_start = time.time()
+            n_ok = 0
+            if jobs:
+                workers = min(parallelism, len(jobs))
+                print(
+                    f"\n{t('Deploying')} {len(jobs)} VM "
+                    f"({t('parallel jobs:')} {workers})…"
+                )
+                if todo_prefs.get("qemu_deploy_progress") == "tui":
+                    outcome = self._qemu_deploy_jobs_tui(jobs, workers)
+                else:
+                    outcome = None
+                if outcome is None:
+                    outcome = self._qemu_deploy_jobs_cli(jobs, workers)
+                for name, rc, _out, _secs in outcome:
+                    if rc == 0:
+                        deployed.append(name)
+                        n_ok += 1
+                print(
+                    f"\n{t('Deploy summary:')} {n_ok} OK, "
+                    f"{len(jobs) - n_ok} {t('failed')}, "
+                    f"{len(jobs)} {t('VMs')}, "
+                    f"{self._fmt_dur(time.time() - deploy_start)}"
+                )
 
         # 6) Résolution des IP EN PARALLÈLE (réutilisée pour ssh_config +
         # install) : une boucle EN SÉRIE bloquait plusieurs minutes par VM
