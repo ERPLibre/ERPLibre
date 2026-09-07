@@ -13305,6 +13305,14 @@ TRANSLATIONS = {
         "fr": 'valeur(s) non vérifiée(s), au-delà du plafond',
         "en": 'value(s) not verified, above the cap',
     },
+    'Not produced here, left alone:': {
+        "fr": 'Non produit ici, laissé en place :',
+        "en": 'Not produced here, left alone:',
+    },
+    'The library here cannot read this workbook: ': {
+        "fr": 'La bibliothèque ne sait pas lire ce classeur ici : ',
+        "en": 'The library here cannot read this workbook: ',
+    },
 }
 
 

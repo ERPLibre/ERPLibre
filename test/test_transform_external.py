@@ -916,6 +916,111 @@ def _cles_du_menu(traduites_seulement=True):
     return cles
 
 
+class TestConversion(unittest.TestCase):
+    """Les cibles de conversion, qu'aucun test n'exerçait.
+
+    C'est ce trou qui a laissé passer, tour à tour : le nom du fichier
+    source recraché comme clé de premier niveau, une date rendue en texte
+    ISO dans un classeur, et un nom de balise XML illégal écrit sans
+    broncher puis annoncé comme écrit.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _csv(self, nom, contenu):
+        chemin = os.path.join(self.base, nom)
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        return chemin
+
+    def test_xml_etiquette_qui_commence_par_un_chiffre(self):
+        """XML interdit à un nom d'élément de commencer par un chiffre.
+
+        « 2024 » produisait `<2024>`, écrit, annoncé comme écrit, et refusé
+        par tout analyseur.
+        """
+        import xml.etree.ElementTree as ET
+
+        source = self._csv("mois.csv", "2024,nom\n1200,Alpha\n")
+        sortie = os.path.join(self.base, "o.xml")
+        formats.ecrire(source, sortie, {"conversion": "xml", "graine": "3"})
+        # La seule assertion qui compte : le fichier se relit.
+        ET.parse(sortie)
+
+    def test_nom_de_balise_sur(self):
+        self.assertEqual(formats._nom_de_balise_sur("nom", 1), "nom")
+        self.assertTrue(formats._nom_de_balise_sur("2024", 1)[0].isalpha())
+        self.assertEqual(formats._nom_de_balise_sur("", 3), "c3")
+        self.assertEqual(formats._nom_de_balise_sur("a b", 1), "a_b")
+
+    def test_un_fichier_par_feuille_au_dela_d_une_seule(self):
+        self.assertFalse(
+            formats._un_fichier_par_feuille(
+                "csv", [formats.Feuille("a", [["x"]])], {"feuilles": None}
+            )
+        )
+        self.assertTrue(
+            formats._un_fichier_par_feuille(
+                "csv",
+                [
+                    formats.Feuille("a", [["x"]]),
+                    formats.Feuille("b", [["y"]]),
+                ],
+                {"feuilles": None},
+            )
+        )
+
+    def test_repertoire_un_fichier_par_feuille(self):
+        feuilles = [
+            formats.Feuille("Ventes", [["nom"], ["Alpha"]]),
+            formats.Feuille("Achats", [["nom"], ["Beta"]]),
+        ]
+        cible = os.path.join(self.base, "lot")
+        ecrits = formats._convertir_vers_repertoire(cible, feuilles, {})
+        self.assertEqual(len(ecrits), 2)
+        self.assertEqual(os.stat(cible).st_mode & 0o777, 0o700)
+
+    def test_conversion_vers_xml_refuse_plusieurs_feuilles(self):
+        feuilles = [
+            formats.Feuille("a", [["nom"], ["Alpha"]]),
+            formats.Feuille("b", [["nom"], ["Beta"]]),
+        ]
+        with self.assertRaises(formats.ErreurMoteur):
+            formats._convertir_vers_xml(
+                os.path.join(self.base, "o.xml"), feuilles
+            )
+
+    def test_valeur_pour_xlsx_garde_les_types(self):
+        """openpyxl porte nativement datetime, int, float et bool.
+
+        `valeur_hors_tableur` est écrite pour csv, json et xml, trois
+        formats SANS types : elle rend une date en chaîne ISO, et la copie
+        portait du texte là où une date était attendue.
+        """
+        quand = datetime.datetime(2024, 3, 1)
+        self.assertIs(formats._valeur_pour_xlsx(quand), quand)
+        self.assertIs(formats._valeur_pour_xlsx(True), True)
+        self.assertEqual(formats._valeur_pour_xlsx(5), 5)
+        self.assertIsNone(formats._valeur_pour_xlsx(b"\x00"))
+
+        class FausseFormule:
+            text = "=SUM(A1:A2)"
+
+        self.assertEqual(
+            formats._valeur_pour_xlsx(FausseFormule()), "=SUM(A1:A2)"
+        )
+
+    def test_bornes_ignorent_les_flottants_non_finis(self):
+        feuille = formats.Feuille(
+            "f",
+            [["montant"], [1200.0], [float("nan")], [float("inf")]],
+        )
+        colonne = formats._stats_colonnes(feuille)[0]
+        self.assertEqual((colonne["min"], colonne["max"]), (1200.0, 1200.0))
+
+
 class TestGardeApresEcriture(unittest.TestCase):
     """Le filet : relire les octets écrits.
 
@@ -1135,6 +1240,11 @@ MARQUEURS = {
     "lien_externe": "ZQXEXTLINK",
     "image": "ZQXIMAGE",
     "filtre": "ZQXFILTRE",
+    # Une feuille GRAPHIQUE n'a aucune cellule : la passe sur la grille ne
+    # la voit pas, `worksheets` l'exclut par construction, et son titre
+    # comme son en-tête ne passent par aucune règle.
+    "titre_feuille_graph": "ZQXCHSHEET",
+    "entete_feuille_graph": "ZQXCHHEAD",
 }
 
 # Les quatre familles référencées par une formule. On ne peut pas les
@@ -1269,6 +1379,19 @@ def _fabriquer_fixture(chemin):
     PILImage.new("RGB", (4, 4), (200, 10, 10)).save(png, pnginfo=info)
     onglet.add_image(XLImage(png), "L2")
 
+    feuille_graph = classeur.create_chartsheet(M["titre_feuille_graph"])
+    feuille_graph.oddHeader.center.text = M["entete_feuille_graph"]
+    # Un graphique attaché, comme Excel en produit toujours : openpyxl
+    # 3.1.2 ne RELIT pas une feuille graphique qui n'en a pas — son
+    # lecteur de relations lève `AttributeError`. Une fixture sans
+    # graphique éprouverait ce défaut de la bibliothèque, pas le nôtre.
+    graphique_feuille = BarChart()
+    graphique_feuille.add_data(
+        Reference(onglet, min_col=2, min_row=1, max_row=3),
+        titles_from_data=True,
+    )
+    feuille_graph.add_chart(graphique_feuille)
+
     classeur.save(chemin)
     _injecter_cache(chemin)
     _injecter_parties_de_copie(chemin)
@@ -1321,21 +1444,30 @@ def _injecter_cache(chemin):
         + TOUS_MARQUEURS["cat_cache"]
         + "</v></pt></strCache></strRef></cat>"
     )
+    injecte = False
     with zipfile.ZipFile(chemin) as entree, zipfile.ZipFile(
         temporaire, "w", zipfile.ZIP_DEFLATED
     ) as sortie:
         for item in entree.infolist():
             octets = entree.read(item.filename)
-            if item.filename.startswith("xl/charts/chart"):
+            # Le classeur porte plusieurs graphiques : viser le PREMIER qui
+            # a des catégories. Exiger « <cat> » dans chacun ferait tomber
+            # la fabrication sur le graphique de la feuille graphique, qui
+            # n'en a pas.
+            if (
+                not injecte
+                and item.filename.startswith("xl/charts/chart")
+                and b"<cat>" in octets
+            ):
                 texte = octets.decode("utf-8")
-                assert "<cat>" in texte, (
-                    "openpyxl n'a pas écrit <cat> : la fixture ne porte"
-                    " pas le vecteur de cache, la mesure serait creuse"
-                )
                 debut = texte.index("<cat>")
                 fin = texte.index("</cat>") + len("</cat>")
                 octets = (texte[:debut] + cache + texte[fin:]).encode("utf-8")
+                injecte = True
             sortie.writestr(item, octets)
+    # Sans cache injecté, la mesure serait creuse : le test rapporterait
+    # « effacé » sur un marqueur jamais écrit.
+    assert injecte, "aucun graphique ne porte <cat>"
     os.replace(temporaire, chemin)
 
 
@@ -1464,8 +1596,8 @@ class TestFuiteXlsx(unittest.TestCase):
 
     def test_le_compte_des_effaces(self):
         efface = set(TOUS_MARQUEURS) - set(_balayer(self._anonymiser()))
-        self.assertEqual(len(TOUS_MARQUEURS), 28)
-        self.assertEqual(len(efface), 23)
+        self.assertEqual(len(TOUS_MARQUEURS), 30)
+        self.assertEqual(len(efface), 25)
 
     def test_la_constante_d_une_plage_nommee_passe_par_la_table(self):
         """Le NOM survit par nécessité, la VALEUR doit partir.
@@ -1498,6 +1630,16 @@ class TestFuiteXlsx(unittest.TestCase):
             self.assertFalse(
                 [n for n in noms if n.startswith(prefixe)], prefixe
             )
+
+    def test_la_feuille_graphique_part_toujours(self):
+        """Rien ne peut l'anonymiser : elle n'a pas de cellule.
+
+        La retirer seulement quand une sélection de feuilles existe faisait
+        mentir l'avertissement dans tous les autres cas.
+        """
+        survivants = _balayer(self._anonymiser())
+        self.assertNotIn("titre_feuille_graph", survivants)
+        self.assertNotIn("entete_feuille_graph", survivants)
 
     def test_les_graphiques_partent_par_defaut(self):
         with zipfile.ZipFile(self._anonymiser()) as archive:

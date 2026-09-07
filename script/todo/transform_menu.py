@@ -23,6 +23,7 @@ import datetime
 import json
 import os
 import shlex
+import shutil
 import subprocess
 
 import click
@@ -735,30 +736,75 @@ class TransformMenuMixin:
         if not os.path.isdir(SORTIE_PAR_DEFAUT):
             print(f"   {t('Empty file.')} {SORTIE_PAR_DEFAUT}")
             return
-        entrees = sorted(os.listdir(SORTIE_PAR_DEFAUT))
-        if not entrees:
+        produites, etrangeres = self._transform_inventaire()
+        if not produites and not etrangeres:
             print(f"   {t('Empty file.')} {SORTIE_PAR_DEFAUT}")
             return
         total = 0
-        for nom in entrees:
-            chemin = os.path.join(SORTIE_PAR_DEFAUT, nom)
-            try:
-                taille = os.path.getsize(chemin)
-            except OSError:
-                continue
+        for nom, taille in produites:
             total += taille
             print(f"   {nom:<44} {taille:>10} o")
-        print(f"   {len(entrees)} {t('File')} — {total} o")
+        print(f"   {len(produites)} {t('File')} — {total} o")
+        if etrangeres:
+            # Le navigateur de fichiers ouvre son parcours dans ce même
+            # répertoire : ce qui s'y trouve n'est pas toujours une copie
+            # produite ici, et l'effacement en bloc l'emportait aussi.
+            print(f"\n   {t('Not produced here, left alone:')}")
+            for nom, taille in etrangeres:
+                print(f"   {nom:<44} {taille:>10} o")
+        if not produites:
+            print(t("Nothing to do."))
+            return
         reponse = input(
             t("Delete all copies in private/transform/? (y/N): ")
         ).strip()
         if not self._is_yes(reponse):
             print(t("Nothing to do."))
             return
-        for nom in entrees:
+        for nom, _taille in produites:
             chemin = os.path.join(SORTIE_PAR_DEFAUT, nom)
             try:
-                if os.path.isfile(chemin):
+                if os.path.isdir(chemin):
+                    # Une source à plusieurs feuilles convertie en csv
+                    # écrit un RÉPERTOIRE. Il était listé comme un fichier
+                    # avec sa taille d'inode, puis laissé sur le disque,
+                    # plein de lignes dérivées du client.
+                    shutil.rmtree(chemin)
+                else:
                     os.unlink(chemin)
             except OSError as exc:
                 print(f"   ⚠ {exc}")
+
+    @staticmethod
+    def _transform_inventaire():
+        """(produites ici, étrangères) — chacune en (nom, octets).
+
+        Ce que l'outil produit se reconnaît à son nom : « .anon. » quelque
+        part, ou le suffixe de la table. Tout le reste est à quelqu'un
+        d'autre et n'est pas à effacer.
+        """
+        produites, etrangeres = [], []
+        for nom in sorted(os.listdir(SORTIE_PAR_DEFAUT)):
+            chemin = os.path.join(SORTIE_PAR_DEFAUT, nom)
+            taille = 0
+            if os.path.isdir(chemin):
+                for racine, _dossiers, fichiers in os.walk(chemin):
+                    for fichier in fichiers:
+                        try:
+                            taille += os.path.getsize(
+                                os.path.join(racine, fichier)
+                            )
+                        except OSError:
+                            continue
+            else:
+                try:
+                    taille = os.path.getsize(chemin)
+                except OSError:
+                    continue
+            cible = (
+                produites
+                if ".anon." in nom or nom.endswith(".table.json")
+                else etrangeres
+            )
+            cible.append((nom, taille))
+        return produites, etrangeres

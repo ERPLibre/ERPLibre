@@ -77,6 +77,7 @@ ERREURS = {
     " or the copy; nothing was written.",
     "fuite_detectee": "A source value survives in the copy;"
     " nothing was written: ",
+    "lecture_impossible": "The library here cannot read this workbook: ",
 }
 
 # Les sept constantes d'erreur d'Excel. Elles arrivent en `str` SANS `=` en
@@ -867,7 +868,12 @@ def main(
     args = analyseur.parse_args(argv)
 
     def rendre(objet, code=0):
-        json.dump(objet, sys.stdout, ensure_ascii=False)
+        # `allow_nan=False` : json.dump émet sinon « NaN » et « Infinity »
+        # nus, que la norme JSON interdit. L'appelant les relirait — Python
+        # les accepte — mais tout autre lecteur du résultat le refuserait,
+        # et le moteur aurait écrit un document non conforme en annonçant
+        # un succès. Mieux vaut lever ici, là où la cause est visible.
+        json.dump(objet, sys.stdout, ensure_ascii=False, allow_nan=False)
         sys.stdout.write("\n")
         return code
 

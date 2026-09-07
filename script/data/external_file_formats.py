@@ -19,6 +19,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -187,7 +188,15 @@ def _stats_colonnes(feuille):
                     distinctes.add(valeur)
                 except TypeError:
                     distinctes.add(repr(valeur))
-            if famille == "nombre" and not isinstance(valeur, bool):
+            if (
+                famille == "nombre"
+                and not isinstance(valeur, bool)
+                and math.isfinite(valeur)
+            ):
+                # NaN et l'infini ne bornent rien : `min` et `max` les
+                # ignorent selon l'ORDRE des arguments, ce qui n'est pas
+                # une garantie sur laquelle asseoir un intervalle de
+                # tirage.
                 mini = valeur if mini is None else min(mini, valeur)
                 maxi = valeur if maxi is None else max(maxi, valeur)
         etiquette = etiquettes[index] if index < len(etiquettes) else None
@@ -252,12 +261,24 @@ def _lire_xlsx(chemin, garder_vba=False):
     """
     from openpyxl import load_workbook
 
-    classeur = load_workbook(
-        chemin,
-        data_only=False,
-        keep_links=False,
-        keep_vba=bool(garder_vba),
-    )
+    try:
+        classeur = load_workbook(
+            chemin,
+            data_only=False,
+            keep_links=False,
+            keep_vba=bool(garder_vba),
+        )
+    except ErreurMoteur:
+        raise
+    except Exception as exc:
+        # La bibliothèque ne lit pas tout ce qu'Excel écrit : une feuille
+        # graphique DÉPOURVUE de graphique fait lever `AttributeError`
+        # dans son lecteur de relations, en 3.1.2. Ce refus nomme la
+        # cause ; sans lui, un fichier qui s'ouvre dans Excel ressort en
+        # « format non reconnu » suivi d'un message Python.
+        raise ErreurMoteur(
+            "lecture_impossible", f"{type(exc).__name__}: {exc}"
+        )
     feuilles = []
     for onglet in classeur.worksheets:
         lignes = [
@@ -1341,6 +1362,16 @@ def _retirer_feuilles_hors_portee(classeur, options):
     intactes dans le fichier livré, avec pour seule trace « N cellules
     laissées hors portée ». Les autres cibles les retirent déjà.
     """
+    # Une feuille graphique n'a AUCUNE cellule : la passe sur la grille ne
+    # la voit pas, `worksheets` l'exclut par construction, et son titre,
+    # ses titres d'axes, son en-tête et ses caches de série ne passent donc
+    # par aucune règle. Rien ne peut l'anonymiser — elle part, toujours, et
+    # l'avertissement le dit. La retirer seulement quand une sélection de
+    # feuilles existe faisait mentir cet avertissement dans tous les autres
+    # cas.
+    for onglet in list(getattr(classeur, "chartsheets", []) or []):
+        classeur.remove(onglet)
+
     retenues = options.get("feuilles")
     if not retenues:
         return
@@ -1350,10 +1381,6 @@ def _retirer_feuilles_hors_portee(classeur, options):
         if onglet.title not in retenues
     ]:
         del classeur[nom]
-    # `worksheets` exclut les feuilles graphiques, qui portent un cache de
-    # série pointant une feuille qu'on vient de retirer.
-    for onglet in list(getattr(classeur, "chartsheets", []) or []):
-        classeur.remove(onglet)
 
 
 def _resynchroniser_tableaux(classeur):
@@ -1561,13 +1588,28 @@ def _convertir_vers_json(destination, feuilles):
     return [destination]
 
 
+def _nom_de_balise_sur(etiquette, rang):
+    """Une étiquette rendue légale comme nom d'élément XML.
+
+    XML interdit à un nom de commencer par un chiffre : une colonne
+    intitulée « 2024 » produisait `<2024>`, écrit sans broncher, annoncé
+    comme écrit, et refusé par tout analyseur — y compris celui du dépôt.
+    """
+    brut = re.sub(r"[^A-Za-z0-9_.-]", "_", str(etiquette or "")).strip("_")
+    if not brut:
+        return f"c{rang}"
+    if not re.match(r"[A-Za-z_]", brut[0]):
+        return f"c{rang}_{brut}"
+    return brut
+
+
 def _convertir_vers_xml(destination, feuilles):
     if len(feuilles) > 1:
         raise ErreurMoteur("format_inconnu", "xml")
     feuille = feuilles[0]
     racine = ET.Element("table")
     etiquettes = [
-        re.sub(r"[^A-Za-z0-9_.-]", "_", str(v)) if v else f"c{i}"
+        _nom_de_balise_sur(v, i)
         for i, v in enumerate(feuille.etiquettes, start=1)
     ]
     for ligne in feuille.lignes[1:]:
@@ -1575,7 +1617,7 @@ def _convertir_vers_xml(destination, feuilles):
         for index, valeur in enumerate(ligne):
             if index >= len(etiquettes):
                 continue
-            champ = ET.SubElement(noeud, etiquettes[index] or f"c{index}")
+            champ = ET.SubElement(noeud, etiquettes[index])
             rendu = valeur_hors_tableur(valeur)
             champ.text = "" if rendu is None else str(rendu)
 
