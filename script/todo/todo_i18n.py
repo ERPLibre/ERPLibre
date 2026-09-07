@@ -1135,6 +1135,10 @@ TRANSLATIONS = {
         "fr": "Retaper combien de VM sont effacées",
         "en": "Type how many VMs are deleted",
     },
+    "Kept - these disks belong to something:": {
+        "fr": "Gardés — ces disques appartiennent à quelque chose :",
+        "en": "Kept - these disks belong to something:",
+    },
     "no proof": {
         "fr": "aucune preuve",
         "en": "no proof",

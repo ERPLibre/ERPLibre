@@ -863,15 +863,28 @@ class QemuDeployMixin:
         orphans = self._qemu_orphan_disks(names)
         if not orphans:
             return True
-        items = []
-        for _name, path in orphans:
+        candidats = []
+        for name, path in orphans:
             try:
-                items.append((os.path.getsize(path), path))
+                candidats.append((os.path.getsize(path), path, name))
             except OSError:
-                items.append((0, path))
+                candidats.append((0, path, name))
+        # UN FICHIER RÉFÉRENCÉ N'EST JAMAIS ORPHELIN. La détection déduit le
+        # chemin du nom, et elle a raison de le faire — le formulaire la
+        # rappelle à chaque frappe, sans invite de mot de passe. Mais un
+        # disque peut appartenir à un domaine portant un AUTRE nom : une VM
+        # renommée garde le nom de fichier d'avant, si bien que déployer une
+        # machine qui reprend l'ancien nom proposait d'effacer le disque
+        # vivant de la voisine. Le contrôle vit donc ICI, où l'on efface, et
+        # non là où l'on détecte.
+        orphelins, proteges = self._qemu_split_orphans(candidats)
+        if proteges:
+            print(f"\n🛡  {t('Kept - these disks belong to something:')}")
+            for _taille, chemin, porteur in proteges:
+                print(f"   {chemin} — {porteur}")
         self._cleanup_delete_files(
             t("Orphan disks that would fail the deployment"),
-            items,
+            [(taille, chemin) for taille, chemin, _m in orphelins],
             t("Delete them and continue? (y/N): "),
         )
         restants = self._qemu_orphan_disks(names)
