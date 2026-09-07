@@ -28,6 +28,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from script.todo.todo_i18n import t
+
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MENU = os.path.join(RACINE, "script", "todo", "assistant_menu.py")
@@ -237,6 +239,209 @@ class JournalDuTransport(unittest.TestCase):
             self.assertGreaterEqual(
                 logging.getLogger(nom).getEffectiveLevel(), logging.WARNING
             )
+
+
+class Balayage(unittest.TestCase):
+    """Ce que le balayage doit atteindre, et ce qu'il ne doit pas taire.
+
+    Un serveur vit souvent sur un réseau que la machine ne PORTE pas,
+    joignable par la passerelle. Les deux mécanismes qui semblaient couvrir ce
+    cas ne le couvrent pas : la saisie d'une adresse ne prend qu'un hôte, et
+    la table de voisinage est link-local, donc elle ne connaît jamais un hôte
+    routé. Sans réseau saisi à la main, un tel serveur est hors d'atteinte.
+    """
+
+    def _todo(self):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        todo._llm_session = {
+            "serveur": None,
+            "sonde": [],
+            "confirmes": set(),
+        }
+        return todo
+
+    def test_un_reseau_non_porte_est_balayable(self):
+        """Aucune interface ne porte ce préfixe, et il doit être planifiable
+        quand même : c'est le cas d'un CLI qui tourne dans une VM, dont le
+        « réseau local » est celui de l'hyperviseur."""
+        from script.todo.assistant import discover as llm_disc
+
+        todo = self._todo()
+        vus = {}
+        with patch.object(
+            llm_disc, "local_networks", return_value=[]
+        ), patch.object(llm_disc, "run_ip", return_value=""), patch.object(
+            todo, "_qemu_host_addresses", staticmethod(lambda: set())
+        ), patch.object(
+            todo,
+            "_llm_probe_and_keep",
+            lambda adresses, **kw: vus.update({"n": len(adresses), "kw": kw}),
+        ), patch(
+            "click.prompt", side_effect=["198.51.100.0/24", "o"]
+        ):
+            todo._llm_search_cidr()
+        self.assertEqual(vus.get("n"), 254)
+        self.assertEqual(vus["kw"]["cible"], "198.51.100.0/24")
+        self.assertFalse(vus["kw"]["restreint"])
+
+    def test_le_defaut_est_le_reseau_entier_pas_les_hotes_deja_vus(self):
+        """Rétrécir par défaut se retourne : la table de voisinage ne porte
+        souvent que la passerelle, le balayage tombe à une adresse, et le
+        résumé annonce un réseau vide là où une seule adresse a été vue."""
+        from script.todo.assistant import discover as llm_disc
+
+        todo = self._todo()
+        vus = {}
+        voisinage = "198.51.100.1 dev lien0 lladdr aa:bb:cc:dd:ee:01 REACHABLE"
+        with patch.object(
+            llm_disc, "run_ip", return_value=voisinage
+        ), patch.object(
+            todo, "_qemu_host_addresses", staticmethod(lambda: set())
+        ), patch.object(
+            todo,
+            "_llm_probe_and_keep",
+            lambda adresses, **kw: vus.update({"n": len(adresses), "kw": kw}),
+        ), patch(
+            "click.prompt", side_effect=["o"]
+        ):
+            todo._llm_sweep_cidr("198.51.100.0/24")
+        self.assertEqual(vus.get("n"), 254)
+        self.assertFalse(vus["kw"]["restreint"])
+
+    def test_la_lettre_v_restreint_et_le_dit(self):
+        from script.todo.assistant import discover as llm_disc
+
+        todo = self._todo()
+        vus = {}
+        voisinage = "198.51.100.1 dev lien0 lladdr aa:bb:cc:dd:ee:01 REACHABLE"
+        with patch.object(
+            llm_disc, "run_ip", return_value=voisinage
+        ), patch.object(
+            todo, "_qemu_host_addresses", staticmethod(lambda: set())
+        ), patch.object(
+            todo,
+            "_llm_probe_and_keep",
+            lambda adresses, **kw: vus.update({"n": len(adresses), "kw": kw}),
+        ), patch(
+            "click.prompt", side_effect=["v"]
+        ):
+            todo._llm_sweep_cidr("198.51.100.0/24")
+        self.assertEqual(vus.get("n"), 1)
+        self.assertTrue(vus["kw"]["restreint"])
+
+    def test_un_balayage_restreint_sans_trouvaille_le_dit(self):
+        """« Aucun serveur sur ce /24 » après une adresse regardée est un
+        faux négatif présenté comme un fait."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import discover as llm_disc
+
+        todo = self._todo()
+        sortie = io.StringIO()
+        with patch.object(llm_disc, "sweep", return_value=[]), redirect_stdout(
+            sortie
+        ):
+            todo._llm_probe_and_keep(
+                ["198.51.100.1"], cible="198.51.100.0/24", restreint=True
+            )
+        texte = sortie.getvalue()
+        self.assertIn(t("Only part of that network was swept."), texte)
+
+    def test_un_balayage_complet_sans_trouvaille_ne_le_dit_pas(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import discover as llm_disc
+
+        todo = self._todo()
+        sortie = io.StringIO()
+        with patch.object(llm_disc, "sweep", return_value=[]), redirect_stdout(
+            sortie
+        ):
+            todo._llm_probe_and_keep(["198.51.100.1"], cible="198.51.100.0/24")
+        self.assertNotIn(
+            t("Only part of that network was swept."), sortie.getvalue()
+        )
+
+    def test_plus_large_qu_un_slash24_est_refuse(self):
+        from script.todo.assistant import discover as llm_disc
+
+        todo = self._todo()
+        appels = []
+        with patch.object(
+            todo, "_qemu_host_addresses", staticmethod(lambda: set())
+        ), patch.object(llm_disc, "run_ip", return_value=""), patch.object(
+            todo, "_llm_probe_and_keep", lambda *a, **k: appels.append(a)
+        ), patch(
+            "click.prompt", side_effect=[]
+        ):
+            todo._llm_sweep_cidr("10.0.0.0/8")
+        self.assertEqual(appels, [])
+
+
+class ReglagesDuBalayage(unittest.TestCase):
+    """Les réglages viennent des préférences, et une valeur abîmée n'y passe
+    pas.
+
+    Le délai est le seul réglage du balayage qui fabrique des faux négatifs :
+    sous mille connexions simultanées, un hôte joignable en une milliseconde
+    se manque à cinq centièmes de délai. Une valeur illisible ou négative doit
+    donc retomber sur le défaut du module, jamais s'appliquer.
+    """
+
+    def test_les_prefs_sont_passees_au_balayage(self):
+        from script.todo import todo_prefs
+        from script.todo.assistant_menu import AssistantMenuMixin
+
+        with patch.object(
+            todo_prefs,
+            "get",
+            lambda cle, defaut=None: {
+                "assistant_sweep_workers": 64,
+                "assistant_sweep_timeout": 0.75,
+            }[cle],
+        ):
+            reglages = AssistantMenuMixin._llm_sweep_tuning()
+        self.assertEqual(reglages, {"workers": 64, "timeout": 0.75})
+
+    def test_une_valeur_illisible_retombe_sur_le_defaut_du_module(self):
+        from script.todo import todo_prefs
+        from script.todo.assistant_menu import AssistantMenuMixin
+
+        for mauvais in ("beaucoup", None, -1, 0):
+            with patch.object(
+                todo_prefs, "get", lambda cle, defaut=None: mauvais
+            ):
+                reglages = AssistantMenuMixin._llm_sweep_tuning()
+            self.assertNotIn("workers", reglages, f"accepté : {mauvais!r}")
+            self.assertNotIn("timeout", reglages, f"accepté : {mauvais!r}")
+
+    def test_le_defaut_du_module_ne_suit_pas_le_nombre_de_coeurs(self):
+        """Dimensionner par cœurs est l'erreur que ce module refuse : ces
+        fils attendent le réseau. Le plafond réel est le nombre de sondes,
+        que le balayage applique lui-même."""
+        import os
+
+        from script.todo.assistant import discover as llm_disc
+
+        self.assertNotEqual(llm_disc.MAX_WORKERS, os.cpu_count())
+        self.assertGreaterEqual(llm_disc.MAX_WORKERS, 1024)
+        self.assertNotIn("cpu_count", _source_de_la_decouverte())
+
+    def test_les_prefs_declarent_les_deux_reglages(self):
+        from script.todo import todo_prefs
+
+        for cle in ("assistant_sweep_workers", "assistant_sweep_timeout"):
+            self.assertIn(cle, todo_prefs.DEFAULTS)
+
+
+def _source_de_la_decouverte():
+    chemin = os.path.join(RACINE, "script", "todo", "assistant", "discover.py")
+    with open(chemin) as fichier:
+        return fichier.read()
 
 
 class Frontiere(unittest.TestCase):

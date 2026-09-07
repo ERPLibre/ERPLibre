@@ -12486,6 +12486,38 @@ TRANSLATIONS = {
         ),
         "en": "Sweeping the network reaches machines you did not name.",
     },
+    "A network I type (CIDR)": {
+        "fr": "Un réseau que je tape (CIDR)",
+        "en": "A network I type (CIDR)",
+    },
+    "Network in CIDR form": {
+        "fr": "Réseau en notation CIDR",
+        "en": "Network in CIDR form",
+    },
+    "Only part of that network was swept.": {
+        "fr": "Une partie seulement de ce réseau a été balayée.",
+        "en": "Only part of that network was swept.",
+    },
+    "The networks of a machine over SSH": {
+        "fr": "Les réseaux d'une machine en SSH",
+        "en": "The networks of a machine over SSH",
+    },
+    "Host reachable over SSH": {
+        "fr": "Hôte joignable en SSH",
+        "en": "Host reachable over SSH",
+    },
+    "Reading the networks it carries…": {
+        "fr": "Lecture des réseaux qu'elle porte…",
+        "en": "Reading the networks it carries…",
+    },
+    "That host did not answer, or carries no network.": {
+        "fr": "Cet hôte n'a pas répondu, ou ne porte aucun réseau.",
+        "en": "That host did not answer, or carries no network.",
+    },
+    "read on %s, swept from here": {
+        "fr": "lu sur %s, balayé d'ici",
+        "en": "read on %s, swept from here",
+    },
     "Only the hosts that have already spoken (ip neigh)": {
         "fr": "Seulement les hôtes qui ont déjà parlé (ip neigh)",
         "en": "Only the hosts that have already spoken (ip neigh)",

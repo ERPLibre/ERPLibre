@@ -377,6 +377,12 @@ class AssistantMenuMixin:
                     }
                 )
             choices.append({"prompt_description": t("An address I type")})
+            choices.append(
+                {"prompt_description": t("A network I type (CIDR)")}
+            )
+            choices.append(
+                {"prompt_description": t("The networks of a machine over SSH")}
+            )
             print(t("Where should I look for a server?"))
             try:
                 status = click.prompt(self.fill_help_info(choices))
@@ -402,6 +408,10 @@ class AssistantMenuMixin:
                 self._llm_search_network(reseaux[rang - 4])
             elif rang == 4 + len(reseaux):
                 self._llm_add_server()
+            elif rang == 5 + len(reseaux):
+                self._llm_search_cidr()
+            elif rang == 6 + len(reseaux):
+                self._llm_search_remote()
             else:
                 print(t("Command not found !"))
 
@@ -450,24 +460,104 @@ class AssistantMenuMixin:
             return
         self._llm_probe_and_keep([hote for _, hote, _ in hotes])
 
-    def _llm_search_network(self, interface):
-        """Balayer un /24, une fois seulement que le CIDR a été nommé.
+    def _llm_search_cidr(self):
+        """Balayer un réseau que la machine ne porte pas.
 
-        C'est la seule action de ce menu qui atteigne des machines que
-        personne n'a désignées : la confirmation nomme donc le réseau et les
-        comptes exacts, et le défaut se limite aux hôtes que la table de
-        voisinage dit avoir déjà parlé — ils ne coûtent rien à connaître et
-        ne supposent aucun droit.
+        Les réseaux proposés sont ceux que les interfaces portent. Or un
+        serveur vit souvent AILLEURS, derrière la passerelle : quand le CLI
+        tourne dans une VM, le « réseau local » qu'il voit est celui de
+        l'hyperviseur, et le vrai parc est hors-lien. Rien d'autre dans ce
+        menu n'atteint ce cas — la saisie d'une adresse ne prend qu'un hôte,
+        et la table de voisinage est link-local, donc elle ne connaîtra
+        jamais un hôte routé.
+        """
+        try:
+            cidr = click.prompt(t("Network in CIDR form")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        self._llm_sweep_cidr(cidr)
 
-        La lettre « t » élargit aux 254. Un troisième numéro juste après un
-        menu numéroté invite à retaper un numéro de menu ; une lettre dit
-        qu'on répond à autre chose.
+    def _llm_search_remote(self):
+        """Lire les réseaux d'une machine joignable en SSH, et en balayer un.
+
+        La machine du dessus porte les bons préfixes quand celle-ci n'en voit
+        que ceux de son hyperviseur. Les réseaux se LISENT là-bas et se
+        balayent D'ICI : la table de routage locale décide de l'accès, et une
+        route par défaut suffit d'ordinaire. L'hôte distant n'a besoin que
+        d'un accès en lecture, et rien n'est balayé depuis lui.
         """
         from script.todo.assistant import discover as llm_disc
 
-        jobs = llm_disc.plan_sweep(
-            interface.cidr, skip=self._qemu_host_addresses()
-        )
+        try:
+            alias = click.prompt(t("Host reachable over SSH")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not alias:
+            return
+        print(f"  {t('Reading the networks it carries…')}", flush=True)
+        reseaux = llm_disc.remote_networks(alias)
+        if not reseaux:
+            print(f"⚠ {t('That host did not answer, or carries no network.')}")
+            return
+        choices = []
+        for interface in reseaux:
+            pont = f" ({t('libvirt bridge')})" if interface.is_bridge else ""
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{interface.cidr} · {interface.name}{pont}"
+                    )
+                }
+            )
+        print(t("read on %s, swept from here") % alias)
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(reseaux):
+            self._llm_sweep_cidr(reseaux[rang - 1].cidr)
+        else:
+            print(t("Command not found !"))
+
+    def _llm_search_network(self, interface):
+        """Balayer un réseau porté par une interface."""
+        self._llm_sweep_cidr(interface.cidr)
+
+    def _llm_sweep_cidr(self, cidr):
+        """Confirmer, puis balayer le réseau nommé.
+
+        C'est la seule action de ce menu qui atteigne des machines que
+        personne n'a désignées, d'où une confirmation qui nomme le réseau et
+        les comptes exacts.
+
+        Le défaut est le réseau ENTIER, et non les hôtes que la table de
+        voisinage dit avoir déjà parlé. Rétrécir par défaut paraissait plus
+        prudent, et se retourne : la table ne porte souvent que la
+        passerelle, le balayage se réduit alors à une adresse, et le résumé
+        annonce un /24 vide là où une seule adresse a été vue. Un faux
+        négatif présenté comme un fait coûte plus cher que les connexions
+        épargnées. La confirmation nomme le compte, donc le consentement est
+        informé dans les deux sens.
+
+        La lettre « v » restreint aux hôtes déjà vus, pour un réseau chargé
+        où l'on cherche vite. Une lettre plutôt qu'un troisième numéro : un
+        numéro juste après un menu numéroté invite à retaper une entrée de
+        menu.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        jobs = llm_disc.plan_sweep(cidr, skip=self._qemu_host_addresses())
         if not jobs:
             print(f"⚠ {t('Wider than a /24 is refused.')}")
             print(
@@ -477,38 +567,61 @@ class AssistantMenuMixin:
                 )
             )
             return
-        voisins = llm_disc.neigh_hosts(llm_disc.run_ip(["neigh"]))
-        connus = [
-            adresse
-            for adresse in voisins
-            if any(adresse == ip for ip, _ in jobs)
-        ]
+        toutes = sorted({ip for ip, _ in jobs})
+        voisins = set(llm_disc.neigh_hosts(llm_disc.run_ip(["neigh"])))
+        deja_vus = [adresse for adresse in toutes if adresse in voisins]
         print(
             f"⚠ {t('Sweeping the network reaches machines you did not name.')}"
         )
-        if connus:
-            print(
-                f"  {t('Only the hosts that have already spoken (ip neigh)')}"
-                f" : {self._llm_count(len(connus), 'host', 'hosts')}"
-            )
-            cibles = connus
-        else:
-            cibles = sorted({ip for ip, _ in jobs})
         question = t("Sweep %s addresses × %s ports on %s?") % (
-            len(cibles),
+            len(toutes),
             len(llm_fp.PORTS),
-            interface.cidr,
+            cidr,
+        )
+        rappel = (
+            f", « v » = {self._llm_count(len(deja_vus), 'host', 'hosts')}"
+            if deja_vus
+            else ""
         )
         try:
-            reponse = click.prompt(f"{question} (o/N, « t » = 254)")
+            reponse = click.prompt(f"{question} (o/N{rappel})")
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return
-        if reponse.strip().lower() == "t":
-            cibles = sorted({ip for ip, _ in jobs})
+        cibles = toutes
+        restreint = False
+        if reponse.strip().lower() == "v" and deja_vus:
+            cibles = deja_vus
+            restreint = True
         elif not self._is_yes(reponse):
             return
-        self._llm_probe_and_keep(cibles, cible=interface.cidr)
+        self._llm_probe_and_keep(cibles, cible=cidr, restreint=restreint)
+
+    @staticmethod
+    def _llm_sweep_tuning():
+        """Les réglages du balayage, lus dans les préférences.
+
+        Le menu les lit et les passe ; le module de découverte ne connaît pas
+        les préférences, ce qui le laisse testable sans le disque. Une valeur
+        illisible ou hors bornes retombe sur le défaut du module plutôt que de
+        propager un réglage qui fabriquerait des faux négatifs.
+        """
+        from script.todo import todo_prefs
+
+        reglages = {}
+        try:
+            ouvriers = int(todo_prefs.get("assistant_sweep_workers"))
+            if ouvriers > 0:
+                reglages["workers"] = ouvriers
+        except (TypeError, ValueError):
+            pass
+        try:
+            delai = float(todo_prefs.get("assistant_sweep_timeout"))
+            if delai > 0:
+                reglages["timeout"] = delai
+        except (TypeError, ValueError):
+            pass
+        return reglages
 
     def _llm_sweep_printer(self):
         """L'imprimeur d'événements du balayage.
@@ -530,12 +643,17 @@ class AssistantMenuMixin:
 
         return imprimer
 
-    def _llm_probe_and_keep(self, adresses, *, cible=None):
+    def _llm_probe_and_keep(self, adresses, *, cible=None, restreint=False):
         """Frapper, reconnaître, puis proposer de garder.
 
         Le balayage n'ouvre que des connexions ; la reconnaissance, elle,
         coûte une requête HTTP par étage et ne part donc QUE vers les hôtes
         qui ont accepté. C'est ce qui rend un /24 abordable.
+
+        `restreint` dit que les adresses sont un SOUS-ENSEMBLE de ce que
+        `cible` nomme. L'absence de trouvaille se dit alors autrement : un
+        réseau dont on n'a vu qu'une adresse n'est pas un réseau vide, et
+        l'annoncer comme tel est un faux négatif.
         """
         from script.todo.assistant import discover as llm_disc
 
@@ -556,7 +674,11 @@ class AssistantMenuMixin:
         )
         debut = time.monotonic()
         try:
-            touches = llm_disc.sweep(jobs, on_event=self._llm_sweep_printer())
+            touches = llm_disc.sweep(
+                jobs,
+                on_event=self._llm_sweep_printer(),
+                **self._llm_sweep_tuning(),
+            )
         except KeyboardInterrupt:
             print(f"\n⏹ {t('answer interrupted')}")
             return
@@ -585,6 +707,8 @@ class AssistantMenuMixin:
                     f"{duree:.0f}",
                 )
             )
+            if restreint:
+                print(f"  ⚠ {t('Only part of that network was swept.')}")
             self._llm_nothing_found()
             return
         mot = (

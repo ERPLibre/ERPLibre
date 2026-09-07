@@ -322,10 +322,23 @@ class LaFrontiere(unittest.TestCase):
     def test_aucun_analyseur_de_config_ssh_n_est_reecrit_ici(self):
         """`ssh -G` a raison sur les `Include`, les `Match`, l'héritage des
         jokers et ses propres défauts ; recopier son travail est ce que
-        l'injection évite."""
+        l'injection évite.
+
+        L'affirmation porte sur ce que le module NE FAIT PAS lui-même : il ne
+        lit pas le fichier de configuration et n'appelle pas `ssh -G`. La
+        présence du mot « ssh » ne dit rien à ce sujet — `ssh_runner` lance
+        `ip` À TRAVERS ssh, ce qui délègue la configuration à ssh au lieu de
+        la relire, donc respecte la règle en la nommant.
+        """
         source = _source()
-        self.assertNotIn("sshconf", source)
-        self.assertNotIn('"ssh"', source)
+        self.assertNotIn("sshconf", source, "sshconf importé ici")
+        # Le drapeau comme ARGUMENT, et non le nom de la commande dans une
+        # docstring : les docstrings nomment `ssh -G` exprès, pour dire à qui
+        # le travail est délégué.
+        self.assertTrue(
+            '"-G"' not in source and "'-G'" not in source,
+            "« -G » passé en argument : la résolution est réécrite ici",
+        )
 
 
 def _source():
@@ -335,6 +348,90 @@ def _source():
     if not re.search(r"def ssh_hosts\(", texte):
         raise AssertionError("source illisible : le module a changé de forme")
     return texte
+
+
+class ReseauxDistants(unittest.TestCase):
+    """Les réseaux lus sur une AUTRE machine, par le même analyseur.
+
+    Quand le CLI tourne dans une machine virtuelle, les réseaux qu'il porte
+    sont ceux de l'hyperviseur et le parc réel est hors-lien. La machine du
+    dessus porte les bons préfixes ; `remote_networks` les lit chez elle en
+    passant un exécuteur SSH à `local_networks`, ce qui réutilise la lecture
+    des adresses, la détection des ponts et l'ordre par route par défaut sans
+    en dupliquer une ligne.
+    """
+
+    ADRESSES = (
+        "1: lo    inet 127.0.0.1/8 scope host lo\n"
+        "2: lien0 inet 198.51.100.9/24 scope global lien0\n"
+        "3: pont0 inet 192.0.2.1/24 scope global pont0\n"
+    )
+    LIENS = (
+        "1: lo: <LOOPBACK> mtu 65536 qdisc noqueue state UNKNOWN\n"
+        "2: lien0: <BROADCAST> mtu 1500 qdisc fq_codel state UP\n"
+        "3: pont0: <BROADCAST> mtu 1500 qdisc noqueue state UP "
+        "link/ether aa:bb:cc:dd:ee:07 bridge_id 8000.0 bridge\n"
+    )
+    DEFAUT = "default via 198.51.100.1 dev lien0 proto dhcp\n"
+
+    def _executeur(self, journal):
+        """Un exécuteur qui rend ce qu'annoncerait l'hôte distant."""
+
+        def executer(argv):
+            journal.append(tuple(argv))
+            if "addr" in argv:
+                return self.ADRESSES
+            if "link" in argv:
+                return self.LIENS
+            if "route" in argv:
+                return self.DEFAUT
+            return ""
+
+        return executer
+
+    def test_les_reseaux_du_distant_sont_lus_et_le_pont_marque(self):
+        journal = []
+        reseaux = discover.remote_networks(
+            "machine.invalid", run=self._executeur(journal)
+        )
+        self.assertTrue(journal, "aucune commande lancée sur l'hôte")
+        self.assertEqual(
+            [(r.cidr, r.name, r.is_bridge) for r in reseaux],
+            [
+                ("198.51.100.0/24", "lien0", False),
+                ("192.0.2.0/24", "pont0", True),
+            ],
+        )
+
+    def test_la_boucle_locale_du_distant_est_ecartee(self):
+        reseaux = discover.remote_networks(
+            "machine.invalid", run=self._executeur([])
+        )
+        self.assertTrue(reseaux)
+        for reseau in reseaux:
+            self.assertNotIn("127.0.0", reseau.cidr)
+
+    def test_un_hote_muet_rend_une_liste_vide(self):
+        reseaux = discover.remote_networks(
+            "machine.invalid", run=lambda argv: ""
+        )
+        self.assertEqual(reseaux, [])
+
+    def test_un_executeur_qui_leve_rend_une_liste_vide(self):
+        def executer(argv):
+            raise OSError("hôte injoignable")
+
+        self.assertEqual(
+            discover.remote_networks("machine.invalid", run=executer), []
+        )
+
+    def test_l_executeur_ssh_refuse_toute_invite_et_cite_ses_arguments(self):
+        """`BatchMode=yes` empêche une demande de mot de passe de tenir le
+        menu sur une question que personne ne voit venir, et la commande
+        distante est relue par un interpréteur là-bas."""
+        source = _source()
+        self.assertIn("BatchMode=yes", source, "une invite pourrait bloquer")
+        self.assertIn("shlex.quote", source, "arguments non cités")
 
 
 if __name__ == "__main__":

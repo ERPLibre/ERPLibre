@@ -46,6 +46,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
+import shlex
 import socket
 import subprocess
 import time
@@ -61,16 +62,41 @@ from script.todo.assistant import fingerprint
 # personne n'a désignée décrit des machines que personne n'a désignées.
 MAX_HOSTS = 254
 
-# Le nombre d'ouvriers en vol. Dimensionné par vagues, jamais par cœurs.
-MAX_WORKERS = 256
+# Le nombre d'ouvriers en vol. Dimensionné par VAGUES, jamais par cœurs :
+# ces fils attendent le réseau, ils ne calculent pas, et le nombre de cœurs
+# n'a aucun rapport avec le nombre de connexions qu'une machine peut tenir en
+# attente. `sweep` plafonne à `min(len(jobs), workers)`, donc une valeur plus
+# grande que le nombre de sondes ne change RIEN : un /24 sur onze ports en
+# compte 2 794, et 4 096, 8 192 ou 16 384 ouvriers y donnent tous une vague et
+# la même durée.
+#
+# La durée suit `plafond(sondes / ouvriers) × délai`. Le compromis retenu à
+# 1 024 laisse trois vagues sur un /24 plutôt qu'une : le gain de la vague
+# unique se compte en centièmes de seconde, et trois salves d'un tiers de
+# taille pèsent moins sur un commutateur qu'une seule salve entière — donc
+# moins de paquets perdus, et un paquet perdu se lit comme un port fermé.
+MAX_WORKERS = 1024
 
-# Le délai d'une connexion sur un réseau local. Il couvre la résolution ARP
-# d'un voisin absent du cache, qui est ce qui coûte devant une adresse morte.
+# Le délai d'une connexion. Il NE se déduit PAS de la latence observée au
+# repos : un hôte joignable en une milliseconde à vide se manque à 0,05 s de
+# délai dès que mille connexions partent ensemble, parce que la file, la
+# passerelle et le noyau ajoutent tous leur part sous charge. La marge sert
+# donc à ça, et non à la distance.
+#
+# Il couvre aussi la résolution ARP d'un voisin absent du cache, qui est ce
+# qui coûte devant une adresse morte. Le raccourcir est le seul réglage de ce
+# module qui fabrique des FAUX NÉGATIFS, et un réseau annoncé vide sur un
+# délai trop court est plus coûteux que les secondes épargnées.
 CONNECT_TIMEOUT = 0.30
 
 # L'intervalle du battement de cœur. Paramétrable, et c'est le point : un
 # intervalle figé rend la branche du battement intestable, donc non testée.
 HEARTBEAT_SEC = 2.0
+
+# Le délai d'un aller-retour SSH pour lire les réseaux d'un hôte. Il
+# borne l'attente d'un hôte éteint : sans lui, un menu tiendrait le
+# temps que la pile TCP renonce d'elle-même.
+SSH_TIMEOUT = 15
 
 # Le port qu'annonce `ssh -G` quand aucun n'est déclaré, et donc la seule
 # valeur de repli qui ne soit pas une invention.
@@ -215,6 +241,64 @@ def local_networks(*, run=None) -> list[Interface]:
         found.append(Interface(name, str(network), name in bridges))
     found.sort(key=lambda item: 0 if item.name == first else 1)
     return found
+
+
+def ssh_runner(alias, *, timeout=SSH_TIMEOUT):
+    """Un exécuteur qui lance `ip` SUR `alias`, pour `local_networks`.
+
+    `local_networks` reçoit son exécuteur en argument, donc lui en passer un
+    qui traverse SSH suffit à énumérer les réseaux d'une AUTRE machine : la
+    lecture des adresses, la détection des ponts et l'ordre par route par
+    défaut se réutilisent tels quels, sans une ligne d'analyse en double.
+
+    `BatchMode=yes` refuse toute invite : un hôte qui demanderait un mot de
+    passe rend une chaîne vide plutôt que de bloquer le menu sur une question
+    que personne ne voit venir.
+
+    Les arguments sont cités un par un : la commande distante est une chaîne
+    interprétée par un interpréteur là-bas, et un argument non cité s'y
+    ferait relire.
+    """
+
+    def executer(argv):
+        distant = " ".join(shlex.quote(morceau) for morceau in argv)
+        answer = subprocess.run(
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                f"ConnectTimeout={int(timeout)}",
+                alias,
+                distant,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=_c_env(),
+        )
+        return answer.stdout if answer.returncode == 0 else ""
+
+    return executer
+
+
+def remote_networks(alias, *, run=None) -> list[Interface]:
+    """Les réseaux IPv4 que porte `alias`, lus chez lui.
+
+    Sert le cas que `local_networks` ne peut pas voir : quand le CLI tourne
+    dans une machine virtuelle, les réseaux qu'il porte sont ceux de
+    l'hyperviseur, et le parc réel est hors-lien. La machine du dessus, elle,
+    porte les bons préfixes et sait les dire.
+
+    Les réseaux sont LUS là-bas et balayés D'ICI : c'est la table de routage
+    locale qui décide si l'on y accède, et une route par défaut suffit
+    d'ordinaire. Rien n'est balayé depuis l'hôte distant, qui n'a donc besoin
+    que d'un accès en lecture.
+
+    Rend une liste vide quand l'hôte est injoignable, refuse une clé ou n'a
+    pas `ip` : aucun de ces cas n'est une panne du menu.
+    """
+    return local_networks(run=run or ssh_runner(alias))
 
 
 def qemu_hosts(
