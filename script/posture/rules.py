@@ -178,23 +178,21 @@ def _refuse_la_posture(posture, destinations):
 # le verront, plutôt que dans une phrase libre.
 #
 # `no-rendering` : le rendu refuse cette posture, il n'y a rien à appliquer.
-# `no-applier` : rien ne porte le texte jusqu'à une machine.
-# `not-at-boot` : rien ne le recharge à chaque démarrage, avant que le
-#   réseau monte — une machine redémarrée repart sans règles.
-# `tool-unverified` : rien ne vérifie que l'analyseur existe dans l'image ;
-#   absent, le chargement échoue et la machine tourne sans aucune règle.
+# `not-at-boot` : rien ne recharge le fichier à chaque démarrage, avant que
+#   le réseau monte — une machine redémarrée repart sans règles.
+# `failure-not-fatal` : la relecture DIT qu'un chargement a échoué, et le
+#   déploiement se poursuit quand même. Nommer un manque qu'on découvre vaut
+#   mieux que retirer le jeton qui l'a fait apparaître.
 # `containers-unproven` : la chaîne forward est rendue, jamais confrontée à
 #   un conteneur vivant qui tente une sortie hors liste.
 NO_RENDERING = "no-rendering"
-NO_APPLIER = "no-applier"
 NOT_AT_BOOT = "not-at-boot"
-TOOL_UNVERIFIED = "tool-unverified"
+FAILURE_NOT_FATAL = "failure-not-fatal"
 CONTAINERS_UNPROVEN = "containers-unproven"
 UNENFORCED_TOKENS = (
     NO_RENDERING,
-    NO_APPLIER,
     NOT_AT_BOOT,
-    TOOL_UNVERIFIED,
+    FAILURE_NOT_FATAL,
     CONTAINERS_UNPROVEN,
 )
 
@@ -227,7 +225,7 @@ def unenforced(posture) -> tuple:
     if not posture.destinations_bounded:
         # Seul jeton : le reste porterait sur un rendu qui n'existe pas.
         return (NO_RENDERING,)
-    return (NO_APPLIER, NOT_AT_BOOT, TOOL_UNVERIFIED, CONTAINERS_UNPROVEN)
+    return (NOT_AT_BOOT, FAILURE_NOT_FATAL, CONTAINERS_UNPROVEN)
 
 
 def render_egress(posture, destinations=()) -> str:

@@ -318,9 +318,8 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
     def test_the_rendered_posture_names_what_is_still_missing(self):
         manques = rules.unenforced(R.get_posture("paranoid"))
         for jeton in (
-            rules.NO_APPLIER,
             rules.NOT_AT_BOOT,
-            rules.TOOL_UNVERIFIED,
+            rules.FAILURE_NOT_FATAL,
             rules.CONTAINERS_UNPROVEN,
         ):
             with self.subTest(jeton=jeton):
@@ -343,9 +342,8 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
         self.assertEqual(
             (
                 "no-rendering",
-                "no-applier",
                 "not-at-boot",
-                "tool-unverified",
+                "failure-not-fatal",
                 "containers-unproven",
             ),
             rules.UNENFORCED_TOKENS,
@@ -381,12 +379,15 @@ class TestLeJetonCommandeLaBascule(unittest.TestCase):
         self.assertEqual({True, False}, reponses)
 
     def test_the_strict_posture_is_still_refused_and_the_tokens_say_why(self):
-        """Le compteur du travail, vu du mécanisme : le jour où ces quatre
-        jetons disparaissent, la posture stricte accepte les données
-        réelles, et cette épreuve tombe avec eux."""
+        """Le compteur du travail, vu du mécanisme : le jour où ces jetons
+        disparaissent, la posture stricte accepte les données réelles, et
+        cette épreuve tombe avec eux.
+
+        Le nombre est écrit en toutes lettres pour qu'il faille le CHANGER :
+        un compteur qui suit tout seul ne compte rien."""
         stricte = R.get_posture("paranoid")
         self.assertFalse(R.allows_real_data(stricte))
-        self.assertEqual(4, len(rules.unenforced(stricte)))
+        self.assertEqual(3, len(rules.unenforced(stricte)))
 
 
 class TestElleNAppliqueRien(unittest.TestCase):
