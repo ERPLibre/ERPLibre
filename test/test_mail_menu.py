@@ -587,7 +587,7 @@ class TestTodoWiring(unittest.TestCase):
     def test_todo_keeps_the_ai_question(self):
         from script.todo.todo import TODO
 
-        self.assertTrue(hasattr(TODO, "_assistant_question"))
+        self.assertTrue(hasattr(TODO, "prompt_assistant_llm"))
 
     def test_assistant_key_is_translated(self):
         from script.todo.todo_i18n import TRANSLATIONS
@@ -598,7 +598,7 @@ class TestTodoWiring(unittest.TestCase):
     def test_one_dispatches_to_assistant_question_only(self):
         """`hasattr` seul ne verrait pas deux branches de menu échangées —
         on pilote `click.prompt` et on vérifie que `[1]` appelle
-        `_assistant_question`, PAS `prompt_execute_mail`.
+        `prompt_assistant_llm`, PAS `prompt_execute_mail`.
 
         `_menu_header()` enregistre aussi une télémétrie best-effort dans
         `~/.erplibre` : on la neutralise, sinon ce test écrirait pour de
@@ -609,9 +609,13 @@ class TestTodoWiring(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(TODO, "_assistant_question") as mock_question, patch(
+        with patch.object(
+            TODO, "prompt_assistant_llm"
+        ) as mock_question, patch(
             "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch("click.prompt", side_effect=["1", "0"]), patch(
+        ) as mock_mail, patch(
+            "click.prompt", side_effect=["1", "0"]
+        ), patch(
             "script.todo.todo_telemetry.record"
         ):
             todo.prompt_assistant()
@@ -621,15 +625,19 @@ class TestTodoWiring(unittest.TestCase):
 
     def test_two_dispatches_to_mail_only(self):
         """Symétrique : `[2]` appelle `prompt_execute_mail`, PAS
-        `_assistant_question`."""
+        `prompt_assistant_llm`."""
         from unittest.mock import patch
 
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(TODO, "_assistant_question") as mock_question, patch(
+        with patch.object(
+            TODO, "prompt_assistant_llm"
+        ) as mock_question, patch(
             "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch("script.todo.todo_telemetry.record"), patch(
+        ) as mock_mail, patch(
+            "script.todo.todo_telemetry.record"
+        ), patch(
             "click.prompt", side_effect=["2", "0"]
         ):
             todo.prompt_assistant()

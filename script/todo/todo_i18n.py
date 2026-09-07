@@ -10028,10 +10028,6 @@ TRANSLATIONS = {
         "fr": "Courriel - Lire et envoyer du courriel",
         "en": "Mail - Read and send email",
     },
-    "mail_ai_question": {
-        "fr": "Question IA - Poser une question à un modèle",
-        "en": "AI question - Ask a model a question",
-    },
     "mail_open_tui": {
         "fr": "Ouvrir le client courriel (TUI)",
         "en": "Open the mail client (TUI)",
@@ -12185,6 +12181,326 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
+    # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
+    "AI question - Ask a model, local or remote": {
+        "fr": "Question IA - Interroger un modèle, local ou distant",
+        "en": "AI question - Ask a model, local or remote",
+    },
+    "A server, a gpt tool, a conversation.": {
+        "fr": "Un serveur, un outil gpt, une conversation.",
+        "en": "A server, a gpt tool, a conversation.",
+    },
+    "Talk": {
+        "fr": "Parler",
+        "en": "Talk",
+    },
+    "Free question": {
+        "fr": "Question libre",
+        "en": "Free question",
+    },
+    "Known servers": {
+        "fr": "Serveurs connus",
+        "en": "Known servers",
+    },
+    "Search for a server…": {
+        "fr": "Chercher un serveur…",
+        "en": "Search for a server…",
+    },
+    "Server card": {
+        "fr": "Fiche du serveur",
+        "en": "Server card",
+    },
+    "what it says it can do": {
+        "fr": "ce qu'il annonce savoir faire",
+        "en": "what it says it can do",
+    },
+    "no local server — via api.openai.com": {
+        "fr": "aucun serveur local — via api.openai.com",
+        "en": "no local server — via api.openai.com",
+    },
+    "no server yet": {
+        "fr": "aucun serveur pour l'instant",
+        "en": "no server yet",
+    },
+    "reachable": {
+        "fr": "joignable",
+        "en": "reachable",
+    },
+    "The history lives in memory and dies with this menu. /save writes it to a file.": {
+        "fr": "L'historique vit en mémoire et meurt avec ce menu. /save l'écrit dans un fichier.",
+        "en": "The history lives in memory and dies with this menu. /save writes it to a file.",
+    },
+    "Commands start with a slash. /? lists them.": {
+        "fr": "Les commandes commencent par une barre oblique. /? les liste.",
+        "en": "Commands start with a slash. /? lists them.",
+    },
+    "interrupted": {
+        "fr": "interrompue",
+        "en": "interrupted",
+    },
+    "answer interrupted": {
+        "fr": "réponse interrompue",
+        "en": "answer interrupted",
+    },
+    "/save to write it to a file": {
+        "fr": "/save pour l'écrire dans un fichier",
+        "en": "/save to write it to a file",
+    },
+    "back to the menu": {
+        "fr": "retour au menu",
+        "en": "back to the menu",
+    },
+    "clear the history (same server, same tool)": {
+        "fr": "vider l'historique (même serveur, même outil)",
+        "en": "clear the history (same server, same tool)",
+    },
+    "change tool, history kept": {
+        "fr": "changer d'outil, historique conservé",
+        "en": "change tool, history kept",
+    },
+    "change server, history CLEARED — the model is no longer the same": {
+        "fr": "changer de serveur, historique VIDÉ — le modèle n'est plus le même",
+        "en": "change server, history CLEARED — the model is no longer the same",
+    },
+    "show again what was sent": {
+        "fr": "réafficher ce qui a été envoyé",
+        "en": "show again what was sent",
+    },
+    'multi-line entry, end with a single "." line': {
+        "fr": "saisie multiligne, terminer par une ligne « . » seule",
+        "en": 'multi-line entry, end with a single "." line',
+    },
+    "write the conversation to a file": {
+        "fr": "écrire la conversation dans un fichier",
+        "en": "write the conversation to a file",
+    },
+    "list the commands": {
+        "fr": "lister les commandes",
+        "en": "list the commands",
+    },
+    "turns dropped": {
+        "fr": "tours jetés",
+        "en": "turns dropped",
+    },
+    "Conversation written to": {
+        "fr": "Conversation écrite dans",
+        "en": "Conversation written to",
+    },
+    "via api.openai.com (key from the vault)": {
+        "fr": "via api.openai.com (clé du coffre)",
+        "en": "via api.openai.com (key from the vault)",
+    },
+    "This destination is a third party. Retype it to confirm:": {
+        "fr": "Cette destination est un tiers. Retape-la pour confirmer :",
+        "en": "This destination is a third party. Retype it to confirm:",
+    },
+    "Destination not retyped — nothing was sent.": {
+        "fr": "Destination non retapée — rien n'a été envoyé.",
+        "en": "Destination not retyped — nothing was sent.",
+    },
+    "third party": {
+        "fr": "tiers",
+        "en": "third party",
+    },
+    "this machine": {
+        "fr": "cette machine",
+        "en": "this machine",
+    },
+    "local network": {
+        "fr": "réseau local",
+        "en": "local network",
+    },
+    "No server answered on this machine.": {
+        "fr": "Aucun serveur n'a répondu sur cette machine.",
+        "en": "No server answered on this machine.",
+    },
+    "The vault holds no OpenAI key: configure a server or a key.": {
+        "fr": "Le coffre ne porte aucune clé OpenAI : configurer un serveur ou une clé.",
+        "en": "The vault holds no OpenAI key: configure a server or a key.",
+    },
+    "Here (127.0.0.1)": {
+        "fr": "Ici (127.0.0.1)",
+        "en": "Here (127.0.0.1)",
+    },
+    "An address I type": {
+        "fr": "Une adresse que je tape",
+        "en": "An address I type",
+    },
+    "Where should I look for a server?": {
+        "fr": "Où chercher un serveur ?",
+        "en": "Where should I look for a server?",
+    },
+    "Add a server by hand": {
+        "fr": "Ajouter un serveur à la main",
+        "en": "Add a server by hand",
+    },
+    "Host or IP": {
+        "fr": "Hôte ou IP",
+        "en": "Host or IP",
+    },
+    "Port": {
+        "fr": "Port",
+        "en": "Port",
+    },
+    "Name for this server": {
+        "fr": "Nom pour ce serveur",
+        "en": "Name for this server",
+    },
+    "Answered, not identified": {
+        "fr": "A répondu, non identifié",
+        "en": "Answered, not identified",
+    },
+    "Asks for a key — configure it against a server you named": {
+        "fr": "Demande une clé — la configurer contre un serveur que tu as nommé",
+        "en": "Asks for a key — configure it against a server you named",
+    },
+    "Starting up — alive, answer not ready": {
+        "fr": "En démarrage — vivant, réponse pas prête",
+        "en": "Starting up — alive, answer not ready",
+    },
+    "Type the server name in full to delete it:": {
+        "fr": "Tape le nom du serveur en entier pour le supprimer :",
+        "en": "Type the server name in full to delete it:",
+    },
+    "Delete a server": {
+        "fr": "Supprimer un serveur",
+        "en": "Delete a server",
+    },
+    "Choose the server to use": {
+        "fr": "Choisir le serveur à utiliser",
+        "en": "Choose the server to use",
+    },
+    "in use": {
+        "fr": "en usage",
+        "en": "in use",
+    },
+    "11 ports, instant": {
+        "fr": "11 ports, instantané",
+        "en": "11 ports, instant",
+    },
+    "The QEMU VMs of this machine (virsh)": {
+        "fr": "Les VM QEMU de cette machine (virsh)",
+        "en": "The QEMU VMs of this machine (virsh)",
+    },
+    "The hosts of ~/.ssh/config": {
+        "fr": "Les hôtes de ~/.ssh/config",
+        "en": "The hosts of ~/.ssh/config",
+    },
+    "libvirt bridge": {
+        "fr": "pont libvirt",
+        "en": "libvirt bridge",
+    },
+    "Sweep %s addresses × %s ports on %s?": {
+        "fr": "Balayer %s adresses × %s ports sur %s ?",
+        "en": "Sweep %s addresses × %s ports on %s?",
+    },
+    "The /24 is an assumption: a prefix does not follow from an address.": {
+        "fr": (
+            "Le /24 est une hypothèse : un préfixe ne se déduit pas"
+            " d'une adresse."
+        ),
+        "en": (
+            "The /24 is an assumption: a prefix does not follow from an"
+            " address."
+        ),
+    },
+    "Wider than a /24 is refused.": {
+        "fr": "Plus large qu'un /24 est refusé.",
+        "en": "Wider than a /24 is refused.",
+    },
+    "Ctrl+C interrupts": {
+        "fr": "Ctrl+C interrompt",
+        "en": "Ctrl+C interrupts",
+    },
+    "hosts": {
+        "fr": "hôtes",
+        "en": "hosts",
+    },
+    "ports": {
+        "fr": "ports",
+        "en": "ports",
+    },
+    "server recognized": {
+        "fr": "serveur reconnu",
+        "en": "server recognized",
+    },
+    "servers recognized": {
+        "fr": "serveurs reconnus",
+        "en": "servers recognized",
+    },
+    "hosts swept": {
+        "fr": "hôtes balayés",
+        "en": "hosts swept",
+    },
+    "No server on %s (%s, %s, %ss).": {
+        "fr": "Aucun serveur sur %s (%s, %s, %ss).",
+        "en": "No server on %s (%s, %s, %ss).",
+    },
+    # « host » et « port » sont déjà déclarées plus haut dans ce fichier, avec
+    # ce français : les redéclarer ici les écraserait en silence. L'accord des
+    # nombres les lit telles quelles.
+    "model": {
+        "fr": "modèle",
+        "en": "model",
+    },
+    "host swept": {
+        "fr": "hôte balayé",
+        "en": "host swept",
+    },
+    "Look somewhere else": {
+        "fr": "Chercher ailleurs",
+        "en": "Look somewhere else",
+    },
+    "Carry on with the OpenAI API (key from the vault)": {
+        "fr": "Continuer avec l'API OpenAI (clé du coffre)",
+        "en": "Carry on with the OpenAI API (key from the vault)",
+    },
+    'A local server: "ollama serve" listens on 11434.': {
+        "fr": "Un serveur local : « ollama serve » écoute sur 11434.",
+        "en": 'A local server: "ollama serve" listens on 11434.',
+    },
+    "libvirt answers, no VM defined": {
+        "fr": "libvirt répond, aucune VM définie",
+        "en": "libvirt answers, no VM defined",
+    },
+    "~/.ssh/config absent — nothing to probe": {
+        "fr": "~/.ssh/config absent — rien à sonder",
+        "en": "~/.ssh/config absent — nothing to probe",
+    },
+    "Host without an address — listed as unknown": {
+        "fr": "Hôte sans adresse — listé comme inconnu",
+        "en": "Host without an address — listed as unknown",
+    },
+    "Keep this server?": {
+        "fr": "Garder ce serveur ?",
+        "en": "Keep this server?",
+    },
+    "Keep them all": {
+        "fr": "Les garder tous",
+        "en": "Keep them all",
+    },
+    "Sweeping the network reaches machines you did not name.": {
+        "fr": (
+            "Balayer le réseau atteint des machines que tu n'as pas"
+            " nommées."
+        ),
+        "en": "Sweeping the network reaches machines you did not name.",
+    },
+    "Only the hosts that have already spoken (ip neigh)": {
+        "fr": "Seulement les hôtes qui ont déjà parlé (ip neigh)",
+        "en": "Only the hosts that have already spoken (ip neigh)",
+    },
+    "nothing kept": {
+        "fr": "rien de gardé",
+        "en": "nothing kept",
+    },
+    "kept": {
+        "fr": "gardé",
+        "en": "kept",
+    },
+    # « models », « still waiting for » et « Type an address » servent aussi
+    # ici et sont définies plus haut : les redéfinir écraserait la première
+    # sans rien lever.
 }
 
 

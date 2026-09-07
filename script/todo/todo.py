@@ -27,6 +27,7 @@ sys.path.append(new_path)
 from script.config import config_file
 from script.execute import execute
 from script.todo import dev_tools, todo_install, todo_prefs
+from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -38,10 +39,9 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.vpn_menu import VpnMenuMixin
-from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
+from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 VENV_ERPLIBRE = ".venv.erplibre"
@@ -105,6 +105,7 @@ class TODO(
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     VpnMenuMixin,
+    AssistantMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -207,7 +208,7 @@ class TODO(
 
         while True:
             help_info = f"""{self._menu_header()}
-[1] {t("mail_ai_question")}
+[1] {t("AI question - Ask a model, local or remote")}
 [2] {t("mail_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
@@ -215,38 +216,11 @@ class TODO(
             if status == "0":
                 return
             if status == "1":
-                self._assistant_question()
+                self.prompt_assistant_llm()
             elif status == "2":
                 prompt_execute_mail(self)
             else:
                 print(t("Command not found !"))
-
-    def _assistant_question(self):
-        while True:
-            help_info = f"""{self._menu_header()}
-[0] {t("Back")}
-{t("Write your question ")}"""
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            kp = self.kdbx_manager.get_kdbx()
-            if not kp:
-                return
-            config_name = self.config_file.get_config_value(
-                ["kdbx_config", "openai", "kdbx_key"]
-            )
-            entry = kp.find_entries_by_title(config_name, first=True)
-
-            client = openai.OpenAI(api_key=entry.password)
-            prompt_update = status
-            completion = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt_update}],
-            )
-
-            print(completion.choices[0].message.content)
-            print()
 
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
@@ -600,6 +574,7 @@ class TODO(
         "run": "TODO",
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
+        "prompt_assistant_llm": "LLM",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
