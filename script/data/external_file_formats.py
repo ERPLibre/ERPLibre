@@ -46,7 +46,9 @@ from script.data.external_file import (  # noqa: E402
     nom_de_fichier_sur,
     normaliser_xls,
     progres,
+    valeur_forme_identifiant,
     valeur_hors_tableur,
+    verifier_copie,
     vivier_de_mots,
 )
 
@@ -56,6 +58,17 @@ from script.data.external_file import (  # noqa: E402
 warnings.simplefilter("ignore")
 
 CIBLES_CONVERSION = ("xlsx", "csv", "json", "xml")
+
+# Le nom de feuille d'un format qui n'en porte pas. Reprendre le nom du
+# FICHIER le recrachait dans la copie convertie — clé de premier niveau d'un
+# JSON, nom d'onglet d'un xlsx — alors que le dialogue promet que le nom du
+# fichier n'est pas anonymisé.
+NOM_FEUILLE_NEUTRE = "feuille_1"
+
+# `csv` refuse un champ de plus de 128 Kio par défaut, et un mémo de
+# commande les dépasse. Le refus arrivait en « format non reconnu » sur un
+# CSV parfaitement valide.
+csv.field_size_limit(16 * 1024 * 1024)
 
 
 class ErreurMoteur(Exception):
@@ -111,6 +124,14 @@ class Feuille:
         self.lignes = lignes
         self.masquee = masquee
         self.source = source
+        # (ligne, colonne) -> (conteneur, clé). Hors tableur, l'écriture
+        # passait par un SECOND parcours de l'arbre, qui ignorait la portée,
+        # le plancher et les colonnes intactes — au point de détruire un
+        # external ID que le plancher venait de protéger. Une ancre par
+        # cellule rend l'écriture solidaire de la marche à blanc.
+        self.ancres = {}
+        # L'arbre JSON ou XML dont ces ancres sont les branches.
+        self.arbre = None
 
     @property
     def etiquettes(self):
@@ -149,6 +170,7 @@ def _stats_colonnes(feuille):
         familles = {}
         distinctes = set()
         remplies = 0
+        forme = True
         mini = maxi = None
         for numero, ligne in enumerate(feuille.lignes, start=1):
             if numero == 1:
@@ -158,6 +180,7 @@ def _stats_colonnes(feuille):
             if famille == "vide":
                 continue
             remplies += 1
+            forme = forme and valeur_forme_identifiant(valeur)
             familles[famille] = familles.get(famille, 0) + 1
             if len(distinctes) < 10000:
                 try:
@@ -186,10 +209,22 @@ def _stats_colonnes(feuille):
                 "distinctes": len(distinctes),
                 "min": mini,
                 "max": maxi,
-                "plancher": colonne_plancher(etiquette),
+                "forme_identifiant": forme,
+                "plancher": colonne_plancher(etiquette, forme),
             }
         )
     return colonnes
+
+
+def _formes_par_colonne(rapport):
+    """{(feuille, colonne): son contenu a-t-il la forme d'un identifiant}."""
+    return {
+        (feuille["nom"], colonne["index"]): bool(
+            colonne.get("forme_identifiant")
+        )
+        for feuille in rapport.get("feuilles", [])
+        for colonne in feuille.get("colonnes", [])
+    }
 
 
 def _bornes_par_colonne(rapport):
@@ -243,7 +278,13 @@ def _lire_xlsx(chemin, garder_vba=False):
 def _lire_xls(chemin):
     import xlrd
 
-    classeur = xlrd.open_workbook(chemin, formatting_info=False)
+    # `logfile` vaut sys.stdout par défaut, et xlrd y écrit dès qu'un
+    # classeur n'a pas de CODEPAGE : la ligne se mêlait à l'unique objet
+    # JSON de stdout, et l'appelant refusait un fichier lisible sans un mot
+    # de diagnostic.
+    classeur = xlrd.open_workbook(
+        chemin, formatting_info=False, logfile=sys.stderr
+    )
     feuilles = []
     for onglet in classeur.sheets():
         lignes = []
@@ -386,11 +427,19 @@ def _lire_csv(chemin):
     # `csv.reader` ne rend que des chaînes : un champ numérique doit
     # retrouver son type ici, sinon la colonne de montants est traitée
     # comme du texte et chaque montant devient un mot.
-    lignes = [
-        [coercer_texte(champ) for champ in ligne]
-        for ligne in csv.reader(io.StringIO(texte), delimiter=delimiteur)
-    ]
-    nom = os.path.splitext(os.path.basename(chemin))[0]
+    # L'EN-TÊTE garde son type d'origine : la coercition le rendait en
+    # entier, donc en étiquette absente, et « 1 » ne désignait plus la
+    # colonne étiquetée « 1 » mais la première colonne.
+    lignes = []
+    for numero, ligne in enumerate(
+        csv.reader(io.StringIO(texte), delimiter=delimiteur), start=1
+    ):
+        lignes.append(
+            list(ligne)
+            if numero == 1
+            else [coercer_texte(champ) for champ in ligne]
+        )
+    nom = NOM_FEUILLE_NEUTRE
     meta = {
         "encodage": encodage,
         "encodage_source": source_enc,
@@ -540,7 +589,7 @@ def report(chemin):
     if format_lu == "xlsb":
         rapport = _rapport_commun(chemin, "xlsb")
         rapport["hors_cellules"] = {"macros": has_macros(chemin)}
-        rapport["arret"] = "illisible_ici"
+        rapport["arret"] = noyau.ERREURS["illisible_ici"]
         return rapport
     if not format_lu:
         raise ErreurMoteur("format_inconnu", os.path.basename(chemin))
@@ -565,7 +614,7 @@ def report(chemin):
         feuilles = [feuille]
         rapport.update(meta)
     elif format_lu == "json":
-        feuilles = _lire_json(chemin)
+        feuilles = _lire_json(chemin)[0]
     elif format_lu == "xml":
         feuilles = _lire_xml(chemin)[0]
     else:  # pragma: no cover - detect_format ne rend rien d'autre
@@ -592,6 +641,7 @@ def _lire_json(chemin):
     with open(chemin, "r", encoding="utf-8") as fh:
         arbre = json.load(fh)
     lignes = []
+    ancres = {}
     if isinstance(arbre, list) and arbre and isinstance(arbre[0], dict):
         cles = []
         for element in arbre:
@@ -601,23 +651,32 @@ def _lire_json(chemin):
         lignes.append(cles)
         for element in arbre:
             lignes.append([element.get(cle) for cle in cles])
+            for index, cle in enumerate(cles, start=1):
+                if cle in element:
+                    ancres[(len(lignes), index)] = (element, cle)
     else:
         lignes.append(["cle", "valeur"])
-        for cle, valeur in _aplatir_json(arbre):
+        for cle, valeur, conteneur, index in _aplatir_json(arbre):
             lignes.append([cle, valeur])
-    nom = os.path.splitext(os.path.basename(chemin))[0]
-    return [Feuille(nom, lignes)]
+            ancres[(len(lignes), 2)] = (conteneur, index)
+    feuille = Feuille(NOM_FEUILLE_NEUTRE, lignes)
+    feuille.ancres = ancres
+    feuille.arbre = arbre
+    return [feuille], arbre
 
 
-def _aplatir_json(noeud, prefixe=""):
+def _aplatir_json(noeud, prefixe="", conteneur=None, index=None):
+    """(chemin, valeur, conteneur, clé) — la clé permet de RÉÉCRIRE."""
     if isinstance(noeud, dict):
         for cle, valeur in noeud.items():
-            yield from _aplatir_json(valeur, f"{prefixe}.{cle}".strip("."))
+            yield from _aplatir_json(
+                valeur, f"{prefixe}.{cle}".strip("."), noeud, cle
+            )
     elif isinstance(noeud, list):
-        for index, valeur in enumerate(noeud):
-            yield from _aplatir_json(valeur, f"{prefixe}[{index}]")
+        for rang, valeur in enumerate(noeud):
+            yield from _aplatir_json(valeur, f"{prefixe}[{rang}]", noeud, rang)
     else:
-        yield prefixe, noeud
+        yield prefixe, noeud, conteneur, index
 
 
 def _lire_xml(chemin):
@@ -627,13 +686,27 @@ def _lire_xml(chemin):
     arbre = parse(chemin)
     racine = arbre.getroot()
     lignes = [["chemin", "valeur"]]
+    ancres = {}
     for element in racine.iter():
         if element.text and element.text.strip():
             lignes.append([element.tag, coercer_texte(element.text.strip())])
+            ancres[(len(lignes), 2)] = (element, None)
         for cle, valeur in element.attrib.items():
             lignes.append([f"{element.tag}@{cle}", coercer_texte(valeur)])
-    nom = os.path.splitext(os.path.basename(chemin))[0]
-    return [Feuille(nom, lignes)], arbre
+            ancres[(len(lignes), 2)] = (element, cle)
+        # La QUEUE d'un élément : le texte qui suit sa balise fermante. Un
+        # export d'ERP nommé « .xls » qui est en réalité du HTML arrive
+        # ici, et la moitié d'une cellule y vit — « Client <b>X</b> Nom »
+        # porte « Nom » en queue de <b>.
+        if element.tail and element.tail.strip():
+            lignes.append(
+                [f"{element.tag}#tail", coercer_texte(element.tail.strip())]
+            )
+            ancres[(len(lignes), 2)] = (element, "#tail")
+    feuille = Feuille(NOM_FEUILLE_NEUTRE, lignes)
+    feuille.ancres = ancres
+    feuille.arbre = arbre
+    return [feuille], arbre
 
 
 # ----------------------------------------------------------------------
@@ -798,7 +871,7 @@ def _preparer(chemin, options):
     elif format_lu == "csv":
         feuilles = [_lire_csv(chemin)[0]]
     elif format_lu == "json":
-        feuilles = _lire_json(chemin)
+        feuilles = _lire_json(chemin)[0]
     else:
         feuilles = _lire_xml(chemin)[0]
 
@@ -810,6 +883,16 @@ def _preparer(chemin, options):
     options["feuilles"] = list(demandees) or None
     options["etiquettes"] = _etiquettes_par_colonne(feuilles)
     options["bornes"] = _bornes_par_colonne(rapport)
+    options["formes"] = _formes_par_colonne(rapport)
+    # Hors tableur, la colonne 1 de la grille porte des NOMS de balise ou des
+    # chemins de clé : de la structure, que le graveur ne touche jamais. Les
+    # compter comme remplacées désarmait le refus « rien à faire » et brûlait
+    # le vivier sur des noms de champ.
+    options["colonnes_structure"] = (
+        {(f.nom, 1) for f in feuilles}
+        if format_lu in ("xml", "json")
+        else set()
+    )
     return format_lu, feuilles, classeur, rapport, options
 
 
@@ -827,6 +910,7 @@ def _parcourir(feuilles, options, table, rng, appliquer=None):
         "hors_portee": 0,
         "intactes": {},
         "apercu": [],
+        "entete_gardee": [],
     }
     for feuille in feuilles:
         for numero, ligne in enumerate(feuille.lignes, start=1):
@@ -836,11 +920,33 @@ def _parcourir(feuilles, options, table, rng, appliquer=None):
                     continue
                 if not cellule_en_portee(feuille.nom, numero, index, options):
                     bilan["hors_portee"] += 1
+                    if (
+                        numero == 1
+                        and not options.get("entetes")
+                        and famille == "texte"
+                        and len(bilan["entete_gardee"]) < 12
+                    ):
+                        # La ligne 1 est PRÉSUMÉE d'en-tête, jamais
+                        # mesurée : un CSV sans en-tête, ou un titre de
+                        # rapport en A1, y met de la donnée. Un compteur
+                        # global ne dit pas qu'un nom de client est dedans.
+                        bilan["entete_gardee"].append(
+                            {
+                                "feuille": feuille.nom,
+                                "cellule": f"L1C{index}",
+                                "valeur": valeur_hors_tableur(valeur),
+                            }
+                        )
                     continue
                 bornes = options["bornes"].get((feuille.nom, index))
-                neuve = anonymise_cellule(
-                    valeur, options, table, rng, bornes=bornes
-                )
+                if isinstance(valeur, (dict, list)):
+                    # Un conteneur imbriqué n'est pas une cellule : sans
+                    # cette récursion, tout ce qu'il porte sort en clair.
+                    neuve = _transformer_json(valeur, options, table, rng)
+                else:
+                    neuve = anonymise_cellule(
+                        valeur, options, table, rng, bornes=bornes
+                    )
                 if neuve is _INTACTE:
                     bilan["intactes"][famille] = (
                         bilan["intactes"].get(famille, 0) + 1
@@ -886,6 +992,19 @@ def _colonnes_ecartees(rapport, options):
                         "raison": "question",
                     }
                 )
+            elif (
+                not colonne.get("etiquette")
+                and str(colonne["index"]) in options["colonnes_intactes"]
+            ):
+                # Une colonne sans étiquette ne se désigne que par son
+                # index ; l'aperçu ne la nommait pas du tout.
+                ecartees.append(
+                    {
+                        "feuille": feuille["nom"],
+                        "etiquette": f"#{colonne['index']}",
+                        "raison": "question",
+                    }
+                )
     return ecartees
 
 
@@ -910,6 +1029,13 @@ def plan(chemin, options):
     bilan["colonnes_ecartees"] = _colonnes_ecartees(rapport, options)
     bilan["format"] = format_lu
     bilan["fichiers"] = _fichiers_prevus(chemin, feuilles, options)
+    # La marche à blanc est ce sur quoi l'opérateur consent : elle doit
+    # refuser là où l'écriture refuserait.
+    _refuser_table_confondue(
+        chemin,
+        options.get("table_chemin"),
+        bilan["fichiers"] + [options.get("destination")],
+    )
     bilan["avertissements"] = _avertissements(rapport, options)
     return bilan
 
@@ -973,9 +1099,29 @@ def _avertissements(rapport, options):
             "Range and table names are kept so formulas resolve;"
             " they may hold identifying strings."
         )
-    if any(f.get("formules_litteral") for f in rapport.get("feuilles", [])):
+    if rapport.get("format") in ("xlsx", "xls", "access"):
+        # Le nom d'onglet survit dans workbook.xml, qu'une formule le
+        # référence ou non : conditionner cet avertissement à la présence
+        # d'un littéral de formule le taisait sur le cas le plus courant.
         dits.append(
             "Sheet names are kept so formulas resolve; they may identify."
+        )
+    if options.get("feuilles"):
+        dits.append(
+            "Sheets outside the selection are dropped from the copy;"
+            " formulas that referenced them show #REF!."
+        )
+    if hors.get("feuilles_graphiques"):
+        dits.append(
+            "Chart sheets are dropped from the copy: their titles and"
+            " series caches are not cells."
+        )
+    if rapport.get("format") == "json":
+        dits.append("Object keys are kept as structure; they may identify.")
+    if rapport.get("format") == "xml":
+        dits.append(
+            "Element and attribute names are kept as structure;"
+            " they may identify."
         )
     if options.get("garder_macros"):
         dits.append(
@@ -1028,6 +1174,42 @@ def _refuser_si_source(chemin, destination):
         raise ErreurMoteur("destination_source", destination)
 
 
+def _valeurs_gardees(classeur, feuilles, format_lu):
+    """Ce que le moteur conserve SCIEMMENT, et qui a été annoncé.
+
+    La vérification d'après écriture refuse tout ce qui subsiste ; cette
+    liste est la seule tolérance, et elle doit rester courte et justifiée.
+    Chaque entrée est conservée parce que la retirer casserait ce que la
+    règle de la formule vient de préserver.
+    """
+    gardees = set()
+    if format_lu in ("xml", "json"):
+        # Noms de balise, noms d'attribut, clés d'objet : de la structure.
+        for feuille in feuilles:
+            for ligne in feuille.lignes:
+                if ligne and isinstance(ligne[0], str):
+                    gardees.add(ligne[0])
+                    gardees.update(re.split(r"[.\[\]@#]", ligne[0]))
+    if classeur is None:
+        return gardees
+    for onglet in classeur.worksheets:
+        gardees.add(onglet.title)
+        gardees.update(onglet.defined_names.keys())
+        for tableau in getattr(onglet, "tables", {}) or {}:
+            gardees.add(str(tableau))
+        for ligne in onglet.iter_rows():
+            for cellule in ligne:
+                # Le TEXTE d'une formule : la règle 1 interdit d'y toucher,
+                # et le rapport le compte et l'annonce.
+                if isinstance(cellule.value, str) and cellule.value.startswith(
+                    "="
+                ):
+                    gardees.add(cellule.value)
+                    gardees.update(re.findall(r'"([^"]*)"', cellule.value))
+    gardees.update(classeur.defined_names.keys())
+    return gardees
+
+
 def ecrire(chemin, destination, options):
     """Écrire la copie. L'original n'est jamais modifié."""
     import random
@@ -1037,12 +1219,15 @@ def ecrire(chemin, destination, options):
         chemin, options
     )
     options["destination"] = destination
+    prevus = _fichiers_prevus(chemin, feuilles, options)
+    _refuser_table_confondue(
+        chemin, options.get("table_chemin"), prevus + [destination]
+    )
     table = Correspondance.charger(options.get("table_chemin"))
     graine = options.get("graine")
     rng = (
         random.Random(graine) if graine not in (None, "") else random.Random()
     )
-
     hors_cellules = {}
     if format_lu == "xlsx":
         hors_cellules = nettoyer_hors_cellules(classeur, table, options)
@@ -1051,6 +1236,20 @@ def ecrire(chemin, destination, options):
         feuille.lignes[numero - 1][index - 1] = neuve
         if feuille.source is not None:
             feuille.source.cell(row=numero, column=index).value = neuve
+        # Hors tableur, l'ancre est la SEULE voie d'écriture : sans elle,
+        # le graveur reparcourait l'arbre et ignorerait la portée.
+        ancre = feuille.ancres.get((numero, index))
+        if ancre is None:
+            return
+        conteneur, cle = ancre
+        if isinstance(conteneur, (dict, list)):
+            conteneur[cle] = neuve
+        elif cle is None:
+            conteneur.text = _garder_espaces(conteneur.text, neuve)
+        elif cle == "#tail":
+            conteneur.tail = _garder_espaces(conteneur.tail, neuve)
+        else:
+            conteneur.attrib[cle] = "" if neuve is None else str(neuve)
 
     bilan = _parcourir(feuilles, options, table, rng, appliquer=appliquer)
     if not bilan["remplacees"] and not options.get("conversion"):
@@ -1060,36 +1259,164 @@ def ecrire(chemin, destination, options):
             raise ErreurMoteur("tout_exclu", "")
         raise ErreurMoteur("rien_a_faire", "")
 
+    if format_lu == "xlsx":
+        _resynchroniser_tableaux(classeur)
+    gardees = _valeurs_gardees(classeur, feuilles, format_lu)
+
     cible = options.get("conversion") or ""
     if cible and cible != format_lu:
         fichiers = convertir(
             chemin, destination, cible, options, feuilles=feuilles
         )
     elif format_lu == "xlsx":
+        _retirer_feuilles_hors_portee(classeur, options)
         _ecrire_atomique(destination, classeur.save)
         fichiers = [destination]
     elif format_lu == "csv":
         fichiers = _ecrire_csv(destination, feuilles[0], options)
-    elif format_lu == "json":
-        fichiers = _ecrire_json(chemin, destination, table, options, rng)
-    elif format_lu == "xml":
-        fichiers = _ecrire_xml(chemin, destination, table, options, rng)
+    elif format_lu in ("json", "xml"):
+        fichiers = _ecrire_arbre(destination, feuilles[0], format_lu)
     else:
         # `.xls` et Access n'ont pas de graveur : la copie repart en .xlsx
         fichiers = convertir(
             chemin, destination, "xlsx", options, feuilles=feuilles
         )
 
+    # Le filet : relire les OCTETS écrits. Il ne dépend d'aucune
+    # énumération de vecteurs, donc un endroit du format que personne n'a
+    # pensé à nettoyer produit un refus, là où une liste de parties à
+    # vérifier produirait un silence.
+    fuites, non_vues = verifier_copie(fichiers, table, gardees)
+    if fuites:
+        for fichier in fichiers:
+            if fichier and os.path.isfile(fichier):
+                os.unlink(fichier)
+        apercu = "; ".join(
+            f"{v!r} -> {', '.join(sorted(set(parties))[:2])}"
+            for v, parties in sorted(fuites.items())[:5]
+        )
+        raise ErreurMoteur("fuite_detectee", f"{len(fuites)} — {apercu}")
+
     chemin_table = options.get("table_chemin")
     if chemin_table:
-        table.ecrire(chemin_table)
+        try:
+            table.ecrire(chemin_table)
+        except OSError:
+            # Une copie sans sa table reçoit les mêmes mots que le fichier
+            # suivant du lot, et deux clients fusionnent sur un seul mot.
+            for fichier in fichiers:
+                if fichier and os.path.isfile(fichier):
+                    os.unlink(fichier)
+            raise
 
     bilan["fichiers"] = fichiers
     bilan["hors_cellules"] = hors_cellules
     bilan["colonnes_ecartees"] = _colonnes_ecartees(rapport, options)
     bilan["avertissements"] = _avertissements(rapport, options)
     bilan["table"] = chemin_table or ""
+    bilan["valeurs_non_verifiees"] = non_vues
     return bilan
+
+
+def _garder_espaces(brut, neuve):
+    """Réécrire un texte sans perdre son encadrement.
+
+    Le texte d'un élément XML porte l'indentation du document et l'espace
+    qui sépare deux mots d'un contenu mixte. Écrire la valeur nue collait
+    « acai<b> » et aplatissait le document.
+    """
+    if neuve is None:
+        return ""
+    brut = brut or ""
+    tete = brut[: len(brut) - len(brut.lstrip())]
+    queue = brut[len(brut.rstrip()) :]
+    return f"{tete}{neuve}{queue}"
+
+
+def _retirer_feuilles_hors_portee(classeur, options):
+    """Une feuille écartée de la portée ne part pas dans la copie.
+
+    `classeur.save` grave le classeur ENTIER : répondre « Ventes » à la
+    question des feuilles laissait les autres — dont une feuille masquée —
+    intactes dans le fichier livré, avec pour seule trace « N cellules
+    laissées hors portée ». Les autres cibles les retirent déjà.
+    """
+    retenues = options.get("feuilles")
+    if not retenues:
+        return
+    for nom in [
+        onglet.title
+        for onglet in classeur.worksheets
+        if onglet.title not in retenues
+    ]:
+        del classeur[nom]
+    # `worksheets` exclut les feuilles graphiques, qui portent un cache de
+    # série pointant une feuille qu'on vient de retirer.
+    for onglet in list(getattr(classeur, "chartsheets", []) or []):
+        classeur.remove(onglet)
+
+
+def _resynchroniser_tableaux(classeur):
+    """Un tableau porte une COPIE du texte de sa cellule d'en-tête.
+
+    OOXML exige que `tableColumn.name` égale la cellule d'en-tête. Après
+    l'anonymisation de celle-ci les deux divergent : rien n'est plus
+    préservé au bénéfice d'une formule, et le texte d'origine reste
+    simplement derrière. `totalsRowLabel` n'est jamais une cellule et
+    survivait quelles que soient les options.
+
+    Appelé APRÈS la passe sur la grille, contrairement au nettoyage hors
+    cellules : il lui faut la valeur d'en-tête déjà remplacée.
+    """
+    for onglet in classeur.worksheets:
+        for tableau in list((getattr(onglet, "tables", {}) or {}).values()):
+            debut = tableau.ref.split(":")[0]
+            ligne = onglet[debut].row
+            colonne = onglet[debut].column
+            for rang, tcol in enumerate(tableau.tableColumns):
+                cellule = onglet.cell(row=ligne, column=colonne + rang)
+                if isinstance(cellule.value, str) and cellule.value:
+                    tcol.name = cellule.value
+                if getattr(tcol, "totalsRowLabel", None):
+                    tcol.totalsRowLabel = None
+
+
+def _refuser_table_confondue(chemin, chemin_table, fichiers):
+    """La table ne peut être NI la source NI un fichier écrit.
+
+    Elle est gravée APRÈS la copie, en écrasant sa cible : confondue avec
+    la source, elle détruit l'original ; confondue avec la copie, elle
+    laisse sous le nom de la copie la liste en clair de toutes les valeurs
+    réelles, et le menu annonce « Written: <destination> ».
+    """
+    if not chemin_table:
+        return
+    reel = os.path.realpath(chemin_table)
+    if reel == os.path.realpath(chemin):
+        raise ErreurMoteur("table_source", chemin_table)
+    for fichier in fichiers:
+        if fichier and reel == os.path.realpath(fichier):
+            raise ErreurMoteur("table_source", chemin_table)
+
+
+def _ecrire_arbre(destination, feuille, format_lu):
+    """Graver l'arbre JSON ou XML que les ancres viennent de modifier.
+
+    Aucun second parcours : ce que `_parcourir` a décidé est déjà DANS
+    l'arbre, par les ancres. Un graveur qui reparcourait la source
+    ignorerait la portée, le plancher et les colonnes intactes.
+    """
+    arbre = feuille.arbre
+
+    def ecrivain(cible):
+        if format_lu == "json":
+            with open(cible, "w", encoding="utf-8") as fh:
+                json.dump(arbre, fh, ensure_ascii=False, indent=1)
+        else:
+            arbre.write(cible, encoding="utf-8", xml_declaration=True)
+
+    _ecrire_atomique(destination, ecrivain)
+    return [destination]
 
 
 def _ecrire_csv(destination, feuille, options):
@@ -1123,50 +1450,6 @@ def _transformer_json(noeud, options, table, rng):
         ]
     neuve = anonymise_cellule(noeud, options, table, rng)
     return noeud if neuve is _INTACTE else neuve
-
-
-def _ecrire_json(chemin, destination, table, options, rng):
-    with open(chemin, "r", encoding="utf-8") as fh:
-        arbre = json.load(fh)
-    sortie = _transformer_json(arbre, options, table, rng)
-
-    def ecrivain(cible):
-        with open(cible, "w", encoding="utf-8") as fh:
-            json.dump(sortie, fh, ensure_ascii=False, indent=1)
-
-    _ecrire_atomique(destination, ecrivain)
-    return [destination]
-
-
-def _ecrire_xml(chemin, destination, table, options, rng):
-    """Le texte ET les valeurs d'attribut, par la MÊME table.
-
-    Un identifiant porté une fois en attribut et une fois en texte doit
-    rendre le même mot, sinon la jointure entre les deux casse. Les noms de
-    balise, les noms d'attribut et les URI d'espace de noms sont de la
-    structure et restent.
-    """
-    feuilles, arbre = _lire_xml(chemin)
-    racine = arbre.getroot()
-    for element in racine.iter():
-        if element.text and element.text.strip():
-            neuve = anonymise_cellule(
-                coercer_texte(element.text.strip()), options, table, rng
-            )
-            if neuve is not _INTACTE:
-                element.text = "" if neuve is None else str(neuve)
-        for cle, valeur in list(element.attrib.items()):
-            neuve = anonymise_cellule(
-                coercer_texte(valeur), options, table, rng
-            )
-            if neuve is not _INTACTE:
-                element.attrib[cle] = "" if neuve is None else str(neuve)
-
-    def ecrivain(cible):
-        arbre.write(cible, encoding="utf-8", xml_declaration=True)
-
-    _ecrire_atomique(destination, ecrivain)
-    return [destination]
 
 
 def convertir(chemin, destination, cible, options, feuilles=None):
@@ -1211,9 +1494,28 @@ def _convertir_vers_xlsx(destination, feuilles):
             nom_de_fichier_sur(feuille.nom, pris)[:31]
         )
         for ligne in feuille.lignes:
-            onglet.append([valeur_hors_tableur(v) for v in ligne])
+            onglet.append([_valeur_pour_xlsx(v) for v in ligne])
     _ecrire_atomique(destination, classeur.save)
     return [destination]
+
+
+def _valeur_pour_xlsx(valeur):
+    """La valeur telle qu'un classeur la porte, sans passer par du texte.
+
+    `valeur_hors_tableur` est écrite pour csv, json et xml, trois formats
+    sans types : elle rend une date en chaîne ISO. openpyxl, lui, porte
+    nativement `datetime`, `int`, `float` et `bool` — convertir en texte
+    faisait perdre le type, et la copie portait du texte là où une date
+    était attendue, donc ne se réimportait plus comme telle.
+    """
+    if valeur is None or isinstance(valeur, (bool, int, float, str)):
+        return valeur
+    texte = getattr(valeur, "text", None)
+    if isinstance(texte, str):
+        return texte
+    if isinstance(valeur, (bytes, bytearray)):
+        return None
+    return valeur
 
 
 def _preparer_repertoire(destination):

@@ -73,6 +73,10 @@ ERREURS = {
     "tout_exclu": "Nothing was anonymised: every region was excluded.",
     "rien_a_faire": "Nothing to anonymise in this file.",
     "place": "Not enough room to write.",
+    "table_source": "The mapping table would overwrite the source"
+    " or the copy; nothing was written.",
+    "fuite_detectee": "A source value survives in the copy;"
+    " nothing was written: ",
 }
 
 # Les sept constantes d'erreur d'Excel. Elles arrivent en `str` SANS `=` en
@@ -112,7 +116,64 @@ CODES_ERREUR_XLS = {
 # l'ORM, pas la confidentialité », et des relations entières dont la
 # randomisation mélangerait toute la base. Un export tableur de cette même
 # base porte les mêmes colonnes sous les mêmes étiquettes.
-SUFFIXES_IDENTIFIANTS = ("_id", "_ids", "/id", "/.id")
+# Une étiquette dont le CONTENU n'est jamais du texte libre : le plancher
+# peut tomber sur le nom seul sans rien laisser passer.
+PLANCHER_STRUCTUREL = frozenset(
+    {
+        "id",
+        "create_uid",
+        "write_uid",
+        "create_date",
+        "write_date",
+        "sequence",
+        "active",
+        "color",
+        "res_field",
+        "__last_update",
+        "arch_fs",
+    }
+)
+SUFFIXES_STRUCTURELS = ("/id", "/.id")
+
+# Une étiquette qui PEUT porter du texte libre. Un export Odoo
+# import-compatible met le nom affiché de la relation dans « partner_id », et
+# « State », « Key » ou « Model » d'un classeur ordinaire ne sont pas les
+# champs d'Odoo. Le plancher n'y tombe que si le contenu MESURÉ a la forme
+# d'un identifiant : décider sur le nom seul recopiait textuellement les
+# colonnes les plus identifiantes du fichier.
+SUFFIXES_IDENTIFIANTS = ("_id", "_ids")
+ETIQUETTES_SOUS_CONDITION = frozenset(CHAMPS_INTERDITS) - PLANCHER_STRUCTUREL
+
+# Un chemin d'identifiants Odoo, une valeur de sélection, un external ID.
+_MOTIF_CHEMIN_ID = re.compile(r"[0-9]+(?:/[0-9]+)*/?")
+_MOTIF_SELECTION = re.compile(r"[a-z0-9_]+")
+_MOTIF_ID_TEXTE = re.compile(r"[A-Za-z0-9_.]+(?:,[A-Za-z0-9_.]+)*")
+
+
+def valeur_forme_identifiant(valeur):
+    """Vrai si cette valeur a la forme d'un identifiant, non d'un nom.
+
+    Le doute profite à l'ANONYMISATION : ce qui n'est pas franchement un
+    identifiant est traité comme du texte, donc remplacé. L'inverse — croire
+    identifiant ce qui est un nom — recopie la donnée en clair et l'annonce
+    comme protégée.
+    """
+    if isinstance(valeur, bool) or isinstance(valeur, int):
+        return True
+    if isinstance(valeur, float):
+        return valeur.is_integer()
+    if not isinstance(valeur, str):
+        return False
+    texte = valeur.strip()
+    if not texte:
+        return True
+    if _MOTIF_CHEMIN_ID.fullmatch(texte):
+        return True
+    if _MOTIF_SELECTION.fullmatch(texte):
+        return True
+    # Un external ID porte un point ; la virgule tient la liste d'un m2m.
+    return bool(_MOTIF_ID_TEXTE.fullmatch(texte)) and "." in texte
+
 
 # Les octets de tête qui tranchent, quand l'extension mentirait.
 SIGNATURES = (
@@ -320,22 +381,43 @@ class Correspondance:
         return cls(brut.get("mots"), brut.get("nombres"))
 
     def ecrire(self, chemin):
-        """Écrite en 0600 : elle ré-identifie la copie à elle seule."""
-        parent = os.path.dirname(os.path.abspath(chemin))
+        """Écrite en 0600, et par un temporaire renommé.
+
+        Le mode compte parce que ce fichier porte chaque valeur d'origine en
+        clair : il ré-identifie les copies à lui seul. `os.open` n'applique
+        son mode QU'À la création, donc une table arrivée en 0644 par un
+        clone, un `cp` ou un `tar -x` le resterait — d'où le `fchmod`.
+
+        L'atomicité compte parce que la table s'écrit APRÈS les copies : une
+        interruption laisserait sur le disque une table tronquée au milieu
+        d'une chaîne, alors que les fichiers qu'elle seule ré-identifie sont
+        déjà livrables. Le fichier suivant du lot échouerait alors à la
+        charger, sur un message qui accuse sa source.
+        """
+        parent = os.path.dirname(os.path.abspath(chemin)) or "."
         os.makedirs(parent, mode=0o700, exist_ok=True)
-        fd = os.open(chemin, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(
-                {
-                    "version": self.VERSION,
-                    "mots": self.mots,
-                    "nombres": self.nombres,
-                },
-                fh,
-                ensure_ascii=False,
-                indent=1,
-                sort_keys=True,
-            )
+        descripteur, temporaire = tempfile.mkstemp(
+            dir=parent, prefix=".table-", suffix=".part"
+        )
+        try:
+            os.fchmod(descripteur, 0o600)
+            with os.fdopen(descripteur, "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "version": self.VERSION,
+                        "mots": self.mots,
+                        "nombres": self.nombres,
+                    },
+                    fh,
+                    ensure_ascii=False,
+                    indent=1,
+                    sort_keys=True,
+                )
+            os.replace(temporaire, chemin)
+            temporaire = None
+        finally:
+            if temporaire and os.path.exists(temporaire):
+                os.unlink(temporaire)
 
     def en_dict(self):
         return {"mots": dict(self.mots), "nombres": dict(self.nombres)}
@@ -437,25 +519,37 @@ def nouveau_nombre(valeur, rng, bornes=None, table=None):
 # ----------------------------------------------------------------------
 # La portée
 # ----------------------------------------------------------------------
-def colonne_plancher(etiquette):
-    """Vrai si cette étiquette de colonne porte un identifiant.
+def colonne_plancher(etiquette, forme_identifiant=False):
+    """Vrai si cette colonne porte un identifiant, non un nom.
 
     Le plancher s'applique AVANT la question des colonnes intactes et
     indépendamment d'elle : sans lui, accepter tous les défauts détruit
-    `id`, `partner_id/id` et `state`, pour une entrée dont tout l'objet est
-    un jeu de test qui FONCTIONNE.
+    `id`, `partner_id/id` et les relations, pour une entrée dont tout
+    l'objet est un jeu de test qui FONCTIONNE.
+
+    Mais le NOM ne suffit pas à décider. `CHAMPS_INTERDITS` vient d'un
+    anonymiseur de BASE, où `display_name` est refusé parce que le serveur le
+    RECALCULE depuis `name` ; un fichier plat ne recalcule rien, la colonne
+    EST la donnée. Et dans un export import-compatible, `partner_id` porte le
+    nom affiché de la relation, pas un entier. `forme_identifiant` dit si le
+    CONTENU mesuré de la colonne a la forme d'un identifiant ; sans lui, le
+    plancher recopie en clair les colonnes les plus identifiantes du fichier
+    et l'annonce comme une protection.
     """
     if not etiquette:
         return False
-    nom = str(etiquette).strip()
-    if not nom:
+    bas = str(etiquette).strip().lower()
+    if not bas:
         return False
-    bas = nom.lower()
-    if bas == "id":
+    if bas in PLANCHER_STRUCTUREL:
         return True
+    if any(bas.endswith(s) for s in SUFFIXES_STRUCTURELS):
+        return True
+    if not forme_identifiant:
+        return False
     if any(bas.endswith(s) for s in SUFFIXES_IDENTIFIANTS):
         return True
-    return bas in CHAMPS_INTERDITS
+    return bas in ETIQUETTES_SOUS_CONDITION
 
 
 def cellule_en_portee(feuille, ligne, colonne, options):
@@ -464,20 +558,29 @@ def cellule_en_portee(feuille, ligne, colonne, options):
     `feuille` est un nom, `None` hors tableur. `ligne` et `colonne` sont
     des entiers 1-based, comme openpyxl les compte.
     """
+    # Une colonne de STRUCTURE : les noms de balise d'un XML, les clés
+    # aplaties d'un JSON. Le graveur ne les touche jamais, et les compter
+    # comme remplacées désarmait le refus « rien à faire » et brûlait le
+    # vivier sur des noms de champ.
+    if (feuille, colonne) in (options.get("colonnes_structure") or ()):
+        return False
     feuilles = options.get("feuilles")
     if feuilles and feuille is not None and feuille not in feuilles:
         return False
     if ligne == 1 and not options.get("entetes"):
         return False
     etiquette = (options.get("etiquettes") or {}).get((feuille, colonne))
-    if colonne_plancher(etiquette):
+    forme = (options.get("formes") or {}).get((feuille, colonne), False)
+    if colonne_plancher(etiquette, forme):
         return False
     intactes = options.get("colonnes_intactes") or set()
-    if etiquette is not None and str(etiquette).strip() in intactes:
-        return False
-    if str(colonne) in intactes:
-        return False
-    return True
+    if etiquette is not None:
+        # L'index ne répond QUE pour une colonne sans étiquette. Sinon « 1 »
+        # désigne à la fois la colonne étiquetée « 1 » et la première
+        # colonne, et une seule réponse en épargne deux — dont celle des
+        # noms, que l'aperçu n'annonçait pas.
+        return str(etiquette).strip() not in intactes
+    return str(colonne) not in intactes
 
 
 def anonymise_cellule(valeur, options, table, rng, bornes=None):
@@ -623,6 +726,107 @@ def coercer_texte(valeur):
     if not texte or not _NOMBRE_TEXTE.fullmatch(texte):
         return valeur
     return float(texte) if "." in texte else int(texte)
+
+
+# La vérification ne regarde pas les chaînes trop courtes : « 12 » ou « ok »
+# apparaissent dans n'importe quel XML de conteneur et noieraient le signal.
+LONGUEUR_VERIFIABLE = 4
+
+# Au-delà, la vérification dit ce qu'elle n'a pas pu regarder. Un plafond
+# muet se lirait comme « rien ne fuit ».
+MAX_VALEURS_VERIFIEES = 20000
+
+
+def valeurs_a_verifier(table):
+    """Les chaînes que le moteur a DIT avoir remplacées.
+
+    `table.mots` est exactement l'ensemble des valeurs texte vues EN
+    PORTÉE : `nouveau_mot` n'est appelé nulle part ailleurs. Une de ces
+    valeurs qui subsiste dans la copie est donc une fuite sans ambiguïté —
+    le moteur a annoncé son remplacement et une copie en a survécu
+    ailleurs, dans un cache, un nom de colonne de tableau ou une feuille
+    qu'on croyait retirée.
+
+    Ce qui est hors portée n'est PAS regardé ici : ces valeurs restent par
+    décision, et c'est `colonnes_ecartees` et `entete_gardee` qui les
+    nomment à l'écran. Les mêler ici rendrait la garde bruyante au point
+    d'être désactivée, ce qui est la seule manière de la rendre inutile.
+    """
+    return {
+        valeur
+        for valeur in table.mots
+        if isinstance(valeur, str)
+        and len(valeur.strip()) >= LONGUEUR_VERIFIABLE
+    }
+
+
+def survivances(chemin, valeurs):
+    """{valeur: [parties du fichier]} pour ce qui subsiste dans la copie.
+
+    Un `.xlsx` est un zip : on balaie CHAQUE partie, sans en nommer aucune.
+    Nommer les parties une à une est ce qui a laissé passer, tour à tour, le
+    cache d'un graphique, un titre d'axe, un hyperlien de cellule et le nom
+    d'une colonne de tableau.
+    """
+    if not valeurs:
+        return {}
+    morceaux = []
+    try:
+        with zipfile.ZipFile(chemin) as archive:
+            for nom in archive.namelist():
+                morceaux.append(
+                    (nom, archive.read(nom).decode("utf-8", "ignore"))
+                )
+    except (zipfile.BadZipFile, OSError):
+        try:
+            with open(chemin, "rb") as fh:
+                morceaux.append(
+                    (
+                        os.path.basename(chemin),
+                        fh.read().decode("utf-8", "ignore"),
+                    )
+                )
+        except OSError:
+            return {}
+    trouvees = {}
+    for valeur in valeurs:
+        for nom, texte in morceaux:
+            if valeur in texte:
+                trouvees.setdefault(valeur, []).append(nom)
+    return trouvees
+
+
+def verifier_copie(fichiers, table, gardees=()):
+    """Relire les octets écrits, et refuser la copie qui porte la source.
+
+    C'est un filet, non la règle : les règles décident ce qu'on remplace,
+    et cette fonction constate ce qui est SORTI. Sa valeur est de ne
+    dépendre d'aucune énumération de vecteurs — un endroit du format que
+    personne n'a pensé à nettoyer produit un refus, là où une liste de
+    parties à vérifier produirait un silence.
+
+    `gardees` est ce que le moteur conserve SCIEMMENT et a annoncé : noms de
+    feuille, plages nommées, littéraux de formule, clés d'objet, noms de
+    balise. Tout le reste qui subsiste est un refus.
+
+    Rend (survivances non annoncées, nombre de valeurs non regardées).
+    """
+    valeurs = valeurs_a_verifier(table)
+    tolerees = {str(g).strip() for g in gardees if isinstance(g, str)}
+    candidates = sorted(valeurs - tolerees)
+    ecartees = 0
+    if len(candidates) > MAX_VALEURS_VERIFIEES:
+        ecartees = len(candidates) - MAX_VALEURS_VERIFIEES
+        candidates = candidates[:MAX_VALEURS_VERIFIEES]
+    fuites = {}
+    for fichier in fichiers:
+        if not fichier or not os.path.isfile(fichier):
+            continue
+        for valeur, parties in survivances(fichier, set(candidates)).items():
+            fuites.setdefault(valeur, []).extend(
+                f"{os.path.basename(fichier)}:{p}" for p in parties
+            )
+    return fuites, ecartees
 
 
 def normaliser_xls(ctype, valeur, datemode):

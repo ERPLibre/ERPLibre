@@ -13264,6 +13264,47 @@ TRANSLATIONS = {
         "fr": 'Pas assez de place pour écrire.',
         "en": 'Not enough room to write.',
     },
+    # Transform data - correctifs de fuite
+    'A source value survives in the copy; nothing was written: ': {
+        "fr": "Une valeur de la source subsiste dans la copie ; rien n'a été écrit : ",
+        "en": 'A source value survives in the copy; nothing was written: ',
+    },
+    'The mapping table would overwrite the source or the copy; nothing was written.': {
+        "fr": "La table de correspondance écraserait la source ou la copie ; rien n'a été écrit.",
+        "en": 'The mapping table would overwrite the source or the copy; nothing was written.',
+    },
+    'Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.': {
+        "fr": 'Les feuilles hors de la sélection sont retirées de la copie ; les formules qui les référençaient affichent #REF!.',
+        "en": 'Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.',
+    },
+    'Chart sheets are dropped from the copy: their titles and series caches are not cells.': {
+        "fr": 'Les feuilles graphiques sont retirées de la copie : leurs titres et leurs caches de série ne sont pas des cellules.',
+        "en": 'Chart sheets are dropped from the copy: their titles and series caches are not cells.',
+    },
+    'Object keys are kept as structure; they may identify.': {
+        "fr": "Les clés d'objet sont conservées comme structure ; elles peuvent identifier.",
+        "en": 'Object keys are kept as structure; they may identify.',
+    },
+    'Element and attribute names are kept as structure; they may identify.': {
+        "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
+        "en": 'Element and attribute names are kept as structure; they may identify.',
+    },
+    'Row 1 is copied verbatim as a header row.': {
+        "fr": "La ligne 1 est recopiée telle quelle comme ligne d'en-tête.",
+        "en": 'Row 1 is copied verbatim as a header row.',
+    },
+    'If it holds data, answer yes to the header question and start over.': {
+        "fr": "Si elle porte de la donnée, répondre oui à la question d'en-tête et reprendre.",
+        "en": 'If it holds data, answer yes to the header question and start over.',
+    },
+    'Mapping table: ': {
+        "fr": 'Table de correspondance : ',
+        "en": 'Mapping table: ',
+    },
+    'value(s) not verified, above the cap': {
+        "fr": 'valeur(s) non vérifiée(s), au-delà du plafond',
+        "en": 'value(s) not verified, above the cap',
+    },
 }
 
 

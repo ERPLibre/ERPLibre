@@ -339,18 +339,65 @@ class TestPlancherStructurel(unittest.TestCase):
         self.assertTrue(noyau.colonne_plancher("id"))
         self.assertTrue(noyau.colonne_plancher("ID"))
 
-    def test_suffixes_de_relation(self):
-        for etiquette in (
-            "partner_id",
-            "partner_ids",
-            "partner_id/id",
-            "partner_id/.id",
-        ):
+    def test_suffixes_structurels_au_nom_seul(self):
+        """« /id » et « /.id » ne portent JAMAIS de texte libre."""
+        for etiquette in ("partner_id/id", "partner_id/.id"):
             self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
 
-    def test_champs_interdits_repris_d_anonymize(self):
-        for etiquette in ("state", "sequence", "active", "display_name"):
+    def test_suffixe_de_relation_exige_la_forme_mesuree(self):
+        """Un export import-compatible met un NOM dans « partner_id ».
+
+        Décider sur le nom seul recopiait en clair la colonne la plus
+        identifiante du fichier, et l'annonçait comme protégée.
+        """
+        for etiquette in ("partner_id", "partner_ids"):
+            self.assertFalse(noyau.colonne_plancher(etiquette), etiquette)
+            self.assertTrue(
+                noyau.colonne_plancher(etiquette, forme_identifiant=True),
+                etiquette,
+            )
+
+    def test_champs_structurels_au_nom_seul(self):
+        for etiquette in ("sequence", "active", "create_uid"):
             self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
+
+    def test_champs_sous_condition(self):
+        """`display_name` est du texte dans un fichier plat.
+
+        Le serveur le RECALCULE depuis `name`, ce qui le rend structurel
+        dans une base ; un fichier ne recalcule rien, la colonne EST la
+        donnée.
+        """
+        for etiquette in ("state", "display_name"):
+            self.assertFalse(noyau.colonne_plancher(etiquette), etiquette)
+            self.assertTrue(
+                noyau.colonne_plancher(etiquette, forme_identifiant=True),
+                etiquette,
+            )
+
+    def test_forme_identifiant(self):
+        for valeur in (
+            7,
+            7.0,
+            "",
+            "base.res_partner_7",
+            "sale",
+            "1/2/",
+            "base.p1,base.p2",
+        ):
+            self.assertTrue(
+                noyau.valeur_forme_identifiant(valeur), repr(valeur)
+            )
+        for valeur in (
+            "Boulangerie Tremblay inc.",
+            "Jean Tremblay",
+            "Quebec",
+            "Freightliner M2 106",
+            7.5,
+        ):
+            self.assertFalse(
+                noyau.valeur_forme_identifiant(valeur), repr(valeur)
+            )
 
     def test_une_colonne_ordinaire_passe(self):
         for etiquette in ("montant", "nom", "identifiant_client", ""):
@@ -506,6 +553,12 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
         # Le même client rend le même mot dans les deux lignes.
         self.assertEqual(lignes[1][1], lignes[3][1])
         self.assertNotEqual(lignes[1][1], lignes[2][1])
+        # AUCUNE valeur texte de la source ne survit. Sans cette
+        # assertion, un graveur inerte garde toutes les précédentes :
+        # elles sont vraies des valeurs SOURCE aussi.
+        texte = open(sortie, encoding="utf-8").read()
+        self.assertNotIn("Alpha", texte)
+        self.assertNotIn("Beta", texte)
         # Un montant reste un nombre, du même signe.
         self.assertGreater(float(lignes[1][2]), 0)
         self.assertLess(float(lignes[2][2]), 0)
@@ -691,8 +744,145 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
         source = self._ecrire("s.csv", "nom,n\nAlpha,5\n")
         sortie = os.path.join(self.base, "o.json")
         formats.ecrire(source, sortie, {"conversion": "json", "graine": "1"})
+        # `assertTrue(arbre)` passait sur une recopie verbatim.
+        self.assertNotIn("Alpha", open(sortie, encoding="utf-8").read())
+
+    def test_le_nom_du_fichier_source_ne_sort_pas(self):
+        """Le dialogue promet que le nom du fichier n'est pas anonymisé.
+
+        Le recracher comme clé de premier niveau du JSON injectait dans la
+        copie un identifiant qui n'était même pas dans la grille.
+        """
+        source = self._ecrire("Client_Tremblay_2024.csv", "nom\nAlpha\n")
+        sortie = os.path.join(self.base, "o.json")
+        formats.ecrire(source, sortie, {"conversion": "json", "graine": "1"})
+        self.assertNotIn(
+            "Client_Tremblay", open(sortie, encoding="utf-8").read()
+        )
+
+    def test_json_les_cles_sont_de_la_structure_et_sont_dites(self):
+        source = self._ecrire(
+            "k.json", '{"Alpha": {"responsable": "Beta", "solde": 1200}}'
+        )
+        apercu = formats.plan(source, {"graine": "3"})
+        for exemple in apercu["apercu"]:
+            self.assertNotEqual(exemple["avant"], "Alpha")
+        self.assertIn(
+            "Object keys are kept as structure; they may identify.",
+            apercu["avertissements"],
+        )
+
+    def test_xml_la_queue_est_anonymisee(self):
+        """Un export d'ERP nommé « .xls » qui est du HTML arrive ici.
+
+        La moitié d'une cellule vit dans la QUEUE d'un élément : « Client
+        <b>X</b> Nom » porte « Nom » après la balise fermante.
+        """
+        source = self._ecrire(
+            "h.xml", "<t><td>Client <b>ABC</b> Alpha</td></t>"
+        )
+        sortie = os.path.join(self.base, "o.xml")
+        formats.ecrire(source, sortie, {"graine": "3"})
+        rendu = open(sortie, encoding="utf-8").read()
+        self.assertNotIn("Alpha", rendu)
+        # L'espace d'encadrement survit, sinon deux mots se collent.
+        self.assertRegex(rendu, r"\w <b>")
+
+    def test_la_portee_gouverne_aussi_le_json(self):
+        """L'écriture passait par un SECOND parcours de l'arbre.
+
+        Il ignorait le plancher et les colonnes intactes, au point de
+        détruire l'external ID que le plancher venait de protéger.
+        """
+        source = self._ecrire(
+            "r.json",
+            json.dumps(
+                [
+                    {
+                        "id": 7,
+                        "partner_id/id": "base.p7",
+                        "nom": "Alpha",
+                        "ville": "Beta",
+                    }
+                ]
+            ),
+        )
+        sortie = os.path.join(self.base, "o.json")
+        formats.ecrire(
+            source, sortie, {"graine": "3", "colonnes_intactes": ["nom"]}
+        )
         arbre = json.load(open(sortie, encoding="utf-8"))
-        self.assertTrue(arbre)
+        self.assertEqual(arbre[0]["id"], 7)
+        self.assertEqual(arbre[0]["partner_id/id"], "base.p7")
+        self.assertEqual(arbre[0]["nom"], "Alpha")
+        # Et la colonne qui EST en portée bouge, sinon le test passerait
+        # sur une recopie verbatim de tout le fichier.
+        self.assertNotEqual(arbre[0]["ville"], "Beta")
+
+    def test_la_ligne_1_gardee_est_nommee(self):
+        """Un CSV sans en-tête met un enregistrement complet en ligne 1."""
+        source = self._ecrire("sans.csv", "Alpha,1200\nBeta,830\n")
+        apercu = formats.plan(source, {"graine": "3"})
+        valeurs = [c["valeur"] for c in apercu["entete_gardee"]]
+        self.assertIn("Alpha", valeurs)
+
+    def test_la_table_ne_peut_pas_ecraser_la_source(self):
+        source = self._ecrire("t.json", '{"client": "Alpha"}')
+        avant = open(source, encoding="utf-8").read()
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats.ecrire(
+                source,
+                os.path.join(self.base, "o.json"),
+                {"table_chemin": source},
+            )
+        self.assertEqual(capture.exception.cle, "table_source")
+        self.assertEqual(open(source, encoding="utf-8").read(), avant)
+
+    def test_la_table_ne_peut_pas_remplacer_la_copie(self):
+        source = self._ecrire("s.csv", "nom\nAlpha\n")
+        sortie = os.path.join(self.base, "o.csv")
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats.ecrire(source, sortie, {"table_chemin": sortie})
+        self.assertEqual(capture.exception.cle, "table_source")
+        self.assertFalse(os.path.exists(sortie))
+
+    def test_la_table_existante_repasse_en_0600(self):
+        """`os.open` n'applique son mode QU'À la création.
+
+        Une table arrivée en 0644 par un clone, un `cp` ou un `tar -x` le
+        resterait — et c'est le cas normal du flux prévu.
+        """
+        source = self._ecrire("s.csv", "nom\nAlpha\n")
+        table = os.path.join(self.base, "t.json")
+        with open(table, "w", encoding="utf-8") as fh:
+            fh.write("{}")
+        os.chmod(table, 0o644)
+        formats.ecrire(
+            source,
+            os.path.join(self.base, "o.csv"),
+            {"table_chemin": table},
+        )
+        self.assertEqual(os.stat(table).st_mode & 0o777, 0o600)
+
+    def test_le_plancher_ne_recopie_plus_les_noms(self):
+        """La fuite qui a motivé tout ce bloc.
+
+        Cinq colonnes sur six d'un export import-compatible étaient
+        recopiées mot pour mot, et l'écran l'annonçait comme une
+        protection.
+        """
+        source = self._ecrire(
+            "export.csv",
+            "id,partner_id,user_id,display_name,state,montant\n"
+            "7,Alpha,Beta,Gamma,Delta,1200.50\n",
+        )
+        sortie = os.path.join(self.base, "o.csv")
+        formats.ecrire(source, sortie, {"graine": "3"})
+        rendu = open(sortie, encoding="utf-8").read()
+        for valeur in ("Alpha", "Beta", "Gamma", "Delta"):
+            self.assertNotIn(valeur, rendu, valeur)
+        # « id » reste, lui : son contenu a la forme d'un identifiant.
+        self.assertIn("7,", rendu)
 
 
 def _cles_du_menu(traduites_seulement=True):
@@ -724,6 +914,105 @@ def _cles_du_menu(traduites_seulement=True):
                 continue
             cles.append(valeur)
     return cles
+
+
+class TestGardeApresEcriture(unittest.TestCase):
+    """Le filet : relire les octets écrits.
+
+    Sa valeur est de ne dépendre d'AUCUNE énumération de vecteurs. Un
+    endroit du format que personne n'a pensé à nettoyer produit un refus,
+    là où une liste de parties à vérifier produirait un silence. Ce sont
+    ces tests qui prouvent qu'il tire ; sans eux il pourrait être neutralisé
+    sans qu'une ligne ne rougisse.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _table(self, *valeurs):
+        table = noyau.Correspondance()
+        for valeur in valeurs:
+            noyau.nouveau_mot(valeur, table, VIVIER)
+        return table
+
+    def test_ne_regarde_que_ce_qui_a_ete_remplace(self):
+        """Ce qui est hors portée reste par DÉCISION, et est annoncé.
+
+        Le mêler ici rendrait la garde bruyante au point d'être
+        désactivée, ce qui est la seule manière de la rendre inutile.
+        """
+        table = self._table("Alpha")
+        self.assertEqual(noyau.valeurs_a_verifier(table), {"Alpha"})
+
+    def test_ignore_les_chaines_trop_courtes(self):
+        table = self._table("ok", "abc", "Alpha")
+        self.assertEqual(noyau.valeurs_a_verifier(table), {"Alpha"})
+
+    def test_detecte_une_valeur_survivante(self):
+        cible = os.path.join(self.base, "copie.txt")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("rien ici sauf Alpha qui ne devrait pas y etre")
+        fuites, ecartees = noyau.verifier_copie([cible], self._table("Alpha"))
+        self.assertIn("Alpha", fuites)
+        self.assertEqual(ecartees, 0)
+
+    def test_tolere_ce_qui_est_garde_sciemment(self):
+        cible = os.path.join(self.base, "copie.txt")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("Alpha reste, il est annonce")
+        fuites, _ = noyau.verifier_copie(
+            [cible], self._table("Alpha"), gardees=["Alpha"]
+        )
+        self.assertEqual(fuites, {})
+
+    def test_balaie_chaque_partie_d_un_zip(self):
+        """Nommer les parties une à une est ce qui a laissé passer, tour à
+        tour, un cache de graphique, un titre d'axe, un hyperlien de
+        cellule et le nom d'une colonne de tableau."""
+        cible = os.path.join(self.base, "copie.xlsx")
+        with zipfile.ZipFile(cible, "w") as archive:
+            archive.writestr("xl/worksheets/sheet1.xml", "<c>propre</c>")
+            archive.writestr("xl/un/coin/inattendu.xml", "<c>Alpha</c>")
+        fuites, _ = noyau.verifier_copie([cible], self._table("Alpha"))
+        self.assertEqual(
+            fuites["Alpha"], ["copie.xlsx:xl/un/coin/inattendu.xml"]
+        )
+
+    def test_dit_ce_qu_elle_n_a_pas_regarde(self):
+        """Un plafond MUET se lirait comme « rien ne fuit »."""
+        table = noyau.Correspondance()
+        for index in range(noyau.MAX_VALEURS_VERIFIEES + 5):
+            noyau.nouveau_mot(f"valeur-{index:06d}", table, VIVIER)
+        cible = os.path.join(self.base, "copie.txt")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("propre")
+        _, ecartees = noyau.verifier_copie([cible], table)
+        self.assertEqual(ecartees, 5)
+
+    def test_l_ecriture_refuse_et_n_laisse_aucun_fichier(self):
+        """Le refus doit être total : une copie partielle serait livrée."""
+        source = os.path.join(self.base, "s.csv")
+        with open(source, "w", encoding="utf-8") as fh:
+            fh.write("nom\nAlpha\n")
+        sortie = os.path.join(self.base, "o.csv")
+
+        # Un graveur qui recopie la source telle quelle : exactement le
+        # mutant que la suite laissait passer avant cette garde.
+        def graveur_inerte(destination, feuille, options):
+            with open(destination, "w", encoding="utf-8") as fh:
+                fh.write("nom\nAlpha\n")
+            return [destination]
+
+        vrai = formats._ecrire_csv
+        formats._ecrire_csv = graveur_inerte
+        try:
+            with self.assertRaises(formats.ErreurMoteur) as capture:
+                formats.ecrire(source, sortie, {"graine": "3"})
+        finally:
+            formats._ecrire_csv = vrai
+        self.assertEqual(capture.exception.cle, "fuite_detectee")
+        self.assertFalse(os.path.exists(sortie))
 
 
 class TestI18n(unittest.TestCase):
@@ -837,6 +1126,15 @@ MARQUEURS = {
     "cat_cache": "ZQXCATCACHE",
     "cell_value": "ZQXCELL",
     "defined_value": "ZQXNAMEVAL",
+    # Les trois vecteurs qui portent une COPIE ENTIÈRE de la source. La
+    # fixture ne les portait pas, si bien que les assertions d'absence
+    # portaient sur des parties JAMAIS présentes : `ws._pivots = []`,
+    # `ws._images = []` et `keep_links=False` pouvaient chacun disparaître
+    # sans qu'une ligne ne rougisse.
+    "pivot_cache": "ZQXPIVOT",
+    "lien_externe": "ZQXEXTLINK",
+    "image": "ZQXIMAGE",
+    "filtre": "ZQXFILTRE",
 }
 
 # Les quatre familles référencées par une formule. On ne peut pas les
@@ -952,9 +1250,61 @@ def _fabriquer_fixture(chemin):
     )
     onglet.add_chart(graphique, "J2")
 
+    # Un filtre automatique AVEC une valeur : `auto_filter.ref` seul ne
+    # pose aucun `filterColumn`, donc l'effacement n'était pas exercé.
+    onglet.auto_filter.add_filter_column(
+        0, [M["filtre"], "autre"], blank=False
+    )
+
+    # Une image dont le marqueur vit dans un chunk PNG tEXt : openpyxl ne
+    # recopie xl/media/ que si Pillow est là, et c'est le vecteur le plus
+    # dense qu'un classeur puisse porter.
+    from openpyxl.drawing.image import Image as XLImage
+    from PIL import Image as PILImage
+    from PIL import PngImagePlugin
+
+    png = os.path.join(os.path.dirname(chemin), "img.png")
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Comment", M["image"])
+    PILImage.new("RGB", (4, 4), (200, 10, 10)).save(png, pnginfo=info)
+    onglet.add_image(XLImage(png), "L2")
+
     classeur.save(chemin)
     _injecter_cache(chemin)
+    _injecter_parties_de_copie(chemin)
     return chemin
+
+
+def _injecter_parties_de_copie(chemin):
+    """Poser un cache de tableau croisé et un lien externe.
+
+    openpyxl sait les LIRE et non les écrire : sans injection au niveau du
+    zip, la fixture ne porte pas les deux parties dont le message de
+    commit dit qu'elles contiennent « une copie entière » de la source.
+    """
+    temporaire = chemin + ".tmp"
+    parties = {
+        "xl/pivotCache/pivotCacheRecords1.xml": (
+            '<?xml version="1.0"?><pivotCacheRecords count="1">'
+            f"<r><s v=\"{TOUS_MARQUEURS['pivot_cache']}\"/></r>"
+            "</pivotCacheRecords>"
+        ),
+        "xl/externalLinks/externalLink1.xml": (
+            '<?xml version="1.0"?><externalLink><externalBook>'
+            f"<sheetNames><sheetName val=\"{TOUS_MARQUEURS['lien_externe']}\"/>"
+            "</sheetNames></externalBook></externalLink>"
+        ),
+    }
+    with zipfile.ZipFile(chemin) as entree, zipfile.ZipFile(
+        temporaire, "w", zipfile.ZIP_DEFLATED
+    ) as sortie:
+        for item in entree.infolist():
+            # Les membres NON XML passent en octets : décoder
+            # xl/media/image1.png lèverait UnicodeDecodeError.
+            sortie.writestr(item, entree.read(item.filename))
+        for nom, contenu in parties.items():
+            sortie.writestr(nom, contenu)
+    os.replace(temporaire, chemin)
 
 
 def _injecter_cache(chemin):
@@ -1112,10 +1462,10 @@ class TestFuiteXlsx(unittest.TestCase):
             " test, pas passer inaperçu",
         )
 
-    def test_dix_neuf_marqueurs_sur_vingt_quatre_sont_effaces(self):
+    def test_le_compte_des_effaces(self):
         efface = set(TOUS_MARQUEURS) - set(_balayer(self._anonymiser()))
-        self.assertEqual(len(TOUS_MARQUEURS), 24)
-        self.assertEqual(len(efface), 19)
+        self.assertEqual(len(TOUS_MARQUEURS), 28)
+        self.assertEqual(len(efface), 23)
 
     def test_la_constante_d_une_plage_nommee_passe_par_la_table(self):
         """Le NOM survit par nécessité, la VALEUR doit partir.

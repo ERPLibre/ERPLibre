@@ -433,6 +433,27 @@ class TransformMenuMixin:
                 f"   {t('column(s) left alone: they hold identifiers')}:"
                 f" {noms}"
             )
+        gardee = apercu.get("entete_gardee") or []
+        if gardee:
+            # La ligne 1 est présumée d'en-tête, jamais mesurée : un CSV
+            # sans en-tête, ou un titre de rapport en A1, y met de la
+            # donnée. Un compteur ne dirait pas qu'un nom est dedans.
+            print(f"   ⚠ {t('Row 1 is copied verbatim as a header row.')}")
+            for cellule in gardee:
+                print(f"      {cellule['cellule']}  {cellule['valeur']!r}")
+            print(
+                "      "
+                + t(
+                    "If it holds data, answer yes to the header question"
+                    " and start over."
+                )
+            )
+        non_verifiees = apercu.get("valeurs_non_verifiees") or 0
+        if non_verifiees:
+            print(
+                f"   ⚠ {non_verifiees}"
+                f" {t('value(s) not verified, above the cap')}"
+            )
         for exemple in apercu.get("apercu") or []:
             print(
                 f"      {exemple['cellule']}"
@@ -493,6 +514,19 @@ class TransformMenuMixin:
             return choisi
         return os.path.expanduser(reponse)
 
+    @staticmethod
+    def _transform_table_par_defaut(destination):
+        """Le chemin de la table, TOUJOURS sous private/transform/.
+
+        La table porte chaque valeur d'origine en clair : elle
+        ré-identifie la copie à elle seule. La poser à côté du fichier à
+        transmettre — ce que faisait le défaut, puisque la destination est
+        justement choisie hors de private/ — fait partir la clé avec le
+        chiffré au premier `zip -r` ou `scp -r` du dossier de livraison.
+        """
+        base = os.path.basename(os.path.splitext(destination)[0])
+        return os.path.join(SORTIE_PAR_DEFAUT, f"{base}.table.json")
+
     def _transform_confirm_overwrite(self, cibles):
         """Le nom tapé en entier, comme le reste du dépôt l'exige."""
         existants = [c for c in cibles if c and os.path.exists(c)]
@@ -546,9 +580,10 @@ class TransformMenuMixin:
             return
         options["destination"] = destination
         if not options.get("table_chemin"):
-            options["table_chemin"] = os.path.splitext(destination)[0] + (
-                ".table.json"
+            options["table_chemin"] = self._transform_table_par_defaut(
+                destination
             )
+        print(f"   {t('Mapping table: ')}{options['table_chemin']}")
 
         arguments = [
             "--plan",
@@ -602,7 +637,13 @@ class TransformMenuMixin:
                 f" {t('cell(s) left out of scope')}"
             )
         hors = bilan.get("hors_cellules") or {}
-        efface = sum(v for v in hors.values() if isinstance(v, int))
+        # `isinstance(True, int)` vaut True : sans exclure les booléens, le
+        # drapeau des macros comptait pour un élément effacé.
+        efface = sum(
+            v
+            for v in hors.values()
+            if isinstance(v, int) and not isinstance(v, bool)
+        )
         if efface:
             print(f"   {efface} {t('element(s) outside cells wiped')}")
         print(f"   {t('The original was not modified.')}")
@@ -612,14 +653,27 @@ class TransformMenuMixin:
             print(f"   ⚠ {avis}")
         for avertissement in bilan.get("avertissements") or []:
             print(f"   ⚠ {t(avertissement)}")
-        if str(destination).startswith(SORTIE_PAR_DEFAUT) or str(
-            destination
-        ).startswith("private"):
+        if self._transform_sous_private(destination):
             avis = t(
                 "private/ is tracked by git — this file will show in"
                 " « git status »."
             )
             print(f"   ⚠ {avis}")
+
+    @staticmethod
+    def _transform_sous_private(destination):
+        """La destination est-elle sous `private/` du dépôt ?
+
+        Comparaison de `realpath` ancrés : un test de préfixe sur le chemin
+        tel qu'il est tapé taisait l'avertissement pour le chemin ABSOLU
+        que rend le navigateur — c'est-à-dire le cas le plus courant — et
+        le levait à tort pour « privateer/ ».
+        """
+        prive = os.path.realpath(
+            os.path.join(transform_setup.racine(), "private")
+        )
+        cible = os.path.realpath(os.path.abspath(str(destination)))
+        return cible == prive or cible.startswith(prive + os.sep)
 
     @staticmethod
     def _transform_format(chemin):
