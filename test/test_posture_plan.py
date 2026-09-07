@@ -212,6 +212,79 @@ class TestOuLeFichierSePose(unittest.TestCase):
         self.assertEqual(texte, plan.file_entry(texte)[2])
 
 
+class TestLUniteDeRechargement(unittest.TestCase):
+    """Sans elle, seul le PREMIER amorçage charge les règles : une machine
+    redémarrée repart sans, et la voie de l'installateur — qui n'a aucune
+    première commande — ne les chargeait jamais."""
+
+    def test_it_runs_before_any_interface_is_configured(self):
+        """Sinon il existe une fenêtre où la machine sort librement à
+        chaque démarrage."""
+        texte = plan.unit_text()
+        self.assertIn("Before=network-pre.target", texte)
+        self.assertIn("Wants=network-pre.target", texte)
+
+    def test_it_loads_the_file_that_the_entry_poses(self):
+        self.assertIn(plan.RULES_PATH, plan.unit_text())
+
+    def test_it_finds_the_tool_through_a_shell(self):
+        """systemd exige un chemin absolu pour son premier mot, et le
+        répertoire de l'analyseur diffère selon la distribution ; le shell
+        est au même endroit partout."""
+        ligne = [
+            l
+            for l in plan.unit_text().splitlines()
+            if l.startswith("ExecStart=")
+        ]
+        self.assertEqual(1, len(ligne))
+        self.assertTrue(ligne[0].startswith("ExecStart=/bin/sh -c "))
+
+    def test_it_runs_once_and_is_armed_for_every_boot(self):
+        texte = plan.unit_text()
+        self.assertIn("Type=oneshot", texte)
+        self.assertIn("WantedBy=multi-user.target", texte)
+
+    def test_its_entry_is_readable_and_not_secret(self):
+        """Un fichier d'unité se lit ; il ne porte aucune adresse."""
+        chemin, mode, contenu, proprietaire = plan.unit_entry()
+        self.assertEqual(plan.UNIT_PATH, chemin)
+        self.assertEqual("0644", mode)
+        self.assertEqual("", proprietaire)
+        self.assertEqual(plan.unit_text(), contenu)
+
+    def test_the_unit_lives_where_the_installer_can_copy_it(self):
+        """Le répertoire d'unités locales existe sur tout système systemd ;
+        la voie qui recopie ne créerait pas un parent manquant."""
+        self.assertTrue(plan.UNIT_PATH.startswith("/etc/systemd/system/"))
+        self.assertTrue(plan.UNIT_PATH.endswith(plan.UNIT_NAME))
+
+    def test_the_first_boot_arms_and_loads_in_that_order(self):
+        """Armer sans charger laisse la machine sortir jusqu'au premier
+        redémarrage ; charger sans armer la laisse sortir à partir du
+        deuxième."""
+        commande = plan.first_boot_command()
+        self.assertLess(
+            commande.index(plan.UNIT_NAME), commande.index(plan.RULES_PATH)
+        )
+        self.assertIn("&&", commande)
+        self.assertNotIn("|| true", commande)
+
+    def test_both_halves_must_succeed(self):
+        """Joué par un shell : « && » lie les deux, un premier échec
+        arrête tout, et le code de sortie est non nul."""
+        with tempfile.TemporaryDirectory() as dossier:
+            faux_outil(dossier, "systemctl", "exit 1")
+            faux_outil(dossier, "nft", "echo NE-DEVRAIT-PAS-TOURNER; exit 0")
+            res = subprocess.run(
+                [BASH, "-c", plan.first_boot_command()],
+                capture_output=True,
+                text=True,
+                env={"PATH": dossier},
+            )
+        self.assertNotEqual(0, res.returncode)
+        self.assertNotIn("NE-DEVRAIT-PAS-TOURNER", res.stdout)
+
+
 class TestLaLigneDeChargement(unittest.TestCase):
     def test_it_tolerates_no_failure(self):
         """Un « || true » masquerait la panne, et le déploiement

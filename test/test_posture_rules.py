@@ -318,7 +318,7 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
     def test_the_rendered_posture_names_what_is_still_missing(self):
         manques = rules.unenforced(R.get_posture("paranoid"))
         for jeton in (
-            rules.NOT_AT_BOOT,
+            rules.RELOAD_FAILURE_UNSEEN,
             rules.CONTAINERS_UNPROVEN,
         ):
             with self.subTest(jeton=jeton):
@@ -341,7 +341,7 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
         self.assertEqual(
             (
                 "no-rendering",
-                "not-at-boot",
+                "reload-failure-unseen",
                 "containers-unproven",
             ),
             rules.UNENFORCED_TOKENS,

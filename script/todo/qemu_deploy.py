@@ -38,6 +38,18 @@ EGRESS_SSH_OPTS = (
 )
 
 
+class EgressFiles(NamedTuple):
+    """Les deux fichiers rendus, ou deux chaînes vides.
+
+    Deux et non un : les règles disent CE QUI passe, l'unité dit QUAND
+    elles sont chargées. Poser les premières sans la seconde ne confine que
+    jusqu'au premier redémarrage.
+    """
+
+    rules: str
+    unit: str
+
+
 class EgressOutcome(NamedTuple):
     """Ce que la relecture a conclu pour un parc.
 
@@ -1317,17 +1329,31 @@ class QemuDeployMixin:
         Chaîne vide quand la posture n'en attend pas : un déploiement qui ne
         confine rien ne doit pas payer un fichier.
 
-        Écrit par mkstemp — un nom composé serait un chemin PRÉVISIBLE — et
-        retiré dans tous les cas, y compris quand le déploiement s'arrête au
-        milieu. Le contenu nomme les adresses internes du site : il ne
-        traîne pas après coup.
+        Le contenu nomme les adresses internes du site : il ne traîne pas
+        après coup.
         """
         texte = self._qemu_egress_rules(spec)
         if not texte:
-            yield ""
+            yield EgressFiles("", "")
             return
+        with contextlib.ExitStack() as pile:
+            regles = pile.enter_context(self._fichier_ephemere(texte, ".nft"))
+            unite = pile.enter_context(
+                self._fichier_ephemere(posture_plan.unit_text(), ".service")
+            )
+            yield EgressFiles(regles, unite)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _fichier_ephemere(texte, suffixe):
+        """Un fichier écrit pour la durée du bloc, puis retiré.
+
+        Écrit par mkstemp — un nom composé serait un chemin PRÉVISIBLE — et
+        retiré dans tous les cas, y compris quand le déploiement s'arrête
+        au milieu.
+        """
         descripteur, chemin = tempfile.mkstemp(
-            prefix="erplibre-egress-", suffix=".nft"
+            prefix="erplibre-egress-", suffix=suffixe
         )
         try:
             with os.fdopen(descripteur, "w", encoding="utf-8") as fichier:
@@ -1397,8 +1423,9 @@ class QemuDeployMixin:
         # Le fichier de règles est POSÉ par le déploiement, pas rendu par
         # lui : il reçoit un chemin déjà écrit, et n'a rien à savoir des
         # postures. Absent, la commande est celle d'avant, mot pour mot.
-        if egress:
-            parts += ["--egress-file", egress]
+        if egress and egress.rules:
+            parts += ["--egress-file", egress.rules]
+            parts += ["--egress-unit", egress.unit]
         return parts
 
     def _qemu_arches_for(self, distro, arch):
@@ -2432,7 +2459,7 @@ class QemuDeployMixin:
         # il porte les adresses internes du site, et il est retiré même
         # si le parc s'arrête au milieu. Vide quand la posture n'attend
         # rien, ce qui est le cas de la plupart des déploiements.
-        egress_pose = ""
+        egress_pose = EgressFiles("", "")
         with self._qemu_egress_file(spec) as egress:
             egress_pose = egress
             # Jobs numérotés (k/N) : l'ID suit l'ORDRE de
@@ -2480,7 +2507,7 @@ class QemuDeployMixin:
         # quand rien d'autre ne la demandait : sans elle, la relecture ne
         # joindrait aucune VM et rendrait un silence pour tout le parc.
         if deployed and (
-            add_ssh_config or install_branch or desktop or egress_pose
+            add_ssh_config or install_branch or desktop or egress_pose.rules
         ):
             labels = {
                 nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
@@ -2507,7 +2534,7 @@ class QemuDeployMixin:
         # parce qu'elle en a besoin, et avant l'installation : une machine
         # qui n'a pas chargé ses règles doit se voir AVANT qu'on y pose
         # quoi que ce soit.
-        if egress_pose and deployed:
+        if egress_pose.rules and deployed:
             releve = self._qemu_probe_egress(deployed, ip_map)
             if releve.unconfined:
                 # RIEN ne se pose sur une machine qui devait être confinée

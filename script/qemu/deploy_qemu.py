@@ -2402,6 +2402,13 @@ INSTALLER_GUIDE_PREFIX = "erplibre-"
 EGRESS_GUEST_PATH = "/etc/erplibre-egress.nft"
 EGRESS_GUEST_MODE = "0600"
 
+# L'unité qui RECHARGE les règles à chaque démarrage. Sans elle, seul le
+# premier amorçage les charge par cloud-init — et la voie de l'installateur,
+# qui n'a pas de première commande du tout, ne les chargeait jamais.
+EGRESS_UNIT_NAME = "erplibre-egress.service"
+EGRESS_UNIT_PATH = f"/etc/systemd/system/{EGRESS_UNIT_NAME}"
+EGRESS_UNIT_MODE = "0644"
+
 
 def installer_guide_name(path: str) -> str:
     """Nom dans l'initrd du fichier destiné au chemin `path` de la VM.
@@ -2444,6 +2451,9 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     regles = getattr(args, "egress_rules", "")
     if regles:
         files.append((EGRESS_GUEST_PATH, EGRESS_GUEST_MODE, regles, ""))
+    unite = getattr(args, "egress_unit_text", "")
+    if unite:
+        files.append((EGRESS_UNIT_PATH, EGRESS_UNIT_MODE, unite, ""))
     if args.no_git_identity:
         return files
     # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par
@@ -2608,7 +2618,13 @@ def build_cloud_config(
     # masquer laisserait déployer une machine qui promet ce qu'elle ne tient
     # pas.
     if getattr(args, "egress_rules", ""):
-        lines.append(f"  - nft -f {EGRESS_GUEST_PATH}")
+        charge = f"nft -f {EGRESS_GUEST_PATH}"
+        if getattr(args, "egress_unit_text", ""):
+            # Armer ET charger, liés : armer sans charger laisse la machine
+            # sortir jusqu'au premier redémarrage, charger sans armer la
+            # laisse sortir à partir du deuxième.
+            charge = f"systemctl enable {EGRESS_UNIT_NAME} && {charge}"
+        lines.append(f"  - {charge}")
     return "\n".join(lines) + "\n"
 
 
@@ -2967,6 +2983,13 @@ def build_preseed(
     # nul. Sans ce « true », un chmod qui échoue bloque l'installation sur un
     # écran que personne ne regarde — c'est déjà la garde de
     # partman/early_command, quelques lignes plus haut.
+    # Cette voie n'a AUCUNE première commande : l'unité est donc ce qui
+    # charge les règles, au premier démarrage du système installé comme aux
+    # suivants. Le « || true » est la contrainte de ce chemin, pas un choix
+    # — mais un armement raté se voit quand même : la relecture d'après
+    # déploiement ne trouve pas la table et la machine est écartée.
+    if getattr(args, "egress_unit_text", ""):
+        post.append(f"in-target systemctl enable {EGRESS_UNIT_NAME} || true")
     post.append("true")
     # Diagnostic réseau, écrit sur la console AVANT que netcfg ne décide.
     # netcfg n'essaie aucun DHCP sur s390x et tombe droit sur l'adressage
@@ -4083,6 +4106,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Paquet APT additionnel (répétable).",
     )
     g_cloud.add_argument(
+        "--egress-unit",
+        metavar="FICHIER",
+        help=(
+            "Unité systemd déjà RENDUE qui recharge les règles de sortie à"
+            " chaque démarrage. Posée et armée sur les deux voies d'amorce."
+        ),
+    )
+    g_cloud.add_argument(
         "--egress-file",
         metavar="FICHIER",
         help=(
@@ -4241,21 +4272,21 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
     return keys
 
 
-def load_egress_rules(path: str) -> str:
-    """Le texte des règles à embarquer, ou l'arrêt si on ne peut pas.
+def load_posed_file(path: str, label: str) -> str:
+    """Le texte d'un fichier à embarquer, ou l'arrêt si on ne peut pas.
 
-    Un fichier vide est refusé comme un fichier absent : chargé, il
-    s'accepterait sans rien appliquer, et la machine se lirait comme
-    confinée alors que rien ne la borne.
+    Un fichier vide est refusé comme un fichier absent : posé, il donnerait
+    des règles qui n'appliquent rien ou une unité qui ne charge rien, et la
+    machine se lirait comme confinée alors que rien ne la borne.
     """
     if not path:
         return ""
     fichier = Path(path).expanduser()
     if not fichier.exists():
-        sys.exit(f"Règles de sortie introuvables : {fichier}")
+        sys.exit(f"{label} introuvable : {fichier}")
     texte = fichier.read_text()
     if not texte.strip():
-        sys.exit(f"Règles de sortie vides : {fichier}")
+        sys.exit(f"{label} vide : {fichier}")
     return texte
 
 
@@ -4371,7 +4402,12 @@ def main() -> None:
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
-    args.egress_rules = load_egress_rules(getattr(args, "egress_file", ""))
+    args.egress_rules = load_posed_file(
+        getattr(args, "egress_file", ""), "Règles de sortie"
+    )
+    args.egress_unit_text = load_posed_file(
+        getattr(args, "egress_unit", ""), "Unité de rechargement"
+    )
     if not pw_hash and not ssh_keys:
         print(
             "ATTENTION : ni mot de passe ni clé SSH -> connexion impossible à la VM.\n"

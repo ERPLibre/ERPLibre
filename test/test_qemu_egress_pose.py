@@ -48,11 +48,13 @@ DQ = _deploy_qemu()
 REGLES = "table inet erplibre {\n}\n"
 
 
-def args_de_banc(regles=None):
+def args_de_banc(regles=None, unite=None):
     args = DQ.build_parser().parse_args(["--name", "banc"])
     args.hostname = "banc"
     if regles is not None:
         args.egress_rules = regles
+    if unite is not None:
+        args.egress_unit_text = unite
     return args
 
 
@@ -136,6 +138,63 @@ class TestAvecLeDrapeau(unittest.TestCase):
         self.assertNotIn("/", plat)
 
 
+class TestLUnitePoseeEtArmee(unittest.TestCase):
+    """Les règles disent CE QUI passe, l'unité dit QUAND elles sont
+    chargées. Sans elle, la voie de l'installateur posait le fichier et
+    rien ne le chargeait jamais."""
+
+    def config(self):
+        return DQ.build_cloud_config(
+            args_de_banc(REGLES, plan.unit_text()), None, []
+        )
+
+    def test_the_unit_is_written_where_systemd_reads_it(self):
+        texte = self.config()
+        self.assertIn(f"  - path: {DQ.EGRESS_UNIT_PATH}", texte)
+        self.assertIn(f"    permissions: '{DQ.EGRESS_UNIT_MODE}'", texte)
+
+    def test_the_first_boot_arms_it_before_loading(self):
+        derniere = self.config().rstrip("\n").splitlines()[-1]
+        self.assertLess(
+            derniere.index(DQ.EGRESS_UNIT_NAME),
+            derniere.index("nft -f"),
+        )
+        self.assertNotIn("|| true", derniere)
+
+    def test_the_installer_path_arms_it_because_it_has_no_runcmd(self):
+        """C'est LA raison de l'unité sur ce chemin : rien d'autre n'y
+        charge les règles, ni au premier démarrage ni aux suivants."""
+        texte = DQ.build_preseed(
+            args_de_banc(REGLES, plan.unit_text()), None, []
+        )
+        self.assertIn(
+            f"in-target systemctl enable {DQ.EGRESS_UNIT_NAME}", texte
+        )
+        plat = DQ.installer_guide_name(DQ.EGRESS_UNIT_PATH)
+        self.assertIn(f"cp /{plat} /target{DQ.EGRESS_UNIT_PATH}", texte)
+
+    def test_the_unit_name_kept_in_the_initrd_is_flat(self):
+        """Une barre oblique ferait échouer le dépliage de l'initrd
+        ENTIER, donc l'installation."""
+        self.assertNotIn("/", DQ.installer_guide_name(DQ.EGRESS_UNIT_PATH))
+
+    def test_rules_without_a_unit_keep_the_line_they_had(self):
+        """Les deux drapeaux restent indépendants : un déploiement qui
+        n'envoie que les règles doit se comporter comme avant."""
+        derniere = (
+            DQ.build_cloud_config(args_de_banc(REGLES), None, [])
+            .rstrip("\n")
+            .splitlines()[-1]
+        )
+        self.assertEqual(f"  - nft -f {DQ.EGRESS_GUEST_PATH}", derniere)
+
+    def test_no_rules_means_no_unit_either(self):
+        """Poser une unité qui chargerait un fichier absent la ferait
+        échouer à chaque démarrage, sur une machine qui n'a rien demandé."""
+        texte = DQ.build_cloud_config(args_de_banc(), None, [])
+        self.assertNotIn(DQ.EGRESS_UNIT_NAME, texte)
+
+
 class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
     """L'import est impossible ; l'égalité, elle, se vérifie."""
 
@@ -144,6 +203,21 @@ class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
 
     def test_the_mode_is_the_one_the_renderer_names(self):
         self.assertEqual(plan.RULES_MODE, DQ.EGRESS_GUEST_MODE)
+
+    def test_the_unit_path_is_the_one_the_renderer_names(self):
+        self.assertEqual(plan.UNIT_PATH, DQ.EGRESS_UNIT_PATH)
+        self.assertEqual(plan.UNIT_NAME, DQ.EGRESS_UNIT_NAME)
+        self.assertEqual(plan.UNIT_MODE, DQ.EGRESS_UNIT_MODE)
+
+    def test_the_first_boot_line_is_the_one_the_renderer_names(self):
+        lignes = (
+            DQ.build_cloud_config(
+                args_de_banc(REGLES, plan.unit_text()), None, []
+            )
+            .rstrip("\n")
+            .splitlines()
+        )
+        self.assertEqual(f"  - {plan.first_boot_command()}", lignes[-1])
 
     def test_the_load_line_is_the_one_the_renderer_names(self):
         lignes = (
@@ -174,11 +248,11 @@ class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
 
 class TestLireLeFichierRendu(unittest.TestCase):
     def test_nothing_asked_reads_nothing(self):
-        self.assertEqual("", DQ.load_egress_rules(""))
+        self.assertEqual("", DQ.load_posed_file("", "Règles"))
 
     def test_a_missing_file_stops_before_anything_is_created(self):
         with self.assertRaises(SystemExit):
-            DQ.load_egress_rules("/nexiste-pas.invalid/regles.nft")
+            DQ.load_posed_file("/nexiste-pas.invalid/regles.nft", "Règles")
 
     def test_an_empty_file_is_refused_like_a_missing_one(self):
         """Chargé, il s'accepterait sans rien appliquer, et la machine se
@@ -187,13 +261,15 @@ class TestLireLeFichierRendu(unittest.TestCase):
             fichier.write("   \n")
             fichier.flush()
             with self.assertRaises(SystemExit):
-                DQ.load_egress_rules(fichier.name)
+                DQ.load_posed_file(fichier.name, "Règles")
 
     def test_a_real_file_comes_back_whole(self):
         with tempfile.NamedTemporaryFile("w", suffix=".nft") as fichier:
             fichier.write(REGLES)
             fichier.flush()
-            self.assertEqual(REGLES, DQ.load_egress_rules(fichier.name))
+            self.assertEqual(
+                REGLES, DQ.load_posed_file(fichier.name, "Règles")
+            )
 
 
 if __name__ == "__main__":

@@ -49,6 +49,16 @@ RULES_MODE = "0600"
 # l'étape finale, alors que ce fichier doit être là avant tout le reste.
 RULES_OWNER = ""
 
+# L'unité qui RECHARGE les règles à chaque démarrage. Sans elle, seul le
+# premier amorçage les charge : une machine redémarrée repart sans règles,
+# et la voie de l'installateur — qui n'a pas de première commande du tout —
+# ne les chargeait jamais.
+UNIT_NAME = "erplibre-egress.service"
+UNIT_PATH = f"/etc/systemd/system/{UNIT_NAME}"
+
+# Un fichier d'unité se lit, il ne porte pas de secret.
+UNIT_MODE = "0644"
+
 # Le marqueur qui distingue la réponse du bruit. Une sonde qui rend « oui »
 # tout court se confondrait avec n'importe quelle ligne de transport.
 MARQUEUR = "ERPLIBRE-EGRESS:"
@@ -78,6 +88,60 @@ def file_entry(content: str) -> tuple:
             " appliquer, et la machine se lirait comme confinée."
         )
     return (RULES_PATH, RULES_MODE, content, RULES_OWNER)
+
+
+def unit_text() -> str:
+    """Le contenu de l'unité. Calqué sur celle de nftables, à la ligne.
+
+    `Wants` et `Before` sur la cible d'avant-réseau : les règles sont en
+    place avant que la moindre interface soit configurée, sans quoi il
+    existe une fenêtre où la machine sort librement à chaque démarrage.
+
+    L'analyseur est appelé PAR UN SHELL, et non par un chemin absolu :
+    systemd exige un chemin absolu pour son premier mot, et le répertoire
+    de l'outil diffère selon la distribution. Le shell, lui, est au même
+    endroit partout et sait le chercher dans le chemin d'exécution.
+    """
+    return (
+        "\n".join(
+            [
+                "[Unit]",
+                "Description=ERPLibre egress rules",
+                "Wants=network-pre.target",
+                "Before=network-pre.target",
+                "",
+                "[Service]",
+                "Type=oneshot",
+                f"ExecStart=/bin/sh -c 'exec nft -f {RULES_PATH}'",
+                "",
+                "[Install]",
+                "WantedBy=multi-user.target",
+            ]
+        )
+        + "\n"
+    )
+
+
+def unit_entry() -> tuple:
+    """(chemin, mode, contenu, propriétaire) pour l'unité."""
+    return (UNIT_PATH, UNIT_MODE, unit_text(), "")
+
+
+def enable_command() -> str:
+    """La commande qui arme l'unité pour les démarrages suivants."""
+    return f"systemctl enable {UNIT_NAME}"
+
+
+def first_boot_command() -> str:
+    """Ce qu'il faut jouer au PREMIER amorçage, en une seule commande.
+
+    Armer et charger, dans cet ordre et liés : armer sans charger laisse la
+    machine sortir jusqu'au premier redémarrage, charger sans armer la
+    laisse sortir à partir du deuxième. Liées par « && », les deux doivent
+    réussir, et le code de sortie de l'ensemble est celui de la ligne — ce
+    qui n'est vrai que si elle est la DERNIÈRE de sa liste.
+    """
+    return f"{enable_command()} && {load_command()}"
 
 
 def load_command() -> str:

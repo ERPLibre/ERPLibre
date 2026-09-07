@@ -129,42 +129,59 @@ class TestCeQuiEstRefuseAvantDeRienCreer(unittest.TestCase):
 
 class TestLeFichierTemporaire(unittest.TestCase):
     def test_nothing_to_pose_yields_no_path(self):
-        with menu(CARNET)._qemu_egress_file(spec_de("open")) as chemin:
-            self.assertEqual("", chemin)
+        with menu(CARNET)._qemu_egress_file(spec_de("open")) as fichiers:
+            self.assertEqual(("", ""), tuple(fichiers))
 
-    def test_it_is_written_readable_by_root_alone(self):
-        """Il nomme les adresses internes du site."""
-        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
-            self.assertTrue(os.path.exists(chemin))
-            self.assertEqual(0o600, os.stat(chemin).st_mode & 0o777)
+    def test_both_files_are_written(self):
+        """Les règles disent CE QUI passe, l'unité dit QUAND elles sont
+        chargées : poser les premières sans la seconde ne confine que
+        jusqu'au premier redémarrage."""
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as f:
+            self.assertTrue(os.path.exists(f.rules))
+            self.assertTrue(os.path.exists(f.unit))
+            self.assertNotEqual(f.rules, f.unit)
 
-    def test_it_carries_the_rendered_rules(self):
-        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
-            with open(chemin, encoding="utf-8") as fichier:
-                texte = fichier.read()
-        self.assertIn("policy drop;", texte)
-        self.assertIn("# forge :", texte)
+    def test_they_are_written_readable_by_their_owner_alone(self):
+        """Sur la station qui déploie : le fichier de règles nomme les
+        adresses internes du site."""
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as f:
+            for chemin in (f.rules, f.unit):
+                self.assertEqual(0o600, os.stat(chemin).st_mode & 0o777)
 
-    def test_it_is_gone_once_the_block_closes(self):
-        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
-            garde = chemin
-        self.assertFalse(os.path.exists(garde))
+    def test_they_carry_what_was_rendered(self):
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as f:
+            with open(f.rules, encoding="utf-8") as fichier:
+                regles = fichier.read()
+            with open(f.unit, encoding="utf-8") as fichier:
+                unite = fichier.read()
+        self.assertIn("policy drop;", regles)
+        self.assertIn("# forge :", regles)
+        self.assertIn("Before=network-pre.target", unite)
 
-    def test_it_is_gone_even_when_the_deployment_breaks(self):
-        """Il porte les adresses internes du site : il ne traîne pas."""
+    def test_they_are_gone_once_the_block_closes(self):
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as f:
+            garde = (f.rules, f.unit)
+        for chemin in garde:
+            self.assertFalse(os.path.exists(chemin))
+
+    def test_they_are_gone_even_when_the_deployment_breaks(self):
+        """Le fichier de règles porte les adresses internes du site : il ne
+        traîne pas."""
         garde = {}
         with self.assertRaises(RuntimeError):
-            with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
-                garde["chemin"] = chemin
+            with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as f:
+                garde["f"] = (f.rules, f.unit)
                 raise RuntimeError("le parc s'arrête au milieu")
-        self.assertFalse(os.path.exists(garde["chemin"]))
+        for chemin in garde["f"]:
+            self.assertFalse(os.path.exists(chemin))
 
-    def test_the_name_says_nothing_about_the_site(self):
-        """Un nom composé serait un chemin PRÉVISIBLE ; celui-ci ne l'est
-        pas, et ne nomme ni la machine ni la posture."""
-        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as chemin:
-            self.assertNotIn("paranoid", chemin)
-            self.assertNotIn("essai", chemin)
+    def test_the_names_say_nothing_about_the_site(self):
+        """Un nom composé serait un chemin PRÉVISIBLE ; ceux-ci ne le sont
+        pas, et ne nomment ni la machine ni la posture."""
+        with menu(CARNET)._qemu_egress_file(spec_de("paranoid")) as f:
+            for chemin in (f.rules, f.unit):
+                self.assertNotIn("paranoid", chemin)
+                self.assertNotIn("essai", chemin)
 
 
 class TestLaCommandePosee(unittest.TestCase):
@@ -174,27 +191,34 @@ class TestLaCommandePosee(unittest.TestCase):
         )
         self.assertNotIn("--egress-file", parts)
 
-    def test_the_flag_names_the_file_that_was_written(self):
+    def test_the_flags_name_the_files_that_were_written(self):
         todo = menu(CARNET)
         spec = spec_de("paranoid")
-        with todo._qemu_egress_file(spec) as chemin:
+        with todo._qemu_egress_file(spec) as f:
             parts = todo._qemu_deploy_parts_for(
-                VM_UNE, spec, dry_run=True, egress=chemin
+                VM_UNE, spec, dry_run=True, egress=f
             )
-            self.assertEqual(chemin, parts[parts.index("--egress-file") + 1])
+            self.assertEqual(f.rules, parts[parts.index("--egress-file") + 1])
+            self.assertEqual(f.unit, parts[parts.index("--egress-unit") + 1])
 
-    def test_the_flag_comes_last_and_changes_nothing_before_it(self):
+    def test_the_flags_come_last_and_change_nothing_before_them(self):
         """Le reste de la commande ne bouge pas d'un mot : une option qui
         déborde sur le cas courant coûte plus qu'elle n'apporte."""
         todo = menu(CARNET)
         spec = spec_de("paranoid")
         nu = todo._qemu_deploy_parts_for(VM_UNE, spec, dry_run=True)
-        with todo._qemu_egress_file(spec) as chemin:
+        with todo._qemu_egress_file(spec) as f:
             avec = todo._qemu_deploy_parts_for(
-                VM_UNE, spec, dry_run=True, egress=chemin
+                VM_UNE, spec, dry_run=True, egress=f
             )
+            attendu = [
+                "--egress-file",
+                f.rules,
+                "--egress-unit",
+                f.unit,
+            ]
         self.assertEqual(nu, avec[: len(nu)])
-        self.assertEqual(["--egress-file", chemin], avec[len(nu) :])
+        self.assertEqual(attendu, avec[len(nu) :])
 
     def test_the_run_path_actually_hands_the_file_over(self):
         """Le maillon qu'aucune épreuve ne pouvait tenir autrement : le
@@ -262,9 +286,17 @@ class TestLaCommandePosee(unittest.TestCase):
         sys.modules["dq_flag"] = module
         spec_mod.loader.exec_module(module)
         analyse = module.build_parser().parse_args(
-            ["--name", "banc", "--egress-file", "/x.nft"]
+            [
+                "--name",
+                "banc",
+                "--egress-file",
+                "/x.nft",
+                "--egress-unit",
+                "/x.service",
+            ]
         )
         self.assertEqual("/x.nft", analyse.egress_file)
+        self.assertEqual("/x.service", analyse.egress_unit)
 
 
 if __name__ == "__main__":
