@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import time
 
+from script.posture import registry as posture_registry
 from script.todo import host_os, todo_prefs, vm_backend_choice
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
@@ -1419,6 +1420,10 @@ class QemuDeployMixin:
                 host_os.host_os(),
                 bool(shutil.which("limactl")),
             ),
+            # Les postures dans l'ordre du registre, du plus libre au plus
+            # contraint : on descend vers la contrainte, on n'y tombe pas.
+            "postures": posture_registry.posture_names(),
+            "posture": posture_registry.DEFAULT_POSTURE,
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée

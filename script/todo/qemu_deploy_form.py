@@ -229,6 +229,18 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="t_backend",
                         classes="grouptitle",
                     )
+                    # La posture est un CHOIX, là où le backend n'est qu'une
+                    # ligne : celle-ci, ce chemin sait l'honorer. Elle est
+                    # au niveau du déploiement, juste sous la machine, parce
+                    # qu'elle décrit le réseau de la machine et non ce qu'on
+                    # installe dedans.
+                    yield Static(t("Network posture"), classes="grouptitle")
+                    yield Select(
+                        [(nom, nom) for nom in ctx.get("postures", ())],
+                        value=ctx.get("posture") or Select.BLANK,
+                        allow_blank=False,
+                        id="f_posture",
+                    )
                     yield Static(t("Architecture"), classes="grouptitle")
                     with RadioSet(id="f_arch"):
                         for a in arches:
@@ -982,6 +994,8 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # le point de passage du déploiement puisse refuser ce qu'il
                 # ne sait pas piloter.
                 "backend": ctx.get("backend", ""),
+                # Elle, l'écran la CHOISIT : ce chemin sait la poser.
+                "posture": self.query_one("#f_posture", Select).value,
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.

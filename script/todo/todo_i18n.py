@@ -1107,6 +1107,10 @@ TRANSLATIONS = {
     },
     "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
     "Backend:": {"fr": "Backend :", "en": "Backend:"},
+    "Network posture": {
+        "fr": "Posture réseau",
+        "en": "Network posture",
+    },
     "VM backends": {"fr": "Backends de VM", "en": "VM backends"},
     "Deploy - VM backends (which one this machine uses)": {
         "fr": "🖥  Deploy - Backends de VM (lequel cette machine emploie)",
