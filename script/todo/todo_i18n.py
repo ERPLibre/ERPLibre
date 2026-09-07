@@ -1111,6 +1111,30 @@ TRANSLATIONS = {
         "fr": "Cette machine porte des données réelles",
         "en": "This machine carries real data",
     },
+    "libvirt group is active.": {
+        "fr": "Le groupe libvirt est actif.",
+        "en": "libvirt group is active.",
+    },
+    "You are in the libvirt group, but this session predates it.": {
+        "fr": "Vous êtes dans le groupe libvirt, mais cette session lui est antérieure.",
+        "en": "You are in the libvirt group, but this session predates it.",
+    },
+    "Log out and back in, or run: newgrp libvirt": {
+        "fr": "Fermer puis rouvrir la session, ou lancer : newgrp libvirt",
+        "en": "Log out and back in, or run: newgrp libvirt",
+    },
+    "Join the libvirt group, then open a new session.": {
+        "fr": "Entrer dans le groupe libvirt, puis ouvrir une nouvelle session.",
+        "en": "Join the libvirt group, then open a new session.",
+    },
+    "Hardware acceleration is available.": {
+        "fr": "L'accélération matérielle est disponible.",
+        "en": "Hardware acceleration is available.",
+    },
+    "No hardware acceleration: VMs will be EMULATED.": {
+        "fr": "Pas d'accélération matérielle : les VM seront ÉMULÉES.",
+        "en": "No hardware acceleration: VMs will be EMULATED.",
+    },
     "Network posture": {
         "fr": "Posture réseau",
         "en": "Network posture",
