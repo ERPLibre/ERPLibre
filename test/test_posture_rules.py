@@ -319,7 +319,6 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
         manques = rules.unenforced(R.get_posture("paranoid"))
         for jeton in (
             rules.NOT_AT_BOOT,
-            rules.FAILURE_NOT_FATAL,
             rules.CONTAINERS_UNPROVEN,
         ):
             with self.subTest(jeton=jeton):
@@ -343,7 +342,6 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
             (
                 "no-rendering",
                 "not-at-boot",
-                "failure-not-fatal",
                 "containers-unproven",
             ),
             rules.UNENFORCED_TOKENS,
@@ -387,7 +385,7 @@ class TestLeJetonCommandeLaBascule(unittest.TestCase):
         un compteur qui suit tout seul ne compte rien."""
         stricte = R.get_posture("paranoid")
         self.assertFalse(R.allows_real_data(stricte))
-        self.assertEqual(3, len(rules.unenforced(stricte)))
+        self.assertEqual(2, len(rules.unenforced(stricte)))
 
 
 class TestElleNAppliqueRien(unittest.TestCase):

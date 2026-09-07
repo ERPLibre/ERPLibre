@@ -180,19 +180,14 @@ def _refuse_la_posture(posture, destinations):
 # `no-rendering` : le rendu refuse cette posture, il n'y a rien à appliquer.
 # `not-at-boot` : rien ne recharge le fichier à chaque démarrage, avant que
 #   le réseau monte — une machine redémarrée repart sans règles.
-# `failure-not-fatal` : la relecture DIT qu'un chargement a échoué, et le
-#   déploiement se poursuit quand même. Nommer un manque qu'on découvre vaut
-#   mieux que retirer le jeton qui l'a fait apparaître.
 # `containers-unproven` : la chaîne forward est rendue, jamais confrontée à
 #   un conteneur vivant qui tente une sortie hors liste.
 NO_RENDERING = "no-rendering"
 NOT_AT_BOOT = "not-at-boot"
-FAILURE_NOT_FATAL = "failure-not-fatal"
 CONTAINERS_UNPROVEN = "containers-unproven"
 UNENFORCED_TOKENS = (
     NO_RENDERING,
     NOT_AT_BOOT,
-    FAILURE_NOT_FATAL,
     CONTAINERS_UNPROVEN,
 )
 
@@ -225,7 +220,7 @@ def unenforced(posture) -> tuple:
     if not posture.destinations_bounded:
         # Seul jeton : le reste porterait sur un rendu qui n'existe pas.
         return (NO_RENDERING,)
-    return (NOT_AT_BOOT, FAILURE_NOT_FATAL, CONTAINERS_UNPROVEN)
+    return (NOT_AT_BOOT, CONTAINERS_UNPROVEN)
 
 
 def render_egress(posture, destinations=()) -> str:

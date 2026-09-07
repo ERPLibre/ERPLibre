@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from typing import NamedTuple
 
 from script.posture import destinations as posture_destinations
 from script.posture import plan as posture_plan
@@ -35,6 +36,18 @@ EGRESS_SSH_OPTS = (
     "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     " -o ConnectTimeout=15 -o BatchMode=yes"
 )
+
+
+class EgressOutcome(NamedTuple):
+    """Ce que la relecture a conclu pour un parc.
+
+    `code` agrège les couches, `unconfined` NOMME les machines : agréger
+    seul perdrait ce qui sert, puisque la suite du déploiement se décide
+    machine par machine et non pour le parc entier.
+    """
+
+    code: int
+    unconfined: tuple
 
 
 class QemuDeployMixin:
@@ -1227,6 +1240,16 @@ class QemuDeployMixin:
             return ""
         return (fini.stdout or "") + (fini.stderr or "")
 
+    @staticmethod
+    def _egress_keep(deployed, unconfined):
+        """Les machines sur lesquelles la suite a le droit de poser.
+
+        Une liste À PART, et non `deployed` amputée : celle-ci compte ce
+        qui a été déployé, et le sommaire final la lit. Les confondre
+        ferait disparaître du décompte des machines bien réelles.
+        """
+        return [nom for nom in deployed if nom not in unconfined]
+
     def _qemu_probe_egress(self, deployed, ip_map, lire=None):
         """Relit les règles de chaque VM déployée et écrit le verdict.
 
@@ -1236,11 +1259,16 @@ class QemuDeployMixin:
         l'analyseur se déploie en annonçant un confinement que rien ne tient.
 
         `lire` rend la lecture remplaçable, donc la décision vérifiable sans
-        machine. Rend le pire code des VM relues : une VM dont l'adresse
-        n'a pas été résolue compte pour un silence.
+        machine.
+
+        SEULE UNE TABLE LUE COMPTE POUR UN CONFINEMENT. Une VM dont
+        l'adresse n'a pas été résolue, ou qui n'a rien répondu, est nommée
+        parmi les non confinées : ce qui n'a pas été lu vaut « non », et
+        l'inverse ferait passer un silence pour une garantie.
         """
         lire = lire or self._egress_read
         verdicts = []
+        sans_regles = []
         for nom in deployed:
             ip = ip_map.get(nom)
             lu = posture_plan.UNREAD
@@ -1248,11 +1276,15 @@ class QemuDeployMixin:
                 lu = posture_plan.parse_probe(
                     lire(self._egress_probe_command(ip))
                 )
+            if lu != posture_plan.LOADED:
+                sans_regles.append(nom)
             couches = self._egress_layers(lu)
             print(f"\n  🔒 {nom} — {t('Network posture')}")
             print(report.render_layers(couches))
             verdicts.extend(couches)
-        return report.aggregate_layers(verdicts)
+        return EgressOutcome(
+            report.aggregate_layers(verdicts), tuple(sans_regles)
+        )
 
     def _qemu_egress_rules(self, spec):
         """Le texte des règles que cette spec demande, ou une chaîne vide.
@@ -2466,12 +2498,30 @@ class QemuDeployMixin:
                         name, "erplibre", ip, identity_file=identity
                     )
 
+        # Ce sur quoi la suite a le droit de poser, distinct de ce qui a
+        # été déployé : le sommaire final compte le second, et une machine
+        # écartée reste une machine déployée.
+        a_installer = list(deployed)
+
         # 6 bis) Relecture des règles posées. Après la résolution des IP,
         # parce qu'elle en a besoin, et avant l'installation : une machine
         # qui n'a pas chargé ses règles doit se voir AVANT qu'on y pose
         # quoi que ce soit.
         if egress_pose and deployed:
-            self._qemu_probe_egress(deployed, ip_map)
+            releve = self._qemu_probe_egress(deployed, ip_map)
+            if releve.unconfined:
+                # RIEN ne se pose sur une machine qui devait être confinée
+                # et ne l'est pas. Elle existe, elle est jointe, et c'est
+                # justement pourquoi continuer l'installerait derrière une
+                # promesse que la machine ne tient pas. Elle est écartée
+                # une par une : les autres ont chargé leurs règles et n'ont
+                # pas à payer pour elle.
+                print(
+                    f"\n⛔ {t('Withheld: egress rules did not hold on')}"
+                    f" {', '.join(releve.unconfined)}"
+                )
+                print(f"   {t('Nothing is installed there.')}")
+                a_installer = self._egress_keep(a_installer, releve.unconfined)
 
         # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
         # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
@@ -2487,7 +2537,7 @@ class QemuDeployMixin:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
-                    deployed,
+                    a_installer,
                     branch_map if branch_multi else install_branch,
                     ip_map,
                     cmd_map if cmd_multi else base_cmd,
@@ -2503,7 +2553,7 @@ class QemuDeployMixin:
                     f"\n{t('Installing ERPLibre on each VM')} "
                     f"({install_branch})…"
                 )
-                for name in deployed:
+                for name in a_installer:
                     self._qemu_install_erplibre_vm(
                         name,
                         ssh_key,

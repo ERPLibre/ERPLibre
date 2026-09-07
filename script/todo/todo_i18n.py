@@ -1111,6 +1111,14 @@ TRANSLATIONS = {
         "fr": "Posture réseau",
         "en": "Network posture",
     },
+    "Withheld: egress rules did not hold on": {
+        "fr": "Retenu : les règles de sortie n'ont pas tenu sur",
+        "en": "Withheld: egress rules did not hold on",
+    },
+    "Nothing is installed there.": {
+        "fr": "Rien n'y est installé.",
+        "en": "Nothing is installed there.",
+    },
     "Egress rules loaded.": {
         "fr": "Règles de sortie chargées.",
         "en": "Egress rules loaded.",

@@ -131,14 +131,26 @@ class TestLaRelectureDuParc(unittest.TestCase):
         lire = lecteur(reponse)
         tampon = io.StringIO()
         with redirect_stdout(tampon):
-            code = menu()._qemu_probe_egress(["a", "b"], ip_map, lire=lire)
-        return code, tampon.getvalue(), lire
+            releve = menu()._qemu_probe_egress(["a", "b"], ip_map, lire=lire)
+        return releve, tampon.getvalue(), lire
+
+    def test_only_a_table_that_was_read_counts_as_confined(self):
+        """Ce qui n'a pas été lu vaut « non » : l'inverse ferait passer un
+        silence pour une garantie."""
+        for verdict in plan.VERDICTS:
+            releve, _sortie, _lire = self._relire(
+                f"{plan.MARQUEUR}{verdict}", {"a": IP, "b": IP}
+            )
+            with self.subTest(verdict=verdict):
+                confine = releve.unconfined == ()
+                self.assertEqual(verdict == plan.LOADED, confine)
 
     def test_a_fleet_that_loaded_reports_green(self):
-        code, sortie, lire = self._relire(
+        releve, sortie, lire = self._relire(
             f"{plan.MARQUEUR}{plan.LOADED}", {"a": IP, "b": "198.51.100.6"}
         )
-        self.assertEqual(R.DS_OK, code)
+        self.assertEqual(R.DS_OK, releve.code)
+        self.assertEqual((), releve.unconfined)
         self.assertEqual(2, len(lire.vues))
         self.assertIn("firewall", sortie)
 
@@ -153,30 +165,59 @@ class TestLaRelectureDuParc(unittest.TestCase):
 
         tampon = io.StringIO()
         with redirect_stdout(tampon):
-            code = menu()._qemu_probe_egress(
+            releve = menu()._qemu_probe_egress(
                 ["a", "b"], {"a": IP, "b": "198.51.100.6"}, lire=lire
             )
-        self.assertEqual(R.DS_ERR, code)
+        self.assertEqual(R.DS_ERR, releve.code)
+        self.assertEqual(("b",), releve.unconfined)
 
     def test_a_machine_without_an_address_counts_as_silence(self):
         """Elle n'est pas sondée, donc rien n'est prouvé pour elle — et
         surtout pas qu'elle va bien."""
-        code, _sortie, lire = self._relire(
+        releve, _sortie, lire = self._relire(
             f"{plan.MARQUEUR}{plan.LOADED}", {"a": IP}
         )
         self.assertEqual(1, len(lire.vues))
-        self.assertEqual(R.DS_SKIP, code)
+        self.assertEqual(R.DS_SKIP, releve.code)
+        self.assertEqual(("b",), releve.unconfined)
 
     def test_nothing_read_is_never_green(self):
-        code, _sortie, _lire = self._relire("", {"a": IP, "b": IP})
-        self.assertNotEqual(R.DS_OK, code)
+        releve, _sortie, _lire = self._relire("", {"a": IP, "b": IP})
+        self.assertNotEqual(R.DS_OK, releve.code)
+        self.assertEqual(("a", "b"), releve.unconfined)
 
     def test_each_machine_is_named_in_what_is_written(self):
-        _code, sortie, _lire = self._relire(
+        _releve, sortie, _lire = self._relire(
             f"{plan.MARQUEUR}{plan.LOADED}", {"a": IP, "b": IP}
         )
         for nom in ("a", "b"):
             self.assertIn(nom, sortie)
+
+
+class TestCeQuOnRefuseDePoser(unittest.TestCase):
+    """Une machine qui devait être confinée et ne l'est pas ne reçoit
+    rien. Elle existe et elle est jointe : c'est justement pourquoi
+    continuer l'installerait derrière une promesse qu'elle ne tient pas."""
+
+    def test_the_ones_that_held_are_kept(self):
+        """Contrôle positif : les autres ont chargé leurs règles et n'ont
+        pas à payer pour celle qui a échoué."""
+        self.assertEqual(
+            ["a", "c"], menu()._egress_keep(["a", "b", "c"], ("b",))
+        )
+
+    def test_nothing_refused_changes_nothing(self):
+        self.assertEqual(["a", "b"], menu()._egress_keep(["a", "b"], ()))
+
+    def test_a_fleet_that_all_failed_installs_nowhere(self):
+        self.assertEqual([], menu()._egress_keep(["a", "b"], ("a", "b")))
+
+    def test_the_deployed_list_is_not_the_one_that_shrinks(self):
+        """Le sommaire final compte ce qui a été DÉPLOYÉ : amputer cette
+        liste ferait disparaître du décompte des machines bien réelles."""
+        deployees = ["a", "b"]
+        menu()._egress_keep(deployees, ("b",))
+        self.assertEqual(["a", "b"], deployees)
 
 
 class TestLeChainageDansLeDeploiement(unittest.TestCase):
@@ -263,6 +304,55 @@ class TestLeChainageDansLeDeploiement(unittest.TestCase):
             g for g in gardes if self._appelle(g, "_qemu_resolve_ips")
         ]
         self.assertEqual(1, len(resolutions))
+
+    def test_the_withholding_is_wired_to_the_read_back(self):
+        """Sans cet appel, la relecture rougit et l'installation se pose
+        quand même : le rapport serait une décoration."""
+        gardes = self._si_gardes_par("egress_pose")
+        filtrages = [g for g in gardes if self._appelle(g, "_egress_keep")]
+        self.assertEqual(1, len(filtrages))
+
+    def test_both_install_paths_target_the_filtered_list(self):
+        """Poser sur la liste non filtrée annulerait le retrait sans que
+        rien ne le dise. Les deux voies se lisent différemment : le suivi
+        reçoit la LISTE, l'installation synchrone BOUCLE dessus."""
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef) and n.name == "_qemu_run_spec"
+        ][0]
+
+        suivi = [
+            n
+            for n in ast.walk(corps)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "_qemu_install_erplibre_monitored"
+        ]
+        self.assertEqual(1, len(suivi))
+        passes = [n.id for n in suivi[0].args if isinstance(n, ast.Name)]
+        self.assertIn("a_installer", passes)
+        self.assertNotIn("deployed", passes)
+
+        boucles = [
+            n
+            for n in ast.walk(corps)
+            if isinstance(n, ast.For)
+            and isinstance(n.iter, ast.Name)
+            and any(
+                isinstance(a, ast.Call)
+                and isinstance(a.func, ast.Attribute)
+                and a.func.attr == "_qemu_install_erplibre_vm"
+                for a in ast.walk(n)
+            )
+        ]
+        self.assertEqual(1, len(boucles))
+        self.assertEqual("a_installer", boucles[0].iter.id)
 
     def test_exactly_two_places_depend_on_having_posed_a_file(self):
         """Un troisième serait une porte de plus à tenir, et personne ne
