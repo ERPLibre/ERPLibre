@@ -213,6 +213,104 @@ class TestNormalisationXls(unittest.TestCase):
         self.assertEqual(noyau.normaliser_xls(1, "Alpha", 0), "Alpha")
 
 
+class TestUniciteNumerique(unittest.TestCase):
+    """Le tirage seul collisionne, et détruit les clés.
+
+    C'est l'intégrité que la table apporte au texte, et qu'elle refusait en
+    silence aux nombres : deux clés primaires distinctes recevaient le même
+    nombre, et la fixture ne se réimportait plus.
+    """
+
+    def test_cent_valeurs_rendent_cent_sorties(self):
+        table = noyau.Correspondance()
+        rng = random.Random(1)
+        sorties = [
+            noyau.nouveau_nombre(v, rng, bornes=(1, 100), table=table)
+            for v in range(1, 101)
+        ]
+        # Mesuré avant correctif : 66 sorties distinctes sur 100.
+        self.assertEqual(len(set(sorties)), 100)
+
+    def test_etendue_etroite_sans_doublon(self):
+        for graine in (7, 11, 42):
+            table = noyau.Correspondance()
+            rng = random.Random(graine)
+            sorties = [
+                noyau.nouveau_nombre(v, rng, bornes=(1, 6), table=table)
+                for v in range(1, 7)
+            ]
+            self.assertEqual(len(set(sorties)), 6, graine)
+
+    def test_l_elargissement_garde_le_signe(self):
+        table = noyau.Correspondance()
+        rng = random.Random(2)
+        sorties = [
+            noyau.nouveau_nombre(-v, rng, bornes=(-50, 200), table=table)
+            for v in range(1, 51)
+        ]
+        self.assertEqual(len(set(sorties)), 50)
+        self.assertTrue(all(x < 0 for x in sorties))
+
+    def test_sans_table_le_tirage_reste_borne(self):
+        rng = random.Random(3)
+        for _ in range(50):
+            self.assertLessEqual(
+                noyau.nouveau_nombre(5, rng, bornes=(1, 10)), 10
+            )
+
+    def test_une_table_rechargee_garde_l_unicite(self):
+        """Le lot entier, pas seulement le fichier courant."""
+        table = noyau.Correspondance(nombres={"i:1": 4, "i:2": 5})
+        self.assertEqual(table.nombres_pris, {4, 5})
+        rng = random.Random(4)
+        for v in range(3, 7):
+            self.assertNotIn(
+                noyau.nouveau_nombre(v, rng, bornes=(1, 6), table=table),
+                (4, 5),
+            )
+
+
+class TestNormalisationAccess(unittest.TestCase):
+    """`access-parser` rend une date et un montant en CHAÎNE.
+
+    Comme pour `.xls`, c'est le TYPE déclaré qui décide et jamais la forme
+    de la valeur : une colonne de texte peut légitimement porter
+    « 2021-12-02 00:00:00 », et la convertir la mettrait hors d'atteinte de
+    la règle du texte.
+    """
+
+    def test_une_date_devient_une_date(self):
+        valeur = noyau.normaliser_access(
+            "2021-12-02 00:00:00", noyau.ACCESS_DATETIME
+        )
+        self.assertIsInstance(valeur, datetime.datetime)
+        self.assertEqual(valeur.year, 2021)
+
+    def test_la_date_invalide_est_videe(self):
+        """Le marqueur d'Access ne porte aucune donnée."""
+        self.assertIsNone(
+            noyau.normaliser_access("(Invalid Date)", noyau.ACCESS_DATETIME)
+        )
+
+    def test_un_montant_devient_un_nombre(self):
+        self.assertEqual(noyau.normaliser_access("$1,995.50", 5), 1995.50)
+        self.assertEqual(noyau.normaliser_access("($1,995.50)", 5), -1995.50)
+
+    def test_un_montant_illisible_reste_du_texte(self):
+        self.assertEqual(noyau.normaliser_access("sur devis", 5), "sur devis")
+
+    def test_le_texte_qui_RESSEMBLE_a_une_date_reste_du_texte(self):
+        """Le type décide, pas la forme."""
+        self.assertEqual(
+            noyau.normaliser_access("2021-12-02 00:00:00", 10),
+            "2021-12-02 00:00:00",
+        )
+
+    def test_les_types_couverts(self):
+        self.assertEqual(noyau.ACCESS_DATETIME, 8)
+        self.assertIn(5, noyau.ACCESS_MONETAIRE)
+
+
 class TestCoercition(unittest.TestCase):
     """Un champ CSV ou un attribut XML arrive sans type."""
 
@@ -344,16 +442,21 @@ class TestPlancherStructurel(unittest.TestCase):
         for etiquette in ("partner_id/id", "partner_id/.id"):
             self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
 
-    def test_suffixe_de_relation_exige_la_forme_mesuree(self):
+    def test_suffixe_de_relation_exige_la_forme_d_une_CIBLE(self):
         """Un export import-compatible met un NOM dans « partner_id ».
 
-        Décider sur le nom seul recopiait en clair la colonne la plus
-        identifiante du fichier, et l'annonçait comme protégée.
+        Et un mot en minuscules — un login, un nom de service — n'est pas
+        la cible d'une relation : l'exiger seulement « identifiant »
+        recopiait « jtremblay » et « comptabilite » en clair.
         """
         for etiquette in ("partner_id", "partner_ids"):
             self.assertFalse(noyau.colonne_plancher(etiquette), etiquette)
-            self.assertTrue(
+            self.assertFalse(
                 noyau.colonne_plancher(etiquette, forme_identifiant=True),
+                etiquette,
+            )
+            self.assertTrue(
+                noyau.colonne_plancher(etiquette, forme_relation=True),
                 etiquette,
             )
 
@@ -361,19 +464,40 @@ class TestPlancherStructurel(unittest.TestCase):
         for etiquette in ("sequence", "active", "create_uid"):
             self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
 
-    def test_champs_sous_condition(self):
-        """`display_name` est du texte dans un fichier plat.
-
-        Le serveur le RECALCULE depuis `name`, ce qui le rend structurel
-        dans une base ; un fichier ne recalcule rien, la colonne EST la
-        donnée.
-        """
-        for etiquette in ("state", "display_name"):
+    def test_champs_de_selection_sous_condition(self):
+        """Une valeur de sélection est une clé technique en minuscules."""
+        for etiquette in ("state", "model", "res_model", "key"):
             self.assertFalse(noyau.colonne_plancher(etiquette), etiquette)
             self.assertTrue(
                 noyau.colonne_plancher(etiquette, forme_identifiant=True),
                 etiquette,
             )
+
+    def test_display_name_n_est_JAMAIS_au_plancher(self):
+        """Dans un fichier plat, cette colonne EST la donnée.
+
+        Le serveur la recalcule depuis `name`, ce qui la rend structurelle
+        dans une base ; un fichier ne recalcule rien. Aucune forme mesurée
+        ne doit la sauver.
+        """
+        for forme in (False, True):
+            self.assertFalse(
+                noyau.colonne_plancher(
+                    "display_name",
+                    forme_identifiant=forme,
+                    forme_relation=forme,
+                ),
+                forme,
+            )
+
+    def test_forme_relation_est_plus_etroite(self):
+        """Un login ou un nom de service n'est pas une cible de relation."""
+        for valeur in (7, 7.0, "", "42/7/", "base.res_partner_7"):
+            self.assertTrue(noyau.valeur_forme_relation(valeur), repr(valeur))
+        for valeur in ("jtremblay", "comptabilite", "Paie_Zeta.pdf"):
+            self.assertFalse(noyau.valeur_forme_relation(valeur), repr(valeur))
+            # Et le nom de fichier n'est pas non plus un identifiant.
+        self.assertFalse(noyau.valeur_forme_identifiant("Paie_Zeta.pdf"))
 
     def test_forme_identifiant(self):
         for valeur in (
@@ -1084,16 +1208,25 @@ class TestGardeApresEcriture(unittest.TestCase):
             fuites["Alpha"], ["copie.xlsx:xl/un/coin/inattendu.xml"]
         )
 
-    def test_dit_ce_qu_elle_n_a_pas_regarde(self):
-        """Un plafond MUET se lirait comme « rien ne fuit »."""
+    def test_la_couverture_ne_suit_pas_l_alphabet(self):
+        """Le plafond tronquait une liste TRIÉE.
+
+        La couverture était donc un préfixe lexicographique et non un
+        échantillon : sur plusieurs colonnes de texte, seule la première
+        était relue, à chaque exécution — une reprise n'y changeait rien,
+        et l'écran affichait une écriture propre.
+        """
         table = noyau.Correspondance()
-        for index in range(noyau.MAX_VALEURS_VERIFIEES + 5):
-            noyau.nouveau_mot(f"valeur-{index:06d}", table, VIVIER)
+        for index in range(20005):
+            noyau.nouveau_mot(f"aaa-{index:06d}", table, VIVIER)
+        # Cette valeur trie APRÈS les vingt mille autres.
+        noyau.nouveau_mot("zzz_survivante", table, VIVIER)
         cible = os.path.join(self.base, "copie.txt")
         with open(cible, "w", encoding="utf-8") as fh:
-            fh.write("propre")
-        _, ecartees = noyau.verifier_copie([cible], table)
-        self.assertEqual(ecartees, 5)
+            fh.write("il reste zzz_survivante dans la copie")
+        fuites, ecartees = noyau.verifier_copie([cible], table)
+        self.assertIn("zzz_survivante", fuites)
+        self.assertEqual(ecartees, 0)
 
     def test_l_ecriture_refuse_et_n_laisse_aucun_fichier(self):
         """Le refus doit être total : une copie partielle serait livrée."""

@@ -45,6 +45,7 @@ from script.data.external_file import (  # noqa: E402
     format_divergent,
     has_macros,
     nom_de_fichier_sur,
+    normaliser_access,
     normaliser_xls,
     progres,
     valeur_forme_identifiant,
@@ -133,6 +134,20 @@ class Feuille:
         self.ancres = {}
         # L'arbre JSON ou XML dont ces ancres sont les branches.
         self.arbre = None
+        # L'index 1-based de la colonne qui porte de la STRUCTURE, ou None.
+        # Le LECTEUR seul le sait : une grille (clé, valeur) en a une, un
+        # tableau de vrais champs n'en a aucune. Le déduire du FORMAT
+        # recopiait en clair le premier champ d'un tableau d'objets.
+        self.colonne_structure = None
+        # Vrai quand la ligne 1 de la grille est une ÉTIQUETTE fabriquée
+        # par le lecteur (« cle »/« valeur », « chemin »/« valeur ») :
+        # absente du fichier, elle n'est ni de la donnée ni un en-tête, et
+        # aucune ancre ne peut l'écrire.
+        self.ligne1_fabriquee = False
+        # Le porteur d'une racine SCALAIRE (`"x"`, `42` — du JSON valide).
+        # Un str ou un int ne se réécrit pas en place : sans cette case
+        # réinscriptible, l'ancre porte None et l'écriture déréférence None.
+        self.porteur = None
 
     @property
     def etiquettes(self):
@@ -172,6 +187,7 @@ def _stats_colonnes(feuille):
         distinctes = set()
         remplies = 0
         forme = True
+        forme_rel = True
         mini = maxi = None
         for numero, ligne in enumerate(feuille.lignes, start=1):
             if numero == 1:
@@ -182,6 +198,7 @@ def _stats_colonnes(feuille):
                 continue
             remplies += 1
             forme = forme and valeur_forme_identifiant(valeur)
+            forme_rel = forme_rel and noyau.valeur_forme_relation(valeur)
             familles[famille] = familles.get(famille, 0) + 1
             if len(distinctes) < 10000:
                 try:
@@ -219,18 +236,17 @@ def _stats_colonnes(feuille):
                 "min": mini,
                 "max": maxi,
                 "forme_identifiant": forme,
-                "plancher": colonne_plancher(etiquette, forme),
+                "forme_relation": forme_rel,
+                "plancher": colonne_plancher(etiquette, forme, forme_rel),
             }
         )
     return colonnes
 
 
-def _formes_par_colonne(rapport):
-    """{(feuille, colonne): son contenu a-t-il la forme d'un identifiant}."""
+def _formes_par_colonne(rapport, cle="forme_identifiant"):
+    """{(feuille, colonne): son contenu a-t-il cette forme mesurée}."""
     return {
-        (feuille["nom"], colonne["index"]): bool(
-            colonne.get("forme_identifiant")
-        )
+        (feuille["nom"], colonne["index"]): bool(colonne.get(cle))
         for feuille in rapport.get("feuilles", [])
         for colonne in feuille.get("colonnes", [])
     }
@@ -356,15 +372,28 @@ def _lire_access(chemin):
             progres(f"{nom}: {type(exc).__name__}")
             continue
         etiquettes = list(colonnes.keys())
+        # Le TYPE déclaré de chaque colonne, pour normaliser avant que
+        # l'anonymiseur voie quoi que ce soit : `access-parser` rend une
+        # date et un montant en CHAÎNE, et la règle du texte les prendrait
+        # pour du texte du client.
+        types = {}
+        try:
+            for col in base.get_table(nom).columns.values():
+                types[col.col_name_str] = col.type
+        except Exception as exc:  # pragma: no cover - table hors norme
+            progres(f"{nom}: types indisponibles ({type(exc).__name__})")
         hauteur = max((len(v) for v in colonnes.values()), default=0)
         lignes = [etiquettes]
         for index in range(hauteur):
             lignes.append(
                 [
-                    (
-                        colonnes[cle][index]
-                        if index < len(colonnes[cle])
-                        else None
+                    normaliser_access(
+                        (
+                            colonnes[cle][index]
+                            if index < len(colonnes[cle])
+                            else None
+                        ),
+                        types.get(cle),
                     )
                     for cle in etiquettes
                 ]
@@ -663,7 +692,19 @@ def _lire_json(chemin):
         arbre = json.load(fh)
     lignes = []
     ancres = {}
-    if isinstance(arbre, list) and arbre and isinstance(arbre[0], dict):
+    colonne_structure = None
+    ligne1_fabriquee = False
+    porteur = None
+    # Le tableau d'enregistrements exige que TOUTE entrée soit un objet :
+    # une entrée nue (chaîne, nombre, null, liste) n'a pas de clés, et
+    # `element.get` la faisait mourir. Un tableau mêlé retombe sur
+    # l'aplatissement, qui ancre chaque feuille — la sauter écrirait
+    # l'entrée en clair, non annoncée.
+    if (
+        isinstance(arbre, list)
+        and arbre
+        and all(isinstance(e, dict) for e in arbre)
+    ):
         cles = []
         for element in arbre:
             for cle in element:
@@ -676,13 +717,23 @@ def _lire_json(chemin):
                 if cle in element:
                     ancres[(len(lignes), index)] = (element, cle)
     else:
+        colonne_structure = 1
+        ligne1_fabriquee = True
         lignes.append(["cle", "valeur"])
-        for cle, valeur, conteneur, index in _aplatir_json(arbre):
+        porteur = None if isinstance(arbre, (dict, list)) else [arbre]
+        for cle, valeur, conteneur, index in _aplatir_json(
+            arbre,
+            conteneur=porteur,
+            index=None if porteur is None else 0,
+        ):
             lignes.append([cle, valeur])
             ancres[(len(lignes), 2)] = (conteneur, index)
     feuille = Feuille(NOM_FEUILLE_NEUTRE, lignes)
     feuille.ancres = ancres
     feuille.arbre = arbre
+    feuille.colonne_structure = colonne_structure
+    feuille.ligne1_fabriquee = ligne1_fabriquee
+    feuille.porteur = porteur
     return [feuille], arbre
 
 
@@ -727,6 +778,8 @@ def _lire_xml(chemin):
     feuille = Feuille(NOM_FEUILLE_NEUTRE, lignes)
     feuille.ancres = ancres
     feuille.arbre = arbre
+    feuille.colonne_structure = 1
+    feuille.ligne1_fabriquee = True
     return [feuille], arbre
 
 
@@ -905,19 +958,34 @@ def _preparer(chemin, options):
     options["etiquettes"] = _etiquettes_par_colonne(feuilles)
     options["bornes"] = _bornes_par_colonne(rapport)
     options["formes"] = _formes_par_colonne(rapport)
+    options["formes_relation"] = _formes_par_colonne(rapport, "forme_relation")
     # Hors tableur, la colonne 1 de la grille porte des NOMS de balise ou des
     # chemins de clé : de la structure, que le graveur ne touche jamais. Les
     # compter comme remplacées désarmait le refus « rien à faire » et brûlait
     # le vivier sur des noms de champ.
-    options["colonnes_structure"] = (
-        {(f.nom, 1) for f in feuilles}
-        if format_lu in ("xml", "json")
-        else set()
+    options["colonnes_structure"] = {
+        (f.nom, f.colonne_structure) for f in feuilles if f.colonne_structure
+    }
+    # Hors tableur, l'ancre est la SEULE voie d'écriture, et aucune ancre ne
+    # porte la ligne 1 : ni l'étiquette que le lecteur a fabriquée, ni les
+    # clés d'objet d'un tableau d'enregistrements. La compter en portée la
+    # fait annoncer comme remplacée alors que la copie la garde en clair, et
+    # le filet qui relit les octets refuse alors TOUTE copie. Une conversion
+    # sort par un autre graveur, qui écrit bien cette ligne : elle y reste
+    # en portée.
+    ecrit_par_ancres = (
+        format_lu in ("xml", "json")
+        and (options.get("conversion") or format_lu) == format_lu
     )
+    options["lignes_structure"] = {
+        (f.nom, 1) for f in feuilles if f.ligne1_fabriquee or ecrit_par_ancres
+    }
     return format_lu, feuilles, classeur, rapport, options
 
 
-def _parcourir(feuilles, options, table, rng, appliquer=None):
+def _parcourir(
+    feuilles, options, table, rng, appliquer=None, gardees_out=None
+):
     """La passe unique : compte, et écrit si `appliquer` est donné.
 
     Un seul parcours pour la marche à blanc et pour l'écriture : deux
@@ -941,6 +1009,12 @@ def _parcourir(feuilles, options, table, rng, appliquer=None):
                     continue
                 if not cellule_en_portee(feuille.nom, numero, index, options):
                     bilan["hors_portee"] += 1
+                    if gardees_out is not None:
+                        texte = str(valeur_hors_tableur(valeur) or "").strip()
+                        if len(texte) >= noyau.LONGUEUR_VERIFIABLE:
+                            gardees_out.setdefault(feuille.nom, set()).add(
+                                texte
+                            )
                     if (
                         numero == 1
                         and not options.get("entetes")
@@ -963,19 +1037,33 @@ def _parcourir(feuilles, options, table, rng, appliquer=None):
                 if isinstance(valeur, (dict, list)):
                     # Un conteneur imbriqué n'est pas une cellule : sans
                     # cette récursion, tout ce qu'il porte sort en clair.
-                    neuve = _transformer_json(valeur, options, table, rng)
+                    # Le compte des FEUILLES réécrites décide : reconstruit
+                    # à l'identique, le conteneur reste intact.
+                    neuve, compte = _transformer_json(
+                        valeur, options, table, rng
+                    )
+                    if not compte:
+                        neuve = _INTACTE
                 else:
                     neuve = anonymise_cellule(
                         valeur, options, table, rng, bornes=bornes
                     )
+                    compte = {famille: 1}
                 if neuve is _INTACTE:
                     bilan["intactes"][famille] = (
                         bilan["intactes"].get(famille, 0) + 1
                     )
+                    if gardees_out is not None:
+                        texte = str(valeur_hors_tableur(valeur) or "").strip()
+                        if len(texte) >= noyau.LONGUEUR_VERIFIABLE:
+                            gardees_out.setdefault(feuille.nom, set()).add(
+                                texte
+                            )
                     continue
-                bilan["remplacees"] += 1
-                if famille in ("texte", "nombre"):
-                    bilan[famille] += 1
+                for fam, feuilles_reecrites in compte.items():
+                    bilan["remplacees"] += feuilles_reecrites
+                    if fam in ("texte", "nombre"):
+                        bilan[fam] += feuilles_reecrites
                 if len(bilan["apercu"]) < 5:
                     bilan["apercu"].append(
                         {
@@ -1204,13 +1292,17 @@ def _valeurs_gardees(classeur, feuilles, format_lu):
     règle de la formule vient de préserver.
     """
     gardees = set()
-    if format_lu in ("xml", "json"):
-        # Noms de balise, noms d'attribut, clés d'objet : de la structure.
-        for feuille in feuilles:
-            for ligne in feuille.lignes:
-                if ligne and isinstance(ligne[0], str):
-                    gardees.add(ligne[0])
-                    gardees.update(re.split(r"[.\[\]@#]", ligne[0]))
+    for feuille in feuilles or ():
+        # `ligne[0]` n'est de la structure que là où il porte VRAIMENT un
+        # chemin de clé. La colonne 1 d'un tableau d'objets porte des
+        # VALEURS, et les tolérer aveuglait le filet sur la colonne même
+        # qu'il doit surveiller.
+        if feuille.colonne_structure != 1:
+            continue
+        for ligne in feuille.lignes:
+            if ligne and isinstance(ligne[0], str):
+                gardees.add(ligne[0])
+                gardees.update(re.split(r"[.\[\]@#]", ligne[0]))
     if classeur is None:
         return gardees
     for onglet in classeur.worksheets:
@@ -1272,7 +1364,15 @@ def ecrire(chemin, destination, options):
         else:
             conteneur.attrib[cle] = "" if neuve is None else str(neuve)
 
-    bilan = _parcourir(feuilles, options, table, rng, appliquer=appliquer)
+    hors_portee_gardees = {}
+    bilan = _parcourir(
+        feuilles,
+        options,
+        table,
+        rng,
+        appliquer=appliquer,
+        gardees_out=hors_portee_gardees,
+    )
     if not bilan["remplacees"] and not options.get("conversion"):
         if options["colonnes_intactes"] or not (
             options["nombres"] or options["texte"]
@@ -1280,17 +1380,32 @@ def ecrire(chemin, destination, options):
             raise ErreurMoteur("tout_exclu", "")
         raise ErreurMoteur("rien_a_faire", "")
 
+    cible = options.get("conversion") or ""
     if format_lu == "xlsx":
         _resynchroniser_tableaux(classeur)
+        # Récolter les tolérances sur le classeur qui SERA enregistré : un
+        # littéral de formule ou un titre pris sur une feuille que la copie
+        # ne porte pas taisait le filet au nom d'une formule que le
+        # destinataire ne verra jamais.
+        if not (cible and cible != format_lu):
+            _retirer_feuilles_hors_portee(classeur, options)
     gardees = _valeurs_gardees(classeur, feuilles, format_lu)
+    # Une cellule hors portée reste EN CLAIR par décision, et l'aperçu la
+    # nomme : sa valeur n'est pas une fuite. Seules comptent les feuilles
+    # qui partent dans la copie — celles que `_retirer_feuilles_hors_portee`
+    # supprime n'y sont plus, et une de leurs valeurs qui reparaîtrait dans
+    # un cache est une fuite comme une autre.
+    retenues = options.get("feuilles")
+    for nom, valeurs_vues in hors_portee_gardees.items():
+        if retenues and nom is not None and nom not in retenues:
+            continue
+        gardees.update(valeurs_vues)
 
-    cible = options.get("conversion") or ""
     if cible and cible != format_lu:
         fichiers = convertir(
             chemin, destination, cible, options, feuilles=feuilles
         )
     elif format_lu == "xlsx":
-        _retirer_feuilles_hors_portee(classeur, options)
         _ecrire_atomique(destination, classeur.save)
         fichiers = [destination]
     elif format_lu == "csv":
@@ -1437,8 +1552,12 @@ def _ecrire_arbre(destination, feuille, format_lu):
 
     def ecrivain(cible):
         if format_lu == "json":
+            # Le porteur d'une racine scalaire : l'ancre a écrit DANS sa
+            # case, c'est elle qu'il faut sérialiser. Pour un dict ou une
+            # liste il vaut None, et `arbre` est déjà l'objet muté.
+            charge = arbre if feuille.porteur is None else feuille.porteur[0]
             with open(cible, "w", encoding="utf-8") as fh:
-                json.dump(arbre, fh, ensure_ascii=False, indent=1)
+                json.dump(charge, fh, ensure_ascii=False, indent=1)
         else:
             arbre.write(cible, encoding="utf-8", xml_declaration=True)
 
@@ -1465,18 +1584,30 @@ def _ecrire_csv(destination, feuille, options):
 
 
 def _transformer_json(noeud, options, table, rng):
-    """Les CLÉS sont de la structure et restent ; les valeurs passent."""
-    if isinstance(noeud, dict):
-        return {
-            cle: _transformer_json(valeur, options, table, rng)
-            for cle, valeur in noeud.items()
-        }
-    if isinstance(noeud, list):
-        return [
-            _transformer_json(valeur, options, table, rng) for valeur in noeud
-        ]
+    """(valeur, compte). Les CLÉS sont de la structure et restent.
+
+    `compte` porte, par famille, le nombre de FEUILLES réécrites. Il est
+    vide quand le sous-arbre revient identique : l'appelant en fait alors un
+    « intact ». Sans ce compte, un conteneur reconstruit à l'identique
+    valait une cellule remplacée — ce qui désarmait les refus « rien à
+    faire » et « tout exclu », et faisait écrire une copie identique à la
+    source en l'annonçant anonymisée.
+    """
+    if isinstance(noeud, (dict, list)):
+        compte = {}
+        entrees = (
+            noeud.items() if isinstance(noeud, dict) else enumerate(noeud)
+        )
+        neuf = {} if isinstance(noeud, dict) else [None] * len(noeud)
+        for cle, valeur in entrees:
+            neuf[cle], partiel = _transformer_json(valeur, options, table, rng)
+            for fam, feuilles_reecrites in partiel.items():
+                compte[fam] = compte.get(fam, 0) + feuilles_reecrites
+        return neuf, compte
     neuve = anonymise_cellule(noeud, options, table, rng)
-    return noeud if neuve is _INTACTE else neuve
+    if neuve is _INTACTE:
+        return noeud, {}
+    return neuve, {classer(noeud): 1}
 
 
 def convertir(chemin, destination, cible, options, feuilles=None):

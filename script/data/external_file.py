@@ -34,6 +34,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
+import html
 import json
 import os
 import re
@@ -143,12 +145,59 @@ SUFFIXES_STRUCTURELS = ("/id", "/.id")
 # d'un identifiant : décider sur le nom seul recopiait textuellement les
 # colonnes les plus identifiantes du fichier.
 SUFFIXES_IDENTIFIANTS = ("_id", "_ids")
-ETIQUETTES_SOUS_CONDITION = frozenset(CHAMPS_INTERDITS) - PLANCHER_STRUCTUREL
+# Les étiquettes dont le contenu légitime EST une clé technique en
+# minuscules. `display_name` n'en fait pas partie : dans un fichier plat il
+# EST la donnée, et aucune forme mesurée ne doit le sauver.
+ETIQUETTES_SELECTION = frozenset(
+    {"state", "key", "model", "res_model", "arch_db"}
+)
 
 # Un chemin d'identifiants Odoo, une valeur de sélection, un external ID.
 _MOTIF_CHEMIN_ID = re.compile(r"[0-9]+(?:/[0-9]+)*/?")
 _MOTIF_SELECTION = re.compile(r"[a-z0-9_]+")
-_MOTIF_ID_TEXTE = re.compile(r"[A-Za-z0-9_.]+(?:,[A-Za-z0-9_.]+)*")
+# Un external ID, un nom de modèle : minuscules et AU MOINS un point. Ne pas
+# borner le nombre de points — « account.move.line » en porte deux.
+_MOTIF_POINTE = re.compile(r"[a-z0-9_]+(?:\.[a-z0-9_]+)+")
+# Un nom de fichier a la forme d'un external ID : des mots, des chiffres,
+# des points. C'est l'EXTENSION qui le trahit, et un fichier de paie porte
+# le nom de la personne.
+EXTENSIONS_FICHIER = frozenset(
+    {
+        "pdf",
+        "doc",
+        "docx",
+        "odt",
+        "xls",
+        "xlsx",
+        "xlsm",
+        "csv",
+        "ods",
+        "ppt",
+        "pptx",
+        "odp",
+        "txt",
+        "rtf",
+        "zip",
+        "png",
+        "jpg",
+        "jpeg",
+        "gif",
+        "svg",
+        "eml",
+        "msg",
+        "xml",
+        "json",
+        "html",
+        "htm",
+    }
+)
+
+
+def _pointe_identifiant(texte):
+    """Vrai pour « account.move.line », faux pour « rapport.pdf »."""
+    if not _MOTIF_POINTE.fullmatch(texte):
+        return False
+    return texte.rsplit(".", 1)[1] not in EXTENSIONS_FICHIER
 
 
 def valeur_forme_identifiant(valeur):
@@ -173,7 +222,32 @@ def valeur_forme_identifiant(valeur):
     if _MOTIF_SELECTION.fullmatch(texte):
         return True
     # Un external ID porte un point ; la virgule tient la liste d'un m2m.
-    return bool(_MOTIF_ID_TEXTE.fullmatch(texte)) and "." in texte
+    # Exiger les MINUSCULES et refuser une extension de fichier : sinon
+    # « Paie_Marie_2025_03.pdf » et « clinique.exemple.com » passaient pour
+    # des identifiants, et le plancher les recopiait en clair.
+    return all(_pointe_identifiant(p) for p in texte.split(","))
+
+
+def valeur_forme_relation(valeur):
+    """Vrai si cette valeur peut être la CIBLE d'une relation.
+
+    Plus étroit que `valeur_forme_identifiant` : un mot en minuscules n'est
+    pas une valeur de relation. C'est ce qui laissait « user_id » porter un
+    login et « department_id » un nom de service, tous deux recopiés en
+    clair et annoncés comme protégés.
+    """
+    if isinstance(valeur, bool) or isinstance(valeur, int):
+        return True
+    if isinstance(valeur, float):
+        return valeur.is_integer()
+    if not isinstance(valeur, str):
+        return False
+    texte = valeur.strip()
+    if not texte:
+        return True
+    if _MOTIF_CHEMIN_ID.fullmatch(texte):
+        return True
+    return all(_pointe_identifiant(p) for p in texte.split(","))
 
 
 # Les octets de tête qui tranchent, quand l'extension mentirait.
@@ -372,6 +446,10 @@ class Correspondance:
     def __init__(self, mots=None, nombres=None):
         self.mots = dict(mots or {})
         self.nombres = dict(nombres or {})
+        # Les nombres DÉJÀ attribués. Reconstruits au chargement, pour
+        # qu'une table réutilisée d'un fichier à l'autre continue de
+        # garantir l'unicité sur tout le lot.
+        self.nombres_pris = set(self.nombres.values())
 
     @classmethod
     def charger(cls, chemin):
@@ -438,17 +516,25 @@ def nouveau_mot(valeur, table, vivier):
     connu = table.mots.get(cle)
     if connu is not None:
         return connu
-    n = len(table.mots)
     taille = len(vivier)
-    if n < taille:
-        mot = vivier[n]
-    else:
-        rang = n - taille
-        gauche, droite = divmod(rang, taille)
-        if gauche < taille:
-            mot = f"{vivier[gauche]}_{vivier[droite]}"
+    # Le mot tiré peut ÊTRE la valeur : le vivier est un dictionnaire, et
+    # une cellule peut porter un de ses mots. Rendre ce mot compte un
+    # remplacement que la copie ne porte pas — la valeur y part en clair.
+    # On avance alors d'un rang plutôt que de rendre l'identité.
+    n = len(table.mots)
+    for _ in range(taille + 1):
+        if n < taille:
+            mot = vivier[n]
         else:
-            mot = f"mot_{n}"
+            rang = n - taille
+            gauche, droite = divmod(rang, taille)
+            if gauche < taille:
+                mot = f"{vivier[gauche]}_{vivier[droite]}"
+            else:
+                mot = f"mot_{n}"
+        if mot != cle:
+            break
+        n += 1
     table.mots[cle] = mot
     return mot
 
@@ -469,6 +555,32 @@ def _bornes_par_signe(valeur, bornes):
     if valeur > 0:
         return max(bas, 0.0), haut if haut > 0 else 1000.0
     return (bas if bas < 0 else -1000.0), min(haut, 0.0)
+
+
+# Au-delà, le tirage rend un doublon plutôt que de boucler. Dix essais par
+# palier d'élargissement, cinq paliers : l'étendue est alors 10 000 fois
+# plus large que la mesurée, ce qu'aucune colonne réelle ne sature.
+ESSAIS_UNICITE = 50
+
+
+def _tirer(valeur, rng, bas, haut, entier):
+    """Un tirage dans l'intervalle, du même signe que la valeur.
+
+    Un zéro tiré effacerait le signe que la règle promet de garder, et se
+    lirait comme une absence de valeur.
+    """
+    if entier:
+        plancher, plafond = int(bas), int(haut)
+        if plafond <= plancher:
+            plafond = plancher + 1
+        tire = rng.randint(plancher, plafond)
+        if tire == 0:
+            return 1 if valeur > 0 else -1
+        return tire
+    tire = round(rng.uniform(bas, haut), 2)
+    if tire == 0:
+        return 0.01 if valeur > 0 else -0.01
+    return tire
 
 
 def nouveau_nombre(valeur, rng, bornes=None, table=None):
@@ -499,28 +611,30 @@ def nouveau_nombre(valeur, rng, bornes=None, table=None):
         if connu is not None:
             return connu
     bas, haut = _bornes_par_signe(valeur, bornes)
-    if entier:
-        plancher, plafond = int(bas), int(haut)
-        if plafond <= plancher:
-            plafond = plancher + 1
-        tire = rng.randint(plancher, plafond)
-        if tire == 0:
-            # Un zéro tiré effacerait le signe que la règle promet de
-            # garder, et se lirait comme une absence de valeur.
-            tire = 1 if valeur > 0 else -1
-    else:
-        tire = round(rng.uniform(bas, haut), 2)
-        if tire == 0:
-            tire = 0.01 if valeur > 0 else -0.01
+    # SANS REMISE, comme pour le texte. Le tirage seul collisionne par le
+    # paradoxe des anniversaires : mesuré, 100 valeurs distinctes dans une
+    # étendue de 100 ne rendent que 66 sorties distinctes. Deux clés
+    # primaires qui reçoivent le même nombre font une fixture qui ne se
+    # réimporte plus — et c'est justement l'intégrité que la table apporte
+    # au texte, refusée en silence aux nombres.
+    pris = table.nombres_pris if table is not None else ()
+    for essai in range(ESSAIS_UNICITE):
+        # L'étendue s'élargit ×10 quand elle sature. Elle s'éloigne du
+        # zéro, donc le signe reste celui de la valeur d'origine.
+        facteur = 10 ** (essai // 10)
+        tire = _tirer(valeur, rng, bas * facteur, haut * facteur, entier)
+        if tire not in pris:
+            break
     if table is not None:
         table.nombres[cle] = tire
+        table.nombres_pris.add(tire)
     return tire
 
 
 # ----------------------------------------------------------------------
 # La portée
 # ----------------------------------------------------------------------
-def colonne_plancher(etiquette, forme_identifiant=False):
+def colonne_plancher(etiquette, forme_identifiant=False, forme_relation=False):
     """Vrai si cette colonne porte un identifiant, non un nom.
 
     Le plancher s'applique AVANT la question des colonnes intactes et
@@ -546,11 +660,13 @@ def colonne_plancher(etiquette, forme_identifiant=False):
         return True
     if any(bas.endswith(s) for s in SUFFIXES_STRUCTURELS):
         return True
-    if not forme_identifiant:
-        return False
+    # Une relation exige la forme d'une CIBLE de relation : un entier, un
+    # chemin d'ids, un external ID. Un mot en minuscules n'en est pas une.
     if any(bas.endswith(s) for s in SUFFIXES_IDENTIFIANTS):
-        return True
-    return bas in ETIQUETTES_SOUS_CONDITION
+        return bool(forme_relation)
+    if bas in ETIQUETTES_SELECTION:
+        return bool(forme_identifiant)
+    return False
 
 
 def cellule_en_portee(feuille, ligne, colonne, options):
@@ -565,14 +681,23 @@ def cellule_en_portee(feuille, ligne, colonne, options):
     # vivier sur des noms de champ.
     if (feuille, colonne) in (options.get("colonnes_structure") or ()):
         return False
+    # Une LIGNE de structure : les clés d'objet, l'étiquette que le lecteur
+    # a fabriquée. Rien ne peut l'écrire, donc la compter en portée annonce
+    # un remplacement que la copie ne porte pas.
+    if (feuille, ligne) in (options.get("lignes_structure") or ()):
+        return False
     feuilles = options.get("feuilles")
     if feuilles and feuille is not None and feuille not in feuilles:
         return False
     if ligne == 1 and not options.get("entetes"):
         return False
     etiquette = (options.get("etiquettes") or {}).get((feuille, colonne))
-    forme = (options.get("formes") or {}).get((feuille, colonne), False)
-    if colonne_plancher(etiquette, forme):
+    formes = options.get("formes") or {}
+    forme = formes.get((feuille, colonne), False)
+    forme_rel = (options.get("formes_relation") or {}).get(
+        (feuille, colonne), False
+    )
+    if colonne_plancher(etiquette, forme, forme_rel):
         return False
     intactes = options.get("colonnes_intactes") or set()
     if etiquette is not None:
@@ -733,9 +858,8 @@ def coercer_texte(valeur):
 # apparaissent dans n'importe quel XML de conteneur et noieraient le signal.
 LONGUEUR_VERIFIABLE = 4
 
-# Au-delà, la vérification dit ce qu'elle n'a pas pu regarder. Un plafond
-# muet se lirait comme « rien ne fuit ».
-MAX_VALEURS_VERIFIEES = 20000
+# Le socle du graveur, lu une seule fois.
+_SOCLE = None
 
 
 def valeurs_a_verifier(table):
@@ -761,7 +885,38 @@ def valeurs_a_verifier(table):
     }
 
 
-def survivances(chemin, valeurs):
+def _socle_du_graveur():
+    """Le texte que le graveur écrit TOUJOURS, quel que soit le contenu.
+
+    Un classeur vide porte déjà « Microsoft », « Calibri », « Normal »,
+    « office ». Sans ce socle, une cellule qui porte un de ces mots refuse
+    la copie pour toujours, en nommant une partie sur laquelle l'opérateur
+    ne peut rien. Compter les occurrences EN SURPLUS du socle garde le
+    balayage aveugle aux vecteurs sans le rendre inutilisable.
+    """
+    global _SOCLE
+    if _SOCLE is not None:
+        return _SOCLE
+    _SOCLE = {}
+    try:
+        import openpyxl
+    except ImportError:
+        return _SOCLE
+    import tempfile
+
+    try:
+        with tempfile.TemporaryDirectory() as dossier:
+            temoin = os.path.join(dossier, "socle.xlsx")
+            openpyxl.Workbook().save(temoin)
+            with zipfile.ZipFile(temoin) as archive:
+                for nom in archive.namelist():
+                    _SOCLE[nom] = archive.read(nom).decode("utf-8", "ignore")
+    except (OSError, zipfile.BadZipFile):
+        _SOCLE = {}
+    return _SOCLE
+
+
+def survivances(chemin, valeurs, tolerees=()):
     """{valeur: [parties du fichier]} pour ce qui subsiste dans la copie.
 
     Un `.xlsx` est un zip : on balaie CHAQUE partie, sans en nommer aucune.
@@ -771,29 +926,59 @@ def survivances(chemin, valeurs):
     """
     if not valeurs:
         return {}
+    # Un SEUL bloc, joint par un octet nul pour qu'aucune valeur ne puisse
+    # se former à cheval sur deux chaînes gardées. On compare ensuite les
+    # OCCURRENCES : la portée se décide par cellule, le balayage ne sait
+    # lire que le fichier entier, et une valeur qui ne subsiste QUE dans ce
+    # que le moteur a annoncé garder n'est pas une fuite.
+    bloc = "\x00".join(t for t in tolerees if t)
     morceaux = []
     try:
+        socle = _socle_du_graveur()
         with zipfile.ZipFile(chemin) as archive:
             for nom in archive.namelist():
-                morceaux.append(
-                    (nom, archive.read(nom).decode("utf-8", "ignore"))
-                )
+                brut = archive.read(nom).decode("utf-8", "ignore")
+                morceaux.append((nom, brut, socle.get(nom, "")))
+                # Un `.xlsx` est un zip de XML : la valeur y est ÉCHAPPÉE.
+                # Chercher les octets bruts d'un nom portant « & », « < »
+                # ou « > » n'y trouve rien, et la copie part avec.
+                if "&" in brut:
+                    morceaux.append(
+                        (
+                            nom,
+                            html.unescape(brut),
+                            html.unescape(socle.get(nom, "")),
+                        )
+                    )
     except (zipfile.BadZipFile, OSError):
         try:
             with open(chemin, "rb") as fh:
+                brut = fh.read().decode("utf-8", "ignore")
+            morceaux.append((os.path.basename(chemin), brut, ""))
+            if "&" in brut:
                 morceaux.append(
-                    (
-                        os.path.basename(chemin),
-                        fh.read().decode("utf-8", "ignore"),
-                    )
+                    (os.path.basename(chemin), html.unescape(brut), "")
                 )
         except OSError:
             return {}
     trouvees = {}
     for valeur in valeurs:
-        for nom, texte in morceaux:
-            if valeur in texte:
-                trouvees.setdefault(valeur, []).append(nom)
+        vus = 0
+        excuses = bloc.count(valeur)
+        parties = []
+        for nom, texte, socle in morceaux:
+            compte = texte.count(valeur)
+            if not compte:
+                continue
+            vus += compte
+            # EN SURPLUS du socle : « Normal » que le graveur écrit toujours
+            # dans `xl/styles.xml` n'est pas une fuite, un second « Normal »
+            # dans la même partie en est une.
+            excuses += socle.count(valeur)
+            if nom not in parties:
+                parties.append(nom)
+        if vus > excuses:
+            trouvees[valeur] = parties
     return trouvees
 
 
@@ -813,21 +998,85 @@ def verifier_copie(fichiers, table, gardees=()):
     Rend (survivances non annoncées, nombre de valeurs non regardées).
     """
     valeurs = valeurs_a_verifier(table)
-    tolerees = {str(g).strip() for g in gardees if isinstance(g, str)}
-    candidates = sorted(valeurs - tolerees)
+    tolerees = {str(g) for g in gardees if isinstance(g, str) and g.strip()}
+    # Un mot du vivier attribué à une AUTRE valeur reparaît dans la copie
+    # comme remplacement, non comme survivance. `cle != mot` garde le cas de
+    # l'identité — une valeur rendue à elle-même — comme un refus.
+    tolerees.update(
+        str(mot)
+        for cle, mot in getattr(table, "mots", {}).items()
+        if isinstance(mot, str) and str(cle) != str(mot)
+    )
+    # AUCUNE troncature, et pas de plafond. `candidates[:N]` d'une liste
+    # TRIÉE fait suivre la couverture à l'alphabet plutôt qu'au risque : de
+    # trois colonnes de texte, seule la première est relue, de façon
+    # déterministe, donc une reprise n'y change rien — et l'écran annonce
+    # une écriture propre. Le coût que ce plafond épargnait est de l'ordre
+    # de six secondes pour 24 000 valeurs sur neuf parties.
+    candidates = sorted(valeurs)
     ecartees = 0
-    if len(candidates) > MAX_VALEURS_VERIFIEES:
-        ecartees = len(candidates) - MAX_VALEURS_VERIFIEES
-        candidates = candidates[:MAX_VALEURS_VERIFIEES]
     fuites = {}
     for fichier in fichiers:
         if not fichier or not os.path.isfile(fichier):
             continue
-        for valeur, parties in survivances(fichier, set(candidates)).items():
+        for valeur, parties in survivances(
+            fichier, set(candidates), tolerees
+        ).items():
             fuites.setdefault(valeur, []).extend(
                 f"{os.path.basename(fichier)}:{p}" for p in parties
             )
     return fuites, ecartees
+
+
+# Les types déclarés d'Access dont la valeur arrive en CHAÎNE. Comme pour
+# `.xls`, c'est le TYPE qui décide et jamais la forme de la valeur : une
+# colonne de texte peut légitimement porter « AAAA-MM-JJ hh:mm:ss », et la
+# convertir en date la mettrait hors d'atteinte de la règle du texte.
+ACCESS_DATETIME = 8
+ACCESS_MONETAIRE = frozenset({5, 16})
+
+_MOTIF_DATE_ACCESS = re.compile(
+    r"(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})"
+)
+
+
+def normaliser_access(valeur, type_colonne):
+    """La valeur d'une cellule Access, ramenée aux types de la règle.
+
+    `access-parser` rend une date par `str(datetime)` et un montant par sa
+    représentation localisée (« $1,995.50 ») : sans cette normalisation,
+    une colonne de dates et une colonne monétaire sont vues comme du
+    texte, chaque valeur devient un mot, la colonne perd ses bornes, et la
+    copie ne se réimporte plus.
+    """
+    if not isinstance(valeur, str):
+        return valeur
+    texte = valeur.strip()
+    if not texte:
+        return None
+    if type_colonne == ACCESS_DATETIME:
+        # Le marqueur d'Access pour une date qu'il ne sait pas représenter.
+        # Il ne porte aucune donnée : la vider vaut mieux que la remplacer
+        # par un mot, qui la ferait passer pour du texte du client.
+        if texte == "(Invalid Date)":
+            return None
+        trouve = _MOTIF_DATE_ACCESS.fullmatch(texte)
+        if not trouve:
+            return None
+        try:
+            return datetime.datetime(*(int(g) for g in trouve.groups()))
+        except ValueError:
+            return None
+    if type_colonne in ACCESS_MONETAIRE:
+        nu = re.sub(r"[^0-9.,()-]", "", texte)
+        negatif = nu.startswith("(") and nu.endswith(")")
+        nu = nu.strip("()").replace(",", "")
+        try:
+            nombre = float(nu)
+        except ValueError:
+            return valeur
+        return -nombre if negatif else nombre
+    return valeur
 
 
 def normaliser_xls(ctype, valeur, datemode):

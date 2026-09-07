@@ -449,12 +449,6 @@ class TransformMenuMixin:
                     " and start over."
                 )
             )
-        non_verifiees = apercu.get("valeurs_non_verifiees") or 0
-        if non_verifiees:
-            print(
-                f"   ⚠ {non_verifiees}"
-                f" {t('value(s) not verified, above the cap')}"
-            )
         for exemple in apercu.get("apercu") or []:
             print(
                 f"      {exemple['cellule']}"
@@ -575,6 +569,7 @@ class TransformMenuMixin:
             return
 
         sortie_fmt = options["conversion"] or rapport["format"]
+        fmt_moteur = self._transform_fmt_moteur(rapport["format"], sortie_fmt)
         destination = self._transform_select_destination(chemin, sortie_fmt)
         if not destination:
             print(t("Nothing to do."))
@@ -594,7 +589,7 @@ class TransformMenuMixin:
         ]
         if options.get("table_chemin"):
             arguments += ["--table", options["table_chemin"]]
-        apercu = self._transform_run(arguments, rapport["format"])
+        apercu = self._transform_run(arguments, fmt_moteur)
         if apercu is None:
             return
         if not self._transform_preview(apercu):
@@ -616,10 +611,24 @@ class TransformMenuMixin:
         ]
         if options.get("table_chemin"):
             arguments += ["--table", options["table_chemin"]]
-        bilan = self._transform_run(arguments, rapport["format"])
+        bilan = self._transform_run(arguments, fmt_moteur)
         if bilan is None:
             return
         self._transform_render_bilan(bilan, destination)
+
+    @staticmethod
+    def _transform_fmt_moteur(source_fmt, sortie_fmt):
+        """Le format qui DÉCIDE de l'interpréteur du moteur.
+
+        Le processus doit lire la source ET écrire la cible : il lui faut
+        l'union des bibliothèques. La source seule laissait csv→xlsx
+        importer openpyxl sous l'interpréteur du CLI, qui ne l'a pas ; la
+        cible seule enverrait un classeur au même interpréteur, qui ne sait
+        pas le lire.
+        """
+        if source_fmt not in transform_setup.FORMATS_STDLIB:
+            return source_fmt
+        return sortie_fmt
 
     def _transform_render_bilan(self, bilan, destination):
         for fichier in bilan.get("fichiers") or [destination]:
@@ -647,6 +656,12 @@ class TransformMenuMixin:
         )
         if efface:
             print(f"   {efface} {t('element(s) outside cells wiped')}")
+        non_verifiees = bilan.get("valeurs_non_verifiees") or 0
+        if non_verifiees:
+            print(
+                f"   ⚠ {non_verifiees}"
+                f" {t('value(s) not verified, above the cap')}"
+            )
         print(f"   {t('The original was not modified.')}")
         if bilan.get("table"):
             print(f"   {t('Mapping table written: ')}{bilan['table']}")
