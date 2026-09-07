@@ -267,6 +267,80 @@ class TestLesDisquesRestentLus(unittest.TestCase):
         self.assertIs(False, getattr(mots["with_disks"], "value", None))
 
 
+class TestLesDomainesFantomes(unittest.TestCase):
+    """Même corps recopié, même garde manquant. Aucun fichier n'y est
+    effacé, mais l'entrée se présente comme un nettoyage : on y répond
+    « o » plus vite."""
+
+    def _nettoyer(self, inventaire, fantomes, reponses):
+        import builtins
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        todo = TODO.__new__(TODO)
+        todo._qemu_list_domains_proved = lambda: VM.parse_uuid_listing(
+            inventaire
+        )
+        todo._qemu_c_env = lambda: {}
+        todo._is_yes = lambda rep: str(rep).strip().lower() in ("y", "o")
+        todo.execute = Bancal()
+
+        # Un domaine est FANTÔME quand aucun de ses disques n'existe. On
+        # remplace les deux lectures qui le décident, pas la décision.
+        def faux_run(argv, **_kwargs):
+            class Reponse:
+                returncode = 0 if argv[0] != "sudo" else 1
+                stdout = ""
+
+            if "domblklist" in argv:
+                nom = argv[argv.index("domblklist") + 1]
+                Reponse.stdout = (
+                    "Type Device Target Source\n"
+                    "file disk vda /var/lib/libvirt/images/x.qcow2\n"
+                    if nom in fantomes
+                    else ""
+                )
+            return Reponse
+
+        from unittest.mock import patch
+
+        file = list(reponses)
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: file.pop(0) if file else ""
+        tampon = tampon_io.StringIO()
+        try:
+            with patch(
+                "script.todo.qemu_manage.subprocess.run", faux_run
+            ), redirect_stdout(tampon):
+                todo._cleanup_ghost_domains()
+        finally:
+            builtins.input = vrai
+        return todo, tampon.getvalue()
+
+    def test_the_command_refuses_before_it_undefines(self):
+        todo, _vu = self._nettoyer(INVENTAIRE, {"machine-a"}, ["y"])
+        self.assertEqual(1, len(todo.execute.vues), todo.execute.vues)
+        cmd = todo.execute.vues[0]
+        self.assertLess(cmd.index("REFUS"), cmd.index("undefine"))
+        self.assertIn("aaaaaaaa-1111-2222-3333-444444444444", cmd)
+
+    def test_a_ghost_without_proof_is_refused(self):
+        todo, vu = self._nettoyer(
+            "machine-sans-preuve\n", {"machine-sans-preuve"}, ["y"]
+        )
+        self.assertEqual([], todo.execute.vues)
+        self.assertIn("machine-sans-preuve", vu)
+
+    def test_no_disk_is_ever_removed_here(self):
+        """Un fantôme n'en a plus : c'est ce qui le définit."""
+        todo, _vu = self._nettoyer(INVENTAIRE, {"machine-a"}, ["y"])
+        self.assertNotIn("rm -f", todo.execute.vues[0])
+
+    def test_a_refused_confirmation_runs_nothing(self):
+        todo, _vu = self._nettoyer(INVENTAIRE, {"machine-a"}, ["n"])
+        self.assertEqual([], todo.execute.vues)
+
+
 class TestRienNestFaitSansConfirmation(unittest.TestCase):
     def test_a_refused_confirmation_runs_nothing(self):
         todo = todo_avec()

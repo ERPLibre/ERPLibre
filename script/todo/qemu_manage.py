@@ -2719,7 +2719,11 @@ class QemuManageMixin:
     def _cleanup_ghost_domains(self):
         """VM définies dont plus aucun disque n'existe -> propose undefine."""
         ghosts = []
-        for name in self._qemu_list_domains():
+        # Les preuves se lisent AVEC la liste, avant la question : le
+        # domaine défini pendant que l'opérateur lit l'écran ne doit pas se
+        # faire retirer sa définition sous un nom qu'il vient de prendre.
+        preuves = {d.name: d for d in self._qemu_list_domains_proved()}
+        for name in list(preuves):
             try:
                 res = subprocess.run(
                     virsh_argv("domblklist", name, "--details"),
@@ -2753,13 +2757,17 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
         for name in ghosts:
-            q = shlex.quote(name)
-            cmd = (
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"destroy {q} 2>/dev/null; "
-                f"{sudo_prefix()}virsh --connect {URI} "
-                f"undefine {q} --nvram 2>/dev/null "
-                f"|| {sudo_prefix()}virsh --connect {URI} undefine {q}"
+            handle = preuves.get(name)
+            if handle is None or not vm_backend.is_armed(handle):
+                print(f"  ⛔ {name} : {t('no identity proof; refused')}")
+                continue
+            # Le même verbe gardé que l'effacement : aucun disque ici — un
+            # fantôme n'en a plus, c'est ce qui le définit.
+            cmd = vm_verbs.delete_command(
+                handle,
+                with_disks=False,
+                sudo=sudo_prefix(),
+                uri=URI,
             )
             print(f"{t('Will execute:')} {cmd}")
             self.execute.exec_command_live(cmd, source_erplibre=False)
