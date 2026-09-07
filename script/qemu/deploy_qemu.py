@@ -1665,6 +1665,17 @@ def download_image(
     )
 
 
+def pinned_sha256(distro: str) -> str:
+    """La somme que le DÉPÔT porte pour l'image de `distro`, ou "".
+
+    Lue par les deux chemins de déploiement : celui de qemu vérifie le
+    fichier qu'il vient de télécharger, celui de Proxmox fait vérifier sur
+    l'hôte distant. Deux copies de la somme dériveraient, et la copie oubliée
+    serait celle qui laisse passer une image que personne n'a regardée.
+    """
+    return NIXOS_IMAGE_SHA256 if distro == "nixos" else ""
+
+
 def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
     """Vérifie une image contre la somme que le DÉPÔT porte pour elle.
 
@@ -1677,9 +1688,9 @@ def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
     Une somme qui ne correspond pas ARRÊTE le déploiement : continuer
     reviendrait à installer un système que personne n'a regardé.
     """
-    if distro != "nixos" or dry_run:
+    attendu = pinned_sha256(distro)
+    if not attendu or dry_run:
         return
-    attendu = NIXOS_IMAGE_SHA256
     digest = hashlib.sha256()
     with open(image, "rb") as fh:
         for morceau in iter(lambda: fh.read(1 << 20), b""):

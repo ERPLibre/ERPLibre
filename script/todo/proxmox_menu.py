@@ -1458,9 +1458,13 @@ class ProxmoxMenuMixin:
             detail["user_data"] = self._pve_user_data(
                 mod, vm.get("distro") or "", vm.get("name") or "", cle_locale
             )
-        return [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vm["vmid"], detail
-        )
+        # La somme que le dépôt porte pour cette image, quand il en a une :
+        # c'est la seule chose qui distingue une image tierce revue de
+        # n'importe quel fichier servi sous la même URL.
+        somme = mod.pinned_sha256(vm.get("distro") or "")
+        return [
+            pve.image_fetch_cmd(url, image, sha256=somme)
+        ] + pve.create_cmds(vm["vmid"], detail)
 
     def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
@@ -2386,9 +2390,10 @@ class ProxmoxMenuMixin:
             # resterait muette.
             "ipconfig": ipconfig,
         }
-        etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vmid, spec
-        )
+        somme = mod.pinned_sha256(distro)
+        etapes = [
+            pve.image_fetch_cmd(url, image, sha256=somme)
+        ] + pve.create_cmds(vmid, spec)
         if dry_run:
             print(f"\n── {t('Would run on')} {host['target']} ──")
             print(f"  # {t('SSH key ->')} {spec['sshkey_path']}")
@@ -2403,9 +2408,9 @@ class ProxmoxMenuMixin:
         if cle_locale and not self._pve_push_key(cle_locale):
             print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
             spec.pop("sshkey_path", None)
-            etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-                vmid, spec
-            )
+            etapes = [
+                pve.image_fetch_cmd(url, image, sha256=somme)
+            ] + pve.create_cmds(vmid, spec)
         for cmd in etapes:
             code, _out = self._pve_show(cmd, timeout=1800)
             if code:
@@ -2718,4 +2723,10 @@ class ProxmoxMenuMixin:
         url = mod.image_url(distro, code, "amd64", version)
         nom = mod.default_image_name(distro, code, "amd64", version)
         print(f"\n  {nom}\n  {url}")
-        self._pve_show(pve.image_fetch_cmd(url, nom), timeout=1800)
+        # La somme, ici comme au déploiement : une image téléchargée d'avance
+        # est celle qu'un déploiement futur trouvera « déjà présente », et il
+        # ne la regardera pas mieux que celui-ci.
+        self._pve_show(
+            pve.image_fetch_cmd(url, nom, sha256=mod.pinned_sha256(distro)),
+            timeout=1800,
+        )
