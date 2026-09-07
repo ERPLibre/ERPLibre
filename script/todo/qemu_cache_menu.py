@@ -42,6 +42,7 @@ CACHE_CONF = "/etc/erplibre_go_qemu_cache/env"
 CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
 CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
+CACHE_DIR = "/var/cache/erplibre_go_qemu_cache"
 
 # L'ordre d'affichage des issues du journal. Ce n'est PAS une liste de ce qui
 # existe : tout ce que le journal porte est montré, ce qui n'est pas nommé ici
@@ -148,6 +149,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Service state")},
             {"prompt_description": t("Cache - VMs kept out of the cache")},
             {"prompt_description": t("Cache - Git mirrors: fill them ahead")},
+            {"prompt_description": t("Cache - Age and cleanup")},
             {"prompt_description": t("Cache - Guide: how it works")},
             {"prompt_description": t("Cache - Tests and performance report")},
         ]
@@ -168,8 +170,10 @@ class QemuCacheMenuMixin:
             elif status == "5":
                 self._cache_miroir_git()
             elif status == "6":
-                self._cache_guide()
+                self._cache_age()
             elif status == "7":
+                self._cache_guide()
+            elif status == "8":
                 self._cache_tests()
             else:
                 print(t("Command not found !"))
@@ -595,7 +599,93 @@ class QemuCacheMenuMixin:
         return "?"
 
     # ------------------------------------------------------------------
-    # [6] Guide
+    # [6] Âge et nettoyage
+    # ------------------------------------------------------------------
+
+    def _cache_age(self):
+        """Ce qui occupe, depuis quand, et de quoi en rendre.
+
+        L'âge retenu est celui du dernier USAGE : le service remet la date
+        d'un objet chaque fois qu'il le sert. « Vieux » veut donc dire « n'a
+        plus servi », et non « est entré il y a longtemps » — un paquet servi
+        tous les jours depuis un an n'est pas à jeter, l'effacer obligerait à
+        le retélécharger le lendemain.
+        """
+        print(f"\n🧭 {t('Age of the cache, and cleanup')}\n")
+        if not os.path.isfile(CACHE_BIN):
+            print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
+            return
+        print(f"  {t('Free space:')} {self._cache_place_libre()}\n")
+        choices = [
+            {"prompt_description": t("Age - By day")},
+            {"prompt_description": t("Age - By week")},
+            {"prompt_description": t("Age - By month")},
+            {
+                "prompt_description": t(
+                    "Clean - What has not served for a while"
+                )
+            },
+            {"prompt_description": t("Clean - Everything")},
+        ]
+        grains = {"1": "jour", "2": "semaine", "3": "mois"}
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            if status in grains:
+                self._cache_lancer(
+                    f"--age-report --age-par {grains[status]}", sudo=False
+                )
+            elif status == "4":
+                self._cache_nettoyer_age()
+            elif status == "5":
+                self._cache_nettoyer_tout()
+            else:
+                print(t("Command not found !"))
+
+    def _cache_lancer(self, options, sudo=True):
+        """La commande du cache, annoncée puis lancée."""
+        cmd = (
+            f"{'sudo ' if sudo else ''}{CACHE_BIN}"
+            f" --cache-dir {CACHE_DIR} --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" {options}"
+        )
+        print(f"{t('Will execute:')} {cmd}\n")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_nettoyer_age(self):
+        """Le délai est DEMANDÉ, puis montré à blanc avant d'effacer.
+
+        Une purge ne se rattrape pas : les octets sont rendus, il faut les
+        retélécharger — et pour un dépôt en miroir, cela se compte en minutes.
+        Voir d'abord ce qui partirait est le seul moyen de répondre à la
+        question posée.
+        """
+        delai = click.prompt(
+            t("Not served since (e.g. 30j, 12h)"), default="30j"
+        ).strip()
+        if not delai:
+            return
+        self._cache_lancer(
+            f"--purge-older-than {shlex.quote(delai)} --dry-run"
+        )
+        if not click.confirm(t("Erase what is listed above?")):
+            return
+        self._cache_lancer(f"--purge-older-than {shlex.quote(delai)}")
+
+    def _cache_nettoyer_tout(self):
+        """Tout, objets ET dépôts. Montré à blanc d'abord, comme le reste."""
+        print(f"  ⚠ {t('This empties the objects AND the git mirrors.')}")
+        print(f"    {t('Refilling the mirrors takes minutes to hours.')}\n")
+        self._cache_lancer("--purge --dry-run")
+        if not click.confirm(t("Erase the whole cache?")):
+            return
+        self._cache_lancer("--purge")
+
+    # ------------------------------------------------------------------
+    # [7] Guide
     # ------------------------------------------------------------------
 
     def _cache_guide(self):
@@ -656,6 +746,9 @@ class QemuCacheMenuMixin:
             t("    Neither the objects nor the mirrors shrink by themselves,"),
             t("    and both live on the orchestrator's disk. The diagnosis"),
             t("    entry says what each of the two occupies."),
+            t("    Entry 6 groups them by AGE OF LAST USE — an object served"),
+            t("    has its date renewed, so « old » means « no longer used »"),
+            t("    — and gives back what has not served for a while, or all."),
             "",
             f"  {t('Turning it off')}",
             t("    Interception is transparent and covers the whole bridge:"),
@@ -700,7 +793,7 @@ class QemuCacheMenuMixin:
             print(ligne)
 
     # ------------------------------------------------------------------
-    # [7] Tests
+    # [8] Tests
     # ------------------------------------------------------------------
 
     # Les trois essais, dans l'ordre où l'assistant les propose et les enchaîne.

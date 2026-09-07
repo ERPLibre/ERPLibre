@@ -39,6 +39,7 @@ CLES = (
     "Cache - Service state",
     "Cache - VMs kept out of the cache",
     "Cache - Git mirrors: fill them ahead",
+    "Cache - Age and cleanup",
     "Cache - Guide: how it works",
     "Cache - Tests and performance report",
     "Install the download cache shared by the QEMU VMs of this host",
@@ -68,6 +69,16 @@ CLES = (
     "Service - Detailed state (status)",
     "Service - Logs (log)",
     "Access log, last requests:",
+    # Âge et nettoyage : ce qui occupe, depuis quand, et de quoi en rendre.
+    "Age of the cache, and cleanup",
+    "Age - By day",
+    "Age - By week",
+    "Age - By month",
+    "Clean - What has not served for a while",
+    "Clean - Everything",
+    "Not served since (e.g. 30j, 12h)",
+    "Erase what is listed above?",
+    "Erase the whole cache?",
     # Les exceptions par adresse MAC : une VM soustraite au détournement.
     "VMs kept out of the download cache",
     "Exceptions - Remove the stale ones",
@@ -100,9 +111,12 @@ def affichage_et_dispatch(corps):
     """
     affichees = len(re.findall(r'"prompt_description": t\(', corps))
     numeros = set(re.findall(r'if status == "(\d+)":', corps))
-    table = re.search(r"verbes = \{([^}]*)\}", corps)
-    if table:
-        numeros |= set(re.findall(r'"(\d+)":', table.group(1)))
+    # Toute table qui associe un numéro à quelque chose compte : le dispatch
+    # passe tantôt par une branche, tantôt par une table de verbes ou de
+    # granularités. N'en connaître qu'une ferait passer pour un trou ce
+    # qu'une autre couvre.
+    for table in re.findall(r"=\s*\{([^}]*)\}", corps):
+        numeros |= set(re.findall(r'"(\d+)"\s*:', table))
     numeros.discard("0")
     return affichees, sorted(int(n) for n in numeros)
 
@@ -192,7 +206,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 7)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 8)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
@@ -203,6 +217,9 @@ class TestSousMenusDuCache(unittest.TestCase):
     def test_le_menu_des_miroirs(self):
         self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 3)
 
+    def test_le_menu_de_lage(self):
+        self.verifier("_cache_age", "_cache_lancer", 5)
+
     def test_letat_du_service_est_la_troisieme(self):
         """Sous le diagnostic, comme demandé : le décalage du guide et des
         tests est la moitié du changement, et c'est celle qui casse."""
@@ -211,8 +228,9 @@ class TestSousMenusDuCache(unittest.TestCase):
             ("3", "_cache_service"),
             ("4", "_cache_exceptions"),
             ("5", "_cache_miroir_git"),
-            ("6", "_cache_guide"),
-            ("7", "_cache_tests"),
+            ("6", "_cache_age"),
+            ("7", "_cache_guide"),
+            ("8", "_cache_tests"),
         ):
             self.assertRegex(
                 corps,
@@ -375,6 +393,9 @@ class TestClesI18n(unittest.TestCase):
             "Cache - Service state": "⚙",
             "Cache - VMs kept out of the cache": "🎫",
             "Cache - Git mirrors: fill them ahead": "🪞",
+            "Cache - Age and cleanup": "🧭",
+            "Age - By day": "📅",
+            "Clean - Everything": "🔥",
             "Cache - Guide: how it works": "📖",
             "Exceptions - Remove the stale ones": "🧹",
             "Exceptions - Remove one by its MAC": "✂",

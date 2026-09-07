@@ -1752,6 +1752,66 @@ TRANSLATIONS = {
         "fr": "    en tunnel, et un tunnel ne porte rien une fois coupé.",
         "en": "    tunnelled, and a tunnel carries nothing once cut.",
     },
+    "Cache - Age and cleanup": {
+        "fr": "🧭 Cache - Âge et nettoyage",
+        "en": "🧭 Cache - Age and cleanup",
+    },
+    "Age of the cache, and cleanup": {
+        "fr": "Âge du cache, et nettoyage",
+        "en": "Age of the cache, and cleanup",
+    },
+    "Age - By day": {
+        "fr": "📅 Âge - Par jour",
+        "en": "📅 Age - By day",
+    },
+    "Age - By week": {
+        "fr": "🗓 Âge - Par semaine",
+        "en": "🗓 Age - By week",
+    },
+    "Age - By month": {
+        "fr": "📆 Âge - Par mois",
+        "en": "📆 Age - By month",
+    },
+    "Clean - What has not served for a while": {
+        "fr": "🧹 Nettoyer - Ce qui n'a plus servi depuis un temps",
+        "en": "🧹 Clean - What has not served for a while",
+    },
+    "Clean - Everything": {
+        "fr": "🔥 Nettoyer - Tout",
+        "en": "🔥 Clean - Everything",
+    },
+    "Not served since (e.g. 30j, 12h)": {
+        "fr": "Plus servi depuis (ex. 30j, 12h)",
+        "en": "Not served since (e.g. 30j, 12h)",
+    },
+    "Erase what is listed above?": {
+        "fr": "Effacer ce qui est listé ci-dessus ?",
+        "en": "Erase what is listed above?",
+    },
+    "This empties the objects AND the git mirrors.": {
+        "fr": "Cela vide les objets ET les miroirs git.",
+        "en": "This empties the objects AND the git mirrors.",
+    },
+    "Refilling the mirrors takes minutes to hours.": {
+        "fr": "Remplir de nouveau les miroirs prend des minutes à des heures.",
+        "en": "Refilling the mirrors takes minutes to hours.",
+    },
+    "Erase the whole cache?": {
+        "fr": "Effacer tout le cache ?",
+        "en": "Erase the whole cache?",
+    },
+    "    Entry 6 groups them by AGE OF LAST USE — an object served": {
+        "fr": "    L'entrée 6 les groupe par ÂGE DU DERNIER USAGE — un objet servi",
+        "en": "    Entry 6 groups them by AGE OF LAST USE — an object served",
+    },
+    "    has its date renewed, so « old » means « no longer used »": {
+        "fr": "    voit sa date remise à jour, « vieux » veut donc dire « n'a plus",
+        "en": "    has its date renewed, so « old » means « no longer used »",
+    },
+    "    — and gives back what has not served for a while, or all.": {
+        "fr": "    servi » — et rend ce qui ne sert plus, ou tout.",
+        "en": "    — and gives back what has not served for a while, or all.",
+    },
     "Cache - Guide: how it works": {
         "fr": "📖 Cache - Guide : comment il fonctionne",
         "en": "📖 Cache - Guide: how it works",
