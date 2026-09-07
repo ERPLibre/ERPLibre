@@ -1111,6 +1111,42 @@ TRANSLATIONS = {
         "fr": "Posture réseau",
         "en": "Network posture",
     },
+    "Egress rules loaded.": {
+        "fr": "Règles de sortie chargées.",
+        "en": "Egress rules loaded.",
+    },
+    "Egress rules did not load.": {
+        "fr": "Les règles de sortie ne se sont pas chargées.",
+        "en": "Egress rules did not load.",
+    },
+    "Read cloud-init output in the guest.": {
+        "fr": "Lire la sortie de cloud-init dans l'invité.",
+        "en": "Read cloud-init output in the guest.",
+    },
+    "The guest image has no nftables.": {
+        "fr": "L'image de l'invité n'a pas nftables.",
+        "en": "The guest image has no nftables.",
+    },
+    "Pick an image that ships it: none is installed here.": {
+        "fr": "Choisir une image qui le porte : rien n'est installé ici.",
+        "en": "Pick an image that ships it: none is installed here.",
+    },
+    "Egress rules could not be read.": {
+        "fr": "Les règles de sortie n'ont pas pu être lues.",
+        "en": "Egress rules could not be read.",
+    },
+    "Reading the table needs root on the guest.": {
+        "fr": "Lire la table demande root sur l'invité.",
+        "en": "Reading the table needs root on the guest.",
+    },
+    "The guest answered nothing.": {
+        "fr": "L'invité n'a rien répondu.",
+        "en": "The guest answered nothing.",
+    },
+    "Check the guest is up, then check again.": {
+        "fr": "Vérifier que l'invité est levé, puis recommencer.",
+        "en": "Check the guest is up, then check again.",
+    },
     "VM backends": {"fr": "Backends de VM", "en": "VM backends"},
     "Deploy - VM backends (which one this machine uses)": {
         "fr": "🖥  Deploy - Backends de VM (lequel cette machine emploie)",

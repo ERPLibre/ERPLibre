@@ -16,13 +16,25 @@ import tempfile
 import time
 
 from script.posture import destinations as posture_destinations
+from script.posture import plan as posture_plan
 from script.posture import registry as posture_registry
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
 from script.todo import host_os, todo_prefs, vm_backend_choice
+from script.todo import devstack_report as report
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
 from script.vm import backend as vm_backend
+
+# Les options ssh de la relecture des règles. Une VM neuve n'a pas de clé
+# d'hôte connue, et son adresse se réutilise d'un déploiement au suivant :
+# la vérification refuserait une machine neuve à chaque fois. BatchMode
+# interdit toute invite — une sonde qui attend une réponse bloque le
+# déploiement sur une question que personne ne voit.
+EGRESS_SSH_OPTS = (
+    "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    " -o ConnectTimeout=15 -o BatchMode=yes"
+)
 
 
 class QemuDeployMixin:
@@ -1127,6 +1139,120 @@ class QemuDeployMixin:
     # donnée de site — elle vit dans la configuration privée, le seul des
     # trois fichiers fusionnés qui ne soit pas suivi.
     EGRESS_BOOK_KEY = "egress_destinations"
+
+    @staticmethod
+    def _egress_probe_command(ip, user="erplibre"):
+        """La ligne ssh qui relit les règles d'une VM. Rend une CHAÎNE.
+
+        Elle n'exécute rien : c'est ce qui permet de l'éprouver depuis une
+        station et de la MONTRER avant de la lancer.
+        """
+        sonde = posture_plan.probe_command()
+        return f"ssh {EGRESS_SSH_OPTS} {user}@{ip} {shlex.quote(sonde)}"
+
+    @staticmethod
+    def _egress_layers(verdict):
+        """Le verdict de la relecture, réparti sur la couche qu'il concerne.
+
+        Chacun se corrige d'un côté différent : une table absente se
+        recharge, un analyseur absent se choisit avec l'image, un droit
+        manquant s'accorde, et un silence est un problème de transport où
+        le pare-feu n'a jamais été mesuré.
+
+        UN DROIT MANQUANT COMPTE POUR UNE PANNE, et non pour un retrait
+        propre : la machine a reçu une posture qui promet un confinement, et
+        une vérification qui n'aboutit pas ne doit pas se lire comme un
+        succès. Le retrait propre est réservé au silence, où rien n'a été
+        sondé du tout.
+        """
+        if verdict == posture_plan.LOADED:
+            return (
+                report.layer_verdict(
+                    "firewall", report.DS_OK, t("Egress rules loaded.")
+                ),
+            )
+        if verdict == posture_plan.TABLE_ABSENT:
+            return (
+                report.layer_verdict(
+                    "firewall",
+                    report.DS_ERR,
+                    t("Egress rules did not load."),
+                    t("Read cloud-init output in the guest."),
+                ),
+            )
+        if verdict == posture_plan.TOOL_ABSENT:
+            return (
+                report.layer_verdict(
+                    "guest",
+                    report.DS_ERR,
+                    t("The guest image has no nftables."),
+                    t("Pick an image that ships it: none is installed here."),
+                ),
+            )
+        if verdict == posture_plan.NO_PRIVILEGE:
+            return (
+                report.layer_verdict(
+                    "firewall",
+                    report.DS_ERR,
+                    t("Egress rules could not be read."),
+                    t("Reading the table needs root on the guest."),
+                ),
+            )
+        return (
+            report.layer_verdict(
+                "transport",
+                report.DS_SKIP,
+                t("The guest answered nothing."),
+                t("Check the guest is up, then check again."),
+            ),
+        )
+
+    @staticmethod
+    def _egress_read(commande):
+        """Joue la sonde et rend sa sortie. Le SEUL geste impur d'ici.
+
+        Ne lève pas : une panne de transport est un silence, que la lecture
+        du verdict traite déjà — et un déploiement qui vient de réussir ne
+        doit pas s'interrompre parce qu'une relecture n'a pas abouti.
+        """
+        try:
+            fini = subprocess.run(
+                commande,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return (fini.stdout or "") + (fini.stderr or "")
+
+    def _qemu_probe_egress(self, deployed, ip_map, lire=None):
+        """Relit les règles de chaque VM déployée et écrit le verdict.
+
+        Le chargement échoue DANS l'invité sans que l'hôte l'apprenne :
+        l'attente de cloud-init lit son état pour cesser d'attendre, jamais
+        pour le dire. Sans cette relecture, une machine dont l'image n'a pas
+        l'analyseur se déploie en annonçant un confinement que rien ne tient.
+
+        `lire` rend la lecture remplaçable, donc la décision vérifiable sans
+        machine. Rend le pire code des VM relues : une VM dont l'adresse
+        n'a pas été résolue compte pour un silence.
+        """
+        lire = lire or self._egress_read
+        verdicts = []
+        for nom in deployed:
+            ip = ip_map.get(nom)
+            lu = posture_plan.UNREAD
+            if ip:
+                lu = posture_plan.parse_probe(
+                    lire(self._egress_probe_command(ip))
+                )
+            couches = self._egress_layers(lu)
+            print(f"\n  🔒 {nom} — {t('Network posture')}")
+            print(report.render_layers(couches))
+            verdicts.extend(couches)
+        return report.aggregate_layers(verdicts)
 
     def _qemu_egress_rules(self, spec):
         """Le texte des règles que cette spec demande, ou une chaîne vide.
@@ -2274,7 +2400,9 @@ class QemuDeployMixin:
         # il porte les adresses internes du site, et il est retiré même
         # si le parc s'arrête au milieu. Vide quand la posture n'attend
         # rien, ce qui est le cas de la plupart des déploiements.
+        egress_pose = ""
         with self._qemu_egress_file(spec) as egress:
+            egress_pose = egress
             # Jobs numérotés (k/N) : l'ID suit l'ORDRE de
             # préparation, stable même si les résultats reviennent
             # dans le désordre (exécution parallèle).
@@ -2316,7 +2444,12 @@ class QemuDeployMixin:
         ip_map = {}
         # `desktop` compte aussi : sans IP résolue, l'installation du bureau
         # n'aurait aucune VM à joindre.
-        if deployed and (add_ssh_config or install_branch or desktop):
+        # Les règles posées se RELISENT, donc l'adresse est nécessaire même
+        # quand rien d'autre ne la demandait : sans elle, la relecture ne
+        # joindrait aucune VM et rendrait un silence pour tout le parc.
+        if deployed and (
+            add_ssh_config or install_branch or desktop or egress_pose
+        ):
             labels = {
                 nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
             }
@@ -2332,6 +2465,13 @@ class QemuDeployMixin:
                     self._write_ssh_config_entry(
                         name, "erplibre", ip, identity_file=identity
                     )
+
+        # 6 bis) Relecture des règles posées. Après la résolution des IP,
+        # parce qu'elle en a besoin, et avant l'installation : une machine
+        # qui n'a pas chargé ses règles doit se voir AVANT qu'on y pose
+        # quoi que ce soit.
+        if egress_pose and deployed:
+            self._qemu_probe_egress(deployed, ip_map)
 
         # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
         # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
