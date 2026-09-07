@@ -1313,8 +1313,8 @@ class QemuDeployMixin:
             if lu != posture_plan.LOADED:
                 sans_regles.append(nom)
             couches = self._egress_layers(lu)
-            print(f"\n  🔒 {nom} — {t('Network posture')}")
-            print(report.render_layers(couches))
+            print()
+            print(report.render_layers(couches, subject=nom))
             verdicts.extend(couches)
         return EgressOutcome(
             report.aggregate_layers(verdicts), tuple(sans_regles)
