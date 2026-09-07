@@ -2389,6 +2389,19 @@ def write_files_lines(
 # l'initrd ENTIER, donc l'installation. Les fichiers restent à la racine.
 INSTALLER_GUIDE_PREFIX = "erplibre-"
 
+# Où le fichier de règles de sortie se pose dans l'invité, et son mode.
+# RECOPIÉS depuis le module qui rend ces règles, et non importés : ce
+# fichier se charge seul, sans le dépôt sur le chemin d'import, et il
+# n'importe que la bibliothèque standard. Une épreuve les tient égaux à leur
+# source, ce qui remplace l'import qu'on ne peut pas faire.
+#
+# Le chemin est PLAT sous /etc : le late_command recopie avec une commande
+# qui ne crée pas les parents et tolère son propre échec, si bien qu'un
+# chemin à deux niveaux se poserait par cloud-init et manquerait par
+# l'installateur.
+EGRESS_GUEST_PATH = "/etc/erplibre-egress.nft"
+EGRESS_GUEST_MODE = "0600"
+
 
 def installer_guide_name(path: str) -> str:
     """Nom dans l'initrd du fichier destiné au chemin `path` de la VM.
@@ -2425,6 +2438,12 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
             "",
         )
     ]
+    # Les règles de sortie, quand un déploiement en a rendu. Posées comme le
+    # guide : par la même voie, donc présentes dès le PREMIER boot et sur les
+    # deux chemins d'amorce, sans mécanisme neuf.
+    regles = getattr(args, "egress_rules", "")
+    if regles:
+        files.append((EGRESS_GUEST_PATH, EGRESS_GUEST_MODE, regles, ""))
     if args.no_git_identity:
         return files
     # Ce que le formulaire a saisi PRIME sur l'identité de l'hôte, champ par
@@ -2581,6 +2600,15 @@ def build_cloud_config(
         "  - systemctl restart qemu-guest-agent 2>/dev/null"
         " || systemctl restart qemu-ga 2>/dev/null || true",
     ]
+    # Le chargement des règles vient EN DERNIER, et c'est la seule ligne de
+    # runcmd sans repli. Le code de sortie d'un script est celui de sa
+    # dernière commande : placée là, sa panne devient celle du script, alors
+    # qu'ailleurs elle se perdrait dans les « || true » qui suivent. Sans
+    # repli parce qu'un confinement qui ne se charge pas doit se voir : le
+    # masquer laisserait déployer une machine qui promet ce qu'elle ne tient
+    # pas.
+    if getattr(args, "egress_rules", ""):
+        lines.append(f"  - nft -f {EGRESS_GUEST_PATH}")
     return "\n".join(lines) + "\n"
 
 
@@ -4055,6 +4083,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Paquet APT additionnel (répétable).",
     )
     g_cloud.add_argument(
+        "--egress-file",
+        metavar="FICHIER",
+        help=(
+            "Fichier de règles de sortie déjà RENDU, à poser dans l'invité"
+            " et à charger au premier démarrage. Le rendu se fait ailleurs :"
+            " ce script pose ce qu'on lui donne, il ne connaît pas les"
+            " postures."
+        ),
+    )
+    g_cloud.add_argument(
         "--no-upgrade",
         action="store_true",
         help="N'exécute pas package_upgrade au premier boot.",
@@ -4203,6 +4241,24 @@ def load_ssh_keys(paths: list[str]) -> list[str]:
     return keys
 
 
+def load_egress_rules(path: str) -> str:
+    """Le texte des règles à embarquer, ou l'arrêt si on ne peut pas.
+
+    Un fichier vide est refusé comme un fichier absent : chargé, il
+    s'accepterait sans rien appliquer, et la machine se lirait comme
+    confinée alors que rien ne la borne.
+    """
+    if not path:
+        return ""
+    fichier = Path(path).expanduser()
+    if not fichier.exists():
+        sys.exit(f"Règles de sortie introuvables : {fichier}")
+    texte = fichier.read_text()
+    if not texte.strip():
+        sys.exit(f"Règles de sortie vides : {fichier}")
+    return texte
+
+
 def main() -> None:
     # Sortie ligne par ligne même quand stdout est un tube (menu todo) : sinon
     # les en-têtes restent bufferisés et le déploiement paraît « gelé ».
@@ -4315,6 +4371,7 @@ def main() -> None:
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
+    args.egress_rules = load_egress_rules(getattr(args, "egress_file", ""))
     if not pw_hash and not ssh_keys:
         print(
             "ATTENTION : ni mot de passe ni clé SSH -> connexion impossible à la VM.\n"
