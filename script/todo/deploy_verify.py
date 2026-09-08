@@ -20,9 +20,90 @@ station, sans hyperviseur et sans privilège.
 
 from __future__ import annotations
 
+from script.remote import host_probe
 from script.todo import devstack_report as report
 from script.todo import host_os, qemu_privilege
 from script.todo.todo_i18n import t
+
+
+def probe_layers(verdict) -> tuple:
+    """Le verdict d'une sonde d'appliance, réparti sur ses couches.
+
+    Un code unique perdrait ce qui sert le plus. « ssh passe, c'est le
+    produit qui manque » et « rien ne répond » se corrigent de deux côtés
+    opposés, et l'un des deux n'a rien à voir avec le réseau.
+
+    Le privilège absent est une ABSENCE et non une panne : deux verbes sur
+    onze en ont besoin, et refuser la machine pour eux fermerait les neuf
+    autres, qui marchent.
+
+    Ici et non dans un écran : la traduction ne dépend d'aucune conversation,
+    et deux écrans qui la recopieraient divergeraient au premier verdict
+    ajouté.
+    """
+    if verdict.kind == host_probe.HOSTKEY:
+        return (
+            report.layer_verdict(
+                "transport",
+                report.DS_REFUSED,
+                t("Host key not known yet."),
+                t("Record it, then check again."),
+            ),
+        )
+    if verdict.kind == host_probe.UNREACHABLE:
+        return (
+            report.layer_verdict(
+                "transport",
+                report.DS_ERR,
+                verdict.detail or t("No answer."),
+                t("Check the address and the SSH access."),
+            ),
+        )
+    passe = report.layer_verdict(
+        "transport", report.DS_OK, t("SSH gets through.")
+    )
+    if verdict.kind == host_probe.PRODUCT_ABSENT:
+        return (
+            passe,
+            report.layer_verdict(
+                "service",
+                report.DS_ERR,
+                verdict.detail or t("ERPLibre is not at that path."),
+                t("Push the files, then install."),
+            ),
+        )
+    if verdict.kind not in (
+        host_probe.OK,
+        host_probe.NO_PRIVILEGE,
+        host_probe.NEEDS_ROOT,
+    ):
+        # Le vocabulaire est clos : un septième verdict se dirait ici plutôt
+        # que de tomber en silence dans la branche du succès.
+        return (
+            report.layer_verdict(
+                "transport", report.DS_ERR, t("Unexpected verdict.")
+            ),
+        )
+    service = report.layer_verdict(
+        "service", report.DS_OK, f"ERPLibre {verdict.version}"
+    )
+    if verdict.kind == host_probe.OK:
+        dit = t("Elevation available.") if verdict.sudo else t("Root account.")
+        return (
+            passe,
+            service,
+            report.layer_verdict("host", report.DS_OK, dit),
+        )
+    return (
+        passe,
+        service,
+        report.layer_verdict(
+            "host",
+            report.DS_SKIP,
+            t("No passwordless sudo."),
+            t("Two verbs need it; the nine others do not."),
+        ),
+    )
 
 
 def network_layers(active, autostart, cidr="", collision="") -> tuple:

@@ -21,6 +21,7 @@ sys.path.append(RACINE)
 
 from script.todo import deploy_verify as V  # noqa: E402
 from script.todo import devstack_report as R  # noqa: E402
+from script.remote import host_probe as P  # noqa: E402
 from script.todo import host_os  # noqa: E402
 
 
@@ -99,6 +100,71 @@ class TestLesDeuxGravites(unittest.TestCase):
         ]
         for interdit in ("print", "input", "open"):
             self.assertNotIn(interdit, appels)
+
+
+class TestLaTraductionDeLaSonde(unittest.TestCase):
+    """Elle vivait dans un ÉCRAN, éprouvée seulement à travers lui. Elle ne
+    dépend d'aucune conversation, et deux écrans qui la recopieraient
+    divergeraient au premier verdict ajouté."""
+
+    @staticmethod
+    def verdict(kind, **extra):
+        from script.remote import host_probe
+
+        return host_probe.Verdict(kind, **extra)
+
+    def couches_de(self, kind, **extra):
+        return V.probe_layers(self.verdict(kind, **extra))
+
+    def test_ssh_through_and_the_product_there_is_green(self):
+        couches = self.couches_de(P.OK, version="1.8.0")
+        self.assertEqual(R.DS_OK, R.aggregate_layers(couches))
+        self.assertIn("1.8.0", " ".join(c.detail for c in couches))
+
+    def test_an_unknown_host_key_is_refused_not_broken(self):
+        """Ce n'est pas une panne : c'est un accord qui manque, et il
+        s'obtient puis se re-sonde."""
+        couches = self.couches_de(P.HOSTKEY)
+        self.assertEqual(R.DS_REFUSED, couches[0].code)
+        self.assertEqual("transport", couches[0].layer)
+
+    def test_unreachable_and_product_absent_are_two_sides(self):
+        """LE défaut que cette répartition existe pour empêcher : l'un
+        envoie vérifier le réseau, l'autre envoie installer."""
+        injoignable = self.couches_de(P.UNREACHABLE, detail="timeout")
+        absent = self.couches_de(P.PRODUCT_ABSENT, detail="not found")
+        self.assertEqual({"transport"}, {c.layer for c in injoignable})
+        self.assertIn("service", {c.layer for c in absent})
+        transport = [c for c in absent if c.layer == "transport"][0]
+        self.assertEqual(R.DS_OK, transport.code)
+
+    def test_no_passwordless_sudo_is_an_absence_not_a_failure(self):
+        """Deux verbes sur onze en ont besoin : refuser la machine pour eux
+        fermerait les neuf autres, qui marchent."""
+        couches = self.couches_de(P.NO_PRIVILEGE, version="1.8.0")
+        hote = [c for c in couches if c.layer == "host"][0]
+        self.assertEqual(R.DS_SKIP, hote.code)
+        self.assertNotEqual(R.DS_ERR, R.aggregate_layers(couches))
+
+    def test_root_and_elevation_are_told_apart(self):
+        racine = self.couches_de(P.OK, version="1.8.0", sudo="")
+        eleve = self.couches_de(P.OK, version="1.8.0", sudo="sudo ")
+        dire = lambda cs: [c for c in cs if c.layer == "host"][0].detail
+        self.assertNotEqual(dire(racine), dire(eleve))
+
+    def test_a_verdict_outside_the_vocabulary_says_so(self):
+        """Le vocabulaire est clos : un septième verdict se dit ici plutôt
+        que de tomber en silence dans la branche du succès."""
+        couches = V.probe_layers(self.verdict("jamais-un-verdict"))
+        self.assertEqual(R.DS_ERR, couches[0].code)
+
+    def test_every_verdict_of_the_vocabulary_is_translated(self):
+        for kind in P.VERDICTS:
+            with self.subTest(kind=kind):
+                couches = self.couches_de(kind, version="1.8.0")
+                self.assertTrue(couches)
+                for couche in couches:
+                    self.assertIn(couche.layer, R.LAYERS)
 
 
 class TestLaCoucheReseau(unittest.TestCase):
