@@ -47,7 +47,28 @@ from script.todo.todo_i18n import t
 # Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
 # « /gpt », qui suppose un catalogue d'outils : l'annoncer dans « /? » avant
 # qu'il existe promettrait une entrée qui n'aboutit pas.
-COMMANDES_PHASE_1 = ("/?", "/q", "/new", "/srv", "/ctx", "/m", "/save")
+COMMANDES_PHASE_1 = (
+    "/?",
+    "/q",
+    "/new",
+    "/gpt",
+    "/srv",
+    "/ctx",
+    "/m",
+    "/save",
+)
+
+# Le catalogue se choisit par LETTRE. Le menu qui précède numérote ses
+# entrées ; une seconde liste numérotée juste après invite à retaper un
+# numéro de menu, et c'est une régression que le menu VPN a déjà payée. Un
+# chiffre reste accepté comme rang, parce que le doigt vient d'en taper un.
+LETTRES = "abcdefghijklmnopqrstuvwxyz"
+
+# Les marques de compatibilité. Seule une exigence CONTREDITE par un champ
+# réellement lu sur le serveur grise ; l'inconnu et l'estimé restent
+# exécutables, sans quoi le catalogue se viderait devant un serveur qui
+# n'annonce rien — c'est-à-dire devant la plupart.
+MARQUE = {"ok": "✅", "unknown": "⚠️", "no": "⛔"}
 
 # Le serveur distant que le coffre sait déjà servir. Il porte une poignée comme
 # les autres : c'est elle, et non son adresse, qui a le droit de circuler.
@@ -79,6 +100,9 @@ class AssistantMenuMixin:
                 "serveur": None,
                 "sonde": None,
                 "confirmes": set(),
+                "contextes": set(),
+                "gpt": None,
+                "gpts": None,
             }
         return self._llm_session
 
@@ -174,6 +198,7 @@ class AssistantMenuMixin:
             choices = [
                 {"section": t("Talk")},
                 {"prompt_description": parler},
+                {"prompt_description": self._llm_gpt_label()},
                 {"section": t("Server")},
                 {"prompt_description": (f"{t('Known servers')}  ({compte})")},
                 {"prompt_description": t("Search for a server…")},
@@ -194,10 +219,12 @@ class AssistantMenuMixin:
             elif status == "1":
                 self._llm_conversation()
             elif status == "2":
-                self._llm_servers()
+                self._llm_gpt_catalogue()
             elif status == "3":
-                self._llm_search()
+                self._llm_servers()
             elif status == "4":
+                self._llm_search()
+            elif status == "5":
                 self._llm_server_card()
             else:
                 print(t("Command not found !"))
@@ -815,6 +842,277 @@ class AssistantMenuMixin:
         }.get(hosting, "third party")
 
     # ------------------------------------------------------------------
+    # Le catalogue d'outils gpt
+
+    def _llm_gpts(self):
+        """Le catalogue, chargé une fois par session, avec ses problèmes.
+
+        Chargé une seule fois parce que la liste des fichiers ne change pas
+        pendant qu'on parle, et qu'un rechargement à chaque affichage relirait
+        le disque pour rien.
+        """
+        state = self._llm_state()
+        if state.get("gpts") is None:
+            from script.todo.assistant import gpt as llm_gpt
+
+            state["gpts"], state["gpt_problemes"] = llm_gpt.load_all()
+        return state["gpts"], state["gpt_problemes"]
+
+    def _llm_gpt_label(self):
+        """L'étiquette de l'entrée du catalogue, avec ses comptes.
+
+        Le nombre de compatibles se dit dès le menu : ouvrir un catalogue pour
+        y découvrir que rien ne convient est une visite perdue.
+        """
+        gpts, problemes = self._llm_gpts()
+        if not gpts:
+            fatals = [souci for souci in problemes if souci.fatal]
+            if fatals:
+                return f"{t('gpt tools')}  ({len(fatals)} ⚠)"
+            return f"{t('gpt tools')}  ({t('no gpt tool yet')})"
+        compatibles = sum(
+            1 for _, verdict, _ in self._llm_apparier(gpts) if verdict == "ok"
+        )
+        return (
+            f"{t('gpt tools')}  ({len(gpts)},"
+            f" {compatibles} {t('compatible')})"
+        )
+
+    def _llm_apparier(self, gpts):
+        """[(gpt, verdict, raison)] — chaque outil confronté au serveur.
+
+        Les capacités sont lues UNE fois par session et par serveur : chaque
+        lecture coûte une requête au serveur, et la réponse ne change pas
+        entre deux affichages du même catalogue.
+        """
+        from script.todo.assistant import capabilities as caps_mod
+
+        serveur = self._llm_current() or REPLI_OPENAI
+        state = self._llm_state()
+        cle = (serveur.host, serveur.port, serveur.model)
+        if state.get("caps_cle") != cle:
+            from script.todo.assistant import fingerprint as fp_mod
+
+            empreinte = fp_mod.identify(
+                fp_mod.collect(serveur.host, serveur.port, budget=2.0),
+                port=serveur.port,
+                host=serveur.host,
+            )
+            state["caps"] = caps_mod.read(
+                empreinte, serveur.host, serveur.port
+            )
+            state["caps_cle"] = cle
+        caps = state["caps"]
+        hosting = serveur.hosting
+        return [
+            (outil,) + caps_mod.match(outil.requires, caps, hosting)
+            for outil in gpts
+        ]
+
+    def _llm_gpt_catalogue(self):
+        """Choisir un outil, par lettre.
+
+        Une lettre plutôt qu'un numéro : le menu qui précède numérote ses
+        entrées, et une seconde liste numérotée juste après fait retaper un
+        numéro de menu. Un chiffre reste accepté comme rang, parce que le
+        doigt vient d'en taper un.
+
+        Un outil ⛔ imprime sa raison et re-demande : il n'est jamais avalé en
+        silence, et jamais lancé.
+        """
+        gpts, problemes = self._llm_gpts()
+        fatals = [souci for souci in problemes if souci.fatal]
+        if not gpts:
+            for souci in fatals:
+                self._llm_dire_probleme(souci)
+            if not fatals:
+                print(t("no gpt tool yet"))
+            return
+        while True:
+            appariement = self._llm_apparier(gpts)
+            serveur = self._llm_current() or REPLI_OPENAI
+            print(f"{t('Which gpt tool?')}    {self._llm_label(serveur)}")
+            for rang, (outil, verdict, raison) in enumerate(appariement):
+                marque = MARQUE.get(verdict, "")
+                print(
+                    f"  [{LETTRES[rang]}] {marque} {t(outil.name)}"
+                    f"   {t(outil.description)}"
+                )
+            print(f"  [0] {t('Back')}")
+            if any(v != "ok" for _, v, _ in appariement):
+                print(
+                    f"      ⚠️ {t('a requirement could not be checked')}"
+                    f" · ⛔ {t('a requirement is contradicted')}"
+                )
+            if fatals:
+                print(
+                    f"      ⚠ {len(fatals)} {t('unreadable gpt files')}"
+                    f" — [d] {t('details')}"
+                )
+            try:
+                reponse = click.prompt(t("Choice")).strip().lower()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            if reponse in ("0", ""):
+                return
+            if reponse == "d" and fatals:
+                for souci in problemes:
+                    self._llm_dire_probleme(souci)
+                continue
+            rang = self._llm_rang(reponse, len(appariement))
+            if rang is None:
+                print(t("Command not found !"))
+                continue
+            outil, verdict, raison = appariement[rang]
+            if verdict == "no":
+                print(f"  ⛔ {self._llm_raison(outil, raison)}")
+                continue
+            self._llm_state()["gpt"] = outil
+            print(f"✅ {t(outil.name)}")
+            self._llm_conversation()
+            return
+
+    @staticmethod
+    def _llm_rang(reponse, combien):
+        """Le rang désigné par une lettre ou par un chiffre, sinon `None`."""
+        if len(reponse) == 1 and reponse in LETTRES:
+            rang = LETTRES.index(reponse)
+            return rang if rang < combien else None
+        if reponse.isdigit():
+            rang = int(reponse) - 1
+            return rang if 0 <= rang < combien else None
+        return None
+
+    def _llm_raison(self, outil, raison):
+        """La raison d'un refus, ses trous remplis.
+
+        Les clés portent des `%s` que seul l'appelant peut remplir : lui seul
+        tient à la fois l'exigence déclarée et ce que le serveur annonce.
+        """
+        modele = t(raison)
+        if "%s" not in modele:
+            return modele
+        caps = self._llm_state().get("caps")
+        serveur = self._llm_current() or REPLI_OPENAI
+        for champ in ("context_window", "parameters"):
+            if champ in raison:
+                return modele % (
+                    outil.requires.get(champ),
+                    getattr(caps, champ, None),
+                )
+        return modele % (t(self._llm_hosting_key(serveur.hosting)),)
+
+    @staticmethod
+    def _llm_dire_probleme(souci):
+        """Un problème de chargement, traduit, avec son détail brut."""
+        nom = f"{souci.stem} : " if souci.stem else ""
+        detail = f" {souci.detail}" if souci.detail else ""
+        print(f"  ⚠ {nom}{t(souci.key)}{detail}")
+
+    # ------------------------------------------------------------------
+    # La porte du contexte déclaré
+
+    def _llm_demander_entrees(self, outil):
+        """Les entrées déclarées, demandées une par une. `None` si l'on sort.
+
+        Une valeur saisie n'est PAS validée ici : elle est substituée dans la
+        commande, et c'est le contrôle du contexte qui la voit ensuite, avec
+        la liste d'autorisation et le refus des métacaractères. Valider deux
+        fois inviterait à valider différemment.
+        """
+        valeurs = {}
+        for entree in outil.inputs:
+            nom = entree.get("name")
+            defaut = entree.get("default") or ""
+            invite = f"{nom}" + (f" [{defaut}]" if defaut else "")
+            try:
+                donnee = click.prompt(invite, default=defaut).strip()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return None
+            if not donnee and entree.get("required"):
+                print(t("Nothing has been sent."))
+                return None
+            valeurs[nom] = donnee
+        return valeurs
+
+    def _llm_context_gate(self, outil, serveur):
+        """Assembler le contexte déclaré, le montrer, et demander.
+
+        Rend le texte à joindre, ou `None` quand rien ne doit partir.
+
+        La confirmation vaut pour la session et pour ce couple (outil,
+        serveur) : la re-demander à chaque tour ferait cliquer sans lire, ce
+        qui est le contraire de ce qu'une porte sert à obtenir. Un tiers est
+        la seule exception — là, il n'y a pas de rattrapage.
+        """
+        from script import lib_identifiant
+        from script.todo.assistant import context as ctx
+
+        sources = outil.context or {}
+        if not sources.get("files") and not sources.get("commands"):
+            return ""
+        entrees = self._llm_demander_entrees(outil)
+        if entrees is None:
+            return None
+        termes = lib_identifiant.termes_interdits()
+        texte, trouvailles = ctx.assemble(
+            files=sources.get("files") or (),
+            commands=sources.get("commands") or (),
+            inputs=entrees,
+            termes=termes,
+        )
+        verdict, cle = ctx.gate(
+            trouvailles, serveur.hosting, names_checkable=bool(termes)
+        )
+        if verdict == ctx.BLOQUER:
+            print(f"⛔ {t(cle)}")
+            return None
+        state = self._llm_state()
+        sceau = (outil.stem, serveur.host, serveur.port)
+        if verdict == ctx.OK and sceau in state["contextes"]:
+            return texte
+        if not self._llm_montrer_contexte(texte, trouvailles, cle):
+            return None
+        state["contextes"].add(sceau)
+        return texte
+
+    def _llm_montrer_contexte(self, texte, trouvailles, cle):
+        """Montrer ce qui va partir, et demander. Vrai si l'on continue.
+
+        Ce que la porte montre est ce qui décide : la taille, la tête, la
+        queue, et chaque trouvaille nommée par sa source. Un aperçu qu'on ne
+        peut pas relire ne vaut pas mieux qu'aucun aperçu.
+        """
+        lignes = texte.splitlines()
+        print(f"── {t('What is about to be sent')} ──")
+        print(f"   {len(texte)} {t('characters')}, {len(lignes)} {t('lines')}")
+        for ligne in lignes[:6]:
+            print(f"   {ligne[:100]}")
+        if len(lignes) > 12:
+            print(f"   … {len(lignes) - 12} …")
+        for ligne in lignes[-6:] if len(lignes) > 12 else []:
+            print(f"   {ligne[:100]}")
+        if trouvailles:
+            print(f"   ⚠ {len(trouvailles)} {t(cle)}")
+            for trouvaille in trouvailles[:8]:
+                print(
+                    f"     {trouvaille['source']} · {trouvaille['motif']}"
+                    f" · {trouvaille['extrait']}"
+                )
+        print(f"   {t('What the filter checks')}")
+        try:
+            reponse = click.prompt(f"[c] {t('continue')} · [0] {t('cancel')}")
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        if reponse.strip().lower() != "c":
+            print(t("Nothing has been sent."))
+            return False
+        return True
+
+    # ------------------------------------------------------------------
     # La conversation
 
     def _llm_openai_key(self):
@@ -896,12 +1194,30 @@ class AssistantMenuMixin:
             )
         )
         print(t("Commands start with a slash. /? lists them."))
+        outil = self._llm_state().get("gpt")
+        systeme = ""
+        if outil is not None:
+            joint = self._llm_context_gate(outil, serveur)
+            if joint is None:
+                # La porte a refusé, ou l'utilisateur a annulé : rien ne part,
+                # et la conversation ne s'ouvre pas avec un contexte amputé.
+                return
+            systeme = "\n\n".join(
+                part for part in (outil.system, joint) if part
+            )
         backend = llm_backends.HttpBackend(
-            serveur, serveur.model, api_key=cle or None
+            serveur,
+            serveur.model,
+            api_key=cle or None,
+            params=dict(outil.params) if outil is not None else None,
         )
-        conversation = llm_chat.Conversation(backend)
+        conversation = llm_chat.Conversation(backend, system=systeme)
+        # Le RADICAL du nom de fichier, et non le nom traduit : celui-ci est
+        # une phrase, et l'invite d'état est réimprimée à chaque tour. Un
+        # radical est court, stable, et désigne le fichier sans ambiguïté.
+        marque_outil = f" · {outil.stem}" if outil is not None else ""
         invite = (
-            f"{self._llm_label(serveur)}"
+            f"{self._llm_label(serveur)}{marque_outil}"
             f" · {t(self._llm_hosting_key(serveur.hosting))} ▸ "
         )
         while True:
@@ -924,6 +1240,9 @@ class AssistantMenuMixin:
                 jetes = conversation.reset()
                 print(f"  {jetes} {t('turns dropped')}")
                 continue
+            if commande == "/gpt":
+                self._llm_gpt_catalogue()
+                return
             if commande == "/srv":
                 self._llm_servers()
                 return

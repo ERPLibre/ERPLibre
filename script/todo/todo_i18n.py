@@ -12486,6 +12486,196 @@ TRANSLATIONS = {
         ),
         "en": "Sweeping the network reaches machines you did not name.",
     },
+    "gpt tools": {
+        "fr": "Outils gpt",
+        "en": "gpt tools",
+    },
+    "no gpt tool yet": {
+        "fr": "aucun outil gpt pour l'instant",
+        "en": "no gpt tool yet",
+    },
+    "compatible": {
+        "fr": "compatibles",
+        "en": "compatible",
+    },
+    "Which gpt tool?": {
+        "fr": "Quel outil gpt ?",
+        "en": "Which gpt tool?",
+    },
+    "a requirement is contradicted": {
+        "fr": "une exigence est contredite",
+        "en": "a requirement is contradicted",
+    },
+    "unreadable gpt files": {
+        "fr": "fichiers gpt illisibles",
+        "en": "unreadable gpt files",
+    },
+    "details": {
+        "fr": "détails",
+        "en": "details",
+    },
+    "What is about to be sent": {
+        "fr": "Ce qui va être envoyé",
+        "en": "What is about to be sent",
+    },
+    "characters": {
+        "fr": "caractères",
+        "en": "characters",
+    },
+    "What the filter checks": {
+        "fr": "Ce que le filtre contrôle : adresses, courriels, chemins de compte. Pas les noms.",
+        "en": "What the filter checks",
+    },
+    "cancel": {
+        "fr": "annuler",
+        "en": "cancel",
+    },
+    "Nothing has been sent.": {
+        "fr": "Rien n'a été envoyé.",
+        "en": "Nothing has been sent.",
+    },
+    # Catalogue gpt et porte du contexte (script/todo/assistant/gpt.py,
+    # script/todo/assistant/context.py, capabilities.py)
+    "No front-matter: a gpt opens with ---": {
+        "fr": "Pas d'en-tête : un gpt s'ouvre par ---",
+        "en": "No front-matter: a gpt opens with ---",
+    },
+    "Front-matter is not closed": {
+        "fr": "En-tête non fermé",
+        "en": "Front-matter is not closed",
+    },
+    "Front-matter is not a mapping": {
+        "fr": "L'en-tête n'est pas un dictionnaire",
+        "en": "Front-matter is not a mapping",
+    },
+    "Front-matter is unreadable": {
+        "fr": "En-tête illisible",
+        "en": "Front-matter is unreadable",
+    },
+    "Repeated key in front-matter:": {
+        "fr": "Clé répétée dans l'en-tête :",
+        "en": "Repeated key in front-matter:",
+    },
+    "No schema version: gpt is required": {
+        "fr": "Version de schéma absente : gpt est obligatoire",
+        "en": "No schema version: gpt is required",
+    },
+    "Schema too recent for this version of TODO": {
+        "fr": "Schéma trop récent pour cette version de TODO",
+        "en": "Schema too recent for this version of TODO",
+    },
+    "No name": {
+        "fr": "Nom absent",
+        "en": "No name",
+    },
+    "No description": {
+        "fr": "Description absente",
+        "en": "No description",
+    },
+    "Missing marker <!-- [question] -->": {
+        "fr": "Marqueur <!-- [question] --> absent",
+        "en": "Missing marker <!-- [question] -->",
+    },
+    "Unknown key in front-matter:": {
+        "fr": "Clé inconnue dans l'en-tête :",
+        "en": "Unknown key in front-matter:",
+    },
+    "name_fr belongs in the translations file": {
+        "fr": "name_fr appartient au fichier des traductions",
+        "en": "name_fr belongs in the translations file",
+    },
+    "A gpt from outside the repository may not declare any command.": {
+        "fr": "Un gpt hors du dépôt ne peut déclarer aucune commande.",
+        "en": "A gpt from outside the repository may not declare any command.",
+    },
+    "Overrides the one from": {
+        "fr": "Écrase celui de",
+        "en": "Overrides the one from",
+    },
+    "Unreadable file:": {
+        "fr": "Fichier illisible :",
+        "en": "Unreadable file:",
+    },
+    "A gpt may not be named *.base.md": {
+        "fr": "Un gpt ne peut pas s'appeler *.base.md",
+        "en": "A gpt may not be named *.base.md",
+    },
+    "PyYAML is missing: the gpt catalogue stays closed, the free question works.": {
+        "fr": "PyYAML manque : le catalogue gpt reste fermé, la question libre fonctionne.",
+        "en": "PyYAML is missing: the gpt catalogue stays closed, the free question works.",
+    },
+    "private/noms_interdits.txt is absent: no client, database, VM or host name can be recognized.": {
+        "fr": "private/noms_interdits.txt est absent : aucun nom de client, de base, de VM ou d'hôte ne peut être reconnu.",
+        "en": "private/noms_interdits.txt is absent: no client, database, VM or host name can be recognized.",
+    },
+    "A finding blocks a send to a third party. No override.": {
+        "fr": "Une trouvaille bloque un envoi vers un tiers. Aucun passe-droit.",
+        "en": "A finding blocks a send to a third party. No override.",
+    },
+    "finding to re-read before sending": {
+        "fr": "trouvaille à relire avant d'envoyer",
+        "en": "finding to re-read before sending",
+    },
+    "findings to re-read before sending": {
+        "fr": "trouvailles à relire avant d'envoyer",
+        "en": "findings to re-read before sending",
+    },
+    "… [cut]": {
+        "fr": "… [coupé]",
+        "en": "… [cut]",
+    },
+    "a requirement could not be checked": {
+        "fr": "une exigence n'a pas pu être vérifiée",
+        "en": "a requirement could not be checked",
+    },
+    "asks for %s of context, this server announces %s": {
+        "fr": "demande %s de contexte, ce serveur en annonce %s",
+        "en": "asks for %s of context, this server announces %s",
+    },
+    "asks for %s B of parameters, this server announces %s B": {
+        "fr": "demande %s B de paramètres, ce serveur en annonce %s B",
+        "en": "asks for %s B of parameters, this server announces %s B",
+    },
+    "asks for a local server, this one is %s": {
+        "fr": "demande un serveur local, celui-ci est %s",
+        "en": "asks for a local server, this one is %s",
+    },
+    "asks for tool calling, this server does not announce it": {
+        "fr": "demande l'appel d'outils, ce serveur ne l'annonce pas",
+        "en": "asks for tool calling, this server does not announce it",
+    },
+    "asks for vision, this server does not announce it": {
+        "fr": "demande la vision, ce serveur ne l'annonce pas",
+        "en": "asks for vision, this server does not announce it",
+    },
+    "asks for JSON output, this server does not announce it": {
+        "fr": "demande une sortie JSON, ce serveur ne l'annonce pas",
+        "en": "asks for JSON output, this server does not announce it",
+    },
+    "hosting could not be checked": {
+        "fr": "l'hébergement n'a pas pu être vérifié",
+        "en": "hosting could not be checked",
+    },
+    "context_window could not be checked on this server": {
+        "fr": "context_window n'a pas pu être vérifié sur ce serveur",
+        "en": "context_window could not be checked on this server",
+    },
+    "parameters could not be checked on this server": {
+        "fr": "parameters n'a pas pu être vérifié sur ce serveur",
+        "en": "parameters could not be checked on this server",
+    },
+    "tool_calling could not be checked on this server": {
+        "fr": "tool_calling n'a pas pu être vérifié sur ce serveur",
+        "en": "tool_calling could not be checked on this server",
+    },
+    "vision could not be checked on this server": {
+        "fr": "vision n'a pas pu être vérifié sur ce serveur",
+        "en": "vision could not be checked on this server",
+    },
+    "json_output could not be checked on this server": {
+        "fr": "json_output n'a pas pu être vérifié sur ce serveur",
+        "en": "json_output could not be checked on this server",
+    },
     "A network I type (CIDR)": {
         "fr": "Un réseau que je tape (CIDR)",
         "en": "A network I type (CIDR)",
