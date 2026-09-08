@@ -5544,6 +5544,17 @@ TRANSLATIONS = {
         "fr": "compte système, service systemd, compte administrateur",
         "en": "system account, systemd service, admin account",
     },
+    "admin password drawn into /etc/forgejo/admin-password": {
+        "fr": (
+            "mot de passe admin tiré au sort dans"
+            " /etc/forgejo/admin-password"
+        ),
+        "en": "admin password drawn into /etc/forgejo/admin-password",
+    },
+    "registration closed, private-range mirrors refused": {
+        "fr": "inscription fermée, miroirs en plage privée refusés",
+        "en": "registration closed, private-range mirrors refused",
+    },
     "posed by script/forgejo/install_forgejo.sh": {
         "fr": "posé par script/forgejo/install_forgejo.sh",
         "en": "posed by script/forgejo/install_forgejo.sh",

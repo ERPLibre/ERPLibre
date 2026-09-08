@@ -847,6 +847,8 @@ class QemuInstallMixin:
             "help": (
                 "git forge on port 3000, SQLite database",
                 "system account, systemd service, admin account",
+                "admin password drawn into /etc/forgejo/admin-password",
+                "registration closed, private-range mirrors refused",
                 "posed by script/forgejo/install_forgejo.sh",
             ),
             "hint": "self-hosted git forge on :3000, SQLite",
