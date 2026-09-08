@@ -1411,6 +1411,61 @@ def _cles_du_menu(traduites_seulement=True):
     return cles
 
 
+class TestPolices(unittest.TestCase):
+    """Aucune forme ne sépare une fonte courante d'une fonte de marque.
+
+    Le renommage porte donc sur toutes celles que la liste ne nomme pas, et
+    l'erreur penche du côté du dégât cosmétique. La liste est le confort de
+    la copie, jamais la propriété de sûreté.
+    """
+
+    def test_les_courantes_gardent_leur_nom(self):
+        for nom in (
+            "Calibri",
+            "Liberation Sans",
+            "DejaVu Sans",
+            "Consolas",
+            "Georgia",
+            "Wingdings",
+            "Noto Sans",
+        ):
+            with self.subTest(nom=nom):
+                self.assertIn(nom, formats.POLICES_COURANTES)
+
+    def test_une_fonte_inconnue_est_renommee(self):
+        self.assertNotIn("Aboulie Sans", formats.POLICES_COURANTES)
+
+
+class TestAvertissementEncodage(unittest.TestCase):
+    """Le délimiteur de la source est repris, son encodage NON.
+
+    Le rapport annonce l'encodage détecté, ce qui laissait croire que la
+    copie le garde. Elle sort en UTF-8 : un mot du vivier ou un en-tête
+    gardé peut ne pas s'encoder dans le jeu d'origine, et l'écriture
+    échouerait APRÈS la question du consentement.
+    """
+
+    AVIS = "The copy is written in UTF-8, whatever the source was."
+
+    def test_un_encodage_autre_est_annonce(self):
+        for encodage in ("cp1252", "latin-1", "ISO-8859-15"):
+            with self.subTest(encodage=encodage):
+                dits = formats._avertissements(
+                    {"format": "csv", "encodage": encodage}, {}
+                )
+                self.assertIn(self.AVIS, dits)
+
+    def test_utf8_ne_dit_rien(self):
+        """Rien ne change, donc rien à dire : un avis sans objet use
+        l'attention qu'il faudra ailleurs."""
+        for encodage in ("utf-8", "UTF_8", "ascii", None, ""):
+            with self.subTest(encodage=encodage):
+                dits = formats._avertissements(
+                    {"format": "csv", "encodage": encodage}, {}
+                )
+                self.assertNotIn(self.AVIS, dits)
+
+
 class TestFichiersPrevus(unittest.TestCase):
     """Les chemins annoncés doivent être ceux qui seront écrits.
 
@@ -2099,6 +2154,11 @@ MARQUEURS = {
     # annoncé par personne.
     "format_axe": "ZQXAXISFMT",
     "format_etiquette": "ZQXLBLFMT",
+    # Un style différentiel porte sa police EN LIGNE : elle n'est pas dans
+    # la liste des polices du classeur, que la passe de renommage
+    # parcourt. Une fonte de marque nommée par une seule mise en forme
+    # conditionnelle traversait.
+    "police_dxf": "ZQXFONTDXF",
 }
 
 # Les quatre familles référencées par une formule. On ne peut pas les
@@ -2135,7 +2195,7 @@ def _fabriquer_fixture(chemin):
         CustomPropertyList,
         StringProperty,
     )
-    from openpyxl.styles import PatternFill
+    from openpyxl.styles import Font, PatternFill
     from openpyxl.workbook.defined_name import DefinedName
     from openpyxl.worksheet.datavalidation import DataValidation
     from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -2179,6 +2239,7 @@ def _fabriquer_fixture(chemin):
             operator="equal",
             formula=[f'"{M["condformat"]}"'],
             fill=PatternFill(start_color="FFEE1111", end_color="FFEE1111"),
+            font=Font(name=M["police_dxf"]),
         ),
     )
     onglet.auto_filter.ref = "A1:B3"
@@ -2463,8 +2524,8 @@ class TestFuiteXlsx(unittest.TestCase):
 
     def test_le_compte_des_effaces(self):
         efface = set(TOUS_MARQUEURS) - set(_balayer(self._anonymiser()))
-        self.assertEqual(len(TOUS_MARQUEURS), 34)
-        self.assertEqual(len(efface), 29)
+        self.assertEqual(len(TOUS_MARQUEURS), 35)
+        self.assertEqual(len(efface), 30)
 
     def test_la_constante_d_une_plage_nommee_passe_par_la_table(self):
         """Le NOM survit par nécessité, la VALEUR doit partir.

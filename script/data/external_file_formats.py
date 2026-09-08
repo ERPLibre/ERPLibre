@@ -1156,6 +1156,92 @@ def _formats_de_graphique(graphique, mot_si_long):
                     pile.append(candidat)
 
 
+# Ce qu'installent Office, LibreOffice et les systèmes, plus les
+# métriques-compatibles libres. Une police absente de cette liste devient
+# `police_<n>` : la copie perd son apparence, ce qui est le côté sur
+# lequel pencher quand le nom peut être celui d'une fonte de marque.
+POLICES_COURANTES = frozenset(
+    (
+        "Aptos",
+        "Aptos Display",
+        "Aptos Narrow",
+        "Arial",
+        "Arial Black",
+        "Arial Narrow",
+        "Bahnschrift",
+        "Bookman Old Style",
+        "Cabin",
+        "Calibri",
+        "Calibri Light",
+        "Cambria",
+        "Cambria Math",
+        "Candara",
+        "Carlito",
+        "Caladea",
+        "Century Gothic",
+        "Comic Sans MS",
+        "Consolas",
+        "Constantia",
+        "Corbel",
+        "Courier",
+        "Courier New",
+        "DejaVu Sans",
+        "DejaVu Sans Mono",
+        "DejaVu Serif",
+        "Ebrima",
+        "Franklin Gothic Book",
+        "Garamond",
+        "Georgia",
+        "Gill Sans MT",
+        "Helvetica",
+        "Helvetica Neue",
+        "Impact",
+        "Inconsolata",
+        "Lato",
+        "Liberation Mono",
+        "Liberation Sans",
+        "Liberation Sans Narrow",
+        "Liberation Serif",
+        "Lucida Console",
+        "Lucida Sans Unicode",
+        "MS Gothic",
+        "MS PGothic",
+        "MS Sans Serif",
+        "MS Serif",
+        "Malgun Gothic",
+        "Menlo",
+        "Meiryo",
+        "Monaco",
+        "Noto Sans",
+        "Noto Serif",
+        "Open Sans",
+        "Palatino Linotype",
+        "PT Sans",
+        "Roboto",
+        "SimSun",
+        "Segoe UI",
+        "Segoe UI Light",
+        "Segoe UI Semibold",
+        "Segoe UI Symbol",
+        "Source Sans Pro",
+        "Sylfaen",
+        "Symbol",
+        "Tahoma",
+        "Times",
+        "Times New Roman",
+        "Trebuchet MS",
+        "Ubuntu",
+        "Ubuntu Mono",
+        "Verdana",
+        "Webdings",
+        "Wingdings",
+        "Wingdings 2",
+        "Wingdings 3",
+        "Yu Gothic",
+    )
+)
+
+
 def _renommer_polices(classeur):
     """Le NOM d'une police part aussi dans les styles.
 
@@ -1164,28 +1250,37 @@ def _renommer_polices(classeur):
     la faire passer par la table brûlerait des mots du vivier sur ce qui
     n'est pas une donnée de la grille, et ferait tolérer ce mot par le
     filet là où il n'a rien à excuser.
+
+    Aucune forme ne sépare « Century Gothic » d'une fonte de marque : les
+    deux sont des noms propres. Le renommage porte donc sur TOUTES celles
+    que la liste ne nomme pas, et l'erreur penche du côté du dégât
+    cosmétique plutôt que du nom qui sort. `POLICES_COURANTES` n'est pas
+    la propriété de sûreté, seulement le confort de la copie : ce qu'elle
+    oublie perd son apparence, jamais sa donnée.
     """
-    connues = {
-        "Calibri",
-        "Arial",
-        "Times New Roman",
-        "Courier New",
-        "Verdana",
-        "Tahoma",
-        "Helvetica",
-        "Cambria",
-        "Segoe UI",
-        "Aptos Narrow",
-        "Aptos",
-        "MS Sans Serif",
-    }
     touches = 0
-    for rang, police in enumerate(
-        getattr(classeur, "_fonts", []) or [], start=1
-    ):
-        nom = getattr(police, "name", None)
-        if nom and nom not in connues:
-            police.name = f"police_{rang}"
+    rang = 0
+    # Un style DIFFÉRENTIEL porte sa police EN LIGNE : elle vit dans
+    # `xl/styles.xml` sans passer par la liste des polices du classeur, si
+    # bien qu'une fonte de marque survivait au renommage en n'étant nommée
+    # que par une mise en forme conditionnelle.
+    for porteur in list(getattr(classeur, "_fonts", []) or []) + [
+        getattr(style, "font", None)
+        for style in (
+            getattr(
+                getattr(classeur, "_differential_styles", None),
+                "styles",
+                None,
+            )
+            or []
+        )
+    ]:
+        if porteur is None:
+            continue
+        rang += 1
+        nom = getattr(porteur, "name", None)
+        if nom and nom not in POLICES_COURANTES:
+            porteur.name = f"police_{rang}"
             touches += 1
     return touches
 
@@ -1697,6 +1792,15 @@ def _avertissements(rapport, options):
             "Element and attribute names are kept as structure;"
             " they may identify."
         )
+    encodage = (rapport.get("encodage") or "").lower().replace("-", "_")
+    if encodage and encodage not in ("utf_8", "utf8", "ascii"):
+        # Le délimiteur de la source est repris, son encodage NON : la
+        # copie sort en UTF-8. C'est le bon choix — un mot du vivier ou un
+        # en-tête gardé peut ne pas s'encoder dans le jeu d'origine, et
+        # l'écriture échouerait après la question du consentement. Le
+        # défaut était de ne pas le dire, alors que le rapport annonce
+        # l'encodage détecté et laisse croire qu'il est conservé.
+        dits.append("The copy is written in UTF-8, whatever the source was.")
     if options.get("garder_macros"):
         dits.append(
             "The VBA project and its companions (form controls, ActiveX,"

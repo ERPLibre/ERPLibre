@@ -490,20 +490,34 @@ class TransformMenuMixin:
     # ------------------------------------------------------------------
     # La destination
     # ------------------------------------------------------------------
-    def _transform_select_destination(self, source, fmt):
+    def _transform_select_destination(self, source, fmt, macros=False):
         """Le chemin de sortie, ou None si l'opérateur renonce.
 
         Le défaut NE REPREND PAS le nom source : sur un export réel, ce nom
         porte le client, la base ou l'année, et toute l'entrée existe pour
         produire un fichier transmissible. Le nom source reste offert, et
         l'invite dit alors qu'il n'a pas été anonymisé.
+
+        Un classeur qui GARDE ses macros se nomme `.xlsm` : Excel lie
+        l'extension au contenu, et refuse d'ouvrir un `.xlsx` qui porte un
+        projet VBA. La copie était écrite correctement et n'ouvrait pas.
         """
         horodatage = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         extension = EXTENSION_PAR_FORMAT.get(fmt, ".out")
+        if macros and extension == ".xlsx":
+            extension = ".xlsm"
         defaut = os.path.join(
             SORTIE_PAR_DEFAUT, f"{horodatage}.anon{extension}"
         )
         print(f"\n   {t('Destination')}: {defaut}")
+        if extension == ".xlsm":
+            print(
+                "   ⚠ %s"
+                % t(
+                    "Macros are kept, so the copy is named .xlsm:"
+                    " Excel refuses a .xlsx holding a VBA project."
+                )
+            )
         avis = t(
             "The file name is not anonymised;"
             " the default does not reuse it."
@@ -596,7 +610,9 @@ class TransformMenuMixin:
 
         sortie_fmt = options["conversion"] or rapport["format"]
         fmt_moteur = self._transform_fmt_moteur(rapport["format"], sortie_fmt)
-        destination = self._transform_select_destination(chemin, sortie_fmt)
+        destination = self._transform_select_destination(
+            chemin, sortie_fmt, options.get("garder_macros")
+        )
         if not destination:
             print(t("Nothing to do."))
             return

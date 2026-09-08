@@ -13100,6 +13100,14 @@ TRANSLATIONS = {
         "fr": 'Garder les graphiques dans la copie ? (o/N) : ',
         "en": 'Keep the charts in the copy? (y/N): ',
     },
+    'Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.': {
+        "fr": "Les macros sont gardées, donc la copie se nomme .xlsm : Excel refuse un .xlsx qui porte un projet VBA.",
+        "en": 'Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.',
+    },
+    'The copy is written in UTF-8, whatever the source was.': {
+        "fr": "La copie est écrite en UTF-8, quel qu'ait été l'encodage de la source.",
+        "en": 'The copy is written in UTF-8, whatever the source was.',
+    },
     'Preview — nothing written yet': {
         "fr": "Aperçu — rien n'est encore écrit",
         "en": 'Preview — nothing written yet',
@@ -13123,10 +13131,6 @@ TRANSLATIONS = {
     'cell(s) replaced': {
         "fr": 'cellule(s) remplacée(s)',
         "en": 'cell(s) replaced',
-    },
-    'formula(s) left intact': {
-        "fr": 'formule(s) laissée(s) intacte(s)',
-        "en": 'formula(s) left intact',
     },
     'cell(s) left out of scope': {
         "fr": 'cellule(s) laissée(s) hors portée',
