@@ -74,12 +74,19 @@ csv.field_size_limit(16 * 1024 * 1024)
 
 
 class ErreurMoteur(Exception):
-    """Un refus motivé, porteur d'une clé d'`ERREURS`."""
+    """Un refus motivé, porteur d'une clé d'`ERREURS`.
 
-    def __init__(self, cle, detail=""):
+    `conseil` est une SECONDE clé, celle du remède, quand le refus en a un
+    que l'opérateur ne devinerait pas. Le détail nomme ce que le moteur
+    trouve, le conseil dit quoi répondre à la prochaine exécution ; les
+    mêler dans une chaîne les rend intraduisibles tous les deux.
+    """
+
+    def __init__(self, cle, detail="", conseil=""):
         super().__init__(cle)
         self.cle = cle
         self.detail = detail
+        self.conseil = conseil
 
 
 # ----------------------------------------------------------------------
@@ -2063,7 +2070,24 @@ def ecrire(chemin, destination, options):
             f"{v!r} -> {', '.join(sorted(set(parties))[:2])}"
             for v, parties in sorted(fuites.items())[:5]
         )
-        raise ErreurMoteur("fuite_detectee", f"{len(fuites)} — {apercu}")
+        # Une macro cite couramment la valeur d'une cellule, et le projet
+        # VBA est recopié tel quel : garder les macros rend alors la copie
+        # irrecevable. Le refus est juste, mais l'option qui le cause vient
+        # d'être choisie une écran plus tôt, et le détail seul nomme une
+        # partie du format sans dire quoi en faire.
+        conseil = ""
+        if options.get("garder_macros") and any(
+            "vba" in partie.lower() or partie.lower().endswith(".bin")
+            for parties in fuites.values()
+            for partie in parties
+        ):
+            conseil = (
+                "The kept VBA project quotes a source value;"
+                " answer no to the macro question to write the copy."
+            )
+        raise ErreurMoteur(
+            "fuite_detectee", f"{len(fuites)} — {apercu}", conseil
+        )
 
     chemin_table = options.get("table_chemin")
     if chemin_table:

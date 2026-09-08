@@ -144,6 +144,8 @@ class TransformMenuMixin:
 
         if "erreur" in resultat:
             print(f"❌ {t(resultat['erreur'])}{resultat.get('detail', '')}")
+            if resultat.get("conseil"):
+                print(f"   → {t(resultat['conseil'])}")
             return None
         return resultat
 

@@ -1457,6 +1457,38 @@ def _cles_du_menu(traduites_seulement=True):
     return cles
 
 
+class TestConseilDuRefus(unittest.TestCase):
+    """Un refus dont l'opérateur ne devinerait pas le remède.
+
+    Une macro cite couramment la valeur d'une cellule, et le projet VBA est
+    recopié tel quel : garder les macros rend alors la copie irrecevable au
+    filet. Le refus est juste — la valeur sortirait en clair — mais le
+    détail nomme une partie du format sans dire quoi en faire, alors que
+    l'option qui le cause vient d'être choisie un écran plus tôt.
+    """
+
+    def test_le_conseil_est_une_cle_a_part(self):
+        """Mêler le remède au détail les rendait intraduisibles tous les
+        deux : le détail porte un chemin, le conseil une phrase."""
+        exc = formats.ErreurMoteur("fuite_detectee", "1 — x", "conseil")
+        self.assertEqual(exc.detail, "1 — x")
+        self.assertEqual(exc.conseil, "conseil")
+
+    def test_sans_conseil_l_attribut_existe_quand_meme(self):
+        """Le CLI le lit sur toute erreur, pas sur celles qui en ont un."""
+        self.assertEqual(formats.ErreurMoteur("format_inconnu").conseil, "")
+
+    def test_le_conseil_est_traduit_dans_les_deux_langues(self):
+        avis = (
+            "The kept VBA project quotes a source value;"
+            " answer no to the macro question to write the copy."
+        )
+        self.assertIn(avis, todo_i18n.TRANSLATIONS)
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                self.assertTrue(todo_i18n.TRANSLATIONS[avis][langue].strip())
+
+
 class TestPolices(unittest.TestCase):
     """Aucune forme ne sépare une fonte courante d'une fonte de marque.
 

@@ -37,8 +37,8 @@ import csv
 import datetime
 import decimal
 import html
-import math
 import json
+import math
 import os
 import re
 import sys
@@ -1197,9 +1197,7 @@ def _matiere(nom, brut, reductible=True):
         vues.add(brut.replace('""', '"'))
     if "\\" in brut:
         vues.add(
-            brut.replace('\\"', '"')
-            .replace("\\/", "/")
-            .replace("\\\\", "\\")
+            brut.replace('\\"', '"').replace("\\/", "/").replace("\\\\", "\\")
         )
     return brut, _joindre(vues)
 
@@ -1502,8 +1500,11 @@ def main(
         sys.stdout.write("\n")
         return code
 
-    def echec(cle, detail=""):
-        return rendre({"erreur": ERREURS.get(cle, cle), "detail": detail}, 1)
+    def echec(cle, detail="", conseil=""):
+        objet = {"erreur": ERREURS.get(cle, cle), "detail": detail}
+        if conseil:
+            objet["conseil"] = conseil
+        return rendre(objet, 1)
 
     if args.capabilities:
         return rendre(formats.capabilities())
@@ -1526,7 +1527,7 @@ def main(
             return echec("format_inconnu", "--out")
         return rendre(formats.ecrire(chemin, args.out, options))
     except formats.ErreurMoteur as exc:
-        return echec(exc.cle, exc.detail)
+        return echec(exc.cle, exc.detail, getattr(exc, "conseil", ""))
     except Exception as exc:  # pragma: no cover - filet de dernier recours
         import traceback
 

@@ -13108,6 +13108,10 @@ TRANSLATIONS = {
         "fr": "La copie est écrite en UTF-8, quel qu'ait été l'encodage de la source.",
         "en": 'The copy is written in UTF-8, whatever the source was.',
     },
+    'The kept VBA project quotes a source value; answer no to the macro question to write the copy.': {
+        "fr": "Le projet VBA gardé cite une valeur de la source ; répondre non à la question des macros pour écrire la copie.",
+        "en": 'The kept VBA project quotes a source value; answer no to the macro question to write the copy.',
+    },
     'Preview — nothing written yet': {
         "fr": "Aperçu — rien n'est encore écrit",
         "en": 'Preview — nothing written yet',
