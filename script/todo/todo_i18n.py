@@ -13317,9 +13317,9 @@ TRANSLATIONS = {
         "fr": 'Non produit ici, laissé en place :',
         "en": 'Not produced here, left alone:',
     },
-    'The library here cannot read this workbook: ': {
-        "fr": 'La bibliothèque ne sait pas lire ce classeur ici : ',
-        "en": 'The library here cannot read this workbook: ',
+    'The library here cannot read this file: ': {
+        "fr": 'La bibliothèque ne sait pas lire ce fichier ici : ',
+        "en": 'The library here cannot read this file: ',
     },
     "This target cannot hold the source's shape: ": {
         "fr": 'Cette cible ne peut pas porter la forme de la source : ',

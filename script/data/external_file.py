@@ -82,7 +82,7 @@ ERREURS = {
     " or the copy; nothing was written.",
     "fuite_detectee": "A source value survives in the copy;"
     " nothing was written: ",
-    "lecture_impossible": "The library here cannot read this workbook: ",
+    "lecture_impossible": "The library here cannot read this file: ",
 }
 
 # Les sept constantes d'erreur d'Excel. Elles arrivent en `str` SANS `=` en
@@ -602,7 +602,9 @@ def _bornes_par_signe(valeur, bornes):
     """
     bas, haut = 0.0, 1000.0
     if bornes:
-        mini, maxi = bornes
+        # Un troisième terme peut suivre — l'intégralité de la colonne —,
+        # que cette fonction ignore : elle ne décide que de l'intervalle.
+        mini, maxi = bornes[0], bornes[1]
         if mini is not None and maxi is not None and maxi > mini:
             bas, haut = float(mini), float(maxi)
     if valeur > 0:
@@ -779,8 +781,20 @@ def nouveau_nombre(valeur, rng, bornes=None, table=None):
         return valeur
     if valeur == 0:
         return valeur
+    # La clé de la table reste celle de la VALEUR : la faire dépendre de
+    # la colonne donnerait deux clés à un même nombre vu dans deux
+    # colonnes de résolutions différentes, et la jointure qui les relie se
+    # désagrégerait.
+    cle = f"{'i' if isinstance(valeur, int) else 'f'}:{valeur!r}"
+    # Le TIRAGE, lui, suit la colonne. `isinstance` ne peut pas en
+    # répondre : le format `.xls` ne stocke que des doubles, si bien que
+    # son lecteur rend 100 en `100.0` et que toute colonne d'entiers
+    # ressortait décimale — une copie qui ne se réimporte plus dans un
+    # champ entier. C'est la même leçon que pour la résolution : le type
+    # d'UNE valeur ne dit pas la nature de sa colonne.
     entier = isinstance(valeur, int)
-    cle = f"{'i' if entier else 'f'}:{valeur!r}"
+    if bornes is not None and len(bornes) > 2 and bornes[2] is not None:
+        entier = bool(bornes[2])
     if table is not None:
         connu = table.nombres.get(cle)
         if connu is not None:

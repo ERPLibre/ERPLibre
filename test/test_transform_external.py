@@ -594,6 +594,81 @@ class TestFiletSurUneValeurNumerique(unittest.TestCase):
         self.assertIn("10785", fuites)
 
 
+class TestResolutionDeLaColonne(unittest.TestCase):
+    """L'intégralité vient de la COLONNE, non du type d'une valeur.
+
+    `isinstance(valeur, int)` ne peut pas en répondre : le format `.xls`
+    ne stocke que des doubles, si bien que son lecteur rend 100 en
+    « 100.0 ». Toute colonne d'entiers d'un `.xls` ressortait donc
+    décimale, et la copie ne se réimportait plus dans un champ entier.
+    """
+
+    def setUp(self):
+        self.rng = random.Random(7)
+
+    def test_une_colonne_entiere_rend_des_entiers(self):
+        """Même quand le lecteur a rendu des flottants."""
+        for valeur in (100.0, 256.0, 101.0):
+            with self.subTest(valeur=valeur):
+                tire = noyau.nouveau_nombre(
+                    valeur, self.rng, bornes=(100.0, 256.0, True)
+                )
+                self.assertTrue(float(tire).is_integer(), tire)
+
+    def test_une_colonne_decimale_garde_ses_decimales(self):
+        vus = [
+            noyau.nouveau_nombre(
+                v, random.Random(v), bornes=(0.02, 1007.64, False)
+            )
+            for v in (32.38, 47.42, 126.38)
+        ]
+        self.assertFalse(all(float(v).is_integer() for v in vus), vus)
+
+    def test_sans_troisieme_terme_le_type_decide_encore(self):
+        """Les bornes à deux termes restent valides : la fonction sert
+        aussi hors du parcours de colonnes."""
+        self.assertTrue(
+            float(
+                noyau.nouveau_nombre(5, self.rng, bornes=(1, 100))
+            ).is_integer()
+        )
+        self.assertIsInstance(
+            noyau.nouveau_nombre(5.5, self.rng, bornes=(1.0, 100.0)), float
+        )
+
+    def test_la_cle_de_la_table_ne_depend_PAS_de_la_colonne(self):
+        """Sinon un même nombre vu dans deux colonnes de résolutions
+        différentes recevrait deux remplacements, et la jointure qui les
+        relie se désagrégerait."""
+        table = noyau.Correspondance()
+        premier = noyau.nouveau_nombre(
+            10248, random.Random(1), bornes=(10248, 11077, True), table=table
+        )
+        second = noyau.nouveau_nombre(
+            10248, random.Random(2), bornes=(1, 99999, False), table=table
+        )
+        self.assertEqual(premier, second)
+
+    def test_une_seule_decimale_suffit_a_decimaliser_la_colonne(self):
+        """La mesure porte sur TOUTE la colonne."""
+        feuille = formats.Feuille(
+            "F", [["montant"], [1.0], [2.0], [3.5], [4.0]]
+        )
+        colonne = formats._stats_colonnes(feuille)[0]
+        self.assertFalse(colonne["entiere"])
+        entiere = formats._stats_colonnes(
+            formats.Feuille("F", [["m"], [1.0], [2.0], [3.0]])
+        )[0]
+        self.assertTrue(entiere["entiere"])
+
+    def test_une_colonne_sans_nombre_n_est_pas_dite_entiere(self):
+        """Vraie par vacuité, elle aurait forcé un arrondi ailleurs."""
+        colonne = formats._stats_colonnes(
+            formats.Feuille("F", [["nom"], ["aboulie"], ["acai"]])
+        )[0]
+        self.assertFalse(colonne["entiere"])
+
+
 class TestEchelleMonetaireAccess(unittest.TestCase):
     """`access-parser` a DEUX sorties pour une colonne monétaire.
 

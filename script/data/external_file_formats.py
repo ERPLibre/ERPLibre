@@ -196,6 +196,7 @@ def _stats_colonnes(feuille):
         forme = True
         forme_rel = True
         mini = maxi = None
+        entiere = True
         for numero, ligne in enumerate(feuille.lignes, start=1):
             if numero == 1:
                 continue
@@ -223,6 +224,9 @@ def _stats_colonnes(feuille):
                 # tirage.
                 mini = valeur if mini is None else min(mini, valeur)
                 maxi = valeur if maxi is None else max(maxi, valeur)
+                # Le verdict porte sur TOUTE la colonne : une seule
+                # décimale quelque part la rend décimale.
+                entiere = entiere and float(valeur).is_integer()
         etiquette = etiquettes[index] if index < len(etiquettes) else None
         dominant = (
             max(familles.items(), key=lambda kv: kv[1])[0]
@@ -242,6 +246,7 @@ def _stats_colonnes(feuille):
                 "distinctes": len(distinctes),
                 "min": mini,
                 "max": maxi,
+                "entiere": entiere and mini is not None,
                 "forme_identifiant": forme,
                 "forme_relation": forme_rel,
                 # Une SÉLECTION est un ensemble fermé et petit. Sans cette
@@ -272,7 +277,12 @@ def _formes_par_colonne(rapport, cle="forme_identifiant"):
 
 
 def _bornes_par_colonne(rapport):
-    """{(feuille, colonne): (min, max)} depuis le rapport déjà calculé."""
+    """{(feuille, colonne): (min, max, entiere)} depuis le rapport.
+
+    Le troisième terme dit si la colonne ne porte QUE des entiers. Il ne
+    se déduit pas du type Python d'une valeur : `.xls` ne stocke que des
+    doubles, et son lecteur rend 100 en `100.0`.
+    """
     bornes = {}
     for feuille in rapport.get("feuilles", []):
         for colonne in feuille.get("colonnes", []):
@@ -280,6 +290,7 @@ def _bornes_par_colonne(rapport):
                 bornes[(feuille["nom"], colonne["index"])] = (
                     colonne["min"],
                     colonne["max"],
+                    colonne.get("entiere"),
                 )
     return bornes
 
@@ -338,9 +349,19 @@ def _lire_xls(chemin):
     # classeur n'a pas de CODEPAGE : la ligne se mêlait à l'unique objet
     # JSON de stdout, et l'appelant refusait un fichier lisible sans un mot
     # de diagnostic.
-    classeur = xlrd.open_workbook(
-        chemin, formatting_info=False, logfile=sys.stderr
-    )
+    try:
+        classeur = xlrd.open_workbook(
+            chemin, formatting_info=False, logfile=sys.stderr
+        )
+    except Exception as exc:
+        # La bibliothèque échoue sur un fichier MALFORMÉ, et pas seulement
+        # sur un format qu'elle ignore : un flux de classeur abîmé, un nom
+        # défini dont la formule ne s'évalue pas. Sans ce refus, la sortie
+        # annonçait « format non reconnu » — faux, le format est reconnu —
+        # suivi d'un message Python.
+        raise ErreurMoteur(
+            "lecture_impossible", f"{type(exc).__name__}: {exc}"
+        )
     feuilles = []
     for onglet in classeur.sheets():
         lignes = []
@@ -380,7 +401,12 @@ def _lire_access(chemin):
     """
     from access_parser import AccessParser
 
-    base = AccessParser(chemin)
+    try:
+        base = AccessParser(chemin)
+    except Exception as exc:
+        raise ErreurMoteur(
+            "lecture_impossible", f"{type(exc).__name__}: {exc}"
+        )
     feuilles = []
     for nom in base.catalog:
         if str(nom).startswith("MSys"):
