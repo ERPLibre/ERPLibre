@@ -655,14 +655,64 @@ class TestPlancherStructurel(unittest.TestCase):
         for etiquette in ("sequence", "active", "create_uid"):
             self.assertTrue(noyau.colonne_plancher(etiquette), etiquette)
 
-    def test_champs_de_selection_sous_condition(self):
-        """Une valeur de sélection est une clé technique en minuscules."""
-        for etiquette in ("state", "model", "res_model", "key"):
-            self.assertFalse(noyau.colonne_plancher(etiquette), etiquette)
-            self.assertTrue(
+    def test_une_selection_exige_AUSSI_peu_de_valeurs(self):
+        """La forme seule accepte n'importe quel mot minuscule.
+
+        Une colonne de provinces, ou de créneaux nommés par des
+        personnes, passait pour une sélection sur ce seul fait.
+        """
+        self.assertFalse(
+            noyau.colonne_plancher("state", forme_identifiant=True)
+        )
+        self.assertTrue(
+            noyau.colonne_plancher(
+                "state", forme_identifiant=True, selection=True
+            )
+        )
+
+    def test_une_etiquette_pointee_exige_la_preuve_d_un_external_id(self):
+        """« key », « model », « res_model » portent un jeton pointé.
+
+        La forme d'un mot minuscule ne suffit pas : une colonne « Key » de
+        identifiants de personnes en minuscules partait en clair.
+        """
+        for etiquette in ("key", "model", "res_model", "arch_db"):
+            self.assertFalse(
                 noyau.colonne_plancher(etiquette, forme_identifiant=True),
                 etiquette,
             )
+            self.assertTrue(
+                noyau.colonne_plancher(etiquette, forme_relation=True),
+                etiquette,
+            )
+
+    def test_un_external_id_se_PROUVE(self):
+        """Compter les préfixes communs ne tranchait pas.
+
+        Une équipe entière de logins partage son domaine, et une colonne à
+        une seule valeur n'a aucun préfixe à comparer. Ce qui prouve un
+        external ID est le NUMÉRO de son local, ou le module sentinelle de
+        l'export.
+        """
+        for valeur in (
+            "base.res_partner_7",
+            "__export__.res_partner_42",
+            "__import__.sale_order_1",
+        ):
+            self.assertTrue(noyau.valeur_forme_relation(valeur), valeur)
+        for valeur in (
+            "jean.tremblay",
+            "tremblay.jean",
+            "clinique.exemple.com",
+            "account.move",
+        ):
+            self.assertFalse(noyau.valeur_forme_relation(valeur), valeur)
+
+    def test_une_liste_de_relations_prouve_chaque_membre(self):
+        self.assertTrue(noyau.valeur_forme_relation("base.tag_1,base.tag_2"))
+        self.assertFalse(
+            noyau.valeur_forme_relation("base.tag_1,jean.tremblay")
+        )
 
     def test_display_name_n_est_JAMAIS_au_plancher(self):
         """Dans un fichier plat, cette colonne EST la donnée.
@@ -1541,6 +1591,52 @@ class TestGardeApresEcriture(unittest.TestCase):
             gardees=["Roy & Fils"],
         )
         self.assertEqual(fuites, {})
+
+    def test_la_tolerance_ne_couvre_que_l_EGALITE(self):
+        """L'appartenance à un bloc joint est un test de sous-chaîne.
+
+        Toute chaîne tolérée qui CONTIENT la valeur la tolérait, y compris
+        là où la valeur fuit — le grain le plus large possible.
+        """
+        cible = os.path.join(self.base, "c.csv")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("nom\naboulie\nRoy et Fils SA\nRoy et Fils\n")
+        fuites, _ = noyau.verifier_copie(
+            [cible],
+            self._table("Roy et Fils"),
+            gardees=["Roy et Fils SA"],
+        )
+        self.assertIn("Roy et Fils", fuites)
+
+    def test_une_valeur_toleree_a_l_identique_peut_paraitre_deux_fois(self):
+        """Le cas ordinaire d'une colonne laissée intacte."""
+        cible = os.path.join(self.base, "d.csv")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("ville\nSainte-Lambda\nSainte-Lambda\n")
+        fuites, _ = noyau.verifier_copie(
+            [cible],
+            self._table("Sainte-Lambda"),
+            gardees=["Sainte-Lambda"],
+        )
+        self.assertEqual(fuites, {})
+
+    def test_le_filet_voit_ce_que_le_graveur_a_ECHAPPE(self):
+        """`csv` double le guillemet, `json.dump` le préfixe.
+
+        Chercher les octets bruts d'un nom portant un guillemet n'y
+        trouvait alors rien, et la copie partait avec.
+        """
+        for nom, contenu in (
+            ("e.csv", 'nom\naboulie\n"Roy ""et"" Fils"\n'),
+            ("f.json", json.dumps({"a": 'Roy "et" Fils'})),
+        ):
+            cible = os.path.join(self.base, nom)
+            with open(cible, "w", encoding="utf-8") as fh:
+                fh.write(contenu)
+            fuites, _ = noyau.verifier_copie(
+                [cible], self._table('Roy "et" Fils')
+            )
+            self.assertIn('Roy "et" Fils', fuites, nom)
 
     def test_le_prefiltre_ne_rend_aucun_faux_negatif(self):
         """La propriété sur laquelle tout le balayage repose.

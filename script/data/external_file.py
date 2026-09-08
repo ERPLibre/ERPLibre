@@ -35,7 +35,9 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
+import decimal
 import html
+import math
 import json
 import os
 import re
@@ -149,9 +151,19 @@ SUFFIXES_IDENTIFIANTS = ("_id", "_ids")
 # Les étiquettes dont le contenu légitime EST une clé technique en
 # minuscules. `display_name` n'en fait pas partie : dans un fichier plat il
 # EST la donnée, et aucune forme mesurée ne doit le sauver.
-ETIQUETTES_SELECTION = frozenset(
-    {"state", "key", "model", "res_model", "arch_db"}
-)
+# Ces étiquettes portent légitimement un jeton POINTÉ — un nom de modèle,
+# un external ID. Elles exigent la même preuve qu'une relation.
+ETIQUETTES_POINTEES = frozenset({"key", "model", "res_model", "arch_db"})
+
+# `state` porte une valeur de SÉLECTION : un jeton minuscule pris dans un
+# ensemble fermé et petit. Le seul test de forme accepterait n'importe quel
+# mot minuscule — une colonne de provinces, ou de créneaux nommés par des
+# personnes — d'où la borne sur le nombre de valeurs distinctes.
+ETIQUETTES_SELECTION = frozenset({"state"})
+
+# Au-delà, ce n'est plus une sélection : c'est une colonne de texte dont
+# les valeurs se trouvent être en minuscules.
+SELECTION_MAX_DISTINCTES = 12
 
 # Un chemin d'identifiants Odoo, une valeur de sélection, un external ID.
 _MOTIF_CHEMIN_ID = re.compile(r"[0-9]+(?:/[0-9]+)*/?")
@@ -229,6 +241,34 @@ def valeur_forme_identifiant(valeur):
     return all(_pointe_identifiant(p) for p in texte.split(","))
 
 
+# Un external ID PROUVÉ : un local numéroté, ou le module sentinelle
+# qu'Odoo écrit lui-même à l'export.
+_MOTIF_XMLID_NUMEROTE = re.compile(r"[a-z0-9_]+\.[a-z0-9_]*_[0-9]+")
+_MODULES_EXPORT = ("__export__.", "__import__.")
+
+
+def _cible_externe(texte):
+    """Vrai pour un external ID PROUVÉ, faux pour un login pointé.
+
+    « base.res_partner_7 » et « jean.tremblay » ont exactement la même
+    forme, et compter les préfixes communs d'une colonne ne tranchait pas :
+    une équipe entière de logins partage son domaine, et une colonne à une
+    seule valeur n'a aucun préfixe à comparer. Ce qui PROUVE un external
+    ID est le numéro de son local, ou le module sentinelle de l'export.
+
+    Sans preuve, la valeur est du texte et part au remplacement : le doute
+    profite à l'anonymisation. Une colonne de noms de modèles — `res_model`
+    portant « account.move » — est donc anonymisée elle aussi, faute de
+    pouvoir la distinguer d'une colonne de personnes.
+    """
+    brut = texte.strip()
+    if not _pointe_identifiant(brut):
+        return False
+    if brut.startswith(_MODULES_EXPORT):
+        return True
+    return bool(_MOTIF_XMLID_NUMEROTE.fullmatch(brut))
+
+
 def valeur_forme_relation(valeur):
     """Vrai si cette valeur peut être la CIBLE d'une relation.
 
@@ -248,7 +288,7 @@ def valeur_forme_relation(valeur):
         return True
     if _MOTIF_CHEMIN_ID.fullmatch(texte):
         return True
-    return all(_pointe_identifiant(p) for p in texte.split(","))
+    return all(_cible_externe(p) for p in texte.split(","))
 
 
 # Les octets de tête qui tranchent, quand l'extension mentirait.
@@ -614,7 +654,17 @@ def _tirer_libre(valeur, rng, bas, haut, entier, pris):
         else max(_decimales(bas), _decimales(haut), _decimales(valeur))
     )
     pas = 1 if entier else 10.0**-decimales
-    places = int(round((haut - bas) / pas)) + 1
+    # Une étendue dont le quotient par le pas dépasse le flottant — un
+    # nombre au plafond d'Excel dans une colonne à deux décimales —
+    # rendait `inf`, et `int(round(inf))` levait. La plage est alors bien
+    # trop large pour se faire parcourir : la compter comme telle est la
+    # réponse, refuser la copie n'en est pas une.
+    etendue = (haut - bas) / pas
+    places = (
+        int(round(etendue)) + 1
+        if math.isfinite(etendue)
+        else PLACES_PARCOURUES + 1
+    )
     interdit = (valeur,)
     for _ in range(ESSAIS_UNICITE):
         tire = _tirer(valeur, rng, bas, haut, entier, decimales)
@@ -656,8 +706,15 @@ def _tirer_libre(valeur, rng, bas, haut, entier, pris):
             if tire not in pris and tire not in interdit:
                 return tire
     # Toutes les places connues sont prises : rendre un doublon vaut mieux
-    # que refuser une copie propre — une collision ne fait rien fuir.
-    return _tirer(valeur, rng, bas, haut, entier, decimales)
+    # que refuser une copie propre — une collision ne fait rien fuir. Mais
+    # JAMAIS l'identité : elle laisse la valeur d'origine dans la copie en
+    # la comptant comme remplacée, ce qui est une fuite annoncée propre.
+    for _ in range(ESSAIS_UNICITE):
+        tire = _tirer(valeur, rng, bas, haut, entier, decimales)
+        if tire not in interdit:
+            return tire
+    ecart = 1 if entier else 10.0**-decimales
+    return valeur + ecart if valeur > 0 else valeur - ecart
 
 
 def _decimales(valeur):
@@ -670,7 +727,12 @@ def _decimales(valeur):
     """
     texte = repr(float(valeur))
     if "e" in texte or "E" in texte:
-        return 2
+        # `repr` passe en notation exposant sous 1e-4 : compter l'exposant
+        # plutôt que rendre 2. Un pas de 0,01 sur une étendue de 1e-7 ne
+        # laisse aucune place, et la colonne entière sort de la plage
+        # mesurée sur un seul nombre, le même quelle que soit la graine.
+        exposant = decimal.Decimal(texte).as_tuple().exponent
+        return min(max(-exposant, 2), 17)
     _entier, _point, fraction = texte.partition(".")
     return min(len(fraction.rstrip("0")) or 2, 10)
 
@@ -741,7 +803,12 @@ def nouveau_nombre(valeur, rng, bornes=None, table=None):
 # ----------------------------------------------------------------------
 # La portée
 # ----------------------------------------------------------------------
-def colonne_plancher(etiquette, forme_identifiant=False, forme_relation=False):
+def colonne_plancher(
+    etiquette,
+    forme_identifiant=False,
+    forme_relation=False,
+    selection=False,
+):
     """Vrai si cette colonne porte un identifiant, non un nom.
 
     Le plancher s'applique AVANT la question des colonnes intactes et
@@ -771,8 +838,12 @@ def colonne_plancher(etiquette, forme_identifiant=False, forme_relation=False):
     # chemin d'ids, un external ID. Un mot en minuscules n'en est pas une.
     if any(bas.endswith(s) for s in SUFFIXES_IDENTIFIANTS):
         return bool(forme_relation)
+    if bas in ETIQUETTES_POINTEES:
+        return bool(forme_relation)
     if bas in ETIQUETTES_SELECTION:
-        return bool(forme_identifiant)
+        # La forme SEULE accepterait n'importe quel mot minuscule : une
+        # colonne de provinces, ou de créneaux nommés par des personnes.
+        return bool(forme_identifiant) and bool(selection)
     return False
 
 
@@ -804,7 +875,10 @@ def cellule_en_portee(feuille, ligne, colonne, options):
     forme_rel = (options.get("formes_relation") or {}).get(
         (feuille, colonne), False
     )
-    if colonne_plancher(etiquette, forme, forme_rel):
+    selection = (options.get("selections") or {}).get(
+        (feuille, colonne), False
+    )
+    if colonne_plancher(etiquette, forme, forme_rel, selection):
         return False
     intactes = options.get("colonnes_intactes") or set()
     if etiquette is not None:
@@ -1111,8 +1185,23 @@ def _matiere(nom, brut, reductible=True):
     if reductible and _est_xml(nom, brut):
         ecrites, nues = _chaines_distinctes(brut)
         return _joindre(ecrites), _joindre(nues)
-    nue = html.unescape(brut) if "&" in brut else brut
-    return brut, nue
+    # Un graveur de fichier plat ÉCHAPPE : `csv` double le guillemet d'une
+    # valeur qui en porte un, `json.dump` le préfixe d'une barre oblique.
+    # Chercher les octets bruts d'un nom portant un guillemet n'y trouvait
+    # alors rien. On déchiffre le FOIN une fois, plutôt que de réencoder
+    # chaque aiguille — les parties d'un zip restent intactes.
+    vues = {brut}
+    if "&" in brut:
+        vues.add(html.unescape(brut))
+    if '""' in brut:
+        vues.add(brut.replace('""', '"'))
+    if "\\" in brut:
+        vues.add(
+            brut.replace('\\"', '"')
+            .replace("\\/", "/")
+            .replace("\\\\", "\\")
+        )
+    return brut, _joindre(vues)
 
 
 # Le préfiltre : un bit par empreinte de n-gramme. 2^22 bits font 512 Kio,
@@ -1204,6 +1293,12 @@ def survivances(chemin, valeurs, tolerees=()):
             (nom_plat, _matiere(nom_plat, brut, reductible=False), ("", ""))
         )
     bloc_garde = _joindre(tolerees)
+    # L'appartenance à un bloc joint est un test de SOUS-CHAÎNE : toute
+    # chaîne tolérée qui CONTIENT la valeur la tolérait, y compris une
+    # valeur qui fuit ailleurs. Le saut ne vaut donc que pour l'ÉGALITÉ ;
+    # le reste retourne au comptage d'occurrences, qui compare ce que la
+    # copie porte à ce que le moteur a annoncé.
+    tolerees_exactes = {str(g) for g in tolerees if g}
     # Le préfiltre ne se paie que quand il rapporte.
     assez = len(valeurs) >= SEUIL_PREFILTRE
     bits_garde = _prefiltre(bloc_garde) if assez else None
@@ -1223,16 +1318,21 @@ def survivances(chemin, valeurs, tolerees=()):
         # Une boucle Python sur les chaînes coûtait cinquante secondes pour
         # vingt mille valeurs, là où le compte sur un bloc joint en prend
         # une fraction — même travail, même grain.
-        # Annoncé gardé : ce n'est pas une fuite, où qu'il reparaisse.
-        # Chaque chaîne tolérée est DÉJÀ dans la copie en clair — une
-        # cellule hors portée, un titre de feuille, un littéral de formule
-        # — donc une occurrence de plus ne divulgue rien de neuf. La
-        # compter par occurrence refusait toute copie où une valeur gardée
-        # paraît deux fois, ce qui est le cas ordinaire d'une colonne
-        # laissée intacte.
-        if _peut_contenir(bits_garde, valeur) and valeur in bloc_garde:
+        # Annoncée gardée À L'IDENTIQUE : ce n'est pas une fuite, où
+        # qu'elle reparaisse. Une cellule hors portée, un titre de feuille,
+        # un littéral de formule sont déjà dans la copie en clair, et une
+        # occurrence de plus ne divulgue rien de neuf — c'est ce que le
+        # comptage par occurrence refusait à tort.
+        if valeur in tolerees_exactes:
             continue
-        excuses = 0
+        # Tolérée seulement comme PARTIE d'une chaîne annoncée : le compte
+        # tranche, sinon une chaîne gardée qui contient la valeur la
+        # couvrirait même là où elle fuit.
+        excuses = (
+            bloc_garde.count(valeur)
+            if _peut_contenir(bits_garde, valeur)
+            else 0
+        )
         vus = 0
         parties = []
         for nom, paire, paire_socle, bits in filtres:
