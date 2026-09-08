@@ -605,8 +605,16 @@ says so when it takes it.
 unknown server certificate raises a question, and openconnect would read the
 answer from the standard input the password arrives on. With it, openconnect
 refuses at once **and** prints the `--servercert sha256:…` line to paste into
-the profile's `oc_servercert`. Routes belong to the server, through
-`vpnc-script`; the profile can add to them, not replace them.
+the profile's `oc_servercert`.
+
+Routes belong to the server, through `vpnc-script`; the profile can add to
+them, not replace them. For that reason the form does **not** ask this
+driver « send ALL traffic through the tunnel? », and `status` does not judge
+it: the gateway decides what enters the tunnel, and forcing a default route
+against a split-tunnel gateway would not give all traffic but a black hole —
+a gateway does not route what it never advertised. To force a network
+through anyway, add it to `routes`, which this driver does honour, with
+`0.0.0.0/0` for everything.
 
 Set **`oc_sso`** when the concentrator authenticates through a **web form**
 (SAML / SSO — Azure AD, Okta, Duo). There is then no password to send, and
@@ -695,7 +703,14 @@ sur l'entrée standard par laquelle arrive le mot de passe. Avec lui,
 openconnect refuse tout de suite **et** imprime la ligne
 `--servercert sha256:…` à recopier dans le champ `oc_servercert` du profil.
 Les routes appartiennent au serveur, via `vpnc-script` ; le profil peut en
-ajouter, pas les remplacer.
+ajouter, pas les remplacer. Pour cette raison le formulaire ne demande
+**pas** à ce pilote « envoyer TOUT le trafic dans le tunnel ? », et `status`
+ne le juge pas : c'est la passerelle qui décide de ce qui entre dans le
+tunnel, et forcer une route par défaut contre une passerelle en tunnel
+scindé ne donnerait pas tout le trafic mais un trou noir — une passerelle ne
+route pas ce qu'elle n'a jamais annoncé. Pour y forcer un réseau tout de
+même, l'ajouter à `routes`, que ce pilote honore, avec `0.0.0.0/0` pour
+tout.
 
 Cocher **`oc_sso`** quand le concentrateur authentifie par un **formulaire
 web** (SAML / SSO — Azure AD, Okta, Duo). Il n'y a alors aucun mot de passe à

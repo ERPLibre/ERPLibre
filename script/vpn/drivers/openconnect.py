@@ -172,6 +172,12 @@ class OpenconnectDriver(VpnDriver):
     # Le serveur pousse les routes : exiger une route déclarée serait une
     # fausse exigence.
     needs_routes = False
+    # Et pour la même raison, la route par défaut ne se demande pas ici :
+    # c'est le concentrateur qui décide de ce qui entre dans le tunnel, et
+    # `vpnc-script` pose ce qu'il pousse. La forcer côté client contre une
+    # passerelle en tunnel scindé ne donnerait pas « tout le trafic » mais
+    # un trou noir — la passerelle ne route pas ce qu'elle n'a pas annoncé.
+    uses_default_route = False
     defaults = {
         "port": 443,
         "oc_user": "",

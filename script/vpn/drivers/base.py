@@ -301,6 +301,15 @@ class VpnDriver:
     # Faux quand la technologie ne prend pas le MTU du profil — le demander
     # serait une question sans effet.
     uses_mtu = True
+    # Faux quand la technologie ne pose pas la route par défaut elle-même —
+    # c'est alors le SERVEUR qui décide de ce qui passe par le tunnel. Le
+    # champ n'est ni demandé ni jugé : demander « tout le trafic ? » à qui
+    # n'a pas la main dessus, puis sanctionner la réponse par un ✗ sur un
+    # tunnel sain, est la pire des trois façons de traiter la question.
+    #
+    # L'échappatoire reste : `routes` est honorée par tous les pilotes, et
+    # « 0.0.0.0/0 » y demande explicitement ce que ce drapeau n'offre plus.
+    uses_default_route = True
 
     def __init__(self, profile: dict, secrets: dict | None = None):
         self.profile = profile
@@ -859,7 +868,7 @@ class VpnDriver:
                     + (f" (attendu {iface})" if not ok else ""),
                 )
             )
-        if self.profile.get("default_route"):
+        if self.profile.get("default_route") and self.uses_default_route:
             info = route_to("1.1.1.1")
             checks.append(
                 (
