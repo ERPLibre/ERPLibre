@@ -54,10 +54,10 @@ fi
 # « repo init -b <sha> » échoue sur un espace de travail NEUF : repo doit y
 # cloner .repo/manifests et ne sait pas résoudre un commit en révision de
 # manifeste. Il abandonne sur « unparseable HEAD », puis repo sync sur
-# « manifest not found ». Mesuré : -b main réussit, -b <sha> échoue.
-# Le piège est qu'un .repo DÉJÀ initialisé accepte le SHA — le défaut reste
-# donc invisible sur toute machine ayant réussi un init une fois, et ne frappe
-# que les installations neuves : les 4 VM du 2026-08-07 ont toutes échoué là.
+# « manifest not found ». Un nom de branche passe là où le SHA nu échoue.
+# Le piège est qu'un .repo DÉJÀ initialisé accepte le SHA : le défaut reste
+# invisible sur toute machine ayant réussi un init une fois, et ne frappe que
+# les installations neuves.
 MANIFEST_REV=$(git symbolic-ref --quiet --short HEAD || true)
 if [ -z "${MANIFEST_REV}" ]; then
   # HEAD détaché : prendre une branche qui contient ce commit plutôt que de
