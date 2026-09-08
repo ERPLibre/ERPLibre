@@ -1228,6 +1228,68 @@ class TestGardeApresEcriture(unittest.TestCase):
         self.assertIn("zzz_survivante", fuites)
         self.assertEqual(ecartees, 0)
 
+    def test_le_prefiltre_ne_rend_aucun_faux_negatif(self):
+        """La propriété sur laquelle tout le balayage repose.
+
+        Le préfiltre n'existe que pour écarter une valeur sans la
+        chercher : s'il pouvait écarter une valeur PRÉSENTE, le filet
+        deviendrait aveugle en silence, ce qui est exactement le mode de
+        défaillance qu'il est là pour empêcher.
+        """
+        bloc = noyau._joindre(
+            {f"chaine_{i}_avec_du_texte" for i in range(500)}
+        )
+        bits = noyau._prefiltre(bloc)
+        for i in range(500):
+            for valeur in (
+                f"chaine_{i}_avec_du_texte",
+                f"aine_{i}_avec",
+                "avec_du_texte",
+            ):
+                self.assertTrue(
+                    noyau._peut_contenir(bits, valeur),
+                    f"faux négatif sur {valeur!r}",
+                )
+
+    def test_le_prefiltre_ecarte_vraiment(self):
+        bloc = noyau._joindre({"aboulie", "acai", "acanthe"})
+        bits = noyau._prefiltre(bloc)
+        ecartees = sum(
+            0 if noyau._peut_contenir(bits, f"valeur_{i}_absente") else 1
+            for i in range(200)
+        )
+        self.assertGreater(ecartees, 150)
+
+    def test_une_valeur_plus_courte_que_le_ngramme_passe_toujours(self):
+        bits = noyau._prefiltre(noyau._joindre({"aboulie"}))
+        self.assertTrue(noyau._peut_contenir(bits, "ab"))
+
+    def test_le_prefiltre_ne_change_pas_le_verdict(self):
+        """Au-dessus et en dessous du seuil, le même résultat.
+
+        C'est la seule façon de garder le préfiltre honnête : il accélère,
+        il ne décide pas.
+        """
+        cible = os.path.join(self.base, "copie.txt")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("il reste zzz_survivante ici, et rien d'autre")
+        table = noyau.Correspondance()
+        for i in range(noyau.SEUIL_PREFILTRE + 50):
+            noyau.nouveau_mot(f"absente_{i:05d}", table, VIVIER)
+        noyau.nouveau_mot("zzz_survivante", table, VIVIER)
+        avec, _ = noyau.verifier_copie([cible], table)
+        petite = noyau.Correspondance()
+        noyau.nouveau_mot("zzz_survivante", petite, VIVIER)
+        sans, _ = noyau.verifier_copie([cible], petite)
+        self.assertIn("zzz_survivante", avec)
+        self.assertEqual(set(avec), set(sans))
+
+    def test_l_octet_nul_empeche_une_valeur_a_cheval(self):
+        """Sans séparateur, deux chaînes voisines en fabriqueraient une."""
+        bloc = noyau._joindre({"aaabbb", "cccddd"})
+        self.assertEqual(bloc.count("bbbccc"), 0)
+        self.assertIn("\x00", bloc)
+
     def test_l_ecriture_refuse_et_n_laisse_aucun_fichier(self):
         """Le refus doit être total : une copie partielle serait livrée."""
         source = os.path.join(self.base, "s.csv")

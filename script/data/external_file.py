@@ -916,6 +916,100 @@ def _socle_du_graveur():
     return _SOCLE
 
 
+# Le texte d'un nœud XML, et la valeur d'un attribut. Une valeur de cellule
+# vit TOUJOURS dans l'un des deux : le balisage ne peut pas la traverser.
+_TEXTE_XML = re.compile(r">([^<>]+)<")
+_ATTRIBUT_XML = re.compile(r"=\"([^\"]*)\"|='([^']*)'")
+
+
+def _chaines_distinctes(brut):
+    """Les chaînes DISTINCTES que porte cette partie.
+
+    Le balayage cherchait chaque valeur dans le document entier, où elle
+    est justement absente : un classeur de cent mille cellules fait dix
+    mégaoctets, et cent mille recherches infructueuses dessus ne finissent
+    pas. Or l'anonymisation ramène le contenu à quelques milliers de mots :
+    la matière DISTINCTE tient en quelques kilooctets, et c'est la seule
+    qu'il faut fouiller.
+
+    Rien n'est perdu : une valeur de cellule vit toujours dans un nœud de
+    texte ou une valeur d'attribut — le balisage ne peut pas la traverser —
+    et l'ensemble est bâti par extraction sur TOUTES les parties, sans en
+    nommer aucune. Une partie qui n'est pas du XML retombe sur son texte
+    entier.
+    """
+    trouvees = set()
+    for morceau in _TEXTE_XML.findall(brut):
+        trouvees.add(morceau)
+        if "&" in morceau:
+            # Un `.xlsx` est un zip de XML : la valeur y est ÉCHAPPÉE.
+            # Chercher les octets bruts d'un nom portant « & », « < » ou
+            # « > » n'y trouve rien, et la copie part avec.
+            trouvees.add(html.unescape(morceau))
+    for double, simple in _ATTRIBUT_XML.findall(brut):
+        for morceau in (double, simple):
+            if not morceau:
+                continue
+            trouvees.add(morceau)
+            if "&" in morceau:
+                trouvees.add(html.unescape(morceau))
+    if not trouvees:
+        # Ni nœud ni attribut : une partie binaire, ou un fichier plat.
+        trouvees.add(brut)
+        if "&" in brut:
+            trouvees.add(html.unescape(brut))
+    return trouvees
+
+
+# Le préfiltre : un bit par empreinte de n-gramme. 2^22 bits font 512 Kio,
+# quelle que soit la taille du document. Il ne rend JAMAIS de faux négatif —
+# c'est ce qui autorise à s'y fier pour écarter une valeur — et ses faux
+# positifs retombent sur le comptage exact, qui tranche.
+_BITS_PREFILTRE = 1 << 22
+_MASQUE_PREFILTRE = _BITS_PREFILTRE - 1
+
+# En deçà, le comptage direct est déjà plus rapide que la construction du
+# préfiltre. Le seuil n'est pas un réglage fin : il sépare « quelques
+# centaines de valeurs » de « des dizaines de milliers ».
+SEUIL_PREFILTRE = 2000
+
+
+def _prefiltre(bloc):
+    """Les empreintes des n-grammes du bloc, en bitmap.
+
+    Le balayage cherche des dizaines de milliers de valeurs dans un
+    document où elles sont justement ABSENTES : chaque recherche parcourt
+    tout le bloc pour ne rien trouver, et le coût est le produit des deux
+    tailles. Une valeur ne peut apparaître que si son premier n-gramme
+    apparaît ; le vérifier coûte un accès, et écarte presque tout.
+    """
+    bits = bytearray(_BITS_PREFILTRE >> 3)
+    taille = LONGUEUR_VERIFIABLE
+    for depart in range(len(bloc) - taille + 1):
+        empreinte = hash(bloc[depart : depart + taille]) & _MASQUE_PREFILTRE
+        bits[empreinte >> 3] |= 1 << (empreinte & 7)
+    return bits
+
+
+def _peut_contenir(bits, valeur):
+    """Faux si la valeur ne peut PAS être dans le bloc. Jamais l'inverse."""
+    if bits is None or len(valeur) < LONGUEUR_VERIFIABLE:
+        return True
+    empreinte = hash(valeur[:LONGUEUR_VERIFIABLE]) & _MASQUE_PREFILTRE
+    return bool(bits[empreinte >> 3] & (1 << (empreinte & 7)))
+
+
+def _joindre(chaines):
+    """Un bloc unique, les chaînes séparées par un octet nul.
+
+    L'octet nul n'apparaît dans aucun document : il empêche une valeur de
+    se former à cheval sur deux chaînes voisines, ce qu'une simple
+    concaténation permettrait. Trié pour que deux exécutions rendent le
+    même bloc.
+    """
+    return "\x00".join(sorted(c for c in chaines if c))
+
+
 def survivances(chemin, valeurs, tolerees=()):
     """{valeur: [parties du fichier]} pour ce qui subsiste dans la copie.
 
@@ -923,58 +1017,65 @@ def survivances(chemin, valeurs, tolerees=()):
     Nommer les parties une à une est ce qui a laissé passer, tour à tour, le
     cache d'un graphique, un titre d'axe, un hyperlien de cellule et le nom
     d'une colonne de tableau.
+
+    On compare des OCCURRENCES et non une appartenance : la portée se décide
+    par cellule, le balayage ne sait lire que le fichier, et une valeur qui
+    ne subsiste QUE dans ce que le moteur a annoncé garder n'est pas une
+    fuite. Le grain est la chaîne distincte — une fuite ajoute toujours une
+    chaîne que le socle n'a pas.
     """
     if not valeurs:
         return {}
-    # Un SEUL bloc, joint par un octet nul pour qu'aucune valeur ne puisse
-    # se former à cheval sur deux chaînes gardées. On compare ensuite les
-    # OCCURRENCES : la portée se décide par cellule, le balayage ne sait
-    # lire que le fichier entier, et une valeur qui ne subsiste QUE dans ce
-    # que le moteur a annoncé garder n'est pas une fuite.
-    bloc = "\x00".join(t for t in tolerees if t)
     morceaux = []
     try:
         socle = _socle_du_graveur()
         with zipfile.ZipFile(chemin) as archive:
             for nom in archive.namelist():
                 brut = archive.read(nom).decode("utf-8", "ignore")
-                morceaux.append((nom, brut, socle.get(nom, "")))
-                # Un `.xlsx` est un zip de XML : la valeur y est ÉCHAPPÉE.
-                # Chercher les octets bruts d'un nom portant « & », « < »
-                # ou « > » n'y trouve rien, et la copie part avec.
-                if "&" in brut:
-                    morceaux.append(
-                        (
-                            nom,
-                            html.unescape(brut),
-                            html.unescape(socle.get(nom, "")),
-                        )
+                morceaux.append(
+                    (
+                        nom,
+                        _joindre(_chaines_distinctes(brut)),
+                        _joindre(_chaines_distinctes(socle.get(nom, ""))),
                     )
+                )
     except (zipfile.BadZipFile, OSError):
         try:
             with open(chemin, "rb") as fh:
                 brut = fh.read().decode("utf-8", "ignore")
-            morceaux.append((os.path.basename(chemin), brut, ""))
-            if "&" in brut:
-                morceaux.append(
-                    (os.path.basename(chemin), html.unescape(brut), "")
-                )
         except OSError:
             return {}
+        morceaux.append(
+            (os.path.basename(chemin), _joindre(_chaines_distinctes(brut)), "")
+        )
+    bloc_garde = _joindre(tolerees)
+    # Le préfiltre ne se paie que quand il rapporte.
+    assez = len(valeurs) >= SEUIL_PREFILTRE
+    filtres = [
+        (nom, bloc, socle, _prefiltre(bloc) if assez else None)
+        for nom, bloc, socle in morceaux
+    ]
+
     trouvees = {}
     for valeur in valeurs:
+        # `str.count` est du C : c'est ce qui rend le balayage tenable.
+        # Une boucle Python sur les chaînes coûtait cinquante secondes pour
+        # vingt mille valeurs, là où le compte sur un bloc joint en prend
+        # une fraction — même travail, même grain.
+        excuses = bloc_garde.count(valeur)
         vus = 0
-        excuses = bloc.count(valeur)
         parties = []
-        for nom, texte, socle in morceaux:
-            compte = texte.count(valeur)
+        for nom, bloc, bloc_socle, bits in filtres:
+            if not _peut_contenir(bits, valeur):
+                continue
+            compte = bloc.count(valeur)
             if not compte:
                 continue
             vus += compte
-            # EN SURPLUS du socle : « Normal » que le graveur écrit toujours
-            # dans `xl/styles.xml` n'est pas une fuite, un second « Normal »
-            # dans la même partie en est une.
-            excuses += socle.count(valeur)
+            # EN SURPLUS du socle : « Normal » que le graveur écrit
+            # toujours dans `xl/styles.xml` n'est pas une fuite ; une
+            # seconde occurrence en est une.
+            excuses += bloc_socle.count(valeur)
             if nom not in parties:
                 parties.append(nom)
         if vus > excuses:
