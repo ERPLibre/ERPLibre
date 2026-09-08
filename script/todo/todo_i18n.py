@@ -12534,6 +12534,58 @@ TRANSLATIONS = {
         "fr": "Rien n'a été envoyé.",
         "en": "Nothing has been sent.",
     },
+    # Les noms et descriptions des gpts livrés (script/todo/assistant/gpt/).
+    # L'anglais EST la clé, comme partout : un gpt non traduit
+    # s'affiche en anglais au lieu de rien. L'emoji vit dans la
+    # valeur, jamais dans la clé.
+    "Unit test failure - the cause, and what to read next": {
+        "fr": "🧪 Échec de test unitaire - la cause, et quoi lire ensuite",
+        "en": "Unit test failure - the cause, and what to read next",
+    },
+    "Read one failing test and name the cause, without proposing a patch": {
+        "fr": "lire un test en échec et nommer la cause, sans proposer de correctif",
+        "en": "Read one failing test and name the cause, without proposing a patch",
+    },
+    "Manifest gaps - which tier loses which modules": {
+        "fr": "🕳️ Trous de manifeste - quel palier perd quels modules",
+        "en": "Manifest gaps - which tier loses which modules",
+    },
+    "Read the reported holes and name the tier and the modules each loses": {
+        "fr": "lire les trous rapportés et nommer le palier et les modules perdus",
+        "en": "Read the reported holes and name the tier and the modules each loses",
+    },
+    "Cloned module - find what it inherited": {
+        "fr": "🧬 Module cloné - repérer ce dont il a hérité",
+        "en": "Cloned module - find what it inherited",
+    },
+    "Name what a cloned module inherited rather than what was written": {
+        "fr": "nommer ce qu'un module cloné a hérité plutôt que ce qui a été écrit",
+        "en": "Name what a cloned module inherited rather than what was written",
+    },
+    "Comment hygiene - rewrite narrative as mechanism": {
+        "fr": "🧹 Hygiène des commentaires - réécrire le récit en fonctionnement",
+        "en": "Comment hygiene - rewrite narrative as mechanism",
+    },
+    "Rewrite each flagged sentence so the code is the subject, present tense": {
+        "fr": "réécrire chaque phrase signalée avec le code pour sujet, au présent",
+        "en": "Rewrite each flagged sentence so the code is the subject, present tense",
+    },
+    "Commit message - subject, bilingual body, Assisted-by": {
+        "fr": "✍️ Message de commit - sujet, corps bilingue, Assisted-by",
+        "en": "Commit message - subject, bilingual body, Assisted-by",
+    },
+    "Turn the staged diff into a tagged subject and a bilingual body": {
+        "fr": "faire du diff indexé un sujet tagué et un corps bilingue",
+        "en": "Turn the staged diff into a tagged subject and a bilingual body",
+    },
+    "Bilingual doc - write or repair a .base.md": {
+        "fr": "🌍 Doc bilingue - écrire ou réparer un .base.md",
+        "en": "Bilingual doc - write or repair a .base.md",
+    },
+    "Produce or fix a .base.md, its header and its language blocks": {
+        "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
+        "en": "Produce or fix a .base.md, its header and its language blocks",
+    },
     # Catalogue gpt et porte du contexte (script/todo/assistant/gpt.py,
     # script/todo/assistant/context.py, capabilities.py)
     "No front-matter: a gpt opens with ---": {

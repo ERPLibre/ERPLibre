@@ -70,6 +70,11 @@ LETTRES = "abcdefghijklmnopqrstuvwxyz"
 # n'annonce rien — c'est-à-dire devant la plupart.
 MARQUE = {"ok": "✅", "unknown": "⚠️", "no": "⛔"}
 
+# Ce qu'une description a le droit d'occuper. Le dépôt n'interroge jamais la
+# largeur du terminal ; soixante-dix caractères tiennent partout, indentation
+# comprise.
+LARGEUR = 70
+
 # Le serveur distant que le coffre sait déjà servir. Il porte une poignée comme
 # les autres : c'est elle, et non son adresse, qui a le droit de circuler.
 REPLI_OPENAI = llm_servers.Server(
@@ -934,10 +939,12 @@ class AssistantMenuMixin:
             print(f"{t('Which gpt tool?')}    {self._llm_label(serveur)}")
             for rang, (outil, verdict, raison) in enumerate(appariement):
                 marque = MARQUE.get(verdict, "")
-                print(
-                    f"  [{LETTRES[rang]}] {marque} {t(outil.name)}"
-                    f"   {t(outil.description)}"
-                )
+                # Le nom sur sa ligne, la description en dessous : un nom de
+                # gpt est une phrase, et les deux bout à bout dépassent la
+                # largeur d'un terminal — une entrée qui s'enroule se lit
+                # moins bien que deux lignes assumées.
+                print(f"  [{LETTRES[rang]}] {marque} {t(outil.name)}")
+                print(f"        {t(outil.description)[:LARGEUR]}")
             print(f"  [0] {t('Back')}")
             if any(v != "ok" for _, v, _ in appariement):
                 print(
