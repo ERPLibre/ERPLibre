@@ -843,7 +843,78 @@ def nettoyer_hors_cellules(classeur, table, options):
         _anonymiser_noms_locaux(onglet, table, vivier)
 
     _anonymiser_noms_locaux(classeur, table, vivier)
+    comptes["formats"] = _anonymiser_formats_de_nombre(classeur, table, vivier)
+    comptes["styles"] = _renommer_styles_nommes(classeur)
     return comptes
+
+
+# Un littéral entre guillemets dans un format de nombre personnalisé.
+_LITTERAL_FORMAT = re.compile(r'"([^"]*)"')
+
+
+def _anonymiser_formats_de_nombre(classeur, table, vivier):
+    """Le texte libre d'un format de nombre personnalisé.
+
+    Excel laisse suffixer un nombre d'un libellé — `#,##0" Nom du client"` —
+    et ce libellé vit dans `xl/styles.xml`, hors de toute cellule. Aucune
+    règle ne le voyait, et le filet le refusait sans jamais l'assainir : un
+    classeur portant un nom dans un format personnalisé était inécrivable.
+
+    La liste est REMPLACÉE dans son ordre, jamais réécrite cellule par
+    cellule : les cellules référencent un format par son INDEX, et le
+    setter d'openpyxl AJOUTE une entrée plutôt que de modifier la sienne —
+    l'ancien format, littéral compris, repartait alors dans le fichier.
+
+    Un littéral court — une devise, une unité — reste : il ne porte aucune
+    donnée du client, et le remplacer abîmerait le classeur sans rien
+    protéger. Le seuil est celui du filet, pour que ce qu'on garde ici soit
+    exactement ce qu'il ne refusera pas.
+    """
+    from openpyxl.utils.indexed_list import IndexedList
+
+    from script.data.external_file import nouveau_mot
+
+    touches = 0
+
+    def remplacer(trouve):
+        nonlocal touches
+        interieur = trouve.group(1)
+        noyau_texte = interieur.strip()
+        if len(noyau_texte) < noyau.LONGUEUR_VERIFIABLE:
+            return trouve.group(0)
+        touches += 1
+        tete = interieur[: len(interieur) - len(interieur.lstrip())]
+        queue = interieur[len(interieur.rstrip()) :]
+        return '"%s%s%s"' % (
+            tete,
+            nouveau_mot(noyau_texte, table, vivier),
+            queue,
+        )
+
+    formats = list(getattr(classeur, "_number_formats", []) or [])
+    if not formats:
+        return 0
+    classeur._number_formats = IndexedList(
+        [_LITTERAL_FORMAT.sub(remplacer, f) for f in formats]
+    )
+    return touches
+
+
+def _renommer_styles_nommes(classeur):
+    """Le NOM d'un style nommé part aussi dans `xl/styles.xml`.
+
+    Renommé en place : une cellule référence son style par l'index de la
+    liste, que renommer l'objet ne déplace pas. « Normal » est le style par
+    défaut d'Excel et n'est pas un nom donné par quelqu'un.
+    """
+    touches = 0
+    for rang, style in enumerate(
+        getattr(classeur, "_named_styles", []) or [], start=1
+    ):
+        if style.name != "Normal":
+            style.name = f"style_{rang}"
+            touches += 1
+    return touches
 
 
 def _nettoyer_graphiques(onglet):

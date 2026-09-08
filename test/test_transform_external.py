@@ -1378,6 +1378,10 @@ MARQUEURS = {
     # comme son en-tête ne passent par aucune règle.
     "titre_feuille_graph": "ZQXCHSHEET",
     "entete_feuille_graph": "ZQXCHHEAD",
+    # Le littéral d'un format de nombre personnalisé et le nom d'un style
+    # nommé : tous deux vivent dans xl/styles.xml, hors de toute cellule.
+    "format_nombre": "ZQXNUMFMT",
+    "style_nomme": "ZQXSTYLE",
 }
 
 # Les quatre familles référencées par une formule. On ne peut pas les
@@ -1511,6 +1515,14 @@ def _fabriquer_fixture(chemin):
     info.add_text("Comment", M["image"])
     PILImage.new("RGB", (4, 4), (200, 10, 10)).save(png, pnginfo=info)
     onglet.add_image(XLImage(png), "L2")
+
+    onglet["B2"].number_format = '#,##0" %s"' % M["format_nombre"]
+    onglet["B3"].number_format = '#,##0" kg"'
+    from openpyxl.styles import Font, NamedStyle
+
+    style = NamedStyle(name=M["style_nomme"], font=Font(bold=True))
+    classeur.add_named_style(style)
+    onglet["A3"].style = M["style_nomme"]
 
     feuille_graph = classeur.create_chartsheet(M["titre_feuille_graph"])
     feuille_graph.oddHeader.center.text = M["entete_feuille_graph"]
@@ -1729,8 +1741,8 @@ class TestFuiteXlsx(unittest.TestCase):
 
     def test_le_compte_des_effaces(self):
         efface = set(TOUS_MARQUEURS) - set(_balayer(self._anonymiser()))
-        self.assertEqual(len(TOUS_MARQUEURS), 30)
-        self.assertEqual(len(efface), 25)
+        self.assertEqual(len(TOUS_MARQUEURS), 32)
+        self.assertEqual(len(efface), 27)
 
     def test_la_constante_d_une_plage_nommee_passe_par_la_table(self):
         """Le NOM survit par nécessité, la VALEUR doit partir.
@@ -1813,6 +1825,23 @@ class TestFuiteXlsx(unittest.TestCase):
         # La valeur de cellule, elle, a changé — les chaînes vivent dans
         # sharedStrings.xml, qui est balayé par _balayer().
         self.assertNotIn("cell_value", _balayer(self._anonymiser()))
+
+    def test_le_littéral_d_un_format_de_nombre_est_assaini(self):
+        """Excel laisse suffixer un nombre d'un libellé.
+
+        Ce libellé vit dans `xl/styles.xml`, hors de toute cellule : aucune
+        règle ne le voyait, et le filet refusait le classeur sans jamais
+        l'assainir. Un littéral COURT — une devise, une unité — reste : il
+        ne porte aucune donnée et le remplacer abîmerait le classeur.
+        """
+        sortie = self._anonymiser()
+        with zipfile.ZipFile(sortie) as archive:
+            styles = archive.read("xl/styles.xml").decode("utf-8")
+        self.assertNotIn(TOUS_MARQUEURS["format_nombre"], styles)
+        self.assertNotIn(TOUS_MARQUEURS["style_nomme"], styles)
+        # L'unité survit, et la structure du format avec elle.
+        self.assertIn("kg", styles)
+        self.assertIn("#,##0", styles)
 
     def test_la_source_n_est_pas_modifiee(self):
         avant = (
