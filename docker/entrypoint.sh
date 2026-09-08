@@ -6,7 +6,7 @@ if [[ "$ENV" == "dev" ]] && [ ! -z ${CURRENT_UID} ]; then
   cd $HOME
 
   # As it's only possible to fetch git repos manifest from an git url, we create one using git-daemon.
-  git daemon --base-path=. --export-all --reuseaddr --informative-errors --verbose &
+  git daemon --base-path=. --export-all --listen=127.0.0.1 --reuseaddr --informative-errors --verbose &
   GIT_PID=$!
   echo "my repo" $(git rev-parse --abbrev-ref HEAD)
   repo init -u git://127.0.0.1:9418/ -b $(git rev-parse --abbrev-ref HEAD) -m default.dev.xml
