@@ -450,6 +450,9 @@ class Correspondance:
         # qu'une table réutilisée d'un fichier à l'autre continue de
         # garantir l'unicité sur tout le lot.
         self.nombres_pris = set(self.nombres.values())
+        # Les mots DÉJÀ attribués, pour la même raison — et parce que le
+        # saut d'identité ci-dessous peut retomber sur l'un d'eux.
+        self.mots_pris = set(self.mots.values())
 
     @classmethod
     def charger(cls, chemin):
@@ -521,8 +524,16 @@ def nouveau_mot(valeur, table, vivier):
     # une cellule peut porter un de ses mots. Rendre ce mot compte un
     # remplacement que la copie ne porte pas — la valeur y part en clair.
     # On avance alors d'un rang plutôt que de rendre l'identité.
+    # `mots_pris` est indispensable : le saut d'identité seul peut retomber
+    # sur un mot DÉJÀ attribué à une autre valeur, et deux clients
+    # fusionnent alors sur un seul mot — la RECHERCHEV résout encore, mais
+    # sur la mauvaise ligne. Reconstruit au chargement, il vaut pour tout
+    # un lot.
+    pris = getattr(table, "mots_pris", None)
+    if pris is None:
+        pris = table.mots_pris = set(table.mots.values())
     n = len(table.mots)
-    for _ in range(taille + 1):
+    while True:
         if n < taille:
             mot = vivier[n]
         else:
@@ -532,10 +543,11 @@ def nouveau_mot(valeur, table, vivier):
                 mot = f"{vivier[gauche]}_{vivier[droite]}"
             else:
                 mot = f"mot_{n}"
-        if mot != cle:
+        if mot != cle and mot not in pris:
             break
         n += 1
     table.mots[cle] = mot
+    pris.add(mot)
     return mot
 
 
@@ -922,43 +934,81 @@ _TEXTE_XML = re.compile(r">([^<>]+)<")
 _ATTRIBUT_XML = re.compile(r"=\"([^\"]*)\"|='([^']*)'")
 
 
+def _est_xml(nom, brut):
+    """Cette partie est-elle du XML ?
+
+    C'est la NATURE de la partie qui doit décider de la matière fouillée,
+    jamais le fait que deux expressions y aient capturé quelque chose. Un
+    seul couple « > … < » dans un fichier plat — un fragment HTML dans une
+    colonne gardée suffit — ramenait sinon le balayage à ce qui les sépare,
+    et toute valeur hors de cet intervalle sortait sans refus.
+    """
+    if nom.endswith((".xml", ".rels", ".vml")):
+        return True
+    # Le préfixe seulement : une partie fait plusieurs mégaoctets, et
+    # `brut.lstrip()` la recopierait à chaque appel. Le BOM est dans
+    # l'ensemble à retirer, pour qu'un XML qui en porte reste reconnu.
+    tete = brut[:512].lstrip("\ufeff \t\r\n")
+    return tete.startswith("<?xml") or tete.startswith("<")
+
+
 def _chaines_distinctes(brut):
-    """Les chaînes DISTINCTES que porte cette partie.
+    """(formes écrites, formes déséchappées) — les chaînes DISTINCTES.
 
     Le balayage cherchait chaque valeur dans le document entier, où elle
     est justement absente : un classeur de cent mille cellules fait dix
     mégaoctets, et cent mille recherches infructueuses dessus ne finissent
     pas. Or l'anonymisation ramène le contenu à quelques milliers de mots :
-    la matière DISTINCTE tient en quelques kilooctets, et c'est la seule
-    qu'il faut fouiller.
+    la matière DISTINCTE tient en quelques kilooctets.
 
-    Rien n'est perdu : une valeur de cellule vit toujours dans un nœud de
-    texte ou une valeur d'attribut — le balisage ne peut pas la traverser —
-    et l'ensemble est bâti par extraction sur TOUTES les parties, sans en
-    nommer aucune. Une partie qui n'est pas du XML retombe sur son texte
-    entier.
+    Dans une partie XML, rien n'est perdu : une valeur de cellule vit
+    toujours dans un nœud de texte ou une valeur d'attribut, le balisage ne
+    pouvant pas la traverser. Les parties qui ne sont PAS du XML — un
+    binaire, un projet VBA, un fichier plat — ne passent pas ici du tout,
+    voir `_matiere`.
+
+    Les deux formes sont rendues SÉPARÉMENT : mêlées dans un seul ensemble,
+    une même chaîne portant « & » s'y compte deux fois, et le total des
+    occurrences dépasse alors la tolérance annoncée — un refus sur du
+    travail légitime.
     """
-    trouvees = set()
+    ecrites = set()
+    nues = set()
+
+    def ajouter(morceau):
+        ecrites.add(morceau)
+        # Un `.xlsx` est un zip de XML : la valeur y est ÉCHAPPÉE.
+        # Chercher les octets bruts d'un nom portant « & », « < » ou « > »
+        # n'y trouve rien, et la copie part avec.
+        nues.add(html.unescape(morceau) if "&" in morceau else morceau)
+
     for morceau in _TEXTE_XML.findall(brut):
-        trouvees.add(morceau)
-        if "&" in morceau:
-            # Un `.xlsx` est un zip de XML : la valeur y est ÉCHAPPÉE.
-            # Chercher les octets bruts d'un nom portant « & », « < » ou
-            # « > » n'y trouve rien, et la copie part avec.
-            trouvees.add(html.unescape(morceau))
+        ajouter(morceau)
     for double, simple in _ATTRIBUT_XML.findall(brut):
         for morceau in (double, simple):
-            if not morceau:
-                continue
-            trouvees.add(morceau)
-            if "&" in morceau:
-                trouvees.add(html.unescape(morceau))
-    if not trouvees:
-        # Ni nœud ni attribut : une partie binaire, ou un fichier plat.
-        trouvees.add(brut)
-        if "&" in brut:
-            trouvees.add(html.unescape(brut))
-    return trouvees
+            if morceau:
+                ajouter(morceau)
+    return ecrites, nues
+
+
+def _matiere(nom, brut, reductible=True):
+    """(bloc des formes écrites, bloc des formes déséchappées).
+
+    Du XML se réduit à ses chaînes distinctes ; tout le reste est fouillé
+    ENTIER.
+
+    `reductible=False` pour une copie PLATE : elle est UNE seule partie, la
+    réduire n'achète rien, et le contenu ne peut pas décider de la
+    couverture. Un export d'ERP qui est du HTML sous une extension `.csv`
+    ou `.txt` commence par « < » et passerait pour du XML : le balayage se
+    réduirait alors au premier nœud, et tout le reste du fichier sortirait
+    sans refus.
+    """
+    if reductible and _est_xml(nom, brut):
+        ecrites, nues = _chaines_distinctes(brut)
+        return _joindre(ecrites), _joindre(nues)
+    nue = html.unescape(brut) if "&" in brut else brut
+    return brut, nue
 
 
 # Le préfiltre : un bit par empreinte de n-gramme. 2^22 bits font 512 Kio,
@@ -1035,8 +1085,8 @@ def survivances(chemin, valeurs, tolerees=()):
                 morceaux.append(
                     (
                         nom,
-                        _joindre(_chaines_distinctes(brut)),
-                        _joindre(_chaines_distinctes(socle.get(nom, ""))),
+                        _matiere(nom, brut),
+                        _matiere(nom, socle.get(nom, "")),
                     )
                 )
     except (zipfile.BadZipFile, OSError):
@@ -1045,15 +1095,21 @@ def survivances(chemin, valeurs, tolerees=()):
                 brut = fh.read().decode("utf-8", "ignore")
         except OSError:
             return {}
+        nom_plat = os.path.basename(chemin)
         morceaux.append(
-            (os.path.basename(chemin), _joindre(_chaines_distinctes(brut)), "")
+            (nom_plat, _matiere(nom_plat, brut, reductible=False), ("", ""))
         )
     bloc_garde = _joindre(tolerees)
     # Le préfiltre ne se paie que quand il rapporte.
     assez = len(valeurs) >= SEUIL_PREFILTRE
     filtres = [
-        (nom, bloc, socle, _prefiltre(bloc) if assez else None)
-        for nom, bloc, socle in morceaux
+        (
+            nom,
+            paire,
+            paire_socle,
+            _prefiltre(paire[0] + "\x00" + paire[1]) if assez else None,
+        )
+        for nom, paire, paire_socle in morceaux
     ]
 
     trouvees = {}
@@ -1065,17 +1121,22 @@ def survivances(chemin, valeurs, tolerees=()):
         excuses = bloc_garde.count(valeur)
         vus = 0
         parties = []
-        for nom, bloc, bloc_socle, bits in filtres:
+        for nom, paire, paire_socle, bits in filtres:
             if not _peut_contenir(bits, valeur):
                 continue
-            compte = bloc.count(valeur)
+            # Le MAX des deux vues, jamais leur somme : une même chaîne
+            # portant « & » apparaît dans les deux, et l'additionner
+            # gonflait le compte au-delà de la tolérance annoncée.
+            compte = max(paire[0].count(valeur), paire[1].count(valeur))
             if not compte:
                 continue
             vus += compte
             # EN SURPLUS du socle : « Normal » que le graveur écrit
             # toujours dans `xl/styles.xml` n'est pas une fuite ; une
             # seconde occurrence en est une.
-            excuses += bloc_socle.count(valeur)
+            excuses += max(
+                paire_socle[0].count(valeur), paire_socle[1].count(valeur)
+            )
             if nom not in parties:
                 parties.append(nom)
         if vus > excuses:

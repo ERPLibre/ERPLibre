@@ -1474,7 +1474,12 @@ def ecrire(chemin, destination, options):
 
     if cible and cible != format_lu:
         fichiers = convertir(
-            chemin, destination, cible, options, feuilles=feuilles
+            chemin,
+            destination,
+            cible,
+            options,
+            feuilles=feuilles,
+            table=table,
         )
     elif format_lu == "xlsx":
         _ecrire_atomique(destination, classeur.save)
@@ -1486,7 +1491,12 @@ def ecrire(chemin, destination, options):
     else:
         # `.xls` et Access n'ont pas de graveur : la copie repart en .xlsx
         fichiers = convertir(
-            chemin, destination, "xlsx", options, feuilles=feuilles
+            chemin,
+            destination,
+            "xlsx",
+            options,
+            feuilles=feuilles,
+            table=table,
         )
 
     # Le filet : relire les OCTETS écrits. Il ne dépend d'aucune
@@ -1681,7 +1691,27 @@ def _transformer_json(noeud, options, table, rng):
     return neuve, {classer(noeud): 1}
 
 
-def convertir(chemin, destination, cible, options, feuilles=None):
+def _nom_de_feuille_anonyme(feuille, table, options):
+    """Le nom d'une feuille, remplacé, pour une CONVERSION.
+
+    Une table Access ou une feuille `.xls` porte souvent le nom du client,
+    et la conversion l'écrit tel quel : en nom d'onglet, en clé de premier
+    niveau d'un JSON, en nom de fichier. Contrairement au classeur d'où
+    une formule le référence, ici RIEN ne le résout — c'est donc de la
+    donnée, et le tolérer aurait laissé le nom du client dans la copie
+    tout en faisant refuser le fichier au filet.
+
+    Il passe par la MÊME table que les cellules : la feuille et les
+    valeurs qui la nomment reçoivent le même mot.
+    """
+    from script.data.external_file import nouveau_mot
+
+    if table is None or not feuille.nom:
+        return feuille.nom
+    return nouveau_mot(str(feuille.nom), table, options["vivier"])
+
+
+def convertir(chemin, destination, cible, options, feuilles=None, table=None):
     """Écrire la copie dans un AUTRE format. Rend la liste des fichiers.
 
     Quand la cible ne peut pas porter la forme de la source — un classeur
@@ -1701,27 +1731,29 @@ def convertir(chemin, destination, cible, options, feuilles=None):
     if not retenues:
         raise ErreurMoteur("aucune_feuille", "")
 
+    noms = {
+        f.nom: _nom_de_feuille_anonyme(f, table, options) for f in retenues
+    }
     if cible == "xlsx":
-        return _convertir_vers_xlsx(destination, retenues)
+        return _convertir_vers_xlsx(destination, retenues, noms)
     if cible == "csv":
         if len(retenues) == 1:
             return _ecrire_csv(destination, retenues[0], options)
-        return _convertir_vers_repertoire(destination, retenues, options)
+        return _convertir_vers_repertoire(destination, retenues, options, noms)
     if cible == "json":
-        return _convertir_vers_json(destination, retenues)
+        return _convertir_vers_json(destination, retenues, noms)
     return _convertir_vers_xml(destination, retenues)
 
 
-def _convertir_vers_xlsx(destination, feuilles):
+def _convertir_vers_xlsx(destination, feuilles, noms=None):
     from openpyxl import Workbook
 
     classeur = Workbook()
     classeur.remove(classeur.active)
     pris = set()
     for feuille in feuilles:
-        onglet = classeur.create_sheet(
-            nom_de_fichier_sur(feuille.nom, pris)[:31]
-        )
+        brut = (noms or {}).get(feuille.nom, feuille.nom)
+        onglet = classeur.create_sheet(nom_de_fichier_sur(brut, pris)[:31])
         for ligne in feuille.lignes:
             onglet.append([_valeur_pour_xlsx(v) for v in ligne])
     _ecrire_atomique(destination, classeur.save)
@@ -1753,18 +1785,20 @@ def _preparer_repertoire(destination):
     os.makedirs(destination, mode=0o700, exist_ok=True)
 
 
-def _convertir_vers_repertoire(destination, feuilles, options):
+def _convertir_vers_repertoire(destination, feuilles, options, noms=None):
     _preparer_repertoire(destination)
     pris = set()
     ecrits = []
     for feuille in feuilles:
-        nom = nom_de_fichier_sur(feuille.nom, pris)
+        nom = nom_de_fichier_sur(
+            (noms or {}).get(feuille.nom, feuille.nom), pris
+        )
         cible = os.path.join(destination, f"{nom}.csv")
         ecrits.extend(_ecrire_csv(cible, feuille, options))
     return ecrits
 
 
-def _convertir_vers_json(destination, feuilles):
+def _convertir_vers_json(destination, feuilles, noms=None):
     sortie = {}
     for feuille in feuilles:
         etiquettes = [
@@ -1780,7 +1814,7 @@ def _convertir_vers_json(destination, feuilles):
                     if i < len(etiquettes)
                 }
             )
-        sortie[feuille.nom] = enregistrements
+        sortie[(noms or {}).get(feuille.nom, feuille.nom)] = enregistrements
 
     def ecrivain(cible):
         with open(cible, "w", encoding="utf-8") as fh:

@@ -270,6 +270,85 @@ class TestUniciteNumerique(unittest.TestCase):
             )
 
 
+class TestMotSansRemise(unittest.TestCase):
+    """Deux valeurs distinctes ne peuvent PAS partager un mot."""
+
+    def test_le_saut_d_identite_ne_reprend_pas_un_mot_donne(self):
+        """Le saut avance d'un rang : il pouvait retomber sur un mot pris.
+
+        Deux clients fusionnaient alors sur un seul mot — la RECHERCHEV
+        résout encore, mais sur la mauvaise ligne.
+        """
+        table = noyau.Correspondance()
+        # La première valeur EST un mot du vivier : le saut se déclenche.
+        sorties = [
+            noyau.nouveau_mot(v, table, VIVIER)
+            for v in (VIVIER[1], "Alpha", "Beta", VIVIER[0], "Gamma")
+        ]
+        self.assertEqual(len(set(sorties)), len(sorties))
+        for source, mot in table.mots.items():
+            self.assertNotEqual(source, mot)
+
+    def test_une_table_rechargee_ne_recolle_pas(self):
+        premiere = noyau.Correspondance()
+        for v in ("Alpha", "Beta"):
+            noyau.nouveau_mot(v, premiere, VIVIER)
+        seconde = noyau.Correspondance(mots=dict(premiere.mots))
+        for v in ("Gamma", "Delta"):
+            noyau.nouveau_mot(v, seconde, VIVIER)
+        self.assertEqual(len(set(seconde.mots.values())), len(seconde.mots))
+
+    def test_mots_pris_est_reconstruit_au_chargement(self):
+        table = noyau.Correspondance(mots={"Alpha": "aboulie"})
+        self.assertEqual(table.mots_pris, {"aboulie"})
+
+
+class TestNomDeFeuilleEnConversion(unittest.TestCase):
+    """Une table Access porte souvent le nom du client.
+
+    La conversion l'écrivait tel quel — nom d'onglet, clé de premier
+    niveau d'un JSON, nom de fichier — alors que RIEN ne le résout dans
+    une conversion, contrairement au classeur d'où une formule le
+    référence. Le tolérer aurait laissé le nom dans la copie tout en
+    faisant refuser le fichier au filet.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.options = {"vivier": VIVIER, "feuilles": None}
+
+    def test_le_nom_passe_par_la_MEME_table_que_les_cellules(self):
+        table = noyau.Correspondance()
+        feuille = formats.Feuille("Alpha", [["client"], ["Alpha"]])
+        nom = formats._nom_de_feuille_anonyme(feuille, table, self.options)
+        self.assertNotEqual(nom, "Alpha")
+        # La feuille et la cellule qui la nomme reçoivent le même mot.
+        self.assertEqual(nom, noyau.nouveau_mot("Alpha", table, VIVIER))
+
+    def test_sans_table_le_nom_ne_bouge_pas(self):
+        feuille = formats.Feuille("Alpha", [["c"], ["x"]])
+        self.assertEqual(
+            formats._nom_de_feuille_anonyme(feuille, None, self.options),
+            "Alpha",
+        )
+
+    def test_la_conversion_vers_json_anonymise_la_cle(self):
+        table = noyau.Correspondance()
+        feuille = formats.Feuille("Alpha", [["c"], ["Beta"]])
+        sortie = os.path.join(self.base, "o.json")
+        formats.convertir(
+            os.path.join(self.base, "s.csv"),
+            sortie,
+            "json",
+            self.options,
+            feuilles=[feuille],
+            table=table,
+        )
+        arbre = json.load(open(sortie, encoding="utf-8"))
+        self.assertNotIn("Alpha", arbre)
+
+
 class TestNormalisationAccess(unittest.TestCase):
     """`access-parser` rend une date et un montant en CHAÎNE.
 
@@ -1227,6 +1306,74 @@ class TestGardeApresEcriture(unittest.TestCase):
         fuites, ecartees = noyau.verifier_copie([cible], table)
         self.assertIn("zzz_survivante", fuites)
         self.assertEqual(ecartees, 0)
+
+    def test_une_copie_plate_est_fouillee_ENTIERE(self):
+        """La nature de la partie décide, pas ce que les regex capturent.
+
+        Un seul couple « > … < » — un fragment HTML dans une colonne
+        gardée suffit — ramenait le balayage à ce qui les sépare, et toute
+        valeur hors de cet intervalle sortait sans refus.
+        """
+        for nom, contenu in (
+            ("plat.csv", "nom,note\naboulie,<b>gras</b>\nzzz_leak,ici\n"),
+            ("plat.json", '{"a": "<i>x</i>", "b": "zzz_leak"}'),
+            ("plat.txt", "<html>rien</html>\nzzz_leak\n"),
+        ):
+            cible = os.path.join(self.base, nom)
+            with open(cible, "w", encoding="utf-8") as fh:
+                fh.write(contenu)
+            fuites, _ = noyau.verifier_copie([cible], self._table("zzz_leak"))
+            self.assertIn("zzz_leak", fuites, nom)
+
+    def test_une_partie_binaire_est_fouillee_ENTIERE(self):
+        """Un projet VBA n'a ni nœud ni attribut."""
+        cible = os.path.join(self.base, "avec.xlsm")
+        with zipfile.ZipFile(cible, "w") as archive:
+            archive.writestr(
+                "xl/worksheets/sheet1.xml", "<c><v>aboulie</v></c>"
+            )
+            archive.writestr("xl/vbaProject.bin", b"\x00\x01 zzz_leak \x02")
+        fuites, _ = noyau.verifier_copie([cible], self._table("zzz_leak"))
+        self.assertEqual(fuites["zzz_leak"], ["avec.xlsm:xl/vbaProject.bin"])
+
+    def test_une_copie_propre_ne_produit_aucun_refus(self):
+        cible = os.path.join(self.base, "propre.csv")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("nom\naboulie\nacai\n")
+        fuites, _ = noyau.verifier_copie([cible], self._table("Alpha", "Beta"))
+        self.assertEqual(fuites, {})
+
+    def test_est_xml_tranche_sur_la_nature(self):
+        self.assertTrue(noyau._est_xml("xl/styles.xml", "nimporte"))
+        self.assertTrue(noyau._est_xml("_rels/.rels", "x"))
+        self.assertTrue(noyau._est_xml("sans_extension", "<?xml v?><a/>"))
+        self.assertTrue(noyau._est_xml("bom", "\ufeff<a/>"))
+        self.assertFalse(noyau._est_xml("x.bin", "\x00 pas du xml"))
+        self.assertFalse(
+            noyau._est_xml("plat.csv", "nom\nun <b>gras</b> ici\n")
+        )
+
+    def test_les_deux_formes_ne_se_comptent_pas_deux_fois(self):
+        """Mêlées dans un ensemble, une chaîne portant « & » pesait deux.
+
+        Le total dépassait alors la tolérance annoncée, et le filet
+        refusait du travail légitime.
+        """
+        ecrites, nues = noyau._chaines_distinctes(
+            "<a>Roy &amp; Fils</a><b>simple</b>"
+        )
+        self.assertIn("Roy &amp; Fils", ecrites)
+        self.assertIn("Roy & Fils", nues)
+        # Une valeur gardée qui porte « & » n'est pas refusée.
+        cible = os.path.join(self.base, "amp.xml")
+        with open(cible, "w", encoding="utf-8") as fh:
+            fh.write("<r><a>Roy &amp; Fils</a></r>")
+        fuites, _ = noyau.verifier_copie(
+            [cible],
+            self._table("Roy & Fils"),
+            gardees=["Roy & Fils"],
+        )
+        self.assertEqual(fuites, {})
 
     def test_le_prefiltre_ne_rend_aucun_faux_negatif(self):
         """La propriété sur laquelle tout le balayage repose.
