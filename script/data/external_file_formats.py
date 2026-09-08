@@ -1111,7 +1111,49 @@ def _anonymiser_formats_de_nombre(classeur, table, vivier):
         fmt = getattr(style, "numFmt", None)
         if fmt is not None and getattr(fmt, "formatCode", None):
             fmt.formatCode = _parcourir_format(fmt.formatCode, mot_si_long)
+    for onglet in classeur.worksheets:
+        for graphique in getattr(onglet, "_charts", []) or []:
+            _formats_de_graphique(graphique, mot_si_long)
     return touches
+
+
+def _formats_de_graphique(graphique, mot_si_long):
+    """Les formats de nombre qu'un graphique porte hors des cellules.
+
+    Un axe et une étiquette de données portent leur PROPRE format, dont le
+    libellé vit dans `xl/charts/chartN.xml` : ni dans la liste que le
+    classeur tient, ni dans une cellule. Le filet ne le rattrape pas, car
+    il ne refuse que ce qui a été ANNONCÉ remplacé — un libellé qui n'a
+    jamais été lu d'une cellule n'est annoncé par personne, et sort intact.
+
+    Deux formes cohabitent : un objet à `formatCode` sur un axe, une
+    chaîne nue sur une étiquette. Le parcours descend le graphe que
+    openpyxl sérialise, et s'amorce sur les axes : le graphique ne les
+    référence que par leur identifiant, ils ne sont pas dans ses éléments.
+    """
+    vus = set()
+    pile = [graphique]
+    for nom in ("x_axis", "y_axis", "z_axis"):
+        axe = getattr(graphique, nom, None)
+        if axe is not None:
+            pile.append(axe)
+    while pile:
+        porteur = pile.pop()
+        if id(porteur) in vus:
+            continue
+        vus.add(id(porteur))
+        fmt = getattr(porteur, "numFmt", None)
+        if isinstance(fmt, str):
+            porteur.numFmt = _parcourir_format(fmt, mot_si_long)
+        elif getattr(fmt, "formatCode", None):
+            fmt.formatCode = _parcourir_format(fmt.formatCode, mot_si_long)
+        for element in getattr(porteur, "__elements__", ()) or ():
+            valeur = getattr(porteur, element, None)
+            if not isinstance(valeur, (list, tuple)):
+                valeur = (valeur,)
+            for candidat in valeur:
+                if hasattr(candidat, "__elements__"):
+                    pile.append(candidat)
 
 
 def _renommer_polices(classeur):
@@ -1537,10 +1579,11 @@ def plan(chemin, options):
     rng = (
         random.Random(graine) if graine not in (None, "") else random.Random()
     )
+    fichiers = _fichiers_prevus(chemin, feuilles, options, table)
     bilan = _parcourir(feuilles, options, table, rng)
     bilan["colonnes_ecartees"] = _colonnes_ecartees(rapport, options)
     bilan["format"] = format_lu
-    bilan["fichiers"] = _fichiers_prevus(chemin, feuilles, options)
+    bilan["fichiers"] = fichiers
     # La marche à blanc est ce sur quoi l'opérateur consent : elle doit
     # refuser là où l'écriture refuserait.
     _refuser_table_confondue(
@@ -1552,15 +1595,34 @@ def plan(chemin, options):
     return bilan
 
 
-def _fichiers_prevus(chemin, feuilles, options):
-    """Les chemins qui seront écrits — calculés AVANT toute écriture."""
+def _fichiers_prevus(chemin, feuilles, options, table=None):
+    """Les chemins qui seront écrits — calculés AVANT toute écriture.
+
+    Les noms passent par la MÊME table que la conversion : un fichier par
+    feuille est nommé d'après le nom ANONYMISÉ de la feuille, et prédire
+    d'après le nom d'origine annonçait des chemins qui n'existeraient
+    jamais. Ce n'était pas qu'un affichage — cette liste est ce que le
+    contrôle d'écrasement et celui de la table de correspondance
+    examinent, si bien qu'un fichier réel échappait aux deux.
+
+    L'appel doit précéder le parcours des cellules, dans la marche à
+    blanc comme à l'écriture : la table sert les deux, et le nom réservé
+    ici est celui que la conversion retrouvera.
+    """
     destination = options.get("destination") or ""
     cible = options.get("conversion") or ""
     if cible and _un_fichier_par_feuille(cible, feuilles, options):
         pris = set()
         return [
             os.path.join(
-                destination, f"{nom_de_fichier_sur(f.nom, pris)}.{cible}"
+                destination,
+                "%s.%s"
+                % (
+                    nom_de_fichier_sur(
+                        _nom_de_feuille_anonyme(f, table, options), pris
+                    ),
+                    cible,
+                ),
             )
             for f in feuilles
             if not options["feuilles"] or f.nom in options["feuilles"]
@@ -1735,11 +1797,11 @@ def ecrire(chemin, destination, options):
         chemin, options
     )
     options["destination"] = destination
-    prevus = _fichiers_prevus(chemin, feuilles, options)
+    table = Correspondance.charger(options.get("table_chemin"))
+    prevus = _fichiers_prevus(chemin, feuilles, options, table)
     _refuser_table_confondue(
         chemin, options.get("table_chemin"), prevus + [destination]
     )
-    table = Correspondance.charger(options.get("table_chemin"))
     graine = options.get("graine")
     rng = (
         random.Random(graine) if graine not in (None, "") else random.Random()
@@ -2135,13 +2197,41 @@ def _convertir_vers_repertoire(destination, feuilles, options, noms=None):
     return ecrits
 
 
+def _cles_distinctes(etiquettes):
+    """Une clé d'objet par colonne, toutes DISTINCTES.
+
+    Un objet JSON écrase la clé qu'il répète : deux colonnes au même
+    en-tête, ou deux en-têtes vides, n'en laissaient qu'une dans la copie
+    et la donnée de l'autre disparaissait sans qu'une ligne ne le dise.
+    Un tableur laisse les deux faire — l'en-tête n'y est qu'une ligne.
+
+    Une étiquette vide n'est pas None : elle porte la chaîne vide, que le
+    repli sur « cN » ne couvrait pas. Le test porte sur l'étiquette
+    dépouillée, la clé garde l'étiquette telle quelle.
+    """
+    sortie = []
+    pris = set()
+    for rang, valeur in enumerate(etiquettes, start=1):
+        nom = "" if valeur is None else str(valeur)
+        if not nom.strip():
+            nom = "c%d" % rang
+        candidat, suffixe = nom, 2
+        while candidat in pris:
+            candidat = "%s_%d" % (nom, suffixe)
+            suffixe += 1
+        pris.add(candidat)
+        sortie.append(candidat)
+    return sortie
+
+
 def _convertir_vers_json(destination, feuilles, noms=None):
     sortie = {}
-    for feuille in feuilles:
-        etiquettes = [
-            str(v) if v is not None else f"c{i}"
-            for i, v in enumerate(feuille.etiquettes, start=1)
-        ]
+    # La clé de premier niveau nomme la feuille, et passe par la même
+    # distinction que ses colonnes : les deux autres graveurs réservent
+    # déjà leurs noms d'onglet et de fichier, celui-ci écrasait.
+    cles = _cles_distinctes([(noms or {}).get(f.nom, f.nom) for f in feuilles])
+    for cle, feuille in zip(cles, feuilles):
+        etiquettes = _cles_distinctes(feuille.etiquettes)
         enregistrements = []
         for ligne in feuille.lignes[1:]:
             enregistrements.append(
@@ -2151,7 +2241,7 @@ def _convertir_vers_json(destination, feuilles, noms=None):
                     if i < len(etiquettes)
                 }
             )
-        sortie[(noms or {}).get(feuille.nom, feuille.nom)] = enregistrements
+        sortie[cle] = enregistrements
 
     def ecrivain(cible):
         with open(cible, "w", encoding="utf-8") as fh:

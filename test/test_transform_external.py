@@ -1411,6 +1411,114 @@ def _cles_du_menu(traduites_seulement=True):
     return cles
 
 
+class TestFichiersPrevus(unittest.TestCase):
+    """Les chemins annoncés doivent être ceux qui seront écrits.
+
+    Ce n'est pas qu'un affichage : cette liste est ce que le contrôle
+    d'écrasement et celui de la table de correspondance examinent. Prédite
+    d'après le nom d'ORIGINE d'une feuille, elle annonçait des chemins qui
+    n'existeraient jamais, montrait le nom du client à l'écran, et laissait
+    les fichiers réels échapper aux deux contrôles.
+    """
+
+    def setUp(self):
+        self.feuilles = [
+            formats.Feuille("Cabinet Lavigne", [["c"], ["x"]]),
+            formats.Feuille("Fournisseurs 2024", [["c"], ["y"]]),
+        ]
+        self.options = {
+            "vivier": VIVIER,
+            "feuilles": [],
+            "destination": "/tmp/sortie",
+            "conversion": "csv",
+        }
+
+    def test_les_chemins_portent_le_nom_ANONYMISE(self):
+        table = noyau.Correspondance()
+        prevus = formats._fichiers_prevus(
+            "s.xlsx", self.feuilles, self.options, table
+        )
+        self.assertEqual(len(prevus), 2)
+        for chemin in prevus:
+            self.assertNotIn("Lavigne", chemin)
+            self.assertNotIn("Fournisseurs", chemin)
+
+    def test_la_prediction_fige_ce_que_la_conversion_retrouvera(self):
+        """La table est une correspondance stable : le nom réservé par la
+        prédiction est celui que la conversion lira ensuite."""
+        table = noyau.Correspondance()
+        prevus = formats._fichiers_prevus(
+            "s.xlsx", self.feuilles, self.options, table
+        )
+        attendus = [
+            "%s.csv" % formats._nom_de_feuille_anonyme(f, table, self.options)
+            for f in self.feuilles
+        ]
+        self.assertEqual([os.path.basename(c) for c in prevus], attendus)
+
+    def test_sans_table_le_nom_d_origine_reste(self):
+        """Rien n'est anonymisé quand rien ne l'est : la prédiction ne
+        doit pas inventer un nom que l'écriture ne produira pas."""
+        prevus = formats._fichiers_prevus(
+            "s.xlsx", self.feuilles, self.options, None
+        )
+        self.assertIn(
+            "Cabinet_Lavigne.csv", [os.path.basename(c) for c in prevus]
+        )
+
+    def test_une_seule_feuille_garde_la_destination_telle_quelle(self):
+        prevus = formats._fichiers_prevus(
+            "s.csv", self.feuilles[:1], self.options, noyau.Correspondance()
+        )
+        self.assertEqual(prevus, ["/tmp/sortie"])
+
+
+class TestClesDistinctesEnJson(unittest.TestCase):
+    """Un objet JSON écrase la clé qu'il répète, un tableur non.
+
+    L'en-tête d'un tableur n'est qu'une ligne : rien ne l'empêche de
+    porter deux fois « montant », ni de laisser deux colonnes sans titre.
+    Rendu tel quel en clés d'objet, cela perdait des colonnes ENTIÈRES
+    dans la copie, sans qu'une ligne du rapport ne le dise.
+    """
+
+    def test_etiquettes_repetees_se_distinguent(self):
+        self.assertEqual(
+            formats._cles_distinctes(["montant", "montant", "montant"]),
+            ["montant", "montant_2", "montant_3"],
+        )
+
+    def test_etiquette_vide_n_est_pas_none(self):
+        """La chaîne vide et l'espace ne passaient pas par le repli."""
+        self.assertEqual(
+            formats._cles_distinctes([None, "", "   ", "x"]),
+            ["c1", "c2", "c3", "x"],
+        )
+
+    def test_l_etiquette_garde_ses_espaces(self):
+        """Le test porte sur l'étiquette dépouillée, la clé la garde
+        telle quelle : la dépouiller altérerait la copie en silence."""
+        self.assertEqual(formats._cles_distinctes([" Nom "]), [" Nom "])
+
+    def test_le_repli_ne_collisionne_pas_avec_une_etiquette(self):
+        """Une colonne littéralement intitulée « c2 » existe."""
+        self.assertEqual(
+            formats._cles_distinctes(["c2", None]), ["c2", "c2_2"]
+        )
+
+    def test_autant_de_cles_que_de_colonnes(self):
+        for etiquettes in (
+            ["a", "a", None, "", "a"],
+            [None] * 5,
+            ["x"],
+            [],
+        ):
+            with self.subTest(etiquettes=etiquettes):
+                cles = formats._cles_distinctes(etiquettes)
+                self.assertEqual(len(cles), len(etiquettes))
+                self.assertEqual(len(set(cles)), len(etiquettes))
+
+
 class TestConversion(unittest.TestCase):
     """Les cibles de conversion, qu'aucun test n'exerçait.
 
@@ -1984,6 +2092,13 @@ MARQUEURS = {
     # nommé : tous deux vivent dans xl/styles.xml, hors de toute cellule.
     "format_nombre": "ZQXNUMFMT",
     "style_nomme": "ZQXSTYLE",
+    # Un axe et une étiquette de données portent leur PROPRE format, dans
+    # la partie graphique. Vider les titres et les caches les laisse, et
+    # le filet ne les rattrape pas : il ne refuse que ce qui a été annoncé
+    # remplacé, et un libellé qui n'a jamais été lu d'une cellule n'est
+    # annoncé par personne.
+    "format_axe": "ZQXAXISFMT",
+    "format_etiquette": "ZQXLBLFMT",
 }
 
 # Les quatre familles référencées par une formule. On ne peut pas les
@@ -2013,6 +2128,7 @@ def _fabriquer_fixture(chemin):
     """
     from openpyxl import Workbook
     from openpyxl.chart import BarChart, Reference, Series
+    from openpyxl.chart.label import DataLabelList
     from openpyxl.comments import Comment
     from openpyxl.formatting.rule import CellIsRule
     from openpyxl.packaging.custom import (
@@ -2097,6 +2213,10 @@ def _fabriquer_fixture(chemin):
             title=M["series_name"],
         )
     )
+    graphique.y_axis.numFmt = '#,##0" %s"' % M["format_axe"]
+    if graphique.dLbls is None:
+        graphique.dLbls = DataLabelList()
+    graphique.dLbls.numFmt = '#,##0" %s"' % M["format_etiquette"]
     onglet.add_chart(graphique, "J2")
 
     # Un filtre automatique AVEC une valeur : `auto_filter.ref` seul ne
@@ -2343,8 +2463,8 @@ class TestFuiteXlsx(unittest.TestCase):
 
     def test_le_compte_des_effaces(self):
         efface = set(TOUS_MARQUEURS) - set(_balayer(self._anonymiser()))
-        self.assertEqual(len(TOUS_MARQUEURS), 32)
-        self.assertEqual(len(efface), 27)
+        self.assertEqual(len(TOUS_MARQUEURS), 34)
+        self.assertEqual(len(efface), 29)
 
     def test_la_constante_d_une_plage_nommee_passe_par_la_table(self):
         """Le NOM survit par nécessité, la VALEUR doit partir.
