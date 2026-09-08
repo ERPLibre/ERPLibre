@@ -1524,5 +1524,223 @@ class TestLeSuivi(unittest.TestCase):
         self.assertIn("tableau", vus)
 
 
+class TestLAutoriteDuCacheDansUneVmImbriquee(unittest.TestCase):
+    """Une VM née sur un Proxmox imbriqué est interceptée sans le savoir.
+
+    Le cache détourne tout ce qui sort de son pont. Un hôte Proxmox qui est
+    lui-même une VM d'ici y est branché, et les machines qu'il porte sortent
+    derrière son adresse : elles traversent donc le cache, alors que rien à
+    l'intérieur ne leur a donné son autorité. Le mode de défaillance est
+    trompeur — un dépôt apt en clair passe, si bien que l'installation
+    démarre, et seuls les téléchargements HTTPS échouent, sur « self-signed
+    certificate in certificate chain ».
+
+    « qm set » ne sait écrire aucun fichier : l'autorité part par ssh, depuis
+    la MÊME source que la voie libvirt (`cache_files`, `cache_commands`).
+    """
+
+    def _todo(self, domaines=("pve-local",), ca="/tmp/ca.crt"):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._qemu_list_domains = lambda: list(domaines)
+        todo._qemu_cache_ca_path = classmethod(lambda cls: ca).__get__(
+            todo, type(todo)
+        )
+        return todo
+
+    # -- Qui est concerné ----------------------------------------------
+
+    def test_a_nested_proxmox_host_gets_the_authority(self):
+        todo = self._todo()
+        self.assertEqual(
+            todo._pve_cache_ca({"target": "root@pve-local"}),
+            "/tmp/ca.crt",
+        )
+
+    def test_a_proxmox_host_that_lives_elsewhere_gets_nothing(self):
+        """Son trafic ne traverse pas ce pont : l'autorité n'y servirait à
+        rien, et le cache doit s'installer sur cet hôte-là."""
+        todo = self._todo()
+        self.assertEqual(todo._pve_cache_ca({"target": "root@10.0.0.5"}), "")
+
+    def test_no_cache_installed_here_means_no_authority(self):
+        todo = self._todo(ca="")
+        self.assertEqual(todo._pve_cache_ca({"target": "pve-local"}), "")
+
+    # -- Ce qui est réellement posé ------------------------------------
+
+    def _pose(self, distro="ubuntu", cache_files=None):
+        import contextlib
+        import io
+        import tempfile
+
+        todo = self._todo()
+        vus = {}
+        todo._pve_ssh = lambda cible, remote, timeout=60: (
+            vus.update(cible=cible, remote=remote, timeout=timeout) or (0, "")
+        )
+        mod = todo._qemu_import_module()
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".crt", delete=False
+        ) as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\nZm F1eA==\n")
+            fh.write("-----END CERTIFICATE-----\n")
+            ca = fh.name
+        patch = (
+            mock.patch.object(mod, "cache_files", cache_files)
+            if cache_files
+            else contextlib.nullcontext()
+        )
+        with contextlib.redirect_stdout(io.StringIO()), patch:
+            vus["ok"] = todo._pve_set_cache_ca(
+                "hote+vm-a", {"name": "vm-a", "distro": distro}, ca
+            )
+        return vus
+
+    def test_the_authority_goes_where_the_family_reads_it(self):
+        vus = self._pose()
+        self.assertTrue(vus["ok"])
+        # Par l'ALIAS : lui seul porte le rebond vers le réseau interne.
+        self.assertEqual(vus["cible"], "hote+vm-a")
+        self.assertIn(
+            "/usr/local/share/ca-certificates/erplibre-cache.crt",
+            vus["remote"],
+        )
+
+    def test_arch_does_not_get_the_debian_path(self):
+        vus = self._pose(distro="arch")
+        self.assertIn(
+            "/etc/ca-certificates/trust-source/anchors", vus["remote"]
+        )
+        self.assertNotIn("/usr/local/share/ca-certificates", vus["remote"])
+
+    def test_the_store_is_reread_then_the_variables_are_written(self):
+        """Dans cet ordre : les variables visent le faisceau que la commande
+        de confiance vient de régénérer."""
+        vus = self._pose()
+        confiance = vus["remote"].index("update-ca-certificates")
+        for var in ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"):
+            self.assertLess(confiance, vus["remote"].index(var), var)
+
+    def test_the_content_comes_from_cache_files_and_is_not_rebuilt_here(self):
+        """Une seule source pour les deux voies de livraison : ce que
+        cloud-init écrirait est ce que ssh pose."""
+        vus = self._pose(
+            cache_files=lambda args: [
+                ("/etc/anchors/temoin.crt", "0644", "PEM-TEMOIN", "")
+            ]
+        )
+        self.assertIn("/etc/anchors/temoin.crt", vus["remote"])
+        self.assertIn("PEM-TEMOIN", vus["remote"])
+
+    def test_a_distro_out_of_the_table_poses_nothing(self):
+        """Le fichier au mauvais endroit ne servirait à rien sans rien
+        dire ; la VM télécharge en direct, ce qui marche."""
+        vus = self._pose(distro="plan9")
+        self.assertFalse(vus["ok"])
+        self.assertNotIn("remote", vus)
+
+    # -- Le câblage ----------------------------------------------------
+
+    def test_the_authority_is_posed_before_the_install(self):
+        """Le contrôle porte sur l'ORDRE : c'est l'installation qui
+        télécharge, et un magasin relu ensuite ne rattrape rien."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        ordre = []
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._pve_alias_perime = lambda *a, **k: []
+        todo._qemu_list_domains = lambda: ["pve-local"]
+        todo._qemu_cache_ca_path = classmethod(
+            lambda cls: "/tmp/ca.crt"
+        ).__get__(todo, type(todo))
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+        todo._pve_set_cache_ca = lambda cible, vm, ca: ordre.append(
+            ("autorité", cible, ca)
+        )
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: ordre.append(
+            ("installation",)
+        )
+        spec = {
+            "host": {"target": "root@pve-local"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "distro": "ubuntu",
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {"branch": "develop", "cmd": "make x", "label": "X"},
+            "monitor": True,
+            "desktop": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        self.assertEqual([e[0] for e in ordre], ["autorité", "installation"])
+        self.assertEqual(ordre[0][2], "/tmp/ca.crt")
+
+    def test_a_remote_host_does_not_get_the_step_at_all(self):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        appels = []
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._pve_alias_perime = lambda *a, **k: []
+        todo._qemu_list_domains = lambda: []
+        todo._qemu_cache_ca_path = classmethod(
+            lambda cls: "/tmp/ca.crt"
+        ).__get__(todo, type(todo))
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+        todo._pve_set_cache_ca = lambda *a: appels.append(a)
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: None
+        spec = {
+            "host": {"target": "root@10.0.0.5"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "distro": "ubuntu",
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": False,
+            "desktop": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        self.assertEqual(appels, [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

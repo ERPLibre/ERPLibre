@@ -1534,6 +1534,70 @@ class ProxmoxMenuMixin:
         print(f"  ✓ {t('Timezone')} : {fuseau}")
         return True
 
+    def _pve_cache_ca(self, host):
+        """L'autorité du cache à poser dans les VM de cet hôte, ou ''.
+
+        Le cache détourne tout ce qui sort de SON pont. Un hôte Proxmox qui
+        est lui-même une VM d'ici y est branché, et les machines qu'il porte
+        sortent derrière son adresse : elles sont donc interceptées, sans que
+        rien à l'intérieur ne l'annonce. Un hôte Proxmox qui ne vit pas ici ne
+        traverse pas ce pont, et son invité n'a que faire de cette autorité.
+
+        Le déséquilibre décide du doute : une autorité approuvée en trop ne
+        signe jamais rien, tandis qu'un détournement sans autorité fait
+        échouer chaque téléchargement HTTPS sur « self-signed certificate in
+        certificate chain ». En cas d'hésitation, on la pose.
+        """
+        nom = (host.get("target") or "").split("@")[-1]
+        if not nom or nom not in set(self._qemu_list_domains()):
+            return ""
+        return self._qemu_cache_ca_path()
+
+    def _pve_set_cache_ca(self, cible, vm, ca):
+        """Pose l'autorité du cache DANS la VM, par ssh.
+
+        Même source que la voie libvirt — `cache_files` et `cache_commands` de
+        deploy_qemu — livrée autrement : « qm set » ne sait écrire aucun
+        fichier, comme pour le guide et pour le fuseau.
+
+        AVANT l'installation : c'est elle qui télécharge. Un magasin de
+        confiance relu ensuite ne rattrape rien de ce qui a déjà échoué.
+        """
+        import types
+
+        try:
+            mod = self._qemu_import_module()
+        except Exception:  # pragma: no cover - dépend du module
+            return False
+        args = types.SimpleNamespace(
+            distro=vm.get("distro") or "", cache_ca=ca, cache_bypass=False
+        )
+        fichiers = mod.cache_files(args)
+        if not fichiers:
+            # Distribution hors table, ou autorité illisible : la VM
+            # télécharge en direct, ce qui marche tant qu'aucune règle ne la
+            # vise. Poser le fichier au mauvais endroit ne marcherait pas et
+            # ne dirait rien.
+            return False
+        morceaux = []
+        for chemin, mode, contenu, _proprio in fichiers:
+            q = shlex.quote(chemin)
+            morceaux.append(
+                f"printf '%s' {shlex.quote(contenu)} | sudo tee {q} "
+                f">/dev/null && sudo chmod {mode} {q}"
+            )
+        morceaux += [
+            f"sudo sh -c {shlex.quote(c)}" for c in mod.cache_commands(args)
+        ]
+        code, _o = self._pve_ssh(cible, " && ".join(morceaux), timeout=120)
+        if code:
+            print(
+                f"  ⚠ {t('download cache authority not installed')} ({code})"
+            )
+            return False
+        print(f"  ✓ {t('download cache authority installed')}")
+        return True
+
     def _pve_write_guide(self, cible, vm, spec, mod):
         """Pose le guide de connexion et l'identité git DANS la VM.
 
@@ -1736,6 +1800,7 @@ class ProxmoxMenuMixin:
         # qu'on a RÉELLEMENT écrit, pas par le nom.
         alias = {}
         joignables = []
+        ca_cache = self._pve_cache_ca(host)
         for vm in spec["vms"]:
             if vm["name"] not in reussies:
                 continue
@@ -1752,8 +1817,8 @@ class ProxmoxMenuMixin:
             # Un nom qui existe DÉJÀ comme domaine local est un piège : l'alias
             # ~/.ssh/config serait volé à la VM locale, et le suivi
             # d'installation — qui ré-résout par virsh — irait installer
-            # ERPLibre sur ELLE. Vécu : « erplibre-ubuntu-2604 » déployée sur
-            # Proxmox, installation partie sur la VM locale du même nom.
+            # ERPLibre sur ELLE : une VM Proxmox homonyme d'un domaine
+            # local lui prend son alias, et l'installation part sur elle.
             noms_alias, vole = self._pve_alias_names(
                 vm["name"],
                 alias_chaine(vm["name"]),
@@ -1795,6 +1860,10 @@ class ProxmoxMenuMixin:
                 self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
             if vm["alias"]:
                 self._pve_set_timezone(vm["alias"], spec)
+                # Après le fuseau et avant l'installation : c'est
+                # l'installation qui télécharge.
+                if ca_cache:
+                    self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
             joignables.append(vm)
         install = spec.get("install")
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été

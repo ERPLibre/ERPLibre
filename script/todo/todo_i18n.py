@@ -1957,25 +1957,33 @@ TRANSLATIONS = {
         "en": "    The rules leave with it, so no VM stays redirected.",
     },
     "Proxmox": {"fr": "Proxmox", "en": "Proxmox"},
-    "    A Proxmox VM is born on a REMOTE host: its traffic never": {
-        "fr": "    Une VM Proxmox naît sur un hôte DISTANT : son trafic ne traverse",
-        "en": "    A Proxmox VM is born on a REMOTE host: its traffic never",
+    "    A Proxmox host that is itself a VM of this orchestrator crosses": {
+        "fr": "    Un hôte Proxmox qui est lui-même une VM d'ici traverse ce pont :",
+        "en": "    A Proxmox host that is itself a VM of this orchestrator crosses",
     },
-    "    crosses this bridge, so this cache cannot serve it. Install the": {
-        "fr": "    jamais ce pont, donc ce cache ne peut pas la servir. Installer le",
-        "en": "    crosses this bridge, so this cache cannot serve it. Install the",
+    "    this bridge: the machines it carries come out behind its address,": {
+        "fr": "    les machines qu'il porte sortent derrière son adresse, le cache",
+        "en": "    this bridge: the machines it carries come out behind its address,",
     },
-    "    cache ON that host instead — the script is generic, and Proxmox": {
-        "fr": "    cache SUR cet hôte-là — le script est générique, et Proxmox",
-        "en": "    cache ON that host instead — the script is generic, and Proxmox",
+    "    so the cache serves them, and the deployment poses the authority": {
+        "fr": "    les sert donc, et le déploiement pose l'autorité dans chacune.",
+        "en": "    so the cache serves them, and the deployment poses the authority",
     },
-    "    is a Debian. Reserve: a bridge switched onto the LAN is only": {
-        "fr": "    est un Debian. Réserve : un pont commuté sur le LAN n'est vu",
-        "en": "    is a Debian. Reserve: a bridge switched onto the LAN is only",
+    "    in each of them. A host that lives elsewhere is not concerned —": {
+        "fr": "    Un hôte qui vit ailleurs n'est pas concerné — y installer le",
+        "en": "    in each of them. A host that lives elsewhere is not concerned —",
     },
-    "    seen by the rules when br_netfilter is enabled.": {
-        "fr": "    par les règles que si br_netfilter est actif.",
-        "en": "    seen by the rules when br_netfilter is enabled.",
+    "    install the cache ON it, the script being generic and Proxmox a": {
+        "fr": "    cache, le script étant générique et Proxmox un Debian. Réserve :",
+        "en": "    install the cache ON it, the script being generic and Proxmox a",
+    },
+    "    Debian. Reserve: a bridge switched onto the LAN is only seen by": {
+        "fr": "    un pont basculé sur le LAN n'est vu par les règles que si",
+        "en": "    Debian. Reserve: a bridge switched onto the LAN is only seen by",
+    },
+    "    the rules when br_netfilter is enabled.": {
+        "fr": "    br_netfilter est activé.",
+        "en": "    the rules when br_netfilter is enabled.",
     },
     "Cache tests: real VMs, several minutes": {
         "fr": "Tests du cache : de vraies VM, quelques minutes",
@@ -6374,6 +6382,14 @@ TRANSLATIONS = {
     "timezone not set": {
         "fr": "fuseau non posé",
         "en": "timezone not set",
+    },
+    "download cache authority installed": {
+        "fr": "autorité du cache de téléchargement posée",
+        "en": "download cache authority installed",
+    },
+    "download cache authority not installed": {
+        "fr": "autorité du cache de téléchargement non posée",
+        "en": "download cache authority not installed",
     },
     "Timezone": {
         "fr": "Fuseau horaire",

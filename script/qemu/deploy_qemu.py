@@ -2704,24 +2704,36 @@ def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     return [(f"{anchors}/{CACHE_CERT_NAME}", "0644", pem, "")]
 
 
-def cache_runcmd(args: argparse.Namespace) -> list[str]:
+def cache_commands(args: argparse.Namespace) -> list[str]:
     """Ce qui rend l'autorité effective, et ce que pip et npm exigent en plus.
 
-    Deux gestes, dans cet ordre : relire le magasin de confiance, puis écrire
-    les variables dans /etc/environment — que PAM lit pour TOUTE session ssh,
-    interactive ou non, ce qui est la seule façon d'atteindre le bootstrap
-    d'installation lancé par commande distante.
+    Des commandes SHELL, dans cet ordre : relire le magasin de confiance, puis
+    écrire les variables dans /etc/environment — que PAM lit pour TOUTE
+    session ssh, interactive ou non, ce qui est la seule façon d'atteindre le
+    bootstrap d'installation lancé par commande distante.
+
+    Du shell et non du YAML : cloud-init n'est pas la seule voie de livraison.
+    Une VM née sur un hôte Proxmox reçoit les mêmes gestes par ssh, « qm set »
+    ne sachant écrire aucun fichier. Une source unique, deux emballages.
+
+    Chaque commande est tolérante à son propre échec : une autorité déjà
+    approuvée, ou une variable déjà écrite, n'est pas une raison d'arrêter.
     """
     if not cache_files(args):
         return []
     _, commande, faisceau = CACHE_TRUST[cache_family(args.distro)]
-    lignes = [f"  - {commande} || true"]
+    commandes = [f"{commande} || true"]
     for var in CACHE_ENV_VARS:
-        lignes.append(
-            f"  - sh -c 'grep -q ^{var}= /etc/environment"
+        commandes.append(
+            f"sh -c 'grep -q ^{var}= /etc/environment"
             f" || echo {var}={faisceau} >> /etc/environment'"
         )
-    return lignes
+    return commandes
+
+
+def cache_runcmd(args: argparse.Namespace) -> list[str]:
+    """Les mêmes gestes, emballés en éléments de « runcmd » pour cloud-init."""
+    return [f"  - {c}" for c in cache_commands(args)]
 
 
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:

@@ -840,17 +840,25 @@ class QemuCacheMenuMixin:
             t("    The rules leave with it, so no VM stays redirected."),
             "",
             f"  {t('Proxmox')}",
-            t("    A Proxmox VM is born on a REMOTE host: its traffic never"),
             t(
-                "    crosses this bridge, so this cache cannot serve it. Install the"
+                "    A Proxmox host that is itself a VM of this orchestrator crosses"
             ),
             t(
-                "    cache ON that host instead — the script is generic, and Proxmox"
+                "    this bridge: the machines it carries come out behind its address,"
             ),
             t(
-                "    is a Debian. Reserve: a bridge switched onto the LAN is only"
+                "    so the cache serves them, and the deployment poses the authority"
             ),
-            t("    seen by the rules when br_netfilter is enabled."),
+            t(
+                "    in each of them. A host that lives elsewhere is not concerned —"
+            ),
+            t(
+                "    install the cache ON it, the script being generic and Proxmox a"
+            ),
+            t(
+                "    Debian. Reserve: a bridge switched onto the LAN is only seen by"
+            ),
+            t("    the rules when br_netfilter is enabled."),
             "",
         ):
             print(ligne)
