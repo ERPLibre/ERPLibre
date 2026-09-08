@@ -159,15 +159,6 @@ def load_all(config=None) -> tuple[list[dict], list[str]]:
     return list(by_id.values()), errors
 
 
-def load(identifier: str, config=None) -> dict | None:
-    """Le préréglage `identifier`, ou None."""
-    found, _ = load_all(config)
-    for item in found:
-        if item["preset"] == identifier:
-            return item
-    return None
-
-
 def label(preset: dict) -> str:
     """Ce qu'on affiche. Le `label` s'il est là, l'identifiant sinon : un
     préréglage sans libellé reste choisissable."""

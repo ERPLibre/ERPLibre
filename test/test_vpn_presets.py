@@ -159,11 +159,6 @@ class PresetLoading(unittest.TestCase):
         found, errors = presets.load_all()
         self.assertEqual((found, errors), ([], []))
 
-    def test_load_finds_one_by_identifier(self):
-        write_preset(self.shared, "campus.json", PRESET)
-        self.assertEqual(presets.load("campus")["server"], PRESET["server"])
-        self.assertIsNone(presets.load("nowhere"))
-
 
 class PresetApplication(unittest.TestCase):
     """`apply` : d'un préréglage à un profil que la validation accepte."""
