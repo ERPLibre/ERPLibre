@@ -1131,7 +1131,7 @@ def _est_xml(nom, brut):
 
 
 def _chaines_distinctes(brut):
-    """(formes écrites, formes déséchappées) — les chaînes DISTINCTES.
+    """Quatre ensembles : tout, puis les seuls NŒUDS DE TEXTE.
 
     Le balayage cherchait chaque valeur dans le document entier, où elle
     est justement absente : un classeur de cent mille cellules fait dix
@@ -1145,35 +1145,54 @@ def _chaines_distinctes(brut):
     binaire, un projet VBA, un fichier plat — ne passent pas ici du tout,
     voir `_matiere`.
 
-    Les deux formes sont rendues SÉPARÉMENT : mêlées dans un seul ensemble,
-    une même chaîne portant « & » s'y compte deux fois, et le total des
-    occurrences dépasse alors la tolérance annoncée — un refus sur du
-    travail légitime.
+    La forme écrite et la forme déséchappée sont rendues SÉPARÉMENT :
+    mêlées dans un seul ensemble, une même chaîne portant « & » s'y compte
+    deux fois, et le total des occurrences dépasse alors la tolérance
+    annoncée — un refus sur du travail légitime.
+
+    Les nœuds de texte sont rendus À PART parce qu'une valeur PUREMENT
+    numérique ne peut pas se chercher dans un attribut : un XML y porte
+    ses index de ligne, de style et ses compteurs, si bien que tout
+    nombre à quatre chiffres se retrouve dans `<row r="1203">` d'une
+    feuille de plus de mille lignes. Une valeur de cellule, elle, vit
+    dans un nœud de texte — `<v>` —, donc restreindre la recherche là
+    n'abandonne rien de ce que le filet doit voir. Énumérer plutôt les
+    attributs de structure serait à refaire au premier format inconnu.
     """
     ecrites = set()
     nues = set()
+    texte_ecrites = set()
+    texte_nues = set()
 
-    def ajouter(morceau):
-        ecrites.add(morceau)
+    def ajouter(morceau, noeud_de_texte):
         # Un `.xlsx` est un zip de XML : la valeur y est ÉCHAPPÉE.
         # Chercher les octets bruts d'un nom portant « & », « < » ou « > »
         # n'y trouve rien, et la copie part avec.
-        nues.add(html.unescape(morceau) if "&" in morceau else morceau)
+        nu = html.unescape(morceau) if "&" in morceau else morceau
+        ecrites.add(morceau)
+        nues.add(nu)
+        if noeud_de_texte:
+            texte_ecrites.add(morceau)
+            texte_nues.add(nu)
 
     for morceau in _TEXTE_XML.findall(brut):
-        ajouter(morceau)
+        ajouter(morceau, True)
     for double, simple in _ATTRIBUT_XML.findall(brut):
         for morceau in (double, simple):
             if morceau:
-                ajouter(morceau)
-    return ecrites, nues
+                ajouter(morceau, False)
+    return ecrites, nues, texte_ecrites, texte_nues
 
 
 def _matiere(nom, brut, reductible=True):
-    """(bloc des formes écrites, bloc des formes déséchappées).
+    """Quatre blocs : écrit, déséchappé, puis les mêmes en TEXTE seul.
 
     Du XML se réduit à ses chaînes distinctes ; tout le reste est fouillé
     ENTIER.
+
+    Sur une partie qui n'est pas du XML, les deux derniers blocs sont les
+    deux premiers : un champ de csv est de la donnée où qu'il soit, et
+    l'y restreindre aveuglerait le filet sur le format le plus simple.
 
     `reductible=False` pour une copie PLATE : elle est UNE seule partie, la
     réduire n'achète rien, et le contenu ne peut pas décider de la
@@ -1183,8 +1202,13 @@ def _matiere(nom, brut, reductible=True):
     sans refus.
     """
     if reductible and _est_xml(nom, brut):
-        ecrites, nues = _chaines_distinctes(brut)
-        return _joindre(ecrites), _joindre(nues)
+        ecrites, nues, t_ecrites, t_nues = _chaines_distinctes(brut)
+        return (
+            _joindre(ecrites),
+            _joindre(nues),
+            _joindre(t_ecrites),
+            _joindre(t_nues),
+        )
     # Un graveur de fichier plat ÉCHAPPE : `csv` double le guillemet d'une
     # valeur qui en porte un, `json.dump` le préfixe d'une barre oblique.
     # Chercher les octets bruts d'un nom portant un guillemet n'y trouvait
@@ -1199,7 +1223,8 @@ def _matiere(nom, brut, reductible=True):
         vues.add(
             brut.replace('\\"', '"').replace("\\/", "/").replace("\\\\", "\\")
         )
-    return brut, _joindre(vues)
+    tout = _joindre(vues)
+    return brut, tout, brut, tout
 
 
 # Le préfiltre : un bit par empreinte de n-gramme. 2^22 bits font 512 Kio,
@@ -1251,6 +1276,55 @@ def _joindre(chaines):
     return "\x00".join(sorted(c for c in chaines if c))
 
 
+_MOTIF_TOUT_CHIFFRE = re.compile(r"^[0-9]+$")
+
+
+def _motif_borne(valeur):
+    """Le motif d'une valeur PUREMENT numérique, ou None.
+
+    Une valeur de chiffres est indiscernable, en sous-chaîne, des chiffres
+    qui vivent légitimement ailleurs : un code postal « 0512 » se retrouve
+    dans l'identifiant 10512, « 1081 » dans 10815. Sur une base ordinaire
+    cela suffit : seize valeurs faisaient refuser une copie saine, sans
+    qu'aucune ne fuie.
+
+    Le remède n'affaiblit rien : une VRAIE survivance est bordée de ce qui
+    n'est pas un chiffre — `>0512<`, `"0512"` —, donc elle est toujours
+    vue. Ce qui cesse de compter est la valeur courte NOYÉE dans un nombre
+    plus long, qui n'en est jamais une occurrence.
+
+    Bordent : les chiffres, les LETTRES et le point. Les lettres, parce
+    qu'un attribut de référence de cellule — `r="A1010"` — met un numéro
+    de LIGNE à côté d'une lettre de colonne, et que la feuille de plus de
+    mille lignes fait alors refuser toute valeur à quatre chiffres ; plus
+    généralement, des chiffres collés à une lettre font un seul jeton, et
+    une vraie survivance porterait la lettre dans sa valeur. Le point,
+    parce que « 1203 » dans 1203,5 est un autre nombre.
+
+    Ne bordent PAS : la virgule, qui SÉPARE les champs d'un csv — l'y
+    mettre aveuglait le filet sur le format le plus simple, là où un
+    séparateur de milliers coupe déjà la suite de chiffres et ne pose donc
+    pas le problème qu'on croyait. Ni le signe moins : mêmes chiffres, et
+    refuser est le côté sur lequel pencher.
+    """
+    if not _MOTIF_TOUT_CHIFFRE.match(valeur):
+        return None
+    return re.compile(r"(?<![\w.])%s(?![\w.])" % re.escape(valeur))
+
+
+def _compter(texte, valeur, motif):
+    """Les occurrences de `valeur`, bornées quand elle est numérique.
+
+    `str.count` reste le chemin rapide et sert de préfiltre : il ne peut
+    pas manquer une occurrence, seulement en compter de trop. Le motif ne
+    se paie donc que là où il y a quelque chose à départager.
+    """
+    compte = texte.count(valeur)
+    if not compte or motif is None:
+        return compte
+    return len(motif.findall(texte))
+
+
 def survivances(chemin, valeurs, tolerees=()):
     """{valeur: [parties du fichier]} pour ce qui subsiste dans la copie.
 
@@ -1288,7 +1362,11 @@ def survivances(chemin, valeurs, tolerees=()):
             return {}
         nom_plat = os.path.basename(chemin)
         morceaux.append(
-            (nom_plat, _matiere(nom_plat, brut, reductible=False), ("", ""))
+            (
+                nom_plat,
+                _matiere(nom_plat, brut, reductible=False),
+                ("", "", "", ""),
+            )
         )
     bloc_garde = _joindre(tolerees)
     # L'appartenance à un bloc joint est un test de SOUS-CHAÎNE : toute
@@ -1305,7 +1383,7 @@ def survivances(chemin, valeurs, tolerees=()):
             nom,
             paire,
             paire_socle,
-            _prefiltre(paire[0] + "\x00" + paire[1]) if assez else None,
+            _prefiltre("\x00".join(paire)) if assez else None,
         )
         for nom, paire, paire_socle in morceaux
     ]
@@ -1323,11 +1401,12 @@ def survivances(chemin, valeurs, tolerees=()):
         # comptage par occurrence refusait à tort.
         if valeur in tolerees_exactes:
             continue
+        motif = _motif_borne(valeur)
         # Tolérée seulement comme PARTIE d'une chaîne annoncée : le compte
         # tranche, sinon une chaîne gardée qui contient la valeur la
         # couvrirait même là où elle fuit.
         excuses = (
-            bloc_garde.count(valeur)
+            _compter(bloc_garde, valeur, motif)
             if _peut_contenir(bits_garde, valeur)
             else 0
         )
@@ -1339,16 +1418,24 @@ def survivances(chemin, valeurs, tolerees=()):
             # Le MAX des deux vues, jamais leur somme : une même chaîne
             # portant « & » apparaît dans les deux, et l'additionner
             # gonflait le compte au-delà de la tolérance annoncée.
-            compte = max(paire[0].count(valeur), paire[1].count(valeur))
+            # Une valeur de chiffres n'est cherchée que dans les nœuds
+            # de texte, où vit une valeur de cellule ; ailleurs, partout.
+            vues = paire[2:] if motif is not None else paire[:2]
+            compte = max(_compter(v, valeur, motif) for v in vues)
             if not compte:
                 continue
             vus += compte
             # EN SURPLUS du socle : « Normal » que le graveur écrit
             # toujours dans `xl/styles.xml` n'est pas une fuite ; une
             # seconde occurrence en est une.
-            excuses += max(
-                paire_socle[0].count(valeur), paire_socle[1].count(valeur)
+            # Le socle se compte par les MÊMES vues et la même règle de
+            # bornes : comparer un compte borné à un compte non borné
+            # laisserait l'excuse et l'occurrence parler de choses
+            # différentes.
+            socle_vues = (
+                paire_socle[2:] if motif is not None else paire_socle[:2]
             )
+            excuses += max(_compter(v, valeur, motif) for v in socle_vues)
             if nom not in parties:
                 parties.append(nom)
         if vus > excuses:
@@ -1380,6 +1467,17 @@ def verifier_copie(fichiers, table, gardees=()):
         str(mot)
         for cle, mot in getattr(table, "mots", {}).items()
         if isinstance(mot, str) and str(cle) != str(mot)
+    )
+    # Le même raisonnement pour les NOMBRES, qui n'en bénéficiaient pas :
+    # un nombre tiré pour une colonne peut égaler, chiffre pour chiffre,
+    # une valeur texte d'une autre colonne — un identifiant tiré à 10785
+    # et un code postal « 10785 ». Sa présence est expliquée par le
+    # tirage, non par une survivance, et sans cette ligne une copie saine
+    # se faisait refuser.
+    tolerees.update(
+        str(nombre)
+        for cle, nombre in (getattr(table, "nombres", {}) or {}).items()
+        if str(cle) != str(nombre)
     )
     # AUCUNE troncature, et pas de plafond. `candidates[:N]` d'une liste
     # TRIÉE fait suivre la couverture à l'alphabet plutôt qu'au risque : de
@@ -1442,13 +1540,30 @@ def normaliser_access(valeur, type_colonne):
         except ValueError:
             return None
     if type_colonne in ACCESS_MONETAIRE:
-        nu = re.sub(r"[^0-9.,()-]", "", texte)
+        # `eE+` sont gardés : la branche scientifique de la bibliothèque
+        # rend « 3.24e+01 », et retirer l'exposant en faisait 3,2401.
+        nu = re.sub(r"[^0-9.,()eE+-]", "", texte)
         negatif = nu.startswith("(") and nu.endswith(")")
         nu = nu.strip("()").replace(",", "")
         try:
             nombre = float(nu)
         except ValueError:
             return valeur
+        if "." not in nu:
+            # `access-parser` a DEUX sorties pour une colonne monétaire.
+            # Reconnaît-il le format de la colonne, il place le point
+            # décimal et rend « $14.00 » ; ne le reconnaît-il pas, il rend
+            # l'entier de stockage TEL QUEL — et Access garde un Currency
+            # en entier multiplié par dix mille. Un fret de 47,42 arrivait
+            # donc à 474200, la colonne prenait des bornes gonflées de
+            # quatre ordres de grandeur, et la copie portait un fret à six
+            # chiffres. Les deux formes cohabitent dans un même fichier.
+            #
+            # Le point décimal tranche sans deviner : toutes les branches
+            # qui aboutissent en insèrent un, celle qui renonce n'en met
+            # pas. Le diviseur est celui de la bibliothèque, qui coupe les
+            # quatre derniers chiffres.
+            nombre /= 10000.0
         return -nombre if negatif else nombre
     return valeur
 

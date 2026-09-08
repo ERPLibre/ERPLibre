@@ -502,6 +502,147 @@ class TestNormalisationAccess(unittest.TestCase):
         self.assertIn(5, noyau.ACCESS_MONETAIRE)
 
 
+class TestFiletSurUneValeurNumerique(unittest.TestCase):
+    """Une valeur de chiffres ne se cherche pas comme un mot.
+
+    Sur une base ordinaire, le filet refusait seize valeurs dont aucune
+    ne fuyait. Un code postal « 0512 » se retrouve dans l'identifiant
+    10512 ; « 1203 » est le numéro de ligne que
+    `<row r="1203">` porte dans toute feuille de plus de mille lignes ; et
+    un nombre TIRÉ pour une colonne peut égaler, chiffre pour chiffre, une
+    valeur texte d'une autre.
+
+    Refuser toute copie d'un fichier ordinaire rend le filet inutile aussi
+    sûrement que ne rien refuser.
+    """
+
+    def test_une_valeur_noyee_dans_un_nombre_plus_long_ne_compte_pas(self):
+        motif = noyau._motif_borne("0512")
+        self.assertFalse(motif.search("10512"))
+        self.assertFalse(motif.search("105120"))
+        self.assertFalse(motif.search("0512.7"))
+
+    def test_une_vraie_survivance_reste_vue(self):
+        """Bordée de ce qui n'est pas un chiffre, elle est toujours là."""
+        motif = noyau._motif_borne("0512")
+        for foin in ("<v>0512</v>", '"0512"', "a,0512,b", "0512", ">0512<"):
+            with self.subTest(foin=foin):
+                self.assertTrue(motif.search(foin))
+
+    def test_la_virgule_borne_un_champ_de_csv(self):
+        """L'exclure aveuglait le filet sur le format le plus simple, là
+        où un séparateur de milliers coupe déjà la suite de chiffres."""
+        self.assertTrue(noyau._motif_borne("1203").search("x,1203,y"))
+        self.assertEqual("1,203".count("1203"), 0)
+
+    def test_une_lettre_collee_borne_aussi(self):
+        """`r="A1010"` met un numéro de ligne contre une lettre de
+        colonne, et des chiffres collés à une lettre font un seul jeton."""
+        self.assertFalse(noyau._motif_borne("1010").search('r="A1010"'))
+        self.assertFalse(noyau._motif_borne("1203").search("SKU1203"))
+
+    def test_une_valeur_qui_porte_une_lettre_garde_la_sous_chaine(self):
+        """Le bornage ne vaut QUE pour les chiffres purs : un nom noyé
+        dans un cache ou un littéral doit rester trouvable."""
+        self.assertIsNone(noyau._motif_borne("aboulie"))
+        self.assertIsNone(noyau._motif_borne("0512a"))
+
+    def test_les_attributs_ne_portent_pas_de_valeur_numerique(self):
+        """Un XML porte ses index dans les ATTRIBUTS et ses valeurs de
+        cellule dans les nœuds de texte : la matière est séparée."""
+        brut = '<row r="1203"><c r="A1203"><v>7</v></c></row>'
+        _e, _n, texte, _tn = noyau._chaines_distinctes(brut)
+        self.assertIn("7", texte)
+        self.assertNotIn("1203", texte)
+        self.assertNotIn("A1203", texte)
+
+    def test_une_partie_plate_reste_fouillee_ENTIERE(self):
+        """Les deux derniers blocs valent les deux premiers hors XML : un
+        champ de csv est de la donnée où qu'il soit."""
+        blocs = noyau._matiere("o.csv", "a,0512,b", reductible=False)
+        self.assertEqual(len(blocs), 4)
+        self.assertEqual(blocs[0], blocs[2])
+        self.assertEqual(blocs[1], blocs[3])
+
+    def test_un_nombre_tire_est_tolere_comme_un_mot_l_est(self):
+        """Sa présence est expliquée par le tirage, non par une
+        survivance : un identifiant tiré à 10785 et un code postal
+        « 10785 » sont les mêmes chiffres pour des raisons différentes."""
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        copie = os.path.join(base, "o.csv")
+        with open(copie, "w", encoding="utf-8") as flux:
+            flux.write("aboulie,10785\n")
+        table = noyau.Correspondance()
+        table.mots["10785"] = "aboulie"
+        table.nombres[42] = 10785
+        fuites, _non = noyau.verifier_copie([copie], table)
+        self.assertEqual(fuites, {})
+
+    def test_l_identite_d_un_nombre_reste_un_refus(self):
+        """Un nombre rendu à lui-même est annoncé remplacé et ne l'est
+        pas : c'est le cas que la tolérance ne doit PAS couvrir."""
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        copie = os.path.join(base, "o.csv")
+        with open(copie, "w", encoding="utf-8") as flux:
+            flux.write("10785,x\n")
+        table = noyau.Correspondance()
+        table.mots["10785"] = "aboulie"
+        table.nombres[10785] = 10785
+        fuites, _non = noyau.verifier_copie([copie], table)
+        self.assertIn("10785", fuites)
+
+
+class TestEchelleMonetaireAccess(unittest.TestCase):
+    """`access-parser` a DEUX sorties pour une colonne monétaire.
+
+    Reconnaît-il le format déclaré de la colonne, il place le point décimal
+    et rend « $14.00 ». Ne le reconnaît-il pas, il rend l'entier de
+    stockage TEL QUEL — et Access garde un Currency en entier multiplié par
+    dix mille. Les deux formes cohabitent dans un MÊME fichier : une
+    colonne de prix en sort juste et une colonne de fret gonflée de quatre
+    ordres de grandeur.
+
+    Le point décimal tranche sans deviner : toutes les branches de la
+    bibliothèque qui aboutissent en insèrent un, celle qui renonce n'en
+    met pas.
+    """
+
+    def _cas(self, brut, attendu):
+        """Éprouvé sur CHAQUE code monétaire, non sur un seul."""
+        for code in sorted(noyau.ACCESS_MONETAIRE):
+            with self.subTest(code=code, brut=brut):
+                rendu = noyau.normaliser_access(brut, code)
+                self.assertAlmostEqual(rendu, attendu, places=6)
+
+    def test_l_entier_de_stockage_est_divise(self):
+        self._cas("474200", 47.42)
+        self._cas("1263800", 126.38)
+        self._cas("54500", 5.45)
+        self._cas("0", 0.0)
+
+    def test_la_forme_localisee_ne_l_est_pas(self):
+        self._cas("$14.00", 14.0)
+        self._cas("$1,995.50", 1995.5)
+        self._cas("\u20ac5.00", 5.0)
+
+    def test_le_signe_survit_aux_deux_formes(self):
+        """Access écrit un négatif entre parenthèses."""
+        self._cas("(474200)", -47.42)
+        self._cas("-474200", -47.42)
+
+    def test_l_exposant_n_est_pas_ampute(self):
+        """La branche scientifique rend « 3.24e+01 » : retirer le « e » en
+        faisait 3,2401, soit un facteur dix sur la borne de la colonne."""
+        self._cas("3.24e+01", 32.4)
+        self._cas("3.24e-01", 0.324)
+
+    def test_le_pourcentage_garde_son_echelle(self):
+        """Sa branche coupe deux chiffres, pas quatre, et pose le point."""
+        self._cas("12.34%", 12.34)
+
+
 class TestCoercition(unittest.TestCase):
     """Un champ CSV ou un attribut XML arrive sans type."""
 
@@ -1947,7 +2088,7 @@ class TestGardeApresEcriture(unittest.TestCase):
         Le total dépassait alors la tolérance annoncée, et le filet
         refusait du travail légitime.
         """
-        ecrites, nues = noyau._chaines_distinctes(
+        ecrites, nues, _t_e, _t_n = noyau._chaines_distinctes(
             "<a>Roy &amp; Fils</a><b>simple</b>"
         )
         self.assertIn("Roy &amp; Fils", ecrites)
