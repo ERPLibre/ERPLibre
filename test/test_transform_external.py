@@ -404,6 +404,63 @@ class TestNomDeFeuilleEnConversion(unittest.TestCase):
         self.assertNotIn("Alpha", arbre)
 
 
+class TestExternalIdContreLogin(unittest.TestCase):
+    """Un external ID et un login pointé ont la même FORME.
+
+    « base.res_partner_7 » et « jean.tremblay » sont tous deux des jetons
+    minuscules pointés : la forme seule ne les sépare pas, et une colonne
+    « user_id » de logins passait pour une colonne de relations, donc
+    partait en clair. Ce qui les sépare est le PRÉFIXE : un external ID
+    partage son module avec ses voisins, des noms de personnes non.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _ecrire(self, contenu):
+        chemin = os.path.join(self.base, "e.csv")
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write(contenu)
+        return chemin
+
+    def test_un_external_id_reste_au_plancher(self):
+        source = self._ecrire(
+            "id,partner_id/id,montant\n"
+            "7,base.res_partner_7,1200\n"
+            "8,base.res_partner_8,830\n"
+        )
+        sortie = os.path.join(self.base, "o.csv")
+        formats.ecrire(source, sortie, {"graine": "3"})
+        rendu = open(sortie, encoding="utf-8").read()
+        self.assertIn("base.res_partner_7", rendu)
+
+    def test_un_login_pointe_est_remplace(self):
+        source = self._ecrire(
+            "id,user_id,montant\n"
+            "7,jean.tremblay,1200\n"
+            "8,marie.roy,830\n"
+            "9,paul.gagne,410\n"
+        )
+        sortie = os.path.join(self.base, "o.csv")
+        formats.ecrire(source, sortie, {"graine": "3"})
+        rendu = open(sortie, encoding="utf-8").read()
+        for login in ("jean.tremblay", "marie.roy", "paul.gagne"):
+            self.assertNotIn(login, rendu, login)
+
+    def test_l_annonce_suit_la_portee(self):
+        """L'écran annonçait une colonne écartée que le moteur remplace."""
+        source = self._ecrire(
+            "id,partner_id/id,user_id,montant\n"
+            "7,base.res_partner_7,jean.tremblay,1200\n"
+            "8,base.res_partner_8,marie.roy,830\n"
+        )
+        apercu = formats.plan(source, {"graine": "3"})
+        ecartees = {c["etiquette"] for c in apercu["colonnes_ecartees"]}
+        self.assertIn("partner_id/id", ecartees)
+        self.assertNotIn("user_id", ecartees)
+
+
 class TestNormalisationAccess(unittest.TestCase):
     """`access-parser` rend une date et un montant en CHAÎNE.
 

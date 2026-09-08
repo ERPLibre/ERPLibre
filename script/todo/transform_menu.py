@@ -53,6 +53,19 @@ EXTENSION_PAR_FORMAT = {
 
 CIBLES = ("xlsx", "csv", "json", "xml")
 
+# La famille d'une valeur laissée intacte, telle qu'on la nomme à l'écran.
+# Une date et un booléen sont de VRAIES valeurs du client : les taire dans
+# le bilan laissait croire à une copie entièrement remplacée.
+_LIBELLE_INTACTES = {
+    "formule": "formula(s)",
+    "date": "date(s)",
+    "booleen": "boolean(s)",
+    "erreur": "error value(s)",
+    "binaire": "binary value(s)",
+    "texte": "text",
+    "nombre": "numeric",
+}
+
 
 class TransformMenuMixin:
     # ------------------------------------------------------------------
@@ -434,6 +447,19 @@ class TransformMenuMixin:
                 f"   {t('column(s) left alone: they hold identifiers')}:"
                 f" {noms}"
             )
+        intactes = apercu.get("intactes") or {}
+        if intactes:
+            # Une date, un booléen, une valeur d'erreur traversent par
+            # RÈGLE, non par oubli — et ce sont de vraies valeurs du
+            # client. Ne les compter nulle part faisait signer un
+            # consentement sur un fichier dont une colonne entière part
+            # en clair sans que rien ne le dise.
+            detail = ", ".join(
+                f"{compte} {t(_LIBELLE_INTACTES.get(famille, famille))}"
+                for famille, compte in sorted(intactes.items())
+                if compte
+            )
+            print(f"   ⚠ {t('Left intact')} : {detail}")
         gardee = apercu.get("entete_gardee") or []
         if gardee:
             # La ligne 1 est présumée d'en-tête, jamais mesurée : un CSV
@@ -639,8 +665,13 @@ class TransformMenuMixin:
             f" {bilan.get('nombre', 0)} {t('numeric')}"
         )
         intactes = bilan.get("intactes") or {}
-        if intactes.get("formule"):
-            print(f"   {intactes['formule']} {t('formula(s) left intact')}")
+        if intactes:
+            detail = ", ".join(
+                f"{compte} {t(_LIBELLE_INTACTES.get(famille, famille))}"
+                for famille, compte in sorted(intactes.items())
+                if compte
+            )
+            print(f"   {t('Left intact')} : {detail}")
         if bilan.get("hors_portee"):
             print(
                 f"   {bilan['hors_portee']}"

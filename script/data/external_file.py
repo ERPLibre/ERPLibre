@@ -602,11 +602,21 @@ def _tirer_libre(valeur, rng, bas, haut, entier, pris):
     lui-même serait compté et annoncé comme remplacé alors que la copie le
     porte inchangé.
     """
-    pas = 1 if entier else 0.01
+    # La résolution est celle de la COLONNE, jamais celle de la valeur :
+    # « 0,2 » en porte une et « 0,15 » deux, et suivre chaque valeur faisait
+    # arrondir la plage [0,15 ; 0,20] au dixième — donc sortir par le bas,
+    # à 0,1. Les bornes sont mesurées sur toute la colonne, elles sont le
+    # bon repère.
+    decimales = (
+        2
+        if entier
+        else max(_decimales(bas), _decimales(haut), _decimales(valeur))
+    )
+    pas = 1 if entier else 10.0**-decimales
     places = int(round((haut - bas) / pas)) + 1
     interdit = (valeur,)
     for _ in range(ESSAIS_UNICITE):
-        tire = _tirer(valeur, rng, bas, haut, entier)
+        tire = _tirer(valeur, rng, bas, haut, entier, decimales)
         if tire not in pris and tire not in interdit:
             return tire
     if 0 < places <= PLACES_PARCOURUES:
@@ -616,7 +626,7 @@ def _tirer_libre(valeur, rng, bas, haut, entier, pris):
         depart = rng.randrange(places)
         for decalage in range(places):
             brut = bas + ((depart + decalage) % places) * pas
-            candidat = int(brut) if entier else round(brut, 2)
+            candidat = int(brut) if entier else round(brut, decimales)
             if candidat == 0 or candidat in interdit:
                 continue
             if candidat not in pris:
@@ -626,7 +636,7 @@ def _tirer_libre(valeur, rng, bas, haut, entier, pris):
         vers_le_haut = haut > 0
         for rang in range(1, PAS_AGRANDIS + 1):
             brut = (haut + rang * pas) if vers_le_haut else (bas - rang * pas)
-            candidat = int(brut) if entier else round(brut, 2)
+            candidat = int(brut) if entier else round(brut, decimales)
             if candidat == 0 or candidat in interdit:
                 continue
             if candidat not in pris:
@@ -634,15 +644,37 @@ def _tirer_libre(valeur, rng, bas, haut, entier, pris):
     for palier in range(1, PALIERS_ELARGISSEMENT + 1):
         facteur = 10**palier
         for _ in range(ESSAIS_UNICITE):
-            tire = _tirer(valeur, rng, bas * facteur, haut * facteur, entier)
+            tire = _tirer(
+                valeur,
+                rng,
+                bas * facteur,
+                haut * facteur,
+                entier,
+                decimales,
+            )
             if tire not in pris and tire not in interdit:
                 return tire
     # Toutes les places connues sont prises : rendre un doublon vaut mieux
     # que refuser une copie propre — une collision ne fait rien fuir.
-    return _tirer(valeur, rng, bas, haut, entier)
+    return _tirer(valeur, rng, bas, haut, entier, decimales)
 
 
-def _tirer(valeur, rng, bas, haut, entier):
+def _decimales(valeur):
+    """Le nombre de décimales que porte cette valeur, au plus dix.
+
+    Arrondir tout flottant à deux décimales laissait presque aucune place
+    à une colonne plus fine — un taux à sept décimales n'en avait qu'une
+    poignée — ce qui saturait la plage et forçait l'élargissement, lequel
+    brisait la promesse de rester dans l'étendue mesurée.
+    """
+    texte = repr(float(valeur))
+    if "e" in texte or "E" in texte:
+        return 2
+    _entier, _point, fraction = texte.partition(".")
+    return min(len(fraction.rstrip("0")) or 2, 10)
+
+
+def _tirer(valeur, rng, bas, haut, entier, decimales=2):
     """Un tirage dans l'intervalle, du même signe que la valeur.
 
     Un zéro tiré effacerait le signe que la règle promet de garder, et se
@@ -656,9 +688,10 @@ def _tirer(valeur, rng, bas, haut, entier):
         if tire == 0:
             return 1 if valeur > 0 else -1
         return tire
-    tire = round(rng.uniform(bas, haut), 2)
+    tire = round(rng.uniform(bas, haut), decimales)
     if tire == 0:
-        return 0.01 if valeur > 0 else -0.01
+        menu = 10.0**-decimales
+        return menu if valeur > 0 else -menu
     return tire
 
 
@@ -880,21 +913,30 @@ def valeur_hors_tableur(valeur):
     return str(valeur)
 
 
-def nom_de_fichier_sur(nom, pris):
+def nom_de_fichier_sur(nom, pris, maximum=None):
     """Un nom de feuille ou de table, rendu sûr comme nom de fichier.
 
     `pris` est l'ensemble des noms déjà attribués : deux feuilles qui se
     réduisent au même après nettoyage doivent rester deux fichiers.
+
+    `maximum` borne la longueur — un onglet Excel n'en accepte que 31.
+    La coupe vient AVANT l'unicité, et le candidat suffixé est revérifié :
+    unicifier d'abord puis couper faisait retomber deux noms distincts sur
+    le même, et le classeur perdait une feuille en silence.
     """
     propre = re.sub(r"[^A-Za-z0-9._-]", "_", str(nom or ""))
     propre = propre.strip("_")
     if not propre or set(propre) <= {"_", ".", "-"}:
         propre = f"feuille_{len(pris) + 1}"
+    if maximum:
+        propre = propre[:maximum].rstrip("._-") or f"feuille_{len(pris) + 1}"
     candidat = propre
     suffixe = 1
     while candidat in pris:
         suffixe += 1
-        candidat = f"{propre}_{suffixe}"
+        marque = f"_{suffixe}"
+        base = propre[: maximum - len(marque)] if maximum else propre
+        candidat = f"{base}{marque}"
     pris.add(candidat)
     return candidat
 
@@ -1163,6 +1205,7 @@ def survivances(chemin, valeurs, tolerees=()):
     bloc_garde = _joindre(tolerees)
     # Le préfiltre ne se paie que quand il rapporte.
     assez = len(valeurs) >= SEUIL_PREFILTRE
+    bits_garde = _prefiltre(bloc_garde) if assez else None
     filtres = [
         (
             nom,
@@ -1179,7 +1222,16 @@ def survivances(chemin, valeurs, tolerees=()):
         # Une boucle Python sur les chaînes coûtait cinquante secondes pour
         # vingt mille valeurs, là où le compte sur un bloc joint en prend
         # une fraction — même travail, même grain.
-        excuses = bloc_garde.count(valeur)
+        # Annoncé gardé : ce n'est pas une fuite, où qu'il reparaisse.
+        # Chaque chaîne tolérée est DÉJÀ dans la copie en clair — une
+        # cellule hors portée, un titre de feuille, un littéral de formule
+        # — donc une occurrence de plus ne divulgue rien de neuf. La
+        # compter par occurrence refusait toute copie où une valeur gardée
+        # paraît deux fois, ce qui est le cas ordinaire d'une colonne
+        # laissée intacte.
+        if _peut_contenir(bits_garde, valeur) and valeur in bloc_garde:
+            continue
+        excuses = 0
         vus = 0
         parties = []
         for nom, paire, paire_socle, bits in filtres:

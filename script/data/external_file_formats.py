@@ -188,6 +188,7 @@ def _stats_colonnes(feuille):
         remplies = 0
         forme = True
         forme_rel = True
+        prefixes = set()
         mini = maxi = None
         for numero, ligne in enumerate(feuille.lignes, start=1):
             if numero == 1:
@@ -199,6 +200,8 @@ def _stats_colonnes(feuille):
             remplies += 1
             forme = forme and valeur_forme_identifiant(valeur)
             forme_rel = forme_rel and noyau.valeur_forme_relation(valeur)
+            if isinstance(valeur, str) and "." in valeur:
+                prefixes.add(valeur.strip().split(".", 1)[0].lower())
             familles[famille] = familles.get(famille, 0) + 1
             if len(distinctes) < 10000:
                 try:
@@ -216,6 +219,10 @@ def _stats_colonnes(feuille):
                 # tirage.
                 mini = valeur if mini is None else min(mini, valeur)
                 maxi = valeur if maxi is None else max(maxi, valeur)
+        # L'ajustement se calcule UNE fois : le rapport et la portée
+        # doivent lire la même valeur, sinon l'écran annonce une colonne
+        # écartée que le moteur remplace.
+        forme_rel = forme_rel and len(prefixes) <= 1
         etiquette = etiquettes[index] if index < len(etiquettes) else None
         dominant = (
             max(familles.items(), key=lambda kv: kv[1])[0]
@@ -236,6 +243,12 @@ def _stats_colonnes(feuille):
                 "min": mini,
                 "max": maxi,
                 "forme_identifiant": forme,
+                # Un external ID partage son MODULE avec ses voisins —
+                # « base.res_partner_7 », « base.res_partner_8 » — alors
+                # que des identifiants de personnes n'ont aucun préfixe
+                # commun : « jean.tremblay », « marie.roy ». Sans ce
+                # discriminateur, une colonne « user_id » de logins pointés
+                # passait pour une colonne de relations et partait en clair.
                 "forme_relation": forme_rel,
                 "plancher": colonne_plancher(etiquette, forme, forme_rel),
             }
@@ -1901,7 +1914,7 @@ def _convertir_vers_xlsx(destination, feuilles, noms=None):
     pris = set()
     for feuille in feuilles:
         brut = (noms or {}).get(feuille.nom, feuille.nom)
-        onglet = classeur.create_sheet(nom_de_fichier_sur(brut, pris)[:31])
+        onglet = classeur.create_sheet(nom_de_fichier_sur(brut, pris, 31))
         for ligne in feuille.lignes:
             onglet.append([_valeur_pour_xlsx(v) for v in ligne])
     _ecrire_atomique(destination, classeur.save)
