@@ -845,11 +845,79 @@ def nettoyer_hors_cellules(classeur, table, options):
     _anonymiser_noms_locaux(classeur, table, vivier)
     comptes["formats"] = _anonymiser_formats_de_nombre(classeur, table, vivier)
     comptes["styles"] = _renommer_styles_nommes(classeur)
+    comptes["styles_tableau"] = _renommer_styles_de_tableau(classeur)
+    comptes["polices"] = _renommer_polices(classeur)
     return comptes
 
 
-# Un littéral entre guillemets dans un format de nombre personnalisé.
-_LITTERAL_FORMAT = re.compile(r'"([^"]*)"')
+# Les caractères qui « avalent » le suivant dans un format de nombre :
+# l'échappement, la réservation de largeur, la répétition. Un libellé peut
+# s'écrire ainsi, hors guillemets et un caractère à la fois.
+_ECHAPPE_FORMAT = "\\_*"
+
+# Une section de devise : `[$USD-409]`, `[$-1010409]`. Son texte est libre —
+# un nom de client y tient — alors que `[Red]`, `[<100]` et `[h]` sont des
+# mots-clés qu'un remplacement casserait.
+_DEVISE_CROCHET = re.compile(r"^\[\$(.*?)(-[0-9A-Fa-f]+)?\]$")
+
+
+def _parcourir_format(fmt, mot_si_long):
+    r"""Le format parcouru de gauche à droite, ses libellés assainis.
+
+    Excel a QUATRE façons de porter du texte dans un format de nombre, et
+    une expression sur les seuls guillemets n'en voyait qu'une :
+
+    - `"..."` — la forme courante ;
+    - `\N\o\m` — une suite d'échappements, un caractère à la fois, sans
+      aucun guillemet : c'est ainsi qu'un libellé écrit à la main dans
+      Excel arrive souvent ;
+    - `[$Nom-409]` — la section de devise, dont le texte est libre ;
+    - un guillemet ÉCHAPPÉ, qui n'ouvre pas de littéral et décalait
+      l'appariement de tous les suivants.
+
+    Les autres sections entre crochets sont recopiées telles quelles : y
+    remplacer `Red` ou `h` casserait le format.
+    """
+    sortie = []
+    index, taille = 0, len(fmt)
+    while index < taille:
+        caractere = fmt[index]
+        if caractere in _ECHAPPE_FORMAT and index + 1 < taille:
+            debut = index
+            lettres = []
+            while index + 1 < taille and fmt[index] in _ECHAPPE_FORMAT:
+                lettres.append(fmt[index + 1])
+                index += 2
+            mot = mot_si_long("".join(lettres))
+            sortie.append(fmt[debut:index] if mot is None else '"%s"' % mot)
+            continue
+        if caractere == "[":
+            fin = fmt.find("]", index)
+            if fin == -1:
+                sortie.append(fmt[index:])
+                break
+            section = fmt[index : fin + 1]
+            devise = _DEVISE_CROCHET.match(section)
+            if devise:
+                mot = mot_si_long(devise.group(1))
+                if mot is not None:
+                    section = "[$%s%s]" % (mot, devise.group(2) or "")
+            sortie.append(section)
+            index = fin + 1
+            continue
+        if caractere == '"':
+            fin = fmt.find('"', index + 1)
+            interieur = fmt[index + 1 :] if fin == -1 else fmt[index + 1 : fin]
+            mot = mot_si_long(interieur)
+            sortie.append('"%s' % (interieur if mot is None else mot))
+            if fin == -1:
+                break
+            sortie.append('"')
+            index = fin + 1
+            continue
+        sortie.append(caractere)
+        index += 1
+    return "".join(sortie)
 
 
 def _anonymiser_formats_de_nombre(classeur, table, vivier):
@@ -876,28 +944,108 @@ def _anonymiser_formats_de_nombre(classeur, table, vivier):
 
     touches = 0
 
-    def remplacer(trouve):
+    def mot_si_long(interieur):
+        """Le libellé assaini, ou None si le seuil du filet le laisse."""
         nonlocal touches
-        interieur = trouve.group(1)
         noyau_texte = interieur.strip()
         if len(noyau_texte) < noyau.LONGUEUR_VERIFIABLE:
-            return trouve.group(0)
+            return None
         touches += 1
         tete = interieur[: len(interieur) - len(interieur.lstrip())]
         queue = interieur[len(interieur.rstrip()) :]
-        return '"%s%s%s"' % (
+        return "%s%s%s" % (
             tete,
             nouveau_mot(noyau_texte, table, vivier),
             queue,
         )
 
     formats = list(getattr(classeur, "_number_formats", []) or [])
-    if not formats:
-        return 0
-    classeur._number_formats = IndexedList(
-        [_LITTERAL_FORMAT.sub(remplacer, f) for f in formats]
-    )
+    if formats:
+        classeur._number_formats = IndexedList(
+            [_parcourir_format(f, mot_si_long) for f in formats]
+        )
+    # Un style DIFFÉRENTIEL porte son propre format : c'est celui d'une mise
+    # en forme conditionnelle. Vider la liste casserait l'index qu'un style
+    # de tableau personnalisé y référence, donc on l'assainit en place.
+    for style in (
+        getattr(
+            getattr(classeur, "_differential_styles", None), "styles", None
+        )
+        or []
+    ):
+        fmt = getattr(style, "numFmt", None)
+        if fmt is not None and getattr(fmt, "formatCode", None):
+            fmt.formatCode = _parcourir_format(fmt.formatCode, mot_si_long)
     return touches
+
+
+def _renommer_polices(classeur):
+    """Le NOM d'une police part aussi dans les styles.
+
+    Une police installée chez le client porte son nom, et rien ne la
+    référence par autre chose que ce nom. Un repère POSITIONNEL suffit —
+    la faire passer par la table brûlerait des mots du vivier sur ce qui
+    n'est pas une donnée de la grille, et ferait tolérer ce mot par le
+    filet là où il n'a rien à excuser.
+    """
+    connues = {
+        "Calibri",
+        "Arial",
+        "Times New Roman",
+        "Courier New",
+        "Verdana",
+        "Tahoma",
+        "Helvetica",
+        "Cambria",
+        "Segoe UI",
+        "Aptos Narrow",
+        "Aptos",
+        "MS Sans Serif",
+    }
+    touches = 0
+    for rang, police in enumerate(
+        getattr(classeur, "_fonts", []) or [], start=1
+    ):
+        nom = getattr(police, "name", None)
+        if nom and nom not in connues:
+            police.name = f"police_{rang}"
+            touches += 1
+    return touches
+
+
+def _renommer_styles_de_tableau(classeur):
+    """Le NOM d'un style de tableau personnalisé, à ses TROIS endroits.
+
+    Il vit dans les styles du classeur — l'entrée du style et, quand il est
+    le défaut, l'attribut qui le désigne — et dans chaque partie de tableau
+    qui le référence. Aucune formule ne le résout, contrairement au nom
+    d'affichage d'un tableau : il se renomme, il ne se rapporte pas. Les
+    trois endroits changent dans la même passe, sinon le tableau perd sa
+    mise en forme.
+
+    La liste ne porte que ce que le DOCUMENT définit : les styles intégrés
+    n'y figurent jamais, donc chaque entrée est un nom tapé par quelqu'un.
+    """
+    liste = getattr(classeur, "_table_styles", None)
+    correspondance = {}
+    for rang, style in enumerate(
+        getattr(liste, "tableStyle", None) or (), start=1
+    ):
+        if style.name:
+            correspondance[style.name] = style.name = f"tableStyle_{rang}"
+    if not correspondance:
+        return 0
+    for attribut in ("defaultTableStyle", "defaultPivotStyle"):
+        valeur = getattr(liste, attribut, None)
+        if valeur in correspondance:
+            setattr(liste, attribut, correspondance[valeur])
+    for onglet in classeur.worksheets:
+        for tableau in (getattr(onglet, "tables", {}) or {}).values():
+            info = getattr(tableau, "tableStyleInfo", None)
+            nom = getattr(info, "name", None)
+            if nom in correspondance:
+                info.name = correspondance[nom]
+    return len(correspondance)
 
 
 def _renommer_styles_nommes(classeur):

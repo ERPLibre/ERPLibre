@@ -251,6 +251,61 @@ class TestUniciteNumerique(unittest.TestCase):
         self.assertEqual(len(set(sorties)), 50)
         self.assertTrue(all(x < 0 for x in sorties))
 
+    def test_une_plage_saturee_reste_dans_ses_bornes(self):
+        """Élargir dès le premier échec sortait de la plage mesurée.
+
+        Une heure de la journée devenait 189, un taux dépassait l'unité,
+        alors que la plage avait encore des places libres.
+        """
+        table = noyau.Correspondance()
+        rng = random.Random(1)
+        sorties = [
+            noyau.nouveau_nombre(
+                round(0.15 + i * 0.01, 2),
+                rng,
+                bornes=(0.15, 0.2),
+                table=table,
+            )
+            for i in range(6)
+        ]
+        self.assertEqual(len(set(sorties)), 6)
+        for valeur in sorties:
+            self.assertGreaterEqual(valeur, 0.15)
+            # Six valeurs dans six places, l'identité interdite : la
+            # dernière place libre EST parfois l'identité. On grandit
+            # alors d'un PAS, pas d'un facteur dix — un taux reste un
+            # taux.
+            self.assertLessEqual(valeur, 0.25)
+
+    def test_une_heure_reste_une_heure(self):
+        table = noyau.Correspondance()
+        rng = random.Random(2)
+        sorties = [
+            noyau.nouveau_nombre(v, rng, bornes=(0, 23), table=table)
+            for v in range(1, 24)
+        ]
+        self.assertEqual(len(set(sorties)), 23)
+        self.assertLessEqual(max(sorties), 23)
+
+    def test_aucun_nombre_n_est_rendu_a_lui_meme(self):
+        """Il serait compté et annoncé comme remplacé sans l'être."""
+        table = noyau.Correspondance()
+        rng = random.Random(3)
+        for v in range(1, 7):
+            self.assertNotEqual(
+                noyau.nouveau_nombre(v, rng, bornes=(1, 6), table=table), v
+            )
+
+    def test_l_elargissement_ne_sert_qu_en_dernier_recours(self):
+        """Plus de places que de valeurs : aucune sortie hors plage."""
+        table = noyau.Correspondance()
+        rng = random.Random(4)
+        sorties = [
+            noyau.nouveau_nombre(v, rng, bornes=(1, 10), table=table)
+            for v in range(1, 10)
+        ]
+        self.assertTrue(all(1 <= x <= 10 for x in sorties), sorties)
+
     def test_sans_table_le_tirage_reste_borne(self):
         rng = random.Random(3)
         for _ in range(50):

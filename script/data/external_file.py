@@ -569,10 +569,77 @@ def _bornes_par_signe(valeur, bornes):
     return (bas if bas < 0 else -1000.0), min(haut, 0.0)
 
 
-# Au-delà, le tirage rend un doublon plutôt que de boucler. Dix essais par
-# palier d'élargissement, cinq paliers : l'étendue est alors 10 000 fois
-# plus large que la mesurée, ce qu'aucune colonne réelle ne sature.
-ESSAIS_UNICITE = 50
+# Essais aléatoires avant de passer au parcours des places. Dix suffisent
+# tant que la plage est large ; le parcours tranche quand elle est étroite.
+ESSAIS_UNICITE = 10
+
+# Le parcours des places est borné : sur une plage de plusieurs milliers de
+# valeurs, l'aléatoire a déjà répondu, et une plage vraiment saturée doit
+# s'élargir plutôt que se faire fouiller.
+PLACES_PARCOURUES = 8192
+
+# Pas d'agrandissement, une fois la plage saturée. On grandit D'UN PAS à
+# la fois, du côté qui s'éloigne du zéro : avec N valeurs dans N places et
+# l'interdiction de rendre l'identité, la dernière place libre EST parfois
+# l'identité, et la plage se sature sans être trop petite. Un taux qui
+# passe de 0,20 à 0,21 reste un taux ; le même élargi dix fois ne l'est
+# plus.
+PAS_AGRANDIS = 32
+
+# Paliers ×10, dernier recours quand même l'agrandissement ne suffit pas.
+PALIERS_ELARGISSEMENT = 5
+
+
+def _tirer_libre(valeur, rng, bas, haut, entier, pris):
+    """Un tirage dans une place LIBRE de l'étendue mesurée.
+
+    Élargir dès le premier échec faisait sortir la valeur de la plage
+    mesurée alors qu'elle avait encore des places : une heure de la
+    journée devenait 189, un taux dépassait l'unité. L'élargissement n'est
+    plus qu'un dernier recours, quand la plage est vraiment saturée.
+
+    La valeur d'origine compte parmi les places prises : un nombre rendu à
+    lui-même serait compté et annoncé comme remplacé alors que la copie le
+    porte inchangé.
+    """
+    pas = 1 if entier else 0.01
+    places = int(round((haut - bas) / pas)) + 1
+    interdit = (valeur,)
+    for _ in range(ESSAIS_UNICITE):
+        tire = _tirer(valeur, rng, bas, haut, entier)
+        if tire not in pris and tire not in interdit:
+            return tire
+    if 0 < places <= PLACES_PARCOURUES:
+        # Parcourir depuis un point au hasard : sans point de départ
+        # aléatoire, une plage étroite se remplirait toujours dans le même
+        # ordre et la copie deviendrait devinable.
+        depart = rng.randrange(places)
+        for decalage in range(places):
+            brut = bas + ((depart + decalage) % places) * pas
+            candidat = int(brut) if entier else round(brut, 2)
+            if candidat == 0 or candidat in interdit:
+                continue
+            if candidat not in pris:
+                return candidat
+        # Saturée : grandir d'un pas à la fois, du côté qui s'éloigne du
+        # zéro, plutôt que de multiplier l'étendue par dix.
+        vers_le_haut = haut > 0
+        for rang in range(1, PAS_AGRANDIS + 1):
+            brut = (haut + rang * pas) if vers_le_haut else (bas - rang * pas)
+            candidat = int(brut) if entier else round(brut, 2)
+            if candidat == 0 or candidat in interdit:
+                continue
+            if candidat not in pris:
+                return candidat
+    for palier in range(1, PALIERS_ELARGISSEMENT + 1):
+        facteur = 10**palier
+        for _ in range(ESSAIS_UNICITE):
+            tire = _tirer(valeur, rng, bas * facteur, haut * facteur, entier)
+            if tire not in pris and tire not in interdit:
+                return tire
+    # Toutes les places connues sont prises : rendre un doublon vaut mieux
+    # que refuser une copie propre — une collision ne fait rien fuir.
+    return _tirer(valeur, rng, bas, haut, entier)
 
 
 def _tirer(valeur, rng, bas, haut, entier):
@@ -630,13 +697,7 @@ def nouveau_nombre(valeur, rng, bornes=None, table=None):
     # réimporte plus — et c'est justement l'intégrité que la table apporte
     # au texte, refusée en silence aux nombres.
     pris = table.nombres_pris if table is not None else ()
-    for essai in range(ESSAIS_UNICITE):
-        # L'étendue s'élargit ×10 quand elle sature. Elle s'éloigne du
-        # zéro, donc le signe reste celui de la valeur d'origine.
-        facteur = 10 ** (essai // 10)
-        tire = _tirer(valeur, rng, bas * facteur, haut * facteur, entier)
-        if tire not in pris:
-            break
+    tire = _tirer_libre(valeur, rng, bas, haut, entier, pris)
     if table is not None:
         table.nombres[cle] = tire
         table.nombres_pris.add(tire)
