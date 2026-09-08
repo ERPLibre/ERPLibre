@@ -216,6 +216,75 @@ def network_layers(active, autostart, cidr="", collision="") -> tuple:
     )
 
 
+def dns_layers(name, lease="", address="") -> tuple:
+    """La machine se joint-elle par son NOM, ou seulement par son adresse ?
+
+    UN BAIL AU MAUVAIS NOM EST PIRE QU'AUCUN. Une VM renommée dont le bail
+    porte encore l'ancien nom d'hôte se voit attribuer ce que l'ancien nom
+    désigne — et un alias ssh écrit sur ce nom mène ailleurs. Trouver
+    l'adresse sans le nom n'est donc PAS un demi-succès : c'est le cas où
+    l'on croit joindre une machine et où l'on en joint une autre.
+
+    Aucun bail du tout est un retrait propre : la machine peut n'avoir pas
+    fini de démarrer, et rien n'est prouvé ni infirmé.
+    """
+    if lease and lease == name:
+        detail = t("The lease carries the machine's name.")
+        return (
+            report.layer_verdict(
+                "dns", report.DS_OK, f"{detail} {address}".strip()
+            ),
+        )
+    if address or lease:
+        return (
+            report.layer_verdict(
+                "dns",
+                report.DS_ERR,
+                t("An address answers, under another name:")
+                + f" {lease or t('unknown')}",
+                t("Rename the machine, or clear the stale lease."),
+            ),
+        )
+    return (
+        report.layer_verdict(
+            "dns",
+            report.DS_SKIP,
+            t("No lease yet for this machine."),
+            t("Wait for it to boot, then check again."),
+        ),
+    )
+
+
+def tls_layers(domain="") -> tuple:
+    """Le certificat servi — pas encore sondé, et le DIRE plutôt que se taire.
+
+    Un déploiement n'a de TLS que s'il déclare un domaine : sans domaine,
+    rien n'est servi derrière un terminateur, et la couche n'a pas d'objet.
+    Avec un domaine, elle en a un et personne ne le regarde encore.
+
+    DEUX RETRAITS, ET NON UN SILENCE. Une couche omise se lit comme une
+    couche tenue ; nommée, elle dit laquelle des deux situations est la
+    sienne — et la seconde est un travail à faire, pas un non-sujet.
+    """
+    if not domain:
+        return (
+            report.layer_verdict(
+                "tls",
+                report.DS_SKIP,
+                t("No domain declared: nothing is served behind TLS."),
+            ),
+        )
+    return (
+        report.layer_verdict(
+            "tls",
+            report.DS_SKIP,
+            t("A domain is declared, and the certificate is not probed:")
+            + f" {domain}",
+            t("Probing it is not written yet."),
+        ),
+    )
+
+
 def host_layers(groupe=None, kvm=None) -> tuple:
     """La station qui déploie : peut-elle piloter, et accélérer ?
 

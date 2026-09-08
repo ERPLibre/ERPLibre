@@ -256,6 +256,78 @@ class TestLaTraductionDeLaSonde(unittest.TestCase):
                     self.assertIn(couche.layer, R.LAYERS)
 
 
+class TestLaCoucheDns(unittest.TestCase):
+    """Un bail au MAUVAIS nom est pire qu'aucun bail."""
+
+    def test_a_lease_bearing_the_name_is_green(self):
+        couche = V.dns_layers("vm-a", lease="vm-a", address="198.51.100.5")[0]
+        self.assertEqual(R.DS_OK, couche.code)
+        self.assertIn("198.51.100.5", couche.detail)
+
+    def test_an_address_under_another_name_is_a_failure(self):
+        """Une VM renommée dont le bail porte l'ancien nom d'hôte se voit
+        attribuer ce que l'ancien nom désigne — et un alias ssh écrit sur
+        ce nom mène ailleurs."""
+        couche = V.dns_layers(
+            "vm-a", lease="ancien-nom", address="198.51.100.5"
+        )[0]
+        self.assertEqual(R.DS_ERR, couche.code)
+        self.assertIn("ancien-nom", couche.detail)
+
+    def test_an_address_without_any_lease_is_a_failure_too(self):
+        """Ce n'est PAS un demi-succès : c'est le cas où l'on croit joindre
+        une machine et où l'on en joint une autre."""
+        couche = V.dns_layers("vm-a", address="198.51.100.5")[0]
+        self.assertEqual(R.DS_ERR, couche.code)
+
+    def test_nothing_at_all_is_a_clean_withdrawal(self):
+        """La machine peut n'avoir pas fini de démarrer : rien n'est prouvé
+        ni infirmé."""
+        couche = V.dns_layers("vm-a")[0]
+        self.assertEqual(R.DS_SKIP, couche.code)
+
+    def test_every_failure_says_what_to_do(self):
+        for kw in (
+            dict(lease="autre", address="198.51.100.5"),
+            dict(address="198.51.100.5"),
+            dict(),
+        ):
+            couche = V.dns_layers("vm-a", **kw)[0]
+            with self.subTest(**kw):
+                self.assertTrue(couche.remedy)
+                self.assertEqual("dns", couche.layer)
+
+
+class TestLaCoucheTls(unittest.TestCase):
+    """Deux retraits, et non un silence : une couche omise se lit comme une
+    couche tenue."""
+
+    def test_no_domain_means_the_layer_has_no_object(self):
+        couche = V.tls_layers()[0]
+        self.assertEqual(R.DS_SKIP, couche.code)
+        self.assertEqual("tls", couche.layer)
+
+    def test_a_declared_domain_is_a_work_to_do_and_says_so(self):
+        """La seconde situation n'est pas un non-sujet : personne ne
+        regarde encore, et le taire le ferait oublier."""
+        couche = V.tls_layers("exemple.invalid")[0]
+        self.assertEqual(R.DS_SKIP, couche.code)
+        self.assertIn("exemple.invalid", couche.detail)
+
+    def test_the_two_withdrawals_do_not_say_the_same_thing(self):
+        self.assertNotEqual(
+            V.tls_layers()[0].detail,
+            V.tls_layers("exemple.invalid")[0].detail,
+        )
+
+    def test_neither_is_ever_green(self):
+        """Rien n'est sondé : rendre vert serait le mensonge que le
+        vocabulaire existe pour empêcher."""
+        for domaine in ("", "exemple.invalid"):
+            with self.subTest(domaine=domaine):
+                self.assertNotEqual(R.DS_OK, V.tls_layers(domaine)[0].code)
+
+
 class TestLaCoucheReseau(unittest.TestCase):
     """Elle était DÉCLARÉE dans le vocabulaire et émise nulle part."""
 

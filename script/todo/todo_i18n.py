@@ -1159,6 +1159,42 @@ TRANSLATIONS = {
         "fr": "Vérifier virsh et l'URI système.",
         "en": "Check virsh and the system URI.",
     },
+    "The lease carries the machine's name.": {
+        "fr": "Le bail porte le nom de la machine.",
+        "en": "The lease carries the machine's name.",
+    },
+    "An address answers, under another name:": {
+        "fr": "Une adresse répond, sous un autre nom :",
+        "en": "An address answers, under another name:",
+    },
+    "unknown": {
+        "fr": "inconnu",
+        "en": "unknown",
+    },
+    "Rename the machine, or clear the stale lease.": {
+        "fr": "Renommer la machine, ou effacer le bail périmé.",
+        "en": "Rename the machine, or clear the stale lease.",
+    },
+    "No lease yet for this machine.": {
+        "fr": "Aucun bail encore pour cette machine.",
+        "en": "No lease yet for this machine.",
+    },
+    "Wait for it to boot, then check again.": {
+        "fr": "Attendre qu'elle démarre, puis recommencer.",
+        "en": "Wait for it to boot, then check again.",
+    },
+    "No domain declared: nothing is served behind TLS.": {
+        "fr": "Aucun domaine déclaré : rien n'est servi derrière TLS.",
+        "en": "No domain declared: nothing is served behind TLS.",
+    },
+    "A domain is declared, and the certificate is not probed:": {
+        "fr": "Un domaine est déclaré, et le certificat n'est pas sondé :",
+        "en": "A domain is declared, and the certificate is not probed:",
+    },
+    "Probing it is not written yet.": {
+        "fr": "Le sonder n'est pas encore écrit.",
+        "en": "Probing it is not written yet.",
+    },
     "libvirt group is active.": {
         "fr": "Le groupe libvirt est actif.",
         "en": "libvirt group is active.",
