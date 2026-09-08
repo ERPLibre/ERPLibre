@@ -22,6 +22,7 @@ from script.posture import registry as posture_registry
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
 from script.todo import host_os, todo_prefs, vm_backend_choice
+from script.todo import deploy_verify
 from script.todo import devstack_report as report
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
@@ -1198,63 +1199,6 @@ class QemuDeployMixin:
         return f"ssh {EGRESS_SSH_OPTS} {user}@{ip} {shlex.quote(sonde)}"
 
     @staticmethod
-    def _egress_layers(verdict):
-        """Le verdict de la relecture, réparti sur la couche qu'il concerne.
-
-        Chacun se corrige d'un côté différent : une table absente se
-        recharge, un analyseur absent se choisit avec l'image, un droit
-        manquant s'accorde, et un silence est un problème de transport où
-        le pare-feu n'a jamais été mesuré.
-
-        UN DROIT MANQUANT COMPTE POUR UNE PANNE, et non pour un retrait
-        propre : la machine a reçu une posture qui promet un confinement, et
-        une vérification qui n'aboutit pas ne doit pas se lire comme un
-        succès. Le retrait propre est réservé au silence, où rien n'a été
-        sondé du tout.
-        """
-        if verdict == posture_plan.LOADED:
-            return (
-                report.layer_verdict(
-                    "firewall", report.DS_OK, t("Egress rules loaded.")
-                ),
-            )
-        if verdict == posture_plan.TABLE_ABSENT:
-            return (
-                report.layer_verdict(
-                    "firewall",
-                    report.DS_ERR,
-                    t("Egress rules did not load."),
-                    t("Read cloud-init output in the guest."),
-                ),
-            )
-        if verdict == posture_plan.TOOL_ABSENT:
-            return (
-                report.layer_verdict(
-                    "guest",
-                    report.DS_ERR,
-                    t("The guest image has no nftables."),
-                    t("Pick an image that ships it: none is installed here."),
-                ),
-            )
-        if verdict == posture_plan.NO_PRIVILEGE:
-            return (
-                report.layer_verdict(
-                    "firewall",
-                    report.DS_ERR,
-                    t("Egress rules could not be read."),
-                    t("Reading the table needs root on the guest."),
-                ),
-            )
-        return (
-            report.layer_verdict(
-                "transport",
-                report.DS_SKIP,
-                t("The guest answered nothing."),
-                t("Check the guest is up, then check again."),
-            ),
-        )
-
-    @staticmethod
     def _egress_read(commande):
         """Joue la sonde et rend sa sortie. Le SEUL geste impur d'ici.
 
@@ -1312,7 +1256,7 @@ class QemuDeployMixin:
                 )
             if lu != posture_plan.LOADED:
                 sans_regles.append(nom)
-            couches = self._egress_layers(lu)
+            couches = deploy_verify.egress_layers(lu)
             print()
             print(report.render_layers(couches, subject=nom))
             verdicts.extend(couches)

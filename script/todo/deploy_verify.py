@@ -20,6 +20,7 @@ station, sans hyperviseur et sans privilège.
 
 from __future__ import annotations
 
+from script.posture import plan
 from script.remote import host_probe
 from script.todo import devstack_report as report
 from script.todo import host_os, qemu_privilege
@@ -102,6 +103,63 @@ def probe_layers(verdict) -> tuple:
             report.DS_SKIP,
             t("No passwordless sudo."),
             t("Two verbs need it; the nine others do not."),
+        ),
+    )
+
+
+def egress_layers(verdict) -> tuple:
+    """Le verdict de la relecture des règles, réparti sur ses couches.
+
+    Chacun se corrige d'un côté différent : une table absente se
+    recharge, un analyseur absent se choisit avec l'image, un droit
+    manquant s'accorde, et un silence est un problème de transport où
+    le pare-feu n'a jamais été mesuré.
+
+    UN DROIT MANQUANT COMPTE POUR UNE PANNE, et non pour un retrait
+    propre : la machine a reçu une posture qui promet un confinement, et
+    une vérification qui n'aboutit pas ne doit pas se lire comme un
+    succès. Le retrait propre est réservé au silence, où rien n'a été
+    sondé du tout.
+    """
+    if verdict == plan.LOADED:
+        return (
+            report.layer_verdict(
+                "firewall", report.DS_OK, t("Egress rules loaded.")
+            ),
+        )
+    if verdict == plan.TABLE_ABSENT:
+        return (
+            report.layer_verdict(
+                "firewall",
+                report.DS_ERR,
+                t("Egress rules did not load."),
+                t("Read cloud-init output in the guest."),
+            ),
+        )
+    if verdict == plan.TOOL_ABSENT:
+        return (
+            report.layer_verdict(
+                "guest",
+                report.DS_ERR,
+                t("The guest image has no nftables."),
+                t("Pick an image that ships it: none is installed here."),
+            ),
+        )
+    if verdict == plan.NO_PRIVILEGE:
+        return (
+            report.layer_verdict(
+                "firewall",
+                report.DS_ERR,
+                t("Egress rules could not be read."),
+                t("Reading the table needs root on the guest."),
+            ),
+        )
+    return (
+        report.layer_verdict(
+            "transport",
+            report.DS_SKIP,
+            t("The guest answered nothing."),
+            t("Check the guest is up, then check again."),
         ),
     )
 
