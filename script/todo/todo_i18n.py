@@ -1139,6 +1139,26 @@ TRANSLATIONS = {
         "fr": "Réseau levé et armé pour le prochain démarrage.",
         "en": "Network up and armed for the next boot.",
     },
+    "Deploy - verify this station, layer by layer": {
+        "fr": "Deploy - vérifier cette station, couche par couche",
+        "en": "Deploy - verify this station, layer by layer",
+    },
+    "Verify the deploying station": {
+        "fr": "Vérifier la station qui déploie",
+        "en": "Verify the deploying station",
+    },
+    "Station": {
+        "fr": "Station",
+        "en": "Station",
+    },
+    "The libvirt network could not be read.": {
+        "fr": "Le réseau libvirt n'a pas pu être lu.",
+        "en": "The libvirt network could not be read.",
+    },
+    "Check virsh and the system URI.": {
+        "fr": "Vérifier virsh et l'URI système.",
+        "en": "Check virsh and the system URI.",
+    },
     "libvirt group is active.": {
         "fr": "Le groupe libvirt est actif.",
         "en": "libvirt group is active.",

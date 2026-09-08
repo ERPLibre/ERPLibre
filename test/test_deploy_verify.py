@@ -102,6 +102,95 @@ class TestLesDeuxGravites(unittest.TestCase):
             self.assertNotIn(interdit, appels)
 
 
+class TestLeVerbeDeLaStation(unittest.TestCase):
+    """Les couches étaient justes, éprouvées et INVISIBLES : rien ne les
+    demandait depuis un écran.
+
+    Découvrir un groupe manquant ou un réseau en collision au bout de vingt
+    minutes d'installation coûte bien plus cher qu'une lecture d'une
+    seconde — d'où un verbe qui ne crée rien.
+    """
+
+    def jouer(self, faits, groupe=(True, True), kvm=True):
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        from script.todo.todo import TODO
+        from script.todo import deploy_verify
+
+        todo = TODO.__new__(TODO)
+        todo._qemu_station_facts = lambda mod=None: faits
+        vrai = deploy_verify.host_layers
+        deploy_verify.host_layers = lambda **_kw: vrai(groupe=groupe, kvm=kvm)
+        self.addCleanup(setattr, deploy_verify, "host_layers", vrai)
+        tampon = tampon_io.StringIO()
+        with redirect_stdout(tampon):
+            code = todo._qemu_verify_station()
+        return code, tampon.getvalue()
+
+    FAITS = {
+        "active": True,
+        "autostart": True,
+        "cidr": "192.0.2.0/24",
+        "collision": "",
+    }
+
+    def test_a_healthy_station_is_green_and_says_every_layer(self):
+        code, vu = self.jouer(self.FAITS)
+        self.assertEqual(R.DS_OK, code)
+        self.assertIn("host", vu)
+        self.assertIn("network", vu)
+
+    def test_it_names_the_subject_of_the_block(self):
+        """Les tirets seuls ne prouvent rien : le titre par défaut les
+        porte aussi. C'est le SUJET qui doit s'y lire."""
+        from script.todo import todo_i18n
+
+        _code, vu = self.jouer(self.FAITS)
+        self.assertIn(f"── {todo_i18n.t('Station')} ──", vu)
+        self.assertNotIn(todo_i18n.t("Layers"), vu)
+
+    def test_a_collision_reddens_the_verb(self):
+        code, vu = self.jouer(dict(self.FAITS, collision="198.51.100.0/24"))
+        self.assertEqual(R.DS_ERR, code)
+        self.assertIn("198.51.100.0/24", vu)
+
+    def test_a_missing_group_reddens_it_too(self):
+        code, _vu = self.jouer(self.FAITS, groupe=(False, False))
+        self.assertEqual(R.DS_ERR, code)
+
+    def test_a_network_that_could_not_be_read_is_never_green(self):
+        """Ce qui n'a pas été lu n'est pas VERT : un bloc muet se lirait
+        comme « tout va bien »."""
+        code, vu = self.jouer({})
+        self.assertNotEqual(R.DS_OK, code)
+        self.assertIn("network", vu)
+
+    def test_it_creates_nothing(self):
+        """Un verbe de vérification qui modifie n'est plus une
+        vérification. Il ne compose que des lectures."""
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "_qemu_verify_station"
+        ]
+        self.assertEqual(1, len(corps))
+        appels = [
+            noeud.func.attr
+            for noeud in ast.walk(corps[0])
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+        ]
+        for interdit in ("exec_command_live", "run", "ensure_network"):
+            self.assertNotIn(interdit, appels)
+
+
 class TestLaTraductionDeLaSonde(unittest.TestCase):
     """Elle vivait dans un ÉCRAN, éprouvée seulement à travers lui. Elle ne
     dépend d'aucune conversation, et deux écrans qui la recopieraient

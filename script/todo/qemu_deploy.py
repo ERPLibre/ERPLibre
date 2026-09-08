@@ -1228,6 +1228,65 @@ class QemuDeployMixin:
         """
         return [nom for nom in deployed if nom not in unconfined]
 
+    def _qemu_station_facts(self, mod=None):
+        """Les faits du réseau libvirt, lus une fois. ({} si illisible.)
+
+        La lecture demande virsh et l'URI système ; elle vit donc ICI, où
+        le module de déploiement est déjà chargé, et non chez le composeur
+        qui ne sonde rien.
+        """
+        try:
+            mod = mod or self._qemu_import_module()
+        except Exception:
+            return {}
+        nom = mod.network_name(mod.DEFAULT_NETWORK)
+        if not nom:
+            return {}
+        sudo = bool(sudo_prefix())
+        try:
+            actif, autostart = mod.network_state(nom, sudo)
+            cidr = mod.network_cidr(nom, sudo)
+            pont = mod.network_bridge(nom, sudo)
+            collision = mod.network_collision(
+                cidr, mod.host_networks(exclure_ponts=[pont])
+            )
+        except Exception:
+            return {}
+        return {
+            "active": actif,
+            "autostart": autostart,
+            "cidr": cidr,
+            "collision": collision,
+        }
+
+    def _qemu_verify_station(self):
+        """Ce que la station sait faire, couche par couche, sans rien créer.
+
+        AVANT de déployer, et non après : découvrir un groupe manquant ou un
+        réseau en collision au bout de vingt minutes d'installation coûte
+        bien plus cher qu'une lecture d'une seconde.
+
+        Rend le pire code des couches, pour qu'un appelant puisse en
+        dépendre. Ce qui n'a pas pu être lu n'est pas rendu VERT : le
+        composeur le dit, et un bloc muet se lirait comme « tout va bien ».
+        """
+        print(f"\n🩺 {t('Verify the deploying station')}")
+        couches = list(deploy_verify.host_layers())
+        faits = self._qemu_station_facts()
+        if faits:
+            couches.extend(deploy_verify.network_layers(**faits))
+        else:
+            couches.append(
+                report.layer_verdict(
+                    "network",
+                    report.DS_SKIP,
+                    t("The libvirt network could not be read."),
+                    t("Check virsh and the system URI."),
+                )
+            )
+        print(report.render_layers(couches, subject=t("Station")))
+        return report.aggregate_layers(couches)
+
     def _qemu_probe_egress(self, deployed, ip_map, lire=None):
         """Relit les règles de chaque VM déployée et écrit le verdict.
 

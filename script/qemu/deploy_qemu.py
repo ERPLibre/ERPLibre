@@ -3122,6 +3122,12 @@ def create_blank_disk(
     )
 
 
+# Ce que « --network » vaut sans rien demander. Nommé plutôt qu'écrit dans
+# l'analyseur d'arguments : un écran qui veut SONDER ce réseau a besoin de
+# la même valeur, et la recopier la ferait diverger au premier changement.
+DEFAULT_NETWORK = "network=default,model=virtio"
+
+
 def network_name(network_arg: str) -> str | None:
     """Extrait NAME de « network=NAME,... » ; None si c'est un bridge, etc."""
     for part in network_arg.split(","):
@@ -3997,7 +4003,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     g_vm.add_argument(
         "--network",
-        default="network=default,model=virtio",
+        default=DEFAULT_NETWORK,
         help="Argument --network de virt-install.",
     )
     g_vm.add_argument(
