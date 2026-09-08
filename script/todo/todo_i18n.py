@@ -1199,6 +1199,10 @@ TRANSLATIONS = {
         "fr": "Deploy - vérifier une VM déployée, couche par couche",
         "en": "Deploy - verify a deployed VM, layer by layer",
     },
+    "nothing checked": {
+        "fr": "rien de contrôlé",
+        "en": "nothing checked",
+    },
     "libvirt group is active.": {
         "fr": "Le groupe libvirt est actif.",
         "en": "libvirt group is active.",
