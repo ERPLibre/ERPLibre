@@ -1111,6 +1111,34 @@ TRANSLATIONS = {
         "fr": "Cette machine porte des données réelles",
         "en": "This machine carries real data",
     },
+    "The libvirt network overlaps a route of this host:": {
+        "fr": "Le réseau libvirt recouvre une route de cet hôte :",
+        "en": "The libvirt network overlaps a route of this host:",
+    },
+    "Move its subnet, or stop the network.": {
+        "fr": "Déplacer son sous-réseau, ou arrêter le réseau.",
+        "en": "Move its subnet, or stop the network.",
+    },
+    "The libvirt network is defined but not started.": {
+        "fr": "Le réseau libvirt est défini mais pas démarré.",
+        "en": "The libvirt network is defined but not started.",
+    },
+    "Start it: nothing reaches the VMs without it.": {
+        "fr": "Le démarrer : sans lui rien ne joint les VM.",
+        "en": "Start it: nothing reaches the VMs without it.",
+    },
+    "It works, and it will not come back after a reboot.": {
+        "fr": "Il marche, et il ne remontera pas au prochain démarrage.",
+        "en": "It works, and it will not come back after a reboot.",
+    },
+    "Arm autostart, the subnet being free of collision.": {
+        "fr": "Armer l'autostart, le sous-réseau étant libre de collision.",
+        "en": "Arm autostart, the subnet being free of collision.",
+    },
+    "Network up and armed for the next boot.": {
+        "fr": "Réseau levé et armé pour le prochain démarrage.",
+        "en": "Network up and armed for the next boot.",
+    },
     "libvirt group is active.": {
         "fr": "Le groupe libvirt est actif.",
         "en": "libvirt group is active.",

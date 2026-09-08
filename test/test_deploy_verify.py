@@ -101,6 +101,75 @@ class TestLesDeuxGravites(unittest.TestCase):
             self.assertNotIn(interdit, appels)
 
 
+class TestLaCoucheReseau(unittest.TestCase):
+    """Elle était DÉCLARÉE dans le vocabulaire et émise nulle part."""
+
+    def test_a_network_up_and_armed_is_green(self):
+        couches = V.network_layers(active=True, autostart=True)
+        self.assertEqual(R.DS_OK, R.aggregate_layers(couches))
+
+    def test_the_subnet_is_named_when_all_is_well(self):
+        """Le rapport sert aussi à savoir OÙ vivent les machines."""
+        couches = V.network_layers(
+            active=True, autostart=True, cidr="192.0.2.0/24"
+        )
+        self.assertIn("192.0.2.0/24", couches[0].detail)
+
+    def test_a_network_not_started_is_a_failure(self):
+        couches = V.network_layers(active=False, autostart=True)
+        self.assertEqual(R.DS_ERR, couches[0].code)
+
+    def test_working_but_not_armed_is_a_failure_too(self):
+        """La panne arriverait DÉTACHÉE de sa cause, au démarrage suivant :
+        c'est ce qui coûte le plus cher à diagnostiquer."""
+        couches = V.network_layers(active=True, autostart=False)
+        self.assertEqual(R.DS_ERR, couches[0].code)
+        # « autostart » s'écrit pareil dans les deux langues ; une phrase
+        # citée en une seule tomberait sur l'autre.
+        self.assertIn("autostart", couches[0].remedy.lower())
+        arrete = V.network_layers(active=False, autostart=False)
+        self.assertNotEqual(arrete[0].detail, couches[0].detail)
+
+    def test_a_collision_dominates_and_speaks_alone(self):
+        """L'autostart ÉTEINT est alors le BON état : le signaler ferait
+        corriger ce qui protège."""
+        couches = V.network_layers(
+            active=True, autostart=False, collision="198.51.100.0/24"
+        )
+        self.assertEqual(1, len(couches))
+        self.assertIn("198.51.100.0/24", couches[0].detail)
+        self.assertNotIn("autostart", couches[0].detail.lower())
+
+    def test_a_collision_is_named_and_not_merely_announced(self):
+        """« il y a une collision » n'apprend rien : c'est le réseau
+        recouvert qui dit quoi déplacer."""
+        couches = V.network_layers(
+            active=False, autostart=False, collision="198.51.100.0/24"
+        )
+        self.assertIn("198.51.100.0/24", couches[0].detail)
+
+    def test_every_failure_says_what_to_do(self):
+        for kw in (
+            dict(active=False, autostart=False),
+            dict(active=True, autostart=False),
+            dict(active=True, autostart=False, collision="198.51.100.0/24"),
+        ):
+            for couche in V.network_layers(**kw):
+                with self.subTest(**kw):
+                    self.assertTrue(couche.remedy)
+
+    def test_it_never_leaves_the_closed_vocabulary(self):
+        for kw in (
+            dict(active=True, autostart=True),
+            dict(active=False, autostart=False),
+            dict(active=True, autostart=False, collision="x"),
+        ):
+            for couche in V.network_layers(**kw):
+                with self.subTest(**kw):
+                    self.assertEqual("network", couche.layer)
+                    self.assertIn(couche.code, R.CODES)
+
+
 class TestLaRegleDeLAcceleration(unittest.TestCase):
     """La présence suffit HORS root : libvirt tourne en root et se moque
     de notre appartenance au groupe kvm."""

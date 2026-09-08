@@ -25,6 +25,58 @@ from script.todo import host_os, qemu_privilege
 from script.todo.todo_i18n import t
 
 
+def network_layers(active, autostart, cidr="", collision="") -> tuple:
+    """Le réseau libvirt : joignable maintenant, et au prochain démarrage ?
+
+    UNE COLLISION DOMINE TOUT LE RESTE. Un réseau qui recouvre ce que l'hôte
+    route déjà prend l'adresse de la passerelle sur son pont, et la machine
+    perd son réseau. Dans ce cas l'autostart ÉTEINT est le bon état, pas un
+    second défaut : le signaler ferait corriger ce qui protège.
+
+    L'AUTOSTART COMPTE MÊME QUAND TOUT MARCHE. Sans lui le réseau ne remonte
+    pas au démarrage suivant, et les machines deviennent injoignables sans
+    que rien n'ait changé entre-temps — la panne arrive détachée de sa
+    cause, ce qui est le plus cher à diagnostiquer.
+
+    Les faits arrivent en paramètres : les lire demande virsh et l'URI
+    système, que ce module ne sonde pas.
+    """
+    if collision:
+        return (
+            report.layer_verdict(
+                "network",
+                report.DS_ERR,
+                t("The libvirt network overlaps a route of this host:")
+                + f" {collision}",
+                t("Move its subnet, or stop the network."),
+            ),
+        )
+    if not active:
+        return (
+            report.layer_verdict(
+                "network",
+                report.DS_ERR,
+                t("The libvirt network is defined but not started."),
+                t("Start it: nothing reaches the VMs without it."),
+            ),
+        )
+    if not autostart:
+        return (
+            report.layer_verdict(
+                "network",
+                report.DS_ERR,
+                t("It works, and it will not come back after a reboot."),
+                t("Arm autostart, the subnet being free of collision."),
+            ),
+        )
+    detail = t("Network up and armed for the next boot.")
+    return (
+        report.layer_verdict(
+            "network", report.DS_OK, f"{detail} {cidr}".strip()
+        ),
+    )
+
+
 def host_layers(groupe=None, kvm=None) -> tuple:
     """La station qui déploie : peut-elle piloter, et accélérer ?
 
