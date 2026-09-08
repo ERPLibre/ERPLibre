@@ -310,11 +310,15 @@ class FakeLLM:
     aucune autorisation.
     """
 
-    def __init__(self, famille=None, *, routes=None):
+    def __init__(self, famille=None, *, routes=None, port=0):
         table = dict(FIXTURES[famille]) if famille else {}
         if routes:
             table.update(routes)
-        self._httpd = http.server.ThreadingHTTPServer((HOST, 0), _Handler)
+        # Le port 0 laisse le système choisir, ce qui évite toute collision
+        # avec ce qui écoute déjà et permet à deux serveurs de tourner en
+        # même temps. Un port EXPLICITE ne sert qu'à occuper celui d'un
+        # logiciel réel, pour qu'un balayage tombe dessus.
+        self._httpd = http.server.ThreadingHTTPServer((HOST, port), _Handler)
         self._httpd.routes = table
         self._httpd.seen = []
         self._httpd.daemon_threads = True
@@ -356,6 +360,19 @@ class FakeLLM:
         """(méthode, chemin, en-têtes) de chaque requête reçue."""
         return self._httpd.seen
 
+    def statut_de(self, chemin) -> str:
+        """Ce que ce chemin rend : un statut, une méchanceté, ou 404.
+
+        Sert le mode à la main : voir le chemin interrogé ne dit pas ce qu'il
+        a répondu, et c'est la réponse qui décide de la reconnaissance.
+        """
+        route = self._httpd.routes.get(chemin)
+        if route is None:
+            return "404"
+        if isinstance(route, Fault):
+            return type(route).__name__.lower()
+        return str(route[0])
+
 
 def port_ferme() -> int:
     """Un port sur lequel personne n'écoute.
@@ -369,3 +386,118 @@ def port_ferme() -> int:
     with socket.socket() as sock:
         sock.bind((HOST, 0))
         return sock.getsockname()[1]
+
+
+def _chat(texte):
+    """Une complétion OpenAI qui rend `texte`.
+
+    Les tables `FIXTURES` ne servent que des GET de reconnaissance : la
+    découverte n'émet rien d'autre. Une conversation réclame en plus un
+    `/v1/chat/completions`, que cette fonction fabrique pour l'usage à la
+    main — un vrai modèle n'est pas nécessaire pour vérifier qu'un menu parle
+    au bon endroit.
+    """
+    return (
+        200,
+        json.dumps(
+            {
+                "id": "chatcmpl-faux",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "modele-de-facade",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": texte},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            }
+        ).encode(),
+    )
+
+
+def _principal(arguments):
+    """Sert une famille en avant-plan, et JOURNALISE chaque requête reçue.
+
+    C'est ce que le mode à la main apporte et qu'un test ne donne pas : la
+    liste des chemins qu'un client interroge, dans l'ordre. Une
+    reconnaissance qui se trompe se lit alors directement — l'ordre des
+    étages est visible, et le chemin qui a emporté la décision est le dernier
+    avant l'arrêt.
+
+    Le port 0 laisse le système choisir ; un port explicite sert à occuper
+    celui qu'un logiciel réel utiliserait, pour qu'un balayage tombe dessus.
+    """
+    import argparse
+    import time
+
+    analyseur = argparse.ArgumentParser(
+        description=(
+            "Un serveur LLM de façade, pour diagnostiquer un client sans"
+            " modèle."
+        )
+    )
+    analyseur.add_argument(
+        "famille",
+        nargs="?",
+        choices=sorted(FIXTURES),
+        help="la famille à imiter ; sans elle, la liste s'affiche",
+    )
+    analyseur.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="le port d'écoute ; 0 laisse le système choisir",
+    )
+    analyseur.add_argument(
+        "--chat",
+        metavar="TEXTE",
+        help="ajoute /v1/chat/completions, qui rendra TEXTE",
+    )
+    options = analyseur.parse_args(arguments)
+
+    if not options.famille:
+        print("Familles servies :")
+        for nom in sorted(FIXTURES):
+            chemins = " ".join(sorted(FIXTURES[nom]))
+            print(f"  {nom:18} {chemins}")
+        return 0
+
+    routes = {}
+    if options.chat:
+        routes["/v1/chat/completions"] = _chat(options.chat)
+    with FakeLLM(options.famille, routes=routes, port=options.port) as vivant:
+        print(f"{options.famille} → {vivant.url}")
+        print("Chaque requête reçue s'affiche ici. Ctrl+C arrête.", flush=True)
+        vus = 0
+        try:
+            while True:
+                time.sleep(0.05)
+                for methode, chemin, entetes in vivant.seen[vus:]:
+                    autorisation = entetes.get("Authorization")
+                    marque = " ⚠ Authorization" if autorisation else ""
+                    statut = vivant.statut_de(chemin)
+                    # Vidé à chaque ligne : la sortie d'un serveur en
+                    # avant-plan est mise en tampon par blocs dès qu'elle est
+                    # redirigée, et un journal qui n'arrive qu'à l'arrêt ne
+                    # sert plus à suivre ce qui se passe.
+                    print(
+                        f"  {methode:4} {chemin:28} → {statut}{marque}",
+                        flush=True,
+                    )
+                vus = len(vivant.seen)
+        except KeyboardInterrupt:
+            print(f"\n{vus} requête(s) reçue(s).")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(_principal(sys.argv[1:]))

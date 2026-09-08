@@ -124,6 +124,11 @@ ROUTES = {
         b"<html><body>Administration</body></html>",
     ),
     "/vide/chat/completions": (200, b'{"choices":[]}'),
+    "/muet/chat/completions": (
+        200,
+        b'{"choices":[{"index":0,"finish_reason":"length",'
+        b'"message":{"role":"assistant","content":""}}]}',
+    ),
 }
 
 
@@ -211,6 +216,9 @@ class AllerRetour(unittest.TestCase):
             base_url=f"{cls.faux.url}/routeur",
             api_key="cle-de-test",
             timeout=5,
+        )
+        cls.client_muet = openai.OpenAI(
+            base_url=f"{cls.faux.url}/muet", api_key="cle-de-test", timeout=5
         )
         cls.client_vide = openai.OpenAI(
             base_url=f"{cls.faux.url}/vide", api_key="cle-de-test", timeout=5
@@ -311,6 +319,21 @@ class AllerRetour(unittest.TestCase):
         tour = conversation.ask("salut")
         self.assertEqual(tour.role, "error")
         self.assertIn("no choice", tour.text)
+
+    def test_une_reponse_vide_est_un_message_pas_un_blanc(self):
+        """Un serveur dont le moteur de modèle s'arrête rend un 200 avec un
+        contenu VIDE. L'afficher tel quel se confond avec un modèle qui n'a
+        rien à dire, et une panne de ressources sur l'hôte se lit alors comme
+        un défaut du menu. La cause vit dans `finish_reason`, donc elle est
+        nommée."""
+        conversation = Conversation(
+            HttpBackend(None, MODELE, client=self.client_muet)
+        )
+        tour = conversation.ask("salut")
+        self.assertEqual(tour.role, "error")
+        self.assertIn("empty answer", tour.text)
+        self.assertIn("length", tour.text)
+        self.assertEqual(conversation.turns, [])
 
     def test_un_parametre_inconnu_est_nomme_pas_une_trace(self):
         conversation = Conversation(

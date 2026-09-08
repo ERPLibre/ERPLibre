@@ -235,10 +235,24 @@ class HttpBackend:
                 one_line(f"{self.model}: no choice in the answer — {reponse}")
             )
         texte = getattr(choix[0].message, "content", None) or ""
+        raison = getattr(choix[0], "finish_reason", "") or ""
+        if not texte.strip():
+            # Un serveur dont le moteur de modèle s'arrête en cours de route
+            # rend un 200 avec un contenu VIDE, et l'afficher tel quel se
+            # confond avec un modèle qui n'a rien à dire. La cause du silence
+            # est dans `finish_reason`, donc il est nommé : sans cela, une
+            # panne de ressources sur l'hôte du modèle se lit comme un défaut
+            # du menu.
+            raise BackendError(
+                one_line(
+                    f"{self.model}: empty answer"
+                    f" (finish_reason: {raison or 'none'})"
+                )
+            )
         faits = {
             "model": getattr(reponse, "model", "") or self.model,
             "usage": _usage(getattr(reponse, "usage", None)),
-            "finish_reason": getattr(choix[0], "finish_reason", "") or "",
+            "finish_reason": raison,
         }
         return texte, faits
 
