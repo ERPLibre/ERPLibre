@@ -800,6 +800,136 @@ class TestSerialisationHorsTableur(unittest.TestCase):
         self.assertEqual(noyau.valeur_hors_tableur("#REF!"), "#REF!")
 
 
+class TestFormatDeNombre(unittest.TestCase):
+    """Le texte libre d'un format, séparé du motif qui l'entoure.
+
+    Excel porte du texte dans un format de quatre façons, dont une SANS
+    guillemets ni barre oblique, et traduit ses marques de position dans
+    la langue du classeur. Reconnaître le libellé sans abîmer le motif
+    n'a donc rien d'un test sur les guillemets : chaque forme ci-dessous
+    tranche un cas où l'une des deux moitiés a été perdue.
+    """
+
+    @staticmethod
+    def _mot_si_long(interieur):
+        """Le contrat de mot_si_long : None sous le seuil du filet."""
+        if len(interieur.strip()) < noyau.LONGUEUR_VERIFIABLE:
+            return None
+        return "MOT"
+
+    def _rendu(self, fmt):
+        return formats._parcourir_format(fmt, self._mot_si_long)
+
+    def test_motifs_traversent_intacts(self):
+        """Un motif ne porte pas de donnée : le toucher abîme la copie.
+
+        Les formes en lettres de locale — « jj/mm/aaaa » en français,
+        « tt.mm.jjjj » en allemand, « gg/mm/aaaa » en italien — sont des
+        dates au même titre que « dd/mm/yyyy ». Celles sans séparateur
+        atteignent le seuil du filet à elles seules.
+        """
+        for fmt in (
+            "0.00%",
+            "General",
+            "@",
+            "0.00E+00",
+            "# ??/??",
+            "dd/mm/yyyy hh:mm:ss",
+            "jj/mm/aaaa",
+            "tt.mm.jjjj",
+            "aaaa-mm-jj",
+            "gg/mm/aaaa",
+            "yyyymmdd",
+            "aaaammjj",
+            "hhmm",
+            "mmss",
+            "h:mm AM/PM",
+            "mmm-yy",
+            "jjjj jj mmmm aaaa",
+            "0.00_);[Red](0.00)",
+            "[Red]#,##0;-#,##0",
+            "[h]:mm:ss",
+            "[<=9999999]000-0000;000-000-0000",
+            "_-* #,##0.00_-;-* #,##0.00_-",
+            "0.00;;",
+            "\u00a5#,##0.00",
+        ):
+            with self.subTest(fmt=fmt):
+                self.assertEqual(self._rendu(fmt), fmt)
+
+    def test_balise_de_locale_traverse_intacte(self):
+        """Une section de devise dont TOUT est de convention.
+
+        Le seul LCID hexadécimal ne les couvre pas, et les remplacer
+        détruit le symbole monétaire de la copie ou la forme de ses
+        dates.
+        """
+        for fmt in (
+            "[$-en-US]jj/mm/aaaa",
+            "[$-x-sysdate]",
+            "[$\u20ac-x-euro2]#,##0",
+            "[$-409]#,##0",
+            "[$R$-pt-BR]#,##0.00",
+        ):
+            with self.subTest(fmt=fmt):
+                self.assertEqual(self._rendu(fmt), fmt)
+
+    def test_libelles_partent_par_leurs_quatre_ecritures(self):
+        """Guillemets, barre oblique, section de devise, et texte nu."""
+        for fmt, libelle in (
+            ('#,##0" aboulie"', "aboulie"),
+            ("#,##0.00\\a\\b\\o\\u\\l", "aboul"),
+            ("[$aboulie-409]#,##0", "aboulie"),
+            ("#,##0 aboulie", "aboulie"),
+        ):
+            with self.subTest(fmt=fmt):
+                rendu = self._rendu(fmt)
+                self.assertNotIn(libelle, rendu)
+                self.assertIn("MOT", rendu)
+
+    def test_le_motif_survit_au_libelle_nu(self):
+        """Le remplacement porte sur le LIBELLÉ, pas sur toute la suite.
+
+        Un libellé nu se lit dans la même course de texte que le motif
+        qui le précède : remplacer la course entière rendait « "MOT" »
+        seul, et la copie perdait sa forme numérique.
+        """
+        self.assertEqual(self._rendu("#,##0 aboulie"), '#,##0 "MOT"')
+        self.assertEqual(self._rendu("0.0 aboulie %"), '0.0 "MOT" %')
+        self.assertEqual(
+            self._rendu("#,##0 aboulie;-#,##0 aboulie"),
+            '#,##0 "MOT";-#,##0 "MOT"',
+        )
+        self.assertEqual(
+            self._rendu("aboulie jj/mm/aaaa aboulie"),
+            '"MOT" jj/mm/aaaa "MOT"',
+        )
+        self.assertEqual(
+            self._rendu("aboulie 0.00E+00 aboulie"),
+            '"MOT" 0.00E+00 "MOT"',
+        )
+
+    def test_mots_joints_par_un_espace_font_un_libelle(self):
+        """« Nom du client » est UN libellé, pas trois mots à remplacer
+        un à un : chacun pris seul retombe sous le seuil du filet."""
+        self.assertEqual(self._rendu("#,##0 Nom du client"), '#,##0 "MOT"')
+
+    def test_mot_et_marque_se_distinguent_par_la_repetition(self):
+        """Une marque vient par groupes d'une même lettre, un mot non."""
+        for marque in ("aaaa", "mm", "jjjj", "hhmm", "yyyymmdd", "General"):
+            with self.subTest(marque=marque):
+                self.assertFalse(formats._est_un_mot(marque))
+        for mot in ("aboulie", "Nom", "client", "Total", "ZQXNU"):
+            with self.subTest(mot=mot):
+                self.assertTrue(formats._est_un_mot(mot))
+
+    def test_libelle_de_devise_non_conventionnel_reste_un_libelle(self):
+        """« [$Cabinet-Lav] » ressemble à une balise de locale et n'en
+        est pas : son texte est libre, et un nom y tient."""
+        rendu = self._rendu("[$aboulie-Lav]#,##0")
+        self.assertNotIn("aboulie", rendu)
+
+
 class TestNomDeFichier(unittest.TestCase):
     def test_separateur_remplace(self):
         pris = set()

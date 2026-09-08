@@ -188,7 +188,6 @@ def _stats_colonnes(feuille):
         remplies = 0
         forme = True
         forme_rel = True
-        prefixes = set()
         mini = maxi = None
         for numero, ligne in enumerate(feuille.lignes, start=1):
             if numero == 1:
@@ -200,8 +199,6 @@ def _stats_colonnes(feuille):
             remplies += 1
             forme = forme and valeur_forme_identifiant(valeur)
             forme_rel = forme_rel and noyau.valeur_forme_relation(valeur)
-            if isinstance(valeur, str) and "." in valeur:
-                prefixes.add(valeur.strip().split(".", 1)[0].lower())
             familles[famille] = familles.get(famille, 0) + 1
             if len(distinctes) < 10000:
                 try:
@@ -219,10 +216,6 @@ def _stats_colonnes(feuille):
                 # tirage.
                 mini = valeur if mini is None else min(mini, valeur)
                 maxi = valeur if maxi is None else max(maxi, valeur)
-        # L'ajustement se calcule UNE fois : le rapport et la portée
-        # doivent lire la même valeur, sinon l'écran annonce une colonne
-        # écartée que le moteur remplace.
-        forme_rel = forme_rel and len(prefixes) <= 1
         etiquette = etiquettes[index] if index < len(etiquettes) else None
         dominant = (
             max(familles.items(), key=lambda kv: kv[1])[0]
@@ -243,14 +236,20 @@ def _stats_colonnes(feuille):
                 "min": mini,
                 "max": maxi,
                 "forme_identifiant": forme,
-                # Un external ID partage son MODULE avec ses voisins —
-                # « base.res_partner_7 », « base.res_partner_8 » — alors
-                # que des identifiants de personnes n'ont aucun préfixe
-                # commun : « jean.tremblay », « marie.roy ». Sans ce
-                # discriminateur, une colonne « user_id » de logins pointés
-                # passait pour une colonne de relations et partait en clair.
                 "forme_relation": forme_rel,
-                "plancher": colonne_plancher(etiquette, forme, forme_rel),
+                # Une SÉLECTION est un ensemble fermé et petit. Sans cette
+                # borne, une colonne de provinces ou de créneaux nommés par
+                # des personnes passait pour une sélection sur le seul fait
+                # d'être en minuscules.
+                "selection": (
+                    len(distinctes) <= noyau.SELECTION_MAX_DISTINCTES
+                ),
+                "plancher": colonne_plancher(
+                    etiquette,
+                    forme,
+                    forme_rel,
+                    len(distinctes) <= noyau.SELECTION_MAX_DISTINCTES,
+                ),
             }
         )
     return colonnes
@@ -860,7 +859,29 @@ def nettoyer_hors_cellules(classeur, table, options):
     comptes["styles"] = _renommer_styles_nommes(classeur)
     comptes["styles_tableau"] = _renommer_styles_de_tableau(classeur)
     comptes["polices"] = _renommer_polices(classeur)
+    comptes["theme"] = _assainir_theme(classeur)
     return comptes
+
+
+def _assainir_theme(classeur):
+    """Le thème, que le graveur recopie octet pour octet.
+
+    openpyxl rend `xl/theme/theme1.xml` tel qu'il l'a LU quand
+    `loaded_theme` est rempli, et son propre défaut sinon. Deux chaînes
+    libres y vivent : le nom sous lequel le thème a été enregistré, et les
+    polices majeure et mineure. Une police de marque y reste donc nommée
+    après que le renommage l'a retirée des styles, et une de ces chaînes
+    qui répète une valeur de la grille rend le classeur inécrivable au
+    filet, sans qu'aucune règle ne puisse l'assainir.
+
+    Le remède est de laisser openpyxl écrire SON thème : la copie perd la
+    palette du client, ce qui est exactement ce qu'on veut d'une copie
+    transmissible.
+    """
+    if not getattr(classeur, "loaded_theme", None):
+        return 0
+    classeur.loaded_theme = None
+    return 1
 
 
 # Les caractères qui « avalent » le suivant dans un format de nombre :
@@ -872,6 +893,81 @@ _ECHAPPE_FORMAT = "\\_*"
 # un nom de client y tient — alors que `[Red]`, `[<100]` et `[h]` sont des
 # mots-clés qu'un remplacement casserait.
 _DEVISE_CROCHET = re.compile(r"^\[\$(.*?)(-[0-9A-Fa-f]+)?\]$")
+
+# Une section de devise qu'Excel écrit ENTIÈREMENT de convention : un
+# symbole ou un code, suivi d'un modificateur de locale. Le seul LCID
+# hexadécimal ne les couvre pas — « [$-en-US] », « [$-x-sysdate] »,
+# « [$€-x-euro2] », « [$R$-pt-BR] ». Aucune ne porte de donnée du
+# client, et les remplacer détruit le symbole monétaire de la copie,
+# ou la forme de ses dates. Reconnue en ENTIER, jamais par un suffixe
+# élargi : « [$Cabinet-Lav] » y perdrait la moitié de son libellé.
+_DEVISE_LOCALE = re.compile(
+    r"^\[\$[^\]-]{0,4}-(?:[0-9A-Fa-f]+|x-[a-z0-9]+"
+    r"|[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*)\]$"
+)
+
+
+# Excel accepte du texte NU dans un format de nombre — sans guillemets ni
+# barre oblique — et un nom écrit là sortait intact. Le reconnaître demande
+# de distinguer un mot d'un motif de date, et les deux sont faits de
+# lettres. Un ALPHABET ne le fait pas : Excel traduit ses marques de
+# position dans la langue du classeur, si bien que « jj/mm/aaaa » et
+# « tt.mm.jjjj » sont des dates aussi légitimes que « dd/mm/yyyy », et
+# énumérer les lettres de chaque locale se perd — pour ensuite détruire la
+# date de la copie sur celle qu'on a oubliée.
+#
+# Ce qui sépare les deux est la RÉPÉTITION. Une marque de position vient
+# par groupes d'une même lettre, seuls ou collés — « aaaammjj », « hhmm ».
+# Un mot colle des lettres différentes et retombe sur des groupes d'UNE
+# seule — « Nom », « aboulie ». D'où le test : deux lettres différentes
+# côte à côte ET un groupe solitaire.
+#
+# L'erreur reste orientée. Prendre un mot pour un motif le laisse passer,
+# et le filet de relecture refuse la copie ; prendre un motif pour un mot
+# abîme le classeur en silence.
+_LETTRES_FORMAT = re.compile(r"[^\W\d_]+")
+
+# Ce qu'Excel écrit en lettres sans que ce soit un libellé, malgré des
+# lettres différentes côte à côte.
+_MOTS_CLES_FORMAT = frozenset(("general", "am", "pm", "a", "p"))
+
+
+def _est_un_mot(lettres):
+    """Vrai si cette suite de lettres est un mot et non une marque."""
+    if lettres.lower() in _MOTS_CLES_FORMAT:
+        return False
+    plie = lettres.lower()
+    if not any(a != b for a, b in zip(plie, plie[1:])):
+        return False
+    return any(
+        len(trouve.group()) < 2 for trouve in re.finditer(r"(.)\1*", plie)
+    )
+
+
+# Ce qui peut joindre deux mots d'un même libellé sans être du motif.
+# Tout le reste sépare : bloquer la jonction ne coûte qu'un remplacement
+# de plus, la forcer emporte le motif qui vit entre les deux.
+_JOINT_LIBELLE = re.compile("^[\\s'\u2019-]*$")
+
+
+def _spans_du_libelle(plage):
+    """Les étendues des libellés nus de cette suite, de gauche à droite.
+
+    Deux mots séparés d'un simple espace font UN libellé — « Nom du
+    client » — mais deux mots séparés d'un motif en font DEUX : la
+    tranche qui les réunirait emporterait ce motif, et « #,##0 X;-#,##0
+    X » perdait sa section négative en entier.
+    """
+    spans = []
+    for trouve in _LETTRES_FORMAT.finditer(plage):
+        if not _est_un_mot(trouve.group()):
+            continue
+        debut, fin = trouve.span()
+        if spans and _JOINT_LIBELLE.match(plage[spans[-1][1] : debut]):
+            spans[-1] = (spans[-1][0], fin)
+        else:
+            spans.append((debut, fin))
+    return spans
 
 
 def _parcourir_format(fmt, mot_si_long):
@@ -892,10 +988,29 @@ def _parcourir_format(fmt, mot_si_long):
     remplacer `Red` ou `h` casserait le format.
     """
     sortie = []
+    plat = []
+
+    def vider_plat():
+        """Le texte nu accumulé : ses libellés partent, son motif reste."""
+        if not plat:
+            return
+        brut = "".join(plat)
+        plat.clear()
+        curseur = 0
+        for debut, fin in _spans_du_libelle(brut):
+            mot = mot_si_long(brut[debut:fin])
+            if mot is None:
+                continue
+            sortie.append(brut[curseur:debut])
+            sortie.append('"%s"' % mot)
+            curseur = fin
+        sortie.append(brut[curseur:])
+
     index, taille = 0, len(fmt)
     while index < taille:
         caractere = fmt[index]
         if caractere in _ECHAPPE_FORMAT and index + 1 < taille:
+            vider_plat()
             debut = index
             lettres = []
             while index + 1 < taille and fmt[index] in _ECHAPPE_FORMAT:
@@ -905,11 +1020,16 @@ def _parcourir_format(fmt, mot_si_long):
             sortie.append(fmt[debut:index] if mot is None else '"%s"' % mot)
             continue
         if caractere == "[":
+            vider_plat()
             fin = fmt.find("]", index)
             if fin == -1:
                 sortie.append(fmt[index:])
                 break
             section = fmt[index : fin + 1]
+            if _DEVISE_LOCALE.match(section):
+                sortie.append(section)
+                index = fin + 1
+                continue
             devise = _DEVISE_CROCHET.match(section)
             if devise:
                 mot = mot_si_long(devise.group(1))
@@ -919,6 +1039,7 @@ def _parcourir_format(fmt, mot_si_long):
             index = fin + 1
             continue
         if caractere == '"':
+            vider_plat()
             fin = fmt.find('"', index + 1)
             interieur = fmt[index + 1 :] if fin == -1 else fmt[index + 1 : fin]
             mot = mot_si_long(interieur)
@@ -928,8 +1049,9 @@ def _parcourir_format(fmt, mot_si_long):
             sortie.append('"')
             index = fin + 1
             continue
-        sortie.append(caractere)
+        plat.append(caractere)
         index += 1
+    vider_plat()
     return "".join(sortie)
 
 
@@ -1068,14 +1190,35 @@ def _renommer_styles_nommes(classeur):
     liste, que renommer l'objet ne déplace pas. « Normal » est le style par
     défaut d'Excel et n'est pas un nom donné par quelqu'un.
     """
-    touches = 0
+    correspondance = {}
     for rang, style in enumerate(
         getattr(classeur, "_named_styles", []) or [], start=1
     ):
         if style.name != "Normal":
-            style.name = f"style_{rang}"
-            touches += 1
-    return touches
+            correspondance[style.name] = style.name = f"style_{rang}"
+    if not correspondance:
+        return 0
+    # Une COLONNE de tableau référence un style nommé par son NOM — sur le
+    # tableau et sur chacune de ses colonnes, pour l'en-tête, les données
+    # et la ligne de total. Sans cette passe, l'ancien nom — celui du
+    # client — reste dans la partie de tableau, et la référence ne résout
+    # plus.
+    for onglet in classeur.worksheets:
+        for tableau in (getattr(onglet, "tables", {}) or {}).values():
+            porteurs = [tableau] + list(
+                getattr(tableau, "tableColumns", None) or []
+            )
+            for porteur in porteurs:
+                for attribut in (
+                    "headerRowCellStyle",
+                    "dataCellStyle",
+                    "totalsRowCellStyle",
+                    "headerRowDxfId",
+                ):
+                    valeur = getattr(porteur, attribut, None)
+                    if valeur in correspondance:
+                        setattr(porteur, attribut, correspondance[valeur])
+    return len(correspondance)
 
 
 def _nettoyer_graphiques(onglet):
@@ -1196,6 +1339,7 @@ def _preparer(chemin, options):
     options["bornes"] = _bornes_par_colonne(rapport)
     options["formes"] = _formes_par_colonne(rapport)
     options["formes_relation"] = _formes_par_colonne(rapport, "forme_relation")
+    options["selections"] = _formes_par_colonne(rapport, "selection")
     # Hors tableur, la colonne 1 de la grille porte des NOMS de balise ou des
     # chemins de clé : de la structure, que le graveur ne touche jamais. Les
     # compter comme remplacées désarmait le refus « rien à faire » et brûlait
