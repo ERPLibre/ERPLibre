@@ -970,6 +970,50 @@ def _spans_du_libelle(plage):
     return spans
 
 
+# Les jetons qu'une section entre crochets peut porter. Contrairement aux
+# marques de position d'une date, la grammaire d'Excel les ÉNUMÈRE : huit
+# couleurs, cinquante-six numérotées, une condition, une durée écoulée, un
+# jeu de chiffres, une ère. C'est une spécification, pas une devinette,
+# d'où l'énumération ici là où l'alphabet a été rejeté ailleurs.
+#
+# Tout jeton de trois caractères ou moins passe de toute façon, le seuil du
+# filet le laissant : la liste ne sert que ceux qui l'atteignent.
+_CROCHETS_CONNUS = frozenset(
+    (
+        "black",
+        "blue",
+        "cyan",
+        "green",
+        "magenta",
+        "red",
+        "white",
+        "yellow",
+        "thai",
+        "hijri",
+        "buddhist",
+        "gregorian",
+    )
+)
+
+_CROCHET_NUMEROTE = re.compile(
+    r"^(?:color\s?(?:[1-9]|[1-4][0-9]|5[0-6])"
+    r"|(?:db|nat)num(?:1[0-9]|[1-9]))$"
+)
+
+# Une condition, qu'une comparaison ouvre : `[<100]`, `[>=0]`, `[<>1]`.
+_CROCHET_CONDITION = re.compile(r"^[<>=]")
+
+
+def _crochet_est_connu(interieur):
+    """Vrai si la grammaire d'Excel explique cette section."""
+    plie = interieur.strip().lower()
+    if len(plie) < noyau.LONGUEUR_VERIFIABLE:
+        return True
+    if _CROCHET_CONDITION.match(plie):
+        return True
+    return plie in _CROCHETS_CONNUS or bool(_CROCHET_NUMEROTE.match(plie))
+
+
 def _parcourir_format(fmt, mot_si_long):
     r"""Le format parcouru de gauche à droite, ses libellés assainis.
 
@@ -1035,6 +1079,15 @@ def _parcourir_format(fmt, mot_si_long):
                 mot = mot_si_long(devise.group(1))
                 if mot is not None:
                     section = "[$%s%s]" % (mot, devise.group(2) or "")
+            elif not _crochet_est_connu(section[1:-1]):
+                # Une section que la grammaire n'explique pas porte du
+                # texte libre : Excel ne l'écrit pas, un producteur tiers
+                # si, et elle sortait intacte. Le remplacement reste NU —
+                # un crochet ne porte pas de guillemets, et la section
+                # était déjà hors grammaire avant qu'on y touche.
+                mot = mot_si_long(section[1:-1])
+                if mot is not None:
+                    section = "[%s]" % mot
             sortie.append(section)
             index = fin + 1
             continue

@@ -923,6 +923,52 @@ class TestFormatDeNombre(unittest.TestCase):
             with self.subTest(mot=mot):
                 self.assertTrue(formats._est_un_mot(mot))
 
+    def test_les_jetons_entre_crochets_traversent_intacts(self):
+        """La grammaire d'Excel ÉNUMÈRE ce qu'un crochet peut porter.
+
+        C'est une spécification, non une devinette : l'énumération est
+        légitime ici là où l'alphabet des marques de date a été rejeté.
+        Chaque forme documentée est reprise, car en oublier une casse le
+        code de format de la copie.
+        """
+        for fmt in (
+            "[Red]#,##0",
+            "[Green]0.00",
+            "[Black]0",
+            "[White]0",
+            "[Blue]0",
+            "[Cyan]0",
+            "[Magenta]0",
+            "[Yellow]0",
+            "[Color12]0",
+            "[COLOR 3]0",
+            "[color56]0",
+            "[DBNum1]0",
+            "[NatNum12]0",
+            "[h]:mm",
+            "[mm]:ss",
+            "[<100]0;[>=100]0.0",
+            "[<>1]0",
+            "[ENG]jj/mm/aaaa",
+            "[THAI]0",
+            "[t]0",
+        ):
+            with self.subTest(fmt=fmt):
+                self.assertEqual(self._rendu(fmt), fmt)
+
+    def test_une_section_hors_grammaire_porte_du_texte_libre(self):
+        """Excel n'écrit pas une telle section, un producteur tiers si.
+
+        Le remplacement reste NU : un crochet ne porte pas de guillemets,
+        et la section était déjà hors grammaire avant qu'on y touche.
+        """
+        self.assertEqual(self._rendu("[aboulie]#,##0"), "[MOT]#,##0")
+        self.assertEqual(self._rendu("[Nom du client]0.00"), "[MOT]0.00")
+
+    def test_un_crochet_non_ferme_ne_boucle_pas(self):
+        """`find` rend -1, et l'index repartait à zéro."""
+        self.assertEqual(self._rendu("#,##0[aboulie"), "#,##0[aboulie")
+
     def test_libelle_de_devise_non_conventionnel_reste_un_libelle(self):
         """« [$Cabinet-Lav] » ressemble à une balise de locale et n'en
         est pas : son texte est libre, et un nom y tient."""
