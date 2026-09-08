@@ -444,6 +444,86 @@ def _source_de_la_decouverte():
         return fichier.read()
 
 
+class SessionsClaudeCode(unittest.TestCase):
+    """Le câblage de la phase 4, sous « GPT code » et non sous le LLM.
+
+    Une session est un processus adressé par identifiant ; un serveur est un
+    hôte adressé par port. Les mêler dans une liste numérotée ferait partager
+    des numéros à deux modèles mentaux, et toutes les entrées Claude vivent
+    déjà sous ce menu-là.
+    """
+
+    def test_todo_expose_le_sous_menu_des_sessions(self):
+        from script.todo.todo import TODO
+
+        self.assertTrue(hasattr(TODO, "prompt_claude_sessions"))
+
+    def test_l_etiquette_de_fil_d_ariane_existe(self):
+        from script.todo.todo import TODO
+
+        self.assertEqual(
+            TODO._MENU_LABELS.get("prompt_claude_sessions"), "Claude Code"
+        )
+
+    def test_six_dispatche_vers_les_sessions_seulement(self):
+        """Les deux listes de `prompt_execute_gpt_code` sont tenues à la
+        main : l'entrée peut s'afficher et appeler autre chose."""
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch.object(
+            TODO, "prompt_claude_sessions"
+        ) as mock_sessions, patch.object(
+            TODO, "prompt_execute_claude_plugins"
+        ) as mock_plugins, patch(
+            "click.prompt", side_effect=["6", "0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_execute_gpt_code()
+        mock_sessions.assert_called_once_with()
+        mock_plugins.assert_not_called()
+
+    def test_le_sous_menu_s_ouvre_sans_aucune_session(self):
+        """Une machine sans Claude Code n'est pas une panne du menu."""
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch("click.prompt", side_effect=["0"]), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_claude_sessions()
+
+    def test_un_claude_absent_est_un_message_pas_un_plantage(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        sortie = io.StringIO()
+        with patch("shutil.which", return_value=None), redirect_stdout(sortie):
+            todo._claude_questionner([])
+            todo._claude_reprendre([])
+        self.assertIn(t("claude is not on the PATH."), sortie.getvalue())
+
+    def test_aucune_session_a_reprendre_le_dit(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        sortie = io.StringIO()
+        with patch("shutil.which", return_value="/usr/bin/claude"), patch(
+            "click.prompt", side_effect=["0"]
+        ), redirect_stdout(sortie):
+            todo._claude_reprendre([])
+        self.assertIn(t("No session on this machine."), sortie.getvalue())
+
+
 class Frontiere(unittest.TestCase):
     """Le paquet doit vivre sans le CLI qui l'appelle."""
 

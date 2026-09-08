@@ -585,6 +585,7 @@ class TODO(
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
         "prompt_execute_gpt_code": "GPT code",
+        "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
@@ -1393,8 +1394,8 @@ class TODO(
         On découpe en blocs plutôt que de substituer par expression
         régulière : une ligne Host peut porter PLUSIEURS noms.
 
-        Deux règles, chacune corrigeant une perte de données CONSTATÉE dans
-        le fichier d'un utilisateur.
+        Deux règles, chacune corrigeant une perte de données que ce
+        découpage provoque sans elles.
 
         1. Seuls « Host » et « Match » clôturent un bloc. La règle d'avant —
            « une ligne non indentée clôt le bloc » — prenait l'indentation
@@ -1797,9 +1798,8 @@ class TODO(
         """Nombre de rebonds pour joindre `cible`, en suivant la chaîne.
 
         C'est la mesure de PROFONDEUR d'un hôte imbriqué, et la seule dont on
-        dispose de l'extérieur. Elle est exacte pour les hôtes que nous avons
-        déployés : c'est nous qui écrivons ces entrées, un ProxyJump par
-        étage.
+        dispose de l'extérieur. Elle est exacte pour les hôtes que cet outil
+        déploie : c'est lui qui écrit ces entrées, un ProxyJump par étage.
 
         `maxi` borne le parcours : une boucle dans ~/.ssh/config — A qui
         rebondit par B qui rebondit par A — tournerait sinon sans fin.
@@ -1965,8 +1965,8 @@ class TODO(
     # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
     # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
     # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
-    # monter tel quel. Vécu : « read: Connection reset by peer », parce que la
-    # seconde moitié du nom est un domaine libvirt, pas un alias SSH du rebond.
+    # monter tel quel : le montage échoue, la seconde moitié du nom étant un
+    # domaine libvirt et non un alias SSH du rebond.
     SSHFS_CHAIN_SEP = "+"
 
     # Options à rendre à sshfs quand on contourne l'alias : exactement celles
@@ -3003,6 +3003,7 @@ class TODO(
                     "Claude Code plugins - marketplaces and ERPLibre list"
                 )
             },
+            {"prompt_description": t("Claude Code - local sessions")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -3021,6 +3022,8 @@ class TODO(
                 self._show_claude_context()
             elif status == "5":
                 self.prompt_execute_claude_plugins()
+            elif status == "6":
+                self.prompt_claude_sessions()
             else:
                 print(t("Command not found !"))
 
@@ -4588,11 +4591,11 @@ class TODO(
     def _monitoring_restore(self, zip_path):
         """Restaurer la sauvegarde, puis DIRE ce que la neutralisation a pris.
 
-        Mesuré sur sept bases dont le nom portait « neutralize » :
-        `database.is_neutralized` absent partout, jusqu'à 35 crons actifs,
-        et le domaine de courriel du client toujours en place. Poser la
-        question, recevoir oui et ne rien vérifier reproduit exactement
-        cette illusion — on relit donc la base.
+        Une base dont le nom annonce la neutralisation peut n'en porter
+        aucune trace : `database.is_neutralized` absent, des crons encore
+        actifs, un domaine de courriel toujours en place. Poser la question,
+        recevoir oui et ne rien vérifier reproduit exactement cette illusion
+        — on relit donc la base.
         """
         from script.analyse import monitoring
 

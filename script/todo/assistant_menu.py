@@ -847,6 +847,221 @@ class AssistantMenuMixin:
         }.get(hosting, "third party")
 
     # ------------------------------------------------------------------
+    # Les sessions Claude Code de la machine
+
+    def prompt_claude_sessions(self):
+        """Voir les sessions locales, en interroger une, ou la reprendre.
+
+        Sous « GPT code » et non sous le sous-menu LLM : une session est un
+        processus adressé par identifiant, un serveur est un hôte adressé par
+        port. Les mêler dans une seule liste numérotée ferait partager cinq
+        numéros à deux modèles mentaux, alors que toutes les entrées Claude
+        vivent déjà ici.
+        """
+        # L'emoji vit dans la valeur traduite, jamais dans le code : le
+        # mettre aux deux endroits en imprime deux.
+        print(t("Claude Code - local sessions"))
+        while True:
+            flotte = self._claude_flotte()
+            vivantes = sum(1 for session in flotte if session.live)
+            compte = (
+                f"{len(flotte)} · {vivantes} {t('live')}"
+                if flotte
+                else t("No session on this machine.")
+            )
+            choices = [
+                {
+                    "prompt_description": (
+                        f"{t('List local sessions')}  ({compte})"
+                    )
+                },
+                {"prompt_description": t("Ask a question to a session")},
+                {
+                    "prompt_description": t(
+                        "Resume a session in a new terminal"
+                    )
+                },
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            elif status == "1":
+                self._claude_lister(flotte)
+            elif status == "2":
+                self._claude_questionner(flotte)
+            elif status == "3":
+                self._claude_reprendre(flotte)
+            else:
+                print(t("Command not found !"))
+
+    def _claude_flotte(self):
+        """La flotte, relue à chaque tour du menu.
+
+        Relue et non gardée : une session démarre ou s'arrête dans un autre
+        terminal pendant qu'on regarde la liste, et une liste périmée
+        proposerait d'écrire dans un processus qui n'est plus là.
+        """
+        from script.todo.assistant import claude_sessions as cs
+
+        return cs.fleet()
+
+    def _claude_lister(self, flotte):
+        """Afficher la flotte, sans rien lire d'une transcription.
+
+        Ce qui paraît vient du registre, que tout compte de la machine peut
+        déjà lire. Le titre d'une session, lui, vit dans la transcription, et
+        celle-ci est sous un répertoire que le système ferme à son
+        propriétaire : cette frontière n'est pas à rouvrir pour décorer une
+        liste.
+        """
+        from script.todo.assistant import claude_sessions as cs
+
+        if not flotte:
+            print(t("No session on this machine."))
+            return
+        for rang, session in enumerate(flotte, 1):
+            vue = cs.displayable(session)
+            if vue["live"]:
+                etat = (
+                    f"{vue['kind']} · {t(vue['status'] or 'idle')}"
+                    f" · {t('held by pid %s') % vue['pid']}"
+                )
+            else:
+                etat = t("resumable, not running")
+            print(f"  [{rang}] {vue['id']}  {etat}")
+            print(
+                f"        {vue['dir']}"
+                f"{'  ' + vue['branch'] if vue['branch'] else ''}"
+                f"{'  ' + vue['version'] if vue['version'] else ''}"
+            )
+
+    def _claude_choisir(self, flotte):
+        """La session désignée par un rang, ou `None`."""
+        if not flotte:
+            print(t("No session on this machine."))
+            return None
+        self._claude_lister(flotte)
+        try:
+            reponse = click.prompt(t("Choice")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        if not reponse.isdigit():
+            return None
+        rang = int(reponse) - 1
+        return flotte[rang] if 0 <= rang < len(flotte) else None
+
+    def _claude_questionner(self, flotte):
+        """Poser UNE question à une session, sans ouvrir de terminal.
+
+        Deux garde-fous, et le second vient d'une mesure. L'invite part sur
+        l'entrée standard : la ligne de commande d'un processus est lisible
+        par tout compte de la machine, et une question porte du contexte.
+
+        Et l'outil ne REFUSE pas de reprendre une session qu'un terminal
+        tient : son garde-fou écarte délibérément les détenteurs interactifs.
+        Deux écritures simultanées scindent alors la transcription, et une
+        branche est perdue de la continuation. Une copie est donc branchée par
+        défaut, et écrire dans la session tenue exige de retaper le pid du
+        détenteur — recopier un nombre oblige à regarder ce qu'on fait.
+        """
+        import shutil
+
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant import claude_sessions as cs
+
+        if not shutil.which("claude"):
+            print(t("claude is not on the PATH."))
+            return
+        session = self._claude_choisir(flotte)
+        if session is None:
+            return
+        fork = True
+        detenteur = cs.held_by(session)
+        if detenteur:
+            avis = t("This session is open elsewhere. A branch would be lost.")
+            print(f"⚠ {avis}")
+            print(f"  [1] {t('Branch a copy (recommended)')}")
+            print(f"  [2] {t('Write into the held session')}")
+            try:
+                choix = click.prompt(t("Choice")).strip()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            if choix == "2":
+                try:
+                    frappe = click.prompt(
+                        t("Type the pid of the holder to write into it:")
+                    ).strip()
+                except (KeyboardInterrupt, click.exceptions.Abort):
+                    print()
+                    return
+                if frappe != detenteur:
+                    print(t("Nothing has been sent."))
+                    return
+                fork = False
+            elif choix != "1":
+                return
+        try:
+            question = click.prompt(t("Write your question "))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print(f"  {t('read-only: Read, Glob, Grep')}")
+        backend = llm_backends.ClaudeCliBackend(
+            session_id=session.session_id, cwd=session.cwd, fork=fork
+        )
+        try:
+            texte, faits = backend.send(
+                [{"role": "user", "content": question}]
+            )
+        except Exception as panne:
+            print(f"⚠ {panne}")
+            return
+        print(texte)
+        cout = faits.get("cost_usd") or faits.get("total_cost_usd")
+        if cout:
+            print(f"── {cout} USD ──")
+
+    def _claude_reprendre(self, flotte):
+        """Reprendre une session dans sa propre fenêtre.
+
+        Une session interactive est un programme plein écran : elle a besoin
+        d'un vrai terminal, que le tube du lanceur ordinaire ne fournit pas.
+        Sans fenêtre possible — ni gnome-terminal, ni son équivalent — la
+        commande est IMPRIMÉE plutôt que lancée sur un tube où elle ne
+        survivrait pas.
+        """
+        import shlex
+        import shutil
+
+        chemin = shutil.which("claude")
+        if not chemin:
+            print(t("claude is not on the PATH."))
+            return
+        session = self._claude_choisir(flotte)
+        if session is None:
+            return
+        commande = (
+            f"{shlex.quote(chemin)} --resume"
+            f" {shlex.quote(session.session_id)}"
+        )
+        if not getattr(self.execute, "cmd_source_default", ""):
+            print(t("No terminal can be opened here. Paste this command:"))
+            print(f"  cd {shlex.quote(session.cwd)} && {commande}")
+            return
+        self.execute.exec_command_live(
+            f"cd {shlex.quote(session.cwd)} && {commande}",
+            source_erplibre=False,
+            new_window=True,
+        )
+
+    # ------------------------------------------------------------------
     # Le catalogue d'outils gpt
 
     def _llm_gpts(self):

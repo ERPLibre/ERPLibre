@@ -12586,6 +12586,67 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
+    # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
+    "Claude Code - local sessions": {
+        "fr": "🤖 Claude Code - sessions locales",
+        "en": "Claude Code - local sessions",
+    },
+    "List local sessions": {
+        "fr": "Lister les sessions locales",
+        "en": "List local sessions",
+    },
+    "Ask a question to a session": {
+        "fr": "Poser une question à une session",
+        "en": "Ask a question to a session",
+    },
+    "Resume a session in a new terminal": {
+        "fr": "Reprendre une session dans un nouveau terminal",
+        "en": "Resume a session in a new terminal",
+    },
+    "live": {
+        "fr": "vivantes",
+        "en": "live",
+    },
+    "held by pid %s": {
+        "fr": "tenue par le pid %s",
+        "en": "held by pid %s",
+    },
+    "resumable, not running": {
+        "fr": "reprenable, pas en cours",
+        "en": "resumable, not running",
+    },
+    "This session is open elsewhere. A branch would be lost.": {
+        "fr": "Cette session est ouverte ailleurs. Une branche serait perdue.",
+        "en": "This session is open elsewhere. A branch would be lost.",
+    },
+    "Branch a copy (recommended)": {
+        "fr": "Brancher une copie (recommandé)",
+        "en": "Branch a copy (recommended)",
+    },
+    "Write into the held session": {
+        "fr": "Écrire dans la session tenue",
+        "en": "Write into the held session",
+    },
+    "Type the pid of the holder to write into it:": {
+        "fr": "Tape le pid du détenteur pour y écrire :",
+        "en": "Type the pid of the holder to write into it:",
+    },
+    "No session on this machine.": {
+        "fr": "Aucune session sur cette machine.",
+        "en": "No session on this machine.",
+    },
+    "claude is not on the PATH.": {
+        "fr": "claude n'est pas dans le PATH.",
+        "en": "claude is not on the PATH.",
+    },
+    "No terminal can be opened here. Paste this command:": {
+        "fr": "Aucun terminal ne peut être ouvert ici. Colle cette commande :",
+        "en": "No terminal can be opened here. Paste this command:",
+    },
+    "read-only: Read, Glob, Grep": {
+        "fr": "lecture seule : Read, Glob, Grep",
+        "en": "read-only: Read, Glob, Grep",
+    },
     # Catalogue gpt et porte du contexte (script/todo/assistant/gpt.py,
     # script/todo/assistant/context.py, capabilities.py)
     "No front-matter: a gpt opens with ---": {
