@@ -1195,6 +1195,10 @@ TRANSLATIONS = {
         "fr": "Le sonder n'est pas encore écrit.",
         "en": "Probing it is not written yet.",
     },
+    "Deploy - verify a deployed VM, layer by layer": {
+        "fr": "Deploy - vérifier une VM déployée, couche par couche",
+        "en": "Deploy - verify a deployed VM, layer by layer",
+    },
     "libvirt group is active.": {
         "fr": "Le groupe libvirt est actif.",
         "en": "libvirt group is active.",

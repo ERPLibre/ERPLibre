@@ -24,7 +24,7 @@ from script.posture import spec as posture_spec
 from script.todo import host_os, todo_prefs, vm_backend_choice
 from script.todo import deploy_verify
 from script.todo import devstack_report as report
-from script.todo.qemu_privilege import sudo_prefix
+from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.todo.todo_i18n import get_lang, t
 from script.vm import backend as vm_backend
 
@@ -1258,6 +1258,88 @@ class QemuDeployMixin:
             "cidr": cidr,
             "collision": collision,
         }
+
+    def _qemu_lease_name(self, adresse, mod=None):
+        """Le nom sous lequel `adresse` est servie, ou "".
+
+        Sous LC_ALL=C : l'inventaire TRADUIT ses en-têtes, et l'analyseur
+        reconnaît l'adresse par sa forme — mais lire la sortie d'un outil
+        sous une locale inconnue est un piège que ce dépôt a déjà payé
+        ailleurs, et qu'on ne rouvre pas ici.
+        """
+        if not adresse:
+            return ""
+        try:
+            mod = mod or self._qemu_import_module()
+        except Exception:
+            # Le catalogue peut ne pas se charger sur une station nue ; ce
+            # n'est pas une raison de faire tomber une lecture.
+            return ""
+        nom_reseau = mod.network_name(mod.DEFAULT_NETWORK)
+        if not nom_reseau:
+            return ""
+        try:
+            fini = subprocess.run(
+                virsh_argv("net-dhcp-leases", nom_reseau),
+                capture_output=True,
+                text=True,
+                timeout=20,
+                env=self._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            # ÉTROIT, et non « Exception » : un filet large a déjà caché un
+            # nom mal importé ici même, et la lecture rendait « aucun bail »
+            # sans que rien ne le dise.
+            return ""
+        return vm_backend.lease_hostname(fini.stdout or "", adresse)
+
+    def _qemu_verify_vm(self):
+        """Une machine déployée, couche par couche, sans rien y changer.
+
+        LE PENDANT DU VERBE DE STATION. Celui-là dit si l'on PEUT déployer ;
+        celui-ci dit ce qu'une machine déjà là tient — son transport, son
+        nom, et le confinement que sa posture promettait.
+
+        Le nom est CHOISI dans la liste et jamais retapé : ce verbe ne
+        détruit rien, et retaper un nom long pour une lecture serait un
+        péage sans contrepartie.
+        """
+        domaines = self._qemu_list_domains_proved()
+        noms = [d.name for d in domaines]
+        if not noms:
+            print(f"\n{t('No VM found.')}")
+            return report.DS_SKIP
+        print(f"\n{t('Available VMs:')}")
+        for rang, nom in enumerate(noms, 1):
+            print(f"  [{rang}] {nom}")
+        choisis = self._parse_index_selection(
+            input(t("Selection (numbers, or 'all'): ")).strip().lower(),
+            noms,
+        )
+        if not choisis:
+            print(t("Nothing selected."))
+            return report.DS_SKIP
+        ip_map = self._qemu_resolve_ips(choisis)
+        pires = []
+        for nom in choisis:
+            adresse = ip_map.get(nom) or ""
+            couches = list(
+                deploy_verify.dns_layers(
+                    nom,
+                    lease=self._qemu_lease_name(adresse),
+                    address=adresse,
+                )
+            )
+            if adresse:
+                lu = posture_plan.parse_probe(
+                    self._egress_read(self._egress_probe_command(adresse))
+                )
+                couches.extend(deploy_verify.egress_layers(lu))
+            couches.extend(deploy_verify.tls_layers())
+            print()
+            print(report.render_layers(couches, subject=nom))
+            pires.append(report.aggregate_layers(couches))
+        return report.worst_code(pires)
 
     def _qemu_verify_station(self):
         """Ce que la station sait faire, couche par couche, sans rien créer.

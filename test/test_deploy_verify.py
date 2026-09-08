@@ -191,6 +191,173 @@ class TestLeVerbeDeLaStation(unittest.TestCase):
             self.assertNotIn(interdit, appels)
 
 
+class TestLeVerbeDeLaMachine(unittest.TestCase):
+    """Le pendant du verbe de station : celui-là dit si l'on PEUT déployer,
+    celui-ci ce qu'une machine déjà là tient."""
+
+    INVENTAIRE = "aaaaaaaa-1111-2222-3333-444444444444 vm-a\n"
+
+    def jouer(self, adresse="198.51.100.5", bail="vm-a", sonde="loaded"):
+        import builtins
+        import io as tampon_io
+        from contextlib import redirect_stdout
+
+        from script.posture import plan
+        from script.todo.todo import TODO
+        from script.vm import backend as VMB
+
+        todo = TODO.__new__(TODO)
+        todo._qemu_list_domains_proved = lambda: VMB.parse_uuid_listing(
+            self.INVENTAIRE
+        )
+        todo._parse_index_selection = lambda brut, noms: list(noms)
+        todo._qemu_resolve_ips = lambda noms: (
+            {"vm-a": adresse} if adresse else {}
+        )
+        todo._qemu_lease_name = lambda adr, mod=None: bail
+        todo._egress_read = lambda cmd: f"{plan.MARQUEUR}{sonde}"
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: "1"
+        tampon = tampon_io.StringIO()
+        try:
+            with redirect_stdout(tampon):
+                code = todo._qemu_verify_vm()
+        finally:
+            builtins.input = vrai
+        return code, tampon.getvalue()
+
+    def test_a_healthy_machine_names_every_layer_it_probed(self):
+        code, vu = self.jouer()
+        for couche in ("dns", "firewall", "tls"):
+            with self.subTest(couche=couche):
+                self.assertIn(couche, vu)
+        self.assertNotEqual(R.DS_ERR, code)
+
+    def test_a_lease_under_another_name_reddens_it(self):
+        """Le cas où l'on croit joindre une machine et où l'on en joint
+        une autre."""
+        code, vu = self.jouer(bail="ancien-nom")
+        self.assertEqual(R.DS_ERR, code)
+        self.assertIn("ancien-nom", vu)
+
+    def test_rules_that_did_not_load_redden_it_too(self):
+        code, _vu = self.jouer(sonde="table-absent")
+        self.assertEqual(R.DS_ERR, code)
+
+    def test_without_an_address_nothing_is_claimed_about_the_rules(self):
+        """Ce qui n'a pas été sondé n'est pas rendu vert, et n'est pas
+        rendu rouge non plus : il n'est pas rendu."""
+        _code, vu = self.jouer(adresse="", bail="")
+        self.assertIn("dns", vu)
+        self.assertNotIn("firewall", vu)
+
+    def test_it_names_each_machine_it_reports_on(self):
+        _code, vu = self.jouer()
+        self.assertIn("── vm-a ──", vu)
+
+    def test_the_lease_is_read_under_a_forced_locale(self):
+        """L'inventaire TRADUIT ses en-têtes. L'analyseur reconnaît
+        l'adresse par sa forme, mais lire la sortie d'un outil sous une
+        locale inconnue est un piège que ce dépôt a déjà payé ailleurs."""
+        from unittest.mock import patch
+
+        from script.todo.todo import TODO
+
+        vues = {}
+
+        class Reponse:
+            returncode = 0
+            stdout = (
+                " 2026-09-08 10:00:00   52:54:00:11:22:33   ipv4"
+                "       198.51.100.5/24        vm-a       -\n"
+            )
+
+        def espion(argv, **kwargs):
+            # « virsh_argv » sonde lui-même pour décider du sudo : l'espion
+            # répond à tout le monde et ne retient que la lecture des baux.
+            if "net-dhcp-leases" in argv:
+                vues["argv"] = argv
+                vues["env"] = kwargs.get("env")
+                return Reponse()
+            vide = Reponse()
+            vide.stdout = ""
+            vide.returncode = 0
+            return vide
+
+        from script.todo import qemu_privilege
+
+        qemu_privilege.reset_cache()
+        self.addCleanup(qemu_privilege.reset_cache)
+        todo = TODO.__new__(TODO)
+        with patch("script.todo.qemu_deploy.subprocess.run", espion):
+            nom = todo._qemu_lease_name("198.51.100.5")
+        self.assertEqual("vm-a", nom)
+        self.assertIn("net-dhcp-leases", vues["argv"])
+        self.assertEqual("C", (vues["env"] or {}).get("LC_ALL"))
+
+    def test_a_bridge_has_no_named_network_and_nothing_is_read(self):
+        """« --network bridge=br0 » ne nomme aucun réseau libvirt : lui en
+        demander les baux passerait « None » à l'inventaire."""
+        from unittest.mock import patch
+
+        from script.todo.todo import TODO
+
+        class ModuleDeBanc:
+            DEFAULT_NETWORK = "bridge=br0"
+
+            @staticmethod
+            def network_name(_arg):
+                return None
+
+        appels = []
+        todo = TODO.__new__(TODO)
+        todo._qemu_import_module = lambda: ModuleDeBanc
+        with patch(
+            "script.todo.qemu_deploy.subprocess.run",
+            lambda *a, **k: appels.append(a) or None,
+        ):
+            self.assertEqual("", todo._qemu_lease_name("198.51.100.5"))
+        self.assertEqual([], appels)
+
+    def test_no_address_reads_nothing_at_all(self):
+        """Une lecture pour une adresse vide coûterait un processus pour
+        une réponse connue d'avance."""
+        from unittest.mock import patch
+
+        from script.todo.todo import TODO
+
+        appels = []
+        with patch(
+            "script.todo.qemu_deploy.subprocess.run",
+            lambda *a, **k: appels.append(a) or None,
+        ):
+            self.assertEqual("", TODO.__new__(TODO)._qemu_lease_name(""))
+        self.assertEqual([], appels)
+
+    def test_it_changes_nothing_on_the_machine(self):
+        """Un verbe de vérification qui modifie n'est plus une
+        vérification."""
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        corps = [
+            noeud
+            for noeud in ast.walk(arbre)
+            if isinstance(noeud, ast.FunctionDef)
+            and noeud.name == "_qemu_verify_vm"
+        ][0]
+        appels = [
+            noeud.func.attr
+            for noeud in ast.walk(corps)
+            if isinstance(noeud, ast.Call)
+            and isinstance(noeud.func, ast.Attribute)
+        ]
+        for interdit in ("exec_command_live", "delete_command"):
+            self.assertNotIn(interdit, appels)
+
+
 class TestLaTraductionDeLaSonde(unittest.TestCase):
     """Elle vivait dans un ÉCRAN, éprouvée seulement à travers lui. Elle ne
     dépend d'aucune conversation, et deux écrans qui la recopieraient

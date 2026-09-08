@@ -186,5 +186,83 @@ class TestLaConfrontationAuVraiBinaire(unittest.TestCase):
         )
 
 
+# La forme sous LC_ALL=C. Le pilote de test ne sait PAS rendre de baux
+# (« virNetworkGetDHCPLeases » n'y est pas pris en charge), donc aucune
+# confrontation au binaire n'est possible ici : cet échantillon est le
+# contrat, et les colonnes sont ce qui ne dépend d'aucune langue.
+BAUX = (
+    " Expiry Time           MAC address         Protocol   IP address"
+    "           Hostname   Client ID or DUID\n"
+    "-------------------------------------------------------------\n"
+    " 2026-09-08 10:00:00   52:54:00:11:22:33   ipv4"
+    "       192.0.2.10/24        vm-a       -\n"
+    " 2026-09-08 10:05:00   52:54:00:44:55:66   ipv4"
+    "       192.0.2.11/24        -          -\n"
+)
+
+
+class TestLesBaux(unittest.TestCase):
+    """L'inventaire est TRADUIT : sous une locale française ses en-têtes
+    deviennent « Adresse IP » et « Nom d'hôte ». Un analyseur qui cherche
+    ses étiquettes rend une liste vide — laquelle se lit « aucun bail »,
+    ce qui est un mensonge tranquille."""
+
+    def test_it_reads_the_address_and_the_name(self):
+        baux = B.parse_leases(BAUX)
+        self.assertEqual(2, len(baux))
+        self.assertEqual("192.0.2.10", baux[0].address)
+        self.assertEqual("vm-a", baux[0].hostname)
+
+    def test_the_header_is_not_a_lease(self):
+        """Les en-têtes et la ligne de tirets ne portent aucune adresse :
+        c'est la FORME qui les écarte, pas leur position."""
+        self.assertEqual((), B.parse_leases(BAUX.splitlines()[0]))
+
+    def test_a_translated_header_changes_nothing(self):
+        """Ce que la locale change, ce sont les ÉTIQUETTES ; l'ordre des
+        colonnes, lui, ne dépend d'aucune langue."""
+        traduit = BAUX.replace("IP address", "Adresse IP").replace(
+            "Hostname", "Nom d'hôte"
+        )
+        self.assertEqual(B.parse_leases(BAUX), B.parse_leases(traduit))
+
+    def test_a_missing_name_is_empty_and_not_a_dash(self):
+        """Garder le tiret ferait comparer un nom de machine à « - »."""
+        self.assertEqual("", B.parse_leases(BAUX)[1].hostname)
+
+    def test_the_prefix_describes_the_network_not_the_machine(self):
+        for bail in B.parse_leases(BAUX):
+            with self.subTest(bail=bail):
+                self.assertNotIn("/", bail.address)
+
+    def test_the_name_is_found_by_the_address_already_resolved(self):
+        """La demander à nouveau coûterait une lecture de plus pour une
+        réponse qu'on a déjà."""
+        self.assertEqual("vm-a", B.lease_hostname(BAUX, "192.0.2.10"))
+        self.assertEqual("", B.lease_hostname(BAUX, "192.0.2.11"))
+        self.assertEqual("", B.lease_hostname(BAUX, "198.51.100.9"))
+
+    def test_an_address_given_with_its_prefix_still_matches(self):
+        self.assertEqual("vm-a", B.lease_hostname(BAUX, "192.0.2.10/24"))
+
+    def test_the_first_address_of_a_line_is_the_one_served(self):
+        """Une machine peut porter un NOM qui ressemble à une adresse. Sans
+        cette borne, une ligne en rendrait deux baux : le vrai, et un
+        fantôme dont l'adresse est le nom du premier."""
+        ligne = (
+            " 2026-09-08 10:00:00   52:54:00:11:22:33   ipv4"
+            "       192.0.2.10/24        192.0.2.99       -\n"
+        )
+        baux = B.parse_leases(ligne)
+        self.assertEqual(1, len(baux), baux)
+        self.assertEqual("192.0.2.10", baux[0].address)
+        self.assertEqual("192.0.2.99", baux[0].hostname)
+
+    def test_an_empty_listing_is_no_lease(self):
+        for vide in ("", None, "\n---\n"):
+            with self.subTest(vide=repr(vide)):
+                self.assertEqual((), B.parse_leases(vide))
+
+
 if __name__ == "__main__":
     unittest.main()

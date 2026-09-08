@@ -575,6 +575,7 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
         "Deploy - verify this station, layer by layer": (
             "_qemu_verify_station"
         ),
+        "Deploy - verify a deployed VM, layer by layer": "_qemu_verify_vm",
     }
 
 
