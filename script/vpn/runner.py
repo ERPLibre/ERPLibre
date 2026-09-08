@@ -26,6 +26,10 @@ import shlex
 import subprocess
 import sys
 
+# Le même masque que le coffre : deux masques différents dans la même
+# sortie feraient croire à deux natures de secret.
+from script.vpn.vault import MASK
+
 # Marqueurs des blocs gérés dans les fichiers de configuration du système.
 # Reconnaissables, uniques, et ils DISENT de ne pas éditer à la main.
 BLOCK_BEGIN = "# >>> erplibre-vpn %s — généré, ne pas éditer"
@@ -79,6 +83,25 @@ class Runner:
         self.ops: list[dict] = []
         self.failures: list[str] = []
 
+    def add_secret(self, value):
+        """Masque `value` dans tout ce qui s'affichera DÉSORMAIS.
+
+        Le masquage est monté une fois pour toutes au démarrage, à partir de
+        ce que le coffre a rendu. Mais un secret peut NAÎTRE en cours de
+        route : un jeton de session obtenu par une authentification web
+        n'existe pas avant qu'elle aboutisse, et il ne doit pas moins être
+        masqué que le mot de passe qui l'a produit.
+
+        Sous huit caractères, on ne masque pas : une valeur courte se
+        retrouve par hasard dans un chemin ou un nom d'interface, et on
+        masquerait du texte utile en croyant protéger un secret.
+        """
+        value = str(value or "")
+        if len(value) < 8:
+            return
+        previous = self.redactor
+        self.redactor = lambda text: previous(text).replace(value, MASK)
+
     # ------------------------------------------------------------------
     # Affichage
     # ------------------------------------------------------------------
@@ -119,6 +142,26 @@ class Runner:
         `stdin` est le seul chemin par lequel un secret entre dans un
         processus. `secret_stdin` ne change PAS l'exécution : il dit à
         l'affichage et aux tests que ce contenu ne doit jamais être montré.
+
+        `capture` vaut True (sortie et erreurs lues, donc invisibles),
+        False (tout à l'écran, rien de lu), ou « stdout » — la sortie est
+        lue, les erreurs restent à l'écran. Ce troisième cas existe pour
+        une commande qui RETOURNE un secret sur sa sortie tout en parlant
+        sur ses erreurs : capturer les deux ferait attendre l'utilisateur
+        en silence devant une authentification qui réclame son geste.
+
+        Faute de `stdin`, l'entrée est /dev/null et JAMAIS le terminal
+        hérité. Une commande qui reçoit un terminal sur son entrée peut
+        appeler `tcsetattr` ; hors du groupe de processus d'avant-plan,
+        elle reçoit alors SIGTTOU et s'ARRÊTE — état T, que ni SIGINT ni
+        SIGTERM ne lèvent, et qui garde les verrous déjà pris. Le cas se
+        produit quand la sortie est capturée : sudo alloue un
+        pseudo-terminal pour l'entrée pendant que la sortie part dans un
+        tuyau, et le groupe d'avant-plan de ce terminal n'est pas celui de
+        la commande. Rien ici n'a besoin de lire l'humain : les questions
+        passent par `confirm`, dans CE processus, et un secret arrive par
+        `stdin`. Une invite de mot de passe sudo n'en souffre pas — sudo
+        ouvre /dev/tty, pas son entrée standard.
         """
         full = command
         if sudo is None:
@@ -143,13 +186,24 @@ class Runner:
                 full,
                 shell=True,
                 input=stdin,
+                # Rien à fournir : /dev/null, et jamais le terminal hérité
+                # (voir la docstring). Quand `input` porte un contenu,
+                # subprocess branche lui-même le tuyau et `stdin` doit
+                # rester None — les deux ensemble sont refusés.
+                stdin=subprocess.DEVNULL if stdin is None else None,
                 text=True,
                 timeout=timeout,
                 stdout=subprocess.PIPE if capture else None,
-                stderr=subprocess.STDOUT if capture else None,
+                stderr=(subprocess.STDOUT if capture is True else None),
             )
             code, out = proc.returncode, proc.stdout or ""
         except subprocess.TimeoutExpired:
+            # Le délai rend la main à l'appelant ; il ne garantit pas que
+            # la commande soit morte. `shell=True` met un shell entre nous
+            # et le vrai travail, et subprocess ne tue que ce shell — un
+            # `sudo apt-get` lancé par lui devient orphelin et continue,
+            # verrous compris. D'où le code 124 et un échec ANNONCÉ plutôt
+            # qu'un silence : la suite se juge sur un état inconnu.
             code, out = 124, ""
             self.fail(f"{label} : délai dépassé ({timeout} s)")
             return code, out

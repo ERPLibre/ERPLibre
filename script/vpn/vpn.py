@@ -38,14 +38,12 @@ from script.vpn.drivers import DRIVERS, driver_names, get_driver
 from script.vpn.drivers.base import INSTALL_SCRIPT
 from script.vpn.runner import Runner
 from script.vpn.vault import (
+    PLACEHOLDER,
     VaultError,
     VpnVault,
     redact,
     secrets_from_env,
 )
-
-# Ce qu'on met à la place d'un secret qu'on n'a pas pu lire, en mode à blanc.
-PLACEHOLDER = "<secret-du-coffre>"
 
 
 def _vault():
@@ -100,7 +98,10 @@ def _build(args, want_secrets=True, secrets_required=True):
         )
         return None, None, None
     secrets = {}
-    if want_secrets:
+    # Le PROFIL décide, pas seulement la technologie : ouvrir le coffre
+    # pour un secret que ce montage n'utilisera pas réclamerait le mot de
+    # passe maître pour rien.
+    if want_secrets and driver_cls.wants_secrets(profile):
         try:
             secrets = _load_secrets(
                 profile, driver_cls, required=secrets_required
@@ -280,13 +281,23 @@ def cmd_check(args):
 def cmd_install(args):
     """Une SEULE invocation, même pour plusieurs pilotes : le script fait
     un `apt-get update` par appel, et cinq appels le referaient cinq
-    fois."""
+    fois.
+
+    Le délai couvre le cas le plus lourd — tous les pilotes, index des
+    dépôts rafraîchi, paquets tirés d'un miroir lent — et existe pour
+    borner l'attente, pas pour la mesurer. Sans lui, un gestionnaire de
+    paquets qui ne rend jamais la main immobilise le menu sans fin.
+    """
     names = [args.driver] if args.driver else driver_names()
     runner = Runner()
+    # `--sso` en QUEUE : le script retire ce drapeau avant de traiter le
+    # reste comme une liste de pilotes.
+    extra = " --sso" if getattr(args, "with_sso", False) else ""
     code, _ = runner.cmd(
         f"installer les paquets de : {', '.join(names)}",
-        f"bash {INSTALL_SCRIPT} {' '.join(names)}",
+        f"bash {INSTALL_SCRIPT} {' '.join(names)}{extra}",
         check=True,
+        timeout=900,
     )
     return code
 
@@ -342,6 +353,15 @@ def build_parser():
             choices=sorted(DRIVERS),
             help="Se limiter à ce pilote",
         )
+        if name == "install":
+            sp.add_argument(
+                "--with-sso",
+                action="store_true",
+                help=(
+                    "Installer aussi le greffon d'authentification par"
+                    " formulaire web (openconnect-sso)"
+                ),
+            )
     return parser
 
 

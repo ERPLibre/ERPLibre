@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import tempfile
+import unicodedata
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
@@ -37,6 +38,9 @@ from script.todo.vpn_menu import (  # noqa: E402
 )
 from script.vpn import profiles  # noqa: E402
 from script.vpn.drivers import DRIVERS  # noqa: E402
+from script.vpn.drivers.openconnect import (  # noqa: E402
+    OpenconnectDriver,
+)
 
 WG_PUBLIC = base64.b64encode(bytes(range(32, 64))).decode()
 
@@ -595,6 +599,439 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
     def test_an_empty_answer_keeps_the_stored_value(self):
         with patch("getpass.getpass", return_value=""):
             self.assertEqual(self.todo._vpn_ask_secret("PSK"), "")
+
+
+class SsoHelperOffer(MenuBase):
+    """La proposition d'installer le greffon SSO.
+
+    Elle doit être ÉCLAIRÉE et ne pas se répéter : le greffon ne sert
+    qu'aux passerelles à navigateur intégré, et proposer d'installer ce qui
+    est déjà installé fait douter de ce qu'on lit.
+    """
+
+    def installing(self, driver, absent, *answers):
+        """Déroule `_vpn_install` et rend (sortie, commandes lancées)."""
+        launched = []
+        with patch(
+            "script.todo.vpn_menu._sso_helper_seen", return_value=not absent
+        ):
+            with patch.object(
+                self.todo, "_vpn_pick_driver", return_value=DRIVERS[driver]
+            ):
+                with patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ):
+                    with self.answering(*answers):
+                        out = io.StringIO()
+                        with redirect_stdout(out):
+                            self.todo._vpn_install()
+        return out.getvalue(), launched
+
+    def test_it_is_offered_when_the_helper_is_missing(self):
+        printed, launched = self.installing("openconnect", True, "o")
+        self.assertIn("No SSO handler", printed)
+        self.assertEqual(launched, ["install --driver openconnect --with-sso"])
+
+    def test_declining_installs_only_the_packages(self):
+        _, launched = self.installing("openconnect", True, "n")
+        self.assertEqual(launched, ["install --driver openconnect"])
+
+    def test_it_is_not_offered_when_the_helper_is_there(self):
+        """Une liste de réponses VIDE : si la question était posée, le test
+        lèverait StopIteration."""
+        printed, launched = self.installing("openconnect", False)
+        self.assertNotIn("No SSO handler", printed)
+        self.assertEqual(launched, ["install --driver openconnect"])
+
+    def test_it_is_not_offered_for_a_driver_that_cannot_use_it(self):
+        """WireGuard n'a pas de formulaire web : la question serait sans
+        objet, et la liste de réponses vide le prouve."""
+        printed, launched = self.installing("wireguard", True)
+        self.assertNotIn("No SSO handler", printed)
+        self.assertEqual(launched, ["install --driver wireguard"])
+
+    def test_the_offer_says_the_upstream_is_unmaintained(self):
+        """La réponse doit être éclairée : le greffon porte une dette, et
+        la taire ferait accepter sans savoir."""
+        printed, _ = self.installing("openconnect", True, "n")
+        self.assertIn("entretenu", printed)
+
+
+def largeur_affichee(texte):
+    """Largeur de `texte` en colonnes de terminal.
+
+    Les caractères que la norme Unicode classe « W » (wide) ou « F »
+    (fullwidth) — dont les emoji — en occupent deux pour un seul
+    caractère. Une colonne alignée à l'écran ne l'est donc pas dans
+    l'index de la chaîne, et l'inverse.
+    """
+    return sum(
+        2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in texte
+    )
+
+
+class ShowingWhatIsConnected(MenuBase):
+    """L'état de chaque profil, dans la liste qui sert à choisir.
+
+    La même liste sert à connecter et à déconnecter : sans l'état, on
+    descend un tunnel déjà mort ou on remonte celui qui tient, et la
+    sortie du CLI est la première chose qui le dit — trop tard.
+    """
+
+    def setUp(self):
+        super().setUp()
+        profiles.save(
+            {
+                "name": "vivant",
+                "driver": "openconnect",
+                "server": "ssl.vpn.example-campus.net",
+                "oc_user": "someone",
+            }
+        )
+        profiles.save(
+            {
+                "name": "mort",
+                "driver": "openconnect",
+                "server": "ssl.vpn.example-campus.net",
+                "oc_user": "someone",
+            }
+        )
+
+    def listing(self, up):
+        """La liste, avec `up` disant quels profils sont montés."""
+        with patch.object(
+            OpenconnectDriver,
+            "is_up",
+            lambda self: self.profile["name"] in up,
+        ):
+            with self.answering("0"):
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    self.todo._vpn_select_profile()
+        return out.getvalue()
+
+    def test_the_connected_profile_is_marked(self):
+        printed = self.listing({"vivant"})
+        vivant = [l for l in printed.splitlines() if "vivant" in l][0]
+        mort = [l for l in printed.splitlines() if "mort" in l][0]
+        self.assertIn("🟢", vivant)
+        self.assertNotIn("🟢", mort)
+
+    def test_the_columns_stay_aligned(self):
+        """Un emoji occupe deux COLONNES pour un seul caractère : la ligne
+        non marquée en réserve deux, sinon tout ce qui suit se décale.
+
+        La mesure porte donc sur les colonnes affichées et non sur
+        `str.index`, qui compte des caractères — l'écart d'un caractère
+        entre les deux lignes est précisément ce qui les aligne à l'écran.
+        """
+        printed = self.listing({"vivant"})
+        lignes = [l for l in printed.splitlines() if "example-campus" in l]
+        self.assertEqual(len(lignes), 2, printed)
+        colonnes = {
+            largeur_affichee(l[: l.index("ssl.vpn.example-campus.net")])
+            for l in lignes
+        }
+        self.assertEqual(len(colonnes), 1, lignes)
+
+    def test_an_unknown_driver_does_not_break_the_listing(self):
+        """Un pilote retiré de la configuration ne doit pas empêcher de
+        lister les profils, ni de supprimer celui qui le nomme."""
+        self.assertFalse(
+            self.todo._vpn_is_up({"name": "x", "driver": "disparu"})
+        )
+
+    def test_connecting_what_is_already_up_asks_first(self):
+        """Remonter un tunnel qui tient rejoue toute l'authentification —
+        jusqu'à un formulaire web — pour aboutir à une interface qui
+        existait déjà."""
+        launched = []
+        with patch.object(OpenconnectDriver, "is_up", lambda self: True):
+            with patch.object(
+                self.todo, "_vpn_select_profile", return_value="vivant"
+            ):
+                with patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ):
+                    with self.answering("n"):
+                        out = io.StringIO()
+                        with redirect_stdout(out):
+                            self.todo._vpn_connect()
+        self.assertIn("déjà connecté", out.getvalue())
+        self.assertEqual(launched, [], "rien ne devait être lancé")
+
+    def test_disconnecting_what_is_down_says_so_but_proceeds(self):
+        """« down » reste utile : c'est lui qui efface l'état laissé dans
+        /run par un tunnel mort sans lui."""
+        launched = []
+        with patch.object(OpenconnectDriver, "is_up", lambda self: False):
+            with patch.object(
+                self.todo, "_vpn_select_profile", return_value="mort"
+            ):
+                with patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ):
+                    out = io.StringIO()
+                    with redirect_stdout(out):
+                        self.todo._vpn_disconnect()
+        self.assertIn("n'est pas connecté", out.getvalue())
+        self.assertEqual(launched, ["down --profile mort"])
+
+
+class ChoosingTheXmlProfile(MenuBase):
+    """Le choix du fichier `.xml` : parcours d'abord, saisie ensuite.
+
+    Ni l'un ni l'autre ne suffit. Le parcours part des répertoires du
+    client de Cisco et n'aide pas si le fichier vient d'ailleurs ; le
+    chemin tapé oblige à le connaître, or personne ne retient
+    « /opt/cisco/secureclient/vpn/profile ».
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.xml = os.path.join(self.tmp.name, "campus.xml")
+        with open(self.xml, "w") as fh:
+            fh.write("<AnyConnectProfile/>")
+
+    def browsing(self, chosen, *answers, dirs=None):
+        """Déroule `_vpn_select_xml` avec un parcours qui rend `chosen`."""
+        picked = []
+
+        class FauxNavigateur:
+            def __init__(self, start, callback):
+                picked.append(start)
+                self._callback = callback
+
+            def run_main_frame(inner):
+                if chosen is not None:
+                    inner._callback(chosen)
+
+        with patch(
+            "script.todo.vpn_menu.ANYCONNECT_DIRS",
+            dirs if dirs is not None else (self.tmp.name,),
+        ):
+            with patch(
+                "script.todo.vpn_menu.todo_file_browser.FileBrowser",
+                FauxNavigateur,
+            ):
+                with self.answering(*answers):
+                    with redirect_stdout(io.StringIO()):
+                        return self.todo._vpn_select_xml(), picked
+
+    def test_the_browser_starts_in_the_cisco_directory(self):
+        path, started = self.browsing(self.xml, "")
+        self.assertEqual(path, self.xml)
+        self.assertEqual(started, [self.tmp.name])
+
+    def test_declining_the_browser_falls_back_to_typing(self):
+        path, started = self.browsing(self.xml, "n", self.xml)
+        self.assertEqual(path, self.xml)
+        self.assertEqual(started, [], "le parcours ne devait pas s'ouvrir")
+
+    def test_leaving_the_browser_empty_falls_back_to_typing(self):
+        """On peut sortir du parcours sans rien choisir : la saisie reste."""
+        path, _ = self.browsing(None, "", self.xml)
+        self.assertEqual(path, self.xml)
+
+    def test_a_path_that_is_not_a_file_does_not_pass_as_chosen(self):
+        """Le parcours peut rendre un répertoire : il ne vaut pas fichier,
+        et la saisie reprend la main."""
+        path, _ = self.browsing(self.tmp.name, "", self.xml)
+        self.assertEqual(path, self.xml)
+
+    def test_no_cisco_directory_means_no_offer(self):
+        """Ouvrir un parcours sur un chemin absent afficherait une liste
+        vide, ce qui ressemble à une panne. Liste de réponses courte : si
+        la question était posée, le test lèverait StopIteration."""
+        path, started = self.browsing(
+            self.xml, self.xml, dirs=("/nowhere/cisco",)
+        )
+        self.assertEqual(path, self.xml)
+        self.assertEqual(started, [])
+
+    def test_a_typed_path_is_expanded(self):
+        path, _ = self.browsing(None, "n", "~")
+        self.assertEqual(path, os.path.expanduser("~"))
+
+    def test_giving_up_returns_nothing(self):
+        path, _ = self.browsing(None, "n", "")
+        self.assertEqual(path, "")
+
+
+class FromPreset(MenuBase):
+    """Le chemin « créer un profil à partir d'un préréglage ».
+
+    Le préréglage porte ce que l'établissement publie ; il ne reste qu'un
+    identifiant à taper. Le formulaire est celui de `_vpn_edit_profile`,
+    amorcé — dupliquer les questions ferait vivre deux formulaires qui
+    divergeraient au prochain champ ajouté à un pilote.
+    """
+
+    # Passerelle INVENTÉE : voir la règle du dépôt sur ce qu'un exemple
+    # a le droit de nommer.
+    PRESET = {
+        "preset": "campus",
+        "label": "Campus SSL VPN",
+        "driver": "openconnect",
+        "server": "ssl.vpn.example-campus.net",
+        "oc_protocol": "anyconnect",
+        "oc_usergroup": "SSLProfileCampus",
+        "oc_authgroup": "CampusSSL",
+        "oc_password_len": 8,
+    }
+
+    def choosing(self, *answers):
+        """Le préréglage servi sans toucher au disque, et les réponses."""
+        return patch(
+            "script.vpn.presets.load_all",
+            return_value=([dict(self.PRESET)], []),
+        ), self.answering(*answers)
+
+    def test_only_the_identity_is_left_to_type(self):
+        """Aucune question sur la technologie : le préréglage y a répondu.
+        Si le formulaire la posait, la liste de réponses serait décalée et
+        le profil ne porterait pas les bonnes valeurs."""
+        loading, answering = self.choosing(
+            "1",  # le préréglage
+            "campus_me",  # nom du profil
+            "",  # serveur : celui du préréglage
+            "someone",  # oc_user
+            "",  # protocole
+            "",  # groupe de connexion (chemin d'URL)
+            "",  # SSO ? défaut non
+            "",  # réseaux
+            "",  # tout le trafic ? défaut non
+            "",  # témoin
+            "n",  # réglages avancés ?
+        )
+        with loading:
+            with answering:
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        saved = profiles.load("campus_me")
+        self.assertIsNotNone(saved, "profil non enregistré")
+        self.assertEqual(saved["driver"], "openconnect")
+        self.assertEqual(saved["server"], self.PRESET["server"])
+        # Le chemin d'URL : le champ qui décide QUEL service du
+        # concentrateur on joint, et celui qu'on ne devine pas.
+        self.assertEqual(saved["oc_usergroup"], "SSLProfileCampus")
+        self.assertEqual(saved["oc_authgroup"], "CampusSSL")
+        self.assertEqual(saved["oc_user"], "someone")
+        # La borne du concentrateur est un réglage AVANCÉ, jamais demandé
+        # ici : elle doit venir du préréglage quand même.
+        self.assertEqual(saved["oc_password_len"], 8)
+
+    def test_going_back_saves_nothing(self):
+        loading, answering = self.choosing("0")
+        with loading:
+            with answering:
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        self.assertEqual(profiles.names(), [])
+
+    def test_an_unreadable_preset_is_reported(self):
+        with patch(
+            "script.vpn.presets.load_all",
+            return_value=([], ["campus.json : ligne 3"]),
+        ):
+            with redirect_stdout(io.StringIO()) as out:
+                self.todo._vpn_from_preset()
+        self.assertIn("campus.json", out.getvalue())
+
+    def test_replaying_refreshes_the_gateway_and_keeps_the_identity(self):
+        """Rejouer un préréglage sur un profil existant sert à le remettre à
+        jour — passerelle déménagée, groupe renommé. Ce qui est PERSONNEL et
+        qu'aucun préréglage ne porte se garde : identifiant, routes ajoutées
+        à la main, certificat épinglé."""
+        profiles.save(
+            {
+                "name": "campus_me",
+                "driver": "openconnect",
+                "server": "ssl.vpn.example-campus.net",
+                "oc_user": "someone",
+                "oc_authgroup": "OldGroup",
+                "oc_servercert": "sha256:abc",
+                "routes": ["10.60.0.0/16"],
+                "oc_password_len": 0,
+            }
+        )
+        moved = dict(
+            self.PRESET,
+            server="ssl2.vpn.example-campus.net",
+            oc_authgroup="NewGroup",
+        )
+        with patch("script.vpn.presets.load_all", return_value=([moved], [])):
+            with self.answering(
+                "1",
+                "campus_me",
+                "",  # serveur : celui du préréglage, désormais à jour
+                "",  # oc_user : gardé
+                "",  # protocole
+                "",  # groupe de connexion : celui du préréglage
+                "",  # SSO ?
+                "",  # réseaux : gardés
+                "",  # tout le trafic ?
+                "",  # témoin
+                "n",  # réglages avancés ?
+            ):
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        saved = profiles.load("campus_me")
+        # Le préréglage rafraîchit ce qu'il déclare.
+        self.assertEqual(saved["server"], "ssl2.vpn.example-campus.net")
+        self.assertEqual(saved["oc_authgroup"], "NewGroup")
+        self.assertEqual(saved["oc_password_len"], 8)
+        # Le profil garde ce qui est personnel.
+        self.assertEqual(saved["oc_user"], "someone")
+        self.assertEqual(saved["oc_servercert"], "sha256:abc")
+        self.assertEqual(saved["routes"], ["10.60.0.0/16"])
+
+    def test_replaying_over_another_technology_drags_nothing_along(self):
+        """Un profil qui change de technologie ne doit pas faire suivre une
+        clé WireGuard dans un profil OpenConnect, où rien ne la lirait."""
+        profiles.save(
+            {
+                "name": "campus_me",
+                "driver": "wireguard",
+                "server": "vpn.acme.example",
+                "wg_address": "10.7.0.2/32",
+                "wg_peer_key": WG_PUBLIC,
+                "routes": ["10.7.0.0/24"],
+            }
+        )
+        loading, answering = self.choosing(
+            "1",
+            "campus_me",
+            "",  # serveur
+            "someone",  # oc_user
+            "",  # protocole
+            "",  # groupe de connexion
+            "",  # SSO ?
+            "",  # réseaux
+            "",  # tout le trafic ?
+            "",  # témoin
+            "n",  # réglages avancés ?
+        )
+        with loading:
+            with answering:
+                with redirect_stdout(io.StringIO()):
+                    self.todo._vpn_from_preset()
+        saved = profiles.load("campus_me")
+        self.assertEqual(saved["driver"], "openconnect")
+        self.assertNotIn("wg_peer_key", saved)
+        self.assertNotIn("wg_address", saved)
+
+    def test_no_preset_says_where_to_put_one(self):
+        with patch("script.vpn.presets.load_all", return_value=([], [])):
+            with redirect_stdout(io.StringIO()) as out:
+                self.todo._vpn_from_preset()
+        self.assertIn("conf/vpn_presets", out.getvalue())
 
 
 if __name__ == "__main__":

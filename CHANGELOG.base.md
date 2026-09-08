@@ -25,6 +25,32 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+<!-- [en] -->
+## Added
+<!-- [fr] -->
+## Ajouté
+<!-- [en] -->
+
+- Site presets for the VPN: one `.json` carries a site's gateway, protocol and connection group, and neither a username nor a secret, so it can be handed around. Read from `conf/vpn_presets/`, then from a git-ignored `private/vpn/presets/`, then from any directory listed in `vpn_preset_paths`; on the same identifier the latest wins, so a site fixes a shipped template without touching a tracked file
+- Import a Cisco AnyConnect `.xml` profile from the menu, browsing the client's own directories or typing the path, and get a preset from its `HostName`, `HostAddress` and `UserGroup`
+- OpenConnect tells apart the two mechanisms that designate a service on one concentrator: the connection group in the URL and the value picked from a dropdown. Confusing them hands over another service's login form, so correct credentials are refused with nothing naming the group
+- Reach a gateway that demands an embedded browser for SAML, which stops OpenConnect on « No SSO handler »: the web step is delegated to an `openconnect-sso` helper that the installer offers to set up, and the tunnel is then brought up by the driver itself, so the interface name, the state files and the diagnosis stay with the profile
+- Declare a concentrator that compares only the first characters of a password: it is announced before the secret is stored, and nothing is ever truncated
+- The VPN installer looks for `vpnc-script` — a file, not a binary on the `PATH` — and names the package to install per distribution family, instead of letting the tunnel fail on an interface that never appears
+- A command launched by the VPN runner gets `/dev/null` on standard input, so a captured-output command can no longer be stopped by a SIGTTOU and freeze the machine's package manager
+- The VPN profile list marks which profiles carry a live tunnel, so connecting one already up asks first and disconnecting one already down says so instead of looking like a mistake. A profile is judged on its interface, not on the state file a tunnel killed without `down` leaves behind — a state left over used to be reported as mounted on the same screen that declared the process gone
+
+<!-- [fr] -->
+
+- Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
+- Importer un profil Cisco AnyConnect `.xml` depuis le menu, en parcourant les répertoires du client ou en tapant le chemin, et en tirer un préréglage de ses balises `HostName`, `HostAddress` et `UserGroup`
+- OpenConnect distingue les deux mécanismes qui désignent un service sur un même concentrateur : le groupe de connexion dans l'URL et la valeur choisie dans un menu déroulant. Les confondre donne le formulaire d'un autre service, et des identifiants justes sont refusés sans que rien ne nomme le groupe
+- Joindre une passerelle qui exige un navigateur intégré pour le SAML, ce qui arrête OpenConnect sur « No SSO handler » : l'étape web est déléguée à un greffon `openconnect-sso` que l'installateur propose de poser, et le tunnel est ensuite monté par le pilote lui-même, si bien que le nom d'interface, les fichiers d'état et le diagnostic restent au profil
+- Déclarer un concentrateur qui ne compare que les premiers caractères d'un mot de passe : il est annoncé avant le dépôt du secret, et rien n'est jamais tronqué
+- L'installateur VPN cherche `vpnc-script` — un fichier, et non un binaire du `PATH` — et nomme le paquet à poser par famille de distribution, au lieu de laisser le tunnel échouer sur une interface qui n'apparaît jamais
+- Une commande lancée par l'exécuteur VPN reçoit `/dev/null` sur son entrée standard, si bien qu'une commande à sortie capturée ne peut plus être arrêtée par un SIGTTOU et figer le gestionnaire de paquets de la machine
+- La liste des profils VPN marque ceux qui portent un tunnel vivant, si bien que connecter un profil déjà monté demande confirmation et que déconnecter un profil déjà tombé le dit au lieu de ressembler à une erreur. Un profil est jugé sur son interface et non sur le fichier d'état qu'un tunnel tué sans `down` laisse derrière lui — un état laissé était annoncé monté sur l'écran même qui déclarait le processus mort
+
 <!-- [common] -->
 
 ## [1.8.0] - 2026-09-04

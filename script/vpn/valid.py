@@ -32,6 +32,16 @@ SERVER_RE = re.compile(
 HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$")
 # Clé WireGuard : 32 octets en base64, donc 43 caractères + « = ».
 WG_KEY_RE = re.compile(r"^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$")
+# Chemin d'URL, sans barre oblique de tête : ce qui se colle derrière
+# « https://hôte/ » pour désigner un groupe de connexion. Ni « ? », ni
+# « # », ni espace — la valeur finit dans une URL ET dans une ligne de
+# commande lancée par sudo.
+#
+# La sentinelle refuse aussi un segment « . » ou « .. ». Aucun groupe de
+# connexion ne s'appelle ainsi, et un chemin que le serveur réduirait
+# désignerait un service autre que celui qu'on croit avoir écrit.
+_URL_SEGMENT = r"(?!\.\.?(?:/|$))[A-Za-z0-9._~-]+"
+URL_PATH_RE = re.compile(rf"^{_URL_SEGMENT}(/{_URL_SEGMENT})*$")
 
 
 class ProfileError(ValueError):
@@ -110,10 +120,10 @@ def ip_address(profile, key, label, required=False):
 
 
 def ip_interface(profile, key, label, required=True):
-    """Adresse AVEC préfixe (10.7.0.2/32) : c'est ce qu'une interface porte.
+    """Adresse AVEC son préfixe : c'est ce qu'une interface porte.
 
-    Une adresse sans préfixe est acceptée et complétée en /32 — mais dire
-    « 10.7.0.2 » quand on veut dire « /24 » est une erreur silencieuse
+    Une adresse sans préfixe est acceptée et complétée en /32 — mais écrire
+    l'adresse nue quand on voulait dire /24 est une erreur silencieuse
     coûteuse, alors le message le rappelle en cas de doute.
     """
     value = str(profile.get(key) or "").strip()
