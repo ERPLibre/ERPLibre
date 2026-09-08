@@ -75,6 +75,7 @@ ERREURS = {
     "tout_exclu": "Nothing was anonymised: every region was excluded.",
     "rien_a_faire": "Nothing to anonymise in this file.",
     "place": "Not enough room to write.",
+    "conversion_impossible": "This target cannot hold the source's" " shape: ",
     "table_source": "The mapping table would overwrite the source"
     " or the copy; nothing was written.",
     "fuite_detectee": "A source value survives in the copy;"

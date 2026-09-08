@@ -1307,6 +1307,61 @@ class TestConversion(unittest.TestCase):
                 os.path.join(self.base, "o.xml"), feuilles
             )
 
+    def test_le_delimiteur_detecte_survit_a_l_ecriture(self):
+        """Il servait à LIRE et pas à écrire.
+
+        Un fichier à point-virgule revenait en virgule, et le tableur du
+        destinataire le rendait en une seule colonne — après que l'écran
+        avait imprimé « délimiteur détecté : ; ».
+        """
+        source = self._csv("pv.csv", "nom;ville\nAlpha;Beta\n")
+        sortie = os.path.join(self.base, "o.csv")
+        formats.ecrire(source, sortie, {"graine": "3"})
+        rendu = open(sortie, encoding="utf-8").read()
+        self.assertIn(";", rendu)
+        self.assertNotIn(",", rendu)
+
+    def test_une_cible_impossible_refuse_avant_l_APERCU(self):
+        """Le refus venait du graveur, après le consentement.
+
+        Et sous une clé qui accusait le format au lieu de nommer la
+        contrainte. `_verifier_conversion` est appelée par `_preparer`,
+        donc par `plan` comme par `ecrire` : le même refus aux deux.
+        """
+        feuilles = [
+            formats.Feuille("Une", [["nom"], ["Alpha"]]),
+            formats.Feuille("Deux", [["nom"], ["Beta"]]),
+        ]
+        with self.assertRaises(formats.ErreurMoteur) as capture:
+            formats._verifier_conversion(
+                "xlsx", feuilles, {"conversion": "xml"}
+            )
+        self.assertEqual(capture.exception.cle, "conversion_impossible")
+
+    def test_une_seule_feuille_vers_xml_passe(self):
+        formats._verifier_conversion(
+            "xlsx",
+            [formats.Feuille("Une", [["nom"], ["Alpha"]])],
+            {"conversion": "xml"},
+        )
+
+    def test_la_selection_compte_dans_le_refus(self):
+        """Deux feuilles, une seule retenue : la cible redevient possible."""
+        feuilles = [
+            formats.Feuille("Une", [["nom"], ["Alpha"]]),
+            formats.Feuille("Deux", [["nom"], ["Beta"]]),
+        ]
+        formats._verifier_conversion(
+            "xlsx", feuilles, {"conversion": "xml", "feuilles": ["Une"]}
+        )
+
+    def test_un_conteneur_ne_fait_pas_lever_openpyxl(self):
+        """L'erreur brute ressortait sous « format non reconnu »."""
+        rendu = formats._valeur_pour_xlsx({"nom": "aboulie"})
+        self.assertIsInstance(rendu, str)
+        self.assertIn("aboulie", rendu)
+        self.assertIsInstance(formats._valeur_pour_xlsx([1, 2]), str)
+
     def test_valeur_pour_xlsx_garde_les_types(self):
         """openpyxl porte nativement datetime, int, float et bool.
 

@@ -1175,7 +1175,12 @@ def _preparer(chemin, options):
     elif format_lu == "access":
         feuilles = _lire_access(chemin)
     elif format_lu == "csv":
-        feuilles = [_lire_csv(chemin)[0]]
+        feuille_csv, meta_csv = _lire_csv(chemin)
+        feuilles = [feuille_csv]
+        # Le délimiteur est détecté, imprimé à l'opérateur, puis il servait
+        # à LIRE et pas à écrire : un fichier à point-virgule revenait en
+        # virgule, et le tableur du destinataire le rendait en une colonne.
+        options.setdefault("delimiteur", meta_csv["delimiteur"])
     elif format_lu == "json":
         feuilles = _lire_json(chemin)[0]
     else:
@@ -1195,6 +1200,7 @@ def _preparer(chemin, options):
     # chemins de clé : de la structure, que le graveur ne touche jamais. Les
     # compter comme remplacées désarmait le refus « rien à faire » et brûlait
     # le vivier sur des noms de champ.
+    _verifier_conversion(format_lu, feuilles, options)
     options["colonnes_structure"] = {
         (f.nom, f.colonne_structure) for f in feuilles if f.colonne_structure
     }
@@ -1213,6 +1219,25 @@ def _preparer(chemin, options):
         (f.nom, 1) for f in feuilles if f.ligne1_fabriquee or ecrit_par_ancres
     }
     return format_lu, feuilles, classeur, rapport, options
+
+
+def _verifier_conversion(format_lu, feuilles, options):
+    """Refuser une cible impossible AVANT l'aperçu.
+
+    Le refus venait du graveur, donc après que l'opérateur avait lu un
+    aperçu propre et consenti — et sous une clé qui accusait le format
+    au lieu de nommer la contrainte.
+    """
+    cible = options.get("conversion") or ""
+    if not cible or cible == format_lu:
+        return
+    retenues = [
+        f
+        for f in feuilles
+        if not options.get("feuilles") or f.nom in options["feuilles"]
+    ]
+    if cible == "xml" and len(retenues) > 1:
+        raise ErreurMoteur("conversion_impossible", f"{len(retenues)} → xml")
 
 
 def _parcourir(
@@ -1251,6 +1276,8 @@ def _parcourir(
                         numero == 1
                         and not options.get("entetes")
                         and famille == "texte"
+                        and (feuille.nom, 1)
+                        not in (options.get("lignes_structure") or ())
                         and len(bilan["entete_gardee"]) < 12
                     ):
                         # La ligne 1 est PRÉSUMÉE d'en-tête, jamais
@@ -1937,6 +1964,11 @@ def _valeur_pour_xlsx(valeur):
         return texte
     if isinstance(valeur, (bytes, bytearray)):
         return None
+    if isinstance(valeur, (dict, list)):
+        # Un conteneur imbriqué d'un JSON : openpyxl lève sur une cellule
+        # qu'il ne sait pas porter, et l'erreur ressortait brute sous
+        # « format non reconnu ». Son contenu est déjà anonymisé.
+        return json.dumps(valeur, ensure_ascii=False)
     return valeur
 
 
