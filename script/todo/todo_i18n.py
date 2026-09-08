@@ -11791,6 +11791,25 @@ TRANSLATIONS = {
         "fr": "L'installer aussi ? (o/N)",
         "en": "Install it as well? (y/N)",
     },
+    "This profile is already connected.": {
+        "fr": "Ce profil est déjà connecté.",
+        "en": "This profile is already connected.",
+    },
+    "Connect it again? (y/N)": {
+        "fr": "Le reconnecter quand même ? (o/N)",
+        "en": "Connect it again? (y/N)",
+    },
+    "This profile is not connected. Disconnecting still clears the state"
+    " a dead tunnel left behind.": {
+        "fr": (
+            "Ce profil n'est pas connecté. Le déconnecter efface tout de"
+            " même l'état qu'un tunnel mort a laissé."
+        ),
+        "en": (
+            "This profile is not connected. Disconnecting still clears the"
+            " state a dead tunnel left behind."
+        ),
+    },
     "SSO helper": {
         "fr": "greffon SSO",
         "en": "SSO helper",

@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import tempfile
+import unicodedata
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
@@ -37,6 +38,9 @@ from script.todo.vpn_menu import (  # noqa: E402
 )
 from script.vpn import profiles  # noqa: E402
 from script.vpn.drivers import DRIVERS  # noqa: E402
+from script.vpn.drivers.openconnect import (  # noqa: E402
+    OpenconnectDriver,
+)
 
 WG_PUBLIC = base64.b64encode(bytes(range(32, 64))).decode()
 
@@ -653,6 +657,131 @@ class SsoHelperOffer(MenuBase):
         la taire ferait accepter sans savoir."""
         printed, _ = self.installing("openconnect", True, "n")
         self.assertIn("entretenu", printed)
+
+
+def largeur_affichee(texte):
+    """Largeur de `texte` en colonnes de terminal.
+
+    Les caractères que la norme Unicode classe « W » (wide) ou « F »
+    (fullwidth) — dont les emoji — en occupent deux pour un seul
+    caractère. Une colonne alignée à l'écran ne l'est donc pas dans
+    l'index de la chaîne, et l'inverse.
+    """
+    return sum(
+        2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in texte
+    )
+
+
+class ShowingWhatIsConnected(MenuBase):
+    """L'état de chaque profil, dans la liste qui sert à choisir.
+
+    La même liste sert à connecter et à déconnecter : sans l'état, on
+    descend un tunnel déjà mort ou on remonte celui qui tient, et la
+    sortie du CLI est la première chose qui le dit — trop tard.
+    """
+
+    def setUp(self):
+        super().setUp()
+        profiles.save(
+            {
+                "name": "vivant",
+                "driver": "openconnect",
+                "server": "ssl.vpn.example-campus.net",
+                "oc_user": "someone",
+            }
+        )
+        profiles.save(
+            {
+                "name": "mort",
+                "driver": "openconnect",
+                "server": "ssl.vpn.example-campus.net",
+                "oc_user": "someone",
+            }
+        )
+
+    def listing(self, up):
+        """La liste, avec `up` disant quels profils sont montés."""
+        with patch.object(
+            OpenconnectDriver,
+            "is_up",
+            lambda self: self.profile["name"] in up,
+        ):
+            with self.answering("0"):
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    self.todo._vpn_select_profile()
+        return out.getvalue()
+
+    def test_the_connected_profile_is_marked(self):
+        printed = self.listing({"vivant"})
+        vivant = [l for l in printed.splitlines() if "vivant" in l][0]
+        mort = [l for l in printed.splitlines() if "mort" in l][0]
+        self.assertIn("🟢", vivant)
+        self.assertNotIn("🟢", mort)
+
+    def test_the_columns_stay_aligned(self):
+        """Un emoji occupe deux COLONNES pour un seul caractère : la ligne
+        non marquée en réserve deux, sinon tout ce qui suit se décale.
+
+        La mesure porte donc sur les colonnes affichées et non sur
+        `str.index`, qui compte des caractères — l'écart d'un caractère
+        entre les deux lignes est précisément ce qui les aligne à l'écran.
+        """
+        printed = self.listing({"vivant"})
+        lignes = [l for l in printed.splitlines() if "example-campus" in l]
+        self.assertEqual(len(lignes), 2, printed)
+        colonnes = {
+            largeur_affichee(l[: l.index("ssl.vpn.example-campus.net")])
+            for l in lignes
+        }
+        self.assertEqual(len(colonnes), 1, lignes)
+
+    def test_an_unknown_driver_does_not_break_the_listing(self):
+        """Un pilote retiré de la configuration ne doit pas empêcher de
+        lister les profils, ni de supprimer celui qui le nomme."""
+        self.assertFalse(
+            self.todo._vpn_is_up({"name": "x", "driver": "disparu"})
+        )
+
+    def test_connecting_what_is_already_up_asks_first(self):
+        """Remonter un tunnel qui tient rejoue toute l'authentification —
+        jusqu'à un formulaire web — pour aboutir à une interface qui
+        existait déjà."""
+        launched = []
+        with patch.object(OpenconnectDriver, "is_up", lambda self: True):
+            with patch.object(
+                self.todo, "_vpn_select_profile", return_value="vivant"
+            ):
+                with patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ):
+                    with self.answering("n"):
+                        out = io.StringIO()
+                        with redirect_stdout(out):
+                            self.todo._vpn_connect()
+        self.assertIn("déjà connecté", out.getvalue())
+        self.assertEqual(launched, [], "rien ne devait être lancé")
+
+    def test_disconnecting_what_is_down_says_so_but_proceeds(self):
+        """« down » reste utile : c'est lui qui efface l'état laissé dans
+        /run par un tunnel mort sans lui."""
+        launched = []
+        with patch.object(OpenconnectDriver, "is_up", lambda self: False):
+            with patch.object(
+                self.todo, "_vpn_select_profile", return_value="mort"
+            ):
+                with patch.object(
+                    self.todo,
+                    "_vpn_cli",
+                    lambda arguments, env=None: launched.append(arguments),
+                ):
+                    out = io.StringIO()
+                    with redirect_stdout(out):
+                        self.todo._vpn_disconnect()
+        self.assertIn("n'est pas connecté", out.getvalue())
+        self.assertEqual(launched, ["down --profile mort"])
 
 
 class ChoosingTheXmlProfile(MenuBase):

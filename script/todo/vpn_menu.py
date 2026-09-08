@@ -109,6 +109,14 @@ SSO_HELPER_NOTE = (
     " optional, and its upstream is no longer maintained."
 )
 
+# Ce qu'on dit avant de descendre un profil qui n'est pas monté. Le geste
+# garde un sens — il nettoie ce qu'un tunnel mort a laissé dans /run — et
+# le taire ferait croire à une erreur de choix.
+NOT_CONNECTED_NOTE = (
+    "This profile is not connected. Disconnecting still clears the state"
+    " a dead tunnel left behind."
+)
+
 MASTER_PASSWORD_WARNING = (
     "The vault MASTER password is stored in the configuration in clear"
     " text. Remove it and type it on demand."
@@ -271,6 +279,13 @@ class VpnMenuMixin:
         name = self._vpn_select_profile()
         if not name:
             return
+        # Remonter un tunnel qui tient rejoue toute l'authentification —
+        # jusqu'à un formulaire web et un second facteur — pour aboutir à
+        # une interface qui existait déjà.
+        if self._vpn_is_up(profiles.load(name)):
+            print(f"\n! {t('This profile is already connected.')}")
+            if not self._is_yes(input(f"{t('Connect it again? (y/N)')} : ")):
+                return
         # Lu UNE fois pour les deux exécutions qui suivent.
         secrets_env = self._vpn_secrets_env(name)
         # Le plan d'abord, l'exécution ensuite : monter un tunnel réécrit
@@ -283,8 +298,14 @@ class VpnMenuMixin:
 
     def _vpn_disconnect(self):
         name = self._vpn_select_profile()
-        if name:
-            self._vpn_cli(f"down --profile {name}")
+        if not name:
+            return
+        # « down » reste utile sur un profil déjà tombé : c'est lui qui
+        # efface l'état laissé dans /run par un tunnel mort sans lui. On le
+        # dit, on ne l'empêche pas.
+        if not self._vpn_is_up(profiles.load(name)):
+            print(f"\n! {t(NOT_CONNECTED_NOTE)}")
+        self._vpn_cli(f"down --profile {name}")
 
     def _vpn_diagnose(self):
         name = self._vpn_select_profile()
@@ -320,8 +341,22 @@ class VpnMenuMixin:
     # ------------------------------------------------------------------
     # Profils
     # ------------------------------------------------------------------
+    @staticmethod
+    def _vpn_is_up(profile):
+        """Ce profil porte-t-il un tunnel vivant ? Faux si on ne peut pas
+        savoir — un pilote retiré de la configuration ne doit pas empêcher
+        de lister les profils."""
+        driver_cls = get_driver(profile.get("driver"))
+        return bool(driver_cls) and driver_cls(profile).is_up()
+
     def _vpn_select_profile(self):
-        """Nom du profil choisi, "" si l'utilisateur renonce."""
+        """Nom du profil choisi, "" si l'utilisateur renonce.
+
+        L'état de chaque profil est affiché, parce que la liste sert autant
+        à connecter qu'à déconnecter : sans lui, on descend un tunnel déjà
+        mort ou on remonte celui qui tient, et la sortie du CLI est la
+        première chose qui le dit — trop tard.
+        """
         all_profiles = [profiles.with_defaults(p) for p in profiles.load_all()]
         if not all_profiles:
             print(t("No VPN profile yet: create one first."))
@@ -332,8 +367,12 @@ class VpnMenuMixin:
                 if profile["default_route"]
                 else ", ".join(profile["routes"])
             )
+            # Deux colonnes de large dans les deux cas : un emoji en occupe
+            # deux, et sans cela les lignes non connectées décaleraient tout
+            # ce qui suit.
+            marque = "🟢" if self._vpn_is_up(profile) else "  "
             print(
-                f"[{index}] {profile['name']:<20}"
+                f"[{index}] {marque} {profile['name']:<20}"
                 f" {profile['server']:<26} {target}"
             )
         answer = input(f"{t('Profile number (0 to go back)')} : ").strip()
