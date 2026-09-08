@@ -60,23 +60,12 @@ def faux_args(tmp, distro="arch", ca=True):
 
 
 class TestFamilles(unittest.TestCase):
-    def test_toutes_les_distributions_du_catalogue_ont_une_famille(self):
-        """Une distribution sans famille ne recevrait rien, en silence."""
-        for distro in (
-            "ubuntu",
-            "debian",
-            "linuxmint",
-            "fedora",
-            "almalinux",
-            "rocky",
-            "opensuse",
-            "arch",
-        ):
-            self.assertIn(
-                cache_family(distro),
-                CACHE_TRUST,
-                f"{distro} n'a pas de famille connue",
-            )
+    """Le catalogue est vérifié par TestAucunSystemeNestOublie, plus bas.
+
+    La liste qui était écrite ici nommait « linuxmint », qui n'est pas un
+    système déployable, et taisait Proxmox, qui l'est : recopier le catalogue
+    dans un test le fige au jour où on l'a recopié.
+    """
 
     def test_distribution_inconnue_ne_pose_rien(self):
         self.assertEqual(cache_family("plan9"), "")
@@ -212,6 +201,52 @@ class TestAccordAvecLeGo(unittest.TestCase):
             self.assertIn(
                 var, go, f"{var} est écrite côté VM mais absente du Go"
             )
+
+
+class TestAucunSystemeNestOublie(unittest.TestCase):
+    """Tout système déployable doit pouvoir recevoir l'autorité du cache.
+
+    Le détournement s'applique à TOUT le pont : un invité qui ne reçoit pas
+    l'autorité est intercepté quand même et échoue sur « self-signed
+    certificate in certificate chain » à chaque téléchargement HTTPS. Le
+    message ne dit rien d'une table incomplète, et c'est ainsi que Proxmox est
+    resté sans autorité — la famille de paquets était recopiée à côté du
+    catalogue, et la copie l'avait oublié.
+
+    Le contrôle porte donc sur la PROPRIÉTÉ : le catalogue et la table des
+    familles doivent couvrir les mêmes systèmes.
+    """
+
+    def test_chaque_systeme_du_catalogue_a_une_famille(self):
+        from script.qemu.deploy_qemu import DISTROS, cache_family
+
+        sans = sorted(d for d in DISTROS if not cache_family(d))
+        self.assertEqual(
+            sans,
+            [],
+            "ces systèmes seraient déployés SANS l'autorité du cache, et"
+            f" chaque téléchargement HTTPS y échouerait : {sans}",
+        )
+
+    def test_chaque_famille_sait_poser_lautorite(self):
+        from script.qemu.deploy_qemu import CACHE_TRUST, DISTROS, cache_family
+
+        manquantes = sorted(
+            {cache_family(d) for d in DISTROS} - set(CACHE_TRUST)
+        )
+        self.assertEqual(
+            manquantes,
+            [],
+            f"familles sans commande de confiance : {manquantes}",
+        )
+
+    def test_la_famille_vient_du_catalogue_et_nest_pas_recopiee(self):
+        """Deux tables qui disent la même chose dérivent : c'est ce qui a
+        laissé Proxmox de côté."""
+        from script.qemu.deploy_qemu import DISTRO_PKG, cache_family
+
+        for d, attendue in DISTRO_PKG.items():
+            self.assertEqual(cache_family(d), attendue, d)
 
 
 if __name__ == "__main__":

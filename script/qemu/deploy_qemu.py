@@ -2513,17 +2513,15 @@ CACHE_CERT_NAME = "erplibre-cache.crt"
 
 
 def cache_family(distro: str) -> str:
-    """Famille de gestionnaire de paquets d'une distribution du catalogue."""
-    return {
-        "ubuntu": "apt",
-        "debian": "apt",
-        "linuxmint": "apt",
-        "fedora": "dnf",
-        "almalinux": "dnf",
-        "rocky": "dnf",
-        "opensuse": "zypper",
-        "arch": "pacman",
-    }.get(distro, "")
+    """Famille de gestionnaire de paquets d'un système du catalogue.
+
+    Lue de DISTRO_PKG, qui est LA table du catalogue, plutôt que recopiée
+    ici : une copie dérive, et le système qu'elle oublie est déployé SANS
+    l'autorité du cache, alors que le détournement, lui, porte sur tout le
+    pont. Chaque téléchargement HTTPS y échoue sur « self-signed certificate
+    in certificate chain », message qui ne dit rien d'une table incomplète.
+    """
+    return DISTRO_PKG.get(distro, "")
 
 
 # ---------------------------------------------------------------------------
