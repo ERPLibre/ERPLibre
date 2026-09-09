@@ -33,7 +33,6 @@ n'a donc rien à filtrer.
 from __future__ import annotations
 
 import argparse
-import csv
 import datetime
 import decimal
 import html
@@ -50,10 +49,7 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 )
 
-from script.analyse.anonymize import (  # noqa: E402
-    CHAMPS_INTERDITS,
-    MOTS_PAR_DEFAUT,
-)
+from script.analyse.anonymize import MOTS_PAR_DEFAUT  # noqa: E402
 
 # Les clés d'erreur, à UN seul endroit. Le moteur n'écrit jamais un libellé
 # ailleurs : `t()` rend la clé quand elle manque, sans lever, donc un libellé

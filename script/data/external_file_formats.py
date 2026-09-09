@@ -27,7 +27,6 @@ import sys
 import tempfile
 import warnings
 import xml.etree.ElementTree as ET
-import zipfile
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
