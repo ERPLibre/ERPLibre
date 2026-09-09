@@ -255,6 +255,14 @@ class TransformMenuMixin:
             reste = len(feuille.get("colonnes", [])) - 12
             if reste > 0:
                 lignes.append(f"      … {reste}")
+            # Les colonnes au-delà du plafond des exemples n'en portent
+            # pas : une colonne sans exemple se lit comme une colonne
+            # vide, et le taire faisait juger une colonne sur rien.
+            manquants = feuille.get("exemples_manquants") or 0
+            if manquants:
+                lignes.append(
+                    f"      ⚠ {manquants} {t('column(s) without examples')}"
+                )
 
         hors = rapport.get("hors_cellules") or {}
         if hors:

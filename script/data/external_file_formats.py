@@ -1076,9 +1076,16 @@ def _feuilles_en_rapport(feuilles):
                 "entete_mesure": _mesure_de_la_ligne(feuille),
                 "lignes_sondees": _lignes_sondees(feuille),
                 "entete_declaree": bool(feuille.entete_declaree),
-                "exemples_tronques": (
+                # COMBIEN de colonnes n'ont pas d'exemple, non un
+                # simple « oui ». Un booléen que personne ne lisait ne
+                # disait pas plus qu'une case vide, et une colonne sans
+                # exemple se lit comme une colonne vide — l'opérateur
+                # laisse alors intacte, ou non, une colonne qu'il n'a pas
+                # vue.
+                "exemples_manquants": max(
+                    0,
                     max((len(l) for l in feuille.lignes), default=0)
-                    > EXEMPLES_COLONNES_MAX
+                    - EXEMPLES_COLONNES_MAX,
                 ),
                 "lignes": len(feuille.lignes),
                 "colonnes_n": max((len(l) for l in feuille.lignes), default=0),

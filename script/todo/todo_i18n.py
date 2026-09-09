@@ -13397,6 +13397,10 @@ TRANSLATIONS = {
         "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
         "en": "Element and attribute names are kept as structure; they may identify.",
     },
+    "column(s) without examples": {
+        "fr": "colonne(s) sans exemple",
+        "en": "column(s) without examples",
+    },
     "These cells are copied verbatim:": {
         "fr": "Ces cellules sont recopiées telles quelles :",
         "en": "These cells are copied verbatim:",

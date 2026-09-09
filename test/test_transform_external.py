@@ -797,6 +797,28 @@ class TestMenuRendus(unittest.TestCase):
         self.assertIn(todo_i18n.t("chardet"), rendu)
         self.assertIn(todo_i18n.t("sniffer"), rendu)
 
+    def test_les_colonnes_sans_exemple_sont_COMPTEES_dans_le_rapport(self):
+        """Une colonne sans exemple se lit comme une colonne vide."""
+        rendu = self.menu._transform_render_report(
+            {
+                "chemin": "s.csv",
+                "taille": 1,
+                "format": "csv",
+                "feuilles": [
+                    {
+                        "nom": "F",
+                        "lignes": 3,
+                        "colonnes_n": 505,
+                        "formules": 0,
+                        "colonnes": [],
+                        "exemples_manquants": 5,
+                    }
+                ],
+            }
+        )
+        self.assertIn(todo_i18n.t("column(s) without examples"), rendu)
+        self.assertIn("5", rendu)
+
     def test_le_bilan_nomme_CHAQUE_fichier_ecrit(self):
         """Une conversion à plusieurs feuilles en écrit plusieurs."""
         self.menu._transform_render_bilan(
@@ -2436,6 +2458,42 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self._bouchonner(tombe)
         self.assertEqual(self.menu._transform_ecran(self.RAPPORT), {})
         self.assertIn("pas de terminal", self.ecran.getvalue())
+
+
+class TestExemplesManquants(unittest.TestCase):
+    """Au-delà du plafond, les colonnes n'ont pas d'exemple, et le
+    rapport le COMPTE.
+
+    Une colonne sans exemple se lit comme une colonne vide : l'opérateur
+    la laisse intacte, ou non, sans l'avoir vue. Un booléen que personne
+    ne lisait n'en disait pas plus que la case vide elle-même.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _large(self, colonnes):
+        chemin = os.path.join(self.base, "large.csv")
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write(",".join("C%04d" % i for i in range(colonnes)) + "\n")
+            for rang in range(3):
+                flux.write(
+                    ",".join(str(rang * colonnes + i) for i in range(colonnes))
+                    + "\n"
+                )
+        return chemin
+
+    def test_le_depassement_est_compte(self):
+        large = formats.EXEMPLES_COLONNES_MAX + 5
+        feuille = formats.report(self._large(large))["feuilles"][0]
+        self.assertEqual(feuille["exemples_manquants"], 5)
+        self.assertEqual(feuille["colonnes"][-1]["exemples"], [])
+
+    def test_en_deca_du_plafond_le_compte_est_nul(self):
+        feuille = formats.report(self._large(4))["feuilles"][0]
+        self.assertEqual(feuille["exemples_manquants"], 0)
+        self.assertTrue(feuille["colonnes"][-1]["exemples"])
 
 
 class TestPorteeDeLOperateur(unittest.TestCase):
