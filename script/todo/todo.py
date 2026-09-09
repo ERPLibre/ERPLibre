@@ -4425,8 +4425,8 @@ class TODO(
         de modèles et de colonnes, et lesquels sont traduits ou uniques.
 
         La confirmation redemande le NOM de la base. Une frappe sur « o »
-        se donne par réflexe ; recopier « sireine_neutralize_upgrade_18 »
-        oblige à regarder ce qu'on détruit.
+        se tape par réflexe ; recopier un nom long oblige à regarder ce
+        qu'on détruit.
         """
         from script.analyse import monitoring
 
