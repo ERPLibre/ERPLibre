@@ -74,7 +74,10 @@ class TransformMenuMixin:
     def prompt_execute_transform(self):
         print(f"🪄 {t('External files: read, describe, then draw a copy.')}")
         choices = [
-            {"section": t("File")},
+            # Sa propre clé, et non « File » : celle-là sert aussi à
+            # trois libellés alignés au caractère et à la ligne de
+            # total des copies, qu'une icône désalignerait.
+            {"section": t("Source file")},
             {"prompt_description": t("Open a file and read its report")},
             {"section": t("Environment")},
             {"prompt_description": t("Install the reading environment")},

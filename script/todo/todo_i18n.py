@@ -12836,29 +12836,33 @@ TRANSLATIONS = {
         "fr": '🪄 Transform data - Transformer des fichiers externes',
         "en": '🪄 Transform data - Transform external files',
     },
+    'Source file': {
+        "fr": '📁 Fichier source',
+        "en": '📁 Source file',
+    },
     'External files: read, describe, then draw a copy.': {
         "fr": 'Fichiers externes : lire, décrire, puis en tirer une copie.',
         "en": 'External files: read, describe, then draw a copy.',
     },
     'Environment': {
-        "fr": 'Environnement',
-        "en": 'Environment',
+        "fr": '🧰 Environnement',
+        "en": '🧰 Environment',
     },
     'Open a file and read its report': {
-        "fr": 'Ouvrir un fichier et lire son rapport',
-        "en": 'Open a file and read its report',
+        "fr": '📖 Ouvrir un fichier et lire son rapport',
+        "en": '📖 Open a file and read its report',
     },
     'Install the reading environment': {
-        "fr": "Installer l'environnement de lecture",
-        "en": 'Install the reading environment',
+        "fr": "📦 Installer l'environnement de lecture",
+        "en": '📦 Install the reading environment',
     },
     'What can this machine read?': {
-        "fr": 'Que sait lire cette machine ?',
-        "en": 'What can this machine read?',
+        "fr": '🩺 Que sait lire cette machine ?',
+        "en": '🩺 What can this machine read?',
     },
     'Copies produced': {
-        "fr": 'Copies produites',
-        "en": 'Copies produced',
+        "fr": '🗂 Copies produites',
+        "en": '🗂 Copies produced',
     },
     'A dedicated environment is required to read this format.': {
         "fr": 'Un environnement dédié est nécessaire pour lire ce format.',
