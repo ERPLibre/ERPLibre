@@ -2504,6 +2504,68 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self.assertIn("pas de terminal", self.ecran.getvalue())
 
 
+class TestEmpanDeclareEtendu(unittest.TestCase):
+    """Un tableau OOXML déclare SA ligne de champs, pas la mise en page.
+
+    `headerRowCount` ignore ce qui est posé au-dessus du tableau. Un titre
+    de rapport en A1 restait hors de l'empan, les statistiques de colonne
+    le comptaient comme une valeur, une colonne de relation cessait d'en
+    avoir la FORME, le plancher lâchait — et les identifiants étaient
+    permutés dans la copie, toutes ses relations pointant ailleurs, sans
+    un mot.
+    """
+
+    CORPS = [[41 + rang, 100 * (rang + 1)] for rang in range(4)]
+    CHAMPS = ["partner_id", "montant"]
+
+    def _feuille(self, lignes, declaree):
+        feuille = formats.Feuille("Ventes", lignes)
+        feuille.entete_declaree = declaree
+        formats.mesurer_entetes([feuille], "xlsx")
+        return feuille
+
+    def test_le_titre_au_dessus_rejoint_l_empan(self):
+        lignes = [
+            ["Rapport mensuel", None],
+            ["Periode : janvier", None],
+            self.CHAMPS,
+        ] + self.CORPS
+        feuille = self._feuille(lignes, {3})
+        self.assertEqual(feuille.lignes_entete, {1, 2, 3})
+        # La ligne de CHAMPS ne bouge pas : le tableau la déclare.
+        self.assertEqual(feuille.ligne_champs, 3)
+
+    def test_les_statistiques_ne_comptent_plus_le_titre(self):
+        """C'est par là que la corruption passait."""
+        lignes = [
+            ["Rapport mensuel", None],
+            ["Periode : janvier", None],
+            self.CHAMPS,
+        ] + self.CORPS
+        colonne = formats._stats_colonnes(self._feuille(lignes, {3}))[0]
+        self.assertEqual(colonne["etiquette"], "partner_id")
+        self.assertEqual(colonne["remplies"], 4)
+        self.assertTrue(colonne["forme_relation"])
+        self.assertTrue(colonne["plancher"])
+
+    def test_un_tableau_en_A1_est_inchange(self):
+        feuille = self._feuille([self.CHAMPS] + self.CORPS, {1})
+        self.assertEqual(feuille.lignes_entete, {1})
+
+    def test_une_DONNEE_au_dessus_borne_la_remontee_sans_l_annuler(self):
+        """Le tableau déclare sa ligne de champs : une donnée au-dessus
+        ne remet pas ce fait en cause, contrairement à la mesure, qui n'a
+        rien qui le lui dise."""
+        lignes = [[45, 500], self.CHAMPS] + self.CORPS
+        feuille = self._feuille(lignes, {2})
+        self.assertEqual(feuille.lignes_entete, {2})
+
+    def test_un_empan_declare_de_deux_lignes_est_inchange(self):
+        lignes = [["Bloc", "Bloc"], self.CHAMPS] + self.CORPS
+        feuille = self._feuille(lignes, {1, 2})
+        self.assertEqual(feuille.lignes_entete, {1, 2})
+
+
 class TestRapportResynchronise(unittest.TestCase):
     """Le rapport suit l'empan DÉSIGNÉ, non celui qui a été mesuré.
 

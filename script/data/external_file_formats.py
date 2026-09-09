@@ -323,7 +323,7 @@ def mesurer_entetes(feuilles, format_lu, corrections=None, memoire=None):
         if demandee is not None:
             empan = {int(n) for n in demandee if int(n) >= 1}
         elif feuille.entete_declaree:
-            empan = set(feuille.entete_declaree)
+            empan = _empan_etendu(feuille.lignes, set(feuille.entete_declaree))
         elif format_lu in FORMATS_ENTETE_FABRIQUEE or feuille.ligne1_fabriquee:
             empan = {1}
         else:
@@ -331,6 +331,33 @@ def mesurer_entetes(feuilles, format_lu, corrections=None, memoire=None):
         feuille.lignes_entete = empan
         feuille.ligne_champs = max(empan) if empan else None
         _rendre_les_brutes(feuille)
+
+
+def _empan_etendu(lignes, empan):
+    """L'empan, remonté sur ce qui le surmonte sans être des données.
+
+    La même remontée que la mesure, appliquée à l'empan DÉCLARÉ. Un
+    tableau OOXML déclare `headerRowCount`, donc SA ligne de champs, mais
+    ignore la mise en page posée au-dessus de lui : un titre de rapport en
+    A1 restait hors de l'empan, et les statistiques de colonne le
+    comptaient comme une valeur. Une colonne de relation cessait alors
+    d'avoir la FORME d'une relation, le plancher lâchait, et les
+    identifiants étaient permutés dans la copie — toutes ses relations
+    pointant ailleurs, sans un mot.
+
+    À la différence de la mesure, l'empan n'a pas à ATTEINDRE la ligne 1 :
+    le tableau déclare sa propre ligne de champs, donc une donnée
+    au-dessus ne remet pas ce fait en cause. Elle borne seulement la
+    remontée, et reste en portée.
+    """
+    if not empan:
+        return empan
+    etendu = set(empan)
+    haut = min(etendu) - 1
+    while haut >= 1 and not _est_de_la_donnee(lignes, haut):
+        etendu.add(haut)
+        haut -= 1
+    return etendu
 
 
 def _rendre_les_brutes(feuille):
