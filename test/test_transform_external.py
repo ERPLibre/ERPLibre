@@ -2117,6 +2117,93 @@ class TestRapportDeLEnTete(unittest.TestCase):
         self.assertNotIn("etiquette", colonnes[0]["exemples"])
 
 
+class TestColonneRepondue(unittest.TestCase):
+    """La règle des colonnes laissées intactes, en UN endroit.
+
+    Elle vivait en trois copies — la portée, les colonnes écartées, les
+    colonnes saturées — donc trois occasions de divergence. Et l'ensemble
+    était GLOBAL : répondre « 3 » gelait la colonne 3 des dix feuilles
+    d'un classeur, si bien qu'un écran laissant cocher la colonne 3 de la
+    septième feuille aurait tenu une promesse fausse.
+    """
+
+    def test_l_ensemble_plat_reste_global(self):
+        """La question textuelle répond comme avant : elle ne sait pas de
+        quelle feuille elle parle."""
+        options = {"colonnes_intactes": {"3"}}
+        self.assertTrue(noyau.colonne_repondue("A", 3, None, options))
+        self.assertTrue(noyau.colonne_repondue("B", 3, None, options))
+
+    def test_l_ensemble_par_feuille_ne_vaut_QUE_pour_elle(self):
+        options = {"colonnes_intactes_par_feuille": {"A": {"ref"}}}
+        self.assertTrue(noyau.colonne_repondue("A", 5, "ref", options))
+        self.assertFalse(noyau.colonne_repondue("B", 5, "ref", options))
+
+    def test_l_index_ne_repond_que_sans_etiquette(self):
+        """Sinon « 1 » désigne à la fois la colonne étiquetée « 1 » et la
+        première colonne, et une réponse en épargne deux."""
+        options = {"colonnes_intactes": {"3"}}
+        self.assertFalse(noyau.colonne_repondue("A", 3, "nom", options))
+        self.assertTrue(noyau.colonne_repondue("A", 3, None, options))
+        self.assertTrue(noyau.colonne_repondue("A", 3, "   ", options))
+
+    def test_les_deux_ensembles_se_cumulent(self):
+        options = {
+            "colonnes_intactes": {"nom"},
+            "colonnes_intactes_par_feuille": {"A": {"ref"}},
+        }
+        self.assertTrue(noyau.colonne_repondue("A", 1, "nom", options))
+        self.assertTrue(noyau.colonne_repondue("A", 2, "ref", options))
+        self.assertTrue(noyau.colonne_repondue("B", 1, "nom", options))
+        self.assertFalse(noyau.colonne_repondue("B", 2, "ref", options))
+
+    def test_sans_aucune_reponse_rien_n_est_gele(self):
+        for options in (
+            {},
+            {"colonnes_intactes": set()},
+            {"colonnes_intactes_par_feuille": {}},
+        ):
+            with self.subTest(options=options):
+                self.assertFalse(
+                    noyau.colonne_repondue("A", 1, "nom", options)
+                )
+
+    def test_la_portee_reprend_la_meme_regle(self):
+        """Le test qui lie les deux : une divergence entre la portée et
+        cette règle laisserait sortir une colonne annoncée gelée."""
+        options = {
+            "entetes": False,
+            "lignes_entete": {("A", 1)},
+            "colonnes_intactes_par_feuille": {"A": {"ref"}},
+            "etiquettes": {("A", 2): "ref"},
+        }
+        self.assertFalse(noyau.cellule_en_portee("A", 2, 2, options))
+        self.assertTrue(noyau.cellule_en_portee("B", 2, 2, options))
+
+    def test_preparer_normalise_le_par_feuille(self):
+        """Un dict {nom: [str]} traverse le sous-processus ; l'espace
+        autour d'une réponse tapée à la main ne doit pas la manquer."""
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        source = os.path.join(base, "s.csv")
+        with open(source, "w", encoding="utf-8") as flux:
+            flux.write("etiquette,montant,date\n")
+            flux.write("aboulie,12,2019-01-02\n")
+            flux.write("acai,13,2019-01-03\n")
+        _f, _fe, _c, _r, options = formats._preparer(
+            source,
+            {
+                "colonnes_intactes_par_feuille": {
+                    formats.NOM_FEUILLE_NEUTRE: [" montant ", ""]
+                }
+            },
+        )
+        self.assertEqual(
+            options["colonnes_intactes_par_feuille"],
+            {formats.NOM_FEUILLE_NEUTRE: {"montant"}},
+        )
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 

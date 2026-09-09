@@ -1959,6 +1959,15 @@ def _preparer(chemin, options):
     options.setdefault("texte", True)
     options.setdefault("entetes", False)
     options["colonnes_intactes"] = set(options.get("colonnes_intactes") or [])
+    # Un dict {nom: [str]} traverse le sous-processus ; un set et un dict à
+    # clés tuple sont refusés par `json.dumps`, ce qui est la raison pour
+    # laquelle les clés dérivées de `_preparer` ne voyagent jamais.
+    options["colonnes_intactes_par_feuille"] = {
+        str(nom): {str(c).strip() for c in (liste or []) if str(c).strip()}
+        for nom, liste in (
+            options.get("colonnes_intactes_par_feuille") or {}
+        ).items()
+    }
 
     classeur = None
     if format_lu == "xlsx":
@@ -2167,27 +2176,22 @@ def _colonnes_ecartees(rapport, options):
                         "raison": "plancher",
                     }
                 )
-            elif (
-                colonne.get("etiquette")
-                and colonne["etiquette"] in options["colonnes_intactes"]
+            elif noyau.colonne_repondue(
+                feuille["nom"],
+                colonne["index"],
+                colonne.get("etiquette"),
+                options,
             ):
+                # La MÊME règle que la portée : la répéter ici faisait
+                # trois occasions de divergence. Une colonne sans
+                # étiquette ne se désigne que par son index, et l'aperçu
+                # ne la nommait pas du tout.
                 ecartees.append(
                     {
                         "feuille": feuille["nom"],
-                        "etiquette": colonne["etiquette"],
-                        "raison": "question",
-                    }
-                )
-            elif (
-                not colonne.get("etiquette")
-                and str(colonne["index"]) in options["colonnes_intactes"]
-            ):
-                # Une colonne sans étiquette ne se désigne que par son
-                # index ; l'aperçu ne la nommait pas du tout.
-                ecartees.append(
-                    {
-                        "feuille": feuille["nom"],
-                        "etiquette": f"#{colonne['index']}",
+                        "etiquette": (
+                            colonne.get("etiquette") or f"#{colonne['index']}"
+                        ),
                         "raison": "question",
                     }
                 )
@@ -2302,7 +2306,6 @@ def _colonnes_saturees(rapport, options):
     """
     if not options.get("nombres", True):
         return []
-    intactes = options.get("colonnes_intactes") or set()
     saturees = []
     for feuille in rapport.get("feuilles", []):
         if (
@@ -2314,7 +2317,9 @@ def _colonnes_saturees(rapport, options):
             if colonne.get("plancher") or not colonne.get("entiere"):
                 continue
             etiquette = colonne.get("etiquette")
-            if str(etiquette or colonne["index"]).strip() in intactes:
+            if noyau.colonne_repondue(
+                feuille["nom"], colonne["index"], etiquette, options
+            ):
                 continue
             distinctes = colonne.get("distinctes") or 0
             if distinctes >= PLAFOND_DISTINCTES:

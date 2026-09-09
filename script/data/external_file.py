@@ -909,14 +909,38 @@ def cellule_en_portee(feuille, ligne, colonne, options):
     )
     if colonne_plancher(etiquette, forme, forme_rel, selection):
         return False
-    intactes = options.get("colonnes_intactes") or set()
-    if etiquette is not None:
-        # L'index ne répond QUE pour une colonne sans étiquette. Sinon « 1 »
-        # désigne à la fois la colonne étiquetée « 1 » et la première
-        # colonne, et une seule réponse en épargne deux — dont celle des
-        # noms, que l'aperçu n'annonçait pas.
-        return str(etiquette).strip() not in intactes
-    return str(colonne) not in intactes
+    return not colonne_repondue(feuille, colonne, etiquette, options)
+
+
+def colonne_repondue(feuille, colonne, etiquette, options):
+    """L'opérateur a-t-il demandé de laisser CETTE colonne intacte ?
+
+    Deux ensembles, consultés dans cet ordre : celui de la FEUILLE, puis
+    le plat. Le plat était seul, et il est global : répondre « 3 » gelait
+    la colonne 3 des dix feuilles d'un classeur. Un écran qui laisse
+    cocher la colonne 3 de la septième feuille tiendrait donc une promesse
+    fausse — et l'erreur va du mauvais côté, neuf feuilles restant
+    sous-anonymisées.
+
+    L'index ne répond QUE pour une colonne sans étiquette. Sinon « 1 »
+    désigne à la fois la colonne étiquetée « 1 » et la première colonne,
+    et une seule réponse en épargne deux — dont celle des noms, que
+    l'aperçu n'annonçait pas.
+
+    La règle vit ICI et nulle part ailleurs : `_colonnes_ecartees` et
+    `_colonnes_saturees` la reprenaient chacune à sa façon, ce qui fait
+    trois occasions de divergence.
+    """
+    if etiquette is not None and str(etiquette).strip():
+        reponse = str(etiquette).strip()
+    else:
+        reponse = str(colonne)
+    par_feuille = (options.get("colonnes_intactes_par_feuille") or {}).get(
+        feuille
+    )
+    if par_feuille and reponse in par_feuille:
+        return True
+    return reponse in (options.get("colonnes_intactes") or set())
 
 
 def anonymise_cellule(valeur, options, table, rng, bornes=None):
