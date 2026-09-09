@@ -46,16 +46,20 @@ past.
 
 ## The menu
 
-`Assistant › LLM` carries four entries today. `[2] gpt tools` does not exist
-yet, and an entry answering "not yet" would be worse than its absence: phase
-3 inserts it and renumbers.
+`Assistant › LLM` carries five entries.
 
 | Entry | What it does |
 |-------|--------------|
 | Free question | the conversation with the server in use, or the remote fallback when no local one answered |
+| gpt tools | the catalogue, compatible ones first, picked by letter |
 | Known servers | list, pick, add by hand, delete |
-| Search for a server… | here on the loopback, or an address you type |
+| Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
+
+Entries are picked by number, the catalogue by LETTER. A second numbered list
+right after a numbered menu invites retyping a menu entry, and this repository
+has already paid for that once. A digit is still accepted there as a rank,
+because the finger has just typed one.
 
 A third-party destination has to be **retyped** before the first send —
 once per session, and for that destination only. A keystroke on "y" is given
@@ -68,8 +72,66 @@ deserved keeping. Every command carries a leading slash and no bare number is
 one: a question pasted over several lines becomes that many turns, and a
 pasted line reading `0` would otherwise trigger a menu entry.
 
-Host discovery beyond the loopback — QEMU domains, `~/.ssh/config`, a sweep
-of the local `/24` — arrives with `discover.py` in phase 2.
+## Finding a server that is not here
+
+Four sources answer "where should I look": the loopback, the QEMU domains of
+this machine, the hosts of `~/.ssh/config`, and a swept `/24`. Two of them are
+INJECTED — enumerating libvirt domains and resolving an SSH alias already
+exist as methods of the CLI class, which this package may not import.
+
+A server often lives on a network this machine does not CARRY, reachable
+through the gateway: when the CLI runs inside a virtual machine, the "local
+network" it sees is the hypervisor's. Two sources answer that — a typed CIDR,
+and the networks read over SSH on another machine then swept from here. The
+neighbour table cannot: it is link-local, so a routed host never appears in
+it.
+
+Anything wider than a `/24` is refused, and the refusal happens BEFORE
+enumeration — measuring a `/8` by materialising it would cost sixteen million
+addresses. The pool is sized by WAVE COUNT and never by core count: these
+threads wait on the network. And the connection timeout is the one setting
+here that manufactures FALSE NEGATIVES — a host reachable in one millisecond
+when idle is missed at five hundredths under a thousand simultaneous
+connections, so it does not follow from measured latency.
+
+## The gpt catalogue
+
+A gpt is one Markdown file: YAML front-matter, a system prompt, and a declared
+READ-ONLY context. Nothing in it runs on the model's behalf.
+
+Its requirements are matched against what the server announces, and one rule
+governs the display: UNKNOWN NEVER GREYS OUT. Only a requirement contradicted
+by a field actually read from the server does — greying on the unknown would
+empty the catalogue in front of a server that announces nothing, which is to
+say in front of most of them. An estimated value never greys either.
+
+`yaml.safe_load` is no validator, and that shapes the loader. Front-matter
+that is a list returns a list, a scalar returns a string, an empty file
+returns nothing, and a REPEATED key resolves silently to the last — so two
+`requires` blocks changed a gpt's safety class without a word. Hence a type
+check and a re-read of the raw text.
+
+A gpt from outside the repository is forced to loopback and may declare no
+command at all: a file nobody reviewed is configuration, not data.
+
+## What a declared context may read
+
+The deny list comes first and resolves the REAL path: neither "tracked by
+git" nor "ignored by git" is a usable gate, since `private/` is partly tracked
+and `tasks/` is in no ignore file. A symlink is therefore resolved before it
+is compared.
+
+A command is an argv, never an interpreter string, and it is checked against
+an allowlist that lives in the repository. Substitution of a typed input
+happens BEFORE that check, never after: validating a template and then
+injecting a value would validate what is not run.
+
+Every assembled byte passes the repository's detector — and the honest limit
+is stated rather than hidden. It recognises addresses, e-mails and account
+paths. It does NOT recognise names, unless a list enumerates them, and that
+list does not usually exist. An absence of findings therefore proves nothing
+about names, and a send to a third party is REFUSED in that case even with no
+finding at all.
 
 ## Where a server is written, and what is not
 
@@ -94,6 +156,29 @@ result, no timestamped log**. The list of who answered among the 254
 addresses of a `/24` describes machines nobody designated, where a retained
 server designates exactly one, on purpose.
 
+## The machine's Claude Code sessions
+
+A session open elsewhere already holds a piece of work, and asking it one
+question without retyping that is worth the trip. It sits under `GPT code`
+rather than the LLM submenu: a session is a process addressed by identifier, a
+server is a host addressed by port, and mixing the two in one numbered list
+would make two mental models share the same digits.
+
+Two hazards had to be measured before offering it. A pid does not prove a
+session lives — pids are recycled, so liveness needs the pid AND the process's
+start time. And the tool does not REFUSE to resume a session a terminal holds,
+its guard skipping interactive holders; two writers then split the transcript
+and one branch is orphaned. A copy is branched by default, and writing into a
+held session requires retyping the holder's pid.
+
+The privacy boundary is the one the system already drew. The registry is
+world-readable, so pid, directory, name and identifier are no secret there.
+Transcripts are not: only two STRUCTURAL fields come out of them — the working
+directory and the git branch — never a title, a prompt or a message. The
+working directory is read there rather than derived from the containing
+directory's name, because that transformation turns separators, dots and
+underscores all into dashes and so cannot be inverted.
+
 ## The modules
 
 | File | What it owns |
@@ -104,6 +189,10 @@ server designates exactly one, on purpose.
 | `servers.py` | the retained servers: opaque handles, reading and writing |
 | `backends.py` | speaking to one destination: an HTTP server, or the `claude` CLI |
 | `chat.py` | the turns of a conversation, and the commands that drive it |
+| `discover.py` | which (host, port) pairs are worth a fingerprint, and the knock |
+| `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
+| `context.py` | what a declared context may read, and what the gate allows |
+| `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and

@@ -51,16 +51,20 @@ past.
 
 ## The menu
 
-`Assistant › LLM` carries four entries today. `[2] gpt tools` does not exist
-yet, and an entry answering "not yet" would be worse than its absence: phase
-3 inserts it and renumbers.
+`Assistant › LLM` carries five entries.
 
 | Entry | What it does |
 |-------|--------------|
 | Free question | the conversation with the server in use, or the remote fallback when no local one answered |
+| gpt tools | the catalogue, compatible ones first, picked by letter |
 | Known servers | list, pick, add by hand, delete |
-| Search for a server… | here on the loopback, or an address you type |
+| Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
+
+Entries are picked by number, the catalogue by LETTER. A second numbered list
+right after a numbered menu invites retyping a menu entry, and this repository
+has already paid for that once. A digit is still accepted there as a rank,
+because the finger has just typed one.
 
 A third-party destination has to be **retyped** before the first send —
 once per session, and for that destination only. A keystroke on "y" is given
@@ -73,8 +77,66 @@ deserved keeping. Every command carries a leading slash and no bare number is
 one: a question pasted over several lines becomes that many turns, and a
 pasted line reading `0` would otherwise trigger a menu entry.
 
-Host discovery beyond the loopback — QEMU domains, `~/.ssh/config`, a sweep
-of the local `/24` — arrives with `discover.py` in phase 2.
+## Finding a server that is not here
+
+Four sources answer "where should I look": the loopback, the QEMU domains of
+this machine, the hosts of `~/.ssh/config`, and a swept `/24`. Two of them are
+INJECTED — enumerating libvirt domains and resolving an SSH alias already
+exist as methods of the CLI class, which this package may not import.
+
+A server often lives on a network this machine does not CARRY, reachable
+through the gateway: when the CLI runs inside a virtual machine, the "local
+network" it sees is the hypervisor's. Two sources answer that — a typed CIDR,
+and the networks read over SSH on another machine then swept from here. The
+neighbour table cannot: it is link-local, so a routed host never appears in
+it.
+
+Anything wider than a `/24` is refused, and the refusal happens BEFORE
+enumeration — measuring a `/8` by materialising it would cost sixteen million
+addresses. The pool is sized by WAVE COUNT and never by core count: these
+threads wait on the network. And the connection timeout is the one setting
+here that manufactures FALSE NEGATIVES — a host reachable in one millisecond
+when idle is missed at five hundredths under a thousand simultaneous
+connections, so it does not follow from measured latency.
+
+## The gpt catalogue
+
+A gpt is one Markdown file: YAML front-matter, a system prompt, and a declared
+READ-ONLY context. Nothing in it runs on the model's behalf.
+
+Its requirements are matched against what the server announces, and one rule
+governs the display: UNKNOWN NEVER GREYS OUT. Only a requirement contradicted
+by a field actually read from the server does — greying on the unknown would
+empty the catalogue in front of a server that announces nothing, which is to
+say in front of most of them. An estimated value never greys either.
+
+`yaml.safe_load` is no validator, and that shapes the loader. Front-matter
+that is a list returns a list, a scalar returns a string, an empty file
+returns nothing, and a REPEATED key resolves silently to the last — so two
+`requires` blocks changed a gpt's safety class without a word. Hence a type
+check and a re-read of the raw text.
+
+A gpt from outside the repository is forced to loopback and may declare no
+command at all: a file nobody reviewed is configuration, not data.
+
+## What a declared context may read
+
+The deny list comes first and resolves the REAL path: neither "tracked by
+git" nor "ignored by git" is a usable gate, since `private/` is partly tracked
+and `tasks/` is in no ignore file. A symlink is therefore resolved before it
+is compared.
+
+A command is an argv, never an interpreter string, and it is checked against
+an allowlist that lives in the repository. Substitution of a typed input
+happens BEFORE that check, never after: validating a template and then
+injecting a value would validate what is not run.
+
+Every assembled byte passes the repository's detector — and the honest limit
+is stated rather than hidden. It recognises addresses, e-mails and account
+paths. It does NOT recognise names, unless a list enumerates them, and that
+list does not usually exist. An absence of findings therefore proves nothing
+about names, and a send to a third party is REFUSED in that case even with no
+finding at all.
 
 ## Where a server is written, and what is not
 
@@ -99,6 +161,29 @@ result, no timestamped log**. The list of who answered among the 254
 addresses of a `/24` describes machines nobody designated, where a retained
 server designates exactly one, on purpose.
 
+## The machine's Claude Code sessions
+
+A session open elsewhere already holds a piece of work, and asking it one
+question without retyping that is worth the trip. It sits under `GPT code`
+rather than the LLM submenu: a session is a process addressed by identifier, a
+server is a host addressed by port, and mixing the two in one numbered list
+would make two mental models share the same digits.
+
+Two hazards had to be measured before offering it. A pid does not prove a
+session lives — pids are recycled, so liveness needs the pid AND the process's
+start time. And the tool does not REFUSE to resume a session a terminal holds,
+its guard skipping interactive holders; two writers then split the transcript
+and one branch is orphaned. A copy is branched by default, and writing into a
+held session requires retyping the holder's pid.
+
+The privacy boundary is the one the system already drew. The registry is
+world-readable, so pid, directory, name and identifier are no secret there.
+Transcripts are not: only two STRUCTURAL fields come out of them — the working
+directory and the git branch — never a title, a prompt or a message. The
+working directory is read there rather than derived from the containing
+directory's name, because that transformation turns separators, dots and
+underscores all into dashes and so cannot be inverted.
+
 ## The modules
 
 | File | What it owns |
@@ -109,6 +194,10 @@ server designates exactly one, on purpose.
 | `servers.py` | the retained servers: opaque handles, reading and writing |
 | `backends.py` | speaking to one destination: an HTTP server, or the `claude` CLI |
 | `chat.py` | the turns of a conversation, and the commands that drive it |
+| `discover.py` | which (host, port) pairs are worth a fingerprint, and the knock |
+| `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
+| `context.py` | what a declared context may read, and what the gate allows |
+| `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and
@@ -166,16 +255,20 @@ position de passer.
 
 ## Le menu
 
-`Assistant › LLM` porte quatre entrées aujourd'hui. `[2] Outils gpt`
-n'existe pas encore, et une entrée qui répondrait « pas encore » serait pire
-que son absence : la phase 3 l'insère et renumérote.
+`Assistant › LLM` porte cinq entrées.
 
 | Entrée | Ce qu'elle fait |
 |--------|-----------------|
 | Question libre | la conversation avec le serveur en usage, ou le repli distant quand aucun local n'a répondu |
+| Outils gpt | le catalogue, les compatibles en tête, choisis par lettre |
 | Serveurs connus | lister, choisir, ajouter à la main, supprimer |
-| Chercher un serveur… | ici sur la boucle locale, ou une adresse qu'on tape |
+| Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
+
+Les entrées se choisissent par numéro, le catalogue par LETTRE. Une seconde
+liste numérotée juste après un menu numéroté invite à retaper une entrée de
+menu, et ce dépôt l'a déjà payé une fois. Un chiffre y reste accepté comme
+rang, parce que le doigt vient d'en taper un.
 
 Une destination tierce doit être **retapée** avant le premier envoi — une
 fois par session, et pour cette destination seulement. Une frappe sur « o »
@@ -191,8 +284,65 @@ plusieurs lignes devient autant de tours, et une ligne collée valant `0`
 déclencherait sinon une entrée de menu.
 
 La découverte d'hôtes au-delà de la boucle locale — domaines QEMU,
-`~/.ssh/config`, balayage du `/24` local — arrive avec `discover.py` en
-phase 2.
+`~/.ssh/config`, balayage du `/24` local — repose sur quatre sources, dont
+deux sont INJECTÉES : l'énumération des domaines libvirt et la résolution d'un
+alias SSH existent déjà comme méthodes de la classe du CLI, que ce paquet n'a
+pas le droit d'importer.
+
+Un serveur vit souvent sur un réseau que cette machine ne PORTE pas, joignable
+par la passerelle : quand le CLI tourne dans une machine virtuelle, le
+« réseau local » qu'il voit est celui de l'hyperviseur. Deux sources y
+répondent — un CIDR saisi, et les réseaux lus en SSH sur une autre machine
+puis balayés d'ici. La table de voisinage, elle, ne peut pas : elle est
+link-local, donc un hôte routé n'y figure jamais.
+
+Plus large qu'un `/24` est refusé, et le refus précède l'énumération —
+mesurer un `/8` en le matérialisant coûterait seize millions d'adresses. La
+piscine se dimensionne par NOMBRE DE VAGUES et jamais par nombre de cœurs :
+ces fils attendent le réseau. Et le délai de connexion est le seul réglage
+d'ici qui fabrique des FAUX NÉGATIFS — un hôte joignable en une milliseconde
+au repos se manque à cinq centièmes sous mille connexions simultanées, donc il
+ne se déduit pas de la latence mesurée.
+
+## Le catalogue d'outils gpt
+
+Un gpt est un fichier Markdown : en-tête YAML, invite système, contexte
+READ-ONLY déclaré. Rien n'y s'exécute au nom du modèle.
+
+Ses exigences sont confrontées à ce que le serveur annonce, et une règle
+gouverne l'affichage : L'INCONNU NE GRISE JAMAIS. Seule une exigence
+contredite par un champ réellement lu sur le serveur grise — griser sur
+l'inconnu viderait le catalogue devant un serveur qui n'annonce rien,
+c'est-à-dire devant la plupart. Une valeur estimée ne grise pas non plus.
+
+`yaml.safe_load` n'est pas un validateur, et cela façonne le chargeur. Un
+en-tête qui est une liste rend une liste, un scalaire rend une chaîne, un
+fichier vide ne rend rien, et une clé RÉPÉTÉE est résolue en silence sur la
+dernière — deux blocs `requires` changeaient donc la classe de sûreté d'un gpt
+sans un mot. D'où un contrôle de type et une relecture du texte brut.
+
+Un gpt hors du dépôt est forcé en boucle locale et ne peut déclarer aucune
+commande : un fichier que personne n'a relu est de la configuration, pas une
+donnée.
+
+## Ce qu'un contexte déclaré a le droit de lire
+
+La liste de refus passe la première et se résout sur le chemin RÉEL : ni
+« suivi par git » ni « ignoré par git » n'est une porte utilisable, puisque
+`private/` est partiellement suivi et que `tasks/` n'est dans aucun fichier
+d'exclusion. Un lien symbolique est donc résolu avant d'être comparé.
+
+Une commande est un argv, jamais une chaîne d'interpréteur, et elle est
+confrontée à une liste d'autorisation qui vit dans le dépôt. La substitution
+d'une entrée saisie précède ce contrôle, jamais l'inverse : vérifier un
+gabarit puis y injecter une valeur vérifierait ce qu'on n'exécute pas.
+
+Chaque octet assemblé passe par le détecteur du dépôt — et sa limite est dite
+plutôt que cachée. Il reconnaît les adresses, les courriels et les chemins de
+compte. Il ne reconnaît PAS les noms, sauf si une liste les énumère, et cette
+liste n'existe pas d'ordinaire. Une absence de trouvaille ne prouve donc rien
+sur les noms, et un envoi vers un tiers est REFUSÉ dans ce cas, même sans
+aucune trouvaille.
 
 ## Où s'écrit un serveur, et ce qui ne s'écrit pas
 
@@ -218,6 +368,30 @@ vivant, ni résultat négatif, ni journal horodaté**. La liste de qui a répond
 parmi les 254 adresses d'un `/24` décrit des machines que personne n'a
 désignées, là où un serveur retenu en désigne une seule, volontairement.
 
+## Les sessions Claude Code de la machine
+
+Une session ouverte ailleurs porte déjà le contexte d'un travail, et lui poser
+une question sans le retaper vaut le détour. Elle vit sous « GPT code » et non
+sous le sous-menu LLM : une session est un processus adressé par identifiant,
+un serveur est un hôte adressé par port, et les mêler dans une seule liste
+numérotée ferait partager les mêmes chiffres à deux modèles mentaux.
+
+Deux dangers ont dû être mesurés avant de le proposer. Un pid ne prouve pas
+qu'une session vit — les pids se recyclent, donc la vivacité exige le pid ET
+le moment de démarrage du processus. Et l'outil ne REFUSE pas de reprendre une
+session qu'un terminal tient, son garde-fou écartant les détenteurs
+interactifs ; deux écritures scindent alors la transcription et une branche est
+orpheline. Une copie est branchée par défaut, et écrire dans une session tenue
+exige de retaper le pid du détenteur.
+
+La frontière de vie privée est celle que le système a déjà tracée. Le registre
+est lisible par tous, donc pid, répertoire, nom et identifiant n'y sont pas des
+secrets. Les transcriptions ne le sont pas : il n'en sort que deux champs de
+STRUCTURE — le répertoire de travail et la branche git — jamais un titre, une
+invite ou un message. Le répertoire y est LU plutôt que dérivé du nom du
+répertoire qui la contient, parce que cette transformation change les
+séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
@@ -228,6 +402,10 @@ désignées, là où un serveur retenu en désigne une seule, volontairement.
 | `servers.py` | les serveurs retenus : poignées opaques, lecture et écriture |
 | `backends.py` | parler à une destination : un serveur HTTP, ou le CLI `claude` |
 | `chat.py` | les tours d'une conversation, et les commandes qui la pilotent |
+| `discover.py` | quels couples (hôte, port) méritent une reconnaissance, et la frappe |
+| `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
+| `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
+| `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et
