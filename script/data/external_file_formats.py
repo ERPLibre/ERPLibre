@@ -358,7 +358,7 @@ def _forme_de_valeur(valeur):
 
     Les répétitions sont écrasées, si bien que « 99999 » et « 999999 »
     sont une seule forme. Une ligne de données partage la forme de sa
-    colonne — « IN137784 » au-dessus de « IN137785 » — et un nom de champ
+    colonne — « ZK204817 » au-dessus de « ZK204818 » — et un nom de champ
     non. C'est ce qui tranche là où le type ne dit rien, les deux étant du
     texte.
     """
@@ -463,8 +463,8 @@ def _est_une_ligne_de_champs(signaux, accord):
     y est donc « pas d'en-tête », ce qui anonymise la ligne — le côté sur
     lequel pencher — et l'opérateur corrige.
 
-    Une classe de LONGUEUR ne lève pas l'aveuglement : « IN137784 » et
-    « ORD154711 » doivent s'accorder alors que « etiquette » et
+    Une classe de LONGUEUR ne lève pas l'aveuglement : « ZK204817 » et
+    « MPQ204818 » doivent s'accorder alors que « etiquette » et
     « aboulie » doivent se distinguer, et aucune frontière ne fait les
     deux — mesuré sur cinq jeux de seuils.
     """

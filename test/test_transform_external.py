@@ -1645,7 +1645,7 @@ class TestValeursGardeesDesFormules(unittest.TestCase):
 def _corps(hauteur=8):
     """Un corps de tableau réaliste : trois formes de colonne distinctes."""
     return [
-        ["IN%06d" % (137784 + i), 1028 + i, 100.5 + i] for i in range(hauteur)
+        ["ZK%06d" % (204817 + i), 501 + i, 100.5 + i] for i in range(hauteur)
     ]
 
 
@@ -1718,8 +1718,8 @@ class TestFormeDeValeur(unittest.TestCase):
 
     def test_deux_valeurs_du_meme_moule_ont_une_seule_forme(self):
         self.assertEqual(
-            formats._forme_de_valeur("IN137784"),
-            formats._forme_de_valeur("ORD154711"),
+            formats._forme_de_valeur("ZK204817"),
+            formats._forme_de_valeur("MPQ204818"),
         )
 
     def test_les_longueurs_ne_distinguent_pas(self):
@@ -1733,13 +1733,13 @@ class TestFormeDeValeur(unittest.TestCase):
     def test_un_nom_de_champ_se_distingue_de_ses_donnees(self):
         self.assertNotEqual(
             formats._forme_de_valeur("N° facture"),
-            formats._forme_de_valeur("IN137784"),
+            formats._forme_de_valeur("ZK204817"),
         )
 
     def test_une_date_et_un_nombre_ne_se_confondent_pas(self):
         self.assertNotEqual(
-            formats._forme_de_valeur("2023-04-21"),
-            formats._forme_de_valeur(20230421),
+            formats._forme_de_valeur("2011-03-09"),
+            formats._forme_de_valeur(20110309),
         )
 
     def test_none_rend_la_forme_vide(self):
@@ -2060,9 +2060,7 @@ class TestRapportDeLEnTete(unittest.TestCase):
         "acai,830,2019-01-03,B2\n"
         "adobe,940,2019-01-04,C3\n"
     )
-    SANS = (
-        "IN137784,1028,100.5\n" "IN137785,1029,101.5\n" "IN137786,1030,102.5\n"
-    )
+    SANS = "ZK204817,501,100.5\n" "ZK204818,502,101.5\n" "ZK204819,503,102.5\n"
 
     def test_l_empan_est_une_LISTE_serialisable(self):
         """Un set ne passe pas `json.dump`, et ce rapport traverse un
@@ -2317,9 +2315,9 @@ class TestMemoireDesEntetes(unittest.TestCase):
     def _csv(self, nom):
         chemin = os.path.join(self.base, nom)
         with open(chemin, "w", encoding="utf-8") as flux:
-            flux.write("IN137784,1028,100.5\n")
-            flux.write("IN137785,1029,101.5\n")
-            flux.write("IN137786,1030,102.5\n")
+            flux.write("ZK204817,501,100.5\n")
+            flux.write("ZK204818,502,101.5\n")
+            flux.write("ZK204819,503,102.5\n")
         return chemin
 
     OPTIONS = {"nombres": True, "textes": True, "graine": 7, "feuilles": []}
@@ -2351,7 +2349,7 @@ class TestMemoireDesEntetes(unittest.TestCase):
             ),
         )
         valeurs = [c["valeur"] for c in apercu["entete_gardee"]]
-        self.assertIn("IN137784", valeurs)
+        self.assertIn("ZK204817", valeurs)
 
     def test_sans_memoire_la_mesure_tranche_et_la_ligne_1_est_en_portee(self):
         apercu = formats.plan(
