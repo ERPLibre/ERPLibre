@@ -1763,6 +1763,112 @@ class TestFormeDeValeur(unittest.TestCase):
         self.assertIsNone(formats._signaux_entete([["a", "b"]], 1))
 
 
+class TestSignalHorsColonne(unittest.TestCase):
+    """`hors_colonne` n'a de pouvoir que sur une colonne à VOCABULAIRE.
+
+    La régression qu'il ferme : sur une grille tout-texte aux valeurs
+    toutes distinctes, une ligne de DONNÉES est absente du reste de sa
+    colonne exactement autant qu'un libellé l'est. Rapporté à la largeur,
+    le signal vaut 1,0 pour n'importe quelle ligne, et une première ligne
+    de données ponctuée autrement que son corps passe pour un en-tête —
+    donc sort en clair dans la copie.
+    """
+
+    # Trois colonnes tout-texte, toutes valeurs distinctes, sans en-tête.
+    # La ligne 1 est ponctuée au tiret là où le corps l'est à l'espace :
+    # c'est ce qui met son accord de forme à zéro.
+    SANS_ENTETE = [["Aubel-Nord", "Piece-A1", "Lot-B1"]] + [
+        ["Bureau %d" % i, "Piece %d" % i, "Lot %d" % i] for i in range(1, 9)
+    ]
+
+    # Les mêmes colonnes, mais à vocabulaire : des valeurs s'y répètent.
+    ENTETE = ["N° ville", "Statut du dossier", "Categorie"]
+    CORPS = [
+        ["Aubel", "ouvert", "papeterie"],
+        ["Bruant", "ferme", "papeterie"],
+        ["Aubel", "ouvert", "outillage"],
+        ["Bruant", "ferme", "outillage"],
+        ["Aubel", "ouvert", "papeterie"],
+        ["Bruant", "ferme", "outillage"],
+    ]
+
+    def test_sur_une_colonne_tout_distincte_le_signal_se_TAIT(self):
+        """0,0 dit « ce signal ne dit rien ici », non « c'est un en-tête ».
+
+        Le dénominateur compte les colonnes où le signal porte quelque
+        chose. Aucune n'en a : il vaut zéro et laisse `accord` trancher
+        seul, ce qui est le comportement voulu.
+        """
+        signaux = formats._signaux_entete(self.SANS_ENTETE, 1)
+        self.assertEqual(signaux["hors_colonne"], 0.0)
+        self.assertEqual(signaux["compares"], 3)
+
+    def test_une_ligne_de_donnees_ainsi_ponctuee_n_est_PAS_un_en_tete(self):
+        """Le bout du fil : sans le dénominateur propre au signal,
+        l'empan garde cette ligne et la copie la sort en clair."""
+        self.assertEqual(
+            formats.lignes_entete(self.SANS_ENTETE), (set(), None)
+        )
+
+    def test_sur_une_colonne_a_vocabulaire_le_signal_PARLE(self):
+        """Et il porte seul : le contraste est muet sur du tout-texte."""
+        lignes = [self.ENTETE] + self.CORPS
+        signaux = formats._signaux_entete(lignes, 1)
+        self.assertEqual(signaux["contraste"], 0.0)
+        self.assertGreaterEqual(
+            signaux["hors_colonne"], formats.HORS_COLONNE_MINIMAL
+        )
+        self.assertEqual(formats.lignes_entete(lignes), ({1}, 1))
+
+    def test_la_meme_table_sans_son_en_tete_n_en_invente_pas(self):
+        signaux = formats._signaux_entete(self.CORPS, 1)
+        self.assertEqual(signaux["hors_colonne"], 0.0)
+        self.assertEqual(formats.lignes_entete(self.CORPS), (set(), None))
+
+
+class TestCeQuiEstDeLaDonnee(unittest.TestCase):
+    """`_est_de_la_donnee` borne la remontée de l'empan : deux conditions,
+    et les deux sont nécessaires."""
+
+    ENTETE = ["N° ville", "N° magasin", "Montant"]
+    CORPS = [["Aubel", 501 + i, 100.5 + i] for i in range(8)]
+
+    def test_la_forme_seule_ne_suffit_pas(self):
+        """Un titre seul en A1 partage la forme de la colonne de mots
+        qu'il surmonte ; sans la condition de remplissage, l'extension
+        s'arrêtait dessus et le mettait en PORTÉE."""
+        lignes = [["Rapport", None, None], self.ENTETE] + self.CORPS
+        self.assertEqual(formats._accord_de_forme(lignes, 1), 1.0)
+        self.assertLess(
+            formats._signaux_entete(lignes, 1)["rempli"],
+            formats.REMPLISSAGE_MINIMAL,
+        )
+        self.assertFalse(formats._est_de_la_donnee(lignes, 1))
+        self.assertEqual(formats.lignes_entete(lignes), ({1, 2}, 2))
+
+    def test_le_remplissage_seul_ne_suffit_pas(self):
+        """Une ligne de catégorie couvre la largeur sans être des
+        données : sa forme ne s'accorde pas à celle du corps."""
+        lignes = [["Bloc", "Bloc", "Bloc"], self.ENTETE] + self.CORPS
+        signaux = formats._signaux_entete(lignes, 1)
+        self.assertGreaterEqual(signaux["rempli"], formats.REMPLISSAGE_MINIMAL)
+        self.assertLess(formats._accord_de_forme(lignes, 1), 0.5)
+        self.assertFalse(formats._est_de_la_donnee(lignes, 1))
+        self.assertEqual(formats.lignes_entete(lignes), ({1, 2}, 2))
+
+    def test_les_deux_ensemble_bornent_la_remontee(self):
+        """Une vraie ligne de données au-dessus de l'en-tête : elle sort
+        de l'empan, donc elle est anonymisée."""
+        lignes = [["Bruant", 599, 199.5], self.ENTETE] + self.CORPS
+        self.assertTrue(formats._est_de_la_donnee(lignes, 1))
+        self.assertEqual(formats.lignes_entete(lignes), ({2}, 2))
+
+    def test_sans_corps_sous_la_ligne_ce_n_est_pas_de_la_donnee(self):
+        """Rien à comparer n'est pas un verdict : le refus fait entrer la
+        ligne dans l'empan, du côté qui ne fait pas sortir de donnée."""
+        self.assertFalse(formats._est_de_la_donnee([self.ENTETE], 1))
+
+
 class TestEtiquettesDeLaLigneDeChamps(unittest.TestCase):
     """`Feuille.etiquettes` suit la ligne de champs, non la ligne 1."""
 

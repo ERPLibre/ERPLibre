@@ -246,10 +246,22 @@ ACCORD_DE_DONNEE = 0.40
 REMPLISSAGE_MINIMAL = 0.5
 DISTINCTION_MINIMALE = 0.99
 
-# L'un OU l'autre suffit : le contraste de type est franc sur une table
-# numérique et MUET sur une table tout-texte, où c'est l'appartenance à la
-# colonne qui tranche.
-CONTRASTE_MINIMAL = 0.4
+# L'un OU l'autre suffit, et l'un des deux est REQUIS : ce sont les seules
+# preuves POSITIVES qu'une ligne nomme ses colonnes. `accord` bas dit
+# seulement « elle ne ressemble pas à ses données », ce qui n'est pas la
+# même chose — s'en contenter fait prendre une première ligne de
+# données pour un en-tête sur une table tout-texte, donc la recopie en
+# clair.
+#
+# Le contraste est franc sur une table numérique et MUET sur une table
+# tout-texte ; l'appartenance à la colonne y répond, mais seulement là où
+# la colonne a un VOCABULAIRE. Aucune des deux ne parle : pas d'en-tête.
+#
+# Le seuil du contraste est bas parce que toute ligne de DONNÉES mesurée
+# vaut zéro — une ligne au-dessus d'une colonne numérique y est numérique
+# elle aussi. Il n'est pas nul pour qu'une seule valeur texte égarée dans
+# une colonne de nombres ne suffise pas : il en faut une part.
+CONTRASTE_MINIMAL = 0.15
 HORS_COLONNE_MINIMAL = 0.9
 
 
@@ -418,7 +430,7 @@ def _signaux_entete(lignes, rang):
     corps = lignes[rang:]
     if not corps:
         return None
-    contraste = hors_colonne = compares = 0
+    contraste = hors_colonne = compares = colonnes_a_vocabulaire = 0
     for index in range(largeur):
         valeurs = [l[index] for l in corps if index < len(l)]
         familles = {classer(v) for v in valeurs} - {"vide"}
@@ -428,9 +440,21 @@ def _signaux_entete(lignes, rang):
         compares += 1
         if classer(cellule) == "texte" and "texte" not in familles:
             contraste += 1
-        vues = {str(v).strip().lower() for v in valeurs if v is not None}
-        if str(cellule).strip().lower() not in vues:
-            hors_colonne += 1
+        non_vides = [v for v in valeurs if classer(v) != "vide"]
+        vues = {str(v).strip().lower() for v in non_vides}
+        # Ce signal n'a de pouvoir que sur une colonne à VOCABULAIRE, où
+        # des valeurs se répètent. Dans une colonne tout-distincte — des
+        # noms, des courriels, des numéros de pièce — une ligne de DONNÉES
+        # est absente du reste de sa colonne exactement autant qu'un
+        # libellé l'est : rapporté à la largeur, le signal y vaut 1,0 pour
+        # n'importe quelle ligne. Les compter laisse `accord` seul sur une
+        # table tout-texte, où une première ligne de données ponctuée
+        # autrement que son corps passe alors pour un en-tête : recopiée
+        # en clair dans la copie.
+        if len(vues) < len(non_vides):
+            colonnes_a_vocabulaire += 1
+            if str(cellule).strip().lower() not in vues:
+                hors_colonne += 1
     pleines = sum(
         1
         for index in range(largeur)
@@ -443,7 +467,14 @@ def _signaux_entete(lignes, rang):
     ]
     return {
         "contraste": contraste / compares if compares else 0.0,
-        "hors_colonne": hors_colonne / compares if compares else 0.0,
+        # Son propre dénominateur : les colonnes où il porte quelque
+        # chose. Aucune n'en a, il vaut 0,0 — c'est-à-dire « ce signal ne
+        # dit rien ici », et non « la ligne est de la donnée ».
+        "hors_colonne": (
+            hors_colonne / colonnes_a_vocabulaire
+            if colonnes_a_vocabulaire
+            else 0.0
+        ),
         "rempli": pleines / largeur,
         "distinct": (
             len(set(etiquettes)) / len(etiquettes) if etiquettes else 0.0
@@ -481,6 +512,26 @@ def _est_une_ligne_de_champs(signaux, accord):
     )
 
 
+def _est_de_la_donnee(lignes, rang):
+    """Cette ligne, au-dessus de la ligne de champs, est-elle une DONNÉE ?
+
+    Deux conditions, et les deux sont nécessaires : elle ressemble à ses
+    données par la forme, ET elle en remplit la largeur. La forme seule ne
+    suffit pas — un titre seul en A1 partage la forme de la colonne de
+    noms qu'il surmonte, et sans la seconde l'extension s'arrête dessus et
+    le met en portée. Le remplissage seul ne suffit pas non plus : une
+    ligne de catégorie couvre la largeur sans être des données.
+
+    L'erreur va du bon côté quand elle se produit : une ligne prise pour
+    des données est ANONYMISÉE, non recopiée.
+    """
+    accord = _accord_de_forme(lignes, rang)
+    if accord is None or accord < 0.5:
+        return False
+    signaux = _signaux_entete(lignes, rang)
+    return signaux is not None and signaux["rempli"] >= REMPLISSAGE_MINIMAL
+
+
 def lignes_entete(lignes):
     """(empan des lignes d'en-tête, ligne de champs) — 1-based.
 
@@ -503,10 +554,7 @@ def lignes_entete(lignes):
             continue
         empan = {rang}
         haut = rang - 1
-        while haut >= 1:
-            dessus = _accord_de_forme(lignes, haut)
-            if dessus is not None and dessus >= 0.5:
-                break
+        while haut >= 1 and not _est_de_la_donnee(lignes, haut):
             empan.add(haut)
             haut -= 1
         return empan, rang
