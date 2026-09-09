@@ -13048,6 +13048,26 @@ TRANSLATIONS = {
         "fr": "Ce format ne stocke aucune formule lisible ici.",
         "en": "This format stores no formula readable here.",
     },
+    "saved query(ies)": {
+        "fr": "requête(s) enregistrée(s)",
+        "en": "saved query(ies)",
+    },
+    "Access saved queries are readable here.": {
+        "fr": "Les requêtes enregistrées d'Access sont lisibles ici.",
+        "en": "Access saved queries are readable here.",
+    },
+    "Install it by hand to read Access saved queries.": {
+        "fr": "L'installer à la main pour lire les requêtes enregistrées d'Access.",
+        "en": "Install it by hand to read Access saved queries.",
+    },
+    "Saved queries cannot be counted here: install mdbtools to know whether this file holds any.": {
+        "fr": "Les requêtes enregistrées ne peuvent pas être comptées ici : installer mdbtools pour savoir si ce fichier en porte.",
+        "en": "Saved queries cannot be counted here: install mdbtools to know whether this file holds any.",
+    },
+    "Saved queries are not carried over to the copy.": {
+        "fr": "Les requêtes enregistrées ne sont pas reprises dans la copie.",
+        "en": "Saved queries are not carried over to the copy.",
+    },
     "Saved queries are not readable in pure Python.": {
         "fr": "Les requêtes enregistrées ne sont pas lisibles en pur Python.",
         "en": "Saved queries are not readable in pure Python.",

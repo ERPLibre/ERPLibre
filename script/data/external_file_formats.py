@@ -1001,6 +1001,51 @@ def _lire_xls(chemin):
     return feuilles
 
 
+# Le binaire de mdbtools qui liste les requêtes enregistrées d'une base
+# Access. `access-parser` n'en rend aucune : il lit les TABLES, et le
+# catalogue où vivent les requêtes est écarté exprès — il porte aussi les
+# noms d'objets système et, pour une table liée, le chemin source.
+#
+# Le nom est répété dans `transform_setup`, qui répond à « cette machine
+# sait-elle les lire ». Ce module tourne sous l'interpréteur du MOTEUR et
+# celui-là sous celui du CLI : les faire dépendre l'un de l'autre
+# rendrait le moteur inimportable là où il tourne.
+BINAIRE_REQUETES = "mdb-queries"
+
+
+def requetes_access(chemin):
+    """Les noms des requêtes enregistrées, ou None si on ne sait pas lire.
+
+    None et `[]` ne disent pas la même chose, et les confondre était le
+    défaut : `[]` veut dire « cette base n'en porte aucune », None veut
+    dire « personne ici ne sait le dire ». L'aperçu doit pouvoir annoncer
+    la seconde comme une IGNORANCE, non comme une absence.
+
+    Une requête ne passe jamais dans la copie : le graveur ne connaît que
+    des feuilles, tirées des tables. C'est donc une PERTE à annoncer, du
+    même genre que les images d'un classeur — et une base dont la moitié
+    du travail vit dans ses requêtes se transmet amputée sans un mot.
+    """
+    import shutil
+    import subprocess
+
+    binaire = shutil.which(BINAIRE_REQUETES)
+    if not binaire:
+        return None
+    try:
+        rendu = subprocess.run(
+            [binaire, "-1", chemin],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if rendu.returncode:
+        return None
+    return [l.strip() for l in rendu.stdout.splitlines() if l.strip()]
+
+
 def _lire_access(chemin):
     """Les tables d'un `.mdb`/`.accdb`, reconstruites ligne par ligne.
 
@@ -1447,9 +1492,17 @@ def report(chemin):
         )
     elif format_lu == "access":
         feuilles = _lire_access(chemin)
-        rapport["avertissements"].append(
-            "Saved queries are not readable in pure Python."
-        )
+        requetes = requetes_access(chemin)
+        if requetes is None:
+            rapport["avertissements"].append(
+                "Saved queries cannot be counted here:"
+                " install mdbtools to know whether this file holds any."
+            )
+        elif requetes:
+            rapport["requetes"] = requetes
+            rapport["avertissements"].append(
+                "Saved queries are not carried over to the copy."
+            )
     elif format_lu == "csv":
         feuille, meta = _lire_csv(chemin)
         feuilles = [feuille]

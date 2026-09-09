@@ -20,6 +20,7 @@ déjà pour les quatre familles, et il est testé. On l'appelle.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -59,6 +60,13 @@ PAQUETS_ACCESS = {
     "dnf": ["mdbtools"],
     "zypper": ["mdbtools"],
 }
+
+# Le binaire qui les lit. La PRÉSENCE se demande au PATH, jamais au
+# gestionnaire de paquets : sur une distribution dont ce module ne connaît
+# pas le paquet — Arch, où mdbtools n'est qu'à l'AUR — l'absence de
+# commande d'installation était rendue comme l'absence de l'outil, et
+# l'entrée disait « aucun paquet connu » devant un `mdb-queries` installé.
+BINAIRE_REQUETES = "mdb-queries"
 
 
 def racine() -> str:
@@ -119,12 +127,30 @@ def available(fmt: str | None = None) -> bool:
     return all(_importable_par(interpreteur, m) for m in modules or ())
 
 
+def requetes_access_lisibles() -> bool:
+    """`mdb-queries` est-il sur le PATH ?
+
+    Les requêtes enregistrées d'une base Access ne se lisent pas en pur
+    Python : `access-parser` rend les TABLES, et le catalogue où vivent
+    les requêtes est écarté exprès. Cette question est donc distincte de
+    « le format access est-il lisible », qui reste vraie sans mdbtools.
+    """
+    return shutil.which(BINAIRE_REQUETES) is not None
+
+
 def capabilities() -> dict:
-    """Format -> lisible. Pour l'entrée « Que sait lire cette machine ? »."""
+    """Ce que la machine sait lire. Pour l'entrée du même nom.
+
+    Les requêtes enregistrées y figurent comme une entrée à part : elles
+    ne viennent pas du venv mais d'un paquet système, et une base Access
+    reste lisible sans elles — seulement, ce qu'elles portent n'est alors
+    ni lu ni compté, et l'opérateur doit le savoir avant de transmettre.
+    """
     etat = {nom: True for nom in FORMATS_STDLIB}
     for fmt in IMPORTS_PAR_FORMAT:
         etat[fmt] = available(fmt)
     etat["xlsb"] = False
+    etat["access queries"] = requetes_access_lisibles()
     return etat
 
 

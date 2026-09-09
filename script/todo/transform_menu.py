@@ -264,6 +264,20 @@ class TransformMenuMixin:
                     f"      ⚠ {manquants} {t('column(s) without examples')}"
                 )
 
+        requetes = rapport.get("requetes") or []
+        if requetes:
+            # Nommées, non comptées : une base dont le travail vit dans
+            # ses requêtes se transmet amputée, et un chiffre ne dit pas
+            # ce qui manque.
+            lignes.append("")
+            lignes.append(f"   {len(requetes)} {t('saved query(ies)')}")
+            for nom in requetes[:12]:
+                lignes.append(f"      {nom}")
+            if len(requetes) > 12:
+                lignes.append(
+                    f"      … {len(requetes) - 12} {t('more, not listed')}"
+                )
+
         hors = rapport.get("hors_cellules") or {}
         if hors:
             lignes.append("")
@@ -932,9 +946,20 @@ class TransformMenuMixin:
             print(f"✅ {t('The environment is ready.')}")
         else:
             transform_setup.create()
+        # La PRÉSENCE d'abord, le paquet ensuite. Demander au gestionnaire
+        # de paquets si l'outil est là rendait « aucun paquet connu »
+        # devant un `mdb-queries` installé — vrai sur une distribution
+        # dont ce module ne connaît pas le paquet, et faux sur ce que
+        # l'opérateur voit dans son PATH.
+        if transform_setup.requetes_access_lisibles():
+            print(f"✅ {t('Access saved queries are readable here.')}")
+            return
         commande = transform_setup.system_packages_cmd()
         if commande is None:
             print(f"   {t('No package known here for:')} mdb-queries")
+            print(
+                f"   {t('Install it by hand to read Access saved queries.')}"
+            )
             return
         print(f"\n{t('Access files need a system package.')}")
         print(f"{t('The installation requires sudo.')}")

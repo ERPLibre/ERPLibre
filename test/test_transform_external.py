@@ -3113,6 +3113,145 @@ class TestPorteeDeLOperateur(unittest.TestCase):
         self.assertNotIn(2024, valeurs)
 
 
+class TestCapaciteDesRequetes(unittest.TestCase):
+    """La présence de l'outil se demande au PATH, jamais au gestionnaire
+    de paquets.
+
+    Sur une distribution dont ce module ne connaît pas le paquet — Arch,
+    où mdbtools n'est qu'à l'AUR — l'absence de commande d'installation
+    était rendue comme l'absence de l'outil, et l'entrée disait « aucun
+    paquet connu » devant un `mdb-queries` installé.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.ancien = os.environ.get("PATH", "")
+        self.addCleanup(os.environ.__setitem__, "PATH", self.ancien)
+
+    def _poser(self, present):
+        dossier = os.path.join(self.base, "bin")
+        os.makedirs(dossier, exist_ok=True)
+        if present:
+            chemin = os.path.join(dossier, "mdb-queries")
+            with open(chemin, "w", encoding="utf-8") as flux:
+                flux.write("#!/bin/sh\ntrue\n")
+            os.chmod(chemin, 0o755)
+        os.environ["PATH"] = dossier
+
+    def test_present_sur_le_PATH(self):
+        self._poser(True)
+        self.assertTrue(transform_setup.requetes_access_lisibles())
+        self.assertTrue(transform_setup.capabilities()["access queries"])
+
+    def test_absent_du_PATH(self):
+        self._poser(False)
+        self.assertFalse(transform_setup.requetes_access_lisibles())
+        self.assertFalse(transform_setup.capabilities()["access queries"])
+
+    def test_access_reste_lisible_sans_l_outil(self):
+        """Les deux questions sont distinctes : une base Access se lit
+        sans mdbtools, seulement ses requêtes non."""
+        self._poser(False)
+        capacites = transform_setup.capabilities()
+        self.assertIn("access", capacites)
+        self.assertFalse(capacites["access queries"])
+
+
+class TestRequetesAccess(unittest.TestCase):
+    """Les requêtes enregistrées : comptées quand on sait, dites sinon.
+
+    `access-parser` n'en rend aucune — il lit les TABLES, et le catalogue
+    où elles vivent est écarté exprès. `mdb-queries` de mdbtools les
+    liste, et son absence ne se devine pas : `None` veut dire « personne
+    ici ne sait le dire », `[]` veut dire « cette base n'en porte aucune »,
+    et les confondre annonçait une absence là où il y avait ignorance.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.chemin = os.path.join(self.base, "b.mdb")
+        with open(self.chemin, "wb") as flux:
+            flux.write(b"\x00" * 16)
+
+    def _bouchon(self, corps, code=0):
+        """Un `mdb-queries` de substitution, posé en tête de PATH.
+
+        Aucune base Access de ce dépôt ne porte de requête, et mdbtools
+        ne sait pas en écrire : le bouchon est la seule façon d'éprouver
+        les trois branches, et il éprouve bien ce qui est à éprouver — la
+        lecture de la sortie, non le format JET.
+        """
+        dossier = os.path.join(self.base, "bin")
+        os.makedirs(dossier, exist_ok=True)
+        chemin = os.path.join(dossier, "mdb-queries")
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write("#!/bin/sh\n%s\nexit %d\n" % (corps, code))
+        os.chmod(chemin, 0o755)
+        ancien = os.environ.get("PATH", "")
+        os.environ["PATH"] = dossier + os.pathsep + ancien
+        self.addCleanup(os.environ.__setitem__, "PATH", ancien)
+
+    def test_sans_le_binaire_on_ne_SAIT_pas(self):
+        ancien = os.environ.get("PATH", "")
+        os.environ["PATH"] = os.path.join(self.base, "vide")
+        self.addCleanup(os.environ.__setitem__, "PATH", ancien)
+        self.assertIsNone(formats.requetes_access(self.chemin))
+
+    def test_une_base_sans_requete_rend_une_liste_VIDE(self):
+        """Et non None : l'aperçu n'a alors rien à annoncer."""
+        self._bouchon("true")
+        self.assertEqual(formats.requetes_access(self.chemin), [])
+
+    def test_les_noms_sont_rendus_un_par_ligne(self):
+        self._bouchon("printf 'Factures\\nSoldes\\n\\n  Totaux  \\n'")
+        self.assertEqual(
+            formats.requetes_access(self.chemin),
+            ["Factures", "Soldes", "Totaux"],
+        )
+
+    def test_un_binaire_qui_echoue_vaut_une_IGNORANCE(self):
+        """Non une absence : une base illisible par mdbtools n'est pas une
+        base sans requête."""
+        self._bouchon("echo 'unable to open'", code=1)
+        self.assertIsNone(formats.requetes_access(self.chemin))
+
+
+class TestRapportDesRequetes(unittest.TestCase):
+    """Ce que l'aperçu dit des requêtes, dans les trois cas."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+
+    RAPPORT = {"chemin": "b.mdb", "taille": 1, "format": "access"}
+
+    def test_les_requetes_sont_NOMMEES(self):
+        """Un chiffre ne dit pas ce qui manque à la copie."""
+        rendu = self.menu._transform_render_report(
+            dict(self.RAPPORT, requetes=["Factures", "Soldes"])
+        )
+        self.assertIn(todo_i18n.t("saved query(ies)"), rendu)
+        self.assertIn("Factures", rendu)
+        self.assertIn("Soldes", rendu)
+
+    def test_au_dela_de_douze_le_reste_est_COMPTE(self):
+        rendu = self.menu._transform_render_report(
+            dict(self.RAPPORT, requetes=["R%02d" % n for n in range(20)])
+        )
+        self.assertIn("R00", rendu)
+        self.assertNotIn("R19", rendu)
+        self.assertIn(todo_i18n.t("more, not listed"), rendu)
+
+    def test_sans_requete_rien_n_est_dit(self):
+        rendu = self.menu._transform_render_report(dict(self.RAPPORT))
+        self.assertNotIn(todo_i18n.t("saved query(ies)"), rendu)
+
+
 class TestTableAbimee(unittest.TestCase):
     """Une table abîmée refuse en la NOMMANT.
 
