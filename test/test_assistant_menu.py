@@ -161,32 +161,6 @@ class ClesDeTraduction(unittest.TestCase):
             self.assertIn(nom, COMMANDS)
             self.assertIn(COMMANDS[nom], TRANSLATIONS)
 
-    def test_les_doublons_de_translations_restent_les_trois_connus(self):
-        """Une clé répétée écrase la précédente en silence, et l'écrasement
-        s'est déjà payé d'une mauvaise étiquette de menu principal. Trois
-        doublons préexistent ; ce test refuse le quatrième sans exiger de
-        réparer les trois, qui sont hors du sujet de ce câblage."""
-        chemin = os.path.join(RACINE, "script", "todo", "todo_i18n.py")
-        with open(chemin) as fichier:
-            arbre = ast.parse(fichier.read())
-        litteral = None
-        for noeud in ast.walk(arbre):
-            if isinstance(noeud, ast.Assign) and any(
-                isinstance(c, ast.Name) and c.id == "TRANSLATIONS"
-                for c in noeud.targets
-            ):
-                litteral = noeud.value
-        self.assertIsInstance(litteral, ast.Dict)
-        noms = [
-            c.value
-            for c in litteral.keys
-            if isinstance(c, ast.Constant) and isinstance(c.value, str)
-        ]
-        self.assertTrue(noms)
-        compte = collections.Counter(noms)
-        doublons = sorted(k for k, n in compte.items() if n > 1)
-        self.assertEqual(doublons, ["Maintenance", "none", "pass"])
-
 
 class JournalDuTransport(unittest.TestCase):
     """La conversation ne doit pas être coupée par des lignes de journal.

@@ -1255,6 +1255,9 @@ TRANSLATIONS = {
         "fr": "Ajouter un marketplace",
         "en": "Add a marketplace",
     },
+    # Sert la section « Maintenance » des deux menus qui en portent une :
+    # la traduction est la même, et une clé répétée écrase la précédente en
+    # silence.
     "Maintenance": {
         "fr": "Maintenance",
         "en": "Maintenance",
@@ -1637,10 +1640,6 @@ TRANSLATIONS = {
     "Interface": {
         "fr": "Interface",
         "en": "Interface",
-    },
-    "Maintenance": {
-        "fr": "Maintenance",
-        "en": "Maintenance",
     },
     "Language / Langue": {
         "fr": "🌐 Langue / Language",
@@ -5779,10 +5778,6 @@ TRANSLATIONS = {
         "fr": "Fuseau inconnu, on garde",
         "en": "Unknown timezone, keeping",
     },
-    "none": {
-        "fr": "aucune",
-        "en": "none",
-    },
     "No SSH key found. Set a password instead? (Y/n): ": {
         "fr": "Aucune clé SSH trouvée. Définir un mot de passe ? (O/n) : ",
         "en": "No SSH key found. Set a password instead? (Y/n): ",
@@ -7595,10 +7590,6 @@ TRANSLATIONS = {
     "seconds.": {
         "fr": "secondes.",
         "en": "seconds.",
-    },
-    "pass": {
-        "fr": "passe",
-        "en": "pass",
     },
     "The cleanup was still running after": {
         "fr": "Le nettoyage tournait encore après",
