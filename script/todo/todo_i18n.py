@@ -13397,6 +13397,14 @@ TRANSLATIONS = {
         "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
         "en": "Element and attribute names are kept as structure; they may identify.",
     },
+    "The mapping table is unreadable, or is not a mapping table: ": {
+        "fr": "La table de correspondance est illisible, ou n'est pas une table de correspondance : ",
+        "en": "The mapping table is unreadable, or is not a mapping table: ",
+    },
+    "Leave the mapping table question empty to create a new one.": {
+        "fr": "Laisser vide la question de la table pour en créer une neuve.",
+        "en": "Leave the mapping table question empty to create a new one.",
+    },
     "A table of that name exists; using a new one.": {
         "fr": "Une table de ce nom existe ; une neuve est prise.",
         "en": "A table of that name exists; using a new one.",

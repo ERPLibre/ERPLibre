@@ -76,6 +76,8 @@ ERREURS = {
     "conversion_impossible": "This target cannot hold the source's" " shape: ",
     "table_source": "The mapping table would overwrite the source"
     " or the copy; nothing was written.",
+    "table_illisible": "The mapping table is unreadable,"
+    " or is not a mapping table: ",
     "fuite_detectee": "A source value survives in the copy;"
     " nothing was written: ",
     "lecture_impossible": "The library here cannot read this file: ",
@@ -544,10 +546,40 @@ class Correspondance:
 
     @classmethod
     def charger(cls, chemin):
+        """La table du disque, ou une neuve si le chemin ne désigne rien.
+
+        Une table ABÎMÉE, elle, refuse en la NOMMANT. L'exception nue
+        remontait au filet de dernier recours, qui la rendait sous
+        « format non reconnu » — donc en accusant le classeur source, que
+        l'opérateur concluait corrompu. Le cas arrive de deux façons : une
+        table tronquée par une interruption, et un autre fichier de
+        `private/` désigné à l'invite.
+
+        L'import est TARDIF : `external_file_formats` importe cette
+        classe, et l'importer en tête ferait un cycle.
+        """
         if not chemin or not os.path.isfile(chemin):
             return cls()
-        with open(chemin, "r", encoding="utf-8") as fh:
-            brut = json.load(fh)
+        from script.data.external_file_formats import ErreurMoteur
+
+        # Le conseil est la PHRASE, non une clé d'`ERREURS` : `echec` le
+        # rend tel quel et le menu le passe à `t()`.
+        conseil = "Leave the mapping table question empty to create a new one."
+        try:
+            with open(chemin, "r", encoding="utf-8") as fh:
+                brut = json.load(fh)
+        except (OSError, ValueError) as exc:
+            raise ErreurMoteur(
+                "table_illisible",
+                f"{chemin}: {type(exc).__name__}: {exc}",
+                conseil,
+            ) from exc
+        if not isinstance(brut, dict):
+            raise ErreurMoteur(
+                "table_illisible",
+                f"{chemin}: {type(brut).__name__}",
+                conseil,
+            )
         return cls(brut.get("mots"), brut.get("nombres"), brut.get("entetes"))
 
     def ecrire(self, chemin):

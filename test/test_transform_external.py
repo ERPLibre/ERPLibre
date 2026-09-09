@@ -2961,6 +2961,67 @@ class TestPorteeDeLOperateur(unittest.TestCase):
         self.assertNotIn(2024, valeurs)
 
 
+class TestTableAbimee(unittest.TestCase):
+    """Une table abîmée refuse en la NOMMANT.
+
+    L'exception nue remontait au filet de dernier recours, qui la rendait
+    sous « format non reconnu » — donc en accusant le classeur source, que
+    l'opérateur concluait corrompu. Le cas arrive de deux façons : une
+    table tronquée par une interruption, et un autre fichier de
+    `private/` désigné à l'invite.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _table(self, contenu):
+        chemin = os.path.join(self.base, "t.json")
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write(contenu)
+        return chemin
+
+    ABIMEES = {
+        "tronquée": '{"version": 2, "mots": {"Aubel": "pomme"',
+        "racine liste": "[1, 2, 3]",
+        "racine chaîne": '"une table"',
+        "vide": "",
+    }
+
+    def test_le_refus_NOMME_la_table(self):
+        for genre, contenu in self.ABIMEES.items():
+            with self.subTest(genre=genre):
+                chemin = self._table(contenu)
+                with self.assertRaises(formats.ErreurMoteur) as capture:
+                    noyau.Correspondance.charger(chemin)
+                self.assertEqual(capture.exception.cle, "table_illisible")
+                self.assertIn(chemin, capture.exception.detail)
+                self.assertTrue(capture.exception.conseil)
+
+    def test_la_cle_a_son_libelle_et_sa_traduction(self):
+        """Sans quoi le message sortirait en clé brute."""
+        libelle = noyau.ERREURS["table_illisible"]
+        self.assertIn(libelle, todo_i18n.TRANSLATIONS)
+
+    def test_un_chemin_absent_rend_une_table_NEUVE(self):
+        """Le cas normal du premier fichier d'un lot."""
+        table = noyau.Correspondance.charger(
+            os.path.join(self.base, "rien.json")
+        )
+        self.assertEqual(table.mots, {})
+
+    def test_le_menu_ouvre_l_ecran_malgre_une_table_abimee(self):
+        """La mémoire est un confort : son absence n'empêche rien."""
+        for genre, contenu in self.ABIMEES.items():
+            with self.subTest(genre=genre):
+                self.assertEqual(
+                    _tm().TransformMenuMixin._transform_memoire(
+                        self._table(contenu)
+                    ),
+                    {},
+                )
+
+
 class TestMemoireJusquALEcran(unittest.TestCase):
     """La table du disque, lue par le menu, pré-cochée par l'écran.
 

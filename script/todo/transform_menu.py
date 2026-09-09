@@ -518,7 +518,16 @@ class TransformMenuMixin:
             return {}
         try:
             with open(table_chemin, "r", encoding="utf-8") as flux:
-                return json.load(flux).get("entetes") or {}
+                brut = json.load(flux)
+            # Une racine qui n'est pas un dictionnaire — un autre fichier
+            # de `private/` désigné à l'invite — lèverait `AttributeError`
+            # sur `.get`, hors de ce que la garde attrape, et emporterait
+            # l'ouverture de l'écran. Le moteur refusera ce chemin en
+            # NOMMANT la table ; ici la mémoire est un confort, et son
+            # absence n'a rien à empêcher.
+            if not isinstance(brut, dict):
+                return {}
+            return brut.get("entetes") or {}
         except (OSError, ValueError):
             return {}
 
