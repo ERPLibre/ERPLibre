@@ -2438,6 +2438,79 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self.assertIn("pas de terminal", self.ecran.getvalue())
 
 
+class TestPorteeDeLOperateur(unittest.TestCase):
+    """L'écran montre plus loin que la mesure ne cherche.
+
+    La borne de la mesure dit « au-delà, je ne devine plus » ; la prendre
+    pour la borne de l'écran rendait INATTEIGNABLE la ligne de champs d'un
+    rapport mis en page, alors que le commentaire de la borne promettait
+    justement que l'opérateur corrige.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.source = os.path.join(self.base, "rapport.csv")
+        with open(self.source, "w", encoding="utf-8") as flux:
+            for rang in range(1, formats.LIGNES_SONDEES + 2):
+                flux.write("Titre %d,,\n" % rang)
+            # La ligne de champs, hors de portée de la mesure. Sa
+            # première cellule est un NOMBRE écrit en toutes lettres :
+            # c'est ce qui révèle si ses brutes ont été gardées.
+            self.champs = formats.LIGNES_SONDEES + 2
+            flux.write("2024,Champ,Montant\n")
+            for rang in range(6):
+                flux.write("%d,Aubel,%d\n" % (2000 + rang, 100 + rang))
+
+    def _plan(self, **options):
+        return formats.plan(
+            self.source,
+            dict(
+                {
+                    "nombres": True,
+                    "textes": True,
+                    "graine": 7,
+                    "feuilles": [],
+                    "colonnes_intactes": [],
+                    "destination": os.path.join(self.base, "o.csv"),
+                },
+                **options,
+            ),
+        )
+
+    def test_l_ecran_montre_la_ligne_que_la_mesure_n_atteint_pas(self):
+        sondees = formats.report(self.source)["feuilles"][0]["lignes_sondees"]
+        numeros = [ligne["numero"] for ligne in sondees]
+        self.assertIn(self.champs, numeros)
+        self.assertLessEqual(len(numeros), formats.LIGNES_MONTREES)
+
+    def test_au_dela_de_la_mesure_la_colonne_des_mesures_est_VIDE(self):
+        """Elle dit la vérité : la mesure n'est pas allée jusque-là.
+
+        La calculer coûte un balayage de la feuille PAR ligne, et trente
+        balayages d'un classeur de deux millions de cellules se voient.
+        """
+        sondees = formats.report(self.source)["feuilles"][0]["lignes_sondees"]
+        par_rang = {ligne["numero"]: ligne for ligne in sondees}
+        self.assertIsNotNone(par_rang[formats.LIGNES_SONDEES]["mesure"])
+        self.assertIsNone(par_rang[self.champs]["mesure"])
+
+    def test_une_ligne_designee_au_dela_garde_ses_valeurs_BRUTES(self):
+        """La fenêtre des brutes suit la portée de l'écran.
+
+        Bornée à celle de la mesure, une ligne d'en-tête désignée plus bas
+        retrouvait ses valeurs coercées : « 2024 » redevenait le nombre
+        2024, et l'en-tête de la copie portait un nombre là où le fichier
+        porte un libellé.
+        """
+        apercu = self._plan(
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [self.champs]}
+        )
+        valeurs = [c["valeur"] for c in apercu["entete_gardee"]]
+        self.assertIn("2024", valeurs)
+        self.assertNotIn(2024, valeurs)
+
+
 class TestMemoireJusquALEcran(unittest.TestCase):
     """La table du disque, lue par le menu, pré-cochée par l'écran.
 

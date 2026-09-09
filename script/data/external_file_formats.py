@@ -243,6 +243,18 @@ def _etiquettes_par_colonne(feuilles):
 # l'opérateur corrige mieux que n'importe quelle mesure.
 LIGNES_SONDEES = 10
 
+# Jusqu'où l'écran MONTRE des lignes. La portée de l'opérateur n'est pas
+# bornée par celle de la mesure : un rapport dont la ligne de champs vient
+# en douzième position se corrige à la main, et le commentaire ci-dessus
+# le promettait sans que rien ne l'offre — l'écran s'arrêtait à la
+# dixième, donc la douzième était inatteignable.
+#
+# Les lignes au-delà de `LIGNES_SONDEES` arrivent SANS mesure : la
+# calculer coûte un balayage de la feuille par ligne, et trente balayages
+# sur un classeur de deux millions de cellules se voient. Une colonne de
+# mesures vide y dit la vérité — la mesure n'est pas allée jusque-là.
+LIGNES_MONTREES = 30
+
 # Une ligne qui RESSEMBLE à ses données en est. Le seuil sépare deux
 # nuages mesurés sur les huit tables d'une base réelle, prises une fois
 # avec leur ligne d'en-tête et une fois sans : les en-têtes vont de 0,00 à
@@ -988,7 +1000,10 @@ def _lire_csv(chemin):
         # — donc en inventer un là où il n'y en a pas, ce qui recopie de
         # la donnée en clair. `mesurer_entetes` rend ensuite leurs chaînes
         # aux seules lignes de l'empan retenu, où « 2024 » est un libellé.
-        if numero <= LIGNES_SONDEES:
+        # La fenêtre des brutes couvre la portée de l'ÉCRAN, non celle
+        # de la mesure : une ligne d'en-tête désignée au-delà retrouvait
+        # ses valeurs coercées, et « 2024 » y redevenait un nombre.
+        if numero <= LIGNES_MONTREES:
             brutes.append(list(ligne))
         lignes.append([coercer_texte(champ) for champ in ligne])
     nom = NOM_FEUILLE_NEUTRE
@@ -1087,15 +1102,17 @@ def _lignes_sondees(feuille):
     c'est ainsi qu'on voit pourquoi la voisine a été écartée.
     """
     rendu = []
-    for rang in range(1, min(LIGNES_SONDEES, len(feuille.lignes)) + 1):
+    for rang in range(1, min(LIGNES_MONTREES, len(feuille.lignes)) + 1):
         ligne = feuille.lignes[rang - 1]
         apercu = [
             valeur_d_exemple(v)
             for v in ligne[:EXEMPLES_PAR_COLONNE]
             if classer(v) != "vide"
         ]
-        signaux = _signaux_entete(feuille.lignes, rang)
-        accord = _accord_de_forme(feuille.lignes, rang)
+        signaux = accord = None
+        if rang <= LIGNES_SONDEES:
+            signaux = _signaux_entete(feuille.lignes, rang)
+            accord = _accord_de_forme(feuille.lignes, rang)
         mesure = None
         if signaux is not None and accord is not None:
             mesure = {
