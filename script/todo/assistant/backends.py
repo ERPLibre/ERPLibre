@@ -16,9 +16,9 @@ l'historique local à une session qui la garde déjà la doublerait.
 **La clé ne quitte jamais le processus.** Elle va à `openai.OpenAI(api_key=…)`
 en mémoire, jamais sur une ligne de commande ni dans une variable
 d'environnement : un argv se lit par n'importe quel compte local dès que
-`/proc` est monté sans `hidepid`, et le masquage de
-`script/execute/execute.py` ne reconnaît que `PASSWORD|PASSWD|SECRET|TOKEN`,
-donc ni `OPENAI_API_KEY=` ni `Authorization: Bearer`.
+`/proc` est monté sans `hidepid`, et AUCUN masquage n'atteint argv. Celui de
+`script/execute/execute.py` couvre `OPENAI_API_KEY=` et `Authorization:
+Bearer` dans une TRACE, ce qui est le dernier rempart et non le premier.
 
 **L'invite de `claude` part sur l'entrée standard**, jamais en positionnel,
 pour la même raison. `claude_argv` bâtit donc l'argv SANS l'invite, et
