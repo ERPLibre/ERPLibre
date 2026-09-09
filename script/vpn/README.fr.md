@@ -340,7 +340,14 @@ sur l'entrée standard par laquelle arrive le mot de passe. Avec lui,
 openconnect refuse tout de suite **et** imprime la ligne
 `--servercert sha256:…` à recopier dans le champ `oc_servercert` du profil.
 Les routes appartiennent au serveur, via `vpnc-script` ; le profil peut en
-ajouter, pas les remplacer.
+ajouter, pas les remplacer. Pour cette raison le formulaire ne demande
+**pas** à ce pilote « envoyer TOUT le trafic dans le tunnel ? », et `status`
+ne le juge pas : c'est la passerelle qui décide de ce qui entre dans le
+tunnel, et forcer une route par défaut contre une passerelle en tunnel
+scindé ne donnerait pas tout le trafic mais un trou noir — une passerelle ne
+route pas ce qu'elle n'a jamais annoncé. Pour y forcer un réseau tout de
+même, l'ajouter à `routes`, que ce pilote honore, avec `0.0.0.0/0` pour
+tout.
 
 Cocher **`oc_sso`** quand le concentrateur authentifie par un **formulaire
 web** (SAML / SSO — Azure AD, Okta, Duo). Il n'y a alors aucun mot de passe à

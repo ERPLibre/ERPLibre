@@ -321,8 +321,16 @@ says so when it takes it.
 unknown server certificate raises a question, and openconnect would read the
 answer from the standard input the password arrives on. With it, openconnect
 refuses at once **and** prints the `--servercert sha256:…` line to paste into
-the profile's `oc_servercert`. Routes belong to the server, through
-`vpnc-script`; the profile can add to them, not replace them.
+the profile's `oc_servercert`.
+
+Routes belong to the server, through `vpnc-script`; the profile can add to
+them, not replace them. For that reason the form does **not** ask this
+driver « send ALL traffic through the tunnel? », and `status` does not judge
+it: the gateway decides what enters the tunnel, and forcing a default route
+against a split-tunnel gateway would not give all traffic but a black hole —
+a gateway does not route what it never advertised. To force a network
+through anyway, add it to `routes`, which this driver does honour, with
+`0.0.0.0/0` for everything.
 
 Set **`oc_sso`** when the concentrator authenticates through a **web form**
 (SAML / SSO — Azure AD, Okta, Duo). There is then no password to send, and

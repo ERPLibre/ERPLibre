@@ -117,6 +117,14 @@ NOT_CONNECTED_NOTE = (
     " a dead tunnel left behind."
 )
 
+# Ce qu'on dit à la place de la question « tout le trafic ? », pour un
+# pilote dont le SERVEUR décide du routage. Nomme l'échappatoire, sans quoi
+# le retrait de la question se lit comme une capacité perdue.
+SERVER_ROUTES_NOTE = (
+    "The gateway decides what enters this tunnel. To force a network"
+    " through it anyway, add it to the routes above — 0.0.0.0/0 for all."
+)
+
 MASTER_PASSWORD_WARNING = (
     "The vault MASTER password is stored in the configuration in clear"
     " text. Remove it and type it on demand."
@@ -566,10 +574,17 @@ class VpnMenuMixin:
             t("Networks to reach, comma-separated"),
             ", ".join(draft.get("routes", [])),
         )
-        draft["default_route"] = self._vpn_ask_flag(
-            t("Send ALL traffic through the tunnel?"),
-            draft.get("default_route", False),
-        )
+        if driver_cls.uses_default_route:
+            draft["default_route"] = self._vpn_ask_flag(
+                t("Send ALL traffic through the tunnel?"),
+                draft.get("default_route", False),
+            )
+        else:
+            # Ni demandée, ni conservée : un drapeau laissé à vrai sur un
+            # pilote qui l'ignore reste un champ sans effet, et le profil
+            # continuerait d'annoncer « tout le trafic » à la liste.
+            draft["default_route"] = False
+            print(f"  {t(SERVER_ROUTES_NOTE)}")
         draft["probe"] = self._vpn_ask(
             t("Witness address reachable only through the tunnel (optional)"),
             draft.get("probe", ""),

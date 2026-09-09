@@ -672,6 +672,72 @@ def largeur_affichee(texte):
     )
 
 
+class TheDefaultRouteQuestion(MenuBase):
+    """« Tout le trafic ? » n'est posée qu'aux pilotes qui posent la route.
+
+    Demander à qui n'a pas la main dessus, puis sanctionner la réponse par
+    un ✗ sur un tunnel sain, était la pire des trois façons de traiter la
+    question : le champ existait, ne servait à rien, et faisait échouer le
+    diagnostic.
+    """
+
+    def filling(self, seed, *answers):
+        """Déroule le formulaire et rend (questions posées, sortie)."""
+        prompts = []
+        suite = iter(answers)
+
+        def fake(prompt=""):
+            prompts.append(prompt.strip())
+            return next(suite)
+
+        with patch("builtins.input", fake):
+            out = io.StringIO()
+            with redirect_stdout(out):
+                try:
+                    self.todo._vpn_edit_profile(seed=dict(seed))
+                except StopIteration:
+                    pass
+        return prompts, out.getvalue()
+
+    OPENCONNECT = {
+        "name": "oc",
+        "driver": "openconnect",
+        "server": "ssl.vpn.example-campus.net",
+        "oc_user": "someone",
+    }
+    WIREGUARD = {
+        "name": "wg",
+        "driver": "wireguard",
+        "server": "gw.example-campus.net",
+        "wg_address": "10.9.0.2/32",
+        "wg_peer_key": WG_PUBLIC,
+    }
+
+    def test_a_server_routed_driver_is_not_asked(self):
+        prompts, printed = self.filling(self.OPENCONNECT, *[""] * 20)
+        self.assertFalse([p for p in prompts if "trafic" in p], prompts)
+        self.assertIn("passerelle décide", printed)
+
+    def test_the_escape_hatch_is_named(self):
+        """Retirer la question sans dire par quoi la remplacer se lirait
+        comme une capacité perdue : `routes` reste honorée."""
+        _, printed = self.filling(self.OPENCONNECT, *[""] * 20)
+        self.assertIn("0.0.0.0/0", printed)
+
+    def test_a_driver_that_lays_the_route_is_still_asked(self):
+        prompts, _ = self.filling(self.WIREGUARD, *[""] * 20)
+        self.assertTrue([p for p in prompts if "trafic" in p], prompts)
+
+    def test_the_flag_is_not_kept_on_a_driver_that_ignores_it(self):
+        """Un drapeau laissé à vrai resterait un champ sans effet, et la
+        liste des profils continuerait d'annoncer « tout le trafic »."""
+        seed = dict(self.OPENCONNECT, default_route=True)
+        self.filling(seed, *([""] * 8 + ["n"]))
+        saved = profiles.load("oc")
+        self.assertIsNotNone(saved, "profil non enregistré")
+        self.assertFalse(saved["default_route"])
+
+
 class ShowingWhatIsConnected(MenuBase):
     """L'état de chaque profil, dans la liste qui sert à choisir.
 

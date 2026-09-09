@@ -416,6 +416,47 @@ class Openconnect(unittest.TestCase):
         self.assertEqual(driver.profile["routes"], [])
 
 
+class TheDefaultRouteVerdict(unittest.TestCase):
+    """`status` ne juge que ce que le pilote CONTRÔLE.
+
+    Un pilote dont le serveur décide du routage ne pose pas la route par
+    défaut. La juger quand même rendait un ✗ permanent sur un tunnel
+    parfaitement sain, et un profil qui la demandait n'obtenait rien.
+    """
+
+    def _driver(self, name, **overrides):
+        # `driver` explicite : les échantillons ne le portent pas, et la
+        # validation retomberait sur le pilote par défaut.
+        profile = dict(
+            SAMPLES[name][0],
+            name="t-route",
+            driver=name,
+            default_route=True,
+        )
+        profile.update(overrides)
+        return DRIVERS[name](profiles.validate(profile), {})
+
+    @staticmethod
+    def _labels(driver):
+        """Les libellés que rend `check_routes`, interrogé directement.
+
+        `standard_status` ne l'appelle que sur un tunnel MONTÉ : passer par
+        lui ne rendrait aucun verdict de route sur une machine de test, et
+        le test passerait pour la mauvaise raison.
+        """
+        return [label for label, _ok, _d in driver.check_routes("vpn-t")]
+
+    def test_a_server_routed_driver_is_not_judged_on_it(self):
+        driver = self._driver("openconnect")
+        self.assertFalse(driver.uses_default_route)
+        self.assertNotIn("route par défaut", self._labels(driver))
+
+    def test_a_driver_that_lays_it_is_still_judged(self):
+        driver = self._driver("wireguard")
+        self.assertTrue(driver.uses_default_route)
+        self.assertIn("route par défaut", self._labels(driver))
+
+
 class _OpenconnectNoHelper(DRIVERS["openconnect"]):
     """Le pilote openconnect, mais sans greffon SSO.
 

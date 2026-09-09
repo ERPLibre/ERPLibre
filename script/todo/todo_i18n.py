@@ -11810,6 +11810,19 @@ TRANSLATIONS = {
             " state a dead tunnel left behind."
         ),
     },
+    "The gateway decides what enters this tunnel. To force a network"
+    " through it anyway, add it to the routes above \u2014 0.0.0.0/0 for all.": {
+        "fr": (
+            "La passerelle décide de ce qui entre dans ce tunnel. Pour y"
+            " forcer un réseau tout de même, l'ajouter aux routes"
+            " ci-dessus — 0.0.0.0/0 pour tout."
+        ),
+        "en": (
+            "The gateway decides what enters this tunnel. To force a"
+            " network through it anyway, add it to the routes above —"
+            " 0.0.0.0/0 for all."
+        ),
+    },
     "SSO helper": {
         "fr": "greffon SSO",
         "en": "SSO helper",
