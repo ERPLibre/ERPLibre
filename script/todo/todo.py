@@ -27,6 +27,7 @@ sys.path.append(new_path)
 from script.config import config_file
 from script.execute import execute
 from script.todo import dev_tools, todo_install, todo_prefs
+from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -38,10 +39,9 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.vpn_menu import VpnMenuMixin
-from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
+from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 VENV_ERPLIBRE = ".venv.erplibre"
@@ -105,6 +105,7 @@ class TODO(
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     VpnMenuMixin,
+    AssistantMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -207,7 +208,7 @@ class TODO(
 
         while True:
             help_info = f"""{self._menu_header()}
-[1] {t("mail_ai_question")}
+[1] {t("AI question - Ask a model, local or remote")}
 [2] {t("mail_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
@@ -215,38 +216,11 @@ class TODO(
             if status == "0":
                 return
             if status == "1":
-                self._assistant_question()
+                self.prompt_assistant_llm()
             elif status == "2":
                 prompt_execute_mail(self)
             else:
                 print(t("Command not found !"))
-
-    def _assistant_question(self):
-        while True:
-            help_info = f"""{self._menu_header()}
-[0] {t("Back")}
-{t("Write your question ")}"""
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            kp = self.kdbx_manager.get_kdbx()
-            if not kp:
-                return
-            config_name = self.config_file.get_config_value(
-                ["kdbx_config", "openai", "kdbx_key"]
-            )
-            entry = kp.find_entries_by_title(config_name, first=True)
-
-            client = openai.OpenAI(api_key=entry.password)
-            prompt_update = status
-            completion = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt_update}],
-            )
-
-            print(completion.choices[0].message.content)
-            print()
 
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
@@ -600,6 +574,7 @@ class TODO(
         "run": "TODO",
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
+        "prompt_assistant_llm": "LLM",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
@@ -610,6 +585,7 @@ class TODO(
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
         "prompt_execute_gpt_code": "GPT code",
+        "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
@@ -1418,8 +1394,8 @@ class TODO(
         On découpe en blocs plutôt que de substituer par expression
         régulière : une ligne Host peut porter PLUSIEURS noms.
 
-        Deux règles, chacune corrigeant une perte de données CONSTATÉE dans
-        le fichier d'un utilisateur.
+        Deux règles, chacune corrigeant une perte de données que ce
+        découpage provoque sans elles.
 
         1. Seuls « Host » et « Match » clôturent un bloc. La règle d'avant —
            « une ligne non indentée clôt le bloc » — prenait l'indentation
@@ -1822,9 +1798,8 @@ class TODO(
         """Nombre de rebonds pour joindre `cible`, en suivant la chaîne.
 
         C'est la mesure de PROFONDEUR d'un hôte imbriqué, et la seule dont on
-        dispose de l'extérieur. Elle est exacte pour les hôtes que nous avons
-        déployés : c'est nous qui écrivons ces entrées, un ProxyJump par
-        étage.
+        dispose de l'extérieur. Elle est exacte pour les hôtes que cet outil
+        déploie : c'est lui qui écrit ces entrées, un ProxyJump par étage.
 
         `maxi` borne le parcours : une boucle dans ~/.ssh/config — A qui
         rebondit par B qui rebondit par A — tournerait sinon sans fin.
@@ -1990,8 +1965,8 @@ class TODO(
     # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
     # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
     # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
-    # monter tel quel. Vécu : « read: Connection reset by peer », parce que la
-    # seconde moitié du nom est un domaine libvirt, pas un alias SSH du rebond.
+    # monter tel quel : le montage échoue, la seconde moitié du nom étant un
+    # domaine libvirt et non un alias SSH du rebond.
     SSHFS_CHAIN_SEP = "+"
 
     # Options à rendre à sshfs quand on contourne l'alias : exactement celles
@@ -3028,6 +3003,7 @@ class TODO(
                     "Claude Code plugins - marketplaces and ERPLibre list"
                 )
             },
+            {"prompt_description": t("Claude Code - local sessions")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -3046,6 +3022,8 @@ class TODO(
                 self._show_claude_context()
             elif status == "5":
                 self.prompt_execute_claude_plugins()
+            elif status == "6":
+                self.prompt_claude_sessions()
             else:
                 print(t("Command not found !"))
 
@@ -4613,11 +4591,11 @@ class TODO(
     def _monitoring_restore(self, zip_path):
         """Restaurer la sauvegarde, puis DIRE ce que la neutralisation a pris.
 
-        Mesuré sur sept bases dont le nom portait « neutralize » :
-        `database.is_neutralized` absent partout, jusqu'à 35 crons actifs,
-        et le domaine de courriel du client toujours en place. Poser la
-        question, recevoir oui et ne rien vérifier reproduit exactement
-        cette illusion — on relit donc la base.
+        Une base dont le nom annonce la neutralisation peut n'en porter
+        aucune trace : `database.is_neutralized` absent, des crons encore
+        actifs, un domaine de courriel toujours en place. Poser la question,
+        recevoir oui et ne rien vérifier reproduit exactement cette illusion
+        — on relit donc la base.
         """
         from script.analyse import monitoring
 

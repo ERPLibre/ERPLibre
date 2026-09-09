@@ -19,6 +19,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The VPN installer looks for `vpnc-script` — a file, not a binary on the `PATH` — and names the package to install per distribution family, instead of letting the tunnel fail on an interface that never appears
 - A command launched by the VPN runner gets `/dev/null` on standard input, so a captured-output command can no longer be stopped by a SIGTTOU and freeze the machine's package manager
 - The VPN profile list marks which profiles carry a live tunnel, so connecting one already up asks first and disconnecting one already down says so instead of looking like a mistake. A profile is judged on its interface, not on the state file a tunnel killed without `down` leaves behind — a state left over used to be reported as mounted on the same screen that declared the process gone
+- `Assistant › LLM` — ask a model server over several turns, local or remote. The history lives in memory and dies with the menu, `/save` being the only way to keep a trace; every command carries a leading slash, so a question pasted over several lines stays one turn. A third-party destination has to be retyped before the first send
+- Server recognition across eleven ports and twelve families, identity read from the response BODY and never from the port: one port hosts up to three products, and one family re-serves another's whole native API
+- Finding a server from six sources — the loopback, this machine's QEMU domains, the hosts of `~/.ssh/config`, an address or a network typed by hand, and the networks read over SSH on another machine. Anything wider than a `/24` is refused before enumeration, and two preferences bound the sweep: `assistant_sweep_workers`, `assistant_sweep_timeout`
+- A gpt catalogue in `script/todo/assistant/gpt/`: one Markdown file per tool, whose declared requirements are matched against what the server announces. An unknown never greys a tool out — only a requirement contradicted by a field actually read does, with the figure that refuses it
+- A declared READ-ONLY context per tool, files and allowlisted commands, shown and confirmed before the first send, capped in size and duration, and scanned for identifying data. The scan's honest limit is stated: it sees addresses, e-mails and account paths, not names
+- `Execute › GPT code › Claude Code` — list the machine's sessions, ask one a question with read-only tools, or resume one in its own terminal. A copy is branched by default, since two writers on one session lose a branch
+
+## Changed
+
+- `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
 
 
 ## [1.8.0] - 2026-09-04
