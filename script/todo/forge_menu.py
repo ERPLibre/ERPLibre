@@ -18,15 +18,22 @@ se déroule souvent devant quelqu'un, et sa sortie se colle dans un rapport.
 """
 
 import getpass
+import glob
+import os
+from xml.etree import ElementTree
 
 import click
 
-from script.forge import profiles
+from script.forge import mirror, profiles
 from script.forge.api import ForgeClient
 from script.forge import api
 from script.lib_valid import ValidationError
 from script.todo.todo_i18n import t
 from script.vault.store import SecretError, SecretStore
+
+# Le manifeste du CHECKOUT : ce que le poste utilise vraiment, et ce à
+# quoi trois autres scripts du dépôt défaultent déjà.
+MANIFEST_DEFAULT = ".repo/local_manifests/erplibre_manifest.xml"
 
 # Ce qu'on écrit pour chaque verdict, et QUOI FAIRE ensuite. La table est
 # exhaustive : `verdict_sentence` refuse un verdict qu'elle ne connaît pas
@@ -108,6 +115,11 @@ class ForgeMenuMixin:
             {"section": t("The forge itself")},
             {"prompt_description": t("Forge - Check the connection")},
             {"prompt_description": t("Forge - List the repositories")},
+            {
+                "prompt_description": t(
+                    "Forge - Create the repositories the manifest declares"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -128,6 +140,8 @@ class ForgeMenuMixin:
                 self._forge_check()
             elif status == "6":
                 self._forge_list_repos()
+            elif status == "7":
+                self._forge_create_missing()
             else:
                 print(t("Command not found !"))
 
@@ -328,3 +342,117 @@ class ForgeMenuMixin:
                 f" [{visibilite}]"
             )
         print(f"  {len(depots)} {t('repositories')}")
+
+    # ------------------------------------------------------------------
+    # Le miroir du manifeste
+    # ------------------------------------------------------------------
+    def _forge_manifest_path(self):
+        """Le manifeste à miroiter, "" si l'utilisateur renonce.
+
+        Celui du CHECKOUT d'abord — c'est ce que le poste utilise vraiment,
+        et trois autres scripts du dépôt y défaultent déjà. Absent, on
+        DEMANDE plutôt que de lire un autre fichier en silence : miroiter un
+        manifeste qui n'est pas celui en service crée les mauvais dépôts, et
+        rien ne le dit.
+        """
+        if os.path.exists(MANIFEST_DEFAULT):
+            return MANIFEST_DEFAULT
+        print(f"! {t('No synced manifest at')} {MANIFEST_DEFAULT}")
+        print(f"  {t('Run repo sync, or give a manifest path below.')}")
+        for candidat in sorted(glob.glob("manifest/*.xml"))[:10]:
+            print(f"    {candidat}")
+        reponse = input(f"{t('Manifest path (empty to cancel): ')}").strip()
+        if not reponse:
+            return ""
+        if not os.path.exists(reponse):
+            print(f"! {t('No such file:')} {reponse}")
+            return ""
+        return reponse
+
+    def _forge_declared_names(self, chemin):
+        """Les noms de projet du manifeste, [] s'il est illisible.
+
+        Un XML tronqué est un ÉTAT et non une panne du menu : un `repo sync`
+        interrompu en laisse un, et remonter une trace d'analyse XML ne dit
+        pas quoi faire.
+        """
+        try:
+            arbre = ElementTree.parse(chemin)
+        except (OSError, ElementTree.ParseError) as refus:
+            print(f"! {t('Unreadable manifest:')} {refus}")
+            return []
+        return [
+            projet.get("name")
+            for projet in arbre.getroot().findall("project")
+            if projet.get("name")
+        ]
+
+    def _forge_create_missing(self):
+        """Crée sur la forge les dépôts que le manifeste déclare.
+
+        LE PLAN D'ABORD, l'exécution ensuite : la liste fait deux cents
+        entrées, et une forge à nettoyer coûte plus cher que la relire.
+
+        UNE PANNE N'ARRÊTE PAS LES AUTRES. Un dépôt déjà présent sous un nom
+        que le rapprochement n'a pas vu répond 409 ; abandonner là laisserait
+        les cent quatre-vingt-dix-neuf suivants non créés, et rejouer
+        buterait sur le même.
+        """
+        nom = self._forge_select_profile()
+        if not nom:
+            return
+        chemin = self._forge_manifest_path()
+        if not chemin:
+            return
+        declares = self._forge_declared_names(chemin)
+        if not declares:
+            print(t("The manifest declares no project."))
+            return
+        _profile, client = self._forge_client(nom)
+        if client is None:
+            return
+
+        reponse = client.repos()
+        if reponse.kind != api.OK:
+            print(f"  {verdict_sentence(reponse.kind)}")
+            if reponse.detail:
+                print(f"  {t('The forge said:')} {reponse.detail}")
+            return
+        presents = [
+            depot.get("full_name") or depot.get("name") or ""
+            for depot in (reponse.data or [])
+        ]
+
+        projet = mirror.plan(declares, presents)
+        print(
+            f"  {len(projet.already)} {t('already there,')}"
+            f" {len(projet.to_create)} {t('to create.')}"
+        )
+        for collision, noms in projet.collisions.items():
+            # Une collision reste vraie même quand le dépôt est là : un seul
+            # des projets est miroité, et le miroir est incomplet.
+            print(
+                f"  ⚠ {t('Same forge name for:')} {', '.join(noms)}"
+                f" → « {collision} »"
+            )
+        if not projet.to_create:
+            return
+        for a_creer in projet.to_create:
+            print(f"    + {a_creer}")
+        if not self._is_yes(
+            input(f"\n{t('Create these repositories? (o/N): ')}")
+        ):
+            return
+
+        faits, refuses = 0, []
+        for a_creer in projet.to_create:
+            resultat = client.create_repo(a_creer)
+            if resultat.kind == api.OK:
+                faits += 1
+            else:
+                refuses.append((a_creer, resultat.kind, resultat.detail))
+        print(f"  ✓ {faits} {t('created.')}")
+        for a_creer, verdict, detail in refuses:
+            print(f"  ✗ {a_creer} : {verdict_sentence(verdict)}")
+            if detail:
+                print(f"      {detail}")

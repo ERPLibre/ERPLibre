@@ -12411,6 +12411,54 @@ TRANSLATIONS = {
         "en": "A dry run touches no secret",
     },
     # Forge Forgejo/Gitea (script/todo/forge_menu.py)
+    "Forge - Create the repositories the manifest declares": {
+        "fr": "Forge - Créer les dépôts que le manifeste déclare",
+        "en": "Forge - Create the repositories the manifest declares",
+    },
+    "The manifest declares no project.": {
+        "fr": "Le manifeste ne déclare aucun projet.",
+        "en": "The manifest declares no project.",
+    },
+    "No synced manifest at": {
+        "fr": "Aucun manifeste synchronisé à",
+        "en": "No synced manifest at",
+    },
+    "Run repo sync, or give a manifest path below.": {
+        "fr": "Lancer repo sync, ou donner un chemin de manifeste ci-dessous.",
+        "en": "Run repo sync, or give a manifest path below.",
+    },
+    "Manifest path (empty to cancel): ": {
+        "fr": "Chemin du manifeste (vide pour renoncer) : ",
+        "en": "Manifest path (empty to cancel): ",
+    },
+    "No such file:": {
+        "fr": "Fichier introuvable :",
+        "en": "No such file:",
+    },
+    "Unreadable manifest:": {
+        "fr": "Manifeste illisible :",
+        "en": "Unreadable manifest:",
+    },
+    "already there,": {
+        "fr": "déjà là,",
+        "en": "already there,",
+    },
+    "to create.": {
+        "fr": "à créer.",
+        "en": "to create.",
+    },
+    "created.": {
+        "fr": "créés.",
+        "en": "created.",
+    },
+    "Same forge name for:": {
+        "fr": "Même nom de forge pour :",
+        "en": "Same forge name for:",
+    },
+    "Create these repositories? (o/N): ": {
+        "fr": "Créer ces dépôts ? (o/N) : ",
+        "en": "Create these repositories? (o/N): ",
+    },
     "Forge (Forgejo/Gitea)": {
         "fr": "Forge (Forgejo/Gitea)",
         "en": "Forge (Forgejo/Gitea)",

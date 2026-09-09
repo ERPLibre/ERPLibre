@@ -22,6 +22,7 @@ import contextlib
 import io as _io
 import os
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -281,6 +282,147 @@ class TestCeQueLeMenuEcritSurUnVerdict(CasDeMenu):
             texte = sortie(menu._forge_list_repos)
         self.assertIn("PUBLIC", texte)
         self.assertIn("o/ouvert", texte)
+
+
+class ClientDeMiroir:
+    """Une forge de banc : une liste de dépôts, et un journal des créations.
+
+    `refus` nomme les dépôts dont la création échoue, pour éprouver qu'une
+    panne n'arrête pas les autres.
+    """
+
+    def __init__(self, presents=(), refus=(), liste=None):
+        self.presents = [{"full_name": f"o/{n}", "name": n} for n in presents]
+        self.refus = set(refus)
+        self.crees = []
+        self._liste = liste
+
+    def repos(self):
+        if self._liste is not None:
+            return self._liste
+        return Reponse(api.OK, data=self.presents)
+
+    def create_repo(self, nom, private=True, description=""):
+        self.crees.append(nom)
+        if nom in self.refus:
+            return Reponse(api.ALREADY_EXISTS, detail=f"{nom} existe")
+        return Reponse(api.OK, data={"name": nom})
+
+
+class TestCreerLesDepotsDuManifeste(CasDeMenu):
+    """Le plan d'abord : une forge à nettoyer coûte plus cher qu'une relecture."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def manifeste(self, *noms):
+        chemin = os.path.join(self.tmp.name, "manifeste.xml")
+        projets = "".join(f'<project name="{n}" path="{n}"/>' for n in noms)
+        with open(chemin, "w", encoding="utf-8") as fichier:
+            fichier.write(f"<manifest>{projets}</manifest>")
+        return chemin
+
+    def lancer(self, menu, chemin, reponse="o"):
+        with patch.object(
+            menu, "_forge_select_profile", return_value="a"
+        ), patch.object(
+            menu, "_forge_manifest_path", return_value=chemin
+        ), patch(
+            "builtins.input", return_value=reponse
+        ):
+            return sortie(menu._forge_create_missing)
+
+    def test_the_plan_is_shown_before_anything_is_created(self):
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        texte = self.lancer(
+            menu, self.manifeste("a.git", "b.git"), reponse="n"
+        )
+        self.assertIn("+ a", texte)
+        self.assertIn("+ b", texte)
+        self.assertEqual([], client.crees, "créé sans confirmation")
+
+    def test_confirming_creates_them(self):
+        """Contrôle positif : ne jamais créer retirerait l'usage."""
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste("a.git", "b.git"))
+        self.assertEqual(["a", "b"], client.crees)
+
+    def test_what_is_already_there_is_not_recreated(self):
+        client = ClientDeMiroir(presents=["a"])
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste("a.git", "b.git"))
+        self.assertEqual(["b"], client.crees)
+
+    def test_the_git_suffix_never_reaches_the_forge(self):
+        """Le créer avec son suffixe donnerait « a.git » sur la forge, et
+        le miroir suivant le trouverait encore manquant."""
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste("a.git"))
+        self.assertEqual(["a"], client.crees)
+
+    def test_one_refusal_does_not_stop_the_others(self):
+        """Abandonner au premier 409 laisserait les suivants non créés, et
+        rejouer buterait sur le même."""
+        client = ClientDeMiroir(refus=["b"])
+        menu = MenuDeBanc(client)
+        texte = self.lancer(menu, self.manifeste("a.git", "b.git", "c.git"))
+        self.assertEqual(["a", "b", "c"], client.crees)
+        self.assertIn("✗ b", texte)
+        self.assertIn("2", texte)
+
+    def test_a_collision_is_named_and_not_silently_halved(self):
+        """Un seul des deux projets est miroité : taire le conflit
+        laisserait un miroir incomplet en silence."""
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        texte = self.lancer(
+            menu, self.manifeste("OCA/web.git", "autre/web.git"), reponse="n"
+        )
+        self.assertIn("Same forge name for", texte)
+
+    def test_a_failed_listing_creates_nothing(self):
+        """Prendre une liste vide pour une forge vide recréerait tout."""
+        client = ClientDeMiroir(liste=Reponse(api.BAD_TOKEN, detail="x"))
+        menu = MenuDeBanc(client)
+        texte = self.lancer(menu, self.manifeste("a.git"))
+        self.assertEqual([], client.crees)
+        self.assertIn(SENTENCES[api.BAD_TOKEN][:30], texte)
+
+    def test_an_empty_manifest_creates_nothing(self):
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        texte = self.lancer(menu, self.manifeste())
+        self.assertEqual([], client.crees)
+        self.assertIn("no project", texte)
+
+    def test_an_unreadable_manifest_is_a_state_and_not_a_crash(self):
+        """Un « repo sync » interrompu en laisse un tronqué ; remonter une
+        trace d'analyse XML ne dit pas quoi faire."""
+        chemin = os.path.join(self.tmp.name, "tronque.xml")
+        with open(chemin, "w", encoding="utf-8") as fichier:
+            fichier.write("<manifest><project name=")
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        texte = self.lancer(menu, chemin)
+        self.assertEqual([], client.crees)
+        self.assertIn("Unreadable manifest", texte)
+
+    def test_nothing_to_do_says_so_without_asking(self):
+        client = ClientDeMiroir(presents=["a"])
+        menu = MenuDeBanc(client)
+        texte = self.lancer(menu, self.manifeste("a.git"), reponse="o")
+        self.assertEqual([], client.crees)
+        self.assertIn("1", texte)
+
+    def test_the_default_manifest_is_the_checkout_one(self):
+        """Miroiter un manifeste qui n'est pas celui en service crée les
+        mauvais dépôts, et rien ne le dit."""
+        self.assertIn(".repo/", forge_menu.MANIFEST_DEFAULT)
 
 
 class TestLaFrontiereAvecLeModuleDeForge(CasDeMenu):
