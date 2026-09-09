@@ -19,6 +19,8 @@ Référence de secret : "<coffre>:<chemin>"
 from __future__ import annotations
 
 import logging
+import os
+import stat
 
 from script.todo.todo_i18n import t
 
@@ -38,6 +40,36 @@ SAFE_BACKENDS = {
 
 class SecretError(Exception):
     """Aucun coffre utilisable, ou référence malformée."""
+
+
+def protect(path) -> bool:
+    """Remet le coffre en 0600. Rend True s'il fallait le resserrer.
+
+    À APPELER APRÈS CHAQUE ÉCRITURE, et pas seulement à la création.
+    `PyKeePass.save()` réécrit le fichier de zéro et lui donne le mode du
+    umask — 0644 avec un umask de 022. Un chmod fait une fois à la création
+    ne survit donc pas au premier enregistrement, et un fichier de mots de
+    passe devient lisible par tout utilisateur de la machine sans que
+    personne ne touche à rien.
+
+    Un chemin vide, un fichier absent ou une erreur de `stat` rendent False
+    sans lever : resserrer est une précaution, pas une opération dont
+    l'échec doit interrompre une écriture déjà faite.
+    """
+    if not path:
+        return False
+    path = os.path.expanduser(str(path))
+    try:
+        actuel = stat.S_IMODE(os.stat(path).st_mode)
+    except OSError:
+        return False
+    if not actuel & 0o077:
+        return False
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        return False
+    return True
 
 
 def keyring_backend_name() -> str:
@@ -135,7 +167,7 @@ class SecretStore:
         if scheme == "kdbx":
             entry = self._kdbx_entry(path, create=True)
             entry.password = secret
-            self._kdbx().save()
+            self._save()
             return
         self._keyring_call("set_password", path, secret)
 
@@ -146,7 +178,7 @@ class SecretStore:
             entry = self._kdbx_entry(path, create=False)
             if entry:
                 self._kdbx().delete_entry(entry)
-                self._kdbx().save()
+                self._save()
             return
         self._keyring_call("delete_password", path)
 
@@ -166,6 +198,16 @@ class SecretStore:
         if kp is None:
             raise SecretError(t("mail_err_kdbx_unreadable"))
         return kp
+
+    def _save(self) -> None:
+        """Enregistre le coffre, puis le referme sur son propriétaire.
+
+        Un seul endroit : `set` et `delete` écrivent tous les deux, et un
+        oubli dans l'un des deux suffit à laisser le coffre en 0644.
+        """
+        kp = self._kdbx()
+        kp.save()
+        protect(getattr(kp, "filename", ""))
 
     def _kdbx_entry(self, path: str, create: bool):
         """`path` = "Groupe/SousGroupe/Titre". Crée les groupes au besoin."""
