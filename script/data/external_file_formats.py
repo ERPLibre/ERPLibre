@@ -456,12 +456,23 @@ def _accord_de_forme(lignes, rang):
         if not valeurs or classer(cellule) == "vide":
             continue
         compares += 1
-        dominante = collections.Counter(
-            _forme_de_valeur(v) for v in valeurs
-        ).most_common(1)
-        if dominante and _forme_de_valeur(cellule) == dominante[0][0]:
+        formes = collections.Counter(_forme_de_valeur(v) for v in valeurs)
+        if _forme_de_valeur(cellule) == _forme_dominante(formes):
             accords += 1
     return accords / compares if compares else 0.0
+
+
+def _forme_dominante(formes):
+    """La forme la plus fréquente, la plus petite en cas d'égalité.
+
+    `most_common` tranche une égalité par l'ordre d'INSERTION : deux
+    agrégations du même corps dans un ordre différent donnaient alors deux
+    dominantes, donc deux verdicts. Le départage explicite est arbitraire
+    mais stable, ce qui est tout ce qu'on lui demande.
+    """
+    if not formes:
+        return None
+    return max(formes.items(), key=lambda paire: (paire[1], paire[0]))[0]
 
 
 def _signaux_entete(lignes, rang):
@@ -533,6 +544,103 @@ def _signaux_entete(lignes, rang):
     }
 
 
+def _signaux_par_rang(lignes, jusqu_a):
+    """{rang: (signaux, accord)} pour les rangs 1..`jusqu_a`, en UNE passe.
+
+    `corps(rang) = {ligne rang+1} ∪ corps(rang+1)` : en DESCENDANT les
+    rangs, chaque pas ajoute une ligne à l'état par colonne au lieu de
+    rebalayer le corps. Rang par rang, les dix rangs sondés coûtaient
+    vingt balayages de la feuille — quatre cinquièmes du temps du rapport
+    sur un export de cinq cent mille cellules.
+
+    Les valeurs sont celles que rendent `_signaux_entete` et
+    `_accord_de_forme` : mêmes définitions, et la dominante de forme y est
+    départagée explicitement, sans quoi deux ordres d'agrégation du même
+    corps donneraient deux verdicts.
+    """
+    largeur = max((len(l) for l in lignes), default=0)
+    jusqu_a = min(jusqu_a, len(lignes))
+    if jusqu_a < 1:
+        return {}
+    if not largeur:
+        # Une feuille de lignes vides : chaque rang existe et ne mesure
+        # rien. Rendre la même forme qu'ailleurs épargne un cas
+        # particulier à chaque appelant.
+        return {rang: (None, None) for rang in range(1, jusqu_a + 1)}
+    familles = [set() for _ in range(largeur)]
+    vues = [set() for _ in range(largeur)]
+    pleines = [0] * largeur
+    formes = [collections.Counter() for _ in range(largeur)]
+
+    def ajouter(ligne):
+        for index in range(min(largeur, len(ligne))):
+            valeur = ligne[index]
+            famille = classer(valeur)
+            if famille == "vide":
+                continue
+            familles[index].add(famille)
+            vues[index].add(str(valeur).strip().lower())
+            pleines[index] += 1
+            formes[index][_forme_de_valeur(valeur)] += 1
+
+    for ligne in lignes[jusqu_a:]:
+        ajouter(ligne)
+    rendu = {}
+    for rang in range(jusqu_a, 0, -1):
+        if rang < jusqu_a:
+            # La ligne `rang + 1` en 1-based : celle que le corps gagne.
+            ajouter(lignes[rang])
+        if rang >= len(lignes):
+            # Pas de corps sous la ligne : rien à comparer n'est pas un
+            # verdict, et les deux fonctions rang par rang rendent None.
+            rendu[rang] = (None, None)
+            continue
+        rendu[rang] = _mesurer_depuis_l_etat(
+            lignes[rang - 1], largeur, familles, vues, pleines, formes
+        )
+    return rendu
+
+
+def _mesurer_depuis_l_etat(ligne, largeur, familles, vues, pleines, formes):
+    """(signaux, accord) d'une ligne, contre l'état du corps sous elle."""
+    contraste = hors_colonne = compares = a_vocabulaire = accords = 0
+    for index in range(largeur):
+        cellule = ligne[index] if index < len(ligne) else None
+        if not familles[index] or classer(cellule) == "vide":
+            continue
+        compares += 1
+        if classer(cellule) == "texte" and "texte" not in familles[index]:
+            contraste += 1
+        if len(vues[index]) < pleines[index]:
+            a_vocabulaire += 1
+            if str(cellule).strip().lower() not in vues[index]:
+                hors_colonne += 1
+        if _forme_de_valeur(cellule) == _forme_dominante(formes[index]):
+            accords += 1
+    remplies = sum(
+        1
+        for index in range(largeur)
+        if index < len(ligne) and classer(ligne[index]) != "vide"
+    )
+    etiquettes = [
+        str(ligne[index]).strip().lower()
+        for index in range(min(largeur, len(ligne)))
+        if classer(ligne[index]) != "vide"
+    ]
+    signaux = {
+        "contraste": contraste / compares if compares else 0.0,
+        "hors_colonne": (
+            hors_colonne / a_vocabulaire if a_vocabulaire else 0.0
+        ),
+        "rempli": remplies / largeur,
+        "distinct": (
+            len(set(etiquettes)) / len(etiquettes) if etiquettes else 0.0
+        ),
+        "compares": compares,
+    }
+    return signaux, (accords / compares if compares else 0.0)
+
+
 def _est_une_ligne_de_champs(signaux, accord):
     """Le verdict, seuils nommés à l'appui.
 
@@ -562,8 +670,12 @@ def _est_une_ligne_de_champs(signaux, accord):
     )
 
 
-def _est_de_la_donnee(lignes, rang):
+def _est_de_la_donnee(lignes, rang, mesures=None):
     """Cette ligne, au-dessus de la ligne de champs, est-elle une DONNÉE ?
+
+    `mesures` est le lot rendu par `_signaux_par_rang`, quand l'appelant
+    l'a déjà : le recalculer rang par rang rebalaie la feuille deux fois
+    par ligne remontée.
 
     Deux conditions, et les deux sont nécessaires : elle ressemble à ses
     données par la forme, ET elle en remplit la largeur. La forme seule ne
@@ -575,10 +687,13 @@ def _est_de_la_donnee(lignes, rang):
     L'erreur va du bon côté quand elle se produit : une ligne prise pour
     des données est ANONYMISÉE, non recopiée.
     """
-    accord = _accord_de_forme(lignes, rang)
+    if mesures is None:
+        signaux = _signaux_entete(lignes, rang)
+        accord = _accord_de_forme(lignes, rang)
+    else:
+        signaux, accord = mesures.get(rang, (None, None))
     if accord is None or accord < 0.5:
         return False
-    signaux = _signaux_entete(lignes, rang)
     return signaux is not None and signaux["rempli"] >= REMPLISSAGE_MINIMAL
 
 
@@ -609,13 +724,14 @@ def lignes_entete(lignes):
     """
     if not lignes:
         return set(), None
-    for rang in range(1, min(LIGNES_SONDEES, len(lignes)) + 1):
-        accord = _accord_de_forme(lignes, rang)
-        if not _est_une_ligne_de_champs(_signaux_entete(lignes, rang), accord):
+    mesures = _signaux_par_rang(lignes, LIGNES_SONDEES)
+    for rang in sorted(mesures):
+        signaux, accord = mesures[rang]
+        if not _est_une_ligne_de_champs(signaux, accord):
             continue
         empan = {rang}
         haut = rang - 1
-        while haut >= 1 and not _est_de_la_donnee(lignes, haut):
+        while haut >= 1 and not _est_de_la_donnee(lignes, haut, mesures):
             empan.add(haut)
             haut -= 1
         if haut >= 1:
@@ -1179,6 +1295,7 @@ def _lignes_sondees(feuille):
     c'est ainsi qu'on voit pourquoi la voisine a été écartée.
     """
     rendu = []
+    mesures = _signaux_par_rang(feuille.lignes, LIGNES_SONDEES)
     for rang in range(1, min(LIGNES_MONTREES, len(feuille.lignes)) + 1):
         ligne = feuille.lignes[rang - 1]
         # Filtrer AVANT de borner. La tranche posée d'abord ne montrait
@@ -1194,10 +1311,7 @@ def _lignes_sondees(feuille):
             apercu.append(valeur_d_exemple(valeur))
             if len(apercu) >= EXEMPLES_PAR_COLONNE:
                 break
-        signaux = accord = None
-        if rang <= LIGNES_SONDEES:
-            signaux = _signaux_entete(feuille.lignes, rang)
-            accord = _accord_de_forme(feuille.lignes, rang)
+        signaux, accord = mesures.get(rang, (None, None))
         mesure = None
         if signaux is not None and accord is not None:
             mesure = {

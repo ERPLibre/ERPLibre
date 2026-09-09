@@ -1818,6 +1818,108 @@ class TestLigneDeChamps(unittest.TestCase):
                 self.assertEqual(formats.lignes_entete(lignes), (set(), None))
 
 
+class TestSignauxEnLot(unittest.TestCase):
+    """Le lot rend EXACTEMENT ce que le rang par rang rendait.
+
+    C'est la propriété qui autorise le raccourci : `corps(rang)` est
+    `corps(rang + 1)` plus une ligne, donc descendre les rangs en
+    AJOUTANT une ligne à l'état par colonne remplace vingt balayages de la
+    feuille par un. Sans ce test, une retouche à l'une des deux voies
+    ferait dériver les verdicts sans que rien ne le dise.
+    """
+
+    def _comparer(self, lignes):
+        lot = formats._signaux_par_rang(lignes, formats.LIGNES_SONDEES)
+        attendus = {}
+        for rang in range(1, min(formats.LIGNES_SONDEES, len(lignes)) + 1):
+            attendus[rang] = (
+                formats._signaux_entete(lignes, rang),
+                formats._accord_de_forme(lignes, rang),
+            )
+        self.assertEqual(sorted(lot), sorted(attendus))
+        for rang, (signaux, accord) in attendus.items():
+            with self.subTest(rang=rang):
+                self.assertEqual(lot[rang][0], signaux)
+                if accord is None:
+                    self.assertIsNone(lot[rang][1])
+                else:
+                    self.assertAlmostEqual(lot[rang][1], accord, places=12)
+
+    ENTETE = ["N° facture", "N° magasin", "Montant"]
+
+    def test_les_cas_nommes(self):
+        cas = {
+            "en-tête en ligne 1": [self.ENTETE] + _corps(),
+            "titre en A1": [
+                ["Rapport annuel", None, None],
+                [None, None, None],
+                self.ENTETE,
+            ]
+            + _corps(),
+            "sans en-tête": _corps(),
+            "ligne de catégorie": [["Bloc", "Bloc", "Bloc"], self.ENTETE]
+            + _corps(),
+            "feuille courte": [
+                ["Client%d" % rang, "Ville%d" % rang, 100 + rang]
+                for rang in range(12)
+            ],
+            "une seule ligne": [self.ENTETE],
+            "dents de scie": [["a"], ["b", "c", "d"], ["e", "f"], ["g"]],
+            "lignes vides": [[], [], []],
+            "vide": [],
+        }
+        for nom, lignes in cas.items():
+            with self.subTest(cas=nom):
+                self._comparer(lignes)
+
+    def test_sur_quatre_cents_grilles_tirees(self):
+        """Les cas nommés couvrent ce qu'on a pensé ; le tirage couvre le
+        reste — colonnes à trous, types mêlés, feuilles d'une ligne."""
+        rng = random.Random(11)
+        for _ in range(400):
+            lignes = []
+            for _ in range(rng.randint(1, 14)):
+                ligne = []
+                for _ in range(rng.randint(1, 6)):
+                    genre = rng.choice("nsSvdb")
+                    if genre == "n":
+                        ligne.append(rng.randint(-50, 5000))
+                    elif genre == "s":
+                        ligne.append(
+                            rng.choice(("Aubel", "Bruant", "Cerdan", "nom"))
+                        )
+                    elif genre == "S":
+                        ligne.append("ZK%05d" % rng.randint(1, 300))
+                    elif genre == "v":
+                        ligne.append(None)
+                    elif genre == "d":
+                        ligne.append("2011-03-%02d" % rng.randint(1, 28))
+                    else:
+                        ligne.append(rng.choice((True, False)))
+                lignes.append(ligne)
+            self._comparer(lignes)
+
+    def test_la_dominante_de_forme_ne_depend_pas_de_l_ordre(self):
+        """`most_common` tranche une égalité par l'ordre d'INSERTION :
+        deux agrégations du même corps donnaient deux dominantes, donc
+        deux verdicts."""
+        import collections
+
+        premier = collections.Counter({"a+": 2, "9+": 2})
+        second = collections.Counter()
+        second["9+"] = 2
+        second["a+"] = 2
+        self.assertEqual(
+            formats._forme_dominante(premier),
+            formats._forme_dominante(second),
+        )
+
+    def test_un_compteur_vide_n_a_pas_de_dominante(self):
+        import collections
+
+        self.assertIsNone(formats._forme_dominante(collections.Counter()))
+
+
 class TestFormeDeValeur(unittest.TestCase):
     """La signature de forme : ce qui sépare un nom de champ d'une donnée
     là où le TYPE ne dit rien, les deux étant du texte."""
