@@ -12410,6 +12410,179 @@ TRANSLATIONS = {
         "fr": "Un essai à blanc ne touche à aucun secret",
         "en": "A dry run touches no secret",
     },
+    # Forge Forgejo/Gitea (script/todo/forge_menu.py)
+    "Forge (Forgejo/Gitea)": {
+        "fr": "Forge (Forgejo/Gitea)",
+        "en": "Forge (Forgejo/Gitea)",
+    },
+    "Forge (Forgejo/Gitea): profiles, token, repos": {
+        "fr": "Forge (Forgejo/Gitea) : profils, jeton, dépôts",
+        "en": "Forge (Forgejo/Gitea): profiles, token, repos",
+    },
+    "Profiles & token": {
+        "fr": "Profils et jeton",
+        "en": "Profiles & token",
+    },
+    "The forge itself": {
+        "fr": "La forge elle-même",
+        "en": "The forge itself",
+    },
+    "Forge - List the profiles": {
+        "fr": "Forge - Lister les profils",
+        "en": "Forge - List the profiles",
+    },
+    "Forge - Add or edit a profile": {
+        "fr": "Forge - Créer ou modifier un profil",
+        "en": "Forge - Add or edit a profile",
+    },
+    "Forge - Store the API token": {
+        "fr": "Forge - Déposer le jeton d'API",
+        "en": "Forge - Store the API token",
+    },
+    "Forge - Delete a profile": {
+        "fr": "Forge - Supprimer un profil",
+        "en": "Forge - Delete a profile",
+    },
+    "Forge - Check the connection": {
+        "fr": "Forge - Vérifier la connexion",
+        "en": "Forge - Check the connection",
+    },
+    "Forge - List the repositories": {
+        "fr": "Forge - Lister les dépôts",
+        "en": "Forge - List the repositories",
+    },
+    "No forge profile yet: create one first.": {
+        "fr": "Aucun profil de forge : en créer un d'abord.",
+        "en": "No forge profile yet: create one first.",
+    },
+    "Profile name: ": {
+        "fr": "Nom du profil : ",
+        "en": "Profile name: ",
+    },
+    "Profile number (empty to cancel): ": {
+        "fr": "Numéro du profil (vide pour renoncer) : ",
+        "en": "Profile number (empty to cancel): ",
+    },
+    "Forge URL: ": {
+        "fr": "Adresse de la forge : ",
+        "en": "Forge URL: ",
+    },
+    "Owning account or organisation: ": {
+        "fr": "Compte ou organisation propriétaire : ",
+        "en": "Owning account or organisation: ",
+    },
+    "Verify the TLS certificate": {
+        "fr": "Vérifier le certificat TLS",
+        "en": "Verify the TLS certificate",
+    },
+    "Allow http to a remote address": {
+        "fr": "Autoriser http vers une adresse distante",
+        "en": "Allow http to a remote address",
+    },
+    "Profile saved:": {
+        "fr": "Profil enregistré :",
+        "en": "Profile saved:",
+    },
+    "Profile deleted:": {
+        "fr": "Profil supprimé :",
+        "en": "Profile deleted:",
+    },
+    "Not in the private file, nothing deleted:": {
+        "fr": "Absent du fichier privé, rien de supprimé :",
+        "en": "Not in the private file, nothing deleted:",
+    },
+    "Unknown profile:": {
+        "fr": "Profil inconnu :",
+        "en": "Unknown profile:",
+    },
+    "TLS verification is OFF for this profile.": {
+        "fr": "La vérification TLS est COUPÉE pour ce profil.",
+        "en": "TLS verification is OFF for this profile.",
+    },
+    "API token (not echoed): ": {
+        "fr": "Jeton d'API (saisie non affichée) : ",
+        "en": "API token (not echoed): ",
+    },
+    "Empty: nothing stored.": {
+        "fr": "Vide : rien de déposé.",
+        "en": "Empty: nothing stored.",
+    },
+    "Token stored for": {
+        "fr": "Jeton déposé pour",
+        "en": "Token stored for",
+    },
+    "TLS UNVERIFIED": {
+        "fr": "TLS NON VÉRIFIÉ",
+        "en": "TLS UNVERIFIED",
+    },
+    "PLAINTEXT": {
+        "fr": "EN CLAIR",
+        "en": "PLAINTEXT",
+    },
+    "token stored": {
+        "fr": "jeton déposé",
+        "en": "token stored",
+    },
+    "no token": {
+        "fr": "aucun jeton",
+        "en": "no token",
+    },
+    "The forge said:": {
+        "fr": "La forge a répondu :",
+        "en": "The forge said:",
+    },
+    "Connected as:": {
+        "fr": "Connecté en tant que :",
+        "en": "Connected as:",
+    },
+    "repositories": {
+        "fr": "dépôts",
+        "en": "repositories",
+    },
+    "private": {
+        "fr": "privé",
+        "en": "private",
+    },
+    "PUBLIC": {
+        "fr": "PUBLIC",
+        "en": "PUBLIC",
+    },
+    "Forge reached.": {
+        "fr": "Forge jointe.",
+        "en": "Forge reached.",
+    },
+    "No API token for this profile. Store one with « Store the API token »; create it in the forge under Settings > Applications.": {
+        "fr": "Aucun jeton d'API pour ce profil. En déposer un par « Déposer le jeton d'API » ; il se crée dans la forge sous Paramètres > Applications.",
+        "en": "No API token for this profile. Store one with « Store the API token »; create it in the forge under Settings > Applications.",
+    },
+    "The forge refused the token. Check it has not expired, and that it carries the scopes the operation needs.": {
+        "fr": "La forge a refusé le jeton. Vérifier qu'il n'a pas expiré, et qu'il porte les portées que l'opération demande.",
+        "en": "The forge refused the token. Check it has not expired, and that it carries the scopes the operation needs.",
+    },
+    "The forge refuses a private-range target. This is its ALLOW_LOCALNETWORKS setting, NOT the token: regenerating a token changes nothing. Set FORGEJO_ALLOW_LOCALNETWORKS=1 and reinstall, or edit [migrations] in /etc/forgejo/app.ini.": {
+        "fr": "La forge refuse une cible en plage privée. C'est son réglage ALLOW_LOCALNETWORKS, PAS le jeton : en régénérer un n'y change rien. Poser FORGEJO_ALLOW_LOCALNETWORKS=1 et réinstaller, ou modifier [migrations] dans /etc/forgejo/app.ini.",
+        "en": "The forge refuses a private-range target. This is its ALLOW_LOCALNETWORKS setting, NOT the token: regenerating a token changes nothing. Set FORGEJO_ALLOW_LOCALNETWORKS=1 and reinstall, or edit [migrations] in /etc/forgejo/app.ini.",
+    },
+    "Nothing at that address on the forge.": {
+        "fr": "Rien à cette adresse sur la forge.",
+        "en": "Nothing at that address on the forge.",
+    },
+    "It already exists on the forge.": {
+        "fr": "Cela existe déjà sur la forge.",
+        "en": "It already exists on the forge.",
+    },
+    "The certificate is not trusted. Trust the authority on this machine; turning verification off in the profile sends the token to whoever answers in the forge's place.": {
+        "fr": "Le certificat n'est pas approuvé. Approuver l'autorité sur cette machine ; couper la vérification dans le profil envoie le jeton à qui répond à la place de la forge.",
+        "en": "The certificate is not trusted. Trust the authority on this machine; turning verification off in the profile sends the token to whoever answers in the forge's place.",
+    },
+    "No answer from the forge. Check the address, the port, and that the service is running.": {
+        "fr": "Aucune réponse de la forge. Vérifier l'adresse, le port, et que le service tourne.",
+        "en": "No answer from the forge. Check the address, the port, and that the service is running.",
+    },
+    "The forge refused the call.": {
+        "fr": "La forge a refusé l'appel.",
+        "en": "The forge refused the call.",
+    },
 }
 
 

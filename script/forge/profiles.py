@@ -69,14 +69,22 @@ DEFAULTS = {
 }
 
 
-def secret_title(name: str) -> str:
-    """Titre de l'entrée KeePassXC qui porte le jeton du profil.
+# Où le jeton d'un profil est rangé dans le coffre. La forme est celle de
+# `script.vault.store`, le magasin de secrets du dépôt : « kdbx:Groupe/Sous/
+# Titre ». Pas celle du coffre VPN, qui titre à plat — deux conventions dans
+# le même coffre le rendent illisible dans KeePassXC, et un lecteur ne sait
+# plus laquelle chercher.
+SECRET_GROUP = "ERPLibre/Forge"
 
-    Dérivé du nom plutôt que stocké : deux sources de vérité pour un même
+
+def secret_ref(name: str) -> str:
+    """Référence du jeton du profil, pour `script.vault.store.SecretStore`.
+
+    Dérivée du nom plutôt que stockée : deux sources de vérité pour un même
     lien finissent toujours par diverger, et un profil renommé chercherait
-    son jeton sous l'ancien titre sans le dire.
+    son jeton sous l'ancienne référence sans le dire.
     """
-    return f"ERPLibre Forge / {name}"
+    return f"kdbx:{SECRET_GROUP}/{name}"
 
 
 def load_all(config=None) -> list[dict]:

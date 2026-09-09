@@ -205,14 +205,24 @@ class TestLeProfilValide(unittest.TestCase):
         with self.assertRaises(ValidationError):
             profiles.validate({**VALIDE, "owner": ""})
 
-    def test_the_secret_title_is_derived_and_not_stored(self):
+    def test_the_secret_reference_is_derived_and_not_stored(self):
         """Deux sources de vérité pour un même lien divergent ; un profil
-        renommé chercherait son jeton sous l'ancien titre."""
-        self.assertNotIn("secret_title", profiles.validate(VALIDE))
-        self.assertIn("atelier", profiles.secret_title("atelier"))
+        renommé chercherait son jeton sous l'ancienne référence."""
+        self.assertNotIn("secret_ref", profiles.validate(VALIDE))
+        self.assertIn("atelier", profiles.secret_ref("atelier"))
         self.assertNotEqual(
-            profiles.secret_title("a"), profiles.secret_title("b")
+            profiles.secret_ref("a"), profiles.secret_ref("b")
         )
+
+    def test_the_secret_reference_is_one_the_repository_store_parses(self):
+        """La forme du coffre VPN — un titre à plat — ne serait pas
+        analysée par `SecretStore`, et le jeton irait nulle part."""
+        from script.vault.store import SecretStore
+
+        schema, chemin = SecretStore._parse(profiles.secret_ref("atelier"))
+        self.assertEqual("kdbx", schema)
+        self.assertTrue(chemin.endswith("/atelier"), chemin)
+        self.assertIn("/", chemin.rstrip("/atelier"))
 
     def test_the_profile_carries_no_token_field(self):
         """Le jeton vit dans le coffre. Un champ ici serait une invitation

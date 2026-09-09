@@ -537,6 +537,7 @@ class TestGitMenuNumbering(MenuCoherence, unittest.TestCase):
         "Add a remote to a local repository": "_git_add_remote",
         "Install git hooks": "_git_install_hooks",
         "Set merge.conflictStyle": "_git_set_conflict_style",
+        "Forge (Forgejo/Gitea)": "prompt_execute_forge",
         "Install Starship on Shell": "_shell_install_starship",
         "Install Claude Code": "_shell_install_claude_code",
         "Install opencode": "_shell_install_opencode",

@@ -50,6 +50,7 @@ from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 from script.todo.vm_backend_menu import VmBackendMenuMixin
+from script.todo.forge_menu import ForgeMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -114,6 +115,7 @@ class TODO(
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     VpnMenuMixin,
+    ForgeMenuMixin,
     DevstackMenuMixin,
     DeployTargetMenuMixin,
     VmBackendMenuMixin,
@@ -2803,6 +2805,12 @@ class TODO(
         # rang dépend du nombre d'entrées venues de todo.json, donc « method »
         # porte la destination dans l'entrée elle-même — un numéro codé en dur
         # mènerait ailleurs dès qu'une entrée de configuration s'ajoute.
+        choices.append(
+            {
+                "prompt_description": t("Forge (Forgejo/Gitea)"),
+                "method": "prompt_execute_forge",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t("Install Starship on Shell"),
