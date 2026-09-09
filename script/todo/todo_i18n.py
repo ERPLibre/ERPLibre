@@ -13120,6 +13120,94 @@ TRANSLATIONS = {
         "fr": "Une colonne d'entiers est saturée : la copie porte le même ensemble de valeurs, seulement redistribuées.",
         "en": 'An integer column is saturated: the copy holds the same set of values, only reshuffled.',
     },
+    'Choose the scope on screen? (Y/n): ': {
+        "fr": "Choisir le périmètre à l'écran ? (O/n) : ",
+        "en": 'Choose the scope on screen? (Y/n): ',
+    },
+    'Transform — anonymisation scope': {
+        "fr": "Transform — périmètre de l'anonymisation",
+        "en": 'Transform — anonymisation scope',
+    },
+    '‹no label›': {
+        "fr": '‹sans libellé›',
+        "en": '‹no label›',
+    },
+    'column label': {
+        "fr": 'libellé',
+        "en": 'column label',
+    },
+    'column type': {
+        "fr": 'type',
+        "en": 'column type',
+    },
+    'filled': {
+        "fr": 'remplies',
+        "en": 'filled',
+    },
+    'distinct': {
+        "fr": 'distinctes',
+        "en": 'distinct',
+    },
+    'examples': {
+        "fr": 'exemples',
+        "en": 'examples',
+    },
+    'row no': {
+        "fr": 'ligne',
+        "en": 'row no',
+    },
+    'first values': {
+        "fr": 'premières valeurs',
+        "en": 'first values',
+    },
+    'measures': {
+        "fr": 'mesures',
+        "en": 'measures',
+    },
+    'sig type': {
+        "fr": 'type',
+        "en": 'sig type',
+    },
+    'off-col': {
+        "fr": 'hors-col',
+        "en": 'off-col',
+    },
+    'shape': {
+        "fr": 'forme',
+        "en": 'shape',
+    },
+    'Toggle the current row': {
+        "fr": 'Cocher ou décocher la ligne courante',
+        "en": 'Toggle the current row',
+    },
+    'Leave this column untouched': {
+        "fr": 'Laisser cette colonne intacte',
+        "en": 'Leave this column untouched',
+    },
+    'Clear this sheet': {
+        "fr": 'Rendre cette feuille à la mesure',
+        "en": 'Clear this sheet',
+    },
+    'Accept': {
+        "fr": 'Accepter',
+        "en": 'Accept',
+    },
+    'Fall back to text prompts': {
+        "fr": 'Revenir aux invites textuelles',
+        "en": 'Fall back to text prompts',
+    },
+    '[x] untouched · [!] floored, not answerable': {
+        "fr": '[x] intacte · [!] planchéiée, non répondable',
+        "en": '[x] untouched · [!] floored, not answerable',
+    },
+    'This column is floored: no answer applies.': {
+        "fr": "Cette colonne est planchéiée : aucune réponse n'y porte.",
+        "en": 'This column is floored: no answer applies.',
+    },
+    'The screen needs textual; falling back to prompts.': {
+        "fr": "L'écran demande textual ; retour aux invites.",
+        "en": 'The screen needs textual; falling back to prompts.',
+    },
     'Preview — nothing written yet': {
         "fr": "Aperçu — rien n'est encore écrit",
         "en": 'Preview — nothing written yet',

@@ -354,6 +354,16 @@ class TransformMenuMixin:
             return None
         options["conversion"] = cible
 
+        # L'écran AVANT les questions de portée : c'est lui qui répond
+        # aux deux qu'une invite ne sait pas poser — quelles lignes
+        # nomment les colonnes, et lesquelles rester intactes. Il rend
+        # `{}` pour dire « pose-moi les questions », ce qui laisse la
+        # suite se dérouler comme avant.
+        ecran = self._transform_ecran(rapport)
+        if ecran is None:
+            return None
+        options.update(ecran)
+
         noms = [f["nom"] for f in rapport.get("feuilles") or []]
         if len(noms) > 1:
             reponse = self._transform_ask(
@@ -380,14 +390,20 @@ class TransformMenuMixin:
             if resolues:
                 print(f"   {', '.join(resolues)}")
 
-        reponse = self._transform_ask(
-            t("Columns to leave untouched (empty = none): ")
-        )
-        if reponse is None:
-            return None
-        options["colonnes_intactes"] = [
-            c.strip() for c in reponse.split(",") if c.strip()
-        ]
+        if "colonnes_intactes_par_feuille" in options:
+            # L'écran a répondu par feuille, ce que cette invite ne sait
+            # pas faire : la reposer inviterait à une réponse GLOBALE qui
+            # gèlerait la même colonne sur toutes les feuilles.
+            options["colonnes_intactes"] = []
+        else:
+            reponse = self._transform_ask(
+                t("Columns to leave untouched (empty = none): ")
+            )
+            if reponse is None:
+                return None
+            options["colonnes_intactes"] = [
+                c.strip() for c in reponse.split(",") if c.strip()
+            ]
 
         reponse = self._transform_ask(t("Replace numbers? (Y/n): "))
         if reponse is None:
@@ -439,6 +455,41 @@ class TransformMenuMixin:
                 return None
             options["garder_graphiques"] = self._is_yes(reponse)
         return options
+
+    def _transform_ecran(self, rapport):
+        """Le périmètre choisi à l'écran, ou {} pour les invites.
+
+        Trois issues, et non deux : la spec porte le périmètre, `{}`
+        demande les invites, et None annule. Confondre les deux dernières
+        supprimerait le repli en silence.
+        """
+        if not (rapport.get("feuilles") or []):
+            return {}
+        reponse = self._transform_ask(t("Choose the scope on screen? (Y/n): "))
+        if reponse is None:
+            return None
+        if not self._is_yes_default_yes(reponse):
+            return {}
+        try:
+            from script.todo import transform_form
+        except ImportError:  # pragma: no cover - textual peut manquer
+            print(
+                "   ⚠ %s"
+                % t("The screen needs textual; falling back to prompts.")
+            )
+            return {}
+        try:
+            spec = transform_form.run_transform_form(
+                transform_form.contexte_depuis_rapport(rapport)
+            )
+        except Exception as exc:  # pragma: no cover - pas de terminal
+            # Un écran qui ne peut pas s'ouvrir ne doit pas emporter le
+            # travail : les invites savent tout demander.
+            print(f"   ⚠ {exc}")
+            return {}
+        if spec is None:
+            return None
+        return spec
 
     # ------------------------------------------------------------------
     # L'aperçu

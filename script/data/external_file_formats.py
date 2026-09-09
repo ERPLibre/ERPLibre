@@ -992,6 +992,7 @@ def _feuilles_en_rapport(feuilles):
                 "lignes_entete": empan,
                 "ligne_champs": feuille.ligne_champs,
                 "entete_mesure": _mesure_de_la_ligne(feuille),
+                "lignes_sondees": _lignes_sondees(feuille),
                 "entete_declaree": bool(feuille.entete_declaree),
                 "exemples_tronques": (
                     max((len(l) for l in feuille.lignes), default=0)
@@ -1006,6 +1007,46 @@ def _feuilles_en_rapport(feuilles):
             }
         )
     return resume
+
+
+def _lignes_sondees(feuille):
+    """Les premières lignes, montrables, avec ce que la mesure en dit.
+
+    Sans elles, un écran ne peut pas faire juger QUELLE ligne nomme les
+    colonnes : le rapport dit son verdict mais pas la matière sur laquelle
+    il porte, et contredire un verdict qu'on ne voit pas est un pari.
+
+    Les mesures accompagnent chaque ligne, pas seulement celle retenue :
+    c'est ainsi qu'on voit pourquoi la voisine a été écartée.
+    """
+    rendu = []
+    for rang in range(1, min(LIGNES_SONDEES, len(feuille.lignes)) + 1):
+        ligne = feuille.lignes[rang - 1]
+        apercu = [
+            valeur_d_exemple(v)
+            for v in ligne[:EXEMPLES_PAR_COLONNE]
+            if classer(v) != "vide"
+        ]
+        signaux = _signaux_entete(feuille.lignes, rang)
+        accord = _accord_de_forme(feuille.lignes, rang)
+        mesure = None
+        if signaux is not None and accord is not None:
+            mesure = {
+                "contraste": round(signaux["contraste"], 2),
+                "hors_colonne": round(signaux["hors_colonne"], 2),
+                "accord": round(accord, 2),
+            }
+        rendu.append(
+            {
+                "numero": rang,
+                "apercu": apercu,
+                "pleines": sum(
+                    1 for v in ligne if classer(v) != "vide"
+                ),
+                "mesure": mesure,
+            }
+        )
+    return rendu
 
 
 def _mesure_de_la_ligne(feuille):

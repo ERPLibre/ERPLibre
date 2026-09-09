@@ -40,6 +40,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import zipfile
 
@@ -211,6 +212,10 @@ class TestMenuQuestions(unittest.TestCase):
 
     def setUp(self):
         self.menu = _MenuBouchon()
+        # L'écran réel prendrait le terminal : ce qu'on éprouve ici est le
+        # chemin TEXTUEL, dont l'écran est le repli. `{}` veut dire
+        # « pose-moi les questions ».
+        self.menu._transform_ecran = lambda rapport: {}
         self.vrai_input = builtins.input
         self.addCleanup(setattr, builtins, "input", self.vrai_input)
         self.sortie = io.StringIO()
@@ -895,6 +900,8 @@ class TestMenuDerouleComplet(unittest.TestCase):
         self.appels = []
         self.rendus = []
         self.menu._transform_run = self._run
+        # Comme ci-dessus : l'écran réel bloquerait la suite.
+        self.menu._transform_ecran = lambda rapport: {}
         # Le rapport est un VRAI rapport, non une main écrite : la forme
         # que le rendu attend change avec le moteur, et une fixture à la
         # main dériverait sans qu'un test le voie.
@@ -2202,6 +2209,91 @@ class TestColonneRepondue(unittest.TestCase):
             options["colonnes_intactes_par_feuille"],
             {formats.NOM_FEUILLE_NEUTRE: {"montant"}},
         )
+
+
+class TestMenuEcranDePerimetre(unittest.TestCase):
+    """L'ouverture de l'écran, et ses TROIS issues.
+
+    La spec porte le périmètre, `{}` demande les invites, `None`
+    annule. Confondre les deux dernières supprimerait le repli textuel en
+    silence.
+    """
+
+    RAPPORT = {"feuilles": [{"nom": "F", "colonnes": []}]}
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.ecran = io.StringIO()
+        vrai_out = sys.stdout
+        sys.stdout = self.ecran
+        self.addCleanup(setattr, sys, "stdout", vrai_out)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+
+    def _repondre(self, reponse):
+        builtins.input = lambda invite="": reponse
+
+    def test_refuser_l_ecran_rend_un_dict_VIDE(self):
+        """Et non None : l'appelant enchaîne sur les invites."""
+        self._repondre("n")
+        self.assertEqual(self.menu._transform_ecran(self.RAPPORT), {})
+
+    def test_zero_annule_tout(self):
+        self._repondre("0")
+        self.assertIsNone(self.menu._transform_ecran(self.RAPPORT))
+
+    def test_un_rapport_sans_feuille_ne_pose_pas_la_question(self):
+        def refuse(invite=""):
+            raise AssertionError("rien à montrer, rien à demander")
+
+        builtins.input = refuse
+        self.assertEqual(self.menu._transform_ecran({"feuilles": []}), {})
+
+    def _bouchonner(self, ecran, contexte=None):
+        """Remplacer la fonction SUR le vrai module.
+
+        Injecter un faux module dans `sys.modules` n'a aucun effet dès
+        que le vrai a été importé : `from script.todo import
+        transform_form` lit l'attribut du PAQUET, déjà posé. Le test
+        lançait alors le VRAI écran, qui attend un terminal — et la suite
+        se bloquait dès qu'un autre fichier avait importé le module.
+        """
+        from script.todo import transform_form
+
+        for nom, valeur in (
+            ("run_transform_form", ecran),
+            ("contexte_depuis_rapport", contexte or (lambda rapport: {})),
+        ):
+            vrai = getattr(transform_form, nom)
+            setattr(transform_form, nom, valeur)
+            self.addCleanup(setattr, transform_form, nom, vrai)
+
+    def test_le_defaut_est_OUI(self):
+        """L'écran est la réponse aux deux questions qu'une invite ne sait
+        pas poser : le proposer par défaut est le sens de l'entrée."""
+        appels = []
+        self._repondre("")
+
+        def faux_ecran(ctx):
+            appels.append(ctx)
+            return {"colonnes_intactes_par_feuille": {}}
+
+        self._bouchonner(faux_ecran, lambda rapport: {"vu": True})
+        rendu = self.menu._transform_ecran(self.RAPPORT)
+        self.assertEqual(appels, [{"vu": True}])
+        self.assertEqual(rendu, {"colonnes_intactes_par_feuille": {}})
+
+    def test_un_ecran_qui_leve_ne_perd_pas_le_travail(self):
+        """Sans terminal, il ne peut pas s'ouvrir : les invites savent
+        tout demander, et emporter le travail serait pire."""
+        self._repondre("o")
+
+        def tombe(ctx):
+            raise RuntimeError("pas de terminal")
+
+        self._bouchonner(tombe)
+        self.assertEqual(self.menu._transform_ecran(self.RAPPORT), {})
+        self.assertIn("pas de terminal", self.ecran.getvalue())
 
 
 class TestNombre(unittest.TestCase):
