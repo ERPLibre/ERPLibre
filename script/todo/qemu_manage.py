@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import time
 
-from script.todo import todo_install
+from script.todo import ssh_config, todo_install
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
     sudo_prefix,
@@ -98,15 +98,15 @@ def parse_ssh_blocks(content) -> dict:
     """{nom: {"hostname": …, "proxyjump": …}} pour CHAQUE nom déclaré.
 
     Une ligne « Host » peut en porter plusieurs : ils partagent alors le même
-    corps, donc la même entrée. Les motifs (« * », « ? ») sont écartés — ce
-    sont des règles, pas des machines."""
+    corps, donc la même entrée. Ce qui compte comme un nom de machine est
+    tranché par `ssh_config.declared_names`, partagé avec les deux lecteurs
+    de todo.py."""
     blocs, courant = {}, []
     for ligne in (content or "").splitlines():
-        if re.match(r"^[ \t]*Host[ \t]+", ligne):
+        declares = ssh_config.declared_names(ligne)
+        if declares is not None:
             corps = {}
-            courant = [
-                n for n in ligne.split()[1:] if "*" not in n and "?" not in n
-            ]
+            courant = declares
             for nom in courant:
                 blocs[nom] = corps
             continue
