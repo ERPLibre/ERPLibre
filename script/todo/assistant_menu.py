@@ -403,7 +403,8 @@ class AssistantMenuMixin:
                 choices.append(
                     {
                         "prompt_description": (
-                            f"{t('local network')}  {interface.cidr}"
+                            f"{t('local network of this machine')}"
+                            f"  {interface.cidr}"
                             f" · {interface.name}{pont}"
                         )
                     }

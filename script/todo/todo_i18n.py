@@ -10025,8 +10025,8 @@ TRANSLATIONS = {
     },
     # Courriel
     "mail_menu": {
-        "fr": "Courriel - Lire et envoyer du courriel",
-        "en": "Mail - Read and send email",
+        "fr": "📧 Courriel - Lire et envoyer du courriel",
+        "en": "📧 Mail - Read and send email",
     },
     "mail_open_tui": {
         "fr": "Ouvrir le client courriel (TUI)",
@@ -12183,8 +12183,8 @@ TRANSLATIONS = {
     },
     # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
     "AI question - Ask a model, local or remote": {
-        "fr": "Question IA - Interroger un modèle, local ou distant",
-        "en": "AI question - Ask a model, local or remote",
+        "fr": "🤖 Question IA - Interroger un modèle, local ou distant",
+        "en": "🤖 AI question - Ask a model, local or remote",
     },
     "A server, a gpt tool, a conversation.": {
         "fr": "Un serveur, un outil gpt, une conversation.",
@@ -12195,20 +12195,20 @@ TRANSLATIONS = {
         "en": "Talk",
     },
     "Free question": {
-        "fr": "Question libre",
-        "en": "Free question",
+        "fr": "💬 Question libre",
+        "en": "💬 Free question",
     },
     "Known servers": {
-        "fr": "Serveurs connus",
-        "en": "Known servers",
+        "fr": "🗄 Serveurs connus",
+        "en": "🗄 Known servers",
     },
     "Search for a server…": {
-        "fr": "Chercher un serveur…",
-        "en": "Search for a server…",
+        "fr": "🔍 Chercher un serveur…",
+        "en": "🔍 Search for a server…",
     },
     "Server card": {
-        "fr": "Fiche du serveur",
-        "en": "Server card",
+        "fr": "📇 Fiche du serveur",
+        "en": "📇 Server card",
     },
     "what it says it can do": {
         "fr": "ce qu'il annonce savoir faire",
@@ -12306,6 +12306,10 @@ TRANSLATIONS = {
         "fr": "cette machine",
         "en": "this machine",
     },
+    "local network of this machine": {
+        "fr": "🌐 Réseau local de cette machine",
+        "en": "🌐 Local network of this machine",
+    },
     "local network": {
         "fr": "réseau local",
         "en": "local network",
@@ -12319,20 +12323,20 @@ TRANSLATIONS = {
         "en": "The vault holds no OpenAI key: configure a server or a key.",
     },
     "Here (127.0.0.1)": {
-        "fr": "Ici (127.0.0.1)",
-        "en": "Here (127.0.0.1)",
+        "fr": "🏠 Ici (127.0.0.1)",
+        "en": "🏠 Here (127.0.0.1)",
     },
     "An address I type": {
-        "fr": "Une adresse que je tape",
-        "en": "An address I type",
+        "fr": "🎯 Une adresse que je tape",
+        "en": "🎯 An address I type",
     },
     "Where should I look for a server?": {
         "fr": "Où chercher un serveur ?",
         "en": "Where should I look for a server?",
     },
     "Add a server by hand": {
-        "fr": "Ajouter un serveur à la main",
-        "en": "Add a server by hand",
+        "fr": "➕ Ajouter un serveur à la main",
+        "en": "➕ Add a server by hand",
     },
     "Host or IP": {
         "fr": "Hôte ou IP",
@@ -12363,8 +12367,8 @@ TRANSLATIONS = {
         "en": "Type the server name in full to delete it:",
     },
     "Delete a server": {
-        "fr": "Supprimer un serveur",
-        "en": "Delete a server",
+        "fr": "🗑 Supprimer un serveur",
+        "en": "🗑 Delete a server",
     },
     "Choose the server to use": {
         "fr": "Choisir le serveur à utiliser",
@@ -12379,12 +12383,12 @@ TRANSLATIONS = {
         "en": "11 ports, instant",
     },
     "The QEMU VMs of this machine (virsh)": {
-        "fr": "Les VM QEMU de cette machine (virsh)",
-        "en": "The QEMU VMs of this machine (virsh)",
+        "fr": "🖥 Les VM QEMU de cette machine (virsh)",
+        "en": "🖥 The QEMU VMs of this machine (virsh)",
     },
     "The hosts of ~/.ssh/config": {
-        "fr": "Les hôtes de ~/.ssh/config",
-        "en": "The hosts of ~/.ssh/config",
+        "fr": "🔑 Les hôtes de ~/.ssh/config",
+        "en": "🔑 The hosts of ~/.ssh/config",
     },
     "libvirt bridge": {
         "fr": "pont libvirt",
@@ -12487,8 +12491,8 @@ TRANSLATIONS = {
         "en": "Sweeping the network reaches machines you did not name.",
     },
     "gpt tools": {
-        "fr": "Outils gpt",
-        "en": "gpt tools",
+        "fr": "🧰 Outils gpt",
+        "en": "🧰 gpt tools",
     },
     "no gpt tool yet": {
         "fr": "aucun outil gpt pour l'instant",
@@ -12589,19 +12593,19 @@ TRANSLATIONS = {
     # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
     "Claude Code - local sessions": {
         "fr": "🤖 Claude Code - sessions locales",
-        "en": "Claude Code - local sessions",
+        "en": "🤖 Claude Code - local sessions",
     },
     "List local sessions": {
-        "fr": "Lister les sessions locales",
-        "en": "List local sessions",
+        "fr": "📋 Lister les sessions locales",
+        "en": "📋 List local sessions",
     },
     "Ask a question to a session": {
-        "fr": "Poser une question à une session",
-        "en": "Ask a question to a session",
+        "fr": "❓ Poser une question à une session",
+        "en": "❓ Ask a question to a session",
     },
     "Resume a session in a new terminal": {
-        "fr": "Reprendre une session dans un nouveau terminal",
-        "en": "Resume a session in a new terminal",
+        "fr": "▶ Reprendre une session dans un nouveau terminal",
+        "en": "▶ Resume a session in a new terminal",
     },
     "live": {
         "fr": "vivantes",
@@ -12790,8 +12794,8 @@ TRANSLATIONS = {
         "en": "json_output could not be checked on this server",
     },
     "A network I type (CIDR)": {
-        "fr": "Un réseau que je tape (CIDR)",
-        "en": "A network I type (CIDR)",
+        "fr": "📡 Un réseau que je tape (CIDR)",
+        "en": "📡 A network I type (CIDR)",
     },
     "Network in CIDR form": {
         "fr": "Réseau en notation CIDR",
@@ -12802,8 +12806,8 @@ TRANSLATIONS = {
         "en": "Only part of that network was swept.",
     },
     "The networks of a machine over SSH": {
-        "fr": "Les réseaux d'une machine en SSH",
-        "en": "The networks of a machine over SSH",
+        "fr": "🛰 Les réseaux d'une machine en SSH",
+        "en": "🛰 The networks of a machine over SSH",
     },
     "Host reachable over SSH": {
         "fr": "Hôte joignable en SSH",
