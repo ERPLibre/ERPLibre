@@ -259,16 +259,20 @@ HORS_COLONNE_MINIMAL = 0.9
 FORMATS_ENTETE_FABRIQUEE = ("access", "json", "xml")
 
 
-def mesurer_entetes(feuilles, format_lu, corrections=None):
+def mesurer_entetes(feuilles, format_lu, corrections=None, memoire=None):
     """Poser, par feuille, l'empan d'en-tête et la ligne de champs.
 
-    Quatre sources, dans cet ordre de priorité :
+    Cinq sources, dans cet ordre de priorité :
 
-    1. La CORRECTION de l'opérateur, qui ne se remesure jamais.
-    2. Ce que le FICHIER déclare — `headerRowCount` d'un tableau.
-    3. Ce que le LECTEUR sait : Access, JSON et XML fabriquent leur
+    1. La CORRECTION de l'opérateur pour ce passage-ci, qui ne se
+       remesure jamais.
+    2. Ce que la TABLE se rappelle : une correction faite sur un fichier
+       du même lot. C'est une réponse d'opérateur elle aussi, donc elle
+       passe avant ce que le fichier déclare.
+    3. Ce que le FICHIER déclare — `headerRowCount` d'un tableau.
+    4. Ce que le LECTEUR sait : Access, JSON et XML fabriquent leur
        ligne 1, gardent le défaut et ne mesurent rien.
-    4. La mesure, pour un tableur sans tableau déclaré et pour un csv.
+    5. La mesure, pour un tableur sans tableau déclaré et pour un csv.
 
     La ligne de CHAMPS est la plus BASSE de l'empan : c'est la convention
     de `_resynchroniser_tableaux`, qui nomme les colonnes d'un tableau
@@ -276,8 +280,11 @@ def mesurer_entetes(feuilles, format_lu, corrections=None):
     d'en inventer une seconde évite deux notions qui se contredisent.
     """
     corrections = corrections or {}
+    memoire = memoire or {}
     for feuille in feuilles:
         demandee = corrections.get(feuille.nom)
+        if demandee is None:
+            demandee = memoire.get(feuille.nom)
         if demandee is not None:
             empan = {int(n) for n in demandee if int(n) >= 1}
         elif feuille.entete_declaree:
@@ -1040,9 +1047,7 @@ def _lignes_sondees(feuille):
             {
                 "numero": rang,
                 "apercu": apercu,
-                "pleines": sum(
-                    1 for v in ligne if classer(v) != "vide"
-                ),
+                "pleines": sum(1 for v in ligne if classer(v) != "vide"),
                 "mesure": mesure,
             }
         )
@@ -2035,8 +2040,15 @@ def _preparer(chemin, options):
     # par-dessus : elle voyage dans les options sérialisées et ne se
     # remesure jamais. Posée avant `etiquettes` et `bornes`, qui en
     # dérivent par la ligne de champs.
+    # La table est relue ici, et de nouveau par l'appelant : deux
+    # lectures d'un fichier qui ne change pas entre les deux, ce qui
+    # évite de faire traverser un objet à `_preparer` pour un
+    # dictionnaire de quelques lignes.
     mesurer_entetes(
-        feuilles, format_lu, options.get("entetes_par_feuille") or {}
+        feuilles,
+        format_lu,
+        options.get("entetes_par_feuille") or {},
+        Correspondance.charger(options.get("table_chemin")).entetes,
     )
     connues = {f.nom for f in feuilles}
     demandees = options.get("feuilles") or []
@@ -2750,6 +2762,15 @@ def ecrire(chemin, destination, options):
     chemin_table = options.get("table_chemin")
     if chemin_table:
         try:
+            # Ce que l'opérateur a RÉPONDU, et cela seul : retenir une
+            # MESURE ferait propager son erreur à tout le lot, alors
+            # qu'elle se refait à l'identique sur chaque fichier.
+            for nom, lignes in (
+                options.get("entetes_par_feuille") or {}
+            ).items():
+                table.entetes[str(nom)] = sorted(
+                    {int(n) for n in (lignes or []) if int(n) >= 1}
+                )
             table.ecrire(chemin_table)
         except OSError:
             # Une copie sans sa table reçoit les mêmes mots que le fichier

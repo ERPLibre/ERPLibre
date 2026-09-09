@@ -12832,593 +12832,597 @@ TRANSLATIONS = {
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
     # Transform data - fichiers externes
-    'Transform data - Transform external files': {
-        "fr": '🪄 Transform data - Transformer des fichiers externes',
-        "en": '🪄 Transform data - Transform external files',
+    "Transform data - Transform external files": {
+        "fr": "🪄 Transform data - Transformer des fichiers externes",
+        "en": "🪄 Transform data - Transform external files",
     },
-    'Source file': {
-        "fr": '📁 Fichier source',
-        "en": '📁 Source file',
+    "Source file": {
+        "fr": "📁 Fichier source",
+        "en": "📁 Source file",
     },
-    'External files: read, describe, then draw a copy.': {
-        "fr": 'Fichiers externes : lire, décrire, puis en tirer une copie.',
-        "en": 'External files: read, describe, then draw a copy.',
+    "External files: read, describe, then draw a copy.": {
+        "fr": "Fichiers externes : lire, décrire, puis en tirer une copie.",
+        "en": "External files: read, describe, then draw a copy.",
     },
-    'Environment': {
-        "fr": '🧰 Environnement',
-        "en": '🧰 Environment',
+    "Environment": {
+        "fr": "🧰 Environnement",
+        "en": "🧰 Environment",
     },
-    'Open a file and read its report': {
-        "fr": '📖 Ouvrir un fichier et lire son rapport',
-        "en": '📖 Open a file and read its report',
+    "Open a file and read its report": {
+        "fr": "📖 Ouvrir un fichier et lire son rapport",
+        "en": "📖 Open a file and read its report",
     },
-    'Install the reading environment': {
+    "Install the reading environment": {
         "fr": "📦 Installer l'environnement de lecture",
-        "en": '📦 Install the reading environment',
+        "en": "📦 Install the reading environment",
     },
-    'What can this machine read?': {
-        "fr": '🩺 Que sait lire cette machine ?',
-        "en": '🩺 What can this machine read?',
+    "What can this machine read?": {
+        "fr": "🩺 Que sait lire cette machine ?",
+        "en": "🩺 What can this machine read?",
     },
-    'Copies produced': {
-        "fr": '🗂 Copies produites',
-        "en": '🗂 Copies produced',
+    "Copies produced": {
+        "fr": "🗂 Copies produites",
+        "en": "🗂 Copies produced",
     },
-    'A dedicated environment is required to read this format.': {
-        "fr": 'Un environnement dédié est nécessaire pour lire ce format.',
-        "en": 'A dedicated environment is required to read this format.',
+    "A dedicated environment is required to read this format.": {
+        "fr": "Un environnement dédié est nécessaire pour lire ce format.",
+        "en": "A dedicated environment is required to read this format.",
     },
-    'Create it now? (Y/n): ': {
-        "fr": 'Le créer maintenant ? (O/n) : ',
-        "en": 'Create it now? (Y/n): ',
+    "Create it now? (Y/n): ": {
+        "fr": "Le créer maintenant ? (O/n) : ",
+        "en": "Create it now? (Y/n): ",
     },
-    'The environment is ready.': {
+    "The environment is ready.": {
         "fr": "L'environnement est prêt.",
-        "en": 'The environment is ready.',
+        "en": "The environment is ready.",
     },
-    'Creation finished but the libraries are still missing.': {
-        "fr": 'Création terminée mais les bibliothèques manquent toujours.',
-        "en": 'Creation finished but the libraries are still missing.',
+    "Creation finished but the libraries are still missing.": {
+        "fr": "Création terminée mais les bibliothèques manquent toujours.",
+        "en": "Creation finished but the libraries are still missing.",
     },
-    'python -m venv exited with': {
-        "fr": 'python -m venv a rendu',
-        "en": 'python -m venv exited with',
+    "python -m venv exited with": {
+        "fr": "python -m venv a rendu",
+        "en": "python -m venv exited with",
     },
-    'Access files need a system package.': {
-        "fr": 'Les fichiers Access demandent un paquet système.',
-        "en": 'Access files need a system package.',
+    "Access files need a system package.": {
+        "fr": "Les fichiers Access demandent un paquet système.",
+        "en": "Access files need a system package.",
     },
-    'readable': {
-        "fr": 'lisible',
-        "en": 'readable',
+    "readable": {
+        "fr": "lisible",
+        "en": "readable",
     },
-    'not readable': {
-        "fr": 'non lisible',
-        "en": 'not readable',
+    "not readable": {
+        "fr": "non lisible",
+        "en": "not readable",
     },
-    'Contents do not match the extension: read as ': {
+    "Contents do not match the extension: read as ": {
         "fr": "Le contenu ne correspond pas à l'extension : lu comme ",
-        "en": 'Contents do not match the extension: read as ',
+        "en": "Contents do not match the extension: read as ",
     },
-    'Encoding detected by ': {
-        "fr": 'Encodage détecté par ',
-        "en": 'Encoding detected by ',
+    "Encoding detected by ": {
+        "fr": "Encodage détecté par ",
+        "en": "Encoding detected by ",
     },
-    'Delimiter detected by ': {
-        "fr": 'Délimiteur détecté par ',
-        "en": 'Delimiter detected by ',
+    "Delimiter detected by ": {
+        "fr": "Délimiteur détecté par ",
+        "en": "Delimiter detected by ",
     },
-    'bom': {
-        "fr": 'BOM',
-        "en": 'BOM',
+    "bom": {
+        "fr": "BOM",
+        "en": "BOM",
     },
-    'chardet': {
-        "fr": 'chardet',
-        "en": 'chardet',
+    "chardet": {
+        "fr": "chardet",
+        "en": "chardet",
     },
-    'sniffer': {
-        "fr": 'sniffer',
-        "en": 'sniffer',
+    "sniffer": {
+        "fr": "sniffer",
+        "en": "sniffer",
     },
-    'mesure': {
-        "fr": 'mesure',
-        "en": 'measurement',
+    "mesure": {
+        "fr": "mesure",
+        "en": "measurement",
     },
-    'repli': {
-        "fr": 'repli',
-        "en": 'fallback',
+    "repli": {
+        "fr": "repli",
+        "en": "fallback",
     },
-    'sheet(s)': {
-        "fr": 'feuille(s)',
-        "en": 'sheet(s)',
+    "sheet(s)": {
+        "fr": "feuille(s)",
+        "en": "sheet(s)",
     },
-    'chart sheet(s)': {
-        "fr": 'feuille(s) graphique',
-        "en": 'chart sheet(s)',
+    "chart sheet(s)": {
+        "fr": "feuille(s) graphique",
+        "en": "chart sheet(s)",
     },
-    'hidden': {
-        "fr": 'masquée',
-        "en": 'hidden',
+    "hidden": {
+        "fr": "masquée",
+        "en": "hidden",
     },
-    'formula(s)': {
-        "fr": 'formule(s)',
-        "en": 'formula(s)',
+    "formula(s)": {
+        "fr": "formule(s)",
+        "en": "formula(s)",
     },
-    'formula(s) holding a text literal': {
-        "fr": 'formule(s) portant un littéral texte',
-        "en": 'formula(s) holding a text literal',
+    "formula(s) holding a text literal": {
+        "fr": "formule(s) portant un littéral texte",
+        "en": "formula(s) holding a text literal",
     },
-    'distinct value(s)': {
-        "fr": 'valeur(s) distincte(s)',
-        "en": 'distinct value(s)',
+    "distinct value(s)": {
+        "fr": "valeur(s) distincte(s)",
+        "en": "distinct value(s)",
     },
-    'VBA macros present': {
-        "fr": 'Macros VBA présentes',
-        "en": 'VBA macros present',
+    "VBA macros present": {
+        "fr": "Macros VBA présentes",
+        "en": "VBA macros present",
     },
-    'No VBA macro': {
-        "fr": 'Aucune macro VBA',
-        "en": 'No VBA macro',
+    "No VBA macro": {
+        "fr": "Aucune macro VBA",
+        "en": "No VBA macro",
     },
-    'pivot table(s)': {
-        "fr": 'tableau(x) croisé(s)',
-        "en": 'pivot table(s)',
+    "pivot table(s)": {
+        "fr": "tableau(x) croisé(s)",
+        "en": "pivot table(s)",
     },
-    'chart(s) with cached series': {
-        "fr": 'graphique(s) à séries en cache',
-        "en": 'chart(s) with cached series',
+    "chart(s) with cached series": {
+        "fr": "graphique(s) à séries en cache",
+        "en": "chart(s) with cached series",
     },
-    'image(s) and drawing(s)': {
-        "fr": 'image(s) et dessin(s)',
-        "en": 'image(s) and drawing(s)',
+    "image(s) and drawing(s)": {
+        "fr": "image(s) et dessin(s)",
+        "en": "image(s) and drawing(s)",
     },
-    'external link(s)': {
-        "fr": 'lien(s) externe(s)',
-        "en": 'external link(s)',
+    "external link(s)": {
+        "fr": "lien(s) externe(s)",
+        "en": "external link(s)",
     },
-    'cell hyperlink(s)': {
-        "fr": 'hyperlien(s) de cellule',
-        "en": 'cell hyperlink(s)',
+    "cell hyperlink(s)": {
+        "fr": "hyperlien(s) de cellule",
+        "en": "cell hyperlink(s)",
     },
-    'comment(s)': {
-        "fr": 'commentaire(s)',
-        "en": 'comment(s)',
+    "comment(s)": {
+        "fr": "commentaire(s)",
+        "en": "comment(s)",
     },
-    'comment author(s)': {
-        "fr": 'auteur(s) de commentaire',
-        "en": 'comment author(s)',
+    "comment author(s)": {
+        "fr": "auteur(s) de commentaire",
+        "en": "comment author(s)",
     },
-    'header(s)/footer(s)': {
-        "fr": 'en-tête(s)/pied(s)',
-        "en": 'header(s)/footer(s)',
+    "header(s)/footer(s)": {
+        "fr": "en-tête(s)/pied(s)",
+        "en": "header(s)/footer(s)",
     },
-    'validation(s)': {
-        "fr": 'validation(s)',
-        "en": 'validation(s)',
+    "validation(s)": {
+        "fr": "validation(s)",
+        "en": "validation(s)",
     },
-    'conditional format(s)': {
-        "fr": 'mise(s) en forme conditionnelle(s)',
-        "en": 'conditional format(s)',
+    "conditional format(s)": {
+        "fr": "mise(s) en forme conditionnelle(s)",
+        "en": "conditional format(s)",
     },
-    'Text outside cells': {
-        "fr": 'Texte hors cellules',
-        "en": 'Text outside cells',
+    "Text outside cells": {
+        "fr": "Texte hors cellules",
+        "en": "Text outside cells",
     },
-    'Author': {
-        "fr": 'Auteur',
-        "en": 'Author',
+    "Author": {
+        "fr": "Auteur",
+        "en": "Author",
     },
-    'Link targets': {
-        "fr": 'Cibles des liens',
-        "en": 'Link targets',
+    "Link targets": {
+        "fr": "Cibles des liens",
+        "en": "Link targets",
     },
-    'named range(s)': {
-        "fr": 'plage(s) nommée(s)',
-        "en": 'named range(s)',
+    "named range(s)": {
+        "fr": "plage(s) nommée(s)",
+        "en": "named range(s)",
     },
-    'Anonymisable': {
-        "fr": 'Anonymisable',
-        "en": 'Anonymisable',
+    "Anonymisable": {
+        "fr": "Anonymisable",
+        "en": "Anonymisable",
     },
-    'word(s) in the pool': {
-        "fr": 'mot(s) dans le vivier',
-        "en": 'word(s) in the pool',
+    "word(s) in the pool": {
+        "fr": "mot(s) dans le vivier",
+        "en": "word(s) in the pool",
     },
-    'Left intact': {
-        "fr": 'Laissé intact',
-        "en": 'Left intact',
+    "Left intact": {
+        "fr": "Laissé intact",
+        "en": "Left intact",
     },
-    'date(s)': {
-        "fr": 'date(s)',
-        "en": 'date(s)',
+    "date(s)": {
+        "fr": "date(s)",
+        "en": "date(s)",
     },
-    'boolean(s)': {
-        "fr": 'booléen(s)',
-        "en": 'boolean(s)',
+    "boolean(s)": {
+        "fr": "booléen(s)",
+        "en": "boolean(s)",
     },
-    'error value(s)': {
+    "error value(s)": {
         "fr": "valeur(s) d'erreur",
-        "en": 'error value(s)',
+        "en": "error value(s)",
     },
-    'binary value(s)': {
-        "fr": 'valeur(s) binaire(s)',
-        "en": 'binary value(s)',
+    "binary value(s)": {
+        "fr": "valeur(s) binaire(s)",
+        "en": "binary value(s)",
     },
-    'This format stores no formula readable here.': {
-        "fr": 'Ce format ne stocke aucune formule lisible ici.',
-        "en": 'This format stores no formula readable here.',
+    "This format stores no formula readable here.": {
+        "fr": "Ce format ne stocke aucune formule lisible ici.",
+        "en": "This format stores no formula readable here.",
     },
-    'Saved queries are not readable in pure Python.': {
-        "fr": 'Les requêtes enregistrées ne sont pas lisibles en pur Python.',
-        "en": 'Saved queries are not readable in pure Python.',
+    "Saved queries are not readable in pure Python.": {
+        "fr": "Les requêtes enregistrées ne sont pas lisibles en pur Python.",
+        "en": "Saved queries are not readable in pure Python.",
     },
-    'Only 20 fallback words are available: randomwordfr is missing.': {
-        "fr": 'Seuls 20 mots de repli sont disponibles : randomwordfr est absent.',
-        "en": 'Only 20 fallback words are available: randomwordfr is missing.',
+    "Only 20 fallback words are available: randomwordfr is missing.": {
+        "fr": "Seuls 20 mots de repli sont disponibles : randomwordfr est absent.",
+        "en": "Only 20 fallback words are available: randomwordfr is missing.",
     },
-    '0 to cancel': {
-        "fr": '0 pour annuler',
-        "en": '0 to cancel',
+    "0 to cancel": {
+        "fr": "0 pour annuler",
+        "en": "0 to cancel",
     },
-    'Anonymise this file? (y/N): ': {
-        "fr": 'Anonymiser ce fichier ? (o/N) : ',
-        "en": 'Anonymise this file? (y/N): ',
+    "Anonymise this file? (y/N): ": {
+        "fr": "Anonymiser ce fichier ? (o/N) : ",
+        "en": "Anonymise this file? (y/N): ",
     },
-    'Convert at the same time? (xlsx/csv/json/xml, empty = keep): ': {
-        "fr": 'Convertir en même temps ? (xlsx/csv/json/xml, vide = garder) : ',
-        "en": 'Convert at the same time? (xlsx/csv/json/xml, empty = keep): ',
+    "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ": {
+        "fr": "Convertir en même temps ? (xlsx/csv/json/xml, vide = garder) : ",
+        "en": "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ",
     },
-    'Sheets to process (empty = all): ': {
-        "fr": 'Feuilles à traiter (vide = toutes) : ',
-        "en": 'Sheets to process (empty = all): ',
+    "Sheets to process (empty = all): ": {
+        "fr": "Feuilles à traiter (vide = toutes) : ",
+        "en": "Sheets to process (empty = all): ",
     },
-    'Columns to leave untouched (empty = none): ': {
-        "fr": 'Colonnes à laisser intactes (vide = aucune) : ',
-        "en": 'Columns to leave untouched (empty = none): ',
+    "Columns to leave untouched (empty = none): ": {
+        "fr": "Colonnes à laisser intactes (vide = aucune) : ",
+        "en": "Columns to leave untouched (empty = none): ",
     },
-    'Replace numbers? (Y/n): ': {
-        "fr": 'Remplacer les nombres ? (O/n) : ',
-        "en": 'Replace numbers? (Y/n): ',
+    "Replace numbers? (Y/n): ": {
+        "fr": "Remplacer les nombres ? (O/n) : ",
+        "en": "Replace numbers? (Y/n): ",
     },
-    'Replace text? (Y/n): ': {
-        "fr": 'Remplacer le texte ? (O/n) : ',
-        "en": 'Replace text? (Y/n): ',
+    "Replace text? (Y/n): ": {
+        "fr": "Remplacer le texte ? (O/n) : ",
+        "en": "Replace text? (Y/n): ",
     },
-    'Anonymise the header row too? (y/N): ': {
+    "Anonymise the header row too? (y/N): ": {
         "fr": "Anonymiser aussi la ligne d'en-tête ? (o/N) : ",
-        "en": 'Anonymise the header row too? (y/N): ',
+        "en": "Anonymise the header row too? (y/N): ",
     },
-    'Random seed (empty = not reproducible): ': {
-        "fr": 'Graine aléatoire (vide = non reproductible) : ',
-        "en": 'Random seed (empty = not reproducible): ',
+    "Random seed (empty = not reproducible): ": {
+        "fr": "Graine aléatoire (vide = non reproductible) : ",
+        "en": "Random seed (empty = not reproducible): ",
     },
-    'Mapping table to reuse (empty = a new one): ': {
-        "fr": 'Table de correspondance à réutiliser (vide = nouvelle) : ',
-        "en": 'Mapping table to reuse (empty = a new one): ',
+    "Mapping table to reuse (empty = a new one): ": {
+        "fr": "Table de correspondance à réutiliser (vide = nouvelle) : ",
+        "en": "Mapping table to reuse (empty = a new one): ",
     },
-    'Keep the VBA macros in the copy? (y/N): ': {
-        "fr": 'Garder les macros VBA dans la copie ? (o/N) : ',
-        "en": 'Keep the VBA macros in the copy? (y/N): ',
+    "Keep the VBA macros in the copy? (y/N): ": {
+        "fr": "Garder les macros VBA dans la copie ? (o/N) : ",
+        "en": "Keep the VBA macros in the copy? (y/N): ",
     },
-    'Keep the charts in the copy? (y/N): ': {
-        "fr": 'Garder les graphiques dans la copie ? (o/N) : ',
-        "en": 'Keep the charts in the copy? (y/N): ',
+    "Keep the charts in the copy? (y/N): ": {
+        "fr": "Garder les graphiques dans la copie ? (o/N) : ",
+        "en": "Keep the charts in the copy? (y/N): ",
     },
-    'Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.': {
+    "Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.": {
         "fr": "Les macros sont gardées, donc la copie se nomme .xlsm : Excel refuse un .xlsx qui porte un projet VBA.",
-        "en": 'Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.',
+        "en": "Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.",
     },
-    'The copy is written in UTF-8, whatever the source was.': {
+    "The copy is written in UTF-8, whatever the source was.": {
         "fr": "La copie est écrite en UTF-8, quel qu'ait été l'encodage de la source.",
-        "en": 'The copy is written in UTF-8, whatever the source was.',
+        "en": "The copy is written in UTF-8, whatever the source was.",
     },
-    'The kept VBA project quotes a source value; answer no to the macro question to write the copy.': {
+    "The kept VBA project quotes a source value; answer no to the macro question to write the copy.": {
         "fr": "Le projet VBA gardé cite une valeur de la source ; répondre non à la question des macros pour écrire la copie.",
-        "en": 'The kept VBA project quotes a source value; answer no to the macro question to write the copy.',
+        "en": "The kept VBA project quotes a source value; answer no to the macro question to write the copy.",
     },
-    'An integer column is saturated: the copy holds the same set of values, only reshuffled.': {
+    "An integer column is saturated: the copy holds the same set of values, only reshuffled.": {
         "fr": "Une colonne d'entiers est saturée : la copie porte le même ensemble de valeurs, seulement redistribuées.",
-        "en": 'An integer column is saturated: the copy holds the same set of values, only reshuffled.',
+        "en": "An integer column is saturated: the copy holds the same set of values, only reshuffled.",
     },
-    'Choose the scope on screen? (Y/n): ': {
+    "Choose the scope on screen? (Y/n): ": {
         "fr": "Choisir le périmètre à l'écran ? (O/n) : ",
-        "en": 'Choose the scope on screen? (Y/n): ',
+        "en": "Choose the scope on screen? (Y/n): ",
     },
-    'Transform — anonymisation scope': {
+    "Transform — anonymisation scope": {
         "fr": "Transform — périmètre de l'anonymisation",
-        "en": 'Transform — anonymisation scope',
+        "en": "Transform — anonymisation scope",
     },
-    '‹no label›': {
-        "fr": '‹sans libellé›',
-        "en": '‹no label›',
+    "‹no label›": {
+        "fr": "‹sans libellé›",
+        "en": "‹no label›",
     },
-    'column label': {
-        "fr": 'libellé',
-        "en": 'column label',
+    "column label": {
+        "fr": "libellé",
+        "en": "column label",
     },
-    'column type': {
-        "fr": 'type',
-        "en": 'column type',
+    "column type": {
+        "fr": "type",
+        "en": "column type",
     },
-    'filled': {
-        "fr": 'remplies',
-        "en": 'filled',
+    "filled": {
+        "fr": "remplies",
+        "en": "filled",
     },
-    'distinct': {
-        "fr": 'distinctes',
-        "en": 'distinct',
+    "distinct": {
+        "fr": "distinctes",
+        "en": "distinct",
     },
-    'examples': {
-        "fr": 'exemples',
-        "en": 'examples',
+    "examples": {
+        "fr": "exemples",
+        "en": "examples",
     },
-    'row no': {
-        "fr": 'ligne',
-        "en": 'row no',
+    "row no": {
+        "fr": "ligne",
+        "en": "row no",
     },
-    'first values': {
-        "fr": 'premières valeurs',
-        "en": 'first values',
+    "first values": {
+        "fr": "premières valeurs",
+        "en": "first values",
     },
-    'measures': {
-        "fr": 'mesures',
-        "en": 'measures',
+    "measures": {
+        "fr": "mesures",
+        "en": "measures",
     },
-    'sig type': {
-        "fr": 'type',
-        "en": 'sig type',
+    "sig type": {
+        "fr": "type",
+        "en": "sig type",
     },
-    'off-col': {
-        "fr": 'hors-col',
-        "en": 'off-col',
+    "off-col": {
+        "fr": "hors-col",
+        "en": "off-col",
     },
-    'shape': {
-        "fr": 'forme',
-        "en": 'shape',
+    "shape": {
+        "fr": "forme",
+        "en": "shape",
     },
-    'Toggle the current row': {
-        "fr": 'Cocher ou décocher la ligne courante',
-        "en": 'Toggle the current row',
+    "Toggle the current row": {
+        "fr": "Cocher ou décocher la ligne courante",
+        "en": "Toggle the current row",
     },
-    'Leave this column untouched': {
-        "fr": 'Laisser cette colonne intacte',
-        "en": 'Leave this column untouched',
+    "Leave this column untouched": {
+        "fr": "Laisser cette colonne intacte",
+        "en": "Leave this column untouched",
     },
-    'Clear this sheet': {
-        "fr": 'Rendre cette feuille à la mesure',
-        "en": 'Clear this sheet',
+    "Clear this sheet": {
+        "fr": "Rendre cette feuille à la mesure",
+        "en": "Clear this sheet",
     },
-    'Accept': {
-        "fr": 'Accepter',
-        "en": 'Accept',
+    "Accept": {
+        "fr": "Accepter",
+        "en": "Accept",
     },
-    'Fall back to text prompts': {
-        "fr": 'Revenir aux invites textuelles',
-        "en": 'Fall back to text prompts',
+    "Fall back to text prompts": {
+        "fr": "Revenir aux invites textuelles",
+        "en": "Fall back to text prompts",
     },
-    '[x] untouched · [!] floored, not answerable': {
-        "fr": '[x] intacte · [!] planchéiée, non répondable',
-        "en": '[x] untouched · [!] floored, not answerable',
+    "[x] untouched · [!] floored · * corrected · = from the batch table": {
+        "fr": "[x] intacte · [!] planchéiée · * corrigée · = de la table du lot",
+        "en": "[x] untouched · [!] floored · * corrected · = from the batch table",
     },
-    'This column is floored: no answer applies.': {
+    "[x] untouched · [!] floored, not answerable": {
+        "fr": "[x] intacte · [!] planchéiée, non répondable",
+        "en": "[x] untouched · [!] floored, not answerable",
+    },
+    "This column is floored: no answer applies.": {
         "fr": "Cette colonne est planchéiée : aucune réponse n'y porte.",
-        "en": 'This column is floored: no answer applies.',
+        "en": "This column is floored: no answer applies.",
     },
-    'The screen needs textual; falling back to prompts.': {
+    "The screen needs textual; falling back to prompts.": {
         "fr": "L'écran demande textual ; retour aux invites.",
-        "en": 'The screen needs textual; falling back to prompts.',
+        "en": "The screen needs textual; falling back to prompts.",
     },
-    'Preview — nothing written yet': {
+    "Preview — nothing written yet": {
         "fr": "Aperçu — rien n'est encore écrit",
-        "en": 'Preview — nothing written yet',
+        "en": "Preview — nothing written yet",
     },
-    'Write? (Y/n): ': {
-        "fr": 'Écrire ? (O/n) : ',
-        "en": 'Write? (Y/n): ',
+    "Write? (Y/n): ": {
+        "fr": "Écrire ? (O/n) : ",
+        "en": "Write? (Y/n): ",
     },
-    'Destination': {
-        "fr": 'Destination',
-        "en": 'Destination',
+    "Destination": {
+        "fr": "Destination",
+        "en": "Destination",
     },
-    'Enter to accept, p to browse, or type a path: ': {
-        "fr": 'Entrée pour accepter, p pour parcourir, ou taper un chemin : ',
-        "en": 'Enter to accept, p to browse, or type a path: ',
+    "Enter to accept, p to browse, or type a path: ": {
+        "fr": "Entrée pour accepter, p pour parcourir, ou taper un chemin : ",
+        "en": "Enter to accept, p to browse, or type a path: ",
     },
-    'Written: ': {
-        "fr": 'Écrit : ',
-        "en": 'Written: ',
+    "Written: ": {
+        "fr": "Écrit : ",
+        "en": "Written: ",
     },
-    'cell(s) replaced': {
-        "fr": 'cellule(s) remplacée(s)',
-        "en": 'cell(s) replaced',
+    "cell(s) replaced": {
+        "fr": "cellule(s) remplacée(s)",
+        "en": "cell(s) replaced",
     },
-    'cell(s) left out of scope': {
-        "fr": 'cellule(s) laissée(s) hors portée',
-        "en": 'cell(s) left out of scope',
+    "cell(s) left out of scope": {
+        "fr": "cellule(s) laissée(s) hors portée",
+        "en": "cell(s) left out of scope",
     },
-    'element(s) outside cells wiped': {
-        "fr": 'élément(s) hors cellules effacé(s)',
-        "en": 'element(s) outside cells wiped',
+    "element(s) outside cells wiped": {
+        "fr": "élément(s) hors cellules effacé(s)",
+        "en": "element(s) outside cells wiped",
     },
-    'column(s) left alone: they hold identifiers': {
-        "fr": 'colonne(s) laissée(s) : elles portent des identifiants',
-        "en": 'column(s) left alone: they hold identifiers',
+    "column(s) left alone: they hold identifiers": {
+        "fr": "colonne(s) laissée(s) : elles portent des identifiants",
+        "en": "column(s) left alone: they hold identifiers",
     },
-    'The original was not modified.': {
+    "The original was not modified.": {
         "fr": "L'original n'a pas été modifié.",
-        "en": 'The original was not modified.',
+        "en": "The original was not modified.",
     },
-    'These files would be overwritten: ': {
-        "fr": 'Ces fichiers seraient écrasés : ',
-        "en": 'These files would be overwritten: ',
+    "These files would be overwritten: ": {
+        "fr": "Ces fichiers seraient écrasés : ",
+        "en": "These files would be overwritten: ",
     },
-    'This file already exists. Type its name in full to overwrite: ': {
+    "This file already exists. Type its name in full to overwrite: ": {
         "fr": "Ce fichier existe déjà. Taper son nom en entier pour l'écraser : ",
-        "en": 'This file already exists. Type its name in full to overwrite: ',
+        "en": "This file already exists. Type its name in full to overwrite: ",
     },
-    'Name does not match, nothing was written.': {
+    "Name does not match, nothing was written.": {
         "fr": "Le nom ne correspond pas, rien n'a été écrit.",
-        "en": 'Name does not match, nothing was written.',
+        "en": "Name does not match, nothing was written.",
     },
-    'Mapping table written: ': {
-        "fr": 'Table de correspondance écrite : ',
-        "en": 'Mapping table written: ',
+    "Mapping table written: ": {
+        "fr": "Table de correspondance écrite : ",
+        "en": "Mapping table written: ",
     },
-    'This table re-identifies the copy; keep it in private/.': {
-        "fr": 'Cette table ré-identifie la copie ; la garder dans private/.',
-        "en": 'This table re-identifies the copy; keep it in private/.',
+    "This table re-identifies the copy; keep it in private/.": {
+        "fr": "Cette table ré-identifie la copie ; la garder dans private/.",
+        "en": "This table re-identifies the copy; keep it in private/.",
     },
-    'The file name is not anonymised; the default does not reuse it.': {
+    "The file name is not anonymised; the default does not reuse it.": {
         "fr": "Le nom du fichier n'est pas anonymisé ; le défaut ne le reprend pas.",
-        "en": 'The file name is not anonymised; the default does not reuse it.',
+        "en": "The file name is not anonymised; the default does not reuse it.",
     },
-    'Delete all copies in private/transform/? (y/N): ': {
-        "fr": 'Supprimer toutes les copies de private/transform/ ? (o/N) : ',
-        "en": 'Delete all copies in private/transform/? (y/N): ',
+    "Delete all copies in private/transform/? (y/N): ": {
+        "fr": "Supprimer toutes les copies de private/transform/ ? (o/N) : ",
+        "en": "Delete all copies in private/transform/? (y/N): ",
     },
-    'private/ is tracked by git — this file will show in « git status ».': {
-        "fr": 'private/ est suivi par git — ce fichier apparaîtra dans « git status ».',
-        "en": 'private/ is tracked by git — this file will show in « git status ».',
+    "private/ is tracked by git — this file will show in « git status ».": {
+        "fr": "private/ est suivi par git — ce fichier apparaîtra dans « git status ».",
+        "en": "private/ is tracked by git — this file will show in « git status ».",
     },
-    'Cached formula results are dropped; the sheet recomputes on open.': {
+    "Cached formula results are dropped; the sheet recomputes on open.": {
         "fr": "Les résultats de formule en cache sont perdus ; la feuille recalcule à l'ouverture.",
-        "en": 'Cached formula results are dropped; the sheet recomputes on open.',
+        "en": "Cached formula results are dropped; the sheet recomputes on open.",
     },
-    'Document properties were cleared on the copy.': {
-        "fr": 'Les propriétés du document ont été vidées sur la copie.',
-        "en": 'Document properties were cleared on the copy.',
+    "Document properties were cleared on the copy.": {
+        "fr": "Les propriétés du document ont été vidées sur la copie.",
+        "en": "Document properties were cleared on the copy.",
     },
-    'Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.': {
-        "fr": 'Les tableaux croisés et les caches de graphique sont supprimés : ils portent une copie non anonymisée de la source.',
-        "en": 'Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.',
+    "Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.": {
+        "fr": "Les tableaux croisés et les caches de graphique sont supprimés : ils portent une copie non anonymisée de la source.",
+        "en": "Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.",
     },
-    'Images and drawings are not carried over to the copy.': {
-        "fr": 'Les images et les dessins ne sont pas repris dans la copie.',
-        "en": 'Images and drawings are not carried over to the copy.',
+    "Images and drawings are not carried over to the copy.": {
+        "fr": "Les images et les dessins ne sont pas repris dans la copie.",
+        "en": "Images and drawings are not carried over to the copy.",
     },
-    'Charts are not carried over to the copy.': {
-        "fr": 'Les graphiques ne sont pas repris dans la copie.',
-        "en": 'Charts are not carried over to the copy.',
+    "Charts are not carried over to the copy.": {
+        "fr": "Les graphiques ne sont pas repris dans la copie.",
+        "en": "Charts are not carried over to the copy.",
     },
-    'Charts are kept: their caches are cleaned through private attributes.': {
-        "fr": 'Les graphiques sont conservés : leurs caches sont nettoyés par des attributs privés.',
-        "en": 'Charts are kept: their caches are cleaned through private attributes.',
+    "Charts are kept: their caches are cleaned through private attributes.": {
+        "fr": "Les graphiques sont conservés : leurs caches sont nettoyés par des attributs privés.",
+        "en": "Charts are kept: their caches are cleaned through private attributes.",
     },
-    'External links were dropped; formulas that used them show #REF!.': {
+    "External links were dropped; formulas that used them show #REF!.": {
         "fr": "Les liens externes sont retirés ; les formules qui s'en servaient affichent #REF!.",
-        "en": 'External links were dropped; formulas that used them show #REF!.',
+        "en": "External links were dropped; formulas that used them show #REF!.",
     },
-    'Range and table names are kept so formulas resolve; they may hold identifying strings.': {
-        "fr": 'Les noms de plages et de tableaux sont conservés pour que les formules résolvent ; ils peuvent porter des chaînes identifiantes.',
-        "en": 'Range and table names are kept so formulas resolve; they may hold identifying strings.',
+    "Range and table names are kept so formulas resolve; they may hold identifying strings.": {
+        "fr": "Les noms de plages et de tableaux sont conservés pour que les formules résolvent ; ils peuvent porter des chaînes identifiantes.",
+        "en": "Range and table names are kept so formulas resolve; they may hold identifying strings.",
     },
-    'Sheet names are kept so formulas resolve; they may identify.': {
-        "fr": 'Les noms de feuille sont conservés pour que les formules résolvent ; ils peuvent identifier.',
-        "en": 'Sheet names are kept so formulas resolve; they may identify.',
+    "Sheet names are kept so formulas resolve; they may identify.": {
+        "fr": "Les noms de feuille sont conservés pour que les formules résolvent ; ils peuvent identifier.",
+        "en": "Sheet names are kept so formulas resolve; they may identify.",
     },
-    'The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.': {
+    "The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.": {
         "fr": "Le projet VBA et ce qui l'accompagne (contrôles de formulaire, ActiveX, formes VML, ruban, images EMF) sont recopiés tels quels et n'ont pas été relus.",
-        "en": 'The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.',
+        "en": "The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.",
     },
-    'Format not recognised: ': {
-        "fr": 'Format non reconnu : ',
-        "en": 'Format not recognised: ',
+    "Format not recognised: ": {
+        "fr": "Format non reconnu : ",
+        "en": "Format not recognised: ",
     },
-    'Recognised format, unreadable here — re-save it as .xlsx.': {
-        "fr": 'Format reconnu, illisible ici — le ré-enregistrer en .xlsx.',
-        "en": 'Recognised format, unreadable here — re-save it as .xlsx.',
+    "Recognised format, unreadable here — re-save it as .xlsx.": {
+        "fr": "Format reconnu, illisible ici — le ré-enregistrer en .xlsx.",
+        "en": "Recognised format, unreadable here — re-save it as .xlsx.",
     },
-    'Protected by a password, or not a workbook — unreadable here.': {
-        "fr": 'Protégé par un mot de passe, ou pas un classeur — illisible ici.',
-        "en": 'Protected by a password, or not a workbook — unreadable here.',
+    "Protected by a password, or not a workbook — unreadable here.": {
+        "fr": "Protégé par un mot de passe, ou pas un classeur — illisible ici.",
+        "en": "Protected by a password, or not a workbook — unreadable here.",
     },
-    'Empty file.': {
-        "fr": 'Fichier vide.',
-        "en": 'Empty file.',
+    "Empty file.": {
+        "fr": "Fichier vide.",
+        "en": "Empty file.",
     },
-    'Not readable: check the permissions.': {
-        "fr": 'Illisible : vérifier les droits.',
-        "en": 'Not readable: check the permissions.',
+    "Not readable: check the permissions.": {
+        "fr": "Illisible : vérifier les droits.",
+        "en": "Not readable: check the permissions.",
     },
-    'Not an ordinary file.': {
-        "fr": 'Pas un fichier ordinaire.',
-        "en": 'Not an ordinary file.',
+    "Not an ordinary file.": {
+        "fr": "Pas un fichier ordinaire.",
+        "en": "Not an ordinary file.",
     },
-    'The destination is the source file; nothing was written.': {
+    "The destination is the source file; nothing was written.": {
         "fr": "La destination est le fichier source ; rien n'a été écrit.",
-        "en": 'The destination is the source file; nothing was written.',
+        "en": "The destination is the source file; nothing was written.",
     },
-    'The destination directory exists and is not empty.': {
+    "The destination directory exists and is not empty.": {
         "fr": "Le répertoire de destination existe et n'est pas vide.",
-        "en": 'The destination directory exists and is not empty.',
+        "en": "The destination directory exists and is not empty.",
     },
-    'The selection matches no sheet; nothing was written.': {
+    "The selection matches no sheet; nothing was written.": {
         "fr": "La sélection ne correspond à aucune feuille ; rien n'a été écrit.",
-        "en": 'The selection matches no sheet; nothing was written.',
+        "en": "The selection matches no sheet; nothing was written.",
     },
-    'Nothing was anonymised: every region was excluded.': {
+    "Nothing was anonymised: every region was excluded.": {
         "fr": "Rien n'a été anonymisé : toutes les régions ont été exclues.",
-        "en": 'Nothing was anonymised: every region was excluded.',
+        "en": "Nothing was anonymised: every region was excluded.",
     },
-    'Nothing to anonymise in this file.': {
-        "fr": 'Rien à anonymiser dans ce fichier.',
-        "en": 'Nothing to anonymise in this file.',
+    "Nothing to anonymise in this file.": {
+        "fr": "Rien à anonymiser dans ce fichier.",
+        "en": "Nothing to anonymise in this file.",
     },
-    'Not enough room to write.': {
-        "fr": 'Pas assez de place pour écrire.',
-        "en": 'Not enough room to write.',
+    "Not enough room to write.": {
+        "fr": "Pas assez de place pour écrire.",
+        "en": "Not enough room to write.",
     },
     # Transform data - correctifs de fuite
-    'A source value survives in the copy; nothing was written: ': {
+    "A source value survives in the copy; nothing was written: ": {
         "fr": "Une valeur de la source subsiste dans la copie ; rien n'a été écrit : ",
-        "en": 'A source value survives in the copy; nothing was written: ',
+        "en": "A source value survives in the copy; nothing was written: ",
     },
-    'The mapping table would overwrite the source or the copy; nothing was written.': {
+    "The mapping table would overwrite the source or the copy; nothing was written.": {
         "fr": "La table de correspondance écraserait la source ou la copie ; rien n'a été écrit.",
-        "en": 'The mapping table would overwrite the source or the copy; nothing was written.',
+        "en": "The mapping table would overwrite the source or the copy; nothing was written.",
     },
-    'Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.': {
-        "fr": 'Les feuilles hors de la sélection sont retirées de la copie ; les formules qui les référençaient affichent #REF!.',
-        "en": 'Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.',
+    "Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.": {
+        "fr": "Les feuilles hors de la sélection sont retirées de la copie ; les formules qui les référençaient affichent #REF!.",
+        "en": "Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.",
     },
-    'Chart sheets are dropped from the copy: their titles and series caches are not cells.': {
-        "fr": 'Les feuilles graphiques sont retirées de la copie : leurs titres et leurs caches de série ne sont pas des cellules.',
-        "en": 'Chart sheets are dropped from the copy: their titles and series caches are not cells.',
+    "Chart sheets are dropped from the copy: their titles and series caches are not cells.": {
+        "fr": "Les feuilles graphiques sont retirées de la copie : leurs titres et leurs caches de série ne sont pas des cellules.",
+        "en": "Chart sheets are dropped from the copy: their titles and series caches are not cells.",
     },
-    'Object keys are kept as structure; they may identify.': {
+    "Object keys are kept as structure; they may identify.": {
         "fr": "Les clés d'objet sont conservées comme structure ; elles peuvent identifier.",
-        "en": 'Object keys are kept as structure; they may identify.',
+        "en": "Object keys are kept as structure; they may identify.",
     },
-    'Element and attribute names are kept as structure; they may identify.': {
+    "Element and attribute names are kept as structure; they may identify.": {
         "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
-        "en": 'Element and attribute names are kept as structure; they may identify.',
+        "en": "Element and attribute names are kept as structure; they may identify.",
     },
-    'Row 1 is copied verbatim as a header row.': {
+    "Row 1 is copied verbatim as a header row.": {
         "fr": "La ligne 1 est recopiée telle quelle comme ligne d'en-tête.",
-        "en": 'Row 1 is copied verbatim as a header row.',
+        "en": "Row 1 is copied verbatim as a header row.",
     },
-    'If it holds data, answer yes to the header question and start over.': {
+    "If it holds data, answer yes to the header question and start over.": {
         "fr": "Si elle porte de la donnée, répondre oui à la question d'en-tête et reprendre.",
-        "en": 'If it holds data, answer yes to the header question and start over.',
+        "en": "If it holds data, answer yes to the header question and start over.",
     },
-    'Mapping table: ': {
-        "fr": 'Table de correspondance : ',
-        "en": 'Mapping table: ',
+    "Mapping table: ": {
+        "fr": "Table de correspondance : ",
+        "en": "Mapping table: ",
     },
-    'value(s) not verified, above the cap': {
-        "fr": 'valeur(s) non vérifiée(s), au-delà du plafond',
-        "en": 'value(s) not verified, above the cap',
+    "value(s) not verified, above the cap": {
+        "fr": "valeur(s) non vérifiée(s), au-delà du plafond",
+        "en": "value(s) not verified, above the cap",
     },
-    'Not produced here, left alone:': {
-        "fr": 'Non produit ici, laissé en place :',
-        "en": 'Not produced here, left alone:',
+    "Not produced here, left alone:": {
+        "fr": "Non produit ici, laissé en place :",
+        "en": "Not produced here, left alone:",
     },
-    'The library here cannot read this file: ': {
-        "fr": 'La bibliothèque ne sait pas lire ce fichier ici : ',
-        "en": 'The library here cannot read this file: ',
+    "The library here cannot read this file: ": {
+        "fr": "La bibliothèque ne sait pas lire ce fichier ici : ",
+        "en": "The library here cannot read this file: ",
     },
     "This target cannot hold the source's shape: ": {
-        "fr": 'Cette cible ne peut pas porter la forme de la source : ',
+        "fr": "Cette cible ne peut pas porter la forme de la source : ",
         "en": "This target cannot hold the source's shape: ",
     },
 }

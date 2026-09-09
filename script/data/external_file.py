@@ -482,11 +482,25 @@ class Correspondance:
     seul objet produit qui RÉ-IDENTIFIE la copie : il vit dans `private/`.
     """
 
-    VERSION = 1
+    # 2 depuis que la table se rappelle les lignes d'en-tête. Une table
+    # de version 1 se charge toujours : `charger` lit une clé ABSENTE
+    # comme un dictionnaire vide, faute de quoi le deuxième fichier d'un
+    # lot commencé avant refuserait la table du premier.
+    VERSION = 2
 
-    def __init__(self, mots=None, nombres=None):
+    def __init__(self, mots=None, nombres=None, entetes=None):
         self.mots = dict(mots or {})
         self.nombres = dict(nombres or {})
+        # {nom de feuille: [lignes d'en-tête]} — ce que l'opérateur a
+        # RÉPONDU sur un fichier de ce lot. Le deuxième fichier d'un même
+        # export porte les mêmes feuilles, si bien que la correction n'est
+        # à faire qu'une fois. Elle n'est JAMAIS appliquée en silence :
+        # l'écran la montre pré-cochée, une réponse fausse appliquée sans
+        # être vue étant exactement comment une erreur gagne tout un lot.
+        self.entetes = {
+            str(nom): sorted({int(n) for n in (lignes or []) if int(n) >= 1})
+            for nom, lignes in (entetes or {}).items()
+        }
         # Les nombres DÉJÀ attribués. Reconstruits au chargement, pour
         # qu'une table réutilisée d'un fichier à l'autre continue de
         # garantir l'unicité sur tout le lot.
@@ -501,7 +515,7 @@ class Correspondance:
             return cls()
         with open(chemin, "r", encoding="utf-8") as fh:
             brut = json.load(fh)
-        return cls(brut.get("mots"), brut.get("nombres"))
+        return cls(brut.get("mots"), brut.get("nombres"), brut.get("entetes"))
 
     def ecrire(self, chemin):
         """Écrite en 0600, et par un temporaire renommé.
@@ -530,6 +544,7 @@ class Correspondance:
                         "version": self.VERSION,
                         "mots": self.mots,
                         "nombres": self.nombres,
+                        "entetes": self.entetes,
                     },
                     fh,
                     ensure_ascii=False,
@@ -543,7 +558,13 @@ class Correspondance:
                 os.unlink(temporaire)
 
     def en_dict(self):
-        return {"mots": dict(self.mots), "nombres": dict(self.nombres)}
+        return {
+            "mots": dict(self.mots),
+            "nombres": dict(self.nombres),
+            "entetes": {
+                nom: list(lignes) for nom, lignes in self.entetes.items()
+            },
+        }
 
 
 def nouveau_mot(valeur, table, vivier):

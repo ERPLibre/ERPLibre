@@ -354,12 +354,25 @@ class TransformMenuMixin:
             return None
         options["conversion"] = cible
 
+        # La table AVANT l'écran : elle dit si ce fichier appartient à
+        # un lot déjà entamé, et l'écran montre alors les lignes
+        # d'en-tête qu'un fichier précédent a fait corriger. La poser
+        # après l'écran laissait cette mémoire hors de vue.
+        reponse = self._transform_ask(
+            t("Mapping table to reuse (empty = a new one): ")
+        )
+        if reponse is None:
+            return None
+        options["table_chemin"] = (
+            os.path.expanduser(reponse) if reponse else ""
+        )
+
         # L'écran AVANT les questions de portée : c'est lui qui répond
         # aux deux qu'une invite ne sait pas poser — quelles lignes
         # nomment les colonnes, et lesquelles rester intactes. Il rend
         # `{}` pour dire « pose-moi les questions », ce qui laisse la
         # suite se dérouler comme avant.
-        ecran = self._transform_ecran(rapport)
+        ecran = self._transform_ecran(rapport, options.get("table_chemin"))
         if ecran is None:
             return None
         options.update(ecran)
@@ -429,15 +442,6 @@ class TransformMenuMixin:
             return None
         options["graine"] = reponse
 
-        reponse = self._transform_ask(
-            t("Mapping table to reuse (empty = a new one): ")
-        )
-        if reponse is None:
-            return None
-        options["table_chemin"] = (
-            os.path.expanduser(reponse) if reponse else ""
-        )
-
         hors = rapport.get("hors_cellules") or {}
         garde_xlsm = (options["conversion"] or rapport["format"]) == "xlsx"
         if hors.get("macros") and garde_xlsm:
@@ -456,7 +460,7 @@ class TransformMenuMixin:
             options["garder_graphiques"] = self._is_yes(reponse)
         return options
 
-    def _transform_ecran(self, rapport):
+    def _transform_ecran(self, rapport, table_chemin=""):
         """Le périmètre choisi à l'écran, ou {} pour les invites.
 
         Trois issues, et non deux : la spec porte le périmètre, `{}`
@@ -480,7 +484,9 @@ class TransformMenuMixin:
             return {}
         try:
             spec = transform_form.run_transform_form(
-                transform_form.contexte_depuis_rapport(rapport)
+                transform_form.contexte_depuis_rapport(
+                    rapport, self._transform_memoire(table_chemin)
+                )
             )
         except Exception as exc:  # pragma: no cover - pas de terminal
             # Un écran qui ne peut pas s'ouvrir ne doit pas emporter le
@@ -490,6 +496,23 @@ class TransformMenuMixin:
         if spec is None:
             return None
         return spec
+
+    @staticmethod
+    def _transform_memoire(table_chemin):
+        """Les lignes d'en-tête qu'une table de lot se rappelle.
+
+        Lue ICI et non par le moteur : l'écran vit dans le processus du
+        menu, et la table est un simple JSON. Une table absente, illisible
+        ou d'une version antérieure rend un dictionnaire vide — la mémoire
+        est un confort, jamais une condition pour ouvrir l'écran.
+        """
+        if not table_chemin or not os.path.isfile(table_chemin):
+            return {}
+        try:
+            with open(table_chemin, "r", encoding="utf-8") as flux:
+                return json.load(flux).get("entetes") or {}
+        except (OSError, ValueError):
+            return {}
 
     # ------------------------------------------------------------------
     # L'aperçu

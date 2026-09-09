@@ -215,7 +215,7 @@ class TestMenuQuestions(unittest.TestCase):
         # L'écran réel prendrait le terminal : ce qu'on éprouve ici est le
         # chemin TEXTUEL, dont l'écran est le repli. `{}` veut dire
         # « pose-moi les questions ».
-        self.menu._transform_ecran = lambda rapport: {}
+        self.menu._transform_ecran = lambda *args: {}
         self.vrai_input = builtins.input
         self.addCleanup(setattr, builtins, "input", self.vrai_input)
         self.sortie = io.StringIO()
@@ -233,13 +233,13 @@ class TestMenuQuestions(unittest.TestCase):
         self._repondre(
             "o",  # anonymiser
             "csv",  # convertir
+            "",  # table du lot — posée AVANT l'écran
             "Ventes",  # feuilles
             "id, ref",  # colonnes intactes
             "",  # nombres, défaut oui
             "",  # texte, défaut oui
             "",  # en-têtes, défaut non
             "42",  # graine
-            "",  # table
         )
         options = self.menu._transform_ask_options(self.RAPPORT)
         self.assertEqual(options["conversion"], "csv")
@@ -252,7 +252,7 @@ class TestMenuQuestions(unittest.TestCase):
         self.assertEqual(options["table_chemin"], "")
 
     def test_un_defaut_vide_ne_convertit_ni_ne_restreint(self):
-        self._repondre("oui", "", "", "", "n", "n", "o", "", "")
+        self._repondre("oui", "", "", "", "", "n", "n", "o", "")
         options = self.menu._transform_ask_options(self.RAPPORT)
         self.assertEqual(options["conversion"], "")
         self.assertEqual(options["feuilles"], [])
@@ -268,7 +268,8 @@ class TestMenuQuestions(unittest.TestCase):
 
     def test_zero_annule_a_CHAQUE_question(self):
         """Une réponse valide jusqu'au rang N, puis « 0 »."""
-        valides = ["o", "csv", "Ventes", "", "", "", "", "42", ""]
+        # L'ordre du dialogue, la table venant maintenant en troisième.
+        valides = ["o", "csv", "", "Ventes", "", "", "", "", "42"]
         for rang in range(len(valides)):
             with self.subTest(rang=rang):
                 entrees = self._repondre(*(valides[:rang] + ["0"]))
@@ -291,14 +292,14 @@ class TestMenuQuestions(unittest.TestCase):
 
     # -- les feuilles --------------------------------------------------
     def test_une_feuille_inconnue_est_refusee_AVANT_d_ecrire(self):
-        entrees = self._repondre("o", "", "Trésorerie")
+        entrees = self._repondre("o", "", "", "Trésorerie")
         self.assertIsNone(self.menu._transform_ask_options(self.RAPPORT))
-        self.assertEqual(len(entrees.demandes), 3)
+        self.assertEqual(len(entrees.demandes), 4)
 
     def test_le_nom_de_feuille_se_resout_sans_la_casse(self):
         """Le nom rendu est celui du CLASSEUR, non celui tapé : la portée
         s'apparie ensuite par égalité exacte."""
-        self._repondre("o", "", "  ventes , ACHATS ", "", "", "", "", "", "")
+        self._repondre("o", "", "", "  ventes , ACHATS ", "", "", "", "", "")
         options = self.menu._transform_ask_options(self.RAPPORT)
         self.assertEqual(options["feuilles"], ["Ventes", "Achats"])
 
@@ -901,7 +902,7 @@ class TestMenuDerouleComplet(unittest.TestCase):
         self.rendus = []
         self.menu._transform_run = self._run
         # Comme ci-dessus : l'écran réel bloquerait la suite.
-        self.menu._transform_ecran = lambda rapport: {}
+        self.menu._transform_ecran = lambda *args: {}
         # Le rapport est un VRAI rapport, non une main écrite : la forme
         # que le rendu attend change avec le moteur, et une fixture à la
         # main dériverait sans qu'un test le voie.
@@ -1037,18 +1038,17 @@ class TestMenuDerouleComplet(unittest.TestCase):
 
     def test_les_options_partent_en_json_analysable(self):
         self.rendus = [self.rapport, {"remplacees": 1}, {"remplacees": 1}]
-        # Une source d'UNE feuille ne pose pas la question des feuilles :
-        # huit réponses, non neuf.
+        # Une source d'UNE feuille ne pose pas la question des feuilles.
         self._dialogue(
             self.source,
             "o",  # anonymiser
             "json",  # convertir
+            "",  # table du lot — posée AVANT l'écran
             "id",  # colonnes intactes
             "",  # nombres
             "",  # texte
             "",  # en-têtes
             "7",  # graine
-            "",  # table
             os.path.join(self.base, "o.json"),
             "",  # écrire
         )
@@ -2262,7 +2262,10 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
 
         for nom, valeur in (
             ("run_transform_form", ecran),
-            ("contexte_depuis_rapport", contexte or (lambda rapport: {})),
+            (
+                "contexte_depuis_rapport",
+                contexte or (lambda *args: {}),
+            ),
         ):
             vrai = getattr(transform_form, nom)
             setattr(transform_form, nom, valeur)
@@ -2278,7 +2281,7 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
             appels.append(ctx)
             return {"colonnes_intactes_par_feuille": {}}
 
-        self._bouchonner(faux_ecran, lambda rapport: {"vu": True})
+        self._bouchonner(faux_ecran, lambda *args: {"vu": True})
         rendu = self.menu._transform_ecran(self.RAPPORT)
         self.assertEqual(appels, [{"vu": True}])
         self.assertEqual(rendu, {"colonnes_intactes_par_feuille": {}})
@@ -2294,6 +2297,135 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self._bouchonner(tombe)
         self.assertEqual(self.menu._transform_ecran(self.RAPPORT), {})
         self.assertIn("pas de terminal", self.ecran.getvalue())
+
+
+class TestMemoireDesEntetes(unittest.TestCase):
+    """La table de lot se rappelle les lignes d'en-tête corrigées.
+
+    Le deuxième fichier d'un même export porte les mêmes feuilles : la
+    correction n'est à faire qu'une fois. Ce qui est retenu est la
+    RÉPONSE de l'opérateur et rien d'autre — retenir une mesure ferait
+    propager son erreur à tout le lot, alors qu'elle se refait à
+    l'identique sur chaque fichier.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.table = os.path.join(self.base, "t.json")
+
+    def _csv(self, nom):
+        chemin = os.path.join(self.base, nom)
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write("IN137784,1028,100.5\n")
+            flux.write("IN137785,1029,101.5\n")
+            flux.write("IN137786,1030,102.5\n")
+        return chemin
+
+    OPTIONS = {"nombres": True, "textes": True, "graine": 7, "feuilles": []}
+
+    def test_la_table_se_rappelle_ce_que_l_operateur_a_repondu(self):
+        source = self._csv("un.csv")
+        formats.ecrire(
+            source,
+            os.path.join(self.base, "a.csv"),
+            dict(
+                self.OPTIONS,
+                table_chemin=self.table,
+                entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1]},
+            ),
+        )
+        relue = noyau.Correspondance.charger(self.table)
+        self.assertEqual(relue.entetes, {formats.NOM_FEUILLE_NEUTRE: [1]})
+
+    def test_le_fichier_suivant_du_lot_herite_de_la_correction(self):
+        """Sans qu'on redise rien : c'est tout l'objet de la mémoire."""
+        table = noyau.Correspondance(entetes={formats.NOM_FEUILLE_NEUTRE: [1]})
+        table.ecrire(self.table)
+        apercu = formats.plan(
+            self._csv("deux.csv"),
+            dict(
+                self.OPTIONS,
+                table_chemin=self.table,
+                destination=os.path.join(self.base, "b.csv"),
+            ),
+        )
+        valeurs = [c["valeur"] for c in apercu["entete_gardee"]]
+        self.assertIn("IN137784", valeurs)
+
+    def test_sans_memoire_la_mesure_tranche_et_la_ligne_1_est_en_portee(self):
+        apercu = formats.plan(
+            self._csv("trois.csv"),
+            dict(
+                self.OPTIONS,
+                destination=os.path.join(self.base, "c.csv"),
+            ),
+        )
+        self.assertEqual(apercu["entete_gardee"], [])
+
+    def test_la_reponse_de_CE_passage_passe_avant_la_memoire(self):
+        """L'opérateur peut toujours contredire ce que le lot a établi."""
+        feuille = formats.Feuille(
+            "F", [["a", "b"], ["x", 1], ["y", 2], ["z", 3]]
+        )
+        formats.mesurer_entetes([feuille], "csv", {"F": [2]}, {"F": [1]})
+        self.assertEqual(feuille.lignes_entete, {2})
+
+    def test_la_memoire_passe_avant_ce_que_le_FICHIER_declare(self):
+        """C'est une réponse d'opérateur elle aussi, faite sur un autre
+        fichier du même lot."""
+        feuille = formats.Feuille(
+            "F", [["a", "b"], ["x", 1], ["y", 2], ["z", 3]]
+        )
+        feuille.entete_declaree = {1}
+        formats.mesurer_entetes([feuille], "xlsx", None, {"F": [1, 2]})
+        self.assertEqual(feuille.lignes_entete, {1, 2})
+
+    def test_une_memoire_qui_ne_nomme_pas_la_feuille_ne_fait_rien(self):
+        feuille = formats.Feuille(
+            "F", [["a", "b"], ["x", 1], ["y", 2], ["z", 3]]
+        )
+        feuille.entete_declaree = {1}
+        formats.mesurer_entetes([feuille], "xlsx", None, {"Autre": [9]})
+        self.assertEqual(feuille.lignes_entete, {1})
+
+
+class TestTableVersion2(unittest.TestCase):
+    """La table porte un troisième dictionnaire, sans casser l'ancienne."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.chemin = os.path.join(self.base, "t.json")
+
+    def test_une_table_de_version_1_se_charge_toujours(self):
+        """Sinon le deuxième fichier d'un lot commencé avant refuserait
+        la table du premier."""
+        with open(self.chemin, "w", encoding="utf-8") as flux:
+            json.dump(
+                {"version": 1, "mots": {"a": "aboulie"}, "nombres": {}}, flux
+            )
+        relue = noyau.Correspondance.charger(self.chemin)
+        self.assertEqual(relue.mots, {"a": "aboulie"})
+        self.assertEqual(relue.entetes, {})
+
+    def test_l_ecriture_reste_en_0600(self):
+        """Ce fichier porte chaque valeur d'origine en clair."""
+        noyau.Correspondance(entetes={"F": [1]}).ecrire(self.chemin)
+        self.assertEqual(os.stat(self.chemin).st_mode & 0o777, 0o600)
+
+    def test_les_lignes_sont_normalisees_et_triees(self):
+        """Une réponse tapée à la main, ou relue d'un JSON, arrive en
+        chaînes et dans n'importe quel ordre."""
+        table = noyau.Correspondance(entetes={"F": ["3", 1, "1", 0, -2]})
+        self.assertEqual(table.entetes, {"F": [1, 3]})
+
+    def test_en_dict_porte_les_trois_dictionnaires(self):
+        rendu = noyau.Correspondance(
+            mots={"a": "b"}, nombres={"i:1": 2}, entetes={"F": [1]}
+        ).en_dict()
+        self.assertEqual(sorted(rendu), ["entetes", "mots", "nombres"])
+        json.dumps(rendu, allow_nan=False)
 
 
 class TestNombre(unittest.TestCase):

@@ -46,12 +46,19 @@ MARQUE_INTACTE = "[x]"
 MARQUE_PLANCHER = "[!]"
 
 
-def contexte_depuis_rapport(rapport):
+def contexte_depuis_rapport(rapport, memoire=None):
     """Le contexte de l'écran, tiré du rapport du moteur.
 
     Pure transformation de données : c'est ce qui rend l'écran testable
     sans fichier, et ce qui garantit qu'il n'ouvre rien lui-même.
+
+    `memoire` porte ce qu'une table de lot se rappelle — les lignes
+    d'en-tête qu'un fichier PRÉCÉDENT a fait corriger. Elle arrive
+    PRÉ-COCHÉE et marquée, jamais appliquée en silence : une réponse
+    fausse appliquée sans être vue est exactement comment une erreur
+    gagne tout un lot.
     """
+    memoire = memoire or {}
     return {
         "fichier": rapport.get("chemin", ""),
         "format": rapport.get("format", ""),
@@ -60,9 +67,22 @@ def contexte_depuis_rapport(rapport):
                 "nom": feuille.get("nom", ""),
                 "lignes": feuille.get("lignes", 0),
                 "colonnes_n": feuille.get("colonnes_n", 0),
-                "lignes_entete": list(feuille.get("lignes_entete") or []),
+                "lignes_entete": sorted(
+                    {
+                        int(n)
+                        for n in (
+                            memoire[feuille.get("nom", "")]
+                            if feuille.get("nom", "") in memoire
+                            else (feuille.get("lignes_entete") or [])
+                        )
+                    }
+                ),
                 "ligne_champs": feuille.get("ligne_champs"),
                 "entete_declaree": bool(feuille.get("entete_declaree")),
+                # D'où vient l'empan pré-coché : la table d'un lot, ou la
+                # mesure de ce fichier. L'écran le MARQUE, sans quoi une
+                # réponse héritée et un verdict se lisent pareil.
+                "entete_memorisee": feuille.get("nom", "") in memoire,
                 "lignes_sondees": list(feuille.get("lignes_sondees") or []),
                 "colonnes": [
                     {
@@ -234,7 +254,11 @@ def run_transform_form(ctx, run_app: bool = True):
                     yield DataTable(id="colonnes")
                     yield DataTable(id="sondees")
             yield Static(
-                "  %s" % t("[x] untouched · [!] floored, not answerable"),
+                "  %s"
+                % t(
+                    "[x] untouched · [!] floored · * corrected · = from"
+                    " the batch table"
+                ),
                 id="legende",
             )
             yield Footer()
@@ -285,7 +309,13 @@ def run_transform_form(ctx, run_app: bool = True):
             """
             empan = sorted(entetes.get(feuille["nom"], set()))
             rang = str(max(empan)) if empan else "-"
-            marque = " *" if feuille["nom"] in corrigees else ""
+            if feuille["nom"] in corrigees:
+                marque = " *"
+            elif feuille.get("entete_memorisee"):
+                # Hérité d'un fichier du même lot : montré, non subi.
+                marque = " ="
+            else:
+                marque = ""
             return " %-20s %s%s" % (feuille["nom"][:20], rang, marque)
 
         def _widget(self, selecteur, genre):

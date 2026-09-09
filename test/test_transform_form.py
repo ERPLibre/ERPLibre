@@ -175,6 +175,76 @@ class TestContexte(unittest.TestCase):
         self.assertEqual(feuille["lignes_sondees"], [])
 
 
+class TestMemoireDansLeContexte(unittest.TestCase):
+    """Ce qu'une table de lot se rappelle arrive PRÉ-COCHÉ et MARQUÉ.
+
+    Jamais appliqué en silence : une réponse fausse appliquée sans être
+    vue est exactement comment une erreur gagne tout un lot.
+    """
+
+    def test_sans_memoire_l_empan_est_celui_de_la_mesure(self):
+        ctx = transform_form.contexte_depuis_rapport(rapport())
+        self.assertEqual(ctx["feuilles"][0]["lignes_entete"], [1])
+        self.assertFalse(ctx["feuilles"][0]["entete_memorisee"])
+
+    def test_la_memoire_remplace_l_empan_et_se_MARQUE(self):
+        ctx = transform_form.contexte_depuis_rapport(
+            rapport(), {"Achats": [1, 2]}
+        )
+        achats = ctx["feuilles"][1]
+        self.assertEqual(achats["lignes_entete"], [1, 2])
+        self.assertTrue(achats["entete_memorisee"])
+
+    def test_une_memoire_VIDE_veut_dire_pas_d_en_tete(self):
+        """Et se distingue d'une absence de mémoire : l'une répond « pas
+        d'en-tête », l'autre laisse la mesure trancher."""
+        ctx = transform_form.contexte_depuis_rapport(rapport(), {"Ventes": []})
+        ventes = ctx["feuilles"][0]
+        self.assertEqual(ventes["lignes_entete"], [])
+        self.assertTrue(ventes["entete_memorisee"])
+
+    def test_une_feuille_hors_memoire_garde_sa_mesure(self):
+        ctx = transform_form.contexte_depuis_rapport(
+            rapport(), {"Achats": [1]}
+        )
+        self.assertEqual(ctx["feuilles"][0]["lignes_entete"], [1])
+        self.assertFalse(ctx["feuilles"][0]["entete_memorisee"])
+
+    def test_des_lignes_en_chaines_sont_normalisees(self):
+        """Elles arrivent d'un JSON relu à la main."""
+        ctx = transform_form.contexte_depuis_rapport(
+            rapport(), {"Achats": ["2", "1", "1"]}
+        )
+        self.assertEqual(ctx["feuilles"][1]["lignes_entete"], [1, 2])
+
+
+@unittest.skipUnless(TEXTUAL, SANS_TEXTUAL)
+class TestMemoireALEcran(unittest.TestCase):
+    """L'écran part de la mémoire, et la montre."""
+
+    def test_l_empan_de_depart_vient_de_la_memoire(self):
+        app = transform_form.run_transform_form(
+            transform_form.contexte_depuis_rapport(
+                rapport(), {"Achats": [1, 2]}
+            ),
+            run_app=False,
+        )
+        self.assertEqual(app._entetes["Achats"], {1, 2})
+        self.assertEqual(app._entetes["Ventes"], {1})
+
+    def test_la_legende_nomme_les_quatre_marques(self):
+        """Un marqueur qu'il faut deviner n'est pas offert."""
+        from script.todo.todo_i18n import t as traduire
+
+        legende = traduire(
+            "[x] untouched · [!] floored · * corrected · = from"
+            " the batch table"
+        )
+        for marque in ("[x]", "[!]", "*", "="):
+            with self.subTest(marque=marque):
+                self.assertIn(marque, legende)
+
+
 class TestLibelles(unittest.TestCase):
     """Ce que l'écran montre d'une colonne et d'une ligne."""
 
