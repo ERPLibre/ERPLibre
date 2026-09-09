@@ -1835,6 +1835,152 @@ class TestUniciteDesClesI18n(unittest.TestCase):
         self.assertEqual(doubles, [], "clés déclarées deux fois")
 
 
+class TestPorteeDeLEmpanDEnTete(unittest.TestCase):
+    """La portée obéit à l'empan mesuré — l'endroit où une erreur laisse
+    sortir de la donnée.
+
+    Le défaut de l'ABSENCE porte tout : un appelant qui ne mesure pas
+    mettrait la ligne de champs en portée, ses libellés remplacés et la
+    copie illisible. Une clé PRÉSENTE et vide veut dire « pas d'en-tête ».
+    """
+
+    BASE = {"entetes": False, "colonnes_intactes": set()}
+
+    def test_la_cle_ABSENTE_garde_la_ligne_1(self):
+        """Le comportement d'avant la mesure : le gabarit d'options des
+        tests de portée ne porte que quelques clés."""
+        self.assertFalse(noyau.cellule_en_portee("F", 1, 1, dict(self.BASE)))
+        self.assertTrue(noyau.cellule_en_portee("F", 2, 1, dict(self.BASE)))
+
+    def test_la_cle_PRESENTE_ET_VIDE_met_la_ligne_1_en_portee(self):
+        """C'est le correctif de la fuite : une feuille sans en-tête voit
+        sa première ligne de DONNÉES anonymisée."""
+        options = dict(self.BASE, lignes_entete=set())
+        self.assertTrue(noyau.cellule_en_portee("F", 1, 1, options))
+
+    def test_un_empan_de_deux_lignes_les_garde_toutes_les_deux(self):
+        options = dict(self.BASE, lignes_entete={("F", 1), ("F", 2)})
+        self.assertFalse(noyau.cellule_en_portee("F", 1, 1, options))
+        self.assertFalse(noyau.cellule_en_portee("F", 2, 1, options))
+        self.assertTrue(noyau.cellule_en_portee("F", 3, 1, options))
+
+    def test_l_empan_est_PAR_FEUILLE(self):
+        """Garder la ligne 3 d'une feuille ne garde pas la ligne 3 des
+        autres : l'empan est mesuré feuille par feuille."""
+        options = dict(self.BASE, lignes_entete={("A", 3)})
+        self.assertFalse(noyau.cellule_en_portee("A", 3, 1, options))
+        self.assertTrue(noyau.cellule_en_portee("B", 3, 1, options))
+
+    def test_repondre_oui_a_l_en_tete_met_tout_en_portee(self):
+        """L'option existante garde sa parole : l'empan ne la contredit
+        pas."""
+        options = dict(
+            self.BASE, entetes=True, lignes_entete={("F", 1), ("F", 2)}
+        )
+        self.assertTrue(noyau.cellule_en_portee("F", 1, 1, options))
+
+    def test_preparer_pose_TOUJOURS_la_cle(self):
+        """Sinon l'absence — qui veut dire « ligne 1 » — s'appliquerait à
+        une feuille dont l'en-tête est ailleurs."""
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        source = os.path.join(base, "s.csv")
+        with open(source, "w", encoding="utf-8") as flux:
+            flux.write("etiquette,montant,date\n")
+            flux.write("aboulie,12,2019-01-02\n")
+            flux.write("acai,13,2019-01-03\n")
+        _f, _feuilles, _c, _r, options = formats._preparer(source, {})
+        self.assertIn("lignes_entete", options)
+        # Le nom vient du module : un csv n'a pas d'onglet, et coder son
+        # nom en dur dans le test ferait tomber au premier renommage.
+        self.assertEqual(
+            options["lignes_entete"],
+            {(formats.NOM_FEUILLE_NEUTRE, 1)},
+        )
+
+
+class TestMesurerEntetes(unittest.TestCase):
+    """Quatre sources, dans un ordre qui n'est pas négociable."""
+
+    ENTETE = ["etiquette", "montant", "date", "code"]
+    CORPS = [
+        ["aboulie", 1200, "2019-01-02", "A1"],
+        ["acai", 830, "2019-01-03", "B2"],
+        ["adobe", 940, "2019-01-04", "C3"],
+    ]
+
+    @classmethod
+    def _feuille(cls, nom="F", lignes=None):
+        """Types MÊLÉS : le régime où la mesure tranche. Une grille
+        étroite et tout-alphabétique ne se décide pas."""
+        return formats.Feuille(
+            nom, lignes if lignes is not None else [cls.ENTETE] + cls.CORPS
+        )
+
+    def test_la_correction_de_l_operateur_passe_avant_tout(self):
+        feuille = self._feuille()
+        feuille.entete_declaree = {1}
+        formats.mesurer_entetes([feuille], "xlsx", {"F": [2, 3]})
+        self.assertEqual(feuille.lignes_entete, {2, 3})
+        self.assertEqual(feuille.ligne_champs, 3)
+
+    def test_la_DECLARATION_du_fichier_passe_avant_la_mesure(self):
+        """`_resynchroniser_tableaux` lit déjà `headerRowCount` pour
+        nommer les colonnes d'un tableau : deux notions d'en-tête qui se
+        contredisent feraient renommer depuis une ligne anonymisée."""
+        feuille = self._feuille(lignes=[["cat"] * 4, self.ENTETE] + self.CORPS)
+        feuille.entete_declaree = {1, 2}
+        formats.mesurer_entetes([feuille], "xlsx")
+        self.assertEqual(feuille.lignes_entete, {1, 2})
+        self.assertEqual(feuille.ligne_champs, 2)
+
+    def test_un_lecteur_qui_FABRIQUE_sa_ligne_1_ne_mesure_rien(self):
+        for format_lu in formats.FORMATS_ENTETE_FABRIQUEE:
+            with self.subTest(format_lu=format_lu):
+                # Une grille SANS en-tête : la mesure rendrait
+                # `set()`, et le défaut du lecteur doit l'emporter.
+                feuille = self._feuille(lignes=self.CORPS)
+                formats.mesurer_entetes([feuille], format_lu)
+                self.assertEqual(feuille.lignes_entete, {1})
+
+    def test_une_correction_vide_veut_dire_PAS_d_en_tete(self):
+        feuille = self._feuille()
+        formats.mesurer_entetes([feuille], "csv", {"F": []})
+        self.assertEqual(feuille.lignes_entete, set())
+        self.assertIsNone(feuille.ligne_champs)
+
+    def test_une_correction_ne_touche_pas_les_autres_feuilles(self):
+        une, deux = self._feuille("A"), self._feuille("B")
+        formats.mesurer_entetes([une, deux], "csv", {"A": []})
+        self.assertEqual(une.lignes_entete, set())
+        self.assertEqual(deux.ligne_champs, 1)
+
+
+class TestCorpsSousLEmpan(unittest.TestCase):
+    """Les lignes de DONNÉES : ce qui suit la dernière ligne d'en-tête."""
+
+    def test_le_corps_saute_tout_l_empan(self):
+        feuille = formats.Feuille(
+            "F", [["cat", "cat"], ["a", "b"], ["x", 1], ["y", 2]]
+        )
+        feuille.lignes_entete = {1, 2}
+        self.assertEqual(formats.corps(feuille), [["x", 1], ["y", 2]])
+
+    def test_sans_en_tete_le_corps_est_TOUTE_la_grille(self):
+        """Sinon la première ligne de données devient les noms de clé :
+        en clair dans la copie, et perdue comme donnée."""
+        feuille = formats.Feuille("F", [["x", 1], ["y", 2]])
+        feuille.lignes_entete = set()
+        self.assertEqual(formats.corps(feuille), [["x", 1], ["y", 2]])
+
+    def test_des_noms_neutres_remplacent_l_en_tete_absent(self):
+        feuille = formats.Feuille("F", [["x", 1, 2], ["y", 3, 4]])
+        self.assertEqual(
+            formats._noms_neutres(feuille),
+            ["colonne_1", "colonne_2", "colonne_3"],
+        )
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 
@@ -3377,12 +3523,54 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
         # sur une recopie verbatim de tout le fichier.
         self.assertNotEqual(arbre[0]["ville"], "Beta")
 
-    def test_la_ligne_1_gardee_est_nommee(self):
-        """Un CSV sans en-tête met un enregistrement complet en ligne 1."""
-        source = self._ecrire("sans.csv", "Alpha,1200\nBeta,830\n")
+    def test_un_csv_SANS_en_tete_voit_sa_ligne_1_anonymisee(self):
+        """C'était la fuite : la ligne 1 était PRÉSUMÉE d'en-tête, donc
+        recopiée en clair, alors qu'elle porte un enregistrement complet.
+
+        La mesure conclut qu'il n'y a pas d'en-tête, et la ligne entre en
+        portée. Rien n'est alors gardé, donc rien n'est à nommer — c'est
+        ce que l'ancien avertissement compensait de son mieux.
+        """
+        source = self._ecrire("sans.csv", "aboulie,1200\nacai,830\n")
+        apercu = formats.plan(source, {"graine": "3"})
+        self.assertEqual(apercu["entete_gardee"], [])
+        avant = [c["avant"] for c in apercu["apercu"]]
+        self.assertIn("aboulie", avant)
+
+    def test_un_csv_AVEC_en_tete_le_garde_et_le_nomme(self):
+        """L'autre sens : la mesure ne doit pas anonymiser un vrai
+        en-tête, qui rendrait la copie illisible.
+
+        La grille porte des types MÊLÉS, comme un export réel : c'est le
+        régime où la mesure tranche. Une grille étroite et tout-
+        alphabétique ne se décide pas, et le test suivant le dit.
+        """
+        source = self._ecrire(
+            "avec.csv",
+            "etiquette,montant,date,code\n"
+            "aboulie,1200,2019-01-02,A1\n"
+            "acai,830,2019-01-03,B2\n"
+            "adobe,940,2019-01-04,C3\n",
+        )
         apercu = formats.plan(source, {"graine": "3"})
         valeurs = [c["valeur"] for c in apercu["entete_gardee"]]
-        self.assertIn("Alpha", valeurs)
+        self.assertIn("etiquette", valeurs)
+
+    def test_une_grille_tout_alphabetique_ne_se_decide_pas(self):
+        """La limite, ÉNONCÉE plutôt que masquée par un seuil ajusté.
+
+        Rien de structurel ne sépare « nom » de « aboulie » : seul un
+        vocabulaire le ferait, et une liste de noms de champs connus est
+        une classe ouverte. Le verdict est donc « pas d'en-tête », ce qui
+        ANONYMISE la ligne — le côté sur lequel pencher — et l'opérateur
+        corrige.
+        """
+        source = self._ecrire(
+            "mots.csv",
+            "nom,ville\naboulie,acai\nacanthe,acai\nadelphique,acai\n",
+        )
+        apercu = formats.plan(source, {"graine": "3"})
+        self.assertEqual(apercu["entete_gardee"], [])
 
     def test_la_table_ne_peut_pas_ecraser_la_source(self):
         source = self._ecrire("t.json", '{"client": "Alpha"}')

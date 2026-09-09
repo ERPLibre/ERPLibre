@@ -167,6 +167,19 @@ class Feuille:
         # les surmonte sans être des données — un titre, une catégorie
         # fusionnée — reste intact avec elle.
         self.lignes_entete = {1}
+        # Ce que le FICHIER DÉCLARE, quand il le déclare : `headerRowCount`
+        # d'un tableau d'un onglet. La déclaration GAGNE sur la mesure —
+        # `_resynchroniser_tableaux` la lit déjà pour nommer les colonnes
+        # d'un tableau, et deux notions d'en-tête qui se contredisent
+        # feraient renommer un tableau depuis une ligne qu'on vient
+        # d'anonymiser.
+        self.entete_declaree = None
+        # Les premières lignes telles que le lecteur les a LUES, avant
+        # coercition. Un csv rend tout en chaînes ; les coercer donne au
+        # signal de type la matière dont il a besoin, mais une ligne
+        # d'en-tête doit garder ses chaînes — « 2024 » est un libellé, pas
+        # un nombre. `mesurer_entetes` les rend à l'empan retenu.
+        self.lignes_brutes = None
 
     @property
     def etiquettes(self):
@@ -181,6 +194,18 @@ class Feuille:
         if rang is None or rang > len(self.lignes):
             return []
         return list(self.lignes[rang - 1])
+
+
+def corps(feuille):
+    """Les lignes de DONNÉES : ce qui suit la dernière ligne d'en-tête.
+
+    Un seul endroit le dit, pour les deux graveurs qui écrivaient
+    `lignes[1:]` : une seconde ligne d'en-tête y devenait un
+    enregistrement, et sur une feuille SANS en-tête la première ligne de
+    données devenait les noms de clé — en clair, et perdue comme donnée.
+    """
+    empan = feuille.lignes_entete or set()
+    return feuille.lignes[max(empan) if empan else 0 :]
 
 
 def _etiquettes_par_colonne(feuilles):
@@ -226,6 +251,61 @@ DISTINCTION_MINIMALE = 0.99
 # colonne qui tranche.
 CONTRASTE_MINIMAL = 0.4
 HORS_COLONNE_MINIMAL = 0.9
+
+
+# Les lecteurs qui FABRIQUENT leur ligne 1 : elle porte des noms de champ
+# ou des chemins de clé absents du fichier, donc l'empan est connu d'avance
+# et rien n'est à mesurer.
+FORMATS_ENTETE_FABRIQUEE = ("access", "json", "xml")
+
+
+def mesurer_entetes(feuilles, format_lu, corrections=None):
+    """Poser, par feuille, l'empan d'en-tête et la ligne de champs.
+
+    Quatre sources, dans cet ordre de priorité :
+
+    1. La CORRECTION de l'opérateur, qui ne se remesure jamais.
+    2. Ce que le FICHIER déclare — `headerRowCount` d'un tableau.
+    3. Ce que le LECTEUR sait : Access, JSON et XML fabriquent leur
+       ligne 1, gardent le défaut et ne mesurent rien.
+    4. La mesure, pour un tableur sans tableau déclaré et pour un csv.
+
+    La ligne de CHAMPS est la plus BASSE de l'empan : c'est la convention
+    de `_resynchroniser_tableaux`, qui nomme les colonnes d'un tableau
+    depuis la dernière ligne de `headerRowCount`. L'adopter plutôt que
+    d'en inventer une seconde évite deux notions qui se contredisent.
+    """
+    corrections = corrections or {}
+    for feuille in feuilles:
+        demandee = corrections.get(feuille.nom)
+        if demandee is not None:
+            empan = {int(n) for n in demandee if int(n) >= 1}
+        elif feuille.entete_declaree:
+            empan = set(feuille.entete_declaree)
+        elif format_lu in FORMATS_ENTETE_FABRIQUEE or feuille.ligne1_fabriquee:
+            empan = {1}
+        else:
+            empan, _champs = lignes_entete(feuille.lignes)
+        feuille.lignes_entete = empan
+        feuille.ligne_champs = max(empan) if empan else None
+        _rendre_les_brutes(feuille)
+
+
+def _rendre_les_brutes(feuille):
+    """Rendre à l'empan ses valeurs telles que le lecteur les a LUES.
+
+    Un csv arrive tout en chaînes et se fait coercer pour que le signal de
+    type ait de la matière ; une ligne d'en-tête, elle, doit garder ses
+    chaînes — « 2024 » y est un libellé de colonne, pas un nombre. Sans
+    ce retour, l'étiquette d'une colonne annuelle devenait un entier, et
+    la réponse « 2024 » à la question des colonnes ne portait plus.
+    """
+    brutes = feuille.lignes_brutes
+    if not brutes:
+        return
+    for numero in feuille.lignes_entete:
+        if 1 <= numero <= len(brutes) and numero <= len(feuille.lignes):
+            feuille.lignes[numero - 1] = list(brutes[numero - 1])
 
 
 def _forme_de_valeur(valeur):
@@ -328,7 +408,21 @@ def _signaux_entete(lignes, rang):
 
 
 def _est_une_ligne_de_champs(signaux, accord):
-    """Le verdict, seuils nommés à l'appui."""
+    """Le verdict, seuils nommés à l'appui.
+
+    Une limite à connaître : l'accord de forme est AVEUGLE quand le nom
+    d'un champ et ses valeurs partagent une classe de caractères — « nom »
+    au-dessus de mots, sur une grille étroite et tout-alphabétique. Rien
+    de structurel ne les sépare alors ; seul un vocabulaire le ferait, et
+    une liste de noms de champs connus est une classe OUVERTE. Le verdict
+    y est donc « pas d'en-tête », ce qui anonymise la ligne — le côté sur
+    lequel pencher — et l'opérateur corrige.
+
+    Une classe de LONGUEUR ne lève pas l'aveuglement : « IN137784 » et
+    « ORD154711 » doivent s'accorder alors que « etiquette » et
+    « aboulie » doivent se distinguer, et aucune frontière ne fait les
+    deux — mesuré sur cinq jeux de seuils.
+    """
     if signaux is None or accord is None:
         return False
     return (
@@ -396,7 +490,12 @@ def _stats_colonnes(feuille):
         mini = maxi = None
         entiere = True
         for numero, ligne in enumerate(feuille.lignes, start=1):
-            if numero == 1:
+            # L'EMPAN, jamais le littéral « 1 » : `forme_identifiant` et
+            # `forme_relation` se court-circuitent sur un seul faux, si
+            # bien qu'une ligne d'en-tête laissée dans la mesure fait
+            # lâcher le plancher sur `partner_id`, `key`, `model` et
+            # `state` — exactement les colonnes pour lesquelles il existe.
+            if numero in (feuille.lignes_entete or ()):
                 continue
             valeur = ligne[index] if index < len(ligne) else None
             famille = classer(valeur)
@@ -529,15 +628,49 @@ def _lire_xlsx(chemin, garder_vba=False):
             [cellule.value for cellule in ligne]
             for ligne in onglet.iter_rows()
         ]
-        feuilles.append(
-            Feuille(
-                onglet.title,
-                lignes,
-                masquee=onglet.sheet_state != "visible",
-                source=onglet,
-            )
+        feuille = Feuille(
+            onglet.title,
+            lignes,
+            masquee=onglet.sheet_state != "visible",
+            source=onglet,
         )
+        feuille.entete_declaree = _entete_declaree(onglet)
+        feuilles.append(feuille)
     return classeur, feuilles
+
+
+def _entete_declaree(onglet):
+    """L'empan d'en-tête que les TABLEAUX de l'onglet déclarent, ou None.
+
+    Un tableau OOXML porte `headerRowCount` et la première ligne de son
+    `ref` : l'empan s'en déduit sans rien mesurer. C'est la même donnée que
+    `_resynchroniser_tableaux` lit pour nommer les colonnes, et l'adopter
+    ici évite deux notions d'en-tête qui se contredisent — un tableau
+    renommé depuis une ligne qu'on vient d'anonymiser.
+
+    Plusieurs tableaux sur un onglet : l'empan est leur RÉUNION, chacun
+    gardant sa propre ligne d'en-tête intacte.
+    """
+    empan = set()
+    for tableau in (getattr(onglet, "tables", {}) or {}).values():
+        ref = getattr(tableau, "ref", "") or ""
+        if ":" not in ref and not ref:
+            continue
+        try:
+            premiere = onglet[ref.split(":")[0]].row
+        except (ValueError, KeyError, TypeError):
+            continue
+        hauteur = getattr(tableau, "headerRowCount", 1)
+        try:
+            hauteur = int(hauteur if hauteur is not None else 1)
+        except (TypeError, ValueError):
+            hauteur = 1
+        if hauteur < 1:
+            # Un tableau déclaré SANS ligne d'en-tête : sa première ligne
+            # est de la donnée, et rien n'est à garder pour lui.
+            continue
+        empan.update(range(premiere, premiere + hauteur))
+    return empan or None
 
 
 def _lire_xls(chemin):
@@ -724,14 +857,19 @@ def _lire_csv(chemin):
     # entier, donc en étiquette absente, et « 1 » ne désignait plus la
     # colonne étiquetée « 1 » mais la première colonne.
     lignes = []
+    brutes = []
     for numero, ligne in enumerate(
         csv.reader(io.StringIO(texte), delimiter=delimiteur), start=1
     ):
-        lignes.append(
-            list(ligne)
-            if numero == 1
-            else [coercer_texte(champ) for champ in ligne]
-        )
+        # TOUTES les lignes sont coercées, ligne 1 comprise : le signal de
+        # type compare une ligne aux VRAIS types de sa colonne, et lui
+        # laisser ses chaînes faisait passer toute ligne 1 pour un en-tête
+        # — donc en inventer un là où il n'y en a pas, ce qui recopie de
+        # la donnée en clair. `mesurer_entetes` rend ensuite leurs chaînes
+        # aux seules lignes de l'empan retenu, où « 2024 » est un libellé.
+        if numero <= LIGNES_SONDEES:
+            brutes.append(list(ligne))
+        lignes.append([coercer_texte(champ) for champ in ligne])
     nom = NOM_FEUILLE_NEUTRE
     meta = {
         "encodage": encodage,
@@ -739,7 +877,9 @@ def _lire_csv(chemin):
         "delimiteur": delimiteur,
         "delimiteur_source": source_del,
     }
-    return Feuille(nom, lignes), meta
+    feuille = Feuille(nom, lignes)
+    feuille.lignes_brutes = brutes
+    return feuille, meta
 
 
 # ----------------------------------------------------------------------
@@ -913,6 +1053,11 @@ def report(chemin):
     else:  # pragma: no cover - detect_format ne rend rien d'autre
         raise ErreurMoteur("format_inconnu", format_lu)
 
+    # AVANT les statistiques : elles sautent l'empan d'en-tête, et une
+    # ligne d'en-tête restée dans la mesure rendrait `forme_identifiant`
+    # faux pour toute la colonne — le plancher lâcherait alors les
+    # colonnes pour lesquelles il existe.
+    mesurer_entetes(feuilles, format_lu)
     rapport["feuilles"] = _feuilles_en_rapport(feuilles)
     rapport["comptes"] = _comptes_de(feuilles)
     if not rapport["vivier_complet"]:
@@ -1750,6 +1895,13 @@ def _preparer(chemin, options):
     else:
         feuilles = _lire_xml(chemin)[0]
 
+    # La même mesure que dans `report`, et la CORRECTION de l'opérateur
+    # par-dessus : elle voyage dans les options sérialisées et ne se
+    # remesure jamais. Posée avant `etiquettes` et `bornes`, qui en
+    # dérivent par la ligne de champs.
+    mesurer_entetes(
+        feuilles, format_lu, options.get("entetes_par_feuille") or {}
+    )
     connues = {f.nom for f in feuilles}
     demandees = options.get("feuilles") or []
     inconnues = [n for n in demandees if n not in connues]
@@ -1782,6 +1934,12 @@ def _preparer(chemin, options):
     )
     options["lignes_structure"] = {
         (f.nom, 1) for f in feuilles if f.ligne1_fabriquee or ecrit_par_ancres
+    }
+    # L'empan d'en-tête, en couples, comme `lignes_structure` : bâti ICI,
+    # donc jamais sérialisé. Une feuille sans en-tête n'y met rien, et sa
+    # ligne 1 entre en portée — c'est le correctif de la fuite.
+    options["lignes_entete"] = {
+        (f.nom, n) for f in feuilles for n in (f.lignes_entete or ())
     }
     return format_lu, feuilles, classeur, rapport, options
 
@@ -1833,13 +1991,26 @@ def _parcourir(
                     bilan["hors_portee"] += 1
                     if gardees_out is not None:
                         _noter_gardee(gardees_out, feuille.nom, valeur)
+                    empan_feuille = sum(
+                        1
+                        for c in bilan["entete_gardee"]
+                        if c["feuille"] == feuille.nom
+                    )
                     if (
-                        numero == 1
+                        numero in (feuille.lignes_entete or ())
                         and not options.get("entetes")
-                        and famille == "texte"
-                        and (feuille.nom, 1)
+                        # TOUTE cellule gardée, non les seules textuelles :
+                        # l'empan garde aussi les lignes de mise en page
+                        # au-dessus de la ligne de champs, et un nombre
+                        # laissé là n'était dit à personne.
+                        and famille != "formule"
+                        and (feuille.nom, numero)
                         not in (options.get("lignes_structure") or ())
-                        and len(bilan["entete_gardee"]) < 12
+                        # PAR FEUILLE, non globalement : un plafond global
+                        # de douze cachait une feuille entière derrière les
+                        # entrées d'une autre, et l'opérateur consentait
+                        # sans avoir vu ce qui sortait.
+                        and empan_feuille < 12
                     ):
                         # La ligne 1 est PRÉSUMÉE d'en-tête, jamais
                         # mesurée : un CSV sans en-tête, ou un titre de
@@ -1848,7 +2019,11 @@ def _parcourir(
                         bilan["entete_gardee"].append(
                             {
                                 "feuille": feuille.nom,
-                                "cellule": f"L1C{index}",
+                                # La VRAIE coordonnée : le littéral « L1 »
+                                # mentait dès que l'en-tête n'était pas en
+                                # ligne 1, et l'opérateur cherchait la
+                                # valeur au mauvais endroit.
+                                "cellule": f"L{numero}C{index}",
                                 "valeur": valeur_hors_tableur(valeur),
                             }
                         )
@@ -2760,6 +2935,17 @@ def _convertir_vers_repertoire(destination, feuilles, options, noms=None):
     return ecrits
 
 
+def _noms_neutres(feuille):
+    """Des noms de colonne quand la feuille n'a PAS d'en-tête.
+
+    Sans eux, la première ligne de données prenait la place des noms de
+    clé : en clair dans la copie, et perdue comme donnée puisqu'un objet
+    ne porte pas sa clé deux fois.
+    """
+    largeur = max((len(l) for l in feuille.lignes), default=0)
+    return ["colonne_%d" % (i + 1) for i in range(largeur)]
+
+
 def _cles_distinctes(etiquettes):
     """Une clé d'objet par colonne, toutes DISTINCTES.
 
@@ -2794,9 +2980,11 @@ def _convertir_vers_json(destination, feuilles, noms=None):
     # déjà leurs noms d'onglet et de fichier, celui-ci écrasait.
     cles = _cles_distinctes([(noms or {}).get(f.nom, f.nom) for f in feuilles])
     for cle, feuille in zip(cles, feuilles):
-        etiquettes = _cles_distinctes(feuille.etiquettes)
+        etiquettes = _cles_distinctes(
+            feuille.etiquettes or _noms_neutres(feuille)
+        )
         enregistrements = []
-        for ligne in feuille.lignes[1:]:
+        for ligne in corps(feuille):
             enregistrements.append(
                 {
                     etiquettes[i]: valeur_hors_tableur(v)
@@ -2836,9 +3024,11 @@ def _convertir_vers_xml(destination, feuilles):
     racine = ET.Element("table")
     etiquettes = [
         _nom_de_balise_sur(v, i)
-        for i, v in enumerate(feuille.etiquettes, start=1)
+        for i, v in enumerate(
+            feuille.etiquettes or _noms_neutres(feuille), start=1
+        )
     ]
-    for ligne in feuille.lignes[1:]:
+    for ligne in corps(feuille):
         noeud = ET.SubElement(racine, "ligne")
         for index, valeur in enumerate(ligne):
             if index >= len(etiquettes):

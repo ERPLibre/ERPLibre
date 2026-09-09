@@ -881,8 +881,23 @@ def cellule_en_portee(feuille, ligne, colonne, options):
     feuilles = options.get("feuilles")
     if feuilles and feuille is not None and feuille not in feuilles:
         return False
-    if ligne == 1 and not options.get("entetes"):
-        return False
+    if not options.get("entetes"):
+        # L'ABSENCE de la clé vaut « la ligne 1 est l'en-tête » — le
+        # comportement d'avant la mesure. Un appelant qui ne mesure pas
+        # (le gabarit d'options des tests de portée ne porte que quelques
+        # clés) mettrait sinon la ligne de champs en portée : ses libellés
+        # remplacés, la copie illisible, et une RECHERCHEV du destinataire
+        # résolue sur la mauvaise ligne.
+        #
+        # Une clé PRÉSENTE et vide veut dire « cette feuille n'a pas
+        # d'en-tête », et sa ligne 1 entre en portée. C'est là qu'une
+        # première ligne de DONNÉES cesse d'être recopiée en clair.
+        empan = options.get("lignes_entete")
+        if empan is None:
+            if ligne == 1:
+                return False
+        elif (feuille, ligne) in empan:
+            return False
     etiquette = (options.get("etiquettes") or {}).get((feuille, colonne))
     formes = options.get("formes") or {}
     forme = formes.get((feuille, colonne), False)
