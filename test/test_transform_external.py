@@ -1054,6 +1054,187 @@ class TestMenuDerouleComplet(unittest.TestCase):
         self.assertTrue(options["destination"].endswith("o.json"))
 
 
+def _colonne(
+    etiquette, mini, maxi, distinctes, entiere=True, plancher=False, index=1
+):
+    return {
+        "index": index,
+        "etiquette": etiquette,
+        "type": "nombre",
+        "remplies": distinctes,
+        "distinctes": distinctes,
+        "min": mini,
+        "max": maxi,
+        "entiere": entiere,
+        "plancher": plancher,
+    }
+
+
+def _rapport(colonnes, nom="F", format_lu="xlsx"):
+    return {
+        "format": format_lu,
+        "feuilles": [{"nom": nom, "colonnes": colonnes}],
+        "hors_cellules": {},
+    }
+
+
+class TestColonneSaturee(unittest.TestCase):
+    """Une colonne d'entiers pleine ressort PERMUTÉE.
+
+    Le tirage est sans remise et reste dans l'étendue mesurée : avec
+    autant de valeurs distinctes que l'étendue compte d'entiers,
+    l'ensemble de sortie EST l'ensemble d'entrée. Ce n'est pas une fuite —
+    la permutation ne s'inverse pas sans la table — mais l'écran annonce
+    « N nombres remplacés » et une comparaison d'ensembles ne montrerait
+    rien.
+    """
+
+    OPTIONS = {"nombres": True, "colonnes_intactes": []}
+
+    def _saturees(self, colonnes, **surcharges):
+        options = dict(self.OPTIONS, **surcharges)
+        return formats._colonnes_saturees(_rapport(colonnes), options)
+
+    def test_une_etendue_pleine_est_signalee(self):
+        """830 valeurs distinctes dans 830 entiers : aucune liberté."""
+        self.assertEqual(
+            self._saturees([_colonne("OrderID", 10248, 11077, 830)]),
+            [("F", "OrderID")],
+        )
+
+    def test_une_etendue_large_ne_l_est_pas(self):
+        self.assertEqual(
+            self._saturees([_colonne("montant", 1, 100000, 830)]), []
+        )
+
+    def test_neuf_dixiemes_suffisent(self):
+        """La copie porte déjà presque le même ensemble."""
+        self.assertTrue(self._saturees([_colonne("k", 1, 100, 90)]))
+        self.assertFalse(self._saturees([_colonne("k", 1, 100, 89)]))
+
+    def test_une_colonne_decimale_n_est_jamais_saturee(self):
+        """Entre deux entiers, un décimal a une infinité de places."""
+        self.assertEqual(
+            self._saturees([_colonne("taux", 1, 30, 30, entiere=False)]),
+            [],
+        )
+
+    def test_une_petite_colonne_pleine_ne_dit_rien_de_personne(self):
+        """Un drapeau à deux états, un mois sur douze : l'avertissement y
+        serait du bruit, et le bruit finit par se lire comme du fond."""
+        for etendue in (2, 12, 19):
+            with self.subTest(etendue=etendue):
+                self.assertEqual(
+                    self._saturees([_colonne("m", 1, etendue, etendue)]), []
+                )
+        self.assertTrue(self._saturees([_colonne("m", 1, 20, 20)]))
+
+    def test_une_colonne_plancheiee_n_entre_pas(self):
+        """Elle n'est pas remplacée du tout, et `colonnes_ecartees` la
+        nomme déjà."""
+        self.assertEqual(
+            self._saturees(
+                [_colonne("partner_id", 1, 830, 830, plancher=True)]
+            ),
+            [],
+        )
+
+    def test_une_colonne_laissee_intacte_n_entre_pas(self):
+        self.assertEqual(
+            self._saturees(
+                [_colonne("OrderID", 1, 830, 830)],
+                colonnes_intactes={"OrderID"},
+            ),
+            [],
+        )
+
+    def test_sans_remplacement_des_nombres_rien_n_est_dit(self):
+        self.assertEqual(
+            self._saturees([_colonne("k", 1, 830, 830)], nombres=False), []
+        )
+
+    def test_un_compte_au_PLAFOND_ne_conclut_rien(self):
+        """`_stats_colonnes` cesse de compter au-delà : le nombre ne dit
+        plus combien la colonne porte, et rien n'en découle."""
+        plafond = formats.PLAFOND_DISTINCTES
+        self.assertEqual(
+            self._saturees([_colonne("k", 1, plafond, plafond)]), []
+        )
+
+    def test_une_feuille_hors_selection_n_entre_pas(self):
+        rapport = _rapport([_colonne("k", 1, 830, 830)], nom="Achats")
+        options = dict(self.OPTIONS, feuilles=["Ventes"])
+        self.assertEqual(formats._colonnes_saturees(rapport, options), [])
+
+    def test_l_avertissement_est_dit_une_seule_fois(self):
+        colonnes = [
+            _colonne("a", 1, 830, 830, index=1),
+            _colonne("b", 1, 830, 830, index=2),
+        ]
+        dits = formats._avertissements(_rapport(colonnes), self.OPTIONS)
+        avis = [d for d in dits if "saturated" in d]
+        self.assertEqual(len(avis), 1)
+        self.assertIn(avis[0], todo_i18n.TRANSLATIONS)
+
+
+class TestAvertissementDesNomsDeFeuille(unittest.TestCase):
+    """Il ne vaut QUE pour le chemin qui les recopie tels quels.
+
+    Toute conversion passe par un classeur neuf dont les onglets
+    reçoivent un nom de la table, et `.xls` comme Access n'ont pas de
+    graveur — leur copie repart par cette même conversion. Le dire quand
+    ce n'est pas vrai apprend à ne plus lire la liste, qui EST la surface
+    du consentement.
+    """
+
+    AVIS = "Sheet names are kept so formulas resolve; they may identify."
+
+    def _dits(self, format_lu, conversion=""):
+        return formats._avertissements(
+            {"format": format_lu, "hors_cellules": {}, "feuilles": []},
+            {"conversion": conversion},
+        )
+
+    def test_un_xlsx_sans_conversion_les_garde(self):
+        self.assertIn(self.AVIS, self._dits("xlsx"))
+        self.assertIn(self.AVIS, self._dits("xlsx", "xlsx"))
+
+    def test_une_conversion_les_anonymise(self):
+        for cible in ("csv", "json", "xml"):
+            with self.subTest(cible=cible):
+                self.assertNotIn(self.AVIS, self._dits("xlsx", cible))
+
+    def test_xls_et_access_n_ont_pas_de_graveur(self):
+        """Leur copie repart en .xlsx par la conversion, qui renomme."""
+        for format_lu in ("xls", "access"):
+            with self.subTest(format_lu=format_lu):
+                self.assertNotIn(self.AVIS, self._dits(format_lu))
+
+    def test_les_plages_nommees_suivent_la_meme_condition(self):
+        avis = (
+            "Range and table names are kept so formulas resolve;"
+            " they may hold identifying strings."
+        )
+        garde = formats._avertissements(
+            {
+                "format": "xlsx",
+                "hors_cellules": {"plages_nommees": 2},
+                "feuilles": [],
+            },
+            {"conversion": ""},
+        )
+        convertit = formats._avertissements(
+            {
+                "format": "xlsx",
+                "hors_cellules": {"plages_nommees": 2},
+                "feuilles": [],
+            },
+            {"conversion": "csv"},
+        )
+        self.assertIn(avis, garde)
+        self.assertNotIn(avis, convertit)
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 

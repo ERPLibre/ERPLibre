@@ -1820,9 +1820,88 @@ def _un_fichier_par_feuille(cible, feuilles, options):
     return cible in ("csv",) and len(retenues) > 1
 
 
+# Le plafond de `distinctes` dans `_stats_colonnes`. Au-delà, le compte
+# ne dit plus combien la colonne porte de valeurs, et aucune conclusion
+# sur sa saturation ne tient.
+PLAFOND_DISTINCTES = 10000
+
+# À partir de quelle part de l'étendue une colonne d'entiers est dite
+# saturée. Pleine, elle ne laisse AUCUNE liberté au tirage ; à neuf
+# dixièmes, la copie porte déjà presque le même ensemble.
+PART_SATUREE = 0.9
+
+# En deçà, une colonne d'entiers pleine ne dit rien de personne : un
+# drapeau à deux états, un mois sur douze. L'avertissement y serait du
+# bruit, et le bruit finit par se lire comme du fond.
+SATURATION_MINIMALE = 20
+
+
+def _colonnes_saturees(rapport, options):
+    """Les colonnes d'entiers dont la copie sera une PERMUTATION.
+
+    Le tirage est sans remise et reste dans l'étendue mesurée de la
+    colonne : avec autant de valeurs distinctes que l'étendue compte
+    d'entiers, l'ensemble de sortie est forcément l'ensemble d'entrée, et
+    seule l'affectation change. Ce n'est pas une fuite — la permutation ne
+    s'inverse pas sans la table — mais l'écran annonce « N nombres
+    remplacés » et une comparaison d'ENSEMBLES ne montrerait rien.
+
+    Une colonne planchéiée ou laissée intacte n'entre pas : elle n'est pas
+    remplacée du tout, et `colonnes_ecartees` la nomme déjà.
+    """
+    if not options.get("nombres", True):
+        return []
+    intactes = options.get("colonnes_intactes") or set()
+    saturees = []
+    for feuille in rapport.get("feuilles", []):
+        if (
+            options.get("feuilles")
+            and feuille["nom"] not in options["feuilles"]
+        ):
+            continue
+        for colonne in feuille.get("colonnes", []):
+            if colonne.get("plancher") or not colonne.get("entiere"):
+                continue
+            etiquette = colonne.get("etiquette")
+            if str(etiquette or colonne["index"]).strip() in intactes:
+                continue
+            distinctes = colonne.get("distinctes") or 0
+            if distinctes >= PLAFOND_DISTINCTES:
+                continue
+            if distinctes < SATURATION_MINIMALE:
+                continue
+            etendue = int(colonne["max"]) - int(colonne["min"]) + 1
+            if etendue > 0 and distinctes >= etendue * PART_SATUREE:
+                saturees.append((feuille["nom"], etiquette))
+    return saturees
+
+
+def _noms_de_feuille_survivent(rapport, options):
+    """Le graveur recopie-t-il les noms d'onglet TELS QUELS ?
+
+    Un seul chemin le fait : une source `.xlsx` rendue en `.xlsx` par
+    `classeur.save`. Toute conversion passe par un classeur NEUF dont les
+    onglets reçoivent un nom de la table, et `.xls` comme Access n'ont pas
+    de graveur — leur copie repart par cette même conversion.
+
+    Le dire quand ce n'est pas vrai n'est pas anodin : la liste des
+    avertissements EST la surface du consentement, et un avis qui parle
+    d'un risque écarté apprend à ne plus la lire.
+    """
+    if rapport.get("format") != "xlsx":
+        return False
+    cible = options.get("conversion") or ""
+    return not (cible and cible != "xlsx")
+
+
 def _avertissements(rapport, options):
     """Ce que la copie perd ou garde, dit plutôt que découvert."""
     dits = []
+    if _colonnes_saturees(rapport, options):
+        dits.append(
+            "An integer column is saturated: the copy holds the same set"
+            " of values, only reshuffled."
+        )
     hors = rapport.get("hors_cellules") or {}
     if rapport.get("format") == "xlsx":
         dits.append(
@@ -1849,12 +1928,13 @@ def _avertissements(rapport, options):
             "External links were dropped; formulas that used them"
             " show #REF!."
         )
-    if hors.get("plages_nommees"):
+    survivent = _noms_de_feuille_survivent(rapport, options)
+    if hors.get("plages_nommees") and survivent:
         dits.append(
             "Range and table names are kept so formulas resolve;"
             " they may hold identifying strings."
         )
-    if rapport.get("format") in ("xlsx", "xls", "access"):
+    if survivent:
         # Le nom d'onglet survit dans workbook.xml, qu'une formule le
         # référence ou non : conditionner cet avertissement à la présence
         # d'un littéral de formule le taisait sur le cas le plus courant.

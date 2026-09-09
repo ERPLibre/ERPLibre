@@ -13112,6 +13112,10 @@ TRANSLATIONS = {
         "fr": "Le projet VBA gardé cite une valeur de la source ; répondre non à la question des macros pour écrire la copie.",
         "en": 'The kept VBA project quotes a source value; answer no to the macro question to write the copy.',
     },
+    'An integer column is saturated: the copy holds the same set of values, only reshuffled.': {
+        "fr": "Une colonne d'entiers est saturée : la copie porte le même ensemble de valeurs, seulement redistribuées.",
+        "en": 'An integer column is saturated: the copy holds the same set of values, only reshuffled.',
+    },
     'Preview — nothing written yet': {
         "fr": "Aperçu — rien n'est encore écrit",
         "en": 'Preview — nothing written yet',
