@@ -467,6 +467,46 @@ def vivier_de_mots():
     return tuple(sorted(MOTS_PAR_DEFAUT))
 
 
+def _entetes_lisibles(brut):
+    """Les lignes d'en-tête d'une table, réduites à ce qui s'en lit.
+
+    Une table est un fichier du disque : elle arrive tronquée, éditée à la
+    main, ou d'une version que ce code ne connaît pas. Ce qui ne se lit
+    pas est SAUTÉ, jamais levé — la mémoire de lot est un confort, et la
+    perdre vaut mieux que perdre le travail. Cinq formes malformées
+    faisaient lever, dont une chaîne à la place d'une liste, qui s'itère
+    caractère par caractère.
+    """
+    if not isinstance(brut, dict):
+        return {}
+    rendu = {}
+    for nom, lignes in brut.items():
+        if isinstance(lignes, (str, bytes)) or not hasattr(lignes, "__iter__"):
+            continue
+        rendu[str(nom)] = lignes_entieres(lignes)
+    return rendu
+
+
+def lignes_entieres(lignes):
+    """Des numéros de ligne 1-based, réduits à ce qui s'en lit.
+
+    Une seule écriture de la règle : elle sert à la lecture d'une table du
+    disque comme à l'enregistrement d'une réponse venue d'un JSON, et deux
+    copies auraient fini par accepter des choses différentes.
+    """
+    if isinstance(lignes, (str, bytes)) or not hasattr(lignes, "__iter__"):
+        return []
+    gardees = set()
+    for ligne in lignes:
+        try:
+            numero = int(ligne)
+        except (TypeError, ValueError):
+            continue
+        if numero >= 1:
+            gardees.add(numero)
+    return sorted(gardees)
+
+
 class Correspondance:
     """La table qui donne son intégrité référentielle à la copie.
 
@@ -497,10 +537,7 @@ class Correspondance:
         # à faire qu'une fois. Elle n'est JAMAIS appliquée en silence :
         # l'écran la montre pré-cochée, une réponse fausse appliquée sans
         # être vue étant exactement comment une erreur gagne tout un lot.
-        self.entetes = {
-            str(nom): sorted({int(n) for n in (lignes or []) if int(n) >= 1})
-            for nom, lignes in (entetes or {}).items()
-        }
+        self.entetes = _entetes_lisibles(entetes)
         # Les nombres DÉJÀ attribués. Reconstruits au chargement, pour
         # qu'une table réutilisée d'un fichier à l'autre continue de
         # garantir l'unicité sur tout le lot.
