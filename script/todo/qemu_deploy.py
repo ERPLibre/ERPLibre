@@ -19,6 +19,7 @@ from typing import NamedTuple
 from script.posture import destinations as posture_destinations
 from script.posture import plan as posture_plan
 from script.posture import registry as posture_registry
+from script.todo import vm_profiles
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
 from script.todo import host_os, todo_prefs, vm_backend_choice
@@ -1802,6 +1803,25 @@ class QemuDeployMixin:
             # Les postures dans l'ordre du registre, du plus libre au plus
             # contraint : on descend vers la contrainte, on n'y tombe pas.
             "postures": posture_registry.posture_names(),
+            # Les mêmes, sous les noms qu'un humain reconnaît. La VALEUR
+            # reste le nom de posture : c'est lui que la spec porte, et un
+            # libellé stocké se retraduirait mal d'une langue à l'autre.
+            "posture_choices": vm_profiles.choices(),
+            # CE QUE CHACUNE APPLIQUE, et ce qu'elle promet sans le tenir.
+            # Un écran qui nomme « VM Connecté » sans dire que rien
+            # n'applique sa politique vend l'assurance que le registre
+            # s'interdit de donner — c'est pour ça que ce mécanisme existe.
+            "posture_enforcement": {
+                nom: vm_profiles.enforcement(nom)
+                for nom in posture_registry.posture_names()
+            },
+            "posture_gaps": {
+                nom: tuple(
+                    vm_profiles.gap_sentence(jeton)
+                    for jeton in vm_profiles.gaps(nom)
+                )
+                for nom in posture_registry.posture_names()
+            },
             "posture": posture_registry.DEFAULT_POSTURE,
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),

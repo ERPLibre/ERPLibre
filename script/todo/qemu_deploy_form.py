@@ -235,12 +235,22 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # qu'elle décrit le réseau de la machine et non ce qu'on
                     # installe dedans.
                     yield Static(t("Network posture"), classes="grouptitle")
+                    # LES LIBELLÉS, et la valeur reste le nom de posture :
+                    # c'est lui que la spec porte. Le repli sur les noms
+                    # bruts garde l'écran utilisable si un contexte plus
+                    # ancien ne porte pas encore les choix.
                     yield Select(
-                        [(nom, nom) for nom in ctx.get("postures", ())],
+                        ctx.get("posture_choices")
+                        or [(nom, nom) for nom in ctx.get("postures", ())],
                         value=ctx.get("posture") or Select.BLANK,
                         allow_blank=False,
                         id="f_posture",
                     )
+                    # CE QU'ELLE APPLIQUE, sous elle. Un nom sans cette
+                    # ligne vend l'assurance que le registre s'interdit de
+                    # donner : une politique déclarée sans mécanisme se
+                    # comporte comme l'absence de politique.
+                    yield Static("", id="t_posture_effet", classes="hint")
                     # Sous la posture parce qu'on les lit ensemble, et
                     # SÉPARÉE d'elle parce qu'aucune des deux ne se déduit
                     # de l'autre : le déploiement refuse le couple
@@ -459,6 +469,27 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._reload_catalog(first_load=True)
             self._sync_install_deps()
             self._sync_ai()
+            self._sync_posture()
+
+        def _sync_posture(self) -> None:
+            """Écrit sous le sélecteur ce que la posture choisie APPLIQUE.
+
+            La ligne est composée par `vm_profiles` : ici il ne reste qu'une
+            affectation, parce que ce fichier est du Textual et qu'aucune
+            épreuve unitaire ne le pilote.
+            """
+            try:
+                choisie = self.query_one("#f_posture", Select).value
+                ligne = self.query_one("#t_posture_effet", Static)
+            except Exception:  # pragma: no cover - widget absent
+                return
+            # `ctx` est la FERMETURE : la classe est définie dans
+            # `run_deploy_form`, et le reste du fichier la lit ainsi.
+            lignes = ctx.get("posture_enforcement") or {}
+            ecarts = (ctx.get("posture_gaps") or {}).get(choisie, ())
+            morceaux = [lignes.get(choisie, "")]
+            morceaux.extend(f"⚠ {e}" for e in ecarts)
+            ligne.update("  ".join(m for m in morceaux if m))
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -843,6 +874,11 @@ def run_deploy_form(ctx, run_app: bool = True):
             if self._syncing:
                 return
             wid = event.select.id or ""
+            if wid == "f_posture":
+                # Réécrit avant tout le reste : ce que la posture applique
+                # est la seule information de cet écran qui change de sens
+                # d'un choix à l'autre.
+                self._sync_posture()
             row = re.match(r"v(\d+)_(vcpus|ram|disk|type|branch|prof)$", wid)
             if row and not self._is_current(event.select):
                 # Widget d'une génération périmée : son rang ne désigne plus

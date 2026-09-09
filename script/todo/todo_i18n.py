@@ -12410,6 +12410,35 @@ TRANSLATIONS = {
         "fr": "Un essai à blanc ne touche à aucun secret",
         "en": "A dry run touches no secret",
     },
+    # Profils de VM (script/todo/vm_profiles.py)
+    "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.": {
+        "fr": "Aucun fichier de règles n'est produit : cette posture déclare une politique que rien n'installe. Elle se comporte exactement comme une sortie libre.",
+        "en": "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.",
+    },
+    "A failed reload of the rules on a later boot is not reported.": {
+        "fr": "Un rechargement des règles qui échoue à un démarrage ultérieur n'est pas signalé.",
+        "en": "A failed reload of the rules on a later boot is not reported.",
+    },
+    "Container traffic is not proven to be caught: it crosses FORWARD, which no confrontation has measured yet.": {
+        "fr": "Le trafic des conteneurs n'est pas prouvé attrapé : il traverse FORWARD, qu'aucune confrontation n'a encore mesuré.",
+        "en": "Container traffic is not proven to be caught: it crosses FORWARD, which no confrontation has measured yet.",
+    },
+    "Unknown posture: this profile deploys nothing.": {
+        "fr": "Posture inconnue : ce profil ne déploie rien.",
+        "en": "Unknown posture: this profile deploys nothing.",
+    },
+    "Nothing is confined, and that is the point.": {
+        "fr": "Rien n'est confiné, et c'est le principe.",
+        "en": "Nothing is confined, and that is the point.",
+    },
+    "INTENTION ONLY: this posture states a policy that no rule installs. It behaves like free egress.": {
+        "fr": "INTENTION SEULEMENT : cette posture déclare une politique qu'aucune règle n'installe. Elle se comporte comme une sortie libre.",
+        "en": "INTENTION ONLY: this posture states a policy that no rule installs. It behaves like free egress.",
+    },
+    "Rules are written, loaded and armed in the guest.": {
+        "fr": "Des règles sont écrites, chargées et armées dans l'invité.",
+        "en": "Rules are written, loaded and armed in the guest.",
+    },
     # Lima (script/todo/lima_menu.py)
     "ERPLibre": {
         "fr": "ERPLibre",

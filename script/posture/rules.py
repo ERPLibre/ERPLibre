@@ -227,10 +227,24 @@ UNENFORCED_TOKENS = (
     CONTAINERS_UNPROVEN,
 )
 
-# Ce que le rendu ne fournit PAS, mais que la posture tient déjà par la
-# nature de son réseau : « nat » ne promet que la sortie, que la traduction
-# d'adresses donne, et un réseau isolé n'a pas de route du tout. Ni l'une ni
-# l'autre n'attend quoi que ce soit d'un jeu de règles.
+# Ce que le rendu ne fournit PAS, mais que la posture tient déjà — soit par
+# la nature de son réseau, soit parce que ce qu'elle demande est TOTAL.
+#
+# « nat » ne promet que la sortie, et la traduction d'adresses la donne : il
+# n'y a rien à poser.
+#
+# « none » ne demande aucune liste : elle demande que RIEN ne sorte, et les
+# deux chaînes rendues le font en bloc — « policy drop » sur la sortie ET sur
+# le transfert, donc le trafic des conteneurs avec. Il n'y a pas de
+# destination à énumérer, donc pas d'énumération qui puisse être incomplète :
+# c'est ce qui la distingue d'une liste blanche bornée, dont les deux
+# faiblesses restantes tiennent justement à ce qu'elle énumère.
+#
+# Le motif écrit ici auparavant — « un réseau isolé n'a pas de route du
+# tout » — reposait sur `network_kind`, qui est DÉCLARÉ et qu'aucun code ne
+# configure : la VM reçoit le réseau ordinaire. La conclusion tenait, la
+# raison non ; et depuis que le jeu de règles est réellement posé, elle tient
+# pour une raison qui, elle, a du code derrière.
 TENUES_PAR_LE_RESEAU = ("nat", "none")
 
 
