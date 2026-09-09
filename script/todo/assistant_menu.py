@@ -1342,9 +1342,10 @@ class AssistantMenuMixin:
         """La clé du coffre, ou une chaîne vide quand il n'en porte aucune.
 
         La clé reste en mémoire du processus : /proc expose la ligne de
-        commande de chaque processus à tout compte de la machine, et un
-        `redact_secrets` qui ne reconnaît pas « API_KEY » ne la masquerait pas
-        non plus dans une trace.
+        commande de chaque processus à tout compte de la machine, et aucun
+        caviardage n'atteint argv. Le filtre du dépôt masque « API_KEY » et
+        « Bearer » dans une trace, ce qui est le dernier rempart et non le
+        premier.
         """
         kp = self.kdbx_manager.get_kdbx()
         if not kp:
