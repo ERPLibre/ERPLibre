@@ -12410,6 +12410,143 @@ TRANSLATIONS = {
         "fr": "Un essai à blanc ne touche à aucun secret",
         "en": "A dry run touches no secret",
     },
+    # Lima (script/todo/lima_menu.py)
+    "Lima - instances (macOS, Linux)": {
+        "fr": "Lima - instances (macOS, Linux)",
+        "en": "Lima - instances (macOS, Linux)",
+    },
+    "Lima: VMs on macOS and Linux, by name": {
+        "fr": "Lima : des VM sur macOS et Linux, par leur nom",
+        "en": "Lima: VMs on macOS and Linux, by name",
+    },
+    "The tool": {
+        "fr": "L'outil",
+        "en": "The tool",
+    },
+    "Instances": {
+        "fr": "Instances",
+        "en": "Instances",
+    },
+    "Lima - How this host gets the tool": {
+        "fr": "Lima - Par où cet hôte obtient l'outil",
+        "en": "Lima - How this host gets the tool",
+    },
+    "Lima - List the instances": {
+        "fr": "Lima - Lister les instances",
+        "en": "Lima - List the instances",
+    },
+    "Lima - Create and start an instance": {
+        "fr": "Lima - Créer et démarrer une instance",
+        "en": "Lima - Create and start an instance",
+    },
+    "Lima - Start an instance": {
+        "fr": "Lima - Démarrer une instance",
+        "en": "Lima - Start an instance",
+    },
+    "Lima - Stop an instance": {
+        "fr": "Lima - Arrêter une instance",
+        "en": "Lima - Stop an instance",
+    },
+    "Lima - Delete an instance": {
+        "fr": "Lima - Supprimer une instance",
+        "en": "Lima - Delete an instance",
+    },
+    "Lima - Open a shell in an instance": {
+        "fr": "Lima - Ouvrir un shell dans une instance",
+        "en": "Lima - Open a shell in an instance",
+    },
+    "Instance name": {
+        "fr": "Nom d'instance",
+        "en": "Instance name",
+    },
+    "Instance name: ": {
+        "fr": "Nom de l'instance : ",
+        "en": "Instance name: ",
+    },
+    "Instance number (empty to cancel): ": {
+        "fr": "Numéro de l'instance (vide pour renoncer) : ",
+        "en": "Instance number (empty to cancel): ",
+    },
+    "Config file:": {
+        "fr": "Fichier de configuration :",
+        "en": "Config file:",
+    },
+    "Config removed:": {
+        "fr": "Configuration retirée :",
+        "en": "Config removed:",
+    },
+    "is not installed.": {
+        "fr": "n'est pas installé.",
+        "en": "is not installed.",
+    },
+    "Run:": {
+        "fr": "Jouer :",
+        "en": "Run:",
+    },
+    "Archive:": {
+        "fr": "Archive :",
+        "en": "Archive:",
+    },
+    "SHA-256:": {
+        "fr": "SHA-256 :",
+        "en": "SHA-256:",
+    },
+    "No instance yet.": {
+        "fr": "Aucune instance.",
+        "en": "No instance yet.",
+    },
+    "No instance matches.": {
+        "fr": "Aucune instance ne correspond.",
+        "en": "No instance matches.",
+    },
+    "Not held by this config:": {
+        "fr": "Non tenu par cette configuration :",
+        "en": "Not held by this config:",
+    },
+    "Write and start? (o/N): ": {
+        "fr": "Écrire et démarrer ? (o/N) : ",
+        "en": "Write and start? (o/N): ",
+    },
+    "Type the instance name to confirm (empty to cancel): ": {
+        "fr": "Retapez le nom de l'instance pour confirmer (vide pour annuler) : ",
+        "en": "Type the instance name to confirm (empty to cancel): ",
+    },
+    "The package manager provides it. Its signature chain covers the whole index, which is stronger than a hand-copied checksum.": {
+        "fr": "Le gestionnaire de paquets le fournit. Sa chaîne de signature porte sur l'index entier, ce qui est plus fort qu'une somme recopiée à la main.",
+        "en": "The package manager provides it. Its signature chain covers the whole index, which is stronger than a hand-copied checksum.",
+    },
+    "A pinned release matches. Download it, then verify the checksum BEFORE running anything from the archive.": {
+        "fr": "Une version épinglée correspond. La télécharger, puis vérifier la somme AVANT d'exécuter quoi que ce soit de l'archive.",
+        "en": "A pinned release matches. Download it, then verify the checksum BEFORE running anything from the archive.",
+    },
+    "The package manager of this host is not installed. Install it, or read a checksum off a verified release and pin it in RELEASES.": {
+        "fr": "Le gestionnaire de paquets de cet hôte n'est pas installé. L'installer, ou relever une somme sur une version vérifiée et l'épingler dans RELEASES.",
+        "en": "The package manager of this host is not installed. Install it, or read a checksum off a verified release and pin it in RELEASES.",
+    },
+    "No package manager is known for this host, and no release is pinned. Both routes are shut: read a checksum off a verified release and pin it in RELEASES.": {
+        "fr": "Aucun gestionnaire de paquets connu pour cet hôte, et aucune version épinglée. Les deux routes sont fermées : relever une somme sur une version vérifiée et l'épingler dans RELEASES.",
+        "en": "No package manager is known for this host, and no release is pinned. Both routes are shut: read a checksum off a verified release and pin it in RELEASES.",
+    },
+    "The version asked for is not pinned. « latest » names a different thing on every call, so there is nothing to verify.": {
+        "fr": "La version demandée n'est pas épinglée. « latest » désigne une chose différente à chaque appel, donc il n'y a rien à vérifier.",
+        "en": "The version asked for is not pinned. « latest » names a different thing on every call, so there is nothing to verify.",
+    },
+    "That version carries no checksum in RELEASES. A checksum is read off a release, it is never invented.": {
+        "fr": "Cette version ne porte aucune somme dans RELEASES. Une somme se relève sur une publication, elle ne s'invente jamais.",
+        "en": "That version carries no checksum in RELEASES. A checksum is read off a release, it is never invented.",
+    },
+    "No archive is published for this system and architecture.": {
+        "fr": "Aucune archive n'est publiée pour ce système et cette architecture.",
+        "en": "No archive is published for this system and architecture.",
+    },
+    "The checksum does NOT match. Run nothing from that archive: this is the last moment where nothing has been executed yet.": {
+        "fr": "La somme ne correspond PAS. N'exécuter rien de cette archive : c'est le dernier moment où rien n'a encore été exécuté.",
+        "en": "The checksum does NOT match. Run nothing from that archive: this is the last moment where nothing has been executed yet.",
+    },
+    "The archive is not where it was expected.": {
+        "fr": "L'archive n'est pas où on l'attendait.",
+        "en": "The archive is not where it was expected.",
+    },
     # Forge Forgejo/Gitea (script/todo/forge_menu.py)
     "Forge - Mirror the manifest from its upstreams": {
         "fr": "Forge - Miroiter le manifeste depuis ses amonts",

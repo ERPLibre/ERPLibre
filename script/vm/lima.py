@@ -96,6 +96,23 @@ def render_config(
     return "\n".join(lignes) + "\n"
 
 
+def host_limits(macos: bool = False) -> tuple:
+    """Ce qu'une instance ne sait pas offrir SUR CET HÔTE, posture ou non.
+
+    QUESTION DISTINCTE de `unenforceable`, qui répond « que promet cette
+    POSTURE que la configuration ne tient pas ». Ici il n'y a pas de
+    posture : c'est l'hôte qui borne, et le dire ne demande pas d'avoir
+    choisi un profil. Un écran qui montre une configuration avant de la
+    jouer a besoin de celle-ci, pas de l'autre.
+
+    Sans socket_vmnet — qui n'existe que sur macOS — l'invité SORT mais ne
+    se laisse pas joindre. C'est la seule limite que l'hôte impose à lui
+    seul, et `unenforceable` la reprend d'ici plutôt que d'en garder une
+    copie.
+    """
+    return () if macos else ("reachable-address",)
+
+
 def unenforceable(posture, macos: bool = False) -> tuple:
     """Ce que la configuration d'instance ne sait PAS tenir de cette posture.
 
@@ -120,9 +137,8 @@ def unenforceable(posture, macos: bool = False) -> tuple:
     # l'instance.
     if posture.destinations_bounded:
         manques.append("destinations-bounded")
-    # Sans socket_vmnet, l'invité sort mais ne se laisse pas joindre.
-    if not macos:
-        manques.append("reachable-address")
+    # Ce que l'hôte borne à lui seul, lu d'un seul endroit.
+    manques.extend(host_limits(macos))
     return tuple(manques)
 
 

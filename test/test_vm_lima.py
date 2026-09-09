@@ -93,7 +93,25 @@ class TestCeQueLaConfigurationNeTientPas(unittest.TestCase):
     un confinement qui n'existe pas."""
 
     def test_no_posture_promises_nothing(self):
+        """`unenforceable` répond « que promet cette POSTURE que la
+        configuration ne tient pas ». Sans posture, pas de promesse."""
         self.assertEqual((), L.unenforceable(None))
+
+    def test_the_host_limit_is_a_separate_question(self):
+        """Un écran qui montre une configuration AVANT de la jouer n'a pas
+        encore de posture, et `unenforceable` ne lui dirait donc RIEN — ce
+        qui laisserait croire une instance joignable."""
+        self.assertEqual(("reachable-address",), L.host_limits(macos=False))
+        self.assertEqual((), L.host_limits(macos=True))
+
+    def test_the_posture_answer_takes_its_host_limit_from_there(self):
+        """Une seule source : deux copies du même constat divergeraient au
+        premier changement de l'hôte."""
+        for nom in P.posture_names():
+            with self.subTest(posture=nom):
+                repondu = L.unenforceable(P.get_posture(nom), macos=False)
+                for borne in L.host_limits(macos=False):
+                    self.assertIn(borne, repondu)
 
     def test_cutting_egress_is_beyond_an_instance_file(self):
         """Le réseau en mode utilisateur donne TOUJOURS la sortie, et aucun
