@@ -26,7 +26,7 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, todo_install, todo_prefs
+from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
@@ -1741,20 +1741,23 @@ class TODO(
     def _ssh_config_hosts():
         """Noms d'hôtes déclarés dans ~/.ssh/config, dans l'ordre du fichier.
 
-        Une ligne « Host » peut porter plusieurs noms : on les rend tous. Les
-        motifs (`*`, `?`) sont écartés — ce sont des règles, pas des machines
-        auxquelles se connecter."""
+        Une ligne « Host » peut porter plusieurs noms : on les rend tous.
+        Ce qui compte comme un nom de machine est tranché par
+        `ssh_config.declared_names`, en un seul endroit pour les trois
+        lecteurs de ce fichier — la casse du mot-clé, la tabulation qui
+        sépare et le motif nié s'y décidaient autrement dans chacun.
+
+        La lecture ne suit PAS `Include` : un alias déclaré dans un fichier
+        inclus reste invisible ici, alors même que `ssh -G` le résoudrait. La
+        source est donc incomplète sans être fausse."""
         path = os.path.expanduser("~/.ssh/config")
         names = []
         try:
             with open(path, encoding="utf-8") as fh:
                 for line in fh:
-                    if not re.match(r"^[ \t]*Host[ \t]+", line):
-                        continue
-                    for name in line.split()[1:]:
-                        if "*" in name or "?" in name or name in names:
-                            continue
-                        names.append(name)
+                    for name in ssh_config.declared_names(line) or ():
+                        if name not in names:
+                            names.append(name)
         except OSError:
             pass
         return names
@@ -2004,8 +2007,8 @@ class TODO(
         « Host a b » déclare DEUX alias pour la même machine — c'est ce que
         todo.py écrit lui-même quand une VM porte plusieurs noms. Les prendre
         pour un seul nom donnait un alias « a b », que sshfs ne peut pas
-        monter. Les motifs génériques (« * », « web-? ») sont écartés : ils ne
-        désignent aucune machine.
+        monter. Ce qui compte comme un nom de machine est tranché par
+        `ssh_config.declared_names`, partagé avec les deux autres lecteurs.
         """
         hosts = []
         noms = []
@@ -2022,13 +2025,10 @@ class TODO(
             return []
         for ligne in lignes:
             ligne = ligne.strip()
-            if ligne.lower().startswith("host "):
+            declares = ssh_config.declared_names(ligne)
+            if declares is not None:
                 clore()
-                noms = [
-                    m
-                    for m in ligne.split()[1:]
-                    if "*" not in m and "?" not in m and not m.startswith("!")
-                ]
+                noms = declares
                 info = {}
             elif noms:
                 paire = ligne.split(None, 1)
