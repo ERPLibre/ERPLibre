@@ -460,11 +460,14 @@ class TestPilotage(unittest.TestCase):
         async def scenario(app, pilote):
             table = app.query_one("#sondees")
             vu["largeurs"] = [c.width for c in table.columns.values()]
+            vu["volet"] = table.size.width
 
         self._piloter(scenario, taille=(80, 20))
-        *avant_la_derniere, derniere = vu["largeurs"]
+        *avant_la_derniere, _derniere = vu["largeurs"]
+        # Toutes bornées sauf la dernière, et leur somme tient dans le
+        # volet : la colonne libre COMMENCE donc à l'écran.
         self.assertTrue(all(l for l in avant_la_derniere))
-        self.assertLessEqual(sum(avant_la_derniere), 40)
+        self.assertLess(sum(avant_la_derniere), vu["volet"])
 
     def test_les_deux_tableaux_se_remplissent(self):
         vu = {}

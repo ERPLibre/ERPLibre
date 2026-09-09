@@ -2852,6 +2852,56 @@ class TestColonnesEnClair(unittest.TestCase):
         self.assertNotIn("montant", nommees)
 
 
+class TestApercuDesLignesSondees(unittest.TestCase):
+    """L'écran existe pour faire juger QUELLE ligne nomme les colonnes.
+
+    La tranche des trois premières cellules, posée AVANT le filtre des
+    vides, ne montrait rien d'une ligne dont les trois premières sont
+    vides : un bloc d'en-tête décalé de quelques colonnes donnait des
+    lignes d'aperçu toutes vides, et l'opérateur ne pouvait que parier.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.source = os.path.join(self.base, "decale.csv")
+        with open(self.source, "w", encoding="utf-8") as flux:
+            flux.write(",,,Rapport interne\n")
+            flux.write(",,,\n")
+            flux.write(",,,nom,ville,total\n")
+            flux.write(",,,Aubel,Nord,10\n")
+            flux.write(",,,Bruant,Sud,20\n")
+            flux.write(",,,Cerdan,Est,30\n")
+
+    def _sondees(self):
+        rendu = formats.report(self.source)["feuilles"][0]["lignes_sondees"]
+        return {ligne["numero"]: ligne for ligne in rendu}
+
+    def test_un_bloc_DECALE_montre_quand_meme_ses_valeurs(self):
+        sondees = self._sondees()
+        self.assertEqual(sondees[3]["apercu"], ["nom", "ville", "total"])
+        self.assertEqual(sondees[1]["apercu"], ["Rapport interne"])
+
+    def test_une_ligne_vraiment_vide_ne_montre_rien(self):
+        self.assertEqual(self._sondees()[2]["apercu"], [])
+
+    def test_l_apercu_reste_borne_a_trois_valeurs(self):
+        """Filtrer avant de borner ne doit pas dérouler la ligne."""
+        for ligne in self._sondees().values():
+            self.assertLessEqual(
+                len(ligne["apercu"]), formats.EXEMPLES_PAR_COLONNE
+            )
+
+    def test_le_compte_des_pleines_separe_le_titre_des_champs(self):
+        """Il est montré à l'écran : c'est le seul signal quand les
+        mesures se taisent, une feuille sans en-tête retenu n'en ayant
+        pas."""
+        sondees = self._sondees()
+        self.assertEqual(sondees[1]["pleines"], 1)
+        self.assertEqual(sondees[2]["pleines"], 0)
+        self.assertEqual(sondees[3]["pleines"], 3)
+
+
 class TestExemplesManquants(unittest.TestCase):
     """Au-delà du plafond, les colonnes n'ont pas d'exemple, et le
     rapport le COMPTE.

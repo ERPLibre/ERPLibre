@@ -1181,11 +1181,19 @@ def _lignes_sondees(feuille):
     rendu = []
     for rang in range(1, min(LIGNES_MONTREES, len(feuille.lignes)) + 1):
         ligne = feuille.lignes[rang - 1]
-        apercu = [
-            valeur_d_exemple(v)
-            for v in ligne[:EXEMPLES_PAR_COLONNE]
-            if classer(v) != "vide"
-        ]
+        # Filtrer AVANT de borner. La tranche posée d'abord ne montrait
+        # RIEN d'une ligne dont les trois premières cellules sont vides —
+        # un bloc d'en-tête décalé de quelques colonnes donnait six lignes
+        # d'aperçu toutes vides, et l'écran existe pour faire juger
+        # LAQUELLE nomme les colonnes. On s'arrête aux trois premières
+        # valeurs pleines plutôt que de parcourir une ligne large.
+        apercu = []
+        for valeur in ligne:
+            if classer(valeur) == "vide":
+                continue
+            apercu.append(valeur_d_exemple(valeur))
+            if len(apercu) >= EXEMPLES_PAR_COLONNE:
+                break
         signaux = accord = None
         if rang <= LIGNES_SONDEES:
             signaux = _signaux_entete(feuille.lignes, rang)

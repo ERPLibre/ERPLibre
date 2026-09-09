@@ -59,6 +59,12 @@ COLONNES_DU_PERIMETRE = (
 COLONNES_SONDEES = (
     ("", 3),
     ("row no", 6),
+    # `pleines` était calculé et montré à personne. C'est le seul signal
+    # qui sépare un titre d'une ligne de champs quand les mesures se
+    # taisent — une feuille sans en-tête retenu n'en a pas — et il les
+    # sépare par un nombre : 1 pour le titre, 0 pour la ligne blanche,
+    # la largeur pour les champs.
+    ("filled", 7),
     ("first values", 28),
     ("measures", None),
 )
@@ -145,7 +151,7 @@ def libelle_de_colonne(colonne, marque):
 
 
 def libelle_de_ligne_sondee(ligne, cochee):
-    """Les quatre cellules d'une ligne sondée.
+    """Les cinq cellules d'une ligne sondée.
 
     Les mesures sont montrées pour que l'opérateur voie POURQUOI la
     mesure a tranché avant de la contredire — contredire un verdict qu'on
@@ -155,6 +161,7 @@ def libelle_de_ligne_sondee(ligne, cochee):
     return (
         MARQUE_INTACTE if cochee else MARQUE_EN_PORTEE,
         str(ligne["numero"]),
+        str(ligne.get("pleines", "")),
         " · ".join(ligne.get("apercu") or []),
         (
             "%s %.2f  %s %.2f  %s %.2f"
