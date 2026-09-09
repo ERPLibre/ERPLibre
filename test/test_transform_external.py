@@ -2490,6 +2490,93 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self.assertIn("pas de terminal", self.ecran.getvalue())
 
 
+class TestRapportResynchronise(unittest.TestCase):
+    """Le rapport suit l'empan DÉSIGNÉ, non celui qui a été mesuré.
+
+    `report` mesure avant que l'opérateur réponde, et tout ce qui suit
+    travaille sur sa réponse. Les deux se lisaient l'un pour l'autre : les
+    étiquettes, les bornes, les formes et le plancher dérivent du rapport,
+    la portée de la réponse.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.source = os.path.join(self.base, "s.csv")
+        with open(self.source, "w", encoding="utf-8") as flux:
+            flux.write("etiquette,montant,date,code\n")
+            flux.write("aboulie,1200,2019-01-02,A1\n")
+            flux.write("acai,830,2019-01-03,B2\n")
+            flux.write("adobe,940,2019-01-04,C3\n")
+            flux.write("acanthe,910,2019-01-05,D4\n")
+
+    def _prepare(self, **options):
+        return formats._preparer(
+            self.source,
+            dict(
+                {
+                    "nombres": True,
+                    "textes": True,
+                    "graine": 7,
+                    "feuilles": [],
+                    "colonnes_intactes": [],
+                },
+                **options,
+            ),
+        )
+
+    def test_la_mesure_elit_la_ligne_1(self):
+        """Le point de départ, sans quoi le test suivant ne prouve rien."""
+        _fmt, _f, _c, rapport, _o = self._prepare()
+        feuille = rapport["feuilles"][0]
+        self.assertEqual(feuille["lignes_entete"], [1])
+        self.assertEqual(
+            [c["etiquette"] for c in feuille["colonnes"]],
+            ["etiquette", "montant", "date", "code"],
+        )
+
+    def test_une_correction_refait_les_etiquettes_du_rapport(self):
+        """Sinon l'aperçu annonce épargnée une colonne que la passe
+        anonymise : il la reconnaît par l'étiquette de la ligne mesurée,
+        la portée par celle de la ligne désignée."""
+        _fmt, _f, _c, rapport, options = self._prepare(
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1, 2]}
+        )
+        feuille = rapport["feuilles"][0]
+        self.assertEqual(feuille["lignes_entete"], [1, 2])
+        self.assertEqual(feuille["ligne_champs"], 2)
+        # La ligne de champs est la 2 : ses valeurs nomment les colonnes.
+        etiquettes = [c["etiquette"] for c in feuille["colonnes"]]
+        self.assertEqual(etiquettes, ["aboulie", "1200", "2019-01-02", "A1"])
+        # Et le rapport et les options s'accordent, puisque les secondes
+        # en dérivent.
+        self.assertEqual(
+            options["etiquettes"][(formats.NOM_FEUILLE_NEUTRE, 1)], "aboulie"
+        )
+
+    def test_les_bornes_suivent_le_corps_designe(self):
+        """Elles dérivent du rapport : une ligne de plus dans l'en-tête,
+        c'est une valeur de moins dans les bornes."""
+        _fmt, _f, _c, _r, mesure = self._prepare()
+        _fmt, _f, _c, _r, corrige = self._prepare(
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1, 2]}
+        )
+        cle = (formats.NOM_FEUILLE_NEUTRE, 2)
+        self.assertEqual(mesure["bornes"][cle][:2], (830, 1200))
+        self.assertEqual(corrige["bornes"][cle][:2], (830, 940))
+
+    def test_sans_correction_le_rapport_n_est_pas_refait(self):
+        """Refaire les statistiques coûte un balayage par feuille : une
+        feuille dont l'empan n'a pas bougé n'y passe pas."""
+        appels = []
+        vrai = formats._stats_colonnes
+        formats._stats_colonnes = lambda f: appels.append(f.nom) or vrai(f)
+        self.addCleanup(setattr, formats, "_stats_colonnes", vrai)
+        self._prepare()
+        # Un seul appel : celui de `report`, et pas un de plus.
+        self.assertEqual(len(appels), 1)
+
+
 class TestColonnesEnClair(unittest.TestCase):
     """Une colonne qui sort ENTIÈRE en clair est nommée.
 

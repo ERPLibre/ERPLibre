@@ -1097,6 +1097,37 @@ def _feuilles_en_rapport(feuilles):
     return resume
 
 
+def _resynchroniser_le_rapport(rapport, feuilles):
+    """Remettre le rapport sur l'empan que l'opérateur a DÉSIGNÉ.
+
+    `report` mesure AVANT qu'il réponde, et tout ce qui suit travaille sur
+    sa réponse. Les deux se lisaient l'un pour l'autre : la portée
+    reconnaît une colonne par l'étiquette de la ligne DÉSIGNÉE, tandis que
+    l'aperçu la reconnaissait par celle de la ligne MESURÉE. Il annonçait
+    donc épargnée une colonne que la passe anonymisait, et le plancher
+    lâchait sur une colonne de relation dont l'étiquette avait changé.
+
+    Les bornes, les formes et le plancher dérivent tous du rapport : les
+    refaire ici les met d'accord d'un coup.
+
+    Seul ce qui DÉPEND de l'empan est refait, et seulement sur une feuille
+    dont l'empan a changé. Les lignes sondées et les mesures sont pour
+    l'écran, qui a déjà répondu, et les refaire coûte dix balayages de la
+    feuille.
+    """
+    par_nom = {f.nom: f for f in feuilles}
+    for resume in rapport.get("feuilles") or []:
+        feuille = par_nom.get(resume.get("nom"))
+        if feuille is None:
+            continue
+        empan = sorted(feuille.lignes_entete or ())
+        if empan == resume.get("lignes_entete"):
+            continue
+        resume["lignes_entete"] = empan
+        resume["ligne_champs"] = feuille.ligne_champs
+        resume["colonnes"] = _stats_colonnes(feuille)
+
+
 def _lignes_sondees(feuille):
     """Les premières lignes, montrables, avec ce que la mesure en dit.
 
@@ -2133,6 +2164,7 @@ def _preparer(chemin, options):
         options.get("entetes_par_feuille") or {},
         Correspondance.charger(options.get("table_chemin")).entetes,
     )
+    _resynchroniser_le_rapport(rapport, feuilles)
     connues = {f.nom for f in feuilles}
     demandees = options.get("feuilles") or []
     inconnues = [n for n in demandees if n not in connues]
