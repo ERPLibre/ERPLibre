@@ -2010,6 +2010,51 @@ def _refuser_si_source(chemin, destination):
         raise ErreurMoteur("destination_source", destination)
 
 
+# Ce qu'une paire de crochets enferme dans une formule, sans les paires
+# imbriquées : « [[#This Row],[Montant]] » rend « #This Row » et
+# « Montant ».
+_CROCHETS_FORMULE = re.compile(r"\[([^\[\]]*)\]")
+
+
+def _litteraux_de_formule(formule, sans_egal=False):
+    """Ce qu'une formule PRÉSERVE, et que le filet doit donc excuser.
+
+    Les guillemets ne suffisent pas : une référence structurée de tableau
+    porte le nom de colonne entre CROCHETS et sans guillemets —
+    `=T[[#This Row],[Montant]]`. Toutes les cellules d'une colonne
+    calculée partagent le MÊME texte, si bien que le bloc toléré ne
+    l'excuse qu'une fois là où la copie le porte deux fois : dans la
+    feuille et dans `xl/tables/`. Rendu en tolérance EXACTE, le nom cesse
+    de se compter.
+
+    Une formule matricielle n'est pas une `str` mais un objet à `text` ;
+    la tester par `startswith` la faisait passer inaperçue.
+
+    `sans_egal` pour un texte que l'appelant SAIT être une formule : OOXML
+    omet le « = » initial dans `calculatedColumnFormula`, et la garde le
+    rejetait donc — un tableau dont la colonne calculée n'a pas de formule
+    de cellule équivalente se faisait refuser.
+    """
+    texte = (
+        formule if isinstance(formule, str) else getattr(formule, "text", None)
+    )
+    # La garde sur « = » est LOAD-BEARING : appelée sur toute cellule, la
+    # fonction tolérerait chaque valeur texte et le filet ne refuserait
+    # plus rien.
+    if not isinstance(texte, str) or not texte:
+        return ()
+    if not sans_egal and not texte.startswith("="):
+        return ()
+    morceaux = {texte}
+    morceaux.update(re.findall(r'"([^"]*)"', texte))
+    for brut in _CROCHETS_FORMULE.findall(texte):
+        morceaux.add(brut)
+        # Excel échappe `[`, `]`, `#` et l'apostrophe d'un nom de colonne
+        # par une apostrophe : le nom réel est la forme déséchappée.
+        morceaux.add(brut.replace("'", ""))
+    return {m for m in morceaux if m}
+
+
 def _valeurs_gardees(classeur, feuilles, format_lu):
     """Ce que le moteur conserve SCIEMMENT, et qui a été annoncé.
 
@@ -2037,15 +2082,25 @@ def _valeurs_gardees(classeur, feuilles, format_lu):
         gardees.update(onglet.defined_names.keys())
         for tableau in getattr(onglet, "tables", {}) or {}:
             gardees.add(str(tableau))
+        # Une colonne de tableau porte sa PROPRE formule, que rien ne lit
+        # par la grille : elle vit dans `xl/tables/` et la règle de la
+        # formule la préserve, donc ce qu'elle nomme doit être excusé.
+        for tableau in (getattr(onglet, "tables", {}) or {}).values():
+            for tcol in getattr(tableau, "tableColumns", None) or ():
+                for attribut in (
+                    "calculatedColumnFormula",
+                    "totalsRowFormula",
+                ):
+                    gardees.update(
+                        _litteraux_de_formule(
+                            getattr(tcol, attribut, None), sans_egal=True
+                        )
+                    )
         for ligne in onglet.iter_rows():
             for cellule in ligne:
                 # Le TEXTE d'une formule : la règle 1 interdit d'y toucher,
                 # et le rapport le compte et l'annonce.
-                if isinstance(cellule.value, str) and cellule.value.startswith(
-                    "="
-                ):
-                    gardees.add(cellule.value)
-                    gardees.update(re.findall(r'"([^"]*)"', cellule.value))
+                gardees.update(_litteraux_de_formule(cellule.value))
     gardees.update(classeur.defined_names.keys())
     return gardees
 

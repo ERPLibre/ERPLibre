@@ -1470,6 +1470,171 @@ class TestNomsDeColonneDeTableau(unittest.TestCase):
         self.assertIsNone(tableau.tableColumns[0].totalsRowLabel)
 
 
+class TestLitterauxDeFormule(unittest.TestCase):
+    """Ce qu'une formule PRÉSERVE, et que le filet doit donc excuser.
+
+    Les guillemets ne suffisent pas : une référence structurée de tableau
+    porte le nom de colonne entre CROCHETS et sans guillemets. Toutes les
+    cellules d'une colonne calculée partagent le même texte, si bien que
+    le bloc toléré ne l'excuse qu'une fois là où la copie le porte deux
+    fois — dans la feuille et dans `xl/tables/`.
+    """
+
+    def test_une_reference_structuree_rend_le_nom_de_colonne(self):
+        rendu = set(
+            formats._litteraux_de_formule("=T1[[#This Row],[Montant]]*S$5")
+        )
+        self.assertIn("Montant", rendu)
+        self.assertIn("#This Row", rendu)
+
+    def test_un_littéral_entre_guillemets_reste_rendu(self):
+        self.assertIn(
+            "aboulie",
+            formats._litteraux_de_formule('=IF(A1="aboulie",1,0)'),
+        )
+
+    def test_le_texte_ENTIER_est_rendu_aussi(self):
+        """La tolérance d'origine : le filet compte les occurrences dans
+        le bloc joint, et le texte complet y participe."""
+        self.assertIn("=A1+1", formats._litteraux_de_formule("=A1+1"))
+
+    def test_une_valeur_texte_NUE_ne_tolère_rien(self):
+        """La garde sur « = » porte tout le filet : sans elle, la
+        fonction étant appelée sur chaque cellule, toute valeur texte
+        serait tolérée et plus rien ne serait refusé."""
+        for valeur in ("Montant", "aboulie", "", "  ", "A1+1"):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(
+                    set(formats._litteraux_de_formule(valeur)), set()
+                )
+
+    def test_un_nom_a_espace_finale_garde_son_espace(self):
+        """Le nom réel est celui que la formule porte, espaces compris :
+        le dépouiller ne l'aurait jamais fait correspondre."""
+        self.assertIn(
+            "expected 1 ",
+            formats._litteraux_de_formule("=T[[#This Row],[expected 1 ]]"),
+        )
+
+    def test_l_apostrophe_d_echappement_est_retirée(self):
+        """Excel échappe `[`, `]`, `#` et l'apostrophe par une
+        apostrophe : le nom réel est la forme déséchappée."""
+        rendu = formats._litteraux_de_formule("=T[[#This Row],[a'#b]]")
+        self.assertIn("a#b", rendu)
+
+    def test_une_formule_matricielle_n_est_pas_une_chaine(self):
+        """Un objet à `text` : le tester par `startswith` la faisait
+        passer inaperçue."""
+
+        class Matricielle:
+            text = "=T[[#This Row],[acanthe]]"
+
+        self.assertIn("acanthe", formats._litteraux_de_formule(Matricielle()))
+
+    def test_sans_egal_pour_un_texte_que_l_appelant_SAIT_etre_une_formule(
+        self,
+    ):
+        """OOXML omet le « = » dans `calculatedColumnFormula`. Le drapeau
+        est réservé aux appelants qui lisent une partie de FORMULE : le
+        passer sur une cellule rouvrirait le trou que la garde ferme."""
+        self.assertIn(
+            "acanthe",
+            formats._litteraux_de_formule(
+                "T[[#This Row],[acanthe]]", sans_egal=True
+            ),
+        )
+        self.assertEqual(
+            set(formats._litteraux_de_formule("T[[#This Row],[acanthe]]")),
+            set(),
+        )
+
+    def test_ni_none_ni_un_nombre_ne_lèvent(self):
+        for valeur in (None, 12345, 3.5, True):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(
+                    set(formats._litteraux_de_formule(valeur)), set()
+                )
+
+
+class TestValeursGardeesDesFormules(unittest.TestCase):
+    """La collecte doit appeler la fonction là où les formules vivent.
+
+    Deux endroits : la grille, et la formule PROPRE d'une colonne de
+    tableau — celle-là vit dans `xl/tables/`, ne passe par aucune cellule,
+    et son nom de colonne n'était excusé par personne.
+    """
+
+    @staticmethod
+    def _classeur(valeurs_de_cellule=(), formule_de_colonne=None):
+        """Un bouchon : la fonction ne lit que des attributs, si bien que
+        le test tourne sous l'interpréteur du CLI, sans openpyxl."""
+
+        class Cellule:
+            def __init__(self, valeur):
+                self.value = valeur
+
+        class Colonne:
+            def __init__(self, formule):
+                self.calculatedColumnFormula = formule
+                self.totalsRowFormula = None
+
+        class Tableau:
+            def __init__(self, formule):
+                self.tableColumns = [Colonne(formule)]
+
+        class Noms(dict):
+            pass
+
+        class Onglet:
+            title = "T"
+            defined_names = Noms()
+
+            def __init__(self):
+                self.tables = (
+                    {"T1": Tableau(formule_de_colonne)}
+                    if formule_de_colonne is not None
+                    else {}
+                )
+
+            def iter_rows(self):
+                yield [Cellule(v) for v in valeurs_de_cellule]
+
+        class Classeur:
+            defined_names = Noms()
+
+            def __init__(self, onglet):
+                self.worksheets = [onglet]
+
+        return Classeur(Onglet())
+
+    def _gardees(self, **kwargs):
+        return formats._valeurs_gardees(self._classeur(**kwargs), [], "xlsx")
+
+    def test_une_formule_de_CELLULE_est_dépouillée(self):
+        gardees = self._gardees(
+            valeurs_de_cellule=("=T1[[#This Row],[Montant]]*2",)
+        )
+        self.assertIn("Montant", gardees)
+
+    def test_une_formule_de_COLONNE_de_tableau_aussi(self):
+        """Elle vit dans `xl/tables/` et ne passe par aucune cellule."""
+
+        class Formule:
+            text = "T1[[#This Row],[acanthe]]*2"
+
+        gardees = self._gardees(formule_de_colonne=Formule())
+        self.assertIn("acanthe", gardees)
+
+    def test_une_valeur_texte_de_cellule_n_est_PAS_tolérée(self):
+        """Sinon le filet ne refuserait plus rien."""
+        gardees = self._gardees(valeurs_de_cellule=("aboulie", "acai"))
+        self.assertNotIn("aboulie", gardees)
+        self.assertNotIn("acai", gardees)
+
+    def test_un_classeur_sans_tableau_ne_lève_pas(self):
+        self.assertIsInstance(self._gardees(), set)
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 
