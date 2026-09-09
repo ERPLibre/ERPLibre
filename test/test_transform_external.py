@@ -1923,12 +1923,26 @@ class TestCeQuiEstDeLaDonnee(unittest.TestCase):
         self.assertFalse(formats._est_de_la_donnee(lignes, 1))
         self.assertEqual(formats.lignes_entete(lignes), ({1, 2}, 2))
 
-    def test_les_deux_ensemble_bornent_la_remontee(self):
-        """Une vraie ligne de données au-dessus de l'en-tête : elle sort
-        de l'empan, donc elle est anonymisée."""
+    def test_une_donnee_au_dessus_annule_le_candidat(self):
+        """La remontée bornée par une DONNÉE place le candidat au milieu
+        d'elle : un en-tête ne se trouve pas sous des enregistrements.
+
+        Sur une feuille courte, le corps sous le rang sondé fond jusqu'à
+        trois lignes et la forme dominante y bascule — la ligne se
+        distingue alors de ce qui reste sans rien nommer, et sortait en
+        clair au milieu des données. Le verdict est donc « pas d'en-tête »,
+        ce qui ANONYMISE, et l'écran corrige.
+        """
         lignes = [["Bruant", 599, 199.5], self.ENTETE] + self.CORPS
         self.assertTrue(formats._est_de_la_donnee(lignes, 1))
-        self.assertEqual(formats.lignes_entete(lignes), ({2}, 2))
+        self.assertEqual(formats.lignes_entete(lignes), (set(), None))
+
+    def test_de_la_MISE_EN_PAGE_au_dessus_ne_l_annule_pas(self):
+        """L'empan atteint la ligne 1 en la traversant : c'est la
+        différence que `_est_de_la_donnee` sert à faire."""
+        lignes = [["Rapport", None, None], self.ENTETE] + self.CORPS
+        self.assertFalse(formats._est_de_la_donnee(lignes, 1))
+        self.assertEqual(formats.lignes_entete(lignes), ({1, 2}, 2))
 
     def test_sans_corps_sous_la_ligne_ce_n_est_pas_de_la_donnee(self):
         """Rien à comparer n'est pas un verdict : le refus fait entrer la
@@ -4549,9 +4563,11 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
         """Le compte de « remplacées » et le compte d'enregistrements
         doivent parler du même fichier.
 
-        Une ligne de données au-dessus de la ligne de champs est hors de
-        l'empan exprès ; partir de la dernière ligne d'en-tête la faisait
-        disparaître, après l'avoir anonymisée et comptée.
+        La mesure ne place jamais l'en-tête sous une ligne de données ;
+        l'opérateur, lui, peut le DÉSIGNER, et sa réponse ne se remesure
+        pas. La ligne 1 est alors hors de l'empan, et partir de la
+        dernière ligne d'en-tête la faisait disparaître, après l'avoir
+        anonymisée et comptée.
         """
         source = self._ecrire(
             "d.csv",
@@ -4563,7 +4579,15 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
             "Aubel,504\n",
         )
         sortie = os.path.join(self.base, "d.json")
-        formats.ecrire(source, sortie, {"conversion": "json", "graine": "1"})
+        formats.ecrire(
+            source,
+            sortie,
+            {
+                "conversion": "json",
+                "graine": "1",
+                "entetes_par_feuille": {formats.NOM_FEUILLE_NEUTRE: [2]},
+            },
+        )
         arbre = json.load(open(sortie, encoding="utf-8"))
         (enregistrements,) = arbre.values()
         self.assertEqual(len(enregistrements), 5)

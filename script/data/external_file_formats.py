@@ -568,6 +568,17 @@ def lignes_entete(lignes):
     champs. C'est un verdict, pas un échec : une feuille sans en-tête
     existe, et sa ligne 1 est de la DONNÉE — la présumer d'en-tête la
     recopiait en clair.
+
+    L'empan doit ATTEINDRE la ligne 1. Une remontée bornée par une ligne
+    qui mesure comme de la donnée place le candidat AU MILIEU d'elle : un
+    en-tête ne se trouve pas sous des enregistrements. Sur une feuille
+    courte, le corps sous le rang sondé fond jusqu'à trois lignes et la
+    forme dominante y bascule dès qu'un compteur change de nombre de
+    chiffres — la ligne se distingue alors de ce qui reste sans nommer
+    quoi que ce soit, et sortait en clair au milieu des données. Le prix
+    est un export dont la ligne 1 est un enregistrement égaré : il n'a
+    plus d'en-tête reconnu, donc son en-tête est anonymisé, et l'écran le
+    corrige — le côté qui ne fait pas sortir de donnée.
     """
     if not lignes:
         return set(), None
@@ -580,6 +591,8 @@ def lignes_entete(lignes):
         while haut >= 1 and not _est_de_la_donnee(lignes, haut):
             empan.add(haut)
             haut -= 1
+        if haut >= 1:
+            continue
         return empan, rang
     return set(), None
 
