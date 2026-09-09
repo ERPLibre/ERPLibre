@@ -473,7 +473,7 @@ class TestMenuApercu(unittest.TestCase):
         self.assertIn("7", rendu)
         self.assertIn(todo_i18n.t("date(s)"), rendu)
 
-    def test_la_ligne_1_gardee_est_montree_cellule_par_cellule(self):
+    def test_l_empan_garde_est_montre_cellule_par_cellule(self):
         """Un compteur ne dirait pas qu'un nom est dedans."""
         self._repondre("")
         self.menu._transform_preview(
@@ -485,6 +485,21 @@ class TestMenuApercu(unittest.TestCase):
         rendu = self.sortie.getvalue()
         self.assertIn("L1C1", rendu)
         self.assertIn("aboulie", rendu)
+
+    def test_ce_que_le_plafond_n_a_pas_liste_est_DIT(self):
+        """Sinon l'opérateur consent sur un extrait pris pour le tout."""
+        self._repondre("")
+        self.menu._transform_preview(
+            {
+                "remplacees": 1,
+                "entete_gardee": [{"cellule": "L1C1", "valeur": "aboulie"}],
+                "entete_gardee_omises": {"Ventes": 3},
+            }
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn("Ventes", rendu)
+        self.assertIn("3", rendu)
+        self.assertIn(todo_i18n.t("more, not listed"), rendu)
 
     def test_les_avertissements_sont_traduits(self):
         self._repondre("")
@@ -4184,6 +4199,40 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
         apercu = formats.plan(source, {"graine": "3"})
         valeurs = [c["valeur"] for c in apercu["entete_gardee"]]
         self.assertIn("etiquette", valeurs)
+
+    def test_au_dela_du_plafond_ce_qui_n_est_pas_liste_est_COMPTE(self):
+        """Le plafond borne la liste, jamais le compte.
+
+        Le taire faisait consentir sur un extrait pris pour le tout :
+        douze cellules montrées d'un empan qui en garde quinze, et les
+        trois autres partaient en clair sans que rien ne le dise.
+        """
+        largeur = formats.PLAFOND_GARDEES_LISTEES + 3
+        source = self._ecrire(
+            "plafond.csv",
+            ",".join("Champ%02d" % i for i in range(largeur))
+            + "\n"
+            + "".join(
+                ",".join(str(100 + rang * largeur + i) for i in range(largeur))
+                + "\n"
+                for rang in range(6)
+            ),
+        )
+        apercu = formats.plan(source, {"graine": "3"})
+        self.assertEqual(
+            len(apercu["entete_gardee"]), formats.PLAFOND_GARDEES_LISTEES
+        )
+        self.assertEqual(
+            apercu["entete_gardee_omises"], {formats.NOM_FEUILLE_NEUTRE: 3}
+        )
+
+    def test_en_deca_du_plafond_rien_n_est_annonce_comme_omis(self):
+        source = self._ecrire(
+            "court.csv",
+            "etiquette,montant\naboulie,1200\nacai,830\nadobe,940\n",
+        )
+        apercu = formats.plan(source, {"graine": "3"})
+        self.assertEqual(apercu["entete_gardee_omises"], {})
 
     def test_une_grille_tout_alphabetique_ne_se_decide_pas(self):
         """La limite, ÉNONCÉE plutôt que masquée par un seuil ajusté.

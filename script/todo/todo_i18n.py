@@ -13397,13 +13397,17 @@ TRANSLATIONS = {
         "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
         "en": "Element and attribute names are kept as structure; they may identify.",
     },
-    "Row 1 is copied verbatim as a header row.": {
-        "fr": "La ligne 1 est recopiée telle quelle comme ligne d'en-tête.",
-        "en": "Row 1 is copied verbatim as a header row.",
+    "These cells are copied verbatim:": {
+        "fr": "Ces cellules sont recopiées telles quelles :",
+        "en": "These cells are copied verbatim:",
     },
-    "If it holds data, answer yes to the header question and start over.": {
-        "fr": "Si elle porte de la donnée, répondre oui à la question d'en-tête et reprendre.",
-        "en": "If it holds data, answer yes to the header question and start over.",
+    "more, not listed": {
+        "fr": "autres, non listées",
+        "en": "more, not listed",
+    },
+    "Correct the header rows to anonymise them.": {
+        "fr": "Corriger les lignes d'en-tête pour les anonymiser.",
+        "en": "Correct the header rows to anonymise them.",
     },
     "Mapping table: ": {
         "fr": "Table de correspondance : ",

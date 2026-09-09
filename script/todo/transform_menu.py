@@ -556,19 +556,19 @@ class TransformMenuMixin:
             print(f"   ⚠ {t('Left intact')} : {detail}")
         gardee = apercu.get("entete_gardee") or []
         if gardee:
-            # La ligne 1 est présumée d'en-tête, jamais mesurée : un CSV
-            # sans en-tête, ou un titre de rapport en A1, y met de la
-            # donnée. Un compteur ne dirait pas qu'un nom est dedans.
-            print(f"   ⚠ {t('Row 1 is copied verbatim as a header row.')}")
+            # L'empan est MESURÉ, et il porte plusieurs lignes sur un
+            # export mis en page : un compteur ne dirait pas qu'un nom est
+            # dedans. Chaque valeur se montre donc, avec sa coordonnée.
+            print(f"   ⚠ {t('These cells are copied verbatim:')}")
             for cellule in gardee:
                 print(f"      {cellule['cellule']}  {cellule['valeur']!r}")
-            print(
-                "      "
-                + t(
-                    "If it holds data, answer yes to the header question"
-                    " and start over."
-                )
-            )
+            # Le plafond borne la LISTE, pas le compte : le taire faisait
+            # consentir sur un extrait pris pour le tout.
+            for nom, omises in sorted(
+                (apercu.get("entete_gardee_omises") or {}).items()
+            ):
+                print(f"      {nom} : {omises} {t('more, not listed')}")
+            print("      " + t("Correct the header rows to anonymise them."))
         for exemple in apercu.get("apercu") or []:
             print(
                 f"      {exemple['cellule']}"

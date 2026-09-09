@@ -2171,6 +2171,14 @@ def _verifier_conversion(format_lu, feuilles, options):
         raise ErreurMoteur("conversion_impossible", f"{len(retenues)} → xml")
 
 
+# Combien de cellules d'empan gardées en clair sont LISTÉES par feuille.
+# Par feuille, non globalement : un plafond global cachait une feuille
+# entière derrière les entrées d'une autre. Il borne la LISTE, jamais le
+# compte — ce qui dépasse est annoncé, faute de quoi l'opérateur consent
+# sur un extrait qu'il prend pour le tout.
+PLAFOND_GARDEES_LISTEES = 12
+
+
 def _parcourir(
     feuilles, options, table, rng, appliquer=None, gardees_out=None
 ):
@@ -2188,7 +2196,12 @@ def _parcourir(
         "intactes": {},
         "apercu": [],
         "entete_gardee": [],
+        "entete_gardee_omises": {},
     }
+    # Par feuille : TOUTES les cellules d'empan gardées, listées ou non.
+    # Le recompte par balayage de la liste était quadratique, et ne
+    # pouvait de toute façon pas compter au-delà du plafond.
+    gardees_par_feuille = collections.Counter()
     for feuille in feuilles:
         for numero, ligne in enumerate(feuille.lignes, start=1):
             for index, valeur in enumerate(ligne, start=1):
@@ -2199,11 +2212,6 @@ def _parcourir(
                     bilan["hors_portee"] += 1
                     if gardees_out is not None:
                         _noter_gardee(gardees_out, feuille.nom, valeur)
-                    empan_feuille = sum(
-                        1
-                        for c in bilan["entete_gardee"]
-                        if c["feuille"] == feuille.nom
-                    )
                     if (
                         numero in (feuille.lignes_entete or ())
                         and not options.get("entetes")
@@ -2214,27 +2222,28 @@ def _parcourir(
                         and famille != "formule"
                         and (feuille.nom, numero)
                         not in (options.get("lignes_structure") or ())
-                        # PAR FEUILLE, non globalement : un plafond global
-                        # de douze cachait une feuille entière derrière les
-                        # entrées d'une autre, et l'opérateur consentait
-                        # sans avoir vu ce qui sortait.
-                        and empan_feuille < 12
                     ):
-                        # La ligne 1 est PRÉSUMÉE d'en-tête, jamais
-                        # mesurée : un CSV sans en-tête, ou un titre de
-                        # rapport en A1, y met de la donnée. Un compteur
-                        # global ne dit pas qu'un nom de client est dedans.
-                        bilan["entete_gardee"].append(
-                            {
-                                "feuille": feuille.nom,
-                                # La VRAIE coordonnée : le littéral « L1 »
-                                # mentait dès que l'en-tête n'était pas en
-                                # ligne 1, et l'opérateur cherchait la
-                                # valeur au mauvais endroit.
-                                "cellule": f"L{numero}C{index}",
-                                "valeur": valeur_hors_tableur(valeur),
-                            }
-                        )
+                        # L'empan est MESURÉ, et il porte plusieurs lignes
+                        # sur un export mis en page. Un compteur ne dirait
+                        # pas qu'un nom de client est dedans : chaque
+                        # valeur se montre, jusqu'au plafond.
+                        gardees_par_feuille[feuille.nom] += 1
+                        if (
+                            gardees_par_feuille[feuille.nom]
+                            <= PLAFOND_GARDEES_LISTEES
+                        ):
+                            bilan["entete_gardee"].append(
+                                {
+                                    "feuille": feuille.nom,
+                                    # La VRAIE coordonnée : le littéral
+                                    # « L1 » mentait dès que l'en-tête
+                                    # n'était pas en ligne 1, et
+                                    # l'opérateur cherchait la valeur au
+                                    # mauvais endroit.
+                                    "cellule": f"L{numero}C{index}",
+                                    "valeur": valeur_hors_tableur(valeur),
+                                }
+                            )
                     continue
                 bornes = options["bornes"].get((feuille.nom, index))
                 if isinstance(valeur, (dict, list)):
@@ -2274,6 +2283,11 @@ def _parcourir(
                     )
                 if appliquer is not None:
                     appliquer(feuille, numero, index, neuve)
+    bilan["entete_gardee_omises"] = {
+        nom: compte - PLAFOND_GARDEES_LISTEES
+        for nom, compte in gardees_par_feuille.items()
+        if compte > PLAFOND_GARDEES_LISTEES
+    }
     return bilan
 
 
