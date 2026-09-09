@@ -2292,22 +2292,31 @@ class TODO(
     def _get_ssh_params(self):
         """Prompt for SSH connection parameters. Returns dict or None on cancel."""
         host = click.prompt(
-            t("Remote host (user@hostname or hostname): ")
+            t("Remote host (user@hostname or hostname): "), prompt_suffix=""
         ).strip()
         if not host:
             print(t("SSH host is required!"))
             return None
         user = (
-            click.prompt(t("SSH user (default: erplibre): ")).strip()
+            click.prompt(
+                t("SSH user (default: erplibre): "), prompt_suffix=""
+            ).strip()
             or "erplibre"
         )
-        port = click.prompt(t("SSH port (default: 22): ")).strip() or "22"
+        port = (
+            click.prompt(
+                t("SSH port (default: 22): "), prompt_suffix=""
+            ).strip()
+            or "22"
+        )
         key = click.prompt(
-            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): ")
+            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): "),
+            prompt_suffix="",
         ).strip()
         path = (
             click.prompt(
-                t("Remote path (default: ~/erplibre_deploy_2): ")
+                t("Remote path (default: ~/erplibre_deploy_2): "),
+                prompt_suffix="",
             ).strip()
             or "~/erplibre_deploy_2"
         )
@@ -2415,7 +2424,9 @@ class TODO(
         params = self._get_ssh_params()
         if not params:
             return
-        target = click.prompt(t("Make target to run remotely: ")).strip()
+        target = click.prompt(
+            t("Make target to run remotely: "), prompt_suffix=""
+        ).strip()
         if not target:
             print(t("SSH host is required!"))
             return
@@ -2441,11 +2452,15 @@ class TODO(
         params = self._get_ssh_params()
         if not params:
             return
-        domain = click.prompt(t("Domain name (e.g.: example.com): ")).strip()
+        domain = click.prompt(
+            t("Domain name (e.g.: example.com): "), prompt_suffix=""
+        ).strip()
         if not domain:
             print(t("SSH host is required!"))
             return
-        email = click.prompt(t("Admin email for SSL certificate: ")).strip()
+        email = click.prompt(
+            t("Admin email for SSL certificate: "), prompt_suffix=""
+        ).strip()
         cmd = self._build_ssh_make_cmd(
             "ssh_install_nginx",
             params,
@@ -4097,7 +4112,7 @@ class TODO(
         print(f"[1] {t('A database')}")
         print(f"[2] {t('A backup .zip, without restoring it')}")
         print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if answer == "1":
             database = self._analyse_select_database()
@@ -4469,7 +4484,7 @@ class TODO(
         print(f"[2] {t('Whitelist: only the models I name')}")
         print(f"[3] {t('Blacklist: every model except those I name')}")
         print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         mode = {"1": "hybrid", "2": "whitelist", "3": "blacklist"}.get(answer)
         if not mode:
@@ -4512,7 +4527,7 @@ class TODO(
         print()
         print(f"[1] {t('A development copy (restored, neutralised)')}")
         print(f"[2] {t('An instance in service')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         return (
             check_instance_state.LIVE
@@ -4539,7 +4554,7 @@ class TODO(
         print(f"[3] {t('A remote backup (https + master password)')}")
         print(f"[4] {t('A live remote instance')}")
         print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if answer == "1":
             database = self.db_manager.select_database()
@@ -4583,7 +4598,7 @@ class TODO(
         print()
         print(f"[1] {t('An API key')}")
         print(f"[2] {t('A password')}")
-        genre = click.prompt(t("Command:"))
+        genre = click.prompt(t("Command:"), prompt_suffix=" ")
         secret = getpass.getpass(
             t("API key: ") if genre == "1" else t("Password: ")
         )
