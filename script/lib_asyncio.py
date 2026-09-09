@@ -155,15 +155,30 @@ class AsyncioPool:
         """
         @param loop: asyncio loop
         @param concurrency: Maximum number of concurrently running tasks
+
+        La loop n'est PAS créée ici. `asyncio.get_event_loop()` lève hors
+        d'une loop en marche depuis Python 3.14 — il ne faisait qu'avertir
+        avant — donc la construire à l'instanciation rendait la classe
+        impossible à instancier, et le drapeau `--max_process` inutilisable.
+        Elle est donc créée à l'exécution, et fermée par `close`, qui ne
+        ferme que ce que la classe a ouvert.
         """
-        self._loop = loop or asyncio.get_event_loop()
+        self._loop = loop
+        self._loop_est_notre = False
         self._concurrency = concurrency
         self._coros = deque([])  # All coroutines queued for execution
         self._futures = []  # All currently running coroutines
         self._lst_result = []
 
     def close(self):
-        self._loop.close()
+        """Ferme la loop, si c'est celle que la classe a créée.
+
+        Une loop reçue en argument appartient à l'appelant : la fermer sous
+        lui casserait tout ce qu'il compte encore y faire tourner."""
+        if self._loop is not None and self._loop_est_notre:
+            self._loop.close()
+            self._loop = None
+            self._loop_est_notre = False
 
     def add_coro(self, coro):
         """
@@ -173,6 +188,10 @@ class AsyncioPool:
         self.print_status()
 
     def run_until_complete(self):
+        if self._loop is None:
+            self._loop = asyncio.new_event_loop()
+            self._loop_est_notre = True
+            asyncio.set_event_loop(self._loop)
         self._loop.run_until_complete(self._wait_for_futures())
         return self._lst_result
 
@@ -187,16 +206,19 @@ class AsyncioPool:
         num_to_start = min(num_to_start, len(self._coros))
         for _ in range(num_to_start):
             coro = self._coros.popleft()
-            future = asyncio.ensure_future(coro, loop=self._loop)
+            # Sans « loop= » : l'appel a lieu DEPUIS la loop en marche, qui
+            # est donc celle que ensure_future prend d'elle-même.
+            future = asyncio.ensure_future(coro)
             self._futures.append(future)
             self.print_status()
 
     async def _wait_for_futures(self):
         while len(self._coros) > 0 or len(self._futures) > 0:
             self._start_futures()
+            # « loop= » a été RETIRÉ de asyncio.wait en Python 3.10 : le
+            # passer lève un TypeError, et c'est la loop en marche qui sert.
             futures_completed, futures_pending = await asyncio.wait(
                 self._futures,
-                loop=self._loop,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
