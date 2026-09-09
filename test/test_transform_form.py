@@ -295,29 +295,36 @@ class TestLibelles(unittest.TestCase):
 
 
 class TestCleDeColonne(unittest.TestCase):
-    """Ce par quoi une réponse DÉSIGNE une colonne.
+    """Une réponse d'ÉCRAN désigne une colonne par son index.
 
-    La même règle que `colonne_repondue` du moteur, faute de quoi l'écran
-    cocherait une case dont la réponse ne porterait pas.
+    Pas par son étiquette : corriger l'empan d'en-tête renomme les
+    colonnes — la ligne de champs change — et une réponse portée par
+    l'étiquette tombait alors sur une autre colonne, ou sur aucune, sans
+    que rien ne le dise.
     """
 
-    def test_l_etiquette_quand_il_y_en_a_une(self):
-        self.assertEqual(
-            transform_form.cle_de_colonne(
-                {"index": 4, "etiquette": "montant"}
-            ),
-            "montant",
-        )
-
-    def test_l_index_sinon(self):
-        for etiquette in ("", "   ", None):
+    def test_c_est_l_index_quelle_que_soit_l_etiquette(self):
+        for etiquette in ("montant", "", "   ", None, "4"):
             with self.subTest(etiquette=etiquette):
                 self.assertEqual(
                     transform_form.cle_de_colonne(
                         {"index": 4, "etiquette": etiquette}
                     ),
-                    "4",
+                    4,
                 )
+
+    def test_deux_colonnes_ne_partagent_jamais_une_cle(self):
+        """L'ambiguïté qui oblige l'invite à préférer l'étiquette — « 1 »
+        désigne la colonne étiquetée « 1 » ET la première — n'existe pas
+        ici."""
+        cles = {
+            transform_form.cle_de_colonne(c)
+            for c in (
+                {"index": 1, "etiquette": "3"},
+                {"index": 3, "etiquette": "x"},
+            )
+        }
+        self.assertEqual(len(cles), 2)
 
 
 class TestBasculer(unittest.TestCase):
@@ -341,11 +348,11 @@ class TestSpec(unittest.TestCase):
         import json
 
         spec = transform_form.spec_depuis_etat(
-            self.ctx, {"Ventes": {"montant"}}, {"Ventes": {1, 2}}
+            self.ctx, {"Ventes": {2}}, {"Ventes": {1, 2}}
         )
         json.dumps(spec, allow_nan=False)
         self.assertEqual(
-            spec["colonnes_intactes_par_feuille"], {"Ventes": ["montant"]}
+            spec["colonnes_intactes_index_par_feuille"], {"Ventes": [2]}
         )
         self.assertEqual(spec["entetes_par_feuille"]["Ventes"], [1, 2])
 
@@ -353,7 +360,7 @@ class TestSpec(unittest.TestCase):
         spec = transform_form.spec_depuis_etat(
             self.ctx, {"Ventes": set(), "Achats": set()}, {}
         )
-        self.assertEqual(spec["colonnes_intactes_par_feuille"], {})
+        self.assertEqual(spec["colonnes_intactes_index_par_feuille"], {})
 
     def test_CHAQUE_feuille_porte_son_empan_meme_vide(self):
         """Un empan vide veut dire « pas d'en-tête », ce qui met la ligne
@@ -478,7 +485,9 @@ class TestPilotage(unittest.TestCase):
             await pilote.pause()
 
         app = self._piloter(scenario)
-        self.assertEqual(app._intactes["Ventes"], {"montant"})
+        # L'INDEX, non l'étiquette : c'est la seule désignation qui
+        # survit à une correction d'en-tête.
+        self.assertEqual(app._intactes["Ventes"], {1})
 
     def test_espace_sur_une_colonne_PLANCHEIEE_ne_fait_rien(self):
         """Le plancher passe avant la réponse : une case qui ne

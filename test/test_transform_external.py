@@ -2577,6 +2577,100 @@ class TestRapportResynchronise(unittest.TestCase):
         self.assertEqual(len(appels), 1)
 
 
+class TestReponseParIndex(unittest.TestCase):
+    """Une case cochée à l'écran survit à une correction d'en-tête.
+
+    Corriger l'empan RENOMME les colonnes — la ligne de champs change,
+    donc les étiquettes aussi. Une réponse portée par l'étiquette tombait
+    alors sur une autre colonne, ou sur aucune, sans que rien ne le dise :
+    la colonne était anonymisée malgré la case.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.source = os.path.join(self.base, "s.csv")
+        with open(self.source, "w", encoding="utf-8") as flux:
+            flux.write("etiquette,montant,date,code\n")
+            flux.write("aboulie,1200,2019-01-02,A1\n")
+            flux.write("acai,830,2019-01-03,B2\n")
+            flux.write("adobe,940,2019-01-04,C3\n")
+            flux.write("acanthe,910,2019-01-05,D4\n")
+
+    def _plan(self, **options):
+        return formats.plan(
+            self.source,
+            dict(
+                {
+                    "nombres": True,
+                    "textes": True,
+                    "graine": 7,
+                    "feuilles": [],
+                    "destination": os.path.join(self.base, "o.csv"),
+                },
+                **options,
+            ),
+        )
+
+    EMPAN_CORRIGE = {formats.NOM_FEUILLE_NEUTRE: [1, 2]}
+
+    def test_l_index_porte_a_travers_la_correction(self):
+        apercu = self._plan(
+            entetes_par_feuille=self.EMPAN_CORRIGE,
+            colonnes_intactes_index_par_feuille={
+                formats.NOM_FEUILLE_NEUTRE: [2]
+            },
+        )
+        self.assertEqual(
+            [c["index"] for c in apercu["colonnes_ecartees"]], [2]
+        )
+        self.assertFalse(
+            [c for c in apercu["apercu"] if c["cellule"].endswith("C2")]
+        )
+
+    def test_l_etiquette_MONTREE_ne_porte_plus_apres_la_correction(self):
+        """Le comportement que l'index remplace, gardé comme repère : la
+        réponse ne tombe nulle part, et la colonne part.
+        """
+        apercu = self._plan(
+            entetes_par_feuille=self.EMPAN_CORRIGE,
+            colonnes_intactes_par_feuille={
+                formats.NOM_FEUILLE_NEUTRE: ["montant"]
+            },
+        )
+        self.assertEqual(apercu["colonnes_ecartees"], [])
+        self.assertTrue(
+            [c for c in apercu["apercu"] if c["cellule"].endswith("C2")]
+        )
+
+    def test_sans_correction_l_index_porte_aussi(self):
+        apercu = self._plan(
+            colonnes_intactes_index_par_feuille={
+                formats.NOM_FEUILLE_NEUTRE: [2]
+            }
+        )
+        self.assertEqual(
+            [c["etiquette"] for c in apercu["colonnes_ecartees"]], ["montant"]
+        )
+
+    def test_un_index_illisible_est_saute_sans_emporter_le_travail(self):
+        """La spec traverse un JSON : une clé illisible arrive."""
+        apercu = self._plan(
+            colonnes_intactes_index_par_feuille={
+                formats.NOM_FEUILLE_NEUTRE: [2, "x", None, 0, -3]
+            }
+        )
+        self.assertEqual(
+            [c["index"] for c in apercu["colonnes_ecartees"]], [2]
+        )
+
+    def test_l_index_d_une_AUTRE_feuille_ne_porte_pas(self):
+        apercu = self._plan(
+            colonnes_intactes_index_par_feuille={"Une autre": [2]}
+        )
+        self.assertEqual(apercu["colonnes_ecartees"], [])
+
+
 class TestColonnesEnClair(unittest.TestCase):
     """Une colonne qui sort ENTIÈRE en clair est nommée.
 

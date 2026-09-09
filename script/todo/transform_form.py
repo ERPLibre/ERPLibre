@@ -173,14 +173,20 @@ def libelle_de_ligne_sondee(ligne, cochee):
 
 
 def cle_de_colonne(colonne):
-    """Ce par quoi une réponse DÉSIGNE cette colonne.
+    """Ce par quoi une réponse DÉSIGNE cette colonne : son INDEX.
 
-    L'étiquette quand il y en a une, l'index sinon — exactement la règle
-    de `colonne_repondue`, faute de quoi l'écran cocherait une case dont
-    la réponse ne porterait pas.
+    Pas son étiquette, bien que ce soit ce que l'invite textuelle emploie.
+    Corriger l'empan d'en-tête RENOMME les colonnes — la ligne de champs
+    change, donc les étiquettes aussi — et une réponse portée par
+    l'étiquette tombait alors sur une autre colonne, ou sur aucune, sans
+    que rien ne le dise. L'index ne bouge pas.
+
+    L'ambiguïté qui oblige l'invite à préférer l'étiquette — « 1 » désigne
+    à la fois la colonne étiquetée « 1 » et la première — n'existe pas
+    ici : l'écran tient l'objet colonne, il ne tape pas une chaîne. La
+    spec les porte donc dans deux clés distinctes.
     """
-    etiquette = (colonne.get("etiquette") or "").strip()
-    return etiquette or str(colonne["index"])
+    return colonne["index"]
 
 
 def basculer(ensemble, valeur):
@@ -217,8 +223,8 @@ def spec_depuis_etat(ctx, intactes, entetes, corrigees=()):
     """
     return {
         "entetes_corrigees": sorted(corrigees),
-        "colonnes_intactes_par_feuille": {
-            nom: sorted(cles) for nom, cles in intactes.items() if cles
+        "colonnes_intactes_index_par_feuille": {
+            nom: sorted(rangs) for nom, rangs in intactes.items() if rangs
         },
         "entetes_par_feuille": {
             feuille["nom"]: sorted(entetes.get(feuille["nom"], set()))

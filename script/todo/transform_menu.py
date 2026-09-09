@@ -411,7 +411,7 @@ class TransformMenuMixin:
             if resolues:
                 print(f"   {', '.join(resolues)}")
 
-        if "colonnes_intactes_par_feuille" in options:
+        if "colonnes_intactes_index_par_feuille" in options:
             # L'écran a répondu par feuille, ce que cette invite ne sait
             # pas faire : la reposer inviterait à une réponse GLOBALE qui
             # gèlerait la même colonne sur toutes les feuilles.

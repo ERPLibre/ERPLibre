@@ -981,10 +981,22 @@ def colonne_repondue(feuille, colonne, etiquette, options):
     et une seule réponse en épargne deux — dont celle des noms, que
     l'aperçu n'annonçait pas.
 
+    Un ÉCRAN, lui, désigne par l'index sans ambiguïté : il tient l'objet
+    colonne, il ne tape pas une chaîne. Et l'index est la seule désignation
+    qui survit à une correction d'en-tête, qui RENOMME les colonnes —
+    répondre par l'étiquette faisait tomber la réponse sur une autre
+    colonne, ou sur aucune, en silence. D'où deux ensembles distincts
+    plutôt qu'un : des entiers pour l'écran, des chaînes pour l'invite.
+
     La règle vit ICI et nulle part ailleurs : `_colonnes_ecartees` et
     `_colonnes_saturees` la reprenaient chacune à sa façon, ce qui fait
     trois occasions de divergence.
     """
+    par_index = (options.get("colonnes_intactes_index_par_feuille") or {}).get(
+        feuille
+    )
+    if par_index and colonne in par_index:
+        return True
     if etiquette is not None and str(etiquette).strip():
         reponse = str(etiquette).strip()
     else:

@@ -2102,6 +2102,15 @@ def _anonymiser_noms_locaux(porteur, table, vivier):
 # ----------------------------------------------------------------------
 # La marche à blanc et l'écriture
 # ----------------------------------------------------------------------
+def _rang_de_colonne(valeur):
+    """Un rang de colonne 1-based, ou None si ce n'en est pas un."""
+    try:
+        rang = int(valeur)
+    except (TypeError, ValueError):
+        return None
+    return rang if rang >= 1 else None
+
+
 def _preparer(chemin, options):
     """(format, feuilles, classeur, rapport, options complétées)."""
     format_lu = detect_format(chemin)
@@ -2126,6 +2135,20 @@ def _preparer(chemin, options):
         str(nom): {str(c).strip() for c in (liste or []) if str(c).strip()}
         for nom, liste in (
             options.get("colonnes_intactes_par_feuille") or {}
+        ).items()
+    }
+    # Des ENTIERS : la réponse de l'écran, qui désigne par l'index parce
+    # qu'une correction d'en-tête renomme les colonnes. Ce qui ne se lit
+    # pas comme un rang est sauté — la spec traverse un JSON, et une clé
+    # illisible ne doit pas emporter le travail.
+    options["colonnes_intactes_index_par_feuille"] = {
+        str(nom): {
+            rang
+            for rang in (_rang_de_colonne(c) for c in (liste or []))
+            if rang
+        }
+        for nom, liste in (
+            options.get("colonnes_intactes_index_par_feuille") or {}
         ).items()
     }
 
