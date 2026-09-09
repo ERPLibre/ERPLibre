@@ -349,7 +349,8 @@ class AssistantMenuMixin:
             if not choisis:
                 return
             frappe = click.prompt(
-                t("Type the server name in full to delete it:")
+                t("Type the server name in full to delete it:"),
+                prompt_suffix=" ",
             ).strip()
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
@@ -997,7 +998,8 @@ class AssistantMenuMixin:
             if choix == "2":
                 try:
                     frappe = click.prompt(
-                        t("Type the pid of the holder to write into it:")
+                        t("Type the pid of the holder to write into it:"),
+                        prompt_suffix=" ",
                     ).strip()
                 except (KeyboardInterrupt, click.exceptions.Abort):
                     print()
