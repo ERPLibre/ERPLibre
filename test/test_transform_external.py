@@ -1786,6 +1786,55 @@ class TestEtiquettesDeLaLigneDeChamps(unittest.TestCase):
         self.assertEqual(feuille.etiquettes, [])
 
 
+class TestUniciteDesClesI18n(unittest.TestCase):
+    """Une clé dupliquée dans un littéral de dict Python écrase la
+    précédente, sans erreur ni avertissement.
+
+    Les deux entrées peuvent être identiques aujourd'hui : le jour où l'on
+    corrige l'une, la correction se perd en silence, et aucun test
+    d'intégrité existant ne regarde les DOUBLONS — ils lisent le dict
+    déjà construit, où le doublon a déjà disparu. D'où la lecture par AST
+    du fichier SOURCE.
+    """
+
+    @staticmethod
+    def _cles_du_source():
+        import ast
+
+        chemin = os.path.join(
+            os.path.dirname(__file__),
+            "..",
+            "script",
+            "todo",
+            "todo_i18n.py",
+        )
+        with open(chemin, encoding="utf-8") as flux:
+            arbre = ast.parse(flux.read())
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Assign):
+                continue
+            if getattr(noeud.targets[0], "id", "") != "TRANSLATIONS":
+                continue
+            return [
+                cle.value
+                for cle in noeud.value.keys
+                if isinstance(cle, ast.Constant) and isinstance(cle.value, str)
+            ]
+        return []
+
+    def test_le_dict_source_a_bien_ete_lu(self):
+        """Si la forme du fichier change, ce test doit tomber ici plutôt
+        que de déclarer « aucun doublon » sur une liste vide."""
+        self.assertGreater(len(self._cles_du_source()), 1000)
+
+    def test_aucune_cle_n_est_declaree_deux_fois(self):
+        import collections
+
+        compte = collections.Counter(self._cles_du_source())
+        doubles = sorted(k for k, n in compte.items() if n > 1)
+        self.assertEqual(doubles, [], "clés déclarées deux fois")
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 
