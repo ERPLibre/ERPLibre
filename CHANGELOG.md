@@ -25,10 +25,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A gpt catalogue in `script/todo/assistant/gpt/`: one Markdown file per tool, whose declared requirements are matched against what the server announces. An unknown never greys a tool out — only a requirement contradicted by a field actually read does, with the figure that refuses it
 - A declared READ-ONLY context per tool, files and allowlisted commands, shown and confirmed before the first send, capped in size and duration, and scanned for identifying data. The scan's honest limit is stated: it sees addresses, e-mails and account paths, not names
 - `Execute › GPT code › Claude Code` — list the machine's sessions, ask one a question with read-only tools, or resume one in its own terminal. A copy is branched by default, since two writers on one session lose a branch
+- `check_comment_hygiene.py` signals a fully qualified machine name in a comment, as a re-read signal and never a finding: a BARE host name is mechanically indistinguishable from an ordinary word, so the absence of a signal proves nothing about names. The copyright header, the RFC 2606 domains and any address carried by a URL are left alone
 
 ## Changed
 
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
+
+## Fixed
+
+- Reading the dnsmasq leases no longer opens a root password prompt: the files are read directly, which suffices on a standard install where they are 0644, and only then is `sudo -n` tried, which fails instead of asking. Displaying a VM list called that path once per VM, and waiting on a VM called it every three seconds for ten minutes
+- `--max_process` runs again on Python 3.10 and later: `loop=` left `asyncio.wait` in 3.10 and `asyncio.get_event_loop()` raises outside a running loop since 3.14, so the pool was not even constructible while the help still advertised the flag
+- A prompt no longer writes its colon twice — the most-seen menu of the software asked « Command:: », and seven remote-deployment prompts showed a colon followed by another
+- Eleven submenus now leave their segment in the breadcrumb, and navigation telemetry stops filing them as commands under their raw method name
+- The three readers of `~/.ssh/config` agree on what a machine name is: an alias declared with a lowercase `host` is seen, a tab separates as legally as a space, and a negated `!name` pattern is no longer taken for a machine to connect to
+- Three translation keys declared twice are gone, and a check refuses the next one: a repeated key silently overwrites the previous, which had already cost a menu label
+
+## Removed
+
+- The `sshconf` dependency, declared and installed everywhere and imported nowhere
+
+## Security
+
+- An API key and a bearer token are redacted too before a command is displayed, logged or reprinted: `OPENAI_API_KEY=` went out in the clear, and a header token escaped by construction, carrying neither an option name nor a variable name
 
 
 ## [1.8.0] - 2026-09-04

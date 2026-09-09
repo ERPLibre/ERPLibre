@@ -25,10 +25,28 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un catalogue d'outils gpt dans `script/todo/assistant/gpt/` : un fichier Markdown par outil, dont les exigences déclarées sont confrontées à ce que le serveur annonce. L'inconnu ne grise jamais un outil — seule une exigence contredite par un champ réellement lu le fait, avec le chiffre qui la refuse
 - Un contexte LECTURE SEULE déclaré par outil, fichiers et commandes autorisées, montré et confirmé avant le premier envoi, borné en taille et en durée, et balayé à la recherche de données identifiantes. La limite du balayage est dite : il voit les adresses, les courriels et les chemins de compte, pas les noms
 - `Exécution › GPT code › Claude Code` — lister les sessions de la machine, en interroger une avec des outils en lecture seule, ou la reprendre dans son propre terminal. Une copie est branchée par défaut, deux écritures sur une même session perdant une branche
+- `check_comment_hygiene.py` signale un nom de machine pleinement qualifié dans un commentaire, en signal à relire et jamais en trouvaille : un nom d'hôte NU ne se distingue mécaniquement pas d'un mot ordinaire, donc l'absence de signal ne prouve rien sur les noms. L'en-tête de copyright, les domaines de la RFC 2606 et toute adresse portée par une URL sont laissés tranquilles
 
 ## Modifié
 
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond
+
+## Corrigé
+
+- La lecture des baux dnsmasq n'ouvre plus d'invite de mot de passe root : les fichiers sont lus en direct, ce qui suffit sur une installation standard où ils sont en 0644, et `sudo -n` n'est tenté qu'ensuite, qui échoue au lieu de demander. L'affichage d'une liste de VM appelait ce chemin une fois par VM, et l'attente d'une VM toutes les trois secondes pendant dix minutes
+- `--max_process` repart sur Python 3.10 et plus : `loop=` a quitté `asyncio.wait` en 3.10 et `asyncio.get_event_loop()` lève hors d'une loop en marche depuis 3.14, si bien que le pool n'était même plus instanciable alors que l'aide annonçait toujours l'option
+- Une invite n'écrit plus son deux-points deux fois — le menu le plus vu du logiciel demandait « Commande :: », et sept invites de déploiement à distance affichaient un deux-points suivi d'un autre
+- Onze sous-menus laissent désormais leur segment dans le fil d'Ariane, et la télémétrie de navigation cesse de les classer comme des commandes sous leur nom de méthode brut
+- Les trois lecteurs de `~/.ssh/config` s'accordent sur ce qu'est un nom de machine : un alias déclaré par un `host` en minuscules est vu, une tabulation sépare aussi légalement qu'un espace, et un motif nié `!nom` n'est plus pris pour une machine à joindre
+- Trois clés de traduction déclarées deux fois ont disparu, et un contrôle refuse la suivante : une clé répétée écrase la précédente en silence, ce qui avait déjà coûté une étiquette de menu
+
+## Retiré
+
+- La dépendance `sshconf`, déclarée et installée partout et importée nulle part
+
+## Sécurité
+
+- Une clé d'API et un jeton Bearer sont caviardés eux aussi avant qu'une commande soit affichée, journalisée ou réimprimée : `OPENAI_API_KEY=` partait en clair, et un jeton d'en-tête échappait par construction, ne portant ni nom d'option ni nom de variable
 
 
 ## [1.8.0] - 2026-09-04
