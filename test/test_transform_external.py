@@ -2631,7 +2631,7 @@ class TestRapportResynchronise(unittest.TestCase):
             dict(
                 {
                     "nombres": True,
-                    "textes": True,
+                    "texte": True,
                     "graine": 7,
                     "feuilles": [],
                     "colonnes_intactes": [],
@@ -2718,7 +2718,7 @@ class TestReponseParIndex(unittest.TestCase):
             dict(
                 {
                     "nombres": True,
-                    "textes": True,
+                    "texte": True,
                     "graine": 7,
                     "feuilles": [],
                     "destination": os.path.join(self.base, "o.csv"),
@@ -2808,7 +2808,7 @@ class TestColonnesEnClair(unittest.TestCase):
             dict(
                 {
                     "nombres": True,
-                    "textes": True,
+                    "texte": True,
                     "graine": 7,
                     "feuilles": [],
                     "colonnes_intactes": [],
@@ -2968,7 +2968,7 @@ class TestPorteeDeLOperateur(unittest.TestCase):
             dict(
                 {
                     "nombres": True,
-                    "textes": True,
+                    "texte": True,
                     "graine": 7,
                     "feuilles": [],
                     "colonnes_intactes": [],
@@ -3160,7 +3160,7 @@ class TestMemoireDesEntetes(unittest.TestCase):
             flux.write("ZK204819,503,102.5\n")
         return chemin
 
-    OPTIONS = {"nombres": True, "textes": True, "graine": 7, "feuilles": []}
+    OPTIONS = {"nombres": True, "texte": True, "graine": 7, "feuilles": []}
 
     def _ecrire(self, nom, **options):
         formats.ecrire(

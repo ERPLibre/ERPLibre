@@ -74,6 +74,15 @@ COLONNES_SONDEES = (
 MARQUE_EN_PORTEE = "[ ]"
 MARQUE_INTACTE = "[x]"
 MARQUE_PLANCHER = "[!]"
+MARQUE_CORRIGEE = "*"
+MARQUE_DU_LOT = "="
+
+# La légende, ici et nulle part ailleurs. Elle était écrite dans
+# `compose` et RECOPIÉE dans son test, qui éprouvait donc sa propre copie :
+# une marque ajoutée sans être expliquée passait au vert.
+TEXTE_LEGENDE = (
+    "[x] untouched · [!] floored · * corrected · = from the batch table"
+)
 
 
 def contexte_depuis_rapport(rapport, memoire=None):
@@ -302,14 +311,7 @@ def run_transform_form(ctx, run_app: bool = True):
                 with Vertical():
                     yield DataTable(id="colonnes")
                     yield DataTable(id="sondees")
-            yield Static(
-                "  %s"
-                % t(
-                    "[x] untouched · [!] floored · * corrected · = from"
-                    " the batch table"
-                ),
-                id="legende",
-            )
+            yield Static("  %s" % t(TEXTE_LEGENDE), id="legende")
             yield Footer()
 
         def on_mount(self) -> None:
@@ -357,10 +359,10 @@ def run_transform_form(ctx, run_app: bool = True):
             empan = sorted(entetes.get(feuille["nom"], set()))
             rang = str(max(empan)) if empan else "-"
             if feuille["nom"] in corrigees:
-                marque = " *"
+                marque = " " + MARQUE_CORRIGEE
             elif feuille.get("entete_memorisee"):
                 # Hérité d'un fichier du même lot : montré, non subi.
-                marque = " ="
+                marque = " " + MARQUE_DU_LOT
             else:
                 marque = ""
             return " %-20s %s%s" % (feuille["nom"][:20], rang, marque)

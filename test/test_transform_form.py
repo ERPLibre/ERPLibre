@@ -232,17 +232,44 @@ class TestMemoireALEcran(unittest.TestCase):
         self.assertEqual(app._entetes["Achats"], {1, 2})
         self.assertEqual(app._entetes["Ventes"], {1})
 
-    def test_la_legende_nomme_les_quatre_marques(self):
-        """Un marqueur qu'il faut deviner n'est pas offert."""
+
+class TestLegende(unittest.TestCase):
+    """La légende explique CHAQUE marque que l'écran peut poser.
+
+    Le test lisait sa propre copie du littéral : une marque ajoutée sans
+    être expliquée passait au vert. Il lit désormais la même constante que
+    `compose`, et n'ouvre aucun widget — donc rien à ignorer si textual
+    manque.
+    """
+
+    MARQUES = (
+        "MARQUE_INTACTE",
+        "MARQUE_PLANCHER",
+        "MARQUE_CORRIGEE",
+        "MARQUE_DU_LOT",
+    )
+
+    def test_chaque_marque_figure_dans_la_legende(self):
         from script.todo.todo_i18n import t as traduire
 
-        legende = traduire(
-            "[x] untouched · [!] floored · * corrected · = from"
-            " the batch table"
+        legende = traduire(transform_form.TEXTE_LEGENDE)
+        for nom in self.MARQUES:
+            with self.subTest(marque=nom):
+                self.assertIn(getattr(transform_form, nom), legende)
+
+    def test_la_marque_EN_PORTEE_n_a_pas_a_y_figurer(self):
+        """C'est la case vide, le défaut : rien à expliquer."""
+        from script.todo.todo_i18n import t as traduire
+
+        self.assertNotIn(
+            transform_form.MARQUE_EN_PORTEE,
+            traduire(transform_form.TEXTE_LEGENDE),
         )
-        for marque in ("[x]", "[!]", "*", "="):
-            with self.subTest(marque=marque):
-                self.assertIn(marque, legende)
+
+    def test_la_legende_est_traduite(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        self.assertIn(transform_form.TEXTE_LEGENDE, TRANSLATIONS)
 
 
 class TestLibelles(unittest.TestCase):
@@ -432,6 +459,40 @@ class TestPilotage(unittest.TestCase):
 
         asyncio.run(tourner())
         return app
+
+    def test_une_ligne_a_UNE_cellule_par_EN_TETE_monte(self):
+        """Une cellule manquante ne lève pas : `DataTable` complète la
+        ligne, et les valeurs glissent d'une colonne — les exemples
+        s'affichaient sous « distinctes » sans que rien ne le dise.
+
+        Le nombre est pris sur les en-têtes RÉELLEMENT montés, non sur un
+        littéral : un « 7 » en dur dériverait au prochain ajout.
+        """
+        vu = {}
+
+        async def scenario(app, pilote):
+            for selecteur in ("#colonnes", "#sondees"):
+                vu[selecteur] = len(app.query_one(selecteur).columns)
+
+        self._piloter(scenario)
+        contexte = transform_form.contexte_depuis_rapport(rapport())
+        feuille = contexte["feuilles"][0]
+        for colonne in feuille["colonnes"]:
+            with self.subTest(colonne=colonne["index"]):
+                self.assertEqual(
+                    len(
+                        transform_form.libelle_de_colonne(
+                            colonne, transform_form.MARQUE_EN_PORTEE
+                        )
+                    ),
+                    vu["#colonnes"],
+                )
+        for ligne in feuille["lignes_sondees"]:
+            with self.subTest(ligne=ligne["numero"]):
+                self.assertEqual(
+                    len(transform_form.libelle_de_ligne_sondee(ligne, False)),
+                    vu["#sondees"],
+                )
 
     def test_les_deux_tableaux_tiennent_sur_vingt_lignes(self):
         """Une hauteur fixe donnait ZÉRO ligne au tableau des colonnes.
