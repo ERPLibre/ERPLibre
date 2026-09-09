@@ -35,9 +35,33 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
-# Ce que la ligne d'une colonne montre. Les largeurs sont en dur et la
-# colonne des exemples vient EN DERNIER, pour absorber ce qui reste.
-LARGEURS = ((6, 4), (4, 4), (22, 22), (9, 9), (8, 8), (9, 9))
+# Les colonnes des deux tableaux : clé i18n et largeur. Les en-têtes de
+# `SIGNES` ne passent pas par la traduction — ce sont des signes, non des
+# mots, et les faire passer par `t()` les inscrit dans tout audit de clé
+# manquante.
+#
+# `None` laisse la colonne s'ajuster à son contenu, et ne va qu'en
+# DERNIÈRE place : ce qui dépasse le volet y sort par la droite sans rien
+# masquer. Une colonne libre au MILIEU pousse hors de l'écran celles qui
+# la suivent — trois exemples de quarante caractères font cent vingt-six
+# colonnes, et les mesures, qui sont la raison de montrer ces lignes,
+# disparaissaient derrière elles.
+SIGNES = ("", "#")
+COLONNES_DU_PERIMETRE = (
+    ("", 3),
+    ("#", 4),
+    ("column label", 22),
+    ("column type", 9),
+    ("filled", 8),
+    ("distinct", 9),
+    ("examples", None),
+)
+COLONNES_SONDEES = (
+    ("", 3),
+    ("row no", 6),
+    ("first values", 28),
+    ("measures", None),
+)
 
 # Le marqueur d'une colonne, à l'écran. Un caractère chacun : un glyphe
 # double-largeur décalerait la colonne suivante.
@@ -229,8 +253,8 @@ def run_transform_form(ctx, run_app: bool = True):
         CSS = """
         #tete { height: auto; padding: 0 1; color: $text-muted; }
         #feuilles { width: 30; border: solid $panel; }
-        #colonnes { height: 1fr; border: solid $accent; }
-        #sondees { height: 14; border: solid $panel; }
+        #colonnes { height: 3fr; min-height: 4; border: solid $accent; }
+        #sondees { height: 2fr; min-height: 4; border: solid $panel; }
         #legende { height: auto; color: $text-muted; padding: 0 1; }
         """
         BINDINGS = [
@@ -284,27 +308,25 @@ def run_transform_form(ctx, run_app: bool = True):
                 )
             colonnes = self.query_one("#colonnes", DataTable)
             colonnes.cursor_type = "row"
-            colonnes.add_columns(
-                "",
-                "#",
-                t("column label"),
-                t("column type"),
-                t("filled"),
-                t("distinct"),
-                t("examples"),
-            )
+            self._poser_colonnes(colonnes, COLONNES_DU_PERIMETRE)
             sondees = self.query_one("#sondees", DataTable)
             sondees.cursor_type = "row"
-            sondees.add_columns(
-                "",
-                t("row no"),
-                t("first values"),
-                t("measures"),
-            )
+            self._poser_colonnes(sondees, COLONNES_SONDEES)
             self._pret = True
             if ctx["feuilles"]:
                 liste.highlighted = 0
             self._remplir()
+
+        @staticmethod
+        def _poser_colonnes(tableau, colonnes):
+            """Les colonnes d'un tableau, avec leur largeur.
+
+            `add_columns` ne prend pas de largeur : chaque colonne se pose
+            donc une par une.
+            """
+            for cle, largeur in colonnes:
+                libelle = cle if cle in SIGNES else t(cle)
+                tableau.add_column(libelle, width=largeur)
 
         # -- rendu ------------------------------------------------------ #
         def _feuille(self):

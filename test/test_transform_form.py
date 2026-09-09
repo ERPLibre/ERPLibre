@@ -413,18 +413,51 @@ class TestPilotage(unittest.TestCase):
     Tout le reste passerait sur un écran qui ne s'affiche pas.
     """
 
-    def _piloter(self, scenario):
+    def _piloter(self, scenario, taille=None):
         app = transform_form.run_transform_form(
             transform_form.contexte_depuis_rapport(rapport()), run_app=False
         )
 
         async def tourner():
-            async with app.run_test() as pilote:
+            async with app.run_test(size=taille) as pilote:
                 await pilote.pause()
                 await scenario(app, pilote)
 
         asyncio.run(tourner())
         return app
+
+    def test_les_deux_tableaux_tiennent_sur_vingt_lignes(self):
+        """Une hauteur fixe donnait ZÉRO ligne au tableau des colonnes.
+
+        C'est là que se décide « laisser cette colonne intacte » : le
+        tableau était présent, focalisable, et invisible. Les deux se
+        partagent donc la hauteur au lieu d'en réserver une.
+        """
+        vu = {}
+
+        async def scenario(app, pilote):
+            for selecteur in ("#colonnes", "#sondees"):
+                vu[selecteur] = app.query_one(selecteur).size.height
+
+        self._piloter(scenario, taille=(80, 20))
+        self.assertGreaterEqual(vu["#colonnes"], 4)
+        self.assertGreaterEqual(vu["#sondees"], 4)
+
+    def test_la_colonne_des_mesures_n_est_pas_poussee_hors_de_l_ecran(self):
+        """Trois exemples de quarante caractères font cent vingt-six
+        colonnes : la colonne libre ne va qu'en dernière place, sans quoi
+        elle chasse les mesures, qui sont la raison de montrer ces
+        lignes."""
+        vu = {}
+
+        async def scenario(app, pilote):
+            table = app.query_one("#sondees")
+            vu["largeurs"] = [c.width for c in table.columns.values()]
+
+        self._piloter(scenario, taille=(80, 20))
+        *avant_la_derniere, derniere = vu["largeurs"]
+        self.assertTrue(all(l for l in avant_la_derniere))
+        self.assertLessEqual(sum(avant_la_derniere), 40)
 
     def test_les_deux_tableaux_se_remplissent(self):
         vu = {}
