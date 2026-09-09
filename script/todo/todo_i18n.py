@@ -13397,6 +13397,10 @@ TRANSLATIONS = {
         "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
         "en": "Element and attribute names are kept as structure; they may identify.",
     },
+    "column(s) entirely in clear": {
+        "fr": "colonne(s) entièrement en clair",
+        "en": "column(s) entirely in clear",
+    },
     "column(s) without examples": {
         "fr": "colonne(s) sans exemple",
         "en": "column(s) without examples",

@@ -2220,17 +2220,35 @@ def _parcourir(
         "apercu": [],
         "entete_gardee": [],
         "entete_gardee_omises": {},
+        "colonnes_en_clair": [],
     }
     # Par feuille : TOUTES les cellules d'empan gardées, listées ou non.
     # Le recompte par balayage de la liste était quadratique, et ne
     # pouvait de toute façon pas compter au-delà du plafond.
     gardees_par_feuille = collections.Counter()
+    # Par colonne : ce qu'elle porte, et ce qui y a été remplacé. Une
+    # colonne qui porte quelque chose et dont RIEN n'a été remplacé part
+    # entière en clair, et le critère vaut quelle que soit la raison —
+    # plancher, réponse, famille qui traverse par règle, ou aucune règle
+    # qui l'atteigne. Les compter par famille sur tout le fichier ne
+    # nommait pas la colonne : sur quarante colonnes, « 7 date(s)
+    # laissées » ne dit pas laquelle sort.
+    contenu = collections.Counter()
+    remplacees = collections.Counter()
     for feuille in feuilles:
         for numero, ligne in enumerate(feuille.lignes, start=1):
             for index, valeur in enumerate(ligne, start=1):
                 famille = classer(valeur)
                 if famille == "vide":
                     continue
+                # Une ligne d'en-tête n'est pas du contenu de colonne :
+                # la garder en clair est la RÈGLE, et la compter ici
+                # ferait dire d'une colonne entièrement remplacée qu'elle
+                # sort en clair.
+                if (feuille.nom, numero) not in (
+                    options.get("lignes_entete") or ()
+                ):
+                    contenu[(feuille.nom, index)] += 1
                 if not cellule_en_portee(feuille.nom, numero, index, options):
                     bilan["hors_portee"] += 1
                     if gardees_out is not None:
@@ -2291,6 +2309,7 @@ def _parcourir(
                     if gardees_out is not None:
                         _noter_gardee(gardees_out, feuille.nom, valeur)
                     continue
+                remplacees[(feuille.nom, index)] += 1
                 for fam, feuilles_reecrites in compte.items():
                     bilan["remplacees"] += feuilles_reecrites
                     if fam in ("texte", "nombre"):
@@ -2311,7 +2330,40 @@ def _parcourir(
         for nom, compte in gardees_par_feuille.items()
         if compte > PLAFOND_GARDEES_LISTEES
     }
+    bilan["colonnes_en_clair"] = [
+        {
+            "feuille": nom,
+            "index": index,
+            "etiquette": options["etiquettes"].get((nom, index)) or "",
+            "cellules": porte,
+        }
+        for (nom, index), porte in sorted(contenu.items())
+        if porte and not remplacees[(nom, index)]
+    ]
     return bilan
+
+
+def _nommer_les_colonnes_ecartees(bilan, rapport, options):
+    """Les deux listes de colonnes, posées ensemble sur le bilan.
+
+    `colonnes_ecartees` dit celles qu'une RÈGLE explique — le plancher, ou
+    une réponse de l'opérateur. `colonnes_en_clair` garde alors les
+    autres : celles qui sortent entières sans que rien de ce qui a été
+    demandé ne le dise. Les laisser dans les deux listes les faisait
+    annoncer deux fois, et une ligne redondante apprend à ne plus lire les
+    autres.
+    """
+    bilan["colonnes_ecartees"] = _colonnes_ecartees(rapport, options)
+    expliquees = {
+        (c["feuille"], c["index"])
+        for c in bilan["colonnes_ecartees"]
+        if c.get("index")
+    }
+    bilan["colonnes_en_clair"] = [
+        c
+        for c in bilan.get("colonnes_en_clair") or []
+        if (c["feuille"], c["index"]) not in expliquees
+    ]
 
 
 def _colonnes_ecartees(rapport, options):
@@ -2322,6 +2374,11 @@ def _colonnes_ecartees(rapport, options):
                 ecartees.append(
                     {
                         "feuille": feuille["nom"],
+                        # L'INDEX autant que l'étiquette : c'est par lui
+                        # qu'une colonne se recoupe avec celles qui
+                        # sortent entières en clair, et sans lui aucune
+                        # n'était reconnue comme déjà expliquée.
+                        "index": colonne["index"],
                         "etiquette": colonne["etiquette"],
                         "raison": "plancher",
                     }
@@ -2339,6 +2396,7 @@ def _colonnes_ecartees(rapport, options):
                 ecartees.append(
                     {
                         "feuille": feuille["nom"],
+                        "index": colonne["index"],
                         "etiquette": (
                             colonne.get("etiquette") or f"#{colonne['index']}"
                         ),
@@ -2367,7 +2425,7 @@ def plan(chemin, options):
     )
     fichiers = _fichiers_prevus(chemin, feuilles, options, table)
     bilan = _parcourir(feuilles, options, table, rng)
-    bilan["colonnes_ecartees"] = _colonnes_ecartees(rapport, options)
+    _nommer_les_colonnes_ecartees(bilan, rapport, options)
     bilan["format"] = format_lu
     bilan["fichiers"] = fichiers
     # La marche à blanc est ce sur quoi l'opérateur consent : elle doit
@@ -2884,7 +2942,7 @@ def ecrire(chemin, destination, options):
 
     bilan["fichiers"] = fichiers
     bilan["hors_cellules"] = hors_cellules
-    bilan["colonnes_ecartees"] = _colonnes_ecartees(rapport, options)
+    _nommer_les_colonnes_ecartees(bilan, rapport, options)
     bilan["avertissements"] = _avertissements(rapport, options)
     bilan["table"] = chemin_table or ""
     bilan["valeurs_non_verifiees"] = non_vues

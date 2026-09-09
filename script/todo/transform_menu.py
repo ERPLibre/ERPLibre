@@ -562,6 +562,23 @@ class TransformMenuMixin:
                 if compte
             )
             print(f"   ⚠ {t('Left intact')} : {detail}")
+        # Le compte par famille dit POURQUOI, non OÙ : sur quarante
+        # colonnes, « 7 date(s) laissées » ne dit pas laquelle sort. Le
+        # critère est le même quelle que soit la raison — une colonne qui
+        # porte quelque chose et dont rien n'a été remplacé part entière.
+        # Celles qu'une réponse ou le plancher expliquent sont déjà
+        # nommées au-dessus, et n'y reviennent pas.
+        en_clair = apercu.get("colonnes_en_clair") or []
+        if en_clair:
+            noms = ", ".join(
+                "%s/%s"
+                % (
+                    colonne["feuille"],
+                    colonne["etiquette"] or "#%s" % colonne["index"],
+                )
+                for colonne in en_clair
+            )
+            print(f"   ⚠ {t('column(s) entirely in clear')} : {noms}")
         gardee = apercu.get("entete_gardee") or []
         if gardee:
             # L'empan est MESURÉ, et il porte plusieurs lignes sur un

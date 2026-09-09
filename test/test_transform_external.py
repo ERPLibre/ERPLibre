@@ -484,6 +484,38 @@ class TestMenuApercu(unittest.TestCase):
         self.assertIn("L1C1", rendu)
         self.assertIn("aboulie", rendu)
 
+    def test_une_colonne_entierement_en_clair_est_NOMMEE(self):
+        """Le compte par famille dit POURQUOI, non OÙ.
+
+        Sur quarante colonnes, « 7 date(s) laissées » ne dit pas laquelle
+        sort, et c'est la colonne qui se transmet, non la famille.
+        """
+        self._repondre("")
+        self.menu._transform_preview(
+            {
+                "remplacees": 1,
+                "colonnes_en_clair": [
+                    {
+                        "feuille": "Ventes",
+                        "index": 2,
+                        "etiquette": "actif",
+                        "cellules": 3,
+                    },
+                    {
+                        "feuille": "Ventes",
+                        "index": 5,
+                        "etiquette": "",
+                        "cellules": 3,
+                    },
+                ],
+            }
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn(todo_i18n.t("column(s) entirely in clear"), rendu)
+        self.assertIn("Ventes/actif", rendu)
+        # Sans étiquette, l'index : sinon la colonne n'est pas désignable.
+        self.assertIn("Ventes/#5", rendu)
+
     def test_ce_que_le_plafond_n_a_pas_liste_est_DIT(self):
         """Sinon l'opérateur consent sur un extrait pris pour le tout."""
         self._repondre("")
@@ -2456,6 +2488,72 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self._bouchonner(tombe)
         self.assertEqual(self.menu._transform_ecran(self.RAPPORT), {})
         self.assertIn("pas de terminal", self.ecran.getvalue())
+
+
+class TestColonnesEnClair(unittest.TestCase):
+    """Une colonne qui sort ENTIÈRE en clair est nommée.
+
+    Le critère est unique et ne dépend d'aucune raison : elle porte
+    quelque chose, et rien n'y a été remplacé. Compter par famille sur
+    tout le fichier disait POURQUOI sans dire OÙ, et c'est la colonne qui
+    se transmet, non la famille.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _plan(self, contenu, **options):
+        source = os.path.join(self.base, "s.json")
+        with open(source, "w", encoding="utf-8") as flux:
+            json.dump(contenu, flux)
+        return formats.plan(
+            source,
+            dict(
+                {
+                    "nombres": True,
+                    "textes": True,
+                    "graine": 7,
+                    "feuilles": [],
+                    "colonnes_intactes": [],
+                    "destination": os.path.join(self.base, "o.json"),
+                },
+                **options,
+            ),
+        )
+
+    ENREGISTREMENTS = [
+        {"etiquette": mot, "actif": True, "montant": 1200 + rang}
+        for rang, mot in enumerate(("aboulie", "acai", "adobe"))
+    ]
+
+    def test_une_colonne_de_booleens_est_nommee(self):
+        """Les booléens traversent par RÈGLE : rien ne les remplace."""
+        apercu = self._plan(self.ENREGISTREMENTS)
+        self.assertEqual(
+            [
+                (c["etiquette"], c["cellules"])
+                for c in apercu["colonnes_en_clair"]
+            ],
+            [("actif", 3)],
+        )
+
+    def test_une_colonne_remplacee_n_y_figure_pas(self):
+        apercu = self._plan(self.ENREGISTREMENTS)
+        nommees = {c["etiquette"] for c in apercu["colonnes_en_clair"]}
+        self.assertNotIn("etiquette", nommees)
+        self.assertNotIn("montant", nommees)
+
+    def test_une_colonne_qu_une_REPONSE_explique_n_y_revient_pas(self):
+        """Elle est déjà nommée par les colonnes écartées : la redire
+        apprend à ne plus lire la ligne."""
+        apercu = self._plan(
+            self.ENREGISTREMENTS, colonnes_intactes={"montant"}
+        )
+        ecartees = {c["etiquette"] for c in apercu["colonnes_ecartees"]}
+        nommees = {c["etiquette"] for c in apercu["colonnes_en_clair"]}
+        self.assertIn("montant", ecartees)
+        self.assertNotIn("montant", nommees)
 
 
 class TestExemplesManquants(unittest.TestCase):
