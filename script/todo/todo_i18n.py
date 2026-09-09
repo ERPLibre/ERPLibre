@@ -12411,6 +12411,58 @@ TRANSLATIONS = {
         "en": "A dry run touches no secret",
     },
     # Lima (script/todo/lima_menu.py)
+    "ERPLibre": {
+        "fr": "ERPLibre",
+        "en": "ERPLibre",
+    },
+    "Lima - Install ERPLibre in an instance": {
+        "fr": "Lima - Installer ERPLibre dans une instance",
+        "en": "Lima - Install ERPLibre in an instance",
+    },
+    "ERPLibre branch: ": {
+        "fr": "Branche ERPLibre : ",
+        "en": "ERPLibre branch: ",
+    },
+    "Production layout (/opt/erplibre, systemd)? (o/N): ": {
+        "fr": "Disposition de production (/opt/erplibre, systemd) ? (o/N) : ",
+        "en": "Production layout (/opt/erplibre, systemd)? (o/N): ",
+    },
+    "Start the install? (o/N): ": {
+        "fr": "Lancer l'installation ? (o/N) : ",
+        "en": "Start the install? (o/N): ",
+    },
+    "Instance:": {
+        "fr": "Instance :",
+        "en": "Instance:",
+    },
+    "Branch:": {
+        "fr": "Branche :",
+        "en": "Branch:",
+    },
+    "Install directory:": {
+        "fr": "Répertoire d'installation :",
+        "en": "Install directory:",
+    },
+    "Remote script:": {
+        "fr": "Script distant :",
+        "en": "Remote script:",
+    },
+    "characters": {
+        "fr": "caractères",
+        "en": "characters",
+    },
+    "Enters by:": {
+        "fr": "Entre par :",
+        "en": "Enters by:",
+    },
+    "Install started. Manifest:": {
+        "fr": "Installation lancée. Manifeste :",
+        "en": "Install started. Manifest:",
+    },
+    "Follow it from": {
+        "fr": "La suivre depuis",
+        "en": "Follow it from",
+    },
     "Lima - instances (macOS, Linux)": {
         "fr": "Lima - instances (macOS, Linux)",
         "en": "Lima - instances (macOS, Linux)",

@@ -31,6 +31,7 @@ from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from script.todo import lima_menu, todo_i18n  # noqa: E402
 from script.todo.lima_menu import (  # noqa: E402
@@ -428,38 +429,14 @@ class TestLaFrontiereAvecLeModuleLima(CasDeMenu):
 
     @staticmethod
     def _litteraux_de_code(source):
-        """Les chaînes du CODE qui nomment l'outil, docstrings exclues."""
-        import ast
+        """Les chaînes du CODE qui nomment l'outil, docstrings
+        exclues. La mécanique vit dans `test/code_literals.py` : ce
+        contrôle a été recopié trois fois, et la troisième copie
+        levait un TypeError sur une expression conditionnelle.
+        """
+        from code_literals import literals_matching
 
-        arbre = ast.parse(source)
-        docs = set()
-        for noeud in ast.walk(arbre):
-            if not isinstance(
-                noeud,
-                (
-                    ast.Module,
-                    ast.FunctionDef,
-                    ast.AsyncFunctionDef,
-                    ast.ClassDef,
-                ),
-            ):
-                continue
-            corps = getattr(noeud, "body", None) or []
-            if (
-                corps
-                and isinstance(corps[0], ast.Expr)
-                and isinstance(corps[0].value, ast.Constant)
-                and isinstance(corps[0].value.value, str)
-            ):
-                docs.add(id(corps[0].value))
-        return [
-            noeud.value
-            for noeud in ast.walk(arbre)
-            if isinstance(noeud, ast.Constant)
-            and isinstance(noeud.value, str)
-            and id(noeud) not in docs
-            and "limactl" in noeud.value
-        ]
+        return literals_matching(source, "limactl")
 
     def test_the_menu_writes_no_tool_argument_of_its_own(self):
         """Une copie ici diverge de la confrontation de `long_test/`, et
@@ -493,6 +470,218 @@ class TestLaFrontiereAvecLeModuleLima(CasDeMenu):
             encoding="utf-8",
         ) as fichier:
             self.assertIn('"method": "prompt_execute_lima"', fichier.read())
+
+
+class TestInstallerErplibreDansUneInstance(CasDeMenu):
+    """LE MÊME LANCEUR QUE LES AUTRES BACKENDS, et la clé qui manquait.
+
+    `handle_of` lit la clé « lima » depuis toujours pour bâtir une fiche
+    d'instance, et rien sous `script/` ne l'écrivait : le backend était
+    complet, éprouvé, et inatteignable. Cette entrée l'écrit.
+
+    Rien n'est lancé : `launch_installs` est intercepté, et ce qui est
+    éprouvé est ce qu'il AURAIT reçu.
+    """
+
+    VIVE = L.Instance("vive", "Running", "arm64", "60022")
+
+    def lancer(self, menu, reponses, instances=None):
+        appels = []
+        with patch.object(
+            menu, "_lima_select", return_value="vive"
+        ), patch.object(
+            lima_menu,
+            "launch_installs",
+            side_effect=lambda *a, **k: appels.append((a, k))
+            or "/tmp/manifeste-de-banc.json",
+        ), patch(
+            "builtins.input", side_effect=list(reponses)
+        ):
+            texte = sortie(menu._lima_install_erplibre)
+        return texte, appels
+
+    def menu(self):
+        menu = MenuDeBanc(instances=(self.VIVE,))
+        menu._qemu_repo_branch = lambda: "ma-branche"
+        menu._qemu_install_dir = staticmethod(
+            lambda prod: "/opt/erplibre" if prod else "$HOME/git/erplibre"
+        )
+        menu._qemu_erplibre_remote_cmd = (
+            lambda branche, prod=False, **k: f"set -e; clone {branche} {prod}"
+        )
+        return menu
+
+    def test_it_writes_the_key_that_names_the_backend(self):
+        """SANS ELLE, `handle_of` rebâtirait une fiche libvirt et
+        l'installation partirait vers un domaine local homonyme."""
+        _texte, appels = self.lancer(self.menu(), ["", "n", "o"])
+        self.assertEqual(1, len(appels))
+        vms = appels[0][0][0]
+        self.assertEqual([{"name": "vive", "ip": "vive", "lima": True}], vms)
+
+    def test_the_handle_built_from_it_is_an_instance(self):
+        """Le contrôle qui compte : c'est `handle_of` qui relira ce
+        dictionnaire, et lui seul décide du backend."""
+        from script.vm.backend import LIMA, handle_of
+
+        _texte, appels = self.lancer(self.menu(), ["", "n", "o"])
+        fiche = handle_of(appels[0][0][0][0])
+        self.assertEqual(LIMA, fiche.backend)
+        self.assertEqual("vive", fiche.key)
+
+    def test_the_branch_defaults_to_the_current_one(self):
+        """On déploie le plus souvent ce qu'on a sous les yeux."""
+        _texte, appels = self.lancer(self.menu(), ["", "n", "o"])
+        self.assertEqual("ma-branche", appels[0][0][1])
+
+    def test_a_typed_branch_wins(self):
+        """Contrôle positif : un défaut qui gagne toujours retirerait le
+        choix."""
+        _texte, appels = self.lancer(self.menu(), ["autre", "n", "o"])
+        self.assertEqual("autre", appels[0][0][1])
+
+    def test_an_empty_branch_and_no_current_one_cancels(self):
+        """Cloner une branche vide échouerait dans l'invité, loin d'ici."""
+        menu = self.menu()
+        menu._qemu_repo_branch = lambda: ""
+        _texte, appels = self.lancer(menu, ["", "n", "o"])
+        self.assertEqual([], appels)
+
+    def test_refusing_launches_nothing(self):
+        _texte, appels = self.lancer(self.menu(), ["", "n", "n"])
+        self.assertEqual([], appels)
+
+    def test_the_production_layout_travels(self):
+        _texte, appels = self.lancer(self.menu(), ["", "o", "o"])
+        self.assertIn("True", appels[0][0][2])
+        _texte, appels = self.lancer(self.menu(), ["", "n", "o"])
+        self.assertIn("False", appels[0][0][2])
+
+    def test_it_says_how_one_enters_the_instance(self):
+        """La ligne se recopie : « ssh compte@vive » échouerait chez qui la
+        recopie, et le message de ssh ne dirait pas pourquoi."""
+        texte, _appels = self.lancer(self.menu(), ["", "n", "n"])
+        self.assertIn("limactl shell vive", texte)
+        self.assertNotIn("ssh ", texte)
+
+    def test_it_does_not_dump_the_whole_remote_script(self):
+        """Elle fait plusieurs milliers de caractères : la déverser
+        noierait les trois lignes qui décident."""
+        texte, _appels = self.lancer(self.menu(), ["", "n", "n"])
+        self.assertNotIn("set -e; clone", texte)
+        self.assertIn("characters", texte)
+
+    def test_it_names_where_the_install_lands(self):
+        texte, _appels = self.lancer(self.menu(), ["", "n", "n"])
+        self.assertIn("$HOME/git/erplibre", texte)
+
+    def test_it_only_offers_a_running_instance(self):
+        """Installer dans une instance éteinte ferait échouer le canal
+        d'exec, et le refus de l'outil ne dirait pas que le choix était le
+        mauvais."""
+        menu = self.menu()
+        vus = []
+        with patch.object(
+            menu, "_lima_select", side_effect=lambda **k: vus.append(k) or ""
+        ):
+            sortie(menu._lima_install_erplibre)
+        self.assertEqual([{"running": True}], vus)
+
+    def test_it_asks_for_neither_desktop_nor_graphical_tools(self):
+        """La configuration d'instance n'expose AUCUN affichage — c'est
+        écrit dans `render_config` — donc un bureau ne serait vu par
+        personne."""
+        vus = {}
+        menu = self.menu()
+        menu._qemu_erplibre_remote_cmd = (
+            lambda branche, **k: vus.update(k) or "set -e; clone"
+        )
+        self.lancer(menu, ["", "n", "o"])
+        self.assertNotIn("desktop", vus)
+        self.assertNotIn("tools", vus)
+
+    def test_the_manifest_path_is_shown(self):
+        """C'est par lui que le tableau de bord rouvre le suivi."""
+        texte, _appels = self.lancer(self.menu(), ["", "n", "o"])
+        self.assertIn("/tmp/manifeste-de-banc.json", texte)
+
+
+class TestLesDeuxEntreesQuiNeDifferentQueParUnMot(CasDeMenu):
+    """« Démarrer » et « Arrêter » mènent à la MÊME méthode.
+
+    La table de cohérence de `test_todo_menu.py` compare des noms de
+    méthode : elle ne peut donc pas les distinguer. Or les confondre fait
+    DÉMARRER ce qu'on voulait arrêter — et le filtre d'état propose alors
+    la mauvaise liste, si bien que le menu ne montre même pas l'instance
+    qu'on visait.
+
+    L'épreuve porte sur le COMPORTEMENT et non sur le texte : le menu est
+    piloté, et ce qui compte est l'argument reçu.
+    """
+
+    def piloter(self, *reponses):
+        """Le menu, conduit par ces réponses, puis « 0 » pour sortir."""
+        recus = []
+        menu = MenuDeBanc()
+        menu.fill_help_info = lambda choix: "> "
+        menu._lima_power = lambda action: recus.append(action)
+        with patch.object(
+            lima_menu.click, "prompt", side_effect=list(reponses) + ["0"]
+        ):
+            sortie(menu.prompt_execute_lima)
+        return recus
+
+    def test_the_bench_actually_drives_the_menu(self):
+        """Contrôle du banc : un pilotage muet rendrait une liste vide, et
+        les deux épreuves suivantes passeraient sans rien mesurer."""
+        self.assertEqual(["start"], self.piloter("4"))
+
+    def test_entry_four_starts_and_entry_five_stops(self):
+        self.assertEqual(["start"], self.piloter("4"))
+        self.assertEqual(["stop"], self.piloter("5"))
+
+    def test_they_are_not_the_same_action(self):
+        """L'épreuve qui tombe si un jour les deux rangs se recopient."""
+        self.assertNotEqual(self.piloter("4"), self.piloter("5"))
+
+    def test_every_entry_reaches_its_own_method(self):
+        """Un « elif » décalé ferait lancer le voisin sous le libellé
+        attendu, et la suppression est à un rang de l'ouverture d'un
+        shell."""
+        attendus = {
+            "1": "_lima_tool",
+            "2": "_lima_list",
+            "3": "_lima_create",
+            "6": "_lima_delete",
+            "7": "_lima_shell",
+            "8": "_lima_install_erplibre",
+        }
+        for rang, methode in attendus.items():
+            with self.subTest(rang=rang, methode=methode):
+                vus = []
+                menu = MenuDeBanc()
+                menu.fill_help_info = lambda choix: "> "
+                setattr(menu, methode, lambda: vus.append(methode))
+                with patch.object(
+                    lima_menu.click, "prompt", side_effect=[rang, "0"]
+                ):
+                    sortie(menu.prompt_execute_lima)
+                self.assertEqual([methode], vus)
+
+    def test_an_unknown_entry_runs_nothing(self):
+        menu = MenuDeBanc()
+        menu.fill_help_info = lambda choix: "> "
+        with patch.object(lima_menu.click, "prompt", side_effect=["99", "0"]):
+            texte = sortie(menu.prompt_execute_lima)
+        self.assertIn("not found", texte)
+
+    def test_the_screen_says_the_backend_is_unproven_every_pass(self):
+        """Une note vue au premier passage ne tient pas au dixième."""
+        menu = MenuDeBanc()
+        menu.fill_help_info = lambda choix: "> "
+        with patch.object(lima_menu.click, "prompt", side_effect=["0"]):
+            texte = sortie(menu.prompt_execute_lima)
+        self.assertIn("*", texte)
 
 
 if __name__ == "__main__":

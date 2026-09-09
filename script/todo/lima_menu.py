@@ -26,8 +26,11 @@ import click
 
 from script.lib_valid import NAME_RE, ValidationError
 from script.todo import host_os
+from script.todo.qemu_install_monitor import launch_installs
 from script.todo.todo_i18n import t
+from script.vm import backend as vm_backend
 from script.vm import lima, lima_install
+from script.vm import verbs as vm_verbs
 from script.todo.vm_backend_choice import UNPROVEN_NOTE
 from script.vm.backend import LIMA, is_proven
 
@@ -131,6 +134,12 @@ class LimaMenuMixin:
             {"prompt_description": t("Lima - Stop an instance")},
             {"prompt_description": t("Lima - Delete an instance")},
             {"prompt_description": t("Lima - Open a shell in an instance")},
+            {"section": t("ERPLibre")},
+            {
+                "prompt_description": t(
+                    "Lima - Install ERPLibre in an instance"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -153,6 +162,8 @@ class LimaMenuMixin:
                 self._lima_delete()
             elif status == "7":
                 self._lima_shell()
+            elif status == "8":
+                self._lima_install_erplibre()
             else:
                 print(t("Command not found !"))
 
@@ -394,3 +405,64 @@ class LimaMenuMixin:
         self.execute.exec_command_live(
             lima.display(argv), source_erplibre=False
         )
+
+    # ------------------------------------------------------------------
+    # ERPLibre dans l'instance
+    # ------------------------------------------------------------------
+    def _lima_install_erplibre(self):
+        """Installe ERPLibre dans une instance, par le suivi commun.
+
+        LE MÊME LANCEUR QUE LES AUTRES BACKENDS. `launch_installs` détache
+        une enveloppe par machine, écrit un journal et un manifeste que le
+        tableau de bord relit. Écrire un second lanceur ici aurait donné un
+        suivi qui ne s'ouvre pas dans le même écran, et deux endroits où
+        corriger la même attente de cloud-init.
+
+        LA CLÉ « lima » EST CE QUI MANQUAIT. `handle_of` la lit depuis
+        toujours pour bâtir une fiche d'instance, et rien sous `script/` ne
+        l'écrivait : le backend était complet, éprouvé, et inatteignable.
+
+        NI BUREAU NI OUTILS GRAPHIQUES. La configuration d'instance
+        n'expose aucun affichage — c'est un choix, écrit dans
+        `render_config` — donc les proposer installerait un bureau que
+        personne ne verrait.
+        """
+        nom = self._lima_select(running=True)
+        if not nom:
+            return
+        branche = self._lima_ask_branch()
+        if not branche:
+            return
+        prod = self._is_yes(
+            input(
+                f"{t('Production layout (/opt/erplibre, systemd)? (o/N): ')}"
+            )
+        )
+        remote = self._qemu_erplibre_remote_cmd(branche, prod=prod)
+
+        print(f"  {t('Instance:')} {nom}")
+        print(f"  {t('Branch:')} {branche}")
+        print(f"  {t('Install directory:')} {self._qemu_install_dir(prod)}")
+        # La commande fait plusieurs milliers de caractères : la déverser
+        # noierait les trois lignes qui décident. Le journal la portera.
+        print(f"  {t('Remote script:')} {len(remote)} {t('characters')}")
+        entree = vm_verbs.connect_command(vm_backend.lima_handle(nom))
+        print(f"  {t('Enters by:')} {entree}")
+        if not self._is_yes(input(f"\n{t('Start the install? (o/N): ')}")):
+            return
+
+        vms = [{"name": nom, "ip": nom, "lima": True}]
+        chemin = launch_installs(vms, branche, remote)
+        print(f"  ✓ {t('Install started. Manifest:')} {chemin}")
+        print(f"  {t('Follow it from')} TODO › Execute › QEMU/KVM")
+
+    def _lima_ask_branch(self):
+        """La branche à installer, "" si l'utilisateur renonce.
+
+        Le défaut est la branche du dépôt COURANT : on déploie le plus
+        souvent ce qu'on a sous les yeux. Le mixin qui la relit vit dans le
+        menu qemu — la relire ici en ferait une seconde vérité.
+        """
+        defaut = self._qemu_repo_branch()
+        reponse = input(f"{t('ERPLibre branch: ')}[{defaut}] ").strip()
+        return reponse or defaut

@@ -639,6 +639,32 @@ class TestVpnMenuNumbering(MenuCoherence, unittest.TestCase):
     }
 
 
+class TestLimaMenuNumbering(MenuCoherence, unittest.TestCase):
+    """Le menu Lima : huit entrées en trois sections, aucun garde.
+
+    Sa sixième DÉTRUIT une instance et son disque ; sa huitième lance une
+    installation détachée qui dure une demi-heure. Trois sections font
+    qu'aucun rang ne se lit à l'œil sur la liste, et un « elif » oublié
+    ferait lancer l'entrée voisine sous le libellé attendu.
+    """
+
+    SOURCE = TODO_DIR / "lima_menu.py"
+    ENTRY = "def prompt_execute_lima(self):"
+    END = "def _lima_tool(self):"
+    MINIMUM = 5
+
+    EXPECTED = {
+        "Lima - How this host gets the tool": "_lima_tool",
+        "Lima - List the instances": "_lima_list",
+        "Lima - Create and start an instance": "_lima_create",
+        "Lima - Start an instance": "_lima_power",
+        "Lima - Stop an instance": "_lima_power",
+        "Lima - Delete an instance": "_lima_delete",
+        "Lima - Open a shell in an instance": "_lima_shell",
+        "Lima - Install ERPLibre in an instance": "_lima_install_erplibre",
+    }
+
+
 class TestQemuNetworkSection(unittest.TestCase):
     """La section « VM network » du menu QEMU/KVM est un point de greffe.
 
