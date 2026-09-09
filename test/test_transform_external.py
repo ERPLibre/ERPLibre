@@ -1235,6 +1235,103 @@ class TestAvertissementDesNomsDeFeuille(unittest.TestCase):
         self.assertNotIn(avis, convertit)
 
 
+class _NavigateurBouchon:
+    """Le navigateur de fichiers, réduit à son CONTRAT.
+
+    Il appelle le rappel avec un chemin, puis sort de sa boucle — ce que
+    le vrai fait aussi, `exit_program()` suivant l'appel dans son code.
+    Le bouchonner à `None` sautait la branche entière, et c'est ainsi
+    qu'un rappel introuvable a atteint le premier usage de l'entrée.
+    """
+
+    def __init__(self, rendu):
+        self.rendu = rendu
+        self.appele_avec = None
+
+    def FileBrowser(self, depart, rappel, open_dir=False):
+        self.depart = depart
+        self.open_dir = open_dir
+        navigateur = self
+
+        class Fenetre:
+            def run_main_frame(self):
+                navigateur.appele_avec = navigateur.rendu
+                rappel(navigateur.rendu)
+
+        return Fenetre()
+
+
+class TestMenuNavigateurDeFichiers(unittest.TestCase):
+    """Le rappel que le navigateur appelle doit EXISTER sur la classe.
+
+    Ce mixin fournit le sien : `TODO` nomme le sien `on_dir_selected`, et
+    le préfixé vit sur le gestionnaire de bases, qui n'est pas un mixin.
+    L'emprunter faisait lever `AttributeError` à l'ouverture du
+    navigateur — donc sur la première ligne du menu, au premier usage.
+    """
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.ecran = io.StringIO()
+        vrai_out = sys.stdout
+        sys.stdout = self.ecran
+        self.addCleanup(setattr, sys, "stdout", vrai_out)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+        self.vrai_nav = _tm().todo_file_browser
+        self.addCleanup(setattr, _tm(), "todo_file_browser", self.vrai_nav)
+
+    def _navigateur(self, rendu):
+        bouchon = _NavigateurBouchon(rendu)
+        _tm().todo_file_browser = bouchon
+        return bouchon
+
+    def test_le_rappel_existe_sur_la_classe_d_accueil(self):
+        """La vraie classe, non le bouchon : c'est `TODO` qui reçoit le
+        mixin, et c'est là que le rappel manquait."""
+        from script.todo.todo import TODO
+
+        self.assertTrue(hasattr(TODO, "_on_dir_selected"))
+        hote = TODO.__new__(TODO)
+        hote._on_dir_selected("/tmp/choisi")
+        self.assertEqual(hote._dir_path, "/tmp/choisi")
+
+    def test_un_fichier_choisi_au_navigateur_est_rendu(self):
+        chemin = os.path.join(self.base, "s.csv")
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write("a\n")
+        self._navigateur(chemin)
+        self.assertEqual(self.menu._transform_select_file(), chemin)
+
+    def test_un_choix_qui_n_est_pas_un_fichier_retombe_sur_la_saisie(self):
+        """Le navigateur peut rendre un répertoire : la saisie tranche."""
+        self._navigateur(self.base)
+        chemin = os.path.join(self.base, "s.csv")
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write("a\n")
+        builtins.input = lambda invite="": chemin
+        self.assertEqual(self.menu._transform_select_file(), chemin)
+
+    def test_la_destination_passe_aussi_par_le_rappel(self):
+        """Second appel du navigateur, en mode répertoire."""
+        bouchon = self._navigateur(self.base)
+        builtins.input = lambda invite="": "p"
+        rendu = self.menu._transform_select_destination("s.xlsx", "xlsx")
+        self.assertTrue(bouchon.open_dir)
+        self.assertEqual(os.path.dirname(rendu), self.base)
+        self.assertTrue(rendu.endswith(".xlsx"), rendu)
+
+    def test_un_navigateur_absent_ne_leve_pas(self):
+        """urwid peut manquer : « p » lèverait alors sur None."""
+        _tm().todo_file_browser = None
+        builtins.input = lambda invite="": "p"
+        self.assertTrue(
+            self.menu._transform_select_destination("s.xlsx", "xlsx")
+        )
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 

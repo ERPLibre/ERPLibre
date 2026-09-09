@@ -152,6 +152,21 @@ class TransformMenuMixin:
     # ------------------------------------------------------------------
     # Le fichier d'entrée
     # ------------------------------------------------------------------
+    def _on_dir_selected(self, chemin):
+        """Le chemin choisi dans le navigateur, mis de côté.
+
+        Ce mixin fournit SON rappel au lieu d'emprunter celui de sa classe
+        d'accueil : `TODO` nomme le sien `on_dir_selected` et pose
+        `dir_path`, tandis que le préfixé vit sur le gestionnaire de bases,
+        qui n'est pas un mixin mais un objet à part. Emprunter faisait
+        lever `AttributeError` à l'ouverture du navigateur — donc au
+        premier usage de l'entrée, et sur la première ligne du menu.
+
+        Le navigateur sort de sa boucle lui-même après avoir appelé le
+        rappel : celui-ci n'a que le chemin à retenir.
+        """
+        self._dir_path = chemin
+
     def _transform_select_file(self):
         """Le parcours d'abord, la saisie en repli.
 
