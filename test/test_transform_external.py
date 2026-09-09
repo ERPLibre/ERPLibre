@@ -2428,19 +2428,54 @@ class TestMemoireDesEntetes(unittest.TestCase):
 
     OPTIONS = {"nombres": True, "textes": True, "graine": 7, "feuilles": []}
 
-    def test_la_table_se_rappelle_ce_que_l_operateur_a_repondu(self):
-        source = self._csv("un.csv")
+    def _ecrire(self, nom, **options):
         formats.ecrire(
-            source,
-            os.path.join(self.base, "a.csv"),
-            dict(
-                self.OPTIONS,
-                table_chemin=self.table,
-                entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1]},
-            ),
+            self._csv(nom),
+            os.path.join(self.base, nom + ".out"),
+            dict(self.OPTIONS, table_chemin=self.table, **options),
         )
-        relue = noyau.Correspondance.charger(self.table)
-        self.assertEqual(relue.entetes, {formats.NOM_FEUILLE_NEUTRE: [1]})
+        return noyau.Correspondance.charger(self.table).entetes
+
+    def test_la_table_se_rappelle_ce_que_l_operateur_a_CORRIGE(self):
+        retenu = self._ecrire(
+            "un.csv",
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1]},
+            entetes_corrigees=[formats.NOM_FEUILLE_NEUTRE],
+        )
+        self.assertEqual(retenu, {formats.NOM_FEUILLE_NEUTRE: [1]})
+
+    def test_un_empan_MESURÉ_n_est_pas_retenu(self):
+        """L'écran rend l'empan de CHAQUE feuille — c'est ce qui a été
+        montré, et c'est là-dessus que l'opérateur a consenti. Le retenir
+        imposerait la mesure d'un fichier à tout le lot, jusque là où la
+        mesure du suivant dirait autre chose : une erreur de mesure
+        devenait la loi du lot.
+        """
+        retenu = self._ecrire(
+            "deux.csv",
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1]},
+            entetes_corrigees=[],
+        )
+        self.assertEqual(retenu, {})
+
+    def test_sans_la_liste_des_corrections_rien_n_est_retenu(self):
+        """Un appelant qui ne la fournit pas — le dialogue textuel — ne
+        doit rien inscrire : il ne sait pas ce qui a été corrigé."""
+        retenu = self._ecrire(
+            "trois.csv",
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1]},
+        )
+        self.assertEqual(retenu, {})
+
+    def test_une_correction_qui_ne_nomme_aucune_feuille_connue_est_ignoree(
+        self,
+    ):
+        retenu = self._ecrire(
+            "quatre.csv",
+            entetes_par_feuille={formats.NOM_FEUILLE_NEUTRE: [1]},
+            entetes_corrigees=["Une autre feuille"],
+        )
+        self.assertEqual(retenu, {})
 
     def test_le_fichier_suivant_du_lot_herite_de_la_correction(self):
         """Sans qu'on redise rien : c'est tout l'objet de la mémoire."""

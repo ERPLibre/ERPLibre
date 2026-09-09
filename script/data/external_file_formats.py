@@ -2810,14 +2810,19 @@ def ecrire(chemin, destination, options):
     chemin_table = options.get("table_chemin")
     if chemin_table:
         try:
-            # Ce que l'opérateur a RÉPONDU, et cela seul : retenir une
-            # MESURE ferait propager son erreur à tout le lot, alors
-            # qu'elle se refait à l'identique sur chaque fichier.
-            for nom, lignes in (
-                options.get("entetes_par_feuille") or {}
-            ).items():
-                table.entetes[str(nom)] = sorted(
-                    {int(n) for n in (lignes or []) if int(n) >= 1}
+            # Les feuilles que l'opérateur a VRAIMENT changées, et
+            # celles-là seules. `entetes_par_feuille` porte AUSSI les
+            # empans mesurés — c'est ce qui a été montré à l'écran, et
+            # c'est là-dessus qu'il a consenti — mais les retenir
+            # imposerait la mesure d'un fichier à tout le lot, jusque là
+            # où la mesure du suivant dirait autre chose. Sans cette
+            # liste, une erreur de mesure devenait la loi du lot.
+            demandees = options.get("entetes_par_feuille") or {}
+            for nom in options.get("entetes_corrigees") or ():
+                if str(nom) not in demandees:
+                    continue
+                table.entetes[str(nom)] = noyau.lignes_entieres(
+                    demandees[str(nom)]
                 )
             table.ecrire(chemin_table)
         except OSError:

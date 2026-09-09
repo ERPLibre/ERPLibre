@@ -173,14 +173,26 @@ def basculer(ensemble, valeur):
     return True
 
 
-def spec_depuis_etat(ctx, intactes, entetes):
+def spec_depuis_etat(ctx, intactes, entetes, corrigees=()):
     """La spec rendue à l'appelant, en types SÉRIALISABLES.
 
     Un `set` et un dict à clés tuple sont refusés par `json.dumps`, et
     ces valeurs traversent le sous-processus du moteur : ce sont donc des
     listes triées, et des dicts à clés `str`.
+
+    `entetes_par_feuille` porte CHAQUE feuille, y compris celles que
+    l'opérateur n'a pas touchées : c'est ce qui a été montré à l'écran, et
+    c'est là-dessus qu'il a consenti. Un empan vide y veut dire « pas
+    d'en-tête », là où une feuille ABSENTE voudrait dire « mesure-la ».
+
+    `entetes_corrigees` nomme les seules feuilles qu'il a VRAIMENT
+    changées, et c'est la seule chose qu'une table de lot doit retenir :
+    retenir un empan mesuré l'imposerait au fichier suivant même si sa
+    propre mesure disait autre chose — la mesure d'un fichier deviendrait
+    la loi de tout le lot.
     """
     return {
+        "entetes_corrigees": sorted(corrigees),
         "colonnes_intactes_par_feuille": {
             nom: sorted(cles) for nom, cles in intactes.items() if cles
         },
@@ -455,7 +467,9 @@ def run_transform_form(ctx, run_app: bool = True):
             self._rafraichir_les_feuilles()
 
         def action_accepter(self) -> None:
-            resultat["spec"] = spec_depuis_etat(ctx, intactes, entetes)
+            resultat["spec"] = spec_depuis_etat(
+                ctx, intactes, entetes, corrigees
+            )
             self.exit()
 
         def action_invites(self) -> None:
