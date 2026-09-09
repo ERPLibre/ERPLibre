@@ -126,6 +126,91 @@ def unenforceable(posture, macos: bool = False) -> tuple:
     return tuple(manques)
 
 
+# Le binaire de l'outil. Nommé une fois : un jour où il s'appellerait
+# autrement, ou vivrait ailleurs, il n'y a qu'ici à toucher.
+LIMACTL = "limactl"
+
+# CE QUI REND UN DÉMARRAGE JOUABLE DEPUIS UN MENU. Sans « --tty=false »,
+# l'outil ouvre une conversation — un éditeur sur la configuration, une
+# question à confirmer. Un menu qui la reçoit se figeait sur une invite que
+# personne ne voit, et il ne reste que Ctrl-C.
+SANS_INVITE = "--tty=false"
+
+# « -f » sur l'arrêt et sur la suppression : les deux posent sinon leur
+# propre question. L'écran a déjà demandé, et le redemander là où la sortie
+# n'est plus lue revient à ne rien demander.
+SANS_QUESTION = "-f"
+
+# Les actions du cycle de vie, vocabulaire clos. Ce ne sont PAS
+# « suspend »/« resume » : `verbs.power_command` les refuse pour ce backend
+# exprès, parce qu'un arrêt n'est pas une pause — confondre les deux perd
+# l'état d'une VM qu'on croyait seulement mettre de côté.
+LIFECYCLE = ("start", "stop", "delete")
+
+
+def list_argv() -> list:
+    """L'inventaire, en JSON. Rend un ARGV, donc aucun shell n'intervient.
+
+    « --json » et non la sortie tabulée : cette dernière change de colonnes
+    selon la version, et l'analyser reviendrait à parier sur une mise en
+    page. `parse_instances` lit ce que cet appel rend.
+    """
+    return [LIMACTL, "list", "--json"]
+
+
+def start_argv(name: str, config: str = "") -> list:
+    """Démarre l'instance, en la créant depuis `config` s'il est donné.
+
+    Le chemin de configuration vient EN DERNIER, comme un argument
+    positionnel, parce que c'est ainsi que l'outil le prend. Sans lui,
+    l'appel démarre une instance déjà décrite.
+    """
+    argv = [LIMACTL, "start", "--name", str(name), SANS_INVITE]
+    if config:
+        argv.append(str(config))
+    return argv
+
+
+def stop_argv(name: str) -> list:
+    """Arrête l'instance. Ce n'est pas une pause : l'état vif est perdu."""
+    return [LIMACTL, "stop", SANS_QUESTION, str(name)]
+
+
+def delete_argv(name: str) -> list:
+    """Détruit l'instance et son disque. Sans retour.
+
+    L'écran qui appelle DOIT avoir fait retaper le nom : « -f » retire la
+    dernière question, et un nom mal tapé détruit alors sans un mot.
+    """
+    return [LIMACTL, "delete", SANS_QUESTION, str(name)]
+
+
+def shell_argv(name: str, remote: str = "") -> list:
+    """Ouvre un shell dans l'instance, ou y joue une suite de commandes.
+
+    « bash -c » est indispensable pour une SUITE : l'outil exécute des
+    arguments, si bien que « a && b » lui arriverait comme une liste de mots.
+    Sans `remote`, c'est une session interactive et « bash -c » n'a rien à
+    faire là — il attendrait une commande qui ne vient pas.
+    """
+    argv = [LIMACTL, "shell", str(name)]
+    if remote:
+        argv += ["--", "bash", "-c", str(remote)]
+    return argv
+
+
+def display(argv) -> str:
+    """La commande telle qu'on la MONTRE avant de la jouer.
+
+    `shlex.join` et non un espace : une valeur qui porte une espace se
+    relirait comme deux arguments, et la ligne affichée ne serait plus celle
+    qui s'exécute — ce qui est pire que ne rien montrer.
+    """
+    import shlex
+
+    return shlex.join(str(mot) for mot in argv or ())
+
+
 # Ce que l'inventaire de Lima rend, et ce qu'on en garde. Les autres champs
 # existent ; on ne les lit pas, donc on ne s'engage pas sur eux.
 class Instance(NamedTuple):
