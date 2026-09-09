@@ -13397,6 +13397,10 @@ TRANSLATIONS = {
         "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
         "en": "Element and attribute names are kept as structure; they may identify.",
     },
+    "A table of that name exists; using a new one.": {
+        "fr": "Une table de ce nom existe ; une neuve est prise.",
+        "en": "A table of that name exists; using a new one.",
+    },
     "column(s) entirely in clear": {
         "fr": "colonne(s) entièrement en clair",
         "en": "column(s) entirely in clear",

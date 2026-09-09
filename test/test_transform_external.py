@@ -174,6 +174,45 @@ class TestMenuFonctionsPures(unittest.TestCase):
                 )
                 self.assertTrue(table.endswith(".table.json"), table)
 
+    def test_deux_livraisons_de_meme_nom_ne_partagent_pas_leur_table(self):
+        """« vide = nouvelle » est une promesse.
+
+        Le nom ne tenait qu'au nom de BASE : « 2026/export.xlsx » et
+        « 2027/export.xlsx » donnaient le même chemin, et le moteur
+        chargeait la table de la livraison précédente — ses mots, ses
+        nombres, ses empans — sans que rien ne signale sa présence.
+        """
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        vrai = _tm().SORTIE_PAR_DEFAUT
+        _tm().SORTIE_PAR_DEFAUT = base
+        self.addCleanup(setattr, _tm(), "SORTIE_PAR_DEFAUT", vrai)
+
+        premiere = self.menu._transform_table_par_defaut(
+            "/tmp/livraison/2026/export.xlsx"
+        )
+        with open(premiere, "w", encoding="utf-8") as flux:
+            flux.write("{}")
+        seconde = self.menu._transform_table_par_defaut(
+            "/tmp/livraison/2027/export.xlsx"
+        )
+        self.assertNotEqual(premiere, seconde)
+        self.assertFalse(os.path.exists(seconde))
+        self.assertTrue(seconde.endswith(".table.json"), seconde)
+
+    def test_un_nom_libre_garde_le_nom_de_la_destination(self):
+        """Il reste le plus utile pour retrouver la table d'une copie."""
+        base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, base, True)
+        vrai = _tm().SORTIE_PAR_DEFAUT
+        _tm().SORTIE_PAR_DEFAUT = base
+        self.addCleanup(setattr, _tm(), "SORTIE_PAR_DEFAUT", vrai)
+        chemin = self.menu._transform_table_par_defaut("/tmp/l/export.xlsx")
+        self.assertEqual(
+            chemin, self.menu._transform_table_derivee("/tmp/l/export.xlsx")
+        )
+        self.assertEqual(os.path.basename(chemin), "export.table.json")
+
     def test_private_se_reconnait_par_realpath(self):
         """Un test de préfixe sur le chemin TAPÉ taisait l'avertissement
         pour le chemin absolu du navigateur, et le levait pour

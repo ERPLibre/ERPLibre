@@ -677,6 +677,35 @@ class TransformMenuMixin:
         transmettre — ce que faisait le défaut, puisque la destination est
         justement choisie hors de private/ — fait partir la clé avec le
         chiffré au premier `zip -r` ou `scp -r` du dossier de livraison.
+
+        Le nom DÉRIVE de la destination, ce qui reste le plus utile pour
+        retrouver la table d'une copie une semaine plus tard. Mais il ne
+        tient qu'au nom de BASE : deux livraisons rangées par année,
+        « 2026/export.xlsx » et « 2027/export.xlsx », donnaient le même
+        chemin. L'invite promet « vide = nouvelle » et le moteur chargeait
+        la table de la livraison précédente — ses mots, ses nombres, ses
+        empans — sans que rien ne signale sa présence, l'écran ayant déjà
+        été bâti sur une mémoire vide.
+
+        Un chemin déjà pris prend donc un suffixe frais, et l'appelant le
+        DIT. Le partage voulu à l'intérieur d'un lot passe par l'invite,
+        où l'opérateur tape le chemin de la table précédente.
+        """
+        chemin = TransformMenuMixin._transform_table_derivee(destination)
+        if not os.path.exists(chemin):
+            return chemin
+        horodatage = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        racine = chemin[: -len(".table.json")]
+        return f"{racine}-{horodatage}.table.json"
+
+    @staticmethod
+    def _transform_table_derivee(destination):
+        """Le nom que la destination donne à sa table, SANS voir le disque.
+
+        Séparé pour que l'appelant sache si le chemin retenu est bien
+        celui-là — comparer deux chemins vaut mieux que renifler un tiret
+        dans un nom de base, qui en porte un dès que la destination garde
+        l'horodatage du défaut.
         """
         base = os.path.basename(os.path.splitext(destination)[0])
         return os.path.join(SORTIE_PAR_DEFAUT, f"{base}.table.json")
@@ -740,6 +769,15 @@ class TransformMenuMixin:
             options["table_chemin"] = self._transform_table_par_defaut(
                 destination
             )
+            # « vide = nouvelle » est une promesse : le dire quand le nom
+            # dérivé était déjà pris, plutôt que d'adopter en silence la
+            # table d'une autre livraison.
+            if options["table_chemin"] != self._transform_table_derivee(
+                destination
+            ):
+                print(
+                    f"   {t('A table of that name exists; using a new one.')}"
+                )
         print(f"   {t('Mapping table: ')}{options['table_chemin']}")
 
         arguments = [
