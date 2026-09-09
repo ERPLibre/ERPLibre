@@ -1981,6 +1981,142 @@ class TestCorpsSousLEmpan(unittest.TestCase):
         )
 
 
+class TestValeurDExemple(unittest.TestCase):
+    """Une valeur montrable : toujours une `str`, toujours bornée.
+
+    C'est la seule colonne du rapport qui porte de la donnée du client à
+    l'écran, et la charge utile traverse un `json.dump` en
+    `allow_nan=False` : ce qui échoue là échoue APRÈS tout le travail du
+    moteur, et l'écran n'affiche alors qu'une trace.
+    """
+
+    def test_tout_rendu_est_une_chaine(self):
+        import datetime
+
+        for valeur in (
+            None,
+            0,
+            0.0,
+            False,
+            True,
+            1200,
+            "aboulie",
+            datetime.date(2019, 1, 2),
+            b"\x00\xff",
+        ):
+            with self.subTest(valeur=valeur):
+                self.assertIsInstance(formats.valeur_d_exemple(valeur), str)
+
+    def test_le_zero_et_le_faux_ne_s_effacent_pas(self):
+        """`or ""` les écrasait : une colonne de montants nuls montrait
+        des exemples vides."""
+        self.assertEqual(formats.valeur_d_exemple(0), "0")
+        self.assertEqual(formats.valeur_d_exemple(0.0), "0.0")
+        self.assertEqual(formats.valeur_d_exemple(False), "False")
+
+    def test_des_octets_ne_sortent_pas_en_clair(self):
+        """`valeur_hors_tableur` tomberait sur son `str()` final et
+        rendrait le `repr` d'un `bytes` — du binaire lisible."""
+        rendu = formats.valeur_d_exemple(b"\x00\xff\x00")
+        self.assertNotIn("\\x", rendu)
+        self.assertIn("3", rendu)
+
+    def test_un_flottant_non_fini_ne_casse_pas_la_serialisation(self):
+        """`allow_nan=False` lèverait, et le moteur aurait tout fait."""
+        for valeur in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(formats.valeur_d_exemple(valeur), "")
+
+    def test_une_valeur_longue_est_bornee_et_le_dit(self):
+        rendu = formats.valeur_d_exemple("x" * 5000)
+        self.assertEqual(len(rendu), formats.EXEMPLE_LONGUEUR)
+        self.assertTrue(rendu.endswith("…"))
+
+
+class TestRapportDeLEnTete(unittest.TestCase):
+    """Ce que le rapport DIT de la mesure, pour qu'une invention se lise
+    avant d'être consentie."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+
+    def _rapport(self, contenu, nom="s.csv"):
+        chemin = os.path.join(self.base, nom)
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write(contenu)
+        return formats.report(chemin)
+
+    AVEC = (
+        "etiquette,montant,date,code\n"
+        "aboulie,1200,2019-01-02,A1\n"
+        "acai,830,2019-01-03,B2\n"
+        "adobe,940,2019-01-04,C3\n"
+    )
+    SANS = (
+        "IN137784,1028,100.5\n" "IN137785,1029,101.5\n" "IN137786,1030,102.5\n"
+    )
+
+    def test_l_empan_est_une_LISTE_serialisable(self):
+        """Un set ne passe pas `json.dump`, et ce rapport traverse un
+        sous-processus."""
+        feuille = self._rapport(self.AVEC)["feuilles"][0]
+        self.assertEqual(feuille["lignes_entete"], [1])
+        self.assertEqual(feuille["ligne_champs"], 1)
+        json.dumps(feuille, allow_nan=False)
+
+    def test_sans_en_tete_le_rapport_le_dit(self):
+        feuille = self._rapport(self.SANS)["feuilles"][0]
+        self.assertEqual(feuille["lignes_entete"], [])
+        self.assertIsNone(feuille["ligne_champs"])
+        self.assertIsNone(feuille["entete_mesure"])
+
+    def test_les_cinq_mesures_sont_affichables(self):
+        """L'opérateur voit POURQUOI la mesure a tranché avant de la
+        contredire."""
+        mesure = self._rapport(self.AVEC)["feuilles"][0]["entete_mesure"]
+        self.assertEqual(
+            sorted(mesure),
+            ["accord", "contraste", "distinct", "hors_colonne", "rempli"],
+        )
+        for cle, valeur in mesure.items():
+            with self.subTest(cle=cle):
+                self.assertIsInstance(valeur, float)
+                self.assertLessEqual(valeur, 1.0)
+
+    def test_chaque_colonne_montre_des_exemples(self):
+        """CE qui distingue deux colonnes sans libellé : ni le type, ni le
+        compte, ni les bornes n'y suffisent."""
+        colonnes = self._rapport(self.AVEC)["feuilles"][0]["colonnes"]
+        for colonne in colonnes:
+            with self.subTest(colonne=colonne["index"]):
+                self.assertTrue(colonne["exemples"])
+                self.assertLessEqual(
+                    len(colonne["exemples"]), formats.EXEMPLES_PAR_COLONNE
+                )
+
+    def test_les_exemples_sont_des_valeurs_DISTINCTES(self):
+        """Trois fois la même ne montre rien de la colonne."""
+        rapport = self._rapport(
+            "etiquette,constante,date\n"
+            "aboulie,7,2019-01-02\n"
+            "acai,7,2019-01-03\n"
+            "adobe,7,2019-01-04\n"
+        )
+        par_index = {
+            c["index"]: c["exemples"]
+            for c in rapport["feuilles"][0]["colonnes"]
+        }
+        self.assertEqual(par_index[2], ["7"])
+        self.assertEqual(len(par_index[1]), 3)
+
+    def test_l_en_tete_de_la_ligne_de_champs_n_est_pas_un_exemple(self):
+        """Les statistiques sautent l'empan : le libellé n'est pas une
+        valeur de sa colonne."""
+        colonnes = self._rapport(self.AVEC)["feuilles"][0]["colonnes"]
+        self.assertNotIn("etiquette", colonnes[0]["exemples"])
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 

@@ -308,6 +308,44 @@ def _rendre_les_brutes(feuille):
             feuille.lignes[numero - 1] = list(brutes[numero - 1])
 
 
+# Ce qu'une colonne montre d'elle-même. Trois suffisent à reconnaître un
+# champ ; borner la longueur garde la ligne lisible et la charge utile
+# petite.
+EXEMPLES_PAR_COLONNE = 3
+EXEMPLE_LONGUEUR = 40
+
+# Au-delà, les exemples ne sont plus peuplés. `colonnes` elle-même n'est
+# JAMAIS tronquée : les bornes, les formes et le plancher en dérivent
+# colonne par colonne, et une liste coupée déplancherait en silence.
+EXEMPLES_COLONNES_MAX = 500
+
+
+def valeur_d_exemple(valeur):
+    """Une valeur montrable : toujours une `str`, toujours bornée.
+
+    Écarte les octets — `valeur_hors_tableur` tomberait sur son `str()`
+    final et rendrait le `repr` d'un `bytes`, donc du binaire en clair —
+    et les flottants non finis, que `allow_nan=False` refuserait à la
+    sérialisation, c'est-à-dire APRÈS tout le travail du moteur, l'écran
+    n'affichant alors qu'une trace.
+
+    Un seul type dans le champ : ni le menu ni l'écran n'ont à brancher.
+    Cette valeur ne passe JAMAIS par `t()`, qui chercherait une clé de
+    traduction dans une donnée du client.
+    """
+    if isinstance(valeur, (bytes, bytearray)):
+        return "<%d octets>" % len(valeur)
+    if isinstance(valeur, float) and not math.isfinite(valeur):
+        return ""
+    # `or ""` écraserait le zéro et le faux, qui sont de VRAIES valeurs :
+    # une colonne de montants nuls montrait des exemples vides.
+    rendu = valeur_hors_tableur(valeur)
+    texte = "" if rendu is None else str(rendu)
+    if len(texte) > EXEMPLE_LONGUEUR:
+        return texte[: EXEMPLE_LONGUEUR - 1] + "…"
+    return texte
+
+
 def _forme_de_valeur(valeur):
     """La signature de forme d'une valeur : chiffres en 9, lettres en a.
 
@@ -489,6 +527,7 @@ def _stats_colonnes(feuille):
         forme_rel = True
         mini = maxi = None
         entiere = True
+        exemples = []
         for numero, ligne in enumerate(feuille.lignes, start=1):
             # L'EMPAN, jamais le littéral « 1 » : `forme_identifiant` et
             # `forme_relation` se court-circuitent sur un seul faux, si
@@ -506,10 +545,22 @@ def _stats_colonnes(feuille):
             forme_rel = forme_rel and noyau.valeur_forme_relation(valeur)
             familles[famille] = familles.get(famille, 0) + 1
             if len(distinctes) < 10000:
+                avant = len(distinctes)
                 try:
                     distinctes.add(valeur)
                 except TypeError:
                     distinctes.add(repr(valeur))
+                # Une valeur INÉDITE et rien qu'elle : trois exemples
+                # identiques ne montrent rien de la colonne. La valeur est
+                # déjà en main et la passe est déjà payée.
+                if (
+                    len(distinctes) > avant
+                    and len(exemples) < EXEMPLES_PAR_COLONNE
+                    and index < EXEMPLES_COLONNES_MAX
+                ):
+                    montrable = valeur_d_exemple(valeur)
+                    if montrable:
+                        exemples.append(montrable)
             if (
                 famille == "nombre"
                 and not isinstance(valeur, bool)
@@ -541,6 +592,9 @@ def _stats_colonnes(feuille):
                 "type": dominant,
                 "remplies": remplies,
                 "distinctes": len(distinctes),
+                # CE qui distingue deux colonnes sans libellé : mesuré, ni
+                # le type, ni le compte, ni les bornes n'y suffisent.
+                "exemples": exemples,
                 "min": mini,
                 "max": maxi,
                 "entiere": entiere and mini is not None,
@@ -929,9 +983,20 @@ def _feuilles_en_rapport(feuilles):
             for valeur in ligne
             if classer(valeur) == "formule" and '"' in str(valeur)
         )
+        empan = sorted(feuille.lignes_entete or ())
         resume.append(
             {
                 "nom": feuille.nom,
+                # Une LISTE, non un set : `json.dump` refuse un set, et
+                # ce rapport traverse un sous-processus.
+                "lignes_entete": empan,
+                "ligne_champs": feuille.ligne_champs,
+                "entete_mesure": _mesure_de_la_ligne(feuille),
+                "entete_declaree": bool(feuille.entete_declaree),
+                "exemples_tronques": (
+                    max((len(l) for l in feuille.lignes), default=0)
+                    > EXEMPLES_COLONNES_MAX
+                ),
                 "lignes": len(feuille.lignes),
                 "colonnes_n": max((len(l) for l in feuille.lignes), default=0),
                 "masquee": feuille.masquee,
@@ -941,6 +1006,27 @@ def _feuilles_en_rapport(feuilles):
             }
         )
     return resume
+
+
+def _mesure_de_la_ligne(feuille):
+    """Les cinq mesures de la ligne de champs, ou None.
+
+    Affichées pour qu'une INVENTION se lise avant d'être consentie : la
+    mesure peut prendre une ligne de données pour un en-tête, et
+    l'opérateur doit voir POURQUOI elle a tranché avant de la contredire.
+    """
+    rang = feuille.ligne_champs
+    if rang is None:
+        return None
+    signaux = _signaux_entete(feuille.lignes, rang)
+    accord = _accord_de_forme(feuille.lignes, rang)
+    if signaux is None or accord is None:
+        return None
+    return {
+        cle: round(valeur, 2)
+        for cle, valeur in list(signaux.items()) + [("accord", accord)]
+        if cle != "compares"
+    }
 
 
 def _hors_cellules_xlsx(classeur, chemin):
