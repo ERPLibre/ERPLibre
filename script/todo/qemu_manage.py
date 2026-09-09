@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import time
 
-from script.todo import todo_install
+from script.todo import ssh_config, todo_install
 from script.todo.qemu_privilege import (
     LIBVIRT_URI as URI,
     sudo_prefix,
@@ -22,19 +22,91 @@ from script.todo.qemu_privilege import (
 from script.todo.todo_i18n import t
 
 
+# Les fichiers d'état de dnsmasq, un par réseau libvirt. Sur une installation
+# standard ils sont en 0644 dans un répertoire en 0755, donc lisibles sans
+# privilège — le « .conf » posé à côté est en 0600, et c'est lui qui donne
+# l'impression que le répertoire est fermé.
+DNSMASQ_STATUS = "/var/lib/libvirt/dnsmasq/*.status"
+
+
+def lease_status_text(*, paths=None, read=None, run=None, euid=None) -> str:
+    """Le contenu des fichiers d'état de dnsmasq, ou la chaîne vide.
+
+    La lecture DIRECTE passe d'abord, et elle suffit sur une installation
+    standard, où ces fichiers sont en lecture pour tous. Ce n'est qu'ensuite
+    que « sudo -n » est tenté, pour l'installation durcie — jamais « sudo »
+    tout court. L'attente d'une VM appelle ce chemin
+    toutes les trois secondes pendant dix minutes, et l'affichage d'une liste
+    l'appelle une fois par VM : un sudo interactif y demande donc un mot de
+    passe root en boucle, au milieu d'un écran, ce qui entraîne précisément le
+    réflexe de le taper dans ce qui le demande.
+
+    `needs_sudo()` ne tranche pas ici : il dit si libvirt est joignable, pas
+    si un fichier de root est lisible. Les deux questions n'ont ni la même
+    réponse ni la même cause.
+
+    Rend la chaîne vide quand rien n'est lisible — un répertoire interdit rend
+    un glob VIDE, indistinguable de « aucun réseau », d'où l'essai privilégié
+    même sans chemin trouvé. Les appelants se replient déjà sur une autre
+    source.
+    """
+    if paths is None:
+        paths = glob.glob
+    if read is None:
+
+        def read(chemin):
+            with open(chemin, encoding="utf-8") as fh:
+                return fh.read()
+
+    if run is None:
+        run = subprocess.run
+    if euid is None:
+        euid = os.geteuid
+
+    morceaux = []
+    for chemin in sorted(paths(DNSMASQ_STATUS)):
+        try:
+            morceaux.append(read(chemin))
+        except OSError:
+            morceaux = []
+            break
+    if morceaux:
+        return "".join(morceaux)
+    if euid() == 0:
+        # Root a déjà tout vu : il n'y a rien à lire, et sudo n'y changerait
+        # rien.
+        return ""
+    try:
+        res = run(
+            [
+                "sudo",
+                "-n",
+                "sh",
+                "-c",
+                f"cat {DNSMASQ_STATUS} 2>/dev/null",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return res.stdout or ""
+
+
 def parse_ssh_blocks(content) -> dict:
     """{nom: {"hostname": …, "proxyjump": …}} pour CHAQUE nom déclaré.
 
     Une ligne « Host » peut en porter plusieurs : ils partagent alors le même
-    corps, donc la même entrée. Les motifs (« * », « ? ») sont écartés — ce
-    sont des règles, pas des machines."""
+    corps, donc la même entrée. Ce qui compte comme un nom de machine est
+    tranché par `ssh_config.declared_names`, partagé avec les deux lecteurs
+    de todo.py."""
     blocs, courant = {}, []
     for ligne in (content or "").splitlines():
-        if re.match(r"^[ \t]*Host[ \t]+", ligne):
+        declares = ssh_config.declared_names(ligne)
+        if declares is not None:
             corps = {}
-            courant = [
-                n for n in ligne.split()[1:] if "*" not in n and "?" not in n
-            ]
+            courant = declares
             for nom in courant:
                 blocs[nom] = corps
             continue
@@ -3022,23 +3094,14 @@ class QemuManageMixin:
     @staticmethod
     def _qemu_lease_ip_for_host(name, candidates):
         """Parmi `candidates`, l'IP dont le bail dnsmasq porte le hostname de la
-        VM (le bail DÉFINITIF, pas le bail précoce « ubuntu »). None sinon."""
-        try:
-            res = subprocess.run(
-                [
-                    "sudo",
-                    "sh",
-                    "-c",
-                    "cat /var/lib/libvirt/dnsmasq/*.status 2>/dev/null",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
+        VM (le bail DÉFINITIF, pas le bail précoce « ubuntu »). None sinon.
+
+        La lecture ne demande JAMAIS de mot de passe : `lease_status_text` lit
+        en direct puis tente « sudo -n », et rend la chaîne vide plutôt que
+        d'ouvrir une invite. Les deux appelants se replient sur une autre
+        source quand ceci rend None."""
         # Plusieurs tableaux JSON concaténés : on parse chaque objet {...}.
-        for obj in re.findall(r"\{[^{}]*\}", res.stdout or ""):
+        for obj in re.findall(r"\{[^{}]*\}", lease_status_text()):
             if re.search(rf'"hostname":\s*"{re.escape(name)}"', obj):
                 m = re.search(r'"ip-address":\s*"([\d.]+)"', obj)
                 if m and m.group(1) in candidates:

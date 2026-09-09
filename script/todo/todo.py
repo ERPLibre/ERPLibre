@@ -26,7 +26,8 @@ sys.path.append(new_path)
 
 from script.config import config_file
 from script.execute import execute
-from script.todo import dev_tools, todo_install, todo_prefs
+from script.todo import dev_tools, ssh_config, todo_install, todo_prefs
+from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.database_manager import DatabaseManager
 from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
@@ -38,10 +39,9 @@ from script.todo.qemu_manage import QemuManageMixin
 from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
-from script.todo.vpn_menu import VpnMenuMixin
-from script.todo.kdbx_manager import KdbxManager
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
+from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
 VENV_ERPLIBRE = ".venv.erplibre"
@@ -105,6 +105,7 @@ class TODO(
     ProxmoxMenuMixin,
     LongTestMenuMixin,
     VpnMenuMixin,
+    AssistantMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -207,7 +208,7 @@ class TODO(
 
         while True:
             help_info = f"""{self._menu_header()}
-[1] {t("mail_ai_question")}
+[1] {t("AI question - Ask a model, local or remote")}
 [2] {t("mail_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
@@ -215,38 +216,11 @@ class TODO(
             if status == "0":
                 return
             if status == "1":
-                self._assistant_question()
+                self.prompt_assistant_llm()
             elif status == "2":
                 prompt_execute_mail(self)
             else:
                 print(t("Command not found !"))
-
-    def _assistant_question(self):
-        while True:
-            help_info = f"""{self._menu_header()}
-[0] {t("Back")}
-{t("Write your question ")}"""
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return
-            kp = self.kdbx_manager.get_kdbx()
-            if not kp:
-                return
-            config_name = self.config_file.get_config_value(
-                ["kdbx_config", "openai", "kdbx_key"]
-            )
-            entry = kp.find_entries_by_title(config_name, first=True)
-
-            client = openai.OpenAI(api_key=entry.password)
-            prompt_update = status
-            completion = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt_update}],
-            )
-
-            print(completion.choices[0].message.content)
-            print()
 
     def prompt_execute(self):
         help_info = f"""{self._menu_header()}
@@ -600,6 +574,10 @@ class TODO(
         "run": "TODO",
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
+        "prompt_assistant_llm": "LLM",
+        "_llm_servers": "Servers",
+        "_llm_search": "Search",
+        "_llm_search_remote": "Over SSH",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",
@@ -609,7 +587,11 @@ class TODO(
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
+        "_prompt_git_server_actions": "Actions",
         "prompt_execute_gpt_code": "GPT code",
+        "_prompt_claude_configs": "Claude configs",
+        "prompt_execute_claude_plugins": "Plugins",
+        "prompt_claude_sessions": "Claude Code",
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
@@ -618,6 +600,11 @@ class TODO(
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
+        "prompt_execute_vpn": "VPN",
+        "prompt_execute_network": "Network",
+        "prompt_execute_security": "Security",
+        "prompt_execute_test": "Test",
+        "prompt_execute_longtest": "Long test",
         "prompt_configuration": "Configuration",
     }
 
@@ -1418,8 +1405,8 @@ class TODO(
         On découpe en blocs plutôt que de substituer par expression
         régulière : une ligne Host peut porter PLUSIEURS noms.
 
-        Deux règles, chacune corrigeant une perte de données CONSTATÉE dans
-        le fichier d'un utilisateur.
+        Deux règles, chacune corrigeant une perte de données que ce
+        découpage provoque sans elles.
 
         1. Seuls « Host » et « Match » clôturent un bloc. La règle d'avant —
            « une ligne non indentée clôt le bloc » — prenait l'indentation
@@ -1765,20 +1752,23 @@ class TODO(
     def _ssh_config_hosts():
         """Noms d'hôtes déclarés dans ~/.ssh/config, dans l'ordre du fichier.
 
-        Une ligne « Host » peut porter plusieurs noms : on les rend tous. Les
-        motifs (`*`, `?`) sont écartés — ce sont des règles, pas des machines
-        auxquelles se connecter."""
+        Une ligne « Host » peut porter plusieurs noms : on les rend tous.
+        Ce qui compte comme un nom de machine est tranché par
+        `ssh_config.declared_names`, en un seul endroit pour les trois
+        lecteurs de ce fichier — la casse du mot-clé, la tabulation qui
+        sépare et le motif nié s'y décidaient autrement dans chacun.
+
+        La lecture ne suit PAS `Include` : un alias déclaré dans un fichier
+        inclus reste invisible ici, alors même que `ssh -G` le résoudrait. La
+        source est donc incomplète sans être fausse."""
         path = os.path.expanduser("~/.ssh/config")
         names = []
         try:
             with open(path, encoding="utf-8") as fh:
                 for line in fh:
-                    if not re.match(r"^[ \t]*Host[ \t]+", line):
-                        continue
-                    for name in line.split()[1:]:
-                        if "*" in name or "?" in name or name in names:
-                            continue
-                        names.append(name)
+                    for name in ssh_config.declared_names(line) or ():
+                        if name not in names:
+                            names.append(name)
         except OSError:
             pass
         return names
@@ -1822,9 +1812,8 @@ class TODO(
         """Nombre de rebonds pour joindre `cible`, en suivant la chaîne.
 
         C'est la mesure de PROFONDEUR d'un hôte imbriqué, et la seule dont on
-        dispose de l'extérieur. Elle est exacte pour les hôtes que nous avons
-        déployés : c'est nous qui écrivons ces entrées, un ProxyJump par
-        étage.
+        dispose de l'extérieur. Elle est exacte pour les hôtes que cet outil
+        déploie : c'est lui qui écrit ces entrées, un ProxyJump par étage.
 
         `maxi` borne le parcours : une boucle dans ~/.ssh/config — A qui
         rebondit par B qui rebondit par A — tournerait sinon sans fin.
@@ -1990,8 +1979,8 @@ class TODO(
     # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
     # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
     # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
-    # monter tel quel. Vécu : « read: Connection reset by peer », parce que la
-    # seconde moitié du nom est un domaine libvirt, pas un alias SSH du rebond.
+    # monter tel quel : le montage échoue, la seconde moitié du nom étant un
+    # domaine libvirt et non un alias SSH du rebond.
     SSHFS_CHAIN_SEP = "+"
 
     # Options à rendre à sshfs quand on contourne l'alias : exactement celles
@@ -2029,8 +2018,8 @@ class TODO(
         « Host a b » déclare DEUX alias pour la même machine — c'est ce que
         todo.py écrit lui-même quand une VM porte plusieurs noms. Les prendre
         pour un seul nom donnait un alias « a b », que sshfs ne peut pas
-        monter. Les motifs génériques (« * », « web-? ») sont écartés : ils ne
-        désignent aucune machine.
+        monter. Ce qui compte comme un nom de machine est tranché par
+        `ssh_config.declared_names`, partagé avec les deux autres lecteurs.
         """
         hosts = []
         noms = []
@@ -2047,13 +2036,10 @@ class TODO(
             return []
         for ligne in lignes:
             ligne = ligne.strip()
-            if ligne.lower().startswith("host "):
+            declares = ssh_config.declared_names(ligne)
+            if declares is not None:
                 clore()
-                noms = [
-                    m
-                    for m in ligne.split()[1:]
-                    if "*" not in m and "?" not in m and not m.startswith("!")
-                ]
+                noms = declares
                 info = {}
             elif noms:
                 paire = ligne.split(None, 1)
@@ -2306,22 +2292,31 @@ class TODO(
     def _get_ssh_params(self):
         """Prompt for SSH connection parameters. Returns dict or None on cancel."""
         host = click.prompt(
-            t("Remote host (user@hostname or hostname): ")
+            t("Remote host (user@hostname or hostname): "), prompt_suffix=""
         ).strip()
         if not host:
             print(t("SSH host is required!"))
             return None
         user = (
-            click.prompt(t("SSH user (default: erplibre): ")).strip()
+            click.prompt(
+                t("SSH user (default: erplibre): "), prompt_suffix=""
+            ).strip()
             or "erplibre"
         )
-        port = click.prompt(t("SSH port (default: 22): ")).strip() or "22"
+        port = (
+            click.prompt(
+                t("SSH port (default: 22): "), prompt_suffix=""
+            ).strip()
+            or "22"
+        )
         key = click.prompt(
-            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): ")
+            t("SSH key path (default: ~/.ssh/id_rsa, empty for none): "),
+            prompt_suffix="",
         ).strip()
         path = (
             click.prompt(
-                t("Remote path (default: ~/erplibre_deploy_2): ")
+                t("Remote path (default: ~/erplibre_deploy_2): "),
+                prompt_suffix="",
             ).strip()
             or "~/erplibre_deploy_2"
         )
@@ -2429,7 +2424,9 @@ class TODO(
         params = self._get_ssh_params()
         if not params:
             return
-        target = click.prompt(t("Make target to run remotely: ")).strip()
+        target = click.prompt(
+            t("Make target to run remotely: "), prompt_suffix=""
+        ).strip()
         if not target:
             print(t("SSH host is required!"))
             return
@@ -2455,11 +2452,15 @@ class TODO(
         params = self._get_ssh_params()
         if not params:
             return
-        domain = click.prompt(t("Domain name (e.g.: example.com): ")).strip()
+        domain = click.prompt(
+            t("Domain name (e.g.: example.com): "), prompt_suffix=""
+        ).strip()
         if not domain:
             print(t("SSH host is required!"))
             return
-        email = click.prompt(t("Admin email for SSL certificate: ")).strip()
+        email = click.prompt(
+            t("Admin email for SSL certificate: "), prompt_suffix=""
+        ).strip()
         cmd = self._build_ssh_make_cmd(
             "ssh_install_nginx",
             params,
@@ -3028,6 +3029,7 @@ class TODO(
                     "Claude Code plugins - marketplaces and ERPLibre list"
                 )
             },
+            {"prompt_description": t("Claude Code - local sessions")},
         ]
         help_info = self.fill_help_info(choices)
 
@@ -3046,6 +3048,8 @@ class TODO(
                 self._show_claude_context()
             elif status == "5":
                 self.prompt_execute_claude_plugins()
+            elif status == "6":
+                self.prompt_claude_sessions()
             else:
                 print(t("Command not found !"))
 
@@ -4108,7 +4112,7 @@ class TODO(
         print(f"[1] {t('A database')}")
         print(f"[2] {t('A backup .zip, without restoring it')}")
         print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if answer == "1":
             database = self._analyse_select_database()
@@ -4447,8 +4451,8 @@ class TODO(
         de modèles et de colonnes, et lesquels sont traduits ou uniques.
 
         La confirmation redemande le NOM de la base. Une frappe sur « o »
-        se donne par réflexe ; recopier « sireine_neutralize_upgrade_18 »
-        oblige à regarder ce qu'on détruit.
+        se tape par réflexe ; recopier un nom long oblige à regarder ce
+        qu'on détruit.
         """
         from script.analyse import monitoring
 
@@ -4480,7 +4484,7 @@ class TODO(
         print(f"[2] {t('Whitelist: only the models I name')}")
         print(f"[3] {t('Blacklist: every model except those I name')}")
         print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         mode = {"1": "hybrid", "2": "whitelist", "3": "blacklist"}.get(answer)
         if not mode:
@@ -4523,7 +4527,7 @@ class TODO(
         print()
         print(f"[1] {t('A development copy (restored, neutralised)')}")
         print(f"[2] {t('An instance in service')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         return (
             check_instance_state.LIVE
@@ -4550,7 +4554,7 @@ class TODO(
         print(f"[3] {t('A remote backup (https + master password)')}")
         print(f"[4] {t('A live remote instance')}")
         print(f"[0] {t('Back')}")
-        answer = click.prompt(t("Command:"))
+        answer = click.prompt(t("Command:"), prompt_suffix=" ")
         print()
         if answer == "1":
             database = self.db_manager.select_database()
@@ -4594,7 +4598,7 @@ class TODO(
         print()
         print(f"[1] {t('An API key')}")
         print(f"[2] {t('A password')}")
-        genre = click.prompt(t("Command:"))
+        genre = click.prompt(t("Command:"), prompt_suffix=" ")
         secret = getpass.getpass(
             t("API key: ") if genre == "1" else t("Password: ")
         )
@@ -4613,11 +4617,11 @@ class TODO(
     def _monitoring_restore(self, zip_path):
         """Restaurer la sauvegarde, puis DIRE ce que la neutralisation a pris.
 
-        Mesuré sur sept bases dont le nom portait « neutralize » :
-        `database.is_neutralized` absent partout, jusqu'à 35 crons actifs,
-        et le domaine de courriel du client toujours en place. Poser la
-        question, recevoir oui et ne rien vérifier reproduit exactement
-        cette illusion — on relit donc la base.
+        Une base dont le nom annonce la neutralisation peut n'en porter
+        aucune trace : `database.is_neutralized` absent, des crons encore
+        actifs, un domaine de courriel toujours en place. Poser la question,
+        recevoir oui et ne rien vérifier reproduit exactement cette illusion
+        — on relit donc la base.
         """
         from script.analyse import monitoring
 

@@ -513,15 +513,28 @@ class TestMenuLabels(unittest.TestCase):
 
     Sans elle, `_menu_header` n'affiche pas le segment et
     `todo_telemetry.build_code_tree` traite le menu comme une COMMANDE :
-    il apparaît en feuille, sous son nom de méthode brut. Trois menus en
-    souffrent déjà — la liste est figée ici pour que le nombre ne grandisse
-    pas, pas pour bénir ce qu'elle contient.
+    il apparaît en feuille, sous son nom de méthode brut.
+
+    Les menus se trouvent par ce qu'ils APPELLENT — `fill_help_info` ou
+    `_menu_header` — dans tout le paquet, et non par la table de répartition
+    du menu Exécution. Chercher là ne voyait que les sous-menus atteints
+    depuis cette table : un menu ouvert depuis ailleurs, ou défini dans un
+    mixin, n'était jamais examiné, et c'est ainsi que le sous-menu VPN a
+    passé le contrôle sans étiquette.
+
+    Cinq méthodes sont exemptées, et pour la même raison : ce sont des
+    ACTIONS qui posent une question — un choix de méthode d'installation, un
+    « aller plus loin » après un rapport — et non des écrans où l'on
+    navigue. Leur donner un segment mettrait une miette sur une invite
+    passagère.
     """
 
-    KNOWN_MISSING = {
-        "prompt_execute_test",
-        "prompt_execute_network",
-        "prompt_execute_security",
+    ECRANS_EXEMPTES = {
+        "_analyse_follow_up",
+        "rtk_install",
+        "generate_config_from_preconfiguration",
+        "debug_ide",
+        "execute_odoo_upgrade",
     }
 
     def setUp(self):
@@ -553,18 +566,59 @@ class TestMenuLabels(unittest.TestCase):
     def test_analyse_menu_has_a_breadcrumb_label(self):
         self.assertIn("prompt_execute_analyse", self.labels)
 
+    @staticmethod
+    def _menus_du_paquet():
+        """Toute méthode qui dessine un menu, dans tout script/todo/*.py.
+
+        Une méthode dessine un menu quand elle appelle `fill_help_info` ou
+        `_menu_header` : c'est par là que passe l'en-tête, donc c'est là que
+        l'étiquette manque ou non. Les deux fonctions elles-mêmes sortent."""
+        trouves = set()
+        for chemin in sorted(TODO_DIR.glob("*.py")):
+            arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            for noeud in ast.walk(arbre):
+                if not isinstance(noeud, ast.FunctionDef):
+                    continue
+                appels = {
+                    c.func.attr
+                    for c in ast.walk(noeud)
+                    if isinstance(c, ast.Call)
+                    and isinstance(c.func, ast.Attribute)
+                }
+                if not {"fill_help_info", "_menu_header"} & appels:
+                    continue
+                if noeud.name in ("fill_help_info", "_menu_header"):
+                    continue
+                trouves.add(noeud.name)
+        return trouves
+
+    def test_the_package_menus_were_found(self):
+        """Le détecteur voit bien des menus : sinon tout passerait."""
+        menus = self._menus_du_paquet()
+        self.assertIn("prompt_execute_qemu", menus)
+        self.assertIn("prompt_execute_vpn", menus)
+        self.assertGreater(len(menus), 20)
+
     def test_no_new_menu_forgets_its_label(self):
-        submenus = {
-            method
-            for method in self.dispatched
-            if method.startswith("prompt_execute_")
-        }
-        missing = submenus - self.labels - self.KNOWN_MISSING
+        missing = self._menus_du_paquet() - self.labels - self.ECRANS_EXEMPTES
         self.assertEqual(
             missing,
             set(),
             f"menus sans étiquette dans _MENU_LABELS : {sorted(missing)}",
         )
+
+    def test_the_vpn_submenu_leaves_a_crumb(self):
+        """Le cas nommé : il était le seul menu invisible au contrôle."""
+        self.assertIn("prompt_execute_vpn", self.labels)
+
+    def test_no_stale_exemption(self):
+        """Une exemption qui ne nomme plus un menu est à retirer."""
+        fantomes = self.ECRANS_EXEMPTES - self._menus_du_paquet()
+        self.assertEqual(fantomes, set())
+
+    def test_an_exemption_is_never_also_labelled(self):
+        """Exempter ET étiqueter dirait deux choses opposées du même écran."""
+        self.assertEqual(self.ECRANS_EXEMPTES & self.labels, set())
 
 
 if __name__ == "__main__":

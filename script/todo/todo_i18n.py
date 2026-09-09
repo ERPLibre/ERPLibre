@@ -1255,6 +1255,9 @@ TRANSLATIONS = {
         "fr": "Ajouter un marketplace",
         "en": "Add a marketplace",
     },
+    # Sert la section « Maintenance » des deux menus qui en portent une :
+    # la traduction est la même, et une clé répétée écrase la précédente en
+    # silence.
     "Maintenance": {
         "fr": "Maintenance",
         "en": "Maintenance",
@@ -1637,10 +1640,6 @@ TRANSLATIONS = {
     "Interface": {
         "fr": "Interface",
         "en": "Interface",
-    },
-    "Maintenance": {
-        "fr": "Maintenance",
-        "en": "Maintenance",
     },
     "Language / Langue": {
         "fr": "🌐 Langue / Language",
@@ -5779,10 +5778,6 @@ TRANSLATIONS = {
         "fr": "Fuseau inconnu, on garde",
         "en": "Unknown timezone, keeping",
     },
-    "none": {
-        "fr": "aucune",
-        "en": "none",
-    },
     "No SSH key found. Set a password instead? (Y/n): ": {
         "fr": "Aucune clé SSH trouvée. Définir un mot de passe ? (O/n) : ",
         "en": "No SSH key found. Set a password instead? (Y/n): ",
@@ -7595,10 +7590,6 @@ TRANSLATIONS = {
     "seconds.": {
         "fr": "secondes.",
         "en": "seconds.",
-    },
-    "pass": {
-        "fr": "passe",
-        "en": "pass",
     },
     "The cleanup was still running after": {
         "fr": "Le nettoyage tournait encore après",
@@ -10025,12 +10016,8 @@ TRANSLATIONS = {
     },
     # Courriel
     "mail_menu": {
-        "fr": "Courriel - Lire et envoyer du courriel",
-        "en": "Mail - Read and send email",
-    },
-    "mail_ai_question": {
-        "fr": "Question IA - Poser une question à un modèle",
-        "en": "AI question - Ask a model a question",
+        "fr": "📧 Courriel - Lire et envoyer du courriel",
+        "en": "📧 Mail - Read and send email",
     },
     "mail_open_tui": {
         "fr": "Ouvrir le client courriel (TUI)",
@@ -12185,6 +12172,665 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
+    # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
+    "AI question - Ask a model, local or remote": {
+        "fr": "🤖 Question IA - Interroger un modèle, local ou distant",
+        "en": "🤖 AI question - Ask a model, local or remote",
+    },
+    "A server, a gpt tool, a conversation.": {
+        "fr": "Un serveur, un outil gpt, une conversation.",
+        "en": "A server, a gpt tool, a conversation.",
+    },
+    "Talk": {
+        "fr": "Parler",
+        "en": "Talk",
+    },
+    "Free question": {
+        "fr": "💬 Question libre",
+        "en": "💬 Free question",
+    },
+    "Known servers": {
+        "fr": "🗄 Serveurs connus",
+        "en": "🗄 Known servers",
+    },
+    "Search for a server…": {
+        "fr": "🔍 Chercher un serveur…",
+        "en": "🔍 Search for a server…",
+    },
+    "Server card": {
+        "fr": "📇 Fiche du serveur",
+        "en": "📇 Server card",
+    },
+    "what it says it can do": {
+        "fr": "ce qu'il annonce savoir faire",
+        "en": "what it says it can do",
+    },
+    "no local server — via api.openai.com": {
+        "fr": "aucun serveur local — via api.openai.com",
+        "en": "no local server — via api.openai.com",
+    },
+    "no server yet": {
+        "fr": "aucun serveur pour l'instant",
+        "en": "no server yet",
+    },
+    "reachable": {
+        "fr": "joignable",
+        "en": "reachable",
+    },
+    "The history lives in memory and dies with this menu. /save writes it to a file.": {
+        "fr": "L'historique vit en mémoire et meurt avec ce menu. /save l'écrit dans un fichier.",
+        "en": "The history lives in memory and dies with this menu. /save writes it to a file.",
+    },
+    "Commands start with a slash. /? lists them.": {
+        "fr": "Les commandes commencent par une barre oblique. /? les liste.",
+        "en": "Commands start with a slash. /? lists them.",
+    },
+    "interrupted": {
+        "fr": "interrompue",
+        "en": "interrupted",
+    },
+    "answer interrupted": {
+        "fr": "réponse interrompue",
+        "en": "answer interrupted",
+    },
+    "/save to write it to a file": {
+        "fr": "/save pour l'écrire dans un fichier",
+        "en": "/save to write it to a file",
+    },
+    "back to the menu": {
+        "fr": "retour au menu",
+        "en": "back to the menu",
+    },
+    "clear the history (same server, same tool)": {
+        "fr": "vider l'historique (même serveur, même outil)",
+        "en": "clear the history (same server, same tool)",
+    },
+    "change tool, history kept": {
+        "fr": "changer d'outil, historique conservé",
+        "en": "change tool, history kept",
+    },
+    "change server, history CLEARED — the model is no longer the same": {
+        "fr": "changer de serveur, historique VIDÉ — le modèle n'est plus le même",
+        "en": "change server, history CLEARED — the model is no longer the same",
+    },
+    "show again what was sent": {
+        "fr": "réafficher ce qui a été envoyé",
+        "en": "show again what was sent",
+    },
+    'multi-line entry, end with a single "." line': {
+        "fr": "saisie multiligne, terminer par une ligne « . » seule",
+        "en": 'multi-line entry, end with a single "." line',
+    },
+    "write the conversation to a file": {
+        "fr": "écrire la conversation dans un fichier",
+        "en": "write the conversation to a file",
+    },
+    "list the commands": {
+        "fr": "lister les commandes",
+        "en": "list the commands",
+    },
+    "turns dropped": {
+        "fr": "tours jetés",
+        "en": "turns dropped",
+    },
+    "Conversation written to": {
+        "fr": "Conversation écrite dans",
+        "en": "Conversation written to",
+    },
+    "via api.openai.com (key from the vault)": {
+        "fr": "via api.openai.com (clé du coffre)",
+        "en": "via api.openai.com (key from the vault)",
+    },
+    "This destination is a third party. Retype it to confirm:": {
+        "fr": "Cette destination est un tiers. Retape-la pour confirmer :",
+        "en": "This destination is a third party. Retype it to confirm:",
+    },
+    "Destination not retyped — nothing was sent.": {
+        "fr": "Destination non retapée — rien n'a été envoyé.",
+        "en": "Destination not retyped — nothing was sent.",
+    },
+    "third party": {
+        "fr": "tiers",
+        "en": "third party",
+    },
+    "this machine": {
+        "fr": "cette machine",
+        "en": "this machine",
+    },
+    "local network of this machine": {
+        "fr": "🌐 Réseau local de cette machine",
+        "en": "🌐 Local network of this machine",
+    },
+    "local network": {
+        "fr": "réseau local",
+        "en": "local network",
+    },
+    "No server answered on this machine.": {
+        "fr": "Aucun serveur n'a répondu sur cette machine.",
+        "en": "No server answered on this machine.",
+    },
+    "The vault holds no OpenAI key: configure a server or a key.": {
+        "fr": "Le coffre ne porte aucune clé OpenAI : configurer un serveur ou une clé.",
+        "en": "The vault holds no OpenAI key: configure a server or a key.",
+    },
+    "Here (127.0.0.1)": {
+        "fr": "🏠 Ici (127.0.0.1)",
+        "en": "🏠 Here (127.0.0.1)",
+    },
+    "An address I type": {
+        "fr": "🎯 Une adresse que je tape",
+        "en": "🎯 An address I type",
+    },
+    "Where should I look for a server?": {
+        "fr": "Où chercher un serveur ?",
+        "en": "Where should I look for a server?",
+    },
+    "Add a server by hand": {
+        "fr": "➕ Ajouter un serveur à la main",
+        "en": "➕ Add a server by hand",
+    },
+    "Host or IP": {
+        "fr": "Hôte ou IP",
+        "en": "Host or IP",
+    },
+    "Port": {
+        "fr": "Port",
+        "en": "Port",
+    },
+    "Name for this server": {
+        "fr": "Nom pour ce serveur",
+        "en": "Name for this server",
+    },
+    "Answered, not identified": {
+        "fr": "A répondu, non identifié",
+        "en": "Answered, not identified",
+    },
+    "Asks for a key — configure it against a server you named": {
+        "fr": "Demande une clé — la configurer contre un serveur que tu as nommé",
+        "en": "Asks for a key — configure it against a server you named",
+    },
+    "Starting up — alive, answer not ready": {
+        "fr": "En démarrage — vivant, réponse pas prête",
+        "en": "Starting up — alive, answer not ready",
+    },
+    "Type the server name in full to delete it:": {
+        "fr": "Tape le nom du serveur en entier pour le supprimer :",
+        "en": "Type the server name in full to delete it:",
+    },
+    "Delete a server": {
+        "fr": "🗑 Supprimer un serveur",
+        "en": "🗑 Delete a server",
+    },
+    "Choose the server to use": {
+        "fr": "Choisir le serveur à utiliser",
+        "en": "Choose the server to use",
+    },
+    "in use": {
+        "fr": "en usage",
+        "en": "in use",
+    },
+    "11 ports, instant": {
+        "fr": "11 ports, instantané",
+        "en": "11 ports, instant",
+    },
+    "The QEMU VMs of this machine (virsh)": {
+        "fr": "🖥 Les VM QEMU de cette machine (virsh)",
+        "en": "🖥 The QEMU VMs of this machine (virsh)",
+    },
+    "The hosts of ~/.ssh/config": {
+        "fr": "🔑 Les hôtes de ~/.ssh/config",
+        "en": "🔑 The hosts of ~/.ssh/config",
+    },
+    "libvirt bridge": {
+        "fr": "pont libvirt",
+        "en": "libvirt bridge",
+    },
+    "Sweep %s addresses × %s ports on %s?": {
+        "fr": "Balayer %s adresses × %s ports sur %s ?",
+        "en": "Sweep %s addresses × %s ports on %s?",
+    },
+    "The /24 is an assumption: a prefix does not follow from an address.": {
+        "fr": (
+            "Le /24 est une hypothèse : un préfixe ne se déduit pas"
+            " d'une adresse."
+        ),
+        "en": (
+            "The /24 is an assumption: a prefix does not follow from an"
+            " address."
+        ),
+    },
+    "Wider than a /24 is refused.": {
+        "fr": "Plus large qu'un /24 est refusé.",
+        "en": "Wider than a /24 is refused.",
+    },
+    "Ctrl+C interrupts": {
+        "fr": "Ctrl+C interrompt",
+        "en": "Ctrl+C interrupts",
+    },
+    "hosts": {
+        "fr": "hôtes",
+        "en": "hosts",
+    },
+    "ports": {
+        "fr": "ports",
+        "en": "ports",
+    },
+    "server recognized": {
+        "fr": "serveur reconnu",
+        "en": "server recognized",
+    },
+    "servers recognized": {
+        "fr": "serveurs reconnus",
+        "en": "servers recognized",
+    },
+    "hosts swept": {
+        "fr": "hôtes balayés",
+        "en": "hosts swept",
+    },
+    "No server on %s (%s, %s, %ss).": {
+        "fr": "Aucun serveur sur %s (%s, %s, %ss).",
+        "en": "No server on %s (%s, %s, %ss).",
+    },
+    # « host » et « port » sont déjà déclarées plus haut dans ce fichier, avec
+    # ce français : les redéclarer ici les écraserait en silence. L'accord des
+    # nombres les lit telles quelles.
+    "model": {
+        "fr": "modèle",
+        "en": "model",
+    },
+    "host swept": {
+        "fr": "hôte balayé",
+        "en": "host swept",
+    },
+    "Look somewhere else": {
+        "fr": "Chercher ailleurs",
+        "en": "Look somewhere else",
+    },
+    "Carry on with the OpenAI API (key from the vault)": {
+        "fr": "Continuer avec l'API OpenAI (clé du coffre)",
+        "en": "Carry on with the OpenAI API (key from the vault)",
+    },
+    'A local server: "ollama serve" listens on 11434.': {
+        "fr": "Un serveur local : « ollama serve » écoute sur 11434.",
+        "en": 'A local server: "ollama serve" listens on 11434.',
+    },
+    "libvirt answers, no VM defined": {
+        "fr": "libvirt répond, aucune VM définie",
+        "en": "libvirt answers, no VM defined",
+    },
+    "~/.ssh/config absent — nothing to probe": {
+        "fr": "~/.ssh/config absent — rien à sonder",
+        "en": "~/.ssh/config absent — nothing to probe",
+    },
+    "Host without an address — listed as unknown": {
+        "fr": "Hôte sans adresse — listé comme inconnu",
+        "en": "Host without an address — listed as unknown",
+    },
+    "Keep this server?": {
+        "fr": "Garder ce serveur ?",
+        "en": "Keep this server?",
+    },
+    "Keep them all": {
+        "fr": "Les garder tous",
+        "en": "Keep them all",
+    },
+    "Sweeping the network reaches machines you did not name.": {
+        "fr": (
+            "Balayer le réseau atteint des machines que tu n'as pas"
+            " nommées."
+        ),
+        "en": "Sweeping the network reaches machines you did not name.",
+    },
+    "gpt tools": {
+        "fr": "🧰 Outils gpt",
+        "en": "🧰 gpt tools",
+    },
+    "no gpt tool yet": {
+        "fr": "aucun outil gpt pour l'instant",
+        "en": "no gpt tool yet",
+    },
+    "compatible": {
+        "fr": "compatibles",
+        "en": "compatible",
+    },
+    "Which gpt tool?": {
+        "fr": "Quel outil gpt ?",
+        "en": "Which gpt tool?",
+    },
+    "a requirement is contradicted": {
+        "fr": "une exigence est contredite",
+        "en": "a requirement is contradicted",
+    },
+    "unreadable gpt files": {
+        "fr": "fichiers gpt illisibles",
+        "en": "unreadable gpt files",
+    },
+    "details": {
+        "fr": "détails",
+        "en": "details",
+    },
+    "What is about to be sent": {
+        "fr": "Ce qui va être envoyé",
+        "en": "What is about to be sent",
+    },
+    "characters": {
+        "fr": "caractères",
+        "en": "characters",
+    },
+    "What the filter checks": {
+        "fr": "Ce que le filtre contrôle : adresses, courriels, chemins de compte. Pas les noms.",
+        "en": "What the filter checks",
+    },
+    "cancel": {
+        "fr": "annuler",
+        "en": "cancel",
+    },
+    "Nothing has been sent.": {
+        "fr": "Rien n'a été envoyé.",
+        "en": "Nothing has been sent.",
+    },
+    # Les noms et descriptions des gpts livrés (script/todo/assistant/gpt/).
+    # L'anglais EST la clé, comme partout : un gpt non traduit
+    # s'affiche en anglais au lieu de rien. L'emoji vit dans la
+    # valeur, jamais dans la clé.
+    "Unit test failure - the cause, and what to read next": {
+        "fr": "🧪 Échec de test unitaire - la cause, et quoi lire ensuite",
+        "en": "Unit test failure - the cause, and what to read next",
+    },
+    "Read one failing test and name the cause, without proposing a patch": {
+        "fr": "lire un test en échec et nommer la cause, sans proposer de correctif",
+        "en": "Read one failing test and name the cause, without proposing a patch",
+    },
+    "Manifest gaps - which tier loses which modules": {
+        "fr": "🕳️ Trous de manifeste - quel palier perd quels modules",
+        "en": "Manifest gaps - which tier loses which modules",
+    },
+    "Read the reported holes and name the tier and the modules each loses": {
+        "fr": "lire les trous rapportés et nommer le palier et les modules perdus",
+        "en": "Read the reported holes and name the tier and the modules each loses",
+    },
+    "Cloned module - find what it inherited": {
+        "fr": "🧬 Module cloné - repérer ce dont il a hérité",
+        "en": "Cloned module - find what it inherited",
+    },
+    "Name what a cloned module inherited rather than what was written": {
+        "fr": "nommer ce qu'un module cloné a hérité plutôt que ce qui a été écrit",
+        "en": "Name what a cloned module inherited rather than what was written",
+    },
+    "Comment hygiene - rewrite narrative as mechanism": {
+        "fr": "🧹 Hygiène des commentaires - réécrire le récit en fonctionnement",
+        "en": "Comment hygiene - rewrite narrative as mechanism",
+    },
+    "Rewrite each flagged sentence so the code is the subject, present tense": {
+        "fr": "réécrire chaque phrase signalée avec le code pour sujet, au présent",
+        "en": "Rewrite each flagged sentence so the code is the subject, present tense",
+    },
+    "Commit message - subject, bilingual body, Assisted-by": {
+        "fr": "✍️ Message de commit - sujet, corps bilingue, Assisted-by",
+        "en": "Commit message - subject, bilingual body, Assisted-by",
+    },
+    "Turn the staged diff into a tagged subject and a bilingual body": {
+        "fr": "faire du diff indexé un sujet tagué et un corps bilingue",
+        "en": "Turn the staged diff into a tagged subject and a bilingual body",
+    },
+    "Bilingual doc - write or repair a .base.md": {
+        "fr": "🌍 Doc bilingue - écrire ou réparer un .base.md",
+        "en": "Bilingual doc - write or repair a .base.md",
+    },
+    "Produce or fix a .base.md, its header and its language blocks": {
+        "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
+        "en": "Produce or fix a .base.md, its header and its language blocks",
+    },
+    # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
+    "Claude Code - local sessions": {
+        "fr": "🤖 Claude Code - sessions locales",
+        "en": "🤖 Claude Code - local sessions",
+    },
+    "List local sessions": {
+        "fr": "📋 Lister les sessions locales",
+        "en": "📋 List local sessions",
+    },
+    "Ask a question to a session": {
+        "fr": "❓ Poser une question à une session",
+        "en": "❓ Ask a question to a session",
+    },
+    "Resume a session in a new terminal": {
+        "fr": "▶ Reprendre une session dans un nouveau terminal",
+        "en": "▶ Resume a session in a new terminal",
+    },
+    "live": {
+        "fr": "vivantes",
+        "en": "live",
+    },
+    "held by pid %s": {
+        "fr": "tenue par le pid %s",
+        "en": "held by pid %s",
+    },
+    "resumable, not running": {
+        "fr": "reprenable, pas en cours",
+        "en": "resumable, not running",
+    },
+    "This session is open elsewhere. A branch would be lost.": {
+        "fr": "Cette session est ouverte ailleurs. Une branche serait perdue.",
+        "en": "This session is open elsewhere. A branch would be lost.",
+    },
+    "Branch a copy (recommended)": {
+        "fr": "Brancher une copie (recommandé)",
+        "en": "Branch a copy (recommended)",
+    },
+    "Write into the held session": {
+        "fr": "Écrire dans la session tenue",
+        "en": "Write into the held session",
+    },
+    "Type the pid of the holder to write into it:": {
+        "fr": "Tape le pid du détenteur pour y écrire :",
+        "en": "Type the pid of the holder to write into it:",
+    },
+    "No session on this machine.": {
+        "fr": "Aucune session sur cette machine.",
+        "en": "No session on this machine.",
+    },
+    "claude is not on the PATH.": {
+        "fr": "claude n'est pas dans le PATH.",
+        "en": "claude is not on the PATH.",
+    },
+    "No terminal can be opened here. Paste this command:": {
+        "fr": "Aucun terminal ne peut être ouvert ici. Colle cette commande :",
+        "en": "No terminal can be opened here. Paste this command:",
+    },
+    "read-only: Read, Glob, Grep": {
+        "fr": "lecture seule : Read, Glob, Grep",
+        "en": "read-only: Read, Glob, Grep",
+    },
+    # Catalogue gpt et porte du contexte (script/todo/assistant/gpt.py,
+    # script/todo/assistant/context.py, capabilities.py)
+    "No front-matter: a gpt opens with ---": {
+        "fr": "Pas d'en-tête : un gpt s'ouvre par ---",
+        "en": "No front-matter: a gpt opens with ---",
+    },
+    "Front-matter is not closed": {
+        "fr": "En-tête non fermé",
+        "en": "Front-matter is not closed",
+    },
+    "Front-matter is not a mapping": {
+        "fr": "L'en-tête n'est pas un dictionnaire",
+        "en": "Front-matter is not a mapping",
+    },
+    "Front-matter is unreadable": {
+        "fr": "En-tête illisible",
+        "en": "Front-matter is unreadable",
+    },
+    "Repeated key in front-matter:": {
+        "fr": "Clé répétée dans l'en-tête :",
+        "en": "Repeated key in front-matter:",
+    },
+    "No schema version: gpt is required": {
+        "fr": "Version de schéma absente : gpt est obligatoire",
+        "en": "No schema version: gpt is required",
+    },
+    "Schema too recent for this version of TODO": {
+        "fr": "Schéma trop récent pour cette version de TODO",
+        "en": "Schema too recent for this version of TODO",
+    },
+    "No name": {
+        "fr": "Nom absent",
+        "en": "No name",
+    },
+    "No description": {
+        "fr": "Description absente",
+        "en": "No description",
+    },
+    "Missing marker <!-- [question] -->": {
+        "fr": "Marqueur <!-- [question] --> absent",
+        "en": "Missing marker <!-- [question] -->",
+    },
+    "Unknown key in front-matter:": {
+        "fr": "Clé inconnue dans l'en-tête :",
+        "en": "Unknown key in front-matter:",
+    },
+    "name_fr belongs in the translations file": {
+        "fr": "name_fr appartient au fichier des traductions",
+        "en": "name_fr belongs in the translations file",
+    },
+    "A gpt from outside the repository may not declare any command.": {
+        "fr": "Un gpt hors du dépôt ne peut déclarer aucune commande.",
+        "en": "A gpt from outside the repository may not declare any command.",
+    },
+    "Overrides the one from": {
+        "fr": "Écrase celui de",
+        "en": "Overrides the one from",
+    },
+    "Unreadable file:": {
+        "fr": "Fichier illisible :",
+        "en": "Unreadable file:",
+    },
+    "A gpt may not be named *.base.md": {
+        "fr": "Un gpt ne peut pas s'appeler *.base.md",
+        "en": "A gpt may not be named *.base.md",
+    },
+    "PyYAML is missing: the gpt catalogue stays closed, the free question works.": {
+        "fr": "PyYAML manque : le catalogue gpt reste fermé, la question libre fonctionne.",
+        "en": "PyYAML is missing: the gpt catalogue stays closed, the free question works.",
+    },
+    "private/noms_interdits.txt is absent: no client, database, VM or host name can be recognized.": {
+        "fr": "private/noms_interdits.txt est absent : aucun nom de client, de base, de VM ou d'hôte ne peut être reconnu.",
+        "en": "private/noms_interdits.txt is absent: no client, database, VM or host name can be recognized.",
+    },
+    "A finding blocks a send to a third party. No override.": {
+        "fr": "Une trouvaille bloque un envoi vers un tiers. Aucun passe-droit.",
+        "en": "A finding blocks a send to a third party. No override.",
+    },
+    "finding to re-read before sending": {
+        "fr": "trouvaille à relire avant d'envoyer",
+        "en": "finding to re-read before sending",
+    },
+    "findings to re-read before sending": {
+        "fr": "trouvailles à relire avant d'envoyer",
+        "en": "findings to re-read before sending",
+    },
+    "… [cut]": {
+        "fr": "… [coupé]",
+        "en": "… [cut]",
+    },
+    "a requirement could not be checked": {
+        "fr": "une exigence n'a pas pu être vérifiée",
+        "en": "a requirement could not be checked",
+    },
+    "asks for %s of context, this server announces %s": {
+        "fr": "demande %s de contexte, ce serveur en annonce %s",
+        "en": "asks for %s of context, this server announces %s",
+    },
+    "asks for %s B of parameters, this server announces %s B": {
+        "fr": "demande %s B de paramètres, ce serveur en annonce %s B",
+        "en": "asks for %s B of parameters, this server announces %s B",
+    },
+    "asks for a local server, this one is %s": {
+        "fr": "demande un serveur local, celui-ci est %s",
+        "en": "asks for a local server, this one is %s",
+    },
+    "asks for tool calling, this server does not announce it": {
+        "fr": "demande l'appel d'outils, ce serveur ne l'annonce pas",
+        "en": "asks for tool calling, this server does not announce it",
+    },
+    "asks for vision, this server does not announce it": {
+        "fr": "demande la vision, ce serveur ne l'annonce pas",
+        "en": "asks for vision, this server does not announce it",
+    },
+    "asks for JSON output, this server does not announce it": {
+        "fr": "demande une sortie JSON, ce serveur ne l'annonce pas",
+        "en": "asks for JSON output, this server does not announce it",
+    },
+    "hosting could not be checked": {
+        "fr": "l'hébergement n'a pas pu être vérifié",
+        "en": "hosting could not be checked",
+    },
+    "context_window could not be checked on this server": {
+        "fr": "context_window n'a pas pu être vérifié sur ce serveur",
+        "en": "context_window could not be checked on this server",
+    },
+    "parameters could not be checked on this server": {
+        "fr": "parameters n'a pas pu être vérifié sur ce serveur",
+        "en": "parameters could not be checked on this server",
+    },
+    "tool_calling could not be checked on this server": {
+        "fr": "tool_calling n'a pas pu être vérifié sur ce serveur",
+        "en": "tool_calling could not be checked on this server",
+    },
+    "vision could not be checked on this server": {
+        "fr": "vision n'a pas pu être vérifié sur ce serveur",
+        "en": "vision could not be checked on this server",
+    },
+    "json_output could not be checked on this server": {
+        "fr": "json_output n'a pas pu être vérifié sur ce serveur",
+        "en": "json_output could not be checked on this server",
+    },
+    "A network I type (CIDR)": {
+        "fr": "📡 Un réseau que je tape (CIDR)",
+        "en": "📡 A network I type (CIDR)",
+    },
+    "Network in CIDR form": {
+        "fr": "Réseau en notation CIDR",
+        "en": "Network in CIDR form",
+    },
+    "Only part of that network was swept.": {
+        "fr": "Une partie seulement de ce réseau a été balayée.",
+        "en": "Only part of that network was swept.",
+    },
+    "The networks of a machine over SSH": {
+        "fr": "🛰 Les réseaux d'une machine en SSH",
+        "en": "🛰 The networks of a machine over SSH",
+    },
+    "Host reachable over SSH": {
+        "fr": "Hôte joignable en SSH",
+        "en": "Host reachable over SSH",
+    },
+    "Reading the networks it carries…": {
+        "fr": "Lecture des réseaux qu'elle porte…",
+        "en": "Reading the networks it carries…",
+    },
+    "That host did not answer, or carries no network.": {
+        "fr": "Cet hôte n'a pas répondu, ou ne porte aucun réseau.",
+        "en": "That host did not answer, or carries no network.",
+    },
+    "read on %s, swept from here": {
+        "fr": "lu sur %s, balayé d'ici",
+        "en": "read on %s, swept from here",
+    },
+    "Only the hosts that have already spoken (ip neigh)": {
+        "fr": "Seulement les hôtes qui ont déjà parlé (ip neigh)",
+        "en": "Only the hosts that have already spoken (ip neigh)",
+    },
+    "nothing kept": {
+        "fr": "rien de gardé",
+        "en": "nothing kept",
+    },
+    "kept": {
+        "fr": "gardé",
+        "en": "kept",
+    },
+    # « models », « still waiting for » et « Type an address » servent aussi
+    # ici et sont définies plus haut : les redéfinir écraserait la première
+    # sans rien lever.
 }
 
 

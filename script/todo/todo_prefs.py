@@ -30,6 +30,17 @@ DEFAULTS = {
     "qemu_deploy_progress": "cli",
     # Interface de la migration Odoo : "ask" / "tui" / "cli".
     "migration_ui": "ask",
+    # Balayage de découverte des serveurs LLM : connexions en vol. Sert
+    # seulement quand il est INFÉRIEUR au nombre de sondes, le balayage
+    # plafonnant à celui-ci — un /24 sur onze ports en compte 2 794. Monter
+    # raccourcit en groupant les vagues ; descendre allège la salve sur un
+    # commutateur qui perd des paquets sous charge.
+    "assistant_sweep_workers": 1024,
+    # Délai d'une connexion du balayage, en secondes. Le SEUL réglage d'ici
+    # qui fabrique des faux négatifs : sous charge, un hôte joignable en une
+    # milliseconde se manque à 0,05 s. Le descendre annonce des réseaux vides
+    # qui ne le sont pas.
+    "assistant_sweep_timeout": 0.30,
     # Cache courriel : mode par DÉFAUT. Un compte peut le surcharger via
     # sa clé `cache_mode` dans accounts.json ; `null` là-bas veut dire
     # « hérite d'ici ». Valeurs : clear | encrypted | ephemeral.
