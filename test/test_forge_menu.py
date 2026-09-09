@@ -295,6 +295,7 @@ class ClientDeMiroir:
         self.presents = [{"full_name": f"o/{n}", "name": n} for n in presents]
         self.refus = set(refus)
         self.crees = []
+        self.miroites = []
         self._liste = liste
 
     def repos(self):
@@ -304,6 +305,12 @@ class ClientDeMiroir:
 
     def create_repo(self, nom, private=True, description=""):
         self.crees.append(nom)
+        if nom in self.refus:
+            return Reponse(api.ALREADY_EXISTS, detail=f"{nom} existe")
+        return Reponse(api.OK, data={"name": nom})
+
+    def migrate(self, clone_addr, nom, mirror=True):
+        self.miroites.append((clone_addr, nom))
         if nom in self.refus:
             return Reponse(api.ALREADY_EXISTS, detail=f"{nom} existe")
         return Reponse(api.OK, data={"name": nom})
@@ -423,6 +430,111 @@ class TestCreerLesDepotsDuManifeste(CasDeMenu):
         """Miroiter un manifeste qui n'est pas celui en service crée les
         mauvais dépôts, et rien ne le dit."""
         self.assertIn(".repo/", forge_menu.MANIFEST_DEFAULT)
+
+
+class TestMiroiterDepuisLAmont(CasDeMenu):
+    """Un miroir plutôt qu'un dépôt vide : la forge tire elle-même."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def manifeste(self, projets, remotes=None, defaut=None):
+        remotes = remotes or {"AMONT": "https://exemple.invalid/amont/"}
+        chemin = os.path.join(self.tmp.name, "manifeste.xml")
+        r = "".join(
+            f'<remote name="{n}" fetch="{u}"/>' for n, u in remotes.items()
+        )
+        d = f'<default remote="{defaut}"/>' if defaut else ""
+        p = "".join(
+            f'<project name="{n}"' + (f' remote="{rem}"' if rem else "") + "/>"
+            for n, rem in projets
+        )
+        with open(chemin, "w", encoding="utf-8") as fichier:
+            fichier.write(f"<manifest>{r}{d}{p}</manifest>")
+        return chemin
+
+    def lancer(self, menu, chemin, reponse="o"):
+        with patch.object(
+            menu, "_forge_select_profile", return_value="a"
+        ), patch.object(
+            menu, "_forge_manifest_path", return_value=chemin
+        ), patch(
+            "builtins.input", return_value=reponse
+        ):
+            return sortie(menu._forge_mirror_manifest)
+
+    def test_it_mirrors_and_does_not_merely_create(self):
+        """LE MOTIF que cette entrée referme : `migrate` était écrit,
+        éprouvé, et aucun chemin ne l'atteignait."""
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste([("outil.git", "AMONT")]))
+        self.assertEqual([], client.crees, "a créé au lieu de miroiter")
+        self.assertEqual(
+            [("https://exemple.invalid/amont/outil.git", "outil")],
+            client.miroites,
+        )
+
+    def test_the_plan_shows_the_upstream_before_anything(self):
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        texte = self.lancer(
+            menu, self.manifeste([("outil.git", "AMONT")]), reponse="n"
+        )
+        self.assertIn("https://exemple.invalid/amont/outil.git", texte)
+        self.assertEqual([], client.miroites)
+
+    def test_a_project_without_an_upstream_is_named_and_skipped(self):
+        """Miroiter sur rien ferait répondre la forge sans dire qu'il
+        manque un remote."""
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        texte = self.lancer(
+            menu,
+            self.manifeste(
+                [("orphelin.git", "JAMAIS-VU"), ("outil.git", "AMONT")]
+            ),
+        )
+        self.assertIn("No upstream for", texte)
+        self.assertIn("orphelin.git", texte)
+        self.assertEqual(["outil"], [n for _u, n in client.miroites])
+
+    def test_what_is_already_there_is_not_mirrored_again(self):
+        client = ClientDeMiroir(presents=["outil"])
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste([("outil.git", "AMONT")]))
+        self.assertEqual([], client.miroites)
+
+    def test_one_refusal_does_not_stop_the_others(self):
+        client = ClientDeMiroir(refus=["b"])
+        menu = MenuDeBanc(client)
+        texte = self.lancer(
+            menu,
+            self.manifeste(
+                [("a.git", "AMONT"), ("b.git", "AMONT"), ("c.git", "AMONT")]
+            ),
+        )
+        self.assertEqual(["a", "b", "c"], [n for _u, n in client.miroites])
+        self.assertIn("✗ b", texte)
+
+    def test_a_failed_listing_mirrors_nothing(self):
+        client = ClientDeMiroir(liste=Reponse(api.BAD_TOKEN, detail="x"))
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste([("a.git", "AMONT")]))
+        self.assertEqual([], client.miroites)
+
+    def test_the_forge_name_carries_no_git_suffix_but_the_url_does(self):
+        """Le nom sur la forge et l'adresse de clone ne sont pas la même
+        chose : tronquer l'URL viserait un dépôt qui n'existe pas en
+        amont, et garder le suffixe dans le nom créerait « outil.git »."""
+        client = ClientDeMiroir()
+        menu = MenuDeBanc(client)
+        self.lancer(menu, self.manifeste([("outil.git", "AMONT")]))
+        url, nom = client.miroites[0]
+        self.assertTrue(url.endswith("outil.git"), url)
+        self.assertEqual("outil", nom)
 
 
 class TestLaFrontiereAvecLeModuleDeForge(CasDeMenu):

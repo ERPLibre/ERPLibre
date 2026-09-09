@@ -106,3 +106,60 @@ def plan(declared, present) -> Plan:
         vus.add(clef)
         (presents if clef in deja else a_creer).append(forge_name(nom))
     return Plan(tuple(a_creer), tuple(presents), collisions)
+
+
+def clone_url(fetch: str, manifest_name: str) -> str:
+    """L'adresse à cloner pour ce projet, "" si l'un des deux manque.
+
+    LA JONCTION SE NORMALISE. Les URL de « fetch » d'un manifeste ne
+    finissent pas toutes par une barre oblique — une seule sur vingt-neuf
+    n'en porte pas — et concaténer donnerait « …/ORGANISATIONdepot.git », une
+    adresse qui n'existe pas. Le nom, lui, garde son « .git » : c'est l'URL
+    de clone, pas le nom sur la forge.
+    """
+    fetch = (fetch or "").strip()
+    nom = (manifest_name or "").strip().lstrip("/")
+    if not fetch or not nom:
+        return ""
+    return f"{fetch.rstrip('/')}/{nom}"
+
+
+def parse_projects(xml_text: str) -> list:
+    """[{"name", "clone_url"}] pour chaque projet du manifeste.
+
+    Prend le TEXTE et non un chemin : l'analyse devient pure, donc
+    vérifiable sur les neuf cents projets réels du dépôt sans lire de
+    fichier, et sur des cas inventés qu'aucun manifeste ne porte.
+
+    LE « REMOTE » S'HÉRITE de « <default remote=…> ». Un seul projet sur
+    neuf cents s'en sert dans ce dépôt, et c'est justement pour celui-là que
+    l'ignorer donnerait une adresse VIDE — un miroir demandé sur rien, dont
+    le refus de la forge ne dirait pas qu'il manque un remote.
+
+    Un XML illisible LÈVE : c'est à l'appelant de dire quoi faire d'un
+    manifeste tronqué, et rendre une liste vide se lirait comme « aucun
+    projet », ce qui n'est pas la même chose.
+    """
+    from xml.etree import ElementTree
+
+    racine = ElementTree.fromstring(xml_text)
+    fetch_par_remote = {
+        remote.get("name"): remote.get("fetch") or ""
+        for remote in racine.findall("remote")
+    }
+    defaut = racine.find("default")
+    remote_defaut = defaut.get("remote") if defaut is not None else None
+
+    projets = []
+    for projet in racine.findall("project"):
+        nom = projet.get("name")
+        if not nom:
+            continue
+        remote = projet.get("remote") or remote_defaut
+        projets.append(
+            {
+                "name": nom,
+                "clone_url": clone_url(fetch_par_remote.get(remote, ""), nom),
+            }
+        )
+    return projets

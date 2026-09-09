@@ -120,6 +120,11 @@ class ForgeMenuMixin:
                     "Forge - Create the repositories the manifest declares"
                 )
             },
+            {
+                "prompt_description": t(
+                    "Forge - Mirror the manifest from its upstreams"
+                )
+            },
         ]
         help_info = self.fill_help_info(choices)
 
@@ -142,6 +147,8 @@ class ForgeMenuMixin:
                 self._forge_list_repos()
             elif status == "7":
                 self._forge_create_missing()
+            elif status == "8":
+                self._forge_mirror_manifest()
             else:
                 print(t("Command not found !"))
 
@@ -369,23 +376,24 @@ class ForgeMenuMixin:
             return ""
         return reponse
 
-    def _forge_declared_names(self, chemin):
-        """Les noms de projet du manifeste, [] s'il est illisible.
+    def _forge_declared_projects(self, chemin):
+        """Les projets du manifeste, [] s'il est illisible.
+
+        L'analyse elle-même vit dans `script.forge.mirror`, qui prend du
+        TEXTE : elle y est pure, donc vérifiable sur les neuf cents projets
+        du dépôt. Ce qui reste ici est la lecture du fichier et la phrase.
 
         Un XML tronqué est un ÉTAT et non une panne du menu : un `repo sync`
         interrompu en laisse un, et remonter une trace d'analyse XML ne dit
         pas quoi faire.
         """
         try:
-            arbre = ElementTree.parse(chemin)
-        except (OSError, ElementTree.ParseError) as refus:
+            with open(chemin, encoding="utf-8") as fichier:
+                texte = fichier.read()
+            return mirror.parse_projects(texte)
+        except (OSError, UnicodeDecodeError, ElementTree.ParseError) as refus:
             print(f"! {t('Unreadable manifest:')} {refus}")
             return []
-        return [
-            projet.get("name")
-            for projet in arbre.getroot().findall("project")
-            if projet.get("name")
-        ]
 
     def _forge_create_missing(self):
         """Crée sur la forge les dépôts que le manifeste déclare.
@@ -404,10 +412,11 @@ class ForgeMenuMixin:
         chemin = self._forge_manifest_path()
         if not chemin:
             return
-        declares = self._forge_declared_names(chemin)
-        if not declares:
+        projets = self._forge_declared_projects(chemin)
+        if not projets:
             print(t("The manifest declares no project."))
             return
+        declares = [projet["name"] for projet in projets]
         _profile, client = self._forge_client(nom)
         if client is None:
             return
@@ -454,5 +463,83 @@ class ForgeMenuMixin:
         print(f"  ✓ {faits} {t('created.')}")
         for a_creer, verdict, detail in refuses:
             print(f"  ✗ {a_creer} : {verdict_sentence(verdict)}")
+            if detail:
+                print(f"      {detail}")
+
+    def _forge_mirror_manifest(self):
+        """Miroite sur la forge les dépôts du manifeste, depuis leur amont.
+
+        UN MIROIR PLUTÔT QU'UN DÉPÔT VIDE. « Créer » donne des dépôts sans
+        contenu, qu'il faut ensuite pousser depuis un poste ; miroiter fait
+        tirer la forge elle-même, et elle continue de le faire.
+
+        L'AMONT VIENT DU MANIFESTE, pas d'une saisie : c'est lui qui sait
+        quel « remote » sert quel projet, héritage du remote par défaut
+        compris. Une adresse VIDE est écartée et nommée — miroiter sur rien
+        ferait répondre la forge sans dire qu'il manque un remote.
+        """
+        nom = self._forge_select_profile()
+        if not nom:
+            return
+        chemin = self._forge_manifest_path()
+        if not chemin:
+            return
+        projets = self._forge_declared_projects(chemin)
+        if not projets:
+            print(t("The manifest declares no project."))
+            return
+        _profile, client = self._forge_client(nom)
+        if client is None:
+            return
+
+        reponse = client.repos()
+        if reponse.kind != api.OK:
+            print(f"  {verdict_sentence(reponse.kind)}")
+            if reponse.detail:
+                print(f"  {t('The forge said:')} {reponse.detail}")
+            return
+        presents = [
+            depot.get("full_name") or depot.get("name") or ""
+            for depot in (reponse.data or [])
+        ]
+
+        sans_amont = [p["name"] for p in projets if not p["clone_url"]]
+        for orphelin in sans_amont:
+            print(f"  ⚠ {t('No upstream for:')} {orphelin}")
+        amont = {
+            mirror.forge_name(p["name"]): p["clone_url"]
+            for p in projets
+            if p["clone_url"]
+        }
+
+        projet = mirror.plan(list(amont), presents)
+        print(
+            f"  {len(projet.already)} {t('already there,')}"
+            f" {len(projet.to_create)} {t('to mirror.')}"
+        )
+        for collision, noms in projet.collisions.items():
+            print(
+                f"  ⚠ {t('Same forge name for:')} {', '.join(noms)}"
+                f" → « {collision} »"
+            )
+        if not projet.to_create:
+            return
+        for a_miroiter in projet.to_create:
+            print(f"    ↓ {a_miroiter}  ←  {amont[a_miroiter]}")
+        if not self._is_yes(
+            input(f"\n{t('Mirror these repositories? (o/N): ')}")
+        ):
+            return
+
+        faits, refuses = 0, []
+        for a_miroiter in projet.to_create:
+            resultat = client.migrate(amont[a_miroiter], a_miroiter)
+            if resultat.kind == api.OK:
+                faits += 1
+            else:
+                refuses.append((a_miroiter, resultat.kind, resultat.detail))
+        print(f"  ✓ {faits} {t('mirrored.')}")
+        for a_miroiter, verdict, detail in refuses:
+            print(f"  ✗ {a_miroiter} : {verdict_sentence(verdict)}")
             if detail:
                 print(f"      {detail}")

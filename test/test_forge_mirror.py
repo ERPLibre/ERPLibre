@@ -33,7 +33,13 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.forge.mirror import Plan, forge_name, plan  # noqa: E402
+from script.forge.mirror import (  # noqa: E402
+    Plan,
+    clone_url,
+    forge_name,
+    parse_projects,
+    plan,
+)
 
 
 class TestLeNomQuePorteLaForge(unittest.TestCase):
@@ -166,6 +172,225 @@ class TestLesCollisions(unittest.TestCase):
         resultat = plan(["OCA/web.git", "autre/web.git"], ["web"])
         self.assertEqual((), resultat.to_create)
         self.assertIn("web", resultat.collisions)
+
+
+class TestLAdresseDeClone(unittest.TestCase):
+    """La jonction se normalise, parce que les manifestes ne le font pas."""
+
+    def test_a_fetch_without_a_trailing_slash_still_joins(self):
+        """Les URL de fetch d'un manifeste ne finissent pas toutes par une
+        barre oblique — une sur vingt-neuf n'en porte pas. Concaténer
+        donnerait « …/ORGANISATIONdepot.git », qui n'existe pas."""
+        self.assertEqual(
+            "https://exemple.invalid/ORG/outil.git",
+            clone_url("https://exemple.invalid/ORG", "outil.git"),
+        )
+
+    def test_a_fetch_with_one_joins_the_same_way(self):
+        self.assertEqual(
+            "https://exemple.invalid/ORG/outil.git",
+            clone_url("https://exemple.invalid/ORG/", "outil.git"),
+        )
+
+    def test_several_trailing_slashes_do_not_double(self):
+        self.assertEqual(
+            "https://exemple.invalid/ORG/outil.git",
+            clone_url("https://exemple.invalid/ORG//", "outil.git"),
+        )
+
+    def test_a_leading_slash_on_the_name_does_not_double(self):
+        self.assertEqual(
+            "https://exemple.invalid/ORG/outil.git",
+            clone_url("https://exemple.invalid/ORG/", "/outil.git"),
+        )
+
+    def test_the_name_keeps_its_git_suffix(self):
+        """C'est l'URL de CLONE, pas le nom sur la forge : le tronquer
+        viserait un dépôt qui n'existe pas en amont."""
+        self.assertTrue(
+            clone_url("https://exemple.invalid/o/", "outil.git").endswith(
+                "outil.git"
+            )
+        )
+
+    def test_a_missing_half_gives_nothing_rather_than_a_broken_url(self):
+        """Une adresse à moitié bâtie ferait répondre la forge sans dire
+        qu'il manque un remote."""
+        self.assertEqual("", clone_url("", "outil.git"))
+        self.assertEqual("", clone_url("https://exemple.invalid/", ""))
+        self.assertEqual("", clone_url(None, None))
+
+
+class TestLAnalyseDuManifeste(unittest.TestCase):
+    """Elle prend du TEXTE : pure, donc vérifiable sans lire de fichier."""
+
+    @staticmethod
+    def xml(remotes, projets, defaut=None):
+        r = "".join(
+            f'<remote name="{n}" fetch="{u}"/>' for n, u in remotes.items()
+        )
+        d = f'<default remote="{defaut}"/>' if defaut else ""
+        p = "".join(
+            f'<project name="{n}"' + (f' remote="{rem}"' if rem else "") + "/>"
+            for n, rem in projets
+        )
+        return f"<manifest>{r}{d}{p}</manifest>"
+
+    def test_a_project_gets_its_remote_fetch(self):
+        texte = self.xml(
+            {"AMONT": "https://exemple.invalid/amont/"},
+            [("outil.git", "AMONT")],
+        )
+        projets = parse_projects(texte)
+        self.assertEqual(
+            "https://exemple.invalid/amont/outil.git",
+            projets[0]["clone_url"],
+        )
+
+    def test_the_remote_is_inherited_from_the_default(self):
+        """UN SEUL projet sur neuf cents s'en sert dans ce dépôt, et c'est
+        justement pour celui-là que l'ignorer donnerait une adresse vide."""
+        texte = self.xml(
+            {"AMONT": "https://exemple.invalid/amont/"},
+            [("outil.git", None)],
+            defaut="AMONT",
+        )
+        self.assertEqual(
+            "https://exemple.invalid/amont/outil.git",
+            parse_projects(texte)[0]["clone_url"],
+        )
+
+    def test_an_explicit_remote_wins_over_the_default(self):
+        texte = self.xml(
+            {
+                "A": "https://exemple.invalid/a/",
+                "B": "https://exemple.invalid/b/",
+            },
+            [("outil.git", "B")],
+            defaut="A",
+        )
+        self.assertIn("/b/", parse_projects(texte)[0]["clone_url"])
+
+    def test_an_unknown_remote_gives_no_address_rather_than_a_guess(self):
+        texte = self.xml(
+            {"A": "https://exemple.invalid/a/"}, [("outil.git", "JAMAIS-VU")]
+        )
+        self.assertEqual("", parse_projects(texte)[0]["clone_url"])
+
+    def test_no_default_and_no_remote_gives_no_address(self):
+        texte = self.xml(
+            {"A": "https://exemple.invalid/a/"}, [("outil.git", None)]
+        )
+        self.assertEqual("", parse_projects(texte)[0]["clone_url"])
+
+    def test_a_project_without_a_name_is_dropped(self):
+        texte = (
+            '<manifest><project path="x"/><project name="a.git"/></manifest>'
+        )
+        self.assertEqual(["a.git"], [p["name"] for p in parse_projects(texte)])
+
+    def test_an_empty_manifest_is_an_empty_list(self):
+        self.assertEqual([], parse_projects("<manifest/>"))
+
+    def test_a_broken_xml_raises_rather_than_looking_empty(self):
+        """« Aucun projet » et « manifeste tronqué » ne se corrigent pas
+        pareil : rendre [] ferait passer le second pour le premier."""
+        from xml.etree import ElementTree
+
+        with self.assertRaises(ElementTree.ParseError):
+            parse_projects("<manifest><project name=")
+
+    def test_the_order_of_the_manifest_is_kept(self):
+        texte = self.xml(
+            {"A": "https://exemple.invalid/a/"},
+            [("c.git", "A"), ("a.git", "A"), ("b.git", "A")],
+        )
+        self.assertEqual(
+            ["c.git", "a.git", "b.git"],
+            [p["name"] for p in parse_projects(texte)],
+        )
+
+
+class TestSurLesVraiesAdresses(unittest.TestCase):
+    """Neuf cents projets réels : chacun doit avoir une adresse."""
+
+    def setUp(self):
+        import glob
+
+        racine = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..")
+        )
+        self.fichiers = sorted(
+            glob.glob(os.path.join(racine, "manifest/*.xml"))
+        )
+        if not self.fichiers:
+            self.skipTest("aucun manifeste dans ce checkout")
+
+    def tous(self):
+        from xml.etree import ElementTree
+
+        projets = []
+        for fichier in self.fichiers:
+            with open(fichier, encoding="utf-8") as poignee:
+                try:
+                    projets.extend(parse_projects(poignee.read()))
+                except ElementTree.ParseError:
+                    continue
+        return projets
+
+    def test_almost_every_real_project_gets_a_clone_url(self):
+        """Le gros du parc doit avoir une adresse, sans quoi le miroir ne
+        sert à rien — mais pas forcément TOUS : voir l'épreuve suivante."""
+        projets = self.tous()
+        avec = [p for p in projets if p["clone_url"]]
+        self.assertGreater(len(avec), 0.99 * len(projets), len(projets))
+
+    def test_an_empty_address_is_always_explained_by_the_manifest(self):
+        """L'INVARIANT qui compte : l'analyseur ne perd jamais une adresse
+        qu'il pouvait bâtir. Une adresse vide veut dire que le manifeste
+        vise un « remote » qu'il ne déclare pas — ce que ce dépôt porte
+        réellement, dans un manifeste d'une version dépréciée.
+
+        Sans cet invariant, un « remote » mal lu se confondrait avec un
+        manifeste fautif, et le miroir sauterait des projets en silence.
+        """
+        from xml.etree import ElementTree
+
+        vus = 0
+        for fichier in self.fichiers:
+            with open(fichier, encoding="utf-8") as poignee:
+                texte = poignee.read()
+            try:
+                racine = ElementTree.fromstring(texte)
+                projets = parse_projects(texte)
+            except ElementTree.ParseError:
+                continue
+            declares = {r.get("name") for r in racine.findall("remote")}
+            defaut = racine.find("default")
+            nom_defaut = defaut.get("remote") if defaut is not None else None
+            par_nom = {
+                p.get("name"): (p.get("remote") or nom_defaut)
+                for p in racine.findall("project")
+            }
+            for projet in projets:
+                if projet["clone_url"]:
+                    continue
+                vus += 1
+                with self.subTest(fichier=fichier, nom=projet["name"]):
+                    self.assertNotIn(par_nom.get(projet["name"]), declares)
+        self.assertGreater(vus, 0, "aucun cas vide : l'invariant est muet")
+
+    def test_no_clone_url_carries_a_doubled_or_missing_slash(self):
+        for projet in self.tous():
+            if not projet["clone_url"]:
+                continue
+            with self.subTest(nom=projet["name"]):
+                sans_schema = projet["clone_url"].split("://", 1)[-1]
+                self.assertNotIn("//", sans_schema)
+                self.assertIn("/", sans_schema)
+
+    def test_the_sweep_read_something(self):
+        self.assertGreater(len(self.tous()), 100)
 
 
 class TestSurLesVraisManifestes(unittest.TestCase):

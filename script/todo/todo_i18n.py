@@ -12411,6 +12411,26 @@ TRANSLATIONS = {
         "en": "A dry run touches no secret",
     },
     # Forge Forgejo/Gitea (script/todo/forge_menu.py)
+    "Forge - Mirror the manifest from its upstreams": {
+        "fr": "Forge - Miroiter le manifeste depuis ses amonts",
+        "en": "Forge - Mirror the manifest from its upstreams",
+    },
+    "to mirror.": {
+        "fr": "à miroiter.",
+        "en": "to mirror.",
+    },
+    "mirrored.": {
+        "fr": "miroités.",
+        "en": "mirrored.",
+    },
+    "No upstream for:": {
+        "fr": "Aucun amont pour :",
+        "en": "No upstream for:",
+    },
+    "Mirror these repositories? (o/N): ": {
+        "fr": "Miroiter ces dépôts ? (o/N) : ",
+        "en": "Mirror these repositories? (o/N): ",
+    },
     "Forge - Create the repositories the manifest declares": {
         "fr": "Forge - Créer les dépôts que le manifeste déclare",
         "en": "Forge - Create the repositories the manifest declares",
