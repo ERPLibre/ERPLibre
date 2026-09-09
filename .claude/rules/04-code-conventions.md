@@ -60,7 +60,12 @@ python3 script/analyse/check_comment_hygiene.py --staged
 
 🔴 `identifiant` est une trouvaille, à retirer. 🟡 `récit` est un signal à
 relire : l'outil ne sait pas si la phrase énonce un fait durable ou raconte
-une journée, et ne tranche pas à votre place.
+une journée, et ne tranche pas à votre place. 🟡 `nom` en est un autre, et sa
+limite est plus dure : un nom d'hôte NU ne se distingue mécaniquement ni d'un
+mot ordinaire ni du nom d'un logiciel, donc l'outil ne voit que la forme
+pleinement qualifiée. Un miroir de paquets nommé dans un commentaire y
+répond, et se confirme d'un coup d'œil ; l'absence de signal ne prouve rien
+sur les noms.
 
 Trois exemples pris dans ce dépôt, leurs noms propres masqués — une règle qui
 interdit de nommer ne se cite pas elle-même en clair.

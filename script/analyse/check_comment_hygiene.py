@@ -8,7 +8,7 @@ La convention est dans `.claude/rules/04-code-conventions.md` : un commentaire
 dit COMMENT le code marche, il ne porte aucune donnée identifiante et il ne
 raconte pas l'enquête. Cet outil en vérifie la part mécanique.
 
-Deux familles, de sûreté très différente :
+Trois familles, de sûreté très différente :
 
 - `identifiant` — adresse IP, courriel, chemin de compte. Une
   correspondance est une trouvaille : ces formes n'ont aucune raison d'être
@@ -17,6 +17,12 @@ Deux familles, de sûreté très différente :
   absolue, première personne. Une correspondance est un SIGNAL À RELIRE : la
   même phrase peut énoncer un fait durable. L'outil ne trie pas à la place
   du lecteur.
+- `nom` — un nom de machine pleinement qualifié. Aussi un signal à relire,
+  et pour une raison plus dure : un nom d'hôte NU ne se distingue
+  mécaniquement ni d'un mot ordinaire ni du nom d'un logiciel, donc cette
+  famille ne voit que la forme qualifiée. Les miroirs de paquets nommés dans
+  un commentaire y répondent, et c'est le prix d'un signal mécanique — le
+  lecteur confirme en deux secondes, là où la classe entière était invisible.
 
 Il lit les commentaires `#` et, en Python, les docstrings de module, de classe
 et de fonction. Le reste du code ne l'intéresse pas.
@@ -115,6 +121,64 @@ MOTIFS_RECIT = (
     ("date", DATE),
     ("personne", PERSONNE),
 )
+
+# Le nom de machine est la SEULE classe interdite qu'aucun motif ne tranche :
+# un nom d'hôte ne se distingue mécaniquement ni d'un mot pointé ordinaire, ni
+# du nom d'un logiciel. Seule sa forme pleinement qualifiée se reconnaît, et
+# encore : « chemin.home » et « logging.info » ont la même forme. D'où un
+# signal à relire et non une trouvaille.
+#
+# Le suffixe est comparé à une liste FERMÉE. Sans elle, tout attribut pointé
+# du code correspondrait. Les suffixes de service — local, lan, internal —
+# y sont exprès : c'est sous eux qu'une machine du parc se nomme.
+SUFFIXES_DHOTE = (
+    "com",
+    "ca",
+    "net",
+    "org",
+    "io",
+    "dev",
+    "fr",
+    "be",
+    "ch",
+    "eu",
+    "us",
+    "uk",
+    "biz",
+    "cloud",
+    "app",
+    "tech",
+    "quebec",
+    "local",
+    "lan",
+    "internal",
+    "intra",
+    "corp",
+)
+
+# Le point qui SUIT décide de deux choses opposées : suivi d'un caractère de
+# nom, il prolonge l'adresse et la correspondance n'est qu'un préfixe ; seul,
+# c'est le point d'une phrase, et l'adresse s'arrête là. Les confondre rendait
+# invisible toute adresse en fin de phrase.
+NOM_DHOTE = re.compile(
+    r"(?<![\w.@-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"(?:%s))(?![\w-])(?!\.[\w-])" % "|".join(SUFFIXES_DHOTE),
+    re.IGNORECASE,
+)
+
+# Ce que la convention autorise nommément. Le dépôt nomme son PROPRIÉTAIRE et
+# sa licence dans l'en-tête de chaque fichier : les signaler reviendrait à
+# signaler l'en-tête obligatoire partout.
+DOMAINES_PERMIS = re.compile(
+    r"^(?:www\.)?(?:technolibre\.ca|gnu\.org)$"
+    r"|^(?:[a-z0-9-]+\.)*(?:example|exemple)\.(?:com|net|org)$",
+    re.IGNORECASE,
+)
+
+# Une adresse portée par une URL désigne une ressource publique — un miroir de
+# paquets, une page de documentation — et non une machine du parc. La machine
+# qui fuite dans un commentaire s'y écrit nue.
+DANS_UNE_URL = re.compile(r"[a-z][a-z0-9+.-]*://\S*$", re.IGNORECASE)
 
 
 def _bloc(sous_lignes):
@@ -264,6 +328,28 @@ def recits(texte):
     return sorted(trouves, key=lambda t: t[2])
 
 
+def noms_dhote(texte):
+    """Les noms de machine pleinement qualifiés d'un texte.
+
+    Rend (motif, extrait, position), comme `recits` et `identifiants`, pour
+    que les trois familles se traitent de la même façon.
+
+    Trois formes sortent : le domaine du propriétaire et celui de la licence,
+    que l'en-tête de chaque fichier porte ; les domaines réservés à la
+    documentation par la RFC 2606 ; et toute adresse portée par une URL, qui
+    désigne une ressource publique.
+    """
+    trouves = []
+    for trouve in NOM_DHOTE.finditer(texte):
+        nom = trouve.group(1)
+        if DOMAINES_PERMIS.match(nom):
+            continue
+        if DANS_UNE_URL.search(texte[: trouve.start()]):
+            continue
+        trouves.append(("nom d'hôte", nom, trouve.start()))
+    return trouves
+
+
 def ligne_a(bloc, position):
     """La ligne physique qui porte cette position du texte recollé."""
     numero = bloc["line"]
@@ -287,6 +373,7 @@ def inspect(chemin, source=None, termes=None):
         familles = (
             ("identifiant", identifiants(bloc["text"], termes)),
             ("récit", recits(bloc["text"])),
+            ("nom", noms_dhote(bloc["text"])),
         )
         for genre, trouves in familles:
             for motif, extrait, position in trouves:
