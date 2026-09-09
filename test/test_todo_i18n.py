@@ -2,6 +2,8 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import ast
+import collections
 import os
 import tempfile
 import unittest
@@ -230,6 +232,64 @@ class TestLangIsConfigured(unittest.TestCase):
         ):
             result = todo_i18n.lang_is_configured()
         self.assertFalse(result)
+
+
+class TestAucuneCleRepetee(unittest.TestCase):
+    """Une clé répétée écrase la précédente EN SILENCE.
+
+    Le dictionnaire est un littéral Python de plusieurs milliers d'entrées :
+    rien n'avertit, rien ne lève, et la deuxième définition gagne. Le prix
+    s'est déjà payé une fois en étiquette de menu principal — la traduction
+    lue n'était pas celle qu'on venait d'écrire, et le fichier montrait la
+    bonne à qui la cherchait.
+
+    Le contrôle lit l'ARBRE et non le dictionnaire construit : une fois
+    construit, le doublon a déjà disparu, et il n'y a plus rien à voir. C'est
+    la seule façon de poser la question.
+    """
+
+    def _cles(self):
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "script",
+            "todo",
+            "todo_i18n.py",
+        )
+        with open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        litteral = None
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.Assign) and any(
+                isinstance(c, ast.Name) and c.id == "TRANSLATIONS"
+                for c in noeud.targets
+            ):
+                litteral = noeud.value
+        self.assertIsInstance(litteral, ast.Dict)
+        return [
+            c.value
+            for c in litteral.keys
+            if isinstance(c, ast.Constant) and isinstance(c.value, str)
+        ]
+
+    def test_the_literal_was_actually_read(self):
+        """Sinon un dictionnaire vide passerait le test suivant."""
+        self.assertGreater(len(self._cles()), 2000)
+
+    def test_no_key_is_declared_twice(self):
+        compte = collections.Counter(self._cles())
+        doublons = sorted(k for k, n in compte.items() if n > 1)
+        self.assertEqual(
+            doublons,
+            [],
+            "clés déclarées deux fois : la seconde écrase la première",
+        )
+
+    def test_every_key_survives_the_build(self):
+        """Le compte du littéral et celui du dictionnaire s'accordent.
+
+        C'est la même vérité dite autrement, et elle tombe d'elle-même le
+        jour où une clé se répète."""
+        self.assertEqual(len(self._cles()), len(todo_i18n.TRANSLATIONS))
 
 
 if __name__ == "__main__":
