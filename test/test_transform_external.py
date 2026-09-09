@@ -2438,6 +2438,71 @@ class TestMenuEcranDePerimetre(unittest.TestCase):
         self.assertIn("pas de terminal", self.ecran.getvalue())
 
 
+class TestMemoireJusquALEcran(unittest.TestCase):
+    """La table du disque, lue par le menu, pré-cochée par l'écran.
+
+    Les tests de chaque bout passaient sur un bouchon : celui du menu
+    rendait une mémoire posée à la main, celui de l'écran ne montait pas
+    le menu. Le chemin entier n'était éprouvé par personne, alors que
+    c'est lui qui porte la promesse — un lot entamé se reprend sans
+    redire.
+    """
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.table = os.path.join(self.base, "lot.json")
+
+    RAPPORT = {
+        "fichier": "f.csv",
+        "format": "csv",
+        "feuilles": [
+            {
+                "nom": "Ventes",
+                "colonnes": [
+                    {
+                        "index": 1,
+                        "etiquette": "a",
+                        "type": "texte",
+                        "remplies": 3,
+                        "distinctes": 3,
+                        "exemples": ["x"],
+                        "plancher": False,
+                    }
+                ],
+                # La MESURE dit « ligne 1 » ; la table, « 1 et 2 ».
+                "lignes_entete": [1],
+                "lignes_sondees": [
+                    {
+                        "numero": n,
+                        "apercu": ["v"],
+                        "pleines": 1,
+                        "mesure": None,
+                    }
+                    for n in (1, 2)
+                ],
+            }
+        ],
+    }
+
+    def _contexte(self):
+        from script.todo import transform_form
+
+        memoire = _tm().TransformMenuMixin._transform_memoire(self.table)
+        return transform_form.contexte_depuis_rapport(self.RAPPORT, memoire)
+
+    def test_la_table_ecrite_arrive_pre_cochee_a_l_ecran(self):
+        noyau.Correspondance(entetes={"Ventes": [1, 2]}).ecrire(self.table)
+        feuille = self._contexte()["feuilles"][0]
+        self.assertEqual(feuille["lignes_entete"], [1, 2])
+        self.assertTrue(feuille["entete_memorisee"])
+
+    def test_sans_table_la_mesure_reste(self):
+        feuille = self._contexte()["feuilles"][0]
+        self.assertEqual(feuille["lignes_entete"], [1])
+        self.assertFalse(feuille["entete_memorisee"])
+
+
 class TestMemoireDesEntetes(unittest.TestCase):
     """La table de lot se rappelle les lignes d'en-tête corrigées.
 
