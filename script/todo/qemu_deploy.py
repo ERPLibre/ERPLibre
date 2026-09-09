@@ -1408,13 +1408,20 @@ class QemuDeployMixin:
     def _qemu_egress_rules(self, spec):
         """Le texte des règles que cette spec demande, ou une chaîne vide.
 
-        Vide n'est pas un échec : trois postures sur quatre n'ont pas de
-        liste bornée, et la plupart des déploiements ne posent rien.
+        Vide n'est pas un échec : deux postures sur quatre ne demandent rien,
+        et la plupart des déploiements ne posent aucune règle.
 
         Ce qui est refusé ici, c'est l'inverse — une posture qui EN attend
         et dont le site n'a pas nommé les adresses. La laisser passer
         déploierait une machine qui ne joint pas sa forge, et le manque se
         découvrirait sur la machine plutôt que devant l'écran.
+
+        LA QUESTION POSÉE EST « CETTE POSTURE VEUT-ELLE DES RÈGLES ». Elle
+        était « a-t-elle une liste bornée à résoudre », ce qui est une
+        AUTRE question : une sortie coupée n'a aucune adresse à nommer et
+        veut pourtant des règles. « local-only » se déployait donc avec la
+        sortie entière — la posture qui promet le plus étant la seule à ne
+        rien poser.
         """
         posture = posture_spec.posture_of(spec)
         if posture is None:
@@ -1423,7 +1430,7 @@ class QemuDeployMixin:
                 " inconnue. Déployer en sortie libre une spec qui demandait"
                 " du confinement serait le sens inverse de la demande."
             )
-        if not posture_destinations.has_bounded_list(posture):
+        if not posture_rules.wants_rules(posture):
             return ""
         carnet = self.config_file.get_config(self.EGRESS_BOOK_KEY) or {}
         cibles = posture_destinations.destinations_for(posture, carnet)

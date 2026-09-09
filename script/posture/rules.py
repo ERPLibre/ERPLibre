@@ -133,6 +133,38 @@ def _lignes_chaine(nom, accroche, destinations):
     return lignes
 
 
+def wants_rules(posture) -> bool:
+    """Cette posture demande-t-elle un jeu de règles ?
+
+    DEUX RAISONS D'EN VOULOIR, ET UNE SEULE ÉTAIT CONSULTÉE. Une liste
+    bornée en donne une : il y a des adresses à nommer. Une sortie COUPÉE
+    en donne une autre, et le rendu la sert depuis toujours — « policy
+    drop », la boucle locale, les connexions déjà établies. Ne demander que
+    la première laissait « local-only » se déployer avec la sortie ENTIÈRE :
+    la posture qui promet le plus était la seule à ne rien poser, et rien ne
+    le disait.
+
+    Le prédicat vit ICI et non dans `destinations` parce que c'est ce
+    fichier qui décide des refus : `wants_rules` est faux exactement là où
+    `_refuse_la_posture` refuse quelle que soit la liste. Une épreuve tient
+    cet accord, qui ne peut donc pas dériver.
+
+    Ce n'est PAS « a-t-elle une liste bornée » : `destinations.has_bounded_
+    list` répond à cette autre question — « y a-t-il des adresses à
+    résoudre » — et les deux ne coïncident que sur trois postures sur
+    quatre.
+    """
+    if posture is None:
+        return False
+    # « nat » est assumé : lui rendre un jeu donnerait l'apparence d'un
+    # confinement que le nom de la posture dément.
+    if posture.egress == "nat":
+        return False
+    # Des destinations non bornées se liraient comme une liste blanche
+    # portant la sortie entière.
+    return bool(posture.destinations_bounded)
+
+
 def _refuse_la_posture(posture, destinations):
     """Ce qu'on ne rend PAS, et pourquoi le dire vaut mieux que rendre."""
     if posture is None:
