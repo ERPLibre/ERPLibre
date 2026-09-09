@@ -382,5 +382,103 @@ class TestLeHook(unittest.TestCase):
         self.assertEqual(0, r.returncode, r.stderr)
 
 
+class TestLesNomsDHote(unittest.TestCase):
+    """La classe interdite qu'aucun motif ne tranche vraiment.
+
+    Un nom d'hôte NU — « rig », « la-machine-de-tests » — ne se distingue
+    mécaniquement ni d'un mot ordinaire ni du nom d'un logiciel : ces tests
+    fixent donc ce que l'outil VOIT, la forme pleinement qualifiée, et ce
+    qu'il continue de ne pas voir. Confondre les deux ferait croire la classe
+    couverte.
+
+    Les noms sont inventés et ne paraissent nulle part ailleurs dans le
+    dépôt, comme l'exige la règle pour l'exemple qui illustre un interdit.
+    """
+
+    def _noms(self, texte):
+        return [extrait for _, extrait, _ in hygiene.noms_dhote(texte)]
+
+    def test_un_nom_pleinement_qualifie(self):
+        self.assertEqual(
+            self._noms("# le service tourne sur garance-01.interne.lan"),
+            ["garance-01.interne.lan"],
+        )
+
+    def test_un_domaine_de_client(self):
+        self.assertEqual(
+            self._noms("# la base de airelle-conseil.ca"),
+            ["airelle-conseil.ca"],
+        )
+
+    def test_le_domaine_du_proprietaire_passe(self):
+        """L'en-tête de copyright est l'exception nommée par la convention."""
+        self.assertEqual(self._noms("# © TechnoLibre www.technolibre.ca"), [])
+
+    def test_le_domaine_de_la_licence_passe(self):
+        self.assertEqual(
+            self._noms("# License AGPL, www.gnu.org/licenses"), []
+        )
+
+    def test_un_domaine_de_documentation_passe(self):
+        """La RFC 2606 les réserve : ils ne désignent aucune machine."""
+        self.assertEqual(self._noms("# par exemple vpn.example.com"), [])
+        self.assertEqual(self._noms("# ou bien hote.exemple.com"), [])
+
+    def test_une_url_passe(self):
+        """Une URL désigne une ressource publique, non une machine du parc."""
+        self.assertEqual(
+            self._noms("# voir https://docs.airelle-conseil.ca/guide"), []
+        )
+
+    def test_un_attribut_pointe_ne_pointe_rien(self):
+        """Le suffixe se compare à une liste fermée, sinon tout correspond."""
+        self.assertEqual(self._noms("# logging.info dit la version"), [])
+        self.assertEqual(self._noms("# asyncio.wait attend un futur"), [])
+        self.assertEqual(self._noms("# chemin.home est le répertoire"), [])
+
+    def test_un_fichier_ne_pointe_rien(self):
+        self.assertEqual(self._noms("# voir todo.py et les autres"), [])
+
+    def test_un_nom_nu_reste_invisible(self):
+        """La limite, énoncée plutôt que cachée.
+
+        « rig » est un nom de machine de ce parc, et rien ne le distingue
+        d'un mot. L'absence de trouvaille ne prouve donc rien sur les noms —
+        c'est pourquoi la famille est un signal 🟡 et non une trouvaille."""
+        self.assertEqual(self._noms("# le calcul tourne sur rig"), [])
+
+    def test_la_famille_est_un_signal_a_relire(self):
+        """Le genre décide de l'icône et de --identifying-only."""
+        trouvailles = hygiene.inspect(
+            "essai.py", source='"""Sur garance-01.interne.lan."""\n'
+        )
+        self.assertEqual(genres(trouvailles), {"nom"})
+        durs = [f for f in trouvailles if f["kind"] == "identifiant"]
+        self.assertEqual(durs, [])
+
+    def test_le_genre_sort_de_identifying_only(self):
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".py", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write('"""Sur garance-01.interne.lan."""\n')
+            chemin = fh.name
+        try:
+            sortie = subprocess.run(
+                [
+                    sys.executable,
+                    OUTIL,
+                    chemin,
+                    "--identifying-only",
+                    "--no-color",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(sortie.returncode, 0)
+            self.assertNotIn("garance-01", sortie.stdout)
+        finally:
+            os.unlink(chemin)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
