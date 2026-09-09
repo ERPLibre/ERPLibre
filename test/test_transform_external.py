@@ -29,13 +29,16 @@ en dépend est derrière `skipUnless` et se DIT ignoré, jamais vert en
 silence.
 """
 
+import builtins
 import datetime
+import io
 import json
 import os
 import random
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -60,6 +63,995 @@ def _options(**extra):
     }
     base.update(extra)
     return base
+
+
+# `transform_menu` et `todo.py` importent `click`, que le venv dédié n'a
+# pas — et la fixture du test de fuite importe CE module sous cet
+# interprète-là pour bâtir un classeur. Les imports du menu sont donc
+# PARESSEUX, comme ceux du moteur : sans cela, tout le test de fuite tombe
+# sur un `ModuleNotFoundError` sans rapport avec ce qu'il éprouve.
+def _tm():
+    """Le module du menu, importé au premier appel."""
+    from script.todo import transform_menu
+
+    return transform_menu
+
+
+def _MenuBouchon():
+    """Le mixin, monté sur les aides que `TODO` lui fournit.
+
+    Les aides sont PRISES sur la vraie classe et non recopiées : « o »,
+    « oui », « y », « yes » et la différence entre un défaut oui et un
+    défaut non sont sa règle, et une copie dériverait sans qu'un test le
+    voie.
+    """
+    from script.todo.todo import TODO
+
+    class Bouchon(_tm().TransformMenuMixin):
+        _is_yes = staticmethod(TODO._is_yes)
+        _is_yes_default_yes = staticmethod(TODO._is_yes_default_yes)
+
+    return Bouchon()
+
+
+class _Entrees:
+    """`input()` bouchonné, et la trace de ce qui a été demandé.
+
+    Rend les réponses dans l'ordre. Une question de plus que de réponses
+    lève : un test qui répondrait « à côté » passerait sinon en silence.
+    """
+
+    def __init__(self, *reponses):
+        self.reponses = list(reponses)
+        self.demandes = []
+
+    def __call__(self, invite=""):
+        self.demandes.append(invite)
+        if not self.reponses:
+            raise AssertionError(
+                "question sans réponse : %r après %d"
+                % (invite, len(self.demandes) - 1)
+            )
+        return self.reponses.pop(0)
+
+
+class TestMenuFonctionsPures(unittest.TestCase):
+    """Ce que le menu décide sans rien demander."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+
+    def test_le_format_vient_de_l_extension(self):
+        for nom, attendu in (
+            ("a.xlsx", "xlsx"),
+            ("a.XLSM", "xlsx"),
+            ("a.xlsb", "xlsx"),
+            ("a.xls", "xls"),
+            ("a.mdb", "access"),
+            ("a.accdb", "access"),
+            ("a.csv", "csv"),
+            ("a.xml", "xml"),
+            ("a.json", "json"),
+        ):
+            with self.subTest(nom=nom):
+                self.assertEqual(self.menu._transform_format(nom), attendu)
+
+    def test_une_extension_inconnue_tombe_sur_le_venv_dedie(self):
+        """Le repli doit être le venv qui sait TOUT lire : celui du CLI
+        ferait lever un import sur un classeur mal nommé."""
+        self.assertEqual(self.menu._transform_format("a.dat"), "xlsx")
+        self.assertEqual(self.menu._transform_format("sans_extension"), "xlsx")
+
+    def test_l_interpreteur_suit_l_union_des_bibliotheques(self):
+        """Le processus lit la source ET écrit la cible.
+
+        La source seule laissait csv→xlsx importer openpyxl sous
+        l'interpréteur du CLI, qui ne l'a pas ; la cible seule enverrait
+        un classeur au même interpréteur, qui ne sait pas le lire.
+        """
+        self.assertEqual(
+            self.menu._transform_fmt_moteur("csv", "xlsx"), "xlsx"
+        )
+        self.assertEqual(self.menu._transform_fmt_moteur("xls", "csv"), "xls")
+        self.assertEqual(
+            self.menu._transform_fmt_moteur("csv", "json"), "json"
+        )
+        self.assertEqual(
+            self.menu._transform_fmt_moteur("access", "xlsx"), "access"
+        )
+
+    def test_la_table_va_TOUJOURS_sous_private(self):
+        """Elle ré-identifie la copie à elle seule : la poser à côté du
+        fichier à transmettre fait partir la clé avec le chiffré."""
+        for destination in (
+            "/tmp/livraison/copie.xlsx",
+            os.path.join("private", "transform", "c.xlsx"),
+            "c.csv",
+        ):
+            with self.subTest(destination=destination):
+                table = self.menu._transform_table_par_defaut(destination)
+                self.assertTrue(
+                    table.startswith(_tm().SORTIE_PAR_DEFAUT), table
+                )
+                self.assertTrue(table.endswith(".table.json"), table)
+
+    def test_private_se_reconnait_par_realpath(self):
+        """Un test de préfixe sur le chemin TAPÉ taisait l'avertissement
+        pour le chemin absolu du navigateur, et le levait pour
+        « privateer/ »."""
+        racine = transform_setup.racine()
+        self.assertTrue(
+            self.menu._transform_sous_private(
+                os.path.join(racine, "private", "transform", "c.xlsx")
+            )
+        )
+        self.assertTrue(
+            self.menu._transform_sous_private(os.path.join(racine, "private"))
+        )
+        self.assertFalse(
+            self.menu._transform_sous_private(
+                os.path.join(racine, "privateer", "c.xlsx")
+            )
+        )
+        self.assertFalse(self.menu._transform_sous_private("/tmp/c.xlsx"))
+
+
+class TestMenuQuestions(unittest.TestCase):
+    """Les douze questions, et la sortie qui doit exister à chacune.
+
+    S'apercevoir à la onzième qu'on a ouvert le mauvais fichier ne doit
+    pas obliger à répondre à tout puis à refuser un nom de fichier.
+    """
+
+    RAPPORT = {
+        "format": "xlsx",
+        "feuilles": [{"nom": "Ventes"}, {"nom": "Achats"}],
+        "hors_cellules": {},
+    }
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", self.vrai_input)
+        self.sortie = io.StringIO()
+        self.vrai_stdout = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", self.vrai_stdout)
+
+    def _repondre(self, *reponses):
+        entrees = _Entrees(*reponses)
+        builtins.input = entrees
+        return entrees
+
+    # -- le chemin qui aboutit -----------------------------------------
+    def test_le_chemin_complet_rend_les_douze_reponses(self):
+        self._repondre(
+            "o",  # anonymiser
+            "csv",  # convertir
+            "Ventes",  # feuilles
+            "id, ref",  # colonnes intactes
+            "",  # nombres, défaut oui
+            "",  # texte, défaut oui
+            "",  # en-têtes, défaut non
+            "42",  # graine
+            "",  # table
+        )
+        options = self.menu._transform_ask_options(self.RAPPORT)
+        self.assertEqual(options["conversion"], "csv")
+        self.assertEqual(options["feuilles"], ["Ventes"])
+        self.assertEqual(options["colonnes_intactes"], ["id", "ref"])
+        self.assertTrue(options["nombres"])
+        self.assertTrue(options["texte"])
+        self.assertFalse(options["entetes"])
+        self.assertEqual(options["graine"], "42")
+        self.assertEqual(options["table_chemin"], "")
+
+    def test_un_defaut_vide_ne_convertit_ni_ne_restreint(self):
+        self._repondre("oui", "", "", "", "n", "n", "o", "", "")
+        options = self.menu._transform_ask_options(self.RAPPORT)
+        self.assertEqual(options["conversion"], "")
+        self.assertEqual(options["feuilles"], [])
+        self.assertFalse(options["nombres"])
+        self.assertFalse(options["texte"])
+        self.assertTrue(options["entetes"])
+
+    # -- les sorties ---------------------------------------------------
+    def test_refuser_d_anonymiser_ne_pose_aucune_autre_question(self):
+        entrees = self._repondre("n")
+        self.assertIsNone(self.menu._transform_ask_options(self.RAPPORT))
+        self.assertEqual(len(entrees.demandes), 1)
+
+    def test_zero_annule_a_CHAQUE_question(self):
+        """Une réponse valide jusqu'au rang N, puis « 0 »."""
+        valides = ["o", "csv", "Ventes", "", "", "", "", "42", ""]
+        for rang in range(len(valides)):
+            with self.subTest(rang=rang):
+                entrees = self._repondre(*(valides[:rang] + ["0"]))
+                self.assertIsNone(
+                    self.menu._transform_ask_options(self.RAPPORT)
+                )
+                self.assertEqual(len(entrees.demandes), rang + 1)
+
+    def test_une_cible_inconnue_est_refusee(self):
+        entrees = self._repondre("o", "parquet")
+        self.assertIsNone(self.menu._transform_ask_options(self.RAPPORT))
+        self.assertEqual(len(entrees.demandes), 2)
+
+    def test_les_quatre_cibles_sont_acceptees(self):
+        for cible in _tm().CIBLES:
+            with self.subTest(cible=cible):
+                self._repondre("o", cible, "", "", "", "", "", "", "")
+                options = self.menu._transform_ask_options(self.RAPPORT)
+                self.assertEqual(options["conversion"], cible)
+
+    # -- les feuilles --------------------------------------------------
+    def test_une_feuille_inconnue_est_refusee_AVANT_d_ecrire(self):
+        entrees = self._repondre("o", "", "Trésorerie")
+        self.assertIsNone(self.menu._transform_ask_options(self.RAPPORT))
+        self.assertEqual(len(entrees.demandes), 3)
+
+    def test_le_nom_de_feuille_se_resout_sans_la_casse(self):
+        """Le nom rendu est celui du CLASSEUR, non celui tapé : la portée
+        s'apparie ensuite par égalité exacte."""
+        self._repondre("o", "", "  ventes , ACHATS ", "", "", "", "", "", "")
+        options = self.menu._transform_ask_options(self.RAPPORT)
+        self.assertEqual(options["feuilles"], ["Ventes", "Achats"])
+
+    def test_une_source_d_une_seule_feuille_ne_pose_pas_la_question(self):
+        entrees = self._repondre("o", "", "", "", "", "", "", "")
+        rapport = dict(self.RAPPORT, feuilles=[{"nom": "F"}])
+        options = self.menu._transform_ask_options(rapport)
+        self.assertNotIn("feuilles", options)
+        self.assertEqual(len(entrees.demandes), 8)
+
+    # -- macros et graphiques ------------------------------------------
+    def test_les_macros_ne_se_demandent_que_si_le_fichier_en_a(self):
+        entrees = self._repondre("o", "", "", "", "", "", "", "", "", "o", "n")
+        rapport = dict(
+            self.RAPPORT, hors_cellules={"macros": 1, "graphiques": 2}
+        )
+        options = self.menu._transform_ask_options(rapport)
+        self.assertTrue(options["garder_macros"])
+        self.assertFalse(options["garder_graphiques"])
+        self.assertEqual(len(entrees.demandes), 11)
+
+    def test_une_conversion_hors_xlsx_ne_les_demande_pas(self):
+        """Un csv ne porte ni macro ni graphique : poser la question
+        laisserait croire que la réponse change quelque chose."""
+        entrees = self._repondre("o", "csv", "", "", "", "", "", "", "")
+        rapport = dict(
+            self.RAPPORT, hors_cellules={"macros": 1, "graphiques": 2}
+        )
+        options = self.menu._transform_ask_options(rapport)
+        self.assertNotIn("garder_macros", options)
+        self.assertEqual(len(entrees.demandes), 9)
+
+
+class _Acheve:
+    """Ce que `subprocess.run` rend, réduit à ce que le menu en lit."""
+
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+class TestMenuMoteurEnSousProcessus(unittest.TestCase):
+    """stdout ne porte qu'un objet JSON, stderr la progression.
+
+    Un stdout vide ou inanalysable est traité comme une ERREUR et non
+    relayé en exception, pour que le menu affiche les dernières lignes de
+    stderr plutôt que de tomber à son tour.
+    """
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+        self.vrai_run = _tm().subprocess.run
+        self.addCleanup(setattr, _tm().subprocess, "run", self.vrai_run)
+
+    def _rendre(self, acheve):
+        _tm().subprocess.run = lambda *a, **k: acheve
+
+    def test_un_objet_json_traverse(self):
+        self._rendre(_Acheve(stdout='{"format": "csv", "taille": 12}'))
+        self.assertEqual(
+            self.menu._transform_run(["--report", "a.csv"], "csv"),
+            {"format": "csv", "taille": 12},
+        )
+
+    def test_la_progression_de_stderr_s_affiche_sans_son_diese(self):
+        self._rendre(
+            _Acheve(stdout="{}", stderr="# lecture en cours\nbruit interne")
+        )
+        self.menu._transform_run(["--report", "a.csv"], "csv")
+        rendu = self.sortie.getvalue()
+        self.assertIn("lecture en cours", rendu)
+        self.assertNotIn("bruit interne", rendu)
+
+    def test_un_stdout_vide_ne_leve_pas_et_montre_stderr(self):
+        """Le menu doit afficher la cause, non tomber à son tour."""
+        self._rendre(_Acheve(stdout="", stderr="Traceback ligne 1"))
+        self.assertIsNone(
+            self.menu._transform_run(["--report", "a.csv"], "csv")
+        )
+        self.assertIn("Traceback ligne 1", self.sortie.getvalue())
+
+    def test_un_stdout_inanalysable_est_traite_comme_une_erreur(self):
+        self._rendre(_Acheve(stdout="pas du json"))
+        self.assertIsNone(
+            self.menu._transform_run(["--report", "a.csv"], "csv")
+        )
+
+    def test_une_erreur_du_moteur_s_affiche_avec_son_detail(self):
+        self._rendre(
+            _Acheve(
+                stdout=json.dumps(
+                    {"erreur": "Nothing to do.", "detail": " ici"}
+                )
+            )
+        )
+        self.assertIsNone(
+            self.menu._transform_run(["--apply", "a.csv"], "csv")
+        )
+        self.assertIn("ici", self.sortie.getvalue())
+
+    def test_le_CONSEIL_s_affiche_quand_le_refus_en_porte_un(self):
+        """Le détail nomme une partie du format ; le conseil dit quoi
+        répondre à la prochaine exécution."""
+        avis = (
+            "The kept VBA project quotes a source value;"
+            " answer no to the macro question to write the copy."
+        )
+        self._rendre(
+            _Acheve(
+                stdout=json.dumps(
+                    {"erreur": "Nothing to do.", "conseil": avis}
+                )
+            )
+        )
+        self.assertIsNone(
+            self.menu._transform_run(["--apply", "a.xlsm"], "xlsx")
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn("→", rendu)
+        self.assertIn(todo_i18n.TRANSLATIONS[avis]["fr"][:30], rendu)
+
+    def test_un_interpreteur_introuvable_ne_leve_pas(self):
+        def tombe(*a, **k):
+            raise OSError("introuvable")
+
+        _tm().subprocess.run = tombe
+        self.assertIsNone(
+            self.menu._transform_run(["--report", "a.csv"], "csv")
+        )
+
+
+class TestMenuApercu(unittest.TestCase):
+    """Montrer, PUIS demander. La convention du dépôt pour ce qui écrit."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+
+    def _repondre(self, reponse):
+        builtins.input = lambda invite="": reponse
+
+    def test_une_reponse_vide_ECRIT(self):
+        """Le défaut de la dernière question est oui : l'opérateur vient
+        de lire l'aperçu."""
+        self._repondre("")
+        self.assertTrue(self.menu._transform_preview({"remplacees": 3}))
+
+    def test_un_non_n_ecrit_pas(self):
+        self._repondre("n")
+        self.assertFalse(self.menu._transform_preview({"remplacees": 3}))
+
+    def test_l_intact_est_ANNONCE_avant_le_consentement(self):
+        """Une date et un booléen traversent par RÈGLE et sont de vraies
+        valeurs du client : les taire faisait signer un consentement sur
+        un fichier dont une colonne part en clair."""
+        self._repondre("")
+        self.menu._transform_preview(
+            {"remplacees": 3, "intactes": {"date": 7, "booleen": 2}}
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn("7", rendu)
+        self.assertIn(todo_i18n.t("date(s)"), rendu)
+
+    def test_la_ligne_1_gardee_est_montree_cellule_par_cellule(self):
+        """Un compteur ne dirait pas qu'un nom est dedans."""
+        self._repondre("")
+        self.menu._transform_preview(
+            {
+                "remplacees": 1,
+                "entete_gardee": [{"cellule": "L1C1", "valeur": "aboulie"}],
+            }
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn("L1C1", rendu)
+        self.assertIn("aboulie", rendu)
+
+    def test_les_avertissements_sont_traduits(self):
+        self._repondre("")
+        avis = "The copy is written in UTF-8, whatever the source was."
+        self.menu._transform_preview(
+            {"remplacees": 1, "avertissements": [avis]}
+        )
+        self.assertIn(
+            todo_i18n.TRANSLATIONS[avis]["fr"][:30], self.sortie.getvalue()
+        )
+
+    def test_les_fichiers_prevus_sont_montres(self):
+        """Ce sur quoi l'opérateur consent inclut OÙ ça va."""
+        self._repondre("")
+        self.menu._transform_preview(
+            {"remplacees": 1, "fichiers": ["/tmp/a.csv", "/tmp/b.csv"]}
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn("/tmp/a.csv", rendu)
+        self.assertIn("/tmp/b.csv", rendu)
+
+
+class TestMenuDestination(unittest.TestCase):
+    """Le défaut NE REPREND PAS le nom source : il porte le client."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+
+    def _repondre(self, reponse):
+        builtins.input = lambda invite="": reponse
+
+    def test_le_defaut_ne_reprend_pas_le_nom_source(self):
+        self._repondre("")
+        rendu = self.menu._transform_select_destination(
+            "/tmp/Cabinet_Lavigne_2024.xlsx", "xlsx"
+        )
+        self.assertNotIn("Lavigne", rendu)
+        self.assertTrue(rendu.endswith(".xlsx"), rendu)
+        self.assertTrue(rendu.startswith(_tm().SORTIE_PAR_DEFAUT), rendu)
+
+    def test_l_extension_suit_le_format_de_SORTIE(self):
+        for fmt, extension in (
+            ("xlsx", ".xlsx"),
+            ("csv", ".csv"),
+            ("json", ".json"),
+            ("xml", ".xml"),
+            ("xls", ".xlsx"),
+            ("access", ".xlsx"),
+        ):
+            with self.subTest(fmt=fmt):
+                self._repondre("")
+                rendu = self.menu._transform_select_destination("s", fmt)
+                self.assertTrue(rendu.endswith(extension), rendu)
+
+    def test_garder_les_macros_nomme_la_copie_xlsm(self):
+        """Excel lie l'extension au contenu et refuse d'ouvrir un .xlsx
+        qui porte un projet VBA : la copie était juste et n'ouvrait pas."""
+        self._repondre("")
+        rendu = self.menu._transform_select_destination(
+            "s.xlsm", "xlsx", macros=True
+        )
+        self.assertTrue(rendu.endswith(".xlsm"), rendu)
+        self.assertIn(".xlsm", self.sortie.getvalue())
+
+    def test_les_macros_ne_changent_rien_hors_xlsx(self):
+        self._repondre("")
+        rendu = self.menu._transform_select_destination(
+            "s.csv", "csv", macros=True
+        )
+        self.assertTrue(rendu.endswith(".csv"), rendu)
+
+    def test_un_chemin_tape_est_pris_et_developpe(self):
+        self._repondre("~/copie.xlsx")
+        self.assertEqual(
+            self.menu._transform_select_destination("s", "xlsx"),
+            os.path.expanduser("~/copie.xlsx"),
+        )
+
+    def test_zero_renonce(self):
+        self._repondre("0")
+        self.assertIsNone(self.menu._transform_select_destination("s", "xlsx"))
+
+
+class TestMenuEcrasement(unittest.TestCase):
+    """Le nom tapé EN ENTIER, comme le reste du dépôt l'exige."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+        self.existant = os.path.join(self.base, "copie.xlsx")
+        with open(self.existant, "w", encoding="utf-8") as flux:
+            flux.write("x")
+
+    def test_rien_a_ecraser_ne_demande_rien(self):
+        def refuse(invite=""):
+            raise AssertionError("aucune question ne devait être posée")
+
+        builtins.input = refuse
+        absent = os.path.join(self.base, "neuf.xlsx")
+        self.assertTrue(self.menu._transform_confirm_overwrite([absent]))
+
+    def test_le_nom_exact_autorise(self):
+        builtins.input = lambda invite="": "copie.xlsx"
+        self.assertTrue(
+            self.menu._transform_confirm_overwrite([self.existant])
+        )
+
+    def test_un_nom_approchant_refuse(self):
+        for reponse in ("copie", "copie.xls", "o", "", self.existant):
+            with self.subTest(reponse=reponse):
+                builtins.input = lambda invite="", r=reponse: r
+                self.assertFalse(
+                    self.menu._transform_confirm_overwrite([self.existant])
+                )
+
+    def test_les_cibles_existantes_sont_TOUTES_nommees(self):
+        second = os.path.join(self.base, "autre.csv")
+        with open(second, "w", encoding="utf-8") as flux:
+            flux.write("y")
+        builtins.input = lambda invite="": "copie.xlsx"
+        self.menu._transform_confirm_overwrite([self.existant, second, None])
+        rendu = self.sortie.getvalue()
+        self.assertIn("copie.xlsx", rendu)
+        self.assertIn("autre.csv", rendu)
+
+
+class TestMenuInventaire(unittest.TestCase):
+    """Ce que l'outil a produit se reconnaît à son NOM.
+
+    Le navigateur ouvre son parcours dans ce même répertoire : ce qui s'y
+    trouve n'est pas toujours une copie produite ici, et l'effacement en
+    bloc l'emportait aussi.
+    """
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        vrai = _tm().SORTIE_PAR_DEFAUT
+        _tm().SORTIE_PAR_DEFAUT = self.base
+        self.addCleanup(setattr, _tm(), "SORTIE_PAR_DEFAUT", vrai)
+
+    def _poser(self, nom, contenu="x"):
+        chemin = os.path.join(self.base, nom)
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write(contenu)
+        return chemin
+
+    def test_les_copies_et_les_tables_sont_dites_produites(self):
+        self._poser("20260101-000000.anon.xlsx")
+        self._poser("20260101-000000.table.json")
+        produites, etrangeres = self.menu._transform_inventaire()
+        self.assertEqual(
+            [n for n, _ in produites],
+            ["20260101-000000.anon.xlsx", "20260101-000000.table.json"],
+        )
+        self.assertEqual(etrangeres, [])
+
+    def test_un_fichier_depose_par_quelqu_un_d_autre_est_ETRANGER(self):
+        """Il n'est pas à effacer : le parcours ouvre ici."""
+        self._poser("export_du_client.xlsx")
+        produites, etrangeres = self.menu._transform_inventaire()
+        self.assertEqual(produites, [])
+        self.assertEqual([n for n, _ in etrangeres], ["export_du_client.xlsx"])
+
+    def test_un_repertoire_de_conversion_pese_la_somme_de_ses_fichiers(self):
+        """Une source à plusieurs feuilles convertie en csv écrit un
+        RÉPERTOIRE. Il était compté à la taille de son inode."""
+        dossier = os.path.join(self.base, "20260101.anon.csv")
+        os.makedirs(os.path.join(dossier, "sous"))
+        for chemin, contenu in (
+            (os.path.join(dossier, "a.csv"), "12345"),
+            (os.path.join(dossier, "sous", "b.csv"), "678"),
+        ):
+            with open(chemin, "w", encoding="utf-8") as flux:
+                flux.write(contenu)
+        produites, _etrangeres = self.menu._transform_inventaire()
+        self.assertEqual(produites, [("20260101.anon.csv", 8)])
+
+    def test_un_repertoire_vide_pese_zero_et_reste_liste(self):
+        os.makedirs(os.path.join(self.base, "20260101.anon.csv"))
+        produites, _e = self.menu._transform_inventaire()
+        self.assertEqual(produites, [("20260101.anon.csv", 0)])
+
+
+class TestMenuFichierEntree(unittest.TestCase):
+    """Le parcours d'abord, la saisie en repli.
+
+    La garde d'import est celle de `database_manager` : urwid peut
+    manquer, et sans elle « p » lèverait sur None.
+    """
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.sortie = io.StringIO()
+        vrai_out = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai_out)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+        # Sans navigateur, la saisie répond : c'est le chemin qu'on teste,
+        # et lancer urwid dans une suite unitaire n'a pas de sens.
+        vrai_nav = _tm().todo_file_browser
+        _tm().todo_file_browser = None
+        self.addCleanup(setattr, _tm(), "todo_file_browser", vrai_nav)
+
+    def _repondre(self, reponse):
+        builtins.input = lambda invite="": reponse
+
+    def test_un_fichier_ordinaire_est_pris(self):
+        chemin = os.path.join(self.base, "s.csv")
+        with open(chemin, "w", encoding="utf-8") as flux:
+            flux.write("a\n")
+        self._repondre(chemin)
+        self.assertEqual(self.menu._transform_select_file(), chemin)
+
+    def test_un_repertoire_est_refuse(self):
+        """`--report` sur un répertoire ferait lever le moteur."""
+        self._repondre(self.base)
+        self.assertIsNone(self.menu._transform_select_file())
+
+    def test_un_chemin_absent_est_refuse(self):
+        self._repondre(os.path.join(self.base, "absent.csv"))
+        self.assertIsNone(self.menu._transform_select_file())
+
+    def test_une_reponse_vide_ou_zero_renonce(self):
+        for reponse in ("", "0", "   "):
+            with self.subTest(reponse=reponse):
+                self._repondre(reponse)
+                self.assertIsNone(self.menu._transform_select_file())
+
+
+class TestMenuRendus(unittest.TestCase):
+    """Le rapport et le bilan : ce que l'opérateur lit pour décider."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+
+    def test_le_rapport_nomme_le_fichier_sa_taille_et_son_format(self):
+        rendu = self.menu._transform_render_report(
+            {"chemin": "/tmp/s.csv", "taille": 42, "format": "csv"}
+        )
+        self.assertIn("s.csv", rendu)
+        self.assertIn("42", rendu)
+        self.assertIn("csv", rendu)
+
+    def test_une_divergence_entre_octets_et_extension_est_DITE(self):
+        """Un export d'ERP en HTML sous une extension .csv se lit comme
+        du HTML : le taire ferait consentir sur un format supposé."""
+        rendu = self.menu._transform_render_report(
+            {
+                "chemin": "s.csv",
+                "taille": 1,
+                "format": "xml",
+                "divergence": True,
+            }
+        )
+        self.assertIn(
+            todo_i18n.t("Contents do not match the extension: read as "),
+            rendu,
+        )
+
+    def test_l_encodage_et_le_delimiteur_disent_QUI_les_a_decides(self):
+        rendu = self.menu._transform_render_report(
+            {
+                "chemin": "s.csv",
+                "taille": 1,
+                "format": "csv",
+                "encodage": "cp1252",
+                "encodage_source": "chardet",
+                "delimiteur": ";",
+                "delimiteur_source": "sniffer",
+            }
+        )
+        self.assertIn("cp1252", rendu)
+        self.assertIn(todo_i18n.t("chardet"), rendu)
+        self.assertIn(todo_i18n.t("sniffer"), rendu)
+
+    def test_le_bilan_nomme_CHAQUE_fichier_ecrit(self):
+        """Une conversion à plusieurs feuilles en écrit plusieurs."""
+        self.menu._transform_render_bilan(
+            {"fichiers": ["/tmp/a.csv", "/tmp/b.csv"], "remplacees": 4},
+            "/tmp/ignore",
+        )
+        rendu = self.sortie.getvalue()
+        self.assertIn("/tmp/a.csv", rendu)
+        self.assertIn("/tmp/b.csv", rendu)
+        self.assertNotIn("ignore", rendu)
+
+    def test_sans_liste_le_bilan_retombe_sur_la_destination(self):
+        self.menu._transform_render_bilan({"remplacees": 1}, "/tmp/seul.xlsx")
+        self.assertIn("/tmp/seul.xlsx", self.sortie.getvalue())
+
+
+class TestMenuEffacement(unittest.TestCase):
+    """L'effacement en bloc n'emporte QUE ce que l'outil a produit."""
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        vrai_sortie = _tm().SORTIE_PAR_DEFAUT
+        _tm().SORTIE_PAR_DEFAUT = self.base
+        self.addCleanup(setattr, _tm(), "SORTIE_PAR_DEFAUT", vrai_sortie)
+        self.ecran = io.StringIO()
+        vrai_out = sys.stdout
+        sys.stdout = self.ecran
+        self.addCleanup(setattr, sys, "stdout", vrai_out)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+        self.copie = os.path.join(self.base, "20260101.anon.xlsx")
+        self.table = os.path.join(self.base, "20260101.table.json")
+        self.etranger = os.path.join(self.base, "export_du_client.xlsx")
+        for chemin in (self.copie, self.table, self.etranger):
+            with open(chemin, "w", encoding="utf-8") as flux:
+                flux.write("x")
+        self.dossier = os.path.join(self.base, "20260102.anon.csv")
+        os.makedirs(self.dossier)
+        with open(os.path.join(self.dossier, "a.csv"), "w") as flux:
+            flux.write("y")
+
+    def test_oui_efface_les_copies_et_LAISSE_l_etranger(self):
+        builtins.input = lambda invite="": "o"
+        self.menu._transform_copies()
+        self.assertFalse(os.path.exists(self.copie))
+        self.assertFalse(os.path.exists(self.table))
+        self.assertFalse(os.path.exists(self.dossier))
+        self.assertTrue(os.path.exists(self.etranger))
+
+    def test_non_n_efface_rien(self):
+        for reponse in ("n", "", "0", "x"):
+            with self.subTest(reponse=reponse):
+                builtins.input = lambda invite="", r=reponse: r
+                self.menu._transform_copies()
+                self.assertTrue(os.path.exists(self.copie))
+                self.assertTrue(os.path.exists(self.dossier))
+
+    def test_l_etranger_est_NOMME_a_l_ecran(self):
+        """Le parcours ouvre dans ce répertoire : ce qui s'y trouve n'est
+        pas toujours une copie produite ici."""
+        builtins.input = lambda invite="": "n"
+        self.menu._transform_copies()
+        rendu = self.ecran.getvalue()
+        self.assertIn("export_du_client.xlsx", rendu)
+        self.assertIn(todo_i18n.t("Not produced here, left alone:"), rendu)
+
+    def test_un_repertoire_absent_ne_leve_pas(self):
+        _tm().SORTIE_PAR_DEFAUT = os.path.join(self.base, "absent")
+
+        def refuse(invite=""):
+            raise AssertionError("rien à effacer, rien à demander")
+
+        builtins.input = refuse
+        self.menu._transform_copies()
+
+    def test_sans_copie_produite_aucune_question_n_est_posee(self):
+        os.remove(self.copie)
+        os.remove(self.table)
+        shutil.rmtree(self.dossier)
+
+        def refuse(invite=""):
+            raise AssertionError("rien à effacer, rien à demander")
+
+        builtins.input = refuse
+        self.menu._transform_copies()
+        self.assertTrue(os.path.exists(self.etranger))
+
+
+class TestMenuDerouleComplet(unittest.TestCase):
+    """L'ordre du dialogue EST la règle : rapport, questions, marche à
+    blanc, écriture. Une question posée avant de savoir ce qui sera touché
+    n'est pas un consentement.
+
+    Le moteur est bouchonné : ce qu'on éprouve ici est le CÂBLAGE — quels
+    arguments partent, dans quel ordre, et ce qui arrête le déroulé.
+    """
+
+    def setUp(self):
+        self.menu = _MenuBouchon()
+        self.base = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.source = os.path.join(self.base, "s.csv")
+        with open(self.source, "w", encoding="utf-8") as flux:
+            flux.write("etiquette\naboulie\n")
+        self.ecran = io.StringIO()
+        vrai_out = sys.stdout
+        sys.stdout = self.ecran
+        self.addCleanup(setattr, sys, "stdout", vrai_out)
+        vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", vrai_input)
+        vrai_nav = _tm().todo_file_browser
+        _tm().todo_file_browser = None
+        self.addCleanup(setattr, _tm(), "todo_file_browser", vrai_nav)
+        # `ensure` installerait un venv : ici le format est du pur stdlib.
+        self.appels = []
+        self.rendus = []
+        self.menu._transform_run = self._run
+        # Le rapport est un VRAI rapport, non une main écrite : la forme
+        # que le rendu attend change avec le moteur, et une fixture à la
+        # main dériverait sans qu'un test le voie.
+        self.rapport = formats.report(self.source)
+
+    def _run(self, arguments, fmt=None):
+        self.appels.append((list(arguments), fmt))
+        return self.rendus.pop(0) if self.rendus else None
+
+    def _dialogue(self, *reponses):
+        builtins.input = _Entrees(*reponses)
+
+    def test_le_deroule_qui_aboutit_appelle_plan_PUIS_apply(self):
+        self.rendus = [
+            self.rapport,
+            {"remplacees": 1, "fichiers": [os.path.join(self.base, "o.csv")]},
+            {"remplacees": 1, "fichiers": [os.path.join(self.base, "o.csv")]},
+        ]
+        self._dialogue(
+            self.source,  # le fichier
+            "o",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",  # les questions
+            os.path.join(self.base, "o.csv"),  # la destination
+            "",  # écrire ? défaut oui
+        )
+        self.menu._transform_open_and_report()
+        etapes = [a[0][0] for a in self.appels]
+        self.assertEqual(etapes, ["--report", "--plan", "--apply"])
+
+    def test_un_arret_annonce_par_le_moteur_stoppe_avant_les_questions(self):
+        """Un `.xlsb` reconnu et illisible ici s'arrête là : poser les
+        douze questions pour finir sur un refus est une perte de temps."""
+        self.rendus = [dict(self.rapport, arret="Nothing to do.")]
+        # L'arrêt vient du moteur : le rapport est complet, mais il dit
+        # que rien ne peut être écrit.
+
+        posees = []
+
+        def refuse(invite=""):
+            posees.append(invite)
+            if len(posees) == 1:
+                return self.source
+            raise AssertionError("aucune question ne devait suivre l'arrêt")
+
+        builtins.input = refuse
+        self.menu._transform_open_and_report()
+        self.assertEqual([a[0][0] for a in self.appels], ["--report"])
+
+    def test_refuser_l_apercu_n_appelle_PAS_apply(self):
+        self.rendus = [self.rapport, {"remplacees": 1}]
+        self._dialogue(
+            self.source,
+            "o",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            os.path.join(self.base, "o.csv"),
+            "n",
+        )
+        self.menu._transform_open_and_report()
+        self.assertEqual(
+            [a[0][0] for a in self.appels], ["--report", "--plan"]
+        )
+
+    def test_renoncer_aux_questions_n_appelle_ni_plan_ni_apply(self):
+        self.rendus = [self.rapport]
+        self._dialogue(self.source, "n")
+        self.menu._transform_open_and_report()
+        self.assertEqual([a[0][0] for a in self.appels], ["--report"])
+
+    def test_la_table_par_defaut_est_passee_au_moteur(self):
+        """Sans elle, un lot ne donne pas le même mot au même client."""
+        self.rendus = [self.rapport, {"remplacees": 1}, {"remplacees": 1}]
+        self._dialogue(
+            self.source,
+            "o",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            os.path.join(self.base, "o.csv"),
+            "",
+        )
+        self.menu._transform_open_and_report()
+        plan = self.appels[1][0]
+        self.assertIn("--table", plan)
+        table = plan[plan.index("--table") + 1]
+        self.assertTrue(table.endswith(".table.json"), table)
+        self.assertTrue(table.startswith(_tm().SORTIE_PAR_DEFAUT), table)
+
+    def test_l_ecrasement_est_confirme_sur_les_fichiers_du_PLAN(self):
+        """La marche à blanc dit les chemins réels ; confirmer sur la
+        seule destination manquait ceux d'une conversion par feuille."""
+        deja = os.path.join(self.base, "deja.csv")
+        with open(deja, "w", encoding="utf-8") as flux:
+            flux.write("z")
+        self.rendus = [self.rapport, {"remplacees": 1, "fichiers": [deja]}]
+        self._dialogue(
+            self.source,
+            "o",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            os.path.join(self.base, "o.csv"),
+            "",
+            "pas-le-bon-nom",
+        )
+        self.menu._transform_open_and_report()
+        self.assertEqual(
+            [a[0][0] for a in self.appels], ["--report", "--plan"]
+        )
+        self.assertIn(
+            todo_i18n.t("Name does not match, nothing was written."),
+            self.ecran.getvalue(),
+        )
+
+    def test_les_options_partent_en_json_analysable(self):
+        self.rendus = [self.rapport, {"remplacees": 1}, {"remplacees": 1}]
+        # Une source d'UNE feuille ne pose pas la question des feuilles :
+        # huit réponses, non neuf.
+        self._dialogue(
+            self.source,
+            "o",  # anonymiser
+            "json",  # convertir
+            "id",  # colonnes intactes
+            "",  # nombres
+            "",  # texte
+            "",  # en-têtes
+            "7",  # graine
+            "",  # table
+            os.path.join(self.base, "o.json"),
+            "",  # écrire
+        )
+        self.menu._transform_open_and_report()
+        plan = self.appels[1][0]
+        options = json.loads(plan[plan.index("--options") + 1])
+        self.assertEqual(options["conversion"], "json")
+        self.assertEqual(options["colonnes_intactes"], ["id"])
+        self.assertEqual(options["graine"], "7")
+        self.assertTrue(options["destination"].endswith("o.json"))
 
 
 class TestNombre(unittest.TestCase):
