@@ -6,7 +6,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from script.execute.execute import Execute
+from script.execute.execute import Execute, redact_secrets
 
 
 class TestExecuteInit(unittest.TestCase):
@@ -167,6 +167,67 @@ class TestExecCommandLive(unittest.TestCase):
         )
         self.assertEqual(status, 0)
         self.assertEqual(output, [])
+
+
+class TestRedactSecrets(unittest.TestCase):
+    """Ce qui doit disparaître d'une commande affichée, et ce qui doit rester.
+
+    Le caviardage est le DERNIER rempart et non le premier : un secret sur
+    argv est déjà lisible par tout compte de la machine dans
+    /proc/<pid>/cmdline, où aucun filtre n'atteint. Ces tests défendent donc
+    la trace — terminal, journal, sortie CI — et rien d'autre.
+
+    Trois familles portent un secret, et elles ne se ressemblent pas. Une
+    option se reconnaît par son nom, une variable d'environnement par le
+    sien, et un jeton d'en-tête n'a NI l'un NI l'autre : il suit le mot
+    « Bearer ». Un filtre bâti sur les deux premières laisse passer la
+    troisième, qui est exactement celle qu'une API de modèle emploie.
+
+    Les valeurs sont inventées, comme l'exige la règle du dépôt pour tout
+    exemple qui illustre un interdit.
+    """
+
+    def test_env_api_key_is_redacted(self):
+        sortie = redact_secrets("OPENAI_API_KEY=sk-inventeXYZ python x.py")
+        self.assertNotIn("sk-inventeXYZ", sortie)
+        self.assertIn("OPENAI_API_KEY='***'", sortie)
+
+    def test_env_apikey_without_separator(self):
+        sortie = redact_secrets("MISTRAL_APIKEY=abc123 ./run")
+        self.assertNotIn("abc123", sortie)
+
+    def test_bearer_header_is_redacted(self):
+        sortie = redact_secrets(
+            "curl -H 'Authorization: Bearer sk-inventeABC' http://h/v1/models"
+        )
+        self.assertNotIn("sk-inventeABC", sortie)
+        self.assertIn("Authorization: Bearer '***'", sortie)
+
+    def test_basic_header_is_redacted(self):
+        sortie = redact_secrets("Authorization: Basic dXNlcjpmYXV4")
+        self.assertNotIn("dXNlcjpmYXV4", sortie)
+
+    def test_header_case_is_ignored(self):
+        sortie = redact_secrets("authorization: bearer sk-inventeDEF")
+        self.assertNotIn("sk-inventeDEF", sortie)
+
+    def test_option_password_still_redacted(self):
+        sortie = redact_secrets("odoo --db_password 'inventeGHI'")
+        self.assertNotIn("inventeGHI", sortie)
+
+    def test_option_name_survives(self):
+        """Le nom de l'option reste : la commande doit rester reproductible."""
+        sortie = redact_secrets("odoo --db_password 'inventeJKL'")
+        self.assertIn("--db_password", sortie)
+
+    def test_a_path_is_not_a_secret(self):
+        """Rien ne disparaît d'une commande qui ne porte aucun secret."""
+        commande = "make test_unit_file F=test/test_execute.py"
+        self.assertEqual(redact_secrets(commande), commande)
+
+    def test_empty_text_survives(self):
+        self.assertEqual(redact_secrets(""), "")
+        self.assertIsNone(redact_secrets(None))
 
 
 if __name__ == "__main__":

@@ -46,13 +46,21 @@ _SECRET_OPTION = re.compile(
     re.IGNORECASE,
 )
 _SECRET_ENV = re.compile(
-    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN)\w*=)"
+    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY)\w*=)"
     r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)"
+)
+# Un jeton porté par un en-tête n'a ni nom d'option ni nom de variable : il
+# suit le mot « Bearer », et les deux règles ci-dessus passent à côté. Le
+# schéma est nommé par la RFC 7235 et se compare sans casse, la valeur allant
+# jusqu'à la fin de la ligne — un jeton ne porte pas d'espace.
+_SECRET_HEADER = re.compile(
+    r"(?P<schema>\bAuthorization:\s*(?:Bearer|Basic)\s+)(?P<val>\S+)",
+    re.IGNORECASE,
 )
 
 
 def redact_secrets(text):
-    """Remplace la valeur des options et variables porteuses de secret.
+    """Remplace la valeur des options, variables et en-têtes de secret.
 
     Appliqué à CHAQUE affichage d'une commande. Filtrer au point d'affichage
     plutôt qu'à la construction est ce qui rend la garantie tenable : il n'y a
@@ -62,7 +70,8 @@ def redact_secrets(text):
     if not text:
         return text
     text = _SECRET_OPTION.sub(lambda m: m.group("opt") + "'***'", text)
-    return _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
+    text = _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
+    return _SECRET_HEADER.sub(lambda m: m.group("schema") + "'***'", text)
 
 
 new_path = os.path.normpath(
