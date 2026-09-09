@@ -155,5 +155,88 @@ class TestLaFicheLimaTraverseLeMoniteur(unittest.TestCase):
         self.assertTrue(hasattr(M.subprocess, "Popen"))
 
 
+class TestLesDeuxPrefixesDuRedemarrage(unittest.TestCase):
+    """Le redémarrage reçoit DEUX préfixes, et les confondre coûte.
+
+    L'ORDRE compte. L'ordre de redémarrage part avec le préfixe ordinaire ;
+    la boucle qui relit « uname -r » exige en plus « BatchMode », sans quoi
+    une invite de mot de passe la ferait tourner cent quatre-vingts fois
+    pour rien. Inversés, l'attente devient interactive et l'ordre perd sa
+    protection.
+
+    UNE FICHE LIBVIRT ICI, dans un fichier nommé pour l'instance : c'est le
+    seul backend dont les deux préfixes DIFFÈRENT. Chez l'instance ils sont
+    identiques — l'outil ignore les options de ssh — donc l'inversion y est
+    invisible, et une épreuve qui ne mesurerait que là passerait.
+    """
+
+    LIBVIRT = B.libvirt_handle("vm-locale", uuid="u-u-i-d", ip="192.0.2.10")
+
+    INSTALL = "./script/proxmox/install_proxmox.sh"
+
+    def enveloppe_avec_reboot(self, handle):
+        """Le motif est PASSÉ, pas déduit ici.
+
+        `_launch_one` le reçoit ; c'est `launch_installs` qui le dérive de
+        la commande par `reboot_expected`. Le déduire dans ce banc
+        éprouverait la dérivation au lieu du câblage.
+        """
+        return enveloppe(
+            handle,
+            remote_cmd=self.INSTALL,
+            reboot=M.reboot_expected(self.INSTALL),
+        )
+
+    def test_the_reboot_is_asked_for_by_that_install(self):
+        """Contrôle du banc : sans motif de redémarrage, les assertions
+        suivantes porteraient sur un bloc absent."""
+        self.assertTrue(M.reboot_expected(self.INSTALL))
+        self.assertIn(
+            "systemctl reboot", self.enveloppe_avec_reboot(self.LIBVIRT)
+        )
+
+    def test_the_order_and_the_probe_do_not_share_a_prefix(self):
+        texte = self.enveloppe_avec_reboot(self.LIBVIRT)
+        ordre = texte.index("'sudo -n systemctl reboot'")
+        sonde = texte.index("'uname -r'")
+        # Le préfixe de la SONDE porte BatchMode, celui de l'ordre non.
+        debut_sonde = texte.rindex("ssh ", 0, sonde)
+        debut_ordre = texte.rindex("ssh ", 0, ordre)
+        self.assertIn("BatchMode=yes", texte[debut_sonde:sonde])
+        self.assertNotIn("BatchMode=yes", texte[debut_ordre:ordre])
+
+    def test_neither_prefix_is_a_bare_ssh(self):
+        """« ssh » nu perdrait les options qui rendent la commande jouable
+        depuis un processus détaché — dont « -n », sans quoi elle vole les
+        frappes du terminal."""
+        texte = self.enveloppe_avec_reboot(self.LIBVIRT)
+        ordre = texte.index("'sudo -n systemctl reboot'")
+        debut = texte.rindex("ssh ", 0, ordre)
+        self.assertIn("StrictHostKeyChecking", texte[debut:ordre])
+        self.assertIn("erplibre@", texte[debut:ordre])
+
+    def test_an_instance_reboot_uses_its_own_tool(self):
+        """Elle n'en demande jamais un — seule l'installation de Proxmox le
+        fait, et elle n'a pas de sens ici — mais si elle en demandait un, la
+        commande viserait l'instance et non un hôte ssh homonyme."""
+        texte = self.enveloppe_avec_reboot(B.lima_handle(INSTANCE))
+        self.assertIn(
+            f"limactl shell {INSTANCE} -- bash -c 'sudo -n systemctl reboot'",
+            texte,
+        )
+        self.assertNotIn("ssh ", texte)
+
+    def test_the_wrapper_is_still_valid_shell_with_a_reboot(self):
+        for handle in (self.LIBVIRT, B.lima_handle(INSTANCE)):
+            with self.subTest(backend=handle.backend):
+                texte = self.enveloppe_avec_reboot(handle)
+                res = subprocess.run(
+                    ["bash", "-n", "-c", texte],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(0, res.returncode, res.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

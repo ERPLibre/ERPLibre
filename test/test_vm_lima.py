@@ -21,6 +21,7 @@ import yaml
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from script import posture as P  # noqa: E402
 from script.vm import lima as L  # noqa: E402
@@ -400,43 +401,14 @@ class TestLaConfrontationNecritAucuneCommande(unittest.TestCase):
 
     @staticmethod
     def _litteraux_de_code(source):
-        """Les chaînes du CODE qui nomment l'outil, docstrings exclues.
-
-        Par l'AST et non ligne à ligne : une docstring qui EXPLIQUE la
-        question confrontée cite légitimement la commande, et un filtre sur
-        « # » ne la distingue pas d'un argument.
+        """Les chaînes du CODE qui nomment l'outil, docstrings
+        exclues. La mécanique vit dans `test/code_literals.py` : ce
+        contrôle a été recopié trois fois, et la troisième copie
+        levait un TypeError sur une expression conditionnelle.
         """
-        import ast
+        from code_literals import literals_matching
 
-        arbre = ast.parse(source)
-        docs = set()
-        for noeud in ast.walk(arbre):
-            if not isinstance(
-                noeud,
-                (
-                    ast.Module,
-                    ast.FunctionDef,
-                    ast.AsyncFunctionDef,
-                    ast.ClassDef,
-                ),
-            ):
-                continue
-            corps = getattr(noeud, "body", None) or []
-            if (
-                corps
-                and isinstance(corps[0], ast.Expr)
-                and isinstance(corps[0].value, ast.Constant)
-                and isinstance(corps[0].value.value, str)
-            ):
-                docs.add(id(corps[0].value))
-        return [
-            noeud.value
-            for noeud in ast.walk(arbre)
-            if isinstance(noeud, ast.Constant)
-            and isinstance(noeud.value, str)
-            and id(noeud) not in docs
-            and "limactl" in noeud.value
-        ]
+        return literals_matching(source, "limactl")
 
     def test_the_ast_filter_sees_the_docstrings_it_must_ignore(self):
         """Contrôle du banc : un filtre qui exclurait TOUT passerait
