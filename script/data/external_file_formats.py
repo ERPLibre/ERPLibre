@@ -197,15 +197,27 @@ class Feuille:
 
 
 def corps(feuille):
-    """Les lignes de DONNÉES : ce qui suit la dernière ligne d'en-tête.
+    """Les lignes de DONNÉES : toutes celles qui ne sont pas de l'en-tête.
 
     Un seul endroit le dit, pour les deux graveurs qui écrivaient
     `lignes[1:]` : une seconde ligne d'en-tête y devenait un
     enregistrement, et sur une feuille SANS en-tête la première ligne de
     données devenait les noms de clé — en clair, et perdue comme donnée.
+
+    L'exclusion se fait par APPARTENANCE à l'empan, non par position sous
+    lui. Une ligne de données au-dessus de la ligne de champs en est
+    exclue exprès — la mesure la reconnaît, la portée l'anonymise — et
+    partir de la dernière ligne d'en-tête la faisait DISPARAÎTRE d'une
+    conversion json ou xml, comptée comme remplacée puis absente du
+    fichier. Un empan corrigé par l'opérateur n'est d'ailleurs pas tenu
+    d'être contigu.
     """
     empan = feuille.lignes_entete or set()
-    return feuille.lignes[max(empan) if empan else 0 :]
+    return [
+        ligne
+        for rang, ligne in enumerate(feuille.lignes, start=1)
+        if rang not in empan
+    ]
 
 
 def _etiquettes_par_colonne(feuilles):

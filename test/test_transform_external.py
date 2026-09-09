@@ -2070,7 +2070,27 @@ class TestMesurerEntetes(unittest.TestCase):
 
 
 class TestCorpsSousLEmpan(unittest.TestCase):
-    """Les lignes de DONNÉES : ce qui suit la dernière ligne d'en-tête."""
+    """Les lignes de DONNÉES : toutes celles hors de l'empan d'en-tête."""
+
+    def test_une_donnee_AU_DESSUS_de_la_ligne_de_champs_est_gardee(self):
+        """Elle est hors de l'empan exprès, et partir de la dernière ligne
+        d'en-tête la faisait disparaître d'une conversion json ou xml —
+        anonymisée, comptée comme remplacée, puis absente du fichier."""
+        feuille = formats.Feuille(
+            "F", [["z", 9], ["a", "b"], ["x", 1], ["y", 2]]
+        )
+        feuille.lignes_entete = {2}
+        self.assertEqual(
+            formats.corps(feuille), [["z", 9], ["x", 1], ["y", 2]]
+        )
+
+    def test_un_empan_NON_contigu_ne_reprend_pas_ce_qu_il_saute(self):
+        """L'opérateur n'est pas tenu de cocher des lignes voisines."""
+        feuille = formats.Feuille(
+            "F", [["a", "b"], ["x", 1], ["c", "d"], ["y", 2]]
+        )
+        feuille.lignes_entete = {1, 3}
+        self.assertEqual(formats.corps(feuille), [["x", 1], ["y", 2]])
 
     def test_le_corps_saute_tout_l_empan(self):
         feuille = formats.Feuille(
@@ -4036,6 +4056,29 @@ class TestBoutEnBoutStdlib(unittest.TestCase):
         formats.ecrire(source, sortie, {"conversion": "json", "graine": "1"})
         # `assertTrue(arbre)` passait sur une recopie verbatim.
         self.assertNotIn("Alpha", open(sortie, encoding="utf-8").read())
+
+    def test_aucune_ligne_ne_se_perd_a_la_conversion(self):
+        """Le compte de « remplacées » et le compte d'enregistrements
+        doivent parler du même fichier.
+
+        Une ligne de données au-dessus de la ligne de champs est hors de
+        l'empan exprès ; partir de la dernière ligne d'en-tête la faisait
+        disparaître, après l'avoir anonymisée et comptée.
+        """
+        source = self._ecrire(
+            "d.csv",
+            "Bruant,599\n"
+            "N° ville,N° magasin\n"
+            "Aubel,501\n"
+            "Aubel,502\n"
+            "Aubel,503\n"
+            "Aubel,504\n",
+        )
+        sortie = os.path.join(self.base, "d.json")
+        formats.ecrire(source, sortie, {"conversion": "json", "graine": "1"})
+        arbre = json.load(open(sortie, encoding="utf-8"))
+        (enregistrements,) = arbre.values()
+        self.assertEqual(len(enregistrements), 5)
 
     def test_le_nom_du_fichier_source_ne_sort_pas(self):
         """Le dialogue promet que le nom du fichier n'est pas anonymisé.
