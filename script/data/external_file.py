@@ -1321,9 +1321,15 @@ def _motif_borne(valeur):
     pas le problème qu'on croyait. Ni le signe moins : mêmes chiffres, et
     refuser est le côté sur lequel pencher.
     """
-    if not _MOTIF_TOUT_CHIFFRE.match(valeur):
-        return None
-    return re.compile(r"(?<![\w.])%s(?![\w.])" % re.escape(valeur))
+    if _MOTIF_TOUT_CHIFFRE.match(valeur):
+        return re.compile(r"(?<![\w.])%s(?![\w.])" % re.escape(valeur))
+    # Une valeur qui porte des lettres se borne aussi, mais par les seuls
+    # caractères de mot : « Document » vit dans l'URI `officeDocument` que
+    # tout classeur écrit, et le socle du graveur ne l'excuse pas — il est
+    # MINIMAL, si bien que chaque type de partie que la source a en plus
+    # apporte une URI distincte de plus. Le point ne borne pas ici : il
+    # suit un mot en fin de phrase sans en faire un autre mot.
+    return re.compile(r"(?<!\w)%s(?!\w)" % re.escape(valeur))
 
 
 def _compter(texte, valeur, motif):

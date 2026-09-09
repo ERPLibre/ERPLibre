@@ -1634,11 +1634,7 @@ def _parcourir(
                 if not cellule_en_portee(feuille.nom, numero, index, options):
                     bilan["hors_portee"] += 1
                     if gardees_out is not None:
-                        texte = str(valeur_hors_tableur(valeur) or "").strip()
-                        if len(texte) >= noyau.LONGUEUR_VERIFIABLE:
-                            gardees_out.setdefault(feuille.nom, set()).add(
-                                texte
-                            )
+                        _noter_gardee(gardees_out, feuille.nom, valeur)
                     if (
                         numero == 1
                         and not options.get("entetes")
@@ -1680,11 +1676,7 @@ def _parcourir(
                         bilan["intactes"].get(famille, 0) + 1
                     )
                     if gardees_out is not None:
-                        texte = str(valeur_hors_tableur(valeur) or "").strip()
-                        if len(texte) >= noyau.LONGUEUR_VERIFIABLE:
-                            gardees_out.setdefault(feuille.nom, set()).add(
-                                texte
-                            )
+                        _noter_gardee(gardees_out, feuille.nom, valeur)
                     continue
                 for fam, feuilles_reecrites in compte.items():
                     bilan["remplacees"] += feuilles_reecrites
@@ -2260,6 +2252,21 @@ def _retirer_feuilles_hors_portee(classeur, options):
         del classeur[nom]
 
 
+def _noter_gardee(gardees_out, feuille, valeur):
+    """Une valeur laissée intacte, notée sous ses DEUX formes.
+
+    Le filet cherche la valeur telle que la table la porte, espaces
+    compris ; ne noter que la forme dépouillée laissait un libellé à
+    espace final annoncé remplacé ailleurs et jamais excusé ici — un
+    refus sur du travail légitime, sur un fichier ordinaire dont un
+    en-tête finit par une espace.
+    """
+    texte = str(valeur_hors_tableur(valeur) or "")
+    for forme in (texte, texte.strip()):
+        if len(forme) >= noyau.LONGUEUR_VERIFIABLE:
+            gardees_out.setdefault(feuille, set()).add(forme)
+
+
 def _resynchroniser_tableaux(classeur):
     """Un tableau porte une COPIE du texte de sa cellule d'en-tête.
 
@@ -2275,12 +2282,28 @@ def _resynchroniser_tableaux(classeur):
     for onglet in classeur.worksheets:
         for tableau in list((getattr(onglet, "tables", {}) or {}).values()):
             debut = tableau.ref.split(":")[0]
-            ligne = onglet[debut].row
             colonne = onglet[debut].column
+            # La DERNIÈRE ligne d'en-tête porte les noms de champ. Prendre
+            # la première donnait, sur un en-tête de deux lignes, la ligne
+            # de CATÉGORIE — souvent la même valeur sur plusieurs colonnes,
+            # d'où des `tableColumn` de nom identique, qu'OOXML interdit :
+            # Excel annonce alors un fichier à réparer.
+            hauteur = getattr(tableau, "headerRowCount", 1)
+            ligne = onglet[debut].row + max(int(hauteur or 1), 1) - 1
+            pris = set()
             for rang, tcol in enumerate(tableau.tableColumns):
                 cellule = onglet.cell(row=ligne, column=colonne + rang)
-                if isinstance(cellule.value, str) and cellule.value:
-                    tcol.name = cellule.value
+                nom = cellule.value
+                nom = nom if isinstance(nom, str) and nom.strip() else ""
+                # Un nom qu'AUCUNE cellule ne porte — en-tête vide, ou
+                # tableau déclaré sans ligne d'en-tête — restait tel quel :
+                # le texte d'origine sortait dans `xl/tables/`, et le filet
+                # ne pouvait pas le voir puisqu'il n'a jamais été lu d'une
+                # cellule, donc jamais annoncé remplacé.
+                if not nom or nom in pris:
+                    nom = "colonne_%d" % (rang + 1)
+                pris.add(nom)
+                tcol.name = nom
                 if getattr(tcol, "totalsRowLabel", None):
                     tcol.totalsRowLabel = None
 

@@ -1332,6 +1332,144 @@ class TestMenuNavigateurDeFichiers(unittest.TestCase):
         )
 
 
+class TestGardeeSousSesDeuxFormes(unittest.TestCase):
+    """Le filet cherche la valeur telle que la TABLE la porte.
+
+    Un en-tête qui finit par une espace est annoncé remplacé sous sa forme
+    brute — là où il est en portée — et n'était excusé que sous sa forme
+    dépouillée là où il est gardé. Un fichier ordinaire dont une colonne
+    s'intitule « Montant » avec une espace finale se faisait refuser.
+    """
+
+    def test_les_deux_formes_sont_notees(self):
+        gardees = {}
+        formats._noter_gardee(gardees, "F", "aboulie ")
+        self.assertEqual(gardees["F"], {"aboulie ", "aboulie"})
+
+    def test_une_valeur_sans_espace_n_est_notee_qu_une_fois(self):
+        gardees = {}
+        formats._noter_gardee(gardees, "F", "aboulie")
+        self.assertEqual(gardees["F"], {"aboulie"})
+
+    def test_le_seuil_du_filet_s_applique_aux_deux(self):
+        """Sous le seuil, le filet ne cherche pas : le noter serait
+        tolérer une chaîne qu'il n'examine jamais."""
+        gardees = {}
+        formats._noter_gardee(gardees, "F", " ab ")
+        self.assertEqual(gardees.get("F"), {" ab "})
+
+    def test_une_valeur_non_texte_traverse_sans_lever(self):
+        gardees = {}
+        formats._noter_gardee(gardees, "F", 12345)
+        formats._noter_gardee(gardees, "F", None)
+        self.assertEqual(gardees.get("F"), {"12345"})
+
+
+class TestNomsDeColonneDeTableau(unittest.TestCase):
+    """OOXML exige que `tableColumn.name` égale sa cellule d'en-tête, et
+    que les noms d'un tableau soient DISTINCTS.
+
+    Deux manquements, chacun grave à sa façon : un nom qu'aucune cellule
+    ne porte laissait sortir le texte d'origine SANS que le filet puisse
+    le voir — il n'a jamais été lu d'une cellule, donc jamais annoncé — et
+    un en-tête de deux lignes donnait deux fois le même nom, ce qu'Excel
+    annonce comme un fichier à réparer.
+    """
+
+    # La fonction ne touche que des ATTRIBUTS : un bouchon suffit, et le
+    # test tourne alors sous l'interpréteur du CLI, qui n'a pas openpyxl.
+    # Le faire par un vrai classeur l'aurait exclu de la suite.
+    @staticmethod
+    def _classeur(lignes, hauteur_entete=1, noms=("a", "b")):
+        class Colonne:
+            def __init__(self, nom):
+                self.name = nom
+                self.totalsRowLabel = None
+
+        class Cellule:
+            def __init__(self, ligne, colonne, valeur):
+                self.row = ligne
+                self.column = colonne
+                self.value = valeur
+
+        class Tableau:
+            def __init__(self):
+                self.ref = "A1:B%d" % len(lignes)
+                self.headerRowCount = hauteur_entete
+                self.tableColumns = [Colonne(n) for n in noms]
+
+        class Onglet:
+            tables = {}
+
+            def __getitem__(self, adresse):
+                assert adresse == "A1", adresse
+                return Cellule(1, 1, None)
+
+            def cell(self, row, column):
+                ligne = lignes[row - 1] if row <= len(lignes) else []
+                valeur = ligne[column - 1] if column <= len(ligne) else None
+                return Cellule(row, column, valeur)
+
+        class Classeur:
+            def __init__(self, onglet):
+                self.worksheets = [onglet]
+
+        onglet = Onglet()
+        tableau = Tableau()
+        onglet.tables = {"T1": tableau}
+        return Classeur(onglet), onglet, tableau
+
+    def _noms(self, *args, **kwargs):
+        classeur, _onglet, tableau = self._classeur(*args, **kwargs)
+        formats._resynchroniser_tableaux(classeur)
+        return [c.name for c in tableau.tableColumns]
+
+    def test_le_nom_suit_la_cellule_d_en_tete(self):
+        self.assertEqual(
+            self._noms([["acai", "acanthe"], [1, 2]], noms=("vieux", "vieil")),
+            ["acai", "acanthe"],
+        )
+
+    def test_un_en_tete_de_DEUX_lignes_prend_la_derniere(self):
+        """La ligne de catégorie se répète souvent d'une colonne à
+        l'autre : la prendre donnait deux noms identiques."""
+        self.assertEqual(
+            self._noms(
+                [["cat", "cat"], ["acai", "acanthe"], [1, 2]],
+                hauteur_entete=2,
+                noms=("vieux", "vieil"),
+            ),
+            ["acai", "acanthe"],
+        )
+
+    def test_un_nom_sans_cellule_est_remplace_positionnellement(self):
+        """Il sortait tel quel dans `xl/tables/`, hors d'atteinte du
+        filet."""
+        noms = self._noms(
+            [[None, "acanthe"], [1, 2]], noms=("aboulie", "acai")
+        )
+        self.assertEqual(noms, ["colonne_1", "acanthe"])
+        self.assertNotIn("aboulie", noms)
+
+    def test_une_cellule_non_texte_ne_nomme_pas_une_colonne(self):
+        noms = self._noms([[2024, "acanthe"], [1, 2]], noms=("aboulie", "x"))
+        self.assertEqual(noms[0], "colonne_1")
+
+    def test_deux_en_tetes_IDENTIQUES_se_distinguent(self):
+        """Sans quoi le tableau porte deux fois le même nom."""
+        noms = self._noms([["acai", "acai"], [1, 2]], noms=("v", "w"))
+        self.assertEqual(len(set(noms)), 2, noms)
+        self.assertEqual(noms[0], "acai")
+
+    def test_le_libelle_de_ligne_de_total_part(self):
+        """Il n'est jamais une cellule et survivait quelles que soient
+        les options."""
+        classeur, _o, tableau = self._classeur([["acai", "acanthe"], [1, 2]])
+        tableau.tableColumns[0].totalsRowLabel = "aboulie"
+        formats._resynchroniser_tableaux(classeur)
+        self.assertIsNone(tableau.tableColumns[0].totalsRowLabel)
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 
@@ -1811,11 +1949,39 @@ class TestFiletSurUneValeurNumerique(unittest.TestCase):
         self.assertFalse(noyau._motif_borne("1010").search('r="A1010"'))
         self.assertFalse(noyau._motif_borne("1203").search("SKU1203"))
 
-    def test_une_valeur_qui_porte_une_lettre_garde_la_sous_chaine(self):
-        """Le bornage ne vaut QUE pour les chiffres purs : un nom noyé
-        dans un cache ou un littéral doit rester trouvable."""
-        self.assertIsNone(noyau._motif_borne("aboulie"))
-        self.assertIsNone(noyau._motif_borne("0512a"))
+    def test_une_valeur_a_lettres_se_borne_par_les_seuls_mots(self):
+        """Elle se borne aussi, mais pas sur le point.
+
+        « Document » vit dans l'URI `officeDocument` que tout classeur
+        écrit, et le socle du graveur ne l'excuse pas : il est MINIMAL, si
+        bien que chaque type de partie que la source a en plus apporte une
+        URI distincte de plus. Le point ne borne pas ici — il suit un mot
+        en fin de phrase sans en faire un autre mot.
+        """
+        motif = noyau._motif_borne("Document")
+        self.assertIsNotNone(motif)
+        self.assertFalse(motif.search("officeDocument"))
+        self.assertFalse(motif.search("Documentation"))
+        self.assertTrue(motif.search("<t>Document</t>"))
+        self.assertTrue(motif.search("Document."))
+
+    def test_un_nom_dans_un_cache_ou_un_litteral_reste_trouvable(self):
+        """Ce que le bornage NE doit pas coûter : une survivance vraie est
+        bordée de balisage ou de guillemets, jamais collée à un mot."""
+        motif = noyau._motif_borne("aboulie")
+        for foin in (
+            "<c:v>aboulie</c:v>",
+            '="aboulie"',
+            '="Pre"&"aboulie"',
+            "a,aboulie,b",
+            "aboulie-2024",
+        ):
+            with self.subTest(foin=foin):
+                self.assertTrue(motif.search(foin))
+
+    def test_un_autre_mot_qui_contient_la_valeur_n_en_est_pas_une(self):
+        """« Bellevue » n'est pas une survivance de « Belle »."""
+        self.assertFalse(noyau._motif_borne("Belle").search("Bellevue"))
 
     def test_les_attributs_ne_portent_pas_de_valeur_numerique(self):
         """Un XML porte ses index dans les ATTRIBUTS et ses valeurs de
