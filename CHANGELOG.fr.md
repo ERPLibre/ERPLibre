@@ -19,6 +19,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - L'installateur VPN cherche `vpnc-script` — un fichier, et non un binaire du `PATH` — et nomme le paquet à poser par famille de distribution, au lieu de laisser le tunnel échouer sur une interface qui n'apparaît jamais
 - Une commande lancée par l'exécuteur VPN reçoit `/dev/null` sur son entrée standard, si bien qu'une commande à sortie capturée ne peut plus être arrêtée par un SIGTTOU et figer le gestionnaire de paquets de la machine
 - La liste des profils VPN marque ceux qui portent un tunnel vivant, si bien que connecter un profil déjà monté demande confirmation et que déconnecter un profil déjà tombé le dit au lieu de ressembler à une erreur. Un profil est jugé sur son interface et non sur le fichier d'état qu'un tunnel tué sans `down` laisse derrière lui — un état laissé était annoncé monté sur l'écran même qui déclarait le processus mort
+- `Assistant › LLM` — interroger un serveur de modèle sur plusieurs tours, local ou distant. L'historique vit en mémoire et meurt avec le menu, `/save` étant le seul moyen d'en garder une trace ; toute commande porte une barre oblique initiale, donc une question collée sur plusieurs lignes reste un seul tour. Une destination tierce doit être retapée avant le premier envoi
+- Reconnaissance du serveur sur onze ports et douze familles, l'identité étant lue dans le CORPS de la réponse et jamais dans le port : un port héberge jusqu'à trois produits, et une famille réémet l'API native d'une autre en entier
+- Recherche d'un serveur depuis six sources — la boucle locale, les domaines QEMU de la machine, les hôtes de `~/.ssh/config`, une adresse ou un réseau saisi, et les réseaux lus en SSH sur une autre machine. Plus large qu'un `/24` est refusé avant énumération, et deux préférences bornent le balayage : `assistant_sweep_workers`, `assistant_sweep_timeout`
+- Un catalogue d'outils gpt dans `script/todo/assistant/gpt/` : un fichier Markdown par outil, dont les exigences déclarées sont confrontées à ce que le serveur annonce. L'inconnu ne grise jamais un outil — seule une exigence contredite par un champ réellement lu le fait, avec le chiffre qui la refuse
+- Un contexte LECTURE SEULE déclaré par outil, fichiers et commandes autorisées, montré et confirmé avant le premier envoi, borné en taille et en durée, et balayé à la recherche de données identifiantes. La limite du balayage est dite : il voit les adresses, les courriels et les chemins de compte, pas les noms
+- `Exécution › GPT code › Claude Code` — lister les sessions de la machine, en interroger une avec des outils en lecture seule, ou la reprendre dans son propre terminal. Une copie est branchée par défaut, deux écritures sur une même session perdant une branche
+
+## Modifié
+
+- `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond
 
 
 ## [1.8.0] - 2026-09-04
