@@ -288,10 +288,12 @@ class LimaMenuMixin:
         for ligne in texte.splitlines():
             print(f"  {ligne}")
         print("  ---")
-        # `host_limits` et non `unenforceable` : aucune posture n'est
-        # choisie ici, et sans posture la seconde ne promet rien — donc elle
-        # ne dirait RIEN, ce qui laisserait croire une instance joignable.
-        for manque in lima.host_limits(macos):
+        # `config_limits` sur le TEXTE, et non une des deux questions
+        # voisines. `unenforceable` sans posture ne promet rien, donc ne dit
+        # rien ; `host_limits` répond ce que l'hôte PEUT offrir — sur macOS,
+        # l'adresse joignable est possible et pourtant absente si personne
+        # ne l'a demandée. Seule la lecture du texte ne peut pas mentir.
+        for manque in lima.config_limits(texte):
             print(f"  ⚠ {t('Not held by this config:')} {manque}")
         argv = lima.start_argv(nom, chemin)
         print(f"  {t('Will execute:')} {lima.display(argv)}")

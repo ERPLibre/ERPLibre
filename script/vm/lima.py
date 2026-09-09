@@ -36,6 +36,12 @@ MOUNTS_VIDES = "mounts: []"
 # n'a pas Virtualization.framework fait échouer le démarrage.
 VM_TYPE_MACOS = "vz"
 
+# Le bloc qui donne une adresse joignable depuis l'hôte. UNE constante,
+# parce que `render_config` l'écrit et `config_limits` le relit : deux
+# littéraux voisins cesseraient de correspondre au premier ajustement, et
+# l'écran annoncerait « joignable » sur une instance qui ne l'est pas.
+NETWORK_SHARED = "  - lima: shared"
+
 
 def render_config(
     image: str,
@@ -91,9 +97,28 @@ def render_config(
             "# Adresse joignable depuis l'hôte. Passe par socket_vmnet, qui",
             "# demande une installation privilégiée à part.",
             "networks:",
-            "  - lima: shared",
+            NETWORK_SHARED,
         ]
     return "\n".join(lignes) + "\n"
+
+
+def config_limits(rendered: str) -> tuple:
+    """Ce que la configuration RENDUE n'offre pas, lu dans son texte.
+
+    TROIS QUESTIONS VOISINES, et un écran a besoin de celle-ci.
+    `unenforceable` répond « que promet cette POSTURE que la configuration
+    ne tient pas ». `host_limits` répond « que cet HÔTE ne peut pas offrir
+    du tout ». Celle-ci répond « que CETTE configuration n'offre pas », et
+    c'est la seule que le lecteur d'un écran de création veut savoir : sur
+    macOS, l'adresse joignable est POSSIBLE, et pourtant elle n'est pas là
+    si personne ne l'a demandée.
+
+    Lue dans le TEXTE et non déduite des arguments : c'est la seule forme
+    qui ne peut pas mentir. Un jour où le rendu cesserait d'écrire le bloc —
+    parce que la demande a été ignorée sur cet hôte — une déduction faite
+    sur les arguments dirait encore « joignable ».
+    """
+    return () if NETWORK_SHARED in (rendered or "") else ("reachable-address",)
 
 
 def host_limits(macos: bool = False) -> tuple:

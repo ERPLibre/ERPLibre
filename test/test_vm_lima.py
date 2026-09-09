@@ -97,6 +97,45 @@ class TestCeQueLaConfigurationNeTientPas(unittest.TestCase):
         configuration ne tient pas ». Sans posture, pas de promesse."""
         self.assertEqual((), L.unenforceable(None))
 
+    def test_what_the_rendered_config_offers_is_read_in_its_text(self):
+        """TROIS QUESTIONS VOISINES, et un écran de création a besoin de
+        celle-ci. Sur macOS l'adresse joignable est POSSIBLE — donc
+        `host_limits` dit « rien ne manque » — et pourtant elle n'est pas
+        là si personne ne l'a demandée. L'écran annoncerait « joignable »
+        sur une instance qui ne l'est pas."""
+        sans = L.render_config("https://exemple.invalid/i.img", macos=True)
+        self.assertEqual(("reachable-address",), L.config_limits(sans))
+        self.assertEqual((), L.host_limits(macos=True))
+
+    def test_asking_for_it_on_macos_makes_it_offered(self):
+        """Contrôle positif : toujours répondre « manquant » retirerait
+        l'information."""
+        avec = L.render_config(
+            "https://exemple.invalid/i.img", macos=True, reachable=True
+        )
+        self.assertEqual((), L.config_limits(avec))
+
+    def test_asking_for_it_elsewhere_does_not_make_it_offered(self):
+        """La demande est IGNORÉE hors macOS plutôt que d'écrire un bloc
+        qui ferait échouer le démarrage — donc elle reste manquante, et le
+        dire est tout l'intérêt de lire le texte."""
+        ailleurs = L.render_config(
+            "https://exemple.invalid/i.img", macos=False, reachable=True
+        )
+        self.assertEqual(("reachable-address",), L.config_limits(ailleurs))
+
+    def test_reading_the_text_cannot_drift_from_writing_it(self):
+        """Le bloc est UNE constante : deux littéraux voisins cesseraient
+        de correspondre au premier ajustement."""
+        avec = L.render_config(
+            "https://exemple.invalid/i.img", macos=True, reachable=True
+        )
+        self.assertIn(L.NETWORK_SHARED, avec)
+
+    def test_nothing_rendered_is_not_taken_for_reachable(self):
+        self.assertEqual(("reachable-address",), L.config_limits(""))
+        self.assertEqual(("reachable-address",), L.config_limits(None))
+
     def test_the_host_limit_is_a_separate_question(self):
         """Un écran qui montre une configuration AVANT de la jouer n'a pas
         encore de posture, et `unenforceable` ne lui dirait donc RIEN — ce

@@ -365,6 +365,17 @@ class TestLaCreation(CasDeMenu):
                 texte = self.creer(menu, "essai", "n", base)
         self.assertIn("reachable-address", texte)
 
+    def test_it_is_said_on_macos_too_when_nobody_asked_for_it(self):
+        """LE PIÈGE. Sur macOS l'adresse joignable est POSSIBLE, donc une
+        réponse fondée sur ce que l'HÔTE peut offrir dirait « rien ne
+        manque » — sur une instance qui n'est pas joignable, parce que
+        personne ne l'a demandée."""
+        with tempfile.TemporaryDirectory() as base:
+            menu = MenuDeBanc()
+            with patch("script.todo.host_os.is_macos", return_value=True):
+                texte = self.creer(menu, "essai", "n", base)
+        self.assertIn("reachable-address", texte)
+
     def test_a_refused_name_creates_nothing(self):
         with tempfile.TemporaryDirectory() as base:
             menu = MenuDeBanc()
