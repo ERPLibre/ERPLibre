@@ -16,6 +16,7 @@ coupure est interne.
 
 from __future__ import annotations
 
+import collections
 import csv
 import io
 import json
@@ -155,10 +156,31 @@ class Feuille:
         # Un str ou un int ne se réécrit pas en place : sans cette case
         # réinscriptible, l'ancre porte None et l'écriture déréférence None.
         self.porteur = None
+        # La ligne 1-based qui NOMME les colonnes, ou None quand la feuille
+        # n'en a pas. Un tableur ne le dit pas : la ligne 1 est une
+        # PRÉSOMPTION, fausse sur un rapport dont A1 porte un titre et sur
+        # une feuille sans en-tête, où elle recopiait de la donnée en
+        # clair. `_preparer` la mesure ; les lecteurs qui FABRIQUENT leur
+        # ligne 1 — Access, JSON, XML — la connaissent d'avance.
+        self.ligne_champs = 1
+        # L'empan des lignes d'en-tête, ligne de champs comprise : ce qui
+        # les surmonte sans être des données — un titre, une catégorie
+        # fusionnée — reste intact avec elle.
+        self.lignes_entete = {1}
 
     @property
     def etiquettes(self):
-        return list(self.lignes[0]) if self.lignes else []
+        """Les libellés de colonne, pris sur la ligne de CHAMPS.
+
+        Vide quand la feuille n'a pas d'en-tête : sans libellé, le
+        plancher ne peut pas reconnaître un identifiant et la question des
+        colonnes intactes répond par l'index. C'est le prix juste — les
+        prendre sur une ligne de données faisait planchéier au hasard.
+        """
+        rang = self.ligne_champs
+        if rang is None or rang > len(self.lignes):
+            return []
+        return list(self.lignes[rang - 1])
 
 
 def _etiquettes_par_colonne(feuilles):
@@ -174,6 +196,182 @@ def _etiquettes_par_colonne(feuilles):
             if isinstance(etiquette, str) and etiquette.strip():
                 table[(feuille.nom, index)] = etiquette.strip()
     return table
+
+
+# ----------------------------------------------------------------------
+# La ligne d'en-tête : mesurée, non présumée
+# ----------------------------------------------------------------------
+# Au-delà, on ne cherche plus : un tableau dont la ligne de champs vient
+# plus bas qu'ici n'est pas un tableau mais un rapport mis en page, et
+# l'opérateur corrige mieux que n'importe quelle mesure.
+LIGNES_SONDEES = 10
+
+# Une ligne qui RESSEMBLE à ses données en est. Le seuil sépare deux
+# nuages mesurés sur les huit tables d'une base réelle, prises une fois
+# avec leur ligne d'en-tête et une fois sans : les en-têtes vont de 0,00 à
+# 0,36, les lignes de données de 0,50 à 1,00. Le seuil penche vers le bas
+# de l'écart, parce que les deux erreurs ne coûtent pas la même chose —
+# manquer un en-tête l'anonymise et abîme la lecture de la copie, en
+# inventer un le recopie en clair et fait SORTIR de la donnée.
+ACCORD_DE_DONNEE = 0.40
+
+# Ce qu'une ligne de champs doit tenir par ailleurs. Le remplissage écarte
+# le titre seul en A1 ; la distinction écarte la ligne de catégorie, qui
+# répète un même mot sur plusieurs colonnes.
+REMPLISSAGE_MINIMAL = 0.5
+DISTINCTION_MINIMALE = 0.99
+
+# L'un OU l'autre suffit : le contraste de type est franc sur une table
+# numérique et MUET sur une table tout-texte, où c'est l'appartenance à la
+# colonne qui tranche.
+CONTRASTE_MINIMAL = 0.4
+HORS_COLONNE_MINIMAL = 0.9
+
+
+def _forme_de_valeur(valeur):
+    """La signature de forme d'une valeur : chiffres en 9, lettres en a.
+
+    Les répétitions sont écrasées, si bien que « 99999 » et « 999999 »
+    sont une seule forme. Une ligne de données partage la forme de sa
+    colonne — « IN137784 » au-dessus de « IN137785 » — et un nom de champ
+    non. C'est ce qui tranche là où le type ne dit rien, les deux étant du
+    texte.
+    """
+    if valeur is None:
+        return ""
+    texte = re.sub(r"[0-9]", "9", str(valeur).strip())
+    texte = re.sub(r"[^\W\d_]", "a", texte)
+    return re.sub(r"(.)\1+", r"\1+", texte)
+
+
+def _accord_de_forme(lignes, rang):
+    """Part des colonnes où la ligne partage la forme dominante du corps.
+
+    Haut : la ligne ressemble à ses données, donc c'en est. Bas : elle s'en
+    distingue, donc elle les nomme. Rend None quand il n'y a pas de corps
+    sous la ligne — rien à comparer n'est pas un verdict.
+    """
+    largeur = max((len(l) for l in lignes), default=0)
+    if rang > len(lignes) or not largeur:
+        return None
+    ligne = lignes[rang - 1]
+    corps = lignes[rang:]
+    if not corps:
+        return None
+    accords = compares = 0
+    for index in range(largeur):
+        valeurs = [
+            l[index]
+            for l in corps
+            if index < len(l) and classer(l[index]) != "vide"
+        ]
+        cellule = ligne[index] if index < len(ligne) else None
+        if not valeurs or classer(cellule) == "vide":
+            continue
+        compares += 1
+        dominante = collections.Counter(
+            _forme_de_valeur(v) for v in valeurs
+        ).most_common(1)
+        if dominante and _forme_de_valeur(cellule) == dominante[0][0]:
+            accords += 1
+    return accords / compares if compares else 0.0
+
+
+def _signaux_entete(lignes, rang):
+    """Quatre mesures de la ligne `rang` comme ligne de champs.
+
+    `contraste` : elle est du texte au-dessus d'une colonne qui n'en porte
+    pas. `hors_colonne` : sa valeur ne figure pas parmi celles de sa
+    colonne — zéro collision mesurée sur 55 colonnes tout-texte réelles.
+    `rempli` : elle couvre la largeur utile. `distinct` : ses libellés ne
+    se répètent pas.
+    """
+    largeur = max((len(l) for l in lignes), default=0)
+    if rang > len(lignes) or not largeur:
+        return None
+    ligne = lignes[rang - 1]
+    corps = lignes[rang:]
+    if not corps:
+        return None
+    contraste = hors_colonne = compares = 0
+    for index in range(largeur):
+        valeurs = [l[index] for l in corps if index < len(l)]
+        familles = {classer(v) for v in valeurs} - {"vide"}
+        cellule = ligne[index] if index < len(ligne) else None
+        if not familles or classer(cellule) == "vide":
+            continue
+        compares += 1
+        if classer(cellule) == "texte" and "texte" not in familles:
+            contraste += 1
+        vues = {str(v).strip().lower() for v in valeurs if v is not None}
+        if str(cellule).strip().lower() not in vues:
+            hors_colonne += 1
+    pleines = sum(
+        1
+        for index in range(largeur)
+        if index < len(ligne) and classer(ligne[index]) != "vide"
+    )
+    etiquettes = [
+        str(ligne[index]).strip().lower()
+        for index in range(min(largeur, len(ligne)))
+        if classer(ligne[index]) != "vide"
+    ]
+    return {
+        "contraste": contraste / compares if compares else 0.0,
+        "hors_colonne": hors_colonne / compares if compares else 0.0,
+        "rempli": pleines / largeur,
+        "distinct": (
+            len(set(etiquettes)) / len(etiquettes) if etiquettes else 0.0
+        ),
+        "compares": compares,
+    }
+
+
+def _est_une_ligne_de_champs(signaux, accord):
+    """Le verdict, seuils nommés à l'appui."""
+    if signaux is None or accord is None:
+        return False
+    return (
+        signaux["rempli"] >= REMPLISSAGE_MINIMAL
+        and signaux["distinct"] >= DISTINCTION_MINIMALE
+        and accord <= ACCORD_DE_DONNEE
+        and (
+            signaux["contraste"] >= CONTRASTE_MINIMAL
+            or signaux["hors_colonne"] >= HORS_COLONNE_MINIMAL
+        )
+    )
+
+
+def lignes_entete(lignes):
+    """(empan des lignes d'en-tête, ligne de champs) — 1-based.
+
+    La ligne de CHAMPS est celle que la mesure retient : c'est elle qui
+    nomme les colonnes, donc celle dont `etiquettes` sort. L'EMPAN y ajoute
+    les lignes du dessus qui ne ressemblent pas à des données — un titre de
+    rapport, une ligne de catégorie fusionnée : les anonymiser n'apporte
+    rien et rend la copie illisible.
+
+    Rend `(set(), None)` quand aucune ligne ne mesure comme une ligne de
+    champs. C'est un verdict, pas un échec : une feuille sans en-tête
+    existe, et sa ligne 1 est de la DONNÉE — la présumer d'en-tête la
+    recopiait en clair.
+    """
+    if not lignes:
+        return set(), None
+    for rang in range(1, min(LIGNES_SONDEES, len(lignes)) + 1):
+        accord = _accord_de_forme(lignes, rang)
+        if not _est_une_ligne_de_champs(_signaux_entete(lignes, rang), accord):
+            continue
+        empan = {rang}
+        haut = rang - 1
+        while haut >= 1:
+            dessus = _accord_de_forme(lignes, haut)
+            if dessus is not None and dessus >= 0.5:
+                break
+            empan.add(haut)
+            haut -= 1
+        return empan, rang
+    return set(), None
 
 
 def _stats_colonnes(feuille):

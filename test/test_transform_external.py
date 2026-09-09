@@ -1635,6 +1635,157 @@ class TestValeursGardeesDesFormules(unittest.TestCase):
         self.assertIsInstance(self._gardees(), set)
 
 
+def _corps(hauteur=8):
+    """Un corps de tableau réaliste : trois formes de colonne distinctes."""
+    return [
+        ["IN%06d" % (137784 + i), 1028 + i, 100.5 + i] for i in range(hauteur)
+    ]
+
+
+class TestLigneDeChamps(unittest.TestCase):
+    """La ligne d'en-tête est MESURÉE, non présumée.
+
+    La présumer en ligne 1 est faux dans les deux sens : un rapport dont
+    A1 porte un titre a son en-tête plus bas, et une feuille sans en-tête
+    voyait sa première ligne de DONNÉES recopiée en clair.
+    """
+
+    ENTETE = ["N° facture", "N° magasin", "Montant"]
+
+    def test_un_en_tete_en_ligne_1_est_trouve(self):
+        empan, champs = formats.lignes_entete([self.ENTETE] + _corps())
+        self.assertEqual(empan, {1})
+        self.assertEqual(champs, 1)
+
+    def test_un_titre_en_A1_repousse_l_en_tete(self):
+        """Le cas qui motive la mesure : la ligne 1 n'est pas l'en-tête."""
+        lignes = [
+            ["Rapport annuel", None, None],
+            [None, None, None],
+            self.ENTETE,
+        ] + _corps()
+        empan, champs = formats.lignes_entete(lignes)
+        self.assertEqual(champs, 3)
+        self.assertEqual(empan, {1, 2, 3})
+
+    def test_une_feuille_SANS_en_tete_n_en_invente_pas(self):
+        """Sa ligne 1 est de la donnée : la garder la recopiait en clair."""
+        empan, champs = formats.lignes_entete(_corps())
+        self.assertEqual(empan, set())
+        self.assertIsNone(champs)
+
+    def test_une_ligne_de_categorie_ne_nomme_pas_les_colonnes(self):
+        """Elle répète un mot sur plusieurs colonnes : la retenir donnait
+        deux colonnes de même nom, ce qu'OOXML refuse."""
+        lignes = [["Bloc", "Bloc", "Bloc"], self.ENTETE] + _corps()
+        empan, champs = formats.lignes_entete(lignes)
+        self.assertEqual(champs, 2)
+        self.assertEqual(empan, {1, 2})
+
+    def test_l_empan_s_arrete_a_la_premiere_ligne_de_donnees(self):
+        """Ce qui surmonte la ligne de champs sans être des données est de
+        la mise en page ; une ligne de données borne la remontée."""
+        lignes = [self.ENTETE] + _corps()
+        empan, _champs = formats.lignes_entete(lignes)
+        self.assertEqual(empan, {1})
+
+    def test_au_dela_des_lignes_sondees_on_ne_cherche_plus(self):
+        """Un en-tête plus bas n'est pas un tableau, c'est une mise en
+        page — et l'opérateur corrige mieux qu'une mesure."""
+        bourrage = [[None, None, None]] * formats.LIGNES_SONDEES
+        empan, champs = formats.lignes_entete(
+            bourrage + [self.ENTETE] + _corps()
+        )
+        self.assertEqual(empan, set())
+        self.assertIsNone(champs)
+
+    def test_une_feuille_vide_ou_d_une_ligne_ne_leve_pas(self):
+        for lignes in ([], [self.ENTETE], [[]]):
+            with self.subTest(lignes=lignes):
+                self.assertEqual(formats.lignes_entete(lignes), (set(), None))
+
+
+class TestFormeDeValeur(unittest.TestCase):
+    """La signature de forme : ce qui sépare un nom de champ d'une donnée
+    là où le TYPE ne dit rien, les deux étant du texte."""
+
+    def test_deux_valeurs_du_meme_moule_ont_une_seule_forme(self):
+        self.assertEqual(
+            formats._forme_de_valeur("IN137784"),
+            formats._forme_de_valeur("ORD154711"),
+        )
+
+    def test_les_longueurs_ne_distinguent_pas(self):
+        """Les répétitions sont écrasées : « 99999 » et « 999999 » sont
+        une forme, sinon chaque longueur ferait une forme à part."""
+        self.assertEqual(
+            formats._forme_de_valeur(12345),
+            formats._forme_de_valeur(1234567),
+        )
+
+    def test_un_nom_de_champ_se_distingue_de_ses_donnees(self):
+        self.assertNotEqual(
+            formats._forme_de_valeur("N° facture"),
+            formats._forme_de_valeur("IN137784"),
+        )
+
+    def test_une_date_et_un_nombre_ne_se_confondent_pas(self):
+        self.assertNotEqual(
+            formats._forme_de_valeur("2023-04-21"),
+            formats._forme_de_valeur(20230421),
+        )
+
+    def test_none_rend_la_forme_vide(self):
+        self.assertEqual(formats._forme_de_valeur(None), "")
+
+    def test_l_accord_est_HAUT_sur_une_ligne_de_donnees(self):
+        """C'est le sens du signal : ressembler à ses données, c'en être."""
+        lignes = _corps()
+        self.assertGreaterEqual(formats._accord_de_forme(lignes, 1), 0.9)
+
+    def test_l_accord_est_BAS_sur_une_ligne_de_champs(self):
+        lignes = [["N° facture", "N° magasin", "Montant"]] + _corps()
+        self.assertLessEqual(
+            formats._accord_de_forme(lignes, 1),
+            formats.ACCORD_DE_DONNEE,
+        )
+
+    def test_sans_corps_sous_la_ligne_il_n_y_a_pas_de_verdict(self):
+        """Rien à comparer n'est pas « c'est un en-tête »."""
+        self.assertIsNone(formats._accord_de_forme([["a", "b"]], 1))
+        self.assertIsNone(formats._signaux_entete([["a", "b"]], 1))
+
+
+class TestEtiquettesDeLaLigneDeChamps(unittest.TestCase):
+    """`Feuille.etiquettes` suit la ligne de champs, non la ligne 1."""
+
+    def test_les_etiquettes_viennent_de_la_ligne_de_champs(self):
+        feuille = formats.Feuille(
+            "F", [["titre", None], ["nom", "montant"], ["x", 1]]
+        )
+        feuille.ligne_champs = 2
+        self.assertEqual(feuille.etiquettes, ["nom", "montant"])
+
+    def test_sans_ligne_de_champs_il_n_y_a_pas_d_etiquette(self):
+        """Le plancher répond alors par l'INDEX : les prendre sur une
+        ligne de données faisait planchéier au hasard."""
+        feuille = formats.Feuille("F", [["x", 1], ["y", 2]])
+        feuille.ligne_champs = None
+        self.assertEqual(feuille.etiquettes, [])
+
+    def test_la_ligne_1_reste_le_defaut(self):
+        """Les lecteurs qui FABRIQUENT leur ligne 1 la connaissent
+        d'avance : Access, JSON et XML n'ont rien à mesurer."""
+        feuille = formats.Feuille("F", [["cle", "valeur"], ["a", 1]])
+        self.assertEqual(feuille.ligne_champs, 1)
+        self.assertEqual(feuille.etiquettes, ["cle", "valeur"])
+
+    def test_une_ligne_de_champs_hors_des_lignes_ne_leve_pas(self):
+        feuille = formats.Feuille("F", [["a"]])
+        feuille.ligne_champs = 9
+        self.assertEqual(feuille.etiquettes, [])
+
+
 class TestNombre(unittest.TestCase):
     """Le signe, le zéro, le type, et l'étendue mesurée."""
 
