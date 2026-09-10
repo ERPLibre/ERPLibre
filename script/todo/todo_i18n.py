@@ -6395,6 +6395,26 @@ TRANSLATIONS = {
         "fr": "avec ce qui est déjà stocké.",
         "en": "builds from what is already stored.",
     },
+    "The cut hits every user of the cache:": {
+        "fr": "La coupure vaut pour tous les usagers du cache :",
+        "en": "The cut hits every user of the cache:",
+    },
+    "a deployment run from another terminal": {
+        "fr": "un déploiement mené depuis un autre terminal",
+        "en": "a deployment run from another terminal",
+    },
+    "goes offline too, without asking for it.": {
+        "fr": "sera hors ligne aussi, sans l'avoir demandé.",
+        "en": "goes offline too, without asking for it.",
+    },
+    "Nothing is cut before F5: the upstream": {
+        "fr": "Rien n'est coupé avant F5 : l'amont tombe",
+        "en": "Nothing is cut before F5: the upstream",
+    },
+    "falls at launch and comes back at the end.": {
+        "fr": "au lancement et revient à la fin.",
+        "en": "falls at launch and comes back at the end.",
+    },
     "Cache upstream cut for this deployment.": {
         "fr": "Amont du cache coupé pour ce déploiement.",
         "en": "Cache upstream cut for this deployment.",

@@ -443,6 +443,28 @@ def run_deploy_form(ctx, run_app: bool = True):
                         yield Static(
                             f"  {t('builds from what is already stored.')}"
                         )
+                        # Découvert par la case, comme le bloc IA : ce qui
+                        # suit ne concerne que celui qui vient de la cocher.
+                        yield Static(
+                            f"  ⚠ {t('The cut hits every user of the cache:')}",
+                            id="t_offline_w1",
+                        )
+                        yield Static(
+                            f"    {t('a deployment run from another terminal')}",
+                            id="t_offline_w2",
+                        )
+                        yield Static(
+                            f"    {t('goes offline too, without asking for it.')}",
+                            id="t_offline_w3",
+                        )
+                        yield Static(
+                            f"  {t('Nothing is cut before F5: the upstream')}",
+                            id="t_offline_w4",
+                        )
+                        yield Static(
+                            f"    {t('falls at launch and comes back at the end.')}",
+                            id="t_offline_w5",
+                        )
                 with Vertical(id="right"):
                     # Une liste de widgets, pas un tableau : chaque VM porte
                     # SES listes déroulantes, modifiables sur place. Un
@@ -453,6 +475,22 @@ def run_deploy_form(ctx, run_app: bool = True):
 
         # Les widgets que la case « AI coding tools » découvre.
         _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
+
+        # L'avertissement que la case « Sans connexion internet » découvre.
+        _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 6))
+
+        def _sync_offline(self) -> None:
+            """Montre l'avertissement quand la coupure est demandée.
+
+            Il dit deux choses qu'on ne devine pas : la coupure vaut pour
+            TOUS les usagers du cache, et elle ne tombe qu'au lancement —
+            cocher la case ne coupe rien, l'écran reste utilisable.
+            """
+            case = self.query("#f_offline")
+            vu = bool(case) and bool(case.first(Checkbox).value)
+            for sel in self._OFFLINE_WIDGETS:
+                for widget in self.query(sel):
+                    widget.display = vu
 
         def _sync_ai(self) -> None:
             """Montre ou cache le bloc IA selon la case des outils.
@@ -470,6 +508,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._reload_catalog(first_load=True)
             self._sync_install_deps()
             self._sync_ai()
+            self._sync_offline()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -973,6 +1012,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.checkbox.id == "f_tool_aidev":
                 self._sync_ai()
                 self._recompute()
+            elif event.checkbox.id == "f_offline":
+                self._sync_offline()
             elif str(event.checkbox.id or "").startswith("f_tool_"):
                 # Un IDE de plus, c'est un disque plus grand : le plan doit le
                 # montrer AVANT de déployer, pas après une heure d'installation.

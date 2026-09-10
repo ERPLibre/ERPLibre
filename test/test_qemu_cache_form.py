@@ -23,6 +23,7 @@ import re
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
@@ -390,6 +391,95 @@ class TestLaSectionReseau(unittest.TestCase):
             " demandé",
         )
         self.assertIs(vu["spec"], True)
+
+    def test_lavertissement_ne_parait_que_cochee(self):
+        """Il dit deux choses qu'on ne devine pas : la coupure vaut pour
+        TOUS les usagers du cache, et elle ne tombe qu'au lancement."""
+        import asyncio
+
+        from textual.widgets import Checkbox
+
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(self.ctx, cache_offert=True)
+
+        def visibles(app):
+            return [
+                w.id
+                for w in app.query("#fields *")
+                if str(w.id or "").startswith("t_offline_w") and w.display
+            ]
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 70)) as pilote:
+                await pilote.pause()
+                vu["decochee"] = visibles(app)
+                app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                vu["cochee"] = visibles(app)
+                app.query_one("#f_offline", Checkbox).value = False
+                await pilote.pause()
+                vu["redecochee"] = visibles(app)
+
+        asyncio.run(scenario())
+        self.assertEqual(
+            vu["decochee"], [], "l'avertissement s'affiche sans être demandé"
+        )
+        self.assertEqual(len(vu["cochee"]), 5, f"vu : {vu['cochee']}")
+        self.assertEqual(
+            vu["redecochee"], [], "il reste affiché après décochage"
+        )
+
+    def test_cocher_la_case_ne_coupe_rien(self):
+        """La coupure tombe à F5, pas au clic.
+
+        Couper depuis le formulaire priverait le cache de réseau pendant
+        qu'on remplit l'écran — et pour de bon si l'écran est annulé, aucun
+        « finally » ne courant sur une case cochée.
+        """
+        import asyncio
+        import subprocess
+
+        from textual.widgets import Checkbox
+
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        lancees = []
+        vrai_run = subprocess.run
+
+        def espion(cmd, *a, **kw):
+            lancees.append(
+                cmd if isinstance(cmd, str) else " ".join(map(str, cmd))
+            )
+            return vrai_run(cmd, *a, **kw)
+
+        ctx = dict(self.ctx, cache_offert=True)
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 70)) as pilote:
+                await pilote.pause()
+                app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                app._form_values()
+
+        with mock.patch("subprocess.run", espion):
+            asyncio.run(scenario())
+        coupures = [c for c in lancees if "nft" in c]
+        self.assertEqual(
+            coupures,
+            [],
+            f"le formulaire a coupé l'amont tout seul : {coupures}",
+        )
+
+    def test_le_formulaire_ne_connait_pas_la_coupure(self):
+        """La garde structurelle : le module du formulaire n'a aucun moyen
+        de couper, quel que soit ce qu'on y ajoutera."""
+        src = QEMU_FORM.read_text(encoding="utf-8")
+        self.assertNotIn("cache_offline", src)
+        self.assertNotIn("nft", src)
 
 
 if __name__ == "__main__":
