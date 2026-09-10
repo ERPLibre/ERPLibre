@@ -20,6 +20,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A mirror is COMPLETE where `repo sync` clones at depth one, so it costs tens of gigabytes. Below ten gigabytes free, no new mirror is created and the request goes back upstream. The diagnosis says what the objects and the mirrors each occupy
 - **Deployment › QEMU cache › Age and cleanup** groups the cache by age of last use (day, week or month; objects and git repositories apart) and gives back what has not served for a chosen delay, or everything. A served object has its date renewed, so « old » means « no longer used ». Both cleanups say what would go before erasing anything, and entry 5 lists the mirrors heaviest first to remove one
 - `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
+- Before cutting, the form says whether the cache holds the base suite of each system asked for: F5 warns « cache holds nothing for ubuntu 26.04 » and a second F5 goes ahead anyway. The verdict is given only where a release is named unambiguously in the URL — the apt families — rather than reassuring wrongly elsewhere
 - The deployment form carries a **Network** section with « No internet connection »: the cache service alone loses its way out for the whole deployment, install included, and gets it back whatever happens. Not the VMs' network — they need it to reach the cache. Offered only where the cache runs, and the deployment refuses rather than run with the upstream still up, a VM built that way succeeding for the wrong reason
 
 ## Changed
@@ -29,6 +30,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Fixed
 
 - The « - Default » label appears again at the version and environment menus: both reads asked for a capitalised key the version file never writes, and a missing key returns nothing without a word
+- A desktop install no longer waits minutes on the apt lock: the apt-daily SERVICE is stopped and not only its timer, a timer being disabled without interrupting the apt-get it already started; and the retry comes back every two seconds rather than every ten, `DPkg::Lock::Timeout` not covering the list lock at all
 - Fedora VMs boot again: the firmware loads and starts their loader, then freezes without writing a byte — no console, no DHCP lease, a machine "running" that does nothing. Fedora is booted in legacy BIOS, where the same image starts its kernel; `--bios` still wins when asked
 - A VM receives a hostname it can accept — an underscore, which a libvirt domain name tolerates, made it keep its image's generic name — and a timezone its own distribution knows, a legacy alias having left it in UTC
 

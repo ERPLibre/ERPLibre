@@ -40,6 +40,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A mirror is COMPLETE where `repo sync` clones at depth one, so it costs tens of gigabytes. Below ten gigabytes free, no new mirror is created and the request goes back upstream. The diagnosis says what the objects and the mirrors each occupy
 - **Deployment › QEMU cache › Age and cleanup** groups the cache by age of last use (day, week or month; objects and git repositories apart) and gives back what has not served for a chosen delay, or everything. A served object has its date renewed, so « old » means « no longer used ». Both cleanups say what would go before erasing anything, and entry 5 lists the mirrors heaviest first to remove one
 - `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
+- Before cutting, the form says whether the cache holds the base suite of each system asked for: F5 warns « cache holds nothing for ubuntu 26.04 » and a second F5 goes ahead anyway. The verdict is given only where a release is named unambiguously in the URL — the apt families — rather than reassuring wrongly elsewhere
 - The deployment form carries a **Network** section with « No internet connection »: the cache service alone loses its way out for the whole deployment, install included, and gets it back whatever happens. Not the VMs' network — they need it to reach the cache. Offered only where the cache runs, and the deployment refuses rather than run with the upstream still up, a VM built that way succeeding for the wrong reason
 
 <!-- [fr] -->
@@ -53,6 +54,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un miroir est COMPLET là où `repo sync` clone en profondeur un : il coûte donc des dizaines de gigaoctets. Sous dix gigaoctets libres, aucun miroir neuf n'est créé et la requête repart vers l'amont. Le diagnostic dit ce qu'occupent les objets et les miroirs, séparément
 - **Déploiement › Cache QEMU › Âge et nettoyage** groupe le cache par âge du dernier usage (jour, semaine ou mois ; objets et dépôts git séparément) et rend ce qui n'a plus servi depuis un délai choisi, ou tout. Un objet servi voit sa date remise à jour : « vieux » veut donc dire « n'a plus servi ». Les deux nettoyages disent ce qui partirait avant d'effacer quoi que ce soit, et l'entrée 5 liste les miroirs du plus lourd au plus léger pour en effacer un
 - `long_test/qemu_cache.py` mesure si le cache sert vraiment la seconde VM, et `--hors-ligne` coupe l'amont du seul service du cache pour prouver qu'une troisième se bâtit encore sur l'index stocké
+- Avant de couper, le formulaire dit si le cache détient la suite de base de chaque système demandé : F5 prévient « le cache ne détient rien pour ubuntu 26.04 » et un second F5 passe outre. Le verdict n'est rendu que là où une version se nomme sans ambiguïté dans l'URL — les familles apt — plutôt que de rassurer à tort ailleurs
 - Le formulaire de déploiement porte une section **Réseau** avec « Sans connexion internet » : le seul service du cache perd sa sortie pour tout le déploiement, installation comprise, et la retrouve quoi qu'il arrive. Pas le réseau des VM — elles en ont besoin pour joindre le cache. Offerte seulement là où le cache tourne, et le déploiement refuse plutôt que de partir avec l'amont debout, une VM bâtie ainsi réussissant pour la mauvaise raison
 
 <!-- [en] -->
@@ -74,12 +76,14 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- [en] -->
 
 - The « - Default » label appears again at the version and environment menus: both reads asked for a capitalised key the version file never writes, and a missing key returns nothing without a word
+- A desktop install no longer waits minutes on the apt lock: the apt-daily SERVICE is stopped and not only its timer, a timer being disabled without interrupting the apt-get it already started; and the retry comes back every two seconds rather than every ten, `DPkg::Lock::Timeout` not covering the list lock at all
 - Fedora VMs boot again: the firmware loads and starts their loader, then freezes without writing a byte — no console, no DHCP lease, a machine "running" that does nothing. Fedora is booted in legacy BIOS, where the same image starts its kernel; `--bios` still wins when asked
 - A VM receives a hostname it can accept — an underscore, which a libvirt domain name tolerates, made it keep its image's generic name — and a timezone its own distribution knows, a legacy alias having left it in UTC
 
 <!-- [fr] -->
 
 - L'étiquette « - Default » reparaît aux menus des versions et des environnements : les deux lectures demandaient une clé à majuscule que le fichier des versions n'écrit pas, et une clé absente ne rend rien sans rien dire
+- Une installation de bureau n'attend plus des minutes sur le verrou apt : le SERVICE apt-daily est arrêté et non son seul minuteur, un minuteur désactivé n'interrompant pas l'apt-get qu'il a déjà lancé ; et la reprise repasse toutes les deux secondes au lieu de dix, « DPkg::Lock::Timeout » ne couvrant pas ce verrou-là
 - Les VM Fedora démarrent de nouveau : le micrologiciel charge et démarre leur chargeur, puis se fige sans écrire un octet — pas de console, pas de bail DHCP, une machine « en cours d'exécution » qui ne fait rien. Fedora est amorcée en BIOS hérité, où la même image démarre son noyau ; `--bios` garde le dernier mot
 - Une VM reçoit un nom d'hôte qu'elle accepte — un souligné, que le nom de domaine libvirt tolère, lui faisait garder le nom générique de son image — et un fuseau que sa distribution connaît, un alias hérité la laissant en UTC
 

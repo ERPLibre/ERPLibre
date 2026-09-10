@@ -6407,6 +6407,14 @@ TRANSLATIONS = {
         "fr": "La lever par :",
         "en": "Lift it with:",
     },
+    "cache holds nothing for": {
+        "fr": "le cache ne détient rien pour",
+        "en": "cache holds nothing for",
+    },
+    "an offline VM will fail": {
+        "fr": "une VM hors ligne échouera",
+        "en": "an offline VM will fail",
+    },
     "The cut hits every user of the cache:": {
         "fr": "La coupure vaut pour tous les usagers du cache :",
         "en": "The cut hits every user of the cache:",

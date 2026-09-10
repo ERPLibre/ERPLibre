@@ -1167,6 +1167,30 @@ def run_deploy_form(ctx, run_app: bool = True):
                     severity="warning",
                 )
                 return
+            # Hors ligne : ce que le cache ne détient pas, aucune VM ne
+            # pourra le lire. Dit MAINTENANT, et non après une heure
+            # d'installation qui échoue sur « Impossible de trouver le
+            # paquet ». F5 à nouveau vaut passage outre — le journal peut
+            # avoir tourné, ou le cache avoir été rempli autrement.
+            if spec.get("offline") and not getattr(
+                self, "_offline_ack", False
+            ):
+                from script.qemu import cache_offline
+
+                absentes = cache_offline.suites_absentes(spec["vms"])
+                if absentes:
+                    self._offline_ack = True
+                    quoi = ", ".join(f"{d} {v}" for d, v in absentes)
+                    self.notify(
+                        t("cache holds nothing for")
+                        + f" {quoi} — "
+                        + t("an offline VM will fail")
+                        + " — "
+                        + t("press F5 again to confirm"),
+                        severity="error",
+                        timeout=15,
+                    )
+                    return
             orphans = [r for r in self.rows if r["state"] == "orphan"]
             if orphans and not getattr(self, "_orphan_ack", False):
                 # Un qcow2 orphelin fait échouer deploy_qemu : on prévient une

@@ -197,6 +197,20 @@ def contexte_du_formulaire():
     return todo._qemu_form_context(mod)
 
 
+def choisir_une_vm(app):
+    """Coche la première entrée du catalogue et refait le plan.
+
+    Sans sélection, « action_deploy » sort sur « Rien de sélectionné » et
+    n'atteint aucun des contrôles qu'on veut éprouver.
+    """
+    from textual.widgets import SelectionList
+
+    liste = app.query_one("#f_catalog", SelectionList)
+    liste.select(liste.options[0].value)
+    app._recompute()
+    return app.vms
+
+
 def champs_affiches(ctx):
     """Les identifiants réellement montés dans le panneau, sans écran."""
     import asyncio
@@ -490,12 +504,94 @@ class TestLaSectionReseau(unittest.TestCase):
             f"le formulaire a coupé l'amont tout seul : {coupures}",
         )
 
-    def test_le_formulaire_ne_connait_pas_la_coupure(self):
-        """La garde structurelle : le module du formulaire n'a aucun moyen
-        de couper, quel que soit ce qu'on y ajoutera."""
+    def test_f5_previent_avant_de_couper_pour_rien(self):
+        """Une suite que le cache n'a jamais servie fait échouer la VM une
+        heure plus tard, sur « Impossible de trouver le paquet » — un message
+        qui ne parle ni du cache ni du hors ligne.
+
+        Même idiome que les disques orphelins : on prévient une fois, F5 à
+        nouveau vaut passage outre. Passer outre reste possible — le journal
+        peut avoir tourné, ou le cache avoir été rempli autrement.
+        """
+        import asyncio
+
+        from textual.widgets import Checkbox
+
+        from script.qemu import cache_offline
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(self.ctx, cache_offert=True)
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 70)) as pilote:
+                await pilote.pause()
+                choisir_une_vm(app)
+                await pilote.pause()
+                app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                app.action_deploy()
+                vu["premier"] = app._result.get("spec")
+                app.action_deploy()
+                vu["second"] = app._result.get("spec")
+
+        with mock.patch.object(
+            cache_offline, "suites_absentes", lambda vms: [("ubuntu", "26.04")]
+        ):
+            asyncio.run(scenario())
+        self.assertIsNone(
+            vu["premier"], "le déploiement est parti sans prévenir"
+        )
+        self.assertIsNotNone(
+            vu["second"], "un second F5 ne passe pas outre l'avertissement"
+        )
+
+    def test_f5_ne_previent_pas_quand_le_cache_a_de_quoi(self):
+        import asyncio
+
+        from textual.widgets import Checkbox
+
+        from script.qemu import cache_offline
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(self.ctx, cache_offert=True)
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 70)) as pilote:
+                await pilote.pause()
+                choisir_une_vm(app)
+                await pilote.pause()
+                app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                app.action_deploy()
+                vu["premier"] = app._result.get("spec")
+
+        with mock.patch.object(
+            cache_offline, "suites_absentes", lambda vms: []
+        ):
+            asyncio.run(scenario())
+        self.assertIsNotNone(
+            vu["premier"], "un avertissement sans motif apprend à passer outre"
+        )
+
+    def test_le_formulaire_ne_sait_pas_couper(self):
+        """La garde structurelle : le formulaire LIT ce que le cache détient
+        — il en a besoin pour prévenir avant le lancement — mais il n'a
+        aucun moyen de poser ni de lever la coupure, quoi qu'on y ajoute.
+
+        La frontière est là et non sur le module entier : c'est le geste qui
+        est interdit à cet écran, pas la connaissance.
+        """
         src = QEMU_FORM.read_text(encoding="utf-8")
-        self.assertNotIn("cache_offline", src)
-        self.assertNotIn("nft", src)
+        for interdit in ("cut_cmd", "restore_cmd", "nft"):
+            self.assertNotIn(
+                interdit,
+                src,
+                f"le formulaire peut couper l'amont ({interdit})",
+            )
 
 
 if __name__ == "__main__":

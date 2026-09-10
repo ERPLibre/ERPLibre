@@ -246,5 +246,116 @@ class TestLeDiagnosticVoitLaCoupure(unittest.TestCase):
         )
 
 
+class TestCeQueLeCacheDetient(unittest.TestCase):
+    """Savoir AVANT de couper si une VM hors ligne a une chance.
+
+    Une VM déployée hors ligne sur une suite que le cache n'a jamais servie
+    échoue une heure plus tard, sur « Impossible de trouver le paquet » — un
+    message qui ne parle ni du cache ni du hors ligne.
+    """
+
+    def _journal(self, lignes):
+        import json
+        import tempfile
+
+        fh = tempfile.NamedTemporaryFile(
+            "w", suffix=".jsonl", delete=False, encoding="utf-8"
+        )
+        for l in lignes:
+            fh.write(json.dumps(l) + "\n")
+        fh.close()
+        return fh.name
+
+    def test_le_nom_de_code_vient_du_catalogue(self):
+        """Le recopier ici le ferait dériver du déploiement, qui l'a déjà."""
+        self.assertEqual(
+            cache_offline.jeton_de_suite("ubuntu", "26.04"),
+            "/dists/resolute/",
+        )
+        self.assertEqual(
+            cache_offline.jeton_de_suite("debian", "13"), "/dists/trixie/"
+        )
+
+    def test_aucun_verdict_hors_des_familles_apt(self):
+        """« /repodata/ » ne dit pas quelle VERSION il sert : un cache rempli
+        pour l'une passerait pour rempli pour toutes."""
+        for d, v in (("arch", "latest"), ("fedora", "42"), ("rocky", "9")):
+            self.assertEqual(cache_offline.jeton_de_suite(d, v), "", d)
+
+    def test_une_suite_servie_est_vue_en_reserve(self):
+        chemin = self._journal(
+            [
+                {
+                    "url": "http://m/ubuntu/dists/resolute/InRelease",
+                    "outcome": "stored",
+                }
+            ]
+        )
+        self.assertTrue(
+            cache_offline.detient_la_suite("ubuntu", "26.04", chemin)
+        )
+
+    def test_une_suite_jamais_servie_est_signalee(self):
+        chemin = self._journal(
+            [
+                {
+                    "url": "http://m/ubuntu/dists/noble/InRelease",
+                    "outcome": "stored",
+                }
+            ]
+        )
+        self.assertFalse(
+            cache_offline.detient_la_suite("ubuntu", "26.04", chemin)
+        )
+
+    def test_un_304_ne_compte_pas_pour_une_reserve(self):
+        """« fetched » couvre aussi la revalidation, qui n'a pas de corps :
+        c'est exactement le cas qui laissait le cache vide."""
+        chemin = self._journal(
+            [
+                {
+                    "url": "http://m/ubuntu/dists/resolute/InRelease",
+                    "outcome": "fetched",
+                    "status": 304,
+                }
+            ]
+        )
+        self.assertFalse(
+            cache_offline.detient_la_suite("ubuntu", "26.04", chemin)
+        )
+
+    def test_un_journal_illisible_ne_crie_pas_au_loup(self):
+        """Un avertissement qui se déclenche sans savoir apprend à passer
+        outre, et c'est alors celui qui compte qu'on ne lit plus."""
+        self.assertTrue(
+            cache_offline.detient_la_suite("ubuntu", "26.04", "/pas/la.jsonl")
+        )
+
+    def test_les_manquantes_sont_nommees_sans_doublon(self):
+        chemin = self._journal(
+            [
+                {
+                    "url": "http://m/ubuntu/dists/noble/InRelease",
+                    "outcome": "hit",
+                }
+            ]
+        )
+        with mock.patch.object(
+            cache_offline,
+            "detient_la_suite",
+            lambda d, v, c="": (d, v) == ("ubuntu", "24.04"),
+        ):
+            manquantes = cache_offline.suites_absentes(
+                [
+                    {"distro": "ubuntu", "version": "24.04"},
+                    {"distro": "ubuntu", "version": "26.04"},
+                    {"distro": "ubuntu", "version": "26.04"},
+                    {"distro": "", "version": "x"},
+                ]
+            )
+        self.assertEqual(manquantes, [("ubuntu", "26.04")])
+        self.assertEqual(chemin, chemin)
+
+
 if __name__ == "__main__":
     unittest.main()
