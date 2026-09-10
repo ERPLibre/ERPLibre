@@ -570,6 +570,7 @@ class TODO(
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
         "prompt_assistant_ia": "IA",
+        "_agents_hooks": "Hooks",
         "prompt_assistant_llm": "LLM",
         "_llm_servers": "Servers",
         "_llm_search": "Search",

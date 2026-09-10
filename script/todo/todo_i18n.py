@@ -12640,6 +12640,86 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
+    # Les hooks de télémétrie (script/todo/assistant/agents/pose.py). Deux
+    # endroits qui ne se remplacent pas : le global mesure la machine, celui
+    # du dépôt mesure ce dépôt pour tout clone.
+    "Telemetry hooks": {
+        "fr": "🪝 Hooks de télémétrie",
+        "en": "🪝 Telemetry hooks",
+    },
+    "Where the telemetry hooks are installed": {
+        "fr": "Où les hooks de télémétrie sont posés",
+        "en": "Where the telemetry hooks are installed",
+    },
+    "none installed": {
+        "fr": "aucun posé",
+        "en": "none installed",
+    },
+    "both": {
+        "fr": "les deux",
+        "en": "both",
+    },
+    "global": {
+        "fr": "global",
+        "en": "global",
+    },
+    "repository": {
+        "fr": "dépôt",
+        "en": "repository",
+    },
+    "Install into ~/.claude (this machine)": {
+        "fr": "🪝 Poser dans ~/.claude (cette machine)",
+        "en": "🪝 Install into ~/.claude (this machine)",
+    },
+    "Install into the repository (every clone)": {
+        "fr": "🪝 Poser dans le dépôt (tout clone)",
+        "en": "🪝 Install into the repository (every clone)",
+    },
+    "Remove from ~/.claude": {
+        "fr": "🗑 Retirer de ~/.claude",
+        "en": "🗑 Remove from ~/.claude",
+    },
+    "Remove from the repository": {
+        "fr": "🗑 Retirer du dépôt",
+        "en": "🗑 Remove from the repository",
+    },
+    "That file is tracked by git.": {
+        "fr": "Ce fichier est suivi par git.",
+        "en": "That file is tracked by git.",
+    },
+    "The log lives under": {
+        "fr": "Le journal vit sous",
+        "en": "The log lives under",
+    },
+    # « days » existe déjà plus haut, avec la même traduction : réutilisée.
+    "Per tool": {
+        "fr": "Par outil",
+        "en": "Per tool",
+    },
+    "tool": {
+        "fr": "outil",
+        "en": "tool",
+    },
+    "calls": {
+        "fr": "appels",
+        "en": "calls",
+    },
+    "median": {
+        "fr": "médiane",
+        "en": "median",
+    },
+    "peak": {
+        "fr": "pointe",
+        "en": "peak",
+    },
+    "unfinished": {
+        "fr": "inachevés",
+        "en": "unfinished",
+    },
+    "No hook installed: the per-tool figures need one.": {
+        "fr": "Aucun hook posé : les chiffres par outil en demandent un.",
+        "en": "No hook installed: the per-tool figures need one.",
+    },
     # Télémétrie des agents (script/todo/assistant/agents/). Chaque chiffre
     # dit sa source : les jetons sont sommés, le coût est lu.
     "Measure": {

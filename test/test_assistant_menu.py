@@ -469,13 +469,16 @@ class SessionsClaudeCode(unittest.TestCase):
     def test_sept_ouvre_la_telemetrie(self):
         self._dispatche("7", "_agents_telemetrie")
 
-    def test_neuf_ouvre_les_greffons(self):
-        """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
-        self._dispatche("9", "prompt_execute_claude_plugins")
+    def test_huit_ouvre_les_hooks(self):
+        self._dispatche("8", "_agents_hooks")
 
-    def test_douze_ouvre_l_automatisation(self):
+    def test_dix_ouvre_les_greffons(self):
+        """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
+        self._dispatche("10", "prompt_execute_claude_plugins")
+
+    def test_treize_ouvre_l_automatisation(self):
         """La dernière entrée : un décalage d'un cran la rend injoignable."""
-        self._dispatche("12", "_claude_add_automation")
+        self._dispatche("13", "_claude_add_automation")
 
     def test_un_numero_au_dela_de_la_liste_ne_lance_rien(self):
         """Les deux listes se construisent ensemble ; rien ne doit dépasser."""
@@ -483,7 +486,7 @@ class SessionsClaudeCode(unittest.TestCase):
 
         todo = TODO()
         with patch.object(TODO, "_agents_telemetrie") as mock, patch(
-            "click.prompt", side_effect=["13", "0"]
+            "click.prompt", side_effect=["14", "0"]
         ), patch("script.todo.todo_telemetry.record"):
             todo.prompt_assistant_ia()
         mock.assert_not_called()

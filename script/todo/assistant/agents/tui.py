@@ -30,6 +30,7 @@ from __future__ import annotations
 import glob
 import os
 
+from script.todo.assistant.agents import journal as jr
 from script.todo.assistant.agents import statistiques as st
 from script.todo.todo_i18n import t
 
@@ -85,8 +86,17 @@ def projet(chemin, agregat=None) -> str:
 
 
 def duree(millisecondes) -> str:
-    """« 2 h 05 », « 12 min », « 8 s » — la plus grande unité qui parle."""
-    secondes = max(0, int(millisecondes or 0)) // 1000
+    """« 2 h 05 », « 12 min », « 8 s », « 40 ms » — l'unité qui parle.
+
+    Le palier des millisecondes n'est pas un raffinement : une durée d'outil
+    se compte en dizaines de millisecondes, et l'arrondi à la seconde
+    affichait « 0 s » sur une édition de quarante millisecondes — le même
+    mensonge qu'un zéro mis à la place d'une absence.
+    """
+    ms = max(0, int(millisecondes or 0))
+    if ms < 1000:
+        return f"{ms} ms"
+    secondes = ms // 1000
     if secondes >= 3600:
         return f"{secondes // 3600} h {(secondes % 3600) // 60:02d}"
     if secondes >= 60:
@@ -165,6 +175,34 @@ def lignes(lectures) -> list[dict]:
     return sorties
 
 
+def lignes_outils(par_outil) -> list[dict]:
+    """Une ligne par outil, prête à afficher. Fonction PURE.
+
+    Ce panneau est le SEUL que le disque ne donne pas : une transcription
+    porte la durée totale des outils, jamais celle de chacun. Sans hook posé,
+    il est vide, et l'écran le dit au lieu d'afficher un tableau nu.
+    """
+    return [
+        {
+            "outil": p.outil or "—",
+            "appels": str(p.appels),
+            "mediane": duree(p.mediane_ms),
+            "pointe": duree(p.pointe_ms),
+            "inacheves": str(p.inacheves) if p.inacheves else "",
+        }
+        for p in par_outil
+    ]
+
+
+# Les colonnes du tableau des outils, alimentées par le journal des hooks.
+COLONNES_OUTILS = (
+    ("outil", "tool"),
+    ("appels", "calls"),
+    ("mediane", "median"),
+    ("pointe", "peak"),
+    ("inacheves", "unfinished"),
+)
+
 # Les colonnes du tableau : la clé dans la ligne, et sa clé i18n.
 COLONNES = (
     ("id", "session"),
@@ -206,12 +244,15 @@ def run_tui(run_app: bool = True):
         def __init__(self):
             super().__init__()
             self._lectures: dict[str, st.Lecture] = {}
+            self._appels: list = []
             self._gele = False
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
             yield Static("", id="resume")
             yield DataTable(id="tableau", zebra_stripes=True)
+            yield Static("", id="titre_outils")
+            yield DataTable(id="outils", zebra_stripes=True)
             yield Static("", id="source")
             yield Footer()
 
@@ -220,6 +261,13 @@ def run_tui(run_app: bool = True):
             tableau = self.query_one("#tableau", DataTable)
             for _, cle in COLONNES:
                 tableau.add_column(t(cle), key=cle)
+            outils = self.query_one("#outils", DataTable)
+            for _, cle in COLONNES_OUTILS:
+                outils.add_column(t(cle), key=cle)
+            # Les journaux périmés partent à l'ouverture : c'est le seul
+            # moment où quelqu'un regarde, donc le seul où le ménage ne
+            # surprend personne.
+            jr.nettoyer()
             self._tick()
             self.set_interval(PAS, self._tick)
 
@@ -238,6 +286,9 @@ def run_tui(run_app: bool = True):
                 self._lectures[chemin] = st.lire(
                     chemin, self._lectures.get(chemin)
                 )
+            # Le journal est relu en entier : il ne pèse que quelques lignes
+            # par appel d'outil, là où une transcription pèse des mégaoctets.
+            self._appels = jr.lire()
             if not self._gele:
                 self._peindre()
 
@@ -246,6 +297,16 @@ def run_tui(run_app: bool = True):
             tableau.clear()
             for ligne in lignes(self._lectures):
                 tableau.add_row(*[ligne[cle] for cle, _ in COLONNES])
+            outils = self.query_one("#outils", DataTable)
+            outils.clear()
+            groupes = jr.par_outil(self._appels)
+            for ligne in lignes_outils(groupes):
+                outils.add_row(*[ligne[cle] for cle, _ in COLONNES_OUTILS])
+            self.query_one("#titre_outils", Static).update(
+                t("Per tool")
+                if groupes
+                else t("No hook installed: the per-tool figures need one.")
+            )
             self._resumer()
 
         def _resumer(self):

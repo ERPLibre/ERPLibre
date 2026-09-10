@@ -51,9 +51,18 @@ class TestLesEchelles(unittest.TestCase):
         self.assertEqual(tui.duree(720_000), "12 min")
         self.assertEqual(tui.duree(7_500_000), "2 h 05")
 
-    def test_a_missing_duration_is_zero_seconds(self):
-        self.assertEqual(tui.duree(None), "0 s")
-        self.assertEqual(tui.duree(-5), "0 s")
+    def test_a_tool_duration_is_not_rounded_to_zero(self):
+        """Une édition de quarante millisecondes n'a pas pris « 0 s ».
+
+        C'est le même mensonge qu'un zéro mis à la place d'une absence, et il
+        touchait toute la colonne des durées par outil."""
+        self.assertEqual(tui.duree(40), "40 ms")
+        self.assertEqual(tui.duree(999), "999 ms")
+        self.assertEqual(tui.duree(1_000), "1 s")
+
+    def test_a_missing_duration_is_zero_milliseconds(self):
+        self.assertEqual(tui.duree(None), "0 ms")
+        self.assertEqual(tui.duree(-5), "0 ms")
 
 
 class TestLaBarre(unittest.TestCase):

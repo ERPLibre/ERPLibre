@@ -269,6 +269,14 @@ class AssistantMenuMixin:
             choices.append({"section": t("Measure")})
             choices.append({"prompt_description": t("Agent telemetry (TUI)")})
             actions.append(self._agents_telemetrie)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Telemetry hooks')}  ({self._agents_hooks_etat()})"
+                    )
+                }
+            )
+            actions.append(self._agents_hooks)
             choices.append({"section": t("Tooling")})
             for cle, methode in (
                 (
@@ -1083,6 +1091,99 @@ class AssistantMenuMixin:
                 print(t("Command not found !"))
 
     # ------------------------------------------------------------------
+    def _agents_hooks_etat(self):
+        """« global », « dépôt », « les deux » ou « aucun posé ».
+
+        Les deux endroits sont nommés parce qu'ils ne se remplacent pas : le
+        global mesure toute la machine, celui du dépôt mesure ce dépôt pour
+        tout clone. Un utilisateur qui pose le global et voit ses appels
+        manquer doit pouvoir apprendre que le dépôt en portait un autre.
+        """
+        from script.todo.assistant.agents import pose
+
+        etat = pose.etat(racine_depot=self._agents_racine())
+        poses = [nom for nom, (_, actifs) in etat.items() if actifs]
+        if len(poses) == 2:
+            return t("both")
+        if poses:
+            return t("global") if poses[0] == pose.GLOBAL else t("repository")
+        return t("none installed")
+
+    @staticmethod
+    def _agents_racine():
+        """La racine du dépôt, pour le fichier de réglages qu'il porte."""
+        return os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
+
+    def _agents_hooks(self):
+        """Poser ou retirer les hooks, et dire ce que chaque endroit porte.
+
+        Rien n'est écrit sans que l'écran ait d'abord montré les deux états :
+        poser à l'aveugle sur une machine où le dépôt en porte déjà ferait
+        compter deux fois chaque appel d'outil.
+        """
+        from script.todo.assistant.agents import journal, pose
+
+        while True:
+            etat = pose.etat(racine_depot=self._agents_racine())
+            print(f"{t('Where the telemetry hooks are installed')} :")
+            for endroit in (pose.GLOBAL, pose.DEPOT):
+                chemin, actifs = etat[endroit]
+                marque = MARQUE["ok"] if actifs else MARQUE["no"]
+                compte = (
+                    f"{len(actifs)}/{len(journal.EVENEMENTS)}"
+                    if actifs
+                    else t("none installed")
+                )
+                print(f"  {marque} {chemin}  ({compte})")
+            print(
+                f"  {t('The log lives under')} {journal.RACINE},"
+                f" {journal.RETENTION_JOURS} {t('days')}"
+            )
+            choices = [
+                {
+                    "prompt_description": t(
+                        "Install into ~/.claude (this machine)"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "Install into the repository (every clone)"
+                    )
+                },
+                {"prompt_description": t("Remove from ~/.claude")},
+                {"prompt_description": t("Remove from the repository")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            geste = {
+                "1": (pose.poser, pose.GLOBAL),
+                "2": (pose.poser, pose.DEPOT),
+                "3": (pose.retirer, pose.GLOBAL),
+                "4": (pose.retirer, pose.DEPOT),
+            }.get(status)
+            if geste is None:
+                print(t("Command not found !"))
+                continue
+            faire, endroit = geste
+            try:
+                chemin = faire(endroit, racine_depot=self._agents_racine())
+            except OSError as souci:
+                print(f"{MARQUE['no']} {souci}")
+                continue
+            print(f"{MARQUE['ok']} {chemin}")
+            if endroit == pose.DEPOT:
+                print(
+                    f"{MARQUE['unknown']} {t('That file is tracked by git.')}"
+                )
+
     def _agents_telemetrie(self):
         """L'écran vivant de la télémétrie des agents.
 

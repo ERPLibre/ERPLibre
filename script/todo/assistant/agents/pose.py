@@ -1,0 +1,225 @@
+#!/usr/bin/env python3
+# © 2026 TechnoLibre (http://www.technolibre.ca)
+# License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
+"""Poser et retirer les hooks de télémétrie, aux deux endroits possibles.
+
+Claude Code lit ses réglages à deux endroits que ce dépôt peut écrire, et le
+choix n'est pas indifférent :
+
+| Endroit | Portée | Ce que ça coûte |
+|---|---|---|
+| `~/.claude/settings.json` | tous les dépôts de la machine | rien de suivi ne bouge |
+| `.claude/settings.json` du dépôt | ce dépôt, tout clone | fichier SUIVI par git |
+
+Le second n'est pas une idée neuve : ce dépôt y pose déjà un bloc `env`. Mais
+il s'applique à quiconque travaille ici, alors que le premier ne mesure que la
+machine de celui qui l'a posé. L'écran offre les deux et DIT lequel est actif —
+sans quoi un utilisateur qui pose le global et voit ses appels manquer ne
+saurait pas que le dépôt en avait un autre.
+
+**Le bloc est FUSIONNÉ, jamais écrasé.** Un fichier de réglages porte
+volontiers d'autres hooks — un formateur, un garde-fou de projet — et les
+remplacer par les nôtres retirerait silencieusement le travail de quelqu'un
+d'autre. La pose n'ajoute que ses propres entrées, reconnaissables à leur
+commande, et le retrait n'enlève que celles-là.
+
+**L'écriture est atomique.** Un fichier de réglages à moitié écrit empêche
+Claude Code de démarrer, donc le nouveau contenu passe par un temporaire du
+même répertoire puis un `os.replace`, qui ne laisse jamais de fichier
+tronqué.
+"""
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+
+from script.todo.assistant.agents import journal
+
+# Les deux endroits, et la clé qui les nomme dans le menu.
+GLOBAL = "global"
+DEPOT = "depot"
+
+CHEMINS = {
+    GLOBAL: "~/.claude/settings.json",
+    DEPOT: ".claude/settings.json",
+}
+
+# Ce qui reconnaît NOS entrées parmi celles d'un autre. Le chemin du script
+# suffit et ne dépend pas du répertoire d'où le menu a été lancé.
+SIGNATURE = "assistant/agents/hooks/evenement.py"
+
+# Le délai laissé au hook, en secondes. Il écrit une ligne : au-delà d'une
+# seconde, quelque chose est cassé et il vaut mieux que Claude Code passe
+# outre que d'attendre.
+DELAI = 5
+
+
+def _script() -> str:
+    """Le chemin absolu du hook, tel qu'il sera écrit dans les réglages."""
+    return os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "hooks", "evenement.py")
+    )
+
+
+def commande(*, python=None, script=None) -> str:
+    """La ligne que Claude Code lancera.
+
+    L'interpréteur est nommé en ENTIER. Compter sur « python3 » du PATH ferait
+    dépendre la télémétrie du shell qui a lancé la session, et le hook tombe
+    silencieusement quand ce nom ne résout pas.
+    """
+    import sys
+
+    return f"{python or sys.executable} {script or _script()}"
+
+
+def bloc(*, python=None, script=None) -> dict:
+    """Le bloc `hooks` que la pose ajoute, un matcher par événement.
+
+    `matcher` vaut « * » sur les événements d'outil : ce qui est compté, c'est
+    l'appel de N'IMPORTE QUEL outil, et une liste d'outils à jour serait à
+    refaire à chaque version de Claude Code.
+    """
+    ligne = commande(python=python, script=script)
+    entree = {
+        "hooks": [{"type": "command", "command": ligne, "timeout": DELAI}]
+    }
+    hooks = {}
+    for evenement in journal.EVENEMENTS:
+        forme = dict(entree)
+        if evenement in ("PreToolUse", "PostToolUse"):
+            forme = {"matcher": "*", **entree}
+        hooks[evenement] = [forme]
+    return hooks
+
+
+def _charger(chemin) -> dict:
+    try:
+        with open(chemin, encoding="utf-8") as fh:
+            donnees = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return donnees if isinstance(donnees, dict) else {}
+
+
+def _ecrire(chemin, donnees) -> None:
+    """Écriture atomique : un temporaire du même répertoire, puis `os.replace`.
+
+    Un fichier de réglages à moitié écrit empêche Claude Code de démarrer.
+    """
+    dossier = os.path.dirname(chemin) or "."
+    os.makedirs(dossier, exist_ok=True)
+    fd, provisoire = tempfile.mkstemp(dir=dossier, suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(donnees, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+        os.replace(provisoire, chemin)
+    except Exception:
+        try:
+            os.unlink(provisoire)
+        except OSError:
+            pass
+        raise
+
+
+def _est_le_notre(entree) -> bool:
+    """Vrai si cette entrée de hook est celle que ce dépôt pose."""
+    if not isinstance(entree, dict):
+        return False
+    for hook in entree.get("hooks") or ():
+        if isinstance(hook, dict) and SIGNATURE in str(
+            hook.get("command") or ""
+        ):
+            return True
+    return False
+
+
+def fusionner(reglages, nouveau) -> dict:
+    """Ajouter nos entrées SANS toucher à celles des autres. Fonction pure.
+
+    Une entrée à nous déjà présente est remplacée — le chemin de
+    l'interpréteur change quand l'environnement virtuel est refait — et tout
+    le reste est laissé exactement où il est.
+    """
+    fusion = dict(reglages)
+    hooks = dict(fusion.get("hooks") or {})
+    for evenement, entrees in nouveau.items():
+        gardees = [
+            e for e in (hooks.get(evenement) or []) if not _est_le_notre(e)
+        ]
+        hooks[evenement] = gardees + list(entrees)
+    fusion["hooks"] = hooks
+    return fusion
+
+
+def retirer_de(reglages) -> dict:
+    """Enlever nos entrées et rien d'autre. Fonction pure.
+
+    Un événement qui n'a plus que les nôtres perd sa clé, et un fichier qui
+    n'a plus aucun hook perd la clé `hooks` : laisser des coquilles vides
+    ferait croire à une pose partielle.
+    """
+    fusion = dict(reglages)
+    hooks = {}
+    for evenement, entrees in (fusion.get("hooks") or {}).items():
+        gardees = [e for e in (entrees or []) if not _est_le_notre(e)]
+        if gardees:
+            hooks[evenement] = gardees
+    if hooks:
+        fusion["hooks"] = hooks
+    else:
+        fusion.pop("hooks", None)
+    return fusion
+
+
+def actifs(reglages) -> tuple[str, ...]:
+    """Les événements où NOS hooks sont posés, dans l'ordre du journal."""
+    hooks = reglages.get("hooks") or {}
+    return tuple(
+        evenement
+        for evenement in journal.EVENEMENTS
+        if any(_est_le_notre(e) for e in (hooks.get(evenement) or []))
+    )
+
+
+def chemin_de(endroit, *, racine_depot=None) -> str:
+    """Le fichier de réglages d'un endroit, chemin absolu."""
+    brut = CHEMINS[endroit]
+    if endroit == DEPOT:
+        base = racine_depot or os.getcwd()
+        return os.path.join(base, brut)
+    return os.path.expanduser(brut)
+
+
+def etat(*, racine_depot=None, charger=None) -> dict:
+    """{endroit: (chemin, événements actifs)} — ce que l'écran affiche.
+
+    Les deux endroits sont TOUJOURS rendus, même absents : c'est ce qui permet
+    de dire « posé ici, pas là » plutôt que de taire celui qui manque.
+    """
+    charger = charger or _charger
+    rapport = {}
+    for endroit in (GLOBAL, DEPOT):
+        chemin = chemin_de(endroit, racine_depot=racine_depot)
+        rapport[endroit] = (chemin, actifs(charger(chemin)))
+    return rapport
+
+
+def poser(endroit, *, racine_depot=None, charger=None, ecrire=None, **kw):
+    """Poser nos hooks à un endroit. Rend le chemin écrit."""
+    charger = charger or _charger
+    ecrire = ecrire or _ecrire
+    chemin = chemin_de(endroit, racine_depot=racine_depot)
+    ecrire(chemin, fusionner(charger(chemin), bloc(**kw)))
+    return chemin
+
+
+def retirer(endroit, *, racine_depot=None, charger=None, ecrire=None):
+    """Retirer nos hooks d'un endroit. Rend le chemin écrit."""
+    charger = charger or _charger
+    ecrire = ecrire or _ecrire
+    chemin = chemin_de(endroit, racine_depot=racine_depot)
+    ecrire(chemin, retirer_de(charger(chemin)))
+    return chemin
