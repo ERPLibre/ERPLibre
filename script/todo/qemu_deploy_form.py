@@ -240,10 +240,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                     # c'est lui que la spec porte. Le repli sur les noms
                     # bruts garde l'écran utilisable si un contexte plus
                     # ancien ne porte pas encore les choix.
+                    choix = ctx.get("posture_choices") or vm_profiles.choices()
                     yield Select(
-                        ctx.get("posture_choices")
-                        or [(nom, nom) for nom in ctx.get("postures", ())],
-                        value=ctx.get("posture") or Select.BLANK,
+                        choix,
+                        # LE PREMIER CHOIX OFFERT, et non un blanc : un
+                        # Select sans blanc autorisé REFUSE une liste vide
+                        # et une valeur absente. Le repli d'avant était un
+                        # contexte plus ancien — donc une liste vide, donc
+                        # l'écran qui ne monte pas du tout.
+                        value=ctx.get("posture") or choix[0][1],
                         allow_blank=False,
                         id="f_posture",
                     )
@@ -486,11 +491,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                 return
             # `ctx` est la FERMETURE : la classe est définie dans
             # `run_deploy_form`, et le reste du fichier la lit ainsi.
-            lignes = ctx.get("posture_enforcement") or {}
-            ecarts = (ctx.get("posture_gaps") or {}).get(choisie, ())
-            morceaux = [lignes.get(choisie, "")]
-            morceaux.extend(f"⚠ {e}" for e in ecarts)
-            ligne.update("  ".join(m for m in morceaux if m))
+            ligne.update((ctx.get("posture_screen") or {}).get(choisie, ""))
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):

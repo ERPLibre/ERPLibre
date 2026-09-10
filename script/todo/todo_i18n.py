@@ -1231,6 +1231,18 @@ TRANSLATIONS = {
         "fr": "Posture réseau",
         "en": "Network posture",
     },
+    "Deployment refused:": {
+        "fr": "Déploiement refusé :",
+        "en": "Deployment refused:",
+    },
+    "egress rules posed and armed": {
+        "fr": "règles de sortie posées et armées",
+        "en": "egress rules posed and armed",
+    },
+    "egress rules not rendered": {
+        "fr": "règles de sortie non rendues",
+        "en": "egress rules not rendered",
+    },
     "Withheld: egress rules did not hold on": {
         "fr": "Retenu : les règles de sortie n'ont pas tenu sur",
         "en": "Withheld: egress rules did not hold on",

@@ -219,6 +219,38 @@ def screen_line(posture_name: str, after_boot: bool = False) -> str:
     return "  ".join(morceaux)
 
 
+def form_context(after_boot: bool = False) -> dict:
+    """Les trois clés de posture qu'un écran de déploiement attend.
+
+    UNE fonction et non trois clés recopiées d'un menu à l'autre. Le
+    second écran a été écrit en recopiant le premier, et ce qui s'y perd
+    ne se voit pas : une clé écrite d'un côté sous un autre nom laisse la
+    ligne vide, sans message et sans erreur.
+
+    `after_boot` décrit le CHEMIN et non la posture : là où les règles
+    n'arrivent qu'une fois la machine debout, la ligne porte l'écart de la
+    fenêtre de démarrage. Faux par défaut, pour qu'un chemin qui écrit
+    avant le premier boot ne porte pas un écart qui n'est pas le sien.
+    """
+    return {
+        # L'ordre du registre, du plus libre au plus contraint : on
+        # descend vers la contrainte, on n'y tombe pas.
+        "posture": registry.DEFAULT_POSTURE,
+        # Les libellés qu'un humain reconnaît. La VALEUR reste le nom de
+        # posture : c'est lui que la spec porte, et un libellé stocké se
+        # retraduirait mal d'une langue à l'autre.
+        "posture_choices": choices(),
+        # CE QUE CHACUNE APPLIQUE, ses écarts, et ce que son nom promet —
+        # en une ligne. Un écran qui nomme « VM Connecté » sans dire que
+        # rien n'applique sa politique vend l'assurance que le registre
+        # s'interdit de donner.
+        "posture_screen": {
+            nom: screen_line(nom, after_boot)
+            for nom in registry.posture_names()
+        },
+    }
+
+
 def missing_addresses(posture_name: str, book) -> tuple:
     """Les rôles que ce profil nomme et que le carnet n'adresse pas.
 

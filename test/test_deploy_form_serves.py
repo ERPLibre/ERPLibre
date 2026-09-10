@@ -4,6 +4,10 @@
 """Le couple (libellé choisi, installation choisie), au seul endroit où le
 libellé existe.
 
+LES DEUX ÉCRANS. Le second a été écrit en recopiant le premier, et une
+épreuve qui n'en pilote qu'un laisse l'autre perdre l'avertissement sans
+que rien ne le dise.
+
 POURQUOI PAS AU DÉPLOIEMENT. Un spec porte une POSTURE, pas le libellé sous
 lequel on l'a choisie, et le registre sépare les deux exprès : « les séparer
 est ce qui permet de servir autre chose sur la même posture ». Un refus
@@ -102,6 +106,72 @@ class Ecran:
         return self
 
 
+def contexte_pve():
+    """Le contexte du second écran, PRIS dans l'épreuve qui le tient déjà.
+
+    Chargé par son CHEMIN : « test » est aussi un paquet de la
+    bibliothèque standard, et un import par son nom y mènerait.
+    """
+    import importlib.util
+
+    chemin = Path(__file__).resolve().parent / "test_proxmox_form.py"
+    spec = importlib.util.spec_from_file_location("tpf_fixtures", chemin)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    ctx = mod.contexte()
+    # Les mêmes clés que le menu Proxmox construit : le contexte de banc
+    # est écrit à la main et ne les portait pas.
+    ctx["posture"] = "open"
+    ctx["posture_choices"] = vm_profiles.choices()
+    ctx["posture_screen"] = {
+        nom: vm_profiles.screen_line(nom, after_boot=True)
+        for _libelle, nom in vm_profiles.choices()
+    }
+    return ctx
+
+
+class EcranPve(Ecran):
+    """Le second écran, piloté de la même façon que le premier."""
+
+    def jouer(self, coups=1):
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+
+        async def scenario():
+            app = run_proxmox_form(contexte_pve(), run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                app.vms = [dict(VM_UNE, vmid=100)]
+                app._form_values = lambda: dict(
+                    FORM_PVE,
+                    posture=self.posture,
+                    install={"cmd": self.commande, "label": "banc"},
+                )
+                app.notify = lambda message, **k: self.avertissements.append(
+                    (str(message), k.get("severity"))
+                )
+                app.exit = lambda *a, **k: None
+                for _ in range(coups):
+                    app.action_deploy()
+                    await pilote.pause()
+                self.deployees = list((app.result or {}).get("vms", []))
+
+        asyncio.run(scenario())
+        return self
+
+
+FORM_PVE = {
+    "host": {"target": "hote"},
+    "storage": "local-lvm",
+    "bridge": "vmbr0",
+    "res_label": "x1",
+    "ssh_key": "",
+    "start": True,
+    "add_ssh_config": False,
+    "monitor": False,
+    "parallelism": 1,
+}
+
+
 class TestLeCoupleAuMomentDuChoix(unittest.TestCase):
     def test_the_bench_finds_both_kinds_of_install(self):
         """Contrôle du banc : sans les deux, les épreuves suivantes
@@ -140,6 +210,10 @@ class TestLEcranPreVientPuisLaisseFaire(unittest.TestCase):
     a laissé dans `_current_lang`.
     """
 
+    # L'écran piloté. Une sous-classe le remplace, et hérite de chaque
+    # épreuve écrite ici sans en recopier une seule.
+    ECRAN = Ecran
+
     def setUp(self):
         self.addCleanup(
             setattr, todo_i18n, "_current_lang", todo_i18n._current_lang
@@ -149,43 +223,54 @@ class TestLEcranPreVientPuisLaisseFaire(unittest.TestCase):
     def test_the_bench_deploys_when_nothing_is_wrong(self):
         """Contrôle du banc : si le pilotage n'aboutissait jamais, les
         épreuves suivantes seraient vertes sans rien mesurer."""
-        ecran = Ecran("local-only", AVEC).jouer()
+        ecran = self.ECRAN("local-only", AVEC).jouer()
         self.assertTrue(ecran.deployees)
 
     def test_the_first_press_warns_and_does_not_deploy(self):
-        ecran = Ecran("local-only", SANS).jouer()
+        ecran = self.ECRAN("local-only", SANS).jouer()
         self.assertEqual([], ecran.deployees)
         self.assertTrue(ecran.avertissements)
 
     def test_the_warning_says_what_is_wrong(self):
-        ecran = Ecran("local-only", SANS).jouer()
+        ecran = self.ECRAN("local-only", SANS).jouer()
         message, _severite = ecran.avertissements[-1]
         self.assertIn("no Odoo", message)
 
     def test_it_warns_and_never_refuses(self):
         """Une sévérité d'erreur se lit comme un refus, et il n'y en a
         pas : la posture sert légitimement autre chose."""
-        ecran = Ecran("local-only", SANS).jouer()
+        ecran = self.ECRAN("local-only", SANS).jouer()
         _message, severite = ecran.avertissements[-1]
         self.assertEqual("warning", severite)
 
     def test_the_second_press_goes_through(self):
         """Sans l'accusé, l'écran avertirait à chaque F5 et on ne pourrait
         JAMAIS déployer ce couple — ce qui est un refus déguisé."""
-        ecran = Ecran("local-only", SANS).jouer(coups=2)
+        ecran = self.ECRAN("local-only", SANS).jouer(coups=2)
         self.assertTrue(ecran.deployees)
 
     def test_a_sound_pair_never_warns(self):
         """Contrôle positif : avertir toujours ne dirait plus rien."""
-        ecran = Ecran("local-only", AVEC).jouer()
+        ecran = self.ECRAN("local-only", AVEC).jouer()
         self.assertEqual([], ecran.avertissements)
 
     def test_another_label_on_the_same_posture_is_untouched(self):
         """« Sandbox » sur une installation sans Odoo est parfaitement
         sensé, et l'écran ne doit rien dire."""
-        ecran = Ecran("open", SANS).jouer()
+        ecran = self.ECRAN("open", SANS).jouer()
         self.assertEqual([], ecran.avertissements)
         self.assertTrue(ecran.deployees)
+
+
+class TestLeSecondEcranPrevientAussi(TestLEcranPreVientPuisLaisseFaire):
+    """Les MÊMES épreuves, sur l'écran Proxmox.
+
+    Hériter plutôt que recopier : une épreuve ajoutée au premier écran
+    couvre le second le jour où elle est écrite, et une divergence entre
+    les deux devient impossible à laisser passer.
+    """
+
+    ECRAN = EcranPve
 
 
 if __name__ == "__main__":

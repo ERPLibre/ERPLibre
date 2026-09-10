@@ -333,7 +333,20 @@ class TestLaLigneQuUnEcranEcrit(CasDeProfil):
 
 
 class TestLeFormulaireOffreLesLibelles(CasDeProfil):
-    """Le sélecteur montrait les noms BRUTS du registre."""
+    """Le sélecteur montrait les noms BRUTS du registre.
+
+    LES DEUX ÉCRANS, et non le premier seulement : le second a été écrit en
+    recopiant le premier, et une épreuve qui ne regarde qu'un fichier
+    laisse le deuxième diverger sans que rien ne le dise. Le contexte est
+    construit par le menu, l'écran le lit — une clé écrite d'un côté et
+    lue de l'autre sous un autre nom laisse la ligne vide, en silence.
+    """
+
+    # (le module qui CONSTRUIT le contexte, l'écran qui le LIT)
+    ECRANS = (
+        ("qemu_deploy.py", "qemu_deploy_form.py"),
+        ("proxmox_menu.py", "proxmox_deploy_form.py"),
+    )
 
     @staticmethod
     def source(nom):
@@ -341,56 +354,145 @@ class TestLeFormulaireOffreLesLibelles(CasDeProfil):
         with open(chemin, encoding="utf-8") as fichier:
             return fichier.read()
 
-    def test_the_context_carries_the_labelled_choices(self):
-        self.assertIn("vm_profiles.choices()", self.source("qemu_deploy.py"))
+    def test_the_context_comes_from_the_module(self):
+        """Trois clés recopiées d'un menu à l'autre avaient déjà divergé :
+        la ligne composée à la main y perdait la phrase du profil qui
+        promet une interface servie, et personne ne l'a vu."""
+        for menu, _form in self.ECRANS:
+            with self.subTest(menu=menu):
+                self.assertIn("**vm_profiles.form_context(", self.source(menu))
 
-    def test_the_context_carries_what_each_one_enforces(self):
-        """Les clés EXACTES, guillemets compris : « posture_gaps_retire »
-        contient « posture_gaps », et une recherche de sous-chaîne
-        laisserait passer une clé renommée."""
-        source = self.source("qemu_deploy.py")
-        self.assertIn('"posture_enforcement": {', source)
-        self.assertIn('"posture_gaps": {', source)
+    def test_the_late_screen_declares_the_boot_window(self):
+        """Ce chemin pose les règles une fois la machine joignable : elle
+        sort librement pendant tout son démarrage, et l'autre écran non."""
+        self.assertIn(
+            "vm_profiles.form_context(after_boot=True)",
+            self.source("proxmox_menu.py"),
+        )
+        self.assertIn(
+            "**vm_profiles.form_context(),", self.source("qemu_deploy.py")
+        )
 
-    def test_the_form_reads_those_very_keys(self):
-        """Une clé écrite d'un côté et lue de l'autre sous un autre nom
-        laisserait la ligne vide, sans rien dire."""
-        source = self.source("qemu_deploy_form.py")
-        self.assertIn('ctx.get("posture_enforcement")', source)
-        self.assertIn('ctx.get("posture_gaps")', source)
+    def test_the_form_reads_that_very_key(self):
+        for _menu, form in self.ECRANS:
+            with self.subTest(form=form):
+                self.assertIn('ctx.get("posture_screen")', self.source(form))
 
     def test_the_form_uses_them(self):
-        source = self.source("qemu_deploy_form.py")
-        self.assertIn('ctx.get("posture_choices")', source)
+        for _menu, form in self.ECRANS:
+            with self.subTest(form=form):
+                self.assertIn('ctx.get("posture_choices")', self.source(form))
 
     def test_the_form_actually_yields_the_effect_line(self):
         """Le NOM du widget suffit à apparaître dans le code qui l'écrit :
         c'est le `yield` qui le fait exister à l'écran."""
-        source = self.source("qemu_deploy_form.py")
-        self.assertIn('yield Static("", id="t_posture_effet"', source)
+        for _menu, form in self.ECRANS:
+            with self.subTest(form=form):
+                self.assertIn(
+                    'yield Static("", id="t_posture_effet"', self.source(form)
+                )
 
     def test_the_form_refreshes_it_when_the_choice_changes(self):
         """Écrite une fois au montage, elle décrirait la posture de départ
         quel que soit le choix — le pire message possible ici."""
-        source = self.source("qemu_deploy_form.py")
-        self.assertIn('if wid == "f_posture":', source)
-        self.assertIn("self._sync_posture()", source)
+        for _menu, form in self.ECRANS:
+            with self.subTest(form=form):
+                source = self.source(form)
+                self.assertIn('== "f_posture":', source)
+                self.assertIn("self._sync_posture()", source)
 
-    def test_the_form_keeps_a_fallback_to_the_raw_names(self):
-        """Un contexte plus ancien qui ne porte pas les choix doit laisser
-        l'écran utilisable, pas vide."""
-        source = self.source("qemu_deploy_form.py")
-        self.assertIn(
-            'or [(nom, nom) for nom in ctx.get("postures", ())]', source
-        )
+    def test_the_fallback_is_the_module_and_not_an_empty_context(self):
+        """Un contexte plus ancien doit laisser l'écran UTILISABLE.
+
+        Le repli d'avant retombait sur une clé que ce contexte-là ne
+        portait pas non plus : le sélecteur recevait une liste vide, et un
+        Select sans blanc autorisé la REFUSE — l'écran ne montait plus du
+        tout. Un repli qui empêche de monter n'est pas un repli."""
+        for _menu, form in self.ECRANS:
+            with self.subTest(form=form):
+                self.assertIn(
+                    'ctx.get("posture_choices") or vm_profiles.choices()',
+                    self.source(form),
+                )
 
     def test_the_spec_still_carries_the_posture_name(self):
         """Le libellé est de l'affichage : le stocker obligerait à le
         retraduire, et une spec relue ailleurs ne se retrouverait plus."""
-        source = self.source("qemu_deploy_form.py")
-        self.assertIn(
-            '"posture": self.query_one("#f_posture", Select).value', source
+        for _menu, form in self.ECRANS:
+            with self.subTest(form=form):
+                self.assertIn(
+                    '"posture": self.query_one("#f_posture", Select).value',
+                    self.source(form),
+                )
+
+
+class TestLeContexteDEcran(CasDeProfil):
+    """Les trois clés que les deux écrans attendent, rendues par le
+    module qui les possède.
+
+    Aucun terminal, aucun ssh : le contexte du second écran se construit
+    autrement par vingt lectures distantes, et rien ne l'éprouvait.
+    """
+
+    def test_it_carries_exactly_the_three_keys(self):
+        """Une quatrième clé ajoutée ici et lue nulle part serait un
+        mécanisme mort de plus ; une manquante laisse l'écran vide."""
+        self.assertEqual(
+            {"posture", "posture_choices", "posture_screen"},
+            set(V.form_context()),
         )
+
+    def test_the_default_is_the_freest_posture(self):
+        """On descend vers la contrainte, on n'y tombe pas par défaut."""
+        contexte = V.form_context()
+        self.assertEqual(R.DEFAULT_POSTURE, contexte["posture"])
+        self.assertEqual(R.DEFAULT_POSTURE, contexte["posture_choices"][0][1])
+
+    def test_every_posture_of_the_registry_is_offered(self):
+        """Une liste écrite à la main perdrait la cinquième le jour où
+        elle arrive, sans que rien ne le dise."""
+        contexte = V.form_context()
+        self.assertEqual(
+            R.posture_names(),
+            [nom for _libelle, nom in contexte["posture_choices"]],
+        )
+        self.assertEqual(
+            set(R.posture_names()), set(contexte["posture_screen"])
+        )
+
+    def test_the_choices_and_the_lines_share_their_keys(self):
+        """Un sélecteur qui offre un nom sans ligne l'affiche muet."""
+        contexte = V.form_context()
+        self.assertEqual(
+            {nom for _libelle, nom in contexte["posture_choices"]},
+            set(contexte["posture_screen"]),
+        )
+
+    def test_the_line_carries_what_the_name_promises(self):
+        """La composition à la main perdait cette phrase-là."""
+        self.assertIn(
+            V.EXPECTS_ODOO, V.form_context()["posture_screen"]["local-only"]
+        )
+
+    def test_the_early_path_does_not_carry_the_boot_window(self):
+        tot = V.form_context()["posture_screen"]
+        for nom, ligne in tot.items():
+            with self.subTest(posture=nom):
+                self.assertNotIn(V.gap_sentence(rules.BOOT_WINDOW_OPEN), ligne)
+
+    def test_the_late_path_carries_it_where_rules_are_posed(self):
+        """Là où les règles n'arrivent qu'une fois la machine debout,
+        elle sort librement pendant tout son démarrage."""
+        tard = V.form_context(after_boot=True)["posture_screen"]
+        self.assertIn(
+            V.gap_sentence(rules.BOOT_WINDOW_OPEN), tard["local-only"]
+        )
+
+    def test_a_free_posture_has_no_boot_window(self):
+        """Rien n'est confiné : il n'y a pas de fenêtre à nommer, et en
+        nommer une ferait croire à un confinement raté."""
+        tard = V.form_context(after_boot=True)["posture_screen"]
+        self.assertNotIn(V.gap_sentence(rules.BOOT_WINDOW_OPEN), tard["open"])
 
 
 class TestCeQuiManqueAuCarnet(CasDeProfil):
