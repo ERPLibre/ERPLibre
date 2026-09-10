@@ -13,6 +13,7 @@ import pathlib
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
@@ -1372,12 +1373,72 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         self.assertIn("sleep 2", boucle)
         self.assertNotIn("sleep 10", boucle)
 
+    def test_lattente_couvre_notre_propre_service_detache(self):
+        """Le vrai teneur du verrou, et c'est nous.
+
+        La pose de l'agent invité part en service DÉTACHÉ pour que
+        cloud-init rende la main en quelques secondes. Ce service fait un
+        « apt-get update » puis une installation : « cloud-init status
+        --wait » dit « done » pendant qu'il tient encore le verrou, et
+        l'étape suivante épuise ses reprises pour rien.
+        """
+        attente = self.todo._qemu_cloud_init_wait()
+        self.assertIn("erplibre-qga", attente)
+        self.assertIn("is-active", attente)
+
+    def test_le_nom_du_service_est_celui_que_le_deploiement_donne(self):
+        """Deux noms qui divergent et l'attente ne trouve jamais rien."""
+        from script.qemu import deploy_qemu
+
+        src = pathlib.Path(deploy_qemu.__file__).read_text(encoding="utf-8")
+        self.assertIn("--unit=erplibre-qga", src)
+
+    def test_un_update_qui_nabouti_pas_le_dit(self):
+        """Sans cette ligne, l'installation continue sur un index jamais
+        rafraîchi et échoue plus bas sur « Impossible de trouver le
+        paquet » — qui accuse le dépôt et non le verrou."""
+        i = self.cmd.index("until sudo apt-get")
+        boucle = self.cmd[i : self.cmd.index("done;", i)]
+        self.assertIn("echo", boucle)
+        self.assertIn("⚠", boucle)
+
+    def test_une_apostrophe_traduite_ne_casse_pas_la_commande(self):
+        """Les messages sont traduits, et le français est plein
+        d'apostrophes. Une seule mal placée casse la commande distante
+        ENTIÈRE : la VM ne dit alors pas pourquoi elle n'a rien fait.
+
+        La langue n'est pas changée pour l'éprouver — « set_lang » la
+        PERSISTE dans env_var.sh, et un test qui la déplace fait échouer
+        tout ce qui suit. On remplace la traduction elle-même, le temps du
+        contrôle, par une chaîne qui porte le caractère dangereux.
+        """
+        import tempfile
+
+        piege = "l'agent n'a pas fini « attendre »"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            todo = TODO.__new__(TODO)
+            cmd = (
+                todo._qemu_cloud_init_wait()
+                + todo._qemu_no_auto_upgrade(prod=False)
+                + todo._qemu_desktop_remote_cmd("gnome", "deb")
+            )
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".sh", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(cmd)
+            chemin = fh.name
+        res = subprocess.run(
+            ["bash", "-n", chemin], capture_output=True, text=True
+        )
+        self.assertEqual(res.returncode, 0, res.stderr[:400])
+
     def test_la_boucle_reste_bornee(self):
         """Sans borne, un verrou jamais rendu tiendrait l'installation pour
         toujours."""
         i = self.cmd.index("until sudo apt-get")
         boucle = self.cmd[i : self.cmd.index("done;", i)]
-        self.assertRegex(boucle, r"-ge \d+ \] && break")
+        self.assertRegex(boucle, r"-ge \d+ \]")
+        self.assertIn("break", boucle)
 
 
 if __name__ == "__main__":

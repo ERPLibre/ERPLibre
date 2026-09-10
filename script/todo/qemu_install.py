@@ -415,7 +415,16 @@ class QemuInstallMixin:
         L'attente dure jusqu'à 15 min et n'écrivait RIEN : sur une architecture
         émulée, le log restait muet un quart d'heure juste après avoir annoncé
         le début de l'installation, ce qui se lit comme un blocage. Deux lignes
-        l'encadrent, et le « status » final dit si elle a abouti ou expiré."""
+        l'encadrent, et le « status » final dit si elle a abouti ou expiré.
+
+        « cloud-init status --wait » NE SUFFIT PAS. La pose de l'agent invité
+        est lancée en service DÉTACHÉ — « systemd-run --no-block » — pour que
+        cloud-init rende la main en quelques secondes ; ce service, lui, fait
+        un « apt-get update » puis une installation, et garde donc le verrou
+        des paquets bien après que cloud-init s'est dit terminé. L'étape
+        suivante trouvait le verrou pris, échouait jusqu'à sa borne, puis
+        installait sur un index jamais rafraîchi : « Impossible de trouver le
+        paquet », un message qui n'accuse personne."""
         return (
             "if command -v cloud-init >/dev/null 2>&1; then "
             'echo "== '
@@ -425,6 +434,14 @@ class QemuInstallMixin:
             "|| true; "
             + f'echo "   {t("cloud-init:")} $(cloud-init status 2>/dev/null '
             '| head -1)"; '
+            "fi; "
+            # Le service détaché de l'agent invité, s'il court encore. Le nom
+            # est celui que le déploiement lui donne ; « --collect » l'efface
+            # une fois fini, donc « is-active » redevient faux tout seul.
+            "if systemctl is-active --quiet erplibre-qga 2>/dev/null; then "
+            f'echo "   {t("waiting for the guest agent install (apt lock)")}"; '
+            "n=0; while systemctl is-active --quiet erplibre-qga 2>/dev/null; "
+            "do n=$((n+1)); [ $n -ge 150 ] && break; sleep 2; done; "
             "fi; "
         )
 
@@ -683,7 +700,12 @@ class QemuInstallMixin:
             # minutes à ne rien faire. On repasse plus souvent, et on rend la
             # main dès que le verrou se libère.
             "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
-            "n=$((n+1)); [ $n -ge 60 ] && break; sleep 2; done; "
+            "n=$((n+1)); [ $n -ge 60 ] && "
+            # Le dire ICI. Sans cette ligne, l'installation continue sur un
+            # index jamais rafraîchi et échoue plus bas sur « Impossible de
+            # trouver le paquet », qui accuse le dépôt et non le verrou.
+            f'{{ echo "   ⚠ {t("apt-get update never succeeded: the lock stayed held")}"; '
+            "break; }; sleep 2; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
             f"{de['apt']} {rem['apt']['packages']} "

@@ -6407,6 +6407,14 @@ TRANSLATIONS = {
         "fr": "La lever par :",
         "en": "Lift it with:",
     },
+    "waiting for the guest agent install (apt lock)": {
+        "fr": "attente de la pose de l'agent invité (verrou apt)",
+        "en": "waiting for the guest agent install (apt lock)",
+    },
+    "apt-get update never succeeded: the lock stayed held": {
+        "fr": "apt-get update n'a jamais abouti : le verrou est resté pris",
+        "en": "apt-get update never succeeded: the lock stayed held",
+    },
     "cache holds nothing for": {
         "fr": "le cache ne détient rien pour",
         "en": "cache holds nothing for",
