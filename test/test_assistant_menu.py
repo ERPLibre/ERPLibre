@@ -90,27 +90,28 @@ class Cablage(unittest.TestCase):
         from script.todo.todo import TODO
 
         self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_llm"), "LLM")
+        self.assertEqual(TODO._MENU_LABELS.get("prompt_assistant_ia"), "IA")
 
-    def test_un_dispatche_vers_le_sous_menu_llm_seulement(self):
+    def test_un_dispatche_vers_l_ecran_des_agents_seulement(self):
         """Les deux listes du menu parent sont tenues à la main et rien ne
         les rapproche : `[1]` peut afficher une entrée et appeler l'autre."""
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(TODO, "prompt_assistant_llm") as mock_llm, patch(
+        with patch.object(TODO, "prompt_assistant_ia") as mock_ia, patch(
             "script.todo.mail.menu.prompt_execute_mail"
         ) as mock_mail, patch("click.prompt", side_effect=["1", "0"]), patch(
             "script.todo.todo_telemetry.record"
         ):
             todo.prompt_assistant()
-        mock_llm.assert_called_once_with()
+        mock_ia.assert_called_once_with()
         mock_mail.assert_not_called()
 
     def test_deux_dispatche_toujours_vers_le_courriel_seulement(self):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(TODO, "prompt_assistant_llm") as mock_llm, patch(
+        with patch.object(TODO, "prompt_assistant_ia") as mock_llm, patch(
             "script.todo.mail.menu.prompt_execute_mail"
         ) as mock_mail, patch("click.prompt", side_effect=["2", "0"]), patch(
             "script.todo.todo_telemetry.record"
@@ -439,24 +440,39 @@ class SessionsClaudeCode(unittest.TestCase):
             TODO._MENU_LABELS.get("prompt_claude_sessions"), "Claude Code"
         )
 
-    def test_six_dispatche_vers_les_sessions_seulement(self):
-        """Les deux listes de `prompt_execute_gpt_code` sont tenues à la
-        main : l'entrée peut s'afficher et appeler autre chose."""
+    def _dispatche(self, chiffre, cible, *, temoin=None):
+        """Taper `chiffre` dans « Assistant › IA » appelle-t-il `cible` ?
+
+        Les deux listes de cet écran — ce qui s'affiche et ce qui se
+        répartit — sont tenues à la main, donc une entrée peut s'afficher et
+        appeler autre chose. `temoin` nomme une méthode qui ne doit PAS
+        partir, sans quoi un test vert ne dirait rien d'un dispatch qui
+        appelle tout.
+        """
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(
-            TODO, "prompt_claude_sessions"
-        ) as mock_sessions, patch.object(
-            TODO, "prompt_execute_claude_plugins"
-        ) as mock_plugins, patch(
-            "click.prompt", side_effect=["6", "0"]
+        with patch.object(TODO, cible) as mock_cible, patch.object(
+            TODO, temoin or "prompt_execute_rtk"
+        ) as mock_temoin, patch(
+            "click.prompt", side_effect=[chiffre, "0"]
         ), patch(
             "script.todo.todo_telemetry.record"
         ):
-            todo.prompt_execute_gpt_code()
-        mock_sessions.assert_called_once_with()
-        mock_plugins.assert_not_called()
+            todo.prompt_assistant_ia()
+        mock_cible.assert_called_once_with()
+        mock_temoin.assert_not_called()
+
+    def test_un_ouvre_le_harnais_claude(self):
+        self._dispatche("1", "prompt_claude_sessions")
+
+    def test_huit_ouvre_les_greffons(self):
+        """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
+        self._dispatche("8", "prompt_execute_claude_plugins")
+
+    def test_onze_ouvre_l_automatisation(self):
+        """La dernière entrée : un décalage d'un cran la rend injoignable."""
+        self._dispatche("11", "_claude_add_automation")
 
     def test_le_sous_menu_s_ouvre_sans_aucune_session(self):
         """Une machine sans Claude Code n'est pas une panne du menu."""

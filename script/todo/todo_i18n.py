@@ -12172,6 +12172,65 @@ TRANSLATIONS = {
         "fr": "Aucun réseau routé pour l'instant : ce tunnel ne joindra que l'hôte distant. Monter une fois — l'adresse obtenue dira quel réseau ajouter.",
         "en": "No network routed yet: this tunnel will only reach the remote host. Connect once — the address you get tells you which network to add.",
     },
+    # Agents IA (script/todo/assistant/harness/, assistant_menu.py). Les
+    # verdicts d'un harnais : le binaire manque, ou l'adaptateur n'a pas été
+    # mesuré, et les deux n'appellent pas le même geste.
+    "AI - Agents, models and telemetry": {
+        "fr": "🤖 IA - Agents, modèles et télémétrie",
+        "en": "🤖 AI - Agents, models and telemetry",
+    },
+    "An agent, a model, a conversation.": {
+        "fr": "Un agent, un modèle, une conversation.",
+        "en": "An agent, a model, a conversation.",
+    },
+    "Agents": {
+        "fr": "🤖 Agents",
+        "en": "🤖 Agents",
+    },
+    "Direct model": {
+        "fr": "💬 Modèle direct",
+        "en": "💬 Direct model",
+    },
+    "Tooling": {
+        "fr": "🛠 Outillage",
+        "en": "🛠 Tooling",
+    },
+    "LLM servers": {
+        "fr": "💬 Serveurs LLM",
+        "en": "💬 LLM servers",
+    },
+    "Other harnesses…": {
+        "fr": "🔎 Autres harnais…",
+        "en": "🔎 Other harnesses…",
+    },
+    "binary not found": {
+        "fr": "binaire introuvable",
+        "en": "binary not found",
+    },
+    "binary found, its configuration directory is not": {
+        "fr": "binaire trouvé, son répertoire de configuration non",
+        "en": "binary found, its configuration directory is not",
+    },
+    "no adapter measured against this software yet": {
+        "fr": "aucun adaptateur mesuré contre ce logiciel",
+        "en": "no adapter measured against this software yet",
+    },
+    "This harness is not usable here:": {
+        "fr": "Ce harnais n'est pas utilisable ici :",
+        "en": "This harness is not usable here:",
+    },
+    "Installing it makes it appear on its own.": {
+        "fr": "L'installer le fait apparaître de lui-même.",
+        "en": "Installing it makes it appear on its own.",
+    },
+    "Installing one makes it appear on its own.": {
+        "fr": "En installer un le fait apparaître de lui-même.",
+        "en": "Installing one makes it appear on its own.",
+    },
+    "The harnesses this repository knows by name": {
+        "fr": "Les harnais que ce dépôt connaît de nom",
+        "en": "The harnesses this repository knows by name",
+    },
     # Assistant LLM (script/todo/assistant_menu.py, script/todo/assistant/)
     "AI question - Ask a model, local or remote": {
         "fr": "🤖 Question IA - Interroger un modèle, local ou distant",

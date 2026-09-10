@@ -598,7 +598,7 @@ class TestTodoWiring(unittest.TestCase):
     def test_one_dispatches_to_assistant_question_only(self):
         """`hasattr` seul ne verrait pas deux branches de menu échangées —
         on pilote `click.prompt` et on vérifie que `[1]` appelle
-        `prompt_assistant_llm`, PAS `prompt_execute_mail`.
+        `prompt_assistant_ia`, PAS `prompt_execute_mail`.
 
         `_menu_header()` enregistre aussi une télémétrie best-effort dans
         `~/.erplibre` : on la neutralise, sinon ce test écrirait pour de
@@ -610,7 +610,7 @@ class TestTodoWiring(unittest.TestCase):
 
         todo = TODO()
         with patch.object(
-            TODO, "prompt_assistant_llm"
+            TODO, "prompt_assistant_ia"
         ) as mock_question, patch(
             "script.todo.mail.menu.prompt_execute_mail"
         ) as mock_mail, patch(
@@ -625,14 +625,14 @@ class TestTodoWiring(unittest.TestCase):
 
     def test_two_dispatches_to_mail_only(self):
         """Symétrique : `[2]` appelle `prompt_execute_mail`, PAS
-        `prompt_assistant_llm`."""
+        `prompt_assistant_ia`."""
         from unittest.mock import patch
 
         from script.todo.todo import TODO
 
         todo = TODO()
         with patch.object(
-            TODO, "prompt_assistant_llm"
+            TODO, "prompt_assistant_ia"
         ) as mock_question, patch(
             "script.todo.mail.menu.prompt_execute_mail"
         ) as mock_mail, patch(

@@ -164,10 +164,18 @@ désignées, là où un serveur retenu en désigne une seule, volontairement.
 ## Les sessions Claude Code de la machine
 
 Une session ouverte ailleurs porte déjà le contexte d'un travail, et lui poser
-une question sans le retaper vaut le détour. Elle vit sous « GPT code » et non
-sous le sous-menu LLM : une session est un processus adressé par identifiant,
-un serveur est un hôte adressé par port, et les mêler dans une seule liste
-numérotée ferait partager les mêmes chiffres à deux modèles mentaux.
+une question sans le retaper vaut le détour. Elle vit sous « Assistant › IA »,
+dans la section **Agents** et non parmi les serveurs : une session est un
+processus adressé par identifiant, un serveur est un hôte adressé par port, et
+les mettre dans une même section ferait partager les mêmes chiffres à deux
+modèles mentaux.
+
+Cet écran liste les harnais que ce dépôt connaît de nom, et il n'en cache
+jamais un. Un harnais dont le binaire manque garde son numéro, grisé, avec ce
+qui manque dit sur la même ligne — et la raison distingue deux choses qui
+appellent des gestes opposés : un binaire à installer, ou un adaptateur que
+personne n'a mesuré. Seul `claude` l'est ; déclarer une action pour les autres
+offrirait ce qui échoue.
 
 Deux dangers ont dû être mesurés avant de le proposer. Un pid ne prouve pas
 qu'une session vit — les pids se recyclent, donc la vivacité exige le pid ET
@@ -199,6 +207,7 @@ séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
+| `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et

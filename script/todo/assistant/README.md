@@ -159,10 +159,18 @@ server designates exactly one, on purpose.
 ## The machine's Claude Code sessions
 
 A session open elsewhere already holds a piece of work, and asking it one
-question without retyping that is worth the trip. It sits under `GPT code`
-rather than the LLM submenu: a session is a process addressed by identifier, a
-server is a host addressed by port, and mixing the two in one numbered list
-would make two mental models share the same digits.
+question without retyping that is worth the trip. It sits under
+`Assistant › AI`, in the **Agents** section and not among the servers: a
+session is a process addressed by identifier, a server is a host addressed by
+port, and putting the two in one section would make two mental models share
+the same digits.
+
+That screen lists the harnesses this repository knows by name, and it never
+hides one. A harness whose binary is missing keeps its number, greyed, with
+what is missing said on the same line — and the reason distinguishes two
+things that call for opposite gestures: a binary to install, or an adapter
+nobody has measured yet. Only `claude` is measured; declaring an action for
+the others would offer what fails.
 
 Two hazards had to be measured before offering it. A pid does not prove a
 session lives — pids are recycled, so liveness needs the pid AND the process's
@@ -193,6 +201,7 @@ underscores all into dashes and so cannot be inverted.
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
+| `harness/registre.py` | which agent harnesses this machine carries, and what is missing from the others |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and

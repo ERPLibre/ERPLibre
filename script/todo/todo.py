@@ -208,7 +208,7 @@ class TODO(
 
         while True:
             help_info = f"""{self._menu_header()}
-[1] {t("AI question - Ask a model, local or remote")}
+[1] {t("AI - Agents, models and telemetry")}
 [2] {t("mail_menu")}
 [0] {t("Back")}"""
             status = click.prompt(help_info)
@@ -216,7 +216,7 @@ class TODO(
             if status == "0":
                 return
             if status == "1":
-                self.prompt_assistant_llm()
+                self.prompt_assistant_ia()
             elif status == "2":
                 prompt_execute_mail(self)
             else:
@@ -241,16 +241,15 @@ class TODO(
 [9] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[10] {t("GPT code - AI assistant tools")}
-[11] {t("Automation - Demonstration of developed features")}
+[10] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[12] {t("Deploy - Deploy ERPLibre locally")}
-[13] {t("Network - Network tools")}
-[14] {t("Security - Dependency security audit")}
+[11] {t("Deploy - Deploy ERPLibre locally")}
+[12] {t("Network - Network tools")}
+[13] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[15] {t("Language - Change language / Changer la langue")}
+[14] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -295,26 +294,22 @@ class TODO(
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_gpt_code()
-                if status is not False:
-                    return
-            elif status == "11":
                 status = self.prompt_execute_function()
                 if status is not False:
                     return
-            elif status == "12":
+            elif status == "11":
                 status = self.prompt_execute_deploy()
                 if status is not False:
                     return
-            elif status == "13":
+            elif status == "12":
                 status = self.prompt_execute_network()
                 if status is not False:
                     return
-            elif status == "14":
+            elif status == "13":
                 status = self.prompt_execute_security()
                 if status is not False:
                     return
-            elif status == "15":
+            elif status == "14":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -574,6 +569,7 @@ class TODO(
         "run": "TODO",
         "prompt_execute": "Execute",
         "prompt_assistant": "Assistant",
+        "prompt_assistant_ia": "IA",
         "prompt_assistant_llm": "LLM",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
@@ -588,7 +584,6 @@ class TODO(
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
         "_prompt_git_server_actions": "Actions",
-        "prompt_execute_gpt_code": "GPT code",
         "_prompt_claude_configs": "Claude configs",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
@@ -3008,50 +3003,6 @@ class TODO(
             cmd,
             source_erplibre=False,
         )
-
-    def prompt_execute_gpt_code(self):
-        print(f"🤖 {t('AI assistant tools for development!')}")
-        choices = [
-            {"prompt_description": t("Configure Claude Code configurations")},
-            {
-                "prompt_description": t(
-                    "Add an automation with Claude in todo.py"
-                )
-            },
-            {
-                "prompt_description": t(
-                    "RTK - CLI proxy to reduce LLM token consumption"
-                )
-            },
-            {"prompt_description": t("Show the context given to Claude")},
-            {
-                "prompt_description": t(
-                    "Claude Code plugins - marketplaces and ERPLibre list"
-                )
-            },
-            {"prompt_description": t("Claude Code - local sessions")},
-        ]
-        help_info = self.fill_help_info(choices)
-
-        while True:
-            status = click.prompt(help_info)
-            print()
-            if status == "0":
-                return False
-            elif status == "1":
-                self._prompt_claude_configs()
-            elif status == "2":
-                self._claude_add_automation()
-            elif status == "3":
-                self.prompt_execute_rtk()
-            elif status == "4":
-                self._show_claude_context()
-            elif status == "5":
-                self.prompt_execute_claude_plugins()
-            elif status == "6":
-                self.prompt_claude_sessions()
-            else:
-                print(t("Command not found !"))
 
     def _prompt_claude_configs(self):
         print(f"🤖 {t('Deploy Claude Code commands!')}")

@@ -99,7 +99,6 @@ class TestExecuteMenuNumbering(unittest.TestCase):
         "Analyse": "prompt_execute_analyse",
         "Git": "prompt_execute_git",
         "Doc": "prompt_execute_doc",
-        "GPT code": "prompt_execute_gpt_code",
         "Automation": "prompt_execute_function",
         "Deploy": "prompt_execute_deploy",
         "Network": "prompt_execute_network",

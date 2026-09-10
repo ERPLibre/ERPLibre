@@ -188,6 +188,157 @@ class AssistantMenuMixin:
             return f"{serveur.software} · {serveur.model}"
         return serveur.software
 
+    # ------------------------------------------------------------------
+    # Les agents IA
+
+    def _harnais_etats(self):
+        """L'état de chaque harnais déclaré, lu une fois par affichage."""
+        from script.todo.assistant.harness import registre as reg
+
+        return reg.etats()
+
+    @staticmethod
+    def _harnais_libelle(etat, compte=""):
+        """« ⛔ Open Code  (binaire introuvable) » — et jamais rien de moins.
+
+        Le verdict et sa raison sont sur la MÊME ligne que le nom : un écran
+        qui grise sans dire pourquoi envoie chercher une installation là où
+        c'est un adaptateur qui manque, ou l'inverse.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        marque = "" if etat.verdict == reg.OK else f"{MARQUE['no']} "
+        detail = compte or (t(etat.raison) if etat.raison else "")
+        suffixe = f"  ({detail})" if detail else ""
+        icone = etat.harnais.icone
+        return f"{marque}{icone} {etat.harnais.nom}{suffixe}"
+
+    def prompt_assistant_ia(self):
+        """Les agents, les modèles, et l'outillage qui les entoure.
+
+        Un agent et un serveur de modèle vivent dans le même écran mais dans
+        deux sections : le premier s'adresse par identifiant de session, le
+        second par port, et rien de ce qu'on sait de l'un ne s'applique à
+        l'autre. Les mêler dans une seule section ferait partager les mêmes
+        chiffres à deux modèles mentaux.
+
+        Un harnais absent garde son numéro et sa place. Le taire donnerait un
+        écran qui change de numérotation d'une machine à l'autre, et cacherait
+        justement l'information qui sert — qu'il existe, et qu'un `install`
+        suffirait.
+        """
+        from script.todo.assistant.harness import registre as reg
+
+        print(f"🤖 {t('An agent, a model, a conversation.')}")
+        while True:
+            etats = self._harnais_etats()
+            devant, autres = etats[:3], etats[3:]
+            serveur = self._llm_current()
+            choices = [{"section": t("Agents")}]
+            for etat in devant:
+                compte = ""
+                if etat.harnais.cle == "claude" and etat.verdict == reg.OK:
+                    compte = self._claude_compte()
+                choices.append(
+                    {"prompt_description": self._harnais_libelle(etat, compte)}
+                )
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Other harnesses…')}  ({len(autres)})"
+                    )
+                }
+            )
+            choices.append({"section": t("Direct model")})
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('LLM servers')}  ({self._llm_label(serveur)})"
+                    )
+                }
+            )
+            choices.append({"prompt_description": self._llm_gpt_label()})
+            choices.append({"section": t("Tooling")})
+            for cle in (
+                "Configure Claude Code configurations",
+                "Claude Code plugins - marketplaces and ERPLibre list",
+                "RTK - CLI proxy to reduce LLM token consumption",
+                "Show the context given to Claude",
+                "Add an automation with Claude in todo.py",
+            ):
+                choices.append({"prompt_description": t(cle)})
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            try:
+                rang = int(status)
+            except ValueError:
+                print(t("Command not found !"))
+                continue
+            if 1 <= rang <= len(devant):
+                self._harnais_ouvrir(devant[rang - 1])
+            elif rang == len(devant) + 1:
+                self._harnais_autres(autres)
+            elif rang == len(devant) + 2:
+                self.prompt_assistant_llm()
+            elif rang == len(devant) + 3:
+                self._llm_gpt_catalogue()
+            elif rang == len(devant) + 4:
+                self._prompt_claude_configs()
+            elif rang == len(devant) + 5:
+                self.prompt_execute_claude_plugins()
+            elif rang == len(devant) + 6:
+                self.prompt_execute_rtk()
+            elif rang == len(devant) + 7:
+                self._show_claude_context()
+            elif rang == len(devant) + 8:
+                self._claude_add_automation()
+            else:
+                print(t("Command not found !"))
+
+    def _harnais_ouvrir(self, etat):
+        """L'écran d'un harnais, ou la raison pour laquelle il n'y en a pas."""
+        from script.todo.assistant.harness import registre as reg
+
+        if etat.verdict != reg.OK:
+            print(f"{MARQUE['no']} {t('This harness is not usable here:')}")
+            print(f"   {etat.harnais.nom} — {t(etat.raison)}")
+            if etat.verdict == reg.ABSENT:
+                print(f"   {t('Installing it makes it appear on its own.')}")
+            return
+        if etat.harnais.cle == "claude":
+            self.prompt_claude_sessions()
+            return
+        print(f"{MARQUE['no']} {t(reg.SANS_ADAPTATEUR)}")
+
+    def _harnais_autres(self, autres):
+        """Les harnais restants, en prose et sans numéro.
+
+        Aucun n'est ouvrable — ils sont là pour dire qu'ils existent et ce qui
+        leur manque. Une liste numérotée juste après un menu numéroté invite à
+        retaper une entrée de menu, et ce dépôt l'a déjà payé une fois.
+        """
+        print(f"{t('The harnesses this repository knows by name')} :")
+        for etat in autres:
+            print(
+                f"  {MARQUE['no']} {etat.harnais.icone} {etat.harnais.nom}"
+                f" — {t(etat.raison)}"
+            )
+        print(f"  {t('Installing one makes it appear on its own.')}")
+
+    def _claude_compte(self):
+        """« 6 · 5 vivantes », ou ce qui le remplace quand il n'y a rien."""
+        flotte = self._claude_flotte()
+        if not flotte:
+            return t("No session on this machine.")
+        vivantes = sum(1 for session in flotte if session.live)
+        return f"{len(flotte)} · {vivantes} {t('live')}"
+
     def prompt_assistant_llm(self):
         """Le sous-menu : parler à un serveur, ou décider auquel."""
         print(f"🤖 {t('A server, a gpt tool, a conversation.')}")
