@@ -54,6 +54,7 @@ ORDRE_ISSUES = (
     "mirror",
     "stored",
     "stale",
+    "keep",
     "offline-miss",
     "fetched",
     "passthrough",

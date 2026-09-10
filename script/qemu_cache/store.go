@@ -136,6 +136,21 @@ type Writer struct {
 	finished bool
 }
 
+// Detient dit si le corps ENTIER d'une clé est là, sans l'ouvrir.
+//
+// Sert à décider si une requête conditionnelle peut partir telle quelle :
+// sans corps en réserve, un « 304 » de l'amont ne laisserait rien à garder,
+// et le cache resterait vide pour cette ressource aussi longtemps que ses
+// clients en détiennent une copie — c'est-à-dire toujours.
+func (s *Store) Detient(key string) bool {
+	metaPath, bodyPath := s.paths(key)
+	if _, err := os.Stat(metaPath); err != nil {
+		return false
+	}
+	fi, err := os.Stat(bodyPath)
+	return err == nil && fi.Size() > 0
+}
+
 // NewWriter ouvre un temporaire dans le répertoire de destination : un
 // renommage n'est atomique qu'au sein d'un même système de fichiers.
 func (s *Store) NewWriter(key string, m Meta) (*Writer, error) {

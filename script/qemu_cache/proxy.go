@@ -25,6 +25,7 @@ const (
 	OutcomeFetched     = "fetched"      // pris à l'amont, non gardé
 	OutcomeStale       = "stale"        // amont muet, copie stockée servie
 	OutcomeOfflineMiss = "offline-miss" // amont muet, rien en réserve
+	OutcomeKeep        = "keep"         // amont muet, le client garde la sienne
 	OutcomePassthrough = "passthrough"  // méthode ou requête non cachable
 	OutcomeError       = "error"        // amont joignable, mais en erreur
 	OutcomeMirror      = "mirror"       // servi d'un dépôt git tenu sur l'hôte
@@ -249,7 +250,27 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		}
 	}
 
-	resp, upErr := p.fetch(r, u)
+	// Le client détient-il déjà une copie ? Relevé AVANT tout, et jamais
+	// relu sur la requête d'amont : celle-ci peut avoir perdu sa condition
+	// juste en dessous, et l'oubli ferait rendre « 504 » à un client qui
+	// avait de quoi se passer de nous.
+	conditionnelle := estConditionnelle(r)
+
+	// Une requête conditionnelle sur une ressource dont NOUS n'avons pas le
+	// corps rapporte « 304 », donc rien à garder. Le cache resterait vide
+	// aussi longtemps que ses clients en détiennent une copie — c'est-à-dire
+	// toujours, une image cloud livrant déjà l'index de sa suite de base.
+	// La condition est donc retirée pour ce seul aller : l'amont envoie le
+	// corps entier, une fois, et toute VM suivante est servie, hors ligne
+	// comprise. Le corps une fois en réserve, la condition repart et le
+	// « 304 » économise de nouveau la bande passante.
+	amont := r
+	if cacheable && r.Method == "GET" && conditionnelle &&
+		!p.Store.Detient(key) {
+		amont = sansCondition(r)
+	}
+
+	resp, upErr := p.fetch(amont, u)
 	// Une redirection est SUIVIE quand le nom du fichier demandé porte déjà
 	// son identité, et le contenu est gardé sous l'URL DEMANDÉE.
 	//
@@ -266,6 +287,24 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		// dépassé. C'est ici, et seulement ici, qu'une copie périmée sort —
 		// y compris un index, ce qui rend le déploiement hors ligne possible.
 		if cacheable && p.serveFromStore(w, r, u, key, class, OutcomeStale) {
+			return
+		}
+		// Le client a posé une condition : il DÉTIENT déjà une copie, et ne
+		// demandait qu'à savoir si elle avait changé. Ne pouvant plus le
+		// vérifier, lui rendre « 304 » le laisse garder la sienne — c'est ce
+		// que « stale-if-error » veut dire pour une requête conditionnelle.
+		//
+		// Un « 504 » à sa place fait échouer toute la suite de dépôt : apt
+		// ne trouve alors plus un paquet de la suite de base, alors que la
+		// machine avait chez elle de quoi le nommer.
+		if conditionnelle {
+			w.Header().Set("X-ERPLibre-Cache", OutcomeKeep)
+			w.WriteHeader(http.StatusNotModified)
+			p.record(accessLine{
+				Method: r.Method, URL: u.String(), Class: class.String(),
+				Outcome: OutcomeKeep, Status: http.StatusNotModified,
+				Client: clientDe(r.RemoteAddr),
+			})
 			return
 		}
 		p.offlineMiss(
@@ -427,6 +466,35 @@ func (p *Proxy) suivreRedirections(
 		resp = suivante
 	}
 	return resp
+}
+
+// enTetesConditionnels : ce par quoi un client dit « seulement si ça a
+// changé ». Le « Range » n'en est pas — il demande un fragment, pas une
+// validation, et il est traité ailleurs.
+var enTetesConditionnels = []string{
+	"If-None-Match", "If-Modified-Since", "If-Match", "If-Unmodified-Since",
+}
+
+// estConditionnelle dit si le client détient déjà une copie de la ressource.
+func estConditionnelle(r *http.Request) bool {
+	for _, h := range enTetesConditionnels {
+		if r.Header.Get(h) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// sansCondition rend une COPIE de la requête, ses conditions retirées.
+//
+// Une copie : la requête d'origine est celle du serveur HTTP, et la modifier
+// changerait ce que voit tout ce qui la lit ensuite — le relevé, notamment.
+func sansCondition(r *http.Request) *http.Request {
+	out := r.Clone(r.Context())
+	for _, h := range enTetesConditionnels {
+		out.Header.Del(h)
+	}
+	return out
 }
 
 func (p *Proxy) fetch(r *http.Request, u *url.URL) (*http.Response, error) {

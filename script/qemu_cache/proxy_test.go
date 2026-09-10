@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -355,5 +357,115 @@ func TestUneBoucleDeRedirectionsSarrete(t *testing.T) {
 	if n := atomic.LoadInt64(&vues); n > maxRedirections+1 {
 		t.Errorf("%d requêtes pour une boucle, borne %d",
 			n, maxRedirections+1)
+	}
+}
+
+// proxyEtCasier rend un proxy et le répertoire de son casier : les contrôles
+// qui suivent ont besoin de constater ce qui a été GARDÉ, pas seulement ce
+// qui a été rendu.
+func proxyEtCasier(t *testing.T) (*Proxy, string) {
+	t.Helper()
+	alog, err := OpenAccessLog("")
+	if err != nil {
+		t.Fatalf("journal : %v", err)
+	}
+	dir := t.TempDir()
+	return NewProxy(&Store{Dir: dir}, alog), dir
+}
+
+func corpsGardes(t *testing.T, dir string) int {
+	t.Helper()
+	n := 0
+	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err == nil && !fi.IsDir() && strings.HasSuffix(p, ".body") {
+			n++
+		}
+		return nil
+	})
+	return n
+}
+
+// Une image cloud livre déjà l'index de sa suite de base. Son apt le REVALIDE
+// au lieu de le télécharger, l'amont rend « 304 », et le cache n'a donc
+// jamais de corps à garder pour cette ressource — aussi longtemps que ses
+// clients en détiennent une copie, c'est-à-dire toujours.
+//
+// Hors ligne, la suite de base est alors la seule à manquer : ses voisines
+// « -updates », « -security » et « -backports » sortent périmées du cache, et
+// apt ne trouve plus un paquet de la base pendant que le reste marche.
+func TestUneConditionnelleNeLaissePasLeCasierVide(t *testing.T) {
+	var recues []string
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			recues = append(recues, r.Header.Get("If-Modified-Since"))
+			if r.Header.Get("If-Modified-Since") != "" {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+			_, _ = w.Write([]byte("Origin: Ubuntu\nSuite: base\n"))
+		}))
+	defer srv.Close()
+	hote, _ := url.Parse(srv.URL)
+
+	p, dir := proxyEtCasier(t)
+	joue := func() *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "/ubuntu/dists/base/InRelease", nil)
+		r.Host = hote.Host
+		r.Header.Set("If-Modified-Since", "Wed, 01 Jan 2020 00:00:00 GMT")
+		w := httptest.NewRecorder()
+		p.serve(w, r, "http")
+		return w
+	}
+
+	if w := joue(); w.Code != http.StatusOK {
+		t.Fatalf("statut rendu %d, attendu 200", w.Code)
+	}
+	if len(recues) != 1 || recues[0] != "" {
+		t.Fatalf("la condition est partie à l'amont : %q", recues)
+	}
+	if corpsGardes(t, dir) == 0 {
+		t.Fatal("rien n'est gardé : le cache restera vide pour cette suite")
+	}
+
+	// Le corps est là : la condition peut repartir, et un « 304 » ne coûte
+	// alors plus rien — c'est ce qui économise la bande passante.
+	recues = nil
+	joue()
+	if len(recues) != 1 || recues[0] == "" {
+		t.Fatalf("la condition a encore été retirée : %q", recues)
+	}
+}
+
+// Amont muet et client qui détient déjà sa copie : lui rendre « 504 » le
+// prive d'une suite entière qu'il pouvait lire. « 304 » le laisse garder la
+// sienne, ce que « stale-if-error » veut dire pour une conditionnelle.
+func TestAmontMuetEtClientQuiDetientDejaSaCopie(t *testing.T) {
+	p, _ := proxyEtCasier(t)
+	r := httptest.NewRequest("GET", "/ubuntu/dists/base/InRelease", nil)
+	// Rien n'écoute : l'amont est injoignable.
+	r.Host = "127.0.0.1:1"
+	r.Header.Set("If-None-Match", `"abc"`)
+	w := httptest.NewRecorder()
+	p.serve(w, r, "http")
+
+	if w.Code != http.StatusNotModified {
+		t.Fatalf("statut rendu %d, attendu 304", w.Code)
+	}
+	if got := w.Header().Get("X-ERPLibre-Cache"); got != OutcomeKeep {
+		t.Fatalf("issue %q, attendue %q", got, OutcomeKeep)
+	}
+}
+
+// Sans condition, le client n'a rien à garder : le 504 reste la réponse
+// juste, et il dit pourquoi.
+func TestAmontMuetSansCopieChezLeClient(t *testing.T) {
+	p, _ := proxyEtCasier(t)
+	r := httptest.NewRequest("GET", "/ubuntu/dists/base/InRelease", nil)
+	r.Host = "127.0.0.1:1"
+	w := httptest.NewRecorder()
+	p.serve(w, r, "http")
+
+	if w.Code != http.StatusGatewayTimeout {
+		t.Fatalf("statut rendu %d, attendu 504", w.Code)
 	}
 }
