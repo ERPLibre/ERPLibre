@@ -31,6 +31,7 @@ import subprocess
 
 import click
 
+from script.qemu import cache_offline
 from script.todo.todo_i18n import t
 
 # Ce que l'installateur pose. Ces chemins sont comparés à ceux du script par
@@ -89,6 +90,22 @@ class QemuCacheMenuMixin:
         vu = cls._cache_lire(f"sudo -n nft list table ip {CACHE_TABLE}")
         m = re.search(r"saddr (\d+\.\d+\.\d+)\.", vu)
         return m.group(1) if m else ""
+
+    @classmethod
+    def _cache_amont_coupe(cls):
+        """La coupure d'amont est-elle posée ?
+
+        Elle ne devrait jamais survivre au déploiement qui la demande — le
+        rebranchement est dans un « finally ». Elle survit quand même à ce
+        qu'un « finally » ne rattrape pas : un processus tué net, une panne
+        de courant. Le cache rend alors « 504 » à chaque VM, l'installation
+        échoue sur « failed retrieving file … 504 » depuis TOUS les miroirs,
+        et rien dans ce message ne parle d'une règle de pare-feu.
+        """
+        vu = cls._cache_lire(
+            f"sudo -n nft list table inet {cache_offline.TABLE}"
+        )
+        return "meta skuid" in vu
 
     @classmethod
     def _cache_prefixe_libvirt(cls):
@@ -210,6 +227,16 @@ class QemuCacheMenuMixin:
                 f"{t('libvirt serves')} {libvirt or '?'}.x"
             )
             print(f"    {t('Reinstall: the cache reads libvirt by itself.')}")
+
+        # Après le détournement : c'est la même classe de fait, une règle
+        # posée sur l'hôte. Muet quand tout va bien — une ligne « amont
+        # branché » à chaque diagnostic n'apprendrait rien.
+        if self._cache_amont_coupe():
+            print(
+                f"  ✗ {t('Upstream CUT: the cache can pull nothing from the internet')}"
+            )
+            print(f"    {t('Every VM then gets a 504 from every mirror.')}")
+            print(f"    {t('Lift it with:')} {cache_offline.restore_cmd()}")
 
         print(f"  · {t('Authority:')} {CACHE_CA}")
         # Le répertoire du miroir est passé au relevé : sans lui, le binaire

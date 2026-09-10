@@ -20,6 +20,7 @@ distant, que le cache local ne sert pas.
 """
 
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -345,6 +346,32 @@ class TestLaSectionReseau(unittest.TestCase):
     def setUpClass(cls):
         cls.ctx = contexte_du_formulaire()
 
+    def setUp(self):
+        """Aucun test de cette classe ne pose de règle de pare-feu.
+
+        Ils cochent tous la case, et le jour où le formulaire régresse en
+        coupant au clic, la coupure resterait sur la machine de test — aucun
+        « finally » ne court sur un test qui vient d'échouer. Le cache
+        rendrait 504 à toute VM déployée ensuite, et le message ne parlerait
+        pas d'une règle oubliée.
+
+        La garde est ici, sur la CLASSE, et non dans le seul test qui
+        surveille : c'est celui qui ne surveillait pas qui a posé la règle.
+        """
+        vrai_run = subprocess.run
+        self.lancees = []
+
+        def espion(cmd, *a, **kw):
+            texte = cmd if isinstance(cmd, str) else " ".join(map(str, cmd))
+            self.lancees.append(texte)
+            if "nft" in texte:
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            return vrai_run(cmd, *a, **kw)
+
+        patch = mock.patch("subprocess.run", espion)
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def test_elle_saffiche_quand_le_cache_tourne(self):
         champs = champs_affiches(dict(self.ctx, cache_offert=True))
         self.assertIn("f_offline", champs)
@@ -440,20 +467,10 @@ class TestLaSectionReseau(unittest.TestCase):
         « finally » ne courant sur une case cochée.
         """
         import asyncio
-        import subprocess
 
         from textual.widgets import Checkbox
 
         from script.todo.qemu_deploy_form import run_deploy_form
-
-        lancees = []
-        vrai_run = subprocess.run
-
-        def espion(cmd, *a, **kw):
-            lancees.append(
-                cmd if isinstance(cmd, str) else " ".join(map(str, cmd))
-            )
-            return vrai_run(cmd, *a, **kw)
 
         ctx = dict(self.ctx, cache_offert=True)
 
@@ -465,9 +482,8 @@ class TestLaSectionReseau(unittest.TestCase):
                 await pilote.pause()
                 app._form_values()
 
-        with mock.patch("subprocess.run", espion):
-            asyncio.run(scenario())
-        coupures = [c for c in lancees if "nft" in c]
+        asyncio.run(scenario())
+        coupures = [c for c in self.lancees if "nft" in c]
         self.assertEqual(
             coupures,
             [],

@@ -168,5 +168,83 @@ class TestLeCablageDuDeploiement(unittest.TestCase):
         self.assertIs(spec["offline"], True)
 
 
+class TestLeDiagnosticVoitLaCoupure(unittest.TestCase):
+    """Une coupure restée en place est muette là où on la cherche.
+
+    Le rebranchement est dans un « finally », mais un « finally » ne court
+    pas sur un processus tué net. Le cache rend alors « 504 » à chaque VM et
+    l'installation échoue sur « failed retrieving file … 504 » depuis TOUS
+    les miroirs — un message qui accuse les miroirs, jamais une règle de
+    pare-feu posée sur l'hôte.
+
+    Le journal du cache écrivait bien « offline-miss », et le diagnostic le
+    montrait ; encore fallait-il savoir le lire. Il le dit maintenant.
+    """
+
+    TABLE_POSEE = (
+        f"table inet {cache_offline.TABLE} {{\n"
+        "  chain sortie {\n"
+        "    type filter hook output priority filter; policy accept;\n"
+        "    meta skuid 959 tcp dport { 80, 443 } drop\n"
+        "  }\n"
+        "}\n"
+    )
+    TABLE_ABSENTE = "Error: No such file or directory"
+
+    def _menu(self, listing):
+        sys.argv = ["todo.py"]
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin
+
+        class Faux(QemuCacheMenuMixin):
+            @staticmethod
+            def _cache_lire(cmd, delai=15):
+                return listing if cache_offline.TABLE in cmd else ""
+
+        return Faux
+
+    def test_elle_est_vue_quand_elle_est_posee(self):
+        self.assertTrue(self._menu(self.TABLE_POSEE)._cache_amont_coupe())
+
+    def test_rien_nest_annonce_quand_elle_ne_lest_pas(self):
+        self.assertFalse(self._menu(self.TABLE_ABSENTE)._cache_amont_coupe())
+
+    def test_une_lecture_impossible_ne_crie_pas_au_loup(self):
+        """Sans sudo, « nft list » ne rend rien : annoncer une coupure
+        enverrait chercher une règle qui n'existe pas."""
+        self.assertFalse(self._menu("")._cache_amont_coupe())
+
+    def test_le_diagnostic_la_nomme_et_donne_le_geste(self):
+        import contextlib
+        import io as _io
+
+        menu = self._menu(self.TABLE_POSEE)
+        faux = menu.__new__(menu)
+        faux._cache_actif = lambda: True
+        with mock.patch("os.path.isfile", return_value=True), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_par_machine",
+            return_value=[],
+        ), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin"
+            "._cache_compte_issues",
+            return_value={},
+        ), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin"
+            "._cache_bypass_lire",
+            return_value=[],
+        ), contextlib.redirect_stdout(
+            _io.StringIO()
+        ) as sortie:
+            faux._cache_diagnostic()
+        ecrit = sortie.getvalue()
+        self.assertIn(
+            "504", ecrit, "le symptôme n'est pas rattaché à sa cause"
+        )
+        self.assertIn(
+            cache_offline.restore_cmd(),
+            ecrit,
+            "le diagnostic constate sans donner le geste qui lève la coupure",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

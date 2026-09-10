@@ -6395,6 +6395,18 @@ TRANSLATIONS = {
         "fr": "avec ce qui est déjà stocké.",
         "en": "builds from what is already stored.",
     },
+    "Upstream CUT: the cache can pull nothing from the internet": {
+        "fr": "Amont COUPÉ : le cache ne peut rien tirer de l'internet",
+        "en": "Upstream CUT: the cache can pull nothing from the internet",
+    },
+    "Every VM then gets a 504 from every mirror.": {
+        "fr": "Toute VM reçoit alors un 504 depuis tous les miroirs.",
+        "en": "Every VM then gets a 504 from every mirror.",
+    },
+    "Lift it with:": {
+        "fr": "La lever par :",
+        "en": "Lift it with:",
+    },
     "The cut hits every user of the cache:": {
         "fr": "La coupure vaut pour tous les usagers du cache :",
         "en": "The cut hits every user of the cache:",
