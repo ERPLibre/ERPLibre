@@ -19,6 +19,7 @@ from typing import NamedTuple
 from script.posture import destinations as posture_destinations
 from script.posture import plan as posture_plan
 from script.posture import registry as posture_registry
+from script.todo import egress_book
 from script.todo import vm_profiles
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
@@ -1185,9 +1186,13 @@ class QemuDeployMixin:
 
     # La clé sous laquelle le site nomme l'adresse de chaque rôle. Le
     # dépôt sait de QUOI une machine a besoin ; ceci dit OÙ, et c'est une
-    # donnée de site — elle vit dans la configuration privée, le seul des
-    # trois fichiers fusionnés qui ne soit pas suivi.
-    EGRESS_BOOK_KEY = "egress_destinations"
+    # donnée de site.
+    #
+    # RELAYÉE et non recopiée : `egress_book` la porte, avec la lecture, le
+    # refus du fichier suivi et l'écriture. Deux littéraux voisins cessent
+    # de correspondre au premier renommage, et celui-là déciderait d'où une
+    # liste blanche tire ses adresses.
+    EGRESS_BOOK_KEY = egress_book.BOOK_KEY
 
     @staticmethod
     def _egress_probe_command(ip, user="erplibre"):
@@ -1433,7 +1438,12 @@ class QemuDeployMixin:
             )
         if not posture_rules.wants_rules(posture):
             return ""
-        carnet = self.config_file.get_config(self.EGRESS_BOOK_KEY) or {}
+        # PAR LE MODULE DU CARNET, et non par une lecture directe : c'est
+        # lui qui refuse le fichier SUIVI par git. Le carnet ne porte que
+        # des adresses, et une adresse y devient publique — lire d'abord
+        # donnerait un déploiement réussi derrière lequel la fuite ne se
+        # verrait jamais.
+        carnet = egress_book.read(self.config_file)
         cibles = posture_destinations.destinations_for(posture, carnet)
         return posture_rules.render_egress(posture, cibles)
 

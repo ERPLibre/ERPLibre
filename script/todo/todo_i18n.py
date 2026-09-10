@@ -12410,6 +12410,99 @@ TRANSLATIONS = {
         "fr": "Un essai à blanc ne touche à aucun secret",
         "en": "A dry run touches no secret",
     },
+    # Carnet d'adresses (script/todo/egress_book_menu.py)
+    "Deploy - Site address book (what a confined VM reaches)": {
+        "fr": "Deploy - Carnet d'adresses du site (ce qu'une VM bornée atteint)",
+        "en": "Deploy - Site address book (what a confined VM reaches)",
+    },
+    "Site address book: what a confined VM may reach": {
+        "fr": "Carnet d'adresses du site : ce qu'une VM bornée a le droit de joindre",
+        "en": "Site address book: what a confined VM may reach",
+    },
+    "Book - Show the book": {
+        "fr": "Carnet - Voir le carnet",
+        "en": "Book - Show the book",
+    },
+    "Book - Set a role's addresses": {
+        "fr": "Carnet - Poser les adresses d'un rôle",
+        "en": "Book - Set a role's addresses",
+    },
+    "Book - Forget a role": {
+        "fr": "Carnet - Oublier un rôle",
+        "en": "Book - Forget a role",
+    },
+    "Book - What each profile still needs": {
+        "fr": "Carnet - Ce qui manque encore à chaque profil",
+        "en": "Book - What each profile still needs",
+    },
+    "The book is empty.": {
+        "fr": "Le carnet est vide.",
+        "en": "The book is empty.",
+    },
+    "A confined profile refuses to deploy without it.": {
+        "fr": "Un profil qui confine refuse de se déployer sans lui.",
+        "en": "A confined profile refuses to deploy without it.",
+    },
+    "no address": {
+        "fr": "aucune adresse",
+        "en": "no address",
+    },
+    "ports": {
+        "fr": "ports",
+        "en": "ports",
+    },
+    "comes from the team book: forgetting here will not remove it": {
+        "fr": "vient du carnet de l'équipe : l'oublier ici ne le retirera pas",
+        "en": "comes from the team book: forgetting here will not remove it",
+    },
+    "These addresses live in the team book and will stay open:": {
+        "fr": "Ces adresses vivent dans le carnet de l'équipe et resteront ouvertes :",
+        "en": "These addresses live in the team book and will stay open:",
+    },
+    "Networks, comma separated. An address alone means /32.": {
+        "fr": "Réseaux, séparés par des virgules. Une adresse seule vaut /32.",
+        "en": "Networks, comma separated. An address alone means /32.",
+    },
+    "A HOSTNAME is refused: resolving it would freeze the address.": {
+        "fr": "Un NOM d'hôte est refusé : le résoudre figerait l'adresse.",
+        "en": "A HOSTNAME is refused: resolving it would freeze the address.",
+    },
+    "Networks: ": {
+        "fr": "Réseaux : ",
+        "en": "Networks: ",
+    },
+    "Ports, comma separated (empty: the repository knows): ": {
+        "fr": "Ports, séparés par des virgules (vide : le dépôt les connaît) : ",
+        "en": "Ports, comma separated (empty: the repository knows): ",
+    },
+    "Role number (empty to cancel): ": {
+        "fr": "Numéro du rôle (vide pour renoncer) : ",
+        "en": "Role number (empty to cancel): ",
+    },
+    "Nothing typed: the book is unchanged.": {
+        "fr": "Rien de tapé : le carnet est inchangé.",
+        "en": "Nothing typed: the book is unchanged.",
+    },
+    "Written for": {
+        "fr": "Écrit pour",
+        "en": "Written for",
+    },
+    "Forget": {
+        "fr": "Oublier",
+        "en": "Forget",
+    },
+    "Forgotten from this machine:": {
+        "fr": "Oublié de cette machine :",
+        "en": "Forgotten from this machine:",
+    },
+    "Not in this machine book, nothing changed:": {
+        "fr": "Absent du carnet de cette machine, rien de changé :",
+        "en": "Not in this machine book, nothing changed:",
+    },
+    "refuses to deploy, missing": {
+        "fr": "refuse de se déployer, il manque",
+        "en": "refuses to deploy, missing",
+    },
     # Profils de VM (script/todo/vm_profiles.py)
     "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.": {
         "fr": "Aucun fichier de règles n'est produit : cette posture déclare une politique que rien n'installe. Elle se comporte exactement comme une sortie libre.",

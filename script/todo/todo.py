@@ -50,6 +50,7 @@ from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 from script.todo.vm_backend_menu import VmBackendMenuMixin
+from script.todo.egress_book_menu import EgressBookMenuMixin
 from script.todo.forge_menu import ForgeMenuMixin
 from script.todo.lima_menu import LimaMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
@@ -118,6 +119,7 @@ class TODO(
     VpnMenuMixin,
     ForgeMenuMixin,
     LimaMenuMixin,
+    EgressBookMenuMixin,
     DevstackMenuMixin,
     DeployTargetMenuMixin,
     VmBackendMenuMixin,
@@ -1066,6 +1068,14 @@ class TODO(
         )
         # DIXIÈME, déclarée par « method » comme la neuvième, et pour la
         # même raison : les rangs codés en dur s'arrêtent à huit.
+        choices.append(
+            {
+                "prompt_description": t(
+                    "Deploy - Site address book (what a confined VM reaches)"
+                ),
+                "method": "prompt_execute_egress_book",
+            }
+        )
         choices.append(
             {
                 "prompt_description": t("Lima - instances (macOS, Linux)"),

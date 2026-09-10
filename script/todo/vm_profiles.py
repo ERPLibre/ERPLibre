@@ -198,3 +198,26 @@ def screen_line(posture_name: str) -> str:
     for jeton in gaps(posture_name):
         morceaux.append(f"⚠ {gap_sentence(jeton)}")
     return "  ".join(morceaux)
+
+
+def missing_addresses(posture_name: str, book) -> tuple:
+    """Les rôles que ce profil nomme et que le carnet n'adresse pas.
+
+    Vide veut dire que le déploiement passera. Non vide, il REFUSERA — et
+    le dire devant l'écran vaut mieux que de le découvrir après avoir
+    rempli un formulaire entier.
+
+    Le carnet est un PARAMÈTRE : ce module ne lit aucun fichier, et la
+    liste des rôles vient du paquet posture, qui la déduit de la posture.
+    """
+    from script.posture import destinations as posture_destinations
+
+    posture = registry.get_posture(posture_name)
+    if posture is None:
+        return ()
+    carnet = book or {}
+    return tuple(
+        symbole
+        for symbole in posture_destinations.symbols_for(posture)
+        if symbole not in carnet
+    )

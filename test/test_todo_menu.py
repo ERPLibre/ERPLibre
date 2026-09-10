@@ -572,7 +572,9 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
         # chaînes littérales.
         "Deploy - VM backends": "_deploy_vm_backends",
         # ONZIÈME, greffée par « method » juste après le choix des
-        # backends : c'est là qu'on vient de lire que Lima existe.
+        # backends : c'est là qu'on lit ce qu'une machine atteint.
+        "Deploy - Site address book": "prompt_execute_egress_book",
+        # DOUZIÈME, même greffe et même raison.
         "Lima - instances": "prompt_execute_lima",
         # DIXIÈME, même greffe et même raison : les rangs codés en dur
         # s'arrêtent à huit, et une entrée posée plus haut les décalerait.
