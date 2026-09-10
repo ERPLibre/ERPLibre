@@ -12640,6 +12640,91 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
+    # Télémétrie des agents (script/todo/assistant/agents/). Chaque chiffre
+    # dit sa source : les jetons sont sommés, le coût est lu.
+    "Measure": {
+        "fr": "📊 Mesure",
+        "en": "📊 Measure",
+    },
+    "Agent telemetry (TUI)": {
+        "fr": "📊 Télémétrie des agents (TUI)",
+        "en": "📊 Agent telemetry (TUI)",
+    },
+    "Agent telemetry": {
+        "fr": "Télémétrie des agents",
+        "en": "Agent telemetry",
+    },
+    "Freeze": {
+        "fr": "Geler",
+        "en": "Freeze",
+    },
+    "frozen": {
+        "fr": "gelé",
+        "en": "frozen",
+    },
+    "Read again": {
+        "fr": "Tout relire",
+        "en": "Read again",
+    },
+    "sessions": {
+        "fr": "sessions",
+        "en": "sessions",
+    },
+    "session": {
+        "fr": "session",
+        "en": "session",
+    },
+    # « project » existe déjà plus haut, avec exactement cette traduction :
+    # une clé répétée écrase la précédente en silence, donc elle est réutilisée
+    # plutôt que redéclarée.
+    "turns": {
+        "fr": "tours",
+        "en": "turns",
+    },
+    "prompt": {
+        "fr": "invite",
+        "en": "prompt",
+    },
+    "output": {
+        "fr": "sortie",
+        "en": "output",
+    },
+    "thinking": {
+        "fr": "réflexion",
+        "en": "thinking",
+    },
+    "cache": {
+        "fr": "cache",
+        "en": "cache",
+    },
+    "context": {
+        "fr": "contexte",
+        "en": "context",
+    },
+    "growth": {
+        "fr": "croissance",
+        "en": "growth",
+    },
+    "cost": {
+        "fr": "coût",
+        "en": "cost",
+    },
+    "tools": {
+        "fr": "outils",
+        "en": "tools",
+    },
+    "Tokens are summed from each message. Cost and durations are read from"
+    " the last cost-state, which a compaction resets.": {
+        "fr": (
+            "Les jetons sont sommés message par message. Le coût et les"
+            " durées sont lus dans le dernier cost-state, qu'une compaction"
+            " remet à zéro."
+        ),
+        "en": (
+            "Tokens are summed from each message. Cost and durations are read"
+            " from the last cost-state, which a compaction resets."
+        ),
+    },
     # Agents d'arrière-plan (script/todo/assistant/harness/claude.py). Les
     # cinq sous-commandes ne coûtent pas la même chose : « stop » garde la
     # conversation, « respawn » coupe le travail, « rm » détruit l'arbre.

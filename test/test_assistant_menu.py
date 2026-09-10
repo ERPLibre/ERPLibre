@@ -466,13 +466,27 @@ class SessionsClaudeCode(unittest.TestCase):
     def test_un_ouvre_le_harnais_claude(self):
         self._dispatche("1", "prompt_claude_sessions")
 
-    def test_huit_ouvre_les_greffons(self):
-        """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
-        self._dispatche("8", "prompt_execute_claude_plugins")
+    def test_sept_ouvre_la_telemetrie(self):
+        self._dispatche("7", "_agents_telemetrie")
 
-    def test_onze_ouvre_l_automatisation(self):
+    def test_neuf_ouvre_les_greffons(self):
+        """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
+        self._dispatche("9", "prompt_execute_claude_plugins")
+
+    def test_douze_ouvre_l_automatisation(self):
         """La dernière entrée : un décalage d'un cran la rend injoignable."""
-        self._dispatche("11", "_claude_add_automation")
+        self._dispatche("12", "_claude_add_automation")
+
+    def test_un_numero_au_dela_de_la_liste_ne_lance_rien(self):
+        """Les deux listes se construisent ensemble ; rien ne doit dépasser."""
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch.object(TODO, "_agents_telemetrie") as mock, patch(
+            "click.prompt", side_effect=["13", "0"]
+        ), patch("script.todo.todo_telemetry.record"):
+            todo.prompt_assistant_ia()
+        mock.assert_not_called()
 
     def test_le_sous_menu_s_ouvre_sans_aucune_session(self):
         """Une machine sans Claude Code n'est pas une panne du menu."""

@@ -234,7 +234,11 @@ class AssistantMenuMixin:
             etats = self._harnais_etats()
             devant, autres = etats[:3], etats[3:]
             serveur = self._llm_current()
+            # Les deux listes se construisent EN MÊME TEMPS, une action par
+            # entrée. Tenues séparément, elles se décalent d'un cran sans que
+            # rien ne lève : l'entrée s'affiche et une autre part.
             choices = [{"section": t("Agents")}]
+            actions = []
             for etat in devant:
                 compte = ""
                 if etat.harnais.cle == "claude" and etat.verdict == reg.OK:
@@ -242,6 +246,7 @@ class AssistantMenuMixin:
                 choices.append(
                     {"prompt_description": self._harnais_libelle(etat, compte)}
                 )
+                actions.append(lambda e=etat: self._harnais_ouvrir(e))
             choices.append(
                 {
                     "prompt_description": (
@@ -249,6 +254,7 @@ class AssistantMenuMixin:
                     )
                 }
             )
+            actions.append(lambda: self._harnais_autres(autres))
             choices.append({"section": t("Direct model")})
             choices.append(
                 {
@@ -257,16 +263,37 @@ class AssistantMenuMixin:
                     )
                 }
             )
+            actions.append(self.prompt_assistant_llm)
             choices.append({"prompt_description": self._llm_gpt_label()})
+            actions.append(self._llm_gpt_catalogue)
+            choices.append({"section": t("Measure")})
+            choices.append({"prompt_description": t("Agent telemetry (TUI)")})
+            actions.append(self._agents_telemetrie)
             choices.append({"section": t("Tooling")})
-            for cle in (
-                "Configure Claude Code configurations",
-                "Claude Code plugins - marketplaces and ERPLibre list",
-                "RTK - CLI proxy to reduce LLM token consumption",
-                "Show the context given to Claude",
-                "Add an automation with Claude in todo.py",
+            for cle, methode in (
+                (
+                    "Configure Claude Code configurations",
+                    self._prompt_claude_configs,
+                ),
+                (
+                    "Claude Code plugins - marketplaces and ERPLibre list",
+                    self.prompt_execute_claude_plugins,
+                ),
+                (
+                    "RTK - CLI proxy to reduce LLM token consumption",
+                    self.prompt_execute_rtk,
+                ),
+                (
+                    "Show the context given to Claude",
+                    self._show_claude_context,
+                ),
+                (
+                    "Add an automation with Claude in todo.py",
+                    self._claude_add_automation,
+                ),
             ):
                 choices.append({"prompt_description": t(cle)})
+                actions.append(methode)
             try:
                 status = click.prompt(self.fill_help_info(choices))
             except (KeyboardInterrupt, click.exceptions.Abort):
@@ -280,24 +307,8 @@ class AssistantMenuMixin:
             except ValueError:
                 print(t("Command not found !"))
                 continue
-            if 1 <= rang <= len(devant):
-                self._harnais_ouvrir(devant[rang - 1])
-            elif rang == len(devant) + 1:
-                self._harnais_autres(autres)
-            elif rang == len(devant) + 2:
-                self.prompt_assistant_llm()
-            elif rang == len(devant) + 3:
-                self._llm_gpt_catalogue()
-            elif rang == len(devant) + 4:
-                self._prompt_claude_configs()
-            elif rang == len(devant) + 5:
-                self.prompt_execute_claude_plugins()
-            elif rang == len(devant) + 6:
-                self.prompt_execute_rtk()
-            elif rang == len(devant) + 7:
-                self._show_claude_context()
-            elif rang == len(devant) + 8:
-                self._claude_add_automation()
+            if 1 <= rang <= len(actions):
+                actions[rang - 1]()
             else:
                 print(t("Command not found !"))
 
@@ -1070,6 +1081,21 @@ class AssistantMenuMixin:
                 self._claude_gerer()
             else:
                 print(t("Command not found !"))
+
+    # ------------------------------------------------------------------
+    def _agents_telemetrie(self):
+        """L'écran vivant de la télémétrie des agents.
+
+        Textual n'est pas une dépendance dure du CLI : `ensure` répond à sa
+        place à la question « est-il là, et sinon veut-on l'installer ».
+        """
+        from script.todo import textual_setup
+
+        if not textual_setup.ensure():
+            return
+        from script.todo.assistant.agents import tui
+
+        tui.run_tui()
 
     # ------------------------------------------------------------------
     # Les agents d'arrière-plan
