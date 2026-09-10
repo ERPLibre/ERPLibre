@@ -609,13 +609,9 @@ class TestTodoWiring(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(
-            TODO, "prompt_assistant_ia"
-        ) as mock_question, patch(
+        with patch.object(TODO, "prompt_assistant_ia") as mock_question, patch(
             "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch(
-            "click.prompt", side_effect=["1", "0"]
-        ), patch(
+        ) as mock_mail, patch("click.prompt", side_effect=["1", "0"]), patch(
             "script.todo.todo_telemetry.record"
         ):
             todo.prompt_assistant()
@@ -631,13 +627,9 @@ class TestTodoWiring(unittest.TestCase):
         from script.todo.todo import TODO
 
         todo = TODO()
-        with patch.object(
-            TODO, "prompt_assistant_ia"
-        ) as mock_question, patch(
+        with patch.object(TODO, "prompt_assistant_ia") as mock_question, patch(
             "script.todo.mail.menu.prompt_execute_mail"
-        ) as mock_mail, patch(
-            "script.todo.todo_telemetry.record"
-        ), patch(
+        ) as mock_mail, patch("script.todo.todo_telemetry.record"), patch(
             "click.prompt", side_effect=["2", "0"]
         ):
             todo.prompt_assistant()
