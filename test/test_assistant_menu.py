@@ -547,5 +547,86 @@ class Frontiere(unittest.TestCase):
         self.assertEqual(res.stdout.strip(), "False", res.stdout)
 
 
+class LesAgentsDetaches(unittest.TestCase):
+    """Ce que « un agent d'arrière-plan » veut dire, et ce que ça exclut.
+
+    La flotte réunit deux sources qui ne disent pas la même chose : le
+    registre annonce ce qui TOURNE, un balayage des transcriptions annonce ce
+    qui se REPREND. Une session dormante n'a donc ni genre ni processus, et
+    la compter comme un agent détaché affichait « 1 agent » sur une machine
+    qui n'en portait aucun — ce que seul le pilotage de l'écran a montré.
+    """
+
+    def _detaches(self, *sessions):
+        from script.todo.assistant_menu import AssistantMenuMixin
+
+        return AssistantMenuMixin._claude_detaches(list(sessions))
+
+    def _session(self, cle, kind, live):
+        from script.todo.assistant.claude_sessions import Session
+
+        return Session(session_id=cle, kind=kind, live=live)
+
+    def test_a_live_background_agent_counts(self):
+        detaches = self._detaches(self._session("a", "background", True))
+        self.assertEqual([s.session_id for s in detaches], ["a"])
+
+    def test_a_terminal_never_counts(self):
+        """Proposer « arrêter » sur la fenêtre où l'on travaille serait un
+        piège, et c'est le genre qui l'écarte."""
+        self.assertEqual(
+            self._detaches(self._session("a", "interactive", True)), []
+        )
+
+    def test_a_dormant_session_is_not_an_agent(self):
+        """Ni genre ni processus : c'est un fichier, pas un agent."""
+        self.assertEqual(self._detaches(self._session("a", "", False)), [])
+
+    def test_an_exited_background_agent_is_not_listed_either(self):
+        """Il existe — `rm` sait encore nettoyer son arbre — mais il faut
+        `claude agents --all` pour le voir, et la flotte ne le demande pas."""
+        self.assertEqual(
+            self._detaches(self._session("a", "background", False)), []
+        )
+
+    def test_the_order_of_the_fleet_is_kept(self):
+        detaches = self._detaches(
+            self._session("a", "interactive", True),
+            self._session("b", "background", True),
+            self._session("c", "detached", True),
+        )
+        self.assertEqual([s.session_id for s in detaches], ["b", "c"])
+
+
+class LeCablageDesAgents(unittest.TestCase):
+    """Les trois entrées d'arrière-plan mènent-elles où elles disent ?"""
+
+    def _dispatche(self, chiffre, cible):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch.object(TODO, cible) as mock_cible, patch.object(
+            TODO, "_claude_questionner"
+        ) as mock_temoin, patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "click.prompt", side_effect=[chiffre, "0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_claude_sessions()
+        mock_cible.assert_called_once_with()
+        mock_temoin.assert_not_called()
+
+    def test_quatre_attache(self):
+        self._dispatche("4", "_claude_attacher")
+
+    def test_cinq_lit_le_journal(self):
+        self._dispatche("5", "_claude_journal")
+
+    def test_six_gere(self):
+        self._dispatche("6", "_claude_gerer")
+
+
 if __name__ == "__main__":
     unittest.main()

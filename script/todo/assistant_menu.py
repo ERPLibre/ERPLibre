@@ -1022,6 +1022,7 @@ class AssistantMenuMixin:
                 if flotte
                 else t("No session on this machine.")
             )
+            detaches = self._claude_compte_detaches(flotte)
             choices = [
                 {
                     "prompt_description": (
@@ -1032,6 +1033,18 @@ class AssistantMenuMixin:
                 {
                     "prompt_description": t(
                         "Resume a session in a new terminal"
+                    )
+                },
+                {"section": t("Background")},
+                {
+                    "prompt_description": (
+                        f"{t('Attach a background agent')}  ({detaches})"
+                    )
+                },
+                {"prompt_description": t("Read a background agent's output")},
+                {
+                    "prompt_description": t(
+                        "Stop, restart or delete a background agent…"
                     )
                 },
             ]
@@ -1049,8 +1062,191 @@ class AssistantMenuMixin:
                 self._claude_questionner(flotte)
             elif status == "3":
                 self._claude_reprendre(flotte)
+            elif status == "4":
+                self._claude_attacher()
+            elif status == "5":
+                self._claude_journal()
+            elif status == "6":
+                self._claude_gerer()
             else:
                 print(t("Command not found !"))
+
+    # ------------------------------------------------------------------
+    # Les agents d'arrière-plan
+
+    @staticmethod
+    def _claude_detaches(flotte):
+        """Les agents détachés VIVANTS, dans l'ordre de la flotte.
+
+        Un agent détaché se pilote par `attach`, `logs`, `stop`, `respawn` et
+        `rm` ; un terminal se reprend par `--resume` et se questionne par une
+        copie branchée. Les mélanger ferait proposer `stop` sur la fenêtre où
+        l'on travaille.
+
+        La vivacité est exigée en plus du genre, et c'est ce qui sépare deux
+        choses que la flotte réunit : le registre annonce ce qui TOURNE, et un
+        balayage des transcriptions annonce ce qui se REPREND. Une session
+        dormante n'a ni genre ni processus — la compter comme un agent
+        d'arrière-plan afficherait un agent là où il n'y a qu'un fichier.
+
+        Un agent d'arrière-plan déjà SORTI n'est donc pas ici non plus. Il
+        existe — `rm` sait encore nettoyer son arbre de travail — mais il
+        faut `claude agents --all` pour le voir, et la flotte ne le demande
+        pas encore.
+        """
+        from script.todo.assistant.harness import claude as adaptateur
+
+        return [s for s in flotte if s.live and adaptateur.est_arriere_plan(s)]
+
+    def _claude_compte_detaches(self, flotte):
+        """« 2 » ou « aucun » — ce que l'entrée affiche avant qu'on y entre."""
+        detaches = self._claude_detaches(flotte)
+        return str(len(detaches)) if detaches else t("no background agent")
+
+    def _claude_choisir_detache(self):
+        """L'agent détaché désigné par un rang, ou `None`.
+
+        Aucun détaché n'est une réponse et non une panne : la liste des
+        sessions montre alors ce qui tourne, et l'écran le dit plutôt que
+        d'ouvrir un choix vide.
+        """
+        detaches = self._claude_detaches(self._claude_flotte())
+        if not detaches:
+            print(f"{MARQUE['unknown']} {t('no background agent')}")
+            return None
+        return self._claude_choisir(detaches)
+
+    def _claude_lancer_action(self, sous_commande, session):
+        """Lancer UNE des cinq sous-commandes, avec la confirmation qu'elle
+        mérite.
+
+        Trois niveaux, et l'écart entre les deux derniers est tout : `respawn`
+        coupe le travail en cours et se demande, `rm` supprime la session ET
+        son arbre de travail et se fait retaper. Une frappe sur « o » se donne
+        par réflexe ; recopier un identifiant oblige à regarder ce qu'on
+        détruit.
+        """
+        from script.todo.assistant.harness import claude as adaptateur
+
+        exigence = adaptateur.confirmation_exigee(sous_commande)
+        if exigence == "oui" and not self._claude_dit_oui(session):
+            return
+        if exigence == "id" and not self._claude_retape_id(session):
+            return
+        argv = adaptateur.argv_action(sous_commande, session.session_id)
+        self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
+
+    def _claude_dit_oui(self, session):
+        """Une confirmation simple, pour ce qui coupe sans détruire."""
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"{MARQUE['unknown']} {t('The work in progress is cut.')}")
+        try:
+            reponse = click.prompt(
+                f"{vue['id']} — {t('Restart it? (y/N)')}",
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        return self._is_yes(reponse)
+
+    def _claude_retape_id(self, session):
+        """L'identifiant retapé en entier avant une suppression.
+
+        `claude rm` supprime la session ET son arbre de travail, et rien ne la
+        récupère. Le préfixe affiché ne suffit donc pas : c'est l'identifiant
+        complet qui se recopie.
+        """
+        print(
+            f"{MARQUE['no']} {t('This deletes the session and its worktree.')}"
+        )
+        print(f"   {session.session_id}")
+        try:
+            frappe = click.prompt(
+                t("Type the session identifier in full to delete it:"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return False
+        if frappe != session.session_id:
+            print(t("Nothing has been sent."))
+            return False
+        return True
+
+    def _claude_attacher(self):
+        """Ouvrir un agent détaché dans une fenêtre à lui.
+
+        Comme la reprise d'une session : c'est un programme plein écran, et le
+        tube du lanceur ordinaire ne fournit pas le terminal qu'il exige. Sans
+        fenêtre possible, la commande est IMPRIMÉE plutôt que lancée là où
+        elle ne survivrait pas.
+        """
+        import shlex
+
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        argv = adaptateur.argv_action(adaptateur.ATTACHER, session.session_id)
+        commande = " ".join(shlex.quote(m) for m in argv)
+        if not getattr(self.execute, "cmd_source_default", ""):
+            print(t("No terminal can be opened here. Paste this command:"))
+            print(f"  {commande}")
+            return
+        self.execute.exec_command_live(
+            commande, source_erplibre=False, new_window=True
+        )
+
+    def _claude_journal(self):
+        """Imprimer la sortie récente d'un agent détaché. Elle ne fait que lire."""
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        self._claude_lancer_action(adaptateur.JOURNAL, session)
+
+    def _claude_gerer(self):
+        """Arrêter, relancer ou supprimer — trois dommages, trois questions."""
+        from script.todo.assistant.harness import claude as adaptateur
+
+        session = self._claude_choisir_detache()
+        if session is None:
+            return
+        choices = [
+            {"prompt_description": t("Stop it, keeping its conversation")},
+            {"prompt_description": t("Restart it on the current binary")},
+            {"prompt_description": t("Delete it, and its worktree")},
+        ]
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"{vue['id']} · {vue['cwd']}")
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        sous = {
+            "1": adaptateur.ARRETER,
+            "2": adaptateur.RELANCER,
+            "3": adaptateur.SUPPRIMER,
+        }.get(status)
+        if status == "0":
+            return
+        if sous is None:
+            print(t("Command not found !"))
+            return
+        self._claude_lancer_action(sous, session)
 
     def _claude_flotte(self):
         """La flotte, relue à chaque tour du menu.

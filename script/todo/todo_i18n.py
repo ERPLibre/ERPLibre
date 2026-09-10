@@ -12640,6 +12640,57 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
+    # Agents d'arrière-plan (script/todo/assistant/harness/claude.py). Les
+    # cinq sous-commandes ne coûtent pas la même chose : « stop » garde la
+    # conversation, « respawn » coupe le travail, « rm » détruit l'arbre.
+    "Background": {
+        "fr": "Arrière-plan",
+        "en": "Background",
+    },
+    "Attach a background agent": {
+        "fr": "🔗 Attacher un agent d'arrière-plan",
+        "en": "🔗 Attach a background agent",
+    },
+    "Read a background agent's output": {
+        "fr": "📜 Lire la sortie d'un agent d'arrière-plan",
+        "en": "📜 Read a background agent's output",
+    },
+    "Stop, restart or delete a background agent…": {
+        "fr": "🛑 Arrêter, relancer ou supprimer un agent…",
+        "en": "🛑 Stop, restart or delete a background agent…",
+    },
+    "no background agent": {
+        "fr": "aucun agent en arrière-plan",
+        "en": "no background agent",
+    },
+    "The work in progress is cut.": {
+        "fr": "Le travail en cours est coupé.",
+        "en": "The work in progress is cut.",
+    },
+    "Restart it? (y/N)": {
+        "fr": "La relancer ? (o/N)",
+        "en": "Restart it? (y/N)",
+    },
+    "This deletes the session and its worktree.": {
+        "fr": "Ceci supprime la session ET son arbre de travail.",
+        "en": "This deletes the session and its worktree.",
+    },
+    "Type the session identifier in full to delete it:": {
+        "fr": "Tape l'identifiant de session en entier pour la supprimer :",
+        "en": "Type the session identifier in full to delete it:",
+    },
+    "Stop it, keeping its conversation": {
+        "fr": "🛑 L'arrêter, en gardant sa conversation",
+        "en": "🛑 Stop it, keeping its conversation",
+    },
+    "Restart it on the current binary": {
+        "fr": "🔄 La relancer sur le binaire courant",
+        "en": "🔄 Restart it on the current binary",
+    },
+    "Delete it, and its worktree": {
+        "fr": "🗑 La supprimer, et son arbre de travail",
+        "en": "🗑 Delete it, and its worktree",
+    },
     # Sessions Claude Code locales (script/todo/assistant/claude_sessions.py).
     "Claude Code - local sessions": {
         "fr": "🤖 Claude Code - sessions locales",

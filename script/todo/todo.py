@@ -587,6 +587,7 @@ class TODO(
         "_prompt_claude_configs": "Claude configs",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
+        "_claude_gerer": "Manage",
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",
         "prompt_execute_rtk": "RTK",
