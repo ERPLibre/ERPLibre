@@ -372,9 +372,9 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
     def test_a_profile_without_routes_is_accepted_and_flagged(self):
         names = list(DRIVERS)
         answers = [
-            "novipro",
+            "cortalis",
             DRIVER_LETTERS[names.index("l2tp_ipsec")],
-            "vpn.novipro.example",  # la passerelle
+            "vpn.cortalis.example",  # la passerelle
             "user",  # l'utilisateur PPP
             "",  # réseaux : le site n'en a pas donné
             "",  # tout le trafic ? non
@@ -385,7 +385,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
         with self.answering(*answers):
             with redirect_stdout(buffer):
                 self.todo._vpn_edit_profile()
-        saved = profiles.load("novipro")
+        saved = profiles.load("cortalis")
         self.assertIsNotNone(saved, "profil refusé alors qu'il est utilisable")
         self.assertEqual(saved["routes"], [])
         self.assertFalse(saved["default_route"])
@@ -401,7 +401,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
 
         profile = profiles.validate(
             {
-                "name": "novipro",
+                "name": "cortalis",
                 "driver": "l2tp_ipsec",
                 "server": "127.0.0.1",
                 "ppp_user": "user",
@@ -427,7 +427,7 @@ class OnlyWhatTheSiteGaveYou(MenuBase):
 
         profile = profiles.validate(
             {
-                "name": "novipro",
+                "name": "cortalis",
                 "driver": "l2tp_ipsec",
                 "server": "127.0.0.1",
                 "ppp_user": "user",
@@ -489,9 +489,9 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
         """
         profiles.save(
             {
-                "name": "novipro",
+                "name": "cortalis",
                 "driver": "l2tp_ipsec",
-                "server": "vpn.novipro.example",
+                "server": "vpn.cortalis.example",
                 "ppp_user": "user",
             }
         )
@@ -505,7 +505,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             return "secret"
 
         with patch.object(
-            self.todo, "_vpn_select_profile", return_value="novipro"
+            self.todo, "_vpn_select_profile", return_value="cortalis"
         ):
             with self.answering(coffre, "o"):
                 with patch("getpass.getpass", masked):
@@ -522,9 +522,9 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
         """
         profiles.save(
             {
-                "name": "novipro",
+                "name": "cortalis",
                 "driver": "l2tp_ipsec",
-                "server": "vpn.novipro.example",
+                "server": "vpn.cortalis.example",
                 "ppp_user": "user",
             }
         )
@@ -540,7 +540,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
 
         buffer = io.StringIO()
         with patch.object(
-            self.todo, "_vpn_select_profile", return_value="novipro"
+            self.todo, "_vpn_select_profile", return_value="cortalis"
         ):
             with self.answering(coffre, "o"):
                 with patch("getpass.getpass", masked):
@@ -558,9 +558,9 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
     def test_a_field_already_set_says_so(self):
         profiles.save(
             {
-                "name": "novipro",
+                "name": "cortalis",
                 "driver": "l2tp_ipsec",
-                "server": "vpn.novipro.example",
+                "server": "vpn.cortalis.example",
                 "ppp_user": "user",
             }
         )
@@ -574,7 +574,7 @@ class SecretsOnlyWhenThereAreSome(MenuBase):
             return "valeur"
 
         with patch.object(
-            self.todo, "_vpn_select_profile", return_value="novipro"
+            self.todo, "_vpn_select_profile", return_value="cortalis"
         ):
             with self.answering(coffre, "o"):
                 with patch("getpass.getpass", masked):
