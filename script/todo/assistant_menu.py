@@ -277,6 +277,14 @@ class AssistantMenuMixin:
                 }
             )
             actions.append(self._agents_hooks)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Disk and cleanup')}  ({self._agents_volume()})"
+                    )
+                }
+            )
+            actions.append(self._agents_disque)
             choices.append({"section": t("Tooling")})
             for cle, methode in (
                 (
@@ -1091,6 +1099,122 @@ class AssistantMenuMixin:
                 print(t("Command not found !"))
 
     # ------------------------------------------------------------------
+    @staticmethod
+    def _agents_volume():
+        """Le volume total, pour l'entrée du menu. Vide si rien n'est là."""
+        from script.todo.assistant.agents import disque
+
+        total = sum(p.octets for p in disque.mesurer())
+        return disque.octets_lisibles(total) if total else t("nothing")
+
+    def _agents_disque(self):
+        """Ce que Claude Code occupe, et ce qui se retire sans regret.
+
+        L'écran descend d'un cran sous le total : l'historique se range par
+        session, et une session porte un plus gros fichier capturé. « 10 Go »
+        n'est pas une information sur laquelle agir ; « 10 Go dont 10 Go en un
+        seul fichier » dit que quelque chose d'énorme est entré par accident.
+
+        Une session VIVANTE n'est jamais proposée. Elle écrit encore, et
+        retirer son historique sous elle laisserait une session qui croit
+        pouvoir restaurer ce qui n'existe plus.
+        """
+        from script.todo.assistant.agents import disque
+
+        while True:
+            postes = disque.mesurer()
+            vivantes = {s.session_id for s in self._claude_flotte() if s.live}
+            histoires = disque.historiques(vivantes=vivantes)
+            print(f"{t('What Claude Code occupies')} :")
+            for poste in postes:
+                if not poste.present:
+                    continue
+                print(
+                    f"  {disque.octets_lisibles(poste.octets):>10}"
+                    f"  {self._llm_count(poste.fichiers, 'file', 'files'):>16}"
+                    f"  {poste.nom}"
+                )
+            print(f"\n{t('File history, per session')} :")
+            for histoire in histoires:
+                marque = MARQUE["no"] if histoire.vivante else MARQUE["ok"]
+                detail = (
+                    t("alive, not offered")
+                    if histoire.vivante
+                    else t("removable")
+                )
+                print(
+                    f"  {marque} {disque.octets_lisibles(histoire.octets):>10}"
+                    f"  {t('largest')} {disque.octets_lisibles(histoire.plus_gros)}"
+                    f"  {histoire.session[:8]}  ({detail})"
+                )
+            retirables = [h for h in histoires if h.retirable]
+            if not retirables:
+                print(f"  {MARQUE['unknown']} {t('Nothing can be removed:')}")
+                print(f"     {t('every session with a history is alive.')}")
+            choices = [
+                {"prompt_description": t("Remove one session's file history")}
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status != "1":
+                print(t("Command not found !"))
+                continue
+            if not retirables:
+                print(f"{MARQUE['unknown']} {t('Nothing can be removed:')}")
+                continue
+            self._agents_retirer_historique(retirables)
+
+    def _agents_retirer_historique(self, retirables):
+        """Retirer l'historique d'UNE session, son identifiant retapé.
+
+        Rien ne reconstitue un historique : c'est ce qui permet de restaurer
+        une version antérieure d'un fichier de cette session. Le préfixe
+        affiché ne suffit donc pas, comme pour la suppression d'un agent.
+        """
+        import shutil
+
+        from script.todo.assistant.agents import disque
+
+        for histoire in retirables:
+            print(
+                f"  {disque.octets_lisibles(histoire.octets):>10}"
+                f"  {histoire.session}"
+            )
+        print(
+            f"{MARQUE['no']} {t('This loses the ability to restore a file')}"
+        )
+        print(f"   {t('to an earlier version within that session.')}")
+        try:
+            frappe = click.prompt(
+                t("Type the session identifier in full to delete it:"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        choisie = [h for h in retirables if h.session == frappe]
+        if not choisie:
+            print(t("Nothing has been sent."))
+            return
+        try:
+            chemin = disque.chemin_historique(choisie[0].session)
+            shutil.rmtree(chemin)
+        except (OSError, ValueError) as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        print(
+            f"{MARQUE['ok']} {disque.octets_lisibles(choisie[0].octets)}"
+            f" {t('freed')}"
+        )
+
     def _agents_hooks_etat(self):
         """« global », « dépôt », « les deux » ou « aucun posé ».
 

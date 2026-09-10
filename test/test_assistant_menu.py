@@ -30,6 +30,8 @@ from unittest.mock import patch
 
 from script.todo.todo_i18n import t
 
+from script.todo.todo_i18n import t
+
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MENU = os.path.join(RACINE, "script", "todo", "assistant_menu.py")
@@ -440,17 +442,45 @@ class SessionsClaudeCode(unittest.TestCase):
             TODO._MENU_LABELS.get("prompt_claude_sessions"), "Claude Code"
         )
 
-    def _dispatche(self, chiffre, cible, *, temoin=None):
-        """Taper `chiffre` dans « Assistant › IA » appelle-t-il `cible` ?
+    def _entrees(self):
+        """Les entrées affichées par « Assistant › IA », dans l'ordre.
 
-        Les deux listes de cet écran — ce qui s'affiche et ce qui se
-        répartit — sont tenues à la main, donc une entrée peut s'afficher et
-        appeler autre chose. `temoin` nomme une méthode qui ne doit PAS
-        partir, sans quoi un test vert ne dirait rien d'un dispatch qui
-        appelle tout.
+        Le rang d'une entrée n'est PAS écrit dans le test : une section de
+        plus le décale, et trois passes de cette fonctionnalité l'ont décalé
+        trois fois. Il est donc DÉRIVÉ de l'écran, et le test affirme ce qui
+        compte — l'entrée qui montre telle chose appelle telle méthode.
         """
         from script.todo.todo import TODO
 
+        capture = []
+
+        def fausse_aide(self, choices):
+            capture.extend(choices)
+            return ""
+
+        todo = TODO()
+        with patch.object(TODO, "fill_help_info", fausse_aide), patch(
+            "click.prompt", side_effect=["0"]
+        ), patch("script.todo.todo_telemetry.record"):
+            todo.prompt_assistant_ia()
+        return [c["prompt_description"] for c in capture if "section" not in c]
+
+    def _rang(self, morceau):
+        """Le numéro de l'entrée qui porte ce morceau de libellé."""
+        for rang, libelle in enumerate(self._entrees(), start=1):
+            if morceau in libelle:
+                return rang
+        raise AssertionError(f"aucune entrée ne porte « {morceau} »")
+
+    def _dispatche(self, morceau, cible, *, temoin=None):
+        """L'entrée qui porte `morceau` appelle-t-elle `cible` ?
+
+        `temoin` nomme une méthode qui ne doit PAS partir, sans quoi un test
+        vert ne dirait rien d'un dispatch qui appelle tout.
+        """
+        from script.todo.todo import TODO
+
+        chiffre = str(self._rang(morceau))
         todo = TODO()
         with patch.object(TODO, cible) as mock_cible, patch.object(
             TODO, temoin or "prompt_execute_rtk"
@@ -463,30 +493,40 @@ class SessionsClaudeCode(unittest.TestCase):
         mock_cible.assert_called_once_with()
         mock_temoin.assert_not_called()
 
-    def test_un_ouvre_le_harnais_claude(self):
-        self._dispatche("1", "prompt_claude_sessions")
+    def test_le_harnais_claude_ouvre_ses_sessions(self):
+        self._dispatche("Claude Code", "prompt_claude_sessions")
 
-    def test_sept_ouvre_la_telemetrie(self):
-        self._dispatche("7", "_agents_telemetrie")
+    def test_la_telemetrie_ouvre_la_tui(self):
+        self._dispatche(t("Agent telemetry (TUI)"), "_agents_telemetrie")
 
-    def test_huit_ouvre_les_hooks(self):
-        self._dispatche("8", "_agents_hooks")
+    def test_les_hooks_ouvrent_leur_ecran(self):
+        self._dispatche(t("Telemetry hooks"), "_agents_hooks")
 
-    def test_dix_ouvre_les_greffons(self):
+    def test_le_disque_ouvre_son_ecran(self):
+        self._dispatche(t("Disk and cleanup"), "_agents_disque")
+
+    def test_les_greffons_au_milieu_de_la_chaine(self):
         """Le milieu de la chaîne : c'est là qu'un décalage se cache."""
-        self._dispatche("10", "prompt_execute_claude_plugins")
+        self._dispatche(
+            t("Claude Code plugins - marketplaces and ERPLibre list"),
+            "prompt_execute_claude_plugins",
+        )
 
-    def test_treize_ouvre_l_automatisation(self):
-        """La dernière entrée : un décalage d'un cran la rend injoignable."""
-        self._dispatche("13", "_claude_add_automation")
+    def test_la_derniere_entree_reste_joignable(self):
+        """Un décalage d'un cran la rendrait injoignable."""
+        self._dispatche(
+            t("Add an automation with Claude in todo.py"),
+            "_claude_add_automation",
+        )
 
     def test_un_numero_au_dela_de_la_liste_ne_lance_rien(self):
         """Les deux listes se construisent ensemble ; rien ne doit dépasser."""
         from script.todo.todo import TODO
 
         todo = TODO()
+        au_dela = str(len(self._entrees()) + 1)
         with patch.object(TODO, "_agents_telemetrie") as mock, patch(
-            "click.prompt", side_effect=["14", "0"]
+            "click.prompt", side_effect=[au_dela, "0"]
         ), patch("script.todo.todo_telemetry.record"):
             todo.prompt_assistant_ia()
         mock.assert_not_called()

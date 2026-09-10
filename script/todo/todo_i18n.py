@@ -12640,6 +12640,60 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
+    # Disque et ménage (script/todo/assistant/agents/disque.py). L'écran
+    # descend sous le total : une session, et son plus gros fichier capturé.
+    "Disk and cleanup": {
+        "fr": "💾 Disque et ménage",
+        "en": "💾 Disk and cleanup",
+    },
+    "What Claude Code occupies": {
+        "fr": "Ce que Claude Code occupe",
+        "en": "What Claude Code occupies",
+    },
+    "File history, per session": {
+        "fr": "Historique des fichiers, par session",
+        "en": "File history, per session",
+    },
+    "largest": {
+        "fr": "plus gros",
+        "en": "largest",
+    },
+    "alive, not offered": {
+        "fr": "vivante, non proposée",
+        "en": "alive, not offered",
+    },
+    "removable": {
+        "fr": "retirable",
+        "en": "removable",
+    },
+    "Nothing can be removed:": {
+        "fr": "Rien ne peut être retiré :",
+        "en": "Nothing can be removed:",
+    },
+    "every session with a history is alive.": {
+        "fr": "toute session qui porte un historique est vivante.",
+        "en": "every session with a history is alive.",
+    },
+    "Remove one session's file history": {
+        "fr": "🗑 Retirer l'historique des fichiers d'une session",
+        "en": "🗑 Remove one session's file history",
+    },
+    "This loses the ability to restore a file": {
+        "fr": "Ceci fait perdre la restauration d'un fichier",
+        "en": "This loses the ability to restore a file",
+    },
+    "to an earlier version within that session.": {
+        "fr": "à une version antérieure, dans cette session.",
+        "en": "to an earlier version within that session.",
+    },
+    "freed": {
+        "fr": "libérés",
+        "en": "freed",
+    },
+    "file": {
+        "fr": "fichier",
+        "en": "file",
+    },
     # Les hooks de télémétrie (script/todo/assistant/agents/pose.py). Deux
     # endroits qui ne se remplacent pas : le global mesure la machine, celui
     # du dépôt mesure ce dépôt pour tout clone.
