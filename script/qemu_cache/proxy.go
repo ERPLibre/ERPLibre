@@ -414,14 +414,14 @@ func (p *Proxy) offlineMiss(
 	w http.ResponseWriter, u *url.URL, class Class, method, client string,
 	cause error,
 ) {
-	msg := fmt.Sprintf(
+	msg := enCommentaire(fmt.Sprintf(
 		"erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
 			"  demandé : %s\n"+
 			"  classe  : %s\n"+
 			"  cause   : %v\n"+
 			"Ce fichier n'a jamais traversé ce cache. Rétablir le réseau, ou\n"+
 			"déployer une VM identique à celle qui a rempli le cache.\n",
-		u, class, cause)
+		u, class, cause))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-ERPLibre-Cache", OutcomeOfflineMiss)
 	w.WriteHeader(http.StatusGatewayTimeout)
@@ -466,6 +466,25 @@ func (p *Proxy) suivreRedirections(
 		resp = suivante
 	}
 	return resp
+}
+
+// enCommentaire rend un texte INERTE pour un interpréteur de commandes.
+//
+// Un corps d'erreur finit régulièrement dans un shell : l'idiome
+// « curl … | bash » est celui de la moitié des installateurs, et « curl »
+// sans « -f » lui livre le corps d'un 504 comme s'il l'avait demandé. Chaque
+// ligne du message devenait alors une commande, et le lecteur recevait une
+// cascade de « command not found » à la place de la cause.
+//
+// Chaque ligne est donc préfixée — y compris celles d'une cause qui en
+// porterait plusieurs, sans quoi la première suffirait à sortir du
+// commentaire. Le texte reste lisible pour l'humain, et ne fait rien.
+func enCommentaire(texte string) string {
+	lignes := strings.Split(strings.TrimRight(texte, "\n"), "\n")
+	for i, l := range lignes {
+		lignes[i] = "# " + l
+	}
+	return strings.Join(lignes, "\n") + "\n"
 }
 
 // enTetesConditionnels : ce par quoi un client dit « seulement si ça a

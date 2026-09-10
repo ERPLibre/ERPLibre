@@ -76,6 +76,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- [en] -->
 
 - The « - Default » label appears again at the version and environment menus: both reads asked for a capitalised key the version file never writes, and a missing key returns nothing without a word
+- The cache's « nothing in store » message is inert as a shell script, every line being a comment. Fed to an installer built on `curl … | bash`, it used to become a cascade of « command not found » that hid the real cause. Such a download now also asks curl to fail on an HTTP error rather than execute the error page
 - A desktop install no longer waits minutes on the apt lock: the apt-daily SERVICE is stopped and not only its timer, a timer being disabled without interrupting the apt-get it already started; and the retry comes back every two seconds rather than every ten, `DPkg::Lock::Timeout` not covering the list lock at all
 - Fedora VMs boot again: the firmware loads and starts their loader, then freezes without writing a byte — no console, no DHCP lease, a machine "running" that does nothing. Fedora is booted in legacy BIOS, where the same image starts its kernel; `--bios` still wins when asked
 - A VM receives a hostname it can accept — an underscore, which a libvirt domain name tolerates, made it keep its image's generic name — and a timezone its own distribution knows, a legacy alias having left it in UTC
@@ -83,6 +84,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- [fr] -->
 
 - L'étiquette « - Default » reparaît aux menus des versions et des environnements : les deux lectures demandaient une clé à majuscule que le fichier des versions n'écrit pas, et une clé absente ne rend rien sans rien dire
+- Le message « rien en réserve » du cache est inerte pour un interpréteur de commandes, chaque ligne étant un commentaire. Livré à un installateur bâti sur `curl … | bash`, il devenait une cascade de « command not found » qui masquait la cause. Un tel téléchargement demande en outre à curl d'échouer sur une erreur HTTP plutôt que d'exécuter la page d'erreur
 - Une installation de bureau n'attend plus des minutes sur le verrou apt : le SERVICE apt-daily est arrêté et non son seul minuteur, un minuteur désactivé n'interrompant pas l'apt-get qu'il a déjà lancé ; et la reprise repasse toutes les deux secondes au lieu de dix, « DPkg::Lock::Timeout » ne couvrant pas ce verrou-là
 - Les VM Fedora démarrent de nouveau : le micrologiciel charge et démarre leur chargeur, puis se fige sans écrire un octet — pas de console, pas de bail DHCP, une machine « en cours d'exécution » qui ne fait rien. Fedora est amorcée en BIOS hérité, où la même image démarre son noyau ; `--bios` garde le dernier mot
 - Une VM reçoit un nom d'hôte qu'elle accepte — un souligné, que le nom de domaine libvirt tolère, lui faisait garder le nom générique de son image — et un fuseau que sa distribution connaît, un alias hérité la laissant en UTC

@@ -112,7 +112,12 @@ el_pyenv_install() {
   exe="$(el_pyenv_exec_path "${version}")"
   if [[ ! -d "${root}" ]]; then
     echo "---- Installation de pyenv dans ${root} ----" >&2
-    curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer \
+    # « -f » : sans lui, curl livre le CORPS d'une erreur HTTP à bash, qui
+    # l'exécute. Une page d'erreur de miroir, un portail captif ou le 504
+    # d'un cache hors ligne devient alors une suite de commandes, et le
+    # lecteur reçoit « command not found » à la place de la cause. Avec
+    # « -f », curl rend non nul et le repli ci-dessous s'énonce.
+    curl -fsSL https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer \
       | bash >&2 || return 1
   fi
   export PATH="${root}/bin:$PATH"

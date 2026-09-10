@@ -469,3 +469,42 @@ func TestAmontMuetSansCopieChezLeClient(t *testing.T) {
 		t.Fatalf("statut rendu %d, attendu 504", w.Code)
 	}
 }
+
+// Un corps d'erreur finit régulièrement dans un shell : « curl … | bash »
+// est l'idiome de la moitié des installateurs, et « curl » sans « -f » lui
+// livre le corps d'un 504 comme s'il l'avait demandé.
+//
+// Le message doit donc ne RIEN faire une fois exécuté. Sans cela, l'échec
+// se lit « bash: line 1: erplibre_go_qemu_cache: command not found » et la
+// cause véritable, elle, ne se lit plus.
+func TestLeMessageHorsLigneEstInerteDansUnShell(t *testing.T) {
+	p, _ := proxyEtCasier(t)
+	r := httptest.NewRequest("GET", "/pyenv-installer", nil)
+	r.Host = "127.0.0.1:1"
+	w := httptest.NewRecorder()
+	p.serve(w, r, "http")
+
+	if w.Code != http.StatusGatewayTimeout {
+		t.Fatalf("statut rendu %d, attendu 504", w.Code)
+	}
+	for i, l := range strings.Split(strings.TrimRight(w.Body.String(), "\n"), "\n") {
+		if !strings.HasPrefix(l, "#") {
+			t.Fatalf("ligne %d exécutable par un shell : %q", i+1, l)
+		}
+	}
+	// Inerte ne veut pas dire muet : la cause reste lisible.
+	if !strings.Contains(w.Body.String(), "amont injoignable") {
+		t.Fatal("le message ne dit plus pourquoi")
+	}
+}
+
+// Une cause qui porte plusieurs lignes ne doit pas sortir du commentaire :
+// il suffirait de la première pour rendre la suite exécutable.
+func TestUneCauseMultiligneResteCommentee(t *testing.T) {
+	got := enCommentaire("premier\nseconde\ntroisième\n")
+	for _, l := range strings.Split(strings.TrimRight(got, "\n"), "\n") {
+		if !strings.HasPrefix(l, "# ") {
+			t.Fatalf("ligne non commentée : %q", l)
+		}
+	}
+}
