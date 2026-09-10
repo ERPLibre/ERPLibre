@@ -70,6 +70,7 @@ from script.todo.deploy_form_lib import (  # noqa: F401
 
 # Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
 # tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo import vm_profiles
 from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_plan import (  # noqa: F401
     PlanMixin,
@@ -1158,6 +1159,29 @@ def run_deploy_form(ctx, run_app: bool = True):
                     + t("press F5 again to confirm"),
                     severity="error",
                     timeout=10,
+                )
+                return
+            # LE COUPLE (libellé choisi, installation choisie). Ici, et pas
+            # au déploiement : l'écran SAIT qu'un libellé a été choisi —
+            # c'est lui qui l'a montré — alors qu'un spec ne porte qu'une
+            # posture, que les invites en ligne posent sans libellé. Un
+            # avertissement et non un refus : servir autre chose sur la même
+            # posture reste légitime, et c'est la raison même pour laquelle
+            # le registre sépare les deux.
+            commande = (spec.get("install") or {}).get("cmd", "")
+            verdict = vm_profiles.check_install(
+                vm_profiles.label_of(spec.get("posture", "")), commande
+            )
+            if verdict != vm_profiles.INSTALL_OK and not getattr(
+                self, "_serves_ack", False
+            ):
+                self._serves_ack = True
+                self.notify(
+                    vm_profiles.install_sentence(verdict)
+                    + " — "
+                    + t("press F5 again to confirm"),
+                    severity="warning",
+                    timeout=12,
                 )
                 return
             result["spec"] = spec

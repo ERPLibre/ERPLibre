@@ -148,7 +148,7 @@ class QemuDeployMixin:
         # Profils AVEC Odoo (install_odoo*) uniquement : après l'install, on
         # enregistre Odoo comme service systemd (enable + start). Pas pour
         # « ERPLibre seul », « mobile » ni « Déploiement ».
-        if "install_odoo" in final_cmd:
+        if vm_profiles.ODOO_MARK in final_cmd:
             # Le snippet de service est une SUITE d'instructions séparées par
             # « ; ». Collé tel quel après « && », l'opérateur ne lie que la
             # première : tout le reste s'exécute même quand le make a échoué, et
@@ -1514,6 +1514,14 @@ class QemuDeployMixin:
                 f" Posture « {posture_spec.posture_name(spec)} »,"
                 f" données réelles : {posture_spec.real_data(spec)}."
             )
+        # AUCUN REFUS SUR LE COUPLE (profil, installation) ICI, et c'est
+        # une décision. Un spec porte une POSTURE, pas le libellé sous
+        # lequel on l'a choisie — et le registre sépare les deux exprès :
+        # « les séparer est ce qui permet de servir autre chose sur la même
+        # posture ». Déduire « on voulait une interface web » de « on a
+        # choisi local-only » inverse cette séparation, et refuserait la
+        # seule posture qui porte une donnée réelle. La question se pose là
+        # où le LIBELLÉ existe : dans le formulaire.
         demande = spec.get("backend") or vm_backend.LIBVIRT
         if demande != vm_backend.LIBVIRT:
             raise vm_backend.VerbNotImplemented(

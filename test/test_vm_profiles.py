@@ -87,18 +87,18 @@ class TestLeQuatriemeNEstPasUnePosture(CasDeProfil):
     def test_no_posture_carries_that_name(self):
         self.assertIsNone(R.get_posture("local-webui"))
 
-    def test_the_profile_says_which_half_is_missing(self):
-        """Le taire laisserait croire qu'un profil nommé « webui » sert une
-        interface."""
-        profil = V.by_label("local-webui")
-        self.assertTrue(profil.install_half)
+    def test_the_profile_declares_that_its_name_promises_a_service(self):
+        """Le taire laisserait déployer une VM nommée « webui » qui ne sert
+        rien, et le nom survivrait à qui l'a choisi."""
+        self.assertTrue(V.by_label("local-webui").serves_web)
 
-    def test_the_three_others_are_whole(self):
-        """Contrôle positif : déclarer une moitié manquante partout ne
-        dirait plus rien."""
+    def test_the_three_others_promise_nothing_of_the_kind(self):
+        """Contrôle positif : l'exiger partout ferait refuser des
+        déploiements sensés — une VM sans Odoo est un cas courant, et seul
+        le nom « webui » le rend contradictoire."""
         for libelle in ("Sandbox", "VM Connecté", "VM paranoid"):
             with self.subTest(libelle=libelle):
-                self.assertEqual("", V.by_label(libelle).install_half)
+                self.assertFalse(V.by_label(libelle).serves_web)
 
 
 class TestCeQueChaqueProfilApplique(CasDeProfil):
@@ -456,6 +456,205 @@ class TestCeQuiManqueAuCarnet(CasDeProfil):
             with self.subTest(posture=nom):
                 attendus = tuple(D.symbols_for(R.get_posture(nom)))
                 self.assertEqual(attendus, V.missing_addresses(nom, {}))
+
+
+class TestLeCoupleProfilEtInstallation(CasDeProfil):
+    """Le FRÈRE de la règle d'or : celle-ci juge ce que le réseau autorise,
+    celui-ci ce que le NOM promet.
+
+    Huit installations sur douze posent Odoo. Choisir « local-webui » avec
+    l'une des quatre autres donne une machine qui ne sert rien sous un nom
+    qui dit le contraire.
+    """
+
+    AVEC = "make install_os && make install_odoo_18"
+    SANS = "make install_os && ./script/install/install_erplibre.sh"
+
+    def test_the_web_profile_needs_an_install_that_serves(self):
+        self.assertEqual(
+            V.SERVES_NOTHING, V.check_install("local-webui", self.SANS)
+        )
+
+    def test_it_accepts_one_that_does(self):
+        """Contrôle positif : tout refuser retirerait le profil."""
+        self.assertEqual(
+            V.INSTALL_OK, V.check_install("local-webui", self.AVEC)
+        )
+
+    def test_a_profile_that_promises_nothing_accepts_anything(self):
+        """Une VM sans Odoo est un cas courant : le vérifier partout
+        ferait refuser des déploiements parfaitement sensés."""
+        for libelle in ("Sandbox", "VM Connecté", "VM paranoid"):
+            for commande in (self.AVEC, self.SANS):
+                with self.subTest(libelle=libelle, commande=commande[:30]):
+                    self.assertEqual(
+                        V.INSTALL_OK, V.check_install(libelle, commande)
+                    )
+
+    def test_it_takes_a_LABEL_and_never_a_posture(self):
+        """LE DÉFAUT QUE CETTE ÉPREUVE FIGE. Interrogé par posture, il
+        déduisait « on voulait une interface web » de « on a choisi
+        local-only » — ce que le registre sépare EXPRÈS, puisque la même
+        posture sert légitimement autre chose. Il refusait alors la seule
+        posture qui porte une donnée réelle, sur la foi d'un nom que
+        personne n'avait choisi.
+        """
+        self.assertEqual(
+            V.INSTALL_OK, V.check_install("local-only", self.SANS)
+        )
+        self.assertEqual(
+            V.SERVES_NOTHING, V.check_install("local-webui", self.SANS)
+        )
+
+    def test_the_form_asks_the_question_where_the_label_exists(self):
+        """L'écran SAIT qu'un libellé a été choisi — c'est lui qui l'a
+        montré. Un spec, lui, ne porte qu'une posture, que les invites en
+        ligne posent sans libellé."""
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy_form.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn("vm_profiles.check_install(", source)
+        self.assertIn("vm_profiles.label_of(", source)
+
+    def test_the_form_reads_the_command_and_not_the_install_dict(self):
+        """`spec["install"]` est un DICTIONNAIRE. « install_odoo in {…} »
+        interroge ses CLÉS et rend toujours faux : le couple serait déclaré
+        fautif sur toute installation, y compris celles qui posent Odoo."""
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy_form.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn('.get("cmd", "")', source)
+
+    def test_an_install_dict_is_not_mistaken_for_a_command(self):
+        """Le contrôle du banc : ce que le défaut aurait donné."""
+        self.assertNotIn(V.ODOO_MARK, {"cmd": "make install_odoo_18"})
+        self.assertEqual(
+            V.SERVES_NOTHING,
+            V.check_install("local-webui", str({"cmd": "x"})),
+        )
+
+    def test_the_expectation_is_said_under_the_selector_too(self):
+        """Deux endroits : la ligne annonce l'attente au moment du choix,
+        l'avertissement dit qu'elle n'est pas satisfaite quand les DEUX
+        choix existent."""
+        self.assertIn(V.EXPECTS_ODOO, V.screen_line("local-only"))
+
+    def test_the_expectation_itself_is_translated(self):
+        """La moitié « application » diffère déjà entre les langues : la
+        ligne entière différerait même si CETTE phrase-là restait en
+        anglais. Il faut donc la comparer seule."""
+        todo_i18n._current_lang = "fr"
+        francais = V.screen_line("local-only")
+        todo_i18n._current_lang = "en"
+        anglais = V.screen_line("local-only")
+        self.assertIn(V.EXPECTS_ODOO, anglais)
+        self.assertNotIn(V.EXPECTS_ODOO, francais)
+
+    def test_no_other_profile_announces_it(self):
+        """Contrôle positif : l'annoncer partout ne dirait plus rien."""
+        for nom in ("open", "connected", "paranoid"):
+            with self.subTest(posture=nom):
+                self.assertNotIn(V.EXPECTS_ODOO, V.screen_line(nom))
+
+    def test_the_deploy_refuses_nothing_on_this_pair(self):
+        """Le spec porte une posture, pas le libellé sous lequel on l'a
+        choisie : le refus y viserait des déploiements que personne n'a
+        décrits ainsi."""
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertNotIn("vm_profiles.check_install(", source)
+
+    def test_every_odoo_install_of_the_repository_satisfies_it(self):
+        """LA MARQUE ET NON LA LISTE : les profils se composent —
+        « install_odoo_18 », « install_odoo_all_version » — et une liste
+        recopiée manquerait le suivant."""
+        import sys as _sys
+
+        _sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        menu = TODO.__new__(TODO)
+        profils = menu._qemu_install_profiles()
+        self.assertTrue(profils, "aucun profil lu : rien n'est prouvé")
+        avec_odoo = [c for _l, c in profils if V.ODOO_MARK in c]
+        self.assertGreater(
+            len(avec_odoo), 1, "un seul : la marque ne sert à rien"
+        )
+        for commande in avec_odoo:
+            with self.subTest(commande=commande[:40]):
+                self.assertEqual(
+                    V.INSTALL_OK, V.check_install("local-webui", commande)
+                )
+
+    def test_the_installs_without_odoo_are_refused_for_it(self):
+        import sys as _sys
+
+        _sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        menu = TODO.__new__(TODO)
+        sans = [
+            c
+            for _l, c in menu._qemu_install_profiles()
+            if V.ODOO_MARK not in c
+        ]
+        self.assertTrue(
+            sans, "aucune installation sans Odoo : rien n'est prouvé"
+        )
+        for commande in sans:
+            with self.subTest(commande=commande[:40]):
+                self.assertEqual(
+                    V.SERVES_NOTHING, V.check_install("local-webui", commande)
+                )
+
+    def test_an_unknown_posture_accepts_anything(self):
+        """Refuser ici ferait échouer un déploiement pour une raison qui
+        n'est pas la sienne : la posture inconnue est déjà refusée par la
+        règle d'or, et le dire deux fois nommerait la mauvaise cause."""
+        self.assertEqual(V.INSTALL_OK, V.check_install("Jamais vu", ""))
+
+    def test_no_install_at_all_is_refused_for_the_web_profile(self):
+        self.assertEqual(V.SERVES_NOTHING, V.check_install("local-webui", ""))
+        self.assertEqual(
+            V.SERVES_NOTHING, V.check_install("local-webui", None)
+        )
+
+    def test_every_verdict_has_a_sentence(self):
+        self.assertTrue(V.INSTALL_VERDICTS, "vocabulaire vidé")
+        for verdict in V.INSTALL_VERDICTS:
+            with self.subTest(verdict=verdict):
+                self.assertTrue(V.install_sentence(verdict).strip())
+
+    def test_an_unknown_verdict_raises_rather_than_prints_nothing(self):
+        with self.assertRaises(KeyError):
+            V.install_sentence("verdict-jamais-declare")
+
+    def test_the_refusal_says_what_is_wrong_and_not_only_that_it_is(self):
+        phrase = V.INSTALL_SENTENCES[V.SERVES_NOTHING]
+        self.assertIn("no Odoo", phrase)
+        self.assertIn("serve nothing", phrase)
+
+
+class TestLaMarqueEstNommeeUneFois(CasDeProfil):
+    """Le déploiement l'emploie pour décider d'enregistrer le service
+    systemd. Deux littéraux voisins cessent de correspondre au premier
+    ajustement, et celui-là déciderait si Odoo démarre."""
+
+    def test_the_deploy_uses_the_named_mark(self):
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn("vm_profiles.ODOO_MARK in final_cmd", source)
+        self.assertNotIn('"install_odoo" in final_cmd', source)
+
+    def test_the_deploy_says_why_it_checks_nothing_here(self):
+        """Un refus retiré sans un mot revient un jour, écrit par
+        quelqu'un qui n'a pas vu pourquoi il était parti."""
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        with open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn("AUCUN REFUS SUR LE COUPLE", source)
 
 
 if __name__ == "__main__":

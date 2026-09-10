@@ -42,14 +42,16 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
 class Profile(NamedTuple):
     """Un profil : le nom qu'on reconnaît, et la posture qui le tient.
 
-    `install_half` nomme ce qu'il faudrait installer pour que le profil soit
-    complet, ou "" quand la posture suffit. Un profil dont cette moitié
-    manque n'est pas refusé — il est UTILISABLE, et il le dit.
+    `serves_web` dit que le NOM du profil promet une interface servie. Ce
+    n'est pas une posture — le registre l'écrit lui-même : « l'autre moitié
+    est un profil d'installation, et les séparer est ce qui permet de servir
+    autre chose sur la même posture ». C'est donc une EXIGENCE sur ce qu'on
+    installe, vérifiée par déploiement et non déclarée une fois pour toutes.
     """
 
     label: str
     posture: str
-    install_half: str = ""
+    serves_web: bool = False
 
 
 # L'ordre est celui du registre : du plus libre au plus contraint. « On
@@ -58,9 +60,9 @@ PROFILES = (
     Profile("Sandbox", "open"),
     Profile("VM Connecté", "connected"),
     Profile("VM paranoid", "paranoid"),
-    # La moitié installation n'existe pas encore, et le dire vaut mieux que
-    # de laisser croire qu'un profil nommé « webui » sert une interface.
-    Profile("local-webui", "local-only", install_half="serve-webui"),
+    # Son nom promet une interface servie : l'installation choisie doit
+    # poser Odoo, sinon la VM ne sert rien et le nom ment.
+    Profile("local-webui", "local-only", serves_web=True),
 )
 
 # Ce que chaque jeton d'`unenforced` veut dire pour qui lit un écran. La
@@ -197,6 +199,12 @@ def screen_line(posture_name: str) -> str:
     morceaux = [enforcement(posture_name)]
     for jeton in gaps(posture_name):
         morceaux.append(f"⚠ {gap_sentence(jeton)}")
+    # CE QUE LE NOM PROMET, quand il promet quelque chose. Dit ICI parce que
+    # c'est l'instant du choix : l'avertissement de validation, lui, arrive
+    # quand les DEUX choix existent, et ne dit que ce qui cloche.
+    profil = by_posture(posture_name)
+    if profil is not None and profil.serves_web:
+        morceaux.append(t(EXPECTS_ODOO))
     return "  ".join(morceaux)
 
 
@@ -223,3 +231,66 @@ def missing_addresses(posture_name: str, book) -> tuple:
         for symbole in posture_destinations.symbols_for(posture)
         if symbole not in carnet
     )
+
+
+# CE QUI, DANS UNE COMMANDE D'INSTALLATION, POSE ODOO. La marque et non la
+# liste des profils : ceux-ci se composent — « install_odoo_18 »,
+# « install_odoo_all_version » — et une liste recopiée manquerait le
+# suivant. C'est la même marque que le déploiement emploie pour décider
+# d'enregistrer le service systemd, et elle est nommée UNE fois.
+ODOO_MARK = "install_odoo"
+
+# Ce que dit un profil dont le nom promet une interface servie, au moment
+# du CHOIX. Une attente et non un refus : servir autre chose sur la même
+# posture reste légitime, et le registre sépare les deux pour cela.
+EXPECTS_ODOO = "This profile expects an install that lays down Odoo."
+
+# Le verdict du couple (profil, installation). Clos, comme celui du couple
+# (posture, données réelles) dont il est le frère.
+INSTALL_OK = "ok"
+SERVES_NOTHING = "serves-nothing"
+INSTALL_VERDICTS = (INSTALL_OK, SERVES_NOTHING)
+
+INSTALL_SENTENCES = {
+    INSTALL_OK: "The install serves what the profile promises.",
+    SERVES_NOTHING: (
+        "This profile's name promises a served interface, and the chosen"
+        " install lays down no Odoo. The machine would serve nothing under"
+        " a name that says otherwise."
+    ),
+}
+
+
+def check_install(label: str, final_cmd: str) -> str:
+    """Le verdict du couple (LIBELLÉ choisi, installation). Ne lève pas.
+
+    IL PREND UN LIBELLÉ ET NON UNE POSTURE, et c'est tout le sujet. Une
+    spec porte une posture ; le registre sépare les deux exprès — « les
+    séparer est ce qui permet de servir autre chose sur la même posture ».
+    Déduire « on voulait une interface web » de « on a choisi local-only »
+    inverse cette séparation : ce serait refuser la seule posture qui porte
+    une donnée réelle, sur la foi d'un nom que personne n'a choisi.
+
+    La question ne se pose donc QUE là où le libellé existe — le
+    formulaire, au moment du choix — et elle s'y dit, elle ne s'y refuse
+    pas : servir autre chose sur cette posture reste légitime.
+
+    Un profil qui ne promet rien accepte toute installation.
+    """
+    profil = by_label(label)
+    if profil is None or not profil.serves_web:
+        return INSTALL_OK
+    if ODOO_MARK in (final_cmd or ""):
+        return INSTALL_OK
+    return SERVES_NOTHING
+
+
+def install_sentence(verdict: str) -> str:
+    """La phrase d'un verdict d'installation. Lève sur un verdict inconnu.
+
+    Un `dict.get` rendant "" afficherait une ligne vide, qui se lit comme
+    « rien à signaler » — le contraire d'un refus.
+    """
+    if verdict not in INSTALL_SENTENCES:
+        raise KeyError(f"verdict d'installation sans phrase : {verdict!r}")
+    return t(INSTALL_SENTENCES[verdict])

@@ -12504,6 +12504,18 @@ TRANSLATIONS = {
         "en": "refuses to deploy, missing",
     },
     # Profils de VM (script/todo/vm_profiles.py)
+    "This profile expects an install that lays down Odoo.": {
+        "fr": "Ce profil attend une installation qui pose Odoo.",
+        "en": "This profile expects an install that lays down Odoo.",
+    },
+    "The install serves what the profile promises.": {
+        "fr": "L'installation sert ce que le profil promet.",
+        "en": "The install serves what the profile promises.",
+    },
+    "This profile's name promises a served interface, and the chosen install lays down no Odoo. The machine would serve nothing under a name that says otherwise.": {
+        "fr": "Le nom de ce profil promet une interface servie, et l'installation choisie ne pose aucun Odoo. La machine ne servirait rien, sous un nom qui dit le contraire.",
+        "en": "This profile's name promises a served interface, and the chosen install lays down no Odoo. The machine would serve nothing under a name that says otherwise.",
+    },
     "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.": {
         "fr": "Aucun fichier de règles n'est produit : cette posture déclare une politique que rien n'installe. Elle se comporte exactement comme une sortie libre.",
         "en": "No rule file is produced: this posture states a policy that nothing installs. It behaves exactly like free egress.",
