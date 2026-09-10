@@ -1329,5 +1329,56 @@ class TestGnomeSiteExtensions(unittest.TestCase):
         self.assertIn("dbus-run-session", self.block)
 
 
+class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
+    """« Impossible d'obtenir le verrou /var/lib/apt/lists/lock. Il est
+    occupé par le processus N (apt-get) », répété pendant des minutes au
+    début de chaque installation de bureau.
+
+    Deux causes, et la première est la vraie : « disable --now » arrête un
+    MINUTEUR mais n'interrompt pas l'apt-get qu'il a déjà lancé, lequel garde
+    le verrou jusqu'au bout de sa mise à jour.
+
+    La seconde est le rythme : « DPkg::Lock::Timeout » ne couvre pas ce
+    verrou-là — il ne vaut que pour celui de dpkg — si bien qu'apt rend la
+    main en moins d'une seconde, et qu'un sommeil de dix secondes entre deux
+    essais est du temps payé pour rien.
+    """
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.desarme = self.todo._qemu_no_auto_upgrade(prod=False)
+        self.cmd = self.todo._qemu_desktop_remote_cmd("gnome", "deb")
+
+    def test_le_service_deja_lance_est_arrete_lui_aussi(self):
+        """C'est lui qui tient le verrou, pas le minuteur."""
+        self.assertIn("stop apt-daily.service", self.desarme)
+        self.assertIn("apt-daily-upgrade.service", self.desarme)
+
+    def test_les_minuteurs_restent_desarmes(self):
+        """Les arrêter sans les désactiver les laisserait repartir en
+        pleine installation."""
+        self.assertIn("apt-daily.timer", self.desarme)
+        self.assertIn("apt-daily-upgrade.timer", self.desarme)
+
+    def test_en_production_on_ne_touche_a_rien(self):
+        """Les correctifs de sécurité automatiques doivent rester actifs."""
+        self.assertEqual(self.todo._qemu_no_auto_upgrade(prod=True), "")
+
+    def test_la_boucle_repasse_souvent(self):
+        """Un essai coûte moins d'une seconde : dormir dix secondes entre
+        deux multiplie par cinq l'attente d'un verrou qui se libère."""
+        i = self.cmd.index("until sudo apt-get")
+        boucle = self.cmd[i : self.cmd.index("done;", i)]
+        self.assertIn("sleep 2", boucle)
+        self.assertNotIn("sleep 10", boucle)
+
+    def test_la_boucle_reste_bornee(self):
+        """Sans borne, un verrou jamais rendu tiendrait l'installation pour
+        toujours."""
+        i = self.cmd.index("until sudo apt-get")
+        boucle = self.cmd[i : self.cmd.index("done;", i)]
+        self.assertRegex(boucle, r"-ge \d+ \] && break")
+
+
 if __name__ == "__main__":
     unittest.main()

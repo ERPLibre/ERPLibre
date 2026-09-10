@@ -468,6 +468,13 @@ class QemuInstallMixin:
             return ""
         return (
             "if command -v apt-get >/dev/null 2>&1; then "
+            # Les SERVICES autant que les minuteurs. « disable --now » sur un
+            # minuteur l'empêche de repartir mais n'interrompt pas l'apt-get
+            # qu'il a DÉJÀ lancé : celui-ci garde /var/lib/apt/lists/lock
+            # jusqu'au bout de sa mise à jour, et l'installation qui suit
+            # répète « Impossible d'obtenir le verrou » pendant des minutes.
+            "sudo systemctl stop apt-daily.service apt-daily-upgrade.service "
+            ">/dev/null 2>&1 || true; "
             "sudo systemctl disable --now unattended-upgrades.service "
             "apt-daily.timer apt-daily-upgrade.timer "
             ">/dev/null 2>&1 || true; "
@@ -669,8 +676,14 @@ class QemuInstallMixin:
         return (
             f'echo "== {t("Installing the desktop (long):")} {label} =="; '
             "if command -v apt-get >/dev/null 2>&1; then "
+            # « DPkg::Lock::Timeout » ne couvre PAS le verrou des listes :
+            # il ne vaut que pour celui de dpkg. « apt-get update » échoue
+            # donc en moins d'une seconde quand une tâche quotidienne le
+            # tient, et dormir dix secondes entre deux essais coûte des
+            # minutes à ne rien faire. On repasse plus souvent, et on rend la
+            # main dès que le verrou se libère.
             "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
-            "n=$((n+1)); [ $n -ge 30 ] && break; sleep 10; done; "
+            "n=$((n+1)); [ $n -ge 60 ] && break; sleep 2; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "
             f"{de['apt']} {rem['apt']['packages']} "
