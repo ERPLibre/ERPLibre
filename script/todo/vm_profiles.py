@@ -212,9 +212,11 @@ def missing_addresses(posture_name: str, book) -> tuple:
     """
     from script.posture import destinations as posture_destinations
 
+    # PAS DE GARDE SUR None : `symbols_for` en pose déjà un — il passe par
+    # `has_bounded_list`, qui répond faux pour une posture absente. Le
+    # doubler ici ferait deux endroits à tenir en accord, et le second ne
+    # se casserait jamais assez fort pour qu'on s'en aperçoive.
     posture = registry.get_posture(posture_name)
-    if posture is None:
-        return ()
     carnet = book or {}
     return tuple(
         symbole

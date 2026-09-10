@@ -393,5 +393,70 @@ class TestLeFormulaireOffreLesLibelles(CasDeProfil):
         )
 
 
+class TestCeQuiManqueAuCarnet(CasDeProfil):
+    """Le déploiement REFUSE sur le premier rôle sans adresse, et le
+    découvrir après un formulaire entier coûte le formulaire.
+
+    Le carnet est un PARAMÈTRE : ce module ne lit aucun fichier, et la
+    liste des rôles vient du paquet posture, qui la déduit de la posture.
+    """
+
+    COMPLET = {
+        r: ["203.0.113.7"]
+        for r in (
+            "dns-resolver",
+            "ntp",
+            "package-mirror",
+            "python-index",
+            "vault",
+            "backup-target",
+            "forge",
+        )
+    }
+
+    def test_an_empty_book_leaves_the_confined_profile_short(self):
+        manque = V.missing_addresses("paranoid", {})
+        self.assertIn("dns-resolver", manque)
+        self.assertIn("forge", manque)
+
+    def test_a_full_book_leaves_it_nothing_to_ask(self):
+        """Contrôle positif : tout déclarer manquant ne dirait rien."""
+        self.assertEqual((), V.missing_addresses("paranoid", self.COMPLET))
+
+    def test_a_profile_that_names_no_role_needs_no_book(self):
+        for nom in ("open", "connected", "local-only"):
+            with self.subTest(posture=nom):
+                self.assertEqual((), V.missing_addresses(nom, {}))
+
+    def test_one_role_short_is_still_short(self):
+        """La granularité compte : le déploiement refuse sur le PREMIER
+        rôle sans adresse, pas sur le carnet entier."""
+        presque = dict(self.COMPLET)
+        del presque["vault"]
+        self.assertEqual(("vault",), V.missing_addresses("paranoid", presque))
+
+    def test_an_unknown_posture_asks_for_nothing_rather_than_crashing(self):
+        """L'écran l'affiche pour TOUS les profils : lever ici viderait la
+        liste entière à cause d'un seul nom."""
+        self.assertEqual((), V.missing_addresses("jamais-vue", {}))
+
+    def test_no_book_at_all_is_read_as_an_empty_one(self):
+        """L'appelant lit un fichier qui peut ne pas exister ; recevoir
+        None ne doit pas lever au milieu d'un affichage."""
+        self.assertEqual(
+            V.missing_addresses("paranoid", {}),
+            V.missing_addresses("paranoid", None),
+        )
+
+    def test_the_roles_come_from_the_posture_package(self):
+        """Une liste recopiée ici divergerait au premier rôle ajouté."""
+        from script.posture import destinations as D
+
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                attendus = tuple(D.symbols_for(R.get_posture(nom)))
+                self.assertEqual(attendus, V.missing_addresses(nom, {}))
+
+
 if __name__ == "__main__":
     unittest.main()
