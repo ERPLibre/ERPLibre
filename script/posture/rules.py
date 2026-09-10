@@ -221,10 +221,17 @@ def _refuse_la_posture(posture, destinations):
 NO_RENDERING = "no-rendering"
 RELOAD_FAILURE_UNSEEN = "reload-failure-unseen"
 CONTAINERS_UNPROVEN = "containers-unproven"
+# La machine SORT LIBREMENT entre son premier démarrage et la pose des
+# règles. Ce n'est pas une propriété de la posture mais du CHEMIN qui la
+# livre : là où l'amorce écrit les règles avant le premier boot, il n'y a
+# pas de fenêtre ; là où elles arrivent après, par un canal qui exige que
+# la machine réponde déjà, il y en a une de plusieurs minutes.
+BOOT_WINDOW_OPEN = "boot-window-open"
 UNENFORCED_TOKENS = (
     NO_RENDERING,
     RELOAD_FAILURE_UNSEEN,
     CONTAINERS_UNPROVEN,
+    BOOT_WINDOW_OPEN,
 )
 
 # Ce que le rendu ne fournit PAS, mais que la posture tient déjà — soit par
@@ -248,7 +255,7 @@ UNENFORCED_TOKENS = (
 TENUES_PAR_LE_RESEAU = ("nat", "none")
 
 
-def unenforced(posture) -> tuple:
+def unenforced(posture, after_boot: bool = False) -> tuple:
     """Ce que le rendu de règles ne tient PAS de cette posture.
 
     Un mécanisme muet sur ce qu'il n'applique pas est ce qui fait croire à
@@ -261,16 +268,28 @@ def unenforced(posture) -> tuple:
     avec `egress_enforced` : tant qu'un jeton reste, elle REFUSE la bascule
     du drapeau ; le jour où il n'en reste aucun, elle l'EXIGE.
 
+    `after_boot` décrit le CHEMIN de livraison et non la posture. Vrai, les
+    règles n'arrivent qu'une fois la machine debout et joignable : elle sort
+    librement pendant tout son démarrage. Le drapeau de la posture, lui, ne
+    peut pas en tenir compte — il est per-posture, et deux chemins livrent
+    la même. C'est pourquoi le défaut est FAUX : l'équivalence porte sur le
+    chemin qui écrit avant le premier boot, et ce paramètre dit l'autre.
+
     Une posture absente ne promet rien, donc rien ne manque.
     """
     if posture is None:
         return ()
+    fenetre = (BOOT_WINDOW_OPEN,) if after_boot else ()
     if posture.egress in TENUES_PAR_LE_RESEAU:
-        return ()
+        # La sortie libre n'a pas de fenêtre : rien n'est à poser, donc
+        # rien n'arrive en retard. La sortie coupée, elle, en a une — ses
+        # règles arrivent par le même canal tardif que les autres.
+        return () if posture.egress == "nat" else fenetre
     if not posture.destinations_bounded:
-        # Seul jeton : le reste porterait sur un rendu qui n'existe pas.
+        # Seul jeton : le reste porterait sur un rendu qui n'existe pas, et
+        # une fenêtre ne s'ouvre pas sur des règles qu'on ne pose jamais.
         return (NO_RENDERING,)
-    return (RELOAD_FAILURE_UNSEEN, CONTAINERS_UNPROVEN)
+    return (RELOAD_FAILURE_UNSEEN, CONTAINERS_UNPROVEN) + fenetre
 
 
 def render_egress(posture, destinations=()) -> str:

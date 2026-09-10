@@ -80,6 +80,11 @@ GAP_SENTENCES = {
         "Container traffic is not proven to be caught: it crosses FORWARD,"
         " which no confrontation has measured yet."
     ),
+    rules.BOOT_WINDOW_OPEN: (
+        "This path lays the rules down only once the machine answers, so"
+        " it goes out freely for the whole of its first boot — minutes,"
+        " not seconds."
+    ),
 }
 
 
@@ -141,13 +146,19 @@ def gap_sentence(token: str) -> str:
     return t(GAP_SENTENCES[token])
 
 
-def gaps(posture_name: str) -> tuple:
+def gaps(posture_name: str, after_boot: bool = False) -> tuple:
     """Ce que ce profil promet et que rien ne tient, en jetons.
 
     Vide veut dire que tout ce qu'elle annonce est tenu — soit par la nature
     de son réseau, soit par des règles réellement posées.
+
+    `after_boot` décrit le CHEMIN et non la posture : là où les règles
+    n'arrivent qu'une fois la machine debout, elle sort librement pendant
+    tout son démarrage. Faux par défaut, comme dans le paquet posture, pour
+    que l'écran d'un chemin qui écrit avant le premier boot ne porte pas un
+    écart qui n'est pas le sien.
     """
-    return rules.unenforced(registry.get_posture(posture_name))
+    return rules.unenforced(registry.get_posture(posture_name), after_boot)
 
 
 def enforcement(posture_name: str) -> str:
@@ -184,7 +195,7 @@ def bounded_addresses(posture_name: str) -> bool:
     )
 
 
-def screen_line(posture_name: str) -> str:
+def screen_line(posture_name: str, after_boot: bool = False) -> str:
     """Ce qu'un écran écrit sous le sélecteur, en une seule chaîne.
 
     La COMPOSITION vit ici et non dans le formulaire : celui-ci est du
@@ -197,7 +208,7 @@ def screen_line(posture_name: str) -> str:
     qu'ils nuancent, et un écart lu seul se prend pour une panne.
     """
     morceaux = [enforcement(posture_name)]
-    for jeton in gaps(posture_name):
+    for jeton in gaps(posture_name, after_boot):
         morceaux.append(f"⚠ {gap_sentence(jeton)}")
     # CE QUE LE NOM PROMET, quand il promet quelque chose. Dit ICI parce que
     # c'est l'instant du choix : l'avertissement de validation, lui, arrive

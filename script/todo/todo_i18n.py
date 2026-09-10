@@ -12504,6 +12504,10 @@ TRANSLATIONS = {
         "en": "refuses to deploy, missing",
     },
     # Profils de VM (script/todo/vm_profiles.py)
+    "This path lays the rules down only once the machine answers, so it goes out freely for the whole of its first boot — minutes, not seconds.": {
+        "fr": "Ce chemin ne pose les règles qu'une fois la machine joignable : elle sort donc librement pendant tout son premier démarrage — des minutes, pas des secondes.",
+        "en": "This path lays the rules down only once the machine answers, so it goes out freely for the whole of its first boot — minutes, not seconds.",
+    },
     "This profile expects an install that lays down Odoo.": {
         "fr": "Ce profil attend une installation qui pose Odoo.",
         "en": "This profile expects an install that lays down Odoo.",

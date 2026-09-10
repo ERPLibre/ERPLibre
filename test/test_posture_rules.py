@@ -343,6 +343,7 @@ class TestDireEnJetonsCeQuiManque(unittest.TestCase):
                 "no-rendering",
                 "reload-failure-unseen",
                 "containers-unproven",
+                "boot-window-open",
             ),
             rules.UNENFORCED_TOKENS,
         )
@@ -546,6 +547,73 @@ class TestLAccordEntreLeVouloirEtLeRefus(unittest.TestCase):
         texte = rules.render_egress(R.get_posture("local-only"), ())
         self.assertNotIn("192.0.2", texte)
         self.assertNotIn("dport", texte)
+
+
+class TestLaFenetreDuPremierDemarrage(unittest.TestCase):
+    """Elle appartient au CHEMIN de livraison, pas à la posture.
+
+    Là où l'amorce écrit les règles avant le premier boot, il n'y a pas de
+    fenêtre. Là où elles arrivent par un canal qui exige que la machine
+    RÉPONDE déjà — donc après son démarrage — la machine sort librement
+    pendant plusieurs minutes.
+
+    Le drapeau `egress_enforced` ne peut pas en tenir compte : il est
+    per-posture, et deux chemins livrent la même. D'où un paramètre, et un
+    défaut qui laisse l'équivalence existante intacte.
+    """
+
+    def test_the_default_path_opens_no_window(self):
+        """L'équivalence avec `egress_enforced` porte sur ce chemin-là :
+        la changer par défaut casserait le contrat du drapeau."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertNotIn(
+                    rules.BOOT_WINDOW_OPEN,
+                    rules.unenforced(R.get_posture(nom)),
+                )
+
+    def test_a_late_path_opens_one_where_rules_are_posed(self):
+        for nom in ("paranoid", "local-only"):
+            with self.subTest(posture=nom):
+                self.assertIn(
+                    rules.BOOT_WINDOW_OPEN,
+                    rules.unenforced(R.get_posture(nom), after_boot=True),
+                )
+
+    def test_free_egress_has_no_window_to_open(self):
+        """Rien n'est à poser, donc rien n'arrive en retard."""
+        self.assertEqual(
+            (), rules.unenforced(R.get_posture("open"), after_boot=True)
+        )
+
+    def test_a_posture_nothing_renders_gains_no_window_either(self):
+        """Une fenêtre ne s'ouvre pas sur des règles qu'on ne pose JAMAIS :
+        l'y ajouter ferait croire à un confinement tardif là où il n'y en a
+        aucun."""
+        self.assertEqual(
+            (rules.NO_RENDERING,),
+            rules.unenforced(R.get_posture("connected"), after_boot=True),
+        )
+
+    def test_the_late_path_never_loses_a_token_of_the_early_one(self):
+        """Le chemin tardif AJOUTE une faiblesse, il n'en retire aucune."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                posture = R.get_posture(nom)
+                tot = set(rules.unenforced(posture))
+                tard = set(rules.unenforced(posture, after_boot=True))
+                self.assertTrue(tot <= tard, (tot, tard))
+
+    def test_no_posture_is_absent_from_the_answer(self):
+        self.assertEqual((), rules.unenforced(None, after_boot=True))
+
+    def test_every_token_it_can_return_is_in_the_vocabulary(self):
+        for nom in R.posture_names():
+            for tardif in (False, True):
+                jetons = rules.unenforced(R.get_posture(nom), tardif)
+                with self.subTest(posture=nom, tardif=tardif):
+                    for jeton in jetons:
+                        self.assertIn(jeton, rules.UNENFORCED_TOKENS)
 
 
 if __name__ == "__main__":

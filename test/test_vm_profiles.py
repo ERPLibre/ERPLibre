@@ -657,5 +657,60 @@ class TestLaMarqueEstNommeeUneFois(CasDeProfil):
         self.assertIn("AUCUN REFUS SUR LE COUPLE", source)
 
 
+class TestLaFenetreRemonteJusquALEcran(CasDeProfil):
+    """Un écart calculé et jamais affiché ne protège personne.
+
+    La fenêtre appartient au CHEMIN : le défaut est faux pour que l'écran
+    d'un chemin qui écrit avant le premier boot ne porte pas un écart qui
+    n'est pas le sien.
+    """
+
+    def test_the_default_screen_carries_no_window(self):
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertNotIn(
+                    V.GAP_SENTENCES[rules.BOOT_WINDOW_OPEN],
+                    V.screen_line(nom),
+                )
+
+    def test_a_late_path_says_it_on_the_line(self):
+        for nom in ("paranoid", "local-only"):
+            with self.subTest(posture=nom):
+                self.assertIn(
+                    V.GAP_SENTENCES[rules.BOOT_WINDOW_OPEN],
+                    V.screen_line(nom, after_boot=True),
+                )
+
+    def test_free_egress_says_nothing_of_it_even_late(self):
+        """Contrôle positif : l'ajouter partout ne dirait plus rien, et
+        « rien n'est confiné » n'a pas de fenêtre."""
+        self.assertNotIn(
+            V.GAP_SENTENCES[rules.BOOT_WINDOW_OPEN],
+            V.screen_line("open", after_boot=True),
+        )
+
+    def test_the_gaps_come_from_the_package_with_the_path(self):
+        """Une recopie ici divergerait du modèle qu'elle décrit."""
+        for nom in R.posture_names():
+            for tardif in (False, True):
+                with self.subTest(posture=nom, tardif=tardif):
+                    self.assertEqual(
+                        rules.unenforced(R.get_posture(nom), tardif),
+                        V.gaps(nom, tardif),
+                    )
+
+    def test_the_sentence_says_how_long_and_not_only_that_it_exists(self):
+        """« Une fenêtre existe » ne se décide pas ; « des minutes » si."""
+        phrase = V.GAP_SENTENCES[rules.BOOT_WINDOW_OPEN]
+        self.assertIn("first boot", phrase)
+        self.assertIn("minutes", phrase)
+
+    def test_it_is_translated_like_the_others(self):
+        todo_i18n._current_lang = "fr"
+        francais = V.gap_sentence(rules.BOOT_WINDOW_OPEN)
+        todo_i18n._current_lang = "en"
+        self.assertNotEqual(francais, V.gap_sentence(rules.BOOT_WINDOW_OPEN))
+
+
 if __name__ == "__main__":
     unittest.main()
