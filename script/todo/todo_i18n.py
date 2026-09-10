@@ -12640,6 +12640,49 @@ TRANSLATIONS = {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
     },
+    # Serveurs MCP (script/todo/assistant/agents/mcp.py). Deux populations :
+    # les déclarations locales se lisent, les connecteurs du compte se
+    # demandent — et la demande attend le réseau.
+    "MCP servers": {
+        "fr": "🔌 Serveurs MCP",
+        "en": "🔌 MCP servers",
+    },
+    "to be queried": {
+        "fr": "à interroger",
+        "en": "to be queried",
+    },
+    "declared": {
+        "fr": "déclarés",
+        "en": "declared",
+    },
+    "no server declared here": {
+        "fr": "aucun serveur déclaré ici",
+        "en": "no server declared here",
+    },
+    "Locally declared MCP servers": {
+        "fr": "Serveurs MCP déclarés ici",
+        "en": "Locally declared MCP servers",
+    },
+    "Account connectors live in no file here.": {
+        "fr": "Les connecteurs du compte ne vivent dans aucun fichier ici.",
+        "en": "Account connectors live in no file here.",
+    },
+    "Query the servers (network)": {
+        "fr": "🔍 Interroger les serveurs (réseau)",
+        "en": "🔍 Query the servers (network)",
+    },
+    "Detail one server (network)": {
+        "fr": "📇 Détailler un serveur (réseau)",
+        "en": "📇 Detail one server (network)",
+    },
+    "Server name": {
+        "fr": "Nom du serveur",
+        "en": "Server name",
+    },
+    "Checking over the network…": {
+        "fr": "Interrogation par le réseau…",
+        "en": "Checking over the network…",
+    },
     # Disque et ménage (script/todo/assistant/agents/disque.py). L'écran
     # descend sous le total : une session, et son plus gros fichier capturé.
     "Disk and cleanup": {

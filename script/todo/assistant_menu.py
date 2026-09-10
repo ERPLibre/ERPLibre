@@ -285,6 +285,14 @@ class AssistantMenuMixin:
                 }
             )
             actions.append(self._agents_disque)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('MCP servers')}  ({self._agents_mcp_compte()})"
+                    )
+                }
+            )
+            actions.append(self._agents_mcp)
             choices.append({"section": t("Tooling")})
             for cle, methode in (
                 (
@@ -1099,6 +1107,88 @@ class AssistantMenuMixin:
                 print(t("Command not found !"))
 
     # ------------------------------------------------------------------
+    def _agents_mcp_compte(self):
+        """Ce que l'entrée annonce SANS toucher au réseau.
+
+        Le compte des serveurs déclarés localement, ou la mention qu'il faut
+        interroger. `claude mcp list` contrôle la santé de chaque serveur en
+        réseau : l'appeler pour afficher une entrée de menu ferait attendre à
+        chaque passage.
+        """
+        from script.todo.assistant.agents import mcp
+
+        declares = mcp.declares(depot=self._agents_racine())
+        return (
+            self._llm_count(len(declares), "declared", "declared")
+            if declares
+            else t("to be queried")
+        )
+
+    def _agents_mcp(self):
+        """Les serveurs MCP : les déclarations d'ici, et l'interrogation.
+
+        Les deux populations sont séparées à l'écran parce qu'elles ne se
+        connaissent pas de la même façon. Une déclaration locale se lit dans
+        un fichier ; un connecteur de compte n'existe dans aucun fichier et
+        ne se sait qu'en demandant.
+        """
+        from script.todo.assistant.agents import mcp
+
+        while True:
+            declares = mcp.declares(depot=self._agents_racine())
+            print(f"{t('Locally declared MCP servers')} :")
+            if declares:
+                for serveur in declares:
+                    cible = serveur.cible or "—"
+                    print(
+                        f"  {serveur.origine:<14} {serveur.nom:<20}"
+                        f" {serveur.transport:<6} {cible}"
+                    )
+            else:
+                print(f"  {t('no server declared here')}")
+            print(f"  {t('Account connectors live in no file here.')}")
+            choices = [
+                {"prompt_description": t("Query the servers (network)")},
+                {"prompt_description": t("Detail one server (network)")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._agents_mcp_lancer(mcp.argv_lister())
+            elif status == "2":
+                self._agents_mcp_detail()
+            else:
+                print(t("Command not found !"))
+
+    def _agents_mcp_detail(self):
+        """Détailler un serveur nommé. Lecture seule."""
+        from script.todo.assistant.agents import mcp
+
+        try:
+            nom = click.prompt(t("Server name")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            return
+        try:
+            argv = mcp.argv_detail(nom)
+        except ValueError as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        self._agents_mcp_lancer(argv)
+
+    def _agents_mcp_lancer(self, argv):
+        """Lancer une commande de lecture, en disant qu'elle attend le réseau."""
+        print(f"  {t('Checking over the network…')}", flush=True)
+        self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
+
     @staticmethod
     def _agents_volume():
         """Le volume total, pour l'entrée du menu. Vide si rien n'est là."""
