@@ -421,6 +421,28 @@ def run_deploy_form(ctx, run_app: bool = True):
                         disabled=True,
                         id="f_par",
                     )
+                    # Offerte seulement là où le cache tourne : sans lui il
+                    # n'y a pas d'amont à couper, et la case ne ferait rien.
+                    # Ce n'est PAS le réseau de la VM qu'elle coupe — la VM
+                    # en a besoin pour joindre le cache — mais celui du
+                    # service, le temps du déploiement.
+                    if cache_offert:
+                        yield Static(
+                            t("Network"),
+                            id="t_network",
+                            classes="grouptitle",
+                        )
+                        yield Checkbox(
+                            t("No internet connection"),
+                            value=defaults.get("offline", False),
+                            id="f_offline",
+                        )
+                        yield Static(
+                            f"  {t('Cuts the cache upstream: proves the VM')}"
+                        )
+                        yield Static(
+                            f"  {t('builds from what is already stored.')}"
+                        )
                 with Vertical(id="right"):
                     # Une liste de widgets, pas un tableau : chaque VM porte
                     # SES listes déroulantes, modifiables sur place. Un
@@ -998,6 +1020,11 @@ def run_deploy_form(ctx, run_app: bool = True):
                 "cache_bypass": bool(
                     self.query("#f_cache_bypass")  # type: ignore[union-attr]
                     and self.query_one("#f_cache_bypass", Checkbox).value
+                ),
+                # Même garde : la case n'existe que si le cache tourne.
+                "offline": bool(
+                    self.query("#f_offline")  # type: ignore[union-attr]
+                    and self.query_one("#f_offline", Checkbox).value
                 ),
                 "ai_agent": self.query_one("#f_ai_agent", Select).value,
                 "git_name": self.query_one("#f_git_name", Input).value.strip(),

@@ -62,6 +62,7 @@ from descente import (  # noqa: E402
 # distributions, versions par défaut, gestionnaire de paquets et libellés y
 # sont déjà tenus à jour, et une seconde table dériverait en silence — le test
 # proposerait alors un système que le déploiement ne sait pas installer.
+from script.qemu import cache_offline  # noqa: E402
 from script.qemu.deploy_qemu import (  # noqa: E402
     DISTRO_PKG,
     DISTROS,
@@ -95,8 +96,6 @@ CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
 CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
 SERVICE = "erplibre-go-qemu-cache.service"
 CONF = "/etc/erplibre_go_qemu_cache/env"
-SERVICE_USER = "elqcache"
-TABLE_BLOCAGE = "erplibre_qemu_cache_test"
 
 # La CHARGE : ce que les deux VM téléchargent, et donc ce que la mesure
 # regarde. Elle doit être identique d'une VM à l'autre, sans quoi la
@@ -894,26 +893,16 @@ def verdict(premier, second, journal):
 def couper_lamont(journal, dry_run=False):
     """Prive le SEUL service du cache de son accès sortant.
 
-    Par le compte du service — « meta skuid » — et non par une règle générale :
-    couper tout le 443 de l'orchestrateur emporterait la session ssh depuis
-    laquelle ce test se lance.
+    Les règles viennent de `cache_offline`, que le formulaire de déploiement
+    emploie aussi : une seule source, et ce que la case « Sans connexion
+    internet » fait est exactement ce que cette contre-épreuve mesure.
     """
-    regles = (
-        f"table inet {TABLE_BLOCAGE} {{\n"
-        f"  chain sortie {{\n"
-        f"    type filter hook output priority 0; policy accept;\n"
-        f"    meta skuid {SERVICE_USER} tcp dport {{ 80, 443 }} drop\n"
-        f"  }}\n"
-        f"}}\n"
-    )
     if dry_run:
         dire("  [à blanc] règles de coupure :", journal)
-        for ligne in regles.splitlines():
+        for ligne in cache_offline.nft_rules().splitlines():
             dire(f"    {ligne}", journal)
         return True
-    code, sortie = executer(
-        f"printf %s {shlex.quote(regles)} | sudo nft -f -", 60, journal
-    )
+    code, sortie = executer(cache_offline.cut_cmd(), 60, journal)
     if code:
         dire(f"  ✗ coupure impossible : {sortie}", journal)
         return False
@@ -922,13 +911,9 @@ def couper_lamont(journal, dry_run=False):
 
 def rebrancher_lamont(journal, dry_run=False):
     if dry_run:
-        dire(f"  [à blanc] nft delete table inet {TABLE_BLOCAGE}", journal)
+        dire(f"  [à blanc] {cache_offline.restore_cmd()}", journal)
         return
-    executer(
-        f"sudo nft delete table inet {TABLE_BLOCAGE} 2>/dev/null || true",
-        60,
-        journal,
-    )
+    executer(cache_offline.restore_cmd(), 60, journal)
 
 
 def contre_epreuve(

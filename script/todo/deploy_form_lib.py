@@ -404,6 +404,9 @@ def build_spec(vms, domains, form):
         # Au niveau du déploiement : soustraire une VM au cache se décide
         # avant sa création, l'exception portant sur son adresse MAC.
         "cache_bypass": form.get("cache_bypass", False),
+        # Au niveau du déploiement : la coupure vise le service du cache et
+        # dure le temps de la spec entière, installation comprise.
+        "offline": form.get("offline", False),
         "add_ssh_config": form["add_ssh_config"],
         "parallelism": form["parallelism"],
     }

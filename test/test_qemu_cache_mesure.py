@@ -230,11 +230,18 @@ class TestConventionsDuTestLong(unittest.TestCase):
         self.assertIn("attendu=", self.source)
         self.assertIn("uuid_libvirt", self.source)
 
-    def test_la_coupure_vise_le_compte_du_service(self):
-        """Couper tout le 443 de l'orchestrateur emporterait la session ssh
-        depuis laquelle le test se lance."""
-        self.assertIn("meta skuid", self.source)
-        self.assertNotIn("policy drop", self.source)
+    def test_la_coupure_est_deleguee_et_non_recopiee(self):
+        """Les règles vivent dans `script/qemu/cache_offline.py`, que le
+        formulaire de déploiement emploie aussi : la case « Sans connexion
+        internet » coupe donc exactement ce que cette mesure mesure.
+
+        Leur contenu — le compte visé plutôt que le port, sans quoi la
+        session ssh de l'opérateur tomberait — est éprouvé chez elles, dans
+        `test_qemu_cache_offline.py`.
+        """
+        self.assertIn("cache_offline.cut_cmd()", self.source)
+        self.assertIn("cache_offline.restore_cmd()", self.source)
+        self.assertNotIn("meta skuid", self.source)
 
     def test_la_coupure_est_toujours_retiree(self):
         self.assertIn("finally:", self.source)

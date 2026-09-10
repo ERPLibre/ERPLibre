@@ -332,5 +332,65 @@ class TestRienDeCollecteNeSePerd(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLaSectionReseau(unittest.TestCase):
+    """« Sans connexion internet » : la même chose que « --hors-ligne ».
+
+    Ce n'est pas le réseau de la VM qui tombe — elle en a besoin pour joindre
+    le cache — mais l'amont du service, le temps du déploiement.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ctx = contexte_du_formulaire()
+
+    def test_elle_saffiche_quand_le_cache_tourne(self):
+        champs = champs_affiches(dict(self.ctx, cache_offert=True))
+        self.assertIn("f_offline", champs)
+        self.assertIn("t_network", champs, "la section n'a pas de titre")
+
+    def test_elle_disparait_sans_cache(self):
+        """Sans cache il n'y a pas d'amont à couper : la case ne ferait
+        rien, et une case sans effet apprend une chose fausse."""
+        champs = champs_affiches(dict(self.ctx, cache_offert=False))
+        self.assertNotIn("f_offline", champs)
+
+    def test_elle_vient_apres_le_parallelisme(self):
+        """« à la toute fin » : la section est la dernière du panneau."""
+        champs = champs_affiches(dict(self.ctx, cache_offert=True))
+        self.assertLess(champs.index("f_par"), champs.index("t_network"))
+
+    def test_cochee_elle_arrive_dans_la_spec(self):
+        import asyncio
+
+        from textual.widgets import Checkbox
+
+        from script.todo.deploy_form_lib import build_spec
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(self.ctx, cache_offert=True)
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                case = app.query_one("#f_offline", Checkbox)
+                vu["defaut"] = case.value
+                case.value = True
+                await pilote.pause()
+                valeurs = app._form_values()
+                vu["spec"] = build_spec([], set(), valeurs)["offline"]
+
+        asyncio.run(scenario())
+        self.assertIs(
+            vu["defaut"],
+            False,
+            "cochée d'avance, elle couperait l'amont sans qu'on l'ait"
+            " demandé",
+        )
+        self.assertIs(vu["spec"], True)
+
+
 if __name__ == "__main__":
     unittest.main()

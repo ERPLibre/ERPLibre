@@ -3,6 +3,7 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Menu QEMU/KVM : d\u00e9cider et lancer un d\u00e9ploiement.\n\nLe chemin complet d'une cr\u00e9ation : les ressources (pr\u00e9r\u00e9glages vCPU/RAM/disque\net saisie libre), le plan et son r\u00e9capitulatif, les v\u00e9rifications de l'h\u00f4te\n(groupe libvirt, KVM), le contexte du formulaire TUI, la collecte en ligne, et\nl'ex\u00e9cution d'une spec \u2014 la M\u00caME structure quelle que soit l'interface, ce qui\npermet aux invites et au formulaire de partager tout le reste.\n\nFronti\u00e8re claire : ici on d\u00e9cide ; dans qemu_install.py on \u00e9crit ce qui sera\nex\u00e9cut\u00e9 dans l'invit\u00e9."""
 
+import contextlib
 import getpass
 import grp
 import json
@@ -15,6 +16,15 @@ import time
 from script.todo import todo_prefs
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
+
+
+class _SansInternetImpossible(Exception):
+    """La coupure demandée n'a pas pu être posée : rien n'est déployé.
+
+    Une exception et non un code de retour : le déploiement est enveloppé
+    d'un gestionnaire de contexte, et seule une exception l'empêche d'entrer
+    dans le bloc.
+    """
 
 
 class QemuDeployMixin:
@@ -2213,7 +2223,75 @@ class QemuDeployMixin:
         except ImportError:
             return None
 
+    @contextlib.contextmanager
+    def _qemu_sans_internet(self, actif):
+        """Coupe l'amont du cache le temps du bloc, et le rebranche toujours.
+
+        Ce n'est PAS le réseau des VM qui tombe : elles en ont besoin pour
+        joindre le cache, qui vit sur l'orchestrateur. Seul le service perd
+        son accès sortant, si bien que tout ce qui arrive encore dans une VM
+        vient du disque.
+
+        La coupure vaut pour la spec ENTIÈRE, installation comprise : c'est
+        l'installation qui télécharge, et une coupure levée avant elle ne
+        mesurerait plus rien.
+
+        Elle vaut aussi pour les AUTRES usagers du cache pendant ce temps —
+        un déploiement mené en parallèle depuis un autre terminal se
+        retrouvera hors ligne sans l'avoir demandé.
+        """
+        if not actif:
+            yield False
+            return
+        from script.qemu import cache_offline
+
+        if self._qemu_shell(cache_offline.cut_cmd()):
+            # Refuser plutôt que déployer quand même : une VM bâtie avec
+            # l'amont debout se bâtit toujours, et son succès se lirait comme
+            # une preuve hors ligne qu'elle n'est pas.
+            print(f"\n  ✗ {t('Upstream not cut: nothing deployed.')}")
+            print(
+                f"    {t('The result would look offline without being so.')}"
+            )
+            raise _SansInternetImpossible()
+        print(f"\n  ✂ {t('Cache upstream cut for this deployment.')}")
+        try:
+            yield True
+        finally:
+            # TOUJOURS : une coupure laissée en place prive le cache de
+            # réseau bien après, et la panne se découvre ailleurs.
+            self._qemu_shell(cache_offline.restore_cmd())
+            print(f"  {t('Cache upstream restored.')}")
+
+    @staticmethod
+    def _qemu_shell(cmd, timeout=60):
+        """Code de retour d'une commande shell locale, 255 si elle n'a pas
+        pu être lancée du tout."""
+        try:
+            return subprocess.run(
+                cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            ).returncode
+        except (OSError, subprocess.SubprocessError):
+            return 255
+
     def _qemu_run_spec(self, spec):
+        """Enveloppe le déploiement de la coupure d'amont qu'il demande.
+
+        Séparée du déploiement lui-même : la spec entière doit tenir dans le
+        bloc, et un « with » autour de deux cents lignes déjà indentées se
+        relit mal.
+        """
+        try:
+            with self._qemu_sans_internet(bool(spec.get("offline"))):
+                return self._qemu_deploie_spec(spec)
+        except _SansInternetImpossible:
+            return
+
+    def _qemu_deploie_spec(self, spec):
         """Exécute une spec de déploiement : création des VM en parallèle,
         résolution des IP, ~/.ssh/config, installation ERPLibre.
 

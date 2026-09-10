@@ -6383,6 +6383,34 @@ TRANSLATIONS = {
         "fr": "fuseau non posé",
         "en": "timezone not set",
     },
+    "No internet connection": {
+        "fr": "Sans connexion internet",
+        "en": "No internet connection",
+    },
+    "Cuts the cache upstream: proves the VM": {
+        "fr": "Coupe l'amont du cache : prouve que la VM se bâtit",
+        "en": "Cuts the cache upstream: proves the VM",
+    },
+    "builds from what is already stored.": {
+        "fr": "avec ce qui est déjà stocké.",
+        "en": "builds from what is already stored.",
+    },
+    "Cache upstream cut for this deployment.": {
+        "fr": "Amont du cache coupé pour ce déploiement.",
+        "en": "Cache upstream cut for this deployment.",
+    },
+    "Cache upstream restored.": {
+        "fr": "Amont du cache rebranché.",
+        "en": "Cache upstream restored.",
+    },
+    "Upstream not cut: nothing deployed.": {
+        "fr": "Amont non coupé : rien n'est déployé.",
+        "en": "Upstream not cut: nothing deployed.",
+    },
+    "The result would look offline without being so.": {
+        "fr": "Le résultat se lirait comme hors ligne sans l'être.",
+        "en": "The result would look offline without being so.",
+    },
     "download cache authority installed": {
         "fr": "autorité du cache de téléchargement posée",
         "en": "download cache authority installed",
