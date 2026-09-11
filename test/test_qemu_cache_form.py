@@ -371,8 +371,17 @@ class TestLaSectionReseau(unittest.TestCase):
 
         La garde est ici, sur la CLASSE, et non dans le seul test qui
         surveille : c'est celui qui ne surveillait pas qui a posé la règle.
+
+        L'espion ne relaie RIEN à la vraie commande : ce qu'il n'attend pas
+        reçoit un échec vide. Le pré-vol de F5 lit le suivi des déploiements
+        et le journal du cache, puis interroge le binaire du service ; un
+        ajout futur au pré-vol ne peut donc pas atteindre la machine. Le
+        pré-vol par les essais précédents est remplacé pour toute la classe :
+        il lirait le vrai ~/.erplibre et le vrai journal, et le résultat
+        dépendrait de la machine qui lance les tests.
         """
-        vrai_run = subprocess.run
+        from script.qemu import cache_offline
+
         self.lancees = []
 
         def espion(cmd, *a, **kw):
@@ -380,11 +389,16 @@ class TestLaSectionReseau(unittest.TestCase):
             self.lancees.append(texte)
             if "nft" in texte:
                 return subprocess.CompletedProcess(cmd, 0, "", "")
-            return vrai_run(cmd, *a, **kw)
+            return subprocess.CompletedProcess(cmd, 127, "", "")
 
-        patch = mock.patch("subprocess.run", espion)
-        patch.start()
-        self.addCleanup(patch.stop)
+        for patch in (
+            mock.patch("subprocess.run", espion),
+            mock.patch.object(
+                cache_offline, "manques_hors_ligne", lambda vms: []
+            ),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def test_elle_saffiche_quand_le_cache_tourne(self):
         champs = champs_affiches(dict(self.ctx, cache_offert=True))

@@ -1218,17 +1218,87 @@ def run_deploy_form(ctx, run_app: bool = True):
                 from script.qemu import cache_offline
 
                 absentes = cache_offline.suites_absentes(spec["vms"])
-                if absentes:
+                # Ce que les derniers déploiements hors ligne des MÊMES VM ont
+                # manqué, moins ce que le cache détient depuis. Un seul
+                # avertissement pour les deux, sous le même F5 : deux
+                # confirmations d'affilée apprendraient à les enchaîner.
+                manques = cache_offline.manques_hors_ligne(spec["vms"])
+                if absentes or manques:
                     self._offline_ack = True
-                    quoi = ", ".join(f"{d} {v}" for d, v in absentes)
+                    motifs = []
+                    if absentes:
+                        quoi = ", ".join(f"{d} {v}" for d, v in absentes)
+                        motifs.append(
+                            t("cache holds nothing for")
+                            + f" {quoi} — "
+                            + t("an offline VM will fail")
+                        )
+                    for b in manques:
+                        heures = int(b["age"] // 3600)
+                        if heures < 1:
+                            age = f"{int(b['age'] // 60)} min"
+                        elif heures < 72:
+                            age = f"{heures} h"
+                        else:
+                            age = f"{heures // 24} " + t("days")
+                        # « au moins » : l'installation s'arrête au premier
+                        # manque fatal, ce qui suivait n'a pas été demandé.
+                        motif = (
+                            t("the last offline run of")
+                            + f" {b['nom']} ("
+                            + t("age:")
+                            + f" {age}) "
+                            + t("lacked at least")
+                            + f" {len(b['manquants'])} "
+                            + t("addresses")
+                        )
+                        # Nommés à part : ils ne se comblent pas par l'entrée
+                        # « Combler ». Une négociation git se remplit par le
+                        # miroir, dépôt par dépôt ; le reste est nommé par sa
+                        # méthode, un GET que le cache ne garde pas n'étant
+                        # pas un POST.
+                        extras = []
+                        if b.get("git"):
+                            extras.append(
+                                f"+{len(b['git'])} "
+                                + t(
+                                    "git repositories not mirrored: fill"
+                                    " them from entry 5 of the cache menu"
+                                )
+                            )
+                        if b["jamais"]:
+                            methodes = sorted(
+                                {m.upper() for m, _u in b["jamais"]}
+                            )
+                            extras.append(
+                                f"+{len(b['jamais'])} "
+                                + t("requests the cache never keeps:")
+                                + " "
+                                + ", ".join(methodes)
+                            )
+                        if extras:
+                            motif += " (" + "; ".join(extras) + ")"
+                        if b["selon_journal"]:
+                            motif += ", " + t(
+                                "according to the log: a purge can make it"
+                                " wrong"
+                            )
+                        motifs.append(motif)
+                    if manques:
+                        exemples = [
+                            url for b in manques for _m, url in b["manquants"]
+                        ][:3]
+                        motifs.append(t("e.g.") + " " + ", ".join(exemples))
+                        motifs.append(
+                            t(
+                                "fill them from Cache › Fill what offline"
+                                " runs lacked"
+                            )
+                        )
                     self.notify(
-                        t("cache holds nothing for")
-                        + f" {quoi} — "
-                        + t("an offline VM will fail")
-                        + " — "
-                        + t("press F5 again to confirm"),
+                        " — ".join(motifs + [t("press F5 again to confirm")]),
                         severity="error",
-                        timeout=15,
+                        timeout=20,
                     )
                     return
             orphans = [r for r in self.rows if r["state"] == "orphan"]

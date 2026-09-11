@@ -225,6 +225,9 @@ CONF = "/etc/erplibre_go_qemu_cache/env"
 
 # Les issues qui prouvent qu'un CORPS est en réserve. « fetched » n'en est
 # pas : elle couvre aussi le « 304 » d'une revalidation, qui n'a pas de corps.
+# « stored-status » et « stale-status » n'en sont pas davantage : elles
+# portent un objet de STATUT seul — une redirection ou un refus gardés, sans
+# corps — et l'index d'une suite gardé en 404 ne la rend pas lisible.
 ISSUES_EN_RESERVE = ("stored", "hit", "stale")
 
 
@@ -316,3 +319,553 @@ def suites_absentes(vms) -> list:
         if not detient_la_suite(*cle):
             manquantes.append(cle)
     return manquantes
+
+
+# ---------------------------------------------------------------------------
+# Ce que les déploiements hors ligne précédents n'ont pas trouvé
+# ---------------------------------------------------------------------------
+#
+# Une ligne « offline-miss » du journal d'accès PROUVE qu'un invité a demandé
+# une adresse que le cache n'avait pas, pendant que l'amont était muet. Jointe
+# à un déploiement — l'adresse de sa VM et sa fenêtre [début, dernière
+# écriture de son log] — elle dit ce que ce déploiement a manqué, donc ce que
+# le suivant manquera encore si rien n'a été rempli entre-temps.
+#
+# Une liste de manques est une BORNE BASSE : l'installation s'arrête au premier
+# manque fatal, et ce qui la suivait n'a jamais été demandé.
+
+# Le binaire du service. Le menu du cache porte le même chemin ; un test
+# compare les deux.
+BINAIRE = "/usr/local/bin/erplibre_go_qemu_cache"
+
+# Un répertoire par déploiement, écrit par le suivi des installations : un
+# « session.json » et un log par VM.
+RUNS = "~/.erplibre/qemu-install"
+
+# Les méthodes que le cache sait garder. Toute autre le traverse sans copie :
+# un POST manqué hors ligne le sera toujours, et le compter dans « au moins
+# N » promettrait un remplissage impossible.
+METHODES_GARDABLES = ("GET", "HEAD")
+
+# Les points de négociation git (gitSmartPaths, côté Go) ; un test compare.
+# Le cache ne garde pas ces échanges : c'est le DÉPÔT qu'il tient, dans son
+# miroir, et l'entrée 5 du menu du cache le remplit.
+GIT_NEGOCIATION = ("/info/refs", "/git-upload-pack", "/git-receive-pack")
+
+ISSUE_MANQUE = "offline-miss"
+
+# Les issues d'un amont muet : servies du disque faute de réponse. Elles
+# naissent d'une coupure, mais aussi EN LIGNE : un amont qui vient de refuser
+# une connexion est tenu pour muet quelques secondes, et les requêtes qui ont
+# de quoi se rabattre sont servies du disque sans l'appeler. Leur présence
+# dans la fenêtre d'une VM ne prouve donc pas qu'elle a tourné coupée ; seul
+# le « offline » du manifeste le dit.
+ISSUES_AMONT_MUET = ("stale", "stale-status", "keep", ISSUE_MANQUE)
+
+# Ce qui prouve qu'une RÉPONSE est gardée, plus large que ISSUES_EN_RESERVE :
+# la VM hors ligne qui reçoit la redirection ou le 404 que l'amont avait rendu
+# obtient ce qu'elle aurait eu en ligne.
+ISSUES_REPONSE_GARDEE = ISSUES_EN_RESERVE + ("stored-status", "stale-status")
+
+# Les verdicts de « --detient » qui valent détention : un corps, ou un objet
+# de statut seul.
+DETENTION = ("garde", "statut")
+
+# Combien de déploiements renseignés d'un même nom sont réunis, et jusqu'à
+# quel âge. Au-delà, branche, catalogue et cache ont changé, et l'avertissement
+# parlerait d'un autre système.
+RUNS_RETENUS = 3
+AGE_MAX = 30 * 86400
+
+
+def reglage(nom: str, conf: str = CONF) -> str:
+    """Valeur d'un réglage du service (« EL_… »), ou "" s'il est illisible."""
+    prefixe = f"{nom}="
+    try:
+        with open(conf, encoding="utf-8") as fh:
+            for ligne in fh:
+                if ligne.startswith(prefixe):
+                    return ligne.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def instant(texte):
+    """Secondes depuis l'époque d'une date RFC 3339, ou None.
+
+    Le journal date en UTC ; une date sans fuseau est lue comme telle.
+    """
+    import datetime
+
+    try:
+        d = datetime.datetime.fromisoformat(str(texte).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=datetime.timezone.utc)
+    return d.timestamp()
+
+
+def _horodatage(label: str):
+    """L'instant local que porte le nom d'un répertoire de déploiement."""
+    import time
+
+    try:
+        return time.mktime(time.strptime(label, "%Y%m%d-%H%M%S"))
+    except (ValueError, OverflowError):
+        return None
+
+
+def lire_runs(racine: str = RUNS) -> list:
+    """Les déploiements passés qui ont installé quelque chose.
+
+    Rend [{"label", "debut", "hors_ligne", "vms": [{"nom", "ip", "fin",
+    "code"}]}].
+
+    « hors_ligne » est le « offline » du manifeste : True ou False quand il
+    le porte, None sinon — un manifeste qui ne le porte pas ne dit pas si
+    son déploiement a tourné coupé.
+
+    « debut » est le « deploy_started » du manifeste quand il le porte :
+    l'instant où le déploiement commence, AVANT la création des VM. Le
+    premier démarrage d'une VM coupée — pose de l'agent invité, paquets de
+    cloud-init — passe par le cache avant le lancement des installations, et
+    ses manques tomberaient hors d'une fenêtre ouverte au lancement. À
+    défaut, « debut » est le plus tôt de l'horodatage du répertoire et du
+    « started », tous deux écrits au lancement des installations.
+
+    « fin » est la dernière écriture du log de la VM, c'est-à-dire son
+    marqueur de sortie ; « code » est ce marqueur, None quand il manque. Un
+    déploiement sans branche ne fait que démarrer ses VM, n'installe rien,
+    et n'est pas rendu.
+    """
+    import glob
+    import json
+    import os
+
+    from script.todo.qemu_install_monitor import read_status
+
+    out = []
+    motif = os.path.join(os.path.expanduser(racine), "*", "session.json")
+    for manifeste in glob.glob(motif):
+        try:
+            with open(manifeste, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or not data.get("branch"):
+            continue
+        label = os.path.basename(os.path.dirname(manifeste))
+        debut = data.get("deploy_started")
+        if not isinstance(debut, (int, float)) or isinstance(debut, bool):
+            debuts = [
+                d
+                for d in (data.get("started"), _horodatage(label))
+                if isinstance(d, (int, float))
+            ]
+            if not debuts:
+                continue
+            debut = min(debuts)
+        vms = []
+        for vm in data.get("vms") or ():
+            if not isinstance(vm, dict):
+                continue
+            log = vm.get("log") or ""
+            try:
+                fin = os.path.getmtime(log)
+            except (OSError, TypeError):
+                continue
+            vms.append(
+                {
+                    "nom": vm.get("name") or "",
+                    "ip": vm.get("ip") or "",
+                    "fin": fin,
+                    "code": read_status(log)[1],
+                }
+            )
+        hors_ligne = data.get("offline")
+        out.append(
+            {
+                "label": label,
+                "debut": debut,
+                "hors_ligne": (
+                    hors_ligne if isinstance(hors_ligne, bool) else None
+                ),
+                "vms": vms,
+            }
+        )
+    return out
+
+
+def _lignes(chemin: str, indices) -> list:
+    """Les lignes du journal, décodées, dont le TEXTE contient un des indices.
+
+    Le filtre sur le texte précède le décodage : le journal n'est pas tourné,
+    il compte des dizaines de milliers de lignes, et seule une poignée
+    concerne la question posée. Un journal illisible rend une liste vide.
+    """
+    import json
+
+    if not chemin or not indices:
+        return []
+    out = []
+    try:
+        with open(chemin, encoding="utf-8", errors="replace") as fh:
+            for ligne in fh:
+                if not any(i in ligne for i in indices):
+                    continue
+                try:
+                    d = json.loads(ligne)
+                except ValueError:
+                    continue
+                if isinstance(d, dict):
+                    out.append(d)
+    except OSError:
+        return []
+    return out
+
+
+def releve_amont_muet(chemin: str, clients) -> list:
+    """Les lignes servies amont muet à ces clients.
+
+    Rend [{"client", "t", "issue", "methode", "url"}], « t » en secondes.
+    """
+    out = []
+    for d in _lignes(chemin, [f'"{i}"' for i in ISSUES_AMONT_MUET]):
+        if d.get("outcome") not in ISSUES_AMONT_MUET:
+            continue
+        if d.get("client") not in clients:
+            continue
+        quand = instant(d.get("time"))
+        if quand is None:
+            continue
+        out.append(
+            {
+                "client": d["client"],
+                "t": quand,
+                "issue": d["outcome"],
+                "methode": d.get("method") or "",
+                "url": d.get("url") or "",
+            }
+        )
+    return out
+
+
+def bilan_du_nom(
+    runs,
+    nom: str,
+    releve,
+    maintenant: float,
+    retenus: int = RUNS_RETENUS,
+    age_max: float = AGE_MAX,
+):
+    """Ce que les derniers déploiements hors ligne de la VM « nom » ont manqué.
+
+    Le NOM est la clé : il porte le système, sa version et la saveur du
+    bureau, là où le manifeste peut laisser système et version vides. Une
+    ligne du relevé appartient à un déploiement quand son client est l'adresse
+    de sa VM et que son instant tombe dans la fenêtre de celle-ci : une
+    adresse IP se réattribue, et seule la fenêtre dit à qui elle était.
+
+    Les déploiements sont lus du plus récent au plus ancien :
+      · un déploiement qui a RÉUSSI coupé (manifeste « offline » vrai, code
+        0, des lignes d'amont muet) clôt la lecture des PLUS ANCIENS — ce
+        qui leur manquait a été rempli depuis, ou n'est plus demandé. Ses
+        PROPRES manques sont gardés : les blocs d'outils facultatifs
+        préviennent et rendent 0, et une installation qui en a manqué
+        plusieurs réussit quand même ;
+      · une réussite qu'on ne sait pas coupée ne clôt rien, le manifeste
+        l'ignorât-il seulement : les lignes d'amont muet naissent aussi en
+        ligne, et clore à tort ferait taire des manques réels. Ne pas clore
+        coûte peu — la lecture reste bornée par « retenus » et « age_max »,
+        et ce que le magasin détient depuis est ôté plus loin ;
+      · un déploiement sans manque ne renseigne pas : arrêté avant d'avoir
+        rien demandé, sur un verrou apt par exemple, ou mené en ligne ;
+      · les autres sont RÉUNIS, jusqu'à « retenus ». Prendre le seul dernier
+        rendrait muet l'avertissement dès qu'un déploiement s'arrête tôt.
+
+    Rend None quand aucun déploiement ne renseigne. Sinon {"nom", "age",
+    "runs", "manques"} : « age » est celui du plus récent retenu, « manques »
+    associe chaque (méthode, URL) au dernier instant où elle a manqué, le
+    déploiement le plus récent d'abord.
+    """
+    candidats = sorted(
+        (
+            (run, vm)
+            for run in runs
+            for vm in run["vms"]
+            if vm["nom"] == nom and vm["ip"]
+        ),
+        key=lambda rv: rv[1]["fin"],
+        reverse=True,
+    )
+    pris = []
+    for run, vm in candidats:
+        if maintenant - vm["fin"] > age_max:
+            break
+        dedans = [
+            ligne
+            for ligne in releve
+            if ligne["client"] == vm["ip"]
+            and run["debut"] <= ligne["t"] <= vm["fin"]
+        ]
+        manques = [l for l in dedans if l["issue"] == ISSUE_MANQUE]
+        if dedans and vm["code"] == 0 and run.get("hors_ligne") is True:
+            if manques:
+                pris.append((run, vm, manques))
+            break
+        if not manques:
+            continue
+        pris.append((run, vm, manques))
+        if len(pris) >= retenus:
+            break
+    if not pris:
+        return None
+    manques = {}
+    for _run, _vm, lignes in pris:
+        for ligne in sorted(lignes, key=lambda l: l["t"]):
+            cle = (ligne["methode"], ligne["url"])
+            manques[cle] = max(manques.get(cle, 0.0), ligne["t"])
+    return {
+        "nom": nom,
+        "age": maintenant - pris[0][1]["fin"],
+        "runs": [run["label"] for run, _vm, _l in pris],
+        "manques": manques,
+    }
+
+
+def tenus_selon_journal(chemin: str, manques) -> set:
+    """Les (méthode, URL) dont le journal dit la réponse gardée APRÈS le manque.
+
+    « manques » associe chaque (méthode, URL) à l'instant de son dernier
+    manque. Le journal dit « a été gardé », pas « est encore là » : une purge
+    efface l'objet et laisse ses lignes. Seule une ligne postérieure au manque
+    compte — l'objet est entré, ou a été servi, après — ce qui écarte l'objet
+    purgé avant le manque. Une purge postérieure reste invisible, d'où
+    l'étiquette « selon le journal » partout où ce verdict est montré.
+    """
+    from urllib.parse import urlsplit
+
+    hotes = set()
+    for _methode, url in manques:
+        try:
+            hote = urlsplit(url).hostname
+        except ValueError:
+            hote = None
+        if hote:
+            hotes.add(f"//{hote}")
+    tenus = set()
+    for d in _lignes(chemin, sorted(hotes)):
+        cle = (d.get("method") or "", d.get("url") or "")
+        if cle not in manques or d.get("outcome") not in ISSUES_REPONSE_GARDEE:
+            continue
+        quand = instant(d.get("time"))
+        if quand is not None and quand > manques[cle]:
+            tenus.add(cle)
+    return tenus
+
+
+def detient_rendu(sortie: str) -> dict:
+    """La sortie de « --detient », par (méthode, URL).
+
+    Une ligne par question, six champs séparés par des tabulations :
+    verdict, statut, date de garde (RFC 3339 ou « - »), classe, méthode, URL.
+    Une ligne mal formée est sautée plutôt que devinée.
+    """
+    out = {}
+    for ligne in (sortie or "").splitlines():
+        champs = ligne.split("\t", 5)
+        if len(champs) < 6:
+            continue
+        verdict, statut, garde_le, classe, methode, url = champs
+        out[(methode, url)] = {
+            "verdict": verdict,
+            "statut": statut,
+            "garde_le": garde_le,
+            "classe": classe,
+        }
+    return out
+
+
+def detient_interroger(paires, binaire: str = BINAIRE, cache_dir: str = ""):
+    """Ce que le MAGASIN détient maintenant, par (méthode, URL).
+
+    Le magasin et non le journal : un objet effacé après son entrée garde ses
+    lignes « stored ». Rend None quand le binaire manque, ne connaît pas
+    « --detient » — il se sonde dans son aide — ou échoue : l'appelant se
+    rabat alors sur le journal, et le DIT. La question ne demande aucun
+    privilège, les casiers étant lisibles par tous.
+    """
+    import os
+    import subprocess
+
+    paires = list(paires)
+    if not paires:
+        return {}
+    if not os.path.isfile(binaire):
+        return None
+    try:
+        aide = subprocess.run(
+            [binaire, "--help"], capture_output=True, text=True, timeout=15
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if "-detient" not in (aide.stdout or "") + (aide.stderr or ""):
+        return None
+    argv = [binaire]
+    cache_dir = cache_dir or reglage("EL_CACHE_DIR")
+    if cache_dir:
+        argv += ["--cache-dir", cache_dir]
+    argv.append("--detient")
+    try:
+        p = subprocess.run(
+            argv,
+            input="".join(f"{m} {u}\n" for m, u in paires),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    return detient_rendu(p.stdout)
+
+
+def depot_git(url: str) -> str:
+    """L'adresse du dépôt dont `url` est une négociation git, ou "".
+
+    Le suffixe de négociation est retiré du chemin, et la requête avec lui :
+    « …/d.git/info/refs?service=git-upload-pack » et « …/d.git/git-upload-pack »
+    rendent le même dépôt, compté une fois. Une adresse illisible rend "".
+    """
+    from urllib.parse import urlsplit, urlunsplit
+
+    try:
+        morceaux = urlsplit(url or "")
+    except ValueError:
+        return ""
+    for suffixe in GIT_NEGOCIATION:
+        if morceaux.path.endswith(suffixe):
+            chemin = morceaux.path[: -len(suffixe)] or "/"
+            return urlunsplit(
+                (morceaux.scheme, morceaux.netloc, chemin, "", "")
+            )
+    return ""
+
+
+def manques_hors_ligne(
+    vms, racine: str = RUNS, chemin: str = "", maintenant=None, detient=None
+) -> list:
+    """Par VM de la spec, ce que ses derniers déploiements hors ligne ont
+    manqué et que le cache ne détient toujours pas.
+
+    Rend [{"nom", "age", "runs", "manquants", "git", "jamais",
+    "selon_journal"}], une entrée par nom qui manque encore quelque chose de
+    comblable. « manquants » ne porte que des méthodes gardables que le cache
+    ne détient pas. « git » : les dépôts, sans doublon, dont une négociation
+    a manqué — le miroir les remplit, pas un rejeu, et le magasin n'est pas
+    interrogé à leur sujet. « jamais » : ce que le cache ne gardera jamais.
+    Les deux derniers sont nommés à part, pour ne pas promettre un
+    remplissage impossible, et ne font pas parler l'avertissement à eux
+    seuls : ni le magasin ni le journal ne disent si un miroir a été rempli
+    depuis.
+
+    « detient » est la question posée au magasin (detient_interroger par
+    défaut) ; None en retour fait lire le journal à la place, et
+    « selon_journal » le dit.
+
+    Muet — [] — sans déploiement qui renseigne, et alors sans même lire le
+    journal ni lancer le binaire : un avertissement qui parle sans savoir
+    apprend à passer outre.
+    """
+    import time
+
+    noms = []
+    for vm in vms or ():
+        nom = vm.get("name") or ""
+        if nom and nom not in noms:
+            noms.append(nom)
+    if not noms:
+        return []
+    runs = lire_runs(racine)
+    clients = {
+        vm["ip"]
+        for run in runs
+        for vm in run["vms"]
+        if vm["nom"] in noms and vm["ip"]
+    }
+    if not clients:
+        return []
+    chemin = chemin or journal()
+    releve = releve_amont_muet(chemin, clients)
+    maintenant = time.time() if maintenant is None else maintenant
+    bilans = [
+        b
+        for b in (bilan_du_nom(runs, n, releve, maintenant) for n in noms)
+        if b
+    ]
+    if not bilans:
+        return []
+
+    derniers = {}
+    for b in bilans:
+        for cle, quand in b["manques"].items():
+            if _gardable(cle) and not depot_git(cle[1]):
+                derniers[cle] = max(derniers.get(cle, 0.0), quand)
+    verdicts = (detient or detient_interroger)(sorted(derniers))
+    selon_journal = verdicts is None
+    if selon_journal:
+        tenus, jamais_gardes = tenus_selon_journal(chemin, derniers), set()
+    else:
+        tenus = {c for c, v in verdicts.items() if v["verdict"] in DETENTION}
+        jamais_gardes = {
+            c for c, v in verdicts.items() if v["verdict"] == "non-cachable"
+        }
+    out = []
+    for b in bilans:
+        git, jamais, manquants = _trier_manques(
+            b["manques"], jamais_gardes, tenus
+        )
+        if manquants:
+            out.append(
+                {
+                    "nom": b["nom"],
+                    "age": b["age"],
+                    "runs": b["runs"],
+                    "manquants": manquants,
+                    "git": git,
+                    "jamais": jamais,
+                    "selon_journal": selon_journal,
+                }
+            )
+    return out
+
+
+def _gardable(cle) -> bool:
+    """La méthode d'un (méthode, URL) est-elle de celles que le cache
+    garde ?"""
+    return cle[0].upper() in METHODES_GARDABLES
+
+
+def _trier_manques(manques, jamais_gardes, tenus):
+    """Répartit des (méthode, URL) manqués en (git, jamais, manquants).
+
+    « git » : les dépôts, triés et sans doublon, dont une négociation a
+    manqué. « jamais » : les méthodes que le cache ne garde pas, et ce que
+    le magasin dit non-cachable. « manquants » : le reste, moins `tenus`.
+    La négociation git est reconnue AVANT la méthode : un POST sur
+    « git-upload-pack » se remplit par le miroir, comme le GET qui le
+    précède.
+    """
+    git, jamais, manquants = set(), [], []
+    for cle in manques:
+        depot = depot_git(cle[1])
+        if depot:
+            git.add(depot)
+        elif not _gardable(cle) or cle in jamais_gardes:
+            jamais.append(cle)
+        elif cle not in tenus:
+            manquants.append(cle)
+    return sorted(git), jamais, manquants

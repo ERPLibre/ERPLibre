@@ -6411,6 +6411,34 @@ TRANSLATIONS = {
         "fr": "avec ce qui est déjà stocké.",
         "en": "builds from what is already stored.",
     },
+    "according to the log: a purge can make it wrong": {
+        "fr": "selon le journal : une purge peut le rendre faux",
+        "en": "according to the log: a purge can make it wrong",
+    },
+    "the last offline run of": {
+        "fr": "le dernier déploiement hors ligne de",
+        "en": "the last offline run of",
+    },
+    "age:": {
+        "fr": "âge :",
+        "en": "age:",
+    },
+    "lacked at least": {
+        "fr": "a manqué d'au moins",
+        "en": "lacked at least",
+    },
+    "addresses": {
+        "fr": "adresses",
+        "en": "addresses",
+    },
+    "e.g.": {
+        "fr": "par exemple",
+        "en": "e.g.",
+    },
+    "fill them from Cache › Fill what offline runs lacked": {
+        "fr": "les combler depuis Cache › Combler ce qui a manqué hors ligne",
+        "en": "fill them from Cache › Fill what offline runs lacked",
+    },
     "Upstream CUT: the cache can pull nothing from the internet": {
         "fr": "Amont COUPÉ : le cache ne peut rien tirer de l'internet",
         "en": "Upstream CUT: the cache can pull nothing from the internet",
@@ -6570,6 +6598,14 @@ TRANSLATIONS = {
     "The monitor stays ticked: it is what arms that return.": {
         "fr": "Le suivi reste coché : c'est lui qui arme ce retour.",
         "en": "The monitor stays ticked: it is what arms that return.",
+    },
+    "git repositories not mirrored: fill them from entry 5 of the cache menu": {
+        "fr": "dépôts git absents du miroir : les remplir depuis l'entrée 5 du menu du cache",
+        "en": "git repositories not mirrored: fill them from entry 5 of the cache menu",
+    },
+    "requests the cache never keeps:": {
+        "fr": "requêtes que le cache ne garde jamais :",
+        "en": "requests the cache never keeps:",
     },
     "cache holds nothing for": {
         "fr": "le cache ne détient rien pour",
