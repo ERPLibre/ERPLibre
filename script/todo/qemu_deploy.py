@@ -2287,10 +2287,11 @@ class QemuDeployMixin:
     def _qemu_sans_internet(self, actif):
         """Coupe l'amont du cache le temps du bloc, et le rebranche toujours.
 
-        Ce n'est PAS le réseau des VM qui tombe : elles en ont besoin pour
-        joindre le cache, qui vit sur l'orchestrateur. Seul le service perd
-        son accès sortant, si bien que tout ce qui arrive encore dans une VM
-        vient du disque.
+        Deux sorties tombent : celle du service du cache, et celle que l'hôte
+        relaie pour les VM. Ce qu'une VM demande à l'hôte lui-même — le
+        cache, la résolution de noms — reste joignable : tout ce qui arrive
+        encore dans une VM vient donc du disque du cache, et un pas qui
+        prendrait un autre chemin échoue.
 
         La coupure vaut pour la spec ENTIÈRE, installation comprise : c'est
         l'installation qui télécharge, et une coupure levée avant elle ne

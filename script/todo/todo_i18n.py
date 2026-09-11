@@ -6403,14 +6403,6 @@ TRANSLATIONS = {
         "fr": "Sans connexion internet",
         "en": "No internet connection",
     },
-    "Cuts the cache upstream: proves the VM": {
-        "fr": "Coupe l'amont du cache : prouve que la VM se bâtit",
-        "en": "Cuts the cache upstream: proves the VM",
-    },
-    "builds from what is already stored.": {
-        "fr": "avec ce qui est déjà stocké.",
-        "en": "builds from what is already stored.",
-    },
     "Cache - Fill what offline runs lacked": {
         "fr": "🩹 Cache - Combler ce qui a manqué hors ligne",
         "en": "🩹 Cache - Fill what offline runs lacked",
@@ -6722,6 +6714,18 @@ TRANSLATIONS = {
     "requests the cache never keeps:": {
         "fr": "requêtes que le cache ne garde jamais :",
         "en": "requests the cache never keeps:",
+    },
+    "Cuts internet for the cache and the VMs: proves": {
+        "fr": "Coupe l'internet du cache et des VM : prouve que",
+        "en": "Cuts internet for the cache and the VMs: proves",
+    },
+    "the install builds from what the cache holds.": {
+        "fr": "l'installation se bâtit avec ce que le cache détient.",
+        "en": "the install builds from what the cache holds.",
+    },
+    "The VMs have no direct way out either: only the host answers them.": {
+        "fr": "Les VM n'ont plus de sortie directe non plus : seul l'hôte leur répond.",
+        "en": "The VMs have no direct way out either: only the host answers them.",
     },
     "cache holds nothing for": {
         "fr": "le cache ne détient rien pour",

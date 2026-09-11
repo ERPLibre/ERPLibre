@@ -212,6 +212,9 @@ class QemuCacheMenuMixin:
                 f"  ✗ {t('Upstream CUT: the cache can pull nothing from the internet')}"
             )
             print(f"    {t('Every VM then gets a 504 from every mirror.')}")
+            print(
+                f"    {t('The VMs have no direct way out either: only the host answers them.')}"
+            )
             print(f"    {t('Lift it with:')} {cache_offline.restore_cmd()}")
         elif coupe is None:
             print(

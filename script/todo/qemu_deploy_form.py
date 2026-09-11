@@ -423,9 +423,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     )
                     # Offerte seulement là où le cache tourne : sans lui il
                     # n'y a pas d'amont à couper, et la case ne ferait rien.
-                    # Ce n'est PAS le réseau de la VM qu'elle coupe — la VM
-                    # en a besoin pour joindre le cache — mais celui du
-                    # service, le temps du déploiement.
+                    # Elle coupe l'internet du cache ET la sortie directe des
+                    # VM, le temps du déploiement ; les VM gardent l'hôte :
+                    # le cache et la résolution de noms.
                     if cache_offert:
                         yield Static(
                             t("Network"),
@@ -438,10 +438,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                             id="f_offline",
                         )
                         yield Static(
-                            f"  {t('Cuts the cache upstream: proves the VM')}"
+                            f"  {t('Cuts internet for the cache and the VMs: proves')}"
                         )
                         yield Static(
-                            f"  {t('builds from what is already stored.')}"
+                            f"  {t('the install builds from what the cache holds.')}"
                         )
                         # Découvert par la case, comme le bloc IA : ce qui
                         # suit ne concerne que celui qui vient de la cocher.

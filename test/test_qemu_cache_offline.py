@@ -4,9 +4,10 @@
 
 """Déployer avec l'amont du cache coupé.
 
-Ce qui tombe n'est PAS le réseau de la VM : elle en a besoin pour joindre le
-cache, qui vit sur l'orchestrateur. Seul le service perd son accès sortant,
-si bien que tout ce qui arrive encore dans la VM vient du disque.
+Deux sorties tombent : l'amont du service du cache, et la sortie directe des
+VM que l'hôte relaie. Les VM gardent l'hôte — le cache, la résolution de
+noms —, si bien que tout ce qui arrive encore dans une VM vient du disque du
+cache, et qu'un pas qui prendrait un autre chemin échoue.
 
 Les règles sont VÉRIFIÉES au caractère près et jamais appliquées : la machine
 qui exécute les tests garde son pare-feu intact.
@@ -47,6 +48,45 @@ class TestLesRegles(unittest.TestCase):
         """Les mêler ferait tomber la redirection de tout le pont en
         rebranchant l'amont."""
         self.assertNotEqual(cache_offline.TABLE, "erplibre_qemu_cache")
+
+    def test_la_sortie_directe_des_vm_tombe(self):
+        """Ping, autres ports, UDP, IPv6 : tout ce que le pont relaie vers
+        l'extérieur. Sans cette chaîne, un pas qui contourne le cache réussit
+        en ligne pendant une coupure annoncée, et le test ment."""
+        regles = cache_offline.nft_rules(pont="virbr9")
+        self.assertIn("hook forward", regles)
+        self.assertIn('iifname "virbr9" oifname != "virbr9" drop', regles)
+
+    def test_ce_qui_vise_lhote_reste_joignable(self):
+        """Le détournement vers le cache se fait avant le routage, le
+        résolveur et la session ssh passent par « input » : aucune de ces
+        routes ne doit être visée, sans quoi la VM ne joindrait plus le cache
+        et échouerait pour une raison qui n'est pas le hors-ligne."""
+        regles = cache_offline.nft_rules()
+        for accroche in ("hook input", "hook prerouting", "hook postrouting"):
+            self.assertNotIn(accroche, regles)
+        # Le trafic entre VM du même pont n'est pas relayé vers l'extérieur.
+        self.assertIn('oifname != "', regles)
+
+    def test_le_pont_vient_des_reglages_du_service(self):
+        with mock.patch.object(
+            cache_offline, "reglage", lambda nom, conf="": "virbr7"
+        ):
+            self.assertIn('iifname "virbr7"', cache_offline.cut_cmd())
+        with mock.patch.object(
+            cache_offline, "reglage", lambda nom, conf="": ""
+        ):
+            self.assertIn(
+                f'iifname "{cache_offline.PONT_PAR_DEFAUT}"',
+                cache_offline.cut_cmd(),
+            )
+
+    def test_un_nom_de_pont_douteux_est_refuse(self):
+        """Il entre tel quel dans les règles : un guillemet casserait le jeu,
+        un nom faux donnerait une règle qui ne vise rien."""
+        for douteux in ('vir"br0', "virbr0 drop", "", "x" * 16):
+            with self.assertRaises(ValueError, msg=douteux):
+                cache_offline.nft_rules(pont=douteux)
 
     def test_le_retrait_est_muet_sur_une_table_absente(self):
         """Il se fait dans un « finally » : une erreur y masquerait celle

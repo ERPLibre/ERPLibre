@@ -2,17 +2,22 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
-"""Priver le cache de téléchargement de son amont, et l'y rebrancher.
+"""Couper l'internet d'un déploiement hors ligne, et le rendre.
 
-Ce qu'on coupe n'est PAS le réseau de la VM. La VM en a besoin : le cache vit
-sur l'orchestrateur, et c'est par son réseau qu'elle l'atteint. Lui couper la
-patte ne prouverait rien — elle échouerait sans jamais interroger le cache.
+La coupure ferme deux sorties et laisse l'hôte joignable :
+- l'amont du SEUL service du cache, qui ne peut plus rien tirer de
+  l'internet : ce qu'il sert encore vient de son disque ;
+- la sortie DIRECTE des VM, celle que l'hôte relaie : ping, autres ports,
+  UDP, IPv6. Un pas d'installation qui prendrait un autre chemin que le
+  cache — un clone par ssh, un dépôt sur un port à lui, du QUIC — échoue
+  donc, au lieu de réussir en ligne sans que rien ne le montre.
 
-Ce qu'on coupe est l'amont du SEUL service du cache. La VM garde son réseau
-et parle au cache comme d'habitude ; le cache, lui, ne peut plus rien tirer de
-l'internet. Tout ce qui arrive encore dans la VM vient donc du disque.
+Reste ce qu'une VM demande à l'HÔTE lui-même : son 80 et son 443, détournés
+vers le cache avant tout routage ; la résolution de noms, que l'hôte fait
+pour elle et fait toujours ; la session ssh de l'opérateur ; le trafic entre
+VM du même pont. Rien de cela n'est relayé vers l'extérieur.
 
-La coupure porte sur le COMPTE du service, jamais sur le port. Une règle
+La coupure du cache porte sur son COMPTE, jamais sur le port. Une règle
 générale sur le 443 de l'orchestrateur emporterait la session ssh depuis
 laquelle le déploiement est lancé, et la machine se couperait au milieu de la
 commande qui la configure.
@@ -22,6 +27,7 @@ alors les règles au caractère près sans toucher au pare-feu de la machine qui
 exécute les tests.
 """
 
+import re
 import shlex
 
 # Le compte sous lequel le service tourne. Le script d'installation porte la
@@ -35,30 +41,65 @@ SERVICE_USER = "elqcache"
 # tomber le détournement de tout le pont en rebranchant l'amont.
 TABLE = "erplibre_qemu_cache_offline"
 
+# Le pont des VM quand le service n'en nomme aucun : celui que libvirt donne
+# à son réseau par défaut.
+PONT_PAR_DEFAUT = "virbr0"
 
-def nft_rules(user: str = SERVICE_USER, table: str = TABLE) -> str:
+# Un nom d'interface tel que le noyau les accepte. Il entre tel quel dans les
+# règles : une apostrophe ou un guillemet y casserait le jeu entier, et un nom
+# faux donnerait une règle qui ne viserait rien — des VM restées en ligne
+# sous une coupure annoncée.
+_NOM_DE_PONT = re.compile(r"[A-Za-z0-9_.:-]{1,15}")
+
+
+def nft_rules(
+    user: str = SERVICE_USER, table: str = TABLE, pont: str = PONT_PAR_DEFAUT
+) -> str:
     """Le jeu de règles à passer à « nft -f - ».
 
-    « meta skuid » filtre sur l'UID du processus émetteur : seul ce que le
-    service envoie tombe, le reste de la machine — session ssh, libvirt, les
-    VM elles-mêmes — n'est pas touché.
+    Chaîne « sortie » : « meta skuid » filtre sur l'UID du processus
+    émetteur, si bien que seul ce que le service du cache envoie tombe ; la
+    session ssh et le reste de l'hôte ne sont pas touchés. Les deux ports : le
+    cache tire aussi en clair, et ne couper que le 443 laisserait passer tout
+    un miroir Debian.
 
-    Les deux ports : le cache tire aussi en clair, et ne couper que le 443
-    laisserait passer tout un miroir Debian.
+    Chaîne « transit » : elle jette ce que le pont relaie vers une AUTRE
+    interface, c'est-à-dire la sortie directe des VM. Ce qui vise l'hôte — le
+    80 et le 443 détournés vers le cache avant le routage, le résolveur, la
+    session ssh — passe par « input » et n'est pas touché ; le trafic entre
+    VM ne quitte pas le pont. Une chaîne à soi suffit : un « accept » de
+    libvirt dans SA table n'empêche pas ce « drop » de jouer, un paquet
+    traversant toutes les chaînes de base de son point d'accroche.
+
+    Lève ValueError sur un nom de pont qu'une interface ne peut pas porter.
     """
+    if not _NOM_DE_PONT.fullmatch(pont or ""):
+        raise ValueError(f"nom de pont refusé : {pont!r}")
     return (
         f"table inet {table} {{\n"
         f"  chain sortie {{\n"
         f"    type filter hook output priority 0; policy accept;\n"
         f"    meta skuid {user} tcp dport {{ 80, 443 }} drop\n"
         f"  }}\n"
+        f"  chain transit {{\n"
+        f"    type filter hook forward priority 0; policy accept;\n"
+        f'    iifname "{pont}" oifname != "{pont}" drop\n'
+        f"  }}\n"
         f"}}\n"
     )
 
 
-def cut_cmd(user: str = SERVICE_USER, table: str = TABLE) -> str:
-    """La commande qui pose la coupure."""
-    return f"printf %s {shlex.quote(nft_rules(user, table))} | sudo nft -f -"
+def pont_des_vm() -> str:
+    """Le pont que le service du cache détourne, lu dans ses réglages."""
+    return reglage("EL_BRIDGE") or PONT_PAR_DEFAUT
+
+
+def cut_cmd(
+    user: str = SERVICE_USER, table: str = TABLE, pont: str = ""
+) -> str:
+    """La commande qui pose la coupure, sur le pont des VM du service."""
+    regles = nft_rules(user, table, pont or pont_des_vm())
+    return f"printf %s {shlex.quote(regles)} | sudo nft -f -"
 
 
 def restore_cmd(table: str = TABLE) -> str:
