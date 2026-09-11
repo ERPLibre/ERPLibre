@@ -2248,7 +2248,10 @@ class QemuInstallMixin:
             + f'RTK="$(command -v rtk || echo "{local_bin}/rtk")"; '
             + '[ -x "$RTK" ] && timeout 60 "$RTK" init --global'
             " </dev/null >/dev/null 2>&1 || true; "
-            + pose(dev_tools.STARSHIP_UPSTREAM_YES, 300)
+            # Ces 300 s ne bornent que curl : l'installateur root porte sa
+            # propre borne, plus courte, derrière sudo — voir
+            # STARSHIP_UPSTREAM_VM.
+            + pose(dev_tools.STARSHIP_UPSTREAM_VM, 300)
             + une_fois(prompt, "starship init bash")
             + pose(commande, 600)
             + une_fois(local_line, local_bin)
