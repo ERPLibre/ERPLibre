@@ -583,3 +583,65 @@ func TestHorsLigneLeClientSuitLaRedirectionJusquAuCorps(t *testing.T) {
 		t.Errorf("hors ligne : corps %q, attendu celui de la cible", got)
 	}
 }
+
+// Une redirection suivie par le cache repart SANS la condition du client :
+// sinon la cible répond « 304 » et il n'y a rien à garder. Et les
+// identifiants confiés à l'hôte demandé ne suivent pas vers un autre hôte.
+func TestLesRedirectionsSuiviesPartentSansConditionNiIdentifiants(t *testing.T) {
+	contenu := strings.Repeat("charge utile", 32)
+	var mu sync.Mutex
+	var conditions, identites []string
+	stockage := nouvelAmontScripte(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		conditions = append(conditions, r.Header.Get("If-None-Match"))
+		identites = append(identites, r.Header.Get("Authorization"))
+		mu.Unlock()
+		if r.Header.Get("If-None-Match") != "" {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		io.WriteString(w, contenu)
+	})
+	pub := nouvelAmontScripte(t,
+		rediriger(http.StatusFound, stockage.srv.URL+"/objet?signature=a"))
+	p, dir := proxyEtCasier(t)
+
+	w := joue(t, p, "GET", pub.hote(), "/paquets/outil_1.0_amd64.deb",
+		"If-None-Match", `"v0"`, "Authorization", "Bearer jeton-de-test")
+	if w.Code != http.StatusOK || w.Body.String() != contenu {
+		t.Fatalf("code %d, %d octets : le corps n'est pas venu", w.Code, w.Body.Len())
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(conditions) != 1 || conditions[0] != "" {
+		t.Errorf("la cible a reçu la condition : %q", conditions)
+	}
+	if len(identites) != 1 || identites[0] != "" {
+		t.Errorf("l'identifiant a suivi vers un autre hôte : %q", identites)
+	}
+	if corpsGardes(t, dir) != 1 {
+		t.Error("rien n'est gardé derrière la redirection")
+	}
+}
+
+// Sur le MÊME hôte, l'identifiant suit : c'est à lui qu'il a été confié.
+func TestUneRedirectionSurLeMemeHoteGardeLIdentifiant(t *testing.T) {
+	var recu atomic.Value
+	a := nouvelAmontScripte(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/a/outil_1.0_amd64.deb" {
+			rediriger(http.StatusFound, "/b/outil_1.0_amd64.deb")(w, r)
+			return
+		}
+		recu.Store(r.Header.Get("Authorization"))
+		io.WriteString(w, "paquet")
+	})
+	p := proxyDeTest(t)
+	w := joue(t, p, "GET", a.hote(), "/a/outil_1.0_amd64.deb",
+		"Authorization", "Bearer jeton-de-test")
+	if w.Code != http.StatusOK {
+		t.Fatalf("code %d", w.Code)
+	}
+	if got, _ := recu.Load().(string); got != "Bearer jeton-de-test" {
+		t.Errorf("identifiant reçu %q sur le même hôte", got)
+	}
+}

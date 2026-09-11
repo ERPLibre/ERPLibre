@@ -308,8 +308,12 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	// que la machine suivante ne retrouve rien et retélécharge. Rendre la
 	// redirection au client suppose une cible stable, ce qu'une signature à
 	// péremption n'est pas.
+	//
+	// Chaque étape part de la requête d'AMONT : ses conditions sont retirées
+	// quand le cache ne détient rien, et la requête d'origine ferait répondre
+	// « 304 » à la cible — il n'y aurait alors rien à garder.
 	if upErr == nil && class == ClassImmutable && r.Method == "GET" {
-		resp = p.suivreRedirections(r, resp)
+		resp = p.suivreRedirections(amont, u, resp)
 	}
 	if upErr != nil {
 		// L'amont est injoignable : DNS muet, connexion refusée, délai
@@ -603,6 +607,13 @@ const maxRedirections = 5
 // suivreRedirections rend la réponse FINALE d'une chaîne de redirections, ou
 // la dernière obtenue si quelque chose s'y oppose.
 //
+// Chaque étape rejoue `r`, la requête d'amont partie vers `depart`. Les
+// identifiants — « Authorization », « Cookie », « Proxy-Authorization » — ne
+// suivent pas une étape qui quitte l'hôte de départ : ils ont été confiés à
+// cet hôte, et une redirection vers un stockage tiers les lui livrerait. Le
+// client HTTP de la bibliothèque les retire de même ; un suivi à la main doit
+// le faire lui-même.
+//
 // Une cible qui désigne le cache lui-même arrête la chaîne : la suivre
 // renverrait la requête ici.
 //
@@ -611,8 +622,9 @@ const maxRedirections = 5
 // rien : le client verra la redirection et se débrouillera, ce qui est le
 // comportement d'avant.
 func (p *Proxy) suivreRedirections(
-	r *http.Request, resp *http.Response,
+	r *http.Request, depart *url.URL, resp *http.Response,
 ) *http.Response {
+	origine := adresseAmont(depart)
 	for i := 0; i < maxRedirections; i++ {
 		if resp.StatusCode < 300 || resp.StatusCode > 399 {
 			return resp
@@ -621,10 +633,14 @@ func (p *Proxy) suivreRedirections(
 		if err != nil || cible == nil || p.viseLeCache(cible) {
 			return resp
 		}
+		etape := r
+		if adresseAmont(cible) != origine {
+			etape = sansIdentifiants(r)
+		}
 		// Sans repli : l'étape qui échoue rend la redirection au client,
 		// qui la redemandera au travers du cache — la tenter coûte au plus
 		// le délai d'établissement, la sauter ne ferait que le déplacer.
-		suivante, err := p.fetch(r, cible, false)
+		suivante, err := p.fetch(etape, cible, false)
 		if err != nil {
 			return resp
 		}
@@ -632,6 +648,20 @@ func (p *Proxy) suivreRedirections(
 		resp = suivante
 	}
 	return resp
+}
+
+// enTetesDIdentite : ce par quoi un client s'authentifie auprès d'un hôte.
+var enTetesDIdentite = []string{
+	"Authorization", "Cookie", "Proxy-Authorization",
+}
+
+// sansIdentifiants rend une COPIE de la requête, ses identifiants retirés.
+func sansIdentifiants(r *http.Request) *http.Request {
+	out := r.Clone(r.Context())
+	for _, h := range enTetesDIdentite {
+		out.Header.Del(h)
+	}
+	return out
 }
 
 // enCommentaire rend un texte INERTE pour un interpréteur de commandes.
