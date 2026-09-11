@@ -1047,6 +1047,16 @@ class TestLeMenuLitLaCoupureEtLeGuet(SansSysteme):
             self.assertIn(cache_offline.guet_actif_cmd(), c)
             self.assertNotIn("sudo", c)
 
+    def test_un_service_inactif_nest_pas_actif(self):
+        for sortie, attendu in (
+            ("active\n", True),
+            ("inactive\n", False),
+            ("failed\n", False),
+            ("", False),
+        ):
+            self.sorties = {"systemctl is-active": sortie}
+            self.assertIs(M._cache_actif(), attendu, sortie)
+
     def diagnostic(self, coupe, guet):
         binaire = self.dossier / "binaire"
         binaire.write_text("")

@@ -267,12 +267,11 @@ class QemuCacheMenuMixin:
 
     @classmethod
     def _cache_actif(cls):
-        return (
-            "active"
-            in cls._cache_lire(f"systemctl is-active {CACHE_SERVICE}").split(
-                "\n"
-            )[0]
-        )
+        """Le service tourne-t-il ? La première ligne doit valoir
+        « active » ENTIÈRE : « inactive » la contient, et un test
+        d'inclusion lirait un service arrêté comme en marche."""
+        vu = cls._cache_lire(f"systemctl is-active {CACHE_SERVICE}")
+        return vu.split("\n")[0].strip() == "active"
 
     @staticmethod
     def _cache_journal():
