@@ -4,15 +4,17 @@
 
 """Déployer avec l'amont du cache coupé.
 
-Deux sorties tombent : l'amont du service du cache, et la sortie directe des
-VM que l'hôte relaie. Les VM gardent l'hôte — le cache, la résolution de
-noms —, si bien que tout ce qui arrive encore dans une VM vient du disque du
-cache, et qu'un pas qui prendrait un autre chemin échoue.
+Trois sorties tombent : l'amont du service du cache, la sortie directe des
+VM que l'hôte relaie, et la résolution des noms par l'internet — l'hôte
+répond lui-même à tout nom une adresse que le cache intercepte. Tout ce qui
+arrive encore dans une VM vient donc du disque du cache, et un pas qui
+prendrait un autre chemin échoue.
 
 Les règles sont VÉRIFIÉES au caractère près et jamais appliquées : la machine
 qui exécute les tests garde son pare-feu intact.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -24,6 +26,9 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from script.qemu import cache_offline  # noqa: E402
+
+# Gardée avant que setUpModule ne la remplace pour tout le module.
+_VRAI_DNSMASQ = cache_offline.dnsmasq
 
 
 class TestLesRegles(unittest.TestCase):
@@ -63,10 +68,27 @@ class TestLesRegles(unittest.TestCase):
         routes ne doit être visée, sans quoi la VM ne joindrait plus le cache
         et échouerait pour une raison qui n'est pas le hors-ligne."""
         regles = cache_offline.nft_rules()
-        for accroche in ("hook input", "hook prerouting", "hook postrouting"):
+        for accroche in ("hook input", "hook postrouting"):
             self.assertNotIn(accroche, regles)
+        # En tête de routage, cette table ne détourne que le port 53 : le 80
+        # et le 443 restent à la table du cache, qui les mène au cache.
+        self.assertNotIn("dport 80", regles)
+        self.assertNotIn("dport 443 redirect", regles)
         # Le trafic entre VM du même pont n'est pas relayé vers l'extérieur.
         self.assertIn('oifname != "', regles)
+
+    def test_le_dns_des_vm_va_au_resolveur_fictif(self):
+        """UDP et TCP : une réponse DNS trop grande repasse en TCP, et une
+        requête qui y échapperait joindrait l'internet par le résolveur de
+        libvirt."""
+        regles = cache_offline.nft_rules(pont="virbr9")
+        self.assertIn("hook prerouting", regles)
+        for proto in ("udp", "tcp"):
+            self.assertIn(
+                f'iifname "virbr9" {proto} dport 53 redirect to'
+                f" :{cache_offline.PORT_DNS}",
+                regles,
+            )
 
     def test_le_pont_vient_des_reglages_du_service(self):
         with mock.patch.object(
@@ -93,6 +115,102 @@ class TestLesRegles(unittest.TestCase):
         d'origine."""
         self.assertIn("|| true", cache_offline.restore_cmd())
         self.assertIn(cache_offline.TABLE, cache_offline.restore_cmd())
+
+
+class TestLeResolveurFictif(unittest.TestCase):
+    """Pendant la coupure, l'hôte répond LUI-MÊME à tout nom : sans
+    résolution, la VM ne se connecterait à rien et le cache ne verrait jamais
+    la requête ; avec la vraie, les noms sortiraient par l'internet."""
+
+    def test_un_dnsmasq_sans_amont_qui_repond_tout_nom(self):
+        cmd = cache_offline.dns_cmd(pont="virbr9", binaire="/usr/bin/dnsmasq")
+        for attendu in (
+            f"--unit={cache_offline.UNITE_DNS}",
+            "--collect",
+            "RuntimeMaxSec=",
+            "--conf-file=/dev/null",
+            "--no-resolv",
+            "--no-hosts",
+            "--interface=virbr9",
+            "--except-interface=lo",
+            "--bind-interfaces",
+            f"--port={cache_offline.PORT_DNS}",
+            f"--address=/#/{cache_offline.ADRESSE_FICTIVE_V4}",
+            f"--address=/#/{cache_offline.ADRESSE_FICTIVE_V6}",
+            "--local-ttl=0",
+        ):
+            self.assertIn(attendu, cmd)
+
+    def test_sans_dnsmasq_la_coupure_est_refusee(self):
+        """Une coupure qui laisserait les noms sortir mentirait sur ce
+        qu'elle prouve."""
+        with mock.patch.object(cache_offline, "dnsmasq", lambda: ""):
+            self.assertEqual(cache_offline.dns_cmd(pont="virbr9"), "")
+            cmd = cache_offline.cut_cmd(pont="virbr9")
+        self.assertNotEqual(subprocess.run(["sh", "-c", cmd]).returncode, 0)
+
+    def test_dnsmasq_se_cherche_dans_le_path(self):
+        """Le module le remplace pour tous les tests : c'est la VRAIE
+        fonction qu'on éprouve ici."""
+        with mock.patch.object(cache_offline.shutil, "which", lambda n: None):
+            self.assertEqual(_VRAI_DNSMASQ(), "")
+        with mock.patch.object(
+            cache_offline.shutil, "which", lambda n: f"/opt/bin/{n}"
+        ):
+            self.assertEqual(_VRAI_DNSMASQ(), "/opt/bin/dnsmasq")
+
+    def test_le_retrait_arrete_aussi_le_resolveur(self):
+        for cmd in (cache_offline._retrait(), cache_offline.restore_cmd()):
+            self.assertIn(f"systemctl stop {cache_offline.UNITE_DNS}", cmd)
+            self.assertIn(f"nft delete table inet {cache_offline.TABLE}", cmd)
+        self.assertTrue(cache_offline.restore_cmd().startswith("sudo sh -c "))
+        # Le guet lève par le même retrait : il arrête donc le résolveur.
+        guet = cache_offline.guet_cmd(["/srv/run/vm.log"], "__FIN__")
+        self.assertIn(cache_offline.UNITE_DNS, guet)
+
+    def _poser(self, systemd_run_rc):
+        """Exécute la VRAIE commande de pose avec de faux sudo, nft,
+        systemd-run et systemctl EN TÊTE du PATH : aucun vrai outil n'est
+        atteint, et le journal dit qui a été appelé, dans quel ordre."""
+        import tempfile
+
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, True))
+        journal = os.path.join(d, "appels")
+        faux = {
+            "sudo": 'exec "$@"',
+            "nft": f'echo "nft $*" >> {journal}',
+            "systemctl": f'echo "systemctl $*" >> {journal}',
+            "systemd-run": f'echo "systemd-run" >> {journal}; exit {systemd_run_rc}',
+        }
+        for nom, corps in faux.items():
+            chemin = os.path.join(d, nom)
+            with open(chemin, "w", encoding="utf-8") as fh:
+                fh.write(f"#!/bin/sh\n{corps}\n")
+            os.chmod(chemin, 0o755)
+        dns = cache_offline.dns_cmd(
+            pont="virbr9", binaire="/inexistant/dnsmasq"
+        )
+        cmd = cache_offline.cut_cmd(pont="virbr9", dns=dns)
+        env = {"PATH": f"{d}:/usr/bin:/bin"}
+        rc = subprocess.run(["/bin/sh", "-c", cmd], env=env).returncode
+        with open(journal, encoding="utf-8") as fh:
+            return rc, fh.read().splitlines()
+
+    def test_un_resolveur_qui_ne_part_pas_retire_la_table(self):
+        rc, appels = self._poser(systemd_run_rc=1)
+        self.assertNotEqual(rc, 0, "la pose a réussi sans résolveur")
+        self.assertEqual(appels[0], "nft -f -")
+        self.assertEqual(appels[1], "systemd-run")
+        self.assertIn(
+            f"nft delete table inet {cache_offline.TABLE}", appels[2]
+        )
+        self.assertIn(f"systemctl stop {cache_offline.UNITE_DNS}", appels[3])
+
+    def test_une_pose_complete_ne_retire_rien(self):
+        rc, appels = self._poser(systemd_run_rc=0)
+        self.assertEqual(rc, 0)
+        self.assertEqual(appels, ["nft -f -", "systemd-run"])
 
 
 class TestLeCompteDuService(unittest.TestCase):
@@ -446,13 +564,15 @@ class _FauxHote:
             if not self.lecture:
                 return 2
             return 0 if self.table else 1
-        if "systemd-run" in cmd:
-            self.ordre.append("guet")
-            self.guet = True
-            return 0
+        # La pose passe AVANT le guet : elle lance aussi une unité (le
+        # résolveur fictif), mais c'est la table qu'elle pose.
         if "nft -f -" in cmd:
             self.ordre.append("coupure")
             self.table = True
+            return 0
+        if "systemd-run" in cmd:
+            self.ordre.append("guet")
+            self.guet = True
             return 0
         if "nft delete" in cmd:
             self.ordre.append("rebranchement")
@@ -1283,6 +1403,13 @@ def setUpModule():
     patch = mock.patch.object(mon, "session_dir", lambda: Path(sessions.name))
     patch.start()
     unittest.addModuleCleanup(patch.stop)
+    # Les commandes rendues ne dépendent pas de l'hôte de test : sans ce
+    # remplacement, un hôte sans dnsmasq rendrait « false » pour la pose.
+    dns = mock.patch.object(
+        cache_offline, "dnsmasq", lambda: "/usr/sbin/dnsmasq"
+    )
+    dns.start()
+    unittest.addModuleCleanup(dns.stop)
 
 
 def _chemin_du_verrou():
@@ -1518,6 +1645,22 @@ class TestLesSignauxPendantLaCoupure(_SansSysteme, unittest.TestCase):
         vu = _joue_la_spec(hote)
         self.assertEqual(hote.ordre, ["coupure"])
         self.assertIn(t("Upstream not cut: nothing deployed."), vu["ecrit"])
+        self._rendus()
+        self.assertTrue(_verrou_libre())
+
+    def test_sans_dnsmasq_rien_nest_touche_et_on_dit_pourquoi(self):
+        """La pose échouerait sans motif lisible : le refus vient avant, et
+        nomme ce qui manque."""
+        from script.todo.todo_i18n import t
+
+        hote = _FauxHote()
+        with mock.patch.object(cache_offline, "dnsmasq", lambda: ""):
+            vu = _joue_la_spec(hote)
+        self.assertEqual(hote.ordre, [], "une commande est partie")
+        self.assertEqual(vu["lances"], [])
+        self.assertIn(
+            t("dnsmasq is missing on the host: names cannot"), vu["ecrit"]
+        )
         self._rendus()
         self.assertTrue(_verrou_libre())
 

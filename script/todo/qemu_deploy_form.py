@@ -423,9 +423,10 @@ def run_deploy_form(ctx, run_app: bool = True):
                     )
                     # Offerte seulement là où le cache tourne : sans lui il
                     # n'y a pas d'amont à couper, et la case ne ferait rien.
-                    # Elle coupe l'internet du cache ET la sortie directe des
-                    # VM, le temps du déploiement ; les VM gardent l'hôte :
-                    # le cache et la résolution de noms.
+                    # Elle coupe l'internet du cache, la sortie directe des VM
+                    # et la résolution des noms par l'internet, le temps du
+                    # déploiement ; les VM gardent l'hôte : le cache, et des
+                    # noms que l'hôte leur répond seul.
                     if cache_offert:
                         yield Static(
                             t("Network"),

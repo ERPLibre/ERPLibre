@@ -4,18 +4,22 @@
 
 """Couper l'internet d'un déploiement hors ligne, et le rendre.
 
-La coupure ferme deux sorties et laisse l'hôte joignable :
+La coupure ferme trois sorties et laisse l'hôte joignable :
 - l'amont du SEUL service du cache, qui ne peut plus rien tirer de
   l'internet : ce qu'il sert encore vient de son disque ;
 - la sortie DIRECTE des VM, celle que l'hôte relaie : ping, autres ports,
   UDP, IPv6. Un pas d'installation qui prendrait un autre chemin que le
   cache — un clone par ssh, un dépôt sur un port à lui, du QUIC — échoue
-  donc, au lieu de réussir en ligne sans que rien ne le montre.
+  donc, au lieu de réussir en ligne sans que rien ne le montre ;
+- la résolution des noms par l'internet : un résolveur à part, sur l'hôte,
+  répond à TOUT nom une adresse fictive. Le détournement du cache vise un
+  PORT et non une adresse, et le cache reconnaît le site à son nom (SNI,
+  en-tête Host) : la VM joint donc encore ce que le cache détient, et rien
+  d'autre. Aucune requête DNS d'une VM ne quitte l'hôte.
 
 Reste ce qu'une VM demande à l'HÔTE lui-même : son 80 et son 443, détournés
-vers le cache avant tout routage ; la résolution de noms, que l'hôte fait
-pour elle et fait toujours ; la session ssh de l'opérateur ; le trafic entre
-VM du même pont. Rien de cela n'est relayé vers l'extérieur.
+vers le cache avant tout routage ; les noms, auxquels l'hôte répond seul ;
+la session ssh de l'opérateur ; le trafic entre VM du même pont.
 
 La coupure du cache porte sur son COMPTE, jamais sur le port. Une règle
 générale sur le 443 de l'orchestrateur emporterait la session ssh depuis
@@ -29,6 +33,7 @@ exécute les tests.
 
 import re
 import shlex
+import shutil
 
 # Le compte sous lequel le service tourne. Le script d'installation porte la
 # même valeur — il est en shell et ne peut pas la lire ici ; un test compare
@@ -51,6 +56,22 @@ PONT_PAR_DEFAUT = "virbr0"
 # sous une coupure annoncée.
 _NOM_DE_PONT = re.compile(r"[A-Za-z0-9_.:-]{1,15}")
 
+# Le résolveur fictif. Toute question reçoit la même adresse, que le
+# détournement conduit au cache quelle qu'elle soit : 192.0.2.1 est réservée à
+# la documentation (RFC 5737) et jamais routée. L'AAAA répond 100::1, du
+# préfixe réservé au rejet (RFC 6666) : sans réponse, dnsmasq REFUSE la
+# question, et un résolveur qui reçoit un refus peut écarter le serveur. Sans
+# route IPv6, le client repasse aussitôt en IPv4 ; avec une route, la chaîne
+# « transit » jette ce trafic.
+ADRESSE_FICTIVE_V4 = "192.0.2.1"
+ADRESSE_FICTIVE_V6 = "100::1"
+
+# Hors des ports que tiennent déjà le résolveur de libvirt (53) et le mDNS
+# de l'hôte (5353).
+PORT_DNS = 10053
+
+UNITE_DNS = "erplibre-qemu-offline-dns"
+
 
 def nft_rules(
     user: str = SERVICE_USER, table: str = TABLE, pont: str = PONT_PAR_DEFAUT
@@ -71,6 +92,11 @@ def nft_rules(
     libvirt dans SA table n'empêche pas ce « drop » de jouer, un paquet
     traversant toutes les chaînes de base de son point d'accroche.
 
+    Chaîne « noms » : le DNS des VM — UDP et TCP 53, quelle que soit la
+    destination, un résolveur public compris — est détourné vers le
+    résolveur fictif de `dns_cmd`. Elle ne touche ni le 80 ni le 443, que la
+    table du cache détourne de son côté.
+
     Lève ValueError sur un nom de pont qu'une interface ne peut pas porter.
     """
     if not _NOM_DE_PONT.fullmatch(pont or ""):
@@ -80,6 +106,11 @@ def nft_rules(
         f"  chain sortie {{\n"
         f"    type filter hook output priority 0; policy accept;\n"
         f"    meta skuid {user} tcp dport {{ 80, 443 }} drop\n"
+        f"  }}\n"
+        f"  chain noms {{\n"
+        f"    type nat hook prerouting priority dstnat; policy accept;\n"
+        f'    iifname "{pont}" udp dport 53 redirect to :{PORT_DNS}\n'
+        f'    iifname "{pont}" tcp dport 53 redirect to :{PORT_DNS}\n'
         f"  }}\n"
         f"  chain transit {{\n"
         f"    type filter hook forward priority 0; policy accept;\n"
@@ -95,11 +126,80 @@ def pont_des_vm() -> str:
 
 
 def cut_cmd(
-    user: str = SERVICE_USER, table: str = TABLE, pont: str = ""
+    user: str = SERVICE_USER, table: str = TABLE, pont: str = "", dns: str = ""
 ) -> str:
-    """La commande qui pose la coupure, sur le pont des VM du service."""
-    regles = nft_rules(user, table, pont or pont_des_vm())
-    return f"printf %s {shlex.quote(regles)} | sudo nft -f -"
+    """La commande qui pose la coupure : la table, PUIS le résolveur fictif.
+
+    Tout ou rien. Si le résolveur ne part pas, la table est retirée aussitôt
+    et la commande échoue : sans lui, le port 53 des VM mènerait à un port
+    muet, et l'installation échouerait sur la résolution des noms — une
+    raison qui n'est pas celle qu'on mesure. Sans dnsmasq sur l'hôte, la
+    commande échoue d'emblée, pour la même raison.
+    """
+    pont = pont or pont_des_vm()
+    regles = nft_rules(user, table, pont)
+    dns = dns or dns_cmd(pont)
+    if not dns:
+        return "false"
+    pose = f"printf %s {shlex.quote(regles)} | sudo nft -f -"
+    return f"{pose} && {{ {dns} || {{ {restore_cmd(table)}; false; }}; }}"
+
+
+def dnsmasq() -> str:
+    """Le chemin de dnsmasq sur l'hôte, ou "" : la coupure des noms en
+    dépend, et le déploiement le vérifie avant de rien poser."""
+    return shutil.which("dnsmasq") or ""
+
+
+def dns_cmd(
+    pont: str = PONT_PAR_DEFAUT,
+    binaire: str = "",
+    duree: int = 0,
+    unite: str = UNITE_DNS,
+) -> str:
+    """La commande qui fait répondre l'hôte à tout nom, le temps de la coupure.
+
+    Un dnsmasq à part, et non celui de libvirt, auquel on ne touche pas : il
+    reprend son rôle dès que la redirection du port 53 tombe avec la table.
+    Le nôtre écoute le seul pont, sur PORT_DNS, sans fichier de réglages,
+    sans amont (« --no-resolv »), sans /etc/hosts, avec un TTL nul : aucune
+    réponse fictive ne survit dans une VM à la levée. Il tourne en unité
+    transitoire bornée par RuntimeMaxSec, au-delà de celle du guet.
+
+    Rend "" quand dnsmasq est introuvable.
+    """
+    binaire = binaire or dnsmasq()
+    if not binaire:
+        return ""
+    if not _NOM_DE_PONT.fullmatch(pont or ""):
+        raise ValueError(f"nom de pont refusé : {pont!r}")
+    parties = [
+        "sudo",
+        "systemd-run",
+        f"--unit={unite}",
+        "--collect",
+        "--description=ERPLibre QEMU offline DNS",
+        "-p",
+        f"RuntimeMaxSec={duree or DUREE_MAX_GUET + 3600}",
+        binaire,
+        "--keep-in-foreground",
+        "--conf-file=/dev/null",
+        "--no-resolv",
+        "--no-hosts",
+        "--no-poll",
+        f"--interface={pont}",
+        # dnsmasq ajoute la boucle locale à toute liste « --interface » :
+        # l'en retirer le cantonne au seul pont.
+        "--except-interface=lo",
+        "--bind-interfaces",
+        f"--port={PORT_DNS}",
+        f"--address=/#/{ADRESSE_FICTIVE_V4}",
+        f"--address=/#/{ADRESSE_FICTIVE_V6}",
+        "--local-ttl=0",
+        "--pid-file=",
+        "--log-facility=-",
+    ]
+    return " ".join(shlex.quote(x) for x in parties)
 
 
 def restore_cmd(table: str = TABLE) -> str:
@@ -109,13 +209,21 @@ def restore_cmd(table: str = TABLE) -> str:
     coupure déjà retirée ne doit pas y lever d'erreur qui masquerait celle
     d'origine.
     """
-    return f"sudo {_retrait(table)}"
+    return f"sudo sh -c {shlex.quote(_retrait(table))}"
 
 
 def _retrait(table: str = TABLE) -> str:
-    """Le retrait nu, sans sudo : `restore_cmd` le préfixe, le guet le lance
-    déjà en root."""
-    return f"nft delete table inet {table} 2>/dev/null || true"
+    """Le retrait nu, sans sudo : `restore_cmd` le lance sous « sudo sh -c »,
+    le guet le lance déjà en root.
+
+    Il retire la table ET arrête le résolveur fictif. Arrêter le résolveur
+    seul laisserait le port 53 des VM détourné vers un port muet ; retirer la
+    table seule laisserait tourner un processus que plus rien n'interroge.
+    """
+    return (
+        f"nft delete table inet {table} 2>/dev/null || true; "
+        f"systemctl stop {UNITE_DNS} 2>/dev/null || true"
+    )
 
 
 # Le guet : une unité systemd transitoire, posée par root au lancement des

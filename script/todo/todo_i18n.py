@@ -6763,6 +6763,14 @@ TRANSLATIONS = {
         "fr": "Le résultat se lirait comme hors ligne sans l'être.",
         "en": "The result would look offline without being so.",
     },
+    "dnsmasq is missing on the host: names cannot": {
+        "fr": "dnsmasq manque sur l'hôte : les noms ne peuvent",
+        "en": "dnsmasq is missing on the host: names cannot",
+    },
+    "be cut. Install the dnsmasq package, then F5.": {
+        "fr": "pas être coupés. Installer le paquet dnsmasq, puis F5.",
+        "en": "be cut. Install the dnsmasq package, then F5.",
+    },
     "download cache authority installed": {
         "fr": "autorité du cache de téléchargement posée",
         "en": "download cache authority installed",

@@ -2288,10 +2288,11 @@ class QemuDeployMixin:
         """Coupe l'amont du cache le temps du bloc, et le rebranche toujours.
 
         Deux sorties tombent : celle du service du cache, et celle que l'hôte
-        relaie pour les VM. Ce qu'une VM demande à l'hôte lui-même — le
-        cache, la résolution de noms — reste joignable : tout ce qui arrive
-        encore dans une VM vient donc du disque du cache, et un pas qui
-        prendrait un autre chemin échoue.
+        relaie pour les VM, et la résolution des noms par l'internet. Ce
+        qu'une VM demande à l'hôte lui-même reste joignable : le cache, et
+        les noms, auxquels l'hôte répond seul une adresse que le cache
+        intercepte. Tout ce qui arrive encore dans une VM vient donc du
+        disque du cache, et un pas qui prendrait un autre chemin échoue.
 
         La coupure vaut pour la spec ENTIÈRE, installation comprise : c'est
         l'installation qui télécharge, et une coupure levée avant elle ne
@@ -2332,6 +2333,16 @@ class QemuDeployMixin:
             return
         from script.qemu import cache_offline
 
+        # Sans dnsmasq, la coupure des noms ne peut pas se poser, et
+        # `cut_cmd` échouerait sans dire pourquoi : on le dit avant de rien
+        # toucher.
+        if not cache_offline.dnsmasq():
+            print(f"\n  ✗ {t('dnsmasq is missing on the host: names cannot')}")
+            print(
+                f"    {t('be cut. Install the dnsmasq package, then F5.')} "
+                f"{t('Nothing deployed.')}"
+            )
+            raise _SansInternetImpossible()
         with self._qemu_verrou_hors_ligne() as libre:
             if not libre:
                 print(
