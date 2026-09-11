@@ -506,6 +506,20 @@ func (t *TLSFront) tunnel(c net.Conn, host string) {
 		log.Printf("tunnel impossible pour %q : destination inconnue (%v)", host, err)
 		return
 	}
+	// Une connexion NON détournée — ouverte directement sur l'écoute — a pour
+	// destination d'origine l'écoute elle-même. La relayer la renverrait ici,
+	// où elle serait relayée de nouveau, sans fin : chaque tour ouvre une
+	// connexion, jusqu'à épuiser les descripteurs et arrêter le service.
+	if memeAdresse(dst, c.LocalAddr().String()) {
+		log.Printf("tunnel refusé pour %q : connexion non détournée, sa"+
+			" destination %s est cette écoute même", host, dst)
+		t.Proxy.record(accessLine{
+			Method: "CONNECT", URL: "tcp://" + dst, Class: "tunnel",
+			Outcome: OutcomeError, Status: http.StatusLoopDetected,
+			Client: clientDe(c.RemoteAddr().String()),
+		})
+		return
+	}
 	up, err := net.DialTimeout("tcp", dst, 10*time.Second)
 	if err != nil {
 		log.Printf("tunnel vers %s : %v", dst, err)

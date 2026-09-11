@@ -125,6 +125,10 @@ type Proxy struct {
 	// Verbose fait parler chaque requête sur la sortie standard, ce qu'un
 	// service systemd envoie au journal.
 	Verbose bool
+	// Ecoutes porte les ports où le cache lui-même écoute. Une requête qui
+	// vise l'un d'eux sur une adresse de cette machine est une boucle. Vide,
+	// rien n'est refusé.
+	Ecoutes []int
 }
 
 // NewProxy monte le client amont. Aucun délai GLOBAL n'est posé : une image
@@ -216,6 +220,15 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	class := Classify(u)
 	key := CleDe(r.Method, u)
 	cacheable := CacheableMethod(r.Method) && class != ClassNoStore
+
+	// Une requête adressée au cache lui-même serait relayée vers sa propre
+	// écoute, qui la relaierait de nouveau, sans fin : chaque tour ouvre une
+	// connexion, jusqu'à épuiser les descripteurs et arrêter le service. Elle
+	// est refusée avant toute autre chose.
+	if p.viseLeCache(u) {
+		p.boucle(w, u, class, r.Method, clientDe(r.RemoteAddr))
+		return
+	}
 
 	// Une requête partielle n'est servie du cache que si le corps ENTIER y
 	// est ; sinon elle passe et ne se garde pas, un fragment ne valant rien
@@ -577,6 +590,9 @@ const maxRedirections = 5
 // suivreRedirections rend la réponse FINALE d'une chaîne de redirections, ou
 // la dernière obtenue si quelque chose s'y oppose.
 //
+// Une cible qui désigne le cache lui-même arrête la chaîne : la suivre
+// renverrait la requête ici.
+//
 // Le corps de chaque étape est refermé : une redirection en porte un, court,
 // que personne ne lira. Une erreur en route rend l'étape courante plutôt que
 // rien : le client verra la redirection et se débrouillera, ce qui est le
@@ -589,7 +605,7 @@ func (p *Proxy) suivreRedirections(
 			return resp
 		}
 		cible, err := resp.Location()
-		if err != nil || cible == nil {
+		if err != nil || cible == nil || p.viseLeCache(cible) {
 			return resp
 		}
 		suivante, err := p.fetch(r, cible)

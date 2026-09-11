@@ -329,6 +329,8 @@ func serve(
 	proxy := NewProxy(store, alog)
 	proxy.Git = miroir
 	proxy.Verbose = verbose
+	// Les ports d'écoute sont ceux que la requête d'une boucle viserait.
+	proxy.Ecoutes = []int{rules.HTTPPort, rules.TLSPort}
 
 	refusals := NewRefusals(append(DefaultExclusions, splitList(exclude)...))
 	front := &TLSFront{CA: ca, Proxy: proxy, Refusals: refusals}
