@@ -6411,9 +6411,93 @@ TRANSLATIONS = {
         "fr": "avec ce qui est déjà stocké.",
         "en": "builds from what is already stored.",
     },
+    "Cache - Fill what offline runs lacked": {
+        "fr": "🩹 Cache - Combler ce qui a manqué hors ligne",
+        "en": "🩹 Cache - Fill what offline runs lacked",
+    },
+    "What offline runs lacked": {
+        "fr": "Ce qui a manqué hors ligne",
+        "en": "What offline runs lacked",
+    },
+    "Start it from entry 3 of this menu.": {
+        "fr": "Le démarrer depuis l'entrée 3 de ce menu.",
+        "en": "Start it from entry 3 of this menu.",
+    },
+    "A replay now would only record more misses.": {
+        "fr": "Un rejeu maintenant ne ferait qu'ajouter des manques.",
+        "en": "A replay now would only record more misses.",
+    },
+    "No offline miss in the recent window: nothing to fill.": {
+        "fr": "Aucun manque hors ligne récent : rien à combler.",
+        "en": "No offline miss in the recent window: nothing to fill.",
+    },
+    "Everything that was missed is held now.": {
+        "fr": "Tout ce qui a manqué est désormais détenu.",
+        "en": "Everything that was missed is held now.",
+    },
     "according to the log: a purge can make it wrong": {
         "fr": "selon le journal : une purge peut le rendre faux",
         "en": "according to the log: a purge can make it wrong",
+    },
+    "replay through the cache": {
+        "fr": "à rejouer par le cache",
+        "en": "replay through the cache",
+    },
+    "never kept: the cache keeps only GET and HEAD": {
+        "fr": "jamais gardée : le cache ne garde que GET et HEAD",
+        "en": "never kept: the cache keeps only GET and HEAD",
+    },
+    "the cache does not keep this address": {
+        "fr": "le cache ne garde pas cette adresse",
+        "en": "the cache does not keep this address",
+    },
+    "host in tunnel: nothing to keep": {
+        "fr": "hôte en tunnel : rien à garder",
+        "en": "host in tunnel: nothing to keep",
+    },
+    "git negotiation: fill the mirror from entry 5": {
+        "fr": "négociation git : remplir le miroir depuis l'entrée 5",
+        "en": "git negotiation: fill the mirror from entry 5",
+    },
+    "not a host name: a replay could loop back into the cache": {
+        "fr": "pas un nom d'hôte : le rejeu pourrait revenir dans le cache",
+        "en": "not a host name: a replay could loop back into the cache",
+    },
+    "Nothing here can be replayed.": {
+        "fr": "Rien ici ne peut être rejoué.",
+        "en": "Nothing here can be replayed.",
+    },
+    "The replay sends curl's own headers: a server that varies on": {
+        "fr": "Le rejeu envoie les en-têtes de curl : un serveur qui varie selon",
+        "en": "The replay sends curl's own headers: a server that varies on",
+    },
+    "User-Agent or Accept may keep another answer than the VM's.": {
+        "fr": "User-Agent ou Accept peut garder une autre réponse que celle de la VM.",
+        "en": "User-Agent or Accept may keep another answer than the VM's.",
+    },
+    "Replay these addresses through the cache now?": {
+        "fr": "Rejouer ces adresses par le cache maintenant ?",
+        "en": "Replay these addresses through the cache now?",
+    },
+    "held": {
+        "fr": "détenu",
+        "en": "held",
+    },
+    "not held": {
+        "fr": "non détenu",
+        "en": "not held",
+    },
+    "not re-checked: this binary has no --detient": {
+        "fr": "non revérifié : ce binaire n'a pas --detient",
+        "en": "not re-checked: this binary has no --detient",
+    },
+    "Tunnel refusals learned by the service:": {
+        "fr": "Refus de tunnel appris par le service :",
+        "en": "Tunnel refusals learned by the service:",
+    },
+    "curl got no answer": {
+        "fr": "curl n'a obtenu aucune réponse",
+        "en": "curl got no answer",
     },
     "the last offline run of": {
         "fr": "le dernier déploiement hors ligne de",
@@ -6594,6 +6678,38 @@ TRANSLATIONS = {
     "Deploy anyway, offline? (y/N): ": {
         "fr": "Déployer quand même, hors ligne ? (o/N) : ",
         "en": "Deploy anyway, offline? (y/N): ",
+    },
+    "Upstream CUT by an offline deployment still installing,": {
+        "fr": "Amont COUPÉ par un déploiement hors ligne qui installe encore,",
+        "en": "Upstream CUT by an offline deployment still installing,",
+    },
+    "held until its last installation ends (12 h at most).": {
+        "fr": "coupure tenue jusqu'à la fin de sa dernière installation (12 h au plus).",
+        "en": "held until its last installation ends (12 h at most).",
+    },
+    "Lifting it now makes those installations finish online.": {
+        "fr": "La lever maintenant fait finir ces installations en ligne.",
+        "en": "Lifting it now makes those installations finish online.",
+    },
+    "The lift watcher still runs, with no cut left to lift.": {
+        "fr": "Le guet de levée tourne encore, sans coupure à lever.",
+        "en": "The lift watcher still runs, with no cut left to lift.",
+    },
+    "Stop it with:": {
+        "fr": "L'arrêter par :",
+        "en": "Stop it with:",
+    },
+    "Cannot tell whether the upstream is cut: reading nft needs a sudo password here.": {
+        "fr": "Impossible de savoir si l'amont est coupé : lire nft exige ici le mot de passe de sudo.",
+        "en": "Cannot tell whether the upstream is cut: reading nft needs a sudo password here.",
+    },
+    "Under the cut, a replay would only record more misses.": {
+        "fr": "Sous la coupure, un rejeu n'ajouterait que des manques.",
+        "en": "Under the cut, a replay would only record more misses.",
+    },
+    "Replay anyway?": {
+        "fr": "Rejouer quand même ?",
+        "en": "Replay anyway?",
     },
     "The monitor stays ticked: it is what arms that return.": {
         "fr": "Le suivi reste coché : c'est lui qui arme ce retour.",

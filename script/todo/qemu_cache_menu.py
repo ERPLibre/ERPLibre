@@ -28,6 +28,8 @@ import os
 import re
 import shlex
 import subprocess
+import time
+from urllib.parse import urljoin, urlsplit
 
 import click
 
@@ -44,6 +46,24 @@ CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
 CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
 CACHE_DIR = "/var/cache/erplibre_go_qemu_cache"
+
+# Combler ce qui a manqué hors ligne : les jours de journal relus, le délai
+# d'un rejeu, et les redirections suivies — autant que le cache en suit
+# lui-même (maxRedirections) avant de renoncer.
+JOURS_RECENTS = 7
+REJEU_DELAI = 60
+SAUTS_MAX = 5
+REDIRECTIONS = (301, 302, 303, 307, 308)
+# Les points de négociation git : la liste vit dans cache_offline, que le
+# pré-vol du formulaire lit aussi ; un test la compare au Go.
+GIT_NEGOCIATION = cache_offline.GIT_NEGOCIATION
+# Les marques que les lectures de la coupure et du guet écrivent quand leur
+# commande réussit. Une marque à nous plutôt qu'un message de nft, de sudo
+# ou de systemctl : les leurs se traduisent selon la langue du compte.
+NFT_LISIBLE = "erplibre-nft-lisible"
+GUET_ACTIF = "erplibre-guet-actif"
+# La source Go qui déclare les hôtes passés d'office en tunnel.
+MITM_GO = os.path.join("script", "qemu_cache", "mitm.go")
 
 # L'ordre d'affichage des issues du journal. Ce n'est PAS une liste de ce qui
 # existe : tout ce que le journal porte est montré, ce qui n'est pas nommé ici
@@ -96,19 +116,147 @@ class QemuCacheMenuMixin:
 
     @classmethod
     def _cache_amont_coupe(cls):
-        """La coupure d'amont est-elle posée ?
+        """La coupure d'amont est-elle posée ? True, False, ou None quand on
+        ne peut pas le savoir.
 
-        Elle ne devrait jamais survivre au déploiement qui la demande — le
-        rebranchement est dans un « finally ». Elle survit quand même à ce
-        qu'un « finally » ne rattrape pas : un processus tué net, une panne
-        de courant. Le cache rend alors « 504 » à chaque VM, l'installation
-        échoue sur « failed retrieving file … 504 » depuis TOUS les miroirs,
-        et rien dans ce message ne parle d'une règle de pare-feu.
+        Lue par « sudo -n », qui échoue plutôt que de demander un mot de
+        passe. Sur un hôte où sudo en exige un, rien ne se lit : conclure
+        « pas coupé » ferait rejouer sous la coupure, et chaque rejeu
+        n'ajouterait qu'un manque. La marque NFT_LISIBLE n'est écrite que si
+        nft a répondu ; sans elle, la réponse est None, et l'appelant
+        tranche. None est faux en contexte booléen : un diagnostic ne crie
+        pas à la coupure sur une lecture impossible.
+
+        La coupure survit LÉGITIMEMENT au déploiement qui la pose tant que le
+        guet tourne (`_cache_guet_actif`) : les installations sont
+        détachées, et le guet ne la lève qu'à la fin de la dernière, 12 h au
+        plus. Sans guet, elle ne survit qu'à ce qu'un « finally » ne rattrape
+        pas : un processus tué net, une panne de courant. Le cache rend alors
+        « 504 » à chaque VM, l'installation échoue sur « failed retrieving
+        file … 504 » depuis TOUS les miroirs, et rien dans ce message ne
+        parle d'une règle de pare-feu.
         """
         vu = cls._cache_lire(
-            f"sudo -n nft list table inet {cache_offline.TABLE}"
+            f"sudo -n nft list tables >/dev/null 2>&1 && echo {NFT_LISIBLE};"
+            f" sudo -n nft list table inet {cache_offline.TABLE}"
         )
-        return "meta skuid" in vu
+        if "meta skuid" in vu:
+            return True
+        return False if NFT_LISIBLE in vu.split() else None
+
+    @classmethod
+    def _cache_guet_actif(cls):
+        """Le guet d'un déploiement hors ligne tourne-t-il ?
+
+        Tant qu'il tourne, la coupure est tenue exprès, jusqu'à la fin de la
+        dernière installation détachée. Sans sudo : l'état d'une unité se lit
+        de tout compte. Passe par `_cache_lire`, qui ne lève jamais : une
+        lecture impossible rend False.
+        """
+        vu = cls._cache_lire(
+            f"{cache_offline.guet_actif_cmd()} && echo {GUET_ACTIF}"
+        )
+        return GUET_ACTIF in vu.split()
+
+    @staticmethod
+    def _cache_dire_coupure_tenue(marque, *entre):
+        """Les lignes d'une coupure que le guet tient.
+
+        Le geste donné ARRÊTE le guet, dont la levée retire la table. Retirer
+        la table seule laisserait le guet tourner pour rien, et le
+        déploiement hors ligne suivant serait refusé tant qu'il tourne.
+        `entre` : lignes ajoutées avant le coût de la levée.
+        """
+        print(
+            f"  {marque} {t('Upstream CUT by an offline deployment still installing,')}"
+        )
+        print(
+            f"    {t('held until its last installation ends (12 h at most).')}"
+        )
+        for ligne in entre:
+            print(f"    {ligne}")
+        print(
+            f"    {t('Lifting it now makes those installations finish online.')}"
+        )
+        print(
+            f"    {t('Lift it now with:')} {cache_offline.lever_maintenant_cmd()}"
+        )
+
+    def _cache_diag_coupure(self):
+        """Les lignes du diagnostic sur la coupure d'amont et le guet.
+
+        Muet quand tout va bien — une ligne « amont branché » à chaque
+        diagnostic n'apprendrait rien. Le guet d'abord : tant qu'il tourne,
+        la coupure est tenue exprès, et donner le retrait de la table ferait
+        finir en ligne les installations qui tournent encore. Une lecture de
+        nft impossible (None) ne dément pas le guet. Un guet sans coupure est
+        nommé : resté sans rien à lever, il ferait refuser le déploiement
+        hors ligne suivant.
+        """
+        coupe = self._cache_amont_coupe()
+        guet = self._cache_guet_actif()
+        if guet and coupe is not False:
+            self._cache_dire_coupure_tenue("⚠")
+        elif guet:
+            print(
+                f"  ⚠ {t('The lift watcher still runs, with no cut left to lift.')}"
+            )
+            print(
+                f"    {t('Stop it with:')} {cache_offline.lever_maintenant_cmd()}"
+            )
+        elif coupe:
+            print(
+                f"  ✗ {t('Upstream CUT: the cache can pull nothing from the internet')}"
+            )
+            print(f"    {t('Every VM then gets a 504 from every mirror.')}")
+            print(f"    {t('Lift it with:')} {cache_offline.restore_cmd()}")
+        elif coupe is None:
+            print(
+                f"  · {t('Cannot tell whether the upstream is cut: reading nft needs a sudo password here.')}"
+            )
+
+    def _cache_combler_permis(self):
+        """Le rejeu de l'entrée 9 peut-il partir ? Dit pourquoi sinon.
+
+        Il faut le binaire et le service. Sous la coupure, un rejeu
+        n'ajouterait que des manques au journal. Le guet est lu d'abord,
+        sans sudo : tant qu'il tourne, la coupure est tenue exprès, et le
+        geste donné l'arrête. Une coupure illisible — sudo exige un mot de
+        passe — n'est pas prise pour une absence : le menu le dit et
+        demande, non par défaut.
+        """
+        if not os.path.isfile(CACHE_BIN):
+            print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
+            return False
+        if not self._cache_actif():
+            print(f"  ✗ {t('Service:')} {t('Service is stopped')}")
+            print(f"    {t('Start it from entry 3 of this menu.')}\n")
+            return False
+        if self._cache_guet_actif():
+            self._cache_dire_coupure_tenue(
+                "✗", t("A replay now would only record more misses.")
+            )
+            print()
+            return False
+        coupe = self._cache_amont_coupe()
+        if coupe:
+            print(
+                f"  ✗ {t('Upstream CUT: the cache can pull nothing from the internet')}"
+            )
+            print(f"    {t('A replay now would only record more misses.')}")
+            print(f"    {t('Lift it with:')} {cache_offline.restore_cmd()}\n")
+            return False
+        if coupe is None:
+            print(
+                f"  ⚠ {t('Cannot tell whether the upstream is cut: reading nft needs a sudo password here.')}"
+            )
+            print(
+                f"    {t('Under the cut, a replay would only record more misses.')}"
+            )
+            if not click.confirm(t("Replay anyway?"), default=False):
+                print()
+                return False
+        return True
 
     @classmethod
     def _cache_prefixe_libvirt(cls):
@@ -172,6 +320,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Age and cleanup")},
             {"prompt_description": t("Cache - Guide: how it works")},
             {"prompt_description": t("Cache - Tests and performance report")},
+            {"prompt_description": t("Cache - Fill what offline runs lacked")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -195,6 +344,8 @@ class QemuCacheMenuMixin:
                 self._cache_guide()
             elif status == "8":
                 self._cache_tests()
+            elif status == "9":
+                self._cache_combler()
             else:
                 print(t("Command not found !"))
 
@@ -232,14 +383,8 @@ class QemuCacheMenuMixin:
             print(f"    {t('Reinstall: the cache reads libvirt by itself.')}")
 
         # Après le détournement : c'est la même classe de fait, une règle
-        # posée sur l'hôte. Muet quand tout va bien — une ligne « amont
-        # branché » à chaque diagnostic n'apprendrait rien.
-        if self._cache_amont_coupe():
-            print(
-                f"  ✗ {t('Upstream CUT: the cache can pull nothing from the internet')}"
-            )
-            print(f"    {t('Every VM then gets a 504 from every mirror.')}")
-            print(f"    {t('Lift it with:')} {cache_offline.restore_cmd()}")
+        # posée sur l'hôte.
+        self._cache_diag_coupure()
 
         print(f"  · {t('Authority:')} {CACHE_CA}")
         # Le répertoire du miroir est passé au relevé : sans lui, le binaire
@@ -1057,6 +1202,381 @@ class QemuCacheMenuMixin:
                 self._longtest_run("qemu_cache.py", args[status])
             else:
                 print(t("Command not found !"))
+
+    # ------------------------------------------------------------------
+    # [9] Combler ce qui a manqué hors ligne
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _cache_raison(verdict):
+        """Ce qu'un verdict de rejeu veut dire, dans la langue du menu."""
+        return {
+            "rejouable": t("replay through the cache"),
+            "jamais": t("never kept: the cache keeps only GET and HEAD"),
+            "non-cachable": t("the cache does not keep this address"),
+            "tunnel": t("host in tunnel: nothing to keep"),
+            "git": t("git negotiation: fill the mirror from entry 5"),
+            "adresse": t(
+                "not a host name: a replay could loop back into the cache"
+            ),
+        }.get(verdict, verdict)
+
+    @classmethod
+    def _cache_refus_appris(cls):
+        """Les hôtes que le service a appris à passer en tunnel.
+
+        Ces refus ne vivent qu'en mémoire du service, qui ne les oublie pas,
+        et seul son journal systemd les nomme. Lu sans privilège, puis par
+        « sudo -n », qui échoue plutôt que de demander un mot de passe. Un
+        journal illisible rend une liste vide.
+        """
+        lire = (
+            f"journalctl -u {CACHE_SERVICE} -o cat --no-pager"
+            " | grep -F 'tunnel opaque retenu pour'"
+        )
+        vu = cls._cache_lire(lire) + cls._cache_lire(f"sudo -n {lire}")
+        return sorted(
+            set(re.findall(r"tunnel opaque retenu pour (\S+) \(", vu))
+        )
+
+    def _cache_exclus(self):
+        """Les hôtes que le cache passe en tunnel : déclarés dans ses
+        sources, ajoutés par EL_EXCLUDE (séparés par des virgules, comme le
+        service les lit), et appris au fil des refus."""
+        racine = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        )
+        exclus = list(exclusions_declarees(racine))
+        exclus += [
+            e.strip()
+            for e in cache_offline.reglage("EL_EXCLUDE", CACHE_CONF).split(",")
+            if e.strip()
+        ]
+        appris = self._cache_refus_appris()
+        if appris:
+            print(
+                f"  {t('Tunnel refusals learned by the service:')}"
+                f" {', '.join(appris)}\n"
+            )
+        return exclus + appris
+
+    @staticmethod
+    def _cache_curl(argv, delai=REJEU_DELAI):
+        """Les en-têtes que curl a reçus, ou "" s'il n'a rien obtenu.
+
+        Les variables de mandataire héritées de l'opérateur sont retirées :
+        un « https_proxy » enverrait le rejeu ailleurs que dans le cache, et
+        un « no_proxy » ferait ignorer « -x ».
+        """
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if not k.lower().endswith("_proxy")
+        }
+        try:
+            p = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=delai + 15,
+                env=env,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return p.stdout or ""
+
+    def _cache_rejouer(self, methode, url, ports, exclus):
+        """Rejoue une adresse, puis sa chaîne de redirections, saut par saut.
+
+        Rend [(url, statut)], le statut None quand curl n'a rien obtenu.
+
+        Pas de « -L » : curl suivrait seul, et un saut vers l'autre schéma
+        partirait par une connexion que le cache ne mène pas. Chaque saut
+        est donc une commande de la même forme que la première, et n'est
+        rejoué que s'il est lui-même rejouable, jamais deux fois. Seul un GET
+        suit : un HEAD lit sa redirection et s'arrête, comme le client qui
+        l'a émis.
+        """
+        sauts = []
+        cible = url
+        for _ in range(SAUTS_MAX + 1):
+            sortie = self._cache_curl(
+                rejeu_cmd(methode, cible, ports[0], ports[1], CACHE_CA)
+            )
+            statut, suivante = statut_et_cible(sortie, cible)
+            sauts.append((cible, statut))
+            if (
+                methode.upper() != "GET"
+                or statut not in REDIRECTIONS
+                or not suivante
+                or verdict_de_rejeu("GET", suivante, exclus) != "rejouable"
+                or suivante in [u for u, _s in sauts]
+            ):
+                break
+            cible = suivante
+        return sauts
+
+    def _cache_combler(self):
+        """Rejouer, amont branché, ce que les VM hors ligne n'ont pas trouvé.
+
+        Chaque rejeu traverse le cache sous la clé qu'une VM produirait : le
+        nom d'hôte reste celui de l'URL, seule la connexion est menée à
+        l'écoute locale. Ce qui entre alors au cache est ce que la VM y
+        trouvera au prochain déploiement hors ligne.
+
+        Refusé sous la coupure : le rejeu n'ajouterait que des manques au
+        journal, et l'on croirait avoir rempli. Le guet est lu d'abord, sans
+        sudo : tant qu'il tourne, la coupure est tenue exprès, et le geste
+        donné est l'arrêt du guet. Une coupure illisible — sudo exige un mot
+        de passe — n'est pas prise pour une absence : le menu le dit, et
+        demande, non par défaut. Le plan est montré avant la confirmation du
+        rejeu, avec ce qui ne se rejoue pas et pourquoi.
+        """
+        print(f"\n🩹 {t('What offline runs lacked')}\n")
+        if not self._cache_combler_permis():
+            return
+
+        def reglage(nom, defaut=""):
+            return cache_offline.reglage(nom, CACHE_CONF) or defaut
+
+        chemin = self._cache_journal()
+        manques = cache_offline.manques_recents(
+            chemin, reglage("EL_SUBNET"), time.time() - JOURS_RECENTS * 86400
+        )
+        if not manques:
+            print(
+                f"  {t('No offline miss in the recent window: nothing to fill.')}\n"
+            )
+            return
+        cache_dir = reglage("EL_CACHE_DIR", CACHE_DIR)
+        verdicts = cache_offline.detient_interroger(
+            [(m["methode"], m["url"]) for m in manques], CACHE_BIN, cache_dir
+        )
+        selon_journal = verdicts is None
+        if selon_journal:
+            verdicts = {}
+            tenus = cache_offline.tenus_selon_journal(
+                chemin,
+                {(m["methode"], m["url"]): m["dernier"] for m in manques},
+            )
+        else:
+            tenus = {
+                c
+                for c, v in verdicts.items()
+                if v["verdict"] in cache_offline.DETENTION
+            }
+        restants = [
+            m for m in manques if (m["methode"], m["url"]) not in tenus
+        ]
+        avis_journal = t("according to the log: a purge can make it wrong")
+        if not restants:
+            print(f"  ✓ {t('Everything that was missed is held now.')}")
+            if selon_journal:
+                print(f"    {avis_journal}")
+            print()
+            return
+
+        exclus = self._cache_exclus()
+        plan = []
+        for m in restants:
+            cle = (m["methode"], m["url"])
+            if verdicts.get(cle, {}).get("verdict") == "non-cachable":
+                verdict = "non-cachable"
+            else:
+                verdict = verdict_de_rejeu(m["methode"], m["url"], exclus)
+            plan.append((m, verdict))
+            marque = "↻" if verdict == "rejouable" else "·"
+            print(f"  {marque} {m['methode']:<5}{m['url']}")
+            print(f"        {self._cache_raison(verdict)} ({m['n']}×)")
+        if selon_journal:
+            print(f"\n  ⚠ {avis_journal}")
+        rejouables = [m for m, v in plan if v == "rejouable"]
+        if not rejouables:
+            print(f"\n  {t('Nothing here can be replayed.')}\n")
+            return
+
+        # Le magasin ne tient compte ni de Vary ni des en-têtes de la
+        # requête : il garde ce que curl reçoit, et le sert tel quel à la VM.
+        entetes_1 = t(
+            "The replay sends curl's own headers: a server that varies on"
+        )
+        entetes_2 = t(
+            "User-Agent or Accept may keep another answer than the VM's."
+        )
+        print(f"\n  ⚠ {entetes_1}")
+        print(f"    {entetes_2}")
+        # Les ports par défaut de l'installateur, quand le réglage manque.
+        ports = (
+            reglage("EL_HTTP_PORT", "8898"),
+            reglage("EL_TLS_PORT", "8899"),
+        )
+        premier = rejouables[0]
+        exemple = rejeu_cmd(
+            premier["methode"], premier["url"], ports[0], ports[1], CACHE_CA
+        )
+        print(f"\n{t('Will execute:')} {shlex.join(exemple)}")
+        if not click.confirm(
+            t("Replay these addresses through the cache now?")
+        ):
+            return
+
+        resultats = [
+            (m, self._cache_rejouer(m["methode"], m["url"], ports, exclus))
+            for m in rejouables
+        ]
+        # Revérifié au MAGASIN : un 200 reçu par curl ne prouve pas que
+        # l'objet a été gardé.
+        verification = cache_offline.detient_interroger(
+            [
+                (m["methode"], url)
+                for m, sauts in resultats
+                for url, _s in sauts
+            ],
+            CACHE_BIN,
+            cache_dir,
+        )
+        print()
+        for m, sauts in resultats:
+            for rang, (url, statut) in enumerate(sauts):
+                cle = (m["methode"], url)
+                if verification is None:
+                    etat = t("not re-checked: this binary has no --detient")
+                elif (
+                    verification.get(cle, {}).get("verdict")
+                    in cache_offline.DETENTION
+                ):
+                    etat = "✓ " + t("held")
+                else:
+                    etat = "✗ " + t("not held")
+                recu = (
+                    statut if statut is not None else t("curl got no answer")
+                )
+                debut = f"  {m['methode']:<5}" if rang == 0 else "    → "
+                print(f"{debut}{url}")
+                print(f"        [{recu}] {etat}")
+        print()
+
+
+def exclusions_declarees(racine):
+    """Les hôtes que le cache passe d'office en tunnel, lus dans SA source.
+
+    DefaultExclusions vit en Go. Le lire là plutôt que d'en tenir une copie
+    empêche qu'un hôte ajouté côté Go soit rejoué d'ici. Une source illisible
+    rend une liste vide.
+    """
+    try:
+        with open(os.path.join(racine, MITM_GO), encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError:
+        return []
+    bloc = re.search(r"var DefaultExclusions = \[\]string\{([^}]*)\}", src)
+    return re.findall(r'"([^"]+)"', bloc.group(1)) if bloc else []
+
+
+def hote_exclu(hote, exclus):
+    """La règle du service : le nom exact, ou un suffixe qui commence par un
+    point et couvre alors tout le domaine."""
+    hote = (hote or "").lower()
+    for e in exclus:
+        e = (e or "").strip().lower()
+        if e and (hote == e or (e.startswith(".") and hote.endswith(e))):
+            return True
+    return False
+
+
+def _est_une_adresse_ip(hote):
+    import ipaddress
+
+    try:
+        ipaddress.ip_address(hote)
+    except ValueError:
+        return False
+    return True
+
+
+def verdict_de_rejeu(methode, url, exclus=()):
+    """Que faire d'une adresse manquée : « rejouable », « jamais », « git »,
+    « tunnel » ou « adresse ».
+
+    Seuls GET et HEAD se gardent. Une négociation git ne se garde pas : c'est
+    un DÉPÔT que le cache tient, et l'entrée 5 le remplit. Un hôte en tunnel
+    — https sur une adresse IP, sans SNI, ou hôte exclu — n'a rien à garder,
+    et rejoué depuis l'hôte il revient dans le cache : sans détournement, la
+    destination d'origine d'une connexion locale est l'écoute elle-même, et
+    le tunnel s'y rappelle sans fin. Pour la même raison, une adresse IP ou
+    « localhost » en http n'est pas rejouée.
+    """
+    if (methode or "").upper() not in cache_offline.METHODES_GARDABLES:
+        return "jamais"
+    try:
+        morceaux = urlsplit(url)
+        hote = (morceaux.hostname or "").lower()
+    except ValueError:
+        return "adresse"
+    if morceaux.scheme not in ("http", "https") or not hote:
+        return "adresse"
+    if _est_une_adresse_ip(hote):
+        return "tunnel" if morceaux.scheme == "https" else "adresse"
+    if hote == "localhost":
+        return "adresse"
+    if cache_offline.depot_git(url):
+        return "git"
+    if morceaux.scheme == "https" and hote_exclu(hote, exclus):
+        return "tunnel"
+    return "rejouable"
+
+
+def rejeu_cmd(methode, url, http_port, tls_port, ca, delai=REJEU_DELAI):
+    """La commande curl qui rejoue une adresse PAR le cache, en arguments.
+
+    http passe par le mandataire du cache (« -x »), qui rebâtit l'adresse
+    depuis la ligne de requête. https garde son nom — SNI et en-tête Host —
+    et seule sa connexion est menée à l'écoute TLS : « --connect-to » sans
+    hôte ni port d'origine vaut pour tous. La clé est alors celle qu'une VM
+    produirait. L'autorité du cache est APPROUVÉE par « --cacert », jamais
+    contournée.
+
+    « -D - » rend les en-têtes, qui portent la redirection ; le corps va à
+    /dev/null, le cache le garde de son côté.
+
+    « -q » en PREMIER argument — curl ne l'honore qu'à cette place — écarte
+    le ~/.curlrc de l'opérateur : un « proxy » y enverrait le rejeu https
+    ailleurs que dans le cache, et « location », « compressed » ou un
+    en-tête changeraient ce qui entre au magasin sous la clé de la VM.
+    """
+    argv = ["curl", "-q", "-sS", "-o", "/dev/null", "-D", "-"]
+    argv += ["--max-time", str(delai)]
+    if urlsplit(url).scheme == "https":
+        argv += ["--connect-to", f"::127.0.0.1:{tls_port}", "--cacert", ca]
+    else:
+        argv += ["-x", f"http://127.0.0.1:{http_port}"]
+    if (methode or "").upper() == "HEAD":
+        argv.append("-I")
+    argv.append(url)
+    return argv
+
+
+def statut_et_cible(entetes, url):
+    """(statut, cible absolue de la redirection ou "") lus dans « curl -D - ».
+
+    Le DERNIER bloc compte : un « 100 Continue » précède la vraie réponse.
+    Une cible relative est résolue contre l'adresse demandée. Rend (None, "")
+    quand curl n'a rien reçu.
+    """
+    statut, cible = None, ""
+    for ligne in (entetes or "").splitlines():
+        ligne = ligne.strip()
+        if ligne.startswith("HTTP/"):
+            champs = ligne.split()
+            statut = (
+                int(champs[1])
+                if len(champs) > 1 and champs[1].isdigit()
+                else None
+            )
+            cible = ""
+        elif ligne.lower().startswith("location:"):
+            cible = urljoin(url, ligne.split(":", 1)[1].strip())
+    return statut, cible
 
 
 def bypass_retrait_cmd(mac):

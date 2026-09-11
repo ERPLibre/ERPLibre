@@ -869,3 +869,53 @@ def _trier_manques(manques, jamais_gardes, tenus):
         elif cle not in tenus:
             manquants.append(cle)
     return sorted(git), jamais, manquants
+
+
+def manques_recents(chemin: str, sous_reseau: str = "", depuis: float = 0.0):
+    """Ce que les invités n'ont pas obtenu hors ligne depuis « depuis ».
+
+    Rend [{"methode", "url", "dernier", "n", "clients"}], une entrée par
+    (méthode, URL), le manque le plus récent d'abord. Ne comptent que les
+    clients du sous-réseau des VM quand il est connu, et jamais la boucle
+    locale : un rejeu depuis l'hôte écrit ses propres lignes, et les
+    recompter ferait rejouer sans fin ce qui vient de l'être.
+    """
+    import ipaddress
+
+    reseau = None
+    if sous_reseau:
+        try:
+            reseau = ipaddress.ip_network(sous_reseau, strict=False)
+        except ValueError:
+            reseau = None
+    par = {}
+    for d in _lignes(chemin, [f'"{ISSUE_MANQUE}"']):
+        if d.get("outcome") != ISSUE_MANQUE:
+            continue
+        client = d.get("client") or ""
+        try:
+            adresse = ipaddress.ip_address(client)
+        except ValueError:
+            continue
+        if adresse.is_loopback or (
+            reseau is not None and adresse not in reseau
+        ):
+            continue
+        quand = instant(d.get("time"))
+        if quand is None or quand < depuis:
+            continue
+        cle = (d.get("method") or "", d.get("url") or "")
+        entree = par.setdefault(
+            cle,
+            {
+                "methode": cle[0],
+                "url": cle[1],
+                "dernier": quand,
+                "n": 0,
+                "clients": set(),
+            },
+        )
+        entree["n"] += 1
+        entree["dernier"] = max(entree["dernier"], quand)
+        entree["clients"].add(client)
+    return sorted(par.values(), key=lambda e: -e["dernier"])

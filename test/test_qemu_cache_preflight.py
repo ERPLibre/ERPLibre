@@ -21,6 +21,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,8 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from script.qemu import cache_offline  # noqa: E402
+from script.todo import qemu_cache_menu as menu  # noqa: E402
+from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M  # noqa: E402
 from script.todo.qemu_install_monitor import EXIT_MARKER  # noqa: E402
 from script.todo.todo_i18n import t  # noqa: E402
 
@@ -622,6 +625,493 @@ class TestLaQuestionAuMagasin(SansSysteme):
     def test_rien_a_demander_ne_lance_rien(self):
         self.assertEqual(self.interroger(()), {})
         self.assertEqual(self.lancees, [])
+
+
+class TestLesManquesRecents(SansSysteme):
+    """Ce que le menu relit pour combler : les invités seuls, sans doublon."""
+
+    def test_le_releve(self):
+        maintenant = time.time()
+        chemin = self.journal(
+            [
+                ligne(maintenant - 60, "offline-miss", URL_A),
+                ligne(
+                    maintenant - 30, "offline-miss", URL_A, client="192.0.2.11"
+                ),
+                ligne(
+                    maintenant - 20, "offline-miss", URL_B, client="127.0.0.1"
+                ),
+                ligne(
+                    maintenant - 10,
+                    "offline-miss",
+                    URL_C,
+                    client="198.51.100.7",
+                ),
+                ligne(maintenant - 9 * 86400, "offline-miss", URL_POST),
+                ligne(maintenant - 5, "stored", URL_A2),
+            ]
+        )
+        releve = cache_offline.manques_recents(
+            chemin, "192.0.2.0/24", maintenant - 7 * 86400
+        )
+        self.assertEqual(
+            [(e["methode"], e["url"]) for e in releve], [("GET", URL_A)]
+        )
+        self.assertEqual(releve[0]["n"], 2)
+        self.assertEqual(releve[0]["clients"], {IP, "192.0.2.11"})
+
+    def test_sans_sous_reseau_la_boucle_locale_reste_ecartee(self):
+        maintenant = time.time()
+        chemin = self.journal(
+            [ligne(maintenant - 20, "offline-miss", URL_B, client="127.0.0.1")]
+        )
+        self.assertEqual(cache_offline.manques_recents(chemin, "", 0.0), [])
+
+
+# ---------------------------------------------------------------------------
+# Le verdict de rejeu et la commande
+# ---------------------------------------------------------------------------
+
+
+def exclusions_du_go():
+    """DefaultExclusions, relues dans la source Go comme le fait le test qui
+    lit proxy.go."""
+    src = (RACINE / "script" / "qemu_cache" / "mitm.go").read_text(
+        encoding="utf-8"
+    )
+    bloc = re.search(r"var DefaultExclusions = \[\]string\{([^}]*)\}", src)
+    return re.findall(r'"([^"]+)"', bloc.group(1))
+
+
+class TestLeVerdictDeRejeu(unittest.TestCase):
+    """Ce qui se rejoue, et ce qui ne doit JAMAIS l'être.
+
+    Un hôte en tunnel rejoué depuis l'hôte revient dans le cache : sans
+    détournement, la destination d'origine d'une connexion locale est
+    l'écoute elle-même, et le tunnel s'y rappelle sans fin.
+    """
+
+    def test_get_et_head_sur_un_nom_se_rejouent(self):
+        self.assertEqual(menu.verdict_de_rejeu("GET", URL_A), "rejouable")
+        self.assertEqual(menu.verdict_de_rejeu("HEAD", URL_B), "rejouable")
+
+    def test_un_post_ne_se_garde_jamais(self):
+        for methode in ("POST", "PUT", "DELETE"):
+            self.assertEqual(menu.verdict_de_rejeu(methode, URL_A), "jamais")
+
+    def test_une_adresse_ip_en_https_est_un_tunnel(self):
+        self.assertEqual(menu.verdict_de_rejeu("GET", URL_IP), "tunnel")
+
+    def test_une_adresse_ip_en_http_ou_localhost_nest_pas_rejouee(self):
+        for url in (
+            "http://192.0.2.99/x",
+            "http://localhost/x",
+            "ftp://example.com/x",
+        ):
+            self.assertEqual(menu.verdict_de_rejeu("GET", url), "adresse", url)
+
+    def test_les_exclusions_declarees_passent_en_tunnel(self):
+        exclus = menu.exclusions_declarees(str(RACINE))
+        self.assertEqual(sorted(exclus), sorted(exclusions_du_go()))
+        self.assertGreater(len(exclus), 0)
+        for hote in exclus:
+            self.assertEqual(
+                menu.verdict_de_rejeu("GET", f"https://{hote}/v1/x", exclus),
+                "tunnel",
+                hote,
+            )
+
+    def test_une_exclusion_en_suffixe_couvre_le_domaine(self):
+        exclus = [".example.org"]
+        self.assertEqual(
+            menu.verdict_de_rejeu("GET", "https://a.example.org/x", exclus),
+            "tunnel",
+        )
+        self.assertEqual(
+            menu.verdict_de_rejeu(
+                "GET", "https://example.org.invalid/x", exclus
+            ),
+            "rejouable",
+        )
+
+    def test_une_negociation_git_va_au_miroir(self):
+        url = "https://example.com/o/d.git/info/refs?service=git-upload-pack"
+        self.assertEqual(menu.verdict_de_rejeu("GET", url), "git")
+
+    def test_les_chemins_git_suivent_le_go(self):
+        src = (RACINE / "script" / "qemu_cache" / "classify.go").read_text(
+            encoding="utf-8"
+        )
+        bloc = re.search(r"var gitSmartPaths = \[\]string\{([^}]*)\}", src)
+        self.assertEqual(
+            tuple(re.findall(r'"([^"]+)"', bloc.group(1))),
+            menu.GIT_NEGOCIATION,
+        )
+
+
+class TestLaCommandeDeRejeu(unittest.TestCase):
+    """La connexion va à l'écoute locale ; le nom d'hôte, lui, ne change pas.
+
+    C'est ce qui donne au rejeu la clé qu'une VM produirait. L'autorité est
+    APPROUVÉE, jamais contournée : « -k » ferait passer n'importe quoi pour le
+    cache.
+    """
+
+    CA = "/var/lib/essai/ca.crt"
+
+    def cmd(self, methode, url):
+        return menu.rejeu_cmd(methode, url, "8898", "8899", self.CA)
+
+    def test_http_passe_par_le_mandataire_du_cache(self):
+        argv = self.cmd("GET", URL_B)
+        self.assertEqual(argv[0], "curl")
+        self.assertIn("-x", argv)
+        self.assertEqual(argv[argv.index("-x") + 1], "http://127.0.0.1:8898")
+        self.assertNotIn("--connect-to", argv)
+        self.assertNotIn("-I", argv)
+        self.assertEqual(argv[-1], URL_B)
+        self.assertIn("--max-time", argv)
+
+    def test_https_mene_la_connexion_a_lecoute_tls(self):
+        argv = self.cmd("GET", URL_A)
+        self.assertEqual(
+            argv[argv.index("--connect-to") + 1], "::127.0.0.1:8899"
+        )
+        self.assertEqual(argv[argv.index("--cacert") + 1], self.CA)
+        for interdit in ("-k", "--insecure", "-L", "-x"):
+            self.assertNotIn(interdit, argv)
+        self.assertEqual(argv[-1], URL_A)
+
+    def test_head_se_rejoue_en_head(self):
+        self.assertIn("-I", self.cmd("HEAD", URL_A))
+        self.assertIn("-I", self.cmd("HEAD", URL_B))
+
+    def test_le_curlrc_de_loperateur_est_ecarte(self):
+        """curl n'honore « -q » qu'en tout premier argument. Ailleurs, un
+        « proxy » du ~/.curlrc enverrait le rejeu https hors du cache, et
+        un en-tête ou « compressed » changerait ce qui entre au magasin."""
+        for methode, url in (("GET", URL_A), ("GET", URL_B), ("HEAD", URL_A)):
+            argv = self.cmd(methode, url)
+            self.assertEqual(argv[:2], ["curl", "-q"], argv)
+
+    def test_la_redirection_se_lit_dans_le_dernier_bloc(self):
+        entetes = (
+            "HTTP/1.1 100 Continue\r\n\r\n"
+            "HTTP/1.1 302 Found\r\nLocation: /depot/cible.tar.gz\r\n\r\n"
+        )
+        self.assertEqual(menu.statut_et_cible(entetes, URL_A), (302, URL_A2))
+        self.assertEqual(
+            menu.statut_et_cible("HTTP/2 200\r\n\r\n", URL_A), (200, "")
+        )
+        self.assertEqual(menu.statut_et_cible("", URL_A), (None, ""))
+
+
+# ---------------------------------------------------------------------------
+# L'entrée 9 : refuser sous la coupure, montrer, confirmer, rejouer, vérifier
+# ---------------------------------------------------------------------------
+
+
+class Faux(M):
+    def __init__(self):
+        self.execute = self
+        self.executees = []
+
+    def exec_command_live(self, cmd, **_kw):
+        self.executees.append(cmd)
+
+
+class TestLeComblement(SansSysteme):
+    def setUp(self):
+        super().setUp()
+        self.binaire = self.dossier / "binaire"
+        self.binaire.write_text("")
+        conf = self.dossier / "env"
+        conf.write_text(
+            "EL_SUBNET=192.0.2.0/24\nEL_HTTP_PORT=8898\nEL_TLS_PORT=8899\n"
+            f"EL_CACHE_DIR={self.dossier / 'casiers'}\nEL_EXCLUDE=\n"
+        )
+        maintenant = time.time()
+        self.chemin = self.journal(
+            [
+                ligne(maintenant - 300, "offline-miss", URL_A),
+                ligne(maintenant - 200, "offline-miss", URL_B),
+                ligne(
+                    maintenant - 150, "offline-miss", URL_POST, methode="POST"
+                ),
+                ligne(maintenant - 100, "offline-miss", URL_IP),
+            ]
+        )
+        self.coupe = False
+        self.guet = False
+        self.actif = True
+        self.rejoue = False
+        for cible, valeur in (
+            ("CACHE_BIN", str(self.binaire)),
+            ("CACHE_CONF", str(conf)),
+        ):
+            p = mock.patch.object(menu, cible, valeur)
+            p.start()
+            self.addCleanup(p.stop)
+        for nom, fonction in (
+            ("_cache_journal", staticmethod(lambda: self.chemin)),
+            ("_cache_actif", classmethod(lambda cls: self.actif)),
+            ("_cache_amont_coupe", classmethod(lambda cls: self.coupe)),
+            ("_cache_guet_actif", classmethod(lambda cls: self.guet)),
+        ):
+            p = mock.patch.object(M, nom, fonction)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def repondre(self, texte, kw):
+        if texte.endswith("--help"):
+            return 0, "  -detient\n"
+        if texte.endswith("--detient"):
+            lignes = []
+            for question in (kw.get("input") or "").splitlines():
+                methode, url = question.split(" ", 1)
+                garde = self.rejoue and url in (URL_A2, URL_B)
+                verdict = "garde" if garde else "absent"
+                lignes.append(f"{verdict}\t200\t-\tvolatile\t{methode}\t{url}")
+            return 0, "\n".join(lignes) + "\n"
+        if texte.startswith("curl "):
+            self.rejoue = True
+            if texte.endswith(" " + URL_A):
+                return 0, f"HTTP/1.1 302 Found\r\nLocation: {URL_A2}\r\n\r\n"
+            return 0, "HTTP/1.1 200 OK\r\n\r\n"
+        return 0, ""
+
+    def combler(self, confirmer=True):
+        sortie = io.StringIO()
+        faux = Faux()
+        with mock.patch(
+            "click.confirm", return_value=confirmer
+        ) as confirme, contextlib.redirect_stdout(sortie):
+            faux._cache_combler()
+        return sortie.getvalue(), confirme, faux
+
+    def curls(self):
+        return [(c, kw) for c, kw in self.lancees if c.startswith("curl ")]
+
+    def test_sous_la_coupure_rien_ne_part(self):
+        self.coupe = True
+        texte, confirme, faux = self.combler()
+        self.assertEqual(
+            self.curls(), [], "un rejeu est parti sous la coupure"
+        )
+        confirme.assert_not_called()
+        self.assertIn(cache_offline.restore_cmd(), texte)
+        self.assertEqual(faux.executees, [])
+
+    def test_sous_le_guet_rien_ne_part_et_le_geste_arrete_le_guet(self):
+        """Le guet tient la coupure jusqu'à la fin de la dernière
+        installation détachée. Le geste donné l'arrête ; retirer la table
+        seule ferait finir ces installations en ligne et laisserait le guet
+        tourner pour rien."""
+        self.guet = True
+        texte, confirme, faux = self.combler()
+        self.assertEqual(self.curls(), [], "un rejeu est parti sous le guet")
+        confirme.assert_not_called()
+        self.assertIn(cache_offline.lever_maintenant_cmd(), texte)
+        self.assertNotIn(cache_offline.restore_cmd(), texte)
+        self.assertIn(
+            t("Lifting it now makes those installations finish online."), texte
+        )
+        self.assertEqual(faux.executees, [])
+
+    def test_une_coupure_illisible_fait_demander_non_par_defaut(self):
+        """sudo exige un mot de passe : la coupure ne se lit pas, et la
+        prendre pour absente ferait rejouer sous la coupure."""
+        self.coupe = None
+        texte, confirme, _f = self.combler(confirmer=False)
+        self.assertEqual(self.curls(), [])
+        confirme.assert_called_once()
+        self.assertIs(confirme.call_args.kwargs.get("default"), False)
+        self.assertIn(
+            t(
+                "Cannot tell whether the upstream is cut: reading nft needs a"
+                " sudo password here."
+            ),
+            texte,
+        )
+        self.assertEqual(
+            [c for c, _kw in self.lancees if c.endswith("--detient")],
+            [],
+            "le magasin a été interrogé avant la réponse",
+        )
+
+    def test_une_coupure_illisible_acceptee_rejoue(self):
+        self.coupe = None
+        _texte, confirme, _f = self.combler(confirmer=True)
+        self.assertEqual(confirme.call_count, 2)
+        self.assertNotEqual(self.curls(), [])
+
+    def test_service_arrete_rien_ne_part(self):
+        self.actif = False
+        _texte, confirme, _f = self.combler()
+        self.assertEqual(self.curls(), [])
+        confirme.assert_not_called()
+
+    def test_sans_binaire_rien_ne_part(self):
+        self.binaire.unlink()
+        _texte, confirme, _f = self.combler()
+        self.assertEqual(self.lancees, [])
+        confirme.assert_not_called()
+
+    def test_refuser_la_confirmation_ne_lance_rien(self):
+        texte, confirme, _f = self.combler(confirmer=False)
+        confirme.assert_called_once()
+        self.assertEqual(self.curls(), [])
+        self.assertIn(URL_POST, texte, "le plan tait ce qui ne se rejoue pas")
+
+    def test_le_rejeu_passe_par_le_cache_et_se_verifie(self):
+        with mock.patch.dict(
+            os.environ, {"https_proxy": "http://198.51.100.1:3128"}
+        ):
+            texte, _c, _f = self.combler()
+        curls = self.curls()
+        cibles = [c.rsplit(" ", 1)[-1] for c, _kw in curls]
+        # Le manque le plus récent d'abord ; une redirection est suivie
+        # aussitôt, avant l'adresse suivante.
+        self.assertEqual(cibles, [URL_B, URL_A, URL_A2])
+        for c, kw in curls:
+            argv = c.split()
+            self.assertTrue(
+                ("--connect-to" in argv and "--cacert" in argv)
+                or "http://127.0.0.1:8898" in argv,
+                c,
+            )
+            for interdit in ("-k", "--insecure", "-L"):
+                self.assertNotIn(interdit, argv)
+            self.assertNotIn(
+                "https_proxy", kw.get("env") or {}, "le mandataire hérité"
+            )
+        # Le rejeu et sa vérification tournent sans privilège. Le seul sudo
+        # admis est la lecture non interactive du journal du service, qui
+        # nomme les refus de tunnel appris.
+        for c, _kw in self.lancees:
+            self.assertNotIn("nft", c)
+            if c.startswith("sudo"):
+                self.assertTrue(c.startswith("sudo -n journalctl "), c)
+        for c, _kw in curls:
+            self.assertNotIn("sudo", c)
+        self.assertNotIn(URL_POST, cibles)
+        self.assertNotIn(URL_IP, cibles)
+        self.assertIn(t("held"), texte)
+        self.assertIn(t("not held"), texte)
+        self.assertIn(
+            t("User-Agent or Accept may keep another answer than the VM's."),
+            texte,
+        )
+
+
+class TestLeMenuLitLaCoupureEtLeGuet(SansSysteme):
+    """Ce que le menu du cache croit de la coupure et du guet.
+
+    Trois lectures sans privilège ou sans mot de passe, chacune réduite à
+    une marque que la commande écrit quand elle réussit : les messages de
+    nft, de sudo et de systemctl se traduisent, et une inclusion de texte
+    lit « inactive » comme « active ».
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sorties = {}
+
+    def repondre(self, texte, kw):
+        for motif, sortie in self.sorties.items():
+            if motif in texte:
+                return 0, sortie
+        return 1, ""
+
+    def test_la_coupure_a_trois_etats(self):
+        posee = (
+            "table inet x {\n  meta skuid 900 tcp dport { 80, 443 } drop\n}\n"
+        )
+        for sortie, attendu in (
+            (f"{menu.NFT_LISIBLE}\n{posee}", True),
+            (f"{menu.NFT_LISIBLE}\nError: la table n'existe pas\n", False),
+            ("sudo: un mot de passe est nécessaire\n", None),
+            ("", None),
+        ):
+            self.sorties = {"nft list": sortie}
+            self.assertIs(M._cache_amont_coupe(), attendu, sortie)
+        for c, _kw in self.lancees:
+            self.assertNotRegex(c, r"sudo (?!-n )", "sudo peut demander")
+
+    def test_le_guet_se_lit_sans_sudo(self):
+        self.sorties = {cache_offline.guet_actif_cmd(): menu.GUET_ACTIF}
+        self.assertTrue(M._cache_guet_actif())
+        self.sorties = {}
+        self.assertFalse(M._cache_guet_actif())
+        for c, _kw in self.lancees:
+            self.assertIn(cache_offline.guet_actif_cmd(), c)
+            self.assertNotIn("sudo", c)
+
+    def diagnostic(self, coupe, guet):
+        binaire = self.dossier / "binaire"
+        binaire.write_text("")
+        sortie = io.StringIO()
+        faux = Faux()
+        with mock.patch.object(menu, "CACHE_BIN", str(binaire)), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_amont_coupe",
+            classmethod(lambda cls: coupe),
+        ), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_guet_actif",
+            classmethod(lambda cls: guet),
+        ), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_par_machine",
+            return_value=[],
+        ), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_compte_issues",
+            return_value={},
+        ), mock.patch(
+            "script.todo.qemu_cache_menu.QemuCacheMenuMixin._cache_bypass_lire",
+            return_value=[],
+        ), contextlib.redirect_stdout(
+            sortie
+        ):
+            faux._cache_diagnostic()
+        return sortie.getvalue()
+
+    def test_sous_le_guet_le_diagnostic_donne_larret_du_guet(self):
+        """Donner le retrait de la table ferait finir en ligne les
+        installations qui tournent, et le guet resterait sans rien à
+        lever."""
+        for coupe in (True, None):
+            texte = self.diagnostic(coupe, guet=True)
+            self.assertIn(cache_offline.lever_maintenant_cmd(), texte)
+            self.assertNotIn(cache_offline.restore_cmd(), texte)
+            self.assertIn(
+                t("held until its last installation ends (12 h at most)."),
+                texte,
+            )
+
+    def test_sans_guet_le_diagnostic_donne_le_retrait(self):
+        texte = self.diagnostic(True, guet=False)
+        self.assertIn(cache_offline.restore_cmd(), texte)
+        self.assertNotIn(cache_offline.lever_maintenant_cmd(), texte)
+
+    def test_un_guet_sans_coupure_est_nomme(self):
+        texte = self.diagnostic(False, guet=True)
+        self.assertIn(
+            t("The lift watcher still runs, with no cut left to lift."), texte
+        )
+        self.assertIn(cache_offline.lever_maintenant_cmd(), texte)
+
+    def test_une_coupure_illisible_est_dite_sans_alarme(self):
+        texte = self.diagnostic(None, guet=False)
+        self.assertNotIn(cache_offline.restore_cmd(), texte)
+        self.assertNotIn(
+            t("Upstream CUT: the cache can pull nothing from the internet"),
+            texte,
+        )
+        self.assertIn(
+            t(
+                "Cannot tell whether the upstream is cut: reading nft needs a"
+                " sudo password here."
+            ),
+            texte,
+        )
 
 
 # ---------------------------------------------------------------------------

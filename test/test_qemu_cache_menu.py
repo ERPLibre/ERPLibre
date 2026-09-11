@@ -88,6 +88,41 @@ CLES = (
     "VM gone",
     "Keep this VM out of the download cache",
     "Keep this VM out of the download cache? (y/N): ",
+    # Combler ce qui a manqué hors ligne : l'entrée 9 et ses verdicts.
+    "Cache - Fill what offline runs lacked",
+    "What offline runs lacked",
+    "Start it from entry 3 of this menu.",
+    "A replay now would only record more misses.",
+    "No offline miss in the recent window: nothing to fill.",
+    "Everything that was missed is held now.",
+    "according to the log: a purge can make it wrong",
+    "replay through the cache",
+    "never kept: the cache keeps only GET and HEAD",
+    "the cache does not keep this address",
+    "host in tunnel: nothing to keep",
+    "git negotiation: fill the mirror from entry 5",
+    "not a host name: a replay could loop back into the cache",
+    "Nothing here can be replayed.",
+    "The replay sends curl's own headers: a server that varies on",
+    "User-Agent or Accept may keep another answer than the VM's.",
+    "Replay these addresses through the cache now?",
+    "held",
+    "not held",
+    "not re-checked: this binary has no --detient",
+    "Tunnel refusals learned by the service:",
+    "curl got no answer",
+    # La coupure que le guet tient, et celle qu'on ne peut pas lire :
+    # diagnostic et entrée 9.
+    "Upstream CUT by an offline deployment still installing,",
+    "held until its last installation ends (12 h at most).",
+    "Lifting it now makes those installations finish online.",
+    "Lift it now with:",
+    "The lift watcher still runs, with no cut left to lift.",
+    "Stop it with:",
+    "Cannot tell whether the upstream is cut: reading nft needs a sudo"
+    " password here.",
+    "Under the cut, a replay would only record more misses.",
+    "Replay anyway?",
 )
 
 CACHE_PY = RACINE / "script" / "todo" / "qemu_cache_menu.py"
@@ -206,7 +241,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 8)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 9)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
@@ -231,6 +266,7 @@ class TestSousMenusDuCache(unittest.TestCase):
             ("6", "_cache_age"),
             ("7", "_cache_guide"),
             ("8", "_cache_tests"),
+            ("9", "_cache_combler"),
         ):
             self.assertRegex(
                 corps,
@@ -406,6 +442,7 @@ class TestClesI18n(unittest.TestCase):
             "Service - Detailed state (status)": "📋",
             "Service - Logs (log)": "📜",
             "Cache - Tests and performance report": "🧪",
+            "Cache - Fill what offline runs lacked": "🩹",
         }
         for cle, icone in attendues.items():
             entree = todo_i18n.TRANSLATIONS[cle]
