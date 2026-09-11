@@ -108,7 +108,9 @@ func KeySansHote(method string, u *url.URL) string {
 //
 // La clé écarte l'hôte quand le NOM du fichier l'identifie partout : une
 // liste de miroirs tourne, et une clé qui porte l'hôte ferait manquer le
-// cache au fichier déjà gardé sous un autre nom de miroir.
+// cache au fichier déjà gardé sous un autre nom de miroir. Le service et la
+// lecture « --detient » passent tous deux par ici : deux calculs de la clé
+// finiraient par diverger, et le relevé dirait absent ce que le service sert.
 func CleDe(method string, u *url.URL) string {
 	if PortableParChemin(u) {
 		return KeySansHote(method, u)

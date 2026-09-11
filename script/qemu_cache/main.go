@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func main() {
 	var (
@@ -83,11 +83,29 @@ func main() {
 		bypassList = flag.Bool("bypass-list", false,
 			"dire les exceptions en place, une « MAC nom » par ligne")
 		showVersion = flag.Bool("version", false, "dire la version, puis sortir")
+		detient     = flag.Bool("detient", false,
+			"lire des lignes « MÉTHODE URL » sur l'entrée standard et dire,"+
+				" pour chacune, ce que le magasin tient : une ligne séparée"+
+				" par des tabulations « verdict statut stored_at classe"+
+				" méthode url », verdict garde (corps 200), statut (statut"+
+				" seul, sans corps), absent ou non-cachable. Lecture seule :"+
+				" --cache-dir suffit, sans privilège, et l'âge des objets"+
+				" n'est pas touché")
 	)
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("erplibre_go_qemu_cache %s\n", version)
+		return
+	}
+	// Traité AVANT tout ce qui lit une configuration : la question ne
+	// porte que sur le magasin, et un fichier d'exceptions illisible pour
+	// l'appelant ne doit pas l'empêcher d'y répondre.
+	if *detient {
+		store := &Store{Dir: *cacheDir}
+		if err := EcrireDetentions(store, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "entrée illisible : %v\n", err)
+		}
 		return
 	}
 
