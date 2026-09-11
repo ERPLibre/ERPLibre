@@ -3253,8 +3253,163 @@ class QemuManageMixin:
         ]
         return len(sujets), sujets
 
-    def _qemu_branch_gap_lines(self, branche, limite=3):
-        """Les lignes à dire avant de déployer, ou []."""
+    def _qemu_miroir_erplibre(self):
+        """Le miroir du cache qui sert le clone d'ERPLibre, ou "" s'il manque.
+
+        Même chemin que celui que le cache calcule : <racine>/<hôte>/<chemin
+        sans « .git »>.git. Absent sur un hôte sans cache, ou tant qu'aucune
+        VM n'a cloné ERPLibre à travers lui.
+        """
+        from urllib.parse import urlparse
+
+        from script.todo.qemu_cache_menu import CACHE_MIROIR_GIT
+
+        url = urlparse(self.ERPLIBRE_GIT_URL)
+        chemin = url.path.strip("/")
+        if chemin.endswith(".git"):
+            chemin = chemin[: -len(".git")]
+        if not url.netloc or not chemin:
+            return ""
+        miroir = os.path.join(CACHE_MIROIR_GIT, url.netloc, chemin + ".git")
+        return miroir if os.path.isdir(miroir) else ""
+
+    def _qemu_ecart_miroir(self, branche):
+        """Ce qu'une VM hors ligne recevra, face à ce que l'hôte connaît.
+
+        Hors ligne, le clone est servi par le miroir du cache TEL QUEL : son
+        rafraîchissement échoue, l'amont étant coupé. Ce que le miroir porte
+        est donc ce que la VM exécute, poussé ou non depuis.
+
+        Rend None quand on ne sait pas — pas de miroir, miroir illisible —
+        et l'appelant retombe alors sur l'écart avec origin. Sinon
+        (sha_miroir, sha_ici, nombre) : `sha_miroir` vide si le miroir n'a
+        pas la branche ; `sha_ici` celui de la branche locale, à défaut
+        d'origin/<branche>, vide si l'hôte n'a ni l'une ni l'autre ;
+        `nombre` les commits de `sha_ici` absents du miroir, -1 si
+        incalculable. Tout est lu, rien n'est écrit : le miroir appartient
+        au compte du service.
+
+        « ls-remote --exit-code » rend 2 quand aucune référence ne répond au
+        motif, et seul ce code vaut absence : une requête qui échoue autrement
+        rend None. Le motif se compare à la FIN des références, d'où la
+        recherche de la référence exacte dans ce qui revient.
+        """
+        miroir = self._qemu_miroir_erplibre() if branche else ""
+        if not miroir:
+            return None
+
+        def lancer(*args):
+            try:
+                return subprocess.run(
+                    ["git", *args], capture_output=True, text=True, timeout=15
+                )
+            except (OSError, subprocess.SubprocessError):
+                return None
+
+        def git(*args):
+            res = lancer(*args)
+            if res is None or res.returncode:
+                return None
+            return (res.stdout or "").strip()
+
+        ref = f"refs/heads/{branche}"
+        vu = lancer("ls-remote", "--exit-code", miroir, ref)
+        if vu is None or vu.returncode not in (0, 2):
+            return None
+        sha_miroir = ""
+        if vu.returncode == 0:
+            for ligne in (vu.stdout or "").splitlines():
+                champs = ligne.split()
+                if len(champs) == 2 and champs[1] == ref:
+                    sha_miroir = champs[0]
+                    break
+        sha_ici = ""
+        for ref in (f"refs/heads/{branche}", f"refs/remotes/origin/{branche}"):
+            sha_ici = git("rev-parse", "--verify", "-q", f"{ref}^{{commit}}")
+            if sha_ici:
+                break
+        sha_ici = sha_ici or ""
+        nombre = -1
+        if sha_miroir and sha_ici and sha_miroir != sha_ici:
+            compte = git("rev-list", "--count", f"{sha_miroir}..{sha_ici}")
+            nombre = int(compte) if (compte or "").isdigit() else -1
+        return sha_miroir, sha_ici, nombre
+
+    @staticmethod
+    def _qemu_lignes_miroir(ecarts):
+        """Les lignes à dire face au miroir, pour [(branche, écart)].
+
+        `écart` est ce que rend `_qemu_ecart_miroir`, None compris. Chaque
+        ligne nomme sa branche. Une branche absente du miroir a sa ligne ;
+        une branche à jour, ou dont on ne sait rien, n'en a aucune. Le
+        conseil sur « git push » ne vient qu'une fois, et seulement si le
+        miroir porte, pour une branche au moins, un autre commit que l'hôte.
+        """
+        lignes, en_retard = [], False
+        for branche, ecart in ecarts:
+            if ecart is None:
+                continue
+            sha_miroir, sha_ici, nombre = ecart
+            if not sha_miroir:
+                lignes.append(
+                    f"⚠ {t('The cache mirror has no branch')} {branche}: "
+                    f"{t('an offline clone will fail.')}"
+                )
+                continue
+            if sha_miroir == sha_ici:
+                continue
+            en_retard = True
+            lignes.append(
+                f"⚠ {t('Offline, the VM clones the cache mirror of')} "
+                f"{branche}: {sha_miroir[:12]}"
+            )
+            if sha_ici:
+                lignes.append(
+                    f"  {t('this checkout has')} {sha_ici[:12]}"
+                    + (
+                        f", {nombre} {t('commit(s) missing from the mirror')}"
+                        if nombre > 0
+                        else ""
+                    )
+                )
+        if en_retard:
+            lignes.append(
+                f"  → {t('A push alone changes nothing: the mirror is')}"
+            )
+            lignes.append(
+                f"    {t('refreshed only when a VM clones it online.')}"
+            )
+        return lignes
+
+    def _qemu_branch_gap_lines(self, branche, limite=3, hors_ligne=False):
+        """Les lignes à dire avant de déployer, ou [].
+
+        `branche` : un nom, ou la collection des branches que les VM
+        clonent réellement. Plusieurs branches ne sont comparées qu'au
+        miroir, une par une, chaque ligne nommant la sienne : l'écart avec
+        origin se mesure contre HEAD, qui n'est qu'une seule branche, et lui
+        attribuerait les commits d'une autre. Une branche dont le miroir ne
+        dit rien reste alors muette.
+
+        `hors_ligne` : la VM clonera depuis le miroir du cache. L'écart qui
+        compte est alors celui du miroir, et « git push » seul n'y change
+        rien : le miroir ne se rafraîchit que quand une VM le clone amont
+        branché.
+        """
+        if isinstance(branche, str):
+            branches = [branche]
+        else:
+            branches = sorted({b for b in branche if b})
+        if len(branches) != 1:
+            if not hors_ligne:
+                return []
+            return self._qemu_lignes_miroir(
+                [(b, self._qemu_ecart_miroir(b)) for b in branches]
+            )
+        branche = branches[0]
+        ecart = self._qemu_ecart_miroir(branche) if hors_ligne else None
+        if ecart is not None:
+            return self._qemu_lignes_miroir([(branche, ecart)])
         nombre, sujets = self._qemu_branch_gap(branche)
         if not nombre:
             return []

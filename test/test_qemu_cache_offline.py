@@ -793,6 +793,337 @@ class TestUneSecondeCoupure(_SansSysteme, unittest.TestCase):
         self.assertEqual(hote.ordre[0], "coupure")
 
 
+class TestLaLigneDeCommit(unittest.TestCase):
+    """Le journal nomme le commit que la VM exécute : hors ligne, le clone
+    vient du miroir du cache, qui peut retarder sur le distant."""
+
+    def _script(self, prod=False):
+        return _todo()._qemu_erplibre_remote_cmd("develop", None, prod)
+
+    def test_la_ligne_suit_le_clone_et_precede_le_make(self):
+        for prod, depot in (
+            (False, "~/git/erplibre"),
+            (True, "/opt/erplibre"),
+        ):
+            with self.subTest(prod=prod):
+                script = self._script(prod)
+                ligne = script.index(f"git -C {depot} log -1")
+                self.assertLess(script.index("git clone --branch"), ligne)
+                self.assertLess(ligne, script.index("make install_os"))
+                self.assertIn("Commit       : %h %s", script)
+
+    def test_un_depot_garde_se_dit_garde(self):
+        from script.todo.todo_i18n import t
+
+        script = self._script()
+        clone = script.index("git clone --branch")
+        garde = script.index(t("Existing checkout kept, not updated:"))
+        self.assertLess(clone, script.index("else echo", clone))
+        self.assertLess(script.index("else echo", clone), garde)
+        self.assertLess(garde, script.index("fi;", clone))
+
+    def test_la_ligne_ne_fait_jamais_echouer_linstallation(self):
+        """Sous « set -e », un « git log » qui échoue — dépôt absent, git
+        refusant un dépôt d'un autre compte — arrêterait tout. Lu sur un
+        dépôt qui n'existe pas : git ne fait que lire."""
+        import tempfile
+
+        from script.todo.qemu_deploy import QemuDeployMixin
+
+        with tempfile.TemporaryDirectory() as tmp:
+            absent = f"{tmp}/pas_de_depot"
+            res = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    "set -e; "
+                    + QemuDeployMixin._qemu_commit_line(absent)
+                    + "echo SUITE",
+                ],
+                text=True,
+                capture_output=True,
+                timeout=30,
+            )
+        self.assertIn("SUITE", res.stdout, res.stderr)
+
+    def test_le_script_reste_du_shell_valide(self):
+        for prod in (False, True):
+            res = subprocess.run(
+                ["bash", "-n"],
+                input=self._script(prod),
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+
+
+class TestLecartHorsLigne(_SansSysteme, unittest.TestCase):
+    """Hors ligne, la VM clone le miroir du cache TEL QUEL : « git push »
+    seul n'y change rien, et c'est son sha qui compte."""
+
+    MIROIR = "/srv/essai/miroir/erplibre.git"
+    SHA_MIROIR = "a" * 40
+    SHA_ICI = "b" * 40
+
+    def _git(
+        self,
+        sha_miroir=SHA_MIROIR,
+        sha_ici=SHA_ICI,
+        compte="3",
+        refs=None,
+        rc_ls=None,
+        sortie_ls=None,
+    ):
+        """Un faux git. `refs` : {branche: sha du miroir}, "" pour une
+        branche que le miroir n'a pas — « ls-remote --exit-code » rend alors
+        2 ; par défaut la seule « dev ». `rc_ls` : une requête qui échoue
+        avec ce code. `sortie_ls` : ce que rend un ls-remote qui réussit."""
+        self.appels = []
+        refs = {"dev": sha_miroir} if refs is None else refs
+
+        def run(argv, *a, **kw):
+            self.appels.append(list(argv))
+            fait = subprocess.CompletedProcess
+            if argv[:2] == ["git", "ls-remote"]:
+                if rc_ls is not None:
+                    return fait(argv, rc_ls, "", "fatal: illisible\n")
+                if sortie_ls is not None:
+                    return fait(argv, 0, sortie_ls, "")
+                sha = refs.get(argv[-1][len("refs/heads/") :])
+                if not sha:
+                    return fait(argv, 2, "", "")
+                return fait(argv, 0, f"{sha}\t{argv[-1]}\n", "")
+            if argv[:2] == ["git", "rev-parse"]:
+                return fait(argv, 0 if sha_ici else 1, sha_ici, "")
+            if argv[:2] == ["git", "rev-list"]:
+                return fait(argv, 0, f"{compte}\n", "")
+            if argv[:2] == ["git", "log"]:
+                return fait(argv, 0, "c1 [FIX] un correctif\n", "")
+            raise AssertionError(f"commande inattendue : {argv}")
+
+        return run
+
+    def _lignes(self, hors_ligne, miroir=MIROIR, **git):
+        todo = _todo()
+        todo._qemu_miroir_erplibre = lambda: miroir
+        with mock.patch("subprocess.run", self._git(**git)):
+            return todo._qemu_branch_gap_lines("dev", hors_ligne=hors_ligne)
+
+    def test_hors_ligne_le_sha_du_miroir_est_dit(self):
+        from script.todo.todo_i18n import t
+
+        texte = "\n".join(self._lignes(True))
+        self.assertIn(self.SHA_MIROIR[:12], texte)
+        self.assertIn(self.SHA_ICI[:12], texte)
+        self.assertIn(f"3 {t('commit(s) missing from the mirror')}", texte)
+        self.assertIn(t("A push alone changes nothing: the mirror is"), texte)
+        self.assertNotIn(t("to deploy your own work."), texte)
+        self.assertIn(
+            ["git", "ls-remote", "--exit-code", self.MIROIR, "refs/heads/dev"],
+            self.appels,
+        )
+
+    def test_en_ligne_le_conseil_reste_git_push(self):
+        from script.todo.todo_i18n import t
+
+        texte = "\n".join(self._lignes(False))
+        self.assertIn(f"git push {t('to deploy your own work.')}", texte)
+        self.assertFalse(
+            [a for a in self.appels if a[:2] == ["git", "ls-remote"]]
+        )
+
+    def test_sans_miroir_on_se_tait_et_retombe_sur_origin(self):
+        from script.todo.todo_i18n import t
+
+        texte = "\n".join(self._lignes(True, miroir=""))
+        self.assertIn(f"git push {t('to deploy your own work.')}", texte)
+        self.assertFalse(
+            [a for a in self.appels if a[:2] == ["git", "ls-remote"]]
+        )
+
+    def test_un_miroir_a_jour_na_rien_a_dire(self):
+        self.assertEqual(self._lignes(True, sha_ici=self.SHA_MIROIR), [])
+
+    def test_une_branche_absente_du_miroir_fera_echouer_le_clone(self):
+        from script.todo.todo_i18n import t
+
+        texte = "\n".join(self._lignes(True, sha_miroir=""))
+        self.assertIn(t("an offline clone will fail."), texte)
+
+    def test_une_requete_ratee_ne_dit_pas_la_branche_absente(self):
+        """Seul le code 2 de « --exit-code » vaut absence : un miroir
+        illisible ne sait rien, et l'écart retombe sur origin."""
+        from script.todo.todo_i18n import t
+
+        texte = "\n".join(self._lignes(True, rc_ls=128))
+        self.assertNotIn(t("an offline clone will fail."), texte)
+        self.assertIn(f"git push {t('to deploy your own work.')}", texte)
+
+    def test_une_reference_qui_finit_pareil_nest_pas_la_branche(self):
+        """Le motif de ls-remote se compare à la FIN des références."""
+        from script.todo.todo_i18n import t
+
+        sortie = f"{self.SHA_MIROIR}\trefs/heads/x/refs/heads/dev\n"
+        texte = "\n".join(self._lignes(True, sortie_ls=sortie))
+        self.assertIn(f"{t('The cache mirror has no branch')} dev", texte)
+
+    VM_RECAP = {
+        "distro": "debian",
+        "version": "13",
+        "arch": "amd64",
+        "vcpus": 2,
+        "ram": 2048,
+        "disk": "20G",
+    }
+
+    def _recap(self, hors_ligne=True, **git):
+        """Le récapitulatif de deux VM sur deux branches : « dev » par
+        défaut, « stable » pour la seconde."""
+        import contextlib
+        import io
+
+        todo = _todo()
+        todo._qemu_miroir_erplibre = lambda: self.MIROIR
+        todo._qemu_sudo_lines = lambda: []
+        spec = {
+            "vms": [
+                dict(self.VM_RECAP, name="vm-a"),
+                dict(self.VM_RECAP, name="vm-b", branch="stable"),
+            ],
+            "install": {
+                "branch": "dev",
+                "prod": False,
+                "label": "x",
+                "cmd": "make x",
+            },
+            "add_ssh_config": False,
+            "parallelism": 1,
+            "offline": hors_ligne,
+        }
+        with mock.patch(
+            "subprocess.run", self._git(**git)
+        ), contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._qemu_print_recap(spec, [])
+        return sortie.getvalue()
+
+    def _refs_lues(self):
+        return [a[-1] for a in self.appels if a[:2] == ["git", "ls-remote"]]
+
+    def test_deux_branches_chacune_face_au_miroir(self):
+        """« varie, voir chaque ligne » est un libellé : le miroir n'a aucune
+        branche de ce nom, et l'annoncer absente serait faux."""
+        from script.todo.todo_i18n import t
+
+        texte = self._recap(refs={"dev": self.SHA_ICI, "stable": ""})
+        self.assertEqual(
+            self._refs_lues(), ["refs/heads/dev", "refs/heads/stable"]
+        )
+        self.assertIn(
+            f"{t('The cache mirror has no branch')} stable: "
+            f"{t('an offline clone will fail.')}",
+            texte,
+        )
+        self.assertNotIn(f"{t('The cache mirror has no branch')} dev", texte)
+        self.assertNotIn(
+            f"{t('The cache mirror has no branch')} "
+            f"{t('varies, see each line')}",
+            texte,
+        )
+
+    def test_deux_branches_a_jour_rien_a_dire(self):
+        from script.todo.todo_i18n import t
+
+        texte = self._recap(refs={"dev": self.SHA_ICI, "stable": self.SHA_ICI})
+        self.assertNotIn(t("The cache mirror has no branch"), texte)
+        self.assertNotIn(
+            t("Offline, the VM clones the cache mirror of"), texte
+        )
+
+    def test_deux_branches_le_retard_nomme_la_sienne(self):
+        from script.todo.todo_i18n import t
+
+        texte = self._recap(
+            refs={"dev": self.SHA_MIROIR, "stable": self.SHA_ICI}
+        )
+        self.assertIn(
+            f"{t('Offline, the VM clones the cache mirror of')} dev: "
+            f"{self.SHA_MIROIR[:12]}",
+            texte,
+        )
+        self.assertNotIn(
+            f"{t('Offline, the VM clones the cache mirror of')} stable",
+            texte,
+        )
+        self.assertEqual(
+            1, texte.count(t("A push alone changes nothing: the mirror is"))
+        )
+
+    def test_deux_branches_une_requete_ratee_se_tait(self):
+        from script.todo.todo_i18n import t
+
+        texte = self._recap(rc_ls=128)
+        self.assertNotIn(t("The cache mirror has no branch"), texte)
+        self.assertNotIn(t("to deploy your own work."), texte)
+        self.assertFalse([a for a in self.appels if a[:2] == ["git", "log"]])
+
+    def test_deux_branches_en_ligne_rien_nest_demande(self):
+        """En ligne, l'écart se mesure contre HEAD, une seule branche : il
+        attribuerait à l'autre des commits qui ne la concernent pas."""
+        texte = self._recap(hors_ligne=False)
+        self.assertEqual(self.appels, [])
+        self.assertNotIn("⚠", texte)
+
+    def test_le_recapitulatif_passe_le_hors_ligne(self):
+        """Le récapitulatif est le dernier écran avant de déployer : c'est là
+        que l'écart doit parler du miroir."""
+        import contextlib
+        import io
+
+        for hors_ligne in (True, False):
+            with self.subTest(hors_ligne=hors_ligne):
+                todo = _todo()
+                vus = []
+                todo._qemu_branch_gap_lines = lambda br, **kw: (
+                    vus.append(kw) or []
+                )
+                todo._qemu_sudo_lines = lambda: []
+                spec = {
+                    "vms": [
+                        {
+                            "name": "vm-a",
+                            "distro": "debian",
+                            "version": "13",
+                            "arch": "amd64",
+                            "vcpus": 2,
+                            "ram": 2048,
+                            "disk": "20G",
+                        }
+                    ],
+                    "install": {
+                        "branch": "dev",
+                        "prod": False,
+                        "label": "x",
+                        "cmd": "make x",
+                    },
+                    "add_ssh_config": False,
+                    "parallelism": 1,
+                    "offline": hors_ligne,
+                }
+                with contextlib.redirect_stdout(io.StringIO()):
+                    todo._qemu_print_recap(spec, [])
+                self.assertIs(vus[0].get("hors_ligne"), hors_ligne)
+
+    def test_le_chemin_est_celui_que_le_cache_calcule(self):
+        from script.todo.qemu_cache_menu import CACHE_MIROIR_GIT
+
+        attendu = f"{CACHE_MIROIR_GIT}/github.com/erplibre/erplibre.git"
+        todo = _todo()
+        with mock.patch("os.path.isdir", lambda p: p == attendu):
+            self.assertEqual(todo._qemu_miroir_erplibre(), attendu)
+        with mock.patch("os.path.isdir", return_value=False):
+            self.assertEqual(todo._qemu_miroir_erplibre(), "")
+
+
 class TestUnCheminQueSystemdReecrirait(unittest.TestCase):
     """Le guet reçoit les chemins de journaux en arguments, que systemd
     réécrit quand ils portent « $ » ou « % » : le journal ne serait jamais

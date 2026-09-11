@@ -265,24 +265,53 @@ class QemuDeployMixin:
             + tools_cmd
             # Clone : /opt/erplibre en PROD (racine, puis chown à l'utilisateur
             # pour que make/venv s'exécutent sans sudo), ~/git/erplibre en dev.
+            # Un dépôt déjà là est gardé tel quel, et le journal le dit : la
+            # branche choisie n'y est alors PAS rechargée.
             + (
                 (
                     "sudo mkdir -p /opt; "
                     "if [ ! -d /opt/erplibre/.git ]; then "
                     f"sudo git clone --branch {shlex.quote(branch)} "
                     f"{self.ERPLIBRE_GIT_URL} /opt/erplibre; "
-                    "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; fi; "
-                    f"cd /opt/erplibre && {install_chain}"
+                    "sudo chown -R $(id -un):$(id -gn) /opt/erplibre; "
+                    f"else {self._qemu_checkout_garde('/opt/erplibre')}; fi; "
+                    + self._qemu_commit_line("/opt/erplibre")
+                    + f"cd /opt/erplibre && {install_chain}"
                 )
                 if prod
                 else (
                     "mkdir -p ~/git; "
                     "if [ ! -d ~/git/erplibre/.git ]; then "
                     f"git clone --branch {shlex.quote(branch)} "
-                    f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; fi; "
-                    f"cd ~/git/erplibre && {install_chain}"
+                    f"{self.ERPLIBRE_GIT_URL} ~/git/erplibre; "
+                    f"else {self._qemu_checkout_garde('~/git/erplibre')}; fi; "
+                    + self._qemu_commit_line("~/git/erplibre")
+                    + f"cd ~/git/erplibre && {install_chain}"
                 )
             )
+        )
+
+    @staticmethod
+    def _qemu_checkout_garde(depot):
+        """Ligne du journal quand le clone est sauté : le dépôt existant est
+        gardé, sans mise à jour."""
+        note = f"   {t('Existing checkout kept, not updated:')} {depot}"
+        return f"echo {shlex.quote(note)}"
+
+    @staticmethod
+    def _qemu_commit_line(depot):
+        """Ligne du journal qui nomme le commit que la VM exécute vraiment.
+
+        Lu DANS la VM, après le clone : c'est la seule source sûre. Hors
+        ligne, le clone vient du miroir du cache, qui peut retarder sur le
+        dépôt distant comme sur le checkout de l'hôte. `depot` n'est pas
+        cité : « ~ » doit s'y développer. « || true » : sous « set -e », une
+        ligne d'information ne doit jamais faire échouer l'installation.
+        """
+        fmt = shlex.quote("   Commit       : %h %s")
+        return (
+            f"git -C {depot} log -1 --abbrev=12 --format={fmt} "
+            "2>/dev/null || true; "
         )
 
     def _qemu_install_erplibre_monitored(
@@ -961,6 +990,9 @@ class QemuDeployMixin:
                 for vm in spec["vms"]
             }
             varies = t("varies, see each line")
+            # L'écart se mesure sur les branches RÉELLES : « varie » n'est
+            # qu'un libellé, et le miroir n'a aucune branche de ce nom.
+            ecart_de = sorted(used_br) if len(used_br) > 1 else None
             br_txt = used_br.pop() if len(used_br) == 1 else varies
             lb_txt = used_lb.pop() if len(used_lb) == 1 else varies
             print(
@@ -968,10 +1000,13 @@ class QemuDeployMixin:
                 f"{t('profile')} {lb_txt}, {env}"
             )
             # La VM ne reçoit pas CE checkout : elle CLONE la branche depuis
-            # le dépôt distant. Un correctif commité ici et non poussé n'y est
-            # donc pas, et le défaut « revient » alors qu'il est corrigé —
-            # vécu deux fois de suite sur install_proxmox.sh.
-            for ligne in self._qemu_branch_gap_lines(br_txt):
+            # le dépôt distant, ou hors ligne depuis le miroir du cache. Un
+            # correctif commité ici et non poussé n'y est donc pas, et le
+            # défaut « revient » alors qu'il est corrigé.
+            for ligne in self._qemu_branch_gap_lines(
+                br_txt if ecart_de is None else ecart_de,
+                hors_ligne=bool(spec.get("offline")),
+            ):
                 print(f"  {ligne}")
         else:
             print(f"  {t('Install:')} {t('no')}")

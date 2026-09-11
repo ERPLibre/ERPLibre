@@ -6479,6 +6479,38 @@ TRANSLATIONS = {
         "fr": "L'amont du cache est peut-être encore coupé.",
         "en": "The cache upstream may still be cut.",
     },
+    "Existing checkout kept, not updated:": {
+        "fr": "Dépôt existant gardé, sans mise à jour :",
+        "en": "Existing checkout kept, not updated:",
+    },
+    "The cache mirror has no branch": {
+        "fr": "Le miroir du cache n'a pas la branche",
+        "en": "The cache mirror has no branch",
+    },
+    "an offline clone will fail.": {
+        "fr": "un clone hors ligne échouera.",
+        "en": "an offline clone will fail.",
+    },
+    "Offline, the VM clones the cache mirror of": {
+        "fr": "Hors ligne, la VM clone le miroir du cache de",
+        "en": "Offline, the VM clones the cache mirror of",
+    },
+    "this checkout has": {
+        "fr": "ce checkout est à",
+        "en": "this checkout has",
+    },
+    "commit(s) missing from the mirror": {
+        "fr": "commit(s) absent(s) du miroir",
+        "en": "commit(s) missing from the mirror",
+    },
+    "A push alone changes nothing: the mirror is": {
+        "fr": "Un push seul n'y change rien : le miroir ne se",
+        "en": "A push alone changes nothing: the mirror is",
+    },
+    "refreshed only when a VM clones it online.": {
+        "fr": "rafraîchit que quand une VM le clone en ligne.",
+        "en": "refreshed only when a VM clones it online.",
+    },
     "Nothing is cut before F5: the upstream falls": {
         "fr": "Rien n'est coupé avant F5 : l'amont tombe",
         "en": "Nothing is cut before F5: the upstream falls",
