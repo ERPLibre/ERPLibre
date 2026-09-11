@@ -244,7 +244,7 @@ func TestGitPasseParLeClientPatient(t *testing.T) {
 		vues = nil
 		u, _ := url.Parse(c.brut)
 		r, _ := http.NewRequest("GET", c.brut, nil)
-		if _, err := p.fetch(r, u); err != nil {
+		if _, err := p.fetch(r, u, false); err != nil {
 			t.Fatalf("%s : %v", c.brut, err)
 		}
 		if len(vues) != 1 || vues[0] != c.attendu {

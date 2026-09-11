@@ -76,10 +76,24 @@ type GitMirror struct {
 	// pas. Les miroirs DÉJÀ tenus continuent d'être rafraîchis et servis —
 	// une mise à jour ne coûte que ce qui a changé.
 	PlancherLibre int64
+	// Muets est la mémoire des amonts injoignables, partagée avec le relais.
+	// Elle ne retient que des établissements manqués. Nulle, rien n'est
+	// retenu d'une requête à l'autre.
+	Muets *Joignabilite
+	// Sonder vérifie qu'un amont accepte une connexion. Nul, une connexion
+	// TCP est ouverte puis refermée.
+	Sonder func(ctx context.Context, adresse string) error
+	// Mandataire dit par quel mandataire HTTP une URL sortirait. Nul, c'est
+	// http.ProxyFromEnvironment : l'environnement même que « git remote
+	// update » lit.
+	Mandataire func(*http.Request) (*url.URL, error)
 
 	mu      sync.Mutex
 	verrous map[string]*sync.Mutex
 	vus     map[string]time.Time
+	// figes retient les hôtes dont une sonde manquée a déjà été dite au
+	// journal : une ligne par panne, pas une par requête.
+	figes map[string]bool
 }
 
 // backendsUsuels : les chemins où les distributions posent git-http-backend.
@@ -220,15 +234,129 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 		g.noter(chemin)
 		return chemin, true
 	}
+	if !g.amontJoignable(ctx, depot) {
+		// Amont connu muet, ou qui vient de refuser la sonde : le miroir
+		// sert tel quel, sans payer le délai d'une mise à jour vouée à
+		// l'échec.
+		return chemin, true
+	}
 	if err := g.gitBorne(
 		ctx, g.delaiMaj(), chemin, "remote", "update", "--prune",
 	); err != nil {
-		// L'amont est muet : le miroir d'hier vaut mieux que rien, et c'est
-		// exactement ce qui permet de déployer sans réseau.
+		// Le miroir d'hier vaut mieux que rien : il sert, et c'est ce qui
+		// permet de déployer sans réseau. La tentative n'est notée comme un
+		// rafraîchissement — les requêtes suivantes du dépôt servies sans
+		// la rejouer pendant « Frais » — que si la sonde échoue désormais.
+		// Un amont qui l'accepte a échoué autrement : un 5xx, une
+		// poignée de main coupée, un délai sur un gros dépôt. La requête
+		// suivante retente alors, sans quoi le miroir servirait une branche
+		// en retard à une installation dont la forge répond.
+		if g.sondeRefusee(ctx, depot) {
+			g.noter(chemin)
+		}
 		return chemin, true
 	}
 	g.noter(chemin)
 	return chemin, true
+}
+
+// amontJoignable dit si l'amont d'un dépôt vaut une tentative de mise à jour.
+//
+// Faux quand la mémoire partagée le tient pour muet, ou quand la sonde se
+// voit refuser la connexion (sondeRefusee) ; l'échec est alors retenu, et les
+// dépôts suivants du même hôte n'essaient même plus. Sans cette sonde, chaque
+// dépôt d'un amont coupé paie le délai entier d'une mise à jour : pour les
+// centaines de dépôts d'une installation, l'attente domine tout le reste.
+//
+// Vrai quand l'adresse ne se déduit pas : git tentera, et son propre délai
+// bornera l'attente.
+func (g *GitMirror) amontJoignable(ctx context.Context, depot string) bool {
+	u, adresse, ok := adresseDuDepot(depot)
+	if !ok {
+		return true
+	}
+	if g.Muets.ConnuMuet(adresse) {
+		return false
+	}
+	return !g.sonderAmont(ctx, u, adresse)
+}
+
+// adresseDuDepot rend l'URL d'un dépôt et son « hôte:port », faux quand
+// l'adresse ne se déduit pas.
+func adresseDuDepot(depot string) (*url.URL, string, bool) {
+	u, err := url.Parse(depot)
+	if err != nil || u.Hostname() == "" {
+		return nil, "", false
+	}
+	adresse := adresseAmont(u)
+	if !strings.Contains(adresse, ":") {
+		return nil, "", false
+	}
+	return u, adresse, true
+}
+
+// sondeRefusee sonde l'amont d'un dépôt, sans consulter la mémoire, et dit
+// si la connexion a échoué. Faux quand l'adresse ne se déduit pas, ou quand
+// un mandataire porte l'URL.
+func (g *GitMirror) sondeRefusee(ctx context.Context, depot string) bool {
+	u, adresse, ok := adresseDuDepot(depot)
+	if !ok {
+		return false
+	}
+	return g.sonderAmont(ctx, u, adresse)
+}
+
+// sonderAmont ouvre une connexion vers l'amont et dit si elle a échoué.
+//
+// Un échec d'établissement est retenu dans la mémoire partagée, et dit au
+// journal UNE fois par panne et par hôte : un miroir servi sans
+// rafraîchissement doit se voir, sans qu'une installation de trois cents
+// dépôts n'y écrive trois cents lignes. La première réussite efface l'un et
+// l'autre.
+//
+// Aucune sonde quand un mandataire porte l'URL : « git remote update » passe
+// par lui, et une connexion directe, refusée sur un hôte dont c'est la seule
+// sortie, figerait tous ses miroirs pour toujours. L'amont est alors tenu
+// pour joignable, et c'est git qui tranche.
+func (g *GitMirror) sonderAmont(
+	ctx context.Context, u *url.URL, adresse string,
+) bool {
+	if g.parMandataire(u) {
+		return false
+	}
+	sonder := g.Sonder
+	if sonder == nil {
+		sonder = sonderTCP
+	}
+	err := sonder(ctx, adresse)
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err == nil {
+		g.Muets.Reussite(adresse)
+		delete(g.figes, adresse)
+		return false
+	}
+	g.Muets.Echec(adresse, err)
+	if !g.figes[adresse] {
+		if g.figes == nil {
+			g.figes = map[string]bool{}
+		}
+		g.figes[adresse] = true
+		log.Printf("miroir git : sonde de %s en échec (%v) ; ses miroirs"+
+			" sont servis sans rafraîchissement jusqu'à ce qu'il réponde",
+			adresse, err)
+	}
+	return true
+}
+
+// parMandataire dit si l'URL sortirait par un mandataire HTTP.
+func (g *GitMirror) parMandataire(u *url.URL) bool {
+	mandataire := g.Mandataire
+	if mandataire == nil {
+		mandataire = http.ProxyFromEnvironment
+	}
+	par, err := mandataire(&http.Request{URL: u, Header: http.Header{}})
+	return err == nil && par != nil
 }
 
 func (g *GitMirror) recent(chemin string) bool {

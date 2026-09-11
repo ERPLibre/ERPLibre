@@ -289,6 +289,7 @@ func TestUnStatutSeulResteHorsDesClesDeCorps(t *testing.T) {
 	a := nouvelAmontScripte(t, rediriger(http.StatusFound,
 		"https://ailleurs.example/bootstrap.sh"))
 	p := proxyDeTest(t)
+	p.Muets = NouvelleJoignabilite()
 	chemin := "/installer.sh"
 	u, _ := url.Parse("http://" + a.hote() + chemin)
 	joue(t, p, "GET", a.hote(), chemin)
@@ -299,6 +300,16 @@ func TestUnStatutSeulResteHorsDesClesDeCorps(t *testing.T) {
 	if !p.Store.TientStatut(CleStatut("GET", u)) {
 		t.Fatal("le statut seul n'est pas sous sa propre clé")
 	}
+
+	// L'hôte retenu muet : le repli sort sans composer, et c'est le rejeu.
+	p.Muets.Echec(a.hote(), refusEtablissement())
+	w := joue(t, p, "GET", a.hote(), chemin)
+	if w.Code != http.StatusFound ||
+		w.Header().Get("X-ERPLibre-Cache") != OutcomeStaleStatus {
+		t.Fatalf("rejeu : %d « %s », attendu 302 « %s »", w.Code,
+			w.Header().Get("X-ERPLibre-Cache"), OutcomeStaleStatus)
+	}
+	p.Muets.Reussite(a.hote())
 
 	a.repondre(servir("echo bonjour"))
 	if w := joue(t, p, "GET", a.hote(), chemin); w.Code != http.StatusOK {
@@ -312,7 +323,7 @@ func TestUnStatutSeulResteHorsDesClesDeCorps(t *testing.T) {
 	}
 
 	hote := a.couper()
-	w := joue(t, p, "GET", hote, chemin)
+	w = joue(t, p, "GET", hote, chemin)
 	if w.Code != http.StatusOK || w.Body.String() != "echo bonjour" {
 		t.Fatalf("hors ligne : %d %q, attendu le corps", w.Code, w.Body.String())
 	}

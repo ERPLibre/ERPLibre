@@ -125,6 +125,10 @@ type Proxy struct {
 	// Verbose fait parler chaque requête sur la sortie standard, ce qu'un
 	// service systemd envoie au journal.
 	Verbose bool
+	// Muets retient les amonts dont l'établissement vient d'échouer, et la
+	// mémoire est partagée avec le miroir git. Nulle, chaque requête retente
+	// l'amont et repaie le délai d'établissement.
+	Muets *Joignabilite
 	// Ecoutes porte les ports où le cache lui-même écoute. Une requête qui
 	// vise l'un d'eux sur une adresse de cette machine est une boucle. Vide,
 	// rien n'est refusé.
@@ -142,7 +146,7 @@ func NewProxy(store *Store, alog *AccessLog) *Proxy {
 	// n'arrive jamais — et un pare-feu qui jette les paquets sans les refuser
 	// fait justement pendre l'établissement jusqu'au délai.
 	tr := &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: 4 * time.Second}).DialContext,
+		DialContext:           (&net.Dialer{Timeout: DelaiEtablissement}).DialContext,
 		TLSHandshakeTimeout:   5 * time.Second,
 		ResponseHeaderTimeout: 8 * time.Second,
 		MaxIdleConnsPerHost:   8,
@@ -287,7 +291,15 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	// calculent pas : voir CleStatut.
 	cleStatut := CleStatut(r.Method, u)
 
-	resp, upErr := p.fetch(amont, u)
+	// repli dit si la branche hors ligne a de quoi répondre : un corps 200,
+	// la copie du client (requête conditionnelle d'ORIGINE) ou un statut
+	// gardé. Seul un repli autorise à ne pas composer vers un amont connu
+	// muet ; sans lui, sauter la tentative changerait un aléa passager en
+	// « 504 » certain, pour une requête que l'amont revenu aurait servie.
+	repli := cacheable &&
+		(detient || conditionnelle || p.Store.TientStatut(cleStatut))
+
+	resp, upErr := p.fetch(amont, u, repli)
 	// Une redirection est SUIVIE quand le nom du fichier demandé porte déjà
 	// son identité, et le contenu est gardé sous l'URL DEMANDÉE.
 	//
@@ -566,9 +578,10 @@ func (p *Proxy) offlineMiss(
 			"  demandé : %s\n"+
 			"  classe  : %s\n"+
 			"  cause   : %v\n"+
+			"%s"+
 			"Ce fichier n'a jamais traversé ce cache. Rétablir le réseau, ou\n"+
 			"déployer une VM identique à celle qui a rempli le cache.\n",
-		u, class, cause))
+		u, class, cause, decrireMuet(cause)))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-ERPLibre-Cache", OutcomeOfflineMiss)
 	w.WriteHeader(http.StatusGatewayTimeout)
@@ -608,7 +621,10 @@ func (p *Proxy) suivreRedirections(
 		if err != nil || cible == nil || p.viseLeCache(cible) {
 			return resp
 		}
-		suivante, err := p.fetch(r, cible)
+		// Sans repli : l'étape qui échoue rend la redirection au client,
+		// qui la redemandera au travers du cache — la tenter coûte au plus
+		// le délai d'établissement, la sauter ne ferait que le déplacer.
+		suivante, err := p.fetch(r, cible, false)
 		if err != nil {
 			return resp
 		}
@@ -666,7 +682,29 @@ func sansCondition(r *http.Request) *http.Request {
 	return out
 }
 
-func (p *Proxy) fetch(r *http.Request, u *url.URL) (*http.Response, error) {
+// fetch interroge l'amont.
+//
+// repli dit que l'appelant a de quoi répondre sans l'amont : corps gardé,
+// copie du client ou statut gardé. Avec lui, un amont dont l'établissement
+// vient d'échouer n'est pas retenté : fetch rend aussitôt une erreur qui
+// enveloppe errAmontConnuMuet, et l'appelant sert son repli sans repayer le
+// délai d'établissement. Un pare-feu qui jette les paquets fait attendre ce
+// délai entier à chaque tentative ; le repli, lui, n'a rien à attendre.
+//
+// Sans repli, fetch compose toujours, mémoire ou non : un échec
+// d'établissement passager — un paquet perdu, un miroir qui redémarre —
+// ferait sinon rendre « 504 » à toute requête vers cet hôte pendant la
+// fenêtre, alors que l'amont revenu l'aurait servie.
+//
+// Chaque échec d'établissement est retenu et chaque réponse efface l'hôte,
+// avec ou sans repli : la mémoire ne retient que les établissements manqués.
+func (p *Proxy) fetch(
+	r *http.Request, u *url.URL, repli bool,
+) (*http.Response, error) {
+	adresse := adresseAmont(u)
+	if repli && p.Muets.ConnuMuet(adresse) {
+		return nil, fmt.Errorf("%w (%s)", errAmontConnuMuet, adresse)
+	}
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, u.String(), r.Body)
 	if err != nil {
 		return nil, err
@@ -676,10 +714,17 @@ func (p *Proxy) fetch(r *http.Request, u *url.URL) (*http.Response, error) {
 	// différemment selon l'agent, et un paquet servi à un agent n'est pas
 	// forcément celui servi à un autre.
 	out.Header.Del("Accept-Encoding")
+	client := p.Client
 	if EstGitSmart(u) {
-		return p.ClientPatient.Do(out)
+		client = p.ClientPatient
 	}
-	return p.Client.Do(out)
+	resp, err := client.Do(out)
+	if err != nil {
+		p.Muets.Echec(adresse, err)
+		return nil, err
+	}
+	p.Muets.Reussite(adresse)
+	return resp, nil
 }
 
 func (p *Proxy) record(l accessLine) {

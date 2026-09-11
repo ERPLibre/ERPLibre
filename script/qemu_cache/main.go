@@ -159,7 +159,13 @@ func main() {
 		return
 	}
 
-	miroir := &GitMirror{Dir: *gitMirrorDir, Frais: *gitMirrorFresh}
+	// Une seule mémoire des amonts muets, partagée par le relais et le
+	// miroir : un hôte coupé l'est pour les deux, et le premier qui le
+	// constate en épargne le délai à l'autre.
+	muets := NouvelleJoignabilite()
+	miroir := &GitMirror{
+		Dir: *gitMirrorDir, Frais: *gitMirrorFresh, Muets: muets,
+	}
 
 	if *ageReport {
 		gran, err := LireGranularite(*agePar)
@@ -297,7 +303,7 @@ func main() {
 				" git sera relayé vers l'amont (%s)", *gitMirrorDir)
 	}
 	if err := serve(
-		store, *caDir, rules, *logPath, *exclude, *verbose, miroir,
+		store, *caDir, rules, *logPath, *exclude, *verbose, miroir, muets,
 	); err != nil {
 		log.Fatalf("le cache s'arrête : %v", err)
 	}
@@ -306,6 +312,7 @@ func main() {
 func serve(
 	store *Store, caDir string, rules RuleSet,
 	logPath, exclude string, verbose bool, miroir *GitMirror,
+	muets *Joignabilite,
 ) error {
 	if err := os.MkdirAll(store.Dir, 0o755); err != nil {
 		return err
@@ -329,6 +336,7 @@ func serve(
 	proxy := NewProxy(store, alog)
 	proxy.Git = miroir
 	proxy.Verbose = verbose
+	proxy.Muets = muets
 	// Les ports d'écoute sont ceux que la requête d'une boucle viserait.
 	proxy.Ecoutes = []int{rules.HTTPPort, rules.TLSPort}
 
