@@ -54,6 +54,8 @@ ORDRE_ISSUES = (
     "mirror",
     "stored",
     "stale",
+    "stored-status",
+    "stale-status",
     "keep",
     "offline-miss",
     "fetched",

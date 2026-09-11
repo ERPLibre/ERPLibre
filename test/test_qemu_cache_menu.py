@@ -474,6 +474,17 @@ class TestLesIssuesDuJournalSontToutesMontrees(unittest.TestCase):
         bloc = bloc[: bloc.index("\n    @")]
         self.assertIn("set(compte) - set(ORDRE_ISSUES)", bloc)
 
+    def test_les_objets_de_statut_suivent_stale(self):
+        """Une redirection ou un refus gardés se lisent à côté de ce qui a
+        été gardé puis resservi, et non à la fin parmi les inconnues."""
+        from script.todo.qemu_cache_menu import ORDRE_ISSUES
+
+        rang = ORDRE_ISSUES.index("stale")
+        self.assertEqual(
+            ORDRE_ISSUES[rang + 1 : rang + 3],
+            ("stored-status", "stale-status"),
+        )
+
 
 class TestCeQueChaqueMachineATire(unittest.TestCase):
     """Un doute sur l'accélération ne s'instruit pas sur un total.

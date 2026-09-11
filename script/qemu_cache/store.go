@@ -39,6 +39,31 @@ type Meta struct {
 	Size     int64       `json:"size"`
 	StoredAt time.Time   `json:"stored_at"`
 	Class    string      `json:"class"`
+	// StatusOnly marque un objet gardé SANS corps, qui ne rejoue que son
+	// statut. Le statut seul ne suffit pas à le dire : le 200 d'un HEAD est
+	// un statut seul, et se lirait sinon comme un corps vide.
+	//
+	// Le marqueur décrit l'objet, il ne le protège pas : ce qui tient un
+	// lecteur plus ancien à l'écart d'un statut seul, c'est la clé sous
+	// laquelle il est rangé (voir CleStatut), pas un champ qu'un tel lecteur
+	// ignore.
+	StatusOnly bool `json:"status_only,omitempty"`
+}
+
+// StatutReel rend le statut gardé, 200 quand le méta n'en porte pas : un méta
+// écrit avant que le magasin garde autre chose que des corps n'a pas de
+// statut, et il décrivait toujours un 200.
+func (m *Meta) StatutReel() int {
+	if m.Status == 0 {
+		return http.StatusOK
+	}
+	return m.Status
+}
+
+// StatutSeul dit si l'objet ne porte qu'un statut : marqué comme tel, ou de
+// statut autre que 200 — seul un 200 a jamais été gardé avec son corps.
+func (m *Meta) StatutSeul() bool {
+	return m.StatusOnly || m.StatutReel() != http.StatusOK
 }
 
 // Stats répond au besoin de surveillance manuelle : aucune éviction n'est
@@ -79,11 +104,71 @@ func KeySansHote(method string, u *url.URL) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// CleDe rend la clé sous laquelle une réponse est rangée et cherchée.
+//
+// La clé écarte l'hôte quand le NOM du fichier l'identifie partout : une
+// liste de miroirs tourne, et une clé qui porte l'hôte ferait manquer le
+// cache au fichier déjà gardé sous un autre nom de miroir.
+func CleDe(method string, u *url.URL) string {
+	if PortableParChemin(u) {
+		return KeySansHote(method, u)
+	}
+	return Key(method, u.String())
+}
+
+// CleStatut rend la clé sous laquelle un STATUT SEUL est rangé et cherché.
+//
+// Un espace de clés à part, et non la clé du corps : un lecteur qui ne
+// connaît que les corps ne lit que Key et KeySansHote, et ne tombe donc
+// jamais sur un statut seul. Rangé sous la clé du corps, un tel objet — un
+// méta 302 et un corps de zéro octet de la bonne taille — ressortirait chez
+// lui en « 200 » vide, que « curl … | bash » exécuterait comme un script
+// vide qui réussit.
+//
+// Aucune clé de corps ne peut la rejoindre : une méthode HTTP ne porte pas
+// d'espace, si bien que « STATUT GET … » n'est la méthode d'aucune requête.
+// L'URL entière, hôte compris : un statut seul ne se garde jamais sous une
+// clé portable.
+func CleStatut(method string, u *url.URL) string {
+	return Key("STATUT "+method, u.String())
+}
+
+// TientStatut dit si la clé porte un statut seul que le rejeu servirait : un
+// méta lisible, marqué statut seul, dont le corps a la taille annoncée — les
+// conditions mêmes auxquelles Get le rend.
+func (s *Store) TientStatut(key string) bool {
+	m, err := s.LireMeta(key)
+	if err != nil || !m.StatutSeul() {
+		return false
+	}
+	_, bodyPath := s.paths(key)
+	fi, err := os.Stat(bodyPath)
+	return err == nil && fi.Size() == m.Size
+}
+
 func (s *Store) paths(key string) (metaPath, bodyPath string) {
 	// Deux niveaux de répertoires : un seul répertoire de cent mille entrées
 	// ralentit chaque ouverture sur la plupart des systèmes de fichiers.
 	dir := filepath.Join(s.Dir, key[0:2], key[2:4])
 	return filepath.Join(dir, key+".meta"), filepath.Join(dir, key+".body")
+}
+
+// LireMeta rend les métadonnées d'une clé sans toucher au corps.
+//
+// Get, lui, remet la date du corps à maintenant : un relevé qui passerait par
+// lui rajeunirait tout ce qu'il regarde, et l'âge du dernier usage ne
+// voudrait plus rien dire. Un méta illisible vaut absent.
+func (s *Store) LireMeta(key string) (*Meta, error) {
+	metaPath, _ := s.paths(key)
+	raw, err := os.ReadFile(metaPath)
+	if err != nil {
+		return nil, errMiss
+	}
+	var m Meta
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, errMiss
+	}
+	return &m, nil
 }
 
 // Get rend les métadonnées et un lecteur positionné sur le corps. Le lecteur
@@ -136,17 +221,25 @@ type Writer struct {
 	finished bool
 }
 
-// Detient dit si le corps ENTIER d'une clé est là, sans l'ouvrir.
+// Detient dit si une clé porte le corps d'une réponse 200, sans l'ouvrir.
 //
 // Sert à décider si une requête conditionnelle peut partir telle quelle :
 // sans corps en réserve, un « 304 » de l'amont ne laisserait rien à garder,
 // et le cache resterait vide pour cette ressource aussi longtemps que ses
 // clients en détiennent une copie — c'est-à-dire toujours.
+//
+// Un objet de statut seul ne compte pas : il vit sous sa propre clé
+// (CleStatut), et un méta de statut qui se trouverait sous une clé de corps
+// n'en fait pas un corps. La condition est alors retirée, pour que le premier
+// 200 que l'amont rendra vienne entier. C'est aussi le test qui interdit de
+// garder un refus quand un corps est en réserve : un statut seul ne s'écrit
+// que là où Detient est faux pour la clé du corps.
 func (s *Store) Detient(key string) bool {
-	metaPath, bodyPath := s.paths(key)
-	if _, err := os.Stat(metaPath); err != nil {
+	m, err := s.LireMeta(key)
+	if err != nil || m.StatutSeul() {
 		return false
 	}
+	_, bodyPath := s.paths(key)
 	fi, err := os.Stat(bodyPath)
 	return err == nil && fi.Size() > 0
 }

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -178,6 +179,41 @@ func TestStatSansRepertoire(t *testing.T) {
 func TestKeyDistingueMethode(t *testing.T) {
 	if Key("GET", "https://x/y") == Key("HEAD", "https://x/y") {
 		t.Error("GET et HEAD partagent une clé : un HEAD servirait un corps")
+	}
+}
+
+// Detient veut dire « tient un corps 200 ». Un statut seul n'en est pas un,
+// quel que soit ce que son fichier de corps contient ; un méta sans statut,
+// écrit avant que le magasin garde autre chose que des corps, en est un.
+func TestDetientNeCompteQueLesCorps200(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	cas := []struct {
+		statut  int
+		seul    bool
+		attendu bool
+	}{
+		{http.StatusFound, false, false},
+		{http.StatusNotFound, false, false},
+		// Le 200 d'un HEAD : un statut seul malgré son code.
+		{http.StatusOK, true, false},
+		{http.StatusOK, false, true},
+		{0, false, true},
+	}
+	for i, c := range cas {
+		key := Key("GET", fmt.Sprintf("https://exemple.example/%d", i))
+		w, err := s.NewWriter(key, Meta{
+			URL: "x", Method: "GET", Status: c.statut, StatusOnly: c.seul,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		io.WriteString(w, "corps")
+		if err := w.Commit(5); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.Detient(key); got != c.attendu {
+			t.Errorf("statut %d : Detient %v, attendu %v", c.statut, got, c.attendu)
+		}
 	}
 }
 

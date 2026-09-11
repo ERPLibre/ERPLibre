@@ -29,6 +29,12 @@ const (
 	OutcomePassthrough = "passthrough"  // méthode ou requête non cachable
 	OutcomeError       = "error"        // amont joignable, mais en erreur
 	OutcomeMirror      = "mirror"       // servi d'un dépôt git tenu sur l'hôte
+
+	// Un statut gardé sans corps a ses PROPRES noms : les lecteurs du
+	// journal tiennent « stored » et « stale » pour la preuve qu'un corps est
+	// en réserve, et un refus gardé ne l'est pas.
+	OutcomeStoredStatus = "stored-status" // pris à l'amont, statut seul gardé
+	OutcomeStaleStatus  = "stale-status"  // amont muet, statut seul rejoué
 )
 
 // AccessLog écrit une ligne JSON par requête. Un format à une ligne par
@@ -208,13 +214,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		return
 	}
 	class := Classify(u)
-	// La clé écarte l'hôte quand le NOM du fichier l'identifie partout : une
-	// liste de miroirs tourne, et une clé qui porte l'hôte ferait manquer le
-	// cache au fichier déjà gardé sous un autre nom de miroir.
-	key := Key(r.Method, u.String())
-	if PortableParChemin(u) {
-		key = KeySansHote(r.Method, u)
-	}
+	key := CleDe(r.Method, u)
 	cacheable := CacheableMethod(r.Method) && class != ClassNoStore
 
 	// Une requête partielle n'est servie du cache que si le corps ENTIER y
@@ -264,11 +264,15 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	// corps entier, une fois, et toute VM suivante est servie, hors ligne
 	// comprise. Le corps une fois en réserve, la condition repart et le
 	// « 304 » économise de nouveau la bande passante.
+	detient := cacheable && p.Store.Detient(key)
 	amont := r
-	if cacheable && r.Method == "GET" && conditionnelle &&
-		!p.Store.Detient(key) {
+	if cacheable && r.Method == "GET" && conditionnelle && !detient {
 		amont = sansCondition(r)
 	}
+
+	// Un statut seul vit sous sa propre clé, que les lecteurs de corps ne
+	// calculent pas : voir CleStatut.
+	cleStatut := CleStatut(r.Method, u)
 
 	resp, upErr := p.fetch(amont, u)
 	// Une redirection est SUIVIE quand le nom du fichier demandé porte déjà
@@ -307,6 +311,16 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			})
 			return
 		}
+		// Ni corps en réserve ni copie chez le client : reste le STATUT que
+		// l'amont a rendu la dernière fois, une redirection ou un refus. Le
+		// client qui suit la redirection, ou qui s'arrête sur le 404, reçoit
+		// ce qu'il aurait reçu en ligne, là où un 504 l'arrêterait net.
+		//
+		// Rejoué en DERNIER recours : un corps gardé l'emporte toujours, et le
+		// client qui détient sa copie garde son 304 plutôt qu'un refus.
+		if cacheable && p.rejouerStatut(w, r, u, cleStatut, class) {
+			return
+		}
 		p.offlineMiss(
 			w, u, class, r.Method, clientDe(r.RemoteAddr), upErr,
 		)
@@ -316,9 +330,34 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 
 	store := cacheable && !partial && resp.StatusCode == http.StatusOK &&
 		r.Method == "GET"
+	// Un statut est gardé SEUL, sans corps, quand il porte une réponse
+	// qu'aucun corps ne remplace : redirection ou refus définitif pour un GET,
+	// et en plus le 200 d'un HEAD, qui n'a jamais de corps. Il est rangé
+	// sous CleStatut, jamais sous la clé du corps, et ne ressort que l'amont
+	// muet. Trois bornes :
+	//   - le volatile seul : l'immuable suit ses redirections, et un 404
+	//     servi du disque y masquerait le fichier publié ensuite ;
+	//   - jamais sous une clé portable : partagée par tous les miroirs, elle
+	//     recevrait le refus d'un miroir en retard à la place de l'index
+	//     qu'un autre a rendu ;
+	//   - jamais quand la clé du CORPS tient un 200 : le rejeu ne passe
+	//     qu'après lui, et le garder ne servirait qu'à le faire mentir le
+	//     jour où ce corps disparaît.
+	// Un statut passager — 403, 429, 5xx — ne se garde pas : le rejouer
+	// figerait une panne qui n'a duré qu'un moment.
+	//
+	// Detenir, dans « --detient », tient la négation exacte de cette
+	// condition pour un HEAD : les deux sont à changer ensemble.
+	statutSeul := !store && cacheable && !partial &&
+		class == ClassVolatile && !PortableParChemin(u) &&
+		statutSansCorps(r.Method, resp) && !detient
 
 	var cw *Writer
-	if store {
+	if store || statutSeul {
+		cle := key
+		if statutSeul {
+			cle = cleStatut
+		}
 		m := Meta{
 			URL:    u.String(),
 			Method: r.Method,
@@ -326,7 +365,13 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			Header: resp.Header.Clone(),
 			Class:  class.String(),
 		}
-		if cw, err = p.Store.NewWriter(key, m); err != nil {
+		if statutSeul {
+			m.StatusOnly = true
+			sansLongueurMenteuse(r.Method, m.Header)
+			// Le témoin de session appartient à la machine qui l'a reçu.
+			m.Header.Del("Set-Cookie")
+		}
+		if cw, err = p.Store.NewWriter(cle, m); err != nil {
 			log.Printf("cache : écriture impossible pour %s : %v", u, err)
 			cw = nil
 		}
@@ -336,8 +381,9 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	w.Header().Set("X-ERPLibre-Cache", "miss")
 	w.WriteHeader(resp.StatusCode)
 
+	// Le corps d'un statut seul va au client tel quel, jamais au disque.
 	var sink *Writer
-	if cw != nil {
+	if cw != nil && store {
 		sink = cw
 	}
 	var n int64
@@ -357,9 +403,18 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		}
 		outcome = OutcomeError
 	case cw != nil:
-		if cerr := cw.Commit(resp.ContentLength); cerr != nil {
+		// Un statut seul se publie VIDE, quelle que soit la longueur
+		// annoncée : pour un HEAD, la bibliothèque la tire de l'en-tête alors
+		// qu'aucun corps ne suit, et la comparer ferait tout refuser.
+		attendu := resp.ContentLength
+		if statutSeul {
+			attendu = 0
+		}
+		if cerr := cw.Commit(attendu); cerr != nil {
 			log.Printf("cache : %s non gardé : %v", u, cerr)
 			outcome = OutcomeFetched
+		} else if statutSeul {
+			outcome = OutcomeStoredStatus
 		} else {
 			outcome = OutcomeStored
 		}
@@ -384,6 +439,12 @@ func (p *Proxy) serveFromStore(
 		return false
 	}
 	defer f.Close()
+	// Seul un corps 200 sort par ici. Un statut seul a son propre chemin,
+	// réservé à l'amont muet : ServeContent en ferait un 200 vide, et sur le
+	// chemin de l'immuable il sortirait même quand l'amont répond.
+	if m.StatutSeul() {
+		return false
+	}
 
 	copyHeader(w.Header(), m.Header)
 	w.Header().Set("X-ERPLibre-Cache", outcome)
@@ -405,6 +466,79 @@ func (p *Proxy) serveFromStore(
 		log.Printf("%s %s -> %s (%s)", r.Method, u, outcome, HumanBytes(m.Size))
 	}
 	return true
+}
+
+// rejouerStatut rend, sans corps, le statut gardé sous la clé — une clé de
+// CleStatut : ses en-têtes, « Location » compris et tel que l'amont l'a
+// écrit, puis le code. Rend faux quand la clé ne porte pas de statut seul.
+//
+// ServeContent est évité entièrement : il réécrirait le code en 200, et
+// ferait d'une redirection un « 304 » ou un « 206 » selon ce que le client
+// pose. La longueur d'un GET est retirée une seconde fois, un méta écrit à
+// la main pouvant la porter ; celle d'un HEAD ressort telle que l'amont l'a
+// annoncée.
+func (p *Proxy) rejouerStatut(
+	w http.ResponseWriter, r *http.Request, u *url.URL, key string,
+	class Class,
+) bool {
+	m, f, err := p.Store.Get(key)
+	if err != nil {
+		return false
+	}
+	f.Close()
+	if !m.StatutSeul() {
+		return false
+	}
+
+	copyHeader(w.Header(), m.Header)
+	sansLongueurMenteuse(m.Method, w.Header())
+	w.Header().Set("X-ERPLibre-Cache", OutcomeStaleStatus)
+	w.Header().Set("X-ERPLibre-Cache-Date", m.StoredAt.Format(time.RFC3339))
+	w.WriteHeader(m.Status)
+
+	p.record(accessLine{
+		Method: r.Method, URL: u.String(), Class: class.String(),
+		Outcome: OutcomeStaleStatus, Status: m.Status, Upstream: false,
+		Client: clientDe(r.RemoteAddr),
+	})
+	if p.Verbose {
+		log.Printf("%s %s -> %s (%d)", r.Method, u, OutcomeStaleStatus, m.Status)
+	}
+	return true
+}
+
+// sansLongueurMenteuse retire la longueur d'un statut seul, sauf pour un HEAD.
+//
+// Pour un GET, la longueur annoncée sans corps mentirait : le client
+// attendrait des octets qui ne viendront jamais, et échouerait sur une fin de
+// flux inattendue. Pour un HEAD, elle ne ment pas — la norme (RFC 9110) en
+// fait la taille du corps que rendrait le GET, et aucun client ne lit de
+// corps après un HEAD. C'est même la seule chose qu'il apprend du corps :
+// l'installateur qui compare une taille par « curl -I » recevrait sinon hors
+// ligne une autre réponse qu'en ligne.
+func sansLongueurMenteuse(methode string, h http.Header) {
+	if methode != http.MethodHead {
+		h.Del("Content-Length")
+	}
+}
+
+// statutSansCorps dit si la réponse porte un statut qui vaut d'être gardé
+// seul : une redirection qui dit où aller, un refus définitif, et pour un
+// HEAD aussi le 200 — le HEAD n'a de toute façon jamais de corps.
+//
+// Une redirection sans « Location » ne mène nulle part : elle n'est pas
+// gardée.
+func statutSansCorps(methode string, resp *http.Response) bool {
+	switch resp.StatusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther,
+		http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return resp.Header.Get("Location") != ""
+	case http.StatusNotFound, http.StatusGone:
+		return true
+	case http.StatusOK:
+		return methode == "HEAD"
+	}
+	return false
 }
 
 // offlineMiss dit CE QUI manque. Un 404 nu ferait accuser le miroir : le
