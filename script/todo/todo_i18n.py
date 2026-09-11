@@ -6379,6 +6379,14 @@ TRANSLATIONS = {
         "fr": "Chemin de la clé publique SSH",
         "en": "SSH public key path",
     },
+    "mise download impossible (network or cache): pyenv will take over": {
+        "fr": "téléchargement de mise impossible (réseau ou cache) : pyenv prendra le relais",
+        "en": "mise download impossible (network or cache): pyenv will take over",
+    },
+    "mise installer failed: pyenv will take over": {
+        "fr": "l'installateur de mise a échoué : pyenv prendra le relais",
+        "en": "mise installer failed: pyenv will take over",
+    },
     "timezone not set": {
         "fr": "fuseau non posé",
         "en": "timezone not set",

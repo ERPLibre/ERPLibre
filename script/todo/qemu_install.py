@@ -2441,7 +2441,20 @@ class QemuInstallMixin:
         défaut — même raison que pour cargo et rustc.
 
         Sans mise utilisable, rien n'est écrit : lib_python_provider.sh
-        retombe alors sur pyenv toute seule."""
+        retombe alors sur pyenv toute seule.
+
+        L'installateur est téléchargé dans un fichier, PUIS exécuté. Dans
+        « curl … | sh || repli », le statut du tube est celui de sh, qui rend
+        0 sur une entrée vide : sans pipefail, le repli ne se déclencherait
+        jamais, et un téléchargement raté passerait pour une pose réussie. Le
+        statut de curl, lu seul, distingue les deux échecs — rien obtenu,
+        ou un installateur qui a échoué — et chacun a son message. Aucun ne
+        fait tomber « set -e » : ils sont testés dans un « if ».
+
+        Le fichier ne s'obtient que de mktemp : un nom aléatoire, créé par ce
+        compte seul. Sans mktemp, rien n'est téléchargé. Un nom fixe dans
+        /tmp, qu'un autre compte peut créer d'avance, serait exécuté par
+        root."""
         if python_provider == "pyenv":
             # Explicite : même si mise se trouvait déjà dans l'image, on ne
             # l'utilise pas. Sans cela le mode « auto » du dépôt le prendrait.
@@ -2453,11 +2466,23 @@ class QemuInstallMixin:
             "if command -v mise >/dev/null 2>&1; then "
             'echo "   mise: $(mise --version)"; '
             "else "
+            # L'affectation est DANS la condition : un mktemp qui échoue prend
+            # la branche du téléchargement impossible au lieu de faire tomber
+            # « set -e ». `f` y reste vide, et « rm -f "" » rend 0.
+            "if ! f=$(mktemp 2>/dev/null) "
+            '|| ! curl -fsSL https://mise.run -o "$f"; then '
+            'echo "   ⚠ '
+            + t(
+                "mise download impossible (network or cache): "
+                "pyenv will take over"
+            )
+            + '"; '
             # La variable est passée À sudo, pas exportée avant : « sudo -E »
             # dépend de env_reset dans sudoers et n'est pas garanti.
-            "curl -fsSL https://mise.run "
-            "| sudo MISE_INSTALL_PATH=/usr/local/bin/mise sh "
-            '|| echo "   mise indisponible ici : pyenv prendra le relais"; '
+            + 'elif ! sudo MISE_INSTALL_PATH=/usr/local/bin/mise sh "$f"'
+            " </dev/null; then "
+            + f'echo "   ⚠ {t("mise installer failed: pyenv will take over")}"; '
+            + 'fi; rm -f "$f"; '
             "fi; "
             # « auto », et non « mise » : si l'installation ci-dessus a échoué,
             # lib_python_provider.sh doit pouvoir retomber sur pyenv.
