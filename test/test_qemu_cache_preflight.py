@@ -1284,13 +1284,26 @@ class TestLAvertissementAvantLaCoupure(SansSysteme):
         self.assertIn(
             "+2 " + t("requests the cache never keeps:") + " GET, POST", note
         )
-        self.assertNotIn(t("POST requests are never kept"), note)
+        # L'ancien libellé, qui rangeait tout sous « POST », n'a plus de
+        # clé : t() le rendrait tel quel, en anglais, et la sonde ne verrait
+        # jamais le français. Les deux langues sont donc cherchées en clair.
+        for ancien in (
+            "POST requests are never kept",
+            "requêtes POST ne sont jamais gardées",
+        ):
+            self.assertNotIn(ancien, note)
 
     def test_sans_git_ni_jamais_rien_nest_ajoute(self):
         vu = self.deployer([], [dict(self.MANQUE, git=[], jamais=[])])
         (note,) = vu["notes"]
         self.assertNotIn(t("requests the cache never keeps:"), note)
-        self.assertNotIn(t("git repositories not mirrored"), note)
+        self.assertNotIn(
+            t(
+                "git repositories not mirrored: fill them from entry 5 of"
+                " the cache menu"
+            ),
+            note,
+        )
         self.assertNotIn(" (+", note)
 
     def test_un_seul_avertissement_pour_les_deux(self):
