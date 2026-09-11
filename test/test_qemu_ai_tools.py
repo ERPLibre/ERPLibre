@@ -525,10 +525,12 @@ _FAUX_SUDO = 'echo "$*" >> "$HOME/sudo.trace"\nexec env "$@"\n'
 
 
 class LeVerdictDesOutilsAmont(unittest.TestCase):
-    """Les installateurs amont de la commande distante des outils.
+    """Après chaque installateur amont, une ligne qui dit s'il a abouti.
 
-    La commande distante tourne ici pour de vrai, sous « set -e », dans un
-    bac à sable où curl et sudo sont faux.
+    Le code de sortie de la pose ne le peut pas : sans pipefail, un tube
+    rend le statut de l'interpréteur, 0 sur une entrée vide. La commande
+    distante tourne ici pour de vrai, sous « set -e », dans un bac à sable
+    où curl et sudo sont faux.
     """
 
     def _lancer(self, agent, **env_en_plus):
@@ -549,6 +551,30 @@ class LeVerdictDesOutilsAmont(unittest.TestCase):
             timeout=120,
         )
         return fini, home
+
+    def test_without_a_download_each_tool_is_named_missing(self):
+        """Et l'installation continue : aucun outil optionnel ne la fait
+        tomber, pas même sa ligne de verdict."""
+        for agent in ("claude", "opencode"):
+            with self.subTest(agent=agent):
+                fini, _home = self._lancer(agent, ECHEC="1")
+                self.assertEqual(0, fini.returncode, fini.stderr[-400:])
+                self.assertIn("FIN", fini.stdout)
+                for nom in ("rtk", "starship", agent):
+                    self.assertIn(
+                        f"⚠ {nom} not installed (see above)", fini.stdout
+                    )
+
+    def test_a_posed_tool_gives_its_version(self):
+        """opencode s'installe hors du PATH de ce shell : c'est le chemin
+        de repli qui le trouve."""
+        for agent in ("claude", "opencode"):
+            with self.subTest(agent=agent):
+                fini, _home = self._lancer(agent)
+                self.assertEqual(0, fini.returncode, fini.stderr[-400:])
+                for nom in ("rtk", "starship", agent):
+                    self.assertIn(f"{nom}: {nom} 0.0.1", fini.stdout)
+                self.assertNotIn("⚠", fini.stdout)
 
     def test_starship_is_installed_as_root(self):
         """En root, /usr/local/bin est inscriptible : l'installateur n'atteint
@@ -648,6 +674,33 @@ class LeHookDuPrompt(unittest.TestCase):
         for shell, ligne in dev_tools.STARSHIP_LINE.items():
             with self.subTest(shell=shell):
                 self.assertIn(f"starship init {shell}", ligne)
+
+
+class UneApostropheTraduite(unittest.TestCase):
+    def test_the_tool_blocks_stay_valid_shell(self):
+        """Les messages sont traduits, et le français est plein
+        d'apostrophes : une seule mal placée casse la commande distante
+        ENTIÈRE. On remplace la traduction elle-même — « set_lang » la
+        persisterait dans env_var.sh."""
+        from unittest import mock
+
+        # Un nombre IMPAIR d'apostrophes : entre apostrophes, un nombre pair
+        # se referme de lui-même, et « bash -n » ne verrait rien.
+        piege = "l'outil n'a pas « fini » aujourd'hui"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            todo = TODO.__new__(TODO)
+            blocs = {
+                f"aidev({agent})": todo._qemu_aidev_remote_cmd(agent)
+                for agent in dev_tools.AGENTS
+            }
+            blocs["mise"] = todo._qemu_mise_remote_cmd("mise")
+        for nom, cmd in blocs.items():
+            with self.subTest(bloc=nom):
+                self.assertIn(piege, cmd)
+                fini = subprocess.run(
+                    ["bash", "-n"], input=cmd, text=True, capture_output=True
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr[:400])
 
 
 if __name__ == "__main__":

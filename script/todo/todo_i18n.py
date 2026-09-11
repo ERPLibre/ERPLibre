@@ -6379,6 +6379,14 @@ TRANSLATIONS = {
         "fr": "Chemin de la clé publique SSH",
         "en": "SSH public key path",
     },
+    "not installed (see above)": {
+        "fr": "non installé (voir ci-dessus)",
+        "en": "not installed (see above)",
+    },
+    "download impossible (network or cache):": {
+        "fr": "téléchargement impossible (réseau ou cache) :",
+        "en": "download impossible (network or cache):",
+    },
     "mise download impossible (network or cache): pyenv will take over": {
         "fr": "téléchargement de mise impossible (réseau ou cache) : pyenv prendra le relais",
         "en": "mise download impossible (network or cache): pyenv will take over",
