@@ -60,7 +60,15 @@ class TestLesRegles(unittest.TestCase):
         en ligne pendant une coupure annoncée, et le test ment."""
         regles = cache_offline.nft_rules(pont="virbr9")
         self.assertIn("hook forward", regles)
-        self.assertIn('iifname "virbr9" oifname != "virbr9" drop', regles)
+        self.assertIn('iifname "virbr9" oifname != "virbr9" reject', regles)
+
+    def test_la_coupure_refuse_au_lieu_de_jeter(self):
+        """Un paquet jeté fait pendre l'établissement jusqu'au délai du
+        cache, à chaque adresse qu'il ne détient pas : des centaines pendant
+        un « apt-get update ». Refusé, il échoue sur-le-champ."""
+        regles = cache_offline.nft_rules()
+        self.assertIn("tcp dport { 80, 443 } reject with tcp reset", regles)
+        self.assertNotIn(" drop\n", regles)
 
     def test_ce_qui_vise_lhote_reste_joignable(self):
         """Le détournement vers le cache se fait avant le routage, le
@@ -168,7 +176,7 @@ class TestLeResolveurFictif(unittest.TestCase):
         guet = cache_offline.guet_cmd(["/srv/run/vm.log"], "__FIN__")
         self.assertIn(cache_offline.UNITE_DNS, guet)
 
-    def _poser(self, systemd_run_rc):
+    def _poser(self, systemd_run_rc, nft_refuse_le_refus=False):
         """Exécute la VRAIE commande de pose avec de faux sudo, nft,
         systemd-run et systemctl EN TÊTE du PATH : aucun vrai outil n'est
         atteint, et le journal dit qui a été appelé, dans quel ordre."""
@@ -179,7 +187,14 @@ class TestLeResolveurFictif(unittest.TestCase):
         journal = os.path.join(d, "appels")
         faux = {
             "sudo": 'exec "$@"',
-            "nft": f'echo "nft $*" >> {journal}',
+            # Le journal dit quel jeu la pose a reçu : « refus » ou « jet ».
+            "nft": (
+                'case "$1" in -f) jeu=$(cat);; esac; '
+                'case "$jeu" in *reject*) v=refus;; *drop*) v=jet;; esac; '
+                f'echo "nft $* $v" >> {journal}; '
+                f'[ "$v" = refus ] && exit {1 if nft_refuse_le_refus else 0}; '
+                "exit 0"
+            ),
             "systemctl": f'echo "systemctl $*" >> {journal}',
             "systemd-run": f'echo "systemd-run" >> {journal}; exit {systemd_run_rc}',
         }
@@ -200,7 +215,7 @@ class TestLeResolveurFictif(unittest.TestCase):
     def test_un_resolveur_qui_ne_part_pas_retire_la_table(self):
         rc, appels = self._poser(systemd_run_rc=1)
         self.assertNotEqual(rc, 0, "la pose a réussi sans résolveur")
-        self.assertEqual(appels[0], "nft -f -")
+        self.assertEqual(appels[0], "nft -f - refus")
         self.assertEqual(appels[1], "systemd-run")
         self.assertIn(
             f"nft delete table inet {cache_offline.TABLE}", appels[2]
@@ -210,7 +225,22 @@ class TestLeResolveurFictif(unittest.TestCase):
     def test_une_pose_complete_ne_retire_rien(self):
         rc, appels = self._poser(systemd_run_rc=0)
         self.assertEqual(rc, 0)
-        self.assertEqual(appels, ["nft -f -", "systemd-run"])
+        self.assertEqual(appels, ["nft -f - refus", "systemd-run"])
+
+    def test_un_noyau_sans_module_de_refus_recoit_le_jeu_qui_jette(self):
+        """Un noyau mis à jour sans redémarrage ne charge plus le module du
+        refus : la pose retombe sur le jeu qui jette, sans demi-coupure."""
+        rc, appels = self._poser(systemd_run_rc=0, nft_refuse_le_refus=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(
+            appels, ["nft -f - refus", "nft -f - jet", "systemd-run"]
+        )
+
+    def test_le_repli_jette_partout(self):
+        repli = cache_offline.nft_rules(refus=False)
+        self.assertNotIn("reject", repli)
+        self.assertIn("tcp dport { 80, 443 } drop", repli)
+        self.assertIn('oifname != "virbr0" drop', repli)
 
 
 class TestLeCompteDuService(unittest.TestCase):

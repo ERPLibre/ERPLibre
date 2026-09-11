@@ -74,7 +74,10 @@ UNITE_DNS = "erplibre-qemu-offline-dns"
 
 
 def nft_rules(
-    user: str = SERVICE_USER, table: str = TABLE, pont: str = PONT_PAR_DEFAUT
+    user: str = SERVICE_USER,
+    table: str = TABLE,
+    pont: str = PONT_PAR_DEFAUT,
+    refus: bool = True,
 ) -> str:
     """Le jeu de règles à passer à « nft -f - ».
 
@@ -84,12 +87,21 @@ def nft_rules(
     cache tire aussi en clair, et ne couper que le 443 laisserait passer tout
     un miroir Debian.
 
-    Chaîne « transit » : elle jette ce que le pont relaie vers une AUTRE
+    Les deux chaînes de filtrage REFUSENT au lieu de jeter. Un paquet jeté
+    fait pendre l'établissement jusqu'au délai de celui qui compose : le
+    cache paierait ce délai à chaque adresse qu'il ne détient pas, et un
+    « apt-get update » en enchaîne des centaines. Refusé, l'établissement
+    échoue sur-le-champ, et le cache rend son 504 — ou sa copie — aussitôt.
+    « refus=False » rend la variante qui jette : un noyau mis à jour sans
+    redémarrage n'a plus ses modules sur le disque, et ne peut pas charger
+    celui du refus. `cut_cmd` la pose alors en repli.
+
+    Chaîne « transit » : elle refuse ce que le pont relaie vers une AUTRE
     interface, c'est-à-dire la sortie directe des VM. Ce qui vise l'hôte — le
     80 et le 443 détournés vers le cache avant le routage, le résolveur, la
     session ssh — passe par « input » et n'est pas touché ; le trafic entre
     VM ne quitte pas le pont. Une chaîne à soi suffit : un « accept » de
-    libvirt dans SA table n'empêche pas ce « drop » de jouer, un paquet
+    libvirt dans SA table n'empêche pas ce refus de jouer, un paquet
     traversant toutes les chaînes de base de son point d'accroche.
 
     Chaîne « noms » : le DNS des VM — UDP et TCP 53, quelle que soit la
@@ -101,11 +113,14 @@ def nft_rules(
     """
     if not _NOM_DE_PONT.fullmatch(pont or ""):
         raise ValueError(f"nom de pont refusé : {pont!r}")
+    sortie, transit = (
+        ("reject with tcp reset", "reject") if refus else ("drop", "drop")
+    )
     return (
         f"table inet {table} {{\n"
         f"  chain sortie {{\n"
         f"    type filter hook output priority 0; policy accept;\n"
-        f"    meta skuid {user} tcp dport {{ 80, 443 }} drop\n"
+        f"    meta skuid {user} tcp dport {{ 80, 443 }} {sortie}\n"
         f"  }}\n"
         f"  chain noms {{\n"
         f"    type nat hook prerouting priority dstnat; policy accept;\n"
@@ -114,7 +129,7 @@ def nft_rules(
         f"  }}\n"
         f"  chain transit {{\n"
         f"    type filter hook forward priority 0; policy accept;\n"
-        f'    iifname "{pont}" oifname != "{pont}" drop\n'
+        f'    iifname "{pont}" oifname != "{pont}" {transit}\n'
         f"  }}\n"
         f"}}\n"
     )
@@ -135,13 +150,21 @@ def cut_cmd(
     muet, et l'installation échouerait sur la résolution des noms — une
     raison qui n'est pas celle qu'on mesure. Sans dnsmasq sur l'hôte, la
     commande échoue d'emblée, pour la même raison.
+
+    Le jeu qui refuse est tenté d'abord, celui qui jette en repli, dans le
+    même sudo : nft pose un jeu entier ou rien, si bien qu'un refus que le
+    noyau ne sait pas charger ne laisse aucune demi-coupure derrière lui.
     """
     pont = pont or pont_des_vm()
     regles = nft_rules(user, table, pont)
+    repli = nft_rules(user, table, pont, refus=False)
     dns = dns or dns_cmd(pont)
     if not dns:
         return "false"
-    pose = f"printf %s {shlex.quote(regles)} | sudo nft -f -"
+    pose = "sudo sh -c " + shlex.quote(
+        f"printf %s {shlex.quote(regles)} | nft -f - 2>/dev/null"
+        f" || printf %s {shlex.quote(repli)} | nft -f -"
+    )
     return f"{pose} && {{ {dns} || {{ {restore_cmd(table)}; false; }}; }}"
 
 
