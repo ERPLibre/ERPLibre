@@ -1199,6 +1199,18 @@ TRANSLATIONS = {
         "fr": "Deploy - vérifier une VM déployée, couche par couche",
         "en": "Deploy - verify a deployed VM, layer by layer",
     },
+    "The backup command failed; nothing was verified: ": {
+        "fr": "La sauvegarde a échoué ; rien n'a été relu : ",
+        "en": "The backup command failed; nothing was verified: ",
+    },
+    "Archive not found where expected; not verified: ": {
+        "fr": "Archive introuvable là où on l'attendait ; non relue : ",
+        "en": "Archive not found where expected; not verified: ",
+    },
+    "Finding not recorded: ": {
+        "fr": "Constat non enregistré : ",
+        "en": "Finding not recorded: ",
+    },
     "nothing checked": {
         "fr": "rien de contrôlé",
         "en": "nothing checked",

@@ -171,39 +171,63 @@ class TestCeQuIlDitJusquOuIlEstAlle(BancDeSauvegardes):
 class TestLAppelantRegardeCeQuIlVientDEcrire(unittest.TestCase):
     """Le contrôle d'après téléchargement relisait le chemin PAR DÉFAUT
     alors que l'opérateur peut en choisir un autre : il portait donc sur une
-    sauvegarde d'avant — ou sur rien — et annonçait « validée »."""
+    sauvegarde d'avant — ou sur rien — et annonçait « validée ».
+
+    La relecture vit maintenant dans une COUTURE partagée par les deux
+    chemins qui produisent une sauvegarde. L'épreuve suit : elle nomme les
+    fonctions au lieu de prendre la première dont le nom porte « backup »,
+    parce qu'il y en a désormais plusieurs et que l'ordre d'un parcours
+    d'arbre n'est pas celui du source.
+    """
 
     @staticmethod
-    def _bloc():
+    def _fonction(nom):
         import ast
 
         chemin = os.path.join(RACINE, "script", "todo", "database_manager.py")
         with open(chemin, encoding="utf-8") as fichier:
             arbre = ast.parse(fichier.read())
         for noeud in ast.walk(arbre):
-            if isinstance(noeud, ast.FunctionDef) and "backup" in noeud.name:
-                for interne in ast.walk(noeud):
-                    if (
-                        isinstance(interne, ast.Call)
-                        and isinstance(interne.func, ast.Attribute)
-                        and interne.func.attr == "verify"
-                    ):
-                        return noeud, interne
-        return None, None
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == nom:
+                return noeud
+        return None
 
-    def test_the_check_goes_through_the_verifier(self):
+    @staticmethod
+    def _appel(fonction, nom):
+        import ast
+
+        for interne in ast.walk(fonction):
+            if not isinstance(interne, ast.Call):
+                continue
+            cible = interne.func
+            porte = getattr(cible, "attr", None) or getattr(cible, "id", None)
+            if porte == nom:
+                return interne
+        return None
+
+    def test_the_seam_is_the_one_that_verifies(self):
         """Ouvrir un membre ne dit pas qu'il se décompresse, et le manifeste
         manque légitimement aux sauvegardes produites ailleurs."""
-        fonction, appel = self._bloc()
+        couture = self._fonction("verify_and_witness")
+        self.assertIsNotNone(couture, "la couture a disparu")
+        appel = self._appel(couture, "verify")
         self.assertIsNotNone(appel, "le vérificateur n'est pas appelé")
         self.assertEqual("backup_verify", appel.func.value.id)
 
-    def test_it_verifies_the_path_that_was_written(self):
+    def test_the_seam_reads_the_path_it_is_given(self):
+        """Relire autre chose que son argument ferait mentir les deux
+        appelants d'un coup."""
         import ast
 
-        _fonction, appel = self._bloc()
+        appel = self._appel(self._fonction("verify_and_witness"), "verify")
         self.assertEqual(1, len(appel.args))
         self.assertIsInstance(appel.args[0], ast.Name)
+        self.assertEqual("path", appel.args[0].id)
+
+    def test_the_download_path_hands_over_what_it_wrote(self):
+        fonction = self._fonction("download_database_backup_cli")
+        appel = self._appel(fonction, "verify_and_witness")
+        self.assertIsNotNone(appel, "le téléchargement ne relit plus rien")
         self.assertEqual("output_path", appel.args[0].id)
 
     def test_the_default_path_is_no_longer_read_after_writing(self):
@@ -216,7 +240,8 @@ class TestLAppelantRegardeCeQuIlVientDEcrire(unittest.TestCase):
         dire."""
         import ast
 
-        fonction, appel = self._bloc()
+        fonction = self._fonction("download_database_backup_cli")
+        appel = self._appel(fonction, "verify_and_witness")
         defauts = [
             n.lineno
             for n in ast.walk(fonction)
