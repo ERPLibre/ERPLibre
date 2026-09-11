@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1122,6 +1123,76 @@ class TestLeMenuLitLaCoupureEtLeGuet(SansSysteme):
             ),
             texte,
         )
+
+
+# ---------------------------------------------------------------------------
+# Remplir les miroirs sous le compte du service
+# ---------------------------------------------------------------------------
+
+
+class TestLeRemplissageDesMiroirs(SansSysteme):
+    """Un objet posé par root dans un miroir est interdit en écriture au
+    service : son rafraîchissement échoue, il le prend pour un amont muet, et
+    le miroir se fige sans rien dire."""
+
+    def unite_de_linstallateur(self):
+        src = INSTALLATEUR.read_text(encoding="utf-8")
+        unite = self.dossier / "unite.service"
+        unite.write_text(
+            "\n".join(
+                l for l in src.splitlines() if l.startswith("Environment=")
+            )
+        )
+        return str(unite)
+
+    def test_lunite_donne_son_environnement_a_git(self):
+        env = menu.environnement_de_l_unite(self.unite_de_linstallateur())
+        self.assertEqual(
+            {e.split("=", 1)[0] for e in env},
+            {"HOME", "GIT_CONFIG_GLOBAL", "GIT_TERMINAL_PROMPT"},
+        )
+
+    def test_la_commande_tourne_sous_le_compte_du_service(self):
+        cmd = menu.miroir_prefetch_cmd(
+            "/liste/miroirs.txt", ["HOME=/casiers", "GIT_TERMINAL_PROMPT=0"]
+        )
+        self.assertTrue(
+            cmd.startswith(f"sudo -u {cache_offline.SERVICE_USER} env "), cmd
+        )
+        self.assertIn("HOME=/casiers GIT_TERMINAL_PROMPT=0 ", cmd)
+        self.assertIn(
+            "--git-mirror-prefetch /dev/stdin < /liste/miroirs.txt", cmd
+        )
+        self.assertNotIn(f"sudo {menu.CACHE_BIN}", cmd)
+
+    def test_le_menu_lance_cette_commande(self):
+        maison = self.dossier / "maison"
+        vraie = os.path.expanduser
+        with mock.patch.object(
+            menu, "CACHE_UNITE", self.unite_de_linstallateur()
+        ), mock.patch(
+            "os.path.expanduser",
+            lambda p: str(maison) + p[1:] if p.startswith("~") else vraie(p),
+        ), mock.patch(
+            "click.confirm", return_value=True
+        ):
+            faux = Faux()
+            with contextlib.redirect_stdout(io.StringIO()):
+                faux._cache_miroir_remplir(["https://example.com/o/d.git"])
+        (cmd,) = faux.executees
+        self.assertTrue(
+            cmd.startswith(f"sudo -u {cache_offline.SERVICE_USER} ")
+        )
+        self.assertIn("GIT_CONFIG_GLOBAL=/dev/null", cmd)
+        fichier = maison / ".erplibre" / "miroirs_git.txt"
+        self.assertEqual(stat.S_IMODE(fichier.stat().st_mode), 0o644)
+
+    def test_les_chemins_suivent_linstallateur(self):
+        src = INSTALLATEUR.read_text(encoding="utf-8")
+        self.assertEqual(
+            re.search(r'^UNIT="([^"]+)"', src, re.M).group(1), menu.CACHE_UNITE
+        )
+        self.assertEqual(cache_offline.BINAIRE, menu.CACHE_BIN)
 
 
 # ---------------------------------------------------------------------------

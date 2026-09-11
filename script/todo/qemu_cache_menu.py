@@ -46,6 +46,9 @@ CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
 CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
 CACHE_DIR = "/var/cache/erplibre_go_qemu_cache"
+# L'unité que l'installateur écrit. Remplir un miroir lui reprend
+# l'environnement qu'elle donne à git, plutôt que d'en tenir une copie.
+CACHE_UNITE = f"/etc/systemd/system/{CACHE_SERVICE}"
 
 # Combler ce qui a manqué hors ligne : les jours de journal relus, le délai
 # d'un rejeu, et les redirections suivies — autant que le cache en suit
@@ -766,16 +769,25 @@ class QemuCacheMenuMixin:
                 print(t("Command not found !"))
 
     def _cache_miroir_remplir(self, liste):
+        """Remplir les miroirs sous le compte du SERVICE, jamais sous root.
+
+        Le service rafraîchit ensuite ces dépôts sous son propre compte. Un
+        objet que root y a posé lui est interdit en écriture : le
+        rafraîchissement échoue, il est pris pour un amont muet, et le
+        miroir se fige sans rien dire. L'environnement est celui que l'unité
+        donne à git, relu dans l'unité plutôt que recopié ici.
+        """
         fichier = os.path.join(
             os.path.expanduser("~/.erplibre"), "miroirs_git.txt"
         )
         os.makedirs(os.path.dirname(fichier), exist_ok=True)
         with open(fichier, "w", encoding="utf-8") as fh:
             fh.write("\n".join(liste) + "\n")
-        cmd = (
-            f"sudo {CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" --git-mirror-prefetch {fichier}"
-        )
+        # La liste n'a que des URL publiques. Lisible de tous, le compte du
+        # service peut la rouvrir par /dev/stdin, qui ne parcourt pas le
+        # répertoire personnel de l'opérateur, souvent fermé aux autres.
+        os.chmod(fichier, 0o644)
+        cmd = miroir_prefetch_cmd(fichier, environnement_de_l_unite())
         print(f"{t('Will execute:')} {cmd}")
         if not click.confirm(t("Fill the git mirrors now?")):
             return
@@ -1576,6 +1588,50 @@ def statut_et_cible(entetes, url):
         elif ligne.lower().startswith("location:"):
             cible = urljoin(url, ligne.split(":", 1)[1].strip())
     return statut, cible
+
+
+def environnement_de_l_unite(unite=None):
+    """Les « NOM=valeur » que l'unité systemd donne au service, dans l'ordre.
+
+    Lus dans l'unité posée, qui porte les valeurs résolues à l'installation.
+    Une unité illisible rend une liste vide.
+    """
+    out = []
+    try:
+        with open(unite or CACHE_UNITE, encoding="utf-8") as fh:
+            for ligne in fh:
+                ligne = ligne.strip()
+                if not ligne.startswith("Environment="):
+                    continue
+                try:
+                    out.extend(shlex.split(ligne.split("=", 1)[1]))
+                except ValueError:
+                    continue
+    except OSError:
+        pass
+    return out
+
+
+def miroir_prefetch_cmd(fichier, environnement):
+    """La commande qui remplit les miroirs sous le compte du service.
+
+    La liste arrive sur l'entrée standard, ouverte par le shell de
+    l'opérateur : « /dev/stdin » la rouvre sans parcourir le chemin, là où
+    le compte du service ne traverse pas le répertoire personnel qui la
+    porte.
+    """
+    mots = ["sudo", "-u", cache_offline.SERVICE_USER, "env"]
+    mots += [shlex.quote(e) for e in environnement]
+    mots += [
+        CACHE_BIN,
+        "--git-mirror-dir",
+        CACHE_MIROIR_GIT,
+        "--git-mirror-prefetch",
+        "/dev/stdin",
+        "<",
+        shlex.quote(fichier),
+    ]
+    return " ".join(mots)
 
 
 def bypass_retrait_cmd(mac):
