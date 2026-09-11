@@ -468,10 +468,93 @@ class TestLaSectionReseau(unittest.TestCase):
         self.assertEqual(
             vu["decochee"], [], "l'avertissement s'affiche sans être demandé"
         )
-        self.assertEqual(len(vu["cochee"]), 5, f"vu : {vu['cochee']}")
+        self.assertEqual(len(vu["cochee"]), 7, f"vu : {vu['cochee']}")
         self.assertEqual(
             vu["redecochee"], [], "il reste affiché après décochage"
         )
+
+    def suivi_selon_la_case(self, suivi_avant):
+        """Coche puis décoche la case, le suivi réglé d'abord à
+        `suivi_avant` ; rend ce que le suivi et la spec disent à chaque
+        étape."""
+        import asyncio
+
+        from textual.widgets import Checkbox
+
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(self.ctx, cache_offert=True)
+
+        def etat(app):
+            case = app.query_one("#f_monitor", Checkbox)
+            return (case.value, case.disabled, app._form_values()["monitor"])
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 70)) as pilote:
+                await pilote.pause()
+                app.query_one("#f_monitor", Checkbox).value = suivi_avant
+                await pilote.pause()
+                vu["avant"] = etat(app)
+                app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                vu["cochee"] = etat(app)
+                app.query_one("#f_offline", Checkbox).value = False
+                await pilote.pause()
+                vu["decochee"] = etat(app)
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_hors_ligne_le_suivi_est_force_et_grise(self):
+        """Seul le déploiement suivi confie la levée à une unité systemd :
+        sans lui, la promesse de l'avertissement — l'amont revient à la fin
+        de la dernière installation, 12 h au plus — ne tient pas."""
+        vu = self.suivi_selon_la_case(False)
+        self.assertEqual(vu["avant"], (False, False, False))
+        self.assertEqual(
+            vu["cochee"],
+            (True, True, True),
+            "hors ligne, le suivi reste décochable ou n'est pas forcé",
+        )
+
+    def test_decocher_rend_le_suivi_tel_quil_etait(self):
+        vu = self.suivi_selon_la_case(False)
+        self.assertEqual(
+            vu["decochee"],
+            (False, False, False),
+            "décocher la case ne rend pas au suivi sa valeur ni sa main",
+        )
+        vu = self.suivi_selon_la_case(True)
+        self.assertEqual(vu["decochee"], (True, False, True))
+
+    def test_la_spec_exige_le_suivi_hors_ligne(self):
+        """La défense derrière l'écran : un suivi décoché par un chemin qui
+        contourne la case grisée part quand même suivi."""
+        import asyncio
+
+        from textual.widgets import Checkbox
+
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        vu = {}
+        ctx = dict(self.ctx, cache_offert=True)
+
+        async def scenario():
+            app = run_deploy_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 70)) as pilote:
+                await pilote.pause()
+                app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                app.query_one("#f_monitor", Checkbox).value = False
+                await pilote.pause()
+                vu["valeurs"] = app._form_values()
+
+        asyncio.run(scenario())
+        self.assertIs(vu["valeurs"]["monitor"], True)
+        if vu["valeurs"]["install"]:
+            self.assertIs(vu["valeurs"]["install"]["monitor"], True)
 
     def test_cocher_la_case_ne_coupe_rien(self):
         """La coupure tombe à F5, pas au clic.

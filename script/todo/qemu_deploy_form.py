@@ -457,13 +457,30 @@ def run_deploy_form(ctx, run_app: bool = True):
                             f"    {t('goes offline too, without asking for it.')}",
                             id="t_offline_w3",
                         )
+                        # La fin de la coupure suit celle des installations,
+                        # pas celle du tableau de bord : c'est ce qu'on ne
+                        # devine pas, le tableau de bord étant détachable.
                         yield Static(
-                            f"  {t('Nothing is cut before F5: the upstream')}",
+                            f"  {t('Nothing is cut before F5: the upstream falls')}",
                             id="t_offline_w4",
                         )
                         yield Static(
-                            f"    {t('falls at launch and comes back at the end.')}",
+                            f"    {t('at launch and comes back when the last install')}",
                             id="t_offline_w5",
+                        )
+                        yield Static(
+                            f"    {t('ends (12 h at most), even with the monitor closed.')}",
+                            id="t_offline_w6",
+                        )
+                        # Dit pourquoi le suivi est grisé : seul le chemin
+                        # suivi confie ce retour à une unité systemd. Sans
+                        # lui, l'amont revient dès que les VM ont une adresse
+                        # quand rien ne s'installe, ou reste coupé pour de
+                        # bon si le terminal se ferme pendant une
+                        # installation synchrone.
+                        yield Static(
+                            f"  {t('The monitor stays ticked: it is what arms that return.')}",
+                            id="t_offline_w7",
                         )
                 with Vertical(id="right"):
                     # Une liste de widgets, pas un tableau : chaque VM porte
@@ -477,20 +494,35 @@ def run_deploy_form(ctx, run_app: bool = True):
         _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
 
         # L'avertissement que la case « Sans connexion internet » découvre.
-        _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 6))
+        _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 8))
 
         def _sync_offline(self) -> None:
-            """Montre l'avertissement quand la coupure est demandée.
+            """Montre l'avertissement quand la coupure est demandée, et y
+            force le suivi.
 
-            Il dit deux choses qu'on ne devine pas : la coupure vaut pour
-            TOUS les usagers du cache, et elle ne tombe qu'au lancement —
-            cocher la case ne coupe rien, l'écran reste utilisable.
+            Il dit ce qu'on ne devine pas : la coupure vaut pour TOUS les
+            usagers du cache ; elle ne tombe qu'au lancement — cocher la case
+            ne coupe rien, l'écran reste utilisable — et ne se lève qu'à la
+            fin de la dernière installation, tableau de bord fermé ou non.
+
+            Cette dernière promesse n'est tenue que par le déploiement suivi,
+            le seul qui confie la levée à une unité systemd. Le suivi est donc
+            coché et grisé tant que la case l'est ; la décocher le rend
+            modifiable, avec la valeur qu'il avait avant.
             """
             case = self.query("#f_offline")
             vu = bool(case) and bool(case.first(Checkbox).value)
             for sel in self._OFFLINE_WIDGETS:
                 for widget in self.query(sel):
                     widget.display = vu
+            suivi = self.query_one("#f_monitor", Checkbox)
+            if vu and not suivi.disabled:
+                self._suivi_avant = suivi.value
+                suivi.value = True
+                suivi.disabled = True
+            elif not vu and suivi.disabled:
+                suivi.disabled = False
+                suivi.value = getattr(self, "_suivi_avant", True)
 
         def _sync_ai(self) -> None:
             """Montre ou cache le bloc IA selon la case des outils.
@@ -1037,6 +1069,18 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._mount_rows()
 
         def _form_values(self):
+            # La case n'existe que si le cache tourne : la chercher toujours
+            # ferait lever le formulaire là où il n'y a pas de cache,
+            # c'est-à-dire sur la plupart des hôtes.
+            offline = bool(
+                self.query("#f_offline")  # type: ignore[union-attr]
+                and self.query_one("#f_offline", Checkbox).value
+            )
+            # Hors ligne, le suivi est exigé : seul son chemin confie la levée
+            # à une unité systemd. L'écran force déjà la case ; la valeur
+            # l'est aussi ici, pour qu'aucun état du widget ne mène à une
+            # coupure sans levée bornée.
+            monitor = offline or self.query_one("#f_monitor", Checkbox).value
             install = None
             if self.query_one("#f_install", Checkbox).value and profiles:
                 index = self.query_one("#f_profile_install", Select).value
@@ -1046,14 +1090,14 @@ def run_deploy_form(ctx, run_app: bool = True):
                     "prod": self.query_one("#f_prod", Checkbox).value,
                     "label": label,
                     "cmd": cmd,
-                    "monitor": self.query_one("#f_monitor", Checkbox).value,
+                    "monitor": monitor,
                 }
             key = self.query_one("#f_key", Input).value.strip()
             return {
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
-                "monitor": self.query_one("#f_monitor", Checkbox).value,
+                "monitor": monitor,
                 "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
                 # La case n'existe que si le cache tourne : la chercher
                 # toujours ferait lever le formulaire là où il n'y a pas de
@@ -1062,11 +1106,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                     self.query("#f_cache_bypass")  # type: ignore[union-attr]
                     and self.query_one("#f_cache_bypass", Checkbox).value
                 ),
-                # Même garde : la case n'existe que si le cache tourne.
-                "offline": bool(
-                    self.query("#f_offline")  # type: ignore[union-attr]
-                    and self.query_one("#f_offline", Checkbox).value
-                ),
+                "offline": offline,
                 "ai_agent": self.query_one("#f_ai_agent", Select).value,
                 "git_name": self.query_one("#f_git_name", Input).value.strip(),
                 "git_email": self.query_one(

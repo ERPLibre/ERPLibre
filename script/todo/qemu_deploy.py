@@ -4,13 +4,16 @@
 """Menu QEMU/KVM : d\u00e9cider et lancer un d\u00e9ploiement.\n\nLe chemin complet d'une cr\u00e9ation : les ressources (pr\u00e9r\u00e9glages vCPU/RAM/disque\net saisie libre), le plan et son r\u00e9capitulatif, les v\u00e9rifications de l'h\u00f4te\n(groupe libvirt, KVM), le contexte du formulaire TUI, la collecte en ligne, et\nl'ex\u00e9cution d'une spec \u2014 la M\u00caME structure quelle que soit l'interface, ce qui\npermet aux invites et au formulaire de partager tout le reste.\n\nFronti\u00e8re claire : ici on d\u00e9cide ; dans qemu_install.py on \u00e9crit ce qui sera\nex\u00e9cut\u00e9 dans l'invit\u00e9."""
 
 import contextlib
+import fcntl
 import getpass
 import grp
 import json
 import os
 import re
 import shlex
+import signal
 import subprocess
+import threading
 import time
 
 from script.todo import todo_prefs
@@ -296,9 +299,19 @@ class QemuDeployMixin:
         pve=None,
         meta=None,
         ai_agent="",
+        guet_hors_ligne=False,
+        deploy_started=None,
+        hors_ligne=None,
     ):
         """Lance l'install ERPLibre en parallèle DÉTACHÉE sur les VM et ouvre
         le dashboard Textual. Quitter le dashboard n'arrête pas les installs.
+        `guet_hors_ligne` : l'amont du cache est coupé ; sa levée est confiée
+        au guet entre le lancement et l'ouverture du tableau de bord.
+        `deploy_started` : début du déploiement (epoch), recopié dans le
+        manifeste ; None n'y écrit rien.
+        `hors_ligne` : l'amont du cache était-il coupé pour ce déploiement ?
+        Recopié dans le manifeste, où le bilan hors ligne le lit ; None, pour
+        un appelant qui ne le sait pas, n'y écrit rien.
         `ip_map` : IP déjà résolues (sinon on résout ici, EN PARALLÈLE).
         `final_cmd` : commande d'install selon le profil choisi.
         `prod` : install /opt/erplibre + service SELinux confiné.
@@ -397,9 +410,21 @@ class QemuDeployMixin:
         if not vms:
             print(t("No VM to install."))
             return
+        # Le mot-clé ne part que s'il porte une valeur : un lanceur de
+        # remplacement à trois arguments reste alors appelable.
+        debut = {}
+        if deploy_started is not None:
+            debut["deploy_started"] = deploy_started
+        if hors_ligne is not None:
+            debut["hors_ligne"] = bool(hors_ligne)
         manifest = launch_installs(
-            vms, branch_def or next(iter(branch_map.values()), ""), remote
+            vms,
+            branch_def or next(iter(branch_map.values()), ""),
+            remote,
+            **debut,
         )
+        if guet_hors_ligne:
+            self._qemu_confier_la_levee(manifest)
         print(f"\n🖥  {t('Opening the interactive monitor...')}")
         # Affiche tous les chemins de log (pour les consulter/partager même si
         # on quitte le dashboard avant la fin).
@@ -2239,29 +2264,340 @@ class QemuDeployMixin:
         Elle vaut aussi pour les AUTRES usagers du cache pendant ce temps —
         un déploiement mené en parallèle depuis un autre terminal se
         retrouvera hors ligne sans l'avoir demandé.
+
+        La table est UNIQUE et partagée : deux coupures n'en font qu'une, et
+        la première levée ôte les deux. D'où le refus quand un guet tourne
+        encore — sa fin lèverait la coupure de ce déploiement-ci en cours de
+        route — et la question quand une table est posée sans guet.
+
+        Sur la voie suivie, la levée est confiée au guet dès le lancement des
+        installations (`_qemu_confier_la_levee`) ; le « finally » ne la fait
+        alors pas, il dit jusqu'à quand l'amont reste coupé. Ailleurs, il lève
+        et VÉRIFIE : « rebranché » ne s'affiche que constaté.
+
+        Hors ligne, un verrou de fichier tient le bloc ENTIER, relevés
+        compris : deux déploiements lancés ensemble passeraient sinon tous
+        deux les relevés avant que l'un ait posé son guet. Tant que la
+        coupure est tenue, SIGHUP et SIGTERM déroulent le « finally » au lieu
+        de tuer le processus sur place. La commande de coupure elle-même
+        tourne DANS le « try » qui lève : un signal reçu pendant qu'elle
+        s'exécute, la table déjà posée, trouve la levée sur son chemin. Seule
+        une coupure qui rend un échec n'est pas levée — le sudo qui l'a
+        refusée refuserait le retrait aussi, et redemanderait un mot de passe.
+
+        En ligne, rien n'est coupé, mais une coupure tenue par un autre
+        déploiement ferait tourner celui-ci hors ligne : on le dit et on
+        demande (`_qemu_en_ligne_malgre_la_coupure`).
         """
         if not actif:
+            if not self._qemu_en_ligne_malgre_la_coupure():
+                raise _SansInternetImpossible()
             yield False
             return
         from script.qemu import cache_offline
 
-        if self._qemu_shell(cache_offline.cut_cmd()):
-            # Refuser plutôt que déployer quand même : une VM bâtie avec
-            # l'amont debout se bâtit toujours, et son succès se lirait comme
-            # une preuve hors ligne qu'elle n'est pas.
-            print(f"\n  ✗ {t('Upstream not cut: nothing deployed.')}")
-            print(
-                f"    {t('The result would look offline without being so.')}"
-            )
-            raise _SansInternetImpossible()
-        print(f"\n  ✂ {t('Cache upstream cut for this deployment.')}")
+        with self._qemu_verrou_hors_ligne() as libre:
+            if not libre:
+                print(
+                    f"\n  ✗ {t('Another offline deployment is starting or')}"
+                )
+                print(
+                    f"    {t('running in another terminal.')} "
+                    f"{t('Nothing deployed.')}"
+                )
+                raise _SansInternetImpossible()
+            if not self._qemu_coupure_libre():
+                raise _SansInternetImpossible()
+            anciens = self._qemu_signaux_de_sortie()
+            lever = True
+            try:
+                try:
+                    if self._qemu_shell(cache_offline.cut_cmd()):
+                        lever = False
+                        # Refuser plutôt que déployer quand même : une VM
+                        # bâtie avec l'amont debout se bâtit toujours, et son
+                        # succès se lirait comme une preuve hors ligne qu'elle
+                        # n'est pas.
+                        print(
+                            f"\n  ✗ {t('Upstream not cut: nothing deployed.')}"
+                        )
+                        faux = t(
+                            "The result would look offline without being so."
+                        )
+                        print(f"    {faux}")
+                        raise _SansInternetImpossible()
+                    print(
+                        f"\n  ✂ {t('Cache upstream cut for this deployment.')}"
+                    )
+                    yield True
+                finally:
+                    if lever:
+                        self._qemu_rebrancher()
+            finally:
+                self._qemu_signaux_rendus(anciens)
+
+    @staticmethod
+    def _qemu_verrou_hors_ligne_chemin():
+        """Fichier du verrou des déploiements hors ligne, dans le répertoire
+        des sessions d'installation."""
+        from script.todo.qemu_install_monitor import session_dir
+
+        return session_dir() / ".coupure-hors-ligne.lock"
+
+    @contextlib.contextmanager
+    def _qemu_verrou_hors_ligne(self):
+        """Tient le verrou exclusif des déploiements hors ligne le temps du
+        bloc. Rend False s'il est déjà tenu ailleurs, True sinon.
+
+        `flock` non bloquant : un second terminal est refusé sur-le-champ
+        plutôt que mis en attente d'un déploiement qui dure des heures. Le
+        verrou tombe avec le descripteur, donc aussi à la mort du processus,
+        même par SIGKILL : aucun reste à nettoyer. Le descripteur n'est pas
+        hérité (PEP 446) : les installations détachées ne le gardent pas.
+
+        Un fichier impossible à ouvrir rend True : le verrou ne ferme que la
+        course entre deux terminaux, les relevés qui suivent tiennent encore.
+        """
         try:
+            fd = os.open(
+                self._qemu_verrou_hors_ligne_chemin(),
+                os.O_RDWR | os.O_CREAT,
+                0o600,
+            )
+        except OSError:
             yield True
+            return
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            libre = True
+        except BlockingIOError:
+            libre = False
+        except OSError:
+            # Système de fichiers sans flock : même règle qu'un fichier
+            # impossible à ouvrir.
+            libre = True
+        try:
+            yield libre
         finally:
-            # TOUJOURS : une coupure laissée en place prive le cache de
-            # réseau bien après, et la panne se découvre ailleurs.
-            self._qemu_shell(cache_offline.restore_cmd())
+            os.close(fd)
+
+    def _qemu_verrou_tenu_ailleurs(self):
+        """Un déploiement hors ligne tient-il le verrou ? Lecture seule.
+
+        Le fichier n'est pas créé : absent, personne ne le tient. Le verrou
+        n'est pris qu'un instant pour le sonder, puis rendu.
+        """
+        try:
+            fd = os.open(self._qemu_verrou_hors_ligne_chemin(), os.O_RDWR)
+        except OSError:
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        except OSError:
+            return False
+        finally:
+            os.close(fd)
+        return False
+
+    def _qemu_en_ligne_malgre_la_coupure(self):
+        """Un déploiement EN LIGNE peut-il partir ? True si oui.
+
+        La table est partagée par tout le cache : tant qu'un autre
+        déploiement la tient — son guet attend ses installations, ou il est
+        encore en train de se lancer —, celui-ci tournerait hors ligne sans
+        l'avoir demandé, et ses échecs de téléchargement se liraient comme
+        des pannes. On le dit et on demande, « non » par défaut.
+
+        Aucun sudo ici : `guet_actif_cmd` lit l'état d'une unité, et le
+        verrou est un fichier de l'utilisateur. Sans guet ni verrou tenu,
+        rien n'est demandé.
+        """
+        from script.qemu import cache_offline
+
+        if self._qemu_shell(cache_offline.guet_actif_cmd()) == 0:
+            heures = cache_offline.DUREE_MAX_GUET // 3600
+            print(f"\n  ⚠ {t('An offline deployment is still installing.')}")
+            print(f"    {t('The cache upstream stays cut until the last')}")
+            print(f"    {t('installation ends, at most')} {heures} h.")
+            print(f"    {t('This deployment would therefore run offline.')}")
+            print(
+                f"    {t('Lift it now with:')} "
+                f"{cache_offline.lever_maintenant_cmd()}"
+            )
+        elif self._qemu_verrou_tenu_ailleurs():
+            print(f"\n  ⚠ {t('An offline deployment is starting in another')}")
+            print(
+                f"    {t('terminal: the cache upstream is cut until it ends.')}"
+            )
+            print(f"    {t('This deployment would therefore run offline.')}")
+        else:
+            return True
+        if not self._is_yes(
+            input(f"  {t('Deploy anyway, offline? (y/N): ')}")
+        ):
+            print(f"  {t('Nothing deployed.')}")
+            return False
+        return True
+
+    @staticmethod
+    def _qemu_signaux_de_sortie():
+        """Fait de SIGHUP et SIGTERM une sortie qui déroule les « finally ».
+
+        Leur action par défaut tue le processus sur place : un terminal fermé
+        ou une session ssh perdue laisse alors la coupure posée sans fin.
+        Ici, le premier signal lève SystemExit(128 + signal) ; les suivants
+        sont sans effet, pour qu'un second signal n'interrompe pas la levée en
+        cours. Un signal déjà ignoré le reste : lancé sous « nohup », le
+        déploiement doit survivre à son terminal.
+
+        Rend {signal: ancien gestionnaire}, à passer à `_qemu_signaux_rendus`.
+        Hors du fil principal, `signal.signal` lève ValueError : rien n'est
+        posé et le dictionnaire est vide.
+        """
+        if threading.current_thread() is not threading.main_thread():
+            return {}
+        deja = []
+
+        def sortir(signum, _frame):
+            if deja:
+                return
+            deja.append(signum)
+            raise SystemExit(128 + signum)
+
+        anciens = {}
+        for nom in ("SIGHUP", "SIGTERM"):
+            num = getattr(signal, nom, None)
+            if num is None or signal.getsignal(num) == signal.SIG_IGN:
+                continue
+            try:
+                anciens[num] = signal.signal(num, sortir)
+            except (ValueError, OSError):
+                continue
+        return anciens
+
+    @staticmethod
+    def _qemu_signaux_rendus(anciens):
+        """Remet les gestionnaires que rend `_qemu_signaux_de_sortie`.
+
+        Un ancien gestionnaire posé hors de Python se lit None : il redevient
+        l'action par défaut, la seule qu'on sache rétablir.
+        """
+        for num, ancien in anciens.items():
+            try:
+                signal.signal(
+                    num, signal.SIG_DFL if ancien is None else ancien
+                )
+            except (ValueError, OSError, TypeError):
+                continue
+
+    def _qemu_coupure_libre(self):
+        """Peut-on poser une coupure ? True si oui, False si rien ne doit
+        être déployé — l'appelant n'a plus rien à dire, tout est affiché.
+
+        Un guet actif refuse d'office, que la table soit posée ou non : il la
+        retirera à la fin des installations qu'il attend, et celle de ce
+        déploiement avec. Une table posée sans guet est un reste — processus
+        tué, installation synchrone menée depuis un autre terminal — que
+        seul l'utilisateur peut juger : on demande, « non » par défaut.
+        """
+        from script.qemu import cache_offline
+
+        if self._qemu_shell(cache_offline.guet_actif_cmd()) == 0:
+            print(
+                f"\n  ✗ {t('An offline deployment is still running: the cut')}"
+            )
+            print(
+                f"    {t('is shared, and its end would lift yours.')} "
+                f"{t('Nothing deployed.')}"
+            )
+            print(
+                f"    {t('Lift it now with:')} "
+                f"{cache_offline.lever_maintenant_cmd()}"
+            )
+            return False
+        if self._qemu_shell(cache_offline.table_posee_cmd()) != 0:
+            return True
+        print(f"\n  ⚠ {t('The cache upstream is already cut, and nothing')}")
+        print(f"    {t('will lift it: an interrupted deployment, or one')}")
+        print(f"    {t('still installing without the monitor.')}")
+        if not self._is_yes(input(f"  {t('Lift it and continue? (y/N): ')}")):
+            print(f"  {t('Nothing deployed.')}")
+            return False
+        self._qemu_shell(cache_offline.restore_cmd())
+        return True
+
+    def _qemu_rebrancher(self):
+        """Le « finally » de la coupure : lever, ou dire qui lèvera.
+
+        Guet actif : les installations tournent encore, détachées, et c'est
+        lui qui lèvera à la dernière. Lever ici les ferait finir en ligne.
+
+        Sinon, TOUJOURS lever — une coupure laissée en place prive le cache de
+        réseau bien après, et la panne se découvre ailleurs — puis constater :
+        `restore_cmd` rend 0 même quand sudo refuse, et seul un relevé de la
+        table dit si l'amont est revenu.
+        """
+        from script.qemu import cache_offline
+
+        if self._qemu_shell(cache_offline.guet_actif_cmd()) == 0:
+            heures = cache_offline.DUREE_MAX_GUET // 3600
+            print(f"\n  ✂ {t('The cache upstream stays cut until the last')}")
+            print(
+                f"    {t('installation ends, at most')} {heures} h."
+                f" {t('Lift it now with:')}"
+            )
+            print(f"    {cache_offline.lever_maintenant_cmd()}")
+            return
+        self._qemu_shell(cache_offline.restore_cmd())
+        if self._qemu_shell(cache_offline.table_posee_cmd()) == 1:
             print(f"  {t('Cache upstream restored.')}")
+            return
+        print(f"\n  ✗ {t('The cache upstream may still be cut.')}")
+        print(f"    {t('Lift it with:')} {cache_offline.restore_cmd()}")
+
+    def _qemu_confier_la_levee(self, manifest):
+        """Confie la levée de la coupure à root, le temps des installations.
+
+        Appelée juste après leur lancement et AVANT le tableau de bord : le
+        terminal est encore libre pour une invite de mot de passe. L'unité
+        attend le marqueur de sortie de chaque journal du manifeste, puis
+        lève ; elle survit à la fermeture du tableau de bord comme à la mort
+        de ce processus, et le tableau de bord reste détachable.
+
+        Rend True si le guet est posé. En cas d'échec, la coupure reste au
+        « finally », c'est-à-dire à la fermeture du tableau de bord : le dire,
+        puisque le fermer avant la fin fait finir les installations en ligne.
+        """
+        from script.qemu import cache_offline
+        from script.todo.qemu_install_monitor import EXIT_MARKER
+
+        try:
+            with open(manifest, encoding="utf-8") as fh:
+                journaux = [vm["log"] for vm in json.load(fh)["vms"]]
+        except (OSError, ValueError, KeyError, TypeError):
+            journaux = None
+        heures = cache_offline.DUREE_MAX_GUET // 3600
+        if (
+            journaux
+            and cache_offline.chemins_surs(journaux)
+            and not self._qemu_shell(
+                cache_offline.guet_cmd(journaux, EXIT_MARKER)
+            )
+        ):
+            print(f"\n  ✂ {t('The cache upstream comes back when the last')}")
+            print(
+                f"    {t('installation ends, at most')} {heures} h,"
+                f" {t('even if the monitor is closed.')}"
+            )
+            return True
+        print(f"\n  ⚠ {t('Could not hand the lift over to systemd-run:')}")
+        print(f"    {t('the cache upstream comes back when the monitor')}")
+        print(
+            f"    {t('closes; closing it early finishes the installs online.')}"
+        )
+        return False
 
     @staticmethod
     def _qemu_shell(cmd, timeout=60):
@@ -2286,17 +2622,20 @@ class QemuDeployMixin:
         relit mal.
         """
         try:
-            with self._qemu_sans_internet(bool(spec.get("offline"))):
-                return self._qemu_deploie_spec(spec)
+            with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
+                return self._qemu_deploie_spec(spec, coupee=coupee)
         except _SansInternetImpossible:
             return
 
-    def _qemu_deploie_spec(self, spec):
+    def _qemu_deploie_spec(self, spec, coupee=False):
         """Exécute une spec de déploiement : création des VM en parallèle,
         résolution des IP, ~/.ssh/config, installation ERPLibre.
 
         Ne pose AUCUNE question — tous les choix sont dans la spec, d'où
-        qu'elle vienne (invites en ligne ou formulaire TUI)."""
+        qu'elle vienne (invites en ligne ou formulaire TUI).
+
+        `coupee` : l'amont du cache est coupé autour de cet appel. La voie
+        suivie en confie alors la levée au guet, dès le lancement."""
         pending = spec["vms"]
         deployed = list(spec.get("existing") or [])
         install = spec.get("install")
@@ -2404,6 +2743,13 @@ class QemuDeployMixin:
         # de bord — rapporté, et c'est ce qui donnait « le suivi ne fonctionne
         # plus ». Le choix vient du déploiement, pas de l'installation.
         monitor = install["monitor"] if install else spec.get("monitor", True)
+        # Hors ligne, le suivi est d'office : seule sa voie confie la levée de
+        # la coupure au guet, qui la tient jusqu'à la fin de la dernière
+        # installation. Sans lui, la voie synchrone n'a aucun guet, et une spec
+        # sans rien à installer lèverait la coupure dès les IP connues, avant
+        # que cloud-init et l'agent invité aient fini de télécharger.
+        if spec.get("offline"):
+            monitor = True
         if install or desktop or monitor:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
@@ -2418,6 +2764,11 @@ class QemuDeployMixin:
                     app_store=app_store,
                     vm_tools=vm_tools,
                     ai_agent=ai_agent,
+                    guet_hors_ligne=coupee,
+                    deploy_started=deploy_start,
+                    # La coupure TENUE, et non la case de la spec : c'est
+                    # elle qui fait qu'une réussite prouve le hors ligne.
+                    hors_ligne=bool(coupee),
                 )
             elif install:
                 print(

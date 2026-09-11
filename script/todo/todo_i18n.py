@@ -6415,6 +6415,114 @@ TRANSLATIONS = {
         "fr": "apt-get update n'a jamais abouti : le verrou est resté pris",
         "en": "apt-get update never succeeded: the lock stayed held",
     },
+    "An offline deployment is still running: the cut": {
+        "fr": "Un déploiement hors ligne tourne encore : la coupure",
+        "en": "An offline deployment is still running: the cut",
+    },
+    "is shared, and its end would lift yours.": {
+        "fr": "est partagée, et sa fin lèverait la vôtre.",
+        "en": "is shared, and its end would lift yours.",
+    },
+    "Nothing deployed.": {
+        "fr": "Rien n'est déployé.",
+        "en": "Nothing deployed.",
+    },
+    "Lift it now with:": {
+        "fr": "La lever maintenant par :",
+        "en": "Lift it now with:",
+    },
+    "The cache upstream is already cut, and nothing": {
+        "fr": "L'amont du cache est déjà coupé, et rien",
+        "en": "The cache upstream is already cut, and nothing",
+    },
+    "will lift it: an interrupted deployment, or one": {
+        "fr": "ne le rebranchera : un déploiement interrompu, ou un",
+        "en": "will lift it: an interrupted deployment, or one",
+    },
+    "still installing without the monitor.": {
+        "fr": "autre qui installe encore sans le suivi.",
+        "en": "still installing without the monitor.",
+    },
+    "Lift it and continue? (y/N): ": {
+        "fr": "Lever la coupure et continuer ? (o/N) : ",
+        "en": "Lift it and continue? (y/N): ",
+    },
+    "The cache upstream stays cut until the last": {
+        "fr": "L'amont du cache reste coupé jusqu'à la fin de la",
+        "en": "The cache upstream stays cut until the last",
+    },
+    "installation ends, at most": {
+        "fr": "dernière installation, au plus",
+        "en": "installation ends, at most",
+    },
+    "The cache upstream comes back when the last": {
+        "fr": "L'amont du cache revient à la fin de la",
+        "en": "The cache upstream comes back when the last",
+    },
+    "even if the monitor is closed.": {
+        "fr": "même si le suivi est fermé.",
+        "en": "even if the monitor is closed.",
+    },
+    "Could not hand the lift over to systemd-run:": {
+        "fr": "Impossible de confier la levée à systemd-run :",
+        "en": "Could not hand the lift over to systemd-run:",
+    },
+    "the cache upstream comes back when the monitor": {
+        "fr": "l'amont du cache revient à la fermeture du suivi ;",
+        "en": "the cache upstream comes back when the monitor",
+    },
+    "closes; closing it early finishes the installs online.": {
+        "fr": "le fermer avant la fin fait finir les installations en ligne.",
+        "en": "closes; closing it early finishes the installs online.",
+    },
+    "The cache upstream may still be cut.": {
+        "fr": "L'amont du cache est peut-être encore coupé.",
+        "en": "The cache upstream may still be cut.",
+    },
+    "Nothing is cut before F5: the upstream falls": {
+        "fr": "Rien n'est coupé avant F5 : l'amont tombe",
+        "en": "Nothing is cut before F5: the upstream falls",
+    },
+    "at launch and comes back when the last install": {
+        "fr": "au lancement et revient à la fin de la dernière",
+        "en": "at launch and comes back when the last install",
+    },
+    "ends (12 h at most), even with the monitor closed.": {
+        "fr": "installation (12 h au plus), suivi fermé ou non.",
+        "en": "ends (12 h at most), even with the monitor closed.",
+    },
+    "Another offline deployment is starting or": {
+        "fr": "Un autre déploiement hors ligne démarre ou",
+        "en": "Another offline deployment is starting or",
+    },
+    "running in another terminal.": {
+        "fr": "tourne dans un autre terminal.",
+        "en": "running in another terminal.",
+    },
+    "An offline deployment is still installing.": {
+        "fr": "Un déploiement hors ligne installe encore.",
+        "en": "An offline deployment is still installing.",
+    },
+    "This deployment would therefore run offline.": {
+        "fr": "Ce déploiement tournerait donc hors ligne.",
+        "en": "This deployment would therefore run offline.",
+    },
+    "An offline deployment is starting in another": {
+        "fr": "Un déploiement hors ligne se lance dans un autre",
+        "en": "An offline deployment is starting in another",
+    },
+    "terminal: the cache upstream is cut until it ends.": {
+        "fr": "terminal : l'amont du cache est coupé jusqu'à sa fin.",
+        "en": "terminal: the cache upstream is cut until it ends.",
+    },
+    "Deploy anyway, offline? (y/N): ": {
+        "fr": "Déployer quand même, hors ligne ? (o/N) : ",
+        "en": "Deploy anyway, offline? (y/N): ",
+    },
+    "The monitor stays ticked: it is what arms that return.": {
+        "fr": "Le suivi reste coché : c'est lui qui arme ce retour.",
+        "en": "The monitor stays ticked: it is what arms that return.",
+    },
     "cache holds nothing for": {
         "fr": "le cache ne détient rien pour",
         "en": "cache holds nothing for",
@@ -6434,14 +6542,6 @@ TRANSLATIONS = {
     "goes offline too, without asking for it.": {
         "fr": "sera hors ligne aussi, sans l'avoir demandé.",
         "en": "goes offline too, without asking for it.",
-    },
-    "Nothing is cut before F5: the upstream": {
-        "fr": "Rien n'est coupé avant F5 : l'amont tombe",
-        "en": "Nothing is cut before F5: the upstream",
-    },
-    "falls at launch and comes back at the end.": {
-        "fr": "au lancement et revient à la fin.",
-        "en": "falls at launch and comes back at the end.",
     },
     "Cache upstream cut for this deployment.": {
         "fr": "Amont du cache coupé pour ce déploiement.",

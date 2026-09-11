@@ -68,7 +68,155 @@ def restore_cmd(table: str = TABLE) -> str:
     coupure déjà retirée ne doit pas y lever d'erreur qui masquerait celle
     d'origine.
     """
-    return f"sudo nft delete table inet {table} 2>/dev/null || true"
+    return f"sudo {_retrait(table)}"
+
+
+def _retrait(table: str = TABLE) -> str:
+    """Le retrait nu, sans sudo : `restore_cmd` le préfixe, le guet le lance
+    déjà en root."""
+    return f"nft delete table inet {table} 2>/dev/null || true"
+
+
+# Le guet : une unité systemd transitoire, posée par root au lancement des
+# installations, qui attend que chaque journal porte son marqueur de sortie
+# puis lève la coupure. Les installations tournent détachées et survivent au
+# tableau de bord : lever la coupure à sa fermeture les ferait finir en ligne
+# sans que rien ne le dise, et l'y garder la ferait durer tant que l'écran
+# reste ouvert. Un processus Python ne tient pas ce rôle : SIGKILL, une
+# session ssh perdue ou une panne l'emportent sans dérouler aucun « finally ».
+UNITE_GUET = "erplibre-qemu-offline-lift"
+
+# Durée maximale du guet, en secondes. Au-delà, systemd l'arrête et la levée
+# (ExecStopPost) court quand même : une installation dont le marqueur ne vient
+# jamais — session ssh pendue, VM supprimée — ne prive pas le cache d'amont
+# indéfiniment.
+DUREE_MAX_GUET = 12 * 3600
+
+# Période de relecture des journaux. Le marqueur est la dernière ligne écrite ;
+# elle borne le retard de la levée sur la fin réelle.
+PAS_GUET = 10
+
+
+# systemd réécrit « ${VAR} », un « $VAR » pris comme argument entier et
+# « $$ » dans les arguments qu'il exécute, et les spécificateurs « % » dans
+# les valeurs passées par « -p ». Un chemin de journal qui en porte serait
+# réécrit : le guet ne le trouverait jamais, et la coupure tiendrait jusqu'à
+# RuntimeMaxSec au lieu de tomber avec la dernière installation.
+CARACTERES_REECRITS = ("$", "%")
+
+
+def chemins_surs(journaux) -> bool:
+    """Vrai si aucun chemin ne porte un caractère que systemd réécrirait.
+
+    Refuser vaut mieux qu'échapper : « $$ » n'est juste que si systemd
+    substitue réellement, ce qui dépend de sa version et de la voie par
+    laquelle la commande lui arrive. Un refus ramène la levée au « finally »,
+    dont le comportement est connu.
+    """
+    return all(
+        not any(c in str(j) for c in CARACTERES_REECRITS) for j in journaux
+    )
+
+
+def script_attente(marqueur: str, pas: int = PAS_GUET) -> str:
+    """Le script du guet : il rend 0 quand CHAQUE journal passé en argument
+    porte `marqueur` dans ses derniers octets, et repasse toutes les `pas`
+    secondes sinon.
+
+    Un journal ABSENT compte pour non fini. Le guet part juste après le
+    lancement des installations, et leurs journaux peuvent ne pas exister
+    encore : les compter pour finis lèverait la coupure sur-le-champ, et
+    l'installation se terminerait en ligne sans que rien ne le dise. Un
+    journal qui ne viendra jamais — son répertoire effacé — tient donc la
+    coupure jusqu'à RuntimeMaxSec, et la levée immédiate est affichée.
+
+    Sans pipefail, « tail | grep » rend le statut de grep : un fichier absent
+    ne livre rien, et le marqueur n'y est pas trouvé.
+    """
+    return (
+        "while :; do fini=1; "
+        'for f in "$@"; do '
+        f'tail -c 4096 "$f" 2>/dev/null | grep -qF {shlex.quote(marqueur)}'
+        " || fini=0; "
+        'done; [ "$fini" = 1 ] && exit 0; '
+        f"sleep {int(pas)}; done"
+    )
+
+
+def guet_cmd(
+    journaux,
+    marqueur: str,
+    duree: int = DUREE_MAX_GUET,
+    table: str = TABLE,
+    unite: str = UNITE_GUET,
+) -> str:
+    """La commande qui confie la levée à root, par une unité transitoire.
+
+    `journaux` : chemins des journaux d'installation, un par VM ; `marqueur` :
+    ce que l'enveloppe détachée écrit en dernière ligne à la fin de chacune.
+    Les chemins voyagent en ARGUMENTS du shell (« sh -c script sh j1 j2 … »)
+    et non dans le script : un espace ou une apostrophe dans un chemin ne
+    peut rien y casser.
+
+    ExecStopPost court à la fin normale, au dépassement de RuntimeMaxSec et à
+    un « systemctl stop » : la coupure tombe dans les trois cas. « --collect »
+    efface l'unité même en échec, sans quoi son nom resterait pris.
+
+    Le script d'attente vient de `script_attente` : un journal absent y
+    compte pour NON fini.
+
+    systemd remplace « ${VAR} » et « $$ » dans les arguments qu'il exécute : le
+    script n'en contient aucun, seules les formes « $f » et « "$@" », qu'il
+    laisse intactes, y figurent.
+    """
+    attente = script_attente(marqueur)
+    parties = [
+        "sudo",
+        "systemd-run",
+        f"--unit={unite}",
+        "--collect",
+        "--description=ERPLibre QEMU offline cut lift",
+        "-p",
+        f"RuntimeMaxSec={duree}",
+        "-p",
+        f'ExecStopPost=/bin/sh -c "{_retrait(table)}"',
+        "/bin/sh",
+        "-c",
+        attente,
+        "sh",
+        *journaux,
+    ]
+    return " ".join(shlex.quote(p) for p in parties)
+
+
+def guet_actif_cmd(unite: str = UNITE_GUET) -> str:
+    """Rend 0 tant que le guet tourne. Sans sudo : lire l'état d'une unité
+    est ouvert à tout compte."""
+    return f"systemctl is-active --quiet {shlex.quote(unite)}"
+
+
+def lever_maintenant_cmd(unite: str = UNITE_GUET) -> str:
+    """La levée immédiate quand le guet tourne : l'arrêter fait courir son
+    ExecStopPost, qui retire la table. Retirer la table seule laisserait le
+    guet attendre pour rien."""
+    return f"sudo systemctl stop {shlex.quote(unite)}"
+
+
+def table_posee_cmd(table: str = TABLE) -> str:
+    """Rend 0 si la coupure est posée, 1 si elle ne l'est pas, 2 si on ne
+    peut pas le savoir.
+
+    Le troisième cas est la raison d'être de la commande : « ! nft list
+    table » conclurait à l'absence dès que sudo refuse ou que nft manque, et
+    un rebranchement raté se lirait comme réussi. La table est cherchée
+    ligne entière dans « nft list tables » : un nom qui la prolongerait ne
+    compte pas.
+    """
+    ligne = shlex.quote(f"table inet {table}")
+    return (
+        "(l=$(sudo nft list tables) || exit 2; "
+        f"printf '%s\\n' \"$l\" | grep -qxF {ligne} && exit 0; exit 1)"
+    )
 
 
 # Là où le service écrit ses réglages. Le journal d'accès y est nommé : le
