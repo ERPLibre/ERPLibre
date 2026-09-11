@@ -11410,6 +11410,10 @@ TRANSLATIONS = {
         "fr": "Annulé : rien n'a été écrit.",
         "en": "Cancelled: nothing was written.",
     },
+    "Nothing to anonymise: nothing to confirm.": {
+        "fr": "Rien à anonymiser : rien à confirmer.",
+        "en": "Nothing to anonymise: nothing to confirm.",
+    },
     "Hybrid: the default personal-data models, adjusted": {
         "fr": "Hybride : les modèles à données personnelles par défaut, ajustés",
         "en": "Hybrid: the default personal-data models, adjusted",
@@ -11497,6 +11501,14 @@ TRANSLATIONS = {
     "Nothing was written:": {
         "fr": "Rien n'a été écrit :",
         "en": "Nothing was written:",
+    },
+    "nothing to do.": {
+        "fr": "rien à faire.",
+        "en": "nothing to do.",
+    },
+    "The dry run ended on an unexpected code:": {
+        "fr": "La marche à blanc s'est terminée sur un code inattendu :",
+        "en": "The dry run ended on an unexpected code:",
     },
     "This file declares no MOTS:": {
         "fr": "Ce fichier ne déclare aucun MOTS :",
@@ -12831,6 +12843,764 @@ TRANSLATIONS = {
     # « models », « still waiting for » et « Type an address » servent aussi
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
+    # Transform data - fichiers externes
+    "Transform data - Transform your data": {
+        "fr": "🪄 Transform data - Transformer vos données",
+        "en": "🪄 Transform data - Transform your data",
+    },
+    "Source file": {
+        "fr": "📁 Fichier source",
+        "en": "📁 Source file",
+    },
+    "Transform your data: read, describe, then copy.": {
+        "fr": "Transformer vos données : lire, décrire, puis en tirer une copie.",
+        "en": "Transform your data: read, describe, then copy.",
+    },
+    "Source": {
+        "fr": "📁 Source",
+        "en": "📁 Source",
+    },
+    "Anonymise an Odoo database or a backup": {
+        "fr": "🎭 Anonymiser une base Odoo ou une sauvegarde",
+        "en": "🎭 Anonymise an Odoo database or a backup",
+    },
+    "The database ITSELF is modified; no copy.": {
+        "fr": "La base ELLE-MÊME est modifiée ; aucune copie.",
+        "en": "The database ITSELF is modified; no copy.",
+    },
+    "Nothing was written; no backup was drawn.": {
+        "fr": "Rien n'a été écrit ; aucune sauvegarde n'a été tirée.",
+        "en": "Nothing was written; no backup was drawn.",
+    },
+    "Backup name (Enter to accept): ": {
+        "fr": "Nom de la sauvegarde (Entrée pour accepter) : ",
+        "en": "Backup name (Enter to accept): ",
+    },
+    "Backup written: ": {
+        "fr": "Sauvegarde écrite : ",
+        "en": "Backup written: ",
+    },
+    "Database kept: ": {
+        "fr": "Base conservée : ",
+        "en": "Database kept: ",
+    },
+    "Gone already, only in the register:": {
+        "fr": "Déjà disparue(s), seulement au registre :",
+        "en": "Gone already, only in the register:",
+    },
+    "Use Database to drop one.": {
+        "fr": "Passer par Database pour en détruire une.",
+        "en": "Use Database to drop one.",
+    },
+    "Advanced options? (y/N): ": {
+        "fr": "Options avancées ? (o/N) : ",
+        "en": "Advanced options? (y/N): ",
+    },
+    "every sheet": {
+        "fr": "toutes les feuilles",
+        "en": "every sheet",
+    },
+    "no column left untouched": {
+        "fr": "aucune colonne laissée intacte",
+        "en": "no column left untouched",
+    },
+    "column(s) left untouched, chosen on screen": {
+        "fr": "colonne(s) laissée(s) intacte(s), choisies à l'écran",
+        "en": "column(s) left untouched, chosen on screen",
+    },
+    "numbers replaced, widths kept": {
+        "fr": "nombres remplacés, largeurs gardées",
+        "en": "numbers replaced, widths kept",
+    },
+    "numbers replaced within the measured extent": {
+        "fr": "nombres remplacés dans l'étendue mesurée",
+        "en": "numbers replaced within the measured extent",
+    },
+    "text replaced": {
+        "fr": "texte remplacé",
+        "en": "text replaced",
+    },
+    "the header row is left readable": {
+        "fr": "la ligne d'en-tête reste lisible",
+        "en": "the header row is left readable",
+    },
+    "sheet(s) with no header row on screen": {
+        "fr": "feuille(s) sans en-tête à l'écran : leur 1re ligne est de la donnée",
+        "en": "sheet(s) with no header row on screen: their 1st row is data",
+    },
+    "no seed: not reproducible": {
+        "fr": "aucune graine : non reproductible",
+        "en": "no seed: not reproducible",
+    },
+    "Taken as given:": {
+        "fr": "Pris tel quel :",
+        "en": "Taken as given:",
+    },
+    "Anonymise the logins too? (y/N): ": {
+        "fr": "Anonymiser aussi les identifiants de connexion ? (o/N) : ",
+        "en": "Anonymise the logins too? (y/N): ",
+    },
+    "Keeping the digit count drops the measured extent.": {
+        "fr": "Garder le nombre de chiffres abandonne l'étendue mesurée.",
+        "en": "Keeping the digit count drops the measured extent.",
+    },
+    "Not neutralized: this copy can send mail and run": {
+        "fr": "Non neutralisée : cette copie peut envoyer du courriel et faire tourner",
+        "en": "Not neutralized: this copy can send mail and run",
+    },
+    "its crons from this machine.": {
+        "fr": "ses crons depuis cette machine.",
+        "en": "its crons from this machine.",
+    },
+    "Databases produced": {
+        "fr": "🗄 Bases produites",
+        "en": "🗄 Databases produced",
+    },
+    "External files: read, describe, then draw a copy.": {
+        "fr": "Fichiers externes : lire, décrire, puis en tirer une copie.",
+        "en": "External files: read, describe, then draw a copy.",
+    },
+    "Environment": {
+        "fr": "🧰 Environnement",
+        "en": "🧰 Environment",
+    },
+    "Open a file and read its report": {
+        "fr": "📖 Ouvrir un fichier et lire son rapport",
+        "en": "📖 Open a file and read its report",
+    },
+    "Install the reading environment": {
+        "fr": "📦 Installer l'environnement de lecture",
+        "en": "📦 Install the reading environment",
+    },
+    "What can this machine read?": {
+        "fr": "🩺 Que sait lire cette machine ?",
+        "en": "🩺 What can this machine read?",
+    },
+    "Copies produced": {
+        "fr": "🗂 Copies produites",
+        "en": "🗂 Copies produced",
+    },
+    "A dedicated environment is required to read this format.": {
+        "fr": "Un environnement dédié est nécessaire pour lire ce format.",
+        "en": "A dedicated environment is required to read this format.",
+    },
+    "Create it now? (Y/n): ": {
+        "fr": "Le créer maintenant ? (O/n) : ",
+        "en": "Create it now? (Y/n): ",
+    },
+    "The environment is ready.": {
+        "fr": "L'environnement est prêt.",
+        "en": "The environment is ready.",
+    },
+    "Creation finished but the libraries are still missing.": {
+        "fr": "Création terminée mais les bibliothèques manquent toujours.",
+        "en": "Creation finished but the libraries are still missing.",
+    },
+    "python -m venv exited with": {
+        "fr": "python -m venv a rendu",
+        "en": "python -m venv exited with",
+    },
+    "Access files need a system package.": {
+        "fr": "Les fichiers Access demandent un paquet système.",
+        "en": "Access files need a system package.",
+    },
+    "readable": {
+        "fr": "lisible",
+        "en": "readable",
+    },
+    "not readable": {
+        "fr": "non lisible",
+        "en": "not readable",
+    },
+    "Contents do not match the extension: read as ": {
+        "fr": "Le contenu ne correspond pas à l'extension : lu comme ",
+        "en": "Contents do not match the extension: read as ",
+    },
+    "Encoding detected by ": {
+        "fr": "Encodage détecté par ",
+        "en": "Encoding detected by ",
+    },
+    "Delimiter detected by ": {
+        "fr": "Délimiteur détecté par ",
+        "en": "Delimiter detected by ",
+    },
+    "bom": {
+        "fr": "BOM",
+        "en": "BOM",
+    },
+    "chardet": {
+        "fr": "chardet",
+        "en": "chardet",
+    },
+    "sniffer": {
+        "fr": "sniffer",
+        "en": "sniffer",
+    },
+    "mesure": {
+        "fr": "mesure",
+        "en": "measurement",
+    },
+    "repli": {
+        "fr": "repli",
+        "en": "fallback",
+    },
+    "sheet(s)": {
+        "fr": "feuille(s)",
+        "en": "sheet(s)",
+    },
+    "chart sheet(s)": {
+        "fr": "feuille(s) graphique",
+        "en": "chart sheet(s)",
+    },
+    "hidden": {
+        "fr": "masquée",
+        "en": "hidden",
+    },
+    "formula(s)": {
+        "fr": "formule(s)",
+        "en": "formula(s)",
+    },
+    "formula(s) holding a text literal": {
+        "fr": "formule(s) portant un littéral texte",
+        "en": "formula(s) holding a text literal",
+    },
+    "distinct value(s)": {
+        "fr": "valeur(s) distincte(s)",
+        "en": "distinct value(s)",
+    },
+    "VBA macros present": {
+        "fr": "Macros VBA présentes",
+        "en": "VBA macros present",
+    },
+    "No VBA macro": {
+        "fr": "Aucune macro VBA",
+        "en": "No VBA macro",
+    },
+    "pivot table(s)": {
+        "fr": "tableau(x) croisé(s)",
+        "en": "pivot table(s)",
+    },
+    "chart(s) with cached series": {
+        "fr": "graphique(s) à séries en cache",
+        "en": "chart(s) with cached series",
+    },
+    "image(s) and drawing(s)": {
+        "fr": "image(s) et dessin(s)",
+        "en": "image(s) and drawing(s)",
+    },
+    "external link(s)": {
+        "fr": "lien(s) externe(s)",
+        "en": "external link(s)",
+    },
+    "cell hyperlink(s)": {
+        "fr": "hyperlien(s) de cellule",
+        "en": "cell hyperlink(s)",
+    },
+    "comment(s)": {
+        "fr": "commentaire(s)",
+        "en": "comment(s)",
+    },
+    "comment author(s)": {
+        "fr": "auteur(s) de commentaire",
+        "en": "comment author(s)",
+    },
+    "header(s)/footer(s)": {
+        "fr": "en-tête(s)/pied(s)",
+        "en": "header(s)/footer(s)",
+    },
+    "validation(s)": {
+        "fr": "validation(s)",
+        "en": "validation(s)",
+    },
+    "conditional format(s)": {
+        "fr": "mise(s) en forme conditionnelle(s)",
+        "en": "conditional format(s)",
+    },
+    "Text outside cells": {
+        "fr": "Texte hors cellules",
+        "en": "Text outside cells",
+    },
+    "Author": {
+        "fr": "Auteur",
+        "en": "Author",
+    },
+    "Link targets": {
+        "fr": "Cibles des liens",
+        "en": "Link targets",
+    },
+    "named range(s)": {
+        "fr": "plage(s) nommée(s)",
+        "en": "named range(s)",
+    },
+    "Anonymisable": {
+        "fr": "Anonymisable",
+        "en": "Anonymisable",
+    },
+    "word(s) in the pool": {
+        "fr": "mot(s) dans le vivier",
+        "en": "word(s) in the pool",
+    },
+    "Left intact": {
+        "fr": "Laissé intact",
+        "en": "Left intact",
+    },
+    "date(s)": {
+        "fr": "date(s)",
+        "en": "date(s)",
+    },
+    "boolean(s)": {
+        "fr": "booléen(s)",
+        "en": "boolean(s)",
+    },
+    "error value(s)": {
+        "fr": "valeur(s) d'erreur",
+        "en": "error value(s)",
+    },
+    "binary value(s)": {
+        "fr": "valeur(s) binaire(s)",
+        "en": "binary value(s)",
+    },
+    "This format stores no formula readable here.": {
+        "fr": "Ce format ne stocke aucune formule lisible ici.",
+        "en": "This format stores no formula readable here.",
+    },
+    "saved query(ies)": {
+        "fr": "requête(s) enregistrée(s)",
+        "en": "saved query(ies)",
+    },
+    "Access saved queries are readable here.": {
+        "fr": "Les requêtes enregistrées d'Access sont lisibles ici.",
+        "en": "Access saved queries are readable here.",
+    },
+    "Install it by hand to read Access saved queries.": {
+        "fr": "L'installer à la main pour lire les requêtes enregistrées d'Access.",
+        "en": "Install it by hand to read Access saved queries.",
+    },
+    "Saved queries cannot be counted here: install mdbtools to know whether this file holds any.": {
+        "fr": "Les requêtes enregistrées ne peuvent pas être comptées ici : installer mdbtools pour savoir si ce fichier en porte.",
+        "en": "Saved queries cannot be counted here: install mdbtools to know whether this file holds any.",
+    },
+    "Saved queries are not carried over to the copy.": {
+        "fr": "Les requêtes enregistrées ne sont pas reprises dans la copie.",
+        "en": "Saved queries are not carried over to the copy.",
+    },
+    "Saved queries are not readable in pure Python.": {
+        "fr": "Les requêtes enregistrées ne sont pas lisibles en pur Python.",
+        "en": "Saved queries are not readable in pure Python.",
+    },
+    "Only 20 fallback words are available: randomwordfr is missing.": {
+        "fr": "Seuls 20 mots de repli sont disponibles : randomwordfr est absent.",
+        "en": "Only 20 fallback words are available: randomwordfr is missing.",
+    },
+    "0 to cancel": {
+        "fr": "0 pour annuler",
+        "en": "0 to cancel",
+    },
+    "Anonymise this file? (y/N): ": {
+        "fr": "Anonymiser ce fichier ? (o/N) : ",
+        "en": "Anonymise this file? (y/N): ",
+    },
+    "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ": {
+        "fr": "Convertir en même temps ? (xlsx/csv/json/xml, vide = garder) : ",
+        "en": "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ",
+    },
+    "Sheets to process (empty = all): ": {
+        "fr": "Feuilles à traiter (vide = toutes) : ",
+        "en": "Sheets to process (empty = all): ",
+    },
+    "Columns to leave untouched (empty = none): ": {
+        "fr": "Colonnes à laisser intactes (vide = aucune) : ",
+        "en": "Columns to leave untouched (empty = none): ",
+    },
+    "Numbers keep their digit count, so the column's measured extent no longer bounds them: a rate or a year can leave its range.": {
+        "fr": "Les nombres gardent leur nombre de chiffres, donc l'étendue mesurée de la colonne ne les borne plus : un taux ou une année peut sortir de sa plage.",
+        "en": "Numbers keep their digit count, so the column's measured extent no longer bounds them: a rate or a year can leave its range.",
+    },
+    "draw a number of the same width; drops the extent": {
+        "fr": "tirer un nombre de même largeur ; abandonne l'étendue",
+        "en": "draw a number of the same width; drops the extent",
+    },
+    "left in clear, numeric and unique:": {
+        "fr": "laissée(s) en clair, numérique(s) et unique(s) :",
+        "en": "left in clear, numeric and unique:",
+    },
+    "Keep the digit count? (y/N): ": {
+        "fr": "Garder le nombre de chiffres ? (o/N) : ",
+        "en": "Keep the digit count? (y/N): ",
+    },
+    "Replace numbers? (Y/n): ": {
+        "fr": "Remplacer les nombres ? (O/n) : ",
+        "en": "Replace numbers? (Y/n): ",
+    },
+    "Replace text? (Y/n): ": {
+        "fr": "Remplacer le texte ? (O/n) : ",
+        "en": "Replace text? (Y/n): ",
+    },
+    "Anonymise the header row too? (y/N): ": {
+        "fr": "Anonymiser aussi la ligne d'en-tête ? (o/N) : ",
+        "en": "Anonymise the header row too? (y/N): ",
+    },
+    "Random seed (empty = not reproducible): ": {
+        "fr": "Graine aléatoire (vide = non reproductible) : ",
+        "en": "Random seed (empty = not reproducible): ",
+    },
+    "Mapping table to reuse (empty = a new one): ": {
+        "fr": "Table de correspondance à réutiliser (vide = nouvelle) : ",
+        "en": "Mapping table to reuse (empty = a new one): ",
+    },
+    "Keep the VBA macros in the copy? (y/N): ": {
+        "fr": "Garder les macros VBA dans la copie ? (o/N) : ",
+        "en": "Keep the VBA macros in the copy? (y/N): ",
+    },
+    "Keep the charts in the copy? (y/N): ": {
+        "fr": "Garder les graphiques dans la copie ? (o/N) : ",
+        "en": "Keep the charts in the copy? (y/N): ",
+    },
+    "Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.": {
+        "fr": "Les macros sont gardées, donc la copie se nomme .xlsm : Excel refuse un .xlsx qui porte un projet VBA.",
+        "en": "Macros are kept, so the copy is named .xlsm: Excel refuses a .xlsx holding a VBA project.",
+    },
+    "The copy is written in UTF-8, whatever the source was.": {
+        "fr": "La copie est écrite en UTF-8, quel qu'ait été l'encodage de la source.",
+        "en": "The copy is written in UTF-8, whatever the source was.",
+    },
+    "The kept VBA project quotes a source value; answer no to the macro question to write the copy.": {
+        "fr": "Le projet VBA gardé cite une valeur de la source ; répondre non à la question des macros pour écrire la copie.",
+        "en": "The kept VBA project quotes a source value; answer no to the macro question to write the copy.",
+    },
+    "An integer column is saturated: the copy holds the same set of values, only reshuffled.": {
+        "fr": "Une colonne d'entiers est saturée : la copie porte le même ensemble de valeurs, seulement redistribuées.",
+        "en": "An integer column is saturated: the copy holds the same set of values, only reshuffled.",
+    },
+    "Open the TUI for setup? (Y/n): ": {
+        "fr": "Ouvrir l'interface TUI pour paramétrage ? (O/n) : ",
+        "en": "Open the TUI for setup? (Y/n): ",
+    },
+    "Transform — anonymisation scope": {
+        "fr": "Transform — périmètre de l'anonymisation",
+        "en": "Transform — anonymisation scope",
+    },
+    "‹no label›": {
+        "fr": "‹sans libellé›",
+        "en": "‹no label›",
+    },
+    "column label": {
+        "fr": "libellé",
+        "en": "column label",
+    },
+    "column type": {
+        "fr": "type",
+        "en": "column type",
+    },
+    "filled": {
+        "fr": "remplies",
+        "en": "filled",
+    },
+    "distinct": {
+        "fr": "distinctes",
+        "en": "distinct",
+    },
+    "examples": {
+        "fr": "exemples",
+        "en": "examples",
+    },
+    "row no": {
+        "fr": "ligne",
+        "en": "row no",
+    },
+    "first values": {
+        "fr": "premières valeurs",
+        "en": "first values",
+    },
+    "measures": {
+        "fr": "mesures",
+        "en": "measures",
+    },
+    "sig type": {
+        "fr": "type",
+        "en": "sig type",
+    },
+    "off-col": {
+        "fr": "hors-col",
+        "en": "off-col",
+    },
+    "shape": {
+        "fr": "forme",
+        "en": "shape",
+    },
+    "Toggle the current row": {
+        "fr": "Cocher ou décocher la ligne courante",
+        "en": "Toggle the current row",
+    },
+    "Leave this column untouched": {
+        "fr": "Laisser cette colonne intacte",
+        "en": "Leave this column untouched",
+    },
+    "Clear this sheet": {
+        "fr": "Rendre cette feuille à la mesure",
+        "en": "Clear this sheet",
+    },
+    "Accept": {
+        "fr": "Accepter",
+        "en": "Accept",
+    },
+    "Fall back to text prompts": {
+        "fr": "Revenir aux invites textuelles",
+        "en": "Fall back to text prompts",
+    },
+    "[x] untouched · [!] floored · * corrected · = from the batch table": {
+        "fr": "[x] intacte · [!] planchéiée · * corrigée · = de la table du lot",
+        "en": "[x] untouched · [!] floored · * corrected · = from the batch table",
+    },
+    "[x] untouched · [!] floored, not answerable": {
+        "fr": "[x] intacte · [!] planchéiée, non répondable",
+        "en": "[x] untouched · [!] floored, not answerable",
+    },
+    "This column is floored: no answer applies.": {
+        "fr": "Cette colonne est planchéiée : aucune réponse n'y porte.",
+        "en": "This column is floored: no answer applies.",
+    },
+    "The screen needs textual; falling back to prompts.": {
+        "fr": "L'écran demande textual ; retour aux invites.",
+        "en": "The screen needs textual; falling back to prompts.",
+    },
+    "Preview — nothing written yet": {
+        "fr": "Aperçu — rien n'est encore écrit",
+        "en": "Preview — nothing written yet",
+    },
+    "Write? (Y/n): ": {
+        "fr": "Écrire ? (O/n) : ",
+        "en": "Write? (Y/n): ",
+    },
+    "Destination": {
+        "fr": "Destination",
+        "en": "Destination",
+    },
+    "Enter to accept, p to browse, or type a path: ": {
+        "fr": "Entrée pour accepter, p pour parcourir, ou taper un chemin : ",
+        "en": "Enter to accept, p to browse, or type a path: ",
+    },
+    "Written: ": {
+        "fr": "Écrit : ",
+        "en": "Written: ",
+    },
+    "cell(s) replaced": {
+        "fr": "cellule(s) remplacée(s)",
+        "en": "cell(s) replaced",
+    },
+    "cell(s) left out of scope": {
+        "fr": "cellule(s) laissée(s) hors portée",
+        "en": "cell(s) left out of scope",
+    },
+    "element(s) outside cells wiped": {
+        "fr": "élément(s) hors cellules effacé(s)",
+        "en": "element(s) outside cells wiped",
+    },
+    "column(s) left alone: they hold identifiers": {
+        "fr": "colonne(s) laissée(s) : elles portent des identifiants",
+        "en": "column(s) left alone: they hold identifiers",
+    },
+    "The original was not modified.": {
+        "fr": "L'original n'a pas été modifié.",
+        "en": "The original was not modified.",
+    },
+    "These files would be overwritten: ": {
+        "fr": "Ces fichiers seraient écrasés : ",
+        "en": "These files would be overwritten: ",
+    },
+    "This file already exists. Type its name in full to overwrite: ": {
+        "fr": "Ce fichier existe déjà. Taper son nom en entier pour l'écraser : ",
+        "en": "This file already exists. Type its name in full to overwrite: ",
+    },
+    "Name does not match, nothing was written.": {
+        "fr": "Le nom ne correspond pas, rien n'a été écrit.",
+        "en": "Name does not match, nothing was written.",
+    },
+    "Mapping table written: ": {
+        "fr": "Table de correspondance écrite : ",
+        "en": "Mapping table written: ",
+    },
+    "This table re-identifies the copy; keep it in private/.": {
+        "fr": "Cette table ré-identifie la copie ; la garder dans private/.",
+        "en": "This table re-identifies the copy; keep it in private/.",
+    },
+    "The file name is not anonymised; the default does not reuse it.": {
+        "fr": "Le nom du fichier n'est pas anonymisé ; le défaut ne le reprend pas.",
+        "en": "The file name is not anonymised; the default does not reuse it.",
+    },
+    "Delete all copies in private/transform/? (y/N): ": {
+        "fr": "Supprimer toutes les copies de private/transform/ ? (o/N) : ",
+        "en": "Delete all copies in private/transform/? (y/N): ",
+    },
+    "private/ is tracked by git — this file will show in « git status ».": {
+        "fr": "private/ est suivi par git — ce fichier apparaîtra dans « git status ».",
+        "en": "private/ is tracked by git — this file will show in « git status ».",
+    },
+    "Cached formula results are dropped; the sheet recomputes on open.": {
+        "fr": "Les résultats de formule en cache sont perdus ; la feuille recalcule à l'ouverture.",
+        "en": "Cached formula results are dropped; the sheet recomputes on open.",
+    },
+    "Document properties were cleared on the copy.": {
+        "fr": "Les propriétés du document ont été vidées sur la copie.",
+        "en": "Document properties were cleared on the copy.",
+    },
+    "Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.": {
+        "fr": "Les tableaux croisés et les caches de graphique sont supprimés : ils portent une copie non anonymisée de la source.",
+        "en": "Pivot tables and chart caches are removed: they hold an unanonymised copy of the source.",
+    },
+    "Images and drawings are not carried over to the copy.": {
+        "fr": "Les images et les dessins ne sont pas repris dans la copie.",
+        "en": "Images and drawings are not carried over to the copy.",
+    },
+    "Charts are not carried over to the copy.": {
+        "fr": "Les graphiques ne sont pas repris dans la copie.",
+        "en": "Charts are not carried over to the copy.",
+    },
+    "Charts are kept: their caches are cleaned through private attributes.": {
+        "fr": "Les graphiques sont conservés : leurs caches sont nettoyés par des attributs privés.",
+        "en": "Charts are kept: their caches are cleaned through private attributes.",
+    },
+    "External links were dropped; formulas that used them show #REF!.": {
+        "fr": "Les liens externes sont retirés ; les formules qui s'en servaient affichent #REF!.",
+        "en": "External links were dropped; formulas that used them show #REF!.",
+    },
+    "Range and table names are kept so formulas resolve; they may hold identifying strings.": {
+        "fr": "Les noms de plages et de tableaux sont conservés pour que les formules résolvent ; ils peuvent porter des chaînes identifiantes.",
+        "en": "Range and table names are kept so formulas resolve; they may hold identifying strings.",
+    },
+    "Sheet names are kept so formulas resolve; they may identify.": {
+        "fr": "Les noms de feuille sont conservés pour que les formules résolvent ; ils peuvent identifier.",
+        "en": "Sheet names are kept so formulas resolve; they may identify.",
+    },
+    "The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.": {
+        "fr": "Le projet VBA et ce qui l'accompagne (contrôles de formulaire, ActiveX, formes VML, ruban, images EMF) sont recopiés tels quels et n'ont pas été relus.",
+        "en": "The VBA project and its companions (form controls, ActiveX, VML shapes, ribbon, EMF images) are copied as they are and were not reviewed.",
+    },
+    "Format not recognised: ": {
+        "fr": "Format non reconnu : ",
+        "en": "Format not recognised: ",
+    },
+    "Recognised format, unreadable here — re-save it as .xlsx.": {
+        "fr": "Format reconnu, illisible ici — le ré-enregistrer en .xlsx.",
+        "en": "Recognised format, unreadable here — re-save it as .xlsx.",
+    },
+    "Protected by a password, or not a workbook — unreadable here.": {
+        "fr": "Protégé par un mot de passe, ou pas un classeur — illisible ici.",
+        "en": "Protected by a password, or not a workbook — unreadable here.",
+    },
+    "Empty file.": {
+        "fr": "Fichier vide.",
+        "en": "Empty file.",
+    },
+    "Not readable: check the permissions.": {
+        "fr": "Illisible : vérifier les droits.",
+        "en": "Not readable: check the permissions.",
+    },
+    "Not an ordinary file.": {
+        "fr": "Pas un fichier ordinaire.",
+        "en": "Not an ordinary file.",
+    },
+    "The destination is the source file; nothing was written.": {
+        "fr": "La destination est le fichier source ; rien n'a été écrit.",
+        "en": "The destination is the source file; nothing was written.",
+    },
+    "The destination directory exists and is not empty.": {
+        "fr": "Le répertoire de destination existe et n'est pas vide.",
+        "en": "The destination directory exists and is not empty.",
+    },
+    "The selection matches no sheet; nothing was written.": {
+        "fr": "La sélection ne correspond à aucune feuille ; rien n'a été écrit.",
+        "en": "The selection matches no sheet; nothing was written.",
+    },
+    "Nothing was anonymised: every region was excluded.": {
+        "fr": "Rien n'a été anonymisé : toutes les régions ont été exclues.",
+        "en": "Nothing was anonymised: every region was excluded.",
+    },
+    "Nothing to anonymise in this file.": {
+        "fr": "Rien à anonymiser dans ce fichier.",
+        "en": "Nothing to anonymise in this file.",
+    },
+    "Not enough room to write.": {
+        "fr": "Pas assez de place pour écrire.",
+        "en": "Not enough room to write.",
+    },
+    # Transform data - correctifs de fuite
+    "A source value survives in the copy; nothing was written: ": {
+        "fr": "Une valeur de la source subsiste dans la copie ; rien n'a été écrit : ",
+        "en": "A source value survives in the copy; nothing was written: ",
+    },
+    "The mapping table would overwrite the source or the copy; nothing was written.": {
+        "fr": "La table de correspondance écraserait la source ou la copie ; rien n'a été écrit.",
+        "en": "The mapping table would overwrite the source or the copy; nothing was written.",
+    },
+    "Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.": {
+        "fr": "Les feuilles hors de la sélection sont retirées de la copie ; les formules qui les référençaient affichent #REF!.",
+        "en": "Sheets outside the selection are dropped from the copy; formulas that referenced them show #REF!.",
+    },
+    "Chart sheets are dropped from the copy: their titles and series caches are not cells.": {
+        "fr": "Les feuilles graphiques sont retirées de la copie : leurs titres et leurs caches de série ne sont pas des cellules.",
+        "en": "Chart sheets are dropped from the copy: their titles and series caches are not cells.",
+    },
+    "Object keys are kept as structure; they may identify.": {
+        "fr": "Les clés d'objet sont conservées comme structure ; elles peuvent identifier.",
+        "en": "Object keys are kept as structure; they may identify.",
+    },
+    "Element and attribute names are kept as structure; they may identify.": {
+        "fr": "Les noms de balise et d'attribut sont conservés comme structure ; ils peuvent identifier.",
+        "en": "Element and attribute names are kept as structure; they may identify.",
+    },
+    "The mapping table is unreadable, or is not a mapping table: ": {
+        "fr": "La table de correspondance est illisible, ou n'est pas une table de correspondance : ",
+        "en": "The mapping table is unreadable, or is not a mapping table: ",
+    },
+    "Leave the mapping table question empty to create a new one.": {
+        "fr": "Laisser vide la question de la table pour en créer une neuve.",
+        "en": "Leave the mapping table question empty to create a new one.",
+    },
+    "A table of that name exists; using a new one.": {
+        "fr": "Une table de ce nom existe ; une neuve est prise.",
+        "en": "A table of that name exists; using a new one.",
+    },
+    "column(s) entirely in clear": {
+        "fr": "colonne(s) entièrement en clair",
+        "en": "column(s) entirely in clear",
+    },
+    "column(s) without examples": {
+        "fr": "colonne(s) sans exemple",
+        "en": "column(s) without examples",
+    },
+    "These cells are copied verbatim:": {
+        "fr": "Ces cellules sont recopiées telles quelles :",
+        "en": "These cells are copied verbatim:",
+    },
+    "more, not listed": {
+        "fr": "autres, non listées",
+        "en": "more, not listed",
+    },
+    "Correct the header rows to anonymise them.": {
+        "fr": "Corriger les lignes d'en-tête pour les anonymiser.",
+        "en": "Correct the header rows to anonymise them.",
+    },
+    "Mapping table: ": {
+        "fr": "Table de correspondance : ",
+        "en": "Mapping table: ",
+    },
+    "value(s) not verified, above the cap": {
+        "fr": "valeur(s) non vérifiée(s), au-delà du plafond",
+        "en": "value(s) not verified, above the cap",
+    },
+    "Not produced here, left alone:": {
+        "fr": "Non produit ici, laissé en place :",
+        "en": "Not produced here, left alone:",
+    },
+    "The library here cannot read this file: ": {
+        "fr": "La bibliothèque ne sait pas lire ce fichier ici : ",
+        "en": "The library here cannot read this file: ",
+    },
+    "This target cannot hold the source's shape: ": {
+        "fr": "Cette cible ne peut pas porter la forme de la source : ",
+        "en": "This target cannot hold the source's shape: ",
+    },
 }
 
 

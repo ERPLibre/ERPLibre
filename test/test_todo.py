@@ -2,14 +2,19 @@
 # © 2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import ast
+import builtins
+import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+from script.todo import todo_i18n
 from script.todo.todo import (
     ANDROID_DIR,
     CONFIG_FILE,
@@ -804,6 +809,294 @@ class TestModuleLevelAbortExit(unittest.TestCase):
         result = self._run_todo("")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Traceback", result.stderr)
+
+
+class TestOptionsDeLAnonymiseur(unittest.TestCase):
+    """Le mode, les listes, et les deux options qui suivent.
+
+    La garde de la liste blanche appartient à la question des MODÈLES :
+    c'est le `elif` de son `if`. Une question insérée entre les deux la
+    rattache à la dernière posée, si bien qu'elle refuse selon une
+    réponse qui n'est pas la sienne et laisse passer une liste blanche
+    vide — laquelle n'anonymise rien, en l'annonçant comme un succès.
+
+    Les cinq chemins du mode sont couverts ici, plus le fichier de mots
+    introuvable.
+    """
+
+    def setUp(self):
+        from script.todo.todo import TODO
+
+        self.todo = TODO.__new__(TODO)
+        self.vrai_input = builtins.input
+        self.addCleanup(setattr, builtins, "input", self.vrai_input)
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+
+    def _repondre(self, mode, *reponses):
+        import script.todo.todo as module
+
+        suite = iter(reponses)
+        builtins.input = lambda invite="": next(suite)
+        vrai = module.click.prompt
+        module.click.prompt = lambda *a, **k: mode
+        self.addCleanup(setattr, module.click, "prompt", vrai)
+        return self.todo._monitoring_anonymize_options()
+
+    def test_une_liste_blanche_sans_modele_est_REFUSEE(self):
+        """Elle ne ferait rien : le dire vaut mieux que la lancer."""
+        self.assertIsNone(self._repondre("2", "", "n", "n", ""))
+
+    def test_une_liste_blanche_avec_un_modele_passe(self):
+        self.assertEqual(
+            self._repondre("2", "res.partner", "n", "n", ""),
+            ["--mode", "whitelist", "--models", "res.partner"],
+        )
+
+    def test_l_hybride_sans_modele_passe(self):
+        """Ses défauts SONT sa liste : rien à nommer."""
+        self.assertEqual(
+            self._repondre("1", "", "n", "n", ""), ["--mode", "hybrid"]
+        )
+
+    def test_les_deux_options_suivent_le_mode(self):
+        self.assertEqual(
+            self._repondre("1", "", "o", "o", ""),
+            ["--mode", "hybrid", "--include-logins", "--keep-digits"],
+        )
+
+    def test_la_liste_noire_exclut(self):
+        self.assertEqual(
+            self._repondre("3", "res.users", "n", "n", ""),
+            ["--mode", "blacklist", "--exclude", "res.users"],
+        )
+
+    def test_un_mode_inconnu_renonce(self):
+        self.assertIsNone(self._repondre("9"))
+
+    def test_un_fichier_de_mots_introuvable_est_REFUSE(self):
+        """Le lancer produirait une trace au lieu d'un message."""
+        self.assertIsNone(
+            self._repondre("1", "", "n", "n", "/nexistepas/mots.py")
+        )
+
+
+class TestAttributsDeTODO(unittest.TestCase):
+    """Tout `self.X` que `TODO` LIT est-il posé par TODO ou un mixin ?
+
+    Un attribut mal orthographié ne lève qu'à l'exécution de l'entrée qui
+    le touche : `self._execute` là où `TODO` pose `self.execute` traverse
+    tout contrôle statique et attend l'opérateur.
+
+    Le nom se cherche dans les classes dont TODO HÉRITE, et nulle part
+    ailleurs : `DatabaseManager` pose bien `_execute`, si bien que le
+    chercher dans tout `script/todo/` le trouve et ne voit rien. Un
+    bouchon de test qui fournit l'attribut masque la faute de la même
+    façon.
+    """
+
+    RACINE = Path(__file__).resolve().parents[1] / "script" / "todo"
+
+    @staticmethod
+    def _noms_de_classe(classe):
+        """Méthodes et attributs que cette classe POSE."""
+        noms = set()
+        for noeud in ast.walk(classe):
+            if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                noms.add(noeud.name)
+            if (
+                isinstance(noeud, ast.Attribute)
+                and isinstance(noeud.value, ast.Name)
+                and noeud.value.id == "self"
+                and isinstance(noeud.ctx, ast.Store)
+            ):
+                noms.add(noeud.attr)
+        for corps in classe.body:
+            if isinstance(corps, ast.Assign):
+                for cible in corps.targets:
+                    if isinstance(cible, ast.Name):
+                        noms.add(cible.id)
+        return noms
+
+    def _classe_todo(self):
+        source = (self.RACINE / "todo.py").read_text(encoding="utf-8")
+        arbre = ast.parse(source)
+        return next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.ClassDef) and n.name == "TODO"
+        )
+
+    def test_aucun_attribut_lu_sans_etre_pose(self):
+        todo = self._classe_todo()
+        bases = {b.id for b in todo.bases if isinstance(b, ast.Name)}
+        self.assertGreater(len(bases), 5, "TODO est composé de mixins")
+        poses = self._noms_de_classe(todo)
+        trouvees = set()
+        for chemin in sorted(self.RACINE.rglob("*.py")):
+            try:
+                arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            except SyntaxError:  # pragma: no cover - fichier en travaux
+                continue
+            for noeud in ast.walk(arbre):
+                if isinstance(noeud, ast.ClassDef) and noeud.name in bases:
+                    poses |= self._noms_de_classe(noeud)
+                    trouvees.add(noeud.name)
+        # Une base introuvable rendrait le contrôle muet : ses noms
+        # manqueraient, et tout ce qu'elle pose passerait pour orphelin.
+        self.assertEqual(bases - trouvees, set(), "base introuvable")
+        lus = {
+            noeud.attr
+            for noeud in ast.walk(todo)
+            if isinstance(noeud, ast.Attribute)
+            and isinstance(noeud.value, ast.Name)
+            and noeud.value.id == "self"
+            and isinstance(noeud.ctx, ast.Load)
+        }
+        self.assertEqual(sorted(lus - poses), [])
+
+
+class TestLeFluxQuiEcrit(unittest.TestCase):
+    """`_monitoring_write_flow` : les codes de sortie sont un CONTRAT.
+
+    La marche à blanc rend 2 pour un refus, 1 quand il y a du travail, et
+    0 quand il n'y a RIEN à anonymiser. Ne distinguer que le 2 fait
+    confirmer puis « appliquer » un plan vide : l'appelant tire alors une
+    sauvegarde de la base INTACTE et l'annonce anonymisée.
+    """
+
+    def setUp(self):
+        from script.analyse import monitoring
+
+        self.todo = TODO.__new__(TODO)
+        self.todo._monitoring_anonymize_options = lambda: ["--mode", "hybrid"]
+        self.monitoring = monitoring
+        self.addCleanup(
+            setattr, monitoring, "run_analysis", monitoring.run_analysis
+        )
+        self.addCleanup(setattr, builtins, "input", builtins.input)
+        self.sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = self.sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+        self.appels = []
+
+    def _codes(self, *codes):
+        """Les codes que la marche à blanc puis l'écriture rendront."""
+        suite = iter(codes)
+
+        def faux(analyse, database, **kw):
+            self.appels.append(list(kw.get("extra") or []))
+            return next(suite)
+
+        self.monitoring.run_analysis = faux
+
+    def _taper(self, *reponses):
+        suite = iter(reponses)
+        builtins.input = lambda invite="": next(suite)
+
+    def _dit(self, cle):
+        return todo_i18n.t(cle) in self.sortie.getvalue()
+
+    def test_un_plan_vide_ne_se_fait_pas_confirmer(self):
+        """Retaper le nom d'une base qu'on ne touchera pas obtient un
+        consentement sans objet."""
+        self._codes(0)
+        self._taper()  # aucune invite ne doit être posée
+        self.assertIs(False, self.todo._monitoring_write_flow({}, "base"))
+        self.assertEqual(1, len(self.appels))
+
+    def test_un_plan_vide_le_DIT(self):
+        self._codes(0)
+        self.todo._monitoring_write_flow({}, "base")
+        self.assertTrue(self._dit("Nothing to anonymise: nothing to confirm."))
+
+    def test_un_refus_de_la_marche_a_blanc_arrete(self):
+        self._codes(2)
+        self.assertIs(False, self.todo._monitoring_write_flow({}, "base"))
+        self.assertEqual(1, len(self.appels))
+
+    def test_du_travail_annonce_demande_le_nom_puis_ecrit(self):
+        self._codes(3, 0)
+        self._taper("base")
+        self.assertIs(True, self.todo._monitoring_write_flow({}, "base"))
+        self.assertEqual(2, len(self.appels))
+        self.assertIn("--apply", self.appels[1])
+        self.assertIn("--confirm", self.appels[1])
+
+    def test_un_nom_mal_retape_n_ecrit_rien(self):
+        self._codes(3)
+        self._taper("bas")
+        self.assertIs(False, self.todo._monitoring_write_flow({}, "base"))
+        self.assertEqual(1, len(self.appels))
+
+    def test_une_ecriture_en_erreur_rend_FAUX(self):
+        """L'appelant ne doit pas tirer de sauvegarde derrière."""
+        self._codes(3, 2)
+        self._taper("base")
+        self.assertIs(False, self.todo._monitoring_write_flow({}, "base"))
+
+    def test_renoncer_aux_options_n_appelle_rien(self):
+        self.todo._monitoring_anonymize_options = lambda: None
+        self._codes()
+        self.assertIs(False, self.todo._monitoring_write_flow({}, "base"))
+        self.assertEqual([], self.appels)
+
+    def test_seul_le_code_du_TRAVAIL_ouvre_la_confirmation(self):
+        """Une trace Python sort en 1. Lire « ni 0 ni 2 » comme du travail
+        faisait demander la confirmation destructrice après un plantage,
+        puis « appliquer » un plan jamais calculé."""
+        for code in (0, 1, 2, 4, 5, 127):
+            with self.subTest(code=code):
+                self._codes(code)
+                self.appels = []
+                self._taper()  # aucune invite ne doit être posée
+                self.assertIs(
+                    False, self.todo._monitoring_write_flow({}, "base")
+                )
+                self.assertEqual(1, len(self.appels))
+
+    def test_un_code_inattendu_le_DIT(self):
+        """Le refus, lui, a déjà parlé : ne pas le redoubler."""
+        self._codes(1)
+        self.todo._monitoring_write_flow({}, "base")
+        self.assertTrue(self._dit("The dry run ended on an unexpected code:"))
+        self.sortie.truncate(0)
+        self.sortie.seek(0)
+        self._codes(2)
+        self.appels = []
+        self.todo._monitoring_write_flow({}, "base")
+        self.assertFalse(self._dit("The dry run ended on an unexpected code:"))
+
+    def test_une_ecriture_SANS_EFFET_ne_vaut_pas_une_ecriture(self):
+        """Un plan devenu vide entre les deux passes rendait 0, psql
+        acceptant un script vide : l'appelant tirait alors une sauvegarde
+        de la base intacte en l'annonçant anonymisée."""
+        from script.analyse import anonymize
+
+        self._codes(3, anonymize.SORTIE_SANS_EFFET)
+        self._taper("base")
+        self.assertIs(False, self.todo._monitoring_write_flow({}, "base"))
+
+    def test_les_codes_sont_ceux_que_le_moteur_declare(self):
+        """Le contrat vit dans `anonymize`, pas en double ici."""
+        from script.analyse import anonymize
+
+        self.assertEqual(0, anonymize.SORTIE_RIEN)
+        self.assertEqual(2, anonymize.SORTIE_REFUS)
+        self.assertEqual(3, anonymize.SORTIE_A_FAIRE)
+        self.assertEqual(4, anonymize.SORTIE_SANS_EFFET)
+        self.assertNotIn(
+            1,
+            (
+                anonymize.SORTIE_RIEN,
+                anonymize.SORTIE_REFUS,
+                anonymize.SORTIE_A_FAIRE,
+                anonymize.SORTIE_SANS_EFFET,
+            ),
+        )
 
 
 if __name__ == "__main__":

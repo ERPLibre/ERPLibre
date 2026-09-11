@@ -40,6 +40,7 @@ from script.todo.qemu_menu import QemuMenuMixin
 from script.todo.qemu_network import QemuNetworkMixin
 from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
+from script.todo.transform_menu import TransformMenuMixin
 from script.todo.version_manager import get_odoo_version
 from script.todo.vpn_menu import VpnMenuMixin
 
@@ -104,6 +105,7 @@ class TODO(
     QemuAccessMixin,
     ProxmoxMenuMixin,
     LongTestMenuMixin,
+    TransformMenuMixin,
     VpnMenuMixin,
     AssistantMenuMixin,
 ):
@@ -235,22 +237,23 @@ class TODO(
 ── {t("Data")} ──
 [6] {t("Database - Database tools")}
 [7] {t("Analyse - Odoo database analysis")}
+[8] {t("Transform data - Transform your data")}
 
 ── {t("Sources & documentation")} ──
-[8] {t("Git - Git and shell tools")}
-[9] {t("Doc - Documentation search")}
+[9] {t("Git - Git and shell tools")}
+[10] {t("Doc - Documentation search")}
 
 ── {t("AI & automation")} ──
-[10] {t("GPT code - AI assistant tools")}
-[11] {t("Automation - Demonstration of developed features")}
+[11] {t("GPT code - AI assistant tools")}
+[12] {t("Automation - Demonstration of developed features")}
 
 ── {t("Deployment, network & security")} ──
-[12] {t("Deploy - Deploy ERPLibre locally")}
-[13] {t("Network - Network tools")}
-[14] {t("Security - Dependency security audit")}
+[13] {t("Deploy - Deploy ERPLibre locally")}
+[14] {t("Network - Network tools")}
+[15] {t("Security - Dependency security audit")}
 
 ── {t("Preferences")} ──
-[15] {t("Language - Change language / Changer la langue")}
+[16] {t("Language - Change language / Changer la langue")}
 [0] {t("Back")}
 """
         while True:
@@ -287,34 +290,38 @@ class TODO(
                 if status is not False:
                     return
             elif status == "8":
-                status = self.prompt_execute_git()
+                status = self.prompt_execute_transform()
                 if status is not False:
                     return
             elif status == "9":
-                status = self.prompt_execute_doc()
+                status = self.prompt_execute_git()
                 if status is not False:
                     return
             elif status == "10":
-                status = self.prompt_execute_gpt_code()
+                status = self.prompt_execute_doc()
                 if status is not False:
                     return
             elif status == "11":
-                status = self.prompt_execute_function()
+                status = self.prompt_execute_gpt_code()
                 if status is not False:
                     return
             elif status == "12":
-                status = self.prompt_execute_deploy()
+                status = self.prompt_execute_function()
                 if status is not False:
                     return
             elif status == "13":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_deploy()
                 if status is not False:
                     return
             elif status == "14":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "15":
+                status = self.prompt_execute_security()
+                if status is not False:
+                    return
+            elif status == "16":
                 status = self._change_language()
                 if status is not False:
                     return
@@ -584,6 +591,7 @@ class TODO(
         "prompt_execute_config": "Config",
         "prompt_execute_database": "Database",
         "prompt_execute_analyse": "Analyse",
+        "prompt_execute_transform": "Transform data",
         "prompt_execute_doc": "Doc",
         "prompt_execute_git": "Git",
         "prompt_execute_git_local_server": "Git local server",
@@ -4453,15 +4461,38 @@ class TODO(
         La confirmation redemande le NOM de la base. Une frappe sur « o »
         se tape par réflexe ; recopier un nom long oblige à regarder ce
         qu'on détruit.
+
+        Rend VRAI seulement si l'écriture a eu lieu. L'appelant qui tire
+        une sauvegarde derrière en a besoin : sans distinction, un
+        renoncement produisait un zip de la base NON anonymisée, annoncé
+        comme le résultat d'une anonymisation.
+
+        Les codes de sortie de la marche à blanc sont un CONTRAT, et le
+        travail s'annonce par un code À LUI — voir `anonymize.SORTIE_*`.
+        Lire « tout ce qui n'est ni 0 ni 2 » comme du travail faisait
+        demander la confirmation destructrice après une trace Python,
+        laquelle sort en 1, puis « appliquer » un plan jamais calculé.
         """
-        from script.analyse import monitoring
+        from script.analyse import anonymize, monitoring
 
         choix = self._monitoring_anonymize_options()
         if choix is None:
-            return
+            return False
         print()
-        if monitoring.run_analysis(analyse, database, extra=choix) == 2:
-            return
+        code = monitoring.run_analysis(analyse, database, extra=choix)
+        if code != anonymize.SORTIE_A_FAIRE:
+            if code == anonymize.SORTIE_RIEN:
+                # Demander de retaper le nom d'une base qu'on ne touchera
+                # pas obtient un consentement sans objet, et l'appelant
+                # tirait ensuite une sauvegarde de la base INTACTE en
+                # l'annonçant anonymisée.
+                print(f"↩️  {t('Nothing to anonymise: nothing to confirm.')}")
+            elif code != anonymize.SORTIE_REFUS:
+                print(
+                    f"❌ {t('The dry run ended on an unexpected code:')}"
+                    f" {code}"
+                )
+            return False
         print()
         print(
             f"⚠️  {t('This DESTROYS the data of')} '{database}'"
@@ -4472,9 +4503,17 @@ class TODO(
         ).strip()
         if tape != database:
             print(f"↩️  {t('Cancelled: nothing was written.')}")
-            return
-        monitoring.run_analysis(
-            analyse, database, extra=choix + ["--apply", "--confirm", database]
+            return False
+        # SEUL le code de succès vaut « l'écriture a eu lieu » : un plan
+        # devenu vide entre les deux passes rend SORTIE_SANS_EFFET, et non
+        # le 0 que psql donnait sur un script vide.
+        return (
+            monitoring.run_analysis(
+                analyse,
+                database,
+                extra=choix + ["--apply", "--confirm", database],
+            )
+            == anonymize.SORTIE_RIEN
         )
 
     def _monitoring_anonymize_options(self):
@@ -4501,6 +4540,18 @@ class TODO(
         elif mode == "whitelist":
             print(f"❌ {t('A whitelist with no model would do nothing.')}")
             return None
+        # Les logins RESTENT par défaut : on anonymise pour pouvoir
+        # partager une copie UTILISABLE, et tout randomiser empêcherait
+        # quiconque de s'y connecter.
+        if self._is_yes(input(f"💬 {t('Anonymise the logins too? (y/N): ')}")):
+            extra.append("--include-logins")
+        # Le calibre échange une garantie contre une autre : l'étendue
+        # mesurée protège les bornes que le CODE d'Odoo impose — une heure
+        # de la journée, une probabilité — et la largeur sert un export
+        # relu à l'œil. L'invite le dit avant de demander.
+        print(f"   {t('Keeping the digit count drops the measured extent.')}")
+        if self._is_yes(input(f"💬 {t('Keep the digit count? (y/N): ')}")):
+            extra.append("--keep-digits")
         mots = input(
             f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
         ).strip()
@@ -4641,8 +4692,16 @@ class TODO(
         if neutralise != "n":
             more_arg = "--neutralize "
             database += "_neutralize"
+        else:
+            # Refuser est un choix légitime — reproduire un bug de cron
+            # sur une copie en est un — mais il faut savoir ce que la
+            # copie pourra faire depuis cette machine.
+            print(
+                f"⚠  {t('Not neutralized: this copy can send mail and run')}"
+                f" {t('its crons from this machine.')}"
+            )
 
-        status, _ = self._execute.exec_command_live(
+        status, _ = self.execute.exec_command_live(
             f"python3 ./script/database/db_restore.py -d {database} "
             f"{more_arg}--ignore_cache --image {image}",
             return_status_and_output=True,
@@ -4653,7 +4712,7 @@ class TODO(
             print(f"❌ {t('The restore failed.')}")
             return None
         if more_arg:
-            status, _ = self._execute.exec_command_live(
+            status, _ = self.execute.exec_command_live(
                 f"./script/addons/update_prod_to_dev.sh {database}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
