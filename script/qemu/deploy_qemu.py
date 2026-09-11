@@ -1683,24 +1683,38 @@ APT_MIRRORS_MAIN = [
 PORTS_ARCHES = ("s390x", "arm64", "aarch64", "ppc64el", "riscv64")
 
 
-def apt_mirror_lines(arch: str, override: str | None = None) -> list[str]:
+def apt_mirror_lines(
+    arch: str, override: str | None = None, fixe: bool = False
+) -> list[str]:
     """Bloc « apt: » du cloud-config, ou [] si rien à écrire.
 
     Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
     « search » y écrirait des URI qui n'existent pas.
+
+    Un miroir imposé (« override »), ou le premier de la liste quand « fixe »
+    est vrai, s'écrit « uri: » et non « search: ». La recherche de cloud-init
+    écarte tout miroir dont le nom se résout comme un nom inexistant :
+    derrière un résolveur qui répond à tout nom, elle les écarte tous et
+    retombe sur le dépôt officiel. Le cache range les index sous leur hôte,
+    si bien qu'une VM derrière lui doit tirer du même miroir que les
+    précédentes pour retrouver ce qu'elles ont gardé, en ligne comme hors
+    ligne.
     """
     mirrors = (
         [override]
         if override
         else (APT_MIRRORS_PORTS if arch in PORTS_ARCHES else APT_MIRRORS_MAIN)
     )
-    lines = ["apt:", "  primary:", "    - arches: [default]", "      search:"]
-    lines += [f"        - {m}" for m in mirrors]
+
+    def bloc(nom):
+        tete = [f"  {nom}:", "    - arches: [default]"]
+        if override or fixe:
+            return tete + [f"      uri: {mirrors[0]}"]
+        return tete + ["      search:"] + [f"        - {m}" for m in mirrors]
+
     # La sécurité suit le même dépôt pour les arches ports ; sur amd64 elle a
     # son propre hôte, que les miroirs répliquent sous le même chemin.
-    lines += ["  security:", "    - arches: [default]", "      search:"]
-    lines += [f"        - {m}" for m in mirrors]
-    return lines
+    return ["apt:"] + bloc("primary") + bloc("security")
 
 
 def kvm_available() -> bool:
@@ -2819,7 +2833,9 @@ def build_cloud_config(
     lines.append(f"timezone: {args.timezone}")
     if getattr(args, "distro", "ubuntu") == "ubuntu":
         lines += apt_mirror_lines(
-            getattr(args, "arch", "amd64"), getattr(args, "apt_mirror", None)
+            getattr(args, "arch", "amd64"),
+            getattr(args, "apt_mirror", None),
+            fixe=bool(getattr(args, "cache_ca", None)),
         )
     lines += [
         "keyboard:",
