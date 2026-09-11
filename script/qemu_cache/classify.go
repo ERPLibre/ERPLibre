@@ -6,6 +6,7 @@ package main
 import (
 	"net/url"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -76,6 +77,27 @@ var volatileSuffixes = []string{
 	".xml.gz", ".xml.zck", ".sqlite.bz2", ".sqlite.gz",
 }
 
+// parEmpreinte reconnaît un index Debian publié sous l'empreinte de son
+// contenu : « …/by-hash/SHA256/<hexadécimal> ». Le nom EST la somme du
+// contenu, si bien qu'un contenu différent porte un autre nom : le fichier est
+// aussi figé qu'un paquet, quoiqu'il n'ait aucune extension.
+//
+// Il reste attaché à son hôte : le même chemin ne désigne le même octet que
+// si le miroir publie la même suite, ce que le nom seul ne garantit pas.
+var parEmpreinte = regexp.MustCompile(
+	`/by-hash/(MD5Sum|SHA1|SHA256|SHA512)/[0-9a-fA-F]{32,128}$`)
+
+// dernierePublication reconnaît « /<propriétaire>/<dépôt>/releases/latest/
+// download/<fichier> » : un POINTEUR vers la dernière version publiée, dont
+// la cible change à chaque publication.
+//
+// Son suffixe — « .tar.gz », « .zip » — le ferait passer pour figé : servi du
+// disque sans jamais redemander, il resterait à la première version vue, et
+// rangé sans son hôte il répondrait pour n'importe quelle forge. Il est donc
+// volatile et attaché à son hôte, et la règle passe AVANT les suffixes.
+var dernierePublication = regexp.MustCompile(
+	`^/[^/]+/[^/]+/releases/latest/download/[^/]+$`)
+
 // Chemins du protocole « smart HTTP » de git. Ce sont des points de
 // NÉGOCIATION : le serveur calcule sa réponse en fonction de ce que le client
 // détient déjà. Rien n'y est réutilisable d'une requête à l'autre, et servir
@@ -127,6 +149,14 @@ func Classify(u *url.URL) Class {
 	if u.RawQuery != "" {
 		return ClassVolatile
 	}
+	// Les deux règles de CHEMIN l'emportent sur celles du nom : l'une porte un
+	// suffixe figé qui ment, l'autre n'en porte aucun et dit pourtant vrai.
+	if dernierePublication.MatchString(u.Path) {
+		return ClassVolatile
+	}
+	if parEmpreinte.MatchString(u.Path) {
+		return ClassImmutable
+	}
 	for _, n := range volatileNames {
 		if name == n {
 			return ClassVolatile
@@ -157,6 +187,10 @@ func Classify(u *url.URL) Class {
 // reste : « /index.html » n'identifie rien.
 func PortableParChemin(u *url.URL) bool {
 	if u == nil || u.RawQuery != "" {
+		return false
+	}
+	if dernierePublication.MatchString(u.Path) ||
+		parEmpreinte.MatchString(u.Path) {
 		return false
 	}
 	name := strings.ToLower(path.Base(u.Path))

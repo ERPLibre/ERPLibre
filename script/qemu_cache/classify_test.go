@@ -5,6 +5,7 @@ package main
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -171,5 +172,57 @@ func TestLesObjetsGitRestentCachables(t *testing.T) {
 func TestEstGitSmartURLNulle(t *testing.T) {
 	if EstGitSmart(nil) {
 		t.Error("une URL absente est prise pour du git")
+	}
+}
+
+// Un index Debian publié sous l'empreinte de son contenu est aussi figé
+// qu'un paquet : son nom EST sa somme. Il reste attaché à son hôte.
+func TestLesIndexParEmpreinteSontImmuables(t *testing.T) {
+	sha256 := strings.Repeat("0123456789abcdef", 4)
+	md5 := strings.Repeat("0123456789abcdef", 2)
+	for _, brut := range []string{
+		"https://miroir.example/debian/dists/trixie/main/binary-amd64/by-hash/SHA256/" + sha256,
+		"https://miroir.example/debian/dists/trixie/main/i18n/by-hash/MD5Sum/" + md5,
+	} {
+		u, _ := url.Parse(brut)
+		if got := Classify(u); got != ClassImmutable {
+			t.Errorf("%s classé « %s », attendu « immutable »", brut, got)
+		}
+		if PortableParChemin(u) {
+			t.Errorf("%s jugé portable", brut)
+		}
+	}
+	// Ce qui n'est pas une empreinte garde la règle d'avant.
+	for _, brut := range []string{
+		"https://miroir.example/debian/dists/trixie/by-hash/SHA256/pas-une-somme",
+		"https://miroir.example/debian/dists/trixie/by-hash/SHA256/" + sha256 + "?v=2",
+	} {
+		u, _ := url.Parse(brut)
+		if got := Classify(u); got != ClassVolatile {
+			t.Errorf("%s classé « %s », attendu « volatile »", brut, got)
+		}
+	}
+}
+
+// Un pointeur vers la dernière version publiée change de cible à chaque
+// publication : son suffixe d'archive ne doit pas le figer sur le disque, ni
+// le ranger sans son hôte.
+func TestUnPointeurDeDerniereVersionEstVolatile(t *testing.T) {
+	for _, brut := range []string{
+		"https://forge.example/o/d/releases/latest/download/outil-x86_64-linux.tar.gz",
+		"https://forge.example/o/d/releases/latest/download/outil.zip",
+	} {
+		u, _ := url.Parse(brut)
+		if got := Classify(u); got != ClassVolatile {
+			t.Errorf("%s classé « %s », attendu « volatile »", brut, got)
+		}
+		if PortableParChemin(u) {
+			t.Errorf("%s jugé portable", brut)
+		}
+	}
+	// Une version NOMMÉE reste figée par son suffixe.
+	u, _ := url.Parse("https://forge.example/o/d/releases/download/v1.2.3/outil.tar.gz")
+	if got := Classify(u); got != ClassImmutable {
+		t.Errorf("une version nommée classée « %s », attendu « immutable »", got)
 	}
 }
