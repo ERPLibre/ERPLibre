@@ -64,6 +64,54 @@ from script.analyse import lib_analyse  # noqa: E402
 TYPES_TEXTE = ("char", "text", "html")
 TYPES_NOMBRE = ("integer", "float", "monetary")
 
+# PostgreSQL borne ses entiers par TAILLE, et garder la largeur peut viser
+# plus haut que la colonne : une valeur à 10 chiffres tire dans
+# 10⁹..9 999 999 999, quand `integer` s'arrête à 2 147 483 647 et
+# `smallint` à 32 767. Le dépassement lève, et l'écriture tenant en une
+# transaction unique, il emporte TOUTE l'anonymisation.
+#
+# La bande se RÉTRÉCIT donc au plafond, au lieu d'écraser les tirages
+# dessus : borner le tirage par `least` mettrait, sur une colonne
+# `integer` à 10 chiffres, près de huit valeurs sur dix exactement à
+# 2 147 483 647.
+PLAFOND_ENTIER = {
+    "smallint": 32767,
+    "integer": 2147483647,
+    "bigint": 9223372036854775807,
+}
+# `atttypid::regtype::text` rend le nom canonique — `integer`, jamais
+# `int4` — mais l'alias circule dans les dumps et les jeux d'essai.
+ALIAS_ENTIER = {"int2": "smallint", "int4": "integer", "int8": "bigint"}
+
+
+def type_entier(pg_type):
+    """Le nom canonique du type entier de la colonne, ou None.
+
+    Rend None pour tout ce qui n'est pas un entier borné — `numeric`,
+    `double precision`, un texte — où aucun plafond ne s'applique.
+    """
+    canon = ALIAS_ENTIER.get(pg_type, pg_type)
+    return canon if canon in PLAFOND_ENTIER else None
+
+
+def type_de_coulee(champ):
+    """Le type PostgreSQL vers lequel couler un tirage numérique.
+
+    Un `integer` d'Odoo n'implique PAS une colonne entière : une base
+    montée de version garde la colonne `numeric` qu'un champ `Float`
+    avait créée, `ir_model_fields` disant désormais `integer`. Y couler
+    en `integer` lève dès que la valeur dépasse 2 147 483 647 — et comme
+    le plafond d'`integer` bornait alors le haut d'une bande dont le bas
+    le dépassait déjà, la bande s'INVERSAIT et chaque ligne levait.
+
+    `numeric` n'a pas de plafond : un entier y reste entier par `floor`.
+    """
+    canon = type_entier(champ.get("pg_type"))
+    if champ["ttype"] == "integer":
+        return canon or "numeric"
+    return canon
+
+
 # Le plancher : aucune liste blanche ne le lève.
 PREFIXES_INTERDITS = ("ir.",)
 MODELES_INTERDITS = frozenset(
@@ -169,6 +217,16 @@ MOTS_PAR_DEFAUT = (
 
 MODES = ("whitelist", "blacklist", "hybrid")
 
+# Les codes de sortie sont un CONTRAT : le menu les lit pour décider s'il
+# tire une sauvegarde derrière l'anonymisation. Ils doivent se distinguer
+# d'une TRACE PYTHON, qui sort en 1 — lire « tout ce qui n'est ni 0 ni 2 »
+# comme du travail annoncé faisait demander la confirmation destructrice
+# après un plantage, puis « appliquer » sur un plan jamais calculé.
+SORTIE_RIEN = 0  # rien à anonymiser, ou écriture faite
+SORTIE_REFUS = 2  # refus, base illisible, écriture en erreur
+SORTIE_A_FAIRE = 3  # marche à blanc : du travail est annoncé
+SORTIE_SANS_EFFET = 4  # `--apply` n'avait rien à écrire
+
 
 def modele_interdit(modele):
     """Le plancher, en une question."""
@@ -208,15 +266,43 @@ def champ_retenu(champ, inclure_connexion=False):
 
     `champ` : dict avec model, name, ttype, pg_type, unique.
     """
+    return raison_du_refus(champ, inclure_connexion) is None
+
+
+# Pourquoi une colonne n'est pas remplacée. Le rapport n'en NOMME qu'une —
+# l'unicité numérique, la seule dont le silence laisserait partir une
+# colonne identifiante — mais la raison se LIT ici et ne se redevine pas
+# ailleurs : `id` est un entier unique, et c'est le plancher qui le
+# refuse. Redevinée depuis le type et l'unicité, elle nommait `id` sur
+# CHAQUE modèle, noyant les vrais avertissements ; et une colonne
+# `xxx_id`, sous contrainte CHECK ou en jsonb numérique, se confondait de
+# la même façon.
+REFUS_PLANCHER = "plancher"
+REFUS_CONNEXION = "connexion"
+REFUS_RELATION = "relation"
+REFUS_STRUCTURE = "structure"
+REFUS_CONTRAINTE = "contrainte"
+REFUS_JSONB_NOMBRE = "jsonb_nombre"
+REFUS_NOMBRE_UNIQUE = "nombre_unique"
+REFUS_TYPE = "type"
+
+
+def raison_du_refus(champ, inclure_connexion=False):
+    """Pourquoi ce champ n'est pas remplacé, ou None s'il l'est.
+
+    L'ORDRE des contrôles fait la réponse, et c'est la raison d'être de
+    cette fonction : plusieurs champs satisfont deux motifs à la fois, et
+    seul le PREMIER rencontré est celui qui les écarte.
+    """
     if champ["name"] in CHAMPS_INTERDITS:
-        return False
+        return REFUS_PLANCHER
     if champ["name"] in CHAMPS_CONNEXION and not inclure_connexion:
-        return False
+        return REFUS_CONNEXION
     if champ["name"].endswith("_id") or champ["name"].endswith("_ids"):
         # Une relation qui aurait échappé au filtre de ttype.
-        return False
+        return REFUS_RELATION
     if champ["name"] in CHAMPS_STRUCTURES:
-        return False
+        return REFUS_STRUCTURE
     if champ.get("checked"):
         # Une contrainte CHECK hors de portée. Mesuré, et la distinction
         # compte : sur un NOMBRE toute contrainte borne la valeur —
@@ -228,14 +314,43 @@ def champ_retenu(champ, inclure_connexion=False):
         # important de la base intact — une anonymisation qui n'anonymisait
         # pas les noms. La requête ne lève donc ce drapeau, pour du texte,
         # que sur les contraintes de FORME.
-        return False
+        return REFUS_CONTRAINTE
     if champ["ttype"] in TYPES_NOMBRE and champ.get("pg_type") == "jsonb":
         # Mesuré sur res_partner.credit_limit : un `float` d'Odoo peut
         # vivre dans un jsonb par société. Y écrire un nombre nu ferait
         # échouer l'UPDATE — et donc, transaction unique oblige, TOUTE
         # l'anonymisation. On s'abstient plutôt que de deviner sa forme.
+        return REFUS_JSONB_NOMBRE
+    if champ["ttype"] in TYPES_NOMBRE and champ.get("unique"):
+        # Un TIRAGE ne garantit rien : `expression_texte` colle l'id sur
+        # une colonne unique, un nombre n'a pas cette issue — y coller
+        # l'id changerait sa grandeur. Deux lignes au même nombre font
+        # échouer l'UPDATE, et transaction unique oblige, TOUTE
+        # l'anonymisation avec. Même parade que pour les CHECK et les
+        # jsonb numériques : on s'abstient, et le rapport le NOMME.
+        return REFUS_NOMBRE_UNIQUE
+    if champ["ttype"] in TYPES_TEXTE + TYPES_NOMBRE:
+        return None
+    return REFUS_TYPE
+
+
+def abstention_a_nommer(champ, raison):
+    """Cette colonne laissée en clair doit-elle être NOMMÉE au rapport ?
+
+    « Laquelle toucher » et « laquelle nommer » sont deux questions.
+    L'ordre des contrôles répond à la première : il rend UN motif, le
+    premier rencontré. Le réutiliser comme prédicat du rapport taisait
+    une colonne numérique unique dès qu'un autre motif la précédait —
+    une contrainte CHECK, un jsonb, un nom en `_id` — alors que c'est
+    exactement ce que la ligne ⚠ affirme, et exactement la situation pour
+    laquelle elle existe.
+
+    Le plancher, lui, reste muet : `id` est un entier unique sur CHAQUE
+    modèle, et le nommer partout noyait les vrais avertissements.
+    """
+    if raison is None or raison == REFUS_PLANCHER:
         return False
-    return champ["ttype"] in TYPES_TEXTE + TYPES_NOMBRE
+    return champ["ttype"] in TYPES_NOMBRE and bool(champ.get("unique"))
 
 
 def mots_pour(nom_champ, mots):
@@ -309,6 +424,77 @@ def expression_texte(champ, mots):
     return f"CASE WHEN {nom} IS NULL THEN NULL ELSE {tirage} END"
 
 
+def expression_calibre(champ):
+    """Le SQL qui remplace un nombre en gardant sa LARGEUR.
+
+    8839 tire dans 1000..9999. La décade se lit sur la valeur de chaque
+    LIGNE — `log(abs(col))` — et non sur la colonne : une colonne mêle des
+    largeurs, et c'est la largeur de la valeur que l'opérateur veut voir
+    survivre.
+
+    Trois cas que la règle ne couvre pas, et qui retombent sur l'étendue
+    mesurée :
+
+    - `NULL` reste `NULL`, comme partout ;
+    - `0` reste `0` : il n'a pas de largeur à garder, et un zéro devenu
+      743 fabrique de la donnée là où il n'y en avait pas ;
+    - `abs(col) < 1` n'a aucun chiffre avant la virgule. Appliquer la
+      règle y tirerait un taux entre 1 et 9, ce que l'étendue mesurée
+      existe précisément pour empêcher.
+
+    La partie ENTIÈRE décide, pour un `float` comme pour un `monetary` :
+    1234,56 garde ses quatre chiffres et ses deux décimales.
+
+    La bande est rétrécie au plafond du type qui ACCUEILLE le tirage
+    quand il en a un — voir `type_de_coulee` et `PLAFOND_ENTIER` : une
+    valeur à 10 chiffres coulée en `integer` dépasserait 2 147 483 647, et
+    l'écriture tenant en une transaction unique, elle emporterait tout.
+    """
+    nom = ident(champ["name"])
+    entier = champ["ttype"] == "integer"
+    # La mesure passe par `numeric` : `abs()` sur le plus petit entier
+    # signé lève, sa valeur absolue ne tenant pas dans son propre type.
+    mesure = f"abs({nom}::numeric)"
+    # Le nombre de CHIFFRES, compté sur le texte de la partie entière.
+    # `floor(log(...))` s'en approchait, mais travaille en flottant et
+    # `log(999999999999999)` y vaut 15 tout rond : la décade gagnait un
+    # rang, et la copie un chiffre. En `numeric`, le compte est exact
+    # quelle que soit la grandeur.
+    chiffres = f"length(trunc({mesure})::text)"
+    decade = f"power(10::numeric, {chiffres} - 1)"
+    haut = f"{decade} * 10 - 1"
+    coulee = type_de_coulee(champ) or "numeric"
+    # La bande doit tenir dans le type qui ACCUEILLE le tirage, et il
+    # n'est pas toujours celui de la colonne — voir `type_de_coulee`.
+    # `numeric` n'a pas de plafond, donc rien à rétrécir.
+    if coulee in PLAFOND_ENTIER:
+        haut = f"least({haut}, {PLAFOND_ENTIER[coulee]})"
+    if entier:
+        # Le `+ 1` rend le haut de la bande atteignable : sans lui, 8839
+        # ne peut jamais sortir 9999. `random()::numeric` garde le calcul
+        # exact là où le flottant perd des rangs au-delà de 2^53.
+        tirage = (
+            f"(sign({nom}) * floor({decade}"
+            f" + random()::numeric * ({haut} - {decade} + 1)))::{coulee}"
+        )
+    else:
+        # Pas de `+ 1` ici : `round(…, 2)` d'un tirage qui touche le haut
+        # de la bande rendrait la décade SUIVANTE, soit un chiffre de plus.
+        tirage = (
+            f"round((sign({nom}) * ({decade}"
+            f" + random()::numeric * ({haut} - {decade})))::numeric, 2)"
+        )
+    # Sous l'unité et sur zéro, l'étendue mesurée reprend la main : c'est
+    # elle qui protège un taux, une heure ou une probabilité.
+    repli = expression_nombre(champ)
+    return (
+        f"CASE WHEN {nom} IS NULL THEN NULL"
+        f" WHEN {nom} = 0 THEN {nom}"
+        f" WHEN {mesure} < 1 THEN ({repli})"
+        f" ELSE {tirage} END"
+    )
+
+
 def expression_nombre(champ):
     """Le SQL qui remplace un nombre, DANS l'étendue de la colonne.
 
@@ -331,9 +517,13 @@ def expression_nombre(champ):
     nom = ident(champ["name"])
     bas, haut = champ.get("borne_min"), champ.get("borne_max")
     entier = champ["ttype"] == "integer"
+    # Même règle que pour le calibre : on coule vers le type qui accueille,
+    # et un `integer` d'Odoo peut vivre dans une colonne `numeric` dont
+    # l'étendue mesurée dépasse 2 147 483 647.
+    coulee = type_de_coulee(champ) or "numeric"
     if bas is None or haut is None:
         tirage = (
-            "floor(random() * 1001)::integer"
+            f"floor(random() * 1001)::{coulee}"
             if entier
             else "round((random() * 1000)::numeric, 2)"
         )
@@ -341,18 +531,27 @@ def expression_nombre(champ):
         # +1 pour que la borne haute soit atteignable ; si bas == haut,
         # le tirage rend cette valeur, ce qui est sans risque : une
         # colonne constante ne porte aucune information à masquer.
-        tirage = f"floor({bas} + random() * ({haut} - {bas} + 1))::integer"
+        tirage = f"floor({bas} + random() * ({haut} - {bas} + 1))::{coulee}"
     else:
         tirage = f"round(({bas} + random() * ({haut} - {bas}))::numeric, 2)"
     return f"CASE WHEN {nom} IS NULL THEN NULL ELSE {tirage} END"
 
 
-def sql_pour_table(table, champs, mots):
-    """Un seul UPDATE par table : toutes ses colonnes d'un coup."""
+def sql_pour_table(table, champs, mots, calibre=False):
+    """Un seul UPDATE par table : toutes ses colonnes d'un coup.
+
+    `calibre` échange l'étendue mesurée contre la largeur de chaque
+    valeur. Les deux ne tiennent pas ensemble, et c'est l'opérateur qui
+    tranche : l'étendue protège les bornes que le CODE d'Odoo impose — une
+    heure de la journée, une probabilité — la largeur sert un export relu
+    à l'œil ou réimporté dans un champ borné.
+    """
     morceaux = []
     for champ in champs:
         if champ["ttype"] in TYPES_TEXTE:
             valeur = expression_texte(champ, mots)
+        elif calibre:
+            valeur = expression_calibre(champ)
         else:
             valeur = expression_nombre(champ)
         morceaux.append(f"{ident(champ['name'])} = {valeur}")
@@ -448,6 +647,7 @@ def plan(
     blacklist=(),
     inclure_connexion=False,
     mots=None,
+    calibre=False,
 ):
     """Ce qui sera écrit, table par table — avant d'écrire quoi que ce soit.
 
@@ -459,20 +659,51 @@ def plan(
     )
     retenus = set(modeles)
     par_modele = {}
+    # Ce qu'on ÉCARTE parce qu'aucune règle mécanique ne sait le
+    # remplacer : le rapport le nomme, sans quoi une colonne identifiante
+    # reste en clair sans que rien ne le dise.
+    abstenus = {}
     for champ in champs:
         if champ["model"] not in retenus:
             continue
-        if not champ_retenu(champ, inclure_connexion):
+        raison = raison_du_refus(champ, inclure_connexion)
+        if raison is not None:
+            if abstention_a_nommer(champ, raison):
+                abstenus.setdefault(champ["model"], []).append(champ["name"])
             continue
         par_modele.setdefault(champ["model"], []).append(champ)
     etapes = []
     for modele in modeles:
+        laisses = sorted(abstenus.get(modele, ()))
         liste = par_modele.get(modele)
-        if not liste:
-            continue
-        sql = sql_pour_table(table_de(modele), liste, mots)
+        sql = (
+            sql_pour_table(table_de(modele), liste, mots, calibre)
+            if liste
+            else None
+        )
         if sql:
-            etapes.append({"model": modele, "fields": liste, "sql": sql})
+            etapes.append(
+                {
+                    "model": modele,
+                    "fields": liste,
+                    "sql": sql,
+                    "abstenus": laisses,
+                }
+            )
+        elif laisses:
+            # Une étape SANS travail, qui ne porte que l'avertissement.
+            # Un modèle dont la seule colonne anonymisable EST la
+            # numérique unique ne produit aucun UPDATE : l'écarter
+            # emportait l'avertissement, et le rapport affirmait « rien à
+            # anonymiser » sur la colonne même qu'il existe pour nommer.
+            etapes.append(
+                {
+                    "model": modele,
+                    "fields": [],
+                    "sql": None,
+                    "abstenus": laisses,
+                }
+            )
     return etapes
 
 
@@ -564,8 +795,13 @@ def nombre_valide(texte):
     return True
 
 
-def appliquer_sondes(etapes, ecartees, bornes, mots):
-    """Refaire le plan sans les écartées, et avec les bornes mesurées."""
+def appliquer_sondes(etapes, ecartees, bornes, mots, calibre=False):
+    """Refaire le plan sans les écartées, et avec les bornes mesurées.
+
+    `calibre` est repassé tel quel : refaire le SQL sans lui rendrait la
+    marche à blanc et l'écriture différentes, ce qui est exactement ce que
+    le rendu séparé existe pour empêcher.
+    """
     propre = []
     for etape in etapes:
         exclues = set(ecartees.get(etape["model"], ()))
@@ -583,9 +819,14 @@ def appliquer_sondes(etapes, ecartees, bornes, mots):
         # Pas de garde sur une liste vide : `sql_pour_table` rend None, et
         # le `if sql` ci-dessous l'écarte. Deux vérifications pour la même
         # chose se contredisent un jour.
-        sql = sql_pour_table(table_de(etape["model"]), gardes, mots)
+        sql = sql_pour_table(table_de(etape["model"]), gardes, mots, calibre)
         if sql:
             propre.append({**etape, "fields": gardes, "sql": sql})
+        elif etape.get("abstenus"):
+            # L'étape perd sa dernière colonne à la sonde, mais porte
+            # encore l'avertissement : le garder, faute de quoi il
+            # disparaît ici comme il disparaissait du plan.
+            propre.append({**etape, "fields": [], "sql": None})
     return propre
 
 
@@ -593,13 +834,28 @@ def render(etapes, applique=False, verbeux=False):
     """Le rapport. Il dit ce qui est ÉCARTÉ autant que ce qui est pris."""
     if not etapes:
         return f"✅ {t('Nothing to anonymise with these lists.')}"
-    total = sum(len(e["fields"]) for e in etapes)
+    # Une étape sans SQL ne porte QU'un avertissement : elle ne compte pas
+    # pour du travail, et se dit quand même. C'est le seul cas où la
+    # colonne nommée est aussi la seule qu'il y avait à traiter.
+    travail = [e for e in etapes if e.get("sql")]
+    total = sum(len(e["fields"]) for e in travail)
     tete = (
-        f"🎭 {len(etapes)} {t('model(s)')}, {total} {t('column(s)')}"
-        f" — {t('written') if applique else t('dry run, nothing written')}"
+        (
+            f"🎭 {len(travail)} {t('model(s)')}, {total} {t('column(s)')}"
+            f" — {t('written') if applique else t('dry run, nothing written')}"
+        )
+        if travail
+        else f"✅ {t('Nothing to anonymise with these lists.')}"
     )
     lignes = [tete, ""]
     for etape in etapes:
+        if not etape.get("sql"):
+            lignes.append(f"   {etape['model']}")
+            lignes.append(
+                f"        ⚠ {t('left in clear, numeric and unique:')}"
+                f" {', '.join(etape.get('abstenus') or ())}"
+            )
+            continue
         textes = [f for f in etape["fields"] if f["ttype"] in TYPES_TEXTE]
         nombres = [f for f in etape["fields"] if f["ttype"] in TYPES_NOMBRE]
         traduits = [f for f in textes if f["pg_type"] == "jsonb"]
@@ -610,13 +866,23 @@ def render(etapes, applique=False, verbeux=False):
         if uniques:
             detail += f", {len(uniques)} {t('unique')}"
         lignes.append(f"   {etape['model']:<34} {detail}")
+        abstenus = etape.get("abstenus") or []
+        if abstenus:
+            # Une colonne numérique UNIQUE reste en clair : aucun tirage
+            # ne garantit son unicité, et y coller l'id changerait sa
+            # grandeur. Le taire laisserait une colonne identifiante
+            # partir sans que rien ne le dise.
+            lignes.append(
+                f"        ⚠ {t('left in clear, numeric and unique:')}"
+                f" {', '.join(abstenus)}"
+            )
         if verbeux:
             for champ in etape["fields"]:
                 lignes.append(
                     f"        {champ['name']:<30} {champ['ttype']}"
                     f" / {champ['pg_type']}"
                 )
-    if not applique:
+    if travail and not applique:
         lignes.append("")
         lignes.append(f"   {t('Use --apply --confirm <database> to write.')}")
     return "\n".join(lignes)
@@ -656,7 +922,8 @@ def ecrire(database, etapes, config_path=None, timeout=900):
 
     env = lib_analyse.pg_env(config_path, timeout=timeout)
     env["PGOPTIONS"] = f"-c statement_timeout={timeout}s"
-    sql = "\n".join(etape["sql"] for etape in etapes)
+    # Une étape sans SQL ne porte qu'un avertissement pour le rapport.
+    sql = "\n".join(e["sql"] for e in etapes if e.get("sql"))
 
     # PAR FICHIER, jamais par `-c`. Linux plafonne un seul argument à
     # MAX_ARG_STRLEN — 32 pages, soit 131 072 octets. Mesuré sur une base
@@ -725,6 +992,11 @@ def main(argv=None):
     )
     parser.add_argument("--words", help=t("python file declaring MOTS"))
     parser.add_argument("--include-logins", action="store_true")
+    parser.add_argument(
+        "--keep-digits",
+        action="store_true",
+        help=t("draw a number of the same width; drops the extent"),
+    )
     parser.add_argument("--apply", action="store_true")
     parser.add_argument(
         "--confirm",
@@ -766,11 +1038,12 @@ def main(argv=None):
         [m.strip() for m in args.exclude.split(",") if m.strip()],
         args.include_logins,
         mots,
+        args.keep_digits,
     )
     # La sonde AVANT le rendu : la marche à blanc doit montrer ce que
     # `--apply` ferait, pas une approximation plus large.
     ecartees, bornes = sonder_colonnes(args.database, etapes, args.config)
-    etapes = appliquer_sondes(etapes, ecartees, bornes, mots)
+    etapes = appliquer_sondes(etapes, ecartees, bornes, mots, args.keep_digits)
     if ecartees:
         combien = sum(len(v) for v in ecartees.values())
         print(
@@ -781,16 +1054,27 @@ def main(argv=None):
             print(f"     {modele} : {', '.join(sorted(ecartees[modele]))}")
         print()
 
+    # Une étape sans SQL ne porte qu'un avertissement : la compter pour du
+    # travail ferait confirmer une écriture qui n'aurait pas lieu.
+    travail = any(e.get("sql") for e in etapes)
     if not args.apply:
         print(render(etapes, applique=False, verbeux=args.verbose))
-        return 1 if etapes else 0
+        return SORTIE_A_FAIRE if travail else SORTIE_RIEN
+
+    if not travail:
+        # Sans cette sortie, `ecrire` remettait un script VIDE à psql, qui
+        # rend 0 : l'appelant lisait « écriture faite » et tirait une
+        # sauvegarde de la base intacte en l'annonçant anonymisée.
+        print(render(etapes, applique=False, verbeux=args.verbose))
+        print(f"↩️  {t('Nothing was written:')} {t('nothing to do.')}")
+        return SORTIE_SANS_EFFET
 
     erreur = ecrire(args.database, etapes, args.config)
     if erreur:
         print(f"❌ {t('Nothing was written:')} {erreur}", file=sys.stderr)
-        return 2
+        return SORTIE_REFUS
     print(render(etapes, applique=True, verbeux=args.verbose))
-    return 0
+    return SORTIE_RIEN
 
 
 if __name__ == "__main__":

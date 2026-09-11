@@ -24,6 +24,9 @@ blanche, aucune insistance ne doit permettre d'écrire dans `ir.*`.
 """
 
 import ast
+import io
+import math
+import sys
 import unittest
 from pathlib import Path
 
@@ -578,6 +581,143 @@ class TestACheckDoesNotSilenceTheMainField(unittest.TestCase):
         for motif in ("char_length", "~~", "jsonb_typeof"):
             self.assertIn(motif, anon.REQUETE_CHAMPS, motif)
 
+    def _champ_calibre(self, ttype="integer"):
+        return {
+            "model": "res.partner",
+            "name": "montant",
+            "ttype": ttype,
+            "pg_type": "numeric",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+            "borne_min": 1,
+            "borne_max": 99999,
+        }
+
+    def test_the_width_rule_reads_each_ROW(self):
+        """La décade se lit sur la valeur de la ligne, pas sur la colonne.
+
+        Une colonne mêle des largeurs, et c'est la largeur de la VALEUR
+        que l'option promet de garder.
+        """
+        sql = anon.expression_calibre(self._champ_calibre())
+        self.assertIn('trunc(abs("montant"::numeric))', sql)
+        self.assertIn("power(10::numeric", sql)
+        # `floor(log(...))` travaillait en flottant : log(999999999999999)
+        # y vaut 15 tout rond, et la décade gagnait un rang.
+        self.assertNotIn("floor(log(", sql)
+
+    def test_the_three_cases_the_rule_does_not_cover(self):
+        """NULL, zéro et sous l'unité retombent sur l'étendue mesurée.
+
+        0,15 n'a aucun chiffre avant la virgule : appliquer la règle y
+        tirerait un taux entre 1 et 9, ce que l'étendue existe pour
+        empêcher.
+        """
+        sql = anon.expression_calibre(self._champ_calibre("float"))
+        self.assertIn('WHEN "montant" IS NULL THEN NULL', sql)
+        self.assertIn('WHEN "montant" = 0 THEN "montant"', sql)
+        self.assertIn('WHEN abs("montant"::numeric) < 1', sql)
+
+    def test_the_sign_survives(self):
+        for ttype in ("integer", "float", "monetary"):
+            with self.subTest(ttype=ttype):
+                sql = anon.expression_calibre(self._champ_calibre(ttype))
+                self.assertIn('sign("montant")', sql)
+
+    def test_an_integer_field_gets_a_WHOLE_number(self):
+        """Un `float` rendu dans un champ entier ne se réimporte plus.
+
+        Ce qui garantit l'entier est `floor`, non la coulée : celle-ci
+        suit le type qui accueille, et un `integer` d'Odoo peut vivre
+        dans une colonne `numeric` où `::integer` lèverait.
+        """
+        sql = anon.expression_calibre(self._champ_calibre("integer"))
+        self.assertIn("floor(", sql)
+        self.assertNotIn("::numeric, 2)", sql.split("ELSE")[-1])
+        sql = anon.expression_calibre(self._champ_calibre("float"))
+        self.assertIn("::numeric, 2)", sql)
+
+    def test_the_cast_follows_the_column_when_it_is_a_bounded_int(self):
+        champ = dict(self._champ_calibre("integer"), pg_type="integer")
+        self.assertIn("::integer", anon.expression_calibre(champ))
+
+    def test_the_option_is_OFF_by_default(self):
+        """L'étendue mesurée est ce qui protège une heure ou un taux :
+        elle reste la règle."""
+        champs = [self._champ_calibre()]
+        mots = {"MOTS": ["aa", "bb"]}
+        sans = anon.plan(champs, mode="blacklist", mots=mots)
+        avec = anon.plan(champs, mode="blacklist", mots=mots, calibre=True)
+        self.assertNotIn("power(10", sans[0]["sql"])
+        self.assertIn("power(10", avec[0]["sql"])
+
+    def test_the_dry_run_and_the_write_build_the_SAME_sql(self):
+        """`appliquer_sondes` refait le SQL : sans l'option, la marche à
+        blanc montrerait autre chose que ce que `--apply` écrit."""
+        champs = [self._champ_calibre()]
+        mots = {"MOTS": ["aa", "bb"]}
+        etapes = anon.plan(champs, mode="blacklist", mots=mots, calibre=True)
+        refait = anon.appliquer_sondes(
+            etapes, {}, {"res.partner": {"montant": (1, 99)}}, mots, True
+        )
+        self.assertIn("power(10", refait[0]["sql"])
+
+    def _champ_numerique(self, unique):
+        return {
+            "model": "res.partner",
+            "name": "ref",
+            "ttype": "integer",
+            "pg_type": "int4",
+            "unique": unique,
+            "checked": False,
+            "max_len": None,
+        }
+
+    def test_a_unique_number_is_left_alone(self):
+        """Aucun tirage ne garantit son unicité.
+
+        `expression_texte` colle l'id sur une colonne unique ; un nombre
+        n'a pas cette issue — y coller l'id changerait sa grandeur. Deux
+        lignes au même nombre font échouer l'UPDATE, et transaction
+        unique oblige, TOUTE l'anonymisation avec.
+        """
+        self.assertFalse(anon.champ_retenu(self._champ_numerique(True)))
+        self.assertTrue(anon.champ_retenu(self._champ_numerique(False)))
+
+    def test_a_unique_TEXT_column_is_still_anonymised(self):
+        """L'abstention ne vaut que pour les nombres : le texte a l'id
+        collé, et c'est lui qui porte l'unicité."""
+        champ = dict(
+            self._champ_numerique(True),
+            name="vat",
+            ttype="char",
+            pg_type="character varying",
+        )
+        self.assertTrue(anon.champ_retenu(champ))
+
+    def test_the_report_NAMES_what_it_left_alone(self):
+        """Le taire laisserait une colonne identifiante partir sans que
+        rien ne le dise."""
+        champs = [
+            {
+                "model": "res.partner",
+                "name": "name",
+                "ttype": "char",
+                "pg_type": "character varying",
+                "unique": False,
+                "checked": False,
+                "max_len": None,
+            },
+            self._champ_numerique(True),
+        ]
+        etapes = anon.plan(
+            champs, mode="blacklist", mots={"MOTS": ["aa", "bb"]}
+        )
+        self.assertEqual(etapes[0]["abstenus"], ["ref"])
+        self.assertNotIn("ref", [c["name"] for c in etapes[0]["fields"]])
+        self.assertIn("ref", anon.render(etapes))
+
     def test_a_field_the_query_cleared_is_anonymised(self):
         """`checked=False` doit suffire : aucune seconde barrière cachée."""
         champ = {
@@ -891,6 +1031,789 @@ class TestTheProbeDistrustsWhatItReads(unittest.TestCase):
         champs = [self._champ("a"), self._champ("b")]
         _, bornes = self._sonder("8.0:13.0\x1f1.0:2.0", champs)
         self.assertEqual(len(bornes["m"]), 2)
+
+
+class TestTheCalibreCannotLeaveTheColumnType(unittest.TestCase):
+    """Garder la largeur ne doit pas viser plus haut que la colonne ne tient.
+
+    PostgreSQL borne ses entiers par TAILLE. Une valeur à 10 chiffres dans
+    une colonne `integer` tire dans une bande qui monte à 9 999 999 999,
+    là où le type s'arrête à 2 147 483 647 : le dépassement lève, et
+    l'écriture tenant en une transaction unique, il emporte TOUTE
+    l'anonymisation. `smallint` est plus étroit encore — 32 767 — et une
+    valeur à 5 chiffres y suffit.
+    """
+
+    def _champ(self, ttype="integer", pg="integer"):
+        return {
+            "model": "res.partner",
+            "name": "montant",
+            "ttype": ttype,
+            "pg_type": pg,
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+            "borne_min": 1,
+            "borne_max": 99999,
+        }
+
+    def _tirer(self, valeur, pg="integer", entier=True, hasard=0.5):
+        """Un MODÈLE de l'arithmétique du SQL, et non le SQL lui-même.
+
+        Il tourne sans base et couvre toute la plage de `random()` d'un
+        seul balayage, ce qu'une base rend coûteux. Mais il ne prouve que
+        lui-même : c'est `TestTheEmittedSqlUnderPostgres` qui éprouve la
+        chaîne réellement émise, et les deux doivent rester d'accord.
+        """
+        decade = 10 ** (len(str(abs(int(valeur)))) - 1)
+        haut = decade * 10 - 1
+        coulee = anon.type_de_coulee({"ttype": "integer", "pg_type": pg})
+        if coulee in anon.PLAFOND_ENTIER:
+            haut = min(haut, anon.PLAFOND_ENTIER[coulee])
+        signe = -1 if valeur < 0 else 1
+        if entier:
+            return signe * math.floor(decade + hasard * (haut - decade + 1))
+        return round(signe * (decade + hasard * (haut - decade)), 2)
+
+    def test_each_integer_width_has_its_own_ceiling(self):
+        for pg, plafond in (
+            ("smallint", 32767),
+            ("integer", 2147483647),
+            ("bigint", 9223372036854775807),
+        ):
+            with self.subTest(pg=pg):
+                sql = anon.expression_calibre(self._champ(pg=pg))
+                self.assertIn("least(", sql)
+                self.assertIn(str(plafond), sql)
+
+    def test_the_alias_spelling_is_understood(self):
+        """Un dump écrit `int4` là où `regtype` rend `integer`."""
+        for alias, canon in (
+            ("int2", "smallint"),
+            ("int4", "integer"),
+            ("int8", "bigint"),
+        ):
+            with self.subTest(alias=alias):
+                self.assertEqual(canon, anon.type_entier(alias))
+
+    def test_a_type_with_no_ceiling_keeps_the_open_band(self):
+        """`numeric` et `double precision` n'ont aucun plafond à tenir."""
+        for pg in ("numeric", "double precision"):
+            with self.subTest(pg=pg):
+                self.assertIsNone(anon.type_entier(pg))
+                sql = anon.expression_calibre(self._champ("float", pg))
+                self.assertNotIn("least(", sql)
+
+    def test_the_cast_follows_the_column_and_is_not_always_integer(self):
+        """Couler un tirage bigint en `::integer` lèverait à son tour."""
+        self.assertIn(
+            "::bigint", anon.expression_calibre(self._champ(pg="bigint"))
+        )
+        self.assertIn(
+            "::smallint", anon.expression_calibre(self._champ(pg="smallint"))
+        )
+
+    def test_a_ten_digit_integer_never_leaves_int4(self):
+        for cran in range(1000):
+            tire = self._tirer(2000000000, "integer", hasard=cran / 1000.0)
+            self.assertLessEqual(tire, 2147483647, cran)
+            self.assertGreaterEqual(tire, 10**9, cran)
+
+    def test_a_five_digit_smallint_never_leaves_int2(self):
+        for cran in range(1000):
+            tire = self._tirer(20000, "smallint", hasard=cran / 1000.0)
+            self.assertLessEqual(tire, 32767, cran)
+            self.assertGreaterEqual(tire, 10000, cran)
+
+    def test_the_sign_survives_the_ceiling(self):
+        for cran in range(1000):
+            tire = self._tirer(-2000000000, "integer", hasard=cran / 1000.0)
+            self.assertLess(tire, 0, cran)
+            self.assertGreaterEqual(tire, -2147483647, cran)
+
+    def test_the_top_of_the_band_is_reachable(self):
+        """Sans le `+ 1`, 8839 ne pouvait jamais sortir 9999."""
+        atteints = {
+            self._tirer(8839, "numeric", hasard=c / 10000.0)
+            for c in range(10000)
+        }
+        self.assertEqual(1000, min(atteints))
+        self.assertEqual(9999, max(atteints))
+
+    def test_rounding_never_adds_a_digit(self):
+        """`round(…, 2)` au haut de la bande rendrait 10000,0 : un chiffre
+        de plus, ce que l'option existe pour empêcher."""
+        for cran in range(10000):
+            tire = self._tirer(
+                8839.5, "numeric", entier=False, hasard=cran / 10000.0
+            )
+            self.assertLess(tire, 10000, cran)
+            self.assertGreaterEqual(tire, 1000, cran)
+
+    def test_the_measure_casts_before_taking_the_absolute_value(self):
+        """`abs()` du plus petit entier signé lève : sa valeur absolue ne
+        tient pas dans son propre type."""
+        sql = anon.expression_calibre(self._champ())
+        self.assertIn('abs("montant"::numeric)', sql)
+        self.assertEqual(
+            sql.count('abs("montant"'),
+            sql.count('abs("montant"::numeric)'),
+        )
+
+
+class TestWhyAColumnIsLeftAlone(unittest.TestCase):
+    """La raison d'une abstention se LIT, elle ne se redevine pas.
+
+    Le rapport ne nomme qu'un motif — l'unicité numérique, la seule dont
+    le silence laisserait partir une colonne identifiante. Le redeviner
+    depuis le type et l'unicité nommait `id` sur CHAQUE modèle, `id`
+    étant un entier unique que le PLANCHER refuse ; et une colonne
+    `xxx_id`, sous contrainte CHECK ou en jsonb numérique se confondait
+    de la même façon.
+    """
+
+    def _f(self, nom, ttype="integer", pg="integer", **kw):
+        return {
+            "model": kw.pop("modele", "res.partner"),
+            "name": nom,
+            "ttype": ttype,
+            "pg_type": pg,
+            "unique": kw.pop("unique", False),
+            "checked": kw.pop("checked", False),
+            "max_len": None,
+        }
+
+    def test_the_primary_key_is_refused_by_the_FLOOR(self):
+        """`id` est un entier unique : c'est le plancher qui l'écarte."""
+        self.assertEqual(
+            anon.REFUS_PLANCHER,
+            anon.raison_du_refus(self._f("id", unique=True)),
+        )
+
+    def test_each_neighbour_gives_its_OWN_reason(self):
+        """Quatre champs satisfont « nombre unique » sans être celui-là."""
+        for nom, kw, attendu in (
+            ("id", {"unique": True}, anon.REFUS_PLANCHER),
+            ("partner_id", {"unique": True}, anon.REFUS_RELATION),
+            (
+                "compteur",
+                {"unique": True, "checked": True},
+                anon.REFUS_CONTRAINTE,
+            ),
+            (
+                "credit_limit",
+                {"unique": True, "pg": "jsonb"},
+                anon.REFUS_JSONB_NOMBRE,
+            ),
+        ):
+            with self.subTest(nom=nom):
+                champ = self._f(nom, **kw)
+                self.assertEqual(attendu, anon.raison_du_refus(champ))
+                self.assertNotEqual(
+                    anon.REFUS_NOMBRE_UNIQUE, anon.raison_du_refus(champ)
+                )
+
+    def test_the_reason_the_report_names_is_still_reached(self):
+        self.assertEqual(
+            anon.REFUS_NOMBRE_UNIQUE,
+            anon.raison_du_refus(self._f("numero", unique=True)),
+        )
+
+    def test_the_two_questions_never_disagree(self):
+        """`champ_retenu` n'est que la même question posée en oui/non."""
+        for champ in (
+            self._f("id", unique=True),
+            self._f("numero", unique=True),
+            self._f("name", "char", "character varying"),
+            self._f("login", "char", "character varying"),
+            self._f("parent_path", "char", "character varying"),
+        ):
+            with self.subTest(nom=champ["name"]):
+                self.assertEqual(
+                    anon.raison_du_refus(champ) is None,
+                    anon.champ_retenu(champ),
+                )
+
+    def test_the_login_reason_follows_the_option(self):
+        champ = self._f("login", "char", "character varying")
+        self.assertEqual(anon.REFUS_CONNEXION, anon.raison_du_refus(champ))
+        self.assertIsNone(anon.raison_du_refus(champ, True))
+
+    def test_the_plan_does_not_name_the_primary_key(self):
+        """Une ligne ⚠ par modèle noyait les vrais avertissements."""
+        champs = [
+            self._f("id", unique=True),
+            self._f("name", "char", "character varying"),
+        ]
+        etapes = anon.plan(
+            champs, mode="blacklist", mots={"MOTS": ["aa", "bb"]}
+        )
+        self.assertEqual([], etapes[0]["abstenus"])
+        self.assertNotIn("⚠", anon.render(etapes))
+
+
+class TestTheWarningSurvivesAnEmptyPlan(unittest.TestCase):
+    """Le seul cas pour lequel l'avertissement existe le perdait.
+
+    Un modèle dont la seule colonne anonymisable EST la numérique unique
+    ne produit aucun UPDATE. L'étape était écartée, l'avertissement avec,
+    et le rapport affirmait « rien à anonymiser » sur la colonne même
+    qu'il existe pour nommer.
+    """
+
+    MOTS = {"MOTS": ["aa", "bb"]}
+
+    def _f(self, nom, ttype="integer", pg="integer", **kw):
+        return {
+            "model": kw.pop("modele", "x.compteur"),
+            "name": nom,
+            "ttype": ttype,
+            "pg_type": pg,
+            "unique": kw.pop("unique", False),
+            "checked": False,
+            "max_len": None,
+        }
+
+    def test_a_model_with_only_that_column_keeps_its_warning(self):
+        etapes = anon.plan(
+            [self._f("numero", unique=True)],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        self.assertEqual(1, len(etapes))
+        self.assertEqual(["numero"], etapes[0]["abstenus"])
+
+    def test_such_a_step_carries_NO_sql_and_no_field(self):
+        """C'est ce que lisent le code de sortie et l'écriture."""
+        etapes = anon.plan(
+            [self._f("numero", unique=True)],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        self.assertIsNone(etapes[0]["sql"])
+        self.assertEqual([], etapes[0]["fields"])
+
+    def test_the_report_NAMES_it_and_still_says_nothing_to_do(self):
+        etapes = anon.plan(
+            [self._f("numero", unique=True)],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        rapport = anon.render(etapes)
+        self.assertIn("numero", rapport)
+        self.assertIn(anon.t("left in clear, numeric and unique:"), rapport)
+        self.assertIn(
+            anon.t("Nothing to anonymise with these lists."), rapport
+        )
+
+    def test_such_a_report_does_not_invite_to_write(self):
+        """Il n'y a rien à écrire : proposer --apply serait un piège."""
+        etapes = anon.plan(
+            [self._f("numero", unique=True)],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        self.assertNotIn(
+            anon.t("Use --apply --confirm <database> to write."),
+            anon.render(etapes),
+        )
+
+    def test_a_real_step_still_invites_to_write(self):
+        etapes = anon.plan(
+            [
+                self._f("numero", unique=True),
+                self._f("libelle", "char", "character varying"),
+            ],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        rapport = anon.render(etapes)
+        self.assertIn(
+            anon.t("Use --apply --confirm <database> to write."), rapport
+        )
+        self.assertIn(anon.t("left in clear, numeric and unique:"), rapport)
+
+    def test_the_probe_taking_the_last_column_keeps_the_warning(self):
+        """Le second endroit où l'avertissement disparaissait."""
+        etapes = anon.plan(
+            [
+                self._f("ref_interne", unique=True),
+                self._f("chemin", "char", "character varying"),
+            ],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        apres = anon.appliquer_sondes(
+            etapes, {"x.compteur": ["chemin"]}, {}, self.MOTS
+        )
+        self.assertEqual(1, len(apres))
+        self.assertIsNone(apres[0]["sql"])
+        self.assertEqual(["ref_interne"], apres[0]["abstenus"])
+        self.assertIn("ref_interne", anon.render(apres))
+
+    def test_a_step_with_neither_sql_nor_warning_is_dropped(self):
+        """Sans avertissement à porter, une étape vide n'a rien à dire."""
+        etapes = anon.plan(
+            [self._f("chemin", "char", "character varying")],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        apres = anon.appliquer_sondes(
+            etapes, {"x.compteur": ["chemin"]}, {}, self.MOTS
+        )
+        self.assertEqual([], apres)
+
+
+def _postgres_joignable():
+    """PostgreSQL répond-il ? Le lanceur unitaire n'en exige aucun."""
+    try:
+        from script.analyse import lib_analyse
+
+        lib_analyse.run_psql("postgres", "SELECT 1", timeout=5)
+        return True
+    except Exception:  # noqa: BLE001 - absent, refusé, injoignable : pareil
+        return False
+
+
+PG_JOIGNABLE = _postgres_joignable()
+
+
+@unittest.skipUnless(PG_JOIGNABLE, "aucun PostgreSQL joignable")
+class TestTheEmittedSqlUnderPostgres(unittest.TestCase):
+    """Le SQL RÉELLEMENT ÉMIS, évalué par PostgreSQL.
+
+    Un test bâti sur une transcription Python prouve la transcription.
+    Les deux décisions d'arithmétique de `expression_calibre` — le
+    plafond du type d'ARRIVÉE et le compte exact des chiffres — ne se
+    vérifient que dans la chaîne émise, sur le moteur qui l'exécutera.
+
+    Aucune table, aucune écriture : l'expression est évaluée sur une
+    liste de VALUES, et `pg_env` impose `default_transaction_read_only`.
+    Sans base joignable, le test SE DIT ignoré plutôt que de passer au
+    vert en silence.
+    """
+
+    LIGNES = 3000
+
+    def _champ(self, ttype, pg, bmin, bmax):
+        return {
+            "model": "m",
+            "name": "montant",
+            "ttype": ttype,
+            "pg_type": pg,
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+            "borne_min": bmin,
+            "borne_max": bmax,
+        }
+
+    def _largeurs_fautives(self, ttype, pg, bmin, bmax, valeurs):
+        """Combien de tirages n'ont pas la largeur de leur source.
+
+        `random()` reste RÉEL : y substituer une constante laisse
+        PostgreSQL replier l'expression au plan, et lever alors sur une
+        branche que le CASE n'atteint jamais à l'exécution.
+        """
+        from script.analyse import lib_analyse
+
+        expr = anon.expression_calibre(self._champ(ttype, pg, bmin, bmax))
+        source = ", ".join("((%s)::%s)" % (v, pg) for v in valeurs)
+        entiere = "ltrim(split_part(%s::text, '.', 1), '-')"
+        sql = (
+            "SELECT count(*) FILTER (WHERE length(%s) <> length(%s))"
+            ' FROM (VALUES %s) t("montant"), generate_series(1, %d)'
+            % (
+                entiere % 't."montant"',
+                entiere % ("(%s)" % expr),
+                source,
+                self.LIGNES,
+            )
+        )
+        return int(lib_analyse.run_psql("postgres", sql, timeout=30).strip())
+
+    def test_an_odoo_integer_on_a_numeric_column_does_not_raise(self):
+        """La bande s'INVERSAIT : son bas dépassait le plafond d'`integer`
+        dont on bornait le haut, et chaque ligne levait — emportant, en
+        transaction unique, toute l'anonymisation."""
+        self.assertEqual(
+            0,
+            self._largeurs_fautives(
+                "integer",
+                "numeric",
+                1,
+                10**12,
+                [10000000000, 500000000000, 2147483648],
+            ),
+        )
+
+    def test_the_same_on_double_precision(self):
+        self.assertEqual(
+            0,
+            self._largeurs_fautives(
+                "integer", "double precision", 1, 10**12, [10000000000]
+            ),
+        )
+
+    def test_a_bounded_integer_column_never_overflows(self):
+        for pg, bmax, valeurs in (
+            ("smallint", 32767, [1, 999, 10000, 32767, -32768]),
+            (
+                "integer",
+                2000000000,
+                [1, 1000000000, 2147483647, -2147483648],
+            ),
+            (
+                "bigint",
+                10**18,
+                [10**18, 999999999999999999, 9223372036854775807],
+            ),
+        ):
+            with self.subTest(pg=pg):
+                self.assertEqual(
+                    0,
+                    self._largeurs_fautives("integer", pg, 1, bmax, valeurs),
+                )
+
+    def test_the_digit_count_is_exact_past_fifteen(self):
+        """`floor(log(999999999999999))` vaut 15 tout rond en flottant :
+        la décade gagnait un rang, et la copie un chiffre."""
+        self.assertEqual(
+            0,
+            self._largeurs_fautives(
+                "integer",
+                "numeric",
+                1,
+                10**20,
+                [
+                    999999999999999,
+                    9999999999999999,
+                    999999999999999999,
+                    10**19 - 1,
+                ],
+            ),
+        )
+
+    def test_the_decimal_branch_keeps_its_width_too(self):
+        for pg in ("numeric", "double precision"):
+            with self.subTest(pg=pg):
+                self.assertEqual(
+                    0,
+                    self._largeurs_fautives(
+                        "float",
+                        pg,
+                        1,
+                        10**9,
+                        [8839.5, 999999999999999.0, -1234.56],
+                    ),
+                )
+
+    def test_the_smallest_signed_integer_does_not_break_abs(self):
+        """`abs()` du minimum d'un type lève : sa valeur absolue ne tient
+        pas dans ce type. La mesure passe donc par `numeric`."""
+        for pg, mini in (
+            ("smallint", -32768),
+            ("integer", -2147483648),
+            ("bigint", -9223372036854775808),
+        ):
+            with self.subTest(pg=pg):
+                self.assertEqual(
+                    0,
+                    self._largeurs_fautives(
+                        "integer", pg, 1, abs(mini) - 1, [mini]
+                    ),
+                )
+
+
+class TestWhereADrawIsPoured(unittest.TestCase):
+    """Le type qui ACCUEILLE le tirage n'est pas celui d'Odoo.
+
+    Une base montée de version garde la colonne `numeric` qu'un champ
+    `Float` avait créée, `ir_model_fields` disant désormais `integer` :
+    Odoo ne réécrit pas le type d'une colonne quand le champ change. Y
+    couler en `integer` lève dès 2 147 483 648.
+    """
+
+    def test_a_bounded_integer_column_keeps_its_own_type(self):
+        for pg, attendu in (
+            ("smallint", "smallint"),
+            ("integer", "integer"),
+            ("bigint", "bigint"),
+            ("int2", "smallint"),
+            ("int4", "integer"),
+            ("int8", "bigint"),
+        ):
+            with self.subTest(pg=pg):
+                self.assertEqual(
+                    attendu,
+                    anon.type_de_coulee({"ttype": "integer", "pg_type": pg}),
+                )
+
+    def test_an_integer_field_on_an_unbounded_column_pours_numeric(self):
+        for pg in ("numeric", "double precision", "real"):
+            with self.subTest(pg=pg):
+                self.assertEqual(
+                    "numeric",
+                    anon.type_de_coulee({"ttype": "integer", "pg_type": pg}),
+                )
+
+    def test_a_decimal_field_follows_its_column(self):
+        """Un `float` d'Odoo sur une colonne entière garde le plafond de
+        celle-ci ; ailleurs, aucun plafond ne s'applique."""
+        self.assertEqual(
+            "integer",
+            anon.type_de_coulee({"ttype": "float", "pg_type": "integer"}),
+        )
+        self.assertIsNone(
+            anon.type_de_coulee({"ttype": "float", "pg_type": "numeric"})
+        )
+
+    def test_no_ceiling_is_applied_to_an_unbounded_cast(self):
+        """Borner à `integer` le haut d'une bande dont le bas le dépasse
+        INVERSE la bande, et chaque ligne lève."""
+        champ = {
+            "model": "m",
+            "name": "montant",
+            "ttype": "integer",
+            "pg_type": "numeric",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+            "borne_min": 1,
+            "borne_max": 10**12,
+        }
+        sql = anon.expression_calibre(champ)
+        self.assertNotIn("least(", sql)
+        self.assertNotIn("2147483647", sql)
+        self.assertIn("::numeric", sql)
+
+    def test_the_measured_extent_pours_the_same_way(self):
+        """`expression_nombre` portait le même `::integer` en dur."""
+        champ = {
+            "model": "m",
+            "name": "montant",
+            "ttype": "integer",
+            "pg_type": "numeric",
+            "unique": False,
+            "checked": False,
+            "max_len": None,
+            "borne_min": 1,
+            "borne_max": 10**12,
+        }
+        sql = anon.expression_nombre(champ)
+        self.assertIn("::numeric", sql)
+        self.assertNotIn("::integer", sql)
+
+
+class TestTheExitCodeContract(unittest.TestCase):
+    """Les codes de sortie sont lus par le menu qui écrit.
+
+    Ils doivent se distinguer d'une TRACE PYTHON, qui sort en 1 : le flux
+    lisait « tout ce qui n'est ni 0 ni 2 » comme du travail annoncé, et
+    demandait la confirmation destructrice après un plantage.
+
+    `--apply` sur un plan vide rendait 0 lui aussi, psql acceptant un
+    script vide : l'appelant y lisait « écriture faite » et tirait une
+    sauvegarde de la base intacte en l'annonçant anonymisée.
+    """
+
+    def setUp(self):
+        self.champs = []
+        for nom, remplacant in (
+            ("require_odoo_database", lambda *a, **k: None),
+        ):
+            self.addCleanup(
+                setattr, anon.lib_analyse, nom, getattr(anon.lib_analyse, nom)
+            )
+            setattr(anon.lib_analyse, nom, remplacant)
+        for nom, remplacant in (
+            ("inspect", lambda *a, **k: self.champs),
+            ("sonder_colonnes", lambda *a, **k: ({}, {})),
+            ("ecrire", lambda *a, **k: None),
+        ):
+            self.addCleanup(setattr, anon, nom, getattr(anon, nom))
+            setattr(anon, nom, remplacant)
+        sortie = io.StringIO()
+        vrai = sys.stdout
+        sys.stdout = sortie
+        self.sortie = sortie
+        self.addCleanup(setattr, sys, "stdout", vrai)
+
+    def _f(self, nom, ttype="char", pg="character varying", unique=False):
+        return {
+            "model": "res.partner",
+            "name": nom,
+            "ttype": ttype,
+            "pg_type": pg,
+            "unique": unique,
+            "checked": False,
+            "max_len": None,
+        }
+
+    def _code(self, champs, applique=False):
+        self.champs = champs
+        extra = ["--apply", "--confirm", "b"] if applique else []
+        return anon.main(["--database", "b"] + extra)
+
+    def test_the_codes_do_not_collide_with_a_python_traceback(self):
+        """Une exception non rattrapée sort en 1 : aucun code du contrat
+        ne doit valoir 1."""
+        codes = (
+            anon.SORTIE_RIEN,
+            anon.SORTIE_REFUS,
+            anon.SORTIE_A_FAIRE,
+            anon.SORTIE_SANS_EFFET,
+        )
+        self.assertNotIn(1, codes)
+        self.assertEqual(len(set(codes)), len(codes))
+
+    def test_an_empty_plan_announces_nothing_to_do(self):
+        self.assertEqual(anon.SORTIE_RIEN, self._code([]))
+
+    def test_real_work_announces_itself_with_its_OWN_code(self):
+        self.assertEqual(anon.SORTIE_A_FAIRE, self._code([self._f("name")]))
+
+    def test_a_warning_only_plan_announces_NO_work(self):
+        """Le seul cas pour lequel l'avertissement existe : le compter
+        pour du travail ferait confirmer une écriture sans objet."""
+        champs = [self._f("numero", "integer", "integer", unique=True)]
+        self.assertEqual(anon.SORTIE_RIEN, self._code(champs))
+        self.assertIn(
+            anon.t("left in clear, numeric and unique:"),
+            self.sortie.getvalue(),
+        )
+
+    def test_apply_on_an_empty_plan_is_not_a_write(self):
+        self.assertEqual(anon.SORTIE_SANS_EFFET, self._code([], True))
+
+    def test_apply_on_a_warning_only_plan_is_not_a_write_either(self):
+        champs = [self._f("numero", "integer", "integer", unique=True)]
+        self.assertEqual(anon.SORTIE_SANS_EFFET, self._code(champs, True))
+
+    def test_apply_that_writes_returns_the_success_code(self):
+        self.assertEqual(anon.SORTIE_RIEN, self._code([self._f("name")], True))
+
+    def test_a_write_error_returns_the_refusal_code(self):
+        anon.ecrire = lambda *a, **k: "collision d'unicité"
+        self.assertEqual(
+            anon.SORTIE_REFUS, self._code([self._f("name")], True)
+        )
+
+    def test_a_confirm_that_does_not_repeat_the_name_refuses(self):
+        self.champs = [self._f("name")]
+        self.assertEqual(
+            anon.SORTIE_REFUS,
+            anon.main(["--database", "b", "--apply", "--confirm", "autre"]),
+        )
+
+    def test_no_empty_script_ever_reaches_psql(self):
+        """`ecrire` recevait un script vide, que psql accepte."""
+        appels = []
+        anon.ecrire = lambda *a, **k: appels.append(a) or None
+        self._code([], True)
+        self._code(
+            [self._f("numero", "integer", "integer", unique=True)], True
+        )
+        self.assertEqual([], appels)
+        self._code([self._f("name")], True)
+        self.assertEqual(1, len(appels))
+
+
+class TestWhichAbstentionGetsNamed(unittest.TestCase):
+    """« Laquelle toucher » et « laquelle nommer » sont deux questions.
+
+    L'ordre des contrôles répond à la première : il rend UN motif, le
+    premier rencontré. Le réutiliser comme prédicat du rapport tait une
+    colonne numérique unique dès qu'un autre motif la précède — une
+    contrainte CHECK, un jsonb, un nom en `_id` — alors que c'est
+    exactement ce que la ligne ⚠ affirme.
+
+    Le cas qui compte : un module déclarant `unique(numero)` ET
+    `check(numero > 0)` sur un numéro de document ou d'employé. La
+    requête lève `checked` pour TOUTE contrainte sur un nombre, donc le
+    motif rendu est la contrainte, jamais l'unicité.
+    """
+
+    MOTS = {"MOTS": ["aa", "bb"]}
+
+    def _f(self, nom, ttype="integer", pg="integer", **kw):
+        return {
+            "model": "x.y",
+            "name": nom,
+            "ttype": ttype,
+            "pg_type": pg,
+            "unique": kw.pop("unique", False),
+            "checked": kw.pop("checked", False),
+            "max_len": None,
+        }
+
+    def _nommes(self, champ):
+        """Ce que le rapport nomme, la colonne étant accompagnée d'un
+        texte pour qu'une étape existe."""
+        etapes = anon.plan(
+            [champ, self._f("libelle", "char", "character varying")],
+            mode="blacklist",
+            mots=self.MOTS,
+        )
+        return etapes[0]["abstenus"] if etapes else []
+
+    def test_the_primary_key_stays_SILENT(self):
+        """`id` est un entier unique sur CHAQUE modèle : le nommer
+        partout noyait les vrais avertissements."""
+        self.assertEqual([], self._nommes(self._f("id", unique=True)))
+
+    def test_every_unique_number_left_in_clear_IS_named(self):
+        for nom, kw in (
+            ("numero", {"unique": True}),
+            ("numero", {"unique": True, "checked": True}),
+            ("numero", {"unique": True, "pg": "jsonb"}),
+            ("compteur_id", {"unique": True}),
+        ):
+            with self.subTest(nom=nom, **kw):
+                self.assertEqual([nom], self._nommes(self._f(nom, **kw)))
+
+    def test_the_reason_returned_is_NOT_the_uniqueness_one(self):
+        """La preuve que le prédicat ne peut pas s'y adosser."""
+        for kw in (
+            {"unique": True, "checked": True},
+            {"unique": True, "pg": "jsonb"},
+        ):
+            with self.subTest(**kw):
+                champ = self._f("numero", **kw)
+                self.assertNotEqual(
+                    anon.REFUS_NOMBRE_UNIQUE, anon.raison_du_refus(champ)
+                )
+                self.assertTrue(
+                    anon.abstention_a_nommer(
+                        champ, anon.raison_du_refus(champ)
+                    )
+                )
+
+    def test_a_unique_TEXT_column_is_not_named(self):
+        """Le texte a une issue : `expression_texte` y colle l'id."""
+        champ = self._f("ref", "char", "character varying", unique=True)
+        self.assertEqual([], self._nommes(champ))
+
+    def test_a_number_that_is_not_unique_is_not_named(self):
+        self.assertEqual([], self._nommes(self._f("montant")))
+
+    def test_a_column_that_is_TAKEN_is_not_named(self):
+        self.assertFalse(anon.abstention_a_nommer(self._f("montant"), None))
+
+    def test_the_floor_is_the_only_reason_that_silences(self):
+        """Toute autre raison laisse la question au type et à l'unicité."""
+        champ = self._f("numero", unique=True)
+        for raison in (
+            anon.REFUS_RELATION,
+            anon.REFUS_CONTRAINTE,
+            anon.REFUS_JSONB_NOMBRE,
+            anon.REFUS_NOMBRE_UNIQUE,
+            anon.REFUS_STRUCTURE,
+            anon.REFUS_CONNEXION,
+        ):
+            with self.subTest(raison=raison):
+                self.assertTrue(anon.abstention_a_nommer(champ, raison))
+        self.assertFalse(anon.abstention_a_nommer(champ, anon.REFUS_PLANCHER))
 
 
 if __name__ == "__main__":
