@@ -22,10 +22,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
 - Before cutting, the form says whether the cache holds the base suite of each system asked for: F5 warns « cache holds nothing for ubuntu 26.04 » and a second F5 goes ahead anyway. The verdict is given only where a release is named unambiguously in the URL — the apt families — rather than reassuring wrongly elsewhere
 - The deployment form carries a **Network** section with « No internet connection »: the cache service alone loses its way out for the whole deployment, install included, and gets it back whatever happens. Not the VMs' network — they need it to reach the cache. Offered only where the cache runs, and the deployment refuses rather than run with the upstream still up, a VM built that way succeeding for the wrong reason
+- Offline, the cache replays what an online pass saw, not only 200 bodies: redirects, definitive refusals (404/410) and HEAD answers of volatile URLs are kept without a body, under keys of their own, and served ONLY when upstream is mute. A TUF client probing the next version of its root gets the 404 it expects instead of a 504, so mise installs Python offline with its Sigstore verification intact; GNOME extensions, Claude Code's installer and rtk's version lookup follow their redirects offline
+- The offline cut ends when the last installation ends, not when the monitor closes: a root unit, handed the lift at launch, waits for every installation's exit marker and survives the monitor closed early, todo.py killed or the terminal gone — 12 h at most. The monitor is therefore required while offline. A second offline deployment is refused while one runs, and an online deployment started meanwhile is told it would run offline
+- F5 also reads the previous offline runs of the same VM and warns « at least N addresses were missing », minus what the store holds now (`erplibre_go_qemu_cache --detient`, read-only, no root). **Deployment › QEMU cache › Fill what offline runs lacked** replays them online, through the cache
+- The install log names the commit the VM runs; offline, the recap says, branch by branch, which commit the cache's mirror will give
 
 ## Changed
 
 - The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
+- Debian and Ubuntu `by-hash` index files are served from disk, their name being the digest of their content; `…/releases/latest/download/…` is no longer pinned to the first version seen
+- An upstream that refuses or drops connections is remembered for 20 s: a request with a stored answer is served at once instead of waiting its connect timeout, which made up most of an offline install's time; a request with nothing stored still tries upstream. A git mirror skips its refresh while its forge is unreachable
+- Mirror prefetch runs under the cache's service account, never as root
 
 ## Fixed
 
@@ -35,6 +42,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A desktop install no longer waits minutes on the apt lock: the apt-daily SERVICE is stopped and not only its timer, a timer being disabled without interrupting the apt-get it already started; and the retry comes back every two seconds rather than every ten, `DPkg::Lock::Timeout` not covering the list lock at all
 - Fedora VMs boot again: the firmware loads and starts their loader, then freezes without writing a byte — no console, no DHCP lease, a machine "running" that does nothing. Fedora is booted in legacy BIOS, where the same image starts its kernel; `--bios` still wins when asked
 - A VM receives a hostname it can accept — an underscore, which a libvirt domain name tolerates, made it keep its image's generic name — and a timezone its own distribution knows, a legacy alias having left it in UTC
+- starship installs in a VM: its installer runs as root, bounded by a root timeout, so it never reaches the `sudo -v` that sudo-rs refuses; its shell hook no longer prints « command not found », nor fails a sourced rc, when starship is absent
+- Each optional tool says whether it was installed, and a GNOME extension whose download failed is no longer reported as unavailable for this GNOME
+- mise, pyenv and GNOME extensions are downloaded, then run: without pipefail, `curl | sh` could neither report a failed download nor reach its fallback
+- The guest-agent unit no longer ends in failure after a successful install
+- The cache answers 508 to a request that targets the cache itself, instead of calling itself until it runs out of descriptors
+- The cache diagnosis no longer reports a stopped service as running
+
+## Security
+
+- Following a redirect, the cache no longer forwards the client's credentials (Authorization, Cookie, Proxy-Authorization) to another host
 
 
 ## [1.8.0] - 2026-09-04

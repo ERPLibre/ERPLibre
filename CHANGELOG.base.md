@@ -42,6 +42,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `long_test/qemu_cache.py` measures whether the cache really serves the second VM, and `--hors-ligne` cuts the upstream of the cache service alone to prove a third VM still builds from the stored index
 - Before cutting, the form says whether the cache holds the base suite of each system asked for: F5 warns « cache holds nothing for ubuntu 26.04 » and a second F5 goes ahead anyway. The verdict is given only where a release is named unambiguously in the URL — the apt families — rather than reassuring wrongly elsewhere
 - The deployment form carries a **Network** section with « No internet connection »: the cache service alone loses its way out for the whole deployment, install included, and gets it back whatever happens. Not the VMs' network — they need it to reach the cache. Offered only where the cache runs, and the deployment refuses rather than run with the upstream still up, a VM built that way succeeding for the wrong reason
+- Offline, the cache replays what an online pass saw, not only 200 bodies: redirects, definitive refusals (404/410) and HEAD answers of volatile URLs are kept without a body, under keys of their own, and served ONLY when upstream is mute. A TUF client probing the next version of its root gets the 404 it expects instead of a 504, so mise installs Python offline with its Sigstore verification intact; GNOME extensions, Claude Code's installer and rtk's version lookup follow their redirects offline
+- The offline cut ends when the last installation ends, not when the monitor closes: a root unit, handed the lift at launch, waits for every installation's exit marker and survives the monitor closed early, todo.py killed or the terminal gone — 12 h at most. The monitor is therefore required while offline. A second offline deployment is refused while one runs, and an online deployment started meanwhile is told it would run offline
+- F5 also reads the previous offline runs of the same VM and warns « at least N addresses were missing », minus what the store holds now (`erplibre_go_qemu_cache --detient`, read-only, no root). **Deployment › QEMU cache › Fill what offline runs lacked** replays them online, through the cache
+- The install log names the commit the VM runs; offline, the recap says, branch by branch, which commit the cache's mirror will give
 
 <!-- [fr] -->
 
@@ -56,6 +60,10 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `long_test/qemu_cache.py` mesure si le cache sert vraiment la seconde VM, et `--hors-ligne` coupe l'amont du seul service du cache pour prouver qu'une troisième se bâtit encore sur l'index stocké
 - Avant de couper, le formulaire dit si le cache détient la suite de base de chaque système demandé : F5 prévient « le cache ne détient rien pour ubuntu 26.04 » et un second F5 passe outre. Le verdict n'est rendu que là où une version se nomme sans ambiguïté dans l'URL — les familles apt — plutôt que de rassurer à tort ailleurs
 - Le formulaire de déploiement porte une section **Réseau** avec « Sans connexion internet » : le seul service du cache perd sa sortie pour tout le déploiement, installation comprise, et la retrouve quoi qu'il arrive. Pas le réseau des VM — elles en ont besoin pour joindre le cache. Offerte seulement là où le cache tourne, et le déploiement refuse plutôt que de partir avec l'amont debout, une VM bâtie ainsi réussissant pour la mauvaise raison
+- Hors ligne, le cache rejoue ce qu'un passage en ligne a vu, et non plus les seuls corps en 200 : redirections, refus définitifs (404/410) et réponses HEAD des adresses volatiles sont gardés sans corps, sous des clés à eux, et servis SEULEMENT quand l'amont est muet. Un client TUF qui sonde la version suivante de sa racine reçoit le 404 qu'il attend au lieu d'un 504 : mise pose Python hors ligne, vérification Sigstore intacte ; les extensions GNOME, l'installateur de Claude Code et la version de rtk suivent leurs redirections hors ligne
+- La coupure hors ligne tombe avec la dernière installation, et non à la fermeture du suivi : une unité root, qui reçoit la levée au lancement, attend le marqueur de fin de chaque installation et survit au suivi fermé tôt, à todo.py tué ou au terminal perdu — 12 h au plus. Le suivi est donc obligatoire hors ligne. Un second déploiement hors ligne est refusé pendant qu'un premier tourne, et un déploiement en ligne lancé entre-temps est prévenu qu'il tournerait hors ligne
+- F5 lit aussi les essais hors ligne précédents de la même VM et prévient « au moins N adresses ont manqué », moins ce que le magasin détient désormais (`erplibre_go_qemu_cache --detient`, en lecture seule, sans root). **Déploiement › Cache QEMU › Combler ce qui a manqué hors ligne** les rejoue en ligne, à travers le cache
+- Le journal d'installation nomme le commit que la VM exécute ; hors ligne, le récapitulatif dit, branche par branche, quel commit le miroir du cache donnera
 
 <!-- [en] -->
 ## Changed
@@ -64,10 +72,16 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 <!-- [en] -->
 
 - The comment hygiene check reads Go comments, not only `#` ones: `//` outside a string, the raw string between backticks, and `/* … */` blocks
+- Debian and Ubuntu `by-hash` index files are served from disk, their name being the digest of their content; `…/releases/latest/download/…` is no longer pinned to the first version seen
+- An upstream that refuses or drops connections is remembered for 20 s: a request with a stored answer is served at once instead of waiting its connect timeout, which made up most of an offline install's time; a request with nothing stored still tries upstream. A git mirror skips its refresh while its forge is unreachable
+- Mirror prefetch runs under the cache's service account, never as root
 
 <!-- [fr] -->
 
 - Le contrôle d'hygiène des commentaires lit le Go, et non les seuls `#` : `//` hors d'une chaîne, la chaîne brute entre accents graves, et les blocs `/* … */`
+- Les index `by-hash` de Debian et d'Ubuntu sont servis du disque, leur nom étant l'empreinte de leur contenu ; `…/releases/latest/download/…` n'est plus figé sur la première version vue
+- Un amont qui refuse ou ignore les connexions est retenu 20 s : une requête qui a une réponse gardée est servie aussitôt au lieu d'attendre son délai d'établissement, qui faisait l'essentiel du temps d'une installation hors ligne ; une requête sans rien en réserve tente toujours l'amont. Un miroir git saute son rafraîchissement tant que sa forge est injoignable
+- Le pré-remplissage des miroirs tourne sous le compte du service du cache, jamais en root
 
 <!-- [en] -->
 ## Fixed
@@ -81,6 +95,12 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A desktop install no longer waits minutes on the apt lock: the apt-daily SERVICE is stopped and not only its timer, a timer being disabled without interrupting the apt-get it already started; and the retry comes back every two seconds rather than every ten, `DPkg::Lock::Timeout` not covering the list lock at all
 - Fedora VMs boot again: the firmware loads and starts their loader, then freezes without writing a byte — no console, no DHCP lease, a machine "running" that does nothing. Fedora is booted in legacy BIOS, where the same image starts its kernel; `--bios` still wins when asked
 - A VM receives a hostname it can accept — an underscore, which a libvirt domain name tolerates, made it keep its image's generic name — and a timezone its own distribution knows, a legacy alias having left it in UTC
+- starship installs in a VM: its installer runs as root, bounded by a root timeout, so it never reaches the `sudo -v` that sudo-rs refuses; its shell hook no longer prints « command not found », nor fails a sourced rc, when starship is absent
+- Each optional tool says whether it was installed, and a GNOME extension whose download failed is no longer reported as unavailable for this GNOME
+- mise, pyenv and GNOME extensions are downloaded, then run: without pipefail, `curl | sh` could neither report a failed download nor reach its fallback
+- The guest-agent unit no longer ends in failure after a successful install
+- The cache answers 508 to a request that targets the cache itself, instead of calling itself until it runs out of descriptors
+- The cache diagnosis no longer reports a stopped service as running
 
 <!-- [fr] -->
 
@@ -90,6 +110,24 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Une installation de bureau n'attend plus des minutes sur le verrou apt : le SERVICE apt-daily est arrêté et non son seul minuteur, un minuteur désactivé n'interrompant pas l'apt-get qu'il a déjà lancé ; et la reprise repasse toutes les deux secondes au lieu de dix, « DPkg::Lock::Timeout » ne couvrant pas ce verrou-là
 - Les VM Fedora démarrent de nouveau : le micrologiciel charge et démarre leur chargeur, puis se fige sans écrire un octet — pas de console, pas de bail DHCP, une machine « en cours d'exécution » qui ne fait rien. Fedora est amorcée en BIOS hérité, où la même image démarre son noyau ; `--bios` garde le dernier mot
 - Une VM reçoit un nom d'hôte qu'elle accepte — un souligné, que le nom de domaine libvirt tolère, lui faisait garder le nom générique de son image — et un fuseau que sa distribution connaît, un alias hérité la laissant en UTC
+- starship s'installe dans une VM : son installateur tourne en root, borné par un délai root, et n'atteint jamais le `sudo -v` que sudo-rs refuse ; son crochet de shell n'écrit plus « command not found », ni ne fait échouer un rc sourcé, quand starship est absent
+- Chaque outil optionnel dit s'il a été posé, et une extension GNOME dont le téléchargement a échoué n'est plus déclarée indisponible pour ce GNOME
+- mise, pyenv et les extensions GNOME sont téléchargés, puis exécutés : sans pipefail, `curl | sh` ne pouvait ni signaler un téléchargement raté ni atteindre son repli
+- L'unité de l'agent invité ne finit plus en échec après une pose réussie
+- Le cache répond 508 à une requête qui le vise lui-même, au lieu de s'appeler jusqu'à épuiser ses descripteurs
+- Le diagnostic du cache ne donne plus un service arrêté pour actif
+
+<!-- [en] -->
+## Security
+<!-- [fr] -->
+## Sécurité
+<!-- [en] -->
+
+- Following a redirect, the cache no longer forwards the client's credentials (Authorization, Cookie, Proxy-Authorization) to another host
+
+<!-- [fr] -->
+
+- En suivant une redirection, le cache ne transmet plus les identifiants du client (Authorization, Cookie, Proxy-Authorization) à un autre hôte
 
 <!-- [common] -->
 
