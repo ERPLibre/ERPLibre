@@ -1458,6 +1458,67 @@ class TestGnomeSiteExtensions(unittest.TestCase):
         self.assertEqual(0, res.returncode, res.stderr[:400])
 
 
+class TestLeServiceDeLAgentInvite(unittest.TestCase):
+    """Le service détaché qui pose qemu-guest-agent, lancé par cloud-init.
+
+    Son script essaie un gestionnaire de paquets après l'autre. Sans
+    accolades autour de chaque branche, une pose réussie enchaîne sur le
+    gestionnaire suivant, absent, et le service finit en échec — 127 sous
+    dash — alors que l'agent est posé. Le script est extrait de la vraie
+    configuration cloud-init, lue en YAML, et tourne dans un PATH où seul le
+    gestionnaire choisi existe, faux : aucun paquet n'est posé, aucun
+    service lancé.
+    """
+
+    def _script(self):
+        import shlex
+
+        import yaml
+
+        from script.qemu import deploy_qemu
+
+        args = deploy_qemu.build_parser().parse_args(
+            ["--distro", "ubuntu", "--hostname", "vm"]
+        )
+        doc = yaml.safe_load(deploy_qemu.build_cloud_config(args, None, []))
+        ligne = next(
+            c
+            for c in doc["runcmd"]
+            if isinstance(c, str) and "--unit=erplibre-qga" in c
+        )
+        mots = shlex.split(ligne)
+        # « systemd-run … /bin/sh -c '<script>' » : le script suit « -c ».
+        return mots[mots.index("/bin/sh") + 2]
+
+    def test_a_successful_install_exits_zero(self):
+        import os
+        import shutil
+        import tempfile
+
+        script = self._script()
+        for gestionnaire in ("apt-get", "dnf", "pacman"):
+            with self.subTest(gestionnaire=gestionnaire):
+                with tempfile.TemporaryDirectory() as tmp:
+                    faux = pathlib.Path(tmp)
+                    os.symlink(shutil.which("sh"), faux / "sh")
+                    trace = faux / "trace"
+                    chemin = faux / gestionnaire
+                    chemin.write_text(
+                        f'#!/bin/sh\necho "$0 $*" >> "{trace}"\nexit 0\n',
+                        encoding="utf-8",
+                    )
+                    chemin.chmod(0o755)
+                    fini = subprocess.run(
+                        [str(faux / "sh"), "-c", script],
+                        env={"PATH": str(faux)},
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(0, fini.returncode, fini.stderr)
+                    self.assertIn("qemu-guest-agent", trace.read_text())
+
+
 class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
     """« Impossible d'obtenir le verrou /var/lib/apt/lists/lock. Il est
     occupé par le processus N (apt-get) », répété pendant des minutes au

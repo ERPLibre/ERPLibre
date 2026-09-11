@@ -2876,10 +2876,9 @@ def build_cloud_config(
         " 2>/dev/null && break; done || true",
         # qemu-guest-agent : installé APRÈS sshd, et surtout HORS de cloud-init.
         #
-        # Mesuré sur Ubuntu 26.04 s390x : « apt-get install qemu-guest-agent »
-        # tire liburing2, ubuntu-helper-virt-hwe et ubuntu-virt depuis
-        # ports.ubuntu.com, et cloud-final tourne 9 min 47. Or le suivi
-        # d'installation attend « cloud-init status: done » : dix minutes
+        # Son installation tire plusieurs paquets de virtualisation, et sur une
+        # architecture émulée elle tient cloud-final une dizaine de minutes. Or
+        # le suivi d'installation attend « cloud-init status: done » : autant
         # d'attente pour un paquet accessoire, avant même de commencer le
         # travail utile.
         #
@@ -2887,13 +2886,20 @@ def build_cloud_config(
         # en quelques secondes et l'agent apparaît quand il apparaît. On saute
         # aussi l'installation quand qemu-ga est déjà là, ce qui est le cas de
         # beaucoup d'images. Repli en ligne si systemd-run manque.
+        #
+        # Chaque branche de gestionnaire est entre accolades. Sans elles, « && »
+        # et « || » se lisent à égalité de gauche à droite : une pose apt
+        # réussie enchaîne sur « dnf install », puis sur le « command -v »
+        # d'un gestionnaire absent, qui rend 127 sous dash — et le service
+        # finit en échec après avoir posé l'agent. Le nom du service est celui
+        # qu'attend _qemu_cloud_init_wait, côté hôte.
         "  - command -v qemu-ga >/dev/null 2>&1 ||"
         " systemd-run --no-block --unit=erplibre-qga --collect"
-        " /bin/sh -c 'command -v apt-get >/dev/null && { apt-get update -qq"
-        " || true; apt-get install -y qemu-guest-agent; }"
-        " || command -v dnf >/dev/null && dnf install -y qemu-guest-agent"
-        " || command -v pacman >/dev/null && pacman -Sy --noconfirm"
-        " qemu-guest-agent' 2>/dev/null"
+        " /bin/sh -c '{ command -v apt-get >/dev/null && { apt-get update -qq"
+        " || true; apt-get install -y qemu-guest-agent; }; }"
+        " || { command -v dnf >/dev/null && dnf install -y qemu-guest-agent; }"
+        " || { command -v pacman >/dev/null && pacman -Sy --noconfirm"
+        " qemu-guest-agent; }' 2>/dev/null"
         " || (command -v apt-get >/dev/null && (timeout 120 apt-get update -qq"
         " || true; timeout 300 apt-get install -y qemu-guest-agent)) ||"
         " (command -v dnf >/dev/null && timeout 300 dnf install -y"
