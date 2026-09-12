@@ -942,6 +942,106 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
         self.assertTrue(self._ecran(True, cocher=True)["valeur"])
 
 
+class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
+    """Une VM Proxmox tire du miroir que le cache a rempli.
+
+    Le magasin range ses index sous l'HÔTE demandé. Une VM qui réclame
+    « archive.ubuntu.com » ne retrouve donc rien de ce qu'une autre a gardé
+    depuis un miroir : hors ligne, chacun de ces index manque, et
+    l'installation échoue plus bas sur des dépendances introuvables — un
+    message qui accuse le dépôt, jamais le miroir.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    class _Mod:
+        APT_MIRRORS_MAIN = [
+            "http://miroir.invalid/ubuntu",
+            "http://second.invalid/ubuntu",
+        ]
+        APT_MIRRORS_PORTS = ["http://miroir.invalid/ubuntu-ports"]
+        PORTS_ARCHES = ("arm64", "s390x")
+
+    def _poser(self, vm, code=0):
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {}
+
+        def faux_ssh(cible, cmd, timeout=120):
+            vu["cible"], vu["cmd"] = cible, cmd
+            return code, ""
+
+        todo._pve_ssh = faux_ssh
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            vu["rendu"] = todo._pve_set_apt_mirror("pve+vm-a", vm, self._Mod)
+        vu["ecrit"] = sortie.getvalue()
+        return vu
+
+    def test_le_premier_miroir_remplace_les_depots_officiels(self):
+        vu = self._poser({"distro": "ubuntu", "arch": "amd64"})
+        self.assertTrue(vu["rendu"])
+        self.assertIn("miroir.invalid/ubuntu", vu["cmd"])
+        self.assertIn("archive|security", vu["cmd"])
+        self.assertNotIn("second.invalid", vu["cmd"])
+
+    def test_les_deux_formats_de_sources_sont_couverts(self):
+        """Le « .sources » deb822 des images récentes, et le
+        « sources.list » des anciennes : n'en réécrire qu'un laisse l'autre
+        pointer ailleurs."""
+        cmd = self._poser({"distro": "ubuntu", "arch": "amd64"})["cmd"]
+        self.assertIn("/etc/apt/sources.list ", cmd)
+        self.assertIn("sources.list.d/*.sources", cmd)
+        self.assertIn("sources.list.d/*.list", cmd)
+
+    def test_une_arche_ports_prend_son_propre_miroir(self):
+        """Les arches « ports » ne sont pas sur archive.ubuntu.com, et amd64
+        n'est pas sur ports.ubuntu.com."""
+        cmd = self._poser({"distro": "ubuntu", "arch": "arm64"})["cmd"]
+        # Le motif est une EXPRESSION : ses points sont échappés, sans quoi
+        # ils vaudraient « n'importe quel caractère ».
+        self.assertIn(r"ports\.ubuntu\.com/ubuntu-ports", cmd)
+        self.assertIn("miroir.invalid/ubuntu-ports", cmd)
+
+    def test_les_autres_distributions_sont_laissees_tranquilles(self):
+        """Debian, Fedora et Arch ont leurs propres dépôts : y réécrire une
+        URI ubuntu ne viserait rien."""
+        todo = self._todo()
+        todo._pve_ssh = lambda *a, **k: self.fail("ssh lancé pour rien")
+        self.assertFalse(
+            todo._pve_set_apt_mirror(
+                "pve+vm-a", {"distro": "debian", "arch": "amd64"}, self._Mod
+            )
+        )
+
+    def test_un_echec_est_dit(self):
+        vu = self._poser({"distro": "ubuntu", "arch": "amd64"}, code=255)
+        self.assertFalse(vu["rendu"])
+        self.assertIn("255", vu["ecrit"])
+
+    def test_le_miroir_est_pose_avant_lautorite_du_cache(self):
+        """L'ordre est le sujet : l'autorité sert aux téléchargements, et le
+        miroir décide OÙ ils vont. Posé après, il ne vaudrait que pour ce qui
+        reste à venir."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script" / "todo" / "proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            src.index('self._pve_set_apt_mirror(vm["alias"]'),
+            src.index('self._pve_set_cache_ca(vm["alias"]'),
+        )
+
+
 class TestUnParcMixte(unittest.TestCase):
     """Le plan porte branche, profil et type PAR RANGÉE — le déploiement
     lisait encore la seule valeur commune.

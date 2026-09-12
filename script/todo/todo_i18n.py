@@ -6443,6 +6443,14 @@ TRANSLATIONS = {
         "fr": "groupes du GPU posés",
         "en": "GPU groups set",
     },
+    "apt mirror pinned": {
+        "fr": "miroir apt fixé",
+        "en": "apt mirror pinned",
+    },
+    "apt mirror not pinned": {
+        "fr": "miroir apt non fixé",
+        "en": "apt mirror not pinned",
+    },
     "GPU groups not set": {
         "fr": "groupes du GPU non posés",
         "en": "GPU groups not set",
@@ -6579,9 +6587,9 @@ TRANSLATIONS = {
         "fr": "attente de la pose de l'agent invité (verrou apt)",
         "en": "waiting for the guest agent install (apt lock)",
     },
-    "apt-get update never succeeded: the lock stayed held": {
+    "apt-get update never succeeded in 5 min (lock held, or nothing served)": {
         "fr": "apt-get update n'a jamais abouti : le verrou est resté pris",
-        "en": "apt-get update never succeeded: the lock stayed held",
+        "en": "apt-get update never succeeded in 5 min (lock held, or nothing served)",
     },
     "An offline deployment is still running: the cut": {
         "fr": "Un déploiement hors ligne tourne encore : la coupure",

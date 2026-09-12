@@ -1664,6 +1664,55 @@ class ProxmoxMenuMixin:
         print(f"  ✓ {t('download cache authority installed')}")
         return True
 
+    def _pve_set_apt_mirror(self, cible, vm, mod=None):
+        """Fixe le miroir apt de la VM sur celui que le cache a rempli.
+
+        Le magasin range ses index sous l'HÔTE demandé : une VM qui réclame
+        « archive.ubuntu.com » ne retrouve rien de ce qu'une autre a gardé
+        depuis un miroir, et hors ligne chacun de ces index manque — la suite
+        échoue alors sur des dépendances introuvables, ce qui accuse le dépôt
+        et non le miroir. La voie libvirt écrit le miroir dans le
+        cloud-config ; « qm set » ne sait écrire aucun fichier, d'où ce
+        passage par ssh.
+
+        Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
+        y réécrire une URI ubuntu ne viserait rien. Les deux formats sont
+        couverts — le « .sources » deb822 des images récentes et le
+        « sources.list » des anciennes — et « security » suit le même miroir,
+        que les miroirs répliquent sous le même chemin.
+        """
+        if (vm.get("distro") or "") != "ubuntu":
+            return False
+        ports = vm.get("arch") in (getattr(mod, "PORTS_ARCHES", ()) or ())
+        miroirs = (
+            getattr(mod, "APT_MIRRORS_PORTS", ())
+            if ports
+            else getattr(mod, "APT_MIRRORS_MAIN", ())
+        ) or ()
+        if not miroirs:
+            return False
+        miroir = miroirs[0]
+        # Les arches « ports » ne sont pas sur archive.ubuntu.com, et amd64
+        # n'est pas sur ports.ubuntu.com : le motif suit l'architecture.
+        motif = (
+            r"https?://ports\.ubuntu\.com/ubuntu-ports"
+            if ports
+            else r"https?://(archive|security)\.ubuntu\.com/ubuntu"
+        )
+        # « # » comme séparateur de sed : une URL en est dépourvue, alors
+        # qu'elle porte des « / » en quantité.
+        geste = (
+            f"sudo sed -i -E 's#{motif}#{miroir}#g'"
+            " /etc/apt/sources.list /etc/apt/sources.list.d/*.sources"
+            " /etc/apt/sources.list.d/*.list 2>/dev/null; true"
+        )
+        code, _o = self._pve_ssh(cible, geste, timeout=60)
+        if code:
+            print(f"  ⚠ {t('apt mirror not pinned')} ({code})")
+            return False
+        print(f"  ✓ {t('apt mirror pinned')} : {miroir}")
+        return True
+
     def _pve_set_gpu_groups(self, cible, utilisateur, mod=None):
         """Met le compte de la VM dans les groupes du GPU, par ssh.
 
@@ -1965,6 +2014,10 @@ class ProxmoxMenuMixin:
                 # Après le fuseau et avant l'installation : c'est
                 # l'installation qui télécharge.
                 if ca_cache:
+                    # Le miroir AVANT l'autorité et l'installation : le cache
+                    # range ses index sous l'hôte demandé, et une VM qui en
+                    # réclame un autre ne retrouve rien de ce qui est gardé.
+                    self._pve_set_apt_mirror(vm["alias"], vm, mod_qemu)
                     self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
                 # Après la création, qui a posé l'écran accéléré : l'accès au
                 # nœud de rendu est une affaire de COMPTE, et il se donne

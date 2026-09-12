@@ -194,9 +194,14 @@ class QemuDeployMixin:
             # (« Could not get lock … lists/lock ») -> lists vides -> « Unable
             # to locate package git ». On RÉESSAIE donc update jusqu'à ce que
             # le verrou se libère (et les lists soient peuplées), borné à ~5 min.
-            "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
-            "n=$((n+1)); [ $n -ge 30 ] && break; "
-            'echo "apt verrouille (tentative $n), attente 10s..."; sleep 10; '
+            # Bornée par le TEMPS : trente essais valent cinq minutes quand
+            # chacun échoue en une seconde sur un verrou, mais des heures
+            # quand le cache répond 504 sur chaque index et qu'un essai dure
+            # des minutes.
+            "fin=$(( $(date +%s) + 300 )); "
+            "until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
+            '[ "$(date +%s)" -ge "$fin" ] && break; '
+            'echo "apt indisponible, nouvel essai dans 10s..."; sleep 10; '
             "done; "
             "sudo apt-get -o DPkg::Lock::Timeout=600 install -y $PKGS; "
             "elif command -v dnf >/dev/null 2>&1; then "

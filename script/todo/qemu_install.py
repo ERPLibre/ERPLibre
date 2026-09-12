@@ -699,12 +699,18 @@ class QemuInstallMixin:
             # tient, et dormir dix secondes entre deux essais coûte des
             # minutes à ne rien faire. On repasse plus souvent, et on rend la
             # main dès que le verrou se libère.
-            "n=0; until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
-            "n=$((n+1)); [ $n -ge 60 ] && "
+            # Bornée par le TEMPS, et non par un nombre d'essais. Un essai
+            # coûte moins d'une seconde quand le verrou est tenu, mais des
+            # MINUTES quand le cache répond 504 sur chaque index : soixante
+            # essais valaient alors des heures d'attente muette, là où on
+            # voulait cinq minutes.
+            "fin=$(( $(date +%s) + 300 )); "
+            "until sudo apt-get -o DPkg::Lock::Timeout=120 update -qq; do "
+            '[ "$(date +%s)" -ge "$fin" ] && '
             # Le dire ICI. Sans cette ligne, l'installation continue sur un
             # index jamais rafraîchi et échoue plus bas sur « Impossible de
             # trouver le paquet », qui accuse le dépôt et non le verrou.
-            f'{{ echo "   ⚠ {t("apt-get update never succeeded: the lock stayed held")}"; '
+            f'{{ echo "   ⚠ {t("apt-get update never succeeded in 5 min (lock held, or nothing served)")}"; '
             "break; }; sleep 2; done; "
             "sudo DEBIAN_FRONTEND=noninteractive "
             "apt-get -o DPkg::Lock::Timeout=600 install -y "

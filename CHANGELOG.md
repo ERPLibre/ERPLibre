@@ -49,6 +49,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The guest-agent unit no longer ends in failure after a successful install
 - The cache answers 508 to a request that targets the cache itself, instead of calling itself until it runs out of descriptors
 - The cache diagnosis no longer reports a stopped service as running
+- The wait for `apt-get update` is bounded by a deadline rather than by a number of attempts. An attempt fails in under a second on a held lock, but takes minutes when the cache answers 504 on every index it does not hold: sixty attempts were then worth hours of silence where five minutes were promised, and the install went on to fail on unmet dependencies
+- A Proxmox guest is pinned to the same apt mirror as the rest of the fleet, written over ssh before anything downloads. The store keys its indexes by HOST, so a VM left on the default repositories of its image found none of what the cache had been filled with — offline, every one of those indexes was missing
 
 ## Security
 

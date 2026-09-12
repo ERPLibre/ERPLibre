@@ -103,6 +103,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The guest-agent unit no longer ends in failure after a successful install
 - The cache answers 508 to a request that targets the cache itself, instead of calling itself until it runs out of descriptors
 - The cache diagnosis no longer reports a stopped service as running
+- The wait for `apt-get update` is bounded by a deadline rather than by a number of attempts. An attempt fails in under a second on a held lock, but takes minutes when the cache answers 504 on every index it does not hold: sixty attempts were then worth hours of silence where five minutes were promised, and the install went on to fail on unmet dependencies
+- A Proxmox guest is pinned to the same apt mirror as the rest of the fleet, written over ssh before anything downloads. The store keys its indexes by HOST, so a VM left on the default repositories of its image found none of what the cache had been filled with — offline, every one of those indexes was missing
 
 <!-- [fr] -->
 
@@ -118,6 +120,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - L'unité de l'agent invité ne finit plus en échec après une pose réussie
 - Le cache répond 508 à une requête qui le vise lui-même, au lieu de s'appeler jusqu'à épuiser ses descripteurs
 - Le diagnostic du cache ne donne plus un service arrêté pour actif
+- L'attente d'`apt-get update` est bornée par une échéance et non par un nombre d'essais. Un essai échoue en moins d'une seconde sur un verrou tenu, mais dure des minutes quand le cache rend 504 sur chaque index qu'il ne détient pas : soixante essais valaient alors des heures de silence là où cinq minutes étaient promises, et l'installation échouait ensuite sur des dépendances introuvables
+- Un invité Proxmox est fixé sur le même miroir apt que le reste du parc, écrit par ssh avant tout téléchargement. Le magasin range ses index par HÔTE : une VM restée sur les dépôts par défaut de son image ne retrouvait rien de ce dont le cache avait été rempli — hors ligne, chacun de ces index manquait
 
 <!-- [en] -->
 ## Security
