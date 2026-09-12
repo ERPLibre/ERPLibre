@@ -114,6 +114,8 @@ def build_spec(vms, existants, form):
         # La coupure d'amont demandée pour TOUT le déploiement, installation
         # comprise. Absente de la spec, le déploiement part en ligne.
         "offline": bool(form.get("offline")),
+        # L'écran accéléré, posé à la création de chaque VM.
+        "gpu3d": bool(form.get("gpu3d")),
     }
 
 
@@ -157,6 +159,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
     # un effet : l'hôte Proxmox est alors une VM de notre pont, et le menu
     # l'a établi avant d'ouvrir cet écran.
     cache_offert = bool(ctx.get("cache_offert"))
+    # La 3D ne s'offre que là où l'hôte distant peut la rendre : nœud de
+    # rendu et VIRGL. Le menu l'a sondé avant d'ouvrir cet écran.
+    gpu_offert = bool(ctx.get("gpu_offert"))
     # {système: (libellé, commande)} — ce qu'un système impose d'installer.
     distro_profiles = ctx.get("distro_profiles") or {}
     # Les commandes qui ne posent PAS ERPLibre : sa marge disque ne les suit
@@ -318,6 +323,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         placeholder="100",
                         id="f_vmid",
                     )
+                    # L'écran de la VM se choisit à la CRÉATION : « qm » pose
+                    # « --vga virtio-gl » au lieu de la console série, et le
+                    # changer ensuite demande d'éteindre la machine. La
+                    # console série reste posée dans les deux cas.
+                    if gpu_offert:
+                        yield Checkbox(
+                            t(
+                                "3D acceleration (host GPU), even without a"
+                                " screen"
+                            ),
+                            value=False,
+                            id="f_gpu3d",
+                        )
                     yield Static(t("Access"), classes="grouptitle")
                     yield Static(f"  {t('SSH public key')}")
                     yield Input(
@@ -949,6 +967,12 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.query("#f_offline")
                 and self.query_one("#f_offline", Checkbox).value
             )
+            # Même règle que pour la coupure : la case n'existe que là où
+            # elle a un effet, et son absence vaut « non ».
+            gpu3d = bool(
+                self.query("#f_gpu3d")
+                and self.query_one("#f_gpu3d", Checkbox).value
+            )
             return {
                 "host": ctx["host"],
                 "storage": self._storage(),
@@ -963,6 +987,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT : une VM sans
                 # ERPLibre se suit aussi (cloud-init, puis relevé système).
                 "offline": offline,
+                "gpu3d": gpu3d,
                 # Hors ligne, le suivi est d'office : seule sa voie confie la
                 # levée de la coupure au guet, qui la tient jusqu'à la fin de
                 # la dernière installation.

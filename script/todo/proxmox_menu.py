@@ -361,6 +361,24 @@ class ProxmoxMenuMixin:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
 
+    def _pve_gpu_dispo(self):
+        """L'hôte Proxmox peut-il donner de la 3D à ses invités ?
+
+        Deux pièces, et les deux sont nécessaires. Un NŒUD DE RENDU
+        (« /dev/dri/renderD* ») : un hôte sans GPU, ou lui-même virtualisé
+        sans GPU transmis, n'en expose aucun. Et la bibliothèque VIRGL, que
+        « --vga virtio-gl » charge au démarrage de la VM : sans elle, le
+        démarrage est refusé. Sans les deux, la case promettrait une
+        accélération que rien ne fournit.
+        """
+        code, sortie = self._pve_show(
+            "ls /dev/dri/renderD* >/dev/null 2>&1 &&"
+            " ls /usr/lib/*/libvirglrenderer.so.* >/dev/null 2>&1 &&"
+            " echo oui",
+            quiet=True,
+        )
+        return code == 0 and "oui" in (sortie or "")
+
     def _pve_vms(self):
         """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
         from script.proxmox import proxmox_deploy as pve
@@ -1235,6 +1253,9 @@ class ProxmoxMenuMixin:
             # vit pas ici ne traverse rien qu'on sache couper, et la case y
             # promettrait un hors-ligne que personne ne tient.
             "cache_offert": bool(self._pve_cache_ca(host)),
+            # Lu ICI, terminal encore à nous : la sonde passe par ssh, et une
+            # invite de mot de passe pendant que l'écran affiche le casserait.
+            "gpu_offert": self._pve_gpu_dispo(),
         }
 
     def _pve_capacity(self):
@@ -1320,6 +1341,10 @@ class ProxmoxMenuMixin:
             # Le DNS de l'hôte : « --ipconfig0 » ne le porte pas, et une VM
             # en adresse fixe se retrouvait sans résolveur.
             "nameservers": spec.get("nameservers") or (),
+            # L'accélération 3D se décide à la CRÉATION : l'écran d'une VM
+            # Proxmox est un choix de « qm create », et le changer ensuite
+            # demande de l'éteindre.
+            "gpu3d": bool(spec.get("gpu3d")),
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
@@ -1639,6 +1664,36 @@ class ProxmoxMenuMixin:
         print(f"  ✓ {t('download cache authority installed')}")
         return True
 
+    def _pve_set_gpu_groups(self, cible, utilisateur, mod=None):
+        """Met le compte de la VM dans les groupes du GPU, par ssh.
+
+        Le nœud de rendu appartient à « root:render » en 0660 : un compte qui
+        n'y est pas retombe en rendu logiciel alors même que la négociation
+        VIRGL entre l'hôte et l'invité a réussi, et rien ne le signale — le
+        matériel virtuel est bien accéléré, seul l'accès manque.
+
+        La voie libvirt pose ces groupes par le cloud-config ; « qm set » ne
+        sait écrire aucun fichier, d'où ce passage par ssh. Les groupes sont
+        CRÉÉS au besoin : « render » manque des images les plus anciennes, et
+        « usermod -aG » sur un groupe inconnu échoue.
+
+        Les appartenances ne valent qu'à la PROCHAINE session : celle qui
+        tourne garde les siennes, ce que l'installation qui suit ne subit pas,
+        chacune de ses commandes ouvrant sa propre session.
+        """
+        groupes = list(getattr(mod, "GPU_GROUPS", ()) or ("render", "video"))
+        gestes = [f"sudo groupadd -f {g}" for g in groupes]
+        gestes.append(
+            f"sudo usermod -aG {','.join(groupes)}"
+            f" {shlex.quote(utilisateur)}"
+        )
+        code, _o = self._pve_ssh(cible, " && ".join(gestes), timeout=60)
+        if code:
+            print(f"  ⚠ {t('GPU groups not set')} ({code})")
+            return False
+        print(f"  ✓ {t('GPU groups set')} : {', '.join(groupes)}")
+        return True
+
     def _pve_write_guide(self, cible, vm, spec, mod):
         """Pose le guide de connexion et l'identité git DANS la VM.
 
@@ -1911,6 +1966,15 @@ class ProxmoxMenuMixin:
                 # l'installation qui télécharge.
                 if ca_cache:
                     self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
+                # Après la création, qui a posé l'écran accéléré : l'accès au
+                # nœud de rendu est une affaire de COMPTE, et il se donne
+                # dans l'invité.
+                if spec.get("gpu3d"):
+                    self._pve_set_gpu_groups(
+                        vm["alias"],
+                        spec.get("user") or "erplibre",
+                        mod_qemu,
+                    )
             joignables.append(vm)
         install = spec.get("install")
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été

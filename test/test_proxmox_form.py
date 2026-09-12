@@ -175,6 +175,9 @@ def contexte():
         # L'hôte d'essai est une VM de notre pont : la case « Sans connexion
         # internet » est donc offerte, comme sur un Proxmox imbriqué.
         "cache_offert": True,
+        # L'hôte d'essai a un nœud de rendu et le VIRGL : la case 3D est
+        # donc offerte, comme sur un hôte Proxmox capable.
+        "gpu_offert": True,
         "ipconfig": lambda pont, vmid: f"ip=10.10.10.{50 + vmid % 200}/24",
         "build_command": lambda vm, spec: [f"qm create {vm['vmid']}"],
         "branches": ["develop", "master"],
@@ -799,6 +802,144 @@ class TestLeHorsLigneSurProxmox(unittest.TestCase):
         self.assertEqual(vu["avertissement"], [True])
         self.assertTrue(vu["suivi"])
         self.assertTrue(vu["suivi_fige"])
+
+
+class TestLaTroisDSurProxmox(unittest.TestCase):
+    """L'accélération 3D, offerte sur Proxmox VE comme sur QEMU/KVM.
+
+    Deux moitiés, et l'une sans l'autre ne donne rien. L'ÉCRAN se pose à la
+    création (« --vga virtio-gl ») ; l'ACCÈS au nœud de rendu est une affaire
+    de groupes DANS l'invité, que « qm set » ne sait pas écrire. Sans les
+    groupes, toute application GL retombe en rendu logiciel alors que la
+    négociation VIRGL a réussi — et rien ne le signale.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    def test_les_groupes_sont_crees_avant_detre_donnes(self):
+        """« usermod -aG » sur un groupe inconnu échoue, et « render » manque
+        des images les plus anciennes."""
+        todo = self._todo()
+        vu = {}
+
+        def faux_ssh(cible, cmd, timeout=120):
+            vu["cible"], vu["cmd"] = cible, cmd
+            return 0, ""
+
+        todo._pve_ssh = faux_ssh
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(todo._pve_set_gpu_groups("pve+vm-a", "erplibre"))
+        self.assertEqual(vu["cible"], "pve+vm-a")
+        self.assertLess(
+            vu["cmd"].index("groupadd -f render"),
+            vu["cmd"].index("usermod -aG"),
+        )
+        self.assertIn("groupadd -f video", vu["cmd"])
+        self.assertIn("usermod -aG render,video erplibre", vu["cmd"])
+
+    def test_un_echec_est_dit_et_non_tu(self):
+        todo = self._todo()
+        todo._pve_ssh = lambda *a, **k: (255, "")
+        import contextlib
+        import io
+
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertFalse(todo._pve_set_gpu_groups("pve+vm-a", "erplibre"))
+        self.assertIn("255", sortie.getvalue())
+
+    def test_la_sonde_exige_le_noeud_ET_le_virgl(self):
+        """Un hôte sans GPU n'expose aucun nœud de rendu ; sans VIRGL, la VM
+        refuse de démarrer. Les deux, ou rien."""
+        todo = self._todo()
+        vus = []
+
+        def faux_show(remote, timeout=120, quiet=False):
+            vus.append(remote)
+            return 0, "oui\n"
+
+        todo._pve_show = faux_show
+        self.assertTrue(todo._pve_gpu_dispo())
+        self.assertIn("/dev/dri/renderD*", vus[0])
+        self.assertIn("libvirglrenderer.so.*", vus[0])
+        todo._pve_show = lambda *a, **k: (0, "")
+        self.assertFalse(todo._pve_gpu_dispo())
+        todo._pve_show = lambda *a, **k: (1, "oui")
+        self.assertFalse(todo._pve_gpu_dispo())
+
+    def test_le_choix_atteint_la_commande_de_creation(self):
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script" / "todo" / "proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"gpu3d": bool(spec.get("gpu3d"))', src)
+        self.assertIn('"gpu_offert": self._pve_gpu_dispo()', src)
+
+    def test_la_case_atteint_la_spec(self):
+        form = {
+            "host": {"target": "pve1"},
+            "storage": "local-lvm",
+            "bridge": "vmbr0",
+            "res_label": "x1",
+            "ssh_key": "",
+            "start": True,
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": True,
+            "parallelism": 1,
+            "gpu3d": True,
+        }
+        self.assertTrue(build_spec([{"name": "a"}], [], form)["gpu3d"])
+        form["gpu3d"] = False
+        self.assertFalse(build_spec([{"name": "a"}], [], form)["gpu3d"])
+
+    def _ecran(self, gpu_offert, cocher=False):
+        """Monte l'écran avec — ou sans — la 3D possible sur l'hôte."""
+        from textual.widgets import Checkbox
+
+        ctx = contexte()
+        ctx["gpu_offert"] = gpu_offert
+        vu = {}
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                cases = app.query("#f_gpu3d")
+                vu["offerte"] = bool(cases)
+                if cocher and cases:
+                    cases.first(Checkbox).value = True
+                    await pilote.pause()
+                vu["valeur"] = app._form_values()["gpu3d"]
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_sans_gpu_sur_lhote_aucune_case(self):
+        """Une case qui promettrait une accélération que l'hôte ne peut pas
+        rendre vaut moins que pas de case."""
+        vu = self._ecran(False)
+        self.assertFalse(vu["offerte"])
+        self.assertFalse(vu["valeur"])
+
+    def test_avec_un_gpu_la_case_est_la_et_decochee(self):
+        vu = self._ecran(True)
+        self.assertTrue(vu["offerte"])
+        self.assertFalse(vu["valeur"])
+
+    def test_cocher_porte_le_choix_jusqua_la_spec(self):
+        self.assertTrue(self._ecran(True, cocher=True)["valeur"])
 
 
 class TestUnParcMixte(unittest.TestCase):

@@ -6439,6 +6439,14 @@ TRANSLATIONS = {
         "fr": "Pas encore de journal d'accès :",
         "en": "No access log yet:",
     },
+    "GPU groups set": {
+        "fr": "groupes du GPU posés",
+        "en": "GPU groups set",
+    },
+    "GPU groups not set": {
+        "fr": "groupes du GPU non posés",
+        "en": "GPU groups not set",
+    },
     "    Entry 10 follows it live: a request that goes out to the": {
         "fr": "    L'entrée 10 le suit en direct : une requête qui sort sur",
         "en": "    Entry 10 follows it live: a request that goes out to the",
