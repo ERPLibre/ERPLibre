@@ -1006,6 +1006,78 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
     def test_cocher_porte_le_choix_jusqua_la_spec(self):
         self.assertTrue(self._ecran(True, cocher=True)["valeur"])
 
+    def _bouton(self, manque="libegl1", apres=(True, ""), moyen=True):
+        """Monte l'écran, presse « Installer sur l'hôte », relève la suite.
+
+        « suspend() » est remplacé : un écran monté sans terminal ne peut pas
+        le rendre, et ce n'est pas lui qu'on éprouve. Ce qu'on éprouve, c'est
+        que le paquet parte, que l'hôte soit RELU, et que l'écran suive.
+        """
+        import contextlib
+
+        from textual.widgets import Button
+
+        ctx = contexte()
+        ctx["gpu_offert"] = False
+        ctx["gpu_manque"] = manque
+        vu = {"recu": None, "notes": []}
+        if moyen:
+            ctx["installer_gpu"] = (
+                lambda paquets: vu.update(recu=paquets) or True
+            )
+            ctx["sonder_gpu"] = lambda: apres
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                app.suspend = lambda: contextlib.nullcontext()
+                app.notify = lambda m, **k: vu["notes"].append(str(m))
+                boutons = app.query("#f_gpu_poser")
+                vu["bouton"] = bool(boutons)
+                if boutons:
+                    boutons.first(Button).press()
+                    await pilote.pause()
+                    await pilote.pause()
+                vu["case"] = bool(app.query("#f_gpu3d"))
+                vu["lignes"] = bool(app.query("#t_gpu_manque"))
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_le_bouton_pose_le_paquet_et_la_case_apparait(self):
+        """Ce que l'opérateur demande : ne pas quitter l'écran pour une
+        commande que l'écran vient de lui montrer."""
+        vu = self._bouton()
+        self.assertTrue(vu["bouton"])
+        self.assertEqual(vu["recu"], "libegl1")
+        self.assertTrue(vu["case"], "la case n'est pas apparue")
+        self.assertFalse(vu["lignes"], "le message est resté sous la case")
+
+    def test_seuls_les_paquets_partent_a_linstallation(self):
+        """Le nœud de rendu ne s'installe pas : l'envoyer à apt ferait
+        échouer la pose des paquets qui, eux, existent."""
+        self.assertEqual(
+            self._bouton(manque="noeud libegl1")["recu"], "libegl1"
+        )
+
+    def test_un_noeud_seul_ne_donne_aucun_bouton(self):
+        vu = self._bouton(manque="noeud")
+        self.assertFalse(vu["bouton"])
+        self.assertFalse(vu["case"])
+
+    def test_sans_moyen_de_poser_aucun_bouton(self):
+        """Un bouton sans effet vaut moins qu'une commande à recopier."""
+        self.assertFalse(self._bouton(moyen=False)["bouton"])
+
+    def test_lhote_est_relu_et_la_case_ne_vient_pas_sur_parole(self):
+        """Croire apt sur parole offrirait une case que Proxmox refuserait
+        ensuite — après avoir écrit le disque de la VM."""
+        vu = self._bouton(apres=(False, "libgl1"))
+        self.assertFalse(vu["case"])
+        self.assertTrue(vu["lignes"], "le message a disparu pour rien")
+        self.assertTrue(any("libgl1" in n for n in vu["notes"]), vu["notes"])
+
 
 class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
     """Une VM Proxmox tire du miroir que le cache a rempli.

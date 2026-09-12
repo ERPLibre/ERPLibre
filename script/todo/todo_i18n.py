@@ -6451,6 +6451,18 @@ TRANSLATIONS = {
         "fr": "Pas de 3D : il manque à l'hôte",
         "en": "No 3D: the host lacks",
     },
+    "Install on the host": {
+        "fr": "Installer sur l'hôte",
+        "en": "Install on the host",
+    },
+    "3D is now available: the box is here.": {
+        "fr": "La 3D est maintenant possible : la case est là.",
+        "en": "3D is now available: the box is here.",
+    },
+    "Still missing on the host:": {
+        "fr": "Il manque encore à l'hôte :",
+        "en": "Still missing on the host:",
+    },
     "apt mirror not pinned": {
         "fr": "miroir apt non fixé",
         "en": "apt mirror not pinned",

@@ -1222,6 +1222,34 @@ class ProxmoxMenuMixin:
         # manque pour le faire. Sondé deux fois, l'écran pourrait offrir la
         # case et nommer en même temps ce qui l'empêche.
         gpu_possible, gpu_manque = self._pve_gpu_dispo()
+
+        def poser_gpu(paquets):
+            """Pose les paquets manquants SUR L'HÔTE. Rend True si apt a fini.
+
+            Interactive à dessein : le terminal est rendu par l'écran avant
+            l'appel, « ssh -t » ouvre un vrai terminal distant, et sudo peut
+            donc demander son mot de passe. Rien n'est capturé — l'opérateur
+            voit apt travailler, ce qui est la moitié de la confiance.
+
+            Le nœud de rendu n'est pas un paquet et ne s'installe pas : il
+            est écarté, et une liste qui n'en contient pas d'autre ne lance
+            rien plutôt que d'appeler « apt install » les mains vides.
+            """
+            noms = [
+                p
+                for p in str(paquets or "").split()
+                if p != "noeud" and re.fullmatch(r"[A-Za-z0-9.+_-]+", p)
+            ]
+            if not noms:
+                return False
+            remote = pve.wrap_privilege(
+                "apt-get update && apt-get install -y " + " ".join(noms),
+                host.get("sudo") or "",
+            )
+            argv = pve.ssh_argv(host, remote, tty=True)
+            print("\n" + " ".join(shlex.quote(a) for a in argv) + "\n")
+            return subprocess.call(argv) == 0
+
         return {
             "host": dict(host, label=self._pve_label(host)),
             "node": self._pve_node_name(),
@@ -1294,6 +1322,11 @@ class ProxmoxMenuMixin:
             # Ce qui manque, nommé : une case qui disparaît sans un mot se
             # lit comme une régression, et l'opérateur n'a rien à corriger.
             "gpu_manque": gpu_manque,
+            # De quoi poser ce qui manque sans quitter l'écran, et de quoi
+            # RELIRE l'hôte ensuite : sans la seconde, l'écran croirait sur
+            # parole qu'apt a réussi.
+            "installer_gpu": poser_gpu,
+            "sonder_gpu": self._pve_gpu_dispo,
         }
 
     def _pve_capacity(self):
