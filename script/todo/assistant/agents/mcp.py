@@ -31,12 +31,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 
 # Où la configuration déclare des serveurs. Le fichier de compte porte un bloc
 # global et un bloc par projet ; le dépôt peut porter son propre `.mcp.json`.
 COMPTE = "~/.claude.json"
 DEPOT = ".mcp.json"
+
+# La forme d'un nom de serveur. Close, parce que ce nom finit dans une ligne
+# de shell : tout ce qui n'est pas ici est refusé plutôt qu'échappé.
+NOM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -63,19 +68,43 @@ def _charger(chemin):
     return donnees if isinstance(donnees, dict) else {}
 
 
+def sans_authentifiant(url: str) -> str:
+    """Une URL réduite à ce qui la NOMME. Fonction pure.
+
+    Une passerelle MCP hébergée porte couramment son jeton dans son URL — en
+    paramètre de requête, ou en « compte:jeton@ » devant l'hôte. Le schéma,
+    l'hôte et le chemin suffisent à reconnaître un serveur ; la requête et
+    l'identification sont coupées, et leur disparition est marquée pour qu'on
+    ne croie pas lire l'URL entière.
+    """
+    garde, marque = url, ""
+    for separateur in ("?", "#"):
+        tete, trouve, _ = garde.partition(separateur)
+        if trouve:
+            garde, marque = tete, "…"
+    schema, separateur, reste = garde.partition("://")
+    if separateur and "@" in reste:
+        _, _, reste = reste.rpartition("@")
+        garde = f"{schema}://…@{reste}"
+    return garde + marque
+
+
 def _decrire(nom, bloc, origine) -> Serveur:
     """Ce qu'un bloc de déclaration dit, sans inventer ce qu'il ne dit pas.
 
     La cible est l'URL ou la commande, selon le transport. Ni l'une ni l'autre
     n'est devinée : un bloc qui ne porte aucune des deux rend une cible vide,
-    et l'écran affiche un tiret plutôt qu'un chemin supposé.
+    et l'écran affiche un tiret plutôt qu'un chemin supposé. Une URL est
+    dépouillée de ce qui l'authentifie avant d'être gardée — l'écran ne peut
+    pas montrer ce que la structure ne porte plus.
     """
     if not isinstance(bloc, dict):
         return Serveur(nom=nom, origine=origine)
     transport = str(bloc.get("type") or bloc.get("transport") or "")
-    cible = str(bloc.get("url") or bloc.get("command") or "")
+    url = str(bloc.get("url") or "")
+    cible = sans_authentifiant(url) if url else str(bloc.get("command") or "")
     if not transport and cible:
-        transport = "http" if cible.startswith("http") else "stdio"
+        transport = "http" if url else "stdio"
     return Serveur(nom=nom, origine=origine, transport=transport, cible=cible)
 
 
@@ -115,7 +144,14 @@ def argv_lister() -> list[str]:
 
 
 def argv_detail(nom: str) -> list[str]:
-    """L'argv qui détaille UN serveur. Lecture seule, comme la liste."""
-    if not nom or nom.startswith("-"):
+    """L'argv qui détaille UN serveur. Lecture seule, comme la liste.
+
+    Le nom est vérifié ICI, contre une forme close, parce que l'appelant le
+    recolle en une ligne de shell : refuser seulement le nom vide et celui qui
+    ouvre sur un tiret laisse passer tout ce qu'un shell interprète — un
+    point-virgule, une apostrophe inverse, un chevron. Un nom de serveur MCP
+    est un identifiant, et rien d'autre n'a de raison d'être accepté.
+    """
+    if not nom or not NOM.match(nom):
         raise ValueError(f"nom de serveur refusé : {nom!r}")
     return ["claude", "mcp", "get", nom]
