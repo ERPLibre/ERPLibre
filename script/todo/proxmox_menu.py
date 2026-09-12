@@ -1065,8 +1065,30 @@ class ProxmoxMenuMixin:
             print(t("Cancelled."))
             return
         if spec:
-            return self._pve_deploy_spec(host, spec, mod, dry_run)
+            return self._pve_run_spec(host, spec, mod, dry_run)
         return self._pve_deploy_prompts(dry_run)
+
+    def _pve_run_spec(self, host, spec, mod, dry_run=False):
+        """Enveloppe le déploiement de la coupure d'amont qu'il demande.
+
+        La coupure est la MÊME qu'en QEMU/KVM, et elle est posée ICI, pas sur
+        l'hôte distant : un hôte Proxmox qui porte l'autorité du cache est
+        une VM de ce pont, et ses invités sortent derrière son adresse. Les
+        règles qui coupent ce pont les couvrent donc tous.
+
+        Le formulaire n'offre la case que dans ce cas ; une spec qui la porte
+        quand même — invites textuelles, spec écrite à la main — coupe ce
+        pont-ci, ce qui reste vrai pour les VM qui le traversent.
+        """
+        from script.todo.qemu_deploy import _SansInternetImpossible
+
+        try:
+            with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
+                return self._pve_deploy_spec(
+                    host, spec, mod, dry_run, coupee=coupee
+                )
+        except _SansInternetImpossible:
+            return
 
     def _pve_form_context(self, mod, host):
         """Tout ce que l'écran doit savoir, LU AVANT de l'ouvrir.
@@ -1206,6 +1228,13 @@ class ProxmoxMenuMixin:
             "host_cpu": cpu,
             "free_ram": ram_libre,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            # La case « Sans connexion internet » ne s'offre que là où la
+            # coupure a un effet. Un hôte Proxmox qui reçoit l'autorité du
+            # cache est une VM de CE pont : ses invités sortent derrière son
+            # adresse, donc la coupure de ce pont les couvre. Un hôte qui ne
+            # vit pas ici ne traverse rien qu'on sache couper, et la case y
+            # promettrait un hors-ligne que personne ne tient.
+            "cache_offert": bool(self._pve_cache_ca(host)),
         }
 
     def _pve_capacity(self):
@@ -1298,8 +1327,13 @@ class ProxmoxMenuMixin:
             vm["vmid"], detail
         )
 
-    def _pve_deploy_spec(self, host, spec, mod, dry_run=False):
+    def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
+
+        `coupee` : l'amont du cache est coupé autour de cet appel. La levée
+        est alors confiée au guet, au lancement des installations, comme sur
+        la voie QEMU/KVM — sans quoi elle tomberait avec ce processus, avant
+        la fin de ce qui télécharge.
 
         Les images D'ABORD, une par une : deux téléchargements simultanés du
         même fichier se marcheraient dessus. Les VM ensuite, en parallèle si
@@ -1307,6 +1341,11 @@ class ProxmoxMenuMixin:
         """
         from script.proxmox import proxmox_deploy as pve
         from script.todo.deploy_form_lib import run_deploy_progress
+
+        # L'instant où CE déploiement commence : le manifeste le porte, et le
+        # bilan hors ligne s'en sert pour ne relire que ce qui s'est passé
+        # depuis. Pris avant la première commande, création comprise.
+        debut = time.time()
 
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
         # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
@@ -1413,7 +1452,9 @@ class ProxmoxMenuMixin:
                     print(f"    {ligne}")
         if not reussies:
             return
-        joignables = self._pve_after_create(host, spec, reussies, cle_locale)
+        joignables = self._pve_after_create(
+            host, spec, reussies, cle_locale, coupee=coupee, debut=debut
+        )
         self._pve_print_summary(spec, joignables or [], session)
 
     @staticmethod
@@ -1772,8 +1813,14 @@ class ProxmoxMenuMixin:
             input(f"\n{t('Deploy this VM now? (Y/n): ')}")
         )
 
-    def _pve_after_create(self, host, spec, reussies, cle_locale):
+    def _pve_after_create(
+        self, host, spec, reussies, cle_locale, coupee=False, debut=None
+    ):
         """Ce qui suit la création : l'adresse, ~/.ssh/config, l'installation.
+
+        `coupee` et `debut` suivent jusqu'à l'installateur : le premier lui
+        fait confier la levée de la coupure au guet, le second date le
+        déploiement dans le manifeste, où le bilan hors ligne le lit.
 
         L'alias et non l'IP dans les étapes suivantes : ssh y lit le rebond
         par l'hôte Proxmox, et le suivi d'installation en a besoin pour
@@ -1939,6 +1986,11 @@ class ProxmoxMenuMixin:
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
                 pve=cartes_pve,
+                guet_hors_ligne=coupee,
+                deploy_started=debut,
+                # La coupure TENUE, et non la case de la spec : c'est elle
+                # qui fait qu'une réussite prouve le hors ligne.
+                hors_ligne=bool(coupee),
                 # Ce que sont ces VM, pris de la SPEC. Le suivi le demandait
                 # à virsh, qui ne connaît que les domaines d'ici.
                 meta={

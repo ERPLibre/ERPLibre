@@ -172,6 +172,9 @@ def contexte():
         },
         "bridges": ["vmbr0"],
         "bridge": "vmbr0",
+        # L'hôte d'essai est une VM de notre pont : la case « Sans connexion
+        # internet » est donc offerte, comme sur un Proxmox imbriqué.
+        "cache_offert": True,
         "ipconfig": lambda pont, vmid: f"ip=10.10.10.{50 + vmid % 200}/24",
         "build_command": lambda vm, spec: [f"qm create {vm['vmid']}"],
         "branches": ["develop", "master"],
@@ -596,6 +599,206 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
                 attendu,
                 choix,
             )
+
+
+class TestLeHorsLigneSurProxmox(unittest.TestCase):
+    """La coupure d'amont, offerte sur Proxmox VE comme sur QEMU/KVM.
+
+    Elle est posée ICI, sur le pont local, et jamais sur l'hôte distant : un
+    hôte Proxmox qui reçoit l'autorité du cache est une VM de ce pont, et ses
+    invités sortent derrière son adresse. Un hôte qui ne vit pas ici ne doit
+    donc PAS se voir offrir la case — rien ici ne sait couper sa sortie, et
+    une VM qui s'y bâtirait réussirait en ligne sous une promesse de
+    hors-ligne.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._ssh_config_block = lambda nom: {}
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+        return todo
+
+    def test_la_case_ne_sort_que_pour_un_hote_qui_vit_ici(self):
+        """C'est le même verdict que celui de l'autorité du cache : là où
+        elle est posée, le trafic traverse notre pont."""
+        todo = self._todo()
+        todo._qemu_cache_ca_path = lambda: "/var/lib/cache/ca.crt"
+        todo._qemu_list_domains = lambda: ["pve-imbrique"]
+        self.assertTrue(
+            todo._pve_cache_ca({"target": "erplibre@pve-imbrique"})
+        )
+        self.assertFalse(todo._pve_cache_ca({"target": "erplibre@ailleurs"}))
+
+    def test_le_contexte_offre_la_case_selon_ce_verdict(self):
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script" / "todo" / "proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"cache_offert": bool(self._pve_cache_ca(host))', src)
+
+    def _capture(self, **kw):
+        """Ce que l'installateur reçoit, la coupure tenue ou non."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {}
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: vu.update(k)
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {"branch": "develop", "cmd": "make", "label": "X"},
+            "monitor": True,
+        }
+        todo._qemu_list_domains = lambda: []
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "", **kw)
+        return vu
+
+    def test_la_coupure_tenue_atteint_linstallateur(self):
+        """Le guet reçoit la levée, et le manifeste porte la coupure : sans
+        cela, la coupure tomberait avec ce processus — avant la fin de ce qui
+        télécharge — et le bilan hors ligne ne saurait pas quoi relire."""
+        vu = self._capture(coupee=True, debut=1789000000.0)
+        self.assertTrue(vu["guet_hors_ligne"])
+        self.assertTrue(vu["hors_ligne"])
+        self.assertEqual(vu["deploy_started"], 1789000000.0)
+
+    def test_sans_coupure_rien_nest_promis(self):
+        vu = self._capture()
+        self.assertFalse(vu["guet_hors_ligne"])
+        self.assertFalse(vu["hors_ligne"])
+
+    def test_le_deploiement_passe_par_lenveloppe(self):
+        """La spec ENTIÈRE tient dans le bloc coupé, création comprise : une
+        coupure levée avant l'installation ne prouverait rien."""
+        import contextlib
+
+        todo = self._todo()
+        vu = {}
+
+        @contextlib.contextmanager
+        def fausse_coupure(actif):
+            vu["demandee"] = actif
+            yield actif
+
+        todo._qemu_sans_internet = fausse_coupure
+        todo._pve_deploy_spec = lambda *a, **k: vu.setdefault(
+            "coupee", k.get("coupee")
+        )
+        todo._pve_run_spec({"target": "pve1"}, {"offline": True}, None)
+        self.assertTrue(vu["demandee"], "la coupure n'a pas été demandée")
+        self.assertTrue(vu["coupee"], "le déploiement ignore la coupure")
+
+    def test_une_coupure_impossible_ne_deploie_rien(self):
+        """Le refus vient de la coupure elle-même — amont debout, verrou pris,
+        dnsmasq absent. Déployer quand même bâtirait une VM en ligne sous une
+        promesse de hors-ligne."""
+        import contextlib
+
+        from script.todo.qemu_deploy import _SansInternetImpossible
+
+        todo = self._todo()
+        vu = {}
+
+        @contextlib.contextmanager
+        def refus(actif):
+            raise _SansInternetImpossible()
+            yield  # pragma: no cover - jamais atteint
+
+        todo._qemu_sans_internet = refus
+        todo._pve_deploy_spec = lambda *a, **k: vu.setdefault("parti", True)
+        self.assertIsNone(
+            todo._pve_run_spec({"target": "pve1"}, {"offline": True}, None)
+        )
+        self.assertNotIn("parti", vu)
+
+    def test_la_case_atteint_la_spec(self):
+        form = {
+            "host": {"target": "pve1"},
+            "storage": "local-lvm",
+            "bridge": "vmbr0",
+            "res_label": "x1",
+            "ssh_key": "",
+            "start": True,
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": True,
+            "parallelism": 1,
+            "offline": True,
+        }
+        self.assertTrue(build_spec([{"name": "a"}], [], form)["offline"])
+        form["offline"] = False
+        self.assertFalse(build_spec([{"name": "a"}], [], form)["offline"])
+
+    def _ecran(self, cache_offert, cocher=False):
+        """Monte l'écran avec — ou sans — le cache offert, et relève l'état
+        DANS le contexte : `run_test` démonte les widgets en sortant."""
+        from textual.widgets import Checkbox
+
+        ctx = contexte()
+        ctx["cache_offert"] = cache_offert
+        vu = {}
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                cases = app.query("#f_offline")
+                vu["offerte"] = bool(cases)
+                if cocher and cases:
+                    cases.first(Checkbox).value = True
+                    await pilote.pause()
+                suivi = app.query_one("#f_monitor", Checkbox)
+                vu["suivi"] = suivi.value
+                vu["suivi_fige"] = suivi.disabled
+                vu["avertissement"] = [
+                    w.display for w in app.query("#t_offline_w1")
+                ]
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_sans_cache_aucune_case(self):
+        """Une case sans effet est pire que pas de case : elle promet."""
+        self.assertFalse(self._ecran(False)["offerte"])
+
+    def test_avec_le_cache_la_case_est_la_et_muette_tant_quon_ny_touche_pas(
+        self,
+    ):
+        vu = self._ecran(True)
+        self.assertTrue(vu["offerte"])
+        self.assertEqual(vu["avertissement"], [False])
+        self.assertFalse(vu["suivi_fige"])
+
+    def test_cocher_decouvre_lavertissement_et_fige_le_suivi(self):
+        """Seule la voie suivie confie la levée au guet : sans suivi, la
+        coupure tomberait avec le tableau de bord."""
+        vu = self._ecran(True, cocher=True)
+        self.assertEqual(vu["avertissement"], [True])
+        self.assertTrue(vu["suivi"])
+        self.assertTrue(vu["suivi_fige"])
 
 
 class TestUnParcMixte(unittest.TestCase):
