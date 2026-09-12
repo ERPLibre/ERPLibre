@@ -76,13 +76,13 @@ password, so both presets require an **app password** instead:
 | Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 characters, spaces are accepted. Two-step verification must be on, otherwise the page is empty. |
 | iCloud | [account.apple.com](https://account.apple.com) — under "Sign-In and Security". Two-factor authentication must be on. |
 
-**A Microsoft account cannot be used yet.** Microsoft removed basic
-authentication from IMAP — for Microsoft 365 tenants first, then for
+**A Microsoft account needs OAuth, not a password.** Microsoft removed
+basic authentication from IMAP — for Microsoft 365 tenants first, then for
 Outlook.com — and an app password is basic authentication, so it is refused
-too. Nobody can turn it back on. Such an account needs OAuth, which this
-client does not do yet; the Microsoft preset is kept for the day it does,
-and until then it fails at the connection test. The client says so where it
-asks for the password, rather than letting the refusal look like a typo.
+too. Nobody can turn it back on. Add such an account with a refresh token
+instead, as "Authenticating with OAuth" below describes; the client says so
+where it asks for the secret, rather than letting a refusal look like a
+typo.
 
 Use the generated password when account setup asks for one — never the
 account's normal password. The "Standard server" preset (generic IMAP/SMTP)
@@ -104,15 +104,14 @@ passe d'application** à la place :
 | Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères, les espaces sont acceptés. La validation en deux étapes doit être active, sinon la page est vide. |
 | iCloud | [account.apple.com](https://account.apple.com) — section « Connexion et sécurité ». L'authentification à deux facteurs doit être active. |
 
-**Un compte Microsoft ne peut pas encore servir.** Microsoft a retiré
-l'authentification simple d'IMAP — d'abord chez les locataires Microsoft
-365, puis sur Outlook.com — et un mot de passe d'application EST de
-l'authentification simple : il est refusé lui aussi. Personne ne peut la
-réactiver. Un tel compte exige OAuth, que ce client ne sait pas encore
-faire ; le préréglage Microsoft est gardé pour le jour où il saura, et
-d'ici là il échoue au test de connexion. Le client le dit là où il demande
-le mot de passe, plutôt que de laisser le refus passer pour une faute de
-frappe.
+**Un compte Microsoft exige OAuth, pas un mot de passe.** Microsoft a
+retiré l'authentification simple d'IMAP — d'abord chez les locataires
+Microsoft 365, puis sur Outlook.com — et un mot de passe d'application EST
+de l'authentification simple : il est refusé lui aussi. Personne ne peut la
+réactiver. Ajoutez plutôt un tel compte avec un jeton de rafraîchissement,
+comme le décrit « S'authentifier par OAuth » plus bas ; le client le dit là
+où il demande le secret, plutôt que de laisser un refus passer pour une
+faute de frappe.
 
 Utilisez ce mot de passe généré quand la configuration du compte en demande
 un — jamais le mot de passe normal du compte. Le préréglage « Serveur
@@ -1096,10 +1095,98 @@ Deux chiffres disent honnêtement ce qu'ils ignorent :
   complète les remplit.
 
 <!-- [en] -->
+## Authenticating with OAuth
+
+Gmail and Microsoft both accept OAuth on IMAP and SMTP; Microsoft accepts
+nothing else. An account says how it authenticates — `login` or `oauth` —
+and the client hands the server whichever secret that means, a password or
+an access token.
+
+**What this repository does not ship: an identity.** The endpoints and
+scopes travel with each preset, but `client_id` is empty. A client
+identifier registered in the project's name would make every installation
+share one quota, one consent screen and one revocation; whoever deploys
+registers their own, once, in the provider's console. Set it either in the
+TODO configuration under `mail.oauth.<preset>.client_id` — written to
+`private/todo/todo_override_private.json`, the file git ignores — or in
+`ERPLIBRE_MAIL_OAUTH_CLIENT_ID` (append `_GMAIL` or `_OUTLOOK` to set one
+per provider). The configuration wins over the environment. Add
+`client_secret` the same way when the provider requires one; an installed
+application usually does not.
+
+**Adding the account.** `Mail > [2] Accounts > [2] Add an account` asks
+which authentication to use wherever there is a choice — Gmail takes
+either, Microsoft only OAuth, iCloud only an app password. Choosing OAuth
+asks for a **refresh token**, obtained outside this client (a provider
+console, or a tool such as an OAuth helper script). It is stored in the
+vault under its own reference, beside the password entry rather than over
+it, so an account that goes back to a password still has one.
+
+**Afterwards, nothing.** An access token lasts about an hour; the client
+exchanges the refresh token for a new one before opening a session, writes
+the new set back to the vault, and syncs. The exchange happens in the main
+thread, before any pass: writing the vault rewrites the whole file, and two
+sync threads writing at once would corrupt it.
+
+**When it fails.** Three outcomes, told apart because the remedy differs. A
+new token arrives and nothing is said. The grant is revoked — the owner
+withdrew it, or the provider expired it — and no retry will bring it back:
+`Mail > [2] Accounts > [6] Replace an account's OAuth token` takes a fresh
+one, and an empty entry writes nothing rather than erasing what is there.
+Or the provider failed to answer, in which case the token in place still
+stands and the next pass tries again.
+
+<!-- [fr] -->
+## S'authentifier par OAuth
+
+Gmail et Microsoft acceptent tous deux OAuth sur IMAP et SMTP ; Microsoft
+n'accepte plus rien d'autre. Un compte dit comment il s'authentifie —
+`login` ou `oauth` — et le client présente au serveur le secret que cela
+désigne, mot de passe ou jeton d'accès.
+
+**Ce que ce dépôt ne livre pas : une identité.** Les points de service et
+les portées voyagent avec chaque préréglage, mais le `client_id` est vide.
+Un identifiant client enregistré au nom du projet ferait partager à toutes
+les installations un seul quota, un seul écran de consentement et une seule
+révocation ; celui qui déploie enregistre le sien, une fois, dans la console
+du fournisseur. Réglez-le dans la configuration TODO sous
+`mail.oauth.<préréglage>.client_id` — écrit dans
+`private/todo/todo_override_private.json`, le fichier que git ignore — ou
+dans `ERPLIBRE_MAIL_OAUTH_CLIENT_ID` (suffixez `_GMAIL` ou `_OUTLOOK` pour
+en poser un par fournisseur). La configuration l'emporte sur
+l'environnement. Ajoutez `client_secret` de la même façon si le fournisseur
+en exige un ; une application installée n'en a généralement pas besoin.
+
+**Ajouter le compte.** `Courriel > [2] Comptes > [2] Ajouter un compte`
+demande quelle authentification employer là où il y a un choix — Gmail
+prend les deux, Microsoft seulement OAuth, iCloud seulement un mot de passe
+d'application. Choisir OAuth demande un **jeton de rafraîchissement**,
+obtenu hors de ce client (console du fournisseur, ou un outil tiers prévu
+pour cela). Il se range au coffre sous sa propre référence, à côté de
+l'entrée du mot de passe et non dessus : un compte qui repasse au mot de
+passe en a toujours un.
+
+**Ensuite, plus rien à faire.** Un jeton d'accès vit environ une heure ; le
+client échange le jeton de rafraîchissement contre un neuf avant d'ouvrir
+une session, range le jeu neuf au coffre, et synchronise. L'échange a lieu
+dans le fil principal, avant toute passe : écrire au coffre y réécrit le
+fichier entier, et deux fils de synchronisation qui écriraient ensemble le
+corrompraient.
+
+**Quand ça échoue.** Trois issues, distinguées parce que le remède diffère.
+Le jeton neuf arrive, et rien n'est dit. L'autorisation est révoquée — le
+propriétaire l'a retirée, ou le fournisseur l'a expirée — et aucun nouvel
+essai ne la rendra : `Courriel > [2] Comptes > [6] Remplacer le jeton OAuth
+d'un compte` en prend un neuf, et une saisie vide n'écrit rien plutôt que
+d'effacer ce qui est là. Ou le fournisseur n'a pas répondu, auquel cas le
+jeton en place vaut toujours et la passe suivante réessaie.
+
+<!-- [en] -->
 ## What the client does not do yet
 
-- **No OAuth** — Gmail and iCloud need an app password, and a Microsoft
-  account cannot be used at all (see above).
+- **No authorisation flow** — an OAuth account is added from a refresh
+  token obtained elsewhere; the client does not yet open the provider's
+  consent page itself (see "Authenticating with OAuth").
 - **No server-side search** — `/` filters only what's already synced to the
   local cache.
 - **No deleting or moving a message** — `s` and `u` change the seen flag,
@@ -1113,9 +1200,10 @@ phases add.
 <!-- [fr] -->
 ## Ce que le client ne fait pas encore
 
-- **Pas d'OAuth** — Gmail et iCloud demandent un mot de passe
-  d'application, et un compte Microsoft ne peut pas servir du tout (voir
-  plus haut).
+- **Pas de parcours d'autorisation** — un compte OAuth s'ajoute à partir
+  d'un jeton de rafraîchissement obtenu ailleurs ; le client n'ouvre pas
+  encore lui-même la page de consentement du fournisseur (voir
+  « S'authentifier par OAuth »).
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.
 - **Ni suppression ni déplacement d'un message** — `s` et `u` changent
