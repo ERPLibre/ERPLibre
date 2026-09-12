@@ -18,13 +18,12 @@ from typing import NamedTuple
 
 from script.posture import destinations as posture_destinations
 from script.posture import plan as posture_plan
-from script.todo import egress_book
-from script.todo import vm_profiles
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
-from script.todo import host_os, todo_prefs, vm_backend_choice
 from script.todo import deploy_verify
 from script.todo import devstack_report as report
+from script.todo import (egress_book, host_os, todo_prefs, vm_backend_choice,
+                         vm_profiles)
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.todo.todo_i18n import get_lang, t
 from script.vm import backend as vm_backend
@@ -354,10 +353,8 @@ class QemuDeployMixin:
         `meta` : {nom: (distro, version, arch)} quand l'appelant SAIT ce que
         sont ces VM. Sans elle, on le demande à virsh — juste ici, donc faux
         pour une VM qui vit sur un Proxmox distant."""
-        from script.todo.qemu_install_monitor import (
-            launch_installs,
-            run_monitor,
-        )
+        from script.todo.qemu_install_monitor import (launch_installs,
+                                                      run_monitor)
 
         # `desktop` accepte une SAVEUR unique (toutes les VM) ou un dict
         # {nom: saveur} depuis que le type se choisit machine par machine. La
@@ -1837,11 +1834,22 @@ class QemuDeployMixin:
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
             **self._qemu_guest_context(),
             # L'aperçu passe par le MÊME constructeur que le déploiement.
-            "build_command": lambda vm, spec, dry: " ".join(
-                shlex.quote(p)
-                for p in self._qemu_deploy_parts_for(vm, spec, dry_run=dry)
-            ),
+            "build_command": self._qemu_preview_command,
         }
+
+    def _qemu_preview_command(self, vm, spec, dry):
+        """La commande qu'un aperçu affiche, en UNE ligne.
+
+        Le MÊME constructeur que le déploiement — c'est ce qui rend leur
+        divergence vérifiable. Mais il porte la règle d'or, qui lève : un
+        aperçu ne crée rien et n'a aucune raison de finir en pile, donc le
+        refus s'affiche ici à la place de la commande, et l'écran reste.
+        """
+        try:
+            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=dry)
+        except vm_backend.VmBackendError as refus:
+            return f"✗ {t('Deployment refused:')} {refus}"
+        return " ".join(shlex.quote(p) for p in parts)
 
     def _qemu_deploy(self, dry_run=False):
         """Déploiement d'un parc de VM, en trois temps : collecte des choix
@@ -1864,6 +1872,22 @@ class QemuDeployMixin:
         self._qemu_check_libvirt_group()
         self._qemu_check_kvm()
 
+        try:
+            self._qemu_deploy_decided(mod, dry_run)
+        except vm_backend.VmBackendError as refus:
+            # LE REFUS SE LIT, il ne se déroule pas. La garde du point de
+            # passage unique lève, et rien ne la rattrapait : un couple
+            # incohérent composé au formulaire sortait du menu en pile,
+            # là où la voie Proxmox imprime son verdict et revient.
+            print(f"\n  ✗ {t('Deployment refused:')} {refus}")
+
+    def _qemu_deploy_decided(self, mod, dry_run):
+        """Le choix d'interface, puis l'aperçu ou l'exécution.
+
+        SÉPARÉE de son appelant pour que la garde du point de passage unique
+        ait UN endroit où être rattrapée, quelle que soit l'interface qui a
+        composé la spec.
+        """
         if self._qemu_ask_ui() == "tui":
             spec = self._qemu_deploy_form(mod, dry_run)
             if spec is None:
@@ -2145,6 +2169,70 @@ class QemuDeployMixin:
                 )
                 print(f"  ⚠ {warn}")
 
+    def _deploy_ask_posture(self, after_boot: bool = False) -> dict:
+        """Les deux questions de la règle d'or, en ligne. Rend un FRAGMENT
+        de spec.
+
+        POSÉ PAR LES DEUX CHEMINS SANS FORMULAIRE — libvirt et Proxmox VE.
+        Un fragment plutôt que deux clés recopiées chez chaque appelant :
+        une clé écrite sous un autre nom d'un côté laisse la ligne vide,
+        sans message et sans erreur.
+
+        LES DONNÉES RÉELLES D'ABORD, parce que la réponse RETIRE des
+        postures. Les offrir toutes puis refuser le couple à la garde fait
+        répondre au reste du questionnaire avant de le dire. Ce qui est
+        retiré s'affiche quand même, avec la raison que `screen_line`
+        calcule déjà : une liste qui rétrécit en silence laisse croire que
+        la posture n'existe pas.
+
+        `after_boot` décrit le CHEMIN et non la posture : là où les règles
+        n'arrivent qu'une fois la machine debout, les lignes portent
+        l'écart de la fenêtre de démarrage.
+        """
+        real_data = self._is_yes(
+            input(f"\n{t('This machine carries real data')} ? (y/N) : ")
+        )
+        offerts = vm_profiles.choices(real_data)
+        ecrans = vm_profiles.form_context(after_boot)["posture_screen"]
+        print(f"\n{t('Network posture')} :")
+        for rang, (libelle, posture) in enumerate(offerts, 1):
+            etoile = " *" if rang == 1 else ""
+            print(f"  [{rang}] {libelle}{etoile}")
+            print(f"      {ecrans[posture]}")
+        retenus = vm_profiles.withheld(real_data)
+        if retenus:
+            print(f"\n  {t(vm_profiles.CANNOT_CARRY_REAL_DATA)}")
+            for libelle, posture in retenus:
+                print(f"  [-] {libelle}")
+                print(f"      {ecrans[posture]}")
+        # AUCUNE POSTURE OFFERTE : le fragment garde la réponse et ne nomme
+        # personne. La garde lit alors la posture par défaut contre des
+        # données réelles, et refuse — le seul repli qui ne promet rien.
+        if not offerts:
+            return {posture_spec.REAL_DATA_KEY: real_data}
+        defaut = offerts[0]
+        sel = input(
+            f"{t('Choice (number or name, blank = the first):')} "
+        ).strip()
+        choisi = defaut
+        if sel:
+            choisi = None
+            try:
+                rang = int(sel) - 1
+                if 0 <= rang < len(offerts):
+                    choisi = offerts[rang]
+            except ValueError:
+                for offert in offerts:
+                    if sel in offert:
+                        choisi = offert
+            if choisi is None:
+                print(f"{t('Invalid selection, using')} {defaut[0]}")
+                choisi = defaut
+        return {
+            posture_spec.POSTURE_KEY: choisi[1],
+            posture_spec.REAL_DATA_KEY: real_data,
+        }
+
     def _qemu_ask_desktop(self):
         """Serveur, ou serveur plus un bureau. Renvoie "" ou la saveur.
 
@@ -2335,6 +2423,11 @@ class QemuDeployMixin:
         """Invites en ligne : clé SSH, installation ERPLibre, ~/.ssh/config,
         parallélisme, puis récapitulatif et confirmation.
         Renvoie la spec complète, ou None si l'utilisateur renonce."""
+        # LA POSTURE EN TÊTE, comme le formulaire la pose juste sous la
+        # machine : elle décrit le réseau de la VM et non ce qu'on installe
+        # dedans. Sans elle, la spec de cette voie laissait la garde replier
+        # sur « sortie libre » et « pas de données réelles ».
+        posture = self._deploy_ask_posture()
         # Clé SSH (partagée par tout le parc). Sans clé, cloud-init n'en
         # injecte aucune : la VM démarre sans accès SSH, donc sans
         # installation ni vérification possibles. On propose donc d'en créer
@@ -2498,6 +2591,10 @@ class QemuDeployMixin:
             "git_email": git_email,
             "add_ssh_config": add_ssh_config,
             "parallelism": parallelism,
+            # Le FRAGMENT et non deux clés recopiées : il est indexé par les
+            # constantes qui les nomment, donc il ne peut pas diverger de ce
+            # que la garde relit.
+            **posture,
         }
 
         # 6) Récapitulatif final, puis confirmation. Toutes les réponses

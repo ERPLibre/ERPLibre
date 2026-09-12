@@ -210,8 +210,12 @@ class TestChaqueVoieTransmetLaSpecEntiere(unittest.TestCase):
 
     def test_the_line_path_collects_the_options_first(self):
         """Avant la collecte, l'aperçu n'a rien à montrer et fabrique une
-        spec réduite : l'ordre EST la correction."""
-        corps = self._corps("_qemu_deploy")
+        spec réduite : l'ordre EST la correction.
+
+        L'ordre se lit dans la méthode qui DÉCIDE — celle que son appelant
+        entoure du rattrapage de la règle d'or, et qui porte donc les deux
+        voies."""
+        corps = self._corps("_qemu_deploy_decided")
         collecte = self._rang(corps, "_qemu_collect_options_cli")
         apercu = self._rang(corps, "_qemu_print_dry_run")
         self.assertIsNotNone(collecte)

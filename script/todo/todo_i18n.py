@@ -1111,6 +1111,14 @@ TRANSLATIONS = {
         "fr": "Cette machine porte des données réelles",
         "en": "This machine carries real data",
     },
+    "Cannot carry real data:": {
+        "fr": "Ne peut pas porter de données réelles :",
+        "en": "Cannot carry real data:",
+    },
+    "Choice (number or name, blank = the first):": {
+        "fr": "Choix (numéro ou nom, vide = le premier) :",
+        "en": "Choice (number or name, blank = the first):",
+    },
     "The libvirt network overlaps a route of this host:": {
         "fr": "Le réseau libvirt recouvre une route de cet hôte :",
         "en": "The libvirt network overlaps a route of this host:",
