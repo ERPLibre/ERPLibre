@@ -162,6 +162,9 @@ def run_proxmox_form(ctx, run_app: bool = True):
     # La 3D ne s'offre que là où l'hôte distant peut la rendre : nœud de
     # rendu et VIRGL. Le menu l'a sondé avant d'ouvrir cet écran.
     gpu_offert = bool(ctx.get("gpu_offert"))
+    # Ce qui manque à l'hôte, nommé par la sonde : sans lui, la case
+    # disparaîtrait sans que rien ne dise pourquoi.
+    gpu_manque = str(ctx.get("gpu_manque") or "")
     # {système: (libellé, commande)} — ce qu'un système impose d'installer.
     distro_profiles = ctx.get("distro_profiles") or {}
     # Les commandes qui ne posent PAS ERPLibre : sa marge disque ne les suit
@@ -336,6 +339,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
                             value=False,
                             id="f_gpu3d",
                         )
+                    elif gpu_manque:
+                        # Une case qui disparaît sans un mot se lit comme une
+                        # régression : on dit ce qui manque, et le paquet à
+                        # poser sur l'HÔTE, pas dans la VM.
+                        yield Static(
+                            f"  {t('No 3D: the host lacks')} {gpu_manque}",
+                            id="t_gpu_manque",
+                        )
+                        if gpu_manque != "noeud":
+                            yield Static(
+                                f"    sudo apt install {gpu_manque}",
+                                id="t_gpu_geste",
+                            )
                     yield Static(t("Access"), classes="grouptitle")
                     yield Static(f"  {t('SSH public key')}")
                     yield Input(

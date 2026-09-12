@@ -6447,6 +6447,10 @@ TRANSLATIONS = {
         "fr": "miroir apt fixé",
         "en": "apt mirror pinned",
     },
+    "No 3D: the host lacks": {
+        "fr": "Pas de 3D : il manque à l'hôte",
+        "en": "No 3D: the host lacks",
+    },
     "apt mirror not pinned": {
         "fr": "miroir apt non fixé",
         "en": "apt mirror not pinned",

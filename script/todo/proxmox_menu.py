@@ -361,8 +361,28 @@ class ProxmoxMenuMixin:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
 
+    # Ce que « --vga virtio-gl » exige de l'hôte : le chemin qui le prouve,
+    # et le nom qui sert à le poser. Les noms sont ceux des paquets, car
+    # c'est ce qu'un opérateur tape ; « noeud » n'en est pas un, le nœud de
+    # rendu venant du matériel ou d'un GPU transmis.
+    _PVE_GPU_PIECES = (
+        ("/dev/dri/renderD*", "noeud"),
+        ("/usr/lib/*/libvirglrenderer.so.*", "libvirglrenderer1"),
+        ("/usr/lib/*/libGL.so.1", "libgl1"),
+        ("/usr/lib/*/libEGL.so.1", "libegl1"),
+    )
+
     def _pve_gpu_dispo(self):
-        """L'hôte Proxmox peut-il donner de la 3D à ses invités ?
+        """Ce qui MANQUE à l'hôte Proxmox pour donner de la 3D à ses invités.
+
+        Rend (possible, manque) : « manque » nomme les pièces absentes et
+        vaut "" quand tout est là. Une case qui disparaît sans un mot ne se
+        devine pas — le formulaire s'en sert pour DIRE pourquoi la 3D n'est
+        pas offerte, et quoi installer.
+
+        Une sonde qui n'aboutit pas rend (False, "") : on ne promet rien, et
+        on n'accuse rien non plus. Le jeton « FIN » distingue une sonde qui a
+        tout trouvé — donc muette — d'une sonde qui n'a pas tourné.
 
         Quatre pièces, et il les faut TOUTES. Un NŒUD DE RENDU
         (« /dev/dri/renderD* ») : un hôte sans GPU, ou lui-même virtualisé
@@ -377,15 +397,18 @@ class ProxmoxMenuMixin:
         Un hôte peut en porter une sans l'autre : VIRGL et GL viennent avec
         d'autres paquets, EGL non.
         """
-        code, sortie = self._pve_show(
-            "ls /dev/dri/renderD* >/dev/null 2>&1 &&"
-            " ls /usr/lib/*/libvirglrenderer.so.* >/dev/null 2>&1 &&"
-            " ls /usr/lib/*/libGL.so.1 >/dev/null 2>&1 &&"
-            " ls /usr/lib/*/libEGL.so.1 >/dev/null 2>&1 &&"
-            " echo oui",
-            quiet=True,
+        sonde = "; ".join(
+            f"ls {chemin} >/dev/null 2>&1 || echo {jeton}"
+            for chemin, jeton in self._PVE_GPU_PIECES
         )
-        return code == 0 and "oui" in (sortie or "")
+        code, sortie = self._pve_show(f"{sonde}; echo FIN", quiet=True)
+        dites = [l.strip() for l in (sortie or "").splitlines() if l.strip()]
+        if code or "FIN" not in dites:
+            return False, ""
+        manque = [
+            jeton for _c, jeton in self._PVE_GPU_PIECES if jeton in dites
+        ]
+        return (not manque), " ".join(manque)
 
     def _pve_vms(self):
         """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
@@ -1195,6 +1218,10 @@ class ProxmoxMenuMixin:
             """Les commandes qui seraient lancées pour CETTE VM."""
             return self._pve_vm_commands(mod, vm, spec)
 
+        # UNE sonde, deux réponses : ce que l'hôte peut faire, et ce qui lui
+        # manque pour le faire. Sondé deux fois, l'écran pourrait offrir la
+        # case et nommer en même temps ce qui l'empêche.
+        gpu_possible, gpu_manque = self._pve_gpu_dispo()
         return {
             "host": dict(host, label=self._pve_label(host)),
             "node": self._pve_node_name(),
@@ -1263,7 +1290,10 @@ class ProxmoxMenuMixin:
             "cache_offert": bool(self._pve_cache_ca(host)),
             # Lu ICI, terminal encore à nous : la sonde passe par ssh, et une
             # invite de mot de passe pendant que l'écran affiche le casserait.
-            "gpu_offert": self._pve_gpu_dispo(),
+            "gpu_offert": gpu_possible,
+            # Ce qui manque, nommé : une case qui disparaît sans un mot se
+            # lit comme une régression, et l'opérateur n'a rien à corriger.
+            "gpu_manque": gpu_manque,
         }
 
     def _pve_capacity(self):
