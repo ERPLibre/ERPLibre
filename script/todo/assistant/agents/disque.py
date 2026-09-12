@@ -126,13 +126,20 @@ def historiques(
 
     `vivantes` porte les identifiants qui tournent — le registre les donne —
     et sert à marquer ce qui ne doit pas être proposé.
+
+    **None n'est pas l'ensemble vide.** Il dit « la question n'a pas pu être
+    posée », et rien n'est alors proposé. Sans cette distinction, un listage
+    qui échoue — l'outil hors du PATH du processus qui lance le menu — rend
+    TOUTE session supprimable, y compris celle qui écrit en ce moment : une
+    garde qui tombe en ouvert sur un geste destructeur.
     """
     import glob
 
     lister = lister or glob.glob
     base = os.path.join(os.path.expanduser(maison or MAISON), HISTORIQUE)
     taille = taille or os.path.getsize
-    vivants = set(vivantes)
+    inconnu = vivantes is None
+    vivants = set() if inconnu else set(vivantes)
     sorties = []
     for chemin in lister(os.path.join(base, "*")):
         octets, fichiers = _volume(chemin, marcher=marcher, taille=taille)
@@ -152,7 +159,7 @@ def historiques(
                 octets=octets,
                 fichiers=fichiers,
                 plus_gros=plus_gros,
-                vivante=session in vivants,
+                vivante=inconnu or session in vivants,
             )
         )
     return sorted(sorties, key=lambda h: -h.octets)

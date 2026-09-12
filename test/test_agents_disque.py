@@ -152,6 +152,22 @@ class TestLHistoriqueParSession(unittest.TestCase):
         cccc = next(h for h in self._histoires() if h.session == "cccc")
         self.assertFalse(cccc.retirable)
 
+    def test_an_unanswerable_question_offers_nothing(self):
+        """None n'est pas l'ensemble vide.
+
+        Le listage des sessions rend une liste VIDE quand l'outil n'est pas
+        joignable depuis le processus qui lance le menu — installé par un
+        gestionnaire de versions, ou hors du PATH. Confondre « aucune session
+        vivante » avec « la question est restée sans réponse » fait tomber la
+        garde en OUVERT sur un geste destructeur : toute session devient
+        retirable, y compris celle qui écrit en ce moment.
+        """
+        histoires = self._histoires(vivantes=None)
+        self.assertTrue(histoires)
+        for histoire in histoires:
+            self.assertTrue(histoire.vivante, histoire.session)
+            self.assertFalse(histoire.retirable, histoire.session)
+
 
 class TestLeCheminEstControle(unittest.TestCase):
     def test_a_plain_identifier_composes(self):

@@ -35,6 +35,7 @@ défilement piloté.
 from __future__ import annotations
 
 import os
+import shutil
 import time
 
 import click
@@ -1221,7 +1222,14 @@ class AssistantMenuMixin:
 
         while True:
             postes = disque.mesurer()
-            vivantes = {s.session_id for s in self._claude_flotte() if s.live}
+            # Sans l'outil, la flotte rend une liste vide, qui se lit
+            # « aucune session vivante » et rendrait tout supprimable. None
+            # dit « on n'a pas pu demander », et rien n'est alors proposé.
+            vivantes = (
+                {s.session_id for s in self._claude_flotte() if s.live}
+                if shutil.which("claude")
+                else None
+            )
             histoires = disque.historiques(vivantes=vivantes)
             print(f"{t('What Claude Code occupies')} :")
             for poste in postes:
