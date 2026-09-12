@@ -219,9 +219,17 @@ class TestLEssaiABlanc(unittest.TestCase):
         fichiers = glob.glob(
             os.path.join(self.maison, ".erplibre/longtest/*.json")
         )
-        self.assertEqual(len(fichiers), 1, fichiers)
-        self.assertIn("dryrun", fichiers[0])
-        with open(fichiers[0], encoding="utf-8") as fh:
+        self.assertTrue(fichiers, "aucun rapport écrit")
+        # Ce qui compte est qu'AUCUN rapport de vraie descente n'ait été
+        # écrit, non leur nombre : la mise en place planifie deux fois — la
+        # profondeur demandée, puis celle que la machine permet — et le nom
+        # d'un rapport porte la seconde où il est écrit. Deux essais de part
+        # et d'autre d'une seconde laissent donc deux fichiers, un seul
+        # sinon, et compter mesurait l'horloge.
+        for chemin in fichiers:
+            self.assertIn("dryrun", chemin, fichiers)
+        recent = max(fichiers, key=os.path.getmtime)
+        with open(recent, encoding="utf-8") as fh:
             rapport = json.load(fh)
         self.assertTrue(rapport["dry_run"])
         self.assertEqual(rapport["atteinte"], 0)
