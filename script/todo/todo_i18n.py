@@ -12277,6 +12277,48 @@ TRANSLATIONS = {
         "fr": "point de jeton injoignable :",
         "en": "token endpoint unreachable:",
     },
+    "mail_ask_refresh_token": {
+        "fr": "Jeton de rafraîchissement OAuth : ",
+        "en": "OAuth refresh token: ",
+    },
+    "mail_ask_auth_kind": {
+        "fr": "Authentification [1] : ",
+        "en": "Authentication [1]: ",
+    },
+    "mail_auth_choice_password": {
+        "fr": "Mot de passe d'application",
+        "en": "App password",
+    },
+    "mail_auth_choice_oauth": {
+        "fr": "Jeton OAuth (obtenu ailleurs)",
+        "en": "OAuth token (obtained elsewhere)",
+    },
+    "mail_oauth_only_here": {
+        "fr": (
+            "Ce fournisseur n'accepte plus que OAuth : un jeton de"
+            " rafraîchissement est demandé."
+        ),
+        "en": (
+            "This provider accepts OAuth only: a refresh token is asked"
+            " for."
+        ),
+    },
+    "mail_account_token": {
+        "fr": "Remplacer le jeton OAuth d'un compte",
+        "en": "Replace an account's OAuth token",
+    },
+    "mail_account_is_not_oauth": {
+        "fr": "Ce compte s'authentifie par mot de passe, pas par jeton.",
+        "en": "This account authenticates by password, not by token.",
+    },
+    "mail_nothing_written": {
+        "fr": "Rien n'a été écrit.",
+        "en": "Nothing was written.",
+    },
+    "mail_token_saved": {
+        "fr": "Jeton enregistré.",
+        "en": "Token saved.",
+    },
     "mail_err_provider_without_oauth": {
         "fr": "ce fournisseur n'offre pas OAuth :",
         "en": "this provider offers no OAuth:",
