@@ -809,6 +809,133 @@ class TestTodoWiring(unittest.TestCase):
         mock_question.assert_not_called()
 
 
+class TestAddingAnOAuthAccount(unittest.TestCase):
+    """Un compte dont le fournisseur n'accepte plus de mot de passe doit
+    pouvoir s'ajouter quand même : c'est ce que l'entrée de menu permet.
+
+    Le jeton est demandé comme un mot de passe l'était — sans écho — et
+    range sous SA référence, jamais sur celle du mot de passe.
+    """
+
+    def _ajouter(self, preset, saisies, secret):
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        coffre = MagicMock()
+        coffre.available_backends.return_value = ["kdbx"]
+        sauvegardes = []
+        with patch.object(
+            menu, "secret_store_for", return_value=coffre
+        ), patch.object(menu, "_ensure_kdbx", return_value=True), patch.object(
+            menu, "_load_accounts", return_value=[]
+        ), patch.object(
+            menu.mail_accounts,
+            "save",
+            side_effect=lambda comptes: sauvegardes.append(comptes),
+        ), patch(
+            "builtins.input", side_effect=saisies
+        ), patch(
+            "getpass.getpass", return_value=secret
+        ), patch(
+            "builtins.print"
+        ):
+            menu._add_account(MagicMock())
+        return coffre, (sauvegardes[0][0] if sauvegardes else None)
+
+    def _numero(self, cle):
+        from script.todo.mail.accounts import PRESETS
+
+        return str(list(PRESETS).index(cle) + 1)
+
+    def test_a_microsoft_account_is_created_as_an_oauth_account(self):
+        """Le préréglage n'a plus de mot de passe possible : proposer le
+        choix serait proposer une impasse."""
+        coffre, compte = self._ajouter(
+            "outlook",
+            ["perso", "moi@x.ca", "", self._numero("outlook")],
+            "jeton-collé",
+        )
+        self.assertEqual(compte.auth, "oauth")
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_a_gmail_account_may_choose_between_the_two(self):
+        """Gmail accepte encore les deux : la question se pose, et la
+        réponse par défaut reste le mot de passe d'application."""
+        coffre, compte = self._ajouter(
+            "gmail",
+            ["perso", "moi@x.ca", "", self._numero("gmail"), "2"],
+            "jeton-collé",
+        )
+        self.assertEqual(compte.auth, "oauth")
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_the_default_answer_keeps_the_app_password(self):
+        coffre, compte = self._ajouter(
+            "gmail",
+            ["perso", "moi@x.ca", "", self._numero("gmail"), ""],
+            "mot-de-passe",
+        )
+        self.assertEqual(compte.auth, "login")
+        coffre.set.assert_called_once_with(compte.secret_ref, "mot-de-passe")
+
+    def test_a_provider_without_oauth_is_never_asked_the_question(self):
+        """iCloud n'en offre pas : poser la question ferait choisir une
+        voie qui n'existe pas."""
+        coffre, compte = self._ajouter(
+            "icloud",
+            ["perso", "moi@x.ca", "", self._numero("icloud")],
+            "mot-de-passe",
+        )
+        self.assertEqual(compte.auth, "login")
+        coffre.set.assert_called_once_with(compte.secret_ref, "mot-de-passe")
+
+
+class TestReplacingAToken(unittest.TestCase):
+    """Un jeton révoqué se remplace sans refaire le compte."""
+
+    def _compte(self):
+        return account_from_preset("perso", "a@x.ca", "gmail", auth="oauth")
+
+    def _lancer(self, secret="jeton-neuf"):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        compte = self._compte()
+        coffre = MagicMock()
+        buf = io.StringIO()
+        with patch.object(
+            menu, "secret_store_for", return_value=coffre
+        ), patch.object(menu, "_load_accounts", return_value=[compte]), patch(
+            "builtins.input", side_effect=["1"]
+        ), patch(
+            "getpass.getpass", return_value=secret
+        ), redirect_stdout(
+            buf
+        ):
+            menu._set_oauth_token(MagicMock())
+        return compte, coffre, buf.getvalue()
+
+    def test_the_token_replaces_the_old_one_under_its_own_reference(self):
+        compte, coffre, _ = self._lancer()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-neuf"
+        )
+
+    def test_an_empty_entry_writes_nothing(self):
+        """Abandonner ne doit pas effacer le jeton en place : sans lui, le
+        compte cesse de se synchroniser."""
+        _, coffre, _ = self._lancer(secret="")
+        coffre.set.assert_not_called()
+
+
 class TestRetryPassword(unittest.TestCase):
     def setUp(self):
         self.account = account_from_preset("perso", "a@x.ca", "generic")

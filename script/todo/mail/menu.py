@@ -325,6 +325,7 @@ def prompt_mail_accounts(todo) -> None:
 [3] {t("mail_account_delete")}
 [4] {t("mail_account_template")}
 [5] {t("mail_account_test")}
+[6] {t("mail_account_token")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -340,6 +341,8 @@ def prompt_mail_accounts(todo) -> None:
             _write_template()
         elif status == "5":
             _test_account(todo)
+        elif status == "6":
+            _set_oauth_token(todo)
         else:
             print(t("Command not found !"))
 
@@ -454,13 +457,17 @@ def _add_account(todo) -> None:
     # mot de passe du tout est justement celui qu'il faut prévenir.
     print(f"  {t(PRESETS[preset_key]['note_key'])}")
 
-    password = getpass.getpass(
-        t("mail_ask_app_password" if attendu_app else "mail_ask_password")
-    )
+    account.auth = _demander_authentification(preset_key)
+    if account.auth == "oauth":
+        secret = getpass.getpass(t("mail_ask_refresh_token"))
+    else:
+        secret = getpass.getpass(
+            t("mail_ask_app_password" if attendu_app else "mail_ask_password")
+        )
     existing = [a for a in _load_accounts() if a.name != account.name]
     try:
         account_setup.save_new_account(
-            store, existing + [account], account, password
+            store, existing + [account], account, secret
         )
     except (SecretError, AccountError, OSError) as exc:
         # Une exception qui remonte ici tuerait le menu ; `save_new_account`
@@ -468,6 +475,53 @@ def _add_account(todo) -> None:
         print(exc)
         return
     print(t("mail_account_saved"))
+
+
+def _demander_authentification(preset_key: str) -> str:
+    """« login » ou « oauth », selon ce que le fournisseur accepte encore.
+
+    La question n'est posée que lorsqu'il y a un CHOIX. Un fournisseur sans
+    OAuth ne doit pas se voir proposer une voie qui n'existe pas ; un
+    fournisseur qui n'accepte plus de mot de passe ne doit pas se voir
+    proposer une impasse.
+    """
+    preset = PRESETS.get(preset_key, {})
+    if not preset.get("oauth"):
+        return "login"
+    if not preset.get("app_password"):
+        print(t("mail_oauth_only_here"))
+        return "oauth"
+    print(f"  [1] {t('mail_auth_choice_password')}")
+    print(f"  [2] {t('mail_auth_choice_oauth')}")
+    return (
+        "oauth" if input(t("mail_ask_auth_kind")).strip() == "2" else "login"
+    )
+
+
+def _set_oauth_token(todo) -> None:
+    """Remplace le jeton de rafraîchissement d'un compte.
+
+    Un jeton révoqué — le propriétaire a retiré l'autorisation, ou le
+    fournisseur l'a expirée — se remplace sans refaire le compte. Une saisie
+    vide n'écrit RIEN : effacer le jeton en place couperait la
+    synchronisation d'un compte qui marchait.
+    """
+    account, _ = _pick_account()
+    if account is None:
+        return
+    if getattr(account, "auth", "login") != "oauth":
+        print(t("mail_account_is_not_oauth"))
+        return
+    jeton = getpass.getpass(t("mail_ask_refresh_token"))
+    if not jeton:
+        print(t("mail_nothing_written"))
+        return
+    try:
+        secret_store_for(todo).set(account.refresh_token_ref(), jeton)
+    except SecretError as exc:
+        print(exc)
+        return
+    print(t("mail_token_saved"))
 
 
 def _pick_account(prompt_key="mail_ask_account"):

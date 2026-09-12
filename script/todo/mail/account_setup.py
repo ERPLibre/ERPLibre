@@ -26,20 +26,34 @@ from script.todo.todo_i18n import t
 DEFAULT_KDBX_PATH = "private/erplibre.kdbx"
 
 
+def secret_ref_for(account) -> str:
+    """La référence sous laquelle vit le secret de CE compte.
+
+    Un compte OAuth range un jeton de rafraîchissement, jamais un mot de
+    passe, et les deux références coexistent : écrire l'un sur l'autre
+    ferait perdre celui qu'on n'écrit pas. Une seule fonction décide, pour
+    que l'écriture et la lecture ne puissent pas diverger.
+    """
+    if getattr(account, "auth", "login") == "oauth":
+        return account.refresh_token_ref()
+    return account.secret_ref
+
+
 def save_new_account(secret_store, accounts, account, password) -> None:
-    """Écrit le mot de passe puis sauvegarde `accounts` (qui doit déjà
-    contenir `account`, à la place voulue par l'appelant).
+    """Écrit le secret puis sauvegarde `accounts` (qui doit déjà contenir
+    `account`, à la place voulue par l'appelant).
 
     Si la sauvegarde échoue, le secret est retiré du coffre avant que
     l'exception ne remonte : l'y laisser sous une référence qu'aucune
     configuration ne désigne en ferait un déchet invisible.
     """
-    secret_store.set(account.secret_ref, password)
+    ref = secret_ref_for(account)
+    secret_store.set(ref, password)
     try:
         mail_accounts.save(accounts)
     except (AccountError, OSError):
         try:
-            secret_store.delete(account.secret_ref)
+            secret_store.delete(ref)
         except SecretError:
             pass
         raise
