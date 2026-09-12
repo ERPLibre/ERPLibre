@@ -214,7 +214,7 @@ def _open_tui(todo) -> None:
 
     accounts = _load_accounts()
     secrets = secret_store_for(todo)
-    sessions = open_sessions(accounts, secrets)
+    sessions = open_sessions(accounts, secrets, config_get=_config_get(todo))
     try:
         # Un TUI sans aucun compte n'est plus une impasse : `config_file` et
         # `secrets` lui permettent d'en créer un depuis l'écran d'ajout.
@@ -228,6 +228,18 @@ def _open_tui(todo) -> None:
             session.close()
 
 
+def _config_get(todo):
+    """L'accès en lecture à la configuration TODO, ou rien.
+
+    Les réglages OAuth de celui qui déploie y vivent. Un `todo` sans
+    fichier de configuration — les tests en passent — retombe sur les
+    variables d'environnement plutôt que de lever.
+    """
+    config = getattr(todo, "config_file", None)
+    lire = getattr(config, "get_config_value", None)
+    return lire if callable(lire) else None
+
+
 def _sync_now(todo) -> None:
     from script.todo.mail.tui import (
         SYNC_PARALLELE,
@@ -239,7 +251,11 @@ def _sync_now(todo) -> None:
     if not accounts:
         print(t("mail_no_account"))
         return
-    sessions = open_sessions(accounts, secret_store_for(todo))
+    sessions = open_sessions(
+        accounts,
+        secret_store_for(todo),
+        config_get=_config_get(todo),
+    )
 
     def une(session) -> str:
         """Une passe pour un compte, rendue en texte. Ne lève jamais : un

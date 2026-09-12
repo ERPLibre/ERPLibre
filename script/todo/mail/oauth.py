@@ -25,6 +25,7 @@ fournisseur répondre « invalid_client ».
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -193,6 +194,81 @@ def _message(detail: bytes) -> str:
     if not isinstance(donnees, dict):
         return ""
     return str(donnees.get("error_description") or donnees.get("error") or "")
+
+
+def settings_for(account, config_get=None) -> dict:
+    """Les réglages OAuth d'un compte : points de service ET identité.
+
+    Les points de service viennent du préréglage : ils sont publics et
+    changent rarement. L'identité — `client_id`, et le secret quand le
+    fournisseur en exige un — vient de CELUI QUI DÉPLOIE, parce que le dépôt
+    n'en livre aucune : un identifiant embarqué engage un domaine, une
+    politique de confidentialité et un quota partagés par tous ceux qui
+    installent le logiciel.
+
+    Trois sources, dans l'ordre : la configuration TODO
+    (`mail.oauth.<préréglage>.client_id`), puis la variable d'environnement
+    propre au préréglage, puis la variable générale. La configuration gagne :
+    c'est celle que l'utilisateur a écrite exprès.
+    """
+    from script.todo.mail.accounts import PRESETS
+
+    preset = PRESETS.get(account.preset, {})
+    points = preset.get("oauth")
+    if not points:
+        raise OAuthError(
+            f"{t('mail_err_provider_without_oauth')} {account.preset}"
+        )
+
+    def regle(nom: str) -> str:
+        if config_get is not None:
+            valeur = config_get(["mail", "oauth", account.preset, nom])
+            if valeur:
+                return str(valeur)
+        propre = f"ERPLIBRE_MAIL_OAUTH_{nom.upper()}_{account.preset.upper()}"
+        general = f"ERPLIBRE_MAIL_OAUTH_{nom.upper()}"
+        return os.environ.get(propre) or os.environ.get(general) or ""
+
+    reglages = dict(points)
+    reglages["client_id"] = regle("client_id")
+    reglages["client_secret"] = regle("client_secret")
+    for nom in ("auth_url", "token_url", "scope"):
+        # Un serveur d'entreprise peut porter ses propres points : la
+        # configuration les remplace sans toucher au code.
+        remplacement = regle(nom)
+        if remplacement:
+            reglages[nom] = remplacement
+    return reglages
+
+
+def secret_for(account, secrets, *, config_get=None, refresh_fn=None) -> str:
+    """Le secret à présenter au serveur pour CE compte.
+
+    Un seul point de décision : l'appelant passe ce qu'on lui rend à
+    `connect()` sans avoir à savoir si c'est un mot de passe ou un jeton.
+
+    Un jeton périmé se rafraîchit ici, et le jeu neuf est rangé au coffre
+    AUSSITÔT : sans cette écriture, chaque ouverture de session rafraîchirait
+    de nouveau, et le fournisseur compte ces échanges.
+    """
+    if getattr(account, "auth", "login") != "oauth":
+        return secrets.get(account.secret_ref) or ""
+
+    jeu = TokenSet.from_json(secrets.get(account.refresh_token_ref()))
+    if not jeu.refresh_token:
+        raise RefreshRefused(t("mail_err_no_refresh_token"))
+    if not jeu.is_stale():
+        return jeu.access_token
+
+    reglages = settings_for(account, config_get)
+    neuf = (refresh_fn or refresh)(
+        jeu,
+        token_url=reglages["token_url"],
+        client_id=reglages["client_id"],
+        client_secret=reglages.get("client_secret", ""),
+    )
+    secrets.set(account.refresh_token_ref(), neuf.to_json())
+    return neuf.access_token
 
 
 def refresh(
