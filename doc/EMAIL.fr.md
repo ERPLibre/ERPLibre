@@ -39,20 +39,33 @@ préréglages exige donc un **mot de passe d'application** à la place :
 
 | Fournisseur | Où le générer |
 |---|---|
-| Gmail | Activez la validation en deux étapes, puis [myaccount.google.com](https://myaccount.google.com/security) > Sécurité > Mots de passe des applications |
-| Outlook / Microsoft 365 | [account.microsoft.com](https://account.microsoft.com/security) > Sécurité > Options de sécurité avancées > Mots de passe d'application |
-| iCloud | [account.apple.com](https://account.apple.com/) > Connexion et sécurité > Mots de passe spécifiques aux applications |
+| Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères, les espaces sont acceptés. La validation en deux étapes doit être active, sinon la page est vide. |
+| Outlook / Microsoft 365 | [account.microsoft.com/security](https://account.microsoft.com/security) — Microsoft ferme l'authentification simple sur les comptes grand public : sans mot de passe d'application, il faudra OAuth (phase 2, non implémentée). |
+| iCloud | [account.apple.com](https://account.apple.com) — section « Connexion et sécurité ». L'authentification à deux facteurs doit être active. |
 
 Utilisez ce mot de passe généré quand la configuration du compte en demande
 un — jamais le mot de passe normal du compte. Le préréglage « Serveur
-standard » (IMAP/SMTP générique) n'en a pas besoin.
+standard » (IMAP/SMTP générique) n'en a pas besoin. Le client affiche
+lui-même ces mêmes notes — au moment de demander le mot de passe, et de
+nouveau quand un refus le fait redemander. Elles vivent dans
+`script/todo/todo_i18n.py` sous les clés `mail_preset_note_*`, et ce
+tableau les suit.
 
 ## Ajouter un compte
 
 Chemin de menu : `TODO > [3] Assistant > [2] Courriel - Lire et envoyer du
 courriel > [2] Comptes > [2] Ajouter un compte`.
 
-Les questions, dans l'ordre :
+La première fois seulement : si aucun coffre n'est encore configuré —
+`kdbx.path` est vide dans la configuration livrée — le menu demande avant
+tout le reste s'il faut créer un nouveau `.kdbx` ou en désigner un déjà
+présent sur disque. La création demande son chemin (par défaut
+`private/erplibre.kdbx`), puis le mot de passe du coffre, saisi deux fois ;
+deux saisies différentes annulent l'ajout du compte, et répondre `[0]`
+aussi. Désigner un coffre existant ne demande que son chemin. Une fois le
+chemin enregistré, la question ne revient plus.
+
+Ensuite, les questions, dans l'ordre :
 
 1. **Nom court du compte** — devient à la fois le nom de dossier sous
    `~/.erplibre/mail/` et la référence dans le coffre : il ne peut donc pas
@@ -75,15 +88,21 @@ Où va le mot de passe : à l'étape du mot de passe, le client passe par le
 les identifiants Odoo. Il lit `kdbx.path` / `kdbx.password` dans la
 configuration TODO (`script/todo/todo.json`, surchargeable dans
 `private/todo/todo_override.json` / `private/todo/todo_override_private.json`).
-Si `kdbx.path` n'est pas encore réglé, une fenêtre de sélection de fichier
-s'ouvre pour choisir un `.kdbx` existant — il faut un affichage graphique,
-et l'annuler (ou lancer le CLI sans affichage) fait échouer la création du
-compte avec « le fichier kdbx n'a pas pu être ouvert » (voir Dépannage).
-**Réglez `kdbx.path` (et `kdbx.password`, pour éviter l'invite) avant
-d'ajouter votre premier compte**, en pointant vers un coffre `.kdbx` que
-vous avez déjà (créez-en un avec KeePassXC ou équivalent). Le trousseau
-système ne sert que pour un compte dont la `secret_ref` le désigne déjà —
-le menu écrit toujours les nouveaux comptes dans le coffre KDBX.
+Si `kdbx.path` n'est pas encore réglé, le menu le demande en texte, comme
+décrit plus haut — aucun affichage graphique nécessaire, donc utilisable en
+SSH et en conteneur. `[1]` crée un nouveau `.kdbx` au chemin donné
+(`private/.gitignore` ignore déjà `*.kdbx`), `[2]` en adopte un déjà
+présent sur disque, `[0]` annule sans rien écrire. Le chemin est inscrit
+dans `private/todo/todo_override_private.json`, le seul de ces trois
+fichiers que git ignore : la question n'est posée qu'une fois, et le TUI
+pose la même avec `n`, avant son propre formulaire. Un coffre que le menu
+vient de créer est rouvert pour y écrire ce premier secret : son mot de
+passe maître est donc redemandé une fois. Régler `kdbx.path` (et
+`kdbx.password`, pour éviter l'invite du mot de passe du coffre) d'avance
+ne fait qu'éviter ces questions — c'est un raccourci, pas un préalable. Le
+trousseau système ne sert que pour un compte dont la `secret_ref` le
+désigne déjà — le menu écrit toujours les nouveaux comptes dans le coffre
+KDBX.
 
 `accounts.json` (dans `~/.erplibre/mail/accounts.json`) ne contient jamais
 qu'une `secret_ref` du genre `kdbx:ERPLibre/Mail/perso` — une référence,
@@ -99,13 +118,29 @@ ligne. Trois modes contrôlent ce que ce cache laisse sur le disque :
 | Mode | Ce qui reste sur le disque | Clé de chiffrement |
 |---|---|---|
 | `clear` (par défaut) | `~/.erplibre/mail/<compte>/cache.db` et les fichiers `.eml`, lisibles en clair | aucune |
-| `encrypted` | même emplacement, mais l'expéditeur, les destinataires, le sujet, l'extrait, le Message-ID et le corps des messages sont scellés en AES-256-GCM | générée une fois, rangée dans le coffre à côté du mot de passe (`.../cache-key`) |
+| `encrypted` | même emplacement, mais l'expéditeur, les destinataires, le sujet, l'extrait, le Message-ID et le corps des messages sont scellés en AES-256-GCM à partir du changement de mode (voir plus bas) | générée une fois, rangée dans le coffre à côté du mot de passe (`.../cache-key`) |
 | `ephemeral` | sous `/dev/shm/erplibre-mail-<pid>/<compte>/` (ou le dossier temporaire système si `/dev/shm` n'est pas inscriptible), scellé comme `encrypted` | tirée en RAM à chaque lancement, jamais écrite nulle part, et tout le dossier est effacé à la fermeture de la session |
 
-Même en mode `clear`, les champs techniques dont le SQL a besoin pour trier
-et filtrer — UID, dossier, date, drapeaux, taille — restent toujours en
-clair ; seuls les champs qui identifient des personnes (et le corps du
-message) sont scellés, et seulement en `encrypted`/`ephemeral`.
+Même en mode `encrypted` ou `ephemeral`, les champs techniques dont le SQL
+a besoin pour trier et filtrer restent en clair : UID, nom de dossier,
+date, drapeaux et taille, ainsi que les empreintes de Message-ID qui
+reconstituent les fils — des empreintes salées par la clé du cache, qui
+relient deux messages sans nommer ni l'un ni l'autre. Le scellement couvre
+ce qui identifie des personnes : expéditeur, destinataires, sujet, extrait,
+Message-ID, corps du message, et les messages en attente d'envoi jusqu'à la
+raison de leur échec. Le client ne construit pas d'index plein texte pour
+un cache scellé : la recherche y déchiffre ligne à ligne (voir Recherche).
+
+**Changer de mode ne revient pas sur ce qui est déjà écrit.** Un mode ne
+vaut que pour les écritures qui le suivent. Une fois le compte passé en
+`encrypted`, les lignes écrites en `clear` gardent leur enveloppe en clair,
+et les fichiers `.eml` déjà téléchargés restent sur le disque — plus relus,
+pas effacés non plus. L'index plein texte fait exception : il est supprimé
+quand le compte quitte le mode `clear`, parce qu'il tient à découvert les
+sujets et les extraits que les lignes scellées protègent, et il se
+reconstruit depuis le cache si le compte y revient. Pour repartir scellé,
+effacez le dossier de cache du compte (`~/.erplibre/mail/<compte>/`), puis
+resynchronisez — tout revient sous la clé.
 
 Réglez le **défaut général** dans `Courriel > [4] Cache > [1] Mode de cache
 par défaut` ; c'est la préférence `mail_cache_mode` (défaut `clear`).
@@ -115,9 +150,12 @@ d'un compte` — ceci écrit le champ `cache_mode` du compte dans
 général ».
 
 `Courriel > [4] Cache > [3] Taille du cache et purge` liste le mode
-effectif et l'espace disque de chaque compte, et peut effacer entièrement le
-cache d'un compte (après confirmation) — la prochaine synchronisation le
-reconstruit à partir de zéro.
+effectif et l'espace disque de chaque compte, et vide les messages, les
+dossiers et les fichiers téléchargés d'un compte (après confirmation) — la
+prochaine synchronisation les reconstruit à partir de zéro. L'index plein
+texte est vidé avec eux : rien ne continue de répondre pour des messages
+qui ne sont plus là. Le fichier `cache.db` lui-même reste, et avec lui ce
+qui attend dans la file d'envoi.
 
 ## Le TUI
 
@@ -128,7 +166,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | Touche | Action |
 |---|---|
 | `↑` `↓` `Tab` | se déplacer dans un volet / changer de volet (comportement par défaut de Textual) |
-| `h` | ouvre la fenêtre d'aide : tous les raccourcis et quelques repères, fermée par `Échap` |
+| `h` | ouvre la fenêtre d'aide : les raccourcis de l'écran principal et quelques repères — pas les touches propres aux fenêtres d'écriture, de dossiers et de statistiques ; fermée par `Échap` |
 | `z` | plein écran sur l'aperçu (masque l'arbre et la liste) |
 | `Échap` | quitter le plein écran |
 | `v` | change de disposition : colonnes, partagée, empilée |
@@ -136,12 +174,16 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `0` | revenir aux tailles de volets par défaut |
 | `r` | synchronise le compte du dossier actuellement sélectionné (tous ses dossiers) |
 | `Shift+R` | synchronise tous les comptes |
-| `/` | ouvre le champ de recherche (filtre seulement la liste déjà affichée — localement, sur sujet/de/à/extrait ; ne cherche pas sur le serveur) |
+| `/` | ouvre le champ de recherche : cherche dans tout le cache du dossier ouvert — et non dans les seuls messages affichés — sur sujet/de/à/extrait ; ne cherche pas sur le serveur (voir « Recherche ») |
+| `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `c` | écrire un nouveau message |
 | `a` / `Shift+A` | répondre / répondre à tous |
 | `f` | transférer |
 | `w` | enregistrer la **première** pièce jointe du message dans `~/Téléchargements` (créé s'il n'existe pas) |
+| `o` | ouvre la file d'envoi : ce qui attend de partir (voir « La file d'envoi ») |
+| `Shift+F` | ouvre l'écran des dossiers : créer, renommer, supprimer (voir « Gérer les dossiers ») |
+| `i` | ouvre l'écran de statistiques (voir « Statistiques ») |
 | `n` | ajouter un compte sans quitter le client |
 | `l` | affiche la fin de `~/.erplibre/mail.log` et les erreurs de synchronisation de la session |
 | `q` | quitter |
@@ -162,12 +204,14 @@ texte d'aperçu.
 
 `c` ouvre le formulaire : `À`, `Cc`, `Objet`, un champ `Pièces jointes`
 (chemins de fichiers séparés par un point-virgule — une virgule est légale
-dans un nom de fichier, donc seul `;` sépare les entrées ; il n'y a pas de
-sélecteur de fichier, tapez les chemins), et un corps multi-lignes.
-`e` envoie le corps vers `$EDITOR` (ou `nano` si non défini) et le relit ;
-si l'éditeur manque ou sort en erreur, le texte de départ est conservé tel
-quel. `Ctrl+S` (ou le bouton Envoyer) remet le message ; `Échap` abandonne
-le brouillon — il n'y a pas d'enregistrement en brouillon.
+dans un nom de fichier, donc seul `;` sépare les entrées ; le bouton
+« Parcourir… » posé à côté du champ ouvre le navigateur de fichiers du CLI,
+qui repart du dossier du dernier chemin déjà saisi et ajoute le fichier
+choisi), et un corps multi-lignes. `Ctrl+E` envoie le corps vers `$EDITOR`
+(ou `nano` si non défini) et le relit ; si l'éditeur manque ou sort en
+erreur, le texte de départ est conservé tel quel. `Ctrl+S` (ou le bouton
+Envoyer) remet le message ; `Échap` abandonne le brouillon — il n'y a pas
+d'enregistrement en brouillon.
 
 `a` (répondre) et `Shift+A` (répondre à tous) préremplissent `À`/`Cc`/
 `Objet`/`In-Reply-To`/`References` et citent le message d'origine dans le
@@ -181,11 +225,13 @@ d'origine — depuis le cache, ou récupéré en direct si le compte est en
 ligne ; sans l'un ou l'autre, vous obtenez « Aucun message sélectionné. » /
 « Aucun message à transférer. ».
 
-Envoyer exige que le compte soit en ligne (écrire hors ligne échoue avec
-« Compte hors ligne : envoi impossible. » — il n'y a pas de file d'attente
-hors ligne). Une fois envoyé, une copie est classée dans le dossier
-Envoyés du compte par IMAP ; si ce classement échoue, la ligne de statut le
-dit, mais le message est déjà parti — il n'est pas renvoyé.
+Un message écrit alors que le compte est hors ligne est mis en file au lieu
+d'être envoyé : il part à la synchronisation suivante, et la ligne de
+statut affiche « hors ligne : message mis en attente, il partira au
+retour » (voir « La file d'envoi »). Une fois envoyé, une copie est classée
+dans le dossier Envoyés du compte par IMAP ; si ce classement échoue, la
+ligne de statut le dit, mais le message est déjà parti — il n'est pas
+renvoyé.
 
 ## Synchronisation
 
@@ -211,8 +257,9 @@ La synchronisation a lieu :
 Si le serveur annonce un `UIDVALIDITY` changé pour un dossier (ses UID ne
 veulent plus dire ce qu'ils disaient — typiquement après une migration
 côté serveur), le cache de ce dossier est purgé et resynchronisé à partir
-de zéro automatiquement ; il n'y a actuellement aucun avis à l'écran
-au-delà du dossier qui se vide puis se remplit à nouveau brièvement.
+de zéro automatiquement. La passe nomme les dossiers auxquels elle l'a
+fait : le TUI dans sa ligne de statut à la fin de la passe, `Courriel >
+[3] Synchroniser maintenant` sous le nom du compte.
 
 ## Où sont les fichiers
 
@@ -227,11 +274,9 @@ au-delà du dossier qui se vide puis se remplit à nouveau brièvement.
 
 Les messages d'erreur qui viennent du paquet courriel lui-même
 (`secrets.py`, `store.py`, `crypto.py`, `accounts.py`, `smtp_send.py`,
-`imap_transport.py`, `imap_sync.py`) passent maintenant par la couche de
-traduction du CLI, comme les invites de menu et les libellés du TUI :
-lancer le CLI en anglais les affiche en anglais. Le libellé ci-dessous est
-cité en français, la langue de référence de ce document ; attendez-vous au
-libellé anglais correspondant avec `EL_LANG=en`.
+`imap_transport.py`, `imap_sync.py`) passent par la couche de traduction
+du CLI, comme les invites de menu et les libellés du TUI : ils suivent la
+langue dans laquelle le CLI tourne.
 
 **« Connexion échouée : ... » en ajoutant ou en testant un compte.**
 `Courriel > [2] Comptes > [5] Tester la connexion d'un compte` affiche
@@ -249,10 +294,20 @@ synchronisé encore) n'affiche aucun dossier du tout. Dans tous les cas,
 passez par « Tester la connexion d'un compte » pour corriger.
 
 **« le fichier kdbx n'a pas pu être ouvert » en ajoutant un compte.**
-Le coffre KDBX partagé n'est pas encore configuré, sa fenêtre de sélection
-de fichier a été annulée, ou le CLI tourne sans affichage pour la montrer.
-Réglez `kdbx.path` (et `kdbx.password`) comme décrit dans « Ajouter un
-compte » plus haut, puis réessayez.
+Un coffre est alors désigné — l'ajout de compte commence par s'en assurer —
+mais il n'a pas pu s'ouvrir : mot de passe du coffre refusé (trois essais,
+puis le client renonce ; une saisie vide renonce tout de suite),
+`kdbx.password` faux dans la configuration, `pykeepass` absent, ou aucun
+terminal pour saisir le mot de passe. Ressaisissez-le, ou réglez
+`kdbx.password` pour un lancement sans surveillance. Deux autres refus
+appartiennent à cette première question : « Ce fichier n'existe pas : »
+(choix `[2]`, rien à ce chemin) et « Les mots de passe ne correspondent
+pas. » (choix `[1]`, les deux saisies diffèrent) ; les deux annulent
+l'ajout du compte sans rien écrire. Le même message hors de l'ajout de
+compte — synchronisation, test de connexion, ouverture du client — veut
+dire que `kdbx.path` est vide : ces entrées vont droit au gestionnaire KDBX
+partagé, qui ouvre alors une fenêtre de sélection de fichier — l'annuler,
+ou tourner sans affichage, laisse le coffre fermé.
 
 **« le trousseau du système écrirait le mot de passe en clair (backend
 ...) ».**
@@ -280,7 +335,7 @@ le cas échéant, effacez à la main le dossier de cache du compte et
 resynchronisez :
 
 ```bash
-rm -rf ~/.erplibre/mail/<account>/
+rm -rf ~/.erplibre/mail/<compte>/
 ```
 
 ## Tester contre un vrai serveur
@@ -299,9 +354,10 @@ couper la connexion ou refuser une commande en pleine synchronisation.
 Ajouter une nouvelle méchanceté est une petite sous-classe dans
 `test/mail_sandbox.py`, pas un nouveau serveur.
 
-Ces tests ne tournent **pas** dans la boucle rapide. Sans `twisted` ni
-`aiosmtpd`, tout le fichier se saute visiblement. Pour les lancer
-volontairement :
+Ces tests tournent avec le reste de la suite : `twisted` et `aiosmtpd`
+figurent dans `requirement/erplibre_require-ments.txt`, le fichier même
+qu'installent les « Prérequis ». Là où ces deux paquets manquent, tout le
+fichier se saute visiblement. Pour ne lancer que ce fichier :
 
 ```bash
 .venv.erplibre/bin/python -m unittest discover -s test \
@@ -326,28 +382,44 @@ Ce qu'il ne couvre **pas**, et ne fera pas semblant de couvrir :
 
 ## La file d'envoi
 
-Écrire un message alors que le compte est hors ligne ne refuse plus : le
-message est mis en file. Perdre ce que quelqu'un vient d'écrire parce que le
-réseau manque est le pire des trois résultats possibles.
+Un message écrit alors que le compte est hors ligne n'est pas refusé : il
+est mis en file. Perdre ce que quelqu'un vient d'écrire parce que le réseau
+manque est le pire des trois résultats possibles.
 
-La file se vide d'elle-même à la synchronisation suivante — le retour du
-réseau est exactement le moment où elle doit partir. L'ordre est conservé :
-deux messages d'un même échange arriveraient sinon inversés.
+La file part au début de chaque passe de synchronisation, avant la
+relecture du serveur : au lancement, par `r` / `Shift+R`, au minuteur
+`mail_refresh_sec`, et par `Courriel > [3] Synchroniser maintenant` depuis
+le menu CLI. Une passe qui envoie ou qui échoue le dit — le TUI dans sa
+ligne de statut pendant la passe, le menu sous le nom du compte. L'ordre
+est conservé : deux messages d'un même échange arriveraient sinon inversés.
 
-`o` ouvre la file. Chaque ligne porte à sa **gauche** un bouton qui retient
-le message ou le relâche. Un message retenu ne part jamais seul ; seul ce
-bouton lève la retenue, jamais un délai qui expire. Un envoi qui échoue
-laisse le message en file avec sa raison et son nombre de tentatives, et
-n'arrête pas ceux qui le suivent.
+Deux choses laissent un message en attente : un compte hors ligne ne vide
+rien, et un message retenu est sauté. L'état réseau d'un compte est fixé à
+l'ouverture du client et rien ne le rouvre ensuite — un compte hors ligne au
+lancement, le cas même qui remplit la file, ne la vide qu'au lancement
+suivant du client, ou par le menu CLI, qui se reconnecte à chaque appel.
+
+`o` ouvre la file : une ligne d'en-tête compte ce qui attend, puis une
+ligne par message, du plus ancien au plus récent — objet, destinataires et,
+dès qu'un envoi a échoué, pourquoi il a échoué et combien de tentatives il a
+coûtées. Chaque ligne porte à sa **gauche** un bouton qui retient le message
+ou le relâche. Un message retenu ne part jamais seul ; seul ce bouton lève
+la retenue, jamais un délai qui expire. `Échap` ferme l'écran.
+
+Un envoi qui échoue laisse le message en file et n'arrête pas ceux qui le
+suivent. Rien n'abandonne : la passe suivante retente et le compteur monte,
+si définitif que soit le refus. Retenir le message est le seul moyen
+d'arrêter ces tentatives — l'écran ne supprime rien.
 
 Les messages en attente sont scellés par la même clé que le reste du cache :
 un cache chiffré qui laisserait ses envois en clair protégerait tout sauf ce
-qu'on vient d'écrire.
+qu'on vient d'écrire. La raison d'un échec est scellée avec eux : un serveur
+qui refuse un message cite le destinataire qu'il refuse.
 
 ## Gérer les dossiers
 
-`F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime, Échap
-ferme.
+`F` ouvre l'écran des dossiers : `n` crée, `r` renomme, `d` supprime,
+`Échap` ferme.
 
 La suppression détruit le dossier **et son contenu sur le serveur**. IMAP
 n'a pas de corbeille pour les dossiers : ce qui part ainsi ne revient que
@@ -393,28 +465,39 @@ n'arrête pas les autres.
 
 ## Recherche
 
-`/` cherche dans **tout le cache**, et non dans les seuls messages chargés.
-Sujet, expéditeur, destinataire et extrait sont comparés.
+`/` cherche dans **tout le cache du dossier ouvert**, et non dans les seuls
+messages chargés. Sujet, expéditeur, destinataire et extrait sont comparés.
+La portée s'arrête là : les autres dossiers du compte, les autres comptes et
+le serveur ne sont pas parcourus, et 500 correspondances au plus sont
+rendues, les plus récentes d'abord.
 
 En mode de cache `clear`, un index FTS5 répond en millisecondes et la liste
 suit chaque frappe. En mode `encrypted` aucun index n'existe — il stockerait
 en clair ce que le cache scelle — et la recherche déchiffre ligne à ligne.
 Mesuré sur 200 000 messages : 0,00 s avec index contre 4,4 s en balayage
 pour un terme qui ne correspond à rien. La liste cesse donc d'y suivre la
-frappe et attend **Entrée**, ce que la barre d'état annonce.
+frappe et attend **Entrée**, ce que la barre d'état annonce. Jusqu'à cette
+validation, la liste ne filtre que les messages déjà chargés.
 
 Le résultat est le même des deux côtés ; seul le coût change.
 
 ## Statistiques
 
 `i` dans le client ouvre l'écran de statistiques ; `[5]` dans le menu Courriel
-rend les mêmes chiffres en texte, sans lancer le client. Tout est calculé
-depuis le cache local : la réponse vient hors ligne, sans mot de passe ni
-requête réseau.
+en imprime un résumé texte par compte, sans lancer le client — total, non-lus
+et leur part, les quatorze dernières tranches quotidiennes de volume, les cinq
+premiers expéditeurs et la médiane des délais de réponse. C'est tout : le
+tableau par dossier, les destinataires et le nombre de messages sans date sont
+calculés puis jetés, la coupe à quatorze tranches n'est pas annoncée, et le
+choix du pas, de la période et de la portée n'appartient qu'à l'écran `i`.
+Tout est calculé depuis le cache local : les deux répondent hors ligne, sans
+requête réseau ; `[5]` n'ouvre le coffre qu'une fois pour tous les comptes, et
+seulement là où un cache est scellé par une clé qui y est rangée — un compte
+en `clear` ne se voit jamais demander de mot de passe.
 
-- **Volume** par jour, semaine ou mois — `d`, `w`, `m` changent le pas. Les
-  barres sont normalisées sur le maximum de la série, pour que la forme de la
-  distribution reste lisible qu'un mois porte douze messages ou douze mille.
+- **Volume** par jour, semaine, mois ou année. Les barres sont normalisées
+  sur le maximum de la série, pour que la forme de la distribution reste
+  lisible qu'un mois porte douze messages ou douze mille.
 - **Par dossier** — nombre, part de non-lus, taille cumulée.
 - **Correspondants** — les expéditeurs et destinataires les plus fréquents,
   comptés par adresse en minuscules plutôt que par libellé : une personne qui
@@ -422,21 +505,27 @@ requête réseau.
 - **Délai de réponse** — la médiane entre un message et la réponse qui lui
   répond, reliés par des empreintes de `Message-ID`.
 
-Trois listes déroulantes surmontent les chiffres — le pas (jour, semaine,
-mois, année), la période (depuis toujours, 30 derniers jours, 12 derniers
-mois, 5 dernières années) et la portée (tous les dossiers ou celui qui est
-ouvert). Les touches `d`, `w`, `m` et `f` font la même chose et gardent les
-listes accordées à l'écran.
+Trois listes déroulantes surmontent les chiffres. Le **pas** (jour, semaine,
+mois, année) fixe la largeur d'une barre de l'histogramme : `d`, `w` et `m`
+posent les trois premiers, l'année ne s'obtient que par la liste. La
+**période** (depuis toujours, 12 derniers mois, 5 dernières années, 30
+derniers jours) borne l'histogramme et, avec lui, les totaux, le tableau par
+dossier, les correspondants et les délais de réponse ; un dossier que la
+période vide reste listé, avec un zéro. La **portée** est tous les dossiers
+ou celui qui est ouvert, et `f` la bascule. Touches et listes mènent au même
+état : une touche déplace sa liste avec elle.
 
 L'écran s'ouvre sur une **vue d'ensemble calculée en SQL seul** — nombres,
 chiffres par dossier et histogramme — donc il apparaît immédiatement même sur
 une boîte de plusieurs centaines de milliers de messages. Les correspondants
 et les délais de réponse ouvrent chaque colonne scellée : ils ne se calculent
 donc que sur **Entrée**, dans un fil de fond, avec une progression. Le pas de
-l'histogramme se choisit d'après l'étendue réelle de la boîte : vingt ans
-d'archives s'affichent par mois et non en sept mille barres quotidiennes, et
-seules les tranches les plus récentes sont listées — les totaux au-dessus,
-eux, comptent tout, et l'écran annonce combien de tranches il a laissées.
+l'histogramme se choisit d'après l'étendue réelle de ce qui est compté — la
+période et la portée choisies —, pour ne jamais dépasser 180 barres : dix ans
+d'archives se lisent par mois, vingt ans par année plutôt qu'en sept mille
+barres quotidiennes. Seules les tranches les
+plus récentes sont listées — les totaux au-dessus, eux, comptent toutes les
+tranches de la période, et l'écran annonce combien il en a laissées.
 
 Deux chiffres disent honnêtement ce qu'ils ignorent :
 
@@ -448,14 +537,16 @@ Deux chiffres disent honnêtement ce qu'ils ignorent :
   l'écran le dit plutôt que d'afficher un délai nul. Une resynchronisation
   complète les remplit.
 
-## Limites de la phase 1
+## Ce que le client ne fait pas encore
 
 - **Pas d'OAuth** — Gmail, Outlook et iCloud demandent un mot de passe
-  d'application (voir plus haut) ; OAuth arrive en phase 2.
+  d'application (voir plus haut).
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.
-- **Pas de file d'attente hors ligne** — l'envoi exige que le compte soit
-  en ligne ; rien ne se met en attente pour partir au retour du réseau.
+- **Ni suppression ni déplacement d'un message** — `s` et `u` changent
+  l'état lu / non lu, et `F` crée, renomme et supprime des dossiers, mais
+  un message lui-même ne peut être ni supprimé ni déplacé vers un autre
+  dossier.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
