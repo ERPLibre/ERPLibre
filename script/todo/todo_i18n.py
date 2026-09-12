@@ -11746,9 +11746,7 @@ TRANSLATIONS = {
             "Pas de terminal pour saisir le mot de passe du coffre :"
             " coffre non ouvert."
         ),
-        "en": (
-            "No terminal to type the vault password: vault left closed."
-        ),
+        "en": ("No terminal to type the vault password: vault left closed."),
     },
     "Some gateways demand an embedded browser (SAML): openconnect stops on"
     " \u00ab No SSO handler \u00bb and a helper is needed for the web step. It is"
@@ -12639,6 +12637,93 @@ TRANSLATIONS = {
     "Produce or fix a .base.md, its header and its language blocks": {
         "fr": "produire ou réparer un .base.md, son en-tête et ses blocs de langue",
         "en": "Produce or fix a .base.md, its header and its language blocks",
+    },
+    # Contexte et environnement d'une session (agents/contexte.py et
+    # agents/environnement.py). Une valeur d'environnement ne s'affiche
+    # que si son nom est déclaré ET que sa valeur a la forme attendue.
+    "Inspect": {
+        "fr": "Inspecter",
+        "en": "Inspect",
+    },
+    "Context and environment of a session": {
+        "fr": "📇 Contexte et environnement d'une session",
+        "en": "📇 Context and environment of a session",
+    },
+    "No transcript for this session.": {
+        "fr": "Aucune transcription pour cette session.",
+        "en": "No transcript for this session.",
+    },
+    "CONTEXT": {
+        "fr": "CONTEXTE",
+        "en": "CONTEXT",
+    },
+    "knowledge cutoff": {
+        "fr": "coupure de connaissances",
+        "en": "knowledge cutoff",
+    },
+    "machine": {
+        "fr": "machine",
+        "en": "machine",
+    },
+    "git repository": {
+        "fr": "· dépôt git",
+        "en": "· git repository",
+    },
+    "skills": {
+        "fr": "skills",
+        "en": "skills",
+    },
+    "permissions": {
+        "fr": "permissions",
+        "en": "permissions",
+    },
+    "announcements": {
+        "fr": "annonces",
+        "en": "announcements",
+    },
+    "latest": {
+        "fr": "dernière",
+        "en": "latest",
+    },
+    "instructions": {
+        "fr": "instructions",
+        "en": "instructions",
+    },
+    "hook": {
+        "fr": "hook",
+        "en": "hook",
+    },
+    "not carried by this CLI version": {
+        "fr": "non porté par cette version du CLI",
+        "en": "not carried by this CLI version",
+    },
+    "Unmask one variable (empty to skip):": {
+        "fr": "Démasquer une variable (vide pour passer) :",
+        "en": "Unmask one variable (empty to skip):",
+    },
+    "No masked variable by that name.": {
+        "fr": "Aucune variable masquée de ce nom.",
+        "en": "No masked variable by that name.",
+    },
+    "ENVIRONMENT": {
+        "fr": "ENVIRONNEMENT",
+        "en": "ENVIRONMENT",
+    },
+    "unreadable: the process is gone": {
+        "fr": "illisible : le processus n'existe plus",
+        "en": "unreadable: the process is gone",
+    },
+    "total · in clear · masked": {
+        "fr": "total · en clair · masquées",
+        "en": "total · in clear · masked",
+    },
+    "The process carries the login shell environment,": {
+        "fr": "Le processus porte l'environnement du shell de connexion,",
+        "en": "The process carries the login shell environment,",
+    },
+    "frozen at exec; Claude Code sets its own in children.": {
+        "fr": "figé à l'exec ; Claude Code pose les siennes dans ses enfants.",
+        "en": "frozen at exec; Claude Code sets its own in children.",
     },
     # Serveurs MCP (script/todo/assistant/agents/mcp.py). Deux populations :
     # les déclarations locales se lisent, les connecteurs du compte se

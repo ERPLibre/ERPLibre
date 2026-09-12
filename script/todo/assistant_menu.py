@@ -1082,6 +1082,12 @@ class AssistantMenuMixin:
                         "Stop, restart or delete a background agent…"
                     )
                 },
+                {"section": t("Inspect")},
+                {
+                    "prompt_description": t(
+                        "Context and environment of a session"
+                    )
+                },
             ]
             try:
                 status = click.prompt(self.fill_help_info(choices))
@@ -1103,6 +1109,8 @@ class AssistantMenuMixin:
                 self._claude_journal()
             elif status == "6":
                 self._claude_gerer()
+            elif status == "7":
+                self._claude_contexte(flotte)
             else:
                 print(t("Command not found !"))
 
@@ -1411,6 +1419,169 @@ class AssistantMenuMixin:
         from script.todo.assistant.agents import tui
 
         tui.run_tui()
+
+    @staticmethod
+    def _claude_transcription(session):
+        """Le fichier de transcription d'une session, ou la chaîne vide.
+
+        Trouvé par l'identifiant et non par le nom de répertoire de projet :
+        celui-ci encode le chemin de travail en tirets, et la transformation
+        ne s'inverse pas.
+        """
+        import glob
+
+        motif = os.path.expanduser(
+            f"~/.claude/projects/*/{session.session_id}.jsonl"
+        )
+        trouves = glob.glob(motif)
+        return trouves[0] if trouves else ""
+
+    def _claude_contexte(self, flotte):
+        """Ce qu'une session porte : son contexte, puis son environnement.
+
+        Les deux blocs disent leur DISPONIBILITÉ avant leur contenu. Trois
+        causes produisent le même vide et n'appellent pas le même geste : la
+        version du CLI n'écrit pas l'enregistrement, le processus appartient à
+        un autre compte, le processus est mort. Un zéro partout transformerait
+        l'inconnu en « il n'y a rien », ce qui est le message le plus trompeur
+        d'un écran de diagnostic.
+        """
+        from script.todo.assistant.agents import contexte as ctx
+        from script.todo.assistant.agents import environnement as env
+
+        session = self._claude_choisir(flotte)
+        if session is None:
+            return
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(session)
+        print(f"\n{vue['id']} · {vue['dir']} · {vue['branch']}")
+
+        chemin = self._claude_transcription(session)
+        if not chemin:
+            print(
+                f"{MARQUE['unknown']} {t('No transcript for this session.')}"
+            )
+        else:
+            self._claude_contexte_bloc(ctx.lire(chemin), ctx)
+
+        liste = env.variables(session.pid) if session.pid else None
+        self._claude_environ_bloc(session, liste, env)
+        if liste:
+            self._claude_devoiler(session, liste, env)
+
+    def _claude_devoiler(self, session, liste, env):
+        """Démasquer UNE variable, nommée et sur demande.
+
+        C'est la soupape de la liste blanche, qui masque par construction
+        toute variable neuve et utile. Une à la fois, et jamais le bloc : un
+        écran qui démasque tout d'un coup rend copiable ce que le noyau
+        réservait au propriétaire du processus.
+        """
+        masquees = [v.nom for v in liste if not v.visible]
+        if not masquees:
+            return
+        try:
+            nom = click.prompt(
+                t("Unmask one variable (empty to skip):"),
+                prompt_suffix=" ",
+                default="",
+                show_default=False,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            return
+        if nom not in masquees:
+            print(
+                f"{MARQUE['unknown']} {t('No masked variable by that name.')}"
+            )
+            return
+        valeur = env.devoile(session.pid, nom)
+        if valeur is None:
+            print(f"{MARQUE['no']} {t('unreadable: the process is gone')}")
+            return
+        print(f"   {nom} = {valeur}")
+
+    @staticmethod
+    def _claude_contexte_bloc(contexte, ctx):
+        """Le bloc « contexte » : ce que la session a chargé."""
+        print(f"\n {t('CONTEXT')}")
+        if contexte.modele:
+            print(
+                f"   {t('model'):<14} {contexte.modele}"
+                f"  {contexte.modele_id}"
+                f"  {t('knowledge cutoff')} {contexte.coupure}"
+            )
+        else:
+            print(
+                f"   {t('model'):<14} {t('not carried by this CLI version')}"
+            )
+        if contexte.plateforme:
+            git = t("git repository") if contexte.depot_git else ""
+            print(
+                f"   {t('machine'):<14} {contexte.plateforme}"
+                f" · {contexte.shell} {git}"
+            )
+        if contexte.skills >= 0:
+            print(f"   {t('skills'):<14} {contexte.skills}")
+        if contexte.annonces_permissions:
+            print(
+                f"   {t('permissions'):<14}"
+                f" {contexte.annonces_permissions} {t('announcements')}"
+                f" · {t('latest')} {contexte.derniere_permission}"
+            )
+        fichiers = ctx.instructions_affichables(contexte)
+        if fichiers:
+            print(f"   {t('instructions'):<14} {len(contexte.instructions)}")
+            for chem, origine, octets in fichiers:
+                print(f"       {origine:<12} {chem:<50} {octets}")
+        else:
+            print(
+                f"   {t('instructions'):<14}"
+                f" {t('not carried by this CLI version')}"
+            )
+        for nom, code, duree in contexte.hooks:
+            detail = f" · {code} · {duree} ms" if code else ""
+            print(f"   {t('hook'):<14} {nom}{detail}")
+
+    @staticmethod
+    def _claude_environ_bloc(session, liste, env):
+        """Le bloc « environnement » : les noms, et ce qu'on montre des valeurs.
+
+        Une valeur ne s'affiche que si son nom est déclaré et que sa valeur a
+        la forme attendue. Le reste montre sa FORME — le noyau réserve déjà ce
+        fichier au propriétaire du processus, et un écran qui recopie une
+        valeur en clair casse cette frontière pour de bon.
+        """
+        print(f"\n {t('ENVIRONMENT')}")
+        if liste is None:
+            print(f"   {MARQUE['no']} {t('unreadable: the process is gone')}")
+            return
+        print(
+            f"   /proc/{session.pid}/environ · {env.resume(liste)}"
+            f"  ({t('total · in clear · masked')})"
+        )
+        for variable in liste:
+            marque = (
+                "🔒"
+                if variable.secret
+                else ("  " if variable.visible else "· ")
+            )
+            print(f"   {marque} {variable.nom:<28} {variable.forme}")
+        absentes = env.familles_absentes(liste)
+        if absentes:
+            print(
+                f"   {MARQUE['unknown']} {t('No')} "
+                + ", ".join(f"{f}*" for f in absentes)
+            )
+            print(
+                f"      {t('The process carries the login shell environment,')}"
+            )
+            print(
+                f"      {t('frozen at exec; Claude Code sets its own in children.')}"
+            )
 
     # ------------------------------------------------------------------
     # Les agents d'arrière-plan
