@@ -824,6 +824,11 @@ class TestAddingAnOAuthAccount(unittest.TestCase):
 
         coffre = MagicMock()
         coffre.available_backends.return_value = ["kdbx"]
+        # Un `MagicMock` rend un objet VRAI à toute lecture : le client y
+        # verrait un identifiant client configuré, et proposerait le
+        # parcours navigateur que ces tests ne jouent pas.
+        todo = MagicMock()
+        todo.config_file.get_config_value.return_value = None
         sauvegardes = []
         with patch.object(
             menu, "secret_store_for", return_value=coffre
@@ -840,7 +845,7 @@ class TestAddingAnOAuthAccount(unittest.TestCase):
         ), patch(
             "builtins.print"
         ):
-            menu._add_account(MagicMock())
+            menu._add_account(todo)
         return coffre, (sauvegardes[0][0] if sauvegardes else None)
 
     def _numero(self, cle):
@@ -910,6 +915,8 @@ class TestReplacingAToken(unittest.TestCase):
 
         compte = self._compte()
         coffre = MagicMock()
+        todo = MagicMock()
+        todo.config_file.get_config_value.return_value = None
         buf = io.StringIO()
         with patch.object(
             menu, "secret_store_for", return_value=coffre
@@ -920,7 +927,7 @@ class TestReplacingAToken(unittest.TestCase):
         ), redirect_stdout(
             buf
         ):
-            menu._set_oauth_token(MagicMock())
+            menu._set_oauth_token(todo)
         return compte, coffre, buf.getvalue()
 
     def test_the_token_replaces_the_old_one_under_its_own_reference(self):
@@ -934,6 +941,89 @@ class TestReplacingAToken(unittest.TestCase):
         compte cesse de se synchroniser."""
         _, coffre, _ = self._lancer(secret="")
         coffre.set.assert_not_called()
+
+
+class TestAuthorisingInTheBrowser(unittest.TestCase):
+    """Quand un identifiant client est configuré, le client peut mener le
+    parcours lui-même — coller un jeton n'est plus la seule voie.
+
+    Sans identifiant, la question ne se pose pas : proposer un parcours qui
+    afficherait « invalid_client » ferait chercher la panne chez le
+    fournisseur.
+    """
+
+    def _compte(self):
+        return account_from_preset("perso", "a@x.ca", "gmail", auth="oauth")
+
+    def _lancer(self, client_id, saisies, autoriser=None):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+        from script.todo.mail.oauth import TokenSet
+
+        compte = self._compte()
+        coffre = MagicMock()
+        todo = MagicMock()
+        todo.config_file.get_config_value.side_effect = lambda cles: (
+            client_id if tuple(cles)[-1] == "client_id" else None
+        )
+        defaut = lambda *a, **k: TokenSet(  # noqa: E731
+            refresh_token="r-du-navigateur", access_token="a", expires_at=9e9
+        )
+        buf = io.StringIO()
+        with patch.object(
+            menu, "secret_store_for", return_value=coffre
+        ), patch.object(menu, "_load_accounts", return_value=[compte]), patch(
+            "script.todo.mail.oauth.authorize",
+            side_effect=autoriser or defaut,
+        ) as mock_auth, patch(
+            "builtins.input", side_effect=saisies
+        ), patch(
+            "getpass.getpass", return_value="jeton-collé"
+        ), redirect_stdout(
+            buf
+        ):
+            menu._set_oauth_token(todo)
+        return compte, coffre, mock_auth, buf.getvalue()
+
+    def test_the_browser_flow_stores_what_it_brings_back(self):
+        compte, coffre, mock_auth, _ = self._lancer("un-client", ["1", "1"])
+        mock_auth.assert_called_once()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "r-du-navigateur"
+        )
+
+    def test_pasting_stays_available(self):
+        compte, coffre, mock_auth, _ = self._lancer("un-client", ["1", "2"])
+        mock_auth.assert_not_called()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_without_a_client_id_the_question_is_not_asked(self):
+        """Une seule saisie consommée : le choix du compte. Poser la
+        question ferait offrir une voie qui ne peut pas aboutir."""
+        compte, coffre, mock_auth, _ = self._lancer(None, ["1"])
+        mock_auth.assert_not_called()
+        coffre.set.assert_called_once_with(
+            compte.refresh_token_ref(), "jeton-collé"
+        )
+
+    def test_a_failed_authorisation_writes_nothing(self):
+        """Le compte garde le jeton qu'il avait : un parcours abandonné ne
+        doit pas couper un compte qui marchait."""
+        from script.todo.mail.oauth import OAuthError
+
+        def echoue(*a, **k):
+            raise OAuthError("autorisation refusée")
+
+        _, coffre, _, sortie = self._lancer(
+            "un-client", ["1", "1"], autoriser=echoue
+        )
+        coffre.set.assert_not_called()
+        self.assertIn("refusée", sortie)
 
 
 class TestRetryPassword(unittest.TestCase):

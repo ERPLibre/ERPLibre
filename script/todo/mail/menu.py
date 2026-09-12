@@ -459,7 +459,10 @@ def _add_account(todo) -> None:
 
     account.auth = _demander_authentification(preset_key)
     if account.auth == "oauth":
-        secret = getpass.getpass(t("mail_ask_refresh_token"))
+        secret = _obtenir_jeton(todo, account)
+        if not secret:
+            print(t("mail_nothing_written"))
+            return
     else:
         secret = getpass.getpass(
             t("mail_ask_app_password" if attendu_app else "mail_ask_password")
@@ -512,7 +515,7 @@ def _set_oauth_token(todo) -> None:
     if getattr(account, "auth", "login") != "oauth":
         print(t("mail_account_is_not_oauth"))
         return
-    jeton = getpass.getpass(t("mail_ask_refresh_token"))
+    jeton = _obtenir_jeton(todo, account)
     if not jeton:
         print(t("mail_nothing_written"))
         return
@@ -522,6 +525,39 @@ def _set_oauth_token(todo) -> None:
         print(exc)
         return
     print(t("mail_token_saved"))
+
+
+def _obtenir_jeton(todo, account) -> str:
+    """Le jeton de rafraîchissement : par le navigateur, ou collé.
+
+    Le parcours d'autorisation n'est proposé que lorsqu'un identifiant
+    client est configuré — sans lui, la page du fournisseur répondrait
+    « invalid_client », et l'utilisateur chercherait la panne chez lui.
+    Rend la chaîne vide quand rien n'a été obtenu ; l'appelant n'écrit
+    alors rien plutôt que d'effacer le jeton en place.
+    """
+    from script.todo.mail import oauth
+
+    try:
+        identifiant = oauth.settings_for(account, _config_get(todo))[
+            "client_id"
+        ]
+    except oauth.OAuthError:
+        identifiant = ""
+
+    if identifiant:
+        print(f"  [1] {t('mail_oauth_choice_browser')}")
+        print(f"  [2] {t('mail_oauth_choice_paste')}")
+        if input(t("mail_ask_oauth_way")).strip() != "2":
+            print(t("mail_oauth_opening_browser"))
+            try:
+                return oauth.authorize(
+                    account, config_get=_config_get(todo)
+                ).refresh_token
+            except oauth.OAuthError as exc:
+                print(exc)
+                return ""
+    return getpass.getpass(t("mail_ask_refresh_token"))
 
 
 def _pick_account(prompt_key="mail_ask_account"):

@@ -575,12 +575,24 @@ en exige un ; une application installée n'en a généralement pas besoin.
 
 **Ajouter le compte.** `Courriel > [2] Comptes > [2] Ajouter un compte`
 demande quelle authentification employer là où il y a un choix — Gmail
-prend les deux, Microsoft seulement OAuth, iCloud seulement un mot de passe
-d'application. Choisir OAuth demande un **jeton de rafraîchissement**,
-obtenu hors de ce client (console du fournisseur, ou un outil tiers prévu
-pour cela). Il se range au coffre sous sa propre référence, à côté de
-l'entrée du mot de passe et non dessus : un compte qui repasse au mot de
-passe en a toujours un.
+prend les deux, les préréglages Microsoft seulement OAuth, iCloud seulement
+un mot de passe d'application. Choisir OAuth propose ensuite deux façons
+d'obtenir le jeton, et va droit à la seconde quand aucun `client_id` n'est
+configuré :
+
+1. **Autoriser dans le navigateur.** Le client écoute sur un port éphémère
+   de 127.0.0.1 — jamais sur toutes les interfaces, ce qui exposerait le
+   code d'autorisation au réseau local le temps du parcours — ouvre la page
+   de consentement du fournisseur, et attend une redirection. PKCE lie
+   l'échange à la demande : le vérificateur ne quitte pas la machine, donc
+   un code intercepté ne suffit pas à obtenir un jeton. Une redirection dont
+   l'état ne correspond pas à la demande est refusée sans rien échanger.
+2. **Coller un jeton de rafraîchissement** obtenu ailleurs — console du
+   fournisseur, ou un outil prévu pour cela.
+
+Dans les deux cas le jeton se range au coffre sous sa propre référence, à
+côté de l'entrée du mot de passe et non dessus : un compte qui repasse au
+mot de passe en a toujours un.
 
 **Ensuite, plus rien à faire.** Un jeton d'accès vit environ une heure ; le
 client échange le jeton de rafraîchissement contre un neuf avant d'ouvrir
@@ -593,15 +605,16 @@ corrompraient.
 Le jeton neuf arrive, et rien n'est dit. L'autorisation est révoquée — le
 propriétaire l'a retirée, ou le fournisseur l'a expirée — et aucun nouvel
 essai ne la rendra : `Courriel > [2] Comptes > [6] Remplacer le jeton OAuth
-d'un compte` en prend un neuf, et une saisie vide n'écrit rien plutôt que
-d'effacer ce qui est là. Ou le fournisseur n'a pas répondu, auquel cas le
+d'un compte` offre les deux mêmes voies que l'ajout, et un parcours
+abandonné comme une saisie vide n'écrivent rien plutôt que d'effacer ce qui
+est là. Ou le fournisseur n'a pas répondu, auquel cas le
 jeton en place vaut toujours et la passe suivante réessaie.
 
 ## Ce que le client ne fait pas encore
 
-- **Pas de parcours d'autorisation** — un compte OAuth s'ajoute à partir
-  d'un jeton de rafraîchissement obtenu ailleurs ; le client n'ouvre pas
-  encore lui-même la page de consentement du fournisseur (voir
+- **Pas d'identifiant client livré** — le parcours d'autorisation dans le
+  navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
+  un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.

@@ -537,11 +537,23 @@ application usually does not.
 
 **Adding the account.** `Mail > [2] Accounts > [2] Add an account` asks
 which authentication to use wherever there is a choice — Gmail takes
-either, Microsoft only OAuth, iCloud only an app password. Choosing OAuth
-asks for a **refresh token**, obtained outside this client (a provider
-console, or a tool such as an OAuth helper script). It is stored in the
-vault under its own reference, beside the password entry rather than over
-it, so an account that goes back to a password still has one.
+either, the Microsoft presets only OAuth, iCloud only an app password.
+Choosing OAuth then offers two ways to obtain the token, or goes straight
+to the second when no `client_id` is configured:
+
+1. **Authorise in the browser.** The client listens on an ephemeral port of
+   127.0.0.1 — never on every interface, which would expose the
+   authorisation code to the local network for the length of the flow —
+   opens the provider's consent page, and waits for one redirection. PKCE
+   ties the exchange to the request: the verifier stays on the machine, so
+   an intercepted code is not enough to obtain a token. A redirection whose
+   state does not match the request is refused without exchanging anything.
+2. **Paste a refresh token** obtained elsewhere — a provider console, or a
+   tool made for it.
+
+Either way the token is stored in the vault under its own reference, beside
+the password entry rather than over it, so an account that goes back to a
+password still has one.
 
 **Afterwards, nothing.** An access token lasts about an hour; the client
 exchanges the refresh token for a new one before opening a session, writes
@@ -552,16 +564,17 @@ sync threads writing at once would corrupt it.
 **When it fails.** Three outcomes, told apart because the remedy differs. A
 new token arrives and nothing is said. The grant is revoked — the owner
 withdrew it, or the provider expired it — and no retry will bring it back:
-`Mail > [2] Accounts > [6] Replace an account's OAuth token` takes a fresh
-one, and an empty entry writes nothing rather than erasing what is there.
+`Mail > [2] Accounts > [6] Replace an account's OAuth token` offers the
+same two ways as adding one does, and an abandoned flow or an empty entry
+writes nothing rather than erasing what is there.
 Or the provider failed to answer, in which case the token in place still
 stands and the next pass tries again.
 
 ## What the client does not do yet
 
-- **No authorisation flow** — an OAuth account is added from a refresh
-  token obtained elsewhere; the client does not yet open the provider's
-  consent page itself (see "Authenticating with OAuth").
+- **No client identifier** — the browser authorisation flow needs a
+  `client_id` you register yourself; without one, an OAuth account is added
+  from a token obtained elsewhere (see "Authenticating with OAuth").
 - **No server-side search** — `/` filters only what's already synced to the
   local cache.
 - **No deleting or moving a message** — `s` and `u` change the seen flag,

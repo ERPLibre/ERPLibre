@@ -12382,6 +12382,28 @@ TRANSLATIONS = {
         "fr": "point de jeton injoignable :",
         "en": "token endpoint unreachable:",
     },
+    "mail_oauth_choice_browser": {
+        "fr": "Autoriser dans le navigateur",
+        "en": "Authorise in the browser",
+    },
+    "mail_oauth_choice_paste": {
+        "fr": "Coller un jeton obtenu ailleurs",
+        "en": "Paste a token obtained elsewhere",
+    },
+    "mail_ask_oauth_way": {
+        "fr": "Comment obtenir le jeton [1] : ",
+        "en": "How to obtain the token [1]: ",
+    },
+    "mail_oauth_opening_browser": {
+        "fr": (
+            "Ouverture de la page d'autorisation. Revenez ici une fois le"
+            " compte autorisé."
+        ),
+        "en": (
+            "Opening the authorisation page. Come back here once the"
+            " account is authorised."
+        ),
+    },
     "mail_ask_refresh_token": {
         "fr": "Jeton de rafraîchissement OAuth : ",
         "en": "OAuth refresh token: ",
@@ -12423,6 +12445,36 @@ TRANSLATIONS = {
     "mail_token_saved": {
         "fr": "Jeton enregistré.",
         "en": "Token saved.",
+    },
+    "mail_oauth_page_ok": {
+        "fr": "Compte autorisé. Vous pouvez fermer cette page.",
+        "en": "Account authorised. You can close this page.",
+    },
+    "mail_oauth_page_ko": {
+        "fr": "Autorisation refusée. Vous pouvez fermer cette page.",
+        "en": "Authorisation refused. You can close this page.",
+    },
+    "mail_err_authorization_timeout": {
+        "fr": "aucune réponse du navigateur : autorisation abandonnée",
+        "en": "no answer from the browser: authorisation abandoned",
+    },
+    "mail_err_authorization_state": {
+        "fr": (
+            "la redirection ne correspond pas à la demande : autorisation"
+            " refusée"
+        ),
+        "en": (
+            "the redirection does not match the request: authorisation"
+            " refused"
+        ),
+    },
+    "mail_err_authorization_refused": {
+        "fr": "autorisation refusée par le fournisseur :",
+        "en": "authorisation refused by the provider:",
+    },
+    "mail_err_authorization_no_code": {
+        "fr": "la redirection n'apporte aucun code d'autorisation",
+        "en": "the redirection carries no authorisation code",
     },
     "mail_err_provider_without_oauth": {
         "fr": "ce fournisseur n'offre pas OAuth :",
