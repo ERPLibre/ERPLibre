@@ -691,8 +691,8 @@ def read_log_tail(
     Rend `(lignes, message)` : `message` est vide quand `lignes` est
     utilisable, sinon il dit POURQUOI elle ne l'est pas — absent, vide,
     illisible. Une fenêtre qui s'ouvre en silence sur une liste vide
-    reproduirait exactement la plainte que cette fonction existe pour
-    résoudre : « j'ai une erreur, mais aucun log ».
+    reproduit le défaut que cette fonction corrige : une erreur signalée
+    quelque part, et aucun journal pour la lire.
     """
     if not path.exists():
         return [], t("mail_log_missing")
@@ -1541,14 +1541,13 @@ def run_tui(
         def _pane_total(self, slot: str, parent) -> int:
             """L'espace que `slot` et son unique voisin `1fr` se partagent
             RÉELLEMENT — jamais `parent.region` telle quelle : la barre de
-            partage (tâche 25) insérée ENTRE eux a une taille FIXE
-            (`_SPLITTER_SIZE`) qui n'appartient à NI L'UN NI L'AUTRE. La
-            compter dans le total partageable laisserait le voisin
-            `sibling_minimum - (taille de la barre)` au plafond plutôt que
-            `sibling_minimum` — la même erreur d'une cellule que la bordure
-            (tâche 24), sous une autre forme. Mesurée sur le widget RÉEL de
-            la barre, jamais recopiée depuis la CSS : une seule source de
-            vérité pour sa taille.
+            partage insérée ENTRE eux a une taille FIXE (`_SPLITTER_SIZE`)
+            qui n'appartient à NI L'UN NI L'AUTRE. La compter dans le total
+            partageable laisserait le voisin `sibling_minimum - (taille de
+            la barre)` au plafond plutôt que `sibling_minimum` — la même
+            erreur d'une cellule que la bordure, sous une autre forme. La
+            taille est lue sur le widget RÉEL de la barre, jamais recopiée
+            depuis la CSS : une seule source de vérité.
 
             Généralise à « un seul voisin FIXE et CONNU » (la barre), pas à
             un nombre arbitraire d'enfants supplémentaires : si `#panes`/
@@ -2310,10 +2309,10 @@ def run_tui(
         de la session en cours — sans quitter le client pour les lire dans
         `~/.erplibre/mail.log`.
 
-        Une fenêtre qui s'ouvre VIDE reproduirait exactement la plainte qui
-        justifie son existence (« j'ai une erreur, mais aucun log ») :
-        chaque état — journal absent, vide, illisible, aucune erreur de
-        session — se dit en toutes lettres, jamais en silence.
+        Une fenêtre qui s'ouvre VIDE reproduit le défaut qu'elle corrige —
+        une erreur signalée, aucun journal pour la lire : chaque état —
+        journal absent, vide, illisible, aucune erreur de session — se dit
+        en toutes lettres, jamais en silence.
         """
 
         BINDINGS = [
@@ -3140,9 +3139,8 @@ def run_tui(
             # qu'App.run() redirige pendant tout le cycle de vie de
             # l'appli (`redirect_stdout(self._capture_stdout)`), et PAS le
             # vrai terminal — `Screen.get_cols_rows()` plante alors sur un
-            # descripteur -1. Constaté par un test manuel (voir le
-            # rapport) ; importer ici, une fois le terminal rendu par
-            # `suspend()`, fige le bon `sys.stdout` à la place.
+            # descripteur -1. Importer ici, une fois le terminal rendu
+            # par `suspend()`, fige le bon `sys.stdout` à la place.
             files_input = self.query_one("#files", Input)
             initial = self._browse_start_dir(files_input.value)
             chosen: dict = {}
