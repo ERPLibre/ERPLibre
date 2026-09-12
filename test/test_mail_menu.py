@@ -12,6 +12,7 @@ from pathlib import Path
 from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.menu import cache_summary
 from script.todo.mail.store import Store
+from script.todo.todo_i18n import t
 
 
 class TestCacheSummary(unittest.TestCase):
@@ -219,6 +220,77 @@ class TestSyncNowSurfacesResync(unittest.TestCase):
             menu._sync_now(MagicMock())
 
         self.assertIn("INBOX", buf.getvalue())
+
+
+class TestSyncNowEmptiesTheOutbox(unittest.TestCase):
+    """« Synchroniser maintenant » doit vider la file d'attente.
+
+    Sans cela, un message écrit hors ligne attend qu'on ouvre le TUI —
+    seul endroit d'où la file partait —, alors que la commande dont le nom
+    promet une synchronisation vient de s'exécuter sans rien envoyer.
+    """
+
+    def _lancer(self, flush):
+        import io
+        from contextlib import redirect_stdout
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        account = account_from_preset("perso", "a@x.ca", "generic")
+
+        class FakeSession:
+            def __init__(self):
+                self.account = account
+                self.online = True
+                self.error = ""
+
+            def sync(self):
+                return SimpleNamespace(new_messages=0, errors=[], purged=[])
+
+            def close(self):
+                pass
+
+        buf = io.StringIO()
+        with patch.object(
+            menu, "_load_accounts", return_value=[account]
+        ), patch(
+            "script.todo.mail.tui.open_sessions",
+            return_value=[FakeSession()],
+        ), patch(
+            "script.todo.mail.tui.flush_outbox", side_effect=flush
+        ), redirect_stdout(
+            buf
+        ):
+            menu._sync_now(MagicMock())
+        return buf.getvalue()
+
+    def test_the_queue_leaves_on_this_command_too(self):
+        appels = []
+        sortie = self._lancer(lambda s: appels.append(s) or (2, 0, 0))
+        self.assertEqual(len(appels), 1)
+        self.assertIn("2", sortie)
+
+    def test_a_queue_that_refuses_to_leave_is_said_not_swallowed(self):
+        sortie = self._lancer(lambda s: (0, 0, 3))
+        self.assertIn("3", sortie)
+
+    def test_a_flush_that_raises_does_not_lose_the_sync(self):
+        """La vidange précède la relecture : si elle explose, la passe qui
+        suit doit quand même avoir lieu."""
+
+        def casse(session):
+            raise OSError("smtp muet")
+
+        sortie = self._lancer(casse)
+        self.assertIn("perso", sortie)
+
+    def test_nothing_is_printed_when_the_queue_was_empty(self):
+        """Une ligne « file : 0 envoyés » à chaque synchronisation apprend
+        à ne plus lire les lignes de la file."""
+        sortie = self._lancer(lambda s: (0, 0, 0))
+        self.assertNotIn(t("mail_outbox_flushed"), sortie)
 
 
 class TestMailLogFile(unittest.TestCase):
@@ -657,8 +729,8 @@ class TestRetryPassword(unittest.TestCase):
     def test_a_timeout_does_not_blame_the_password(self):
         """Le serveur n'a RIEN dit : la commande est partie, aucune réponse.
         Accuser le mot de passe envoie chercher un mot de passe
-        d'application pour un problème qui est ailleurs — signalé à
-        l'usage, sur un « The read operation timed out » de Gmail."""
+        d'application pour un problème qui est ailleurs : un délai d'attente
+        dépassé n'est pas un refus d'authentification."""
         lignes = self._lignes_affichees(
             "gmail",
             cause="connexion IMAP refusée : The read operation timed out",

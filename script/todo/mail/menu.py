@@ -218,7 +218,11 @@ def _open_tui(todo) -> None:
 
 
 def _sync_now(todo) -> None:
-    from script.todo.mail.tui import SYNC_PARALLELE, open_sessions
+    from script.todo.mail.tui import (
+        SYNC_PARALLELE,
+        flush_outbox,
+        open_sessions,
+    )
 
     accounts = _load_accounts()
     if not accounts:
@@ -231,14 +235,32 @@ def _sync_now(todo) -> None:
         compte qui échoue ne doit pas emporter ceux qui avancent avec lui."""
         if not session.online:
             return f"{session.account.name} : {session.error}"
+        lignes = []
+        # La file part AVANT la relecture, comme dans le TUI : une commande
+        # qui promet de synchroniser doit envoyer ce qui attend, sinon un
+        # message écrit hors ligne dort jusqu'à la prochaine ouverture du
+        # client — le seul endroit d'où la file partait.
+        try:
+            partis, _, echoues = flush_outbox(session)
+            if partis or echoues:
+                ligne = (
+                    f"{session.account.name} :"
+                    f" {t('mail_outbox_flushed')} {partis}"
+                )
+                if echoues:
+                    ligne += f" — {t('mail_outbox_failed')} {echoues}"
+                lignes.append(ligne)
+        except Exception as exc:
+            lignes.append(f"{session.account.name} : {exc}")
         try:
             report = session.sync()
         except Exception as exc:
-            return f"{session.account.name} : {exc}"
-        lignes = [
+            lignes.append(f"{session.account.name} : {exc}")
+            return "\n".join(lignes)
+        lignes.append(
             f"{session.account.name} : {report.new_messages}"
             f" {t('mail_new_messages')}"
-        ]
+        )
         lignes += [f"  {e}" for e in report.errors]
         if report.purged:
             lignes.append(
