@@ -34,6 +34,25 @@ SECURITIES = ("ssl", "starttls", "none")
 # le désarmerait pour de bon.
 AUTHS = ("login", "oauth")
 
+# Les deux préréglages Microsoft passent par le même point de service : le
+# point « common » sert les comptes personnels comme les locataires, et un
+# seul enregistrement d'application couvre donc les deux.
+_OAUTH_MICROSOFT = {
+    "auth_url": (
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    ),
+    "token_url": (
+        "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    ),
+    # Trois portées : lire, envoyer, et le droit de rafraîchir sans
+    # redemander le consentement. Sans `offline_access`, il n'y a pas de
+    # jeton de rafraîchissement du tout.
+    "scope": (
+        "https://outlook.office.com/IMAP.AccessAsUser.All"
+        " https://outlook.office.com/SMTP.Send offline_access"
+    ),
+}
+
 PRESETS: dict[str, dict] = {
     "gmail": {
         "label": "Google / Gmail",
@@ -57,8 +76,37 @@ PRESETS: dict[str, dict] = {
             "scope": "https://mail.google.com/",
         },
     },
+    # Les deux mondes Microsoft partagent leur hôte IMAP et PAS leur hôte
+    # d'envoi : un préréglage unique en servirait un sur deux, et l'autre
+    # échouerait à l'envoi seulement — après avoir relevé le courrier, donc
+    # sans que la cause saute aux yeux.
+    #
+    # La clé `outlook` reste celle du compte PERSONNEL : un `accounts.json`
+    # écrit avant la séparation la porte déjà, et la déplacer ferait pointer
+    # ces comptes vers un préréglage inconnu.
     "outlook": {
-        "label": "Microsoft / Outlook",
+        "label": "Microsoft / Outlook.com (personnel)",
+        "imap": {
+            "host": "outlook.office365.com",
+            "port": 993,
+            "security": "ssl",
+        },
+        "smtp": {
+            "host": "smtp-mail.outlook.com",
+            "port": 587,
+            "security": "starttls",
+        },
+        "sent_folder": "Sent Items",
+        # Microsoft a retiré l'authentification simple d'IMAP : un mot de
+        # passe d'application est de l'authentification simple, donc il est
+        # refusé lui aussi. Le drapeau dit « ce fournisseur prend un mot de
+        # passe d'application » — ici, il n'en prend plus aucun.
+        "app_password": False,
+        "note_key": "mail_preset_note_outlook",
+        "oauth": _OAUTH_MICROSOFT,
+    },
+    "microsoft365": {
+        "label": "Microsoft 365 (organisation)",
         "imap": {
             "host": "outlook.office365.com",
             "port": 993,
@@ -70,28 +118,9 @@ PRESETS: dict[str, dict] = {
             "security": "starttls",
         },
         "sent_folder": "Sent Items",
-        # Microsoft a retiré l'authentification simple d'IMAP : un mot de
-        # passe d'application est de l'authentification simple, donc il est
-        # refusé lui aussi. Le drapeau dit « ce fournisseur prend un mot de
-        # passe d'application » — ici, il n'en prend plus aucun.
         "app_password": False,
-        "note_key": "mail_preset_note_outlook",
-        "oauth": {
-            "auth_url": (
-                "https://login.microsoftonline.com/common/oauth2/v2.0"
-                "/authorize"
-            ),
-            "token_url": (
-                "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-            ),
-            # Trois portées : lire, envoyer, et le droit de rafraîchir sans
-            # redemander le consentement. Sans `offline_access`, il n'y a
-            # pas de jeton de rafraîchissement du tout.
-            "scope": (
-                "https://outlook.office.com/IMAP.AccessAsUser.All"
-                " https://outlook.office.com/SMTP.Send offline_access"
-            ),
-        },
+        "note_key": "mail_preset_note_microsoft365",
+        "oauth": _OAUTH_MICROSOFT,
     },
     "icloud": {
         "label": "Apple / iCloud",

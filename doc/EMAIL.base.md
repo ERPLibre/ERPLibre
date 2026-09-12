@@ -143,13 +143,19 @@ Then the prompts, in order:
 2. **Email address**.
 3. **Display name** (optional) — shown in the `From:` header as
    `Display Name <email>`.
-4. **Provider** — a number from the printed list: Gmail, Outlook, iCloud, or
-   "Standard server" (generic IMAP/SMTP).
+4. **Provider** — a number from the printed list: Gmail, Outlook.com
+   (personal), Microsoft 365 (organisation), iCloud, or "Standard server"
+   (generic IMAP/SMTP). The two Microsoft entries share an IMAP host and
+   not an SMTP one, so picking the wrong one reads mail and fails to send.
 5. If you picked "Standard server", the **IMAP host** and **SMTP host** are
    asked next; the other presets fill these in for you.
-6. If the preset requires an app password, its note is printed here as a
-   reminder.
-7. **Password** — typed hidden (`getpass`), then stored — never written to
+6. The preset's note is printed here — what the provider expects, and what
+   it no longer accepts.
+7. **Authentication**, asked only where there is a choice: Gmail takes an
+   app password or OAuth, the Microsoft presets take OAuth only, iCloud an
+   app password only.
+8. **The secret** — an app password or a refresh token, typed hidden
+   (`getpass`), then stored in the vault — never written to
    `accounts.json`.
 
 Where the password goes: at the password step, the client hands off to the
@@ -199,14 +205,21 @@ Ensuite, les questions, dans l'ordre :
 2. **Adresse courriel**.
 3. **Nom affiché** (facultatif) — apparaît dans l'en-tête `De :` comme
    `Nom affiché <email>`.
-4. **Fournisseur** — un numéro dans la liste affichée : Gmail, Outlook,
-   iCloud, ou « Serveur standard » (IMAP/SMTP générique).
+4. **Fournisseur** — un numéro dans la liste affichée : Gmail,
+   Outlook.com (personnel), Microsoft 365 (organisation), iCloud, ou
+   « Serveur standard » (IMAP/SMTP générique). Les deux entrées Microsoft
+   partagent leur hôte IMAP et pas leur hôte d'envoi : se tromper d'entrée
+   relève le courrier et échoue à l'envoi.
 5. Si vous choisissez « Serveur standard », le **serveur IMAP** puis le
    **serveur SMTP** sont demandés ensuite ; les autres préréglages les
    remplissent déjà pour vous.
-6. Si le préréglage exige un mot de passe d'application, sa note s'affiche
-   ici en rappel.
-7. **Mot de passe** — saisi masqué (`getpass`), puis rangé dans le coffre —
+6. La note du préréglage s'affiche ici — ce que le fournisseur attend, et
+   ce qu'il n'accepte plus.
+7. **Authentification**, demandée seulement là où il y a un choix : Gmail
+   prend un mot de passe d'application ou OAuth, les préréglages Microsoft
+   seulement OAuth, iCloud seulement un mot de passe d'application.
+8. **Le secret** — mot de passe d'application ou jeton de
+   rafraîchissement, saisi masqué (`getpass`), puis rangé dans le coffre —
    jamais écrit dans `accounts.json`.
 
 Où va le mot de passe : à l'étape du mot de passe, le client passe par le
