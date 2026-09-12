@@ -78,11 +78,10 @@ def _configure_mail_logging() -> None:
     # pose un `StreamHandler` sur le logger RACINE. `propagate` vaut `True`
     # par défaut : sans cette ligne, chaque `_logger.exception(...)` du
     # paquet remonterait AUSSI jusqu'à ce gestionnaire — donc sur le
-    # terminal que Textual possède pendant tout le TUI, silencieusement.
-    # Constaté pour de vrai : la suite complète l'a fait fuir dans la sortie
-    # pointillée d'`unittest` dès qu'un fichier de test important déjà
-    # `script.todo.todo` tournait avant les tests courriel dans le même
-    # processus.
+    # terminal que Textual possède pendant tout le TUI, silencieusement. La
+    # fuite se voit aussi hors du TUI : sous `unittest`, les lignes du paquet
+    # se mêlent à la sortie pointillée dès qu'un test importe `todo` avant
+    # les tests courriel dans le même processus.
     logger.propagate = False
     _LOG_CONFIGURED = True
 
