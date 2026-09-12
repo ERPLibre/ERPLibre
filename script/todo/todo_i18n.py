@@ -12254,6 +12254,10 @@ TRANSLATIONS = {
             " must be on, otherwise the page is empty."
         ),
     },
+    "mail_err_token_refused": {
+        "fr": "jeton refusé par",
+        "en": "token refused by",
+    },
     "mail_err_unknown_auth": {
         "fr": "authentification inconnue :",
         "en": "unknown authentication:",

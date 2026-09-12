@@ -774,5 +774,86 @@ class TestTheSandboxSpeaksXOAUTH2(MailSandboxCase):
         self.assertIn("XOAUTH2", client.esmtp_features.get("auth", ""))
 
 
+@requires_servers
+class TestTheClientAuthenticatesByToken(MailSandboxCase):
+    """Le VRAI client cette fois : `imap_transport.connect` et
+    `smtp_send.connect`, sur un compte qui dit `auth="oauth"`.
+
+    Ce que ces tests protègent : le secret passé à `connect()` reste UN
+    argument, quel que soit son genre. Deux fonctions distinctes auraient
+    obligé chaque appelant à choisir, et il y en a plus d'un.
+    """
+
+    def _compte(self, sandbox_imap=None, sandbox_smtp=None):
+        compte = sandbox_account(
+            imap_port=sandbox_imap.port if sandbox_imap else 1,
+            smtp_port=sandbox_smtp.port if sandbox_smtp else 1,
+        )
+        compte.auth = "oauth"
+        return compte
+
+    def test_imap_opens_a_usable_session(self):
+        from script.todo.mail import imap_transport
+
+        sandbox = self.imap_server()
+        sandbox.folder("INBOX").deliver(b"Subject: bonjour\r\n\r\ncorps")
+        transport = imap_transport.connect(
+            self._compte(sandbox_imap=sandbox), ACCESS_TOKEN
+        )
+        self.addCleanup(transport.logout)
+        self.assertIn("INBOX", [f.name for f in transport.list_folders()])
+
+    def test_imap_says_the_token_was_refused(self):
+        """Un jeton refusé se répare en le rafraîchissant ; une panne
+        réseau, non. L'appelant doit pouvoir distinguer les deux, donc
+        l'erreur d'authentification a son propre type."""
+        from script.todo.mail.imap_transport import ImapAuthError, connect
+
+        sandbox = self.imap_server()
+        with self.assertRaises(ImapAuthError):
+            connect(self._compte(sandbox_imap=sandbox), "jeton-perime")
+
+    def test_a_network_failure_is_not_an_authentication_failure(self):
+        """Le contrôle symétrique : sans lui, tout deviendrait « jeton à
+        rafraîchir » et le client boucler ait sur un serveur éteint."""
+        from script.todo.mail.imap_transport import ImapAuthError, connect
+
+        compte = self._compte()
+        compte.imap.port = 9
+        with self.assertRaises(Exception) as capture:
+            connect(compte, ACCESS_TOKEN)
+        self.assertNotIsInstance(capture.exception, ImapAuthError)
+
+    def test_smtp_sends_with_a_token(self):
+        from script.todo.mail.smtp_send import build_message, connect, send
+
+        sandbox = self.smtp_server(require_auth=True)
+        compte = self._compte(sandbox_smtp=sandbox)
+        transport = connect(compte, ACCESS_TOKEN)
+        self.addCleanup(transport.quit)
+        message = build_message(compte, "a@y.ca", "essai", "corps")
+        send(compte, message, transport)
+        self.assertEqual(len(sandbox.messages), 1)
+
+    def test_smtp_says_the_token_was_refused(self):
+        from script.todo.mail.smtp_send import SmtpAuthError, connect
+
+        sandbox = self.smtp_server(require_auth=True)
+        with self.assertRaises(SmtpAuthError):
+            connect(self._compte(sandbox_smtp=sandbox), "jeton-perime")
+
+    def test_a_password_account_still_uses_login(self):
+        """Le contrôle qui protège l'existant : la branche ajoutée ne doit
+        pas détourner les comptes qui n'ont jamais demandé OAuth."""
+        from script.todo.mail import imap_transport
+
+        sandbox = self.imap_server()
+        sandbox.folder("INBOX")
+        compte = sandbox_account(imap_port=sandbox.port)
+        transport = imap_transport.connect(compte, PASSWORD)
+        self.addCleanup(transport.logout)
+        self.assertIn("INBOX", [f.name for f in transport.list_folders()])
+
+
 if __name__ == "__main__":
     unittest.main()
