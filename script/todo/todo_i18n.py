@@ -12476,6 +12476,18 @@ TRANSLATIONS = {
             " yet: this preset will fail to connect."
         ),
     },
+    "mail_preset_note_microsoft365": {
+        "fr": (
+            "Boîte d'organisation. Microsoft n'accepte plus aucun mot de"
+            " passe sur IMAP : ce compte exige OAuth, et son administrateur"
+            " doit parfois consentir pour l'application."
+        ),
+        "en": (
+            "An organisation mailbox. Microsoft no longer accepts any"
+            " password over IMAP: this account needs OAuth, and its"
+            " administrator sometimes has to consent for the application."
+        ),
+    },
     "mail_preset_note_icloud": {
         "fr": (
             "Générez-le sur https://account.apple.com, section « Connexion"

@@ -24,10 +24,38 @@ from script.todo.todo_i18n import TRANSLATIONS, t
 
 
 class TestPresets(unittest.TestCase):
-    def test_four_presets(self):
+    def test_the_presets_on_offer(self):
         self.assertEqual(
-            set(PRESETS), {"gmail", "outlook", "icloud", "generic"}
+            set(PRESETS),
+            {"gmail", "outlook", "microsoft365", "icloud", "generic"},
         )
+
+    def test_the_two_microsoft_worlds_do_not_share_their_smtp_host(self):
+        """C'est la raison d'être de la séparation : un compte personnel et
+        un locataire acceptent le même hôte IMAP et PAS le même hôte
+        d'envoi. Un préréglage unique en sert donc un sur deux."""
+        self.assertEqual(
+            PRESETS["outlook"]["smtp"]["host"], "smtp-mail.outlook.com"
+        )
+        self.assertEqual(
+            PRESETS["microsoft365"]["smtp"]["host"], "smtp.office365.com"
+        )
+        self.assertEqual(
+            PRESETS["outlook"]["imap"]["host"],
+            PRESETS["microsoft365"]["imap"]["host"],
+        )
+
+    def test_an_account_saved_before_the_split_still_resolves(self):
+        """`outlook` désignait le préréglage unique. Le réutiliser pour le
+        compte personnel évite qu'un `accounts.json` existant pointe du jour
+        au lendemain vers un préréglage inconnu."""
+        compte = account_from_preset("perso", "a@x.ca", "outlook")
+        self.assertEqual(compte.smtp.host, "smtp-mail.outlook.com")
+
+    def test_neither_microsoft_preset_promises_a_password(self):
+        for cle in ("outlook", "microsoft365"):
+            self.assertFalse(PRESETS[cle]["app_password"], cle)
+            self.assertTrue(PRESETS[cle].get("oauth"), cle)
 
     def test_gmail_servers(self):
         self.assertEqual(PRESETS["gmail"]["imap"]["host"], "imap.gmail.com")

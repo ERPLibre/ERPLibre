@@ -75,13 +75,19 @@ Then the prompts, in order:
 2. **Email address**.
 3. **Display name** (optional) — shown in the `From:` header as
    `Display Name <email>`.
-4. **Provider** — a number from the printed list: Gmail, Outlook, iCloud, or
-   "Standard server" (generic IMAP/SMTP).
+4. **Provider** — a number from the printed list: Gmail, Outlook.com
+   (personal), Microsoft 365 (organisation), iCloud, or "Standard server"
+   (generic IMAP/SMTP). The two Microsoft entries share an IMAP host and
+   not an SMTP one, so picking the wrong one reads mail and fails to send.
 5. If you picked "Standard server", the **IMAP host** and **SMTP host** are
    asked next; the other presets fill these in for you.
-6. If the preset requires an app password, its note is printed here as a
-   reminder.
-7. **Password** — typed hidden (`getpass`), then stored — never written to
+6. The preset's note is printed here — what the provider expects, and what
+   it no longer accepts.
+7. **Authentication**, asked only where there is a choice: Gmail takes an
+   app password or OAuth, the Microsoft presets take OAuth only, iCloud an
+   app password only.
+8. **The secret** — an app password or a refresh token, typed hidden
+   (`getpass`), then stored in the vault — never written to
    `accounts.json`.
 
 Where the password goes: at the password step, the client hands off to the
