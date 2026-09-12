@@ -6407,6 +6407,46 @@ TRANSLATIONS = {
         "fr": "🩹 Cache - Combler ce qui a manqué hors ligne",
         "en": "🩹 Cache - Fill what offline runs lacked",
     },
+    "Cache - Logs": {
+        "fr": "📜 Cache - Journaux",
+        "en": "📜 Cache - Logs",
+    },
+    "Logs of the download cache": {
+        "fr": "Journaux du cache de téléchargement",
+        "en": "Logs of the download cache",
+    },
+    "Ctrl-C ends a live follow.": {
+        "fr": "Ctrl-C arrête un suivi en direct.",
+        "en": "Ctrl-C ends a live follow.",
+    },
+    "Logs - Requests, live": {
+        "fr": "Journaux - Les requêtes, en direct",
+        "en": "Logs - Requests, live",
+    },
+    "Logs - Only requests that went to the internet, live": {
+        "fr": "Journaux - Seulement les requêtes sorties sur l'internet, en direct",
+        "en": "Logs - Only requests that went to the internet, live",
+    },
+    "Logs - Last 40 requests": {
+        "fr": "Journaux - Les 40 dernières requêtes",
+        "en": "Logs - Last 40 requests",
+    },
+    "Logs - Service journal, live": {
+        "fr": "Journaux - Journal du service, en direct",
+        "en": "Logs - Service journal, live",
+    },
+    "No access log yet:": {
+        "fr": "Pas encore de journal d'accès :",
+        "en": "No access log yet:",
+    },
+    "    Entry 10 follows it live: a request that goes out to the": {
+        "fr": "    L'entrée 10 le suit en direct : une requête qui sort sur",
+        "en": "    Entry 10 follows it live: a request that goes out to the",
+    },
+    "    internet shows there, and a cut leaves that view empty.": {
+        "fr": "    l'internet s'y voit, et une coupure y laisse le vide.",
+        "en": "    internet shows there, and a cut leaves that view empty.",
+    },
     "What offline runs lacked": {
         "fr": "Ce qui a manqué hors ligne",
         "en": "What offline runs lacked",

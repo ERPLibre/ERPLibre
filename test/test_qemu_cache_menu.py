@@ -241,7 +241,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 9)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 10)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
@@ -267,6 +267,7 @@ class TestSousMenusDuCache(unittest.TestCase):
             ("7", "_cache_guide"),
             ("8", "_cache_tests"),
             ("9", "_cache_combler"),
+            ("10", "_cache_journaux"),
         ):
             self.assertRegex(
                 corps,

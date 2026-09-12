@@ -46,6 +46,11 @@ CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
 CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
 CACHE_DIR = "/var/cache/erplibre_go_qemu_cache"
+# La racine du dépôt, d'où se lance le lecteur du journal d'accès : le menu
+# tourne depuis n'importe quel répertoire, et un chemin relatif n'y survit pas.
+RACINE_DEPOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 # L'unité que l'installateur écrit. Remplir un miroir lui reprend
 # l'environnement qu'elle donne à git, plutôt que d'en tenir une copie.
 CACHE_UNITE = f"/etc/systemd/system/{CACHE_SERVICE}"
@@ -326,6 +331,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Guide: how it works")},
             {"prompt_description": t("Cache - Tests and performance report")},
             {"prompt_description": t("Cache - Fill what offline runs lacked")},
+            {"prompt_description": t("Cache - Logs")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -351,6 +357,8 @@ class QemuCacheMenuMixin:
                 self._cache_tests()
             elif status == "9":
                 self._cache_combler()
+            elif status == "10":
+                self._cache_journaux()
             else:
                 print(t("Command not found !"))
 
@@ -605,6 +613,81 @@ class QemuCacheMenuMixin:
                 f"    {d.get('outcome', '?'):<13}"
                 f"{str(d.get('url', '')).rsplit('/', 1)[-1][:58]}"
             )
+
+    # ------------------------------------------------------------------
+    # [10] Journaux
+    # ------------------------------------------------------------------
+
+    def _cache_journaux(self):
+        """Les journaux en direct, pour regarder une installation passer.
+
+        Le journal d'ACCÈS porte une ligne par requête et dit, pour chacune,
+        si elle est sortie vers l'internet : c'est lui qui prouve qu'une VM
+        traverse le cache, et lui qui ne montre plus aucune sortie sous une
+        coupure. Le journal du SERVICE porte ce que le service dit de
+        lui-même — démarrages, erreurs, hôtes retenus en tunnel.
+        """
+        chemin = self._cache_journal()
+        print(f"\n📜 {t('Logs of the download cache')}")
+        print(f"  {t('Access log:')} {chemin or '—'}")
+        print(f"  {t('Ctrl-C ends a live follow.')}\n")
+        choices = [
+            {"prompt_description": t("Logs - Requests, live")},
+            {
+                "prompt_description": t(
+                    "Logs - Only requests that went to the internet, live"
+                )
+            },
+            {"prompt_description": t("Logs - Last 40 requests")},
+            {"prompt_description": t("Logs - Service journal, live")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            if status in ("1", "2", "3") and not (
+                chemin and os.path.exists(chemin)
+            ):
+                print(
+                    f"  ✗ {t('No access log yet:')} {chemin or CACHE_CONF}\n"
+                )
+                continue
+            if status == "1":
+                self._cache_suivre(chemin)
+            elif status == "2":
+                self._cache_suivre(chemin, amont=True)
+            elif status == "3":
+                self._cache_suivre(chemin, suivre=False)
+            elif status == "4":
+                cmd = f"sudo journalctl -u {CACHE_SERVICE} -n 20 -f"
+                print(f"{t('Will execute:')} {cmd}")
+                self.execute.exec_command_live(cmd, source_erplibre=False)
+            else:
+                print(t("Command not found !"))
+
+    def _cache_suivre(self, chemin, amont=False, suivre=True):
+        """Le journal d'accès, mis en forme par `cache_journal.py`.
+
+        « tail » garde le fichier ouvert et le lecteur met en forme ligne à
+        ligne : un journal de plusieurs dizaines de Mio n'est jamais chargé
+        en entier, et le suivi écrit dès qu'une requête est servie.
+        """
+        lecteur = os.path.join(
+            RACINE_DEPOT, "script", "qemu", "cache_journal.py"
+        )
+        # « -u » : sans lui, Python met sa sortie en tampon dès qu'elle n'est
+        # pas un terminal, et un tube l'est rarement.
+        lire = f"python3 -u {shlex.quote(lecteur)}" + (
+            " --amont" if amont else ""
+        )
+        cmd = (
+            f"tail -n 40 {'-f ' if suivre else ''}{shlex.quote(chemin)}"
+            f" | {lire}"
+        )
+        print(f"{t('Will execute:')} {cmd}")
+        self.execute.exec_command_live(cmd, source_erplibre=False)
 
     # ------------------------------------------------------------------
     # [4] Exceptions : les VM soustraites au détournement
@@ -975,6 +1058,8 @@ class QemuCacheMenuMixin:
             f"    {t('Authority:')} {CACHE_CA}",
             f"    {t('Settings:')}  {CACHE_CONF}",
             f"    {t('Access log:')} {self._cache_journal() or '—'}",
+            t("    Entry 10 follows it live: a request that goes out to the"),
+            t("    internet shows there, and a cut leaves that view empty."),
             f"    {t('Git mirrors:')} {CACHE_MIROIR_GIT}",
             "",
             f"  {t('Git is mirrored, not cached')}",
