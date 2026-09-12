@@ -364,16 +364,24 @@ class ProxmoxMenuMixin:
     def _pve_gpu_dispo(self):
         """L'hôte Proxmox peut-il donner de la 3D à ses invités ?
 
-        Deux pièces, et les deux sont nécessaires. Un NŒUD DE RENDU
+        Quatre pièces, et il les faut TOUTES. Un NŒUD DE RENDU
         (« /dev/dri/renderD* ») : un hôte sans GPU, ou lui-même virtualisé
-        sans GPU transmis, n'en expose aucun. Et la bibliothèque VIRGL, que
-        « --vga virtio-gl » charge au démarrage de la VM : sans elle, le
-        démarrage est refusé. Sans les deux, la case promettrait une
-        accélération que rien ne fournit.
+        sans GPU transmis, n'en expose aucun. Puis les trois bibliothèques
+        que Proxmox charge pour « --vga virtio-gl » : VIRGL, GL et EGL. Il
+        les réclame nommément — « missing libraries for 'virtio-gl'
+        detected! Please install 'libgl1' and 'libegl1' » — et refuse de
+        démarrer la machine, une fois son disque écrit et sa configuration
+        posée. La case promettrait alors une accélération que rien ne
+        fournit, et le déploiement échouerait à la dernière étape.
+
+        Un hôte peut en porter une sans l'autre : VIRGL et GL viennent avec
+        d'autres paquets, EGL non.
         """
         code, sortie = self._pve_show(
             "ls /dev/dri/renderD* >/dev/null 2>&1 &&"
             " ls /usr/lib/*/libvirglrenderer.so.* >/dev/null 2>&1 &&"
+            " ls /usr/lib/*/libGL.so.1 >/dev/null 2>&1 &&"
+            " ls /usr/lib/*/libEGL.so.1 >/dev/null 2>&1 &&"
             " echo oui",
             quiet=True,
         )

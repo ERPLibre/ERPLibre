@@ -857,9 +857,12 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
             self.assertFalse(todo._pve_set_gpu_groups("pve+vm-a", "erplibre"))
         self.assertIn("255", sortie.getvalue())
 
-    def test_la_sonde_exige_le_noeud_ET_le_virgl(self):
-        """Un hôte sans GPU n'expose aucun nœud de rendu ; sans VIRGL, la VM
-        refuse de démarrer. Les deux, ou rien."""
+    def test_la_sonde_exige_le_noeud_ET_les_trois_bibliotheques(self):
+        """Un hôte sans GPU n'expose aucun nœud de rendu ; sans VIRGL, GL ou
+        EGL, Proxmox refuse de démarrer la machine — « missing libraries for
+        'virtio-gl' detected! Please install 'libgl1' and 'libegl1' » —, et
+        il le refuse APRÈS avoir écrit le disque. Un hôte peut porter GL sans
+        EGL : les exiger ensemble est le seul contrôle qui vaille."""
         todo = self._todo()
         vus = []
 
@@ -871,6 +874,8 @@ class TestLaTroisDSurProxmox(unittest.TestCase):
         self.assertTrue(todo._pve_gpu_dispo())
         self.assertIn("/dev/dri/renderD*", vus[0])
         self.assertIn("libvirglrenderer.so.*", vus[0])
+        self.assertIn("libGL.so.1", vus[0])
+        self.assertIn("libEGL.so.1", vus[0])
         todo._pve_show = lambda *a, **k: (0, "")
         self.assertFalse(todo._pve_gpu_dispo())
         todo._pve_show = lambda *a, **k: (1, "oui")
