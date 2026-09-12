@@ -97,6 +97,29 @@ d'ici qui fabrique des FAUX NÉGATIFS — un hôte joignable en une milliseconde
 au repos se manque à cinq centièmes sous mille connexions simultanées, donc il
 ne se déduit pas de la latence mesurée.
 
+## Trouver un serveur qui n'est pas là
+
+Quatre sources répondent à « où chercher » : la boucle locale, les domaines
+QEMU de cette machine, les hôtes de `~/.ssh/config`, et un `/24` balayé. Deux
+d'entre elles sont INJECTÉES — énumérer les domaines libvirt et résoudre un
+alias SSH sont déjà des méthodes de la classe du CLI, que ce paquet n'a pas le
+droit d'importer.
+
+Un serveur vit souvent sur un réseau que cette machine ne PORTE pas, joignable
+par la passerelle : quand le CLI tourne dans une machine virtuelle, le
+« réseau local » qu'il voit est celui de l'hyperviseur. Deux sources y
+répondent — un CIDR saisi, et les réseaux lus en SSH sur une autre machine
+puis balayés d'ici. La table de voisinage, elle, ne le peut pas : elle est
+link-local, donc un hôte routé n'y paraît jamais.
+
+Plus large qu'un `/24` est refusé, et le refus a lieu AVANT l'énumération —
+mesurer un `/8` en le matérialisant coûterait seize millions d'adresses. La
+réserve de fils se dimensionne au NOMBRE DE VAGUES et jamais au nombre de
+cœurs : ces fils attendent le réseau. Et le délai de connexion est le seul
+réglage d'ici qui fabrique des FAUX NÉGATIFS — un hôte joignable en une
+milliseconde au repos se manque à cinq centièmes sous mille connexions
+simultanées, donc il ne se déduit pas d'une latence mesurée.
+
 ## Le catalogue d'outils gpt
 
 Un gpt est un fichier Markdown : en-tête YAML, invite système, contexte
@@ -193,6 +216,65 @@ invite ou un message. Le répertoire y est LU plutôt que dérivé du nom du
 répertoire qui la contient, parce que cette transformation change les
 séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 
+## Ce qu'un agent coûte, et ce qu'il porte
+
+Trois sources y répondent et elles ne se valent pas. L'écran dit de laquelle
+vient chaque chiffre, parce qu'un tableau qui mélange une mesure et une
+approximation fait accuser le mauvais composant.
+
+**Le disque sait déjà presque tout.** Chaque transcription porte une ligne
+`cost-state` — coût en dollars, durée d'horloge, durée d'API, durée d'outils,
+lignes de code — et chaque message d'assistant porte son propre `usage` de
+jetons. Rien à installer, rien à activer, aucune trace posée. Mais ces lignes
+de coût ne sont PAS monotones : une compaction remet le compteur à zéro, et
+une transcription porte plusieurs segments dont les champs ne se composent
+pas. La dernière est retenue, et l'écran dit que c'en est une.
+
+**Ce que le disque ne sait pas**, c'est QUEL outil, combien de fois et combien
+de temps chacun. `totalToolDuration` est un agrégat : il annonce dix-neuf
+minutes sans jamais dire que l'un d'eux en prend les trois quarts. Un jeu de
+hooks le dit, une ligne par appel — et aucun événement de hook ne porte de
+durée, donc deux sont écrits, avant et après, et leur identifiant d'appel les
+recoud. Un appel dont l'après manque reste NON APPARIÉ plutôt que de se voir
+attribuer une durée inventée.
+
+**Un hook ne doit jamais faire échouer l'appel qu'il observe.** Un code non
+nul sur `PreToolUse` BLOQUE l'appel d'outil, donc le script est enveloppé de
+bout en bout et sort à zéro quoi qu'il arrive. Il n'importe rien du dépôt non
+plus : il tourne des centaines de fois par session, dans un interpréteur neuf
+chaque fois.
+
+Ni la commande ni la réponse de l'outil ne sont écrites. Le journal compte des
+appels, il ne garde pas ce qu'ils disent. Cela tient même là où la frontière
+d'affichage a été levée : ce qui n'est pas écrit n'a pas à être protégé plus
+tard.
+
+## Ce qu'une session porte
+
+Un delta n'est pas un état, et c'est le piège de tout ce domaine. Plusieurs
+enregistrements sont réémis en cours de session et ne portent que ce qui a
+changé : lire la dernière occurrence donne un fichier d'instructions là où
+sept sont chargés, et une skill là où trente-neuf le sont. Chacun se corrige
+selon sa forme — les instructions s'accumulent par chemin, une liste de skills
+retient son entrée initiale — et celui dont la sémantique n'est pas
+déterminable n'est jamais totalisé.
+
+L'ancienne règle du paquet, « la structure oui, le contenu d'un message non »,
+ne suffit plus : une transcription porte maintenant le texte intégral des
+fichiers d'instructions, celui des skills, l'invite système et la sortie brute
+d'un hook, dont aucun n'est un message. La forme opérante : **un chemin, un
+nom, un compte, une taille ou une durée ; jamais un champ dont la valeur est
+du texte libre de longueur non bornée.**
+
+Un environnement se lit sans se recopier. Le noyau réserve déjà
+`/proc/<pid>/environ` au propriétaire du processus, et un écran qui en imprime
+une valeur en clair casse une frontière que personne n'a eu à écrire. Une
+valeur ne s'affiche que si son nom est sur une liste fermée ET que sa valeur a
+la forme attendue de ce nom ; le reste montre sa forme. Le caviardage par
+motifs employé ailleurs dans le dépôt ne convient pas ici : il ne reconnaît
+que `NOM=valeur` collé, et en deux colonnes alignées il laisse passer presque
+tout.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
@@ -208,6 +290,16 @@ séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
 | `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
+| `harness/claude.py` | l'argv des cinq sous-commandes d'un agent détaché, et ce que chacune coûte |
+| `agents/statistiques.py` | ce qu'une transcription dit d'une session : jetons, coût, durées, contexte |
+| `agents/tui.py` | l'écran vivant, rafraîchi sans relire ce qu'il a déjà replié |
+| `agents/journal.py` | le journal des appels d'outils : une ligne par événement, et leur appariement |
+| `agents/hooks/evenement.py` | le hook qui écrit un événement, et ne doit jamais faire échouer l'appel |
+| `agents/pose.py` | poser et retirer les hooks, à l'un ou l'autre des deux endroits |
+| `agents/disque.py` | ce que Claude Code occupe, par répertoire et par session |
+| `agents/mcp.py` | les serveurs MCP : ce qui est déclaré ici, et ce qu'il faut demander |
+| `agents/contexte.py` | ce qu'une session a chargé : modèle, machine, instructions, skills |
+| `agents/environnement.py` | l'environnement d'un processus, lu sans le recopier |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et

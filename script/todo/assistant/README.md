@@ -187,6 +187,60 @@ working directory is read there rather than derived from the containing
 directory's name, because that transformation turns separators, dots and
 underscores all into dashes and so cannot be inverted.
 
+## What an agent costs, and what it carries
+
+Three sources answer that, and they are not worth the same. The screen says
+which one each figure comes from, because a table that mixes a measurement
+with an approximation makes the wrong component look guilty.
+
+**The disk already knows almost everything.** Every transcript carries a
+`cost-state` line — cost in dollars, wall-clock, API and tool durations, lines
+of code — and every assistant message carries its own token `usage`. Nothing
+to install, nothing to switch on, no trace left behind. But those cost lines
+are NOT monotonic: a compaction resets the counter, and one transcript carries
+several segments whose fields do not compose. The last one is kept, and the
+screen says it is a segment.
+
+**What the disk does not know** is WHICH tool, how often, and for how long
+each. `totalToolDuration` is an aggregate: it says nineteen minutes without
+ever saying that one tool takes three quarters of it. A hook set says it, one
+line per call — and no hook event carries a duration, so two events are
+written, before and after, and their call identifier stitches them. A call
+whose after is missing stays UNPAIRED rather than being given an invented
+duration.
+
+**A hook must never fail the call it observes.** A non-zero exit on
+`PreToolUse` BLOCKS the tool call, so the script is wrapped end to end and
+exits zero whatever happens. It imports nothing from the repository either: it
+runs hundreds of times per session, in a fresh interpreter each time.
+
+Neither the command nor the tool's response is written. The log counts calls;
+it does not keep what they say. That holds even where the display boundary was
+lifted — what is never written does not have to be protected later.
+
+## What a session carries
+
+A delta is not a state, and that is the trap of this whole area. Several
+records are re-emitted mid-session and carry only what changed: reading the
+last occurrence gives one instruction file where seven are loaded, and one
+skill where thirty-nine are. Each is corrected according to its shape —
+instructions accumulate by path, a skill listing keeps its initial entry — and
+the one whose semantics cannot be determined is never totalled at all.
+
+The package's old rule, "structure yes, message content no", no longer
+suffices: a transcript now carries the full text of the instruction files, of
+the skills, the system prompt and a hook's raw output, none of which is a
+message. The operative form: **a path, a name, a count, a size or a duration;
+never a field whose value is unbounded free text.**
+
+An environment is read but not copied out. The kernel already reserves
+`/proc/<pid>/environ` to the owner of the process, and a screen that prints a
+value in clear breaks a boundary nobody had to write. A value is shown only if
+its name is on a closed list AND its value has that name's expected shape; the
+rest shows its shape. The pattern-based redaction used elsewhere in the
+repository does not fit here — it only recognises `NAME=value` glued together,
+and in an aligned two-column table it lets almost everything through.
+
 ## The modules
 
 | File | What it owns |
@@ -202,6 +256,16 @@ underscores all into dashes and so cannot be inverted.
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
 | `harness/registre.py` | which agent harnesses this machine carries, and what is missing from the others |
+| `harness/claude.py` | the argv of a detached agent's five subcommands, and what each one costs |
+| `agents/statistiques.py` | what a transcript says of a session: tokens, cost, durations, context |
+| `agents/tui.py` | the live screen, refreshed without re-reading what it already folded |
+| `agents/journal.py` | the tool-call log: one line per event, and their pairing into durations |
+| `agents/hooks/evenement.py` | the hook that writes an event, and must never fail the call |
+| `agents/pose.py` | installing and removing the hooks, at either of the two places |
+| `agents/disque.py` | what Claude Code occupies, per directory and per session |
+| `agents/mcp.py` | the MCP servers: what is declared here, and what must be asked for |
+| `agents/contexte.py` | what a session loaded: model, machine, instructions, skills |
+| `agents/environnement.py` | a process's environment, read without copying it out |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and
