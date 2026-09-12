@@ -349,6 +349,18 @@ class TestLargeMailbox(StatsCase):
         apercu = build_overview(self.store, since=maintenant - 30 * JOUR)
         self.assertEqual(apercu.bucket, "day")
 
+    def test_the_text_report_bounds_its_unread_count_too(self):
+        """`build_report` sert l'entrée [5] du menu. Il passait sa période à
+        tous ses agrégats sauf au tableau par dossier, d'où venaient les
+        non-lus imprimés à côté du total."""
+        self.remplir()
+        self.store.upsert_messages(
+            self.inbox,
+            [self.msg(80 + i, 0, "vieux@x.ca", "moi@x.ca") for i in range(3)],
+        )
+        rapport = build_report(self.store, since=DEPART + 2 * JOUR)
+        self.assertLessEqual(rapport.unseen, rapport.total)
+
     def test_the_details_follow_the_period_as_well(self):
         """Le classement des correspondants est sous le même en-tête que
         l'histogramme : il doit couvrir la même tranche de temps."""
