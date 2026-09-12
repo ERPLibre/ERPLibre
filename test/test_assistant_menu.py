@@ -30,8 +30,6 @@ from unittest.mock import patch
 
 from script.todo.todo_i18n import t
 
-from script.todo.todo_i18n import t
-
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 MENU = os.path.join(RACINE, "script", "todo", "assistant_menu.py")
@@ -683,6 +681,44 @@ class LeCablageDesAgents(unittest.TestCase):
 
     def test_six_gere(self):
         self._dispatche("6", "_claude_gerer")
+
+
+class LaVueDUneSession(unittest.TestCase):
+    """`displayable()` fixe ce qu'une session a le droit de montrer.
+
+    L'écran ne lit donc pas la session, il lit cette vue — et une clé qui n'y
+    est pas lève un `KeyError` qui remonte jusqu'au CLI. Rien ne le signale à
+    l'écriture : les deux vocabulaires se ressemblent, `cwd` du côté de la
+    session et `dir` du côté de la vue, et seul le chemin de menu qui touche
+    la ligne fautive le découvre. Le test lit donc la SOURCE plutôt que
+    d'espérer qu'un test passe par chaque écran.
+    """
+
+    def _cles_lues(self):
+        """Les clés que la source indexe sur un nom commençant par « vue »."""
+        with open(MENU, encoding="utf-8") as fh:
+            arbre = ast.parse(fh.read())
+        cles = set()
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Subscript):
+                continue
+            cible = noeud.value
+            if not isinstance(cible, ast.Name) or cible.id != "vue":
+                continue
+            litteral = _litteral(noeud.slice)
+            if litteral is not None:
+                cles.add(litteral)
+        return cles
+
+    def test_every_key_the_screen_reads_is_one_the_view_produces(self):
+        from script.todo.assistant import claude_sessions as cs
+
+        vue = cs.displayable(
+            cs.Session(session_id="a" * 32, pid=1, cwd="/un/depot")
+        )
+        lues = self._cles_lues()
+        self.assertTrue(lues, "aucune lecture de vue trouvée dans la source")
+        self.assertEqual(lues - set(vue), set())
 
 
 if __name__ == "__main__":

@@ -1741,7 +1741,7 @@ class AssistantMenuMixin:
         from script.todo.assistant import claude_sessions as cs
 
         vue = cs.displayable(session)
-        print(f"{vue['id']} · {vue['cwd']}")
+        print(f"{vue['id']} · {vue['dir']}")
         try:
             status = click.prompt(self.fill_help_info(choices))
         except (KeyboardInterrupt, click.exceptions.Abort):
