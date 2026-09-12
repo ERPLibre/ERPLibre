@@ -24,9 +24,14 @@ fournisseur répondre « invalid_client ».
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import http.server
 import json
 import os
+import secrets
 import time
+import webbrowser
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -194,6 +199,156 @@ def _message(detail: bytes) -> str:
     if not isinstance(donnees, dict):
         return ""
     return str(donnees.get("error_description") or donnees.get("error") or "")
+
+
+def _verificateur() -> tuple:
+    """(vérificateur, empreinte) de PKCE, en S256.
+
+    Le vérificateur est tiré au hasard et ne quitte jamais la machine ;
+    seule son empreinte part avec la demande d'autorisation. Un code
+    intercepté ne suffit donc pas à obtenir un jeton : il faut aussi le
+    vérificateur, que l'intercepteur n'a pas.
+    """
+    verificateur = secrets.token_urlsafe(64)
+    empreinte = (
+        base64.urlsafe_b64encode(
+            hashlib.sha256(verificateur.encode("ascii")).digest()
+        )
+        .decode("ascii")
+        .rstrip("=")
+    )
+    return verificateur, empreinte
+
+
+def authorization_url(
+    reglages: dict,
+    *,
+    redirect_uri: str,
+    state: str,
+    code_challenge: str,
+    login_hint: str = "",
+    reclamer_hors_ligne: bool = False,
+) -> str:
+    """L'adresse de la page de consentement, paramètres compris.
+
+    `reclamer_hors_ligne` demande explicitement un jeton de
+    rafraîchissement : Google n'en rend pas sans `access_type=offline`, et
+    n'en rend plus à qui a déjà consenti sans `prompt=consent` — le compte
+    cesserait alors de fonctionner au bout d'une heure.
+    """
+    params = {
+        "response_type": "code",
+        "client_id": reglages["client_id"],
+        "redirect_uri": redirect_uri,
+        "scope": reglages["scope"],
+        "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+    }
+    if login_hint:
+        params["login_hint"] = login_hint
+    if reclamer_hors_ligne:
+        params["access_type"] = "offline"
+        params["prompt"] = "consent"
+    separateur = "&" if "?" in reglages["auth_url"] else "?"
+    return reglages["auth_url"] + separateur + urllib.parse.urlencode(params)
+
+
+class _RedirectionHandler(http.server.BaseHTTPRequestHandler):
+    """Reçoit la redirection du fournisseur, et rien d'autre."""
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_GET(self):  # noqa: N802 - nom imposé par http.server
+        params = dict(
+            urllib.parse.parse_qsl(urllib.parse.urlparse(self.path).query)
+        )
+        self.server.recu = params
+        fini = params.get("code") and not params.get("error")
+        corps = t("mail_oauth_page_ok") if fini else t("mail_oauth_page_ko")
+        charge = (
+            "<html><head><meta charset='utf-8'></head><body><p>"
+            f"{corps}</p></body></html>"
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(charge)))
+        self.end_headers()
+        self.wfile.write(charge)
+
+
+def authorize(
+    account,
+    *,
+    config_get=None,
+    open_browser=None,
+    timeout: int = 180,
+) -> TokenSet:
+    """Fait autoriser le compte, et rend le jeu de jetons obtenu.
+
+    Le client écoute sur un port éphémère de la BOUCLE LOCALE — jamais sur
+    toutes les interfaces, qui exposerait le code d'autorisation au réseau
+    local le temps du parcours — ouvre la page de consentement, et attend
+    UNE redirection.
+
+    Trois refus avant l'échange : un état qui ne correspond pas à la
+    demande (n'importe quelle page ouverte sur ce poste peut sinon faire
+    échanger SON code), un refus de l'utilisateur, et le délai — personne
+    ne doit attendre indéfiniment devant un navigateur fermé.
+
+    La socket se referme dans tous les cas, y compris sur ces refus.
+    """
+    reglages = settings_for(account, config_get)
+    if not reglages["client_id"]:
+        # Avant d'ouvrir quoi que ce soit : une page qui affiche
+        # « invalid_client » fait chercher la panne chez le fournisseur.
+        raise OAuthError(t("mail_err_no_client_id"))
+
+    verificateur, empreinte = _verificateur()
+    etat = secrets.token_urlsafe(16)
+    serveur = http.server.HTTPServer(("127.0.0.1", 0), _RedirectionHandler)
+    serveur.recu = None
+    serveur.timeout = timeout
+    try:
+        redirect_uri = f"http://127.0.0.1:{serveur.server_address[1]}/"
+        url = authorization_url(
+            reglages,
+            redirect_uri=redirect_uri,
+            state=etat,
+            code_challenge=empreinte,
+            login_hint=getattr(account, "email", ""),
+            reclamer_hors_ligne=True,
+        )
+        (open_browser or webbrowser.open)(url)
+        serveur.handle_request()
+        recu = serveur.recu
+    finally:
+        serveur.server_close()
+
+    if not recu:
+        raise OAuthError(t("mail_err_authorization_timeout"))
+    if recu.get("state") != etat:
+        raise OAuthError(t("mail_err_authorization_state"))
+    if recu.get("error"):
+        raise OAuthError(
+            f"{t('mail_err_authorization_refused')} {recu['error']}"
+        )
+    if not recu.get("code"):
+        raise OAuthError(t("mail_err_authorization_no_code"))
+
+    champs = {
+        "grant_type": "authorization_code",
+        "code": recu["code"],
+        "redirect_uri": redirect_uri,
+        "client_id": reglages["client_id"],
+        "code_verifier": verificateur,
+    }
+    if reglages.get("client_secret"):
+        champs["client_secret"] = reglages["client_secret"]
+    return _depuis_charge(
+        _echanger(reglages["token_url"], champs, DELAI_SECONDES), TokenSet()
+    )
 
 
 def settings_for(account, config_get=None) -> dict:
