@@ -35,8 +35,10 @@ if SANDBOX_MISSING:  # pragma: no cover - dépend de l'installation
     MailSandboxCase = unittest.TestCase
 else:
     from mail_sandbox import (
+        ACCESS_TOKEN,
         LIVE_SERVERS,
         PASSWORD,
+        USER,
         DropConnection,
         MailSandboxCase,
         RefuseCommand,
@@ -665,6 +667,112 @@ class TestSandboxServesWhatWasDeclared(MailSandboxCase):
         transport.store_flags(1, ["\\Seen"], [])
         self.assertEqual(transport.fetch_flags([1]), [(1, "\\Seen")])
         self.assertEqual(box.messages[0].flags, ["\\Seen"])
+
+
+@requires_servers
+class TestTheSandboxSpeaksXOAUTH2(MailSandboxCase):
+    """Le bac à sable doit refuser et accepter XOAUTH2 comme un vrai
+    serveur, sinon tout ce qu'on testera d'OAuth ne testera que nous-mêmes.
+
+    Les clients sont NUS ici — `imaplib` et `smtplib` directement, sans
+    passer par `imap_transport` ni `smtp_send` : ce fichier vérifie le
+    serveur, pas le client.
+    """
+
+    def _chaine(self, user=USER, token=ACCESS_TOKEN) -> bytes:
+        return f"user={user}\x01auth=Bearer {token}\x01\x01".encode()
+
+    def test_imap_accepts_the_token(self):
+        import imaplib
+
+        sandbox = self.imap_server()
+        sandbox.folder("INBOX")
+        client = imaplib.IMAP4("127.0.0.1", sandbox.port)
+        self.addCleanup(lambda: client.shutdown())
+        etat, _ = client.authenticate("XOAUTH2", lambda _: self._chaine())
+        self.assertEqual(etat, "OK")
+        # La preuve que la session est VRAIMENT ouverte : un SELECT ne
+        # passe pas sans authentification, et un « OK » d'authentification
+        # sans session derrière ne se distinguerait pas autrement.
+        self.assertEqual(client.select("INBOX")[0], "OK")
+
+    def test_imap_refuses_a_token_that_is_not_the_one(self):
+        """Un bac à sable qui dit oui à tout rendrait vert un client qui
+        n'envoie rien du tout."""
+        import imaplib
+
+        sandbox = self.imap_server()
+        client = imaplib.IMAP4("127.0.0.1", sandbox.port)
+        self.addCleanup(lambda: client.shutdown())
+        with self.assertRaises(imaplib.IMAP4.error):
+            client.authenticate(
+                "XOAUTH2", lambda _: self._chaine(token="pas-le-bon")
+            )
+
+    def test_imap_refuses_the_login_password_as_a_token(self):
+        """Les deux secrets ne sont pas interchangeables : le mot de passe
+        ouvre LOGIN, le jeton ouvre XOAUTH2, et jamais l'inverse."""
+        import imaplib
+
+        sandbox = self.imap_server()
+        client = imaplib.IMAP4("127.0.0.1", sandbox.port)
+        self.addCleanup(lambda: client.shutdown())
+        with self.assertRaises(imaplib.IMAP4.error):
+            client.authenticate(
+                "XOAUTH2", lambda _: self._chaine(token=PASSWORD)
+            )
+
+    def test_imap_announces_the_mechanism(self):
+        """Un client qui regarde les capacités avant de choisir doit y
+        trouver de quoi choisir."""
+        import imaplib
+
+        sandbox = self.imap_server()
+        client = imaplib.IMAP4("127.0.0.1", sandbox.port)
+        self.addCleanup(lambda: client.shutdown())
+        self.assertIn("AUTH=XOAUTH2", client.capabilities)
+
+    def test_smtp_accepts_the_token(self):
+        import base64
+        import smtplib
+
+        sandbox = self.smtp_server(require_auth=True)
+        client = smtplib.SMTP("127.0.0.1", sandbox.port)
+        self.addCleanup(client.quit)
+        client.ehlo()
+        code, _ = client.docmd(
+            "AUTH",
+            "XOAUTH2 " + base64.b64encode(self._chaine()).decode(),
+        )
+        self.assertEqual(code, 235)
+        # Et la session sert : le serveur exige l'authentification, donc un
+        # message remis prouve qu'elle a bien eu lieu.
+        client.sendmail("moi@x.ca", ["a@y.ca"], "Subject: essai\n\ncorps")
+        self.assertEqual(len(sandbox.messages), 1)
+
+    def test_smtp_refuses_a_token_that_is_not_the_one(self):
+        import base64
+        import smtplib
+
+        sandbox = self.smtp_server(require_auth=True)
+        client = smtplib.SMTP("127.0.0.1", sandbox.port)
+        self.addCleanup(client.quit)
+        client.ehlo()
+        code, _ = client.docmd(
+            "AUTH",
+            "XOAUTH2 "
+            + base64.b64encode(self._chaine(token="pas-le-bon")).decode(),
+        )
+        self.assertNotEqual(code, 235)
+
+    def test_smtp_announces_the_mechanism(self):
+        import smtplib
+
+        sandbox = self.smtp_server(require_auth=True)
+        client = smtplib.SMTP("127.0.0.1", sandbox.port)
+        self.addCleanup(client.quit)
+        client.ehlo()
+        self.assertIn("XOAUTH2", client.esmtp_features.get("auth", ""))
 
 
 if __name__ == "__main__":

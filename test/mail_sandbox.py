@@ -54,11 +54,11 @@ import warnings
 from dataclasses import dataclass, field
 from io import BytesIO
 
-from twisted.cred import checkers, portal
+from twisted.cred import checkers, error, portal
 from twisted.internet import protocol
 from twisted.internet.threads import blockingCallFromThread
 from twisted.mail import imap4
-from zope.interface import implementer
+from zope.interface import Interface, implementer
 
 from script.todo.mail.accounts import Account, ServerConf
 
@@ -67,6 +67,11 @@ SERVER_STOP_TIMEOUT = 10
 
 USER = "moi"
 PASSWORD = "secret"
+# Le jeton d'accès que le bac à sable accepte en XOAUTH2. Il ne vaut QUE
+# pour XOAUTH2, et `PASSWORD` ne vaut QUE pour LOGIN : un client qui
+# confondrait les deux secrets se ferait refuser ici comme il le serait par
+# un vrai serveur.
+ACCESS_TOKEN = "jeton-d-acces-du-bac-a-sable"
 
 # Tous les bacs à sable actuellement à l'écoute. Sert de preuve de non-fuite :
 # à la fin d'un test l'ensemble doit être revenu à ce qu'il était (voir
@@ -456,6 +461,74 @@ class SandboxIMAPAccount:
         return True
 
 
+class ISandboxToken(Interface):
+    """Des identifiants portés par un jeton, et non par un mot de passe.
+
+    Une interface À PART, et non `IUsernamePassword` : le portail choisit
+    son vérificateur d'après l'interface fournie, et réutiliser celle du mot
+    de passe ferait accepter un jeton là où un mot de passe est attendu — et
+    l'inverse. Le bac à sable doit pouvoir refuser exactement ce qu'un vrai
+    serveur refuse.
+    """
+
+    def check(token):
+        """Vrai si le jeton est celui du bac à sable."""
+
+
+@implementer(ISandboxToken)
+class XOAUTH2Credentials:
+    """Ce qu'un client envoie après `AUTHENTICATE XOAUTH2`.
+
+    Un seul aller-retour : le défi est VIDE, le client répond d'un coup
+    `user=<compte>\x01auth=Bearer <jeton>\x01\x01`, et il n'y a pas de
+    second défi. Annoncer autre chose ferait attendre le client pour rien.
+    """
+
+    def __init__(self):
+        self.username = b""
+        self.token = b""
+
+    def getChallenge(self) -> bytes:
+        return b""
+
+    def setResponse(self, response: bytes) -> None:
+        champs = dict(
+            morceau.split(b"=", 1)
+            for morceau in response.split(b"\x01")
+            if b"=" in morceau
+        )
+        self.username = champs.get(b"user", b"")
+        porteur = champs.get(b"auth", b"")
+        prefixe = b"Bearer "
+        self.token = (
+            porteur[len(prefixe) :] if porteur.startswith(prefixe) else b""
+        )
+
+    def moreChallenges(self) -> bool:
+        return False
+
+    def check(self, token) -> bool:
+        return bool(self.token) and self.token == token
+
+
+@implementer(checkers.ICredentialsChecker)
+class _TokenChecker:
+    """Accepte le jeton du bac à sable, et lui seul."""
+
+    credentialInterfaces = (ISandboxToken,)
+
+    def __init__(self, username: bytes, token: bytes):
+        self.username = username
+        self.token = token
+
+    def requestAvatarId(self, credentials):
+        if credentials.username == self.username and credentials.check(
+            self.token
+        ):
+            return self.username
+        raise error.UnauthorizedLogin()
+
+
 @implementer(portal.IRealm)
 class _SandboxRealm:
     def __init__(self, account: SandboxIMAPAccount):
@@ -537,6 +610,11 @@ class _SandboxFactory(protocol.Factory):
         server = SandboxIMAP4Server(self.sandbox)
         server.factory = self
         server.portal = self.sandbox.portal
+        # `challengers` est ce que le serveur ANNONCE dans sa capacité
+        # `AUTH=…` et ce qu'il accepte ensuite. Twisted n'en connaît aucun
+        # par défaut : sans cette ligne, `AUTHENTICATE XOAUTH2` répond
+        # « method unsupported » et le client retombe sur LOGIN.
+        server.challengers = {b"XOAUTH2": XOAUTH2Credentials}
         return server
 
 
@@ -566,6 +644,9 @@ class ImapSandbox:
         checker.addUser(USER.encode(), PASSWORD.encode())
         self.portal = portal.Portal(_SandboxRealm(self.account))
         self.portal.registerChecker(checker)
+        self.portal.registerChecker(
+            _TokenChecker(USER.encode(), ACCESS_TOKEN.encode())
+        )
 
     # -- déclaration du contenu -----------------------------------------
 
@@ -634,6 +715,42 @@ class SentMessage:
 class _CaptureHandler:
     def __init__(self):
         self.messages: list[SentMessage] = []
+
+    async def auth_XOAUTH2(self, server, args):
+        """`AUTH XOAUTH2 <base64>`, en un seul aller.
+
+        `aiosmtpd` ne connaît que PLAIN et LOGIN ; il découvre les autres
+        mécanismes par les méthodes `auth_*` du gestionnaire. Sans celle-ci,
+        le serveur répond « 504 unrecognized authentication type » et le
+        client retombe sur un mot de passe.
+        """
+        from base64 import b64decode
+
+        from aiosmtpd.smtp import AuthResult
+
+        if len(args) < 2:
+            reponse = await server.challenge_auth("")
+            if not isinstance(reponse, (bytes, bytearray)):
+                return AuthResult(success=False)
+            brut = bytes(reponse)
+        else:
+            try:
+                brut = b64decode(args[1].encode(), validate=True)
+            except Exception:
+                await server.push("501 5.5.2 Can't decode base64")
+                return AuthResult(success=False, handled=True)
+        champs = dict(
+            morceau.split(b"=", 1)
+            for morceau in brut.split(b"\x01")
+            if b"=" in morceau
+        )
+        porteur = champs.get(b"auth", b"")
+        attendu = b"Bearer " + ACCESS_TOKEN.encode()
+        if champs.get(b"user") == USER.encode() and porteur == attendu:
+            return AuthResult(success=True, auth_data=brut)
+        # `handled=False` laisse `aiosmtpd` répondre lui-même : un refus
+        # muet fait attendre le client jusqu'au délai de la socket.
+        return AuthResult(success=False, handled=False)
 
     async def handle_DATA(self, server, session, envelope):
         self.messages.append(
