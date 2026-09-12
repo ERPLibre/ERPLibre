@@ -409,6 +409,45 @@ class TestSelectBoxes(StatsScreenCase):
             corps = self._corps(app)
             self.assertIn("Messages : 1", corps)
 
+    async def test_the_period_reaches_every_figure_on_the_screen(self):
+        """Le tableau par dossier et les non-lus se lisent sous le même
+        en-tête que l'histogramme. Bornés séparément, ils affichaient une
+        part de non-lus tirée de deux périodes différentes — jusqu'à
+        dépasser cent pour cent."""
+        import time as horloge
+
+        from textual.widgets import Select
+
+        maintenant = int(horloge.time())
+        self.store.upsert_messages(
+            self.inbox,
+            [
+                MessageMeta(
+                    uid=95 + i,
+                    date=maintenant - (5 if i == 0 else 900) * JOUR,
+                    size=10,
+                    flags="",
+                    msgid=f"<n{i}@e.ca>",
+                    frm="ana@e.ca",
+                    to="moi@x.ca",
+                    subject="s",
+                    snippet="",
+                )
+                for i in range(4)
+            ],
+        )
+        app = await self._app()
+        async with app.run_test() as pilot:
+            await self._ouvrir(pilot, app)
+            app.screen.query_one("#stats_periode", Select).value = "month"
+            await pilot.pause()
+            corps = self._corps(app)
+        self.assertIn("Messages : 1", corps)
+        # Quatre non-lus existent, un seul est dans la fenêtre. Avant, la
+        # ligne affichait « non lus 4 » à côté de « Messages : 1 ».
+        self.assertIn("non lus 1", corps)
+        self.assertNotIn("non lus 4", corps)
+
 
 class TestListModes(StatsScreenCase):
     """La touche `g` fait défiler les modes d'affichage de la liste."""

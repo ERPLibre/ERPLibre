@@ -144,8 +144,9 @@ _AN = 365 * 86400
 def choisir_bucket(span_secondes: float) -> str:
     """Le pas qui garde l'histogramme sous `MAX_BARRES` sans le demander.
 
-    Une boîte de deux semaines se lit par jour ; vingt ans d'archives ne se
-    lisent pas autrement que par mois. Choisir d'après l'étendue réelle
+    Une boîte de deux semaines se lit par jour ; dix ans d'archives par
+    mois, et au-delà par année — cent quatre-vingts barres est la limite
+    qui fait passer d'un pas au suivant. Choisir d'après l'étendue réelle
     évite d'ouvrir sur un écran illisible qu'il faut ensuite corriger à la
     main.
     """
@@ -209,7 +210,10 @@ def build_overview(store, bucket=None, folder_id=None, since=None) -> Overview:
     if bucket is None:
         bucket = choisir_bucket(plus_recent - plus_vieux)
     volume = store.stats_volume(bucket, folder_id, since)
-    dossiers = store.stats_folders()
+    # La MÊME borne que l'histogramme : le total et les non-lus se lisent
+    # sur une seule ligne, et une part de non-lus tirée de deux périodes
+    # différentes peut dépasser cent pour cent.
+    dossiers = store.stats_folders(since)
     if folder_id is not None:
         dossiers = [d for d in dossiers if d["id"] == folder_id]
     montre = derniers(volume)
@@ -226,27 +230,32 @@ def build_overview(store, bucket=None, folder_id=None, since=None) -> Overview:
 
 
 def build_details(
-    store, folder_id=None, limite: int = 10, progress=None
+    store, folder_id=None, limite: int = 10, progress=None, since=None
 ) -> Details:
     """Les correspondants et les délais. Appelable depuis un fil de travail.
 
     `progress(faits, total)` est appelé pendant le balayage : sur une
     grande boîte cette fonction dure des secondes, et une barre qui avance
     dit que le programme travaille plutôt qu'il ne s'est figé.
+
+    `since` est la même borne que la vue d'ensemble : les deux blocs
+    s'affichent sous un seul en-tête de période, et un classement des
+    correspondants qui couvrirait vingt ans sous un titre « trente
+    derniers jours » ne dirait pas de quoi il parle.
     """
-    total, _, _ = store.stats_span(folder_id)
+    total, _, _ = store.stats_span(folder_id, since)
 
     def relais(faits):
         if progress is not None:
             progress(faits, total)
 
     expediteurs = store.stats_correspondents(
-        "from", folder_id, progress=relais
+        "from", folder_id, since, progress=relais
     )
     destinataires = store.stats_correspondents(
-        "to", folder_id, progress=relais
+        "to", folder_id, since, progress=relais
     )
-    delais = store.stats_reply_delays(folder_id)
+    delais = store.stats_reply_delays(folder_id, since)
     return Details(
         senders=top(expediteurs, limite),
         recipients=top(destinataires, limite),
