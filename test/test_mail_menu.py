@@ -890,6 +890,23 @@ class TestRetryPassword(unittest.TestCase):
         )
         self.assertIn("mot de passe d'application", lignes)
 
+    def test_a_microsoft_refusal_says_why_it_will_keep_refusing(self):
+        """Microsoft n'accepte plus aucun mot de passe sur IMAP. Redemander
+        le mot de passe sans le dire fait retaper un secret correct à
+        quelqu'un qui croira s'être trompé, autant de fois qu'on le lui
+        redemande. La note ne dépendait que du drapeau « mot de passe
+        d'application », que ce fournisseur n'a justement plus."""
+        lignes = self._lignes_affichees(
+            "outlook", cause="b'[AUTHENTICATIONFAILED] Invalid credentials'"
+        )
+        self.assertIn("OAuth", lignes)
+
+    def test_a_provider_without_an_app_password_keeps_its_note(self):
+        """Le contrôle : la note du préréglage générique existe aussi, et
+        la restriction retirée ne doit pas l'avoir noyée pour autant."""
+        lignes = self._lignes_affichees("generic")
+        self.assertNotIn("mot de passe d'application", lignes)
+
     def test_an_explicit_refusal_still_blames_the_password(self):
         """Le contrôle symétrique : restreindre l'affichage ne doit pas
         l'avoir supprimé dans le cas où il sert."""

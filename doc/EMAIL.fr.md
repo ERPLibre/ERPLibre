@@ -30,18 +30,27 @@ Installez-les avec :
 .venv.erplibre/bin/pip install -r requirement/erplibre_require-ments.txt
 ```
 
-### Mots de passe d'application pour Gmail, Outlook et iCloud
+### Mots de passe d'application pour Gmail et iCloud, et le cas Microsoft
 
-La phase 1 ne parle qu'IMAP/SMTP en authentification simple — pas encore
-OAuth (ça, c'est la phase 2). Gmail, Outlook et iCloud ont tous les trois
-fermé cette porte au vrai mot de passe du compte : chacun de ces trois
-préréglages exige donc un **mot de passe d'application** à la place :
+Le client ne parle qu'IMAP/SMTP en authentification simple — pas encore
+OAuth, c'est la phase suivante. Gmail et iCloud ont fermé cette porte au
+vrai mot de passe du compte : les deux préréglages exigent donc un **mot de
+passe d'application** à la place :
 
 | Fournisseur | Où le générer |
 |---|---|
 | Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères, les espaces sont acceptés. La validation en deux étapes doit être active, sinon la page est vide. |
-| Outlook / Microsoft 365 | [account.microsoft.com/security](https://account.microsoft.com/security) — Microsoft ferme l'authentification simple sur les comptes grand public : sans mot de passe d'application, il faudra OAuth (phase 2, non implémentée). |
 | iCloud | [account.apple.com](https://account.apple.com) — section « Connexion et sécurité ». L'authentification à deux facteurs doit être active. |
+
+**Un compte Microsoft ne peut pas encore servir.** Microsoft a retiré
+l'authentification simple d'IMAP — d'abord chez les locataires Microsoft
+365, puis sur Outlook.com — et un mot de passe d'application EST de
+l'authentification simple : il est refusé lui aussi. Personne ne peut la
+réactiver. Un tel compte exige OAuth, que ce client ne sait pas encore
+faire ; le préréglage Microsoft est gardé pour le jour où il saura, et
+d'ici là il échoue au test de connexion. Le client le dit là où il demande
+le mot de passe, plutôt que de laisser le refus passer pour une faute de
+frappe.
 
 Utilisez ce mot de passe généré quand la configuration du compte en demande
 un — jamais le mot de passe normal du compte. Le préréglage « Serveur
@@ -283,9 +292,10 @@ langue dans laquelle le CLI tourne.
 l'erreur exacte du serveur puis redemande le mot de passe — jusqu'à 3
 tentatives. Le mot de passe dans le coffre n'est écrasé qu'*après* une
 connexion réussie, donc une faute de frappe ne détruit jamais un mot de
-passe qui fonctionnait. Si le compte est Gmail, Outlook ou iCloud,
-vérifiez d'abord que vous avez utilisé un mot de passe d'application (voir
-« Prérequis » plus haut), pas le mot de passe normal du compte. Ouvrir le
+passe qui fonctionnait. Si le compte est Gmail ou iCloud, vérifiez d'abord
+que vous avez utilisé un mot de passe d'application (voir « Prérequis »
+plus haut), pas le mot de passe normal du compte ; si c'est un compte
+Microsoft, aucun mot de passe ne conviendra — voir la même section. Ouvrir le
 TUI lui-même ne relance pas cette demande automatiquement : un compte au
 mot de passe refusé porte un ⚠ ; s'il avait déjà synchronisé avec succès,
 ses dossiers déjà en cache restent visibles et lisibles, ils cessent
@@ -539,8 +549,9 @@ Deux chiffres disent honnêtement ce qu'ils ignorent :
 
 ## Ce que le client ne fait pas encore
 
-- **Pas d'OAuth** — Gmail, Outlook et iCloud demandent un mot de passe
-  d'application (voir plus haut).
+- **Pas d'OAuth** — Gmail et iCloud demandent un mot de passe
+  d'application, et un compte Microsoft ne peut pas servir du tout (voir
+  plus haut).
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.
 - **Ni suppression ni déplacement d'un message** — `s` et `u` changent

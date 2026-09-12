@@ -65,20 +65,26 @@ Installez-les avec :
 ```
 
 <!-- [en] -->
-### App passwords for Gmail, Outlook and iCloud
+### App passwords for Gmail and iCloud, and why Microsoft is out
 
-Phase 1 speaks plain IMAP/SMTP login only — no OAuth yet (that is phase 2).
-Gmail, Outlook and iCloud have all closed that door to the account's real
-password, so each of these three presets requires an **app password**
-instead:
+The client speaks plain IMAP/SMTP login only — no OAuth yet (that is the
+next phase). Gmail and iCloud have closed that door to the account's real
+password, so both presets require an **app password** instead:
 
 | Provider | Where to generate it |
 |---|---|
 | Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 characters, spaces are accepted. Two-step verification must be on, otherwise the page is empty. |
-| Outlook / Microsoft 365 | [account.microsoft.com/security](https://account.microsoft.com/security) — Microsoft is closing basic authentication on consumer accounts: without an app password this needs OAuth (phase 2, not implemented). |
 | iCloud | [account.apple.com](https://account.apple.com) — under "Sign-In and Security". Two-factor authentication must be on. |
 
-Use that generated password when account setup asks for one — never the
+**A Microsoft account cannot be used yet.** Microsoft removed basic
+authentication from IMAP — for Microsoft 365 tenants first, then for
+Outlook.com — and an app password is basic authentication, so it is refused
+too. Nobody can turn it back on. Such an account needs OAuth, which this
+client does not do yet; the Microsoft preset is kept for the day it does,
+and until then it fails at the connection test. The client says so where it
+asks for the password, rather than letting the refusal look like a typo.
+
+Use the generated password when account setup asks for one — never the
 account's normal password. The "Standard server" preset (generic IMAP/SMTP)
 does not need one. The client prints these same notes itself — when it asks
 for the password, and again when a refusal sends it back to asking. They
@@ -86,18 +92,27 @@ live in `script/todo/todo_i18n.py` under the `mail_preset_note_*` keys, and
 this table follows them.
 
 <!-- [fr] -->
-### Mots de passe d'application pour Gmail, Outlook et iCloud
+### Mots de passe d'application pour Gmail et iCloud, et le cas Microsoft
 
-La phase 1 ne parle qu'IMAP/SMTP en authentification simple — pas encore
-OAuth (ça, c'est la phase 2). Gmail, Outlook et iCloud ont tous les trois
-fermé cette porte au vrai mot de passe du compte : chacun de ces trois
-préréglages exige donc un **mot de passe d'application** à la place :
+Le client ne parle qu'IMAP/SMTP en authentification simple — pas encore
+OAuth, c'est la phase suivante. Gmail et iCloud ont fermé cette porte au
+vrai mot de passe du compte : les deux préréglages exigent donc un **mot de
+passe d'application** à la place :
 
 | Fournisseur | Où le générer |
 |---|---|
 | Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 caractères, les espaces sont acceptés. La validation en deux étapes doit être active, sinon la page est vide. |
-| Outlook / Microsoft 365 | [account.microsoft.com/security](https://account.microsoft.com/security) — Microsoft ferme l'authentification simple sur les comptes grand public : sans mot de passe d'application, il faudra OAuth (phase 2, non implémentée). |
 | iCloud | [account.apple.com](https://account.apple.com) — section « Connexion et sécurité ». L'authentification à deux facteurs doit être active. |
+
+**Un compte Microsoft ne peut pas encore servir.** Microsoft a retiré
+l'authentification simple d'IMAP — d'abord chez les locataires Microsoft
+365, puis sur Outlook.com — et un mot de passe d'application EST de
+l'authentification simple : il est refusé lui aussi. Personne ne peut la
+réactiver. Un tel compte exige OAuth, que ce client ne sait pas encore
+faire ; le préréglage Microsoft est gardé pour le jour où il saura, et
+d'ici là il échoue au test de connexion. Le client le dit là où il demande
+le mot de passe, plutôt que de laisser le refus passer pour une faute de
+frappe.
 
 Utilisez ce mot de passe généré quand la configuration du compte en demande
 un — jamais le mot de passe normal du compte. Le préréglage « Serveur
@@ -555,9 +570,10 @@ language the CLI runs in.
 `Mail > [2] Accounts > [5] Test an account connection` prints the server's
 exact error and then asks for the password again — up to 3 attempts. The
 password in the vault is only overwritten *after* a successful connection,
-so a typo never destroys a working password. If the account is Gmail,
-Outlook or iCloud, check first that you used an app password (see
-"Prerequisites" above), not the account's normal one. Opening the TUI
+so a typo never destroys a working password. If the account is Gmail or
+iCloud, check first that you used an app password (see "Prerequisites"
+above), not the account's normal one; if it is a Microsoft account, no
+password will do — see the same section. Opening the TUI
 itself does not retry automatically: an account with a rejected password
 gets a ⚠ marker; if it had synced successfully before, its already-cached
 folders stay visible and readable, they just stop refreshing — only a
@@ -615,9 +631,10 @@ langue dans laquelle le CLI tourne.
 l'erreur exacte du serveur puis redemande le mot de passe — jusqu'à 3
 tentatives. Le mot de passe dans le coffre n'est écrasé qu'*après* une
 connexion réussie, donc une faute de frappe ne détruit jamais un mot de
-passe qui fonctionnait. Si le compte est Gmail, Outlook ou iCloud,
-vérifiez d'abord que vous avez utilisé un mot de passe d'application (voir
-« Prérequis » plus haut), pas le mot de passe normal du compte. Ouvrir le
+passe qui fonctionnait. Si le compte est Gmail ou iCloud, vérifiez d'abord
+que vous avez utilisé un mot de passe d'application (voir « Prérequis »
+plus haut), pas le mot de passe normal du compte ; si c'est un compte
+Microsoft, aucun mot de passe ne conviendra — voir la même section. Ouvrir le
 TUI lui-même ne relance pas cette demande automatiquement : un compte au
 mot de passe refusé porte un ⚠ ; s'il avait déjà synchronisé avec succès,
 ses dossiers déjà en cache restent visibles et lisibles, ils cessent
@@ -1081,7 +1098,8 @@ Deux chiffres disent honnêtement ce qu'ils ignorent :
 <!-- [en] -->
 ## What the client does not do yet
 
-- **No OAuth** — Gmail, Outlook and iCloud need an app password (see above).
+- **No OAuth** — Gmail and iCloud need an app password, and a Microsoft
+  account cannot be used at all (see above).
 - **No server-side search** — `/` filters only what's already synced to the
   local cache.
 - **No deleting or moving a message** — `s` and `u` change the seen flag,
@@ -1095,8 +1113,9 @@ phases add.
 <!-- [fr] -->
 ## Ce que le client ne fait pas encore
 
-- **Pas d'OAuth** — Gmail, Outlook et iCloud demandent un mot de passe
-  d'application (voir plus haut).
+- **Pas d'OAuth** — Gmail et iCloud demandent un mot de passe
+  d'application, et un compte Microsoft ne peut pas servir du tout (voir
+  plus haut).
 - **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
   synchronisé dans le cache local.
 - **Ni suppression ni déplacement d'un message** — `s` et `u` changent

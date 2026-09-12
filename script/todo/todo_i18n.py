@@ -12256,16 +12256,17 @@ TRANSLATIONS = {
     },
     "mail_preset_note_outlook": {
         "fr": (
-            "Générez-le sur https://account.microsoft.com/security."
-            " Microsoft ferme l'authentification simple sur les comptes"
-            " grand public : sans mot de passe d'application, il faudra"
-            " OAuth (phase 2, non implémentée)."
+            "Microsoft n'accepte plus aucun mot de passe sur IMAP, mot de"
+            " passe d'application compris, ni sur Outlook.com ni sur"
+            " Microsoft 365. Un compte Microsoft exige OAuth, que ce client"
+            " ne sait pas encore faire : ce préréglage échouera à la"
+            " connexion."
         ),
         "en": (
-            "Generate one at https://account.microsoft.com/security."
-            " Microsoft is closing basic authentication on consumer"
-            " accounts: without an app password this needs OAuth (phase 2,"
-            " not implemented)."
+            "Microsoft no longer accepts any password over IMAP, app"
+            " passwords included, on Outlook.com or on Microsoft 365. A"
+            " Microsoft account needs OAuth, which this client cannot do"
+            " yet: this preset will fail to connect."
         ),
     },
     "mail_preset_note_icloud": {

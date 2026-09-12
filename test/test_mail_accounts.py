@@ -19,6 +19,7 @@ from script.todo.mail.accounts import (
     save,
     write_template,
 )
+from script.todo.todo_i18n import TRANSLATIONS, t
 
 
 class TestPresets(unittest.TestCase):
@@ -46,6 +47,27 @@ class TestPresets(unittest.TestCase):
         self.assertTrue(PRESETS["gmail"]["app_password"])
         self.assertTrue(PRESETS["icloud"]["app_password"])
         self.assertFalse(PRESETS["generic"]["app_password"])
+
+    def test_microsoft_no_longer_promises_an_app_password(self):
+        """Microsoft refuse tout mot de passe sur IMAP — le mot de passe
+        d'application compris, puisque c'est la même authentification
+        simple. Envoyer quelqu'un en générer un le fait travailler pour un
+        secret que le serveur rejettera."""
+        self.assertFalse(PRESETS["outlook"]["app_password"])
+
+    def test_every_preset_carries_a_note(self):
+        """La note est le seul endroit où un fournisseur explique ce qu'il
+        attend. Un préréglage sans note laisse l'utilisateur deviner."""
+        for cle, preset in PRESETS.items():
+            self.assertIn("note_key", preset, cle)
+            self.assertNotEqual(t(preset["note_key"]), preset["note_key"], cle)
+
+    def test_the_microsoft_note_names_what_is_needed_instead(self):
+        """Dire « le mot de passe ne marche pas » sans dire ce qui marche
+        laisse l'utilisateur devant un compte qu'il croit mal configuré."""
+        for langue in ("fr", "en"):
+            texte = TRANSLATIONS["mail_preset_note_outlook"][langue]
+            self.assertIn("OAuth", texte)
 
 
 class TestAccountFromPreset(unittest.TestCase):
