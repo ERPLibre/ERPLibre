@@ -335,6 +335,20 @@ class TestLargeMailbox(StatsCase):
         self.assertLessEqual(apercu.unseen, apercu.total)
         self.assertLessEqual(apercu.unseen_share, 1.0)
 
+    def test_the_step_is_chosen_from_the_period_not_the_whole_mailbox(self):
+        """Le pas se déduit de l'étendue. Déduit de TOUTE la boîte alors que
+        la période n'en montre qu'un mois, il donnait l'année — soit une
+        seule barre pour les trente jours affichés."""
+        import time as horloge
+
+        maintenant = int(horloge.time())
+        for i, recul in enumerate((0, 10, 4000)):
+            meta = self.msg(200 + i, 0, "a@x.ca", "moi@x.ca")
+            meta.date = maintenant - recul * JOUR
+            self.store.upsert_messages(self.inbox, [meta])
+        apercu = build_overview(self.store, since=maintenant - 30 * JOUR)
+        self.assertEqual(apercu.bucket, "day")
+
     def test_the_details_follow_the_period_as_well(self):
         """Le classement des correspondants est sous le même en-tête que
         l'histogramme : il doit couvrir la même tranche de temps."""

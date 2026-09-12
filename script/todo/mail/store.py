@@ -901,8 +901,13 @@ class Store:
         Trois entiers rendus par une seule requête : de quoi choisir la
         granularité de l'histogramme et borner une progression sans
         rapatrier une seule ligne de message.
+
+        `since` borne comme partout ailleurs. L'étendue sert à choisir le
+        pas : mesurée sur toute la boîte alors que la période n'en montre
+        qu'un mois, elle donnait l'année — une seule barre pour les trente
+        jours affichés.
         """
-        where, params = self._filtre(folder_id, None, None)
+        where, params = self._filtre(folder_id, since, None)
         ligne = (
             self._db()
             .execute(
