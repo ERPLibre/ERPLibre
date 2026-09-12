@@ -21,8 +21,18 @@ from pathlib import Path
 
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 1
+# La v2 ajoute `auth` à chaque compte. Un fichier de v1 se relit sans rien
+# perdre — le champ manquant vaut « password », ce qu'un compte de v1 faisait
+# de toute façon.
+SCHEMA_VERSION = 2
 SECURITIES = ("ssl", "starttls", "none")
+# « login » couvre le mot de passe du compte comme le mot de passe
+# d'application : du point de vue du transport, c'est le même dialogue LOGIN.
+# Le mot « password » est écarté À DESSEIN de cette valeur : un test vérifie
+# qu'il n'apparaît NULLE PART dans `accounts.json`, garde-fou volontairement
+# grossier contre un secret qui s'y glisserait, et une valeur portant ce mot
+# le désarmerait pour de bon.
+AUTHS = ("login", "oauth")
 
 PRESETS: dict[str, dict] = {
     "gmail": {
@@ -111,6 +121,7 @@ class Account:
     cache_mode: str | None = None
     sent_folder: str = "Sent"
     enabled: bool = True
+    auth: str = "login"
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -128,10 +139,24 @@ class Account:
             raise AccountError(
                 f"{t('mail_err_unknown_cache_mode')} {self.cache_mode!r}"
             )
+        if self.auth not in AUTHS:
+            raise AccountError(
+                f"{t('mail_err_unknown_auth')} {self.auth!r}"
+                f" {t('mail_err_expected')} {AUTHS})"
+            )
 
     def cache_key_ref(self) -> str:
         """Référence de la clé de chiffrement, distincte du mot de passe."""
         return f"{self.secret_ref}/cache-key"
+
+    def refresh_token_ref(self) -> str:
+        """Référence du jeton OAuth, À CÔTÉ du mot de passe et non dessus.
+
+        Trois références distinctes pour un compte : le secret de connexion,
+        la clé du cache, le jeton. Les confondre ferait qu'un compte repassé
+        au mot de passe perdrait le sien, sans moyen de le retrouver.
+        """
+        return f"{self.secret_ref}/oauth-token"
 
     def from_header(self) -> str:
         return (
@@ -158,6 +183,7 @@ class Account:
                 cache_mode=d.get("cache_mode"),
                 sent_folder=d.get("sent_folder", "Sent"),
                 enabled=d.get("enabled", True),
+                auth=d.get("auth", "login"),
             )
         except (KeyError, TypeError) as exc:
             raise AccountError(
@@ -197,6 +223,7 @@ def account_from_preset(
     user: str | None = None,
     display_name: str = "",
     vault: str = "kdbx",
+    auth: str = "login",
 ) -> Account:
     preset = PRESETS.get(preset_key)
     if preset is None:
@@ -216,6 +243,7 @@ def account_from_preset(
         cache_mode=None,
         sent_folder=preset["sent_folder"],
         enabled=True,
+        auth=auth,
     )
 
 
@@ -232,6 +260,16 @@ def load(path: Path | None = None) -> list[Account]:
     if not isinstance(data, dict):
         raise AccountError(
             f"{path} {t('mail_err_should_contain_json_object')}"
+        )
+    # La version était ÉCRITE sans jamais être relue. Un fichier d'une
+    # version future se lisait alors champ par champ, perdant en silence ce
+    # que cette version ne connaît pas — puis se réécrivait amputé par-dessus
+    # l'original. Refuser rend le fichier réparable ; deviner le détruit.
+    version = data.get("version", SCHEMA_VERSION)
+    if isinstance(version, int) and version > SCHEMA_VERSION:
+        raise AccountError(
+            f"{path} {t('mail_err_accounts_from_the_future')}"
+            f" {version} > {SCHEMA_VERSION}"
         )
     return [Account.from_dict(d) for d in data.get("accounts", [])]
 

@@ -12254,6 +12254,21 @@ TRANSLATIONS = {
             " must be on, otherwise the page is empty."
         ),
     },
+    "mail_err_unknown_auth": {
+        "fr": "authentification inconnue :",
+        "en": "unknown authentication:",
+    },
+    "mail_err_accounts_from_the_future": {
+        "fr": (
+            "a été écrit par une version plus récente du client ; mettez-le"
+            " à jour plutôt que de perdre ce que ce fichier contient —"
+            " version"
+        ),
+        "en": (
+            "was written by a newer version of the client; update it rather"
+            " than losing what the file holds — version"
+        ),
+    },
     "mail_preset_note_outlook": {
         "fr": (
             "Microsoft n'accepte plus aucun mot de passe sur IMAP, mot de"
