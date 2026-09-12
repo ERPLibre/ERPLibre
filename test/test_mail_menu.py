@@ -219,6 +219,99 @@ class TestSyncNowSurfacesResync(unittest.TestCase):
         self.assertIn("INBOX", buf.getvalue())
 
 
+class TestStatsReadAnEncryptedCache(unittest.TestCase):
+    """L'entrée [5] ouvrait le cache SANS coffre.
+
+    En mode clair cela marche, et c'est ce qui rendait le défaut discret :
+    un compte chiffré n'a pas de clé sous la main, `open()` refuse, et
+    l'entrée n'affichait qu'une erreur là où elle promet des chiffres.
+    """
+
+    class FauxCoffre:
+        """Le minimum dont `Store` se sert : un get et un set."""
+
+        def __init__(self):
+            self.contenu = {}
+
+        def get(self, ref):
+            return self.contenu.get(ref)
+
+        def set(self, ref, valeur):
+            self.contenu[ref] = valeur
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.coffre = self.FauxCoffre()
+        self.account = account_from_preset("perso", "a@x.ca", "generic")
+        self.account.cache_mode = "encrypted"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _remplir(self):
+        from script.todo.mail.store import MessageMeta
+
+        store = Store(self.account, secrets=self.coffre, base=self.base)
+        store.open()
+        fid = store.upsert_folder("INBOX")
+        store.upsert_messages(
+            fid,
+            [
+                MessageMeta(
+                    uid=1,
+                    date=1700000000,
+                    size=10,
+                    flags="",
+                    msgid="<1@x>",
+                    frm="a@y.ca",
+                    to="moi@x.ca",
+                    subject="Devis",
+                    snippet="x",
+                )
+            ],
+        )
+        store.close()
+
+    def _lancer(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        buf = io.StringIO()
+        with patch.object(
+            menu, "_load_accounts", return_value=[self.account]
+        ), patch.object(
+            menu, "secret_store_for", return_value=self.coffre
+        ), redirect_stdout(
+            buf
+        ):
+            menu._show_stats(MagicMock(), base=self.base)
+        return buf.getvalue()
+
+    def test_the_figures_come_out_instead_of_an_error(self):
+        self._remplir()
+        sortie = self._lancer()
+        self.assertNotIn(t("mail_stats_error"), sortie)
+        self.assertIn("1", sortie)
+
+    def test_a_clear_account_still_asks_no_vault(self):
+        """Le remède ne doit pas coûter une saisie de mot de passe aux
+        comptes en clair, qui n'en ont jamais eu besoin."""
+        from unittest.mock import MagicMock, patch
+
+        import script.todo.mail.menu as menu
+
+        self.account.cache_mode = "clear"
+        with patch.object(
+            menu, "_load_accounts", return_value=[self.account]
+        ), patch.object(menu, "secret_store_for") as coffre:
+            menu._show_stats(MagicMock(), base=self.base)
+        coffre.assert_not_called()
+
+
 class TestSyncNowEmptiesTheOutbox(unittest.TestCase):
     """« Synchroniser maintenant » doit vider la file d'attente.
 

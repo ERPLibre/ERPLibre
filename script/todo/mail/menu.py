@@ -149,12 +149,16 @@ def prompt_execute_mail(todo) -> None:
             print(t("Command not found !"))
 
 
-def _show_stats(todo) -> None:
+def _show_stats(todo, *, base=None) -> None:
     """Les statistiques de chaque compte, en texte, sans ouvrir le TUI.
 
-    Lit le cache seul : aucun mot de passe n'est demandé et rien ne part sur
-    le réseau, donc la commande répond hors ligne. Un compte dont le cache
-    est illisible est signalé et n'empêche pas les autres.
+    Rien ne part sur le réseau : la commande répond hors ligne, et un compte
+    dont le cache est illisible est signalé sans empêcher les autres.
+
+    Le coffre n'est ouvert que pour les comptes dont le cache est CHIFFRÉ,
+    et une seule fois pour tous : un cache scellé ne se lit pas sans sa clé,
+    tandis qu'un parc en clair ne doit pas payer une saisie de mot de passe
+    pour afficher des chiffres qu'il rend sans elle.
     """
     from script.todo.mail import stats
     from script.todo.mail.store import Store, resolve_mode
@@ -163,9 +167,18 @@ def _show_stats(todo) -> None:
     if not comptes:
         print(t("mail_no_account"))
         return
+    coffre = None
     for compte in comptes:
+        mode = resolve_mode(compte)
+        if mode != "clear" and coffre is None:
+            coffre = secret_store_for(todo)
         print(f"\n=== {compte.name} ===")
-        magasin = Store(compte, mode=resolve_mode(compte))
+        magasin = Store(
+            compte,
+            mode=mode,
+            secrets=coffre if mode != "clear" else None,
+            base=base,
+        )
         try:
             magasin.open()
             rapport = stats.build_report(magasin)
