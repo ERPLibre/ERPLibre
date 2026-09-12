@@ -136,6 +136,67 @@ class TestSearchEncrypted(SearchCase):
         self.assertFalse(self.store.search_is_indexed())
 
 
+class TestTheIndexDoesNotOutliveWhatItIndexes(SearchCase):
+    """L'index FTS5 garde en clair le sujet, l'extrait et les adresses.
+
+    C'est le compromis assumé du mode clair. Il cesse de l'être dès que le
+    cache qui l'a rempli n'est plus censé être lisible : un compte passé en
+    chiffré, ou un cache que l'utilisateur vient de purger, laissaient
+    l'index derrière eux avec tout son contenu.
+    """
+
+    def _tables(self, store):
+        return [
+            r[0]
+            for r in store._db().execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        ]
+
+    def _indexes(self, store):
+        return [
+            r[0]
+            for r in store._db().execute("SELECT subject FROM messages_fts")
+        ]
+
+    def _rouvrir(self, mode, key=None):
+        self.store.close()
+        self.store = Store(
+            self.account,
+            mode=mode,
+            key=key,
+            base=Path(self.tmp.name),
+        )
+        self.store.open()
+        return self.store
+
+    def test_turning_on_encryption_takes_the_index_away(self):
+        """Sans cela, le mode chiffré protège les lignes de `messages` et
+        laisse à côté une table qui rend les mêmes sujets par un SELECT."""
+        self.assertIn("messages_fts", self._tables(self.store))
+        store = self._rouvrir("encrypted", new_key())
+        self.assertNotIn("messages_fts", self._tables(store))
+
+    def test_purging_the_cache_empties_the_index_too(self):
+        """« Effacer le cache » qui laisse l'index intact n'efface rien de
+        ce qui se lit."""
+        self.store.purge_all()
+        self.assertEqual(self._indexes(self.store), [])
+
+    def test_purging_one_folder_leaves_the_others_indexed(self):
+        self.store.purge_folder("INBOX")
+        restants = self._indexes(self.store)
+        self.assertEqual(restants, ["Devis archivé"])
+
+    def test_coming_back_to_clear_rebuilds_the_index(self):
+        """Retirer l'index ne doit pas rendre la recherche muette au retour
+        : elle se reconstruit depuis les lignes du cache."""
+        key = new_key()
+        self._rouvrir("encrypted", key)
+        store = self._rouvrir("clear")
+        self.assertIn("messages_fts", self._tables(store))
+
+
 class TestIndexIsRebuilt(SearchCase):
     def test_an_existing_cache_becomes_searchable_without_a_resync(self):
         """Un index vide répondrait « aucun résultat » sur une boîte pleine
