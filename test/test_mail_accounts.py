@@ -11,6 +11,7 @@ from pathlib import Path
 
 from script.todo.mail.accounts import (
     PRESETS,
+    SCHEMA_VERSION,
     Account,
     AccountError,
     account_from_preset,
@@ -118,6 +119,45 @@ class TestAccountFromPreset(unittest.TestCase):
             account_from_preset("per/so", "moi@x.ca", "generic")
 
 
+class TestAuthKind(unittest.TestCase):
+    """Un compte dit COMMENT il s'authentifie, et non plus seulement avec
+    quel secret. Sans ce champ, le transport devrait deviner d'après le
+    préréglage — et un serveur générique qui parle OAuth serait alors
+    inatteignable."""
+
+    def test_an_account_authenticates_by_password_unless_it_says_otherwise(
+        self,
+    ):
+        self.assertEqual(
+            account_from_preset("perso", "a@x.ca", "generic").auth, "login"
+        )
+
+    def test_an_unknown_authentication_is_refused_at_construction(self):
+        """Une faute de frappe dans `accounts.json` doit se voir à la
+        lecture, pas à la première connexion refusée."""
+        with self.assertRaises(AccountError):
+            account_from_preset("perso", "a@x.ca", "generic", auth="magique")
+
+    def test_the_token_reference_sits_beside_the_password_not_over_it(self):
+        """Le jeton et le mot de passe ne se remplacent pas : un compte qui
+        repasse au mot de passe ne doit pas avoir perdu le sien, et un
+        écrasement silencieux serait impossible à rattraper."""
+        compte = account_from_preset("perso", "a@x.ca", "generic")
+        self.assertEqual(compte.secret_ref, "kdbx:ERPLibre/Mail/perso")
+        self.assertEqual(
+            compte.refresh_token_ref(), "kdbx:ERPLibre/Mail/perso/oauth-token"
+        )
+
+    def test_the_three_references_of_an_account_are_all_distinct(self):
+        compte = account_from_preset("perso", "a@x.ca", "generic")
+        refs = {
+            compte.secret_ref,
+            compte.cache_key_ref(),
+            compte.refresh_token_ref(),
+        }
+        self.assertEqual(len(refs), 3)
+
+
 class TestRoundtrip(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -167,6 +207,55 @@ class TestRoundtrip(unittest.TestCase):
 
         self.assertEqual(seen, [0o600])
 
+    def test_the_authentication_kind_survives_the_round_trip(self):
+        """Perdu à l'écriture, il ramènerait le compte au mot de passe à la
+        relecture suivante — et le refus du serveur passerait pour une
+        panne de jeton."""
+        acc = account_from_preset("perso", "a@x.ca", "generic", auth="oauth")
+        save([acc], self.path)
+        self.assertEqual(load(self.path)[0].auth, "oauth")
+
+    def test_a_file_written_by_a_newer_version_is_refused_not_guessed(self):
+        """Lire un fichier d'une version future champ par champ perd en
+        silence ce qu'on ne connaît pas. Mieux vaut refuser que rendre un
+        compte amputé qui s'écrira ensuite par-dessus l'original."""
+        self.path.write_text(
+            json.dumps({"version": SCHEMA_VERSION + 1, "accounts": []})
+        )
+        with self.assertRaises(AccountError):
+            load(self.path)
+
+    def test_a_file_from_the_first_version_still_loads(self):
+        """La migration ne doit pas coûter son compte à qui en avait un."""
+        self.path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "accounts": [
+                        {
+                            "name": "perso",
+                            "email": "a@x.ca",
+                            "imap": {
+                                "host": "imap.x.ca",
+                                "port": 993,
+                                "security": "ssl",
+                                "user": "a@x.ca",
+                            },
+                            "smtp": {
+                                "host": "smtp.x.ca",
+                                "port": 587,
+                                "security": "starttls",
+                                "user": "a@x.ca",
+                            },
+                            "secret_ref": "kdbx:ERPLibre/Mail/perso",
+                        }
+                    ],
+                }
+            )
+        )
+        comptes = load(self.path)
+        self.assertEqual(comptes[0].auth, "login")
+
     def test_load_missing_file_returns_empty(self):
         self.assertEqual(load(Path(self.tmp.name) / "absent.json"), [])
 
@@ -205,7 +294,7 @@ class TestTemplate(unittest.TestCase):
     def test_writes_valid_json(self):
         write_template(self.path)
         data = json.loads(self.path.read_text())
-        self.assertEqual(data["version"], 1)
+        self.assertEqual(data["version"], SCHEMA_VERSION)
 
     def test_has_one_example_per_preset(self):
         write_template(self.path)
