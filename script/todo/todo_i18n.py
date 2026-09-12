@@ -12359,6 +12359,43 @@ TRANSLATIONS = {
             " must be on, otherwise the page is empty."
         ),
     },
+    "mail_err_token_response_unreadable": {
+        "fr": "réponse du point de jeton illisible :",
+        "en": "unreadable answer from the token endpoint:",
+    },
+    "mail_err_token_response_no_token": {
+        "fr": "le point de jeton a répondu sans jeton d'accès",
+        "en": "the token endpoint answered without an access token",
+    },
+    "mail_err_token_revoked": {
+        "fr": (
+            "autorisation révoquée : le compte doit être autorisé de"
+            " nouveau —"
+        ),
+        "en": "authorisation revoked: the account must be authorised again —",
+    },
+    "mail_err_token_endpoint_refused": {
+        "fr": "le point de jeton a refusé l'échange :",
+        "en": "the token endpoint refused the exchange:",
+    },
+    "mail_err_token_endpoint_unreachable": {
+        "fr": "point de jeton injoignable :",
+        "en": "token endpoint unreachable:",
+    },
+    "mail_err_no_refresh_token": {
+        "fr": "aucun jeton de rafraîchissement pour ce compte",
+        "en": "no refresh token for this account",
+    },
+    "mail_err_no_client_id": {
+        "fr": (
+            "aucun client_id configuré : ce dépôt n'en livre aucun, réglez"
+            " celui de votre propre enregistrement OAuth"
+        ),
+        "en": (
+            "no client_id configured: this repository ships none, set the"
+            " one from your own OAuth registration"
+        ),
+    },
     "mail_err_token_refused": {
         "fr": "jeton refusé par",
         "en": "token refused by",
