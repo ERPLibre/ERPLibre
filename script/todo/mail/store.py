@@ -213,6 +213,11 @@ def _ensure_fts(conn, mode: str) -> bool:
     que l'écran annonce plutôt que de le laisser deviner.
     """
     if mode != "clear":
+        # Un cache passé en chiffré garde sinon l'index constitué du temps
+        # où il était clair : `messages` serait scellée, et la table d'à
+        # côté rendrait les mêmes sujets et extraits par un simple SELECT.
+        # Le retour au mode clair le reconstruit depuis le cache.
+        conn.execute("DROP TABLE IF EXISTS messages_fts")
         return False
     # Les colonnes RÉELLES décident, comme pour la migration : une table
     # créée par une version antérieure aurait moins de colonnes, et
@@ -682,6 +687,10 @@ class Store:
             "SELECT id FROM folders WHERE name = ?", (name,)
         ).fetchone()
         if row:
+            # AVANT la suppression des messages : l'index se vide par les
+            # identifiants de ligne, qui n'existent plus après. Un index
+            # laissé derrière rendrait les sujets de messages effacés.
+            self._desindexer(db, row[0])
             db.execute("DELETE FROM messages WHERE folder_id = ?", (row[0],))
             db.execute(
                 "UPDATE folders SET last_uid = 0, total = 0, unseen = 0"
@@ -1016,6 +1025,30 @@ class Store:
         )
         return [delai for (delai,) in lignes if delai > 0]
 
+    def _fts_present(self, db) -> bool:
+        """Vrai si l'index plein texte existe dans CE cache.
+
+        Il n'existe qu'en mode clair, et un cache d'avant la v3 n'en a pas
+        du tout : les fonctions qui le vident doivent pouvoir se taire
+        plutôt que de lever sur une table absente.
+        """
+        return (
+            db.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'messages_fts'"
+            ).fetchone()
+            is not None
+        )
+
+    def _desindexer(self, db, folder_id: int) -> None:
+        """Retire de l'index les messages d'un dossier."""
+        if not self._fts_present(db):
+            return
+        db.execute(
+            "DELETE FROM messages_fts WHERE rowid IN"
+            " (SELECT id FROM messages WHERE folder_id = ?)",
+            (folder_id,),
+        )
+
     def _indexer(self, db, folder_id: int, metas: list) -> None:
         """Range sujet et extrait dans l'index plein texte.
 
@@ -1287,6 +1320,8 @@ class Store:
     @_locked
     def purge_all(self) -> None:
         db = self._db()
+        if self._fts_present(db):
+            db.execute("DELETE FROM messages_fts")
         db.execute("DELETE FROM messages")
         db.execute("DELETE FROM folders")
         db.commit()
