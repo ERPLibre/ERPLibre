@@ -290,7 +290,9 @@ class Session:
                 self.store.close()
 
 
-def open_session(account, secrets, base=None, connect_fn=None) -> Session:
+def open_session(
+    account, secrets, base=None, connect_fn=None, config_get=None
+) -> Session:
     """Ouvre le cache d'UN compte, puis tente le réseau — voir
     `open_sessions` pour l'ordre et sa justification, identique ici.
 
@@ -314,7 +316,14 @@ def open_session(account, secrets, base=None, connect_fn=None) -> Session:
 
     syncer, error, password = None, "", ""
     try:
-        password = secrets.get(account.secret_ref) or ""
+        # Le secret dépend du genre du compte : mot de passe, ou jeton
+        # d'accès rafraîchi au besoin. Le rafraîchissement a lieu ICI, dans
+        # le fil principal et avant toute passe — `SecretStore.set` réécrit
+        # le coffre entier, et deux fils de synchronisation qui y
+        # écriraient ensemble le corrompraient.
+        from script.todo.mail.oauth import secret_for
+
+        password = secret_for(account, secrets, config_get=config_get)
         if not password:
             raise ValueError(t("mail_no_password_stored"))
         syncer = Syncer(store, connect_fn(account, password))
@@ -324,7 +333,7 @@ def open_session(account, secrets, base=None, connect_fn=None) -> Session:
 
 
 def open_sessions(
-    accounts, secrets, base=None, connect_fn=None
+    accounts, secrets, base=None, connect_fn=None, config_get=None
 ) -> list[Session]:
     """Ouvre le cache de chaque compte actif, puis tente le réseau.
 
@@ -336,7 +345,13 @@ def open_sessions(
 
     sweep_orphan_ephemeral()
     sessions = [
-        open_session(account, secrets, base=base, connect_fn=connect_fn)
+        open_session(
+            account,
+            secrets,
+            base=base,
+            connect_fn=connect_fn,
+            config_get=config_get,
+        )
         for account in accounts
         if account.enabled
     ]

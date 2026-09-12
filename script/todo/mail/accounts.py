@@ -47,6 +47,16 @@ PRESETS: dict[str, dict] = {
         "sent_folder": "[Gmail]/Sent Mail",
         "app_password": True,
         "note_key": "mail_preset_note_gmail",
+        # Les points de service sont publics et stables ; l'IDENTITÉ du
+        # client, elle, n'est pas livrée ici — voir `oauth.settings_for`.
+        "oauth": {
+            "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            # La seule portée qui ouvre IMAP et SMTP. Google la classe
+            # « restreinte » : une application publiée qui la demande passe
+            # par sa vérification.
+            "scope": "https://mail.google.com/",
+        },
     },
     "outlook": {
         "label": "Microsoft / Outlook",
@@ -67,6 +77,22 @@ PRESETS: dict[str, dict] = {
         # passe d'application » — ici, il n'en prend plus aucun.
         "app_password": False,
         "note_key": "mail_preset_note_outlook",
+        "oauth": {
+            "auth_url": (
+                "https://login.microsoftonline.com/common/oauth2/v2.0"
+                "/authorize"
+            ),
+            "token_url": (
+                "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+            ),
+            # Trois portées : lire, envoyer, et le droit de rafraîchir sans
+            # redemander le consentement. Sans `offline_access`, il n'y a
+            # pas de jeton de rafraîchissement du tout.
+            "scope": (
+                "https://outlook.office.com/IMAP.AccessAsUser.All"
+                " https://outlook.office.com/SMTP.Send offline_access"
+            ),
+        },
     },
     "icloud": {
         "label": "Apple / iCloud",

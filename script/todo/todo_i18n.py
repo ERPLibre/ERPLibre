@@ -12382,6 +12382,10 @@ TRANSLATIONS = {
         "fr": "point de jeton injoignable :",
         "en": "token endpoint unreachable:",
     },
+    "mail_err_provider_without_oauth": {
+        "fr": "ce fournisseur n'offre pas OAuth :",
+        "en": "this provider offers no OAuth:",
+    },
     "mail_err_no_refresh_token": {
         "fr": "aucun jeton de rafraîchissement pour ce compte",
         "en": "no refresh token for this account",
