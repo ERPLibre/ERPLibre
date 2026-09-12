@@ -166,6 +166,78 @@ class TestQueuedMessagesAreSealed(OutboxCase):
         self.assertEqual(len(self.envoyes), 1)
         self.assertEqual(self.envoyes[0].get("Subject"), "Devis")
 
+    def test_a_refusal_does_not_write_the_address_in_the_clear(self):
+        """Un refus SMTP cite le destinataire qu'il refuse. Gardé tel quel,
+        il rend lisible dans la base l'adresse que la colonne d'à côté
+        scelle — le serveur écrit alors ce que le mode chiffré protège."""
+        deliver(self.hors_ligne(), self.msg)
+
+        def refuse(a, m, t):
+            raise OSError("550 5.1.1 <a@y.ca> : destinataire refusé")
+
+        self.vider(send_fn=refuse)
+        brut = (self.store.root / "cache.db").read_bytes()
+        self.assertNotIn(b"a@y.ca", brut)
+
+    def test_the_reason_stays_readable_through_the_store(self):
+        """Sceller ne doit pas revenir à perdre : la raison de l'échec est
+        ce qui permet de corriger l'envoi."""
+        deliver(self.hors_ligne(), self.msg)
+
+        def refuse(a, m, t):
+            raise OSError("550 5.1.1 <a@y.ca> : destinataire refusé")
+
+        self.vider(send_fn=refuse)
+        self.assertIn(
+            "destinataire refusé", self.store.outbox()[0]["last_error"]
+        )
+
+
+class TestAnOlderCacheStopsLeaking(OutboxCase):
+    """Le cache v4 gardait la raison d'échec en clair. La migration ne peut
+    pas la sceller — la clé ouvrirait un texte déjà écrit en clair sur le
+    disque — mais elle peut l'effacer, ce qui est le seul état honnête."""
+
+    mode = "encrypted"
+
+    def _rendre_v4(self, texte):
+        """Ramène la file à sa forme d'avant : une colonne en clair."""
+        db = self.store._db()
+        db.executescript(
+            """
+            ALTER TABLE outbox DROP COLUMN sealed_error;
+            ALTER TABLE outbox ADD COLUMN last_error TEXT;
+            """
+        )
+        db.execute("UPDATE outbox SET last_error = ?", (texte,))
+        db.commit()
+
+    def _rouvrir(self):
+        self.store.close()
+        self.store = Store(
+            self.account,
+            mode=self.mode,
+            key=self.key,
+            base=Path(self.tmp.name),
+        )
+        self.store.open()
+
+    def test_opening_it_wipes_the_clear_reason(self):
+        deliver(self.hors_ligne(), self.msg)
+        self._rendre_v4("550 <a@y.ca> : destinataire refusé")
+        self._rouvrir()
+        brut = (self.store.root / "cache.db").read_bytes()
+        self.assertNotIn(b"a@y.ca", brut)
+
+    def test_the_queued_message_survives_the_wipe(self):
+        """Effacer la raison ne doit pas emporter l'envoi qui attend."""
+        deliver(self.hors_ligne(), self.msg)
+        self._rendre_v4("550 refusé")
+        self._rouvrir()
+        self.assertEqual(
+            [e["subject"] for e in self.store.outbox()], ["Devis"]
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

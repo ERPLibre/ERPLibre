@@ -33,7 +33,7 @@ from pathlib import Path
 from script.todo.mail.crypto import build_crypto, new_key
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 EPHEMERAL_PREFIX = "erplibre-mail-"
 VALID_MODES = ("clear", "encrypted", "ephemeral")
 
@@ -80,6 +80,13 @@ CREATE INDEX IF NOT EXISTS idx_msg_date ON messages(folder_id, date DESC);
 -- v4 : file d'attente d'envoi. Le message brut est SCELLÉ comme le reste —
 -- il porte le corps entier, et un cache chiffré qui laisserait ses envois
 -- en clair protégerait tout sauf ce qu'on vient d'écrire.
+-- v5 : `sealed_error` l'est pour la même raison. Un refus SMTP cite le
+-- destinataire qu'il refuse (« 550 <adresse> … ») : gardé en clair, il rend
+-- lisible l'adresse que la colonne d'à côté protège, et c'est le serveur qui
+-- l'y écrit.
+-- Aucun commentaire DANS la parenthèse : SQLite reconstruit le `CREATE` pour
+-- un `ALTER TABLE … DROP COLUMN`, et une ligne `--` restée à l'intérieur le
+-- fait échouer sur « incomplete input ».
 CREATE TABLE IF NOT EXISTS outbox (
   id            INTEGER PRIMARY KEY,
   created_at    INTEGER NOT NULL,
@@ -88,7 +95,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   sealed_subject BLOB,
   held          INTEGER NOT NULL DEFAULT 0,
   attempts      INTEGER NOT NULL DEFAULT 0,
-  last_error    TEXT
+  sealed_error  BLOB
 );
 """
 
@@ -120,6 +127,24 @@ def _ensure_columns(conn) -> list[str]:
         " ON messages(in_reply_to_hash)"
     )
     return ajoutees
+
+
+def _ensure_outbox_columns(conn) -> None:
+    """Fait passer la file d'attente de la v4 à la v5.
+
+    La v4 gardait `last_error` en clair. La migration ne peut pas sceller ce
+    texte — il est déjà écrit en clair sur le disque, et le sceller n'en
+    effacerait pas les traces — mais elle peut cesser de le garder. Effacer
+    est le seul état honnête : la raison d'un échec vaut moins que l'adresse
+    qu'elle expose.
+    """
+    presentes = {
+        row["name"] for row in conn.execute("PRAGMA table_info(outbox)")
+    }
+    if "sealed_error" not in presentes:
+        conn.execute("ALTER TABLE outbox ADD COLUMN sealed_error BLOB")
+    if "last_error" in presentes:
+        conn.execute("UPDATE outbox SET last_error = NULL")
 
 
 class StoreError(Exception):
@@ -388,6 +413,7 @@ class Store:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.executescript(SCHEMA)
             _ensure_columns(conn)
+            _ensure_outbox_columns(conn)
             neuf = _ensure_fts(conn, self.mode)
             # REPLACE, pas IGNORE : un cache d'avant la v2 porte encore
             # « 1 », et l'ignorer laisserait la version mentir sur une base
@@ -745,7 +771,7 @@ class Store:
                 "subject": self._open(r["sealed_subject"]),
                 "held": bool(r["held"]),
                 "attempts": r["attempts"],
-                "last_error": r["last_error"] or "",
+                "last_error": self._open(r["sealed_error"]),
             }
             for r in self._db().execute(
                 "SELECT * FROM outbox ORDER BY created_at, id"
@@ -783,16 +809,18 @@ class Store:
 
     @_locked
     def record_send_failure(self, queue_id: int, message: str) -> None:
-        """Compte l'échec et garde SON texte.
+        """Compte l'échec et garde SON texte, scellé.
 
         Un compteur seul dirait qu'on a essayé cinq fois sans jamais dire
-        pourquoi ça échoue, ce qui n'aide personne à corriger.
+        pourquoi ça échoue, ce qui n'aide personne à corriger. Le texte vient
+        du serveur et cite couramment le destinataire : il est scellé comme
+        les autres colonnes de la ligne.
         """
         db = self._db()
         db.execute(
-            "UPDATE outbox SET attempts = attempts + 1, last_error = ?"
+            "UPDATE outbox SET attempts = attempts + 1, sealed_error = ?"
             " WHERE id = ?",
-            (message[:500], queue_id),
+            (self._seal(message[:500]), queue_id),
         )
         db.commit()
 
