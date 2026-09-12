@@ -49,6 +49,10 @@ CHEMINS = {
 # suffit et ne dépend pas du répertoire d'où le menu a été lancé.
 SIGNATURE = "assistant/agents/hooks/evenement.py"
 
+# Le hook vu depuis la racine du dépôt. Claude Code lance un hook avec le
+# dépôt pour répertoire courant, donc ce chemin y suffit.
+RELATIF = "script/todo/assistant/agents/hooks/evenement.py"
+
 # Le délai laissé au hook, en secondes. Il écrit une ligne : au-delà d'une
 # seconde, quelque chose est cassé et il vaut mieux que Claude Code passe
 # outre que d'attendre.
@@ -62,26 +66,37 @@ def _script() -> str:
     )
 
 
-def commande(*, python=None, script=None) -> str:
-    """La ligne que Claude Code lancera.
+def commande(endroit=GLOBAL, *, python=None, script=None) -> str:
+    """La ligne que Claude Code lancera, nommée selon l'endroit qui la porte.
 
-    L'interpréteur est nommé en ENTIER. Compter sur « python3 » du PATH ferait
-    dépendre la télémétrie du shell qui a lancé la session, et le hook tombe
-    silencieusement quand ce nom ne résout pas.
+    Dans `~/.claude/settings.json`, tout est ABSOLU. Ce fichier ne vaut que
+    pour cette machine, et l'interpréteur nommé en entier ne dépend pas du
+    PATH du shell qui a lancé la session — un « python3 » qui ne résout pas
+    fait tomber la télémétrie en silence.
+
+    Dans le `.claude/settings.json` du dépôt, RIEN ne l'est, et pour deux
+    raisons qui vont dans le même sens. Ce fichier est suivi par git : un
+    chemin absolu y inscrit le nom du compte qui a posé les hooks, ce que les
+    conventions du dépôt interdisent partout hors de `private/`. Et il désigne
+    un répertoire qu'aucun autre clone n'a, ce qui vide de son sens l'entrée
+    « pour tout clone ». Le hook n'importe rien du dépôt et ne demande que la
+    bibliothèque standard, donc `python3` et un chemin relatif suffisent.
     """
     import sys
 
+    if endroit == DEPOT:
+        return f"{python or 'python3'} {script or RELATIF}"
     return f"{python or sys.executable} {script or _script()}"
 
 
-def bloc(*, python=None, script=None) -> dict:
+def bloc(endroit=GLOBAL, *, python=None, script=None) -> dict:
     """Le bloc `hooks` que la pose ajoute, un matcher par événement.
 
     `matcher` vaut « * » sur les événements d'outil : ce qui est compté, c'est
     l'appel de N'IMPORTE QUEL outil, et une liste d'outils à jour serait à
     refaire à chaque version de Claude Code.
     """
-    ligne = commande(python=python, script=script)
+    ligne = commande(endroit, python=python, script=script)
     entree = {
         "hooks": [{"type": "command", "command": ligne, "timeout": DELAI}]
     }
@@ -212,7 +227,7 @@ def poser(endroit, *, racine_depot=None, charger=None, ecrire=None, **kw):
     charger = charger or _charger
     ecrire = ecrire or _ecrire
     chemin = chemin_de(endroit, racine_depot=racine_depot)
-    ecrire(chemin, fusionner(charger(chemin), bloc(**kw)))
+    ecrire(chemin, fusionner(charger(chemin), bloc(endroit, **kw)))
     return chemin
 
 

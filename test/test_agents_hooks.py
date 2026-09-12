@@ -200,10 +200,50 @@ class TestLaFusionDesReglages(unittest.TestCase):
         """« python3 » du PATH ferait dépendre la télémétrie du shell."""
         self.assertTrue(pose.commande().startswith("/"))
 
-    def test_the_active_events_are_reported(self):
-        pose_faite = pose.fusionner({}, pose.bloc())
-        self.assertEqual(set(pose.actifs(pose_faite)), set(journal.EVENEMENTS))
-        self.assertEqual(pose.actifs({}), ())
+
+class TestCeQuiEntreDansUnFichierSuivi(unittest.TestCase):
+    """Le `.claude/settings.json` du dépôt est SUIVI par git.
+
+    Deux règles s'y appliquent que le fichier du compte ignore : rien
+    d'identifiant n'entre dans un fichier que le dépôt emporte, et ce qui y
+    est écrit doit valoir pour TOUT clone. Un chemin absolu manque les deux à
+    la fois — il porte le nom du compte qui a posé les hooks, et il désigne un
+    répertoire qu'aucun autre clone n'a.
+    """
+
+    def _ligne(self, endroit):
+        (entree,) = pose.bloc(endroit)["SessionEnd"]
+        return entree["hooks"][0]["command"]
+
+    def test_the_repository_command_carries_no_absolute_path(self):
+        ligne = self._ligne(pose.DEPOT)
+        for mot in ligne.split():
+            self.assertFalse(mot.startswith("/"), ligne)
+
+    def test_the_repository_command_carries_no_home(self):
+        """Un chemin de compte est exactement ce que les conventions
+        refusent."""
+        self.assertNotIn(os.path.expanduser("~"), self._ligne(pose.DEPOT))
+
+    def test_the_global_command_stays_absolute(self):
+        """Le fichier du compte ne suit pas le dépôt et ne vaut que pour cette
+        machine : l'interpréteur y reste nommé en entier."""
+        for mot in self._ligne(pose.GLOBAL).split():
+            self.assertTrue(mot.startswith("/"))
+
+    def test_both_places_stay_recognisable(self):
+        """La signature reconnaît NOS entrées : sans elle, le retrait ne
+        saurait plus lesquelles enlever, aux deux endroits."""
+        for endroit in (pose.GLOBAL, pose.DEPOT):
+            pose_faite = pose.fusionner({}, pose.bloc(endroit))
+            self.assertEqual(
+                set(pose.actifs(pose_faite)), set(journal.EVENEMENTS)
+            )
+
+    def test_the_repository_hook_really_runs(self):
+        """Le chemin relatif désigne bien le hook, depuis la racine."""
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.assertTrue(os.path.isfile(os.path.join(racine, pose.RELATIF)))
 
 
 class TestLesDeuxEndroits(unittest.TestCase):
