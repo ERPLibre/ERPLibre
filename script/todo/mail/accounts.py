@@ -51,7 +51,11 @@ PRESETS: dict[str, dict] = {
             "security": "starttls",
         },
         "sent_folder": "Sent Items",
-        "app_password": True,
+        # Microsoft a retiré l'authentification simple d'IMAP : un mot de
+        # passe d'application est de l'authentification simple, donc il est
+        # refusé lui aussi. Le drapeau dit « ce fournisseur prend un mot de
+        # passe d'application » — ici, il n'en prend plus aucun.
+        "app_password": False,
         "note_key": "mail_preset_note_outlook",
     },
     "icloud": {

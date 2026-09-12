@@ -433,7 +433,10 @@ def _add_account(todo) -> None:
     attendu_app = bool(PRESETS[preset_key]["app_password"])
     if attendu_app:
         print(t("mail_app_password_note"))
-        print(f"  {t(PRESETS[preset_key]['note_key'])}")
+    # La note, elle, se dit TOUJOURS : c'est le seul endroit où un
+    # fournisseur explique ce qu'il attend, et celui qui n'accepte plus de
+    # mot de passe du tout est justement celui qu'il faut prévenir.
+    print(f"  {t(PRESETS[preset_key]['note_key'])}")
 
     password = getpass.getpass(
         t("mail_ask_app_password" if attendu_app else "mail_ask_password")
@@ -539,9 +542,11 @@ def retry_password(
     # fois qu'on le redemande.
     preset = PRESETS.get(account.preset, {})
     attendu_app = bool(preset.get("app_password"))
-    if attendu_app and _looks_like_auth_failure(cause):
-        print(t("mail_app_password_note"))
-        print(f"  {t(preset['note_key'])}")
+    if _looks_like_auth_failure(cause):
+        if attendu_app:
+            print(t("mail_app_password_note"))
+        if preset.get("note_key"):
+            print(f"  {t(preset['note_key'])}")
     # L'invite elle-même nomme ce qu'on attend. « Mot de passe : » invitait
     # à saisir CELUI DU COMPTE, que ces fournisseurs refusent — la note
     # au-dessus se lit une fois, l'invite se relit à chaque tentative.

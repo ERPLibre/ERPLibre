@@ -28,20 +28,26 @@ Install them with:
 .venv.erplibre/bin/pip install -r requirement/erplibre_require-ments.txt
 ```
 
-### App passwords for Gmail, Outlook and iCloud
+### App passwords for Gmail and iCloud, and why Microsoft is out
 
-Phase 1 speaks plain IMAP/SMTP login only — no OAuth yet (that is phase 2).
-Gmail, Outlook and iCloud have all closed that door to the account's real
-password, so each of these three presets requires an **app password**
-instead:
+The client speaks plain IMAP/SMTP login only — no OAuth yet (that is the
+next phase). Gmail and iCloud have closed that door to the account's real
+password, so both presets require an **app password** instead:
 
 | Provider | Where to generate it |
 |---|---|
 | Gmail | [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) — 16 characters, spaces are accepted. Two-step verification must be on, otherwise the page is empty. |
-| Outlook / Microsoft 365 | [account.microsoft.com/security](https://account.microsoft.com/security) — Microsoft is closing basic authentication on consumer accounts: without an app password this needs OAuth (phase 2, not implemented). |
 | iCloud | [account.apple.com](https://account.apple.com) — under "Sign-In and Security". Two-factor authentication must be on. |
 
-Use that generated password when account setup asks for one — never the
+**A Microsoft account cannot be used yet.** Microsoft removed basic
+authentication from IMAP — for Microsoft 365 tenants first, then for
+Outlook.com — and an app password is basic authentication, so it is refused
+too. Nobody can turn it back on. Such an account needs OAuth, which this
+client does not do yet; the Microsoft preset is kept for the day it does,
+and until then it fails at the connection test. The client says so where it
+asks for the password, rather than letting the refusal look like a typo.
+
+Use the generated password when account setup asks for one — never the
 account's normal password. The "Standard server" preset (generic IMAP/SMTP)
 does not need one. The client prints these same notes itself — when it asks
 for the password, and again when a refusal sends it back to asking. They
@@ -264,9 +270,10 @@ language the CLI runs in.
 `Mail > [2] Accounts > [5] Test an account connection` prints the server's
 exact error and then asks for the password again — up to 3 attempts. The
 password in the vault is only overwritten *after* a successful connection,
-so a typo never destroys a working password. If the account is Gmail,
-Outlook or iCloud, check first that you used an app password (see
-"Prerequisites" above), not the account's normal one. Opening the TUI
+so a typo never destroys a working password. If the account is Gmail or
+iCloud, check first that you used an app password (see "Prerequisites"
+above), not the account's normal one; if it is a Microsoft account, no
+password will do — see the same section. Opening the TUI
 itself does not retry automatically: an account with a rejected password
 gets a ⚠ marker; if it had synced successfully before, its already-cached
 folders stay visible and readable, they just stop refreshing — only a
@@ -505,7 +512,8 @@ Two figures are honest about what they cannot know:
 
 ## What the client does not do yet
 
-- **No OAuth** — Gmail, Outlook and iCloud need an app password (see above).
+- **No OAuth** — Gmail and iCloud need an app password, and a Microsoft
+  account cannot be used at all (see above).
 - **No server-side search** — `/` filters only what's already synced to the
   local cache.
 - **No deleting or moving a message** — `s` and `u` change the seen flag,
