@@ -42,6 +42,15 @@ _FLAGS_RE = re.compile(rb"FLAGS\s+\(([^)]*)\)")
 _LIST_RE = re.compile(rb'^\(([^)]*)\)\s+("[^"]*"|NIL)\s+(.*)$')
 
 
+class ImapAuthError(Exception):
+    """Le serveur a REFUSÉ le secret. Distinct d'une panne réseau.
+
+    Un refus se répare en rafraîchissant le jeton ou en redemandant le mot
+    de passe ; un serveur muet, non. Les confondre ferait rafraîchir un
+    jeton valide à chaque coupure de réseau, et boucler.
+    """
+
+
 class ImapError(Exception):
     """Le serveur a refusé, ou a répondu quelque chose d'inattendu."""
 
@@ -339,8 +348,24 @@ class ImaplibTransport:
             pass
 
 
-def connect(account, password: str) -> ImaplibTransport:
-    """Ouvre une connexion TLS et se connecte. Lève `ImapError` sur refus."""
+def xoauth2_chain(user: str, token: str) -> bytes:
+    """La chaîne SASL de XOAUTH2, telle que les serveurs l'attendent.
+
+    Le format est imposé : `user=<compte>^Aauth=Bearer <jeton>^A^A`, où
+    `^A` est l'octet 0x01. Une seule fonction pour IMAP et SMTP — deux
+    copies finiraient par diverger d'un octet, et le refus qui s'ensuit ne
+    dit jamais lequel.
+    """
+    return f"user={user}\x01auth=Bearer {token}\x01\x01".encode()
+
+
+def connect(account, secret: str) -> ImaplibTransport:
+    """Ouvre une connexion TLS et s'authentifie. Lève `ImapError` sur refus.
+
+    `secret` est un mot de passe ou un jeton d'accès selon `account.auth` :
+    l'appelant n'a pas à choisir de fonction, il passe le secret que le
+    coffre lui a rendu.
+    """
     import imaplib
 
     conf = account.imap
@@ -351,7 +376,18 @@ def connect(account, password: str) -> ImaplibTransport:
             client = imaplib.IMAP4(conf.host, conf.port, timeout=30)
             if conf.security == "starttls":
                 client.starttls()
-        client.login(conf.user, password)
+        if getattr(account, "auth", "login") == "oauth":
+            chaine = xoauth2_chain(conf.user, secret)
+            try:
+                client.authenticate("XOAUTH2", lambda _: chaine)
+            except imaplib.IMAP4.error as exc:
+                # Le serveur a parlé, et c'était un refus. Le distinguer
+                # ici, pendant qu'on sait encore que la socket était bonne.
+                raise ImapAuthError(
+                    f"{t('mail_err_token_refused')} {conf.host} : {exc}"
+                ) from exc
+        else:
+            client.login(conf.user, secret)
     except UnicodeEncodeError as exc:
         # `imaplib` encode la commande LOGIN en ASCII : un mot de passe
         # accentué n'atteint même pas le serveur. Ce cas sort AVANT le
@@ -359,6 +395,11 @@ def connect(account, password: str) -> ImaplibTransport:
         # n'a rien refusé, et l'ancien message « ordinal not in range(128) »
         # accusait le serveur d'un refus qu'il n'a jamais prononcé.
         raise ImapError(t("mail_err_password_not_ascii")) from exc
+    except ImapAuthError:
+        # Déjà qualifié : le rattrapage général en ferait une panne de
+        # connexion, et l'appelant cesserait de savoir qu'il peut
+        # rafraîchir son jeton.
+        raise
     except Exception as exc:
         # Toute panne réseau ou d'authentification devient une seule erreur
         # de haut niveau, pour un message utile à l'utilisateur.

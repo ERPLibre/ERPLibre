@@ -26,6 +26,14 @@ from script.todo.todo_i18n import t
 MAX_QUOTE_LINES = 200
 
 
+class SmtpAuthError(Exception):
+    """Le serveur a REFUSÉ le secret. Distinct d'une panne réseau.
+
+    Même raison qu'`ImapAuthError` : un refus se rattrape en rafraîchissant
+    le jeton, une panne réseau se réessaie plus tard.
+    """
+
+
 class SmtpError(Exception):
     """Message impossible à construire, ou serveur qui refuse."""
 
@@ -239,7 +247,8 @@ class SmtplibTransport:
             pass
 
 
-def connect(account, password: str) -> SmtplibTransport:
+def connect(account, secret: str) -> SmtplibTransport:
+    """`secret` est un mot de passe ou un jeton, selon `account.auth`."""
     import smtplib
 
     conf = account.smtp
@@ -250,7 +259,26 @@ def connect(account, password: str) -> SmtplibTransport:
             client = smtplib.SMTP(conf.host, conf.port, timeout=30)
             if conf.security == "starttls":
                 client.starttls()
-        client.login(conf.user, password)
+        if getattr(account, "auth", "login") == "oauth":
+            import base64
+
+            from script.todo.mail.imap_transport import xoauth2_chain
+
+            # `ehlo()` explicite : `login()` le fait pour nous, `docmd` non.
+            # Sans lui, le serveur n'a pas encore annoncé ses mécanismes et
+            # refuse la commande sans dire pourquoi.
+            client.ehlo()
+            jeton = base64.b64encode(xoauth2_chain(conf.user, secret)).decode()
+            code, reponse = client.docmd("AUTH", f"XOAUTH2 {jeton}")
+            if code != 235:
+                raise SmtpAuthError(
+                    f"{t('mail_err_token_refused')} {conf.host} :"
+                    f" {code} {reponse!r}"
+                )
+        else:
+            client.login(conf.user, secret)
+    except SmtpAuthError:
+        raise
     except Exception as exc:
         # Toute panne réseau ou d'authentification devient une seule erreur
         # de haut niveau, pour un message utile à l'utilisateur.
