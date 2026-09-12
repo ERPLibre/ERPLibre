@@ -323,8 +323,7 @@ class TestErrors(SyncCase):
 class TestSyncOne(SyncCase):
     """`sync_one` : la sync ciblée qu'utilise `deliver()` (`tui.py`) juste
     après un APPEND réussi dans Envoyés, pour que le message parti
-    apparaisse sans attendre la prochaine passe complète (voir
-    `docs/superpowers/specs/2026-08-02-email-tui-design.md`, ligne 308)."""
+    apparaisse sans attendre la prochaine passe complète."""
 
     def test_syncs_only_the_named_folder(self):
         self.imap.add("INBOX", 1)
