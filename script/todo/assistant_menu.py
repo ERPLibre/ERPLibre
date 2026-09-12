@@ -1352,6 +1352,14 @@ class AssistantMenuMixin:
             print(f"{t('Where the telemetry hooks are installed')} :")
             for endroit in (pose.GLOBAL, pose.DEPOT):
                 chemin, actifs = etat[endroit]
+                if actifs is None:
+                    # Un fichier illisible n'est pas un fichier sans hooks :
+                    # l'annoncer « aucun posé » inviterait à poser par-dessus.
+                    print(
+                        f"  {MARQUE['unknown']} {chemin}"
+                        f"  ({t('unreadable, nothing will be written')})"
+                    )
+                    continue
                 marque = MARQUE["ok"] if actifs else MARQUE["no"]
                 compte = (
                     f"{len(actifs)}/{len(journal.EVENEMENTS)}"

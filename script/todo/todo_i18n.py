@@ -12705,6 +12705,10 @@ TRANSLATIONS = {
         "fr": "Aucune variable masquée de ce nom.",
         "en": "No masked variable by that name.",
     },
+    "unreadable, nothing will be written": {
+        "fr": "illisible, rien ne sera écrit",
+        "en": "unreadable, nothing will be written",
+    },
     "ENVIRONMENT": {
         "fr": "ENVIRONNEMENT",
         "en": "ENVIRONMENT",

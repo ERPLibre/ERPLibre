@@ -109,20 +109,37 @@ def bloc(endroit=GLOBAL, *, python=None, script=None) -> dict:
     return hooks
 
 
-def _charger(chemin) -> dict:
+def _charger(chemin) -> dict | None:
+    """Les réglages d'un fichier, ou None quand il y a là quelque chose
+    d'illisible.
+
+    None et `{}` disent le contraire l'un de l'autre : le second est « il n'y
+    a pas de fichier », le premier « il y en a un, et le décodage le
+    refuse ». Les confondre fait écrire un fichier NEUF par-dessus des
+    réglages existants — une virgule en trop suffit alors à effacer les hooks,
+    les permissions et les variables de quelqu'un d'autre.
+    """
     try:
         with open(chemin, encoding="utf-8") as fh:
             donnees = json.load(fh)
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return {}
-    return donnees if isinstance(donnees, dict) else {}
+    except (OSError, ValueError):
+        return None
+    return donnees if isinstance(donnees, dict) else None
 
 
 def _ecrire(chemin, donnees) -> None:
     """Écriture atomique : un temporaire du même répertoire, puis `os.replace`.
 
     Un fichier de réglages à moitié écrit empêche Claude Code de démarrer.
+
+    Le chemin est d'abord résolu. Un `settings.json` est volontiers un lien
+    vers un dépôt de fichiers de configuration, et `os.replace` sur le LIEN le
+    remplacerait par un fichier ordinaire : le fichier se détacherait de son
+    dépôt sans que rien ne le dise.
     """
+    chemin = os.path.realpath(chemin)
     dossier = os.path.dirname(chemin) or "."
     os.makedirs(dossier, exist_ok=True)
     fd, provisoire = tempfile.mkstemp(dir=dossier, suffix=".json")
@@ -212,14 +229,33 @@ def etat(*, racine_depot=None, charger=None) -> dict:
     """{endroit: (chemin, événements actifs)} — ce que l'écran affiche.
 
     Les deux endroits sont TOUJOURS rendus, même absents : c'est ce qui permet
-    de dire « posé ici, pas là » plutôt que de taire celui qui manque.
+    de dire « posé ici, pas là » plutôt que de taire celui qui manque. Les
+    événements valent None quand le fichier est là sans être relisible, ce qui
+    n'est pas « aucun hook posé » : on ne sait pas.
     """
     charger = charger or _charger
     rapport = {}
     for endroit in (GLOBAL, DEPOT):
         chemin = chemin_de(endroit, racine_depot=racine_depot)
-        rapport[endroit] = (chemin, actifs(charger(chemin)))
+        reglages = charger(chemin)
+        rapport[endroit] = (
+            chemin,
+            None if reglages is None else actifs(reglages),
+        )
     return rapport
+
+
+def _relire(chemin, charger) -> dict:
+    """Les réglages à modifier, ou une erreur qui refuse d'écrire à l'aveugle.
+
+    C'est le seul endroit qui transforme « illisible » en refus. Écrire
+    par-dessus un fichier qu'on n'a pas su relire remplacerait tout ce qu'il
+    portait par nos seules entrées.
+    """
+    reglages = charger(chemin)
+    if reglages is None:
+        raise OSError(f"réglages illisibles, rien n'est écrit : {chemin}")
+    return reglages
 
 
 def poser(endroit, *, racine_depot=None, charger=None, ecrire=None, **kw):
@@ -227,7 +263,7 @@ def poser(endroit, *, racine_depot=None, charger=None, ecrire=None, **kw):
     charger = charger or _charger
     ecrire = ecrire or _ecrire
     chemin = chemin_de(endroit, racine_depot=racine_depot)
-    ecrire(chemin, fusionner(charger(chemin), bloc(endroit, **kw)))
+    ecrire(chemin, fusionner(_relire(chemin, charger), bloc(endroit, **kw)))
     return chemin
 
 
@@ -236,5 +272,5 @@ def retirer(endroit, *, racine_depot=None, charger=None, ecrire=None):
     charger = charger or _charger
     ecrire = ecrire or _ecrire
     chemin = chemin_de(endroit, racine_depot=racine_depot)
-    ecrire(chemin, retirer_de(charger(chemin)))
+    ecrire(chemin, retirer_de(_relire(chemin, charger)))
     return chemin

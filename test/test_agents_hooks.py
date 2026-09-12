@@ -246,6 +246,86 @@ class TestCeQuiEntreDansUnFichierSuivi(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(racine, pose.RELATIF)))
 
 
+class TestUnFichierQuOnNaPasSuRelire(unittest.TestCase):
+    """Écrire par-dessus des réglages illisibles les remplacerait tous.
+
+    Une virgule en trop dans un `settings.json` suffit à le rendre illisible,
+    et le fichier porte volontiers des permissions, des variables et les hooks
+    de quelqu'un d'autre. « Absent » et « illisible » se ressemblent à la
+    lecture et disent le contraire : le premier se complète, le second se
+    refuse.
+    """
+
+    @staticmethod
+    def _illisible(chemin):
+        return None
+
+    def test_installing_over_unreadable_settings_writes_nothing(self):
+        ecrits = {}
+        with self.assertRaises(OSError):
+            pose.poser(
+                pose.GLOBAL,
+                charger=self._illisible,
+                ecrire=lambda c, d: ecrits.__setitem__(c, d),
+            )
+        self.assertEqual(ecrits, {})
+
+    def test_removing_from_unreadable_settings_writes_nothing(self):
+        ecrits = {}
+        with self.assertRaises(OSError):
+            pose.retirer(
+                pose.GLOBAL,
+                charger=self._illisible,
+                ecrire=lambda c, d: ecrits.__setitem__(c, d),
+            )
+        self.assertEqual(ecrits, {})
+
+    def test_the_screen_is_told_rather_than_shown_zero(self):
+        """None et « aucun hook posé » ne se confondent pas à l'écran."""
+        etat = pose.etat(racine_depot="/un/depot", charger=self._illisible)
+        for _, (_, actifs) in etat.items():
+            self.assertIsNone(actifs)
+
+    def test_a_missing_file_is_still_installable(self):
+        """Refuser l'illisible ne doit pas refuser l'absent : la première pose
+        se fait sur un fichier qui n'existe pas."""
+        ecrits = {}
+        chemin = pose.poser(
+            pose.GLOBAL,
+            charger=lambda c: {},
+            ecrire=lambda c, d: ecrits.__setitem__(c, d),
+        )
+        self.assertIn("hooks", ecrits[chemin])
+
+    def test_a_real_broken_file_reads_as_unreadable(self):
+        """Le vrai lecteur, sur un vrai fichier : c'est lui qui tranche."""
+        with tempfile.TemporaryDirectory() as dossier:
+            casse = os.path.join(dossier, "settings.json")
+            with open(casse, "w", encoding="utf-8") as fh:
+                fh.write('{"hooks": {},}\n')
+            self.assertIsNone(pose._charger(casse))
+            absent = os.path.join(dossier, "rien.json")
+            self.assertEqual(pose._charger(absent), {})
+
+    def test_a_symlink_keeps_being_a_symlink(self):
+        """Un `settings.json` est volontiers un lien vers un dépôt de
+        configuration : `os.replace` sur le lien l'en détacherait en
+        silence."""
+        with tempfile.TemporaryDirectory() as dossier:
+            vrai = os.path.join(dossier, "vrai.json")
+            with open(vrai, "w", encoding="utf-8") as fh:
+                fh.write("{}\n")
+            lien = os.path.join(dossier, "settings.json")
+            os.symlink(vrai, lien)
+            pose._ecrire(lien, {"hooks": {}})
+            self.assertTrue(os.path.islink(lien))
+
+    def test_the_active_events_are_reported(self):
+        pose_faite = pose.fusionner({}, pose.bloc())
+        self.assertEqual(set(pose.actifs(pose_faite)), set(journal.EVENEMENTS))
+        self.assertEqual(pose.actifs({}), ())
+
+
 class TestLesDeuxEndroits(unittest.TestCase):
     def test_both_places_are_always_reported(self):
         """Taire celui qui manque empêcherait de dire « posé ici, pas là »."""
