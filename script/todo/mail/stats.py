@@ -107,7 +107,10 @@ def build_report(
 ) -> Report:
     """Assemble le rapport d'UN compte à partir de son cache."""
     volume = store.stats_volume(bucket, folder_id, since, until)
-    dossiers = store.stats_folders()
+    # La même borne que le volume : le total et les non-lus s'impriment sur
+    # une seule ligne, et deux bornes différentes y mettraient une part de
+    # non-lus qui ne se rapporte à rien.
+    dossiers = store.stats_folders(since)
     delais = store.stats_reply_delays(folder_id, since, until)
     if folder_id is not None:
         # `stats_folders` couvre TOUS les dossiers : filtrer ici évite une
