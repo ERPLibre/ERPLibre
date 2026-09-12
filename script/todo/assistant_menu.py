@@ -1473,7 +1473,11 @@ class AssistantMenuMixin:
         else:
             self._claude_contexte_bloc(ctx.lire(chemin), ctx)
 
-        liste = env.variables(session.pid) if session.pid else None
+        # `live` et non `pid` : une session reprenable garde le pid du
+        # processus qui l'a écrite, et un pid se réemploie. Lire
+        # /proc/<pid>/environ sur une session éteinte montre l'environnement
+        # d'un AUTRE processus, sous le nom de celle-ci.
+        liste = env.variables(session.pid) if session.live else None
         self._claude_environ_bloc(session, liste, env)
         if liste:
             self._claude_devoiler(session, liste, env)
@@ -1485,8 +1489,15 @@ class AssistantMenuMixin:
         toute variable neuve et utile. Une à la fois, et jamais le bloc : un
         écran qui démasque tout d'un coup rend copiable ce que le noyau
         réservait au propriétaire du processus.
+
+        Les SECRETS n'y entrent pas. Le paquet tient deux paliers, et ils ne
+        disent pas la même chose : « masqué » veut dire « ce nom n'est pas
+        déclaré », et se lève à la demande ; « secret » veut dire « la
+        longueur même est un renseignement », et ne se lève pas. Les
+        confondre laisse taper le nom d'une clé d'API pour la voir en clair,
+        ce qui rend inutile tout le reste du module.
         """
-        masquees = [v.nom for v in liste if not v.visible]
+        masquees = [v.nom for v in liste if not v.visible and not v.secret]
         if not masquees:
             return
         try:
@@ -1500,6 +1511,11 @@ class AssistantMenuMixin:
             print()
             return
         if not nom:
+            return
+        if nom in {v.nom for v in liste if v.secret}:
+            # Le dire plutôt que de répondre « aucune de ce nom » : la
+            # variable EXISTE, et c'est le refus qui est l'information.
+            print(f"{MARQUE['no']} {t('A secret is never unmasked here.')}")
             return
         if nom not in masquees:
             print(

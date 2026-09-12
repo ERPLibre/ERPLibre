@@ -12705,6 +12705,10 @@ TRANSLATIONS = {
         "fr": "Aucune variable masquée de ce nom.",
         "en": "No masked variable by that name.",
     },
+    "A secret is never unmasked here.": {
+        "fr": "Un secret ne se démasque jamais ici.",
+        "en": "A secret is never unmasked here.",
+    },
     "unreadable, nothing will be written": {
         "fr": "illisible, rien ne sera écrit",
         "en": "unreadable, nothing will be written",

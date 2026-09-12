@@ -721,5 +721,123 @@ class LaVueDUneSession(unittest.TestCase):
         self.assertEqual(lues - set(vue), set())
 
 
+class LeDemasquageNeLevePasUnSecret(unittest.TestCase):
+    """Le paquet tient DEUX paliers, et ils ne disent pas la même chose.
+
+    « Masqué » veut dire « ce nom n'est pas déclaré », et se lève à la
+    demande — c'est la soupape d'une liste blanche, qui masque par
+    construction toute variable neuve et utile. « Secret » veut dire « la
+    longueur même est un renseignement », et ne se lève pas. Les confondre
+    laisse taper le nom d'une clé d'API pour la voir en clair, ce qui rend
+    inutile tout le reste du module.
+
+    Le témoin est inventé, et sa présence dans l'entrée est ce qui prouve
+    qu'il ne ressort pas.
+    """
+
+    TEMOIN = "valeur-de-secret-qui-ne-doit-pas-sortir"
+
+    def _demander(self, nom):
+        """Taper `nom` à l'invite de démasquage. Rend (sorti, dévoilés)."""
+        from script.todo.assistant.agents import environnement as env
+        from script.todo.todo import TODO
+
+        liste = [
+            env.juger("ANTHROPIC_API_KEY", self.TEMOIN),
+            env.juger("UNE_INCONNUE", self.TEMOIN),
+        ]
+        session = collections.namedtuple("S", "pid")(1234)
+        demandes = []
+
+        def faux_devoile(pid, quoi):
+            demandes.append(quoi)
+            return self.TEMOIN
+
+        sorti = []
+        with patch("click.prompt", return_value=nom), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(
+                " ".join(str(x) for x in a)
+            ),
+        ), patch.object(env, "devoile", faux_devoile):
+            TODO._claude_devoiler(TODO(), session, liste, env)
+        return "\n".join(sorti), demandes
+
+    def test_a_secret_is_refused_and_never_read(self):
+        sorti, demandes = self._demander("ANTHROPIC_API_KEY")
+        self.assertEqual(demandes, [])
+        self.assertNotIn(self.TEMOIN, sorti)
+
+    def test_the_refusal_says_why(self):
+        """« Aucune variable de ce nom » serait faux : elle existe."""
+        sorti, _ = self._demander("ANTHROPIC_API_KEY")
+        self.assertIn(t("A secret is never unmasked here."), sorti)
+
+    def test_an_ordinary_masked_variable_still_lifts(self):
+        """Refuser trop retirerait la soupape, qui a sa raison d'être."""
+        sorti, demandes = self._demander("UNE_INCONNUE")
+        self.assertEqual(demandes, ["UNE_INCONNUE"])
+        self.assertIn(self.TEMOIN, sorti)
+
+    def test_nothing_but_secrets_opens_no_prompt(self):
+        """Un secret n'est pas un candidat au démasquage.
+
+        Proposer « démasquer une variable » sur une liste qui n'en compte que
+        d'inaccessibles invite à taper un nom pour se faire refuser : la
+        soupape ne s'ouvre que s'il y a quelque chose à lever.
+        """
+        from script.todo.assistant.agents import environnement as env
+        from script.todo.todo import TODO
+
+        liste = [env.juger("ANTHROPIC_API_KEY", self.TEMOIN)]
+        session = collections.namedtuple("S", "pid")(1234)
+        with patch("click.prompt") as invite, patch("builtins.print"):
+            TODO._claude_devoiler(TODO(), session, liste, env)
+        invite.assert_not_called()
+
+
+class LEnvironnementNEstLuQueDUnProcessusVivant(unittest.TestCase):
+    """Un pid se réemploie, et une session reprenable garde le sien.
+
+    `/proc/<pid>/environ` lu sur une session éteinte montre l'environnement
+    d'un AUTRE processus, sous le nom de celle-ci. L'écran demande donc la
+    vivacité, que la flotte établit déjà en comparant le moment de démarrage
+    du processus, et non la simple présence d'un pid.
+    """
+
+    def _contexte(self, *, live):
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant.agents import environnement as env
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id="a" * 32, pid=4321, live=live)
+        vus = []
+
+        def fausses_variables(pid, **kw):
+            vus.append(pid)
+            return []
+
+        todo = TODO()
+        with patch.object(
+            TODO, "_claude_choisir", return_value=session
+        ), patch.object(
+            TODO, "_claude_transcription", return_value=""
+        ), patch.object(
+            TODO, "_claude_environ_bloc"
+        ), patch.object(
+            env, "variables", fausses_variables
+        ), patch(
+            "builtins.print"
+        ):
+            todo._claude_contexte([session])
+        return vus
+
+    def test_a_dormant_session_is_not_read(self):
+        self.assertEqual(self._contexte(live=False), [])
+
+    def test_a_live_session_is_read(self):
+        self.assertEqual(self._contexte(live=True), [4321])
+
+
 if __name__ == "__main__":
     unittest.main()
