@@ -28,8 +28,8 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from script.posture import registry, rules
 from script.posture import destinations as posture_destinations
+from script.posture import registry, rules
 
 try:
     from script.todo.todo_i18n import t
@@ -125,14 +125,51 @@ def label_of(posture_name: str) -> str:
     return profil.label if profil else str(posture_name or "")
 
 
-def choices() -> list:
+def _carries_real_data(profil) -> bool:
+    """Ce profil peut-il porter des données réelles ?
+
+    Le prédicat du registre, et non un champ de plus : `allows_real_data`
+    DÉDUIT la réponse de trois propriétés de la posture, et un profil qui
+    déclarerait « oui » de son côté pourrait contredire la garde qui refuse
+    le déploiement.
+    """
+    return registry.allows_real_data(registry.get_posture(profil.posture))
+
+
+def choices(real_data: bool = False) -> list:
     """[(libellé, nom de posture)] pour un sélecteur.
 
     La VALEUR reste le nom de posture : c'est lui que la spec porte et que
     le déploiement lit. Un libellé stocké obligerait à le retraduire, et une
     spec relue dans une autre langue ne se retrouverait plus.
+
+    `real_data` retire les postures sous lesquelles la garde REFUSERA le
+    déploiement. Le filtre lit le même prédicat qu'elle : offrir une posture
+    que le déploiement rejette fait répondre à tout le questionnaire avant
+    de le dire. Faux par défaut, pour qu'un appelant qui ne pose pas la
+    question offre la liste entière.
     """
-    return [(profil.label, profil.posture) for profil in PROFILES]
+    return [
+        (profil.label, profil.posture)
+        for profil in PROFILES
+        if not real_data or _carries_real_data(profil)
+    ]
+
+
+def withheld(real_data: bool = False) -> list:
+    """Ce que `choices(real_data)` a retiré, dans le même ordre.
+
+    Un écran les nomme au lieu de les taire : une liste qui rétrécit sans
+    rien dire laisse croire que la posture n'existe pas, et son absence se
+    lit alors comme une panne. Le complément exact de `choices`, pour que
+    les deux ne puissent pas diverger.
+    """
+    offerts = {posture for _libelle, posture in choices(real_data)}
+    return [
+        (profil.label, profil.posture)
+        for profil in PROFILES
+        if profil.posture not in offerts
+    ]
 
 
 def gap_sentence(token: str) -> str:
@@ -287,6 +324,12 @@ ODOO_MARK = "install_odoo"
 # du CHOIX. Une attente et non un refus : servir autre chose sur la même
 # posture reste légitime, et le registre sépare les deux pour cela.
 EXPECTS_ODOO = "This profile expects an install that lays down Odoo."
+
+# L'en-tête des postures que `withheld` a retirées. Elles s'affichent avec
+# leur raison plutôt que de disparaître : une liste qui rétrécit en silence
+# laisse croire que la posture n'existe pas, et son absence se lit alors
+# comme une panne plutôt que comme une règle.
+CANNOT_CARRY_REAL_DATA = "Cannot carry real data:"
 
 # Le verdict du couple (profil, installation). Clos, comme celui du couple
 # (posture, données réelles) dont il est le frère.

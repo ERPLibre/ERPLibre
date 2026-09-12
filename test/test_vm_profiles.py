@@ -24,6 +24,7 @@ sys.path.append(RACINE)
 
 from script.posture import registry as R  # noqa: E402
 from script.posture import rules  # noqa: E402
+from script.posture import spec as S  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo import vm_profiles as V  # noqa: E402
 
@@ -208,6 +209,64 @@ class TestCeQueLeSelecteurOffre(CasDeProfil):
 
     def test_an_unknown_label_is_none_and_not_a_guess(self):
         self.assertIsNone(V.by_label("Jamais vu"))
+
+
+class TestCeQueLeSelecteurOffreAUneDonneeReelle(CasDeProfil):
+    """La liste offerte et la règle d'or disent la MÊME chose.
+
+    Un sélecteur qui propose une posture que le déploiement refusera fait
+    taper douze réponses de plus avant de le dire. Le filtre est donc
+    DÉDUIT du même prédicat que la garde, jamais d'une seconde liste.
+    """
+
+    def test_without_the_question_the_list_is_what_it_was(self):
+        """Sans argument, rien ne change : les appelants d'avant le filtre
+        continuent d'offrir les quatre profils."""
+        self.assertEqual(V.choices(), V.choices(real_data=False))
+
+    def test_real_data_keeps_only_what_the_registry_allows(self):
+        for _libelle, posture in V.choices(real_data=True):
+            with self.subTest(posture=posture):
+                self.assertTrue(R.allows_real_data(R.get_posture(posture)))
+
+    def test_today_only_the_cut_egress_carries_real_data(self):
+        """Les trois autres échouent sur `egress_enforced` ou sur
+        `destinations_bounded` — le prédicat les déduit, personne ne les
+        déclare."""
+        self.assertEqual(
+            [("local-webui", "local-only")], V.choices(real_data=True)
+        )
+
+    def test_the_offered_never_form_a_couple_the_guard_refuses(self):
+        """L'invariant du filtre : ce qu'il offre, la garde l'accepte. Les
+        deux lisent `allows_real_data`, et cette épreuve tient qu'ils ne
+        divergent pas."""
+        for _libelle, posture in V.choices(real_data=True):
+            with self.subTest(posture=posture):
+                self.assertEqual(
+                    S.OK,
+                    S.check({S.POSTURE_KEY: posture, S.REAL_DATA_KEY: True}),
+                )
+
+    def test_what_is_withheld_is_the_rest_and_nothing_else(self):
+        """Une partition : rien ne se perd et rien ne se double. Et chaque
+        moitié garde l'ordre du registre, du plus libre au plus contraint —
+        un écran qui les réaffiche ne réordonne rien."""
+        tous = V.choices()
+        offerts = V.choices(real_data=True)
+        retenus = V.withheld(real_data=True)
+        self.assertEqual(sorted(tous), sorted(offerts + retenus))
+        self.assertEqual([c for c in tous if c in offerts], offerts)
+        self.assertEqual([c for c in tous if c in retenus], retenus)
+
+    def test_nothing_is_withheld_when_the_answer_is_no(self):
+        self.assertEqual([], V.withheld(real_data=False))
+
+    def test_the_withheld_keep_their_label_so_a_screen_can_name_them(self):
+        """Elles s'affichent avec leur raison plutôt que de disparaître :
+        une liste qui se tait laisse croire que la posture n'existe pas."""
+        libelles = [libelle for libelle, _p in V.withheld(real_data=True)]
+        self.assertEqual(["Sandbox", "VM Connecté", "VM paranoid"], libelles)
 
 
 class TestQuiDemandeUnCarnetDAdresses(CasDeProfil):
