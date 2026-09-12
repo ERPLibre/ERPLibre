@@ -205,6 +205,26 @@ class TestCeQuiEstIgnoreSansBruit(unittest.TestCase):
         for objet in ([], "texte", 12, None):
             self.assertEqual(st.replier(st.Agregat(), objet), st.Agregat())
 
+    def test_a_well_formed_line_of_the_wrong_type_is_skipped_too(self):
+        """Le décodage JSON est entouré, le repliage ne l'est PAS.
+
+        Une ligne bien formée dont un champ porte un autre type que prévu
+        remonterait donc jusqu'à l'écran vivant et l'éteindrait. Le coût est
+        le champ à surveiller : c'est le seul que le module convertissait
+        sans filet, là où les entiers en avaient un.
+        """
+        for valeur in ({}, [], "gratuit", None, True):
+            a = st.replier(
+                st.Agregat(), {"type": "cost-state", "totalCostUSD": valeur}
+            )
+            self.assertEqual(a.cout, 0.0, repr(valeur))
+            self.assertEqual(a.segments, 1, repr(valeur))
+
+    def test_a_cost_given_as_a_whole_number_still_counts(self):
+        """Les transcriptions réelles le donnent en entier comme en réel."""
+        a = st.replier(st.Agregat(), {"type": "cost-state", "totalCostUSD": 3})
+        self.assertEqual(a.cout, 3.0)
+
     def test_a_broken_line_is_skipped(self):
         """Une transcription en cours d'écriture finit sur une ligne coupée."""
         texte = (

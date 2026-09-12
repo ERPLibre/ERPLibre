@@ -190,18 +190,32 @@ class TestLesPermissionsNeSeTotalisentPas(unittest.TestCase):
 
 class TestLesHooks(unittest.TestCase):
     def test_a_hook_is_named_with_its_code_and_duration(self):
+        """Le code et la durée sont des ENTIERS dans la transcription.
+
+        Le premier jeu d'essai les donnait en chaînes, et les deux colonnes
+        sortaient donc vides sur une session réelle sans qu'aucun test ne le
+        voie : un jeu d'essai qui invente une forme valide la trouvaille.
+        """
         c = ctx.replier(
             ctx.Contexte(),
             _piece(
                 "hook_success",
                 hookName="SessionStart:startup",
-                exitCode="0",
-                durationMs="26",
+                exitCode=0,
+                durationMs=26,
                 stdout=TEMOIN,
                 command=TEMOIN,
             ),
         )
         self.assertEqual(c.hooks, (("SessionStart:startup", "0", "26"),))
+
+    def test_a_field_that_is_not_a_number_stays_empty(self):
+        """Un booléen n'est pas un code de sortie, même s'il en a le type."""
+        c = ctx.replier(
+            ctx.Contexte(),
+            _piece("hook_success", hookName="h", exitCode=True, durationMs={}),
+        )
+        self.assertEqual(c.hooks, (("h", "", ""),))
 
     def test_neither_the_output_nor_the_command_is_kept(self):
         """La sortie brute d'un programme arbitraire est le champ le plus

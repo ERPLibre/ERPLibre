@@ -122,6 +122,18 @@ def _texte(valeur) -> str:
     return valeur if isinstance(valeur, str) else ""
 
 
+def _chiffre(valeur) -> str:
+    """Un nombre rendu en texte, et rien d'autre.
+
+    `exitCode` et `durationMs` sont des ENTIERS dans la transcription. Les
+    faire passer par `_texte` les rend vides à tous les coups, et la colonne
+    d'un hook reste blanche alors que la donnée est là.
+    """
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return ""
+    return str(valeur)
+
+
 def replier(contexte: Contexte, objet) -> Contexte:
     """Replier UNE ligne décodée. Fonction pure.
 
@@ -210,8 +222,8 @@ def replier(contexte: Contexte, objet) -> Contexte:
     if genre == "hook_success":
         entree = (
             _texte(piece.get("hookName")),
-            _texte(piece.get("exitCode")),
-            _texte(piece.get("durationMs")),
+            _chiffre(piece.get("exitCode")),
+            _chiffre(piece.get("durationMs")),
         )
         if entree in contexte.hooks:
             return contexte

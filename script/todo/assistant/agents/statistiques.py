@@ -129,6 +129,18 @@ def _entier(valeur) -> int:
     )
 
 
+def _reel(valeur) -> float:
+    """Un réel, ou zéro. Le seul champ que `float()` prenait sans filet.
+
+    `replier` n'est pas protégé par l'appelant : `replier_texte` n'entoure que
+    le décodage JSON, donc une valeur bien formée mais d'un autre type — un
+    objet, une liste — remonterait jusqu'à l'écran vivant et l'éteindrait.
+    """
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return 0.0
+    return float(valeur)
+
+
 def _texte(valeur) -> str:
     """Une chaîne, ou vide. Un champ absent ne doit pas devenir « None »."""
     return valeur if isinstance(valeur, str) else ""
@@ -150,7 +162,7 @@ def replier(agregat: Agregat, objet) -> Agregat:
         modeles = objet.get("modelUsage")
         return replace(
             agregat,
-            cout=float(objet.get("totalCostUSD") or 0.0),
+            cout=_reel(objet.get("totalCostUSD")),
             duree_horloge=_entier(objet.get("totalDuration")),
             duree_api=_entier(objet.get("totalAPIDuration")),
             duree_outils=_entier(objet.get("totalToolDuration")),
