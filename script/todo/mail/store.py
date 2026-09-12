@@ -905,8 +905,19 @@ class Store:
         return (ligne[0] or 0, ligne[1] or 0, ligne[2] or 0)
 
     @_locked
-    def stats_folders(self) -> list[dict]:
-        """Par dossier : total, non-lus, octets. Tout est en clair, donc SQL."""
+    def stats_folders(self, since=None) -> list[dict]:
+        """Par dossier : total, non-lus, octets. Tout est en clair, donc SQL.
+
+        `since` borne les messages COMPTÉS, jamais les dossiers listés : le
+        filtre vit dans le `ON` de la jointure et non dans un `WHERE`, donc
+        un dossier que la période vide reste au tableau avec un zéro. L'en
+        faire disparaître se lirait « ce dossier n'existe plus ».
+        """
+        jointure = "m.folder_id = f.id AND m.date > 0"
+        params: list = []
+        if since is not None:
+            jointure += " AND m.date >= ?"
+            params.append(int(since))
         return [
             {
                 "id": r["id"],
@@ -921,8 +932,9 @@ class Store:
                 " SUM(CASE WHEN m.flags NOT LIKE '%\\Seen%' ESCAPE '\\'"
                 "          THEN 1 ELSE 0 END) AS unseen,"
                 " SUM(m.size) AS octets"
-                " FROM folders f LEFT JOIN messages m ON m.folder_id = f.id"
-                " GROUP BY f.id ORDER BY n DESC"
+                f" FROM folders f LEFT JOIN messages m ON {jointure}"
+                " GROUP BY f.id ORDER BY n DESC",
+                params,
             )
         ]
 

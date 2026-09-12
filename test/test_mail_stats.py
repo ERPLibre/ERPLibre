@@ -173,6 +173,37 @@ class TestFolders(StatsCase):
         noms = [d["name"] for d in self.store.stats_folders()]
         self.assertIn("Archives", noms)
 
+    def test_the_period_reaches_the_folder_table_too(self):
+        """Sans ce filtre, l'écran affichait un total borné par la période
+        à côté d'un tableau qui comptait tout : deux chiffres côte à côte
+        qui ne parlent pas de la même chose."""
+        self.remplir()
+        boite = next(
+            d
+            for d in self.store.stats_folders(since=DEPART + JOUR)
+            if d["name"] == "INBOX"
+        )
+        self.assertEqual(boite["count"], 1)
+
+    def test_a_message_without_a_date_is_left_to_its_own_line(self):
+        """Le tableau compte ce que l'histogramme compte, et la ligne des
+        messages sans date lisible rend compte du reste. Compté aux deux
+        endroits, un même message ferait un total qui ne se recoupe pas."""
+        self.remplir()
+        sans_date = self.msg(99, 0, "c@x.ca", "moi@x.ca")
+        sans_date.date = 0
+        self.store.upsert_messages(self.inbox, [sans_date])
+        boite = next(
+            d for d in self.store.stats_folders() if d["name"] == "INBOX"
+        )
+        self.assertEqual(boite["count"], 3)
+        self.assertEqual(self.store.stats_undated(), 1)
+
+    def test_a_folder_emptied_by_the_period_stays_listed_at_zero(self):
+        """Le disparaître ferait croire que le dossier n'existe plus."""
+        dossiers = self.store.stats_folders(since=DEPART + 400 * JOUR)
+        self.assertIn("INBOX", [d["name"] for d in dossiers])
+
 
 class TestCorrespondents(StatsCase):
     def test_the_same_person_is_counted_once_whatever_the_case(self):
@@ -288,6 +319,34 @@ class TestLargeMailbox(StatsCase):
         self.assertEqual(apercu.total, 220)
         self.assertLess(len(apercu.volume), 220)
         self.assertEqual(apercu.tronque, 220 - len(apercu.volume))
+
+    def test_the_unread_count_follows_the_period_like_the_total(self):
+        """Les deux chiffres se lisent sur la même ligne. Un total borné à
+        trente jours à côté d'un nombre de non-lus qui compte vingt ans
+        donne une part de non-lus qui peut dépasser cent pour cent."""
+        self.remplir()
+        # Trois non-lus HORS de la fenêtre : sans le filtre, ils sont
+        # comptés face à un total qui les exclut.
+        self.store.upsert_messages(
+            self.inbox,
+            [self.msg(90 + i, 0, "vieux@x.ca", "moi@x.ca") for i in range(3)],
+        )
+        apercu = build_overview(self.store, since=DEPART + 2 * JOUR)
+        self.assertLessEqual(apercu.unseen, apercu.total)
+        self.assertLessEqual(apercu.unseen_share, 1.0)
+
+    def test_the_details_follow_the_period_as_well(self):
+        """Le classement des correspondants est sous le même en-tête que
+        l'histogramme : il doit couvrir la même tranche de temps."""
+        from script.todo.mail.stats import build_details
+
+        self.remplir()
+        tout = build_details(self.store)
+        borne = build_details(self.store, since=DEPART + 2 * JOUR)
+        self.assertGreater(
+            sum(n for _, n in tout.senders),
+            sum(n for _, n in borne.senders),
+        )
 
     def test_the_overview_never_opens_a_sealed_column(self):
         """La garantie de rapidité, énoncée directement : si la vue

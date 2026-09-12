@@ -2715,11 +2715,7 @@ def run_tui(
             au moment précis où l'utilisateur attend une réponse.
             """
             cible = self.folder_id if self.restreint else None
-            depuis = (
-                time.time() - self.periode_jours * 86400
-                if self.periode_jours
-                else None
-            )
+            depuis = self._depuis()
             try:
                 apercu = stats.build_overview(
                     self.store,
@@ -2836,6 +2832,17 @@ def run_tui(
             self.refresh_stats()
             self.run_worker(self._calculer_details, thread=True)
 
+        def _depuis(self):
+            """Le début de la période choisie, ou `None` pour « tout ».
+
+            Un seul endroit la calcule : la vue d'ensemble et le balayage
+            des détails s'affichent sous le MÊME en-tête de période, et
+            deux calculs séparés finiraient par diverger.
+            """
+            if not self.periode_jours:
+                return None
+            return time.time() - self.periode_jours * 86400
+
         def _calculer_details(self) -> None:
             cible = self.folder_id if self.restreint else None
 
@@ -2844,7 +2851,10 @@ def run_tui(
 
             try:
                 details = stats.build_details(
-                    self.store, folder_id=cible, progress=progression
+                    self.store,
+                    folder_id=cible,
+                    progress=progression,
+                    since=self._depuis(),
                 )
             except Exception as exc:
                 self.app.call_from_thread(self._details_en_erreur, exc)
