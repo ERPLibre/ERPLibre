@@ -12112,10 +12112,6 @@ TRANSLATIONS = {
         "fr": "dossiers resynchronisés (UIDVALIDITY changé) :",
         "en": "folders resynchronised (UIDVALIDITY changed):",
     },
-    "mail_offline_cannot_send": {
-        "fr": "Compte hors ligne : envoi impossible.",
-        "en": "Account offline: cannot send.",
-    },
     "mail_sent_to": {"fr": "Envoyé à", "en": "Sent to"},
     "mail_sent_not_filed": {
         "fr": "envoyé, mais pas classé dans Envoyés",
