@@ -665,6 +665,10 @@ class TestLePreVolDuCacheSurProxmox(unittest.TestCase):
             cache_offline, "composants_absents", return_value=[]
         ), mock.patch.object(
             cache_offline, "manques_hors_ligne", return_value=[]
+        ), mock.patch.object(
+            cache_offline, "paquets_absents", return_value=[]
+        ), mock.patch.object(
+            cache_offline, "miroirs_absents", return_value=[]
         ):
             asyncio.run(scenario())
         return vu

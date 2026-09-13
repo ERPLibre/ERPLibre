@@ -1104,6 +1104,174 @@ class TestLeComblement(SansSysteme):
         )
 
 
+class TestLesMotifsPartagesParLesDeuxFormulaires(SansSysteme):
+    """Le texte de l'avertissement vit dans le socle commun aux deux
+    formulaires, qui l'affichent tel quel : une épreuve du texte vaut donc
+    pour les deux.
+
+    Éprouver un verdict ne suffit pas : une fonction juste dont le résultat
+    n'atteint jamais l'écran laisse partir la VM sans un mot, et c'est
+    précisément ce que l'avertissement doit empêcher.
+    """
+
+    def motifs(self, **verdicts):
+        """Les phrases rendues, tous les verdicts truqués sauf ceux nommés."""
+        from script.todo.deploy_form_lib import motifs_hors_ligne
+
+        valeurs = {
+            "suites_absentes": [],
+            "composants_absents": [],
+            "manques_hors_ligne": [],
+            "paquets_absents": [],
+            "miroirs_absents": [],
+        }
+        valeurs.update(verdicts)
+        with contextlib.ExitStack() as pile:
+            for nom, valeur in valeurs.items():
+                pile.enter_context(
+                    mock.patch.object(
+                        cache_offline, nom, lambda *a, _v=valeur, **k: _v
+                    )
+                )
+            return motifs_hors_ligne(
+                [{"distro": "ubuntu", "version": "26.04"}]
+            )
+
+    def test_un_paquet_manquant_atteint_lecran(self):
+        motifs = self.motifs(paquets_absents=["qemu-guest-agent"])
+        self.assertTrue(any("qemu-guest-agent" in m for m in motifs), motifs)
+
+    def test_un_depot_sans_miroir_atteint_lecran(self):
+        motifs = self.motifs(miroirs_absents=["forge.example/g/p"])
+        self.assertTrue(any("forge.example/g/p" in m for m in motifs), motifs)
+        self.assertTrue(
+            any(t("fill them from Cache › Git mirrors") in m for m in motifs),
+            "le geste qui lève le manque n'est pas donné",
+        )
+
+    def test_beaucoup_de_depots_ne_deroulent_pas_la_liste(self):
+        """Cinquante dépôts ne se lisent pas, et le geste est le même pour
+        tous : trois exemples, puis le compte."""
+        motifs = self.motifs(
+            miroirs_absents=[f"forge.example/g/p{i}" for i in range(50)]
+        )
+        joints = " ".join(motifs)
+        self.assertIn("(+47)", joints)
+        self.assertNotIn("p49", joints)
+
+    def test_rien_ne_manque_rien_ne_sort(self):
+        """Un avertissement qui tombe quand rien ne manque s'apprend par
+        cœur, et c'est ainsi qu'on cesse de le lire."""
+        self.assertEqual(self.motifs(), [])
+
+
+class TestLesPaquetsQueLeCacheNaPas(SansSysteme):
+    """Le verdict par index ne descend jamais au FICHIER.
+
+    Un cache qui détient l'index d'une suite passe pour complet alors
+    qu'aucun octet du paquet lui-même ne l'a traversé. Hors ligne,
+    l'installation échoue vingt minutes plus tard sur « Unable to locate
+    package », un message qui accuse le dépôt et jamais le cache. Le cas qui
+    le montre : un paquet posé par une unité DÉTACHÉE, dont l'échec ne
+    remonte nulle part.
+    """
+
+    VM = {"distro": "ubuntu", "version": "26.04", "arch": "amd64"}
+    URL = "http://m/pool/main/q/qemu/qemu-guest-agent_9.2_amd64.deb"
+
+    def _journal(self, urls, issue="hit"):
+        return self.journal([{"url": u, "outcome": issue} for u in urls])
+
+    def test_un_paquet_en_reserve_ne_se_dit_pas(self):
+        chemin = self._journal([self.URL])
+        self.assertEqual(
+            cache_offline.paquets_absents([self.VM], chemin=chemin), []
+        )
+
+    def test_un_paquet_jamais_vu_est_nomme(self):
+        chemin = self._journal(["http://m/pool/main/a/a/autre_1_amd64.deb"])
+        self.assertEqual(
+            cache_offline.paquets_absents([self.VM], chemin=chemin),
+            list(cache_offline.PAQUETS_HORS_SUIVI),
+        )
+
+    def test_un_manque_hors_ligne_ne_vaut_pas_une_reserve(self):
+        """« offline-miss » dit qu'on l'a CHERCHÉ sans le trouver : le
+        compter comme détenu ferait taire l'avertissement précisément quand
+        il a raison."""
+        chemin = self._journal([self.URL], issue="offline-miss")
+        self.assertIn(
+            "qemu-guest-agent",
+            cache_offline.paquets_absents([self.VM], chemin=chemin),
+        )
+
+    def test_sans_vm_ou_sans_journal_le_verdict_se_tait(self):
+        """Accuser un cache qu'on ne peut pas interroger ferait cesser de
+        lire l'avertissement le jour où il compte."""
+        chemin = self._journal([])
+        self.assertEqual(cache_offline.paquets_absents([], chemin=chemin), [])
+        self.assertEqual(
+            cache_offline.paquets_absents(
+                [self.VM], chemin=str(self.dossier / "absent.jsonl")
+            ),
+            [],
+        )
+
+
+class TestLesMiroirsGitQuiManquent(SansSysteme):
+    """Une négociation git ne se garde pas : le cache tient un dépôt NU par
+    amont et le sert localement. Sans miroir, le clone échoue une fois le
+    réseau coupé, et aucun verdict ne l'annonçait — celui par index ne parle
+    que d'apt, et le journal des manques ne connaît que ce qu'une coupure a
+    déjà fait rater.
+    """
+
+    def _racine(self, presents=()):
+        racine = self.dossier / "git"
+        racine.mkdir(parents=True, exist_ok=True)
+        for nom in presents:
+            (racine / nom).mkdir(parents=True, exist_ok=True)
+        return str(racine)
+
+    def test_un_depot_sans_miroir_est_nomme(self):
+        self.assertEqual(
+            cache_offline.miroirs_absents(
+                ["https://forge.example/groupe/projet.git"], self._racine()
+            ),
+            ["forge.example/groupe/projet"],
+        )
+
+    def test_un_depot_deja_en_miroir_se_tait(self):
+        racine = self._racine(["forge.example/groupe/projet.git"])
+        self.assertEqual(
+            cache_offline.miroirs_absents(
+                ["https://forge.example/groupe/projet.git"], racine
+            ),
+            [],
+        )
+
+    def test_lhote_fait_partie_du_chemin(self):
+        """Deux forges peuvent servir « /odoo/odoo » : les confondre
+        donnerait à l'une le contenu de l'autre."""
+        racine = self._racine(["forge-a.example/odoo/odoo.git"])
+        self.assertEqual(
+            cache_offline.miroirs_absents(
+                ["https://forge-b.example/odoo/odoo"], racine
+            ),
+            ["forge-b.example/odoo/odoo"],
+        )
+
+    def test_une_racine_absente_ne_dit_rien(self):
+        """Un magasin absent n'est pas un miroir manquant, et deux causes
+        sous un seul message font cesser de lire."""
+        self.assertEqual(
+            cache_offline.miroirs_absents(
+                ["https://forge.example/g/p"], str(self.dossier / "nulle")
+            ),
+            [],
+        )
+
+
 class TestLeMenuLitLaCoupureEtLeGuet(SansSysteme):
     """Ce que le menu du cache croit de la coupure et du guet.
 
@@ -1400,10 +1568,20 @@ class TestLAvertissementAvantLaCoupure(SansSysteme):
                 app.action_deploy()
                 vu["second"] = app._result.get("spec")
 
+        # Les cinq verdicts sont truqués, et non deux : cette épreuve isole
+        # ce qu'elle nomme. Un verdict laissé libre lit la machine qui
+        # exécute les tests — son magasin, ses miroirs — et le résultat
+        # change alors d'un poste à l'autre.
         with mock.patch.object(
             cache_offline, "suites_absentes", lambda vms: absentes
         ), mock.patch.object(
             cache_offline, "manques_hors_ligne", lambda vms: manques
+        ), mock.patch.object(
+            cache_offline, "composants_absents", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "paquets_absents", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "miroirs_absents", lambda *a, **k: []
         ):
             asyncio.run(scenario())
         return vu

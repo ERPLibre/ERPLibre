@@ -6631,6 +6631,26 @@ TRANSLATIONS = {
         "fr": "miroir apt fixé",
         "en": "apt mirror pinned",
     },
+    "the cache has no package named": {
+        "fr": "le cache n'a aucun paquet nommé",
+        "en": "the cache has no package named",
+    },
+    "an offline VM will not install it": {
+        "fr": "une VM hors ligne ne l'installera pas",
+        "en": "an offline VM will not install it",
+    },
+    "these git repositories are not mirrored:": {
+        "fr": "ces dépôts git ne sont pas en miroir :",
+        "en": "these git repositories are not mirrored:",
+    },
+    "an offline VM cannot clone them": {
+        "fr": "une VM hors ligne ne peut pas les cloner",
+        "en": "an offline VM cannot clone them",
+    },
+    "fill them from Cache › Git mirrors": {
+        "fr": "les remplir depuis Cache › Miroirs git",
+        "en": "fill them from Cache › Git mirrors",
+    },
     "cache holds no index for": {
         "fr": "le cache n'a aucun index pour",
         "en": "cache holds no index for",

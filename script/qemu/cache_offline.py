@@ -601,6 +601,102 @@ def composants_absents(vms, chemin: str = "") -> list:
     return sortie
 
 
+# Les paquets que le déploiement pose HORS du fil observé : leur pose part en
+# unité détachée pour que cloud-init rende la main en quelques secondes, si
+# bien qu'un échec ne remonte nulle part — ni au suivi, ni au journal des
+# manques, qui ne connaît que ce qu'une coupure a déjà fait rater. Le pré-vol
+# est donc le seul endroit où leur absence peut encore se dire À TEMPS.
+PAQUETS_HORS_SUIVI = ("qemu-guest-agent",)
+
+
+def paquets_absents(vms, noms=(), chemin: str = "") -> list:
+    """Les paquets nommés dont le magasin n'a rien, ou [].
+
+    Le verdict par index ne descend jamais au FICHIER : un cache qui détient
+    l'index d'une suite passe pour complet alors qu'aucun octet du paquet
+    lui-même n'a jamais traversé. Hors ligne, l'installation échoue vingt
+    minutes plus tard sur « Unable to locate package », un message qui accuse
+    le dépôt et jamais le cache.
+
+    Jugé sur le journal, comme les autres verdicts : une URL en réserve qui
+    porte le nom du paquet suffit. Le nom d'un fichier de paquet porte sa
+    version et son architecture, jamais son miroir, si bien que la recherche
+    vaut quel que soit le miroir qui l'a servi.
+
+    Muet sans VM et quand le journal ne se lit pas : accuser un cache qu'on
+    ne peut pas interroger ferait taire l'avertissement le jour où il compte.
+    """
+    import json
+    import os
+
+    noms = tuple(noms) or PAQUETS_HORS_SUIVI
+    chemin = chemin or journal()
+    if not (vms or ()) or not chemin or not os.path.exists(chemin):
+        return []
+    trouves = set()
+    try:
+        with open(chemin, encoding="utf-8", errors="replace") as fh:
+            for ligne in fh:
+                restants = [n for n in noms if n not in trouves]
+                if not restants:
+                    break
+                # Le test de chaîne AVANT le décodage : un journal de
+                # déploiement porte des dizaines de milliers de lignes, et
+                # les décoder toutes coûterait plus que le verdict ne vaut.
+                for nom in restants:
+                    if nom not in ligne:
+                        continue
+                    try:
+                        d = json.loads(ligne)
+                    except ValueError:
+                        continue
+                    if d.get("outcome") in ISSUES_EN_RESERVE and nom in (
+                        d.get("url") or ""
+                    ):
+                        trouves.add(nom)
+    except OSError:
+        return []
+    return [nom for nom in noms if nom not in trouves]
+
+
+def miroirs_absents(depots, racine: str = "") -> list:
+    """Les dépôts git déclarés qui n'ont pas encore de miroir, ou [].
+
+    Une négociation git ne se garde pas : le cache tient un dépôt NU par
+    amont et le sert localement. Un dépôt jamais mirroré n'a donc rien à
+    servir une fois le réseau coupé, et le clone échoue — sans que rien ne
+    l'ait annoncé, le verdict par index ne parlant que d'apt et le journal
+    des manques ne connaissant que ce qu'une coupure a déjà fait rater.
+
+    Le chemin d'un miroir est « <hôte>/<chemin>.git » sous la racine : la
+    même règle que celle qui les pose, l'hôte en faisant partie parce que
+    deux forges peuvent servir le même chemin.
+
+    Muet quand la racine ne se lit pas : un magasin absent n'est pas un
+    miroir manquant, et deux causes sous un seul message font cesser de lire.
+    """
+    import os
+    from urllib.parse import urlsplit
+
+    racine = racine or os.path.join(
+        reglage("EL_CACHE_DIR") or CACHE_DIR_DEFAUT, "git"
+    )
+    if not os.path.isdir(racine):
+        return []
+    manque = []
+    for depot in depots or ():
+        morceaux = urlsplit(depot)
+        chemin = morceaux.path.strip("/")
+        if chemin.endswith(".git"):
+            chemin = chemin[: -len(".git")]
+        if not morceaux.netloc or not chemin:
+            continue
+        attendu = os.path.join(racine, morceaux.netloc, chemin + ".git")
+        if not os.path.isdir(attendu):
+            manque.append(f"{morceaux.netloc}/{chemin}")
+    return manque
+
+
 # ---------------------------------------------------------------------------
 # Ce que les déploiements hors ligne précédents n'ont pas trouvé
 # ---------------------------------------------------------------------------

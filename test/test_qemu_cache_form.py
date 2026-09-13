@@ -734,8 +734,20 @@ class TestLaSectionReseau(unittest.TestCase):
                 app.action_deploy()
                 vu["second"] = app._result.get("spec")
 
+        # Les quatre autres verdicts sont truqués à vide : cette épreuve
+        # nomme la suite absente, et elle seule. Un verdict laissé libre lit
+        # la machine qui exécute les tests — son magasin, ses miroirs — et
+        # l'épreuve passerait alors pour une raison qui n'est pas la sienne.
         with mock.patch.object(
             cache_offline, "suites_absentes", lambda vms: [("ubuntu", "26.04")]
+        ), mock.patch.object(
+            cache_offline, "composants_absents", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "manques_hors_ligne", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "paquets_absents", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "miroirs_absents", lambda *a, **k: []
         ):
             asyncio.run(scenario())
         self.assertIsNone(
@@ -767,8 +779,20 @@ class TestLaSectionReseau(unittest.TestCase):
                 app.action_deploy()
                 vu["premier"] = app._result.get("spec")
 
+        # Les CINQ verdicts se taisent : c'est la seule façon d'éprouver
+        # qu'un cache pourvu ne retarde personne. En laisser un libre le fait
+        # lire la machine qui exécute les tests — son magasin, ses miroirs,
+        # son journal — et l'épreuve échoue selon le poste.
         with mock.patch.object(
             cache_offline, "suites_absentes", lambda vms: []
+        ), mock.patch.object(
+            cache_offline, "composants_absents", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "manques_hors_ligne", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "paquets_absents", lambda *a, **k: []
+        ), mock.patch.object(
+            cache_offline, "miroirs_absents", lambda *a, **k: []
         ):
             asyncio.run(scenario())
         self.assertIsNotNone(

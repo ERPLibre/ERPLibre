@@ -363,6 +363,30 @@ def disk_note(plan_gb, free_gb, total_gb=0) -> str:
     return f"~{plan_gb} G / {free_gb} G {t('free of')} {total_gb} G"
 
 
+def _depots_declares():
+    """Les dépôts git que les manifestes déclarent, ou [] si on ne sait pas.
+
+    La lecture vit dans le menu du cache, qui la porte déjà ; l'import est
+    DIFFÉRÉ pour que le socle des formulaires ne traîne pas ce menu entier
+    quand personne ne coupe le réseau. Toute défaillance rend une liste vide :
+    le verdict se tait plutôt que d'annoncer des miroirs manquants sur une
+    lecture qui a échoué.
+    """
+    import os
+
+    try:
+        from script.todo.qemu_cache_menu import depots_des_manifestes
+    except Exception:
+        return []
+    racine = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+    try:
+        return depots_des_manifestes(racine)
+    except Exception:
+        return []
+
+
 def motifs_hors_ligne(vms):
     """Ce qu'une coupure fera échouer, en phrases, ou [] si rien ne manque.
 
@@ -384,7 +408,13 @@ def motifs_hors_ligne(vms):
     # Ce que les derniers déploiements hors ligne des MÊMES VM ont manqué,
     # moins ce que le cache détient depuis.
     manques = cache_offline.manques_hors_ligne(vms)
-    if not (absentes or composants or manques):
+    # Un paquet posé hors du fil observé : son absence ne remonte nulle part,
+    # et l'index de sa suite peut être en réserve sans lui.
+    paquets = cache_offline.paquets_absents(vms)
+    # Les dépôts git déclarés qui n'ont pas de miroir. Une négociation git ne
+    # se garde pas : sans miroir, le clone échoue une fois le réseau coupé.
+    depots = cache_offline.miroirs_absents(_depots_declares())
+    if not (absentes or composants or manques or paquets or depots):
         return []
 
     motifs = []
@@ -406,6 +436,26 @@ def motifs_hors_ligne(vms):
             + f" {distro} {version} : {exemples} — "
             + t("those packages will not be found")
         )
+    if paquets:
+        motifs.append(
+            t("the cache has no package named")
+            + " "
+            + ", ".join(paquets)
+            + " — "
+            + t("an offline VM will not install it")
+        )
+    if depots:
+        # Trois au plus, comme pour les composants : une liste de cinquante
+        # dépôts ne se lit pas, et le geste est le même pour tous.
+        exemples = ", ".join(depots[:3])
+        if len(depots) > 3:
+            exemples += f" (+{len(depots) - 3})"
+        motifs.append(
+            t("these git repositories are not mirrored:")
+            + f" {exemples} — "
+            + t("an offline VM cannot clone them")
+        )
+        motifs.append(t("fill them from Cache › Git mirrors"))
     for b in manques:
         heures = int(b["age"] // 3600)
         if heures < 1:
