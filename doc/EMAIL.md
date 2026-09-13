@@ -561,6 +561,16 @@ the new set back to the vault, and syncs. The exchange happens in the main
 thread, before any pass: writing the vault rewrites the whole file, and two
 sync threads writing at once would corrupt it.
 
+A session outlives its token, so the exchange is not only a start-up step.
+Anything that opens a connection later asks for the secret again and gets a
+refreshed one — a queued message leaving hours after it was written, for
+instance. And when the server refuses a pass on a dead token, the client
+reopens the IMAP link once with a fresh one rather than going quiet until
+someone restarts it. Once only, and only where the secret can change:
+presenting the same password to the same server would earn the same
+refusal, and retrying forever on a server that refuses for another reason
+would spin.
+
 **When it fails.** Three outcomes, told apart because the remedy differs. A
 new token arrives and nothing is said. The grant is revoked — the owner
 withdrew it, or the provider expired it — and no retry will bring it back:
