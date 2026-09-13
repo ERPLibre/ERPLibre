@@ -166,6 +166,41 @@ Chaque étage doit donc prouver, et non supposer :
 module non chargé, pas un problème de permission. Un étage qui échoue à cela
 arrête la descente au lieu de la prolonger dans le vide.
 
+## apertus_install.py — Apertus s'installe-t-il vraiment, et répond-il ?
+
+Les tests unitaires vérifient que les étapes sortent dans le bon ordre et que
+leurs commandes se parsent. Ils ne lancent rien. Or ce qui casse une
+installation n'est pas la syntaxe d'une commande : c'est un gestionnaire de
+paquets qui n'a pas le moteur, un service qui ne démarre pas, un dépôt de
+quantification déplacé, un gabarit de chat qui laisse fuir ses jetons spéciaux
+dans les réponses. Cela se mesure en installant.
+
+Ce script ne crée **aucune machine**. Il installe sur la machine locale, ou
+sur n'importe quelle destination ssh donnée par `--hote`. La création de VM a
+ses propres tests, et mêler les deux confondrait l'échec d'un hyperviseur avec
+celui d'un installateur.
+
+Le modèle par défaut est le **Mini 0,5 B distillé**, le plus petit
+téléchargement réel de la famille — le but est d'exercer le chemin, pas
+d'éprouver le lien réseau. `--modele 8b-q4` demande le vrai, sciemment.
+
+```
+./long_test/apertus_install.py                     # ici, Ollama, Mini 0.5B
+./long_test/apertus_install.py --dry-run           # le plan, rien de lancé
+./long_test/apertus_install.py --hote <alias-ssh>  # ailleurs
+./long_test/apertus_install.py --moteur llamacpp   # un autre moteur
+./long_test/apertus_install.py --detruire          # défaire ce qui a été posé
+```
+
+Il finit en posant au modèle une question à réponse unique et en lisant ce
+qui revient. Deux échecs s'y distinguent : un moteur qui écoute mais ne répond
+rien, et un moteur qui répond avec `<|assistant_start|>` encore dans le texte
+— le second veut dire que le gabarit de chat n'est pas appliqué, ce qu'aucun
+code de retour ne signale.
+
+Une exécution interrompue se relance telle quelle : chaque étape porte un test
+de complétion, donc ce qui est déjà fait se saute au lieu d'être refait.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les deux scripts acceptent `--hote`. Créer une VM de tête pour héberger un
