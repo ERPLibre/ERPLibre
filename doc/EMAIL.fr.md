@@ -193,6 +193,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
+| `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `c` | écrire un nouveau message |
 | `a` / `Shift+A` | répondre / répondre à tous |
 | `f` | transférer |
@@ -450,6 +451,27 @@ absent de l'arbre distant et présent dans le nôtre ne se resynchroniserait
 jamais. Le renommage emporte les messages et leurs corps, pour que la passe
 suivante ne retélécharge pas ce qui est déjà là.
 
+## Jeter un message
+
+`d` déplace le message sélectionné vers la corbeille du compte. Rien n'est
+détruit : une corbeille se vide ailleurs, ce qui rend le geste réparable —
+et c'est pourquoi il ne demande aucune confirmation.
+
+IMAP n'a pas de verbe que tous les serveurs connaissent : le client copie
+le message, marque l'original supprimé, et le retire par `UID EXPUNGE`, qui
+NOMME ce qu'il enlève. Un `EXPUNGE` nu emporterait tous les messages marqués
+supprimés du dossier, y compris ceux qu'un autre client a marqués :
+détruire ce que ce client n'a pas déplacé ne lui appartient pas. Un serveur
+qui n'offre pas `UID EXPUNGE` laisse l'original sur place, barré, et la
+ligne de statut le dit plutôt que de laisser la vue d'un autre client
+passer pour un bogue.
+
+Trois refus, chacun dit sur la ligne de statut : le compte est hors ligne,
+le compte n'annonce pas de corbeille — en inventer une créerait un dossier
+que personne n'a demandé — ou le message y est déjà. Le cache local n'est
+mis à jour qu'après l'accord du serveur : le devancer ferait disparaître de
+l'écran un message qui reviendrait à la passe suivante.
+
 ## Vues de la liste
 
 `g` fait défiler trois vues de la liste des messages :
@@ -650,10 +672,9 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **Pas de recherche transversale** — `/` comme `Shift+S` portent sur le
   dossier ouvert d'un seul compte ; ni l'un ni l'autre ne balaie les autres
   dossiers ou les autres comptes.
-- **Ni suppression ni déplacement d'un message** — `s` et `u` changent
-  l'état lu / non lu, et `F` crée, renomme et supprime des dossiers, mais
-  un message lui-même ne peut être ni supprimé ni déplacé vers un autre
-  dossier.
+- **Pas de déplacement vers un dossier choisi** — `d` met un message à la
+  corbeille du compte, mais rien ne permet d'en ranger un dans un dossier
+  qu'on désigne.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez

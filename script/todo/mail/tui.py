@@ -1153,6 +1153,7 @@ def run_tui(
             ),
             Binding("slash", "focus_search", t("mail_search_binding")),
             Binding("S", "search_server", t("mail_search_server_binding")),
+            Binding("d", "trash_message", t("mail_trash_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
@@ -2021,6 +2022,68 @@ def run_tui(
                 self._clear_pane_size(slot)
                 self._store_pane_size(slot, None)
             self.set_status(t("mail_pane_reset_done"))
+
+        def action_trash_message(self) -> None:
+            """`d` : déplace le message vers la corbeille du compte.
+
+            Rien n'est détruit ici — une corbeille se vide ailleurs, et
+            c'est ce qui rend le geste réparable. Le cache n'est mis à jour
+            qu'APRÈS l'accord du serveur : le devancer ferait revenir à la
+            passe suivante un message disparu de l'écran.
+            """
+            meta = self.current_meta()
+            if meta is None or self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_trash_offline"))
+                return
+            corbeille = next(
+                (
+                    f["name"]
+                    for f in session.store.folders()
+                    if f["role"] == "trash"
+                ),
+                None,
+            )
+            if corbeille is None:
+                # Inventer un nom créerait chez le fournisseur un dossier
+                # que personne n'a demandé.
+                self.set_status(t("mail_trash_no_folder"))
+                return
+            source = self.current_ref.folder_name
+            if source == corbeille:
+                self.set_status(t("mail_trash_already_there"))
+                return
+            self.run_worker(
+                lambda: self._jeter(session, source, corbeille, meta.uid),
+                thread=True,
+            )
+
+        def _jeter(self, session, source, corbeille, uid) -> None:
+            try:
+                with self._sync_lock:
+                    session.syncer.transport.select(source)
+                    vide = session.syncer.transport.move([uid], corbeille)
+            except Exception as exc:
+                _logger.exception("déplacement vers %s", corbeille)
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            etat = session.store.folder_state(source) or {}
+            if etat.get("id") is not None:
+                session.store.forget_message(etat["id"], uid)
+            self.call_from_thread(self._jete, corbeille, vide)
+
+        def _jete(self, corbeille: str, vide: bool) -> None:
+            message = f"{t('mail_trash_done')} {corbeille}"
+            if not vide:
+                # Sans UIDPLUS, la source garde le message barré : un autre
+                # client le montrera, et le taire ferait passer ça pour un
+                # bogue.
+                message += f" — {t('mail_trash_source_kept')}"
+            self.set_status(message)
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def action_search_server(self) -> None:
             """Pose au SERVEUR la question que `/` pose au cache.

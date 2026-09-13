@@ -181,6 +181,7 @@ preview pane on the right, with a status line at the bottom.
 | `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
+| `d` | move the selected message to the account's trash folder |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -421,6 +422,26 @@ missing from the remote tree but present in ours would never resynchronise.
 Renaming carries the messages and their bodies across, so the next pass does
 not download again what is already there.
 
+## Throwing a message away
+
+`d` moves the selected message to the account's trash folder. Nothing is
+destroyed: a trash folder is emptied elsewhere, which is what makes the
+gesture repairable — and why it asks for no confirmation.
+
+IMAP has no verb every server knows, so the client copies the message,
+flags the original deleted, and clears it with `UID EXPUNGE`, which names
+what it removes. A bare `EXPUNGE` would sweep every message flagged deleted
+in the folder, including ones another client flagged: destroying what this
+client did not move is not its place. A server that does not offer
+`UID EXPUNGE` leaves the original in place, struck through, and the status
+line says so rather than letting another client's view look like a bug.
+
+Three refusals, each said on the status line: the account is offline, the
+account announces no trash folder — inventing a name would create one
+nobody asked for — or the message is already there. The local cache is
+updated only after the server agrees; getting ahead of it would make a
+message vanish from the screen and come back at the next pass.
+
 ## List views
 
 `g` cycles the message list through three views:
@@ -607,9 +628,8 @@ stands and the next pass tries again.
 - **No cross-folder search** — `/` and `Shift+S` both work on the open
   folder of one account; neither sweeps the other folders or the other
   accounts.
-- **No deleting or moving a message** — `s` and `u` change the seen flag,
-  and `F` creates, renames and deletes folders, but a message itself can be
-  neither deleted nor moved to another folder.
+- **No moving to a chosen folder** — `d` moves a message to the account's
+  trash, but there is no way to file one into a folder you pick.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining

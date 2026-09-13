@@ -1244,6 +1244,27 @@ class Store:
         return [self._row_to_meta(r) for r in rows]
 
     @_locked
+    def forget_message(self, folder_id: int, uid: int) -> None:
+        """Retire une ligne du cache, sans toucher au serveur.
+
+        Appelée APRÈS un déplacement accepté par le serveur : le cache ne
+        doit jamais devancer ce que le serveur a fait, sinon un message
+        disparu de l'écran revient à la passe suivante et l'utilisateur ne
+        sait plus ce qui est vrai.
+        """
+        db = self._db()
+        ligne = db.execute(
+            "SELECT id FROM messages WHERE folder_id = ? AND uid = ?",
+            (folder_id, uid),
+        ).fetchone()
+        if ligne is None:
+            return
+        if self._fts_present(db):
+            db.execute("DELETE FROM messages_fts WHERE rowid = ?", (ligne[0],))
+        db.execute("DELETE FROM messages WHERE id = ?", (ligne[0],))
+        db.commit()
+
+    @_locked
     def missing_uids(self, folder_id: int, uids: list[int]) -> list[int]:
         """Ceux de `uids` que ce dossier n'a pas encore, dans l'ordre reçu.
 
