@@ -259,6 +259,22 @@ adapter — the same rule that keeps a Claude Code session's title off screen.
 What situates a session without quoting it is its identifier and its date; the
 directory column is dropped, since it repeats the one the header just printed.
 
+**Two sources answer, and they do not weigh the same.** The SQLite base the
+tool keeps carries everything — cost, tokens, cache, lines touched, model,
+agent, dates — in a read of under a millisecond, over EVERY session. The two
+CLI commands take close to two seconds for less, and one of them truncates. So
+the base is read first and the CLI is the fallback, its schema being a third
+party's and promised stable by nobody. The screen names which one answered,
+because only the base can leave the current directory.
+
+**That same file holds secrets, and that is what bounds the read.** It keeps
+the account's access and refresh tokens, its address, and the prompts typed by
+the user. One table is therefore named, its columns are listed one by one, the
+handle is read-only, and a test refuses any other table or any authenticating
+column. `immutable=1` is refused too: it ignores the write-ahead log, which
+runs to megabytes here, and returns ZERO rows on a populated base — a wrong
+answer rather than an error, which is the worse of the two.
+
 **Only reading is declared.** `opencode run` writes into the working tree
 without asking — a three-word instruction is enough to have a file created —
 so a menu entry called "free question" would be a trap. It stays at the CLI,

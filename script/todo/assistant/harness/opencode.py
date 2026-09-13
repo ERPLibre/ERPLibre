@@ -3,16 +3,27 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """L'adaptateur d'Open Code : ses séances, et ce qu'elles ont coûté.
 
-Le harnais ressemble à Claude Code de loin et en diffère sur trois points qui
-décident de la forme de tout écran bâti dessus.
+**Deux sources répondent, et elles ne se valent pas.** La base SQLite que
+l'outil tient porte tout — coût, jetons, cache, lignes touchées, modèle,
+agent, dates — en une lecture de moins d'une milliseconde, sur TOUTES les
+séances. Les deux commandes du CLI demandent près de deux secondes pour moins,
+et l'une des deux se tronque. La base est donc lue d'abord, et le CLI sert de
+repli : son schéma est celui d'un logiciel tiers, que personne ne promet
+stable, et une colonne qui disparaît ne doit pas emporter l'écran.
 
-**Le listage est cadré sur le RÉPERTOIRE COURANT.** `opencode session list`
-rend les séances ouvertes là où on le lance, et rien d'autre : lancé à la
-racine d'un dépôt, il ne voit pas celles d'un autre. Là où `claude agents`
-répond « ce qui tourne sur cette machine », celui-ci répond « ce qui s'est
-passé ICI ». Aucun drapeau n'élargit la portée — le listage n'accepte que
-`--format` et `-n`. Un écran qui présenterait les deux comme la même question
-annoncerait « aucune séance » à qui en a vingt dans le répertoire d'à côté.
+**La base porte aussi des secrets, et c'est ce qui borne la lecture.** Le même
+fichier tient les jetons d'accès et de rafraîchissement du compte, son adresse,
+et les invites tapées par l'utilisateur. Une seule table est donc nommée, ses
+colonnes sont énumérées une à une, l'ouverture est en lecture seule, et un test
+vérifie que la source de ce module ne nomme aucune autre table ni aucune
+colonne d'authentification.
+
+**Le listage du CLI est cadré sur le RÉPERTOIRE COURANT.** `opencode session
+list` rend les séances ouvertes là où on le lance, et rien d'autre : aucun
+drapeau n'élargit la portée. Là où `claude agents` répond « ce qui tourne sur
+cette machine », celui-ci répond « ce qui s'est passé ICI ». La base n'a pas
+cette limite — le filtre par répertoire y est un choix de l'appelant, et non
+une contrainte subie.
 
 **Le titre d'une séance est ENGENDRÉ par le modèle** à partir de la
 conversation. Il a la forme d'un champ structurel et n'en est pas un : c'est
@@ -50,7 +61,9 @@ Deux formes de sortie piègent le décodage :
 from __future__ import annotations
 
 import json
+import os
 import re
+import sqlite3
 import time
 from dataclasses import dataclass
 
@@ -59,6 +72,37 @@ from dataclasses import dataclass
 # la présence dit qu'il a tourné, les autres n'ayant qu'un cache ou un schéma.
 BINAIRE = "opencode"
 MAISON = "~/.local/share/opencode"
+
+# La base que l'outil tient, et la SEULE table que ce module a le droit de
+# lire. Le fichier porte aussi, en clair, des jetons d'accès et de
+# rafraîchissement, l'adresse du compte, et les invites tapées par
+# l'utilisateur — dans `account`, `credential`, `control_account`,
+# `session_input`, `message` et `part`. La liste est donc close, un test
+# vérifie que la source n'en nomme aucune autre, et l'ouverture est en lecture
+# seule.
+BASE = "~/.local/share/opencode/opencode.db"
+TABLE = "session"
+
+# Les colonnes lues, nommées une à une. `title` n'y est pas : il est engendré
+# par le modèle à partir de la conversation, donc c'est du contenu.
+COLONNES = (
+    "id",
+    "directory",
+    "agent",
+    "model",
+    "version",
+    "cost",
+    "tokens_input",
+    "tokens_output",
+    "tokens_reasoning",
+    "tokens_cache_read",
+    "tokens_cache_write",
+    "summary_additions",
+    "summary_deletions",
+    "summary_files",
+    "time_created",
+    "time_updated",
+)
 
 # La forme d'un identifiant de séance. Close, parce qu'il finit dans une ligne
 # de shell : tout ce qui n'est pas ici est refusé plutôt qu'échappé.
@@ -78,6 +122,7 @@ class Seance:
     projet: str = ""
     cree: int = 0
     modifie: int = 0
+    resume: Resume | None = None
 
     @property
     def quand(self) -> str:
@@ -304,4 +349,118 @@ def decoder_export(texte) -> Resume | None:
         lignes_ajoutees=_entier(resume.get("additions")),
         lignes_retirees=_entier(resume.get("deletions")),
         fichiers=_entier(resume.get("files")),
+    )
+
+
+def uri(base=None) -> str:
+    """L'URI d'ouverture de la base, en LECTURE SEULE.
+
+    `immutable=1` est un piège mesuré et non une optimisation : il fait
+    ignorer le journal d'écriture anticipée, et la base en porte plusieurs
+    mégaoctets. Une lecture ainsi ouverte rend ZÉRO ligne, en silence, sur une
+    base qui en contient — la pire forme d'erreur, celle qui ressemble à une
+    réponse.
+    """
+    return f"file:{os.path.expanduser(base or BASE)}?mode=ro"
+
+
+def requete(*, repertoire=None) -> tuple[str, tuple]:
+    """La requête et ses paramètres. Les colonnes sont nommées une à une.
+
+    Rien n'est interpolé : le répertoire passe en paramètre lié. La liste de
+    colonnes vient d'une constante du module, jamais d'un appelant.
+    """
+    sql = f"SELECT {', '.join(COLONNES)} FROM {TABLE}"
+    parametres: tuple = ()
+    if repertoire:
+        sql += " WHERE directory = ?"
+        parametres = (repertoire,)
+    return sql + " ORDER BY time_updated DESC", parametres
+
+
+def _modele(brut) -> tuple[str, str]:
+    """(modèle, fournisseur) d'un champ qui porte du JSON, ou deux vides."""
+    if not isinstance(brut, str) or not brut.strip():
+        return "", ""
+    try:
+        charge = json.loads(brut)
+    except ValueError:
+        return "", ""
+    if not isinstance(charge, dict):
+        return "", ""
+    return _texte(charge.get("id")), _texte(charge.get("providerID"))
+
+
+def lire_base(*, base=None, connecter=None, repertoire=None):
+    """Les séances de la base, résumé compris. None si rien n'est lisible.
+
+    Une seule lecture rend ce que le CLI demandait deux commandes et presque
+    deux secondes pour donner, et sans se tronquer. Elle porte en plus ce que
+    le CLI ne sait pas faire : TOUTES les séances, et non celles du seul
+    répertoire courant, `repertoire` filtrant sur demande.
+
+    None et une liste vide ne disent pas la même chose : le premier est « la
+    base manque, se refuse, ou n'a pas la forme attendue », le second « elle
+    ne porte aucune séance ». Un écran qui les confond annonce zéro sur une
+    base illisible.
+
+    Le schéma est celui d'un logiciel tiers et n'est promis par personne : une
+    colonne qui disparaît rend None plutôt que de lever, et l'appelant retombe
+    alors sur les commandes du CLI.
+    """
+    if connecter is None:
+
+        def connecter(chemin):
+            return sqlite3.connect(chemin, uri=True, timeout=2.0)
+
+    sql, parametres = requete(repertoire=repertoire)
+    try:
+        lien = connecter(uri(base))
+    except (sqlite3.Error, OSError):
+        return None
+    try:
+        presentes = {
+            ligne[1] for ligne in lien.execute(f"PRAGMA table_info({TABLE})")
+        }
+        if not set(COLONNES) <= presentes:
+            return None
+        lignes = lien.execute(sql, parametres).fetchall()
+    except (sqlite3.Error, OSError):
+        return None
+    finally:
+        try:
+            lien.close()
+        except (sqlite3.Error, OSError):
+            pass
+    return [_seance_de(dict(zip(COLONNES, ligne))) for ligne in lignes]
+
+
+def _seance_de(champs) -> Seance:
+    """Une ligne de la base, pliée dans les mêmes structures que le CLI.
+
+    Les deux sources nourrissent donc le même écran, qui n'a pas à savoir
+    laquelle a répondu.
+    """
+    modele, fournisseur = _modele(champs.get("model"))
+    return Seance(
+        identifiant=_texte(champs.get("id")),
+        repertoire=_texte(champs.get("directory")),
+        cree=_entier(champs.get("time_created")),
+        modifie=_entier(champs.get("time_updated")),
+        resume=Resume(
+            identifiant=_texte(champs.get("id")),
+            modele=modele,
+            fournisseur=fournisseur,
+            agent=_texte(champs.get("agent")),
+            version=_texte(champs.get("version")),
+            cout=_reel(champs.get("cost")),
+            entree=_entier(champs.get("tokens_input")),
+            sortie=_entier(champs.get("tokens_output")),
+            raisonnement=_entier(champs.get("tokens_reasoning")),
+            cache_lu=_entier(champs.get("tokens_cache_read")),
+            cache_ecrit=_entier(champs.get("tokens_cache_write")),
+            lignes_ajoutees=_entier(champs.get("summary_additions")),
+            lignes_retirees=_entier(champs.get("summary_deletions")),
+            fichiers=_entier(champs.get("summary_files")),
+        ),
     )

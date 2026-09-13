@@ -294,6 +294,24 @@ d'une session de Claude Code. Ce qui situe une séance sans la citer est son
 identifiant et sa date ; la colonne du répertoire disparaît, puisqu'elle
 répète celui que l'en-tête vient d'imprimer.
 
+**Deux sources répondent, et elles ne pèsent pas pareil.** La base SQLite que
+l'outil tient porte tout — coût, jetons, cache, lignes touchées, modèle,
+agent, dates — en une lecture de moins d'une milliseconde, sur TOUTES les
+séances. Les deux commandes du CLI demandent près de deux secondes pour moins,
+et l'une des deux se tronque. La base est donc lue d'abord et le CLI sert de
+repli, son schéma étant celui d'un tiers que personne ne promet stable.
+L'écran nomme celle qui a répondu, car seule la base sait sortir du répertoire
+courant.
+
+**Ce même fichier porte des secrets, et c'est ce qui borne la lecture.** Il
+tient les jetons d'accès et de rafraîchissement du compte, son adresse, et les
+invites tapées par l'utilisateur. Une seule table est donc nommée, ses
+colonnes énumérées une à une, l'ouverture en lecture seule, et un test refuse
+toute autre table comme toute colonne d'authentification. `immutable=1` est
+refusé aussi : il ignore le journal d'écriture anticipée, qui pèse ici
+plusieurs mégaoctets, et rend ZÉRO ligne sur une base pleine — une réponse
+fausse plutôt qu'une erreur, ce qui est pire.
+
 **Seule la lecture est déclarée.** `opencode run` écrit dans l'arbre de
 travail sans demander — une consigne de trois mots suffit à faire créer un
 fichier — donc une entrée « question libre » y serait un piège. Elle reste au

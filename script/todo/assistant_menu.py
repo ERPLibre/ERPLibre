@@ -358,6 +358,11 @@ class AssistantMenuMixin:
             return
         print(f"{MARQUE['no']} {t(reg.SANS_ADAPTATEUR)}")
 
+    # Ce que l'écran nomme comme source de ce qu'il montre. Les deux ne
+    # portent pas la même chose : la base sait sortir du répertoire courant,
+    # le CLI non, et l'écran ne doit pas offrir une portée qu'il n'a pas.
+    SOURCES = {"base": "its database", "cli": "its command line"}
+
     @staticmethod
     def _opencode_lancer(argv):
         """La sortie d'une lecture, ou "" quand l'outil ne répond pas.
@@ -375,15 +380,29 @@ class AssistantMenuMixin:
             return ""
         return fini.stdout if fini.returncode == 0 else ""
 
-    def _opencode_seances(self):
-        """Les séances DU RÉPERTOIRE COURANT, les plus récentes d'abord."""
+    def _opencode_seances(self, *, partout=False):
+        """Les séances, les plus récentes d'abord, et LA SOURCE qui a répondu.
+
+        La base d'abord : une lecture de moins d'une milliseconde qui porte
+        déjà le coût de chaque séance, là où le CLI demande deux commandes et
+        près de deux secondes pour moins, et se tronque au-delà de 60 ko.
+
+        Le CLI en repli, parce que le schéma de la base est celui d'un
+        logiciel tiers que personne ne promet stable. Il ne sait pas sortir du
+        répertoire courant : `partout` est donc sans effet sur lui, et l'écran
+        le dit plutôt que d'annoncer une portée qu'il n'a pas.
+        """
         from script.todo.assistant.harness import opencode as oc
 
-        return oc.decoder_liste(self._opencode_lancer(oc.argv_lister()))
+        ici = None if partout else os.getcwd()
+        seances = oc.lire_base(repertoire=ici)
+        if seances is not None:
+            return seances, "base"
+        return oc.decoder_liste(self._opencode_lancer(oc.argv_lister())), "cli"
 
     def _opencode_compte(self):
         """Ce que l'entrée du menu annonce, sans mentir sur la portée."""
-        seances = self._opencode_seances()
+        seances, _ = self._opencode_seances()
         if not seances:
             return t("nothing here")
         return self._llm_count(len(seances), "session here", "sessions here")
@@ -404,22 +423,45 @@ class AssistantMenuMixin:
         """
         from script.todo.assistant.harness import opencode as oc
 
+        partout = False
         while True:
-            seances = self._opencode_seances()
-            print(f"{t('Sessions opened from this directory')} :")
-            print(f"  {os.getcwd()}")
+            seances, source = self._opencode_seances(partout=partout)
+            elargi = partout and source == "base"
+            titre = (
+                "Sessions everywhere on this machine"
+                if elargi
+                else "Sessions opened from this directory"
+            )
+            print(f"{t(titre)} :")
+            if not elargi:
+                print(f"  {os.getcwd()}")
             if not seances:
-                print(
-                    f"  {MARQUE['unknown']}"
-                    f" {t('None here. The listing sees this directory only.')}"
-                )
+                # Trois vides qui n'appellent pas le même geste : la machine
+                # n'en porte aucune, ce répertoire n'en porte aucune, ou le
+                # CLI ne sait regarder que là. Le troisième invite à changer
+                # de répertoire, les deux autres non.
+                if elargi:
+                    vide = "No Open Code session on this machine."
+                elif source == "base":
+                    vide = "None in this directory."
+                else:
+                    vide = "None here. The listing sees this directory only."
+                print(f"  {MARQUE['unknown']} {t(vide)}")
             for seance in seances:
                 print(f"  {self._opencode_ligne(seance)}")
+            print(f"  {t('read from')} {t(self.SOURCES[source])}")
             choices = [
                 {"prompt_description": t("What one session cost")},
                 {
                     "prompt_description": t(
                         "Statistics, by tool and by model (all projects)"
+                    )
+                },
+                {
+                    "prompt_description": t(
+                        "This directory only"
+                        if elargi
+                        else "Every directory of this machine"
                     )
                 },
             ]
@@ -437,6 +479,16 @@ class AssistantMenuMixin:
                 self.execute.exec_command_live(
                     " ".join(oc.argv_statistiques()), source_erplibre=False
                 )
+            elif status == "3":
+                # Le CLI ne sait pas sortir du répertoire courant : basculer
+                # alors qu'il a répondu afficherait la même liste sous un
+                # autre titre, ce qui se lit comme un écran cassé.
+                if source != "base":
+                    print(
+                        f"{MARQUE['no']} {t('The database is not readable.')}"
+                    )
+                else:
+                    partout = not partout
             else:
                 print(t("Command not found !"))
 
@@ -477,13 +529,19 @@ class AssistantMenuMixin:
             print(t("Command not found !"))
             return
         seance = seances[int(rang) - 1]
-        try:
-            argv = oc.argv_exporter(seance.identifiant)
-        except ValueError as souci:
-            print(f"{MARQUE['no']} {souci}")
-            return
-        brut = self._opencode_lancer(argv)
-        resume = oc.decoder_export(brut)
+        # La base rend le résumé avec la séance : quand il est là, aucune
+        # commande n'est lancée, et la troncature de l'export ne peut pas
+        # frapper. Le repli ne sert que lorsque la base n'a pas répondu.
+        resume = seance.resume
+        brut = ""
+        if resume is None:
+            try:
+                argv = oc.argv_exporter(seance.identifiant)
+            except ValueError as souci:
+                print(f"{MARQUE['no']} {souci}")
+                return
+            brut = self._opencode_lancer(argv)
+            resume = oc.decoder_export(brut)
         if resume is None:
             # None n'est pas un résumé à zéro : le dire évite de chercher une
             # séance gratuite là où rien n'a pu être lu. Et nommer QUI a

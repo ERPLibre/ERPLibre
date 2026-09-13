@@ -13015,6 +13015,42 @@ TRANSLATIONS = {
         "fr": "Open Code a coupé sa propre sortie.",
         "en": "Open Code cut its own output.",
     },
+    "Sessions everywhere on this machine": {
+        "fr": "🧊 Séances de toute la machine",
+        "en": "🧊 Sessions everywhere on this machine",
+    },
+    "Every directory of this machine": {
+        "fr": "🌐 Tous les répertoires de la machine",
+        "en": "🌐 Every directory of this machine",
+    },
+    "This directory only": {
+        "fr": "📁 Ce répertoire seulement",
+        "en": "📁 This directory only",
+    },
+    "None in this directory.": {
+        "fr": "Aucune dans ce répertoire.",
+        "en": "None in this directory.",
+    },
+    "No Open Code session on this machine.": {
+        "fr": "Aucune séance Open Code sur cette machine.",
+        "en": "No Open Code session on this machine.",
+    },
+    "read from": {
+        "fr": "lu depuis",
+        "en": "read from",
+    },
+    "its database": {
+        "fr": "sa base",
+        "en": "its database",
+    },
+    "its command line": {
+        "fr": "sa ligne de commande",
+        "en": "its command line",
+    },
+    "The database is not readable.": {
+        "fr": "La base n'est pas lisible.",
+        "en": "The database is not readable.",
+    },
     "It happens past roughly 60 kB of export.": {
         "fr": "Cela arrive au-delà d'une soixantaine de ko d'export.",
         "en": "It happens past roughly 60 kB of export.",

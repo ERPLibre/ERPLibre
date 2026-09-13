@@ -115,6 +115,191 @@ class TestCeQuiNEstPasConstruit(unittest.TestCase):
             self.assertNotIn(interdit, source, interdit)
 
 
+class TestLaBaseNeSeLitQueLaOuElleDoit(unittest.TestCase):
+    """Le fichier qu'on ouvre porte des secrets, et pas qu'un peu.
+
+    `opencode.db` tient dans la même base les jetons d'accès et de
+    rafraîchissement du compte, son adresse, la valeur des identifiants
+    enregistrés, et les invites tapées par l'utilisateur. Lire une colonne de
+    coût dans ce fichier n'est acceptable que si la portée est CLOSE et
+    vérifiée mécaniquement : sans ce test, une requête ajoutée un mardi
+    atteint `account.access_token` sans que rien ne lève.
+    """
+
+    TABLES_INTERDITES = (
+        "account",
+        "account_state",
+        "control_account",
+        "credential",
+        "session_input",
+        "session_message",
+        "session_share",
+        "message",
+        "part",
+        "todo",
+        "permission",
+        "event",
+    )
+    COLONNES_INTERDITES = (
+        "access_token",
+        "refresh_token",
+        "token_expiry",
+        "email",
+        "secret",
+        "prompt",
+        "title",
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        with open(oc.__file__, encoding="utf-8") as fh:
+            cls.source = fh.read()
+
+    def test_only_one_table_is_named(self):
+        self.assertEqual(oc.TABLE, "session")
+        for interdite in self.TABLES_INTERDITES:
+            self.assertNotIn(
+                f'"{interdite}"', self.source, f"table {interdite}"
+            )
+            self.assertNotIn(
+                f"'{interdite}'", self.source, f"table {interdite}"
+            )
+
+    def test_no_authenticating_column_is_named(self):
+        """`title` est dans la liste pour la même raison que le reste : c'est
+        du contenu engendré par le modèle, et il ne sort pas."""
+        for interdite in self.COLONNES_INTERDITES:
+            self.assertNotIn(f'"{interdite}"', self.source, interdite)
+            self.assertNotIn(f"'{interdite}'", self.source, interdite)
+
+    def test_the_query_names_its_columns_one_by_one(self):
+        """Un « SELECT * » ramènerait le titre et tout ce qui s'ajoutera."""
+        sql, _ = oc.requete()
+        self.assertNotIn("*", sql)
+        for colonne in oc.COLONNES:
+            self.assertIn(colonne, sql)
+
+    def test_a_directory_filter_is_bound_and_never_interpolated(self):
+        sql, parametres = oc.requete(repertoire="/un; DROP TABLE session")
+        self.assertIn("?", sql)
+        self.assertNotIn("DROP", sql)
+        self.assertEqual(parametres, ("/un; DROP TABLE session",))
+
+    def test_the_database_is_opened_read_only(self):
+        self.assertIn("mode=ro", oc.uri())
+
+    def test_the_database_is_never_opened_immutable(self):
+        """`immutable=1` fait ignorer le journal d'écriture anticipée, qui
+        pèse plusieurs mégaoctets : la lecture rend alors ZÉRO ligne sur une
+        base qui en porte, en silence. C'est une réponse fausse, pas une
+        erreur — la pire des deux."""
+        self.assertNotIn("immutable", oc.uri())
+        self.assertNotIn("immutable", oc.uri("/une/autre/base.db"))
+
+    def test_only_one_place_builds_the_uri(self):
+        """La garde précédente ne vaut que si `uri()` est le SEUL endroit qui
+        compose une URI : une seconde, ailleurs, échapperait à tout.
+
+        Le mot « immutable » n'est pas cherché dans la source : il y figure
+        exprès, dans la prose qui explique le piège, et une garde qui
+        interdirait d'en parler pousserait à taire ce qu'on vient d'apprendre.
+        """
+        self.assertEqual(self.source.count("file:"), 1)
+
+
+class TestCeQueLaBaseRend(unittest.TestCase):
+    """Le repli et l'absence, vérifiés sans toucher à une vraie base."""
+
+    LIGNE = {
+        "id": SEANCE,
+        "directory": "/un/depot",
+        "agent": "build",
+        "model": '{"id":"un-modele","providerID":"un-fournisseur"}',
+        "version": "1.2.3",
+        "cost": 0.25,
+        "tokens_input": 100,
+        "tokens_output": 20,
+        "tokens_reasoning": 5,
+        "tokens_cache_read": 400,
+        "tokens_cache_write": 50,
+        "summary_additions": 12,
+        "summary_deletions": 3,
+        "summary_files": 2,
+        "time_created": 111,
+        "time_updated": 222,
+    }
+
+    def _connecter(self, *, colonnes=None, lignes=None, leve=None):
+        """Un faux lien : ni fichier, ni socket, ni base réelle."""
+        presentes = oc.COLONNES if colonnes is None else colonnes
+        rangs = [self.LIGNE] if lignes is None else lignes
+
+        class Faux:
+            def execute(interne, sql, parametres=()):
+                if leve is not None:
+                    raise leve
+                if sql.startswith("PRAGMA"):
+                    return [(i, n) for i, n in enumerate(presentes)]
+                return interne
+
+            def fetchall(interne):
+                return [tuple(r.get(c) for c in oc.COLONNES) for r in rangs]
+
+            def close(interne):
+                pass
+
+        return lambda chemin: Faux()
+
+    def test_a_row_carries_its_whole_summary(self):
+        (seance,) = oc.lire_base(connecter=self._connecter())
+        self.assertEqual(seance.identifiant, SEANCE)
+        self.assertEqual(seance.repertoire, "/un/depot")
+        self.assertEqual(seance.modifie, 222)
+        self.assertEqual(seance.resume.modele, "un-modele")
+        self.assertEqual(seance.resume.fournisseur, "un-fournisseur")
+        self.assertEqual(seance.resume.cout, 0.25)
+        self.assertEqual(seance.resume.jetons, 575)
+        self.assertEqual(seance.resume.lignes_ajoutees, 12)
+
+    def test_a_model_that_is_not_json_leaves_two_empty_fields(self):
+        ligne = dict(self.LIGNE, model="pas du json")
+        (seance,) = oc.lire_base(connecter=self._connecter(lignes=[ligne]))
+        self.assertEqual(seance.resume.modele, "")
+        self.assertEqual(seance.resume.fournisseur, "")
+
+    def test_a_schema_without_a_needed_column_falls_back(self):
+        """Le schéma est celui d'un logiciel tiers, promis par personne : une
+        colonne qui disparaît doit rendre la main au CLI, pas lever."""
+        amputee = tuple(c for c in oc.COLONNES if c != "cost")
+        self.assertIsNone(
+            oc.lire_base(connecter=self._connecter(colonnes=amputee))
+        )
+
+    def test_an_unreadable_base_is_none_and_not_an_empty_list(self):
+        """« La base manque » et « elle ne porte aucune séance » se
+        ressemblent à l'écran et disent le contraire."""
+        import sqlite3
+
+        def refuser(chemin):
+            raise sqlite3.OperationalError("unable to open database file")
+
+        self.assertIsNone(oc.lire_base(connecter=refuser))
+
+    def test_a_base_with_no_session_is_an_empty_list(self):
+        self.assertEqual(
+            oc.lire_base(connecter=self._connecter(lignes=[])), []
+        )
+
+    def test_a_query_that_raises_falls_back_rather_than_propagates(self):
+        import sqlite3
+
+        self.assertIsNone(
+            oc.lire_base(
+                connecter=self._connecter(leve=sqlite3.DatabaseError("x"))
+            )
+        )
+
+
 class TestLIdentifiantNeVaPasDansUnShell(unittest.TestCase):
     """L'appelant recolle l'argv en une ligne de shell."""
 

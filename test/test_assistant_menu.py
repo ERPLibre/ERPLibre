@@ -698,16 +698,18 @@ class LeHarnaisOpenCode(unittest.TestCase):
         cible.assert_called_once_with()
         temoin.assert_not_called()
 
-    def _ecran(self, seances, reponses):
-        """L'écran, piloté sans jamais lancer le vrai binaire."""
+    def _ecran(self, seances, reponses, source="base"):
+        """L'écran, piloté sans jamais lancer le binaire ni ouvrir la base."""
         from script.todo.todo import TODO
 
         sorti = []
-        with patch.object(
-            TODO, "_opencode_seances", return_value=seances
-        ), patch.object(TODO, "fill_help_info", lambda self, c: ""), patch(
-            "click.prompt", side_effect=reponses
-        ), patch(
+
+        def fausses(interne, *, partout=False):
+            return (seances, source)
+
+        with patch.object(TODO, "_opencode_seances", fausses), patch.object(
+            TODO, "fill_help_info", lambda self, c: ""
+        ), patch("click.prompt", side_effect=reponses), patch(
             "builtins.print",
             side_effect=lambda *a, **k: sorti.append(
                 " ".join(str(x) for x in a)
@@ -723,12 +725,37 @@ class LeHarnaisOpenCode(unittest.TestCase):
         self.assertIn(t("Sessions opened from this directory"), rendu)
         self.assertIn(os.getcwd(), rendu)
 
-    def test_aucune_seance_le_dit_avec_sa_raison(self):
-        """« Aucune » tout court laisserait chercher une panne."""
+    def test_les_trois_vides_ne_disent_pas_la_meme_chose(self):
+        """« Aucune » tout court laisserait chercher une panne.
+
+        Trois vides, trois gestes : la machine n'en porte aucune, ce
+        répertoire n'en porte aucune, ou le CLI ne sait regarder que là. Seul
+        le troisième invite à changer de répertoire.
+        """
+        self.assertIn(t("None in this directory."), self._ecran([], ["0"]))
         self.assertIn(
             t("None here. The listing sees this directory only."),
-            self._ecran([], ["0"]),
+            self._ecran([], ["0"], source="cli"),
         )
+        self.assertIn(
+            t("No Open Code session on this machine."),
+            self._ecran([], ["3", "0"]),
+        )
+
+    def test_l_ecran_nomme_la_source_qui_a_repondu(self):
+        """Les deux ne portent pas la même chose : la base sait sortir du
+        répertoire courant, le CLI non."""
+        self.assertIn(t("its database"), self._ecran([], ["0"]))
+        self.assertIn(
+            t("its command line"), self._ecran([], ["0"], source="cli")
+        )
+
+    def test_le_cli_ne_peut_pas_elargir_et_le_dit(self):
+        """Basculer alors que le CLI a répondu afficherait la même liste sous
+        un autre titre, ce qui se lit comme un écran cassé."""
+        rendu = self._ecran([], ["3", "0"], source="cli")
+        self.assertIn(t("The database is not readable."), rendu)
+        self.assertNotIn(t("Sessions everywhere on this machine"), rendu)
 
     def test_une_seance_montre_sa_date_et_jamais_son_titre(self):
         """La date DISTINGUE ; le répertoire, cadré sur le courant, non."""
