@@ -594,6 +594,12 @@ Dans les deux cas le jeton se range au coffre sous sa propre référence, à
 côté de l'entrée du mot de passe et non dessus : un compte qui repasse au
 mot de passe en a toujours un.
 
+Le formulaire du TUI (`n`) offre le même choix : choisir un préréglage fixe
+ce que le compte peut employer — la liste des authentifications n'est
+active que là où il y a quelque chose à choisir — et le champ du secret dit
+ensuite s'il attend un mot de passe ou un jeton. Il prend un jeton collé ;
+le parcours navigateur, lui, vit dans le menu.
+
 **Ensuite, plus rien à faire.** Un jeton d'accès vit environ une heure ; le
 client échange le jeton de rafraîchissement contre un neuf avant d'ouvrir
 une session, range le jeu neuf au coffre, et synchronise. L'échange a lieu
