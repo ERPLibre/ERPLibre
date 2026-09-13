@@ -696,6 +696,18 @@ class TestSelectDatabase(unittest.TestCase):
         self.assertFalse(result)
 
 
+def _commande_de_restauration(todo):
+    """La commande de restauration, CHERCHÉE et non prise au rang zéro.
+
+    La porte lit d'abord la liste des bases : un rang codé en dur désigne
+    cette lecture, et l'épreuve juge alors une commande qui ne détruit rien.
+    """
+    for appel in todo.db_manager._execute.exec_command_live.call_args_list:
+        if "db_restore.py" in appel[0][0]:
+            return appel[0][0]
+    raise AssertionError("aucune restauration lancée")
+
+
 class TestRestoreFromDatabase(unittest.TestCase):
     """L'entrée « [1] » demande désormais un NOM d'image, et le zip est
     cherché avant que la moindre commande soit bâtie : ces deux épreuves
@@ -716,9 +728,7 @@ class TestRestoreFromDatabase(unittest.TestCase):
         # neutralisation, pas de mise à jour des modules
         mock_input.side_effect = ["1", "backup", "", "n", "n"]
         todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
+        cmd = _commande_de_restauration(todo)
         self.assertIn("db_restore.py", cmd)
         self.assertIn("--image backup", cmd)
 
@@ -733,9 +743,7 @@ class TestRestoreFromDatabase(unittest.TestCase):
         )
         mock_input.side_effect = ["1", "backup", "mydb", "y", "n"]
         todo.db_manager.restore_from_database()
-        cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
-            0
-        ]
+        cmd = _commande_de_restauration(todo)
         self.assertIn("--neutralize", cmd)
         self.assertIn("mydb_neutralize", cmd)
 

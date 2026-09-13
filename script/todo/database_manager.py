@@ -8,7 +8,12 @@ import logging
 import os
 import shlex
 
-from script.database import backup_verify, backup_witness, db_restore
+from script.database import (
+    backup_verify,
+    backup_witness,
+    db_restore,
+    drill_guard,
+)
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -44,6 +49,78 @@ class DatabaseManager:
     def _on_dir_selected(self, path: str) -> None:
         self._dir_path = path
 
+    def _list_databases(self) -> tuple[bool, list]:
+        """(a-t-on pu lire, les bases). DEUX réponses, jamais confondues.
+
+        Zéro base EST une réponse ; une liste illisible n'en est pas une.
+        Les rendre par une seule valeur fausse laisse un appelant qui
+        détruit conclure « il n'y a rien à écraser » d'un PostgreSQL muet.
+
+        Le code de retour est vérifié : la sortie et l'erreur sont fusionnées
+        dans le même flux (`stderr=STDOUT`, execute.py), donc sans lui les
+        lignes d'une trace d'appel deviennent des noms de base.
+        """
+        status, output = self._execute.exec_command_live(
+            "./odoo_bin.sh db --list",
+            return_status_and_output=True,
+            quiet=True,
+            source_erplibre=False,
+            single_source_erplibre=True,
+        )
+        if status:
+            print(
+                f"\u274c {t('Cannot list the databases (exit code): ')}"
+                f"{status}"
+            )
+            print(f"   {t('Is PostgreSQL running?')}")
+            for line in output[-5:]:
+                print(f"   {line}")
+            return False, []
+        return True, [a.strip() for a in output if a.strip()]
+
+    def _may_destroy(self, database_name: str) -> bool:
+        """Le feu vert avant d'écraser une base. Faux arrête tout.
+
+        LE POINT DE PASSAGE de l'étage interactif. Restaurer DÉTRUIT la
+        base cible, dont le nom est du texte libre : la collision était
+        imprimée et jamais questionnée.
+
+        Trois réponses, et la troisième est la seule qui demande quelque
+        chose. Une base absente n'a rien à protéger. Une base d'exercice —
+        drapeau de neutralisation ou compte d'essai — passe, et la ligne
+        le DIT : muette, elle ne distingue plus une base reconnue d'une
+        base que rien n'a lue. Tout le reste fait retaper le nom, parce que
+        recopier oblige à regarder ce qu'on détruit là où « o » se tape par
+        réflexe.
+
+        L'étage LOT n'en veut pas : une base fraîchement restaurée n'a ni
+        drapeau ni compte d'essai, donc elle se lit réelle, et la garde y
+        refuserait les dizaines de cibles make qui recyclent leurs noms.
+        """
+        lisible, bases = self._list_databases()
+        if not lisible:
+            # Ne pas savoir n'est pas savoir qu'il n'y a rien.
+            print(f"\u274c {t('Nothing is destroyed without reading first.')}")
+            return False
+        if database_name not in bases:
+            return True
+        if drill_guard.is_drill_database(database_name):
+            print(
+                f"\u2139\ufe0f  {t('Drill database: overwriting it is safe.')}"
+            )
+            return True
+        print(
+            f"\u26a0\ufe0f  {t('This database will be ERASED: ')}"
+            f"{database_name}"
+        )
+        retape = input(
+            f"\U0001f4ac {t('Retype its name to confirm: ')}"
+        ).strip()
+        if retape != database_name:
+            print(t("Database deletion cancelled."))
+            return False
+        return True
+
     def select_database(self) -> str | bool:
         """Faire choisir une base parmi celles que PostgreSQL expose.
 
@@ -55,22 +132,10 @@ class DatabaseManager:
         last): » s'affichait comme la base [1], et la choisir renvoyait cette
         ligne comme nom de base à l'appelant, qui la passait à sa commande.
         """
-        cmd_server = "./odoo_bin.sh db --list"
-        status, output = self._execute.exec_command_live(
-            cmd_server,
-            return_status_and_output=True,
-            quiet=True,
-            source_erplibre=False,
-            single_source_erplibre=True,
-        )
-        if status:
-            print(f"❌ {t('Cannot list the databases (exit code): ')}{status}")
-            print(f"   {t('Is PostgreSQL running?')}")
-            for line in output[-5:]:
-                print(f"   {line}")
+        lisible, databases = self._list_databases()
+        if not lisible:
             return False
 
-        databases = [a.strip() for a in output if a.strip()]
         if not databases:
             print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
             return False
@@ -216,6 +281,9 @@ class DatabaseManager:
         if neutralise != "n":
             more_arg = "--neutralize "
             database_name += "_neutralize"
+
+        if not self._may_destroy(database_name):
+            return
 
         status, _ = self._execute.exec_command_live(
             f"python3 ./script/database/db_restore.py "

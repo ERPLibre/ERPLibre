@@ -11569,6 +11569,22 @@ TRANSLATIONS = {
         "fr": "Mettre à jour tous les modules (o/N) ? ",
         "en": "Would you like to update all addons (y/N)? ",
     },
+    "Nothing is destroyed without reading first.": {
+        "fr": "Rien n'est détruit sans avoir lu d'abord.",
+        "en": "Nothing is destroyed without reading first.",
+    },
+    "Drill database: overwriting it is safe.": {
+        "fr": "Base d'exercice : l'écraser ne coûte rien.",
+        "en": "Drill database: overwriting it is safe.",
+    },
+    "This database will be ERASED: ": {
+        "fr": "Cette base va être EFFACÉE : ",
+        "en": "This database will be ERASED: ",
+    },
+    "Retype its name to confirm: ": {
+        "fr": "Retaper son nom pour confirmer : ",
+        "en": "Retype its name to confirm: ",
+    },
     "The restore failed.": {
         "fr": "La restauration a échoué.",
         "en": "The restore failed.",
