@@ -434,12 +434,26 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
         libvirt : les deux issues sont nommées, pas seulement la première."""
         texte, lancees = self.refus(0, "FIN\n")
         self.assertIn("1. ssh op@ailleurs", texte)
+        self.assertIn("git fetch && git switch ", texte)
         self.assertIn("sudo bash script/install/install_qemu_cache.sh", texte)
         self.assertIn("systemctl start libvirtd.socket", texte)
         self.assertIn("net-start default", texte)
         self.assertIn("EL_BRIDGE=", texte)
         self.assertNotIn("ssh-copy-id", texte)
         self.assertEqual(lancees, [])
+
+    def test_la_branche_nommee_est_celle_de_cet_hote(self):
+        """L'installateur est un FICHIER du dépôt : une machine restée sur
+        une branche qui ne le porte pas répond « fichier introuvable », ce
+        qui ne ressemble en rien à un cache manquant et fait chercher la
+        panne ailleurs. Le nom ne se devine donc pas, il se lit ici."""
+        from script.todo.todo import TODO
+
+        branche = TODO._cache_branche_ici()
+        if not branche:
+            self.skipTest("dépôt en tête détachée : aucune branche à nommer")
+        texte, _lancees = self.refus(0, "FIN\n")
+        self.assertIn(f"git switch {branche}", texte)
 
     def test_un_cache_sans_son_compte_se_dit_autrement(self):
         """Les fichiers arriveraient à root : le service ne les lirait pas.

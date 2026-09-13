@@ -6451,9 +6451,17 @@ TRANSLATIONS = {
         "fr": "Les gestes, SUR la machine d'arrivée :",
         "en": "Steps, ON the target machine:",
     },
-    "go to its ERPLibre checkout, on the same branch": {
-        "fr": "aller dans son checkout ERPLibre, sur la même branche",
-        "en": "go to its ERPLibre checkout, on the same branch",
+    "go to its ERPLibre checkout, then:": {
+        "fr": "aller dans son checkout ERPLibre, puis :",
+        "en": "go to its ERPLibre checkout, then:",
+    },
+    "without that branch, the installer is not there": {
+        "fr": "sans cette branche, l'installateur n'y est pas",
+        "en": "without that branch, the installer is not there",
+    },
+    "the branch used here": {
+        "fr": "la branche utilisée ici",
+        "en": "the branch used here",
     },
     "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1": {
         "fr": "ou, dans son TODO : Exécuter > Déploiement > Cache QEMU, entrée 1",

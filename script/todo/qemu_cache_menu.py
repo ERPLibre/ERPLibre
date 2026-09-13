@@ -718,7 +718,36 @@ class QemuCacheMenuMixin:
         print(f"      ssh-copy-id {q}\n")
 
     @staticmethod
-    def _cache_dire_poser_la_bas(cible):
+    def _cache_branche_ici():
+        """La branche de CE dépôt, ou '' si git ne répond pas.
+
+        L'installateur et le menu sont des fichiers du dépôt : une machine
+        restée sur une branche qui ne les porte pas ne les a tout
+        simplement pas, et « sudo bash … » y répond « fichier introuvable »
+        — une panne qui ne ressemble en rien à un cache manquant. Nommer la
+        branche d'ici épargne de la deviner.
+        """
+        try:
+            res = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    RACINE_DEPOT,
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "HEAD",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        nom = (res.stdout or "").strip()
+        return "" if res.returncode or nom == "HEAD" else nom
+
+    @classmethod
+    def _cache_dire_poser_la_bas(cls, cible):
         """Les gestes à faire SUR la machine d'arrivée, un par ligne.
 
         L'entrée 1 pose le cache ICI : y renvoyer fait relancer une
@@ -733,13 +762,19 @@ class QemuCacheMenuMixin:
         deux issues nommées ensemble — lever libvirt, ou nommer le pont.
         """
         q = shlex.quote(cible)
+        # La branche d'ici, faute de pouvoir lire celle de là-bas : c'est
+        # celle qui porte l'installateur, et un dépôt en tête détachée n'en
+        # nomme aucune — la phrase générique vaut alors mieux qu'un nom faux.
+        branche = cls._cache_branche_ici() or t("the branch used here")
         for ligne in (
             f"  ✗ {t('The target has no cache installed:')} {cible}",
             "    "
             f"{t('Entry 1 installs the cache HERE; the target needs its own.')}",
             f"    {t('Steps, ON the target machine:')}",
             f"      1. ssh {q}",
-            f"      2. {t('go to its ERPLibre checkout, on the same branch')}",
+            f"      2. {t('go to its ERPLibre checkout, then:')}",
+            f"         git fetch && git switch {branche}",
+            f"         {t('without that branch, the installer is not there')}",
             f"      3. sudo bash {INSTALLATEUR}",
             "         "
             f"{t('or, in its own TODO: Execute > Deploy > QEMU cache, entry 1')}",
