@@ -1677,7 +1677,7 @@ class AssistantMenuMixin:
             return
         if exigence == "id" and not self._claude_retape_id(session):
             return
-        argv = adaptateur.argv_action(sous_commande, session.session_id)
+        argv = adaptateur.argv_action(sous_commande, session.poignee)
         self.execute.exec_command_live(" ".join(argv), source_erplibre=False)
 
     def _claude_dit_oui(self, session):
@@ -1739,7 +1739,7 @@ class AssistantMenuMixin:
         session = self._claude_choisir_detache()
         if session is None:
             return
-        argv = adaptateur.argv_action(adaptateur.ATTACHER, session.session_id)
+        argv = adaptateur.argv_action(adaptateur.ATTACHER, session.poignee)
         commande = " ".join(shlex.quote(m) for m in argv)
         if not getattr(self.execute, "cmd_source_default", ""):
             print(t("No terminal can be opened here. Paste this command:"))

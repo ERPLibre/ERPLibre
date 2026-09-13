@@ -24,17 +24,22 @@ non poussés d'un arbre de travail, et le CLI n'accepte que la valeur qu'un
 détruirait du travail sur une valeur devinée. Le menu montre ce que `rm` a
 rapporté et s'arrête là.
 
-**Ce que ce module ne construit pas non plus.** Le lancement d'un agent
-détaché n'est pas ici : `claude --bg` prend son invite en positionnel, et une
-invite en positionnel se lit dans `/proc/<pid>/cmdline` par tout compte de la
-machine. Savoir si `--bg` accepte l'invite sur l'entrée standard demande de
-lancer un vrai agent, ce qui dépense le quota de l'utilisateur — donc la
-mesure appartient à l'utilisateur et le lancement attend qu'elle soit faite.
+**L'identifiant est COURT, et c'est le piège du module.** Le listage porte
+deux champs d'identité pour un agent détaché : `id`, huit caractères, et
+`sessionId`, l'UUID complet. Les cinq sous-commandes n'acceptent que le
+premier. Passer l'UUID rend « No job matching », et le rend avec un code de
+sortie NUL : aucun appelant ne voit l'action échouer, l'écran annonce un
+geste qui n'a pas eu lieu. Une session interactive ne porte pas `id` du tout,
+ce qui est cohérent — les cinq sous-commandes ne s'appliquent qu'aux
+détachées.
 
-L'identifiant passé aux cinq commandes est le `sessionId` du registre. L'aide
-de `--bg` dit que `claude agents` liste les identifiants que ces commandes
-prennent, et c'est le seul champ d'identité que le JSON du registre porte ;
-la forme courte affichée est un préfixe et n'est jamais ce qui est passé.
+**Ce que ce module ne construit pas.** Le lancement d'un agent détaché n'est
+pas ici. `claude --bg` accepte son invite sur l'entrée standard et imprime
+l'identifiant court : la contrainte du dépôt — une invite ne passe jamais par
+l'argv, où `/proc/<pid>/cmdline` la rend lisible par tout compte de la machine
+— est donc tenable. Ce qui manque est ailleurs : un agent détaché ouvre un
+arbre de travail que `rm` supprime, et le menu n'a pas encore de quoi dire à
+l'utilisateur ce qu'il engage.
 """
 from __future__ import annotations
 

@@ -92,6 +92,22 @@ class Session:
     version: str = ""
     branch: str = ""
     live: bool = False
+    court: str = ""
+
+    @property
+    def poignee(self) -> str:
+        """L'identifiant que les sous-commandes d'arrière-plan ACCEPTENT.
+
+        Le listage porte deux identifiants pour un agent détaché : `id`, court,
+        et `sessionId`, l'UUID complet. Les cinq sous-commandes — logs, attach,
+        stop, respawn, rm — ne prennent QUE le court : passer l'UUID rend « No
+        job matching », et avec un code de sortie NUL, donc sans qu'aucun
+        appelant ne le voie échouer.
+
+        Un listage qui ne porte pas `id` retombe sur le préfixe de l'UUID,
+        qui est la forme que l'outil imprime aujourd'hui.
+        """
+        return self.court or self.session_id[:8]
 
 
 def live(*, run=None, read_registry=None, read_stat=None) -> list[Session]:
@@ -116,6 +132,7 @@ def live(*, run=None, read_registry=None, read_stat=None) -> list[Session]:
         trouvees.append(
             Session(
                 session_id=str(brute.get("sessionId") or ""),
+                court=str(brute.get("id") or ""),
                 pid=pid,
                 kind=str(brute.get("kind") or ""),
                 status=str(brute.get("status") or ""),
