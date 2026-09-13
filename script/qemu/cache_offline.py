@@ -493,6 +493,87 @@ def suites_absentes(vms) -> list:
     return manquantes
 
 
+# Ce qu'un bureau installe vraiment. Les quatre composants, sur la suite de
+# base ET sur ses deux compagnes : « xrdp » vit dans « universe », ses
+# dépendances dans « restricted », et les correctifs dans « -security ». Un
+# cache rempli pour « main » seul laisse apt sans rien de tout cela.
+COMPOSANTS_APT = ("main", "universe", "restricted", "multiverse")
+SUFFIXES_APT = ("", "-updates", "-security")
+
+# « /dists/<suite>/<composant>/binary-<arche>/ » : ce que porte l'URL d'un
+# index de paquets, et la seule forme qui dise à la fois la suite, le
+# composant et l'architecture.
+_INDEX_APT = re.compile(r"/dists/([^/]+)/([^/]+)/binary-([^/]+)/")
+
+
+def composants_absents(vms, chemin: str = "") -> list:
+    """[(système, version, ["suite/composant", …])] — ce dont le cache n'a rien.
+
+    Le verdict par SUITE ne suffit pas : une seule URL en réserve sous
+    « /dists/<code>/ » le rend muet, alors que « restricted » ou
+    « -security » peuvent manquer en entier. apt ne le dit qu'à
+    l'installation, par « Unable to locate package », un message qui accuse
+    le dépôt et jamais le cache — vingt minutes après la coupure.
+
+    Muet quand on ne sait pas juger — famille sans jeton, journal illisible.
+    Muet aussi quand le cache n'a RIEN de ce système : `suites_absentes` le
+    dit déjà, et deux avertissements pour une cause apprennent à les
+    enchaîner.
+    """
+    import json
+    import os
+
+    chemin = chemin or journal()
+    if not chemin or not os.path.exists(chemin):
+        return []
+    vus = set()
+    try:
+        with open(chemin, encoding="utf-8", errors="replace") as fh:
+            for ligne in fh:
+                if "/dists/" not in ligne:
+                    continue
+                try:
+                    d = json.loads(ligne)
+                except ValueError:
+                    continue
+                if d.get("outcome") not in ISSUES_EN_RESERVE:
+                    continue
+                trouve = _INDEX_APT.search(d.get("url") or "")
+                if trouve:
+                    vus.add(trouve.groups())
+    except OSError:
+        return []
+
+    deja, sortie = set(), []
+    for vm in vms or ():
+        distro = vm.get("distro") or ""
+        version = vm.get("version") or ""
+        arche = vm.get("arch") or "amd64"
+        cle = (distro, version, arche)
+        if not distro or cle in deja:
+            continue
+        deja.add(cle)
+        jeton = jeton_de_suite(distro, version)
+        if not jeton:
+            continue
+        code = jeton.strip("/").split("/")[-1]
+        attendus = [
+            (code + suffixe, composant)
+            for suffixe in SUFFIXES_APT
+            for composant in COMPOSANTS_APT
+        ]
+        manque = [
+            f"{suite}/{composant}"
+            for suite, composant in attendus
+            if (suite, composant, arche) not in vus
+        ]
+        # Tout manque : le cache ignore ce système, et `suites_absentes` le
+        # dira mieux.
+        if manque and len(manque) < len(attendus):
+            sortie.append((distro, version, manque))
+    return sortie
+
+
 # ---------------------------------------------------------------------------
 # Ce que les déploiements hors ligne précédents n'ont pas trouvé
 # ---------------------------------------------------------------------------

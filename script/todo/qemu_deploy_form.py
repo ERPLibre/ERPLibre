@@ -1219,12 +1219,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                 from script.qemu import cache_offline
 
                 absentes = cache_offline.suites_absentes(spec["vms"])
+                # Le verdict par suite se tait dès qu'UNE url est en
+                # réserve : il ne voit pas « restricted » ou « -security »
+                # absents, qui font pourtant échouer l'installation sur
+                # « Unable to locate package », vingt minutes plus tard.
+                composants = cache_offline.composants_absents(spec["vms"])
                 # Ce que les derniers déploiements hors ligne des MÊMES VM ont
                 # manqué, moins ce que le cache détient depuis. Un seul
                 # avertissement pour les deux, sous le même F5 : deux
                 # confirmations d'affilée apprendraient à les enchaîner.
                 manques = cache_offline.manques_hors_ligne(spec["vms"])
-                if absentes or manques:
+                if absentes or composants or manques:
                     self._offline_ack = True
                     motifs = []
                     if absentes:
@@ -1233,6 +1238,17 @@ def run_deploy_form(ctx, run_app: bool = True):
                             t("cache holds nothing for")
                             + f" {quoi} — "
                             + t("an offline VM will fail")
+                        )
+                    for distro, version, manque in composants:
+                        # Trois au plus : la liste entière tiendrait douze
+                        # entrées et personne ne lirait la douzième.
+                        exemples = ", ".join(manque[:3])
+                        if len(manque) > 3:
+                            exemples += f" (+{len(manque) - 3})"
+                        motifs.append(
+                            t("cache holds no index for")
+                            + f" {distro} {version} : {exemples} — "
+                            + t("those packages will not be found")
                         )
                     for b in manques:
                         heures = int(b["age"] // 3600)

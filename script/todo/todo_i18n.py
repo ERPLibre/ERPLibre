@@ -6447,6 +6447,14 @@ TRANSLATIONS = {
         "fr": "miroir apt fixé",
         "en": "apt mirror pinned",
     },
+    "cache holds no index for": {
+        "fr": "le cache n'a aucun index pour",
+        "en": "cache holds no index for",
+    },
+    "those packages will not be found": {
+        "fr": "ces paquets ne seront pas trouvés",
+        "en": "those packages will not be found",
+    },
     "waiting for the VM to answer ssh": {
         "fr": "attente que la VM réponde en ssh",
         "en": "waiting for the VM to answer ssh",

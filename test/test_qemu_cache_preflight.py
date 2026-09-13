@@ -549,6 +549,105 @@ class TestCeQueLeMagasinDetient(SansSysteme):
         self.assertEqual(self.lancees, [])
 
 
+class TestLesComposantsQueLeCacheNaPas(SansSysteme):
+    """Le verdict par SUITE ne suffit pas.
+
+    Une seule URL en réserve sous « /dists/<code>/ » le rend muet, alors que
+    « restricted » ou « -security » peuvent manquer en entier. apt ne le dit
+    qu'à l'installation — « Unable to locate package gnome-core » —, vingt
+    minutes après la coupure, et ce message accuse le dépôt.
+    """
+
+    VM = {"distro": "ubuntu", "version": "26.04", "arch": "amd64"}
+
+    @property
+    def code(self):
+        """Le nom de code vient du CATALOGUE, jamais d'une table recopiée
+        ici : le test reste vrai quand le catalogue change."""
+        jeton = cache_offline.jeton_de_suite("ubuntu", "26.04")
+        return jeton.strip("/").split("/")[-1]
+
+    def _journal(self, paires, issue="hit"):
+        """Un journal où chaque (suite, composant) donné est en réserve."""
+        return self.journal(
+            [
+                {
+                    "url": f"http://m.invalid/ubuntu/dists/{suite}"
+                    f"/{composant}/binary-amd64/Packages.xz",
+                    "outcome": issue,
+                }
+                for suite, composant in paires
+            ]
+        )
+
+    def _tout(self):
+        return [
+            (self.code + suffixe, composant)
+            for suffixe in cache_offline.SUFFIXES_APT
+            for composant in cache_offline.COMPOSANTS_APT
+        ]
+
+    def test_main_seul_ne_suffit_pas(self):
+        """Le cas vécu : « main » de la suite de base était en réserve, et
+        l'écran s'est tu ; « restricted » et « -security » manquaient."""
+        chemin = self._journal([(self.code, "main")])
+        rendu = cache_offline.composants_absents([self.VM], chemin)
+        self.assertEqual(len(rendu), 1)
+        distro, version, manque = rendu[0]
+        self.assertEqual((distro, version), ("ubuntu", "26.04"))
+        self.assertIn(f"{self.code}/restricted", manque)
+        self.assertIn(f"{self.code}-security/main", manque)
+        self.assertNotIn(f"{self.code}/main", manque)
+
+    def test_un_cache_complet_se_tait(self):
+        chemin = self._journal(self._tout())
+        self.assertEqual(
+            cache_offline.composants_absents([self.VM], chemin), []
+        )
+
+    def test_un_cache_qui_ignore_tout_se_tait_aussi(self):
+        """« suites_absentes » le dit déjà : deux avertissements pour une
+        cause apprennent à les enchaîner."""
+        chemin = self._journal([("autrechose", "main")])
+        self.assertEqual(
+            cache_offline.composants_absents([self.VM], chemin), []
+        )
+
+    def test_une_issue_sans_corps_ne_compte_pas(self):
+        """« offline-miss » prouve le contraire de ce qu'on cherche."""
+        chemin = self._journal(self._tout(), issue="offline-miss")
+        self.assertEqual(
+            cache_offline.composants_absents([self.VM], chemin), []
+        )
+
+    def test_larchitecture_est_respectee(self):
+        """Un index amd64 ne dit rien d'une VM arm64 : tout lui manque, donc
+        on se tait — c'est le cas que « suites_absentes » couvre."""
+        chemin = self._journal(self._tout())
+        arm = dict(self.VM, arch="arm64")
+        self.assertEqual(cache_offline.composants_absents([arm], chemin), [])
+
+    def test_deux_vm_du_meme_systeme_ne_parlent_quune_fois(self):
+        chemin = self._journal([(self.code, "main")])
+        rendu = cache_offline.composants_absents(
+            [self.VM, dict(self.VM)], chemin
+        )
+        self.assertEqual(len(rendu), 1)
+
+    def test_un_systeme_sans_jeton_se_tait(self):
+        """Fedora et openSUSE se ressemblent dans l'URL : ne pas se prononcer
+        vaut mieux que rassurer à tort."""
+        chemin = self._journal([(self.code, "main")])
+        autre = {"distro": "fedora", "version": "44", "arch": "amd64"}
+        self.assertEqual(cache_offline.composants_absents([autre], chemin), [])
+
+    def test_un_journal_illisible_se_tait(self):
+        self.assertEqual(
+            cache_offline.composants_absents([self.VM], "/inexistant.jsonl"),
+            [],
+        )
+
+
 class TestUnObjetDeStatutNestPasUnCorps(unittest.TestCase):
     """Une redirection ou un refus gardés ne rendent pas une suite lisible.
 
