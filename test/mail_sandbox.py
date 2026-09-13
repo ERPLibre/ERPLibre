@@ -797,11 +797,11 @@ class SmtpSandbox:
             )
             if ok:
                 return AuthResult(success=True, auth_data=auth_data)
-            # `handled` vaut True PAR DÉFAUT, et veut dire « j'ai déjà répondu
-            # au client moi-même ». Un simple `AuthResult(success=False)`
-            # laisse donc `aiosmtpd` muet : le client attend une réponse qui
-            # ne vient jamais et le test se bloque jusqu'au délai de la
-            # socket, sans rien dire de la cause.
+            # `handled` vaut True PAR DÉFAUT : il annonce que le
+            # gestionnaire a DÉJÀ répondu au client lui-même. Un simple
+            # `AuthResult(success=False)` laisse donc `aiosmtpd` muet : le
+            # client attend une réponse qui ne vient jamais, et le test se
+            # bloque jusqu'au délai de la socket sans rien dire de la cause.
             return AuthResult(success=False, handled=False)
 
         class _Port0Controller(Controller):
