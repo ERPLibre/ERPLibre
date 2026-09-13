@@ -2183,11 +2183,27 @@ class AssistantMenuMixin:
                 continue
             if not reste.strip():
                 continue
-            tour = conversation.ask(reste)
+            # La réponse s'imprime à MESURE qu'elle arrive : sur un modèle
+            # local, la première phrase paraît des secondes avant la
+            # dernière, et attendre le point final donne un CLI qui semble
+            # bloqué. Le drapeau retient qu'un fragment est passé, pour ne
+            # pas réimprimer ensuite ce qui a déjà défilé — un dos d'appel
+            # qui ne diffuse pas rend tout d'un bloc, et il faut alors
+            # l'imprimer.
+            diffuse = []
+
+            def _fragment(morceau, _vu=diffuse):
+                _vu.append(1)
+                print(morceau, end="", flush=True)
+
+            tour = conversation.ask(reste, on_chunk=_fragment)
+            if diffuse:
+                print()
             if tour.role == "error":
                 print(f"⚠ {tour.text}")
                 continue
-            print(tour.text)
+            if not diffuse:
+                print(tour.text)
             if tour.interrupted:
                 print(f"⏹ {t('answer interrupted')}")
             # Le pied de ligne existe pour une réponse qui a défilé : il dit
