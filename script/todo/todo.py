@@ -5933,6 +5933,13 @@ class TODO(
         status = self.execute.exec_command_live(
             "./mobile/compile_and_run.sh", source_erplibre=False
         )
+        # L'ÉTAT SUIT LE LANCEMENT, et non l'intention. Le champ existait,
+        # son lecteur aussi, et rien ne l'écrivait : « Mobile context »
+        # annonçait « inactive » sur tout poste, pour toujours. Le code de
+        # sortie était déjà capturé ici et n'était jamais relu.
+        from script.version import erplibre_state
+
+        erplibre_state.set_mobile_active(not status)
 
 
 if __name__ == "__main__":
