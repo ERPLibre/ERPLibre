@@ -332,6 +332,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Tests and performance report")},
             {"prompt_description": t("Cache - Fill what offline runs lacked")},
             {"prompt_description": t("Cache - Logs")},
+            {"prompt_description": t("Cache - Copy it to another machine")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -359,6 +360,8 @@ class QemuCacheMenuMixin:
                 self._cache_combler()
             elif status == "10":
                 self._cache_journaux()
+            elif status == "11":
+                self._cache_transfert()
             else:
                 print(t("Command not found !"))
 
@@ -617,6 +620,122 @@ class QemuCacheMenuMixin:
     # ------------------------------------------------------------------
     # [10] Journaux
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # [11] Emporter le cache sur une autre machine
+    # ------------------------------------------------------------------
+
+    def _cache_transfert(self):
+        """Copie le magasin vers une autre machine qui porte ERPLibre.
+
+        Ce qui voyage est le MAGASIN, pas le service : les objets sont rangés
+        sous une clé tirée de l'URL, jamais de la machine qui les a pris, et
+        un dépôt git miroir est un dépôt. Les réglages, eux, restent : le
+        pont, le sous-réseau et l'autorité appartiennent à l'hôte, et les
+        emporter ferait servir une autorité dont aucune VM de là-bas n'a la
+        clé.
+
+        « tar » et non « rsync » : le second manque sur bien des hôtes, et le
+        premier est partout. Le flux est compressé au passage — un magasin
+        se compte en dizaines de gigaoctets, et un lien lent le rend
+        autrement en une nuit.
+        """
+        print(f"\n📦 {t('Copy the cache to another machine')}")
+        if not os.path.isfile(CACHE_BIN):
+            print(f"  ✗ {t('Not installed:')} {CACHE_BIN}\n")
+            return
+        cache_dir = cache_offline.reglage("EL_CACHE_DIR", CACHE_CONF) or (
+            CACHE_DIR
+        )
+        cible = click.prompt(
+            t("Target machine (user@host, or an ssh alias)"), default=""
+        ).strip()
+        if not cible:
+            print(f"  {t('Cancelled.')}\n")
+            return
+        # L'arrivée doit porter le cache : sans son compte de service, les
+        # fichiers arriveraient à root et le service ne les lirait pas.
+        sonde = (
+            f"test -x {shlex.quote(CACHE_BIN)}"
+            f" && id -u {shlex.quote(cache_offline.SERVICE_USER)}"
+        )
+        code, _o = self._cache_ssh(cible, sonde)
+        if code:
+            print(f"  ✗ {t('The target has no cache installed:')} {cible}")
+            print(f"    {t('Install it there first, from entry 1.')}\n")
+            return
+        print(f"  {t('What travels:')} {cache_dir}")
+        for quoi, chemin in (
+            (t("objects"), cache_dir),
+            (t("git mirrors"), os.path.join(cache_dir, "git")),
+        ):
+            print(f"    {quoi:<14}{self._cache_poids(chemin)}")
+        cmd = self._cache_transfert_cmd(cible, cache_dir)
+        print(f"\n{t('Will execute:')} {cmd}")
+        print(f"  {t('The settings stay here: bridge, subnet and authority')}")
+        print(f"  {t('belong to this host, and are posed by entry 1 there.')}")
+        if not click.confirm(t("Copy now?"), default=False):
+            print(f"  {t('Cancelled.')}\n")
+            return
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    @staticmethod
+    def _cache_transfert_cmd(cible, cache_dir):
+        """La commande qui emporte le magasin, en un seul flux.
+
+        Lue d'un bout à l'autre : « tar » lit le magasin ici, « zstd » le
+        comprime, « ssh » le porte, et là-bas le même trio le repose avant de
+        rendre les fichiers au compte du service. Rien n'est écrit sur le
+        disque entre les deux — un magasin de dizaines de gigaoctets n'a pas
+        à exister deux fois.
+
+        « --numeric-owner » à l'écriture et le « chown » à l'arrivée : le
+        même compte porte rarement le même numéro d'une machine à l'autre.
+        """
+        q = shlex.quote
+        distant = (
+            f"zstd -d | sudo tar -C {q(cache_dir)} -xf - --numeric-owner"
+            f" && sudo chown -R {cache_offline.SERVICE_USER}:{cache_offline.SERVICE_USER} {q(cache_dir)}"
+        )
+        return (
+            f"sudo tar -C {q(cache_dir)} -cf - . | zstd -T0 -3"
+            f" | ssh {q(cible)} {q(distant)}"
+        )
+
+    def _cache_ssh(self, cible, commande, timeout=30):
+        """Une commande sur la machine d'arrivée. Rend (code, sortie)."""
+        try:
+            p = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=10",
+                    cible,
+                    commande,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return 255, str(exc)
+        return p.returncode, p.stdout
+
+    @staticmethod
+    def _cache_poids(chemin):
+        """La place qu'occupe un chemin, ou « ? » quand on ne peut pas lire."""
+        try:
+            p = subprocess.run(
+                ["du", "-sh", chemin],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return "?"
+        return p.stdout.split("\t")[0] if p.returncode == 0 else "?"
 
     def _cache_journaux(self):
         """Les journaux en direct, pour regarder une installation passer.

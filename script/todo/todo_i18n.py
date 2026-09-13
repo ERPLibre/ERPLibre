@@ -6411,6 +6411,50 @@ TRANSLATIONS = {
         "fr": "📜 Cache - Journaux",
         "en": "📜 Cache - Logs",
     },
+    "Cache - Copy it to another machine": {
+        "fr": "📦 Cache - L'emporter sur une autre machine",
+        "en": "📦 Cache - Copy it to another machine",
+    },
+    "Copy the cache to another machine": {
+        "fr": "Emporter le cache sur une autre machine",
+        "en": "Copy the cache to another machine",
+    },
+    "Target machine (user@host, or an ssh alias)": {
+        "fr": "Machine d'arrivée (utilisateur@hôte, ou un alias ssh)",
+        "en": "Target machine (user@host, or an ssh alias)",
+    },
+    "The target has no cache installed:": {
+        "fr": "La machine d'arrivée n'a pas le cache :",
+        "en": "The target has no cache installed:",
+    },
+    "Install it there first, from entry 1.": {
+        "fr": "L'y installer d'abord, par l'entrée 1.",
+        "en": "Install it there first, from entry 1.",
+    },
+    "What travels:": {
+        "fr": "Ce qui voyage :",
+        "en": "What travels:",
+    },
+    "objects": {
+        "fr": "objets",
+        "en": "objects",
+    },
+    "git mirrors": {
+        "fr": "miroirs git",
+        "en": "git mirrors",
+    },
+    "The settings stay here: bridge, subnet and authority": {
+        "fr": "Les réglages restent ici : pont, sous-réseau et autorité",
+        "en": "The settings stay here: bridge, subnet and authority",
+    },
+    "belong to this host, and are posed by entry 1 there.": {
+        "fr": "appartiennent à cet hôte ; l'entrée 1 les pose là-bas.",
+        "en": "belong to this host, and are posed by entry 1 there.",
+    },
+    "Copy now?": {
+        "fr": "Emporter maintenant ?",
+        "en": "Copy now?",
+    },
     "Logs of the download cache": {
         "fr": "Journaux du cache de téléchargement",
         "en": "Logs of the download cache",

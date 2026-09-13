@@ -241,7 +241,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 10)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 11)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
@@ -268,6 +268,7 @@ class TestSousMenusDuCache(unittest.TestCase):
             ("8", "_cache_tests"),
             ("9", "_cache_combler"),
             ("10", "_cache_journaux"),
+            ("11", "_cache_transfert"),
         ):
             self.assertRegex(
                 corps,
@@ -284,6 +285,68 @@ class TestSousMenusDuCache(unittest.TestCase):
             re.findall(r'"(\w+)"', verbes.group(1))[1::2],
             ["start", "enable", "disable", "stop"],
         )
+
+
+class TestLeTransfertDuCache(unittest.TestCase):
+    """Le magasin s'emporte ; les réglages restent.
+
+    Un objet est rangé sous une clé tirée de l'URL, jamais de la machine qui
+    l'a pris : il vaut donc ailleurs. Le pont, le sous-réseau et l'autorité,
+    eux, appartiennent à l'hôte — emporter l'autorité ferait servir là-bas
+    une signature dont aucune VM locale n'a la clé.
+    """
+
+    def _menu(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    def test_le_flux_va_dun_tar_a_lautre_sans_fichier_intermediaire(self):
+        """Un magasin de dizaines de gigaoctets n'a pas à exister deux fois."""
+        cmd = self._menu()._cache_transfert_cmd("op@ailleurs", "/var/cache/x")
+        # Un chemin sans caractère spécial ressort tel quel : c'est la forme
+        # RENDUE qu'on éprouve, pas celle qu'on imagine.
+        self.assertIn("tar -C /var/cache/x -cf - .", cmd)
+        self.assertIn("| zstd", cmd)
+        self.assertIn("ssh op@ailleurs", cmd)
+        self.assertIn("tar -C /var/cache/x -xf -", cmd)
+        self.assertNotIn(">", cmd, "un fichier intermédiaire est écrit")
+
+    def test_larrivee_rend_les_fichiers_au_compte_du_service(self):
+        """Le même compte porte rarement le même numéro d'une machine à
+        l'autre : sans ce « chown », le service ne lirait pas son magasin."""
+        from script.qemu import cache_offline
+
+        cmd = self._menu()._cache_transfert_cmd("op@ailleurs", "/var/cache/x")
+        self.assertIn("--numeric-owner", cmd)
+        self.assertIn(
+            f"chown -R {cache_offline.SERVICE_USER}:"
+            f"{cache_offline.SERVICE_USER}",
+            cmd,
+        )
+
+    def test_une_cible_hostile_ne_secrit_pas_dans_la_commande(self):
+        """Le nom vient d'une invite : une apostrophe y casserait la ligne,
+        et le reste s'exécuterait sur CETTE machine."""
+        import shlex
+
+        mechant = "op@x'; rm -rf /; #"
+        cmd = self._menu()._cache_transfert_cmd(mechant, "/var/c")
+        # La preuve de l'échappement : le shell rend la cible en UN seul
+        # argument, identique à ce qui a été tapé. Chercher le texte dangereux
+        # dans la ligne ne prouverait rien — il y est, enfermé.
+        mots = shlex.split(cmd[cmd.index("ssh ") :])
+        self.assertEqual(mots[0], "ssh")
+        self.assertEqual(mots[1], mechant)
+
+    def test_les_reglages_ne_voyagent_pas(self):
+        """Ni l'autorité, ni le pont, ni le sous-réseau."""
+        cmd = self._menu()._cache_transfert_cmd("op@ailleurs", "/var/cache/x")
+        for reste in ("ca.crt", "EL_BRIDGE", "EL_SUBNET", "/etc/"):
+            self.assertNotIn(reste, cmd)
 
 
 class TestLAssistantDesTests(unittest.TestCase):
