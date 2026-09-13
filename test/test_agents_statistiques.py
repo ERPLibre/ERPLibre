@@ -362,3 +362,80 @@ class TestContreUneVraieTranscription(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLesSeriesQueLeDisquePortait(unittest.TestCase):
+    """Deux séries qui étaient sur le disque sans que rien ne les lise.
+
+    Chaque message d'assistant porte son instant et son modèle — vérifié sur
+    dix mille messages, présents sur tous. Ces deux séries ne viennent donc
+    PAS d'un `cost-state` : aucune compaction ne les remet à zéro, aucun
+    segment ne s'y perd, et elles s'additionnent d'une session à l'autre sans
+    la réserve qui pèse sur le coût.
+    """
+
+    def _message(self, jour, modele, sortie):
+        charge = _assistant(sortie=sortie)
+        charge["timestamp"] = f"{jour}T12:34:56.789Z"
+        charge["message"]["model"] = modele
+        return charge
+
+    def test_the_days_add_up(self):
+        a = st.Agregat()
+        for charge in (
+            self._message("2026-09-08", "un-modele", 10),
+            self._message("2026-09-08", "un-modele", 5),
+            self._message("2026-09-09", "un-modele", 7),
+        ):
+            a = st.replier(a, charge)
+        self.assertEqual(
+            sorted(a.jetons_par_jour), ["2026-09-08", "2026-09-09"]
+        )
+        self.assertEqual(a.jetons_par_jour["2026-09-08"], 15)
+        self.assertEqual(a.jetons_par_jour["2026-09-09"], 7)
+
+    def test_the_models_add_up(self):
+        a = st.Agregat()
+        for charge in (
+            self._message("2026-09-08", "un-modele", 10),
+            self._message("2026-09-08", "un-autre", 4),
+        ):
+            a = st.replier(a, charge)
+        self.assertEqual(a.jetons_par_modele, {"un-modele": 10, "un-autre": 4})
+
+    def test_the_day_is_read_in_utc_and_never_converted(self):
+        """Convertir en heure locale déplacerait des messages d'un jour à
+        l'autre selon le fuseau de qui regarde, et deux machines ne liraient
+        plus la même série."""
+        a = st.replier(
+            st.Agregat(), self._message("2026-09-08", "un-modele", 1)
+        )
+        self.assertIn("2026-09-08", a.jetons_par_jour)
+
+    def test_a_message_without_the_fields_is_not_counted_under_an_empty_name(
+        self,
+    ):
+        """Une transcription d'une version antérieure ne les porte pas, et une
+        ligne « ” : 4 M » à l'écran ne veut rien dire."""
+        a = st.replier(st.Agregat(), _assistant(sortie=9))
+        self.assertEqual(a.jetons_par_jour, {})
+        self.assertEqual(a.jetons_par_modele, {})
+        self.assertEqual(a.sortie, 9)
+
+    def test_the_whole_machine_folds_into_one_series(self):
+        une = st.replier(
+            st.Agregat(), self._message("2026-09-08", "un-modele", 10)
+        )
+        deux = st.replier(
+            st.Agregat(), self._message("2026-09-08", "un-autre", 4)
+        )
+        total = st.somme([une, deux])
+        self.assertEqual(total.jetons_par_jour["2026-09-08"], 14)
+        self.assertEqual(
+            total.jetons_par_modele, {"un-modele": 10, "un-autre": 4}
+        )
+
+    def test_summing_nothing_yields_empty_series(self):
+        total = st.somme([])
+        self.assertEqual(total.jetons_par_jour, {})
+        self.assertEqual(total.jetons_par_modele, {})

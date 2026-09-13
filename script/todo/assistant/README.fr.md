@@ -344,6 +344,15 @@ hooks porte déjà l'instant de chaque événement. Sans hooks posés, la colonn
 affiche un tiret et jamais un zéro, un zéro disant « cette session n'a pas
 travaillé » là où la vérité est « rien n'est mesuré ».
 
+**La série temporelle était sur le disque depuis le début.** Chaque message
+d'assistant porte son instant et son modèle — présents sur les dix mille
+échantillonnés. Les jetons par jour et par modèle viennent donc d'une somme de
+messages et non de la lecture d'un `cost-state` : aucune compaction ne les
+remet à zéro, aucun segment ne s'y perd, et ils s'additionnent d'une session à
+l'autre sans la réserve qui pèse sur le coût. Le jour se lit en UTC comme la
+transcription l'écrit ; le convertir en heure locale déplacerait des messages
+d'un jour à l'autre selon qui regarde.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |

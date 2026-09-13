@@ -309,6 +309,14 @@ for it: the hook log already carries the instant of every event. Without hooks
 installed the column shows a dash, never a zero, a zero saying "this session
 did no work" where the truth is "nothing is measured".
 
+**The time series was on disk all along.** Every assistant message carries its
+instant and its model — present on all ten thousand sampled. Tokens per day and
+per model therefore come from summing messages, not from reading a
+`cost-state`: no compaction resets them, no segment is lost, and they add up
+across sessions without the reserve that weighs on cost. The day is read in UTC
+as the transcript writes it; converting to local time would move messages from
+one day to another depending on who is looking.
+
 ## The modules
 
 | File | What it owns |
@@ -687,6 +695,15 @@ que ce paquet choisit et nomme. Rien n'est collecté pour elle : le journal des
 hooks porte déjà l'instant de chaque événement. Sans hooks posés, la colonne
 affiche un tiret et jamais un zéro, un zéro disant « cette session n'a pas
 travaillé » là où la vérité est « rien n'est mesuré ».
+
+**La série temporelle était sur le disque depuis le début.** Chaque message
+d'assistant porte son instant et son modèle — présents sur les dix mille
+échantillonnés. Les jetons par jour et par modèle viennent donc d'une somme de
+messages et non de la lecture d'un `cost-state` : aucune compaction ne les
+remet à zéro, aucun segment ne s'y perd, et ils s'additionnent d'une session à
+l'autre sans la réserve qui pèse sur le coût. Le jour se lit en UTC comme la
+transcription l'écrit ; le convertir en heure locale déplacerait des messages
+d'un jour à l'autre selon qui regarde.
 
 ## Les modules
 

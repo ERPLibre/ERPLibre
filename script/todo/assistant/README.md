@@ -304,6 +304,14 @@ for it: the hook log already carries the instant of every event. Without hooks
 installed the column shows a dash, never a zero, a zero saying "this session
 did no work" where the truth is "nothing is measured".
 
+**The time series was on disk all along.** Every assistant message carries its
+instant and its model — present on all ten thousand sampled. Tokens per day and
+per model therefore come from summing messages, not from reading a
+`cost-state`: no compaction resets them, no segment is lost, and they add up
+across sessions without the reserve that weighs on cost. The day is read in UTC
+as the transcript writes it; converting to local time would move messages from
+one day to another depending on who is looking.
+
 ## The modules
 
 | File | What it owns |
