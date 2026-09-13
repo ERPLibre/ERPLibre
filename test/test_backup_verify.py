@@ -54,7 +54,6 @@ class TestCeQueChaqueControleAttrape(BancDeSauvegardes):
         )
         vu = V.verify(chemin)
         self.assertEqual(V.SOUND, vu.verdict)
-        self.assertTrue(V.is_sound(chemin))
         self.assertEqual(
             ("present", "non-empty", "zip", "dump", "intact"), vu.checks
         )
@@ -163,9 +162,14 @@ class TestCeQuIlDitJusquOuIlEstAlle(BancDeSauvegardes):
             with self.subTest(chemin=os.path.basename(chemin)):
                 self.assertIn(V.verify(chemin).verdict, V.VERDICTS)
 
-    def test_only_a_complete_pass_opens_the_door(self):
-        self.assertFalse(V.is_sound(self.brut("html.zip", b"<html>")))
-        self.assertTrue(V.is_sound(self.zip_de("bon.zip", {"dump.sql": "x"})))
+    def test_only_a_complete_pass_reaches_the_sound_verdict(self):
+        """Le verdict se lit sur la vérification elle-même : un relais
+        booléen jetait le chemin, la taille et la liste des contrôles
+        franchis, c'est-à-dire tout ce qui permet de DIRE pourquoi."""
+        rate = V.verify(self.brut("html.zip", b"<html>"))
+        self.assertNotEqual(V.SOUND, rate.verdict)
+        bon = V.verify(self.zip_de("bon.zip", {"dump.sql": "x"}))
+        self.assertEqual(V.SOUND, bon.verdict)
 
 
 class TestLAppelantRegardeCeQuIlVientDEcrire(unittest.TestCase):

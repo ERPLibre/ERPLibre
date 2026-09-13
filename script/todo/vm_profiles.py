@@ -221,17 +221,6 @@ def enforcement(posture_name: str) -> str:
     return t("Rules are written, loaded and armed in the guest.")
 
 
-def bounded_addresses(posture_name: str) -> bool:
-    """Ce profil demande-t-il au site de nommer des adresses ?
-
-    Vrai, un carnet vide fait REFUSER le déploiement — et le dire devant
-    l'écran vaut mieux que de le découvrir sur la machine.
-    """
-    return posture_destinations.has_bounded_list(
-        registry.get_posture(posture_name)
-    )
-
-
 def screen_line(posture_name: str, after_boot: bool = False) -> str:
     """Ce qu'un écran écrit sous le sélecteur, en une seule chaîne.
 
@@ -299,8 +288,6 @@ def missing_addresses(posture_name: str, book) -> tuple:
     Le carnet est un PARAMÈTRE : ce module ne lit aucun fichier, et la
     liste des rôles vient du paquet posture, qui la déduit de la posture.
     """
-    from script.posture import destinations as posture_destinations
-
     # PAS DE GARDE SUR None : `symbols_for` en pose déjà un — il passe par
     # `has_bounded_list`, qui répond faux pour une posture absente. Le
     # doubler ici ferait deux endroits à tenir en accord, et le second ne

@@ -83,8 +83,6 @@ class TestCeQueLeTemoinPorte(BancDeTemoin):
         W.record(relatif, now=T0)
         absolu = os.path.abspath("sauvegardes/a.zip")
         self.assertEqual([absolu], list(W.entries()))
-        self.assertEqual(0, W.age_seconds("sauvegardes/a.zip", now=T0))
-        self.assertEqual(0, W.age_seconds(absolu, now=T0))
 
     def test_a_second_look_replaces_the_first(self):
         W.record(self.sauvegarde(verdict=V.SOUND), now=T0)
@@ -110,23 +108,27 @@ class TestCeQueLeTemoinPorte(BancDeTemoin):
 
 
 class TestLaFraicheur(BancDeTemoin):
-    def test_never_looked_at_is_none_and_not_zero(self):
-        """L'un dit que personne n'a jamais regardé, l'autre qu'on vient de
-        le faire."""
-        self.assertIsNone(W.age_seconds("/rien.zip"))
+    """L'ÂGE se déduisait ; l'instant, lui, doit être écrit.
 
-    def test_the_age_is_counted_from_the_recorded_instant(self):
+    Le témoin portait un accesseur d'âge qu'aucun écran ne lisait. Ce qui
+    compte et qui reste est l'instant du constat : sans lui, aucun âge ne
+    se calcule, et une sauvegarde jamais regardée ne se distingue plus
+    d'une sauvegarde regardée à l'instant.
+    """
+
+    def test_a_file_never_looked_at_has_no_entry(self):
+        """Personne n'a regardé n'est pas la même chose qu'on vient de
+        regarder : l'absence d'entrée est ce qui les sépare."""
+        self.assertIsNone(W.entries().get("/rien.zip"))
+
+    def test_the_recorded_instant_is_the_one_given(self):
         sauvegarde = self.sauvegarde()
-        W.record(sauvegarde, now=T0)
+        entree = W.record(sauvegarde, now=T0)
         self.assertEqual(
-            86400,
-            W.age_seconds(sauvegarde.path, now=T0 + timedelta(days=1)),
+            T0.strftime("%Y-%m-%dT%H:%M:%SZ"), entree["checked_at"]
         )
-
-    def test_a_fresh_look_is_zero_seconds_old(self):
-        sauvegarde = self.sauvegarde()
-        W.record(sauvegarde, now=T0)
-        self.assertEqual(0, W.age_seconds(sauvegarde.path, now=T0))
+        relu = W.entries()[os.path.abspath(sauvegarde.path)]
+        self.assertEqual(entree["checked_at"], relu["checked_at"])
 
 
 class TestCeQuIlRefuseDeCroire(BancDeTemoin):

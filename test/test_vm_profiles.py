@@ -325,17 +325,21 @@ class TestCeQueLeSelecteurOffreAUneDonneeReelle(CasDeProfil):
 
 class TestQuiDemandeUnCarnetDAdresses(CasDeProfil):
     """Un carnet vide fait REFUSER le déploiement, et le dire devant
-    l'écran vaut mieux que de le découvrir sur la machine."""
+    l'écran vaut mieux que de le découvrir sur la machine.
+
+    UNE SEULE FONCTION répond, et c'est celle qui NOMME ce qui manque : un
+    prédicat booléen à côté d'elle disait moins en attirant autant.
+    """
 
     def test_only_the_bounded_allowlist_asks_for_one(self):
         demandeurs = [
-            nom for nom in R.posture_names() if V.bounded_addresses(nom)
+            nom for nom in R.posture_names() if V.missing_addresses(nom, {})
         ]
         self.assertEqual(["paranoid"], demandeurs)
 
     def test_the_cut_egress_asks_for_none(self):
         """Elle ne joint rien : lui demander des adresses serait absurde."""
-        self.assertFalse(V.bounded_addresses("local-only"))
+        self.assertEqual((), V.missing_addresses("local-only", {}))
 
 
 class TestLeModuleNAfficheRien(CasDeProfil):
