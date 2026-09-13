@@ -860,6 +860,37 @@ class QemuInstallMixin:
             # ni d'Odoo.
             "phase": "after",
         },
+        # Ni bureau ni famille de paquets : Ollama pose un binaire statique et
+        # son propre service, et le modèle est un fichier. Une VM serveur le
+        # prend donc aussi bien qu'une VM graphique — c'est par son API HTTP
+        # qu'on s'en sert, pas par un écran.
+        #
+        # Les architectures sont bornées par l'amont, qui publie amd64 et
+        # arm64. Sur s390x la case se grise plutôt que de poser un binaire qui
+        # ne s'exécute pas.
+        #
+        # APRÈS l'installation, et pour une raison précise : la liste des
+        # étapes vit dans `script/todo/assistant/apertus.py`, donc dans le
+        # dépôt, donc après le clone. Une seule autorité décrit l'installation,
+        # qu'elle serve une VM neuve ou une machine existante.
+        #
+        # Disque : ~1,5 Go de moteur, ~5 Go pour le 8B quantifié, et la marge
+        # couvre le cache de son premier chargement.
+        "apertus": {
+            "label": "Apertus (open LLM)",
+            "help": (
+                "Ollama and its service, from the distribution or upstream",
+                "the 8B quantized model, pulled and answered to once",
+                "same steps as TODO > Assistant > IA > Apertus",
+            ),
+            "hint": "local model answering on :11434, no account",
+            "disk_gb": 9,
+            "arches": ("amd64", "arm64"),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": (),
+            "phase": "after",
+        },
         # Ni bureau ni famille de paquets : l'essentiel vient d'installateurs
         # amont, qu'aucun dépôt de distribution ne porte, et les trois outils
         # de terminal (tig, htop, vim) existent sous le même nom dans les
@@ -2065,6 +2096,43 @@ class QemuInstallMixin:
             f"{el_dir}/script/forgejo/install_forgejo.sh"
         )
 
+    def _qemu_apertus_steps(self):
+        """Pose Apertus dans la VM, par la même liste d'étapes que le menu.
+
+        Les commandes viennent de `assistant.apertus`, et de nulle part
+        ailleurs : ce qui vaut pour une machine existante vaut pour une VM
+        neuve, et un correctif profite aux deux. La cible est déclarée locale
+        parce que le bloc tourne DÉJÀ dans la VM — l'enrobage ssh de la forme
+        distante y ajouterait une seconde connexion vers elle-même.
+
+        Les étapes sont jointes par « && » : celle qui vérifie la version du
+        moteur précède celle qui tire le modèle, et la franchir en ignorant son
+        échec téléchargerait plusieurs gigaoctets pour un moteur qui ne sait
+        pas les lire.
+        """
+        from script.todo.assistant import apertus as apt
+
+        cible = {
+            "kind": "local",
+            "destination": "",
+            "host": "127.0.0.1",
+            "label": "",
+        }
+        etapes = apt.etapes(apt.MOTEUR_DEFAUT, apt.MODELE_DEFAUT, cible)
+        bloc = " && ".join(
+            (
+                f"{{ {e.deja_fait} || {e.commande}; }}"
+                if e.deja_fait
+                else (
+                    f"{{ {e.commande} || true; }}"
+                    if not e.critique
+                    else f"{{ {e.commande}; }}"
+                )
+            )
+            for e in etapes
+        )
+        return f'echo "== {t("Apertus (open LLM)")} =="; {bloc}'
+
     def _qemu_after_remote_cmd(self, tools, prod=False):
         """Phase d'APRÈS l'installation : prologue commun, SDK commun, puis ce
         qui a été coché.
@@ -2077,7 +2145,7 @@ class QemuInstallMixin:
         émulateur créé avec succès effacerait le verdict de la compilation."""
         picked = [
             k
-            for k in ("aidev", "forgejo", "mobile", "avd")
+            for k in ("aidev", "forgejo", "apertus", "mobile", "avd")
             if k in (tools or ()) and k in self._QEMU_VM_TOOLS
         ]
         if not picked:
@@ -2093,6 +2161,10 @@ class QemuInstallMixin:
         # Un échec rapide se voit tôt plutôt qu'après le long.
         if "forgejo" in picked:
             parts.append(f"{{ {self._qemu_forgejo_steps(el_dir)}; }}")
+        # Apertus après Forgejo et avant le SDK : quelques minutes, dont un
+        # téléchargement qui échoue vite quand le réseau manque.
+        if "apertus" in picked:
+            parts.append(f"{{ {self._qemu_apertus_steps()}; }}")
         groups = []
         if "mobile" in picked:
             groups.append(self._qemu_mobile_build_steps(el_dir))
