@@ -1151,6 +1151,7 @@ def run_tui(
                 show=False,
             ),
             Binding("slash", "focus_search", t("mail_search_binding")),
+            Binding("S", "search_server", t("mail_search_server_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
@@ -2019,6 +2020,60 @@ def run_tui(
                 self._clear_pane_size(slot)
                 self._store_pane_size(slot, None)
             self.set_status(t("mail_pane_reset_done"))
+
+        def action_search_server(self) -> None:
+            """Pose au SERVEUR la question que `/` pose au cache.
+
+            Un geste à part, jamais automatique : étendre à chaque frappe
+            ferait payer un aller-retour réseau à une recherche qui répond
+            déjà. Le travail part dans un fil — une requête réseau sur le
+            fil de l'interface gèlerait la fenêtre — et chaque refus se DIT,
+            une touche silencieuse se lisant comme une touche cassée.
+            """
+            if not self.query:
+                self.set_status(t("mail_search_server_no_term"))
+                return
+            if self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_search_server_offline"))
+                return
+            self.set_status(t("mail_search_server_asking"))
+            dossier = self.current_ref.folder_name
+            terme = self.query
+            self.run_worker(
+                lambda: self._chercher_serveur(session, dossier, terme),
+                thread=True,
+            )
+
+        def _chercher_serveur(self, session, dossier, terme) -> None:
+            """Le fil de travail : SELECT, SEARCH, puis les en-têtes manquants.
+
+            Sous `_sync_lock` : `imaplib` n'est pas sûr entre fils, et une
+            passe de synchronisation peut tourner en même temps sur la MÊME
+            connexion.
+            """
+            try:
+                with self._sync_lock:
+                    session.syncer.transport.select(dossier)
+                    uids = session.syncer.transport.search(terme)
+                    ramenes = session.syncer.fetch_uids(dossier, uids)
+            except Exception as exc:
+                _logger.exception("recherche serveur sur %s", dossier)
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            self.call_from_thread(self._serveur_a_repondu, ramenes)
+
+        def _serveur_a_repondu(self, ramenes: int) -> None:
+            if ramenes:
+                self.set_status(f"{t('mail_search_server_found')} {ramenes}")
+            else:
+                self.set_status(t("mail_search_server_nothing"))
+            # Ce que le serveur a ramené est DANS le cache : relire le
+            # dossier le fait apparaître, sans rien retaper.
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def action_focus_search(self) -> None:
             self.query_one("#search_row").add_class("visible")

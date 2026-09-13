@@ -177,7 +177,8 @@ preview pane on the right, with a status line at the bottom.
 | `0` | back to the default pane sizes |
 | `r` | sync the account of the currently selected folder (all its folders) |
 | `Shift+R` | sync every account |
-| `/` | open the search field: it searches the whole cache of the open folder — not just the messages on screen — over subject/from/to/snippet; it does not search the server (see "Search") |
+| `/` | open the search field: it searches the whole cache of the open folder — not just the messages on screen — over subject/from/to/snippet (see "Search") |
+| `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
 | `c` | compose a new message |
@@ -451,9 +452,9 @@ threads. An account that fails is reported and does not stop the others.
 
 `/` searches the **whole cache of the open folder**, not just the messages
 currently loaded. Subject, sender, recipient and snippet are matched. The
-scope stops there: the other folders of the account, the other accounts and
-the server are not searched, and at most 500 matches are returned, the most
-recent first.
+scope stops there: the other folders of the account and the other accounts
+are not searched, and at most 500 matches are returned, the most recent
+first. `Shift+S` reaches past the cache — see below.
 
 In `clear` cache mode an FTS5 index answers in milliseconds and the list
 follows every keystroke. In `encrypted` mode no index exists — one would
@@ -464,6 +465,15 @@ keystroke there and waits for **Enter**, saying so in the status bar. Until
 that key is pressed, the list filters only the messages already loaded.
 
 The result is the same either way; only the cost differs.
+
+`Shift+S` asks the server the same question, for the open folder. It is a
+separate gesture on purpose: extending at every keystroke would charge a
+round trip to a search that already answers. What the server finds is
+downloaded and stored, so the local search shows it immediately and finds
+it again offline. The server looks at whole messages, headers and body, so
+it can return what the local search would not — which is the point of
+looking further. An account that is offline says so rather than waiting,
+and a server that refuses says why.
 
 ## Statistics
 
@@ -594,8 +604,9 @@ stands and the next pass tries again.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **No server-side search** — `/` filters only what's already synced to the
-  local cache.
+- **No cross-folder search** — `/` and `Shift+S` both work on the open
+  folder of one account; neither sweeps the other folders or the other
+  accounts.
 - **No deleting or moving a message** — `s` and `u` change the seen flag,
   and `F` creates, renames and deletes folders, but a message itself can be
   neither deleted nor moved to another folder.
