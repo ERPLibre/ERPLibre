@@ -11676,12 +11676,12 @@ TRANSLATIONS = {
         "en": "Which technology?",
     },
     "VPN - Create a profile from a site preset": {
-        "fr": "\U0001F3DB VPN - Créer un profil à partir d'un préréglage de site",
-        "en": "\U0001F3DB VPN - Create a profile from a site preset",
+        "fr": "\U0001f3db VPN - Créer un profil à partir d'un préréglage de site",
+        "en": "\U0001f3db VPN - Create a profile from a site preset",
     },
     "VPN - Import an AnyConnect profile (.xml)": {
-        "fr": "\U0001F4E5 VPN - Importer un profil AnyConnect (.xml)",
-        "en": "\U0001F4E5 VPN - Import an AnyConnect profile (.xml)",
+        "fr": "\U0001f4e5 VPN - Importer un profil AnyConnect (.xml)",
+        "en": "\U0001f4e5 VPN - Import an AnyConnect profile (.xml)",
     },
     "An AnyConnect profile usually sits in"
     " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/).": {
@@ -12978,6 +12978,58 @@ TRANSLATIONS = {
     "cost": {
         "fr": "coût",
         "en": "cost",
+    },
+    "tokens": {
+        "fr": "jetons",
+        "en": "tokens",
+    },
+    "cache read": {
+        "fr": "cache lu",
+        "en": "cache read",
+    },
+    "Sessions opened from this directory": {
+        "fr": "🧊 Séances ouvertes depuis ce répertoire",
+        "en": "🧊 Sessions opened from this directory",
+    },
+    "None here. The listing sees this directory only.": {
+        "fr": "Aucune ici. Le listage ne voit que ce répertoire.",
+        "en": "None here. The listing sees this directory only.",
+    },
+    "What one session cost": {
+        "fr": "💰 Ce qu'une séance a coûté",
+        "en": "💰 What one session cost",
+    },
+    "Statistics, by tool and by model (all projects)": {
+        "fr": "📊 Statistiques, par outil et par modèle (tous projets)",
+        "en": "📊 Statistics, by tool and by model (all projects)",
+    },
+    "No session to read here.": {
+        "fr": "Aucune séance à lire ici.",
+        "en": "No session to read here.",
+    },
+    "This session could not be read.": {
+        "fr": "Cette séance n'a pas pu être lue.",
+        "en": "This session could not be read.",
+    },
+    "Open Code cut its own output.": {
+        "fr": "Open Code a coupé sa propre sortie.",
+        "en": "Open Code cut its own output.",
+    },
+    "It happens past roughly 60 kB of export.": {
+        "fr": "Cela arrive au-delà d'une soixantaine de ko d'export.",
+        "en": "It happens past roughly 60 kB of export.",
+    },
+    "nothing here": {
+        "fr": "rien ici",
+        "en": "nothing here",
+    },
+    "session here": {
+        "fr": "séance ici",
+        "en": "session here",
+    },
+    "sessions here": {
+        "fr": "séances ici",
+        "en": "sessions here",
     },
     "tools": {
         "fr": "outils",

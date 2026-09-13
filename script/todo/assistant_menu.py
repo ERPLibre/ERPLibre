@@ -242,8 +242,11 @@ class AssistantMenuMixin:
             actions = []
             for etat in devant:
                 compte = ""
-                if etat.harnais.cle == "claude" and etat.verdict == reg.OK:
-                    compte = self._claude_compte()
+                if etat.verdict == reg.OK:
+                    if etat.harnais.cle == "claude":
+                        compte = self._claude_compte()
+                    elif etat.harnais.cle == "opencode":
+                        compte = self._opencode_compte()
                 choices.append(
                     {"prompt_description": self._harnais_libelle(etat, compte)}
                 )
@@ -350,7 +353,158 @@ class AssistantMenuMixin:
         if etat.harnais.cle == "claude":
             self.prompt_claude_sessions()
             return
+        if etat.harnais.cle == "opencode":
+            self.prompt_opencode_seances()
+            return
         print(f"{MARQUE['no']} {t(reg.SANS_ADAPTATEUR)}")
+
+    @staticmethod
+    def _opencode_lancer(argv):
+        """La sortie d'une lecture, ou "" quand l'outil ne répond pas.
+
+        Capturée et non diffusée : le listage se décode avant de s'afficher,
+        là où les statistiques se montrent telles quelles.
+        """
+        import subprocess
+
+        try:
+            fini = subprocess.run(
+                argv, capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return fini.stdout if fini.returncode == 0 else ""
+
+    def _opencode_seances(self):
+        """Les séances DU RÉPERTOIRE COURANT, les plus récentes d'abord."""
+        from script.todo.assistant.harness import opencode as oc
+
+        return oc.decoder_liste(self._opencode_lancer(oc.argv_lister()))
+
+    def _opencode_compte(self):
+        """Ce que l'entrée du menu annonce, sans mentir sur la portée."""
+        seances = self._opencode_seances()
+        if not seances:
+            return t("nothing here")
+        return self._llm_count(len(seances), "session here", "sessions here")
+
+    def prompt_opencode_seances(self):
+        """Les séances d'Open Code, et ce qu'elles ont coûté.
+
+        **L'écran DIT sa portée avant de lister.** Le listage d'Open Code ne
+        voit que le répertoire d'où il est lancé, là où celui de Claude Code
+        voit la machine entière. Présenter les deux de la même façon
+        annoncerait « aucune séance » à quelqu'un qui en a vingt dans le
+        répertoire d'à côté, et le laisserait chercher une panne.
+
+        **Aucun titre n'est affiché.** Celui d'une séance est engendré par le
+        modèle à partir de la conversation : c'est du contenu résumé, pas un
+        champ structurel, et il n'a pas plus sa place ici que le titre d'une
+        session de Claude Code.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        while True:
+            seances = self._opencode_seances()
+            print(f"{t('Sessions opened from this directory')} :")
+            print(f"  {os.getcwd()}")
+            if not seances:
+                print(
+                    f"  {MARQUE['unknown']}"
+                    f" {t('None here. The listing sees this directory only.')}"
+                )
+            for seance in seances:
+                print(f"  {self._opencode_ligne(seance)}")
+            choices = [
+                {"prompt_description": t("What one session cost")},
+                {
+                    "prompt_description": t(
+                        "Statistics, by tool and by model (all projects)"
+                    )
+                },
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._opencode_cout(seances)
+            elif status == "2":
+                self.execute.exec_command_live(
+                    " ".join(oc.argv_statistiques()), source_erplibre=False
+                )
+            else:
+                print(t("Command not found !"))
+
+    @staticmethod
+    def _opencode_ligne(seance):
+        """« <id>  AAAA-MM-JJ hh:mm » — ce qui DISTINGUE une séance.
+
+        La date et non le répertoire. Le listage étant cadré sur le répertoire
+        courant, celui d'une séance vaut presque toujours celui que l'en-tête
+        vient d'afficher : en colonne, il est constant et n'aide à rien, alors
+        que sans la date deux séances du même dossier sont identiques à
+        l'écran. Il reparaît quand il diffère, qui est le seul cas où il
+        apprend quelque chose.
+        """
+        ligne = f"{seance.identifiant}  {seance.quand}".rstrip()
+        ailleurs = seance.repertoire and seance.repertoire != os.getcwd()
+        return f"{ligne}  {seance.repertoire}" if ailleurs else ligne
+
+    def _opencode_cout(self, seances):
+        """Le coût d'une séance choisie : jetons, cache, lignes touchées."""
+        from script.todo.assistant.harness import opencode as oc
+
+        if not seances:
+            print(f"{MARQUE['unknown']} {t('No session to read here.')}")
+            return
+        choices = [
+            {"prompt_description": self._opencode_ligne(s)} for s in seances
+        ]
+        try:
+            rang = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if rang == "0":
+            return
+        if not rang.isdigit() or not 1 <= int(rang) <= len(seances):
+            print(t("Command not found !"))
+            return
+        seance = seances[int(rang) - 1]
+        try:
+            argv = oc.argv_exporter(seance.identifiant)
+        except ValueError as souci:
+            print(f"{MARQUE['no']} {souci}")
+            return
+        brut = self._opencode_lancer(argv)
+        resume = oc.decoder_export(brut)
+        if resume is None:
+            # None n'est pas un résumé à zéro : le dire évite de chercher une
+            # séance gratuite là où rien n'a pu être lu. Et nommer QUI a
+            # failli évite de chercher le défaut ici : sur une longue séance,
+            # c'est l'outil qui sort avant d'avoir vidé son tampon.
+            if oc.semble_tronque(brut):
+                print(f"{MARQUE['no']} {t('Open Code cut its own output.')}")
+                print(f"   {t('It happens past roughly 60 kB of export.')}")
+            else:
+                print(f"{MARQUE['no']} {t('This session could not be read.')}")
+            return
+        print(f"  {resume.modele} · {resume.fournisseur} · {resume.agent}")
+        print(f"  {t('cost')} {resume.cout:.4f} $")
+        print(
+            f"  {t('tokens')} {resume.jetons}"
+            f"  ({t('cache read')} {resume.cache_lu})"
+        )
+        print(
+            f"  +{resume.lignes_ajoutees} −{resume.lignes_retirees}"
+            f"  {self._llm_count(resume.fichiers, 'file', 'files')}"
+        )
 
     def _harnais_autres(self, autres):
         """Les harnais restants, en prose et sans numéro.

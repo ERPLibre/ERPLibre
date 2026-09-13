@@ -590,6 +590,8 @@ class TODO(
         "_prompt_claude_configs": "Claude configs",
         "prompt_execute_claude_plugins": "Plugins",
         "prompt_claude_sessions": "Claude Code",
+        "prompt_opencode_seances": "Open Code",
+        "_opencode_cout": "Cost",
         "_claude_gerer": "Manage",
         "prompt_execute_process": "Process",
         "prompt_execute_instance": "Run",

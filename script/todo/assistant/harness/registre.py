@@ -83,7 +83,18 @@ HARNAIS: tuple[Harnais, ...] = (
         verifie=True,
         actions=(LISTER, QUESTION, REPRENDRE, ARRIERE_PLAN),
     ),
-    Harnais(cle="opencode", nom="Open Code", icone="🧊", binaire="opencode"),
+    # Open Code ne déclare que la LECTURE. Son `run` écrit dans l'arbre de
+    # travail sans demander — une consigne de trois mots suffit à faire créer
+    # un fichier — donc une entrée « question libre » y serait un piège.
+    Harnais(
+        cle="opencode",
+        nom="Open Code",
+        icone="🧊",
+        binaire="opencode",
+        maison="~/.local/share/opencode",
+        verifie=True,
+        actions=(LISTER,),
+    ),
     Harnais(
         cle="hermes",
         nom="Hermes",

@@ -649,6 +649,113 @@ class LeCablageDesAgents(unittest.TestCase):
         self._dispatche("6", "_claude_gerer")
 
 
+class LeHarnaisOpenCode(unittest.TestCase):
+    """Le deuxième harnais mesuré, et ce que son écran doit dire.
+
+    Il diffère de Claude Code sur un point que l'écran ne peut pas taire : son
+    listage ne voit que le RÉPERTOIRE COURANT. Un écran qui présenterait les
+    deux de la même façon annoncerait « aucune séance » à qui en a vingt dans
+    le répertoire d'à côté.
+    """
+
+    def test_le_registre_le_declare_en_lecture_seule(self):
+        """`run` écrit dans l'arbre de travail sans demander : une entrée
+        « question libre » qui crée des fichiers serait un piège."""
+        from script.todo.assistant.harness import registre as reg
+
+        (harnais,) = [h for h in reg.HARNAIS if h.cle == "opencode"]
+        self.assertTrue(harnais.verifie)
+        self.assertEqual(harnais.actions, (reg.LISTER,))
+
+    def test_l_etiquette_de_fil_d_ariane_existe(self):
+        from script.todo.todo import TODO
+
+        self.assertEqual(
+            TODO._MENU_LABELS.get("prompt_opencode_seances"), "Open Code"
+        )
+
+    def test_ouvrir_le_harnais_ouvre_son_ecran(self):
+        """Sans branche, le menu annoncerait « aucun adaptateur » sur un
+        harnais que le registre vient de déclarer vérifié.
+
+        Le témoin est l'écran de l'AUTRE harnais : sans lui, un aiguillage
+        qui appellerait tout passerait pour juste.
+        """
+        from script.todo.assistant.harness import registre as reg
+        from script.todo.todo import TODO
+
+        (harnais,) = [h for h in reg.HARNAIS if h.cle == "opencode"]
+        etat = reg.Etat(harnais=harnais, chemin="/ou/que/ce/soit")
+        self.assertEqual(etat.verdict, reg.OK)
+        with patch.object(
+            TODO, "prompt_opencode_seances"
+        ) as cible, patch.object(
+            TODO, "prompt_claude_sessions"
+        ) as temoin, patch(
+            "builtins.print"
+        ):
+            TODO()._harnais_ouvrir(etat)
+        cible.assert_called_once_with()
+        temoin.assert_not_called()
+
+    def _ecran(self, seances, reponses):
+        """L'écran, piloté sans jamais lancer le vrai binaire."""
+        from script.todo.todo import TODO
+
+        sorti = []
+        with patch.object(
+            TODO, "_opencode_seances", return_value=seances
+        ), patch.object(TODO, "fill_help_info", lambda self, c: ""), patch(
+            "click.prompt", side_effect=reponses
+        ), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(
+                " ".join(str(x) for x in a)
+            ),
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            TODO().prompt_opencode_seances()
+        return "\n".join(sorti)
+
+    def test_l_ecran_dit_sa_portee_avant_de_lister(self):
+        rendu = self._ecran([], ["0"])
+        self.assertIn(t("Sessions opened from this directory"), rendu)
+        self.assertIn(os.getcwd(), rendu)
+
+    def test_aucune_seance_le_dit_avec_sa_raison(self):
+        """« Aucune » tout court laisserait chercher une panne."""
+        self.assertIn(
+            t("None here. The listing sees this directory only."),
+            self._ecran([], ["0"]),
+        )
+
+    def test_une_seance_montre_sa_date_et_jamais_son_titre(self):
+        """La date DISTINGUE ; le répertoire, cadré sur le courant, non."""
+        from script.todo.assistant.harness import opencode as oc
+
+        seance = oc.Seance(
+            identifiant="ses_aaaabbbbccccddddeeeeffff",
+            repertoire=os.getcwd(),
+            modifie=1_700_000_000_000,
+        )
+        rendu = self._ecran([seance], ["0"])
+        self.assertIn(seance.identifiant, rendu)
+        self.assertIn(seance.quand, rendu)
+        self.assertNotIn(os.getcwd(), rendu.split("\n", 2)[2])
+
+    def test_un_repertoire_different_reparait(self):
+        """C'est le seul cas où la colonne apprend quelque chose."""
+        from script.todo.assistant.harness import opencode as oc
+
+        seance = oc.Seance(
+            identifiant="ses_aaaabbbbccccddddeeeeffff",
+            repertoire="/un/autre/endroit",
+            modifie=1_700_000_000_000,
+        )
+        self.assertIn("/un/autre/endroit", self._ecran([seance], ["0"]))
+
+
 class LaVueDUneSession(unittest.TestCase):
     """`displayable()` fixe ce qu'une session a le droit de montrer.
 
