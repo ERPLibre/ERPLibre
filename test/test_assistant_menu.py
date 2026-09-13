@@ -585,6 +585,8 @@ class Frontiere(unittest.TestCase):
         """
         code = (
             "import sys;"
+            "import script.todo.assistant.apertus;"
+            "import script.todo.assistant.apertus_state;"
             "import script.todo.assistant.backends;"
             "import script.todo.assistant.capabilities;"
             "import script.todo.assistant.chat;"
