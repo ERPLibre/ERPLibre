@@ -19,6 +19,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from script.todo.mail.imap_sync import Syncer
 from script.todo.mail.store import Store, sweep_orphan_ephemeral
@@ -2354,13 +2355,23 @@ def run_tui(
                 )
             )
 
+        def _config_get(self):
+            """La lecture de la configuration TODO, ou rien.
+
+            Un TUI monté sans fichier de configuration — les tests en
+            montent — retombe sur les variables d'environnement plutôt que
+            de lever.
+            """
+            lire = getattr(self.config_file, "get_config_value", None)
+            return lire if callable(lire) else None
+
         def action_add_account(self) -> None:
             if self.config_file is None or self.secret_store is None:
                 self.set_status(t("mail_account_add_unavailable"))
                 return
             if account_setup.kdbx_is_configured(self.config_file):
                 self.push_screen(
-                    AccountScreen(self.secret_store),
+                    AccountScreen(self.secret_store, self._config_get()),
                     self._after_account_added,
                 )
             else:
@@ -2373,7 +2384,8 @@ def run_tui(
                 return
             self.secret_store = store
             self.push_screen(
-                AccountScreen(self.secret_store), self._after_account_added
+                AccountScreen(self.secret_store, self._config_get()),
+                self._after_account_added,
             )
 
         def _after_account_added(self, account) -> None:
@@ -3444,12 +3456,24 @@ def run_tui(
             Binding("escape", "cancel", "Annuler"),
         ]
 
-        def __init__(self, secret_store):
+        CSS = """
+        /* Le formulaire défile : onze champs et deux boutons dépassent un
+        terminal de 24 lignes, et le bouton d'enregistrement est justement
+        le dernier — hors de l'écran, il devient introuvable à la souris.
+        `height: auto` sur le contenu et `1fr` sur le conteneur : sans ça,
+        le contenu se replie à la taille de la fenêtre et rien ne défile. */
+        #account_form { height: 1fr; }
+        """
+
+        def __init__(self, secret_store, config_get=None):
             super().__init__()
             self.secret_store = secret_store
+            # Les réglages OAuth de celui qui déploie : sans eux, le
+            # parcours d'autorisation ne peut pas être proposé.
+            self.config_get = config_get
 
         def compose(self):
-            with Vertical(id="account_form"):
+            with VerticalScroll(id="account_form"):
                 yield Static(t("mail_account_add"))
                 yield Input(placeholder=t("mail_ask_name"), id="acc_name")
                 yield Input(placeholder=t("mail_ask_email"), id="acc_email")
@@ -3483,6 +3507,14 @@ def run_tui(
                     password=True,
                     id="acc_password",
                 )
+                bouton = Button(
+                    t("mail_oauth_choice_browser"), id="acc_authorize"
+                )
+                # Caché, pas désactivé : un bouton grisé invite à chercher
+                # ce qui l'activerait, alors qu'il n'y a rien à faire sans
+                # identifiant client.
+                bouton.display = False
+                yield bouton
                 yield Static("", id="account_status")
                 yield Button(t("mail_account_save"), id="acc_save")
 
@@ -3492,6 +3524,48 @@ def run_tui(
         def on_button_pressed(self, event) -> None:
             if event.button.id == "acc_save":
                 self.action_save()
+            elif event.button.id == "acc_authorize":
+                self.action_authorize()
+
+        def action_authorize(self) -> None:
+            """Mène le parcours d'autorisation dans un fil de travail.
+
+            Sur le fil de l'interface, l'attente de la redirection gèlerait
+            la fenêtre — y compris Échap, donc sans moyen d'abandonner.
+            """
+            self.query_one("#account_status", Static).update(
+                t("mail_oauth_opening_browser")
+            )
+            self.run_worker(self._autoriser, thread=True)
+
+        def _autoriser(self) -> None:
+            from script.todo.mail import oauth
+
+            preset_key = self.query_one("#acc_preset", Select).value
+            compte = SimpleNamespace(
+                preset=preset_key,
+                email=self.query_one("#acc_email", Input).value.strip(),
+                auth="oauth",
+            )
+            try:
+                jeu = oauth.authorize(compte, config_get=self.config_get)
+            except Exception as exc:
+                # Large À DESSEIN : une exception qui s'échappe d'un fil de
+                # travail atterrit dans `App._handle_exception`, dont la
+                # trace affiche les variables locales — et l'une d'elles
+                # porterait le secret.
+                self.app.call_from_thread(self._autorisation_ratee, str(exc))
+                return
+            self.app.call_from_thread(self._autorisation_reussie, jeu)
+
+        def _autorisation_reussie(self, jeu) -> None:
+            self.query_one("#acc_password", Input).value = jeu.refresh_token
+            self.query_one("#account_status", Static).update(
+                t("mail_token_saved")
+            )
+
+        def _autorisation_ratee(self, message: str) -> None:
+            self.query_one("#account_status", Static).update(Text(message))
 
         def on_select_changed(self, event) -> None:
             if event.select.id == "acc_auth":
@@ -3535,6 +3609,29 @@ def run_tui(
                 auth.disabled = False
             self._accorder_champ_secret(auth.value)
 
+        def _accorder_bouton(self, preset_key, auth) -> None:
+            """Le bouton n'apparaît que s'il a une page à ouvrir.
+
+            Il faut un compte OAuth, un fournisseur qui en offre, et un
+            identifiant client configuré : sans lui, la page répondrait
+            « invalid_client » et la panne se chercherait chez le
+            fournisseur.
+            """
+            from script.todo.mail import oauth
+
+            possible = False
+            if auth == "oauth":
+                compte = SimpleNamespace(preset=preset_key, auth="oauth")
+                try:
+                    possible = bool(
+                        oauth.settings_for(compte, self.config_get)[
+                            "client_id"
+                        ]
+                    )
+                except oauth.OAuthError:
+                    possible = False
+            self.query_one("#acc_authorize", Button).display = possible
+
         def _accorder_champ_secret(self, auth) -> None:
             """Le champ du secret dit ce qu'on y attend.
 
@@ -3546,6 +3643,9 @@ def run_tui(
                 "mail_ask_refresh_token"
                 if auth == "oauth"
                 else "mail_ask_password"
+            )
+            self._accorder_bouton(
+                self.query_one("#acc_preset", Select).value, auth
             )
 
         def action_save(self) -> None:

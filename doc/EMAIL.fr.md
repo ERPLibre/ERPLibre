@@ -597,8 +597,12 @@ mot de passe en a toujours un.
 Le formulaire du TUI (`n`) offre le même choix : choisir un préréglage fixe
 ce que le compte peut employer — la liste des authentifications n'est
 active que là où il y a quelque chose à choisir — et le champ du secret dit
-ensuite s'il attend un mot de passe ou un jeton. Il prend un jeton collé ;
-le parcours navigateur, lui, vit dans le menu.
+ensuite s'il attend un mot de passe ou un jeton. Un bouton **Autoriser dans
+le navigateur** y figure aussi, mais seulement là où un `client_id` est
+configuré : sans lui, il ouvrirait une page répondant « invalid_client »,
+donc il reste caché plutôt que grisé. Le parcours tourne dans un fil de
+travail, sans quoi l'attente de la redirection gèlerait la fenêtre, Échap
+compris.
 
 **Ensuite, plus rien à faire.** Un jeton d'accès vit environ une heure ; le
 client échange le jeton de rafraîchissement contre un neuf avant d'ouvrir
