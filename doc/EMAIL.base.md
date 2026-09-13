@@ -1147,6 +1147,12 @@ Either way the token is stored in the vault under its own reference, beside
 the password entry rather than over it, so an account that goes back to a
 password still has one.
 
+The TUI's own form (`n`) offers the same choice: picking a preset settles
+what the account can use — the list of authentications is only live where
+there is something to choose — and the secret field then says whether it
+wants a password or a token. It takes a pasted token; the browser flow
+lives in the menu.
+
 **Afterwards, nothing.** An access token lasts about an hour; the client
 exchanges the refresh token for a new one before opening a session, writes
 the new set back to the vault, and syncs. The exchange happens in the main
@@ -1213,6 +1219,12 @@ configuré :
 Dans les deux cas le jeton se range au coffre sous sa propre référence, à
 côté de l'entrée du mot de passe et non dessus : un compte qui repasse au
 mot de passe en a toujours un.
+
+Le formulaire du TUI (`n`) offre le même choix : choisir un préréglage fixe
+ce que le compte peut employer — la liste des authentifications n'est
+active que là où il y a quelque chose à choisir — et le champ du secret dit
+ensuite s'il attend un mot de passe ou un jeton. Il prend un jeton collé ;
+le parcours navigateur, lui, vit dans le menu.
 
 **Ensuite, plus rien à faire.** Un jeton d'accès vit environ une heure ; le
 client échange le jeton de rafraîchissement contre un neuf avant d'ouvrir

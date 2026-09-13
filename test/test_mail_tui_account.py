@@ -301,6 +301,81 @@ class TestAccountScreenSavesAndGoesLive(TuiAccountCase):
             self.assertEqual(mail_accounts.load(), [])
 
 
+class TestTheFormKnowsAboutTokens(TuiAccountCase):
+    """Le formulaire du TUI doit offrir ce que le menu offre.
+
+    Sans cela, un compte Microsoft ne peut pas s'ajouter depuis le client :
+    le seul champ proposé est un mot de passe, que le fournisseur refuse.
+    """
+
+    async def _ouvrir(self, pilot, app):
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        return app.screen
+
+    async def test_a_microsoft_preset_switches_the_form_to_a_token(self):
+        from textual.widgets import Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_preset", Select).value = "outlook"
+            await pilot.pause()
+            auth = ecran.query_one("#acc_auth", Select)
+            self.assertEqual(auth.value, "oauth")
+            # Aucun choix à faire : le fournisseur n'accepte rien d'autre.
+            self.assertTrue(auth.disabled)
+
+    async def test_a_provider_without_oauth_offers_no_choice_either(self):
+        from textual.widgets import Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_preset", Select).value = "icloud"
+            await pilot.pause()
+            auth = ecran.query_one("#acc_auth", Select)
+            self.assertEqual(auth.value, "login")
+            self.assertTrue(auth.disabled)
+
+    async def test_gmail_leaves_the_choice_open(self):
+        from textual.widgets import Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_preset", Select).value = "gmail"
+            await pilot.pause()
+            auth = ecran.query_one("#acc_auth", Select)
+            self.assertEqual(auth.value, "login")
+            self.assertFalse(auth.disabled)
+
+    async def test_a_token_account_is_saved_under_its_own_reference(self):
+        from textual.widgets import Input, Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_name", Input).value = "travail"
+            ecran.query_one("#acc_email", Input).value = "moi@x.ca"
+            ecran.query_one("#acc_preset", Select).value = "outlook"
+            await pilot.pause()
+            ecran.query_one("#acc_password", Input).value = "jeton-collé"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        compte = mail_accounts.load()[0]
+        self.assertEqual(compte.auth, "oauth")
+        self.assertEqual(
+            self.secret_store.get(compte.refresh_token_ref()), "jeton-collé"
+        )
+        # Et surtout PAS sur la référence du mot de passe.
+        self.assertIsNone(self.secret_store.get(compte.secret_ref))
+
+
 class TestVaultScreenFirst(TuiAccountCase):
     """Sans kdbx configuré, `VaultScreen` s'ouvre avant `AccountScreen`, et
     l'annuler annule tout le flux."""

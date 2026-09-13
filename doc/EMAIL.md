@@ -555,6 +555,12 @@ Either way the token is stored in the vault under its own reference, beside
 the password entry rather than over it, so an account that goes back to a
 password still has one.
 
+The TUI's own form (`n`) offers the same choice: picking a preset settles
+what the account can use — the list of authentications is only live where
+there is something to choose — and the secret field then says whether it
+wants a password or a token. It takes a pasted token; the browser flow
+lives in the menu.
+
 **Afterwards, nothing.** An access token lasts about an hour; the client
 exchanges the refresh token for a new one before opening a session, writes
 the new set back to the vault, and syncs. The exchange happens in the main

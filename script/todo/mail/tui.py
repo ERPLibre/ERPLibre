@@ -3466,6 +3466,19 @@ def run_tui(
                 )
                 yield Input(placeholder=t("mail_ask_imap_host"), id="acc_imap")
                 yield Input(placeholder=t("mail_ask_smtp_host"), id="acc_smtp")
+                # Désactivée tant qu'un préréglage n'est pas choisi : le
+                # genre d'authentification n'est une QUESTION que chez un
+                # fournisseur qui accepte les deux.
+                yield Select(
+                    [
+                        (t("mail_auth_choice_password"), "login"),
+                        (t("mail_auth_choice_oauth"), "oauth"),
+                    ],
+                    id="acc_auth",
+                    value="login",
+                    allow_blank=False,
+                    disabled=True,
+                )
                 yield Input(
                     placeholder=t("mail_ask_password"),
                     password=True,
@@ -3482,8 +3495,12 @@ def run_tui(
                 self.action_save()
 
         def on_select_changed(self, event) -> None:
+            if event.select.id == "acc_auth":
+                self._accorder_champ_secret(event.value)
+                return
             if event.select.id != "acc_preset":
                 return
+            self._accorder_authentification(event.value)
             imap_input = self.query_one("#acc_imap", Input)
             smtp_input = self.query_one("#acc_smtp", Input)
             preset_key = event.value
@@ -3498,6 +3515,39 @@ def run_tui(
                 smtp_input.value = preset["smtp"]["host"]
                 imap_input.disabled = True
                 smtp_input.disabled = True
+
+        def _accorder_authentification(self, preset_key) -> None:
+            """Accorde la liste d'authentification au préréglage choisi.
+
+            La liste n'est active que lorsqu'il y a un CHOIX : un
+            fournisseur sans OAuth ne doit pas se voir proposer une voie qui
+            n'existe pas, et celui qui n'accepte plus de mot de passe ne
+            doit pas se voir proposer une impasse.
+            """
+            preset = PRESETS.get(preset_key, {})
+            auth = self.query_one("#acc_auth", Select)
+            if not preset.get("oauth"):
+                auth.value = "login"
+                auth.disabled = True
+            elif not preset.get("app_password"):
+                auth.value = "oauth"
+                auth.disabled = True
+            else:
+                auth.disabled = False
+            self._accorder_champ_secret(auth.value)
+
+        def _accorder_champ_secret(self, auth) -> None:
+            """Le champ du secret dit ce qu'on y attend.
+
+            « Mot de passe » devant un champ qui veut un jeton fait coller
+            un mot de passe, que le serveur refusera sans dire pourquoi.
+            """
+            champ = self.query_one("#acc_password", Input)
+            champ.placeholder = t(
+                "mail_ask_refresh_token"
+                if auth == "oauth"
+                else "mail_ask_password"
+            )
 
         def action_save(self) -> None:
             status = self.query_one("#account_status", Static)
@@ -3534,6 +3584,7 @@ def run_tui(
                 email_addr = self.query_one("#acc_email", Input).value.strip()
                 display = self.query_one("#acc_display", Input).value.strip()
                 preset_key = self.query_one("#acc_preset", Select).value
+                auth = self.query_one("#acc_auth", Select).value
                 password = self.query_one("#acc_password", Input).value
 
                 if not name or not email_addr or not password:
@@ -3551,6 +3602,7 @@ def run_tui(
                     preset_key,
                     display_name=display,
                     vault=vault,
+                    auth=auth,
                 )
 
                 if preset_key == "generic":
