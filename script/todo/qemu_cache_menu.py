@@ -126,10 +126,24 @@ class QemuCacheMenuMixin:
 
     @classmethod
     def _cache_prefixe_regles(cls):
-        """Les trois premiers octets que les règles détournent, ou ""."""
-        vu = cls._cache_lire(f"sudo -n nft list table ip {CACHE_TABLE}")
+        """Les trois premiers octets que les règles détournent, "" quand
+        aucune règle n'est posée, None quand on ne peut pas le savoir.
+
+        Même lecture que `_cache_amont_coupe`, et pour la même raison : sur
+        un hôte où sudo exige un mot de passe, « sudo -n » échoue sans rien
+        rendre. Confondre ce silence avec une absence de règle fait annoncer
+        « aucun détournement » à un cache qui détourne pourtant, et envoie
+        réinstaller ce qui marche. La marque n'est écrite que si nft a
+        répondu ; sans elle, l'appelant tranche.
+        """
+        vu = cls._cache_lire(
+            f"sudo -n nft list tables >/dev/null 2>&1 && echo {NFT_LISIBLE};"
+            f" sudo -n nft list table ip {CACHE_TABLE}"
+        )
         m = re.search(r"saddr (\d+\.\d+\.\d+)\.", vu)
-        return m.group(1) if m else ""
+        if m:
+            return m.group(1)
+        return "" if NFT_LISIBLE in vu.split() else None
 
     @classmethod
     def _cache_amont_coupe(cls):
@@ -396,7 +410,14 @@ class QemuCacheMenuMixin:
         # personne pendant que tout paraît réussi.
         regles = self._cache_prefixe_regles()
         libvirt = self._cache_prefixe_libvirt()
-        if regles and regles == libvirt:
+        if regles is None:
+            # Ni ✓ ni ✗ : on ne sait pas. Le point marque ce que le
+            # diagnostic n'a pas pu lire, comme pour la coupure d'amont.
+            print(
+                "  · "
+                f"{t('Cannot tell where the rules point: reading nft needs a sudo password here.')}"
+            )
+        elif regles and regles == libvirt:
             print(f"  ✓ {t('Redirection:')} {libvirt}.x → {t('the cache')}")
         elif not regles:
             print(f"  ✗ {t('No redirection rule is posted')}")

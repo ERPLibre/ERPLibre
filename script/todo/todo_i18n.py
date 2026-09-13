@@ -1850,6 +1850,10 @@ TRANSLATIONS = {
         "fr": "Aucune règle de détournement n'est posée",
         "en": "No redirection rule is posted",
     },
+    "Cannot tell where the rules point: reading nft needs a sudo password here.": {
+        "fr": "Impossible de savoir où pointent les règles : lire nft exige un mot de passe sudo ici.",
+        "en": "Cannot tell where the rules point: reading nft needs a sudo password here.",
+    },
     "MISMATCH — rules on": {
         "fr": "DÉSACCORD — règles sur",
         "en": "MISMATCH — rules on",

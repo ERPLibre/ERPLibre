@@ -1138,6 +1138,59 @@ class TestLeMenuLitLaCoupureEtLeGuet(SansSysteme):
         for c, _kw in self.lancees:
             self.assertNotRegex(c, r"sudo (?!-n )", "sudo peut demander")
 
+    def test_le_prefixe_des_regles_a_trois_etats(self):
+        """Confondre « illisible » avec « aucune règle » fait annoncer un
+        détournement absent par un cache qui détourne pourtant, et envoie
+        réinstaller ce qui fonctionne déjà."""
+        posee = (
+            "table ip erplibre_qemu_cache {\n"
+            "  chain prerouting {\n"
+            "    ip saddr 192.168.122.0/24 tcp dport 80 dnat to :8898\n"
+            "  }\n"
+            "}\n"
+        )
+        for sortie, attendu in (
+            (f"{menu.NFT_LISIBLE}\n{posee}", "192.168.122"),
+            (f"{menu.NFT_LISIBLE}\nError: la table n'existe pas\n", ""),
+            ("sudo: un mot de passe est nécessaire\n", None),
+            ("", None),
+        ):
+            self.sorties = {"nft list": sortie}
+            self.assertEqual(M._cache_prefixe_regles(), attendu, sortie)
+        for c, _kw in self.lancees:
+            self.assertNotRegex(c, r"sudo (?!-n )", "sudo peut demander")
+
+    def test_le_diagnostic_ne_crie_pas_labsence_dune_regle_illisible(self):
+        """« Aucune règle » et « je n'ai pas pu lire » appellent deux gestes
+        opposés : le premier fait réinstaller, le second fait donner un mot
+        de passe. Les confondre envoie refaire ce qui fonctionne."""
+        import contextlib
+        import io as _io
+
+        class Muet(M):
+            @classmethod
+            def _cache_prefixe_regles(cls):
+                return None
+
+            @classmethod
+            def _cache_prefixe_libvirt(cls):
+                return "192.168.122"
+
+        tampon = _io.StringIO()
+        with contextlib.ExitStack() as pile:
+            pile.enter_context(mock.patch("os.path.isfile", return_value=True))
+            pile.enter_context(contextlib.redirect_stdout(tampon))
+            Muet()._cache_diagnostic()
+        texte = tampon.getvalue()
+        self.assertIn(
+            t(
+                "Cannot tell where the rules point: reading nft needs a"
+                " sudo password here."
+            ),
+            texte,
+        )
+        self.assertNotIn(t("No redirection rule is posted"), texte)
+
     def test_le_guet_se_lit_sans_sudo(self):
         self.sorties = {cache_offline.guet_actif_cmd(): menu.GUET_ACTIF}
         self.assertTrue(M._cache_guet_actif())
