@@ -33,7 +33,7 @@ téléchargée. Aucun des quatre moteurs ne la sert aujourd'hui.
 from __future__ import annotations
 
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 # Le modèle par défaut et le moteur par défaut, quand rien n'a été choisi.
 MOTEUR_DEFAUT = "ollama"
@@ -48,6 +48,10 @@ CONTEXTE_PLAFOND = 8192
 # Marge disque exigée en plus de la taille du modèle, en octets. Couvre les
 # fichiers intermédiaires d'un téléchargement et le fichier de service.
 MARGE_DISQUE = 2 * 1024**3
+
+# Taille de groupe de la quantification MLX. C'est le défaut de l'outil, et
+# le descendre gagne de la qualité contre de la mémoire.
+MLX_GROUPE = 64
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,15 @@ class Moteur:
     # distribution livrent encore les anciens : chercher un seul nom déclare
     # absent un moteur présent.
     alias: tuple[str, ...] = ()
+    # Le noyau que le moteur exige, tel que « uname -s » le rend. Vide = tous.
+    # MLX est la pile d'Apple : elle ne s'installe pas ailleurs, et l'annoncer
+    # tôt vaut mieux qu'un pip qui échoue à la compilation.
+    plateforme: str = ""
+    # Vrai quand le service charge un modèle qui doit DÉJÀ être sur le disque.
+    # Ollama lance un démon qui ignore les modèles, et les trois autres tirent
+    # le leur au premier lancement ; MLX, lui, refuse de démarrer sur un
+    # chemin qui n'existe pas encore. L'ordre des étapes en dépend.
+    modele_avant_service: bool = False
     # Ce qui doit précéder toute commande du moteur. Un installateur sans
     # privilège écrit sous le compte, et un shell non interactif n'a pas ce
     # répertoire sur son chemin : sans ce préfixe, l'étape suivante ne trouve
@@ -171,6 +184,25 @@ MOTEURS: dict[str, Moteur] = {
         version_regex=r"(\d+\.\d+\.\d+)",
         binaire="local-ai",
     ),
+    "mlx": Moteur(
+        cle="mlx",
+        nom="MLX (Apple Silicon)",
+        licence="MIT",
+        port=8080,
+        chemin="/v1",
+        # La version où l'activation xIELU d'Apertus est arrivée dans
+        # `mlx_lm/models/activations.py` : un jour après la sortie du modèle.
+        version_min="0.27.1",
+        version_cmd=(
+            "python3 -c 'import importlib.metadata as m;"
+            ' print(m.version("mlx-lm"))\''
+        ),
+        version_regex=r"(\d+\.\d+\.\d+)",
+        binaire="mlx_lm.server",
+        prefixe='PATH="$HOME/.venv.mlx/bin:$PATH"; ',
+        plateforme="Darwin",
+        modele_avant_service=True,
+    ),
     "vllm": Moteur(
         cle="vllm",
         nom="vLLM",
@@ -204,11 +236,36 @@ class Modele:
     taille: int
     distille: bool
     reference: dict[str, str]
+    # Le dépôt à CONVERTIR quand aucun build MLX n'est publié. La conversion
+    # télécharge les poids pleins avant d'écrire la version quantifiée, donc
+    # elle demande bien plus de place que le résultat : `place_requise` en
+    # tient compte. Vide = un build existe, rien à convertir.
+    mlx_source: str = ""
+    # Taille des poids pleins à télécharger pour cette conversion, en octets.
+    mlx_source_taille: int = 0
 
 
 _GGUF_8B = "unsloth/Apertus-8B-Instruct-2509-GGUF"
 _GGUF_MINI_15 = "mradermacher/Apertus-v1.1-1.5B-Instruct-GGUF"
 _GGUF_MINI_05 = "mradermacher/Apertus-v1.1-0.5B-Instruct-GGUF"
+_GGUF_70B = "unsloth/Apertus-70B-Instruct-2509-GGUF"
+
+# Les builds MLX. Ceux du 8B viennent de `mlx-community`, ceux de la famille
+# Mini sont les quantifications OFFICIELLES de l'éditeur — les seules de tout
+# son catalogue qui servent sur du matériel Apple, les autres visant vLLM.
+_MLX_8B = "mlx-community/Apertus-8B-Instruct-2509"
+_MLX_MINI_15 = "swiss-ai/Apertus-v1.1-1.5B-Instruct-MLX-INT4"
+_MLX_MINI_05 = "swiss-ai/Apertus-v1.1-0.5B-Instruct-MLX-INT4"
+
+# Où atterrissent les modèles convertis à la main, RELATIVEMENT au compte.
+# Le chemin est relatif exprès : « $HOME » pris dans des apostrophes simples
+# ne s'étend pas, et toutes les commandes d'ici sont citées d'un bloc. Les
+# appelants passent donc par `sous_le_compte`, qui laisse le dollar dehors.
+MLX_LOCAL = ".apertus-mlx"
+
+# Les poids pleins du 70B, à convertir puisque personne ne publie de build MLX
+# de ce modèle. Le quatrième chiffre est ce que la conversion télécharge.
+_HF_70B = "swiss-ai/Apertus-70B-Instruct-2509"
 
 MODELES: dict[str, Modele] = {
     "8b-q4": Modele(
@@ -225,6 +282,7 @@ MODELES: dict[str, Modele] = {
                 f"huggingface://{_GGUF_8B}/Apertus-8B-Instruct-2509-Q4_K_M.gguf"
             ),
             "vllm": "swiss-ai/Apertus-8B-Instruct-2509",
+            "mlx": f"{_MLX_8B}-4bit",
         },
     ),
     "8b-q8": Modele(
@@ -241,6 +299,7 @@ MODELES: dict[str, Modele] = {
                 f"huggingface://{_GGUF_8B}/Apertus-8B-Instruct-2509-Q8_0.gguf"
             ),
             "vllm": "swiss-ai/Apertus-8B-Instruct-2509",
+            "mlx": f"{_MLX_8B}-8bit",
         },
     ),
     "mini-1.5b": Modele(
@@ -259,6 +318,7 @@ MODELES: dict[str, Modele] = {
                 "Apertus-v1.1-1.5B-Instruct.Q4_K_M.gguf"
             ),
             "vllm": "swiss-ai/Apertus-v1.1-1.5B-Instruct",
+            "mlx": _MLX_MINI_15,
         },
     ),
     "mini-0.5b": Modele(
@@ -276,7 +336,35 @@ MODELES: dict[str, Modele] = {
                 "Apertus-v1.1-0.5B-Instruct.Q4_K_M.gguf"
             ),
             "vllm": "swiss-ai/Apertus-v1.1-0.5B-Instruct",
+            "mlx": _MLX_MINI_05,
         },
+    ),
+    # Le 70B. Il ne tient que sur une machine qui a de la mémoire à revendre —
+    # 20 Gio de cache clé-valeur au contexte plein, contre 8 pour le 8B, parce
+    # qu'il paie ses 80 couches. Sur un moteur dense il lit TOUS ses poids à
+    # chaque jeton : compter quelques jetons par seconde, pas quelques dizaines.
+    "70b-q4": Modele(
+        cle="70b-q4",
+        nom="Apertus 70B Instruct (4 bits)",
+        depot=_HF_70B,
+        contexte=65536,
+        taille=43_720_000_000,
+        distille=False,
+        reference={
+            "ollama": f"hf.co/{_GGUF_70B}:Q4_K_M",
+            "llamacpp": f"{_GGUF_70B}:Q4_K_M",
+            "localai": (
+                f"huggingface://{_GGUF_70B}/"
+                "Apertus-70B-Instruct-2509-Q4_K_M.gguf"
+            ),
+            # Le seul build quantifié du 70B qui déclare sa licence et chiffre
+            # ce que la quantification coûte : ~0,6 % de moyenne sous le bf16.
+            "vllm": "RedHatAI/Apertus-70B-Instruct-2509-quantized.w4a16",
+            # Personne ne publie de build MLX de ce modèle : il se convertit.
+            "mlx": f"{MLX_LOCAL}/Apertus-70B-Instruct-2509-4bit",
+        },
+        mlx_source=_HF_70B,
+        mlx_source_taille=141_200_000_000,
     ),
 }
 
@@ -299,14 +387,32 @@ class Etape:
     critique: bool = True
 
 
+def sous_le_compte(chemin: str) -> str:
+    """Un chemin relatif au compte, cité pour le shell, dollar au-dehors.
+
+    `"$HOME"/x` s'étend ; `'$HOME/x'` non. Toute commande d'ici étant citée
+    d'un bloc, le chemin se recolle de cette façon-là et pas d'une autre.
+    """
+    return '"$HOME"/' + shlex.quote(chemin)
+
+
 def contexte_utile(modele: Modele) -> int:
     """Le contexte demandé au moteur : celui du modèle, plafonné."""
     return min(modele.contexte, CONTEXTE_PLAFOND)
 
 
-def place_requise(modele: Modele) -> int:
-    """Octets à avoir libres avant de lancer : le modèle, plus la marge."""
-    return modele.taille + MARGE_DISQUE
+def place_requise(modele: Modele, moteur_cle: str = "") -> int:
+    """Octets à avoir libres avant de lancer.
+
+    Le modèle et la marge — sauf sur un moteur qui doit CONVERTIR les poids :
+    la conversion télécharge la version pleine avant d'écrire la quantifiée,
+    et les deux coexistent sur le disque. Ignorer ce terme promet 45 Go là où
+    il en faut 185, et l'échec arrive après une heure de téléchargement.
+    """
+    besoin = modele.taille + MARGE_DISQUE
+    if moteur_cle == "mlx" and modele.mlx_source:
+        besoin += modele.mlx_source_taille
+    return besoin
 
 
 def enrobe(cible: dict, commande: str) -> str:
@@ -384,6 +490,20 @@ def _installe_localai() -> str:
     return "sh -c 'curl -fsSL https://localai.io/install.sh | sh'"
 
 
+def _installe_mlx() -> str:
+    """Installe mlx-lm dans un environnement virtuel dédié.
+
+    Ni privilège ni gestionnaire de paquets : MLX est une roue Python, et
+    l'isoler évite qu'elle ne déplace les dépendances du système. Rien à
+    compiler — Apple publie des roues pour son propre silicium.
+    """
+    return "sh -c " + shlex.quote(
+        'python3 -m venv "$HOME/.venv.mlx" && '
+        '"$HOME/.venv.mlx/bin/pip" install --upgrade pip && '
+        '"$HOME/.venv.mlx/bin/pip" install "mlx-lm>=0.27.1"'
+    )
+
+
 def _installe_vllm() -> str:
     """Installe vLLM dans un environnement virtuel dédié.
 
@@ -402,6 +522,7 @@ def _installe_vllm() -> str:
 
 
 _INSTALLE = {
+    "mlx": _installe_mlx,
     "ollama": _installe_ollama,
     "llamacpp": _installe_llamacpp,
     "localai": _installe_localai,
@@ -442,6 +563,27 @@ def _service(moteur: Moteur, modele: Modele) -> tuple[str, str]:
                 + ' >"$HOME/.apertus-llamacpp.log" 2>&1 & sleep 3'
             ),
             f"curl -fsS http://127.0.0.1:{moteur.port}/health >/dev/null",
+        )
+    if moteur.cle == "mlx":
+        # Aucun plafond de contexte à passer : MLX n'alloue pas son cache
+        # d'avance, il grandit avec la conversation. Le plafond des autres
+        # moteurs existe pour empêcher une réservation initiale de plusieurs
+        # gigaoctets, et cette réservation n'a pas lieu ici.
+        return (
+            "sh -c "
+            + shlex.quote(
+                moteur.prefixe
+                + "nohup mlx_lm.server --model "
+                + (
+                    sous_le_compte(reference)
+                    if modele.mlx_source
+                    else shlex.quote(reference)
+                )
+                + f" --port {moteur.port}"
+                + ' >"$HOME/.apertus-mlx.log" 2>&1 & sleep 5'
+            ),
+            f"curl -fsS http://127.0.0.1:{moteur.port}{moteur.chemin}/models"
+            " >/dev/null",
         )
     if moteur.cle == "localai":
         return (
@@ -487,6 +629,36 @@ def _tirer(moteur: Moteur, modele: Modele) -> tuple[str, str]:
             f"ollama pull {shlex.quote(reference)}",
             f"ollama list | grep -qF {shlex.quote(reference)}",
         )
+    if moteur.cle == "mlx" and modele.mlx_source:
+        # Personne ne publie de build MLX de ce modèle : on le fabrique. La
+        # conversion tire les poids pleins puis écrit la version quantifiée,
+        # donc elle dure et elle occupe les deux tailles à la fois.
+        local = sous_le_compte(reference)
+        return (
+            "sh -c "
+            + shlex.quote(
+                moteur.prefixe
+                + f"mlx_lm.convert --hf-path {shlex.quote(modele.mlx_source)}"
+                + f" --mlx-path {local}"
+                + f" -q --q-bits 4 --q-group-size {MLX_GROUPE}"
+            ),
+            "sh -c " + shlex.quote(f"test -f {local}/config.json"),
+        )
+    if moteur.cle == "mlx":
+        return (
+            "sh -c "
+            + shlex.quote(
+                moteur.prefixe
+                + f"mlx_lm.generate --model {shlex.quote(reference)}"
+                + " --prompt ping --max-tokens 1 >/dev/null"
+            ),
+            "sh -c "
+            + shlex.quote(
+                f'test -d "$HOME/.cache/huggingface/hub/models--'
+                + reference.replace("/", "--")
+                + '"'
+            ),
+        )
     atteste = (
         f"curl -fsS http://127.0.0.1:{moteur.port}{moteur.chemin}/models"
         " 2>/dev/null | grep -qi apertus"
@@ -498,6 +670,45 @@ def _tirer(moteur: Moteur, modele: Modele) -> tuple[str, str]:
     return ("sh -c " + shlex.quote(attente), "sh -c " + shlex.quote(atteste))
 
 
+def _service_et_modele(
+    moteur: Moteur, modele: Modele, srv_cmd, srv_fait, tirer_cmd, tirer_fait
+) -> list[Etape]:
+    """Le démarrage du service et l'obtention du modèle, dans le bon ordre.
+
+    L'ordre n'est pas une préférence. Un démon qui ignore les modèles se lance
+    d'abord, et le modèle se tire ensuite ; un moteur qui charge un chemin au
+    démarrage exige que ce chemin EXISTE, donc la conversion passe devant. À
+    l'envers, le service échouerait sur un répertoire absent et l'étape de
+    conversion suivrait un serveur déjà mort.
+    """
+    service = Etape(
+        cle="service",
+        label="Start the service",
+        commande=srv_cmd,
+        deja_fait=srv_fait,
+        # Un hôte sans systemd sert quand même le modèle : c'est l'étape
+        # d'écoute qui tranche, pas celle-ci.
+        critique=False,
+    )
+    modele_pret = Etape(
+        cle="tirer",
+        # Convertir et tirer ne se ressemblent pas : l'une dure des minutes,
+        # l'autre peut durer une heure et occuper le double sur le disque.
+        label=(
+            "Convert the model"
+            if moteur.cle == "mlx" and modele.mlx_source
+            else "Pull the model"
+        ),
+        commande=tirer_cmd,
+        deja_fait=tirer_fait,
+    )
+    if moteur.modele_avant_service:
+        # La conversion devient alors critique : un service lancé sur rien
+        # n'apprend rien à personne.
+        return [replace(modele_pret, critique=True), service]
+    return [service, modele_pret]
+
+
 def etapes(moteur_cle: str, modele_cle: str, cible: dict) -> list[Etape]:
     """Les étapes ordonnées d'une installation, prêtes à lancer.
 
@@ -507,7 +718,7 @@ def etapes(moteur_cle: str, modele_cle: str, cible: dict) -> list[Etape]:
     moteur = MOTEURS[moteur_cle]
     modele = MODELES[modele_cle]
     reference = modele.reference[moteur.cle]
-    requis = place_requise(modele)
+    requis = place_requise(modele, moteur.cle)
     service_cmd, service_fait = _service(moteur, modele)
     tirer_cmd, tirer_fait = _tirer(moteur, modele)
     racine = f"http://127.0.0.1:{moteur.port}{moteur.chemin}"
@@ -518,6 +729,23 @@ def etapes(moteur_cle: str, modele_cle: str, cible: dict) -> list[Etape]:
             label="Reach the target",
             commande="true",
         ),
+    ]
+    if moteur.plateforme:
+        # AVANT tout le reste, et surtout avant la place disque : un moteur
+        # qui n'existe pas pour ce noyau ne mérite pas qu'on mesure un disque.
+        brutes.append(
+            Etape(
+                cle="plateforme",
+                label="Check the platform",
+                commande=(
+                    "sh -c "
+                    + shlex.quote(
+                        f'test "$(uname -s)" = {shlex.quote(moteur.plateforme)}'
+                    )
+                ),
+            )
+        )
+    brutes += [
         Etape(
             cle="sudo",
             label="Check sudo",
@@ -546,20 +774,8 @@ def etapes(moteur_cle: str, modele_cle: str, cible: dict) -> list[Etape]:
             # découvre pour quelques octets plutôt que pour plusieurs Go.
             commande=moteur.version_test,
         ),
-        Etape(
-            cle="service",
-            label="Start the service",
-            commande=service_cmd,
-            deja_fait=service_fait,
-            # Un hôte sans systemd sert quand même le modèle : c'est
-            # l'étape d'écoute qui tranche, pas celle-ci.
-            critique=False,
-        ),
-        Etape(
-            cle="tirer",
-            label="Pull the model",
-            commande=tirer_cmd,
-            deja_fait=tirer_fait,
+        *_service_et_modele(
+            moteur, modele, service_cmd, service_fait, tirer_cmd, tirer_fait
         ),
         Etape(
             cle="ecouter",
