@@ -46,6 +46,10 @@ CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
 CACHE_MIROIR_GIT = "/var/cache/erplibre_go_qemu_cache/git"
 CACHE_DIR = "/var/cache/erplibre_go_qemu_cache"
+# L'installateur, tel qu'il se lance depuis un checkout ERPLibre. Le chemin
+# reste RELATIF : il est imprimé pour une AUTRE machine, dont le répertoire
+# de travail n'a aucune raison d'être celui d'ici.
+INSTALLATEUR = "script/install/install_qemu_cache.sh"
 # La racine du dépôt, d'où se lance le lecteur du journal d'accès : le menu
 # tourne depuis n'importe quel répertoire, et un chemin relatif n'y survit pas.
 RACINE_DEPOT = os.path.dirname(
@@ -653,16 +657,35 @@ class QemuCacheMenuMixin:
         if not cible:
             print(f"  {t('Cancelled.')}\n")
             return
-        # L'arrivée doit porter le cache : sans son compte de service, les
-        # fichiers arriveraient à root et le service ne les lirait pas.
+        # Trois pannes qu'un seul code de retour confondait : une machine
+        # injoignable, un cache absent, un cache posé sans son compte de
+        # service. Chacune appelle un geste différent, donc chacune a son
+        # message. Le jeton « FIN » termine toujours la sonde : son absence
+        # dénonce le LIEN, là où un code non nul seul accusait le cache.
         sonde = (
-            f"test -x {shlex.quote(CACHE_BIN)}"
-            f" && id -u {shlex.quote(cache_offline.SERVICE_USER)}"
+            f"test -x {shlex.quote(CACHE_BIN)} && echo binaire;"
+            f" id -u {shlex.quote(cache_offline.SERVICE_USER)}"
+            " >/dev/null 2>&1 && echo compte; echo FIN"
         )
-        code, _o = self._cache_ssh(cible, sonde)
-        if code:
-            print(f"  ✗ {t('The target has no cache installed:')} {cible}")
-            print(f"    {t('Install it there first, from entry 1.')}\n")
+        code, sortie = self._cache_ssh(cible, sonde)
+        if code or "FIN" not in sortie:
+            self._cache_dire_ssh_muet(cible)
+            return
+        if "binaire" not in sortie:
+            self._cache_dire_poser_la_bas(cible)
+            return
+        # Le compte de service porte le magasin : sans lui, les fichiers
+        # arriveraient à root et le service ne les lirait pas.
+        if "compte" not in sortie:
+            print(
+                f"  ✗ {t('The cache is there but its service account is not:')}"
+                f" {cache_offline.SERVICE_USER}"
+            )
+            print(
+                "    "
+                f"{t('Reinstall it there: the installer creates the account.')}"
+            )
+            print(f"      sudo bash {INSTALLATEUR}\n")
             return
         print(f"  {t('What travels:')} {cache_dir}")
         for quoi, chemin in (
@@ -678,6 +701,61 @@ class QemuCacheMenuMixin:
             print(f"  {t('Cancelled.')}\n")
             return
         self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    @staticmethod
+    def _cache_dire_ssh_muet(cible):
+        """Le LIEN est en cause, pas le cache : la sonde n'a pas tourné.
+
+        Le transfert tube « tar » dans ssh, sans terminal : un accès qui
+        réclame un mot de passe échouerait au milieu du flux, après des
+        gigaoctets. Il s'éprouve avant, par une commande qui ne coûte rien.
+        """
+        q = shlex.quote(cible)
+        print(f"  ✗ {t('Cannot reach it over ssh:')} {cible}")
+        print(f"    {t('This entry needs a password-less ssh access:')}")
+        print(f"      ssh {q} true")
+        print(f"    {t('If it asks for a password, post a key there:')}")
+        print(f"      ssh-copy-id {q}\n")
+
+    @staticmethod
+    def _cache_dire_poser_la_bas(cible):
+        """Les gestes à faire SUR la machine d'arrivée, un par ligne.
+
+        L'entrée 1 pose le cache ICI : y renvoyer fait relancer une
+        installation sur l'hôte qui en a déjà une, et la machine d'arrivée
+        reste sans rien. Le magasin voyage ; le service, lui, se compile
+        là-bas, contre la distribution de là-bas.
+
+        L'installateur lit le réseau libvirt « default » pour trouver le
+        pont. Sur un hôte où libvirt est arrêté, il meurt donc sur un réseau
+        « introuvable » qui existe pourtant, et démarrer ce réseau seul ne
+        suffit pas : sans hyperviseur joignable, rien ne répond. D'où les
+        deux issues nommées ensemble — lever libvirt, ou nommer le pont.
+        """
+        q = shlex.quote(cible)
+        for ligne in (
+            f"  ✗ {t('The target has no cache installed:')} {cible}",
+            "    "
+            f"{t('Entry 1 installs the cache HERE; the target needs its own.')}",
+            f"    {t('Steps, ON the target machine:')}",
+            f"      1. ssh {q}",
+            f"      2. {t('go to its ERPLibre checkout, on the same branch')}",
+            f"      3. sudo bash {INSTALLATEUR}",
+            "         "
+            f"{t('or, in its own TODO: Execute > Deploy > QEMU cache, entry 1')}",
+            "",
+            f"    {t('The installer reads the « default » libvirt network to find')}",
+            f"    {t('the bridge; a stopped libvirt makes it die on « not found »:')}",
+            "      sudo systemctl start libvirtd.socket",
+            "      sudo virsh -c qemu:///system net-start default",
+            f"    {t('Or name the bridge by hand, libvirt being optional then:')}",
+            "      sudo EL_BRIDGE=virbr0 EL_SUBNET=192.168.122.0/24 \\",
+            f"        bash {INSTALLATEUR}",
+            "",
+            f"    {t('Then come back to this entry.')}",
+            "",
+        ):
+            print(ligne)
 
     @staticmethod
     def _cache_transfert_cmd(cible, cache_dir):
@@ -1252,6 +1330,18 @@ class QemuCacheMenuMixin:
                 "    Debian. Reserve: a bridge switched onto the LAN is only seen by"
             ),
             t("    the rules when br_netfilter is enabled."),
+            "",
+            f"  {t('Carrying it to another machine')}",
+            t("    Entry 11 copies the STORE, not the service: an object is"),
+            t(
+                "    keyed by URL and a git mirror is a repository, so both are"
+            ),
+            t(
+                "    worth the same elsewhere. The settings stay here — bridge,"
+            ),
+            t("    subnet and authority belong to the host that serves them."),
+            t("    The target must already carry the cache, installed from"),
+            t("    ITS own checkout, and answer ssh without a password."),
             "",
         ):
             print(ligne)

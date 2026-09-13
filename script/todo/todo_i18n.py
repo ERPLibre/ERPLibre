@@ -6431,9 +6431,85 @@ TRANSLATIONS = {
         "fr": "La machine d'arrivée n'a pas le cache :",
         "en": "The target has no cache installed:",
     },
-    "Install it there first, from entry 1.": {
-        "fr": "L'y installer d'abord, par l'entrée 1.",
-        "en": "Install it there first, from entry 1.",
+    "Cannot reach it over ssh:": {
+        "fr": "Injoignable par ssh :",
+        "en": "Cannot reach it over ssh:",
+    },
+    "This entry needs a password-less ssh access:": {
+        "fr": "Cette entrée exige un accès ssh sans mot de passe :",
+        "en": "This entry needs a password-less ssh access:",
+    },
+    "If it asks for a password, post a key there:": {
+        "fr": "S'il réclame un mot de passe, y déposer une clé :",
+        "en": "If it asks for a password, post a key there:",
+    },
+    "Entry 1 installs the cache HERE; the target needs its own.": {
+        "fr": "L'entrée 1 pose le cache ICI ; l'arrivée doit avoir le sien.",
+        "en": "Entry 1 installs the cache HERE; the target needs its own.",
+    },
+    "Steps, ON the target machine:": {
+        "fr": "Les gestes, SUR la machine d'arrivée :",
+        "en": "Steps, ON the target machine:",
+    },
+    "go to its ERPLibre checkout, on the same branch": {
+        "fr": "aller dans son checkout ERPLibre, sur la même branche",
+        "en": "go to its ERPLibre checkout, on the same branch",
+    },
+    "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1": {
+        "fr": "ou, dans son TODO : Exécuter > Déploiement > Cache QEMU, entrée 1",
+        "en": "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1",
+    },
+    "The installer reads the « default » libvirt network to find": {
+        "fr": "L'installateur lit le réseau libvirt « default » pour trouver",
+        "en": "The installer reads the « default » libvirt network to find",
+    },
+    "the bridge; a stopped libvirt makes it die on « not found »:": {
+        "fr": "le pont ; libvirt arrêté, il meurt sur un « introuvable » :",
+        "en": "the bridge; a stopped libvirt makes it die on « not found »:",
+    },
+    "Or name the bridge by hand, libvirt being optional then:": {
+        "fr": "Ou nommer le pont à la main, libvirt devenant facultatif :",
+        "en": "Or name the bridge by hand, libvirt being optional then:",
+    },
+    "Then come back to this entry.": {
+        "fr": "Puis revenir à cette entrée.",
+        "en": "Then come back to this entry.",
+    },
+    "The cache is there but its service account is not:": {
+        "fr": "Le cache est là, mais pas son compte de service :",
+        "en": "The cache is there but its service account is not:",
+    },
+    "Reinstall it there: the installer creates the account.": {
+        "fr": "L'y réinstaller : l'installateur crée le compte.",
+        "en": "Reinstall it there: the installer creates the account.",
+    },
+    "Carrying it to another machine": {
+        "fr": "L'emporter sur une autre machine",
+        "en": "Carrying it to another machine",
+    },
+    "    Entry 11 copies the STORE, not the service: an object is": {
+        "fr": "    L'entrée 11 copie le MAGASIN, pas le service : un objet est",
+        "en": "    Entry 11 copies the STORE, not the service: an object is",
+    },
+    "    keyed by URL and a git mirror is a repository, so both are": {
+        "fr": "    rangé sous une clé d'URL et un miroir git est un dépôt : les",
+        "en": "    keyed by URL and a git mirror is a repository, so both are",
+    },
+    "    worth the same elsewhere. The settings stay here — bridge,": {
+        "fr": "    deux valent ailleurs. Les réglages restent ici — le pont,",
+        "en": "    worth the same elsewhere. The settings stay here — bridge,",
+    },
+    "    subnet and authority belong to the host that serves them.": {
+        "fr": "    le sous-réseau et l'autorité sont à l'hôte qui les sert.",
+        "en": "    subnet and authority belong to the host that serves them.",
+    },
+    "    The target must already carry the cache, installed from": {
+        "fr": "    L'arrivée doit déjà porter le cache, posé depuis SON propre",
+        "en": "    The target must already carry the cache, installed from",
+    },
+    "    ITS own checkout, and answer ssh without a password.": {
+        "fr": "    checkout, et répondre à ssh sans mot de passe.",
+        "en": "    ITS own checkout, and answer ssh without a password.",
     },
     "What travels:": {
         "fr": "Ce qui voyage :",

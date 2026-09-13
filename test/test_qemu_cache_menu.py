@@ -349,6 +349,138 @@ class TestLeTransfertDuCache(unittest.TestCase):
             self.assertNotIn(reste, cmd)
 
 
+class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
+    """Un refus doit nommer le geste qui le lève, et il n'est pas ici.
+
+    L'entrée 1 pose le cache sur CETTE machine : y renvoyer fait réinstaller
+    l'hôte qui en a déjà un, pendant que la machine d'arrivée reste sans
+    rien. Trois situations appellent trois gestes — un lien ssh muet, un
+    cache absent, un cache privé de son compte de service — et un code de
+    retour unique les confondait sous un seul message.
+
+    Les assertions portent sur des ancres qui ne se traduisent pas : une
+    commande, un chemin, un nom de variable. Comparer du texte traduit
+    ferait échouer le test au premier changement de langue.
+    """
+
+    def refus(self, code, sortie, confirmer=False):
+        """Exerce l'entrée avec une sonde truquée. Rend (texte, lancées)."""
+        import contextlib
+        import io
+
+        from script.todo.todo import TODO
+
+        lancees = []
+        sondes = []
+
+        class Faux(TODO):
+            def __init__(self):
+                self.execute = self
+
+            def exec_command_live(self, cmd, **_kw):
+                lancees.append(cmd)
+                return 0
+
+            def _cache_ssh(self, cible, commande, timeout=30):
+                sondes.append(commande)
+                return code, sortie
+
+        tampon = io.StringIO()
+        with contextlib.ExitStack() as pile:
+            pile.enter_context(
+                mock.patch("click.prompt", return_value="op@ailleurs")
+            )
+            pile.enter_context(
+                mock.patch("click.confirm", return_value=confirmer)
+            )
+            # Le cache local et ses réglages ne sont pas le sujet : le test
+            # doit rendre le même verdict sur une machine qui n'en a pas.
+            pile.enter_context(
+                mock.patch(
+                    "script.todo.qemu_cache_menu.os.path.isfile",
+                    return_value=True,
+                )
+            )
+            pile.enter_context(
+                mock.patch(
+                    "script.qemu.cache_offline.reglage",
+                    return_value="/var/cache/x",
+                )
+            )
+            pile.enter_context(contextlib.redirect_stdout(tampon))
+            Faux()._cache_transfert()
+        self.sondes = sondes
+        return tampon.getvalue(), lancees
+
+    def test_un_lien_ssh_muet_nest_pas_un_cache_absent(self):
+        """Sans le jeton final, c'est la sonde qui n'a pas tourné : accuser
+        le cache enverrait installer ce qui est peut-être déjà là."""
+        texte, lancees = self.refus(255, "")
+        self.assertIn("ssh-copy-id op@ailleurs", texte)
+        self.assertNotIn("install_qemu_cache.sh", texte)
+        self.assertEqual(lancees, [], "le magasin est parti malgré le refus")
+
+    def test_un_ssh_qui_rend_zero_sans_rien_dire_compte_pour_muet(self):
+        """La sonde se termine TOUJOURS par son jeton. Un canal qui rend 0
+        sans lui ne l'a donc pas exécutée : l'état du cache de là-bas est
+        inconnu, et l'annoncer absent serait inventer."""
+        texte, lancees = self.refus(0, "")
+        self.assertIn("ssh-copy-id op@ailleurs", texte)
+        self.assertNotIn("install_qemu_cache.sh", texte)
+        self.assertEqual(lancees, [])
+
+    def test_un_cache_absent_donne_les_gestes_a_faire_la_bas(self):
+        """Le geste est SUR l'arrivée, et l'installateur y meurt sans
+        libvirt : les deux issues sont nommées, pas seulement la première."""
+        texte, lancees = self.refus(0, "FIN\n")
+        self.assertIn("1. ssh op@ailleurs", texte)
+        self.assertIn("sudo bash script/install/install_qemu_cache.sh", texte)
+        self.assertIn("systemctl start libvirtd.socket", texte)
+        self.assertIn("net-start default", texte)
+        self.assertIn("EL_BRIDGE=", texte)
+        self.assertNotIn("ssh-copy-id", texte)
+        self.assertEqual(lancees, [])
+
+    def test_un_cache_sans_son_compte_se_dit_autrement(self):
+        """Les fichiers arriveraient à root : le service ne les lirait pas.
+        Ce n'est pas une absence de cache, et le remède n'est pas le même."""
+        from script.qemu import cache_offline
+
+        texte, lancees = self.refus(0, "binaire\nFIN\n")
+        self.assertIn(cache_offline.SERVICE_USER, texte)
+        self.assertIn("sudo bash script/install/install_qemu_cache.sh", texte)
+        # Les lignes de libvirt appartiennent à l'autre cas : les voir ici
+        # dirait de réparer un réseau qui n'est pour rien dans la panne.
+        self.assertNotIn("libvirtd.socket", texte)
+        self.assertEqual(lancees, [])
+
+    def test_une_arrivee_complete_mene_a_la_commande(self):
+        """La contre-épreuve : un jeton renommé ferait refuser une machine
+        prête, et le refus ne se verrait que le jour du transfert."""
+        texte, lancees = self.refus(0, "binaire\ncompte\nFIN\n")
+        self.assertIn("tar -C /var/cache/x -cf - .", texte)
+        self.assertNotIn("install_qemu_cache.sh", texte)
+        self.assertEqual(lancees, [], "la confirmation a été refusée")
+
+    def test_la_sonde_annonce_les_jetons_que_la_lecture_attend(self):
+        """La sonde et sa lecture sont les deux moitiés d'un accord : en
+        renommer un jeton d'un seul côté ferait refuser toute machine, et
+        le refus ne se verrait qu'au moment d'emporter le magasin.
+
+        Les autres épreuves truquent la sonde pour choisir la situation :
+        aucune ne regarde ce qui part vraiment sur le lien. Celle-ci le
+        lit."""
+        from script.qemu import cache_offline
+        from script.todo import qemu_cache_menu
+
+        self.refus(0, "binaire\ncompte\nFIN\n")
+        sonde = self.sondes[0]
+        for jeton in ("echo binaire", "echo compte", "echo FIN"):
+            self.assertIn(jeton, sonde)
+        self.assertIn(qemu_cache_menu.CACHE_BIN, sonde)
+        self.assertIn(cache_offline.SERVICE_USER, sonde)
+
+
 class TestLAssistantDesTests(unittest.TestCase):
     """Trois questions — quel essai, quelle charge, quel système — puis les
     essais choisis, l'un après l'autre.
