@@ -249,6 +249,49 @@ class Syncer:
             synced_at=int(time.time()),
         )
 
+    def fetch_uids(self, folder_name: str, uids: list[int]) -> int:
+        """Télécharge les en-têtes des UID que le cache n'a pas. Rend leur
+        nombre.
+
+        Sert la recherche côté serveur : ce que le serveur trouve doit
+        ENTRER dans le cache, sinon la question suivante repartirait sur le
+        réseau et le résultat disparaîtrait avec la connexion.
+
+        Le dossier est sélectionné d'abord : un FETCH sans SELECT porte sur
+        le dossier précédent, ou sur rien.
+        """
+        if not uids:
+            return 0
+        fid = self.store.upsert_folder(folder_name)
+        manquants = self.store.missing_uids(fid, uids)
+        if not manquants:
+            return 0
+        self.transport.select(folder_name)
+        ajoutes = 0
+        for batch in _chunks(manquants, self.BATCH):
+            headers = self.transport.fetch_headers(batch)
+            self.store.upsert_messages(
+                fid,
+                [
+                    MessageMeta(
+                        uid=h.uid,
+                        date=h.date,
+                        size=h.size,
+                        flags=h.flags,
+                        msgid=h.msgid,
+                        frm=h.frm,
+                        to=h.to,
+                        subject=h.subject,
+                        snippet="",
+                        in_reply_to=h.in_reply_to,
+                        references=h.references,
+                    )
+                    for h in headers
+                ],
+            )
+            ajoutes += len(headers)
+        return ajoutes
+
     def fetch_body(self, folder_name: str, uid: int) -> bytes:
         """Le corps, du cache s'il y est, du serveur sinon."""
         cached = self.store.read_body(folder_name, uid)

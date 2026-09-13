@@ -1245,6 +1245,27 @@ class Store:
         return [self._row_to_meta(r) for r in rows]
 
     @_locked
+    def missing_uids(self, folder_id: int, uids: list[int]) -> list[int]:
+        """Ceux de `uids` que ce dossier n'a pas encore, dans l'ordre reçu.
+
+        Une requête plutôt qu'une lecture de tout le dossier : la question
+        se pose sur les quelques centaines d'UID qu'une recherche serveur
+        rapporte, pas sur les deux cent mille que la boîte peut porter.
+        """
+        if not uids:
+            return []
+        trous = ",".join("?" for _ in uids)
+        connus = {
+            r[0]
+            for r in self._db().execute(
+                f"SELECT uid FROM messages WHERE folder_id = ?"
+                f" AND uid IN ({trous})",
+                [folder_id, *uids],
+            )
+        }
+        return [u for u in uids if u not in connus]
+
+    @_locked
     def known_uids(self, folder_id: int, last_n: int = 500) -> list[int]:
         rows = (
             self._db()

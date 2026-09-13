@@ -248,6 +248,45 @@ class ImaplibTransport:
         # boîte est plus courte : on refiltre côté client.
         return [int(u) for u in raw if int(u) >= since_uid]
 
+    def search(self, query: str, limit: int = 500) -> list[int]:
+        """Les UID que LE SERVEUR trouve dans le dossier sélectionné.
+
+        Une seule clé, `TEXT` : elle couvre les en-têtes et le corps, donc
+        un sur-ensemble de ce que la recherche locale compare.
+
+        Le critère part en OCTETS, terme encodé en UTF-8 dans la chaîne
+        citée. `imaplib` encode ses arguments `str` en ASCII : un terme
+        accentué lèverait `UnicodeEncodeError` avant d'atteindre le serveur.
+        `CHARSET UTF-8` n'accompagne que les termes qui en ont besoin — un
+        serveur ancien peut répondre BAD à un jeu de caractères qu'il ne
+        connaît pas, et l'ASCII n'en demande aucun.
+
+        Les plus récents d'abord, comme la recherche locale, et le même
+        plafond.
+        """
+        terme = (query or "").strip()
+        if not terme:
+            # Chercher la chaîne vide rendrait toute la boîte, ce qui n'est
+            # pas une recherche — et coûterait un aller-retour pour rien.
+            return []
+        # Un guillemet non échappé couperait la chaîne IMAP en deux et
+        # ferait lire la suite comme une autre clé de recherche.
+        citation = terme.replace("\\", "\\\\").replace('"', '\\"')
+        critere = f'TEXT "{citation}"'.encode("utf-8")
+        entete = ("CHARSET", "UTF-8") if not terme.isascii() else (None,)
+        try:
+            data = self._ok(
+                self.client.uid("SEARCH", *entete, critere), "SEARCH"
+            )
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(
+                f"{t('mail_err_server_search_failed')} {exc}"
+            ) from exc
+        uids = [int(u) for u in (data[0] or b"").split()]
+        return sorted(uids, reverse=True)[:limit]
+
     def fetch_headers(self, uids: list[int]) -> list[HeaderInfo]:
         if not uids:
             return []
