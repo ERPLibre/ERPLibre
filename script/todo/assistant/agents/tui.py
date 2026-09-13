@@ -32,6 +32,7 @@ import os
 
 from script.todo.assistant.agents import journal as jr
 from script.todo.assistant.agents import statistiques as st
+from script.todo.assistant.harness import opencode as oc
 from script.todo.todo_i18n import t
 
 # Où Claude Code écrit ses transcriptions, un répertoire par projet.
@@ -152,7 +153,7 @@ def lignes(lectures) -> list[dict]:
         reutilisation = a.reutilisation
         sorties.append(
             {
-                "id": identifiant(chemin),
+                "id": f"{ICONES['claude']} {identifiant(chemin)}",
                 "projet": projet(chemin, a),
                 "tours": str(a.tours),
                 "entree": jetons(a.entree + a.cache_lu + a.cache_cree),
@@ -173,6 +174,70 @@ def lignes(lectures) -> list[dict]:
             }
         )
     return sorties
+
+
+def lignes_opencode(seances) -> list[dict]:
+    """Une ligne par séance d'Open Code, dans la MÊME forme que les autres.
+
+    Le tableau réunit deux harnais qui ne mesurent pas les mêmes choses. Les
+    champs qu'Open Code ne porte pas — les tours, le contexte, sa pente, les
+    durées d'API et d'outils — rendent un tiret et JAMAIS un zéro : une
+    colonne à zéro se lit « mesuré, et nul », ce qui est faux et décourage de
+    chercher ailleurs ce que l'autre harnais, lui, donne.
+
+    `seances` peut valoir None, qui veut dire « la base n'a pas répondu » :
+    aucune ligne n'est alors ajoutée, et le tableau ne ment pas sur l'absence.
+    """
+    sorties = []
+    for seance in seances or ():
+        resume = seance.resume
+        if resume is None:
+            continue
+        sorties.append(
+            {
+                "id": (
+                    f"{ICONES['opencode']} "
+                    f"{seance.identifiant.removeprefix('ses_')[:8]}"
+                ),
+                "projet": os.path.basename(seance.repertoire.rstrip("/")),
+                "tours": "—",
+                "entree": jetons(resume.entree + resume.cache_lu),
+                "sortie": jetons(resume.sortie),
+                "reflexion": jetons(resume.raisonnement),
+                "cache": "—",
+                "cout": f"{resume.cout:.2f} $" if resume.cout else "—",
+                "horloge": "—",
+                "api": "—",
+                "outils": "—",
+                "contexte": "—",
+                "pente": "",
+                "segments": "—",
+                "compactions": "—",
+                "code": f"+{resume.lignes_ajoutees}/−{resume.lignes_retirees}",
+            }
+        )
+    return sorties
+
+
+def resume_opencode(seances) -> str:
+    """« · 🧊 3 · coût 1.20 $ · 84 k » — ou "" quand il n'y a rien à dire.
+
+    Un segment SÉPARÉ, et non un total fondu dans celui de l'autre harnais.
+    Le coût de Claude Code est lu dans un `cost-state` qu'une compaction remet
+    à zéro ; celui d'Open Code est un champ de base, stable. Les additionner
+    donnerait un chiffre dont personne ne saurait dire ce qu'il vaut, alors
+    que deux segments côte à côte se rapprochent du tableau sans arithmétique.
+    """
+    resumes = [s.resume for s in seances or () if s.resume is not None]
+    if not resumes:
+        return ""
+    cout = sum(r.cout for r in resumes)
+    total = sum(r.jetons for r in resumes)
+    return (
+        f" · {ICONES['opencode']} {len(resumes)}"
+        f" · {t('cost')} {cout:.2f} $"
+        f" · {jetons(total)}"
+    )
 
 
 def lignes_outils(par_outil) -> list[dict]:
@@ -204,6 +269,12 @@ COLONNES_OUTILS = (
 )
 
 # Les colonnes du tableau : la clé dans la ligne, et sa clé i18n.
+# L'icône qui dit de QUEL harnais vient la ligne. Le tableau en réunit deux
+# qui ne mesurent pas les mêmes choses, et deux identifiants de huit
+# caractères ne se distinguent pas d'un coup d'œil. Elles viennent du registre
+# des harnais, pour qu'un seul endroit les décide.
+ICONES = {"claude": "🤖", "opencode": "🧊"}
+
 COLONNES = (
     ("id", "session"),
     ("projet", "project"),
@@ -245,6 +316,9 @@ def run_tui(run_app: bool = True):
             super().__init__()
             self._lectures: dict[str, st.Lecture] = {}
             self._appels: list = []
+            # None et non [] : « la base d'Open Code n'a pas répondu », ce qui
+            # n'est pas « elle ne porte aucune séance ».
+            self._seances: list | None = None
             self._gele = False
 
         def compose(self) -> ComposeResult:
@@ -289,13 +363,20 @@ def run_tui(run_app: bool = True):
             # Le journal est relu en entier : il ne pèse que quelques lignes
             # par appel d'outil, là où une transcription pèse des mégaoctets.
             self._appels = jr.lire()
+            # La base d'Open Code se lit en moins d'une milliseconde, donc
+            # elle tient dans un pas de deux secondes. Son `export`, lui, coûte
+            # presque une seconde PAR séance et se tronque : il n'a rien à
+            # faire dans un écran vivant.
+            self._seances = oc.lire_base()
             if not self._gele:
                 self._peindre()
 
         def _peindre(self):
             tableau = self.query_one("#tableau", DataTable)
             tableau.clear()
-            for ligne in lignes(self._lectures):
+            for ligne in lignes(self._lectures) + lignes_opencode(
+                self._seances
+            ):
                 tableau.add_row(*[ligne[cle] for cle, _ in COLONNES])
             outils = self.query_one("#outils", DataTable)
             outils.clear()
@@ -313,12 +394,13 @@ def run_tui(run_app: bool = True):
             total = st.somme(l.agregat for l in self._lectures.values())
             compte = len(self._lectures)
             self.query_one("#resume", Static).update(
-                f"{compte} {t('sessions')} · "
+                f"{ICONES['claude']} {compte} {t('sessions')} · "
                 f"{t('prompt')} {jetons(total.entree + total.cache_lu + total.cache_cree)}"
                 f" · {t('output')} {jetons(total.sortie)}"
                 f" · {t('thinking')} {jetons(total.reflexion)}"
                 f" · {t('cost')} {total.cout:.2f} $"
                 f" · {t('tools')} {duree(total.duree_outils)}"
+                + resume_opencode(self._seances)
                 + (f"  [{t('frozen')}]" if self._gele else "")
             )
             self.query_one("#source", Static).update(

@@ -287,6 +287,14 @@ buffer is flushed — three runs of the same export return three sizes, all cut
 mid-string. The screen says Open Code cut its output, which is what a reader
 needs to stop looking for a defect here.
 
+The live telemetry screen shows both harnesses in one table, each row marked by
+its harness icon. What Open Code does not measure — turns, context and its
+slope, API and tool durations — shows a DASH and never a zero: a zero column
+reads "measured, and nil", which is false and stops the reader looking for what
+the other harness does give. The summary line keeps the two apart rather than
+folding them into one total, Claude Code's cost being read from a cost-state
+that a compaction resets while Open Code's is a stable database field.
+
 ## The modules
 
 | File | What it owns |

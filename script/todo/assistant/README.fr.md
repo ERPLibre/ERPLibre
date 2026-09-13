@@ -325,6 +325,15 @@ rendent trois tailles, toutes coupées au milieu d'une chaîne. L'écran dit
 qu'Open Code a coupé, ce qu'il faut savoir pour cesser de chercher un défaut
 ici.
 
+L'écran vivant de télémétrie montre les deux harnais dans un seul tableau,
+chaque ligne marquée de l'icône du sien. Ce qu'Open Code ne mesure pas — les
+tours, le contexte et sa pente, les durées d'API et d'outils — affiche un
+TIRET et jamais un zéro : une colonne à zéro se lit « mesuré, et nul », ce qui
+est faux et décourage de chercher ailleurs ce que l'autre harnais donne. La
+ligne de résumé garde les deux séparés plutôt que de les fondre en un total,
+le coût de Claude Code étant lu dans un `cost-state` qu'une compaction remet à
+zéro là où celui d'Open Code est un champ de base stable.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
