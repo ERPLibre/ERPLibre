@@ -50,6 +50,11 @@ CACHE_DIR = "/var/cache/erplibre_go_qemu_cache"
 # reste RELATIF : il est imprimé pour une AUTRE machine, dont le répertoire
 # de travail n'a aucune raison d'être celui d'ici.
 INSTALLATEUR = "script/install/install_qemu_cache.sh"
+# Le fichier que le mode en deux temps dépose dans le compte d'arrivée. Il
+# pèse autant que le magasin — un cache ne contient que des paquets et des
+# archives git, déjà comprimés — et la dernière commande le retire, le pic
+# d'occupation valant sinon deux fois le magasin.
+TRANSFERT_FICHIER = "erplibre_cache.tar.zst"
 # La racine du dépôt, d'où se lance le lecteur du journal d'accès : le menu
 # tourne depuis n'importe quel répertoire, et un chemin relatif n'y survit pas.
 RACINE_DEPOT = os.path.dirname(
@@ -666,7 +671,12 @@ class QemuCacheMenuMixin:
             f"test -x {shlex.quote(CACHE_BIN)} && echo binaire;"
             f" id -u {shlex.quote(cache_offline.SERVICE_USER)}"
             " >/dev/null 2>&1 && echo compte;"
-            " sudo -n true 2>/dev/null && echo sudo; echo FIN"
+            " sudo -n true 2>/dev/null && echo sudo;"
+            " echo compte_ssh=$(id -un);"
+            " echo place_magasin=$(df -B1 --output=avail"
+            f" {shlex.quote(cache_dir)} 2>/dev/null | tail -1);"
+            ' echo place_compte=$(df -B1 --output=avail "$HOME"'
+            " 2>/dev/null | tail -1); echo FIN"
         )
         code, sortie = self._cache_ssh(cible, sonde)
         if code or "FIN" not in sortie:
@@ -692,7 +702,7 @@ class QemuCacheMenuMixin:
         # octets et non un terminal : un sudo qui réclame un mot de passe
         # là-bas n'échoue pas à l'arrivée du flux, il l'empêche de partir.
         if "sudo" not in sortie:
-            self._cache_dire_sudo_muet(cible)
+            self._cache_sans_sudo_la_bas(cible, cache_dir, sortie)
             return
         print(f"  {t('What travels:')} {cache_dir}")
         for quoi, chemin in (
@@ -800,31 +810,135 @@ class QemuCacheMenuMixin:
             print(ligne)
 
     @staticmethod
-    def _cache_dire_sudo_muet(cible):
-        """Sudo réclame un mot de passe à l'arrivée, et rien ne peut le taper.
+    def _cache_jeton(sortie, nom):
+        """La valeur d'un « nom=valeur » rendu par la sonde, ou ''."""
+        for ligne in sortie.splitlines():
+            if ligne.startswith(f"{nom}="):
+                return ligne.split("=", 1)[1].strip()
+        return ""
 
-        Le magasin occupe l'entrée standard de ssh : ce canal porte des
-        octets, pas un terminal, et sudo refuse de lire un mot de passe
-        ailleurs que sur un terminal. Allouer un terminal à ssh est exclu —
-        le flux binaire y passe justement.
+    def _cache_octets(self, chemin):
+        """La taille du magasin en octets, ou 0 si elle ne se lit pas.
 
-        Un ticket obtenu d'avance lève l'obstacle : sudo n'interroge plus
-        pendant sa validité, et la pose entière tient en une seule
-        invocation privilégiée, qui ne peut donc pas expirer en cours de
-        route.
+        Le privilège est nécessaire : les objets appartiennent au compte de
+        service et ne sont pas lisibles autrement, si bien qu'un « du »
+        ordinaire rendrait un total très inférieur au vrai — et ferait
+        croire que la place suffit à l'arrivée.
+        """
+        try:
+            res = subprocess.run(
+                ["sudo", "-n", "du", "-sb", chemin],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 0
+        morceau = (res.stdout or "").split("\t")[0].strip()
+        return int(morceau) if morceau.isdigit() else 0
+
+    def _cache_sans_sudo_la_bas(self, cible, cache_dir, sortie):
+        """Sudo réclame un mot de passe à l'arrivée : deux issues, au choix.
+
+        Le magasin occupe l'entrée standard de ssh — un canal d'octets, pas
+        un terminal — et sudo refuse de lire un mot de passe ailleurs que
+        sur un terminal. Un ticket pris d'avance n'y change rien : sudo
+        l'attache au terminal qui l'a obtenu, et la session qui porte le
+        flux n'en a aucun.
+
+        Restent deux voies. Élargir les droits une fois, et le flux direct
+        redevient possible. Ou passer par un fichier que le compte
+        d'arrivée écrit lui-même — aucun privilège pendant le transfert —
+        puis l'extraire dans SON terminal, où le mot de passe se tape. La
+        seconde ne coûte aucun droit, mais demande de la place : le fichier
+        et le magasin extrait coexistent le temps de l'extraction.
         """
         q = shlex.quote(cible)
+        compte = self._cache_jeton(sortie, "compte_ssh") or "<compte>"
         print(f"  ✗ {t('sudo asks for a password on the target:')} {cible}")
         print(
             "    "
             f"{t('The store travels on ssh stdin, which carries no terminal,')}"
         )
-        print(f"    {t('so nothing can type it. Get a ticket there first:')}")
-        print(f"      ssh -t {q} sudo -v")
+        print(f"    {t('so nothing can type it. Two ways out:')}\n")
+        print(f"    {t('1) Allow it there without a password, once:')}")
+        print(f"      ssh -t {q} \\")
+        print(
+            f"        \"echo '{compte} ALL=(root) NOPASSWD: ALL'"
+            ' | sudo tee /etc/sudoers.d/erplibre_cache"'
+        )
+        print(f"      {t('Then come back to this entry.')}\n")
         print(
             "    "
-            f"{t('then come back here. Or allow it there without a password.')}"
-            "\n"
+            f"{t('2) Carry it in two steps, the last one in your terminal there:')}"
+        )
+        taille = self._cache_octets(cache_dir)
+        libre = min(
+            int(self._cache_jeton(sortie, "place_magasin") or 0),
+            int(self._cache_jeton(sortie, "place_compte") or 0),
+        )
+        if taille:
+            print(
+                f"      {t('needed there:')} {self._cache_humain(2 * taille)}"
+                f"   {t('free there:')} {self._cache_humain(libre)}"
+            )
+        if taille and libre < 2 * taille:
+            print(
+                f"    ✗ {t('Not enough room there: the two-step mode is out.')}\n"
+            )
+            return
+        if not click.confirm(
+            t("Send it now, and print the command to finish there?"),
+            default=False,
+        ):
+            print(f"  {t('Cancelled.')}\n")
+            return
+        code = self.execute.exec_command_live(
+            self._cache_envoi_fichier_cmd(cible, cache_dir),
+            source_erplibre=False,
+        )
+        if code:
+            print(f"\n  ✗ {t('The send failed; nothing was extracted.')}\n")
+            return
+        print(
+            f"\n  {t('Sent. To finish, ON the target machine, in a terminal:')}"
+        )
+        print(f"      {self._cache_finir_la_bas_cmd(cache_dir)}")
+        print(f"    {t('The last command removes the file.')}\n")
+
+    @staticmethod
+    def _cache_envoi_fichier_cmd(cible, cache_dir):
+        """Le temps 1 : le magasin part dans le compte d'arrivée.
+
+        « cat » écrit dans le répertoire personnel du compte ssh, qui lui
+        appartient : aucun privilège n'est donc demandé là-bas pendant le
+        flux, et c'est exactement ce qui rend ce mode possible sans
+        terminal.
+        """
+        q = shlex.quote
+        return (
+            f"sudo tar -C {q(cache_dir)} -cf - . | zstd -T0 -3"
+            f" | ssh {q(cible)} {q('cat > ~/' + TRANSFERT_FICHIER)}"
+        )
+
+    @staticmethod
+    def _cache_finir_la_bas_cmd(cache_dir):
+        """Le temps 2, à taper dans le terminal de la machine d'arrivée.
+
+        Une seule invocation privilégiée porte l'extraction ET le
+        changement de propriétaire : en deux, la seconde redemanderait le
+        mot de passe après des dizaines de minutes. Le fichier est retiré
+        ensuite, son séjour étant ce qui double l'occupation.
+        """
+        q = shlex.quote
+        interne = (
+            f"tar -C {q(cache_dir)} -xf - --numeric-owner"
+            f" && chown -R {cache_offline.SERVICE_USER}:"
+            f"{cache_offline.SERVICE_USER} {q(cache_dir)}"
+        )
+        return (
+            f"zstd -dc ~/{TRANSFERT_FICHIER} | sudo sh -c {q(interne)}"
+            f" && rm -f ~/{TRANSFERT_FICHIER}"
         )
 
     @staticmethod

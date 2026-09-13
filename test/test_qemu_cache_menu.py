@@ -354,6 +354,30 @@ class TestLeTransfertDuCache(unittest.TestCase):
         self.assertEqual(distant.count("sudo "), 1, distant)
         self.assertIn("chown -R", distant)
 
+    def test_le_premier_temps_ne_demande_aucun_privilege_a_larrivee(self):
+        """C'est ce qui rend ce mode possible sans terminal : « cat » écrit
+        dans le répertoire personnel du compte ssh, qui lui appartient. Un
+        sudo à l'arrivée y ramènerait la panne qu'on contourne."""
+        import shlex
+
+        cmd = self._menu()._cache_envoi_fichier_cmd(
+            "op@ailleurs", "/var/cache/x"
+        )
+        distant = shlex.split(cmd[cmd.index("ssh ") :])[2]
+        self.assertNotIn("sudo", distant, distant)
+        self.assertIn("cat > ~/", distant)
+
+    def test_le_second_temps_extrait_rend_et_retire(self):
+        """Trois gestes, dans cet ordre : extraire, rendre au compte du
+        service, retirer le fichier. En oublier le dernier laisse le double
+        de l'occupation sur une machine qui n'avait déjà que la place."""
+        cmd = self._menu()._cache_finir_la_bas_cmd("/var/cache/x")
+        self.assertIn("zstd -dc ~/", cmd)
+        self.assertIn("tar -C /var/cache/x -xf -", cmd)
+        self.assertIn("chown -R", cmd)
+        self.assertIn("rm -f ~/", cmd)
+        self.assertEqual(cmd.count("sudo "), 1, cmd)
+
     def test_les_reglages_ne_voyagent_pas(self):
         """Ni l'autorité, ni le pont, ni le sous-réseau."""
         cmd = self._menu()._cache_transfert_cmd("op@ailleurs", "/var/cache/x")
@@ -375,7 +399,7 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
     ferait échouer le test au premier changement de langue.
     """
 
-    def refus(self, code, sortie, confirmer=False):
+    def refus(self, code, sortie, confirmer=False, taille=0):
         """Exerce l'entrée avec une sonde truquée. Rend (texte, lancées)."""
         import contextlib
         import io
@@ -396,6 +420,12 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
             def _cache_ssh(self, cible, commande, timeout=30):
                 sondes.append(commande)
                 return code, sortie
+
+            # La taille du magasin se lit par « sudo du » sur des dizaines
+            # de gigaoctets : le test la DONNE, sinon il mesurerait la
+            # machine qui l'exécute et durerait le temps d'un parcours.
+            def _cache_octets(self, chemin):
+                return taille
 
         tampon = io.StringIO()
         with contextlib.ExitStack() as pile:
@@ -488,15 +518,34 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
         self.assertNotIn("install_qemu_cache.sh", texte)
         self.assertEqual(lancees, [], "la confirmation a été refusée")
 
-    def test_un_sudo_qui_reclame_un_mot_de_passe_arrete_avant_le_flux(self):
+    def test_un_sudo_qui_reclame_un_mot_de_passe_offre_les_deux_issues(self):
         """Le magasin occupe l'entrée standard de ssh, qui porte des octets
-        et non un terminal : sudo refuse de lire un mot de passe ailleurs
-        que sur un terminal, et l'obstacle doit donc être dit AVANT, pas
-        après des gigaoctets. Le ticket obtenu d'avance le lève."""
-        texte, lancees = self.refus(0, "binaire\ncompte\nFIN\n")
-        self.assertIn("ssh -t op@ailleurs sudo -v", texte)
-        self.assertNotIn("install_qemu_cache.sh", texte)
+        et non un terminal : sudo refuse de lire un mot de passe ailleurs.
+        Un ticket pris d'avance n'y peut rien — sudo l'attache au terminal
+        qui l'a obtenu — donc les deux issues offertes sont d'élargir les
+        droits une fois, ou de passer par un fichier que le compte
+        d'arrivée écrit lui-même."""
+        texte, lancees = self.refus(0, "binaire\ncompte\ncompte_ssh=op\nFIN\n")
+        self.assertIn("NOPASSWD", texte)
+        self.assertIn("/etc/sudoers.d/erplibre_cache", texte)
+        self.assertIn("op ALL=(root)", texte, "le compte lu n'est pas repris")
+        self.assertNotIn(
+            "sudo -v", texte, "le ticket ne marche pas, ne pas le conseiller"
+        )
         self.assertEqual(lancees, [])
+
+    def test_la_place_manquante_ecarte_le_mode_en_deux_temps(self):
+        """Le fichier et le magasin extrait coexistent : il faut DEUX fois
+        la taille. L'annoncer après l'envoi laisserait une machine pleine
+        et un magasin à moitié posé."""
+        texte, lancees = self.refus(
+            0,
+            "binaire\ncompte\nplace_magasin=1000\nplace_compte=1000\nFIN\n",
+            confirmer=True,
+            taille=800,
+        )
+        self.assertIn("✗", texte)
+        self.assertEqual(lancees, [], "l'envoi est parti malgré la place")
 
     def test_la_sonde_annonce_les_jetons_que_la_lecture_attend(self):
         """La sonde et sa lecture sont les deux moitiés d'un accord : en
@@ -516,6 +565,9 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
             "echo compte",
             "sudo -n true",
             "echo sudo",
+            "compte_ssh=",
+            "place_magasin=",
+            "place_compte=",
             "echo FIN",
         ):
             self.assertIn(jeton, sonde)

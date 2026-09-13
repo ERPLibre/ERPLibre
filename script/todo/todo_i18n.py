@@ -6471,13 +6471,45 @@ TRANSLATIONS = {
         "fr": "Le magasin voyage dans l'entrée de ssh, qui n'a pas de terminal,",
         "en": "The store travels on ssh stdin, which carries no terminal,",
     },
-    "so nothing can type it. Get a ticket there first:": {
-        "fr": "donc rien ne peut le taper. Y obtenir d'abord un ticket :",
-        "en": "so nothing can type it. Get a ticket there first:",
+    "so nothing can type it. Two ways out:": {
+        "fr": "donc rien ne peut le taper. Deux issues :",
+        "en": "so nothing can type it. Two ways out:",
     },
-    "then come back here. Or allow it there without a password.": {
-        "fr": "puis revenir ici. Ou l'y autoriser sans mot de passe.",
-        "en": "then come back here. Or allow it there without a password.",
+    "1) Allow it there without a password, once:": {
+        "fr": "1) L'y autoriser sans mot de passe, une fois :",
+        "en": "1) Allow it there without a password, once:",
+    },
+    "2) Carry it in two steps, the last one in your terminal there:": {
+        "fr": "2) L'emporter en deux temps, le dernier dans ton terminal là-bas :",
+        "en": "2) Carry it in two steps, the last one in your terminal there:",
+    },
+    "needed there:": {
+        "fr": "place requise :",
+        "en": "needed there:",
+    },
+    "free there:": {
+        "fr": "place libre :",
+        "en": "free there:",
+    },
+    "Not enough room there: the two-step mode is out.": {
+        "fr": "Place insuffisante là-bas : le mode en deux temps est exclu.",
+        "en": "Not enough room there: the two-step mode is out.",
+    },
+    "Send it now, and print the command to finish there?": {
+        "fr": "Envoyer maintenant, et afficher la commande à finir là-bas ?",
+        "en": "Send it now, and print the command to finish there?",
+    },
+    "The send failed; nothing was extracted.": {
+        "fr": "L'envoi a échoué ; rien n'a été extrait.",
+        "en": "The send failed; nothing was extracted.",
+    },
+    "Sent. To finish, ON the target machine, in a terminal:": {
+        "fr": "Envoyé. Pour finir, SUR la machine d'arrivée, en terminal :",
+        "en": "Sent. To finish, ON the target machine, in a terminal:",
+    },
+    "The last command removes the file.": {
+        "fr": "La dernière commande retire le fichier.",
+        "en": "The last command removes the file.",
     },
     "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1": {
         "fr": "ou, dans son TODO : Exécuter > Déploiement > Cache QEMU, entrée 1",
