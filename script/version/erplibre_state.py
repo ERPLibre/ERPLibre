@@ -74,7 +74,9 @@ def set_version_installed(
 ) -> None:
     """Record that an Odoo version has been installed (or reinstalled)."""
     state = read_state()
-    entry = state["odoo_versions"].get(odoo_version, _deep_copy(_EMPTY_VERSION_ENTRY))
+    entry = state["odoo_versions"].get(
+        odoo_version, _deep_copy(_EMPTY_VERSION_ENTRY)
+    )
     entry["installed"] = True
     entry["extra"] = extra
     if python:
@@ -94,7 +96,9 @@ def set_version_installed(
 def set_version_switched(odoo_version: str) -> None:
     """Record that the workspace was switched to an Odoo version."""
     state = read_state()
-    entry = state["odoo_versions"].get(odoo_version, _deep_copy(_EMPTY_VERSION_ENTRY))
+    entry = state["odoo_versions"].get(
+        odoo_version, _deep_copy(_EMPTY_VERSION_ENTRY)
+    )
     entry["switched_at"] = str(date.today())
     state["odoo_versions"][odoo_version] = entry
     state["current_odoo_version"] = odoo_version
@@ -127,11 +131,6 @@ def get_version_installed(odoo_version: str) -> bool:
     if entry is None:
         return False
     return bool(entry.get("installed", False))
-
-
-def get_current_version() -> str | None:
-    """Return the currently active Odoo version, or None."""
-    return read_state().get("current_odoo_version")
 
 
 def get_mobile_active() -> bool:
