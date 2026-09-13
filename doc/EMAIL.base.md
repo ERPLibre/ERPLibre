@@ -1153,6 +1153,16 @@ the new set back to the vault, and syncs. The exchange happens in the main
 thread, before any pass: writing the vault rewrites the whole file, and two
 sync threads writing at once would corrupt it.
 
+A session outlives its token, so the exchange is not only a start-up step.
+Anything that opens a connection later asks for the secret again and gets a
+refreshed one — a queued message leaving hours after it was written, for
+instance. And when the server refuses a pass on a dead token, the client
+reopens the IMAP link once with a fresh one rather than going quiet until
+someone restarts it. Once only, and only where the secret can change:
+presenting the same password to the same server would earn the same
+refusal, and retrying forever on a server that refuses for another reason
+would spin.
+
 **When it fails.** Three outcomes, told apart because the remedy differs. A
 new token arrives and nothing is said. The grant is revoked — the owner
 withdrew it, or the provider expired it — and no retry will bring it back:
@@ -1210,6 +1220,17 @@ une session, range le jeu neuf au coffre, et synchronise. L'échange a lieu
 dans le fil principal, avant toute passe : écrire au coffre y réécrit le
 fichier entier, et deux fils de synchronisation qui écriraient ensemble le
 corrompraient.
+
+Une session dure plus longtemps que son jeton : l'échange n'est donc pas
+qu'une étape de démarrage. Tout ce qui ouvre une connexion plus tard
+redemande le secret et en obtient un rafraîchi — un message en file qui
+part des heures après avoir été écrit, par exemple. Et quand le serveur
+refuse une passe sur un jeton mort, le client rouvre le lien IMAP une fois
+avec un jeton neuf, au lieu de se taire jusqu'à ce qu'on le relance. Une
+seule fois, et seulement là où le secret peut changer : représenter le même
+mot de passe au même serveur donnerait le même refus, et réessayer sans fin
+sur un serveur qui refuse pour une autre raison ferait tourner le client
+indéfiniment.
 
 **Quand ça échoue.** Trois issues, distinguées parce que le remède diffère.
 Le jeton neuf arrive, et rien n'est dit. L'autorisation est révoquée — le

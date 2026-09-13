@@ -261,20 +261,94 @@ class Session:
         syncer: Syncer | None,
         error: str = "",
         password: str = "",
+        secrets=None,
+        config_get=None,
+        connect_fn=None,
     ):
         self.account = account
         self.store = store
         self.syncer = syncer
         self.error = error
         self.password = password
+        # Gardés pour pouvoir REDEMANDER le secret : un jeton d'accès vit
+        # une heure, et une session peut durer plus longtemps.
+        self.secrets = secrets
+        self.config_get = config_get
+        self.connect_fn = connect_fn
+
+    def current_secret(self) -> str:
+        """Le secret à présenter MAINTENANT, rafraîchi s'il a vieilli.
+
+        Le secret capté à l'ouverture cesse de valoir en cours de session
+        pour un compte OAuth. Tout ce qui rouvre une connexion — un envoi
+        SMTP, une reprise après refus — passe donc par ici plutôt que de
+        rejouer ce qui a été lu au démarrage.
+
+        Sans coffre, rend ce qu'on a : les sessions montées à la main n'en
+        ont pas, et lever ici les casserait toutes. Un échec de
+        rafraîchissement rend de même — l'appelant verra le refus du
+        serveur, qui dit la même chose sans faire tomber l'écran.
+        """
+        if getattr(self.account, "auth", "login") != "oauth":
+            return self.password
+        if self.secrets is None:
+            return self.password
+        from script.todo.mail.oauth import OAuthError, secret_for
+
+        try:
+            self.password = secret_for(
+                self.account, self.secrets, config_get=self.config_get
+            )
+        except OAuthError as exc:
+            _logger.info("rafraîchissement du jeton refusé : %s", exc)
+        return self.password
 
     @property
     def online(self) -> bool:
         return self.syncer is not None
 
     def sync(self, progress=None):
+        """Une passe, avec UNE reprise si le serveur refuse le secret.
+
+        Le lien IMAP est ouvert au démarrage et gardé ; un jeton d'accès,
+        lui, meurt au bout d'une heure. Sans reprise, le compte cesse de se
+        synchroniser jusqu'à ce que quelqu'un relance le client, et rien à
+        l'écran ne dit qu'il suffirait de rouvrir la connexion.
+
+        Une seule reprise, et seulement pour un compte dont le secret peut
+        CHANGER : représenter le même mot de passe au même serveur donnerait
+        le même refus, et réessayer sans fin sur un serveur qui refuse pour
+        une autre raison ferait tourner le client indéfiniment.
+        """
         if self.syncer is None:
             return None
+        from script.todo.mail.imap_transport import ImapAuthError
+
+        try:
+            return self.syncer.sync(progress=progress)
+        except ImapAuthError:
+            if (
+                getattr(self.account, "auth", "login") != "oauth"
+                or self.secrets is None
+                or self.connect_fn is None
+            ):
+                raise
+        _logger.info(
+            "jeton refusé en cours de session : réouverture de %s",
+            self.account.name,
+        )
+        try:
+            self.syncer.transport.logout()
+        except Exception:
+            # Le lien est déjà mort : ce qui compte est celui qui le
+            # remplace, pas la politesse de la fermeture.
+            pass
+        # Le transport est remplacé, le `Syncer` reste : il ne porte que le
+        # cache et le lien, et le reconstruire obligerait cette méthode à
+        # savoir comment on en fabrique un.
+        self.syncer.transport = self.connect_fn(
+            self.account, self.current_secret()
+        )
         return self.syncer.sync(progress=progress)
 
     def close(self) -> None:
@@ -329,7 +403,16 @@ def open_session(
         syncer = Syncer(store, connect_fn(account, password))
     except Exception as exc:
         error = str(exc)
-    return Session(account, store, syncer, error, password)
+    return Session(
+        account,
+        store,
+        syncer,
+        error,
+        password,
+        secrets=secrets,
+        config_get=config_get,
+        connect_fn=connect_fn,
+    )
 
 
 def open_sessions(
@@ -608,7 +691,7 @@ def flush_outbox(session, send_fn=None, connect_fn=None) -> tuple:
             import email
 
             message = email.message_from_bytes(brut)
-            transport = connect_fn(session.account, session.password)
+            transport = connect_fn(session.account, session.current_secret())
             send_fn(session.account, message, transport)
         except Exception as exc:
             session.store.record_send_failure(entree["id"], str(exc))
@@ -652,7 +735,7 @@ def deliver(session, msg, send_fn=None, connect_fn=None) -> str:
     transport = None
     if send_fn is smtp_send_fn:
         connect_fn = connect_fn or smtp_connect
-        transport = connect_fn(session.account, session.password)
+        transport = connect_fn(session.account, session.current_secret())
     try:
         served = send_fn(session.account, msg, transport)
     finally:

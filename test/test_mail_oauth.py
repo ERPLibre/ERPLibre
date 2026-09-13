@@ -444,7 +444,9 @@ class SessionCase(unittest.TestCase):
                 self.compte.refresh_token_ref(): "r",
             }
         )
-        neuf = TokenSet(refresh_token="r", access_token="a-neuf", expires_at=9e9)
+        neuf = TokenSet(
+            refresh_token="r", access_token="a-neuf", expires_at=9e9
+        )
         session, vus = self._ouvrir(coffre, lambda *a, **k: neuf)
         self.assertEqual(vus, ["a-neuf"])
         self.assertEqual(session.error, "")
@@ -475,6 +477,249 @@ class SessionCase(unittest.TestCase):
 
         _, vus = self._ouvrir(coffre, jamais)
         self.assertEqual(vus, ["mon-mot-de-passe"])
+
+
+class LiveSessionCase(unittest.TestCase):
+    """Un jeton d'accès vit une heure ; une session peut durer plus.
+
+    Le jeu lu à l'ouverture cesse donc de valoir en cours de route, et tout
+    ce qui rejoue le secret gardé — un envoi SMTP, une reconnexion IMAP —
+    se ferait refuser jusqu'au redémarrage du client.
+    """
+
+    def setUp(self):
+        from script.todo.mail.accounts import account_from_preset
+
+        self.compte = account_from_preset(
+            "perso", "a@x.ca", "gmail", auth="oauth"
+        )
+
+    def _session(self, coffre, refresh_fn):
+        from unittest.mock import patch
+
+        from script.todo.mail.tui import Session
+
+        session = Session(
+            self.compte,
+            None,
+            None,
+            password="jeton-d-hier",
+            secrets=coffre,
+        )
+        self.patch = patch("script.todo.mail.oauth.refresh", refresh_fn)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        return session
+
+    def _jeu(self, acces, expire_dans=3600):
+        import time
+
+        from script.todo.mail.oauth import TokenSet
+
+        return TokenSet(
+            refresh_token="r",
+            access_token=acces,
+            expires_at=time.time() + expire_dans,
+        )
+
+    def test_a_stale_token_is_refreshed_when_the_secret_is_asked_for(self):
+        coffre = FauxCoffre(
+            {
+                self.compte.refresh_token_ref(): self._jeu(
+                    "vieux", -10
+                ).to_json()
+            }
+        )
+        session = self._session(coffre, lambda *a, **k: self._jeu("tout-neuf"))
+        self.assertEqual(session.current_secret(), "tout-neuf")
+
+    def test_a_token_still_valid_costs_no_exchange(self):
+        """Rafraîchir à chaque envoi ferait compter des échanges au
+        fournisseur pour rien."""
+        coffre = FauxCoffre(
+            {
+                self.compte.refresh_token_ref(): self._jeu(
+                    "encore-bon"
+                ).to_json()
+            }
+        )
+        appels = []
+        session = self._session(
+            coffre, lambda *a, **k: appels.append(1) or self._jeu("x")
+        )
+        self.assertEqual(session.current_secret(), "encore-bon")
+        self.assertEqual(appels, [])
+
+    def test_a_password_account_keeps_handing_over_its_password(self):
+        from script.todo.mail.accounts import account_from_preset
+        from script.todo.mail.tui import Session
+
+        compte = account_from_preset("perso", "a@x.ca", "generic")
+        session = Session(compte, None, None, password="mon-mot-de-passe")
+        self.assertEqual(session.current_secret(), "mon-mot-de-passe")
+
+    def test_a_session_without_a_vault_hands_over_what_it_has(self):
+        """Les sessions fabriquées à la main — les tests en montent — n'ont
+        pas de coffre. Lever ici les casserait toutes."""
+        from script.todo.mail.tui import Session
+
+        session = Session(self.compte, None, None, password="tel-quel")
+        self.assertEqual(session.current_secret(), "tel-quel")
+
+    def test_the_outbox_leaves_with_a_fresh_token_not_the_stored_one(self):
+        """Le cas qui se voit : un message écrit hors ligne part des heures
+        plus tard, et le jeton gardé à l'ouverture ne vaut plus rien."""
+        import tempfile
+        from pathlib import Path
+
+        from script.todo.mail.smtp_send import build_message
+        from script.todo.mail.store import Store
+        from script.todo.mail.tui import Session, deliver, flush_outbox
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.compte.cache_mode = "clear"
+        magasin = Store(self.compte, mode="clear", base=Path(tmp.name))
+        magasin.open()
+        self.addCleanup(magasin.close)
+
+        coffre = FauxCoffre(
+            {
+                self.compte.refresh_token_ref(): self._jeu(
+                    "vieux", -10
+                ).to_json()
+            }
+        )
+        hors_ligne = Session(
+            self.compte, magasin, None, password="jeton-d-hier"
+        )
+        deliver(
+            hors_ligne,
+            build_message(self.compte, "a@y.ca", "Devis", "Bonjour"),
+        )
+
+        class FauxSyncer:
+            transport = None
+
+        en_ligne = self._session(
+            coffre, lambda *a, **k: self._jeu("tout-neuf")
+        )
+        en_ligne.store = magasin
+        en_ligne.syncer = FauxSyncer()
+        vus = []
+        flush_outbox(
+            en_ligne,
+            send_fn=lambda a, m, t: ["a@y.ca"],
+            connect_fn=lambda a, secret: vus.append(secret)
+            or type("T", (), {"quit": lambda self: None})(),
+        )
+        self.assertEqual(vus, ["tout-neuf"])
+
+
+class ReconnectCase(unittest.TestCase):
+    """Le lien IMAP est ouvert une fois, au démarrage, et gardé.
+
+    Quand son jeton meurt, le serveur refuse la passe suivante. Sans
+    reprise, le compte cesse de se synchroniser jusqu'à ce que quelqu'un
+    relance le client — et rien à l'écran ne dit qu'il suffirait de
+    rouvrir la connexion.
+    """
+
+    def setUp(self):
+        from script.todo.mail.accounts import account_from_preset
+
+        self.compte = account_from_preset(
+            "perso", "a@x.ca", "gmail", auth="oauth"
+        )
+
+    def _session(self, syncer, secrets=None, connect_fn=None):
+        from script.todo.mail.tui import Session
+
+        return Session(
+            self.compte,
+            None,
+            syncer,
+            password="jeton-d-hier",
+            secrets=secrets,
+            connect_fn=connect_fn,
+        )
+
+    class FauxSyncer:
+        """Refuse `refus` fois, puis rend un rapport."""
+
+        def __init__(self, refus=1):
+            self.restants = refus
+            self.transport = object()
+            self.passes = 0
+
+        def sync(self, progress=None):
+            from script.todo.mail.imap_transport import ImapAuthError
+
+            self.passes += 1
+            if self.restants > 0:
+                self.restants -= 1
+                raise ImapAuthError("jeton expiré")
+            return "rapport"
+
+    def test_a_refused_pass_reopens_the_connection_and_succeeds(self):
+        from unittest.mock import patch
+
+        from script.todo.mail.oauth import TokenSet
+
+        coffre = FauxCoffre({self.compte.refresh_token_ref(): "r"})
+        neuf = TokenSet(refresh_token="r", access_token="neuf", expires_at=9e9)
+        vus = []
+        syncer = self.FauxSyncer(refus=1)
+        session = self._session(
+            syncer,
+            secrets=coffre,
+            connect_fn=lambda a, secret: vus.append(secret) or object(),
+        )
+        with patch("script.todo.mail.oauth.refresh", lambda *a, **k: neuf):
+            self.assertEqual(session.sync(), "rapport")
+        self.assertEqual(vus, ["neuf"])
+        self.assertEqual(syncer.passes, 2)
+
+    def test_it_reopens_once_and_not_in_a_loop(self):
+        """Un serveur qui refuse pour une autre raison ferait sinon tourner
+        le client indéfiniment, en rafraîchissant à chaque tour."""
+        from unittest.mock import patch
+
+        from script.todo.mail.imap_transport import ImapAuthError
+        from script.todo.mail.oauth import TokenSet
+
+        coffre = FauxCoffre({self.compte.refresh_token_ref(): "r"})
+        neuf = TokenSet(refresh_token="r", access_token="neuf", expires_at=9e9)
+        syncer = self.FauxSyncer(refus=5)
+        session = self._session(
+            syncer, secrets=coffre, connect_fn=lambda a, s: object()
+        )
+        with patch("script.todo.mail.oauth.refresh", lambda *a, **k: neuf):
+            with self.assertRaises(ImapAuthError):
+                session.sync()
+        self.assertEqual(syncer.passes, 2)
+
+    def test_a_password_account_does_not_reopen_on_a_refusal(self):
+        """Rien à rafraîchir : rouvrir présenterait le même mot de passe au
+        même serveur, et le refus serait le même."""
+        from script.todo.mail.accounts import account_from_preset
+        from script.todo.mail.imap_transport import ImapAuthError
+
+        self.compte = account_from_preset("perso", "a@x.ca", "generic")
+        syncer = self.FauxSyncer(refus=1)
+        session = self._session(syncer, connect_fn=lambda a, s: object())
+        with self.assertRaises(ImapAuthError):
+            session.sync()
+        self.assertEqual(syncer.passes, 1)
+
+    def test_a_pass_that_works_never_reconnects(self):
+        syncer = self.FauxSyncer(refus=0)
+        vus = []
+        session = self._session(
+            syncer, connect_fn=lambda a, s: vus.append(s) or object()
+        )
+        self.assertEqual(session.sync(), "rapport")
+        self.assertEqual(vus, [])
 
 
 if __name__ == "__main__":
