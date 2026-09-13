@@ -30,6 +30,7 @@ from pathlib import Path
 RACINE = Path(os.path.normpath(os.path.join(os.path.dirname(__file__), "..")))
 sys.path.append(str(RACINE))
 
+from script.lib_valid import ValidationError  # noqa: E402
 from script.posture import plan  # noqa: E402
 
 
@@ -208,6 +209,40 @@ class TestLesConstantesRecopieesSontEpinglees(unittest.TestCase):
         self.assertEqual(plan.UNIT_PATH, DQ.EGRESS_UNIT_PATH)
         self.assertEqual(plan.UNIT_NAME, DQ.EGRESS_UNIT_NAME)
         self.assertEqual(plan.UNIT_MODE, DQ.EGRESS_UNIT_MODE)
+
+    def test_the_rules_entry_is_the_one_the_renderer_composes(self):
+        """Le TUPLE entier, et non ses seules constantes. Les trois
+        premières sont épinglées ci-dessus ; ce qui ne l'était pas est leur
+        ASSEMBLAGE, et une entrée mal composée pose un fichier au bon
+        chemin avec le mauvais mode, ou sous le mauvais propriétaire."""
+        entrees = DQ.guide_files(args_de_banc(REGLES, plan.unit_text()))
+        self.assertIn(plan.file_entry(REGLES), entrees)
+
+    def test_the_unit_entry_is_the_one_the_renderer_composes(self):
+        entrees = DQ.guide_files(args_de_banc(REGLES, plan.unit_text()))
+        self.assertIn(plan.unit_entry(), entrees)
+
+    def test_rules_that_are_only_blank_are_posed_by_neither(self):
+        """Le composeur REFUSE un contenu vide — « un fichier vide se
+        chargerait sans rien appliquer, et la machine se lirait comme
+        confinée ». Le chemin recopié teste la vérité de la chaîne, ce qui
+        laisse passer des espaces. Les deux doivent refuser, sans quoi
+        l'épinglage ne tient que sur le cas facile."""
+        with self.assertRaises(ValidationError):
+            plan.file_entry("   \n  ")
+        entrees = DQ.guide_files(args_de_banc("   \n  ", plan.unit_text()))
+        self.assertEqual(
+            [], [e for e in entrees if e[0] == DQ.EGRESS_GUEST_PATH]
+        )
+
+    def test_a_unit_that_is_only_blank_is_not_posed_either(self):
+        """La symétrique de la précédente. Une unité vide s'installerait et
+        échouerait à chaque démarrage, sur une machine qui n'a rien
+        demandé — le fichier de règles et l'unité vont par paire."""
+        entrees = DQ.guide_files(args_de_banc(REGLES, "  \n "))
+        self.assertEqual(
+            [], [e for e in entrees if e[0] == DQ.EGRESS_UNIT_PATH]
+        )
 
     def test_the_first_boot_line_is_the_one_the_renderer_names(self):
         lignes = (

@@ -2448,11 +2448,15 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     # Les règles de sortie, quand un déploiement en a rendu. Posées comme le
     # guide : par la même voie, donc présentes dès le PREMIER boot et sur les
     # deux chemins d'amorce, sans mécanisme neuf.
+    # `.strip()` et non la vérité de la chaîne : un contenu fait d'espaces
+    # se chargerait sans rien appliquer, et la machine se lirait comme
+    # confinée. Le composeur du dépôt refuse ce cas ; le refuser ici aussi
+    # est ce qui tient les deux chemins égaux, faute de pouvoir l'importer.
     regles = getattr(args, "egress_rules", "")
-    if regles:
+    if regles.strip():
         files.append((EGRESS_GUEST_PATH, EGRESS_GUEST_MODE, regles, ""))
     unite = getattr(args, "egress_unit_text", "")
-    if unite:
+    if unite.strip():
         files.append((EGRESS_UNIT_PATH, EGRESS_UNIT_MODE, unite, ""))
     if args.no_git_identity:
         return files
