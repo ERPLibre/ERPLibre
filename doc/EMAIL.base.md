@@ -366,6 +366,7 @@ preview pane on the right, with a status line at the bottom.
 | `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
+| `d` | move the selected message to the account's trash folder |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -409,6 +410,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
+| `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `c` | écrire un nouveau message |
 | `a` / `Shift+A` | répondre / répondre à tous |
 | `f` | transférer |
@@ -900,6 +902,49 @@ jamais. Le renommage emporte les messages et leurs corps, pour que la passe
 suivante ne retélécharge pas ce qui est déjà là.
 
 <!-- [en] -->
+## Throwing a message away
+
+`d` moves the selected message to the account's trash folder. Nothing is
+destroyed: a trash folder is emptied elsewhere, which is what makes the
+gesture repairable — and why it asks for no confirmation.
+
+IMAP has no verb every server knows, so the client copies the message,
+flags the original deleted, and clears it with `UID EXPUNGE`, which names
+what it removes. A bare `EXPUNGE` would sweep every message flagged deleted
+in the folder, including ones another client flagged: destroying what this
+client did not move is not its place. A server that does not offer
+`UID EXPUNGE` leaves the original in place, struck through, and the status
+line says so rather than letting another client's view look like a bug.
+
+Three refusals, each said on the status line: the account is offline, the
+account announces no trash folder — inventing a name would create one
+nobody asked for — or the message is already there. The local cache is
+updated only after the server agrees; getting ahead of it would make a
+message vanish from the screen and come back at the next pass.
+
+<!-- [fr] -->
+## Jeter un message
+
+`d` déplace le message sélectionné vers la corbeille du compte. Rien n'est
+détruit : une corbeille se vide ailleurs, ce qui rend le geste réparable —
+et c'est pourquoi il ne demande aucune confirmation.
+
+IMAP n'a pas de verbe que tous les serveurs connaissent : le client copie
+le message, marque l'original supprimé, et le retire par `UID EXPUNGE`, qui
+NOMME ce qu'il enlève. Un `EXPUNGE` nu emporterait tous les messages marqués
+supprimés du dossier, y compris ceux qu'un autre client a marqués :
+détruire ce que ce client n'a pas déplacé ne lui appartient pas. Un serveur
+qui n'offre pas `UID EXPUNGE` laisse l'original sur place, barré, et la
+ligne de statut le dit plutôt que de laisser la vue d'un autre client
+passer pour un bogue.
+
+Trois refus, chacun dit sur la ligne de statut : le compte est hors ligne,
+le compte n'annonce pas de corbeille — en inventer une créerait un dossier
+que personne n'a demandé — ou le message y est déjà. Le cache local n'est
+mis à jour qu'après l'accord du serveur : le devancer ferait disparaître de
+l'écran un message qui reviendrait à la passe suivante.
+
+<!-- [en] -->
 ## List views
 
 `g` cycles the message list through three views:
@@ -1289,9 +1334,8 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **No cross-folder search** — `/` and `Shift+S` both work on the open
   folder of one account; neither sweeps the other folders or the other
   accounts.
-- **No deleting or moving a message** — `s` and `u` change the seen flag,
-  and `F` creates, renames and deletes folders, but a message itself can be
-  neither deleted nor moved to another folder.
+- **No moving to a chosen folder** — `d` moves a message to the account's
+  trash, but there is no way to file one into a folder you pick.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining
@@ -1307,10 +1351,9 @@ phases add.
 - **Pas de recherche transversale** — `/` comme `Shift+S` portent sur le
   dossier ouvert d'un seul compte ; ni l'un ni l'autre ne balaie les autres
   dossiers ou les autres comptes.
-- **Ni suppression ni déplacement d'un message** — `s` et `u` changent
-  l'état lu / non lu, et `F` crée, renomme et supprime des dossiers, mais
-  un message lui-même ne peut être ni supprimé ni déplacé vers un autre
-  dossier.
+- **Pas de déplacement vers un dossier choisi** — `d` met un message à la
+  corbeille du compte, mais rien ne permet d'en ranger un dans un dossier
+  qu'on désigne.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez

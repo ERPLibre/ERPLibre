@@ -12494,6 +12494,36 @@ TRANSLATIONS = {
             " one from your own OAuth registration"
         ),
     },
+    "mail_trash_binding": {
+        "fr": "Jeter à la corbeille",
+        "en": "Move to the trash",
+    },
+    "mail_trash_offline": {
+        "fr": "Compte hors ligne : le message n'a pas bougé.",
+        "en": "Account offline: the message has not moved.",
+    },
+    "mail_trash_no_folder": {
+        "fr": ("Ce compte n'annonce pas de corbeille : rien n'a été déplacé."),
+        "en": "This account announces no trash folder: nothing was moved.",
+    },
+    "mail_trash_already_there": {
+        "fr": "Ce message est déjà dans la corbeille.",
+        "en": "This message is already in the trash.",
+    },
+    "mail_trash_done": {
+        "fr": "Déplacé vers",
+        "en": "Moved to",
+    },
+    "mail_trash_source_kept": {
+        "fr": (
+            "le serveur n'a pas pu vider la source : le message y reste"
+            " barré"
+        ),
+        "en": (
+            "the server could not clear the source: the message stays"
+            " there, struck through"
+        ),
+    },
     "mail_search_server_binding": {
         "fr": "Chercher sur le serveur",
         "en": "Search the server",
