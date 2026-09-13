@@ -11557,6 +11557,18 @@ TRANSLATIONS = {
         "fr": "Neutraliser la base (O/n) ? ",
         "en": "Neutralize the database (Y/n)? ",
     },
+    "Image name (no .zip): ": {
+        "fr": "Nom de l'image (sans .zip) : ",
+        "en": "Image name (no .zip): ",
+    },
+    "Image not found: ": {
+        "fr": "Image introuvable : ",
+        "en": "Image not found: ",
+    },
+    "Would you like to update all addons (y/N)? ": {
+        "fr": "Mettre à jour tous les modules (o/N) ? ",
+        "en": "Would you like to update all addons (y/N)? ",
+    },
     "The restore failed.": {
         "fr": "La restauration a échoué.",
         "en": "The restore failed.",

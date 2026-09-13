@@ -27,17 +27,15 @@ sys.path.append(new_path)
 from script.config import config_file
 from script.execute import execute
 from script.remote import deploy_target, host_memory
-from script.todo import (
-    deploy_target_menu,
-    dev_tools,
-    host_os,
-    todo_install,
-    todo_prefs,
-)
+from script.todo import (deploy_target_menu, dev_tools, host_os, todo_install,
+                         todo_prefs)
 from script.todo.database_manager import DatabaseManager
 from script.todo.deploy_target_menu import DeployTargetMenuMixin
 from script.todo.devstack_menu import DevstackMenuMixin
+from script.todo.egress_book_menu import EgressBookMenuMixin
+from script.todo.forge_menu import ForgeMenuMixin
 from script.todo.kdbx_manager import KdbxManager
+from script.todo.lima_menu import LimaMenuMixin
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
@@ -50,9 +48,6 @@ from script.todo.qemu_recover import QemuRecoverMixin
 from script.todo.todo_i18n import get_lang, lang_is_configured, set_lang, t
 from script.todo.version_manager import get_odoo_version
 from script.todo.vm_backend_menu import VmBackendMenuMixin
-from script.todo.egress_book_menu import EgressBookMenuMixin
-from script.todo.forge_menu import ForgeMenuMixin
-from script.todo.lima_menu import LimaMenuMixin
 from script.todo.vpn_menu import VpnMenuMixin
 
 ERROR_LOG_PATH = ".erplibre.error.txt"
@@ -74,7 +69,6 @@ try:
     import humanize
     import openai
     import todo_file_browser
-
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
@@ -130,7 +124,9 @@ class TODO(
         self.config_file = config_file.ConfigFile()
         self.execute = execute.Execute()
         self.kdbx_manager = KdbxManager(self.config_file)
-        self.db_manager = DatabaseManager(self.execute, self.fill_help_info)
+        self.db_manager = DatabaseManager(
+            self.execute, self.fill_help_info, self._monitoring_image_name
+        )
 
     def _ask_language(self):
         if not lang_is_configured():

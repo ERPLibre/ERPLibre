@@ -10,25 +10,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
-from script.todo.todo import (
-    ANDROID_DIR,
-    CONFIG_FILE,
-    CONFIG_OVERRIDE_FILE,
-    ENABLE_CRASH,
-    ERROR_LOG_PATH,
-    GRADLE_FILE,
-    LOGO_ASCII_FILE,
-    MOBILE_HOME_PATH,
-    STRINGS_FILE,
-    TODO,
-    VENV_ERPLIBRE,
-)
-from script.todo.version_manager import (
-    INSTALLED_ODOO_VERSION_FILE,
-    ODOO_VERSION_FILE,
-    VERSION_DATA_FILE,
-    get_odoo_version,
-)
+from script.todo.todo import (ANDROID_DIR, CONFIG_FILE, CONFIG_OVERRIDE_FILE,
+                              ENABLE_CRASH, ERROR_LOG_PATH, GRADLE_FILE,
+                              LOGO_ASCII_FILE, MOBILE_HOME_PATH, STRINGS_FILE,
+                              TODO, VENV_ERPLIBRE)
+from script.todo.version_manager import (INSTALLED_ODOO_VERSION_FILE,
+                                         ODOO_VERSION_FILE, VERSION_DATA_FILE,
+                                         get_odoo_version)
 
 
 class TestTODOInit(unittest.TestCase):
@@ -336,7 +324,7 @@ class TestExecuteUnitTests(unittest.TestCase):
         # Verify it was called - error handling path
 
     def test_stdout_is_unbuffered_so_the_verdict_lands_last(self):
-        """Signalé à l'usage : « pas clair si les tests ont passé ».
+        """Le verdict tombe en DERNIER, là où le lecteur le cherche.
 
         unittest écrit son verdict sur stderr et les tests impriment sur
         stdout ; capturés ensemble, le stdout tamponné se déversait après
@@ -709,31 +697,41 @@ class TestSelectDatabase(unittest.TestCase):
 
 
 class TestRestoreFromDatabase(unittest.TestCase):
+    """L'entrée « [1] » demande désormais un NOM d'image, et le zip est
+    cherché avant que la moindre commande soit bâtie : ces deux épreuves
+    posent donc une saisie de plus et simulent le fichier présent. Ce
+    qu'elles tenaient reste tenu ; test/test_restore_menu.py couvre le
+    reste du chemin."""
+
+    @patch("script.todo.database_manager.os.path.isfile", return_value=True)
     @patch("builtins.input")
-    def test_restore_by_filename(self, mock_input):
+    def test_restore_by_filename(self, mock_input, _isfile):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (
             0,
             [],
         )
-        # status="1" (by filename), db name default, no neutralize
-        mock_input.side_effect = ["1", "", "n", "n"]
+        # [1], le nom d'image, le nom de base par défaut, pas de
+        # neutralisation, pas de mise à jour des modules
+        mock_input.side_effect = ["1", "backup", "", "n", "n"]
         todo.db_manager.restore_from_database()
         cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
             0
         ]
         self.assertIn("db_restore.py", cmd)
+        self.assertIn("--image backup", cmd)
 
+    @patch("script.todo.database_manager.os.path.isfile", return_value=True)
     @patch("builtins.input")
-    def test_restore_with_neutralize(self, mock_input):
+    def test_restore_with_neutralize(self, mock_input, _isfile):
         todo = TODO()
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.return_value = (
             0,
             [],
         )
-        mock_input.side_effect = ["1", "mydb", "y", "n"]
+        mock_input.side_effect = ["1", "backup", "mydb", "y", "n"]
         todo.db_manager.restore_from_database()
         cmd = todo.db_manager._execute.exec_command_live.call_args_list[0][0][
             0

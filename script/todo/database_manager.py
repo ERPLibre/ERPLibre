@@ -6,8 +6,9 @@ import datetime
 import getpass
 import logging
 import os
+import shlex
 
-from script.database import backup_verify, backup_witness
+from script.database import backup_verify, backup_witness, db_restore
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -22,10 +23,23 @@ except Exception:
 
 
 class DatabaseManager:
-    def __init__(self, execute, fill_help_info) -> None:
+    def __init__(self, execute, fill_help_info, image_name=None) -> None:
         self._execute = execute
         self._fill_help_info = fill_help_info
+        # CE QUE db_restore ATTEND, composé par le menu qui sait déjà le
+        # faire : un NOM sous image_db/, jamais un chemin. Injecté comme
+        # `fill_help_info`, parce que le composeur pose une question quand
+        # le fichier vient d'ailleurs — et qu'un écran pose les questions.
+        # Le repli ne sait que dépouiller, ce qui suffit à un appelant qui
+        # ne parcourt rien.
+        self._image_name = image_name or self._bare_image_name
         self._dir_path: str | None = None
+
+    @staticmethod
+    def _bare_image_name(zip_path: str) -> str:
+        """Le nom d'une image, sans son répertoire ni son « .zip »."""
+        nom = os.path.basename(zip_path or "")
+        return nom[:-4] if nom.endswith(".zip") else nom
 
     def _on_dir_selected(self, path: str) -> None:
         self._dir_path = path
@@ -141,59 +155,106 @@ class DatabaseManager:
             single_source_erplibre=True,
         )
 
-    def restore_from_database(self, show_remote_list: bool = True) -> None:
+    def _ask_image_name(self) -> str:
+        """Le nom d'image à restaurer, ou "" si on renonce.
+
+        UN SEUL PRODUCTEUR pour les deux branches. « [1] » promettait un
+        nom de fichier et n'en demandait aucun — elle visait donc toujours
+        image_db/1.zip. Le navigateur, lui, rendait un basename portant
+        « .zip », là où `image_path` en rajoute un.
+
+        Le zip est cherché AVANT de bâtir la moindre commande : son absence
+        se découvrait sur la machine, après le lancement.
+        """
         path_image_db = os.path.join(os.getcwd(), "image_db")
         print("[1] By filename from image_db")
         print(f"[] Browser image_db {path_image_db}")
-        status = input("\U0001f4ac Select : ")
-        if status == "1":
-            file_name = status
+        if input("\U0001f4ac Select : ") == "1":
+            nom = input(f"\U0001f4ac {t('Image name (no .zip): ')}").strip()
         else:
-            file_name = self.open_file_image_db()
+            self.open_file_image_db()
+            nom = self._image_name(self._dir_path or "")
+        if not nom:
+            print(t("Cancelled."))
+            return ""
+        chemin = db_restore.image_path(nom)
+        if not os.path.isfile(chemin):
+            print(f"\u274c {t('Image not found: ')}{chemin}")
+            return ""
+        return nom
+
+    def restore_from_database(self, show_remote_list: bool = True) -> None:
+        """Restaure une image dans une base, et LIT ce qu'elle lance.
+
+        Le code de retour était capturé puis écrasé par la question
+        suivante : une seule variable portait le choix de menu, deux
+        réponses oui/non et trois codes de sortie. La chaîne continuait
+        donc sur une base que la restauration venait d'échouer à créer,
+        et proposait d'y mettre à jour tous les modules.
+
+        Les deux noms sont CITÉS : ils traversent un f-string exécuté par
+        bash, où un point-virgule tapé au clavier ouvre une commande.
+        """
+        file_name = self._ask_image_name()
+        if not file_name:
+            return
 
         default_database_name = file_name.replace(" ", "_")
-        if default_database_name.endswith(".zip"):
-            default_database_name = default_database_name[:-4]
-
         database_name = input(
-            f"\U0001f4ac Database name (default={default_database_name}) : "
-        )
+            f"\U0001f4ac {t('Database name (default=')}"
+            f"{default_database_name}) : "
+        ).strip()
         if not database_name:
             database_name = default_database_name
 
-        status = (
-            input("\U0001f4ac Would you like to neutralize database (n/N)? ")
+        neutralise = (
+            input(f"\U0001f4ac {t('Neutralize the database (Y/n)? ')}")
             .strip()
             .lower()
         )
-        is_neutralize = False
         more_arg = ""
-        if status != "n":
+        if neutralise != "n":
             more_arg = "--neutralize "
-            is_neutralize = True
             database_name += "_neutralize"
-        status, output_lines = self._execute.exec_command_live(
-            f"python3 ./script/database/db_restore.py -d {database_name} "
-            f"{more_arg}--ignore_cache --image {file_name}",
+
+        status, _ = self._execute.exec_command_live(
+            f"python3 ./script/database/db_restore.py "
+            f"-d {shlex.quote(database_name)} "
+            f"{more_arg}--ignore_cache --image {shlex.quote(file_name)}",
             return_status_and_output=True,
             single_source_erplibre=True,
             source_erplibre=False,
         )
-        if is_neutralize:
-            status, output_lines = self._execute.exec_command_live(
-                f"./script/addons/update_prod_to_dev.sh {database_name}",
+        if status:
+            print(f"\u274c {t('The restore failed.')}")
+            return
+        # SUR LE DRAPEAU, et non sur `status` : l'un dit qu'on a demandé la
+        # neutralisation, l'autre si la commande d'avant a réussi.
+        if more_arg:
+            status, _ = self._execute.exec_command_live(
+                f"./script/addons/update_prod_to_dev.sh "
+                f"{shlex.quote(database_name)}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
                 source_erplibre=False,
             )
-        status = (
-            input("\U0001f4ac Would you like to update all addons (y/Y)? ")
+            if status:
+                print(
+                    f"\u26a0  {t('update_prod_to_dev did not finish: do not')}"
+                    f" {t('count on the test/test account.')}"
+                )
+                return
+        answer = (
+            input(
+                f"\U0001f4ac {t('Would you like to update all addons (y/N)? ')}"
+            )
             .strip()
             .lower()
         )
-        if status == "y":
-            status, output_lines = self._execute.exec_command_live(
-                f"./script/addons/update_addons_all.sh {database_name}",
+        if answer == "y":
+            self._execute.exec_command_live(
+                f"./script/addons/update_addons_all.sh "
+                f"{shlex.quote(database_name)}",
                 return_status_and_output=True,
                 single_source_erplibre=True,
                 source_erplibre=False,
