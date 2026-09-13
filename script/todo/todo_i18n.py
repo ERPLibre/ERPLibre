@@ -6463,6 +6463,22 @@ TRANSLATIONS = {
         "fr": "la branche utilisée ici",
         "en": "the branch used here",
     },
+    "sudo asks for a password on the target:": {
+        "fr": "sudo réclame un mot de passe à l'arrivée :",
+        "en": "sudo asks for a password on the target:",
+    },
+    "The store travels on ssh stdin, which carries no terminal,": {
+        "fr": "Le magasin voyage dans l'entrée de ssh, qui n'a pas de terminal,",
+        "en": "The store travels on ssh stdin, which carries no terminal,",
+    },
+    "so nothing can type it. Get a ticket there first:": {
+        "fr": "donc rien ne peut le taper. Y obtenir d'abord un ticket :",
+        "en": "so nothing can type it. Get a ticket there first:",
+    },
+    "then come back here. Or allow it there without a password.": {
+        "fr": "puis revenir ici. Ou l'y autoriser sans mot de passe.",
+        "en": "then come back here. Or allow it there without a password.",
+    },
     "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1": {
         "fr": "ou, dans son TODO : Exécuter > Déploiement > Cache QEMU, entrée 1",
         "en": "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1",

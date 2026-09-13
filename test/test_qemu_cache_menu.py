@@ -342,6 +342,18 @@ class TestLeTransfertDuCache(unittest.TestCase):
         self.assertEqual(mots[0], "ssh")
         self.assertEqual(mots[1], mechant)
 
+    def test_larrivee_ne_demande_le_privilege_quune_fois(self):
+        """Un ticket sudo se périme ; le transfert, lui, dure. En deux
+        invocations, la seconde — le « chown » — tomberait après des
+        dizaines de minutes sur une demande que plus rien ne peut saisir :
+        le magasin serait posé, et illisible pour le compte qui le sert."""
+        import shlex
+
+        cmd = self._menu()._cache_transfert_cmd("op@ailleurs", "/var/cache/x")
+        distant = shlex.split(cmd[cmd.index("ssh ") :])[2]
+        self.assertEqual(distant.count("sudo "), 1, distant)
+        self.assertIn("chown -R", distant)
+
     def test_les_reglages_ne_voyagent_pas(self):
         """Ni l'autorité, ni le pont, ni le sous-réseau."""
         cmd = self._menu()._cache_transfert_cmd("op@ailleurs", "/var/cache/x")
@@ -471,10 +483,20 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
     def test_une_arrivee_complete_mene_a_la_commande(self):
         """La contre-épreuve : un jeton renommé ferait refuser une machine
         prête, et le refus ne se verrait que le jour du transfert."""
-        texte, lancees = self.refus(0, "binaire\ncompte\nFIN\n")
+        texte, lancees = self.refus(0, "binaire\ncompte\nsudo\nFIN\n")
         self.assertIn("tar -C /var/cache/x -cf - .", texte)
         self.assertNotIn("install_qemu_cache.sh", texte)
         self.assertEqual(lancees, [], "la confirmation a été refusée")
+
+    def test_un_sudo_qui_reclame_un_mot_de_passe_arrete_avant_le_flux(self):
+        """Le magasin occupe l'entrée standard de ssh, qui porte des octets
+        et non un terminal : sudo refuse de lire un mot de passe ailleurs
+        que sur un terminal, et l'obstacle doit donc être dit AVANT, pas
+        après des gigaoctets. Le ticket obtenu d'avance le lève."""
+        texte, lancees = self.refus(0, "binaire\ncompte\nFIN\n")
+        self.assertIn("ssh -t op@ailleurs sudo -v", texte)
+        self.assertNotIn("install_qemu_cache.sh", texte)
+        self.assertEqual(lancees, [])
 
     def test_la_sonde_annonce_les_jetons_que_la_lecture_attend(self):
         """La sonde et sa lecture sont les deux moitiés d'un accord : en
@@ -487,9 +509,15 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
         from script.qemu import cache_offline
         from script.todo import qemu_cache_menu
 
-        self.refus(0, "binaire\ncompte\nFIN\n")
+        self.refus(0, "binaire\ncompte\nsudo\nFIN\n")
         sonde = self.sondes[0]
-        for jeton in ("echo binaire", "echo compte", "echo FIN"):
+        for jeton in (
+            "echo binaire",
+            "echo compte",
+            "sudo -n true",
+            "echo sudo",
+            "echo FIN",
+        ):
             self.assertIn(jeton, sonde)
         self.assertIn(qemu_cache_menu.CACHE_BIN, sonde)
         self.assertIn(cache_offline.SERVICE_USER, sonde)

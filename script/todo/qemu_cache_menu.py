@@ -665,7 +665,8 @@ class QemuCacheMenuMixin:
         sonde = (
             f"test -x {shlex.quote(CACHE_BIN)} && echo binaire;"
             f" id -u {shlex.quote(cache_offline.SERVICE_USER)}"
-            " >/dev/null 2>&1 && echo compte; echo FIN"
+            " >/dev/null 2>&1 && echo compte;"
+            " sudo -n true 2>/dev/null && echo sudo; echo FIN"
         )
         code, sortie = self._cache_ssh(cible, sonde)
         if code or "FIN" not in sortie:
@@ -686,6 +687,12 @@ class QemuCacheMenuMixin:
                 f"{t('Reinstall it there: the installer creates the account.')}"
             )
             print(f"      sudo bash {INSTALLATEUR}\n")
+            return
+        # Le magasin voyage dans l'entrée standard de ssh, qui porte des
+        # octets et non un terminal : un sudo qui réclame un mot de passe
+        # là-bas n'échoue pas à l'arrivée du flux, il l'empêche de partir.
+        if "sudo" not in sortie:
+            self._cache_dire_sudo_muet(cible)
             return
         print(f"  {t('What travels:')} {cache_dir}")
         for quoi, chemin in (
@@ -793,6 +800,34 @@ class QemuCacheMenuMixin:
             print(ligne)
 
     @staticmethod
+    def _cache_dire_sudo_muet(cible):
+        """Sudo réclame un mot de passe à l'arrivée, et rien ne peut le taper.
+
+        Le magasin occupe l'entrée standard de ssh : ce canal porte des
+        octets, pas un terminal, et sudo refuse de lire un mot de passe
+        ailleurs que sur un terminal. Allouer un terminal à ssh est exclu —
+        le flux binaire y passe justement.
+
+        Un ticket obtenu d'avance lève l'obstacle : sudo n'interroge plus
+        pendant sa validité, et la pose entière tient en une seule
+        invocation privilégiée, qui ne peut donc pas expirer en cours de
+        route.
+        """
+        q = shlex.quote(cible)
+        print(f"  ✗ {t('sudo asks for a password on the target:')} {cible}")
+        print(
+            "    "
+            f"{t('The store travels on ssh stdin, which carries no terminal,')}"
+        )
+        print(f"    {t('so nothing can type it. Get a ticket there first:')}")
+        print(f"      ssh -t {q} sudo -v")
+        print(
+            "    "
+            f"{t('then come back here. Or allow it there without a password.')}"
+            "\n"
+        )
+
+    @staticmethod
     def _cache_transfert_cmd(cible, cache_dir):
         """La commande qui emporte le magasin, en un seul flux.
 
@@ -806,10 +841,17 @@ class QemuCacheMenuMixin:
         même compte porte rarement le même numéro d'une machine à l'autre.
         """
         q = shlex.quote
-        distant = (
-            f"zstd -d | sudo tar -C {q(cache_dir)} -xf - --numeric-owner"
-            f" && sudo chown -R {cache_offline.SERVICE_USER}:{cache_offline.SERVICE_USER} {q(cache_dir)}"
+        # UNE seule invocation privilégiée à l'arrivée. En deux — « tar »
+        # puis « chown » — un ticket sudo obtenu juste avant expire pendant
+        # le transfert, et le second geste réclame alors un mot de passe que
+        # plus rien ne peut saisir : le magasin serait posé, mais resterait
+        # illisible pour le compte qui doit le servir.
+        interne = (
+            f"tar -C {q(cache_dir)} -xf - --numeric-owner"
+            f" && chown -R {cache_offline.SERVICE_USER}:"
+            f"{cache_offline.SERVICE_USER} {q(cache_dir)}"
         )
+        distant = f"zstd -d | sudo sh -c {q(interne)}"
         return (
             f"sudo tar -C {q(cache_dir)} -cf - . | zstd -T0 -3"
             f" | ssh {q(cible)} {q(distant)}"
