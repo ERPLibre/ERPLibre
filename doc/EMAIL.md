@@ -558,8 +558,11 @@ password still has one.
 The TUI's own form (`n`) offers the same choice: picking a preset settles
 what the account can use — the list of authentications is only live where
 there is something to choose — and the secret field then says whether it
-wants a password or a token. It takes a pasted token; the browser flow
-lives in the menu.
+wants a password or a token. An **Authorise in the browser** button appears
+there too, but only where a `client_id` is configured: without one it would
+open a page answering "invalid_client", so it stays hidden rather than
+greyed out. The flow runs in a worker thread, otherwise waiting for the
+redirection would freeze the window, `Escape` included.
 
 **Afterwards, nothing.** An access token lasts about an hour; the client
 exchanges the refresh token for a new one before opening a session, writes
