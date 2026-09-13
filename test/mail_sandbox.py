@@ -354,6 +354,12 @@ class SandboxMailbox:
         octets du message, ce que fait un serveur ordinaire. Une clé
         inconnue LÈVE plutôt que de ne rien trouver : un test qui enverrait
         une requête que ce bac à sable ne sait pas lire doit le dire.
+
+        Rend TOUJOURS des numéros de séquence, jamais des UID, même quand
+        `uid` vaut 1 : Twisted convertit lui-même le résultat par
+        `getUID()`. Rendre des UID les convertirait une seconde fois —
+        invisible tant que numéros et UID coïncident, ce qu'une seule
+        suppression suffit à défaire.
         """
         if not query:
             return []
@@ -364,11 +370,11 @@ class SandboxMailbox:
             raise imap4.IllegalQueryError(query)
         terme = bytes(query[1]).lower() if len(query) > 1 else b""
         champ = self.CLES_RECHERCHE[cle]
-        trouves = []
-        for index, message in enumerate(self.messages, start=1):
-            if terme in self._portion(message, champ).lower():
-                trouves.append(message.getUID() if uid else index)
-        return trouves
+        return [
+            index
+            for index, message in enumerate(self.messages, start=1)
+            if terme in self._portion(message, champ).lower()
+        ]
 
     def _search_uid(self, plage: bytes, uid: int) -> list:
         """Les messages dont l'UID tombe dans `plage` (`2:*`, `1,4`, ...).
@@ -381,7 +387,7 @@ class SandboxMailbox:
         dernier = self.messages[-1].getUID() if self.messages else 0
         ensemble = imap4.parseIdList(plage, dernier)
         return [
-            (message.getUID() if uid else index)
+            index
             for index, message in enumerate(self.messages, start=1)
             if message.getUID() in ensemble
         ]
@@ -492,7 +498,41 @@ class SandboxMailbox:
         return out
 
     def expunge(self) -> list:
-        return []
+        """Retire les messages marqués `\\Deleted`. Rend leurs numéros.
+
+        Rendre une liste vide sans rien retirer — ce que faisait ce bac à
+        sable — fait passer au vert un client qui déplace un message sans
+        jamais le faire disparaître de sa source : le test ne verrait que le
+        `OK` du serveur, jamais le message resté là.
+
+        Les NUMÉROS de séquence, pas les UID : c'est ce que la réponse
+        `* n EXPUNGE` porte, et ils sont rendus du plus grand au plus petit
+        pour qu'une renumérotation en cours de route ne décale pas ceux qui
+        restent à annoncer.
+        """
+        retires = []
+        for numero in range(len(self.messages), 0, -1):
+            message = self.messages[numero - 1]
+            if "\\Deleted" in message.flags:
+                del self.messages[numero - 1]
+                retires.append(numero)
+        return retires
+
+    def uid_expunge(self, plage: bytes) -> list:
+        """Retire les messages marqués supprimés DONT l'UID est dans `plage`.
+
+        C'est toute la différence avec `expunge()` : celui-ci balaie le
+        dossier entier, celui-là ne touche qu'à ce que le client nomme.
+        """
+        dernier = self.messages[-1].getUID() if self.messages else 0
+        ensemble = imap4.parseIdList(plage, dernier)
+        retires = []
+        for numero in range(len(self.messages), 0, -1):
+            message = self.messages[numero - 1]
+            if "\\Deleted" in message.flags and message.getUID() in ensemble:
+                del self.messages[numero - 1]
+                retires.append(numero)
+        return retires
 
     def destroy(self) -> None:
         pass
@@ -627,6 +667,52 @@ class SandboxIMAP4Server(imap4.IMAP4Server):
         super().__init__()
         self.sandbox = sandbox
 
+    def capabilities(self):
+        """Ajoute UIDPLUS à ce que Twisted annonce.
+
+        Sans cette annonce, un client prudent ne peut pas retirer un message
+        précis : il ne lui reste que l'EXPUNGE nu, qui emporte TOUS les
+        messages marqués supprimés du dossier — y compris ceux qu'un autre
+        client a marqués. Les vrais serveurs courants l'annoncent ; un bac à
+        sable qui ne l'annonce pas ferait tester le seul mauvais chemin.
+        """
+        cap = super().capabilities()
+        if self.sandbox.uidplus:
+            cap[b"UIDPLUS"] = None
+        return cap
+
+    def do_UID(self, tag, command, line):
+        """Accepte `UID EXPUNGE`, que Twisted refuse d'emblée.
+
+        Sa liste de commandes UID est fermée (COPY, FETCH, STORE, SEARCH) et
+        lève sur tout le reste. UIDPLUS (RFC 4315) ajoute EXPUNGE, et c'est
+        ce que le client emploie pour ne retirer QUE ce qu'il a déplacé.
+        """
+        if command.upper() == b"EXPUNGE" and self.sandbox.uidplus:
+            return self.do_EXPUNGE(tag, uid=1, line=line)
+        return super().do_UID(tag, command, line)
+
+    def do_EXPUNGE(self, tag, uid=0, line=b""):
+        """EXPUNGE, et sa forme UIDPLUS qui nomme ce qu'elle retire."""
+        if not uid:
+            return super().do_EXPUNGE(tag)
+        plage = line.strip()
+        retires = self.mbox.uid_expunge(plage)
+        for numero in retires:
+            self.sendUntaggedResponse(b"%d EXPUNGE" % (numero,))
+        self.sendPositiveResponse(tag, b"UID EXPUNGE completed")
+
+    # Twisted relie chaque commande à la FONCTION, dans une table de classe
+    # (`select_UID = (do_UID, arg_atom, arg_line)`). Redéfinir la méthode ne
+    # suffit donc pas : la table continue de pointer vers celle du parent, et
+    # le serveur répond « Illegal syntax ». Ces deux lignes refont l'entrée.
+    select_UID = (
+        do_UID,
+        imap4.IMAP4Server.arg_atom,
+        imap4.IMAP4Server.arg_line,
+    )
+    select_EXPUNGE = (do_EXPUNGE,)
+
     def connectionMade(self):
         self.sandbox.connections.add(self)
         super().connectionMade()
@@ -711,7 +797,10 @@ class ImapSandbox:
     `addCleanup`, qui s'exécute même quand le test échoue.
     """
 
-    def __init__(self):
+    def __init__(self, uidplus: bool = True):
+        # Les serveurs courants annoncent UIDPLUS ; `uidplus=False` sert à
+        # éprouver le repli du client sur un serveur qui ne l'a pas.
+        self.uidplus = uidplus
         self.account = SandboxIMAPAccount()
         self.faults: list[Fault] = []
         self.connections: set = set()
@@ -992,8 +1081,8 @@ class MailSandboxCase(unittest.TestCase):
     oubliée ou un fil coincé empoisonneraient toute la suite.
     """
 
-    def imap_server(self) -> ImapSandbox:
-        sandbox = ImapSandbox()
+    def imap_server(self, **kwargs) -> ImapSandbox:
+        sandbox = ImapSandbox(**kwargs)
         self.addCleanup(sandbox.stop)
         return sandbox.start()
 
