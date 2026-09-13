@@ -70,6 +70,29 @@ class Moteur:
     version_cmd: str
     version_regex: str
     binaire: str
+    # Les autres noms sous lesquels le MÊME moteur s'installe. llama.cpp a
+    # remplacé ses binaires par un exécutable unifié, et les paquets de
+    # distribution livrent encore les anciens : chercher un seul nom déclare
+    # absent un moteur présent.
+    alias: tuple[str, ...] = ()
+    # Ce qui doit précéder toute commande du moteur. Un installateur sans
+    # privilège écrit sous le compte, et un shell non interactif n'a pas ce
+    # répertoire sur son chemin : sans ce préfixe, l'étape suivante ne trouve
+    # pas ce que la précédente vient de poser.
+    prefixe: str = ""
+
+    @property
+    def binaires(self) -> tuple[str, ...]:
+        """Tous les noms qui valent « le moteur est là »."""
+        return (self.binaire,) + self.alias
+
+    @property
+    def presence(self) -> str:
+        """La commande qui répond 0 quand le moteur est installé."""
+        tests = " || ".join(
+            f"command -v {nom} >/dev/null 2>&1" for nom in self.binaires
+        )
+        return f"sh -c {shlex.quote(self.prefixe + tests)}"
 
     @property
     def version_test(self) -> str:
@@ -82,11 +105,14 @@ class Moteur:
         trouvée est imprimée AVANT le test : c'est elle que le message
         d'erreur cite.
         """
-        lecture = "{ " + self.version_cmd + " ; } 2>&1"
+        lecture = "{ " + self.prefixe + self.version_cmd + " ; } 2>&1"
         if self.cle == "llamacpp":
             seuil = self.version_min.lstrip("b")
             garde = f'[ "$v" -ge {seuil} ]'
-            extrait = r'grep -oE "b[0-9]+" | head -1 | tr -d b'
+            extrait = (
+                r"grep -oE '(b|build )[0-9]+' | head -1"
+                r" | grep -oE '[0-9]+'"
+            )
             echo = 'echo "b$v"'
         else:
             garde = (
@@ -124,9 +150,14 @@ MOTEURS: dict[str, Moteur] = {
         # Numéro de construction, pas un numéro sémantique : la comparaison
         # se fait sur l'entier qui suit le « b ».
         version_min="b6671",
-        version_cmd="llama-server --version 2>&1 || llama serve --version 2>&1",
-        version_regex=r"b(\d+)",
-        binaire="llama-server",
+        version_cmd="llama --version 2>&1 || llama-server --version 2>&1",
+        # Deux formes pour le même numéro : l'installateur annonce « b10909 »
+        # et le binaire « build 10909 ». N'en reconnaître qu'une rend une
+        # version vide, donc un moteur déclaré trop ancien alors qu'il convient.
+        version_regex=r"(?:b|build )(\d+)",
+        binaire="llama",
+        alias=("llama-server",),
+        prefixe='PATH="$HOME/.local/bin:$PATH"; ',
     ),
     "localai": Moteur(
         cle="localai",
@@ -189,7 +220,7 @@ MODELES: dict[str, Modele] = {
         distille=False,
         reference={
             "ollama": f"hf.co/{_GGUF_8B}:Q4_K_M",
-            "llamacpp": f"{_GGUF_8B}/Apertus-8B-Instruct-2509-Q4_K_M.gguf",
+            "llamacpp": f"{_GGUF_8B}:Q4_K_M",
             "localai": (
                 f"huggingface://{_GGUF_8B}/Apertus-8B-Instruct-2509-Q4_K_M.gguf"
             ),
@@ -205,7 +236,7 @@ MODELES: dict[str, Modele] = {
         distille=False,
         reference={
             "ollama": f"hf.co/{_GGUF_8B}:Q8_0",
-            "llamacpp": f"{_GGUF_8B}/Apertus-8B-Instruct-2509-Q8_0.gguf",
+            "llamacpp": f"{_GGUF_8B}:Q8_0",
             "localai": (
                 f"huggingface://{_GGUF_8B}/Apertus-8B-Instruct-2509-Q8_0.gguf"
             ),
@@ -222,7 +253,7 @@ MODELES: dict[str, Modele] = {
         distille=True,
         reference={
             "ollama": f"hf.co/{_GGUF_MINI_15}:Q4_K_M",
-            "llamacpp": f"{_GGUF_MINI_15}/Apertus-v1.1-1.5B-Instruct.Q4_K_M.gguf",
+            "llamacpp": f"{_GGUF_MINI_15}:Q4_K_M",
             "localai": (
                 f"huggingface://{_GGUF_MINI_15}/"
                 "Apertus-v1.1-1.5B-Instruct.Q4_K_M.gguf"
@@ -239,7 +270,7 @@ MODELES: dict[str, Modele] = {
         distille=True,
         reference={
             "ollama": f"hf.co/{_GGUF_MINI_05}:Q4_K_M",
-            "llamacpp": f"{_GGUF_MINI_05}/Apertus-v1.1-0.5B-Instruct.Q4_K_M.gguf",
+            "llamacpp": f"{_GGUF_MINI_05}:Q4_K_M",
             "localai": (
                 f"huggingface://{_GGUF_MINI_05}/"
                 "Apertus-v1.1-0.5B-Instruct.Q4_K_M.gguf"
@@ -338,9 +369,8 @@ def _installe_llamacpp() -> str:
     chargement du modèle. L'installateur amont pose un binaire récent sous
     le compte courant.
     """
-    return (
-        "sh -c 'curl -fsSL https://llama.app/install.sh | sh && "
-        'export PATH="$HOME/.local/bin:$PATH"\''
+    return "sh -c " + shlex.quote(
+        "curl -fsSL https://llama.app/install.sh | sh"
     )
 
 
@@ -394,11 +424,23 @@ def _service(moteur: Moteur, modele: Modele) -> tuple[str, str]:
             "pgrep -x ollama >/dev/null",
         )
     if moteur.cle == "llamacpp":
+        # « llama serve » est la forme actuelle ; les paquets de distribution
+        # livrent encore « llama-server », d'où le repli. Le dépôt et la
+        # quantification tiennent en UNE référence : « -hf » attend
+        # « <compte>/<dépôt>[:quant] » et refuse un nom de fichier accolé.
+        lance = (
+            f"llama serve -hf {shlex.quote(reference)}"
+            f" --port {moteur.port} --ctx-size {contexte} --jinja"
+        )
+        repli = lance.replace("llama serve", "llama-server", 1)
+        interne = shlex.quote(f"{lance} || {repli}")
         return (
-            "sh -c 'nohup llama-server -hf "
-            f"{shlex.quote(reference)} --port {moteur.port} "
-            f"--ctx-size {contexte} --jinja "
-            '>"$HOME/.apertus-llamacpp.log" 2>&1 & sleep 3\'',
+            "sh -c "
+            + shlex.quote(
+                moteur.prefixe
+                + f"nohup sh -c {interne}"
+                + ' >"$HOME/.apertus-llamacpp.log" 2>&1 & sleep 3'
+            ),
             f"curl -fsS http://127.0.0.1:{moteur.port}/health >/dev/null",
         )
     if moteur.cle == "localai":
@@ -417,12 +459,27 @@ def _service(moteur: Moteur, modele: Modele) -> tuple[str, str]:
     )
 
 
+# Nombre de sondes d'attente et délai entre deux, pour un moteur qui tire le
+# modèle à son premier lancement. Le produit borne l'attente à dix minutes.
+#
+# Une attente FIXE ne peut pas marcher ici : un modèle déjà en cache se charge
+# en quelques secondes, un premier téléchargement de plusieurs gigaoctets prend
+# des minutes, et le moteur répond 503 tant qu'il n'a pas fini. Un modèle d'un
+# demi-milliard de paramètres DÉJÀ téléchargé met une huitaine de secondes à
+# charger : c'est déjà plus qu'une attente de cinq secondes, et le plus petit
+# cas possible.
+ATTENTE_SONDES = 120
+ATTENTE_DELAI = 5
+
+
 def _tirer(moteur: Moteur, modele: Modele) -> tuple[str, str]:
     """La commande qui rapatrie les poids, et son test de complétion.
 
-    Seul Ollama sépare le téléchargement du service ; les trois autres
-    tirent le modèle au premier lancement, et l'étape se réduit alors à
-    constater que le moteur l'annonce.
+    Seul Ollama sépare le téléchargement du service. Les trois autres tirent
+    le modèle à leur premier lancement, et l'étape devient une ATTENTE : on
+    sonde jusqu'à ce que le moteur annonce le modèle, parce qu'il répond 503
+    pendant tout le chargement et qu'aucune durée fixe ne couvre à la fois un
+    cache chaud et un téléchargement neuf.
     """
     reference = modele.reference[moteur.cle]
     if moteur.cle == "ollama":
@@ -432,9 +489,13 @@ def _tirer(moteur: Moteur, modele: Modele) -> tuple[str, str]:
         )
     atteste = (
         f"curl -fsS http://127.0.0.1:{moteur.port}{moteur.chemin}/models"
-        " | grep -qi apertus"
+        " 2>/dev/null | grep -qi apertus"
     )
-    return (f"sh -c 'sleep 5; {atteste}'", atteste)
+    attente = (
+        f"for _ in $(seq 1 {ATTENTE_SONDES}); do "
+        f"{atteste} && exit 0; sleep {ATTENTE_DELAI}; done; exit 1"
+    )
+    return ("sh -c " + shlex.quote(attente), "sh -c " + shlex.quote(atteste))
 
 
 def etapes(moteur_cle: str, modele_cle: str, cible: dict) -> list[Etape]:
@@ -476,7 +537,7 @@ def etapes(moteur_cle: str, modele_cle: str, cible: dict) -> list[Etape]:
             cle="paquet",
             label="Install the engine",
             commande=_INSTALLE[moteur.cle](),
-            deja_fait=f"command -v {moteur.binaire} >/dev/null 2>&1",
+            deja_fait=moteur.presence,
         ),
         Etape(
             cle="version",
