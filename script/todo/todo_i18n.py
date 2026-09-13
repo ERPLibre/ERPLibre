@@ -12389,6 +12389,10 @@ TRANSLATIONS = {
             " one from your own OAuth registration"
         ),
     },
+    "mail_err_server_search_failed": {
+        "fr": "le serveur a refusé la recherche :",
+        "en": "the server refused the search:",
+    },
     "mail_err_token_refused": {
         "fr": "jeton refusé par",
         "en": "token refused by",

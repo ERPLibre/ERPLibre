@@ -313,7 +313,7 @@ class SandboxMessage:
         raise TypeError("le bac à sable ne sert pas de sous-partie")
 
 
-@implementer(imap4.IMailbox, imap4.IMailboxInfo)
+@implementer(imap4.IMailbox, imap4.IMailboxInfo, imap4.ISearchableMailbox)
 class SandboxMailbox:
     def __init__(self, name: str, uidvalidity: int = 42):
         self.name = name
@@ -321,6 +321,83 @@ class SandboxMailbox:
         self.messages: list[SandboxMessage] = []
         self.listeners: list = []
         self.appended: list[tuple[bytes, tuple]] = []
+
+    # -- recherche --------------------------------------------------------
+
+    # Les clés que ce bac à sable connaît, et ce sur quoi chacune porte.
+    # `None` veut dire « le message entier », en-têtes compris.
+    CLES_RECHERCHE = {
+        b"TEXT": None,
+        b"BODY": b"",
+        b"SUBJECT": b"subject",
+        b"FROM": b"from",
+        b"TO": b"to",
+        b"CC": b"cc",
+    }
+
+    def search(self, query, uid=0):
+        """Répond à SEARCH pour les clés que le client emploie.
+
+        `UID` en fait partie, et ce n'est pas un détail : la passe de
+        synchronisation demande `UID <n>:*` à chaque dossier. Déclarer la
+        boîte cherchable prend en charge TOUTES les recherches, celle-là
+        comprise — la refuser couperait la synchronisation entière.
+
+        Twisted délègue la recherche à la boîte quand celle-ci se déclare
+        `ISearchableMailbox`, et ne le fait lui-même que sinon — or son
+        chemin de repli compare des `bytes` à des `str` : il ne trouve
+        jamais rien, et lève sur `SUBJECT`. Un bac à sable qui répond « rien
+        » à toute recherche ferait passer un client qui n'envoie rien.
+
+        La comparaison est une sous-chaîne insensible à la casse sur les
+        octets du message, ce que fait un serveur ordinaire. Une clé
+        inconnue LÈVE plutôt que de ne rien trouver : un test qui enverrait
+        une requête que ce bac à sable ne sait pas lire doit le dire.
+        """
+        if not query:
+            return []
+        cle = bytes(query[0]).upper()
+        if cle == b"UID":
+            return self._search_uid(bytes(query[1]), uid)
+        if cle not in self.CLES_RECHERCHE:
+            raise imap4.IllegalQueryError(query)
+        terme = bytes(query[1]).lower() if len(query) > 1 else b""
+        champ = self.CLES_RECHERCHE[cle]
+        trouves = []
+        for index, message in enumerate(self.messages, start=1):
+            if terme in self._portion(message, champ).lower():
+                trouves.append(message.getUID() if uid else index)
+        return trouves
+
+    def _search_uid(self, plage: bytes, uid: int) -> list:
+        """Les messages dont l'UID tombe dans `plage` (`2:*`, `1,4`, ...).
+
+        `parseIdList` connaît la grammaire des ensembles IMAP ; la réécrire
+        ici ferait diverger le bac à sable de ce qu'un serveur accepte.
+        `last` lui dit à quoi `*` correspond — sans ce repère, une plage
+        ouverte ne contiendrait rien.
+        """
+        dernier = self.messages[-1].getUID() if self.messages else 0
+        ensemble = imap4.parseIdList(plage, dernier)
+        return [
+            (message.getUID() if uid else index)
+            for index, message in enumerate(self.messages, start=1)
+            if message.getUID() in ensemble
+        ]
+
+    def _portion(self, message, champ) -> bytes:
+        """Les octets sur lesquels une clé porte."""
+        brut = message.raw
+        if champ is None:
+            return brut
+        entete, _, corps = brut.partition(b"\r\n\r\n")
+        if champ == b"":
+            return corps
+        for ligne in entete.split(b"\r\n"):
+            nom, _, valeur = ligne.partition(b":")
+            if nom.strip().lower() == champ:
+                return valeur
+        return b""
 
     # -- écriture par le test -------------------------------------------
 
