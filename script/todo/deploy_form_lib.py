@@ -363,6 +363,105 @@ def disk_note(plan_gb, free_gb, total_gb=0) -> str:
     return f"~{plan_gb} G / {free_gb} G {t('free of')} {total_gb} G"
 
 
+def motifs_hors_ligne(vms):
+    """Ce qu'une coupure fera échouer, en phrases, ou [] si rien ne manque.
+
+    Les deux formulaires la partagent : une VM privée de réseau échoue de la
+    même façon quel que soit l'hyperviseur qui la porte, et deux copies de ce
+    texte divergeraient au premier ajustement.
+
+    Trois verdicts se complètent, et un seul avertissement les porte — deux
+    confirmations d'affilée apprendraient à les enchaîner sans les lire.
+    L'appelant ajoute sa propre invite à confirmer.
+    """
+    from script.qemu import cache_offline
+
+    absentes = cache_offline.suites_absentes(vms)
+    # Le verdict par suite se tait dès qu'UNE url est en réserve : il ne voit
+    # pas « restricted » ou « -security » absents, qui font pourtant échouer
+    # l'installation sur « Unable to locate package », vingt minutes plus tard.
+    composants = cache_offline.composants_absents(vms)
+    # Ce que les derniers déploiements hors ligne des MÊMES VM ont manqué,
+    # moins ce que le cache détient depuis.
+    manques = cache_offline.manques_hors_ligne(vms)
+    if not (absentes or composants or manques):
+        return []
+
+    motifs = []
+    if absentes:
+        quoi = ", ".join(f"{d} {v}" for d, v in absentes)
+        motifs.append(
+            t("cache holds nothing for")
+            + f" {quoi} — "
+            + t("an offline VM will fail")
+        )
+    for distro, version, manque in composants:
+        # Trois au plus : la liste entière tiendrait douze entrées et
+        # personne ne lirait la douzième.
+        exemples = ", ".join(manque[:3])
+        if len(manque) > 3:
+            exemples += f" (+{len(manque) - 3})"
+        motifs.append(
+            t("cache holds no index for")
+            + f" {distro} {version} : {exemples} — "
+            + t("those packages will not be found")
+        )
+    for b in manques:
+        heures = int(b["age"] // 3600)
+        if heures < 1:
+            age = f"{int(b['age'] // 60)} min"
+        elif heures < 72:
+            age = f"{heures} h"
+        else:
+            age = f"{heures // 24} " + t("days")
+        # « au moins » : l'installation s'arrête au premier manque fatal, ce
+        # qui suivait n'a pas été demandé.
+        motif = (
+            t("the last offline run of")
+            + f" {b['nom']} ("
+            + t("age:")
+            + f" {age}) "
+            + t("lacked at least")
+            + f" {len(b['manquants'])} "
+            + t("addresses")
+        )
+        # Nommés à part : ils ne se comblent pas par l'entrée « Combler ».
+        # Une négociation git se remplit par le miroir, dépôt par dépôt ; le
+        # reste est nommé par sa méthode, un GET que le cache ne garde pas
+        # n'étant pas un POST.
+        extras = []
+        if b.get("git"):
+            extras.append(
+                f"+{len(b['git'])} "
+                + t(
+                    "git repositories not mirrored: fill"
+                    " them from entry 5 of the cache menu"
+                )
+            )
+        if b["jamais"]:
+            methodes = sorted({m.upper() for m, _u in b["jamais"]})
+            extras.append(
+                f"+{len(b['jamais'])} "
+                + t("requests the cache never keeps:")
+                + " "
+                + ", ".join(methodes)
+            )
+        if extras:
+            motif += " (" + "; ".join(extras) + ")"
+        if b["selon_journal"]:
+            motif += ", " + t(
+                "according to the log: a purge can make it wrong"
+            )
+        motifs.append(motif)
+    if manques:
+        exemples = [url for b in manques for _m, url in b["manquants"]][:3]
+        motifs.append(t("e.g.") + " " + ", ".join(exemples))
+        motifs.append(
+            t("fill them from Cache › Fill what offline runs lacked")
+        )
+    return motifs
+
+
 def plan_totals(rows):
     """Totaux des VM RÉELLEMENT créées (les existantes ne consomment rien de
     neuf) : (nb, vcpus, ram_mo, disque_go)."""

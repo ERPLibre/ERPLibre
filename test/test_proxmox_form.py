@@ -621,6 +621,72 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
             )
 
 
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLePreVolDuCacheSurProxmox(unittest.TestCase):
+    """Ce que le cache ne détient pas, aucune VM coupée ne le lira.
+
+    Le formulaire libvirt le dit depuis toujours ; celui de Proxmox partait
+    sans rien vérifier, et l'échec tombait une heure plus tard, à la pose du
+    bureau — un message qui accuse le dépôt, jamais le cache. F5 à nouveau
+    vaut passage outre : le journal peut avoir tourné, ou le magasin avoir
+    été rempli autrement.
+    """
+
+    def _deployer(self, absentes=(), hors_ligne=True):
+        """Deux F5 d'affilée. Rend ce que la spec valait après chacun."""
+        import asyncio
+        from unittest import mock
+
+        from script.qemu import cache_offline
+
+        ctx = contexte()
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import Checkbox, SelectionList
+
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                liste.select(liste.get_option_at_index(0).value)
+                await pilote.pause()
+                if hors_ligne:
+                    app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                app.action_deploy()
+                vu["premier"] = getattr(app, "result", None)
+                app.action_deploy()
+                vu["second"] = getattr(app, "result", None)
+
+        with mock.patch.object(
+            cache_offline, "suites_absentes", return_value=list(absentes)
+        ), mock.patch.object(
+            cache_offline, "composants_absents", return_value=[]
+        ), mock.patch.object(
+            cache_offline, "manques_hors_ligne", return_value=[]
+        ):
+            asyncio.run(scenario())
+        return vu
+
+    def test_le_premier_f5_avertit_au_lieu_de_partir(self):
+        vu = self._deployer(absentes=[("ubuntu", "26.04")])
+        self.assertFalse(vu["premier"], "parti sans rien dire du manque")
+        self.assertTrue(vu["second"], "le second F5 ne passe pas outre")
+
+    def test_un_magasin_complet_ne_retarde_personne(self):
+        """Un avertissement qui tombe quand rien ne manque s'apprend par
+        cœur, et c'est ainsi qu'on cesse de le lire."""
+        vu = self._deployer(absentes=[])
+        self.assertTrue(vu["premier"], "avertissement sans manque")
+
+    def test_en_ligne_le_pre_vol_ne_se_pose_pas(self):
+        """Le cache n'est qu'un raccourci tant que l'amont répond : ce qui
+        lui manque se télécharge, et rien n'échoue."""
+        vu = self._deployer(absentes=[("ubuntu", "26.04")], hors_ligne=False)
+        self.assertTrue(vu["premier"], "le pré-vol s'est posé hors coupure")
+
+
 class TestLeHorsLigneSurProxmox(unittest.TestCase):
     """La coupure d'amont, offerte sur Proxmox VE comme sur QEMU/KVM.
 

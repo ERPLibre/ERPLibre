@@ -34,6 +34,7 @@ from script.todo.deploy_form_lib import (
     disk_note,
     entry_key,
     gib,
+    motifs_hors_ligne,
     plan_rows,
     plan_totals,
     res_row_widgets,
@@ -1076,6 +1077,23 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if not spec["vms"]:
                 self.notify(t("Nothing to deploy."), severity="warning")
                 return
+            # Hors ligne : ce que le cache ne détient pas, aucune VM ne
+            # pourra le lire, et une VM Proxmox échoue aussi loin de son
+            # lancement qu'une VM libvirt — à la pose du bureau, une heure
+            # plus tard. F5 à nouveau vaut passage outre : le journal peut
+            # avoir tourné, ou le magasin avoir été rempli autrement.
+            if spec.get("offline") and not getattr(
+                self, "_offline_ack", False
+            ):
+                motifs = motifs_hors_ligne(spec["vms"])
+                if motifs:
+                    self._offline_ack = True
+                    self.notify(
+                        " — ".join(motifs + [t("press F5 again to confirm")]),
+                        severity="error",
+                        timeout=20,
+                    )
+                    return
             if not spec["storage"]:
                 self.notify(
                     t("No storage able to hold a VM disk."), severity="error"
