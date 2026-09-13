@@ -574,6 +574,11 @@ class TODO(
         "_agents_disque": "Disk",
         "_agents_mcp": "MCP",
         "prompt_assistant_llm": "LLM",
+        "_apertus_menu": "Apertus",
+        "_apertus_cible": "Target",
+        "_apertus_moteur": "Engine",
+        "_apertus_modele": "Model",
+        "_apertus_reprise": "Resume",
         "_llm_servers": "Servers",
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
@@ -697,6 +702,22 @@ class TODO(
                 ("tui", "TUI, collapsible blocks per VM"),
             ),
         ),
+        "chat_ui": (
+            "Chat interface",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
+        "apertus_progress": (
+            "Display while installing Apertus",
+            (
+                ("ask", "Ask every time"),
+                ("tui", "TUI form"),
+                ("cli", "Classic questions (line by line)"),
+            ),
+        ),
         "migration_ui": (
             "Odoo migration interface",
             (
@@ -759,6 +780,18 @@ class TODO(
                         f"({self._pref_label('migration_ui')})"
                     )
                 },
+                {
+                    "prompt_description": (
+                        f"{t('Display while installing Apertus')}  "
+                        f"({self._pref_label('apertus_progress')})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Chat interface')}  "
+                        f"({self._pref_label('chat_ui')})"
+                    )
+                },
                 {"section": t("Maintenance")},
                 {"prompt_description": t("Reset all preferences")},
             ]
@@ -775,6 +808,10 @@ class TODO(
             elif status == "4":
                 self._pref_edit("migration_ui")
             elif status == "5":
+                self._pref_edit("apertus_progress")
+            elif status == "6":
+                self._pref_edit("chat_ui")
+            elif status == "7":
                 n = todo_prefs.reset()
                 print(f"✅ {t('Preferences reset')} ({n})")
             else:

@@ -13203,6 +13203,225 @@ TRANSLATIONS = {
     # « models », « still waiting for » et « Type an address » servent aussi
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
+    # Apertus (script/todo/assistant_menu.py, script/todo/assistant/apertus*.py).
+    # Les libellés d'étape servent AUSSI de clé de reprise côté
+    # `apertus.py` : les renommer invalide les progressions gardées.
+    "Display while installing Apertus": {
+        "fr": "Affichage pendant l'installation d'Apertus",
+        "en": "Display while installing Apertus",
+    },
+    "Save the conversation": {
+        "fr": "Sauver la conversation",
+        "en": "Save the conversation",
+    },
+    "New conversation": {
+        "fr": "Nouvelle conversation",
+        "en": "New conversation",
+    },
+    "Chat interface": {
+        "fr": "Interface de la conversation",
+        "en": "Chat interface",
+    },
+    "Apertus (open LLM)": {
+        "fr": "Apertus (LLM ouvert)",
+        "en": "Apertus (open LLM)",
+    },
+    "local model answering on :11434, no account": {
+        "fr": "modèle local qui répond sur :11434, sans compte",
+        "en": "local model answering on :11434, no account",
+    },
+    "%s tokens of context": {
+        "fr": "%s jetons de contexte",
+        "en": "%s tokens of context",
+    },
+    "Apertus - The open LLM, here or on a server": {
+        "fr": "🇨🇭 Apertus - Le LLM ouvert, ici ou sur un serveur",
+        "en": "🇨🇭 Apertus - The open LLM, here or on a server",
+    },
+    "Apertus, the open LLM of the Swiss Confederation.": {
+        "fr": "Apertus, le LLM ouvert de la Confédération suisse.",
+        "en": "Apertus, the open LLM of the Swiss Confederation.",
+    },
+    "Understand": {
+        "fr": "📖 Comprendre",
+        "en": "📖 Understand",
+    },
+    "Prepare": {
+        "fr": "🎯 Préparer",
+        "en": "🎯 Prepare",
+    },
+    "Use": {
+        "fr": "💬 Utiliser",
+        "en": "💬 Use",
+    },
+    "Guide - what Apertus is, and how to use it": {
+        "fr": "📖 Guide - ce qu'est Apertus, et comment s'en servir",
+        "en": "📖 Guide - what Apertus is, and how to use it",
+    },
+    "Target - the machine to install on": {
+        "fr": "🎯 Cible - la machine où installer",
+        "en": "🎯 Target - the machine to install on",
+    },
+    "Engine - how to serve the model": {
+        "fr": "⚙️ Moteur - comment servir le modèle",
+        "en": "⚙️ Engine - how to serve the model",
+    },
+    "Model - full 8B, or distilled Mini": {
+        "fr": "🧠 Modèle - 8B complet, ou Mini distillé",
+        "en": "🧠 Model - full 8B, or distilled Mini",
+    },
+    "Install or resume": {
+        "fr": "📦 Installer ou reprendre",
+        "en": "📦 Install or resume",
+    },
+    "Check and keep the server": {
+        "fr": "🩺 Vérifier et retenir le serveur",
+        "en": "🩺 Check and keep the server",
+    },
+    "Chat with the model": {
+        "fr": "💬 Discuter avec le modèle",
+        "en": "💬 Chat with the model",
+    },
+    "Uninstall": {
+        "fr": "🧹 Désinstaller",
+        "en": "🧹 Uninstall",
+    },
+    "never run": {
+        "fr": "jamais lancé",
+        "en": "never run",
+    },
+    "installed on %s": {
+        "fr": "installé le %s",
+        "en": "installed on %s",
+    },
+    "step %s/%s - failed": {
+        "fr": "étape %s/%s - échec",
+        "en": "step %s/%s - failed",
+    },
+    "no target chosen": {
+        "fr": "aucune cible choisie",
+        "en": "no target chosen",
+    },
+    "Where should I install Apertus?": {
+        "fr": "Où installer Apertus ?",
+        "en": "Where should I install Apertus?",
+    },
+    "Which engine should serve the model?": {
+        "fr": "Quel moteur doit servir le modèle ?",
+        "en": "Which engine should serve the model?",
+    },
+    "Which model?": {
+        "fr": "Quel modèle ?",
+        "en": "Which model?",
+    },
+    "Run these %s steps?": {
+        "fr": "Lancer ces %s étapes ?",
+        "en": "Run these %s steps?",
+    },
+    "Step %s/%s (%s) failed with code %s.": {
+        "fr": "L'étape %s/%s (%s) a échoué, code %s.",
+        "en": "Step %s/%s (%s) failed with code %s.",
+    },
+    "Resume at step %s": {
+        "fr": "▶️ Reprendre à l'étape %s",
+        "en": "▶️ Resume at step %s",
+    },
+    "Start over": {
+        "fr": "🔄 Tout recommencer",
+        "en": "🔄 Start over",
+    },
+    "See the full last output": {
+        "fr": "📜 Voir la dernière sortie complète",
+        "en": "📜 See the full last output",
+    },
+    "%s/%s steps, %s elapsed, %s attempts.": {
+        "fr": "%s/%s étapes, %s écoulées, %s tentatives.",
+        "en": "%s/%s steps, %s elapsed, %s attempts.",
+    },
+    "Last error: %s": {
+        "fr": "Dernière erreur : %s",
+        "en": "Last error: %s",
+    },
+    "Interrupted install on %s.": {
+        "fr": "Installation interrompue le %s.",
+        "en": "Interrupted install on %s.",
+    },
+    "Apertus answers on this target.": {
+        "fr": "✅ Apertus répond sur cette cible.",
+        "en": "✅ Apertus answers on this target.",
+    },
+    "%s %s is too old; Apertus needs %s (xIELU activation).": {
+        "fr": "%s %s est trop ancien ; Apertus exige %s (activation xIELU).",
+        "en": "%s %s is too old; Apertus needs %s (xIELU activation).",
+    },
+    "Not enough space: %s needed, %s free.": {
+        "fr": "Place insuffisante : %s requis, %s libres.",
+        "en": "Not enough space: %s needed, %s free.",
+    },
+    "This host needs an interactive sudo password.": {
+        "fr": "Cet hôte exige un mot de passe sudo interactif.",
+        "en": "This host needs an interactive sudo password.",
+    },
+    "Full 8B - 65536 tokens of context": {
+        "fr": "8B complet - 65536 jetons de contexte",
+        "en": "Full 8B - 65536 tokens of context",
+    },
+    "Distilled Mini - lighter, 4096 tokens only": {
+        "fr": "Mini distillé - plus léger, 4096 jetons seulement",
+        "en": "Distilled Mini - lighter, 4096 tokens only",
+    },
+    "No official GGUF exists; this build is community-made.": {
+        "fr": "Aucun GGUF officiel n'existe ; cette version est communautaire.",
+        "en": "No official GGUF exists; this build is community-made.",
+    },
+    "Apertus is not installed on this target.": {
+        "fr": "Apertus n'est pas installé sur cette cible.",
+        "en": "Apertus is not installed on this target.",
+    },
+    "Retype the target in full to remove it": {
+        "fr": "Retapez la cible en entier pour la retirer",
+        "en": "Retype the target in full to remove it",
+    },
+    "Removed.": {
+        "fr": "Retiré.",
+        "en": "Removed.",
+    },
+    "Reach the target": {
+        "fr": "Atteindre la cible",
+        "en": "Reach the target",
+    },
+    "Check sudo": {
+        "fr": "Vérifier sudo",
+        "en": "Check sudo",
+    },
+    "Check free space": {
+        "fr": "Vérifier la place disque",
+        "en": "Check free space",
+    },
+    "Install the engine": {
+        "fr": "Installer le moteur",
+        "en": "Install the engine",
+    },
+    "Check the engine version": {
+        "fr": "Vérifier la version du moteur",
+        "en": "Check the engine version",
+    },
+    "Start the service": {
+        "fr": "Démarrer le service",
+        "en": "Start the service",
+    },
+    "Pull the model": {
+        "fr": "Tirer le modèle",
+        "en": "Pull the model",
+    },
+    "Check it listens": {
+        "fr": "Vérifier qu'il écoute",
+        "en": "Check it listens",
+    },
+    "Check it answers": {
+        "fr": "Vérifier qu'il répond",
+        "en": "Check it answers",
+    },
 }
 
 

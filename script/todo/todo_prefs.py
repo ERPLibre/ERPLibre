@@ -28,6 +28,13 @@ DEFAULTS = {
     # Affichage pendant le déploiement : "cli" (sortie texte, facile à copier
     # depuis le terminal) ou "tui" (blocs repliables + copie OSC 52).
     "qemu_deploy_progress": "cli",
+    # Affichage pendant l'installation d'Apertus : "cli" (sortie texte,
+    # facile à copier) ou "tui" (une étape par bloc). "ask" demande.
+    "apertus_progress": "ask",
+    # Interface de la conversation avec un modèle : "cli" garde les tours
+    # en ligne, faciles à copier depuis le terminal ; "tui" ouvre un écran
+    # où la réponse se peint à mesure et s'annule sans attendre sa fin.
+    "chat_ui": "ask",
     # Interface de la migration Odoo : "ask" / "tui" / "cli".
     "migration_ui": "ask",
     # Balayage de découverte des serveurs LLM : connexions en vol. Sert

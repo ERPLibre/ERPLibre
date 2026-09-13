@@ -264,6 +264,15 @@ class AssistantMenuMixin:
                 }
             )
             actions.append(self.prompt_assistant_llm)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Apertus - The open LLM, here or on a server')}"
+                        f"  ({self._apertus_label()})"
+                    )
+                }
+            )
+            actions.append(self._apertus_menu)
             choices.append({"prompt_description": self._llm_gpt_label()})
             actions.append(self._llm_gpt_catalogue)
             choices.append({"section": t("Measure")})
@@ -2257,3 +2266,672 @@ class AssistantMenuMixin:
         with os.fdopen(os.open(chemin, drapeaux, 0o600), "w") as fichier:
             fichier.write(conversation.transcript())
         print(f"✅ {t('Conversation written to')} {chemin}")
+
+    # ------------------------------------------------------------------
+    # Apertus : installer un LLM ouvert, ici ou sur une autre machine.
+    # ------------------------------------------------------------------
+
+    def _apertus_state(self):
+        """Les choix de la session : cible, moteur, modèle.
+
+        Vit sur l'instance. Seule la PROGRESSION d'une installation descend
+        sur le disque, et elle descend hors du dépôt.
+        """
+        if getattr(self, "_apertus_session", None) is None:
+            from script.todo.assistant import apertus as apt
+
+            self._apertus_session = {
+                "cible": {
+                    "kind": "local",
+                    "destination": "",
+                    "host": "127.0.0.1",
+                    "label": t("Here (127.0.0.1)"),
+                },
+                "moteur": apt.MOTEUR_DEFAUT,
+                "modele": apt.MODELE_DEFAUT,
+            }
+        return self._apertus_session
+
+    @staticmethod
+    def _apertus_cle(cible):
+        """La clé durable d'une cible dans le fichier de progression.
+
+        La destination elle-même, parce qu'elle ne bouge pas. La poignée
+        « server-N » du registre ne peut pas servir : elle se rattribue par
+        rang à chaque chargement, et supprimer un voisin ferait hériter une
+        machine de la progression d'une autre.
+        """
+        return cible.get("destination") or "local"
+
+    @staticmethod
+    def _apertus_duree(secondes):
+        """Une durée en minutes et secondes, sans mot à traduire."""
+        secondes = int(secondes or 0)
+        return f"{secondes // 60}:{secondes % 60:02d}"
+
+    @staticmethod
+    def _apertus_gio(octets):
+        """Des octets en gigaoctets, à une décimale."""
+        return f"{(octets or 0) / 1024 ** 3:.1f} Go"
+
+    def _apertus_label(self):
+        """Le suffixe de l'entrée du menu : où en est l'installation."""
+        from script.todo.assistant import apertus_state as apt_state
+
+        state = self._apertus_state()
+        cle = self._apertus_cle(state["cible"])
+        etat = apt_state.lire(cle)
+        modele = apt_state.resume(cle)
+        if modele == "step %s/%s - failed":
+            return t(modele) % (
+                etat.get("etape_faite", 0),
+                etat.get("etapes_total", 0),
+            )
+        if modele == "installed on %s":
+            return t(modele) % (etat.get("fin", "") or "")[:10]
+        return t(modele)
+
+    def _apertus_menu(self):
+        """L'écran d'Apertus : comprendre, préparer, installer, s'en servir."""
+        from script.todo.assistant import apertus as apt
+
+        print(f"🇨🇭 {t('Apertus, the open LLM of the Swiss Confederation.')}")
+        while True:
+            state = self._apertus_state()
+            moteur = apt.MOTEURS[state["moteur"]]
+            modele = apt.MODELES[state["modele"]]
+            choices = [
+                {"section": t("Understand")},
+                {
+                    "prompt_description": t(
+                        "Guide - what Apertus is, and how to use it"
+                    )
+                },
+                {"section": t("Prepare")},
+                {
+                    "prompt_description": (
+                        f"{t('Target - the machine to install on')}"
+                        f"  ({state['cible']['label']})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Engine - how to serve the model')}"
+                        f"  ({moteur.nom})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('Model - full 8B, or distilled Mini')}"
+                        f"  ({modele.nom})"
+                    )
+                },
+                {"section": t("Install")},
+                {
+                    "prompt_description": (
+                        f"{t('Install or resume')}  ({self._apertus_label()})"
+                    )
+                },
+                {"prompt_description": t("Check and keep the server")},
+                {"section": t("Use")},
+                {"prompt_description": t("Chat with the model")},
+                {"prompt_description": t("Uninstall")},
+            ]
+            actions = [
+                self._apertus_guide,
+                self._apertus_cible,
+                self._apertus_moteur,
+                self._apertus_modele,
+                self._apertus_installer,
+                self._apertus_verifier,
+                self._llm_conversation,
+                self._apertus_desinstaller,
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            try:
+                rang = int(status)
+            except ValueError:
+                print(t("Command not found !"))
+                continue
+            if 1 <= rang <= len(actions):
+                actions[rang - 1]()
+            else:
+                print(t("Command not found !"))
+
+    def _apertus_guide(self):
+        """Ce qu'est Apertus, en quelques lignes, et où lire le reste.
+
+        Le menu dit le strict nécessaire pour choisir ; le guide complet vit
+        dans la documentation, qui se relit sans lancer le CLI.
+        """
+        from script.todo.assistant import apertus as apt
+
+        print("🇨🇭 Apertus — EPFL, ETH Zurich, CSCS — Apache-2.0")
+        print(
+            f"   {t('No official GGUF exists; this build is community-made.')}"
+        )
+        print("   https://apertus-ai.org/")
+        print()
+        for cle, modele in apt.MODELES.items():
+            marque = "🪶" if modele.distille else "🧠"
+            print(
+                f"  {marque} {cle:10} {modele.nom}\n"
+                f"     {modele.depot}\n"
+                f"     {self._apertus_gio(modele.taille)},"
+                f" {modele.contexte} ⇢ {apt.contexte_utile(modele)}"
+            )
+        print()
+        for cle, moteur in apt.MOTEURS.items():
+            print(
+                f"  ⚙️  {cle:10} {moteur.nom:10} {moteur.licence:11}"
+                f" :{moteur.port}{moteur.chemin}  ≥ {moteur.version_min}"
+            )
+        print()
+        print("  📖 doc/APERTUS.md · doc/APERTUS.fr.md")
+
+    def _apertus_cible(self):
+        """Où installer : ici, une VM libvirt, un hôte ssh, une adresse tapée.
+
+        Les énumérateurs sont ceux du balayage des serveurs — le résolveur
+        d'adresse de VM est celui qui ne patiente pas, une VM éteinte suffit
+        sinon à tenir le menu plusieurs minutes.
+        """
+        from script.todo.assistant import discover as llm_disc
+
+        vms = llm_disc.qemu_hosts(
+            list_domains=self._qemu_list_domains,
+            vm_ip=self._qemu_vm_ip_now,
+        )
+        hotes = llm_disc.ssh_hosts(
+            list_aliases=self._ssh_config_hosts,
+            resolve=self._ssh_resolve,
+        )
+        choices = [{"prompt_description": t("Here (127.0.0.1)")}]
+        cibles = [
+            {
+                "kind": "local",
+                "destination": "",
+                "host": "127.0.0.1",
+                "label": t("Here (127.0.0.1)"),
+            }
+        ]
+        for nom, adresse in vms:
+            if not adresse:
+                continue
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('The QEMU VMs of this machine (virsh)')}"
+                        f"  {nom}"
+                    )
+                }
+            )
+            cibles.append(
+                {
+                    "kind": "ssh",
+                    "destination": adresse,
+                    "host": adresse,
+                    "label": nom,
+                }
+            )
+        for alias, hote, _port in hotes:
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('The hosts of ~/.ssh/config')}  {alias}"
+                    )
+                }
+            )
+            cibles.append(
+                {
+                    "kind": "ssh",
+                    "destination": alias,
+                    "host": hote or alias,
+                    "label": alias,
+                }
+            )
+        choices.append({"prompt_description": t("An address I type")})
+        print(t("Where should I install Apertus?"))
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(cibles):
+            self._apertus_state()["cible"] = cibles[rang - 1]
+            return
+        if rang != len(cibles) + 1:
+            print(t("Command not found !"))
+            return
+        try:
+            saisie = click.prompt(t("Host or IP")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not saisie:
+            print(t("Cancelled."))
+            return
+        self._apertus_state()["cible"] = {
+            "kind": "ssh",
+            "destination": saisie,
+            "host": saisie,
+            "label": saisie,
+        }
+
+    def _apertus_moteur(self):
+        """Quel logiciel sert le modèle. Les quatre sont sous licence libre."""
+        from script.todo.assistant import apertus as apt
+
+        cles = list(apt.MOTEURS)
+        choices = [
+            {
+                "prompt_description": (
+                    f"{apt.MOTEURS[c].nom}  ({apt.MOTEURS[c].licence},"
+                    f" :{apt.MOTEURS[c].port}, ≥ {apt.MOTEURS[c].version_min})"
+                )
+            }
+            for c in cles
+        ]
+        print(t("Which engine should serve the model?"))
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(cles):
+            self._apertus_state()["moteur"] = cles[rang - 1]
+        else:
+            print(t("Command not found !"))
+
+    def _apertus_modele(self):
+        """Le 8B complet, ou un Mini distillé.
+
+        La distillation se paie en contexte : les Mini plafonnent à 4096
+        jetons là où le 8B en accepte 65536. Le libellé le porte, parce que
+        c'est la surprise que le choix réserve.
+        """
+        from script.todo.assistant import apertus as apt
+
+        cles = list(apt.MODELES)
+        choices = []
+        for c in cles:
+            modele = apt.MODELES[c]
+            note = (
+                t("Distilled Mini - lighter, 4096 tokens only")
+                if modele.distille
+                else t("Full 8B - 65536 tokens of context")
+            )
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{modele.nom}  ({self._apertus_gio(modele.taille)}"
+                        f" · {note})"
+                    )
+                }
+            )
+        print(t("Which model?"))
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        print()
+        if status == "0":
+            return
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return
+        if 1 <= rang <= len(cles):
+            self._apertus_state()["modele"] = cles[rang - 1]
+        else:
+            print(t("Command not found !"))
+
+    def _apertus_ask_ui(self):
+        """TUI ou invites en ligne, demandé une fois puis mémorisé.
+
+        La préférence répond pour l'utilisateur qui a tranché ; « ask » pose
+        la question à chaque installation.
+        """
+        from script.todo import todo_prefs
+
+        choisi = todo_prefs.get("apertus_progress")
+        if choisi in ("tui", "cli"):
+            return choisi
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')}")
+        print(f"  [2] {t('Classic questions (line by line)')} *")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        return (
+            "tui"
+            if input(t("Choice (1-2, default 1): ")).strip() == "1"
+            else "cli"
+        )
+
+    def _apertus_jouer(self, liste, cle, depart, moteur_cle):
+        """Joue les étapes à partir de `depart`, et s'arrête à la première
+        qui échoue.
+
+        Rend le rang de l'étape en échec, ou 0 si tout est passé. Une étape
+        dont le test de complétion répond déjà 0 est sautée : c'est ce qui
+        rend une reprise bon marché après un téléchargement réussi.
+
+        L'étape de version est la seule dont le CODE DE RETOUR ne suffit
+        pas : un moteur trop ancien répond 0 et annonce son numéro. La
+        comparaison se fait donc sur sa sortie, avant que le modèle ne se
+        télécharge.
+        """
+        from script.todo.assistant import apertus as apt
+        from script.todo.assistant import apertus_state as apt_state
+
+        debut = time.time()
+        total = len(liste)
+        for rang, etape in enumerate(liste, 1):
+            if rang < depart:
+                continue
+            print(f"\n  → {rang}/{total} {t(etape.label)}")
+            if etape.deja_fait:
+                fait, _ = self.execute.exec_command_live(
+                    etape.deja_fait,
+                    source_erplibre=False,
+                    quiet=True,
+                    return_status_and_output=True,
+                )
+                if fait == 0:
+                    apt_state.avancer(cle, rang, int(time.time() - debut))
+                    continue
+            code, sortie = self.execute.exec_command_live(
+                etape.commande,
+                source_erplibre=False,
+                return_status_and_output=True,
+            )
+            texte = "\n".join(sortie or [])
+            if code != 0:
+                if not etape.critique:
+                    print(f"  ⚠️  {t(etape.label)} — {code}")
+                    apt_state.avancer(cle, rang, int(time.time() - debut))
+                    continue
+                pourquoi = self._apertus_diagnostic(etape, moteur_cle, texte)
+                if pourquoi:
+                    print(f"⛔ {pourquoi}")
+                apt_state.noter_echec(cle, etape.cle, etape.label, code, texte)
+                print(
+                    "⛔ "
+                    + t("Step %s/%s (%s) failed with code %s.")
+                    % (rang, total, t(etape.label), code)
+                )
+                return rang
+            apt_state.avancer(cle, rang, int(time.time() - debut))
+        apt_state.terminer(cle, int(time.time() - debut))
+        return 0
+
+    def _apertus_diagnostic(self, etape, moteur_cle, texte):
+        """Ce qu'une étape en échec apprend à l'utilisateur.
+
+        Trois étapes échouent pour une raison qu'on peut nommer, et la
+        nommer évite d'avoir à lire la sortie brute : la version du moteur,
+        le sudo qui réclame un mot de passe, la place manquante. Les autres
+        rendent une chaîne VIDE — leur sortie est déjà à l'écran, et répéter
+        leur libellé sous la ligne qui le porte déjà n'ajoute rien.
+
+        Un moteur INTROUVABLE se distingue d'un moteur trop ancien : la
+        commande de version n'imprime alors aucun numéro, et annoncer une
+        version périmée enverrait chercher une mise à jour là où il n'y a
+        rien d'installé.
+        """
+        from script.todo.assistant import apertus as apt
+
+        if etape.cle == "version":
+            moteur = apt.MOTEURS[moteur_cle]
+            lignes = [x for x in (texte or "").strip().splitlines() if x]
+            if not lignes:
+                return f"{t('Binary not found at: ')}{moteur.binaire}"
+            return t(
+                "%s %s is too old; Apertus needs %s (xIELU activation)."
+            ) % (moteur.nom, lignes[-1][:40], moteur.version_min)
+        if etape.cle == "sudo":
+            return t("This host needs an interactive sudo password.")
+        if etape.cle == "place":
+            modele = apt.MODELES[self._apertus_state()["modele"]]
+            return t("Not enough space: %s needed, %s free.") % (
+                self._apertus_gio(apt.place_requise(modele)),
+                "?",
+            )
+        return ""
+
+    def _apertus_jouer_tui(self, liste, cle, depart):
+        """Le même jeu d'étapes, en plein écran.
+
+        Rend None quand l'écran plein ne peut pas s'ouvrir — bibliothèque
+        absente, terminal inapte. L'appelant retombe alors sur le rendu
+        texte, qui n'a pas de prérequis.
+        """
+        from script.todo import textual_setup
+        from script.todo.assistant import apertus_state as apt_state
+
+        if not textual_setup.ensure():
+            return None
+        try:
+            from script.todo.apertus_form import run_apertus_progress
+        except ImportError:
+            return None
+
+        def note(rang, etape_cle, code, texte, secondes):
+            if code == 0:
+                apt_state.avancer(cle, rang, secondes)
+            else:
+                apt_state.noter_echec(cle, etape_cle, etape_cle, code, texte)
+
+        echec = run_apertus_progress(liste, depart, on_step=note)
+        if not echec:
+            apt_state.terminer(cle)
+        return echec
+
+    def _apertus_reprise(self, ctx):
+        """L'écran d'une installation interrompue : ce qui est fait, ce qui a
+        cassé, et par où repartir.
+
+        Le dictionnaire reçu vient de `apertus.contexte_reprise`, qui ne fait
+        aucune entrée-sortie : le rendu texte et le rendu plein écran
+        décrivent donc forcément le même état.
+
+        Rend le rang de départ, ou None pour renoncer.
+        """
+        print(t("Interrupted install on %s.") % (ctx["debut"] or "?"))
+        print()
+        for etape in ctx["etapes"]:
+            print(
+                f"  {etape['icone']} {etape['rang']}" f" {t(etape['label'])}"
+            )
+        print()
+        print(
+            "  "
+            + t("%s/%s steps, %s elapsed, %s attempts.")
+            % (
+                ctx["faites"],
+                ctx["total"],
+                self._apertus_duree(ctx["secondes"]),
+                ctx["tentatives"],
+            )
+        )
+        if ctx["erreur"]:
+            print("  " + t("Last error: %s") % ctx["erreur"].strip()[-200:])
+        print()
+        choices = [
+            {
+                "prompt_description": (
+                    t("Resume at step %s") % ctx["reprise_a"]
+                )
+            },
+            {"prompt_description": t("Start over")},
+            {"prompt_description": t("See the full last output")},
+        ]
+        while True:
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return None
+            print()
+            if status == "0":
+                return None
+            if status == "1":
+                return ctx["reprise_a"]
+            if status == "2":
+                return 1
+            if status == "3":
+                print(ctx["erreur"] or t("Nothing to do."))
+                continue
+            print(t("Command not found !"))
+
+    def _apertus_installer(self):
+        """Installer Apertus sur la cible, ou reprendre une installation.
+
+        Le plan complet s'affiche AVANT la confirmation : tirer plusieurs
+        gigaoctets sur une machine qu'on ne possède pas se décide en voyant
+        les commandes, pas après.
+        """
+        from script.todo.assistant import apertus as apt
+        from script.todo.assistant import apertus_state as apt_state
+
+        state = self._apertus_state()
+        cible = state["cible"]
+        cle = self._apertus_cle(cible)
+        moteur = apt.MOTEURS[state["moteur"]]
+        modele = apt.MODELES[state["modele"]]
+        liste = apt.etapes(state["moteur"], state["modele"], cible)
+
+        depart = 1
+        if apt_state.a_reprendre(cle):
+            ctx = apt.contexte_reprise(apt_state.lire(cle), liste)
+            depart = self._apertus_reprise(ctx)
+            if depart is None:
+                return
+            if depart == 1:
+                apt_state.oublier(cle)
+            else:
+                apt_state.reprendre(cle)
+
+        print(f"{t('Target')} : {cible['label']}")
+        print(f"⚙️  {moteur.nom} ({moteur.licence})")
+        print(
+            f"🧠 {modele.nom} —"
+            f" {self._apertus_gio(modele.taille)},"
+            f" {t('%s tokens of context') % apt.contexte_utile(modele)}"
+        )
+        print(f"💾 {self._apertus_gio(apt.place_requise(modele))}")
+        print()
+        print(t("Will execute:"))
+        print(apt.plan_lisible(liste[depart - 1 :]))
+        print()
+        try:
+            reponse = click.prompt(
+                f"{t('Run these %s steps?') % (len(liste) - depart + 1)} (o/N)",
+                default="n",
+                show_default=False,
+            )
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not self._is_yes(reponse):
+            print(t("Cancelled."))
+            return
+
+        if depart == 1:
+            apt_state.commencer(
+                cle, state["moteur"], state["modele"], len(liste)
+            )
+        echec = None
+        if self._apertus_ask_ui() == "tui":
+            echec = self._apertus_jouer_tui(liste, cle, depart)
+        if echec is None:
+            echec = self._apertus_jouer(liste, cle, depart, state["moteur"])
+        print()
+        if echec:
+            return
+        print("✅ " + t("Apertus answers on this target."))
+        self._apertus_verifier()
+
+    def _apertus_verifier(self):
+        """Sonder la cible et proposer de retenir le serveur.
+
+        L'enregistrement passe par le chemin existant du registre : la sonde
+        reconnaît le moteur sur son port, et l'écriture n'a qu'un seul
+        auteur dans tout le dépôt.
+        """
+        from script.todo.assistant import apertus as apt
+
+        state = self._apertus_state()
+        moteur = apt.MOTEURS[state["moteur"]]
+        hote = state["cible"]["host"]
+        corps = llm_fp.collect(hote, moteur.port, budget=2.0)
+        if not corps:
+            print(t("Apertus is not installed on this target."))
+            return
+        empreinte = llm_fp.identify(corps, port=moteur.port, host=hote)
+        if not empreinte.software:
+            print(t("Apertus is not installed on this target."))
+            return
+        print(f"✅ {empreinte.software} — {hote}:{moteur.port}")
+        self._llm_probe_and_keep([hote])
+
+    def _apertus_desinstaller(self):
+        """Retirer le modèle et arrêter le service. Le moteur reste posé.
+
+        La cible se retape en entier : le geste n'est pas réversible sans
+        retélécharger plusieurs gigaoctets, et un menu qui l'exécute sur une
+        confirmation d'une lettre se trompe de machine un jour.
+        """
+        from script.todo.assistant import apertus as apt
+        from script.todo.assistant import apertus_state as apt_state
+
+        state = self._apertus_state()
+        cible = state["cible"]
+        cle = self._apertus_cle(cible)
+        if not apt_state.lire(cle):
+            print(t("Apertus is not installed on this target."))
+            return
+        liste = apt.desinstaller(state["moteur"], state["modele"], cible)
+        print(t("Will execute:"))
+        print(apt.plan_lisible(liste))
+        print()
+        try:
+            saisie = click.prompt(
+                t("Retype the target in full to remove it")
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if saisie != cible["label"]:
+            print(t("Destination not retyped — nothing was sent."))
+            return
+        for etape in liste:
+            self.execute.exec_command_live(
+                etape.commande, source_erplibre=False
+            )
+        apt_state.oublier(cle)
+        print(t("Removed."))
