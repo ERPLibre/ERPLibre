@@ -278,9 +278,10 @@ def form_context(after_boot: bool = False) -> dict:
         # retraduirait mal d'une langue à l'autre.
         "posture_choices": choices(),
         # CE QUE CHACUNE APPLIQUE, ses écarts, et ce que son nom promet —
-        # en une ligne. Un écran qui nomme « VM Connecté » sans dire que
-        # rien n'applique sa politique vend l'assurance que le registre
-        # s'interdit de donner.
+        # en une ligne. Un écran qui nomme une posture sans dire ce qu'elle
+        # applique VRAIMENT vend l'assurance que le registre s'interdit de
+        # donner : le nom rassure, et deux postures au nom voisin ne tiennent
+        # pas la même chose.
         "posture_screen": {
             nom: screen_line(nom, after_boot)
             for nom in registry.posture_names()

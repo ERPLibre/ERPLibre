@@ -6,8 +6,10 @@
 CE QUE CE MODULE EXISTE POUR EMPÊCHER. Le registre s'interdit un « nom
 rassurant » — il a retiré une posture qui déclarait une liste blanche sans
 liste, parce qu'elle « donnait l'assurance du contraire ». Un profil qui
-afficherait « VM Connecté » sans dire que rien n'applique sa politique
-vendrait exactement cette assurance-là, un étage plus haut.
+afficherait un nom accueillant sans dire ce que sa posture applique
+vendrait exactement cette assurance-là, un étage plus haut. Aucune posture
+du registre n'est aujourd'hui dans ce cas, et une épreuve le tient : le
+garde doit rester sans emploi.
 
 `rules.unenforced()` est le mécanisme que le dépôt a bâti contre ça, et rien
 ne le lisait. Ces épreuves tiennent qu'un profil le LIT et le DIT.
@@ -18,6 +20,7 @@ Ni réseau, ni VM : tout est pur.
 import os
 import sys
 import unittest
+from unittest import mock
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
@@ -27,6 +30,34 @@ from script.posture import rules  # noqa: E402
 from script.posture import spec as S  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo import vm_profiles as V  # noqa: E402
+
+# UNE POSTURE QUI DÉCLARE SANS APPLIQUER. Le registre n'en porte plus
+# aucune : « restricted » en était une et il l'a retirée, et « connected »
+# borne désormais ses ports pour de vrai. La branche qui la nomme reste,
+# parce que c'est elle qui empêcherait la SUIVANTE de passer pour un
+# confinement. On la fabrique donc, plutôt que de laisser le garde sans
+# épreuve.
+DECLAREE_SANS_MECANISME = R.Posture(
+    name="declaree",
+    network_kind="nat",
+    egress="allowlist",
+    destinations_bounded=False,
+    ports_bounded=False,
+    dns="host",
+    egress_enforced=False,
+    covers_containers=False,
+    forward_agent=False,
+    host_keys="throwaway",
+    cloud=False,
+    needs_forge=False,
+    name_suffix="-declaree",
+)
+
+
+def inscrite(posture=DECLAREE_SANS_MECANISME):
+    """La pose au registre le temps d'un bloc : les deux fonctions sous
+    épreuve prennent un NOM et le résolvent là."""
+    return mock.patch.dict(R.POSTURES, {posture.name: posture})
 
 
 class CasDeProfil(unittest.TestCase):
@@ -108,13 +139,22 @@ class TestCeQueChaqueProfilApplique(CasDeProfil):
         phrase = V.enforcement("open")
         self.assertIn("Nothing is confined", phrase)
 
-    def test_the_one_nothing_applies_says_INTENTION_ONLY(self):
+    def test_a_posture_that_declares_without_applying_says_so(self):
         """LE PIRE DES DEUX MONDES, et ce que ce module existe pour
         montrer : une politique déclarée sans mécanisme se comporte comme
         l'absence de politique, en donnant l'assurance du contraire."""
-        phrase = V.enforcement("connected")
+        with inscrite():
+            phrase = V.enforcement("declaree")
         self.assertIn("INTENTION ONLY", phrase)
         self.assertIn("free egress", phrase)
+
+    def test_no_registered_posture_declares_without_applying(self):
+        """Le garde ci-dessus doit rester SANS EMPLOI : une posture du
+        registre qui l'atteindrait serait un nom rassurant, et le registre
+        en a déjà retiré un."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertNotIn("INTENTION ONLY", V.enforcement(nom))
 
     def test_the_two_that_install_rules_say_so(self):
         for nom in ("paranoid", "local-only"):
@@ -122,8 +162,14 @@ class TestCeQueChaqueProfilApplique(CasDeProfil):
                 self.assertIn("Rules are written", V.enforcement(nom))
 
     def test_the_three_answers_do_not_collide(self):
-        """Trois états, et les confondre est tout le défaut."""
-        phrases = {V.enforcement(n) for n in R.posture_names()}
+        """Trois états, et les confondre est tout le défaut. Le troisième
+        n'a plus de porteur au registre : il se fabrique, il ne se
+        suppose pas."""
+        with inscrite():
+            phrases = {
+                V.enforcement(n)
+                for n in list(R.posture_names()) + ["declaree"]
+            }
         self.assertEqual(3, len(phrases), phrases)
 
     def test_an_unknown_posture_deploys_nothing_and_says_it(self):
@@ -158,7 +204,15 @@ class TestLesEcartsSontDitsEtNonTus(CasDeProfil):
             V.gap_sentence("jeton-jamais-declare")
 
     def test_the_posture_nothing_applies_has_a_gap(self):
-        self.assertIn(rules.NO_RENDERING, V.gaps("connected"))
+        with inscrite():
+            self.assertIn(rules.NO_RENDERING, V.gaps("declaree"))
+
+    def test_the_bounded_ports_have_the_two_of_their_mechanism(self):
+        """Elle rend désormais : ses écarts sont ceux d'un jeu posé."""
+        ecarts = V.gaps("connected")
+        self.assertIn(rules.RELOAD_FAILURE_UNSEEN, ecarts)
+        self.assertIn(rules.CONTAINERS_UNPROVEN, ecarts)
+        self.assertNotIn(rules.NO_RENDERING, ecarts)
 
     def test_the_bounded_allowlist_has_the_two_of_its_mechanism(self):
         ecarts = V.gaps("paranoid")
@@ -346,9 +400,12 @@ class TestLaLigneQuUnEcranEcrit(CasDeProfil):
                     self.assertIn(V.gap_sentence(jeton), V.screen_line(nom))
 
     def test_the_line_that_matters_most_says_it_plainly(self):
-        """« VM Connecté » est le seul profil dont le nom rassure et dont
-        rien ne tient la promesse."""
-        self.assertIn("INTENTION ONLY", V.screen_line("connected"))
+        """La ligne d'une posture dont le nom rassure et dont rien ne tient
+        la promesse. Aucune n'est dans ce cas au registre, et c'est
+        justement ce que la ligne doit rendre visible le jour où une y
+        entre."""
+        with inscrite():
+            self.assertIn("INTENTION ONLY", V.screen_line("declaree"))
 
     def test_it_reads_in_both_languages(self):
         """Une phrase non traduite passerait inaperçue en anglais et

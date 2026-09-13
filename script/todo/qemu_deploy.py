@@ -1410,8 +1410,8 @@ class QemuDeployMixin:
     def _qemu_egress_rules(self, spec):
         """Le texte des règles que cette spec demande, ou une chaîne vide.
 
-        Vide n'est pas un échec : deux postures sur quatre ne demandent rien,
-        et la plupart des déploiements ne posent aucune règle.
+        Vide n'est pas un échec : la sortie libre ne demande rien, et c'est
+        la posture par défaut de la plupart des déploiements.
 
         Ce qui est refusé ici, c'est l'inverse — une posture qui EN attend
         et dont le site n'a pas nommé les adresses. La laisser passer
