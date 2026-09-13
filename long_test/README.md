@@ -156,6 +156,40 @@ level must prove, not assume:
 unloaded module, not a permissions problem. A level that fails these stops the
 descent instead of prolonging it into the void.
 
+## apertus_install.py — does Apertus actually install and answer?
+
+The unit tests check that the install steps come out in the right order and
+that their commands parse. They launch nothing. What breaks an install is not
+a command's syntax: it is a package manager that does not carry the engine, a
+service that will not start, a quantization repository that moved, a chat
+template that lets its special tokens leak into replies. That is measured by
+installing.
+
+This script creates **no machine**. It installs on the local machine, or on
+any ssh destination given with `--hote`. VM creation has its own tests, and
+mixing the two would confuse a hypervisor's failure with an installer's.
+
+The default model is the **0.5 B distilled Mini**, the smallest real download
+in the family — the point is to exercise the path, not to test the network
+link. `--modele 8b-q4` asks for the real one, knowingly.
+
+```
+./long_test/apertus_install.py                     # here, Ollama, Mini 0.5B
+./long_test/apertus_install.py --dry-run           # the plan, nothing run
+./long_test/apertus_install.py --hote <ssh-alias>  # elsewhere
+./long_test/apertus_install.py --moteur llamacpp   # another engine
+./long_test/apertus_install.py --detruire          # undo what was installed
+```
+
+It ends by asking the model a question with one reasonable answer and reading
+the reply. Two failures are told apart there: an engine that listens but
+answers nothing, and an engine that answers with `<|assistant_start|>` still
+in the text — the second means the chat template is not applied, which no exit
+code reports.
+
+A run that stops part-way can simply be relaunched: every step carries a
+completion test, so what is already done is skipped rather than redone.
+
 ## Starting from a host you already have
 
 Both scripts take `--hote`. Creating a head VM to host a hypervisor you
