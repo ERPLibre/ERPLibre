@@ -56,6 +56,19 @@ past.
 | Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
 
+**Apertus does not add a sixth.** Its entry sits one level up, in
+`Assistant › AI`, in the same **Direct model** section as `LLM servers`, and
+what it addresses is the reason. Everything in this package speaks to a server
+that is ALREADY listening; the Apertus entry installs the engine and the
+weights that make one listen — here, on a QEMU domain, or on a host of
+`~/.ssh/config` — then hands the result back through the ordinary path: probe,
+then keep, the same writer and the same section as any other server. The one
+thing it keeps of its own is an installation progress, and it keeps it in
+`~/.erplibre/apertus_install.json`, outside the repository, because a progress
+record names its machine. Which model, which engine, what it costs in memory,
+and what is not official in that path:
+[../../../doc/APERTUS.md](../../../doc/APERTUS.md).
+
 Entries are picked by number, the catalogue by LETTER. A second numbered list
 right after a numbered menu invites retyping a menu entry, and this repository
 has already paid for that once. A digit is still accepted there as a rank,

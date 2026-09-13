@@ -15,3 +15,6 @@ HEALTHCHECK CMD curl --fail http://localhost:8069/web || exit 1
 
 Voir aussi : [EMAIL.fr.md](EMAIL.fr.md) — le client courriel intégré au CLI
 TODO (`Assistant > Courriel`).
+
+Voir aussi : [APERTUS.fr.md](APERTUS.fr.md) — installer le LLM ouvert Apertus,
+ici ou sur un serveur (`Assistant > IA > Apertus`).

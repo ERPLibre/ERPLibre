@@ -15,3 +15,6 @@ TODO: having the DB variable configurable
 
 See also: [EMAIL.md](EMAIL.md) — the mail client built into the TODO CLI
 (`Assistant > Mail`).
+
+See also: [APERTUS.md](APERTUS.md) — installing the Apertus open LLM, here or
+on a server (`Assistant > IA > Apertus`).

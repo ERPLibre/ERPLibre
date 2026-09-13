@@ -58,6 +58,19 @@ position de passer.
 | Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
 
+**Apertus n'en ajoute pas une sixième.** Son entrée est un cran au-dessus,
+dans `Assistant › IA`, dans la même section **Modèle direct** que `Serveurs
+LLM`, et ce qu'elle adresse en est la raison. Tout dans ce paquet parle à un
+serveur qui écoute DÉJÀ ; l'entrée Apertus installe le moteur et les poids qui
+font qu'un serveur écoute — ici, sur un domaine QEMU, ou sur un hôte de
+`~/.ssh/config` — puis rend le résultat par le chemin ordinaire : sonder, puis
+retenir, le même écrivain et la même section que n'importe quel autre serveur.
+La seule chose qu'elle garde en propre est une progression d'installation, et
+elle la garde dans `~/.erplibre/apertus_install.json`, hors du dépôt, parce
+qu'une progression nomme sa machine. Quel modèle, quel moteur, ce que ça coûte
+en mémoire, et ce qui n'est pas officiel dans ce chemin :
+[../../../doc/APERTUS.fr.md](../../../doc/APERTUS.fr.md).
+
 Les entrées se choisissent par numéro, le catalogue par LETTRE. Une seconde
 liste numérotée juste après un menu numéroté invite à retaper une entrée de
 menu, et ce dépôt l'a déjà payé une fois. Un chiffre y reste accepté comme
