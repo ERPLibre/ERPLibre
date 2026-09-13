@@ -390,12 +390,5 @@ class LesRacines(unittest.TestCase):
         self.assertEqual([relu for _, relu in racines], [True, False])
 
 
-class LaFrontiere(unittest.TestCase):
-    """Le paquet doit rester importable sans le CLI."""
-
-    def test_le_chargeur_n_importe_pas_todo(self):
-        self.assertNotIn("script.todo.todo", sys.modules)
-
-
 if __name__ == "__main__":
     unittest.main()

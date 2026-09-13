@@ -351,11 +351,6 @@ class LesSourcesInjectees(unittest.TestCase):
 
 
 class LaFrontiere(unittest.TestCase):
-    def test_le_balayage_ne_tire_pas_todo(self):
-        """Importer `script.todo.todo` coûte près d'une seconde et imprime
-        sur la sortie : le paquet doit rester importable seul."""
-        self.assertNotIn("script.todo.todo", sys.modules)
-
     def test_aucun_asyncio_du_depot_n_est_utilise(self):
         """`AsyncioPool` enveloppe des sous-processus et non des sockets, et
         passe à `asyncio.wait` un argument retiré de Python 3.10."""

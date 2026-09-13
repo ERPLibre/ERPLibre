@@ -12,8 +12,9 @@ faute de frappe s'affiche en clair à l'utilisateur sans que rien ne lève.
 
 Ce fichier est le SEUL de la famille assistant à importer `TODO` : cet import
 coûte près d'une seconde et imprime sur la sortie, et le faire payer aux neuf
-autres fichiers rendrait la boucle d'écriture inutilisable. La contrepartie est
-vérifiée ici même — le paquet, lui, doit rester importable seul.
+autres fichiers rendrait la boucle d'écriture inutilisable. La contrepartie —
+le paquet, lui, doit rester importable seul — est vérifiée dans
+`test_assistant_frontiere.py`, sur TOUS ses modules et non sur une liste.
 
 `_menu_header()` enregistre une télémétrie dans `~/.erplibre` : tout test qui
 appelle une méthode de menu la neutralise, sinon il écrit pour de vrai.
@@ -23,8 +24,6 @@ from __future__ import annotations
 import ast
 import collections
 import os
-import subprocess
-import sys
 import unittest
 from unittest.mock import patch
 
@@ -567,39 +566,6 @@ class SessionsClaudeCode(unittest.TestCase):
         ), redirect_stdout(sortie):
             todo._claude_reprendre([])
         self.assertIn(t("No session on this machine."), sortie.getvalue())
-
-
-class Frontiere(unittest.TestCase):
-    """Le paquet doit vivre sans le CLI qui l'appelle."""
-
-    def test_le_paquet_assistant_n_importe_pas_todo(self):
-        """Vérifié dans un processus NEUF : ce fichier-ci importe `TODO`, donc
-        `sys.modules` le porte déjà et l'assertion passerait ici pour de
-        mauvaises raisons.
-
-        Ce que la frontière achète est mesurable : importer `todo.py` coûte
-        près d'une seconde et imprime sur la sortie, et neuf fichiers de test
-        le paieraient à chaque exécution.
-        """
-        code = (
-            "import sys;"
-            "import script.todo.assistant.backends;"
-            "import script.todo.assistant.capabilities;"
-            "import script.todo.assistant.chat;"
-            "import script.todo.assistant.fingerprint;"
-            "import script.todo.assistant.servers;"
-            "print('script.todo.todo' in sys.modules)"
-        )
-        res = subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=RACINE,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": RACINE},
-            timeout=60,
-        )
-        self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertEqual(res.stdout.strip(), "False", res.stdout)
 
 
 class LesAgentsDetaches(unittest.TestCase):

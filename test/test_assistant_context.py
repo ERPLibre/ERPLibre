@@ -340,12 +340,5 @@ class LaPorte(unittest.TestCase):
         )
 
 
-class LaFrontiere(unittest.TestCase):
-    """Le paquet doit rester importable sans le CLI."""
-
-    def test_le_contexte_n_importe_pas_todo(self):
-        self.assertNotIn("script.todo.todo", sys.modules)
-
-
 if __name__ == "__main__":
     unittest.main()

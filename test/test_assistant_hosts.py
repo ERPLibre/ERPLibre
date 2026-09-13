@@ -314,11 +314,6 @@ class SansInjection(unittest.TestCase):
 
 
 class LaFrontiere(unittest.TestCase):
-    def test_les_sources_ne_tirent_pas_todo(self):
-        """Importer `script.todo.todo` coûte près d'une seconde et imprime
-        sur la sortie : le paquet doit rester importable seul."""
-        self.assertNotIn("script.todo.todo", sys.modules)
-
     def test_aucun_analyseur_de_config_ssh_n_est_reecrit_ici(self):
         """`ssh -G` a raison sur les `Include`, les `Match`, l'héritage des
         jokers et ses propres défauts ; recopier son travail est ce que
