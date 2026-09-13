@@ -24,7 +24,7 @@ from script.todo import deploy_verify
 from script.todo import devstack_report as report
 from script.todo import (egress_book, host_os, todo_prefs, vm_backend_choice,
                          vm_profiles)
-from script.todo.qemu_privilege import sudo_prefix, virsh_argv
+from script.todo.qemu_privilege import sudo_prefix, virsh_argv, virsh_cmd
 from script.todo.todo_i18n import get_lang, t
 from script.vm import backend as vm_backend
 
@@ -2889,4 +2889,8 @@ class QemuDeployMixin:
         print(f"{'═' * 60}")
         print(f"\n✅ {t('ERPLibre infra deployment done.')}")
         print(f"   {t('Default login:')} erplibre / erplibre")
-        print(f"   {t('Manage with:')} {sudo_prefix()}virsh list --all")
+        # PAR LE CONSTRUCTEUR : sans « --connect », un virsh non root vise
+        # qemu:///session, où aucune VM du système n'existe. La commande
+        # conseillée rendait donc une liste vide, sans erreur ni
+        # avertissement, à qui venait d'en déployer plusieurs.
+        print(f"   {t('Manage with:')} {virsh_cmd('list --all')}")
