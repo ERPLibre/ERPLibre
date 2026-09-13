@@ -1735,6 +1735,30 @@ class ProxmoxMenuMixin:
         print(f"  ✓ {t('download cache authority installed')}")
         return True
 
+    def _pve_attendre_ssh(self, cible, delai=300, pas=10):
+        """Attend que la VM réponde en ssh. Rend False si elle ne répond pas.
+
+        Une VM tout juste créée a une adresse bien avant d'avoir un sshd :
+        cloud-init pose les comptes et les clés, et cela prend des minutes
+        sur une machine émulée. Les étapes qui suivent passent toutes par
+        ssh, et les lancer trop tôt les fait échouer ENSEMBLE, chacune avec
+        son propre message — la panne ressemble alors à quatre pannes.
+
+        Bornée par le TEMPS : un essai coûte le délai de connexion de ssh,
+        que rien ici ne borne à l'avance.
+        """
+        fin = time.time() + delai
+        premier = True
+        while time.time() < fin:
+            code, _o = self._pve_ssh(cible, "true", timeout=20)
+            if code == 0:
+                return True
+            if premier:
+                print(f"  … {t('waiting for the VM to answer ssh')}")
+                premier = False
+            time.sleep(pas)
+        return False
+
     def _pve_set_apt_mirror(self, cible, vm, mod=None):
         """Fixe le miroir apt de la VM sur celui que le cache a rempli.
 
@@ -2076,6 +2100,15 @@ class ProxmoxMenuMixin:
                 print(f"  ✓ ~/.ssh/config : ssh {noms_alias[0]}")
             vm["adresse"] = ip
             vm["alias"] = alias.get(vm["name"], vm["name"])
+            # Une adresse n'est pas une machine prête : cloud-init tourne
+            # encore, et sshd n'écoute pas toujours. Les quatre étapes qui
+            # suivent passent TOUTES par ssh — sans cette attente, elles
+            # échouaient ensemble sur une VM qui n'avait pas fini de naître,
+            # et la machine partait sans guide, en UTC, sans autorité et sur
+            # le miroir de son image.
+            if vm["alias"] and not self._pve_attendre_ssh(vm["alias"]):
+                print(f"  ⚠ {t('No ssh answer: guest left as created.')}")
+                vm["alias"] = ""
             # Le guide AVANT l'installation : il doit être là même si rien ne
             # s'installe, et l'installation ne le touche pas.
             if vm["alias"] and mod_qemu:

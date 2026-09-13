@@ -319,7 +319,11 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		// L'amont est injoignable : DNS muet, connexion refusée, délai
 		// dépassé. C'est ici, et seulement ici, qu'une copie périmée sort —
 		// y compris un index, ce qui rend le déploiement hors ligne possible.
-		if cacheable && p.serveFromStore(w, r, u, key, class, OutcomeStale) {
+		// Un index plus récent que la signature qui l'annonce n'est PAS
+		// servi : voir indexIncoherent. Le client tombe alors sur le « 304 »
+		// qui le laisse garder ses listes, ou sur le refus qui suit.
+		if cacheable && !p.indexIncoherent(u, key) &&
+			p.serveFromStore(w, r, u, key, class, OutcomeStale) {
 			return
 		}
 		// Le client a posé une condition : il DÉTIENT déjà une copie, et ne

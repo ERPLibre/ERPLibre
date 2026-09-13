@@ -132,6 +132,23 @@ class TestSpec(unittest.TestCase):
         self.assertNotEqual(res_label("custom"), "xcustom")
 
 
+def setUpModule():
+    """L'attente ssh ne part JAMAIS pour de vrai depuis les tests.
+
+    Le déploiement attend qu'une VM fraîche réponde en ssh avant de lui poser
+    le guide, le fuseau, le miroir et l'autorité — une adresse n'est pas une
+    machine prête. Les harnais d'ici remplacent chaque geste distant mais
+    appellent le vrai `_pve_ssh` : sans ce remplacement, chacun tenterait une
+    connexion vers un alias inventé et la suite unitaire y perdrait des
+    minutes. Les tests de l'attente elle-même la rappellent sur place.
+    """
+    from script.todo.todo import TODO
+
+    patch = mock.patch.object(TODO, "_pve_attendre_ssh", lambda *a, **k: True)
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
+
+
 def contexte():
     def entree(distro, version, arch="amd64"):
         return {
@@ -1177,6 +1194,107 @@ class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
             src.index('self._pve_set_apt_mirror(vm["alias"]'),
             src.index('self._pve_set_cache_ca(vm["alias"]'),
         )
+
+
+class TestLAttenteAvantLesGestesDansLInvite(unittest.TestCase):
+    """Une adresse n'est pas une machine prête.
+
+    Vécu : une VM Proxmox est née sans guide, en UTC, sans l'autorité du
+    cache et sur le miroir de son image. Les quatre gestes passent tous par
+    ssh et partaient dès l'adresse connue, pendant que cloud-init posait
+    encore les comptes et les clés. Ils échouaient donc ENSEMBLE, et la panne
+    ressemblait à quatre pannes sans lien.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    @property
+    def attendre(self):
+        """La VRAIE attente : le module de test la remplace partout
+        ailleurs, et c'est elle qu'on éprouve ici."""
+        from script.todo.proxmox_menu import ProxmoxMenuMixin
+
+        return ProxmoxMenuMixin._pve_attendre_ssh
+
+    def test_elle_rend_vrai_des_que_le_ssh_repond(self):
+        todo = self._todo()
+        essais = []
+        todo._pve_ssh = lambda c, cmd, timeout=120: (
+            essais.append(cmd),
+            (0, ""),
+        )[1]
+        self.assertTrue(self.attendre(todo, "pve+vm-a"))
+        self.assertEqual(essais, ["true"], "une seule sonde suffit")
+
+    def test_elle_rend_faux_au_bout_du_delai(self):
+        """Bornée par le TEMPS : un essai coûte le délai de connexion de ssh,
+        que rien ici ne borne à l'avance."""
+        import contextlib
+        import io
+
+        from script.todo import proxmox_menu
+
+        todo = self._todo()
+        todo._pve_ssh = lambda c, cmd, timeout=120: (255, "")
+        horloge = iter([0, 0, 5, 10, 15, 20, 25, 30, 35, 40])
+        with mock.patch.object(proxmox_menu.time, "sleep", lambda _s: None):
+            with mock.patch.object(
+                proxmox_menu.time, "time", lambda: next(horloge)
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                    rendu = self.attendre(todo, "pve+vm-a", delai=20)
+        self.assertFalse(rendu)
+        self.assertIn("ssh", sortie.getvalue())
+
+    def test_sans_reponse_les_gestes_sont_sautes_et_dits(self):
+        """Quatre échecs silencieux valent moins qu'un refus qui se nomme."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        faits = []
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._qemu_list_domains = lambda: []
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._qemu_import_module = lambda: None
+        todo._pve_attendre_ssh = lambda *a, **k: False
+        for nom in (
+            "_pve_write_guide",
+            "_pve_set_timezone",
+            "_pve_set_apt_mirror",
+            "_pve_set_cache_ca",
+        ):
+            setattr(
+                todo, nom, (lambda n: lambda *a, **k: faits.append(n))(nom)
+            )
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: None
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.0.0.2/24,gw=10.0.0.1",
+                    "distro": "ubuntu",
+                    "arch": "amd64",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": False,
+        }
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        self.assertEqual(faits, [], f"des gestes sont partis : {faits}")
+        self.assertIn("ssh", sortie.getvalue())
 
 
 class TestUnParcMixte(unittest.TestCase):

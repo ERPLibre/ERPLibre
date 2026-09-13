@@ -6447,6 +6447,14 @@ TRANSLATIONS = {
         "fr": "miroir apt fixé",
         "en": "apt mirror pinned",
     },
+    "waiting for the VM to answer ssh": {
+        "fr": "attente que la VM réponde en ssh",
+        "en": "waiting for the VM to answer ssh",
+    },
+    "No ssh answer: guest left as created.": {
+        "fr": "Pas de réponse ssh : l'invité reste tel qu'il est né.",
+        "en": "No ssh answer: guest left as created.",
+    },
     "No 3D: the host lacks": {
         "fr": "Pas de 3D : il manque à l'hôte",
         "en": "No 3D: the host lacks",
