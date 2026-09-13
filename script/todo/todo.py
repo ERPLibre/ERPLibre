@@ -1835,9 +1835,19 @@ class TODO(
             f"\n{t('Installing the QEMU download cache (requires sudo)...')}"
         )
         try:
-            self.execute.exec_command_live(cmd, source_erplibre=False)
+            code = self.execute.exec_command_live(cmd, source_erplibre=False)
         except Exception as e:
             print(f"{t('The cache install failed, nothing is started')} : {e}")
+            return
+        # Le CODE de sortie, et pas seulement l'absence d'exception. Un
+        # installateur qui meurt — réseau libvirt absent, compilation qui
+        # cède — rend un code non nul sans rien lever, et l'entrée annonçait
+        # « installé et démarré » au-dessus de son propre message d'erreur.
+        # Rien n'est plus coûteux qu'un succès annoncé à tort : on cherche
+        # ensuite la panne partout sauf là où elle est.
+        if code:
+            print(f"\n  ✗ {t('The cache install failed, nothing is started')}")
+            print(f"    {t('Read the error above, fix it, and run entry 1.')}")
             return
         print(f"\n{t('QEMU download cache installed and started')}")
         print(

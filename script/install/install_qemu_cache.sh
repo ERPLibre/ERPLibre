@@ -105,8 +105,19 @@ is_fedora_like() {
 # règles bien présentes dans le noyau, et un cache que personne ne traverse.
 detecter_reseau() {
   local xml adresse masque
+  # Donnés à la main, les deux se suffisent. Une machine dont le réseau
+  # libvirt n'est pas démarré — ou qui gère son pont autrement — doit pouvoir
+  # poser le cache en nommant ce pont. Sonder quand même faisait mourir
+  # l'installation sur une absence qui n'empêchait rien, et le contournement
+  # annoncé en tête de ce fichier ne servait à rien.
+  if [ -n "$EL_BRIDGE" ] && [ -n "$EL_SUBNET" ]; then
+    log "réseau donné à la main : ${EL_BRIDGE}, ${EL_SUBNET}"
+    return 0
+  fi
   xml="$(virsh -c qemu:///system net-dumpxml "$EL_NET" 2>/dev/null)" || {
-    die "réseau libvirt « ${EL_NET} » introuvable — virsh -c qemu:///system net-list"
+    die "réseau libvirt « ${EL_NET} » introuvable — virsh -c qemu:///system net-list" \
+      "le démarrer : sudo virsh -c qemu:///system net-start ${EL_NET}" \
+      "ou nommer le pont : EL_BRIDGE=virbr0 EL_SUBNET=192.168.122.0/24"
   }
   [ -n "$EL_BRIDGE" ] || EL_BRIDGE="$(echo "$xml" |
     sed -n "s/.*<bridge name='\([^']*\)'.*/\1/p" | head -1)"

@@ -19,6 +19,7 @@ L'écran Proxmox n'a pas cette case, et c'est voulu : sa VM naît sur un hôte
 distant, que le cache local ne sert pas.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -142,6 +143,106 @@ class TestCommandeProduite(unittest.TestCase):
         autorité qui n'existe plus."""
         parts = self.parts({"install": None}, ca="")
         self.assertNotIn("--cache-ca", parts)
+
+
+class TestLInstallationNeSannonceQueSiElleAEuLieu(unittest.TestCase):
+    """Un code de sortie non nul n'est pas une réussite.
+
+    Vécu : l'installateur est mort sur « réseau libvirt default introuvable »,
+    a rendu 1, et l'entrée a imprimé « Cache de téléchargement QEMU installé
+    et démarré » juste en dessous, avec le chemin d'une autorité qui n'existe
+    pas. Un succès annoncé à tort coûte plus qu'une panne : on cherche
+    ensuite partout sauf là où elle est.
+    """
+
+    def _installer(self, code):
+        """Joue l'entrée 1 avec un installateur qui rend `code`."""
+        import contextlib
+        import io
+
+        import click
+
+        todo = TODO.__new__(TODO)
+        todo.execute = mock.Mock()
+        todo.execute.exec_command_live = mock.Mock(return_value=code)
+        with mock.patch("builtins.input", return_value=""), mock.patch.object(
+            click, "confirm", return_value=True
+        ):
+            with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                todo._deploy_qemu_cache()
+        return sortie.getvalue()
+
+    def test_un_echec_ne_sannonce_pas_comme_une_reussite(self):
+        dit = self._installer(1)
+        self.assertNotIn("installed and started", dit)
+        self.assertNotIn("installé et démarré", dit)
+        self.assertNotIn("ca.crt", dit, "une autorité inexistante est nommée")
+
+    def test_un_echec_dit_quoi_faire(self):
+        self.assertIn("1", self._installer(1))
+
+    def test_une_reussite_sannonce_et_nomme_lautorite(self):
+        dit = self._installer(0)
+        self.assertIn("ca.crt", dit)
+
+
+class TestLeReseauDonneALaMain(unittest.TestCase):
+    """Un pont nommé à la main suffit : l'installateur ne sonde plus libvirt.
+
+    Vécu ailleurs : sur une machine dont le réseau libvirt « default » n'est
+    pas démarré, l'installation mourait sur « réseau introuvable » — et le
+    contournement annoncé en tête du fichier, EL_BRIDGE et EL_SUBNET, ne
+    servait à rien, la sonde tombant AVANT que ces variables soient lues.
+    """
+
+    def _jouer(self, env):
+        """Exécute la VRAIE fonction, extraite du script, avec un « virsh »
+        qui échoue et des « log »/« die » de doublure."""
+        source = INSTALLATEUR.read_text(encoding="utf-8")
+        corps = re.search(
+            r"^detecter_reseau\(\) \{.*?^\}", source, re.S | re.M
+        )
+        self.assertIsNotNone(corps, "detecter_reseau introuvable")
+        script = (
+            'log() { echo "LOG: $*"; }\n'
+            'die() { echo "DIE: $*" >&2; exit 1; }\n'
+            "virsh() { return 1; }\n"
+            f"{corps.group(0)}\n"
+            "detecter_reseau\n"
+        )
+        return subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, EL_NET="default", **env),
+            timeout=30,
+        )
+
+    def test_les_deux_donnes_la_sonde_est_sautee(self):
+        res = self._jouer({"EL_BRIDGE": "virbr9", "EL_SUBNET": "192.0.2.0/24"})
+        self.assertEqual(0, res.returncode, res.stderr)
+        self.assertIn("virbr9", res.stdout)
+        self.assertIn("192.0.2.0/24", res.stdout)
+
+    def test_sans_eux_la_mort_nomme_les_deux_issues(self):
+        """Mourir est juste ; mourir sans dire quoi faire ne l'est pas."""
+        res = self._jouer({"EL_BRIDGE": "", "EL_SUBNET": ""})
+        self.assertNotEqual(0, res.returncode)
+        for issue in ("net-start", "EL_BRIDGE", "EL_SUBNET"):
+            self.assertIn(issue, res.stderr, res.stderr)
+
+    def test_un_seul_des_deux_ne_suffit_pas(self):
+        """Le pont sans le sous-réseau laisserait des règles sans préfixe."""
+        res = self._jouer({"EL_BRIDGE": "virbr9", "EL_SUBNET": ""})
+        self.assertNotEqual(0, res.returncode)
+
+    def test_la_garde_precede_la_sonde(self):
+        """L'ordre EST le correctif : lue après, la garde ne sauverait rien."""
+        source = INSTALLATEUR.read_text(encoding="utf-8")
+        self.assertLess(
+            source.index('if [ -n "$EL_BRIDGE" ] && [ -n "$EL_SUBNET" ]'),
+            source.index("net-dumpxml"),
+        )
 
 
 class TestAccordAvecLInstallateur(unittest.TestCase):

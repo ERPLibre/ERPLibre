@@ -6411,6 +6411,10 @@ TRANSLATIONS = {
         "fr": "📜 Cache - Journaux",
         "en": "📜 Cache - Logs",
     },
+    "Read the error above, fix it, and run entry 1.": {
+        "fr": "Lire l'erreur ci-dessus, la corriger, et relancer l'entrée 1.",
+        "en": "Read the error above, fix it, and run entry 1.",
+    },
     "Cache - Copy it to another machine": {
         "fr": "📦 Cache - L'emporter sur une autre machine",
         "en": "📦 Cache - Copy it to another machine",
