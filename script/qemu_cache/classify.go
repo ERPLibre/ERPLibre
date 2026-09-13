@@ -82,8 +82,14 @@ var volatileSuffixes = []string{
 // contenu, si bien qu'un contenu différent porte un autre nom : le fichier est
 // aussi figé qu'un paquet, quoiqu'il n'ait aucune extension.
 //
-// Il reste attaché à son hôte : le même chemin ne désigne le même octet que
-// si le miroir publie la même suite, ce que le nom seul ne garantit pas.
+// Il se range SANS son hôte, et c'est ce qui le distingue d'un index nommé
+// par sa suite : deux miroirs qui servent ce chemin servent le même octet,
+// ou l'un des deux est corrompu et son client le rejette sur la somme. Le
+// raisonnement inverse — « le même chemin ne vaut que si le miroir publie la
+// même suite » — vaut pour « Packages », dont le contenu varie d'un miroir à
+// l'autre sous un nom identique ; il ne vaut pas pour un nom qui EST la somme
+// de son contenu, et l'appliquer ici vide le cache de ses index dès qu'une
+// liste de miroirs tourne.
 var parEmpreinte = regexp.MustCompile(
 	`/by-hash/(MD5Sum|SHA1|SHA256|SHA512)/[0-9a-fA-F]{32,128}$`)
 
@@ -189,9 +195,15 @@ func PortableParChemin(u *url.URL) bool {
 	if u == nil || u.RawQuery != "" {
 		return false
 	}
-	if dernierePublication.MatchString(u.Path) ||
-		parEmpreinte.MatchString(u.Path) {
+	if dernierePublication.MatchString(u.Path) {
 		return false
+	}
+	// Un objet adressé par son empreinte se range sans son hôte. La règle est
+	// POSITIVE parce qu'aucune des tables suivantes ne le reconnaîtrait : une
+	// somme hexadécimale n'a pas d'extension, et retirer la seule exclusion ne
+	// suffirait donc pas à le rendre portable.
+	if parEmpreinte.MatchString(u.Path) {
+		return true
 	}
 	name := strings.ToLower(path.Base(u.Path))
 	for _, s := range immutableSuffixes {

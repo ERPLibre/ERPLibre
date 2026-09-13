@@ -176,7 +176,8 @@ func TestEstGitSmartURLNulle(t *testing.T) {
 }
 
 // Un index Debian publié sous l'empreinte de son contenu est aussi figé
-// qu'un paquet : son nom EST sa somme. Il reste attaché à son hôte.
+// qu'un paquet : son nom EST sa somme. Il se range donc SANS son hôte, un
+// contenu différent portant forcément un autre nom.
 func TestLesIndexParEmpreinteSontImmuables(t *testing.T) {
 	sha256 := strings.Repeat("0123456789abcdef", 4)
 	md5 := strings.Repeat("0123456789abcdef", 2)
@@ -188,8 +189,8 @@ func TestLesIndexParEmpreinteSontImmuables(t *testing.T) {
 		if got := Classify(u); got != ClassImmutable {
 			t.Errorf("%s classé « %s », attendu « immutable »", brut, got)
 		}
-		if PortableParChemin(u) {
-			t.Errorf("%s jugé portable", brut)
+		if !PortableParChemin(u) {
+			t.Errorf("%s n'est pas jugé portable", brut)
 		}
 	}
 	// Ce qui n'est pas une empreinte garde la règle d'avant.
@@ -201,6 +202,26 @@ func TestLesIndexParEmpreinteSontImmuables(t *testing.T) {
 		if got := Classify(u); got != ClassVolatile {
 			t.Errorf("%s classé « %s », attendu « volatile »", brut, got)
 		}
+	}
+}
+
+// Le même index par empreinte, servi par deux miroirs. Sans clé portable,
+// changer de miroir vide le cache de ses index : une installation hors ligne
+// échoue alors sur des octets que le magasin détient pourtant, et le message
+// accuse le dépôt.
+func TestUnIndexParEmpreinteVautSurDeuxMiroirs(t *testing.T) {
+	somme := strings.Repeat("0123456789abcdef", 4)
+	chemin := "/debian/dists/trixie/main/binary-amd64/by-hash/SHA256/" + somme
+	a, _ := url.Parse("https://miroir-a.example" + chemin)
+	b, _ := url.Parse("https://miroir-b.example" + chemin)
+	if CleDe("GET", a) != CleDe("GET", b) {
+		t.Error("deux miroirs du même index donnent deux clés")
+	}
+	// La clé complète doit, elle, continuer de les distinguer : c'est ce qui
+	// prouve que le rangement passe bien par la clé SANS hôte, et non que les
+	// deux fonctions se sont mises à rendre la même chose.
+	if Key("GET", a.String()) == Key("GET", b.String()) {
+		t.Error("la clé complète ne distingue plus les deux URL")
 	}
 }
 
