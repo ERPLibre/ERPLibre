@@ -2080,6 +2080,51 @@ class AssistantMenuMixin:
         state["confirmes"].add(serveur.host)
         return True
 
+    def _llm_ask_ui(self):
+        """Écran plein ou tours en ligne, demandé une fois puis mémorisé.
+
+        Le choix se pose ICI plutôt qu'à l'entrée du menu : il dépend de ce
+        qu'on vient faire — copier une réponse depuis le terminal appelle les
+        tours en ligne, suivre une longue génération appelle l'écran.
+        """
+        from script.todo import todo_prefs
+
+        choisi = todo_prefs.get("chat_ui")
+        if choisi in ("tui", "cli"):
+            return choisi
+        print(f"\n{t('Interface:')}")
+        print(f"  [1] {t('TUI form')}")
+        print(f"  [2] {t('Classic questions (line by line)')} *")
+        print(f"  {t('(change the default in TODO > Configuration)')}")
+        reponse = input(t("Choice (1-2, default 1): ")).strip()
+        return "tui" if reponse == "1" else "cli"
+
+    def _llm_conversation_tui(self, conversation, invite):
+        """La conversation en plein écran. Rend vrai si l'écran a bien tenu.
+
+        Faux quand la bibliothèque manque ou que le terminal ne peut pas
+        l'héberger : l'appelant enchaîne alors sur les tours en ligne, qui
+        n'ont aucun prérequis.
+        """
+        from script.todo import textual_setup
+        from script.todo.assistant import chat as llm_chat
+
+        if not textual_setup.ensure():
+            return False
+        try:
+            from script.todo.chat_form import run_chat
+        except ImportError:
+            return False
+        run_chat(
+            conversation,
+            invite,
+            on_save=lambda: self._llm_save(conversation),
+            aide=[
+                (nom, t(llm_chat.COMMANDS[nom])) for nom in COMMANDES_PHASE_1
+            ],
+        )
+        return True
+
     def _llm_conversation(self):
         """La boucle de conversation.
 
@@ -2143,6 +2188,10 @@ class AssistantMenuMixin:
             f"{self._llm_label(serveur)}{marque_outil}"
             f" · {t(self._llm_hosting_key(serveur.hosting))} ▸ "
         )
+        if self._llm_ask_ui() == "tui" and self._llm_conversation_tui(
+            conversation, invite
+        ):
+            return
         while True:
             try:
                 ligne = input(invite)
