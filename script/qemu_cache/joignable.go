@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,6 +30,12 @@ const DelaiEtablissement = 4 * time.Second
 // dizaines de requêtes qui visent le même hôte en rafale, et elle rend l'amont
 // à sa première chance dès qu'il revient.
 const FenetreMuetParDefaut = 20 * time.Second
+
+// SentinelleAmonts nomme le témoin que la levée d'une coupure touche dans le
+// magasin pour annuler la mémoire des amonts muets. Le nom est tenu en accord
+// avec le code qui pose la coupure : toucher un fichier que rien ne lit
+// laisserait les amonts muets jusqu'à la fin de leur fenêtre.
+const SentinelleAmonts = ".amonts-oublies"
 
 // errAmontConnuMuet dit qu'aucune connexion n'a été tentée : l'établissement
 // vers cet amont a échoué il y a moins d'une fenêtre.
@@ -58,6 +65,13 @@ type Joignabilite struct {
 	// Maintenant rend l'heure courante ; les tests la remplacent pour faire
 	// passer une fenêtre sans l'attendre.
 	Maintenant func() time.Time
+	// Sentinelle est un fichier dont la date annule la mémoire : tout échec
+	// antérieur est oublié. Il n'existe aucun canal vers le service en
+	// marche, et sans ce témoin les amonts notés muets PENDANT une coupure
+	// le restent jusqu'à la fin de la fenêtre — la première requête d'après
+	// la levée tombe alors dans le repli alors que le réseau est revenu.
+	// Vide, rien n'est consulté.
+	Sentinelle string
 
 	mu     sync.Mutex
 	echecs map[string]time.Time
@@ -97,6 +111,16 @@ func (j *Joignabilite) ConnuMuet(adresse string) bool {
 	if j.maintenant().Sub(quand) >= j.fenetre() {
 		delete(j.echecs, adresse)
 		return false
+	}
+	// Le témoin touché après l'échec : la coupure a été levée depuis, et
+	// l'amont mérite une nouvelle chance immédiate. Un témoin illisible ou
+	// absent ne change rien — la fenêtre reprend seule son office.
+	if j.Sentinelle != "" {
+		if info, err := os.Stat(j.Sentinelle); err == nil &&
+			info.ModTime().After(quand) {
+			delete(j.echecs, adresse)
+			return false
+		}
 	}
 	return true
 }

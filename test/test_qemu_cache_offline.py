@@ -31,6 +31,41 @@ from script.qemu import cache_offline  # noqa: E402
 _VRAI_DNSMASQ = cache_offline.dnsmasq
 
 
+class TestLeTemoinDesAmontsMuets(unittest.TestCase):
+    """La levée d'une coupure doit rendre leur chance aux amonts.
+
+    Le service retient les amonts dont l'établissement vient d'échouer, pour
+    ne pas repayer le délai à chaque requête d'une installation hors ligne.
+    Rien ne le prévient qu'une coupure est levée : sans témoin, ces amonts
+    restent muets jusqu'à la fin de leur fenêtre, et les premières requêtes
+    d'après la levée se rabattent sur le magasin alors que le réseau est
+    revenu. Aucun canal n'existe vers le service en marche.
+    """
+
+    def test_le_nom_du_temoin_est_le_meme_des_deux_cotes(self):
+        """Deux noms qui divergent font toucher un fichier que personne ne
+        lit : la levée paraît faite, et rien ne change."""
+        src = (RACINE / "script" / "qemu_cache" / "joignable.go").read_text(
+            encoding="utf-8"
+        )
+        trouve = re.search(r'SentinelleAmonts = "([^"]+)"', src)
+        self.assertIsNotNone(trouve, "le Go ne déclare plus le témoin")
+        self.assertEqual(trouve.group(1), cache_offline.SENTINELLE_AMONTS)
+
+    def test_la_levee_touche_le_temoin(self):
+        cmd = cache_offline.restore_cmd()
+        self.assertIn("touch ", cmd)
+        self.assertIn(cache_offline.SENTINELLE_AMONTS, cmd)
+
+    def test_le_temoin_vit_sous_le_magasin_regle(self):
+        """Un magasin déplacé emporte son témoin : sinon la levée écrirait
+        hors du répertoire que le service lit."""
+        self.assertEqual(
+            cache_offline.sentinelle_amonts("/ailleurs/magasin"),
+            os.path.join("/ailleurs/magasin", cache_offline.SENTINELLE_AMONTS),
+        )
+
+
 class TestLesRegles(unittest.TestCase):
     def test_la_coupure_vise_le_compte_et_non_le_port(self):
         """Une règle générale sur le 443 de l'orchestrateur emporterait la

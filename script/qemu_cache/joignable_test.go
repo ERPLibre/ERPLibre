@@ -105,6 +105,54 @@ func TestLaMemoireDUnAmontMuetSEteintAvecLaFenetre(t *testing.T) {
 	}
 }
 
+// La levée d'une coupure touche un témoin : les amonts notés muets pendant
+// qu'elle tenait méritent leur chance tout de suite, sans attendre la fin de
+// leur fenêtre. Rien d'autre ne le dit au service, qui n'a aucun canal.
+func TestLeTemoinDeLeveeOublieLesAmontsMuets(t *testing.T) {
+	temoin := filepath.Join(t.TempDir(), SentinelleAmonts)
+	maintenant := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	j := &Joignabilite{
+		Fenetre:    20 * time.Second,
+		Maintenant: func() time.Time { return maintenant },
+		Sentinelle: temoin,
+	}
+	const a = "amont.example:443"
+	j.Echec(a, refusEtablissement())
+	if !j.ConnuMuet(a) {
+		t.Fatal("l'échec n'est pas retenu")
+	}
+	if err := os.WriteFile(temoin, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Un témoin ANTÉRIEUR à l'échec ne dit rien : c'est une levée d'avant, et
+	// l'amont a été trouvé muet depuis.
+	vieux := maintenant.Add(-time.Hour)
+	if err := os.Chtimes(temoin, vieux, vieux); err != nil {
+		t.Fatal(err)
+	}
+	if !j.ConnuMuet(a) {
+		t.Error("un témoin plus vieux que l'échec l'efface")
+	}
+	// Touché APRÈS : la coupure vient d'être levée.
+	neuf := maintenant.Add(time.Hour)
+	if err := os.Chtimes(temoin, neuf, neuf); err != nil {
+		t.Fatal(err)
+	}
+	if j.ConnuMuet(a) {
+		t.Error("le témoin ne rend pas sa chance à l'amont")
+	}
+	// Un témoin absent laisse la fenêtre faire son office, sans erreur.
+	j2 := &Joignabilite{
+		Fenetre:    20 * time.Second,
+		Maintenant: func() time.Time { return maintenant },
+		Sentinelle: filepath.Join(t.TempDir(), "jamais-cree"),
+	}
+	j2.Echec(a, refusEtablissement())
+	if !j2.ConnuMuet(a) {
+		t.Error("un témoin absent efface la mémoire")
+	}
+}
+
 // Un amont muet n'est pas recomposé à chaque requête : la première paie le
 // délai d'établissement, les suivantes vont droit au repli — et le repli
 // sert la copie gardée comme avant.

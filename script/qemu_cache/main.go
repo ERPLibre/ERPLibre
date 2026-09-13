@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -181,6 +182,9 @@ func main() {
 	// miroir : un hôte coupé l'est pour les deux, et le premier qui le
 	// constate en épargne le délai à l'autre.
 	muets := NouvelleJoignabilite()
+	// Le témoin que la levée d'une coupure touche. Il vit dans le magasin,
+	// seul répertoire que le service et la levée connaissent tous deux.
+	muets.Sentinelle = filepath.Join(*cacheDir, SentinelleAmonts)
 	miroir := &GitMirror{
 		Dir: *gitMirrorDir, Frais: *gitMirrorFresh, Muets: muets,
 	}

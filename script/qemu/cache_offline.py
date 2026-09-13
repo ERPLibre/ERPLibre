@@ -225,6 +225,28 @@ def dns_cmd(
     return " ".join(shlex.quote(x) for x in parties)
 
 
+# Le témoin que la levée touche pour annuler la mémoire des amonts muets du
+# service. Son nom est tenu en accord avec « SentinelleAmonts » du code Go par
+# un test : toucher un fichier que rien ne lit ne réveillerait personne.
+SENTINELLE_AMONTS = ".amonts-oublies"
+# Le magasin, quand les réglages posés ne se lisent pas. Le service et la
+# levée doivent désigner le MÊME fichier, et la levée tourne souvent sans
+# l'environnement de l'unité.
+CACHE_DIR_DEFAUT = "/var/cache/erplibre_go_qemu_cache"
+
+
+def sentinelle_amonts(cache_dir: str = "") -> str:
+    """Le chemin du témoin, sous le magasin.
+
+    Le réglage posé prime : un magasin déplacé emporte son témoin, sans quoi
+    la levée toucherait un fichier hors du répertoire que le service lit.
+    """
+    import os
+
+    racine = cache_dir or reglage("EL_CACHE_DIR") or CACHE_DIR_DEFAUT
+    return os.path.join(racine, SENTINELLE_AMONTS)
+
+
 def restore_cmd(table: str = TABLE) -> str:
     """La commande qui la retire, muette si elle n'était pas là.
 
@@ -239,13 +261,18 @@ def _retrait(table: str = TABLE) -> str:
     """Le retrait nu, sans sudo : `restore_cmd` le lance sous « sudo sh -c »,
     le guet le lance déjà en root.
 
-    Il retire la table ET arrête le résolveur fictif. Arrêter le résolveur
-    seul laisserait le port 53 des VM détourné vers un port muet ; retirer la
-    table seule laisserait tourner un processus que plus rien n'interroge.
+    Il retire la table, arrête le résolveur fictif, ET touche le témoin des
+    amonts muets. Arrêter le résolveur seul laisserait le port 53 des VM
+    détourné vers un port muet ; retirer la table seule laisserait tourner un
+    processus que plus rien n'interroge ; et sans le témoin, les amonts notés
+    muets pendant la coupure le resteraient jusqu'à la fin de leur fenêtre,
+    la première requête d'après la levée tombant dans le repli alors que le
+    réseau est revenu. Aucun canal n'existe vers le service en marche.
     """
     return (
         f"nft delete table inet {table} 2>/dev/null || true; "
-        f"systemctl stop {UNITE_DNS} 2>/dev/null || true"
+        f"systemctl stop {UNITE_DNS} 2>/dev/null || true; "
+        f"touch {shlex.quote(sentinelle_amonts())} 2>/dev/null || true"
     )
 
 
