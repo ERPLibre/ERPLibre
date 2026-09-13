@@ -388,3 +388,85 @@ class TestLeMenage(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLeTempsPasseEtLeTempsEcoule(unittest.TestCase):
+    """Deux durées qui se ressemblent et ne disent pas la même chose.
+
+    L'horloge d'une session compte tout ce qui s'est écoulé, y compris les
+    heures où personne ne regardait : elle annonce des centaines d'heures dès
+    qu'une session reste ouverte plusieurs jours. Le temps d'ATTENTION borne
+    chaque écart
+    par un seuil d'inactivité, et c'est lui qui répond à « combien de temps
+    ce travail a-t-il pris ».
+
+    Le journal des hooks porte déjà l'instant de chaque événement : rien n'est
+    à collecter, seulement à replier.
+    """
+
+    def test_the_gaps_are_summed(self):
+        lignes = [
+            {"session_id": "a", "ts": 0},
+            {"session_id": "a", "ts": 1_000},
+            {"session_id": "a", "ts": 3_000},
+        ]
+        self.assertEqual(journal.temps_actif(lignes), {"a": 3_000})
+
+    def test_a_long_silence_is_capped(self):
+        """Sans coupure, une session ouverte trois jours compte trois jours."""
+        lignes = [
+            {"session_id": "a", "ts": 0},
+            {"session_id": "a", "ts": 3 * 86_400_000},
+        ]
+        self.assertEqual(
+            journal.temps_actif(lignes), {"a": journal.INACTIVITE_MS}
+        )
+
+    def test_the_order_of_the_log_does_not_decide(self):
+        """Deux sessions écrivent dans le même fichier, entrelacées."""
+        lignes = [
+            {"session_id": "a", "ts": 2_000},
+            {"session_id": "b", "ts": 500},
+            {"session_id": "a", "ts": 0},
+            {"session_id": "b", "ts": 1_500},
+        ]
+        self.assertEqual(journal.temps_actif(lignes), {"a": 2_000, "b": 1_000})
+
+    def test_a_single_event_is_zero_and_that_is_a_measure(self):
+        """On sait que la session a existé, pas combien elle a duré : il n'y
+        a aucun intervalle à mesurer, donc zéro est juste."""
+        self.assertEqual(
+            journal.temps_actif([{"session_id": "a", "ts": 42}]), {"a": 0}
+        )
+
+    def test_a_line_without_a_session_or_an_instant_is_dropped(self):
+        lignes = [
+            {"ts": 1_000},
+            {"session_id": "a"},
+            {"session_id": "a", "ts": "hier"},
+            "pas un objet",
+            {"session_id": "a", "ts": 0},
+            {"session_id": "a", "ts": 1_000},
+        ]
+        self.assertEqual(journal.temps_actif(lignes), {"a": 1_000})
+
+    def test_nothing_read_is_nothing_said(self):
+        self.assertEqual(journal.temps_actif([]), {})
+
+    def test_the_decoding_half_is_reusable(self):
+        """Tous les événements portent un instant, seuls deux se recousent en
+        appels : lire le temps sur les appels l'amputerait."""
+        texte = "\n".join(
+            json.dumps(l)
+            for l in (
+                {"session_id": "a", "ts": 0, "hook_event_name": "SessionEnd"},
+                {"session_id": "a", "ts": 1_000},
+            )
+        )
+        lignes = journal.lire_lignes(
+            lister=lambda motif: ["/j/2026-01-01.jsonl"],
+            lire_texte=lambda chemin: texte,
+        )
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(journal.temps_actif(lignes), {"a": 1_000})
+        self.assertEqual(journal.apparier(lignes), [])

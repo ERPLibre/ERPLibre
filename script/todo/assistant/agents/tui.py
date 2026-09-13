@@ -140,17 +140,33 @@ def barre(serie, largeur=BARRE) -> str:
     )
 
 
-def lignes(lectures) -> list[dict]:
+def session_de(chemin) -> str:
+    """L'identifiant ENTIER d'une session, tiré du nom de sa transcription.
+
+    Distinct d'`identifiant`, qui l'abrège pour l'écran : le journal des hooks
+    nomme les sessions en entier, et rapprocher les deux sur huit caractères
+    marierait un jour deux sessions qui n'ont rien à voir.
+    """
+    return os.path.basename(chemin).split(".")[0]
+
+
+def lignes(lectures, temps=None) -> list[dict]:
     """Une ligne de tableau par session, prête à afficher. Fonction PURE.
 
     Prend `{chemin: Lecture}` et rend des dictionnaires de chaînes. Séparer le
     calcul de l'affichage est ce qui permet de vérifier les colonnes sans
     ouvrir un terminal, et la TUI n'a plus qu'à poser les valeurs.
+
+    `temps` est `{session: millisecondes}`, le temps d'ATTENTION lu dans le
+    journal des hooks. Il vaut None quand les hooks ne sont pas posés, et la
+    colonne rend alors un tiret : zéro dirait « cette session n'a pas
+    travaillé », ce qui est le contraire de « on ne mesure pas ».
     """
     sorties = []
     for chemin, lecture in lectures.items():
         a = lecture.agregat
         reutilisation = a.reutilisation
+        attention = (temps or {}).get(session_de(chemin))
         sorties.append(
             {
                 "id": f"{ICONES['claude']} {identifiant(chemin)}",
@@ -164,6 +180,7 @@ def lignes(lectures) -> list[dict]:
                 ),
                 "cout": f"{a.cout:.2f} $" if a.cout else "—",
                 "horloge": duree(a.duree_horloge),
+                "attention": "—" if attention is None else duree(attention),
                 "api": duree(a.duree_api),
                 "outils": duree(a.duree_outils),
                 "contexte": jetons(a.contexte),
@@ -207,6 +224,7 @@ def lignes_opencode(seances) -> list[dict]:
                 "cache": "—",
                 "cout": f"{resume.cout:.2f} $" if resume.cout else "—",
                 "horloge": "—",
+                "attention": "—",
                 "api": "—",
                 "outils": "—",
                 "contexte": "—",
@@ -285,6 +303,7 @@ COLONNES = (
     ("contexte", "context"),
     ("pente", "growth"),
     ("cout", "cost"),
+    ("attention", "attention"),
     ("api", "API"),
     ("outils", "tools"),
 )
@@ -319,6 +338,9 @@ def run_tui(run_app: bool = True):
             # None et non [] : « la base d'Open Code n'a pas répondu », ce qui
             # n'est pas « elle ne porte aucune séance ».
             self._seances: list | None = None
+            # None et non {} : « les hooks ne sont pas posés », ce qui n'est
+            # pas « aucune session n'a travaillé ».
+            self._temps: dict | None = None
             self._gele = False
 
         def compose(self) -> ComposeResult:
@@ -362,7 +384,12 @@ def run_tui(run_app: bool = True):
                 )
             # Le journal est relu en entier : il ne pèse que quelques lignes
             # par appel d'outil, là où une transcription pèse des mégaoctets.
-            self._appels = jr.lire()
+            evenements = jr.lire_lignes()
+            self._appels = jr.apparier(evenements)
+            # Le temps d'ATTENTION vient du journal, pas de l'horloge de
+            # session : celle-ci compte aussi les heures où personne ne
+            # regardait. Sans hooks posés, il n'y a rien et la colonne le dit.
+            self._temps = jr.temps_actif(evenements) or None
             # La base d'Open Code se lit en moins d'une milliseconde, donc
             # elle tient dans un pas de deux secondes. Son `export`, lui, coûte
             # presque une seconde PAR séance et se tronque : il n'a rien à
@@ -374,7 +401,7 @@ def run_tui(run_app: bool = True):
         def _peindre(self):
             tableau = self.query_one("#tableau", DataTable)
             tableau.clear()
-            for ligne in lignes(self._lectures) + lignes_opencode(
+            for ligne in lignes(self._lectures, self._temps) + lignes_opencode(
                 self._seances
             ):
                 tableau.add_row(*[ligne[cle] for cle, _ in COLONNES])

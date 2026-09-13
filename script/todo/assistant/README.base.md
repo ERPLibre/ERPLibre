@@ -300,6 +300,15 @@ the other harness does give. The summary line keeps the two apart rather than
 folding them into one total, Claude Code's cost being read from a cost-state
 that a compaction resets while Open Code's is a stable database field.
 
+**Time spent is not time elapsed, and the table shows the first.** A session's
+clock counts everything that passed, including the hours nobody was watching —
+it reports hundreds of hours as soon as a session stays open for days. The
+attention column sums the gaps between hook events instead, each gap capped by
+an inactivity threshold this package chooses and names. Nothing is collected
+for it: the hook log already carries the instant of every event. Without hooks
+installed the column shows a dash, never a zero, a zero saying "this session
+did no work" where the truth is "nothing is measured".
+
 ## The modules
 
 | File | What it owns |
@@ -668,6 +677,16 @@ est faux et décourage de chercher ailleurs ce que l'autre harnais donne. La
 ligne de résumé garde les deux séparés plutôt que de les fondre en un total,
 le coût de Claude Code étant lu dans un `cost-state` qu'une compaction remet à
 zéro là où celui d'Open Code est un champ de base stable.
+
+**Le temps passé n'est pas le temps écoulé, et le tableau montre le premier.**
+L'horloge d'une session compte tout ce qui s'est écoulé, y compris les heures
+où personne ne regardait — elle annonce des centaines d'heures dès qu'une
+session reste ouverte plusieurs jours. La colonne d'attention somme plutôt les
+écarts entre événements de hook, chaque écart borné par un seuil d'inactivité
+que ce paquet choisit et nomme. Rien n'est collecté pour elle : le journal des
+hooks porte déjà l'instant de chaque événement. Sans hooks posés, la colonne
+affiche un tiret et jamais un zéro, un zéro disant « cette session n'a pas
+travaillé » là où la vérité est « rien n'est mesuré ».
 
 ## Les modules
 

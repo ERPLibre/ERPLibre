@@ -334,6 +334,16 @@ ligne de résumé garde les deux séparés plutôt que de les fondre en un total
 le coût de Claude Code étant lu dans un `cost-state` qu'une compaction remet à
 zéro là où celui d'Open Code est un champ de base stable.
 
+**Le temps passé n'est pas le temps écoulé, et le tableau montre le premier.**
+L'horloge d'une session compte tout ce qui s'est écoulé, y compris les heures
+où personne ne regardait — elle annonce des centaines d'heures dès qu'une
+session reste ouverte plusieurs jours. La colonne d'attention somme plutôt les
+écarts entre événements de hook, chaque écart borné par un seuil d'inactivité
+que ce paquet choisit et nomme. Rien n'est collecté pour elle : le journal des
+hooks porte déjà l'instant de chaque événement. Sans hooks posés, la colonne
+affiche un tiret et jamais un zéro, un zéro disant « cette session n'a pas
+travaillé » là où la vérité est « rien n'est mesuré ».
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |

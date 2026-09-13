@@ -232,8 +232,21 @@ def par_outil(appels) -> list[ParOutil]:
     return sorted(sorties, key=lambda p: (-p.appels, p.outil))
 
 
-def lire(*, racine=None, lister=None, lire_texte=None) -> list[Appel]:
-    """Tous les appels des journaux présents, appariés.
+# Au-delà de ce silence entre deux événements, ce n'est plus du travail mais
+# une absence : la session est restée ouverte pendant qu'on faisait autre
+# chose. Le seuil est un CHOIX de ce paquet et non une mesure — cinq minutes
+# est ce qu'emploient les outils de suivi de temps pour la même question. Le
+# dire importe plus que la valeur : sans coupure, une session ouverte trois
+# jours compte trois jours.
+INACTIVITE_MS = 5 * 60 * 1000
+
+
+def lire_lignes(*, racine=None, lister=None, lire_texte=None) -> list[dict]:
+    """Les événements des journaux présents, décodés, dans l'ordre du disque.
+
+    Séparé de l'appariement parce que TOUS les événements portent un instant,
+    là où seuls `PreToolUse` et `PostToolUse` se recousent en appels. Le temps
+    passé se lit sur les premiers et serait amputé sur les seconds.
 
     Une ligne illisible est sautée : un journal en cours d'écriture finit sur
     une ligne coupée, et le hook d'une session qui travaille écrit pendant
@@ -256,7 +269,49 @@ def lire(*, racine=None, lister=None, lire_texte=None) -> list[Appel]:
             if not brute:
                 continue
             try:
-                lignes.append(json.loads(brute))
+                decodee = json.loads(brute)
             except (ValueError, TypeError):
                 continue
-    return apparier(lignes)
+            if isinstance(decodee, dict):
+                lignes.append(decodee)
+    return lignes
+
+
+def temps_actif(lignes, *, seuil_ms=None) -> dict:
+    """{session: millisecondes travaillées} — le temps d'ATTENTION.
+
+    Fonction PURE. Somme les écarts entre événements consécutifs d'une même
+    session, chaque écart BORNÉ par le seuil d'inactivité. C'est ce qui
+    sépare le temps passé du temps écoulé, et les deux ne se ressemblent pas :
+    une horloge de session annonce des centaines d'heures dès qu'une session
+    reste ouverte plusieurs jours, ce qui n'est pas du travail.
+
+    Une session d'un seul événement rend zéro : on sait qu'elle a existé, pas
+    combien de temps elle a duré. Zéro est ici une mesure et non une absence —
+    il n'y a aucun intervalle à mesurer.
+    """
+    seuil = INACTIVITE_MS if seuil_ms is None else seuil_ms
+    par_session: dict = {}
+    for ligne in lignes:
+        if not isinstance(ligne, dict):
+            continue
+        session = ligne.get("session_id")
+        instant = ligne.get("ts")
+        if not session or not isinstance(instant, int):
+            continue
+        par_session.setdefault(session, []).append(instant)
+    totaux = {}
+    for session, instants in par_session.items():
+        instants.sort()
+        totaux[session] = sum(
+            min(max(0, apres - avant), seuil)
+            for avant, apres in zip(instants, instants[1:])
+        )
+    return totaux
+
+
+def lire(*, racine=None, lister=None, lire_texte=None) -> list[Appel]:
+    """Tous les appels des journaux présents, appariés."""
+    return apparier(
+        lire_lignes(racine=racine, lister=lister, lire_texte=lire_texte)
+    )

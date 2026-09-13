@@ -317,3 +317,58 @@ class TestLesDeuxHarnaisDansLeMemeTableau(unittest.TestCase):
         self.assertEqual(
             t_ui.resume_opencode([self._seance(resume=self.SANS_RESUME)]), ""
         )
+
+
+class TestLeTempsDAttention(unittest.TestCase):
+    """La colonne qui sépare le temps passé du temps écoulé.
+
+    L'horloge d'une session compte aussi les heures où personne ne regardait.
+    Le temps d'attention vient du journal des hooks, qui porte l'instant de
+    chaque événement : rien n'est à collecter, seulement à rapprocher.
+    """
+
+    CHEMIN = "/x/y/aaaaaaaa-1111-4111-8111-111111111111.jsonl"
+
+    def _ligne(self, temps=None):
+        from script.todo.assistant.agents import statistiques as st
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes({self.CHEMIN: st.Lecture()}, temps)
+        return ligne
+
+    def test_the_measured_time_shows(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        session = t_ui.session_de(self.CHEMIN)
+        self.assertEqual(self._ligne({session: 125_000})["attention"], "2 min")
+
+    def test_without_hooks_it_is_a_dash_and_never_a_zero(self):
+        """Zéro dirait « cette session n'a pas travaillé », ce qui est le
+        contraire de « on ne mesure pas »."""
+        self.assertEqual(self._ligne()["attention"], "—")
+        self.assertEqual(self._ligne({})["attention"], "—")
+
+    def test_a_session_absent_from_the_log_is_a_dash(self):
+        """Des hooks posés après coup ne savent rien des sessions qui les
+        précèdent."""
+        self.assertEqual(self._ligne({"une-autre": 9_000})["attention"], "—")
+
+    def test_the_full_identifier_is_what_joins_the_two_sources(self):
+        """Le journal nomme les sessions en entier ; rapprocher sur huit
+        caractères marierait un jour deux sessions sans rapport."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        entier = t_ui.session_de(self.CHEMIN)
+        self.assertEqual(entier, "aaaaaaaa-1111-4111-8111-111111111111")
+        self.assertNotEqual(entier, t_ui.identifiant(self.CHEMIN))
+        self.assertEqual(self._ligne({entier[:8]: 9_000})["attention"], "—")
+
+    def test_open_code_has_no_such_measure(self):
+        """Ses séances ne passent pas par les hooks de Claude Code."""
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        (ligne,) = t_ui.lignes_opencode(
+            [oc.Seance(identifiant="ses_aaaabbbb", resume=oc.Resume())]
+        )
+        self.assertEqual(ligne["attention"], "—")

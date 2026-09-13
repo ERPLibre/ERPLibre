@@ -295,6 +295,15 @@ the other harness does give. The summary line keeps the two apart rather than
 folding them into one total, Claude Code's cost being read from a cost-state
 that a compaction resets while Open Code's is a stable database field.
 
+**Time spent is not time elapsed, and the table shows the first.** A session's
+clock counts everything that passed, including the hours nobody was watching —
+it reports hundreds of hours as soon as a session stays open for days. The
+attention column sums the gaps between hook events instead, each gap capped by
+an inactivity threshold this package chooses and names. Nothing is collected
+for it: the hook log already carries the instant of every event. Without hooks
+installed the column shows a dash, never a zero, a zero saying "this session
+did no work" where the truth is "nothing is measured".
+
 ## The modules
 
 | File | What it owns |

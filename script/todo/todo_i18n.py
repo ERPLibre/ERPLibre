@@ -12979,6 +12979,10 @@ TRANSLATIONS = {
         "fr": "coût",
         "en": "cost",
     },
+    "attention": {
+        "fr": "attention",
+        "en": "attention",
+    },
     "tokens": {
         "fr": "jetons",
         "en": "tokens",
