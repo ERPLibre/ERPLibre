@@ -12413,6 +12413,10 @@ TRANSLATIONS = {
         "fr": "Le serveur n'a rien de plus pour cette recherche.",
         "en": "The server has nothing more for this search.",
     },
+    "mail_err_move_failed": {
+        "fr": "le déplacement a échoué :",
+        "en": "the move failed:",
+    },
     "mail_err_server_search_failed": {
         "fr": "le serveur a refusé la recherche :",
         "en": "the server refused the search:",

@@ -334,6 +334,45 @@ class ImaplibTransport:
                 return item[1]
         raise ImapError(f"{t('mail_err_no_body_for_uid')} {uid}")
 
+    def move(self, uids: list[int], target: str) -> bool:
+        """Déplace des messages vers `target`, dans l'ordre qui protège.
+
+        IMAP n'a pas de verbe « déplacer » que tous les serveurs
+        connaissent : le chemin portable est COPY, puis `\\Deleted` sur la
+        source, puis EXPUNGE.
+
+        L'ORDRE n'est pas négociable. La copie d'abord : son échec arrête
+        tout, et le message reste où il est. L'inverse — marquer supprimé
+        puis découvrir que la copie ne passe pas — donnerait le pire
+        résultat possible, un message retiré de sa source sans être arrivé
+        nulle part.
+
+        Le retrait de la source passe par `UID EXPUNGE`, qui NOMME ce qu'il
+        retire. L'EXPUNGE nu emporterait tous les messages marqués supprimés
+        du dossier, y compris ceux qu'un autre client a marqués ailleurs :
+        un client de courriel n'a pas le droit de détruire ce qu'il n'a pas
+        déplacé. Un serveur sans UIDPLUS ne permet pas ce geste — le message
+        reste alors dans la source, marqué supprimé, et la fonction rend
+        `False` pour que l'appelant puisse le dire.
+        """
+        if not uids:
+            return True
+        liste = ",".join(str(u) for u in uids)
+        try:
+            self._ok(self.client.uid("COPY", liste, target), "COPY")
+            self._ok(
+                self.client.uid("STORE", liste, "+FLAGS", "(\\Deleted)"),
+                "STORE +FLAGS",
+            )
+            if "UIDPLUS" not in self.client.capabilities:
+                return False
+            self._ok(self.client.uid("EXPUNGE", liste), "UID EXPUNGE")
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"{t('mail_err_move_failed')} {exc}") from exc
+        return True
+
     def store_flags(self, uid: int, add: list[str], remove: list[str]) -> None:
         if add:
             self._ok(
