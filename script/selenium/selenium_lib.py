@@ -21,10 +21,8 @@ from typing import Optional
 from pykeepass import PyKeePass
 from randomwordfr import RandomWordFr
 from selenium import webdriver
-from selenium.common.exceptions import (
-    ElementClickInterceptedException,
-    TimeoutException,
-)
+from selenium.common.exceptions import (ElementClickInterceptedException,
+                                        TimeoutException)
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.common.by import By
@@ -190,9 +188,8 @@ class SeleniumLib(object):
 
         try:
             if self.config.use_chrome_driver:
-                from selenium.webdriver.chrome.options import (
-                    Options as ChromeOptions,
-                )
+                from selenium.webdriver.chrome.options import \
+                    Options as ChromeOptions
                 from selenium.webdriver.chrome.service import Service
 
                 chrome_options = ChromeOptions()
@@ -2032,11 +2029,17 @@ class SeleniumLib(object):
         print()
 
 
-def get_args(parser):
-    args = parser.parse_args()
+def compute_args(args):
+    """Réconcilie les options de CETTE couche, comme chaque couche le fait.
+
+    Elle possède les deux drapeaux de pilote, et ils s'excluent : demander
+    Chrome doit éteindre Firefox. La réconciliation vivait dans une
+    fonction que les points d'entrée contournaient, si bien que les deux
+    drapeaux restaient vrais — et `install_addon`, propre à Firefox,
+    partait sur un pilote Chrome.
+    """
     if args.use_chrome_driver:
         args.use_firefox_driver = False
-    return args
 
 
 def fill_parser(parser):
