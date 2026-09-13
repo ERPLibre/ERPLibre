@@ -97,6 +97,7 @@ réduction communautaire.
 | Apertus 8B Instruct, `Q8_0` | 8 B | **65536** | 8,57 Go | `swiss-ai/Apertus-8B-Instruct-2509` |
 | Apertus Mini 1.5B Instruct | 1,5 B | **4096** | ≈ 1,2 Go | `swiss-ai/Apertus-v1.1-1.5B-Instruct` |
 | Apertus Mini 0.5B Instruct | 0,5 B | **4096** | ≈ 0,5 Go | `swiss-ai/Apertus-v1.1-0.5B-Instruct` |
+| Apertus 70B Instruct, 4 bits | 70 B | **65536** | 43,7 Go | `swiss-ai/Apertus-70B-Instruct-2509` |
 
 Un Mini **4 B** existe aussi en amont (`swiss-ai/Apertus-v1.1-4B-Instruct`,
 mêmes 4096 jetons), mais aucune version GGUF n'en a été trouvée : le menu ne
@@ -105,6 +106,16 @@ le propose donc pas.
 Des quantifications officielles sont publiées pour **MLX** (INT3/INT4/INT6,
 Apple Silicon) et pour **vLLM** (NVFP4A16). Il n'existe **aucun GGUF
 officiel** — voir la section 8.
+
+**Le 70B est une autre sorte de machine.** Il paie ses 80 couches à chaque
+jeton : **320 Kio de cache clé-valeur par jeton**, contre 128 Kio pour le 8B,
+donc sa fenêtre pleine de 65536 jetons coûte **20 Gio de cache** par-dessus les
+poids. Et comme il est dense, il lit tous ses poids à chaque jeton — sur une
+machine à 273 Go/s cela le plafonne vers 6 jetons par seconde, contre 17 pour
+le 8B. Prenez-le quand la qualité compte plus que la latence, et attendez-vous
+à attendre. Pour un agent de code, ne le prenez pas : ses seuls chiffres
+publiés sont HumanEval Pass@10 73,0 et MBPP 47,0, contre 97,0 et 73,6 pour un
+modèle de code de 32 B sur la même table.
 
 **Lequel prendre.** Prenez le **8B en `Q4_K_M`** sauf raison contraire : c'est
 le défaut, et le contexte est ce qui rend un assistant utile sur de vrais
@@ -133,17 +144,34 @@ Aucun des quatre moteurs ne le sert. Le menu ne vise que v1 et v1.1.
 ## 4. Choisir un moteur
 
 Un moteur est le programme qui charge les poids et les sert sur une API HTTP
-compatible OpenAI. Quatre sont proposés, tous libres :
+compatible OpenAI. Cinq sont proposés, tous libres :
 
 | Moteur | Licence | Port par défaut | Version minimale | À qui il convient |
 |---|---|---|---|---|
 | **Ollama** | MIT | 11434 | **0.12.6** | à qui débute — une commande d'installation, un service systemd, et le seul moteur qui rapporte une vraie progression de téléchargement |
 | **llama.cpp** | MIT | 8080 | construction **b6671** | une machine sans droits d'administration, ou quand on veut choisir soi-même la quantification |
 | **LocalAI** | MIT | 8080 | **4.0.0** | un hôte qui sert déjà plusieurs modèles derrière une seule porte |
+| **MLX** | MIT | 8080 | **0.27.1** | une machine Apple Silicon — et le seul moteur pour elle, rien d'autre n'y utilisant le GPU |
 | **vLLM** | Apache-2.0 | 8000 | **0.10.2** | une machine à GPU servant plusieurs utilisateurs à la fois |
 
 Le défaut est **Ollama**, et c'est la bonne réponse pour une première
 installation.
+
+**Sur un Mac, prenez MLX et rien d'autre.** Le menu sait y installer Ollama ou
+llama.cpp, et les deux marcheront — mais ils atteignent le GPU par un chemin
+générique, là où MLX est le cadre d'Apple lui-même. Deux conséquences. Les
+quantifications officielles `swiss-ai` de la famille Mini sont des **builds
+MLX** : neuf des dix que publie l'éditeur ne servent nulle part ailleurs et
+sont natives ici. Et le 70B n'a **aucun build MLX publié**, donc le menu le
+convertit sur place par `mlx_lm.convert` — ce qui télécharge les poids pleins
+avant d'écrire les quantifiés, et demande donc environ 175 Go de place libre
+pour en produire 41. Le menu le dit avant de commencer.
+
+Un chiffre à connaître avant de convertir sur un Mac : macOS réserve environ un
+quart de la mémoire unifiée au système, donc une machine de 256 Go n'en offre
+que ~192 Go à un modèle jusqu'à ce que `sudo sysctl iogpu.wired_limit_mb=237568`
+la porte à ~232 Go. Et les accélérateurs matriciels d'Apple couvrent FP16 et
+INT8 mais **pas BF16** — convertissez en 4 ou 8 bits, jamais en bf16.
 
 ### Pourquoi une version minimale : l'activation xIELU
 
