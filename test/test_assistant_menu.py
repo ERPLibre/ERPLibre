@@ -1671,6 +1671,8 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
             llm_fp, "collect_served", lambda *a, **kw: servis
         ), patch.object(
             llm_mesure, "ecrire", lambda *a, **kw: None
+        ), patch.object(
+            todo_module.TODO, "_llm_ask_ui", lambda self: "cli"
         ), patch(
             "builtins.input", lire
         ), patch(
@@ -1816,6 +1818,8 @@ class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
             llm_mesure, "ecrire", lambda *a, **kw: None
         ), patch.object(
             todo_module.TODO, "_llm_resolve_model", lambda self, s: s
+        ), patch.object(
+            todo_module.TODO, "_llm_ask_ui", lambda self: "cli"
         ), patch(
             "builtins.input", lire
         ), patch(
@@ -1959,7 +1963,11 @@ class UneConversationUneSeance(unittest.TestCase):
 
         with patch.object(
             llm_backends, "HttpBackend", FauxBackend
-        ), patch.object(llm_fp, "collect_served", lambda *a, **kw: ()), patch(
+        ), patch.object(
+            llm_fp, "collect_served", lambda *a, **kw: ()
+        ), patch.object(
+            todo_module.TODO, "_llm_ask_ui", lambda self: "cli"
+        ), patch(
             "builtins.input", lire
         ), patch(
             "script.todo.todo_telemetry.record"
