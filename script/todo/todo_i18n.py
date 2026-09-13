@@ -12389,6 +12389,30 @@ TRANSLATIONS = {
             " one from your own OAuth registration"
         ),
     },
+    "mail_search_server_binding": {
+        "fr": "Chercher sur le serveur",
+        "en": "Search the server",
+    },
+    "mail_search_server_no_term": {
+        "fr": "Tapez d'abord une recherche avec « / ».",
+        "en": 'Type a search with "/" first.',
+    },
+    "mail_search_server_offline": {
+        "fr": "Compte hors ligne : le serveur n'est pas joignable.",
+        "en": "Account offline: the server cannot be reached.",
+    },
+    "mail_search_server_asking": {
+        "fr": "Recherche sur le serveur…",
+        "en": "Searching the server…",
+    },
+    "mail_search_server_found": {
+        "fr": "Ramenés du serveur :",
+        "en": "Brought back from the server:",
+    },
+    "mail_search_server_nothing": {
+        "fr": "Le serveur n'a rien de plus pour cette recherche.",
+        "en": "The server has nothing more for this search.",
+    },
     "mail_err_server_search_failed": {
         "fr": "le serveur a refusé la recherche :",
         "en": "the server refused the search:",

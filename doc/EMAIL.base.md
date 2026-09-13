@@ -362,7 +362,8 @@ preview pane on the right, with a status line at the bottom.
 | `0` | back to the default pane sizes |
 | `r` | sync the account of the currently selected folder (all its folders) |
 | `Shift+R` | sync every account |
-| `/` | open the search field: it searches the whole cache of the open folder — not just the messages on screen — over subject/from/to/snippet; it does not search the server (see "Search") |
+| `/` | open the search field: it searches the whole cache of the open folder — not just the messages on screen — over subject/from/to/snippet (see "Search") |
+| `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
 | `c` | compose a new message |
@@ -404,7 +405,8 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `0` | revenir aux tailles de volets par défaut |
 | `r` | synchronise le compte du dossier actuellement sélectionné (tous ses dossiers) |
 | `Shift+R` | synchronise tous les comptes |
-| `/` | ouvre le champ de recherche : cherche dans tout le cache du dossier ouvert — et non dans les seuls messages affichés — sur sujet/de/à/extrait ; ne cherche pas sur le serveur (voir « Recherche ») |
+| `/` | ouvre le champ de recherche : cherche dans tout le cache du dossier ouvert — et non dans les seuls messages affichés — sur sujet/de/à/extrait (voir « Recherche ») |
+| `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `c` | écrire un nouveau message |
@@ -963,9 +965,9 @@ n'arrête pas les autres.
 
 `/` searches the **whole cache of the open folder**, not just the messages
 currently loaded. Subject, sender, recipient and snippet are matched. The
-scope stops there: the other folders of the account, the other accounts and
-the server are not searched, and at most 500 matches are returned, the most
-recent first.
+scope stops there: the other folders of the account and the other accounts
+are not searched, and at most 500 matches are returned, the most recent
+first. `Shift+S` reaches past the cache — see below.
 
 In `clear` cache mode an FTS5 index answers in milliseconds and the list
 follows every keystroke. In `encrypted` mode no index exists — one would
@@ -977,14 +979,23 @@ that key is pressed, the list filters only the messages already loaded.
 
 The result is the same either way; only the cost differs.
 
+`Shift+S` asks the server the same question, for the open folder. It is a
+separate gesture on purpose: extending at every keystroke would charge a
+round trip to a search that already answers. What the server finds is
+downloaded and stored, so the local search shows it immediately and finds
+it again offline. The server looks at whole messages, headers and body, so
+it can return what the local search would not — which is the point of
+looking further. An account that is offline says so rather than waiting,
+and a server that refuses says why.
+
 <!-- [fr] -->
 ## Recherche
 
 `/` cherche dans **tout le cache du dossier ouvert**, et non dans les seuls
 messages chargés. Sujet, expéditeur, destinataire et extrait sont comparés.
-La portée s'arrête là : les autres dossiers du compte, les autres comptes et
-le serveur ne sont pas parcourus, et 500 correspondances au plus sont
-rendues, les plus récentes d'abord.
+La portée s'arrête là : les autres dossiers du compte et les autres comptes ne
+sont pas parcourus, et 500 correspondances au plus sont rendues, les plus
+récentes d'abord. `Shift+S` va au-delà du cache — voir plus bas.
 
 En mode de cache `clear`, un index FTS5 répond en millisecondes et la liste
 suit chaque frappe. En mode `encrypted` aucun index n'existe — il stockerait
@@ -995,6 +1006,15 @@ frappe et attend **Entrée**, ce que la barre d'état annonce. Jusqu'à cette
 validation, la liste ne filtre que les messages déjà chargés.
 
 Le résultat est le même des deux côtés ; seul le coût change.
+
+`Shift+S` pose la même question au serveur, pour le dossier ouvert. C'est un
+geste à part, et c'est voulu : étendre à chaque frappe ferait payer un
+aller-retour à une recherche qui répond déjà. Ce que le serveur trouve est
+téléchargé puis rangé dans le cache : la recherche locale l'affiche aussitôt
+et le retrouvera hors ligne. Le serveur regarde les messages entiers,
+en-têtes et corps, donc il peut rendre ce que la recherche locale n'aurait
+pas rendu — c'est le sens même de chercher plus loin. Un compte hors ligne
+le dit plutôt que d'attendre, et un serveur qui refuse dit pourquoi.
 
 <!-- [en] -->
 ## Statistics
@@ -1266,8 +1286,9 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **No server-side search** — `/` filters only what's already synced to the
-  local cache.
+- **No cross-folder search** — `/` and `Shift+S` both work on the open
+  folder of one account; neither sweeps the other folders or the other
+  accounts.
 - **No deleting or moving a message** — `s` and `u` change the seen flag,
   and `F` creates, renames and deletes folders, but a message itself can be
   neither deleted nor moved to another folder.
@@ -1283,8 +1304,9 @@ phases add.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
-  synchronisé dans le cache local.
+- **Pas de recherche transversale** — `/` comme `Shift+S` portent sur le
+  dossier ouvert d'un seul compte ; ni l'un ni l'autre ne balaie les autres
+  dossiers ou les autres comptes.
 - **Ni suppression ni déplacement d'un message** — `s` et `u` changent
   l'état lu / non lu, et `F` crée, renomme et supprime des dossiers, mais
   un message lui-même ne peut être ni supprimé ni déplacé vers un autre

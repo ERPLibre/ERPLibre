@@ -189,7 +189,8 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `0` | revenir aux tailles de volets par défaut |
 | `r` | synchronise le compte du dossier actuellement sélectionné (tous ses dossiers) |
 | `Shift+R` | synchronise tous les comptes |
-| `/` | ouvre le champ de recherche : cherche dans tout le cache du dossier ouvert — et non dans les seuls messages affichés — sur sujet/de/à/extrait ; ne cherche pas sur le serveur (voir « Recherche ») |
+| `/` | ouvre le champ de recherche : cherche dans tout le cache du dossier ouvert — et non dans les seuls messages affichés — sur sujet/de/à/extrait (voir « Recherche ») |
+| `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `c` | écrire un nouveau message |
@@ -483,9 +484,9 @@ n'arrête pas les autres.
 
 `/` cherche dans **tout le cache du dossier ouvert**, et non dans les seuls
 messages chargés. Sujet, expéditeur, destinataire et extrait sont comparés.
-La portée s'arrête là : les autres dossiers du compte, les autres comptes et
-le serveur ne sont pas parcourus, et 500 correspondances au plus sont
-rendues, les plus récentes d'abord.
+La portée s'arrête là : les autres dossiers du compte et les autres comptes ne
+sont pas parcourus, et 500 correspondances au plus sont rendues, les plus
+récentes d'abord. `Shift+S` va au-delà du cache — voir plus bas.
 
 En mode de cache `clear`, un index FTS5 répond en millisecondes et la liste
 suit chaque frappe. En mode `encrypted` aucun index n'existe — il stockerait
@@ -496,6 +497,15 @@ frappe et attend **Entrée**, ce que la barre d'état annonce. Jusqu'à cette
 validation, la liste ne filtre que les messages déjà chargés.
 
 Le résultat est le même des deux côtés ; seul le coût change.
+
+`Shift+S` pose la même question au serveur, pour le dossier ouvert. C'est un
+geste à part, et c'est voulu : étendre à chaque frappe ferait payer un
+aller-retour à une recherche qui répond déjà. Ce que le serveur trouve est
+téléchargé puis rangé dans le cache : la recherche locale l'affiche aussitôt
+et le retrouvera hors ligne. Le serveur regarde les messages entiers,
+en-têtes et corps, donc il peut rendre ce que la recherche locale n'aurait
+pas rendu — c'est le sens même de chercher plus loin. Un compte hors ligne
+le dit plutôt que d'attendre, et un serveur qui refuse dit pourquoi.
 
 ## Statistiques
 
@@ -637,8 +647,9 @@ jeton en place vaut toujours et la passe suivante réessaie.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Pas de recherche côté serveur** — `/` ne filtre que ce qui est déjà
-  synchronisé dans le cache local.
+- **Pas de recherche transversale** — `/` comme `Shift+S` portent sur le
+  dossier ouvert d'un seul compte ; ni l'un ni l'autre ne balaie les autres
+  dossiers ou les autres comptes.
 - **Ni suppression ni déplacement d'un message** — `s` et `u` changent
   l'état lu / non lu, et `F` crée, renomme et supprime des dossiers, mais
   un message lui-même ne peut être ni supprimé ni déplacé vers un autre
