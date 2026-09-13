@@ -13222,6 +13222,22 @@ TRANSLATIONS = {
         "fr": "Interface de la conversation",
         "en": "Chat interface",
     },
+    "Check the platform": {
+        "fr": "Vérifier la plateforme",
+        "en": "Check the platform",
+    },
+    "Convert the model": {
+        "fr": "Convertir le modèle",
+        "en": "Convert the model",
+    },
+    "This engine needs %s; this target runs something else.": {
+        "fr": "Ce moteur exige %s ; cette cible tourne autre chose.",
+        "en": "This engine needs %s; this target runs something else.",
+    },
+    "No MLX build is published; the model is converted locally.": {
+        "fr": "Aucun build MLX n'est publié ; le modèle se convertit sur place.",
+        "en": "No MLX build is published; the model is converted locally.",
+    },
     "Apertus (open LLM)": {
         "fr": "Apertus (LLM ouvert)",
         "en": "Apertus (open LLM)",
@@ -13361,10 +13377,6 @@ TRANSLATIONS = {
     "This host needs an interactive sudo password.": {
         "fr": "Cet hôte exige un mot de passe sudo interactif.",
         "en": "This host needs an interactive sudo password.",
-    },
-    "Full 8B - 65536 tokens of context": {
-        "fr": "8B complet - 65536 jetons de contexte",
-        "en": "Full 8B - 65536 tokens of context",
     },
     "Distilled Mini - lighter, 4096 tokens only": {
         "fr": "Mini distillé - plus léger, 4096 jetons seulement",

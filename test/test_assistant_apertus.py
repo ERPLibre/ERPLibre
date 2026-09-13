@@ -91,16 +91,69 @@ def toutes_les_commandes():
 
 
 class LOrdreDesEtapes(unittest.TestCase):
-    def test_les_quatre_moteurs_rendent_les_memes_neuf_etapes(self):
+    def test_un_moteur_sans_plateforme_rend_les_neuf_etapes_connues(self):
         """Neuf étapes, mêmes clés, même rang : la clé sert de reprise, donc
         un moteur qui en saute une rendrait une progression illisible."""
-        for moteur in apertus.MOTEURS:
+        for moteur, spec in apertus.MOTEURS.items():
+            if spec.plateforme:
+                continue
             with self.subTest(moteur=moteur):
                 liste = apertus.etapes(
                     moteur, apertus.MODELE_DEFAUT, CIBLE_LOCALE
                 )
                 self.assertEqual(9, len(liste))
                 self.assertEqual(ORDRE, [e.cle for e in liste])
+
+    def test_un_moteur_lie_a_une_plateforme_la_verifie_en_deuxieme(self):
+        """La garde passe AVANT la place disque et avant l'installation.
+
+        Mesurer un disque ou compiler une roue pour un moteur qui n'existe
+        pas sur ce noyau est du travail perdu, et le diagnostic arriverait
+        après. Elle suit « atteindre » parce qu'il faut d'abord joindre la
+        cible pour lui demander son noyau.
+        """
+        for moteur, spec in apertus.MOTEURS.items():
+            if not spec.plateforme:
+                continue
+            with self.subTest(moteur=moteur):
+                cles = [
+                    e.cle
+                    for e in apertus.etapes(
+                        moteur, apertus.MODELE_DEFAUT, CIBLE_LOCALE
+                    )
+                ]
+                self.assertEqual("plateforme", cles[1], cles)
+                self.assertLess(
+                    cles.index("plateforme"), cles.index("place"), cles
+                )
+                self.assertLess(
+                    cles.index("plateforme"), cles.index("paquet"), cles
+                )
+
+    def test_le_modele_precede_le_service_quand_le_moteur_l_exige(self):
+        """L'ordre n'est pas une préférence.
+
+        Un moteur qui charge un chemin au démarrage exige que ce chemin
+        EXISTE : à l'envers, le service échouerait sur un répertoire absent et
+        la conversion suivrait un serveur déjà mort. La conversion devient
+        alors critique, un service lancé sur rien n'apprenant rien.
+        """
+        for moteur, spec in apertus.MOTEURS.items():
+            with self.subTest(moteur=moteur):
+                liste = apertus.etapes(
+                    moteur, apertus.MODELE_DEFAUT, CIBLE_LOCALE
+                )
+                cles = [e.cle for e in liste]
+                par_cle = {e.cle: e for e in liste}
+                if spec.modele_avant_service:
+                    self.assertLess(
+                        cles.index("tirer"), cles.index("service"), cles
+                    )
+                    self.assertTrue(par_cle["tirer"].critique)
+                else:
+                    self.assertLess(
+                        cles.index("service"), cles.index("tirer"), cles
+                    )
 
     def test_la_version_se_verifie_avant_le_telechargement(self):
         """L'invariant qui porte tout le reste.
@@ -124,11 +177,23 @@ class LOrdreDesEtapes(unittest.TestCase):
                     )
 
     def test_le_choix_de_modele_ne_deplace_aucune_etape(self):
+        """L'ordre dépend du MOTEUR et de lui seul.
+
+        Un ordre qui varierait avec le modèle rendrait la reprise fausse : le
+        rang enregistré désignerait une autre étape après un changement de
+        modèle sur la même cible.
+        """
         for moteur in apertus.MOTEURS:
+            attendu = [
+                e.cle
+                for e in apertus.etapes(
+                    moteur, apertus.MODELE_DEFAUT, CIBLE_LOCALE
+                )
+            ]
             for modele in apertus.MODELES:
                 with self.subTest(moteur=moteur, modele=modele):
                     liste = apertus.etapes(moteur, modele, CIBLE_LOCALE)
-                    self.assertEqual(ORDRE, [e.cle for e in liste])
+                    self.assertEqual(attendu, [e.cle for e in liste])
 
     def test_le_service_est_la_seule_etape_non_critique(self):
         """Un hôte sans systemd sert quand même le modèle : c'est « ecouter »
@@ -363,6 +428,7 @@ class LeCatalogue(unittest.TestCase):
         self.assertEqual(
             {
                 "swiss-ai/Apertus-8B-Instruct-2509",
+                "swiss-ai/Apertus-70B-Instruct-2509",
                 "swiss-ai/Apertus-v1.1-1.5B-Instruct",
                 "swiss-ai/Apertus-v1.1-0.5B-Instruct",
             },
@@ -633,6 +699,106 @@ class LaFrontiere(unittest.TestCase):
         """Importer `script.todo.todo` coûte près d'une seconde et imprime
         sur la sortie : le paquet doit rester importable seul."""
         self.assertNotIn("script.todo.todo", sys.modules)
+
+
+class LeMoteurApple(unittest.TestCase):
+    """MLX : la pile d'Apple, et ce qu'elle change au reste."""
+
+    def test_le_chemin_du_compte_s_etend_vraiment(self):
+        """La faute à ne pas refaire.
+
+        Un chemin cité par `shlex.quote` arrive dans le script entre
+        apostrophes simples, et « $HOME » n'y est plus une variable mais
+        quatre caractères. Le modèle serait alors converti dans un répertoire
+        littéralement nommé « $HOME », et servi depuis un chemin qui n'existe
+        pas. Le dollar doit rester hors de la citation.
+        """
+        chemin = apertus.sous_le_compte(".apertus-mlx/essai")
+        vu = subprocess.run(
+            ["sh", "-c", f"printf %s {chemin}"],
+            env={"HOME": "/tmp/compte-invente", "PATH": os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual("/tmp/compte-invente/.apertus-mlx/essai", vu.stdout)
+
+    def test_la_conversion_ecrit_sous_le_compte_et_non_dans_le_depot(self):
+        """Des dizaines de gigaoctets ne vivent jamais dans le dépôt."""
+        etape = self._etape("mlx", "70b-q4", "tirer")
+        self.assertIn('"$HOME"/.apertus-mlx/', etape.commande)
+        self.assertNotIn("'$HOME", etape.commande)
+
+    def test_le_moteur_est_borne_a_apple(self):
+        self.assertEqual("Darwin", apertus.MOTEURS["mlx"].plateforme)
+        self.assertEqual(
+            [],
+            [
+                c
+                for c, m in apertus.MOTEURS.items()
+                if c != "mlx" and m.plateforme
+            ],
+        )
+
+    def test_chaque_modele_a_sa_reference_mlx(self):
+        for cle, modele in apertus.MODELES.items():
+            with self.subTest(modele=cle):
+                self.assertIn("mlx", modele.reference)
+                self.assertTrue(modele.reference["mlx"])
+
+    def test_seul_le_70b_se_convertit(self):
+        """Les autres ont un build publié ; lui n'en a aucun."""
+        a_convertir = [c for c, m in apertus.MODELES.items() if m.mlx_source]
+        self.assertEqual(["70b-q4"], a_convertir)
+        for cle in a_convertir:
+            modele = apertus.MODELES[cle]
+            # La source est le dépôt en poids pleins, la cible un chemin local.
+            self.assertIn("swiss-ai/", modele.mlx_source)
+            self.assertTrue(
+                modele.reference["mlx"].startswith(apertus.MLX_LOCAL)
+            )
+            self.assertGreater(modele.mlx_source_taille, modele.taille)
+
+    def test_les_builds_publies_sont_des_depots_et_non_des_chemins(self):
+        for cle, modele in apertus.MODELES.items():
+            if modele.mlx_source:
+                continue
+            with self.subTest(modele=cle):
+                reference = modele.reference["mlx"]
+                self.assertIn("/", reference)
+                self.assertFalse(reference.startswith("."))
+                self.assertNotIn("$", reference)
+
+    def test_la_place_requise_compte_la_conversion(self):
+        """Annoncer la seule taille finale tromperait de plus de 100 Go.
+
+        La conversion tire les poids pleins AVANT d'écrire la version
+        quantifiée, et les deux coexistent sur le disque. L'échec arriverait
+        après une heure de téléchargement.
+        """
+        modele = apertus.MODELES["70b-q4"]
+        sans = apertus.place_requise(modele, "ollama")
+        avec = apertus.place_requise(modele, "mlx")
+        self.assertGreater(avec, sans + modele.mlx_source_taille - 1)
+        # Un modèle qui a son build publié ne paie rien de plus sur MLX.
+        publie = apertus.MODELES["8b-q4"]
+        self.assertEqual(
+            apertus.place_requise(publie, "mlx"),
+            apertus.place_requise(publie, "ollama"),
+        )
+
+    def test_la_version_minimale_est_celle_qui_connait_xielu(self):
+        """En dessous, l'activation d'Apertus n'existe pas dans la pile."""
+        self.assertEqual("0.27.1", apertus.MOTEURS["mlx"].version_min)
+        self.assertTrue(apertus.version_suffisante("mlx", "0.27.1"))
+        self.assertTrue(apertus.version_suffisante("mlx", "1.0.0"))
+        self.assertFalse(apertus.version_suffisante("mlx", "0.27.0"))
+        self.assertFalse(apertus.version_suffisante("mlx", ""))
+
+    def _etape(self, moteur, modele, cle):
+        for e in apertus.etapes(moteur, modele, CIBLE_LOCALE):
+            if e.cle == cle:
+                return e
+        self.fail(f"étape {cle} absente de {moteur}/{modele}")
 
 
 if __name__ == "__main__":

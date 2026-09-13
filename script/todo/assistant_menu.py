@@ -2495,8 +2495,9 @@ class AssistantMenuMixin:
         print()
         for cle, moteur in apt.MOTEURS.items():
             print(
-                f"  ⚙️  {cle:10} {moteur.nom:10} {moteur.licence:11}"
+                f"  ⚙️  {cle:10} {moteur.nom:21} {moteur.licence:11}"
                 f" :{moteur.port}{moteur.chemin}  ≥ {moteur.version_min}"
+                + (f"  [{moteur.plateforme}]" if moteur.plateforme else "")
             )
         print()
         print("  📖 doc/APERTUS.md · doc/APERTUS.fr.md")
@@ -2603,15 +2604,20 @@ class AssistantMenuMixin:
         from script.todo.assistant import apertus as apt
 
         cles = list(apt.MOTEURS)
-        choices = [
-            {
-                "prompt_description": (
-                    f"{apt.MOTEURS[c].nom}  ({apt.MOTEURS[c].licence},"
-                    f" :{apt.MOTEURS[c].port}, ≥ {apt.MOTEURS[c].version_min})"
-                )
-            }
-            for c in cles
-        ]
+        choices = []
+        for c in cles:
+            moteur = apt.MOTEURS[c]
+            # La plateforme exigée se dit ICI. Apprise à l'étape 2 d'une
+            # installation, elle aurait déjà coûté une question et un choix.
+            ou = f", {moteur.plateforme}" if moteur.plateforme else ""
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{moteur.nom}  ({moteur.licence},"
+                        f" :{moteur.port}, ≥ {moteur.version_min}{ou})"
+                    )
+                }
+            )
         print(t("Which engine should serve the model?"))
         try:
             status = click.prompt(self.fill_help_info(choices))
@@ -2644,10 +2650,13 @@ class AssistantMenuMixin:
         choices = []
         for c in cles:
             modele = apt.MODELES[c]
+            # Le contexte du modèle, et non une phrase qui nomme une taille :
+            # la même phrase servait au 8B et au 70B, et annonçait « 8B » pour
+            # les deux.
             note = (
                 t("Distilled Mini - lighter, 4096 tokens only")
                 if modele.distille
-                else t("Full 8B - 65536 tokens of context")
+                else t("%s tokens of context") % modele.contexte
             )
             choices.append(
                 {
@@ -2778,12 +2787,19 @@ class AssistantMenuMixin:
             return t(
                 "%s %s is too old; Apertus needs %s (xIELU activation)."
             ) % (moteur.nom, lignes[-1][:40], moteur.version_min)
+        if etape.cle == "plateforme":
+            return (
+                t("This engine needs %s; this target runs something else.")
+                % apt.MOTEURS[moteur_cle].plateforme
+            )
         if etape.cle == "sudo":
             return t("This host needs an interactive sudo password.")
         if etape.cle == "place":
             modele = apt.MODELES[self._apertus_state()["modele"]]
             return t("Not enough space: %s needed, %s free.") % (
-                self._apertus_gio(apt.place_requise(modele)),
+                self._apertus_gio(
+                    apt.place_requise(modele, self._apertus_state()["moteur"])
+                ),
                 "?",
             )
         return ""
@@ -2908,7 +2924,18 @@ class AssistantMenuMixin:
             f" {self._apertus_gio(modele.taille)},"
             f" {t('%s tokens of context') % apt.contexte_utile(modele)}"
         )
-        print(f"💾 {self._apertus_gio(apt.place_requise(modele))}")
+        besoin = apt.place_requise(modele, state["moteur"])
+        print(f"💾 {self._apertus_gio(besoin)}")
+        if moteur.cle == "mlx" and modele.mlx_source:
+            # La conversion tire les poids pleins AVANT d'écrire la version
+            # quantifiée : annoncer la seule taille finale tromperait de 130 Go.
+            print(
+                "   "
+                + t(
+                    "No MLX build is published; the model is converted"
+                    " locally."
+                )
+            )
         print()
         print(t("Will execute:"))
         print(apt.plan_lisible(liste[depart - 1 :]))
