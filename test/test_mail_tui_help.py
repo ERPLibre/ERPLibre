@@ -539,7 +539,9 @@ class TestHelpFitsASmallWindow(HelpCase):
             # déjà — il ne prouverait plus rien du défilement.
             self.assertGreater(body.max_scroll_y, 0)
             first_screen = collapse(" ".join(self.screen_lines(app)))
-            self.assertNotIn(collapse(t("mail_help_close_hint")), first_screen)
+            # La phrase qui dit comment SORTIR est posée hors du bloc qui
+            # défile : elle est là dès l'ouverture, et y reste.
+            self.assertIn(collapse(t("mail_help_close_hint")), first_screen)
 
             seen = first_screen
             for _ in range(40):
@@ -555,7 +557,8 @@ class TestHelpFitsASmallWindow(HelpCase):
                     seen,
                     f"« {binding.description} » reste inatteignable",
                 )
-            self.assertIn(collapse(t("mail_help_close_hint")), seen)
+            derniere = collapse(" ".join(self.screen_lines(app)))
+            self.assertIn(collapse(t("mail_help_close_hint")), derniere)
 
 
 class TestBindingDescriptionsAreTranslated(HelpCase):
