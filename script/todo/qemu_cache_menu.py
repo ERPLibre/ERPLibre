@@ -2178,13 +2178,37 @@ def bypass_menage(execute):
     return len(orphelines)
 
 
-def depots_des_manifestes(racine):
+def manifeste_retenu(nom, version=""):
+    """Ce manifeste concerne-t-il la version demandée ?
+
+    Sans version, tous : le remplissage des miroirs prend de l'avance pour
+    toutes les versions à la fois, et rien ne doit lui en soustraire.
+
+    Avec une version, ceux qui portent ce numéro et ceux qui n'en portent
+    aucun — ces derniers valent pour toutes. Les dépréciés sortent : ils ne
+    décrivent plus rien d'installable, et les compter ferait annoncer comme
+    manquants des dépôts qu'aucun déploiement ne demandera.
+    """
+    if not version:
+        return True
+    if "deprecated" in nom:
+        return False
+    numeros = re.findall(r"odoo(\d+\.\d+)", nom)
+    return not numeros or version in numeros
+
+
+def depots_des_manifestes(racine, version=""):
     """Les dépôts git que les manifestes du dépôt déclarent, sans doublon.
 
     Un manifeste Google Repo nomme des « remote » — l'URL de base d'une forge —
     et des « project » qui s'y rattachent. L'URL complète est la concaténation
     des deux, et un même projet figure dans plusieurs manifestes, un par
     version d'Odoo.
+
+    `version` borne la lecture à une version d'Odoo. Un déploiement n'en
+    installe qu'UNE : additionner les dépôts des autres fait compter comme
+    manquant ce que personne ne clonera, et un avertissement qui crie pour
+    rien cesse d'être lu. Vide, tout est rendu.
 
     Un manifeste illisible est SAUTÉ plutôt que fatal : la liste sert à prendre
     de l'avance, et en perdre une partie vaut mieux que de ne rien prendre.
@@ -2197,6 +2221,8 @@ def depots_des_manifestes(racine):
     for fichier in sorted(
         glob.glob(os.path.join(racine, "manifest", "*.xml"))
     ):
+        if not manifeste_retenu(os.path.basename(fichier), version):
+            continue
         try:
             arbre = ET.parse(fichier).getroot()
         except (ET.ParseError, OSError):

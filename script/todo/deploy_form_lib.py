@@ -363,7 +363,7 @@ def disk_note(plan_gb, free_gb, total_gb=0) -> str:
     return f"~{plan_gb} G / {free_gb} G {t('free of')} {total_gb} G"
 
 
-def _depots_declares():
+def _depots_declares(version=""):
     """Les dépôts git que les manifestes déclarent, ou [] si on ne sait pas.
 
     La lecture vit dans le menu du cache, qui la porte déjà ; l'import est
@@ -371,6 +371,12 @@ def _depots_declares():
     quand personne ne coupe le réseau. Toute défaillance rend une liste vide :
     le verdict se tait plutôt que d'annoncer des miroirs manquants sur une
     lecture qui a échoué.
+
+    La lecture est BORNÉE à une version d'Odoo : un déploiement n'en installe
+    qu'une, et compter les dépôts des autres versions — les dépréciées
+    comprises — nomme comme manquants des dépôts que personne ne clonera.
+    Vide, celle que le dépôt porte dans « .odoo-version », qui est ce qu'un
+    déploiement pose par défaut.
     """
     import os
 
@@ -381,8 +387,16 @@ def _depots_declares():
     racine = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
+    if not version:
+        try:
+            with open(
+                os.path.join(racine, ".odoo-version"), encoding="utf-8"
+            ) as fh:
+                version = fh.read().strip()
+        except OSError:
+            version = ""
     try:
-        return depots_des_manifestes(racine)
+        return depots_des_manifestes(racine, version)
     except Exception:
         return []
 
