@@ -34,13 +34,10 @@ sys.path.append(RACINE)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from script.todo import lima_menu, todo_i18n  # noqa: E402
-from script.todo.lima_menu import (  # noqa: E402
-    TOOL_SENTENCES,
-    LimaMenuMixin,
-    config_path,
-    instance_line,
-    tool_sentence,
-)
+from script.todo.lima_menu import LimaMenuMixin  # noqa: E402
+from script.todo.lima_menu import (TOOL_SENTENCES, config_path, instance_line,
+                                   tool_sentence)
+from script.todo.todo_i18n import t  # noqa: E402
 from script.vm import lima as L  # noqa: E402
 from script.vm import lima_install as I  # noqa: E402
 
@@ -68,6 +65,30 @@ class MenuDeBanc(LimaMenuMixin):
 
     def _is_yes(self, reponse):
         return (reponse or "").strip().lower() in ("o", "oui", "y", "yes")
+
+    # Les deux voisins que le vrai menu tient du mixin de déploiement : le
+    # banc déclare ce qu'il fournit plutôt que de monter tout TODO.
+    posture_demandee = "open"
+
+    def _deploy_ask_posture(self, after_boot=False):
+        from script.posture import spec as posture_spec
+
+        return {
+            posture_spec.POSTURE_KEY: self.posture_demandee,
+            posture_spec.REAL_DATA_KEY: False,
+        }
+
+    def _qemu_egress_rules(self, spec):
+        from script.posture import allowlist, registry, rules
+        from script.posture import spec as posture_spec
+
+        posture = registry.get_posture(posture_spec.posture_name(spec))
+        if not rules.wants_rules(posture):
+            return ""
+        cibles = ()
+        if posture.destinations_bounded:
+            cibles = (allowlist.resolve("dns-resolver", ["198.51.100.53"]),)
+        return rules.render_egress(posture, cibles)
 
 
 def sortie(fonction, *args, **kwargs):
@@ -384,6 +405,79 @@ class TestLaCreation(CasDeMenu):
             self.assertEqual([], os.listdir(base))
         self.assertEqual([], menu.execute.joues)
         self.assertEqual("", texte)
+
+
+class TestLaPostureALaCreation(CasDeMenu):
+    """Lima était le SEUL des trois backends hors du système de postures.
+
+    Le prédicat qui dit ce qu'une instance ne tient pas existait depuis le
+    début, avec ses épreuves et zéro appelant : aucune posture n'était
+    jamais choisie, donc il n'avait rien à juger.
+    """
+
+    def creer(self, menu, reponse="o", posture="open", macos=False):
+        import tempfile as tf
+
+        menu.posture_demandee = posture
+        with tf.TemporaryDirectory() as base:
+            self.base = base
+            with patch.object(
+                menu, "_lima_ask_name", return_value="essai"
+            ), patch.object(
+                lima_menu,
+                "config_path",
+                return_value=os.path.join(base, "essai.yaml"),
+            ), patch.object(
+                lima_menu.host_os, "is_macos", return_value=macos
+            ), patch(
+                "builtins.input", return_value=reponse
+            ):
+                texte = sortie(menu._lima_create)
+            self.ecrits = os.listdir(base)
+        return texte
+
+    def test_a_cut_egress_is_refused_and_nothing_is_written(self):
+        """Le réseau en mode utilisateur de Lima DONNE toujours la sortie,
+        et aucun réglage d'instance ne la retire. Offrir « rien ne sort »
+        ici serait exactement le nom rassurant que le registre s'interdit."""
+        menu = MenuDeBanc()
+        texte = self.creer(menu, posture="local-only")
+        self.assertEqual([], self.ecrits)
+        self.assertEqual([], menu.execute.joues)
+        self.assertIn("egress-none", texte)
+
+    def test_a_bounded_allowlist_poses_its_rules_in_the_guest(self):
+        menu = MenuDeBanc()
+        texte = self.creer(menu, posture="paranoid")
+        self.assertIn("provision:", texte)
+        self.assertIn("nft -f", texte)
+
+    def test_a_free_egress_poses_nothing(self):
+        """Lui rendre un bloc donnerait l'apparence d'un confinement que le
+        nom de la posture dément."""
+        menu = MenuDeBanc()
+        texte = self.creer(menu, posture="open")
+        self.assertNotIn("provision:", texte)
+
+    def test_what_the_host_cannot_offer_is_said_on_linux(self):
+        """Sans socket_vmnet — qui n'existe que sur macOS — l'invité sort
+        mais ne se laisse pas joindre. Ce n'est pas un refus : le
+        confinement n'est pas en cause, et le taire le serait."""
+        texte = self.creer(MenuDeBanc(), posture="open", macos=False)
+        self.assertIn(
+            f"{t('Not held for this posture:')} reachable-address", texte
+        )
+
+    def test_macos_has_that_posture_limit_no_more(self):
+        """DEUX QUESTIONS VOISINES, deux phrases. Sur macOS l'adresse
+        joignable est POSSIBLE : la posture ne bute sur rien, et si elle
+        manque encore c'est que personne ne l'a demandée — ce que dit
+        l'autre phrase, celle de la configuration."""
+        texte = self.creer(MenuDeBanc(), posture="open", macos=True)
+        self.assertNotIn(t("Not held for this posture:"), texte)
+        self.assertIn(
+            f"{t('Not held by this config:')} reachable-address", texte
+        )
 
 
 class TestLeNomEstValide(CasDeMenu):

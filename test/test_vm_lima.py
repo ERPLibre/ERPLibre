@@ -24,6 +24,7 @@ sys.path.append(RACINE)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from script import posture as P  # noqa: E402
+from script.posture import plan as plan  # noqa: E402
 from script.vm import lima as L  # noqa: E402
 
 IMAGE = "https://exemple.invalid/ubuntu-24.04-arm64.img"
@@ -189,6 +190,77 @@ class TestCeQueLaConfigurationNeTientPas(unittest.TestCase):
                 self.assertIsInstance(
                     L.unenforceable(P.get_posture(nom), macos=True), tuple
                 )
+
+
+class TestLesReglesPoseesDansLInvite(unittest.TestCase):
+    """La liste blanche se pose DANS L'INVITÉ, pas dans la description.
+
+    `unenforceable` le dit depuis toujours — « destinations-bounded » — et
+    sa docstring nomme la sortie : « l'appelant décide : renoncer, ou poser
+    le verrou ailleurs — dans l'invité, où il attrape ce que la
+    configuration ne peut pas ». Le provisionnement d'instance EST cet
+    ailleurs, et il manquait.
+
+    Les chemins, les modes et la commande d'amorçage viennent du paquet
+    posture. Ce module-ci PEUT l'importer, là où le moteur qemu ne le peut
+    pas — il se charge sans le dépôt sur son chemin d'import — et c'est
+    pourquoi la recopie est assumée là-bas et interdite ici.
+    """
+
+    REGLES = "table inet erplibre { chain output { policy drop; } }\n"
+
+    def rendu(self, **kw):
+        return L.render_config(
+            "img", provision_script=plan.provision_script(self.REGLES), **kw
+        )
+
+    def test_no_rules_means_no_provisioning_at_all(self):
+        """Un bloc vide se lirait comme un provisionnement qui a tourné."""
+        self.assertNotIn("provision:", L.render_config("img"))
+
+    def test_the_block_is_valid_yaml_like_the_rest(self):
+        charge = yaml.safe_load(self.rendu())
+        self.assertEqual(1, len(charge["provision"]))
+        self.assertEqual("system", charge["provision"][0]["mode"])
+
+    def test_the_rules_reach_the_guest_verbatim(self):
+        charge = yaml.safe_load(self.rendu())
+        self.assertIn(self.REGLES.strip(), charge["provision"][0]["script"])
+
+    def test_the_paths_come_from_the_posture_package(self):
+        """Recopiés ici, ils divergeraient du jour où le paquet les change,
+        et l'invité chargerait un fichier que personne n'écrit."""
+        script = yaml.safe_load(self.rendu())["provision"][0]["script"]
+        self.assertIn(plan.RULES_PATH, script)
+        self.assertIn(plan.UNIT_PATH, script)
+
+    def test_the_unit_text_comes_from_there_too(self):
+        script = yaml.safe_load(self.rendu())["provision"][0]["script"]
+        self.assertIn(plan.unit_text().strip(), script)
+
+    def test_it_arms_and_loads_in_that_order(self):
+        """Armer sans charger laisse sortir jusqu'au premier redémarrage ;
+        charger sans armer laisse sortir à partir du deuxième."""
+        script = yaml.safe_load(self.rendu())["provision"][0]["script"]
+        self.assertIn(plan.first_boot_command(), script)
+
+    def test_the_rules_file_is_born_owner_only(self):
+        """Il porte les adresses du site. Une redirection shell ne prend
+        pas de mode : c'est le masque qui décide, et un chmod APRÈS
+        laisserait le fichier lisible le temps de son écriture."""
+        script = yaml.safe_load(self.rendu())["provision"][0]["script"]
+        attendu = f"{0o666 ^ int(plan.RULES_MODE, 8):04o}"
+        self.assertIn(f"umask {attendu}", script)
+        self.assertEqual("0600", plan.RULES_MODE)
+
+    def test_blank_rules_pose_nothing(self):
+        """Un fichier vide se chargerait sans rien appliquer, et l'instance
+        se lirait comme confinée. Le refus vit dans le composeur, et ce
+        module ne voit qu'un script vide — ce qui suffit à ne rien écrire."""
+        self.assertEqual("", plan.provision_script("  \n "))
+        self.assertNotIn(
+            "provision:", L.render_config("img", provision_script="  \n ")
+        )
 
 
 class TestLireLInventaire(unittest.TestCase):

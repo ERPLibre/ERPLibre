@@ -12757,6 +12757,18 @@ TRANSLATIONS = {
         "fr": "Aucune instance ne correspond.",
         "en": "No instance matches.",
     },
+    "Not held for this posture:": {
+        "fr": "Non tenu pour cette posture :",
+        "en": "Not held for this posture:",
+    },
+    "Lima cannot hold this posture:": {
+        "fr": "Lima ne peut pas tenir cette posture :",
+        "en": "Lima cannot hold this posture:",
+    },
+    "User-mode networking always gives egress.": {
+        "fr": "Le réseau en mode utilisateur donne toujours la sortie.",
+        "en": "User-mode networking always gives egress.",
+    },
     "Not held by this config:": {
         "fr": "Non tenu par cette configuration :",
         "en": "Not held by this config:",
