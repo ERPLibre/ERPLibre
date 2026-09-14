@@ -182,6 +182,7 @@ preview pane on the right, with a status line at the bottom.
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
 | `d` | move the selected message to the account's trash folder |
+| `m` | file the selected message into a folder you pick |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -422,7 +423,7 @@ missing from the remote tree but present in ours would never resynchronise.
 Renaming carries the messages and their bodies across, so the next pass does
 not download again what is already there.
 
-## Throwing a message away
+## Filing and throwing away
 
 `d` moves the selected message to the account's trash folder. Nothing is
 destroyed: a trash folder is emptied elsewhere, which is what makes the
@@ -441,6 +442,14 @@ account announces no trash folder — inventing a name would create one
 nobody asked for — or the message is already there. The local cache is
 updated only after the server agrees; getting ahead of it would make a
 message vanish from the screen and come back at the next pass.
+
+`m` files the message into a folder you pick instead: it opens the
+account's folders, arrows and `Enter` choose, `Escape` cancels. The folder
+the message is already in is not offered — moving it there would do
+nothing, and offering it suggests otherwise. It is a screen of its own,
+apart from the folder screen on `F`, which creates and destroys: mixing an
+everyday gesture with destructive ones puts deleting a folder one key away
+from filing a message.
 
 ## List views
 
@@ -628,8 +637,9 @@ stands and the next pass tries again.
 - **No cross-folder search** — `/` and `Shift+S` both work on the open
   folder of one account; neither sweeps the other folders or the other
   accounts.
-- **No moving to a chosen folder** — `d` moves a message to the account's
-  trash, but there is no way to file one into a folder you pick.
+- **No moving across accounts** — `d` and `m` file a message within the
+  account it belongs to; a message cannot be moved from one account to
+  another.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining
