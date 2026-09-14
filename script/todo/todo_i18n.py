@@ -1577,32 +1577,32 @@ TRANSLATIONS = {
         "en": "Which test?",
     },
     "The cache: two VMs, measure the gain": {
-        "fr": "Le cache : deux VM, mesurer le gain",
-        "en": "The cache: two VMs, measure the gain",
+        "fr": "⚡ Le cache : deux VM, mesurer le gain",
+        "en": "⚡ The cache: two VMs, measure the gain",
     },
     "The offline counter-proof": {
-        "fr": "La contre-épreuve hors ligne",
-        "en": "The offline counter-proof",
+        "fr": "📴 La contre-épreuve hors ligne",
+        "en": "📴 The offline counter-proof",
     },
     "The control: two VMs WITHOUT the cache": {
-        "fr": "Le témoin : deux VM SANS le cache",
-        "en": "The control: two VMs WITHOUT the cache",
+        "fr": "⚖ Le témoin : deux VM SANS le cache",
+        "en": "⚖ The control: two VMs WITHOUT the cache",
     },
     "All three, one after another": {
-        "fr": "Les trois, l'un après l'autre",
-        "en": "All three, one after another",
+        "fr": "🔁 Les trois, l'un après l'autre",
+        "en": "🔁 All three, one after another",
     },
     "Which load?": {
         "fr": "Quelle charge ?",
         "en": "Which load?",
     },
     "Minimum: a batch of packages, minutes": {
-        "fr": "Minimum : un lot de paquets, quelques minutes",
-        "en": "Minimum: a batch of packages, minutes",
+        "fr": "🪶 Minimum : un lot de paquets, quelques minutes",
+        "en": "🪶 Minimum: a batch of packages, minutes",
     },
     "ERPLibre + Odoo 18: the real thing, hours": {
-        "fr": "ERPLibre + Odoo 18 : l'installation réelle, des heures",
-        "en": "ERPLibre + Odoo 18: the real thing, hours",
+        "fr": "🏗 ERPLibre + Odoo 18 : l'installation réelle, des heures",
+        "en": "🏗 ERPLibre + Odoo 18: the real thing, hours",
     },
     "Which system?": {
         "fr": "Quel système ?",

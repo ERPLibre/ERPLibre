@@ -1650,12 +1650,31 @@ class QemuCacheMenuMixin:
         spec.loader.exec_module(module)
         return module
 
+    # Une icône par système, pour le menu SEULEMENT. `distro_label` sert aussi
+    # aux formulaires de déploiement et aux journaux : l'icône y changerait
+    # des libellés que d'autres lisent. Une distribution ajoutée au catalogue
+    # sans icône retombe sur _CACHE_ICONE_REPLI, et une épreuve le signale.
+    _CACHE_ICONES_SYSTEMES = {
+        "almalinux": "🌸",
+        "arch": "🏹",
+        "debian": "🌀",
+        "fedora": "🎩",
+        "opensuse": "🦎",
+        "rocky": "⛰",
+        "ubuntu": "🟠",
+    }
+    _CACHE_ICONE_REPLI = "🐧"
+
     @classmethod
     def _cache_systemes(cls):
-        """Les systèmes que le TEST accepte, avec leur libellé."""
+        """Les systèmes que le TEST accepte, avec leur libellé et son icône."""
         module = cls._cache_module_test()
         return [
-            (d, module.distro_label(d, module.DISTROS[d][1]))
+            (
+                d,
+                f"{cls._CACHE_ICONES_SYSTEMES.get(d, cls._CACHE_ICONE_REPLI)}"
+                f" {module.distro_label(d, module.DISTROS[d][1])}",
+            )
             for d in sorted(module.systemes_mesurables())
         ]
 

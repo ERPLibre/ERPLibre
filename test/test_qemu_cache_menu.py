@@ -671,6 +671,51 @@ class TestLesEntreesDesMiroirsVisentLeurListe(unittest.TestCase):
         self.assertEqual(self.remplir("3"), depots_des_manifestes(str(RACINE)))
 
 
+class TestLesIconesDeLAssistant(unittest.TestCase):
+    """Chaque choix de l'assistant porte une icône, système compris.
+
+    Les icônes des systèmes vivent dans le menu et non dans `distro_label`,
+    qui sert aussi aux formulaires de déploiement et aux journaux. Une
+    distribution ajoutée au catalogue sans icône retomberait sur l'icône de
+    repli sans que rien ne le dise : c'est ce que ces épreuves surveillent.
+    """
+
+    def test_chaque_systeme_mesurable_a_son_icone(self):
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        module = M._cache_module_test()
+        sans = sorted(
+            set(module.systemes_mesurables()) - set(M._CACHE_ICONES_SYSTEMES)
+        )
+        self.assertEqual(sans, [], f"systèmes sans icône : {sans}")
+
+    def test_le_libelle_du_catalogue_reste_intact(self):
+        """L'icône précède le libellé, elle ne le remplace pas."""
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        module = M._cache_module_test()
+        for distro, libelle in M._cache_systemes():
+            self.assertEqual(
+                libelle,
+                f"{M._CACHE_ICONES_SYSTEMES[distro]}"
+                f" {module.distro_label(distro, module.DISTROS[distro][1])}",
+            )
+
+    def test_les_essais_et_les_charges_portent_une_icone(self):
+        from script.todo.qemu_cache_menu import QemuCacheMenuMixin as M
+
+        cles = [e[1] for e in M._CACHE_ESSAIS] + [
+            c[1] for c in M._CACHE_CHARGES
+        ]
+        cles.append("All three, one after another")
+        for cle in cles:
+            for langue in ("fr", "en"):
+                valeur = todo_i18n.TRANSLATIONS[cle][langue]
+                self.assertFalse(
+                    valeur[0].isalnum(), f"« {cle} » ({langue}) sans icône"
+                )
+
+
 class TestLAssistantDesTests(unittest.TestCase):
     """Trois questions — quel essai, quelle charge, quel système — puis les
     essais choisis, l'un après l'autre.
