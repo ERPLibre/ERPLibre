@@ -9,10 +9,11 @@ aucun argument de `limactl` en littéral — les rendus viennent du module, et
 c'est ce qui fait que la confrontation de `long_test/` éprouve le code
 livré plutôt que ses propres copies.
 
-L'ÉCRAN DIT QUE LE BACKEND N'EST PAS ÉPROUVÉ. « Non éprouvé » ne veut pas
-dire douteux : il veut dire NON CONFRONTÉ à un vrai « limactl ». Un écran
-muet là-dessus laisse croire l'inverse, et c'est le seul backend du dépôt
-dans cet état.
+L'ÉCRAN MARQUE UN BACKEND NON ÉPROUVÉ, S'IL Y EN A UN. « Non éprouvé » ne
+veut pas dire douteux : il veut dire NON CONFRONTÉ à un vrai outil, et un
+écran muet là-dessus laisse croire l'inverse. La marque vient de la table de
+`script.vm.backend` et non d'un jugement écrit ici ; elle disparaît d'
+elle-même quand la table change, sans qu'un écran soit retouché.
 
 LA COMMANDE SE MONTRE AVANT DE SE JOUER. Deux raisons, et la seconde est la
 vraie : une faute de frappe se voit, et surtout une opération qui détruit se
