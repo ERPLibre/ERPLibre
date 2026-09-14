@@ -963,17 +963,25 @@ def create_cmds(vmid: int, spec: dict) -> list:
     nom = spec["name"]
     stockage = spec["storage"]
     image = f"{spec.get('image_dir', IMAGE_DIR)}/{spec['image']}"
+    # L'écran de la VM. « serial0 » fait de la console série l'affichage :
+    # c'est ce que « qm terminal » attend, et c'est le défaut d'une machine
+    # de serveur. La 3D demande un vrai périphérique vidéo — « virtio-gl »
+    # pose un virtio-gpu que le VIRGL de l'hôte accélère. Le port série reste
+    # posé dans les deux cas, donc la console série ne se perd jamais ; seule
+    # la nature de l'écran change.
+    vga = "virtio-gl" if spec.get("gpu3d") else "serial0"
     cmds = [
         # 1. La coquille : processeur, mémoire, réseau, contrôleur, agent.
         "qm create {id} --name {nom} --memory {mem} --cores {cpu}"
         " --cpu host --ostype l26 --scsihw virtio-scsi-single"
         " --net0 virtio,bridge={pont} --agent enabled=1"
-        " --serial0 socket --vga serial0".format(
+        " --serial0 socket --vga {vga}".format(
             id=vmid,
             nom=shlex.quote(nom),
             mem=int(spec["memory"]),
             cpu=int(spec["vcpus"]),
             pont=spec["bridge"],
+            vga=vga,
         ),
         # 2. Le disque, importé DEPUIS l'image cloud. « import-from » (PVE 8+)
         #    remplace l'ancien « qm importdisk » en une seule étape et attache

@@ -361,6 +361,55 @@ class ProxmoxMenuMixin:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
 
+    # Ce que « --vga virtio-gl » exige de l'hôte : le chemin qui le prouve,
+    # et le nom qui sert à le poser. Les noms sont ceux des paquets, car
+    # c'est ce qu'un opérateur tape ; « noeud » n'en est pas un, le nœud de
+    # rendu venant du matériel ou d'un GPU transmis.
+    _PVE_GPU_PIECES = (
+        ("/dev/dri/renderD*", "noeud"),
+        ("/usr/lib/*/libvirglrenderer.so.*", "libvirglrenderer1"),
+        ("/usr/lib/*/libGL.so.1", "libgl1"),
+        ("/usr/lib/*/libEGL.so.1", "libegl1"),
+    )
+
+    def _pve_gpu_dispo(self):
+        """Ce qui MANQUE à l'hôte Proxmox pour donner de la 3D à ses invités.
+
+        Rend (possible, manque) : « manque » nomme les pièces absentes et
+        vaut "" quand tout est là. Une case qui disparaît sans un mot ne se
+        devine pas — le formulaire s'en sert pour DIRE pourquoi la 3D n'est
+        pas offerte, et quoi installer.
+
+        Une sonde qui n'aboutit pas rend (False, "") : on ne promet rien, et
+        on n'accuse rien non plus. Le jeton « FIN » distingue une sonde qui a
+        tout trouvé — donc muette — d'une sonde qui n'a pas tourné.
+
+        Quatre pièces, et il les faut TOUTES. Un NŒUD DE RENDU
+        (« /dev/dri/renderD* ») : un hôte sans GPU, ou lui-même virtualisé
+        sans GPU transmis, n'en expose aucun. Puis les trois bibliothèques
+        que Proxmox charge pour « --vga virtio-gl » : VIRGL, GL et EGL. Il
+        les réclame nommément — « missing libraries for 'virtio-gl'
+        detected! Please install 'libgl1' and 'libegl1' » — et refuse de
+        démarrer la machine, une fois son disque écrit et sa configuration
+        posée. La case promettrait alors une accélération que rien ne
+        fournit, et le déploiement échouerait à la dernière étape.
+
+        Un hôte peut en porter une sans l'autre : VIRGL et GL viennent avec
+        d'autres paquets, EGL non.
+        """
+        sonde = "; ".join(
+            f"ls {chemin} >/dev/null 2>&1 || echo {jeton}"
+            for chemin, jeton in self._PVE_GPU_PIECES
+        )
+        code, sortie = self._pve_show(f"{sonde}; echo FIN", quiet=True)
+        dites = [l.strip() for l in (sortie or "").splitlines() if l.strip()]
+        if code or "FIN" not in dites:
+            return False, ""
+        manque = [
+            jeton for _c, jeton in self._PVE_GPU_PIECES if jeton in dites
+        ]
+        return (not manque), " ".join(manque)
+
     def _pve_vms(self):
         """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
         from script.proxmox import proxmox_deploy as pve
@@ -1169,6 +1218,38 @@ class ProxmoxMenuMixin:
             """Les commandes qui seraient lancées pour CETTE VM."""
             return self._pve_vm_commands(mod, vm, spec)
 
+        # UNE sonde, deux réponses : ce que l'hôte peut faire, et ce qui lui
+        # manque pour le faire. Sondé deux fois, l'écran pourrait offrir la
+        # case et nommer en même temps ce qui l'empêche.
+        gpu_possible, gpu_manque = self._pve_gpu_dispo()
+
+        def poser_gpu(paquets):
+            """Pose les paquets manquants SUR L'HÔTE. Rend True si apt a fini.
+
+            Interactive à dessein : le terminal est rendu par l'écran avant
+            l'appel, « ssh -t » ouvre un vrai terminal distant, et sudo peut
+            donc demander son mot de passe. Rien n'est capturé — l'opérateur
+            voit apt travailler, ce qui est la moitié de la confiance.
+
+            Le nœud de rendu n'est pas un paquet et ne s'installe pas : il
+            est écarté, et une liste qui n'en contient pas d'autre ne lance
+            rien plutôt que d'appeler « apt install » les mains vides.
+            """
+            noms = [
+                p
+                for p in str(paquets or "").split()
+                if p != "noeud" and re.fullmatch(r"[A-Za-z0-9.+_-]+", p)
+            ]
+            if not noms:
+                return False
+            remote = pve.wrap_privilege(
+                "apt-get update && apt-get install -y " + " ".join(noms),
+                host.get("sudo") or "",
+            )
+            argv = pve.ssh_argv(host, remote, tty=True)
+            print("\n" + " ".join(shlex.quote(a) for a in argv) + "\n")
+            return subprocess.call(argv) == 0
+
         return {
             "host": dict(host, label=self._pve_label(host)),
             "node": self._pve_node_name(),
@@ -1235,6 +1316,17 @@ class ProxmoxMenuMixin:
             # vit pas ici ne traverse rien qu'on sache couper, et la case y
             # promettrait un hors-ligne que personne ne tient.
             "cache_offert": bool(self._pve_cache_ca(host)),
+            # Lu ICI, terminal encore à nous : la sonde passe par ssh, et une
+            # invite de mot de passe pendant que l'écran affiche le casserait.
+            "gpu_offert": gpu_possible,
+            # Ce qui manque, nommé : une case qui disparaît sans un mot se
+            # lit comme une régression, et l'opérateur n'a rien à corriger.
+            "gpu_manque": gpu_manque,
+            # De quoi poser ce qui manque sans quitter l'écran, et de quoi
+            # RELIRE l'hôte ensuite : sans la seconde, l'écran croirait sur
+            # parole qu'apt a réussi.
+            "installer_gpu": poser_gpu,
+            "sonder_gpu": self._pve_gpu_dispo,
         }
 
     def _pve_capacity(self):
@@ -1320,6 +1412,10 @@ class ProxmoxMenuMixin:
             # Le DNS de l'hôte : « --ipconfig0 » ne le porte pas, et une VM
             # en adresse fixe se retrouvait sans résolveur.
             "nameservers": spec.get("nameservers") or (),
+            # L'accélération 3D se décide à la CRÉATION : l'écran d'une VM
+            # Proxmox est un choix de « qm create », et le changer ensuite
+            # demande de l'éteindre.
+            "gpu3d": bool(spec.get("gpu3d")),
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
@@ -1712,6 +1808,36 @@ class ProxmoxMenuMixin:
         print(f"  ✓ {t('apt mirror pinned')} : {miroir}")
         return True
 
+    def _pve_set_gpu_groups(self, cible, utilisateur, mod=None):
+        """Met le compte de la VM dans les groupes du GPU, par ssh.
+
+        Le nœud de rendu appartient à « root:render » en 0660 : un compte qui
+        n'y est pas retombe en rendu logiciel alors même que la négociation
+        VIRGL entre l'hôte et l'invité a réussi, et rien ne le signale — le
+        matériel virtuel est bien accéléré, seul l'accès manque.
+
+        La voie libvirt pose ces groupes par le cloud-config ; « qm set » ne
+        sait écrire aucun fichier, d'où ce passage par ssh. Les groupes sont
+        CRÉÉS au besoin : « render » manque des images les plus anciennes, et
+        « usermod -aG » sur un groupe inconnu échoue.
+
+        Les appartenances ne valent qu'à la PROCHAINE session : celle qui
+        tourne garde les siennes, ce que l'installation qui suit ne subit pas,
+        chacune de ses commandes ouvrant sa propre session.
+        """
+        groupes = list(getattr(mod, "GPU_GROUPS", ()) or ("render", "video"))
+        gestes = [f"sudo groupadd -f {g}" for g in groupes]
+        gestes.append(
+            f"sudo usermod -aG {','.join(groupes)}"
+            f" {shlex.quote(utilisateur)}"
+        )
+        code, _o = self._pve_ssh(cible, " && ".join(gestes), timeout=60)
+        if code:
+            print(f"  ⚠ {t('GPU groups not set')} ({code})")
+            return False
+        print(f"  ✓ {t('GPU groups set')} : {', '.join(groupes)}")
+        return True
+
     def _pve_write_guide(self, cible, vm, spec, mod):
         """Pose le guide de connexion et l'identité git DANS la VM.
 
@@ -1997,6 +2123,15 @@ class ProxmoxMenuMixin:
                     # réclame un autre ne retrouve rien de ce qui est gardé.
                     self._pve_set_apt_mirror(vm["alias"], vm, mod_qemu)
                     self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
+                # Après la création, qui a posé l'écran accéléré : l'accès au
+                # nœud de rendu est une affaire de COMPTE, et il se donne
+                # dans l'invité.
+                if spec.get("gpu3d"):
+                    self._pve_set_gpu_groups(
+                        vm["alias"],
+                        spec.get("user") or "erplibre",
+                        mod_qemu,
+                    )
             joignables.append(vm)
         install = spec.get("install")
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été

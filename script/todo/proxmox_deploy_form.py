@@ -115,6 +115,8 @@ def build_spec(vms, existants, form):
         # La coupure d'amont demandée pour TOUT le déploiement, installation
         # comprise. Absente de la spec, le déploiement part en ligne.
         "offline": bool(form.get("offline")),
+        # L'écran accéléré, posé à la création de chaque VM.
+        "gpu3d": bool(form.get("gpu3d")),
     }
 
 
@@ -158,6 +160,15 @@ def run_proxmox_form(ctx, run_app: bool = True):
     # un effet : l'hôte Proxmox est alors une VM de notre pont, et le menu
     # l'a établi avant d'ouvrir cet écran.
     cache_offert = bool(ctx.get("cache_offert"))
+    # La 3D ne s'offre que là où l'hôte distant peut la rendre : nœud de
+    # rendu et VIRGL. Le menu l'a sondé avant d'ouvrir cet écran.
+    gpu_offert = bool(ctx.get("gpu_offert"))
+    # Ce qui manque à l'hôte, nommé par la sonde : sans lui, la case
+    # disparaîtrait sans que rien ne dise pourquoi.
+    gpu_manque = str(ctx.get("gpu_manque") or "")
+    # Ce qui s'INSTALLE là-dedans : le nœud de rendu vient du matériel ou
+    # d'un GPU transmis, et « apt install noeud » enverrait dans le mur.
+    paquets_gpu = " ".join(p for p in gpu_manque.split() if p != "noeud")
     # {système: (libellé, commande)} — ce qu'un système impose d'installer.
     distro_profiles = ctx.get("distro_profiles") or {}
     # Les commandes qui ne posent PAS ERPLibre : sa marge disque ne les suit
@@ -319,6 +330,40 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         placeholder="100",
                         id="f_vmid",
                     )
+                    # L'écran de la VM se choisit à la CRÉATION : « qm » pose
+                    # « --vga virtio-gl » au lieu de la console série, et le
+                    # changer ensuite demande d'éteindre la machine. La
+                    # console série reste posée dans les deux cas.
+                    if gpu_offert:
+                        yield Checkbox(
+                            t(
+                                "3D acceleration (host GPU), even without a"
+                                " screen"
+                            ),
+                            value=False,
+                            id="f_gpu3d",
+                        )
+                    elif gpu_manque:
+                        # Une case qui disparaît sans un mot se lit comme une
+                        # régression : on dit ce qui manque, et le paquet à
+                        # poser sur l'HÔTE, pas dans la VM.
+                        yield Static(
+                            f"  {t('No 3D: the host lacks')} {gpu_manque}",
+                            id="t_gpu_manque",
+                        )
+                        if paquets_gpu:
+                            yield Static(
+                                f"    sudo apt install {paquets_gpu}",
+                                id="t_gpu_geste",
+                            )
+                            # Le bouton n'existe que si le menu a fourni de
+                            # quoi poser : un bouton sans effet vaut moins
+                            # qu'une commande à recopier.
+                            if ctx.get("installer_gpu"):
+                                yield Button(
+                                    t("Install on the host"),
+                                    id="f_gpu_poser",
+                                )
                     yield Static(t("Access"), classes="grouptitle")
                     yield Static(f"  {t('SSH public key')}")
                     yield Input(
@@ -899,9 +944,50 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     self._set_override(index, champ, event.value)
                     self._refresh_after()
 
+        def _poser_gpu(self) -> None:
+            """Pose ce qui manque sur l'hôte, terminal rendu, puis RELIT.
+
+            « suspend() » rend le clavier à sudo, qui peut demander un mot de
+            passe, et laisse apt s'afficher : la moitié de la confiance tient
+            à voir le travail se faire.
+
+            L'hôte est SONDÉ de nouveau au retour. Croire apt sur parole
+            offrirait une case que Proxmox refuserait ensuite — et il ne la
+            refuse qu'après avoir écrit le disque de la VM.
+            """
+            poser = ctx.get("installer_gpu")
+            if not poser:
+                return
+            with self.suspend():
+                poser(paquets_gpu)
+            sonder = ctx.get("sonder_gpu")
+            possible, reste = sonder() if sonder else (False, gpu_manque)
+            if not possible:
+                self.notify(
+                    f"{t('Still missing on the host:')} {reste or gpu_manque}",
+                    severity="warning",
+                )
+                return
+            # Monter la case AVANT de retirer les lignes : le bloc n'est
+            # jamais vide, et l'œil suit ce qui remplace quoi.
+            self.query_one("#fields").mount(
+                Checkbox(
+                    t("3D acceleration (host GPU), even without a screen"),
+                    value=True,
+                    id="f_gpu3d",
+                ),
+                after=self.query_one("#t_gpu_manque"),
+            )
+            for sel in ("#t_gpu_manque", "#t_gpu_geste", "#f_gpu_poser"):
+                for widget in self.query(sel):
+                    widget.remove()
+            self.notify(t("3D is now available: the box is here."))
+
         def on_button_pressed(self, event) -> None:
             ident = event.button.id or ""
-            if ident == "go":
+            if ident == "f_gpu_poser":
+                self._poser_gpu()
+            elif ident == "go":
                 self.action_deploy()
             elif ident == "no":
                 self.action_cancel()
@@ -950,6 +1036,12 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self.query("#f_offline")
                 and self.query_one("#f_offline", Checkbox).value
             )
+            # Même règle que pour la coupure : la case n'existe que là où
+            # elle a un effet, et son absence vaut « non ».
+            gpu3d = bool(
+                self.query("#f_gpu3d")
+                and self.query_one("#f_gpu3d", Checkbox).value
+            )
             return {
                 "host": ctx["host"],
                 "storage": self._storage(),
@@ -964,6 +1056,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT : une VM sans
                 # ERPLibre se suit aussi (cloud-init, puis relevé système).
                 "offline": offline,
+                "gpu3d": gpu3d,
                 # Hors ligne, le suivi est d'office : seule sa voie confie la
                 # levée de la coupure au guet, qui la tient jusqu'à la fin de
                 # la dernière installation.

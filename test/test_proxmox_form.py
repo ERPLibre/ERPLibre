@@ -192,6 +192,9 @@ def contexte():
         # L'hôte d'essai est une VM de notre pont : la case « Sans connexion
         # internet » est donc offerte, comme sur un Proxmox imbriqué.
         "cache_offert": True,
+        # L'hôte d'essai a un nœud de rendu et le VIRGL : la case 3D est
+        # donc offerte, comme sur un hôte Proxmox capable.
+        "gpu_offert": True,
         "ipconfig": lambda pont, vmid: f"ip=10.10.10.{50 + vmid % 200}/24",
         "build_command": lambda vm, spec: [f"qm create {vm['vmid']}"],
         "branches": ["develop", "master"],
@@ -886,6 +889,281 @@ class TestLeHorsLigneSurProxmox(unittest.TestCase):
         self.assertEqual(vu["avertissement"], [True])
         self.assertTrue(vu["suivi"])
         self.assertTrue(vu["suivi_fige"])
+
+
+class TestLaTroisDSurProxmox(unittest.TestCase):
+    """L'accélération 3D, offerte sur Proxmox VE comme sur QEMU/KVM.
+
+    Deux moitiés, et l'une sans l'autre ne donne rien. L'ÉCRAN se pose à la
+    création (« --vga virtio-gl ») ; l'ACCÈS au nœud de rendu est une affaire
+    de groupes DANS l'invité, que « qm set » ne sait pas écrire. Sans les
+    groupes, toute application GL retombe en rendu logiciel alors que la
+    négociation VIRGL a réussi — et rien ne le signale.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    def test_les_groupes_sont_crees_avant_detre_donnes(self):
+        """« usermod -aG » sur un groupe inconnu échoue, et « render » manque
+        des images les plus anciennes."""
+        todo = self._todo()
+        vu = {}
+
+        def faux_ssh(cible, cmd, timeout=120):
+            vu["cible"], vu["cmd"] = cible, cmd
+            return 0, ""
+
+        todo._pve_ssh = faux_ssh
+        import contextlib
+        import io
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(todo._pve_set_gpu_groups("pve+vm-a", "erplibre"))
+        self.assertEqual(vu["cible"], "pve+vm-a")
+        self.assertLess(
+            vu["cmd"].index("groupadd -f render"),
+            vu["cmd"].index("usermod -aG"),
+        )
+        self.assertIn("groupadd -f video", vu["cmd"])
+        self.assertIn("usermod -aG render,video erplibre", vu["cmd"])
+
+    def test_un_echec_est_dit_et_non_tu(self):
+        todo = self._todo()
+        todo._pve_ssh = lambda *a, **k: (255, "")
+        import contextlib
+        import io
+
+        sortie = io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            self.assertFalse(todo._pve_set_gpu_groups("pve+vm-a", "erplibre"))
+        self.assertIn("255", sortie.getvalue())
+
+    def test_la_sonde_exige_le_noeud_ET_les_trois_bibliotheques(self):
+        """Un hôte sans GPU n'expose aucun nœud de rendu ; sans VIRGL, GL ou
+        EGL, Proxmox refuse de démarrer la machine — « missing libraries for
+        'virtio-gl' detected! Please install 'libgl1' and 'libegl1' » —, et
+        il le refuse APRÈS avoir écrit le disque. Un hôte peut porter GL sans
+        EGL : les exiger ensemble est le seul contrôle qui vaille."""
+        todo = self._todo()
+        vus = []
+
+        def faux_show(remote, timeout=120, quiet=False):
+            vus.append(remote)
+            # Rien de manquant : la sonde ne dit que son jeton final.
+            return 0, "FIN\n"
+
+        todo._pve_show = faux_show
+        # Tout est là : la sonde ne dit que « FIN ».
+        self.assertEqual(todo._pve_gpu_dispo(), (True, ""))
+        for attendu in (
+            "/dev/dri/renderD*",
+            "libvirglrenderer.so.*",
+            "libGL.so.1",
+            "libEGL.so.1",
+        ):
+            self.assertIn(attendu, vus[0])
+
+    def test_la_sonde_nomme_ce_qui_manque(self):
+        """Le cas vécu : un hôte porte GL mais pas EGL, et Proxmox refuse de
+        démarrer la machine APRÈS avoir écrit son disque. La case ne doit pas
+        disparaître en silence — ce qui manque se nomme."""
+        todo = self._todo()
+        todo._pve_show = lambda *a, **k: (0, "libegl1\nFIN\n")
+        self.assertEqual(todo._pve_gpu_dispo(), (False, "libegl1"))
+        todo._pve_show = lambda *a, **k: (0, "noeud\nlibgl1\nlibegl1\nFIN\n")
+        self.assertEqual(
+            todo._pve_gpu_dispo(), (False, "noeud libgl1 libegl1")
+        )
+
+    def test_une_sonde_qui_naboutit_pas_naccuse_rien(self):
+        """Sans le jeton final, une sortie vide voudrait dire « tout est
+        là » : c'est ssh qui a échoué, et on ne promet rien."""
+        todo = self._todo()
+        todo._pve_show = lambda *a, **k: (0, "")
+        self.assertEqual(todo._pve_gpu_dispo(), (False, ""))
+        todo._pve_show = lambda *a, **k: (255, "FIN")
+        self.assertEqual(todo._pve_gpu_dispo(), (False, ""))
+
+    def test_le_choix_atteint_la_commande_de_creation(self):
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script" / "todo" / "proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"gpu3d": bool(spec.get("gpu3d"))', src)
+        # UNE sonde, deux clés : l'écran ne doit pas pouvoir offrir la case
+        # et nommer en même temps ce qui l'empêche.
+        self.assertIn("gpu_possible, gpu_manque = self._pve_gpu_dispo()", src)
+        self.assertIn('"gpu_offert": gpu_possible', src)
+        self.assertIn('"gpu_manque": gpu_manque', src)
+
+    def test_la_case_atteint_la_spec(self):
+        form = {
+            "host": {"target": "pve1"},
+            "storage": "local-lvm",
+            "bridge": "vmbr0",
+            "res_label": "x1",
+            "ssh_key": "",
+            "start": True,
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": True,
+            "parallelism": 1,
+            "gpu3d": True,
+        }
+        self.assertTrue(build_spec([{"name": "a"}], [], form)["gpu3d"])
+        form["gpu3d"] = False
+        self.assertFalse(build_spec([{"name": "a"}], [], form)["gpu3d"])
+
+    def _ecran(self, gpu_offert, cocher=False, manque=""):
+        """Monte l'écran avec — ou sans — la 3D possible sur l'hôte."""
+        from textual.widgets import Checkbox, Static
+
+        ctx = contexte()
+        ctx["gpu_offert"] = gpu_offert
+        ctx["gpu_manque"] = manque
+        vu = {}
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                cases = app.query("#f_gpu3d")
+                vu["offerte"] = bool(cases)
+                if cocher and cases:
+                    cases.first(Checkbox).value = True
+                    await pilote.pause()
+                vu["valeur"] = app._form_values()["gpu3d"]
+                # Relevé DANS le contexte : « run_test » démonte les widgets
+                # en sortant, et le texte n'existerait plus après.
+                vu["explication"] = " ".join(
+                    str(getattr(w, "_content", "") or w.render())
+                    for w in app.query("#t_gpu_manque")
+                )
+                vu["geste"] = " ".join(
+                    str(getattr(w, "_content", "") or w.render())
+                    for w in app.query("#t_gpu_geste")
+                )
+                assert Static  # l'import sert au typage de la requête
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_sans_gpu_sur_lhote_aucune_case(self):
+        """Une case qui promettrait une accélération que l'hôte ne peut pas
+        rendre vaut moins que pas de case."""
+        vu = self._ecran(False)
+        self.assertFalse(vu["offerte"])
+        self.assertFalse(vu["valeur"])
+
+    def test_ce_qui_manque_est_nomme_avec_son_paquet(self):
+        """Le cas vécu : la case avait disparu après correction de la sonde,
+        sans que rien ne dise pourquoi. Elle nomme désormais la pièce ET la
+        commande qui la pose — sur l'HÔTE, pas dans la VM."""
+        vu = self._ecran(False, manque="libegl1")
+        self.assertFalse(vu["offerte"])
+        self.assertIn("libegl1", vu["explication"])
+        self.assertIn("apt install libegl1", vu["geste"])
+
+    def test_un_noeud_de_rendu_absent_ne_propose_aucun_paquet(self):
+        """Le nœud vient du matériel ou d'un GPU transmis : « apt install
+        noeud » enverrait l'opérateur dans le mur."""
+        vu = self._ecran(False, manque="noeud")
+        self.assertIn("noeud", vu["explication"])
+        self.assertEqual(vu["geste"], "")
+
+    def test_rien_nest_dit_quand_la_sonde_na_pas_abouti(self):
+        """Sonde muette : on ne promet rien, et on n'accuse rien non plus."""
+        vu = self._ecran(False)
+        self.assertEqual(vu["explication"], "")
+        self.assertEqual(vu["geste"], "")
+
+    def test_avec_un_gpu_la_case_est_la_et_decochee(self):
+        vu = self._ecran(True)
+        self.assertTrue(vu["offerte"])
+        self.assertFalse(vu["valeur"])
+
+    def test_cocher_porte_le_choix_jusqua_la_spec(self):
+        self.assertTrue(self._ecran(True, cocher=True)["valeur"])
+
+    def _bouton(self, manque="libegl1", apres=(True, ""), moyen=True):
+        """Monte l'écran, presse « Installer sur l'hôte », relève la suite.
+
+        « suspend() » est remplacé : un écran monté sans terminal ne peut pas
+        le rendre, et ce n'est pas lui qu'on éprouve. Ce qu'on éprouve, c'est
+        que le paquet parte, que l'hôte soit RELU, et que l'écran suive.
+        """
+        import contextlib
+
+        from textual.widgets import Button
+
+        ctx = contexte()
+        ctx["gpu_offert"] = False
+        ctx["gpu_manque"] = manque
+        vu = {"recu": None, "notes": []}
+        if moyen:
+            ctx["installer_gpu"] = (
+                lambda paquets: vu.update(recu=paquets) or True
+            )
+            ctx["sonder_gpu"] = lambda: apres
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 60)) as pilote:
+                await pilote.pause()
+                app.suspend = lambda: contextlib.nullcontext()
+                app.notify = lambda m, **k: vu["notes"].append(str(m))
+                boutons = app.query("#f_gpu_poser")
+                vu["bouton"] = bool(boutons)
+                if boutons:
+                    boutons.first(Button).press()
+                    await pilote.pause()
+                    await pilote.pause()
+                vu["case"] = bool(app.query("#f_gpu3d"))
+                vu["lignes"] = bool(app.query("#t_gpu_manque"))
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_le_bouton_pose_le_paquet_et_la_case_apparait(self):
+        """Ce que l'opérateur demande : ne pas quitter l'écran pour une
+        commande que l'écran vient de lui montrer."""
+        vu = self._bouton()
+        self.assertTrue(vu["bouton"])
+        self.assertEqual(vu["recu"], "libegl1")
+        self.assertTrue(vu["case"], "la case n'est pas apparue")
+        self.assertFalse(vu["lignes"], "le message est resté sous la case")
+
+    def test_seuls_les_paquets_partent_a_linstallation(self):
+        """Le nœud de rendu ne s'installe pas : l'envoyer à apt ferait
+        échouer la pose des paquets qui, eux, existent."""
+        self.assertEqual(
+            self._bouton(manque="noeud libegl1")["recu"], "libegl1"
+        )
+
+    def test_un_noeud_seul_ne_donne_aucun_bouton(self):
+        vu = self._bouton(manque="noeud")
+        self.assertFalse(vu["bouton"])
+        self.assertFalse(vu["case"])
+
+    def test_sans_moyen_de_poser_aucun_bouton(self):
+        """Un bouton sans effet vaut moins qu'une commande à recopier."""
+        self.assertFalse(self._bouton(moyen=False)["bouton"])
+
+    def test_lhote_est_relu_et_la_case_ne_vient_pas_sur_parole(self):
+        """Croire apt sur parole offrirait une case que Proxmox refuserait
+        ensuite — après avoir écrit le disque de la VM."""
+        vu = self._bouton(apres=(False, "libgl1"))
+        self.assertFalse(vu["case"])
+        self.assertTrue(vu["lignes"], "le message a disparu pour rien")
+        self.assertTrue(any("libgl1" in n for n in vu["notes"]), vu["notes"])
 
 
 class TestLeMiroirAptDesVmProxmox(unittest.TestCase):

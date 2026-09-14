@@ -6663,6 +6663,10 @@ TRANSLATIONS = {
         "fr": "Pas encore de journal d'accès :",
         "en": "No access log yet:",
     },
+    "GPU groups set": {
+        "fr": "groupes du GPU posés",
+        "en": "GPU groups set",
+    },
     "apt mirror pinned": {
         "fr": "miroir apt fixé",
         "en": "apt mirror pinned",
@@ -6703,9 +6707,29 @@ TRANSLATIONS = {
         "fr": "Pas de réponse ssh : l'invité reste tel qu'il est né.",
         "en": "No ssh answer: guest left as created.",
     },
+    "No 3D: the host lacks": {
+        "fr": "Pas de 3D : il manque à l'hôte",
+        "en": "No 3D: the host lacks",
+    },
+    "Install on the host": {
+        "fr": "Installer sur l'hôte",
+        "en": "Install on the host",
+    },
+    "3D is now available: the box is here.": {
+        "fr": "La 3D est maintenant possible : la case est là.",
+        "en": "3D is now available: the box is here.",
+    },
+    "Still missing on the host:": {
+        "fr": "Il manque encore à l'hôte :",
+        "en": "Still missing on the host:",
+    },
     "apt mirror not pinned": {
         "fr": "miroir apt non fixé",
         "en": "apt mirror not pinned",
+    },
+    "GPU groups not set": {
+        "fr": "groupes du GPU non posés",
+        "en": "GPU groups not set",
     },
     "    Entry 10 follows it live: a request that goes out to the": {
         "fr": "    L'entrée 10 le suit en direct : une requête qui sort sur",
@@ -6834,58 +6858,6 @@ TRANSLATIONS = {
     "Lift it with:": {
         "fr": "La lever par :",
         "en": "Lift it with:",
-    },
-    "cache holds nothing for": {
-        "fr": "le cache ne détient rien pour",
-        "en": "cache holds nothing for",
-    },
-    "an offline VM will fail": {
-        "fr": "une VM hors ligne échouera",
-        "en": "an offline VM will fail",
-    },
-    "The cut hits every user of the cache:": {
-        "fr": "La coupure vaut pour tous les usagers du cache :",
-        "en": "The cut hits every user of the cache:",
-    },
-    "a deployment run from another terminal": {
-        "fr": "un déploiement mené depuis un autre terminal",
-        "en": "a deployment run from another terminal",
-    },
-    "goes offline too, without asking for it.": {
-        "fr": "sera hors ligne aussi, sans l'avoir demandé.",
-        "en": "goes offline too, without asking for it.",
-    },
-    "Cache upstream cut for this deployment.": {
-        "fr": "Amont du cache coupé pour ce déploiement.",
-        "en": "Cache upstream cut for this deployment.",
-    },
-    "Cache upstream restored.": {
-        "fr": "Amont du cache rebranché.",
-        "en": "Cache upstream restored.",
-    },
-    "Upstream not cut: nothing deployed.": {
-        "fr": "Amont non coupé : rien n'est déployé.",
-        "en": "Upstream not cut: nothing deployed.",
-    },
-    "The result would look offline without being so.": {
-        "fr": "Le résultat se lirait comme hors ligne sans l'être.",
-        "en": "The result would look offline without being so.",
-    },
-    "dnsmasq is missing on the host: names cannot": {
-        "fr": "dnsmasq manque sur l'hôte : les noms ne peuvent",
-        "en": "dnsmasq is missing on the host: names cannot",
-    },
-    "be cut. Install the dnsmasq package, then F5.": {
-        "fr": "pas être coupés. Installer le paquet dnsmasq, puis F5.",
-        "en": "be cut. Install the dnsmasq package, then F5.",
-    },
-    "download cache authority installed": {
-        "fr": "autorité du cache de téléchargement posée",
-        "en": "download cache authority installed",
-    },
-    "download cache authority not installed": {
-        "fr": "autorité du cache de téléchargement non posée",
-        "en": "download cache authority not installed",
     },
     "waiting for the guest agent install (apt lock)": {
         "fr": "attente de la pose de l'agent invité (verrou apt)",
@@ -7086,6 +7058,58 @@ TRANSLATIONS = {
     "The VMs have no direct way out either: only the host answers them.": {
         "fr": "Les VM n'ont plus de sortie directe non plus : seul l'hôte leur répond.",
         "en": "The VMs have no direct way out either: only the host answers them.",
+    },
+    "cache holds nothing for": {
+        "fr": "le cache ne détient rien pour",
+        "en": "cache holds nothing for",
+    },
+    "an offline VM will fail": {
+        "fr": "une VM hors ligne échouera",
+        "en": "an offline VM will fail",
+    },
+    "The cut hits every user of the cache:": {
+        "fr": "La coupure vaut pour tous les usagers du cache :",
+        "en": "The cut hits every user of the cache:",
+    },
+    "a deployment run from another terminal": {
+        "fr": "un déploiement mené depuis un autre terminal",
+        "en": "a deployment run from another terminal",
+    },
+    "goes offline too, without asking for it.": {
+        "fr": "sera hors ligne aussi, sans l'avoir demandé.",
+        "en": "goes offline too, without asking for it.",
+    },
+    "Cache upstream cut for this deployment.": {
+        "fr": "Amont du cache coupé pour ce déploiement.",
+        "en": "Cache upstream cut for this deployment.",
+    },
+    "Cache upstream restored.": {
+        "fr": "Amont du cache rebranché.",
+        "en": "Cache upstream restored.",
+    },
+    "Upstream not cut: nothing deployed.": {
+        "fr": "Amont non coupé : rien n'est déployé.",
+        "en": "Upstream not cut: nothing deployed.",
+    },
+    "The result would look offline without being so.": {
+        "fr": "Le résultat se lirait comme hors ligne sans l'être.",
+        "en": "The result would look offline without being so.",
+    },
+    "dnsmasq is missing on the host: names cannot": {
+        "fr": "dnsmasq manque sur l'hôte : les noms ne peuvent",
+        "en": "dnsmasq is missing on the host: names cannot",
+    },
+    "be cut. Install the dnsmasq package, then F5.": {
+        "fr": "pas être coupés. Installer le paquet dnsmasq, puis F5.",
+        "en": "be cut. Install the dnsmasq package, then F5.",
+    },
+    "download cache authority installed": {
+        "fr": "autorité du cache de téléchargement posée",
+        "en": "download cache authority installed",
+    },
+    "download cache authority not installed": {
+        "fr": "autorité du cache de téléchargement non posée",
+        "en": "download cache authority not installed",
     },
     "Timezone": {
         "fr": "Fuseau horaire",
