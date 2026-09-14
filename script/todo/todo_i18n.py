@@ -11517,6 +11517,14 @@ TRANSLATIONS = {
         "fr": "Identifiant : ",
         "en": "User login: ",
     },
+    "No analysis reads a live instance yet.": {
+        "fr": "Aucune analyse ne lit encore une instance vivante.",
+        "en": "No analysis reads a live instance yet.",
+    },
+    "Connect anyway, to check the credentials? (y/N): ": {
+        "fr": "Se connecter quand même, pour vérifier les accès (o/N) ? ",
+        "en": "Connect anyway, to check the credentials? (y/N): ",
+    },
     "Instance URL (ex. https://example.com): ": {
         "fr": "URL de l'instance (ex. https://exemple.com) : ",
         "en": "Instance URL (ex. https://example.com): ",

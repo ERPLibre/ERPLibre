@@ -4836,6 +4836,24 @@ class TODO(
 
         from script.analyse import monitoring
 
+        # CE QUI N'EST PAS TENU, DIT AVANT LE SECRET. L'écran de choix
+        # refusait déjà chaque analyse avec sa raison — mais APRÈS avoir
+        # fait saisir une clé d'API de production, c'est-à-dire trop tard
+        # pour renoncer. Aucune analyse ne lit une session RPC, et ce
+        # n'est pas un oubli : elles descendent dans des tables qu'aucune
+        # session n'expose, et la dernière écrit.
+        if not monitoring.available(monitoring.KIND_LIVE):
+            print(f"\u26a0  {t('No analysis reads a live instance yet.')}")
+            for analyse in monitoring.unavailable(monitoring.KIND_LIVE):
+                print(f"   \u2716 {t(analyse['title'])}")
+                print(f"     {t(analyse['why_not'])}")
+            print()
+            if not self._is_yes(
+                input(t("Connect anyway, to check the credentials? (y/N): "))
+            ):
+                return None
+            print()
+
         base_url = input(t("Instance URL (ex. https://example.com): ")).strip()
         if not base_url:
             return None
