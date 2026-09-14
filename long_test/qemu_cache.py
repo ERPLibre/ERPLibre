@@ -1172,15 +1172,17 @@ def _boucle(args, rapport, journal, acces, decalage):
             charge=args.charge,
         )
         if not adresse:
-            return 1
+            return _clore(
+                args, rapport, journal, False, f"{nom} : déploiement"
+            )
         noter_uuid(rapport, nom, args.dry_run)
         if not args.dry_run and not attendre_ssh(adresse, journal):
-            return 1
+            return _clore(args, rapport, journal, False, f"{nom} : ssh")
         debut = time.time()
         if not poser_les_paquets(
             adresse, journal, args.dry_run, args.distro, args.charge
         ):
-            return 1
+            return _clore(args, rapport, journal, False, f"{nom} : paquets")
         duree = time.time() - debut
         lignes, decalage = ([], decalage)
         if acces:
@@ -1229,9 +1231,22 @@ def _boucle(args, rapport, journal, acces, decalage):
             and ok
         )
 
+    return _clore(args, rapport, journal, ok)
+
+
+def _clore(args, rapport, journal, ok, etape=""):
+    """Écrit la fin et le verdict du rapport, et rend le code de sortie.
+
+    Toute sortie de la boucle passe par ici, échec d'une étape compris : un
+    rapport sans « fin » ni « verdict » ne dit pas si l'exécution a échoué ou
+    tourne encore. « etape » nomme la VM et l'étape qui ont arrêté la boucle.
+    """
     rapport["fin"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     rapport["cache"] = not args.sans_cache
     rapport["verdict"] = "ok" if ok else "échec"
+    if etape:
+        rapport["etape_en_echec"] = etape
+        dire(f"  ✗ arrêt sur {etape}", journal)
     ecrire_rapport(rapport)
     dire("", journal)
     dire(f"  rapport : {rapport['_fichier']}", journal)

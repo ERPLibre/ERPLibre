@@ -166,5 +166,66 @@ class TestLesOptions(unittest.TestCase):
             )
 
 
+class TestLeRapportSeClotSurUnEchec(unittest.TestCase):
+    """Une étape qui échoue arrête la boucle : le rapport doit le dire.
+
+    Sans « fin » ni « verdict », un rapport laissé par une VM qui n'a pas
+    installé se lit comme une exécution encore en cours.
+    """
+
+    def boucler(self, echoue):
+        import argparse
+        import json
+        import tempfile
+        from unittest import mock
+
+        args = argparse.Namespace(
+            dry_run=False,
+            sans_cache=False,
+            hors_ligne=False,
+            distro="debian",
+            version="12",
+            charge="minimum",
+        )
+        with tempfile.TemporaryDirectory() as rep:
+            fichier = str(Path(rep) / "rapport.json")
+            rapport = {"_fichier": fichier, "vms": []}
+            with mock.patch.object(QC, "dire"), mock.patch.object(
+                QC, "noter_uuid"
+            ), mock.patch.object(
+                QC,
+                "deployer",
+                return_value="" if echoue == "deployer" else "10.0.0.1",
+            ), mock.patch.object(
+                QC, "attendre_ssh", return_value=echoue != "attendre_ssh"
+            ), mock.patch.object(
+                QC,
+                "poser_les_paquets",
+                return_value=echoue != "poser_les_paquets",
+            ):
+                code = QC._boucle(args, rapport, None, "", 0)
+            with open(fichier, encoding="utf-8") as fh:
+                return code, json.load(fh)
+
+    def test_chaque_etape_en_echec_ecrit_fin_et_verdict(self):
+        for etape, mot in (
+            ("deployer", "déploiement"),
+            ("attendre_ssh", "ssh"),
+            ("poser_les_paquets", "paquets"),
+        ):
+            with self.subTest(etape=etape):
+                code, ecrit = self.boucler(etape)
+                self.assertEqual(code, 1)
+                self.assertEqual(ecrit.get("verdict"), "échec")
+                self.assertTrue(ecrit.get("fin"))
+                self.assertIn(mot, ecrit.get("etape_en_echec", ""))
+
+    def test_un_echec_n_est_pas_un_succes(self):
+        """Le verdict « ok » reste réservé à la boucle menée à son terme."""
+        code, ecrit = self.boucler("deployer")
+        self.assertNotEqual(ecrit.get("verdict"), "ok")
+        self.assertEqual(len(ecrit["vms"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
