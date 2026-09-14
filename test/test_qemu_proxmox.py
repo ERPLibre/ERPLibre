@@ -167,6 +167,37 @@ class TestLeProfil(unittest.TestCase):
         self.assertIn("install_odoo_18", cmd)
 
 
+# Le script s'installe SUR Debian et appelle les outils de Debian. Une
+# machine qui ne les a pas ne peut pas le JOUER : le shell rend 127 au
+# premier appel, et tout ce qui suit — une sortie tronquée, une chaîne
+# introuvable — est l'effet de cette absence, jamais un défaut du script.
+#
+# Un tel test SAUTE, et dit pourquoi. Un échec appellerait une correction qui
+# n'existe pas, et un rapport qui en porte neuf fait douter de tout le reste :
+# celui qui le lit — humain ou machine — cesse d'y chercher ce qui compte.
+_OUTILS_DEBIAN = ("dpkg", "apt-get", "hostname", "debconf-set-selections")
+
+
+def _sauter_si_outil_debian_manquant(res):
+    """Saute le test quand le script a buté sur un outil absent de l'hôte.
+
+    Jugé sur ce qui S'EST PASSÉ — le code 127 et le nom de l'outil dans la
+    sortie — et non sur un inventaire préalable : une machine peut porter
+    « dpkg » sans « debconf-set-selections », et l'inventaire dirait alors le
+    contraire de l'exécution. Les tests qui attendent un REFUS du script
+    n'atteignent jamais ces outils : ils continuent de tourner partout.
+    """
+    if res.returncode != 127:
+        return
+    sortie = (res.stdout or "") + (res.stderr or "")
+    for outil in _OUTILS_DEBIAN:
+        if outil in sortie:
+            raise unittest.SkipTest(
+                f"« {outil} » absent de cet hôte : le script d'installation"
+                " Proxmox ne se joue que sur une base Debian"
+            )
+
+
 class TestLeScript(unittest.TestCase):
     def test_it_is_executable_and_valid_shell(self):
         self.assertTrue(os.access(SCRIPT, os.X_OK), "pas exécutable")
@@ -197,7 +228,7 @@ class TestLeScript(unittest.TestCase):
                 (bin_dir / nom).chmod(0o755)
             osrel = pathlib.Path(tmp) / "os-release"
             osrel.write_text("ID=debian\nVERSION_CODENAME=trixie\n")
-            return subprocess.run(
+            res = subprocess.run(
                 ["bash", str(SCRIPT), *args],
                 capture_output=True,
                 text=True,
@@ -209,6 +240,10 @@ class TestLeScript(unittest.TestCase):
                 ),
                 timeout=120,
             )
+        # HORS du « with » : le répertoire des doublures est rendu avant que
+        # le saut ne remonte, et aucun test ne laisse le sien derrière lui.
+        _sauter_si_outil_debian_manquant(res)
+        return res
 
     def test_an_unpublished_architecture_is_refused_by_name(self):
         res = self._lance(stubs={"uname": "echo s390x"})
