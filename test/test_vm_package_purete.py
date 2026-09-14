@@ -49,6 +49,67 @@ def racines_importees(chemin):
     return vues
 
 
+class TestLeModeDEmploiSuitLePaquet(unittest.TestCase):
+    """Un backend ajouté sans être documenté est un backend qu'on découvre
+    à l'usage.
+
+    Le README du paquet nomme les trois et dit lequel a tourné contre une
+    vraie machine. Ajouter le quatrième sans y toucher laisserait croire
+    que la liste est complète — et surtout laisserait croire qu'il est
+    éprouvé, ce que le drapeau existe précisément pour empêcher.
+
+    Le contrôle porte sur la SOURCE bilingue et sur CHAQUE langue : une
+    ligne retirée d'une seule moitié laisserait l'autre complète, et un
+    contrôle sur le texte entier ne verrait rien.
+    """
+
+    @staticmethod
+    def moities():
+        chemin = os.path.join(PAQUET, "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            texte = fichier.read()
+        anglais, _sep, francais = texte.partition("<!-- [fr] -->")
+        return anglais, francais
+
+    def test_every_backend_is_named_on_the_line_that_lists_them(self):
+        """Sur LA LIGNE, et non quelque part dans la page : un backend
+        retiré de la table se retrouve nommé ailleurs dans le texte, et un
+        contrôle sur la page entière ne verrait rien."""
+        from script.vm import backend
+
+        for moitie in self.moities():
+            lignes = [
+                ligne
+                for ligne in moitie.splitlines()
+                if ligne.strip().startswith("| `backend`")
+            ]
+            self.assertEqual(1, len(lignes), moitie[:40])
+            for nom in backend.BACKENDS:
+                with self.subTest(backend=nom, langue=moitie[:30]):
+                    self.assertIn(f"`{nom}`", lignes[0])
+
+    def test_the_unproven_one_is_named_as_such(self):
+        """Le taire ferait lire « trois backends » là où deux ont tourné
+        et le troisième n'a que des épreuves unitaires."""
+        from script.vm import backend
+
+        self.assertEqual(
+            ["lima"],
+            [n for n in backend.BACKENDS if not backend.is_proven(n)],
+        )
+        for moitie in self.moities():
+            with self.subTest(langue=moitie[:30]):
+                self.assertIn("lima_confront", moitie)
+
+    def test_every_handle_field_is_documented(self):
+        from script.vm import backend
+
+        for moitie in self.moities():
+            for champ in backend.VmHandle._fields:
+                with self.subTest(champ=champ, langue=moitie[:30]):
+                    self.assertIn(f"`{champ}`", moitie)
+
+
 class TestLePaquetNeDependDeRien(unittest.TestCase):
     def test_there_is_something_to_check(self):
         """Sur un paquet vide, toutes les épreuves d'à côté passent."""
