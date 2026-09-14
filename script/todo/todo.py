@@ -748,7 +748,7 @@ class TODO(
                 ("auto", "Automatic (decided by the system)"),
                 ("libvirt", "libvirt/QEMU - this machine"),
                 ("pve", "Proxmox VE - a remote host"),
-                ("lima", "Lima - for macOS, never run against the tool"),
+                ("lima", "Lima - a VM on this machine, lighter than libvirt"),
             ),
         ),
     }

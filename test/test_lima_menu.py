@@ -35,9 +35,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from script.todo import lima_menu, todo_i18n  # noqa: E402
 from script.todo.lima_menu import LimaMenuMixin  # noqa: E402
-from script.todo.lima_menu import (TOOL_SENTENCES, config_path, instance_line,
-                                   tool_sentence)
+from script.todo.lima_menu import (
+    TOOL_SENTENCES,
+    config_path,
+    instance_line,
+    tool_sentence,
+)
 from script.todo.todo_i18n import t  # noqa: E402
+from script.vm import backend as vm_backend  # noqa: E402
 from script.vm import lima as L  # noqa: E402
 from script.vm import lima_install as I  # noqa: E402
 
@@ -806,13 +811,31 @@ class TestLesDeuxEntreesQuiNeDifferentQueParUnMot(CasDeMenu):
             texte = sortie(menu.prompt_execute_lima)
         self.assertIn("not found", texte)
 
-    def test_the_screen_says_the_backend_is_unproven_every_pass(self):
-        """Une note vue au premier passage ne tient pas au dixième."""
+    def test_an_unproven_backend_is_flagged_on_every_pass(self):
+        """Une note vue au premier passage ne tient pas au dixième.
+
+        Le backend est POSÉ non éprouvé : le sien l'a été depuis, et une
+        épreuve qui attendrait la note dans le dépôt tel qu'il est ne
+        garderait plus rien — juste au moment où un autre backend pourrait
+        arriver sans confrontation.
+        """
+        menu = MenuDeBanc()
+        menu.fill_help_info = lambda choix: "> "
+        with patch.dict(vm_backend.PROVEN, {vm_backend.LIMA: False}):
+            with patch.object(lima_menu.click, "prompt", side_effect=["0"]):
+                texte = sortie(menu.prompt_execute_lima)
+        self.assertIn("*", texte)
+
+    def test_a_proven_backend_carries_no_note(self):
+        """Contrôle positif, et c'est l'état RÉEL du dépôt : la note part
+        d'elle-même, sans qu'un écran soit retouché. La garder affichée
+        enverrait choisir un autre backend pour une raison éteinte."""
+        self.assertTrue(vm_backend.is_proven(vm_backend.LIMA))
         menu = MenuDeBanc()
         menu.fill_help_info = lambda choix: "> "
         with patch.object(lima_menu.click, "prompt", side_effect=["0"]):
             texte = sortie(menu.prompt_execute_lima)
-        self.assertIn("*", texte)
+        self.assertNotIn("*", texte)
 
 
 if __name__ == "__main__":

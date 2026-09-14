@@ -1363,9 +1363,9 @@ TRANSLATIONS = {
         "fr": "Proxmox VE - un hôte distant",
         "en": "Proxmox VE - a remote host",
     },
-    "Lima - for macOS, never run against the tool": {
-        "fr": "Lima - pour macOS, jamais confronté à l'outil",
-        "en": "Lima - for macOS, never run against the tool",
+    "Lima - a VM on this machine, lighter than libvirt": {
+        "fr": "Lima - une VM sur cette machine, plus léger que libvirt",
+        "en": "Lima - a VM on this machine, lighter than libvirt",
     },
     "Here it drives the same hypervisor as libvirt; it earns its place on"
     " macOS.": {

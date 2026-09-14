@@ -88,18 +88,40 @@ class TestLeModeDEmploiSuitLePaquet(unittest.TestCase):
                 with self.subTest(backend=nom, langue=moitie[:30]):
                     self.assertIn(f"`{nom}`", lignes[0])
 
-    def test_the_unproven_one_is_named_as_such(self):
-        """Le taire ferait lire « trois backends » là où deux ont tourné
-        et le troisième n'a que des épreuves unitaires."""
+    def test_every_unproven_backend_is_named_as_such(self):
+        """Le taire ferait lire « trois backends » là où deux auraient
+        tourné et le troisième n'aurait que des épreuves unitaires.
+
+        L'épreuve suit la TABLE plutôt que de nommer un backend : celui qui
+        est non éprouvé change, et une épreuve qui en nomme un devient
+        muette le jour où il est confronté — juste au moment où un autre
+        arrive et aurait besoin d'elle. Vide, elle passe sans rien
+        affirmer, ce qui est le bon comportement quand tout a tourné.
+        """
         from script.vm import backend
 
-        self.assertEqual(
-            ["lima"],
-            [n for n in backend.BACKENDS if not backend.is_proven(n)],
-        )
+        non_eprouves = [
+            n for n in backend.BACKENDS if not backend.is_proven(n)
+        ]
+        for moitie in self.moities():
+            for nom in non_eprouves:
+                with self.subTest(langue=moitie[:30], backend=nom):
+                    self.assertIn(nom, moitie)
+
+    def test_the_confrontation_script_it_names_exists(self):
+        """Le mode d'emploi renvoie à un script pour lever la mention.
+
+        Un nom qui ne désigne plus rien envoie chercher un fichier absent,
+        et la seule sortie annoncée devient une impasse.
+        """
         for moitie in self.moities():
             with self.subTest(langue=moitie[:30]):
-                self.assertIn("lima_confront", moitie)
+                self.assertIn("lima_confront.py", moitie)
+        self.assertTrue(
+            os.path.exists(
+                os.path.join(RACINE, "long_test", "lima_confront.py")
+            )
+        )
 
     def test_every_handle_field_is_documented(self):
         from script.vm import backend

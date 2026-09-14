@@ -126,7 +126,7 @@ class TestLaPreference(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, TRANSLATIONS)
 
-    def test_the_unproven_backend_says_so_in_words(self):
+    def test_no_label_carries_a_star_of_its_own(self):
         """Dans cet écran l'étoile marque la valeur COURANTE : une seconde
         étoile s'y lirait « c'est celle-là qui est active »."""
         from script.todo.todo import TODO
@@ -134,9 +134,11 @@ class TestLaPreference(unittest.TestCase):
         libelles = dict(
             (v, lab) for v, lab in TODO._PREF_CHOICES["vm_backend"][1]
         )
-        self.assertFalse(VM.is_proven(VM.LIMA))
         self.assertNotIn("*", libelles[VM.LIMA])
-        self.assertRegex(libelles[VM.LIMA], r"(?i)never|jamais")
+        # Le libellé ne dit plus « jamais confronté » : le backend l'a été,
+        # et un écran qui l'affirmerait encore enverrait choisir libvirt
+        # pour une raison qui n'existe plus.
+        self.assertNotRegex(libelles[VM.LIMA], r"(?i)never|jamais")
 
 
 class TestLesRangsDeLEcranDeConfiguration(unittest.TestCase):
@@ -227,8 +229,16 @@ class TestLEcranDesBackends(unittest.TestCase):
         self.assertEqual(1, len(marquees))
         self.assertIn("Lima", marquees[0])
 
-    def test_the_unproven_one_carries_the_star_and_the_others_do_not(self):
-        lignes = self.lignes(C.AUTO, H.ARCH)
+    def test_an_unproven_one_carries_the_star_and_the_others_do_not(self):
+        """L'épreuve porte sur le MÉCANISME, pas sur l'état d'un backend.
+
+        Les trois ont désormais tourné contre leur outil ; la marquer sur
+        celui qui l'est encore ferait tomber cette épreuve le jour où il
+        est confronté, et le prochain backend arriverait sans garde. Un
+        backend non éprouvé est donc POSÉ ici.
+        """
+        with patch.dict(VM.PROVEN, {VM.LIMA: False}):
+            lignes = self.lignes(C.AUTO, H.ARCH)
         etoilees = [
             l
             for l in lignes
@@ -251,16 +261,20 @@ class TestLEcranDesBackends(unittest.TestCase):
         est une marque que personne ne sait lire. L'épreuve est
         STRUCTURELLE : chercher le texte reviendrait à épingler la langue
         dans laquelle il s'affiche."""
-        lignes = self.lignes(C.AUTO, H.ARCH)
+        with patch.dict(VM.PROVEN, {VM.LIMA: False}):
+            lignes = self.lignes(C.AUTO, H.ARCH)
         self.assertTrue(any(l.rstrip().endswith("*") for l in lignes))
         self.assertTrue(any(l.startswith("  * ") for l in lignes))
 
-    def test_without_a_star_there_is_no_legend(self):
-        """Contrôle positif : le jour où tout est éprouvé, la légende part
-        d'elle-même — aucun écran à retoucher."""
-        tout_eprouve = dict.fromkeys(VM.BACKENDS, True)
-        with patch.dict(VM.PROVEN, tout_eprouve, clear=True):
-            lignes = self.lignes(C.AUTO, H.ARCH)
+    def test_with_everything_proven_there_is_no_legend(self):
+        """Ce que le dessin annonçait : le jour où tout est éprouvé, la
+        légende part d'elle-même, aucun écran à retoucher.
+
+        C'est l'état RÉEL du dépôt, et non un cas posé : rien n'est
+        bouchonné ici, ce qui vérifie du même coup que la table le dit.
+        """
+        self.assertEqual([], [n for n in VM.BACKENDS if not VM.is_proven(n)])
+        lignes = self.lignes(C.AUTO, H.ARCH)
         self.assertFalse(any(l.rstrip().endswith("*") for l in lignes))
         self.assertFalse(any(l.startswith("  * ") for l in lignes))
 
