@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -229,6 +230,57 @@ func TestUneCoupureRepeteeFinitParCondamner(t *testing.T) {
 	if !r.Has("npm.example") {
 		t.Error("un client qui échoue à chaque fois n'est jamais mis en" +
 			" tunnel : son installation s'arrêtera là")
+	}
+}
+
+// Un soupçon se rouvre ; une décision, jamais.
+//
+// Trois coupures de suite condamnent l'hôte, et c'est voulu — mais elles ne
+// disent rien de ce que le client pense de notre autorité. Le garder banni
+// pour toujours prive le cache de tout ce qu'il détient pour lui : un tunnel
+// recopie des octets sans consulter le magasin. Un miroir de distribution
+// banni sur une rafale de flux corrompus renvoie alors à l'amont jusqu'à ce
+// qui est en réserve.
+func TestUnRefusDeTransportSeRouvre(t *testing.T) {
+	r := NewRefusals(nil)
+	r.Oubli = 50 * time.Millisecond
+	coupure := errors.New("local error: tls: bad record MAC")
+	for i := 0; i < r.Seuil; i++ {
+		r.Echec("miroir.example", coupure)
+	}
+	if !r.Has("miroir.example") {
+		t.Fatal("le seuil ne condamne plus")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if r.Has("miroir.example") {
+		t.Error("un soupçon de transport ne se rouvre jamais")
+	}
+	if slices.Contains(r.List(), "miroir.example") {
+		t.Error("un refus expiré figure encore dans la liste")
+	}
+}
+
+// Une ALERTE ne se rouvre pas, quel que soit le réglage d'oubli : le client a
+// REGARDÉ notre certificat. Le ré-intercepter ferait échouer de nouveau
+// l'installation qui le traverse.
+func TestUneAlerteNeSeRouvreJamais(t *testing.T) {
+	r := NewRefusals(nil)
+	r.Oubli = time.Millisecond
+	r.Echec("epingleur.example", errRefus)
+	time.Sleep(10 * time.Millisecond)
+	if !r.Has("epingleur.example") {
+		t.Error("une décision du client a été oubliée")
+	}
+	if !slices.Contains(r.List(), "epingleur.example") {
+		t.Error("une alerte a disparu de la liste")
+	}
+}
+
+// Le défaut n'est plus « jamais » : sans lui, une rafale condamne un hôte
+// jusqu'au redémarrage du service.
+func TestLOubliEstActifParDefaut(t *testing.T) {
+	if NewRefusals(nil).Oubli <= 0 {
+		t.Error("un refus de transport ne se rouvre jamais par défaut")
 	}
 }
 

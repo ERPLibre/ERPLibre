@@ -207,12 +207,28 @@ func (c *CA) leafFor(host string) (*tls.Certificate, error) {
 // Un vrai épingleur la refuse à nouveau et le refus est réappris, au prix
 // d'une requête perdue par délai. Un hôte qui n'avait qu'un magasin en retard
 // redevient cachable.
+// refus retient QUAND un hôte a été appris, et POURQUOI.
+//
+// La nature commande la durée. Une alerte est une décision : le client a
+// regardé notre certificat et l'a rejeté, il ne se ravisera pas. Une
+// répétition de coupures n'est qu'un SOUPÇON — trois erreurs de transport
+// ressemblent à un épingleur sans en être un — et un soupçon doit pouvoir se
+// rouvrir. Les confondre condamne un miroir de distribution aussi
+// définitivement qu'un épingleur, et prive alors le cache de tout ce qu'il
+// détient pour lui : un tunnel recopie des octets, il ne consulte jamais le
+// magasin.
+type refus struct {
+	quand  time.Time
+	alerte bool
+}
+
 type Refusals struct {
 	mu       sync.RWMutex
 	declares map[string]bool
-	apprises map[string]time.Time
+	apprises map[string]refus
 	echecs   map[string]int
-	// Oubli borne la mémoire d'un refus appris. Nul, il ne s'oublie jamais.
+	// Oubli borne la mémoire d'un refus de TRANSPORT. Nul, il ne s'oublie
+	// jamais. Une ALERTE ne s'oublie en aucun cas, quel que soit ce réglage.
 	Oubli time.Duration
 	// Seuil : combien de poignées de main de suite doivent échouer avant de
 	// conclure. Nul, la valeur par défaut s'applique.
@@ -228,25 +244,30 @@ type Refusals struct {
 // EOF, exactement comme sur une VM qui démarre et coupe.
 const SeuilParDefaut = 3
 
-// OubliParDefaut : NUL, c'est-à-dire jamais.
+// OubliParDefaut : au bout de ce délai, un refus de TRANSPORT est rouvert.
 //
-// Un refus appris est une ALERTE TLS : le client a REGARDÉ notre certificat et
-// l'a rejeté. Ceux qui font cela portent leur propre magasin de confiance —
-// npm, poetry, snapd — et ne changeront pas d'avis à la requête suivante. Les
-// oublier périodiquement les fait ré-intercepter, donc échouer de nouveau, et
-// une installation qui traverse plusieurs de ces outils s'arrête au premier.
+// Une ALERTE, elle, ne s'oublie jamais, et ce réglage ne l'atteint pas : le
+// client a regardé notre certificat et l'a rejeté. Ceux qui font cela portent
+// leur propre magasin de confiance et ne changeront pas d'avis ; les
+// ré-intercepter ferait échouer de nouveau une installation qui les traverse.
 //
-// Ce qui NE doit pas être appris, c'est une coupure de transport — elle ne dit
-// rien de ce que le client pense de nous. C'est estRefusTLS qui fait ce tri,
-// et c'est lui qui rendait l'oubli nécessaire tant qu'il n'existait pas.
+// Un refus appris par SEUIL n'est pas de cette nature. Trois coupures de
+// suite — un flux corrompu, une fin de flux — ne disent rien de ce que le
+// client pense de nous ; estRefusTLS le sait, mais le seuil conclut quand
+// même. Condamner sur ce soupçon prive le cache de TOUT ce qu'il détient pour
+// cet hôte, un tunnel ne servant jamais le magasin : un miroir de
+// distribution banni sur une rafale renvoie alors tout son trafic à l'amont,
+// y compris ce qui est en réserve.
 //
-// Le champ reste réglable : un déploiement qui veut retenter garde la main.
-const OubliParDefaut = 0
+// Dix minutes : assez pour ne pas repayer le délai pendant la rafale qui a
+// condamné l'hôte, assez peu pour que l'installation suivante le retrouve. Le
+// prix du doute est une poignée de main perdue de loin en loin.
+const OubliParDefaut = 10 * time.Minute
 
 func NewRefusals(static []string) *Refusals {
 	r := &Refusals{
 		declares: map[string]bool{},
-		apprises: map[string]time.Time{},
+		apprises: map[string]refus{},
 		echecs:   map[string]int{},
 		Oubli:    OubliParDefaut,
 		Seuil:    SeuilParDefaut,
@@ -280,11 +301,15 @@ func (r *Refusals) Has(host string) bool {
 			return true
 		}
 	}
-	quand, appris := r.apprises[host]
+	vu, appris := r.apprises[host]
 	if !appris {
 		return false
 	}
-	if r.Oubli > 0 && time.Since(quand) >= r.Oubli {
+	// Une décision ne se révise pas ; un soupçon, si.
+	if vu.alerte {
+		return true
+	}
+	if r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
 		delete(r.apprises, host)
 		return false
 	}
@@ -309,15 +334,19 @@ func (r *Refusals) Echec(host string, raison error) bool {
 	if seuil < 1 {
 		seuil = SeuilParDefaut
 	}
+	alerte := estRefusTLS(raison)
 	r.echecs[host]++
-	if !estRefusTLS(raison) && r.echecs[host] < seuil {
+	if !alerte && r.echecs[host] < seuil {
 		return false
 	}
 	if _, deja := r.apprises[host]; !deja {
 		log.Printf("tunnel opaque retenu pour %s (%d échec(s)) : %v",
 			host, r.echecs[host], raison)
 	}
-	r.apprises[host] = time.Now()
+	// La NATURE est retenue avec l'instant : elle décide si ce refus se
+	// rouvrira. Un seuil atteint sur des coupures reste un soupçon, même
+	// répété trois fois.
+	r.apprises[host] = refus{quand: time.Now(), alerte: alerte}
 	return true
 }
 
@@ -337,8 +366,8 @@ func (r *Refusals) List() []string {
 	for h := range r.declares {
 		out = append(out, h)
 	}
-	for h, quand := range r.apprises {
-		if r.Oubli > 0 && time.Since(quand) >= r.Oubli {
+	for h, vu := range r.apprises {
+		if !vu.alerte && r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
 			delete(r.apprises, h)
 			continue
 		}
