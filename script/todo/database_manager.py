@@ -8,12 +8,9 @@ import logging
 import os
 import shlex
 
-from script.database import (
-    backup_verify,
-    backup_witness,
-    db_restore,
-    drill_guard,
-)
+from script.database import (backup_ship, backup_verify, backup_witness,
+                             db_restore, drill_guard)
+from script.remote import appliance_ssh, deploy_target
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -463,6 +460,45 @@ class DatabaseManager:
             print(f"ℹ️  {t('Finding not recorded: ')}{souci}")
         return constat
 
+    def _backup_ship(self, constat, path, name) -> None:
+        """Dépose la sauvegarde chez la cible, ou DIT qu'il n'y en a pas.
+
+        LE CROCHET ÉTAIT PLANTÉ, ET VIDE. « backup-target » est dans le
+        socle des destinations de sortie, avec son port et sa raison — « la
+        cible des sauvegardes, l'ouvrir en sortie est ce qui permet de
+        sauvegarder sans monter le disque de la machine sur l'hôte » — et
+        rien ne le remplissait : le pare-feu d'une machine confinée ouvrait
+        cette porte sur le vide.
+
+        Une archive qui n'a pas passé les contrôles ICI ne part pas : en
+        déposer ailleurs une qu'on sait abîmée remplirait la cible de
+        copies inutilisables, et ferait croire à une sauvegarde.
+        """
+        if not constat or constat.verdict != backup_verify.SOUND:
+            return
+        cibles = [
+            cible
+            for cible in deploy_target.load_all()
+            if cible.get("kind") == deploy_target.KIND_BACKUP
+        ]
+        if not cibles:
+            # UNE FOIS, et en nommant où la créer. Se taire ferait qu'une
+            # sauvegarde qui ne part nulle part ne se distingue plus d'une
+            # sauvegarde qui part.
+            print(f"\u2139\ufe0f  {t('No backup target is configured.')}")
+            print(f"   {t('Create one in:')} {t('Deployment targets')}")
+            return
+        cible = deploy_target.with_defaults(cibles[0])
+        depot = backup_ship.ship(
+            cible,
+            deploy_target.fiche(cible),
+            path,
+            name,
+            run=appliance_ssh.run,
+        )
+        marque = "✅" if depot.verdict == backup_ship.SHIPPED else "⚠️"
+        print(f"{marque}  {cible['name']} : {depot.verdict} {depot.detail}")
+
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:
@@ -503,7 +539,12 @@ class DatabaseManager:
                 f"{backup_name}"
             )
             return
-        self.verify_and_witness(self.backup_archive(backup_name), backup_name)
+        archive = self.backup_archive(backup_name)
+        constat = self.verify_and_witness(archive, backup_name)
+        # ET AILLEURS. Une sauvegarde qui ne vit que sur la machine qui l'a
+        # produite n'en est pas une : le 3-2-1 reste à une copie, un
+        # support, zéro hors-site tant que rien ne la déplace.
+        self._backup_ship(constat, archive, backup_name)
 
     def open_file_image_db(self) -> str:
         self._dir_path = ""

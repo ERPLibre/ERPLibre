@@ -1435,6 +1435,14 @@ TRANSLATIONS = {
         "fr": "🎯 SSH - Choisir la machine visée",
         "en": "🎯 SSH - Choose the target machine",
     },
+    "No backup target is configured.": {
+        "fr": "Aucune cible de sauvegarde n'est configurée.",
+        "en": "No backup target is configured.",
+    },
+    "Create one in:": {
+        "fr": "En créer une dans :",
+        "en": "Create one in:",
+    },
     "Deployment targets": {
         "fr": "Cibles de déploiement",
         "en": "Deployment targets",
