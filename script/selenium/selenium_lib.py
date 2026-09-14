@@ -13,9 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
-import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog
 from typing import Optional
 
 from pykeepass import PyKeePass
@@ -41,6 +39,18 @@ new_path = os.path.normpath(
 sys.path.append(new_path)
 
 from script.config import config_file
+
+# tkinter ne sert QU'au sélecteur de fichier du coffre, quand aucun chemin
+# n'est configuré. Importé en tête, il rendait le module entier inimportable
+# sur toute machine dont le Python est bâti sans lui — c'est-à-dire sur tout
+# serveur sans paquet d'interface graphique — alors que pas une ligne du
+# pilotage de navigateur n'en dépend.
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except ModuleNotFoundError:
+    tk = None
+    filedialog = None
 
 logging.basicConfig(
     format=(
@@ -443,6 +453,12 @@ class SeleniumLib(object):
             ["kdbx", "path"]
         )
         if not chemin_fichier_kdbx:
+            if tk is None:
+                _logger.error(
+                    "tkinter is not available, please fill"
+                    f" {config_file.CONFIG_FILE}"
+                )
+                return
             root = tk.Tk()
             root.withdraw()  # Hide the main window
             chemin_fichier_kdbx = filedialog.askopenfilename(
