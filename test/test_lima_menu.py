@@ -480,6 +480,43 @@ class TestLaPostureALaCreation(CasDeMenu):
         )
 
 
+class TestLEcranNePrometPasPlusQueLaTable(CasDeMenu):
+    """La table dit QUEL gestionnaire fait autorité, pas que Lima y soit.
+
+    Son commentaire est explicite : « Ce qu'elle n'affirme pas : que Lima y
+    soit publié. Le gestionnaire le dit lui-même. » La phrase de l'écran
+    affirmait pourtant « le gestionnaire le fournit » — et sur un hôte où
+    le paquet n'existe pas, la commande conseillée échoue sur « impossible
+    de trouver la cible », sans que rien ne dise quoi faire ensuite.
+
+    Les deux routes peuvent être fermées en même temps : le gestionnaire
+    est là et ne publie rien, et la table épinglée est vide par principe.
+    C'est le cas qu'il faut nommer.
+    """
+
+    def phrase(self):
+        return lima_menu.TOOL_SENTENCES[I.MANAGER]
+
+    def test_it_does_not_claim_the_manager_provides_it(self):
+        self.assertNotIn("provides it", self.phrase())
+
+    def test_it_says_the_manager_is_the_one_to_ask(self):
+        """C'est ce que la table affirme, et rien de plus."""
+        self.assertIn("ask", self.phrase().lower())
+
+    def test_it_says_what_to_do_when_the_answer_is_no(self):
+        """Sans cela, l'utilisateur reste devant l'erreur du gestionnaire,
+        qui ne connaît ni la table épinglée ni ce qui la remplit."""
+        self.assertIn("RELEASES", self.phrase())
+
+    def test_every_refusal_still_has_a_sentence(self):
+        """Un verdict sans phrase s'afficherait vide, ce qui se lit comme
+        « rien à signaler »."""
+        for refus in I.REFUSALS:
+            with self.subTest(refus=refus):
+                self.assertTrue(lima_menu.TOOL_SENTENCES.get(refus))
+
+
 class TestLeNomEstValide(CasDeMenu):
     def demander(self, saisie):
         menu = MenuDeBanc()

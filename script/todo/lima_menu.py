@@ -48,8 +48,11 @@ LIMA_DIR = "~/.erplibre/lima"
 # rendre une chaîne vide, qui s'afficherait comme un succès.
 TOOL_SENTENCES = {
     lima_install.MANAGER: (
-        "The package manager provides it. Its signature chain covers the"
-        " whole index, which is stronger than a hand-copied checksum."
+        "Ask the package manager: it is the one that holds authority here,"
+        " and its signature chain covers the whole index, which is stronger"
+        " than a hand-copied checksum. If it answers that the package does"
+        " not exist, that route is shut — read a checksum off a verified"
+        " release and pin it in RELEASES."
     ),
     lima_install.OK: (
         "A pinned release matches. Download it, then verify the checksum"
