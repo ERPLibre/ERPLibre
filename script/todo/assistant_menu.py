@@ -42,7 +42,7 @@ import click
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
 from script.todo.assistant import servers as llm_servers
-from script.todo.todo_i18n import t
+from script.todo.todo_i18n import get_lang, t
 
 # Les commandes que cette boucle sert. `chat.COMMANDS` en porte une de plus,
 # « /gpt », qui suppose un catalogue d'outils : l'annoncer dans « /? » avant
@@ -273,6 +273,15 @@ class AssistantMenuMixin:
                 }
             )
             actions.append(self._apertus_menu)
+            choices.append(
+                {
+                    "prompt_description": (
+                        f"{t('Open models - engines, licences and resources')}"
+                        f"  ({self._panorama_label()})"
+                    )
+                }
+            )
+            actions.append(self._panorama)
             choices.append({"prompt_description": self._llm_gpt_label()})
             actions.append(self._llm_gpt_catalogue)
             choices.append({"section": t("Measure")})
@@ -3027,3 +3036,113 @@ class AssistantMenuMixin:
             )
         apt_state.oublier(cle)
         print(t("Removed."))
+
+    # ------------------------------------------------------------------
+    # Panorama : ce qui existe, ce que ça coûte, et depuis quand on le sait.
+    # ------------------------------------------------------------------
+
+    def _panorama_label(self):
+        """L'âge du relevé, en suffixe de l'entrée de menu.
+
+        L'âge passe avant le verdict parce que c'est lui qui se vérifie : un
+        lecteur qui voit « 200 jours » n'a pas besoin qu'on lui dise que
+        c'est vieux.
+        """
+        from script.todo.assistant import panorama as pan
+
+        return f"{pan.age_jours()} j · {t(pan.fraicheur())}"
+
+    def _panorama(self):
+        """Le panorama : les moteurs, les modèles, et la date du relevé."""
+        from script.todo.assistant import panorama as pan
+
+        print(
+            f"🗺 {t('A survey has a shelf life; this one carries its date.')}"
+        )
+        while True:
+            choices = [
+                {
+                    "prompt_description": (
+                        f"{t('The engines')}  ({len(pan.MOTEURS)})"
+                    )
+                },
+                {
+                    "prompt_description": (
+                        f"{t('The open models')}  ({len(pan.MODELES)})"
+                    )
+                },
+                {"prompt_description": t("The full guide")},
+            ]
+            print(
+                t("Surveyed on %s, %s days ago.")
+                % (pan.DATE_RELEVE.isoformat(), pan.age_jours())
+                + f"  {t(pan.fraicheur())}"
+            )
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._panorama_moteurs()
+            elif status == "2":
+                self._panorama_modeles()
+            elif status == "3":
+                print("  📖 doc/LLM_OUVERTS.md · doc/LLM_OUVERTS.fr.md")
+            else:
+                print(t("Command not found !"))
+
+    @staticmethod
+    def _panorama_dit(etiquette, valeur, largeur=22):
+        """Une ligne de fiche : une étiquette alignée, puis sa valeur."""
+        print(f"     {etiquette:<{largeur}} {valeur}")
+
+    def _panorama_moteurs(self):
+        """Les moteurs, une fiche chacun.
+
+        Une fiche plutôt qu'un tableau : les colonnes utiles ici sont des
+        phrases — les formats consommés, les plateformes — et un tableau les
+        tronquerait ou déborderait de la largeur du terminal.
+        """
+        from script.todo.assistant import panorama as pan
+
+        langue = get_lang()
+        for moteur in pan.MOTEURS.values():
+            print(
+                f"\n  ⚙️  {moteur.nom}  ·  {moteur.licence}"
+                f"  ·  :{moteur.port}{moteur.api}"
+            )
+            self._panorama_dit(t("formats"), moteur.formats)
+            self._panorama_dit(t("platforms"), moteur.plateformes)
+            self._panorama_dit(t("minimum for Apertus"), moteur.version_min)
+            print(f"     ✅ {moteur.force[langue]}")
+            print(f"     ⚠️  {moteur.faiblesse[langue]}")
+        if pan.NON_RELEVES:
+            print(
+                f"\n  {t('Not surveyed yet: %s') % ', '.join(pan.NON_RELEVES)}"
+            )
+
+    def _panorama_modeles(self):
+        """Les modèles ouverts, une fiche chacun.
+
+        Le cache par jeton est affiché à côté du contexte, et non ailleurs :
+        c'est leur produit qui dit si une fenêtre annoncée est payable, et les
+        séparer laisserait croire que le contexte est gratuit.
+        """
+        from script.todo.assistant import panorama as pan
+
+        langue = get_lang()
+        for modele in pan.MODELES.values():
+            print(f"\n  🧠 {modele.nom}  ·  {modele.editeur}")
+            self._panorama_dit(t("parameters"), modele.parametres)
+            self._panorama_dit(t("context"), modele.contexte)
+            self._panorama_dit(t("KV cache per token"), modele.kv_par_jeton)
+            self._panorama_dit(t("licence"), modele.licence)
+            self._panorama_dit(t("weights"), modele.poids)
+            self._panorama_dit(t("engines"), modele.moteurs)
+            self._panorama_dit(t("coding"), modele.codage)
+            print(f"     ✅ {modele.forces[langue]}")
+            print(f"     ⚠️  {modele.faiblesses[langue]}")

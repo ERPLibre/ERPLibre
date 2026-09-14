@@ -13222,6 +13222,82 @@ TRANSLATIONS = {
         "fr": "Interface de la conversation",
         "en": "Chat interface",
     },
+    "parameters": {
+        "fr": "paramètres",
+        "en": "parameters",
+    },
+    "licence": {
+        "fr": "licence",
+        "en": "licence",
+    },
+    "engines": {
+        "fr": "moteurs",
+        "en": "engines",
+    },
+    "formats": {
+        "fr": "formats",
+        "en": "formats",
+    },
+    "Open models - engines, licences and resources": {
+        "fr": "🗺 Modèles ouverts - moteurs, licences et ressources",
+        "en": "🗺 Open models - engines, licences and resources",
+    },
+    "A survey has a shelf life; this one carries its date.": {
+        "fr": "Un relevé périme ; celui-ci porte sa date.",
+        "en": "A survey has a shelf life; this one carries its date.",
+    },
+    "Surveyed on %s, %s days ago.": {
+        "fr": "Relevé du %s, il y a %s jours.",
+        "en": "Surveyed on %s, %s days ago.",
+    },
+    "survey is fresh": {
+        "fr": "✅ relevé frais",
+        "en": "✅ survey is fresh",
+    },
+    "survey should be re-read": {
+        "fr": "⚠️ relevé à relire",
+        "en": "⚠️ survey should be re-read",
+    },
+    "survey is stale — check before trusting it": {
+        "fr": "⛔ relevé périmé — vérifier avant de s'y fier",
+        "en": "⛔ survey is stale — check before trusting it",
+    },
+    "The engines": {
+        "fr": "⚙️ Les moteurs",
+        "en": "⚙️ The engines",
+    },
+    "The open models": {
+        "fr": "🧠 Les modèles ouverts",
+        "en": "🧠 The open models",
+    },
+    "The full guide": {
+        "fr": "📖 Le guide complet",
+        "en": "📖 The full guide",
+    },
+    "Not surveyed yet: %s": {
+        "fr": "Pas encore relevés : %s",
+        "en": "Not surveyed yet: %s",
+    },
+    "platforms": {
+        "fr": "plateformes",
+        "en": "platforms",
+    },
+    "minimum for Apertus": {
+        "fr": "minimum pour Apertus",
+        "en": "minimum for Apertus",
+    },
+    "weights": {
+        "fr": "poids",
+        "en": "weights",
+    },
+    "KV cache per token": {
+        "fr": "cache KV par jeton",
+        "en": "KV cache per token",
+    },
+    "coding": {
+        "fr": "codage",
+        "en": "coding",
+    },
     "Check the platform": {
         "fr": "Vérifier la plateforme",
         "en": "Check the platform",

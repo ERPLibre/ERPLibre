@@ -575,6 +575,7 @@ class TODO(
         "_agents_mcp": "MCP",
         "prompt_assistant_llm": "LLM",
         "_apertus_menu": "Apertus",
+        "_panorama": "Panorama",
         "_apertus_cible": "Target",
         "_apertus_moteur": "Engine",
         "_apertus_modele": "Model",
