@@ -118,6 +118,7 @@ class QemuMenuMixin:
         "almalinux",
         "rocky",
         "opensuse",
+        "proxmox",
     )
 
     # Alias distro pour l'affichage (jeton générique -> nom courant).
@@ -190,7 +191,11 @@ class QemuMenuMixin:
             if a == native:
                 label += f" — {t('native')} *"
             elif a == "s390x":
-                label += f"  ({t('IBM Z — emulated, slow; Ubuntu only')})"
+                # Sans « Ubuntu seulement » : la table en sert six, et la
+                # liste des distributions qui suit est DÉJÀ filtrée par
+                # elle. Résumer ici une restriction que rien ne dérive
+                # envoie choisir une autre architecture sans raison.
+                label += f"  ({t('IBM Z — emulated, slow')})"
             elif a == "arm64":
                 label += f"  ({t('ARM 64-bit — emulated, slow')})"
             else:

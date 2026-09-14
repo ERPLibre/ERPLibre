@@ -195,10 +195,13 @@ ARCH_ALIASES: dict[str, dict[str, str]] = {
 # diffèrent de l'architecture de l'hôte.
 NON_X86_ARCHES: tuple[str, ...] = ("arm64", "s390x")
 
-# Distros publiant des images cloud par architecture (vérifié juillet 2026) :
-# - s390x (IBM Z)  : Ubuntu seulement (Debian/Fedora : 404 ; Arch : x86/arm).
-# - arm64/aarch64  : Ubuntu, Debian, Fedora (Arch : pas d'image cloud officielle
-#   aarch64 sur geo.mirror.pkgbuild.com).
+# Ce que chaque architecture sert. La table AU-DESSOUS fait autorité ; ce
+# commentaire dit seulement ce qui s'en déduit mal.
+#
+# Arch Linux ne publie d'image cloud ni pour s390x ni pour aarch64, et
+# n'apparaît donc dans aucune des deux listes. Debian est servi sur s390x
+# SANS image cloud, par l'installateur — voir uses_installer() et le
+# commentaire de son entrée.
 S390X_DISTROS: tuple[str, ...] = (
     "ubuntu",
     "almalinux",
