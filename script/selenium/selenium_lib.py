@@ -2,6 +2,7 @@
 # © 2021-2026 TechnoLibre (http://www.technolibre.ca)
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 
+import base64
 import datetime
 import getpass
 import json
@@ -22,6 +23,7 @@ from selenium import webdriver
 from selenium.common.exceptions import (
     ElementClickInterceptedException,
     TimeoutException,
+    WebDriverException,
 )
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
@@ -134,6 +136,44 @@ class SeleniumLib(object):
                 f"{self.config.scenario}_{str(int(time.time() * 10000))}.png",
             )
             self.driver.save_screenshot(file_path)
+
+    def _install_addon(self, relative_path, allow_private_browsing):
+        """Installe une extension, avec l'accès aux fenêtres privées si demandé.
+
+        Prend un chemin relatif à la racine du dépôt, rend l'identifiant de
+        l'extension installée.
+
+        La permission « fenêtres privées » s'accorde À L'INSTALLATION, par le
+        champ allowPrivateBrowsing de /moz/addon/install. Elle ne s'accorde
+        plus autrement : Firefox refuse la navigation vers about:addons depuis
+        le contexte contenu, et le contexte chrome exige
+        -remote-allow-system-access, que geckodriver refuse via les
+        capabilities — la case à cocher de l'interface est hors d'atteinte.
+        install_addon() de selenium n'expose pas ce champ, d'où la commande
+        montée à la main.
+        """
+        path = os.path.join(new_path, relative_path)
+        with open(path, "rb") as addon_file:
+            addon = base64.b64encode(addon_file.read()).decode("UTF-8")
+        try:
+            return self.driver.execute(
+                "INSTALL_ADDON",
+                {
+                    "addon": addon,
+                    "temporary": True,
+                    "allowPrivateBrowsing": allow_private_browsing,
+                },
+            )["value"]
+        except WebDriverException:
+            # Un geckodriver qui ne connaît pas le champ rejette la requête
+            # entière. L'extension s'installe alors sans la permission : le
+            # mode sombre reste inactif en fenêtre privée, ce qui vaut mieux
+            # qu'une session interrompue au démarrage.
+            _logger.warning(
+                "geckodriver refuses allowPrivateBrowsing, installing"
+                f" {relative_path} without private window access"
+            )
+            return self.driver.install_addon(path, temporary=True)
 
     def configure(self, ignore_open_web=False):
         # Configuration pour lancer Firefox en mode de navigation privée
@@ -372,66 +412,15 @@ class SeleniumLib(object):
         # TODO do a script to check if it's the last version
         if self.config.use_firefox_driver and not self.config.use_network:
             if not self.config.no_dark_mode:
-                self.driver.install_addon(
-                    os.path.join(
-                        new_path, "script/selenium/darkreader-firefox.xpi"
-                    ),
-                    temporary=True,
+                # Les extensions reçoivent l'accès aux fenêtres privées dès
+                # l'installation, seul moyen restant de le leur accorder.
+                allow_private = not self.config.not_private_mode
+                self._install_addon(
+                    "script/selenium/darkreader-firefox.xpi", allow_private
                 )
-                self.driver.install_addon(
-                    os.path.join(
-                        new_path, "script/selenium/odoo_debug-4.0.xpi"
-                    ),
-                    temporary=True,
+                self._install_addon(
+                    "script/selenium/odoo_debug-4.0.xpi", allow_private
                 )
-
-            if (
-                not self.config.not_private_mode
-                and not self.config.no_dark_mode
-            ):
-                # self.driver.set_context("chrome")
-                self.driver.get("about:addons")
-                # Enable Dark Reader into incognito
-                # Click Extensions
-                self.click('//button[@viewid="addons://list/extension"]')
-                self.click(
-                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/div/div/div/button",
-                )
-                self.click(
-                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card/div/addon-options/panel-list/panel-item[5]",
-                )
-                # Enable Run in Private Windows
-                try:
-                    self.click(
-                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
-                    )
-                except Exception:
-                    # For old version before Firefox 138
-                    self.click(
-                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
-                    )
-
-                # Enable Odoo_debug into incognito
-                # Back
-                self.click(
-                    "/html/body/div/div[2]/addon-page-header/div/div[2]/button"
-                )
-                self.click(
-                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/div/div/div/button",
-                )
-                self.click(
-                    "/html/body/div/div[2]/div/addon-list/section[1]/addon-card[2]/div/addon-options/panel-list/panel-item[5]",
-                )
-                # Enable Run in Private Windows
-                try:
-                    self.click(
-                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[6]/div/label[1]/input",
-                    )
-                except Exception:
-                    # For old version before Firefox 138
-                    self.click(
-                        "/html/body/div/div[2]/div/addon-card/div/addon-details/named-deck/section/div[5]/div/label[1]/input",
-                    )
 
         # Ouvrez la page web
         if not ignore_open_web:
