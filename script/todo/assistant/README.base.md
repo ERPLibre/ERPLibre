@@ -317,6 +317,20 @@ across sessions without the reserve that weighs on cost. The day is read in UTC
 as the transcript writes it; converting to local time would move messages from
 one day to another depending on who is looking.
 
+**A tool call ends in one of four ways, and the screen tells them apart.** It
+finished, it failed, it was interrupted, or nothing ever closed it. One count
+for all four gave a figure no gesture answers: a failure is corrected, an
+interruption is relaunched, and an unclosed call says nothing at all. The
+`PostToolUseFailure` event carries the difference in `is_interrupt`.
+
+**The duration is the one the tool measured, not the gap between two
+instants.** That gap INCLUDES the time spent in front of a permission prompt,
+so a call approved after four minutes read as a four-minute call and inflated
+the per-tool median. The closing event carries `duration_ms`; the gap remains
+only as a fallback for a binary that does not. Both fields are integers, and a
+string-only filter dropped them silently — the same defect the neighbouring
+module already paid for on a hook's exit code.
+
 ## The modules
 
 | File | What it owns |
@@ -704,6 +718,22 @@ remet à zéro, aucun segment ne s'y perd, et ils s'additionnent d'une session �
 l'autre sans la réserve qui pèse sur le coût. Le jour se lit en UTC comme la
 transcription l'écrit ; le convertir en heure locale déplacerait des messages
 d'un jour à l'autre selon qui regarde.
+
+**Un appel d'outil finit de quatre façons, et l'écran les distingue.** Il est
+fini, il a échoué, il a été interrompu, ou rien ne l'a jamais clos. Un seul
+compte pour les quatre donnait un chiffre auquel aucun geste ne répond : un
+échec se corrige, une interruption se relance, et un appel sans clôture ne dit
+rien du tout. L'événement `PostToolUseFailure` porte la différence dans son
+`is_interrupt`.
+
+**La durée est celle que l'outil a mesurée, et non l'écart entre deux
+instants.** Cet écart INCLUT le temps passé devant une demande d'autorisation,
+donc un appel approuvé au bout de quatre minutes se lisait comme un appel de
+quatre minutes et majorait la médiane par outil. L'événement de clôture porte
+`duration_ms` ; l'écart ne reste qu'en repli, pour un binaire qui ne la porte
+pas. Les deux champs sont numériques, et un filtre à chaînes les écartait en
+silence — le défaut que le module voisin avait déjà payé sur le code de sortie
+d'un hook.
 
 ## Les modules
 

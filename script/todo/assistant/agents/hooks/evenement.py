@@ -33,6 +33,8 @@ import time
 # s'accordent, faute de pouvoir importer sans coûter une seconde par appel.
 RACINE = "~/.erplibre/agents"
 CHAMPS = ("hook_event_name", "session_id", "tool_name", "tool_use_id", "cwd")
+CHAMPS_NOMBRE = ("duration_ms",)
+CHAMPS_BOOLEEN = ("is_interrupt",)
 
 
 def ecrire(brut, *, horloge=None, racine=None) -> bool:
@@ -50,6 +52,19 @@ def ecrire(brut, *, horloge=None, racine=None) -> bool:
         for champ in CHAMPS:
             valeur = evenement.get(champ)
             if isinstance(valeur, str) and valeur:
+                ligne[champ] = valeur
+        # Un filtre à chaînes écarte SILENCIEUSEMENT tout nombre : la durée
+        # que l'outil rapporte et le drapeau d'interruption sont l'un un
+        # entier et l'autre un booléen, donc ils se perdent sans rien dire.
+        # Le booléen se teste AVANT l'entier, `isinstance(True, int)` étant
+        # vrai en Python.
+        for champ in CHAMPS_BOOLEEN:
+            valeur = evenement.get(champ)
+            if isinstance(valeur, bool):
+                ligne[champ] = valeur
+        for champ in CHAMPS_NOMBRE:
+            valeur = evenement.get(champ)
+            if isinstance(valeur, int) and not isinstance(valeur, bool):
                 ligne[champ] = valeur
         if "hook_event_name" not in ligne:
             return False

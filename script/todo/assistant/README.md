@@ -312,6 +312,20 @@ across sessions without the reserve that weighs on cost. The day is read in UTC
 as the transcript writes it; converting to local time would move messages from
 one day to another depending on who is looking.
 
+**A tool call ends in one of four ways, and the screen tells them apart.** It
+finished, it failed, it was interrupted, or nothing ever closed it. One count
+for all four gave a figure no gesture answers: a failure is corrected, an
+interruption is relaunched, and an unclosed call says nothing at all. The
+`PostToolUseFailure` event carries the difference in `is_interrupt`.
+
+**The duration is the one the tool measured, not the gap between two
+instants.** That gap INCLUDES the time spent in front of a permission prompt,
+so a call approved after four minutes read as a four-minute call and inflated
+the per-tool median. The closing event carries `duration_ms`; the gap remains
+only as a fallback for a binary that does not. Both fields are integers, and a
+string-only filter dropped them silently — the same defect the neighbouring
+module already paid for on a hook's exit code.
+
 ## The modules
 
 | File | What it owns |

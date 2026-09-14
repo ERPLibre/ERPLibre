@@ -353,6 +353,22 @@ l'autre sans la réserve qui pèse sur le coût. Le jour se lit en UTC comme la
 transcription l'écrit ; le convertir en heure locale déplacerait des messages
 d'un jour à l'autre selon qui regarde.
 
+**Un appel d'outil finit de quatre façons, et l'écran les distingue.** Il est
+fini, il a échoué, il a été interrompu, ou rien ne l'a jamais clos. Un seul
+compte pour les quatre donnait un chiffre auquel aucun geste ne répond : un
+échec se corrige, une interruption se relance, et un appel sans clôture ne dit
+rien du tout. L'événement `PostToolUseFailure` porte la différence dans son
+`is_interrupt`.
+
+**La durée est celle que l'outil a mesurée, et non l'écart entre deux
+instants.** Cet écart INCLUT le temps passé devant une demande d'autorisation,
+donc un appel approuvé au bout de quatre minutes se lisait comme un appel de
+quatre minutes et majorait la médiane par outil. L'événement de clôture porte
+`duration_ms` ; l'écart ne reste qu'en repli, pour un binaire qui ne la porte
+pas. Les deux champs sont numériques, et un filtre à chaînes les écartait en
+silence — le défaut que le module voisin avait déjà payé sur le code de sortie
+d'un hook.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |

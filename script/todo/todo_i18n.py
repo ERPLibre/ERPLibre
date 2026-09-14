@@ -12979,6 +12979,14 @@ TRANSLATIONS = {
         "fr": "coût",
         "en": "cost",
     },
+    "failed": {
+        "fr": "échoués",
+        "en": "failed",
+    },
+    "interrupted": {
+        "fr": "interrompus",
+        "en": "interrupted",
+    },
     "attention": {
         "fr": "attention",
         "en": "attention",

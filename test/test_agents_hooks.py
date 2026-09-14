@@ -145,6 +145,8 @@ class TestCeQuiNEstPasEcrit(unittest.TestCase):
         Importer le paquet coûterait une seconde par appel d'outil ; le prix
         de la duplication est ce test."""
         self.assertEqual(evenement.CHAMPS, journal.CHAMPS)
+        self.assertEqual(evenement.CHAMPS_NOMBRE, journal.CHAMPS_NOMBRE)
+        self.assertEqual(evenement.CHAMPS_BOOLEEN, journal.CHAMPS_BOOLEEN)
         self.assertEqual(evenement.RACINE, journal.RACINE)
 
 
@@ -470,3 +472,201 @@ class TestLeTempsPasseEtLeTempsEcoule(unittest.TestCase):
         self.assertEqual(len(lignes), 2)
         self.assertEqual(journal.temps_actif(lignes), {"a": 1_000})
         self.assertEqual(journal.apparier(lignes), [])
+
+
+class TestLesQuatreFinsDUnAppel(unittest.TestCase):
+    """« Inachevé » recouvrait trois situations sans rapport.
+
+    Un outil en échec se corrige, un outil interrompu se relance, un appel
+    dont aucune clôture n'est venue ne dit rien du tout. Les compter ensemble
+    donne un écran dont le chiffre n'appelle aucun geste.
+
+    Les noms de champ sont ceux des charges réelles du binaire :
+    `PostToolUseFailure` porte `error`, `is_interrupt` et `duration_ms`.
+    """
+
+    def _pre(self, cle, outil="Bash"):
+        return {
+            "hook_event_name": "PreToolUse",
+            "tool_use_id": cle,
+            "tool_name": outil,
+            "session_id": "s",
+            "ts": 0,
+        }
+
+    def test_a_finished_call_says_so(self):
+        appels = journal.apparier(
+            [
+                self._pre("1"),
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_use_id": "1",
+                    "ts": 40,
+                },
+            ]
+        )
+        self.assertEqual([a.issue for a in appels], [journal.FINI])
+
+    def test_a_failure_is_told_from_an_interruption(self):
+        appels = journal.apparier(
+            [
+                self._pre("1"),
+                {
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_use_id": "1",
+                    "ts": 40,
+                    "is_interrupt": False,
+                },
+                self._pre("2"),
+                {
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_use_id": "2",
+                    "ts": 40,
+                    "is_interrupt": True,
+                },
+            ]
+        )
+        self.assertEqual(
+            sorted(a.issue for a in appels),
+            sorted([journal.ECHOUE, journal.INTERROMPU]),
+        )
+
+    def test_a_call_nothing_closed_is_unfinished_and_has_no_duration(self):
+        (appel,) = journal.apparier([self._pre("1")])
+        self.assertEqual(appel.issue, journal.INACHEVE)
+        self.assertIsNone(appel.duree_ms)
+
+    def test_the_three_are_counted_apart(self):
+        appels = journal.apparier(
+            [
+                self._pre("1"),
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_use_id": "1",
+                    "ts": 1,
+                },
+                self._pre("2"),
+                {
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_use_id": "2",
+                    "ts": 1,
+                },
+                self._pre("3"),
+                {
+                    "hook_event_name": "PostToolUseFailure",
+                    "tool_use_id": "3",
+                    "ts": 1,
+                    "is_interrupt": True,
+                },
+                self._pre("4"),
+            ]
+        )
+        (groupe,) = journal.par_outil(appels)
+        self.assertEqual(groupe.appels, 4)
+        self.assertEqual(groupe.echoues, 1)
+        self.assertEqual(groupe.interrompus, 1)
+        self.assertEqual(groupe.inacheves, 1)
+
+    def test_the_failure_event_is_installed(self):
+        """Sans lui, aucun échec n'atteint jamais le journal."""
+        self.assertIn("PostToolUseFailure", journal.EVENEMENTS)
+        self.assertEqual(pose.bloc()["PostToolUseFailure"][0]["matcher"], "*")
+
+
+class TestLaDureeMesureeEtLaDureeSupposee(unittest.TestCase):
+    """L'écart entre les deux instants INCLUT l'attente d'une autorisation.
+
+    Un appel approuvé au bout de quatre minutes se lisait donc comme un appel
+    de quatre minutes, et la médiane par outil s'en trouvait majorée dès que
+    l'utilisateur approuve au lieu de laisser faire. Le binaire porte la durée
+    qu'il rapporte lui-même, et c'est elle qui vaut.
+    """
+
+    PRE = {
+        "hook_event_name": "PreToolUse",
+        "tool_use_id": "1",
+        "tool_name": "Bash",
+        "session_id": "s",
+        "ts": 0,
+    }
+
+    def test_the_measured_duration_wins_over_the_gap(self):
+        (appel,) = journal.apparier(
+            [
+                self.PRE,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_use_id": "1",
+                    "ts": 4 * 60 * 1000,
+                    "duration_ms": 40,
+                },
+            ]
+        )
+        self.assertEqual(appel.duree_ms, 40)
+
+    def test_without_it_the_gap_is_the_fallback(self):
+        """Une version antérieure du binaire ne la porte pas : mieux vaut un
+        écart majoré que rien du tout."""
+        (appel,) = journal.apparier(
+            [
+                self.PRE,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_use_id": "1",
+                    "ts": 250,
+                },
+            ]
+        )
+        self.assertEqual(appel.duree_ms, 250)
+
+    def test_a_duration_that_is_a_boolean_is_not_a_duration(self):
+        """`isinstance(True, int)` est vrai en Python."""
+        (appel,) = journal.apparier(
+            [
+                self.PRE,
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_use_id": "1",
+                    "ts": 250,
+                    "duration_ms": True,
+                },
+            ]
+        )
+        self.assertEqual(appel.duree_ms, 250)
+
+    def test_the_hook_keeps_the_number_and_the_flag(self):
+        """Un filtre à chaînes les écartait tous les deux en silence."""
+        charge = json.dumps(
+            {
+                "hook_event_name": "PostToolUseFailure",
+                "tool_use_id": "x",
+                "duration_ms": 42,
+                "is_interrupt": True,
+            }
+        )
+        with tempfile.TemporaryDirectory() as dossier:
+            self.assertTrue(evenement.ecrire(charge, racine=dossier))
+            fichiers = os.listdir(dossier)
+            texte = open(os.path.join(dossier, fichiers[0])).read()
+        ligne = json.loads(texte)
+        self.assertEqual(ligne["duration_ms"], 42)
+        self.assertIs(ligne["is_interrupt"], True)
+
+    def test_the_hook_still_refuses_the_free_text(self):
+        """`error` et `tool_input` portent une commande et un message : ils
+        n'entrent pas plus qu'avant."""
+        charge = json.dumps(
+            {
+                "hook_event_name": "PostToolUseFailure",
+                "tool_use_id": "x",
+                "error": TEMOIN,
+                "tool_input": {"command": TEMOIN},
+                "duration_ms": 42,
+            }
+        )
+        with tempfile.TemporaryDirectory() as dossier:
+            evenement.ecrire(charge, racine=dossier)
+            fichiers = os.listdir(dossier)
+            texte = open(os.path.join(dossier, fichiers[0])).read()
+        self.assertNotIn(TEMOIN, texte)
+        self.assertIn("42", texte)

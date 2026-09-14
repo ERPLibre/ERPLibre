@@ -372,3 +372,51 @@ class TestLeTempsDAttention(unittest.TestCase):
             [oc.Seance(identifiant="ses_aaaabbbb", resume=oc.Resume())]
         )
         self.assertEqual(ligne["attention"], "—")
+
+
+class TestLesTroisColonnesDEchec(unittest.TestCase):
+    """Trois façons de mal finir, trois colonnes.
+
+    Une colonne reste VIDE plutôt que d'afficher zéro : un tableau semé de
+    zéros se lit mal, et ce qui compte ici est qu'une valeur y paraisse.
+    """
+
+    def _ligne(self, **comptes):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_outils(
+            [jr.ParOutil(outil="Bash", appels=9, **comptes)]
+        )
+        return ligne
+
+    def test_each_kind_has_its_own_column(self):
+        ligne = self._ligne(echoues=2, interrompus=1, inacheves=3)
+        self.assertEqual(ligne["echoues"], "2")
+        self.assertEqual(ligne["interrompus"], "1")
+        self.assertEqual(ligne["inacheves"], "3")
+
+    def test_a_kind_that_never_happened_leaves_its_cell_empty(self):
+        """Les TROIS colonnes, chacune vérifiée à zéro : un tableau semé de
+        zéros se lit mal, et ce qui compte est qu'une valeur y paraisse."""
+        vide = self._ligne()
+        for colonne in ("echoues", "interrompus", "inacheves"):
+            self.assertEqual(vide[colonne], "", colonne)
+        ligne = self._ligne(echoues=2)
+        self.assertEqual(ligne["echoues"], "2")
+        self.assertEqual(ligne["interrompus"], "")
+        self.assertEqual(ligne["inacheves"], "")
+
+    def test_the_table_asks_for_every_key_the_row_gives(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        ligne = self._ligne(echoues=1)
+        for cle, _ in t_ui.COLONNES_OUTILS:
+            self.assertIn(cle, ligne, cle)
+
+    def test_the_three_columns_are_declared_in_both_languages(self):
+        from script.todo.todo_i18n import TRANSLATIONS
+        from script.todo.assistant.agents import tui as t_ui
+
+        for cle, libelle in t_ui.COLONNES_OUTILS:
+            self.assertIn(libelle, TRANSLATIONS, libelle)

@@ -264,6 +264,10 @@ def lignes_outils(par_outil) -> list[dict]:
     Ce panneau est le SEUL que le disque ne donne pas : une transcription
     porte la durée totale des outils, jamais celle de chacun. Sans hook posé,
     il est vide, et l'écran le dit au lieu d'afficher un tableau nu.
+
+    Les trois façons de mal finir ont chacune leur colonne, et une colonne
+    reste VIDE plutôt que d'afficher zéro : un tableau semé de zéros se lit
+    mal, et ce qui compte ici est qu'une valeur y paraisse.
     """
     return [
         {
@@ -271,6 +275,8 @@ def lignes_outils(par_outil) -> list[dict]:
             "appels": str(p.appels),
             "mediane": duree(p.mediane_ms),
             "pointe": duree(p.pointe_ms),
+            "echoues": str(p.echoues) if p.echoues else "",
+            "interrompus": str(p.interrompus) if p.interrompus else "",
             "inacheves": str(p.inacheves) if p.inacheves else "",
         }
         for p in par_outil
@@ -283,6 +289,8 @@ COLONNES_OUTILS = (
     ("appels", "calls"),
     ("mediane", "median"),
     ("pointe", "peak"),
+    ("echoues", "failed"),
+    ("interrompus", "interrupted"),
     ("inacheves", "unfinished"),
 )
 
