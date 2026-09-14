@@ -22,6 +22,7 @@ libvirt), une panne après l'autre :
   répondait « not running ».
 """
 
+import re
 import shlex
 import subprocess
 import sys
@@ -470,6 +471,124 @@ class TestLesCommandes(unittest.TestCase):
             pve.ip_from_ipconfig("ip=10.10.10.150/24,gw=10.10.10.1"),
         )
         self.assertEqual("", pve.ip_from_ipconfig("ip=dhcp"))
+
+
+class TestLesBatisseursDeCommandeDeGestion(unittest.TestCase):
+    """Cinq fonctions composent une commande pour un shell ROOT distant.
+
+    Aucune n'avait d'épreuve. Elles ne décident rien et n'affichent rien —
+    c'est justement ce qui les rend éprouvables sans hôte, et ce qui rendait
+    leur absence de couverture facile à ne pas voir.
+
+    Ce qui se vérifie ici n'est pas l'orthographe d'une chaîne, qui ne vaut
+    qu'une relecture : ce sont les INVARIANTS QUI TRAVERSENT LES MODULES —
+    un réglage posé à la création dont une action de gestion dépend des mois
+    plus tard, et les valeurs qui, interpolées, arriveraient dans ce shell.
+    """
+
+    def test_the_serial_console_needs_what_creation_lays_down(self):
+        """« qm terminal » ouvre serial0. Retirer « --serial0 » de la
+        création laisserait cette action échouer sur des VM neuves
+        seulement, longtemps après le changement qui l'a cassée."""
+        spec = {
+            "name": "vm-essai",
+            "memory": 2048,
+            "vcpus": 2,
+            "disk": "12G",
+            "storage": "local",
+            "bridge": "vmbr0",
+            "image": "debian-13-genericcloud-amd64.qcow2",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "ipconfig": "ip=dhcp",
+        }
+        # Le lien est à SENS UNIQUE et ne se voit dans aucune signature :
+        # la commande de console ne nomme pas le périphérique, elle ouvre
+        # celui que la création a posé. C'est donc le côté création qui se
+        # tient ici — le seul des deux qui puisse casser l'autre.
+        creation = "\n".join(pve.create_cmds(100, spec))
+        self.assertIn("--serial0 socket", creation)
+        self.assertIn("--vga serial0", creation)
+        self.assertEqual("qm terminal 100", pve.console_cmd(100))
+
+    def test_the_guest_ip_needs_the_agent_creation_enables(self):
+        """L'adresse se demande à l'agent invité ; sans « --agent » à la
+        création, la commande rend une erreur de l'outil plutôt qu'une
+        adresse, et l'on cherche du côté du réseau."""
+        spec = {
+            "name": "vm-essai",
+            "memory": 2048,
+            "vcpus": 2,
+            "disk": "12G",
+            "storage": "local",
+            "bridge": "vmbr0",
+            "image": "debian-13-genericcloud-amd64.qcow2",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "ipconfig": "ip=dhcp",
+        }
+        self.assertIn("--agent", "\n".join(pve.create_cmds(100, spec)))
+        self.assertIn("guest cmd", pve.guest_ip_cmd(100))
+
+    def test_the_vmid_is_a_number_everywhere(self):
+        """Le seul jeton interpolé dans ces commandes vient de « qm list »,
+        où il est converti en entier derrière un contrôle de chiffres. Le
+        vérifier ici plutôt que de s'en souvenir : ces fonctions sont
+        publiques et le prochain appelant ne lira pas l'analyseur."""
+        vmid = pve.parse_qm_list("100 nom running 2048 disque 1234")[0]["vmid"]
+        self.assertIsInstance(vmid, int)
+        for commande in (
+            pve.status_cmd(vmid),
+            pve.console_cmd(vmid),
+            pve.guest_ip_cmd(vmid),
+            pve.resize_cmd(vmid, "+10G"),
+        ):
+            with self.subTest(commande=commande):
+                self.assertIn(" 100", commande)
+
+    def test_nothing_shell_special_survives_the_size_check(self):
+        """La taille est la SEULE valeur saisie qui entre dans ces
+        commandes. Le contrôle vit chez l'appelant ; l'épreuve tient ce
+        qu'il laisse passer, parce qu'un second appelant le recopiera."""
+        motif = re.compile(r"^\+?\d+[MGT]$")
+        for refuse in (
+            "10G; rm -rf /",
+            "$(id)",
+            "`id`",
+            "10G && reboot",
+            "10G\nreboot",
+            "",
+            "10",
+            "-5G",
+        ):
+            with self.subTest(saisie=refuse):
+                self.assertIsNone(motif.match(refuse.strip()))
+        for accepte in ("+10G", "40G", "512M", "2T"):
+            with self.subTest(saisie=accepte):
+                self.assertIsNotNone(motif.match(accepte))
+
+    def test_resize_never_builds_a_shrink_of_its_own(self):
+        """Proxmox refuse de rétrécir, et le dire AVANT évite de croire à
+        une panne de l'outil. La fonction ne compose donc rien qui
+        prétende le faire — elle recopie ce qu'on lui donne."""
+        self.assertEqual("qm resize 7 scsi0 +10G", pve.resize_cmd(7, "+10G"))
+        self.assertEqual(
+            "qm resize 7 virtio0 40G", pve.resize_cmd(7, "40G", "virtio0")
+        )
+
+    def test_the_orphan_sweep_lists_and_never_erases(self):
+        """« On les LISTE, on n'efface rien sans demander. » Un « rm » ou un
+        « pvesm free » glissé là effacerait des disques à la lecture d'un
+        écran d'inventaire."""
+        commande = pve.orphan_disks_cmd()
+        self.assertIn("pvesm list", commande)
+        for destructeur in ("rm ", "free", "destroy", "delete", "wipe"):
+            with self.subTest(mot=destructeur):
+                self.assertNotIn(destructeur, commande)
+
+    def test_the_verbose_status_asks_for_more_than_the_list_shows(self):
+        """« qm list » rend cinq colonnes ; le détail d'UNE machine demande
+        « --verbose », sans quoi cette action redirait ce qu'on vient de
+        lire."""
+        self.assertIn("--verbose", pve.status_cmd(100))
 
 
 class TestLePrivilege(unittest.TestCase):
