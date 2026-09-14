@@ -369,6 +369,7 @@ preview pane on the right, with a status line at the bottom.
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
 | `D` | empty the account's trash folder, permanently |
+| `p` | widen the search: folder, account, every account |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -415,6 +416,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `m` | ranger le message sélectionné dans un dossier qu'on choisit |
 | `D` | vider la corbeille du compte, définitivement |
+| `p` | élargir la recherche : dossier, compte, tous les comptes |
 | `c` | écrire un nouveau message |
 | `a` / `Shift+A` | répondre / répondre à tous |
 | `f` | transférer |
@@ -1065,10 +1067,24 @@ n'arrête pas les autres.
 ## Search
 
 `/` searches the **whole cache of the open folder**, not just the messages
-currently loaded. Subject, sender, recipient and snippet are matched. The
-scope stops there: the other folders of the account and the other accounts
-are not searched, and at most 500 matches are returned, the most recent
-first. `Shift+S` reaches past the cache — see below.
+currently loaded. Subject, sender, recipient and snippet are matched. At
+most 500 matches are returned, the most recent first. `Shift+S` reaches
+past the cache — see below.
+
+`p` widens that scope, one press at a time: the open folder, then every
+folder of the account, then every folder of every account, then back to
+the open folder. The status bar names the new scope each time — a list
+that silently grew would read as a defect. Widening stays an explicit
+gesture: in `encrypted` mode, doing it automatically would decrypt folders
+nobody asked about, at every keystroke.
+
+A result from elsewhere carries where it comes from, shown before its
+subject as `[Archives]`, or `[account/Archives]` when it comes from
+another account. This is not decoration. A UID names nothing on its own —
+the same number names a different message in every folder — so a result
+that lost its origin would show the body of its namesake here, and `d`,
+`m`, `s`, `u` and `w` would act on that one. Each of those keys follows
+the result's own folder and account instead.
 
 In `clear` cache mode an FTS5 index answers in milliseconds and the list
 follows every keystroke. In `encrypted` mode no index exists — one would
@@ -1080,23 +1096,42 @@ that key is pressed, the list filters only the messages already loaded.
 
 The result is the same either way; only the cost differs.
 
-`Shift+S` asks the server the same question, for the open folder. It is a
-separate gesture on purpose: extending at every keystroke would charge a
+`Shift+S` asks the server the same question, over the same scope as `p`
+has set — the open folder, the account's folders, or every account's. It
+is a separate gesture on purpose: extending at every keystroke would charge a
 round trip to a search that already answers. What the server finds is
 downloaded and stored, so the local search shows it immediately and finds
 it again offline. The server looks at whole messages, headers and body, so
 it can return what the local search would not — which is the point of
 looking further. An account that is offline says so rather than waiting,
-and a server that refuses says why.
+and a server that refuses says why. Over a wider scope one folder that
+refuses — unselectable, gone since the last pass — does not stop the
+others: the count of folders that gave no answer is reported alongside
+what was brought back.
 
 <!-- [fr] -->
 ## Recherche
 
 `/` cherche dans **tout le cache du dossier ouvert**, et non dans les seuls
 messages chargés. Sujet, expéditeur, destinataire et extrait sont comparés.
-La portée s'arrête là : les autres dossiers du compte et les autres comptes ne
-sont pas parcourus, et 500 correspondances au plus sont rendues, les plus
-récentes d'abord. `Shift+S` va au-delà du cache — voir plus bas.
+500 correspondances au plus sont rendues, les plus récentes d'abord.
+`Shift+S` va au-delà du cache — voir plus bas.
+
+`p` élargit cette portée, d'une pression à l'autre : le dossier ouvert,
+puis tous les dossiers du compte, puis tous les dossiers de tous les
+comptes, puis retour au dossier ouvert. La barre d'état nomme la nouvelle
+portée à chaque fois — une liste qui s'allongerait en silence se lirait
+comme un défaut. L'élargissement reste un geste explicite : en mode
+`encrypted`, le faire d'office déchiffrerait à chaque frappe des dossiers
+que personne n'a demandés.
+
+Un résultat venu d'ailleurs porte sa provenance, affichée devant son sujet
+sous la forme `[Archives]`, ou `[compte/Archives]` s'il vient d'un autre
+compte. Ce n'est pas un ornement. Un UID ne désigne rien tout seul — le
+même nombre nomme un autre message dans chaque dossier — donc un résultat
+qui perdrait la sienne afficherait le corps de son homonyme ici, et `d`,
+`m`, `s`, `u` et `w` agiraient sur celui-là. Chacune de ces touches suit
+le dossier et le compte du résultat lui-même.
 
 En mode de cache `clear`, un index FTS5 répond en millisecondes et la liste
 suit chaque frappe. En mode `encrypted` aucun index n'existe — il stockerait
@@ -1108,14 +1143,18 @@ validation, la liste ne filtre que les messages déjà chargés.
 
 Le résultat est le même des deux côtés ; seul le coût change.
 
-`Shift+S` pose la même question au serveur, pour le dossier ouvert. C'est un
-geste à part, et c'est voulu : étendre à chaque frappe ferait payer un
+`Shift+S` pose la même question au serveur, sur la portée que `p` a
+réglée — le dossier ouvert, les dossiers du compte, ou ceux de tous les
+comptes. C'est un geste à part, et c'est voulu : étendre à chaque frappe ferait payer un
 aller-retour à une recherche qui répond déjà. Ce que le serveur trouve est
 téléchargé puis rangé dans le cache : la recherche locale l'affiche aussitôt
 et le retrouvera hors ligne. Le serveur regarde les messages entiers,
 en-têtes et corps, donc il peut rendre ce que la recherche locale n'aurait
 pas rendu — c'est le sens même de chercher plus loin. Un compte hors ligne
-le dit plutôt que d'attendre, et un serveur qui refuse dit pourquoi.
+le dit plutôt que d'attendre, et un serveur qui refuse dit pourquoi. Sur
+une portée élargie, un dossier qui refuse — non sélectionnable, disparu
+depuis la dernière passe — n'arrête pas les autres : le nombre de dossiers
+restés sans réponse est annoncé à côté de ce qui a été ramené.
 
 <!-- [en] -->
 ## Statistics
@@ -1387,9 +1426,6 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **No cross-folder search** — `/` and `Shift+S` both work on the open
-  folder of one account; neither sweeps the other folders or the other
-  accounts.
 - **No moving across accounts** — `d` and `m` file a message within the
   account it belongs to; a message cannot be moved from one account to
   another.
@@ -1405,9 +1441,6 @@ phases add.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Pas de recherche transversale** — `/` comme `Shift+S` portent sur le
-  dossier ouvert d'un seul compte ; ni l'un ni l'autre ne balaie les autres
-  dossiers ou les autres comptes.
 - **Pas de déplacement entre comptes** — `d` et `m` rangent un message
   dans le compte auquel il appartient ; on ne peut pas en déplacer un d'un
   compte vers un autre.

@@ -190,6 +190,15 @@ class MessageMeta:
     # par fil, qui doit pouvoir travailler sans rouvrir la base.
     msgid_hash: str = ""
     in_reply_to_hash: str = ""
+    # La PROVENANCE, remplie par `search` seulement. Un résultat qui
+    # traverse les dossiers ne dit plus d'où il vient par le dossier
+    # ouvert : sans ces deux champs, l'écran afficherait le corps du
+    # message qui porte le même UID dans le dossier courant, et les
+    # touches de rangement agiraient dessus. `account` n'est pas rempli
+    # ici — le cache ne connaît qu'un compte, c'est l'appelant qui les
+    # assemble.
+    folder: str = ""
+    account: str = ""
 
 
 def _fts_query(texte: str) -> str:
@@ -1166,8 +1175,9 @@ class Store:
         rows = (
             self._db()
             .execute(
-                "SELECT m.* FROM messages_fts"
+                "SELECT m.*, f.name AS folder_name FROM messages_fts"
                 " JOIN messages m ON m.id = messages_fts.rowid"
+                " JOIN folders f ON f.id = m.folder_id"
                 f" WHERE {' AND '.join(clauses)}"
                 " ORDER BY m.date DESC LIMIT ?",
                 params,
@@ -1182,12 +1192,14 @@ class Store:
         aiguille = fold(query)
         clauses, params = ["1=1"], []
         if folder_id is not None:
-            clauses.append("folder_id = ?")
+            clauses.append("m.folder_id = ?")
             params.append(folder_id)
         trouves = []
         for row in self._db().execute(
-            f"SELECT * FROM messages WHERE {' AND '.join(clauses)}"
-            " ORDER BY date DESC",
+            "SELECT m.*, f.name AS folder_name FROM messages m"
+            " JOIN folders f ON f.id = m.folder_id"
+            f" WHERE {' AND '.join(clauses)}"
+            " ORDER BY m.date DESC",
             params,
         ):
             meta = self._row_to_meta(row)
@@ -1225,6 +1237,8 @@ class Store:
                 if "in_reply_to_hash" in row.keys()
                 else ""
             )
+            or "",
+            folder=(row["folder_name"] if "folder_name" in row.keys() else "")
             or "",
         )
 

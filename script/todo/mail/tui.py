@@ -34,6 +34,12 @@ SYNC_PARALLELE = 4
 # recopié oblige à lire ce qu'on détruit.
 MOT_SUPPRESSION = "supprimer"
 
+# La PORTÉE d'une recherche, dans l'ordre où `p` les fait défiler. Le
+# dossier ouvert d'abord : c'est la seule portée qui réponde sans
+# déchiffrer d'autres dossiers en mode chiffré, donc la seule qui puisse
+# suivre la frappe.
+_PORTEES = ("folder", "account", "all")
+
 try:
     from script.todo.todo_i18n import t
 except Exception:  # pragma: no cover - repli si i18n indisponible
@@ -1156,6 +1162,7 @@ def run_tui(
             Binding("d", "trash_message", t("mail_trash_binding")),
             Binding("m", "move_message", t("mail_move_binding")),
             Binding("D", "empty_trash", t("mail_empty_trash_binding")),
+            Binding("p", "cycle_scope", t("mail_scope_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
@@ -1193,6 +1200,7 @@ def run_tui(
             self.current_ref: MailboxRef | None = None
             self.metas = []
             self.query = ""
+            self.search_scope = "folder"
             # Lue ici, PAS dans `on_mount` : `compose()` a besoin de la
             # classe CSS de disposition dès le premier rendu, avant que
             # `on_mount` ne tourne. `resolve_layout` protège contre une
@@ -1371,16 +1379,101 @@ def run_tui(
                 return tui_text.filter_messages(self.metas, self.query)
             if self.current_ref is None:
                 return tui_text.filter_messages(self.metas, self.query)
-            session = self.session_for(self.current_ref.account_name)
-            etat = session.store.folder_state(self.current_ref.folder_name)
             try:
-                return session.store.search(
-                    self.query, folder_id=(etat or {}).get("id")
-                )
+                return self._resultats()
             except Exception:
                 # Un cache verrouillé ou un index absent ne doit pas vider
                 # la liste : on retombe sur ce qui est chargé.
                 return tui_text.filter_messages(self.metas, self.query)
+
+        def _resultats(self) -> list:
+            """Le résultat de la recherche, selon la portée choisie.
+
+            Chaque message rapporte D'OÙ il vient. Sans cette provenance,
+            une ligne venue d'un autre dossier ne serait plus qu'un UID, et
+            un UID ne désigne rien tout seul : le même nombre nomme un
+            autre message dans chaque dossier.
+            """
+            portee = getattr(self, "search_scope", "folder")
+            if portee == "all":
+                return self._resultats_partout()
+            session = self.session_for(self.current_ref.account_name)
+            folder_id = None
+            if portee == "folder":
+                etat = session.store.folder_state(self.current_ref.folder_name)
+                folder_id = (etat or {}).get("id")
+                if folder_id is None:
+                    return tui_text.filter_messages(self.metas, self.query)
+            return self._signer(
+                session.store.search(self.query, folder_id=folder_id),
+                session,
+            )
+
+        def _resultats_partout(self) -> list:
+            """Tous les comptes, du plus récent au plus ancien.
+
+            Le plafond s'applique à la liste ASSEMBLÉE : sans lui, dix
+            comptes rendraient dix fois le plafond d'un seul, et la fenêtre
+            afficherait une liste qu'aucune touche ne parcourt.
+            """
+            trouves: list = []
+            for session in self.sessions:
+                try:
+                    trouves.extend(
+                        self._signer(session.store.search(self.query), session)
+                    )
+                except Exception:
+                    # Le cache d'un compte peut être fermé ou verrouillé :
+                    # les autres comptes répondent quand même.
+                    _logger.exception(
+                        "recherche dans %s", session.account.name
+                    )
+            trouves.sort(key=lambda m: m.date, reverse=True)
+            return trouves[:500]
+
+        @staticmethod
+        def _signer(metas: list, session) -> list:
+            """Pose le compte sur des résultats que le cache, qui n'en
+            connaît qu'un, ne peut pas signer lui-même."""
+            for meta in metas:
+                meta.account = session.account.name
+            return metas
+
+        def meta_origin(self, meta):
+            """(session, dossier) d'où vient ce message.
+
+            Un message de la liste ordinaire ne porte pas de provenance :
+            il vient du dossier ouvert. Un résultat de recherche élargie,
+            lui, la porte — et c'est elle qui doit servir, sinon l'écran
+            lirait le corps du message qui porte le même UID dans le
+            dossier courant, et les touches de rangement agiraient dessus.
+            """
+            defaut_compte = (
+                self.current_ref.account_name if self.current_ref else ""
+            )
+            defaut_dossier = (
+                self.current_ref.folder_name if self.current_ref else ""
+            )
+            session = self.session_for(
+                getattr(meta, "account", "") or defaut_compte
+            )
+            return session, (getattr(meta, "folder", "") or defaut_dossier)
+
+        def action_cycle_scope(self) -> None:
+            """`p` : dossier ouvert → compte entier → tous les comptes.
+
+            La portée est un choix EXPLICITE. Élargir d'office ferait
+            déchiffrer, en mode chiffré, des dossiers que personne n'a
+            demandés, à chaque frappe.
+            """
+            suivante = _PORTEES[
+                (_PORTEES.index(getattr(self, "search_scope", "folder")) + 1)
+                % len(_PORTEES)
+            ]
+            self.search_scope = suivante
+            self.set_status(t(f"mail_scope_{suivante}"))
+            self.recherche_complete = True
+            self.refresh_list()
 
         def lignes_a_afficher(self) -> list:
             """(message, niveau d'indentation) pour le mode courant.
@@ -1409,12 +1502,45 @@ def run_tui(
                     tui_text.truncate(tui_text.short_addr(meta.frm), 22),
                     tui_text.truncate(
                         ("  ↳ " * niveau)
+                        + self._provenance(meta)
                         + (meta.subject or t("mail_no_subject")),
                         48,
                     ),
                     tui_text.format_date(meta.date, now),
-                    key=str(meta.uid),
+                    key=self._cle(meta),
                 )
+
+        def _provenance(self, meta) -> str:
+            """« [Archives] » devant le sujet d'un résultat venu d'ailleurs.
+
+            Rien devant un message du dossier ouvert : le répéter sur
+            chaque ligne d'une liste ordinaire mangerait la largeur du
+            sujet sans rien apprendre.
+            """
+            dossier = getattr(meta, "folder", "")
+            compte = getattr(meta, "account", "")
+            courant = self.current_ref
+            if not dossier or (
+                courant
+                and dossier == courant.folder_name
+                and (not compte or compte == courant.account_name)
+            ):
+                return ""
+            if compte and courant and compte != courant.account_name:
+                return f"[{compte}/{dossier}] "
+            return f"[{dossier}] "
+
+        @staticmethod
+        def _cle(meta) -> str:
+            """La clé d'une ligne du tableau, unique dans TOUTE la liste.
+
+            L'UID seul ne l'est pas : le même nombre nomme un message
+            différent dans chaque dossier, et une recherche élargie les
+            met côte à côte. `DataTable` refuse deux fois la même clé.
+            """
+            compte = getattr(meta, "account", "")
+            dossier = getattr(meta, "folder", "")
+            return f"{compte}\x1f{dossier}\x1f{meta.uid}"
 
         def refresh_current_folder(self) -> None:
             """Recharge les messages du dossier affiché depuis le cache et
@@ -1437,19 +1563,19 @@ def run_tui(
             # Capturé AVANT de recharger `self.metas` : `current_meta()` lit
             # encore l'ancienne liste et la position actuelle du curseur.
             current = self.current_meta()
-            current_uid = current.uid if current is not None else None
+            current_cle = self._cle(current) if current is not None else None
             state = session.store.folder_state(self.current_ref.folder_name)
             self.metas = (
                 session.store.list_messages(state["id"]) if state else []
             )
             self.refresh_list()
-            if current_uid is None:
+            if current_cle is None:
                 return
             from textual.widgets.data_table import RowDoesNotExist
 
             table = self.query_one("#list", DataTable)
             try:
-                row_index = table.get_row_index(str(current_uid))
+                row_index = table.get_row_index(current_cle)
             except RowDoesNotExist:
                 # Le message qui avait le focus a disparu du dossier (purge
                 # de synchronisation, suppression ailleurs) : `refresh_list`
@@ -1526,7 +1652,10 @@ def run_tui(
             if meta is None or self.current_ref is None:
                 preview.update("")
                 return
-            session = self.session_for(self.current_ref.account_name)
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                preview.update("")
+                return
             # `Text`, PAS une chaîne de balisage : expéditeur, sujet et
             # corps viennent du message, donc de n'importe qui. Un jeton de
             # suivi contenant « [...] » — vu sur un vrai courriel — était
@@ -1548,13 +1677,9 @@ def run_tui(
                 return
             try:
                 raw = (
-                    session.syncer.fetch_body(
-                        self.current_ref.folder_name, meta.uid
-                    )
+                    session.syncer.fetch_body(dossier, meta.uid)
                     if session.online
-                    else session.store.read_body(
-                        self.current_ref.folder_name, meta.uid
-                    )
+                    else session.store.read_body(dossier, meta.uid)
                 )
             except Exception as exc:
                 preview.update(header + Text(f"{t('mail_body_error')} {exc}"))
@@ -2034,11 +2159,10 @@ def run_tui(
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return
-            session = self.session_for(self.current_ref.account_name)
+            session, source = self.meta_origin(meta)
             if session is None or not session.online:
                 self.set_status(t("mail_trash_offline"))
                 return
-            source = self.current_ref.folder_name
 
             def ranger(cible):
                 if not cible:
@@ -2061,7 +2185,7 @@ def run_tui(
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return
-            session = self.session_for(self.current_ref.account_name)
+            session, source = self.meta_origin(meta)
             if session is None or not session.online:
                 self.set_status(t("mail_trash_offline"))
                 return
@@ -2071,7 +2195,6 @@ def run_tui(
                 # que personne n'a demandé.
                 self.set_status(t("mail_trash_no_folder"))
                 return
-            source = self.current_ref.folder_name
             if source == corbeille:
                 self.set_status(t("mail_trash_already_there"))
                 return
@@ -2212,36 +2335,76 @@ def run_tui(
                 self.set_status(t("mail_search_server_offline"))
                 return
             self.set_status(t("mail_search_server_asking"))
-            dossier = self.current_ref.folder_name
+            cibles = self._cibles_serveur(session)
             terme = self.query
             self.run_worker(
-                lambda: self._chercher_serveur(session, dossier, terme),
+                lambda: self._chercher_serveur(cibles, terme),
                 thread=True,
             )
 
-        def _chercher_serveur(self, session, dossier, terme) -> None:
+        def _cibles_serveur(self, session) -> list:
+            """Les (session, dossier) où poser la question, selon la portée.
+
+            La même portée que la recherche locale : une touche qui cherche
+            dans le dossier ouvert et une autre qui interroge le serveur
+            sur tout le compte rendraient deux listes qu'on croirait
+            comparables.
+
+            Les comptes hors ligne sont écartés ici plutôt que d'échouer un
+            par un dans le fil de travail.
+            """
+            portee = getattr(self, "search_scope", "folder")
+            if portee == "folder":
+                return [(session, self.current_ref.folder_name)]
+            sessions = self.sessions if portee == "all" else [session]
+            cibles = []
+            for autre in sessions:
+                if not autre.online:
+                    continue
+                cibles.extend(
+                    (autre, dossier["name"])
+                    for dossier in autre.store.folders()
+                )
+            return cibles
+
+        def _chercher_serveur(self, cibles, terme) -> None:
             """Le fil de travail : SELECT, SEARCH, puis les en-têtes manquants.
 
             Sous `_sync_lock` : `imaplib` n'est pas sûr entre fils, et une
             passe de synchronisation peut tourner en même temps sur la MÊME
             connexion.
-            """
-            try:
-                with self._sync_lock:
-                    session.syncer.transport.select(dossier)
-                    uids = session.syncer.transport.search(terme)
-                    ramenes = session.syncer.fetch_uids(dossier, uids)
-            except Exception as exc:
-                _logger.exception("recherche serveur sur %s", dossier)
-                self.call_from_thread(self.set_status, str(exc))
-                return
-            self.call_from_thread(self._serveur_a_repondu, ramenes)
 
-        def _serveur_a_repondu(self, ramenes: int) -> None:
+            Un dossier qui refuse — non sélectionnable, disparu depuis la
+            dernière passe — n'arrête pas les autres : sur un compte entier,
+            un seul dossier fâché rendrait la touche inutilisable. Le compte
+            des refusés est rendu pour que l'écran puisse le dire.
+            """
+            ramenes, refuses, derniere = 0, 0, None
+            for session, dossier in cibles:
+                try:
+                    with self._sync_lock:
+                        session.syncer.transport.select(dossier)
+                        uids = session.syncer.transport.search(terme)
+                        ramenes += session.syncer.fetch_uids(dossier, uids)
+                except Exception as exc:
+                    _logger.exception("recherche serveur sur %s", dossier)
+                    refuses += 1
+                    derniere = exc
+            if cibles and refuses == len(cibles):
+                # Tout a refusé : l'erreur elle-même en dit plus qu'un
+                # décompte.
+                self.call_from_thread(self.set_status, str(derniere))
+                return
+            self.call_from_thread(self._serveur_a_repondu, ramenes, refuses)
+
+        def _serveur_a_repondu(self, ramenes: int, refuses: int = 0) -> None:
             if ramenes:
-                self.set_status(f"{t('mail_search_server_found')} {ramenes}")
+                message = f"{t('mail_search_server_found')} {ramenes}"
             else:
-                self.set_status(t("mail_search_server_nothing"))
+                message = t("mail_search_server_nothing")
+            if refuses:
+                message += f" — {refuses} {t('mail_search_server_skipped')}"
+            self.set_status(message)
             # Ce que le serveur a ramené est DANS le cache : relire le
             # dossier le fait apparaître, sans rien retaper.
             if self.current_ref is not None:
@@ -2274,8 +2437,10 @@ def run_tui(
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return
-            session = self.session_for(self.current_ref.account_name)
-            state = session.store.folder_state(self.current_ref.folder_name)
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                return
+            state = session.store.folder_state(dossier)
             flags = set(meta.flags.split()) if meta.flags else set()
             flags.add(flag) if add else flags.discard(flag)
             session.store.update_flags(
@@ -2283,9 +2448,7 @@ def run_tui(
             )
             if session.online:
                 try:
-                    session.syncer.transport.select(
-                        self.current_ref.folder_name
-                    )
+                    session.syncer.transport.select(dossier)
                     session.syncer.transport.store_flags(
                         meta.uid, [flag] if add else [], [] if add else [flag]
                     )
@@ -2418,10 +2581,10 @@ def run_tui(
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return
-            session = self.session_for(self.current_ref.account_name)
-            raw = session.store.read_body(
-                self.current_ref.folder_name, meta.uid
-            )
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                return
+            raw = session.store.read_body(dossier, meta.uid)
             if raw is None:
                 self.set_status(t("mail_body_needs_network"))
                 return
@@ -2459,14 +2622,12 @@ def run_tui(
             meta = self.current_meta()
             if meta is None or self.current_ref is None:
                 return None, None
-            session = self.session_for(self.current_ref.account_name)
-            raw = session.store.read_body(
-                self.current_ref.folder_name, meta.uid
-            )
+            session, dossier = self.meta_origin(meta)
+            if session is None:
+                return None, None
+            raw = session.store.read_body(dossier, meta.uid)
             if raw is None and session.online:
-                raw = session.syncer.fetch_body(
-                    self.current_ref.folder_name, meta.uid
-                )
+                raw = session.syncer.fetch_body(dossier, meta.uid)
             if raw is None:
                 return session, None
             import email
@@ -3441,10 +3602,11 @@ def run_tui(
                         self._notes_text(), id="help_notes", markup=False
                     )
                 # HORS du bloc qui défile : la phrase qui dit comment
-                # SORTIR ne doit pas pouvoir passer sous le pli. Chaque
-                # raccourci ajouté allongeait la liste au-dessus d'elle, et
-                # elle a fini par sortir de l'écran — mesuré sur 45 lignes,
-                # la hauteur d'un grand terminal.
+                # SORTIR ne doit pas pouvoir passer sous le pli. La liste
+                # des raccourcis, au-dessus d'elle, dépasse 45 lignes — la
+                # hauteur d'un grand terminal — et grandit à chaque touche
+                # ajoutée ; une sortie qu'il faut aller chercher en
+                # défilant n'en est pas une.
                 yield Static(
                     t("mail_help_close_hint"),
                     id="help_close",
