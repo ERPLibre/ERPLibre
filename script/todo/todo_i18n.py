@@ -1676,10 +1676,6 @@ TRANSLATIONS = {
         "fr": "Déjà en miroir :",
         "en": "Already mirrored:",
     },
-    "Declared by the manifests:": {
-        "fr": "Déclarés par les manifestes :",
-        "en": "Declared by the manifests:",
-    },
     "No repository found in manifest/": {
         "fr": "Aucun dépôt trouvé dans manifest/",
         "en": "No repository found in manifest/",
@@ -1700,9 +1696,49 @@ TRANSLATIONS = {
         "fr": "Remplir les miroirs git maintenant ?",
         "en": "Fill the git mirrors now?",
     },
-    "Mirrors - Fill them from the manifests": {
-        "fr": "📥 Miroirs - Les remplir depuis les manifestes",
-        "en": "📥 Mirrors - Fill them from the manifests",
+    "Mirrors - Fill the base of the active Odoo version": {
+        "fr": "📥 Miroirs - Remplir la base de la version d'Odoo active",
+        "en": "📥 Mirrors - Fill the base of the active Odoo version",
+    },
+    "Mirrors - Fill the extra of the active Odoo version": {
+        "fr": "🧩 Miroirs - Remplir l'extra de la version d'Odoo active",
+        "en": "🧩 Mirrors - Fill the extra of the active Odoo version",
+    },
+    "Mirrors - Fill every manifest, all versions": {
+        "fr": "📚 Miroirs - Remplir tous les manifestes, toutes versions",
+        "en": "📚 Mirrors - Fill every manifest, all versions",
+    },
+    "Base of Odoo": {
+        "fr": "Base d'Odoo",
+        "en": "Base of Odoo",
+    },
+    "Extra of Odoo": {
+        "fr": "Extra d'Odoo",
+        "en": "Extra of Odoo",
+    },
+    "Every manifest, all versions": {
+        "fr": "Tous les manifestes, toutes versions",
+        "en": "Every manifest, all versions",
+    },
+    "repositories declared": {
+        "fr": "dépôts déclarés",
+        "en": "repositories declared",
+    },
+    "without a mirror": {
+        "fr": "sans miroir",
+        "en": "without a mirror",
+    },
+    "No .odoo-version: no active version to fill.": {
+        "fr": "Aucun .odoo-version : pas de version active à remplir.",
+        "en": "No .odoo-version: no active version to fill.",
+    },
+    "Nothing declared for this version.": {
+        "fr": "Rien n'est déclaré pour cette version.",
+        "en": "Nothing declared for this version.",
+    },
+    "Extra modules install only with --with_extra.": {
+        "fr": "Les modules extra ne s'installent qu'avec --with_extra.",
+        "en": "Extra modules install only with --with_extra.",
     },
     "Mirrors - List them, heaviest first": {
         "fr": "📋 Miroirs - Les lister, du plus lourd au plus léger",

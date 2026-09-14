@@ -1222,43 +1222,88 @@ class QemuCacheMenuMixin:
         racine = os.path.dirname(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )
-        liste = depots_des_manifestes(racine)
-        if not liste:
+        tous = depots_des_manifestes(racine)
+        if not tous:
             print(f"  ✗ {t('No repository found in manifest/')}\n")
             return
-        print(f"  {t('Declared by the manifests:')} {len(liste)}")
+        # La version active décide de ce qu'un déploiement clone : sa base
+        # d'office, son extra seulement sur demande. Chaque liste est montrée
+        # avec ce qui lui manque, pour que le choix se fasse sur un compte et
+        # non sur un nom — remplir toutes les versions coûte des heures, là où
+        # la base d'une seule est souvent déjà complète.
+        version = version_active(racine)
+        base = depots_des_manifestes(racine, version) if version else []
+        extra = (
+            depots_des_manifestes(racine, fichiers=[manifeste_extra(version)])
+            if version
+            else []
+        )
+        print()
+        for libelle, liste in (
+            (f"{t('Base of Odoo')} {version or '?'}", base),
+            (f"{t('Extra of Odoo')} {version or '?'}", extra),
+            (t("Every manifest, all versions"), tous),
+        ):
+            manque = cache_offline.miroirs_absents(liste) if liste else []
+            print(
+                f"  {libelle:<36}{len(liste):>4} {t('repositories declared')},"
+                f" {len(manque):>4} {t('without a mirror')}"
+            )
         # Un miroir est COMPLET : le dire en gigaoctets, pas en dépôts. Aucune
         # éviction n'est écrite, et la place ne se rend pas toute seule.
         print(f"\n  ⚠ {t('A mirror is complete: this can take tens of GiB')}")
         print(f"    {t('and hours on the first run. Nothing erases it.')}")
         print(f"    {t('Free space:')} {self._cache_place_libre()}\n")
 
-        fichier = os.path.join(
-            os.path.expanduser("~/.erplibre"), "miroirs_git.txt"
-        )
-        os.makedirs(os.path.dirname(fichier), exist_ok=True)
-        with open(fichier, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(liste) + "\n")
         choices = [
             {
                 "prompt_description": t(
-                    "Mirrors - Fill them from the manifests"
+                    "Mirrors - Fill the base of the active Odoo version"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Mirrors - Fill the extra of the active Odoo version"
+                )
+            },
+            {
+                "prompt_description": t(
+                    "Mirrors - Fill every manifest, all versions"
                 )
             },
             {"prompt_description": t("Mirrors - List them, heaviest first")},
             {"prompt_description": t("Mirrors - Remove one")},
         ]
         help_info = self.fill_help_info(choices)
+        sans_version = t("No .odoo-version: no active version to fill.")
+        rien = t("Nothing declared for this version.")
         while True:
             status = click.prompt(help_info)
             print()
             if status == "0":
                 return False
             if status == "1":
-                self._cache_miroir_remplir(liste)
+                if not version:
+                    print(f"  {sans_version}\n")
+                elif not base:
+                    print(f"  {rien}\n")
+                else:
+                    self._cache_miroir_remplir(base)
             elif status == "2":
-                self._cache_miroir_lister()
+                if not version:
+                    print(f"  {sans_version}\n")
+                elif not extra:
+                    print(f"  {rien}\n")
+                else:
+                    print(
+                        f"  {t('Extra modules install only with --with_extra.')}"
+                    )
+                    self._cache_miroir_remplir(extra)
             elif status == "3":
+                self._cache_miroir_remplir(tous)
+            elif status == "4":
+                self._cache_miroir_lister()
+            elif status == "5":
                 self._cache_miroir_retirer()
             else:
                 print(t("Command not found !"))
@@ -2178,26 +2223,69 @@ def bypass_menage(execute):
     return len(orphelines)
 
 
-def manifeste_retenu(nom, version=""):
-    """Ce manifeste concerne-t-il la version demandée ?
+def version_active(racine):
+    """La version d'Odoo que le checkout porte (« .odoo-version »), ou ""."""
+    try:
+        with open(
+            os.path.join(racine, ".odoo-version"), encoding="utf-8"
+        ) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
 
-    Sans version, tous : le remplissage des miroirs prend de l'avance pour
-    toutes les versions à la fois, et rien ne doit lui en soustraire.
 
-    Avec une version, ceux qui portent ce numéro et ceux qui n'en portent
-    aucun — ces derniers valent pour toutes. Les dépréciés sortent : ils ne
-    décrivent plus rien d'installable, et les compter ferait annoncer comme
-    manquants des dépôts qu'aucun déploiement ne demandera.
+def manifeste_extra(version):
+    """Le manifeste des modules extra d'une version, relatif à la racine.
+
+    Il ne s'installe que sur demande (« --with_extra ») : ni la base ni le
+    verdict du pré-vol ne le comptent, seul son propre remplissage le vise.
     """
-    if not version:
-        return True
-    if "deprecated" in nom:
-        return False
-    numeros = re.findall(r"odoo(\d+\.\d+)", nom)
-    return not numeros or version in numeros
+    return os.path.join("manifest", f"git_manifest_extra_odoo{version}.xml")
 
 
-def depots_des_manifestes(racine, version=""):
+def manifestes_de_version(racine, version, extra=False):
+    """Les manifestes qu'une installation de cette version fusionne.
+
+    La règle est celle de script/git/git_merge_repo_manifest.py. Les
+    manifestes communs sont lus dans les MÊMES listes que lui —
+    conf/git_manifest_odoo.csv et conf/git_manifest.csv — plutôt que recopiés
+    ici : une copie divergerait au premier manifeste ajouté. S'y ajoutent
+    celui de la version et son « _dev ».
+
+    Deux manifestes n'entrent pas d'office, comme dans la fusion : l'extra,
+    qui ne s'installe que sur demande, et le mobile, qui n'entre que si son
+    répertoire existe — ce qui n'est pas le cas d'une VM fraîchement clonée.
+    Les compter ferait annoncer comme manquants des dépôts qu'aucun
+    déploiement par défaut ne clone.
+    """
+    import csv
+
+    fichiers = []
+
+    def ajouter(chemin):
+        if chemin and chemin not in fichiers:
+            fichiers.append(chemin)
+
+    def lire_liste(nom):
+        try:
+            with open(
+                os.path.join(racine, "conf", nom), encoding="utf-8"
+            ) as fh:
+                for ligne in csv.DictReader(fh):
+                    ajouter(ligne.get("filepath") or "")
+        except OSError:
+            pass
+
+    lire_liste("git_manifest_odoo.csv")
+    ajouter(os.path.join("manifest", f"git_manifest_odoo{version}.xml"))
+    ajouter(os.path.join("manifest", f"git_manifest_odoo{version}_dev.xml"))
+    lire_liste("git_manifest.csv")
+    if extra:
+        ajouter(manifeste_extra(version))
+    return fichiers
+
+
+def depots_des_manifestes(racine, version="", fichiers=None):
     """Les dépôts git que les manifestes du dépôt déclarent, sans doublon.
 
     Un manifeste Google Repo nomme des « remote » — l'URL de base d'une forge —
@@ -2205,24 +2293,30 @@ def depots_des_manifestes(racine, version=""):
     des deux, et un même projet figure dans plusieurs manifestes, un par
     version d'Odoo.
 
-    `version` borne la lecture à une version d'Odoo. Un déploiement n'en
-    installe qu'UNE : additionner les dépôts des autres fait compter comme
-    manquant ce que personne ne clonera, et un avertissement qui crie pour
-    rien cesse d'être lu. Vide, tout est rendu.
+    `fichiers` nomme exactement les manifestes à lire, relatifs à la racine.
+    À défaut, `version` les déduit par `manifestes_de_version` : un
+    déploiement n'installe qu'une version, et additionner les dépôts des
+    autres fait compter comme manquant ce que personne ne clonera. Sans l'un
+    ni l'autre, tous les manifestes sont lus — ce dont le remplissage complet
+    a besoin pour prendre de l'avance sur toutes les versions.
 
-    Un manifeste illisible est SAUTÉ plutôt que fatal : la liste sert à prendre
-    de l'avance, et en perdre une partie vaut mieux que de ne rien prendre.
+    Un manifeste illisible ou absent est SAUTÉ plutôt que fatal : la liste
+    sert à prendre de l'avance, et en perdre une partie vaut mieux que de ne
+    rien prendre.
     """
     import glob
     import xml.etree.ElementTree as ET
 
+    if fichiers is None and version:
+        fichiers = manifestes_de_version(racine, version)
+    if fichiers is None:
+        chemins = sorted(glob.glob(os.path.join(racine, "manifest", "*.xml")))
+    else:
+        chemins = [os.path.join(racine, f) for f in fichiers]
+
     vus = set()
     out = []
-    for fichier in sorted(
-        glob.glob(os.path.join(racine, "manifest", "*.xml"))
-    ):
-        if not manifeste_retenu(os.path.basename(fichier), version):
-            continue
+    for fichier in chemins:
         try:
             arbre = ET.parse(fichier).getroot()
         except (ET.ParseError, OSError):

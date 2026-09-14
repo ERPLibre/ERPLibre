@@ -25,16 +25,28 @@ sys.path.insert(0, str(RACINE))
 
 from script.todo.qemu_cache_menu import (  # noqa: E402
     depots_des_manifestes,
-    manifeste_retenu,
+    manifeste_extra,
+    manifestes_de_version,
 )
 
 
-def faux_depot(manifestes):
-    """Un dépôt de manifestes en dur, pour ne pas dépendre des vrais."""
+def faux_depot(manifestes, listes=None):
+    """Un dépôt de manifestes en dur, pour ne pas dépendre des vrais.
+
+    `listes` pose les fichiers de conf que la fusion lit — {nom: [chemins]} —
+    faute de quoi une version n'aurait aucun manifeste commun.
+    """
     d = tempfile.mkdtemp()
     (Path(d) / "manifest").mkdir()
     for nom, contenu in manifestes.items():
         (Path(d) / "manifest" / nom).write_text(contenu, encoding="utf-8")
+    if listes:
+        (Path(d) / "conf").mkdir()
+        for nom, chemins in listes.items():
+            (Path(d) / "conf" / nom).write_text(
+                '"filepath"\n' + "".join(f"{c}\n" for c in chemins),
+                encoding="utf-8",
+            )
     return d
 
 
@@ -49,55 +61,67 @@ def manifeste_de(projet):
 
 
 class TestLaBorneParVersion(unittest.TestCase):
-    """Un déploiement n'installe qu'UNE version d'Odoo.
+    """Ce qu'un déploiement clone, et rien d'autre.
 
-    Additionner les dépôts de toutes les versions — les dépréciées comprises
-    — fait annoncer comme manquants des dépôts que personne ne clonera. Un
-    avertissement qui crie pour rien cesse d'être lu, et c'est justement ce
-    que le reste du pré-vol évite avec soin.
+    La règle est celle de la fusion des manifestes : les communs que listent
+    ses fichiers de conf, la version et son « _dev ». L'extra ne s'installe
+    que sur demande, le mobile seulement si son répertoire existe — ce qui
+    n'est pas le cas d'une VM fraîchement clonée. Les compter fait annoncer
+    comme manquants des dépôts qu'aucun déploiement par défaut ne clonera, et
+    un avertissement qui crie pour rien cesse d'être lu.
 
-    Sans version, rien n'est soustrait : le remplissage des miroirs prend de
-    l'avance pour toutes les versions à la fois, et lui retrancher un
-    manifeste le ferait manquer plus tard, hors ligne, sans recours.
+    Sans version, rien n'est soustrait : le remplissage complet prend de
+    l'avance pour toutes les versions à la fois.
     """
 
     MANIFESTES = {
         "git_manifest_odoo18.0.xml": manifeste_de("dix-huit"),
+        "git_manifest_odoo18.0_dev.xml": manifeste_de("dix-huit-dev"),
         "git_manifest_odoo12.0.xml": manifeste_de("douze"),
-        "git_manifest_erplibre.xml": manifeste_de("commun"),
+        "git_manifest_erplibre_odoo.xml": manifeste_de("commun"),
+        "git_manifest_extra_odoo18.0.xml": manifeste_de("extra"),
+        "git_manifest_mobile_home.xml": manifeste_de("mobile"),
         "default.staged.deprecated.xml": manifeste_de("deprecie"),
     }
+    LISTES = {
+        "git_manifest_odoo.csv": ["manifest/git_manifest_erplibre_odoo.xml"],
+        "git_manifest.csv": [],
+    }
 
-    def test_une_version_retient_la_sienne_et_les_communs(self):
-        urls = depots_des_manifestes(faux_depot(self.MANIFESTES), "18.0")
-        self.assertIn("https://f.example/dix-huit.git", urls)
-        self.assertIn("https://f.example/commun.git", urls)
+    def depot(self, listes=None):
+        return faux_depot(self.MANIFESTES, listes or self.LISTES)
+
+    def test_la_base_retient_la_version_son_dev_et_les_communs(self):
+        urls = depots_des_manifestes(self.depot(), "18.0")
+        for nom in ("dix-huit", "dix-huit-dev", "commun"):
+            self.assertIn(f"https://f.example/{nom}.git", urls)
         self.assertNotIn("https://f.example/douze.git", urls)
 
-    def test_les_deprecies_sortent_des_quune_version_est_donnee(self):
-        """Ils ne décrivent plus rien d'installable."""
-        urls = depots_des_manifestes(faux_depot(self.MANIFESTES), "18.0")
-        self.assertNotIn("https://f.example/deprecie.git", urls)
+    def test_ni_extra_ni_mobile_ni_deprecie_dans_la_base(self):
+        urls = depots_des_manifestes(self.depot(), "18.0")
+        for nom in ("extra", "mobile", "deprecie"):
+            self.assertNotIn(f"https://f.example/{nom}.git", urls)
+
+    def test_les_communs_viennent_des_listes_de_la_fusion(self):
+        """Un manifeste sans numéro que les listes ne nomment pas reste
+        dehors : c'est la liste qui fait foi, pas le nom du fichier."""
+        d = self.depot({"git_manifest_odoo.csv": [], "git_manifest.csv": []})
+        self.assertNotIn(
+            "https://f.example/commun.git", depots_des_manifestes(d, "18.0")
+        )
+
+    def test_lextra_ne_vient_que_sur_demande(self):
+        d = self.depot()
+        extra = manifeste_extra("18.0")
+        self.assertNotIn(extra, manifestes_de_version(d, "18.0"))
+        self.assertIn(extra, manifestes_de_version(d, "18.0", extra=True))
+        self.assertEqual(
+            depots_des_manifestes(d, fichiers=[extra]),
+            ["https://f.example/extra.git"],
+        )
 
     def test_sans_version_rien_nest_soustrait(self):
-        urls = depots_des_manifestes(faux_depot(self.MANIFESTES))
-        self.assertEqual(len(urls), 4, urls)
-
-    def test_la_regle_de_retenue(self):
-        for nom, version, attendu in (
-            ("git_manifest_odoo18.0.xml", "18.0", True),
-            ("git_manifest_extra_odoo18.0.xml", "18.0", True),
-            ("git_manifest_odoo12.0.xml", "18.0", False),
-            # Sans numéro : vaut pour toutes les versions.
-            ("git_manifest_erplibre_odoo.xml", "18.0", True),
-            ("default.staged.deprecated.xml", "18.0", False),
-            # Sans version demandée, tout passe — y compris le déprécié.
-            ("default.staged.deprecated.xml", "", True),
-            ("git_manifest_odoo12.0.xml", "", True),
-        ):
-            self.assertIs(
-                manifeste_retenu(nom, version), attendu, f"{nom} / {version}"
-            )
+        self.assertEqual(len(depots_des_manifestes(self.depot())), 7)
 
 
 class TestExtraction(unittest.TestCase):
@@ -202,6 +226,27 @@ class TestLeRepliSurLaVersionDuDepot(unittest.TestCase):
             sorted(_depots_declares()),
             sorted(depots_des_manifestes(str(RACINE), version)),
         )
+
+
+class TestLaBaseReelle(unittest.TestCase):
+    """Sur les vrais manifestes, la base ne porte pas l'extra de la version
+    active. Sinon le pré-vol annonce des miroirs manquants pour des modules
+    qu'une installation par défaut ne clone jamais."""
+
+    def test_la_base_ne_porte_pas_lextra(self):
+        version = (
+            (RACINE / ".odoo-version").read_text(encoding="utf-8").strip()
+        )
+        base = set(depots_des_manifestes(str(RACINE), version))
+        extra = set(
+            depots_des_manifestes(
+                str(RACINE), fichiers=[manifeste_extra(version)]
+            )
+        )
+        if not extra:
+            self.skipTest(f"aucun manifeste extra pour {version}")
+        self.assertTrue(base, "la base de la version active est vide")
+        self.assertTrue(extra.isdisjoint(base), extra & base)
 
 
 class TestLesVraisManifestes(unittest.TestCase):

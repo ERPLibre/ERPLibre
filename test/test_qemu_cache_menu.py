@@ -250,7 +250,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         self.verifier("_cache_exceptions", "_cache_miroir_git", 2)
 
     def test_le_menu_des_miroirs(self):
-        self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 3)
+        self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 5)
 
     def test_le_menu_de_lage(self):
         self.verifier("_cache_age", "_cache_lancer", 5)
@@ -573,6 +573,102 @@ class TestCeQuOnDitQuandLArriveeNeSuitPas(unittest.TestCase):
             self.assertIn(jeton, sonde)
         self.assertIn(qemu_cache_menu.CACHE_BIN, sonde)
         self.assertIn(cache_offline.SERVICE_USER, sonde)
+
+
+class TestLesEntreesDesMiroirsVisentLeurListe(unittest.TestCase):
+    """Chaque entrée de remplissage passe SA liste, et pas une voisine.
+
+    La base, l'extra et le remplissage complet partagent tout — l'en-tête,
+    la confirmation, la commande — sauf la liste qu'ils transmettent. Une
+    entrée « extra » qui passerait la base remplirait des dépôts déjà
+    complets et laisserait ceux qui manquent, sans que rien à l'écran ne le
+    trahisse : la commande affichée a la même forme dans les deux cas.
+    """
+
+    def remplir(self, choix):
+        """Pilote le sous-menu. Rend la liste reçue par le remplissage."""
+        import contextlib
+        import io
+
+        from script.todo.todo import TODO
+
+        vu = {}
+
+        class Faux(TODO):
+            def __init__(self):
+                pass
+
+            def _cache_miroir_occupation(self):
+                return 0, "0 o"
+
+            def _cache_place_libre(self):
+                return "?"
+
+            def fill_help_info(self, choices):
+                return ""
+
+            def _cache_miroir_remplir(self, liste):
+                vu["liste"] = list(liste)
+
+        reponses = iter([choix, "0"])
+        with contextlib.ExitStack() as pile:
+            pile.enter_context(
+                mock.patch(
+                    "click.prompt", side_effect=lambda *a, **k: next(reponses)
+                )
+            )
+            # Le binaire installé et l'état des miroirs ne sont pas le sujet :
+            # le verdict doit tenir sur une machine qui n'a ni l'un ni l'autre.
+            pile.enter_context(
+                mock.patch(
+                    "script.todo.qemu_cache_menu.os.path.isfile",
+                    return_value=True,
+                )
+            )
+            pile.enter_context(
+                mock.patch(
+                    "script.qemu.cache_offline.miroirs_absents",
+                    return_value=[],
+                )
+            )
+            pile.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            Faux()._cache_miroir_git()
+        return vu.get("liste")
+
+    def version(self):
+        from script.todo.qemu_cache_menu import version_active
+
+        v = version_active(str(RACINE))
+        if not v:
+            self.skipTest("aucune version d'Odoo active dans ce checkout")
+        return v
+
+    def test_lentree_base_passe_la_base(self):
+        from script.todo.qemu_cache_menu import depots_des_manifestes
+
+        v = self.version()
+        self.assertEqual(
+            self.remplir("1"), depots_des_manifestes(str(RACINE), v)
+        )
+
+    def test_lentree_extra_passe_lextra(self):
+        from script.todo.qemu_cache_menu import (
+            depots_des_manifestes,
+            manifeste_extra,
+        )
+
+        v = self.version()
+        extra = depots_des_manifestes(
+            str(RACINE), fichiers=[manifeste_extra(v)]
+        )
+        if not extra:
+            self.skipTest(f"aucun manifeste extra pour {v}")
+        self.assertEqual(self.remplir("2"), extra)
+
+    def test_lentree_complete_passe_tous_les_manifestes(self):
+        from script.todo.qemu_cache_menu import depots_des_manifestes
+
+        self.assertEqual(self.remplir("3"), depots_des_manifestes(str(RACINE)))
 
 
 class TestLAssistantDesTests(unittest.TestCase):
