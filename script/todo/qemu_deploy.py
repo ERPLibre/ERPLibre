@@ -1837,6 +1837,28 @@ class QemuDeployMixin:
             "build_command": self._qemu_preview_command,
         }
 
+    def _qemu_ssh_forwards(self, spec, vm_name):
+        """Les redirections du bloc ssh d'UNE machine. Vide est la règle.
+
+        LA MOITIÉ INSTALLATION du profil servi : la sortie coupée est tenue
+        par les règles, et ce qui manquait est de rendre l'interface
+        joignable depuis l'hôte, à une adresse stable qui ne dépend pas de
+        l'IP du jour.
+
+        La commande examinée est celle que CETTE machine subira — celle
+        qu'elle a figée, sinon la commune. Une rangée qui installe autre
+        chose ne doit pas hériter d'une promesse qu'elle ne tient pas.
+        """
+        commune = (spec.get("install") or {}).get("cmd", "") or ""
+        propre = ""
+        for vm in spec.get("vms") or []:
+            if vm.get("name") == vm_name:
+                propre = vm.get("install_cmd") or ""
+                break
+        return vm_profiles.web_forward(
+            posture_spec.posture_name(spec), propre or commune
+        )
+
     def _qemu_preview_command(self, vm, spec, dry):
         """La commande qu'un aperçu affiche, en UNE ligne.
 
@@ -2802,7 +2824,11 @@ class QemuDeployMixin:
                 ip = ip_map.get(name)
                 if ip:
                     self._write_ssh_config_entry(
-                        name, "erplibre", ip, identity_file=identity
+                        name,
+                        "erplibre",
+                        ip,
+                        identity_file=identity,
+                        forwards=self._qemu_ssh_forwards(spec, name),
                     )
 
         # Ce sur quoi la suite a le droit de poser, distinct de ce qui a

@@ -396,6 +396,78 @@ class TestLeRefusSeLitAuLieuDeSeDerouler(unittest.TestCase):
         self.assertIn("deploy_qemu.py", ligne)
 
 
+class TestLInterfaceServieEstJoignable(unittest.TestCase):
+    """La moitié installation du profil servi, au point qui écrit ssh.
+
+    Le renvoi de port existait, avec ses épreuves, et `forwards=` n'était
+    passé par aucun appelant de production : l'interface promise par le nom
+    « local-webui » n'était joignable depuis l'hôte par aucun chemin.
+    """
+
+    ODOO = "install_odoo_all_version"
+
+    def spec(self, posture, cmd, par_vm=None):
+        return {
+            S.POSTURE_KEY: posture,
+            "install": {"cmd": cmd},
+            "vms": [{"name": "vm1", "install_cmd": par_vm or ""}],
+        }
+
+    def test_the_served_profile_gets_its_forward(self):
+        renvois = menu()._qemu_ssh_forwards(
+            self.spec("local-only", self.ODOO), "vm1"
+        )
+        self.assertEqual((("local", "18069 localhost:8069"),), renvois)
+
+    def test_a_profile_that_promises_nothing_gets_none(self):
+        self.assertEqual(
+            (), menu()._qemu_ssh_forwards(self.spec("open", self.ODOO), "vm1")
+        )
+
+    def test_the_row_that_froze_its_own_install_decides_for_itself(self):
+        """La commande examinée est celle que CETTE machine subira : une
+        rangée qui a figé la sienne ne doit pas hériter de la commune."""
+        spec = self.spec("local-only", self.ODOO, par_vm="install_dev")
+        self.assertEqual((), menu()._qemu_ssh_forwards(spec, "vm1"))
+
+    def test_a_machine_absent_from_the_spec_falls_back_on_the_common(self):
+        spec = self.spec("local-only", self.ODOO)
+        self.assertEqual(
+            (("local", "18069 localhost:8069"),),
+            menu()._qemu_ssh_forwards(spec, "jamais-vue"),
+        )
+
+    def test_a_mute_spec_asks_for_no_forward(self):
+        self.assertEqual((), menu()._qemu_ssh_forwards({}, "vm1"))
+
+    def test_the_ssh_block_is_written_with_that_computation(self):
+        """La couture ne sert à rien si l'écriture ne la traverse pas : une
+        constante vide passée là laisserait toutes ces épreuves au vert
+        pendant qu'aucune machine ne reçoit son renvoi."""
+        import ast
+
+        chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
+        arbre = ast.parse(io.open(chemin, encoding="utf-8").read())
+        ecritures = [
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "_write_ssh_config_entry"
+        ]
+        self.assertEqual(1, len(ecritures), "une seule écriture attendue")
+        renvois = [
+            mot for mot in ecritures[0].keywords if mot.arg == "forwards"
+        ]
+        self.assertEqual(1, len(renvois), "forwards= absent de l'écriture")
+        appels = [
+            n.func.attr
+            for n in ast.walk(renvois[0].value)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+        ]
+        self.assertIn("_qemu_ssh_forwards", appels)
+
+
 class TestLaFenetreDuPremierDemarrage(unittest.TestCase):
     def test_after_boot_changes_what_the_lines_say(self):
         """`after_boot` décrit le CHEMIN : là où les règles n'arrivent

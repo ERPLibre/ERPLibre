@@ -858,6 +858,56 @@ class TestLeCoupleProfilEtInstallation(CasDeProfil):
         self.assertIn("serve nothing", phrase)
 
 
+class TestLaMoitieInstallationDuProfilServi(CasDeProfil):
+    """« local-webui » tenait sa posture et ne servait rien.
+
+    Le nom promet une interface servie ; la sortie coupée est tenue depuis
+    longtemps, et l'autre moitié — la rendre joignable depuis l'hôte —
+    n'existait pas. Le renvoi de port était écrit et sans appelant.
+
+    DEUX CONDITIONS, et aucune ne se déduit de l'autre. Le profil doit
+    promettre une interface, et l'installation choisie doit poser Odoo :
+    renvoyer un port vers une machine qui ne sert rien promet une page qui
+    n'existe pas.
+    """
+
+    ODOO = "install_odoo_all_version"
+
+    def test_the_profile_that_promises_a_screen_gets_its_forward(self):
+        renvois = V.web_forward("local-only", self.ODOO)
+        self.assertEqual((("local", "18069 localhost:8069"),), renvois)
+
+    def test_a_profile_that_promises_nothing_gets_none(self):
+        """Lui en donner un ferait croire à une interface que son nom ne
+        promet pas."""
+        for nom in ("open", "connected", "paranoid"):
+            with self.subTest(posture=nom):
+                self.assertEqual((), V.web_forward(nom, self.ODOO))
+
+    def test_a_promise_without_odoo_gets_none_either(self):
+        """C'est le même couple que l'écran avertit déjà : le profil promet
+        une interface, l'installation n'en pose aucune."""
+        self.assertEqual((), V.web_forward("local-only", "install_dev"))
+        self.assertEqual((), V.web_forward("local-only", ""))
+
+    def test_the_ports_are_the_ones_the_repository_already_chose(self):
+        """18069 sur l'hôte, 8069 dans l'invité : c'est le couple que
+        `web_access` emploie déjà. En choisir un autre ferait deux
+        conventions pour la même chose."""
+        import inspect
+
+        from script.vm import verbs
+
+        signature = inspect.signature(verbs.web_access)
+        self.assertEqual(V.WEB_HOST_PORT, signature.parameters["port"].default)
+        self.assertEqual(
+            V.WEB_GUEST_PORT, signature.parameters["service"].default
+        )
+
+    def test_an_unknown_posture_gets_none_and_does_not_raise(self):
+        self.assertEqual((), V.web_forward("jamais-vue", self.ODOO))
+
+
 class TestLaMarqueEstNommeeUneFois(CasDeProfil):
     """Le déploiement l'emploie pour décider d'enregistrer le service
     systemd. Deux littéraux voisins cessent de correspondre au premier

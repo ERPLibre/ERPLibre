@@ -359,6 +359,39 @@ def check_install(label: str, final_cmd: str) -> str:
     return SERVES_NOTHING
 
 
+# Les deux ports du couple, nommés UNE fois. `script/vm/verbs.py` les a
+# déjà choisis pour son accès web : en retenir d'autres ici ferait deux
+# conventions pour la même chose, et l'une des deux serait fausse selon
+# l'écran qu'on lit. Une épreuve tient l'égalité.
+WEB_HOST_PORT = 18069
+WEB_GUEST_PORT = 8069
+
+
+def web_forward(posture_name: str, final_cmd: str) -> tuple:
+    """Le renvoi de port qui rend l'interface joignable, ou rien.
+
+    LA MOITIÉ INSTALLATION du profil servi. La sortie coupée est tenue par
+    les règles ; ce qui manquait est de rendre l'interface atteignable
+    depuis l'hôte, à une adresse stable qui ne dépend pas de l'IP du jour.
+
+    DEUX CONDITIONS, et aucune ne se déduit de l'autre. Le profil doit
+    PROMETTRE une interface — un nom qui ne promet rien n'en reçoit pas —
+    et l'installation choisie doit POSER Odoo : renvoyer un port vers une
+    machine qui ne sert rien promet une page qui n'existe pas. C'est le
+    même couple que l'écran avertit déjà, pris ici dans le sens positif.
+
+    Le libellé se retrouve depuis la posture, comme le formulaire le fait
+    pour son avertissement : un spec porte la posture, et la table des
+    profils est le pont entre les deux.
+    """
+    profil = by_posture(posture_name)
+    if profil is None or not profil.serves_web:
+        return ()
+    if check_install(profil.label, final_cmd) != INSTALL_OK:
+        return ()
+    return (("local", f"{WEB_HOST_PORT} localhost:{WEB_GUEST_PORT}"),)
+
+
 def install_sentence(verdict: str) -> str:
     """La phrase d'un verdict d'installation. Lève sur un verdict inconnu.
 
