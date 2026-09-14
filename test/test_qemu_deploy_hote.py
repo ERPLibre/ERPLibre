@@ -28,6 +28,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from script.qemu.deploy_qemu import (  # noqa: E402
+    amorcage_bios,
     canonical_timezone,
     hostname_valide,
 )
@@ -108,6 +109,41 @@ class TestFuseau(unittest.TestCase):
         self.assertEqual(
             canonical_timezone("Canada/Eastern", table), "Canada/Eastern"
         )
+
+
+class TestAmorcage(unittest.TestCase):
+    """Quelle image démarre en UEFI, laquelle exige le BIOS.
+
+    L'échec est MUET : le micrologiciel charge et démarre le chargeur, puis se
+    fige sans écrire un octet. Vu du déploiement, il ne reste qu'une VM « en
+    cours d'exécution » sans console et sans bail DHCP, et la cause est à
+    chercher pendant une heure. D'où une table plutôt qu'un diagnostic à
+    refaire.
+    """
+
+    def test_une_distribution_qui_lexige_part_en_bios(self):
+        self.assertTrue(amorcage_bios("fedora", False))
+
+    def test_les_autres_gardent_uefi(self):
+        """UEFI reste le défaut : les images cloud récentes n'embarquent plus
+        le chargeur BIOS et partent en boucle sous SeaBIOS."""
+        for d in (
+            "debian",
+            "ubuntu",
+            "arch",
+            "rocky",
+            "almalinux",
+            "opensuse",
+        ):
+            self.assertFalse(amorcage_bios(d, False), d)
+
+    def test_la_demande_explicite_lemporte(self):
+        """« --bios » sert aussi quand OVMF manque de la machine hôte."""
+        for d in ("debian", "fedora", "inconnue"):
+            self.assertTrue(amorcage_bios(d, True), d)
+
+    def test_une_distribution_inconnue_garde_le_defaut(self):
+        self.assertFalse(amorcage_bios("inconnue", False))
 
 
 if __name__ == "__main__":
