@@ -27,6 +27,14 @@ from script.todo.mail.store import Store, sweep_orphan_ephemeral
 # réseau en série en une seule attente ; au-delà d'une poignée, les
 # fournisseurs refusent les connexions simultanées et le gain disparaît.
 SYNC_PARALLELE = 4
+# Liens simultanés vers UN MÊME compte, pour que ses dossiers se
+# synchronisent ensemble. Un `imaplib` n'a qu'un dossier sélectionné à la
+# fois : sans second lien, une boîte de trente dossiers les parcourt un par
+# un. Trois, pas plus : les fournisseurs plafonnent les connexions
+# simultanées d'un compte, et ce plafond est partagé avec les autres
+# clients de la personne — téléphone, client de bureau — qui gardent le
+# leur ouvert en permanence.
+SYNC_DOSSIERS_PARALLELE = 3
 
 # Le mot à taper pour détruire un dossier. SANS ACCENT : il doit se taper
 # sur n'importe quelle disposition de clavier, y compris celle d'un poste
@@ -406,10 +414,14 @@ def open_session(
         password = secret_for(account, secrets, config_get=config_get)
         if not password:
             raise ValueError(t("mail_no_password_stored"))
-        syncer = Syncer(store, connect_fn(account, password))
+        syncer = Syncer(
+            store,
+            connect_fn(account, password),
+            parallele=SYNC_DOSSIERS_PARALLELE,
+        )
     except Exception as exc:
         error = str(exc)
-    return Session(
+    session = Session(
         account,
         store,
         syncer,
@@ -419,6 +431,16 @@ def open_session(
         config_get=config_get,
         connect_fn=connect_fn,
     )
+    if syncer is not None:
+        # Le secret DÉJÀ obtenu, pas un rafraîchissement : cette fabrique
+        # est appelée depuis le fil de synchronisation, et plusieurs
+        # comptes y avancent ensemble. `SecretStore.set` réécrit le coffre
+        # entier — deux fils qui le rafraîchiraient en même temps le
+        # corrompraient. Un jeton périmé fait échouer l'ouverture du lien
+        # supplémentaire, son lot revient au lien principal, et c'est lui
+        # qui déclenche l'unique reprise de `Session.sync`.
+        syncer.open_transport = lambda: connect_fn(account, session.password)
+    return session
 
 
 def open_sessions(

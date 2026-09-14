@@ -1049,6 +1049,23 @@ connections, and past a handful the gain disappears. Two passes never
 overlap on the same account: one shared imaplib socket is not safe across
 threads. An account that fails is reported and does not stop the others.
 
+Inside one account, its folders now advance together too, over up to three
+links to the same server. One `imaplib` connection has a single selected
+folder at a time, so on one link a mailbox of thirty folders walks them
+one by one and the wait is the sum of the thirty.
+
+Three links, no more: providers cap how many connections one account may
+hold, and that cap is shared with the person's other clients — phone,
+desktop client — which keep theirs open all day. Folders are dealt out in
+round robin rather than in contiguous slices, because a LIST returns them
+grouped by hierarchy and the large ones follow each other.
+
+A provider that refuses one more link costs no folder: that link's share
+goes back to the one already open, so the account syncs more slowly, never
+less completely. Extra links are closed at the end of every pass, whatever
+happened — an account leaving one behind each time would reach the
+provider's limit in minutes.
+
 <!-- [fr] -->
 ## Synchroniser plusieurs comptes
 
@@ -1062,6 +1079,26 @@ connexions simultanées, et au-delà d'une poignée le gain disparaît. Deux
 passes ne se chevauchent jamais sur un même compte : un socket imaplib
 partagé n'est pas sûr à plusieurs fils. Un compte qui échoue est signalé et
 n'arrête pas les autres.
+
+À l'intérieur d'un compte, ses dossiers avancent désormais ensemble eux
+aussi, sur trois liens au plus vers le même serveur. Une connexion
+`imaplib` n'a qu'un dossier sélectionné à la fois : sur un seul lien, une
+boîte de trente dossiers les parcourt un par un, et l'attente est la somme
+des trente.
+
+Trois liens, pas plus : les fournisseurs plafonnent le nombre de
+connexions qu'un compte peut tenir, et ce plafond est partagé avec les
+autres clients de la personne — téléphone, client de bureau — qui gardent
+le leur ouvert toute la journée. Les dossiers sont distribués en
+tourniquet plutôt qu'en tranches contiguës, parce qu'un LIST les rend
+groupés par hiérarchie et que les gros se suivent.
+
+Un fournisseur qui refuse un lien de plus ne coûte aucun dossier : la part
+de ce lien revient à celui déjà ouvert, donc le compte se synchronise plus
+lentement, jamais moins complètement. Les liens supplémentaires sont
+refermés à la fin de chaque passe, quoi qu'il arrive — un compte qui en
+laisserait un derrière lui à chaque fois atteindrait la limite du
+fournisseur en quelques minutes.
 
 <!-- [en] -->
 ## Search
