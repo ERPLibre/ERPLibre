@@ -5678,6 +5678,14 @@ TRANSLATIONS = {
         "fr": "fuseau non posé",
         "en": "timezone not set",
     },
+    "waiting for the guest agent install (apt lock)": {
+        "fr": "attente de la pose de l'agent invité (verrou apt)",
+        "en": "waiting for the guest agent install (apt lock)",
+    },
+    "apt-get update never succeeded: the lock stayed held": {
+        "fr": "apt-get update n'a jamais abouti : le verrou est resté pris",
+        "en": "apt-get update never succeeded: the lock stayed held",
+    },
     "Timezone": {
         "fr": "Fuseau horaire",
         "en": "Timezone",
