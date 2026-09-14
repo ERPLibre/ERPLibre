@@ -326,7 +326,9 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 
 ## Principales options
 
-- `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
+- `--distro` — une distro du catalogue, `ubuntu` par défaut. Le catalogue
+  est ce qu'affiche `--list-images` ; en figer une partie ici vieillit dès
+  qu'une distro s'ajoute, et c'est arrivé.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
@@ -335,9 +337,8 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 - `--name` — nom de la VM (requis pour le déploiement).
 - `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM. Omis,
   `--memory` et `--disk-size` prennent le **minimum requis par la version**
-  choisie (valeurs libosinfo, voir `--list-images` : Ubuntu 24.04+ →
-  3072 Mo/20G, Debian → 1024 Mo/10G, Fedora → 2048 Mo/15G) ; `--vcpus`
-  vaut 2 par défaut.
+  choisie — `--list-images` en donne les chiffres, que le catalogue porte et
+  que cette page ne recopie pas ; `--vcpus` vaut 2 par défaut.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentification.
 - `-y` / `--assume-yes` — accepte automatiquement l'installation des
   dépendances.

@@ -463,16 +463,18 @@ family — and its disk cost is added to the plan before anything is created.
 
 ## Main options
 
-- `--distro` — `ubuntu` (default), `debian` or `fedora`.
+- `--distro` — any distro of the catalogue, `ubuntu` by default. The
+  catalogue is what `--list-images` prints; naming a fixed subset here
+  would go stale the day one is added, and it has.
 - `--version` — release for the distro (default: the distro's default).
 - `--list-images` — print all distros/versions and their specs, then exit.
 - `--image-dir` — image cache directory (default `/var/lib/libvirt/images/iso`).
 - `--download-only` — download the image then exit (no VM).
 - `--name` — VM name (required for deployment).
 - `--memory`, `--vcpus`, `--disk-size` — VM sizing. When omitted, `--memory`
-  and `--disk-size` default to the **minimum required by the chosen version**
-  (libosinfo values, see `--list-images`: Ubuntu 24.04+ → 3072 MB/20G, Debian
-  → 1024 MB/10G, Fedora → 2048 MB/15G); `--vcpus` defaults to 2.
+  and `--disk-size` default to the **minimum required by the chosen
+  version** — run `--list-images` for the figures, which the catalogue
+  carries and this page does not repeat; `--vcpus` defaults to 2.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentication.
 - `-y` / `--assume-yes` — auto-accept dependency installation.
 - `--no-install-deps` — never auto-install dependencies.
@@ -648,7 +650,9 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 
 ## Principales options
 
-- `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
+- `--distro` — une distro du catalogue, `ubuntu` par défaut. Le catalogue
+  est ce qu'affiche `--list-images` ; en figer une partie ici vieillit dès
+  qu'une distro s'ajoute, et c'est arrivé.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
@@ -657,9 +661,8 @@ de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé
 - `--name` — nom de la VM (requis pour le déploiement).
 - `--memory`, `--vcpus`, `--disk-size` — dimensionnement de la VM. Omis,
   `--memory` et `--disk-size` prennent le **minimum requis par la version**
-  choisie (valeurs libosinfo, voir `--list-images` : Ubuntu 24.04+ →
-  3072 Mo/20G, Debian → 1024 Mo/10G, Fedora → 2048 Mo/15G) ; `--vcpus`
-  vaut 2 par défaut.
+  choisie — `--list-images` en donne les chiffres, que le catalogue porte et
+  que cette page ne recopie pas ; `--vcpus` vaut 2 par défaut.
 - `--ssh-key`, `--ask-password`, `--password-hash` — authentification.
 - `-y` / `--assume-yes` — accepte automatiquement l'installation des
   dépendances.
