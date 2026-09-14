@@ -12389,6 +12389,16 @@ TRANSLATIONS = {
             " one from your own OAuth registration"
         ),
     },
+    "mail_move_binding": {
+        "fr": "Ranger dans un dossier",
+        "en": "File into a folder",
+    },
+    "mail_move_close": {"fr": "Renoncer", "en": "Cancel"},
+    "mail_move_choose": {"fr": "Ranger ici", "en": "File here"},
+    "mail_move_hint": {
+        "fr": "Choisissez le dossier, Entrée pour ranger, Échap pour renoncer.",
+        "en": "Pick the folder, Enter to file, Escape to cancel.",
+    },
     "mail_trash_binding": {
         "fr": "Jeter à la corbeille",
         "en": "Move to the trash",

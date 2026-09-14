@@ -1154,6 +1154,7 @@ def run_tui(
             Binding("slash", "focus_search", t("mail_search_binding")),
             Binding("S", "search_server", t("mail_search_server_binding")),
             Binding("d", "trash_message", t("mail_trash_binding")),
+            Binding("m", "move_message", t("mail_move_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
@@ -2023,6 +2024,31 @@ def run_tui(
                 self._store_pane_size(slot, None)
             self.set_status(t("mail_pane_reset_done"))
 
+        def action_move_message(self) -> None:
+            """`m` : ouvre la liste des dossiers et range le message choisi.
+
+            La liste ne propose PAS le dossier courant : s'y déplacer ne
+            ferait rien, et le proposer laisse croire le contraire.
+            """
+            meta = self.current_meta()
+            if meta is None or self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_trash_offline"))
+                return
+            source = self.current_ref.folder_name
+
+            def ranger(cible):
+                if not cible:
+                    return
+                self.run_worker(
+                    lambda: self._deplacer(session, source, cible, meta.uid),
+                    thread=True,
+                )
+
+            self.push_screen(MoveScreen(session, source), ranger)
+
         def action_trash_message(self) -> None:
             """`d` : déplace le message vers la corbeille du compte.
 
@@ -2056,26 +2082,32 @@ def run_tui(
                 self.set_status(t("mail_trash_already_there"))
                 return
             self.run_worker(
-                lambda: self._jeter(session, source, corbeille, meta.uid),
+                lambda: self._deplacer(session, source, corbeille, meta.uid),
                 thread=True,
             )
 
-        def _jeter(self, session, source, corbeille, uid) -> None:
+        def _deplacer(self, session, source, cible, uid) -> None:
+            """Le fil de travail que `d` et `m` partagent.
+
+            Le cache n'est touché qu'APRÈS l'accord du serveur : le devancer
+            ferait disparaître de l'écran un message qui reviendrait à la
+            passe suivante.
+            """
             try:
                 with self._sync_lock:
                     session.syncer.transport.select(source)
-                    vide = session.syncer.transport.move([uid], corbeille)
+                    vide = session.syncer.transport.move([uid], cible)
             except Exception as exc:
-                _logger.exception("déplacement vers %s", corbeille)
+                _logger.exception("déplacement vers %s", cible)
                 self.call_from_thread(self.set_status, str(exc))
                 return
             etat = session.store.folder_state(source) or {}
             if etat.get("id") is not None:
                 session.store.forget_message(etat["id"], uid)
-            self.call_from_thread(self._jete, corbeille, vide)
+            self.call_from_thread(self._deplace, cible, vide)
 
-        def _jete(self, corbeille: str, vide: bool) -> None:
-            message = f"{t('mail_trash_done')} {corbeille}"
+        def _deplace(self, cible: str, vide: bool) -> None:
+            message = f"{t('mail_trash_done')} {cible}"
             if not vide:
                 # Sans UIDPLUS, la source garde le message barré : un autre
                 # client le montrera, et le taire ferait passer ça pour un
@@ -2679,6 +2711,71 @@ def run_tui(
 
         def action_close_outbox(self) -> None:
             self.dismiss(None)
+
+    class MoveScreen(ModalScreen):
+        """La liste des dossiers où ranger le message, et rien d'autre.
+
+        Distincte de `FolderScreen` (`F`), qui CRÉE et DÉTRUIT : mêler un
+        choix anodin à des gestes destructeurs met la suppression d'un
+        dossier à une touche d'un rangement quotidien.
+        """
+
+        BINDINGS = [
+            Binding("escape", "cancel", t("mail_move_close")),
+            Binding("enter", "choose", t("mail_move_choose")),
+        ]
+
+        CSS = """
+        #move_list { height: 1fr; border: solid $panel; }
+        #move_hint { height: auto; padding: 0 1; color: $text-muted; }
+        """
+
+        def __init__(self, session, source: str):
+            super().__init__()
+            self.session = session
+            self.source = source
+            self.dossiers: list[str] = []
+
+        def compose(self):
+            with Vertical():
+                yield Static(Text(t("mail_move_hint")), id="move_hint")
+                yield DataTable(id="move_list")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#move_list", DataTable)
+            table.cursor_type = "row"
+            table.add_columns(t("mail_folder_name"), t("mail_stats_total"))
+            try:
+                dossiers = self.session.store.folders()
+            except Exception as exc:
+                self.query_one("#move_hint", Static).update(
+                    Text(f"{t('mail_folder_error')} {exc}")
+                )
+                return
+            for dossier in dossiers:
+                if dossier["name"] == self.source:
+                    continue
+                table.add_row(
+                    dossier["display"] or dossier["name"],
+                    str(dossier["total"] or 0),
+                    key=dossier["name"],
+                )
+                self.dossiers.append(dossier["name"])
+            table.focus()
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
+        def action_choose(self) -> None:
+            table = self.query_one("#move_list", DataTable)
+            if table.cursor_row is None or table.cursor_row >= len(
+                self.dossiers
+            ):
+                return
+            self.dismiss(self.dossiers[table.cursor_row])
+
+        def on_data_table_row_selected(self, event) -> None:
+            self.action_choose()
 
     class FolderScreen(ModalScreen):
         """Touche `F` : créer, renommer et supprimer un dossier.

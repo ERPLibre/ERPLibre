@@ -194,6 +194,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
+| `m` | ranger le message sélectionné dans un dossier qu'on choisit |
 | `c` | écrire un nouveau message |
 | `a` / `Shift+A` | répondre / répondre à tous |
 | `f` | transférer |
@@ -451,7 +452,7 @@ absent de l'arbre distant et présent dans le nôtre ne se resynchroniserait
 jamais. Le renommage emporte les messages et leurs corps, pour que la passe
 suivante ne retélécharge pas ce qui est déjà là.
 
-## Jeter un message
+## Ranger et jeter un message
 
 `d` déplace le message sélectionné vers la corbeille du compte. Rien n'est
 détruit : une corbeille se vide ailleurs, ce qui rend le geste réparable —
@@ -471,6 +472,14 @@ le compte n'annonce pas de corbeille — en inventer une créerait un dossier
 que personne n'a demandé — ou le message y est déjà. Le cache local n'est
 mis à jour qu'après l'accord du serveur : le devancer ferait disparaître de
 l'écran un message qui reviendrait à la passe suivante.
+
+`m` range plutôt le message dans un dossier qu'on choisit : il ouvre les
+dossiers du compte, les flèches et `Entrée` choisissent, `Échap` renonce.
+Le dossier où le message se trouve déjà n'est pas proposé — s'y déplacer ne
+ferait rien, et le proposer laisse croire le contraire. C'est un écran à
+part, distinct de celui des dossiers sur `F`, qui crée et détruit : mêler
+un geste quotidien à des gestes destructeurs met la suppression d'un
+dossier à une touche du rangement d'un message.
 
 ## Vues de la liste
 
@@ -672,9 +681,9 @@ jeton en place vaut toujours et la passe suivante réessaie.
 - **Pas de recherche transversale** — `/` comme `Shift+S` portent sur le
   dossier ouvert d'un seul compte ; ni l'un ni l'autre ne balaie les autres
   dossiers ou les autres comptes.
-- **Pas de déplacement vers un dossier choisi** — `d` met un message à la
-  corbeille du compte, mais rien ne permet d'en ranger un dans un dossier
-  qu'on désigne.
+- **Pas de déplacement entre comptes** — `d` et `m` rangent un message
+  dans le compte auquel il appartient ; on ne peut pas en déplacer un d'un
+  compte vers un autre.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
