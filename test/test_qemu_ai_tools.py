@@ -27,6 +27,7 @@ Ce que ces tests gardent :
 
 import importlib.util
 import shlex
+import shutil
 import subprocess
 import sys
 import unittest
@@ -133,14 +134,21 @@ class LaCommandeDistante(unittest.TestCase):
         rallonge son ~/.bashrc — ou son historique — d'une ligne identique.
 
         Aucun ajout n'échappe à la règle : on compte les « >> » et non les
-        greps, pour qu'une ligne ajoutée sans garde fasse tomber le test."""
+        greps, pour qu'une ligne ajoutée sans garde fasse tomber le test.
+        Chaque « >> » doit clore l'idiome ENTIER — grep, puis « || echo » de
+        la ligne citée —, lu d'un seul motif : la ligne citée peut porter
+        elle-même des « ; », et un découpage sur « ; » la couperait."""
+        import re
+
+        cite = r"(?:'(?:[^']|'\"'\"')*'|[^\s']+)"
+        garde = re.compile(
+            rf"grep -qF {cite} \S+ 2>/dev/null \|\| echo {cite} >> \S+"
+        )
         for agent in ("claude", "opencode"):
             cmd = self._cmd(agent)
             with self.subTest(agent=agent):
                 self.assertEqual(cmd.count(">> "), cmd.count("grep -qF"))
-                for morceau in cmd.split("; "):
-                    if ">> " in morceau:
-                        self.assertIn("grep -qF", morceau)
+                self.assertEqual(cmd.count(">> "), len(garde.findall(cmd)))
 
     def test_the_local_bin_is_on_the_path_for_every_agent(self):
         """rtk se pose dans ~/.local/bin. La ligne de l'agent ne couvre ce
@@ -439,6 +447,260 @@ class LaSpec(unittest.TestCase):
         self.assertEqual("opencode", spec["ai_agent"])
         self.assertEqual("Une Personne", spec["git_name"])
         self.assertEqual("qui@exemple.invalid", spec["git_email"])
+
+
+# Outils réels prêtés à la commande distante dans un bac à sable : aucun ne
+# touche au réseau, aux paquets ni aux droits.
+_OUTILS_INOFFENSIFS = (
+    "sh",
+    "bash",
+    "env",
+    "timeout",
+    "grep",
+    "chmod",
+    "head",
+    "mktemp",
+    "rm",
+    "cat",
+    "mkdir",
+    "touch",
+)
+
+
+def _bac_a_sable(test, faux, outils=_OUTILS_INOFFENSIFS):
+    """Un PATH qui ne porte QUE des faux et des outils inoffensifs.
+
+    `faux` : nom -> corps d'un script sh posé dans ce PATH. curl, sudo et
+    les gestionnaires de paquets n'y sont que FAUX, ou pas du tout : la
+    commande distante tourne pour de vrai sans jamais atteindre le réseau
+    ni l'hôte. Le HOME est jetable. Rend (env, répertoire du PATH, HOME).
+    """
+    import os
+    import shutil
+    import tempfile
+
+    tmp = tempfile.TemporaryDirectory()
+    test.addCleanup(tmp.cleanup)
+    racine = Path(tmp.name)
+    faux_bin = racine / "bin"
+    home = racine / "home"
+    faux_bin.mkdir()
+    home.mkdir()
+    for outil in outils:
+        os.symlink(shutil.which(outil), faux_bin / outil)
+    for nom, corps in faux.items():
+        chemin = faux_bin / nom
+        chemin.write_text("#!/bin/sh\n" + corps, encoding="utf-8")
+        chemin.chmod(0o755)
+    env = {
+        "PATH": str(faux_bin),
+        "HOME": str(home),
+        "TMPDIR": str(racine),
+        "FAUXBIN": str(faux_bin),
+    }
+    return env, faux_bin, home
+
+
+# Faux curl : à chaque installateur amont, un script qui pose un binaire
+# factice là où le vrai le poserait — starship dans le PATH, comme en root.
+# Avec ECHEC, il rend 22 sans rien écrire, comme sur un 504.
+_FAUX_CURL = (
+    'if [ -n "$ECHEC" ]; then echo "curl: (22) 504" >&2; exit 22; fi\n'
+    'case "$*" in\n'
+    "  *rtk*) echo 'poser rtk \"$HOME/.local/bin\"' ;;\n"
+    "  *starship*) echo 'poser starship \"$FAUXBIN\"' ;;\n"
+    "  *claude.ai*) echo 'poser claude \"$HOME/.local/bin\"' ;;\n"
+    "  *opencode*) echo 'poser opencode \"$HOME/.opencode/bin\"' ;;\n"
+    "  *) exit 22 ;;\n"
+    "esac\n"
+)
+_FAUX_POSER = (
+    'mkdir -p "$2"\n'
+    'printf \'#!/bin/sh\\necho "%s 0.0.1"\\n\' "$1" > "$2/$1"\n'
+    'chmod +x "$2/$1"\n'
+)
+# Trace, puis exécute SANS privilège ; « env » lit les « VAR=valeur » de
+# tête comme le fait sudo.
+_FAUX_SUDO = 'echo "$*" >> "$HOME/sudo.trace"\nexec env "$@"\n'
+
+
+class LeVerdictDesOutilsAmont(unittest.TestCase):
+    """Après chaque installateur amont, une ligne qui dit s'il a abouti.
+
+    Le code de sortie de la pose ne le peut pas : sans pipefail, un tube
+    rend le statut de l'interpréteur, 0 sur une entrée vide. La commande
+    distante tourne ici pour de vrai, sous « set -e », dans un bac à sable
+    où curl et sudo sont faux.
+    """
+
+    def _lancer(self, agent, **env_en_plus):
+        from unittest import mock
+
+        with mock.patch("script.todo.qemu_install.t", lambda k: k):
+            cmd = TODO.__new__(TODO)._qemu_aidev_remote_cmd(agent)
+        env, faux_bin, home = _bac_a_sable(
+            self,
+            {"curl": _FAUX_CURL, "poser": _FAUX_POSER, "sudo": _FAUX_SUDO},
+        )
+        env.update(env_en_plus)
+        fini = subprocess.run(
+            [str(faux_bin / "bash"), "-c", "set -e\n" + cmd + "\necho FIN"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        return fini, home
+
+    def test_without_a_download_each_tool_is_named_missing(self):
+        """Et l'installation continue : aucun outil optionnel ne la fait
+        tomber, pas même sa ligne de verdict."""
+        for agent in ("claude", "opencode"):
+            with self.subTest(agent=agent):
+                fini, _home = self._lancer(agent, ECHEC="1")
+                self.assertEqual(0, fini.returncode, fini.stderr[-400:])
+                self.assertIn("FIN", fini.stdout)
+                for nom in ("rtk", "starship", agent):
+                    self.assertIn(
+                        f"⚠ {nom} not installed (see above)", fini.stdout
+                    )
+
+    def test_a_posed_tool_gives_its_version(self):
+        """opencode s'installe hors du PATH de ce shell : c'est le chemin
+        de repli qui le trouve."""
+        for agent in ("claude", "opencode"):
+            with self.subTest(agent=agent):
+                fini, _home = self._lancer(agent)
+                self.assertEqual(0, fini.returncode, fini.stderr[-400:])
+                for nom in ("rtk", "starship", agent):
+                    self.assertIn(f"{nom}: {nom} 0.0.1", fini.stdout)
+                self.assertNotIn("⚠", fini.stdout)
+
+    def test_starship_is_installed_as_root(self):
+        """En root, /usr/local/bin est inscriptible : l'installateur n'atteint
+        jamais « sudo -v », que sudo-rs refuse sans mot de passe même à un
+        compte NOPASSWD. L'hôte, lui, garde son installateur sans sudo."""
+        self.assertIn(
+            shlex.quote(dev_tools.STARSHIP_UPSTREAM_VM),
+            TODO.__new__(TODO)._qemu_aidev_remote_cmd("claude"),
+        )
+        self.assertIn("| sudo timeout -k ", dev_tools.STARSHIP_UPSTREAM_VM)
+        self.assertNotIn("sudo", dev_tools.STARSHIP_UPSTREAM)
+        _fini, home = self._lancer("claude")
+        self.assertIn(
+            f"timeout -k {dev_tools.STARSHIP_ROOT_KILL_AFTER}"
+            f" {dev_tools.STARSHIP_ROOT_TIMEOUT} sh -s -- -y",
+            (home / "sudo.trace").read_text(),
+        )
+
+    def test_the_root_installer_is_bounded_behind_sudo(self):
+        """Un « timeout » sans privilège ne tue pas un processus root : la
+        borne de l'installateur doit passer DERRIÈRE sudo. « -k » envoie
+        SIGKILL à un installateur qui ignore SIGTERM ; borne et délai
+        additionnés tombent avant la borne de la pose, qui ne tient plus que
+        curl."""
+        import re
+
+        vm = dev_tools.STARSHIP_UPSTREAM_VM
+        dedans = re.search(r"\| sudo timeout -k (\d+) (\d+) sh -s -- -y$", vm)
+        self.assertIsNotNone(dedans, vm)
+        cmd = TODO.__new__(TODO)._qemu_aidev_remote_cmd("claude")
+        dehors = re.search(
+            r"timeout (\d+) sh -c " + re.escape(shlex.quote(vm)), cmd
+        )
+        self.assertIsNotNone(dehors, "la pose de starship n'est plus bornée")
+        self.assertLess(
+            int(dedans.group(1)) + int(dedans.group(2)), int(dehors.group(1))
+        )
+
+
+class LeHookDuPrompt(unittest.TestCase):
+    """La ligne que le fichier du shell reçoit pour starship, lue par un vrai
+    shell.
+
+    Le fichier est lu SEUL, sous « set -e », et rien ne suit la lecture : la
+    ligne est la dernière du fichier, dont le statut est donc le sien. Une
+    commande placée après masquerait ce statut.
+    """
+
+    def _sourcer(self, faux, shell="bash"):
+        binaire = shutil.which(shell)
+        if binaire is None:
+            self.skipTest(f"{shell} absent de cet hôte")
+        env, faux_bin, home = _bac_a_sable(self, faux, outils=())
+        rc = home / f".{shell}rc"
+        rc.write_text(dev_tools.STARSHIP_LINE[shell] + "\n", encoding="utf-8")
+        # Ni ~/.bashrc ni ~/.zshrc lus d'office : seul `rc` est lu.
+        options = ["--norc"] if shell == "bash" else ["-f"]
+        return subprocess.run(
+            [binaire, *options, "-c", f'set -e; . "{rc}"'],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def test_without_the_binary_it_stays_silent_and_returns_zero(self):
+        """Une pose ratée, un binaire retiré : sans garde, chaque shell
+        ouvert écrirait « command not found ». Et la lecture rend 0 : un
+        script sous « set -e » qui lit ce fichier ne s'y arrête pas."""
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                fini = self._sourcer({}, shell)
+                self.assertEqual("", fini.stderr)
+                self.assertEqual(0, fini.returncode)
+
+    def test_with_the_binary_it_starts_starship(self):
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                fini = self._sourcer(
+                    {"starship": 'echo "echo INIT-$2"\n'}, shell
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr)
+                self.assertIn(f"INIT-{shell}", fini.stdout)
+
+    def test_the_guard_is_an_if_in_every_posix_shell(self):
+        """Le même « if … fi » pour bash et zsh : un hôte sans zsh ne lit
+        la ligne de zsh par aucun shell, sa forme reste donc vérifiée."""
+        for shell in ("bash", "zsh"):
+            with self.subTest(shell=shell):
+                ligne = dev_tools.STARSHIP_LINE[shell]
+                self.assertTrue(ligne.startswith("if command -v starship "))
+                self.assertTrue(ligne.endswith("; fi"), ligne)
+
+    def test_the_dedup_pattern_survives_the_guard(self):
+        """L'hôte comme la VM reconnaissent une ligne déjà écrite à
+        « starship init » : la garde ne doit pas le masquer."""
+        for shell, ligne in dev_tools.STARSHIP_LINE.items():
+            with self.subTest(shell=shell):
+                self.assertIn(f"starship init {shell}", ligne)
+
+
+class UneApostropheTraduite(unittest.TestCase):
+    def test_the_tool_blocks_stay_valid_shell(self):
+        """Les messages sont traduits, et le français est plein
+        d'apostrophes : une seule mal placée casse la commande distante
+        ENTIÈRE. On remplace la traduction elle-même — « set_lang » la
+        persisterait dans env_var.sh."""
+        from unittest import mock
+
+        # Un nombre IMPAIR d'apostrophes : entre apostrophes, un nombre pair
+        # se referme de lui-même, et « bash -n » ne verrait rien.
+        piege = "l'outil n'a pas « fini » aujourd'hui"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            todo = TODO.__new__(TODO)
+            blocs = {
+                f"aidev({agent})": todo._qemu_aidev_remote_cmd(agent)
+                for agent in dev_tools.AGENTS
+            }
+            blocs["mise"] = todo._qemu_mise_remote_cmd("mise")
+        for nom, cmd in blocs.items():
+            with self.subTest(bloc=nom):
+                self.assertIn(piege, cmd)
+                fini = subprocess.run(
+                    ["bash", "-n"], input=cmd, text=True, capture_output=True
+                )
+                self.assertEqual(0, fini.returncode, fini.stderr[:400])
 
 
 if __name__ == "__main__":

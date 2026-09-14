@@ -25,9 +25,17 @@ from unittest.mock import MagicMock, patch
 
 from script.todo.todo import TODO
 
-LIGNE_BASH = 'eval "$(starship init bash)"'
-LIGNE_ZSH = 'eval "$(starship init zsh)"'
+LIGNE_BASH = (
+    "if command -v starship >/dev/null 2>&1; then"
+    ' eval "$(starship init bash)"; fi'
+)
+LIGNE_ZSH = (
+    "if command -v starship >/dev/null 2>&1; then"
+    ' eval "$(starship init zsh)"; fi'
+)
 LIGNE_FISH = "starship init fish | source"
+# La ligne telle qu'elle s'écrivait avant sa garde : des fichiers la portent.
+LIGNE_BASH_SANS_GARDE = 'eval "$(starship init bash)"'
 
 
 def refuse_input(*args, **kwargs):
@@ -213,6 +221,16 @@ class TestHookStarship(ShellFixture):
             f"{LIGNE_BASH}\n",
         )
         self.assertIn("✅", sortie)
+
+    def test_a_line_written_before_the_guard_is_still_recognised(self):
+        """Un fichier écrit avant la garde porte la ligne nue : « starship
+        init » la reconnaît, et une seconde ligne n'est pas ajoutée."""
+        self.cree("bash", contenu=f"{LIGNE_BASH_SANS_GARDE}\n")
+        self.hook()
+        self.assertEqual(
+            self.fichiers["bash"].read_text(encoding="utf-8"),
+            f"{LIGNE_BASH_SANS_GARDE}\n",
+        )
 
     def test_no_file_at_all_creates_the_bash_one(self):
         self.hook()

@@ -1329,6 +1329,134 @@ class TestGnomeSiteExtensions(unittest.TestCase):
         l'activation ne peut rien ecrire dans dconf."""
         self.assertIn("dbus-run-session", self.block)
 
+    def _lancer(self, **env_en_plus):
+        """Le bloc, pour de vrai, sous « set -e », dans un PATH où
+        gnome-shell, curl, mktemp et gnome-extensions sont faux : ni
+        réseau, ni session, ni fichier hors du répertoire du test."""
+        import os
+        import shutil
+        import tempfile
+
+        with mock.patch("script.todo.qemu_install.t", lambda k: k):
+            bloc = TODO.__new__(TODO)._qemu_gnome_ext_remote_cmd()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        racine = pathlib.Path(tmp.name)
+        self.racine = racine
+        faux = racine / "bin"
+        faux.mkdir()
+        for outil in ("sh", "bash", "awk", "cut", "rm"):
+            os.symlink(shutil.which(outil), faux / outil)
+        corps = {
+            "gnome-shell": 'echo "GNOME Shell 50.1"\n',
+            "mktemp": 'if [ -n "$MKTEMP_ECHEC" ]; then exit 1; fi\n'
+            'f="$TMPDIR/gext.$$"; : > "$f"; echo "$f"\n',
+            "curl": 'echo "$*" >> "$HOME/curl.trace"\n'
+            'if [ -n "$ECHEC" ]; then exit 22; fi\n'
+            'while [ "$#" -gt 0 ]; do [ "$1" = -o ] && dest="$2"; shift;'
+            ' done\n: > "$dest"\n',
+            "gnome-extensions": '[ "$1" = install ] && exit "${GX_RC:-0}"\n'
+            "exit 0\n",
+        }
+        for nom, texte in corps.items():
+            chemin = faux / nom
+            chemin.write_text("#!/bin/sh\n" + texte, encoding="utf-8")
+            chemin.chmod(0o755)
+        env = {
+            "PATH": str(faux),
+            "HOME": str(racine),
+            "TMPDIR": str(racine),
+            **env_en_plus,
+        }
+        fini = subprocess.run(
+            [str(faux / "bash"), "-c", "set -e\n" + bloc + "\necho FIN"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr[-400:])
+        self.assertIn("FIN", fini.stdout)
+        return fini.stdout
+
+    def test_a_failed_download_does_not_blame_gnome(self):
+        """Le site sert une archive même à un GNOME qu'il ne connaît pas :
+        un téléchargement raté ne dit rien de la version."""
+        sortie = self._lancer(ECHEC="1")
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("⚠ download impossible (network or cache):"),
+        )
+        self.assertNotIn("not available for this GNOME", sortie)
+
+    def test_a_failed_mktemp_skips_like_a_failed_download(self):
+        """Sans nom tiré par mktemp, rien n'est téléchargé : un nom fixe dans
+        /var/tmp, ouvert à tous, pourrait y être posé d'avance."""
+        sortie = self._lancer(MKTEMP_ECHEC="1")
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("⚠ download impossible (network or cache):"),
+        )
+        self.assertNotIn("installed and enabled:", sortie)
+        self.assertFalse(
+            (self.racine / "curl.trace").exists(), "curl lancé sans fichier"
+        )
+
+    def test_no_fixed_path_in_the_shared_tmp(self):
+        """/var/tmp n'apparaît que comme répertoire donné à mktemp, et le
+        bloc reste valide sous une traduction à apostrophe impaire."""
+        import re
+
+        piege = "l'extension n'a pas « fini » aujourd'hui"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            bloc = TODO.__new__(TODO)._qemu_gnome_ext_remote_cmd()
+        self.assertEqual(
+            {"/var/tmp"}, set(re.findall(r"/var/tmp[^\s;\"')|]*", bloc))
+        )
+        self.assertIn("mktemp -p /var/tmp gext-XXXX.zip", bloc)
+        res = subprocess.run(
+            ["bash", "-n"], input=bloc, text=True, capture_output=True
+        )
+        self.assertEqual(0, res.returncode, res.stderr[:400])
+
+    def test_a_refused_install_names_the_gnome_version(self):
+        sortie = self._lancer(GX_RC="1")
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("not available for this GNOME, skipped:"),
+        )
+        self.assertIn("(GNOME 50)", sortie)
+        self.assertNotIn("download impossible", sortie)
+
+    def test_log_out_is_asked_only_when_something_was_installed(self):
+        """Se reconnecter pour charger des extensions jamais posées est
+        une consigne qui ment."""
+        for echec in ({"ECHEC": "1"}, {"GX_RC": "1"}):
+            with self.subTest(echec=echec):
+                sortie = self._lancer(**echec)
+                self.assertNotIn("log out and back in", sortie)
+        sortie = self._lancer()
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("installed and enabled:"),
+        )
+        self.assertEqual(1, sortie.count("log out and back in to load them"))
+
+    def test_a_translated_apostrophe_keeps_the_block_valid(self):
+        """Une apostrophe mal placée casse la commande distante ENTIÈRE. On
+        remplace la traduction — « set_lang » la persisterait.
+
+        Un nombre IMPAIR d'apostrophes : entre apostrophes, un nombre pair
+        se referme de lui-même, et « bash -n » ne verrait rien."""
+        piege = "l'extension n'a pas « fini » aujourd'hui"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            bloc = TODO.__new__(TODO)._qemu_gnome_ext_remote_cmd()
+        self.assertIn(piege, bloc)
+        res = subprocess.run(
+            ["bash", "-n"], input=bloc, text=True, capture_output=True
+        )
+        self.assertEqual(0, res.returncode, res.stderr[:400])
+
 
 class TestLeServiceDeLAgentInvite(unittest.TestCase):
     """Le service détaché qui pose qemu-guest-agent, lancé par cloud-init.
@@ -1486,10 +1614,14 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         PERSISTE dans env_var.sh, et un test qui la déplace fait échouer
         tout ce qui suit. On remplace la traduction elle-même, le temps du
         contrôle, par une chaîne qui porte le caractère dangereux.
+
+        Le nombre d'apostrophes est IMPAIR : avec deux, un message emballé
+        entre guillemets simples se referme sur lui-même et le shell reste
+        valide, si bien que le contrôle ne verrait rien.
         """
         import tempfile
 
-        piege = "l'agent n'a pas fini « attendre »"
+        piege = "l'agent n'a pas fini aujourd'hui « attendre »"
         with mock.patch("script.todo.qemu_install.t", lambda k: piege):
             todo = TODO.__new__(TODO)
             cmd = (

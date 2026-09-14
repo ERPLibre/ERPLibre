@@ -1592,6 +1592,13 @@ class QemuInstallMixin:
 
         Le tout dans un groupe gardé : ni une panne de réseau ni une extension
         retirée du site ne doivent faire échouer une installation d'une heure.
+
+        Deux échecs, deux messages. Un téléchargement raté — réseau coupé,
+        cache qui n'a pas l'archive — n'apprend rien sur la version de GNOME :
+        le site sert une archive même à une version qu'il ne connaît pas. Seul
+        un refus de « gnome-extensions install » la met en cause. Et l'appel à
+        se reconnecter ne vient que si au moins une extension a été posée :
+        sans quoi il n'y a rien à charger.
         """
         uuids = " ".join(self._QEMU_GNOME_EXT_UUIDS)
         site = self._QEMU_GNOME_EXT_SITE
@@ -1617,19 +1624,31 @@ class QemuInstallMixin:
             'gx() { if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && '
             "command -v dbus-run-session >/dev/null 2>&1; then "
             'dbus-run-session -- gnome-extensions "$@"; '
-            'else gnome-extensions "$@"; fi; }; ' + f"for u in {uuids}; do "
-            # « || echo » DANS la substitution : un mktemp qui échoue rendrait
-            # l'affectation non nulle, et « set -e » couperait toute la suite.
-            + "z=$(mktemp -p /var/tmp gext-XXXX.zip || echo /var/tmp/gext.zip); "
-            + 'if curl -fsSL --max-time 120 "'
+            'else gnome-extensions "$@"; fi; }; '
+            # `n` compte les extensions réellement posées.
+            + f"n=0; for u in {uuids}; do "
+            # L'archive ne va que dans un nom tiré par mktemp, créé par ce
+            # compte seul : un nom fixe dans /var/tmp, ouvert à tous, pourrait
+            # y être posé d'avance par un autre. L'affectation est DANS la
+            # condition, si bien qu'un mktemp qui échoue ne fait pas tomber
+            # « set -e » ; « z » reste alors vide, et l'extension est sautée
+            # comme un téléchargement raté, sans rien à effacer.
+            + "if ! z=$(mktemp -p /var/tmp gext-XXXX.zip 2>/dev/null); "
+            + 'then z=""; fi; '
+            + 'if [ -z "$z" ] || ! curl -fsSL --max-time 120 "'
             + site
-            + '/$u.shell-extension.zip?shell_version=$sv" -o "$z" '
-            + '&& gx install --force "$z" >/dev/null 2>&1; then '
-            + 'gx enable "$u" >/dev/null 2>&1 || true; '
-            + f'echo "   {t("installed and enabled:")} $u"; else '
+            + '/$u.shell-extension.zip?shell_version=$sv" -o "$z"; then '
+            + f'echo "   ⚠ {t("download impossible (network or cache):")} '
+            + '$u"; '
+            + 'elif ! gx install --force "$z" >/dev/null 2>&1; then '
             + f'echo "   {t("not available for this GNOME, skipped:")} '
-            + '$u (GNOME $sv)"; fi; rm -f "$z"; done; '
-            + f'echo "   {t("log out and back in to load them")}"; '
+            + '$u (GNOME $sv)"; '
+            + "else "
+            + 'gx enable "$u" >/dev/null 2>&1 || true; n=$((n+1)); '
+            + f'echo "   {t("installed and enabled:")} $u"; '
+            + 'fi; if [ -n "$z" ]; then rm -f "$z"; fi; done; '
+            + 'if [ "$n" -gt 0 ]; then '
+            + f'echo "   {t("log out and back in to load them")}"; fi; '
             + "fi; } || true; "
         )
 
@@ -2210,6 +2229,13 @@ class QemuInstallMixin:
         « </dev/null » la lui fait rater tout de suite, « timeout » borne le
         reste. C'est aussi pourquoi starship reçoit « -y ».
 
+        Chaque installateur amont est suivi d'une ligne de verdict : la version
+        du binaire quand il est là, « ⚠ … non installé (voir ci-dessus) »
+        sinon. Le code de sortie de la pose ne peut pas la donner : sans
+        pipefail, « curl | sh » rend celui de sh, 0 sur une entrée vide, si
+        bien qu'un téléchargement raté passe pour une pose réussie. Seule la
+        présence du binaire tranche.
+
         Les lignes ajoutées à un fichier du HOME le sont UNE fois : sans le
         « grep » qui précède, chaque redéploiement d'une même VM rallonge son
         ~/.bashrc — ou son historique — d'une ligne identique.
@@ -2221,10 +2247,12 @@ class QemuInstallMixin:
         Ce que le dépôt seul peut donner — hooks git, commandes Claude — n'est
         pas ici : voir _qemu_aidev_after_cmd.
         """
-        commande, repertoire = dev_tools.AGENTS.get(
-            agent or dev_tools.AGENT_DEFAUT,
-            dev_tools.AGENTS[dev_tools.AGENT_DEFAUT],
+        # Une valeur vide ou inconnue retombe sur le défaut : un choix
+        # inattendu ne doit pas faire tomber un déploiement.
+        nom_agent = (
+            agent if agent in dev_tools.AGENTS else dev_tools.AGENT_DEFAUT
         )
+        commande, repertoire = dev_tools.AGENTS[nom_agent]
         repertoire = repertoire.replace("~/", "$HOME/", 1)
         prompt = dev_tools.STARSHIP_LINE["bash"]
         path_line = f'export PATH="{repertoire}:$PATH"'
@@ -2248,6 +2276,22 @@ class QemuInstallMixin:
                 f" || echo {shlex.quote(ligne)} >> {fichier}; "
             )
 
+        def verdict(var, nom, repli=""):
+            # `var` reçoit le chemin du binaire : « command -v » d'abord, puis
+            # `repli`, le chemin où l'installateur le pose hors du PATH de ce
+            # shell. Aucune ligne ne peut faire tomber « set -e » : l'« if »
+            # absorbe le test, et la version se lit sous « timeout », sans
+            # entrée, comme une pose.
+            trouve = f'echo "{repli}"' if repli else "true"
+            return (
+                f'{var}="$(command -v {nom} || {trouve})"; '
+                f'if [ -x "${var}" ]; then echo "   {nom}: '
+                f'$(timeout 10 "${var}" --version </dev/null 2>&1'
+                ' | head -n 1 || true)"; '
+                f'else echo "   ⚠ {nom} {t("not installed (see above)")}"; '
+                "fi; "
+            )
+
         return (
             f'echo "== {t("AI coding tools")} =="; '
             + self._qemu_pkg_install_cmd(self._QEMU_AIDEV_PKGS)
@@ -2256,12 +2300,18 @@ class QemuInstallMixin:
             # commande distante a été figé au démarrage du shell SSH, avant que
             # l'installateur ne pose le binaire. Le code 127 qu'on obtiendrait
             # sinon ne dirait pas que le hook n'a pas été écrit.
-            + f'RTK="$(command -v rtk || echo "{local_bin}/rtk")"; '
+            + verdict("RTK", "rtk", f"{local_bin}/rtk")
             + '[ -x "$RTK" ] && timeout 60 "$RTK" init --global'
             " </dev/null >/dev/null 2>&1 || true; "
-            + pose(dev_tools.STARSHIP_UPSTREAM_YES, 300)
+            # En root, starship atterrit dans /usr/local/bin, que le PATH de
+            # ce shell porte déjà : « command -v » le trouve sans repli. Ces
+            # 300 s ne bornent que curl : l'installateur root porte sa propre
+            # borne, plus courte, derrière sudo — voir STARSHIP_UPSTREAM_VM.
+            + pose(dev_tools.STARSHIP_UPSTREAM_VM, 300)
+            + verdict("STARSHIP", "starship")
             + une_fois(prompt, "starship init bash")
             + pose(commande, 600)
+            + verdict("AGENT", nom_agent, f"{repertoire}/{nom_agent}")
             + une_fois(local_line, local_bin)
             # Claude Code s'installe DANS ~/.local/bin : la ligne serait la
             # même, écrite deux fois dans le journal pour un seul effet.
@@ -2449,7 +2499,20 @@ class QemuInstallMixin:
         défaut — même raison que pour cargo et rustc.
 
         Sans mise utilisable, rien n'est écrit : lib_python_provider.sh
-        retombe alors sur pyenv toute seule."""
+        retombe alors sur pyenv toute seule.
+
+        L'installateur est téléchargé dans un fichier, PUIS exécuté. Dans
+        « curl … | sh || repli », le statut du tube est celui de sh, qui rend
+        0 sur une entrée vide : sans pipefail, le repli ne se déclencherait
+        jamais, et un téléchargement raté passerait pour une pose réussie. Le
+        statut de curl, lu seul, distingue les deux échecs — rien obtenu,
+        ou un installateur qui a échoué — et chacun a son message. Aucun ne
+        fait tomber « set -e » : ils sont testés dans un « if ».
+
+        Le fichier ne s'obtient que de mktemp : un nom aléatoire, créé par ce
+        compte seul. Sans mktemp, rien n'est téléchargé. Un nom fixe dans
+        /tmp, qu'un autre compte peut créer d'avance, serait exécuté par
+        root."""
         if python_provider == "pyenv":
             # Explicite : même si mise se trouvait déjà dans l'image, on ne
             # l'utilise pas. Sans cela le mode « auto » du dépôt le prendrait.
@@ -2461,11 +2524,23 @@ class QemuInstallMixin:
             "if command -v mise >/dev/null 2>&1; then "
             'echo "   mise: $(mise --version)"; '
             "else "
+            # L'affectation est DANS la condition : un mktemp qui échoue prend
+            # la branche du téléchargement impossible au lieu de faire tomber
+            # « set -e ». `f` y reste vide, et « rm -f "" » rend 0.
+            "if ! f=$(mktemp 2>/dev/null) "
+            '|| ! curl -fsSL https://mise.run -o "$f"; then '
+            'echo "   ⚠ '
+            + t(
+                "mise download impossible (network or cache): "
+                "pyenv will take over"
+            )
+            + '"; '
             # La variable est passée À sudo, pas exportée avant : « sudo -E »
             # dépend de env_reset dans sudoers et n'est pas garanti.
-            "curl -fsSL https://mise.run "
-            "| sudo MISE_INSTALL_PATH=/usr/local/bin/mise sh "
-            '|| echo "   mise indisponible ici : pyenv prendra le relais"; '
+            + 'elif ! sudo MISE_INSTALL_PATH=/usr/local/bin/mise sh "$f"'
+            " </dev/null; then "
+            + f'echo "   ⚠ {t("mise installer failed: pyenv will take over")}"; '
+            + 'fi; rm -f "$f"; '
             "fi; "
             # « auto », et non « mise » : si l'installation ci-dessus a échoué,
             # lib_python_provider.sh doit pouvoir retomber sur pyenv.
