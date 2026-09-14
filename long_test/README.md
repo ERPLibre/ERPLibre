@@ -156,6 +156,48 @@ level must prove, not assume:
 unloaded module, not a permissions problem. A level that fails these stops the
 descent instead of prolonging it into the void.
 
+## qemu_cache.py — does the download cache really serve the second VM?
+
+Two sibling VMs, the same distribution, the same packages. The first fills the
+cache, the second must be served by it.
+
+**Zero upstream bytes is the headline, not the criterion.** Arch is a rolling
+release: between the two deployments a mirror can publish a newer version,
+which the second VM legitimately fetches — the cache never serves an index
+while upstream answers, so the VM sees it. A criterion built on volume alone
+would call the cache broken while it works.
+
+The criterion is therefore: **no URL requested by BOTH VMs is fetched upstream
+a second time.** What the second VM discovers on its own is counted, shown,
+and does not fail.
+
+`--hors-ligne` adds the counter-proof, which is what makes the test worth its
+hours: it cuts the upstream of the cache SERVICE alone — by its system
+account, not by a blanket rule that would take down the ssh session running
+the test — and deploys a third VM, which must build from the stored index.
+
+```
+./long_test/qemu_cache.py                 # two VMs
+./long_test/qemu_cache.py --dry-run       # the plan, nothing created
+./long_test/qemu_cache.py --hors-ligne    # + the third VM, upstream cut
+./long_test/qemu_cache.py --detruire      # undo it
+```
+
+It needs the cache installed and running — `TODO › Deployment › QEMU cache` —
+and it refuses to create anything before saying which prerequisite is missing.
+Among those prerequisites: the rules must target the subnet libvirt actually
+serves, which is not always 192.168.122.0/24.
+
+What governs the duration is the FIRST VM's download, everything else being
+boot and install: minutes on a machine with nested KVM and a nearby mirror,
+much longer on a slow link. The second VM does not download at all — that is
+what is being measured.
+
+One limit the counter-proof exposes: with upstream cut, the repository
+database SIGNATURES are missing from the cache, the mirror answering 404 for
+them, so the cache returns its named 504. pacman treats them as optional and
+carries on. A distribution that required them would stop there.
+
 ## Starting from a host you already have
 
 Both scripts take `--hote`. Creating a head VM to host a hypervisor you

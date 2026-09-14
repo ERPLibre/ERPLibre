@@ -132,6 +132,23 @@ class TestSpec(unittest.TestCase):
         self.assertNotEqual(res_label("custom"), "xcustom")
 
 
+def setUpModule():
+    """L'attente ssh ne part JAMAIS pour de vrai depuis les tests.
+
+    Le déploiement attend qu'une VM fraîche réponde en ssh avant de lui poser
+    le guide, le fuseau, le miroir et l'autorité — une adresse n'est pas une
+    machine prête. Les harnais d'ici remplacent chaque geste distant mais
+    appellent le vrai `_pve_ssh` : sans ce remplacement, chacun tenterait une
+    connexion vers un alias inventé et la suite unitaire y perdrait des
+    minutes. Les tests de l'attente elle-même la rappellent sur place.
+    """
+    from script.todo.todo import TODO
+
+    patch = mock.patch.object(TODO, "_pve_attendre_ssh", lambda *a, **k: True)
+    patch.start()
+    unittest.addModuleCleanup(patch.stop)
+
+
 def contexte():
     def entree(distro, version, arch="amd64"):
         return {
@@ -172,6 +189,9 @@ def contexte():
         },
         "bridges": ["vmbr0"],
         "bridge": "vmbr0",
+        # L'hôte d'essai est une VM de notre pont : la case « Sans connexion
+        # internet » est donc offerte, comme sur un Proxmox imbriqué.
+        "cache_offert": True,
         "ipconfig": lambda pont, vmid: f"ip=10.10.10.{50 + vmid % 200}/24",
         "build_command": lambda vm, spec: [f"qm create {vm['vmid']}"],
         "branches": ["develop", "master"],
@@ -596,6 +616,477 @@ class TestDeuxVmDuMemeNom(unittest.TestCase):
                 attendu,
                 choix,
             )
+
+
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLePreVolDuCacheSurProxmox(unittest.TestCase):
+    """Ce que le cache ne détient pas, aucune VM coupée ne le lira.
+
+    Le formulaire libvirt le dit depuis toujours ; celui de Proxmox partait
+    sans rien vérifier, et l'échec tombait une heure plus tard, à la pose du
+    bureau — un message qui accuse le dépôt, jamais le cache. F5 à nouveau
+    vaut passage outre : le journal peut avoir tourné, ou le magasin avoir
+    été rempli autrement.
+    """
+
+    def _deployer(self, absentes=(), hors_ligne=True):
+        """Deux F5 d'affilée. Rend ce que la spec valait après chacun."""
+        import asyncio
+        from unittest import mock
+
+        from script.qemu import cache_offline
+
+        ctx = contexte()
+        vu = {}
+
+        async def scenario():
+            from textual.widgets import Checkbox, SelectionList
+
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                liste = app.query_one(SelectionList)
+                liste.select(liste.get_option_at_index(0).value)
+                await pilote.pause()
+                if hors_ligne:
+                    app.query_one("#f_offline", Checkbox).value = True
+                await pilote.pause()
+                app.action_deploy()
+                vu["premier"] = getattr(app, "result", None)
+                app.action_deploy()
+                vu["second"] = getattr(app, "result", None)
+
+        with mock.patch.object(
+            cache_offline, "suites_absentes", return_value=list(absentes)
+        ), mock.patch.object(
+            cache_offline, "composants_absents", return_value=[]
+        ), mock.patch.object(
+            cache_offline, "manques_hors_ligne", return_value=[]
+        ), mock.patch.object(
+            cache_offline, "paquets_absents", return_value=[]
+        ), mock.patch.object(
+            cache_offline, "miroirs_absents", return_value=[]
+        ):
+            asyncio.run(scenario())
+        return vu
+
+    def test_le_premier_f5_avertit_au_lieu_de_partir(self):
+        vu = self._deployer(absentes=[("ubuntu", "26.04")])
+        self.assertFalse(vu["premier"], "parti sans rien dire du manque")
+        self.assertTrue(vu["second"], "le second F5 ne passe pas outre")
+
+    def test_un_magasin_complet_ne_retarde_personne(self):
+        """Un avertissement qui tombe quand rien ne manque s'apprend par
+        cœur, et c'est ainsi qu'on cesse de le lire."""
+        vu = self._deployer(absentes=[])
+        self.assertTrue(vu["premier"], "avertissement sans manque")
+
+    def test_en_ligne_le_pre_vol_ne_se_pose_pas(self):
+        """Le cache n'est qu'un raccourci tant que l'amont répond : ce qui
+        lui manque se télécharge, et rien n'échoue."""
+        vu = self._deployer(absentes=[("ubuntu", "26.04")], hors_ligne=False)
+        self.assertTrue(vu["premier"], "le pré-vol s'est posé hors coupure")
+
+
+class TestLeHorsLigneSurProxmox(unittest.TestCase):
+    """La coupure d'amont, offerte sur Proxmox VE comme sur QEMU/KVM.
+
+    Elle est posée ICI, sur le pont local, et jamais sur l'hôte distant : un
+    hôte Proxmox qui reçoit l'autorité du cache est une VM de ce pont, et ses
+    invités sortent derrière son adresse. Un hôte qui ne vit pas ici ne doit
+    donc PAS se voir offrir la case — rien ici ne sait couper sa sortie, et
+    une VM qui s'y bâtirait réussirait en ligne sous une promesse de
+    hors-ligne.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._ssh_config_block = lambda nom: {}
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+        return todo
+
+    def test_la_case_ne_sort_que_pour_un_hote_qui_vit_ici(self):
+        """C'est le même verdict que celui de l'autorité du cache : là où
+        elle est posée, le trafic traverse notre pont."""
+        todo = self._todo()
+        todo._qemu_cache_ca_path = lambda: "/var/lib/cache/ca.crt"
+        todo._qemu_list_domains = lambda: ["pve-imbrique"]
+        self.assertTrue(
+            todo._pve_cache_ca({"target": "erplibre@pve-imbrique"})
+        )
+        self.assertFalse(todo._pve_cache_ca({"target": "erplibre@ailleurs"}))
+
+    def test_le_contexte_offre_la_case_selon_ce_verdict(self):
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script" / "todo" / "proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"cache_offert": bool(self._pve_cache_ca(host))', src)
+
+    def _capture(self, **kw):
+        """Ce que l'installateur reçoit, la coupure tenue ou non."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {}
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: vu.update(k)
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {"branch": "develop", "cmd": "make", "label": "X"},
+            "monitor": True,
+        }
+        todo._qemu_list_domains = lambda: []
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "", **kw)
+        return vu
+
+    def test_la_coupure_tenue_atteint_linstallateur(self):
+        """Le guet reçoit la levée, et le manifeste porte la coupure : sans
+        cela, la coupure tomberait avec ce processus — avant la fin de ce qui
+        télécharge — et le bilan hors ligne ne saurait pas quoi relire."""
+        vu = self._capture(coupee=True, debut=1789000000.0)
+        self.assertTrue(vu["guet_hors_ligne"])
+        self.assertTrue(vu["hors_ligne"])
+        self.assertEqual(vu["deploy_started"], 1789000000.0)
+
+    def test_sans_coupure_rien_nest_promis(self):
+        vu = self._capture()
+        self.assertFalse(vu["guet_hors_ligne"])
+        self.assertFalse(vu["hors_ligne"])
+
+    def test_le_deploiement_passe_par_lenveloppe(self):
+        """La spec ENTIÈRE tient dans le bloc coupé, création comprise : une
+        coupure levée avant l'installation ne prouverait rien."""
+        import contextlib
+
+        todo = self._todo()
+        vu = {}
+
+        @contextlib.contextmanager
+        def fausse_coupure(actif):
+            vu["demandee"] = actif
+            yield actif
+
+        todo._qemu_sans_internet = fausse_coupure
+        todo._pve_deploy_spec = lambda *a, **k: vu.setdefault(
+            "coupee", k.get("coupee")
+        )
+        todo._pve_run_spec({"target": "pve1"}, {"offline": True}, None)
+        self.assertTrue(vu["demandee"], "la coupure n'a pas été demandée")
+        self.assertTrue(vu["coupee"], "le déploiement ignore la coupure")
+
+    def test_une_coupure_impossible_ne_deploie_rien(self):
+        """Le refus vient de la coupure elle-même — amont debout, verrou pris,
+        dnsmasq absent. Déployer quand même bâtirait une VM en ligne sous une
+        promesse de hors-ligne."""
+        import contextlib
+
+        from script.todo.qemu_deploy import _SansInternetImpossible
+
+        todo = self._todo()
+        vu = {}
+
+        @contextlib.contextmanager
+        def refus(actif):
+            raise _SansInternetImpossible()
+            yield  # pragma: no cover - jamais atteint
+
+        todo._qemu_sans_internet = refus
+        todo._pve_deploy_spec = lambda *a, **k: vu.setdefault("parti", True)
+        self.assertIsNone(
+            todo._pve_run_spec({"target": "pve1"}, {"offline": True}, None)
+        )
+        self.assertNotIn("parti", vu)
+
+    def test_la_case_atteint_la_spec(self):
+        form = {
+            "host": {"target": "pve1"},
+            "storage": "local-lvm",
+            "bridge": "vmbr0",
+            "res_label": "x1",
+            "ssh_key": "",
+            "start": True,
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": True,
+            "parallelism": 1,
+            "offline": True,
+        }
+        self.assertTrue(build_spec([{"name": "a"}], [], form)["offline"])
+        form["offline"] = False
+        self.assertFalse(build_spec([{"name": "a"}], [], form)["offline"])
+
+    def _ecran(self, cache_offert, cocher=False):
+        """Monte l'écran avec — ou sans — le cache offert, et relève l'état
+        DANS le contexte : `run_test` démonte les widgets en sortant."""
+        from textual.widgets import Checkbox
+
+        ctx = contexte()
+        ctx["cache_offert"] = cache_offert
+        vu = {}
+
+        async def scenario():
+            app = run_proxmox_form(ctx, run_app=False)
+            async with app.run_test(size=(200, 50)) as pilote:
+                await pilote.pause()
+                cases = app.query("#f_offline")
+                vu["offerte"] = bool(cases)
+                if cocher and cases:
+                    cases.first(Checkbox).value = True
+                    await pilote.pause()
+                suivi = app.query_one("#f_monitor", Checkbox)
+                vu["suivi"] = suivi.value
+                vu["suivi_fige"] = suivi.disabled
+                vu["avertissement"] = [
+                    w.display for w in app.query("#t_offline_w1")
+                ]
+
+        asyncio.run(scenario())
+        return vu
+
+    def test_sans_cache_aucune_case(self):
+        """Une case sans effet est pire que pas de case : elle promet."""
+        self.assertFalse(self._ecran(False)["offerte"])
+
+    def test_avec_le_cache_la_case_est_la_et_muette_tant_quon_ny_touche_pas(
+        self,
+    ):
+        vu = self._ecran(True)
+        self.assertTrue(vu["offerte"])
+        self.assertEqual(vu["avertissement"], [False])
+        self.assertFalse(vu["suivi_fige"])
+
+    def test_cocher_decouvre_lavertissement_et_fige_le_suivi(self):
+        """Seule la voie suivie confie la levée au guet : sans suivi, la
+        coupure tomberait avec le tableau de bord."""
+        vu = self._ecran(True, cocher=True)
+        self.assertEqual(vu["avertissement"], [True])
+        self.assertTrue(vu["suivi"])
+        self.assertTrue(vu["suivi_fige"])
+
+
+class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
+    """Une VM Proxmox tire du miroir que le cache a rempli.
+
+    Le magasin range ses index sous l'HÔTE demandé. Une VM qui réclame
+    « archive.ubuntu.com » ne retrouve donc rien de ce qu'une autre a gardé
+    depuis un miroir : hors ligne, chacun de ces index manque, et
+    l'installation échoue plus bas sur des dépendances introuvables — un
+    message qui accuse le dépôt, jamais le miroir.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    class _Mod:
+        APT_MIRRORS_MAIN = [
+            "http://miroir.invalid/ubuntu",
+            "http://second.invalid/ubuntu",
+        ]
+        APT_MIRRORS_PORTS = ["http://miroir.invalid/ubuntu-ports"]
+        PORTS_ARCHES = ("arm64", "s390x")
+
+    def _poser(self, vm, code=0):
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {}
+
+        def faux_ssh(cible, cmd, timeout=120):
+            vu["cible"], vu["cmd"] = cible, cmd
+            return code, ""
+
+        todo._pve_ssh = faux_ssh
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            vu["rendu"] = todo._pve_set_apt_mirror("pve+vm-a", vm, self._Mod)
+        vu["ecrit"] = sortie.getvalue()
+        return vu
+
+    def test_le_premier_miroir_remplace_les_depots_officiels(self):
+        vu = self._poser({"distro": "ubuntu", "arch": "amd64"})
+        self.assertTrue(vu["rendu"])
+        self.assertIn("miroir.invalid/ubuntu", vu["cmd"])
+        self.assertIn("archive|security", vu["cmd"])
+        self.assertNotIn("second.invalid", vu["cmd"])
+
+    def test_les_deux_formats_de_sources_sont_couverts(self):
+        """Le « .sources » deb822 des images récentes, et le
+        « sources.list » des anciennes : n'en réécrire qu'un laisse l'autre
+        pointer ailleurs."""
+        cmd = self._poser({"distro": "ubuntu", "arch": "amd64"})["cmd"]
+        self.assertIn("/etc/apt/sources.list ", cmd)
+        self.assertIn("sources.list.d/*.sources", cmd)
+        self.assertIn("sources.list.d/*.list", cmd)
+
+    def test_une_arche_ports_prend_son_propre_miroir(self):
+        """Les arches « ports » ne sont pas sur archive.ubuntu.com, et amd64
+        n'est pas sur ports.ubuntu.com."""
+        cmd = self._poser({"distro": "ubuntu", "arch": "arm64"})["cmd"]
+        # Le motif est une EXPRESSION : ses points sont échappés, sans quoi
+        # ils vaudraient « n'importe quel caractère ».
+        self.assertIn(r"ports\.ubuntu\.com/ubuntu-ports", cmd)
+        self.assertIn("miroir.invalid/ubuntu-ports", cmd)
+
+    def test_les_autres_distributions_sont_laissees_tranquilles(self):
+        """Debian, Fedora et Arch ont leurs propres dépôts : y réécrire une
+        URI ubuntu ne viserait rien."""
+        todo = self._todo()
+        todo._pve_ssh = lambda *a, **k: self.fail("ssh lancé pour rien")
+        self.assertFalse(
+            todo._pve_set_apt_mirror(
+                "pve+vm-a", {"distro": "debian", "arch": "amd64"}, self._Mod
+            )
+        )
+
+    def test_un_echec_est_dit(self):
+        vu = self._poser({"distro": "ubuntu", "arch": "amd64"}, code=255)
+        self.assertFalse(vu["rendu"])
+        self.assertIn("255", vu["ecrit"])
+
+    def test_le_miroir_est_pose_avant_lautorite_du_cache(self):
+        """L'ordre est le sujet : l'autorité sert aux téléchargements, et le
+        miroir décide OÙ ils vont. Posé après, il ne vaudrait que pour ce qui
+        reste à venir."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script" / "todo" / "proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            src.index('self._pve_set_apt_mirror(vm["alias"]'),
+            src.index('self._pve_set_cache_ca(vm["alias"]'),
+        )
+
+
+class TestLAttenteAvantLesGestesDansLInvite(unittest.TestCase):
+    """Une adresse n'est pas une machine prête.
+
+    Vécu : une VM Proxmox est née sans guide, en UTC, sans l'autorité du
+    cache et sur le miroir de son image. Les quatre gestes passent tous par
+    ssh et partaient dès l'adresse connue, pendant que cloud-init posait
+    encore les comptes et les clés. Ils échouaient donc ENSEMBLE, et la panne
+    ressemblait à quatre pannes sans lien.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    @property
+    def attendre(self):
+        """La VRAIE attente : le module de test la remplace partout
+        ailleurs, et c'est elle qu'on éprouve ici."""
+        from script.todo.proxmox_menu import ProxmoxMenuMixin
+
+        return ProxmoxMenuMixin._pve_attendre_ssh
+
+    def test_elle_rend_vrai_des_que_le_ssh_repond(self):
+        todo = self._todo()
+        essais = []
+        todo._pve_ssh = lambda c, cmd, timeout=120: (
+            essais.append(cmd),
+            (0, ""),
+        )[1]
+        self.assertTrue(self.attendre(todo, "pve+vm-a"))
+        self.assertEqual(essais, ["true"], "une seule sonde suffit")
+
+    def test_elle_rend_faux_au_bout_du_delai(self):
+        """Bornée par le TEMPS : un essai coûte le délai de connexion de ssh,
+        que rien ici ne borne à l'avance."""
+        import contextlib
+        import io
+
+        from script.todo import proxmox_menu
+
+        todo = self._todo()
+        todo._pve_ssh = lambda c, cmd, timeout=120: (255, "")
+        horloge = iter([0, 0, 5, 10, 15, 20, 25, 30, 35, 40])
+        with mock.patch.object(proxmox_menu.time, "sleep", lambda _s: None):
+            with mock.patch.object(
+                proxmox_menu.time, "time", lambda: next(horloge)
+            ):
+                with contextlib.redirect_stdout(io.StringIO()) as sortie:
+                    rendu = self.attendre(todo, "pve+vm-a", delai=20)
+        self.assertFalse(rendu)
+        self.assertIn("ssh", sortie.getvalue())
+
+    def test_sans_reponse_les_gestes_sont_sautes_et_dits(self):
+        """Quatre échecs silencieux valent moins qu'un refus qui se nomme."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        faits = []
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._qemu_list_domains = lambda: []
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._qemu_import_module = lambda: None
+        todo._pve_attendre_ssh = lambda *a, **k: False
+        for nom in (
+            "_pve_write_guide",
+            "_pve_set_timezone",
+            "_pve_set_apt_mirror",
+            "_pve_set_cache_ca",
+        ):
+            setattr(
+                todo, nom, (lambda n: lambda *a, **k: faits.append(n))(nom)
+            )
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: None
+        spec = {
+            "host": {"target": "pve1"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "ipconfig": "ip=10.0.0.2/24,gw=10.0.0.1",
+                    "distro": "ubuntu",
+                    "arch": "amd64",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": False,
+        }
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        self.assertEqual(faits, [], f"des gestes sont partis : {faits}")
+        self.assertIn("ssh", sortie.getvalue())
 
 
 class TestUnParcMixte(unittest.TestCase):
@@ -1522,6 +2013,224 @@ class TestLeSuivi(unittest.TestCase):
             monitor=True,
         )
         self.assertIn("tableau", vus)
+
+
+class TestLAutoriteDuCacheDansUneVmImbriquee(unittest.TestCase):
+    """Une VM née sur un Proxmox imbriqué est interceptée sans le savoir.
+
+    Le cache détourne tout ce qui sort de son pont. Un hôte Proxmox qui est
+    lui-même une VM d'ici y est branché, et les machines qu'il porte sortent
+    derrière son adresse : elles traversent donc le cache, alors que rien à
+    l'intérieur ne leur a donné son autorité. Le mode de défaillance est
+    trompeur — un dépôt apt en clair passe, si bien que l'installation
+    démarre, et seuls les téléchargements HTTPS échouent, sur « self-signed
+    certificate in certificate chain ».
+
+    « qm set » ne sait écrire aucun fichier : l'autorité part par ssh, depuis
+    la MÊME source que la voie libvirt (`cache_files`, `cache_commands`).
+    """
+
+    def _todo(self, domaines=("pve-local",), ca="/tmp/ca.crt"):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        todo._qemu_list_domains = lambda: list(domaines)
+        todo._qemu_cache_ca_path = classmethod(lambda cls: ca).__get__(
+            todo, type(todo)
+        )
+        return todo
+
+    # -- Qui est concerné ----------------------------------------------
+
+    def test_a_nested_proxmox_host_gets_the_authority(self):
+        todo = self._todo()
+        self.assertEqual(
+            todo._pve_cache_ca({"target": "root@pve-local"}),
+            "/tmp/ca.crt",
+        )
+
+    def test_a_proxmox_host_that_lives_elsewhere_gets_nothing(self):
+        """Son trafic ne traverse pas ce pont : l'autorité n'y servirait à
+        rien, et le cache doit s'installer sur cet hôte-là."""
+        todo = self._todo()
+        self.assertEqual(todo._pve_cache_ca({"target": "root@10.0.0.5"}), "")
+
+    def test_no_cache_installed_here_means_no_authority(self):
+        todo = self._todo(ca="")
+        self.assertEqual(todo._pve_cache_ca({"target": "pve-local"}), "")
+
+    # -- Ce qui est réellement posé ------------------------------------
+
+    def _pose(self, distro="ubuntu", cache_files=None):
+        import contextlib
+        import io
+        import tempfile
+
+        todo = self._todo()
+        vus = {}
+        todo._pve_ssh = lambda cible, remote, timeout=60: (
+            vus.update(cible=cible, remote=remote, timeout=timeout) or (0, "")
+        )
+        mod = todo._qemu_import_module()
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".crt", delete=False
+        ) as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\nZm F1eA==\n")
+            fh.write("-----END CERTIFICATE-----\n")
+            ca = fh.name
+        patch = (
+            mock.patch.object(mod, "cache_files", cache_files)
+            if cache_files
+            else contextlib.nullcontext()
+        )
+        with contextlib.redirect_stdout(io.StringIO()), patch:
+            vus["ok"] = todo._pve_set_cache_ca(
+                "hote+vm-a", {"name": "vm-a", "distro": distro}, ca
+            )
+        return vus
+
+    def test_the_authority_goes_where_the_family_reads_it(self):
+        vus = self._pose()
+        self.assertTrue(vus["ok"])
+        # Par l'ALIAS : lui seul porte le rebond vers le réseau interne.
+        self.assertEqual(vus["cible"], "hote+vm-a")
+        self.assertIn(
+            "/usr/local/share/ca-certificates/erplibre-cache.crt",
+            vus["remote"],
+        )
+
+    def test_arch_does_not_get_the_debian_path(self):
+        vus = self._pose(distro="arch")
+        self.assertIn(
+            "/etc/ca-certificates/trust-source/anchors", vus["remote"]
+        )
+        self.assertNotIn("/usr/local/share/ca-certificates", vus["remote"])
+
+    def test_the_store_is_reread_then_the_variables_are_written(self):
+        """Dans cet ordre : les variables visent le faisceau que la commande
+        de confiance vient de régénérer."""
+        vus = self._pose()
+        confiance = vus["remote"].index("update-ca-certificates")
+        for var in ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"):
+            self.assertLess(confiance, vus["remote"].index(var), var)
+
+    def test_the_content_comes_from_cache_files_and_is_not_rebuilt_here(self):
+        """Une seule source pour les deux voies de livraison : ce que
+        cloud-init écrirait est ce que ssh pose."""
+        vus = self._pose(
+            cache_files=lambda args: [
+                ("/etc/anchors/temoin.crt", "0644", "PEM-TEMOIN", "")
+            ]
+        )
+        self.assertIn("/etc/anchors/temoin.crt", vus["remote"])
+        self.assertIn("PEM-TEMOIN", vus["remote"])
+
+    def test_a_distro_out_of_the_table_poses_nothing(self):
+        """Le fichier au mauvais endroit ne servirait à rien sans rien
+        dire ; la VM télécharge en direct, ce qui marche."""
+        vus = self._pose(distro="plan9")
+        self.assertFalse(vus["ok"])
+        self.assertNotIn("remote", vus)
+
+    # -- Le câblage ----------------------------------------------------
+
+    def test_the_authority_is_posed_before_the_install(self):
+        """Le contrôle porte sur l'ORDRE : c'est l'installation qui
+        télécharge, et un magasin relu ensuite ne rattrape rien."""
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        ordre = []
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._pve_alias_perime = lambda *a, **k: []
+        todo._qemu_list_domains = lambda: ["pve-local"]
+        todo._qemu_cache_ca_path = classmethod(
+            lambda cls: "/tmp/ca.crt"
+        ).__get__(todo, type(todo))
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+        todo._pve_set_cache_ca = lambda cible, vm, ca: ordre.append(
+            ("autorité", cible, ca)
+        )
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: ordre.append(
+            ("installation",)
+        )
+        spec = {
+            "host": {"target": "root@pve-local"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "distro": "ubuntu",
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": {"branch": "develop", "cmd": "make x", "label": "X"},
+            "monitor": True,
+            "desktop": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        self.assertEqual([e[0] for e in ordre], ["autorité", "installation"])
+        self.assertEqual(ordre[0][2], "/tmp/ca.crt")
+
+    def test_a_remote_host_does_not_get_the_step_at_all(self):
+        import contextlib
+        import io
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        appels = []
+        todo = TODO.__new__(TODO)
+        todo._write_ssh_config_entry = lambda *a, **k: None
+        todo._ssh_private_key = lambda k: None
+        todo._pve_alias_perime = lambda *a, **k: []
+        todo._qemu_list_domains = lambda: []
+        todo._qemu_cache_ca_path = classmethod(
+            lambda cls: "/tmp/ca.crt"
+        ).__get__(todo, type(todo))
+        todo._pve_guest_ip = lambda vmid, attente=120: ""
+        todo._pve_write_guide = lambda *a, **k: True
+        todo._pve_set_timezone = lambda *a, **k: True
+        todo._qemu_import_module = lambda: None
+        todo._pve_set_cache_ca = lambda *a: appels.append(a)
+        todo._qemu_install_erplibre_monitored = lambda *a, **k: None
+        spec = {
+            "host": {"target": "root@10.0.0.5"},
+            "vms": [
+                {
+                    "name": "vm-a",
+                    "vmid": 100,
+                    "distro": "ubuntu",
+                    "ipconfig": "ip=10.10.10.150/24,gw=10.10.10.1",
+                    "install_cmd": "",
+                }
+            ],
+            "user": "erplibre",
+            "add_ssh_config": True,
+            "install": None,
+            "monitor": False,
+            "desktop": "",
+        }
+        with contextlib.redirect_stdout(io.StringIO()):
+            todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
+        self.assertEqual(appels, [])
 
 
 if __name__ == "__main__":

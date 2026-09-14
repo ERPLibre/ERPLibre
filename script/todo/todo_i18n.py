@@ -1395,6 +1395,739 @@ TRANSLATIONS = {
         "fr": "Script d'installation NTFY introuvable : ",
         "en": "NTFY install script not found: ",
     },
+    # Cache de téléchargement des VM QEMU (erplibre_go_qemu_cache)
+    "QEMU cache - Download mirror for local VMs": {
+        "fr": "📦 Cache QEMU - Miroir de téléchargement des VM locales",
+        "en": "📦 QEMU cache - Download mirror for local VMs",
+    },
+    "QEMU download cache for local VMs": {
+        "fr": "Cache de téléchargement QEMU pour les VM locales",
+        "en": "QEMU download cache for local VMs",
+    },
+    "Cache - Install or reinstall": {
+        "fr": "📥 Cache - Installer ou réinstaller",
+        "en": "📥 Cache - Install or reinstall",
+    },
+    "Cache - Diagnose: does it serve?": {
+        "fr": "🔍 Cache - Diagnostic : sert-il vraiment ?",
+        "en": "🔍 Cache - Diagnose: does it serve?",
+    },
+    "    or entry 3 of this menu, which does it for you.": {
+        "fr": "    ou l'entrée 3 de ce menu, qui le fait pour vous.",
+        "en": "    or entry 3 of this menu, which does it for you.",
+    },
+    "Cache - Service state": {
+        "fr": "⚙ Cache - État du service",
+        "en": "⚙ Cache - Service state",
+    },
+    "State of the cache service": {
+        "fr": "État du service du cache",
+        "en": "State of the cache service",
+    },
+    "Stopping it removes the rules: no VM is redirected.": {
+        "fr": "L'arrêter retire les règles : plus aucune VM n'est détournée.",
+        "en": "Stopping it removes the rules: no VM is redirected.",
+    },
+    "starts at boot": {"fr": "démarre au boot", "en": "starts at boot"},
+    "not at boot": {"fr": "pas au boot", "en": "not at boot"},
+    "Service - Start (start)": {
+        "fr": "▶ Service - Démarrer (start)",
+        "en": "▶ Service - Start (start)",
+    },
+    "Service - Start at boot (enable)": {
+        "fr": "🔗 Service - Démarrer au boot (enable)",
+        "en": "🔗 Service - Start at boot (enable)",
+    },
+    "Service - Do not start at boot (disable)": {
+        "fr": "🚫 Service - Ne plus démarrer au boot (disable)",
+        "en": "🚫 Service - Do not start at boot (disable)",
+    },
+    "Service - Stop (stop)": {
+        "fr": "⏹ Service - Arrêter (stop)",
+        "en": "⏹ Service - Stop (stop)",
+    },
+    "Service - Detailed state (status)": {
+        "fr": "📋 Service - État détaillé (status)",
+        "en": "📋 Service - Detailed state (status)",
+    },
+    "Service - Logs (log)": {
+        "fr": "📜 Service - Journal (log)",
+        "en": "📜 Service - Logs (log)",
+    },
+    "Access log, last requests:": {
+        "fr": "Journal d'accès, dernières requêtes :",
+        "en": "Access log, last requests:",
+    },
+    "    Interception is transparent and covers the whole bridge:": {
+        "fr": "    Le détournement est transparent et vaut pour tout le pont :",
+        "en": "    Interception is transparent and covers the whole bridge:",
+    },
+    "    a VM cannot opt out from the inside. Omitting the authority": {
+        "fr": "    une VM ne peut pas s'y soustraire de l'intérieur. Retirer l'autorité",
+        "en": "    a VM cannot opt out from the inside. Omitting the authority",
+    },
+    "    does not bypass anything — the VM is redirected all the same": {
+        "fr": "    ne contourne rien — la VM est détournée quand même et échoue",
+        "en": "    does not bypass anything — the VM is redirected all the same",
+    },
+    "    and fails on « self-signed certificate in chain ».": {
+        "fr": "    sur « self-signed certificate in certificate chain ».",
+        "en": "    and fails on « self-signed certificate in chain ».",
+    },
+    "    For ONE VM: tick « keep this VM out of the cache » when": {
+        "fr": "    Pour UNE VM : cocher « soustraire cette VM au cache » au",
+        "en": "    For ONE VM: tick « keep this VM out of the cache » when",
+    },
+    "    deploying, or pass --cache-bypass. Its MAC address is fixed": {
+        "fr": "    déploiement, ou passer --cache-bypass. Son adresse MAC est fixée",
+        "en": "    deploying, or pass --cache-bypass. Its MAC address is fixed",
+    },
+    "    before creation and an exception is posted on the host, so": {
+        "fr": "    avant la création et une exception est posée sur l'hôte : plus",
+        "en": "    before creation and an exception is posted on the host, so",
+    },
+    "    nothing redirects it. Entry 4 lists them; an exception whose": {
+        "fr": "    rien ne la détourne. L'entrée 4 les liste ; une exception dont",
+        "en": "    nothing redirects it. Entry 4 lists them; an exception whose",
+    },
+    "    VM is gone must be removed, a freed MAC being reused.": {
+        "fr": "    la VM n'existe plus est à retirer, une MAC libérée se réattribuant.",
+        "en": "    VM is gone must be removed, a freed MAC being reused.",
+    },
+    "    For EVERY VM: stop the service, entry 3 or": {
+        "fr": "    Pour TOUTES les VM : arrêter le service, entrée 3 ou",
+        "en": "    For EVERY VM: stop the service, entry 3 or",
+    },
+    "Cache - VMs kept out of the cache": {
+        "fr": "🎫 Cache - Les VM soustraites au cache",
+        "en": "🎫 Cache - VMs kept out of the cache",
+    },
+    "Exceptions - Remove the stale ones": {
+        "fr": "🧹 Exceptions - Retirer celles dont la VM n'existe plus",
+        "en": "🧹 Exceptions - Remove the stale ones",
+    },
+    "Exceptions - Remove one by its MAC": {
+        "fr": "✂ Exceptions - En retirer une par sa MAC",
+        "en": "✂ Exceptions - Remove one by its MAC",
+    },
+    "VMs kept out of the download cache": {
+        "fr": "Les VM soustraites au cache de téléchargement",
+        "en": "VMs kept out of the download cache",
+    },
+    "VM gone": {
+        "fr": "VM disparue",
+        "en": "VM gone",
+    },
+    "No exception: every VM goes through the cache.": {
+        "fr": "Aucune exception : toutes les VM passent par le cache.",
+        "en": "No exception: every VM goes through the cache.",
+    },
+    "Tick the box when deploying to add one.": {
+        "fr": "Cocher la case au déploiement pour en poser une.",
+        "en": "Tick the box when deploying to add one.",
+    },
+    "A freed MAC gets reused: such an entry would": {
+        "fr": "Une MAC libérée se réattribue : une telle entrée soustrairait",
+        "en": "A freed MAC gets reused: such an entry would",
+    },
+    "quietly keep a NEW VM out of the cache.": {
+        "fr": "au cache une VM NEUVE, sans que rien ne le dise.",
+        "en": "quietly keep a NEW VM out of the cache.",
+    },
+    "Nothing is stale.": {
+        "fr": "Rien n'est orphelin.",
+        "en": "Nothing is stale.",
+    },
+    "MAC to give back to the cache": {
+        "fr": "MAC à rendre au cache",
+        "en": "MAC to give back to the cache",
+    },
+    "Keep this VM out of the download cache? (y/N): ": {
+        "fr": "Soustraire cette VM au cache de téléchargement ? (o/N) : ",
+        "en": "Keep this VM out of the download cache? (y/N): ",
+    },
+    "Keep this VM out of the download cache": {
+        "fr": "Soustraire cette VM au cache de téléchargement",
+        "en": "Keep this VM out of the download cache",
+    },
+    "Cache exceptions removed:": {
+        "fr": "Exceptions du cache retirées :",
+        "en": "Cache exceptions removed:",
+    },
+    "Exceptions:": {"fr": "Exceptions :", "en": "Exceptions:"},
+    "with no VM left": {
+        "fr": "sans VM",
+        "en": "with no VM left",
+    },
+    "Remove them from entry 4 of this menu.": {
+        "fr": "Les retirer depuis l'entrée 4 de ce menu.",
+        "en": "Remove them from entry 4 of this menu.",
+    },
+    "Machines created:": {
+        "fr": "Machines créées :",
+        "en": "Machines created:",
+    },
+    "Test - Choose and run": {
+        "fr": "🧭 Test - Choisir et lancer",
+        "en": "🧭 Test - Choose and run",
+    },
+    "Which test?": {
+        "fr": "Quel essai ?",
+        "en": "Which test?",
+    },
+    "The cache: two VMs, measure the gain": {
+        "fr": "⚡ Le cache : deux VM, mesurer le gain",
+        "en": "⚡ The cache: two VMs, measure the gain",
+    },
+    "The offline counter-proof": {
+        "fr": "📴 La contre-épreuve hors ligne",
+        "en": "📴 The offline counter-proof",
+    },
+    "The control: two VMs WITHOUT the cache": {
+        "fr": "⚖ Le témoin : deux VM SANS le cache",
+        "en": "⚖ The control: two VMs WITHOUT the cache",
+    },
+    "All three, one after another": {
+        "fr": "🔁 Les trois, l'un après l'autre",
+        "en": "🔁 All three, one after another",
+    },
+    "Which load?": {
+        "fr": "Quelle charge ?",
+        "en": "Which load?",
+    },
+    "Minimum: a batch of packages, minutes": {
+        "fr": "🪶 Minimum : un lot de paquets, quelques minutes",
+        "en": "🪶 Minimum: a batch of packages, minutes",
+    },
+    "ERPLibre + Odoo 18: the real thing, hours": {
+        "fr": "🏗 ERPLibre + Odoo 18 : l'installation réelle, des heures",
+        "en": "🏗 ERPLibre + Odoo 18: the real thing, hours",
+    },
+    "Which system?": {
+        "fr": "Quel système ?",
+        "en": "Which system?",
+    },
+    "About to run, one after another:": {
+        "fr": "Va exécuter, l'un après l'autre :",
+        "en": "About to run, one after another:",
+    },
+    "The real load takes hours per VM, not minutes.": {
+        "fr": "La charge réelle prend des heures par VM, pas des minutes.",
+        "en": "The real load takes hours per VM, not minutes.",
+    },
+    "Run these long tests?": {
+        "fr": "Lancer ces tests longs ?",
+        "en": "Run these long tests?",
+    },
+    "Git mirrors:": {
+        "fr": "Miroirs git :",
+        "en": "Git mirrors:",
+    },
+    "Git is mirrored, not cached": {
+        "fr": "Git est mis en miroir, pas caché",
+        "en": "Git is mirrored, not cached",
+    },
+    "    Git's protocol is a negotiation: the server computes its": {
+        "fr": "    Le protocole git est une négociation : le serveur calcule sa",
+        "en": "    Git's protocol is a negotiation: the server computes its",
+    },
+    "    answer from what the client already holds, so no answer is": {
+        "fr": "    réponse d'après ce que le client détient déjà, si bien qu'aucune",
+        "en": "    answer from what the client already holds, so no answer is",
+    },
+    "    reusable. A bare mirror per upstream repo is kept instead,": {
+        "fr": "    réponse ne se réutilise. Un miroir nu par dépôt amont est tenu à la",
+        "en": "    reusable. A bare mirror per upstream repo is kept instead,",
+    },
+    "    and served locally — which also works with no network.": {
+        "fr": "    place, et servi localement — ce qui marche aussi sans réseau.",
+        "en": "    and served locally — which also works with no network.",
+    },
+    "    A mirror is COMPLETE: it weighs what the upstream repo": {
+        "fr": "    Un miroir est COMPLET : il pèse ce que pèse le dépôt amont,",
+        "en": "    A mirror is COMPLETE: it weighs what the upstream repo",
+    },
+    "    weighs, history included.": {
+        "fr": "    historique compris.",
+        "en": "    weighs, history included.",
+    },
+    "    Neither the objects nor the mirrors shrink by themselves,": {
+        "fr": "    Ni les objets ni les miroirs ne diminuent d'eux-mêmes, et les deux",
+        "en": "    Neither the objects nor the mirrors shrink by themselves,",
+    },
+    "    and both live on the orchestrator's disk. The diagnosis": {
+        "fr": "    vivent sur le disque de l'orchestrateur. Le diagnostic dit ce",
+        "en": "    and both live on the orchestrator's disk. The diagnosis",
+    },
+    "    entry says what each of the two occupies.": {
+        "fr": "    qu'occupe chacun des deux.",
+        "en": "    entry says what each of the two occupies.",
+    },
+    "Cache - Git mirrors: fill them ahead": {
+        "fr": "🪞 Cache - Miroirs git : prendre l'avance",
+        "en": "🪞 Cache - Git mirrors: fill them ahead",
+    },
+    "Git mirrors of the ERPLibre manifests": {
+        "fr": "Miroirs git des manifestes ERPLibre",
+        "en": "Git mirrors of the ERPLibre manifests",
+    },
+    "Already mirrored:": {
+        "fr": "Déjà en miroir :",
+        "en": "Already mirrored:",
+    },
+    "No repository found in manifest/": {
+        "fr": "Aucun dépôt trouvé dans manifest/",
+        "en": "No repository found in manifest/",
+    },
+    "A mirror is complete: this can take tens of GiB": {
+        "fr": "Un miroir est complet : cela peut prendre des dizaines de Gio",
+        "en": "A mirror is complete: this can take tens of GiB",
+    },
+    "and hours on the first run. Nothing erases it.": {
+        "fr": "et des heures au premier passage. Rien ne l'efface.",
+        "en": "and hours on the first run. Nothing erases it.",
+    },
+    "Free space:": {
+        "fr": "Place libre :",
+        "en": "Free space:",
+    },
+    "Fill the git mirrors now?": {
+        "fr": "Remplir les miroirs git maintenant ?",
+        "en": "Fill the git mirrors now?",
+    },
+    "Mirrors - Fill the base of the active Odoo version": {
+        "fr": "📥 Miroirs - Remplir la base de la version d'Odoo active",
+        "en": "📥 Mirrors - Fill the base of the active Odoo version",
+    },
+    "Mirrors - Fill the extra of the active Odoo version": {
+        "fr": "🧩 Miroirs - Remplir l'extra de la version d'Odoo active",
+        "en": "🧩 Mirrors - Fill the extra of the active Odoo version",
+    },
+    "Mirrors - Fill every manifest, all versions": {
+        "fr": "📚 Miroirs - Remplir tous les manifestes, toutes versions",
+        "en": "📚 Mirrors - Fill every manifest, all versions",
+    },
+    "Base of Odoo": {
+        "fr": "Base d'Odoo",
+        "en": "Base of Odoo",
+    },
+    "Extra of Odoo": {
+        "fr": "Extra d'Odoo",
+        "en": "Extra of Odoo",
+    },
+    "Every manifest, all versions": {
+        "fr": "Tous les manifestes, toutes versions",
+        "en": "Every manifest, all versions",
+    },
+    "repositories declared": {
+        "fr": "dépôts déclarés",
+        "en": "repositories declared",
+    },
+    "without a mirror": {
+        "fr": "sans miroir",
+        "en": "without a mirror",
+    },
+    "No .odoo-version: no active version to fill.": {
+        "fr": "Aucun .odoo-version : pas de version active à remplir.",
+        "en": "No .odoo-version: no active version to fill.",
+    },
+    "Nothing declared for this version.": {
+        "fr": "Rien n'est déclaré pour cette version.",
+        "en": "Nothing declared for this version.",
+    },
+    "Extra modules install only with --with_extra.": {
+        "fr": "Les modules extra ne s'installent qu'avec --with_extra.",
+        "en": "Extra modules install only with --with_extra.",
+    },
+    "Mirrors - List them, heaviest first": {
+        "fr": "📋 Miroirs - Les lister, du plus lourd au plus léger",
+        "en": "📋 Mirrors - List them, heaviest first",
+    },
+    "Mirrors - Remove one": {
+        "fr": "🧹 Miroirs - En effacer un",
+        "en": "🧹 Mirrors - Remove one",
+    },
+    "Repository to remove (as listed)": {
+        "fr": "Dépôt à effacer (tel qu'affiché)",
+        "en": "Repository to remove (as listed)",
+    },
+    "It will be mirrored again when a VM needs it.": {
+        "fr": "Il sera remis en miroir dès qu'une VM en aura besoin.",
+        "en": "It will be mirrored again when a VM needs it.",
+    },
+    "Remove this mirror?": {
+        "fr": "Effacer ce miroir ?",
+        "en": "Remove this mirror?",
+    },
+    "    weighs, history included, and a few repositories make": {
+        "fr": "    historique compris, et quelques dépôts font l'essentiel du",
+        "en": "    weighs, history included, and a few repositories make",
+    },
+    "    most of the total. Entry 5 lists them heaviest first and": {
+        "fr": "    total. L'entrée 5 les liste du plus lourd au plus léger et en",
+        "en": "    most of the total. Entry 5 lists them heaviest first and",
+    },
+    "    removes one — it comes back at the next need.": {
+        "fr": "    efface un — il revient au prochain besoin.",
+        "en": "    removes one — it comes back at the next need.",
+    },
+    "    and served locally. A mirror already held serves with no": {
+        "fr": "    place, et servi localement. Un miroir déjà détenu sert sans",
+        "en": "    and served locally. A mirror already held serves with no",
+    },
+    "    network at all — but NOT what the cache may not decrypt:": {
+        "fr": "    aucun réseau — mais PAS ce que le cache n'a pas le droit de",
+        "en": "    network at all — but NOT what the cache may not decrypt:",
+    },
+    "    npm and poetry carry their own trust store, so they are": {
+        "fr": "    déchiffrer : npm et poetry portent leur propre magasin, passent",
+        "en": "    npm and poetry carry their own trust store, so they are",
+    },
+    "    tunnelled, and a tunnel carries nothing once cut.": {
+        "fr": "    en tunnel, et un tunnel ne porte rien une fois coupé.",
+        "en": "    tunnelled, and a tunnel carries nothing once cut.",
+    },
+    "Cache - Age and cleanup": {
+        "fr": "🧭 Cache - Âge et nettoyage",
+        "en": "🧭 Cache - Age and cleanup",
+    },
+    "Age of the cache, and cleanup": {
+        "fr": "Âge du cache, et nettoyage",
+        "en": "Age of the cache, and cleanup",
+    },
+    "Age - By day": {
+        "fr": "📅 Âge - Par jour",
+        "en": "📅 Age - By day",
+    },
+    "Age - By week": {
+        "fr": "🗓 Âge - Par semaine",
+        "en": "🗓 Age - By week",
+    },
+    "Age - By month": {
+        "fr": "📆 Âge - Par mois",
+        "en": "📆 Age - By month",
+    },
+    "Clean - What has not served for a while": {
+        "fr": "🧹 Nettoyer - Ce qui n'a plus servi depuis un temps",
+        "en": "🧹 Clean - What has not served for a while",
+    },
+    "Clean - Everything": {
+        "fr": "🔥 Nettoyer - Tout",
+        "en": "🔥 Clean - Everything",
+    },
+    "Not served since (e.g. 30j, 12h)": {
+        "fr": "Plus servi depuis (ex. 30j, 12h)",
+        "en": "Not served since (e.g. 30j, 12h)",
+    },
+    "Erase what is listed above?": {
+        "fr": "Effacer ce qui est listé ci-dessus ?",
+        "en": "Erase what is listed above?",
+    },
+    "This empties the objects AND the git mirrors.": {
+        "fr": "Cela vide les objets ET les miroirs git.",
+        "en": "This empties the objects AND the git mirrors.",
+    },
+    "Refilling the mirrors takes minutes to hours.": {
+        "fr": "Remplir de nouveau les miroirs prend des minutes à des heures.",
+        "en": "Refilling the mirrors takes minutes to hours.",
+    },
+    "Erase the whole cache?": {
+        "fr": "Effacer tout le cache ?",
+        "en": "Erase the whole cache?",
+    },
+    "    Entry 6 groups them by AGE OF LAST USE — an object served": {
+        "fr": "    L'entrée 6 les groupe par ÂGE DU DERNIER USAGE — un objet servi",
+        "en": "    Entry 6 groups them by AGE OF LAST USE — an object served",
+    },
+    "    has its date renewed, so « old » means « no longer used »": {
+        "fr": "    voit sa date remise à jour, « vieux » veut donc dire « n'a plus",
+        "en": "    has its date renewed, so « old » means « no longer used »",
+    },
+    "    — and gives back what has not served for a while, or all.": {
+        "fr": "    servi » — et rend ce qui ne sert plus, ou tout.",
+        "en": "    — and gives back what has not served for a while, or all.",
+    },
+    "What each VM pulled:": {
+        "fr": "Ce que chaque VM a tiré :",
+        "en": "What each VM pulled:",
+    },
+    "from disk": {
+        "fr": "du disque",
+        "en": "from disk",
+    },
+    "upstream": {
+        "fr": "de l'amont",
+        "en": "upstream",
+    },
+    "Cache - Guide: how it works": {
+        "fr": "📖 Cache - Guide : comment il fonctionne",
+        "en": "📖 Cache - Guide: how it works",
+    },
+    "Cache - Tests and performance report": {
+        "fr": "🧪 Cache - Tests et rapport de performance",
+        "en": "🧪 Cache - Tests and performance report",
+    },
+    "Diagnosis of the QEMU download cache": {
+        "fr": "Diagnostic du cache de téléchargement QEMU",
+        "en": "Diagnosis of the QEMU download cache",
+    },
+    "Service:": {"fr": "Service :", "en": "Service:"},
+    "Service is running": {"fr": "actif", "en": "running"},
+    "Service is stopped": {"fr": "arrêté", "en": "stopped"},
+    "Not installed:": {"fr": "Non installé :", "en": "Not installed:"},
+    "Install it from entry 1 of this menu.": {
+        "fr": "L'installer depuis l'entrée 1 de ce menu.",
+        "en": "Install it from entry 1 of this menu.",
+    },
+    "Redirection:": {"fr": "Détournement :", "en": "Redirection:"},
+    "the cache": {"fr": "le cache", "en": "the cache"},
+    "No redirection rule is posted": {
+        "fr": "Aucune règle de détournement n'est posée",
+        "en": "No redirection rule is posted",
+    },
+    "Cannot tell where the rules point: reading nft needs a sudo password here.": {
+        "fr": "Impossible de savoir où pointent les règles : lire nft exige un mot de passe sudo ici.",
+        "en": "Cannot tell where the rules point: reading nft needs a sudo password here.",
+    },
+    "MISMATCH — rules on": {
+        "fr": "DÉSACCORD — règles sur",
+        "en": "MISMATCH — rules on",
+    },
+    "libvirt serves": {"fr": "libvirt sert", "en": "libvirt serves"},
+    "Reinstall: the cache reads libvirt by itself.": {
+        "fr": "Réinstaller : le cache lit libvirt tout seul.",
+        "en": "Reinstall: the cache reads libvirt by itself.",
+    },
+    "Authority:": {"fr": "Autorité :", "en": "Authority:"},
+    "What the cache has done:": {
+        "fr": "Ce que le cache a fait :",
+        "en": "What the cache has done:",
+    },
+    "The access log is empty: nothing has gone through the cache.": {
+        "fr": "Le journal d'accès est vide : rien n'a traversé le cache.",
+        "en": "The access log is empty: nothing has gone through the cache.",
+    },
+    "A VM that installs while this stays at zero does not use it.": {
+        "fr": "Une VM qui installe pendant que cela reste à zéro ne l'utilise pas.",
+        "en": "A VM that installs while this stays at zero does not use it.",
+    },
+    "How the QEMU download cache works": {
+        "fr": "Comment fonctionne le cache de téléchargement QEMU",
+        "en": "How the QEMU download cache works",
+    },
+    "  Two VMs of the same distribution pull the same packages.": {
+        "fr": "  Deux VM de la même distribution tirent les mêmes paquets.",
+        "en": "  Two VMs of the same distribution pull the same packages.",
+    },
+    "  The cache keeps what comes down and serves the copy to the next.": {
+        "fr": "  Le cache garde ce qui descend et sert la copie à la suivante.",
+        "en": "  The cache keeps what comes down and serves the copy to the next.",
+    },
+    "What is served from disk": {
+        "fr": "Ce qui est servi du disque",
+        "en": "What is served from disk",
+    },
+    "    A package file: its name carries its version, so it never changes.": {
+        "fr": "    Un fichier de paquet : son nom porte sa version, il ne change jamais.",
+        "en": "    A package file: its name carries its version, so it never changes.",
+    },
+    "    The host name is ignored: a rotating mirror list still hits.": {
+        "fr": "    Le nom d'hôte est ignoré : une liste de miroirs qui tourne sert quand même.",
+        "en": "    The host name is ignored: a rotating mirror list still hits.",
+    },
+    "What is always taken from upstream": {
+        "fr": "Ce qui est toujours repris à l'amont",
+        "en": "What is always taken from upstream",
+    },
+    "    A repository index: it names the versions that exist right now.": {
+        "fr": "    Un index de dépôt : il nomme les versions qui existent en ce moment.",
+        "en": "    A repository index: it names the versions that exist right now.",
+    },
+    "    Serving a stale one makes an install fail on a withdrawn package.": {
+        "fr": "    En servir un périmé fait échouer une installation sur un paquet retiré.",
+        "en": "    Serving a stale one makes an install fail on a withdrawn package.",
+    },
+    "    It is stored anyway, and only comes back out when upstream is mute.": {
+        "fr": "    Il est stocké quand même, et ne ressort que si l'amont est muet.",
+        "en": "    It is stored anyway, and only comes back out when upstream is mute.",
+    },
+    "Where things live": {
+        "fr": "Où vivent les choses",
+        "en": "Where things live",
+    },
+    "Objects:": {"fr": "Objets :", "en": "Objects:"},
+    "Settings:": {"fr": "Réglages :", "en": "Settings:"},
+    "Access log:": {"fr": "Journal d'accès :", "en": "Access log:"},
+    "No eviction is written": {
+        "fr": "Aucune éviction n'est écrite",
+        "en": "No eviction is written",
+    },
+    "    This cache never shrinks by itself, and it lives on the": {
+        "fr": "    Ce cache ne diminue jamais de lui-même, et il vit sur le",
+        "en": "    This cache never shrinks by itself, and it lives on the",
+    },
+    "    orchestrator's disk. Watch it with the diagnosis entry.": {
+        "fr": "    disque de l'orchestrateur. Le surveiller par le diagnostic.",
+        "en": "    orchestrator's disk. Watch it with the diagnosis entry.",
+    },
+    "Turning it off": {"fr": "Le désactiver", "en": "Turning it off"},
+    "    Interception is transparent and covers the whole bridge: a VM": {
+        "fr": "    L'interception est transparente et couvre tout le pont : une VM",
+        "en": "    Interception is transparent and covers the whole bridge: a VM",
+    },
+    "    cannot opt out of it. Omitting the authority does not bypass": {
+        "fr": "    ne peut pas s'y soustraire. Omettre l'autorité ne contourne pas",
+        "en": "    cannot opt out of it. Omitting the authority does not bypass",
+    },
+    "    the cache — the VM is redirected all the same, and fails on": {
+        "fr": "    le cache — la VM est détournée quand même, et échoue sur",
+        "en": "    the cache — the VM is redirected all the same, and fails on",
+    },
+    "    « self-signed certificate in certificate chain ».": {
+        "fr": "    « self-signed certificate in certificate chain ».",
+        "en": "    « self-signed certificate in certificate chain ».",
+    },
+    "    The only true bypass stops the service:": {
+        "fr": "    Le seul contournement vrai arrête le service :",
+        "en": "    The only true bypass stops the service:",
+    },
+    "    The rules leave with it, so no VM stays redirected.": {
+        "fr": "    Les règles partent avec lui : aucune VM ne reste détournée.",
+        "en": "    The rules leave with it, so no VM stays redirected.",
+    },
+    "Proxmox": {"fr": "Proxmox", "en": "Proxmox"},
+    "    A Proxmox host that is itself a VM of this orchestrator crosses": {
+        "fr": "    Un hôte Proxmox qui est lui-même une VM d'ici traverse ce pont :",
+        "en": "    A Proxmox host that is itself a VM of this orchestrator crosses",
+    },
+    "    this bridge: the machines it carries come out behind its address,": {
+        "fr": "    les machines qu'il porte sortent derrière son adresse, le cache",
+        "en": "    this bridge: the machines it carries come out behind its address,",
+    },
+    "    so the cache serves them, and the deployment poses the authority": {
+        "fr": "    les sert donc, et le déploiement pose l'autorité dans chacune.",
+        "en": "    so the cache serves them, and the deployment poses the authority",
+    },
+    "    in each of them. A host that lives elsewhere is not concerned —": {
+        "fr": "    Un hôte qui vit ailleurs n'est pas concerné — y installer le",
+        "en": "    in each of them. A host that lives elsewhere is not concerned —",
+    },
+    "    install the cache ON it, the script being generic and Proxmox a": {
+        "fr": "    cache, le script étant générique et Proxmox un Debian. Réserve :",
+        "en": "    install the cache ON it, the script being generic and Proxmox a",
+    },
+    "    Debian. Reserve: a bridge switched onto the LAN is only seen by": {
+        "fr": "    un pont basculé sur le LAN n'est vu par les règles que si",
+        "en": "    Debian. Reserve: a bridge switched onto the LAN is only seen by",
+    },
+    "    the rules when br_netfilter is enabled.": {
+        "fr": "    br_netfilter est activé.",
+        "en": "    the rules when br_netfilter is enabled.",
+    },
+    "Cache tests: real VMs, several minutes": {
+        "fr": "Tests du cache : de vraies VM, quelques minutes",
+        "en": "Cache tests: real VMs, several minutes",
+    },
+    "Test - The plan only (dry-run)": {
+        "fr": "📋 Test - Le plan seul (à blanc)",
+        "en": "📋 Test - The plan only (dry-run)",
+    },
+    "Test - Two VMs, measure the gain": {
+        "fr": "📊 Test - Deux VM, mesurer le gain",
+        "en": "📊 Test - Two VMs, measure the gain",
+    },
+    "Test - Add the offline counter-proof": {
+        "fr": "🔌 Test - Ajouter la contre-épreuve hors ligne",
+        "en": "🔌 Test - Add the offline counter-proof",
+    },
+    "Test - Control run: two VMs WITHOUT the cache": {
+        "fr": "⚖ Test - Témoin : deux VM SANS le cache",
+        "en": "⚖ Test - Control run: two VMs WITHOUT the cache",
+    },
+    "Test - Performance report": {
+        "fr": "📈 Test - Rapport de performance",
+        "en": "📈 Test - Performance report",
+    },
+    "Test - Undo the machines created": {
+        "fr": "🧹 Test - Défaire les machines créées",
+        "en": "🧹 Test - Undo the machines created",
+    },
+    "The control run measures what NOT caching costs.": {
+        "fr": "Le témoin mesure ce que coûte l'ABSENCE de cache.",
+        "en": "The control run measures what NOT caching costs.",
+    },
+    "Install the download cache shared by the QEMU VMs of this host": {
+        "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",
+        "en": "Install the download cache shared by the QEMU VMs of this host",
+    },
+    "HTTP port of the cache (default: 8898): ": {
+        "fr": "Port HTTP du cache (défaut : 8898) : ",
+        "en": "HTTP port of the cache (default: 8898): ",
+    },
+    "TLS port of the cache (default: 8899): ": {
+        "fr": "Port TLS du cache (défaut : 8899) : ",
+        "en": "TLS port of the cache (default: 8899): ",
+    },
+    "Cache directory (default: /var/cache/erplibre_go_qemu_cache): ": {
+        "fr": "Répertoire du cache (défaut : /var/cache/erplibre_go_qemu_cache) : ",
+        "en": "Cache directory (default: /var/cache/erplibre_go_qemu_cache): ",
+    },
+    "Will write network rules on the host bridge:": {
+        "fr": "Va écrire des règles réseau sur le pont de l'hôte :",
+        "en": "Will write network rules on the host bridge:",
+    },
+    "Only what leaves the VM subnet is redirected": {
+        "fr": "Seul ce qui sort du sous-réseau des VM est détourné",
+        "en": "Only what leaves the VM subnet is redirected",
+    },
+    "The rules exist only while the service runs": {
+        "fr": "Les règles n'existent que pendant que le service tourne",
+        "en": "The rules exist only while the service runs",
+    },
+    "Go is absent; the installer lays it down": {
+        "fr": "Go est absent ; l'installateur le pose",
+        "en": "Go is absent; the installer lays it down",
+    },
+    "Install the QEMU download cache?": {
+        "fr": "Installer le cache de téléchargement QEMU ?",
+        "en": "Install the QEMU download cache?",
+    },
+    "Installing the QEMU download cache (requires sudo)...": {
+        "fr": "Installation du cache de téléchargement QEMU (sudo requis)...",
+        "en": "Installing the QEMU download cache (requires sudo)...",
+    },
+    "QEMU download cache installed and started": {
+        "fr": "Cache de téléchargement QEMU installé et démarré",
+        "en": "QEMU download cache installed and started",
+    },
+    "Certificate authority a VM must trust: ": {
+        "fr": "Autorité de certification qu'une VM doit approuver : ",
+        "en": "Certificate authority a VM must trust: ",
+    },
+    "The cache install failed, nothing is started": {
+        "fr": "L'installation du cache a échoué, rien n'est démarré",
+        "en": "The cache install failed, nothing is started",
+    },
+    "QEMU cache install script not found: ": {
+        "fr": "Script d'installation du cache QEMU introuvable : ",
+        "en": "QEMU cache install script not found: ",
+    },
+    "No eviction is written: this cache never shrinks by itself": {
+        "fr": "Aucune éviction n'est écrite : ce cache ne diminue jamais de lui-même",
+        "en": "No eviction is written: this cache never shrinks by itself",
+    },
+    "Download cache: plan only (dry-run)": {
+        "fr": "📦 Cache de téléchargement : le plan seul (à blanc)",
+        "en": "📦 Download cache: plan only (dry-run)",
+    },
+    "Download cache: two VMs, measure": {
+        "fr": "📦 Cache de téléchargement : deux VM, et la mesure",
+        "en": "📦 Download cache: two VMs, measure",
+    },
+    "Download cache: measure, then cut the upstream": {
+        "fr": "📦 Cache de téléchargement : mesurer, puis couper l'amont",
+        "en": "📦 Download cache: measure, then cut the upstream",
+    },
     # QEMU / KVM (libvirt) VM deployment
     "QEMU/KVM - Deploy an Ubuntu VM (libvirt)": {
         "fr": "💻 QEMU/KVM - Déployer une VM Ubuntu (libvirt)",
@@ -5678,13 +6411,649 @@ TRANSLATIONS = {
         "fr": "fuseau non posé",
         "en": "timezone not set",
     },
+    "No internet connection": {
+        "fr": "Sans connexion internet",
+        "en": "No internet connection",
+    },
+    "Cache - Fill what offline runs lacked": {
+        "fr": "🩹 Cache - Combler ce qui a manqué hors ligne",
+        "en": "🩹 Cache - Fill what offline runs lacked",
+    },
+    "Cache - Logs": {
+        "fr": "📜 Cache - Journaux",
+        "en": "📜 Cache - Logs",
+    },
+    "Read the error above, fix it, and run entry 1.": {
+        "fr": "Lire l'erreur ci-dessus, la corriger, et relancer l'entrée 1.",
+        "en": "Read the error above, fix it, and run entry 1.",
+    },
+    "Cache - Copy it to another machine": {
+        "fr": "📦 Cache - L'emporter sur une autre machine",
+        "en": "📦 Cache - Copy it to another machine",
+    },
+    "Copy the cache to another machine": {
+        "fr": "Emporter le cache sur une autre machine",
+        "en": "Copy the cache to another machine",
+    },
+    "Target machine (user@host, or an ssh alias)": {
+        "fr": "Machine d'arrivée (utilisateur@hôte, ou un alias ssh)",
+        "en": "Target machine (user@host, or an ssh alias)",
+    },
+    "The target has no cache installed:": {
+        "fr": "La machine d'arrivée n'a pas le cache :",
+        "en": "The target has no cache installed:",
+    },
+    "Cannot reach it over ssh:": {
+        "fr": "Injoignable par ssh :",
+        "en": "Cannot reach it over ssh:",
+    },
+    "This entry needs a password-less ssh access:": {
+        "fr": "Cette entrée exige un accès ssh sans mot de passe :",
+        "en": "This entry needs a password-less ssh access:",
+    },
+    "If it asks for a password, post a key there:": {
+        "fr": "S'il réclame un mot de passe, y déposer une clé :",
+        "en": "If it asks for a password, post a key there:",
+    },
+    "Entry 1 installs the cache HERE; the target needs its own.": {
+        "fr": "L'entrée 1 pose le cache ICI ; l'arrivée doit avoir le sien.",
+        "en": "Entry 1 installs the cache HERE; the target needs its own.",
+    },
+    "Steps, ON the target machine:": {
+        "fr": "Les gestes, SUR la machine d'arrivée :",
+        "en": "Steps, ON the target machine:",
+    },
+    "go to its ERPLibre checkout, then:": {
+        "fr": "aller dans son checkout ERPLibre, puis :",
+        "en": "go to its ERPLibre checkout, then:",
+    },
+    "without that branch, the installer is not there": {
+        "fr": "sans cette branche, l'installateur n'y est pas",
+        "en": "without that branch, the installer is not there",
+    },
+    "the branch used here": {
+        "fr": "la branche utilisée ici",
+        "en": "the branch used here",
+    },
+    "sudo asks for a password on the target:": {
+        "fr": "sudo réclame un mot de passe à l'arrivée :",
+        "en": "sudo asks for a password on the target:",
+    },
+    "The store travels on ssh stdin, which carries no terminal,": {
+        "fr": "Le magasin voyage dans l'entrée de ssh, qui n'a pas de terminal,",
+        "en": "The store travels on ssh stdin, which carries no terminal,",
+    },
+    "so nothing can type it. Two ways out:": {
+        "fr": "donc rien ne peut le taper. Deux issues :",
+        "en": "so nothing can type it. Two ways out:",
+    },
+    "1) Allow it there without a password, once:": {
+        "fr": "1) L'y autoriser sans mot de passe, une fois :",
+        "en": "1) Allow it there without a password, once:",
+    },
+    "2) Carry it in two steps, the last one in your terminal there:": {
+        "fr": "2) L'emporter en deux temps, le dernier dans ton terminal là-bas :",
+        "en": "2) Carry it in two steps, the last one in your terminal there:",
+    },
+    "needed there:": {
+        "fr": "place requise :",
+        "en": "needed there:",
+    },
+    "free there:": {
+        "fr": "place libre :",
+        "en": "free there:",
+    },
+    "Not enough room there: the two-step mode is out.": {
+        "fr": "Place insuffisante là-bas : le mode en deux temps est exclu.",
+        "en": "Not enough room there: the two-step mode is out.",
+    },
+    "Send it now, and print the command to finish there?": {
+        "fr": "Envoyer maintenant, et afficher la commande à finir là-bas ?",
+        "en": "Send it now, and print the command to finish there?",
+    },
+    "The send failed; nothing was extracted.": {
+        "fr": "L'envoi a échoué ; rien n'a été extrait.",
+        "en": "The send failed; nothing was extracted.",
+    },
+    "Sent. To finish, ON the target machine, in a terminal:": {
+        "fr": "Envoyé. Pour finir, SUR la machine d'arrivée, en terminal :",
+        "en": "Sent. To finish, ON the target machine, in a terminal:",
+    },
+    "The last command removes the file.": {
+        "fr": "La dernière commande retire le fichier.",
+        "en": "The last command removes the file.",
+    },
+    "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1": {
+        "fr": "ou, dans son TODO : Exécuter > Déploiement > Cache QEMU, entrée 1",
+        "en": "or, in its own TODO: Execute > Deploy > QEMU cache, entry 1",
+    },
+    "The installer reads the « default » libvirt network to find": {
+        "fr": "L'installateur lit le réseau libvirt « default » pour trouver",
+        "en": "The installer reads the « default » libvirt network to find",
+    },
+    "the bridge; a stopped libvirt makes it die on « not found »:": {
+        "fr": "le pont ; libvirt arrêté, il meurt sur un « introuvable » :",
+        "en": "the bridge; a stopped libvirt makes it die on « not found »:",
+    },
+    "Or name the bridge by hand, libvirt being optional then:": {
+        "fr": "Ou nommer le pont à la main, libvirt devenant facultatif :",
+        "en": "Or name the bridge by hand, libvirt being optional then:",
+    },
+    "Then come back to this entry.": {
+        "fr": "Puis revenir à cette entrée.",
+        "en": "Then come back to this entry.",
+    },
+    "The cache is there but its service account is not:": {
+        "fr": "Le cache est là, mais pas son compte de service :",
+        "en": "The cache is there but its service account is not:",
+    },
+    "Reinstall it there: the installer creates the account.": {
+        "fr": "L'y réinstaller : l'installateur crée le compte.",
+        "en": "Reinstall it there: the installer creates the account.",
+    },
+    "Carrying it to another machine": {
+        "fr": "L'emporter sur une autre machine",
+        "en": "Carrying it to another machine",
+    },
+    "    Entry 11 copies the STORE, not the service: an object is": {
+        "fr": "    L'entrée 11 copie le MAGASIN, pas le service : un objet est",
+        "en": "    Entry 11 copies the STORE, not the service: an object is",
+    },
+    "    keyed by URL and a git mirror is a repository, so both are": {
+        "fr": "    rangé sous une clé d'URL et un miroir git est un dépôt : les",
+        "en": "    keyed by URL and a git mirror is a repository, so both are",
+    },
+    "    worth the same elsewhere. The settings stay here — bridge,": {
+        "fr": "    deux valent ailleurs. Les réglages restent ici — le pont,",
+        "en": "    worth the same elsewhere. The settings stay here — bridge,",
+    },
+    "    subnet and authority belong to the host that serves them.": {
+        "fr": "    le sous-réseau et l'autorité sont à l'hôte qui les sert.",
+        "en": "    subnet and authority belong to the host that serves them.",
+    },
+    "    The target must already carry the cache, installed from": {
+        "fr": "    L'arrivée doit déjà porter le cache, posé depuis SON propre",
+        "en": "    The target must already carry the cache, installed from",
+    },
+    "    ITS own checkout, and answer ssh without a password.": {
+        "fr": "    checkout, et répondre à ssh sans mot de passe.",
+        "en": "    ITS own checkout, and answer ssh without a password.",
+    },
+    "What travels:": {
+        "fr": "Ce qui voyage :",
+        "en": "What travels:",
+    },
+    "objects": {
+        "fr": "objets",
+        "en": "objects",
+    },
+    "git mirrors": {
+        "fr": "miroirs git",
+        "en": "git mirrors",
+    },
+    "The settings stay here: bridge, subnet and authority": {
+        "fr": "Les réglages restent ici : pont, sous-réseau et autorité",
+        "en": "The settings stay here: bridge, subnet and authority",
+    },
+    "belong to this host, and are posed by entry 1 there.": {
+        "fr": "appartiennent à cet hôte ; l'entrée 1 les pose là-bas.",
+        "en": "belong to this host, and are posed by entry 1 there.",
+    },
+    "Copy now?": {
+        "fr": "Emporter maintenant ?",
+        "en": "Copy now?",
+    },
+    "Logs of the download cache": {
+        "fr": "Journaux du cache de téléchargement",
+        "en": "Logs of the download cache",
+    },
+    "Ctrl-C ends a live follow.": {
+        "fr": "Ctrl-C arrête un suivi en direct.",
+        "en": "Ctrl-C ends a live follow.",
+    },
+    "Logs - Requests, live": {
+        "fr": "Journaux - Les requêtes, en direct",
+        "en": "Logs - Requests, live",
+    },
+    "Logs - Only requests that went to the internet, live": {
+        "fr": "Journaux - Seulement les requêtes sorties sur l'internet, en direct",
+        "en": "Logs - Only requests that went to the internet, live",
+    },
+    "Logs - Last 40 requests": {
+        "fr": "Journaux - Les 40 dernières requêtes",
+        "en": "Logs - Last 40 requests",
+    },
+    "Logs - Service journal, live": {
+        "fr": "Journaux - Journal du service, en direct",
+        "en": "Logs - Service journal, live",
+    },
+    "No access log yet:": {
+        "fr": "Pas encore de journal d'accès :",
+        "en": "No access log yet:",
+    },
+    "apt mirror pinned": {
+        "fr": "miroir apt fixé",
+        "en": "apt mirror pinned",
+    },
+    "the cache has no package named": {
+        "fr": "le cache n'a aucun paquet nommé",
+        "en": "the cache has no package named",
+    },
+    "an offline VM will not install it": {
+        "fr": "une VM hors ligne ne l'installera pas",
+        "en": "an offline VM will not install it",
+    },
+    "these git repositories are not mirrored:": {
+        "fr": "ces dépôts git ne sont pas en miroir :",
+        "en": "these git repositories are not mirrored:",
+    },
+    "an offline VM cannot clone them": {
+        "fr": "une VM hors ligne ne peut pas les cloner",
+        "en": "an offline VM cannot clone them",
+    },
+    "fill them from Cache › Git mirrors": {
+        "fr": "les remplir depuis Cache › Miroirs git",
+        "en": "fill them from Cache › Git mirrors",
+    },
+    "cache holds no index for": {
+        "fr": "le cache n'a aucun index pour",
+        "en": "cache holds no index for",
+    },
+    "those packages will not be found": {
+        "fr": "ces paquets ne seront pas trouvés",
+        "en": "those packages will not be found",
+    },
+    "waiting for the VM to answer ssh": {
+        "fr": "attente que la VM réponde en ssh",
+        "en": "waiting for the VM to answer ssh",
+    },
+    "No ssh answer: guest left as created.": {
+        "fr": "Pas de réponse ssh : l'invité reste tel qu'il est né.",
+        "en": "No ssh answer: guest left as created.",
+    },
+    "apt mirror not pinned": {
+        "fr": "miroir apt non fixé",
+        "en": "apt mirror not pinned",
+    },
+    "    Entry 10 follows it live: a request that goes out to the": {
+        "fr": "    L'entrée 10 le suit en direct : une requête qui sort sur",
+        "en": "    Entry 10 follows it live: a request that goes out to the",
+    },
+    "    internet shows there, and a cut leaves that view empty.": {
+        "fr": "    l'internet s'y voit, et une coupure y laisse le vide.",
+        "en": "    internet shows there, and a cut leaves that view empty.",
+    },
+    "What offline runs lacked": {
+        "fr": "Ce qui a manqué hors ligne",
+        "en": "What offline runs lacked",
+    },
+    "Start it from entry 3 of this menu.": {
+        "fr": "Le démarrer depuis l'entrée 3 de ce menu.",
+        "en": "Start it from entry 3 of this menu.",
+    },
+    "A replay now would only record more misses.": {
+        "fr": "Un rejeu maintenant ne ferait qu'ajouter des manques.",
+        "en": "A replay now would only record more misses.",
+    },
+    "No offline miss in the recent window: nothing to fill.": {
+        "fr": "Aucun manque hors ligne récent : rien à combler.",
+        "en": "No offline miss in the recent window: nothing to fill.",
+    },
+    "Everything that was missed is held now.": {
+        "fr": "Tout ce qui a manqué est désormais détenu.",
+        "en": "Everything that was missed is held now.",
+    },
+    "according to the log: a purge can make it wrong": {
+        "fr": "selon le journal : une purge peut le rendre faux",
+        "en": "according to the log: a purge can make it wrong",
+    },
+    "replay through the cache": {
+        "fr": "à rejouer par le cache",
+        "en": "replay through the cache",
+    },
+    "never kept: the cache keeps only GET and HEAD": {
+        "fr": "jamais gardée : le cache ne garde que GET et HEAD",
+        "en": "never kept: the cache keeps only GET and HEAD",
+    },
+    "the cache does not keep this address": {
+        "fr": "le cache ne garde pas cette adresse",
+        "en": "the cache does not keep this address",
+    },
+    "host in tunnel: nothing to keep": {
+        "fr": "hôte en tunnel : rien à garder",
+        "en": "host in tunnel: nothing to keep",
+    },
+    "git negotiation: fill the mirror from entry 5": {
+        "fr": "négociation git : remplir le miroir depuis l'entrée 5",
+        "en": "git negotiation: fill the mirror from entry 5",
+    },
+    "not a host name: a replay could loop back into the cache": {
+        "fr": "pas un nom d'hôte : le rejeu pourrait revenir dans le cache",
+        "en": "not a host name: a replay could loop back into the cache",
+    },
+    "Nothing here can be replayed.": {
+        "fr": "Rien ici ne peut être rejoué.",
+        "en": "Nothing here can be replayed.",
+    },
+    "The replay sends curl's own headers: a server that varies on": {
+        "fr": "Le rejeu envoie les en-têtes de curl : un serveur qui varie selon",
+        "en": "The replay sends curl's own headers: a server that varies on",
+    },
+    "User-Agent or Accept may keep another answer than the VM's.": {
+        "fr": "User-Agent ou Accept peut garder une autre réponse que celle de la VM.",
+        "en": "User-Agent or Accept may keep another answer than the VM's.",
+    },
+    "Replay these addresses through the cache now?": {
+        "fr": "Rejouer ces adresses par le cache maintenant ?",
+        "en": "Replay these addresses through the cache now?",
+    },
+    "held": {
+        "fr": "détenu",
+        "en": "held",
+    },
+    "not held": {
+        "fr": "non détenu",
+        "en": "not held",
+    },
+    "not re-checked: this binary has no --detient": {
+        "fr": "non revérifié : ce binaire n'a pas --detient",
+        "en": "not re-checked: this binary has no --detient",
+    },
+    "Tunnel refusals learned by the service:": {
+        "fr": "Refus de tunnel appris par le service :",
+        "en": "Tunnel refusals learned by the service:",
+    },
+    "curl got no answer": {
+        "fr": "curl n'a obtenu aucune réponse",
+        "en": "curl got no answer",
+    },
+    "the last offline run of": {
+        "fr": "le dernier déploiement hors ligne de",
+        "en": "the last offline run of",
+    },
+    "age:": {
+        "fr": "âge :",
+        "en": "age:",
+    },
+    "lacked at least": {
+        "fr": "a manqué d'au moins",
+        "en": "lacked at least",
+    },
+    "addresses": {
+        "fr": "adresses",
+        "en": "addresses",
+    },
+    "e.g.": {
+        "fr": "par exemple",
+        "en": "e.g.",
+    },
+    "fill them from Cache › Fill what offline runs lacked": {
+        "fr": "les combler depuis Cache › Combler ce qui a manqué hors ligne",
+        "en": "fill them from Cache › Fill what offline runs lacked",
+    },
+    "Upstream CUT: the cache can pull nothing from the internet": {
+        "fr": "Amont COUPÉ : le cache ne peut rien tirer de l'internet",
+        "en": "Upstream CUT: the cache can pull nothing from the internet",
+    },
+    "Every VM then gets a 504 from every mirror.": {
+        "fr": "Toute VM reçoit alors un 504 depuis tous les miroirs.",
+        "en": "Every VM then gets a 504 from every mirror.",
+    },
+    "Lift it with:": {
+        "fr": "La lever par :",
+        "en": "Lift it with:",
+    },
+    "cache holds nothing for": {
+        "fr": "le cache ne détient rien pour",
+        "en": "cache holds nothing for",
+    },
+    "an offline VM will fail": {
+        "fr": "une VM hors ligne échouera",
+        "en": "an offline VM will fail",
+    },
+    "The cut hits every user of the cache:": {
+        "fr": "La coupure vaut pour tous les usagers du cache :",
+        "en": "The cut hits every user of the cache:",
+    },
+    "a deployment run from another terminal": {
+        "fr": "un déploiement mené depuis un autre terminal",
+        "en": "a deployment run from another terminal",
+    },
+    "goes offline too, without asking for it.": {
+        "fr": "sera hors ligne aussi, sans l'avoir demandé.",
+        "en": "goes offline too, without asking for it.",
+    },
+    "Cache upstream cut for this deployment.": {
+        "fr": "Amont du cache coupé pour ce déploiement.",
+        "en": "Cache upstream cut for this deployment.",
+    },
+    "Cache upstream restored.": {
+        "fr": "Amont du cache rebranché.",
+        "en": "Cache upstream restored.",
+    },
+    "Upstream not cut: nothing deployed.": {
+        "fr": "Amont non coupé : rien n'est déployé.",
+        "en": "Upstream not cut: nothing deployed.",
+    },
+    "The result would look offline without being so.": {
+        "fr": "Le résultat se lirait comme hors ligne sans l'être.",
+        "en": "The result would look offline without being so.",
+    },
+    "dnsmasq is missing on the host: names cannot": {
+        "fr": "dnsmasq manque sur l'hôte : les noms ne peuvent",
+        "en": "dnsmasq is missing on the host: names cannot",
+    },
+    "be cut. Install the dnsmasq package, then F5.": {
+        "fr": "pas être coupés. Installer le paquet dnsmasq, puis F5.",
+        "en": "be cut. Install the dnsmasq package, then F5.",
+    },
+    "download cache authority installed": {
+        "fr": "autorité du cache de téléchargement posée",
+        "en": "download cache authority installed",
+    },
+    "download cache authority not installed": {
+        "fr": "autorité du cache de téléchargement non posée",
+        "en": "download cache authority not installed",
+    },
     "waiting for the guest agent install (apt lock)": {
         "fr": "attente de la pose de l'agent invité (verrou apt)",
         "en": "waiting for the guest agent install (apt lock)",
     },
-    "apt-get update never succeeded: the lock stayed held": {
+    "apt-get update never succeeded in 5 min (lock held, or nothing served)": {
         "fr": "apt-get update n'a jamais abouti : le verrou est resté pris",
-        "en": "apt-get update never succeeded: the lock stayed held",
+        "en": "apt-get update never succeeded in 5 min (lock held, or nothing served)",
+    },
+    "An offline deployment is still running: the cut": {
+        "fr": "Un déploiement hors ligne tourne encore : la coupure",
+        "en": "An offline deployment is still running: the cut",
+    },
+    "is shared, and its end would lift yours.": {
+        "fr": "est partagée, et sa fin lèverait la vôtre.",
+        "en": "is shared, and its end would lift yours.",
+    },
+    "Nothing deployed.": {
+        "fr": "Rien n'est déployé.",
+        "en": "Nothing deployed.",
+    },
+    "Lift it now with:": {
+        "fr": "La lever maintenant par :",
+        "en": "Lift it now with:",
+    },
+    "The cache upstream is already cut, and nothing": {
+        "fr": "L'amont du cache est déjà coupé, et rien",
+        "en": "The cache upstream is already cut, and nothing",
+    },
+    "will lift it: an interrupted deployment, or one": {
+        "fr": "ne le rebranchera : un déploiement interrompu, ou un",
+        "en": "will lift it: an interrupted deployment, or one",
+    },
+    "still installing without the monitor.": {
+        "fr": "autre qui installe encore sans le suivi.",
+        "en": "still installing without the monitor.",
+    },
+    "Lift it and continue? (y/N): ": {
+        "fr": "Lever la coupure et continuer ? (o/N) : ",
+        "en": "Lift it and continue? (y/N): ",
+    },
+    "The cache upstream stays cut until the last": {
+        "fr": "L'amont du cache reste coupé jusqu'à la fin de la",
+        "en": "The cache upstream stays cut until the last",
+    },
+    "installation ends, at most": {
+        "fr": "dernière installation, au plus",
+        "en": "installation ends, at most",
+    },
+    "The cache upstream comes back when the last": {
+        "fr": "L'amont du cache revient à la fin de la",
+        "en": "The cache upstream comes back when the last",
+    },
+    "even if the monitor is closed.": {
+        "fr": "même si le suivi est fermé.",
+        "en": "even if the monitor is closed.",
+    },
+    "Could not hand the lift over to systemd-run:": {
+        "fr": "Impossible de confier la levée à systemd-run :",
+        "en": "Could not hand the lift over to systemd-run:",
+    },
+    "the cache upstream comes back when the monitor": {
+        "fr": "l'amont du cache revient à la fermeture du suivi ;",
+        "en": "the cache upstream comes back when the monitor",
+    },
+    "closes; closing it early finishes the installs online.": {
+        "fr": "le fermer avant la fin fait finir les installations en ligne.",
+        "en": "closes; closing it early finishes the installs online.",
+    },
+    "The cache upstream may still be cut.": {
+        "fr": "L'amont du cache est peut-être encore coupé.",
+        "en": "The cache upstream may still be cut.",
+    },
+    "Existing checkout kept, not updated:": {
+        "fr": "Dépôt existant gardé, sans mise à jour :",
+        "en": "Existing checkout kept, not updated:",
+    },
+    "The cache mirror has no branch": {
+        "fr": "Le miroir du cache n'a pas la branche",
+        "en": "The cache mirror has no branch",
+    },
+    "an offline clone will fail.": {
+        "fr": "un clone hors ligne échouera.",
+        "en": "an offline clone will fail.",
+    },
+    "Offline, the VM clones the cache mirror of": {
+        "fr": "Hors ligne, la VM clone le miroir du cache de",
+        "en": "Offline, the VM clones the cache mirror of",
+    },
+    "this checkout has": {
+        "fr": "ce checkout est à",
+        "en": "this checkout has",
+    },
+    "commit(s) missing from the mirror": {
+        "fr": "commit(s) absent(s) du miroir",
+        "en": "commit(s) missing from the mirror",
+    },
+    "A push alone changes nothing: the mirror is": {
+        "fr": "Un push seul n'y change rien : le miroir ne se",
+        "en": "A push alone changes nothing: the mirror is",
+    },
+    "refreshed only when a VM clones it online.": {
+        "fr": "rafraîchit que quand une VM le clone en ligne.",
+        "en": "refreshed only when a VM clones it online.",
+    },
+    "Nothing is cut before F5: the upstream falls": {
+        "fr": "Rien n'est coupé avant F5 : l'amont tombe",
+        "en": "Nothing is cut before F5: the upstream falls",
+    },
+    "at launch and comes back when the last install": {
+        "fr": "au lancement et revient à la fin de la dernière",
+        "en": "at launch and comes back when the last install",
+    },
+    "ends (12 h at most), even with the monitor closed.": {
+        "fr": "installation (12 h au plus), suivi fermé ou non.",
+        "en": "ends (12 h at most), even with the monitor closed.",
+    },
+    "Another offline deployment is starting or": {
+        "fr": "Un autre déploiement hors ligne démarre ou",
+        "en": "Another offline deployment is starting or",
+    },
+    "running in another terminal.": {
+        "fr": "tourne dans un autre terminal.",
+        "en": "running in another terminal.",
+    },
+    "An offline deployment is still installing.": {
+        "fr": "Un déploiement hors ligne installe encore.",
+        "en": "An offline deployment is still installing.",
+    },
+    "This deployment would therefore run offline.": {
+        "fr": "Ce déploiement tournerait donc hors ligne.",
+        "en": "This deployment would therefore run offline.",
+    },
+    "An offline deployment is starting in another": {
+        "fr": "Un déploiement hors ligne se lance dans un autre",
+        "en": "An offline deployment is starting in another",
+    },
+    "terminal: the cache upstream is cut until it ends.": {
+        "fr": "terminal : l'amont du cache est coupé jusqu'à sa fin.",
+        "en": "terminal: the cache upstream is cut until it ends.",
+    },
+    "Deploy anyway, offline? (y/N): ": {
+        "fr": "Déployer quand même, hors ligne ? (o/N) : ",
+        "en": "Deploy anyway, offline? (y/N): ",
+    },
+    "Upstream CUT by an offline deployment still installing,": {
+        "fr": "Amont COUPÉ par un déploiement hors ligne qui installe encore,",
+        "en": "Upstream CUT by an offline deployment still installing,",
+    },
+    "held until its last installation ends (12 h at most).": {
+        "fr": "coupure tenue jusqu'à la fin de sa dernière installation (12 h au plus).",
+        "en": "held until its last installation ends (12 h at most).",
+    },
+    "Lifting it now makes those installations finish online.": {
+        "fr": "La lever maintenant fait finir ces installations en ligne.",
+        "en": "Lifting it now makes those installations finish online.",
+    },
+    "The lift watcher still runs, with no cut left to lift.": {
+        "fr": "Le guet de levée tourne encore, sans coupure à lever.",
+        "en": "The lift watcher still runs, with no cut left to lift.",
+    },
+    "Stop it with:": {
+        "fr": "L'arrêter par :",
+        "en": "Stop it with:",
+    },
+    "Cannot tell whether the upstream is cut: reading nft needs a sudo password here.": {
+        "fr": "Impossible de savoir si l'amont est coupé : lire nft exige ici le mot de passe de sudo.",
+        "en": "Cannot tell whether the upstream is cut: reading nft needs a sudo password here.",
+    },
+    "Under the cut, a replay would only record more misses.": {
+        "fr": "Sous la coupure, un rejeu n'ajouterait que des manques.",
+        "en": "Under the cut, a replay would only record more misses.",
+    },
+    "Replay anyway?": {
+        "fr": "Rejouer quand même ?",
+        "en": "Replay anyway?",
+    },
+    "The monitor stays ticked: it is what arms that return.": {
+        "fr": "Le suivi reste coché : c'est lui qui arme ce retour.",
+        "en": "The monitor stays ticked: it is what arms that return.",
+    },
+    "git repositories not mirrored: fill them from entry 5 of the cache menu": {
+        "fr": "dépôts git absents du miroir : les remplir depuis l'entrée 5 du menu du cache",
+        "en": "git repositories not mirrored: fill them from entry 5 of the cache menu",
+    },
+    "requests the cache never keeps:": {
+        "fr": "requêtes que le cache ne garde jamais :",
+        "en": "requests the cache never keeps:",
+    },
+    "Cuts internet for the cache and the VMs: proves": {
+        "fr": "Coupe l'internet du cache et des VM : prouve que",
+        "en": "Cuts internet for the cache and the VMs: proves",
+    },
+    "the install builds from what the cache holds.": {
+        "fr": "l'installation se bâtit avec ce que le cache détient.",
+        "en": "the install builds from what the cache holds.",
+    },
+    "The VMs have no direct way out either: only the host answers them.": {
+        "fr": "Les VM n'ont plus de sortie directe non plus : seul l'hôte leur répond.",
+        "en": "The VMs have no direct way out either: only the host answers them.",
     },
     "Timezone": {
         "fr": "Fuseau horaire",

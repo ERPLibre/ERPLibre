@@ -128,6 +128,16 @@ class TestLaDecisionDuDeploiement(unittest.TestCase):
         )
         todo._qemu_install_erplibre_vm = lambda *a, **k: appels.append("muet")
         todo._qemu_resolve_ips = lambda names, labels=None: {}
+        # Même en ligne, le déploiement relit l'état de la coupure : un hôte
+        # simulé sans guet et un verrou introuvable tiennent la machine de
+        # test hors du jeu.
+        import tempfile
+        from pathlib import Path
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        todo._qemu_shell = lambda cmd, timeout=60: 1
+        todo._qemu_verrou_hors_ligne_chemin = lambda: Path(tmp.name) / "absent"
         base = {
             "vms": [],
             "existing": ["vm-a"],

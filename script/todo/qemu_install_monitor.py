@@ -22,13 +22,10 @@ import shutil
 import socket
 import subprocess
 import time
-
-from script.todo.qemu_privilege import (
-    LIBVIRT_URI as URI,
-    sudo_prefix,
-    virsh_argv,
-)
 from pathlib import Path
+
+from script.todo.qemu_privilege import LIBVIRT_URI as URI
+from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 
 try:
     from script.todo.todo_i18n import t
@@ -368,10 +365,27 @@ def _log_header(vm: dict, branch: str, when: str) -> str:
     )
 
 
-def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
+def launch_installs(
+    vms: list[dict],
+    branch: str,
+    remote_cmd: str,
+    deploy_started: float | None = None,
+    hors_ligne: bool | None = None,
+) -> str:
     """vms : [{name, ip, distro?, version?, arch?}]. Lance chaque install
     détachée, écrit un manifeste et retourne son chemin. remote_cmd : script
-    exécuté dans chaque VM."""
+    exécuté dans chaque VM.
+
+    `deploy_started` : instant (epoch, secondes) où le déploiement a commencé,
+    AVANT la création des VM. Écrit tel quel sous « deploy_started », et
+    seulement s'il est donné : « started » n'est posé qu'ici, après le
+    premier démarrage des VM, et une fenêtre ouverte à « started » laisse
+    dehors ce que cloud-init et l'agent invité ont déjà demandé au cache.
+
+    `hors_ligne` : l'amont du cache était coupé pendant ce déploiement.
+    Écrit sous « offline », true ou false, et seulement s'il est donné : un
+    manifeste sans la clé ne dit pas s'il a tourné coupé, et le bilan hors
+    ligne le traite comme tel."""
     sdir = session_dir()
     stamp = time.strftime("%Y%m%d-%H%M%S")
     when = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -423,6 +437,10 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         "started": time.time(),
         "vms": entries,
     }
+    if deploy_started is not None:
+        manifest["deploy_started"] = float(deploy_started)
+    if hors_ligne is not None:
+        manifest["offline"] = bool(hors_ligne)
     manifest_path = str(logdir / "session.json")
     Path(manifest_path).write_text(json.dumps(manifest, indent=2))
     return manifest_path

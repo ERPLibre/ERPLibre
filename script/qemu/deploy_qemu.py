@@ -53,11 +53,12 @@ import grp
 import gzip
 import hashlib
 import ipaddress
-import zlib
 import os
-import re
-import shutil
 import pwd
+import re
+import secrets
+import shlex
+import shutil
 import socket
 import stat as stat_mod
 import subprocess
@@ -68,6 +69,7 @@ import time
 import urllib.error
 import urllib.request
 import warnings
+import zlib
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
@@ -1681,24 +1683,38 @@ APT_MIRRORS_MAIN = [
 PORTS_ARCHES = ("s390x", "arm64", "aarch64", "ppc64el", "riscv64")
 
 
-def apt_mirror_lines(arch: str, override: str | None = None) -> list[str]:
+def apt_mirror_lines(
+    arch: str, override: str | None = None, fixe: bool = False
+) -> list[str]:
     """Bloc « apt: » du cloud-config, ou [] si rien à écrire.
 
     Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
     « search » y écrirait des URI qui n'existent pas.
+
+    Un miroir imposé (« override »), ou le premier de la liste quand « fixe »
+    est vrai, s'écrit « uri: » et non « search: ». La recherche de cloud-init
+    écarte tout miroir dont le nom se résout comme un nom inexistant :
+    derrière un résolveur qui répond à tout nom, elle les écarte tous et
+    retombe sur le dépôt officiel. Le cache range les index sous leur hôte,
+    si bien qu'une VM derrière lui doit tirer du même miroir que les
+    précédentes pour retrouver ce qu'elles ont gardé, en ligne comme hors
+    ligne.
     """
     mirrors = (
         [override]
         if override
         else (APT_MIRRORS_PORTS if arch in PORTS_ARCHES else APT_MIRRORS_MAIN)
     )
-    lines = ["apt:", "  primary:", "    - arches: [default]", "      search:"]
-    lines += [f"        - {m}" for m in mirrors]
+
+    def bloc(nom):
+        tete = [f"  {nom}:", "    - arches: [default]"]
+        if override or fixe:
+            return tete + [f"      uri: {mirrors[0]}"]
+        return tete + ["      search:"] + [f"        - {m}" for m in mirrors]
+
     # La sécurité suit le même dépôt pour les arches ports ; sur amd64 elle a
     # son propre hôte, que les miroirs répliquent sous le même chemin.
-    lines += ["  security:", "    - arches: [default]", "      search:"]
-    lines += [f"        - {m}" for m in mirrors]
-    return lines
+    return ["apt:"] + bloc("primary") + bloc("security")
 
 
 def kvm_available() -> bool:
@@ -2400,6 +2416,296 @@ def installer_guide_name(path: str) -> str:
     return INSTALLER_GUIDE_PREFIX + path.strip("/").replace("/", "-")
 
 
+# Où chaque famille de distribution range ses ancres de confiance, et par
+# quelle commande elle les relit. La même table vit dans
+# script/qemu_cache/rules.go, côté cache ; un test les compare, la dérive
+# entre deux copies étant le seul risque de cette duplication.
+#
+# Les familles portent le nom de leur gestionnaire de paquets, comme
+# « _QEMU_DISTRO_FAMILY » du menu.
+# Trois valeurs par famille : où poser l'ancre, quelle commande relit le
+# magasin, et quel FAISCEAU cette commande régénère.
+CACHE_TRUST = {
+    "pacman": (
+        "/etc/ca-certificates/trust-source/anchors",
+        "trust extract-compat",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ),
+    "apt": (
+        "/usr/local/share/ca-certificates",
+        "update-ca-certificates",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ),
+    "dnf": (
+        "/etc/pki/ca-trust/source/anchors",
+        "update-ca-trust",
+        "/etc/pki/tls/certs/ca-bundle.crt",
+    ),
+    "zypper": (
+        "/etc/pki/trust/anchors",
+        "update-ca-certificates",
+        "/etc/ssl/certs/ca-certificates.crt",
+    ),
+}
+
+# pip embarque son propre jeu de certificats et IGNORE le magasin système ;
+# npm fait de même. Poser l'autorité suffit à pacman et à apt, pas à eux.
+#
+# Les variables visent le FAISCEAU, non le certificat du cache : pointer
+# celui-là ferait perdre à pip toutes les autres autorités — il échouerait sur
+# le premier hôte que le cache ne déchiffre pas, et le jour où le cache
+# disparaît alors que la VM garde sa variable.
+CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
+
+CACHE_CERT_NAME = "erplibre-cache.crt"
+
+
+def cache_family(distro: str) -> str:
+    """Famille de gestionnaire de paquets d'un système du catalogue.
+
+    Lue de DISTRO_PKG, qui est LA table du catalogue, plutôt que recopiée
+    ici : une copie dérive, et le système qu'elle oublie est déployé SANS
+    l'autorité du cache, alors que le détournement, lui, porte sur tout le
+    pont. Chaque téléchargement HTTPS y échoue sur « self-signed certificate
+    in certificate chain », message qui ne dit rien d'une table incomplète.
+    """
+    return DISTRO_PKG.get(distro, "")
+
+
+# ---------------------------------------------------------------------------
+# Soustraire une VM au cache : l'exception par adresse MAC
+# ---------------------------------------------------------------------------
+
+# Le détournement du cache est TRANSPARENT et vaut pour tout le pont. Ne pas
+# donner l'autorité à une VM ne la dispense donc pas d'être interceptée : elle
+# reçoit un certificat qu'elle ne reconnaît pas et échoue sur « self-signed
+# certificate in certificate chain ». La seule exception qui vaille est posée
+# sur l'HÔTE, et elle a besoin d'un identifiant stable — l'adresse MAC, fixée
+# dans la définition du domaine, là où l'adresse IP vient d'un bail.
+#
+# D'où l'ordre imposé ici : la MAC est CHOISIE avant la création, l'exception
+# est posée, et la VM démarre ensuite. L'inverse — créer puis lire la MAC —
+# laisserait la fenêtre où cloud-init télécharge déjà.
+CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
+CACHE_SERVICE = "erplibre-go-qemu-cache.service"
+
+# Le préfixe que QEMU/KVM se voit attribuer. S'en écarter ferait passer la VM
+# pour une machine d'un autre constructeur auprès de ce qui lit les OUI.
+MAC_PREFIXE = "52:54:00"
+
+
+def mac_du_network(network: str) -> str:
+    """La MAC déjà demandée dans l'argument --network, ou "".
+
+    Une MAC posée à la main l'emporte : l'appelant sait ce qu'il veut, et lui
+    en substituer une autre casserait une réservation DHCP.
+    """
+    for champ in network.split(","):
+        cle, _, valeur = champ.partition("=")
+        if cle.strip() == "mac":
+            return valeur.strip()
+    return ""
+
+
+def macs_deja_prises(runner: Runner) -> set[str]:
+    """Les MAC que portent les domaines existants, en minuscules.
+
+    Libvirt refuse une MAC en double, mais l'erreur arrive au moment de la
+    création, après le téléchargement de l'image. La lire avant coûte deux
+    appels et rend le refus immédiat.
+    """
+    code, sortie = runner.run(
+        ["virsh", "-c", LIBVIRT_URI, "list", "--all", "--name"],
+        privileged=True,
+        check=False,
+        capture=True,
+    )
+    if code:
+        return set()
+    prises: set[str] = set()
+    for nom in (sortie or "").split("\n"):
+        nom = nom.strip()
+        if not nom:
+            continue
+        code, xml = runner.run(
+            ["virsh", "-c", LIBVIRT_URI, "domiflist", nom],
+            privileged=True,
+            check=False,
+            capture=True,
+        )
+        if code:
+            continue
+        prises.update(
+            m.lower()
+            for m in re.findall(
+                r"\b([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})\b", xml or ""
+            )
+        )
+    return prises
+
+
+def mac_neuve(prises: set[str]) -> str:
+    """Une MAC du préfixe QEMU qu'aucun domaine ne porte.
+
+    Le tirage est aléatoire sur trois octets : la collision est improbable,
+    mais elle n'apparaîtrait qu'à la création, une fois l'image téléchargée.
+    Une poignée d'essais suffit à la rendre impossible en pratique.
+    """
+    for _ in range(64):
+        octets = [secrets.randbelow(256) for _ in range(3)]
+        mac = MAC_PREFIXE + ":" + ":".join(f"{o:02x}" for o in octets)
+        if mac not in prises:
+            return mac
+    raise RuntimeError("aucune adresse MAC libre après 64 tirages")
+
+
+def network_avec_mac(network: str, mac: str) -> str:
+    """Ajoute « mac=… » à l'argument --network, sans toucher au reste."""
+    if mac_du_network(network):
+        return network
+    return f"{network},mac={mac}"
+
+
+def cache_bypass_apply(args: argparse.Namespace, runner: Runner) -> str:
+    """Pose l'exception et rend la MAC retenue, ou "" si rien n'est à faire.
+
+    Rend "" sans se plaindre quand le cache n'est pas là ou ne tourne pas :
+    dans ce cas rien n'intercepte, et la VM télécharge en direct — ce que
+    l'appelant demandait. Se plaindre alors serait exiger d'installer un cache
+    pour pouvoir s'en passer.
+
+    L'exception est écrite dans un fichier ET posée à chaud dans l'ensemble
+    nftables. Le fichier la fait survivre au redémarrage du service ;
+    l'ensemble évite d'avoir à reposer les règles, ce qui couperait les
+    téléchargements des autres VM en cours.
+    """
+    if not getattr(args, "cache_bypass", False):
+        return ""
+    if not os.path.isfile(CACHE_BIN):
+        print(
+            "  cache absent de cet hôte : rien n'intercepte, rien à excepter"
+        )
+        return ""
+    code, _ = runner.run(
+        ["systemctl", "is-active", "--quiet", CACHE_SERVICE],
+        check=False,
+        capture=True,
+    )
+    if code and not args.dry_run:
+        print("  cache arrêté : rien n'intercepte, rien à excepter")
+        return ""
+
+    mac = mac_du_network(args.network) or mac_neuve(macs_deja_prises(runner))
+    args.network = network_avec_mac(args.network, mac)
+
+    geste = (
+        f"{shlex.quote(CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
+        f" --bypass-name {shlex.quote(args.name)}"
+    )
+    if shutil.which("nft"):
+        # Le binaire écrit le fichier et rend sur sa sortie le geste à chaud.
+        runner.run(["sh", "-c", f"{geste} | nft -f -"], privileged=True)
+    else:
+        # Sans nft, les règles sont des « -A » iptables sans ensemble nommé :
+        # l'exception ne peut entrer qu'en reposant la chaîne entière, ce que
+        # fait le redémarrage du service.
+        runner.run(["sh", "-c", geste], privileged=True)
+        runner.run(["systemctl", "restart", CACHE_SERVICE], privileged=True)
+    print(f"  VM soustraite au cache : {mac}")
+    return mac
+
+
+def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
+    """L'autorité du cache, posée par cloud-init à l'étape init.
+
+    Rend une liste vide quand aucune autorité n'est demandée, ou quand la
+    distribution n'est pas dans la table : mieux vaut une VM qui télécharge
+    en direct qu'une VM dont le magasin de confiance a reçu un fichier au
+    mauvais endroit, où il ne servirait à rien sans que rien ne le dise.
+
+    Le fichier est écrit à l'étape INIT, donc avant « runcmd » et avant tout
+    téléchargement : ce dépôt n'installe aucun paquet par cloud-init et laisse
+    « package_update » à faux, si bien que rien ne sort sur le réseau entre le
+    démarrage et la commande de confiance.
+    """
+    if not args.cache_ca:
+        return []
+    # Les deux ensemble n'ont pas de sens : une VM exceptée ne rencontre
+    # jamais le cache, et lui faire approuver cette autorité poserait dans son
+    # magasin une signature dont rien ne se sert. L'exception l'emporte, étant
+    # la demande la plus précise.
+    if getattr(args, "cache_bypass", False):
+        return []
+    famille = cache_family(args.distro)
+    if famille not in CACHE_TRUST:
+        return []
+    try:
+        with open(args.cache_ca, encoding="utf-8") as fh:
+            pem = fh.read()
+    except OSError:
+        # Une autorité illisible ne doit pas faire échouer un déploiement :
+        # sans elle, la VM télécharge en direct, ce qui marche.
+        return []
+    if "BEGIN CERTIFICATE" not in pem:
+        return []
+    anchors = CACHE_TRUST[famille][0]
+    return [(f"{anchors}/{CACHE_CERT_NAME}", "0644", pem, "")]
+
+
+def cache_commands(args: argparse.Namespace) -> list[str]:
+    """Ce qui rend l'autorité effective, et ce que pip et npm exigent en plus.
+
+    Des commandes SHELL, dans cet ordre : relire le magasin de confiance, puis
+    écrire les variables dans /etc/environment — que PAM lit pour TOUTE
+    session ssh, interactive ou non, ce qui est la seule façon d'atteindre le
+    bootstrap d'installation lancé par commande distante.
+
+    Du shell et non du YAML : cloud-init n'est pas la seule voie de livraison.
+    Une VM née sur un hôte Proxmox reçoit les mêmes gestes par ssh, « qm set »
+    ne sachant écrire aucun fichier. Une source unique, deux emballages.
+
+    Chaque commande est tolérante à son propre échec : une autorité déjà
+    approuvée, ou une variable déjà écrite, n'est pas une raison d'arrêter.
+    """
+    if not cache_files(args):
+        return []
+    _, commande, faisceau = CACHE_TRUST[cache_family(args.distro)]
+    commandes = [f"{commande} || true"]
+    for var in CACHE_ENV_VARS:
+        commandes.append(
+            f"sh -c 'grep -q ^{var}= /etc/environment"
+            f" || echo {var}={faisceau} >> /etc/environment'"
+        )
+    return commandes
+
+
+def cache_runcmd(args: argparse.Namespace) -> list[str]:
+    """Les mêmes gestes, emballés en éléments de « runcmd » pour cloud-init."""
+    return [f"  - {c}" for c in cache_commands(args)]
+
+
+def cache_env_reload(fichier: str = "/etc/environment") -> str:
+    """Relit les variables du cache dans la session shell EN COURS.
+
+    PAM lit /etc/environment à l'ouverture d'une session, jamais après. Une
+    commande distante qui attend cloud-init s'ouvre AVANT que runcmd n'y écrive
+    les variables : sa session ne les reçoit pas, alors que chaque « sudo », qui
+    rouvre une session PAM, les voit. Un « npm install » lancé sans sudo rejette
+    alors l'autorité du cache — « self-signed certificate in certificate chain »
+    — là où « sudo npm install -g » réussit une ligne plus haut.
+
+    Seules les variables du cache sont exportées : relire le fichier entier
+    remplacerait aussi le PATH de la session. Rend une instruction shell sans
+    séparateur final, sans effet quand le fichier est absent ou ne les porte
+    pas, et qui ne fait pas échouer une commande sous « set -e ».
+    """
+    motif = "|".join(CACHE_ENV_VARS)
+    return (
+        f'if [ -r {fichier} ]; then eval "$(grep -E "^({motif})=" {fichier}'
+        ' | sed "s/^/export /")"; fi'
+    )
+
+
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
 
@@ -2483,7 +2789,9 @@ def build_cloud_config(
     lines.append(f"timezone: {args.timezone}")
     if getattr(args, "distro", "ubuntu") == "ubuntu":
         lines += apt_mirror_lines(
-            getattr(args, "arch", "amd64"), getattr(args, "apt_mirror", None)
+            getattr(args, "arch", "amd64"),
+            getattr(args, "apt_mirror", None),
+            fixe=bool(getattr(args, "cache_ca", None)),
         )
     lines += [
         "keyboard:",
@@ -2494,7 +2802,7 @@ def build_cloud_config(
     # dès le PREMIER boot. C'est le point : ils sont là avant l'installation
     # d'ERPLibre, et encore là si elle échoue — le moment où l'on se connecte
     # justement à la main.
-    lines += write_files_lines(guide_files(args))
+    lines += write_files_lines(guide_files(args) + cache_files(args))
     # apt update/upgrade désactivés par défaut : sur un réseau lent/instable
     # ils font pendre cloud-init au 1er boot (et retardent la dispo SSH). SSH
     # est déjà présent dans les images cloud ; on l'active via runcmd sans apt.
@@ -2517,8 +2825,11 @@ def build_cloud_config(
     # Active et démarre SSH quel que soit le nom du service (ssh sur
     # Debian/Ubuntu, sshd sur Fedora/Arch) — sans quoi la VM peut booter
     # sans SSH accessible.
+    lines += ["runcmd:"]
+    # En TÊTE : ce qui suit peut télécharger, et sans magasin de confiance à
+    # jour un invité rejette le certificat que le cache présente.
+    lines += cache_runcmd(args)
     lines += [
-        "runcmd:",
         "  - systemctl enable --now ssh 2>/dev/null"
         " || systemctl enable --now sshd 2>/dev/null || true",
         # Getty sur la console qui EXISTE VRAIMENT.
@@ -4095,6 +4406,23 @@ def build_parser() -> argparse.ArgumentParser:
         "core.editor) dans le ~/.gitconfig de la VM.",
     )
     g_cloud.add_argument(
+        "--cache-ca",
+        default="",
+        help="Chemin, SUR L'HÔTE, du certificat de l'autorité du cache de "
+        "téléchargement (erplibre_go_qemu_cache). Fourni, la VM approuve "
+        "cette autorité dès son premier démarrage et ses téléchargements "
+        "passent par le cache. Absent, rien n'est posé.",
+    )
+    g_cloud.add_argument(
+        "--cache-bypass",
+        action="store_true",
+        help="Soustrait CETTE VM au cache de téléchargement : une exception "
+        "par adresse MAC est posée sur l'hôte avant la création, et la VM "
+        "télécharge en direct. Sans cela, retirer --cache-ca ne suffit pas — "
+        "le détournement est transparent et la VM échouerait sur un "
+        "certificat inconnu.",
+    )
+    g_cloud.add_argument(
         "--apt-update",
         action="store_true",
         help="Exécute « apt update » au 1er boot (package_update). Désactivé "
@@ -4410,6 +4738,8 @@ def main() -> None:
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
+    # Avant la création, et non après : la VM télécharge dès cloud-init.
+    cache_bypass_apply(args, runner)
     virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:
         watch_and_restart(args.name, runner)

@@ -1447,6 +1447,20 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         self.assertIn("erplibre-qga", attente)
         self.assertIn("is-active", attente)
 
+    def test_lattente_relit_les_variables_du_cache(self):
+        """La session distante s'ouvre avant que cloud-init n'écrive les
+        variables du cache : sans les relire, un npm lancé sans sudo rejette
+        l'autorité du cache, alors que « sudo npm » l'accepte."""
+        from script.qemu.deploy_qemu import cache_env_reload
+
+        attente = self.todo._qemu_cloud_init_wait()
+        self.assertIn(cache_env_reload(), attente)
+        self.assertGreater(
+            attente.index(cache_env_reload()),
+            attente.index("status --wait"),
+            "les variables sont relues avant que cloud-init les ait écrites",
+        )
+
     def test_le_nom_du_service_est_celui_que_le_deploiement_donne(self):
         """Deux noms qui divergent et l'attente ne trouve jamais rien."""
         from script.qemu import deploy_qemu
@@ -1493,13 +1507,22 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         )
         self.assertEqual(res.returncode, 0, res.stderr[:400])
 
-    def test_la_boucle_reste_bornee(self):
-        """Sans borne, un verrou jamais rendu tiendrait l'installation pour
-        toujours."""
+    def test_la_boucle_est_bornee_par_le_temps(self):
+        """La borne est une ÉCHÉANCE, pas un nombre d'essais.
+
+        Un essai coûte moins d'une seconde quand le verrou est tenu, et des
+        minutes quand le cache rend 504 sur chaque index : compter les essais
+        promettait cinq minutes et en valait des heures. Une échéance tient la
+        promesse quelle que soit la durée d'un essai.
+        """
         i = self.cmd.index("until sudo apt-get")
         boucle = self.cmd[i : self.cmd.index("done;", i)]
-        self.assertRegex(boucle, r"-ge \d+ \]")
+        self.assertIn("date +%s", boucle)
+        self.assertIn("-ge", boucle)
         self.assertIn("break", boucle)
+        self.assertNotRegex(boucle, r"n=\$\(\(n\+1\)\)")
+        # L'échéance est POSÉE avant la boucle, sans quoi elle vaudrait zéro.
+        self.assertIn("fin=$(( $(date +%s) + 300 ))", self.cmd[:i])
 
 
 if __name__ == "__main__":

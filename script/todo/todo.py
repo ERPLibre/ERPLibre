@@ -33,6 +33,7 @@ from script.todo.kdbx_manager import KdbxManager
 from script.todo.longtest_menu import LongTestMenuMixin
 from script.todo.proxmox_menu import ProxmoxMenuMixin
 from script.todo.qemu_access import QemuAccessMixin
+from script.todo.qemu_cache_menu import QemuCacheMenuMixin
 from script.todo.qemu_deploy import QemuDeployMixin
 from script.todo.qemu_install import QemuInstallMixin
 from script.todo.qemu_manage import QemuManageMixin
@@ -96,6 +97,7 @@ class TODO(
     # L'ordre est celui de la lecture, pas de la résolution : aucun nom n'est
     # défini deux fois (une classe unique jusqu'ici), donc aucune priorité à
     # arbitrer. Chaque fichier porte un sujet, et son en-tête dit sa frontière.
+    QemuCacheMenuMixin,
     QemuMenuMixin,
     QemuDeployMixin,
     QemuInstallMixin,
@@ -606,6 +608,13 @@ class TODO(
         "prompt_execute_update": "Update",
         "prompt_execute_deploy": "Deploy",
         "prompt_execute_deploy_ssh": "SSH",
+        "prompt_execute_qemu_cache": "QEMU cache",
+        "_cache_service": "Service",
+        "_cache_tests": "Tests",
+        "_cache_age": "Age and cleanup",
+        "_cache_exceptions": "Exceptions",
+        "_cache_journaux": "Logs",
+        "_cache_miroir_git": "Git mirrors",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
         "prompt_execute_vpn": "VPN",
@@ -971,6 +980,11 @@ class TODO(
                     "Deploy - Install NTFY notification server"
                 )
             },
+            {
+                "prompt_description": t(
+                    "QEMU cache - Download mirror for local VMs"
+                )
+            },
             {"section": t("VPN & tunnels")},
             {
                 "prompt_description": t(
@@ -1000,6 +1014,8 @@ class TODO(
             elif status == "7":
                 self._deploy_ntfy_server()
             elif status == "8":
+                self.prompt_execute_qemu_cache()
+            elif status == "9":
                 self.prompt_execute_vpn()
             else:
                 print(t("Command not found !"))
@@ -1755,6 +1771,92 @@ class TODO(
             print(f"\n{t('NTFY server installed and started successfully!')}")
         except Exception as e:
             print(f"{t('Error installing NTFY server: ')}{e}")
+
+    def _deploy_qemu_cache(self):
+        """Pose le miroir de téléchargement partagé par les VM QEMU de l'hôte.
+
+        Idempotente : l'installateur recompile, réécrit l'unité et redémarre le
+        service, qu'il existe déjà ou non.
+
+        Ce que l'entrée ANNONCE avant de demander sudo, et pourquoi : elle fait
+        écrire des règles sur le pont de l'hôte. Une règle trop large y prive la
+        machine de son propre réseau, et l'invite de sudo tombe entre deux
+        lignes de journal sans dire ce qu'elle sert à faire."""
+        print(
+            f"\n{t('Install the download cache shared by the QEMU VMs of this host')}"
+        )
+
+        http_port = (
+            input(t("HTTP port of the cache (default: 8898): ")).strip()
+            or "8898"
+        )
+        tls_port = (
+            input(t("TLS port of the cache (default: 8899): ")).strip()
+            or "8899"
+        )
+        cache_dir = (
+            input(
+                t(
+                    "Cache directory (default: /var/cache/erplibre_go_qemu_cache): "
+                )
+            ).strip()
+            or "/var/cache/erplibre_go_qemu_cache"
+        )
+
+        script_path = os.path.realpath(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "install",
+                "install_qemu_cache.sh",
+            )
+        )
+        if not os.path.isfile(script_path):
+            print(f"{t('QEMU cache install script not found: ')}{script_path}")
+            return
+
+        print(f"\n{t('Will write network rules on the host bridge:')}")
+        print(f"  {t('Only what leaves the VM subnet is redirected')}")
+        print(f"  {t('The rules exist only while the service runs')}")
+        if not shutil.which("go"):
+            print(f"  {t('Go is absent; the installer lays it down')}")
+        print(
+            f"  {t('No eviction is written: this cache never shrinks by itself')}"
+        )
+
+        cmd = (
+            f"sudo EL_HTTP_PORT={http_port}"
+            f" EL_TLS_PORT={tls_port}"
+            f" EL_CACHE_DIR={cache_dir}"
+            f" bash {script_path}"
+        )
+        print(f"\n{t('Will execute:')} {cmd}\n")
+        if not click.confirm(t("Install the QEMU download cache?")):
+            return
+
+        print(
+            f"\n{t('Installing the QEMU download cache (requires sudo)...')}"
+        )
+        try:
+            code = self.execute.exec_command_live(cmd, source_erplibre=False)
+        except Exception as e:
+            print(f"{t('The cache install failed, nothing is started')} : {e}")
+            return
+        # Le CODE de sortie, et pas seulement l'absence d'exception. Un
+        # installateur qui meurt — réseau libvirt absent, compilation qui
+        # cède — rend un code non nul sans rien lever, et l'entrée annonçait
+        # « installé et démarré » au-dessus de son propre message d'erreur.
+        # Rien n'est plus coûteux qu'un succès annoncé à tort : on cherche
+        # ensuite la panne partout sauf là où elle est.
+        if code:
+            print(f"\n  ✗ {t('The cache install failed, nothing is started')}")
+            print(f"    {t('Read the error above, fix it, and run entry 1.')}")
+            return
+        print(f"\n{t('QEMU download cache installed and started')}")
+        print(
+            f"{t('Certificate authority a VM must trust: ')}"
+            "/var/lib/erplibre_go_qemu_cache/ca.crt"
+        )
 
     @staticmethod
     def _ssh_config_hosts():
