@@ -86,6 +86,30 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
+## Confining a machine created directly
+
+**This script poses what it is GIVEN; it does not know postures.** Called
+without egress rules, the machine it creates has **free egress** — whatever
+you had in mind. That is not an oversight: the rules are rendered elsewhere,
+and the menu is what usually renders them.
+
+The golden rule — the couple *(posture, real data)* — is enforced at the
+menu's single crossing point. **A machine created directly bypasses it**, so
+it must not carry real data.
+
+Rules can be rendered and handed over. The posture package writes them, the
+engine lays and arms them at first boot:
+
+```bash
+python3 -c "from script.posture import registry, rules, plan; \
+  open('/tmp/egress.nft','w').write( \
+    rules.render_egress(registry.get_posture('connected'), ())); \
+  open('/tmp/egress.service','w').write(plan.unit_text())"
+
+sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+    --egress-file /tmp/egress.nft --egress-unit /tmp/egress.service
+```
+
 Catalog, per architecture (`deploy_qemu.py` is the source of truth):
 
 | Distro | Versions | amd64 | arm64 | s390x |
