@@ -11,7 +11,9 @@ them, and take hours. They live here and **not** in `test/`, which the unit
 runner sweeps: `./script/test/run_unit_test.sh` must stay runnable in seconds
 on any machine, including one without virtualisation.
 
-Run them from the menu — `TODO › Execute › Test › Long tests` — or directly.
+The two depth descents run from the menu — `TODO › Execute › Test ›
+Long tests`. The two confrontations run **directly**: the menu does not
+carry them, and one of them cuts this machine's network.
 
 ## lima_confront.py — the backend nobody has ever run
 
@@ -48,6 +50,14 @@ start-up.
 It needs privilege: loading a ruleset and reading a table both require it, and
 `nft -c`, which only parses, already fails without it. It exits 20 where the
 tooling is missing.
+
+**It cuts THIS machine's egress.** The ruleset loads into the host's own
+tables — no namespace — with `policy drop` on output and forward, and the one
+named destination is a documentation address that does not exist. An ssh
+session drops with everything else, including the one reading the output. It
+asks for a typed `OUI` before loading, and a **disposable** machine is the
+only reasonable place to run it. `--dry-run` renders the file and loads
+nothing.
 
 ```
 ./long_test/egress_confront.py             # the three questions
@@ -238,8 +248,9 @@ installent des systèmes, et durent des heures. Ils vivent ici et **non** dans
 doit rester lançable en quelques secondes, sur n'importe quelle machine, y
 compris sans virtualisation.
 
-Ils se lancent depuis le menu — `TODO › Execute › Test › Tests longs` — ou
-directement.
+Les deux descentes se lancent depuis le menu — `TODO › Execute › Test ›
+Tests longs`. Les deux confrontations se lancent **directement** : le menu
+ne les porte pas, et l'une d'elles coupe le réseau de cette machine.
 
 ## lima_confront.py — le backend que personne n'a jamais lancé
 
@@ -277,6 +288,14 @@ démarrage.
 Il demande le privilège : charger un jeu de règles et lire une table en
 exigent, et `nft -c`, qui ne fait que l'analyse, échoue déjà sans lui. Il rend
 20 là où l'outillage manque.
+
+**Il coupe la sortie de CETTE machine.** Le jeu de règles se charge dans les
+tables de l'hôte — sans espace de noms — en `policy drop` sur output et
+forward, et la seule destination nommée est une adresse de documentation qui
+n'existe pas. Une session ssh tombe avec le reste, y compris celle qui lit la
+sortie. Il demande un `OUI` tapé avant de charger, et une machine **jetable**
+est le seul endroit raisonnable pour le lancer. `--dry-run` rend le fichier et
+ne charge rien.
 
 ```
 ./long_test/egress_confront.py             # les trois questions
