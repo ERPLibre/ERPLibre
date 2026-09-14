@@ -316,6 +316,80 @@ class TestLaParitéProxmox(unittest.TestCase):
 
         self.assertTrue(callable(CLASSE._pve_change_state))
 
+    def test_the_list_offers_the_detail_of_one_vm(self):
+        """La liste rend cinq colonnes ; « qm status --verbose » en rend
+        bien plus, et c'est le seul endroit du dépôt qui le demande.
+
+        Le bâtisseur existait sans appelant : écrit, jamais câblé, donc
+        invisible à l'usage — un écran ne dit pas ce qu'il ne montre pas.
+        """
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.proxmox import proxmox_deploy as pve
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("_pve_detail", self.src)
+        self.assertTrue(callable(CLASSE._pve_detail))
+        self.assertIn("status_cmd", self.src)
+        self.assertIn("--verbose", pve.status_cmd(1))
+
+    def test_typing_2_in_the_list_really_runs_the_detail(self):
+        """L'entrée est IMPRIMÉE : la garde structurelle ne voit pas qu'elle
+        mène nulle part.
+
+        Une entrée affichée dont la répartition ne reconnaît pas le numéro
+        rend la main sans un mot — l'écran promet alors une action qui
+        n'existe pas. Chercher la méthode dans le source ne voit rien de
+        cela : le numéro peut ne plus lui mener.
+        """
+        import builtins
+        import io as _io
+        import sys
+        from contextlib import redirect_stdout
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        todo = CLASSE.__new__(CLASSE)
+        vms = [
+            {
+                "vmid": 142,
+                "name": "vm-essai",
+                "status": "running",
+                "mem": "2048",
+                "disk": "12G",
+            }
+        ]
+        jouees = []
+        todo._pve_vms = lambda: list(vms)
+        todo._pve_show = lambda cmd, timeout=120, quiet=False: (
+            jouees.append(cmd) or (0, "")
+        )
+        saisies = iter(["2", "1"])
+        vrai = builtins.input
+        builtins.input = lambda *_a, **_k: next(saisies)
+        try:
+            with redirect_stdout(_io.StringIO()):
+                todo._pve_list()
+        finally:
+            builtins.input = vrai
+        self.assertEqual(["qm status 142 --verbose"], jouees)
+
+    def test_the_detail_reuses_the_list_it_was_called_from(self):
+        """Redemander « qm list » renumérote sur une liste qui peut avoir
+        changé, et le numéro tapé porte alors sur la voisine. L'épreuve
+        tient le PASSAGE de la liste, que rien d'autre ne rend visible."""
+        import inspect
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO as CLASSE
+
+        self.assertIn("vms", inspect.signature(CLASSE._pve_pick_vm).parameters)
+        corps = inspect.getsource(CLASSE._pve_detail)
+        self.assertIn("vms=vms", corps)
+
     def test_a_clean_shutdown_comes_before_pulling_the_plug(self):
         # « shutdown » laisse Odoo fermer ses connexions PostgreSQL ; « stop »
         # coupe le courant. L'ordre des choix est la seule chose qui le dit.

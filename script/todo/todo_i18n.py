@@ -3770,6 +3770,10 @@ TRANSLATIONS = {
         "fr": "Changer l'état d'une ou plusieurs VM",
         "en": "Change the state of one or more VMs",
     },
+    "Detail of one VM (uptime, CPU, memory)": {
+        "fr": "Détail d'une VM (uptime, CPU, mémoire)",
+        "en": "Detail of one VM (uptime, CPU, memory)",
+    },
     "Enter": {
         "fr": "Entrée",
         "en": "Enter",
