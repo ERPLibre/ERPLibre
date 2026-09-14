@@ -101,3 +101,11 @@ factur-x<4 ; platform_machine == 's390x'
 # 0.4.4 n'imposent aucune borne sur lxml — vérifié sur PyPI, release par
 # release. À lever le jour où lxml montera.
 lxml-html-clean<0.4.5
+
+# markdown-it-py rend le markdown du modèle de langage en HTML, avant
+# assainissement, sur la page de l'assistant. Il est présent dans
+# l'environnement par la chaîne bandit -> rich, donc en transitif d'un outil de
+# lint : retirer bandit retirerait le moteur de rendu d'une page portail. La
+# dépendance est portée ici parce qu'elle est fonctionnelle, et non de
+# développement.
+markdown-it-py==4.2.0
