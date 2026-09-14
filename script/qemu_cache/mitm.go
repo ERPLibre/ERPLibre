@@ -310,10 +310,18 @@ func (r *Refusals) Has(host string) bool {
 		return true
 	}
 	if r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
-		delete(r.apprises, host)
+		r.oublier(host)
 		return false
 	}
 	return true
+}
+
+// oublier rouvre un soupçon de transport, compte compris. Garder le compte
+// ferait condamner l'hôte rouvert dès sa première coupure : le doute rendu
+// par l'oubli doit se reconstruire sur un seuil entier. Appelant verrouillé.
+func (r *Refusals) oublier(host string) {
+	delete(r.apprises, host)
+	delete(r.echecs, host)
 }
 
 // Echec note une poignée de main manquée et dit si l'hôte passe en tunnel.
@@ -368,7 +376,7 @@ func (r *Refusals) List() []string {
 	}
 	for h, vu := range r.apprises {
 		if !vu.alerte && r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
-			delete(r.apprises, h)
+			r.oublier(h)
 			continue
 		}
 		out = append(out, h)
@@ -397,6 +405,10 @@ type TLSFront struct {
 	CA       *CA
 	Proxy    *Proxy
 	Refusals *Refusals
+	// Origine rend la destination qu'avait la connexion avant le détournement.
+	// Nulle, originalDst s'applique ; les tests la remplacent pour viser une
+	// destination sans poser de règle de détournement.
+	Origine func(net.Conn) (string, error)
 }
 
 // Serve accepte et traite chaque connexion détournée.
@@ -431,8 +443,15 @@ func (t *TLSFront) handle(c net.Conn) {
 		// Sans SNI il n'y a pas de nom à certifier ; avec un refus connu il
 		// n'y a rien à tenter. Les deux passent en tunnel vers la
 		// destination que le noyau a gardée.
-		t.tunnel(peeked, host)
-		return
+		//
+		// Un tunnel dont l'amont ne répond pas ne peut que couper le client,
+		// alors que le magasin détient peut-être ce qu'il demande. Rien n'a
+		// encore été écrit vers le client, et le ClientHello est gardé : la
+		// même connexion est alors déchiffrée. Un client qui refuse vraiment
+		// notre autorité échoue de toute façon, l'amont étant coupé.
+		if !t.tunnel(peeked, host) || host == "" {
+			return
+		}
 	}
 
 	cfg := &tls.Config{
@@ -529,11 +548,20 @@ func (c *connSignalee) Close() error {
 }
 
 // tunnel relie l'invité à sa destination sans rien comprendre à ce qui passe.
-func (t *TLSFront) tunnel(c net.Conn, host string) {
-	dst, err := originalDst(c)
+//
+// Rend vrai quand l'établissement vers l'amont a échoué — refus, délai, réseau
+// injoignable — et que rien n'a été écrit vers le client : la connexion reste
+// alors utilisable par l'appelant. Faux dans tous les autres cas, connexion
+// relayée ou abandonnée.
+func (t *TLSFront) tunnel(c net.Conn, host string) bool {
+	origine := t.Origine
+	if origine == nil {
+		origine = originalDst
+	}
+	dst, err := origine(c)
 	if err != nil {
 		log.Printf("tunnel impossible pour %q : destination inconnue (%v)", host, err)
-		return
+		return false
 	}
 	// Une connexion NON détournée — ouverte directement sur l'écoute — a pour
 	// destination d'origine l'écoute elle-même. La relayer la renverrait ici,
@@ -547,12 +575,18 @@ func (t *TLSFront) tunnel(c net.Conn, host string) {
 			Outcome: OutcomeError, Status: http.StatusLoopDetected,
 			Client: clientDe(c.RemoteAddr().String()),
 		})
-		return
+		return false
 	}
 	up, err := net.DialTimeout("tcp", dst, 10*time.Second)
 	if err != nil {
-		log.Printf("tunnel vers %s : %v", dst, err)
-		return
+		injoignable := estEchecDEtablissement(err)
+		if injoignable && host != "" {
+			log.Printf("tunnel vers %s : %v ; %s est déchiffré à la place",
+				dst, err, host)
+		} else {
+			log.Printf("tunnel vers %s : %v", dst, err)
+		}
+		return injoignable
 	}
 	defer up.Close()
 
@@ -566,6 +600,7 @@ func (t *TLSFront) tunnel(c net.Conn, host string) {
 	go func() { io.Copy(up, c); done <- struct{}{} }()
 	go func() { io.Copy(c, up); done <- struct{}{} }()
 	<-done
+	return false
 }
 
 // readFirstRecord lit l'en-tête de cinq octets d'un enregistrement TLS puis

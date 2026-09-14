@@ -260,6 +260,85 @@ func TestUnRefusDeTransportSeRouvre(t *testing.T) {
 	}
 }
 
+// L'oubli rouvre le doute ENTIER : un hôte rouvert qui coupe une fois n'est pas
+// recondamné sur-le-champ. Le compte d'avant l'oubli, s'il survivait, ferait
+// d'une coupure isolée — un processus qui se termine en abandonnant ses
+// poignées de main — un nouveau bannissement de toute la durée d'oubli.
+func TestLOubliRemetLeCompteAZero(t *testing.T) {
+	// Has et List constatent l'oubli chacun de leur côté : les deux doivent
+	// rouvrir le compte.
+	lectures := map[string]func(r *Refusals, h string) bool{
+		"Has":  func(r *Refusals, h string) bool { return r.Has(h) },
+		"List": func(r *Refusals, h string) bool { return slices.Contains(r.List(), h) },
+	}
+	for nom, lire := range lectures {
+		t.Run(nom, func(t *testing.T) {
+			r := NewRefusals(nil)
+			r.Oubli = 50 * time.Millisecond
+			for i := 0; i < r.Seuil; i++ {
+				r.Echec("registre.example", io.EOF)
+			}
+			time.Sleep(60 * time.Millisecond)
+			if lire(r, "registre.example") {
+				t.Fatal("le soupçon ne s'est pas rouvert")
+			}
+			if r.Echec("registre.example", io.EOF) {
+				t.Error("une seule coupure après l'oubli recondamne l'hôte")
+			}
+		})
+	}
+}
+
+// Un hôte en tunnel dont l'amont ne répond pas est DÉCHIFFRÉ sur la même
+// connexion : le tunnel ne pourrait que couper le client, alors que le magasin
+// détient peut-être ce qu'il demande.
+func TestUnTunnelSansAmontSeRabatSurLeDechiffrement(t *testing.T) {
+	ca, err := LoadOrCreateCA(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Une adresse qui refuse : l'écoute est fermée aussitôt ouverte.
+	ferme, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	coupee := ferme.Addr().String()
+	ferme.Close()
+
+	const hote = "registre.example.invalid"
+	r := NewRefusals(nil)
+	for i := 0; i < r.Seuil; i++ {
+		r.Echec(hote, io.EOF)
+	}
+	front := &TLSFront{
+		CA: ca, Proxy: proxyDeTest(t), Refusals: r,
+		Origine: func(net.Conn) (string, error) { return coupee, nil },
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go front.Serve(ln)
+
+	brut, err := net.DialTimeout("tcp", ln.Addr().String(), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer brut.Close()
+	brut.SetDeadline(time.Now().Add(5 * time.Second))
+	pool := x509.NewCertPool()
+	pool.AddCert(ca.cert)
+	tc := tls.Client(brut, &tls.Config{ServerName: hote, RootCAs: pool})
+	if err := tc.Handshake(); err != nil {
+		t.Fatalf("l'amont coupé laisse le client sans poignée de main : %v", err)
+	}
+	if !r.Has(hote) {
+		t.Error("le repli a effacé le soupçon : il ne vaut que pour cette" +
+			" connexion")
+	}
+}
+
 // Une ALERTE ne se rouvre pas, quel que soit le réglage d'oubli : le client a
 // REGARDÉ notre certificat. Le ré-intercepter ferait échouer de nouveau
 // l'installation qui le traverse.
