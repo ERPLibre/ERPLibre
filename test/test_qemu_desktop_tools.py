@@ -1575,6 +1575,20 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
         self.assertIn("erplibre-qga", attente)
         self.assertIn("is-active", attente)
 
+    def test_lattente_relit_les_variables_du_cache(self):
+        """La session distante s'ouvre avant que cloud-init n'écrive les
+        variables du cache : sans les relire, un npm lancé sans sudo rejette
+        l'autorité du cache, alors que « sudo npm » l'accepte."""
+        from script.qemu.deploy_qemu import cache_env_reload
+
+        attente = self.todo._qemu_cloud_init_wait()
+        self.assertIn(cache_env_reload(), attente)
+        self.assertGreater(
+            attente.index(cache_env_reload()),
+            attente.index("status --wait"),
+            "les variables sont relues avant que cloud-init les ait écrites",
+        )
+
     def test_le_nom_du_service_est_celui_que_le_deploiement_donne(self):
         """Deux noms qui divergent et l'attente ne trouve jamais rien."""
         from script.qemu import deploy_qemu

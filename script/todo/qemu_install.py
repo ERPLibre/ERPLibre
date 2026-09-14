@@ -425,6 +425,8 @@ class QemuInstallMixin:
         suivante trouvait le verrou pris, échouait jusqu'à sa borne, puis
         installait sur un index jamais rafraîchi : « Impossible de trouver le
         paquet », un message qui n'accuse personne."""
+        from script.qemu.deploy_qemu import cache_env_reload
+
         return (
             "if command -v cloud-init >/dev/null 2>&1; then "
             'echo "== '
@@ -443,6 +445,9 @@ class QemuInstallMixin:
             "n=0; while systemctl is-active --quiet erplibre-qga 2>/dev/null; "
             "do n=$((n+1)); [ $n -ge 150 ] && break; sleep 2; done; "
             "fi; "
+            # Les variables du cache sont écrites par cloud-init PENDANT
+            # l'attente : cette session, ouverte avant, ne les a pas reçues.
+            + cache_env_reload() + "; "
         )
 
     @staticmethod

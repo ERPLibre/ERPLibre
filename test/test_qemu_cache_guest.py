@@ -33,6 +33,7 @@ from script.qemu.deploy_qemu import (  # noqa: E402
     CACHE_CERT_NAME,
     CACHE_ENV_VARS,
     CACHE_TRUST,
+    cache_env_reload,
     cache_family,
     cache_files,
     cache_runcmd,
@@ -167,6 +168,64 @@ class TestRuncmd(unittest.TestCase):
     def test_aucune_commande_ne_peut_faire_echouer_le_boot(self):
         """Une VM qui ne démarre pas pour un confort est un mauvais échange."""
         self.assertIn("|| true", self.lignes[0])
+
+
+class TestLesVariablesRelues(unittest.TestCase):
+    """Une session ouverte avant cloud-init ne reçoit pas ce qu'il écrit.
+
+    PAM lit /etc/environment à l'ouverture, et la commande distante qui attend
+    cloud-init s'ouvre avant runcmd. La relecture est jouée ici dans un vrai
+    shell, sur un fichier de test : c'est son EFFET qui compte, pas son texte.
+    """
+
+    def relire(self, contenu):
+        """Lance la relecture sous « set -e » et rend (code, variables vues
+        par un processus ENFANT, PATH de la session)."""
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as rep:
+            fichier = Path(rep) / "environment"
+            if contenu is not None:
+                fichier.write_text(contenu, encoding="utf-8")
+            script = (
+                f"set -e; {cache_env_reload(str(fichier))};"
+                ' env | grep -E "^(PIP_CERT|REQUESTS_CA_BUNDLE|NODE_EXTRA_CA_CERTS)="'
+                ' || true; echo "PATH=$PATH"'
+            )
+            res = subprocess.run(
+                ["sh", "-c", script],
+                capture_output=True,
+                text=True,
+                env={"PATH": "/usr/bin:/bin"},
+            )
+        return res.returncode, res.stdout, res.stderr
+
+    def test_les_variables_atteignent_un_processus_enfant(self):
+        """npm est un ENFANT du shell : une variable posée sans « export »
+        ne l'atteindrait pas."""
+        faisceau = "/etc/ssl/certs/ca-certificates.crt"
+        contenu = "".join(f"{v}={faisceau}\n" for v in CACHE_ENV_VARS)
+        code, sortie, err = self.relire(contenu)
+        self.assertEqual(code, 0, err)
+        for var in CACHE_ENV_VARS:
+            self.assertIn(f"{var}={faisceau}", sortie)
+
+    def test_le_path_de_la_session_est_garde(self):
+        """Relire le fichier entier remplacerait le PATH de la session."""
+        code, sortie, err = self.relire(
+            'PATH="/nulle/part"\nNODE_EXTRA_CA_CERTS=/x.crt\n'
+        )
+        self.assertEqual(code, 0, err)
+        self.assertIn("PATH=/usr/bin:/bin", sortie)
+
+    def test_sans_fichier_ni_variable_rien_n_echoue(self):
+        """Une VM sans cache n'a ni les variables ni, parfois, le fichier :
+        sous « set -e », l'installation ne doit pas s'arrêter là."""
+        for contenu in (None, "LANG=C\n"):
+            with self.subTest(contenu=contenu):
+                code, _, err = self.relire(contenu)
+                self.assertEqual(code, 0, err)
 
 
 class TestAccordAvecLeGo(unittest.TestCase):

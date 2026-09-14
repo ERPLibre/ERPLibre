@@ -131,6 +131,29 @@ class TestLaCharge(unittest.TestCase):
         l'invité ne connaît pas — et ce n'est pas une raison de renoncer."""
         self.assertIn("|| true", QC.ATTENDRE_CLOUD_INIT)
 
+    def test_lattente_relit_les_variables_du_cache(self):
+        """La session de la charge s'ouvre avant que cloud-init n'écrive les
+        variables du cache : « sudo npm » les relit, pas un npm sans sudo."""
+        from script.qemu.deploy_qemu import cache_env_reload
+
+        i = QC.ATTENDRE_CLOUD_INIT.index("status --wait")
+        self.assertIn(cache_env_reload(), QC.ATTENDRE_CLOUD_INIT[i:])
+
+    def test_la_charge_est_du_shell_valide(self):
+        """Une instruction collée sans séparateur casse la commande entière,
+        et la VM ne dit alors pas pourquoi elle n'a rien installé."""
+        import subprocess
+
+        for d in sorted(QC.systemes_mesurables()):
+            for charge in ("minimum", "erplibre"):
+                cmd = QC.commande_de_charge(d, charge)
+                res = subprocess.run(
+                    ["bash", "-n", "-c", cmd], capture_output=True, text=True
+                )
+                self.assertEqual(
+                    res.returncode, 0, f"« {d} », {charge} : {res.stderr}"
+                )
+
     def test_apt_ne_cache_plus_ses_echecs(self):
         """« apt-get update » rend ZÉRO même quand un index n'a pas pu être
         récupéré : il n'émet qu'un avertissement, que « -qq » cachait."""

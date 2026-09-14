@@ -2750,6 +2750,28 @@ def cache_runcmd(args: argparse.Namespace) -> list[str]:
     return [f"  - {c}" for c in cache_commands(args)]
 
 
+def cache_env_reload(fichier: str = "/etc/environment") -> str:
+    """Relit les variables du cache dans la session shell EN COURS.
+
+    PAM lit /etc/environment à l'ouverture d'une session, jamais après. Une
+    commande distante qui attend cloud-init s'ouvre AVANT que runcmd n'y écrive
+    les variables : sa session ne les reçoit pas, alors que chaque « sudo », qui
+    rouvre une session PAM, les voit. Un « npm install » lancé sans sudo rejette
+    alors l'autorité du cache — « self-signed certificate in certificate chain »
+    — là où « sudo npm install -g » réussit une ligne plus haut.
+
+    Seules les variables du cache sont exportées : relire le fichier entier
+    remplacerait aussi le PATH de la session. Rend une instruction shell sans
+    séparateur final, sans effet quand le fichier est absent ou ne les porte
+    pas, et qui ne fait pas échouer une commande sous « set -e ».
+    """
+    motif = "|".join(CACHE_ENV_VARS)
+    return (
+        f'if [ -r {fichier} ]; then eval "$(grep -E "^({motif})=" {fichier}'
+        ' | sed "s/^/export /")"; fi'
+    )
+
+
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
 
