@@ -296,6 +296,62 @@ class TestLaParitéProxmox(unittest.TestCase):
         self.assertIn("execute_from_configuration", self.src)
 
 
+class TestLesIconesDuMenuProxmox(unittest.TestCase):
+    """L'icône vit DANS la chaîne traduite, et les deux langues la portent.
+
+    Une entrée sans icône se perd dans une liste de dix-huit : l'œil s'y
+    repère par le pictogramme avant de lire. Le même pictogramme dit la même
+    chose partout dans l'outil — 📋 liste, 🧹 nettoie, 📊 mesure — et ce
+    tableau est ce qui l'empêche de dériver d'un menu à l'autre.
+    """
+
+    ICONES = {
+        "Deploy a VM on the Proxmox host": "🚀",
+        "Preview a deployment (dry-run, nothing sent)": "🔍",
+        "Download a cloud image on the host": "📥",
+        "Reopen install monitoring (last run / history)": "📈",
+        "List VMs (qm list)": "📋",
+        "Show a VM IP address": "🌐",
+        "Open the console on a VM": "🖥",
+        "Resize a VM disk": "📐",
+        "Delete VM(s)": "🗑",
+        "Clean up (orphan disks)": "🧹",
+        "Test a VM (open Odoo in a CLI browser)": "🧪",
+        "Statistics (host and VMs)": "📊",
+        "SSH configuration (~/.ssh/config, ProxyJump)": "🔑",
+        "Remote desktop tunnel (VNC/RDP over SSH)": "🖥",
+        "Android emulator (start, tunnel, scrcpy)": "📱",
+        "List available images and their specs": "🗂",
+        "Proxmox - example sequence (dry-run)": "🎬",
+        "Change the Proxmox host": "🔀",
+        "Host": "🏠",
+    }
+
+    def test_chaque_entree_porte_son_icone(self):
+        from script.todo import todo_i18n
+
+        for cle, icone in self.ICONES.items():
+            entree = todo_i18n.TRANSLATIONS[cle]
+            for langue in ("fr", "en"):
+                self.assertTrue(
+                    entree[langue].startswith(icone),
+                    f"« {cle} » ({langue}) ne commence pas par {icone} :"
+                    f" {entree[langue]}",
+                )
+
+    def test_le_menu_affiche_bien_ces_entrees(self):
+        """Le tableau ci-dessus ne vaut que s'il décrit le menu RÉEL : une
+        entrée renommée le laisserait figer une icône que personne ne voit."""
+        src = (TODO_DIR / "proxmox_menu.py").read_text(encoding="utf-8")
+        for cle in self.ICONES:
+            # La chaîne SEULE : une entrée longue s'écrit « t( » sur une
+            # ligne et sa chaîne sur la suivante, et chercher l'appel entier
+            # ne trouverait que les courtes.
+            self.assertIn(
+                f'"{cle}"', src, f"« {cle} » n'est plus dans le menu"
+            )
+
+
 class TestLArbreDesMenus(unittest.TestCase):
     """L'écran de télémétrie lit le CODE, pas la classe assemblée.
 
