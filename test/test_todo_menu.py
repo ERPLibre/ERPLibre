@@ -258,6 +258,48 @@ class MenuCoherence:
         keys = {self._key(label) for _, label in self.shown}
         self.assertEqual(set(self.EXPECTED) - keys, set())
 
+    # Un numéro d'entrée écrit EN DUR dans un message d'aide. Rien ne le
+    # relie à la liste : insérer une entrée au-dessus décale la cible, le
+    # message continue de s'afficher, et il envoie désormais ailleurs.
+    # La table est déclarative comme EXPECTED — un renvoi non déclaré est
+    # un échec, sans quoi le prochain échapperait au contrôle.
+    RENVOIS = {}
+    # « \bt( » et non « t( » : sans la frontière, le motif attrape la fin
+    # de « print( » et prend tout message imprimé pour un texte traduit.
+    RE_RENVOI = re.compile(
+        r"""\bt\(\s*\n?\s*["']([^"']*\[(\d+)\][^"']*)["']"""
+    )
+
+    def _entrees_par_numero(self):
+        return {n: label for n, label in self.shown}
+
+    def test_every_hardcoded_entry_number_points_where_it_means(self):
+        source = self.SOURCE.read_text(encoding="utf-8")
+        par_numero = self._entrees_par_numero()
+        vus = set()
+        for message, numero in self.RE_RENVOI.findall(source):
+            numero = int(numero)
+            vus.add((message, numero))
+            self.assertIn(
+                (message, numero),
+                set(self.RENVOIS),
+                f"« {message} » renvoie à [{numero}] et n'est pas déclaré :"
+                " dire vers quelle entrée il pointe",
+            )
+            vise = par_numero.get(numero, "")
+            self.assertTrue(
+                vise.startswith(self.RENVOIS[(message, numero)]),
+                f"« {message} » renvoie à [{numero}], qui est désormais"
+                f" « {vise} » et non « {self.RENVOIS[(message, numero)]} »",
+            )
+
+    def test_no_stale_hardcoded_reference_is_declared(self):
+        """Un renvoi déclaré que le code n'écrit plus laisse croire qu'un
+        message est tenu alors qu'il a disparu."""
+        source = self.SOURCE.read_text(encoding="utf-8")
+        vus = {(m, int(n)) for m, n in self.RE_RENVOI.findall(source)}
+        self.assertEqual(set(), set(self.RENVOIS) - vus)
+
     def test_self_dispatched_entries_name_a_real_method(self):
         """« method » est une chaîne : rien ne la relie au code sans ceci."""
         from script.todo.todo import TODO
@@ -592,6 +634,16 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
     ENTRY = "def prompt_execute_proxmox(self):"
     END = "def _pve_fetch_image(self):"
     MINIMUM = 15
+
+    # Deux messages nomment une entrée par son NUMÉRO. Ils visent juste
+    # aujourd'hui ; ils le resteront tant que ceci tient.
+    RENVOIS = {
+        ("No address yet. Try [6] later.", 6): "Show a VM IP address",
+        (
+            "Use [13] to add a ProxyJump entry, then a tunnel.",
+            13,
+        ): "SSH configuration",
+    }
 
     EXPECTED = {
         "Deploy a VM on the Proxmox host": "_pve_deploy",
