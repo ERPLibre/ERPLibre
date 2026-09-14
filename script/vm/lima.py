@@ -42,6 +42,31 @@ VM_TYPE_MACOS = "vz"
 # l'écran annoncerait « joignable » sur une instance qui ne l'est pas.
 NETWORK_SHARED = "  - lima: shared"
 
+# Le champ « arch » d'une description d'instance a son PROPRE vocabulaire,
+# et ce n'est ni celui du dépôt ni celui des images. L'outil refuse le
+# démarrage sur un jeton hors liste, en nommant la liste :
+#
+#     field `arch` must be one of [x86_64 aarch64 armv7l ppc64le riscv64
+#     s390x]
+#
+# Une image Ubuntu, elle, s'appelle « amd64 ». Les deux mots désignent la
+# même machine et voyagent dans le même appel : traduire ICI est ce qui
+# évite qu'un appelant choisisse au hasard lequel des deux poser.
+#
+# Un jeton inconnu passe TEL QUEL : l'outil le refuse alors en nommant sa
+# liste, ce qu'une correspondance devinée ici ne ferait pas.
+ARCH_CONFIG = {
+    "amd64": "x86_64",
+    "x86_64": "x86_64",
+    "arm64": "aarch64",
+    "aarch64": "aarch64",
+}
+
+
+def config_arch(jeton: str) -> str:
+    """Le jeton d'architecture tel qu'une description d'instance l'écrit."""
+    return ARCH_CONFIG.get((jeton or "").strip().lower(), jeton)
+
 
 def render_config(
     image: str,
@@ -85,14 +110,15 @@ def render_config(
             "# vaut nettement mieux que l'émulation.",
             f"vmType: {VM_TYPE_MACOS}",
         ]
+    jeton = config_arch(arch)
     if arch:
-        lignes.append(f"arch: {arch}")
+        lignes.append(f"arch: {jeton}")
     lignes += [
         "images:",
         f'  - location: "{image}"',
     ]
     if arch:
-        lignes.append(f"    arch: {arch}")
+        lignes.append(f"    arch: {jeton}")
     lignes += [
         f"cpus: {int(cpus)}",
         f'memory: "{memory}"',

@@ -70,6 +70,58 @@ class TestLeRenduSeRelit(unittest.TestCase):
         )
 
 
+class TestLeJetonDArchitecture(unittest.TestCase):
+    """Le champ « arch » d'une instance a son propre vocabulaire.
+
+    Le dépôt dit « amd64 », comme les images Ubuntu. L'outil, lui, n'accepte
+    que [x86_64 aarch64 armv7l ppc64le riscv64 s390x] et refuse le
+    DÉMARRAGE sur tout autre jeton — une configuration qui se relit
+    parfaitement en YAML ne démarre donc pas pour autant.
+
+    Les deux mots voyagent dans le même appel : l'URL d'image porte l'un,
+    le champ porte l'autre. C'est ce qui rend la traduction nécessaire au
+    point de passage plutôt que chez chaque appelant.
+    """
+
+    # Ce que l'outil accepte. Il nomme lui-même cette liste en refusant
+    # un jeton qui n'y est pas, ce qui la rend vérifiable sans documentation.
+    ACCEPTES = ("x86_64", "aarch64", "armv7l", "ppc64le", "riscv64", "s390x")
+
+    def test_the_repo_tokens_land_in_the_accepted_set(self):
+        for jeton in ("amd64", "x86_64", "arm64", "aarch64"):
+            with self.subTest(jeton=jeton):
+                self.assertIn(L.config_arch(jeton), self.ACCEPTES)
+
+    def test_the_rendered_field_never_says_amd64(self):
+        """« amd64 » rendu tel quel fait échouer le démarrage."""
+        rendu = L.render_config("http://host.invalid/i.img", arch="amd64")
+        self.assertNotIn("amd64", rendu)
+        self.assertIn("arch: x86_64", rendu)
+
+    def test_both_arch_fields_agree(self):
+        """Le champ du haut et celui de l'image sont le MÊME vocabulaire ;
+        n'en traduire qu'un laisserait l'autre refusé."""
+        rendu = L.render_config("http://host.invalid/i.img", arch="arm64")
+        self.assertEqual(2, rendu.count("aarch64"))
+        self.assertNotIn("arm64\n", rendu)
+
+    def test_an_image_url_keeps_its_own_spelling(self):
+        """L'image s'appelle « amd64 » chez son éditeur ; traduire l'URL
+        pointerait vers un fichier qui n'existe pas."""
+        url = "http://host.invalid/img-amd64.img"
+        self.assertIn(url, L.render_config(url, arch="amd64"))
+
+    def test_an_unknown_token_passes_through(self):
+        """L'outil nomme sa liste en refusant ; une correspondance devinée
+        ici ferait démarrer une VM d'une autre architecture, ou échouer
+        plus loin sans dire pourquoi."""
+        self.assertEqual("mips64", L.config_arch("mips64"))
+
+    def test_no_arch_asked_writes_no_field(self):
+        rendu = L.render_config("http://host.invalid/i.img")
+        self.assertNotIn("arch:", rendu)
+
+
 class TestCeQuiNExistePasPartout(unittest.TestCase):
     """Deux réglages font ÉCHOUER le démarrage là où ils n'existent pas."""
 
@@ -300,6 +352,30 @@ class TestLireLInventaire(unittest.TestCase):
         """Une instance en cours de création peut produire une ligne
         partielle ; perdre les autres pour elle serait pire."""
         vues = L.parse_instances(self.LIGNES + "\n{ tronqué")
+        self.assertEqual(["a", "b"], [i.name for i in vues])
+
+    # Ce que l'outil écrit quand il n'a AUCUNE instance : un avertissement
+    # au format logfmt, sur la sortie STANDARD, et un code de retour 0.
+    # L'horodatage est neutralisé — c'est la forme qui porte le fait.
+    VIDE_BAVARD = (
+        'time="0000-00-00T00:00:00-00:00" level=warning'
+        ' msg="No instance found. Run `limactl create` to create an'
+        ' instance."'
+    )
+
+    def test_an_empty_inventory_is_not_an_empty_output(self):
+        """Un inventaire vide ARRIVE bavard, et par la bonne sortie.
+
+        Juger « aucune instance » sur une sortie vide ne tient donc pas :
+        la ligne n'est pas du JSON, et un analyseur qui la laisserait
+        remonter ferait lever là où le menu attend un tuple.
+        """
+        self.assertEqual((), L.parse_instances(self.VIDE_BAVARD))
+
+    def test_a_warning_line_never_becomes_an_instance(self):
+        """Une ligne de journal n'a pas de champ « name » ; la prendre pour
+        une instance ferait proposer d'en démarrer une qui n'existe pas."""
+        vues = L.parse_instances(self.VIDE_BAVARD + "\n" + self.LIGNES)
         self.assertEqual(["a", "b"], [i.name for i in vues])
 
     def test_an_entry_without_a_name_is_dropped(self):
