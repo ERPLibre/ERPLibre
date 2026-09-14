@@ -1563,6 +1563,14 @@ TRANSLATIONS = {
         "fr": "Les retirer depuis l'entrée 4 de ce menu.",
         "en": "Remove them from entry 4 of this menu.",
     },
+    "This destroys the machines of this test and their disks.": {
+        "fr": "Cela détruit les machines de ce test et leurs disques.",
+        "en": "This destroys the machines of this test and their disks.",
+    },
+    "Destroy the machines of this test?": {
+        "fr": "Détruire les machines de ce test ?",
+        "en": "Destroy the machines of this test?",
+    },
     "Machines created:": {
         "fr": "Machines créées :",
         "en": "Machines created:",
@@ -2055,6 +2063,14 @@ TRANSLATIONS = {
     "The control run measures what NOT caching costs.": {
         "fr": "Le témoin mesure ce que coûte l'ABSENCE de cache.",
         "en": "The control run measures what NOT caching costs.",
+    },
+    "This creates real VMs and takes a while.": {
+        "fr": "Cela crée de vraies VM et prend du temps.",
+        "en": "This creates real VMs and takes a while.",
+    },
+    "Run this long test?": {
+        "fr": "Lancer ce test long ?",
+        "en": "Run this long test?",
     },
     "Install the download cache shared by the QEMU VMs of this host": {
         "fr": "Installer le cache de téléchargement partagé par les VM QEMU de cet hôte",
