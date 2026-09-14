@@ -1155,6 +1155,7 @@ def run_tui(
             Binding("S", "search_server", t("mail_search_server_binding")),
             Binding("d", "trash_message", t("mail_trash_binding")),
             Binding("m", "move_message", t("mail_move_binding")),
+            Binding("D", "empty_trash", t("mail_empty_trash_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
@@ -2064,14 +2065,7 @@ def run_tui(
             if session is None or not session.online:
                 self.set_status(t("mail_trash_offline"))
                 return
-            corbeille = next(
-                (
-                    f["name"]
-                    for f in session.store.folders()
-                    if f["role"] == "trash"
-                ),
-                None,
-            )
+            corbeille = self._corbeille(session)
             if corbeille is None:
                 # Inventer un nom créerait chez le fournisseur un dossier
                 # que personne n'a demandé.
@@ -2085,6 +2079,88 @@ def run_tui(
                 lambda: self._deplacer(session, source, corbeille, meta.uid),
                 thread=True,
             )
+
+        @staticmethod
+        def _corbeille(session) -> str | None:
+            """Le dossier que le SERVEUR désigne comme corbeille, ou rien.
+
+            Le rôle vient de l'annonce du fournisseur, jamais d'un nom
+            deviné : inventer « Trash » créerait chez lui un dossier que
+            personne n'a demandé, et le vrai resterait plein.
+            """
+            return next(
+                (
+                    f["name"]
+                    for f in session.store.folders()
+                    if f["role"] == "trash"
+                ),
+                None,
+            )
+
+        def action_empty_trash(self) -> None:
+            """`D` : détruit définitivement le contenu de la corbeille.
+
+            Le seul geste du client qui ne se répare pas, et le seul qui
+            exige de TAPER un mot plutôt que d'appuyer sur une touche — la
+            confirmation d'un geste irréversible ne doit pas pouvoir
+            s'obtenir par la frappe de trop.
+            """
+            if self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_empty_trash_offline"))
+                return
+            corbeille = self._corbeille(session)
+            if corbeille is None:
+                self.set_status(t("mail_empty_trash_no_folder"))
+                return
+            # PAS de refus anticipé sur le compte du cache : il retarde
+            # toujours sur la corbeille, que `d` remplit côté serveur sans
+            # rien y ajouter localement. Un « déjà vide » tiré de là
+            # refuserait le geste juste après avoir jeté un message. Le
+            # nombre affiché se donne donc pour ce qu'il est, et le seul
+            # qui compte — celui du serveur — est annoncé à la fin.
+            etat = session.store.folder_state(corbeille) or {}
+
+            def vider(confirme):
+                if not confirme:
+                    return
+                self.set_status(t("mail_empty_trash_working"))
+                self.run_worker(
+                    lambda: self._vider(session, corbeille),
+                    thread=True,
+                )
+
+            self.push_screen(
+                EmptyTrashScreen(corbeille, etat.get("total") or 0), vider
+            )
+
+        def _vider(self, session, corbeille) -> None:
+            """Le fil de travail de `D`.
+
+            Le cache n'est purgé qu'APRÈS l'accord du serveur, et le nombre
+            annoncé est celui que le SERVEUR a retiré, pas celui que le
+            cache croyait détenir.
+            """
+            try:
+                with self._sync_lock:
+                    nombre = session.syncer.transport.empty_folder(corbeille)
+            except Exception as exc:
+                _logger.exception("vidage de %s", corbeille)
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            session.store.purge_folder(corbeille)
+            self.call_from_thread(self._vide, nombre)
+
+        def _vide(self, nombre: int) -> None:
+            self.set_status(
+                f"{t('mail_empty_trash_done')} {nombre}"
+                if nombre
+                else t("mail_empty_trash_already")
+            )
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def _deplacer(self, session, source, cible, uid) -> None:
             """Le fil de travail que `d` et `m` partagent.
@@ -2777,6 +2853,52 @@ def run_tui(
         def on_data_table_row_selected(self, event) -> None:
             self.action_choose()
 
+    class EmptyTrashScreen(ModalScreen):
+        """La confirmation d'un geste qui ne se répare pas.
+
+        Elle exige de TAPER un mot, comme la suppression d'un dossier :
+        c'est la seule forme de confirmation qu'une frappe de trop ne peut
+        pas donner par accident. Elle nomme aussi ce qui va disparaître —
+        une confirmation qui ne dit pas sur quoi elle porte n'en est pas
+        une.
+        """
+
+        BINDINGS = [
+            Binding("escape", "cancel", t("mail_empty_trash_close")),
+        ]
+
+        CSS = """
+        #empty_hint { height: auto; padding: 1; }
+        """
+
+        def __init__(self, corbeille: str, total: int):
+            super().__init__()
+            self.corbeille = corbeille
+            self.total = total
+
+        def compose(self):
+            with Vertical():
+                yield Static(
+                    Text(
+                        f"« {self.corbeille} » — {self.total}"
+                        f" {t('mail_empty_trash_count')}\n\n"
+                        f"{t('mail_empty_trash_ask')} {MOT_SUPPRESSION}"
+                    ),
+                    id="empty_hint",
+                )
+                yield Input(id="empty_input")
+
+        def on_mount(self) -> None:
+            self.query_one("#empty_input", Input).focus()
+
+        def action_cancel(self) -> None:
+            self.dismiss(False)
+
+        def on_input_submitted(self, event) -> None:
+            self.dismiss(
+                (event.value or "").strip().lower() == MOT_SUPPRESSION
+            )
+
     class FolderScreen(ModalScreen):
         """Touche `F` : créer, renommer et supprimer un dossier.
 
@@ -3301,6 +3423,7 @@ def run_tui(
         #help_title { padding: 0 1; }
         #help_body { height: 1fr; padding: 0 1; }
         #help_notes { padding-top: 1; }
+        #help_close { padding: 1 1 0 1; }
         """
 
         def compose(self):
@@ -3317,6 +3440,16 @@ def run_tui(
                     yield Static(
                         self._notes_text(), id="help_notes", markup=False
                     )
+                # HORS du bloc qui défile : la phrase qui dit comment
+                # SORTIR ne doit pas pouvoir passer sous le pli. Chaque
+                # raccourci ajouté allongeait la liste au-dessus d'elle, et
+                # elle a fini par sortir de l'écran — mesuré sur 45 lignes,
+                # la hauteur d'un grand terminal.
+                yield Static(
+                    t("mail_help_close_hint"),
+                    id="help_close",
+                    markup=False,
+                )
 
         def _shortcuts_table(self):
             """Le tableau touche → description, construit depuis
@@ -3361,7 +3494,6 @@ def run_tui(
                     "mail_help_layouts",
                     "mail_help_sync",
                     "mail_help_files",
-                    "mail_help_close_hint",
                 )
             )
 

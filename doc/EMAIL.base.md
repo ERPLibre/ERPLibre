@@ -368,6 +368,7 @@ preview pane on the right, with a status line at the bottom.
 | `s` / `u` | mark the selected message seen / unseen |
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
+| `D` | empty the account's trash folder, permanently |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -413,6 +414,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `m` | ranger le message sélectionné dans un dossier qu'on choisit |
+| `D` | vider la corbeille du compte, définitivement |
 | `c` | écrire un nouveau message |
 | `a` / `Shift+A` | répondre / répondre à tous |
 | `f` | transférer |
@@ -932,6 +934,24 @@ apart from the folder screen on `F`, which creates and destroys: mixing an
 everyday gesture with destructive ones puts deleting a folder one key away
 from filing a message.
 
+`D` empties that trash folder. This is the one gesture the client cannot
+repair: IMAP has no trash for what leaves a trash folder, and no
+synchronization pass brings it back. It therefore asks you to TYPE
+`supprimer`, not to press a key — an irreversible gesture must not be
+obtainable by one keystroke too many. `Escape`, an empty field or any
+other word all leave everything in place.
+
+The whole folder goes at once, which is what makes a bare `EXPUNGE`
+acceptable here where `move` refuses it: everything flagged deleted in
+that folder is either what the client just flagged or what another client
+flagged in the same folder, and the gesture destroys both anyway. A
+message delivered after the UID listing is not flagged, so it survives.
+
+The count the confirmation shows comes from the cache and says so. The
+cache always lags behind the trash folder — `d` fills it on the server
+without adding anything locally — so the number that matters is the one
+reported afterwards: what the server actually removed.
+
 <!-- [fr] -->
 ## Ranger et jeter un message
 
@@ -961,6 +981,24 @@ ferait rien, et le proposer laisse croire le contraire. C'est un écran à
 part, distinct de celui des dossiers sur `F`, qui crée et détruit : mêler
 un geste quotidien à des gestes destructeurs met la suppression d'un
 dossier à une touche du rangement d'un message.
+
+`D` vide cette corbeille. C'est le seul geste que le client ne sait pas
+réparer : IMAP n'a pas de corbeille pour ce qui sort d'une corbeille, et
+aucune passe de synchronisation ne le ramène. Il demande donc de TAPER
+`supprimer`, pas d'appuyer sur une touche — un geste irréversible ne doit
+pas pouvoir s'obtenir par la frappe de trop. `Échap`, un champ vide ou
+tout autre mot laissent tout en place.
+
+Le dossier part en entier, et c'est ce qui rend l'`EXPUNGE` nu acceptable
+ici là où `move` le refuse : tout ce qui y est marqué supprimé est soit ce
+que le client vient de marquer, soit ce qu'un autre client a marqué dans
+ce même dossier, que le geste détruit de toute façon. Un message livré
+après le relevé des UID n'est pas marqué, et survit.
+
+Le nombre affiché par la confirmation vient du cache, et le dit. Le cache
+retarde toujours sur la corbeille — `d` la remplit côté serveur sans rien
+y ajouter localement — donc le nombre qui compte est celui annoncé
+ensuite : ce que le serveur a réellement retiré.
 
 <!-- [en] -->
 ## List views

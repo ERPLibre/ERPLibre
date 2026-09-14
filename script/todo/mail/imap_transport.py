@@ -373,6 +373,42 @@ class ImaplibTransport:
             raise ImapError(f"{t('mail_err_move_failed')} {exc}") from exc
         return True
 
+    def empty_folder(self, folder: str) -> int:
+        """Détruit DÉFINITIVEMENT tout le contenu de `folder`, et rend le
+        nombre de messages retirés.
+
+        C'est le seul geste du client qui ne se répare pas : IMAP n'a pas de
+        corbeille pour ce qui sort d'une corbeille. L'appelant demande
+        confirmation ; cette méthode, elle, ne discute pas.
+
+        `move` refuse l'EXPUNGE nu parce qu'il emporterait des messages
+        qu'elle n'a pas nommés. Ici la question ne se pose pas : le dossier
+        est vidé ENTIER, donc tout ce qui y porte `\\Deleted` est soit ce
+        que cette méthode vient de marquer, soit ce qu'un autre client a
+        marqué dans ce même dossier — que le geste détruit de toute façon.
+        Un message livré après le relevé des UID n'est, lui, pas marqué, et
+        survit.
+        """
+        self.select(folder)
+        uids = self.search_uids(1)
+        if not uids:
+            return 0
+        liste = ",".join(str(u) for u in uids)
+        try:
+            self._ok(
+                self.client.uid("STORE", liste, "+FLAGS", "(\\Deleted)"),
+                "STORE +FLAGS",
+            )
+            if "UIDPLUS" in self.client.capabilities:
+                self._ok(self.client.uid("EXPUNGE", liste), "UID EXPUNGE")
+            else:
+                self._ok(self.client.expunge(), "EXPUNGE")
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"{t('mail_err_empty_failed')} {exc}") from exc
+        return len(uids)
+
     def store_flags(self, uid: int, add: list[str], remove: list[str]) -> None:
         if add:
             self._ok(

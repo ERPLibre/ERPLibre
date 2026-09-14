@@ -183,6 +183,7 @@ preview pane on the right, with a status line at the bottom.
 | `s` / `u` | mark the selected message seen / unseen |
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
+| `D` | empty the account's trash folder, permanently |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -450,6 +451,24 @@ nothing, and offering it suggests otherwise. It is a screen of its own,
 apart from the folder screen on `F`, which creates and destroys: mixing an
 everyday gesture with destructive ones puts deleting a folder one key away
 from filing a message.
+
+`D` empties that trash folder. This is the one gesture the client cannot
+repair: IMAP has no trash for what leaves a trash folder, and no
+synchronization pass brings it back. It therefore asks you to TYPE
+`supprimer`, not to press a key — an irreversible gesture must not be
+obtainable by one keystroke too many. `Escape`, an empty field or any
+other word all leave everything in place.
+
+The whole folder goes at once, which is what makes a bare `EXPUNGE`
+acceptable here where `move` refuses it: everything flagged deleted in
+that folder is either what the client just flagged or what another client
+flagged in the same folder, and the gesture destroys both anyway. A
+message delivered after the UID listing is not flagged, so it survives.
+
+The count the confirmation shows comes from the cache and says so. The
+cache always lags behind the trash folder — `d` fills it on the server
+without adding anything locally — so the number that matters is the one
+reported afterwards: what the server actually removed.
 
 ## List views
 

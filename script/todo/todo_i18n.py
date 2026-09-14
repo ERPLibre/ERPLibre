@@ -12457,6 +12457,52 @@ TRANSLATIONS = {
         "fr": "le déplacement a échoué :",
         "en": "the move failed:",
     },
+    "mail_err_empty_failed": {
+        "fr": "le vidage a échoué :",
+        "en": "emptying failed:",
+    },
+    "mail_empty_trash_binding": {
+        "fr": "Vider la corbeille",
+        "en": "Empty the trash",
+    },
+    "mail_empty_trash_offline": {
+        "fr": "Compte hors ligne : la corbeille n'a pas été touchée.",
+        "en": "Account offline: the trash was left untouched.",
+    },
+    "mail_empty_trash_no_folder": {
+        "fr": "Ce compte n'annonce pas de corbeille : il n'y a rien à vider.",
+        "en": "This account announces no trash folder: nothing to empty.",
+    },
+    "mail_empty_trash_already": {
+        "fr": "La corbeille est déjà vide.",
+        "en": "The trash is already empty.",
+    },
+    "mail_empty_trash_ask": {
+        "fr": (
+            "Détruire définitivement le contenu de la corbeille. Rien ne le"
+            " récupérera. Pour confirmer, tapez"
+        ),
+        "en": (
+            "Permanently destroy the contents of the trash. Nothing will"
+            " bring it back. To confirm, type"
+        ),
+    },
+    "mail_empty_trash_count": {
+        "fr": "messages selon le cache",
+        "en": "messages according to the cache",
+    },
+    "mail_empty_trash_close": {
+        "fr": "Renoncer",
+        "en": "Give up",
+    },
+    "mail_empty_trash_working": {
+        "fr": "Vidage de la corbeille…",
+        "en": "Emptying the trash…",
+    },
+    "mail_empty_trash_done": {
+        "fr": "Détruits définitivement :",
+        "en": "Permanently destroyed:",
+    },
     "mail_err_server_search_failed": {
         "fr": "le serveur a refusé la recherche :",
         "en": "the server refused the search:",
