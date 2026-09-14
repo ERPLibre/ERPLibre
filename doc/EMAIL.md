@@ -184,6 +184,7 @@ preview pane on the right, with a status line at the bottom.
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
 | `D` | empty the account's trash folder, permanently |
+| `p` | widen the search: folder, account, every account |
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
@@ -500,10 +501,24 @@ threads. An account that fails is reported and does not stop the others.
 ## Search
 
 `/` searches the **whole cache of the open folder**, not just the messages
-currently loaded. Subject, sender, recipient and snippet are matched. The
-scope stops there: the other folders of the account and the other accounts
-are not searched, and at most 500 matches are returned, the most recent
-first. `Shift+S` reaches past the cache — see below.
+currently loaded. Subject, sender, recipient and snippet are matched. At
+most 500 matches are returned, the most recent first. `Shift+S` reaches
+past the cache — see below.
+
+`p` widens that scope, one press at a time: the open folder, then every
+folder of the account, then every folder of every account, then back to
+the open folder. The status bar names the new scope each time — a list
+that silently grew would read as a defect. Widening stays an explicit
+gesture: in `encrypted` mode, doing it automatically would decrypt folders
+nobody asked about, at every keystroke.
+
+A result from elsewhere carries where it comes from, shown before its
+subject as `[Archives]`, or `[account/Archives]` when it comes from
+another account. This is not decoration. A UID names nothing on its own —
+the same number names a different message in every folder — so a result
+that lost its origin would show the body of its namesake here, and `d`,
+`m`, `s`, `u` and `w` would act on that one. Each of those keys follows
+the result's own folder and account instead.
 
 In `clear` cache mode an FTS5 index answers in milliseconds and the list
 follows every keystroke. In `encrypted` mode no index exists — one would
@@ -515,14 +530,18 @@ that key is pressed, the list filters only the messages already loaded.
 
 The result is the same either way; only the cost differs.
 
-`Shift+S` asks the server the same question, for the open folder. It is a
-separate gesture on purpose: extending at every keystroke would charge a
+`Shift+S` asks the server the same question, over the same scope as `p`
+has set — the open folder, the account's folders, or every account's. It
+is a separate gesture on purpose: extending at every keystroke would charge a
 round trip to a search that already answers. What the server finds is
 downloaded and stored, so the local search shows it immediately and finds
 it again offline. The server looks at whole messages, headers and body, so
 it can return what the local search would not — which is the point of
 looking further. An account that is offline says so rather than waiting,
-and a server that refuses says why.
+and a server that refuses says why. Over a wider scope one folder that
+refuses — unselectable, gone since the last pass — does not stop the
+others: the count of folders that gave no answer is reported alongside
+what was brought back.
 
 ## Statistics
 
@@ -653,9 +672,6 @@ stands and the next pass tries again.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **No cross-folder search** — `/` and `Shift+S` both work on the open
-  folder of one account; neither sweeps the other folders or the other
-  accounts.
 - **No moving across accounts** — `d` and `m` file a message within the
   account it belongs to; a message cannot be moved from one account to
   another.

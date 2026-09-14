@@ -12534,6 +12534,26 @@ TRANSLATIONS = {
             " there, struck through"
         ),
     },
+    "mail_scope_binding": {
+        "fr": "Portée de la recherche",
+        "en": "Search scope",
+    },
+    "mail_scope_folder": {
+        "fr": "Recherche : le dossier ouvert.",
+        "en": "Search: the open folder.",
+    },
+    "mail_scope_account": {
+        "fr": "Recherche : tous les dossiers du compte.",
+        "en": "Search: every folder of the account.",
+    },
+    "mail_scope_all": {
+        "fr": "Recherche : tous les dossiers de tous les comptes.",
+        "en": "Search: every folder of every account.",
+    },
+    "mail_search_server_skipped": {
+        "fr": "dossiers sans réponse",
+        "en": "folders gave no answer",
+    },
     "mail_search_server_binding": {
         "fr": "Chercher sur le serveur",
         "en": "Search the server",
