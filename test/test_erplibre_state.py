@@ -65,6 +65,37 @@ class TestLeContexteMobileSEcritEtSeRelit(EtatIsole):
         self.assertTrue(E.get_version_installed("18.0"))
 
 
+class TestLeResumeLitParLeLecteur(EtatIsole):
+    """Le résumé disait l'état en recopiant le chemin de clé.
+
+    L'écrivain et le lecteur existent ; le résumé descendait à côté d'eux
+    dans `state["mobile"]["active"]`. Une clé recopiée devient une
+    divergence silencieuse le jour où la forme de l'état change.
+    """
+
+    def ligne_mobile(self):
+        with self.assertLogs(E._logger, level="INFO") as vu:
+            E.print_state()
+        lignes = [l for l in vu.output if "Mobile context" in l]
+        self.assertEqual(1, len(lignes), vu.output)
+        return lignes[0]
+
+    def test_the_summary_says_what_was_recorded(self):
+        """« active » se cherche avec son deux-points : « inactive » le
+        CONTIENT, et une sous-chaîne nue rend l'épreuve verte quoi que le
+        résumé affiche."""
+        E.set_mobile_active(True)
+        self.assertTrue(self.ligne_mobile().endswith(": active"))
+
+    def test_a_fresh_state_says_inactive(self):
+        self.assertTrue(self.ligne_mobile().endswith(": inactive"))
+
+    def test_turning_it_off_shows_in_the_summary(self):
+        E.set_mobile_active(True)
+        E.set_mobile_active(False)
+        self.assertTrue(self.ligne_mobile().endswith(": inactive"))
+
+
 class TestLeCablageDuLancementMobile(unittest.TestCase):
     """L'état suit le LANCEMENT, et non l'intention.
 
