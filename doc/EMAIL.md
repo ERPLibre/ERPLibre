@@ -498,6 +498,23 @@ connections, and past a handful the gain disappears. Two passes never
 overlap on the same account: one shared imaplib socket is not safe across
 threads. An account that fails is reported and does not stop the others.
 
+Inside one account, its folders now advance together too, over up to three
+links to the same server. One `imaplib` connection has a single selected
+folder at a time, so on one link a mailbox of thirty folders walks them
+one by one and the wait is the sum of the thirty.
+
+Three links, no more: providers cap how many connections one account may
+hold, and that cap is shared with the person's other clients — phone,
+desktop client — which keep theirs open all day. Folders are dealt out in
+round robin rather than in contiguous slices, because a LIST returns them
+grouped by hierarchy and the large ones follow each other.
+
+A provider that refuses one more link costs no folder: that link's share
+goes back to the one already open, so the account syncs more slowly, never
+less completely. Extra links are closed at the end of every pass, whatever
+happened — an account leaving one behind each time would reach the
+provider's limit in minutes.
+
 ## Search
 
 `/` searches the **whole cache of the open folder**, not just the messages

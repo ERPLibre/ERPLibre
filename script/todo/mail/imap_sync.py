@@ -135,13 +135,57 @@ class Syncer:
     BATCH = 200
     FLAG_REFRESH = 500
 
-    def __init__(self, store, transport: ImapTransport) -> None:
+    def __init__(
+        self,
+        store,
+        transport: ImapTransport,
+        open_transport=None,
+        parallele: int = 1,
+    ) -> None:
         self.store = store
         self.transport = transport
+        # Fabrique un lien SUPPLÉMENTAIRE vers le même compte, sans
+        # argument. Sans elle, la passe reste sur le seul lien ouvert : un
+        # `imaplib` n'a qu'un dossier sélectionné à la fois, donc deux
+        # dossiers ne peuvent pas avancer ensemble dessus.
+        self.open_transport = open_transport
+        # Le nombre de liens qu'un compte a le droit d'ouvrir en même
+        # temps. Les fournisseurs les plafonnent — quelques dizaines chez
+        # les plus grands, moins chez les petits — et dépasser ne rend pas
+        # une erreur claire : le serveur refuse la connexion suivante.
+        self.parallele = max(1, int(parallele or 1))
 
     def sync(self, progress=None) -> SyncReport:
+        """Une passe sur tous les dossiers du compte.
+
+        `progress(dossier, faits, total)` est appelé depuis PLUSIEURS fils
+        dès qu'un second lien sert : ce qu'on lui passe doit supporter
+        d'être appelé de front.
+        """
+        lots = self._lots(self.transport.list_folders())
+        if len(lots) == 1:
+            return self._sync_lot(lots[0], progress)
+        return self._sync_parallele(lots, progress)
+
+    def _lots(self, dossiers: list) -> list:
+        """Répartit les dossiers entre les liens disponibles.
+
+        En TOURNIQUET, pas en tranches contiguës : le LIST rend les
+        dossiers groupés par hiérarchie, et les gros se suivent — une
+        découpe en tranches donnerait un lot qui dure et des lots déjà
+        finis.
+        """
+        combien = min(self.parallele, len(dossiers))
+        if combien <= 1 or self.open_transport is None:
+            return [list(dossiers)]
+        lots = [[] for _ in range(combien)]
+        for rang, dossier in enumerate(dossiers):
+            lots[rang % combien].append(dossier)
+        return lots
+
+    def _sync_lot(self, dossiers: list, progress) -> SyncReport:
         report = SyncReport()
-        for folder in self.transport.list_folders():
+        for folder in dossiers:
             try:
                 self._sync_folder(folder, report, progress)
             except Exception as exc:
@@ -150,6 +194,63 @@ class Syncer:
                 report.errors.append(f"{folder.name} : {exc}")
             report.folders += 1
         return report
+
+    def _sync_parallele(self, lots: list, progress) -> SyncReport:
+        """Un lot par lien, le premier sur le lien déjà ouvert.
+
+        Les liens supplémentaires sont FERMÉS à la sortie, quoi qu'il
+        arrive : un compte qui en laisserait derrière lui à chaque passe
+        atteindrait la limite du fournisseur en quelques minutes, et le
+        suivant se verrait refuser.
+
+        Le cache, lui, n'a pas besoin d'être protégé ici : ses méthodes
+        prennent déjà son verrou.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        travaux = [(self, list(lots[0]))]
+        auxiliaires = []
+        for lot in lots[1:]:
+            try:
+                transport = self.open_transport()
+            except Exception as exc:
+                # Le fournisseur refuse un lien de plus, ou le secret a
+                # expiré : le lot revient au lien déjà ouvert plutôt que
+                # de ne pas être synchronisé du tout.
+                _logger.info("lien supplémentaire refusé : %s", exc)
+                travaux[0][1].extend(lot)
+                continue
+            auxiliaires.append(transport)
+            travaux.append((Syncer(self.store, transport), lot))
+        try:
+            with ThreadPoolExecutor(max_workers=len(travaux)) as pool:
+                futurs = [
+                    pool.submit(syncer._sync_lot, lot, progress)
+                    for syncer, lot in travaux
+                ]
+                rapports = [futur.result() for futur in futurs]
+        finally:
+            for transport in auxiliaires:
+                try:
+                    transport.logout()
+                except Exception:
+                    # Le lien est fermé de toute façon à la fin du
+                    # processus ; échouer ici ferait perdre une passe qui a
+                    # réussi.
+                    _logger.exception("fermeture d'un lien supplémentaire")
+        return self._fusion(rapports)
+
+    @staticmethod
+    def _fusion(rapports: list) -> SyncReport:
+        """Un seul rapport pour l'appelant : il n'a pas à savoir combien de
+        liens ont servi."""
+        total = SyncReport()
+        for rapport in rapports:
+            total.folders += rapport.folders
+            total.new_messages += rapport.new_messages
+            total.purged.extend(rapport.purged)
+            total.errors.extend(rapport.errors)
+        return total
 
     def sync_one(self, folder_name: str) -> SyncReport:
         """Une passe limitée à `folder_name`, par son nom seul.

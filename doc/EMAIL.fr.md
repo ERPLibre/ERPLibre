@@ -531,6 +531,26 @@ passes ne se chevauchent jamais sur un même compte : un socket imaplib
 partagé n'est pas sûr à plusieurs fils. Un compte qui échoue est signalé et
 n'arrête pas les autres.
 
+À l'intérieur d'un compte, ses dossiers avancent désormais ensemble eux
+aussi, sur trois liens au plus vers le même serveur. Une connexion
+`imaplib` n'a qu'un dossier sélectionné à la fois : sur un seul lien, une
+boîte de trente dossiers les parcourt un par un, et l'attente est la somme
+des trente.
+
+Trois liens, pas plus : les fournisseurs plafonnent le nombre de
+connexions qu'un compte peut tenir, et ce plafond est partagé avec les
+autres clients de la personne — téléphone, client de bureau — qui gardent
+le leur ouvert toute la journée. Les dossiers sont distribués en
+tourniquet plutôt qu'en tranches contiguës, parce qu'un LIST les rend
+groupés par hiérarchie et que les gros se suivent.
+
+Un fournisseur qui refuse un lien de plus ne coûte aucun dossier : la part
+de ce lien revient à celui déjà ouvert, donc le compte se synchronise plus
+lentement, jamais moins complètement. Les liens supplémentaires sont
+refermés à la fin de chaque passe, quoi qu'il arrive — un compte qui en
+laisserait un derrière lui à chaque fois atteindrait la limite du
+fournisseur en quelques minutes.
+
 ## Recherche
 
 `/` cherche dans **tout le cache du dossier ouvert**, et non dans les seuls
