@@ -7204,6 +7204,14 @@ TRANSLATIONS = {
         "fr": "autorité du cache de téléchargement non posée",
         "en": "download cache authority not installed",
     },
+    "no trust store for this distribution, its downloads "
+    "will fail": {
+        "fr": (
+            "pas de magasin de confiance pour cette distribution, ses "
+            "téléchargements échoueront"
+        ),
+        "en": "no trust store for this distribution, its downloads will fail",
+    },
     "Timezone": {
         "fr": "Fuseau horaire",
         "en": "Timezone",

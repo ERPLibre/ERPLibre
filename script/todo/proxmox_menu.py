@@ -1754,10 +1754,22 @@ class ProxmoxMenuMixin:
         )
         fichiers = mod.cache_files(args)
         if not fichiers:
-            # Distribution hors table, ou autorité illisible : la VM
-            # télécharge en direct, ce qui marche tant qu'aucune règle ne la
-            # vise. Poser le fichier au mauvais endroit ne marcherait pas et
-            # ne dirait rien.
+            # Une distribution dont le magasin de confiance n'a pas de forme
+            # par fichier — un système déclaratif n'a pas d'ancre où écrire —
+            # ou une autorité illisible. Poser le fichier au mauvais endroit
+            # ne marcherait pas.
+            #
+            # Mais le silence était faux : on n'arrive ici que lorsque l'hôte
+            # Proxmox est lui-même une VM de CE pont, donc ses invités sont
+            # détournés. Celui-ci n'aura rien pour reconnaître le cache, et
+            # chaque téléchargement HTTPS échouera sur « self-signed
+            # certificate in certificate chain » — plus tard, dans la VM,
+            # loin d'ici. C'est pourquoi il est nommé.
+            cle = (
+                "no trust store for this distribution, its downloads "
+                "will fail"
+            )
+            print(f"  ⚠ {t(cle)} : {vm.get('distro') or '?'}")
             return False
         morceaux = []
         for chemin, mode, contenu, _proprio in fichiers:
