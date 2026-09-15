@@ -196,6 +196,31 @@
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
   };
 
+  # Les réglages régionaux demandés au déploiement.
+  #
+  # Le FUSEAU marche déjà sans cela : cloud-init pose /etc/localtime, que
+  # NixOS laisse mutable tant que « time.timeZone » n'est pas déclaré.
+  # Mesuré sur une VM installée — le lien pointe bien la zone demandée. Le
+  # déclarer ne répare donc rien ; il fait passer la garantie du côté du
+  # module, comme pour l'agent invité.
+  #
+  # La LOCALE, elle, ne marchait pas : cloud-init l'applique par locale-gen
+  # et update-locale, qui n'existent pas ici, et la VM gardait le défaut de
+  # NixOS. Mesuré : « fr_CA.UTF-8 » demandé, « en_US.UTF-8 » obtenu.
+  #
+  # « mkIf » plutôt qu'une valeur de repli : sur une machine où rien n'a été
+  # demandé — une NixOS que l'on avait déjà, installée par « --hote » —
+  # l'option n'est PAS définie, et le réglage de son propriétaire reste.
+  # Écrire un défaut ici l'écraserait sans le dire.
+  #
+  # CE QUE CELA COÛTE, mesuré : une locale autre que celle du défaut change
+  # l'ensemble des locales prises en charge, donc la dérivation de
+  # glibc-locales, qui n'est alors pas dans le cache binaire et se BÂTIT. La
+  # première reconstruction est longue, et silencieuse — il vaut mieux le
+  # savoir que de la prendre pour un blocage.
+  i18n.defaultLocale = lib.mkIf ("@EL_LOCALE@" != "") "@EL_LOCALE@";
+  time.timeZone = lib.mkIf ("@EL_TZ@" != "") "@EL_TZ@";
+
   # Le guide de connexion, AFFICHÉ.
   #
   # Le déploiement écrit /etc/motd dans toutes les distributions, et compte
