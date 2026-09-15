@@ -388,8 +388,6 @@ class TestLeMenage(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestLeTempsPasseEtLeTempsEcoule(unittest.TestCase):
@@ -670,3 +668,7 @@ class TestLaDureeMesureeEtLaDureeSupposee(unittest.TestCase):
             texte = open(os.path.join(dossier, fichiers[0])).read()
         self.assertNotIn(TEMOIN, texte)
         self.assertIn("42", texte)
+
+
+if __name__ == "__main__":
+    unittest.main()

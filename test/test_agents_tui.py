@@ -218,8 +218,6 @@ class TestLApplicationSeConstruit(unittest.TestCase):
         self.assertIn("f", touches, "le gel est une fonction, pas un confort")
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestLesDeuxHarnaisDansLeMemeTableau(unittest.TestCase):
@@ -1135,3 +1133,7 @@ class TestLesDeuxGestesQuiCoutent(unittest.IsolatedAsyncioTestCase):
         ((_, poignee),) = envoyes
         self.assertEqual(poignee, "aaaaaaaa")
         self.assertNotEqual(poignee, self.SESSION)
+
+
+if __name__ == "__main__":
+    unittest.main()

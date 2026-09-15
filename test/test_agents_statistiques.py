@@ -360,8 +360,6 @@ class TestContreUneVraieTranscription(unittest.TestCase):
         self.assertEqual(une.agregat.tours, deux.agregat.tours)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestLesSeriesQueLeDisquePortait(unittest.TestCase):
@@ -439,3 +437,7 @@ class TestLesSeriesQueLeDisquePortait(unittest.TestCase):
         total = st.somme([])
         self.assertEqual(total.jetons_par_jour, {})
         self.assertEqual(total.jetons_par_modele, {})
+
+
+if __name__ == "__main__":
+    unittest.main()
