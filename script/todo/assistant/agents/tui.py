@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import glob
 import os
+import time
 
 from script.todo.assistant.agents import journal as jr
 from script.todo.assistant.agents import statistiques as st
@@ -41,6 +42,10 @@ TRANSCRIPTIONS = "~/.claude/projects/*/*.jsonl"
 # Le pas de rafraîchissement. Deux secondes est ce que la télémétrie de
 # navigation emploie déjà, et un appel d'outil qui dure se voit dedans.
 PAS = 2.0
+
+# Combien d'appels le flux garde à l'écran. Au-delà, on ne lit plus : le
+# panneau répond à « qu'est-ce qui vient de se passer », pas à « tout ».
+FLUX_MAX = 60
 
 # La barre de contexte, en caractères. Assez pour lire une pente, assez peu
 # pour tenir dans une colonne à côté des chiffres.
@@ -258,6 +263,69 @@ def resume_opencode(seances) -> str:
     )
 
 
+def heure(millisecondes) -> str:
+    """« 14:32:07 » — l'heure locale d'un instant du journal.
+
+    En heure LOCALE, contrairement au jour d'une transcription : on lit cette
+    colonne pour se rappeler ce qu'on faisait à ce moment-là, et c'est la
+    pendule du mur qui répond à cette question-là.
+    """
+    if not millisecondes:
+        return ""
+    return time.strftime("%H:%M:%S", time.localtime(millisecondes / 1000))
+
+
+# Comment une fin s'écrit à l'écran. La clé EST la chaîne anglaise, comme
+# partout dans le paquet ; la colonne reste VIDE pour un appel fini, qui est
+# le cas ordinaire et n'a rien à signaler.
+#
+# Des clés DISTINCTES de celles du tableau par outil, bien que l'anglais les
+# confonde : là-bas ce sont des comptes et le français les accorde au pluriel
+# — « échoués » —, ici c'est UN appel et la même clé donnerait « inachevés »
+# sur une ligne qui en décrit un seul.
+ISSUES = {
+    jr.FINI: "",
+    jr.ECHOUE: "failure",
+    jr.INTERROMPU: "interruption",
+    jr.INACHEVE: "no ending",
+}
+
+
+def lignes_flux(appels, limite=FLUX_MAX) -> list[dict]:
+    """Les derniers appels d'outil, du plus RÉCENT au plus ancien.
+
+    Le panneau des outils dit ce qu'un outil coûte en moyenne ; celui-ci dit
+    ce qui vient de se passer, et les deux répondent à des questions
+    différentes — « lequel est lent » contre « pourquoi ça bloque depuis deux
+    minutes ». Aucun contenu n'y paraît : un nom d'outil, une durée, une fin.
+
+    L'ordre est inversé parce qu'un flux se lit par le haut : mettre le plus
+    ancien en tête obligerait à faire défiler pour voir ce qui arrive.
+    """
+    derniers = sorted(appels, key=lambda a: a.debut_ms)[-limite:]
+    return [
+        {
+            "heure": heure(a.debut_ms),
+            "session": (a.session or "")[:8],
+            "outil": a.outil or "—",
+            "duree": "—" if a.duree_ms is None else duree(a.duree_ms),
+            "issue": t(ISSUES.get(a.issue, "")) if ISSUES.get(a.issue) else "",
+        }
+        for a in reversed(derniers)
+    ]
+
+
+# Les colonnes du flux. La session y est abrégée : le flux réunit toutes les
+# sessions de la machine, et sans elle deux terminaux se lisent comme un seul.
+COLONNES_FLUX = (
+    ("heure", "time"),
+    ("session", "session"),
+    ("outil", "tool"),
+    ("duree", "duration"),
+    ("issue", "outcome"),
+)
+
+
 def lignes_outils(par_outil) -> list[dict]:
     """Une ligne par outil, prête à afficher. Fonction PURE.
 
@@ -337,7 +405,14 @@ def run_tui(run_app: bool = True):
             ("q", "quit", t("Quit")),
             ("f", "gel", t("Freeze")),
             ("r", "relire", t("Read again")),
+            ("v", "vue", t("Switch the panel")),
         ]
+
+        # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
+        # la hauteur pour trois tableaux, et empiler les réduirait tous à
+        # quatre lignes. Les deux répondent à des questions différentes :
+        # « quel outil est lent » contre « qu'est-ce qui vient de se passer ».
+        VUES = ("outils", "flux")
 
         def __init__(self):
             super().__init__()
@@ -350,6 +425,7 @@ def run_tui(run_app: bool = True):
             # pas « aucune session n'a travaillé ».
             self._temps: dict | None = None
             self._gele = False
+            self._vue = 0
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -357,6 +433,7 @@ def run_tui(run_app: bool = True):
             yield DataTable(id="tableau", zebra_stripes=True)
             yield Static("", id="titre_outils")
             yield DataTable(id="outils", zebra_stripes=True)
+            yield DataTable(id="flux", zebra_stripes=True)
             yield Static("", id="source")
             yield Footer()
 
@@ -368,12 +445,29 @@ def run_tui(run_app: bool = True):
             outils = self.query_one("#outils", DataTable)
             for _, cle in COLONNES_OUTILS:
                 outils.add_column(t(cle), key=cle)
+            flux = self.query_one("#flux", DataTable)
+            for _, cle in COLONNES_FLUX:
+                flux.add_column(t(cle), key=cle)
+            self._montrer_la_vue()
             # Les journaux périmés partent à l'ouverture : c'est le seul
             # moment où quelqu'un regarde, donc le seul où le ménage ne
             # surprend personne.
             jr.nettoyer()
             self._tick()
             self.set_interval(PAS, self._tick)
+
+        def action_vue(self):
+            """Passer au panneau suivant, en boucle."""
+            self._vue = (self._vue + 1) % len(self.VUES)
+            self._montrer_la_vue()
+            self._peindre()
+
+        def _montrer_la_vue(self):
+            """N'afficher que le panneau courant, et rien d'autre."""
+            for nom in self.VUES:
+                self.query_one(f"#{nom}", DataTable).display = (
+                    nom == self.VUES[self._vue]
+                )
 
         def action_gel(self):
             """Le rafraîchissement continue dessous ; l'affichage s'arrête."""
@@ -418,12 +512,26 @@ def run_tui(run_app: bool = True):
             groupes = jr.par_outil(self._appels)
             for ligne in lignes_outils(groupes):
                 outils.add_row(*[ligne[cle] for cle, _ in COLONNES_OUTILS])
+            flux = self.query_one("#flux", DataTable)
+            flux.clear()
+            for ligne in lignes_flux(self._appels):
+                flux.add_row(*[ligne[cle] for cle, _ in COLONNES_FLUX])
             self.query_one("#titre_outils", Static).update(
-                t("Per tool")
-                if groupes
-                else t("No hook installed: the per-tool figures need one.")
+                self._titre_du_panneau(groupes)
             )
             self._resumer()
+
+        def _titre_du_panneau(self, groupes):
+            """Ce que le panneau du bas montre, et pourquoi il est vide.
+
+            Les deux vues se vident pour la MÊME raison — aucun hook posé —
+            et le dire vaut mieux qu'un tableau nu, qui se lit comme une panne.
+            """
+            if not self._appels:
+                return t("No hook installed: the per-tool figures need one.")
+            if self.VUES[self._vue] == "flux":
+                return t("Latest tool calls, newest first")
+            return t("Per tool")
 
         def _resumer(self):
             total = st.somme(l.agregat for l in self._lectures.values())

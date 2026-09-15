@@ -326,6 +326,15 @@ only as a fallback for a binary that does not. Both fields are integers, and a
 string-only filter dropped them silently — the same defect the neighbouring
 module already paid for on a hook's exit code.
 
+**The bottom panel switches rather than stacks.** A terminal has no room for
+three tables, and stacking them would leave four lines each. The `v` key
+cycles: per tool, which answers "which one is slow", and the stream of the
+latest calls, which answers "why has it been stuck for two minutes". Neither
+shows any content — a tool name, a duration, an ending. The outcome column
+stays empty for a finished call, the ordinary case that has nothing to report,
+and the three bad endings name themselves in the singular: a row describes one
+call, where the per-tool table counts many.
+
 ## The modules
 
 | File | What it owns |

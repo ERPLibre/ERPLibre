@@ -5807,6 +5807,42 @@ TRANSLATIONS = {
     "Installations": {"fr": "Installations", "en": "Installations"},
     "Total": {"fr": "Total", "en": "Total"},
     "succeeded": {"fr": "réussies", "en": "succeeded"},
+    "Switch the panel": {
+        "fr": "Changer de panneau",
+        "en": "Switch the panel",
+    },
+    "Latest tool calls, newest first": {
+        "fr": "Derniers appels d'outil, du plus récent",
+        "en": "Latest tool calls, newest first",
+    },
+    "failure": {
+        "fr": "échec",
+        "en": "failure",
+    },
+    "interruption": {
+        "fr": "interruption",
+        "en": "interruption",
+    },
+    "no ending": {
+        "fr": "sans clôture",
+        "en": "no ending",
+    },
+    "time": {
+        "fr": "heure",
+        "en": "time",
+    },
+    "duration": {
+        "fr": "durée",
+        "en": "duration",
+    },
+    "outcome": {
+        "fr": "fin",
+        "en": "outcome",
+    },
+    "session": {
+        "fr": "session",
+        "en": "session",
+    },
     "failed": {"fr": "échouées", "en": "failed"},
     "Period": {"fr": "Période", "en": "Period"},
     "days": {"fr": "jours", "en": "days"},

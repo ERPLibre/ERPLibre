@@ -331,6 +331,15 @@ only as a fallback for a binary that does not. Both fields are integers, and a
 string-only filter dropped them silently — the same defect the neighbouring
 module already paid for on a hook's exit code.
 
+**The bottom panel switches rather than stacks.** A terminal has no room for
+three tables, and stacking them would leave four lines each. The `v` key
+cycles: per tool, which answers "which one is slow", and the stream of the
+latest calls, which answers "why has it been stuck for two minutes". Neither
+shows any content — a tool name, a duration, an ending. The outcome column
+stays empty for a finished call, the ordinary case that has nothing to report,
+and the three bad endings name themselves in the singular: a row describes one
+call, where the per-tool table counts many.
+
 ## The modules
 
 | File | What it owns |
@@ -734,6 +743,16 @@ quatre minutes et majorait la médiane par outil. L'événement de clôture port
 pas. Les deux champs sont numériques, et un filtre à chaînes les écartait en
 silence — le défaut que le module voisin avait déjà payé sur le code de sortie
 d'un hook.
+
+**Le panneau du bas PERMUTE au lieu de s'empiler.** Un terminal n'a pas la
+hauteur pour trois tableaux, et les empiler les réduirait à quatre lignes
+chacun. La touche `v` fait le tour : par outil, qui répond à « lequel est
+lent », et le flux des derniers appels, qui répond à « pourquoi ça bloque
+depuis deux minutes ». Ni l'un ni l'autre ne montre de contenu — un nom
+d'outil, une durée, une fin. La colonne de fin reste vide pour un appel
+réussi, cas ordinaire qui n'a rien à signaler, et les trois mauvaises fins se
+nomment au singulier : une ligne décrit un appel, là où le tableau par outil
+en compte plusieurs.
 
 ## Les modules
 

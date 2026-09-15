@@ -369,6 +369,16 @@ pas. Les deux champs sont numériques, et un filtre à chaînes les écartait en
 silence — le défaut que le module voisin avait déjà payé sur le code de sortie
 d'un hook.
 
+**Le panneau du bas PERMUTE au lieu de s'empiler.** Un terminal n'a pas la
+hauteur pour trois tableaux, et les empiler les réduirait à quatre lignes
+chacun. La touche `v` fait le tour : par outil, qui répond à « lequel est
+lent », et le flux des derniers appels, qui répond à « pourquoi ça bloque
+depuis deux minutes ». Ni l'un ni l'autre ne montre de contenu — un nom
+d'outil, une durée, une fin. La colonne de fin reste vide pour un appel
+réussi, cas ordinaire qui n'a rien à signaler, et les trois mauvaises fins se
+nomment au singulier : une ligne décrit un appel, là où le tableau par outil
+en compte plusieurs.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |

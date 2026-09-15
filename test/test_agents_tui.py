@@ -22,12 +22,19 @@ chemin, donc c'est lui qui sert.
 **La barre s'échelonne sur ce qui a été vu.** La fenêtre de contexte du modèle
 n'est pas sur le disque ; une barre échelonnée sur une valeur supposée
 mentirait sur la marge restante.
+
+La dernière classe, elle, MONTE l'application et tape des touches, par le
+pilote de Textual. Vérifier des fonctions pures est juste et ne suffit pas :
+une colonne que le tableau ne demande pas, un panneau qu'on n'affiche jamais,
+une touche qui ne répond pas, rien de cela ne se voit sur un dictionnaire.
 """
 
 import unittest
+from unittest.mock import patch
 
 from script.todo.assistant.agents import statistiques as st
 from script.todo.assistant.agents import tui
+from script.todo.todo_i18n import t
 
 
 def _lecture(**champs):
@@ -415,8 +422,230 @@ class TestLesTroisColonnesDEchec(unittest.TestCase):
             self.assertIn(cle, ligne, cle)
 
     def test_the_three_columns_are_declared_in_both_languages(self):
-        from script.todo.todo_i18n import TRANSLATIONS
         from script.todo.assistant.agents import tui as t_ui
+        from script.todo.todo_i18n import TRANSLATIONS
 
         for cle, libelle in t_ui.COLONNES_OUTILS:
             self.assertIn(libelle, TRANSLATIONS, libelle)
+
+
+class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
+    """L'écran lancé pour de bon, sans terminal, par le pilote de Textual.
+
+    Tout le reste de ce fichier vérifie des fonctions PURES — ce qui est juste
+    et ne suffit pas : une colonne que le tableau ne demande pas, un panneau
+    qu'on n'affiche jamais, une touche qui ne répond pas, rien de cela ne se
+    voit sur un dictionnaire. Ce test-ci monte l'application, tape des
+    touches, et lit ce qui est effectivement peint.
+
+    Le disque est INJECTÉ : ni transcription, ni journal, ni base réelle n'est
+    lu, et le ménage des journaux périmés est neutralisé — un test n'efface
+    rien chez personne.
+    """
+
+    CHEMIN = "/x/y/aaaaaaaa-1111-4111-8111-111111111111.jsonl"
+
+    def _monde(self):
+        """Les quatre lectures du disque, remplacées par de l'inventé."""
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import statistiques as st
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        evenements = [
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_use_id": "1",
+                "tool_name": "Bash",
+                "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+                "ts": 1_700_000_000_000,
+            },
+            {
+                "hook_event_name": "PostToolUse",
+                "tool_use_id": "1",
+                "ts": 1_700_000_000_400,
+                "duration_ms": 400,
+            },
+        ]
+        seance = oc.Seance(
+            identifiant="ses_aaaabbbbccccdddd",
+            repertoire="/un/depot/projet",
+            modifie=1_700_000_000_000,
+            resume=oc.Resume(entree=10, sortie=2, cout=0.5),
+        )
+        return (
+            patch.object(t_ui, "transcriptions", lambda: [self.CHEMIN]),
+            patch.object(st, "lire", lambda c, l=None: st.Lecture()),
+            patch.object(jr, "lire_lignes", lambda: evenements),
+            patch.object(jr, "nettoyer", lambda *a, **k: None),
+            patch.object(oc, "lire_base", lambda: [seance]),
+        )
+
+    async def _piloter(self, touches=()):
+        from textual.widgets import DataTable, Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                for touche in touches:
+                    await pilote.press(touche)
+                    await pilote.pause()
+                return {
+                    "vue": app.VUES[app._vue],
+                    "resume": str(app.query_one("#resume", Static).render()),
+                    "titre": str(
+                        app.query_one("#titre_outils", Static).render()
+                    ),
+                    "tables": {
+                        nom: (
+                            app.query_one(f"#{nom}", DataTable).display,
+                            app.query_one(f"#{nom}", DataTable).row_count,
+                            len(app.query_one(f"#{nom}", DataTable).columns),
+                        )
+                        for nom in ("tableau",) + app.VUES
+                    },
+                }
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_l_ecran_se_monte_et_peint_ses_trois_tableaux(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        vu = await self._piloter()
+        self.assertEqual(vu["tables"]["tableau"][1], 2, "une par harnais")
+        self.assertEqual(vu["tables"]["tableau"][2], len(t_ui.COLONNES))
+        self.assertEqual(vu["tables"]["outils"][2], len(t_ui.COLONNES_OUTILS))
+        self.assertEqual(vu["tables"]["flux"][2], len(t_ui.COLONNES_FLUX))
+
+    async def test_un_seul_panneau_du_bas_est_visible(self):
+        """Empilés, les trois tableaux tiendraient quatre lignes chacun."""
+        vu = await self._piloter()
+        self.assertTrue(vu["tables"]["outils"][0])
+        self.assertFalse(vu["tables"]["flux"][0])
+
+    async def test_la_touche_v_permute_le_panneau(self):
+        vu = await self._piloter(["v"])
+        self.assertEqual(vu["vue"], "flux")
+        self.assertFalse(vu["tables"]["outils"][0])
+        self.assertTrue(vu["tables"]["flux"][0])
+        self.assertIn(t("Latest tool calls, newest first"), vu["titre"])
+
+    async def test_la_touche_v_revient_en_boucle(self):
+        vu = await self._piloter(["v", "v"])
+        self.assertEqual(vu["vue"], "outils")
+        self.assertIn(t("Per tool"), vu["titre"])
+
+    async def test_le_resume_nomme_les_deux_harnais(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        vu = await self._piloter()
+        self.assertIn(t_ui.ICONES["claude"], vu["resume"])
+        self.assertIn(t_ui.ICONES["opencode"], vu["resume"])
+
+    async def test_le_gel_se_dit_a_l_ecran(self):
+        """Sans mention, un écran figé se lit comme un écran mort."""
+        vu = await self._piloter(["f"])
+        self.assertIn(t("frozen"), vu["resume"])
+
+
+class TestLeFluxDesAppels(unittest.TestCase):
+    """Le panneau qui dit ce qui VIENT de se passer.
+
+    Celui des outils répond à « lequel est lent » ; celui-ci à « pourquoi ça
+    bloque depuis deux minutes ». Aucun contenu n'y paraît : un nom d'outil,
+    une durée, une fin.
+    """
+
+    def _appel(self, **champs):
+        from script.todo.assistant.agents import journal as jr
+
+        defauts = {
+            "outil": "Bash",
+            "session": "aaaaaaaa-1111-4111-8111-111111111111",
+            "debut_ms": 1_700_000_000_000,
+            "duree_ms": 400,
+            "issue": jr.FINI,
+        }
+        defauts.update(champs)
+        return jr.Appel(**defauts)
+
+    def _issue(self, issue):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux([self._appel(issue=issue)])
+        return ligne["issue"]
+
+    def test_a_finished_call_says_nothing(self):
+        """C'est le cas ordinaire : une colonne remplie à chaque ligne ne
+        signale plus rien."""
+        from script.todo.assistant.agents import journal as jr
+
+        self.assertEqual(self._issue(jr.FINI), "")
+
+    def test_each_bad_ending_names_itself_in_the_singular(self):
+        """Une ligne décrit UN appel. Les clés du tableau par outil sont des
+        comptes, que le français accorde au pluriel — les réutiliser ici
+        afficherait « inachevés » sur un appel unique."""
+        from script.todo.assistant.agents import journal as jr
+
+        self.assertEqual(self._issue(jr.ECHOUE), t("failure"))
+        self.assertEqual(self._issue(jr.INTERROMPU), t("interruption"))
+        self.assertEqual(self._issue(jr.INACHEVE), t("no ending"))
+        for mot in (t("failure"), t("interruption"), t("no ending")):
+            self.assertNotIn(mot, (t("failed"), t("interrupted")))
+
+    def test_the_newest_comes_first(self):
+        """Un flux se lit par le haut : mettre le plus ancien en tête
+        obligerait à faire défiler pour voir ce qui arrive."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        lignes = t_ui.lignes_flux(
+            [
+                self._appel(debut_ms=1_700_000_000_000, outil="vieux"),
+                self._appel(debut_ms=1_700_000_009_000, outil="neuf"),
+            ]
+        )
+        self.assertEqual([l["outil"] for l in lignes], ["neuf", "vieux"])
+
+    def test_only_the_last_ones_are_kept(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        appels = [
+            self._appel(debut_ms=1_700_000_000_000 + i, outil=str(i))
+            for i in range(10)
+        ]
+        lignes = t_ui.lignes_flux(appels, limite=3)
+        self.assertEqual([l["outil"] for l in lignes], ["9", "8", "7"])
+
+    def test_an_unknown_duration_is_a_dash_and_never_a_zero(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux([self._appel(duree_ms=None)])
+        self.assertEqual(ligne["duree"], "—")
+
+    def test_the_session_is_shortened_but_present(self):
+        """Le flux réunit toutes les sessions de la machine : sans elle, deux
+        terminaux se lisent comme un seul."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux([self._appel()])
+        self.assertEqual(ligne["session"], "aaaaaaaa")
+
+    def test_every_column_the_table_asks_for_is_there(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux([self._appel()])
+        for cle, _ in t_ui.COLONNES_FLUX:
+            self.assertIn(cle, ligne, cle)
+
+    def test_nothing_to_show_is_no_row(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.lignes_flux([]), [])
