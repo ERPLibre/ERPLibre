@@ -4,10 +4,11 @@
 
 """L'environnement de lecture des fichiers externes, posé à la demande.
 
-Excel et Access exigent des bibliothèques qui ne sont dans aucun venv du
-dépôt : `.venv.erplibre` porte l'outillage du CLI, le venv Odoo porte celui
-d'Odoo, et charger l'un ou l'autre de ces lecteurs les mélangerait à un
-sujet qui n'est pas le leur. D'où un venv dédié, bâti au premier besoin.
+Excel et Access exigent des bibliothèques qu'aucun venv du dépôt ne porte à
+coup sûr : `.venv.erplibre` porte l'outillage du CLI — openpyxl compris,
+mais seulement depuis qu'il est dans ses dépendances —, le venv Odoo porte
+celui d'Odoo, et le lecteur Access n'est dans aucun. D'où un venv dédié,
+bâti au premier besoin.
 
 Les formats en pur stdlib n'en ont PAS besoin, et c'est ce que
 `available()` et `engine_python()` tiennent à la place des appelants : un

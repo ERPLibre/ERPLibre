@@ -37,6 +37,11 @@ rich
 # Il n'arrivait que par pykeepass / openupgradelib / odoo-module-migrator, donc
 # un jour où l'un d'eux s'en passe, il disparaît sans que rien ne le réclame.
 lxml
+# Classeurs Excel de « Transform data », et les tests qui les éprouvent. Le
+# moteur garde son venv dédié (script/todo/transform_setup.py) : un
+# .venv.erplibre installé avant cette ligne n'a pas openpyxl, et le code ne
+# l'importe donc jamais au niveau d'un module.
+openpyxl
 python-dotenv
 python-dateutil
 unidecode

@@ -6849,6 +6849,24 @@ class TestFuiteXlsx(unittest.TestCase):
         )
 
 
+def _openpyxl_ici():
+    """Vrai si openpyxl s'importe dans CET interpréteur.
+
+    Pas `transform_setup.available("xlsx")` : il répond vrai dès que le venv
+    dédié l'a, alors que ces tests écrivent leur classeur ici même.
+    """
+    try:
+        import openpyxl  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+@unittest.skipUnless(
+    _openpyxl_ici(),
+    "openpyxl absent de cet interpréteur : pip install -r"
+    " requirement/erplibre_require-ments.txt",
+)
 class TestHorodatageDeLaCopie(unittest.TestCase):
     """La copie ne porte pas l'instant où elle a été tirée.
 
