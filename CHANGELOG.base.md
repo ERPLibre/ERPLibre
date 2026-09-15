@@ -70,6 +70,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The offline cut ends when the last installation ends, not when the monitor closes: a root unit, handed the lift at launch, waits for every installation's exit marker and survives the monitor closed early, todo.py killed or the terminal gone — 12 h at most. The monitor is therefore required while offline. A second offline deployment is refused while one runs, and an online deployment started meanwhile is told it would run offline
 - F5 also reads the previous offline runs of the same VM and warns « at least N addresses were missing », minus what the store holds now (`erplibre_go_qemu_cache --detient`, read-only, no root). **Deployment › QEMU cache › Fill what offline runs lacked** replays them online, through the cache
 - The install log names the commit the VM runs; offline, the recap says, branch by branch, which commit the cache's mirror will give
+- `long_test/qemu_cache.py --distro tous` (or a comma list) chains one campaign per catalogue system, destroys each system's VMs before the next, and ends on a table of verdict, durations and upstream bytes. A failure does not stop the series
 
 <!-- [fr] -->
 
@@ -112,6 +113,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - La coupure hors ligne tombe avec la dernière installation, et non à la fermeture du suivi : une unité root, qui reçoit la levée au lancement, attend le marqueur de fin de chaque installation et survit au suivi fermé tôt, à todo.py tué ou au terminal perdu — 12 h au plus. Le suivi est donc obligatoire hors ligne. Un second déploiement hors ligne est refusé pendant qu'un premier tourne, et un déploiement en ligne lancé entre-temps est prévenu qu'il tournerait hors ligne
 - F5 lit aussi les essais hors ligne précédents de la même VM et prévient « au moins N adresses ont manqué », moins ce que le magasin détient désormais (`erplibre_go_qemu_cache --detient`, en lecture seule, sans root). **Déploiement › Cache QEMU › Combler ce qui a manqué hors ligne** les rejoue en ligne, à travers le cache
 - Le journal d'installation nomme le commit que la VM exécute ; hors ligne, le récapitulatif dit, branche par branche, quel commit le miroir du cache donnera
+- `long_test/qemu_cache.py --distro tous` (ou une liste séparée par des virgules) enchaîne une campagne par système du catalogue, défait les VM de chaque système avant le suivant, et finit sur un tableau des verdicts, durées et octets d'amont. Un échec n'arrête pas la série
 
 <!-- [en] -->
 ## Changed
@@ -129,6 +131,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The QEMU cache binary speaks English or French: service journal, `--status`, `--age`, option help and the error served to a VM. The language comes from `--lang`, then `EL_LANG`, then French; the installer writes `EL_LANG` to the service settings and the TODO menu passes its own. Rules, verdict codes and JSON keys are never translated
 - A repository index the cache already holds is revalidated with its ETag rather than downloaded again: upstream still judges every request, and a « 304 » serves the stored body from disk. On a full ERPLibre install the pip indexes, npm metadata and repo bundle had been about 110 MB per VM, taken whole each time. An index stored without its host — shared by every mirror of a rotating list — and an answer carrying no ETag are taken whole as before; the access log names the new outcome `revalidated`
 - A registry page served under `Vary: Accept` keeps one copy per representation. npm asks for the same `/npm` page abridged, then complete, then abridged again; kept under one key they replaced each other and the 31 MB were fetched on every install. Each representation is now revalidated and, offline, served on its own; `--detient` still reads the page under its URL alone
+- A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
 
 <!-- [fr] -->
 
@@ -142,6 +145,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le binaire du cache QEMU parle anglais ou français : journal du service, `--status`, `--age`, aide des options et erreur servie à une VM. La langue vient de `--lang`, puis d'`EL_LANG`, puis du français ; l'installateur écrit `EL_LANG` dans les réglages du service et le menu TODO passe la sienne. Règles, codes de verdict et clés JSON ne se traduisent jamais
 - Un index de dépôt que le cache détient déjà est revalidé par son ETag au lieu d'être retéléchargé : l'amont juge toujours chaque requête, et un « 304 » sert le corps gardé depuis le disque. Sur une installation complète d'ERPLibre, les index pip, les métadonnées npm et le bundle de repo pesaient environ 110 Mo par VM, repris en entier à chaque fois. Un index rangé sans son hôte — partagé par tous les miroirs d'une liste qui tourne — et une réponse sans ETag sont repris en entier comme avant ; le journal d'accès nomme la nouvelle issue `revalidated`
 - Une page de registre servie sous `Vary: Accept` garde une copie par représentation. npm demande la même page `/npm` abrégée, puis complète, puis de nouveau abrégée ; rangées sous une seule clé, elles se remplaçaient et les 31 Mo repartaient à chaque installation. Chaque représentation est désormais revalidée et, hors ligne, servie à part ; `--detient` lit toujours la page sous sa seule URL
+- Une VM déployée l'amont du cache coupé — formulaire QEMU, Proxmox VE, ou `deploy_qemu.py --offline` — a l'audit de sécurité de npm désactivé (`NPM_CONFIG_AUDIT=false`) : il interroge un service qu'aucun cache ne rejoue, et échouait à chaque installation hors ligne. Une VM en ligne garde son audit
 
 <!-- [en] -->
 ## Fixed

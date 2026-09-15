@@ -50,6 +50,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The offline cut ends when the last installation ends, not when the monitor closes: a root unit, handed the lift at launch, waits for every installation's exit marker and survives the monitor closed early, todo.py killed or the terminal gone — 12 h at most. The monitor is therefore required while offline. A second offline deployment is refused while one runs, and an online deployment started meanwhile is told it would run offline
 - F5 also reads the previous offline runs of the same VM and warns « at least N addresses were missing », minus what the store holds now (`erplibre_go_qemu_cache --detient`, read-only, no root). **Deployment › QEMU cache › Fill what offline runs lacked** replays them online, through the cache
 - The install log names the commit the VM runs; offline, the recap says, branch by branch, which commit the cache's mirror will give
+- `long_test/qemu_cache.py --distro tous` (or a comma list) chains one campaign per catalogue system, destroys each system's VMs before the next, and ends on a table of verdict, durations and upstream bytes. A failure does not stop the series
 
 ## Changed
 
@@ -63,6 +64,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The QEMU cache binary speaks English or French: service journal, `--status`, `--age`, option help and the error served to a VM. The language comes from `--lang`, then `EL_LANG`, then French; the installer writes `EL_LANG` to the service settings and the TODO menu passes its own. Rules, verdict codes and JSON keys are never translated
 - A repository index the cache already holds is revalidated with its ETag rather than downloaded again: upstream still judges every request, and a « 304 » serves the stored body from disk. On a full ERPLibre install the pip indexes, npm metadata and repo bundle had been about 110 MB per VM, taken whole each time. An index stored without its host — shared by every mirror of a rotating list — and an answer carrying no ETag are taken whole as before; the access log names the new outcome `revalidated`
 - A registry page served under `Vary: Accept` keeps one copy per representation. npm asks for the same `/npm` page abridged, then complete, then abridged again; kept under one key they replaced each other and the 31 MB were fetched on every install. Each representation is now revalidated and, offline, served on its own; `--detient` still reads the page under its URL alone
+- A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
 
 ## Fixed
 
