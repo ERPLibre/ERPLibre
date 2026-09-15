@@ -422,12 +422,14 @@ def table_posee_cmd(table: str = TABLE) -> str:
 # chercher là plutôt que de recopier son chemin, qui est réglable.
 CONF = "/etc/erplibre_go_qemu_cache/env"
 
-# Les issues qui prouvent qu'un CORPS est en réserve. « fetched » n'en est
-# pas : elle couvre aussi le « 304 » d'une revalidation, qui n'a pas de corps.
+# Les issues qui prouvent qu'un CORPS est en réserve. « revalidated » en est :
+# l'amont a confirmé la copie gardée, et c'est elle qui est servie. « fetched »
+# n'en est pas : elle couvre aussi le « 304 » rendu à un client qui posait sa
+# propre condition, sans corps.
 # « stored-status » et « stale-status » n'en sont pas davantage : elles
 # portent un objet de STATUT seul — une redirection ou un refus gardés, sans
 # corps — et l'index d'une suite gardé en 404 ne la rend pas lisible.
-ISSUES_EN_RESERVE = ("stored", "hit", "stale")
+ISSUES_EN_RESERVE = ("stored", "hit", "stale", "revalidated")
 
 
 def journal(conf: str = CONF) -> str:

@@ -61,6 +61,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le menu des tests longs demande avant de créer de vraies machines, et redemande, avec des mots à lui, avant que `--detruire` efface des machines avec leurs disques. La commande est montrée d'abord, c'est elle qui rend la question répondable ; un plan à blanc ou un rapport de performance ne crée rien et ne demande rien
 - Chaque entrée du menu Proxmox VE porte une icône, la même image voulant dire la même action que dans les autres menus de l'outil
 - Le binaire du cache QEMU parle anglais ou français : journal du service, `--status`, `--age`, aide des options et erreur servie à une VM. La langue vient de `--lang`, puis d'`EL_LANG`, puis du français ; l'installateur écrit `EL_LANG` dans les réglages du service et le menu TODO passe la sienne. Règles, codes de verdict et clés JSON ne se traduisent jamais
+- Un index de dépôt que le cache détient déjà est revalidé par son ETag au lieu d'être retéléchargé : l'amont juge toujours chaque requête, et un « 304 » sert le corps gardé depuis le disque. Sur une installation complète d'ERPLibre, les index pip, les métadonnées npm et le bundle de repo pesaient environ 110 Mo par VM, repris en entier à chaque fois. Un index rangé sans son hôte — partagé par tous les miroirs d'une liste qui tourne — et une réponse sans ETag sont repris en entier comme avant ; le journal d'accès nomme la nouvelle issue `revalidated`
 
 ## Corrigé
 

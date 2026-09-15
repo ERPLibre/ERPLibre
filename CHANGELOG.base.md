@@ -127,6 +127,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The long-test menu asks before creating real machines, and asks again, in words of its own, before `--detruire` removes machines with their disks. The command is shown first, which is what makes the question answerable; a dry run or a performance report creates nothing and asks nothing
 - Every entry of the Proxmox VE menu carries an icon, the same picture meaning the same action as in the other menus of the tool
 - The QEMU cache binary speaks English or French: service journal, `--status`, `--age`, option help and the error served to a VM. The language comes from `--lang`, then `EL_LANG`, then French; the installer writes `EL_LANG` to the service settings and the TODO menu passes its own. Rules, verdict codes and JSON keys are never translated
+- A repository index the cache already holds is revalidated with its ETag rather than downloaded again: upstream still judges every request, and a « 304 » serves the stored body from disk. On a full ERPLibre install the pip indexes, npm metadata and repo bundle had been about 110 MB per VM, taken whole each time. An index stored without its host — shared by every mirror of a rotating list — and an answer carrying no ETag are taken whole as before; the access log names the new outcome `revalidated`
 
 <!-- [fr] -->
 
@@ -138,6 +139,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le menu des tests longs demande avant de créer de vraies machines, et redemande, avec des mots à lui, avant que `--detruire` efface des machines avec leurs disques. La commande est montrée d'abord, c'est elle qui rend la question répondable ; un plan à blanc ou un rapport de performance ne crée rien et ne demande rien
 - Chaque entrée du menu Proxmox VE porte une icône, la même image voulant dire la même action que dans les autres menus de l'outil
 - Le binaire du cache QEMU parle anglais ou français : journal du service, `--status`, `--age`, aide des options et erreur servie à une VM. La langue vient de `--lang`, puis d'`EL_LANG`, puis du français ; l'installateur écrit `EL_LANG` dans les réglages du service et le menu TODO passe la sienne. Règles, codes de verdict et clés JSON ne se traduisent jamais
+- Un index de dépôt que le cache détient déjà est revalidé par son ETag au lieu d'être retéléchargé : l'amont juge toujours chaque requête, et un « 304 » sert le corps gardé depuis le disque. Sur une installation complète d'ERPLibre, les index pip, les métadonnées npm et le bundle de repo pesaient environ 110 Mo par VM, repris en entier à chaque fois. Un index rangé sans son hôte — partagé par tous les miroirs d'une liste qui tourne — et une réponse sans ETag sont repris en entier comme avant ; le journal d'accès nomme la nouvelle issue `revalidated`
 
 <!-- [en] -->
 ## Fixed

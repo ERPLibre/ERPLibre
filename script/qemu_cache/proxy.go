@@ -35,6 +35,7 @@ const (
 	// en réserve, et un refus gardé ne l'est pas.
 	OutcomeStoredStatus = "stored-status" // pris à l'amont, statut seul gardé
 	OutcomeStaleStatus  = "stale-status"  // amont muet, statut seul rejoué
+	OutcomeRevalidated  = "revalidated"   // l'amont confirme la copie (304), corps servi du disque
 )
 
 // AccessLog écrit une ligne JSON par requête. Un format à une ligne par
@@ -287,6 +288,29 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		amont = sansCondition(r)
 	}
 
+	// Un index déjà gardé part avec SON validateur. L'amont reste juge de
+	// chaque requête — un index n'est jamais servi du disque sans son accord
+	// tant qu'il répond — mais une copie qu'il déclare à jour n'est pas
+	// retéléchargée : « 304 » ne porte aucun corps, et le nôtre sort du
+	// disque. Sans cela, chaque installation reprenait en entier des index
+	// de dizaines de mégaoctets qui n'avaient pas changé.
+	//
+	// L'ETag seul, jamais la date : sous « Vary: Accept », deux
+	// représentations d'une même URL partagent leur Last-Modified, et un
+	// « 304 » accordé sur la date validerait celle qui n'est pas gardée. Pas
+	// sous une clé portable non plus : partagée par tous les miroirs, elle
+	// présenterait à l'un le validateur d'un autre. La condition du client,
+	// quand il en pose une, reste la sienne.
+	revalide := false
+	if cacheable && detient && class == ClassVolatile && r.Method == "GET" &&
+		!partial && !conditionnelle && !PortableParChemin(u) {
+		if etag := p.etagGarde(key); etag != "" {
+			amont = r.Clone(r.Context())
+			amont.Header.Set("If-None-Match", etag)
+			revalide = true
+		}
+	}
+
 	// Un statut seul vit sous sa propre clé, que les lecteurs de corps ne
 	// calculent pas : voir CleStatut.
 	cleStatut := CleStatut(r.Method, u)
@@ -300,6 +324,16 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		(detient || conditionnelle || p.Store.TientStatut(cleStatut))
 
 	resp, upErr := p.fetch(amont, u, repli)
+	if upErr == nil && revalide && resp.StatusCode == http.StatusNotModified {
+		resp.Body.Close()
+		// Effacée entre-temps — par un nettoyage —, la copie ne sort plus :
+		// la requête repart sans condition, et le client reçoit le corps de
+		// l'amont plutôt qu'un « 304 » qu'il n'a pas demandé.
+		if p.serveFromStore(w, r, u, key, class, OutcomeRevalidated) {
+			return
+		}
+		resp, upErr = p.fetch(r, u, repli)
+	}
 	// Une redirection est SUIVIE quand le nom du fichier demandé porte déjà
 	// son identité, et le contenu est gardé sous l'URL DEMANDÉE.
 	//
@@ -460,6 +494,16 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		Outcome: outcome, Status: resp.StatusCode, Bytes: n, Upstream: true,
 		Client: clientDe(r.RemoteAddr),
 	})
+}
+
+// etagGarde rend l'ETag du corps gardé sous la clé, ou "" : rien de gardé,
+// un statut seul, ou une réponse d'amont qui n'en portait pas.
+func (p *Proxy) etagGarde(key string) string {
+	m, err := p.Store.LireMeta(key)
+	if err != nil || m.StatutSeul() {
+		return ""
+	}
+	return m.Header.Get("ETag")
 }
 
 // serveFromStore rend vrai quand la réponse est partie du disque.
