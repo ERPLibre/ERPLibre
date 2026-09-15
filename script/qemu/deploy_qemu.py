@@ -1891,17 +1891,29 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
     La table des alias est « /usr/share/zoneinfo/tzdata.zi », dont chaque ligne
     de lien s'écrit « L <canonique> <alias> ». Absente ou illisible, le nom est
     rendu tel quel : un fuseau non traduit vaut mieux qu'un déploiement refusé.
+    Elle est lue de l'HÔTE plutôt que recopiée ici, et suit donc les mises à
+    jour de tzdata sans qu'on s'en occupe ; « table » n'existe que pour qu'un
+    test en fournisse une autre sans dépendre du tzdata de sa machine.
+
+    DEUX tours, et non un seul : un lien peut désigner un autre lien —
+    « Universal » mène à « UTC », qui mène à « Etc/UTC ». S'arrêter au premier
+    rendrait un nom qui reste un alias, donc le défaut qu'on répare. Au-delà
+    de deux, la table est incohérente et le nom d'origine vaut mieux qu'une
+    boucle.
     """
     if not tz:
         return tz
+    alias = {}
     try:
         with open(table, encoding="utf-8") as fh:
             for ligne in fh:
                 champs = ligne.split()
-                if len(champs) >= 3 and champs[0] == "L" and champs[2] == tz:
-                    return champs[1]
+                if len(champs) >= 3 and champs[0] == "L":
+                    alias[champs[2]] = champs[1]
     except OSError:
-        pass
+        return tz
+    for _ in range(2):
+        tz = alias.get(tz, tz)
     return tz
 
 
@@ -2977,7 +2989,10 @@ def build_cloud_config(
 
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
-    lines.append(f"timezone: {args.timezone}")
+    # Canonicalisé ICI, au plus près de l'écriture : un fuseau passé
+    # explicitement en ligne de commande mérite la même traduction que celui
+    # de l'hôte.
+    lines.append(f"timezone: {canonical_timezone(args.timezone)}")
     if getattr(args, "distro", "ubuntu") == "ubuntu":
         lines += apt_mirror_lines(
             getattr(args, "arch", "amd64"),
@@ -3405,7 +3420,7 @@ def build_preseed(
         "d-i network-console/password password erplibre",
         "d-i network-console/password-again password erplibre",
         "d-i clock-setup/utc boolean true",
-        f"d-i time/zone string {args.timezone}",
+        f"d-i time/zone string {canonical_timezone(args.timezone)}",
         "d-i clock-setup/ntp boolean true",
         # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
         # d-i pose quand même la question quand rien ne le désigne.
