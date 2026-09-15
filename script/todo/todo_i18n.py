@@ -12677,6 +12677,90 @@ TRANSLATIONS = {
         "fr": "La poser dans :",
         "en": "Set it in:",
     },
+    "Integration": {
+        "fr": "Intégration",
+        "en": "Integration",
+    },
+    "State of the integration - segment by segment": {
+        "fr": "État de l'intégration - segment par segment",
+        "en": "State of the integration - segment by segment",
+    },
+    "Devstack integration, segment by segment": {
+        "fr": "Intégration de devstack, segment par segment",
+        "en": "Devstack integration, segment by segment",
+    },
+    "backends confronted with the real tool:": {
+        "fr": "backends confrontés au vrai outil :",
+        "en": "backends confronted with the real tool:",
+    },
+    "NAT: nothing is confined, and that is the point.": {
+        "fr": "NAT : rien n'est confiné, et c'est le principe.",
+        "en": "NAT: nothing is confined, and that is the point.",
+    },
+    "No AI gateway. The « ai-gateway » role exists in the address book, and nothing opens it yet.": {
+        "fr": "Aucune porte IA. Le rôle « ai-gateway » existe dans le carnet d'adresses, et rien ne l'ouvre encore.",
+        "en": "No AI gateway. The « ai-gateway » role exists in the address book, and nothing opens it yet.",
+    },
+    "postures that write, load and arm rules:": {
+        "fr": "postures qui écrivent, chargent et arment des règles :",
+        "en": "postures that write, load and arm rules:",
+    },
+    "forge profiles declared:": {
+        "fr": "profils de forge déclarés :",
+        "en": "forge profiles declared:",
+    },
+    "The code drives Forgejo and Gitea; this site declares no profile yet.": {
+        "fr": "Le code pilote Forgejo et Gitea ; ce site ne déclare encore aucun profil.",
+        "en": "The code drives Forgejo and Gitea; this site declares no profile yet.",
+    },
+    "No second authority and no mirror remote.": {
+        "fr": "Aucune seconde autorité, aucun dépôt miroir.",
+        "en": "No second authority and no mirror remote.",
+    },
+    "The vault is KeePassXC; no OpenBao, and no hardware enclave.": {
+        "fr": "Le coffre est KeePassXC ; pas d'OpenBao, pas d'enclave matérielle.",
+        "en": "The vault is KeePassXC; no OpenBao, and no hardware enclave.",
+    },
+    "off-site targets declared:": {
+        "fr": "cibles hors-site déclarées :",
+        "en": "off-site targets declared:",
+    },
+    "The code ships and verifies the fingerprint there; this site declares no target yet.": {
+        "fr": "Le code expédie et vérifie l'empreinte là-bas ; ce site ne déclare encore aucune cible.",
+        "en": "The code ships and verifies the fingerprint there; this site declares no target yet.",
+    },
+    "The drill guard refuses to purge anything that is not a drill database, and names what it refused.": {
+        "fr": "Le garde d'exercice refuse de purger ce qui n'est pas une base d'exercice, et nomme ce qu'il a refusé.",
+        "en": "The drill guard refuses to purge anything that is not a drill database, and names what it refused.",
+    },
+    "served profile:": {
+        "fr": "profil servi :",
+        "en": "served profile:",
+    },
+    "egress cut, port forward laid": {
+        "fr": "sortie coupée, renvoi de port posé",
+        "en": "egress cut, port forward laid",
+    },
+    "No profile promises a web interface.": {
+        "fr": "Aucun profil ne promet d'interface web.",
+        "en": "No profile promises a web interface.",
+    },
+    "carried": {
+        "fr": "portés",
+        "en": "carried",
+    },
+    "to set up here": {
+        "fr": "à régler ici",
+        "en": "to set up here",
+    },
+    "« to set up here » is not a gap in the code:": {
+        "fr": "« à régler ici » n'est pas un manque du code :",
+        "en": "« to set up here » is not a gap in the code:",
+    },
+    "the repository knows how, this site has not declared it.": {
+        "fr": "le dépôt sait faire, ce site ne l'a pas déclaré.",
+        "en": "the repository knows how, this site has not declared it.",
+    },
     "Book - Show the book": {
         "fr": "📖 Carnet - Voir le carnet",
         "en": "📖 Book - Show the book",
