@@ -958,17 +958,35 @@ def image_fetch_cmd(
     continuer reviendrait à installer un système que personne n'a regardé.
     """
     cible = f"{repertoire}/{nom}"
+    partiel = f"{cible}.partiel"
+    somme = lambda f: (  # noqa: E731 - une expression, pas une fonction
+        f"echo {shlex.quote(f'{sha256}  {f}')} | sha256sum -c -"
+    )
+    # Le téléchargement va dans un nom PROVISOIRE, et n'est renommé qu'une
+    # fois complet. « wget -O » écrivait dans la cible : une coupure —
+    # réseau, disque plein, Ctrl-C — y figeait une image tronquée que le
+    # « [ -s ] » ci-dessous acceptait à chaque déploiement suivant. Avec une
+    # somme, elle échouait pour toujours sans dire quoi effacer ; sans somme,
+    # elle servait à créer une VM.
+    recuperation = f"wget -nv -O {shlex.quote(partiel)} {shlex.quote(url)}"
+    if sha256:
+        # Vérifiée AVANT d'être mise en place : une image fausse ne devient
+        # jamais celle que le prochain déploiement trouvera « déjà présente ».
+        recuperation += f" && {somme(partiel)}"
+    recuperation += f" && mv {shlex.quote(partiel)} {shlex.quote(cible)}"
+
     cmd = (
         f"mkdir -p {shlex.quote(repertoire)} && "
         f"if [ -s {shlex.quote(cible)} ]; then "
         f'echo "image déjà présente : {cible}"; else '
-        f"wget -nv -O {shlex.quote(cible)} {shlex.quote(url)}; "
+        f"{recuperation}; "
         f"fi"
     )
     if sha256:
-        cmd += (
-            f" && echo {shlex.quote(f'{sha256}  {cible}')}" " | sha256sum -c -"
-        )
+        # Et la cible elle-même, fraîche ou déjà en cache : le cas visé est un
+        # fichier substitué entre deux déploiements, qu'aucun test de présence
+        # ne voit.
+        cmd += f" && {somme(cible)}"
     return cmd
 
 
