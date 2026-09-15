@@ -1042,5 +1042,90 @@ class LePleinEcranNePasseParUnTube(unittest.TestCase):
         porte.assert_not_called()
 
 
+class LaSuppressionDUnServeurNEnRetireQuUn(unittest.TestCase):
+    """Deux serveurs peuvent porter la même étiquette.
+
+    Elle retombe sur l'hôte quand le nom est laissé vide, donc deux ports du
+    même hôte s'appellent pareil. Le filtre se faisait sur cette étiquette :
+    supprimer l'un retirait les deux, et la garde de la retape ne protégeait
+    rien puisqu'elle portait sur le même nom.
+    """
+
+    def _serveurs(self):
+        from script.todo.assistant import servers as llm
+
+        def serveur(handle, label, host, port):
+            return llm.Server(
+                handle=handle,
+                label=label,
+                host=host,
+                port=port,
+                software="ollama",
+                model="",
+                hosting="local",
+                secret_ref="",
+            )
+
+        # Deux entrées du MÊME hôte : l'étiquette retombe sur l'hôte quand le
+        # nom est laissé vide, donc elles sont homonymes.
+        return [
+            serveur("a", "10.0.0.1", "10.0.0.1", 11434),
+            serveur("b", "10.0.0.1", "10.0.0.1", 8080),
+            serveur("c", "autre", "10.0.0.2", 11434),
+        ]
+
+    def _supprimer(self, rang, frappe):
+        from script.todo.todo import TODO
+
+        gardes = {}
+        todo = TODO()
+        with patch("click.prompt", side_effect=[rang, frappe]), patch(
+            "script.todo.assistant.servers.save",
+            side_effect=lambda restants, **kw: gardes.setdefault(
+                "restants", list(restants)
+            ),
+        ), patch(
+            "script.todo.assistant.servers.assign_handles", side_effect=list
+        ), patch(
+            "builtins.print"
+        ):
+            todo._llm_delete_server(self._serveurs())
+        return gardes.get("restants")
+
+    def test_only_the_chosen_rank_goes(self):
+        restants = self._supprimer("1", "10.0.0.1")
+        self.assertEqual(
+            [(s.host, s.port) for s in restants],
+            [("10.0.0.1", 8080), ("10.0.0.2", 11434)],
+        )
+
+    def test_the_homonym_survives(self):
+        """C'est tout le défaut : les deux partaient ensemble."""
+        restants = self._supprimer("2", "10.0.0.1")
+        self.assertEqual(len(restants), 2)
+        self.assertIn(11434, [s.port for s in restants])
+
+    def test_a_wrong_retype_sends_nothing(self):
+        self.assertIsNone(self._supprimer("1", "pas le nom"))
+
+    def test_a_rank_out_of_bounds_sends_nothing(self):
+        for mauvais in ("0", "4", "-1", "x", ""):
+            self.assertIsNone(self._supprimer(mauvais, "10.0.0.1"), mauvais)
+
+    def test_the_screen_shows_what_tells_them_apart(self):
+        """Sans l'hôte et le port, deux homonymes sont indiscernables."""
+        from script.todo.todo import TODO
+
+        sorti = []
+        with patch("click.prompt", side_effect=["", ""]), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(" ".join(map(str, a))),
+        ):
+            TODO()._llm_delete_server(self._serveurs())
+        rendu = "\n".join(sorti)
+        self.assertIn("10.0.0.1:11434", rendu)
+        self.assertIn("10.0.0.1:8080", rendu)
+
+
 if __name__ == "__main__":
     unittest.main()

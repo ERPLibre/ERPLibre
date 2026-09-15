@@ -737,15 +737,21 @@ class AssistantMenuMixin:
         Une frappe sur « o » se donne par réflexe ; recopier un nom oblige à
         regarder ce qu'on retire.
         """
-        noms = [s.label for s in connus]
-        for rang, nom in enumerate(noms, 1):
-            print(f"[{rang}] {nom}")
+        # L'entrée est choisie par son RANG, jamais par son nom. Deux
+        # serveurs peuvent porter la même étiquette — elle retombe sur l'hôte
+        # quand le nom est laissé vide — et filtrer dessus retirait les deux.
+        # L'hôte et le port sont affichés pour que le choix soit possible.
+        for rang, serveur in enumerate(connus, 1):
+            print(f"[{rang}] {serveur.label}  ({serveur.host}:{serveur.port})")
         try:
-            choisis = self._parse_index_selection(
-                click.prompt(t("Delete a server")), noms
-            )
-            if not choisis:
+            brut = click.prompt(t("Delete a server")).strip()
+            if not brut:
                 return
+            if not brut.isdigit() or not 1 <= int(brut) <= len(connus):
+                print(t("Command not found !"))
+                return
+            rang = int(brut) - 1
+            cible = connus[rang]
             frappe = click.prompt(
                 t("Type the server name in full to delete it:"),
                 prompt_suffix=" ",
@@ -753,16 +759,22 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return
-        if frappe != choisis[0]:
+        # Le nom retapé CONFIRME, il ne sélectionne pas : c'est le rang qui
+        # désigne, et un homonyme ne peut donc plus partir avec.
+        if not cible.label or frappe != cible.label:
             print(t("Destination not retyped — nothing was sent."))
             return
-        restants = [s for s in connus if s.label != choisis[0]]
+        restants = [s for i, s in enumerate(connus) if i != rang]
         llm_servers.save(
             llm_servers.assign_handles(restants),
             set_config=self._llm_set_config,
         )
         state = self._llm_state()
-        if state["serveur"] and state["serveur"].label == choisis[0]:
+        courant = state.get("serveur")
+        if courant is not None and (courant.host, courant.port) == (
+            cible.host,
+            cible.port,
+        ):
             state["serveur"] = None
 
     def _llm_search(self):
