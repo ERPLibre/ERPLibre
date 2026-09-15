@@ -5927,6 +5927,10 @@ TRANSLATIONS = {
         "fr": "l'identifiant en entier",
         "en": "the identifier in full",
     },
+    "Reading everything again…": {
+        "fr": "Tout est relu…",
+        "en": "Reading everything again…",
+    },
     "content": {
         "fr": "contenu",
         "en": "content",

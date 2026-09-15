@@ -1391,10 +1391,14 @@ class TestLeCurseurEtLeClavier(unittest.IsolatedAsyncioTestCase):
                 await pilote.press("down")
                 await pilote.press("down")
                 await pilote.pause()
-                # Le troisieme agent s en va.
+                # Le troisieme agent s en va. La flotte passe par un
+                # sous-processus et n est donc relue qu un tour sur
+                # PAS_FLOTTE : le nombre de tours est DÉRIVÉ de la constante,
+                # sans quoi l espacer à nouveau décalerait ce test.
                 app._lire_flotte = staticmethod(lambda: flotte[:2])
-                app._tick()
-                await pilote.pause()
+                for _ in range(t_ui.PAS_FLOTTE):
+                    app._tick()
+                    await pilote.pause()
                 table = app.query_one("#agents", DataTable)
                 self.assertEqual(table.row_count, 2)
                 self.assertLess(table.cursor_row, 2)
@@ -1502,6 +1506,78 @@ class TestLeTiretQuandRienNAEteMesure(unittest.TestCase):
         )
         self.assertEqual(ligne["attention"], "2 min")
         self.assertEqual(ligne["api"], "—")
+
+
+class TestCeQueChaqueTourDepense(unittest.IsolatedAsyncioTestCase):
+    """Le listage de la flotte passe par un sous-processus.
+
+    Cent soixante millisecondes, la moitié de ce qu'un tour dépense, là où la
+    lecture incrémentale des transcriptions n'en coûte que cinq. Un agent ne
+    naît ni ne meurt toutes les deux secondes, donc la question se pose moins
+    souvent — mais un geste qui en change l'état doit la reposer tout de suite,
+    sans quoi l'écran mentirait pendant trois tours.
+    """
+
+    async def _compter(self, gestes=()):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        lectures = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: lectures.append(1) or [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                depart = len(lectures)
+                for geste in gestes:
+                    if geste == "tour":
+                        app._tick()
+                    else:
+                        getattr(app, geste)()
+                    await pilote.pause()
+                return len(lectures) - depart
+
+    async def test_the_fleet_is_not_listed_every_tick(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        lectures = await self._compter(["tour"] * (t_ui.PAS_FLOTTE - 1))
+        self.assertEqual(lectures, 0)
+
+    async def test_it_is_listed_again_after_the_step(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        lectures = await self._compter(["tour"] * t_ui.PAS_FLOTTE)
+        self.assertEqual(lectures, 1)
+
+    async def test_reading_everything_again_asks_at_once(self):
+        """« r » est un geste explicite : il ne doit rien laisser périmé."""
+        self.assertEqual(await self._compter(["action_relire"]), 1)
+
+    async def test_reading_everything_again_says_so(self):
+        """Plus d'une seconde de gel sans un mot se lit comme un écran mort."""
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                app._dire(t("Reading everything again…"))
+                dit = str(app.query_one("#etat", Static).render())
+        self.assertIn(t("Reading everything again…"), dit)
 
 
 if __name__ == "__main__":

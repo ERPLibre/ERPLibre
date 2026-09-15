@@ -55,6 +55,13 @@ FLUX_MAX = 60
 # lirait comme « cet appel n'a pas de commande ».
 DETAILS_PAR_TOUR = 8
 
+# Tous les combien la flotte est relue. Le listage passe par un SOUS-PROCESSUS
+# et coûte cent soixante millisecondes, soit la moitié de ce qu'un tour dépense
+# — et la lecture des transcriptions, elle, n'en coûte que cinq. Un agent ne
+# naît ni ne meurt toutes les deux secondes, donc la question se pose trois
+# fois moins souvent ; un geste qui en change l'état la repose tout de suite.
+PAS_FLOTTE = 3
+
 # Ce que les cinq autres colonnes du flux occupent — heure, session, outil,
 # durée, fin — séparateurs compris. La commande prend ce qui reste : une
 # largeur FIXE déborde d'un terminal de quatre-vingts colonnes tout en
@@ -707,6 +714,11 @@ def run_tui(run_app: bool = True):
             # Le redimensionnement arrive AVANT le montage : repeindre alors
             # remplirait des tableaux qui n'ont pas encore de colonnes.
             self._monte = False
+            # Le tour courant, et la demande de relire la flotte sans
+            # attendre : un geste qui lance ou arrête un agent doit se voir
+            # au tour suivant, pas trois tours plus tard.
+            self._tours = 0
+            self._flotte_a_relire = True
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
             # La session visée par la saisie en cours. Gardée à part parce que
@@ -995,6 +1007,7 @@ def run_tui(run_app: bool = True):
                 if identifiant
                 else t("The agent did not report an identifier.")
             )
+            self._flotte_a_relire = True
             self._tick()
 
         def _lancer_action(self, sous_commande, poignee):
@@ -1013,6 +1026,7 @@ def run_tui(run_app: bool = True):
             # se fier au code laisserait annoncer un geste qui n'a pas eu lieu.
             premiere = (fini.stdout or fini.stderr or "").strip().splitlines()
             self._dire(premiere[0] if premiere else t("Nothing was said."))
+            self._flotte_a_relire = True
             self._tick()
 
         def _dire(self, message):
@@ -1080,8 +1094,17 @@ def run_tui(run_app: bool = True):
             self._resumer()
 
         def action_relire(self):
-            """Tout relire depuis le début, quand un doute vient sur un total."""
+            """Tout relire depuis le début, quand un doute vient sur un total.
+
+            L'écran se fige le temps de la relecture — plus d'une seconde sur
+            une machine qui porte quatre cents mégaoctets de transcriptions —
+            donc il le DIT avant de commencer. Un écran qui ne répond plus sans
+            rien annoncer se lit comme un écran mort.
+            """
+            self._dire(t("Reading everything again…"))
             self._lectures = {}
+            self._commandes = {}
+            self._flotte_a_relire = True
             self._tick()
 
         def _tick(self):
@@ -1104,8 +1127,11 @@ def run_tui(run_app: bool = True):
             self._seances = oc.lire_base()
             # 0,15 s par tour, soit un quinzième du pas : c'est le prix d'un
             # panneau qui dit ce qui TOURNE, que le disque ne porte pas.
-            self._flotte = self._lire_flotte()
-            self._agents = agents_detaches(self._flotte)
+            if self._flotte_a_relire or self._tours % PAS_FLOTTE == 0:
+                self._flotte = self._lire_flotte()
+                self._agents = agents_detaches(self._flotte)
+                self._flotte_a_relire = False
+            self._tours += 1
             self._completer_les_commandes()
             if not self._gele:
                 self._peindre()
