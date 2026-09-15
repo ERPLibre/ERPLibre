@@ -100,7 +100,9 @@ func main() {
 				" absent, non-cachable ou refus. Le seul geste qui retire UNE"+
 				" entrée : --purge efface tout, et --purge-older-than"+
 				" n'atteint jamais un objet qui sert, chaque service remettant"+
-				" sa date à maintenant. Écrit : demande le droit du service")
+				" sa date à maintenant. Écrit : demande le droit du service."+
+				" Pas d'essai à blanc — --detient EST l'aperçu : il répond aux"+
+				" mêmes lignes, par les mêmes clés, sans rien modifier")
 	)
 	flag.Parse()
 
