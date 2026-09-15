@@ -661,6 +661,12 @@ def run_tui(run_app: bool = True):
             self._vue = 0
             self._flotte: list = []
             self._agents: list = []
+            # Ce qui est PEINT, par opposition à ce qui vient d'être relu. Le
+            # curseur indexe l'écran, pas la lecture : pendant un gel les deux
+            # divergent, et viser la ligne surlignée dans la liste fraîche
+            # arrêterait un autre agent que celui qu'on regarde.
+            self._agents_peints: list = []
+            self._appels_peints: list = []
             # {identifiant: commande} — lu dans les transcriptions à la
             # demande, jamais écrit nulle part. Une entrée absente veut dire
             # « pas encore cherché », une entrée vide « cherché, rien à
@@ -756,11 +762,22 @@ def run_tui(run_app: bool = True):
             self._peindre()
 
         def _montrer_la_vue(self):
-            """N'afficher que le panneau courant, et rien d'autre."""
+            """N'afficher que le panneau courant, et LUI donner le clavier.
+
+            Le focus n'est pas un raffinement : Textual le donne au premier
+            widget focalisable, soit le tableau du haut, et un panneau caché
+            sort de la chaîne de focus. Les flèches pilotaient donc le tableau
+            des sessions pendant que les touches agissaient sur le panneau
+            visible — dont le curseur n'avait jamais bougé. « s » arrêtait le
+            premier agent quel que soit celui qu'on croyait viser, et « s »
+            est justement la seule action qui ne demande rien.
+            """
+            courant = self.VUES[self._vue]
             for nom in self.VUES:
-                self.query_one(f"#{nom}", DataTable).display = (
-                    nom == self.VUES[self._vue]
-                )
+                table = self.query_one(f"#{nom}", DataTable)
+                table.display = nom == courant
+                if nom == courant:
+                    table.focus()
 
         # Ce que la ligne de saisie attend, et ce que valider déclenche.
         # Ce que la ligne de saisie attend. Trois modes, parce que trois
@@ -890,7 +907,11 @@ def run_tui(run_app: bool = True):
             Comparé au long et non à celui de huit caractères : c'est la
             longueur qui fait la garde, pas la forme.
             """
-            if frappe == session.session_id:
+            # L'identifiant peut être VIDE — une version du listage qui ne
+            # porte pas « sessionId » le laisse à "" — et la comparaison
+            # devenait alors vraie sur une simple frappe d'Entrée. La garde la
+            # plus forte du paquet s'ouvrait sur rien.
+            if session.session_id and frappe == session.session_id:
                 self._lancer_action(
                     adaptateur_claude().SUPPRIMER, session.poignee
                 )
@@ -984,20 +1005,16 @@ def run_tui(run_app: bool = True):
         def _appel_choisi(self):
             """L'appel de la ligne surlignée du flux, ou None.
 
-            Le flux est peint depuis la même liste et dans le même ordre, donc
-            l'index d'une ligne EST celui de son appel.
+            Le flux est peint depuis `_appels_peints`, donc l'index d'une
+            ligne EST celui de son appel — y compris pendant un gel, où les
+            lectures continuent dessous sans que l'écran bouge.
             """
-            if self.VUES[self._vue] != "flux":
-                return None
-            derniers = sorted(self._appels, key=lambda a: a.debut_ms)[
-                -FLUX_MAX:
-            ][::-1]
-            if not derniers:
+            if self.VUES[self._vue] != "flux" or not self._appels_peints:
                 return None
             rang = self.query_one("#flux", DataTable).cursor_row
-            if rang is None or not 0 <= rang < len(derniers):
+            if rang is None or not 0 <= rang < len(self._appels_peints):
                 return None
-            return derniers[rang]
+            return self._appels_peints[rang]
 
         def action_gel(self):
             """Le rafraîchissement continue dessous ; l'affichage s'arrête."""
@@ -1035,30 +1052,78 @@ def run_tui(run_app: bool = True):
             if not self._gele:
                 self._peindre()
 
+        @staticmethod
+        def _repeindre(table, lignes, colonnes, cle):
+            """Refaire un tableau SANS perdre la ligne qu'on avait choisie.
+
+            Le curseur est rattaché à la ligne par sa clé, jamais à son rang :
+            un tour de rafraîchissement le remettait en tête, et le geste
+            suivant visait la première ligne au lieu de celle qu'on avait
+            surlignée. Deux secondes suffisaient, et « s » n'a pas de
+            confirmation pour rattraper.
+
+            Une ligne qui a disparu depuis le dernier tour ne se retrouve pas,
+            et le curseur reste alors où Textual le met : l'agent visé n'existe
+            plus, donc il n'y a rien à viser.
+            """
+            avant = None
+            if table.row_count:
+                try:
+                    avant = table.coordinate_to_cell_key(
+                        table.cursor_coordinate
+                    ).row_key
+                except Exception:
+                    avant = None
+            table.clear()
+            for ligne in lignes:
+                table.add_row(
+                    *[ligne[c] for c, _ in colonnes], key=str(ligne[cle])
+                )
+            if avant is not None:
+                # `move_cursor` ne prend qu'un RANG : la clé se retraduit donc
+                # en index après le repeint, ce qui est précisément le point —
+                # le rang a pu changer, la ligne non.
+                try:
+                    table.move_cursor(row=table.get_row_index(avant))
+                except Exception:
+                    pass
+
         def _peindre(self):
             tableau = self.query_one("#tableau", DataTable)
             tableau.clear()
-            for ligne in lignes(self._lectures, self._temps) + lignes_opencode(
-                self._seances
-            ):
-                tableau.add_row(*[ligne[cle] for cle, _ in self._colonnes])
+            self._repeindre(
+                tableau,
+                lignes(self._lectures, self._temps)
+                + lignes_opencode(self._seances),
+                self._colonnes,
+                "id",
+            )
             outils = self.query_one("#outils", DataTable)
-            outils.clear()
             groupes = jr.par_outil(self._appels)
-            for ligne in lignes_outils(groupes):
-                outils.add_row(*[ligne[cle] for cle, _ in COLONNES_OUTILS])
+            self._repeindre(
+                outils, lignes_outils(groupes), COLONNES_OUTILS, "outil"
+            )
             flux = self.query_one("#flux", DataTable)
-            flux.clear()
-            for ligne in lignes_flux(
-                self._appels,
-                commandes=self._commandes,
-                largeur=largeur_commande(self.size.width),
-            ):
-                flux.add_row(*[ligne[cle] for cle, _ in COLONNES_FLUX])
+            # La liste PEINTE est gardée : c'est elle que le curseur indexe,
+            # et un gel la fige pendant que les lectures continuent dessous.
+            self._appels_peints = sorted(
+                self._appels, key=lambda a: a.debut_ms
+            )[-FLUX_MAX:][::-1]
+            self._repeindre(
+                flux,
+                lignes_flux(
+                    self._appels,
+                    commandes=self._commandes,
+                    largeur=largeur_commande(self.size.width),
+                ),
+                COLONNES_FLUX,
+                "heure",
+            )
             agents = self.query_one("#agents", DataTable)
-            agents.clear()
-            for ligne in lignes_agents(self._agents):
-                agents.add_row(*[ligne[cle] for cle, _ in COLONNES_AGENTS])
+            self._agents_peints = list(self._agents)
+            self._repeindre(
+                agents, lignes_agents(self._agents), COLONNES_AGENTS, "id"
+            )
             self.query_one("#titre_outils", Static).update(
                 self._titre_du_panneau(groupes)
             )
@@ -1107,15 +1172,17 @@ def run_tui(run_app: bool = True):
             vide, ou aucune ligne n'est surlignée. Les trois se répondent par
             « rien à faire », et l'appelant le dit.
 
-            L'index de la ligne EST l'index de la session : le panneau est
-            peint depuis la même liste, dans le même ordre.
+            L'index de la ligne EST l'index de la session PEINTE — pas de la
+            dernière lue. Les deux divergent dès qu'on gèle l'écran, et viser
+            dans la liste fraîche arrêterait un autre agent que celui qu'on
+            regarde.
             """
-            if self.VUES[self._vue] != "agents" or not self._agents:
+            if self.VUES[self._vue] != "agents" or not self._agents_peints:
                 return None
             rang = self.query_one("#agents", DataTable).cursor_row
-            if rang is None or not 0 <= rang < len(self._agents):
+            if rang is None or not 0 <= rang < len(self._agents_peints):
                 return None
-            return self._agents[rang]
+            return self._agents_peints[rang]
 
         def _titre_du_panneau(self, groupes):
             """Ce que le panneau du bas montre, et pourquoi il est vide.

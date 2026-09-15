@@ -219,8 +219,6 @@ class TestLApplicationSeConstruit(unittest.TestCase):
         self.assertIn("f", touches, "le gel est une fonction, pas un confort")
 
 
-
-
 class TestLesDeuxHarnaisDansLeMemeTableau(unittest.TestCase):
     """Deux harnais qui ne mesurent pas les mêmes choses, un seul tableau.
 
@@ -1223,6 +1221,166 @@ class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
         source = ast.dump(corps)
         self.assertIn("run_tui", source)
         self.assertIn("exec_command_live", source)
+
+    async def test_an_empty_identifier_never_opens_the_guard(self):
+        """Le listage peut ne pas porter « sessionId ».
+
+        `Session.session_id` vaut alors "", l'invite affiche « Retape : »
+        suivi du vide, et une frappe d'Entrée donnait `"" == ""`. La garde la
+        plus forte du paquet s'ouvrait sur rien, et `claude rm` partait avec
+        la séance ET son arbre de travail.
+        """
+        from textual.widgets import Input
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        sans_uuid = cs.Session(
+            session_id="",
+            court="aaaaaaaa",
+            kind="background",
+            live=True,
+            cwd="/un/depot",
+            pid=4242,
+        )
+        envoyes = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [sans_uuid])
+            async with app.run_test(size=(160, 40)) as pilote:
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                await pilote.pause()
+                while app.VUES[app._vue] != "agents":
+                    await pilote.press("v")
+                    await pilote.pause()
+                self.assertEqual(app._agent_choisi().poignee, "aaaaaaaa")
+                await pilote.press("x")
+                await pilote.pause()
+                app.query_one("#saisie", Input).value = ""
+                await pilote.press("enter")
+                await pilote.pause()
+        self.assertEqual(envoyes, [])
+
+
+class TestLeCurseurEtLeClavier(unittest.IsolatedAsyncioTestCase):
+    """Deux defauts qui visaient la mauvaise ligne, sur des gestes qui tuent.
+
+    Le repeint de chaque tour remettait le curseur en tete : deux secondes
+    apres avoir surligne le troisieme agent, « s » arretait le premier. Et
+    rien ne donnait le clavier au panneau visible, donc les fleches pilotaient
+    le tableau du haut pendant que les touches agissaient en bas.
+
+    « s » est justement la seule action qui ne demande AUCUNE confirmation.
+    """
+
+    def _agents(self, combien=3):
+        from script.todo.assistant import claude_sessions as cs
+
+        return [
+            cs.Session(
+                session_id=f"{i}" * 8 + "-1111-4111-8111-111111111111",
+                kind="background",
+                live=True,
+                cwd=f"/depot/agent{i}",
+                pid=4240 + i,
+            )
+            for i in range(1, combien + 1)
+        ]
+
+    async def _sur_le_panneau(self, flotte, gestes=()):
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        vises = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: flotte)
+            async with app.run_test(size=(160, 40)) as pilote:
+                app._lancer_action = lambda sc, p: vises.append((sc, p))
+                await pilote.pause()
+                while app.VUES[app._vue] != "agents":
+                    await pilote.press("v")
+                    await pilote.pause()
+                focus = app.focused.id if app.focused else None
+                for geste in gestes:
+                    if geste == "tour":
+                        app._tick()
+                    else:
+                        await pilote.press(geste)
+                    await pilote.pause()
+                rang = app.query_one("#agents", DataTable).cursor_row
+        return focus, rang, vises
+
+    async def test_le_panneau_visible_prend_le_clavier(self):
+        """Textual le donne au premier widget focalisable, soit le tableau du
+        haut, et un panneau cache sort de la chaine de focus."""
+        focus, _, _ = await self._sur_le_panneau(self._agents())
+        self.assertEqual(focus, "agents")
+
+    async def test_le_curseur_survit_a_un_tour_de_rafraichissement(self):
+        _, rang, _ = await self._sur_le_panneau(
+            self._agents(), ["down", "down", "tour"]
+        )
+        self.assertEqual(rang, 2)
+
+    async def test_le_curseur_survit_a_plusieurs_tours(self):
+        _, rang, _ = await self._sur_le_panneau(
+            self._agents(), ["down", "down", "tour", "tour", "tour"]
+        )
+        self.assertEqual(rang, 2)
+
+    async def test_le_geste_vise_la_ligne_surlignee_et_non_la_premiere(self):
+        """Le defaut : deux secondes apres le choix, « s » arretait agent-1."""
+        _, _, vises = await self._sur_le_panneau(
+            self._agents(), ["down", "down", "tour", "s"]
+        )
+        self.assertEqual(vises, [("stop", "33333333")])
+
+    async def test_une_ligne_disparue_ne_deplace_pas_le_curseur_ailleurs(self):
+        """Un agent qui s arrete entre deux tours : le curseur ne doit pas
+        glisser en silence sur son voisin."""
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        flotte = self._agents()
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: list(flotte))
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                while app.VUES[app._vue] != "agents":
+                    await pilote.press("v")
+                    await pilote.pause()
+                await pilote.press("down")
+                await pilote.press("down")
+                await pilote.pause()
+                # Le troisieme agent s en va.
+                app._lire_flotte = staticmethod(lambda: flotte[:2])
+                app._tick()
+                await pilote.pause()
+                table = app.query_one("#agents", DataTable)
+                self.assertEqual(table.row_count, 2)
+                self.assertLess(table.cursor_row, 2)
 
 
 if __name__ == "__main__":
