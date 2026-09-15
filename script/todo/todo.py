@@ -5213,11 +5213,51 @@ class TODO(
         if not in_path:
             self.rtk_report_path_warning()
 
-        config_path = os.path.expanduser("~/.config/rtk/config.toml")
-        if os.path.exists(config_path):
+        if self.rtk_global_hook_active():
             print(t("Global auto-rewrite hook: active"))
         else:
             print(t("Global auto-rewrite hook: inactive"))
+
+    # Là où « rtk init --global » écrit : les réglages de l'ASSISTANT, et
+    # non ceux de rtk. Son aide le dit — « add to global assistant config
+    # directory ».
+    RTK_HOOK_SETTINGS = "~/.claude/settings.json"
+    RTK_HOOK_COMMANDE = "rtk hook"
+
+    @classmethod
+    def rtk_global_hook_active(cls, chemin: str = "") -> bool:
+        """Le crochet est-il posé dans les réglages de l'assistant ?
+
+        PAS « ~/.config/rtk/config.toml » : celui-là est la configuration
+        de rtk LUI-MÊME, écrite dès qu'il tourne une fois. Le témoin y
+        répondait donc « actif » à qui n'avait jamais lancé
+        « init --global », et l'écran conseillait de ne rien faire.
+
+        Le fichier est lu en JSON et parcouru : chercher « rtk » dans le
+        texte brut répondrait oui sur un réglage qui le NOMME sans
+        l'appeler — un commentaire, un chemin, une variable.
+        """
+        chemin = os.path.expanduser(chemin or cls.RTK_HOOK_SETTINGS)
+        try:
+            with open(chemin, encoding="utf-8") as fichier:
+                reglages = json.load(fichier)
+        except (OSError, ValueError):
+            return False
+
+        def commandes(noeud):
+            if isinstance(noeud, dict):
+                for valeur in noeud.values():
+                    yield from commandes(valeur)
+            elif isinstance(noeud, list):
+                for valeur in noeud:
+                    yield from commandes(valeur)
+            elif isinstance(noeud, str):
+                yield noeud
+
+        return any(
+            c.strip().startswith(cls.RTK_HOOK_COMMANDE)
+            for c in commandes(reglages)
+        )
 
     def prompt_execute_config(self):
         print(f"🤖 {t('Manage ERPLibre and Odoo configuration!')}")
