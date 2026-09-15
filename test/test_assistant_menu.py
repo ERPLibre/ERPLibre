@@ -783,6 +783,41 @@ class LeHarnaisOpenCode(unittest.TestCase):
         self.assertIn("/un/autre/endroit", self._ecran([seance], ["0"]))
 
 
+class LaRetapeNeSOuvrePasSurRien(unittest.TestCase):
+    """La garde la plus forte du paquet, et ce qui l'ouvrait sur le vide.
+
+    `claude rm` supprime la séance ET son arbre de travail, et rien ne la
+    récupère : l'identifiant se retape donc en entier. Mais un listage qui ne
+    porte pas « sessionId » laisse ce champ à "", l'invite affiche « Retape : »
+    suivi du vide, et une frappe d'Entrée rendait la comparaison vraie.
+    """
+
+    def _retape(self, session_id, frappe):
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        session = cs.Session(session_id=session_id, court="aaaaaaaa")
+        with patch("click.prompt", return_value=frappe), patch(
+            "builtins.print"
+        ):
+            return TODO._claude_retape_id(TODO(), session)
+
+    def test_an_empty_identifier_is_refused_even_on_an_empty_answer(self):
+        self.assertFalse(self._retape("", ""))
+
+    def test_an_empty_identifier_is_refused_whatever_is_typed(self):
+        self.assertFalse(self._retape("", "aaaaaaaa"))
+
+    def test_the_whole_identifier_still_opens_it(self):
+        """Refuser trop retirerait la fonctionnalité."""
+        entier = "aaaaaaaa-1111-4111-8111-111111111111"
+        self.assertTrue(self._retape(entier, entier))
+
+    def test_the_short_identifier_is_not_enough(self):
+        entier = "aaaaaaaa-1111-4111-8111-111111111111"
+        self.assertFalse(self._retape(entier, "aaaaaaaa"))
+
+
 class LaVueDUneSession(unittest.TestCase):
     """`displayable()` fixe ce qu'une session a le droit de montrer.
 

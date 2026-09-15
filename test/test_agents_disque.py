@@ -26,6 +26,7 @@ le disque réel.
 """
 
 import unittest
+from unittest.mock import patch
 
 from script.todo.assistant.agents import disque as dq
 
@@ -198,6 +199,60 @@ class TestLesOctetsLisibles(unittest.TestCase):
 
     def test_none_is_zero(self):
         self.assertEqual(dq.octets_lisibles(None), "0")
+
+
+class TestLaGardeNeTombeQueFermee(unittest.TestCase):
+    """L'écran de ménage supprime récursivement : sa garde doit tenir.
+
+    Elle reposait sur la présence du binaire sur le PATH, ce qui ne dit rien
+    de ce que le listage répond. Compte déconnecté, version qui ignore la
+    sous-commande, délai dépassé, sortie qui n'est pas du JSON : le binaire
+    est là, la question échoue, et l'ensemble VIDE se lisait « aucune session
+    vivante ». Tout historique devenait alors supprimable, y compris celui de
+    la session qui écrit en ce moment.
+    """
+
+    def test_a_listing_that_does_not_answer_offers_nothing(self):
+        from script.todo.todo import TODO
+
+        for muet in ("", "pas du json", '{"pid": 1}'):
+            with patch(
+                "script.todo.assistant.claude_sessions.live",
+                return_value=None,
+            ):
+                self.assertIsNone(TODO._claude_vivantes(), repr(muet))
+
+    def test_a_listing_that_answers_nothing_is_an_empty_set(self):
+        """L'outil a répondu « aucune » : les historiques sont retirables."""
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.claude_sessions.live", return_value=[]
+        ):
+            self.assertEqual(TODO._claude_vivantes(), set())
+
+    def test_only_the_live_ones_are_named(self):
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.todo import TODO
+
+        sessions = [
+            cs.Session(session_id="a" * 32, live=True),
+            cs.Session(session_id="b" * 32, live=False),
+        ]
+        with patch(
+            "script.todo.assistant.claude_sessions.live",
+            return_value=sessions,
+        ):
+            self.assertEqual(TODO._claude_vivantes(), {"a" * 32})
+
+    def test_a_listing_that_raises_offers_nothing(self):
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.claude_sessions.live",
+            side_effect=OSError("refusé"),
+        ):
+            self.assertIsNone(TODO._claude_vivantes())
 
 
 if __name__ == "__main__":

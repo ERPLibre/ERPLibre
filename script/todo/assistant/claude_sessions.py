@@ -118,14 +118,19 @@ def live(*, run=None, read_registry=None, read_stat=None) -> list[Session]:
     coutures permettent à un test de décrire une flotte entière sans qu'aucune
     session réelle ne soit lue ni dérangée.
 
-    Rend une liste VIDE quand l'outil est absent ou muet — une machine sans
-    Claude Code n'est pas une panne du menu.
+    Rend None quand l'outil n'a pas RÉPONDU, et une liste vide quand il a
+    répondu qu'aucune session ne tourne. Une machine sans Claude Code n'est
+    pas une panne du menu, mais elle n'est pas non plus une machine où rien ne
+    tourne : l'appelant qui protège un geste destructeur a besoin des deux.
     """
     lanceur = run or _lancer
+    brutes = _agents(lanceur)
+    if brutes is None:
+        return None
     entrees = (read_registry or _lire_registre)()
     par_pid = {int(e.get("pid", 0) or 0): e for e in entrees}
     trouvees = []
-    for brute in _agents(lanceur):
+    for brute in brutes:
         pid = int(brute.get("pid", 0) or 0)
         enrichie = par_pid.get(pid, {})
         vivante = is_live(pid, enrichie.get("procStart"), read_stat=read_stat)
@@ -230,14 +235,16 @@ def fleet(
     # connaît pas : sans cette reprise, elle paraîtrait pour les sessions
     # dormantes et manquerait pour les vivantes, ce qui se lit comme un
     # défaut alors que l'information est là.
+    # La flotte rend TOUJOURS une liste : elle sert à montrer, et une
+    # transcription reste une transcription même sans listage. Ce qui se perd
+    # alors est la VIVACITÉ, et `live()` est là pour qui en a besoin.
+    trouvees = live(run=run, read_registry=read_registry, read_stat=read_stat)
     vivantes = [
         replace(
             session,
             branch=getattr(persistees.get(session.session_id), "branch", ""),
         )
-        for session in live(
-            run=run, read_registry=read_registry, read_stat=read_stat
-        )
+        for session in trouvees or ()
     ]
     connues = {session.session_id for session in vivantes}
     dormantes = [
@@ -282,19 +289,27 @@ def held_by(session) -> str:
 
 
 def _agents(lanceur):
-    """Les entrées du listage publié par l'outil, ou une liste vide."""
+    """Les entrées du listage, ou None quand l'outil n'a pas RÉPONDU.
+
+    None et la liste vide disent le contraire l'un de l'autre : le premier est
+    « la question n'a pas abouti » — binaire absent, compte déconnecté,
+    version qui ignore la sous-commande, délai dépassé, sortie qui n'est pas
+    du JSON —, le second « aucune session ne tourne ».
+
+    Les confondre fait tomber en OUVERT la garde qui protège l'écran de
+    ménage : sans session vivante connue, tout historique devient supprimable,
+    y compris celui de la session qui écrit en ce moment.
+    """
     texte = lanceur(list(AGENTS_ARGV))
     if not texte:
-        return []
+        return None
     try:
         charge = json.loads(texte)
     except ValueError:
-        return []
-    return (
-        [e for e in charge if isinstance(e, dict)]
-        if isinstance(charge, list)
-        else []
-    )
+        return None
+    if not isinstance(charge, list):
+        return None
+    return [e for e in charge if isinstance(e, dict)]
 
 
 def _lancer(argv):

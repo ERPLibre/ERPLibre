@@ -218,14 +218,34 @@ class LeListageDesVivantes(unittest.TestCase):
         self.assertEqual(session.version, "")
         self.assertTrue(session.live)
 
-    def test_un_outil_absent_rend_une_liste_vide(self):
-        self.assertEqual(self._live(agents=""), [])
+    def test_un_listage_qui_ne_repond_pas_rend_None(self):
+        """None et la liste vide disent le contraire l'un de l'autre.
 
-    def test_un_listage_illisible_rend_une_liste_vide(self):
-        self.assertEqual(self._live(agents="pas du json"), [])
+        Le premier est « la question n'a pas abouti » — binaire absent, compte
+        déconnecté, version qui ignore la sous-commande, délai dépassé, sortie
+        qui n'est pas du JSON. Le second est « aucune session ne tourne ».
 
-    def test_un_listage_qui_n_est_pas_une_liste_rend_une_liste_vide(self):
-        self.assertEqual(self._live(agents='{"pid": 1}'), [])
+        Les confondre fait tomber en OUVERT la garde de l'écran de ménage :
+        sans vivante connue, tout historique devient supprimable, y compris
+        celui de la session qui écrit en ce moment.
+        """
+        for muet in ("", "pas du json", '{"pid": 1}'):
+            self.assertIsNone(self._live(agents=muet), repr(muet))
+
+    def test_un_listage_qui_repond_rien_rend_une_liste_vide(self):
+        """L'outil a répondu, et ce qu'il dit est « aucune »."""
+        self.assertEqual(self._live(agents="[]"), [])
+
+    def test_la_flotte_rend_toujours_une_liste(self):
+        """Elle sert à MONTRER : une transcription reste une transcription
+        même quand le listage se tait. Ce qui se perd alors est la vivacité,
+        et c'est `live()` qui la porte."""
+        flotte = CS.fleet(
+            run=lambda argv: "",
+            read_registry=lambda: [],
+            projects_root="/nulle-part",
+        )
+        self.assertEqual(flotte, [])
 
     def test_le_pid_detenteur_ne_se_donne_que_pour_une_vivante(self):
         vivante = self._live()[0]

@@ -35,7 +35,6 @@ défilement piloté.
 from __future__ import annotations
 
 import os
-import shutil
 import time
 
 import click
@@ -1434,14 +1433,13 @@ class AssistantMenuMixin:
 
         while True:
             postes = disque.mesurer()
-            # Sans l'outil, la flotte rend une liste vide, qui se lit
-            # « aucune session vivante » et rendrait tout supprimable. None
-            # dit « on n'a pas pu demander », et rien n'est alors proposé.
-            vivantes = (
-                {s.session_id for s in self._claude_flotte() if s.live}
-                if shutil.which("claude")
-                else None
-            )
+            # La question est POSÉE, elle n'est pas devinée. Se fier à la
+            # présence du binaire sur le PATH laissait la garde tomber en
+            # ouvert dès que le listage échouait autrement : compte
+            # déconnecté, version qui ignore la sous-commande, délai dépassé,
+            # sortie qui n'est pas du JSON. `live()` rend None dans tous ces
+            # cas, et `historiques` ne propose alors rien.
+            vivantes = self._claude_vivantes()
             histoires = disque.historiques(vivantes=vivantes)
             print(f"{t('What Claude Code occupies')} :")
             for poste in postes:
@@ -1936,7 +1934,9 @@ class AssistantMenuMixin:
         except (KeyboardInterrupt, click.exceptions.Abort):
             print()
             return False
-        if frappe != session.session_id:
+        # Un identifiant VIDE rendrait la comparaison vraie sur une frappe
+        # d'Entrée : la garde la plus forte du paquet s'ouvrirait sur rien.
+        if not session.session_id or frappe != session.session_id:
             print(t("Nothing has been sent."))
             return False
         return True
@@ -2008,6 +2008,25 @@ class AssistantMenuMixin:
             print(t("Command not found !"))
             return
         self._claude_lancer_action(sous, session)
+
+    @staticmethod
+    def _claude_vivantes():
+        """Les identifiants des sessions qui TOURNENT, ou None.
+
+        None veut dire « le listage n'a pas répondu », ce qui n'est pas
+        « aucune session ne tourne ». Seul l'appelant qui protège un geste
+        destructeur a besoin de la différence, et c'est pour lui qu'elle
+        remonte jusqu'ici.
+        """
+        from script.todo.assistant import claude_sessions as cs
+
+        try:
+            trouvees = cs.live()
+        except Exception:
+            return None
+        if trouvees is None:
+            return None
+        return {s.session_id for s in trouvees if s.live}
 
     def _claude_flotte(self):
         """La flotte, relue à chaque tour du menu.
