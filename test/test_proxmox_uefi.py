@@ -118,19 +118,42 @@ class LaSequenceDeCreation(unittest.TestCase):
         self.assertLess(i_efi, i_start)
 
 
-class LeMenuTransmetLeMarqueur(unittest.TestCase):
-    """Un catalogue qui sait et un menu qui ne dit pas laisse la VM en
-    SeaBIOS : les deux points d'appel sont tenus."""
+class TousLesConstructeursDeSpecLeDisent(unittest.TestCase):
+    """create_cmds lit « uefi » dans le spec, et un spec qui l'omet vaut
+    SeaBIOS sans rien dire.
 
-    SRC = (RACINE / "script/todo/proxmox_menu.py").read_text(encoding="utf-8")
+    Compter les appels dans UN fichier laissait échapper tout constructeur
+    écrit ailleurs, et il y en avait un. Le garde-fou cherche donc les
+    appelants plutôt que de les supposer.
+    """
 
-    def test_both_call_sites_pass_it(self):
-        self.assertEqual(2, self.SRC.count('"uefi": mod.requiert_uefi('))
+    def _appelants(self):
+        trouves = []
+        for dossier in ("script", "long_test"):
+            for chemin in sorted((RACINE / dossier).rglob("*.py")):
+                if chemin.name == "proxmox_deploy.py":
+                    continue
+                texte = chemin.read_text(encoding="utf-8")
+                if "create_cmds(" in texte:
+                    trouves.append((chemin, texte))
+        return trouves
 
-    def test_it_is_read_from_the_catalogue_not_hardcoded(self):
-        """Écrire « nixos » ici ferait deux autorités sur une même question."""
-        self.assertNotIn('"uefi": True', self.SRC)
-        self.assertNotIn('"uefi": "nixos"', self.SRC)
+    def test_the_callers_are_found_at_all(self):
+        """Un test qui ne trouve plus personne passerait en restant vert."""
+        self.assertTrue(self._appelants())
+
+    def test_every_one_of_them_declares_the_firmware(self):
+        for chemin, texte in self._appelants():
+            with self.subTest(fichier=chemin.name):
+                self.assertIn('"uefi"', texte)
+
+    def test_none_of_them_decides_it_itself(self):
+        """Écrire « nixos » à côté du spec ferait deux autorités sur une même
+        question, et la seconde vieillirait sans qu'on le sache."""
+        for chemin, texte in self._appelants():
+            with self.subTest(fichier=chemin.name):
+                self.assertNotIn('"uefi": True', texte)
+                self.assertNotIn('"uefi": "nixos"', texte)
 
 
 if __name__ == "__main__":

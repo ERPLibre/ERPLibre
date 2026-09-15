@@ -28,9 +28,11 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
 from script.qemu.deploy_qemu import (  # noqa: E402
+    FIRMWARE_IMPOSE,
     amorcage_bios,
     canonical_timezone,
     hostname_valide,
+    requiert_uefi,
 )
 
 
@@ -143,6 +145,39 @@ class TestAmorcage(unittest.TestCase):
             self.assertTrue(amorcage_bios(d, True), d)
 
     def test_une_distribution_inconnue_garde_le_defaut(self):
+        self.assertFalse(amorcage_bios("inconnue", False))
+
+    def test_la_demande_ne_peut_pas_inventer_un_secteur_damorcage(self):
+        """La seule limite de « la demande l'emporte » : une image sans
+        secteur d'amorçage BIOS n'en gagne pas un parce qu'on l'a tapé. Forcée,
+        elle se déclare « running » avec une console muette — soit la panne
+        que ce drapeau est censé éviter ailleurs."""
+        self.assertFalse(amorcage_bios("nixos", True))
+        self.assertFalse(amorcage_bios("nixos", False))
+
+
+class TestUneSeuleTableDeFirmware(unittest.TestCase):
+    """Les deux voies de déploiement partent de défauts OPPOSÉS — libvirt en
+    UEFI, Proxmox en SeaBIOS — et lisent la MÊME table. Deux tables se
+    contrediraient sans que rien ne le dise, chacune n'étant lue que d'un
+    côté."""
+
+    def test_les_deux_lectures_viennent_de_la_table(self):
+        for distro, impose in FIRMWARE_IMPOSE.items():
+            with self.subTest(distro=distro):
+                self.assertEqual(impose == "uefi", requiert_uefi(distro))
+                self.assertEqual(
+                    impose == "bios", amorcage_bios(distro, False)
+                )
+
+    def test_la_table_ne_connait_que_deux_valeurs(self):
+        """Une troisième valeur serait lue comme « rien d'imposé » par les
+        deux lectures, en silence."""
+        self.assertLessEqual(set(FIRMWARE_IMPOSE.values()), {"bios", "uefi"})
+
+    def test_une_distribution_hors_table_nimpose_rien(self):
+        self.assertFalse(requiert_uefi(""))
+        self.assertFalse(requiert_uefi("inconnue"))
         self.assertFalse(amorcage_bios("inconnue", False))
 
 
