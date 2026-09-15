@@ -76,6 +76,69 @@ class TestEveryCheckDeclaresBothReadings(unittest.TestCase):
         self.assertEqual(len(cles), len(set(cles)))
 
 
+class TestChaqueTexteDeControleEstTraduit(unittest.TestCase):
+    """Un texte de contrôle absent de la table s'affiche EN ANGLAIS.
+
+    Les vingt-neuf de cet écran l'étaient : le rapport entier sortait en
+    anglais au milieu d'une interface française, et rien ne le disait —
+    `t()` rend la clé quand elle ne la connaît pas.
+
+    LA GARDE DES CLÉS LITTÉRALES NE LES VOIT PAS. Ces textes arrivent
+    par `t(controle["title"])` : le nom ne se lit pas dans le source, il
+    se lit dans la TABLE. C'est donc ici qu'ils se tiennent, au plus près
+    de la table qui les porte.
+
+    Le piège qui va avec : ces chaînes sont concaténées sur plusieurs
+    lignes. Une expression régulière n'en attrape que le premier
+    fragment, et traduire ce fragment ne servirait à rien. La table se
+    LIT, elle ne se grepe pas.
+    """
+
+    CHAMPS = ("section", "title", "why_copy", "why_live")
+
+    @staticmethod
+    def table():
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        return TRANSLATIONS
+
+    def test_every_control_text_is_in_the_table(self):
+        table = self.table()
+        absentes = sorted(
+            {
+                f"{controle['key']}.{champ} : {texte[:60]}"
+                for controle in etat.CONTROLES
+                for champ in self.CHAMPS
+                if (texte := controle.get(champ)) and texte not in table
+            }
+        )
+        self.assertEqual([], absentes)
+
+    def test_the_scan_actually_reads_texts(self):
+        """Sur zéro texte lu, la garde passe et ne tient rien."""
+        textes = [
+            controle.get(champ)
+            for controle in etat.CONTROLES
+            for champ in self.CHAMPS
+            if controle.get(champ)
+        ]
+        self.assertGreater(len(textes), 20)
+
+    def test_a_text_written_on_several_lines_is_read_whole(self):
+        """La concaténation implicite est l'idiome de cette table : la
+        clé est la chaîne ENTIÈRE, pas son premier morceau."""
+        longs = [
+            t
+            for controle in etat.CONTROLES
+            for champ in self.CHAMPS
+            if (t := controle.get(champ)) and len(t) > 80
+        ]
+        self.assertTrue(longs)
+        for texte in longs:
+            with self.subTest(texte=texte[:40]):
+                self.assertIn(texte, self.table())
+
+
 class TestThePolarityActuallyInverts(unittest.TestCase):
     """La propriété centrale, épinglée sur un cas réel mesuré."""
 

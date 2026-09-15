@@ -12537,6 +12537,122 @@ TRANSLATIONS = {
         "fr": "SSH",
         "en": "SSH",
     },
+    "A copy can charge real cards.": {
+        "fr": "Une copie peut débiter de vraies cartes.",
+        "en": "A copy can charge real cards.",
+    },
+    "A copy that can send reaches the customer's real contacts.": {
+        "fr": "Une copie qui peut émettre atteint les vrais contacts du client.",
+        "en": "A copy that can send reaches the customer's real contacts.",
+    },
+    "A copy that still runs them sends mail and posts payments.": {
+        "fr": "Une copie qui les exécute encore envoie du courriel et passe des paiements.",
+        "en": "A copy that still runs them sends mail and posts payments.",
+    },
+    "A fixed threshold misses them — a ten-minute job one hour late matters, a monthly one does not.": {
+        "fr": "Un seuil fixe les manque : une tâche de dix minutes en retard d'une heure compte, une tâche mensuelle non.",
+        "en": "A fixed threshold misses them — a ten-minute job one hour late matters, a monthly one does not.",
+    },
+    "A production marked as neutralised has had its scheduled actions and outgoing mail disabled.": {
+        "fr": "Une production marquée neutralisée a vu ses actions planifiées et son courriel sortant désactivés.",
+        "en": "A production marked as neutralised has had its scheduled actions and outgoing mail disabled.",
+    },
+    "Backup configurations recorded": {
+        "fr": "Configurations de sauvegarde enregistrées",
+        "en": "Backup configurations recorded",
+    },
+    "Backups": {
+        "fr": "Sauvegardes",
+        "en": "Backups",
+    },
+    "Everyone can change everything, and no rule is ever exercised.": {
+        "fr": "Tout le monde peut tout changer, et aucune règle n'est jamais éprouvée.",
+        "en": "Everyone can change everything, and no rule is ever exercised.",
+    },
+    "Internal users who are ALL system administrators": {
+        "fr": "Utilisateurs internes TOUS administrateurs système",
+        "en": "Internal users who are ALL system administrators",
+    },
+    "Mail domain that does not match the base URL": {
+        "fr": "Domaine de courriel qui ne correspond pas à l'URL de base",
+        "en": "Mail domain that does not match the base URL",
+    },
+    "Mail servers declared at all": {
+        "fr": "Serveurs de courriel déclarés, tous confondus",
+        "en": "Mail servers declared at all",
+    },
+    "Mail servers that could actually send": {
+        "fr": "Serveurs de courriel capables d'émettre réellement",
+        "en": "Mail servers that could actually send",
+    },
+    "Messages stuck in the outgoing queue": {
+        "fr": "Messages bloqués dans la file sortante",
+        "en": "Messages stuck in the outgoing queue",
+    },
+    "Neutralisation": {
+        "fr": "Neutralisation",
+        "en": "Neutralisation",
+    },
+    "No ordinary user exists to test visibility with — any access-rights check run here proves nothing.": {
+        "fr": "Aucun utilisateur ordinaire n'existe pour éprouver la visibilité : un contrôle de droits d'accès lancé ici ne prouve rien.",
+        "en": "No ordinary user exists to test visibility with — any access-rights check run here proves nothing.",
+    },
+    "Nothing at all runs on a schedule.": {
+        "fr": "Rien du tout ne tourne à l'horaire.",
+        "en": "Nothing at all runs on a schedule.",
+    },
+    "Odoo does not consider this database neutralised; modules that neutralise themselves never ran.": {
+        "fr": "Odoo ne considère pas cette base comme neutralisée ; les modules qui se neutralisent eux-mêmes n'ont jamais tourné.",
+        "en": "Odoo does not consider this database neutralised; modules that neutralise themselves never ran.",
+    },
+    "Payment providers neither disabled nor in test": {
+        "fr": "Fournisseurs de paiement ni désactivés ni en mode test",
+        "en": "Payment providers neither disabled nor in test",
+    },
+    "Portal links, invoice QR codes and reply addresses point somewhere else than the instance itself.": {
+        "fr": "Les liens du portail, les codes QR de facture et les adresses de réponse pointent ailleurs que l'instance elle-même.",
+        "en": "Portal links, invoice QR codes and reply addresses point somewhere else than the instance itself.",
+    },
+    "Queues": {
+        "fr": "Files",
+        "en": "Queues",
+    },
+    "Scheduled actions active": {
+        "fr": "Actions planifiées actives",
+        "en": "Scheduled actions active",
+    },
+    "Scheduled actions late by more than one cycle": {
+        "fr": "Actions planifiées en retard de plus d'un cycle",
+        "en": "Scheduled actions late by more than one cycle",
+    },
+    "Scheduler": {
+        "fr": "Planificateur",
+        "en": "Scheduler",
+    },
+    "The backup scheduler runs and backs up nothing.": {
+        "fr": "Le planificateur de sauvegarde tourne et ne sauvegarde rien.",
+        "en": "The backup scheduler runs and backs up nothing.",
+    },
+    "Users": {
+        "fr": "Utilisateurs",
+        "en": "Users",
+    },
+    "Visible to the customer, invisible to the operator.": {
+        "fr": "Visible du client, invisible de l'exploitant.",
+        "en": "Visible to the customer, invisible to the operator.",
+    },
+    "With NO server, Odoo falls back to smtp_server from the config file — which is why Odoo's own neutralize.sql INSERTS a blocking one instead of deleting them all.": {
+        "fr": "SANS aucun serveur, Odoo se rabat sur smtp_server du fichier de configuration — c'est pourquoi le neutralize.sql d'Odoo en INSÈRE un bloquant au lieu de tous les supprimer.",
+        "en": "With NO server, Odoo falls back to smtp_server from the config file — which is why Odoo's own neutralize.sql INSERTS a blocking one instead of deleting them all.",
+    },
+    "With no server at all, Odoo silently uses the smtp_server from the config file.": {
+        "fr": "Sans aucun serveur, Odoo emploie en silence le smtp_server du fichier de configuration.",
+        "en": "With no server at all, Odoo silently uses the smtp_server from the config file.",
+    },
+    "database.is_neutralized": {
+        "fr": "database.is_neutralized",
+        "en": "database.is_neutralized",
+    },
     "Book - Show the book": {
         "fr": "📖 Carnet - Voir le carnet",
         "en": "📖 Book - Show the book",
