@@ -24,6 +24,10 @@ func TestClassify(t *testing.T) {
 			ClassImmutable, "paquet Fedora"},
 		{"https://pypi.example/packages/ab/cd/requests-2.33.0-py3-none-any.whl",
 			ClassImmutable, "roue Python"},
+		{"https://pypi.example/packages/ab/cd/requests-2.33.0-py3-none-any.whl.metadata",
+			ClassImmutable, "métadonnées d'une roue (PEP 658)"},
+		{"https://pypi.example/packages/ab/cd/requests-2.33.0.tar.gz.metadata",
+			ClassImmutable, "métadonnées d'une archive source (PEP 658)"},
 		{"https://images.example/arch/Arch-Linux-x86_64-cloudimg.qcow2",
 			ClassImmutable, "image cloud"},
 
@@ -245,5 +249,22 @@ func TestUnPointeurDeDerniereVersionEstVolatile(t *testing.T) {
 	u, _ := url.Parse("https://forge.example/o/d/releases/download/v1.2.3/outil.tar.gz")
 	if got := Classify(u); got != ClassImmutable {
 		t.Errorf("une version nommée classée « %s », attendu « immutable »", got)
+	}
+}
+
+// Les métadonnées PEP 658 se rangent sans leur hôte, comme l'archive qu'elles
+// décrivent : leur chemin porte déjà l'empreinte du contenu.
+func TestLesMetadonneesPythonSontPortables(t *testing.T) {
+	for _, brut := range []string{
+		"https://pypi.example/packages/ab/cd/requests-2.33.0-py3-none-any.whl.metadata",
+		"https://pypi.example/packages/ab/cd/requests-2.33.0.zip.metadata",
+	} {
+		u, err := url.Parse(brut)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !PortableParChemin(u) {
+			t.Errorf("%s n'est pas portable", brut)
+		}
 	}
 }
