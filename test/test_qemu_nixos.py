@@ -126,6 +126,28 @@ class LImage(unittest.TestCase):
         """Leur somme, quand elle existe, vient de leur propre SHA256SUMS."""
         DQ.verify_pinned_sha256("ubuntu", Path("/inexistant"), False)
 
+    def _refus(self, urls=()):
+        with mock.patch.object(DQ, "open", mock.mock_open(read_data=b"x")):
+            with self.assertRaises(SystemExit) as pris:
+                DQ.verify_pinned_sha256("nixos", Path("/x"), False, urls)
+        return str(pris.exception)
+
+    def test_the_cache_entry_is_named_as_what_must_go_first(self):
+        """Le remède ordinaire — effacer le fichier — ne suffit PAS derrière
+        le cache : c'est lui qui resservira les mêmes octets, indéfiniment.
+        Ni « --purge », qui efface tout, ni « --purge-older-than », qu'un
+        objet servi rajeunit à chaque fois, ne l'atteignent."""
+        msg = self._refus(("https://miroir.example/nixos.qcow2",))
+        self.assertIn("--oublie", msg)
+        self.assertIn("GET https://miroir.example/nixos.qcow2", msg)
+
+    def test_without_a_url_the_message_stays_short(self):
+        """Une commande qu'on ne peut pas recopier telle quelle vaut moins
+        que pas de commande du tout."""
+        msg = self._refus()
+        self.assertNotIn("--oublie", msg)
+        self.assertIn("attendu", msg)
+
 
 class CeQuiSeDitALEcran(unittest.TestCase):
     def test_the_third_party_origin_is_named(self):

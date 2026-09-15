@@ -403,6 +403,27 @@ class TestLesCommandes(unittest.TestCase):
         self.assertIn("if [ -s", cmd)
         self.assertIn("wget", cmd)
 
+    def test_a_substituted_image_names_what_to_do_first(self):
+        """Cet hôte peut être une VM derrière le cache de téléchargement :
+        effacer l'image la fera resservir à l'identique depuis le magasin.
+        L'entrée s'en retire d'abord, et l'échec le dit — c'est là que
+        l'opérateur se tient quand la somme lâche."""
+        cmd = pve.image_fetch_cmd(
+            "https://x/deb.qcow2", "deb.qcow2", sha256="ab" * 32
+        )
+        self.assertIn("--oublie", cmd)
+        self.assertIn("rm -f", cmd)
+        # Vers l'erreur standard : la sortie normale est lue par la machine.
+        self.assertIn(">&2", cmd)
+
+    def test_the_failure_is_still_a_failure(self):
+        """Un message n'absout pas : « false » garde le code de retour, sans
+        quoi le déploiement continuerait sur une image substituée."""
+        cmd = pve.image_fetch_cmd(
+            "https://x/deb.qcow2", "deb.qcow2", sha256="ab" * 32
+        )
+        self.assertIn("false;", cmd)
+
     def test_the_internal_bridge_never_touches_a_physical_nic(self):
         """Le point le plus important de ce module : ajouter l'interface au
         pont déplace l'adresse de l'hôte et coupe la session SSH — à distance,
