@@ -355,7 +355,8 @@ func amontGitEnPanne(t *testing.T) (string, string, *int64, *atomic.Bool) {
 func TestUnAmontConnuMuetNeRafraichitPasLeMiroir(t *testing.T) {
 	depot, appels, _ := amontGitCompte(t)
 	g := &GitMirror{
-		Dir: t.TempDir(), Delai: 30 * time.Second, Muets: NouvelleJoignabilite(),
+		PlancherLibre: plancherDEssai,
+		Dir:           t.TempDir(), Delai: 30 * time.Second, Muets: NouvelleJoignabilite(),
 	}
 	if _, pret := g.Assurer(context.Background(), depot); !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
@@ -377,7 +378,8 @@ func TestUnAmontConnuMuetNeRafraichitPasLeMiroir(t *testing.T) {
 func TestUneSondeRefuseeRetientLHoteEtSertLeMiroir(t *testing.T) {
 	depot, appels, _ := amontGitCompte(t)
 	g := &GitMirror{
-		Dir: t.TempDir(), Delai: 30 * time.Second, Muets: NouvelleJoignabilite(),
+		PlancherLibre: plancherDEssai,
+		Dir:           t.TempDir(), Delai: 30 * time.Second, Muets: NouvelleJoignabilite(),
 	}
 	if _, pret := g.Assurer(context.Background(), depot); !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
@@ -414,7 +416,8 @@ func sansMandataire(*http.Request) (*url.URL, error) { return nil, nil }
 func miroirCree(t *testing.T, depot string) string {
 	t.Helper()
 	dir := t.TempDir()
-	creation := &GitMirror{Dir: dir, Delai: 30 * time.Second}
+	creation := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: dir, Delai: 30 * time.Second}
 	if _, pret := creation.Assurer(context.Background(), depot); !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
 	}
@@ -427,7 +430,8 @@ func miroirCree(t *testing.T, depot string) string {
 func TestUnRafraichissementManqueSurUnAmontJoignableEstRetente(t *testing.T) {
 	depot, appels, panne := amontGitCompte(t)
 	g := &GitMirror{
-		Dir: miroirCree(t, depot), Delai: 30 * time.Second, Frais: time.Minute,
+		PlancherLibre: plancherDEssai,
+		Dir:           miroirCree(t, depot), Delai: 30 * time.Second, Frais: time.Minute,
 		Muets:  NouvelleJoignabilite(),
 		Sonder: func(context.Context, string) error { return nil },
 	}
@@ -452,7 +456,8 @@ func TestUnRafraichissementManqueSurUnAmontQuiRefuseEstNote(t *testing.T) {
 	depot, appels, panne := amontGitCompte(t)
 	var sondes int64
 	g := &GitMirror{
-		Dir: miroirCree(t, depot), Delai: 30 * time.Second, Frais: time.Minute,
+		PlancherLibre: plancherDEssai,
+		Dir:           miroirCree(t, depot), Delai: 30 * time.Second, Frais: time.Minute,
 		Muets: NouvelleJoignabilite(),
 		// La sonde d'avant la mise à jour passe ; celle d'après trouve
 		// l'amont tombé entre les deux.
@@ -519,7 +524,8 @@ func pousserUnCommit(t *testing.T, nu string) string {
 func TestUnRafraichissementEn500NeFigePasLeMiroir(t *testing.T) {
 	depot, nu, _, panne := amontGitEnPanne(t)
 	g := &GitMirror{
-		Dir: miroirCree(t, depot), Delai: 30 * time.Second, Frais: time.Minute,
+		PlancherLibre: plancherDEssai,
+		Dir:           miroirCree(t, depot), Delai: 30 * time.Second, Frais: time.Minute,
 		Muets: NouvelleJoignabilite(), Mandataire: sansMandataire,
 	}
 	panne.Store(true)
