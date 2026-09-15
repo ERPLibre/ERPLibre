@@ -69,6 +69,14 @@ class Detail:
     description: str = ""
     sortie: str | None = None
     erreur: bool = False
+    # Ce que la valeur EST — « commande », « chemin », « url », « texte » —,
+    # et donc où elle a le droit de paraître.
+    genre: str = ""
+
+    @property
+    def colonnable(self) -> bool:
+        """Tient-elle dans une colonne sans y montrer de contenu ?"""
+        return self.genre in COLONNABLES
 
     @property
     def trouve(self) -> bool:
@@ -101,25 +109,52 @@ def chemins_de_session(session, *, motifs=None, lister=None) -> list[str]:
     return chemins
 
 
-def _entree(bloc) -> tuple[str, str]:
-    """(commande, description) d'un bloc `tool_use`, quel que soit l'outil.
+# Ce qu'un champ d'entrée EST, et ce que l'écran a le droit d'en faire.
+# `command` et un chemin tiennent sur une ligne de tableau sans rien révéler
+# de ce qui a été dit ; une invite, une requête ou un motif sont du TEXTE
+# LIBRE et n'ont leur place que dans le volet, qui prévient. L'URL est à part :
+# elle situe comme un chemin, mais porte volontiers un jeton.
+GENRES = {
+    "command": "commande",
+    "file_path": "chemin",
+    "path": "chemin",
+    "url": "url",
+    "prompt": "texte",
+    "query": "texte",
+    "pattern": "texte",
+}
 
-    `command` est le champ de Bash ; les autres outils nomment leur argument
-    autrement, et il vaut mieux montrer le premier champ textuel que rien.
+# Les genres qu'une colonne de tableau peut montrer telle quelle.
+COLONNABLES = ("commande", "chemin", "url")
+
+
+def _entree(bloc) -> tuple[str, str, str]:
+    """(valeur, description, genre) d'un bloc `tool_use`.
+
+    Le genre est ce qui décide où la valeur a le droit de paraître. Sans lui,
+    un appel `Task` — qui n'a pas de `command` — retombait sur son `prompt` et
+    étalait l'invite entière du sous-agent dans une colonne qui déclare ne
+    montrer aucun contenu.
+
+    Une URL est dépouillée de ce qui l'authentifie, ici comme dans le module
+    des serveurs MCP : montrer un jeton n'est jamais le propos, et la levée
+    que le dépôt a consentie porte sur le CONTENU, pas sur les secrets.
     """
     entree = bloc.get("input")
     if not isinstance(entree, dict):
-        return "", ""
+        return "", "", ""
     description = entree.get("description")
     description = description if isinstance(description, str) else ""
-    commande = entree.get("command")
-    if isinstance(commande, str):
-        return commande, description
-    for cle in ("file_path", "pattern", "prompt", "path", "query", "url"):
+    for cle, genre in GENRES.items():
         valeur = entree.get(cle)
-        if isinstance(valeur, str) and valeur:
-            return valeur, description
-    return "", description
+        if not isinstance(valeur, str) or not valeur:
+            continue
+        if genre == "url":
+            from script.todo.assistant.agents import mcp
+
+            valeur = mcp.sans_authentifiant(valeur)
+        return valeur, description, genre
+    return "", description, ""
 
 
 def _sortie(bloc) -> str:
@@ -159,7 +194,7 @@ def replier(detail: Detail, objet, identifiant: str) -> Detail:
             continue
         genre = bloc.get("type")
         if genre == "tool_use" and bloc.get("id") == identifiant:
-            commande, description = _entree(bloc)
+            commande, description, sorte = _entree(bloc)
             nom = bloc.get("name")
             detail = Detail(
                 outil=nom if isinstance(nom, str) else "",
@@ -167,6 +202,7 @@ def replier(detail: Detail, objet, identifiant: str) -> Detail:
                 description=description,
                 sortie=detail.sortie,
                 erreur=detail.erreur,
+                genre=sorte,
             )
         elif genre == "tool_result" and bloc.get("tool_use_id") == identifiant:
             detail = Detail(
@@ -175,6 +211,7 @@ def replier(detail: Detail, objet, identifiant: str) -> Detail:
                 description=detail.description,
                 sortie=_sortie(bloc),
                 erreur=bool(bloc.get("is_error")),
+                genre=detail.genre,
             )
     return detail
 

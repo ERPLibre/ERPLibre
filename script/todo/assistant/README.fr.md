@@ -440,6 +440,23 @@ trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
 avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
 est une garde, pas un argument.
 
+**La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
+porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
+donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent
+dans une ligne de tableau sans rien révéler de la conversation ; le dernier
+non, et un appel `Task`, qui n'a pas de commande, y étalait son invite
+entière dans une colonne qui déclare ne montrer aucun contenu. Elle dit
+désormais « contenu », et c'est le volet de détail — qui prévient — qui le
+montre. Une URL y perd ce qui l'authentifie, comme dans le module MCP : la
+frontière qu'on a levée porte sur le CONTENU, jamais sur les secrets.
+
+**Tout ce qui vient d'un `cost-state` se tait quand il n'y en a aucun.** Neuf
+des dix-huit transcriptions d'une machine ordinaire n'en portent pas — session
+interrompue, version antérieure, session neuve. Le coût le disait déjà par un
+tiret ; les durées et les lignes touchées, qui viennent du même
+enregistrement, affichaient « 0 ms » et « +0/−0 », ce qui se lit « mesuré, et
+nul ».
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |

@@ -398,6 +398,21 @@ tap on "y" is given by reflex; copying thirty-six characters makes you look at
 what you are destroying. Both act with the SHORT identifier, the only one the
 subcommands accept — the retyping is a guard, not an argument.
 
+**The stream's column shows what situates, never what was said.** A call
+carries a shell command, a path, a URL — or free text: the prompt given to a
+subagent, a search pattern. The first three fit a table row without revealing
+anything of the conversation; the last does not, and a `Task` call, having no
+command, used to spread its whole prompt across a column that declares it
+shows no content. It now says "content", and the detail pane — which warns —
+is where that is read. A URL loses what authenticates it, here as in the MCP
+module: the boundary that was relaxed covers CONTENT, never secrets.
+
+**Everything that comes from a cost-state falls silent when none was read.**
+Nine of the eighteen transcripts on an ordinary machine carry none — an
+interrupted session, an older version, a fresh one. Cost already said so with
+a dash; the durations and the lines touched, which come from the same record,
+were showing "0 ms" and "+0/−0", which reads "measured, and nil".
+
 ## The modules
 
 | File | What it owns |
@@ -873,6 +888,23 @@ celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopi
 trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
 avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
 est une garde, pas un argument.
+
+**La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
+porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
+donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent
+dans une ligne de tableau sans rien révéler de la conversation ; le dernier
+non, et un appel `Task`, qui n'a pas de commande, y étalait son invite
+entière dans une colonne qui déclare ne montrer aucun contenu. Elle dit
+désormais « contenu », et c'est le volet de détail — qui prévient — qui le
+montre. Une URL y perd ce qui l'authentifie, comme dans le module MCP : la
+frontière qu'on a levée porte sur le CONTENU, jamais sur les secrets.
+
+**Tout ce qui vient d'un `cost-state` se tait quand il n'y en a aucun.** Neuf
+des dix-huit transcriptions d'une machine ordinaire n'en portent pas — session
+interrompue, version antérieure, session neuve. Le coût le disait déjà par un
+tiret ; les durées et les lignes touchées, qui viennent du même
+enregistrement, affichaient « 0 ms » et « +0/−0 », ce qui se lit « mesuré, et
+nul ».
 
 ## Les modules
 

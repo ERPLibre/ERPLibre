@@ -393,6 +393,21 @@ tap on "y" is given by reflex; copying thirty-six characters makes you look at
 what you are destroying. Both act with the SHORT identifier, the only one the
 subcommands accept — the retyping is a guard, not an argument.
 
+**The stream's column shows what situates, never what was said.** A call
+carries a shell command, a path, a URL — or free text: the prompt given to a
+subagent, a search pattern. The first three fit a table row without revealing
+anything of the conversation; the last does not, and a `Task` call, having no
+command, used to spread its whole prompt across a column that declares it
+shows no content. It now says "content", and the detail pane — which warns —
+is where that is read. A URL loses what authenticates it, here as in the MCP
+module: the boundary that was relaxed covers CONTENT, never secrets.
+
+**Everything that comes from a cost-state falls silent when none was read.**
+Nine of the eighteen transcripts on an ordinary machine carry none — an
+interrupted session, an older version, a fresh one. Cost already said so with
+a dash; the durations and the lines touched, which come from the same record,
+were showing "0 ms" and "+0/−0", which reads "measured, and nil".
+
 ## The modules
 
 | File | What it owns |

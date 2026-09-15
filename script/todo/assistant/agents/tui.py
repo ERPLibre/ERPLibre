@@ -222,19 +222,38 @@ def lignes(lectures, temps=None) -> list[dict]:
                 "cache": (
                     "—" if reutilisation is None else f"{reutilisation:.0%}"
                 ),
+                # Tout ce qui vient d'un `cost-state` rend un TIRET quand
+                # aucun n'a été lu. Neuf des dix-huit transcriptions d'une
+                # machine ordinaire n'en portent aucun — session interrompue,
+                # version antérieure, session neuve — et « 0 ms » s'y lisait
+                # « mesuré, et nul » là où rien ne l'avait été.
                 "cout": f"{a.cout:.2f} $" if a.cout else "—",
-                "horloge": duree(a.duree_horloge),
+                "horloge": _mesure(a.segments, duree, a.duree_horloge),
                 "attention": "—" if attention is None else duree(attention),
-                "api": duree(a.duree_api),
-                "outils": duree(a.duree_outils),
+                "api": _mesure(a.segments, duree, a.duree_api),
+                "outils": _mesure(a.segments, duree, a.duree_outils),
                 "contexte": jetons(a.contexte),
                 "pente": barre(a.serie),
                 "segments": str(a.segments),
                 "compactions": str(a.compactions),
-                "code": f"+{a.lignes_ajoutees}/−{a.lignes_retirees}",
+                "code": _mesure(
+                    a.segments,
+                    lambda _: f"+{a.lignes_ajoutees}/−{a.lignes_retirees}",
+                    0,
+                ),
             }
         )
     return sorties
+
+
+def _mesure(segments, rendu, valeur) -> str:
+    """Une valeur de `cost-state`, ou un tiret quand aucun n'a été lu.
+
+    Fonction PURE. `segments` compte les `cost-state` vus : à zéro, la valeur
+    n'est pas nulle, elle est INCONNUE. Le coût le disait déjà, les durées et
+    les lignes touchées non, alors qu'elles viennent du même enregistrement.
+    """
+    return rendu(valeur) if segments else "—"
 
 
 def lignes_opencode(seances) -> list[dict]:
@@ -412,13 +431,21 @@ def texte_du_detail(appel, detail) -> str:
 
 
 def _commande_vue(commandes, identifiant, largeur=None) -> str:
-    """Ce que la colonne montre : la commande, « … » ou « — »."""
+    """Ce que la colonne montre, et ce qu'elle refuse de montrer.
+
+    Quatre états. « … » : pas encore cherché. « — » : cherché, rien à montrer.
+    La valeur elle-même quand c'est une commande, un chemin ou une URL. Et
+    « contenu » quand c'est du TEXTE LIBRE — l'invite d'un `Task`, le motif
+    d'un `Grep` —, que le volet montre avec son avertissement et que cette
+    colonne n'a pas le droit d'étaler : elle déclare ne montrer aucun contenu,
+    et un appel `Task` y écrivait l'invite entière du sous-agent.
+    """
     if commandes is None or identifiant not in commandes:
         return "…"
-    coupee = dl.une_ligne(
-        commandes[identifiant],
-        largeur if largeur else dl.COLONNE_MAX,
-    )
+    valeur, colonnable = commandes[identifiant]
+    if valeur and not colonnable:
+        return t("content")
+    coupee = dl.une_ligne(valeur, largeur if largeur else dl.COLONNE_MAX)
     return coupee or "—"
 
 
@@ -668,11 +695,11 @@ def run_tui(run_app: bool = True):
             # arrêterait un autre agent que celui qu'on regarde.
             self._agents_peints: list = []
             self._appels_peints: list = []
-            # {identifiant: commande} — lu dans les transcriptions à la
-            # demande, jamais écrit nulle part. Une entrée absente veut dire
-            # « pas encore cherché », une entrée vide « cherché, rien à
-            # montrer » : sans la distinction, on rechercherait sans fin ce
-            # qui n'existe pas.
+            # {identifiant: (valeur, colonnable)} — lu dans les
+            # transcriptions à la demande, jamais écrit nulle part, et sans
+            # la sortie. Une entrée absente veut dire « pas encore cherché »,
+            # une valeur vide « cherché, rien à montrer » : sans la
+            # distinction, on rechercherait sans fin ce qui n'existe pas.
             self._commandes: dict = {}
             # Les colonnes actuellement posées, pour ne les refaire que
             # lorsque la largeur en change le nombre.
@@ -840,6 +867,7 @@ def run_tui(run_app: bool = True):
             self._cible = session
             self._ouvrir_saisie(
                 self.CONFIRME,
+                t("yes"),
                 f"{t('The work in progress is cut. Type yes:')} "
                 f"{session.poignee}",
             )
@@ -859,15 +887,25 @@ def run_tui(run_app: bool = True):
             self._cible = session
             self._ouvrir_saisie(
                 self.RETAPE,
+                t("the identifier in full"),
                 f"{t('This deletes the session and its worktree. Retype:')} "
                 f"{session.session_id}",
             )
 
-        def _ouvrir_saisie(self, attente, invite):
+        def _ouvrir_saisie(self, attente, invite, consigne=""):
+            """Ouvrir la ligne de saisie, la consigne AU-DESSUS et non dedans.
+
+            Un « placeholder » disparaît à la première frappe. La consigne de
+            suppression porte l'identifiant de trente-six caractères à
+            recopier, et le tableau ne montre que la poignée de huit : une
+            fois la première touche tapée, il n'était plus nulle part à
+            l'écran et il fallait le restituer de mémoire. En pratique la
+            suppression n'aboutissait jamais.
+            """
             from textual.widgets import Input
 
             # Ce qu'un geste précédent avait dit ne vaut plus pour celui-ci.
-            self._dire("")
+            self._dire(consigne)
 
             self._attente = attente
             champ = self.query_one("#saisie", Input)
@@ -1168,7 +1206,14 @@ def run_tui(run_app: bool = True):
                 if a.identifiant and a.identifiant not in self._commandes
             ]
             for appel in manquants[:DETAILS_PAR_TOUR]:
-                self._commandes[appel.identifiant] = dl.pour(appel).commande
+                trouve = dl.pour(appel)
+                # La SORTIE n'est pas gardée : le cache ne sert qu'à la
+                # colonne, et retenir des réponses d'outil en mémoire serait
+                # garder ce que le paquet a promis de seulement montrer.
+                self._commandes[appel.identifiant] = (
+                    trouve.commande,
+                    trouve.colonnable,
+                )
 
         @staticmethod
         def _lire_flotte():

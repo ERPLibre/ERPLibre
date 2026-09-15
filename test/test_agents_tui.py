@@ -140,6 +140,9 @@ class TestLesLignes(unittest.TestCase):
                     cache_lu=900,
                     cache_cree=100,
                     cout=12.5,
+                    # Un cost-state a été LU : sans lui, les durées et les
+                    # lignes touchées se taisent, ce qu'un autre test fige.
+                    segments=1,
                     duree_api=60_000,
                     duree_outils=30_000,
                     serie=(500, 1_100),
@@ -944,10 +947,10 @@ class TestLaColonneDeCommande(unittest.TestCase):
 
     def test_looked_up_and_empty_shows_a_dash(self):
         """La transcription a répondu, et cet appel n'a pas de commande."""
-        self.assertEqual(self._colonne({"toolu_01aaaa": ""}), "—")
+        self.assertEqual(self._colonne({"toolu_01aaaa": ("", True)}), "—")
 
     def test_a_command_shows_on_one_line(self):
-        colonne = self._colonne({"toolu_01aaaa": "echo un\necho deux"})
+        colonne = self._colonne({"toolu_01aaaa": ("echo un\necho deux", True)})
         self.assertEqual(colonne, "echo un echo deux")
 
     def test_the_column_is_declared_in_the_table(self):
@@ -1094,7 +1097,9 @@ class TestLesDeuxGestesQuiCoutent(unittest.IsolatedAsyncioTestCase):
                 await pilote.press(touche)
                 await pilote.pause()
                 champ = app.query_one("#saisie", Input)
-                invite = champ.placeholder
+                from textual.widgets import Static
+
+                invite = str(app.query_one("#etat", Static).render())
                 champ.value = frappe
                 await pilote.press("enter")
                 await pilote.pause()
@@ -1120,6 +1125,12 @@ class TestLesDeuxGestesQuiCoutent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(envoyes, [])
 
     async def test_the_prompt_says_what_each_one_costs(self):
+        """La consigne vit AU-DESSUS du champ et non dedans.
+
+        Un « placeholder » disparaît à la première frappe, et l'identifiant de
+        trente-six caractères à recopier n'était alors plus nulle part — le
+        tableau ne montre que la poignée de huit.
+        """
         relance, _ = await self._piloter("l", "")
         efface, _ = await self._piloter("x", "")
         self.assertIn(t("The work in progress is cut. Type yes:"), relance)
@@ -1387,6 +1398,110 @@ class TestLeCurseurEtLeClavier(unittest.IsolatedAsyncioTestCase):
                 table = app.query_one("#agents", DataTable)
                 self.assertEqual(table.row_count, 2)
                 self.assertLess(table.cursor_row, 2)
+
+
+class TestCeQueLaColonneRefuseDeMontrer(unittest.TestCase):
+    """Le flux déclare ne montrer aucun contenu : il doit s'y tenir.
+
+    Un appel `Task` ne porte pas de `command` : la recherche retombait sur son
+    `prompt` et étalait l'invite entière du sous-agent dans la colonne. Un
+    `Grep` y mettait son motif. Le volet de détail a le droit de les montrer —
+    il prévient —, la colonne non.
+    """
+
+    def _appel(self):
+        from script.todo.assistant.agents import journal as jr
+
+        return jr.Appel(
+            outil="Task",
+            session="aaaaaaaa",
+            debut_ms=1_700_000_000_000,
+            duree_ms=400,
+            identifiant="toolu_01aaaa",
+        )
+
+    def _colonne(self, valeur, colonnable):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux(
+            [self._appel()],
+            commandes={"toolu_01aaaa": (valeur, colonnable)},
+        )
+        return ligne["commande"]
+
+    def test_free_text_says_it_is_content_and_shows_none(self):
+        temoin = "invite-entiere-qui-ne-doit-pas-sortir"
+        colonne = self._colonne(temoin, False)
+        self.assertEqual(colonne, t("content"))
+        self.assertNotIn(temoin, colonne)
+
+    def test_a_command_still_shows(self):
+        """Refuser trop viderait la colonne de ce qu'elle sert à montrer."""
+        self.assertEqual(self._colonne("echo bonjour", True), "echo bonjour")
+
+    def test_nothing_found_is_still_a_dash(self):
+        self.assertEqual(self._colonne("", True), "—")
+
+    def test_not_looked_up_yet_is_still_dots(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux([self._appel()], commandes={})
+        self.assertEqual(ligne["commande"], "…")
+
+
+class TestLeTiretQuandRienNAEteMesure(unittest.TestCase):
+    """Tout ce qui vient d'un `cost-state` se tait quand il n'y en a aucun.
+
+    Neuf des dix-huit transcriptions d'une machine ordinaire n'en portent
+    aucun — session interrompue, version antérieure, session neuve. Le coût le
+    disait déjà par un tiret ; les durées et les lignes touchées, qui viennent
+    du MÊME enregistrement, affichaient « 0 ms » et « +0/−0 ».
+    """
+
+    def _ligne(self, segments):
+        from script.todo.assistant.agents import statistiques as st_
+        from script.todo.assistant.agents import tui as t_ui
+
+        agregat = st_.Agregat(
+            tours=10,
+            segments=segments,
+            cout=1.25 if segments else 0.0,
+            duree_api=60_000,
+            duree_outils=30_000,
+            duree_horloge=90_000,
+            lignes_ajoutees=12,
+            lignes_retirees=3,
+        )
+        (ligne,) = t_ui.lignes(
+            {"/x/y/aaaaaaaa.jsonl": st_.Lecture(agregat=agregat)}
+        )
+        return ligne
+
+    def test_without_a_cost_state_everything_from_it_is_a_dash(self):
+        ligne = self._ligne(0)
+        for colonne in ("cout", "api", "outils", "horloge", "code"):
+            self.assertEqual(ligne[colonne], "—", colonne)
+
+    def test_with_a_cost_state_the_figures_show(self):
+        """Le tiret ne doit pas avaler ce qui a bien été mesuré."""
+        ligne = self._ligne(3)
+        self.assertEqual(ligne["api"], "1 min")
+        self.assertEqual(ligne["outils"], "30 s")
+        self.assertEqual(ligne["code"], "+12/−3")
+        self.assertEqual(ligne["cout"], "1.25 $")
+
+    def test_the_attention_column_does_not_depend_on_it(self):
+        """Elle vient du journal des hooks, pas du cost-state."""
+        from script.todo.assistant.agents import statistiques as st_
+        from script.todo.assistant.agents import tui as t_ui
+
+        chemin = "/x/y/aaaaaaaa-1111-4111-8111-111111111111.jsonl"
+        (ligne,) = t_ui.lignes(
+            {chemin: st_.Lecture(agregat=st_.Agregat(segments=0))},
+            {t_ui.session_de(chemin): 125_000},
+        )
+        self.assertEqual(ligne["attention"], "2 min")
+        self.assertEqual(ligne["api"], "—")
 
 
 if __name__ == "__main__":

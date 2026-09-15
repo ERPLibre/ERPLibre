@@ -316,5 +316,96 @@ class TestCeQueLEcranAffiche(unittest.TestCase):
         self.assertEqual(dl.bornee(None), "")
 
 
+class TestCeQueChaqueChampEst(unittest.TestCase):
+    """Le genre décide d'où la valeur a le droit de paraître.
+
+    Sans lui, un appel `Task` — qui n'a pas de `command` — retombait sur son
+    `prompt` et étalait l'invite entière du sous-agent dans une colonne de
+    tableau qui déclare ne montrer aucun contenu. Le volet de détail a le
+    droit de la montrer, il prévient ; la colonne non.
+    """
+
+    TEMOIN = "invite-entiere-qui-ne-doit-pas-sortir"
+
+    def _genre(self, **entree):
+        return dl._entree({"input": entree})[2]
+
+    def test_a_shell_command_is_a_command(self):
+        self.assertEqual(self._genre(command="echo x"), "commande")
+
+    def test_a_file_is_a_path(self):
+        self.assertEqual(self._genre(file_path="/un/fichier.py"), "chemin")
+        self.assertEqual(self._genre(path="/un/dossier"), "chemin")
+
+    def test_a_prompt_a_query_and_a_pattern_are_free_text(self):
+        for champ in ("prompt", "query", "pattern"):
+            self.assertEqual(self._genre(**{champ: self.TEMOIN}), "texte")
+
+    def test_only_a_few_genres_may_fill_a_column(self):
+        self.assertNotIn("texte", dl.COLONNABLES)
+        for sur in ("commande", "chemin", "url"):
+            self.assertIn(sur, dl.COLONNABLES)
+
+    def test_the_command_wins_over_a_prompt_on_the_same_call(self):
+        """Un outil peut porter les deux ; c'est la commande qui situe."""
+        valeur, _, genre = dl._entree(
+            {"input": {"command": "echo x", "prompt": self.TEMOIN}}
+        )
+        self.assertEqual(genre, "commande")
+        self.assertNotIn(self.TEMOIN, valeur)
+
+    def test_a_task_call_is_never_colonnable(self):
+        detail = dl.replier(
+            dl.Detail(),
+            _assistant(nom="Task", prompt=self.TEMOIN),
+            APPEL,
+        )
+        self.assertEqual(detail.genre, "texte")
+        self.assertFalse(detail.colonnable)
+        self.assertEqual(detail.commande, self.TEMOIN)
+
+    def test_a_bash_call_is_colonnable(self):
+        detail = dl.replier(dl.Detail(), _assistant(command="echo x"), APPEL)
+        self.assertTrue(detail.colonnable)
+
+
+class TestLUrlNeSortPasAvecSonJeton(unittest.TestCase):
+    """Une URL situe comme un chemin, et porte volontiers un jeton.
+
+    La levée que le dépôt a consentie porte sur le CONTENU, pas sur les
+    secrets : le module des serveurs MCP coupe déjà ce qui authentifie, et il
+    n'y a pas de raison que celui-ci l'étale.
+    """
+
+    TEMOIN = "jeton-invente-qui-ne-doit-pas-sortir"
+
+    def test_a_query_string_is_cut(self):
+        valeur, _, genre = dl._entree(
+            {
+                "input": {
+                    "url": f"https://api.exemple.test/v1?api_key={self.TEMOIN}"
+                }
+            }
+        )
+        self.assertEqual(genre, "url")
+        self.assertNotIn(self.TEMOIN, valeur)
+        self.assertIn("api.exemple.test", valeur)
+
+    def test_the_credentials_before_the_host_are_cut(self):
+        valeur, _, _ = dl._entree(
+            {
+                "input": {
+                    "url": f"https://compte:{self.TEMOIN}@api.exemple.test/v1"
+                }
+            }
+        )
+        self.assertNotIn(self.TEMOIN, valeur)
+
+    def test_a_plain_url_is_left_alone(self):
+        url = "https://api.exemple.test/v1"
+        valeur, _, _ = dl._entree({"input": {"url": url}})
+        self.assertEqual(valeur, url)
+
+
 if __name__ == "__main__":
     unittest.main()
