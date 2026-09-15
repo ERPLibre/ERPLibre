@@ -92,6 +92,15 @@ func main() {
 				" seul, sans corps), absent ou non-cachable. Lecture seule :"+
 				" --cache-dir suffit, sans privilège, et l'âge des objets"+
 				" n'est pas touché")
+		oublie = flag.Bool("oublie", false,
+			"lire des lignes « MÉTHODE URL » sur l'entrée standard et"+
+				" EFFACER du magasin ce que chacune désigne : le corps ET le"+
+				" statut seul. Dit, par ligne et séparé par des tabulations,"+
+				" « verdict octets classe méthode url », verdict oublié,"+
+				" absent, non-cachable ou refus. Le seul geste qui retire UNE"+
+				" entrée : --purge efface tout, et --purge-older-than"+
+				" n'atteint jamais un objet qui sert, chaque service remettant"+
+				" sa date à maintenant. Écrit : demande le droit du service")
 	)
 	flag.Parse()
 
@@ -105,6 +114,15 @@ func main() {
 	if *detient {
 		store := &Store{Dir: *cacheDir}
 		if err := EcrireDetentions(store, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "entrée illisible : %v\n", err)
+		}
+		return
+	}
+	// Au même endroit et pour la même raison : la question ne porte que sur
+	// le magasin. Écrire plutôt que lire ne change pas de quoi elle dépend.
+	if *oublie {
+		store := &Store{Dir: *cacheDir}
+		if err := EcrireOublis(store, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "entrée illisible : %v\n", err)
 		}
 		return
