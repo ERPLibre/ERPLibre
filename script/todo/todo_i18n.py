@@ -12501,6 +12501,42 @@ TRANSLATIONS = {
         "fr": "Carnet d'adresses du site : ce qu'une VM bornée a le droit de joindre",
         "en": "Site address book: what a confined VM may reach",
     },
+    "State of": {
+        "fr": "État de",
+        "en": "State of",
+    },
+    "What state an instance is in, for its intended use.": {
+        "fr": "Dans quel état est une instance, pour l'usage qu'on en attend.",
+        "en": "What state an instance is in, for its intended use.",
+    },
+    "a development copy": {
+        "fr": "une copie de développement",
+        "en": "a development copy",
+    },
+    "a live instance": {
+        "fr": "une instance en production",
+        "en": "a live instance",
+    },
+    "read as": {
+        "fr": "lue comme",
+        "en": "read as",
+    },
+    "No Proxmox host.": {
+        "fr": "Aucun hôte Proxmox.",
+        "en": "No Proxmox host.",
+    },
+    "Step failed": {
+        "fr": "Étape en échec",
+        "en": "Step failed",
+    },
+    "…": {
+        "fr": "…",
+        "en": "…",
+    },
+    "SSH": {
+        "fr": "SSH",
+        "en": "SSH",
+    },
     "Book - Show the book": {
         "fr": "📖 Carnet - Voir le carnet",
         "en": "📖 Book - Show the book",
