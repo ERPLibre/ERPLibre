@@ -7204,6 +7204,22 @@ TRANSLATIONS = {
         "fr": "autorité du cache de téléchargement non posée",
         "en": "download cache authority not installed",
     },
+    "Clean - Forget one URL": {
+        "fr": "Nettoyer - Oublier une URL",
+        "en": "Clean - Forget one URL",
+    },
+    "URL to forget (or METHOD URL)": {
+        "fr": "URL à oublier (ou MÉTHODE URL)",
+        "en": "URL to forget (or METHOD URL)",
+    },
+    "What the store holds for it:": {
+        "fr": "Ce que le magasin en tient :",
+        "en": "What the store holds for it:",
+    },
+    "Remove this entry from the store?": {
+        "fr": "Retirer cette entrée du magasin ?",
+        "en": "Remove this entry from the store?",
+    },
     "Prepared by the host:": {
         "fr": "Préparé par l'hôte :",
         "en": "Prepared by the host:",
