@@ -367,5 +367,32 @@ class LaCreationDeLaVmEstPrivilegiee(unittest.TestCase):
         self.assertIn('([] if self.dry_run else ["sudo"]) + [', src)
 
 
+class LaSondeEnvfsNommeSesChemins(unittest.TestCase):
+    """envfs RÉSOUT à la demande et n'ÉNUMÈRE pas.
+
+    « ls /usr/bin » y rend un répertoire vide alors que
+    « /usr/bin/python3.12 » s'ouvre : un glob passe par readdir, donc ne rend
+    rien. Le contrôle déclarait absent ce qui est là — il éprouvait envfs de
+    la seule façon dont envfs ne peut pas répondre.
+    """
+
+    def test_no_glob_is_used_against_that_filesystem(self):
+        self.assertNotIn("ls /usr/bin/python3.*", SRC)
+        self.assertNotIn("/usr/bin/python3.*", SRC)
+
+    def test_the_path_is_named_exactly(self):
+        self.assertIn('[ -e "/usr/bin/python$v" ]', SRC)
+
+    def test_the_version_comes_from_the_repository(self):
+        """Une version écrite ici vieillirait à côté de celle que
+        l'installation a suivie."""
+        self.assertIn(".python-odoo-version", SRC)
+
+    def test_a_missing_version_file_still_probes_something(self):
+        """Sans le fichier, « /usr/bin/python » tout court : mieux vaut une
+        épreuve plus faible qu'un chemin vide, qui passerait toujours."""
+        self.assertIn('[ -n "$v" ] || v=3', SRC)
+
+
 if __name__ == "__main__":
     unittest.main()
