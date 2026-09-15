@@ -31,8 +31,8 @@ Le client de Cisco la rend dans un navigateur WebKit embarqué — donc un
 écran, et sur bien des postes la variable `WEBKIT_DISABLE_DMABUF_RENDERER=1`
 en prime pour qu'elle s'affiche. Son CLI, lui, ne sait pas le faire.
 
-openconnect le fait sans écran sur la machine cliente. Mesuré dans sa
-bibliothèque : il ÉCOUTE sur le port local 29786 et attend la redirection
+openconnect le fait sans écran sur la machine cliente : il ÉCOUTE sur le
+port local 29786 et attend la redirection
 (« Accepted incoming external-browser connection on port 29786 »), après
 avoir lancé le programme donné à `--external-browser` avec l'URL de
 connexion. Sur un serveur, ce « navigateur » est un simple `echo` : l'URL

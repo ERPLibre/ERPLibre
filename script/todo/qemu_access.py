@@ -37,9 +37,9 @@ class QemuAccessMixin:
     # alors de distinguer « pas de QEMU ici » de « QEMU présent, aucune VM ».
     # Sonde exécutée à DISTANCE, dans une session SSH non interactive.
     #
-    # « sudo virsh » y échoue dès que l'hôte demande un mot de passe — vécu sur
-    # erplibre01 (sudo-rs) — et la sonde répondait alors « pas de QEMU » sur une
-    # machine qui en fait tourner. On essaie donc virsh SANS sudo d'abord, via
+    # « sudo virsh » y échoue sur un hôte qui exige une authentification sudo
+    # interactive, et la sonde répond alors « pas de QEMU » sur une machine qui
+    # en fait tourner. On essaie donc virsh SANS sudo d'abord, via
     # qemu:///system : appartenir au groupe libvirt suffit, sans tty.
     #
     # « --connect qemu:///system » est indispensable dans ce cas : sans lui, un
@@ -334,8 +334,7 @@ class QemuAccessMixin:
 
         Deux sur le même AVD, et le second s'arrête sur « Running multiple
         emulators with the same AVD is an experimental feature ». Le savoir
-        AVANT de lancer évite de lire cette phrase sans la comprendre — vécu,
-        deux fois."""
+        AVANT de lancer évite de lire cette phrase sans la comprendre."""
         try:
             res = subprocess.run(
                 ["ssh"]
@@ -474,8 +473,8 @@ class QemuAccessMixin:
             print(f"  ⚠ {t('Could not start it:')} {res.stderr.strip()[:200]}")
             return
         # « setsid » détache : le code de retour ne dit RIEN de l'émulateur.
-        # Le menu annonçait « Démarré » pendant que le journal de la VM disait
-        # « not found » — mesuré sur une VM sans SDK. On attend donc de voir le
+        # Sur une VM sans SDK, le menu annonce « Démarré » pendant que le
+        # journal de la VM dit « not found ». On attend donc de voir le
         # processus, et à défaut on rapporte le journal.
         for _ in range(5):
             if self._qemu_emulator_running(target, src) > 0:

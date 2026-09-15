@@ -423,8 +423,8 @@ class TestEcranMonte(unittest.IsolatedAsyncioTestCase):
         self.assertIn("63G/65G", section)
 
     async def test_nothing_scrolls_out_of_a_150_column_terminal(self):
-        """Le vrai garde-fou de la largeur : mesuré sur la table montée, pas
-        calculé à la main."""
+        """Le vrai garde-fou de la largeur : la mesure porte sur la table
+        montée, pas sur un calcul à la main."""
         _c, _s, besoin, visible = await self._monte((150, 24))
         self.assertGreaterEqual(visible, besoin)
 

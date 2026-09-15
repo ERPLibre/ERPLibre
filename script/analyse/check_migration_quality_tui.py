@@ -52,9 +52,9 @@ Screen { layout: vertical; }
 def rows(lst_snapshot, dct=None):
     """Un palier par ligne, le bilan, puis les trois sections de revue.
 
-    Le bilan APRÈS les paliers et non en tête : on descend la liste comme
-    on a vécu la migration, et la question « qu'est-ce qu'il en reste » se
-    pose une fois qu'on a vu le chemin. Ce qui suit — verdicts, où lire,
+    Le bilan APRÈS les paliers et non en tête : la liste se descend dans
+    l'ordre où la migration se déroule, et la question « qu'est-ce qu'il en
+    reste » se pose une fois le chemin vu. Ce qui suit — verdicts, où lire,
     quoi vérifier — répond à « et maintenant ».
 
     `dct` se passe pour éviter la lecture du fichier de progression :

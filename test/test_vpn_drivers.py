@@ -421,9 +421,9 @@ class OpenconnectSingleSignOn(unittest.TestCase):
     fournisseur d'identité, et il n'y a aucun mot de passe à envoyer.
 
     Le client de Cisco exige alors un navigateur embarqué, donc un écran.
-    openconnect s'en passe : mesuré dans sa bibliothèque, il écoute sur le
-    port local 29786 et attend la redirection du navigateur, lequel peut
-    être celui de l'utilisateur, ailleurs, à travers un `ssh -L`.
+    openconnect s'en passe : sa bibliothèque écoute sur le port local 29786
+    et attend la redirection du navigateur, lequel peut être celui de
+    l'utilisateur, ailleurs, à travers un `ssh -L`.
     """
 
     def _sso(self, **overrides):

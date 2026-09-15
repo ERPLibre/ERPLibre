@@ -717,9 +717,9 @@ class TestExternalEditorSuspendsTerminal(TestComposeScreenMounted):
                 # (le champ « À » via `Input`) : `ctrl+e` est un accord de
                 # contrôle, pas un caractère imprimable, donc `Input` ne le
                 # capture pas pour l'insérer — contrairement à l'ancien `e`
-                # nu, qu'un widget de texte avale avant qu'il n'atteigne la
-                # liaison de touche de l'écran (constaté par un essai
-                # isolé). C'est justement ce que corrige `ctrl+e`.
+                # nu, qu'un widget de texte avale avant qu'il n'atteigne
+                # la liaison de touche de l'écran. C'est justement ce que
+                # corrige `ctrl+e`.
                 with patch.object(type(app), "suspend", fake_suspend):
                     await pilot.press("ctrl+e")
                     await pilot.pause()
@@ -734,11 +734,11 @@ class TestExternalEditorSuspendsTerminal(TestComposeScreenMounted):
         self.assertEqual(order, ["suspend", "editor"])
 
     async def test_ctrl_e_reaches_the_binding_with_focus_on_the_body(self):
-        """Le bug rapporté : `e` nu ne se déclenchait QUE si le focus se
-        trouvait par hasard sur un bouton, jamais depuis la zone de texte du
-        corps — le widget de texte avale le caractère imprimable avant qu'il
-        n'atteigne la liaison. `ctrl+e` n'est pas un caractère imprimable :
-        il doit déclencher l'éditeur même avec le focus sur `#body`."""
+        """`e` nu ne se déclenche QUE si le focus se trouve par hasard
+        sur un bouton, jamais depuis la zone de texte du corps — le widget
+        de texte avale le caractère imprimable avant qu'il n'atteigne la
+        liaison. `ctrl+e` n'est pas un caractère imprimable : il doit
+        déclencher l'éditeur même avec le focus sur `#body`."""
         from textual.widgets import TextArea
 
         import script.todo.mail.tui as tui_mod
@@ -1130,9 +1130,9 @@ class TestPreviewShowsFullDate(TestComposeScreenMounted):
 
 
 class TestPreviewNeverParsesTheMessageAsMarkup(TestComposeScreenMounted):
-    """Signalé sur un VRAI courriel (une infolettre Netflix) : le corps
-    portait un jeton de suivi entre crochets, que Textual analysait comme
-    une balise — `MarkupError`, et le message devenait illisible.
+    """Une infolettre porte dans son corps un jeton de suivi entre
+    crochets, que Textual analyse comme une balise — `MarkupError`, et le
+    message devient alors illisible.
 
     Expéditeur, sujet et corps viennent du message, donc de n'importe qui.
     `escape()` ne suffit pas : il laisse ces formes intactes. Seul un

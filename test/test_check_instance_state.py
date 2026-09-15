@@ -10,8 +10,8 @@ et c'est aussi celle qu'une refonte casserait sans bruit : il suffirait
 qu'un contrôle perde une de ses deux politiques pour qu'il se taise —
 sans erreur, sans rouge, en donnant l'impression d'avoir été vérifié.
 
-Le second sujet de ce fichier est le secret. Une clé de paiement VIVANTE
-a été mesurée dans une base de test. Un rapport finit dans un billet ou
+Le second sujet de ce fichier est le secret. Une base de test porte des
+clés de paiement encore VIVANTES. Un rapport finit dans un billet ou
 devant un agent : aucune requête ne doit lire la valeur d'un secret, et
 c'est vérifié sur le texte des requêtes, pas sur l'intention.
 """
@@ -161,7 +161,7 @@ class TestThePolarityActuallyInverts(unittest.TestCase):
         self.assertEqual(etat.verdict(controle, 0, etat.LIVE)[0], "bad")
 
     def test_late_jobs_are_not_judged_on_a_copy(self):
-        """Mesuré : 11 en retard sur la base d'ORIGINE, jamais démarrée."""
+        """Une copie jamais démarrée hérite des retards de l'ORIGINE."""
         controle = self._controle("cron_late")
         genre, _, raison = etat.verdict(controle, 11, etat.COPY)
         self.assertEqual(genre, "skip")
@@ -253,7 +253,7 @@ class TestWhatTheReportSaysAndCounts(unittest.TestCase):
 
 
 class TestNoQueryEverReadsASecret(unittest.TestCase):
-    """Une clé Stripe VIVANTE a été mesurée dans une base de test."""
+    """Une base de test porte des clés de paiement encore VIVANTES."""
 
     SECRETS = (
         "secret_key",

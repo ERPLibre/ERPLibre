@@ -934,8 +934,8 @@ def run_tui(
             # `priority=True`, et `_modal_binding_chain` sinon,
             # `app.py:3978`) — `h` ouvrirait
             # alors l'aide PAR-DESSUS l'écran d'écriture, le coffre, ou
-            # l'aide elle-même. Mesuré dans les deux sens sur Textual 8.2.8
-            # avant d'écrire ceci.
+            # l'aide elle-même. Les deux formes se comportent ainsi sur
+            # Textual 8.2.8.
             Binding("h", "show_help", t("mail_help_binding")),
             Binding("q", "quit", t("mail_quit_binding")),
             Binding("r", "sync_current", t("mail_sync_current_binding")),
@@ -1811,14 +1811,14 @@ def run_tui(
 
         def set_status(self, text: str) -> None:
             # Plusieurs appelants y glissent le message d'une exception.
-            # Mesuré : les crochets NUS passent (« [ALERT] »,
-            # « [NONEXISTENT] », « [Gmail] » s'affichent tels quels) ; ce
-            # qui lève `MarkupError`, c'est un crochet contenant un « = »,
-            # donc ressemblant à une balise avec valeur — une URL de suivi
-            # dans un message d'erreur suffit. Le statut disparaîtrait au
-            # moment PRÉCIS où il sert. On tente donc le balisage —
-            # `deliver` s'en sert pour son ⚠ en gras rouge — et on retombe
-            # sur du littéral dès qu'il ne tient pas.
+            # Les crochets NUS passent (« [ALERT] », « [NONEXISTENT] »,
+            # « [Gmail] » s'affichent tels quels) ; ce qui lève
+            # `MarkupError`, c'est un crochet contenant un « = », donc
+            # ressemblant à une balise avec valeur — une URL de suivi dans
+            # un message d'erreur suffit. Le statut disparaîtrait au moment
+            # PRÉCIS où il sert. On tente donc le balisage — `deliver` s'en
+            # sert pour son ⚠ en gras rouge — et on retombe sur du littéral
+            # dès qu'il ne tient pas.
             if isinstance(text, str):
                 try:
                     text = Text.from_markup(text)
@@ -2168,9 +2168,9 @@ def run_tui(
         les liaisons de `MailApp` ne sont plus consultées —
         `Screen._modal_binding_chain` (`screen.py:449`) tronque la chaîne au
         dernier écran modal, et c'est elle qu'`App._check_bindings`
-        (`app.py:3978`) parcourt pour une liaison sans priorité. Mesuré sur
-        Textual 8.2.8, et c'est aussi ce qui interdit `priority=True` sur
-        `h` (voir `MailApp.BINDINGS`).
+        (`app.py:3978`) parcourt pour une liaison sans priorité. Ce
+        comportement est celui de Textual 8.2.8, et c'est aussi ce qui
+        interdit `priority=True` sur `h` (voir `MailApp.BINDINGS`).
         """
 
         BINDINGS = [
@@ -2349,8 +2349,7 @@ def run_tui(
             # qu'App.run() redirige pendant tout le cycle de vie de
             # l'appli (`redirect_stdout(self._capture_stdout)`), et PAS le
             # vrai terminal — `Screen.get_cols_rows()` plante alors sur un
-            # descripteur -1. Constaté par un test manuel (voir le
-            # rapport) ; importer ici, une fois le terminal rendu par
+            # descripteur -1. Importer ici, une fois le terminal rendu par
             # `suspend()`, fige le bon `sys.stdout` à la place.
             files_input = self.query_one("#files", Input)
             initial = self._browse_start_dir(files_input.value)

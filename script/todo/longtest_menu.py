@@ -172,10 +172,11 @@ class LongTestMenuMixin:
     def _longtest_depth(self):
         """Profondeur demandée. Trois par défaut, parce que trois marche.
 
-        Mesuré sur cette machine : les trois premiers étages prennent 280, 495
-        et 1 064 secondes — une demi-heure. Le quatrième a demandé 7 h 18
-        d'installation et 4 h 20 d'amorçage, et les suivants se comptent en
-        jours. Dix par défaut promettait ce qu'aucune machine ne tient.
+        Le coût d'un étage croît vite : les trois premiers tiennent à eux
+        tous dans la demi-heure, le quatrième demande des heures
+        d'installation puis des heures d'amorçage, et les suivants se
+        comptent en jours. Dix par défaut promet ce qu'aucune machine ne
+        tient.
         """
         brut = input(f"{t('Depth (default 3): ')}").strip()
         return int(brut) if brut.isdigit() and int(brut) > 0 else 3

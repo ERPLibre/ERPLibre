@@ -7,11 +7,10 @@
 Le bit d'exécution n'accorde rien : qui peut lire le fichier peut déjà faire
 « python3 fichier ». Il décide seulement si « ./script/... » fonctionne.
 
-La première version de ce test exigeait aussi l'absence d'écriture par le
-groupe, mesurée sur le disque. C'était une faute : git ne stocke QUE le bit
+L'écriture par le groupe ne s'exige pas ici : git ne stocke QUE le bit
 d'exécution — 100644 ou 100755 — et le reste vient de l'umask de celui qui
-fait le checkout. Sur un poste en umask 0002, chaque checkout produit 775 et
-le test échouait treize fois, pour une raison qui n'est pas dans le dépôt.
+fait le checkout. Sous umask 0002, chaque checkout produit 775, et un test du
+disque échoue pour une raison qui n'est pas dans le dépôt.
 
 On vérifie donc l'index, seul mode que le dépôt porte et propage. Le mode du
 disque reste l'affaire de la machine, pas d'un test.

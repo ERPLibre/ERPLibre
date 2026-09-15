@@ -391,7 +391,7 @@ class TestLeScript(unittest.TestCase):
         """Le piège propre à l'image cloud : elle amorce en EFI, les paquets
         pve tirent grub-pc, et sa post-installation refuse de deviner le
         disque — « You must correct your GRUB install devices before
-        proceeding ». Mesuré : dpkg s'arrête et emporte la transaction."""
+        proceeding » : dpkg s'arrête et emporte la transaction."""
         res = self._lance(["--dry-run"])
         self.assertIn("grub-pc/install_devices", res.stdout)
         self.assertIn(
@@ -399,9 +399,9 @@ class TestLeScript(unittest.TestCase):
         )
 
     def test_apt_waits_for_the_lock_instead_of_giving_up(self):
-        """Sur une VM fraîche, cloud-init tient encore le verrou : mesuré,
-        « held by process 996 (apt-get) », et le script mourait 40 secondes
-        après le démarrage."""
+        """Sur une VM fraîche, cloud-init tient encore le verrou : apt
+        rend « held by process … (apt-get) » et, sans attente, le script
+        meurt dans la minute qui suit le démarrage."""
         texte = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("DPkg::Lock::Timeout", texte)
         res = self._lance(["--dry-run"])

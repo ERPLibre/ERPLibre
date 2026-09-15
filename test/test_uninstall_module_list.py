@@ -136,11 +136,10 @@ class TestTheListFollowsTheClone(unittest.TestCase):
 
     Deux endroits bâtissent la base intermédiaire : l'étape « Uninstall
     module », et « Choose delete missing module » qui la jette et la
-    refait depuis la version précédente. Le second ne rejouait que les
-    modules choisis là. Mesuré sur test_neutralize_upgrade_18 :
-    web_responsive retiré au rang 218, clone refait au rang 230, et il
-    était revenu — la 18 a refusé de charger sur l'exclusion de
-    muk_web_theme, alors que la désinstallation avait réussi.
+    refait depuis la version précédente. Un second qui ne rejoue que les
+    modules choisis là laisse revenir les autres : web_responsive retiré au
+    rang 218 puis clone refait au rang 230, et la 18 refuse de charger sur
+    l'exclusion de muk_web_theme, alors que la désinstallation a réussi.
     """
 
     def source(self):

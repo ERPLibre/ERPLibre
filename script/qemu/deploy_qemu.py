@@ -531,7 +531,7 @@ def image_candidates(
             ]
         # Leap, lui, publie TOUTES les architectures dans un seul répertoire :
         # les chemins /ports/ équivalents rendent 404. x86_64, aarch64 et s390x
-        # y sont côte à côte (relevé dans l'index de 16.0, les trois en 200).
+        # y sont côte à côte dans ce seul index.
         return [
             f"{OPENSUSE_BASE}/distribution/leap/{version}/appliances/"
             f"Leap-{version}-Minimal-VM.{tag}-Cloud.qcow2"
@@ -1337,9 +1337,9 @@ def ensure_tools(
     manque, puis vérifie la connexion à l'hyperviseur.
 
     `force_daemon` réinstalle DAEMON_PACKAGES même quand le démon répond déjà.
-    Vécu sur Arch : libvirt était présent (posé par un ancien one-liner qui ne
-    listait pas dnsmasq), donc daemon_missing() renvoyait False et dnsmasq
-    n'était jamais installé -> « Failed to start network default ». Les
+    Sur Arch, libvirt peut être là sans dnsmasq, posé par une installation qui
+    ne le listait pas : daemon_missing() rend alors False, dnsmasq n'est jamais
+    installé, et le réseau meurt sur « Failed to start network default ». Les
     gestionnaires de paquets ignorent ce qui est déjà là : c'est bon marché.
     """
     missing = missing_tools()
@@ -1709,10 +1709,10 @@ def kvm_available() -> bool:
 
     « Même architecture que l'hôte » ne suffit PAS à conclure à KVM : dans une
     VM sans virtualisation imbriquée, libvirt bascule SILENCIEUSEMENT en TCG.
-    Mesuré sur erplibre01, lui-même invité KVM : une VM s390x sur hôte s390x
-    est sortie en « <domain type='qemu'> », soit de l'émulation intégrale — et
-    un démarrage de 7 min 30 au lieu de quelques dizaines de secondes, sans
-    que rien ne le signale.
+    Sur un hôte lui-même invité KVM, une VM s390x sur hôte s390x sort en
+    « <domain type='qemu'> », soit de l'émulation intégrale — et un démarrage
+    de 7 min 30 au lieu de quelques dizaines de secondes, sans que rien ne le
+    signale.
 
     /dev/kvm est le test que fait QEMU lui-même. Mais l'ACCÈS n'est concluant
     que si on est root : libvirt, lui, tourne en root et se moque de notre
@@ -2030,12 +2030,12 @@ SERVICE_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# N'apparaît que sur une VM déployée AVEC un bureau. Vécu : GNOME installé,
-# gdm3 installé, cible graphique par défaut… et la console restait en mode texte.
-# graphical.target était déjà atteinte quand le paquet est arrivé, et une cible
-# active ne rattrape pas un service ajouté après coup. « enable » seul n'y change
-# rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement un alias —
-# d'où le « --now », qui démarre.
+# N'apparaît que sur une VM déployée AVEC un bureau. GNOME installé, gdm3
+# installé, cible graphique par défaut… et la console reste pourtant en mode
+# texte : graphical.target est déjà atteinte quand le paquet arrive, et une
+# cible active ne rattrape pas un service ajouté après coup. « enable » seul
+# n'y change rien sur Debian et Ubuntu — l'unité n'a pas de WantedBy, seulement
+# un alias — d'où le « --now », qui démarre.
 DESKTOP_GUIDE: tuple[tuple[str, str, str], ...] = (
     (
         "systemctl status display-manager",
@@ -2573,9 +2573,9 @@ def build_cloud_config(
         " 2>/dev/null && break; done || true",
         # qemu-guest-agent : installé APRÈS sshd, et surtout HORS de cloud-init.
         #
-        # Mesuré sur Ubuntu 26.04 s390x : « apt-get install qemu-guest-agent »
-        # tire liburing2, ubuntu-helper-virt-hwe et ubuntu-virt depuis
-        # ports.ubuntu.com, et cloud-final tourne 9 min 47. Or le suivi
+        # Sur Ubuntu 26.04 s390x, « apt-get install qemu-guest-agent » tire
+        # liburing2, ubuntu-helper-virt-hwe et ubuntu-virt depuis
+        # ports.ubuntu.com, et cloud-final tourne alors 9 min 47. Or le suivi
         # d'installation attend « cloud-init status: done » : dix minutes
         # d'attente pour un paquet accessoire, avant même de commencer le
         # travail utile.
@@ -2739,11 +2739,11 @@ def _ip_taken(ip: str) -> bool:
     """Adresse déjà occupée, même par une machine qui ne parle pas SSH.
 
     Un simple essai sur le port 22 ne suffit pas : il laisse passer toute
-    machine éteinte au moment du choix, ou dont sshd est filtré. Vécu — une
-    adresse attribuée à une VM Debian neuve appartenait déjà à une machine du
-    parc, et l'installation ERPLibre s'est déroulée SUR CETTE DERNIÈRE. Le
-    journal ne le disait qu'à demi-mot : « git is already the newest
-    version », impossible sur un système que d-i vient de poser.
+    machine éteinte au moment du choix, ou dont sshd est filtré. Une adresse
+    attribuée à une VM neuve peut appartenir déjà à une machine en service :
+    l'installation ERPLibre se déroule alors SUR CETTE DERNIÈRE, et le journal
+    ne le dit qu'à demi-mot — « git is already the newest version », impossible
+    sur un système que d-i vient de poser.
 
     On interroge donc trois choses : le voisinage ARP de l'hôte, qui connaît
     ce qui a parlé récemment ; ICMP, qui répond même sans service ; puis SSH.
@@ -2818,8 +2818,8 @@ def static_net_plan(
     # Départ DÉTERMINISTE, tiré du nom de la VM. Un simple « première libre
     # en partant du haut » donne la MÊME adresse à deux VM déployées en
     # parallèle : aucune des deux n'est encore montée quand l'autre cherche,
-    # donc aucune ne voit l'autre. Vécu — debian-12 et debian-13 ont tous
-    # deux pris .250 et se sont disputé l'adresse, une seule survivant.
+    # donc aucune ne voit l'autre. Les deux prennent .250 et se disputent
+    # l'adresse, une seule survivant.
     # Le nom, lui, diffère toujours, et le tirage reste stable d'un
     # redéploiement à l'autre.
     start = zlib.crc32(name.encode()) % 50
@@ -3008,11 +3008,11 @@ def build_preseed(
     early = [
         # LE correctif, pas un diagnostic : on ALLUME la carte.
         #
-        # Mesuré dans l'installateur : « enc1: <BROADCAST,MULTICAST> …
-        # qdisc noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel
-        # obtenait un bail en deux secondes. Le réseau n'a jamais été en
-        # cause ; netcfg teste l'état du lien AVANT d'essayer, ne le voit
-        # pas, saute le DHCP et demande une adresse statique.
+        # Dans l'installateur, « enc1: <BROADCAST,MULTICAST> … qdisc
+        # noop » — ni UP ni LOWER_UP — alors qu'un udhcpc manuel obtient
+        # un bail en deux secondes. Le réseau n'est pas en cause :
+        # netcfg teste l'état du lien AVANT d'essayer, ne le voit pas,
+        # saute le DHCP et demande une adresse statique.
         #
         # Sur s390x c'est le udeb s390-netdevice qui active le périphérique.
         # En preseedant sa question pour qu'il ne s'affiche plus, on

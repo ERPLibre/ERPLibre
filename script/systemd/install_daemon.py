@@ -13,8 +13,8 @@ from pathlib import Path
 #
 # Lancé seul, systemd doit EXÉCUTER le fichier, et l'échoue en « 203/EXEC »
 # dans quatre cas au moins : bit x absent, shebang qui ne résout pas, /home
-# monté noexec, SELinux refusant l'execve. Vécu sur openSUSE s390x — le
-# processus mourait en 3 ms, sans jamais entrer dans le script, ce qui rend le
+# monté noexec, SELinux refusant l'execve. Le processus meurt alors en
+# quelques millisecondes, sans jamais entrer dans le script, ce qui rend le
 # diagnostic très pénible : aucune sortie, et un code qui ressemble à une
 # erreur d'application.
 #
