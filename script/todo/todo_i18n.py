@@ -5815,6 +5815,70 @@ TRANSLATIONS = {
         "fr": "Derniers appels d'outil, du plus récent",
         "en": "Latest tool calls, newest first",
     },
+    "Prompt for the new agent:": {
+        "fr": "Invite du nouvel agent :",
+        "en": "Prompt for the new agent:",
+    },
+    "Pick a detached agent first.": {
+        "fr": "Choisis d'abord un agent détaché.",
+        "en": "Pick a detached agent first.",
+    },
+    "Started": {
+        "fr": "Lancé",
+        "en": "Started",
+    },
+    "The agent did not report an identifier.": {
+        "fr": "L'agent n'a pas rapporté d'identifiant.",
+        "en": "The agent did not report an identifier.",
+    },
+    "Nothing was said.": {
+        "fr": "Rien n'a été dit.",
+        "en": "Nothing was said.",
+    },
+    "New agent": {
+        "fr": "Nouvel agent",
+        "en": "New agent",
+    },
+    "Stop it": {
+        "fr": "L'arrêter",
+        "en": "Stop it",
+    },
+    "Attach": {
+        "fr": "Attacher",
+        "en": "Attach",
+    },
+    "Detached agents running now": {
+        "fr": "Agents détachés qui tournent en ce moment",
+        "en": "Detached agents running now",
+    },
+    "No detached agent. Press n to start one.": {
+        "fr": "Aucun agent détaché. « n » en lance un.",
+        "en": "No detached agent. Press n to start one.",
+    },
+    "agent": {
+        "fr": "agent",
+        "en": "agent",
+    },
+    "state": {
+        "fr": "état",
+        "en": "state",
+    },
+    "branch": {
+        "fr": "branche",
+        "en": "branch",
+    },
+    "pid": {
+        "fr": "pid",
+        "en": "pid",
+    },
+    "busy": {
+        "fr": "occupé",
+        "en": "busy",
+    },
+    "idle": {
+        "fr": "au repos",
+        "en": "idle",
+    },
     "failure": {
         "fr": "échec",
         "en": "failure",

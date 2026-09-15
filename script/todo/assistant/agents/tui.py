@@ -326,6 +326,84 @@ COLONNES_FLUX = (
 )
 
 
+def adaptateur_claude():
+    """L'adaptateur, importé à la demande.
+
+    En tête de module il ferait payer son import à tout ce qui lit `tui` pour
+    une fonction pure — et la frontière du paquet veut que rien ne tire plus
+    que nécessaire.
+    """
+    from script.todo.assistant.harness import claude
+
+    return claude
+
+
+def agents_detaches(flotte) -> list:
+    """Les agents détachés VIVANTS de la flotte, dans son ordre. Fonction PURE.
+
+    Vivant ET détaché, et les deux comptent. La flotte réunit deux sources qui
+    ne disent pas la même chose : le registre annonce ce qui TOURNE, un
+    balayage des transcriptions annonce ce qui se REPREND. Une session
+    dormante en sort sans genre ni processus — l'offrir ici proposerait `stop`
+    sur un fichier, et l'outil répondrait « No job matching » avec un code de
+    sortie NUL, donc sans que rien ne paraisse échouer.
+
+    Séparé du formatage parce que l'ÉCRAN doit pouvoir remonter d'une ligne
+    surlignée à la session qu'elle décrit. Refiltrer puis rapprocher par
+    identifiant ferait dépendre le geste d'un aller-retour par du texte, là où
+    un même index suffit.
+    """
+    from script.todo.assistant.harness import claude as adaptateur
+
+    return [
+        session
+        for session in flotte or ()
+        if getattr(session, "live", False)
+        and adaptateur.est_arriere_plan(session)
+    ]
+
+
+def lignes_agents(agents) -> list[dict]:
+    """Une ligne par agent détaché, dans l'ordre reçu. Fonction PURE.
+
+    Prend ce que `agents_detaches` a filtré : l'index d'une ligne est donc
+    l'index de sa session, et l'écran n'a rien à rapprocher.
+
+    Aucun titre ni nom de conversation : ce que le registre appelle `name` est
+    engendré par le modèle à partir de l'invite, donc c'est du contenu.
+    """
+    sorties = []
+    for session in agents or ():
+        sorties.append(
+            {
+                "id": session.poignee,
+                "projet": os.path.basename((session.cwd or "").rstrip("/")),
+                "etat": (
+                    t(ETATS.get(session.status, "")) if session.status else ""
+                ),
+                "branche": session.branch or "—",
+                "pid": str(session.pid or "—"),
+            }
+        )
+    return sorties
+
+
+# Ce que le registre appelle l'état d'un agent, traduit. La clé EST la chaîne
+# anglaise ; un état inconnu d'une version future se montre tel quel plutôt
+# que de disparaître.
+ETATS = {"busy": "busy", "idle": "idle"}
+
+# Les colonnes du panneau des agents. Ni titre ni nom : le `name` du registre
+# est engendré par le modèle à partir de l'invite, donc c'est du contenu.
+COLONNES_AGENTS = (
+    ("id", "agent"),
+    ("projet", "project"),
+    ("etat", "state"),
+    ("branche", "branch"),
+    ("pid", "pid"),
+)
+
+
 def lignes_outils(par_outil) -> list[dict]:
     """Une ligne par outil, prête à afficher. Fonction PURE.
 
@@ -393,7 +471,13 @@ def run_tui(run_app: bool = True):
     ne doit pas le payer pour un écran qu'on n'ouvre pas.
     """
     from textual.app import App, ComposeResult
-    from textual.widgets import DataTable, Footer, Header, Static
+    from textual.widgets import (
+        DataTable,
+        Footer,
+        Header,
+        Input,
+        Static,
+    )
 
     class Telemetrie(App):
         CSS = """
@@ -406,13 +490,16 @@ def run_tui(run_app: bool = True):
             ("f", "gel", t("Freeze")),
             ("r", "relire", t("Read again")),
             ("v", "vue", t("Switch the panel")),
+            ("n", "lancer", t("New agent")),
+            ("s", "arreter", t("Stop it")),
+            ("a", "attacher", t("Attach")),
         ]
 
         # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
         # la hauteur pour trois tableaux, et empiler les réduirait tous à
         # quatre lignes. Les deux répondent à des questions différentes :
         # « quel outil est lent » contre « qu'est-ce qui vient de se passer ».
-        VUES = ("outils", "flux")
+        VUES = ("outils", "flux", "agents")
 
         def __init__(self):
             super().__init__()
@@ -426,6 +513,10 @@ def run_tui(run_app: bool = True):
             self._temps: dict | None = None
             self._gele = False
             self._vue = 0
+            self._flotte: list = []
+            self._agents: list = []
+            # Ce que la ligne de saisie attend, ou None quand elle est fermée.
+            self._attente: str | None = None
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -434,6 +525,8 @@ def run_tui(run_app: bool = True):
             yield Static("", id="titre_outils")
             yield DataTable(id="outils", zebra_stripes=True)
             yield DataTable(id="flux", zebra_stripes=True)
+            yield DataTable(id="agents", zebra_stripes=True)
+            yield Input(id="saisie", placeholder="")
             yield Static("", id="source")
             yield Footer()
 
@@ -448,6 +541,10 @@ def run_tui(run_app: bool = True):
             flux = self.query_one("#flux", DataTable)
             for _, cle in COLONNES_FLUX:
                 flux.add_column(t(cle), key=cle)
+            agents = self.query_one("#agents", DataTable)
+            for _, cle in COLONNES_AGENTS:
+                agents.add_column(t(cle), key=cle)
+            self.query_one("#saisie", Input).display = False
             self._montrer_la_vue()
             # Les journaux périmés partent à l'ouverture : c'est le seul
             # moment où quelqu'un regarde, donc le seul où le ménage ne
@@ -468,6 +565,129 @@ def run_tui(run_app: bool = True):
                 self.query_one(f"#{nom}", DataTable).display = (
                     nom == self.VUES[self._vue]
                 )
+
+        # Ce que la ligne de saisie attend, et ce que valider déclenche.
+        INVITE = "invite"
+        RETAPE = "retape"
+
+        def action_lancer(self):
+            """Ouvrir la saisie d'une invite pour un agent détaché."""
+            self._ouvrir_saisie(self.INVITE, t("Prompt for the new agent:"))
+
+        def action_arreter(self):
+            """Arrêter l'agent surligné. Sa conversation est GARDÉE.
+
+            Rien de destructeur ici : un `attach` la rouvre. C'est pourquoi
+            cette action-ci ne demande aucune confirmation, là où `rm` exige
+            de retaper l'identifiant en entier.
+            """
+            session = self._agent_choisi()
+            if session is None:
+                self._dire(t("Pick a detached agent first."))
+                return
+            self._lancer_action(adaptateur_claude().ARRETER, session.poignee)
+
+        def action_attacher(self):
+            """Attacher l'agent surligné — ce qui FERME cet écran.
+
+            `claude attach` prend le terminal : il ne peut pas cohabiter avec
+            une application qui le tient déjà. L'écran quitte donc, et imprime
+            la commande plutôt que de la lancer — reprendre la main sur un
+            terminal qu'on vient de rendre est le genre de chose qui laisse un
+            affichage à moitié effacé.
+            """
+            session = self._agent_choisi()
+            if session is None:
+                self._dire(t("Pick a detached agent first."))
+                return
+            argv = adaptateur_claude().argv_action(
+                adaptateur_claude().ATTACHER, session.poignee
+            )
+            self.exit(" ".join(argv))
+
+        def _ouvrir_saisie(self, attente, invite):
+            from textual.widgets import Input
+
+            self._attente = attente
+            champ = self.query_one("#saisie", Input)
+            champ.placeholder = invite
+            champ.value = ""
+            champ.display = True
+            champ.focus()
+
+        def _fermer_saisie(self):
+            from textual.widgets import Input
+
+            self._attente = None
+            champ = self.query_one("#saisie", Input)
+            champ.value = ""
+            champ.display = False
+
+        def on_input_submitted(self, evenement):
+            attente, self._attente = self._attente, None
+            texte = (evenement.value or "").strip()
+            self._fermer_saisie()
+            if attente == self.INVITE and texte:
+                self._lancer_agent(texte)
+
+        def on_key(self, evenement):
+            """Échap referme la saisie sans rien envoyer."""
+            if evenement.key == "escape" and self._attente is not None:
+                self._fermer_saisie()
+                evenement.stop()
+
+        def _lancer_agent(self, invite):
+            """Lancer un agent détaché, l'invite sur l'ENTRÉE STANDARD.
+
+            Jamais en positionnel : `/proc/<pid>/cmdline` est lisible par tout
+            compte de la machine. L'appel rend la main tout de suite — c'est
+            ce que `--bg` promet — donc l'écran ne se fige pas.
+            """
+            import subprocess
+
+            adaptateur = adaptateur_claude()
+            try:
+                fini = subprocess.run(
+                    adaptateur.argv_lancer(),
+                    input=invite,
+                    text=True,
+                    capture_output=True,
+                    timeout=120,
+                )
+            except (OSError, subprocess.SubprocessError) as souci:
+                self._dire(str(souci))
+                return
+            identifiant = adaptateur.identifiant_lance(fini.stdout)
+            self._dire(
+                f"{t('Started')} {identifiant}"
+                if identifiant
+                else t("The agent did not report an identifier.")
+            )
+            self._tick()
+
+        def _lancer_action(self, sous_commande, poignee):
+            """Une action sur un agent, et ce que l'outil en dit."""
+            import subprocess
+
+            try:
+                argv = adaptateur_claude().argv_action(sous_commande, poignee)
+                fini = subprocess.run(
+                    argv, text=True, capture_output=True, timeout=60
+                )
+            except (OSError, ValueError, subprocess.SubprocessError) as souci:
+                self._dire(str(souci))
+                return
+            # L'outil répond « No job matching » avec un code de sortie NUL :
+            # se fier au code laisserait annoncer un geste qui n'a pas eu lieu.
+            premiere = (fini.stdout or fini.stderr or "").strip().splitlines()
+            self._dire(premiere[0] if premiere else t("Nothing was said."))
+            self._tick()
+
+        def _dire(self, message):
+            """Une ligne d'état sous le résumé, remplacée au prochain tour."""
+            from textual.widgets import Static
+
+            self.query_one("#source", Static).update(str(message)[:200])
 
         def action_gel(self):
             """Le rafraîchissement continue dessous ; l'affichage s'arrête."""
@@ -497,6 +717,10 @@ def run_tui(run_app: bool = True):
             # presque une seconde PAR séance et se tronque : il n'a rien à
             # faire dans un écran vivant.
             self._seances = oc.lire_base()
+            # 0,15 s par tour, soit un quinzième du pas : c'est le prix d'un
+            # panneau qui dit ce qui TOURNE, que le disque ne porte pas.
+            self._flotte = self._lire_flotte()
+            self._agents = agents_detaches(self._flotte)
             if not self._gele:
                 self._peindre()
 
@@ -516,10 +740,46 @@ def run_tui(run_app: bool = True):
             flux.clear()
             for ligne in lignes_flux(self._appels):
                 flux.add_row(*[ligne[cle] for cle, _ in COLONNES_FLUX])
+            agents = self.query_one("#agents", DataTable)
+            agents.clear()
+            for ligne in lignes_agents(self._agents):
+                agents.add_row(*[ligne[cle] for cle, _ in COLONNES_AGENTS])
             self.query_one("#titre_outils", Static).update(
                 self._titre_du_panneau(groupes)
             )
             self._resumer()
+
+        @staticmethod
+        def _lire_flotte():
+            """La flotte, ou une liste vide si l'outil ne répond pas.
+
+            Une machine sans Claude Code n'est pas une panne de l'écran, et un
+            listage qui échoue ne doit pas éteindre le rafraîchissement.
+            """
+            from script.todo.assistant import claude_sessions as cs
+
+            try:
+                return cs.fleet()
+            except Exception:
+                return []
+
+        def _agent_choisi(self):
+            """L'agent de la ligne surlignée du panneau, ou None.
+
+            None a trois causes qui ne se distinguent pas ici et n'ont pas
+            besoin de l'être : on n'est pas dans le panneau des agents, il est
+            vide, ou aucune ligne n'est surlignée. Les trois se répondent par
+            « rien à faire », et l'appelant le dit.
+
+            L'index de la ligne EST l'index de la session : le panneau est
+            peint depuis la même liste, dans le même ordre.
+            """
+            if self.VUES[self._vue] != "agents" or not self._agents:
+                return None
+            rang = self.query_one("#agents", DataTable).cursor_row
+            if rang is None or not 0 <= rang < len(self._agents):
+                return None
+            return self._agents[rang]
 
         def _titre_du_panneau(self, groupes):
             """Ce que le panneau du bas montre, et pourquoi il est vide.
@@ -527,8 +787,12 @@ def run_tui(run_app: bool = True):
             Les deux vues se vident pour la MÊME raison — aucun hook posé —
             et le dire vaut mieux qu'un tableau nu, qui se lit comme une panne.
             """
-            if not self._appels:
+            if not self._appels and self.VUES[self._vue] != "agents":
                 return t("No hook installed: the per-tool figures need one.")
+            if self.VUES[self._vue] == "agents":
+                if self._agents:
+                    return t("Detached agents running now")
+                return t("No detached agent. Press n to start one.")
             if self.VUES[self._vue] == "flux":
                 return t("Latest tool calls, newest first")
             return t("Per tool")

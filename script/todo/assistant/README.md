@@ -335,6 +335,20 @@ stays empty for a finished call, the ordinary case that has nothing to report,
 and the three bad endings name themselves in the singular: a row describes one
 call, where the per-tool table counts many.
 
+**The screen acts, and says what it may not do.** A third panel lists the
+detached agents running right now — live AND detached, because the fleet joins
+two sources: the registry says what RUNS, a sweep of the transcripts says what
+RESUMES, and a dormant session comes out of it with neither kind nor process.
+Offering it would propose `stop` on a file, and the tool answers "No job
+matching" with a NULL exit code, so nothing would look like it failed.
+
+`n` starts an agent, its prompt read on standard input and never in the argv,
+where `/proc/<pid>/cmdline` exposes it to every account. `s` stops the
+highlighted one — its conversation is kept, so nothing to confirm. `a` attaches
+and therefore CLOSES the screen: `claude attach` takes the terminal and cannot
+share it. A key pressed in another panel does nothing, rather than acting on a
+highlighted row nobody can see.
+
 ## The modules
 
 | File | What it owns |

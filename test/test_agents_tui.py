@@ -445,6 +445,19 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
 
     CHEMIN = "/x/y/aaaaaaaa-1111-4111-8111-111111111111.jsonl"
 
+    # Ce que le panneau des agents montre, injecté : la vraie flotte
+    # interrogerait l'outil, donc le réseau de personne et le PATH de
+    # personne ne décident du verdict de ce test.
+    AGENTS = (
+        {
+            "id": "abcd1234",
+            "projet": "projet",
+            "etat": "",
+            "branche": "une-branche",
+            "pid": "4242",
+        },
+    )
+
     def _monde(self):
         """Les quatre lectures du disque, remplacées par de l'inventé."""
         from script.todo.assistant.agents import journal as jr
@@ -475,6 +488,7 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         )
         return (
             patch.object(t_ui, "transcriptions", lambda: [self.CHEMIN]),
+            patch.object(t_ui, "lignes_agents", lambda f: list(self.AGENTS)),
             patch.object(st, "lire", lambda c, l=None: st.Lecture()),
             patch.object(jr, "lire_lignes", lambda: evenements),
             patch.object(jr, "nettoyer", lambda *a, **k: None),
@@ -538,7 +552,12 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         self.assertIn(t("Latest tool calls, newest first"), vu["titre"])
 
     async def test_la_touche_v_revient_en_boucle(self):
-        vu = await self._piloter(["v", "v"])
+        """Le nombre de vues est DÉRIVÉ de l'écran : une vue de plus décalait
+        ce test, comme un numéro de menu écrit en dur se décale."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        tour = len(t_ui.run_tui(run_app=False).VUES)
+        vu = await self._piloter(["v"] * tour)
         self.assertEqual(vu["vue"], "outils")
         self.assertIn(t("Per tool"), vu["titre"])
 
@@ -548,6 +567,88 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         vu = await self._piloter()
         self.assertIn(t_ui.ICONES["claude"], vu["resume"])
         self.assertIn(t_ui.ICONES["opencode"], vu["resume"])
+
+    async def test_la_touche_n_ouvre_la_saisie_et_echap_la_referme(self):
+        """Une saisie ouverte qu'on ne peut pas fermer piège l'écran."""
+        from textual.widgets import Input
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                champ = app.query_one("#saisie", Input)
+                self.assertFalse(champ.display, "fermée au montage")
+                await pilote.press("n")
+                await pilote.pause()
+                self.assertTrue(champ.display)
+                self.assertEqual(app._attente, app.INVITE)
+                self.assertEqual(
+                    champ.placeholder, t("Prompt for the new agent:")
+                )
+                await pilote.press("escape")
+                await pilote.pause()
+                self.assertFalse(champ.display)
+                self.assertIsNone(app._attente)
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_une_action_sans_agent_choisi_le_dit(self):
+        """Le panneau des agents est vide dans ce monde-ci : la touche doit
+        répondre, et surtout ne rien envoyer."""
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            envoyes = []
+            async with app.run_test(size=(160, 40)) as pilote:
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                await pilote.pause()
+                await pilote.press("s")
+                await pilote.pause()
+                dit = str(app.query_one("#source", Static).render())
+            self.assertEqual(envoyes, [])
+            self.assertIn(t("Pick a detached agent first."), dit)
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_une_action_hors_du_panneau_des_agents_ne_part_pas(self):
+        """Un agent existe, mais on regarde le panneau des outils.
+
+        Sans ce garde-fou, une touche pressée par réflexe dans un autre
+        panneau arrêterait l'agent surligné d'un panneau qu'on ne voit pas.
+        """
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            envoyes = []
+            async with app.run_test(size=(160, 40)) as pilote:
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                await pilote.pause()
+                # Un agent est là, mais la vue courante n'est pas la sienne.
+                app._agents = [object()]
+                self.assertNotEqual(app.VUES[app._vue], "agents")
+                await pilote.press("s")
+                await pilote.pause()
+            self.assertEqual(envoyes, [])
+        finally:
+            for c in correctifs:
+                c.stop()
 
     async def test_le_gel_se_dit_a_l_ecran(self):
         """Sans mention, un écran figé se lit comme un écran mort."""
@@ -649,3 +750,92 @@ class TestLeFluxDesAppels(unittest.TestCase):
         from script.todo.assistant.agents import tui as t_ui
 
         self.assertEqual(t_ui.lignes_flux([]), [])
+
+
+class TestQuiEstUnAgentDetache(unittest.TestCase):
+    """La flotte réunit deux sources qui ne disent pas la même chose.
+
+    Le registre annonce ce qui TOURNE ; un balayage des transcriptions annonce
+    ce qui se REPREND. Une session dormante en sort sans genre ni processus —
+    l'offrir au panneau proposerait `stop` sur un fichier, et l'outil
+    répondrait « No job matching » avec un code de sortie NUL, donc sans que
+    rien ne paraisse échouer.
+    """
+
+    def _session(self, **champs):
+        from script.todo.assistant import claude_sessions as cs
+
+        defauts = {
+            "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+            "kind": "background",
+            "live": True,
+            "cwd": "/un/depot/projet",
+            "status": "busy",
+            "branch": "une-branche",
+            "pid": 4242,
+        }
+        defauts.update(champs)
+        return cs.Session(**defauts)
+
+    def test_a_live_detached_agent_is_one(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(len(t_ui.agents_detaches([self._session()])), 1)
+
+    def test_a_terminal_is_not_one(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        session = self._session(kind="interactive")
+        self.assertEqual(t_ui.agents_detaches([session]), [])
+
+    def test_a_dormant_session_is_not_one(self):
+        """Genre vide et pid nul : c'est un fichier, pas un processus."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        session = self._session(kind="", live=False, pid=0)
+        self.assertEqual(t_ui.agents_detaches([session]), [])
+
+    def test_a_detached_agent_that_exited_is_not_one(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.agents_detaches([self._session(live=False)]), [])
+
+    def test_nothing_read_is_no_agent(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.agents_detaches(None), [])
+        self.assertEqual(t_ui.agents_detaches([]), [])
+
+    def test_the_row_carries_no_title_and_no_name(self):
+        """Le `name` du registre est engendré par le modèle à partir de
+        l'invite : c'est du contenu, pas un champ structurel."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        temoin = "titre-engendre-qui-ne-doit-pas-sortir"
+        session = self._session(name=temoin)
+        (ligne,) = t_ui.lignes_agents(t_ui.agents_detaches([session]))
+        self.assertNotIn(temoin, repr(ligne))
+        self.assertEqual(ligne["id"], "aaaaaaaa")
+        self.assertEqual(ligne["projet"], "projet")
+
+    def test_the_index_of_a_row_is_the_index_of_its_session(self):
+        """C'est ce qui permet à l'écran de remonter d'une ligne surlignée à
+        la session, sans rapprocher par du texte."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        sessions = [
+            self._session(session_id="1" * 32),
+            self._session(session_id="2" * 32),
+        ]
+        agents = t_ui.agents_detaches(sessions)
+        lignes = t_ui.lignes_agents(agents)
+        self.assertEqual(len(lignes), len(agents))
+        for rang, ligne in enumerate(lignes):
+            self.assertEqual(ligne["id"], agents[rang].poignee)
+
+    def test_every_column_the_table_asks_for_is_there(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_agents(t_ui.agents_detaches([self._session()]))
+        for cle, _ in t_ui.COLONNES_AGENTS:
+            self.assertIn(cle, ligne, cle)

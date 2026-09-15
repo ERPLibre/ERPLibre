@@ -379,6 +379,21 @@ réussi, cas ordinaire qui n'a rien à signaler, et les trois mauvaises fins se
 nomment au singulier : une ligne décrit un appel, là où le tableau par outil
 en compte plusieurs.
 
+**L'écran agit, et dit ce qu'il ne peut pas faire.** Un troisième panneau
+liste les agents détachés qui tournent — vivants ET détachés, car la flotte
+réunit deux sources : le registre annonce ce qui TOURNE, un balayage des
+transcriptions annonce ce qui se REPREND, et une session dormante en sort sans
+genre ni processus. L'offrir proposerait `stop` sur un fichier, et l'outil
+répond « No job matching » avec un code de sortie NUL — rien ne paraîtrait
+avoir échoué.
+
+`n` lance un agent, son invite lue sur l'entrée standard et jamais dans l'argv,
+où `/proc/<pid>/cmdline` l'expose à tout compte. `s` arrête celui qui est
+surligné — sa conversation est gardée, donc rien à confirmer. `a` attache et
+FERME donc l'écran : `claude attach` prend le terminal et ne peut pas le
+partager. Une touche pressée dans un autre panneau ne fait rien, plutôt que
+d'agir sur une ligne surlignée que personne ne voit.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
