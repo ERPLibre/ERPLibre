@@ -128,6 +128,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Every entry of the Proxmox VE menu carries an icon, the same picture meaning the same action as in the other menus of the tool
 - The QEMU cache binary speaks English or French: service journal, `--status`, `--age`, option help and the error served to a VM. The language comes from `--lang`, then `EL_LANG`, then French; the installer writes `EL_LANG` to the service settings and the TODO menu passes its own. Rules, verdict codes and JSON keys are never translated
 - A repository index the cache already holds is revalidated with its ETag rather than downloaded again: upstream still judges every request, and a « 304 » serves the stored body from disk. On a full ERPLibre install the pip indexes, npm metadata and repo bundle had been about 110 MB per VM, taken whole each time. An index stored without its host — shared by every mirror of a rotating list — and an answer carrying no ETag are taken whole as before; the access log names the new outcome `revalidated`
+- A registry page served under `Vary: Accept` keeps one copy per representation. npm asks for the same `/npm` page abridged, then complete, then abridged again; kept under one key they replaced each other and the 31 MB were fetched on every install. Each representation is now revalidated and, offline, served on its own; `--detient` still reads the page under its URL alone
 
 <!-- [fr] -->
 
@@ -140,6 +141,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Chaque entrée du menu Proxmox VE porte une icône, la même image voulant dire la même action que dans les autres menus de l'outil
 - Le binaire du cache QEMU parle anglais ou français : journal du service, `--status`, `--age`, aide des options et erreur servie à une VM. La langue vient de `--lang`, puis d'`EL_LANG`, puis du français ; l'installateur écrit `EL_LANG` dans les réglages du service et le menu TODO passe la sienne. Règles, codes de verdict et clés JSON ne se traduisent jamais
 - Un index de dépôt que le cache détient déjà est revalidé par son ETag au lieu d'être retéléchargé : l'amont juge toujours chaque requête, et un « 304 » sert le corps gardé depuis le disque. Sur une installation complète d'ERPLibre, les index pip, les métadonnées npm et le bundle de repo pesaient environ 110 Mo par VM, repris en entier à chaque fois. Un index rangé sans son hôte — partagé par tous les miroirs d'une liste qui tourne — et une réponse sans ETag sont repris en entier comme avant ; le journal d'accès nomme la nouvelle issue `revalidated`
+- Une page de registre servie sous `Vary: Accept` garde une copie par représentation. npm demande la même page `/npm` abrégée, puis complète, puis de nouveau abrégée ; rangées sous une seule clé, elles se remplaçaient et les 31 Mo repartaient à chaque installation. Chaque représentation est désormais revalidée et, hors ligne, servie à part ; `--detient` lit toujours la page sous sa seule URL
 
 <!-- [en] -->
 ## Fixed

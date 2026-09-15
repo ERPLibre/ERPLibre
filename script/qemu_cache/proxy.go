@@ -301,10 +301,23 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	// sous une clé portable non plus : partagée par tous les miroirs, elle
 	// présenterait à l'un le validateur d'un autre. La condition du client,
 	// quand il en pose une, reste la sienne.
+	//
+	// Sous « Vary: Accept », la représentation que CE client accepte a pu être
+	// rangée à part (voir CleVariante) : c'est son validateur qui part, et
+	// elle qui sort sur « 304 ».
+	cleVariante := ""
+	if cacheable && class == ClassVolatile && r.Method == "GET" && !partial {
+		cleVariante = CleVariante(key, r.Header.Get("Accept"))
+	}
+	varianteTenue := cleVariante != "" && p.Store.Detient(cleVariante)
+	cleRevalidee := key
+	if varianteTenue {
+		cleRevalidee = cleVariante
+	}
 	revalide := false
-	if cacheable && detient && class == ClassVolatile && r.Method == "GET" &&
-		!partial && !conditionnelle && !PortableParChemin(u) {
-		if etag := p.etagGarde(key); etag != "" {
+	if cacheable && (detient || varianteTenue) && class == ClassVolatile &&
+		r.Method == "GET" && !partial && !conditionnelle && !PortableParChemin(u) {
+		if etag := p.etagGarde(cleRevalidee); etag != "" {
 			amont = r.Clone(r.Context())
 			amont.Header.Set("If-None-Match", etag)
 			revalide = true
@@ -329,7 +342,10 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		// Effacée entre-temps — par un nettoyage —, la copie ne sort plus :
 		// la requête repart sans condition, et le client reçoit le corps de
 		// l'amont plutôt qu'un « 304 » qu'il n'a pas demandé.
-		if p.serveFromStore(w, r, u, key, class, OutcomeRevalidated) {
+		if p.serveFromStore(w, r, u, cleRevalidee, class, OutcomeRevalidated) {
+			if cleRevalidee != key {
+				p.Store.Toucher(key)
+			}
 			return
 		}
 		resp, upErr = p.fetch(r, u, repli)
@@ -356,6 +372,13 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		// Un index plus récent que la signature qui l'annonce n'est PAS
 		// servi : voir indexIncoherent. Le client tombe alors sur le « 304 »
 		// qui le laisse garder ses listes, ou sur le refus qui suit.
+		// La représentation de CE client d'abord : la base porte la dernière
+		// rangée, qui peut être l'autre.
+		if cacheable && varianteTenue && !p.indexIncoherent(u, key) &&
+			p.serveFromStore(w, r, u, cleVariante, class, OutcomeStale) {
+			p.Store.Toucher(key)
+			return
+		}
 		if cacheable && !p.indexIncoherent(u, key) &&
 			p.serveFromStore(w, r, u, key, class, OutcomeStale) {
 			return
@@ -484,6 +507,13 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			outcome = OutcomeStoredStatus
 		} else {
 			outcome = OutcomeStored
+			// La base est publiée telle qu'avant ; sa copie sous la variante
+			// garde cette représentation quand l'autre la remplacera.
+			if cleVariante != "" && varieSurAccept(resp.Header) {
+				if verr := p.Store.Copier(key, cleVariante); verr != nil {
+					log.Printf(T("cache : variante de %s non gardée : %v"), u, verr)
+				}
+			}
 		}
 	case !cacheable:
 		outcome = OutcomePassthrough
@@ -494,6 +524,20 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		Outcome: outcome, Status: resp.StatusCode, Bytes: n, Upstream: true,
 		Client: clientDe(r.RemoteAddr),
 	})
+}
+
+// varieSurAccept dit si la réponse annonce varier selon l'en-tête Accept.
+// « Vary » est une liste de noms d'en-têtes, insensible à la casse, et peut
+// être répété.
+func varieSurAccept(h http.Header) bool {
+	for _, v := range h.Values("Vary") {
+		for _, nom := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(nom), "Accept") {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // etagGarde rend l'ETag du corps gardé sous la clé, ou "" : rien de gardé,
