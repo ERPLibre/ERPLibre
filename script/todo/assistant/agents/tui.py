@@ -1152,5 +1152,8 @@ def run_tui(run_app: bool = True):
     app = Telemetrie()
     if not run_app:
         return app
-    app.run()
-    return None
+    # Ce que l'écran rend en sortant, ou None. Aujourd'hui c'est la commande
+    # d'attache : elle prend le terminal, donc l'écran quitte d'abord et
+    # laisse l'appelant la lancer. La jeter ici fermait l'écran sans rien
+    # dire, et l'utilisateur n'avait plus ni écran ni commande.
+    return app.run()

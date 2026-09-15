@@ -1646,7 +1646,12 @@ class AssistantMenuMixin:
             return
         from script.todo.assistant.agents import tui
 
-        tui.run_tui()
+        # L'écran rend une commande quand il sort pour la laisser passer :
+        # « claude attach » prend le terminal et ne peut pas le partager avec
+        # une application qui le tient déjà.
+        commande = tui.run_tui()
+        if commande:
+            self.execute.exec_command_live(commande, source_erplibre=False)
 
     @staticmethod
     def _claude_transcription(session):

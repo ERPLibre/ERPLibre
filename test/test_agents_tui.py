@@ -29,6 +29,7 @@ une colonne que le tableau ne demande pas, un panneau qu'on n'affiche jamais,
 une touche qui ne répond pas, rien de cela ne se voit sur un dictionnaire.
 """
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -1133,6 +1134,95 @@ class TestLesDeuxGestesQuiCoutent(unittest.IsolatedAsyncioTestCase):
         ((_, poignee),) = envoyes
         self.assertEqual(poignee, "aaaaaaaa")
         self.assertNotEqual(poignee, self.SESSION)
+
+
+class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
+    """Attacher ferme l'écran, donc la commande doit lui survivre.
+
+    `claude attach` prend le terminal et ne peut pas le partager avec une
+    application qui le tient déjà. L'écran quitte donc en RENDANT la commande,
+    et c'est l'appelant qui la lance. La jeter fermait l'écran sans rien dire,
+    et il ne restait ni écran ni commande.
+    """
+
+    async def _sortir(self, avec_agent=True):
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        flotte = (
+            [
+                cs.Session(
+                    session_id="aaaaaaaa-1111-4111-8111-111111111111",
+                    kind="background",
+                    live=True,
+                    cwd="/un/depot",
+                    pid=4242,
+                )
+            ]
+            if avec_agent
+            else []
+        )
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: flotte)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                while app.VUES[app._vue] != "agents":
+                    await pilote.press("v")
+                    await pilote.pause()
+                await pilote.press("a")
+                await pilote.pause()
+            return app.return_value
+
+    async def test_attaching_hands_the_command_back(self):
+        self.assertEqual(await self._sortir(), "claude attach aaaaaaaa")
+
+    async def test_the_command_carries_the_short_identifier(self):
+        """Les sous-commandes n'acceptent que lui."""
+        rendu = await self._sortir()
+        self.assertNotIn("1111-4111", rendu)
+
+    async def test_without_an_agent_the_screen_stays_open(self):
+        """Rien à attacher n'est pas une raison de fermer l'écran."""
+        self.assertIsNone(await self._sortir(avec_agent=False))
+
+    def test_run_tui_hands_back_what_the_screen_returned(self):
+        """Le pilote de Textual n'exerce jamais cette ligne-là.
+
+        Les autres tests montent l'application eux-mêmes et lisent son
+        `return_value` ; celui-ci vérifie le CHEMIN ORDINAIRE, où `run_tui`
+        lance l'écran et doit rendre ce qu'il rapporte.
+        """
+        from textual.app import App
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        with patch.object(App, "run", return_value="claude attach abcd1234"):
+            self.assertEqual(t_ui.run_tui(), "claude attach abcd1234")
+
+    def test_the_menu_runs_what_the_screen_hands_back(self):
+        """Sans cela, l'écran se fermerait et la commande se perdrait."""
+        import ast
+
+        racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        chemin = os.path.join(racine, "script", "todo", "assistant_menu.py")
+        with open(chemin, encoding="utf-8") as fh:
+            arbre = ast.parse(fh.read())
+        corps = next(
+            n
+            for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef)
+            and n.name == "_agents_telemetrie"
+        )
+        source = ast.dump(corps)
+        self.assertIn("run_tui", source)
+        self.assertIn("exec_command_live", source)
 
 
 if __name__ == "__main__":
