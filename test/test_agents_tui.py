@@ -1047,3 +1047,91 @@ class TestCeQuiTientDansUnTerminal(unittest.TestCase):
 
         self.assertEqual(len(t_ui.barre(tuple(range(1, 200)))), t_ui.BARRE)
         self.assertLessEqual(t_ui.BARRE, 12)
+
+
+class TestLesDeuxGestesQuiCoutent(unittest.IsolatedAsyncioTestCase):
+    """Relancer coupe le travail ; supprimer efface l'arbre et ne revient pas.
+
+    Deux gardes, et l'écart entre elles est tout le propos : une frappe sur
+    « o » se donne par réflexe, recopier trente-six caractères oblige à
+    regarder ce qu'on détruit. C'est la même échelle que le menu, portée dans
+    l'écran vivant.
+    """
+
+    SESSION = "aaaaaaaa-1111-4111-8111-111111111111"
+
+    async def _piloter(self, touche, frappe):
+        from textual.widgets import Input
+
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        session = cs.Session(
+            session_id=self.SESSION,
+            kind="background",
+            live=True,
+            cwd="/un/depot/projet",
+            pid=4242,
+        )
+        envoyes = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [session])
+            async with app.run_test(size=(160, 40)) as pilote:
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                await pilote.pause()
+                for _ in t_ui.run_tui(run_app=False).VUES:
+                    if app.VUES[app._vue] == "agents":
+                        break
+                    await pilote.press("v")
+                    await pilote.pause()
+                await pilote.press(touche)
+                await pilote.pause()
+                champ = app.query_one("#saisie", Input)
+                invite = champ.placeholder
+                champ.value = frappe
+                await pilote.press("enter")
+                await pilote.pause()
+        return invite, envoyes
+
+    async def test_restarting_asks_for_a_yes(self):
+        _, envoyes = await self._piloter("l", "oui")
+        self.assertEqual(envoyes, [("respawn", "aaaaaaaa")])
+
+    async def test_restarting_without_a_yes_sends_nothing(self):
+        for frappe in ("non", "", "peut-être", "o u i"):
+            _, envoyes = await self._piloter("l", frappe)
+            self.assertEqual(envoyes, [], frappe)
+
+    async def test_deleting_wants_the_whole_identifier(self):
+        _, envoyes = await self._piloter("x", self.SESSION)
+        self.assertEqual(envoyes, [("rm", "aaaaaaaa")])
+
+    async def test_the_short_identifier_is_not_enough_to_delete(self):
+        """C'est la LONGUEUR qui fait la garde : recopier huit caractères se
+        fait sans regarder, et c'est exactement ce qu'on veut empêcher."""
+        _, envoyes = await self._piloter("x", "aaaaaaaa")
+        self.assertEqual(envoyes, [])
+
+    async def test_the_prompt_says_what_each_one_costs(self):
+        relance, _ = await self._piloter("l", "")
+        efface, _ = await self._piloter("x", "")
+        self.assertIn(t("The work in progress is cut. Type yes:"), relance)
+        self.assertIn(
+            t("This deletes the session and its worktree. Retype:"), efface
+        )
+        self.assertIn(self.SESSION, efface, "l'identifiant à recopier")
+
+    async def test_the_action_uses_the_short_identifier(self):
+        """Les sous-commandes n'acceptent que lui : passer l'UUID rend « No
+        job matching » avec un code de sortie nul."""
+        _, envoyes = await self._piloter("x", self.SESSION)
+        ((_, poignee),) = envoyes
+        self.assertEqual(poignee, "aaaaaaaa")
+        self.assertNotEqual(poignee, self.SESSION)

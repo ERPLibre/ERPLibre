@@ -389,6 +389,15 @@ seconds would reset the cursor under the reader's fingers. A project name is
 cut on the LEFT: a family of repositories shares its prefix and differs by
 what follows.
 
+**Two gestures cost something, and the gap between their guards is the point.**
+`l` restarts the highlighted agent on the current binary — the work in progress
+is cut, so a yes is asked, but the conversation survives and that is what sets
+it apart. `x` deletes the session AND its worktree, and nothing brings it back:
+the whole identifier is retyped, the long one and not the eight characters. A
+tap on "y" is given by reflex; copying thirty-six characters makes you look at
+what you are destroying. Both act with the SHORT identifier, the only one the
+subcommands accept — the retyping is a guard, not an argument.
+
 ## The modules
 
 | File | What it owns |
@@ -854,6 +863,16 @@ quel projet, combien ça coûte, où en est son contexte —, refaites seulement
 quand leur nombre change, les recréer à chaque tour remettant le curseur en
 haut sous les doigts de qui lit. Un nom de projet se coupe par la GAUCHE : une
 famille de dépôts partage son préfixe et se distingue par ce qui suit.
+
+**Deux gestes coûtent quelque chose, et l'écart entre leurs gardes est tout le
+propos.** `l` relance l'agent surligné sur le binaire courant — le travail en
+cours est coupé, donc un oui est demandé, mais la conversation survit et c'est
+ce qui le distingue du suivant. `x` supprime la séance ET son arbre de travail,
+et rien ne la récupère : l'identifiant se retape en entier, le long et non
+celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopier
+trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
+avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
+est une garde, pas un argument.
 
 ## Les modules
 

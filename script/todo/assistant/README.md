@@ -384,6 +384,15 @@ seconds would reset the cursor under the reader's fingers. A project name is
 cut on the LEFT: a family of repositories shares its prefix and differs by
 what follows.
 
+**Two gestures cost something, and the gap between their guards is the point.**
+`l` restarts the highlighted agent on the current binary — the work in progress
+is cut, so a yes is asked, but the conversation survives and that is what sets
+it apart. `x` deletes the session AND its worktree, and nothing brings it back:
+the whole identifier is retyped, the long one and not the eight characters. A
+tap on "y" is given by reflex; copying thirty-six characters makes you look at
+what you are destroying. Both act with the SHORT identifier, the only one the
+subcommands accept — the retyping is a guard, not an argument.
+
 ## The modules
 
 | File | What it owns |

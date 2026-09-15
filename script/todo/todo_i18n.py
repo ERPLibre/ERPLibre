@@ -5835,6 +5835,22 @@ TRANSLATIONS = {
         "fr": "Rien n'a été dit.",
         "en": "Nothing was said.",
     },
+    "Restart it": {
+        "fr": "La relancer",
+        "en": "Restart it",
+    },
+    "Delete it": {
+        "fr": "La supprimer",
+        "en": "Delete it",
+    },
+    "The work in progress is cut. Type yes:": {
+        "fr": "Le travail en cours est coupé. Tape oui :",
+        "en": "The work in progress is cut. Type yes:",
+    },
+    "This deletes the session and its worktree. Retype:": {
+        "fr": "Ceci supprime la séance et son arbre. Retape :",
+        "en": "This deletes the session and its worktree. Retype:",
+    },
     "New agent": {
         "fr": "Nouvel agent",
         "en": "New agent",

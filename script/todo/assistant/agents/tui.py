@@ -632,6 +632,8 @@ def run_tui(run_app: bool = True):
             ("s", "arreter", t("Stop it")),
             ("a", "attacher", t("Attach")),
             ("d", "detail", t("Command and output")),
+            ("l", "relancer", t("Restart it")),
+            ("x", "supprimer", t("Delete it")),
         ]
 
         # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
@@ -668,6 +670,11 @@ def run_tui(run_app: bool = True):
             self._monte = False
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
+            # La session visée par la saisie en cours. Gardée à part parce que
+            # la flotte se relit toutes les deux secondes : chercher à nouveau
+            # la ligne surlignée au moment de valider agirait sur une autre
+            # session que celle qu'on a lue dans l'invite.
+            self._cible = None
 
         def compose(self) -> ComposeResult:
             yield Header(show_clock=True)
@@ -751,7 +758,12 @@ def run_tui(run_app: bool = True):
                 )
 
         # Ce que la ligne de saisie attend, et ce que valider déclenche.
+        # Ce que la ligne de saisie attend. Trois modes, parce que trois
+        # gestes ne coûtent pas la même chose : lancer ne détruit rien,
+        # relancer coupe le travail en cours, supprimer efface l'arbre de
+        # travail et rien ne le récupère.
         INVITE = "invite"
+        CONFIRME = "confirme"
         RETAPE = "retape"
 
         def action_lancer(self):
@@ -789,6 +801,43 @@ def run_tui(run_app: bool = True):
             )
             self.exit(" ".join(argv))
 
+        def action_relancer(self):
+            """Relancer l'agent surligné sur le binaire courant.
+
+            Le travail en cours est COUPÉ, donc une confirmation est exigée —
+            mais une confirmation simple : la conversation, elle, survit, et
+            c'est ce qui sépare ce geste du suivant.
+            """
+            session = self._agent_choisi()
+            if session is None:
+                self._dire(t("Pick a detached agent first."))
+                return
+            self._cible = session
+            self._ouvrir_saisie(
+                self.CONFIRME,
+                f"{t('The work in progress is cut. Type yes:')} "
+                f"{session.poignee}",
+            )
+
+        def action_supprimer(self):
+            """Supprimer l'agent surligné, ET son arbre de travail.
+
+            Rien ne le récupère, donc l'identifiant se RETAPE en entier — le
+            long, pas celui de huit caractères. Une frappe sur « o » se donne
+            par réflexe ; recopier vingt-six caractères oblige à regarder ce
+            qu'on détruit.
+            """
+            session = self._agent_choisi()
+            if session is None:
+                self._dire(t("Pick a detached agent first."))
+                return
+            self._cible = session
+            self._ouvrir_saisie(
+                self.RETAPE,
+                f"{t('This deletes the session and its worktree. Retype:')} "
+                f"{session.session_id}",
+            )
+
         def _ouvrir_saisie(self, attente, invite):
             from textual.widgets import Input
 
@@ -809,10 +858,39 @@ def run_tui(run_app: bool = True):
 
         def on_input_submitted(self, evenement):
             attente, self._attente = self._attente, None
+            cible, self._cible = self._cible, None
             texte = (evenement.value or "").strip()
             self._fermer_saisie()
-            if attente == self.INVITE and texte:
-                self._lancer_agent(texte)
+            if attente == self.INVITE:
+                if texte:
+                    self._lancer_agent(texte)
+                return
+            if cible is None:
+                return
+            if attente == self.CONFIRME:
+                self._confirme(texte, adaptateur_claude().RELANCER, cible)
+            elif attente == self.RETAPE:
+                self._retape(texte, cible)
+
+        def _confirme(self, frappe, sous_commande, session):
+            """Un oui, dans l'une ou l'autre langue de l'écran."""
+            if frappe.lower() in ("o", "oui", "y", "yes"):
+                self._lancer_action(sous_commande, session.poignee)
+            else:
+                self._dire(t("Nothing has been sent."))
+
+        def _retape(self, frappe, session):
+            """L'identifiant ENTIER, ou rien ne part.
+
+            Comparé au long et non à celui de huit caractères : c'est la
+            longueur qui fait la garde, pas la forme.
+            """
+            if frappe == session.session_id:
+                self._lancer_action(
+                    adaptateur_claude().SUPPRIMER, session.poignee
+                )
+            else:
+                self._dire(t("Nothing has been sent."))
 
         def on_key(self, evenement):
             """Échap referme la saisie sans rien envoyer."""

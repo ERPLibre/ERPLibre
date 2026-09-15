@@ -430,6 +430,16 @@ quand leur nombre change, les recréer à chaque tour remettant le curseur en
 haut sous les doigts de qui lit. Un nom de projet se coupe par la GAUCHE : une
 famille de dépôts partage son préfixe et se distingue par ce qui suit.
 
+**Deux gestes coûtent quelque chose, et l'écart entre leurs gardes est tout le
+propos.** `l` relance l'agent surligné sur le binaire courant — le travail en
+cours est coupé, donc un oui est demandé, mais la conversation survit et c'est
+ce qui le distingue du suivant. `x` supprime la séance ET son arbre de travail,
+et rien ne la récupère : l'identifiant se retape en entier, le long et non
+celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopier
+trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
+avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
+est une garde, pas un argument.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
