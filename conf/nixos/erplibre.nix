@@ -146,6 +146,24 @@
     wget
     unzip
     wkhtmltopdf
+    # « xmlsec » pose bin/xmlsec1, que les CINQ autres plateformes posent
+    # aussi. Le manifeste d'auth_saml (OCA server-auth, présent dans
+    # l'addons_path) déclare « bin: ["xmlsec1"] », et Odoo REFUSE d'installer
+    # ou de mettre à niveau le module tant que le binaire n'est pas dans le
+    # PATH : « Unable to find 'xmlsec1' in path », en boîte de dialogue.
+    xmlsec
+    # « parallel » et « shfmt » sont appelés par leur NOM NU, l'un par
+    # script/database/db_drop_all.py, l'autre par script/maintenance/
+    # format_bash.sh. Sans parallel, « make db_drop_all » annonce des bases
+    # détruites qui ne l'ont pas été — une opération destructrice qui rend un
+    # succès qu'elle n'a pas obtenu.
+    parallel
+    shfmt
+    # « cloud-utils » porte growpart, qu'aucune autre voie ne fournit ici.
+    # L'agrandissement du disque s'écrit « sudo growpart … || true » : sans le
+    # binaire, il rend 0 sans rien agrandir, et la VM garde la taille de son
+    # image pendant que le déploiement annonce la taille demandée.
+    cloud-utils
   ];
 
   # Le profil du système ne porte PAS « /include » : la liste par défaut de
@@ -177,6 +195,35 @@
     LIBRARY_PATH = "/run/current-system/sw/lib";
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
   };
+
+  # L'agent invité, DÉCLARÉ ici plutôt que reçu de l'image.
+  #
+  # L'image épinglée l'active déjà (son configuration.nix porte la ligne), et
+  # c'est précisément le problème : la garantie appartient alors au tiers qui
+  # rebâtit l'image, pas au dépôt. Les quatre autres distributions reçoivent
+  # l'agent par le runcmd du déploiement, qui appelle leur gestionnaire de
+  # paquets — geste impossible sur un système déclaratif. Ici, c'est cette
+  # ligne ou rien.
+  #
+  # Sans agent, la voie Proxmox perd sa source PRIMAIRE d'adresse et retombe
+  # sur « ip neigh ». Déclarer l'option deux fois est sans effet : une option
+  # booléenne ne rompt l'évaluation que sur des valeurs DIFFÉRENTES. Hors
+  # QEMU, l'unité ne démarre pas — elle n'a pas de section [Install] et
+  # attend une règle udev sur le port virtio.
+  services.qemuGuest.enable = true;
+
+  # Ce que l'agent doit trouver dans son PATH.
+  #
+  # Une unité systemd n'hérite pas du profil du système : celle-ci ne porte
+  # que coreutils, findutils, grep, sed et systemd. Or « guest-exec » exécute
+  # les commandes du produit DANS ce PATH, et l'agrandissement du disque
+  # commence par « findmnt -no SOURCE / » — absent, donc code 127 dès la
+  # première ligne.
+  systemd.services.qemu-guest-agent.path = with pkgs; [
+    util-linux
+    e2fsprogs
+    cloud-utils
+  ];
 
   # Le port d'Odoo, OUVERT.
   #

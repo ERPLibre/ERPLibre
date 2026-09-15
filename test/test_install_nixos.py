@@ -337,6 +337,64 @@ class LeServiceEstDeclare(unittest.TestCase):
                 self.assertIn(marqueur, self.script)
 
 
+class CeQueLeDepotAPPELLE_ParSonNomNu(unittest.TestCase):
+    """Un système déclaratif n'a que ce qui est écrit.
+
+    Les quatre autres distributions posent ces outils par leur gestionnaire
+    de paquets ; ici, l'absence ne se voit qu'à l'usage, et tard.
+    """
+
+    def setUp(self):
+        self.src = MODULE.read_text(encoding="utf-8")
+
+    def test_xmlsec_is_declared(self):
+        """Le manifeste d'auth_saml (OCA server-auth, dans l'addons_path)
+        déclare « bin: ["xmlsec1"] » : Odoo REFUSE d'installer et de mettre à
+        niveau le module tant que le binaire n'est pas dans le PATH."""
+        self.assertIn("\n    xmlsec\n", self.src)
+
+    def test_the_tools_called_by_bare_name_are_declared(self):
+        """« parallel » et « shfmt » sont invoqués sans chemin. Sans
+        parallel, « make db_drop_all » annonce des bases détruites qui ne
+        l'ont pas été."""
+        for outil in ("parallel", "shfmt"):
+            with self.subTest(outil=outil):
+                self.assertIn(f"\n    {outil}\n", self.src)
+
+    def test_growpart_has_a_provider(self):
+        """L'agrandissement s'écrit « sudo growpart … || true » : sans le
+        binaire il rend 0 sans rien agrandir, et la VM garde la taille de son
+        image pendant que le déploiement annonce celle demandée."""
+        self.assertIn("\n    cloud-utils\n", self.src)
+
+
+class LAgentInviteVientDuDepot(unittest.TestCase):
+    """L'image épinglée active déjà l'agent — et c'est le problème : la
+    garantie appartient alors au tiers qui la rebâtit.
+
+    Les quatre autres distributions le reçoivent du runcmd, qui appelle leur
+    gestionnaire de paquets. Sur un système déclaratif, c'est cette ligne ou
+    rien.
+    """
+
+    def setUp(self):
+        self.src = MODULE.read_text(encoding="utf-8")
+
+    def test_the_agent_is_declared(self):
+        self.assertIn("services.qemuGuest.enable = true;", self.src)
+
+    def test_its_path_carries_what_guest_exec_runs(self):
+        """Une unité systemd n'hérite pas du profil du système. « guest-exec »
+        exécute les commandes du produit DANS ce PATH, et l'agrandissement
+        commence par « findmnt -no SOURCE / » : absent, code 127 dès la
+        première ligne."""
+        i = self.src.index("systemd.services.qemu-guest-agent.path")
+        bloc = self.src[i : self.src.index("];", i)]
+        for paquet in ("util-linux", "e2fsprogs", "cloud-utils"):
+            with self.subTest(paquet=paquet):
+                self.assertIn(paquet, bloc)
+
+
 class LePortDOdooTraverseLePareFeu(unittest.TestCase):
     """NixOS active un pare-feu par défaut ; aucune des images cloud des
     quatre autres distributions n'en active un.
