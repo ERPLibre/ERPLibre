@@ -1127,5 +1127,47 @@ class LaSuppressionDUnServeurNEnRetireQuUn(unittest.TestCase):
         self.assertIn("10.0.0.1:8080", rendu)
 
 
+class LesRangsDuCatalogueGptNeSeVolentPas(unittest.TestCase):
+    """Les entrées du catalogue se désignent par une LETTRE.
+
+    La touche des détails en était une : « d » désignait à la fois la
+    quatrième entrée et le détail des fichiers illisibles, et la branche étant
+    testée avant le rang, le quatrième outil devenait injoignable dès qu'un
+    seul fichier gpt était mal formé — l'écran n'affichant aucun chiffre pour
+    le rattraper.
+    """
+
+    def test_the_details_key_is_outside_the_alphabet(self):
+        from script.todo import assistant_menu as menu
+
+        with open(menu.__file__, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn('reponse == "?"', source)
+        self.assertNotIn('reponse == "d"', source)
+
+    def test_no_rank_can_ever_be_the_details_key(self):
+        """La garde qui vaut pour toujours : tant que la touche n'est pas une
+        lettre, aucun rang ne peut la revendiquer."""
+        from script.todo.assistant_menu import LETTRES, AssistantMenuMixin
+
+        self.assertNotIn("?", LETTRES)
+        self.assertIsNone(AssistantMenuMixin._llm_rang("?", len(LETTRES)))
+
+    def test_every_letter_of_the_alphabet_still_reaches_its_rank(self):
+        from script.todo.assistant_menu import LETTRES, AssistantMenuMixin
+
+        for rang, lettre in enumerate(LETTRES):
+            self.assertEqual(
+                AssistantMenuMixin._llm_rang(lettre, len(LETTRES)), rang
+            )
+
+    def test_the_screen_announces_the_new_key(self):
+        from script.todo import assistant_menu as menu
+
+        with open(menu.__file__, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertIn("[?] {t('details')}", source)
+
+
 if __name__ == "__main__":
     unittest.main()

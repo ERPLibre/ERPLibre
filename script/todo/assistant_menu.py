@@ -2321,7 +2321,7 @@ class AssistantMenuMixin:
             if fatals:
                 print(
                     f"      ⚠ {len(fatals)} {t('unreadable gpt files')}"
-                    f" — [d] {t('details')}"
+                    f" — [?] {t('details')}"
                 )
             try:
                 reponse = click.prompt(t("Choice")).strip().lower()
@@ -2330,7 +2330,12 @@ class AssistantMenuMixin:
                 return
             if reponse in ("0", ""):
                 return
-            if reponse == "d" and fatals:
+            # « ? » et non une lettre : les rangs sont eux-mêmes des
+            # lettres, et « d » désignait donc à la fois la quatrième entrée
+            # et ce détail-ci. La branche étant testée avant le rang, le
+            # quatrième outil devenait injoignable dès qu'un fichier gpt était
+            # illisible — l'écran n'affichant aucun chiffre pour le rattraper.
+            if reponse == "?" and fatals:
                 for souci in problemes:
                     self._llm_dire_probleme(souci)
                 continue
