@@ -839,3 +839,113 @@ class TestQuiEstUnAgentDetache(unittest.TestCase):
         (ligne,) = t_ui.lignes_agents(t_ui.agents_detaches([self._session()]))
         for cle, _ in t_ui.COLONNES_AGENTS:
             self.assertIn(cle, ligne, cle)
+
+
+class TestLeVoletDeDetail(unittest.TestCase):
+    """Le seul endroit de l'écran qui montre du contenu.
+
+    Il le DIT, en tête et non en bas : un volet qui déroule une longue sortie
+    pousserait l'avertissement hors de l'écran, et il ne servirait qu'à ceux
+    qui n'en ont pas besoin.
+    """
+
+    def _appel(self, duree_ms=400):
+        from script.todo.assistant.agents import journal as jr
+
+        return jr.Appel(
+            outil="Bash",
+            session="aaaaaaaa",
+            debut_ms=1_700_000_000_000,
+            duree_ms=duree_ms,
+            identifiant="toolu_01aaaa",
+        )
+
+    def _texte(self, duree_ms=400, **champs):
+        from script.todo.assistant.agents import detail as dl
+        from script.todo.assistant.agents import tui as t_ui
+
+        return t_ui.texte_du_detail(self._appel(duree_ms), dl.Detail(**champs))
+
+    def test_the_warning_comes_first(self):
+        texte = self._texte(outil="Bash", commande="echo x", sortie="x")
+        self.assertTrue(
+            texte.startswith(t("This pane shows conversation content."))
+        )
+
+    def test_the_command_and_its_output_are_there(self):
+        texte = self._texte(
+            outil="Bash", commande="echo bonjour", sortie="bonjour"
+        )
+        self.assertIn("echo bonjour", texte)
+        self.assertIn("bonjour", texte)
+
+    def test_an_unknown_duration_is_a_dash_and_never_a_zero(self):
+        """Zéro se lirait « instantané » sur un appel encore en cours."""
+        texte = self._texte(duree_ms=None, outil="Bash", commande="sleep 60")
+        self.assertIn("Bash  —", texte)
+        self.assertNotIn("0 ms", texte)
+
+    def test_no_answer_yet_is_told_apart_from_an_empty_answer(self):
+        """L'un est un appel en cours, l'autre une commande silencieuse."""
+        encours = self._texte(outil="Bash", commande="x", sortie=None)
+        muette = self._texte(outil="Bash", commande="x", sortie="")
+        self.assertIn(t("No answer yet."), encours)
+        self.assertIn(t("The command answered nothing."), muette)
+        self.assertNotIn(t("No answer yet."), muette)
+
+    def test_an_error_is_announced(self):
+        texte = self._texte(
+            outil="Bash", commande="faux", sortie="oups", erreur=True
+        )
+        self.assertIn(t("The tool reported an error."), texte)
+
+    def test_a_call_not_in_the_transcript_says_so(self):
+        """Un volet vide se lirait comme une panne de l'écran."""
+        texte = self._texte()
+        self.assertIn(t("This call was not found in the transcript."), texte)
+        self.assertTrue(
+            texte.startswith(t("This pane shows conversation content."))
+        )
+
+    def test_a_long_output_is_bounded_and_says_it(self):
+        texte = self._texte(outil="Bash", commande="x", sortie="z" * 9000)
+        self.assertLess(len(texte), 6000)
+        self.assertIn("+", texte)
+
+
+class TestLaColonneDeCommande(unittest.TestCase):
+    """Trois états, et les confondre fait attendre ce qui ne viendra pas."""
+
+    def _appel(self, identifiant="toolu_01aaaa"):
+        from script.todo.assistant.agents import journal as jr
+
+        return jr.Appel(
+            outil="Bash",
+            session="aaaaaaaa",
+            debut_ms=1_700_000_000_000,
+            duree_ms=400,
+            identifiant=identifiant,
+        )
+
+    def _colonne(self, commandes):
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_flux([self._appel()], commandes=commandes)
+        return ligne["commande"]
+
+    def test_not_looked_up_yet_shows_dots(self):
+        self.assertEqual(self._colonne(None), "…")
+        self.assertEqual(self._colonne({}), "…")
+
+    def test_looked_up_and_empty_shows_a_dash(self):
+        """La transcription a répondu, et cet appel n'a pas de commande."""
+        self.assertEqual(self._colonne({"toolu_01aaaa": ""}), "—")
+
+    def test_a_command_shows_on_one_line(self):
+        colonne = self._colonne({"toolu_01aaaa": "echo un\necho deux"})
+        self.assertEqual(colonne, "echo un echo deux")
+
+    def test_the_column_is_declared_in_the_table(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertIn("commande", [cle for cle, _ in t_ui.COLONNES_FLUX])

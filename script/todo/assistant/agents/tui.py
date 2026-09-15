@@ -31,6 +31,7 @@ import glob
 import os
 import time
 
+from script.todo.assistant.agents import detail as dl
 from script.todo.assistant.agents import journal as jr
 from script.todo.assistant.agents import statistiques as st
 from script.todo.assistant.harness import opencode as oc
@@ -46,6 +47,13 @@ PAS = 2.0
 # Combien d'appels le flux garde à l'écran. Au-delà, on ne lit plus : le
 # panneau répond à « qu'est-ce qui vient de se passer », pas à « tout ».
 FLUX_MAX = 60
+
+# Combien de commandes le flux va chercher par tour. Une recherche coûte
+# quarante millisecondes ; en faire soixante d'un coup dépasserait le pas de
+# deux secondes. La colonne se remplit donc PROGRESSIVEMENT, et ce qui n'est
+# pas encore lu montre des points de suspension plutôt qu'un vide, qui se
+# lirait comme « cet appel n'a pas de commande ».
+DETAILS_PAR_TOUR = 8
 
 # La barre de contexte, en caractères. Assez pour lire une pente, assez peu
 # pour tenir dans une colonne à côté des chiffres.
@@ -291,7 +299,7 @@ ISSUES = {
 }
 
 
-def lignes_flux(appels, limite=FLUX_MAX) -> list[dict]:
+def lignes_flux(appels, limite=FLUX_MAX, commandes=None) -> list[dict]:
     """Les derniers appels d'outil, du plus RÉCENT au plus ancien.
 
     Le panneau des outils dit ce qu'un outil coûte en moyenne ; celui-ci dit
@@ -301,6 +309,13 @@ def lignes_flux(appels, limite=FLUX_MAX) -> list[dict]:
 
     L'ordre est inversé parce qu'un flux se lit par le haut : mettre le plus
     ancien en tête obligerait à faire défiler pour voir ce qui arrive.
+
+    `commandes` est `{identifiant: commande}`, lu dans les transcriptions et
+    jamais dans le journal, qui ne les garde pas. Une entrée absente montre
+    des points de suspension — la recherche n'a pas encore eu lieu —, une
+    entrée VIDE montre un tiret : la transcription a répondu, et cet appel n'a
+    pas de commande à montrer. Les confondre ferait attendre une colonne qui
+    ne viendra jamais.
     """
     derniers = sorted(appels, key=lambda a: a.debut_ms)[-limite:]
     return [
@@ -310,9 +325,53 @@ def lignes_flux(appels, limite=FLUX_MAX) -> list[dict]:
             "outil": a.outil or "—",
             "duree": "—" if a.duree_ms is None else duree(a.duree_ms),
             "issue": t(ISSUES.get(a.issue, "")) if ISSUES.get(a.issue) else "",
+            "commande": _commande_vue(commandes, a.identifiant),
         }
         for a in reversed(derniers)
     ]
+
+
+def texte_du_detail(appel, detail) -> str:
+    """Ce que le volet de détail affiche. Fonction PURE.
+
+    La mention de contenu vient EN TÊTE et non en bas : un volet qui déroule
+    une longue sortie la pousserait hors de l'écran, et l'avertissement ne
+    servirait qu'à ceux qui n'en ont pas besoin.
+
+    Une sortie ABSENTE et une sortie VIDE ne se disent pas pareil. La première
+    est un appel encore en cours, ou une transcription qu'on n'a pas su lire ;
+    la seconde est une commande qui n'a rien répondu. Les confondre ferait
+    chercher une panne là où il n'y a qu'un silence.
+    """
+    lignes = [t("This pane shows conversation content."), ""]
+    if not detail.trouve:
+        lignes.append(t("This call was not found in the transcript."))
+        return "\n".join(lignes)
+    # Un tiret et non « 0 ms » : la durée d'un appel encore en cours n'est pas
+    # zéro, elle est inconnue, et zéro se lirait « instantané ».
+    mesure = "—" if appel.duree_ms is None else duree(appel.duree_ms)
+    lignes.append(f"{detail.outil or appel.outil}  {mesure}")
+    if detail.description:
+        lignes.append(detail.description)
+    lignes.append("")
+    lignes.append(detail.commande or "—")
+    lignes.append("")
+    if detail.sortie is None:
+        lignes.append(t("No answer yet."))
+    elif not detail.sortie:
+        lignes.append(t("The command answered nothing."))
+    else:
+        if detail.erreur:
+            lignes.append(t("The tool reported an error."))
+        lignes.append(dl.bornee(detail.sortie))
+    return "\n".join(lignes)
+
+
+def _commande_vue(commandes, identifiant) -> str:
+    """Ce que la colonne montre : la commande, « … » ou « — »."""
+    if commandes is None or identifiant not in commandes:
+        return "…"
+    return dl.une_ligne(commandes[identifiant]) or "—"
 
 
 # Les colonnes du flux. La session y est abrégée : le flux réunit toutes les
@@ -323,6 +382,7 @@ COLONNES_FLUX = (
     ("outil", "tool"),
     ("duree", "duration"),
     ("issue", "outcome"),
+    ("commande", "command"),
 )
 
 
@@ -493,6 +553,7 @@ def run_tui(run_app: bool = True):
             ("n", "lancer", t("New agent")),
             ("s", "arreter", t("Stop it")),
             ("a", "attacher", t("Attach")),
+            ("d", "detail", t("Command and output")),
         ]
 
         # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
@@ -515,6 +576,12 @@ def run_tui(run_app: bool = True):
             self._vue = 0
             self._flotte: list = []
             self._agents: list = []
+            # {identifiant: commande} — lu dans les transcriptions à la
+            # demande, jamais écrit nulle part. Une entrée absente veut dire
+            # « pas encore cherché », une entrée vide « cherché, rien à
+            # montrer » : sans la distinction, on rechercherait sans fin ce
+            # qui n'existe pas.
+            self._commandes: dict = {}
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
 
@@ -527,6 +594,7 @@ def run_tui(run_app: bool = True):
             yield DataTable(id="flux", zebra_stripes=True)
             yield DataTable(id="agents", zebra_stripes=True)
             yield Input(id="saisie", placeholder="")
+            yield Static("", id="detail")
             yield Static("", id="source")
             yield Footer()
 
@@ -545,6 +613,7 @@ def run_tui(run_app: bool = True):
             for _, cle in COLONNES_AGENTS:
                 agents.add_column(t(cle), key=cle)
             self.query_one("#saisie", Input).display = False
+            self.query_one("#detail", Static).display = False
             self._montrer_la_vue()
             # Les journaux périmés partent à l'ouverture : c'est le seul
             # moment où quelqu'un regarde, donc le seul où le ménage ne
@@ -557,6 +626,10 @@ def run_tui(run_app: bool = True):
             """Passer au panneau suivant, en boucle."""
             self._vue = (self._vue + 1) % len(self.VUES)
             self._montrer_la_vue()
+            # Remplir TOUT DE SUITE : sans cela, la colonne des commandes
+            # reste en points de suspension jusqu'au tour suivant, soit deux
+            # secondes après qu'on a demandé à la voir.
+            self._completer_les_commandes()
             self._peindre()
 
         def _montrer_la_vue(self):
@@ -689,6 +762,49 @@ def run_tui(run_app: bool = True):
 
             self.query_one("#source", Static).update(str(message)[:200])
 
+        def action_detail(self):
+            """Ouvrir ou fermer le détail de l'appel surligné.
+
+            Le volet MONTRE du contenu — une commande et sa sortie — là où
+            tout le reste de l'écran s'en tient à des noms, des comptes et des
+            durées. Il le dit donc, en toutes lettres et à chaque ouverture :
+            un partage d'écran ne doit pas révéler par distraction ce qu'un
+            geste délibéré vient de demander.
+
+            Rien de ce qu'il affiche n'est écrit : la commande est relue dans
+            la transcription, où Claude Code l'avait déjà mise.
+            """
+            from textual.widgets import Static
+
+            volet = self.query_one("#detail", Static)
+            if volet.display:
+                volet.display = False
+                return
+            appel = self._appel_choisi()
+            if appel is None:
+                self._dire(t("Pick a tool call in the stream first."))
+                return
+            volet.update(texte_du_detail(appel, dl.pour(appel)))
+            volet.display = True
+
+        def _appel_choisi(self):
+            """L'appel de la ligne surlignée du flux, ou None.
+
+            Le flux est peint depuis la même liste et dans le même ordre, donc
+            l'index d'une ligne EST celui de son appel.
+            """
+            if self.VUES[self._vue] != "flux":
+                return None
+            derniers = sorted(self._appels, key=lambda a: a.debut_ms)[
+                -FLUX_MAX:
+            ][::-1]
+            if not derniers:
+                return None
+            rang = self.query_one("#flux", DataTable).cursor_row
+            if rang is None or not 0 <= rang < len(derniers):
+                return None
+            return derniers[rang]
+
         def action_gel(self):
             """Le rafraîchissement continue dessous ; l'affichage s'arrête."""
             self._gele = not self._gele
@@ -721,6 +837,7 @@ def run_tui(run_app: bool = True):
             # panneau qui dit ce qui TOURNE, que le disque ne porte pas.
             self._flotte = self._lire_flotte()
             self._agents = agents_detaches(self._flotte)
+            self._completer_les_commandes()
             if not self._gele:
                 self._peindre()
 
@@ -738,7 +855,7 @@ def run_tui(run_app: bool = True):
                 outils.add_row(*[ligne[cle] for cle, _ in COLONNES_OUTILS])
             flux = self.query_one("#flux", DataTable)
             flux.clear()
-            for ligne in lignes_flux(self._appels):
+            for ligne in lignes_flux(self._appels, commandes=self._commandes):
                 flux.add_row(*[ligne[cle] for cle, _ in COLONNES_FLUX])
             agents = self.query_one("#agents", DataTable)
             agents.clear()
@@ -748,6 +865,27 @@ def run_tui(run_app: bool = True):
                 self._titre_du_panneau(groupes)
             )
             self._resumer()
+
+        def _completer_les_commandes(self):
+            """Chercher quelques commandes manquantes, et seulement au besoin.
+
+            Seulement quand le flux est à l'écran : on ne paie que ce qu'on
+            regarde. Et quelques-unes par tour, parce qu'une recherche coûte
+            quarante millisecondes et que soixante d'un coup dépasseraient le
+            pas de rafraîchissement — la colonne se remplit sous les yeux
+            plutôt que de figer l'écran une fois.
+            """
+            if self.VUES[self._vue] != "flux":
+                return
+            manquants = [
+                a
+                for a in sorted(self._appels, key=lambda x: -x.debut_ms)[
+                    :FLUX_MAX
+                ]
+                if a.identifiant and a.identifiant not in self._commandes
+            ]
+            for appel in manquants[:DETAILS_PAR_TOUR]:
+                self._commandes[appel.identifiant] = dl.pour(appel).commande
 
         @staticmethod
         def _lire_flotte():

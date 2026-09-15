@@ -354,6 +354,25 @@ and therefore CLOSES the screen: `claude attach` takes the terminal and cannot
 share it. A key pressed in another panel does nothing, rather than acting on a
 highlighted row nobody can see.
 
+**The stream shows the command, and nothing was collected for it.** "Bash ·
+1.2 s · failure" says that something failed without saying what. The hook log
+keeps `tool_use_id` and nothing else of the call — no command, no answer —
+because writing `tool_input` there would put every shell command on disk for
+fourteen days, which is keeping and not showing. The command is read back from
+the TRANSCRIPT, where Claude Code had already written it, at the moment
+someone asks. Three hundredths of a second per lookup in thirty megabytes: the
+substring pre-filter does the work.
+
+An added trap, and it hides a third of the calls: a tool launched by a
+SUBAGENT is written in the subagent's own file, under the session directory,
+while the hook announces it under the PARENT session's identifier. Both places
+are searched, the main transcript first.
+
+A detail pane opens on the highlighted call and shows the command with its
+output. It is the only pane of the package that displays content, so it says
+so, in the first line rather than the last — a long output would push the
+warning off screen.
+
 ## The modules
 
 | File | What it owns |
@@ -371,6 +390,7 @@ highlighted row nobody can see.
 | `harness/registre.py` | which agent harnesses this machine carries, and what is missing from the others |
 | `harness/claude.py` | the argv of a detached agent's five subcommands, and what each one costs |
 | `harness/opencode.py` | Open Code's sessions and their cost, read only, and the three shapes its output takes |
+| `agents/detail.py` | a tool call's command and answer, read back from the transcript and never collected |
 | `agents/statistiques.py` | what a transcript says of a session: tokens, cost, durations, context |
 | `agents/tui.py` | the live screen, refreshed without re-reading what it already folded |
 | `agents/journal.py` | the tool-call log: one line per event, and their pairing into durations |
@@ -783,6 +803,25 @@ FERME donc l'écran : `claude attach` prend le terminal et ne peut pas le
 partager. Une touche pressée dans un autre panneau ne fait rien, plutôt que
 d'agir sur une ligne surlignée que personne ne voit.
 
+**Le flux montre la commande, et rien n'a été collecté pour ça.** « Bash ·
+1,2 s · échec » dit qu'une chose a raté sans dire laquelle. Le journal des
+hooks garde `tool_use_id` et rien d'autre de l'appel — ni la commande, ni la
+réponse — parce qu'y écrire `tool_input` mettrait chaque commande shell sur le
+disque pour quatorze jours, ce qui est garder et non montrer. La commande est
+relue dans la TRANSCRIPTION, où Claude Code l'avait déjà mise, au moment où
+quelqu'un la demande. Trois centièmes de seconde par recherche dans trente
+mégaoctets : le pré-filtre par sous-chaîne fait tout le travail.
+
+Un piège s'ajoute, et il cache un appel sur trois : un outil lancé par un
+SOUS-AGENT s'écrit dans le fichier de celui-ci, sous le répertoire de la
+session, alors que le hook l'annonce sous l'identifiant de la session PARENTE.
+Les deux endroits sont donc balayés, la transcription principale d'abord.
+
+Un volet de détail s'ouvre sur l'appel surligné et montre la commande avec sa
+sortie. C'est le seul volet du paquet qui affiche du contenu, alors il le dit,
+en première ligne plutôt qu'en dernière — une longue sortie pousserait
+l'avertissement hors de l'écran.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
@@ -800,6 +839,7 @@ d'agir sur une ligne surlignée que personne ne voit.
 | `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
 | `harness/claude.py` | l'argv des cinq sous-commandes d'un agent détaché, et ce que chacune coûte |
 | `harness/opencode.py` | les séances d'Open Code et leur coût, en lecture seule, et les trois formes que prend sa sortie |
+| `agents/detail.py` | la commande et la réponse d'un appel, relues dans la transcription et jamais collectées |
 | `agents/statistiques.py` | ce qu'une transcription dit d'une session : jetons, coût, durées, contexte |
 | `agents/tui.py` | l'écran vivant, rafraîchi sans relire ce qu'il a déjà replié |
 | `agents/journal.py` | le journal des appels d'outils : une ligne par événement, et leur appariement |

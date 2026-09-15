@@ -5879,6 +5879,38 @@ TRANSLATIONS = {
         "fr": "au repos",
         "en": "idle",
     },
+    "Command and output": {
+        "fr": "Commande et sortie",
+        "en": "Command and output",
+    },
+    "This pane shows conversation content.": {
+        "fr": "Ce volet montre du contenu de conversation.",
+        "en": "This pane shows conversation content.",
+    },
+    "This call was not found in the transcript.": {
+        "fr": "Cet appel est introuvable dans la transcription.",
+        "en": "This call was not found in the transcript.",
+    },
+    "Pick a tool call in the stream first.": {
+        "fr": "Choisis d'abord un appel dans le flux.",
+        "en": "Pick a tool call in the stream first.",
+    },
+    "No answer yet.": {
+        "fr": "Pas encore de réponse.",
+        "en": "No answer yet.",
+    },
+    "The command answered nothing.": {
+        "fr": "La commande n'a rien répondu.",
+        "en": "The command answered nothing.",
+    },
+    "The tool reported an error.": {
+        "fr": "L'outil a signalé une erreur.",
+        "en": "The tool reported an error.",
+    },
+    "command": {
+        "fr": "commande",
+        "en": "command",
+    },
     "failure": {
         "fr": "échec",
         "en": "failure",

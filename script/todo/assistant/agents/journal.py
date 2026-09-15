@@ -142,6 +142,10 @@ class Appel:
     debut_ms: int
     duree_ms: int | None = None
     issue: str = FINI
+    # La clé qui mène à la transcription : le même identifiant y nomme le
+    # bloc `tool_use` et son `tool_result`. Le journal ne garde ni la commande
+    # ni sa sortie — il garde de quoi les RETROUVER, ce qui n'est pas pareil.
+    identifiant: str = ""
 
 
 def _duree(ferme, depart) -> int | None:
@@ -196,6 +200,7 @@ def apparier(lignes) -> list[Appel]:
                     debut_ms=int(depart.get("ts") or 0),
                     duree_ms=_duree(ligne, depart),
                     issue=issue,
+                    identifiant=str(cle),
                 )
             )
     for reste in debuts.values():
@@ -206,6 +211,7 @@ def apparier(lignes) -> list[Appel]:
                 debut_ms=int(reste.get("ts") or 0),
                 duree_ms=None,
                 issue=INACHEVE,
+                identifiant=str(reste.get("tool_use_id") or ""),
             )
         )
     return sorted(appels, key=lambda a: a.debut_ms)
