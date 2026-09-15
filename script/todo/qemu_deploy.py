@@ -22,8 +22,13 @@ from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
 from script.todo import deploy_verify
 from script.todo import devstack_report as report
-from script.todo import (egress_book, host_os, todo_prefs, vm_backend_choice,
-                         vm_profiles)
+from script.todo import (
+    egress_book,
+    host_os,
+    todo_prefs,
+    vm_backend_choice,
+    vm_profiles,
+)
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv, virsh_cmd
 from script.todo.todo_i18n import get_lang, t
 from script.vm import backend as vm_backend
@@ -353,8 +358,10 @@ class QemuDeployMixin:
         `meta` : {nom: (distro, version, arch)} quand l'appelant SAIT ce que
         sont ces VM. Sans elle, on le demande à virsh — juste ici, donc faux
         pour une VM qui vit sur un Proxmox distant."""
-        from script.todo.qemu_install_monitor import (launch_installs,
-                                                      run_monitor)
+        from script.todo.qemu_install_monitor import (
+            launch_installs,
+            run_monitor,
+        )
 
         # `desktop` accepte une SAVEUR unique (toutes les VM) ou un dict
         # {nom: saveur} depuis que le type se choisit machine par machine. La
@@ -1496,8 +1503,14 @@ class QemuDeployMixin:
         vérifie /dev/kvm puis énumère les domaines par virsh — et laisser
         passer une autre description produirait un déploiement libvirt sous
         un faux nom, ou une exception au milieu du travail. Le refus nomme
-        le backend, et il est inatteignable par l'écran d'aujourd'hui : il
-        attend celui de demain."""
+        le backend.
+
+        IL EST ATTEIGNABLE. La description porte le backend RÉSOLU depuis la
+        préférence, et la préférence se règle à l'écran : « pve » ou « lima »
+        y arrivent depuis n'importe quel hôte, et « automatique » suffit sur
+        un poste Apple, où la résolution rend « lima ». L'écran de la
+        préférence dit donc ce refus, faute de quoi il se lit comme une
+        panne."""
         # LA RÈGLE D'OR, au seul endroit que les deux interfaces
         # traversent. Le refus arrive AVANT que la machine existe, ce qui
         # est le seul moment où il ne coûte rien. Une posture inconnue est

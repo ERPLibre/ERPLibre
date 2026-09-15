@@ -1340,9 +1340,11 @@ TRANSLATIONS = {
         "fr": "🖥  Deploy - Backends de VM (lequel cette machine emploie)",
         "en": "🖥  Deploy - VM backends (which one this machine uses)",
     },
-    "This choice informs and preselects; no deployment path drives another backend yet.": {
-        "fr": "Ce choix informe et préselectionne ; aucun chemin de déploiement ne pilote encore un autre backend.",
-        "en": "This choice informs and preselects; no deployment path drives another backend yet.",
+    "The local deployment path drives libvirt only: choosing another backend makes it refuse, and names the one it found.": {
+        "fr": "Le déploiement local ne pilote que libvirt : choisir un autre"
+        " backend le fait refuser, en nommant celui qu'il a trouvé.",
+        "en": "The local deployment path drives libvirt only: choosing another"
+        " backend makes it refuse, and names the one it found.",
     },
     "chosen": {"fr": "choisi", "en": "chosen"},
     "In use:": {"fr": "Employé :", "en": "In use:"},
