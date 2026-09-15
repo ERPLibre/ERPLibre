@@ -543,8 +543,8 @@ COLONNES_OUTILS = (
     ("appels", "calls"),
     ("mediane", "median"),
     ("pointe", "peak"),
-    ("echoues", "failed"),
-    ("interrompus", "interrupted"),
+    ("echoues", "failed calls"),
+    ("interrompus", "interrupted calls"),
     ("inacheves", "unfinished"),
 )
 
@@ -623,17 +623,22 @@ def run_tui(run_app: bool = True):
         #source { height: auto; padding: 0 1; color: $text-muted; }
         DataTable { height: 1fr; }
         """
+        # Les libellés sont COURTS, et c'est une contrainte de place et non
+        # de goût : le pied de page tient sur une ligne à toute largeur, donc
+        # dix indications un peu bavardes réclament le double d'un terminal de
+        # quatre-vingts colonnes, et les dernières touches disparaissent. Sur
+        # un écran qui se pilote au clavier, une touche invisible n'existe pas.
         BINDINGS = [
             ("q", "quit", t("Quit")),
             ("f", "gel", t("Freeze")),
             ("r", "relire", t("Read again")),
-            ("v", "vue", t("Switch the panel")),
-            ("n", "lancer", t("New agent")),
-            ("s", "arreter", t("Stop it")),
+            ("v", "vue", t("Panel")),
+            ("n", "lancer", t("Start")),
+            ("s", "arreter", t("Stop")),
             ("a", "attacher", t("Attach")),
-            ("d", "detail", t("Command and output")),
-            ("l", "relancer", t("Restart it")),
-            ("x", "supprimer", t("Delete it")),
+            ("d", "detail", t("Detail")),
+            ("l", "relancer", t("Restart")),
+            ("x", "supprimer", t("Delete")),
         ]
 
         # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
@@ -921,7 +926,7 @@ def run_tui(run_app: bool = True):
                 return
             identifiant = adaptateur.identifiant_lance(fini.stdout)
             self._dire(
-                f"{t('Started')} {identifiant}"
+                f"{t('Agent started')} {identifiant}"
                 if identifiant
                 else t("The agent did not report an identifier.")
             )

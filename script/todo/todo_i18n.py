@@ -43,6 +43,18 @@ TRANSLATIONS = {
         "fr": "🔀 Fork - Ouvre TODO dans une nouvelle tabulation",
         "en": "🔀 Fork - Open TODO in a new tab",
     },
+    "Agent started": {
+        "fr": "Lancé",
+        "en": "Agent started",
+    },
+    "failed calls": {
+        "fr": "échoués",
+        "en": "failed calls",
+    },
+    "interrupted calls": {
+        "fr": "interrompus",
+        "en": "interrupted calls",
+    },
     "Quit": {
         "fr": "Quitter",
         "en": "Quit",
@@ -5807,10 +5819,6 @@ TRANSLATIONS = {
     "Installations": {"fr": "Installations", "en": "Installations"},
     "Total": {"fr": "Total", "en": "Total"},
     "succeeded": {"fr": "réussies", "en": "succeeded"},
-    "Switch the panel": {
-        "fr": "Changer de panneau",
-        "en": "Switch the panel",
-    },
     "Latest tool calls, newest first": {
         "fr": "Derniers appels d'outil, du plus récent",
         "en": "Latest tool calls, newest first",
@@ -5823,10 +5831,6 @@ TRANSLATIONS = {
         "fr": "Choisis d'abord un agent détaché.",
         "en": "Pick a detached agent first.",
     },
-    "Started": {
-        "fr": "Lancé",
-        "en": "Started",
-    },
     "The agent did not report an identifier.": {
         "fr": "L'agent n'a pas rapporté d'identifiant.",
         "en": "The agent did not report an identifier.",
@@ -5834,14 +5838,6 @@ TRANSLATIONS = {
     "Nothing was said.": {
         "fr": "Rien n'a été dit.",
         "en": "Nothing was said.",
-    },
-    "Restart it": {
-        "fr": "La relancer",
-        "en": "Restart it",
-    },
-    "Delete it": {
-        "fr": "La supprimer",
-        "en": "Delete it",
     },
     "The work in progress is cut. Type yes:": {
         "fr": "Le travail en cours est coupé. Tape oui :",
@@ -5851,13 +5847,21 @@ TRANSLATIONS = {
         "fr": "Ceci supprime la séance et son arbre. Retape :",
         "en": "This deletes the session and its worktree. Retype:",
     },
-    "New agent": {
-        "fr": "Nouvel agent",
-        "en": "New agent",
+    "Start": {
+        "fr": "Lancer",
+        "en": "Start",
     },
-    "Stop it": {
-        "fr": "L'arrêter",
-        "en": "Stop it",
+    "Stop": {
+        "fr": "Arrêter",
+        "en": "Stop",
+    },
+    "Restart": {
+        "fr": "Relancer",
+        "en": "Restart",
+    },
+    "Delete": {
+        "fr": "Supprimer",
+        "en": "Delete",
     },
     "Attach": {
         "fr": "Attacher",
@@ -5879,10 +5883,6 @@ TRANSLATIONS = {
         "fr": "état",
         "en": "state",
     },
-    "branch": {
-        "fr": "branche",
-        "en": "branch",
-    },
     "pid": {
         "fr": "pid",
         "en": "pid",
@@ -5894,10 +5894,6 @@ TRANSLATIONS = {
     "idle": {
         "fr": "au repos",
         "en": "idle",
-    },
-    "Command and output": {
-        "fr": "Commande et sortie",
-        "en": "Command and output",
     },
     "This pane shows conversation content.": {
         "fr": "Ce volet montre du contenu de conversation.",
@@ -5974,7 +5970,6 @@ TRANSLATIONS = {
     "stopped": {"fr": "arrêtées", "en": "stopped"},
     "Disk used": {"fr": "Disque utilisé", "en": "Disk used"},
     "image": {"fr": "image", "en": "image"},
-    "failure": {"fr": "échec", "en": "failure"},
     "Reset the statistics": {
         "fr": "Réinitialiser les statistiques",
         "en": "Reset the statistics",
@@ -8120,10 +8115,6 @@ TRANSLATIONS = {
         "fr": "terminée",
         "en": "finished",
     },
-    "duration": {
-        "fr": "durée",
-        "en": "duration",
-    },
     "Panels": {
         "fr": "Panneaux",
         "en": "Panels",
@@ -8934,10 +8925,6 @@ TRANSLATIONS = {
     "unknown to this database": {
         "fr": "inconnu de cette base",
         "en": "unknown to this database",
-    },
-    "state": {
-        "fr": "état",
-        "en": "state",
     },
     "author": {
         "fr": "auteur",
@@ -10919,7 +10906,6 @@ TRANSLATIONS = {
         "fr": "ouvrir le projet une fois puis fermer PyCharm : le .idea qu'il écrit est ce que l'installation configure",
         "en": "open the project once and close PyCharm; the .idea it writes is what the install configures",
     },
-    "command": {"fr": "commande", "en": "command"},
     "release feed unreachable: unified build, it will ask for a JetBrains account": {
         "fr": "flux des versions injoignable : build unifié, il demandera un compte JetBrains",
         "en": "release feed unreachable: unified build, it will ask for a JetBrains account",
@@ -13088,10 +13074,6 @@ TRANSLATIONS = {
         "fr": "sessions",
         "en": "sessions",
     },
-    "session": {
-        "fr": "session",
-        "en": "session",
-    },
     # « project » existe déjà plus haut, avec exactement cette traduction :
     # une clé répétée écrase la précédente en silence, donc elle est réutilisée
     # plutôt que redéclarée.
@@ -13126,14 +13108,6 @@ TRANSLATIONS = {
     "cost": {
         "fr": "coût",
         "en": "cost",
-    },
-    "failed": {
-        "fr": "échoués",
-        "en": "failed",
-    },
-    "interrupted": {
-        "fr": "interrompus",
-        "en": "interrupted",
     },
     "attention": {
         "fr": "attention",
