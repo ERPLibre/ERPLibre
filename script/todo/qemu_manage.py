@@ -2053,11 +2053,17 @@ class QemuManageMixin:
             max_fs_b = target - part_start_b - 4 * self._MiB
             if max_fs_b <= 0:
                 print(t("Target size too small for this layout; aborting."))
-                return self._qemu_shrink_revert(bak, disk, changed=False)
+                # changed=True BIEN QU'ON N'AIT RIEN RÉDUIT : « e2fsck -f -y »
+                # a déjà tourné plus haut, et il RÉPARE — « -y » répond oui à
+                # tout. Déclarer « rien n'a changé » ferait supprimer la
+                # sauvegarde comme inutile, en laissant le disque tel que fsck
+                # l'a rendu et sans plus aucune copie d'avant.
+                return self._qemu_shrink_revert(bak, disk, changed=True)
             min_blocks = self._qemu_fs_min_blocks(part)
             if min_blocks and min_blocks * bs > max_fs_b:
                 print(t("Not enough used-space margin to shrink; aborting."))
-                return self._qemu_shrink_revert(bak, disk, changed=False)
+                # Idem : le fsck a déjà écrit, la sauvegarde reste.
+                return self._qemu_shrink_revert(bak, disk, changed=True)
             fs_target_mib = max_fs_b // self._MiB
             print(
                 f"\n{t('Shrinking guest ext filesystem')} {part} "
