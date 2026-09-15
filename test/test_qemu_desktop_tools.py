@@ -13,6 +13,7 @@ import pathlib
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 sys.argv = ["todo.py"]
 from script.todo.todo import TODO  # noqa: E402
@@ -1327,6 +1328,333 @@ class TestGnomeSiteExtensions(unittest.TestCase):
         """Un « ssh hote commande » n'a pas de bus de session : sans lui,
         l'activation ne peut rien ecrire dans dconf."""
         self.assertIn("dbus-run-session", self.block)
+
+    def _lancer(self, **env_en_plus):
+        """Le bloc, pour de vrai, sous « set -e », dans un PATH où
+        gnome-shell, curl, mktemp et gnome-extensions sont faux : ni
+        réseau, ni session, ni fichier hors du répertoire du test."""
+        import os
+        import shutil
+        import tempfile
+
+        with mock.patch("script.todo.qemu_install.t", lambda k: k):
+            bloc = TODO.__new__(TODO)._qemu_gnome_ext_remote_cmd()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        racine = pathlib.Path(tmp.name)
+        self.racine = racine
+        faux = racine / "bin"
+        faux.mkdir()
+        for outil in ("sh", "bash", "awk", "cut", "rm"):
+            os.symlink(shutil.which(outil), faux / outil)
+        corps = {
+            "gnome-shell": 'echo "GNOME Shell 50.1"\n',
+            "mktemp": 'if [ -n "$MKTEMP_ECHEC" ]; then exit 1; fi\n'
+            'f="$TMPDIR/gext.$$"; : > "$f"; echo "$f"\n',
+            "curl": 'echo "$*" >> "$HOME/curl.trace"\n'
+            'if [ -n "$ECHEC" ]; then exit 22; fi\n'
+            'while [ "$#" -gt 0 ]; do [ "$1" = -o ] && dest="$2"; shift;'
+            ' done\n: > "$dest"\n',
+            "gnome-extensions": '[ "$1" = install ] && exit "${GX_RC:-0}"\n'
+            "exit 0\n",
+        }
+        for nom, texte in corps.items():
+            chemin = faux / nom
+            chemin.write_text("#!/bin/sh\n" + texte, encoding="utf-8")
+            chemin.chmod(0o755)
+        env = {
+            "PATH": str(faux),
+            "HOME": str(racine),
+            "TMPDIR": str(racine),
+            **env_en_plus,
+        }
+        fini = subprocess.run(
+            [str(faux / "bash"), "-c", "set -e\n" + bloc + "\necho FIN"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(0, fini.returncode, fini.stderr[-400:])
+        self.assertIn("FIN", fini.stdout)
+        return fini.stdout
+
+    def test_a_failed_download_does_not_blame_gnome(self):
+        """Le site sert une archive même à un GNOME qu'il ne connaît pas :
+        un téléchargement raté ne dit rien de la version."""
+        sortie = self._lancer(ECHEC="1")
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("⚠ download impossible (network or cache):"),
+        )
+        self.assertNotIn("not available for this GNOME", sortie)
+
+    def test_a_failed_mktemp_skips_like_a_failed_download(self):
+        """Sans nom tiré par mktemp, rien n'est téléchargé : un nom fixe dans
+        /var/tmp, ouvert à tous, pourrait y être posé d'avance."""
+        sortie = self._lancer(MKTEMP_ECHEC="1")
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("⚠ download impossible (network or cache):"),
+        )
+        self.assertNotIn("installed and enabled:", sortie)
+        self.assertFalse(
+            (self.racine / "curl.trace").exists(), "curl lancé sans fichier"
+        )
+
+    def test_no_fixed_path_in_the_shared_tmp(self):
+        """/var/tmp n'apparaît que comme répertoire donné à mktemp, et le
+        bloc reste valide sous une traduction à apostrophe impaire."""
+        import re
+
+        piege = "l'extension n'a pas « fini » aujourd'hui"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            bloc = TODO.__new__(TODO)._qemu_gnome_ext_remote_cmd()
+        self.assertEqual(
+            {"/var/tmp"}, set(re.findall(r"/var/tmp[^\s;\"')|]*", bloc))
+        )
+        self.assertIn("mktemp -p /var/tmp gext-XXXX.zip", bloc)
+        res = subprocess.run(
+            ["bash", "-n"], input=bloc, text=True, capture_output=True
+        )
+        self.assertEqual(0, res.returncode, res.stderr[:400])
+
+    def test_a_refused_install_names_the_gnome_version(self):
+        sortie = self._lancer(GX_RC="1")
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("not available for this GNOME, skipped:"),
+        )
+        self.assertIn("(GNOME 50)", sortie)
+        self.assertNotIn("download impossible", sortie)
+
+    def test_log_out_is_asked_only_when_something_was_installed(self):
+        """Se reconnecter pour charger des extensions jamais posées est
+        une consigne qui ment."""
+        for echec in ({"ECHEC": "1"}, {"GX_RC": "1"}):
+            with self.subTest(echec=echec):
+                sortie = self._lancer(**echec)
+                self.assertNotIn("log out and back in", sortie)
+        sortie = self._lancer()
+        self.assertEqual(
+            len(TODO._QEMU_GNOME_EXT_UUIDS),
+            sortie.count("installed and enabled:"),
+        )
+        self.assertEqual(1, sortie.count("log out and back in to load them"))
+
+    def test_a_translated_apostrophe_keeps_the_block_valid(self):
+        """Une apostrophe mal placée casse la commande distante ENTIÈRE. On
+        remplace la traduction — « set_lang » la persisterait.
+
+        Un nombre IMPAIR d'apostrophes : entre apostrophes, un nombre pair
+        se referme de lui-même, et « bash -n » ne verrait rien."""
+        piege = "l'extension n'a pas « fini » aujourd'hui"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            bloc = TODO.__new__(TODO)._qemu_gnome_ext_remote_cmd()
+        self.assertIn(piege, bloc)
+        res = subprocess.run(
+            ["bash", "-n"], input=bloc, text=True, capture_output=True
+        )
+        self.assertEqual(0, res.returncode, res.stderr[:400])
+
+
+class TestLeServiceDeLAgentInvite(unittest.TestCase):
+    """Le service détaché qui pose qemu-guest-agent, lancé par cloud-init.
+
+    Son script essaie un gestionnaire de paquets après l'autre. Sans
+    accolades autour de chaque branche, une pose réussie enchaîne sur le
+    gestionnaire suivant, absent, et le service finit en échec — 127 sous
+    dash — alors que l'agent est posé. Le script est extrait de la vraie
+    configuration cloud-init, lue en YAML, et tourne dans un PATH où seul le
+    gestionnaire choisi existe, faux : aucun paquet n'est posé, aucun
+    service lancé.
+    """
+
+    def _script(self):
+        import shlex
+
+        import yaml
+
+        from script.qemu import deploy_qemu
+
+        args = deploy_qemu.build_parser().parse_args(
+            ["--distro", "ubuntu", "--hostname", "vm"]
+        )
+        doc = yaml.safe_load(deploy_qemu.build_cloud_config(args, None, []))
+        ligne = next(
+            c
+            for c in doc["runcmd"]
+            if isinstance(c, str) and "--unit=erplibre-qga" in c
+        )
+        mots = shlex.split(ligne)
+        # « systemd-run … /bin/sh -c '<script>' » : le script suit « -c ».
+        return mots[mots.index("/bin/sh") + 2]
+
+    def test_a_successful_install_exits_zero(self):
+        import os
+        import shutil
+        import tempfile
+
+        script = self._script()
+        for gestionnaire in ("apt-get", "dnf", "pacman"):
+            with self.subTest(gestionnaire=gestionnaire):
+                with tempfile.TemporaryDirectory() as tmp:
+                    faux = pathlib.Path(tmp)
+                    os.symlink(shutil.which("sh"), faux / "sh")
+                    trace = faux / "trace"
+                    chemin = faux / gestionnaire
+                    chemin.write_text(
+                        f'#!/bin/sh\necho "$0 $*" >> "{trace}"\nexit 0\n',
+                        encoding="utf-8",
+                    )
+                    chemin.chmod(0o755)
+                    fini = subprocess.run(
+                        [str(faux / "sh"), "-c", script],
+                        env={"PATH": str(faux)},
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(0, fini.returncode, fini.stderr)
+                    self.assertIn("qemu-guest-agent", trace.read_text())
+
+
+class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
+    """« Impossible d'obtenir le verrou /var/lib/apt/lists/lock. Il est
+    occupé par le processus N (apt-get) », répété pendant des minutes au
+    début de chaque installation de bureau.
+
+    Deux causes, et la première est la vraie : « disable --now » arrête un
+    MINUTEUR mais n'interrompt pas l'apt-get qu'il a déjà lancé, lequel garde
+    le verrou jusqu'au bout de sa mise à jour.
+
+    La seconde est le rythme : « DPkg::Lock::Timeout » ne couvre pas ce
+    verrou-là — il ne vaut que pour celui de dpkg — si bien qu'apt rend la
+    main en moins d'une seconde, et qu'un sommeil de dix secondes entre deux
+    essais est du temps payé pour rien.
+    """
+
+    def setUp(self):
+        self.todo = TODO.__new__(TODO)
+        self.desarme = self.todo._qemu_no_auto_upgrade(prod=False)
+        self.cmd = self.todo._qemu_desktop_remote_cmd("gnome", "deb")
+
+    def test_le_service_deja_lance_est_arrete_lui_aussi(self):
+        """C'est lui qui tient le verrou, pas le minuteur."""
+        self.assertIn("stop apt-daily.service", self.desarme)
+        self.assertIn("apt-daily-upgrade.service", self.desarme)
+
+    def test_les_minuteurs_restent_desarmes(self):
+        """Les arrêter sans les désactiver les laisserait repartir en
+        pleine installation."""
+        self.assertIn("apt-daily.timer", self.desarme)
+        self.assertIn("apt-daily-upgrade.timer", self.desarme)
+
+    def test_en_production_on_ne_touche_a_rien(self):
+        """Les correctifs de sécurité automatiques doivent rester actifs."""
+        self.assertEqual(self.todo._qemu_no_auto_upgrade(prod=True), "")
+
+    def test_la_boucle_repasse_souvent(self):
+        """Un essai coûte moins d'une seconde : dormir dix secondes entre
+        deux multiplie par cinq l'attente d'un verrou qui se libère."""
+        i = self.cmd.index("until sudo apt-get")
+        boucle = self.cmd[i : self.cmd.index("done;", i)]
+        self.assertIn("sleep 2", boucle)
+        self.assertNotIn("sleep 10", boucle)
+
+    def test_lattente_couvre_notre_propre_service_detache(self):
+        """Le vrai teneur du verrou, et c'est nous.
+
+        La pose de l'agent invité part en service DÉTACHÉ pour que
+        cloud-init rende la main en quelques secondes. Ce service fait un
+        « apt-get update » puis une installation : « cloud-init status
+        --wait » dit « done » pendant qu'il tient encore le verrou, et
+        l'étape suivante épuise ses reprises pour rien.
+        """
+        attente = self.todo._qemu_cloud_init_wait()
+        self.assertIn("erplibre-qga", attente)
+        self.assertIn("is-active", attente)
+
+    def test_lattente_relit_les_variables_du_cache(self):
+        """La session distante s'ouvre avant que cloud-init n'écrive les
+        variables du cache : sans les relire, un npm lancé sans sudo rejette
+        l'autorité du cache, alors que « sudo npm » l'accepte."""
+        from script.qemu.deploy_qemu import cache_env_reload
+
+        attente = self.todo._qemu_cloud_init_wait()
+        self.assertIn(cache_env_reload(), attente)
+        self.assertGreater(
+            attente.index(cache_env_reload()),
+            attente.index("status --wait"),
+            "les variables sont relues avant que cloud-init les ait écrites",
+        )
+
+    def test_le_nom_du_service_est_celui_que_le_deploiement_donne(self):
+        """Deux noms qui divergent et l'attente ne trouve jamais rien."""
+        from script.qemu import deploy_qemu
+
+        src = pathlib.Path(deploy_qemu.__file__).read_text(encoding="utf-8")
+        self.assertIn("--unit=erplibre-qga", src)
+
+    def test_un_update_qui_nabouti_pas_le_dit(self):
+        """Sans cette ligne, l'installation continue sur un index jamais
+        rafraîchi et échoue plus bas sur « Impossible de trouver le
+        paquet » — qui accuse le dépôt et non le verrou."""
+        i = self.cmd.index("until sudo apt-get")
+        boucle = self.cmd[i : self.cmd.index("done;", i)]
+        self.assertIn("echo", boucle)
+        self.assertIn("⚠", boucle)
+
+    def test_une_apostrophe_traduite_ne_casse_pas_la_commande(self):
+        """Les messages sont traduits, et le français est plein
+        d'apostrophes. Une seule mal placée casse la commande distante
+        ENTIÈRE : la VM ne dit alors pas pourquoi elle n'a rien fait.
+
+        La langue n'est pas changée pour l'éprouver — « set_lang » la
+        PERSISTE dans env_var.sh, et un test qui la déplace fait échouer
+        tout ce qui suit. On remplace la traduction elle-même, le temps du
+        contrôle, par une chaîne qui porte le caractère dangereux.
+
+        Le nombre d'apostrophes est IMPAIR : avec deux, un message emballé
+        entre guillemets simples se referme sur lui-même et le shell reste
+        valide, si bien que le contrôle ne verrait rien.
+        """
+        import tempfile
+
+        piege = "l'agent n'a pas fini aujourd'hui « attendre »"
+        with mock.patch("script.todo.qemu_install.t", lambda k: piege):
+            todo = TODO.__new__(TODO)
+            cmd = (
+                todo._qemu_cloud_init_wait()
+                + todo._qemu_no_auto_upgrade(prod=False)
+                + todo._qemu_desktop_remote_cmd("gnome", "deb")
+            )
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".sh", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(cmd)
+            chemin = fh.name
+        res = subprocess.run(
+            ["bash", "-n", chemin], capture_output=True, text=True
+        )
+        self.assertEqual(res.returncode, 0, res.stderr[:400])
+
+    def test_la_boucle_est_bornee_par_le_temps(self):
+        """La borne est une ÉCHÉANCE, pas un nombre d'essais.
+
+        Un essai coûte moins d'une seconde quand le verrou est tenu, et des
+        minutes quand le cache rend 504 sur chaque index : compter les essais
+        promettait cinq minutes et en valait des heures. Une échéance tient la
+        promesse quelle que soit la durée d'un essai.
+        """
+        i = self.cmd.index("until sudo apt-get")
+        boucle = self.cmd[i : self.cmd.index("done;", i)]
+        self.assertIn("date +%s", boucle)
+        self.assertIn("-ge", boucle)
+        self.assertIn("break", boucle)
+        self.assertNotRegex(boucle, r"n=\$\(\(n\+1\)\)")
+        # L'échéance est POSÉE avant la boucle, sans quoi elle vaudrait zéro.
+        self.assertIn("fin=$(( $(date +%s) + 300 ))", self.cmd[:i])
 
 
 if __name__ == "__main__":

@@ -356,6 +356,27 @@ class TestLesCommandes(unittest.TestCase):
         self.assertIn("qm resize 100 scsi0 12G", joint)
         self.assertTrue(cmds[-1].endswith("qm start 100"))
 
+    def test_without_3d_the_screen_stays_the_serial_console(self):
+        """Le défaut d'une machine de serveur : « qm terminal » en dépend, et
+        poser un périphérique vidéo d'office changerait son matériel."""
+        creation = pve.create_cmds(100, self._spec())[0]
+        self.assertIn("--vga serial0", creation)
+        self.assertIn("--serial0 socket", creation)
+
+    def test_3d_asks_for_an_accelerated_screen(self):
+        """« virtio-gl » donne à l'invité un virtio-gpu que le VIRGL de
+        l'hôte accélère."""
+        creation = pve.create_cmds(100, self._spec(gpu3d=True))[0]
+        self.assertIn("--vga virtio-gl", creation)
+        self.assertNotIn("--vga serial0", creation)
+
+    def test_the_serial_port_survives_the_accelerated_screen(self):
+        """Le port série reste posé : sans lui, « qm terminal » n'a plus rien
+        où s'attacher, et une VM qui ne démarre pas devient muette."""
+        self.assertIn(
+            "--serial0 socket", pve.create_cmds(100, self._spec(gpu3d=True))[0]
+        )
+
     def test_the_agent_and_the_serial_console_are_asked_for(self):
         """Sans agent, aucune adresse ; sans serial0, « qm terminal » est
         inutilisable et il ne reste que l'interface web."""

@@ -30,12 +30,38 @@ class LongTestMenuMixin:
         chemin = os.path.join(os.getcwd(), LONGTEST_DIR, nom)
         return chemin if os.path.exists(chemin) else ""
 
-    def _longtest_run(self, nom, args=""):
+    # Ce qui ne crée aucune machine : un plan, un rapport, une liste. Ces
+    # commandes-là ne méritent pas de question — une invite qu'on apprend à
+    # confirmer sans lire ne protège plus rien le jour où elle compte.
+    _LONGTEST_SANS_EFFET = ("--dry-run", "--rapport")
+
+    @staticmethod
+    def _longtest_question(args):
+        """L'avertissement et la question qui vont avec ces arguments.
+
+        Rend un couple de CLÉS de traduction, jamais du texte : l'invite est
+        bilingue comme le reste du menu.
+        """
+        if "--detruire" in (args or ""):
+            return (
+                "This destroys the machines of this test and their disks.",
+                "Destroy the machines of this test?",
+            )
+        return (
+            "This creates real VMs and takes a while.",
+            "Run this long test?",
+        )
+
+    def _longtest_run(self, nom, args="", demander=None):
         """Lance un test long, sortie en DIRECT.
 
         En direct parce qu'il dure des heures : capturer sa sortie pour
         l'afficher à la fin, c'est ne rien montrer pendant tout ce temps —
         et c'est justement la progression étage par étage qui intéresse.
+
+        `demander` : None laisse la commande décider — on confirme dès qu'elle
+        peut créer de vraies machines. Un appelant qui a DÉJÀ posé sa question
+        passe False, sans quoi l'opérateur répondrait deux fois à la même.
         """
         chemin = self._longtest_script(nom)
         if not chemin:
@@ -45,6 +71,19 @@ class LongTestMenuMixin:
         if args:
             cmd += f" {args}"
         print(f"\n{t('Will execute:')} {cmd}")
+        if demander is None:
+            demander = not any(
+                d in (args or "") for d in self._LONGTEST_SANS_EFFET
+            )
+        if demander:
+            # Une frappe ne doit suffire ni à créer de vraies machines, ni à
+            # en effacer. La question doit dire LAQUELLE des deux on fait :
+            # confirmer « lancer ce test long » devant une destruction fait
+            # répondre oui à autre chose que ce qui va arriver.
+            avertissement, question = self._longtest_question(args)
+            print(f"  {t(avertissement)}")
+            if not click.confirm(t(question)):
+                return
         self.execute.exec_command_live(cmd, source_erplibre=False)
 
     def prompt_execute_longtest(self):
@@ -62,8 +101,23 @@ class LongTestMenuMixin:
                 )
             },
             {"prompt_description": t("Nested QEMU depth: run it")},
+            {"prompt_description": t("Download cache: plan only (dry-run)")},
+            {"prompt_description": t("Download cache: two VMs, measure")},
+            {
+                "prompt_description": t(
+                    "Download cache: measure, then cut the upstream"
+                )
+            },
             {"prompt_description": t("Undo what the descent created")},
         ]
+        # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
+        # Ses entrées sont donc traitées à part plutôt que pliées dans la
+        # table des piles imbriquées.
+        cache = {
+            "5": "--dry-run",
+            "6": "",
+            "7": "--hors-ligne",
+        }
         # Chaque choix : le script, et s'il faut demander d'où l'on part.
         scripts = {
             "1": ("deep_proxmox.py", True),
@@ -77,6 +131,9 @@ class LongTestMenuMixin:
             print()
             if status == "0":
                 return False
+            if status in cache:
+                self._longtest_run("qemu_cache.py", cache[status])
+                continue
             if status in scripts:
                 script, demander = scripts[status]
                 # La profondeur est DEMANDÉE : c'est le réglage qui décide de
@@ -88,7 +145,7 @@ class LongTestMenuMixin:
                 if status in ("1", "3"):
                     args += " --dry-run"
                 self._longtest_run(script, args)
-            elif status == "5":
+            elif status == "8":
                 self._longtest_defaire()
             else:
                 print(t("Command not found !"))
@@ -104,10 +161,10 @@ class LongTestMenuMixin:
         on lui fait faire cette liste à blanc pour qu'un choix d'une touche ne
         mène pas directement à un « qm destroy --purge ».
         """
-        for script in ("deep_proxmox.py", "deep_qemu.py"):
-            self._longtest_run(script, "--detruire --dry-run")
+        for script in ("deep_proxmox.py", "deep_qemu.py", "qemu_cache.py"):
+            self._longtest_run(script, "--detruire --dry-run", demander=False)
             if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
-                self._longtest_run(script, "--detruire")
+                self._longtest_run(script, "--detruire", demander=False)
 
     def _longtest_depart(self, script):
         """D'où part la descente : une VM neuve, ou un hôte qu'on a déjà.

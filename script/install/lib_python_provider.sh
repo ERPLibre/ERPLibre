@@ -107,13 +107,36 @@ el_mise_install() {
 
 # Installe la version via pyenv, en posant pyenv lui-même au besoin.
 el_pyenv_install() {
-  local version="$1" root exe
+  local version="$1" root exe installer
   root="$(el_pyenv_root)"
   exe="$(el_pyenv_exec_path "${version}")"
   if [[ ! -d "${root}" ]]; then
     echo "---- Installation de pyenv dans ${root} ----" >&2
-    curl -L https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer \
-      | bash >&2 || return 1
+    # Téléchargé dans un fichier, PUIS exécuté. Quand curl alimente bash par
+    # un tube, le statut du tube est celui de bash, qui rend 0 sur une entrée
+    # vide : sans pipefail — que rien ne pose dans cette chaîne —, un
+    # « || return 1 » placé après le tube ne se déclencherait jamais. Un
+    # téléchargement raté mènerait alors à « pyenv: command not found », puis
+    # à un échec de compilation, deux messages qui accusent la mauvaise
+    # étape. Lu seul, le statut de curl nomme la vraie cause.
+    #
+    # « -f » : sans lui, curl écrit le CORPS d'une erreur HTTP — page d'erreur
+    # de miroir, portail captif, 504 d'un cache hors ligne —, que bash
+    # exécuterait ensuite comme un script.
+    installer="$(mktemp)" || return 1
+    if ! curl -fsSL -o "${installer}" \
+      https://raw.githubusercontent.com/pyenv/pyenv-installer/master/bin/pyenv-installer; then
+      echo "Telechargement de l'installateur pyenv impossible" \
+        "(reseau ou cache) : pyenv n'est pas pose." >&2
+      rm -f "${installer}"
+      return 1
+    fi
+    if ! bash "${installer}" >&2; then
+      echo "L'installateur de pyenv a echoue (voir ci-dessus)." >&2
+      rm -f "${installer}"
+      return 1
+    fi
+    rm -f "${installer}"
   fi
   export PATH="${root}/bin:$PATH"
   eval "$(pyenv init - 2> /dev/null)" || true

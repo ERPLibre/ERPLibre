@@ -361,6 +361,55 @@ class ProxmoxMenuMixin:
             print(f"  ⚠ {t('exit code')} {code}")
         return code, out
 
+    # Ce que « --vga virtio-gl » exige de l'hôte : le chemin qui le prouve,
+    # et le nom qui sert à le poser. Les noms sont ceux des paquets, car
+    # c'est ce qu'un opérateur tape ; « noeud » n'en est pas un, le nœud de
+    # rendu venant du matériel ou d'un GPU transmis.
+    _PVE_GPU_PIECES = (
+        ("/dev/dri/renderD*", "noeud"),
+        ("/usr/lib/*/libvirglrenderer.so.*", "libvirglrenderer1"),
+        ("/usr/lib/*/libGL.so.1", "libgl1"),
+        ("/usr/lib/*/libEGL.so.1", "libegl1"),
+    )
+
+    def _pve_gpu_dispo(self):
+        """Ce qui MANQUE à l'hôte Proxmox pour donner de la 3D à ses invités.
+
+        Rend (possible, manque) : « manque » nomme les pièces absentes et
+        vaut "" quand tout est là. Une case qui disparaît sans un mot ne se
+        devine pas — le formulaire s'en sert pour DIRE pourquoi la 3D n'est
+        pas offerte, et quoi installer.
+
+        Une sonde qui n'aboutit pas rend (False, "") : on ne promet rien, et
+        on n'accuse rien non plus. Le jeton « FIN » distingue une sonde qui a
+        tout trouvé — donc muette — d'une sonde qui n'a pas tourné.
+
+        Quatre pièces, et il les faut TOUTES. Un NŒUD DE RENDU
+        (« /dev/dri/renderD* ») : un hôte sans GPU, ou lui-même virtualisé
+        sans GPU transmis, n'en expose aucun. Puis les trois bibliothèques
+        que Proxmox charge pour « --vga virtio-gl » : VIRGL, GL et EGL. Il
+        les réclame nommément — « missing libraries for 'virtio-gl'
+        detected! Please install 'libgl1' and 'libegl1' » — et refuse de
+        démarrer la machine, une fois son disque écrit et sa configuration
+        posée. La case promettrait alors une accélération que rien ne
+        fournit, et le déploiement échouerait à la dernière étape.
+
+        Un hôte peut en porter une sans l'autre : VIRGL et GL viennent avec
+        d'autres paquets, EGL non.
+        """
+        sonde = "; ".join(
+            f"ls {chemin} >/dev/null 2>&1 || echo {jeton}"
+            for chemin, jeton in self._PVE_GPU_PIECES
+        )
+        code, sortie = self._pve_show(f"{sonde}; echo FIN", quiet=True)
+        dites = [l.strip() for l in (sortie or "").splitlines() if l.strip()]
+        if code or "FIN" not in dites:
+            return False, ""
+        manque = [
+            jeton for _c, jeton in self._PVE_GPU_PIECES if jeton in dites
+        ]
+        return (not manque), " ".join(manque)
+
     def _pve_vms(self):
         """[{vmid, name, status, …}] des VM de l'hôte, ou []."""
         from script.proxmox import proxmox_deploy as pve
@@ -1065,8 +1114,30 @@ class ProxmoxMenuMixin:
             print(t("Cancelled."))
             return
         if spec:
-            return self._pve_deploy_spec(host, spec, mod, dry_run)
+            return self._pve_run_spec(host, spec, mod, dry_run)
         return self._pve_deploy_prompts(dry_run)
+
+    def _pve_run_spec(self, host, spec, mod, dry_run=False):
+        """Enveloppe le déploiement de la coupure d'amont qu'il demande.
+
+        La coupure est la MÊME qu'en QEMU/KVM, et elle est posée ICI, pas sur
+        l'hôte distant : un hôte Proxmox qui porte l'autorité du cache est
+        une VM de ce pont, et ses invités sortent derrière son adresse. Les
+        règles qui coupent ce pont les couvrent donc tous.
+
+        Le formulaire n'offre la case que dans ce cas ; une spec qui la porte
+        quand même — invites textuelles, spec écrite à la main — coupe ce
+        pont-ci, ce qui reste vrai pour les VM qui le traversent.
+        """
+        from script.todo.qemu_deploy import _SansInternetImpossible
+
+        try:
+            with self._qemu_sans_internet(bool(spec.get("offline"))) as coupee:
+                return self._pve_deploy_spec(
+                    host, spec, mod, dry_run, coupee=coupee
+                )
+        except _SansInternetImpossible:
+            return
 
     def _pve_form_context(self, mod, host):
         """Tout ce que l'écran doit savoir, LU AVANT de l'ouvrir.
@@ -1147,6 +1218,38 @@ class ProxmoxMenuMixin:
             """Les commandes qui seraient lancées pour CETTE VM."""
             return self._pve_vm_commands(mod, vm, spec)
 
+        # UNE sonde, deux réponses : ce que l'hôte peut faire, et ce qui lui
+        # manque pour le faire. Sondé deux fois, l'écran pourrait offrir la
+        # case et nommer en même temps ce qui l'empêche.
+        gpu_possible, gpu_manque = self._pve_gpu_dispo()
+
+        def poser_gpu(paquets):
+            """Pose les paquets manquants SUR L'HÔTE. Rend True si apt a fini.
+
+            Interactive à dessein : le terminal est rendu par l'écran avant
+            l'appel, « ssh -t » ouvre un vrai terminal distant, et sudo peut
+            donc demander son mot de passe. Rien n'est capturé — l'opérateur
+            voit apt travailler, ce qui est la moitié de la confiance.
+
+            Le nœud de rendu n'est pas un paquet et ne s'installe pas : il
+            est écarté, et une liste qui n'en contient pas d'autre ne lance
+            rien plutôt que d'appeler « apt install » les mains vides.
+            """
+            noms = [
+                p
+                for p in str(paquets or "").split()
+                if p != "noeud" and re.fullmatch(r"[A-Za-z0-9.+_-]+", p)
+            ]
+            if not noms:
+                return False
+            remote = pve.wrap_privilege(
+                "apt-get update && apt-get install -y " + " ".join(noms),
+                host.get("sudo") or "",
+            )
+            argv = pve.ssh_argv(host, remote, tty=True)
+            print("\n" + " ".join(shlex.quote(a) for a in argv) + "\n")
+            return subprocess.call(argv) == 0
+
         return {
             "host": dict(host, label=self._pve_label(host)),
             "node": self._pve_node_name(),
@@ -1206,6 +1309,24 @@ class ProxmoxMenuMixin:
             "host_cpu": cpu,
             "free_ram": ram_libre,
             "extra_disk_gb": self.ERPLIBRE_EXTRA_DISK_GB,
+            # La case « Sans connexion internet » ne s'offre que là où la
+            # coupure a un effet. Un hôte Proxmox qui reçoit l'autorité du
+            # cache est une VM de CE pont : ses invités sortent derrière son
+            # adresse, donc la coupure de ce pont les couvre. Un hôte qui ne
+            # vit pas ici ne traverse rien qu'on sache couper, et la case y
+            # promettrait un hors-ligne que personne ne tient.
+            "cache_offert": bool(self._pve_cache_ca(host)),
+            # Lu ICI, terminal encore à nous : la sonde passe par ssh, et une
+            # invite de mot de passe pendant que l'écran affiche le casserait.
+            "gpu_offert": gpu_possible,
+            # Ce qui manque, nommé : une case qui disparaît sans un mot se
+            # lit comme une régression, et l'opérateur n'a rien à corriger.
+            "gpu_manque": gpu_manque,
+            # De quoi poser ce qui manque sans quitter l'écran, et de quoi
+            # RELIRE l'hôte ensuite : sans la seconde, l'écran croirait sur
+            # parole qu'apt a réussi.
+            "installer_gpu": poser_gpu,
+            "sonder_gpu": self._pve_gpu_dispo,
         }
 
     def _pve_capacity(self):
@@ -1291,6 +1412,10 @@ class ProxmoxMenuMixin:
             # Le DNS de l'hôte : « --ipconfig0 » ne le porte pas, et une VM
             # en adresse fixe se retrouvait sans résolveur.
             "nameservers": spec.get("nameservers") or (),
+            # L'accélération 3D se décide à la CRÉATION : l'écran d'une VM
+            # Proxmox est un choix de « qm create », et le changer ensuite
+            # demande de l'éteindre.
+            "gpu3d": bool(spec.get("gpu3d")),
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
@@ -1298,8 +1423,13 @@ class ProxmoxMenuMixin:
             vm["vmid"], detail
         )
 
-    def _pve_deploy_spec(self, host, spec, mod, dry_run=False):
+    def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
+
+        `coupee` : l'amont du cache est coupé autour de cet appel. La levée
+        est alors confiée au guet, au lancement des installations, comme sur
+        la voie QEMU/KVM — sans quoi elle tomberait avec ce processus, avant
+        la fin de ce qui télécharge.
 
         Les images D'ABORD, une par une : deux téléchargements simultanés du
         même fichier se marcheraient dessus. Les VM ensuite, en parallèle si
@@ -1307,6 +1437,11 @@ class ProxmoxMenuMixin:
         """
         from script.proxmox import proxmox_deploy as pve
         from script.todo.deploy_form_lib import run_deploy_progress
+
+        # L'instant où CE déploiement commence : le manifeste le porte, et le
+        # bilan hors ligne s'en sert pour ne relire que ce qui s'est passé
+        # depuis. Pris avant la première commande, création comprise.
+        debut = time.time()
 
         # Le stockage et le pont AVANT tout : l'écran les vérifie déjà, mais
         # cette méthode s'appelle aussi d'ailleurs. Sans ce garde-fou, on
@@ -1413,7 +1548,9 @@ class ProxmoxMenuMixin:
                     print(f"    {ligne}")
         if not reussies:
             return
-        joignables = self._pve_after_create(host, spec, reussies, cle_locale)
+        joignables = self._pve_after_create(
+            host, spec, reussies, cle_locale, coupee=coupee, debut=debut
+        )
         self._pve_print_summary(spec, joignables or [], session)
 
     @staticmethod
@@ -1532,6 +1669,173 @@ class ProxmoxMenuMixin:
             print(f"  ⚠ {t('timezone not set')} : {fuseau} ({code})")
             return False
         print(f"  ✓ {t('Timezone')} : {fuseau}")
+        return True
+
+    def _pve_cache_ca(self, host):
+        """L'autorité du cache à poser dans les VM de cet hôte, ou ''.
+
+        Le cache détourne tout ce qui sort de SON pont. Un hôte Proxmox qui
+        est lui-même une VM d'ici y est branché, et les machines qu'il porte
+        sortent derrière son adresse : elles sont donc interceptées, sans que
+        rien à l'intérieur ne l'annonce. Un hôte Proxmox qui ne vit pas ici ne
+        traverse pas ce pont, et son invité n'a que faire de cette autorité.
+
+        Le déséquilibre décide du doute : une autorité approuvée en trop ne
+        signe jamais rien, tandis qu'un détournement sans autorité fait
+        échouer chaque téléchargement HTTPS sur « self-signed certificate in
+        certificate chain ». En cas d'hésitation, on la pose.
+        """
+        nom = (host.get("target") or "").split("@")[-1]
+        if not nom or nom not in set(self._qemu_list_domains()):
+            return ""
+        return self._qemu_cache_ca_path()
+
+    def _pve_set_cache_ca(self, cible, vm, ca):
+        """Pose l'autorité du cache DANS la VM, par ssh.
+
+        Même source que la voie libvirt — `cache_files` et `cache_commands` de
+        deploy_qemu — livrée autrement : « qm set » ne sait écrire aucun
+        fichier, comme pour le guide et pour le fuseau.
+
+        AVANT l'installation : c'est elle qui télécharge. Un magasin de
+        confiance relu ensuite ne rattrape rien de ce qui a déjà échoué.
+        """
+        import types
+
+        try:
+            mod = self._qemu_import_module()
+        except Exception:  # pragma: no cover - dépend du module
+            return False
+        args = types.SimpleNamespace(
+            distro=vm.get("distro") or "", cache_ca=ca, cache_bypass=False
+        )
+        fichiers = mod.cache_files(args)
+        if not fichiers:
+            # Distribution hors table, ou autorité illisible : la VM
+            # télécharge en direct, ce qui marche tant qu'aucune règle ne la
+            # vise. Poser le fichier au mauvais endroit ne marcherait pas et
+            # ne dirait rien.
+            return False
+        morceaux = []
+        for chemin, mode, contenu, _proprio in fichiers:
+            q = shlex.quote(chemin)
+            morceaux.append(
+                f"printf '%s' {shlex.quote(contenu)} | sudo tee {q} "
+                f">/dev/null && sudo chmod {mode} {q}"
+            )
+        morceaux += [
+            f"sudo sh -c {shlex.quote(c)}" for c in mod.cache_commands(args)
+        ]
+        code, _o = self._pve_ssh(cible, " && ".join(morceaux), timeout=120)
+        if code:
+            print(
+                f"  ⚠ {t('download cache authority not installed')} ({code})"
+            )
+            return False
+        print(f"  ✓ {t('download cache authority installed')}")
+        return True
+
+    def _pve_attendre_ssh(self, cible, delai=300, pas=10):
+        """Attend que la VM réponde en ssh. Rend False si elle ne répond pas.
+
+        Une VM tout juste créée a une adresse bien avant d'avoir un sshd :
+        cloud-init pose les comptes et les clés, et cela prend des minutes
+        sur une machine émulée. Les étapes qui suivent passent toutes par
+        ssh, et les lancer trop tôt les fait échouer ENSEMBLE, chacune avec
+        son propre message — la panne ressemble alors à quatre pannes.
+
+        Bornée par le TEMPS : un essai coûte le délai de connexion de ssh,
+        que rien ici ne borne à l'avance.
+        """
+        fin = time.time() + delai
+        premier = True
+        while time.time() < fin:
+            code, _o = self._pve_ssh(cible, "true", timeout=20)
+            if code == 0:
+                return True
+            if premier:
+                print(f"  … {t('waiting for the VM to answer ssh')}")
+                premier = False
+            time.sleep(pas)
+        return False
+
+    def _pve_set_apt_mirror(self, cible, vm, mod=None):
+        """Fixe le miroir apt de la VM sur celui que le cache a rempli.
+
+        Le magasin range ses index sous l'HÔTE demandé : une VM qui réclame
+        « archive.ubuntu.com » ne retrouve rien de ce qu'une autre a gardé
+        depuis un miroir, et hors ligne chacun de ces index manque — la suite
+        échoue alors sur des dépendances introuvables, ce qui accuse le dépôt
+        et non le miroir. La voie libvirt écrit le miroir dans le
+        cloud-config ; « qm set » ne sait écrire aucun fichier, d'où ce
+        passage par ssh.
+
+        Ubuntu seulement : Debian, Fedora et Arch ont leurs propres dépôts, et
+        y réécrire une URI ubuntu ne viserait rien. Les deux formats sont
+        couverts — le « .sources » deb822 des images récentes et le
+        « sources.list » des anciennes — et « security » suit le même miroir,
+        que les miroirs répliquent sous le même chemin.
+        """
+        if (vm.get("distro") or "") != "ubuntu":
+            return False
+        ports = vm.get("arch") in (getattr(mod, "PORTS_ARCHES", ()) or ())
+        miroirs = (
+            getattr(mod, "APT_MIRRORS_PORTS", ())
+            if ports
+            else getattr(mod, "APT_MIRRORS_MAIN", ())
+        ) or ()
+        if not miroirs:
+            return False
+        miroir = miroirs[0]
+        # Les arches « ports » ne sont pas sur archive.ubuntu.com, et amd64
+        # n'est pas sur ports.ubuntu.com : le motif suit l'architecture.
+        motif = (
+            r"https?://ports\.ubuntu\.com/ubuntu-ports"
+            if ports
+            else r"https?://(archive|security)\.ubuntu\.com/ubuntu"
+        )
+        # « # » comme séparateur de sed : une URL en est dépourvue, alors
+        # qu'elle porte des « / » en quantité.
+        geste = (
+            f"sudo sed -i -E 's#{motif}#{miroir}#g'"
+            " /etc/apt/sources.list /etc/apt/sources.list.d/*.sources"
+            " /etc/apt/sources.list.d/*.list 2>/dev/null; true"
+        )
+        code, _o = self._pve_ssh(cible, geste, timeout=60)
+        if code:
+            print(f"  ⚠ {t('apt mirror not pinned')} ({code})")
+            return False
+        print(f"  ✓ {t('apt mirror pinned')} : {miroir}")
+        return True
+
+    def _pve_set_gpu_groups(self, cible, utilisateur, mod=None):
+        """Met le compte de la VM dans les groupes du GPU, par ssh.
+
+        Le nœud de rendu appartient à « root:render » en 0660 : un compte qui
+        n'y est pas retombe en rendu logiciel alors même que la négociation
+        VIRGL entre l'hôte et l'invité a réussi, et rien ne le signale — le
+        matériel virtuel est bien accéléré, seul l'accès manque.
+
+        La voie libvirt pose ces groupes par le cloud-config ; « qm set » ne
+        sait écrire aucun fichier, d'où ce passage par ssh. Les groupes sont
+        CRÉÉS au besoin : « render » manque des images les plus anciennes, et
+        « usermod -aG » sur un groupe inconnu échoue.
+
+        Les appartenances ne valent qu'à la PROCHAINE session : celle qui
+        tourne garde les siennes, ce que l'installation qui suit ne subit pas,
+        chacune de ses commandes ouvrant sa propre session.
+        """
+        groupes = list(getattr(mod, "GPU_GROUPS", ()) or ("render", "video"))
+        gestes = [f"sudo groupadd -f {g}" for g in groupes]
+        gestes.append(
+            f"sudo usermod -aG {','.join(groupes)}"
+            f" {shlex.quote(utilisateur)}"
+        )
+        code, _o = self._pve_ssh(cible, " && ".join(gestes), timeout=60)
+        if code:
+            print(f"  ⚠ {t('GPU groups not set')} ({code})")
+            return False
+        print(f"  ✓ {t('GPU groups set')} : {', '.join(groupes)}")
         return True
 
     def _pve_write_guide(self, cible, vm, spec, mod):
@@ -1708,8 +2012,14 @@ class ProxmoxMenuMixin:
             input(f"\n{t('Deploy this VM now? (Y/n): ')}")
         )
 
-    def _pve_after_create(self, host, spec, reussies, cle_locale):
+    def _pve_after_create(
+        self, host, spec, reussies, cle_locale, coupee=False, debut=None
+    ):
         """Ce qui suit la création : l'adresse, ~/.ssh/config, l'installation.
+
+        `coupee` et `debut` suivent jusqu'à l'installateur : le premier lui
+        fait confier la levée de la coupure au guet, le second date le
+        déploiement dans le manifeste, où le bilan hors ligne le lit.
 
         L'alias et non l'IP dans les étapes suivantes : ssh y lit le rebond
         par l'hôte Proxmox, et le suivi d'installation en a besoin pour
@@ -1736,6 +2046,7 @@ class ProxmoxMenuMixin:
         # qu'on a RÉELLEMENT écrit, pas par le nom.
         alias = {}
         joignables = []
+        ca_cache = self._pve_cache_ca(host)
         for vm in spec["vms"]:
             if vm["name"] not in reussies:
                 continue
@@ -1752,8 +2063,8 @@ class ProxmoxMenuMixin:
             # Un nom qui existe DÉJÀ comme domaine local est un piège : l'alias
             # ~/.ssh/config serait volé à la VM locale, et le suivi
             # d'installation — qui ré-résout par virsh — irait installer
-            # ERPLibre sur ELLE. Vécu : « erplibre-ubuntu-2604 » déployée sur
-            # Proxmox, installation partie sur la VM locale du même nom.
+            # ERPLibre sur ELLE : une VM Proxmox homonyme d'un domaine
+            # local lui prend son alias, et l'installation part sur elle.
             noms_alias, vole = self._pve_alias_names(
                 vm["name"],
                 alias_chaine(vm["name"]),
@@ -1789,12 +2100,38 @@ class ProxmoxMenuMixin:
                 print(f"  ✓ ~/.ssh/config : ssh {noms_alias[0]}")
             vm["adresse"] = ip
             vm["alias"] = alias.get(vm["name"], vm["name"])
+            # Une adresse n'est pas une machine prête : cloud-init tourne
+            # encore, et sshd n'écoute pas toujours. Les quatre étapes qui
+            # suivent passent TOUTES par ssh — sans cette attente, elles
+            # échouaient ensemble sur une VM qui n'avait pas fini de naître,
+            # et la machine partait sans guide, en UTC, sans autorité et sur
+            # le miroir de son image.
+            if vm["alias"] and not self._pve_attendre_ssh(vm["alias"]):
+                print(f"  ⚠ {t('No ssh answer: guest left as created.')}")
+                vm["alias"] = ""
             # Le guide AVANT l'installation : il doit être là même si rien ne
             # s'installe, et l'installation ne le touche pas.
             if vm["alias"] and mod_qemu:
                 self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
             if vm["alias"]:
                 self._pve_set_timezone(vm["alias"], spec)
+                # Après le fuseau et avant l'installation : c'est
+                # l'installation qui télécharge.
+                if ca_cache:
+                    # Le miroir AVANT l'autorité et l'installation : le cache
+                    # range ses index sous l'hôte demandé, et une VM qui en
+                    # réclame un autre ne retrouve rien de ce qui est gardé.
+                    self._pve_set_apt_mirror(vm["alias"], vm, mod_qemu)
+                    self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
+                # Après la création, qui a posé l'écran accéléré : l'accès au
+                # nœud de rendu est une affaire de COMPTE, et il se donne
+                # dans l'invité.
+                if spec.get("gpu3d"):
+                    self._pve_set_gpu_groups(
+                        vm["alias"],
+                        spec.get("user") or "erplibre",
+                        mod_qemu,
+                    )
             joignables.append(vm)
         install = spec.get("install")
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été
@@ -1870,6 +2207,11 @@ class ProxmoxMenuMixin:
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
                 pve=cartes_pve,
+                guet_hors_ligne=coupee,
+                deploy_started=debut,
+                # La coupure TENUE, et non la case de la spec : c'est elle
+                # qui fait qu'une réussite prouve le hors ligne.
+                hors_ligne=bool(coupee),
                 # Ce que sont ces VM, pris de la SPEC. Le suivi le demandait
                 # à virsh, qui ne connaît que les domaines d'ici.
                 meta={

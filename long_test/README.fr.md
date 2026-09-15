@@ -166,6 +166,48 @@ Chaque étage doit donc prouver, et non supposer :
 module non chargé, pas un problème de permission. Un étage qui échoue à cela
 arrête la descente au lieu de la prolonger dans le vide.
 
+## qemu_cache.py — le cache de téléchargement sert-il vraiment la seconde VM ?
+
+Deux machines sœurs, la même distribution, les mêmes paquets. La première
+remplit le cache, la seconde doit être servie par lui.
+
+**« Zéro octet d'amont » est la manchette, pas le critère.** Arch est une
+publication continue : entre les deux déploiements, un miroir peut publier une
+version neuve, que la seconde VM tire légitimement — le cache ne sert jamais
+un index tant que l'amont répond, donc elle la voit. Un critère fondé sur le
+seul volume déclarerait le cache en panne alors qu'il fonctionne.
+
+Le critère est donc : **aucune URL demandée par les DEUX VM n'est retirée de
+l'amont une seconde fois.** Ce que la seconde découvre seule est compté,
+montré, et n'échoue pas.
+
+« --hors-ligne » ajoute la contre-épreuve, qui fait la valeur de ces heures :
+elle coupe l'amont du SEUL service du cache — par son compte système, non par
+une règle générale qui emporterait la session ssh depuis laquelle le test se
+lance — et déploie une troisième VM, qui doit se bâtir sur l'index stocké.
+
+```
+./long_test/qemu_cache.py                 # deux VM
+./long_test/qemu_cache.py --dry-run       # le plan, rien de créé
+./long_test/qemu_cache.py --hors-ligne    # + la troisième VM, amont coupé
+./long_test/qemu_cache.py --detruire      # défaire
+```
+
+Il exige le cache installé et actif — « TODO › Déploiement › Cache QEMU » — et
+refuse de rien créer avant d'avoir dit lequel des préalables manque. Parmi
+eux : les règles doivent viser le sous-réseau que libvirt sert vraiment, qui
+n'est pas toujours 192.168.122.0/24.
+
+Ce qui gouverne la durée est le téléchargement de la PREMIÈRE VM, le reste
+n'étant que démarrage et installation : quelques minutes sur une machine à
+KVM imbriqué et miroir proche, bien davantage sur une liaison lente. La
+seconde VM ne télécharge rien — c'est précisément ce qu'on mesure.
+
+Une limite que la contre-épreuve met au jour : amont coupé, les SIGNATURES
+des bases de dépôt manquent au cache, le miroir y répondant 404, et le cache
+rend donc son 504 nommé. pacman les traite comme optionnelles et poursuit.
+Une distribution qui les exigerait s'arrêterait là.
+
 ## Partir d'un hôte qu'on possède déjà
 
 Les deux scripts acceptent `--hote`. Créer une VM de tête pour héberger un

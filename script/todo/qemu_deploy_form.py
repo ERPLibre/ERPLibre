@@ -31,6 +31,9 @@ except Exception:  # pragma: no cover - repli si i18n indisponible
         return key
 
 
+# Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
+# tel quel : les appelants historiques importent encore ces noms ICI.
+from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_lib import (  # noqa: F401
     CLIP_LIMIT,
     CSS_BASE,
@@ -54,6 +57,7 @@ from script.todo.deploy_form_lib import (  # noqa: F401
     expand_copies,
     fmt_dur,
     gib,
+    motifs_hors_ligne,
     parse_disk,
     parse_ram,
     plan_rows,
@@ -67,10 +71,6 @@ from script.todo.deploy_form_lib import (  # noqa: F401
     vm_name,
     vm_status,
 )
-
-# Le socle commun aux deux formulaires (QEMU/KVM et Proxmox VE). Réexporté
-# tel quel : les appelants historiques importent encore ces noms ICI.
-from script.todo.deploy_form_extras import SERVER, ExtrasMixin
 from script.todo.deploy_form_plan import (  # noqa: F401
     PlanMixin,
     preview_screen,
@@ -133,6 +133,11 @@ def run_deploy_form(ctx, run_app: bool = True):
     # saveurs — on ne le redéfinit pas ici.
     desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
     defaults = ctx.get("defaults") or {}
+    # Le cache est-il en marche sur cet hôte ? Lu du CONTEXTE, comme les
+    # autres mesures de la machine, et non de « defaults » : celui-là ne porte
+    # que ce qu'on veut PRÉ-COCHER, et il est vide au premier affichage — la
+    # case ne paraissait donc jamais, quel que soit l'état du cache.
+    cache_offert = bool(ctx.get("cache_offert"))
     result = {"spec": None}
 
     AUTO = "__auto__"
@@ -318,6 +323,12 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_profile_install",
                     )
                     yield from self.compose_install_extras()
+                    # Aucune case pour le cache : l'interception est
+                    # transparente et vaut pour tout le pont, donc une VM ne
+                    # peut pas s'y soustraire. Décocher aurait produit une VM
+                    # détournée SANS l'autorité, cassée sur chaque
+                    # téléchargement HTTPS. Le seul contournement est
+                    # d'arrêter le service, ce que le guide dit.
                     yield from self.compose_timezone()
                     yield Static("SSH", classes="grouptitle")
                     yield Input(
@@ -355,6 +366,15 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("gpu3d", False),
                         id="f_gpu3d",
                     )
+                    # Offerte seulement là où elle a un effet : sans cache
+                    # actif, rien n'intercepte, et une case qui ne change
+                    # rien apprend au lecteur une chose fausse.
+                    if cache_offert:
+                        yield Checkbox(
+                            t("Keep this VM out of the download cache"),
+                            value=defaults.get("cache_bypass", False),
+                            id="f_cache_bypass",
+                        )
                     # Révélés par la case « AI coding tools » du bloc des
                     # outils : sans elle, ni l'agent ni l'identité git n'ont
                     # d'objet, et trois widgets de plus encombrent un écran
@@ -402,6 +422,68 @@ def run_deploy_form(ctx, run_app: bool = True):
                         disabled=True,
                         id="f_par",
                     )
+                    # Offerte seulement là où le cache tourne : sans lui il
+                    # n'y a pas d'amont à couper, et la case ne ferait rien.
+                    # Elle coupe l'internet du cache, la sortie directe des VM
+                    # et la résolution des noms par l'internet, le temps du
+                    # déploiement ; les VM gardent l'hôte : le cache, et des
+                    # noms que l'hôte leur répond seul.
+                    if cache_offert:
+                        yield Static(
+                            t("Network"),
+                            id="t_network",
+                            classes="grouptitle",
+                        )
+                        yield Checkbox(
+                            t("No internet connection"),
+                            value=defaults.get("offline", False),
+                            id="f_offline",
+                        )
+                        yield Static(
+                            f"  {t('Cuts internet for the cache and the VMs: proves')}"
+                        )
+                        yield Static(
+                            f"  {t('the install builds from what the cache holds.')}"
+                        )
+                        # Découvert par la case, comme le bloc IA : ce qui
+                        # suit ne concerne que celui qui vient de la cocher.
+                        yield Static(
+                            f"  ⚠ {t('The cut hits every user of the cache:')}",
+                            id="t_offline_w1",
+                        )
+                        yield Static(
+                            f"    {t('a deployment run from another terminal')}",
+                            id="t_offline_w2",
+                        )
+                        yield Static(
+                            f"    {t('goes offline too, without asking for it.')}",
+                            id="t_offline_w3",
+                        )
+                        # La fin de la coupure suit celle des installations,
+                        # pas celle du tableau de bord : c'est ce qu'on ne
+                        # devine pas, le tableau de bord étant détachable.
+                        yield Static(
+                            f"  {t('Nothing is cut before F5: the upstream falls')}",
+                            id="t_offline_w4",
+                        )
+                        yield Static(
+                            f"    {t('at launch and comes back when the last install')}",
+                            id="t_offline_w5",
+                        )
+                        yield Static(
+                            f"    {t('ends (12 h at most), even with the monitor closed.')}",
+                            id="t_offline_w6",
+                        )
+                        # Dit pourquoi le suivi est grisé : seul le chemin
+                        # suivi confie ce retour à une unité systemd. Sans
+                        # lui, l'amont revient dès que les VM ont une adresse
+                        # quand rien ne s'installe, ou reste coupé pour de
+                        # bon si le terminal se ferme pendant une
+                        # installation synchrone.
+                        yield Static(
+                            f"  {t('The monitor stays ticked: it is what arms that return.')}",
+                            id="t_offline_w7",
+                        )
                 with Vertical(id="right"):
                     # Une liste de widgets, pas un tableau : chaque VM porte
                     # SES listes déroulantes, modifiables sur place. Un
@@ -412,6 +494,37 @@ def run_deploy_form(ctx, run_app: bool = True):
 
         # Les widgets que la case « AI coding tools » découvre.
         _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
+
+        # L'avertissement que la case « Sans connexion internet » découvre.
+        _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 8))
+
+        def _sync_offline(self) -> None:
+            """Montre l'avertissement quand la coupure est demandée, et y
+            force le suivi.
+
+            Il dit ce qu'on ne devine pas : la coupure vaut pour TOUS les
+            usagers du cache ; elle ne tombe qu'au lancement — cocher la case
+            ne coupe rien, l'écran reste utilisable — et ne se lève qu'à la
+            fin de la dernière installation, tableau de bord fermé ou non.
+
+            Cette dernière promesse n'est tenue que par le déploiement suivi,
+            le seul qui confie la levée à une unité systemd. Le suivi est donc
+            coché et grisé tant que la case l'est ; la décocher le rend
+            modifiable, avec la valeur qu'il avait avant.
+            """
+            case = self.query("#f_offline")
+            vu = bool(case) and bool(case.first(Checkbox).value)
+            for sel in self._OFFLINE_WIDGETS:
+                for widget in self.query(sel):
+                    widget.display = vu
+            suivi = self.query_one("#f_monitor", Checkbox)
+            if vu and not suivi.disabled:
+                self._suivi_avant = suivi.value
+                suivi.value = True
+                suivi.disabled = True
+            elif not vu and suivi.disabled:
+                suivi.disabled = False
+                suivi.value = getattr(self, "_suivi_avant", True)
 
         def _sync_ai(self) -> None:
             """Montre ou cache le bloc IA selon la case des outils.
@@ -429,6 +542,7 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._reload_catalog(first_load=True)
             self._sync_install_deps()
             self._sync_ai()
+            self._sync_offline()
 
         # -- catalogue et recalcul ------------------------------------- #
         def _entries(self):
@@ -932,6 +1046,8 @@ def run_deploy_form(ctx, run_app: bool = True):
             elif event.checkbox.id == "f_tool_aidev":
                 self._sync_ai()
                 self._recompute()
+            elif event.checkbox.id == "f_offline":
+                self._sync_offline()
             elif str(event.checkbox.id or "").startswith("f_tool_"):
                 # Un IDE de plus, c'est un disque plus grand : le plan doit le
                 # montrer AVANT de déployer, pas après une heure d'installation.
@@ -955,6 +1071,18 @@ def run_deploy_form(ctx, run_app: bool = True):
             self._mount_rows()
 
         def _form_values(self):
+            # La case n'existe que si le cache tourne : la chercher toujours
+            # ferait lever le formulaire là où il n'y a pas de cache,
+            # c'est-à-dire sur la plupart des hôtes.
+            offline = bool(
+                self.query("#f_offline")  # type: ignore[union-attr]
+                and self.query_one("#f_offline", Checkbox).value
+            )
+            # Hors ligne, le suivi est exigé : seul son chemin confie la levée
+            # à une unité systemd. L'écran force déjà la case ; la valeur
+            # l'est aussi ici, pour qu'aucun état du widget ne mène à une
+            # coupure sans levée bornée.
+            monitor = offline or self.query_one("#f_monitor", Checkbox).value
             install = None
             if self.query_one("#f_install", Checkbox).value and profiles:
                 index = self.query_one("#f_profile_install", Select).value
@@ -964,15 +1092,23 @@ def run_deploy_form(ctx, run_app: bool = True):
                     "prod": self.query_one("#f_prod", Checkbox).value,
                     "label": label,
                     "cmd": cmd,
-                    "monitor": self.query_one("#f_monitor", Checkbox).value,
+                    "monitor": monitor,
                 }
             key = self.query_one("#f_key", Input).value.strip()
             return {
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
-                "monitor": self.query_one("#f_monitor", Checkbox).value,
+                "monitor": monitor,
                 "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
+                # La case n'existe que si le cache tourne : la chercher
+                # toujours ferait lever le formulaire là où il n'y a pas de
+                # cache, c'est-à-dire sur la plupart des hôtes.
+                "cache_bypass": bool(
+                    self.query("#f_cache_bypass")  # type: ignore[union-attr]
+                    and self.query_one("#f_cache_bypass", Checkbox).value
+                ),
+                "offline": offline,
                 "ai_agent": self.query_one("#f_ai_agent", Select).value,
                 "git_name": self.query_one("#f_git_name", Input).value.strip(),
                 "git_email": self.query_one(
@@ -1073,6 +1209,23 @@ def run_deploy_form(ctx, run_app: bool = True):
                     severity="warning",
                 )
                 return
+            # Hors ligne : ce que le cache ne détient pas, aucune VM ne
+            # pourra le lire. Dit MAINTENANT, et non après une heure
+            # d'installation qui échoue sur « Impossible de trouver le
+            # paquet ». F5 à nouveau vaut passage outre — le journal peut
+            # avoir tourné, ou le cache avoir été rempli autrement.
+            if spec.get("offline") and not getattr(
+                self, "_offline_ack", False
+            ):
+                motifs = motifs_hors_ligne(spec["vms"])
+                if motifs:
+                    self._offline_ack = True
+                    self.notify(
+                        " — ".join(motifs + [t("press F5 again to confirm")]),
+                        severity="error",
+                        timeout=20,
+                    )
+                    return
             orphans = [r for r in self.rows if r["state"] == "orphan"]
             if orphans and not getattr(self, "_orphan_ack", False):
                 # Un qcow2 orphelin fait échouer deploy_qemu : on prévient une

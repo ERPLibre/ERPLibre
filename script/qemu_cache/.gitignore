@@ -1,0 +1,3 @@
+# Le binaire compilé : « go build » l'écrit ici, il pèse ~9 Mo et se refait
+# d'une commande. L'installation le pose dans /usr/local/bin.
+/erplibre_go_qemu_cache

@@ -34,6 +34,7 @@ from script.todo.deploy_form_lib import (
     disk_note,
     entry_key,
     gib,
+    motifs_hors_ligne,
     plan_rows,
     plan_totals,
     res_row_widgets,
@@ -111,6 +112,11 @@ def build_spec(vms, existants, form):
         "prod": bool((form.get("install") or {}).get("prod")),
         "monitor": form["monitor"],
         "parallelism": form["parallelism"],
+        # La coupure d'amont demandée pour TOUT le déploiement, installation
+        # comprise. Absente de la spec, le déploiement part en ligne.
+        "offline": bool(form.get("offline")),
+        # L'écran accéléré, posé à la création de chaque VM.
+        "gpu3d": bool(form.get("gpu3d")),
     }
 
 
@@ -150,6 +156,19 @@ def run_proxmox_form(ctx, run_app: bool = True):
     desktop_suffixes = dict(ctx.get("desktop_suffixes") or {})
     stockages = ctx.get("storages") or []
     ponts = ctx.get("bridges") or []
+    # La case « Sans connexion internet » ne s'offre que là où la coupure a
+    # un effet : l'hôte Proxmox est alors une VM de notre pont, et le menu
+    # l'a établi avant d'ouvrir cet écran.
+    cache_offert = bool(ctx.get("cache_offert"))
+    # La 3D ne s'offre que là où l'hôte distant peut la rendre : nœud de
+    # rendu et VIRGL. Le menu l'a sondé avant d'ouvrir cet écran.
+    gpu_offert = bool(ctx.get("gpu_offert"))
+    # Ce qui manque à l'hôte, nommé par la sonde : sans lui, la case
+    # disparaîtrait sans que rien ne dise pourquoi.
+    gpu_manque = str(ctx.get("gpu_manque") or "")
+    # Ce qui s'INSTALLE là-dedans : le nœud de rendu vient du matériel ou
+    # d'un GPU transmis, et « apt install noeud » enverrait dans le mur.
+    paquets_gpu = " ".join(p for p in gpu_manque.split() if p != "noeud")
     # {système: (libellé, commande)} — ce qu'un système impose d'installer.
     distro_profiles = ctx.get("distro_profiles") or {}
     # Les commandes qui ne posent PAS ERPLibre : sa marge disque ne les suit
@@ -311,6 +330,40 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         placeholder="100",
                         id="f_vmid",
                     )
+                    # L'écran de la VM se choisit à la CRÉATION : « qm » pose
+                    # « --vga virtio-gl » au lieu de la console série, et le
+                    # changer ensuite demande d'éteindre la machine. La
+                    # console série reste posée dans les deux cas.
+                    if gpu_offert:
+                        yield Checkbox(
+                            t(
+                                "3D acceleration (host GPU), even without a"
+                                " screen"
+                            ),
+                            value=False,
+                            id="f_gpu3d",
+                        )
+                    elif gpu_manque:
+                        # Une case qui disparaît sans un mot se lit comme une
+                        # régression : on dit ce qui manque, et le paquet à
+                        # poser sur l'HÔTE, pas dans la VM.
+                        yield Static(
+                            f"  {t('No 3D: the host lacks')} {gpu_manque}",
+                            id="t_gpu_manque",
+                        )
+                        if paquets_gpu:
+                            yield Static(
+                                f"    sudo apt install {paquets_gpu}",
+                                id="t_gpu_geste",
+                            )
+                            # Le bouton n'existe que si le menu a fourni de
+                            # quoi poser : un bouton sans effet vaut moins
+                            # qu'une commande à recopier.
+                            if ctx.get("installer_gpu"):
+                                yield Button(
+                                    t("Install on the host"),
+                                    id="f_gpu_poser",
+                                )
                     yield Static(t("Access"), classes="grouptitle")
                     yield Static(f"  {t('SSH public key')}")
                     yield Input(
@@ -390,6 +443,57 @@ def run_proxmox_form(ctx, run_app: bool = True):
                         disabled=True,
                         id="f_par",
                     )
+                    # La coupure est posée ICI, sur le pont local, et non sur
+                    # l'hôte Proxmox : ses invités sortent derrière son
+                    # adresse, donc couper ce pont les coupe aussi. Offerte
+                    # seulement là où cela vaut — le contexte le dit.
+                    if cache_offert:
+                        yield Static(
+                            t("Network"),
+                            id="t_network",
+                            classes="grouptitle",
+                        )
+                        yield Checkbox(
+                            t("No internet connection"),
+                            value=False,
+                            id="f_offline",
+                        )
+                        yield Static(
+                            f"  {t('Cuts internet for the cache and the VMs: proves')}"
+                        )
+                        yield Static(
+                            f"  {t('the install builds from what the cache holds.')}"
+                        )
+                        # Découvert par la case : ce qui suit ne concerne que
+                        # celui qui vient de la cocher.
+                        yield Static(
+                            f"  ⚠ {t('The cut hits every user of the cache:')}",
+                            id="t_offline_w1",
+                        )
+                        yield Static(
+                            f"    {t('a deployment run from another terminal')}",
+                            id="t_offline_w2",
+                        )
+                        yield Static(
+                            f"    {t('goes offline too, without asking for it.')}",
+                            id="t_offline_w3",
+                        )
+                        yield Static(
+                            f"  {t('Nothing is cut before F5: the upstream falls')}",
+                            id="t_offline_w4",
+                        )
+                        yield Static(
+                            f"    {t('at launch and comes back when the last install')}",
+                            id="t_offline_w5",
+                        )
+                        yield Static(
+                            f"    {t('ends (12 h at most), even with the monitor closed.')}",
+                            id="t_offline_w6",
+                        )
+                        yield Static(
+                            f"  {t('The monitor stays ticked: it is what arms that return.')}",
+                            id="t_offline_w7",
+                        )
                 with Vertical(id="right"):
                     yield VerticalScroll(id="plan")
                     yield Static("", id="totals")
@@ -450,9 +554,40 @@ def run_proxmox_form(ctx, run_app: bool = True):
             self.notify(f"✓ {nom}")
             self._refresh_after()
 
+        # L'avertissement que la case « Sans connexion internet » découvre.
+        _OFFLINE_WIDGETS = tuple(f"#t_offline_w{n}" for n in range(1, 8))
+
+        def _sync_offline(self) -> None:
+            """Montre l'avertissement quand la coupure est demandée, et y
+            force le suivi.
+
+            Il dit ce qu'on ne devine pas : la coupure vaut pour TOUS les
+            usagers du cache, elle ne tombe qu'au lancement, et elle ne se
+            lève qu'à la fin de la dernière installation.
+
+            Cette dernière promesse n'est tenue que par le déploiement suivi,
+            le seul qui confie la levée à une unité systemd. Le suivi est donc
+            coché et grisé tant que la case l'est ; la décocher le rend
+            modifiable, avec la valeur qu'il avait avant.
+            """
+            case = self.query("#f_offline")
+            vu = bool(case) and bool(case.first(Checkbox).value)
+            for sel in self._OFFLINE_WIDGETS:
+                for widget in self.query(sel):
+                    widget.display = vu
+            suivi = self.query_one("#f_monitor", Checkbox)
+            if vu and not suivi.disabled:
+                self._suivi_avant = suivi.value
+                suivi.value = True
+                suivi.disabled = True
+            elif not vu and suivi.disabled:
+                suivi.disabled = False
+                suivi.value = getattr(self, "_suivi_avant", True)
+
         def on_mount(self) -> None:
             self._reload_catalog()
             self._sync_install_deps()
+            self._sync_offline()
 
         # ---------------------------------------------------------------- #
         # Le plan
@@ -715,6 +850,8 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 self._refresh_after()
             elif event.checkbox.id == "f_par_all":
                 self.query_one("#f_par", Select).disabled = event.value
+            elif event.checkbox.id == "f_offline":
+                self._sync_offline()
             elif str(event.checkbox.id or "").startswith("f_tool_"):
                 # Un IDE de plus, c'est un disque plus grand : le plan doit
                 # le montrer AVANT de déployer, pas après une heure.
@@ -807,9 +944,50 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     self._set_override(index, champ, event.value)
                     self._refresh_after()
 
+        def _poser_gpu(self) -> None:
+            """Pose ce qui manque sur l'hôte, terminal rendu, puis RELIT.
+
+            « suspend() » rend le clavier à sudo, qui peut demander un mot de
+            passe, et laisse apt s'afficher : la moitié de la confiance tient
+            à voir le travail se faire.
+
+            L'hôte est SONDÉ de nouveau au retour. Croire apt sur parole
+            offrirait une case que Proxmox refuserait ensuite — et il ne la
+            refuse qu'après avoir écrit le disque de la VM.
+            """
+            poser = ctx.get("installer_gpu")
+            if not poser:
+                return
+            with self.suspend():
+                poser(paquets_gpu)
+            sonder = ctx.get("sonder_gpu")
+            possible, reste = sonder() if sonder else (False, gpu_manque)
+            if not possible:
+                self.notify(
+                    f"{t('Still missing on the host:')} {reste or gpu_manque}",
+                    severity="warning",
+                )
+                return
+            # Monter la case AVANT de retirer les lignes : le bloc n'est
+            # jamais vide, et l'œil suit ce qui remplace quoi.
+            self.query_one("#fields").mount(
+                Checkbox(
+                    t("3D acceleration (host GPU), even without a screen"),
+                    value=True,
+                    id="f_gpu3d",
+                ),
+                after=self.query_one("#t_gpu_manque"),
+            )
+            for sel in ("#t_gpu_manque", "#t_gpu_geste", "#f_gpu_poser"):
+                for widget in self.query(sel):
+                    widget.remove()
+            self.notify(t("3D is now available: the box is here."))
+
         def on_button_pressed(self, event) -> None:
             ident = event.button.id or ""
-            if ident == "go":
+            if ident == "f_gpu_poser":
+                self._poser_gpu()
+            elif ident == "go":
                 self.action_deploy()
             elif ident == "no":
                 self.action_cancel()
@@ -852,6 +1030,18 @@ def run_proxmox_form(ctx, run_app: bool = True):
 
         def _form_values(self):
             cle = self.query_one("#f_key", Input).value.strip()
+            # La case n'existe que là où le cache tourne : la chercher sans
+            # la trouver vaut « en ligne ».
+            offline = bool(
+                self.query("#f_offline")
+                and self.query_one("#f_offline", Checkbox).value
+            )
+            # Même règle que pour la coupure : la case n'existe que là où
+            # elle a un effet, et son absence vaut « non ».
+            gpu3d = bool(
+                self.query("#f_gpu3d")
+                and self.query_one("#f_gpu3d", Checkbox).value
+            )
             return {
                 "host": ctx["host"],
                 "storage": self._storage(),
@@ -865,7 +1055,13 @@ def run_proxmox_form(ctx, run_app: bool = True):
                 **self.extras_values(),
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT : une VM sans
                 # ERPLibre se suit aussi (cloud-init, puis relevé système).
-                "monitor": self.query_one("#f_monitor", Checkbox).value,
+                "offline": offline,
+                "gpu3d": gpu3d,
+                # Hors ligne, le suivi est d'office : seule sa voie confie la
+                # levée de la coupure au guet, qui la tient jusqu'à la fin de
+                # la dernière installation.
+                "monitor": offline
+                or self.query_one("#f_monitor", Checkbox).value,
                 # Une exécution par installation : le nombre de VM retenues
                 # fait foi. Le déploiement le borne ensuite à ce même nombre,
                 # donc une valeur haute ne crée aucun travailleur inutile.
@@ -881,6 +1077,23 @@ def run_proxmox_form(ctx, run_app: bool = True):
             if not spec["vms"]:
                 self.notify(t("Nothing to deploy."), severity="warning")
                 return
+            # Hors ligne : ce que le cache ne détient pas, aucune VM ne
+            # pourra le lire, et une VM Proxmox échoue aussi loin de son
+            # lancement qu'une VM libvirt — à la pose du bureau, une heure
+            # plus tard. F5 à nouveau vaut passage outre : le journal peut
+            # avoir tourné, ou le magasin avoir été rempli autrement.
+            if spec.get("offline") and not getattr(
+                self, "_offline_ack", False
+            ):
+                motifs = motifs_hors_ligne(spec["vms"])
+                if motifs:
+                    self._offline_ack = True
+                    self.notify(
+                        " — ".join(motifs + [t("press F5 again to confirm")]),
+                        severity="error",
+                        timeout=20,
+                    )
+                    return
             if not spec["storage"]:
                 self.notify(
                     t("No storage able to hold a VM disk."), severity="error"
