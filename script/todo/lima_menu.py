@@ -36,7 +36,7 @@ from script.todo.vm_backend_choice import UNPROVEN_NOTE
 from script.vm import backend as vm_backend
 from script.vm import lima, lima_install
 from script.vm import verbs as vm_verbs
-from script.vm.backend import LIMA, is_proven
+from script.vm.backend import LIMA, VmBackendError, is_proven
 
 # Où vivent les configurations d'instance. Sous le répertoire ERPLibre de
 # l'utilisateur, et pas dans le dépôt : une instance appartient à la
@@ -319,13 +319,21 @@ class LimaMenuMixin:
                 continue
             print(f"  ⚠ {t('Not held for this posture:')} {manque}")
         image = self._lima_image(arch)
+        # LE REFUS SE MONTRE, il ne remonte pas. Une posture qui nomme des
+        # rôles dont le site n'a donné aucune adresse est refusée — et ce
+        # refus est juste — mais le laisser traverser rendait une trace de
+        # pile et tuait le programme entier. Rien n'est créé à ce stade :
+        # on rend la main au menu, où le carnet est à deux entrées.
+        try:
+            regles = self._qemu_egress_rules(fragment)
+        except VmBackendError as refus:
+            print(f"  ✗ {refus}")
+            return
         texte = lima.render_config(
             image,
             arch=arch,
             macos=macos,
-            provision_script=posture_plan.provision_script(
-                self._qemu_egress_rules(fragment)
-            ),
+            provision_script=posture_plan.provision_script(regles),
         )
         chemin = config_path(nom)
 
