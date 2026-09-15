@@ -493,7 +493,13 @@ class LimaMenuMixin:
         vms = [{"name": nom, "ip": nom, "lima": True}]
         chemin = launch_installs(vms, branche, remote)
         print(f"  ✓ {t('Install started. Manifest:')} {chemin}")
-        print(f"  {t('Follow it from')} TODO › Execute › QEMU/KVM")
+        chemin_menu = self.menu_path(
+            "run",
+            "prompt_execute",
+            "prompt_execute_deploy",
+            "prompt_execute_qemu",
+        )
+        print(f"  {t('Follow it from')} {chemin_menu}")
 
     def _lima_ask_branch(self):
         """La branche à installer, "" si l'utilisateur renonce.

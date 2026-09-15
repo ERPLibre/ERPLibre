@@ -36,6 +36,7 @@ from script.todo.kdbx_manager import KdbxManager
 from script.vpn import profiles
 from script.vpn.drivers import DRIVERS, driver_names, get_driver
 from script.vpn.drivers.base import INSTALL_SCRIPT
+from script.vpn.menu_hint import chemin_vpn
 from script.vpn.runner import Runner
 from script.vpn.vault import (
     VaultError,
@@ -135,8 +136,8 @@ def cmd_list(args):
     all_profiles = profiles.load_all()
     if not all_profiles:
         print(
-            "Aucun profil VPN. En créer un depuis TODO › Execute ›"
-            " Déploiement › VPN › « Ajouter / modifier un profil »."
+            f"Aucun profil VPN. En créer un depuis {chemin_vpn()}"
+            " › « Ajouter / modifier un profil »."
         )
         return 0
     for raw in all_profiles:

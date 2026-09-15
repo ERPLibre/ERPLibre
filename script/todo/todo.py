@@ -27,8 +27,13 @@ sys.path.append(new_path)
 from script.config import config_file
 from script.execute import execute
 from script.remote import deploy_target, host_memory
-from script.todo import (deploy_target_menu, dev_tools, host_os, todo_install,
-                         todo_prefs)
+from script.todo import (
+    deploy_target_menu,
+    dev_tools,
+    host_os,
+    todo_install,
+    todo_prefs,
+)
 from script.todo.database_manager import DatabaseManager
 from script.todo.deploy_target_menu import DeployTargetMenuMixin
 from script.todo.devstack_menu import DevstackMenuMixin
@@ -69,6 +74,7 @@ try:
     import humanize
     import openai
     import todo_file_browser
+
     # import urwid
     # TODO implement rich for beautiful print and table
     # import rich
@@ -637,9 +643,34 @@ class TODO(
         "prompt_execute_deploy_ssh": "SSH",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
+        "prompt_execute_claude_plugins": "Claude plugins",
+        "prompt_execute_egress_book": "Address book",
+        "prompt_execute_forge": "Forge",
+        "prompt_execute_lima": "Lima",
+        "prompt_execute_longtest": "Long tests",
+        "prompt_execute_network": "Network",
+        "prompt_execute_security": "Security",
+        "prompt_execute_test": "Test",
+        "prompt_execute_vpn": "VPN",
         "prompt_execute_devstack": "Devstack",
         "prompt_configuration": "Configuration",
     }
+
+    @classmethod
+    def menu_path(cls, *fonctions) -> str:
+        """« TODO › Execute › Deploy › QEMU/KVM », depuis des noms de menus.
+
+        LE FIL D'ARIANE NE SERT PAS ICI. Il se dérive de la pile d'appels
+        et dit donc OÙ L'ON EST ; un message qui envoie ailleurs parle
+        d'un endroit où personne ne se trouve, et n'a pas de pile à lire.
+
+        Il compose alors depuis la MÊME table, et lève sur un menu qu'elle
+        ne connaît pas : un menu renommé casse ici, à l'épreuve, et non à
+        l'écran devant quelqu'un qui cherchera le chemin indiqué. Trois
+        messages l'écrivaient à la main — l'un oubliait un niveau, deux
+        traduisaient un libellé que le fil n'affiche pas traduit.
+        """
+        return " › ".join(cls._MENU_LABELS[nom] for nom in fonctions)
 
     def _menu_header(self):
         """En-tête de menu : fil d'Ariane (dérivé de la pile d'appels) suivi de

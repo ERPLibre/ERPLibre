@@ -71,6 +71,19 @@ class MenuDeBanc(LimaMenuMixin):
     def _is_yes(self, reponse):
         return (reponse or "").strip().lower() in ("o", "oui", "y", "yes")
 
+    # Le composeur de chemin de menu vit sur TODO, comme la table qu'il
+    # lit. Le banc tire la VRAIE méthode plutôt que d'en inventer une :
+    # un chemin bouchonné passerait sur un menu renommé, ce qui est
+    # exactement ce que ce composeur existe pour attraper.
+    @staticmethod
+    def menu_path(*fonctions):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.menu_path(*fonctions)
+
     # Les deux voisins que le vrai menu tient du mixin de déploiement : le
     # banc déclare ce qu'il fournit plutôt que de monter tout TODO.
     posture_demandee = "open"

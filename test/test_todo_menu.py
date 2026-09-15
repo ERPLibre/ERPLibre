@@ -1199,11 +1199,10 @@ class TestMenuLabels(unittest.TestCase):
     pas, pas pour bénir ce qu'elle contient.
     """
 
-    KNOWN_MISSING = {
-        "prompt_execute_test",
-        "prompt_execute_network",
-        "prompt_execute_security",
-    }
+    # VIDE, et c'est le but : la liste était « figée pour que le nombre ne
+    # grandisse pas, pas pour bénir ce qu'elle contient ». Les trois ont
+    # leur étiquette.
+    KNOWN_MISSING: set = set()
 
     def setUp(self):
         source = TODO_PY.read_text(encoding="utf-8")
@@ -1246,6 +1245,40 @@ class TestMenuLabels(unittest.TestCase):
             set(),
             f"menus sans étiquette dans _MENU_LABELS : {sorted(missing)}",
         )
+
+    def test_no_menu_anywhere_forgets_its_label(self):
+        """La garde ne voyait que les menus atteints depuis « Execute ».
+
+        Elle en connaissait trois sans étiquette ; il y en avait NEUF. Les
+        six autres se rejoignent depuis un autre menu — Deploy, Database —
+        et leur fil d'Ariane était muet sans que rien ne le dise.
+
+        Ce qui fait un menu, et non une action : il liste des choix et
+        boucle sur une saisie. `prompt_uninstall_theme` fait une chose et
+        rend la main ; il n'a rien à situer.
+        """
+        racine = TODO_PY.parent
+        manquants = []
+        for chemin in sorted(racine.rglob("*.py")):
+            arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+            lignes = chemin.read_text(encoding="utf-8").splitlines()
+            for noeud in ast.walk(arbre):
+                if not isinstance(noeud, ast.FunctionDef):
+                    continue
+                if not noeud.name.startswith("prompt_"):
+                    continue
+                corps = "\n".join(lignes[noeud.lineno - 1 : noeud.end_lineno])
+                if "fill_help_info" not in corps or "while True" not in corps:
+                    continue
+                if noeud.name not in self.labels:
+                    manquants.append(
+                        f"{chemin.name}:{noeud.lineno} {noeud.name}"
+                    )
+        self.assertEqual([], manquants)
+
+    def test_the_menu_scan_actually_finds_menus(self):
+        """Sur zéro menu trouvé, la garde passe et ne tient rien."""
+        self.assertGreater(len(self.labels), 25)
 
 
 if __name__ == "__main__":
