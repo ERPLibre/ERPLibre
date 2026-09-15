@@ -55,7 +55,7 @@ type BypassEntry struct {
 func NormalizeMAC(s string) (string, error) {
 	brut := strings.TrimSpace(s)
 	if brut == "" {
-		return "", fmt.Errorf("adresse MAC vide")
+		return "", fmt.Errorf("%s", T("adresse MAC vide"))
 	}
 	// Douze caractères hexadécimaux sans séparateur : la forme que rendent
 	// plusieurs outils, que net.ParseMAC ne lit pas.
@@ -68,14 +68,14 @@ func NormalizeMAC(s string) (string, error) {
 	}
 	adr, err := net.ParseMAC(brut)
 	if err != nil {
-		return "", fmt.Errorf("adresse MAC illisible %q", s)
+		return "", fmt.Errorf(T("adresse MAC illisible %q"), s)
 	}
 	if len(adr) != 6 {
-		return "", fmt.Errorf("adresse MAC de %d octets, six attendus", len(adr))
+		return "", fmt.Errorf(T("adresse MAC de %d octets, six attendus"), len(adr))
 	}
 	if adr[0]&1 == 1 {
 		return "", fmt.Errorf(
-			"%s est une adresse de groupe : jamais une adresse source", adr)
+			T("%s est une adresse de groupe : jamais une adresse source"), adr)
 	}
 	nulle := true
 	for _, o := range adr {
@@ -85,7 +85,7 @@ func NormalizeMAC(s string) (string, error) {
 		}
 	}
 	if nulle {
-		return "", fmt.Errorf("l'adresse nulle n'identifie aucune machine")
+		return "", fmt.Errorf("%s", T("l'adresse nulle n'identifie aucune machine"))
 	}
 	return strings.ToLower(adr.String()), nil
 }

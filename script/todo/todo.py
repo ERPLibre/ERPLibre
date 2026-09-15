@@ -1828,6 +1828,7 @@ class TODO(
             f"sudo EL_HTTP_PORT={http_port}"
             f" EL_TLS_PORT={tls_port}"
             f" EL_CACHE_DIR={cache_dir}"
+            f" EL_LANG={get_lang()}"
             f" bash {script_path}"
         )
         print(f"\n{t('Will execute:')} {cmd}\n")

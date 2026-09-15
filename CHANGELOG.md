@@ -60,6 +60,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Mirror prefetch runs under the cache's service account, never as root
 - The long-test menu asks before creating real machines, and asks again, in words of its own, before `--detruire` removes machines with their disks. The command is shown first, which is what makes the question answerable; a dry run or a performance report creates nothing and asks nothing
 - Every entry of the Proxmox VE menu carries an icon, the same picture meaning the same action as in the other menus of the tool
+- The QEMU cache binary speaks English or French: service journal, `--status`, `--age`, option help and the error served to a VM. The language comes from `--lang`, then `EL_LANG`, then French; the installer writes `EL_LANG` to the service settings and the TODO menu passes its own. Rules, verdict codes and JSON keys are never translated
 
 ## Fixed
 

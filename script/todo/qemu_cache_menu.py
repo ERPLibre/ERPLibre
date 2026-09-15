@@ -34,11 +34,36 @@ from urllib.parse import urljoin, urlsplit
 import click
 
 from script.qemu import cache_offline
-from script.todo.todo_i18n import t
+from script.todo.todo_i18n import get_lang, t
 
 # Ce que l'installateur pose. Ces chemins sont comparés à ceux du script par
 # un test : le menu qui chercherait ailleurs annoncerait un cache absent.
 CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
+
+# Ce que le menu LIT dans les sorties du binaire, dans ses deux langues. Le
+# binaire traduit ses messages humains (catalogue_en.go) : une lecture qui ne
+# connaîtrait que le français deviendrait aveugle sur un service réglé en
+# anglais. test_qemu_cache_langue.py vérifie que le catalogue les porte.
+REFUS_APPRIS = ("tunnel opaque retenu pour", "opaque tunnel kept for")
+LIBELLES_TUS = (
+    "autorité",
+    "empreinte",
+    "exceptions",
+    "authority",
+    "fingerprint",
+)
+
+
+def option_langue(lue=False):
+    """L'option --lang à donner au binaire.
+
+    Une sortie AFFICHÉE suit la langue de todo.py. Une sortie LUE par ce
+    fichier est demandée en français, la langue dont il connaît les
+    libellés. L'option et non EL_LANG : sudo retire l'environnement.
+    """
+    return f"--lang {'fr' if lue else get_lang()}"
+
+
 CACHE_CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
 CACHE_SERVICE = "erplibre-go-qemu-cache.service"
 CACHE_CONF = "/etc/erplibre_go_qemu_cache/env"
@@ -437,14 +462,14 @@ class QemuCacheMenuMixin:
         # ne mesure que les objets, et les dépôts git — qui pèsent bien plus —
         # disparaissent du seul endroit où l'on surveille la place.
         releve = self._cache_lire(
-            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}",
+            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" {option_langue()}",
             delai=60,
         )
         for ligne in [
             l
             for l in releve.split("\n")
-            if l.strip()
-            and not l.startswith(("autorité", "empreinte", "exceptions"))
+            if l.strip() and not l.startswith(LIBELLES_TUS)
         ][:5]:
             if ligne.strip():
                 print(f"  · {ligne.strip()}")
@@ -1338,7 +1363,7 @@ class QemuCacheMenuMixin:
         surveille la place, et quelques dépôts font l'essentiel du total."""
         cmd = (
             f"{CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" --git-mirror-list"
+            f" --git-mirror-list {option_langue()}"
         )
         print(f"{t('Will execute:')} {cmd}\n")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -1352,7 +1377,7 @@ class QemuCacheMenuMixin:
             return
         cmd = (
             f"sudo {CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" --git-mirror-remove {shlex.quote(nom)}"
+            f" --git-mirror-remove {shlex.quote(nom)} {option_langue()}"
         )
         print(f"\n{t('Will execute:')} {cmd}")
         print(f"  {t('It will be mirrored again when a VM needs it.')}")
@@ -1364,7 +1389,8 @@ class QemuCacheMenuMixin:
     def _cache_miroir_occupation(cls):
         """(nombre de dépôts, taille lisible) du miroir, lus du binaire."""
         for ligne in cls._cache_lire(
-            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}",
+            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" {option_langue(lue=True)}",
             delai=120,
         ).split("\n"):
             if ligne.startswith("dépôts git"):
@@ -1439,7 +1465,7 @@ class QemuCacheMenuMixin:
         cmd = (
             f"{'sudo ' if sudo else ''}{CACHE_BIN}"
             f" --cache-dir {CACHE_DIR} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" {options}"
+            f" {options} {option_langue()}"
         )
         print(f"{t('Will execute:')} {cmd}\n")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -1816,11 +1842,19 @@ class QemuCacheMenuMixin:
         """
         lire = (
             f"journalctl -u {CACHE_SERVICE} -o cat --no-pager"
-            " | grep -F 'tunnel opaque retenu pour'"
+            " | grep -F"
+            + "".join(f" -e {shlex.quote(r)}" for r in REFUS_APPRIS)
         )
         vu = cls._cache_lire(lire) + cls._cache_lire(f"sudo -n {lire}")
         return sorted(
-            set(re.findall(r"tunnel opaque retenu pour (\S+) \(", vu))
+            set(
+                re.findall(
+                    "(?:"
+                    + "|".join(map(re.escape, REFUS_APPRIS))
+                    + r") (\S+) \(",
+                    vu,
+                )
+            )
         )
 
     def _cache_exclus(self):
@@ -2199,6 +2233,7 @@ def miroir_prefetch_cmd(fichier, environnement):
         CACHE_BIN,
         "--git-mirror-dir",
         CACHE_MIROIR_GIT,
+        option_langue(),
         "--git-mirror-prefetch",
         "/dev/stdin",
         "<",
@@ -2217,7 +2252,7 @@ def bypass_retrait_cmd(mac):
     """
     return (
         f"sudo {CACHE_BIN} --bypass-del {shlex.quote(mac)}"
-        f" --bypass-file {CACHE_BYPASS} | sudo nft -f -"
+        f" --bypass-file {CACHE_BYPASS} {option_langue()} | sudo nft -f -"
     )
 
 

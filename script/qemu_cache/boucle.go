@@ -109,9 +109,9 @@ func (p *Proxy) boucle(
 	w http.ResponseWriter, u *url.URL, class Class, method, client string,
 ) {
 	msg := enCommentaire(fmt.Sprintf(
-		"erplibre_go_qemu_cache : requête adressée au cache lui-même, refusée.\n"+
+		T("erplibre_go_qemu_cache : requête adressée au cache lui-même, refusée.\n"+
 			"  demandé : %s\n"+
-			"La relayer la renverrait vers cette même écoute, sans fin.\n",
+			"La relayer la renverrait vers cette même écoute, sans fin.\n"),
 		u))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-ERPLibre-Cache", OutcomeError)
@@ -123,7 +123,7 @@ func (p *Proxy) boucle(
 		Outcome: OutcomeError, Status: http.StatusLoopDetected,
 		Client: client,
 	})
-	log.Printf("boucle refusée : %s vise le cache lui-même", u)
+	log.Printf(T("boucle refusée : %s vise le cache lui-même"), u)
 }
 
 // memeAdresse compare deux « hôte:port » par leur VALEUR : « ::ffff:a.b.c.d »

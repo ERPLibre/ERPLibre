@@ -201,7 +201,7 @@ func absoluteURL(r *http.Request, scheme string) (*url.URL, error) {
 	}
 	host := r.Host
 	if host == "" {
-		return nil, fmt.Errorf("requête sans hôte : ni ligne absolue ni en-tête Host")
+		return nil, fmt.Errorf("%s", T("requête sans hôte : ni ligne absolue ni en-tête Host"))
 	}
 	u := *r.URL
 	u.Scheme = scheme
@@ -405,7 +405,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			m.Header.Del("Set-Cookie")
 		}
 		if cw, err = p.Store.NewWriter(cle, m); err != nil {
-			log.Printf("cache : écriture impossible pour %s : %v", u, err)
+			log.Printf(T("cache : écriture impossible pour %s : %v"), u, err)
 			cw = nil
 		}
 	}
@@ -444,7 +444,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			attendu = 0
 		}
 		if cerr := cw.Commit(attendu); cerr != nil {
-			log.Printf("cache : %s non gardé : %v", u, cerr)
+			log.Printf(T("cache : %s non gardé : %v"), u, cerr)
 			outcome = OutcomeFetched
 		} else if statutSeul {
 			outcome = OutcomeStoredStatus
@@ -582,13 +582,13 @@ func (p *Proxy) offlineMiss(
 	cause error,
 ) {
 	msg := enCommentaire(fmt.Sprintf(
-		"erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
+		T("erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
 			"  demandé : %s\n"+
 			"  classe  : %s\n"+
 			"  cause   : %v\n"+
 			"%s"+
 			"Ce fichier n'a jamais traversé ce cache. Rétablir le réseau, ou\n"+
-			"déployer une VM identique à celle qui a rempli le cache.\n",
+			"déployer une VM identique à celle qui a rempli le cache.\n"),
 		u, class, cause, decrireMuet(cause)))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-ERPLibre-Cache", OutcomeOfflineMiss)
@@ -600,7 +600,7 @@ func (p *Proxy) offlineMiss(
 		Outcome: OutcomeOfflineMiss, Status: http.StatusGatewayTimeout,
 		Client: client,
 	})
-	log.Printf("hors ligne, absent du cache : %s", u)
+	log.Printf(T("hors ligne, absent du cache : %s"), u)
 }
 
 // maxRedirections borne la chaîne : une boucle de redirections tournerait

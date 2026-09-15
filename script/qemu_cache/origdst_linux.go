@@ -34,7 +34,7 @@ func originalDst(c net.Conn) (string, error) {
 	}
 	tcp, ok := c.(*net.TCPConn)
 	if !ok {
-		return "", errors.New("la connexion n'est pas une socket TCP")
+		return "", errors.New(T("la connexion n'est pas une socket TCP"))
 	}
 	raw, err := tcp.SyscallConn()
 	if err != nil {
@@ -66,7 +66,7 @@ func originalDst(c net.Conn) (string, error) {
 		return "", inner
 	}
 	if addr == "" || addr == "0.0.0.0:0" {
-		return "", errors.New("aucune destination d'origine : la connexion n'est pas redirigée")
+		return "", errors.New(T("aucune destination d'origine : la connexion n'est pas redirigée"))
 	}
 	return addr, nil
 }

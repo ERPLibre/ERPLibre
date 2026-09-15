@@ -58,12 +58,12 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 	if certPEM, err := os.ReadFile(certPath); err == nil {
 		keyPEM, err := os.ReadFile(keyPath)
 		if err != nil {
-			return nil, fmt.Errorf("clé de l'autorité illisible : %w", err)
+			return nil, fmt.Errorf(T("clé de l'autorité illisible : %w"), err)
 		}
 		cb, _ := pem.Decode(certPEM)
 		kb, _ := pem.Decode(keyPEM)
 		if cb == nil || kb == nil {
-			return nil, errors.New("autorité illisible : PEM invalide")
+			return nil, errors.New(T("autorité illisible : PEM invalide"))
 		}
 		cert, err := x509.ParseCertificate(cb.Bytes)
 		if err != nil {
@@ -348,7 +348,7 @@ func (r *Refusals) Echec(host string, raison error) bool {
 		return false
 	}
 	if _, deja := r.apprises[host]; !deja {
-		log.Printf("tunnel opaque retenu pour %s (%d échec(s)) : %v",
+		log.Printf(T("tunnel opaque retenu pour %s (%d échec(s)) : %v"),
 			host, r.echecs[host], raison)
 	}
 	// La NATURE est retenue avec l'instant : elle décide si ce refus se
@@ -476,7 +476,7 @@ func (t *TLSFront) handle(c net.Conn) {
 		// Les traiter pareil condamnait un miroir de distribution au tunnel
 		// sur une seule coupure, et tout son trafic repartait à l'amont.
 		if !t.Refusals.Echec(host, err) {
-			log.Printf("poignée de main interrompue pour %s : %v", host, err)
+			log.Printf(T("poignée de main interrompue pour %s : %v"), host, err)
 		}
 		return
 	}
@@ -560,7 +560,7 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 	}
 	dst, err := origine(c)
 	if err != nil {
-		log.Printf("tunnel impossible pour %q : destination inconnue (%v)", host, err)
+		log.Printf(T("tunnel impossible pour %q : destination inconnue (%v)"), host, err)
 		return false
 	}
 	// Une connexion NON détournée — ouverte directement sur l'écoute — a pour
@@ -568,8 +568,8 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 	// où elle serait relayée de nouveau, sans fin : chaque tour ouvre une
 	// connexion, jusqu'à épuiser les descripteurs et arrêter le service.
 	if memeAdresse(dst, c.LocalAddr().String()) {
-		log.Printf("tunnel refusé pour %q : connexion non détournée, sa"+
-			" destination %s est cette écoute même", host, dst)
+		log.Printf(T("tunnel refusé pour %q : connexion non détournée, sa"+
+			" destination %s est cette écoute même"), host, dst)
 		t.Proxy.record(accessLine{
 			Method: "CONNECT", URL: "tcp://" + dst, Class: "tunnel",
 			Outcome: OutcomeError, Status: http.StatusLoopDetected,
@@ -581,10 +581,10 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 	if err != nil {
 		injoignable := estEchecDEtablissement(err)
 		if injoignable && host != "" {
-			log.Printf("tunnel vers %s : %v ; %s est déchiffré à la place",
+			log.Printf(T("tunnel vers %s : %v ; %s est déchiffré à la place"),
 				dst, err, host)
 		} else {
-			log.Printf("tunnel vers %s : %v", dst, err)
+			log.Printf(T("tunnel vers %s : %v"), dst, err)
 		}
 		return injoignable
 	}
@@ -612,11 +612,11 @@ func readFirstRecord(c net.Conn) ([]byte, error) {
 		return nil, err
 	}
 	if head[0] != 0x16 { // handshake
-		return nil, fmt.Errorf("ce n'est pas une poignée de main TLS (type %d)", head[0])
+		return nil, fmt.Errorf(T("ce n'est pas une poignée de main TLS (type %d)"), head[0])
 	}
 	n := int(head[3])<<8 | int(head[4])
 	if n <= 0 || n > 1<<16 {
-		return nil, fmt.Errorf("longueur d'enregistrement invraisemblable : %d", n)
+		return nil, fmt.Errorf(T("longueur d'enregistrement invraisemblable : %d"), n)
 	}
 	body := make([]byte, n)
 	if _, err := io.ReadFull(c, body); err != nil {

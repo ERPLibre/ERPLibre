@@ -30,70 +30,76 @@ const version = "0.2.4"
 func main() {
 	var (
 		cacheDir = flag.String("cache-dir", "/var/cache/erplibre_go_qemu_cache",
-			"répertoire des objets gardés")
+			T("répertoire des objets gardés"))
 		caDir = flag.String("ca-dir", "/var/lib/erplibre_go_qemu_cache",
-			"répertoire de l'autorité de certification")
-		httpPort = flag.Int("http-port", 8898, "écoute pour le 80 détourné")
-		tlsPort  = flag.Int("tls-port", 8899, "écoute pour le 443 détourné")
-		bridge   = flag.String("bridge", "virbr0", "pont libvirt des VM")
-		subnet   = flag.String("subnet", "192.168.122.0/24", "sous-réseau des VM")
-		logPath  = flag.String("access-log", "", "journal d'accès JSON par ligne")
+			T("répertoire de l'autorité de certification"))
+		httpPort = flag.Int("http-port", 8898, T("écoute pour le 80 détourné"))
+		tlsPort  = flag.Int("tls-port", 8899, T("écoute pour le 443 détourné"))
+		bridge   = flag.String("bridge", "virbr0", T("pont libvirt des VM"))
+		subnet   = flag.String("subnet", "192.168.122.0/24", T("sous-réseau des VM"))
+		logPath  = flag.String("access-log", "", T("journal d'accès JSON par ligne"))
 		exclude  = flag.String("exclude", "",
-			"hôtes à ne jamais déchiffrer, séparés par des virgules")
-		verbose = flag.Bool("verbose", false, "dire chaque requête")
+			T("hôtes à ne jamais déchiffrer, séparés par des virgules"))
+		verbose = flag.Bool("verbose", false, T("dire chaque requête"))
 		status  = flag.Bool("status", false,
-			"dire ce que le cache occupe, puis sortir")
+			T("dire ce que le cache occupe, puis sortir"))
 		dryRun = flag.Bool("dry-run", false,
-			"montrer les gestes privilégiés sans en faire un")
+			T("montrer les gestes privilégiés sans en faire un"))
 		initCA = flag.Bool("init-ca", false,
-			"créer l'autorité si elle manque, puis sortir")
+			T("créer l'autorité si elle manque, puis sortir"))
 		printNft = flag.Bool("print-nft", false,
-			"écrire les règles nft seules, à passer à « nft -f - »")
+			T("écrire les règles nft seules, à passer à « nft -f - »"))
 		printIptables = flag.Bool("print-iptables", false,
-			"écrire les commandes iptables seules, une par ligne")
+			T("écrire les commandes iptables seules, une par ligne"))
 		bypassFile = flag.String("bypass-file",
 			"/etc/erplibre_go_qemu_cache/bypass",
-			"liste des VM soustraites au détournement, une MAC par ligne")
+			T("liste des VM soustraites au détournement, une MAC par ligne"))
 		bypassAdd = flag.String("bypass-add", "",
-			"soustraire cette adresse MAC au détournement")
+			T("soustraire cette adresse MAC au détournement"))
 		bypassName = flag.String("bypass-name", "",
-			"nom de la VM, écrit à côté de la MAC ajoutée")
+			T("nom de la VM, écrit à côté de la MAC ajoutée"))
 		bypassDel = flag.String("bypass-del", "",
-			"rendre cette adresse MAC au détournement")
+			T("rendre cette adresse MAC au détournement"))
 		gitMirrorDir = flag.String("git-mirror-dir", "",
-			"racine des dépôts git tenus en miroir ; vide, git est"+
-				" simplement relayé vers l'amont")
+			T("racine des dépôts git tenus en miroir ; vide, git est"+
+				" simplement relayé vers l'amont"))
 		gitMirrorFresh = flag.Duration("git-mirror-fresh", 60*time.Second,
-			"délai en deçà duquel un dépôt n'est pas re-interrogé")
+			T("délai en deçà duquel un dépôt n'est pas re-interrogé"))
 		gitPrefetch = flag.String("git-mirror-prefetch", "",
-			"fichier de dépôts, un par ligne, à tenir en miroir d'avance")
+			T("fichier de dépôts, un par ligne, à tenir en miroir d'avance"))
 		gitPrefetchJobs = flag.Int("git-mirror-jobs", 4,
-			"dépôts clonés en parallèle par le pré-remplissage")
+			T("dépôts clonés en parallèle par le pré-remplissage"))
 		ageReport = flag.Bool("age-report", false,
-			"dire ce que le cache occupe, groupé par âge du dernier usage")
+			T("dire ce que le cache occupe, groupé par âge du dernier usage"))
 		agePar = flag.String("age-par", "semaine",
-			"découpage du relevé par âge : jour, semaine ou mois")
+			T("découpage du relevé par âge : jour, semaine ou mois"))
 		purgeTout = flag.Bool("purge", false,
-			"effacer TOUT le cache : objets et dépôts en miroir")
+			T("effacer TOUT le cache : objets et dépôts en miroir"))
 		purgeAvant = flag.String("purge-older-than", "",
-			"n'effacer que ce qui n'a pas servi depuis ce délai (ex. 30j, 12h)")
+			T("n'effacer que ce qui n'a pas servi depuis ce délai (ex. 30j, 12h)"))
 		gitList = flag.Bool("git-mirror-list", false,
-			"dire les dépôts tenus en miroir, du plus lourd au plus léger")
+			T("dire les dépôts tenus en miroir, du plus lourd au plus léger"))
 		gitRemove = flag.String("git-mirror-remove", "",
-			"effacer le miroir de ce dépôt ; il se refera au prochain besoin")
+			T("effacer le miroir de ce dépôt ; il se refera au prochain besoin"))
 		bypassList = flag.Bool("bypass-list", false,
-			"dire les exceptions en place, une « MAC nom » par ligne")
-		showVersion = flag.Bool("version", false, "dire la version, puis sortir")
+			T("dire les exceptions en place, une « MAC nom » par ligne"))
+		showVersion = flag.Bool("version", false, T("dire la version, puis sortir"))
+		lang        = flag.String("lang", "", T("langue des messages : fr ou en ; à défaut, EL_LANG"))
 		detient     = flag.Bool("detient", false,
-			"lire des lignes « MÉTHODE URL » sur l'entrée standard et dire,"+
+			T("lire des lignes « MÉTHODE URL » sur l'entrée standard et dire,"+
 				" pour chacune, ce que le magasin tient : une ligne séparée"+
 				" par des tabulations « verdict statut stored_at classe"+
 				" méthode url », verdict garde (corps 200), statut (statut"+
 				" seul, sans corps), absent ou non-cachable. Lecture seule :"+
 				" --cache-dir suffit, sans privilège, et l'âge des objets"+
-				" n'est pas touché")
+				" n'est pas touché"))
 	)
 	flag.Parse()
+	// Déjà lue dans os.Args avant l'analyse (voir Langue) ; posée ici aussi
+	// pour que la valeur retenue soit celle que flag a comprise.
+	if *lang != "" {
+		definirLangue(*lang)
+	}
 
 	if *showVersion {
 		fmt.Printf("erplibre_go_qemu_cache %s\n", version)
@@ -105,7 +111,7 @@ func main() {
 	if *detient {
 		store := &Store{Dir: *cacheDir}
 		if err := EcrireDetentions(store, os.Stdin, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "entrée illisible : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("entrée illisible : %v\n"), err)
 		}
 		return
 	}
@@ -116,7 +122,7 @@ func main() {
 	// donc pas au seul noyau.
 	exceptions, err := bypass.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "exceptions illisibles : %v\n", err)
+		fmt.Fprintf(os.Stderr, T("exceptions illisibles : %v\n"), err)
 		os.Exit(1)
 	}
 	rules := RuleSet{
@@ -149,21 +155,21 @@ func main() {
 	if *bypassAdd != "" {
 		mac, err := bypass.Add(*bypassAdd, *bypassName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "exception refusée : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("exception refusée : %v\n"), err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "exception posée : %s %s\n", mac, *bypassName)
+		fmt.Fprintf(os.Stderr, T("exception posée : %s %s\n"), mac, *bypassName)
 		fmt.Println(BypassAddElement(mac))
 		return
 	}
 	if *bypassDel != "" {
 		mac, avait, err := bypass.Del(*bypassDel)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "exception refusée : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("exception refusée : %v\n"), err)
 			os.Exit(1)
 		}
 		if !avait {
-			fmt.Fprintf(os.Stderr, "aucune exception pour %s\n", mac)
+			fmt.Fprintf(os.Stderr, T("aucune exception pour %s\n"), mac)
 		}
 		// Le geste à chaud est rendu même si le fichier ne l'avait pas :
 		// l'ensemble du noyau peut porter ce que le fichier a perdu, et le
@@ -207,10 +213,10 @@ func main() {
 				os.Exit(1)
 			}
 			avant = time.Now().Add(-d)
-			fmt.Printf("efface ce qui n'a pas servi depuis %s (avant %s)\n",
+			fmt.Printf(T("efface ce qui n'a pas servi depuis %s (avant %s)\n"),
 				*purgeAvant, avant.Format("2006-01-02 15:04"))
 		} else {
-			fmt.Println("efface TOUT le cache")
+			fmt.Println(T("efface TOUT le cache"))
 		}
 		if *dryRun {
 			printPurgeABlanc(store, miroir, avant)
@@ -218,20 +224,20 @@ func main() {
 		}
 		n, oct, err := store.Purger(avant)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "purge des objets : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("purge des objets : %v\n"), err)
 		}
-		fmt.Printf("objets effacés : %d, %s rendus\n", n, HumanBytes(oct))
+		fmt.Printf(T("objets effacés : %d, %s rendus\n"), n, HumanBytes(oct))
 		nd, octd, err := miroir.PurgerMiroirs(avant)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "purge des miroirs : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("purge des miroirs : %v\n"), err)
 		}
-		fmt.Printf("dépôts effacés : %d, %s rendus\n", nd, HumanBytes(octd))
+		fmt.Printf(T("dépôts effacés : %d, %s rendus\n"), nd, HumanBytes(octd))
 		return
 	}
 	if *gitList {
 		depots := miroir.Depots()
 		if len(depots) == 0 {
-			fmt.Println("aucun dépôt en miroir")
+			fmt.Println(T("aucun dépôt en miroir"))
 			return
 		}
 		var total int64
@@ -240,7 +246,7 @@ func main() {
 			fmt.Printf("%10s  %s  %s\n",
 				HumanBytes(d.Octets), d.Maj.Format("2006-01-02"), d.Nom)
 		}
-		fmt.Printf("%10s  %d dépôts\n", HumanBytes(total), len(depots))
+		fmt.Printf(T("%10s  %d dépôts\n"), HumanBytes(total), len(depots))
 		return
 	}
 	if *gitRemove != "" {
@@ -256,31 +262,31 @@ func main() {
 			}
 		}
 		if err := miroir.Retirer(cible); err != nil {
-			fmt.Fprintf(os.Stderr, "effacement : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("effacement : %v\n"), err)
 			os.Exit(1)
 		}
-		fmt.Printf("miroir effacé : %s\n", cible)
+		fmt.Printf(T("miroir effacé : %s\n"), cible)
 		return
 	}
 	if *gitPrefetch != "" {
 		if !miroir.Actif() {
 			fmt.Fprintln(os.Stderr,
-				"miroir git éteint : passer --git-mirror-dir")
+				T("miroir git éteint : passer --git-mirror-dir"))
 			os.Exit(1)
 		}
 		depots, err := DepotsDuFichier(*gitPrefetch)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "liste illisible : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("liste illisible : %v\n"), err)
 			os.Exit(1)
 		}
-		fmt.Printf("%d dépôts à tenir en miroir sous %s\n",
+		fmt.Printf(T("%d dépôts à tenir en miroir sous %s\n"),
 			len(depots), miroir.Dir)
 		reussis, echoues := miroir.Prefetch(
 			context.Background(), depots, *gitPrefetchJobs,
 			func(l string) { fmt.Println(l) },
 		)
 		_, octets := miroir.Occupation()
-		fmt.Printf("%d en miroir, %d en échec, %s occupés\n",
+		fmt.Printf(T("%d en miroir, %d en échec, %s occupés\n"),
 			reussis, echoues, HumanBytes(octets))
 		// Un dépôt mort ne fait pas échouer l'opération : sur une liste de
 		// trois cents, il y en a toujours un — privé, déplacé, retiré — et
@@ -294,7 +300,7 @@ func main() {
 
 	if *status {
 		if err := printStatus(store, *caDir, rules, miroir); err != nil {
-			fmt.Fprintf(os.Stderr, "état illisible : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("état illisible : %v\n"), err)
 			os.Exit(1)
 		}
 		return
@@ -308,11 +314,11 @@ func main() {
 	if *initCA {
 		ca, err := LoadOrCreateCA(*caDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "autorité : %v\n", err)
+			fmt.Fprintf(os.Stderr, T("autorité : %v\n"), err)
 			os.Exit(1)
 		}
-		fmt.Printf("autorité : %s\n", CertPath(*caDir))
-		fmt.Printf("empreinte : %s\n", ca.Fingerprint())
+		fmt.Printf(T("autorité : %s\n"), CertPath(*caDir))
+		fmt.Printf(T("empreinte : %s\n"), ca.Fingerprint())
 		return
 	}
 
@@ -321,13 +327,13 @@ func main() {
 		// programme de git, le service marche mais git repart à l'amont à
 		// chaque VM, ce qui est exactement ce que le miroir devait éviter.
 		log.Printf(
-			"miroir git demandé mais « git-http-backend » est introuvable :"+
-				" git sera relayé vers l'amont (%s)", *gitMirrorDir)
+			T("miroir git demandé mais « git-http-backend » est introuvable :"+
+				" git sera relayé vers l'amont (%s)"), *gitMirrorDir)
 	}
 	if err := serve(
 		store, *caDir, rules, *logPath, *exclude, *verbose, miroir, muets,
 	); err != nil {
-		log.Fatalf("le cache s'arrête : %v", err)
+		log.Fatalf(T("le cache s'arrête : %v"), err)
 	}
 }
 
@@ -342,7 +348,7 @@ func serve(
 	// Un objet à moitié écrit ne vaut rien et occupe : le démarrage est le
 	// seul moment où un « .part » n'appartient à aucune écriture vivante.
 	if n := store.SweepPartials(); n > 0 {
-		log.Printf("%d écriture(s) interrompue(s) retirée(s)", n)
+		log.Printf(T("%d écriture(s) interrompue(s) retirée(s)"), n)
 	}
 
 	ca, err := LoadOrCreateCA(caDir)
@@ -367,16 +373,16 @@ func serve(
 
 	httpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", rules.HTTPPort))
 	if err != nil {
-		return fmt.Errorf("écoute HTTP : %w", err)
+		return fmt.Errorf(T("écoute HTTP : %w"), err)
 	}
 	tlsLn, err := net.Listen("tcp", fmt.Sprintf(":%d", rules.TLSPort))
 	if err != nil {
-		return fmt.Errorf("écoute TLS : %w", err)
+		return fmt.Errorf(T("écoute TLS : %w"), err)
 	}
 
-	log.Printf("cache : %s", store.Dir)
-	log.Printf("autorité : %s (%s)", CertPath(caDir), ca.Fingerprint())
-	log.Printf("écoutes : http %d, tls %d", rules.HTTPPort, rules.TLSPort)
+	log.Printf(T("cache : %s"), store.Dir)
+	log.Printf(T("autorité : %s (%s)"), CertPath(caDir), ca.Fingerprint())
+	log.Printf(T("écoutes : http %d, tls %d"), rules.HTTPPort, rules.TLSPort)
 
 	errc := make(chan error, 2)
 	go func() {
@@ -397,56 +403,56 @@ func printStatus(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("répertoire  : %s\n", store.Dir)
-	fmt.Printf("objets      : %d\n", st.Objects)
-	fmt.Printf("occupation  : %s\n", HumanBytes(st.Bytes))
+	fmt.Printf(T("répertoire  : %s\n"), store.Dir)
+	fmt.Printf(T("objets      : %d\n"), st.Objects)
+	fmt.Printf(T("occupation  : %s\n"), HumanBytes(st.Bytes))
 	if st.Oldest.IsZero() {
-		fmt.Printf("plus ancien : aucun objet\n")
+		fmt.Printf("%s", T("plus ancien : aucun objet\n"))
 	} else {
-		fmt.Printf("plus ancien : %s\n", st.Oldest.Format(time.RFC3339))
+		fmt.Printf(T("plus ancien : %s\n"), st.Oldest.Format(time.RFC3339))
 	}
-	fmt.Printf("autorité    : %s\n", CertPath(caDir))
+	fmt.Printf(T("autorité    : %s\n"), CertPath(caDir))
 	if ca, err := LoadOrCreateCA(caDir); err == nil {
-		fmt.Printf("empreinte   : %s\n", ca.Fingerprint())
+		fmt.Printf(T("empreinte   : %s\n"), ca.Fingerprint())
 	} else {
-		fmt.Printf("empreinte   : autorité absente\n")
+		fmt.Printf("%s", T("empreinte   : autorité absente\n"))
 	}
 	if depots, octets := miroirStatut.Occupation(); depots > 0 {
-		fmt.Printf("dépôts git  : %d en miroir, %s\n",
+		fmt.Printf(T("dépôts git  : %d en miroir, %s\n"),
 			depots, HumanBytes(octets))
 	}
 	if len(rules.Bypass) == 0 {
-		fmt.Printf("exceptions  : aucune\n")
+		fmt.Printf("%s", T("exceptions  : aucune\n"))
 	} else {
-		fmt.Printf("exceptions  : %d VM soustraite(s) au détournement\n",
+		fmt.Printf(T("exceptions  : %d VM soustraite(s) au détournement\n"),
 			len(rules.Bypass))
 		for _, m := range rules.Bypass {
 			fmt.Printf("              %s\n", m)
 		}
 	}
-	fmt.Printf("\nAucune éviction n'est écrite : ce cache ne diminue jamais\n")
-	fmt.Printf("de lui-même, et il vit sur le disque de l'orchestrateur.\n")
+	fmt.Printf("%s", T("\nAucune éviction n'est écrite : ce cache ne diminue jamais\n"))
+	fmt.Printf("%s", T("de lui-même, et il vit sur le disque de l'orchestrateur.\n"))
 	return nil
 }
 
 func printDryRun(store *Store, caDir string, rules RuleSet) {
-	fmt.Printf("À blanc — rien n'est écrit, rien n'est posé.\n\n")
-	fmt.Printf("Répertoire du cache, créé au démarrage :\n  %s\n\n", store.Dir)
-	fmt.Printf("Autorité, créée si elle manque :\n  %s (clé en 0600)\n\n",
+	fmt.Printf("%s", T("À blanc — rien n'est écrit, rien n'est posé.\n\n"))
+	fmt.Printf(T("Répertoire du cache, créé au démarrage :\n  %s\n\n"), store.Dir)
+	fmt.Printf(T("Autorité, créée si elle manque :\n  %s (clé en 0600)\n\n"),
 		CertPath(caDir))
-	fmt.Printf("Règles nft à poser sur l'hôte :\n")
+	fmt.Printf("%s", T("Règles nft à poser sur l'hôte :\n"))
 	for _, l := range rules.NftLines() {
 		fmt.Printf("  %s\n", l)
 	}
-	fmt.Printf("\nÀ défaut de nft :\n")
+	fmt.Printf("%s", T("\nÀ défaut de nft :\n"))
 	for _, l := range rules.IptablesLines() {
 		fmt.Printf("  %s\n", l)
 	}
-	fmt.Printf("\nRetrait :\n  %s\n", rules.NftDeleteLine())
-	fmt.Printf("\nDans chaque VM qui utilise le cache :\n")
+	fmt.Printf(T("\nRetrait :\n  %s\n"), rules.NftDeleteLine())
+	fmt.Printf("%s", T("\nDans chaque VM qui utilise le cache :\n"))
 	for _, f := range []string{"pacman", "apt", "dnf", "zypper"} {
 		dir, cmd, bundle, _ := GuestTrustCommand(f)
-		fmt.Printf("  %-7s %s/erplibre-cache.crt puis %s\n", f, dir, cmd)
+		fmt.Printf(T("  %-7s %s/erplibre-cache.crt puis %s\n"), f, dir, cmd)
 		for _, l := range GuestEnvLines(bundle) {
 			fmt.Printf("          %s\n", l)
 		}
