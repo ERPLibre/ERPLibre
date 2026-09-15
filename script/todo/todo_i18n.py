@@ -7204,6 +7204,10 @@ TRANSLATIONS = {
         "fr": "autorité du cache de téléchargement non posée",
         "en": "download cache authority not installed",
     },
+    "Prepared by the host:": {
+        "fr": "Préparé par l'hôte :",
+        "en": "Prepared by the host:",
+    },
     "host taken out of the download cache": {
         "fr": "hôte soustrait au cache de téléchargement",
         "en": "host taken out of the download cache",

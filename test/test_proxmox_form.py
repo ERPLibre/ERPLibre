@@ -2675,6 +2675,32 @@ class UnInviteImbriqueSortMasqueDerriereSonHote(unittest.TestCase):
         self.assertIn("--bypass-add 52:54:00:ab:cd:ef", joint)
         self.assertIn("--bypass-name pve-local", joint)
 
+    def test_the_decision_is_kept_for_the_log(self):
+        """Dit à l'écran ET gardé : la console défile, le journal reste."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vm = {"distro": "x"}
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._pve_note(vm, "  ✓ une décision")
+        self.assertIn("une décision", sortie.getvalue())
+        self.assertEqual(["✓ une décision"], vm["notes"])
+
+    def test_the_menu_hands_them_to_the_installer(self):
+        """Gardées et non transmises, elles ne serviraient à personne."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script/todo/proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("notes={", src)
+        dep = (racine / "script/todo/qemu_deploy.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('entry["notes"] = list(notes[name])', dep)
+
     def test_the_price_is_said(self):
         """L'exception vaut pour TOUT ce que l'hôte relaie, ses propres
         téléchargements compris. Le taire ferait chercher plus tard pourquoi

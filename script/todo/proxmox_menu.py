@@ -1735,6 +1735,20 @@ class ProxmoxMenuMixin:
             return ""
         return self._qemu_cache_ca_path()
 
+    @staticmethod
+    def _pve_note(vm, ligne):
+        """Dit la ligne à l'écran ET la garde pour le journal de CETTE VM.
+
+        La console défile et se perd ; le journal est ce qu'on rouvre quand
+        l'installation a échoué, parfois le lendemain. Une décision prise ici
+        — l'autorité du cache posée ou non, l'exception — n'explique la panne
+        que si elle atteint le second. Sans cela le journal ne porte que le
+        symptôme : des centaines de lignes de construction et un certificat
+        refusé, sans un mot sur ce qui l'a voulu.
+        """
+        print(ligne)
+        vm.setdefault("notes", []).append(ligne.strip())
+
     def _pve_cache_bypass_hote(self, host, vm):
         """Soustrait au cache l'hôte Proxmox qui porte un invité sans magasin.
 
@@ -1779,7 +1793,9 @@ class ProxmoxMenuMixin:
             return False
         mac = self._qemu_domain_mac(nom)
         if not mac:
-            print(f"  ⚠ {t('download cache: host MAC not found')} : {nom}")
+            self._pve_note(
+                vm, f"  ⚠ {t('download cache: host MAC not found')} : {nom}"
+            )
             return False
         geste = (
             f"{shlex.quote(mod.CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
@@ -1803,8 +1819,12 @@ class ProxmoxMenuMixin:
                 f" ({fini.returncode})"
             )
             return False
-        print(f"  ✓ {t('host taken out of the download cache')} : {nom}")
-        print(f"    {t('its own downloads stop being cached too.')}")
+        self._pve_note(
+            vm, f"  ✓ {t('host taken out of the download cache')} : {nom}"
+        )
+        self._pve_note(
+            vm, f"    {t('its own downloads stop being cached too.')}"
+        )
         return True
 
     def _qemu_domain_mac(self, nom):
@@ -1857,7 +1877,7 @@ class ProxmoxMenuMixin:
                 "no trust store for this distribution, its downloads "
                 "will fail"
             )
-            print(f"  ⚠ {t(cle)} : {vm.get('distro') or '?'}")
+            self._pve_note(vm, f"  ⚠ {t(cle)} : {vm.get('distro') or '?'}")
             return False
         morceaux = []
         for chemin, mode, contenu, _proprio in fichiers:
@@ -1875,7 +1895,7 @@ class ProxmoxMenuMixin:
                 f"  ⚠ {t('download cache authority not installed')} ({code})"
             )
             return False
-        print(f"  ✓ {t('download cache authority installed')}")
+        self._pve_note(vm, f"  ✓ {t('download cache authority installed')}")
         return True
 
     def _pve_attendre_ssh(self, cible, delai=300, pas=10):
@@ -2369,6 +2389,14 @@ class ProxmoxMenuMixin:
                         vm.get("arch") or "amd64",
                     )
                     for vm in joignables
+                },
+                # Ce que l'hôte a DÉCIDÉ pour chaque VM avant de lancer
+                # l'installation. Sans cela, le journal ne porte que le
+                # symptôme, et la cause reste sur une console qui défile.
+                notes={
+                    vm["name"]: vm.get("notes") or []
+                    for vm in joignables
+                    if vm.get("notes")
                 },
             )
             return resultat
