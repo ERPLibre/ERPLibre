@@ -15,12 +15,14 @@ qu'elles réutilisent volontairement plutôt que de les redire."""
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
 
 import click
 
 from script.todo import todo_prefs
+from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
 
 
@@ -1733,6 +1735,92 @@ class ProxmoxMenuMixin:
             return ""
         return self._qemu_cache_ca_path()
 
+    def _pve_cache_bypass_hote(self, host, vm):
+        """Soustrait au cache l'hôte Proxmox qui porte un invité sans magasin.
+
+        Rend True quand l'exception est en place, False quand il n'y a rien à
+        faire ou qu'elle a échoué.
+
+        POURQUOI LA MAC DE L'HÔTE, ET NON CELLE DE L'INVITÉ. Un invité
+        imbriqué sort MASQUÉ derrière son hôte : sur le pont d'ici, le cache
+        ne voit jamais que la MAC de l'hôte Proxmox, et c'est donc elle
+        qu'il faut excepter. Mesuré des deux côtés — sans l'exception, une
+        requête de l'invité vers cache.nixos.org rend code 000 et
+        vérification SSL 19 ; avec, code 200 et vérification 0.
+
+        CE QUE COÛTE L'ABSENCE DE REMÈDE. Une distribution dont le magasin de
+        confiance n'a pas de forme par fichier ne peut pas recevoir
+        l'autorité, et poser celle-ci par déclaration arriverait trop tard :
+        sur un système déclaratif, la première reconstruction EST le premier
+        téléchargement. Le gestionnaire de paquets ne lit alors plus son cache
+        binaire, se rabat sur la construction depuis les sources — des
+        centaines de dérivations — et ces sources échouent pour la même
+        raison. L'installation part pour une heure avant de rendre 1.
+
+        CE QU'ELLE COÛTE. L'exception vaut pour TOUT ce que l'hôte relaie, y
+        compris ses propres téléchargements : il cesse de profiter du cache.
+        C'est le prix, et il est dit plutôt que subi.
+        """
+        try:
+            mod = self._qemu_import_module()
+        except Exception:  # pragma: no cover - dépend du module
+            mod = None
+        if not mod:
+            # Un module qui ne se charge pas ne doit pas emporter la suite de
+            # la création : sans lui on ne sait pas si l'invité a un magasin
+            # de confiance, et l'autorité reste la voie par défaut.
+            return False
+        distro = vm.get("distro") or ""
+        if not mod.cache_sans_autorite(distro):
+            return False
+        nom = (host.get("target") or "").split("@")[-1]
+        if not nom or nom not in set(self._qemu_list_domains()):
+            # Un hôte Proxmox qui ne vit pas ici ne traverse pas ce pont.
+            return False
+        mac = self._qemu_domain_mac(nom)
+        if not mac:
+            print(f"  ⚠ {t('download cache: host MAC not found')} : {nom}")
+            return False
+        geste = (
+            f"{shlex.quote(mod.CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
+            f" --bypass-name {shlex.quote(nom)}"
+        )
+        # Le binaire écrit le fichier d'exceptions et rend sur sa sortie le
+        # geste à chaud ; sans nft, seul le redémarrage du service repose la
+        # chaîne entière.
+        if shutil.which("nft"):
+            cmd = ["sudo", "sh", "-c", f"{geste} | nft -f -"]
+        else:
+            cmd = ["sudo", "sh", "-c", geste]
+        try:
+            fini = subprocess.run(cmd, capture_output=True, text=True)
+        except (OSError, subprocess.SubprocessError) as souci:
+            print(f"  ⚠ {t('download cache bypass not set')} ({souci})")
+            return False
+        if fini.returncode:
+            print(
+                f"  ⚠ {t('download cache bypass not set')}"
+                f" ({fini.returncode})"
+            )
+            return False
+        print(f"  ✓ {t('host taken out of the download cache')} : {nom}")
+        print(f"    {t('its own downloads stop being cached too.')}")
+        return True
+
+    def _qemu_domain_mac(self, nom):
+        """Première MAC du domaine libvirt `nom`, ou ''."""
+        try:
+            res = subprocess.run(
+                virsh_argv("domiflist", nom),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        trouve = re.findall(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5}", res.stdout)
+        return trouve[0].lower() if trouve else ""
+
     def _pve_set_cache_ca(self, cible, vm, ca):
         """Pose l'autorité du cache DANS la VM, par ssh.
 
@@ -2177,7 +2265,12 @@ class ProxmoxMenuMixin:
                     # range ses index sous l'hôte demandé, et une VM qui en
                     # réclame un autre ne retrouve rien de ce qui est gardé.
                     self._pve_set_apt_mirror(vm["alias"], vm, mod_qemu)
-                    self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
+                    # Un invité dont le magasin de confiance n'a pas de forme
+                    # par fichier ne peut RIEN recevoir : on soustrait son
+                    # hôte au cache à la place. L'autorité n'est posée que
+                    # lorsqu'il y a quelqu'un pour la recevoir.
+                    if not self._pve_cache_bypass_hote(host, vm):
+                        self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
                 # Après la création, qui a posé l'écran accéléré : l'accès au
                 # nœud de rendu est une affaire de COMPTE, et il se donne
                 # dans l'invité.

@@ -7204,6 +7204,22 @@ TRANSLATIONS = {
         "fr": "autorité du cache de téléchargement non posée",
         "en": "download cache authority not installed",
     },
+    "host taken out of the download cache": {
+        "fr": "hôte soustrait au cache de téléchargement",
+        "en": "host taken out of the download cache",
+    },
+    "its own downloads stop being cached too.": {
+        "fr": "ses propres téléchargements cessent aussi d'être gardés.",
+        "en": "its own downloads stop being cached too.",
+    },
+    "download cache bypass not set": {
+        "fr": "exception au cache de téléchargement non posée",
+        "en": "download cache bypass not set",
+    },
+    "download cache: host MAC not found": {
+        "fr": "cache de téléchargement : MAC de l'hôte introuvable",
+        "en": "download cache: host MAC not found",
+    },
     "no trust store for this distribution, its downloads "
     "will fail": {
         "fr": (
