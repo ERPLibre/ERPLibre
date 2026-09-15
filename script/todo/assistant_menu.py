@@ -1649,7 +1649,7 @@ class AssistantMenuMixin:
         # une application qui le tient déjà.
         commande = tui.run_tui()
         if commande:
-            self.execute.exec_command_live(commande, source_erplibre=False)
+            self._ouvrir_plein_ecran(commande)
 
     @staticmethod
     def _claude_transcription(session):
@@ -1941,6 +1941,23 @@ class AssistantMenuMixin:
             return False
         return True
 
+    def _ouvrir_plein_ecran(self, commande):
+        """Lancer une commande qui EXIGE un terminal, ou la faire copier.
+
+        Le lanceur ordinaire passe par un tube et lit la sortie : un programme
+        plein écran n'y trouve pas le terminal qu'il réclame, et l'utilisateur
+        perd l'écran sans obtenir la session. Sans fenêtre possible, la
+        commande est donc IMPRIMÉE plutôt que lancée là où elle ne survivrait
+        pas.
+        """
+        if not getattr(self.execute, "cmd_source_default", ""):
+            print(t("No terminal can be opened here. Paste this command:"))
+            print(f"  {commande}")
+            return
+        self.execute.exec_command_live(
+            commande, source_erplibre=False, new_window=True
+        )
+
     def _claude_attacher(self):
         """Ouvrir un agent détaché dans une fenêtre à lui.
 
@@ -1957,14 +1974,7 @@ class AssistantMenuMixin:
         if session is None:
             return
         argv = adaptateur.argv_action(adaptateur.ATTACHER, session.poignee)
-        commande = " ".join(shlex.quote(m) for m in argv)
-        if not getattr(self.execute, "cmd_source_default", ""):
-            print(t("No terminal can be opened here. Paste this command:"))
-            print(f"  {commande}")
-            return
-        self.execute.exec_command_live(
-            commande, source_erplibre=False, new_window=True
-        )
+        self._ouvrir_plein_ecran(" ".join(shlex.quote(m) for m in argv))
 
     def _claude_journal(self):
         """Imprimer la sortie récente d'un agent détaché. Elle ne fait que lire."""

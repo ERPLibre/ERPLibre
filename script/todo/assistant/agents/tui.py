@@ -620,6 +620,7 @@ def run_tui(run_app: bool = True):
     class Telemetrie(App):
         CSS = """
         #resume { height: auto; padding: 0 1; color: $text-muted; }
+        #etat { height: auto; padding: 0 1; color: $warning; }
         #source { height: auto; padding: 0 1; color: $text-muted; }
         DataTable { height: 1fr; }
         """
@@ -697,6 +698,7 @@ def run_tui(run_app: bool = True):
             yield DataTable(id="agents", zebra_stripes=True)
             yield Input(id="saisie", placeholder="")
             yield Static("", id="detail")
+            yield Static("", id="etat")
             yield Static("", id="source")
             yield Footer()
 
@@ -713,6 +715,7 @@ def run_tui(run_app: bool = True):
             for _, cle in COLONNES_AGENTS:
                 agents.add_column(t(cle), key=cle)
             self.query_one("#saisie", Input).display = False
+            self.query_one("#etat", Static).display = False
             self.query_one("#detail", Static).display = False
             self._montrer_la_vue()
             # Les journaux périmés partent à l'ouverture : c'est le seul
@@ -863,6 +866,9 @@ def run_tui(run_app: bool = True):
         def _ouvrir_saisie(self, attente, invite):
             from textual.widgets import Input
 
+            # Ce qu'un geste précédent avait dit ne vaut plus pour celui-ci.
+            self._dire("")
+
             self._attente = attente
             champ = self.query_one("#saisie", Input)
             champ.placeholder = invite
@@ -972,10 +978,24 @@ def run_tui(run_app: bool = True):
             self._tick()
 
         def _dire(self, message):
-            """Une ligne d'état sous le résumé, remplacée au prochain tour."""
+            """Ce que l'outil vient de répondre, dans un widget À LUI.
+
+            Pas dans `#source` : `_resumer` y réécrit la phrase fixe sur la
+            provenance des chiffres, et il est appelé par `_peindre`, que
+            chaque action déclenche juste après avoir parlé. Les deux écritures
+            tombaient dans la même itération de la boucle d'événements, donc
+            le message n'existait pas une seule image.
+
+            Ce qu'on perdait ainsi n'était pas du décor : `claude stop` répond
+            « No job matching » avec un code de sortie NUL, et cette ligne est
+            le SEUL endroit où l'échec se voit.
+            """
             from textual.widgets import Static
 
-            self.query_one("#source", Static).update(str(message)[:200])
+            champ = self.query_one("#etat", Static)
+            texte = str(message)[:200]
+            champ.update(texte)
+            champ.display = bool(texte)
 
         def action_detail(self):
             """Ouvrir ou fermer le détail de l'appel surligné.

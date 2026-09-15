@@ -974,5 +974,73 @@ class LEnvironnementNEstLuQueDUnProcessusVivant(unittest.TestCase):
         self.assertEqual(self._contexte(live=True), [4321])
 
 
+class LePleinEcranNePasseParUnTube(unittest.TestCase):
+    """`claude attach` est un programme plein écran.
+
+    Le lanceur ordinaire passe par un tube et lit la sortie : le programme n'y
+    trouve pas le terminal qu'il réclame, et l'utilisateur perd l'écran sans
+    obtenir la session. La TUI rendait la commande et le menu la lançait par
+    cette porte-là, alors que l'entrée équivalente du menu refusait de le
+    faire depuis toujours.
+    """
+
+    def _lancer(self, avec_terminal=True):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        appels = []
+        todo.execute.cmd_source_default = (
+            "un-terminal" if avec_terminal else ""
+        )
+        with patch.object(
+            todo.execute,
+            "exec_command_live",
+            side_effect=lambda c, **kw: appels.append((c, kw)),
+        ), patch("builtins.print") as imprime:
+            todo._ouvrir_plein_ecran("claude attach abcd1234")
+        return appels, [str(a) for c in imprime.call_args_list for a in c.args]
+
+    def test_a_terminal_gets_its_own_window(self):
+        appels, _ = self._lancer()
+        ((commande, options),) = appels
+        self.assertEqual(commande, "claude attach abcd1234")
+        self.assertTrue(options.get("new_window"))
+
+    def test_without_a_terminal_the_command_is_printed_not_run(self):
+        """La lancer là où elle ne survivrait pas ferait perdre l'écran ET la
+        session."""
+        appels, sorti = self._lancer(avec_terminal=False)
+        self.assertEqual(appels, [])
+        self.assertTrue(any("claude attach abcd1234" in s for s in sorti))
+
+    def test_the_telemetry_screen_uses_the_same_door(self):
+        """La TUI rendait la commande et le menu la passait au tube."""
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.agents.tui.run_tui",
+            return_value="claude attach abcd1234",
+        ), patch(
+            "script.todo.textual_setup.ensure", return_value=True
+        ), patch.object(
+            TODO, "_ouvrir_plein_ecran"
+        ) as porte:
+            TODO()._agents_telemetrie()
+        porte.assert_called_once_with("claude attach abcd1234")
+
+    def test_nothing_handed_back_opens_nothing(self):
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.agents.tui.run_tui", return_value=None
+        ), patch(
+            "script.todo.textual_setup.ensure", return_value=True
+        ), patch.object(
+            TODO, "_ouvrir_plein_ecran"
+        ) as porte:
+            TODO()._agents_telemetrie()
+        porte.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

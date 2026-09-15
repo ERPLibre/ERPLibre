@@ -618,7 +618,10 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 await pilote.pause()
                 await pilote.press("s")
                 await pilote.pause()
-                dit = str(app.query_one("#source", Static).render())
+                # `#etat` et non `#source` : le second porte la phrase fixe
+                # sur la provenance des chiffres, que `_resumer` réécrit à
+                # chaque repeint et qui effaçait donc ce qu'on venait de dire.
+                dit = str(app.query_one("#etat", Static).render())
             self.assertEqual(envoyes, [])
             self.assertIn(t("Pick a detached agent first."), dit)
         finally:
@@ -1220,7 +1223,10 @@ class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
         )
         source = ast.dump(corps)
         self.assertIn("run_tui", source)
-        self.assertIn("exec_command_live", source)
+        # Par la porte du plein écran, jamais par le tube : « claude attach »
+        # exige un terminal, et le lanceur ordinaire n'en fournit pas.
+        self.assertIn("_ouvrir_plein_ecran", source)
+        self.assertNotIn("exec_command_live", source)
 
     async def test_an_empty_identifier_never_opens_the_guard(self):
         """Le listage peut ne pas porter « sessionId ».
