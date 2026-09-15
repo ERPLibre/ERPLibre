@@ -12513,6 +12513,34 @@ TRANSLATIONS = {
         "fr": "🗑 Carnet - Oublier un rôle",
         "en": "🗑 Book - Forget a role",
     },
+    "unblocks:": {
+        "fr": "débloque :",
+        "en": "unblocks:",
+    },
+    "Post the missing addresses now?": {
+        "fr": "Poser les adresses manquantes maintenant ?",
+        "en": "Post the missing addresses now?",
+    },
+    "Does this site have a": {
+        "fr": "Ce site a-t-il un",
+        "en": "Does this site have a",
+    },
+    "q to stop": {
+        "fr": "q pour arrêter",
+        "en": "q to stop",
+    },
+    "Left aside:": {
+        "fr": "Laissé de côté :",
+        "en": "Left aside:",
+    },
+    "still blocks:": {
+        "fr": "bloque toujours :",
+        "en": "still blocks:",
+    },
+    "After posting:": {
+        "fr": "Après avoir posé :",
+        "en": "After posting:",
+    },
     "Book - What each profile still needs": {
         "fr": "🧭 Carnet - Ce qui manque encore à chaque profil",
         "en": "🧭 Book - What each profile still needs",
