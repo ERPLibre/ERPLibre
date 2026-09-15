@@ -17,8 +17,10 @@ On vérifie donc l'index, seul mode que le dépôt porte et propage. Le mode du
 disque reste l'affaire de la machine, pas d'un test.
 """
 
+import ast
 import glob
 import os
+import re
 import subprocess
 import unittest
 
@@ -102,6 +104,125 @@ class TestExecutableBit(unittest.TestCase):
                 imported.add(node.module)
         self.assertIn("subprocess", imported)
         self.assertNotIn("stat", imported)
+
+
+class TestAucunDrapeauAccepteEnSilence(unittest.TestCase):
+    """Un drapeau déclaré que rien ne lit est accepté et ne fait RIEN.
+
+    C'est pire qu'un drapeau absent : celui-là rend « unrecognized
+    arguments » et l'on sait tout de suite. Cinq l'étaient, dont un qui
+    promettait trois choses — changer le répertoire de téléchargement, le
+    vider au démarrage, servir au grid réseau — et dont la branche avait
+    été retirée en rendant le répertoire temporaire inconditionnel. L'aide
+    était restée.
+
+    TROIS PIÈGES, tous payés en écrivant cette garde :
+    - `firefox_options.add_argument("--no-sandbox")` porte le même nom de
+      méthode et n'est pas argparse : le receveur doit être un parser ;
+    - un fichier peut ne créer que des GROUPES, le parser lui étant passé
+      en paramètre — chercher « ArgumentParser » dans la source l'écarte ;
+    - `dest=` décide du nom d'attribut : « --nb_parent » se lit
+      « args.parent_depth », et le chercher sous son nom le dirait mort.
+    """
+
+    # Le fichier porte déjà REPO ; en poser un second les ferait
+    # diverger au premier déplacement.
+    RACINE = REPO
+
+    @classmethod
+    def parsers_de(cls, arbre):
+        noms = set()
+        for n in ast.walk(arbre):
+            if isinstance(n, ast.Assign) and isinstance(n.value, ast.Call):
+                f = n.value.func
+                appel = getattr(f, "attr", getattr(f, "id", ""))
+                if appel in (
+                    "ArgumentParser",
+                    "add_argument_group",
+                    "add_parser",
+                ):
+                    noms |= {
+                        t.id for t in n.targets if isinstance(t, ast.Name)
+                    }
+        return noms
+
+    @classmethod
+    def drapeaux_de(cls, chemin):
+        """{(drapeau, attribut)} déclarés sur un parser de ce fichier."""
+        src = open(chemin, encoding="utf-8").read()
+        if "add_argument" not in src:
+            return set()
+        try:
+            arbre = ast.parse(src)
+        except SyntaxError:
+            return set()
+        parsers = cls.parsers_de(arbre)
+        out = set()
+        for n in ast.walk(arbre):
+            if not (
+                isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "add_argument"
+                and isinstance(n.func.value, ast.Name)
+                and n.func.value.id in parsers
+            ):
+                continue
+            dest = None
+            for kw in n.keywords:
+                if kw.arg == "dest" and isinstance(kw.value, ast.Constant):
+                    dest = kw.value.value
+            for a in n.args:
+                if (
+                    isinstance(a, ast.Constant)
+                    and isinstance(a.value, str)
+                    and a.value.startswith("--")
+                ):
+                    out.add((a.value, dest or a.value[2:].replace("-", "_")))
+        return out
+
+    @classmethod
+    def tout_le_source(cls):
+        morceaux = []
+        for dossier in ("script", "test"):
+            base = os.path.join(cls.RACINE, dossier)
+            for r, _d, fichiers in os.walk(base):
+                for nom in fichiers:
+                    if nom.endswith(".py"):
+                        with open(
+                            os.path.join(r, nom), encoding="utf-8"
+                        ) as fic:
+                            morceaux.append(fic.read())
+        return "\n".join(morceaux)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.source = cls.tout_le_source()
+        cls.tous = []
+        for r, _d, fichiers in os.walk(os.path.join(cls.RACINE, "script")):
+            for nom in sorted(fichiers):
+                if nom.endswith(".py"):
+                    chemin = os.path.join(r, nom)
+                    for paire in sorted(cls.drapeaux_de(chemin)):
+                        cls.tous.append((chemin, paire))
+
+    def est_lu(self, attribut):
+        motif = re.compile(r"\.%s\b|[\"']%s[\"']" % (attribut, attribut))
+        return bool(motif.search(self.source))
+
+    def test_the_scan_actually_finds_flags(self):
+        """Sur zéro drapeau trouvé, la garde passe et ne tient rien.
+
+        Trois fois le détecteur s'est cassé en silence en l'écrivant ;
+        c'est ici que ça doit tomber."""
+        self.assertGreater(len(self.tous), 100)
+
+    def test_no_flag_is_declared_and_never_read(self):
+        morts = [
+            f"{os.path.relpath(c, self.RACINE)} : {d}"
+            for c, (d, attribut) in self.tous
+            if not self.est_lu(attribut)
+        ]
+        self.assertEqual([], morts)
 
 
 class TestTheTuiSaysWhyItRefuses(unittest.TestCase):

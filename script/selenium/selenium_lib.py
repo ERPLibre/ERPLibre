@@ -21,8 +21,10 @@ from typing import Optional
 from pykeepass import PyKeePass
 from randomwordfr import RandomWordFr
 from selenium import webdriver
-from selenium.common.exceptions import (ElementClickInterceptedException,
-                                        TimeoutException)
+from selenium.common.exceptions import (
+    ElementClickInterceptedException,
+    TimeoutException,
+)
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
 from selenium.webdriver.common.by import By
@@ -188,8 +190,9 @@ class SeleniumLib(object):
 
         try:
             if self.config.use_chrome_driver:
-                from selenium.webdriver.chrome.options import \
-                    Options as ChromeOptions
+                from selenium.webdriver.chrome.options import (
+                    Options as ChromeOptions,
+                )
                 from selenium.webdriver.chrome.service import Service
 
                 chrome_options = ChromeOptions()
@@ -2083,14 +2086,6 @@ def fill_parser(parser):
     group_browser.add_argument(
         "--use_network",
         help="Specify the address, example: http://localhost:4444",
-    )
-    group_browser.add_argument(
-        "--use_download_path_default",
-        action="store_true",
-        help="Actually, the download path is a temporary directory. "
-        "This will enable default path to /home/seluser/Downloads, "
-        "need this with Selenium Grid by network. "
-        "Will delete all file into /home/seluser/Downloads at startup.",
     )
     group_browser.add_argument(
         "--window_size",
