@@ -77,6 +77,8 @@ func main() {
 			T("effacer TOUT le cache : objets et dépôts en miroir"))
 		purgeAvant = flag.String("purge-older-than", "",
 			T("n'effacer que ce qui n'a pas servi depuis ce délai (ex. 30j, 12h)"))
+		purgeTaille = flag.String("purge-to-size", "",
+			T("effacer le moins récemment servi jusqu'à tenir sous cette taille (ex. 50G)"))
 		gitList = flag.Bool("git-mirror-list", false,
 			T("dire les dépôts tenus en miroir, du plus lourd au plus léger"))
 		gitRemove = flag.String("git-mirror-remove", "",
@@ -232,6 +234,26 @@ func main() {
 			fmt.Fprintf(os.Stderr, T("purge des miroirs : %v\n"), err)
 		}
 		fmt.Printf(T("dépôts effacés : %d, %s rendus\n"), nd, HumanBytes(octd))
+		return
+	}
+	if *purgeTaille != "" {
+		plafond, err := LireTaille(*purgeTaille)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		b, err := PurgerJusqua(store, miroir, plafond, *dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, T("purge au plafond : %v\n"), err)
+		}
+		prefixe := ""
+		if *dryRun {
+			prefixe = T("[à blanc] ")
+		}
+		fmt.Printf(T("plafond %s : le cache occupe %s\n"), HumanBytes(plafond), HumanBytes(b.Avant))
+		fmt.Printf(T("%sobjets : %d, %s ; dépôts : %d, %s ; reste %s\n"), prefixe,
+			b.Objets, HumanBytes(b.OctetsObjets), b.Depots, HumanBytes(b.OctetsDepots),
+			HumanBytes(b.Apres))
 		return
 	}
 	if *gitList {

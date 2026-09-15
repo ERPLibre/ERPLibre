@@ -9,9 +9,16 @@ package main
 // qu'aucun T(...) n'emploie, et une traduction qui ne garde pas les mêmes
 // verbes de format que son original.
 var anglais = map[string]string{
-	"cache : variante de %s non gardée : %v":             "cache: variant of %s not kept: %v",
-	"langue des messages : fr ou en ; à défaut, EL_LANG": "language of messages: fr or en; otherwise EL_LANG",
-	"granularité inconnue %q : jour, semaine ou mois":    "unknown granularity %q: day, week or month",
+	"taille vide": "empty size",
+	"taille illisible %q : essayer 50G, 500M, 2T":                                "unreadable size %q: try 50G, 500M, 2T",
+	"effacer le moins récemment servi jusqu'à tenir sous cette taille (ex. 50G)": "erase the least recently served until the cache fits under this size (e.g. 50G)",
+	"purge au plafond : %v\n":                                                    "size purge: %v\n",
+	"[à blanc] ":                                                                 "[dry run] ",
+	"plafond %s : le cache occupe %s\n":                                          "ceiling %s: the cache occupies %s\n",
+	"%sobjets : %d, %s ; dépôts : %d, %s ; reste %s\n":                           "%sobjects: %d, %s; repositories: %d, %s; %s left\n",
+	"cache : variante de %s non gardée : %v":                                     "cache: variant of %s not kept: %v",
+	"langue des messages : fr ou en ; à défaut, EL_LANG":                         "language of messages: fr or en; otherwise EL_LANG",
+	"granularité inconnue %q : jour, semaine ou mois":                            "unknown granularity %q: day, week or month",
 	"durée vide":         "empty duration",
 	"durée illisible %q": "unreadable duration %q",
 	"durée illisible %q : essayer 30j, 12h, 90m": "unreadable duration %q: try 30d, 12h, 90m",
