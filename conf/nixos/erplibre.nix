@@ -196,6 +196,20 @@
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
   };
 
+  # Le guide de connexion, AFFICHÉ.
+  #
+  # Le déploiement écrit /etc/motd dans toutes les distributions, et compte
+  # sur pam_motd pour le montrer — c'est vrai des quatre images cloud, où
+  # sshd est en « PrintMotd no » et où ajouter l'inverse afficherait le guide
+  # DEUX FOIS. Ici, ni l'un ni l'autre : mesuré sur une VM installée, sshd
+  # rend « printmotd no » et /etc/pam.d/sshd ne contient AUCUN pam_motd. Le
+  # fichier est donc écrit, complet, et personne ne le lit.
+  #
+  # sshd et non pam_motd : le double affichage qu'on redoute ailleurs ne peut
+  # pas se produire tant que le PAM d'ici n'en contient pas, et c'est le seul
+  # des deux qui ne demande rien de plus que cette ligne.
+  services.openssh.settings.PrintMotd = true;
+
   # L'agent invité, DÉCLARÉ ici plutôt que reçu de l'image.
   #
   # L'image épinglée l'active déjà (son configuration.nix porte la ligne), et
