@@ -312,5 +312,60 @@ class LeVerrouEtLeMenu(unittest.TestCase):
                 self.assertTrue(TRANSLATIONS[cle].get("en"))
 
 
+class LaCreationDeLaVmEstPrivilegiee(unittest.TestCase):
+    """Le dossier des images appartient à root en 755 sur une installation
+    ordinaire de libvirt.
+
+    Sans sudo, la CLI s'arrête à l'étape 1 sur « Permission refusée » avant
+    d'avoir rien créé : le test ne peut pas tourner du tout, pas même échouer
+    utilement. Le menu — le chemin du produit — passe sudo dès que ce n'est
+    pas un essai à blanc, et c'est cette forme qui est reprise ici.
+    """
+
+    def _module(self):
+        sys.path.insert(0, str(RACINE / "long_test"))
+        import install_nixos
+
+        return install_nixos
+
+    def test_the_real_run_asks_for_privilege(self):
+        mod = self._module()
+        vu = {}
+
+        class Fini:
+            returncode = 1
+
+        def faux_run(argv, **kw):
+            vu["argv"] = argv
+            return Fini()
+
+        vrai = mod.subprocess.run
+        self.addCleanup(setattr, mod.subprocess, "run", vrai)
+        mod.subprocess.run = faux_run
+        mod.creer_vm("essai", None, dry_run=False)
+        self.assertEqual("sudo", vu["argv"][0])
+        self.assertIn("deploy_qemu.py", " ".join(vu["argv"]))
+
+    def test_the_dry_run_asks_for_none(self):
+        """Un essai qui n'écrit rien n'a aucune raison de demander un mot de
+        passe, et le menu ne le demande pas non plus."""
+        mod = self._module()
+        vu = []
+        vrai = mod.dire
+        self.addCleanup(setattr, mod, "dire", vrai)
+        mod.dire = lambda texte, journal=None: vu.append(texte)
+        nom, uuid = mod.creer_vm("essai", None, dry_run=True)
+        self.assertEqual(("essai", ""), (nom, uuid))
+        ligne = " ".join(vu)
+        self.assertIn("deploy_qemu.py", ligne)
+        self.assertNotIn("sudo", ligne)
+
+    def test_its_sibling_does_the_same(self):
+        """descente.py crée l'étage 1 de la même façon, et l'oubli y était
+        le même : un correctif posé d'un seul côté laisse l'autre au mur."""
+        src = (RACINE / "long_test/descente.py").read_text(encoding="utf-8")
+        self.assertIn('([] if self.dry_run else ["sudo"]) + [', src)
+
+
 if __name__ == "__main__":
     unittest.main()
