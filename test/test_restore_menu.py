@@ -405,6 +405,56 @@ class TestLaPorteTientLES_DEUX_CheminsInteractifs(PorteDeBanc):
         self.assertEqual([], [c for c in lancees if "db_restore" in c])
 
 
+class TestEffacerUneBaseTraverseLaMemePorte(PorteDeBanc):
+    """« Effacer TOUTES les bases » refuse ce qui ne se prouve pas jetable ;
+    « effacer UNE base » partait sur un « oui » tapé.
+
+    C'est à rebours : le lot consulte le garde d'exercice et REFUSE une base
+    qui ne se prouve pas jetable — « le nom ne donne pas le feu vert, ce qui
+    autorise c'est ce que la base dit d'elle-même ». L'unité, elle, ne le
+    consultait pas et effaçait n'importe quoi.
+
+    La porte est celle des deux chemins de restauration, appelée telle
+    quelle : une troisième copie aurait divergé, et c'est le geste le plus
+    destructeur du menu.
+    """
+
+    def effacer(self, saisies, bases, exercice=False):
+        todo = self.porte(bases=bases, exercice=exercice)
+        todo.db_manager.select_database = lambda: bases[0]
+        with patch("builtins.input") as saisie:
+            saisie.side_effect = list(saisies)
+            todo.db_manager._drop_single_database()
+        return [
+            appel[0][0]
+            for appel in (
+                todo.db_manager._execute.exec_command_live.call_args_list
+            )
+            if "db --list" not in appel[0][0]
+        ]
+
+    def test_a_real_database_is_not_erased_on_a_typed_yes(self):
+        """Taper « oui » se fait par réflexe ; recopier un nom oblige à
+        regarder ce qu'on détruit."""
+        lancees = self.effacer(["oui", "non"], bases=["reelle"])
+        self.assertEqual([], [c for c in lancees if "--drop" in c])
+
+    def test_retyping_the_name_erases_it(self):
+        lancees = self.effacer(["oui", "reelle"], bases=["reelle"])
+        self.assertTrue([c for c in lancees if "--drop" in c])
+
+    def test_a_drill_database_needs_no_retyping(self):
+        """Une base d'exercice n'a rien à protéger : demander là ferait
+        apprendre à retaper sans regarder."""
+        lancees = self.effacer(["oui"], bases=["essai"], exercice=True)
+        self.assertTrue([c for c in lancees if "--drop" in c])
+
+    def test_refusing_the_first_confirmation_still_stops_everything(self):
+        """Contrôle positif : la porte S'AJOUTE, elle ne remplace pas."""
+        lancees = self.effacer(["non"], bases=["reelle"])
+        self.assertEqual([], [c for c in lancees if "--drop" in c])
+
+
 class TestLaGardeNeDescendPasEnLot(unittest.TestCase):
     """43 cibles make restaurent dans des noms recyclés — test, template,
     code_generator, robotlibre. Une base fraîchement restaurée n'a ni

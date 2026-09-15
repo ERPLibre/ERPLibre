@@ -11595,9 +11595,9 @@ TRANSLATIONS = {
         "fr": "Rien n'est détruit sans avoir lu d'abord.",
         "en": "Nothing is destroyed without reading first.",
     },
-    "Drill database: overwriting it is safe.": {
-        "fr": "Base d'exercice : l'écraser ne coûte rien.",
-        "en": "Drill database: overwriting it is safe.",
+    "Drill database: destroying it is safe.": {
+        "fr": "Base d'exercice : la détruire ne coûte rien.",
+        "en": "Drill database: destroying it is safe.",
     },
     "This database will be ERASED: ": {
         "fr": "Cette base va être EFFACÉE : ",

@@ -8,8 +8,13 @@ import logging
 import os
 import shlex
 
-from script.database import (backup_ship, backup_verify, backup_witness,
-                             db_restore, drill_guard)
+from script.database import (
+    backup_ship,
+    backup_verify,
+    backup_witness,
+    db_restore,
+    drill_guard,
+)
 from script.remote import appliance_ssh, deploy_target
 from script.todo.todo_i18n import t
 
@@ -103,7 +108,7 @@ class DatabaseManager:
             return True
         if drill_guard.is_drill_database(database_name):
             print(
-                f"\u2139\ufe0f  {t('Drill database: overwriting it is safe.')}"
+                f"\u2139\ufe0f  {t('Drill database: destroying it is safe.')}"
             )
             return True
         print(
@@ -210,6 +215,15 @@ class DatabaseManager:
         ).format(database=database_name)
         if not self._confirm_drop(message):
             print(t("Database deletion cancelled."))
+            return
+        # LA MÊME PORTE QUE LA RESTAURATION, et pour la même raison : un
+        # « oui » se tape par réflexe, recopier un nom oblige à regarder.
+        #
+        # L'ÉTAGE LOT était plus sûr que l'unité, ce qui est à rebours :
+        # « db_drop_all » consulte le garde d'exercice et REFUSE ce qui ne
+        # se prouve pas jetable, pendant qu'effacer UNE base partait sur un
+        # « oui ». C'est pourtant le geste le plus destructeur du menu.
+        if not self._may_destroy(database_name):
             return
         self._execute.exec_command_live(
             f"./odoo_bin.sh db --drop --database {database_name}",
