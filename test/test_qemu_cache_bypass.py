@@ -118,6 +118,23 @@ class TestLExceptionEstPoseeAvant(unittest.TestCase):
         self.assertTrue(pose, "l'exception n'a pas été posée")
         self.assertIn("nft -f -", " ".join(pose[0]))
 
+    def test_le_message_du_binaire_suit_la_langue(self):
+        """La commande passe par sudo, qui retire EL_LANG : sans l'option, le
+        binaire répondrait en français à qui déploie en anglais."""
+        args = args_neufs()
+        args.lang = "en"
+        runner = FauxRunner({"is-active": (0, "")})
+        with mock.patch.object(
+            deploy_qemu.os.path, "isfile", return_value=True
+        ), mock.patch.object(
+            deploy_qemu.shutil, "which", return_value="/usr/bin/nft"
+        ), mock.patch.object(
+            deploy_qemu, "macs_deja_prises", return_value=set()
+        ):
+            deploy_qemu.cache_bypass_apply(args, runner)
+        pose = [c for c in runner.commandes if "--bypass-add" in " ".join(c)]
+        self.assertIn("--lang en", " ".join(pose[0]))
+
     def test_sans_cache_installe_rien_nest_pose(self):
         """Exiger un cache pour pouvoir s'en passer n'aurait aucun sens :
         sans lui, rien n'intercepte."""

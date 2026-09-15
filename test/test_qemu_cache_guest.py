@@ -39,6 +39,7 @@ from script.qemu.deploy_qemu import (  # noqa: E402
     cache_files,
     cache_commands,
     cache_runcmd,
+    langue_des_messages,
 )
 
 RULES_GO = RACINE / "script" / "qemu_cache" / "rules.go"
@@ -255,6 +256,21 @@ class TestLeHorsLigneCoupeLAuditNpm(unittest.TestCase):
         avant que cloud-init n'écrive la variable."""
         for var, _ in OFFLINE_ENV_VARS:
             self.assertIn(var, cache_env_reload())
+
+
+class TestLaLangueDesMessagesDuCache(unittest.TestCase):
+    def test_l_option_du_deploiement_l_emporte(self):
+        self.assertEqual(
+            langue_des_messages(argparse.Namespace(lang="en")), "en"
+        )
+        self.assertEqual(
+            langue_des_messages(argparse.Namespace(lang="FR")), "fr"
+        )
+
+    def test_une_valeur_inconnue_rend_le_francais(self):
+        self.assertEqual(
+            langue_des_messages(argparse.Namespace(lang="de")), "fr"
+        )
 
 
 class TestAccordAvecLeGo(unittest.TestCase):

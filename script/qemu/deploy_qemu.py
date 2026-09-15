@@ -2675,6 +2675,9 @@ def cache_bypass_apply(args: argparse.Namespace, runner: Runner) -> str:
     geste = (
         f"{shlex.quote(CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
         f" --bypass-name {shlex.quote(args.name)}"
+        # La commande passe par sudo, qui retire EL_LANG : la langue du
+        # message du binaire va donc en option.
+        f" --lang {shlex.quote(langue_des_messages(args))}"
     )
     if shutil.which("nft"):
         # Le binaire écrit le fichier et rend sur sa sortie le geste à chaud.
@@ -2687,6 +2690,20 @@ def cache_bypass_apply(args: argparse.Namespace, runner: Runner) -> str:
         runner.run(["systemctl", "restart", CACHE_SERVICE], privileged=True)
     print(f"  VM soustraite au cache : {mac}")
     return mac
+
+
+def langue_des_messages(args: argparse.Namespace) -> str:
+    """La langue des messages : --lang du déploiement, sinon celle de todo.py,
+    sinon le français. Rend toujours « fr » ou « en »."""
+    langue = (getattr(args, "lang", "") or "").strip().lower()
+    if not langue:
+        try:
+            from script.todo.todo_i18n import get_lang
+
+            langue = get_lang()
+        except Exception:
+            langue = "fr"
+    return "en" if langue.startswith("en") else "fr"
 
 
 def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
