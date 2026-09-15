@@ -35,6 +35,7 @@ paraissent nulle part ailleurs dans le dépôt.
 
 import os
 import re
+import subprocess
 import sys
 import time
 import unittest
@@ -354,7 +355,23 @@ class LaFrontiere(unittest.TestCase):
     def test_le_balayage_ne_tire_pas_todo(self):
         """Importer `script.todo.todo` coûte près d'une seconde et imprime
         sur la sortie : le paquet doit rester importable seul."""
-        self.assertNotIn("script.todo.todo", sys.modules)
+        # Dans un interpréteur NEUF : la suite complète importe todo par
+        # ailleurs, et le sys.modules de ce processus en garderait la trace
+        # quel que soit le module éprouvé ici.
+        sortie = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, script.todo.assistant.discover, script.todo.assistant.fingerprint;"
+                " print('script.todo.todo' in sys.modules)",
+            ],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
+        self.assertEqual(sortie.stdout.strip(), "False")
 
     def test_aucun_asyncio_du_depot_n_est_utilise(self):
         """`AsyncioPool` enveloppe des sous-processus et non des sockets, et
