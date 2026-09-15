@@ -1148,8 +1148,8 @@ TRANSLATIONS = {
         "en": "Network up and armed for the next boot.",
     },
     "Deploy - verify this station, layer by layer": {
-        "fr": "Deploy - vérifier cette station, couche par couche",
-        "en": "Deploy - verify this station, layer by layer",
+        "fr": "🩺 Deploy - vérifier cette station, couche par couche",
+        "en": "🩺 Deploy - verify this station, layer by layer",
     },
     "Verify the deploying station": {
         "fr": "Vérifier la station qui déploie",
@@ -1204,8 +1204,8 @@ TRANSLATIONS = {
         "en": "Probing it is not written yet.",
     },
     "Deploy - verify a deployed VM, layer by layer": {
-        "fr": "Deploy - vérifier une VM déployée, couche par couche",
-        "en": "Deploy - verify a deployed VM, layer by layer",
+        "fr": "🔬 Deploy - vérifier une VM déployée, couche par couche",
+        "en": "🔬 Deploy - verify a deployed VM, layer by layer",
     },
     "The backup command failed; nothing was verified: ": {
         "fr": "La sauvegarde a échoué ; rien n'a été relu : ",
@@ -12472,16 +12472,16 @@ TRANSLATIONS = {
         "en": "Devstack",
     },
     "Devstack - development and test stack": {
-        "fr": "Devstack - pile de développement et de test",
-        "en": "Devstack - development and test stack",
+        "fr": "🧱 Devstack - pile de développement et de test",
+        "en": "🧱 Devstack - development and test stack",
     },
     "Host OS:": {
         "fr": "OS de l'hôte :",
         "en": "Host OS:",
     },
     "Host doctor - what can this machine do?": {
-        "fr": "Docteur de l'hôte - qu'est-ce que cette machine sait faire ?",
-        "en": "Host doctor - what can this machine do?",
+        "fr": "🩺 Docteur de l'hôte - qu'est-ce que cette machine sait faire ?",
+        "en": "🩺 Host doctor - what can this machine do?",
     },
     "Probe failed:": {
         "fr": "La sonde a échoué :",
@@ -12494,28 +12494,28 @@ TRANSLATIONS = {
     },
     # Carnet d'adresses (script/todo/egress_book_menu.py)
     "Deploy - Site address book (what a confined VM reaches)": {
-        "fr": "Deploy - Carnet d'adresses du site (ce qu'une VM bornée atteint)",
-        "en": "Deploy - Site address book (what a confined VM reaches)",
+        "fr": "📓 Deploy - Carnet d'adresses du site (ce qu'une VM bornée atteint)",
+        "en": "📓 Deploy - Site address book (what a confined VM reaches)",
     },
     "Site address book: what a confined VM may reach": {
         "fr": "Carnet d'adresses du site : ce qu'une VM bornée a le droit de joindre",
         "en": "Site address book: what a confined VM may reach",
     },
     "Book - Show the book": {
-        "fr": "Carnet - Voir le carnet",
-        "en": "Book - Show the book",
+        "fr": "📖 Carnet - Voir le carnet",
+        "en": "📖 Book - Show the book",
     },
     "Book - Set a role's addresses": {
-        "fr": "Carnet - Poser les adresses d'un rôle",
-        "en": "Book - Set a role's addresses",
+        "fr": "📝 Carnet - Poser les adresses d'un rôle",
+        "en": "📝 Book - Set a role's addresses",
     },
     "Book - Forget a role": {
-        "fr": "Carnet - Oublier un rôle",
-        "en": "Book - Forget a role",
+        "fr": "🗑 Carnet - Oublier un rôle",
+        "en": "🗑 Book - Forget a role",
     },
     "Book - What each profile still needs": {
-        "fr": "Carnet - Ce qui manque encore à chaque profil",
-        "en": "Book - What each profile still needs",
+        "fr": "🧭 Carnet - Ce qui manque encore à chaque profil",
+        "en": "🧭 Book - What each profile still needs",
     },
     "The book is empty.": {
         "fr": "Le carnet est vide.",
@@ -12684,8 +12684,8 @@ TRANSLATIONS = {
         "en": "Follow it from",
     },
     "Lima - instances (macOS, Linux)": {
-        "fr": "Lima - instances (macOS, Linux)",
-        "en": "Lima - instances (macOS, Linux)",
+        "fr": "🍋 Lima - instances (macOS, Linux)",
+        "en": "🍋 Lima - instances (macOS, Linux)",
     },
     "Lima: VMs on macOS and Linux, by name": {
         "fr": "Lima : des VM sur macOS et Linux, par leur nom",
