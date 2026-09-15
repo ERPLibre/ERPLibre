@@ -622,8 +622,12 @@ def deployer(
     distro=DISTRO,
     version=VERSION,
     charge="minimum",
+    hors_ligne=False,
 ):
     """Une VM Arch, branchée sur le cache ou non. Rend son adresse, ou ''.
+
+    `hors_ligne` : la VM naît l'amont du cache coupé. Le déploiement y
+    désactive ce qu'aucun cache ne rejoue, comme le ferait le formulaire.
 
     Sans le cache, la VM télécharge en direct : c'est le TÉMOIN, la mesure de
     ce que coûte une installation quand rien n'est gardé. Un gain ne veut rien
@@ -645,6 +649,7 @@ def deployer(
         f" --ssh-key {shlex.quote(cle_publique())}"
         + (
             f" --cache-ca {shlex.quote(CA)}"
+            + (" --offline" if hors_ligne else "")
             if avec_cache
             else " --cache-bypass"
         )
@@ -949,6 +954,7 @@ def contre_epreuve(
             distro=distro,
             version=version,
             charge=charge,
+            hors_ligne=True,
         )
         if not adresse:
             return False

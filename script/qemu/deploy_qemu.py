@@ -2523,6 +2523,14 @@ CACHE_TRUST = {
 # disparaît alors que la VM garde sa variable.
 CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
 
+# Ce qu'une VM déployée l'amont du cache coupé reçoit en plus. L'audit de npm
+# interroge un service distant qu'aucun cache ne peut rejouer : hors ligne il
+# échoue à chaque installation sans rien vérifier. La variable reste dans la
+# VM après son installation ; un « npm config set audit true » la contredit.
+# Séparée de CACHE_ENV_VARS, que le binaire du cache recopie et que le test
+# d'accord avec le Go compare.
+OFFLINE_ENV_VARS = (("NPM_CONFIG_AUDIT", "false"),)
+
 CACHE_CERT_NAME = "erplibre-cache.crt"
 
 
@@ -2742,6 +2750,12 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
             f"sh -c 'grep -q ^{var}= /etc/environment"
             f" || echo {var}={faisceau} >> /etc/environment'"
         )
+    if getattr(args, "offline", False):
+        for var, valeur in OFFLINE_ENV_VARS:
+            commandes.append(
+                f"sh -c 'grep -q ^{var}= /etc/environment"
+                f" || echo {var}={valeur} >> /etc/environment'"
+            )
     return commandes
 
 
@@ -2765,7 +2779,7 @@ def cache_env_reload(fichier: str = "/etc/environment") -> str:
     séparateur final, sans effet quand le fichier est absent ou ne les porte
     pas, et qui ne fait pas échouer une commande sous « set -e ».
     """
-    motif = "|".join(CACHE_ENV_VARS)
+    motif = "|".join(CACHE_ENV_VARS + tuple(v for v, _ in OFFLINE_ENV_VARS))
     return (
         f'if [ -r {fichier} ]; then eval "$(grep -E "^({motif})=" {fichier}'
         ' | sed "s/^/export /")"; fi'
@@ -4478,6 +4492,13 @@ def build_parser() -> argparse.ArgumentParser:
         "téléchargement (erplibre_go_qemu_cache). Fourni, la VM approuve "
         "cette autorité dès son premier démarrage et ses téléchargements "
         "passent par le cache. Absent, rien n'est posé.",
+    )
+    g_cloud.add_argument(
+        "--offline",
+        action="store_true",
+        help="La VM est déployée l'amont du cache coupé : ce qu'aucun cache ne "
+        "peut rejouer y est désactivé, l'audit de npm d'abord. Sans effet "
+        "sans --cache-ca.",
     )
     g_cloud.add_argument(
         "--cache-bypass",
