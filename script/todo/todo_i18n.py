@@ -12673,6 +12673,10 @@ TRANSLATIONS = {
         "fr": "Le disque est incohérent : le démarrage n'est pas proposé.",
         "en": "The disk is inconsistent: not offering to start.",
     },
+    "Set it in:": {
+        "fr": "La poser dans :",
+        "en": "Set it in:",
+    },
     "Book - Show the book": {
         "fr": "📖 Carnet - Voir le carnet",
         "en": "📖 Book - Show the book",
@@ -12836,8 +12840,8 @@ TRANSLATIONS = {
         "en": "ERPLibre",
     },
     "Lima - Install ERPLibre in an instance": {
-        "fr": "Lima - Installer ERPLibre dans une instance",
-        "en": "Lima - Install ERPLibre in an instance",
+        "fr": "📦 Lima - Installer ERPLibre dans une instance",
+        "en": "📦 Lima - Install ERPLibre in an instance",
     },
     "ERPLibre branch: ": {
         "fr": "Branche ERPLibre : ",
@@ -12900,32 +12904,32 @@ TRANSLATIONS = {
         "en": "Instances",
     },
     "Lima - How this host gets the tool": {
-        "fr": "Lima - Par où cet hôte obtient l'outil",
-        "en": "Lima - How this host gets the tool",
+        "fr": "📥 Lima - Par où cet hôte obtient l'outil",
+        "en": "📥 Lima - How this host gets the tool",
     },
     "Lima - List the instances": {
-        "fr": "Lima - Lister les instances",
-        "en": "Lima - List the instances",
+        "fr": "📋 Lima - Lister les instances",
+        "en": "📋 Lima - List the instances",
     },
     "Lima - Create and start an instance": {
-        "fr": "Lima - Créer et démarrer une instance",
-        "en": "Lima - Create and start an instance",
+        "fr": "✨ Lima - Créer et démarrer une instance",
+        "en": "✨ Lima - Create and start an instance",
     },
     "Lima - Start an instance": {
-        "fr": "Lima - Démarrer une instance",
-        "en": "Lima - Start an instance",
+        "fr": "🟢 Lima - Démarrer une instance",
+        "en": "🟢 Lima - Start an instance",
     },
     "Lima - Stop an instance": {
-        "fr": "Lima - Arrêter une instance",
-        "en": "Lima - Stop an instance",
+        "fr": "🔴 Lima - Arrêter une instance",
+        "en": "🔴 Lima - Stop an instance",
     },
     "Lima - Delete an instance": {
-        "fr": "Lima - Supprimer une instance",
-        "en": "Lima - Delete an instance",
+        "fr": "🗑 Lima - Supprimer une instance",
+        "en": "🗑 Lima - Delete an instance",
     },
     "Lima - Open a shell in an instance": {
-        "fr": "Lima - Ouvrir un shell dans une instance",
-        "en": "Lima - Open a shell in an instance",
+        "fr": "🐚 Lima - Ouvrir un shell dans une instance",
+        "en": "🐚 Lima - Open a shell in an instance",
     },
     "Instance name": {
         "fr": "Nom d'instance",
