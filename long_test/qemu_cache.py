@@ -39,6 +39,7 @@ stocké, et le journal doit dire sur quel instantané elle se bâtit.
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -1088,8 +1089,9 @@ def main(argv=None):
     parseur.add_argument(
         "--distro",
         default=DISTRO,
-        choices=sorted(systemes_mesurables()),
-        help=f"système des VM du test (défaut : {DISTRO})",
+        help=f"système des VM du test (défaut : {DISTRO}) ; « tous », ou une"
+        " liste séparée par des virgules, enchaîne une campagne par système :"
+        f" {', '.join(sorted(systemes_mesurables()))}",
     )
     parseur.add_argument(
         "--version",
@@ -1106,21 +1108,115 @@ def main(argv=None):
         " et d'Odoo 18, qui se compte en heures",
     )
     args = parseur.parse_args(argv)
-    # Vide veut dire « celle du catalogue » : la recopier ici la figerait, et
-    # le test installerait une version que le déploiement ne propose plus.
-    if not args.version:
-        args.version = DISTROS[args.distro][1]
 
     if args.rapport:
         return rapport_comparatif()
     if args.detruire:
         return detruire(args.dry_run)
 
+    try:
+        systemes = systemes_demandes(args.distro)
+    except ValueError as err:
+        parseur.error(str(err))
+    if len(systemes) > 1:
+        if args.version:
+            parseur.error(
+                "--version ne vaut que pour un seul système : chacun prend"
+                " celle du catalogue"
+            )
+        return campagne_par_systemes(args, systemes)
+    args.distro = systemes[0]
+    # Vide veut dire « celle du catalogue » : la recopier ici la figerait, et
+    # le test installerait une version que le déploiement ne propose plus.
+    if not args.version:
+        args.version = DISTROS[args.distro][1]
+    return une_campagne(args)[0]
+
+
+def systemes_demandes(valeur):
+    """Les systèmes que --distro désigne, dans l'ordre donné, sans doublon.
+
+    « tous » désigne chaque système mesurable, dans l'ordre alphabétique ; une
+    liste séparée par des virgules, ceux qu'elle nomme. Lève ValueError sur un
+    nom inconnu : le refus tombe avant qu'aucune machine ne soit créée, et non
+    au milieu d'une série de plusieurs heures.
+    """
+    connus = systemes_mesurables()
+    if (valeur or "").strip().lower() == "tous":
+        return sorted(connus)
+    noms = [n.strip() for n in (valeur or "").split(",") if n.strip()]
+    inconnus = [n for n in noms if n not in connus]
+    if not noms or inconnus:
+        raise ValueError(
+            f"système inconnu : {', '.join(inconnus) or repr(valeur)} ;"
+            f" connus : {', '.join(sorted(connus))}, ou « tous »"
+        )
+    return list(dict.fromkeys(noms))
+
+
+def campagne_par_systemes(args, systemes):
+    """Une campagne par système, l'une après l'autre, puis leur tableau.
+
+    Les machines d'un système sont défaites avant le suivant : trois VM par
+    système ne tiendraient pas toutes ensemble sur le disque de l'hôte. Un
+    échec n'arrête pas la série — le tableau doit montrer chaque système, et
+    c'est justement ce qu'on vient chercher quand l'un d'eux échoue.
+    """
+    resultats = []
+    for distro in systemes:
+        un = copy.copy(args)
+        un.distro, un.version = distro, DISTROS[distro][1]
+        print(f"\n  ══ {distro} {un.version} ══")
+        code, fichier = une_campagne(un)
+        resultats.append((distro, un.version, code, fichier))
+        if not args.dry_run:
+            detruire()
+    return resume_par_systemes(resultats)
+
+
+def resume_par_systemes(resultats):
+    """Le tableau d'une série : verdict, durées et octets d'amont de la seconde
+    VM par système. Rend 0 si chaque système a réussi, 1 sinon."""
+    print("\n  ── Par système ──\n")
+    print(
+        f"  {'système':<22}{'verdict':<10}{'VM 1':>8}{'VM 2':>8}"
+        f"{'amont VM 2':>14}  étape en échec"
+    )
+    tous_reussis = True
+    for distro, version, code, fichier in resultats:
+        rapport = {}
+        if fichier and os.path.exists(fichier):
+            try:
+                with open(fichier, encoding="utf-8") as fh:
+                    rapport = json.load(fh)
+            except (OSError, ValueError):
+                rapport = {}
+        durees = list((rapport.get("durees") or {}).values())
+        octets = list((rapport.get("octets") or {}).values())
+        rendu = rapport.get("verdict") or ("ok" if code == 0 else "échec")
+        tous_reussis = tous_reussis and code == 0 and rendu == "ok"
+        vm1 = f"{durees[0]:.0f}s" if durees else "—"
+        vm2 = f"{durees[1]:.0f}s" if len(durees) > 1 else "—"
+        amont = humain(octets[1].get("amont", 0)) if len(octets) > 1 else "—"
+        print(
+            f"  {distro + ' ' + str(version):<22}{rendu:<10}{vm1:>8}{vm2:>8}"
+            f"{amont:>14}  {rapport.get('etape_en_echec') or ''}"
+        )
+    print()
+    return 0 if tous_reussis else 1
+
+
+def une_campagne(args):
+    """Une campagne sur UN système : préalables, VM, mesure, contre-épreuve.
+
+    Rend (code, chemin du rapport) ; le chemin est vide quand la campagne
+    s'arrête avant d'avoir écrit un rapport.
+    """
     base = base_des_noms(args)
     journal = journal_neuf()
     dire(f"  journal : {journal}", journal)
     if not args.dry_run and not prealables(journal, base):
-        return 1
+        return 1, ""
 
     acces = journal_du_cache()
     if not acces:
@@ -1130,7 +1226,7 @@ def main(argv=None):
             journal,
         )
         if not args.dry_run:
-            return 1
+            return 1, ""
 
     rapport = {
         "_fichier": chemin_rapport(),
@@ -1157,7 +1253,10 @@ def main(argv=None):
     if acces and os.path.exists(acces):
         decalage = os.path.getsize(acces)
 
-    return _boucle(args, rapport, journal, acces, decalage)
+    return (
+        _boucle(args, rapport, journal, acces, decalage),
+        rapport["_fichier"],
+    )
 
 
 def _boucle(args, rapport, journal, acces, decalage):
