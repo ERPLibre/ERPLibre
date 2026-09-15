@@ -4941,6 +4941,18 @@ class TODO(
             more_arg = "--neutralize "
             database += "_neutralize"
 
+        # LA MÊME PORTE QUE L'AUTRE CHEMIN INTERACTIF, et elle vit dans une
+        # seule fonction : restaurer DÉTRUIT la base cible, dont le nom est
+        # du texte libre. Ce chemin-ci ne la consultait pas, et une base de
+        # production disparaissait sur une faute de frappe dans le nom par
+        # défaut — pendant que le chemin jumeau refusait la même base.
+        #
+        # APRÈS le suffixe de neutralisation : c'est le nom que db_restore
+        # efface. Garder celui qu'on a tapé protégerait une base que rien
+        # ne touche et laisserait tomber celle qu'on écrase.
+        if not self.db_manager._may_destroy(database):
+            return None
+
         status, _ = self._execute.exec_command_live(
             f"python3 ./script/database/db_restore.py -d {database} "
             f"{more_arg}--ignore_cache --image {image}",

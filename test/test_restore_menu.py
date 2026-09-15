@@ -332,6 +332,79 @@ class TestLaPorteEstSurLeChemin(PorteDeBanc):
         self.assertEqual([], [c for c in lancees if "db_restore" in c])
 
 
+class TestLaPorteTientLES_DEUX_CheminsInteractifs(PorteDeBanc):
+    """La garde vivait sur UN chemin sur deux.
+
+    Depuis le menu d'analyse, « une sauvegarde .zip locale » et « une
+    sauvegarde distante » demandent un nom de base cible EN TEXTE LIBRE,
+    puis lancent db_restore, qui imprime « ## Drop <base> ## » et efface
+    la base portant ce nom. Ni la liste des bases ni le garde d'exercice
+    n'étaient consultés — une base de production disparaissait sur une
+    faute de frappe dans le nom par défaut, alors que le chemin jumeau
+    refusait exactement la même base sous le même nom.
+
+    LE NOM GARDÉ EST CELUI QUI SERA DÉTRUIT. La neutralisation ajoute un
+    suffixe APRÈS la saisie : garder le nom tapé protégerait une base
+    qu'on ne touche pas, et laisserait tomber celle qu'on efface.
+    """
+
+    def restaurer(self, saisies, bases, exercice=False, listable=True):
+        todo = self.porte(bases=bases, listable=listable, exercice=exercice)
+        todo._execute = todo.db_manager._execute
+        # Le nom d'image est POSÉ : le calculer déplace un fichier sur le
+        # disque, et ce n'est pas ce que cette classe éprouve.
+        todo._monitoring_image_name = lambda _chemin: "image"
+        with patch("builtins.input") as saisie:
+            saisie.side_effect = list(saisies)
+            todo._monitoring_restore("image.zip")
+        return [
+            appel[0][0]
+            for appel in todo._execute.exec_command_live.call_args_list
+        ]
+
+    def test_a_real_target_is_not_destroyed_without_asking(self):
+        lancees = self.restaurer(
+            ["reelle", "n", "non"], bases=["reelle"], exercice=False
+        )
+        self.assertEqual([], [c for c in lancees if "db_restore" in c])
+
+    def test_retyping_the_name_lets_it_through(self):
+        """Recopier oblige à regarder ce qu'on détruit, là où « o » se tape
+        par réflexe."""
+        lancees = self.restaurer(
+            ["reelle", "n", "reelle"], bases=["reelle"], exercice=False
+        )
+        self.assertTrue([c for c in lancees if "db_restore" in c])
+
+    def test_a_free_name_needs_no_confirmation(self):
+        """Une base absente n'a rien à protéger : demander là ferait
+        apprendre à taper oui."""
+        lancees = self.restaurer(["neuve", "n"], bases=["autre"])
+        self.assertTrue([c for c in lancees if "db_restore" in c])
+
+    def test_a_drill_database_passes_and_the_line_says_so(self):
+        lancees = self.restaurer(
+            ["essai", "n"], bases=["essai"], exercice=True
+        )
+        self.assertTrue([c for c in lancees if "db_restore" in c])
+
+    def test_the_guarded_name_is_the_one_that_gets_destroyed(self):
+        """La neutralisation suffixe APRÈS la saisie. Garder le nom tapé
+        protégerait « reelle », que rien ne touche, et laisserait tomber
+        « reelle_neutralize », que db_restore efface."""
+        lancees = self.restaurer(
+            ["reelle", "o", "non"],
+            bases=["reelle_neutralize"],
+            exercice=False,
+        )
+        self.assertEqual([], [c for c in lancees if "db_restore" in c])
+
+    def test_an_unreadable_list_destroys_nothing(self):
+        """Ne pas savoir n'est pas savoir qu'il n'y a rien."""
+        lancees = self.restaurer(["quelconque", "n"], bases=[], listable=False)
+        self.assertEqual([], [c for c in lancees if "db_restore" in c])
+
+
 class TestLaGardeNeDescendPasEnLot(unittest.TestCase):
     """43 cibles make restaurent dans des noms recyclés — test, template,
     code_generator, robotlibre. Une base fraîchement restaurée n'a ni
