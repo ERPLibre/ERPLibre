@@ -1925,11 +1925,15 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
     jour de tzdata sans qu'on s'en occupe ; « table » n'existe que pour qu'un
     test en fournisse une autre sans dépendre du tzdata de sa machine.
 
-    DEUX tours, et non un seul : un lien peut désigner un autre lien —
-    « Universal » mène à « UTC », qui mène à « Etc/UTC ». S'arrêter au premier
-    rendrait un nom qui reste un alias, donc le défaut qu'on répare. Au-delà
-    de deux, la table est incohérente et le nom d'origine vaut mieux qu'une
-    boucle.
+    DEUX tours, et non un seul. Le format AUTORISE qu'un lien désigne un
+    autre lien, et un seul tour rendrait alors un nom qui reste un alias —
+    le défaut même qu'on répare. Le tzdata publié n'en contient aucune : tous
+    ses liens visent une zone. Le second tour est donc une assurance, au prix
+    d'une recherche dans un dictionnaire. Au-delà de deux, la table est
+    incohérente et le nom d'origine vaut mieux qu'une boucle.
+
+    L'INVARIANT que la fonction tient, et que le nombre de tours sert : le nom
+    rendu n'est pas lui-même un alias de la table.
     """
     if not tz:
         return tz
@@ -1940,7 +1944,9 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
                 champs = ligne.split()
                 if len(champs) >= 3 and champs[0] == "L":
                     alias[champs[2]] = champs[1]
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # Le décodage aussi : un octet hors UTF-8 dans le fichier ferait
+        # échouer le déploiement ENTIER pour une traduction de confort.
         return tz
     for _ in range(2):
         tz = alias.get(tz, tz)
