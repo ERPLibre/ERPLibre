@@ -277,5 +277,102 @@ class LHoteSansGestionnaire(unittest.TestCase):
                 self.assertIn("conseil_sans_gestionnaire", src[i : i + 400])
 
 
+class LeServiceEstDeclare(unittest.TestCase):
+    """Sur NixOS, /etc est généré depuis le store et monté en lecture seule.
+
+    L'installation dépose l'unité par « tee /etc/systemd/system/
+    erplibre.service » sur toute autre distribution ; ici le tee échoue sur
+    « Read-only file system », et l'installation entière rend 1 à sa dernière
+    étape, après que le dépôt, le venv, les modules compilés et un démarrage
+    d'Odoo ont tous réussi. L'unité vient donc de la configuration.
+    """
+
+    def setUp(self):
+        self.src = MODULE.read_text(encoding="utf-8")
+        self.script = SCRIPT.read_text(encoding="utf-8")
+
+    def test_the_unit_is_declared_in_the_module(self):
+        self.assertIn("systemd.services.erplibre", self.src)
+        self.assertIn('Type = "simple";', self.src)
+        self.assertIn('User = "@EL_USER@";', self.src)
+
+    def test_it_starts_at_boot_without_a_symlink(self):
+        """« systemctl enable » activerait par un lien dans /etc, que le
+        système refuse d'écrire. « wantedBy » en est l'équivalent déclaratif,
+        et c'est la seule forme d'activation qui tienne ici.
+
+        L'absence de « systemctl enable » se vérifie sur la COMMANDE du menu,
+        plus bas : un module Nix n'exécute rien, et l'y chercher interdirait
+        au commentaire de nommer ce qu'il explique."""
+        self.assertIn('wantedBy = [ "multi-user.target" ];', self.src)
+
+    def test_the_interpreter_comes_from_the_store(self):
+        """/bin et /usr/bin sont un montage FUSE d'envfs, et systemd résout
+        l'exécutable d'ExecStart lui-même, hors de portée de ce montage :
+        « /bin/bash » y rend « 203/EXEC ». Avec Restart=always, l'unité boucle
+        indéfiniment."""
+        self.assertIn('ExecStart = "${pkgs.bash}/bin/bash', self.src)
+        self.assertNotIn('ExecStart = "/bin/bash', self.src)
+        self.assertNotIn('ExecStart = "/usr/bin/env', self.src)
+
+    def test_the_unit_carries_the_path_its_scripts_need(self):
+        """Une unité ne reçoit pas le PATH d'une session. run.sh lance des
+        scripts dont le shebang est « env bash » : env est dans le PATH par
+        défaut, bash non, et run.sh s'arrête avant Odoo."""
+        self.assertIn("path = with pkgs; [ bash python312 ];", self.src)
+
+    def test_the_repository_is_not_guessed(self):
+        """Le service lance le dépôt QUI A POSÉ le module. Écrire
+        « /home/$USER/git/erplibre » se tromperait sur une installation de
+        production, qui vit sous /opt."""
+        self.assertIn('WorkingDirectory = "@EL_DIR@";', self.src)
+        self.assertIn("EL_DIR=${EL_DIR:-${PWD}}", self.script)
+
+    def test_both_placeholders_are_substituted(self):
+        """Un marqueur non substitué partirait tel quel dans /etc/nixos et
+        ferait échouer l'évaluation du module."""
+        for marqueur in ("@EL_USER@", "@EL_DIR@"):
+            with self.subTest(marqueur=marqueur):
+                self.assertIn(marqueur, self.src)
+                self.assertIn(marqueur, self.script)
+
+
+class LeMenuNEcritPasDansEtcSurNixos(unittest.TestCase):
+    def _cmd(self, prod=False):
+        import sys
+
+        sys.argv = ["todo.py"]
+        sys.path.insert(0, str(RACINE))
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)._qemu_odoo_service_cmd(prod=prod)
+
+    def test_nixos_is_recognised_before_the_write(self):
+        """Reconnu DANS la VM : la même commande sert au déploiement, au test
+        long et à un « --hote » qu'on n'a pas créé."""
+        for prod in (False, True):
+            with self.subTest(prod=prod):
+                cmd = self._cmd(prod)
+                self.assertLess(
+                    cmd.index("ID=nixos"),
+                    cmd.index("tee /etc/systemd/system"),
+                )
+
+    def test_the_declarative_branch_only_restarts(self):
+        """L'unité existe déjà — le module l'a déclarée. « enable » écrirait
+        un lien dans /etc, que le système refuse."""
+        cmd = self._cmd()
+        nix = cmd[cmd.index("ID=nixos") : cmd.index("tee /etc/systemd/system")]
+        self.assertIn("systemctl restart erplibre.service", nix)
+        self.assertNotIn("systemctl enable", nix)
+
+    def test_a_missing_unit_is_named_and_fails(self):
+        """Sans le module, « restart » rendrait une erreur de systemd sans
+        dire ce qui manque ni où le prendre."""
+        cmd = self._cmd()
+        self.assertIn("systemctl cat erplibre.service", cmd)
+        self.assertIn("make install_os", cmd)
+
+
 if __name__ == "__main__":
     unittest.main()
