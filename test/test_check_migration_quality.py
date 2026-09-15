@@ -982,9 +982,24 @@ class TestTheDetailButton(Base):
         self.assertIn("d", touches)
 
     def test_the_cycle_visits_every_category_and_comes_back(self):
-        suite = (None,) + quality.DETAILS
-        self.assertEqual(len(suite), 6)
-        self.assertEqual(suite[len(suite) % len(suite)], None)
+        """Le parcours, JOUÉ — et non décrit.
+
+        L'épreuve calculait `suite[len(suite) % len(suite)]`, c'est-à-dire
+        `suite[0]`, et comparait à None : vraie pour toute liste non vide,
+        et sur sa propre variable locale. Le cycle réel vivait dans une
+        méthode du TUI qu'aucune épreuve n'atteignait ; sauter la dernière
+        catégorie n'aurait rien fait rougir.
+        """
+        vus, courant = [], None
+        for _ in range(len(quality.DETAILS) + 1):
+            courant = qtui.next_mode(courant)
+            vus.append(courant)
+        self.assertEqual(list(quality.DETAILS) + [None], vus)
+
+    def test_the_cycle_recovers_from_a_mode_it_does_not_know(self):
+        """Un mode retiré de DETAILS entre deux versions laisserait sinon
+        `index()` lever au premier appui sur la touche."""
+        self.assertEqual(quality.DETAILS[0], qtui.next_mode("inconnu"))
 
     def test_ONE_mode_not_two_flags(self):
         """« fichiers absents » et « liste des modèles » ne peuvent pas

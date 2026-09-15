@@ -692,6 +692,23 @@ def mode_label(mode):
     return t(mode)
 
 
+def next_mode(courant):
+    """Le mode qui SUIT `courant` dans le cycle du panneau de détail.
+
+    Résumé → modules → modèles → champs → copies COW → tables, puis retour
+    au résumé. Le cycle est ici et non dans la méthode qui l'appelle :
+    enfermé dans le TUI, il n'était atteint par aucune épreuve, et sauter
+    une catégorie n'aurait rien fait rougir.
+
+    Un mode que la suite ne connaît pas repart du début plutôt que de
+    lever : `DETAILS` peut perdre une entrée d'une version à l'autre,
+    et `index()` ferait alors tomber l'écran au premier appui.
+    """
+    suite = (None,) + quality.DETAILS
+    courant = courant if courant in suite else None
+    return suite[(suite.index(courant) + 1) % len(suite)]
+
+
 # La sortie d'une exécution lancée DEPUIS l'écran, gardée pour être
 # relue. Celle des tests de la migration ne l'était pas — le pilote lance
 # par `run_on_terminal`, qui n'a pas de sortie capturable — mais ce que
@@ -913,9 +930,7 @@ def build_app(lst_snapshot):
             répond pas. On enchaîne donc résumé → modules → modèles →
             champs → copies COW → tables, et l'on revient.
             """
-            suite = (None,) + quality.DETAILS
-            courant = self.mode if self.mode in suite else None
-            self.mode = suite[(suite.index(courant) + 1) % len(suite)]
+            self.mode = next_mode(self.mode)
             self._show()
 
         def action_run_selected(self):
