@@ -1855,6 +1855,14 @@ class QemuManageMixin:
     def _qemu_offer_start(self, name, was_shut_down):
         """Si la VM a été éteinte pour l'opération, le noter et proposer de la
         redémarrer (sinon ne rien demander)."""
+        # LE POINT DE PASSAGE UNIQUE de la proposition : le refus vit ici
+        # et non chez les deux appelants, qui ne peuvent pas savoir qu'une
+        # restauration a échoué plus bas.
+        if getattr(self, "_shrink_disk_unsafe", False):
+            print(
+                f"\n  ✗ {t('The disk is inconsistent: not offering to start.')}"
+            )
+            return
         if not was_shut_down:
             return
         print(f"\nℹ  {t('The VM was shut down for the resize.')}")
@@ -2144,10 +2152,34 @@ class QemuManageMixin:
     def _qemu_shrink_revert(self, bak, disk, changed):
         """Restaure le disque depuis la sauvegarde si on l'a modifié (changed)
         et qu'une sauvegarde existe ; sinon retire la sauvegarde inutile.
-        Renvoie False (la réduction a échoué)."""
+        Renvoie False (la réduction a échoué).
+
+        LE CODE DE RETOUR DU RENOMMAGE EST LU, et c'était le seul de ce
+        chemin à ne pas l'être. Une réduction cassée à mi-parcours laisse
+        un disque incohérent ; si la restauration échoue à son tour, le
+        disque le reste. Rendre la même valeur qu'en cas de succès faisait
+        proposer de DÉMARRER ce disque juste après.
+
+        Ce renommage est dans le même répertoire, donc il ne manque jamais
+        de place. Ce qui le fait échouer : un jeton sudo expiré en cours
+        d'opération — un e2fsck suivi d'un resize2fs sur un gros disque
+        dépasse les quinze minutes par défaut — ou un remontage en lecture
+        seule après l'erreur d'E/S qui a fait échouer la réduction.
+        """
         if changed and bak:
             print(t("Restoring the original disk from backup…"))
-            subprocess.run(["sudo", "mv", "-f", bak, disk], check=False)
+            rendu = subprocess.run(
+                ["sudo", "mv", "-f", bak, disk], check=False
+            )
+            if rendu.returncode:
+                # LA SAUVEGARDE EST NOMMÉE : c'est la seule copie saine, et
+                # ne pas la nommer la laisse détruire au prochain nettoyage.
+                self._shrink_disk_unsafe = True
+                print(f"  ✗ {t('Restore FAILED: the disk is inconsistent.')}")
+                print(f"    {t('Intact copy:')} {bak}")
+                print(f"    {t('Do not start this VM; restore by hand.')}")
+            else:
+                print(f"  ✓ {t('Original disk restored from backup.')}")
         elif changed and not bak:
             print(
                 f"⚠  {t('No backup to restore; run fsck on the disk before use.')}"

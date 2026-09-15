@@ -12653,6 +12653,26 @@ TRANSLATIONS = {
         "fr": "database.is_neutralized",
         "en": "database.is_neutralized",
     },
+    "Restore FAILED: the disk is inconsistent.": {
+        "fr": "Restauration ÉCHOUÉE : le disque est incohérent.",
+        "en": "Restore FAILED: the disk is inconsistent.",
+    },
+    "Intact copy:": {
+        "fr": "Copie intacte :",
+        "en": "Intact copy:",
+    },
+    "Do not start this VM; restore by hand.": {
+        "fr": "Ne pas démarrer cette VM ; restaurer à la main.",
+        "en": "Do not start this VM; restore by hand.",
+    },
+    "Original disk restored from backup.": {
+        "fr": "Disque d'origine restauré depuis la sauvegarde.",
+        "en": "Original disk restored from backup.",
+    },
+    "The disk is inconsistent: not offering to start.": {
+        "fr": "Le disque est incohérent : le démarrage n'est pas proposé.",
+        "en": "The disk is inconsistent: not offering to start.",
+    },
     "Book - Show the book": {
         "fr": "📖 Carnet - Voir le carnet",
         "en": "📖 Book - Show the book",
