@@ -178,6 +178,22 @@
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
   };
 
+  # Le port d'Odoo, OUVERT.
+  #
+  # NixOS active un pare-feu par défaut ; aucune des images cloud des quatre
+  # autres distributions n'en active un. Le service écoute bien sur
+  # 0.0.0.0:8069 et répond en local, mais l'extérieur ne reçoit RIEN — pas un
+  # refus, un silence, donc une attente jusqu'au délai. Ce qui sonde depuis
+  # l'hôte conclut « Odoo absent » sur une machine où il tourne, et le journal
+  # de l'installation ne porte aucune trace de la cause : elle est dans le
+  # pare-feu, pas dans l'application.
+  #
+  # 8069 SEUL. Le port websocket est configuré à 8072, mais Odoo ne le lie
+  # qu'en mode multi-processus, que cette configuration n'emploie pas : rien
+  # n'y écoute, et l'ouvrir donnerait un port béant sans service derrière.
+  # PostgreSQL n'écoute déjà que sur la boucle locale et n'a rien à ouvrir.
+  networking.firewall.allowedTCPPorts = [ 8069 ];
+
   # Le service ERPLibre, DÉCLARÉ et non écrit.
   #
   # Sur toute autre distribution l'installation dépose l'unité par

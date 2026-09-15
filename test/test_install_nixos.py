@@ -337,6 +337,53 @@ class LeServiceEstDeclare(unittest.TestCase):
                 self.assertIn(marqueur, self.script)
 
 
+class LePortDOdooTraverseLePareFeu(unittest.TestCase):
+    """NixOS active un pare-feu par défaut ; aucune des images cloud des
+    quatre autres distributions n'en active un.
+
+    Le service écoute bien sur 0.0.0.0:8069 et répond en local, mais
+    l'extérieur ne reçoit RIEN — pas un refus, un silence, donc une attente
+    jusqu'au délai. Ce qui sonde depuis l'hôte conclut « Odoo absent » sur une
+    machine où il tourne, et le journal de l'installation ne porte aucune
+    trace de la cause.
+    """
+
+    def setUp(self):
+        self.src = MODULE.read_text(encoding="utf-8")
+
+    def _port_sonde(self):
+        """Le port que l'hôte sonde VRAIMENT, lu de sa signature : une
+        constante recopiée ici vieillirait sans que rien ne le dise."""
+        import inspect
+        import sys
+
+        sys.path.insert(0, str(RACINE))
+        from script.todo.qemu_install_monitor import _port_open
+
+        return inspect.signature(_port_open).parameters["port"].default
+
+    def test_the_port_probed_from_the_host_is_the_one_opened(self):
+        port = self._port_sonde()
+        self.assertIn(
+            f"networking.firewall.allowedTCPPorts = [ {port} ];", self.src
+        )
+
+    def test_the_firewall_is_not_simply_turned_off(self):
+        """Le couper ouvrirait TOUT. PostgreSQL n'écoute aujourd'hui que sur
+        la boucle locale, mais un module qui désactive le pare-feu ne le
+        protégerait plus le jour où cela changerait."""
+        self.assertNotIn("networking.firewall.enable = false", self.src)
+
+    def test_only_what_serves_is_opened(self):
+        """Odoo ne lie le port websocket qu'en mode multi-processus, que cette
+        configuration n'emploie pas : rien n'y écoute, et l'ouvrir donnerait
+        un port béant sans service derrière."""
+        i = self.src.index("allowedTCPPorts")
+        ligne = self.src[i : self.src.index("\n", i)]
+        self.assertNotIn("8072", ligne)
+        self.assertNotIn("5432", ligne)
+
+
 class LeMenuNEcritPasDansEtcSurNixos(unittest.TestCase):
     def _cmd(self, prod=False):
         import sys
