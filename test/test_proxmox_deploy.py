@@ -591,6 +591,58 @@ class TestLesBatisseursDeCommandeDeGestion(unittest.TestCase):
         self.assertIn("--verbose", pve.status_cmd(100))
 
 
+class TestLeModeDEmploiNeCompteNiNeNumerote(unittest.TestCase):
+    """Une page qui compte des entrées de menu, ou qui en désigne une par
+    son rang, vieillit au premier ajout — et sans un mot.
+
+    Les deux sont arrivés ici : « les dix-sept entrées de QEMU/KVM » quand
+    le menu en portait vingt, et « l'entrée 13 écrit ~/.ssh/config » dans
+    la même phrase. Le lecteur n'a aucun moyen de savoir que le compte a
+    bougé ; la page reste parfaitement lisible.
+
+    Le contrôle porte sur la SOURCE bilingue et sur chaque langue : une
+    moitié corrigée laisserait l'autre mentir.
+    """
+
+    CHIFFRES = (
+        r"\d+",
+        "dix-sept|dix-huit|dix-neuf|vingt|seize|quinze",
+        "seventeen|eighteen|nineteen|twenty|sixteen|fifteen",
+    )
+
+    @classmethod
+    def moities(cls):
+        import pathlib
+
+        racine = pathlib.Path(__file__).resolve().parents[1]
+        chemin = racine / "script" / "proxmox" / "README.base.md"
+        source = chemin.read_text(encoding="utf-8")
+        anglais, _sep, francais = source.partition("<!-- [fr] -->")
+        return (("en", anglais), ("fr", francais))
+
+    def test_it_counts_no_menu_entry(self):
+        # Jusqu'à trois mots entre le nombre et « entrées » : le compte
+        # s'écrit « les vingt entrées de QEMU/KVM » comme « the twenty
+        # QEMU/KVM entries ». Exiger l'adjacence laissait passer la
+        # seconde forme — mesuré par mutation.
+        motif = re.compile(
+            r"(%s)((\s+|\s*/\s*)[\w./-]+){0,3}\s+(entries|entrées)"
+            % "|".join(self.CHIFFRES),
+            re.IGNORECASE,
+        )
+        for langue, moitie in self.moities():
+            with self.subTest(langue=langue):
+                self.assertEqual([], motif.findall(moitie))
+
+    def test_it_points_at_no_entry_by_its_rank(self):
+        """Insérer une entrée au-dessus décale la cible, et la page
+        continue d'envoyer au même rang."""
+        motif = re.compile(r"(entry|entrée)\s+\d+", re.IGNORECASE)
+        for langue, moitie in self.moities():
+            with self.subTest(langue=langue):
+                self.assertEqual([], motif.findall(moitie))
+
+
 class TestLePrivilege(unittest.TestCase):
     def test_the_whole_command_is_wrapped_not_just_its_first_word(self):
         """« sudo mkdir && if … fi » n'élèverait que le mkdir, et la
