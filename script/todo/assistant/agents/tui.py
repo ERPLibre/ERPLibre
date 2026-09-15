@@ -55,9 +55,26 @@ FLUX_MAX = 60
 # lirait comme « cet appel n'a pas de commande ».
 DETAILS_PAR_TOUR = 8
 
+# Ce que les cinq autres colonnes du flux occupent — heure, session, outil,
+# durée, fin — séparateurs compris. La commande prend ce qui reste : une
+# largeur FIXE déborde d'un terminal de quatre-vingts colonnes tout en
+# gaspillant la place d'un large.
+FLUX_AUTRES = 42
+
+# En dessous, la colonne ne montre plus rien d'utile : mieux vaut qu'elle
+# déborde et se fasse défiler que de n'afficher que « cd … ».
+COMMANDE_MIN = 12
+
 # La barre de contexte, en caractères. Assez pour lire une pente, assez peu
-# pour tenir dans une colonne à côté des chiffres.
-BARRE = 24
+# pour tenir dans une colonne à côté des chiffres. À vingt-quatre elle est la
+# plus large du tableau et le pousse à cent quarante-trois colonnes, ce qui
+# déborde d'à peu près tout terminal.
+BARRE = 12
+
+# Le nom de projet, borné. Coupé par la GAUCHE : une famille de dépôts partage
+# son préfixe et se distingue par ce qui suit, donc couper par la droite les
+# rendrait tous identiques à l'écran.
+PROJET_MAX = 16
 
 
 def transcriptions(*, motif=None, lister=None) -> list[str]:
@@ -95,8 +112,22 @@ def projet(chemin, agregat=None) -> str:
     """
     lu = getattr(agregat, "cwd", "")
     if lu:
-        return os.path.basename(lu.rstrip("/"))
-    return os.path.basename(os.path.dirname(chemin)).split("-")[-1]
+        return _borne_a_gauche(os.path.basename(lu.rstrip("/")))
+    return _borne_a_gauche(
+        os.path.basename(os.path.dirname(chemin)).split("-")[-1]
+    )
+
+
+def _borne_a_gauche(nom, largeur=PROJET_MAX) -> str:
+    """Un nom borné, coupé par la GAUCHE. Fonction PURE.
+
+    Une famille de dépôts partage son préfixe et se distingue par ce qui
+    suit : couper par la droite les rendrait tous identiques à l'écran, ce que
+    la colonne est justement là pour éviter.
+    """
+    if not nom or len(nom) <= largeur:
+        return nom or ""
+    return "…" + nom[-(largeur - 1) :]
 
 
 def duree(millisecondes) -> str:
@@ -299,7 +330,20 @@ ISSUES = {
 }
 
 
-def lignes_flux(appels, limite=FLUX_MAX, commandes=None) -> list[dict]:
+def largeur_commande(largeur_ecran) -> int:
+    """La place qui reste au flux pour la commande. Fonction PURE.
+
+    Une largeur fixe se trompe des deux côtés : elle déborde d'un terminal
+    étroit et gaspille celui d'un large. Le plancher existe parce qu'une
+    colonne de six caractères ne montre plus rien — mieux vaut alors déborder
+    et se faire défiler.
+    """
+    return max(COMMANDE_MIN, int(largeur_ecran or 0) - FLUX_AUTRES)
+
+
+def lignes_flux(
+    appels, limite=FLUX_MAX, commandes=None, largeur=None
+) -> list[dict]:
     """Les derniers appels d'outil, du plus RÉCENT au plus ancien.
 
     Le panneau des outils dit ce qu'un outil coûte en moyenne ; celui-ci dit
@@ -325,7 +369,7 @@ def lignes_flux(appels, limite=FLUX_MAX, commandes=None) -> list[dict]:
             "outil": a.outil or "—",
             "duree": "—" if a.duree_ms is None else duree(a.duree_ms),
             "issue": t(ISSUES.get(a.issue, "")) if ISSUES.get(a.issue) else "",
-            "commande": _commande_vue(commandes, a.identifiant),
+            "commande": _commande_vue(commandes, a.identifiant, largeur),
         }
         for a in reversed(derniers)
     ]
@@ -367,11 +411,15 @@ def texte_du_detail(appel, detail) -> str:
     return "\n".join(lignes)
 
 
-def _commande_vue(commandes, identifiant) -> str:
+def _commande_vue(commandes, identifiant, largeur=None) -> str:
     """Ce que la colonne montre : la commande, « … » ou « — »."""
     if commandes is None or identifiant not in commandes:
         return "…"
-    return dl.une_ligne(commandes[identifiant]) or "—"
+    coupee = dl.une_ligne(
+        commandes[identifiant],
+        largeur if largeur else dl.COLONNE_MAX,
+    )
+    return coupee or "—"
 
 
 # Les colonnes du flux. La session y est abrégée : le flux réunit toutes les
@@ -507,20 +555,50 @@ COLONNES_OUTILS = (
 # des harnais, pour qu'un seul endroit les décide.
 ICONES = {"claude": "🤖", "opencode": "🧊"}
 
+# Les colonnes du tableau des sessions, PAR ORDRE D'IMPORTANCE et non par
+# parenté de sujet. L'ordre décide de ce qui reste à l'écran quand le terminal
+# est étroit : les quatre premières répondent à « laquelle, où, combien ça
+# coûte, où en est son contexte », qui est ce qu'on vient voir. Les dernières
+# sont des détails qu'on va chercher.
+#
+# Les douze réclament cent vingt-quatre colonnes, donc un terminal de
+# quatre-vingts n'en montre jamais la moitié. Les ordonner rend ce tronquage
+# supportable ; les cacher franchement le rend lisible.
 COLONNES = (
     ("id", "session"),
     ("projet", "project"),
+    ("cout", "cost"),
+    ("contexte", "context"),
+    ("pente", "growth"),
+    ("attention", "attention"),
     ("tours", "turns"),
     ("entree", "prompt"),
     ("sortie", "output"),
-    ("cache", "cache"),
-    ("contexte", "context"),
-    ("pente", "growth"),
-    ("cout", "cost"),
-    ("attention", "attention"),
-    ("api", "API"),
     ("outils", "tools"),
+    ("cache", "cache"),
+    ("api", "API"),
 )
+
+# Ce qu'une colonne coûte, séparateur compris. Sert à choisir combien en
+# montrer AVANT de les créer — leur largeur réelle dépend de ce qu'elles
+# contiennent, qu'on ne connaît pas encore au montage.
+#
+# Douze et non la moyenne de dix : les deux premières colonnes, celles qui
+# nomment la session et le projet, sont les plus larges du lot. Une estimation
+# juste en moyenne se trompe donc toujours du même côté, celui qui déborde.
+COLONNE_LARGEUR = 12
+
+
+def colonnes_visibles(largeur_ecran, colonnes=None) -> tuple:
+    """Les colonnes qui tiennent, dans l'ordre d'importance. Fonction PURE.
+
+    Toujours au moins les deux premières : un tableau qui ne dirait ni quelle
+    session ni quel projet ne dirait rien du tout, et mieux vaut alors déborder
+    et se faire défiler.
+    """
+    colonnes = colonnes or COLONNES
+    combien = max(2, int(largeur_ecran or 0) // COLONNE_LARGEUR)
+    return tuple(colonnes[:combien])
 
 
 def run_tui(run_app: bool = True):
@@ -582,6 +660,12 @@ def run_tui(run_app: bool = True):
             # montrer » : sans la distinction, on rechercherait sans fin ce
             # qui n'existe pas.
             self._commandes: dict = {}
+            # Les colonnes actuellement posées, pour ne les refaire que
+            # lorsque la largeur en change le nombre.
+            self._colonnes: tuple = ()
+            # Le redimensionnement arrive AVANT le montage : repeindre alors
+            # remplirait des tableaux qui n'ont pas encore de colonnes.
+            self._monte = False
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
 
@@ -600,9 +684,7 @@ def run_tui(run_app: bool = True):
 
         def on_mount(self):
             self.title = t("Agent telemetry")
-            tableau = self.query_one("#tableau", DataTable)
-            for _, cle in COLONNES:
-                tableau.add_column(t(cle), key=cle)
+            self._poser_les_colonnes()
             outils = self.query_one("#outils", DataTable)
             for _, cle in COLONNES_OUTILS:
                 outils.add_column(t(cle), key=cle)
@@ -619,8 +701,37 @@ def run_tui(run_app: bool = True):
             # moment où quelqu'un regarde, donc le seul où le ménage ne
             # surprend personne.
             jr.nettoyer()
+            self._monte = True
             self._tick()
             self.set_interval(PAS, self._tick)
+
+        def _poser_les_colonnes(self):
+            """(Re)créer les colonnes du tableau selon la largeur de l'écran.
+
+            Refaites seulement quand leur NOMBRE change : les recréer à chaque
+            tour remettrait le curseur en haut toutes les deux secondes, sous
+            les doigts de qui lit.
+            """
+            voulues = colonnes_visibles(self.size.width)
+            if voulues == self._colonnes:
+                return
+            self._colonnes = voulues
+            tableau = self.query_one("#tableau", DataTable)
+            tableau.clear(columns=True)
+            for _, cle in voulues:
+                tableau.add_column(t(cle), key=cle)
+
+        def on_resize(self, evenement):
+            """Une fenêtre qu'on étire montre ce qu'elle peut montrer.
+
+            Sans effet avant le montage : Textual annonce une taille dès la
+            composition, et repeindre là remplirait des tableaux dont les
+            colonnes ne sont pas encore posées.
+            """
+            if not self._monte:
+                return
+            self._poser_les_colonnes()
+            self._peindre()
 
         def action_vue(self):
             """Passer au panneau suivant, en boucle."""
@@ -847,7 +958,7 @@ def run_tui(run_app: bool = True):
             for ligne in lignes(self._lectures, self._temps) + lignes_opencode(
                 self._seances
             ):
-                tableau.add_row(*[ligne[cle] for cle, _ in COLONNES])
+                tableau.add_row(*[ligne[cle] for cle, _ in self._colonnes])
             outils = self.query_one("#outils", DataTable)
             outils.clear()
             groupes = jr.par_outil(self._appels)
@@ -855,7 +966,11 @@ def run_tui(run_app: bool = True):
                 outils.add_row(*[ligne[cle] for cle, _ in COLONNES_OUTILS])
             flux = self.query_one("#flux", DataTable)
             flux.clear()
-            for ligne in lignes_flux(self._appels, commandes=self._commandes):
+            for ligne in lignes_flux(
+                self._appels,
+                commandes=self._commandes,
+                largeur=largeur_commande(self.size.width),
+            ):
                 flux.add_row(*[ligne[cle] for cle, _ in COLONNES_FLUX])
             agents = self.query_one("#agents", DataTable)
             agents.clear()

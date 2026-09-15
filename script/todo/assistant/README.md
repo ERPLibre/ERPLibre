@@ -368,6 +368,22 @@ output. It is the only pane of the package that displays content, so it says
 so, in the first line rather than the last — a long output would push the
 warning off screen.
 
+**The tables fit the terminal, because they were measured against it.** The
+columns had piled up one per feature without anyone checking the width: twelve
+of them wanted 124 characters, and the stream 95 of which 55 for the command
+alone. An eighty-column terminal — the commonest default — showed neither.
+Nothing was broken, Textual scrolls; but a dashboard you have to scroll no
+longer reads at a glance.
+
+Two fixes, both measured. The command column takes WHAT IS LEFT rather than a
+fixed sixty, so it neither overflows a narrow terminal nor wastes a wide one.
+And the session table shows only the columns that fit, in order of importance
+— which session, which project, what it costs, how full its context is —
+rebuilding them only when the count changes, since redoing them every two
+seconds would reset the cursor under the reader's fingers. A project name is
+cut on the LEFT: a family of repositories shares its prefix and differs by
+what follows.
+
 ## The modules
 
 | File | What it owns |

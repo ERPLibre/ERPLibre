@@ -373,6 +373,22 @@ output. It is the only pane of the package that displays content, so it says
 so, in the first line rather than the last — a long output would push the
 warning off screen.
 
+**The tables fit the terminal, because they were measured against it.** The
+columns had piled up one per feature without anyone checking the width: twelve
+of them wanted 124 characters, and the stream 95 of which 55 for the command
+alone. An eighty-column terminal — the commonest default — showed neither.
+Nothing was broken, Textual scrolls; but a dashboard you have to scroll no
+longer reads at a glance.
+
+Two fixes, both measured. The command column takes WHAT IS LEFT rather than a
+fixed sixty, so it neither overflows a narrow terminal nor wastes a wide one.
+And the session table shows only the columns that fit, in order of importance
+— which session, which project, what it costs, how full its context is —
+rebuilding them only when the count changes, since redoing them every two
+seconds would reset the cursor under the reader's fingers. A project name is
+cut on the LEFT: a family of repositories shares its prefix and differs by
+what follows.
+
 ## The modules
 
 | File | What it owns |
@@ -821,6 +837,23 @@ Un volet de détail s'ouvre sur l'appel surligné et montre la commande avec sa
 sortie. C'est le seul volet du paquet qui affiche du contenu, alors il le dit,
 en première ligne plutôt qu'en dernière — une longue sortie pousserait
 l'avertissement hors de l'écran.
+
+**Les tableaux tiennent dans le terminal, parce qu'ils y ont été mesurés.**
+Les colonnes s'étaient accumulées une par fonctionnalité sans que personne
+regarde la largeur : douze en réclamaient cent vingt-quatre, et le flux
+quatre-vingt-quinze dont cinquante-cinq pour la seule commande. Un terminal de
+quatre-vingts colonnes — le défaut le plus répandu — n'en montrait ni l'un ni
+l'autre. Rien n'était cassé, Textual fait défiler ; mais un tableau de bord
+qu'il faut faire défiler ne se lit plus d'un coup.
+
+Deux correctifs, mesurés tous les deux. La colonne de commande prend CE QUI
+RESTE plutôt qu'un soixante fixe, donc elle ne déborde plus d'un terminal
+étroit et ne gaspille plus celui d'un large. Et le tableau des sessions ne
+montre que les colonnes qui tiennent, par ordre d'importance — quelle session,
+quel projet, combien ça coûte, où en est son contexte —, refaites seulement
+quand leur nombre change, les recréer à chaque tour remettant le curseur en
+haut sous les doigts de qui lit. Un nom de projet se coupe par la GAUCHE : une
+famille de dépôts partage son préfixe et se distingue par ce qui suit.
 
 ## Les modules
 

@@ -95,14 +95,19 @@ class TestLaBarre(unittest.TestCase):
 
 class TestLeNomDuProjet(unittest.TestCase):
     def test_the_working_directory_is_read(self):
+        """Le chemin de travail vient de la TRANSCRIPTION, jamais du nom de
+        répertoire de projet, qui ne s'inverse pas.
+
+        Le nom est borné pour tenir dans une colonne, et coupé par la gauche :
+        ce qui distingue une famille de dépôts est ce qui suit leur préfixe.
+        """
         agregat = st.Agregat(cwd="/home/compte/git/erplibre_new_feature_01")
-        self.assertEqual(
-            tui.projet(
-                "/ignore/-home-compte-git-erplibre-new-feature-01/x.jsonl",
-                agregat,
-            ),
-            "erplibre_new_feature_01",
+        lu = tui.projet(
+            "/ignore/-home-compte-git-erplibre-new-feature-01/x.jsonl",
+            agregat,
         )
+        self.assertTrue(lu.endswith("_new_feature_01"), lu)
+        self.assertLessEqual(len(lu), tui.PROJET_MAX)
 
     def test_a_trailing_slash_does_not_empty_it(self):
         agregat = st.Agregat(cwd="/home/compte/git/projet/")
@@ -949,3 +954,96 @@ class TestLaColonneDeCommande(unittest.TestCase):
         from script.todo.assistant.agents import tui as t_ui
 
         self.assertIn("commande", [cle for cle, _ in t_ui.COLONNES_FLUX])
+
+
+class TestCeQuiTientDansUnTerminal(unittest.TestCase):
+    """Les colonnes s'étaient accumulées sans que personne mesure la largeur.
+
+    Douze colonnes réclament cent vingt-quatre caractères, et le flux en
+    réclamait quatre-vingt-quinze dont cinquante-cinq pour la seule commande.
+    Un terminal de quatre-vingts colonnes — le défaut le plus répandu — n'en
+    montrait ni l'un ni l'autre. Rien n'est cassé, Textual fait défiler ; mais
+    un tableau de bord qu'il faut faire défiler ne se lit plus d'un coup.
+    """
+
+    def test_the_command_column_takes_what_is_left(self):
+        """Une largeur FIXE se trompe des deux côtés : elle déborde d'un
+        terminal étroit et gaspille celui d'un large."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        etroit = t_ui.largeur_commande(80)
+        large = t_ui.largeur_commande(200)
+        self.assertLess(etroit, large)
+        self.assertEqual(etroit + t_ui.FLUX_AUTRES, 80)
+
+    def test_the_command_column_never_shrinks_to_nothing(self):
+        """En dessous d'un plancher elle ne montre plus rien d'utile : mieux
+        vaut déborder et se faire défiler."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.largeur_commande(10), t_ui.COMMANDE_MIN)
+        self.assertEqual(t_ui.largeur_commande(0), t_ui.COMMANDE_MIN)
+        self.assertEqual(t_ui.largeur_commande(None), t_ui.COMMANDE_MIN)
+
+    def test_a_narrow_screen_keeps_the_columns_that_matter(self):
+        """L'ordre décide de ce qui reste : laquelle, où, combien ça coûte,
+        où en est son contexte."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        visibles = [c for _, c in t_ui.colonnes_visibles(80)]
+        self.assertEqual(
+            visibles[:4], ["session", "project", "cost", "context"]
+        )
+
+    def test_a_wide_screen_keeps_them_all(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(t_ui.colonnes_visibles(400), tuple(t_ui.COLONNES))
+
+    def test_a_screen_grows_and_so_does_the_table(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        largeurs = [len(t_ui.colonnes_visibles(l)) for l in (60, 100, 160)]
+        self.assertEqual(largeurs, sorted(largeurs))
+        self.assertLess(largeurs[0], largeurs[-1])
+
+    def test_two_columns_survive_any_width(self):
+        """Un tableau qui ne dirait ni quelle session ni quel projet ne dirait
+        rien du tout."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        for etroit in (0, 1, 20, None):
+            visibles = t_ui.colonnes_visibles(etroit)
+            self.assertEqual(len(visibles), 2, repr(etroit))
+            self.assertEqual([c for _, c in visibles], ["session", "project"])
+
+    def test_a_project_name_is_cut_on_the_left(self):
+        """Une famille de dépôts partage son préfixe et se distingue par ce
+        qui suit : couper par la droite les rendrait tous identiques."""
+        from script.todo.assistant.agents import statistiques as st_
+        from script.todo.assistant.agents import tui as t_ui
+
+        noms = [
+            t_ui.projet("/x/y.jsonl", st_.Agregat(cwd=f"/c/{n}"))
+            for n in ("erplibre_todo_assistant", "erplibre_new_feature_01")
+        ]
+        self.assertEqual(len(set(noms)), 2, "les deux restent distincts")
+        for nom in noms:
+            self.assertLessEqual(len(nom), t_ui.PROJET_MAX)
+            self.assertTrue(nom.startswith("…"))
+
+    def test_a_short_project_name_is_untouched(self):
+        from script.todo.assistant.agents import statistiques as st_
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(
+            t_ui.projet("/x/y.jsonl", st_.Agregat(cwd="/c/erplibre")),
+            "erplibre",
+        )
+
+    def test_the_growth_bar_fits_a_column(self):
+        """À vingt-quatre elle était la plus large du tableau."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        self.assertEqual(len(t_ui.barre(tuple(range(1, 200)))), t_ui.BARRE)
+        self.assertLessEqual(t_ui.BARRE, 12)

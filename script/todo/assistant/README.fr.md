@@ -413,6 +413,23 @@ sortie. C'est le seul volet du paquet qui affiche du contenu, alors il le dit,
 en première ligne plutôt qu'en dernière — une longue sortie pousserait
 l'avertissement hors de l'écran.
 
+**Les tableaux tiennent dans le terminal, parce qu'ils y ont été mesurés.**
+Les colonnes s'étaient accumulées une par fonctionnalité sans que personne
+regarde la largeur : douze en réclamaient cent vingt-quatre, et le flux
+quatre-vingt-quinze dont cinquante-cinq pour la seule commande. Un terminal de
+quatre-vingts colonnes — le défaut le plus répandu — n'en montrait ni l'un ni
+l'autre. Rien n'était cassé, Textual fait défiler ; mais un tableau de bord
+qu'il faut faire défiler ne se lit plus d'un coup.
+
+Deux correctifs, mesurés tous les deux. La colonne de commande prend CE QUI
+RESTE plutôt qu'un soixante fixe, donc elle ne déborde plus d'un terminal
+étroit et ne gaspille plus celui d'un large. Et le tableau des sessions ne
+montre que les colonnes qui tiennent, par ordre d'importance — quelle session,
+quel projet, combien ça coûte, où en est son contexte —, refaites seulement
+quand leur nombre change, les recréer à chaque tour remettant le curseur en
+haut sous les doigts de qui lit. Un nom de projet se coupe par la GAUCHE : une
+famille de dépôts partage son préfixe et se distingue par ce qui suit.
+
 ## Les modules
 
 | Fichier | Ce qu'il porte |
