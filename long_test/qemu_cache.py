@@ -67,6 +67,7 @@ from script.qemu import cache_offline  # noqa: E402
 from script.qemu.deploy_qemu import (  # noqa: E402
     DISTRO_PKG,
     DISTROS,
+    attente_cloud_final,
     cache_env_reload,
     distro_label,
 )
@@ -175,6 +176,9 @@ def avec_reprises(commande):
 ATTENDRE_CLOUD_INIT = (
     "if command -v cloud-init >/dev/null 2>&1; then"
     " sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 || true; fi"
+    # « status --wait » rend la main dès que cloud-init se déclare en erreur,
+    # alors que son étape finale écrit encore : l'unité, elle, dit la vérité.
+    f"; {attente_cloud_final()}"
     # La session s'ouvre avant que cloud-init n'écrive les variables du cache :
     # sans les relire, un npm lancé sans sudo rejette l'autorité du cache.
     f"; {cache_env_reload()}"

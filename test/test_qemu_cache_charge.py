@@ -139,6 +139,69 @@ class TestLaCharge(unittest.TestCase):
         i = QC.ATTENDRE_CLOUD_INIT.index("status --wait")
         self.assertIn(cache_env_reload(), QC.ATTENDRE_CLOUD_INIT[i:])
 
+    def test_lattente_suit_l_unite_et_non_le_seul_statut(self):
+        """« status --wait » rend la main dès que cloud-init se déclare en
+        erreur — un module accessoire y suffit — alors que son étape finale
+        écrit encore l'autorité du cache et les variables. Une session ouverte
+        à cette seconde-là vit sans elles, et « sudo » n'a rien à conserver :
+        « sudo npm » rejette alors le certificat du cache."""
+        from script.qemu.deploy_qemu import (
+            attente_cloud_final,
+            cache_env_reload,
+        )
+
+        attente = QC.ATTENDRE_CLOUD_INIT
+        self.assertIn("cloud-final", attente_cloud_final())
+        self.assertIn(attente_cloud_final(), attente)
+        self.assertLess(
+            attente.index(attente_cloud_final()),
+            attente.index(cache_env_reload()),
+            "les variables sont relues avant la fin de l'étape qui les écrit",
+        )
+
+    def test_lattente_de_l_unite_est_bornee_et_sans_effet_ailleurs(self):
+        """Une VM sans cloud-init ne doit pas payer l'attente, et une unité
+        qui ne finit jamais ne doit pas tenir la campagne indéfiniment."""
+        from script.qemu.deploy_qemu import attente_cloud_final
+
+        court = attente_cloud_final(3)
+        self.assertIn("[ $n -ge 3 ]", court)
+        self.assertIn("2>/dev/null", court)
+
+    def test_lattente_guette_activating_et_non_is_active(self):
+        """cloud-final est un « oneshot » qui reste ACTIF une fois terminé :
+        « is-active » y est vrai pour toujours. Attendre là-dessus paie la
+        borne entière sur chaque VM — cinq minutes — sans jamais rien
+        détecter. Seul « activating » dit que l'étape écrit encore."""
+        from script.qemu.deploy_qemu import attente_cloud_final
+
+        attente = attente_cloud_final()
+        self.assertIn("activating", attente)
+        self.assertNotIn("is-active", attente)
+
+    def test_lattente_de_l_unite_rend_la_main_sur_cette_machine(self):
+        """Jouée dans un vrai shell, hors VM : l'hôte n'a pas d'étape finale
+        en cours, et l'attente doit donc rendre la main tout de suite."""
+        import subprocess
+        import time
+
+        from script.qemu.deploy_qemu import attente_cloud_final
+
+        debut = time.monotonic()
+        res = subprocess.run(
+            ["sh", "-c", attente_cloud_final()],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(0, res.returncode, res.stderr[-200:])
+        self.assertLess(
+            time.monotonic() - debut,
+            5,
+            "l'attente tourne alors que rien n'écrit : elle guette un état"
+            " qu'un service oneshot garde pour toujours",
+        )
+
     def test_la_charge_est_du_shell_valide(self):
         """Une instruction collée sans séparateur casse la commande entière,
         et la VM ne dit alors pas pourquoi elle n'a rien installé."""

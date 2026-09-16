@@ -2853,6 +2853,35 @@ def cache_env_reload(fichier: str = "/etc/environment") -> str:
     )
 
 
+def attente_cloud_final(bornes: int = 150) -> str:
+    """Attend que l'ÉTAPE FINALE de cloud-init ait fini d'écrire.
+
+    « cloud-init status --wait » rend la main dès que cloud-init se déclare en
+    ERREUR, et un module accessoire suffit à l'y mettre — une locale que
+    l'invité ne connaît pas, par exemple. Son étape finale, elle, continue :
+    c'est elle qui pose l'autorité du cache, les variables de /etc/environment
+    et le fichier sudoers. Une session ouverte dans cette seconde-là vit sans
+    ces variables pour toute sa durée — PAM ne relit plus le fichier — et
+    « sudo » n'a alors rien à conserver, si bien qu'un npm lancé par sudo
+    rejette l'autorité du cache sur « self-signed certificate in certificate
+    chain ».
+
+    L'unité tranche, mais PAS par « is-active » : cloud-final est un service
+    « oneshot » qui reste ACTIF une fois terminé — is-active y est vrai pour
+    toujours, et attendre là-dessus coûte la borne entière à chaque VM, sans
+    rien détecter. Seul « activating » dit que l'étape écrit encore.
+
+    Bornée à `bornes` tours de deux secondes. Sans effet là où l'unité n'existe
+    pas : « show » y rend un état vide ou « inactive », jamais « activating » —
+    une image sans cloud-init, ou une VM déjà installée, n'attendent rien.
+    """
+    return (
+        'n=0; while [ "$(systemctl show -p ActiveState --value'
+        ' cloud-final.service 2>/dev/null)" = activating ]; do n=$((n+1));'
+        f" [ $n -ge {bornes} ] && break; sleep 2; done"
+    )
+
+
 def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     """Fichiers d'accueil de la VM : le guide de connexion, l'identité git.
 
