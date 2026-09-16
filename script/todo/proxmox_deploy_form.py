@@ -112,6 +112,14 @@ def build_spec(vms, existants, form):
         # déjà sur libvirt, il vaut ici. Sans ces cinq clés, une VM créée sur
         # Proxmox naissait sans bureau, sans outils et en UTC.
         "timezone": form.get("timezone") or "",
+        # CETTE ASSEMBLÉE ÉNUMÈRE, donc elle oublie. Ces quatre-là décrivent
+        # l'INVITÉ : le socle les pose, l'écran les affiche, et elles
+        # s'arrêtaient ici. La VM recevait l'agent de repli et la locale par
+        # défaut du déploiement, quelles que soient les réponses.
+        "locale": form.get("locale", ""),
+        "ai_agent": form.get("ai_agent", ""),
+        "git_name": form.get("git_name", ""),
+        "git_email": form.get("git_email", ""),
         "desktop": form.get("desktop") or "",
         "vm_tools": tuple(form.get("vm_tools") or ()),
         "app_store": form.get("app_store") or "deb",

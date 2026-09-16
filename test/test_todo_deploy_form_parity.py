@@ -303,24 +303,32 @@ class TestLaLocaleDesTroisVoies(unittest.TestCase):
         cls.qemu = releve(run_deploy_form, todo._qemu_form_context(mod))
         cls.pve = releve(run_proxmox_form, contexte_proxmox(todo))
 
-    @staticmethod
-    def assemblee(vu):
+    # CHAQUE ÉCRAN A SON ASSEMBLÉE. Les mesurer toutes deux avec celle de
+    # libvirt laisserait la seconde sans épreuve — et c'est justement là
+    # que les quatre réglages d'invité s'arrêtaient.
+    ASSEMBLEES = {
+        "QEMU/KVM": "script.todo.deploy_form_lib",
+        "Proxmox": "script.todo.proxmox_deploy_form",
+    }
+
+    @classmethod
+    def assemblee(cls, ecran, vu):
         """La spec que le DÉPLOIEMENT reçoit, pas celle de l'écran.
 
         Le banc capture `_form_values()`, un cran trop tôt : c'est
         `build_spec` qui compose ce qui part, et elle ÉNUMÈRE — donc elle
-        oublie. La locale y était perdue alors qu'elle traversait
-        l'écran, et l'épreuve qui regardait l'écran ne pouvait pas le
-        voir.
+        oublie. La locale y était perdue alors qu'elle traversait l'écran,
+        et l'épreuve qui regardait l'écran ne pouvait pas le voir.
         """
-        from script.todo.deploy_form_lib import build_spec
+        import importlib
 
-        return build_spec(CATALOGUE[:1], [], vu["spec"])
+        module = importlib.import_module(cls.ASSEMBLEES[ecran])
+        return module.build_spec(CATALOGUE[:1], [], vu["spec"])
 
     def test_both_screens_carry_one(self):
         for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
             with self.subTest(ecran=nom):
-                self.assertTrue(self.assemblee(vu).get("locale"), nom)
+                self.assertTrue(self.assemblee(nom, vu).get("locale"), nom)
 
     def test_the_assembly_loses_nothing_the_shared_base_poses(self):
         """LA GARDE QUI AURAIT ATTRAPÉ LE TROU. `build_spec` énumère ses
@@ -332,7 +340,9 @@ class TestLaLocaleDesTroisVoies(unittest.TestCase):
         pose = set(ExtrasMixin.extras_values(self._socle()))
         for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
             with self.subTest(ecran=nom):
-                self.assertEqual(set(), pose - set(self.assemblee(vu)), nom)
+                self.assertEqual(
+                    set(), pose - set(self.assemblee(nom, vu)), nom
+                )
 
     @staticmethod
     def _socle():
@@ -360,7 +370,7 @@ class TestLaLocaleDesTroisVoies(unittest.TestCase):
             with self.subTest(ecran=nom):
                 self.assertEqual(
                     ExtrasMixin.LOCALE_DEFAUT,
-                    self.assemblee(vu)["locale"],
+                    self.assemblee(nom, vu)["locale"],
                     nom,
                 )
 
