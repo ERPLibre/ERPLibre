@@ -400,8 +400,22 @@ class AssistantMenuMixin:
         return oc.decoder_liste(self._opencode_lancer(oc.argv_lister())), "cli"
 
     def _opencode_compte(self):
-        """Ce que l'entrée du menu annonce, sans mentir sur la portée."""
-        seances, _ = self._opencode_seances()
+        """Ce que l'entrée du menu annonce, sans mentir sur la portée.
+
+        La BASE seulement, jamais le repli par le CLI. Celui-ci coûte un
+        lancement d'Open Code — près de deux secondes — et ce libellé se
+        recalcule à chaque affichage du menu, donc après chaque geste, y
+        compris ceux qui n'ont rien à voir avec ce harnais. L'écran qui suit,
+        lui, a le droit de payer : on le lui a demandé.
+
+        Base muette, suffixe vide : un compte inventé vaudrait moins que pas
+        de compte du tout.
+        """
+        from script.todo.assistant.harness import opencode as oc
+
+        seances = oc.lire_base(repertoire=os.getcwd())
+        if seances is None:
+            return ""
         if not seances:
             return t("nothing here")
         return self._llm_count(len(seances), "session here", "sessions here")

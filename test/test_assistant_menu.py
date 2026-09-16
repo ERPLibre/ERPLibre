@@ -1200,6 +1200,37 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
     alors de ce qui tournait chez celui qui lançait la suite.
     """
 
+    def test_the_open_code_count_never_falls_back_to_the_cli(self):
+        """Une base muette n'autorise pas le repli par la ligne de commande.
+
+        Ce libellé se recalcule à chaque affichage du menu, donc après chaque
+        geste, y compris ceux qui n'ont rien à voir avec ce harnais. Le repli
+        coûte un lancement d'Open Code — près de deux secondes, trente si
+        l'outil ne répond pas.
+        """
+        import subprocess
+
+        from script.todo.todo import TODO
+
+        def refuser(argv, *a, **kw):
+            raise AssertionError(f"sous-processus lancé : {argv}")
+
+        with patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=None,
+        ), patch.object(subprocess, "run", refuser):
+            self.assertEqual(TODO()._opencode_compte(), "")
+
+    def test_a_readable_base_still_gives_the_count(self):
+        """La couture ne doit pas avoir éteint le libellé lui-même."""
+        from script.todo.todo import TODO
+
+        with patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ):
+            self.assertEqual(TODO()._opencode_compte(), t("nothing here"))
+
     def test_opening_the_agents_screen_launches_nothing(self):
         import subprocess
 
