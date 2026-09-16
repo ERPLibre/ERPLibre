@@ -14,7 +14,14 @@ et rien ne le disait. La duplication était le mécanisme de la dérive, pas son
 symptôme : chaque correctif se posait sur un seul des deux écrans.
 
 Ce fichier teste donc la PARITÉ elle-même, et pas six comportements. Ajouter
-un réglage à un seul écran le fait échouer, quel que soit ce réglage."""
+un réglage à un seul écran le fait échouer, quel que soit ce réglage.
+
+ET « QUEL QUE SOIT CE RÉGLAGE » SE DÉRIVE. Une liste de six identifiants ne
+tenait que ces six-là : trois réglages de l'invité — l'agent de code et
+l'identité git — vivaient sur le seul écran QEMU/KVM sans qu'un mot soit
+dit. La comparaison porte désormais sur l'ENSEMBLE des widgets de réglage,
+et ce qu'un écran porte seul doit être nommé, avec sa raison, dans
+`PROPRES`."""
 
 import asyncio
 import sys
@@ -33,6 +40,30 @@ except Exception:  # pragma: no cover - dépend de l'environnement
 # Ce que porte le socle partagé. Les identifiants, parce qu'ils sont le
 # contrat : c'est par eux que la spec est lue.
 REGLAGES = ("f_type", "f_prod", "f_store", "f_tools", "f_tz", "f_python")
+
+# Ce que chaque écran porte SEUL, et pourquoi. Chacun décrit la machine QUI
+# PORTE la VM, jamais la VM elle-même. Un réglage de l'INVITÉ n'a rien à
+# faire ici : allonger cette liste est exactement la dérive que ce fichier
+# existe pour empêcher, et la raison écrite à côté est ce qui le rend
+# visible à qui l'allonge.
+PROPRES = {
+    "QEMU/KVM": {
+        "f_gpu3d": "passe un GPU de l'hôte, ce que libvirt seul sait faire",
+    },
+    "Proxmox": {
+        "f_storage": "où poser le disque sur l'hôte Proxmox",
+        "f_bridge": "à quel pont de l'hôte rattacher la VM",
+        "f_vmid": "l'identifiant que Proxmox donne à la VM",
+        "f_start": "démarrer la VM une fois « qm create » passé",
+    },
+}
+
+# Les clés de spec qu'un seul écran produit, mêmes raisons. « backend » dit
+# quel hyperviseur reçoit la spec ; « host » nomme l'hôte Proxmox.
+CLES_PROPRES = {
+    "QEMU/KVM": ("backend", "gpu3d"),
+    "Proxmox": ("bridge", "host", "nameservers", "start", "storage"),
+}
 
 CATALOGUE = [
     {
@@ -152,6 +183,34 @@ class TestLesDeuxEcrans(unittest.TestCase):
             with self.subTest(reglage=ident):
                 self.assertTrue(self._porte(self.qemu, ident), "QEMU/KVM")
                 self.assertTrue(self._porte(self.pve, ident), "Proxmox")
+
+    def test_neither_screen_keeps_a_setting_widget_to_itself(self):
+        """La parité, DÉRIVÉE : tout widget de réglage présent d'un seul
+        côté doit être nommé, avec sa raison.
+
+        C'est la seule forme qui tient « quel que soit ce réglage » : une
+        liste des réglages à surveiller ne surveille que ceux qu'on a pensé
+        à y mettre, et trois y avaient manqué.
+        """
+        q = {i for i in self.qemu["ids"] if i.startswith("f_")}
+        p = {i for i in self.pve["ids"] if i.startswith("f_")}
+        self.assertEqual(set(PROPRES["QEMU/KVM"]), q - p)
+        self.assertEqual(set(PROPRES["Proxmox"]), p - q)
+
+    def test_nothing_is_screen_specific_without_a_reason(self):
+        """Contrôle positif : tout verser dans « PROPRES » ferait passer
+        l'épreuve ci-dessus sans qu'aucune parité soit tenue."""
+        for ecran, propres in PROPRES.items():
+            for ident, raison in propres.items():
+                with self.subTest(ecran=ecran, widget=ident):
+                    self.assertTrue(raison.strip())
+
+    def test_neither_spec_carries_a_guest_key_of_its_own(self):
+        """Un réglage peut atteindre la spec sans widget : le contrôle des
+        widgets ne couvre donc pas celui des clés."""
+        q, p = set(self.qemu["spec"]), set(self.pve["spec"])
+        self.assertEqual(set(CLES_PROPRES["QEMU/KVM"]), q - p)
+        self.assertEqual(set(CLES_PROPRES["Proxmox"]), p - q)
 
     def test_both_specs_carry_the_same_guest_keys(self):
         from script.todo.deploy_form_extras import ExtrasMixin

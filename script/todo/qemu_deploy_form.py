@@ -401,33 +401,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         value=defaults.get("gpu3d", False),
                         id="f_gpu3d",
                     )
-                    # Révélés par la case « AI coding tools » du bloc des
-                    # outils : sans elle, ni l'agent ni l'identité git n'ont
-                    # d'objet, et trois widgets de plus encombrent un écran
-                    # déjà dense. Le nom et le courriel sont pré-remplis avec
-                    # l'identité de l'HÔTE — c'est ce que la VM reçoit
-                    # aujourd'hui, et un champ vide la ferait croire absente.
-                    yield Static(
-                        f"  {t('AI coding tools')}",
-                        id="t_ai",
-                        classes="grouptitle",
-                    )
-                    yield Select(
-                        [("Claude Code", "claude"), ("opencode", "opencode")],
-                        value=defaults.get("ai_agent") or "claude",
-                        allow_blank=False,
-                        id="f_ai_agent",
-                    )
-                    yield Input(
-                        value=defaults.get("git_name", ""),
-                        placeholder=t("Name for git"),
-                        id="f_git_name",
-                    )
-                    yield Input(
-                        value=defaults.get("git_email", ""),
-                        placeholder=t("Email for git"),
-                        id="f_git_email",
-                    )
+                    yield from self.compose_ai_tools()
                     # Le parallélisme reste dans « Déploiement » : c'est le
                     # nombre de VM menées de front, pas une option
                     # d'installation.
@@ -455,20 +429,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                     yield VerticalScroll(id="plan")
                     yield Static("", id="totals")
             yield Footer()
-
-        # Les widgets que la case « AI coding tools » découvre.
-        _AI_WIDGETS = ("#t_ai", "#f_ai_agent", "#f_git_name", "#f_git_email")
-
-        def _sync_ai(self) -> None:
-            """Montre ou cache le bloc IA selon la case des outils.
-
-            Cacher plutôt que griser : un champ grisé occupe la place et se
-            lit comme un réglage qu'on aurait le droit de changer."""
-            case = self.query("#f_tool_aidev")
-            vu = bool(case) and bool(case.first(Checkbox).value)
-            for sel in self._AI_WIDGETS:
-                for widget in self.query(sel):
-                    widget.display = vu
 
         def on_mount(self) -> None:
             self.title = t("Deploy ERPLibre VM(s)!")
@@ -1049,11 +1009,6 @@ def run_deploy_form(ctx, run_app: bool = True):
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
                 "monitor": self.query_one("#f_monitor", Checkbox).value,
                 "gpu3d": self.query_one("#f_gpu3d", Checkbox).value,
-                "ai_agent": self.query_one("#f_ai_agent", Select).value,
-                "git_name": self.query_one("#f_git_name", Input).value.strip(),
-                "git_email": self.query_one(
-                    "#f_git_email", Input
-                ).value.strip(),
                 "res_label": (
                     t("custom")
                     if self.profile == "custom"
