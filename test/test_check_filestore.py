@@ -24,7 +24,8 @@ sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from script.analyse import check_filestore as fs  # noqa: E402
+from script.analyse import check_filestore as fs
+from script.todo.todo_i18n import t  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 
@@ -578,6 +579,62 @@ class TestTheRepairMenu(unittest.TestCase):
             self.obj._filestore_purge_dead("db", self.rapport())
         self.assertEqual(demandes, [])
         self.assertEqual(self.lancees, [])
+
+    def test_the_question_counts_what_the_delete_erases(self):
+        """L'ACCORD HUMAIN PORTE SUR UN NOMBRE. Le résumé compte des
+        FICHIERS — il est dédoublonné par « store_fname » — et la
+        suppression porte sur des LIGNES. Demander l'accord sur le premier
+        pour effacer le second obtenait un oui sur un chiffre que rien ne
+        reliait au geste.
+
+        Les deux ensembles diffèrent par construction : « dead_ids » reçoit
+        aussi les pièces dont le fichier est présent mais le champ mort,
+        qui n'entrent dans aucun groupe.
+        """
+        import re
+
+        demandes = []
+        self.auto_ask.ask = lambda p, default="", seconds=None: (
+            demandes.append(p) or "n"
+        )
+        with redirect_stdout(io.StringIO()):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [10, 11, 12])
+            )
+        chiffres = [int(n) for n in re.findall(r"\d+", demandes[0])]
+        self.assertIn(3, chiffres, demandes[0])
+        self.assertNotIn(1, chiffres, demandes[0])
+
+    def test_the_gap_between_files_and_rows_is_said(self):
+        """Deux nombres à l'écran sans un mot laissent chercher lequel
+        décide."""
+        tampon = io.StringIO()
+        self.repond("n")
+        with redirect_stdout(tampon):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [10, 11, 12])
+            )
+        self.assertIn(t("file(s) shown"), tampon.getvalue())
+        self.assertIn(t("row(s) to delete"), tampon.getvalue())
+
+    def test_no_gap_line_when_the_two_counts_agree(self):
+        """Contrôle positif : la dire toujours noierait le seul cas où
+        elle corrige une attente."""
+        tampon = io.StringIO()
+        self.repond("n")
+        with redirect_stdout(tampon):
+            self.obj._filestore_purge_dead(
+                "db", self.rapport([piece("a/1")], [3])
+            )
+        self.assertNotIn(t("row(s) to delete"), tampon.getvalue())
+
+    def test_the_count_and_the_sql_cannot_diverge(self):
+        """UN SEUL endroit décide ce que la purge efface : le compte de la
+        question et les identifiants du DELETE en sortent tous les deux."""
+        rapport = self.rapport([piece("a/1")], [12, 10, 10, 11])
+        ids = fs.purge_dead_ids(rapport)
+        self.assertEqual([10, 11, 12], ids)
+        self.assertIn("(10, 11, 12)", fs.purge_dead_sql(rapport))
 
     def test_the_menu_offers_both_repairs(self):
         racine = os.path.normpath(

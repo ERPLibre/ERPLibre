@@ -4200,6 +4200,12 @@ class TODO(
         from script.todo import auto_ask
 
         lignes = rapport["groups"]["dead_field"]
+        # LE NOMBRE DE LA QUESTION EST CELUI DU DELETE. Le résumé
+        # ci-dessous compte des FICHIERS — il est dédoublonné par
+        # « store_fname » — et la suppression porte sur des LIGNES. Demander
+        # l'accord sur le premier pour effacer le second obtenait un « oui »
+        # sur un chiffre que rien ne reliait au geste.
+        ids = filestore.purge_dead_ids(rapport)
         sql = filestore.purge_dead_sql(rapport)
         if not sql:
             print(f"ℹ️  {t('Nothing to purge.')}")
@@ -4207,8 +4213,16 @@ class TODO(
         print()
         for texte in filestore.summarise(lignes):
             print(f"   {texte}")
+        if len(ids) != len(lignes):
+            # L'ÉCART SE DIT. Sans cette ligne, le résumé et la question
+            # portent deux nombres différents sans que rien n'explique
+            # lequel décide.
+            print(
+                f"   {len(lignes)} {t('file(s) shown')} →"
+                f" {len(ids)} {t('row(s) to delete')}"
+            )
         question = (
-            f"💬 {t('Delete these')} {len(lignes)}"
+            f"💬 {t('Delete these')} {len(ids)}"
             f" {t('attachment row(s) for good?')} (y/N) : "
         )
         if auto_ask.ask(question, default="n").strip().lower() not in (

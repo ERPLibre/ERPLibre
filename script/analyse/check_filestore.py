@@ -591,6 +591,22 @@ def summarise(groupe):
     ]
 
 
+def purge_dead_ids(rapport) -> list:
+    """Les identifiants que la purge efface, triés et dédoublonnés.
+
+    UN SEUL ENDROIT LES COMPTE. L'écran demandait l'accord sur la taille
+    d'un GROUPE, qui compte des fichiers, tandis que le DELETE portait sur
+    ces identifiants-là, qui comptent des lignes. Les deux nombres
+    diffèrent par construction : `dead_ids` reçoit aussi les pièces dont le
+    fichier est présent mais le champ mort — elles n'entrent dans aucun
+    groupe — et il est rempli AVANT la déduplication par « store_fname ».
+
+    Un accord humain obtenu sur le petit nombre autorisait l'effacement du
+    grand, et rien dans la question ne le laissait voir.
+    """
+    return sorted(set(rapport.get("dead_ids") or []))
+
+
 def purge_dead_sql(rapport):
     """Le SQL qui efface les lignes dont le champ n'existe plus, ou "".
 
@@ -599,7 +615,7 @@ def purge_dead_sql(rapport):
     porte, et rejouer ce raisonnement en SQL laisserait la porte ouverte
     à effacer autre chose que ce qui a été montré.
     """
-    ids = sorted(set(rapport.get("dead_ids") or []))
+    ids = purge_dead_ids(rapport)
     if not ids:
         return ""
     liste = ", ".join(str(i) for i in ids)
