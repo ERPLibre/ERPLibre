@@ -153,6 +153,53 @@ func depotDEssai(t *testing.T) string {
 	return nu
 }
 
+// Le refus de place est la SEULE trace qu'un opérateur verra, et il nommait
+// le champ PlancherLibre — laissé à zéro par tout appelant ordinaire — au
+// lieu du plancher qui avait refusé. « moins de 0 o libres sur le disque »
+// n'est ni vrai ni exploitable : il n'annonce aucun seuil et ne dit pas ce
+// qu'il a mesuré.
+func TestLeRefusConnaitLePlancherQuiARefuse(t *testing.T) {
+	g := &GitMirror{Dir: t.TempDir()}
+	libres, plancher, assez := g.placeSuffisante()
+	if plancher != PlancherParDefaut {
+		t.Fatalf("plancher rendu %d, le défaut est %d",
+			plancher, PlancherParDefaut)
+	}
+	if libres < 0 {
+		t.Skip("place non mesurable sur ce répertoire")
+	}
+	if assez != (libres > plancher) {
+		t.Fatalf("verdict %v pour %d libres sous un plancher de %d",
+			assez, libres, plancher)
+	}
+}
+
+// Une mesure impossible ne bloque pas — c'est le choix déjà écrit — mais elle
+// doit se DISTINGUER d'un disque vide : zéro octet libre est une mesure, pas
+// une absence de mesure.
+func TestUnePlaceNonMesurableNeBloquePasEtSeDistingue(t *testing.T) {
+	g := &GitMirror{Dir: filepath.Join(t.TempDir(), "nexiste", "pas")}
+	libres, _, assez := g.placeSuffisante()
+	if !assez {
+		t.Fatal("une mesure impossible ne doit pas refuser le miroir")
+	}
+	if libres != -1 {
+		t.Fatalf("libres %d : une mesure absente doit se distinguer", libres)
+	}
+}
+
+// Le plancher des tests qui ne portent PAS sur le plancher.
+//
+// Le défaut de production — 10 Gio laissés au disque de l'orchestrateur — n'a
+// rien à voir avec un miroir de trois commits dans un répertoire temporaire,
+// et il fait échouer treize tests sur toute machine dont le répertoire
+// temporaire offre moins que cela : un /tmp en tmpfs y suffit. Le refus était
+// alors pris pour une panne du miroir.
+//
+// Le plancher lui-même est éprouvé plus bas, avec une valeur qu'aucun disque
+// n'atteint.
+const plancherDEssai int64 = 1
+
 // L'épreuve qui compte : un client clone à travers le miroir, sans que rien
 // dans l'invité soit configuré, et le dépôt arrive complet.
 func TestClonerAuTraversDuMiroir(t *testing.T) {
@@ -160,7 +207,8 @@ func TestClonerAuTraversDuMiroir(t *testing.T) {
 		t.Skip("git-http-backend absent de cette machine")
 	}
 	amont, _ := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: 2 * time.Minute}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 2 * time.Minute}
 
 	srv := httptest.NewServer(http.HandlerFunc(
 		func(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +248,8 @@ func TestClonerAuTraversDuMiroir(t *testing.T) {
 // peut faire de ce protocole.
 func TestUnMiroirExistantSertQuandLAmontEstMuet(t *testing.T) {
 	amont, srvAmont := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: time.Minute}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: time.Minute}
 	if _, pret := g.Assurer(context.Background(), amont); !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
 	}
@@ -221,7 +270,8 @@ func TestUnMiroirExistantSertQuandLAmontEstMuet(t *testing.T) {
 // relais, qui donnera au client la vraie erreur du réseau plutôt qu'une erreur
 // inventée ici.
 func TestAucunMiroirEtAucunAmont(t *testing.T) {
-	g := &GitMirror{Dir: t.TempDir(), Delai: 20 * time.Second}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 20 * time.Second}
 	chemin, pret := g.Assurer(
 		context.Background(), "https://127.0.0.1:1/nexiste/pas.git")
 	if pret {
@@ -270,7 +320,8 @@ func TestDepotsDuFichier(t *testing.T) {
 // arrêter pour lui perdrait le travail déjà fait.
 func TestUnDepotEnEchecNEmportePasLesAutres(t *testing.T) {
 	bon, _ := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 30 * time.Second}
 	depots := []string{
 		bon,
 		"https://127.0.0.1:1/absent.git",
@@ -293,7 +344,8 @@ func TestUnDepotEnEchecNEmportePasLesAutres(t *testing.T) {
 // être servie, ce qui est tout l'objet de l'avance.
 func TestApresPrefetchLeMiroirEstPret(t *testing.T) {
 	amont, _ := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 30 * time.Second}
 	if r, e := g.Prefetch(
 		context.Background(), []string{amont}, 2, nil,
 	); r != 1 || e != 0 {
@@ -331,7 +383,8 @@ func TestLePlancherRefuseUnMiroirDeplus(t *testing.T) {
 // qui a changé, et le refuser priverait de tout ce qui est déjà là.
 func TestLePlancherNEmpechePasDeServirLexistant(t *testing.T) {
 	amont, _ := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 30 * time.Second}
 	if _, pret := g.Assurer(context.Background(), amont); !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
 	}
@@ -350,7 +403,8 @@ func TestLePlancherNEmpechePasDeServirLexistant(t *testing.T) {
 // mesure ne peut pas avoir un chemin muet.
 func TestCeQueLeMiroirSertEstCompte(t *testing.T) {
 	amont, _ := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 30 * time.Second}
 	chemin, pret := g.Assurer(context.Background(), amont)
 	if !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
@@ -383,7 +437,8 @@ func TestCeQueLeMiroirSertEstCompte(t *testing.T) {
 // La liste est triée par TAILLE : c'est ce qu'on cherche quand on surveille
 // la place à la main, et trois dépôts font les trois quarts du total.
 func TestLesDepotsSontTriesParTaille(t *testing.T) {
-	g := &GitMirror{Dir: t.TempDir()}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir()}
 	for nom, poids := range map[string]int{
 		"h/petit.git": 10, "h/gros.git": 5000, "h/moyen.git": 500,
 	} {
@@ -415,7 +470,8 @@ func TestLesDepotsSontTriesParTaille(t *testing.T) {
 // l'effacement doit rester DANS les miroirs — un appel mal formé ne doit pas
 // pouvoir emporter autre chose.
 func TestRetirerRefuseCeQuiEstDehors(t *testing.T) {
-	g := &GitMirror{Dir: t.TempDir()}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir()}
 	dehors := filepath.Join(t.TempDir(), "ailleurs.git")
 	if err := os.MkdirAll(dehors, 0o755); err != nil {
 		t.Fatal(err)
@@ -432,7 +488,8 @@ func TestRetirerRefuseCeQuiEstDehors(t *testing.T) {
 
 func TestRetirerEffaceLeMiroir(t *testing.T) {
 	amont, _ := amontGit(t)
-	g := &GitMirror{Dir: t.TempDir(), Delai: 30 * time.Second}
+	g := &GitMirror{
+		PlancherLibre: plancherDEssai, Dir: t.TempDir(), Delai: 30 * time.Second}
 	chemin, pret := g.Assurer(context.Background(), amont)
 	if !pret {
 		t.Fatal("le miroir n'a pas pu être créé")
@@ -458,9 +515,10 @@ func TestRetirerEffaceLeMiroir(t *testing.T) {
 func TestUnRafraichissementNattendPasCommeUnClonage(t *testing.T) {
 	amont, srv := amontGit(t)
 	g := &GitMirror{
-		Dir:      t.TempDir(),
-		Delai:    30 * time.Minute,
-		DelaiMaj: 2 * time.Second,
+		PlancherLibre: plancherDEssai,
+		Dir:           t.TempDir(),
+		Delai:         30 * time.Minute,
+		DelaiMaj:      2 * time.Second,
 	}
 	if _, pret := g.Assurer(context.Background(), amont); !pret {
 		t.Fatal("le miroir n'a pas pu être créé")

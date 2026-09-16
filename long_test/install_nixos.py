@@ -183,7 +183,15 @@ def creer_vm(nom, journal, dry_run, memoire=MEMOIRE_MO):
     Rend (nom, uuid) ou (None, ""). L'UUID est ce qui identifie la machine
     pour la destruction : un nom se réutilise, un UUID non.
     """
-    argv = [
+    # SOUS SUDO, comme le menu le fait (« parts = [] if dry_run else
+    # ["sudo"] ») : le dossier des images appartient à root en 755 sur une
+    # installation ordinaire de libvirt, et la CLI s'arrête à l'étape 1 sur
+    # « Permission refusée » avant d'avoir rien créé. Sans cela le test ne
+    # peut pas tourner du tout — pas même échouer utilement.
+    #
+    # Jamais à blanc : un essai qui n'écrit rien n'a aucune raison de
+    # demander un mot de passe.
+    argv = ([] if dry_run else ["sudo"]) + [
         os.path.join(RACINE, ".venv.erplibre/bin/python"),
         os.path.join(RACINE, "script/qemu/deploy_qemu.py"),
         "--distro",

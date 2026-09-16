@@ -473,7 +473,12 @@ class Descente:
     def creer_etage1(self, res):
         """Une VM locale, par la CLI QEMU/KVM. Le seul étage sur du métal."""
         nom = self.nom_etage(1)
-        argv = [
+        # SOUS SUDO, comme le menu le fait : le dossier des images
+        # appartient à root en 755 sur une installation ordinaire de libvirt,
+        # et la CLI s'arrête à l'étape 1 sur « Permission refusée » avant
+        # d'avoir rien créé. Jamais à blanc — un essai qui n'écrit rien n'a
+        # aucune raison de demander un mot de passe.
+        argv = ([] if self.dry_run else ["sudo"]) + [
             os.path.join(RACINE, ".venv.erplibre/bin/python"),
             os.path.join(RACINE, "script/qemu/deploy_qemu.py"),
             "--distro",
