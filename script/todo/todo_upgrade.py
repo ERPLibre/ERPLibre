@@ -3608,12 +3608,23 @@ class TodoUpgrade:
         """
         import pty
 
-        self.lst_command_executed.append(cmd)
+        # CAVIARDÉE AVANT LES TROIS SORTIES. Le filtre disait couvrir
+        # « CHAQUE affichage d'une commande » et ne tenait que ceux du
+        # lanceur voisin : ici la commande partait brute à l'écran, au
+        # journal d'étape — deux lignes avant que l'écho de l'enfant y soit
+        # caviardé, dans le MÊME fichier — et sur disque, dans un fichier
+        # de progression que deux autres écrans relisent et réaffichent.
+        #
+        # Le filtre ne retire que la VALEUR : le nom de l'option reste, et
+        # la ligne demeure lisible — on relit ces journaux pour comprendre
+        # ce qui a été lancé.
+        montree = execute.redact_secrets(cmd)
+        self.lst_command_executed.append(montree)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         print(f"\n🏠 ⬇ {t('Execute command')} :\n")
-        print(cmd)
-        self.note_step_log(f"$ {cmd}")
+        print(montree)
+        self.note_step_log(f"$ {montree}")
 
         handle = getattr(self, "step_log", None)
         if not handle:
@@ -3687,12 +3698,23 @@ class TodoUpgrade:
         copies », ce qui est la raison même de l'avoir ouvert. L'annoncer
         comme un échec inquiétait pour rien.
         """
-        self.lst_command_executed.append(cmd)
+        # CAVIARDÉE AVANT LES TROIS SORTIES. Le filtre disait couvrir
+        # « CHAQUE affichage d'une commande » et ne tenait que ceux du
+        # lanceur voisin : ici la commande partait brute à l'écran, au
+        # journal d'étape — deux lignes avant que l'écho de l'enfant y soit
+        # caviardé, dans le MÊME fichier — et sur disque, dans un fichier
+        # de progression que deux autres écrans relisent et réaffichent.
+        #
+        # Le filtre ne retire que la VALEUR : le nom de l'option reste, et
+        # la ligne demeure lisible — on relit ces journaux pour comprendre
+        # ce qui a été lancé.
+        montree = execute.redact_secrets(cmd)
+        self.lst_command_executed.append(montree)
         self.dct_progression["command_executed"] = self.lst_command_executed
         self.write_config()
         print(f"\n🏠 ⬇ {t('Execute command')} :\n")
-        print(cmd)
-        self.note_step_log(f"$ {cmd}")
+        print(montree)
+        self.note_step_log(f"$ {montree}")
         status = subprocess.call(cmd, shell=True, executable="/bin/bash")
         self.note_step_log(f"  -> {status}")
         return status

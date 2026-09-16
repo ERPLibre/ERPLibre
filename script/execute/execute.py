@@ -162,9 +162,9 @@ class Execute:
                 # made callers doing « status, cmd = exec_command_live(...) »
                 # crash with ValueError instead of seeing the failure.
                 if return_status_and_output_and_command:
-                    return 1, command, []
+                    return 1, redact_secrets(command), []
                 if return_status_and_command:
-                    return 1, command
+                    return 1, redact_secrets(command)
                 if return_status_and_output:
                     return 1, []
                 return 1
@@ -298,10 +298,17 @@ class Execute:
         if not quiet:
             print(redact_secrets(command))
             print()
+        # RENDUE CAVIARDÉE. Cette valeur sert à être RELUE et jamais
+        # rejouée : les deux appelants du dépôt l'écrivent dans le fichier
+        # de progression, que deux écrans réaffichent des semaines plus
+        # tard. L'écran l'imprimait déjà caviardée et la rendait brute —
+        # le secret ressortait donc ailleurs, longtemps après.
+        #
+        # Le filtre ne retire que la valeur : la commande reste lisible.
         if return_status_and_output_and_command:
-            return exit_code, command, output_lines
+            return exit_code, redact_secrets(command), output_lines
         if return_status_and_command:
-            return exit_code, command
+            return exit_code, redact_secrets(command)
         if return_status_and_output:
             return exit_code, output_lines
         return exit_code
