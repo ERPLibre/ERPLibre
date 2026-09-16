@@ -492,6 +492,18 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             resume=oc.Resume(entree=10, sortie=2, cout=0.5),
         )
         return (
+            # La flotte AUSSI : sans elle, `on_mount` lance le vrai
+            # « claude agents --json » et parcourt le vrai ~/.claude. Un test
+            # qui touche la machine de celui qui le lance ne mesure plus le
+            # code, et il coûte un sous-processus par test.
+            #
+            # La couture est `cs.fleet` et non la méthode de l'application :
+            # `run_tui` définit sa classe À CHAQUE APPEL, donc corriger celle
+            # d'une instance ne change rien pour la suivante.
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                return_value=[],
+            ),
             patch.object(t_ui, "transcriptions", lambda: [self.CHEMIN]),
             patch.object(t_ui, "lignes_agents", lambda f: list(self.AGENTS)),
             patch.object(st, "lire", lambda c, l=None: st.Lecture()),
@@ -1578,6 +1590,48 @@ class TestCeQueChaqueTourDepense(unittest.IsolatedAsyncioTestCase):
                 app._dire(t("Reading everything again…"))
                 dit = str(app.query_one("#etat", Static).render())
         self.assertIn(t("Reading everything again…"), dit)
+
+
+class TestAucunTestNeToucheLaMachine(unittest.IsolatedAsyncioTestCase):
+    """Un test qui lance le vrai binaire ne mesure plus le code.
+
+    `on_mount` appelle `_tick`, qui appelle la flotte, qui lance
+    « claude agents --json » et parcourt le vrai ~/.claude. Neuf tests le
+    faisaient — un sous-processus chacun, et un verdict qui dépendait de ce
+    qui tournait chez celui qui les lançait.
+
+    La garde est directe : `subprocess.run` LÈVE pendant le montage. Si
+    quelque chose l'appelle, le test tombe en disant quoi.
+    """
+
+    async def test_mounting_the_screen_launches_nothing(self):
+        import subprocess
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        lances = []
+
+        def refuser(argv, *a, **kw):
+            lances.append(argv)
+            raise AssertionError(f"sous-processus lancé : {argv}")
+
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch.object(
+            oc, "lire_base", return_value=[]
+        ), patch.object(
+            subprocess, "run", refuser
+        ):
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(120, 30)) as pilote:
+                await pilote.pause()
+                app._tick()
+                await pilote.pause()
+        self.assertEqual(lances, [])
 
 
 if __name__ == "__main__":

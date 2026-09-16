@@ -456,9 +456,20 @@ class SessionsClaudeCode(unittest.TestCase):
             return ""
 
         todo = TODO()
+        # Les comptes affichés à côté des entrées interrogent la machine :
+        # sans ces coutures, chaque test lance « claude agents --json » et
+        # ouvre la base d'Open Code. Un test qui dépend de ce qui tourne chez
+        # celui qui le lance ne mesure plus le câblage du menu.
         with patch.object(TODO, "fill_help_info", fausse_aide), patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
             "click.prompt", side_effect=["0"]
-        ), patch("script.todo.todo_telemetry.record"):
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
             todo.prompt_assistant_ia()
         return [c["prompt_description"] for c in capture if "section" not in c]
 
@@ -482,6 +493,11 @@ class SessionsClaudeCode(unittest.TestCase):
         with patch.object(TODO, cible) as mock_cible, patch.object(
             TODO, temoin or "prompt_execute_rtk"
         ) as mock_temoin, patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
             "click.prompt", side_effect=[chiffre, "0"]
         ), patch(
             "script.todo.todo_telemetry.record"
@@ -523,8 +539,15 @@ class SessionsClaudeCode(unittest.TestCase):
         todo = TODO()
         au_dela = str(len(self._entrees()) + 1)
         with patch.object(TODO, "_agents_telemetrie") as mock, patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
             "click.prompt", side_effect=[au_dela, "0"]
-        ), patch("script.todo.todo_telemetry.record"):
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
             todo.prompt_assistant_ia()
         mock.assert_not_called()
 
@@ -1167,6 +1190,43 @@ class LesRangsDuCatalogueGptNeSeVolentPas(unittest.TestCase):
         with open(menu.__file__, encoding="utf-8") as fichier:
             source = fichier.read()
         self.assertIn("[?] {t('details')}", source)
+
+
+class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
+    """Les comptes affichés à côté des entrées interrogent la machine.
+
+    Sans couture, ouvrir l'écran des agents lançait « claude agents --json »
+    trois fois par test et ouvrait la base d'Open Code. Le verdict dépendait
+    alors de ce qui tournait chez celui qui lançait la suite.
+    """
+
+    def test_opening_the_agents_screen_launches_nothing(self):
+        import subprocess
+
+        from script.todo.todo import TODO
+
+        lances = []
+
+        def refuser(argv, *a, **kw):
+            lances.append(argv)
+            raise AssertionError(f"sous-processus lancé : {argv}")
+
+        with patch.object(TODO, "fill_help_info", lambda s, c: ""), patch(
+            "script.todo.assistant.claude_sessions.fleet", return_value=[]
+        ), patch(
+            "script.todo.assistant.harness.opencode.lire_base",
+            return_value=[],
+        ), patch(
+            "click.prompt", side_effect=["0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ), patch.object(
+            subprocess, "run", refuser
+        ), patch(
+            "builtins.print"
+        ):
+            TODO().prompt_assistant_ia()
+        self.assertEqual(lances, [])
 
 
 if __name__ == "__main__":
