@@ -46,17 +46,29 @@ class TestTheCheckbox(unittest.TestCase):
         got = self.todo._qemu_tools_for(("forgejo",), "amd64", "", "ubuntu")
         self.assertIn("forgejo", got)
 
-    def test_every_package_family_gets_it(self):
-        """Le binaire est statique : aucune famille n'est exclue, à la
-        différence de la compilation mobile que son installateur borne à apt.
-        """
-        self.assertEqual(self.spec["families"], ())
+    def test_every_imperative_family_gets_it(self):
+        """Le binaire est statique, donc aucune des quatre familles de
+        gestionnaire n'est exclue — à la différence de la compilation mobile,
+        que son installateur borne à apt.
+
+        Les quatre, et pas « toutes » : l'installateur crée un compte système,
+        écrit dans /usr/local et pose une unité systemd à la main. Sur un
+        système déclaratif, ces gestes vivent HORS de la configuration et ne
+        survivent pas à la reconstruction suivante."""
+        self.assertEqual(
+            ("apt", "dnf", "pacman", "zypper"), self.spec["families"]
+        )
         for distro in ("ubuntu", "debian", "almalinux", "opensuse", "arch"):
             self.assertIn(
                 "forgejo",
                 self.todo._qemu_tools_for(("forgejo",), "amd64", "", distro),
                 distro,
             )
+
+    def test_a_declarative_system_is_left_out(self):
+        self.assertEqual(
+            [], self.todo._qemu_tools_for(("forgejo",), "amd64", "", "nixos")
+        )
 
     def test_arm64_yes_s390x_no(self):
         """Forgejo publie amd64, arm64 et arm-6. Sur s390x il faudrait le bâtir

@@ -824,7 +824,10 @@ class QemuInstallMixin:
             "arches": ("amd64", "arm64"),
             "desktops": (),
             "needs_desktop": True,
-            "families": (),
+            # L'archive JetBrains est liée dynamiquement : elle ne s'exécute pas
+            # sur un système sans /lib64/ld-linux. Les quatre familles
+            # impératives, donc, et pas « toutes ».
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
         "android": {
@@ -838,7 +841,8 @@ class QemuInstallMixin:
             "arches": ("amd64",),
             "desktops": (),
             "needs_desktop": True,
-            "families": (),
+            # Même raison que PyCharm : archive amont liée dynamiquement.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
         "gnome_ext": {
@@ -853,7 +857,9 @@ class QemuInstallMixin:
             "arches": (),
             "desktops": ("gnome",),
             "needs_desktop": True,
-            "families": (),
+            # Les paquets viennent des dépôts de la distribution, et le
+            # gestionnaire d'extensions n'existe qu'à travers eux.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             "phase": "before",
         },
         # Le seul outil qui ne demande PAS de bureau : il compile, il n'affiche
@@ -908,7 +914,10 @@ class QemuInstallMixin:
             "arches": ("amd64", "arm64"),
             "desktops": (),
             "needs_desktop": False,
-            "families": (),
+            # Binaire statique, mais son installateur écrit dans /usr/local,
+            # crée un compte système et pose une unité systemd à la main :
+            # rien de tout cela n'a de sens sur un système déclaratif.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             # APRÈS l'installation : le script vit dans le dépôt, donc après le
             # clone. Rien d'autre ne l'y oblige — Forgejo ne dépend ni du venv
             # ni d'Odoo.
@@ -944,10 +953,45 @@ class QemuInstallMixin:
             "arches": (),
             "desktops": (),
             "needs_desktop": False,
-            "families": (),
+            # Trois installateurs « curl | sh » qui posent des binaires liés
+            # dynamiquement, et des paquets par le gestionnaire du
+            # système : aucun des deux gestes n'existe sur NixOS.
+            "families": ("apt", "dnf", "pacman", "zypper"),
             # AVANT le clone : chaque outil s'y garde lui-même, et aucun ne
             # doit faire échouer l'installation d'ERPLibre pour un curl qui
             # ne répond pas.
+            "phase": "before",
+        },
+        # Nix sur une distribution qui n'est pas NixOS : le gestionnaire de
+        # paquets seul, posé à côté de celui du système, et l'installateur
+        # qui s'en sert pour porter NixOS sur une AUTRE machine, jointe par
+        # SSH — un serveur loué, une VM du parc, une carte ARM.
+        #
+        # « families » exclut « nix » et ce n'est pas un oubli : sur NixOS,
+        # nix EST le système. L'option n'y aurait rien à poser.
+        #
+        # Disque : le store porte la fermeture d'un système NixOS complet et
+        # le noyau kexec qui le démarre à distance.
+        "nixanywhere": {
+            "label": "nix + nixos-anywhere",
+            "help": (
+                "the official multi-user installer, nix as a daemon",
+                "experimental-features: nix-command and flakes",
+                "nixos-anywhere, by nix profile install",
+                "it installs NixOS on any machine reachable over SSH",
+            ),
+            "hint": (
+                "nix, flakes, and nixos-anywhere to install NixOS elsewhere"
+            ),
+            "disk_gb": 8,
+            # L'amont bâtit ce qu'on lui demande plutôt que de servir un
+            # binaire : les deux architectures que nix supporte pleinement.
+            "arches": ("amd64", "arm64"),
+            "desktops": (),
+            "needs_desktop": False,
+            "families": ("apt", "dnf", "pacman", "zypper"),
+            # AVANT le clone, comme les autres poses amont : l'outil se garde
+            # lui-même et ne fait échouer ni les autres ni ERPLibre.
             "phase": "before",
         },
         # L'émulateur n'a pas besoin de bureau DANS la VM : il s'affiche sur
@@ -984,6 +1028,7 @@ class QemuInstallMixin:
         "rocky": "dnf",
         "opensuse": "zypper",
         "arch": "pacman",
+        "nixos": "nix",
     }
 
     def _qemu_guest_context(self):
@@ -2438,6 +2483,92 @@ class QemuInstallMixin:
             f"python3 -c {shlex.quote(code)} 2>/dev/null || true"
         )
 
+    # L'installateur OFFICIEL, en mode multi-utilisateur : il pose /nix, le
+    # groupe nixbld et le démon. C'est le mode qui survit à plusieurs comptes
+    # sur la machine, là où le mode mono-utilisateur donne /nix à celui qui
+    # installe. « --yes » donne d'avance la confirmation que personne ne
+    # tapera : la pose se fait par SSH, sans terminal.
+    _QEMU_NIX_UPSTREAM = (
+        "curl -fsSL https://nixos.org/nix/install -o /tmp/nix-install.sh"
+        " && sh /tmp/nix-install.sh --daemon --yes"
+    )
+
+    # Ces deux fonctions restent « expérimentales » en amont, et
+    # nixos-anywhere ne se distribue QUE par un flake : sans elles,
+    # « nix profile install github:… » refuse la référence.
+    _QEMU_NIX_FEATURES = "nix-command flakes"
+    _QEMU_NIX_CONF_LINE = f"experimental-features = {_QEMU_NIX_FEATURES}"
+
+    # L'installateur de NixOS À DISTANCE, par nix-community : il démarre la
+    # machine cible sur un noyau kexec, partitionne, et y pose le système
+    # décrit par un flake. La cible n'a besoin que d'un SSH root.
+    _QEMU_NIXANYWHERE_FLAKE = "github:nix-community/nixos-anywhere"
+
+    def _qemu_nixanywhere_remote_cmd(self):
+        """Nix et nixos-anywhere dans la VM, sur le moule d'aidev.
+
+        Trois gestes : l'installateur amont, les fonctions expérimentales que
+        les flakes réclament, puis nixos-anywhere dans le profil de
+        l'utilisateur. La VM devient alors une machine d'où l'on INSTALLE
+        NixOS ailleurs — elle-même reste sur sa distribution.
+
+        Chaque pose est bornée par « timeout » et privée d'entrée standard,
+        pour la raison qui vaut pour toute la phase « before » : « || true »
+        couvre l'échec, pas l'ATTENTE, et un installateur qui pose une
+        question resterait pendu sur un SSH sans terminal.
+
+        Nix est appelé par son CHEMIN ABSOLU. Le PATH de cette commande
+        distante a été figé à l'ouverture du shell SSH, avant que
+        l'installateur ne pose quoi que ce soit ; « nix » nu rendrait 127 sans
+        dire que rien n'a été installé. Les fonctions expérimentales sont
+        redonnées sur la ligne de commande en plus d'être écrites dans
+        /etc/nix/nix.conf : l'écriture demande sudo et peut échouer, l'appel
+        doit réussir quand même.
+        """
+        nix = "/nix/var/nix/profiles/default/bin/nix"
+        # L'installateur écrit l'un OU l'autre selon sa version ; les deux
+        # portent le PATH et les variables du démon.
+        profils = "/etc/profile.d/nix.sh /etc/profile.d/nix-daemon.sh"
+        source_line = f'for f in {profils}; do [ -e "$f" ] && . "$f"; done'
+        outil = "$HOME/.nix-profile/bin/nixos-anywhere"
+
+        def pose(cmd, secondes):
+            return (
+                f"timeout {secondes} sh -c {shlex.quote(cmd)}"
+                " </dev/null || true; "
+            )
+
+        conf = (
+            "sudo mkdir -p /etc/nix 2>/dev/null || true; "
+            f"grep -qF {shlex.quote(self._QEMU_NIX_CONF_LINE)}"
+            " /etc/nix/nix.conf 2>/dev/null"
+            f" || echo {shlex.quote(self._QEMU_NIX_CONF_LINE)}"
+            " | sudo tee -a /etc/nix/nix.conf >/dev/null || true; "
+            "sudo systemctl restart nix-daemon 2>/dev/null || true; "
+        )
+        installe = (
+            f'[ -x "{nix}" ] && timeout 900 "{nix}"'
+            " --extra-experimental-features"
+            f" {shlex.quote(self._QEMU_NIX_FEATURES)}"
+            f" profile install {shlex.quote(self._QEMU_NIXANYWHERE_FLAKE)}"
+            " </dev/null >/dev/null 2>&1 || true; "
+        )
+        return (
+            f'echo "== {t("nix + nixos-anywhere")} =="; '
+            + pose(self._QEMU_NIX_UPSTREAM, 900)
+            + conf
+            + installe
+            + (
+                f"grep -qF {shlex.quote(source_line)} ~/.bashrc 2>/dev/null"
+                f" || echo {shlex.quote(source_line)} >> ~/.bashrc; "
+            )
+            # Le verdict porte sur le BINAIRE, pas sur le code de retour des
+            # poses : toutes rendent 0 par construction.
+            + f'[ -x "{outil}" ]'
+            f' && echo "  {t("nixos-anywhere ready")}"'
+            f' || echo "  {t("nixos-anywhere missing, see the log above")}"; '
+        )
+
     def _qemu_tools_remote_cmd(
         self, tools, prod=False, phase="before", ai_agent=""
     ):
@@ -2458,6 +2589,7 @@ class QemuInstallMixin:
             # En tête : quelques secondes de curl, contre des minutes pour un
             # IDE. Ce qui échoue vite se voit tôt.
             "aidev": lambda: self._qemu_aidev_remote_cmd(ai_agent),
+            "nixanywhere": self._qemu_nixanywhere_remote_cmd,
             "gnome_ext": self._qemu_gnome_ext_remote_cmd,
             "pycharm": lambda: self._qemu_pycharm_remote_cmd(prod),
             "android": self._qemu_android_studio_remote_cmd,

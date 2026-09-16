@@ -3,6 +3,13 @@ Red='\033[0;31m'         # Red
 Color_Off='\033[0m'      # Text Reset
 
 # Search by default local configuration
+# NixOS : meme geste qu'en tete d'env_var.sh, et pour la meme raison -- ce
+# fichier est lance par l'unite systemd, qui ne source pas env_var.sh, et
+# Odoo importe psycopg2 au demarrage.
+if [ -n "${NIX_LD_LIBRARY_PATH:-}" ]; then
+  export LD_LIBRARY_PATH="${NIX_LD_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
+
 CONFIG_PATH="./config.conf"
 ORIGIN_CONFIG_PATH=CONFIG_PATH
 if [ ! -f "${CONFIG_PATH}" ]; then

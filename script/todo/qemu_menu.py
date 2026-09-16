@@ -46,6 +46,7 @@ class QemuMenuMixin:
         # deploy_qemu.py, qui fait autorité sur le catalogue.
         "opensuse": (["16.0", "tumbleweed"], "16.0"),
         "arch": (["latest"], "latest"),
+        "nixos": (["25.11"], "25.11"),
         # Proxmox VE : le numéro est celui de PVE, pas de Debian (9 = trixie).
         # Une seule version au catalogue, la seule qui couvre amd64 ET arm64 —
         # voir PROXMOX_VERSIONS dans deploy_qemu.py, qui fait autorité.

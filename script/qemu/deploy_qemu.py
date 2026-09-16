@@ -171,6 +171,17 @@ PROXMOX_VERSIONS: dict[str, tuple[str, str, int, str]] = {
 PROXMOX_DEBIAN_BASE: dict[str, str] = {"9": "13"}
 
 # distro -> (table des versions, version par défaut).
+# NixOS ne publie AUCUNE image cloud : sa page de téléchargement offre des ISO,
+# des AMI Amazon et Docker, rien d'autre. L'image vient donc d'un tiers qui la
+# reconstruit depuis nixpkgs — d'où le TAG épinglé et la somme figée plus bas,
+# et d'où image_source_note(), qui le dit à l'écran avant de déployer.
+#
+# 40 Go et 2 Go de RAM là où Arch demande 20 et 1 : le store Nix garde chaque
+# génération du système et ne se purge qu'à la main (nix-collect-garbage).
+NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
+}
+
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
@@ -179,6 +190,7 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
+    "nixos": (NIXOS_VERSIONS, "25.11"),
     "proxmox": (PROXMOX_VERSIONS, "9"),
 }
 
@@ -414,6 +426,18 @@ def gpu_install_args(node: str) -> list[str]:
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
+# Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
+# qui bouge changerait le système de base d'un déploiement à l'autre, et
+# celle-ci n'est signée par personne — la somme ci-dessous est donc la nôtre,
+# relevée une fois à la revue, et vérifiée à chaque téléchargement.
+NIXOS_IMAGE_TAG = "2026.01.18-0057"
+NIXOS_IMAGE_BASE = (
+    "https://github.com/cloudnull/nixos-openstack/releases/download"
+)
+NIXOS_IMAGE_SHA256 = (
+    "9c7df1786106b3bcbed514d5c16e05b735a42642d3de0c51a690e7d8aba4ebc4"
+)
+
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
 # Debian : cloud.debian.org est un redirecteur qui, selon le réseau, peut
 # renvoyer vers un miroir injoignable. On essaie donc plusieurs bases dans
@@ -538,6 +562,10 @@ def image_candidates(
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
+    if distro == "nixos":
+        # Un seul asset, sans architecture dans son nom : le tiers ne publie
+        # que x86_64, ce que ARCH_DISTRO_SUPPORT borne déjà.
+        return [f"{NIXOS_IMAGE_BASE}/{NIXOS_IMAGE_TAG}/nixos.qcow2"]
     raise ValueError(f"URL indisponible pour la distro {distro!r}")
 
 
@@ -585,6 +613,25 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     )
 
 
+def image_source_note(distro: str) -> tuple[str, str] | None:
+    """(url, tag) quand l'image ne vient PAS de la distribution elle-même.
+
+    None pour tout le reste : on ne commente que ce qui sort de l'ordinaire,
+    et commenter chaque image noierait la seule qui le mérite.
+
+    NixOS ne publie aucune image cloud — sa page de téléchargement n'offre que
+    des ISO, des AMI Amazon et Docker. Celle-ci est donc reconstruite par un
+    tiers, à partir de nixpkgs. Ça se dit AVANT de déployer, pas après : le
+    système de base d'une VM n'est pas un détail d'implémentation.
+    """
+    if distro != "nixos":
+        return None
+    return (
+        f"{NIXOS_IMAGE_BASE}/{NIXOS_IMAGE_TAG}/nixos.qcow2",
+        NIXOS_IMAGE_TAG,
+    )
+
+
 def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
     """Nom de fichier local pour le cache d'image."""
     a = distro_arch(distro, arch)
@@ -600,6 +647,10 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
+    if distro == "nixos":
+        # Le TAG est dans le nom : changer NIXOS_IMAGE_TAG retélécharge, au
+        # lieu de réutiliser une image qui ne répond plus à sa somme.
+        return f"nixos-{NIXOS_IMAGE_TAG}-{a}.qcow2"
     if distro == "opensuse":
         if version == "tumbleweed":
             return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
@@ -1595,6 +1646,39 @@ def download_image(
     )
 
 
+def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
+    """Vérifie une image contre la somme que le DÉPÔT porte pour elle.
+
+    Sans rapport avec --verify, qui lit un SHA256SUMS publié par la
+    distribution : ici l'amont n'en publie aucun, la somme a été relevée une
+    fois à la revue, et c'est la seule chose qui distingue l'image revue de
+    n'importe quel fichier servi sous la même URL. Elle se vérifie donc
+    TOUJOURS, sans drapeau à passer.
+
+    Une somme qui ne correspond pas ARRÊTE le déploiement : continuer
+    reviendrait à installer un système que personne n'a regardé.
+    """
+    if distro != "nixos" or dry_run:
+        return
+    attendu = NIXOS_IMAGE_SHA256
+    digest = hashlib.sha256()
+    with open(image, "rb") as fh:
+        for morceau in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(morceau)
+    obtenu = digest.hexdigest()
+    if obtenu != attendu:
+        sys.exit(
+            f"Erreur : l'image {image} ne correspond pas à la somme que le "
+            f"dépôt porte pour elle.\n"
+            f"  attendu : {attendu}\n"
+            f"  obtenu  : {obtenu}\n"
+            "  Supprimez le fichier pour le retélécharger. S'il revient "
+            "différent, l'amont a republié sous le même tag : le relire "
+            "avant de figer la nouvelle somme."
+        )
+    print(f"  Somme sha256 conforme à celle du dépôt ({attendu[:12]}…).")
+
+
 def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
     """Vérifie l'empreinte via le SHA256SUMS publié dans le même répertoire."""
     if dry_run:
@@ -1807,17 +1891,29 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
     La table des alias est « /usr/share/zoneinfo/tzdata.zi », dont chaque ligne
     de lien s'écrit « L <canonique> <alias> ». Absente ou illisible, le nom est
     rendu tel quel : un fuseau non traduit vaut mieux qu'un déploiement refusé.
+    Elle est lue de l'HÔTE plutôt que recopiée ici, et suit donc les mises à
+    jour de tzdata sans qu'on s'en occupe ; « table » n'existe que pour qu'un
+    test en fournisse une autre sans dépendre du tzdata de sa machine.
+
+    DEUX tours, et non un seul : un lien peut désigner un autre lien —
+    « Universal » mène à « UTC », qui mène à « Etc/UTC ». S'arrêter au premier
+    rendrait un nom qui reste un alias, donc le défaut qu'on répare. Au-delà
+    de deux, la table est incohérente et le nom d'origine vaut mieux qu'une
+    boucle.
     """
     if not tz:
         return tz
+    alias = {}
     try:
         with open(table, encoding="utf-8") as fh:
             for ligne in fh:
                 champs = ligne.split()
-                if len(champs) >= 3 and champs[0] == "L" and champs[2] == tz:
-                    return champs[1]
+                if len(champs) >= 3 and champs[0] == "L":
+                    alias[champs[2]] = champs[1]
     except OSError:
-        pass
+        return tz
+    for _ in range(2):
+        tz = alias.get(tz, tz)
     return tz
 
 
@@ -1916,6 +2012,21 @@ def user_groups(distro: str, gpu: bool = False) -> str:
     return ", ".join(noms)
 
 
+def user_shell(distro: str) -> str:
+    """Shell de connexion du compte créé par cloud-init.
+
+    sshd REFUSE un compte dont le shell n'existe pas — « User <x> not allowed
+    because shell /bin/bash does not exist », avant même l'authentification,
+    et la VM est alors inaccessible bien qu'elle démarre et porte la clé.
+
+    NixOS ne peuple pas /bin : il n'y met que « sh », lui-même lien vers le
+    bash du store. C'est donc bash qu'on obtient, en mode POSIX, et non dash.
+    Ailleurs /bin/bash existe et reste préférable : sur Debian et Ubuntu,
+    /bin/sh EST dash, sans historique ni complétion.
+    """
+    return "/bin/sh" if distro == "nixos" else "/bin/bash"
+
+
 # --------------------------------------------------------------------------- #
 # Guide de connexion (/etc/motd) et identité git de la VM
 # --------------------------------------------------------------------------- #
@@ -1951,6 +2062,7 @@ DISTRO_LABELS: dict[str, str] = {
     "rocky": "Rocky Linux",
     "opensuse": "openSUSE",
     "arch": "Arch Linux",
+    "nixos": "NixOS",
     "proxmox": "Proxmox VE",
 }
 
@@ -1963,6 +2075,7 @@ DISTRO_PKG: dict[str, str] = {
     "rocky": "dnf",
     "opensuse": "zypper",
     "arch": "pacman",
+    "nixos": "nix",
     # Debian dessous : c'est apt qui sert, et le guide de connexion le dit.
     "proxmox": "apt",
 }
@@ -1991,6 +2104,30 @@ def distro_label(distro: str, version: str) -> str:
 # « list installed » sans tirets y échouent tous. Les formes longues passent
 # partout, et ne coûtent rien.
 PKG_GUIDE: dict[str, tuple[tuple[str, str, str], ...]] = {
+    # Rien ne s'y installe « pour de bon » par une commande : ce qui doit
+    # rester se DÉCLARE, et le guide le dit dans cet ordre.
+    "nix": (
+        (
+            "nix-shell -p <paquet>",
+            "essayer, le temps d'un shell",
+            "try it, for one shell",
+        ),
+        (
+            "/etc/nixos/configuration.nix",
+            "y déclarer ce qui reste",
+            "declare there what stays",
+        ),
+        (
+            "sudo nixos-rebuild switch",
+            "appliquer la déclaration",
+            "apply the declaration",
+        ),
+        (
+            "sudo nix-collect-garbage -d",
+            "libérer les générations",
+            "free the generations kept",
+        ),
+    ),
     "apt": (
         ("sudo apt update", "rafraîchir l'index", "refresh the index"),
         (
@@ -2950,7 +3087,7 @@ def build_cloud_config(
         # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
         # groupe : celui-ci n'est qu'une commodité.
         f"    groups: {user_groups(args.distro, gpu)}",
-        "    shell: /bin/bash",
+        f"    shell: {user_shell(args.distro)}",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
     if pw_hash:
@@ -2962,7 +3099,10 @@ def build_cloud_config(
 
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
-    lines.append(f"timezone: {args.timezone}")
+    # Canonicalisé ICI, au plus près de l'écriture : un fuseau passé
+    # explicitement en ligne de commande mérite la même traduction que celui
+    # de l'hôte.
+    lines.append(f"timezone: {canonical_timezone(args.timezone)}")
     if getattr(args, "distro", "ubuntu") == "ubuntu":
         lines += apt_mirror_lines(
             getattr(args, "arch", "amd64"),
@@ -3082,9 +3222,20 @@ def build_cloud_config(
 # network-config (cloud-init v2) : DHCP sur toute interface « e* ». Les images
 # Debian genericcloud ne configurent pas toujours le réseau sans ça (le NIC
 # reste down -> pas d'IP), contrairement à Ubuntu. Inoffensif pour Ubuntu.
-# La clé est « eth0 » car le renderer cloud-init d'Arch utilise la CLÉ comme
-# nom d'interface (en ignorant « match ») et l'image Arch nomme son NIC eth0 ;
-# Debian/Fedora/Ubuntu utilisent bien « match: name: e* » (leur en*).
+# La clé n'est pas partout un nom d'interface. Les renderers netplan et ENI
+# (Ubuntu, Debian) la tiennent pour une étiquette et désignent l'interface par
+# le « match » ; le renderer networkd (Arch, NixOS) IGNORE le « match » et
+# écrit la clé telle quelle en « Name= ». L'image Arch nomme son NIC eth0, ce
+# que la clé couvre ; une image qui le nomme enp0s2 reçoit un « Name=eth0 »
+# qui ne correspond à rien, systemd-networkd-wait-online attend alors sans
+# fin, et TOUT ce qui suit network-online.target reste en file — sshd-keygen,
+# cloud-init.service, cloud-config.service, sshd lui-même. La VM démarre,
+# applique la clé SSH, et n'est jamais joignable.
+#
+# Un glob en clé réglerait networkd et CASSERAIT netplan, qui refuse net :
+# « Definition ID 'e*' must not use globbing », cloud-init.service en échec,
+# aucun compte créé. Aucune valeur ne contente les deux renderers, d'où
+# network_config_for().
 NETWORK_CONFIG = (
     "version: 2\n"
     "ethernets:\n"
@@ -3096,10 +3247,36 @@ NETWORK_CONFIG = (
 )
 
 
+def network_config_for(distro: str) -> str | None:
+    """Le network-config à mettre dans le seed, ou None pour n'en pas mettre.
+
+    None n'est pas « pas de réseau » : privée de configuration réseau par sa
+    source de données, cloud-init produit son repli — DHCP sur la première
+    interface trouvée, désignée par son VRAI nom. C'est ce qu'il faut là où
+    le renderer prend la clé pour un nom d'interface et où ce nom n'est pas
+    connu d'avance.
+
+    NixOS est dans ce cas : son image nomme le NIC selon la machine émulée
+    (enp0s2 en q35, ens3 en i440fx). Arch a le même renderer mais nomme le
+    sien eth0, ce que la clé du document couvre : il garde donc le document,
+    et son réseau ne change pas.
+    """
+    return None if distro == "nixos" else NETWORK_CONFIG
+
+
 def build_seed(
-    cloud_cfg: str, hostname: str, seed_dest: Path, runner: Runner
+    cloud_cfg: str,
+    hostname: str,
+    seed_dest: Path,
+    runner: Runner,
+    network_config: str | None = NETWORK_CONFIG,
 ) -> None:
-    """Génère le seed.iso (cidata) et le copie vers seed_dest."""
+    """Génère le seed.iso (cidata) et le copie vers seed_dest.
+
+    `network_config` à None n'écrit PAS de document réseau dans le seed, et
+    c'est un réglage à part entière : cloud-init produit alors son repli,
+    DHCP sur la première interface trouvée. Voir network_config_for().
+    """
     meta_data = f"instance-id: {hostname}\nlocal-hostname: {hostname}\n"
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -3113,18 +3290,23 @@ def build_seed(
             print("  [dry-run] user-data qui serait généré :")
             print(textwrap.indent(cloud_cfg, "      "))
             print("  [dry-run] network-config :")
-            print(textwrap.indent(NETWORK_CONFIG, "      "))
+            print(
+                textwrap.indent(network_config, "      ")
+                if network_config
+                else "      (aucun : repli DHCP de cloud-init)"
+            )
         else:
             ud.write_text(cloud_cfg)
             md.write_text(meta_data)
-            nc.write_text(NETWORK_CONFIG)
+            if network_config:
+                nc.write_text(network_config)
 
         if runner.dry_run or shutil.which("cloud-localds"):
+            reseau = ["--network-config", str(nc)] if network_config else []
             runner.run(
                 [
                     "cloud-localds",
-                    "--network-config",
-                    str(nc),
+                    *reseau,
                     str(local_iso),
                     str(ud),
                     str(md),
@@ -3350,7 +3532,7 @@ def build_preseed(
         "d-i network-console/password password erplibre",
         "d-i network-console/password-again password erplibre",
         "d-i clock-setup/utc boolean true",
-        f"d-i time/zone string {args.timezone}",
+        f"d-i time/zone string {canonical_timezone(args.timezone)}",
         "d-i clock-setup/ntp boolean true",
         # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
         # d-i pose quand même la question quand rien ne le désigne.
@@ -4804,6 +4986,7 @@ def main() -> None:
         )
         print(f"  Destination : {args.image_path}")
         download_image(urls, args.image_path, args.dry_run)
+        verify_pinned_sha256(args.distro, args.image_path, args.dry_run)
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
         print("\nTerminé (téléchargement seul).")
@@ -4911,6 +5094,7 @@ def main() -> None:
             f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
         )
         download_image(urls, args.image_path, args.dry_run)
+        verify_pinned_sha256(args.distro, args.image_path, args.dry_run)
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
 
@@ -4919,7 +5103,13 @@ def main() -> None:
 
         print(f"\n== 4/5 Seed cloud-init {seed} ==")
         cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-        build_seed(cloud_cfg, args.hostname, seed, runner)
+        build_seed(
+            cloud_cfg,
+            args.hostname,
+            seed,
+            runner,
+            network_config_for(args.distro),
+        )
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
