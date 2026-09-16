@@ -27,6 +27,7 @@ Rien ici ne touche à un hyperviseur : libvirt et l'exécution sont remplacés.
 import os
 import sys
 import unittest
+from unittest import mock
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
@@ -430,6 +431,63 @@ class TestRienNestFaitSansConfirmation(unittest.TestCase):
         todo = todo_avec()
         jouer(todo, [""])
         self.assertEqual([], todo.execute.vues)
+
+
+class TestLInviteNeDonnePasSaReponse(unittest.TestCase):
+    """Retaper le nombre protège parce qu'il faut AVOIR LU le bloc.
+
+    L'invite l'affichait entre parenthèses, à la façon d'un défaut : il
+    suffisait de le recopier depuis la ligne même qui le demandait, et la
+    lecture du bloc « Sera effacé » — qui EST la protection — devenait
+    facultative. Le docstring de la fonction dit pourtant l'inverse mot
+    pour mot.
+
+    Le garde d'identité ne rattrape pas : il compare un UUID, donc il voit
+    un nom qui a changé de porteur, jamais un ensemble plus large qu'on
+    croyait. Seule la saisie voit cette erreur-là.
+    """
+
+    @staticmethod
+    def demander(reponse, combien):
+        """Rend (invite affichée, verdict)."""
+        vues = []
+
+        def faux_input(prompt=""):
+            vues.append(prompt)
+            return reponse
+
+        todo = TODO.__new__(TODO)
+        with mock.patch("builtins.input", faux_input):
+            verdict = todo._qemu_confirm_deletion(
+                [f"vm-{i}" for i in range(combien)]
+            )
+        return vues[0], verdict
+
+    def test_the_prompt_never_carries_the_count(self):
+        invite, _v = self.demander("3", 3)
+        self.assertNotIn("3", invite)
+
+    def test_the_right_count_still_confirms(self):
+        """Contrôle positif : refuser tout rendrait la suppression de lot
+        impossible."""
+        _i, verdict = self.demander("3", 3)
+        self.assertTrue(verdict)
+
+    def test_a_wrong_count_refuses(self):
+        """L'erreur qui compte ici : un ensemble plus large qu'on croyait."""
+        _i, verdict = self.demander("2", 3)
+        self.assertFalse(verdict)
+
+    def test_the_single_vm_branch_does_not_give_the_name_either(self):
+        """La même règle, et elle tenait déjà : recopier un nom long oblige
+        à regarder ce qu'on détruit."""
+        vues = []
+        todo = TODO.__new__(TODO)
+        with mock.patch(
+            "builtins.input", lambda prompt="": vues.append(prompt) or ""
+        ):
+            todo._qemu_confirm_deletion(["base-longue-a-recopier"])
+        self.assertNotIn("base-longue-a-recopier", vues[0])
 
 
 if __name__ == "__main__":

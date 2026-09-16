@@ -2496,6 +2496,12 @@ class QemuManageMixin:
         bloc pour le connaître, et il attrape l'erreur qui compte ici — un
         ensemble plus large qu'on croyait.
 
+        L'INVITE NE LE DONNE DONC PAS. Elle l'affichait entre parenthèses,
+        à la façon d'un défaut, et il suffisait de le recopier depuis la
+        ligne même qui le demandait : la lecture du bloc, qui EST la
+        protection, devenait facultative. La branche à une machine ne donne
+        pas le nom non plus — c'est la même règle.
+
         Le nombre plutôt qu'un mot : un mot appartiendrait à une langue, et
         l'écran en parle deux.
         """
@@ -2504,9 +2510,7 @@ class QemuManageMixin:
                 t("Type the VM name to confirm (empty to cancel): ")
             ).strip()
             return tape == chosen[0]
-        tape = input(
-            f"{t('Type how many VMs are deleted')} ({len(chosen)}): "
-        ).strip()
+        tape = input(f"{t('Type how many VMs are deleted')} : ").strip()
         return tape == str(len(chosen))
 
     def _qemu_list_domains_proved(self):
