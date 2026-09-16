@@ -19,7 +19,10 @@ from script.todo import (
     migration_status,
     todo_file_browser,
 )
-from script.todo.version_manager import get_odoo_version
+from script.todo.version_manager import (
+    get_odoo_version,
+    get_venv_python,
+)
 
 try:
     from script.todo.todo_i18n import t
@@ -1275,10 +1278,19 @@ class TodoUpgrade:
             has_cmd = False
             # cmd_serial = ""
             cmd_parallel = "parallel :::"
+            # LE VENV EST LU, JAMAIS COMPOSÉ. Son nom porte le couple
+            # Odoo/Python, et la moitié Python bouge d'une version à l'autre :
+            # écrite en littéral, elle vise un interpréteur que la prochaine
+            # montée renomme. La commande tourne sous « parallel », où
+            # l'échec de chaque branche se noie dans la sortie — on ne
+            # saurait même pas pourquoi.
+            venv_python = get_venv_python(f"{next_version}.0")
             for path_git_clone_migrate in lst_path_git_clone_migrate:
                 cmd_migration = (
                     f"echo 'views_migration_18 {path_git_clone_migrate}' && "
-                    f"./.venv.odoo18.0_python3.12.10/bin/python ./script/code/odoo_upgrade_code_with_dir_module.py --path {path_git_clone_migrate}"
+                    f"./{venv_python}"
+                    " ./script/code/odoo_upgrade_code_with_dir_module.py"
+                    f" --path {path_git_clone_migrate}"
                 )
                 cmd_parallel += f' "{cmd_migration}"'
                 # cmd_serial += f"{cmd_migration};"
