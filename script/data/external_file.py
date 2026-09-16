@@ -19,9 +19,7 @@ Les formats en pur stdlib — CSV, JSON, XML, et la détection de macros qui
 n'est qu'un `zipfile.namelist()` — tournent sous l'interpréteur du CLI.
 Excel et Access exigent un venv dédié. Le module doit donc s'importer sous
 les deux : AUCUN import de bibliothèque tierce au niveau du module, chacun
-vit dans la fonction qui en a besoin. Les tests unitaires du dépôt tournent
-sous `.venv.erplibre`, qui n'a pas openpyxl : un import au niveau du module
-les ferait tomber tous, y compris ceux des règles pures.
+vit dans la fonction qui en a besoin. 
 
 Le canal de sortie
 ------------------
