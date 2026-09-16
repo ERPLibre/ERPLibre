@@ -682,6 +682,7 @@ def run_tui(run_app: bool = True):
             ("n", "lancer", t("Start")),
             ("s", "arreter", t("Stop")),
             ("a", "attacher", t("Attach")),
+            ("j", "journal", t("Output")),
             ("d", "detail", t("Detail")),
             ("l", "relancer", t("Restart")),
             ("x", "supprimer", t("Delete")),
@@ -889,6 +890,60 @@ def run_tui(run_app: bool = True):
                 adaptateur_claude().ATTACHER, session.poignee
             )
             self.exit(" ".join(argv))
+
+        def action_journal(self):
+            """L'écran récent de l'agent surligné, dans le VRAI terminal.
+
+            `claude logs` n'imprime pas un journal mais un ÉCRAN : quelques
+            milliers d'octets pour un agent qui a répondu un mot, dont deux
+            cents séquences d'échappement, des retours chariot et AUCUN saut
+            de ligne. Les positions du curseur y sont absolues, donc dépouiller
+            les codes rend une seule ligne illisible, et aucun panneau de
+            tableau n'y peut rien. Le seul endroit où cette sortie veut dire
+            quelque chose est un terminal : l'application se suspend, l'outil
+            peint, et elle reprend là où elle était.
+
+            **Ce qui paraît là est du CONTENU** — la conversation de l'agent,
+            ses commandes, ce qu'il a lu. Rien n'en est gardé : la sortie va du
+            processus au terminal sans passer par nous, donc il n'y a même pas
+            de quoi écrire. L'avertissement s'imprime APRÈS, avec l'invite de
+            retour, parce que l'outil ouvre par un effacement d'écran et que
+            tout ce qui précède est perdu.
+            """
+            session = self._agent_choisi()
+            if session is None:
+                self._dire(t("Pick a detached agent first."))
+                return
+            adaptateur = adaptateur_claude()
+            self._montrer_dans_le_terminal(
+                adaptateur.argv_action(adaptateur.JOURNAL, session.poignee)
+            )
+
+        def _montrer_dans_le_terminal(self, argv):
+            """Rendre le terminal à un outil le temps qu'il peigne.
+
+            `subprocess.run` est appelé SANS capture : la sortie va du
+            processus au terminal, et nous n'en tenons jamais une copie. C'est
+            la garantie qu'un contenu montré ne peut pas être écrit — il
+            faudrait d'abord l'avoir.
+
+            Un environnement sans vrai terminal — un pilote de test, un tube —
+            refuse la suspension, et l'écran le dit au lieu de mourir.
+            """
+            import subprocess
+
+            from textual.app import SuspendNotSupported
+
+            try:
+                with self.suspend():
+                    subprocess.run(argv)
+                    print()
+                    print(t("Shown, not kept: nothing of this was written."))
+                    input(t("Enter to go back to the screen…"))
+            except SuspendNotSupported:
+                self._dire(t("This terminal cannot suspend the screen."))
+            except OSError as souci:
+                self._dire(str(souci))
 
         def action_relancer(self):
             """Relancer l'agent surligné sur le binaire courant.

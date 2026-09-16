@@ -5831,6 +5831,22 @@ TRANSLATIONS = {
         "fr": "Choisis d'abord un agent détaché.",
         "en": "Pick a detached agent first.",
     },
+    "Output": {
+        "fr": "Sortie",
+        "en": "Output",
+    },
+    "Shown, not kept: nothing of this was written.": {
+        "fr": "Montré, pas gardé : rien de ceci n'a été écrit.",
+        "en": "Shown, not kept: nothing of this was written.",
+    },
+    "Enter to go back to the screen…": {
+        "fr": "Entrée pour revenir à l'écran…",
+        "en": "Enter to go back to the screen…",
+    },
+    "This terminal cannot suspend the screen.": {
+        "fr": "Ce terminal ne sait pas suspendre l'écran.",
+        "en": "This terminal cannot suspend the screen.",
+    },
     "The agent did not report an identifier.": {
         "fr": "L'agent n'a pas rapporté d'identifiant.",
         "en": "The agent did not report an identifier.",

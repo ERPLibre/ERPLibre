@@ -1460,6 +1460,119 @@ class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(envoyes, [])
 
 
+class TestLaSortieBruteVaAuTerminal(unittest.IsolatedAsyncioTestCase):
+    """`claude logs` imprime un ÉCRAN, et non un journal de lignes.
+
+    Sa sortie porte des centaines de séquences d'échappement, des retours
+    chariot et AUCUN saut de ligne, pour quelques milliers d'octets là où
+    l'agent a répondu un mot. Les positions du curseur y sont absolues, donc
+    les dépouiller rend une seule ligne illisible et aucun panneau de tableau
+    n'y peut rien. Elle va au terminal, le temps que l'application se
+    suspende.
+    """
+
+    def _agent(self):
+        from script.todo.assistant import claude_sessions as cs
+
+        return cs.Session(
+            session_id="aaaaaaaa-1111-4111-8111-111111111111",
+            court="aaaaaaaa",
+            kind="background",
+            live=True,
+            cwd="/un/depot",
+            pid=4242,
+        )
+
+    async def _presser(self, flotte, touches):
+        """L'écran monté sur une flotte inventée, et ce que « j » a demandé."""
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        from textual.widgets import Static
+
+        montres = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: list(flotte))
+            async with app.run_test(size=(160, 40)) as pilote:
+                app._montrer_dans_le_terminal = montres.append
+                await pilote.pause()
+                for touche in touches:
+                    await pilote.press(touche)
+                    await pilote.pause()
+                etat = str(app.query_one("#etat", Static).render())
+        return montres, etat
+
+    async def test_la_touche_j_rend_le_terminal_a_l_outil(self):
+        """L'identifiant passé est le COURT : les cinq sous-commandes ne
+        prennent que celui-là, et l'UUID rend « No job matching » avec un code
+        de sortie nul."""
+        montres, _ = await self._presser([self._agent()], ["v", "v", "j"])
+        self.assertEqual(montres, [["claude", "logs", "aaaaaaaa"]])
+
+    async def test_sans_agent_surligne_la_touche_j_ne_lance_rien(self):
+        montres, etat = await self._presser([], ["v", "v", "j"])
+        self.assertEqual(montres, [])
+        self.assertIn(t("Pick a detached agent first."), etat)
+
+    def _app(self):
+        from script.todo.assistant.agents import tui as t_ui
+
+        app = t_ui.run_tui(run_app=False)
+        app._dire = lambda message: self.dits.append(message)
+        self.dits = []
+        return app
+
+    def test_la_sortie_n_est_jamais_capturee(self):
+        """Ne pas capturer est ce qui GARANTIT que rien n'est écrit.
+
+        La sortie va du processus au terminal sans passer par nous : il n'y a
+        pas de copie, donc rien à mettre sur un disque même par accident.
+        """
+        import contextlib
+        import subprocess
+
+        app = self._app()
+        app.suspend = contextlib.nullcontext
+        appels = []
+        imprimes = []
+        with patch.object(
+            subprocess, "run", lambda argv, **kw: appels.append((argv, kw))
+        ), patch("builtins.input", lambda *a: ""), patch(
+            "builtins.print", lambda *a, **k: imprimes.append(" ".join(a))
+        ):
+            app._montrer_dans_le_terminal(["claude", "logs", "aaaaaaaa"])
+        ((argv, kw),) = appels
+        self.assertEqual(argv, ["claude", "logs", "aaaaaaaa"])
+        self.assertEqual(kw, {}, "ni capture_output, ni stdout, ni stderr")
+        self.assertIn(
+            t("Shown, not kept: nothing of this was written."), imprimes
+        )
+
+    def test_un_terminal_qui_ne_suspend_pas_le_dit(self):
+        """Un pilote de test, un tube : l'écran le dit au lieu de mourir."""
+        import contextlib
+
+        from textual.app import SuspendNotSupported
+
+        @contextlib.contextmanager
+        def refuse():
+            raise SuspendNotSupported("pas de terminal")
+            yield
+
+        app = self._app()
+        app.suspend = refuse
+        app._montrer_dans_le_terminal(["claude", "logs", "aaaaaaaa"])
+        self.assertEqual(
+            self.dits, [t("This terminal cannot suspend the screen.")]
+        )
+
+
 class TestLeCurseurEtLeClavier(unittest.IsolatedAsyncioTestCase):
     """Deux defauts qui visaient la mauvaise ligne, sur des gestes qui tuent.
 
