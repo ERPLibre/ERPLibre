@@ -5919,10 +5919,6 @@ TRANSLATIONS = {
         "fr": "L'outil a signalé une erreur.",
         "en": "The tool reported an error.",
     },
-    "yes": {
-        "fr": "oui",
-        "en": "yes",
-    },
     "the identifier in full": {
         "fr": "l'identifiant en entier",
         "en": "the identifier in full",
