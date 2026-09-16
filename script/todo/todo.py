@@ -98,10 +98,6 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
-LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
-
 
 class TODO(
     # L'ordre est celui de la lecture, pas de la résolution : aucun nom n'est
