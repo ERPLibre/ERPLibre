@@ -503,9 +503,15 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
     Le disque est INJECTÉ : ni transcription, ni journal, ni base réelle n'est
     lu, et le ménage des journaux périmés est neutralisé — un test n'efface
     rien chez personne.
+
+    Le monde porte DEUX de chaque sorte, et les deux appels d'outil tombent
+    dans la même seconde. Un monde à un seul élément ne peut pas montrer une
+    collision de clés, et c'est exactement ce qui avait laissé passer un
+    écran qui mourait au premier tour sur une vraie machine.
     """
 
     CHEMIN = "/x/y/aaaaaaaa-1111-4111-8111-111111111111.jsonl"
+    AUTRE_CHEMIN = "/x/y/bbbbbbbb-2222-4222-8222-222222222222.jsonl"
 
     # Ce que le panneau des agents montre, injecté : la vraie flotte
     # interrogerait l'outil, donc le réseau de personne et le PATH de
@@ -521,6 +527,14 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             "branche": "une-branche",
             "pid": "4242",
         },
+        {
+            "cle": "efgh5678",
+            "id": "efgh5678",
+            "projet": "projet",
+            "etat": "",
+            "branche": "une-autre-branche",
+            "pid": "4243",
+        },
     )
 
     def _monde(self):
@@ -531,6 +545,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         from script.todo.assistant.agents import tui as t_ui
         from script.todo.assistant.harness import opencode as oc
 
+        # Les deux appels tombent dans la MÊME seconde : c'est l'ordinaire
+        # d'une session qui travaille, et c'est ce que le monde à un seul
+        # appel ne pouvait pas montrer.
         evenements = [
             {
                 "hook_event_name": "PreToolUse",
@@ -545,13 +562,34 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 "ts": 1_700_000_000_400,
                 "duration_ms": 400,
             },
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_use_id": "2",
+                "tool_name": "Read",
+                "session_id": "bbbbbbbb-2222-4222-8222-222222222222",
+                "ts": 1_700_000_000_500,
+            },
+            {
+                "hook_event_name": "PostToolUse",
+                "tool_use_id": "2",
+                "ts": 1_700_000_000_600,
+                "duration_ms": 100,
+            },
         ]
-        seance = oc.Seance(
-            identifiant="ses_aaaabbbbccccdddd",
-            repertoire="/un/depot/projet",
-            modifie=1_700_000_000_000,
-            resume=oc.Resume(entree=10, sortie=2, cout=0.5),
-        )
+        seances = [
+            oc.Seance(
+                identifiant="ses_aaaabbbbccccdddd",
+                repertoire="/un/depot/projet",
+                modifie=1_700_000_000_000,
+                resume=oc.Resume(entree=10, sortie=2, cout=0.5),
+            ),
+            oc.Seance(
+                identifiant="ses_eeeeffffgggghhhh",
+                repertoire="/un/depot/projet",
+                modifie=1_700_000_000_000,
+                resume=oc.Resume(entree=20, sortie=4, cout=0.25),
+            ),
+        ]
         return (
             # La flotte AUSSI : sans elle, `on_mount` lance le vrai
             # « claude agents --json » et parcourt le vrai ~/.claude. Un test
@@ -565,12 +603,16 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 "script.todo.assistant.claude_sessions.fleet",
                 return_value=[],
             ),
-            patch.object(t_ui, "transcriptions", lambda: [self.CHEMIN]),
+            patch.object(
+                t_ui,
+                "transcriptions",
+                lambda: [self.CHEMIN, self.AUTRE_CHEMIN],
+            ),
             patch.object(t_ui, "lignes_agents", lambda f: list(self.AGENTS)),
             patch.object(st, "lire", lambda c, l=None: st.Lecture()),
             patch.object(jr, "lire_lignes", lambda: evenements),
             patch.object(jr, "nettoyer", lambda *a, **k: None),
-            patch.object(oc, "lire_base", lambda: [seance]),
+            patch.object(oc, "lire_base", lambda: list(seances)),
             # Le volet de détail relit la TRANSCRIPTION de l'appel : sans
             # couture, la touche « d » balaie le vrai ~/.claude de qui lance
             # la suite.
@@ -624,7 +666,7 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         from script.todo.assistant.agents import tui as t_ui
 
         vu = await self._piloter()
-        self.assertEqual(vu["tables"]["tableau"][1], 2, "une par harnais")
+        self.assertEqual(vu["tables"]["tableau"][1], 4, "deux par harnais")
         self.assertEqual(vu["tables"]["tableau"][2], len(t_ui.COLONNES))
         self.assertEqual(vu["tables"]["outils"][2], len(t_ui.COLONNES_OUTILS))
         self.assertEqual(vu["tables"]["flux"][2], len(t_ui.COLONNES_FLUX))
@@ -710,7 +752,7 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 await calme(pilote)
                 tableau = app.query_one("#tableau", DataTable)
                 large = len(tableau.columns)
-                self.assertEqual(tableau.row_count, 2)
+                self.assertEqual(tableau.row_count, 4)
                 await pilote.press("f")
                 await calme(pilote)
                 peints = []
@@ -719,7 +761,7 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 await calme(pilote)
                 self.assertEqual(peints, [], "gelé veut dire gelé")
                 self.assertEqual(len(tableau.columns), large)
-                self.assertEqual(tableau.row_count, 2)
+                self.assertEqual(tableau.row_count, 4)
                 del app._peindre
                 await pilote.press("f")
                 await calme(pilote)
@@ -783,13 +825,13 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             async with app.run_test(size=(160, 40)) as pilote:
                 await calme(pilote)
                 tableau = app.query_one("#tableau", DataTable)
-                self.assertEqual(tableau.row_count, 2, "une par harnais")
+                self.assertEqual(tableau.row_count, 4, "deux par harnais")
                 t_ui.transcriptions = lambda: []
                 app._tick()
                 await calme(pilote)
                 self.assertEqual(app._lectures, {})
                 self.assertEqual(
-                    tableau.row_count, 1, "la séance Open Code reste"
+                    tableau.row_count, 2, "les séances Open Code restent"
                 )
         finally:
             for c in correctifs:
