@@ -13015,6 +13015,10 @@ TRANSLATIONS = {
         "fr": "aucun posé",
         "en": "none installed",
     },
+    "Sent, waiting for the answer…": {
+        "fr": "Envoyé, en attente de la réponse…",
+        "en": "Sent, waiting for the answer…",
+    },
     "Keys": {
         "fr": "Touches",
         "en": "Keys",

@@ -1315,21 +1315,56 @@ def run_tui(run_app: bool = True):
             self._tick()
 
         def _lancer_action(self, sous_commande, poignee):
-            """Une action sur un agent, et ce que l'outil en dit."""
+            """Une action sur un agent, sur un FIL comme les lectures.
+
+            `subprocess.run` attend ici jusqu'à soixante secondes. Lancé sur la
+            boucle d'événements, un outil qui ne rend pas la main figeait
+            l'écran d'autant — plus une touche, plus même « q ». C'est le même
+            défaut que les lectures avaient, en pire : une minute au lieu de
+            quinze secondes, et sur un geste qu'on vient de demander.
+
+            L'argv est construit AVANT et non sur le fil : un identifiant vide
+            ou une sous-commande inconnue sont des refus immédiats, et les
+            faire voyager pour être refusés ailleurs retarderait le seul
+            message qui apprenne quelque chose.
+            """
+            try:
+                argv = adaptateur_claude().argv_action(sous_commande, poignee)
+            except ValueError as souci:
+                self._dire(str(souci))
+                return
+            # L'écran DIT qu'il attend. Sans cela, un outil lent se lit comme
+            # un geste qui n'est pas parti, et on le redonne.
+            self._dire(t("Sent, waiting for the answer…"))
+            self._agir_en_fond(argv)
+
+        @work(thread=True)
+        def _agir_en_fond(self, argv):
+            """Lancer la sous-commande, et rapporter ce qu'elle a dit."""
             import subprocess
 
             try:
-                argv = adaptateur_claude().argv_action(sous_commande, poignee)
                 fini = subprocess.run(
                     argv, text=True, capture_output=True, timeout=60
                 )
-            except (OSError, ValueError, subprocess.SubprocessError) as souci:
-                self._dire(str(souci))
+            except (OSError, subprocess.SubprocessError) as souci:
+                self.call_from_thread(self._dire, str(souci))
                 return
             # L'outil répond « No job matching » avec un code de sortie NUL :
             # se fier au code laisserait annoncer un geste qui n'a pas eu lieu.
             premiere = (fini.stdout or fini.stderr or "").strip().splitlines()
-            self._dire(premiere[0] if premiere else t("Nothing was said."))
+            self.call_from_thread(
+                self._action_repondue,
+                premiere[0] if premiere else t("Nothing was said."),
+            )
+
+        def _action_repondue(self, message):
+            """Ce que l'outil a dit, et la flotte relue sans attendre.
+
+            Sur le fil de l'affichage : un geste qui lance ou arrête un agent
+            doit se voir au tour suivant, pas six secondes plus tard.
+            """
+            self._dire(message)
             self._flotte_a_relire = True
             self._tick()
 

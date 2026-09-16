@@ -1683,6 +1683,117 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
                 c.stop()
 
 
+class TestUnGesteNeFigePasLEcran(unittest.IsolatedAsyncioTestCase):
+    """Les gestes passent par un sous-processus, comme les lectures.
+
+    `claude stop|respawn|rm` attend jusqu'à soixante secondes. Lancé sur la
+    boucle d'événements, un outil qui ne rend pas la main figeait l'écran
+    d'autant — une minute sans une touche, sur un geste qu'on vient de
+    demander.
+    """
+
+    def _agent(self):
+        from script.todo.assistant import claude_sessions as cs
+
+        return cs.Session(
+            session_id="aaaaaaaa-1111-4111-8111-111111111111",
+            court="aaaaaaaa",
+            kind="background",
+            live=True,
+            cwd="/un/depot",
+            pid=4242,
+        )
+
+    async def _ecran(self, lancer):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        import subprocess
+
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ), patch.object(
+            subprocess, "run", lancer
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [self._agent()])
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                for _ in range(len(app.VUES)):
+                    if app.VUES[app._vue] == "agents":
+                        break
+                    await pilote.press("v")
+                    await calme(pilote)
+                yield app, pilote
+
+    async def test_le_geste_ne_bloque_pas_la_boucle(self):
+        import time as horloge
+
+        lent = 0.4
+
+        def dort(argv, **kw):
+            horloge.sleep(lent)
+            return type("F", (), {"stdout": "stopped aaaaaaaa", "stderr": ""})
+
+        async for app, pilote in self._ecran(dort):
+            depart = horloge.perf_counter()
+            app._lancer_action("stop", "aaaaaaaa")
+            rendu = horloge.perf_counter() - depart
+            self.assertLess(rendu, lent / 4, "le geste rend la main")
+            await calme(pilote)
+
+    async def test_ce_que_l_outil_a_dit_arrive_a_l_ecran(self):
+        """« No job matching » vient avec un code de sortie NUL : c'est la
+        seule trace qu'un geste n'a pas eu lieu."""
+        from textual.widgets import Static
+
+        def muet(argv, **kw):
+            return type(
+                "F", (), {"stdout": "No job matching aaaaaaaa", "stderr": ""}
+            )
+
+        async for app, pilote in self._ecran(muet):
+            await pilote.press("s")
+            await calme(pilote)
+            self.assertIn(
+                "No job matching",
+                str(app.query_one("#etat", Static).render()),
+            )
+
+    async def test_un_outil_absent_le_dit_au_lieu_de_mourir(self):
+        from textual.widgets import Static
+
+        def absent(argv, **kw):
+            raise OSError("claude: introuvable")
+
+        async for app, pilote in self._ecran(absent):
+            await pilote.press("s")
+            await calme(pilote)
+            self.assertIn(
+                "introuvable", str(app.query_one("#etat", Static).render())
+            )
+
+    async def test_un_identifiant_vide_est_refuse_tout_de_suite(self):
+        """Un refus immédiat : le faire voyager retarderait le seul message
+        qui apprenne quelque chose."""
+        from textual.widgets import Static
+
+        lances = []
+
+        def compte(argv, **kw):
+            lances.append(argv)
+            return type("F", (), {"stdout": "", "stderr": ""})
+
+        async for app, pilote in self._ecran(compte):
+            app._lancer_action("stop", "")
+            await calme(pilote)
+            self.assertEqual(lances, [])
+            self.assertTrue(str(app.query_one("#etat", Static).render()))
+
+
 class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
     """Le pied de page ment par omission, et « h » est ce qui le rattrape.
 
