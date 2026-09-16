@@ -199,9 +199,17 @@ def familles_absentes(liste) -> tuple[str, ...]:
 
 
 def resume(liste) -> str:
-    """« 27 variables · 11 en clair · 1 masquée » — ce que l'en-tête annonce."""
+    """« 27 · 11 · 16 · 1 » — total, en clair, masquées, secrètes.
+
+    QUATRE nombres, parce que trois ne se réconciliaient pas : le troisième
+    comptait les secrètes sous l'étiquette « masquées », et le lecteur d'un
+    écran de diagnostic en déduisait qu'un reste était dans un état que
+    personne ne nommait. Une variable masquée montre sa forme, une secrète ne
+    montre même pas sa longueur — ce sont deux états, et les deux se disent.
+    """
     if liste is None:
         return ""
     claires = sum(1 for v in liste if v.visible)
     secrets = sum(1 for v in liste if v.secret)
-    return f"{len(liste)} · {claires} · {secrets}"
+    masquees = sum(1 for v in liste if not v.visible)
+    return f"{len(liste)} · {claires} · {masquees} · {secrets}"

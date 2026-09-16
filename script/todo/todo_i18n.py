@@ -12871,9 +12871,9 @@ TRANSLATIONS = {
         "fr": "illisible : le processus n'existe plus",
         "en": "unreadable: the process is gone",
     },
-    "total · in clear · masked": {
-        "fr": "total · en clair · masquées",
-        "en": "total · in clear · masked",
+    "total · in clear · masked · secret": {
+        "fr": "total · en clair · masquées · secrètes",
+        "en": "total · in clear · masked · secret",
     },
     "The process carries the login shell environment,": {
         "fr": "Le processus porte l'environnement du shell de connexion,",

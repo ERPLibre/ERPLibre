@@ -1820,7 +1820,7 @@ class AssistantMenuMixin:
             return
         print(
             f"   /proc/{session.pid}/environ · {env.resume(liste)}"
-            f"  ({t('total · in clear · masked')})"
+            f"  ({t('total · in clear · masked · secret')})"
         )
         for variable in liste:
             marque = (
