@@ -3594,8 +3594,13 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                 args.erplibre_make,
                 editor,
                 bool(args.desktop),
+                # « getattr » et non « args.vm_tools » : la voie Proxmox
+                # bâtit ses arguments à la main, et un champ qui lui manque
+                # ferait avaler le guide par son « except Exception ».
                 tuple(
-                    c.strip() for c in args.vm_tools.split(",") if c.strip()
+                    c.strip()
+                    for c in getattr(args, "vm_tools", "").split(",")
+                    if c.strip()
                 ),
             ),
             "",

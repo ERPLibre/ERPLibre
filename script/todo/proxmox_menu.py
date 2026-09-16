@@ -1749,7 +1749,7 @@ class ProxmoxMenuMixin:
         print(ligne)
         vm.setdefault("notes", []).append(ligne.strip())
 
-    def _pve_cache_bypass_hote(self, host, vm):
+    def _pve_cache_bypass_hote(self, host, vm, hors_ligne=False):
         """Soustrait au cache l'hôte Proxmox qui porte un invité sans magasin.
 
         Rend True quand l'exception est en place, False quand il n'y a rien à
@@ -1774,7 +1774,16 @@ class ProxmoxMenuMixin:
         CE QU'ELLE COÛTE. L'exception vaut pour TOUT ce que l'hôte relaie, y
         compris ses propres téléchargements : il cesse de profiter du cache.
         C'est le prix, et il est dit plutôt que subi.
+
+        JAMAIS HORS LIGNE. L'amont du cache est alors coupé et le magasin est
+        la SEULE source : excepter l'hôte ne le ferait pas télécharger en
+        direct, cela le priverait de tout — ses propres paquets compris. Les
+        deux issues échouent pour l'invité, mais celle-ci emporte l'hôte avec
+        lui. On garde donc le cache, et l'avertissement qui suit dit à
+        l'invité ce qui l'attend.
         """
+        if hors_ligne:
+            return False
         try:
             mod = self._qemu_import_module()
         except Exception:  # pragma: no cover - dépend du module
@@ -2040,6 +2049,18 @@ class ProxmoxMenuMixin:
             ),
             erplibre_make=self._qemu_make_target(cmd_install),
             desktop=bool(vm.get("desktop")),
+            # Les outils que le guide annoncera, FILTRÉS par cette machine
+            # comme la voie libvirt le fait : en annoncer un que l'
+            # architecture ou l'absence de bureau écarte enverrait chercher
+            # une commande qui ne sera jamais posée.
+            vm_tools=",".join(
+                self._qemu_tools_for(
+                    spec.get("vm_tools") or (),
+                    vm.get("arch") or "amd64",
+                    bool(vm.get("desktop")),
+                    vm.get("distro") or "",
+                )
+            ),
             no_git_identity=False,
             user=spec.get("user") or "erplibre",
         )
@@ -2295,7 +2316,9 @@ class ProxmoxMenuMixin:
                     # par fichier ne peut RIEN recevoir : on soustrait son
                     # hôte au cache à la place. L'autorité n'est posée que
                     # lorsqu'il y a quelqu'un pour la recevoir.
-                    if not self._pve_cache_bypass_hote(host, vm):
+                    if not self._pve_cache_bypass_hote(
+                        host, vm, hors_ligne=bool(coupee)
+                    ):
                         self._pve_set_cache_ca(
                             vm["alias"],
                             vm,

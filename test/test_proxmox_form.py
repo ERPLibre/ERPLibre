@@ -2742,6 +2742,30 @@ class UnInviteImbriqueSortMasqueDerriereSonHote(unittest.TestCase):
         )
         self.assertIn('entry["notes"] = list(notes[name])', dep)
 
+    def test_offline_never_exempts(self):
+        """L'amont du cache est alors coupé et le magasin est la SEULE
+        source : excepter l'hôte ne le ferait pas télécharger en direct, cela
+        le priverait de tout — ses propres paquets compris. Les deux issues
+        échouent pour l'invité, mais celle-ci emporte l'hôte avec lui."""
+        import contextlib
+        import io
+        import subprocess as sp
+
+        todo = self._todo()
+        todo._qemu_import_module = lambda: self._Mod
+        todo._qemu_list_domains = lambda: ["pve-local"]
+        todo._qemu_domain_mac = lambda nom: "52:54:00:ab:cd:ef"
+        lance = []
+        vrai = sp.run
+        self.addCleanup(setattr, sp, "run", vrai)
+        sp.run = lambda c, **k: lance.append(c)
+        with contextlib.redirect_stdout(io.StringIO()):
+            rendu = todo._pve_cache_bypass_hote(
+                {"target": "pve-local"}, {"distro": "nixos"}, hors_ligne=True
+            )
+        self.assertFalse(rendu)
+        self.assertEqual([], lance, "une exception posée hors ligne")
+
     def test_the_price_is_said(self):
         """L'exception vaut pour TOUT ce que l'hôte relaie, ses propres
         téléchargements compris. Le taire ferait chercher plus tard pourquoi
