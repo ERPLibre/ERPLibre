@@ -405,5 +405,61 @@ class TestDesktopBlock(unittest.TestCase):
         self.assertNotIn("Bureau", motd)
 
 
+class LeGuideNixosSeVoitEtDitVrai(unittest.TestCase):
+    """Sur NixOS rien ne lisait /etc/motd — mesuré sur une VM installée :
+    sshd en « printmotd no » et aucun pam_motd dans son PAM. Le fichier était
+    écrit, complet, et personne ne le montrait. Le module le fait afficher ;
+    ces tests gardent ce qu'il montre.
+    """
+
+    def _motd(self, distro="nixos", **kw):
+        return dq.build_motd(
+            distro, "25.11", "amd64", el_dir="~/git/erplibre", **kw
+        )
+
+    def test_the_file_that_gets_rewritten_is_named_as_such(self):
+        """Le piège que ce bloc existe pour dire : « make install_os » repose
+        /etc/nixos/erplibre.nix depuis le dépôt, et ce qu'on y avait ajouté
+        disparaît sans un mot."""
+        motd = self._motd()
+        self.assertIn("/etc/nixos/erplibre.nix", motd)
+        self.assertIn("make install_os", motd)
+
+    def test_where_ones_own_declarations_survive(self):
+        """Un guide qui nomme le piège sans nommer l'issue laisse l'opérateur
+        devant un fichier qu'il n'ose plus toucher."""
+        self.assertIn("/etc/nixos/configuration.nix", self._motd())
+
+    def test_the_source_of_truth_is_the_repository(self):
+        self.assertIn("conf/nixos/erplibre.nix", self._motd())
+
+    def test_the_block_is_translated(self):
+        for lang, attendu in (("fr", "déclaratif"), ("en", "declarative")):
+            with self.subTest(lang=lang):
+                self.assertIn(attendu, self._motd(lang=lang))
+
+    def test_the_other_distributions_are_left_alone(self):
+        """Rien de ceci ne veut dire quoi que ce soit ailleurs."""
+        for distro in ("debian", "ubuntu", "fedora", "arch", "opensuse"):
+            with self.subTest(distro=distro):
+                self.assertNotIn("/etc/nixos/", self._motd(distro))
+
+    def test_a_vm_without_erplibre_says_nothing_of_it(self):
+        """Même règle que le bloc AUR : c'est l'installation qui pose le
+        module dont ces lignes parlent."""
+        nu = dq.build_motd("nixos", "25.11", "amd64")
+        self.assertNotIn("conf/nixos/erplibre.nix", nu)
+
+    def test_the_module_turns_the_display_on(self):
+        """Écrire le guide sans rien pour le lire ne sert personne."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        module = (racine / "conf/nixos/erplibre.nix").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("services.openssh.settings.PrintMotd = true;", module)
+
+
 if __name__ == "__main__":
     unittest.main()

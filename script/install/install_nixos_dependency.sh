@@ -22,6 +22,16 @@ EL_USER=${USER}
 # service doit lancer. Deviner « /home/$USER/git/erplibre » se tromperait sur
 # une installation de production, qui vit sous /opt.
 EL_DIR=${EL_DIR:-${PWD}}
+# Les réglages régionaux que le DÉPLOIEMENT a demandés, lus là où cloud-init
+# garde ce qu'il a reçu. Vides quand rien ne les a demandés — une NixOS que
+# l'on avait déjà —, et le module laisse alors les réglages en place.
+EL_CLOUD_CFG=/var/lib/cloud/instance/cloud-config.txt
+lire_seed() {
+  sudo grep -m1 -E "^${1}: " "${EL_CLOUD_CFG}" 2>/dev/null |
+    cut -d" " -f2- | tr -d "\r" || true
+}
+EL_LOCALE=${EL_LOCALE:-$(lire_seed locale)}
+EL_TZ=${EL_TZ:-$(lire_seed timezone)}
 MODULE_SRC="conf/nixos/erplibre.nix"
 MODULE_DST="/etc/nixos/erplibre.nix"
 CONFIG="/etc/nixos/configuration.nix"
@@ -40,8 +50,11 @@ echo -e "\n---- Module ERPLibre pour NixOS ----"
 # Le nom du compte est substitué comme le user-data cloud-init l'est : le
 # module déclare un rôle PostgreSQL, et un rôle porte un nom.
 sed -e "s/@EL_USER@/${EL_USER}/g" -e "s#@EL_DIR@#${EL_DIR}#g" \
+  -e "s/@EL_LOCALE@/${EL_LOCALE}/g" -e "s#@EL_TZ@#${EL_TZ}#g" \
   "${MODULE_SRC}" | sudo tee "${MODULE_DST}" > /dev/null
 echo "  posé : ${MODULE_DST} (compte ${EL_USER}, dépôt ${EL_DIR})"
+echo "  régional : locale « ${EL_LOCALE:-non demandée} »," \
+  "fuseau « ${EL_TZ:-non demandé} »"
 
 if [ ! -f "${CONFIG}" ]; then
   echo "Configuration introuvable : ${CONFIG}"

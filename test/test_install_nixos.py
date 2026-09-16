@@ -395,6 +395,51 @@ class LAgentInviteVientDuDepot(unittest.TestCase):
                 self.assertIn(paquet, bloc)
 
 
+class LesReglagesRegionauxDemandes(unittest.TestCase):
+    """cloud-init applique la locale par locale-gen et update-locale, qui
+    n'existent pas ici : la VM gardait le défaut de NixOS. Mesuré —
+    « fr_CA.UTF-8 » demandé, « en_US.UTF-8 » obtenu.
+
+    Le fuseau, lui, marchait déjà : cloud-init pose /etc/localtime, que NixOS
+    laisse mutable tant que l'option n'est pas déclarée. Le déclarer ne
+    répare rien, il fait passer la garantie du côté du module.
+    """
+
+    def setUp(self):
+        self.src = MODULE.read_text(encoding="utf-8")
+        self.script = SCRIPT.read_text(encoding="utf-8")
+
+    def test_both_are_declared(self):
+        self.assertIn("i18n.defaultLocale", self.src)
+        self.assertIn("time.timeZone", self.src)
+
+    def test_nothing_is_imposed_when_nothing_was_asked(self):
+        """Sur une NixOS que l'on avait déjà — installée par « --hote » —
+        l'option ne doit pas être définie du tout : un défaut écrit ici
+        écraserait le réglage de son propriétaire sans le dire."""
+        for marqueur in ("@EL_LOCALE@", "@EL_TZ@"):
+            with self.subTest(marqueur=marqueur):
+                self.assertIn(f'lib.mkIf ("{marqueur}" != "")', self.src)
+
+    def test_the_values_come_from_what_the_deployment_asked(self):
+        """Lues là où cloud-init garde ce qu'il a reçu, et non devinées."""
+        self.assertIn("cloud-config.txt", self.script)
+        self.assertIn("lire_seed locale", self.script)
+        self.assertIn("lire_seed timezone", self.script)
+
+    def test_both_markers_are_substituted(self):
+        """Un marqueur non substitué partirait tel quel dans /etc/nixos et
+        ferait échouer l'évaluation du module."""
+        for marqueur in ("@EL_LOCALE@", "@EL_TZ@"):
+            with self.subTest(marqueur=marqueur):
+                self.assertIn(marqueur, self.script)
+
+    def test_the_cost_is_written_down(self):
+        """Une reconstruction qui bâtit glibc-locales est longue et muette :
+        prise pour un blocage, elle se fait interrompre."""
+        self.assertIn("glibc-locales", self.src)
+
+
 class LePortDOdooTraverseLePareFeu(unittest.TestCase):
     """NixOS active un pare-feu par défaut ; aucune des images cloud des
     quatre autres distributions n'en active un.

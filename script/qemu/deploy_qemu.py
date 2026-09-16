@@ -2262,6 +2262,42 @@ AUR_GUIDE: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# Ce que NixOS change pour ERPLibre, et qu'aucune autre distribution ne
+# demande.
+#
+# Le piège est la deuxième ligne : /etc/nixos/erplibre.nix est RÉÉCRIT à
+# chaque « make install_os » — le script le pose par « sed | tee » depuis le
+# dépôt. Ce qu'on y ajoute disparaît à la mise à jour suivante, sans un mot,
+# et l'on cherche alors pourquoi une dépendance déclarée ne l'est plus. Le
+# fichier où l'on écrit SES déclarations est l'autre.
+#
+# « systemctl cat » plutôt qu'une ligne disant de ne pas faire : l'unité est
+# un lien vers le store, et la voir une fois dit mieux que toute explication
+# pourquoi « systemctl enable » n'a rien à faire ici.
+NIXOS_GUIDE: tuple[tuple[str, str, str], ...] = (
+    (
+        "conf/nixos/erplibre.nix",
+        "la déclaration d'ERPLibre, dans le dépôt",
+        "ERPLibre's declaration, in the repository",
+    ),
+    (
+        "/etc/nixos/erplibre.nix",
+        "sa copie — RÉÉCRITE par make install_os",
+        "its copy — REWRITTEN by make install_os",
+    ),
+    (
+        "/etc/nixos/configuration.nix",
+        "vos déclarations à vous, qui restent",
+        "your own declarations, which do stay",
+    ),
+    (
+        "systemctl cat erplibre",
+        "l'unité vient du store, pas de /etc",
+        "the unit comes from the store, not /etc",
+    ),
+)
+
+
 def zypper_guide(rolling: bool) -> tuple[tuple[str, str, str], ...]:
     """Aide-mémoire zypper. `rolling` : Tumbleweed plutôt que Leap.
 
@@ -2478,6 +2514,16 @@ def build_motd(
         body.append("")
         el_rows = erplibre_guide(el_dir, el_make, editor)
         body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
+    # Même règle que le bloc AUR : il ne paraît qu'avec une installation,
+    # parce que c'est elle qui pose le module dont ces lignes parlent.
+    if mgr == "nix" and el_dir:
+        body.append("")
+        body += motd_block(
+            _pick(("NixOS — déclaratif", "NixOS — declarative"), lang),
+            NIXOS_GUIDE,
+            lang,
+            gloss_col(NIXOS_GUIDE),
+        )
     if desktop:
         body.append("")
         body += motd_block(
