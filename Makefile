@@ -1,4 +1,9 @@
-SHELL := /bin/bash
+# bash, où qu'il soit. « /bin/bash » n'existe pas sur NixOS, où le shell
+# vit dans le store : make s'y arrêtait sur « /bin/bash: No such file or
+# directory » avant d'exécuter la moindre recette, y compris celle qui
+# installe de quoi le créer. Le repli garde le chemin des plateformes qui
+# l'ont, et l'affectation reste immédiate — SHELL est lu à chaque recette.
+SHELL := $(shell command -v bash 2>/dev/null || echo /bin/bash)
 ERPLIBRE_VERSION := $(strip \
 	$(if $(wildcard .erplibre-version),$(shell cat .erplibre-version),) \
 )

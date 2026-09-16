@@ -63,3 +63,21 @@ EL_VERBOSE="${EL_VERBOSE:-0}"
 if [ -n "${NIX_LD_LIBRARY_PATH:-}" ]; then
   export LD_LIBRARY_PATH="${NIX_LD_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 fi
+
+# NixOS : les chemins de compilation, relus du SYSTEME DE FICHIERS.
+#
+# Le module declare CPATH, LIBRARY_PATH et PKG_CONFIG_PATH, mais une session
+# les recoit de pam_env a son OUVERTURE. Or l'installation applique le module
+# (« make install_os ») puis compile (« make install_odoo_18 ») dans la MEME
+# session : la sienne est plus vieille que ce qu'elle vient de declarer. Les
+# trois paquets du verrou qui n'ont pas de roue amont s'arretaient alors sur
+# « lber.h », « cups/http.h » et « mysql.h » -- au PREMIER passage seulement,
+# ce qui est la pire des pannes : le second reussit et donne raison a tort.
+#
+# « /run/current-system/sw » est le profil courant du systeme, un lien que le
+# rebuild vient de reposer : le lire ne depend d'aucune variable heritee.
+if [ -d /run/current-system/sw ]; then
+  export CPATH="/run/current-system/sw/include${CPATH:+:${CPATH}}"
+  export LIBRARY_PATH="/run/current-system/sw/lib${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+  export PKG_CONFIG_PATH="/run/current-system/sw/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+fi

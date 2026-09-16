@@ -190,6 +190,43 @@ class LeModule(unittest.TestCase):
         self.assertIn("environment.sessionVariables", self.src)
         self.assertNotIn("environment.variables", self.src)
 
+    def test_the_html_manuals_are_left_out(self):
+        """NixOS installe la sortie « doc » de CHAQUE paquet du système
+        (extraOutputsToInstall vaut « man info doc »). Celle de CPython n'est
+        pas dans le cache binaire : le premier rebuild la BÂTIT, un Sphinx de
+        trois mille pages qui domine le temps d'installation et fait cesser de
+        répondre une machine étroite.
+
+        « documentation.doc » et non « documentation » : les pages de manuel
+        et info restent, elles se lisent depuis un terminal."""
+        self.assertIn("documentation.doc.enable = false;", self.src)
+        self.assertNotIn("documentation.enable", self.src)
+
+    def test_the_install_reads_the_paths_off_the_filesystem(self):
+        """Une session reçoit les variables du module à son OUVERTURE, par
+        pam_env. L'installation applique le module (« make install_os ») puis
+        compile (« make install_odoo_18 ») dans la MÊME session : la sienne
+        est plus vieille que ce qu'elle vient de déclarer.
+
+        Les trois paquets du verrou qui n'ont pas de roue amont s'arrêtaient
+        alors sur « lber.h », « cups/http.h » et « mysql.h » — au PREMIER
+        passage seulement, ce qui est la pire des pannes : le second réussit
+        et donne raison à tort. env_var.sh relit donc le profil courant du
+        système, un lien sur le disque, plutôt qu'une variable héritée."""
+        env = (RACINE / "env_var.sh").read_text(encoding="utf-8")
+        self.assertIn("if [ -d /run/current-system/sw ]", env)
+        for var in ("CPATH", "LIBRARY_PATH", "PKG_CONFIG_PATH"):
+            with self.subTest(var=var):
+                self.assertIn(f"export {var}=", env)
+                self.assertIn("/run/current-system/sw", env)
+
+    def test_nothing_is_exported_off_nixos(self):
+        """Le garde est le répertoire lui-même : ailleurs, aucune de ces
+        variables n'est touchée."""
+        env = (RACINE / "env_var.sh").read_text(encoding="utf-8")
+        bloc = env.split("if [ -d /run/current-system/sw ]")[1].split("fi")[0]
+        self.assertNotIn("\nexport", bloc.replace("\n  export", ""))
+
     def test_the_headers_are_linked_into_the_profile(self):
         """Le profil ne porte pas « /include » par défaut : sans cette ligne,
         déclarer une sortie « .dev » ne met les en-têtes nulle part, et
