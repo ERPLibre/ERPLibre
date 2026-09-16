@@ -1070,5 +1070,62 @@ class TestLEtat(unittest.TestCase):
         self.assertIsNone(mon.PVE_ETATS.get("n'importe quoi"))
 
 
+class TestUneVmSansPointDEntreeNEmportePasLesAutres(unittest.TestCase):
+    """Un lot d'installations se lance VM par VM, et l'une peut n'être
+    joignable par rien : ni adresse, ni alias, et portée par un hôte, donc
+    aucun hyperviseur local pour relire son bail.
+
+    Refuser d'un bloc laisserait alors sans installation des machines qui,
+    elles, se joignent — et le lot est justement la raison d'être de cet
+    écran. Le refus va dans le journal de CETTE VM, que le tableau de bord
+    affiche déjà.
+    """
+
+    INJOIGNABLE = {"name": "vm-muette", "ip": "", "pve": {"vmid": 101}}
+    JOIGNABLE = {
+        "name": "vm-claire",
+        "ip": "alias-de-banc",
+        "pve": {"vmid": 102, "target": "hote.exemple"},
+    }
+
+    def lancer(self, vms):
+        import tempfile
+        from pathlib import Path
+
+        lances = []
+        vrai_launch, vrai_dir = mon._launch_one, mon.session_dir
+
+        def faux_launch(fiche, *_a, **_k):
+            # La PREMIÈRE ligne du vrai lanceur, et rien d'autre : c'est
+            # d'elle que vient le refus, et le reste ouvrirait un « ssh ».
+            vm_verbs.exec_address(fiche)
+            lances.append(fiche.name)
+
+        mon._launch_one = faux_launch
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        mon.session_dir = lambda: Path(tmp.name)
+        try:
+            manifeste = mon.launch_installs(vms, "", "true")
+        finally:
+            mon._launch_one, mon.session_dir = vrai_launch, vrai_dir
+        journaux = {
+            chemin.name: chemin.read_text(encoding="utf-8")
+            for chemin in Path(tmp.name).rglob("*.log")
+        }
+        return lances, journaux, manifeste
+
+    def test_the_reachable_vm_is_still_launched(self):
+        lances, _j, _m = self.lancer([self.INJOIGNABLE, self.JOIGNABLE])
+        self.assertEqual(["vm-claire"], lances)
+
+    def test_the_unreachable_vm_says_so_in_its_own_log(self):
+        """Sans cette ligne, son journal s'arrête sur l'en-tête et se lit
+        comme une installation qui n'a pas encore commencé."""
+        _l, journaux, _m = self.lancer([self.INJOIGNABLE, self.JOIGNABLE])
+        self.assertIn("exec_address", journaux["vm-muette.log"])
+        self.assertNotIn("exec_address", journaux["vm-claire.log"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

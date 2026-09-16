@@ -29,6 +29,7 @@ from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.vm import verbs as vm_verbs
 from script.vm.backend import (
     LIBVIRT,
+    VerbNotImplemented,
     group_by_host,
     handle_of,
     is_hosted,
@@ -422,15 +423,25 @@ def launch_installs(vms: list[dict], branch: str, remote_cmd: str) -> str:
         # laisserait trois vérités possibles si le dictionnaire bougeait
         # entre-temps, et c'est la preuve d'identité qui en souffrirait.
         fiche = handle_of(vm)
-        _launch_one(
-            fiche,
-            cmd_vm,
-            log_path,
-            installs=bool(branch),
-            # Une installation qui pose un NOYAU ne vaut rien avant le
-            # redémarrage : l'enveloppe s'en charge et ne conclut qu'après.
-            reboot=reboot_expected(cmd_vm),
-        )
+        try:
+            _launch_one(
+                fiche,
+                cmd_vm,
+                log_path,
+                installs=bool(branch),
+                # Une installation qui pose un NOYAU ne vaut rien avant le
+                # redémarrage : l'enveloppe s'en charge et ne conclut
+                # qu'après.
+                reboot=reboot_expected(cmd_vm),
+            )
+        except VerbNotImplemented as injoignable:
+            # Une VM sans point d'entrée n'emporte pas les autres : son
+            # refus va dans SON journal, que le tableau de bord affiche
+            # déjà, et la boucle poursuit. Refuser d'un bloc laisserait
+            # sans installation des machines qui, elles, se joignent.
+            with open(log_path, "a", encoding="utf-8") as journal:
+                journal.write(f"\n  ✗ {injoignable}\n")
+            continue
         entree = {
             "name": vm["name"],
             "ip": vm["ip"],
