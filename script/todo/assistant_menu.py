@@ -1544,22 +1544,37 @@ class AssistantMenuMixin:
         )
 
     def _agents_hooks_etat(self):
-        """« global », « dépôt », « les deux » ou « aucun posé ».
+        """« global », « dépôt », « les deux », « illisible » ou « aucun ».
 
         Les deux endroits sont nommés parce qu'ils ne se remplacent pas : le
         global mesure toute la machine, celui du dépôt mesure ce dépôt pour
         tout clone. Un utilisateur qui pose le global et voit ses appels
         manquer doit pouvoir apprendre que le dépôt en portait un autre.
+
+        Un fichier de réglages qu'on n'a pas su relire n'est pas un fichier
+        sans hooks. Le confondre avec « aucun posé » invite à en poser un
+        par-dessus, et deux blocs de hooks comptent chaque appel d'outil deux
+        fois. L'écran de pose le distinguait déjà ; le libellé du menu, qui
+        est ce qu'on lit d'abord, non.
         """
         from script.todo.assistant.agents import pose
 
         etat = pose.etat(racine_depot=self._agents_racine())
         poses = [nom for nom, (_, actifs) in etat.items() if actifs]
+        inconnus = [nom for nom, (_, actifs) in etat.items() if actifs is None]
         if len(poses) == 2:
-            return t("both")
-        if poses:
-            return t("global") if poses[0] == pose.GLOBAL else t("repository")
-        return t("none installed")
+            libelle = t("both")
+        elif poses:
+            libelle = (
+                t("global") if poses[0] == pose.GLOBAL else t("repository")
+            )
+        elif inconnus:
+            return t("unreadable settings")
+        else:
+            return t("none installed")
+        # Un endroit posé, l'autre illisible : le libellé est vrai et
+        # incomplet, et la marque est ce qui le dit.
+        return f"{libelle} {MARQUE['unknown']}" if inconnus else libelle
 
     @staticmethod
     def _agents_racine():

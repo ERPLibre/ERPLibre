@@ -12991,6 +12991,10 @@ TRANSLATIONS = {
         "fr": "aucun posé",
         "en": "none installed",
     },
+    "unreadable settings": {
+        "fr": "réglages illisibles",
+        "en": "unreadable settings",
+    },
     "both": {
         "fr": "les deux",
         "en": "both",

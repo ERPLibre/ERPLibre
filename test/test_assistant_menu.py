@@ -1229,5 +1229,46 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
         self.assertEqual(lances, [])
 
 
+class UnReglageIllisibleNEstPasUnReglageSansHooks(unittest.TestCase):
+    """Le libellé du menu des hooks, qui est ce qu'on lit d'abord.
+
+    Confondre « on n'a pas su relire » avec « aucun posé » invite à en poser
+    un par-dessus : deux blocs de hooks comptent chaque appel d'outil deux
+    fois, et le journal ment sur toute la machine.
+    """
+
+    def _libelle(self, global_, depot):
+        from script.todo.assistant.agents import pose
+        from script.todo.todo import TODO
+
+        etat = {
+            pose.GLOBAL: ("/ou/que/ce/soit/settings.json", global_),
+            pose.DEPOT: ("/un/depot/.claude/settings.json", depot),
+        }
+        with patch.object(pose, "etat", lambda **kw: etat):
+            return TODO()._agents_hooks_etat()
+
+    def test_an_unreadable_settings_file_says_so(self):
+        self.assertEqual(self._libelle(None, []), t("unreadable settings"))
+
+    def test_nothing_installed_still_says_so(self):
+        self.assertEqual(self._libelle([], []), t("none installed"))
+
+    def test_one_installed_and_one_unreadable_carries_the_mark(self):
+        """Le compte affiché est vrai et incomplet : la marque le dit."""
+        from script.todo.assistant_menu import MARQUE
+
+        libelle = self._libelle(["PreToolUse"], None)
+        self.assertIn(t("global"), libelle)
+        self.assertIn(MARQUE["unknown"], libelle)
+
+    def test_both_installed_carries_no_mark(self):
+        from script.todo.assistant_menu import MARQUE
+
+        libelle = self._libelle(["PreToolUse"], ["PreToolUse"])
+        self.assertEqual(libelle, t("both"))
+        self.assertNotIn(MARQUE["unknown"], libelle)
+
+
 if __name__ == "__main__":
     unittest.main()
