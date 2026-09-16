@@ -638,12 +638,44 @@ class TestTheToolsLaunchedApart(unittest.TestCase):
     def test_the_scss_default_follows_what_the_checkout_can_do(self):
         # « a » là où `reset_asset` n'existe pas (avant la 13.0) ferait
         # boucler l'invite sur elle-même : le défaut suit la capacité.
-        import inspect
-
+        #
+        # LE DÉFAUT OFFERT, et non la ligne qui le calcule. Cette épreuve
+        # épinglait « defaut = "a" if can_reset else "n" » au caractère
+        # près, nom de la variable locale compris : un renommage pur la
+        # faisait tomber alors que rien n'avait bougé.
         import check_stale_scss
 
-        source = inspect.getsource(check_stale_scss.prompt)
-        self.assertIn('defaut = "a" if can_reset else "n"', source)
+        vus = []
+        vrai_repertoire = check_stale_scss.running_odoo_dir
+        vrai_support = check_stale_scss.reset_supported
+        vrai_message = check_stale_scss.too_early_message
+        self.addCleanup(
+            setattr, check_stale_scss, "running_odoo_dir", vrai_repertoire
+        )
+        self.addCleanup(
+            setattr, check_stale_scss, "reset_supported", vrai_support
+        )
+        self.addCleanup(
+            setattr, check_stale_scss, "too_early_message", vrai_message
+        )
+        check_stale_scss.running_odoo_dir = lambda *_a, **_k: "/tmp/odoo"
+        check_stale_scss.too_early_message = lambda *_a, **_k: ""
+
+        for sait_remettre, attendu in ((True, "a"), (False, "n")):
+            with self.subTest(sait_remettre=sait_remettre):
+                check_stale_scss.reset_supported = (
+                    lambda *_a, **_k: sait_remettre
+                )
+                vus.clear()
+                with contextlib.redirect_stdout(io.StringIO()):
+                    check_stale_scss.prompt(
+                        "db",
+                        [],
+                        ask=lambda prompt="": vus.append(prompt) or "n",
+                    )
+                self.assertTrue(vus, "l'invite n'a rien demandé")
+                offre_la_remise = "Enter" in vus[0] or "Entrée" in vus[0]
+                self.assertEqual(sait_remettre, offre_la_remise)
 
     def test_each_of_them_can_run_without_a_driver(self):
         # Le repli compte : ces outils se lancent aussi à la main, et une
