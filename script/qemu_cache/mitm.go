@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -233,7 +234,26 @@ type Refusals struct {
 	// Seuil : combien de poignées de main de suite doivent échouer avant de
 	// conclure. Nul, la valeur par défaut s'applique.
 	Seuil int
+	// Rafale : deux coupures plus rapprochées que cela ne comptent que pour
+	// une. Nulle, la valeur par défaut s'applique ; négative, chaque coupure
+	// compte, ce dont un test se sert pour condamner sans attendre.
+	Rafale time.Duration
+	// Maintenant rend l'instant courant. Nulle, time.Now : un test injecte
+	// son horloge pour espacer des coupures sans dormir.
+	Maintenant func() time.Time
+	// dernier : quand a été COMPTÉE la dernière coupure d'un hôte, ce qui
+	// distingue une rafale d'un échec qui se répète.
+	dernier map[string]time.Time
 }
+
+// RafaleParDefaut : en deçà, deux poignées de main coupées sont le MÊME
+// incident.
+//
+// apt ouvre plusieurs connexions de front vers un dépôt et ferme celles dont
+// il ne se sert pas : trois coupures dans la même seconde atteignaient le
+// seuil sans que rien n'ait rejeté notre certificat. Un client qui refuse
+// vraiment réessaie et échoue encore, à des secondes de là.
+const RafaleParDefaut = 2 * time.Second
 
 // SeuilParDefaut : trois échecs de suite avant de renoncer à déchiffrer.
 //
@@ -269,8 +289,10 @@ func NewRefusals(static []string) *Refusals {
 		declares: map[string]bool{},
 		apprises: map[string]refus{},
 		echecs:   map[string]int{},
+		dernier:  map[string]time.Time{},
 		Oubli:    OubliParDefaut,
 		Seuil:    SeuilParDefaut,
+		Rafale:   RafaleParDefaut,
 	}
 	for _, h := range static {
 		if h = strings.TrimSpace(strings.ToLower(h)); h != "" {
@@ -309,7 +331,7 @@ func (r *Refusals) Has(host string) bool {
 	if vu.alerte {
 		return true
 	}
-	if r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
+	if r.Oubli > 0 && r.maintenant().Sub(vu.quand) >= r.Oubli {
 		r.oublier(host)
 		return false
 	}
@@ -322,6 +344,7 @@ func (r *Refusals) Has(host string) bool {
 func (r *Refusals) oublier(host string) {
 	delete(r.apprises, host)
 	delete(r.echecs, host)
+	delete(r.dernier, host)
 }
 
 // Echec note une poignée de main manquée et dit si l'hôte passe en tunnel.
@@ -343,6 +366,18 @@ func (r *Refusals) Echec(host string, raison error) bool {
 		seuil = SeuilParDefaut
 	}
 	alerte := estRefusTLS(raison)
+	maintenant := r.maintenant()
+	// Une rafale ne compte qu'une fois. Sans cela, un client qui ouvre
+	// plusieurs connexions de front et ferme les inutiles atteint le seuil
+	// seul : l'hôte passe en tunnel, le magasin cesse de le servir, et le
+	// client qui attend sur ce tunnel n'a plus rien pour s'en sortir.
+	if !alerte {
+		if precedent, vu := r.dernier[host]; vu &&
+			maintenant.Sub(precedent) < r.rafale() {
+			return false
+		}
+		r.dernier[host] = maintenant
+	}
 	r.echecs[host]++
 	if !alerte && r.echecs[host] < seuil {
 		return false
@@ -354,8 +389,25 @@ func (r *Refusals) Echec(host string, raison error) bool {
 	// La NATURE est retenue avec l'instant : elle décide si ce refus se
 	// rouvrira. Un seuil atteint sur des coupures reste un soupçon, même
 	// répété trois fois.
-	r.apprises[host] = refus{quand: time.Now(), alerte: alerte}
+	r.apprises[host] = refus{quand: maintenant, alerte: alerte}
 	return true
+}
+
+// maintenant rend l'instant courant, celui de l'horloge injectée s'il y en a.
+func (r *Refusals) maintenant() time.Time {
+	if r.Maintenant != nil {
+		return r.Maintenant()
+	}
+	return time.Now()
+}
+
+// rafale rend la distance en deçà de laquelle deux coupures n'en font qu'une.
+// Négative, elle les fait toutes compter.
+func (r *Refusals) rafale() time.Duration {
+	if r.Rafale != 0 {
+		return r.Rafale
+	}
+	return RafaleParDefaut
 }
 
 // Reussite efface le compte d'un hôte : la coupure d'avant n'était qu'un
@@ -365,6 +417,7 @@ func (r *Refusals) Reussite(host string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.echecs, host)
+	delete(r.dernier, host)
 }
 
 func (r *Refusals) List() []string {
@@ -375,7 +428,7 @@ func (r *Refusals) List() []string {
 		out = append(out, h)
 	}
 	for h, vu := range r.apprises {
-		if !vu.alerte && r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
+		if !vu.alerte && r.Oubli > 0 && r.maintenant().Sub(vu.quand) >= r.Oubli {
 			r.oublier(h)
 			continue
 		}
@@ -596,10 +649,28 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 		Client: clientDe(c.RemoteAddr().String()),
 	})
 
+	// Un tunnel qui se referme ne laissait AUCUNE trace : le client qui
+	// attendait dessus paraissait bloqué sans cause, et rien au journal ne
+	// disait lequel des deux bouts s'était taire. La durée et les octets par
+	// direction le disent — un tunnel qui meurt sans avoir rien rendu à
+	// l'invité est l'empreinte d'un amont qui coupe.
+	debut := time.Now()
+	var versAmont, versClient atomic.Int64
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(up, c); done <- struct{}{} }()
-	go func() { io.Copy(c, up); done <- struct{}{} }()
+	go func() {
+		n, _ := io.Copy(up, c)
+		versAmont.Store(n)
+		done <- struct{}{}
+	}()
+	go func() {
+		n, _ := io.Copy(c, up)
+		versClient.Store(n)
+		done <- struct{}{}
+	}()
 	<-done
+	log.Printf(T("tunnel vers %s refermé après %s : %s vers l'amont, %s vers l'invité"),
+		dst, time.Since(debut).Round(time.Second),
+		HumanBytes(versAmont.Load()), HumanBytes(versClient.Load()))
 	return false
 }
 

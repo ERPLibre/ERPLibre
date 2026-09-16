@@ -134,6 +134,7 @@ var anglais = map[string]string{
 	"tunnel impossible pour %q : destination inconnue (%v)":                                    "tunnel impossible for %q: unknown destination (%v)",
 	"tunnel refusé pour %q : connexion non détournée, sa destination %s est cette écoute même": "tunnel refused for %q: connection not redirected, its destination %s is this very listener",
 	"tunnel vers %s : %v ; %s est déchiffré à la place":                                        "tunnel to %s: %v; %s is decrypted instead",
+	"tunnel vers %s refermé après %s : %s vers l'amont, %s vers l'invité":                      "tunnel to %s closed after %s: %s upstream, %s to the guest",
 	"tunnel vers %s : %v":                                                                      "tunnel to %s: %v",
 	"ce n'est pas une poignée de main TLS (type %d)":                                           "not a TLS handshake (type %d)",
 	"longueur d'enregistrement invraisemblable : %d":                                           "implausible record length: %d",
