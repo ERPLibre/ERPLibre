@@ -507,7 +507,8 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
     )
 
     def _monde(self):
-        """Les quatre lectures du disque, remplacées par de l'inventé."""
+        """Les cinq lectures du disque, remplacées par de l'inventé."""
+        from script.todo.assistant.agents import detail as dl
         from script.todo.assistant.agents import journal as jr
         from script.todo.assistant.agents import statistiques as st
         from script.todo.assistant.agents import tui as t_ui
@@ -553,6 +554,19 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             patch.object(jr, "lire_lignes", lambda: evenements),
             patch.object(jr, "nettoyer", lambda *a, **k: None),
             patch.object(oc, "lire_base", lambda: [seance]),
+            # Le volet de détail relit la TRANSCRIPTION de l'appel : sans
+            # couture, la touche « d » balaie le vrai ~/.claude de qui lance
+            # la suite.
+            patch.object(
+                dl,
+                "pour",
+                lambda appel, **kw: dl.Detail(
+                    outil="Bash",
+                    commande="echo salut",
+                    sortie="salut",
+                    genre="commande",
+                ),
+            ),
         )
 
     async def _piloter(self, touches=()):
@@ -697,6 +711,38 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                     large,
                     "le dégel rattrape la largeur perdue",
                 )
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_le_volet_de_detail_se_ferme_avec_son_panneau(self):
+        """Le volet montre du CONTENU, et il le doit à une ligne du flux.
+
+        Le flux parti, plus rien à l'écran ne désigne ce qu'il montre, et la
+        mention qui prévient ne se rapporte plus à rien de visible.
+        """
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                volet = app.query_one("#detail", Static)
+                await pilote.press("v")
+                await pilote.pause()
+                self.assertEqual(app.VUES[app._vue], "flux")
+                await pilote.press("d")
+                await pilote.pause()
+                self.assertTrue(volet.display, "une ligne du flux est là")
+                await pilote.press("v")
+                await pilote.pause()
+                self.assertFalse(volet.display)
+                self.assertEqual(str(volet.render()), "")
         finally:
             for c in correctifs:
                 c.stop()

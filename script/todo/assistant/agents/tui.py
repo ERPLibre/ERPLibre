@@ -811,8 +811,16 @@ def run_tui(run_app: bool = True):
             self._peindre()
 
         def action_vue(self):
-            """Passer au panneau suivant, en boucle."""
+            """Passer au panneau suivant, en boucle.
+
+            Le volet de détail se ferme avec le panneau qu'il détaille. Il
+            montre une commande et sa sortie — le seul endroit de l'écran qui
+            montre du CONTENU — et il le doit à une ligne surlignée du flux.
+            Le flux parti, plus rien ne désignait ce qui restait affiché, et
+            la mention qui prévient ne se rapportait plus à rien de visible.
+            """
             self._vue = (self._vue + 1) % len(self.VUES)
+            self._fermer_le_detail()
             self._montrer_la_vue()
             # Remplir TOUT DE SUITE : sans cela, la colonne des commandes
             # reste en points de suspension jusqu'au tour suivant, soit deux
@@ -1082,7 +1090,7 @@ def run_tui(run_app: bool = True):
 
             volet = self.query_one("#detail", Static)
             if volet.display:
-                volet.display = False
+                self._fermer_le_detail()
                 return
             appel = self._appel_choisi()
             if appel is None:
@@ -1090,6 +1098,19 @@ def run_tui(run_app: bool = True):
                 return
             volet.update(texte_du_detail(appel, dl.pour(appel)))
             volet.display = True
+
+        def _fermer_le_detail(self):
+            """Fermer le volet de contenu, et OUBLIER ce qu'il portait.
+
+            Le texte est effacé en même temps que le volet est caché : un
+            widget caché garde ce qu'on lui a donné, et le rouvrir sur un
+            autre appel le montrerait le temps d'une image.
+            """
+            from textual.widgets import Static
+
+            volet = self.query_one("#detail", Static)
+            volet.update("")
+            volet.display = False
 
         def _appel_choisi(self):
             """L'appel de la ligne surlignée du flux, ou None.
