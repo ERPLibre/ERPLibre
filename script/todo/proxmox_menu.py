@@ -67,7 +67,8 @@ class ProxmoxMenuMixin:
 
     @staticmethod
     def _pve_label(host):
-        """« root@10.0.0.5 (par rebond) », pour l'afficher en tête de menu."""
+        """« root@hyperviseur (par rebond) », pour l'afficher en tête de
+        menu."""
         if not host:
             return ""
         lab = host.get("target", "?")
@@ -676,6 +677,33 @@ class ProxmoxMenuMixin:
                 return ""
             time.sleep(5)
 
+    def _pve_user_data(self, mod, distro, nom, cle_locale):
+        """Le user-data du DÉPÔT pour une VM Proxmox, ou "".
+
+        Le même que le chemin qemu envoie : un bloc « users: » explicite, avec
+        le nom du compte, son shell, son sudo et ses clés. « --ciuser » et
+        « --sshkeys » de Proxmox s'en remettent au compte par DÉFAUT de
+        l'image, et une image qui en déclare un autre les ignore — mesuré sur
+        NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait avec ce
+        compte-là, sans la clé, donc injoignable.
+
+        Rend "" quand la clé publique est illisible : mieux vaut retomber sur
+        la forme d'avant, qui pose au moins un compte, que d'écrire un
+        user-data sans aucun moyen d'entrer.
+        """
+        try:
+            with open(os.path.expanduser(cle_locale), encoding="utf-8") as fh:
+                cle = fh.read().strip()
+        except OSError as exc:
+            print(f"  ⚠ {t('SSH key unreadable:')} {exc}")
+            return ""
+        if not cle:
+            return ""
+        args = mod.build_parser().parse_args(
+            ["--distro", distro, "--hostname", nom, "--user", "erplibre"]
+        )
+        return mod.build_cloud_config(args, None, [cle])
+
     def _pve_push_key(self, chemin_local):
         """Recopie la clé publique SUR l'hôte : « qm set --sshkeys » attend un
         FICHIER là-bas, pas une clé en ligne."""
@@ -936,8 +964,8 @@ class ProxmoxMenuMixin:
         """Réseau du futur pont interne, CHOISI d'après l'hôte.
 
         Pas une constante : un Proxmox dans un Proxmox hérite du réseau
-        interne de son parent, et 10.10.10.1 y est l'adresse de sa propre
-        PASSERELLE. La poser sur son pont rend tout le /24 local, la
+        interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
+        de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
         commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
         la VM ne répondait plus, ni en ssh ni en ping."""
@@ -1043,9 +1071,9 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         host = self._pve_host(ask=False)
-        # Le réseau est LU sur l'hôte avant d'être proposé : l'annoncer
-        # 10.10.10.1/24 pour en poser un autre serait mentir sur l'écran même
-        # où l'on demande l'accord.
+        # Le réseau est LU sur l'hôte avant d'être proposé : annoncer le
+        # réseau par défaut pour en poser un autre serait mentir sur
+        # l'écran même où l'on demande l'accord.
         cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
@@ -1406,6 +1434,9 @@ class ProxmoxMenuMixin:
             "storage": spec["storage"],
             "bridge": spec["bridge"],
             "image": image,
+            # L'image qui n'a pas de secteur d'amorçage BIOS : le catalogue le
+            # sait, ce menu le transmet, et « qm create » en tire l'OVMF.
+            "uefi": mod.requiert_uefi(vm.get("distro") or ""),
             "user": spec.get("user") or "erplibre",
             "start": spec.get("start", True),
             "ipconfig": vm.get("ipconfig") or "ip=dhcp",
@@ -1419,9 +1450,21 @@ class ProxmoxMenuMixin:
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
-        return [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vm["vmid"], detail
-        )
+        # Le user-data du dépôt, pour TOUTES les distributions. La clé locale
+        # vient de la spec de l'écran ; sans elle, on retombe sur la forme
+        # d'avant, qui pose au moins un compte.
+        cle_locale = spec.get("ssh_key_local") or self._qemu_default_ssh_key()
+        if cle_locale:
+            detail["user_data"] = self._pve_user_data(
+                mod, vm.get("distro") or "", vm.get("name") or "", cle_locale
+            )
+        # La somme que le dépôt porte pour cette image, quand il en a une :
+        # c'est la seule chose qui distingue une image tierce revue de
+        # n'importe quel fichier servi sous la même URL.
+        somme = mod.pinned_sha256(vm.get("distro") or "")
+        return [
+            pve.image_fetch_cmd(url, image, sha256=somme)
+        ] + pve.create_cmds(vm["vmid"], detail)
 
     def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
@@ -2343,17 +2386,22 @@ class ProxmoxMenuMixin:
             "storage": stockage,
             "bridge": pont,
             "image": image,
+            "uefi": mod.requiert_uefi(distro),
             "user": "erplibre",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            # Le user-data du dépôt, pour TOUTES les distributions : un seul
+            # cloud-init à comprendre, et celui-là est déjà éprouvé.
+            "user_data": self._pve_user_data(mod, distro, nom, cle_locale),
             "start": True,
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
             # resterait muette.
             "ipconfig": ipconfig,
         }
-        etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vmid, spec
-        )
+        somme = mod.pinned_sha256(distro)
+        etapes = [
+            pve.image_fetch_cmd(url, image, sha256=somme)
+        ] + pve.create_cmds(vmid, spec)
         if dry_run:
             print(f"\n── {t('Would run on')} {host['target']} ──")
             print(f"  # {t('SSH key ->')} {spec['sshkey_path']}")
@@ -2368,9 +2416,9 @@ class ProxmoxMenuMixin:
         if cle_locale and not self._pve_push_key(cle_locale):
             print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
             spec.pop("sshkey_path", None)
-            etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-                vmid, spec
-            )
+            etapes = [
+                pve.image_fetch_cmd(url, image, sha256=somme)
+            ] + pve.create_cmds(vmid, spec)
         for cmd in etapes:
             code, _out = self._pve_show(cmd, timeout=1800)
             if code:
@@ -2683,4 +2731,10 @@ class ProxmoxMenuMixin:
         url = mod.image_url(distro, code, "amd64", version)
         nom = mod.default_image_name(distro, code, "amd64", version)
         print(f"\n  {nom}\n  {url}")
-        self._pve_show(pve.image_fetch_cmd(url, nom), timeout=1800)
+        # La somme, ici comme au déploiement : une image téléchargée d'avance
+        # est celle qu'un déploiement futur trouvera « déjà présente », et il
+        # ne la regardera pas mieux que celui-ci.
+        self._pve_show(
+            pve.image_fetch_cmd(url, nom, sha256=mod.pinned_sha256(distro)),
+            timeout=1800,
+        )

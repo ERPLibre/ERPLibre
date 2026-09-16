@@ -182,6 +182,25 @@ NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
 }
 
+# Les images qui n'ont AUCUN secteur d'amorçage BIOS : elles ne démarrent que
+# par UEFI.
+#
+# Ce chemin-ci amorce en UEFI pour TOUT LE MONDE et n'a donc jamais eu besoin
+# de le savoir ; celui de Proxmox part en SeaBIOS, et c'est lui qui lit cette
+# liste. Mesuré sur un Proxmox 9 : en SeaBIOS, une VM NixOS se déclare
+# « running » et sa console reste muette ; la même en OVMF démarre — systemd,
+# cloud-init, réseau.
+#
+# La liste reste COURTE plutôt que de basculer le défaut de tous : Debian 13,
+# mesurée sur le même hôte, démarre en SeaBIOS sans rien lui devoir.
+DISTROS_UEFI_SEUL: tuple[str, ...] = ("nixos",)
+
+
+def requiert_uefi(distro: str) -> bool:
+    """L'image de `distro` refuse-t-elle un amorçage BIOS hérité ?"""
+    return distro in DISTROS_UEFI_SEUL
+
+
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
@@ -1646,6 +1665,17 @@ def download_image(
     )
 
 
+def pinned_sha256(distro: str) -> str:
+    """La somme que le DÉPÔT porte pour l'image de `distro`, ou "".
+
+    Lue par les deux chemins de déploiement : celui de qemu vérifie le
+    fichier qu'il vient de télécharger, celui de Proxmox fait vérifier sur
+    l'hôte distant. Deux copies de la somme dériveraient, et la copie oubliée
+    serait celle qui laisse passer une image que personne n'a regardée.
+    """
+    return NIXOS_IMAGE_SHA256 if distro == "nixos" else ""
+
+
 def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
     """Vérifie une image contre la somme que le DÉPÔT porte pour elle.
 
@@ -1658,9 +1688,9 @@ def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
     Une somme qui ne correspond pas ARRÊTE le déploiement : continuer
     reviendrait à installer un système que personne n'a regardé.
     """
-    if distro != "nixos" or dry_run:
+    attendu = pinned_sha256(distro)
+    if not attendu or dry_run:
         return
-    attendu = NIXOS_IMAGE_SHA256
     digest = hashlib.sha256()
     with open(image, "rb") as fh:
         for morceau in iter(lambda: fh.read(1 << 20), b""):

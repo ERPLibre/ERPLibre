@@ -226,5 +226,87 @@ class CeQuUnSystemeDeclaratifNeRecoitPas(unittest.TestCase):
                 )
 
 
+class LesDeuxCheminsLisentLaMemeSomme(unittest.TestCase):
+    """L'image tierce se vérifie sur les DEUX chemins de déploiement.
+
+    Aucune distribution ne publie cette image : la somme a été relevée une
+    fois à la revue, et c'est la seule chose qui distingue le fichier revu de
+    n'importe quel autre servi sous la même URL. Le chemin qemu vérifie ce
+    qu'il vient de télécharger ; celui de Proxmox fait vérifier sur l'hôte,
+    où l'image descend.
+
+    Deux copies de la somme dériveraient, et la copie oubliée serait celle
+    qui laisse passer une image que personne n'a regardée.
+    """
+
+    def test_one_accessor_carries_it(self):
+        self.assertEqual(DQ.NIXOS_IMAGE_SHA256, DQ.pinned_sha256("nixos"))
+        self.assertEqual(64, len(DQ.pinned_sha256("nixos")))
+
+    def test_the_distros_that_publish_their_own_have_none(self):
+        """--verify lit alors le SHA256SUMS de la distribution : porter une
+        somme figée en plus ferait deux autorités."""
+        for distro in ("ubuntu", "debian", "fedora", "arch", ""):
+            with self.subTest(distro=distro):
+                self.assertEqual("", DQ.pinned_sha256(distro))
+
+    def test_the_qemu_side_reads_the_accessor(self):
+        """Un second test « distro == nixos » ailleurs se désaccorderait du
+        jour où une autre image tierce entre au catalogue."""
+        src = (RACINE / "script/qemu/deploy_qemu.py").read_text(
+            encoding="utf-8"
+        )
+        i = src.index("def verify_pinned_sha256")
+        self.assertIn("pinned_sha256(distro)", src[i : i + 700])
+
+    def test_the_proxmox_side_verifies_on_the_host(self):
+        from script.proxmox import proxmox_deploy as pve
+
+        cmd = pve.image_fetch_cmd(
+            "http://x/i.qcow2", "i.qcow2", sha256="a" * 64
+        )
+        self.assertIn("sha256sum -c -", cmd)
+        # Par « && » : une somme qui ne correspond pas doit ARRÊTER la suite,
+        # et non se contenter d'un avertissement dans le journal.
+        self.assertIn("&& echo", cmd)
+
+    def test_a_cached_image_is_verified_too(self):
+        """Le cas qu'on veut prendre est un fichier substitué ou tronqué
+        entre deux déploiements : le test de présence ne regarde que la
+        taille, et la vérification vient donc APRÈS le « fi »."""
+        from script.proxmox import proxmox_deploy as pve
+
+        cmd = pve.image_fetch_cmd(
+            "http://x/i.qcow2", "i.qcow2", sha256="b" * 64
+        )
+        self.assertLess(cmd.index("fi"), cmd.index("sha256sum"))
+
+    def test_nothing_is_appended_without_a_sum(self):
+        from script.proxmox import proxmox_deploy as pve
+
+        self.assertNotIn(
+            "sha256sum", pve.image_fetch_cmd("http://x/i.qcow2", "i.qcow2")
+        )
+
+    def test_the_menu_passes_it_at_every_call_site(self):
+        """Un appel qui l'oublie télécharge sans regarder."""
+        src = (RACINE / "script/todo/proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        # Les appels qui TÉLÉCHARGENT, l'exemple d'affichage excepté : les
+        # trois du déploiement, plus celui du téléchargement d'avance — une
+        # image posée par lui est celle qu'un déploiement futur trouvera
+        # « déjà présente », et il ne la regardera pas mieux.
+        vrais = [
+            l
+            for l in src.splitlines()
+            if "pve.image_fetch_cmd(" in l and "https://…" not in l
+        ]
+        self.assertEqual(4, len(vrais))
+        for ligne in vrais:
+            with self.subTest(ligne=ligne.strip()[:50]):
+                self.assertIn("sha256=", ligne)
+
+
 if __name__ == "__main__":
     unittest.main()
