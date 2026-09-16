@@ -388,8 +388,6 @@ class TestLeMenage(unittest.TestCase):
         )
 
 
-
-
 class TestLeTempsPasseEtLeTempsEcoule(unittest.TestCase):
     """Deux durées qui se ressemblent et ne disent pas la même chose.
 
@@ -668,6 +666,78 @@ class TestLaDureeMesureeEtLaDureeSupposee(unittest.TestCase):
             texte = open(os.path.join(dossier, fichiers[0])).read()
         self.assertNotIn(TEMOIN, texte)
         self.assertIn("42", texte)
+
+
+class TestLeJournalSEcritEnUtf8(unittest.TestCase):
+    """Le lecteur impose UTF-8 ; l'écrivain doit l'imposer aussi.
+
+    Sans encodage explicite, le fichier s'ouvre dans celui de la LOCALE. Sous
+    une locale latine ou C, un chemin de travail accentué — un nom de dépôt
+    avec un accent — lève à l'écriture. Le filet du hook avale l'exception
+    parce qu'il ne doit JAMAIS faire échouer l'appel d'outil qu'il observe :
+    l'événement se perd alors sans que rien ne le dise.
+
+    Le hook est lancé dans un vrai processus, comme les autres tests de ce
+    fichier : c'est le seul moyen de lui imposer une locale.
+    """
+
+    ACCENTUE = "/un/dépôt/accentué"
+
+    def _lancer(self, maison, locale):
+        charge = json.dumps(
+            {
+                "hook_event_name": "PreToolUse",
+                "session_id": "s",
+                "tool_use_id": "t",
+                "tool_name": "Bash",
+                "cwd": self.ACCENTUE,
+            }
+        )
+        return subprocess.run(
+            [sys.executable, HOOK],
+            input=charge,
+            text=True,
+            capture_output=True,
+            env=dict(
+                os.environ,
+                HOME=maison,
+                LC_ALL=locale,
+                LANG=locale,
+                PYTHONCOERCECLOCALE="0",
+                PYTHONUTF8="0",
+            ),
+        )
+
+    def _relire(self, maison):
+        dossier = os.path.join(maison, ".erplibre", "agents")
+        fichiers = sorted(os.listdir(dossier))
+        self.assertTrue(fichiers, "aucune ligne écrite")
+        chemin = os.path.join(dossier, fichiers[0])
+        with open(chemin, encoding="utf-8") as fh:
+            return [json.loads(l) for l in fh if l.strip()]
+
+    def test_an_accented_path_survives_a_latin_locale(self):
+        with tempfile.TemporaryDirectory() as maison:
+            fini = self._lancer(maison, "C")
+            self.assertEqual(fini.returncode, 0, fini.stderr)
+            (ligne,) = self._relire(maison)
+            self.assertEqual(ligne["cwd"], self.ACCENTUE)
+
+    def test_it_survives_a_utf8_locale_too(self):
+        with tempfile.TemporaryDirectory() as maison:
+            self._lancer(maison, "C.UTF-8")
+            (ligne,) = self._relire(maison)
+            self.assertEqual(ligne["cwd"], self.ACCENTUE)
+
+    def test_the_reader_of_the_package_reads_it_back(self):
+        """Écrivain et lecteur doivent s'accorder, pas seulement ne pas
+        lever."""
+        with tempfile.TemporaryDirectory() as maison:
+            self._lancer(maison, "C")
+            lignes = journal.lire_lignes(
+                racine=os.path.join(maison, ".erplibre", "agents")
+            )
+        self.assertEqual([l["cwd"] for l in lignes], [self.ACCENTUE])
 
 
 if __name__ == "__main__":

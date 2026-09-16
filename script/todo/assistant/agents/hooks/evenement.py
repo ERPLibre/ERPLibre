@@ -71,7 +71,13 @@ def ecrire(brut, *, horloge=None, racine=None) -> bool:
         jour = time.strftime("%Y-%m-%d", time.localtime(horloge()))
         dossier = os.path.expanduser(racine or RACINE)
         os.makedirs(dossier, exist_ok=True)
-        with open(os.path.join(dossier, f"{jour}.jsonl"), "a") as fh:
+        # UTF-8 explicite, comme le lecteur l'impose. Sans lui, le fichier
+        # s'ouvre dans l'encodage de la LOCALE, et un chemin de travail
+        # accentué lève sous une locale latine — l'exception est avalée par
+        # le filet du hook, et l'événement se perd sans que rien ne le dise.
+        with open(
+            os.path.join(dossier, f"{jour}.jsonl"), "a", encoding="utf-8"
+        ) as fh:
             fh.write(json.dumps(ligne, ensure_ascii=False) + "\n")
         return True
     except Exception:
