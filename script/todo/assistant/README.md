@@ -402,6 +402,16 @@ Enter to come back. What appears there is content — the conversation, the
 commands, what was read — and that same line says so. Nothing is kept: the
 output is never captured, so there is not even a copy that could be written.
 
+**A footer lies by omission, so one key leads to all the others.** The footer
+fits on one line and truncates on the right: on an eighty-column terminal —
+the width of a window nobody widened — four keys out of eleven fell off,
+including the two that destroy. Nothing on screen said they existed. `h` opens
+the whole list in sentences, and a number there acts on the highlighted row for
+anyone who would rather not learn eleven letters. The footer, the panel and the
+numbers read the SAME table, because it was the copy that left four keys
+mentioned nowhere; a test keeps `h` inside eighty columns whatever is added
+later.
+
 **The screen reads on a thread, and the figure that decided it is a tail.** A
 tick folds nineteen transcripts, the hook log, the Open Code database and the
 fleet: 230 ms median, 408 ms worst, a fifth of the two-second step during which

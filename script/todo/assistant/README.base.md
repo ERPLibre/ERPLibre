@@ -407,6 +407,16 @@ Enter to come back. What appears there is content — the conversation, the
 commands, what was read — and that same line says so. Nothing is kept: the
 output is never captured, so there is not even a copy that could be written.
 
+**A footer lies by omission, so one key leads to all the others.** The footer
+fits on one line and truncates on the right: on an eighty-column terminal —
+the width of a window nobody widened — four keys out of eleven fell off,
+including the two that destroy. Nothing on screen said they existed. `h` opens
+the whole list in sentences, and a number there acts on the highlighted row for
+anyone who would rather not learn eleven letters. The footer, the panel and the
+numbers read the SAME table, because it was the copy that left four keys
+mentioned nowhere; a test keeps `h` inside eighty columns whatever is added
+later.
+
 **The screen reads on a thread, and the figure that decided it is a tail.** A
 tick folds nineteen transcripts, the hook log, the Open Code database and the
 fleet: 230 ms median, 408 ms worst, a fifth of the two-second step during which
@@ -919,6 +929,17 @@ l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
 revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
 qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
 n'est jamais capturée, donc il n'existe même pas de copie à écrire.
+
+**Un pied de page ment par omission, donc une touche mène à toutes les
+autres.** Il tient sur une ligne et se coupe à droite : sur un terminal de
+quatre-vingts colonnes — la largeur d'une fenêtre qu'on n'a pas élargie —
+quatre touches sur onze tombaient hors champ, dont les deux qui détruisent.
+Rien à l'écran ne disait qu'elles existaient. `h` ouvre la liste entière en
+phrases, et un chiffre y agit sur la ligne surlignée pour qui ne veut pas
+apprendre onze lettres. Le pied de page, le panneau et les numéros lisent la
+MÊME table, puisque c'est la recopie qui avait laissé quatre touches sans
+mention nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi
+qu'on ajoute ensuite.
 
 **L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
 replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la
