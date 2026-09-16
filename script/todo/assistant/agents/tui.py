@@ -1305,9 +1305,20 @@ def run_tui(run_app: bool = True):
             """Lancer un agent détaché, l'invite sur l'ENTRÉE STANDARD.
 
             Jamais en positionnel : `/proc/<pid>/cmdline` est lisible par tout
-            compte de la machine. L'appel rend la main tout de suite — c'est
-            ce que `--bg` promet — donc l'écran ne se fige pas.
+            compte de la machine.
+
+            Sur un FIL, comme les autres sous-processus. « L'appel rend la main
+            tout de suite » était faux : `capture_output` attend la fin des
+            DEUX tubes, et un agent détaché en hérite — ils ne se ferment qu'à
+            sa mort. L'écran tenait donc jusqu'à deux minutes sans une touche,
+            juste après qu'on lui a confié une invite.
             """
+            self._dire(t("Sent, waiting for the answer…"))
+            self._lancer_en_fond(invite)
+
+        @work(thread=True)
+        def _lancer_en_fond(self, invite):
+            """Lancer l'agent et rapporter son identifiant, ou ce qui a raté."""
             import subprocess
 
             adaptateur = adaptateur_claude()
@@ -1320,16 +1331,17 @@ def run_tui(run_app: bool = True):
                     timeout=120,
                 )
             except (OSError, subprocess.SubprocessError) as souci:
-                self._dire(str(souci))
+                self.call_from_thread(self._dire, str(souci))
                 return
             identifiant = adaptateur.identifiant_lance(fini.stdout)
-            self._dire(
-                f"{t('Agent started')} {identifiant}"
-                if identifiant
-                else t("The agent did not report an identifier.")
+            self.call_from_thread(
+                self._action_repondue,
+                (
+                    f"{t('Agent started')} {identifiant}"
+                    if identifiant
+                    else t("The agent did not report an identifier.")
+                ),
             )
-            self._flotte_a_relire = True
-            self._tick()
 
         def _lancer_action(self, sous_commande, poignee):
             """Une action sur un agent, sur un FIL comme les lectures.

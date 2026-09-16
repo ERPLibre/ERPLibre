@@ -1925,6 +1925,48 @@ class TestUnGesteNeFigePasLEcran(unittest.IsolatedAsyncioTestCase):
                 "introuvable", str(app.query_one("#etat", Static).render())
             )
 
+    async def test_lancer_un_agent_ne_bloque_pas_la_boucle(self):
+        """`capture_output` attend la fin des DEUX tubes, et un agent détaché
+        en hérite : ils ne se ferment qu'à sa mort. « L'appel rend la main
+        tout de suite » était faux, et l'écran tenait jusqu'à deux minutes."""
+        import time as horloge
+
+        lent = 0.4
+
+        def dort(argv, **kw):
+            horloge.sleep(lent)
+            return type("F", (), {"stdout": "backgrounded · abcd1234"})
+
+        async for app, pilote in self._ecran(dort):
+            depart = horloge.perf_counter()
+            app._lancer_agent("une invite")
+            rendu = horloge.perf_counter() - depart
+            self.assertLess(rendu, lent / 4, "le lancement rend la main")
+            await calme(pilote)
+
+    async def test_l_invite_passe_par_l_entree_standard(self):
+        """Jamais en argv : `/proc/<pid>/cmdline` est lisible par tout compte
+        de la machine."""
+        from textual.widgets import Static
+
+        vus = []
+
+        def compte(argv, **kw):
+            vus.append((argv, kw.get("input")))
+            return type("F", (), {"stdout": "backgrounded · abcd1234"})
+
+        async for app, pilote in self._ecran(compte):
+            app._lancer_agent("une invite qui ne doit pas fuir")
+            await calme(pilote)
+            ((argv, entree),) = vus
+            self.assertEqual(argv, ["claude", "--bg"])
+            self.assertEqual(entree, "une invite qui ne doit pas fuir")
+            for morceau in argv:
+                self.assertNotIn("invite", morceau)
+            self.assertIn(
+                "abcd1234", str(app.query_one("#etat", Static).render())
+            )
+
     async def test_un_identifiant_vide_est_refuse_tout_de_suite(self):
         """Un refus immédiat : le faire voyager retarderait le seul message
         qui apprenne quelque chose."""
