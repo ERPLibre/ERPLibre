@@ -12972,6 +12972,14 @@ TRANSLATIONS = {
         "fr": "toute session qui porte un historique est vivante.",
         "en": "every session with a history is alive.",
     },
+    "not asked: the listing did not answer": {
+        "fr": "non demandé : le listage n'a pas répondu",
+        "en": "not asked: the listing did not answer",
+    },
+    "the listing did not answer, so nothing is offered.": {
+        "fr": "le listage n'a pas répondu, donc rien n'est proposé.",
+        "en": "the listing did not answer, so nothing is offered.",
+    },
     "Remove one session's file history": {
         "fr": "🗑 Retirer l'historique des fichiers d'une session",
         "en": "🗑 Remove one session's file history",

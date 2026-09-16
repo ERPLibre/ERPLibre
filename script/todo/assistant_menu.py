@@ -1454,6 +1454,12 @@ class AssistantMenuMixin:
         Une session VIVANTE n'est jamais proposée. Elle écrit encore, et
         retirer son historique sous elle laisserait une session qui croit
         pouvoir restaurer ce qui n'existe plus.
+
+        Un listage qui n'a PAS répondu ferme la garde de la même façon, et
+        l'écran le dit autrement : « non demandé » et non « vivante ». Les
+        deux protègent également, mais la seconde est une mesure et la
+        première une absence de mesure, et confondre les deux envoie chercher
+        des sessions à fermer qui n'existent pas.
         """
         from script.todo.assistant.agents import disque
 
@@ -1466,6 +1472,11 @@ class AssistantMenuMixin:
             # sortie qui n'est pas du JSON. `live()` rend None dans tous ces
             # cas, et `historiques` ne propose alors rien.
             vivantes = self._claude_vivantes()
+            # La garde tombe fermée quand le listage n'a pas répondu, et
+            # l'écran doit dire POURQUOI. Marquer chaque session « vivante,
+            # non proposée » affirmerait un fait qu'on n'a pas mesuré, et
+            # enverrait chercher des sessions à fermer qui n'existent pas.
+            repondu = vivantes is not None
             histoires = disque.historiques(vivantes=vivantes)
             print(f"{t('What Claude Code occupies')} :")
             for poste in postes:
@@ -1478,12 +1489,13 @@ class AssistantMenuMixin:
                 )
             print(f"\n{t('File history, per session')} :")
             for histoire in histoires:
-                marque = MARQUE["no"] if histoire.vivante else MARQUE["ok"]
-                detail = (
-                    t("alive, not offered")
-                    if histoire.vivante
-                    else t("removable")
-                )
+                if not repondu:
+                    marque = MARQUE["unknown"]
+                    detail = t("not asked: the listing did not answer")
+                elif histoire.vivante:
+                    marque, detail = MARQUE["no"], t("alive, not offered")
+                else:
+                    marque, detail = MARQUE["ok"], t("removable")
                 print(
                     f"  {marque} {disque.octets_lisibles(histoire.octets):>10}"
                     f"  {t('largest')} {disque.octets_lisibles(histoire.plus_gros)}"
@@ -1492,7 +1504,11 @@ class AssistantMenuMixin:
             retirables = [h for h in histoires if h.retirable]
             if not retirables:
                 print(f"  {MARQUE['unknown']} {t('Nothing can be removed:')}")
-                print(f"     {t('every session with a history is alive.')}")
+                print(
+                    f"     {t('every session with a history is alive.')}"
+                    if repondu
+                    else f"     {t('the listing did not answer, so nothing is offered.')}"
+                )
             choices = [
                 {"prompt_description": t("Remove one session's file history")}
             ]

@@ -1260,6 +1260,65 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
         self.assertEqual(lances, [])
 
 
+class UnListageMuetNEstPasUneSessionVivante(unittest.TestCase):
+    """L'écran de ménage : la garde tombe fermée, et elle dit pourquoi.
+
+    Un listage qui n'a pas répondu — `claude` hors du PATH du processus qui
+    lance le menu, compte déconnecté, délai dépassé — protège autant qu'une
+    session réellement vivante. Mais « vivante, non proposée » est une MESURE,
+    et l'annoncer sans l'avoir prise envoie chercher des sessions à fermer qui
+    n'existent pas.
+    """
+
+    def _ecran(self, vivantes):
+        from script.todo.assistant.agents import disque
+        from script.todo.todo import TODO
+
+        histoires = [
+            disque.Historique(
+                session="aaaaaaaa-1111-4111-8111-111111111111",
+                octets=4096,
+                fichiers=3,
+                plus_gros=2048,
+                vivante=vivantes is None,
+            )
+        ]
+        sorti = []
+        with patch.object(
+            TODO, "_claude_vivantes", staticmethod(lambda: vivantes)
+        ), patch.object(disque, "mesurer", lambda *a, **k: []), patch.object(
+            disque, "historiques", lambda **k: list(histoires)
+        ), patch.object(
+            TODO, "fill_help_info", lambda self, c: ""
+        ), patch(
+            "click.prompt", side_effect=["0"]
+        ), patch(
+            "builtins.print",
+            side_effect=lambda *a, **k: sorti.append(
+                " ".join(str(x) for x in a)
+            ),
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            TODO()._agents_disque()
+        return "\n".join(sorti)
+
+    def test_a_silent_listing_is_not_announced_as_alive(self):
+        rendu = self._ecran(None)
+        self.assertIn(t("not asked: the listing did not answer"), rendu)
+        self.assertNotIn(t("alive, not offered"), rendu)
+        self.assertIn(
+            t("the listing did not answer, so nothing is offered."), rendu
+        )
+        self.assertNotIn(t("every session with a history is alive."), rendu)
+
+    def test_a_listing_that_answered_still_names_a_live_session(self):
+        """La couture ne doit pas avoir éteint le cas ordinaire."""
+        rendu = self._ecran({"aaaaaaaa-1111-4111-8111-111111111111"})
+        self.assertIn(t("removable"), rendu)
+        self.assertNotIn(t("not asked: the listing did not answer"), rendu)
+
+
 class UnReglageIllisibleNEstPasUnReglageSansHooks(unittest.TestCase):
     """Le libellé du menu des hooks, qui est ce qu'on lit d'abord.
 
