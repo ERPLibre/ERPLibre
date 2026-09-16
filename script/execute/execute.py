@@ -45,10 +45,23 @@ _SECRET_OPTION = re.compile(
     r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
     re.IGNORECASE,
 )
+# LES DEUX VOCABULAIRES ONT DÉRIVÉ. Celui des options porte « pwd » et
+# « api_key » ; celui des variables ne les avait pas, et il était de plus
+# sensible à la casse. Or c'est précisément vers l'ENVIRONNEMENT que le
+# dépôt a déplacé le mot de passe maître pour le tenir hors d'argv —
+# « MASTER_PWD », « EL_PWD », « master_pwd » ressortaient donc INTACTS du
+# filtre censé les couvrir.
 _SECRET_ENV = re.compile(
-    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN)\w*=)"
-    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)"
+    r"(?P<var>\b\w*(?:PASSWORD|PASSWD|SECRET|TOKEN|API[-_]?KEY)\w*="
+    r"|\b\w+PWD\w*=|\b\w*PWD\w+=)"
+    r"(?P<val>'[^']*'|\"[^\"]*\"|\S+)",
+    re.IGNORECASE,
 )
+
+# Ce que « PWD » nomme quand il ne nomme pas un secret : le shell pose le
+# répertoire courant et le précédent sous ces deux noms exactement. Les
+# caviarder retirerait une information utile et se lirait comme un défaut.
+_PWD_DU_SHELL = frozenset({"PWD", "OLDPWD"})
 
 
 def redact_secrets(text):
@@ -62,7 +75,15 @@ def redact_secrets(text):
     if not text:
         return text
     text = _SECRET_OPTION.sub(lambda m: m.group("opt") + "'***'", text)
-    return _SECRET_ENV.sub(lambda m: m.group("var") + "'***'", text)
+    return _SECRET_ENV.sub(_caviarder_variable, text)
+
+
+def _caviarder_variable(trouve):
+    """La valeur d'une variable d'environnement, sauf celles du shell."""
+    var = trouve.group("var")
+    if var.rstrip("=").upper() in _PWD_DU_SHELL:
+        return trouve.group(0)
+    return var + "'***'"
 
 
 new_path = os.path.normpath(
