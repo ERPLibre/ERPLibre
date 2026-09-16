@@ -491,6 +491,55 @@ class TestLesTroisColonnesDEchec(unittest.TestCase):
             self.assertIn(libelle, TRANSLATIONS, libelle)
 
 
+class TestLEnTeteNeContreditPasSesRangees(unittest.IsolatedAsyncioTestCase):
+    """Le résumé du haut vient du même endroit que les colonnes.
+
+    Le coût et les durées d'outils viennent d'un `cost-state`. Sans aucun, les
+    rangées disent toutes « — » et l'en-tête annonçait « 0.00 $ · 0 ms » —
+    deux lectures opposées de la même absence, à trois lignes d'écart.
+    """
+
+    async def _resume(self, segments):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import statistiques as st_
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        lecture = st_.Lecture(
+            agregat=st_.Agregat(
+                tours=4,
+                segments=segments,
+                cout=1.25 if segments else 0.0,
+                duree_outils=30_000 if segments else 0,
+            )
+        )
+        with patch.object(
+            t_ui, "transcriptions", lambda: ["/x/y/aaaaaaaa.jsonl"]
+        ), patch.object(st_, "lire", lambda c, l=None: lecture), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(
+            jr, "nettoyer", lambda *a, **k: None
+        ), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await calme(pilote)
+                return str(app.query_one("#resume").render())
+
+    async def test_without_any_cost_state_the_header_says_nothing_too(self):
+        resume = await self._resume(0)
+        self.assertIn(f"{t('cost')} —", resume)
+        self.assertIn(f"{t('tools')} —", resume)
+        self.assertNotIn("0.00 $", resume)
+
+    async def test_one_measured_session_is_enough_to_report(self):
+        resume = await self._resume(2)
+        self.assertIn("1.25 $", resume)
+        self.assertNotIn(f"{t('cost')} —", resume)
+
+
 class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
     """L'écran lancé pour de bon, sans terminal, par le pilote de Textual.
 
@@ -2648,6 +2697,25 @@ class TestLeTiretQuandRienNAEteMesure(unittest.TestCase):
             {"/x/y/aaaaaaaa.jsonl": st_.Lecture(agregat=agregat)}
         )
         return ligne
+
+    def test_a_session_without_a_turn_has_no_context_to_report(self):
+        """« 0 » se lirait « mesuré, et vide », et l'autre harnais rend un
+        tiret pour la MÊME absence."""
+        from script.todo.assistant.agents import statistiques as st_
+        from script.todo.assistant.agents import tui as t_ui
+
+        (vide,) = t_ui.lignes(
+            {"/x/y/aaaaaaaa.jsonl": st_.Lecture(agregat=st_.Agregat())}
+        )
+        self.assertEqual(vide["contexte"], "—")
+        (plein,) = t_ui.lignes(
+            {
+                "/x/y/aaaaaaaa.jsonl": st_.Lecture(
+                    agregat=st_.Agregat(tours=2, serie=(10, 2051))
+                )
+            }
+        )
+        self.assertEqual(plein["contexte"], t_ui.jetons(2051))
 
     def test_without_a_cost_state_everything_from_it_is_a_dash(self):
         ligne = self._ligne(0)

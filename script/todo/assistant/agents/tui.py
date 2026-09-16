@@ -248,7 +248,10 @@ def lignes(lectures, temps=None) -> list[dict]:
                 "attention": "—" if attention is None else duree(attention),
                 "api": _mesure(a.segments, duree, a.duree_api),
                 "outils": _mesure(a.segments, duree, a.duree_outils),
-                "contexte": jetons(a.contexte),
+                # Sans un seul tour, il n'y a pas d'invite dont donner la
+                # taille : « 0 » se lirait « mesuré, et vide », et l'autre
+                # harnais rend un tiret pour la MÊME absence.
+                "contexte": jetons(a.contexte) if a.tours else "—",
                 "pente": barre(a.serie),
                 "segments": str(a.segments),
                 "compactions": str(a.compactions),
@@ -1786,13 +1789,20 @@ def run_tui(run_app: bool = True):
         def _resumer(self):
             total = st.somme(l.agregat for l in self._lectures.values())
             compte = len(self._lectures)
+            # Le coût et les durées d'outils viennent d'un `cost-state`, et
+            # `somme` ne rapporte pas le compte de segments — il n'a pas de
+            # sens agrégé. La question se repose donc ici : une seule session
+            # qui en porte un suffit à rendre le total mesuré. Sans aucune,
+            # l'en-tête annonçait « 0.00 $ · 0 ms » au-dessus de rangées qui
+            # disent toutes « — » pour la même absence.
+            mesure = any(l.agregat.segments for l in self._lectures.values())
             self.query_one("#resume", Static).update(
                 f"{ICONES['claude']} {compte} {t('sessions')} · "
                 f"{t('prompt')} {jetons(total.entree + total.cache_lu + total.cache_cree)}"
                 f" · {t('output')} {jetons(total.sortie)}"
                 f" · {t('thinking')} {jetons(total.reflexion)}"
-                f" · {t('cost')} {total.cout:.2f} $"
-                f" · {t('tools')} {duree(total.duree_outils)}"
+                f" · {t('cost')} {_mesure(mesure, lambda _: f'{total.cout:.2f} $', 0)}"
+                f" · {t('tools')} {_mesure(mesure, duree, total.duree_outils)}"
                 + resume_opencode(self._seances)
                 + (f"  [{t('frozen')}]" if self._gele else "")
             )
