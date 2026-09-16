@@ -278,6 +278,92 @@ class TestLesDeuxEcrans(unittest.TestCase):
 
 
 @unittest.skipUnless(TEXTUAL, "Textual absent")
+@unittest.skipUnless(TEXTUAL, "Textual absent")
+class TestLaLocaleDesTroisVoies(unittest.TestCase):
+    """La locale décrit l'INVITÉ : elle vaut sur les trois voies.
+
+    Les deux écrans ne la posaient pas du tout. Leur spec n'en portait
+    aucune, « --locale » ne partait donc jamais, et le déploiement retombait
+    sur SON défaut — « fr_CA.UTF-8 », qui n'est pas celui d'ici. Chaque VM
+    née d'un écran payait un locale-gen DANS l'invité, que la voie par
+    invites évite depuis toujours : sa docstring en chiffre le coût à 36 s
+    sur une architecture émulée.
+
+    Ni le nom de la locale ni celui du défaut ne sont écrits ici : les deux
+    se lisent où ils sont décidés.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from script.todo.proxmox_deploy_form import run_proxmox_form
+        from script.todo.qemu_deploy_form import run_deploy_form
+
+        todo = todo_muet()
+        mod = todo._qemu_import_module()
+        cls.qemu = releve(run_deploy_form, todo._qemu_form_context(mod))
+        cls.pve = releve(run_proxmox_form, contexte_proxmox(todo))
+
+    def test_both_screens_carry_one(self):
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            with self.subTest(ecran=nom):
+                self.assertTrue(vu["spec"].get("locale"), nom)
+
+    def test_they_carry_the_one_that_costs_nothing(self):
+        """« C.UTF-8 » est le seul choix qui ne déclenche aucun
+        locale-gen. Le défaut du déploiement, lui, en déclenche un."""
+        from script.todo.deploy_form_extras import ExtrasMixin
+
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            with self.subTest(ecran=nom):
+                self.assertEqual(
+                    ExtrasMixin.LOCALE_DEFAUT, vu["spec"]["locale"], nom
+                )
+
+    def test_it_is_not_the_deploy_script_own_default(self):
+        """Contrôle positif : si les deux valeurs étaient les mêmes, les
+        épreuves ci-dessus passeraient sans qu'aucune locale ne parte."""
+        import argparse
+        import io as _io
+        from contextlib import redirect_stderr, redirect_stdout
+
+        from script.todo.deploy_form_extras import ExtrasMixin
+
+        todo = todo_muet()
+        mod = todo._qemu_import_module()
+        analyseur = None
+        for nom in ("build_parser", "make_parser", "parser"):
+            if hasattr(mod, nom):
+                analyseur = getattr(mod, nom)
+                break
+        if analyseur is None:
+            self.skipTest("deploy_qemu n'expose pas son analyseur")
+        with redirect_stdout(_io.StringIO()), redirect_stderr(_io.StringIO()):
+            defauts = analyseur().parse_args([])
+        self.assertNotEqual(
+            ExtrasMixin.LOCALE_DEFAUT,
+            getattr(defauts, "locale", None),
+            "le défaut du déploiement et celui du socle se confondent",
+        )
+
+    def test_a_locale_in_the_spec_reaches_the_command(self):
+        """Sans cela, la poser à l'écran ne changerait rien."""
+        todo = todo_muet()
+        todo.config_file = None
+        spec = {
+            "posture": "open",
+            "real_data": False,
+            "vms": [],
+            "install": None,
+            "add_ssh_config": False,
+            "parallelism": 1,
+            "locale": "C.UTF-8",
+        }
+        vm = dict(CATALOGUE[0], vcpus=2)
+        parts = todo._qemu_deploy_parts_for(vm, spec, dry_run=True)
+        self.assertIn("--locale", parts)
+        self.assertIn("C.UTF-8", parts)
+
+
 class TestCeQueLeBureauChange(unittest.TestCase):
     """Choisir un bureau doit se voir sur les DEUX écrans, et de la même
     façon : le nom prend un suffixe, le disque grossit."""

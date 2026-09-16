@@ -402,6 +402,7 @@ def run_deploy_form(ctx, run_app: bool = True):
                         id="f_gpu3d",
                     )
                     yield from self.compose_ai_tools()
+                    yield from self.compose_locale()
                     # Le parallélisme reste dans « Déploiement » : c'est le
                     # nombre de VM menées de front, pas une option
                     # d'installation.

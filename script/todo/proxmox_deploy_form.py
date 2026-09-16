@@ -400,6 +400,7 @@ def run_proxmox_form(ctx, run_app: bool = True):
                     )
                     yield from self.compose_install_extras()
                     yield from self.compose_ai_tools()
+                    yield from self.compose_locale()
                     yield from self.compose_timezone()
                     yield from self.compose_python()
                     # Hors de la section « Installation » : le suivi regarde la

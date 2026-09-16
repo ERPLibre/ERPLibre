@@ -343,6 +343,33 @@ class ExtrasMixin:
             classes="freeval",
         )
 
+    # La locale par défaut, et le seul choix qui ne coûte rien. Les autres
+    # déclenchent un locale-gen DANS l'invité — 36 s sur s390x, payées à
+    # chaque déploiement pour un confort dont une VM jetable n'a pas besoin.
+    LOCALE_DEFAUT = "C.UTF-8"
+
+    def compose_locale(self):
+        """La locale des VM.
+
+        DANS LE SOCLE parce qu'elle décrit l'INVITÉ. Les deux écrans ne la
+        posaient pas du tout : leur spec n'en portait aucune, « --locale »
+        ne partait donc jamais, et le déploiement retombait sur SON défaut —
+        « fr_CA.UTF-8 », qui n'est pas celui d'ici. Chaque VM née d'un écran
+        payait un locale-gen que la voie par invites évite depuis toujours.
+
+        Une saisie et non une liste : il y en a des milliers, et celle qu'on
+        veut s'écrit d'un trait. Vide, le déploiement garde son défaut —
+        c'est le comportement d'avant, et rien ne le retire à qui le veut.
+        """
+        from textual.widgets import Input, Static
+
+        yield Static(t("Locale"), classes="grouptitle")
+        yield Input(
+            value=self._extras["defaults"].get("locale", self.LOCALE_DEFAUT),
+            placeholder=t("Locale for the VMs"),
+            id="f_locale",
+        )
+
     def compose_python(self):
         """mise pose un CPython PRÉCOMPILÉ, pyenv le COMPILE. Grisé quand
         aucune des VM retenues n'est sur une architecture que mise sert."""
@@ -803,6 +830,7 @@ class ExtrasMixin:
             "vm_tools": self._vm_tools(),
             "python_provider": self._python_provider(),
             "app_store": self._app_store(),
+            "locale": self._saisie("#f_locale"),
             "ai_agent": self._ai_agent(),
             "git_name": self._saisie("#f_git_name"),
             "git_email": self._saisie("#f_git_email"),
