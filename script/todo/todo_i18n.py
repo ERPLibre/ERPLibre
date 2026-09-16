@@ -5141,6 +5141,10 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "Locale": {
+        "fr": "Locale",
+        "en": "Locale",
+    },
     "left alone:": {
         "fr": "laissée(s) telle(s) quelle(s) :",
         "en": "left alone:",
