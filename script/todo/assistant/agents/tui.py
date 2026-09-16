@@ -462,6 +462,14 @@ def texte_du_detail(appel, detail) -> str:
     return "\n".join(lignes)
 
 
+# Ce que le cache retient à la place d'un contenu : rien, sinon sa PRÉSENCE.
+# `None` dit « il y en a, et nous ne le gardons pas », là où la chaîne vide dit
+# « cherché, il n'y a rien ». Les deux se lisent différemment à l'écran, et
+# seul le premier évite de tenir une invite de sous-agent en mémoire pour toute
+# la durée de la séance.
+CONTENU_NON_GARDE = None
+
+
 def _commande_vue(commandes, identifiant, largeur=None) -> str:
     """Ce que la colonne montre, et ce qu'elle refuse de montrer.
 
@@ -471,11 +479,13 @@ def _commande_vue(commandes, identifiant, largeur=None) -> str:
     d'un `Grep` —, que le volet montre avec son avertissement et que cette
     colonne n'a pas le droit d'étaler : elle déclare ne montrer aucun contenu,
     et un appel `Task` y écrivait l'invite entière du sous-agent.
+
+    Le quatrième état ne porte pas la valeur : le cache ne la garde pas.
     """
     if commandes is None or identifiant not in commandes:
         return "…"
     valeur, colonnable = commandes[identifiant]
-    if valeur and not colonnable:
+    if valeur is CONTENU_NON_GARDE or (valeur and not colonnable):
         return t("content")
     coupee = dl.une_ligne(valeur, largeur if largeur else dl.COLONNE_MAX)
     return coupee or "—"
@@ -784,10 +794,17 @@ def relever(
     commandes = {}
     for appel in besoins:
         trouve = dl.pour(appel)
-        # La SORTIE n'est pas gardée : le cache ne sert qu'à la colonne, et
-        # retenir des réponses d'outil en mémoire serait garder ce que le
-        # paquet a promis de seulement montrer.
-        commandes[appel.identifiant] = (trouve.commande, trouve.colonnable)
+        # Ni la SORTIE ni le CONTENU ne sont gardés. Le cache ne sert qu'à la
+        # colonne, donc il ne retient que ce qu'elle a le droit de montrer :
+        # une invite de sous-agent ou un motif de recherche y restaient en
+        # mémoire pour toute la durée de la séance alors que la colonne
+        # affichait « contenu » à leur place. Le volet, lui, les relit dans la
+        # transcription au moment où quelqu'un les demande.
+        commandes[appel.identifiant] = (
+            (trouve.commande, True)
+            if trouve.colonnable
+            else (CONTENU_NON_GARDE if trouve.commande else "", False)
+        )
     return Releve(
         lectures=lectures,
         appels=tuple(appels),

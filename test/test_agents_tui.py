@@ -2562,6 +2562,58 @@ class TestCeQueLaColonneRefuseDeMontrer(unittest.TestCase):
     def test_nothing_found_is_still_a_dash(self):
         self.assertEqual(self._colonne("", True), "—")
 
+    def test_the_cache_keeps_no_content_at_all(self):
+        """La colonne refusait de le montrer, le cache le gardait quand même.
+
+        Une invite de sous-agent restait en mémoire pour toute la durée de la
+        séance, sans qu'aucun écran ne s'en serve : le volet, lui, la relit
+        dans la transcription au moment où on la demande.
+        """
+        from script.todo.assistant.agents import detail as dl
+        from script.todo.assistant.agents import tui as t_ui
+
+        temoin = "invite-entiere-qui-ne-doit-pas-etre-retenue"
+        with patch.object(
+            dl,
+            "pour",
+            lambda appel, **kw: dl.Detail(
+                outil="Task", commande=temoin, genre="texte"
+            ),
+        ), patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            t_ui.jr, "lire_lignes", lambda: []
+        ), patch.object(
+            t_ui.oc, "lire_base", lambda: None
+        ):
+            releve = t_ui.relever({}, besoins=[self._appel()])
+        ((valeur, colonnable),) = releve.commandes.values()
+        self.assertIs(valeur, t_ui.CONTENU_NON_GARDE)
+        self.assertFalse(colonnable)
+        self.assertNotIn(temoin, repr(releve.commandes))
+        # Et la colonne dit toujours qu'il y a quelque chose à aller voir.
+        self.assertEqual(self._colonne(valeur, colonnable), t("content"))
+
+    def test_a_showable_command_is_still_kept(self):
+        """Ne plus rien garder viderait la colonne de ce qu'elle sert à
+        montrer, et la ferait rechercher à chaque tour."""
+        from script.todo.assistant.agents import detail as dl
+        from script.todo.assistant.agents import tui as t_ui
+
+        with patch.object(
+            dl,
+            "pour",
+            lambda appel, **kw: dl.Detail(
+                outil="Bash", commande="echo bonjour", genre="commande"
+            ),
+        ), patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            t_ui.jr, "lire_lignes", lambda: []
+        ), patch.object(
+            t_ui.oc, "lire_base", lambda: None
+        ):
+            releve = t_ui.relever({}, besoins=[self._appel()])
+        self.assertEqual(
+            releve.commandes, {"toolu_01aaaa": ("echo bonjour", True)}
+        )
+
     def test_not_looked_up_yet_is_still_dots(self):
         from script.todo.assistant.agents import tui as t_ui
 
