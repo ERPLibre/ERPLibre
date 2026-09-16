@@ -13023,6 +13023,10 @@ TRANSLATIONS = {
         "fr": "Envoyé, en attente de la réponse…",
         "en": "Sent, waiting for the answer…",
     },
+    "Act": {
+        "fr": "Agir",
+        "en": "Act",
+    },
     "Keys": {
         "fr": "Touches",
         "en": "Keys",

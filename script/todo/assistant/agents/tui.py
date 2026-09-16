@@ -665,14 +665,14 @@ COLONNE_LARGEUR = 12
 
 # Les touches, et c'est la SEULE liste. Le pied de page, le panneau d'aide et
 # les numéros qui agissent la lisent tous, donc une touche ajoutée ne peut pas
-# manquer à l'un des trois — c'est arrivé : quatre touches sur onze tombaient
+# manquer à l'un des trois — c'est arrivé : quatre touches tombaient
 # hors d'un pied de page de quatre-vingts colonnes, dont les deux qui
 # détruisent, et rien à l'écran ne disait qu'elles existaient.
 #
 # (touche, action, libellé du pied de page, ce que la touche fait)
 #
 # Les libellés du pied de page sont COURTS par contrainte de place : il tient
-# sur une ligne, et onze indications bavardes réclament le double d'un terminal
+# sur une ligne, et une douzaine d'indications bavardes réclament le double
 # ordinaire. La phrase entière vit dans le panneau d'aide, qui a la place.
 TOUCHES_AFFICHAGE = (
     ("q", "quit", "Quit", "Quit the screen"),
@@ -727,7 +727,7 @@ def texte_de_l_aide(largeur=None) -> str:
     for touche, _action, _court, phrase in TOUCHES_AFFICHAGE:
         lignes.append(f"    {touche}  {t(phrase)}")
     lignes.append("")
-    lignes.append(f"  {t('On the highlighted row')}")
+    lignes.append(f"  {t('Act')}")
     for rang, (touche, _a, _c, phrase) in enumerate(TOUCHES_LIGNE):
         lignes.append(f"   [{rang + 1}] {touche}  {t(phrase)}")
     lignes.append("")
@@ -859,7 +859,7 @@ def run_tui(run_app: bool = True):
         # recopie qui avait laissé quatre touches sans mention nulle part.
         #
         # L'ordre compte. Le pied de page tient sur UNE ligne et se coupe à
-        # droite : sur quatre-vingts colonnes, onze indications en perdent
+        # droite : sur quatre-vingts colonnes, une douzaine d'indications perd
         # quatre. Les cinq premières sont donc celles qui ne détruisent rien
         # et « h », qui mène à toutes les autres — une touche invisible
         # n'existe pas, sauf si une touche visible la nomme.
@@ -1272,12 +1272,12 @@ def run_tui(run_app: bool = True):
             """Ouvrir ou fermer le panneau des touches.
 
             Il existe parce que le pied de page MENT par omission : il tient
-            sur une ligne, se coupe à droite, et quatre touches sur onze
+            sur une ligne, se coupe à droite, et quatre touches
             tombaient hors d'un terminal de quatre-vingts colonnes — dont les
             deux qui détruisent. Rien à l'écran ne disait qu'elles existaient.
 
             Il sert aussi de menu : un chiffre y agit sur la ligne surlignée,
-            pour qui ne veut pas apprendre onze lettres. Les deux sont la même
+            pour qui ne veut pas les apprendre. Les deux sont la même
             chose, et les séparer donnerait deux listes à tenir d'accord.
             """
             from textual.widgets import Static
@@ -1311,11 +1311,23 @@ def run_tui(run_app: bool = True):
                 self._fermer_saisie()
                 evenement.stop()
                 return
-            if not self.query_one("#aide").display:
-                return
             if evenement.key == "escape":
-                self.query_one("#aide").display = False
-                evenement.stop()
+                # Échap ferme ce qui est ouvert, dans l'ordre où les choses se
+                # sont posées : la saisie, puis le panneau, puis le volet. Le
+                # volet en était exclu, et la seule façon de le refermer était
+                # de retrouver « d » — qui, à quatre-vingts colonnes, ne
+                # paraît pas toujours au pied de page.
+                for cible in ("#aide", "#detail"):
+                    volet = self.query_one(cible)
+                    if volet.display:
+                        if cible == "#detail":
+                            self._fermer_le_detail()
+                        else:
+                            volet.display = False
+                        evenement.stop()
+                        return
+                return
+            if not self.query_one("#aide").display:
                 return
             if evenement.key in CHIFFRES:
                 self._agir_par_le_chiffre(evenement.key)

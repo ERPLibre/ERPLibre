@@ -2259,6 +2259,66 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
             for c in correctifs:
                 c.stop()
 
+    async def test_echap_ferme_aussi_le_volet_de_detail(self):
+        """« Échap referme ce qui est ouvert », disait la fonction.
+
+        Le volet en était exclu : la seule façon de le refermer était de
+        retrouver « d », qui ne paraît pas toujours au pied de page à
+        quatre-vingts colonnes.
+        """
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 40)) as pilote:
+                await calme(pilote)
+                volet = app.query_one("#detail", Static)
+                volet.update("une commande et sa sortie")
+                volet.display = True
+                await pilote.press("escape")
+                await calme(pilote)
+                self.assertFalse(volet.display)
+                self.assertEqual(str(volet.render()), "")
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_echap_ferme_le_panneau_avant_le_volet(self):
+        """Dans l'ordre où les choses se sont posées, une par frappe."""
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 40)) as pilote:
+                await calme(pilote)
+                volet = app.query_one("#detail", Static)
+                volet.update("une commande")
+                volet.display = True
+                await pilote.press("h")
+                await calme(pilote)
+                aide = app.query_one("#aide", Static)
+                self.assertTrue(aide.display and volet.display)
+                await pilote.press("escape")
+                await calme(pilote)
+                self.assertFalse(aide.display)
+                self.assertTrue(volet.display, "une frappe, une fermeture")
+                await pilote.press("escape")
+                await calme(pilote)
+                self.assertFalse(volet.display)
+        finally:
+            for c in correctifs:
+                c.stop()
+
     async def test_ouvrir_une_invite_ferme_le_panneau(self):
         """Les deux se disputeraient les chiffres : un « 4 » tapé dans une
         invite est un caractère, pas un numéro de menu."""
