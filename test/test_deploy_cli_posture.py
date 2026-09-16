@@ -266,9 +266,15 @@ class TestLaGardePartageeDeProxmox(unittest.TestCase):
     """
 
     def refus(self, spec):
+        # `config_file = None` prend la configuration du site : la garde
+        # rend les règles pour vérifier qu'elles se rendent, et un banc qui
+        # n'en donne aucune la ferait échouer sur l'absence d'attribut
+        # plutôt que sur la posture qu'on éprouve ici.
+        todo = menu()
+        todo.config_file = None
         tampon = io.StringIO()
         with redirect_stdout(tampon):
-            refuse = menu()._pve_posture_refused(spec)
+            refuse = todo._pve_posture_refused(spec)
         return refuse, tampon.getvalue()
 
     def test_free_egress_and_real_data_is_refused(self):
@@ -296,6 +302,128 @@ class TestLaGardePartageeDeProxmox(unittest.TestCase):
         """Une spec écrite avant que les postures existent n'en nomme
         aucune, et doit continuer de se déployer."""
         self.assertFalse(self.refus({})[0])
+
+
+class TestLeCarnetEstEprouveAvantQueLaMachineExiste(unittest.TestCase):
+    """Sur cet hôte, le refus du carnet arrivait APRÈS « qm create ».
+
+    Les trois backends ne traitaient pas la même demande de la même façon.
+    libvirt rend les règles au tout début de son déploiement et Lima avant
+    de composer son image : un carnet qui ne sert pas la posture y refuse
+    sans que rien n'existe. Sur Proxmox, le rendu n'avait lieu qu'à
+    l'écriture du guide, donc après la création — et l'appelant y réduisait
+    le refus à une ligne d'avertissement au milieu du flot.
+
+    La machine naissait alors EN SORTIE LIBRE sous une posture qui promet
+    l'inverse : aucune règle chargée, aucune unité armée, et l'installation
+    d'ERPLibre enchaînait par-dessus.
+
+    Le rendu est PUR — il ne touche aucune machine — donc rien n'empêchait
+    de le tenter à la même porte que la règle d'or, que les deux voies
+    traversent déjà.
+    """
+
+    REFUS = "« dns-resolver » n'a pas d'adresse"
+
+    def garde(self, rendu):
+        """La garde, avec un rendu de règles injecté. Rend (refus, écran)."""
+        todo = menu()
+        todo._qemu_egress_rules = rendu
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            refuse = todo._pve_posture_refused(
+                {S.POSTURE_KEY: "paranoid", S.REAL_DATA_KEY: False}
+            )
+        return refuse, tampon.getvalue()
+
+    def refuser(self, _spec):
+        raise VmBackendError(self.REFUS)
+
+    def test_a_book_that_cannot_serve_the_posture_is_refused_here(self):
+        refuse, ecran = self.garde(self.refuser)
+        self.assertTrue(refuse)
+        self.assertIn(self.REFUS, ecran)
+
+    def test_a_book_that_serves_it_deploys_as_before(self):
+        """Contrôle positif : refuser sur le seul nom de la posture
+        rendrait « paranoid » indéployable sur un site qui l'a réglée."""
+        refuse, ecran = self.garde(lambda _s: "table inet ...")
+        self.assertFalse(refuse)
+        self.assertEqual("", ecran)
+
+    def test_a_posture_that_asks_for_no_rule_passes_too(self):
+        """Vide n'est pas un échec : la sortie libre ne demande rien."""
+        self.assertFalse(self.garde(lambda _s: "")[0])
+
+    def test_the_refusal_comes_before_any_qm_create(self):
+        """LA propriété, et non le chemin qui y mène : la voie par
+        questions ne doit produire AUCUNE commande de création."""
+        from script.proxmox import proxmox_deploy as pve
+
+        todo = menu()
+        todo._pve_host = lambda: {"target": "hote"}
+        todo._qemu_import_module = lambda: MOD
+        todo._qemu_egress_rules = self.refuser
+        atteint = []
+        todo._qemu_prompt_distro = lambda: atteint.append("distro") or "ubuntu"
+        tampon = io.StringIO()
+        with mock.patch.object(
+            pve, "create_cmds", lambda *_a: atteint.append("qm create") or []
+        ):
+            with mock.patch.object(
+                V, "choices", return_value=[("paranoid", "paranoid")]
+            ):
+                with mock.patch("builtins.input", side_effect=["n", "1"]):
+                    with redirect_stdout(tampon):
+                        todo._pve_deploy_prompts()
+        self.assertEqual([], atteint)
+        self.assertIn(self.REFUS, tampon.getvalue())
+
+
+class TestLeDernierRecoursDitCeQuIlSignifie(unittest.TestCase):
+    """Si le rendu échoue APRÈS la création, la machine tourne sans règle.
+
+    Ce chemin ne devrait plus servir — la porte le tente avant « qm create »
+    — mais il reste, parce que s'arrêter là ne confinerait pas davantage une
+    machine déjà debout. Ce qu'il dit compte donc double : c'est le seul
+    endroit d'où l'on peut apprendre qu'une posture n'est pas tenue.
+
+    « Règles non rendues » se lisait comme un détail d'affichage au milieu
+    d'un flot de déploiement. Le message nomme désormais l'ÉTAT.
+    """
+
+    def texte(self):
+        todo = menu()
+        todo._qemu_egress_rules = lambda _s: (_ for _ in ()).throw(
+            VmBackendError("carnet muet")
+        )
+        tampon = io.StringIO()
+        with redirect_stdout(tampon):
+            rendu = todo._pve_egress_texts({S.POSTURE_KEY: "paranoid"}, None)
+        return rendu, tampon.getvalue()
+
+    def test_it_says_the_machine_has_no_rule_at_all(self):
+        _rendu, ecran = self.texte()
+        self.assertIn(t("This VM gets NO egress rule:"), ecran)
+
+    def test_it_says_the_posture_is_not_held(self):
+        """Nommer l'absence de règle sans dire ce qu'elle emporte laisse
+        croire à un guide incomplet plutôt qu'à un confinement absent."""
+        _rendu, ecran = self.texte()
+        self.assertIn(
+            t("It runs with free egress, despite its posture."), ecran
+        )
+
+    def test_it_still_names_the_cause(self):
+        """Contrôle positif : dire l'état sans la cause envoie chercher
+        dans vingt-trois écrans ce qui tient en un mot."""
+        _rendu, ecran = self.texte()
+        self.assertIn("carnet muet", ecran)
+
+    def test_it_lays_no_rule_and_no_unit(self):
+        rendu, _ecran = self.texte()
+        self.assertEqual(("", ""), rendu)
+        self.assertEqual([], TODO._pve_egress_arm(*rendu, None))
 
 
 class TestLeRepliProxmoxTraverseLaGarde(unittest.TestCase):
@@ -333,6 +461,7 @@ class TestLeRepliProxmoxPorteLaPostureJusquAuxRegles(unittest.TestCase):
         from script.proxmox import proxmox_deploy as pve
 
         todo = menu()
+        todo.config_file = None
         todo._pve_host = lambda: {"target": "hote"}
         todo._qemu_import_module = lambda: MOD
         todo._qemu_prompt_distro = lambda: "ubuntu"

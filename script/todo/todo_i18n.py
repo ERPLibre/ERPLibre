@@ -5141,6 +5141,14 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "This VM gets NO egress rule:": {
+        "fr": "Cette VM n'aura AUCUNE règle de sortie :",
+        "en": "This VM gets NO egress rule:",
+    },
+    "It runs with free egress, despite its posture.": {
+        "fr": "Elle tourne en sortie libre, malgré sa posture.",
+        "en": "It runs with free egress, despite its posture.",
+    },
     "margin for what will be installed": {
         "fr": "marge pour ce qui sera installé",
         "en": "margin for what will be installed",

@@ -25,6 +25,7 @@ from script.posture import spec as posture_spec
 from script.remote import appliance_ssh, host_memory, host_probe
 from script.todo import todo_prefs, vm_profiles
 from script.todo.todo_i18n import t
+from script.vm import backend as vm_backend
 
 
 class ProxmoxMenuMixin:
@@ -1309,16 +1310,30 @@ class ProxmoxMenuMixin:
         libre une spec qui demandait du confinement.
         """
         verdict = posture_spec.check(spec)
-        if verdict == posture_spec.OK:
-            return False
-        print(f"\n  ✗ {t('Deployment refused:')} {verdict}")
-        print(
-            f"  {t('Network posture')} :"
-            f" « {posture_spec.posture_name(spec)} », "
-            f"{t('This machine carries real data')} :"
-            f" {posture_spec.real_data(spec)}"
-        )
-        return True
+        if verdict != posture_spec.OK:
+            print(f"\n  ✗ {t('Deployment refused:')} {verdict}")
+            print(
+                f"  {t('Network posture')} :"
+                f" « {posture_spec.posture_name(spec)} », "
+                f"{t('This machine carries real data')} :"
+                f" {posture_spec.real_data(spec)}"
+            )
+            return True
+        # SECOND REFUS, MÊME PORTE. Une posture qui nomme des rôles dont le
+        # site n'a donné aucune adresse ne peut pas être POSÉE. Sur cet hôte
+        # les règles ne s'écrivent qu'une fois la machine debout, si bien que
+        # le manque ne se découvrait qu'après « qm create » — et l'appelant
+        # l'y réduisait à un avertissement. La machine naissait alors en
+        # SORTIE LIBRE sous une posture qui promet l'inverse.
+        #
+        # Le rendu est PUR : il ne touche aucune machine, et les deux autres
+        # backends le tentent déjà avant de créer quoi que ce soit.
+        try:
+            self._qemu_egress_rules(spec)
+        except vm_backend.VmBackendError as manque:
+            print(f"\n  ✗ {t('Deployment refused:')} {manque}")
+            return True
+        return False
 
     def _pve_deploy_spec(self, host, spec, mod, dry_run=False):
         """Exécute la spec rendue par l'écran.
@@ -1639,11 +1654,18 @@ class ProxmoxMenuMixin:
         try:
             regles = self._qemu_egress_rules(spec)
         except Exception as exc:  # noqa: BLE001
-            # Le refus d'une posture qui attend des adresses que le site
-            # n'a pas nommées est LÉGITIME et remonte ; ici on est déjà
-            # après la création, et l'arrêter laisserait une VM sans son
-            # guide. On le DIT, et la posture reste non posée.
-            print(f"  ⚠ {t('egress rules not rendered')} : {exc}")
+            # DERNIER RECOURS, et il ne devrait plus servir : le rendu est
+            # tenté à la porte, avant « qm create », comme le font les deux
+            # autres backends. S'il échoue ICI, la machine EXISTE déjà et
+            # n'aura aucune règle — s'arrêter ne la confinerait pas
+            # davantage, on la mène donc jusqu'à son guide.
+            #
+            # LE MESSAGE DIT L'ÉTAT, et non le geste manqué. « Règles non
+            # rendues » se lit comme un détail d'affichage, au milieu d'un
+            # flot de déploiement ; ce qui compte est qu'une posture de
+            # confinement n'est PAS tenue sur une machine qui tourne.
+            print(f"  ✗ {t('This VM gets NO egress rule:')} {exc}")
+            print(f"  ✗ {t('It runs with free egress, despite its posture.')}")
             return "", ""
         if not regles:
             return "", ""
