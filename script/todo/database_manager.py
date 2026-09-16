@@ -357,12 +357,12 @@ class DatabaseManager:
         source = self.select_database()
         if not source:
             return
-        defaut = f"{source}_neutralize"
-        cible = input(
-            f"\U0001f4ac {t('Name of the copy (default=')}{defaut}) : "
-        ).strip()
-        cible = cible or defaut
-
+        # LA NEUTRALISATION SE DEMANDE D'ABORD, parce qu'elle décide de ce
+        # que le nom a le droit d'annoncer. Posée après, elle laissait
+        # « <source>_neutralize » comme défaut à qui allait la décliner :
+        # taper Entrée puis « n » rendait une base au nom rassurant qui
+        # garde ses tâches planifiées, son repli SMTP et ses clés de
+        # paiement vivantes.
         reponse = (
             input(f"\U0001f4ac {t('Neutralize the copy (Y/n)? ')}")
             .strip()
@@ -374,6 +374,17 @@ class DatabaseManager:
                 f"⚠️  {t('The copy will keep its scheduled actions, its')}"
                 f" {t('outgoing mail and its payment providers.')}"
             )
+        defaut = f"{source}_neutralize" if neutraliser else f"{source}_copy"
+        cible = input(
+            f"\U0001f4ac {t('Name of the copy (default=')}{defaut}) : "
+        ).strip()
+        cible = cible or defaut
+        # UN NOM CHOISI À LA MAIN N'EST PAS REFUSÉ, mais s'il annonce une
+        # neutralisation qui n'a pas lieu, le taire laisse la base mentir à
+        # qui la relira dans six mois — et le nom ne trompe pas que l'œil :
+        # le test de fumée en tirait son verdict avant de s'authentifier.
+        if not neutraliser and "neutralize" in cible.lower():
+            print(f"⚠️  {t('This name says neutralized, and it is not.')}")
 
         commande = (
             f"python3 ./script/database/db_duplicate.py"

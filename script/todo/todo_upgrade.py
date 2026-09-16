@@ -3544,7 +3544,23 @@ class TodoUpgrade:
         # neutralisée » laissait la question ouverte pendant tout le
         # parcours, et un saut annoncé en une ligne à la fin d'un long
         # rapport ne se voit pas : on croit alors le back-office testé.
-        neutralise = "_neutralize" in database_name
+        # LA BASE, PAS SON NOM. Un nom se choisit à la main, et l'écran de
+        # duplication proposait « <source>_neutralize » avant même de
+        # demander s'il fallait neutraliser : une copie qui déclinait
+        # gardait ce nom et passait ici pour neutralisée. On s'authentifiait
+        # alors — « --internal-required » — contre une base aux tâches
+        # planifiées actives et aux clés de paiement vivantes.
+        #
+        # « database.is_neutralized » est le drapeau qu'Odoo pose lui-même.
+        # ILLISIBLE N'EST PAS « NEUTRALISÉE » : PostgreSQL injoignable ou
+        # table absente rendent None, et prendre la voie prudente ne coûte
+        # qu'une couverture moindre là où l'autre exerce une base vivante.
+        from script.analyse import monitoring
+
+        drapeau = monitoring.neutralize_state(database_name).get("flag")
+        neutralise = bool(drapeau)
+        if drapeau is None:
+            print(f"   ⚠ {t('Could not read the neutralization flag.')}")
         if neutralise:
             print(
                 f"   {t('Public pages, then the back office and /my as the')}"
@@ -3553,8 +3569,8 @@ class TodoUpgrade:
         else:
             print(
                 f"   {t('Public pages only:')} '{database_name}'"
-                f" {t('was not neutralized, so there is no test user to')}"
-                f" {t('sign in with.')}"
+                f" {t('does not carry the neutralization flag, so there is')}"
+                f" {t('no test user to sign in with.')}"
             )
         self.run_tool(
             "smoke_public_url",

@@ -5141,6 +5141,30 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "file(s) shown": {
+        "fr": "fichier(s) montré(s)",
+        "en": "file(s) shown",
+    },
+    "row(s) to delete": {
+        "fr": "ligne(s) à supprimer",
+        "en": "row(s) to delete",
+    },
+    "Could not read the neutralization flag.": {
+        "fr": "Le drapeau de neutralisation n'a pas pu être lu.",
+        "en": "Could not read the neutralization flag.",
+    },
+    "does not carry the neutralization flag, so there is": {
+        "fr": "ne porte pas le drapeau de neutralisation, donc il n'y a",
+        "en": "does not carry the neutralization flag, so there is",
+    },
+    "no test user to sign in with.": {
+        "fr": "aucun utilisateur de test avec qui se connecter.",
+        "en": "no test user to sign in with.",
+    },
+    "This name says neutralized, and it is not.": {
+        "fr": "Ce nom annonce une neutralisation qui n'a pas eu lieu.",
+        "en": "This name says neutralized, and it is not.",
+    },
     "This VM gets NO egress rule:": {
         "fr": "Cette VM n'aura AUCUNE règle de sortie :",
         "en": "This VM gets NO egress rule:",
