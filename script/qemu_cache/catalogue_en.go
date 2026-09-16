@@ -9,6 +9,7 @@ package main
 // qu'aucun T(...) n'emploie, et une traduction qui ne garde pas les mêmes
 // verbes de format que son original.
 var anglais = map[string]string{
+	"cache : variante de %s non gardée : %v":             "cache: variant of %s not kept: %v",
 	"langue des messages : fr ou en ; à défaut, EL_LANG": "language of messages: fr or en; otherwise EL_LANG",
 	"granularité inconnue %q : jour, semaine ou mois":    "unknown granularity %q: day, week or month",
 	"durée vide":         "empty duration",

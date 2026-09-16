@@ -55,6 +55,11 @@ var immutableSuffixes = []string{
 	".pkg.tar.zst.sig", ".pkg.tar.xz.sig",
 	// écosystèmes Python et Node
 	".whl", ".tgz",
+	// métadonnées d'une distribution Python servies à part (PEP 658) : le nom
+	// est celui de l'archive suivi de « .metadata », sous le même chemin
+	// d'empreinte. Sans ces suffixes, « .metadata » ne correspond à rien et le
+	// fichier tombe dans le volatil par défaut, repris à chaque installation.
+	".whl.metadata", ".tar.gz.metadata", ".zip.metadata",
 	// images et supports d'installation
 	".qcow2", ".iso", ".img", ".raw", ".vmdk",
 	// archives amont

@@ -113,6 +113,7 @@ MITM_GO = os.path.join("script", "qemu_cache", "mitm.go")
 # nombreuses, faute d'avoir été relue quand elles sont apparues.
 ORDRE_ISSUES = (
     "hit",
+    "revalidated",
     "mirror",
     "stored",
     "stale",
