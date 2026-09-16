@@ -356,9 +356,37 @@ class TestTheScriptGuards(unittest.TestCase):
         même deux secondes."""
         self.assertIn("CHANGED=0", self.body)
         self.assertIn('[ "$CHANGED" = 1 ]', self.body)
-        # Trois évènements le lèvent : binaire posé, config écrite, unité
-        # modifiée.
-        self.assertEqual(3, self.body.count("CHANGED=1"))
+        # UN DRAPEAU PAR ÉCRITURE, et le compte se dérive. « Trois » ne
+        # disait rien de la quatrième : une écriture ajoutée AVANT la
+        # décision de redémarrer sans lever le drapeau laissait le service
+        # tourner sur l'ancien fichier, et la garde restait verte.
+        #
+        # Seules comptent les écritures qui PRÉCÈDENT la décision : celles
+        # d'après — le mot de passe de l'administrateur — n'ont rien à
+        # redémarrer.
+        lignes = self.body.splitlines()
+        decision = next(
+            n
+            for n, ligne in enumerate(lignes)
+            if '[ "$CHANGED" = 1 ]' in ligne
+        )
+        avant_la_decision = lignes[:decision]
+        ecritures = [
+            n
+            for n, ligne in enumerate(avant_la_decision)
+            if "sudo install " in ligne or "sudo tee " in ligne
+        ]
+        drapeaux = [
+            n
+            for n, ligne in enumerate(avant_la_decision)
+            if "CHANGED=1" in ligne
+        ]
+        self.assertTrue(ecritures, "plus aucune écriture avant la décision")
+        self.assertEqual(
+            len(ecritures),
+            len(drapeaux),
+            f"{len(ecritures)} écriture(s) pour {len(drapeaux)} drapeau(x)",
+        )
 
     def test_the_unit_is_compared_before_being_written(self):
         """Sans comparaison, l'unité serait réécrite à l'identique et le
