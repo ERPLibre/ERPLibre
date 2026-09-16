@@ -658,6 +658,49 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             for c in correctifs:
                 c.stop()
 
+    async def test_un_ecran_gele_le_reste_quand_la_fenetre_change(self):
+        """Le gel arrête l'affichage, y compris sous un redimensionnement.
+
+        Rétrécir la fenêtre change le NOMBRE de colonnes, et les reposer vide
+        le tableau : l'écran qu'on avait gelé pour lire une ligne se retrouve
+        blanc, puis rempli de la mesure de l'instant. Le dégel rattrape les
+        deux.
+        """
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                tableau = app.query_one("#tableau", DataTable)
+                large = len(tableau.columns)
+                self.assertEqual(tableau.row_count, 2)
+                await pilote.press("f")
+                await pilote.pause()
+                peints = []
+                app._peindre = lambda: peints.append(1)
+                await pilote.resize_terminal(60, 40)
+                await pilote.pause()
+                self.assertEqual(peints, [], "gelé veut dire gelé")
+                self.assertEqual(len(tableau.columns), large)
+                self.assertEqual(tableau.row_count, 2)
+                del app._peindre
+                await pilote.press("f")
+                await pilote.pause()
+                self.assertLess(
+                    len(tableau.columns),
+                    large,
+                    "le dégel rattrape la largeur perdue",
+                )
+        finally:
+            for c in correctifs:
+                c.stop()
+
     async def test_une_action_sans_agent_choisi_le_dit(self):
         """Le panneau des agents est vide dans ce monde-ci : la touche doit
         répondre, et surtout ne rien envoyer."""

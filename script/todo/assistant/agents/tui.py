@@ -798,8 +798,14 @@ def run_tui(run_app: bool = True):
             Sans effet avant le montage : Textual annonce une taille dès la
             composition, et repeindre là remplirait des tableaux dont les
             colonnes ne sont pas encore posées.
+
+            Sans effet pendant un gel non plus, et les COLONNES avec : les
+            reposer vide le tableau, ce qui est pire qu'un tableau trop large.
+            Le gel est là pour qu'on lise une ligne pendant que les lectures
+            continuent dessous ; un coup de souris sur le bord de la fenêtre
+            la remplacerait par la mesure de l'instant. Le dégel rattrape.
             """
-            if not self._monte:
+            if not self._monte or self._gele:
                 return
             self._poser_les_colonnes()
             self._peindre()
@@ -1100,9 +1106,19 @@ def run_tui(run_app: bool = True):
             return self._appels_peints[rang]
 
         def action_gel(self):
-            """Le rafraîchissement continue dessous ; l'affichage s'arrête."""
+            """Le rafraîchissement continue dessous ; l'affichage s'arrête.
+
+            Le dégel rattrape ce que le gel a laissé passer : la fenêtre a pu
+            changer de largeur pendant l'arrêt, et le nombre de colonnes en
+            dépend. Sans ce rattrapage, un écran dégelé garde les colonnes
+            d'une largeur qu'il n'a plus jusqu'au redimensionnement suivant.
+            """
             self._gele = not self._gele
-            self._resumer()
+            if self._gele:
+                self._resumer()
+                return
+            self._poser_les_colonnes()
+            self._peindre()
 
         def action_relire(self):
             """Tout relire depuis le début, quand un doute vient sur un total.
