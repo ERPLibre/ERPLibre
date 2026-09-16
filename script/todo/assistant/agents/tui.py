@@ -1156,10 +1156,16 @@ def run_tui(run_app: bool = True):
             self._tick()
 
         def _tick(self):
-            for chemin in transcriptions():
-                self._lectures[chemin] = st.lire(
-                    chemin, self._lectures.get(chemin)
-                )
+            # Le dictionnaire est REBÂTI sur le listage du moment, et non
+            # complété : une transcription effacée sous l'écran — ménage du
+            # harnais, projet retiré, session reprise ailleurs — y gardait
+            # sinon sa ligne pour toute la durée de l'écran, avec des totaux
+            # que plus aucun fichier ne porte. La lecture précédente est
+            # passée à `lire`, donc rien ne se relit depuis le début.
+            self._lectures = {
+                chemin: st.lire(chemin, self._lectures.get(chemin))
+                for chemin in transcriptions()
+            }
             # Le journal est relu en entier : il ne pèse que quelques lignes
             # par appel d'outil, là où une transcription pèse des mégaoctets.
             evenements = jr.lire_lignes()

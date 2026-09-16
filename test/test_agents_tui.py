@@ -747,6 +747,37 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             for c in correctifs:
                 c.stop()
 
+    async def test_une_transcription_effacee_quitte_le_tableau(self):
+        """Ce que le disque ne porte plus, l'écran ne le montre plus.
+
+        Les lectures sont incrémentales, donc le dictionnaire se complétait
+        sans jamais perdre une entrée : une session effacée gardait sa ligne
+        et ses totaux pour toute la durée de l'écran.
+        """
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                tableau = app.query_one("#tableau", DataTable)
+                self.assertEqual(tableau.row_count, 2, "une par harnais")
+                t_ui.transcriptions = lambda: []
+                app._tick()
+                await pilote.pause()
+                self.assertEqual(app._lectures, {})
+                self.assertEqual(
+                    tableau.row_count, 1, "la séance Open Code reste"
+                )
+        finally:
+            for c in correctifs:
+                c.stop()
+
     async def test_une_action_sans_agent_choisi_le_dit(self):
         """Le panneau des agents est vide dans ce monde-ci : la touche doit
         répondre, et surtout ne rien envoyer."""
