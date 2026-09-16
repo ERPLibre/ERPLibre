@@ -1262,7 +1262,7 @@ class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
         )
         self.assertLess(
             src.index('self._pve_set_apt_mirror(vm["alias"]'),
-            src.index('self._pve_set_cache_ca(vm["alias"]'),
+            src.index("self._pve_set_cache_ca("),
         )
 
 
@@ -2438,7 +2438,7 @@ class TestLAutoriteDuCacheDansUneVmImbriquee(unittest.TestCase):
         todo._pve_write_guide = lambda *a, **k: True
         todo._pve_set_timezone = lambda *a, **k: True
         todo._qemu_import_module = lambda: None
-        todo._pve_set_cache_ca = lambda cible, vm, ca: ordre.append(
+        todo._pve_set_cache_ca = lambda cible, vm, ca, **k: ordre.append(
             ("autorité", cible, ca)
         )
         todo._qemu_install_erplibre_monitored = lambda *a, **k: ordre.append(
@@ -2509,6 +2509,47 @@ class TestLAutoriteDuCacheDansUneVmImbriquee(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             todo._pve_after_create(spec["host"], spec, ["vm-a"], "")
         self.assertEqual(appels, [])
+
+
+class TestLAutoriteDUneVmProxmoxHorsLigne(unittest.TestCase):
+    """Une VM Proxmox déployée hors ligne reçoit, comme la voie libvirt, de quoi
+    couper l'audit de npm : aucun cache ne rejoue ce service."""
+
+    def test_seule_la_vm_hors_ligne_coupe_l_audit(self):
+        import contextlib
+        import io
+        import sys
+        import tempfile
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        vu = {}
+
+        def faux_ssh(cible, cmd, timeout=120):
+            vu["cmd"] = cmd
+            return 0, ""
+
+        todo._pve_ssh = faux_ssh
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".crt", delete=False
+        ) as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\nZm F1eA==\n")
+            fh.write("-----END CERTIFICATE-----\n")
+            ca = fh.name
+        rendus = {}
+        with contextlib.redirect_stdout(io.StringIO()):
+            for hors_ligne in (True, False):
+                todo._pve_set_cache_ca(
+                    "hote+vm-a",
+                    {"name": "vm-a", "distro": "ubuntu"},
+                    ca,
+                    hors_ligne=hors_ligne,
+                )
+                rendus[hors_ligne] = vu.get("cmd", "")
+        self.assertIn("NPM_CONFIG_AUDIT", rendus[True])
+        self.assertNotIn("NPM_CONFIG_AUDIT", rendus[False])
 
 
 if __name__ == "__main__":

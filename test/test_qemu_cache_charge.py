@@ -250,5 +250,37 @@ class TestLeRapportSeClotSurUnEchec(unittest.TestCase):
         self.assertEqual(len(ecrit["vms"]), 1)
 
 
+class TestLaTroisiemeVmNaitHorsLigne(unittest.TestCase):
+    """Le déploiement coupe l'audit de npm d'une VM hors ligne : le test long
+    doit le lui demander, comme le formulaire, sans quoi il mesure une VM que
+    personne ne déploierait ainsi."""
+
+    def commande(self, **kw):
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire") as dit, mock.patch.object(
+            QC, "cle_publique", return_value="/tmp/cle.pub"
+        ):
+            QC.deployer("vm", None, dry_run=True, **kw)
+        return " ".join(str(a) for c in dit.call_args_list for a in c.args)
+
+    def test_la_vm_hors_ligne_recoit_offline(self):
+        self.assertIn("--offline", self.commande(hors_ligne=True))
+
+    def test_les_vm_en_ligne_n_en_recoivent_pas(self):
+        self.assertNotIn("--offline", self.commande())
+
+    def test_le_temoin_sans_cache_n_en_recoit_pas(self):
+        self.assertNotIn(
+            "--offline", self.commande(avec_cache=False, hors_ligne=True)
+        )
+
+    def test_la_contre_epreuve_le_demande(self):
+        import inspect
+
+        source = inspect.getsource(QC.contre_epreuve)
+        self.assertIn("hors_ligne=True", source)
+
+
 if __name__ == "__main__":
     unittest.main()

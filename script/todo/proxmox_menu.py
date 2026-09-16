@@ -1690,8 +1690,11 @@ class ProxmoxMenuMixin:
             return ""
         return self._qemu_cache_ca_path()
 
-    def _pve_set_cache_ca(self, cible, vm, ca):
+    def _pve_set_cache_ca(self, cible, vm, ca, hors_ligne=False):
         """Pose l'autorité du cache DANS la VM, par ssh.
+
+        `hors_ligne` : l'amont du cache est coupé pour ce déploiement ; la VM
+        reçoit en plus ce que la voie libvirt pose sous « --offline ».
 
         Même source que la voie libvirt — `cache_files` et `cache_commands` de
         deploy_qemu — livrée autrement : « qm set » ne sait écrire aucun
@@ -1707,7 +1710,10 @@ class ProxmoxMenuMixin:
         except Exception:  # pragma: no cover - dépend du module
             return False
         args = types.SimpleNamespace(
-            distro=vm.get("distro") or "", cache_ca=ca, cache_bypass=False
+            distro=vm.get("distro") or "",
+            cache_ca=ca,
+            cache_bypass=False,
+            offline=hors_ligne,
         )
         fichiers = mod.cache_files(args)
         if not fichiers:
@@ -2122,7 +2128,9 @@ class ProxmoxMenuMixin:
                     # range ses index sous l'hôte demandé, et une VM qui en
                     # réclame un autre ne retrouve rien de ce qui est gardé.
                     self._pve_set_apt_mirror(vm["alias"], vm, mod_qemu)
-                    self._pve_set_cache_ca(vm["alias"], vm, ca_cache)
+                    self._pve_set_cache_ca(
+                        vm["alias"], vm, ca_cache, hors_ligne=bool(coupee)
+                    )
                 # Après la création, qui a posé l'écran accéléré : l'accès au
                 # nœud de rendu est une affaire de COMPTE, et il se donne
                 # dans l'invité.

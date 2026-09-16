@@ -1114,6 +1114,7 @@ class QemuDeployMixin:
         git_email="",
         cache_ca="",
         cache_bypass=False,
+        offline=False,
     ):
         """Construit la commande deploy_qemu.py d'UNE VM (utilisée pour l'aperçu
         dry-run ET le déploiement réel)."""
@@ -1163,6 +1164,10 @@ class QemuDeployMixin:
             # l'approuve dès son premier démarrage, sans quoi le détournement
             # lui présente un certificat qu'elle rejette.
             parts += ["--cache-ca", cache_ca]
+            if offline:
+                # L'amont du cache sera coupé : ce qu'aucun cache ne rejoue,
+                # l'audit de npm d'abord, est désactivé dans la VM.
+                parts.append("--offline")
         # L'identité git de la VM. Sans ces options, deploy_qemu recopie celle
         # de l'HÔTE : le formulaire la montre et permet de la changer, il ne
         # la remplace pas par du vide.
@@ -1259,6 +1264,7 @@ class QemuDeployMixin:
                 self._qemu_cache_ca_path() if self._qemu_cache_active() else ""
             ),
             cache_bypass=bool(spec.get("cache_bypass")),
+            offline=bool(spec.get("offline")),
         )
 
     # Où l'installateur du cache pose son autorité. Un test compare cette
