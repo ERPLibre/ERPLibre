@@ -150,6 +150,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A repository index the cache already holds is revalidated with its ETag rather than downloaded again: upstream still judges every request, and a « 304 » serves the stored body from disk. On a full ERPLibre install the pip indexes, npm metadata and repo bundle had been about 110 MB per VM, taken whole each time. An index stored without its host — shared by every mirror of a rotating list — and an answer carrying no ETag are taken whole as before; the access log names the new outcome `revalidated`
 - A registry page served under `Vary: Accept` keeps one copy per representation. npm asks for the same `/npm` page abridged, then complete, then abridged again; kept under one key they replaced each other and the 31 MB were fetched on every install. Each representation is now revalidated and, offline, served on its own; `--detient` still reads the page under its URL alone
 - A VM deployed with the cache upstream cut — QEMU form, Proxmox VE, or `deploy_qemu.py --offline` — has npm's security audit turned off (`NPM_CONFIG_AUDIT=false`): it queries a remote service no cache can replay, and failed on every offline install. An online VM keeps its audit
+- Verifying a downloaded image no longer needs `--verify`: it runs by default for every distribution that publishes a sum, and `--no-verify` is what skips it — to be kept for offline runs, where a substituted image would otherwise pass unremarked
+- `--bios` is refused on an image with no BIOS boot sector, and says why. Forced there, it gave a VM reported « running » with a silent console — the very failure that flag exists to avoid elsewhere
 
 <!-- [fr] -->
 
@@ -164,6 +166,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un index de dépôt que le cache détient déjà est revalidé par son ETag au lieu d'être retéléchargé : l'amont juge toujours chaque requête, et un « 304 » sert le corps gardé depuis le disque. Sur une installation complète d'ERPLibre, les index pip, les métadonnées npm et le bundle de repo pesaient environ 110 Mo par VM, repris en entier à chaque fois. Un index rangé sans son hôte — partagé par tous les miroirs d'une liste qui tourne — et une réponse sans ETag sont repris en entier comme avant ; le journal d'accès nomme la nouvelle issue `revalidated`
 - Une page de registre servie sous `Vary: Accept` garde une copie par représentation. npm demande la même page `/npm` abrégée, puis complète, puis de nouveau abrégée ; rangées sous une seule clé, elles se remplaçaient et les 31 Mo repartaient à chaque installation. Chaque représentation est désormais revalidée et, hors ligne, servie à part ; `--detient` lit toujours la page sous sa seule URL
 - Une VM déployée l'amont du cache coupé — formulaire QEMU, Proxmox VE, ou `deploy_qemu.py --offline` — a l'audit de sécurité de npm désactivé (`NPM_CONFIG_AUDIT=false`) : il interroge un service qu'aucun cache ne rejoue, et échouait à chaque installation hors ligne. Une VM en ligne garde son audit
+- Vérifier une image téléchargée ne demande plus `--verify` : c'est le défaut pour toute distribution qui publie une somme, et `--no-verify` est ce qui la saute — à réserver aux essais hors ligne, où une image substituée passerait autrement sans un mot
+- `--bios` est refusé sur une image sans secteur d'amorçage BIOS, et dit pourquoi. Forcé là, il donnait une VM « running » à console muette — la panne même que ce drapeau évite ailleurs
 
 <!-- [en] -->
 ## Fixed
