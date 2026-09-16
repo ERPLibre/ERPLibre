@@ -745,10 +745,49 @@ class TestLaVmCloneLeDepotDistant(unittest.TestCase):
         self.assertIn("8", texte, "et ce qui n'est pas montré, dit")
         self.assertIn("git push", texte)
 
-    def test_both_screens_say_it_before_deploying(self):
-        # L'avertissement ne vaut que là où on peut encore renoncer.
-        import inspect
+    @staticmethod
+    def _atteint(depart, cible, profondeur=2):
+        """La fonction `depart` atteint-elle `cible`, directement ou par une
+        aide qu'elle appelle sur `self` ?
 
+        L'INDIRECTION EST SUIVIE parce que la factorisation est le geste
+        évident ici : les deux écrans impriment le même bloc à quelques
+        lignes près. Une garde qui exige le nom de l'appel rougirait le
+        jour où l'on range le geste derrière une aide partagée — sur une
+        amélioration, donc, et c'est la forme qui est tombée ailleurs dans
+        ce dépôt.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from script.todo.todo import TODO
+
+        def appels(fn):
+            arbre = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+            return {
+                getattr(n.func, "attr", "") or getattr(n.func, "id", "")
+                for n in ast.walk(arbre)
+                if isinstance(n, ast.Call)
+            }
+
+        vus, a_voir = set(), [(depart, profondeur)]
+        while a_voir:
+            fn, reste = a_voir.pop()
+            noms = appels(fn)
+            if cible in noms:
+                return True
+            if reste <= 0:
+                continue
+            for nom in noms - vus:
+                vus.add(nom)
+                aide = getattr(TODO, nom, None)
+                if callable(aide) and hasattr(aide, "__code__"):
+                    a_voir.append((aide, reste - 1))
+        return False
+
+    def test_both_screens_say_it_before_deploying(self):
+        """L'avertissement ne vaut que là où on peut encore renoncer."""
         from script.todo.proxmox_menu import ProxmoxMenuMixin
         from script.todo.qemu_deploy import QemuDeployMixin
 
@@ -757,7 +796,21 @@ class TestLaVmCloneLeDepotDistant(unittest.TestCase):
             QemuDeployMixin._qemu_print_recap,
         ):
             with self.subTest(fonction=fn.__name__):
-                self.assertIn("_qemu_branch_gap_lines", inspect.getsource(fn))
+                self.assertTrue(
+                    self._atteint(fn, "_qemu_branch_gap_lines"),
+                    f"{fn.__name__} n'atteint plus l'avertissement",
+                )
+
+    def test_the_reach_check_can_say_no(self):
+        """Contrôle du banc : une recherche qui répond toujours oui
+        rendrait l'épreuve ci-dessus verte quoi qu'il arrive."""
+        from script.todo.qemu_deploy import QemuDeployMixin
+
+        self.assertFalse(
+            self._atteint(
+                QemuDeployMixin._qemu_print_recap, "_jamais_appele_nulle_part"
+            )
+        )
 
 
 class TestLePontQuiNeMeneraitNullePart(unittest.TestCase):
