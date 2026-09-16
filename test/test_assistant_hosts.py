@@ -40,6 +40,7 @@ niveau `.invalid` est réservé à cet usage, et « azurite », « obsidienne »
 
 import os
 import re
+import subprocess
 import sys
 import unittest
 
@@ -317,7 +318,23 @@ class LaFrontiere(unittest.TestCase):
     def test_les_sources_ne_tirent_pas_todo(self):
         """Importer `script.todo.todo` coûte près d'une seconde et imprime
         sur la sortie : le paquet doit rester importable seul."""
-        self.assertNotIn("script.todo.todo", sys.modules)
+        # Dans un interpréteur NEUF : la suite complète importe todo par
+        # ailleurs, et le sys.modules de ce processus en garderait la trace
+        # quel que soit le module éprouvé ici.
+        sortie = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, script.todo.assistant.discover;"
+                " print('script.todo.todo' in sys.modules)",
+            ],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
+        self.assertEqual(sortie.stdout.strip(), "False")
 
     def test_aucun_analyseur_de_config_ssh_n_est_reecrit_ici(self):
         """`ssh -G` a raison sur les `Include`, les `Match`, l'héritage des
