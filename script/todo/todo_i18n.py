@@ -5141,6 +5141,10 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "margin for what will be installed": {
+        "fr": "marge pour ce qui sera installé",
+        "en": "margin for what will be installed",
+    },
     "Total RAM (all running):": {
         "fr": "RAM totale (toutes actives) :",
         "en": "Total RAM (all running):",

@@ -325,6 +325,10 @@ class TestLeRepliProxmoxPorteLaPostureJusquAuxRegles(unittest.TestCase):
     guide, et le guide au rendu nftables.
     """
 
+    # Les réponses, dans l'ordre où les invites les consomment : données
+    # réelles, posture, nom, disque, installer ERPLibre, déployer maintenant.
+    # L'installation vient avant la création parce qu'elle décide de la
+    # taille du disque, que « qm create » fige.
     def deployer(self, reponses):
         from script.proxmox import proxmox_deploy as pve
 
@@ -366,7 +370,7 @@ class TestLeRepliProxmoxPorteLaPostureJusquAuxRegles(unittest.TestCase):
         return vues
 
     def test_the_chosen_posture_reaches_the_spec_that_lays_the_rules(self):
-        vues = self.deployer(["n", "4", "", "", "", "n"])
+        vues = self.deployer(["n", "4", "", "", "n", ""])
         self.assertEqual(1, len(vues))
         self.assertEqual("local-only", vues[0][S.POSTURE_KEY])
         self.assertIs(False, vues[0][S.REAL_DATA_KEY])
@@ -374,7 +378,7 @@ class TestLeRepliProxmoxPorteLaPostureJusquAuxRegles(unittest.TestCase):
     def test_a_free_posture_reaches_it_too_and_says_so(self):
         """« open » n'est pas l'absence de réponse : la spec la PORTE, et
         une relecture sait que la question a été posée."""
-        vues = self.deployer(["n", "1", "", "", "", "n"])
+        vues = self.deployer(["n", "1", "", "", "n", ""])
         self.assertEqual("open", vues[0][S.POSTURE_KEY])
 
 

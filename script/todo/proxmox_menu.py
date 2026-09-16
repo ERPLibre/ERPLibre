@@ -2017,10 +2017,6 @@ class ProxmoxMenuMixin:
         )
         disque = input(t("Disk size (default 32G): ")).strip() or "32G"
 
-        code, _v = mod.DISTROS[distro][0][version][:2]
-        url = mod.image_url(distro, code, arch, version)
-        image = mod.default_image_name(distro, code, arch, version)
-
         # Stockage et pont : demandés à l'HÔTE, jamais devinés. « local-lvm »
         # n'existe pas partout, et un pont inventé fait échouer « qm create ».
         _c, out = self._pve_show("pvesm status --content images", quiet=True)
@@ -2070,29 +2066,82 @@ class ProxmoxMenuMixin:
         print(f"  {t('address')} {ipconfig}")
         print(f"  VMID    : {vmid}")
 
+        # L'installation est demandée AVANT la création parce qu'elle DÉCIDE
+        # de la taille du disque : « qm create » la fige, et une marge posée
+        # ensuite n'existe pas. C'est aussi ce qui la fait entrer dans
+        # l'aperçu, qui montre alors le disque réellement demandé.
+        install = None
+        if self._is_yes_default_yes(
+            input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
+        ):
+            branch = self._qemu_pick_branch()
+            label, cmd = self._qemu_pick_install_profile(distro)
+            print(f"  {label}")
+            install = {"branch": branch, "cmd": cmd, "label": label}
+
         cle_locale = self._qemu_default_ssh_key()
-        spec = {
+        # Le DNS de l'hôte, pour les VM en adresse fixe : « --ipconfig0 » ne
+        # porte aucun résolveur, et sans lui la machine route sans rien
+        # résoudre — « apt update » échoue alors sans que rien ne l'explique.
+        _c, resolv = self._pve_show(pve.RESOLV_CMD, quiet=True)
+        vm = {
             "name": nom,
-            "memory": memoire,
+            "vmid": vmid,
+            "distro": distro,
+            "version": version,
+            "arch": arch,
+            "ram": memoire,
             "vcpus": vcpus,
             "disk": disque,
-            "storage": stockage,
-            "bridge": pont,
-            "image": image,
-            "user": "erplibre",
-            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
-            "start": True,
+            "desktop": "",
+            "install_cmd": "",
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
             # resterait muette.
             "ipconfig": ipconfig,
         }
-        etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vmid, spec
-        )
+        spec_finale = {
+            "host": host,
+            "storage": stockage,
+            "bridge": pont,
+            "res_label": "",
+            "vms": [vm],
+            "existing": [],
+            "user": "erplibre",
+            "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            "nameservers": pve.parse_nameservers(resolv),
+            "ssh_key": cle_locale or "",
+            "add_ssh_config": True,
+            "install": install,
+            "monitor": True,
+            "python_provider": "",
+            # La voie par questions ne demande pas le fuseau — l'écran le
+            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
+            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
+            "timezone": self._qemu_host_timezone(),
+            # LE FRAGMENT JUSQU'ICI : c'est cette spec que lit le guide, et
+            # le guide qui rend puis arme les règles. Refuser le couple
+            # incohérent sans la transmettre laissait cette voie créer la VM
+            # et n'en poser aucune, quelle que soit la posture choisie.
+            **posture,
+        }
+        # LE CONSTRUCTEUR DE L'ÉCRAN, et non une description jumelle : une
+        # règle ajoutée à « qm create » ne vaut que là où on l'écrit, et
+        # celle-ci est la voie qu'on relit le moins. Deux s'y étaient déjà
+        # perdues — le DNS de l'hôte et la marge de disque d'ERPLibre.
+        etapes = self._pve_vm_commands(mod, vm, spec_finale)
+        # La taille effective, et non celle qui a été tapée : une marge
+        # ajoutée en silence se découvre au premier « df », sur une machine
+        # dont le disque ne se reprend plus sans frais.
+        taille = self._pve_disk_with_margin(vm, spec_finale)
+        if taille != disque:
+            print(
+                f"  {t('disk')}    : {taille}  ({disque} +"
+                f" {t('margin for what will be installed')})"
+            )
         if dry_run:
             print(f"\n── {t('Would run on')} {host['target']} ──")
-            print(f"  # {t('SSH key ->')} {spec['sshkey_path']}")
+            print(f"  # {t('SSH key ->')} {spec_finale['sshkey_path']}")
             for cmd in etapes:
                 print(f"  {cmd}")
             return
@@ -2103,10 +2152,8 @@ class ProxmoxMenuMixin:
             return
         if cle_locale and not self._pve_push_key(cle_locale):
             print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
-            spec.pop("sshkey_path", None)
-            etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-                vmid, spec
-            )
+            spec_finale.pop("sshkey_path", None)
+            etapes = self._pve_vm_commands(mod, vm, spec_finale)
         for cmd in etapes:
             code, _out = self._pve_show(cmd, timeout=1800)
             if code:
@@ -2128,51 +2175,6 @@ class ProxmoxMenuMixin:
         # domaine local homonyme, pas de guide de connexion, pas de bloc
         # « pve » (donc aucune colonne vivante dans le suivi), pas de
         # sommaire. Trouvé par l'audit, jamais à l'usage.
-        install = None
-        if self._is_yes_default_yes(
-            input(f"\n{t('Install ERPLibre on it? (Y/n): ')}")
-        ):
-            branch = self._qemu_pick_branch()
-            label, cmd = self._qemu_pick_install_profile(distro)
-            print(f"  {label}")
-            install = {"branch": branch, "cmd": cmd, "label": label}
-        spec_finale = {
-            "host": host,
-            "storage": stockage,
-            "bridge": pont,
-            "res_label": "",
-            "vms": [
-                {
-                    "name": nom,
-                    "vmid": vmid,
-                    "distro": distro,
-                    "version": version,
-                    "arch": arch,
-                    "ram": memoire,
-                    "vcpus": vcpus,
-                    "disk": disque,
-                    "desktop": "",
-                    "install_cmd": "",
-                    "ipconfig": ipconfig,
-                }
-            ],
-            "existing": [],
-            "user": "erplibre",
-            "ssh_key": cle_locale or "",
-            "add_ssh_config": True,
-            "install": install,
-            "monitor": True,
-            "python_provider": "",
-            # La voie par questions ne demande pas le fuseau — l'écran le
-            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
-            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
-            "timezone": self._qemu_host_timezone(),
-            # LE FRAGMENT JUSQU'ICI : c'est cette spec que lit le guide, et
-            # le guide qui rend puis arme les règles. Refuser le couple
-            # incohérent sans la transmettre laissait cette voie créer la VM
-            # et n'en poser aucune, quelle que soit la posture choisie.
-            **posture,
-        }
         joignables = self._pve_after_create(
             host, spec_finale, [nom], cle_locale
         )
