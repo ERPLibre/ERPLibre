@@ -1657,7 +1657,9 @@ def pinned_sha256(distro: str) -> str:
     return NIXOS_IMAGE_SHA256 if distro == "nixos" else ""
 
 
-def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
+def verify_pinned_sha256(
+    distro: str, image: Path, dry_run: bool, urls: tuple = ()
+) -> None:
     """Vérifie une image contre la somme que le DÉPÔT porte pour elle.
 
     Sans rapport avec --verify, qui lit un SHA256SUMS publié par la
@@ -1678,6 +1680,20 @@ def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
             digest.update(morceau)
     obtenu = digest.hexdigest()
     if obtenu != attendu:
+        # Le remède ORDINAIRE ne suffit pas derrière le cache : effacer le
+        # fichier le fait retélécharger, et c'est le cache qui resservira les
+        # mêmes octets, indéfiniment. Son entrée se retire d'abord — ni
+        # « --purge », qui efface tout, ni « --purge-older-than », qu'un objet
+        # servi ne vieillit jamais assez pour atteindre.
+        remede = ""
+        if urls:
+            lignes = "\n".join(f"GET {u}" for u in urls)
+            remede = (
+                "\n\n  Si un cache de téléchargement est en place, effacer le "
+                "fichier ne suffit pas : retirez-en l'entrée d'abord.\n"
+                f"    printf '%s\\n' {shlex.quote(lignes)} \\\n"
+                "      | sudo erplibre_go_qemu_cache --oublie"
+            )
         sys.exit(
             f"Erreur : l'image {image} ne correspond pas à la somme que le "
             f"dépôt porte pour elle.\n"
@@ -1685,7 +1701,7 @@ def verify_pinned_sha256(distro: str, image: Path, dry_run: bool) -> None:
             f"  obtenu  : {obtenu}\n"
             "  Supprimez le fichier pour le retélécharger. S'il revient "
             "différent, l'amont a republié sous le même tag : le relire "
-            "avant de figer la nouvelle somme."
+            "avant de figer la nouvelle somme." + remede
         )
     print(f"  Somme sha256 conforme à celle du dépôt ({attendu[:12]}…).")
 
@@ -5156,7 +5172,9 @@ def main() -> None:
         )
         print(f"  Destination : {args.image_path}")
         download_image(urls, args.image_path, args.dry_run)
-        verify_pinned_sha256(args.distro, args.image_path, args.dry_run)
+        verify_pinned_sha256(
+            args.distro, args.image_path, args.dry_run, tuple(urls)
+        )
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
         print("\nTerminé (téléchargement seul).")
@@ -5271,7 +5289,9 @@ def main() -> None:
             f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
         )
         download_image(urls, args.image_path, args.dry_run)
-        verify_pinned_sha256(args.distro, args.image_path, args.dry_run)
+        verify_pinned_sha256(
+            args.distro, args.image_path, args.dry_run, tuple(urls)
+        )
         if do_verify:
             verify_sha256(url, args.image_path, args.dry_run)
 

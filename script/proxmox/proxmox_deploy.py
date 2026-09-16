@@ -986,7 +986,22 @@ def image_fetch_cmd(
         # Et la cible elle-même, fraîche ou déjà en cache : le cas visé est un
         # fichier substitué entre deux déploiements, qu'aucun test de présence
         # ne voit.
-        cmd += f" && {somme(cible)}"
+        #
+        # L'échec nomme le remède, parce que le remède ORDINAIRE ne suffit
+        # pas : cet hôte peut être une VM derrière le cache de
+        # téléchargement, et effacer l'image la fera resservir à l'identique
+        # depuis le magasin. L'entrée s'en retire d'abord — « --purge »
+        # efface tout, et « --purge-older-than » n'atteint jamais un objet
+        # que chaque service rajeunit.
+        aide = (
+            f"rm -f {shlex.quote(cible)} et relancer ;"
+            " derrière un cache de téléchargement, en retirer l'entrée"
+            f" d'abord : printf %s | sudo erplibre_go_qemu_cache --oublie"
+        )
+        cmd += (
+            f" && {{ {somme(cible)} || {{ "
+            f"echo {shlex.quote(aide)} >&2; false; }}; }}"
+        )
     return cmd
 
 
