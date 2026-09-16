@@ -2507,10 +2507,14 @@ CACHE_TRUST = {
         "update-ca-trust",
         "/etc/pki/tls/certs/ca-bundle.crt",
     ),
+    # openSUSE n'écrit aucun « /etc/ssl/certs/ca-certificates.crt » : son
+    # faisceau est « ca-bundle.pem ». Une variable qui vise un fichier absent
+    # fait échouer pip sur « Could not find a suitable TLS CA certificate
+    # bundle », en ligne comme hors ligne.
     "zypper": (
         "/etc/pki/trust/anchors",
         "update-ca-certificates",
-        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/ssl/ca-bundle.pem",
     ),
 }
 
@@ -2767,13 +2771,47 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
             f"sh -c 'grep -q ^{var}= /etc/environment"
             f" || echo {var}={faisceau} >> /etc/environment'"
         )
+    gardees = list(CACHE_ENV_VARS)
     if getattr(args, "offline", False):
         for var, valeur in OFFLINE_ENV_VARS:
             commandes.append(
                 f"sh -c 'grep -q ^{var}= /etc/environment"
                 f" || echo {var}={valeur} >> /etc/environment'"
             )
+            gardees.append(var)
+    commandes.append(commande_sudoers(gardees))
     return commandes
+
+
+CACHE_SUDOERS = "/etc/sudoers.d/erplibre-cache"
+
+
+def commande_sudoers(variables, fichier: str = CACHE_SUDOERS) -> str:
+    """La commande qui fait traverser « sudo » aux variables du cache.
+
+    sudo remet l'environnement à zéro. Seul un module PAM qui relit
+    /etc/environment pour sudo y ramène les variables, et toutes les
+    distributions ne le configurent pas : sans lui, « sudo npm install -g »
+    rejette l'autorité du cache sur « self-signed certificate in certificate
+    chain », quand le même npm sans sudo l'accepte. « env_keep » les garde
+    partout, pourvu que la session appelante les porte — ce que
+    cache_env_reload lui assure.
+
+    Le fichier est écrit sous un nom à point, que sudo ignore, vérifié par
+    « visudo -c », puis renommé : un fichier invalide dans sudoers.d rendrait
+    sudo inutilisable sur toute la machine. Un échec — visudo absent, pas de
+    répertoire sudoers.d — retire le temporaire et ne fait pas échouer la
+    commande. Une variable par ligne, sans guillemets : la commande passe
+    telle quelle dans un « runcmd » YAML comme dans un « sh -c » par ssh.
+    """
+    dossier, nom = fichier.rsplit("/", 1)
+    tmp = f"{dossier}/.{nom}"
+    return (
+        f"sh -c 'for v in {' '.join(variables)};"
+        f" do echo Defaults env_keep += $v; done > {tmp}"
+        f" && chmod 0440 {tmp} && visudo -cf {tmp} && mv {tmp} {fichier}"
+        f" || rm -f {tmp}'"
+    )
 
 
 def cache_runcmd(args: argparse.Namespace) -> list[str]:
@@ -4022,16 +4060,12 @@ def virt_install(
         "--network",
         args.network,
         "--console",
-        # Journal de console pour la voie installateur. Une console « pty »
-        # seule ne gardE rien : quand d-i échoue, il l'écrit à l'écran d'une
-        # VM que personne ne regarde, et il ne reste RIEN à lire ensuite —
-        # exactement « l'installation a échoué, pas de sortie pertinente ».
-        # Le fichier, lui, survit à l'arrêt du domaine.
-        (
-            f"pty,target_type={console_target},log.file={console_log}"
-            if installer
-            else f"pty,target_type={console_target}"
-        ),
+        # Journal de console, pour toutes les voies. Une console « pty » seule
+        # ne garde rien : quand d-i échoue, ou qu'une image cloud reste bloquée
+        # avant son serveur ssh, la VM l'écrit à un écran que personne ne
+        # regarde, et il ne reste RIEN à lire ensuite. Le fichier, lui, survit
+        # à l'arrêt du domaine.
+        f"pty,target_type={console_target},log.file={console_log}",
         # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
         # virsh de piloter la VM SANS réseau (ex. étendre le FS invité après
         # un redimensionnement de disque). Inoffensif si l'agent est absent.
