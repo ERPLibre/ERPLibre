@@ -2535,6 +2535,18 @@ CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
 # d'accord avec le Go compare.
 OFFLINE_ENV_VARS = (("NPM_CONFIG_AUDIT", "false"),)
 
+# Ce qu'une VM déployée l'amont coupé exécute tôt au démarrage. Une image qui
+# active systemd-time-wait-sync — celle d'Arch — retient time-sync.target
+# jusqu'à la première synchronisation NTP, et « cloud-final » est ordonné
+# après : sans serveur de temps joignable, l'étape finale ne démarre jamais, ni
+# les clés d'hôte ssh qu'elle génère, et la VM reste sans ssh. L'arrêter lève
+# l'attente ; une image qui ne l'active pas n'en voit aucun effet. « bootcmd »
+# tourne à l'étape réseau de cloud-init, avant l'étape finale.
+OFFLINE_BOOTCMD = [
+    "bootcmd:",
+    "  - systemctl stop --no-block systemd-time-wait-sync.service || true",
+]
+
 CACHE_CERT_NAME = "erplibre-cache.crt"
 
 
@@ -2960,6 +2972,8 @@ def build_cloud_config(
     # Active et démarre SSH quel que soit le nom du service (ssh sur
     # Debian/Ubuntu, sshd sur Fedora/Arch) — sans quoi la VM peut booter
     # sans SSH accessible.
+    if getattr(args, "offline", False):
+        lines += OFFLINE_BOOTCMD
     lines += ["runcmd:"]
     # En TÊTE : ce qui suit peut télécharger, et sans magasin de confiance à
     # jour un invité rejette le certificat que le cache présente.

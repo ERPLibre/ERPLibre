@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -394,6 +395,46 @@ func TestLImmuableNeGardePasSonRefus(t *testing.T) {
 		if n := corpsGardes(t, dir); n != 0 {
 			t.Errorf("%s : %d objet(s) gardé(s) pour un 404 immuable", chemin, n)
 		}
+	}
+}
+
+// Hors ligne, un HEAD sur un index dont le GET a son corps en réserve reçoit
+// les en-têtes de ce corps, sans corps : c'est ainsi que zypper juge un dépôt
+// valide avant de le lire. Sous une clé portable, aucun statut de HEAD ne se
+// garde, et sans ce repli le dépôt entier était déclaré invalide.
+func TestHorsLigneUnHeadSortDuCorpsDuGet(t *testing.T) {
+	const corps = "<repomd>index</repomd>"
+	const chemin = "/distribution/leap/16.0/repo/oss/x86_64/repodata/repomd.xml"
+	a := nouvelAmontScripte(t, servir(corps))
+	p := proxyDeTest(t)
+	u, _ := url.Parse("http://" + a.hote() + chemin)
+	if Classify(u) != ClassVolatile || !PortableParChemin(u) {
+		t.Fatalf("%s n'est plus un index volatil portable", chemin)
+	}
+	joue(t, p, "GET", a.hote(), chemin)
+	joue(t, p, "HEAD", a.hote(), chemin)
+	base := "http://" + a.hote()
+
+	hote := a.couper()
+	w := joue(t, p, "HEAD", hote, chemin)
+	if w.Code != http.StatusOK {
+		t.Fatalf("HEAD hors ligne : code %d, attendu 200", w.Code)
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("HEAD hors ligne avec un corps de %d octets", w.Body.Len())
+	}
+	if got := w.Header().Get("Content-Length"); got != strconv.Itoa(len(corps)) {
+		t.Errorf("longueur %q, attendu celle du corps gardé (%d)", got, len(corps))
+	}
+	if got := w.Header().Get("X-ERPLibre-Cache"); got != OutcomeStale {
+		t.Errorf("servi « %s », attendu « %s »", got, OutcomeStale)
+	}
+	if got := p.Store.Detenir("HEAD", base+chemin).Verdict; got != VerdictGarde {
+		t.Errorf("--detient dit %q pour un HEAD que le service sert", got)
+	}
+	// Sans GET gardé, rien ne change : le HEAD reste un 504.
+	if w := joue(t, p, "HEAD", hote, "/distribution/autre/repodata/repomd.xml"); w.Code != http.StatusGatewayTimeout {
+		t.Errorf("HEAD sans corps gardé : code %d, attendu 504", w.Code)
 	}
 }
 

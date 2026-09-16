@@ -26,6 +26,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import yaml
+
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 
@@ -34,7 +36,10 @@ from script.qemu.deploy_qemu import (  # noqa: E402
     CACHE_ENV_VARS,
     CACHE_SUDOERS,
     CACHE_TRUST,
+    OFFLINE_BOOTCMD,
     OFFLINE_ENV_VARS,
+    build_cloud_config,
+    build_parser,
     cache_commands,
     cache_env_reload,
     cache_family,
@@ -353,6 +358,35 @@ class TestLesVariablesTraversentSudo(unittest.TestCase):
                             "Defaults env_keep += NODE_EXTRA_CA_CERTS\n",
                         )
                         fichier.unlink()
+
+
+class TestLeHorsLigneNAttendPasLHeure(unittest.TestCase):
+    """Une image qui attend la synchronisation NTP avant « cloud-final » ne
+    démarre jamais son étape finale sans serveur de temps : ni clés d'hôte, ni
+    ssh. Une VM déployée hors ligne lève cette attente dès bootcmd."""
+
+    def config(self, *extra):
+        args = build_parser().parse_args(
+            ["--distro", "arch", "--hostname", "vm", *extra]
+        )
+        return yaml.safe_load(build_cloud_config(args, None, []))
+
+    def test_une_vm_hors_ligne_arrete_l_attente(self):
+        cmd = self.config("--offline").get("bootcmd") or []
+        self.assertTrue(
+            any("systemd-time-wait-sync" in c and "stop" in c for c in cmd),
+            cmd,
+        )
+
+    def test_la_commande_ne_bloque_ni_n_echoue(self):
+        """--no-block : bootcmd ne doit pas attendre un travail qui attend
+        lui-même le réseau ; « || true » : une image sans l'unité continue."""
+        for ligne in OFFLINE_BOOTCMD[1:]:
+            self.assertIn("--no-block", ligne)
+            self.assertTrue(ligne.rstrip().endswith("|| true"))
+
+    def test_une_vm_en_ligne_garde_sa_synchronisation(self):
+        self.assertNotIn("bootcmd", self.config())
 
 
 class TestLaLangueDesMessagesDuCache(unittest.TestCase):

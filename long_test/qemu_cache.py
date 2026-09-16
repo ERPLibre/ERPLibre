@@ -960,13 +960,17 @@ def contre_epreuve(
 
     C'est ce qui distingue un cache d'une simple accélération : sans réseau,
     le déploiement tient encore sur l'index stocké.
+
+    Un échec note l'étape dans rapport["etape_en_echec"], comme la boucle le
+    fait pour les deux premières VM : le résumé d'une série la nomme.
     """
     dire("", journal)
     dire("  ── Contre-épreuve : amont coupé ──", journal)
+    nom = f"{base}-3"
     if not couper_lamont(journal, dry_run):
+        rapport["etape_en_echec"] = f"{nom} : coupure de l'amont"
         return False
     try:
-        nom = f"{base}-3"
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
         adresse = deployer(
@@ -979,11 +983,15 @@ def contre_epreuve(
             hors_ligne=True,
         )
         if not adresse:
+            rapport["etape_en_echec"] = f"{nom} : déploiement"
             return False
         noter_uuid(rapport, nom, dry_run)
         if not dry_run and not attendre_ssh(adresse, journal):
+            rapport["etape_en_echec"] = f"{nom} : ssh"
             return False
         ok = poser_les_paquets(adresse, journal, dry_run, distro, charge)
+        if not ok:
+            rapport["etape_en_echec"] = f"{nom} : paquets"
         if ok:
             dire(
                 "  ✓ la troisième VM s'est bâtie sans que le cache joigne"
@@ -1364,7 +1372,9 @@ def _boucle(args, rapport, journal, acces, decalage):
             and ok
         )
 
-    return _clore(args, rapport, journal, ok)
+    return _clore(
+        args, rapport, journal, ok, rapport.pop("etape_en_echec", "")
+    )
 
 
 def _clore(args, rapport, journal, ok, etape=""):
