@@ -34,6 +34,7 @@ sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "script", "git")
 )
 
+from script import lib_identifiant as identifiant  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 
 # Relevée AVANT d'épingler : c'est la langue que lira un hook lancé en
@@ -236,30 +237,32 @@ class TestLeCorps(unittest.TestCase):
         """« Checked: » ressemble à un trailer : il ne doit pas s'y soustraire."""
         self.assertTrue(check(_message("Checked: 172.20.99.152 répond.")))
 
-    def test_la_liste_privee_absente_ne_refuse_rien(self):
-        origine = commit_msg_lib.NOMS_INTERDITS
-        commit_msg_lib.NOMS_INTERDITS = os.path.join(
-            os.path.dirname(origine), "absent_de_ce_depot.txt"
-        )
-        try:
-            self.assertEqual([], check(_message("Migration de acmecorp.")))
-        finally:
-            commit_msg_lib.NOMS_INTERDITS = origine
+    def _liste(self, contenu):
+        """Pose la liste privée PAR LA VARIABLE, qui est la seule couture
+        offerte à qui ne range pas ce fichier là où le dépôt l'attend.
 
-    def test_la_liste_privee_refuse_le_nom_quelle_porte(self):
-        origine = commit_msg_lib.NOMS_INTERDITS
+        Écrire dans la constante du module éprouvait un chemin que
+        personne n'emprunte : c'est ainsi que ce garde-fou a pu ignorer la
+        variable pendant que l'autre l'honorait.
+        """
         with tempfile.NamedTemporaryFile(
             "w", suffix=".txt", delete=False, encoding="utf-8"
         ) as fh:
-            fh.write("# un commentaire\n\nacmecorp\n")
-            commit_msg_lib.NOMS_INTERDITS = fh.name
-        try:
-            problemes = check(_message("Migration de AcmeCorp, six paliers."))
-            self.assertEqual(1, len(problemes))
-            self.assertIn("nom refusé", problemes[0])
-        finally:
-            os.unlink(commit_msg_lib.NOMS_INTERDITS)
-            commit_msg_lib.NOMS_INTERDITS = origine
+            fh.write(contenu)
+        self.addCleanup(os.unlink, fh.name)
+        self.addCleanup(os.environ.pop, identifiant.NOMS_INTERDITS_VAR, None)
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = fh.name
+
+    def test_la_liste_privee_absente_ne_refuse_rien(self):
+        self.addCleanup(os.environ.pop, identifiant.NOMS_INTERDITS_VAR, None)
+        os.environ[identifiant.NOMS_INTERDITS_VAR] = "/introuvable/nulle-part"
+        self.assertEqual([], check(_message("Migration de acmecorp.")))
+
+    def test_la_liste_privee_refuse_le_nom_quelle_porte(self):
+        self._liste("# un commentaire\n\nacmecorp\n")
+        problemes = check(_message("Migration de AcmeCorp, six paliers."))
+        self.assertEqual(1, len(problemes))
+        self.assertIn("nom refusé", problemes[0])
 
     def test_un_merge_nest_pas_juge(self):
         """git écrit le corps d'un merge : le refuser refuserait le merge."""
@@ -290,19 +293,10 @@ class TestLeCorps(unittest.TestCase):
 
     def test_un_nom_prive_dans_un_trailer_est_refuse(self):
         """Un « Refs: » publie autant qu'une phrase du corps."""
-        origine = commit_msg_lib.NOMS_INTERDITS
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".txt", delete=False, encoding="utf-8"
-        ) as fh:
-            fh.write("acmecorp\n")
-            commit_msg_lib.NOMS_INTERDITS = fh.name
-        try:
-            problemes = check(_message("Une raison.\n\nRefs: acmecorp-42"))
-            self.assertEqual(1, len(problemes))
-            self.assertIn("nom refusé", problemes[0])
-        finally:
-            os.unlink(commit_msg_lib.NOMS_INTERDITS)
-            commit_msg_lib.NOMS_INTERDITS = origine
+        self._liste("acmecorp\n")
+        problemes = check(_message("Une raison.\n\nRefs: acmecorp-42"))
+        self.assertEqual(1, len(problemes))
+        self.assertIn("nom refusé", problemes[0])
 
     def test_body_of_rend_les_trailers_sur_demande(self):
         message = _message("Une raison.\n\nAssisted-by: Un modèle")

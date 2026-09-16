@@ -129,14 +129,20 @@ def adresse_de_machine(valeur):
     return True
 
 
-def termes_interdits(chemin=None):
+def termes_interdits():
     """Les termes du fichier privé, en minuscules. Vide s'il n'existe pas.
 
     Une absence est DITE, une fois par exécution, sur stderr : un contrôle
     muet se lit comme un contrôle satisfait.
+
+    AUCUN CHEMIN EN PARAMÈTRE, et c'est la garde : le garde-fou du message
+    de commit en passait un — la constante du module — et ignorait donc
+    « EL_NOMS_INTERDITS » que l'autre honorait. Qui range sa liste ailleurs
+    voyait ses commentaires contrôlés et ses commits, non. Sans paramètre,
+    il n'y a plus qu'une façon de résoudre ce chemin.
     """
     global _liste_absente_dite
-    chemin = chemin or chemin_noms_interdits()
+    chemin = chemin_noms_interdits()
     try:
         with io.open(chemin, encoding="utf-8") as fh:
             contenu = fh.read()
