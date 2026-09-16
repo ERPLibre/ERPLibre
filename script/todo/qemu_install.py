@@ -425,7 +425,10 @@ class QemuInstallMixin:
         suivante trouvait le verrou pris, échouait jusqu'à sa borne, puis
         installait sur un index jamais rafraîchi : « Impossible de trouver le
         paquet », un message qui n'accuse personne."""
-        from script.qemu.deploy_qemu import cache_env_reload
+        from script.qemu.deploy_qemu import (
+            attente_cloud_final,
+            cache_env_reload,
+        )
 
         return (
             "if command -v cloud-init >/dev/null 2>&1; then "
@@ -445,6 +448,11 @@ class QemuInstallMixin:
             "n=0; while systemctl is-active --quiet erplibre-qga 2>/dev/null; "
             "do n=$((n+1)); [ $n -ge 150 ] && break; sleep 2; done; "
             "fi; "
+            # « status --wait » rend la main dès que cloud-init se déclare en
+            # ERREUR, alors que son étape finale écrit encore l'autorité, les
+            # variables et le sudoers : attendre l'unité, faute de quoi elles
+            # arrivent après cette session, qui vivra sans elles.
+            + attente_cloud_final() + "; "
             # Les variables du cache sont écrites par cloud-init PENDANT
             # l'attente : cette session, ouverte avant, ne les a pas reçues.
             + cache_env_reload() + "; "
