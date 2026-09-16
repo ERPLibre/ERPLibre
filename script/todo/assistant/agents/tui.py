@@ -995,7 +995,14 @@ def run_tui(run_app: bool = True):
             self._vue = (self._vue + 1) % len(self.VUES)
             self._fermer_le_detail()
             self._montrer_la_vue()
-            self._peindre()
+            # Le gel tient ICI AUSSI. Repeindre sous un écran qui s'annonce
+            # gelé refait le tableau sur la flotte fraîche, remet le curseur
+            # en tête et remplace la liste peinte : « s », qui ne demande
+            # aucune confirmation, partait alors sur un agent que personne
+            # n'avait choisi. Les quatre panneaux ont été peints au même
+            # instant, donc celui qu'on découvre porte bien l'état figé.
+            if not self._gele:
+                self._peindre()
             # Demander TOUT DE SUITE ce que le nouveau panneau réclame : sans
             # cela, la colonne des commandes reste en points de suspension
             # jusqu'au tour suivant, soit deux secondes après qu'on a demandé

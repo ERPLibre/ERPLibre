@@ -1683,6 +1683,71 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
                 c.stop()
 
 
+class TestLeGelTientDeBoutEnBout(unittest.IsolatedAsyncioTestCase):
+    """Un gel qui cède est pire qu'un gel absent.
+
+    On gèle pour qu'une ligne cesse de se dérober, puis on agit dessus. Si un
+    geste d'affichage repeint quand même, l'écran s'annonce gelé et montre
+    autre chose : « s », qui ne demande aucune confirmation, part alors sur un
+    agent que personne n'a choisi.
+    """
+
+    def _agent(self, court):
+        from script.todo.assistant import claude_sessions as cs
+
+        return cs.Session(
+            session_id=f"{court}-1111-4111-8111-111111111111",
+            court=court,
+            kind="background",
+            live=True,
+            cwd="/un/depot",
+            pid=42,
+        )
+
+    async def test_permuter_le_panneau_ne_degele_pas_l_ecran(self):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        flotte = [self._agent(c) for c in ("aaaaaaaa", "bbbbbbbb")]
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: list(flotte))
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                for _ in range(len(app.VUES)):
+                    if app.VUES[app._vue] == "agents":
+                        break
+                    await pilote.press("v")
+                    await calme(pilote)
+                await pilote.press("down")
+                await calme(pilote)
+                self.assertEqual(app._agent_choisi().poignee, "bbbbbbbb")
+                await pilote.press("f")
+                await calme(pilote)
+                # La flotte change sous l'écran gelé.
+                flotte[:] = [self._agent("cccccccc")]
+                app._flotte_a_relire = True
+                app._tick()
+                await calme(pilote)
+                # Un tour complet de panneaux, et retour.
+                envoyes = []
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                for _ in range(len(app.VUES)):
+                    await pilote.press("v")
+                    await calme(pilote)
+                self.assertEqual(app.VUES[app._vue], "agents")
+                self.assertTrue(app._gele, "toujours gelé")
+                self.assertEqual(app._agent_choisi().poignee, "bbbbbbbb")
+                await pilote.press("s")
+                await calme(pilote)
+        self.assertEqual(envoyes, [("stop", "bbbbbbbb")])
+
+
 class TestUnGesteNeFigePasLEcran(unittest.IsolatedAsyncioTestCase):
     """Les gestes passent par un sous-processus, comme les lectures.
 
