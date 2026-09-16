@@ -89,6 +89,12 @@ class Agregat:
     # La taille de l'invite, tour par tour, tronquée aux derniers SERIE_MAX.
     serie: tuple[int, ...] = ()
 
+    # La plus grosse invite vue, GARDÉE À PART de la série. La série se
+    # tronque, donc son maximum ne connaît que la fenêtre ; une session de
+    # mille tours y perdait sa pointe et l'écart avec le contexte courant —
+    # le seul endroit où une compaction se lit — se refermait tout seul.
+    pointe: int = 0
+
     # Deux champs de STRUCTURE, et les deux seuls : le répertoire de travail
     # et la branche git. Ce sont ceux que le module des sessions s'autorise
     # déjà à tirer d'une transcription — jamais un titre, une invite ou un
@@ -119,11 +125,6 @@ class Agregat:
     def contexte(self) -> int:
         """La taille de la dernière invite, ou 0 si aucun tour n'a eu lieu."""
         return self.serie[-1] if self.serie else 0
-
-    @property
-    def pointe(self) -> int:
-        """La plus grosse invite vue. Une compaction se lit dans l'écart."""
-        return max(self.serie) if self.serie else 0
 
 
 def _entier(valeur) -> int:
@@ -235,6 +236,7 @@ def replier(agregat: Agregat, objet) -> Agregat:
         tours=agregat.tours + 1,
         reflexion=agregat.reflexion + reflexion,
         serie=serie,
+        pointe=max(agregat.pointe, taille),
         jetons_par_jour=_ajoute(
             agregat.jetons_par_jour, _texte(objet.get("timestamp"))[:10], total
         ),

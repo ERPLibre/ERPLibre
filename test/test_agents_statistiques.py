@@ -152,6 +152,20 @@ class TestLeContexte(unittest.TestCase):
         self.assertEqual(a.contexte, 20_000)
         self.assertEqual(a.pointe, 500_000)
 
+    def test_the_peak_outlives_the_window(self):
+        """La pointe survit à la troncature de la série.
+
+        Une session longue pousse hors fenêtre le tour où l'invite était la
+        plus grosse. Le maximum de la série se refermait alors sur le
+        courant, et l'écart qui signale une compaction disparaissait au bout
+        de SERIE_MAX tours.
+        """
+        a = st.replier(st.Agregat(), _assistant(lu=500_000))
+        for _ in range(st.SERIE_MAX + 10):
+            a = st.replier(a, _assistant(lu=1_000))
+        self.assertEqual(max(a.serie), 1_000)
+        self.assertEqual(a.pointe, 500_000)
+
     def test_the_series_is_bounded(self):
         """Une TUI trace une pente, pas dix mille points."""
         a = st.Agregat()
@@ -358,8 +372,6 @@ class TestContreUneVraieTranscription(unittest.TestCase):
         une = st.lire(chemin)
         deux = st.lire(chemin, une)
         self.assertEqual(une.agregat.tours, deux.agregat.tours)
-
-
 
 
 class TestLesSeriesQueLeDisquePortait(unittest.TestCase):
