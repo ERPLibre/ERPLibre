@@ -1683,6 +1683,91 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
                 c.stop()
 
 
+class TestAucunSousProcessusSurLaBoucle(unittest.TestCase):
+    """La règle, gardée par la STRUCTURE et non par la vigilance.
+
+    Trois sous-processus ont quitté la boucle d'événements l'un après l'autre,
+    et chaque fois le suivant y est resté : les lectures d'abord, les gestes
+    ensuite, le lancement en dernier. Chacun fige l'écran de quinze à cent
+    vingt secondes quand l'outil ne répond pas — touches comprises, « q »
+    compris. Une règle qui ne tient que par la vigilance cède ; celle-ci tient
+    par la structure du module.
+
+    Une seule exception, et elle est nommée : la fonction qui SUSPEND
+    l'application pour rendre le terminal à l'outil. Elle attend exprès, et
+    l'écran n'est pas à l'écran pendant ce temps.
+
+    Ce que ce garde-fou ne voit PAS : un sous-processus lancé par un autre
+    module. Le listage de la flotte en est un — il passe par le module des
+    sessions — et il est sur un fil pour d'autres raisons que celle-ci. Le
+    garde couvre les appels ÉCRITS ICI, qui sont ceux des trois oublis.
+    """
+
+    EXCEPTION = "_montrer_dans_le_terminal"
+
+    def test_every_subprocess_call_lives_on_a_thread(self):
+        import ast
+        import os as os_module
+
+        chemin = os_module.path.join(
+            os_module.path.dirname(os_module.path.dirname(__file__)),
+            "script",
+            "todo",
+            "assistant",
+            "agents",
+            "tui.py",
+        )
+        with open(chemin, encoding="utf-8") as fh:
+            arbre = ast.parse(fh.read())
+        fonctions = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+        def corps_propre(fonction):
+            """Les noeuds de CETTE fonction, hors fonctions imbriquees.
+
+            Sans cette coupe, la fonction qui enveloppe toute l'application
+            porte les appels de ses filles et se denonce elle-meme.
+            """
+            vus, pile = [], list(fonction.body)
+            while pile:
+                noeud = pile.pop()
+                if isinstance(noeud, fonctions):
+                    continue
+                vus.append(noeud)
+                pile.extend(ast.iter_child_nodes(noeud))
+            return vus
+
+        sur_la_boucle = []
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, fonctions):
+                continue
+            if noeud.name == self.EXCEPTION:
+                continue
+            lance = any(
+                isinstance(n, ast.Attribute)
+                and n.attr == "run"
+                and isinstance(n.value, ast.Name)
+                and n.value.id == "subprocess"
+                for n in corps_propre(noeud)
+            )
+            if not lance:
+                continue
+            decorateurs = [ast.unparse(d) for d in noeud.decorator_list]
+            if "work(thread=True)" not in decorateurs:
+                sur_la_boucle.append(f"{noeud.name} (ligne {noeud.lineno})")
+        self.assertEqual(
+            sur_la_boucle,
+            [],
+            "un sous-processus sur la boucle fige l'écran, touches comprises",
+        )
+
+    def test_the_named_exception_still_exists(self):
+        """Une exception qui a disparu laisserait le garde-fou sans objet."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        app = t_ui.run_tui(run_app=False)
+        self.assertTrue(hasattr(app, self.EXCEPTION))
+
+
 class TestLeGelTientDeBoutEnBout(unittest.IsolatedAsyncioTestCase):
     """Un gel qui cède est pire qu'un gel absent.
 
