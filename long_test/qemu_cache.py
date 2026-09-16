@@ -828,7 +828,24 @@ def verdict(premier, second, journal):
     vues1 = {l["url"] for l in p1}
 
     # Le critère : ce que les DEUX ont demandé ne doit pas être ressorti.
-    fautes = [l for l in p2 if l["url"] in vues1 and l.get("upstream")]
+    #
+    # Un REFUS de l'amont n'en est pas : un miroir qui range sa distribution
+    # sous un autre chemin répond 404 à chaque paquet, le client passe au
+    # miroir suivant, et le cache sert celui-là du disque. Il n'a rien livré
+    # que le cache aurait dû garder — un 404 figé masquerait le fichier publié
+    # ensuite. Le compter en faute fait échouer une mesure où tout a été servi.
+    refus = [
+        l
+        for l in p2
+        if l.get("upstream")
+        and isinstance(l.get("status"), int)
+        and l["status"] >= 400
+    ]
+    fautes = [
+        l
+        for l in p2
+        if l["url"] in vues1 and l.get("upstream") and l not in refus
+    ]
     # Ce que la seconde a découvert seule : légitime sur une publication
     # continue, montré pour que personne ne prenne un miroir qui bouge pour
     # une panne de cache.
@@ -901,6 +918,12 @@ def verdict(premier, second, journal):
         )
         for l in neufs[:5]:
             dire(f"    + {l['url'].rsplit('/', 1)[-1]}", journal)
+    if refus:
+        dire(
+            f"  ({len(refus)} refus de l'amont, non comptés : un miroir a"
+            " répondu par une erreur, le fichier est venu d'ailleurs)",
+            journal,
+        )
     if fautes:
         dire("", journal)
         dire(
