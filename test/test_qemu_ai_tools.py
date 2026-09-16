@@ -117,13 +117,58 @@ class LaCommandeDistante(unittest.TestCase):
 
         L'invariant est vérifié pose par pose plutôt que par un compte : un
         compte figé se contente d'être mis à jour quand une pose s'ajoute,
-        sans rien dire de la nouvelle."""
+        sans rien dire de la nouvelle.
+
+        LE FILTRE PORTE SUR LA POSE, ET NON SUR LE REMÈDE. Il retenait les
+        fragments contenant « timeout » — c'est-à-dire ceux qui étaient
+        DÉJÀ bornés. Une pose nue, exactement celle qui peut pendre, était
+        écartée par le filtre même qui prétendait l'éprouver, et la boucle
+        ne pouvait que confirmer ce qu'elle avait sélectionné.
+        """
+        for morceau in self.poses(self._cmd("claude")):
+            with self.subTest(pose=morceau.strip()[:50]):
+                self.assertIn("timeout ", morceau)
+                self.assertIn("</dev/null", morceau)
+                self.assertIn("|| true", morceau)
+
+    # Ce qui peut PENDRE : un script tiré du réseau et versé dans un shell.
+    # Le gestionnaire de paquets, lui, porte sa propre borne — la CLASSE
+    # ci-dessous l'éprouve séparément, parce que la borne n'a pas la même
+    # forme et qu'une seule liste les confondrait.
+    TIRE_DU_RESEAU = ("curl", "wget")
+
+    @classmethod
+    def poses(cls, cmd):
+        """Les fragments qui vont chercher quelque chose sur le réseau."""
+        return [
+            x
+            for x in cmd.split("; ")
+            if any(outil in x for outil in cls.TIRE_DU_RESEAU)
+        ]
+
+    def test_the_bench_finds_poses_to_judge(self):
+        """Contrôle du banc : zéro pose retenue rendrait l'épreuve
+        ci-dessus verte sans rien éprouver — c'est exactement ce que
+        l'ancien filtre risquait."""
+        self.assertGreaterEqual(len(self.poses(self._cmd("claude"))), 3)
+
+    def test_the_package_manager_carries_its_own_bound(self):
+        """Il ne se borne pas par « timeout » mais par le sien, et « -y »
+        l'empêche de demander. Le confondre avec les autres poses ferait
+        rougir une borne qui existe, sous une autre forme."""
         cmd = self._cmd("claude")
-        bornees = [x for x in cmd.split("; ") if "timeout " in x]
-        self.assertGreaterEqual(len(bornees), 4)
-        for morceau in bornees:
-            self.assertIn("</dev/null", morceau)
-            self.assertIn("|| true", morceau)
+        # « apt-get -o … install » : les options s'intercalent, donc le
+        # motif porte sur les DEUX mots. Écrit d'un bloc, le filtre ne
+        # retenait rien et la boucle ne s'exécutait jamais.
+        poses = [
+            x for x in cmd.split("; ") if "apt-get" in x and " install" in x
+        ]
+        self.assertTrue(poses, "aucune pose de paquet à éprouver")
+        for morceau in poses:
+            with self.subTest(pose=morceau.strip()[:50]):
+                self.assertIn("DPkg::Lock::Timeout", morceau)
+                self.assertIn("-y", morceau)
+                self.assertIn("DEBIAN_FRONTEND=noninteractive", morceau)
 
     def test_starship_is_told_not_to_ask(self):
         """Sans « -y », son installateur attend une confirmation."""
