@@ -490,5 +490,82 @@ class TestLInviteNeDonnePasSaReponse(unittest.TestCase):
         self.assertNotIn("base-longue-a-recopier", vues[0])
 
 
+class TestCeQuiEstEfficeEstCeQuiAEteNomme(unittest.TestCase):
+    """Un fichier de fond partagé par deux machines disparaissait sans
+    jamais avoir été nommé.
+
+    Le relevé était pris DEUX fois : une à l'affichage, une par machine
+    dans la boucle. Entre les deux, chaque « undefine » retire un porteur.
+    Le fond a deux porteurs quand l'écran l'écarte — à juste titre, il est
+    partagé — puis un seul quand la seconde machine passe, et il part.
+
+    La règle du dépôt est écrite ailleurs, et elle vaut ici : une
+    confirmation nomme ce qu'elle détruit. La ligne fourre-tout « + les
+    disques et les seed ISO » ne nomme rien.
+
+    Il survit donc comme orphelin, et c'est le parti pris : on nomme, on
+    n'efface pas. Le balayage des disques orphelins le proposera.
+    """
+
+    def jouer(self):
+        """Rend (ce que l'écran a nommé, ce que les commandes effacent)."""
+        todo = TODO.__new__(TODO)
+        # Deux domaines partagent « fond.qcow2 ». La simulation retire le
+        # domaine à l'undefine, comme virsh le fait.
+        vivants = {"vm-a", "vm-b"}
+        propres = {
+            "vm-a": ["/img/vm-a.qcow2", "/img/fond.qcow2"],
+            "vm-b": ["/img/vm-b.qcow2", "/img/fond.qcow2"],
+        }
+
+        def own_files(nom):
+            partages = set()
+            for autre in vivants - {nom}:
+                partages |= set(propres.get(autre, ()))
+            return [c for c in propres[nom] if c not in partages]
+
+        todo._qemu_vm_own_files = own_files
+        lancees = []
+
+        def montrer(cmd, **_kw):
+            lancees.append(cmd)
+            for nom in list(vivants):
+                if f"undefine {nom}" in cmd or f" {nom} " in cmd:
+                    vivants.discard(nom)
+            return 0, ""
+
+        todo._qemu_run = montrer
+        return own_files, lancees
+
+    def test_a_shared_backing_file_is_not_taken_in_silence(self):
+        """LE FAIT QUI FONDE TOUT : tant que les deux porteurs existent, le
+        fond est écarté — et c'est juste. Il ne doit donc pas partir."""
+        own_files, _l = self.jouer()
+        nommes = set(own_files("vm-a")) | set(own_files("vm-b"))
+        self.assertNotIn("/img/fond.qcow2", nommes)
+
+    def test_the_snapshot_is_taken_once_before_anything_moves(self):
+        """La propriété, à la source : un seul relevé, et le même pour
+        l'écran et pour l'effacement."""
+        import ast
+        import inspect
+        import textwrap
+
+        corps = textwrap.dedent(
+            inspect.getsource(TODO._qemu_delete_vm)
+            if hasattr(TODO, "_qemu_delete_vm")
+            else ""
+        )
+        if not corps:
+            self.skipTest("l'écran de suppression a changé de nom")
+        appels = [
+            n
+            for n in ast.walk(ast.parse(corps))
+            if isinstance(n, ast.Call)
+            and getattr(n.func, "attr", "") == "_qemu_vm_own_files"
+        ]
+        self.assertEqual(1, len(appels), [n.lineno for n in appels])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2571,12 +2571,28 @@ class QemuManageMixin:
         # nom qui a changé de porteur, jamais un « 3 » tapé pour un « 2 ».
         # Cet indice-là désigne un domaine RÉEL, correctement identifié, et
         # la preuve concorde. Seule une saisie voit cette erreur.
+        # UN SEUL RELEVÉ, pris AVANT que rien ne bouge, et le même pour
+        # l'écran et pour l'effacement. Recalculé dans la boucle, il change
+        # de réponse à mesure que les domaines disparaissent : un fichier de
+        # fond partagé par deux machines est écarté à l'affichage — il a
+        # encore deux porteurs — puis effacé au passage de la seconde, qui
+        # le voit désormais seul. Détruit sans avoir été nommé, alors que le
+        # commentaire d'ici promet l'inverse.
+        #
+        # Il survit donc comme orphelin, et c'est le parti du dépôt : on
+        # nomme, on n'efface pas. Le balayage des disques orphelins le
+        # proposera, avec sa raison.
+        fichiers_par_vm = (
+            {nom: self._qemu_vm_own_files(nom) for nom in chosen}
+            if del_disks
+            else {}
+        )
         print(f"\n{t('Will delete:')}")
         for name in chosen:
             handle = preuves.get(name)
             preuve = handle.proof if handle else ""
             print(f"  {name}  [{preuve or t('no proof')}]")
-            for chemin in self._qemu_vm_own_files(name) if del_disks else []:
+            for chemin in fichiers_par_vm.get(name, ()):
                 print(f"      {chemin}")
         if del_disks:
             print(f"  + {t('disk images and seed ISOs')}")
@@ -2597,12 +2613,12 @@ class QemuManageMixin:
             if handle is None or not vm_backend.is_armed(handle):
                 print(f"  ⛔ {name} : {t('no identity proof; refused')}")
                 continue
-            # Les fichiers AVANT l'undefine : après, plus de XML à lire.
-            # Et ils sont LUS, jamais déduits du nom : une VM renommée garde
-            # le nom de fichier d'avant, et un fichier partagé avec une
-            # voisine ne s'efface pas. Le verbe, lui, déduirait — d'où
-            # « with_disks=False » et la liste d'ici.
-            fichiers = self._qemu_vm_own_files(name) if del_disks else []
+            # LE RELEVÉ DE L'ÉCRAN, et pas un second : ce qui est effacé
+            # est exactement ce qui a été nommé. Ils sont LUS, jamais
+            # déduits du nom — une VM renommée garde le nom de fichier
+            # d'avant, et un fichier partagé avec une voisine ne s'efface
+            # pas. Le verbe, lui, déduirait : d'où « with_disks=False ».
+            fichiers = fichiers_par_vm.get(name, [])
             # Le verbe porte le garde d'identité : le nom adresse, l'UUID
             # prouve, et la suite s'arrête avant d'effacer si le nom a changé
             # de porteur depuis l'affichage.
