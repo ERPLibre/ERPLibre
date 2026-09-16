@@ -615,6 +615,7 @@ class TODO(
         "_cache_exceptions": "Exceptions",
         "_cache_journaux": "Logs",
         "_cache_miroir_git": "Git mirrors",
+        "_cache_nettoyage_auto": "Automatic cleanup",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
         "prompt_execute_vpn": "VPN",
