@@ -32,6 +32,7 @@ Ce que ces tests gardent :
 
 import importlib.util
 import io
+import os
 import sys
 import unittest
 from contextlib import redirect_stdout
@@ -476,6 +477,80 @@ class LOrdreDesGestes(unittest.TestCase):
             verbes.index("net-destroy"), verbes.index("net-define")
         )
         self.assertIn("rendre l'accès au réseau", texte)
+
+
+class LOrdreDuDeploiement(unittest.TestCase):
+    """Le déplacement du réseau doit précéder tout ce qui en dépend.
+
+    CE QUI EST GRAVÉ NE SE RENÉGOCIE PLUS. `static_net_plan` lit le XML du
+    réseau pour en tirer une passerelle, un masque et une adresse fixe libre ;
+    `build_installer_initrd` les écrit DANS UN FICHIER initrd. Si
+    `ensure_network` passe après, il peut redéfinir le réseau sur un autre
+    /24 — c'est sa raison d'être — et l'installateur pose alors une adresse
+    que plus aucun segment ne route.
+
+    IL N'Y A AUCUN REPLI : cet initrd ne porte que netcfg-static, jamais
+    netcfg-dhcp. La question se pose sur une console série qu'aucun écran ne
+    montre, et l'installation reste pendue jusqu'au délai.
+
+    Même cause, second effet : « net-dhcp-leases » ne rend rien d'un réseau
+    défini mais éteint. Interrogé avant le démarrage, l'ensemble des adresses
+    déjà prises est vide, et le tirage se croit libre de toute la plage.
+
+    L'ÉPREUVE PORTE SUR L'ORDRE, qui EST la propriété. Rejouer un
+    déploiement entier pour le constater demanderait un banc plus gros que
+    ce qu'il garde.
+    """
+
+    @staticmethod
+    def rangs():
+        """Le numéro de ligne du premier appel de chaque verbe, dans main."""
+        import ast
+
+        chemin = RACINE / "script" / "qemu" / "deploy_qemu.py"
+        with io.open(chemin, encoding="utf-8") as fichier:
+            arbre = ast.parse(fichier.read())
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == "main":
+                vus = {}
+                for appel in ast.walk(noeud):
+                    if not isinstance(appel, ast.Call):
+                        continue
+                    nom = getattr(appel.func, "id", "") or getattr(
+                        appel.func, "attr", ""
+                    )
+                    if nom and nom not in vus:
+                        vus[nom] = appel.lineno
+                    elif nom:
+                        vus[nom] = min(vus[nom], appel.lineno)
+                return vus
+        raise AssertionError("main introuvable dans deploy_qemu.py")
+
+    def test_the_network_is_settled_before_the_address_is_chosen(self):
+        rangs = self.rangs()
+        self.assertIn("ensure_network", rangs, "plus personne ne le range")
+        self.assertIn("static_net_plan", rangs)
+        self.assertLess(
+            rangs["ensure_network"],
+            rangs["static_net_plan"],
+            "l'adresse est choisie dans un réseau qui peut encore déménager",
+        )
+
+    def test_the_network_is_settled_before_the_initrd_is_burned(self):
+        rangs = self.rangs()
+        self.assertLess(
+            rangs["ensure_network"],
+            rangs["build_installer_initrd"],
+            "l'initrd est gravé avant que le réseau soit arrêté",
+        )
+
+    def test_it_is_settled_once_and_not_twice(self):
+        """Contrôle positif : deux appels laisseraient le second rattraper
+        le premier à l'œil, et le défaut se rejouerait entre les deux."""
+        chemin = RACINE / "script" / "qemu" / "deploy_qemu.py"
+        with io.open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        self.assertEqual(1, source.count("ensure_network(network_name("))
 
 
 if __name__ == "__main__":

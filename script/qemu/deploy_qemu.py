@@ -4446,6 +4446,20 @@ def main() -> None:
                 "nettement plus lents que l'architecture native."
             )
 
+    # LE RÉSEAU EST RENDU SÛR AVANT TOUT CE QUI EN DÉPEND. Il DÉMÉNAGE sur
+    # un autre /24 quand il recouvre ce que l'hôte route déjà, et l'adresse
+    # fixe de l'installateur est gravée dans l'initrd — où elle ne se
+    # renégocie plus. Choisie avant le déplacement, elle désigne un segment
+    # que plus rien ne route, et cet initrd ne porte que netcfg-static : il
+    # n'a aucun repli DHCP, et la question se pose sur une console série que
+    # personne ne regarde.
+    #
+    # Le démarrer ici rend de plus ses baux LISIBLES : « net-dhcp-leases »
+    # ne rend rien d'un réseau défini mais éteint, et le tirage se croit
+    # alors libre de toute la plage — jusqu'à redonner l'adresse d'une VM
+    # qui vit déjà.
+    ensure_network(network_name(args.network), runner)
+
     installer: tuple[Path, Path] | None = None
     if uses_installer(args.distro, args.arch):
         # Voie debian-installer : aucune image cloud n'existe pour cette
@@ -4520,7 +4534,6 @@ def main() -> None:
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
-    ensure_network(network_name(args.network), runner)
     virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:
         watch_and_restart(args.name, runner)
