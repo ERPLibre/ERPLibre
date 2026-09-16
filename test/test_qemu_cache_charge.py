@@ -282,5 +282,89 @@ class TestLaTroisiemeVmNaitHorsLigne(unittest.TestCase):
         self.assertIn("hors_ligne=True", source)
 
 
+class TestPlusieursSystemes(unittest.TestCase):
+    """Une série de campagnes, un système après l'autre."""
+
+    def test_tous_designe_chaque_systeme_mesurable(self):
+        self.assertEqual(
+            QC.systemes_demandes("tous"), sorted(QC.systemes_mesurables())
+        )
+
+    def test_une_liste_garde_son_ordre_sans_doublon(self):
+        self.assertEqual(
+            QC.systemes_demandes("fedora, debian,fedora"), ["fedora", "debian"]
+        )
+
+    def test_un_nom_inconnu_est_refuse_avant_toute_machine(self):
+        with self.assertRaises(ValueError):
+            QC.systemes_demandes("fedora,haiku")
+
+    def lancer(self, argv, codes=None):
+        from unittest import mock
+
+        appels = []
+        codes = list(codes or [])
+
+        def campagne(a):
+            appels.append((a.distro, a.version))
+            return (codes.pop(0) if codes else 0), ""
+
+        with mock.patch.object(
+            QC, "une_campagne", side_effect=campagne
+        ), mock.patch.object(
+            QC,
+            "detruire",
+            side_effect=lambda *x, **k: appels.append("détruire"),
+        ), mock.patch(
+            "builtins.print"
+        ):
+            code = QC.main(argv)
+        return code, appels
+
+    def test_la_serie_defait_les_machines_entre_deux_systemes(self):
+        from script.qemu.deploy_qemu import DISTROS
+
+        code, appels = self.lancer(
+            [
+                "--distro",
+                "fedora,debian",
+                "--charge",
+                "erplibre",
+                "--hors-ligne",
+            ]
+        )
+        self.assertEqual(
+            appels,
+            [
+                ("fedora", DISTROS["fedora"][1]),
+                "détruire",
+                ("debian", DISTROS["debian"][1]),
+                "détruire",
+            ],
+        )
+        self.assertEqual(code, 0)
+
+    def test_un_echec_n_arrete_pas_la_serie(self):
+        code, appels = self.lancer(["--distro", "fedora,debian"], codes=[1, 0])
+        self.assertEqual(len([a for a in appels if a != "détruire"]), 2)
+        self.assertEqual(code, 1)
+
+    def test_a_blanc_rien_n_est_defait(self):
+        _, appels = self.lancer(["--distro", "fedora,debian", "--dry-run"])
+        self.assertNotIn("détruire", appels)
+
+    def test_la_version_est_refusee_pour_plusieurs_systemes(self):
+        from unittest import mock
+
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            QC.main(["--distro", "tous", "--version", "12"])
+
+    def test_un_seul_systeme_suit_le_chemin_d_avant(self):
+        from script.qemu.deploy_qemu import DISTROS
+
+        _, appels = self.lancer(["--distro", "ubuntu"])
+        self.assertEqual(appels, [("ubuntu", DISTROS["ubuntu"][1])])
+
+
 if __name__ == "__main__":
     unittest.main()
