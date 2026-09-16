@@ -2210,6 +2210,51 @@ class TestLaSortieBruteVaAuTerminal(unittest.IsolatedAsyncioTestCase):
             t("Shown, not kept: nothing of this was written."), imprimes
         )
 
+    def test_une_interruption_ne_ferme_pas_l_ecran(self):
+        """Ctrl+C va au GROUPE de processus, donc aussi à nous.
+
+        Ni `KeyboardInterrupt` ni l'`EOFError` d'un Ctrl+D à l'invite de
+        retour ne sont des `OSError` : sans branche, les deux remontaient
+        jusqu'à Textual, qui ferme l'application. On perdait l'écran pour
+        avoir interrompu un affichage.
+        """
+        import contextlib
+        import subprocess
+
+        for souci in (KeyboardInterrupt, EOFError):
+            app = self._app()
+            app.suspend = contextlib.nullcontext
+
+            def leve(*a, **kw):
+                raise souci()
+
+            with patch.object(subprocess, "run", leve), patch(
+                "builtins.input", lambda *a: ""
+            ), patch("builtins.print"):
+                app._montrer_dans_le_terminal(["claude", "logs", "aaaaaaaa"])
+            self.assertEqual(
+                self.dits,
+                [t("Interrupted; back to the screen.")],
+                souci.__name__,
+            )
+
+    def test_un_ctrl_d_a_l_invite_de_retour_ne_ferme_pas_non_plus(self):
+        """Le second chemin : l'outil a fini, c'est `input()` qui lève."""
+        import contextlib
+        import subprocess
+
+        app = self._app()
+        app.suspend = contextlib.nullcontext
+
+        def fin_de_fichier(*a):
+            raise EOFError()
+
+        with patch.object(subprocess, "run", lambda *a, **k: None), patch(
+            "builtins.input", fin_de_fichier
+        ), patch("builtins.print"):
+            app._montrer_dans_le_terminal(["claude", "logs", "aaaaaaaa"])
+        self.assertEqual(self.dits, [t("Interrupted; back to the screen.")])
+
     def test_un_terminal_qui_ne_suspend_pas_le_dit(self):
         """Un pilote de test, un tube : l'écran le dit au lieu de mourir."""
         import contextlib

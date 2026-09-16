@@ -1124,6 +1124,14 @@ def run_tui(run_app: bool = True):
                     input(t("Enter to go back to the screen…"))
             except SuspendNotSupported:
                 self._dire(t("This terminal cannot suspend the screen."))
+            except (KeyboardInterrupt, EOFError):
+                # Deux gestes ordinaires pendant qu'un outil tient le
+                # terminal : Ctrl+C, qui va au GROUPE de processus et donc
+                # aussi à nous, et Ctrl+D à l'invite de retour. Aucun des deux
+                # n'est une OSError, et sans cette branche ils remontaient
+                # jusqu'à Textual, qui ferme l'application — on perdait
+                # l'écran pour avoir interrompu un affichage.
+                self._dire(t("Interrupted; back to the screen."))
             except OSError as souci:
                 self._dire(str(souci))
 

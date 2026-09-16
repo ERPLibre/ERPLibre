@@ -13015,6 +13015,10 @@ TRANSLATIONS = {
         "fr": "aucun posé",
         "en": "none installed",
     },
+    "Interrupted; back to the screen.": {
+        "fr": "Interrompu ; retour à l'écran.",
+        "en": "Interrupted; back to the screen.",
+    },
     "Sent, waiting for the answer…": {
         "fr": "Envoyé, en attente de la réponse…",
         "en": "Sent, waiting for the answer…",
