@@ -118,7 +118,7 @@ func TestCommandeDeConfiance(t *testing.T) {
 		},
 		"zypper": {
 			"/etc/pki/trust/anchors", "update-ca-certificates",
-			"/etc/ssl/certs/ca-certificates.crt",
+			"/etc/ssl/ca-bundle.pem",
 		},
 	}
 	for famille, attendu := range cas {

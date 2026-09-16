@@ -366,5 +366,67 @@ class TestPlusieursSystemes(unittest.TestCase):
         self.assertEqual(appels, [("ubuntu", DISTROS["ubuntu"][1])])
 
 
+class TestUneVmMesureeEstEteinte(unittest.TestCase):
+    """Deux VM de 8 Gio allumées ensemble, puis trois, épuisent la mémoire de
+    l'hôte en pleine série : chacune s'éteint dès que sa mesure est faite."""
+
+    def test_chaque_vm_s_eteint_apres_sa_propre_mesure(self):
+        import argparse
+        import tempfile
+        from unittest import mock
+
+        ordre = []
+        args = argparse.Namespace(
+            dry_run=False,
+            sans_cache=False,
+            hors_ligne=False,
+            distro="debian",
+            version="12",
+            charge="erplibre",
+        )
+        with tempfile.TemporaryDirectory() as rep:
+            rapport = {"_fichier": str(Path(rep) / "r.json"), "vms": []}
+            with mock.patch.object(QC, "dire"), mock.patch.object(
+                QC, "noter_uuid"
+            ), mock.patch.object(
+                QC, "deployer", return_value="10.0.0.1"
+            ), mock.patch.object(
+                QC, "attendre_ssh", return_value=True
+            ), mock.patch.object(
+                QC,
+                "poser_les_paquets",
+                side_effect=lambda *a, **k: ordre.append("paquets") or True,
+            ), mock.patch.object(
+                QC,
+                "eteindre",
+                side_effect=lambda nom, *a, **k: ordre.append(nom),
+            ), mock.patch.object(
+                QC, "verdict", return_value=True
+            ):
+                QC._boucle(args, rapport, None, "", 0)
+        base = QC.base_des_noms(args)
+        self.assertEqual(
+            ordre, ["paquets", f"{base}-1", "paquets", f"{base}-2"]
+        )
+
+    def test_eteindre_n_efface_rien(self):
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire") as dit:
+            QC.eteindre("vm-essai", None, dry_run=True)
+        annonce = " ".join(str(a) for c in dit.call_args_list for a in c.args)
+        self.assertIn("destroy vm-essai", annonce)
+        self.assertNotIn("undefine", annonce)
+
+    def test_a_blanc_rien_n_est_lance(self):
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire"), mock.patch.object(
+            QC, "executer"
+        ) as ex:
+            QC.eteindre("vm-essai", None, dry_run=True)
+        ex.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

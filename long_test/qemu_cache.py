@@ -691,6 +691,27 @@ def dans_la_vm(adresse, commande, delai, journal, montrer=False):
     return executer(ssh, delai, journal, montrer=montrer)
 
 
+def eteindre(nom, journal, dry_run=False):
+    """Éteint une VM dont la mesure est faite, sans l'effacer.
+
+    Une VM de la charge « erplibre » tient 8 Gio de mémoire. Laissée allumée
+    pendant que la suivante s'installe, puis la troisième, elles s'additionnent,
+    et l'hôte manque de mémoire en pleine série. Éteinte, elle garde son disque
+    pour qui voudrait l'inspecter, et « --detruire » la retrouve par son nom.
+    Un échec d'extinction est dit et n'arrête rien : la mesure est déjà faite.
+    """
+    cmd = f"sudo -n virsh -c qemu:///system destroy {shlex.quote(nom)}"
+    if dry_run:
+        dire(f"  [à blanc] {cmd}", journal)
+        return
+    code, _ = executer(cmd, 120, journal)
+    if code:
+        dire(
+            f"  ⚠ {nom} : extinction impossible ({code}), elle reste allumée",
+            journal,
+        )
+
+
 def attendre_ssh(adresse, journal):
     for _essai in range(40):
         code, _ = dans_la_vm(adresse, "true", 30, None)
@@ -1310,6 +1331,9 @@ def _boucle(args, rapport, journal, acces, decalage):
         }
         ecrire_rapport(rapport)
         dire(f"  VM {rang} : paquets posés en {duree:.0f} s", journal)
+        # Sa mesure est dans le rapport : allumée, elle ne sert plus à rien et
+        # tient sa mémoire pendant que la suivante s'installe.
+        eteindre(nom, journal, args.dry_run)
 
     ok = True
     if args.dry_run:

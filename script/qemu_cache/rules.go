@@ -151,9 +151,10 @@ func GuestTrustCommand(family string) (dir, cmd, bundle string, ok bool) {
 			"/etc/pki/tls/certs/ca-bundle.crt", true
 	case "zypper":
 		// openSUSE range ses ancres ailleurs que la famille RHEL, tout en
-		// employant la même commande que Debian.
+		// employant la même commande que Debian ; son faisceau n'est pas celui
+		// de Debian, et une variable qui vise un fichier absent casse pip.
 		return "/etc/pki/trust/anchors", "update-ca-certificates",
-			"/etc/ssl/certs/ca-certificates.crt", true
+			"/etc/ssl/ca-bundle.pem", true
 	}
 	return "", "", "", false
 }

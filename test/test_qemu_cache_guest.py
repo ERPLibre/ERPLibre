@@ -32,13 +32,15 @@ sys.path.insert(0, str(RACINE))
 from script.qemu.deploy_qemu import (  # noqa: E402
     CACHE_CERT_NAME,
     CACHE_ENV_VARS,
+    CACHE_SUDOERS,
     CACHE_TRUST,
     OFFLINE_ENV_VARS,
+    cache_commands,
     cache_env_reload,
     cache_family,
     cache_files,
-    cache_commands,
     cache_runcmd,
+    commande_sudoers,
     langue_des_messages,
 )
 
@@ -134,6 +136,10 @@ class TestRuncmd(unittest.TestCase):
 
         self.tmp = tempfile.TemporaryDirectory()
         self.lignes = cache_runcmd(faux_args(Path(self.tmp.name), "arch"))
+        # Les écritures de variables, sans la confiance ni le sudoers.
+        self.variables = [
+            l for l in self.lignes[1:] if "/etc/environment" in l
+        ]
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -159,13 +165,14 @@ class TestRuncmd(unittest.TestCase):
     def test_les_variables_vont_dans_etc_environment(self):
         """PAM lit /etc/environment pour TOUTE session ssh, non interactive
         comprise : c'est la seule voie qui atteint une commande distante."""
-        for ligne in self.lignes[1:]:
-            self.assertIn("/etc/environment", ligne)
+        self.assertEqual(len(self.variables), len(CACHE_ENV_VARS))
+        for var in CACHE_ENV_VARS:
+            self.assertTrue(any(f"{var}=" in l for l in self.variables), var)
 
     def test_ecriture_idempotente(self):
         """runcmd ne tourne qu'une fois par instance, mais un opérateur peut
         rejouer la commande : elle ne doit pas empiler les doublons."""
-        for ligne in self.lignes[1:]:
+        for ligne in self.variables:
             self.assertIn("grep -q", ligne)
 
     def test_aucune_commande_ne_peut_faire_echouer_le_boot(self):
@@ -256,6 +263,96 @@ class TestLeHorsLigneCoupeLAuditNpm(unittest.TestCase):
         avant que cloud-init n'écrive la variable."""
         for var, _ in OFFLINE_ENV_VARS:
             self.assertIn(var, cache_env_reload())
+
+
+class TestLesVariablesTraversentSudo(unittest.TestCase):
+    """sudo remet l'environnement à zéro : sans « env_keep », une installation
+    lancée par « sudo npm » rejette l'autorité du cache là où PAM ne relit pas
+    /etc/environment pour sudo."""
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def commande(self, offline=False, distro="debian"):
+        args = faux_args(Path(self.tmp.name), distro)
+        args.offline = offline
+        lignes = [c for c in cache_commands(args) if "env_keep" in c]
+        self.assertEqual(len(lignes), 1, "une seule écriture du sudoers")
+        return lignes[0]
+
+    def test_chaque_variable_du_cache_est_gardee(self):
+        commande = self.commande()
+        for var in CACHE_ENV_VARS:
+            self.assertIn(var, commande)
+        self.assertNotIn("NPM_CONFIG_AUDIT", commande)
+
+    def test_hors_ligne_l_audit_coupe_traverse_aussi(self):
+        for var, _ in OFFLINE_ENV_VARS:
+            self.assertIn(var, self.commande(offline=True))
+
+    def test_vient_apres_les_variables(self):
+        """La confiance reste la première commande ; le sudoers suit."""
+        args = faux_args(Path(self.tmp.name), "debian")
+        commandes = cache_commands(args)
+        self.assertIn("env_keep", commandes[-1])
+
+    def test_le_fichier_ecrit_est_celui_que_sudo_lit(self):
+        """sudo ignore un nom de sudoers.d qui porte un point : c'est ce qui
+        rend le temporaire inoffensif, et interdit ce point au nom final."""
+        nom_final = CACHE_SUDOERS.rsplit("/", 1)[1]
+        self.assertNotIn(".", nom_final)
+        self.assertTrue(CACHE_SUDOERS.startswith("/etc/sudoers.d/"))
+
+    def test_le_fichier_est_verifie_avant_d_etre_pose(self):
+        commande = commande_sudoers(["A"], "/etc/sudoers.d/essai")
+        self.assertLess(
+            commande.index("visudo -cf"),
+            commande.index("mv /etc/sudoers.d/.essai /etc/sudoers.d/essai"),
+        )
+        self.assertIn("chmod 0440", commande)
+        self.assertTrue(
+            commande.rstrip("'").endswith("|| rm -f /etc/sudoers.d/.essai")
+        )
+
+    def test_le_contenu_ecrit_est_une_ligne_par_variable(self):
+        """Joué dans un vrai shell, visudo remplacé : c'est le fichier produit
+        qui compte, et son absence quand la vérification échoue."""
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as rep:
+            bin_ = Path(rep) / "bin"
+            bin_.mkdir()
+            dossier = Path(rep) / "sudoers.d"
+            dossier.mkdir()
+            for verdict, attendu in (("0", True), ("1", False)):
+                faux = bin_ / "visudo"
+                faux.write_text(f"#!/bin/sh\nexit {verdict}\n")
+                faux.chmod(0o755)
+                fichier = dossier / "erplibre-cache"
+                commande = commande_sudoers(
+                    ["PIP_CERT", "NODE_EXTRA_CA_CERTS"], str(fichier)
+                )
+                res = subprocess.run(
+                    ["sh", "-c", commande],
+                    capture_output=True,
+                    text=True,
+                    env={"PATH": f"{bin_}:/usr/bin:/bin"},
+                )
+                with self.subTest(visudo=verdict):
+                    self.assertEqual(res.returncode, 0, res.stderr)
+                    self.assertEqual(fichier.exists(), attendu)
+                    self.assertFalse((dossier / ".erplibre-cache").exists())
+                    if attendu:
+                        self.assertEqual(
+                            fichier.read_text(),
+                            "Defaults env_keep += PIP_CERT\n"
+                            "Defaults env_keep += NODE_EXTRA_CA_CERTS\n",
+                        )
+                        fichier.unlink()
 
 
 class TestLaLangueDesMessagesDuCache(unittest.TestCase):
