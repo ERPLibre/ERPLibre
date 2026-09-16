@@ -4270,6 +4270,7 @@ class TODO(
         ).strip().lower() not in ("y", "yes", "o"):
             print(f"ℹ️  {t('Nothing was moved.')}")
             return False
+        dossier = filestore.nested_dir(rapport)
         deplaces, effaces = 0, 0
         for source, cible in remonter:
             os.makedirs(os.path.dirname(cible), exist_ok=True)
@@ -4278,13 +4279,29 @@ class TODO(
         for source, _cible in doublons:
             os.remove(source)
             effaces += 1
-        dossier = filestore.nested_dir(rapport)
-        if dossier:
-            shutil.rmtree(dossier, ignore_errors=True)
         print(
             f"✅ {deplaces} {t('moved up')}, {effaces}"
             f" {t('duplicate(s) removed')}."
         )
+        # ON NOMME, ON N'EFFACE PAS. Le plan ne connaît qu'une forme — un
+        # répertoire de deux caractères, puis des fichiers. Un fichier posé
+        # à la racine du nid, ou un niveau de plus, lui est invisible :
+        # jamais compté, jamais montré, jamais consenti. Le retirer d'un
+        # bloc les emportait, et « ignore_errors » taisait ce qui résistait
+        # pendant que la ligne de succès s'imprimait quand même.
+        restes = filestore.tidy_nested_leftovers(dossier)
+        if restes:
+            print(
+                f"⚠  {len(restes)}"
+                f" {t('file(s) the plan does not cover, left in place:')}"
+            )
+            for chemin in restes[:10]:
+                print(f"     {chemin}")
+            if len(restes) > 10:
+                print(f"     … {len(restes) - 10} {t('more')}")
+            print(f"   {t('Directory:')} {dossier}")
+        elif filestore.drop_empty_tree(dossier):
+            print(f"   {t('Nested directory removed (it was empty).')}")
         return True
 
     def _analyse_offer_install(self, database, rapport):
