@@ -286,6 +286,49 @@ class TestLesDeuxHarnaisDansLeMemeTableau(unittest.TestCase):
         for absent in ("tours", "contexte", "api", "outils", "horloge"):
             self.assertEqual(ligne[absent], "—", absent)
 
+    def test_the_prompt_column_counts_the_written_cache(self):
+        """Le cache écrit est de l'invite, et il est facturé plus cher.
+
+        L'omettre annonçait une fraction de ce qui est parti au modèle,
+        d'autant plus grande que la séance est longue : la première écriture
+        de cache porte tout le contexte.
+        """
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        resume = oc.Resume(entree=1_000, cache_lu=7_000, cache_ecrit=42_000)
+        (ligne,) = t_ui.lignes_opencode([self._seance(resume=resume)])
+        self.assertEqual(ligne["entree"], t_ui.jetons(50_000))
+
+    def test_the_cache_column_is_a_share_on_both_harnesses(self):
+        """Open Code porte les deux moitiés du cache : un tiret dirait « pas
+        mesuré » là où la base donne le chiffre."""
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        resume = oc.Resume(entree=1_000, cache_lu=7_000, cache_ecrit=2_000)
+        (ligne,) = t_ui.lignes_opencode([self._seance(resume=resume)])
+        self.assertEqual(ligne["cache"], "70%")
+
+    def test_a_session_without_a_prompt_says_so_with_a_dash(self):
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        (ligne,) = t_ui.lignes_opencode(
+            [self._seance(resume=oc.Resume(sortie=3))]
+        )
+        self.assertEqual(ligne["cache"], "—")
+
+    def test_the_project_name_is_bounded_on_both_harnesses(self):
+        """Une largeur de colonne ne dépend pas du harnais qui l'a remplie."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        (ligne,) = t_ui.lignes_opencode(
+            [self._seance(repertoire="/un/depot/" + "n" * 40)]
+        )
+        self.assertLessEqual(len(ligne["projet"]), t_ui.PROJET_MAX)
+        self.assertTrue(ligne["projet"].endswith("n"))
+
     def test_an_unreadable_base_adds_no_row(self):
         """None veut dire « la base n'a pas répondu », pas « zéro séance »."""
         from script.todo.assistant.agents import tui as t_ui

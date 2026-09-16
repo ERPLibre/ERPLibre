@@ -272,6 +272,12 @@ def lignes_opencode(seances) -> list[dict]:
     colonne à zéro se lit « mesuré, et nul », ce qui est faux et décourage de
     chercher ailleurs ce que l'autre harnais, lui, donne.
 
+    Ce qu'il porte, en revanche, se compte comme en face. Les deux moitiés du
+    cache sont là : les omettre de l'invite faisait une colonne dont la
+    définition changeait d'une ligne à l'autre, et c'est le sens même d'un
+    tableau commun qui s'y perdait. Le nom de projet se borne pareillement —
+    une largeur de colonne ne dépend pas du harnais qui l'a remplie.
+
     `seances` peut valoir None, qui veut dire « la base n'a pas répondu » :
     aucune ligne n'est alors ajoutée, et le tableau ne ment pas sur l'absence.
     """
@@ -280,18 +286,23 @@ def lignes_opencode(seances) -> list[dict]:
         resume = seance.resume
         if resume is None:
             continue
+        reutilisation = resume.reutilisation
         sorties.append(
             {
                 "id": (
                     f"{ICONES['opencode']} "
                     f"{seance.identifiant.removeprefix('ses_')[:8]}"
                 ),
-                "projet": os.path.basename(seance.repertoire.rstrip("/")),
+                "projet": _borne_a_gauche(
+                    os.path.basename(seance.repertoire.rstrip("/"))
+                ),
                 "tours": "—",
-                "entree": jetons(resume.entree + resume.cache_lu),
+                "entree": jetons(resume.invite),
                 "sortie": jetons(resume.sortie),
                 "reflexion": jetons(resume.raisonnement),
-                "cache": "—",
+                "cache": (
+                    "—" if reutilisation is None else f"{reutilisation:.0%}"
+                ),
                 "cout": f"{resume.cout:.2f} $" if resume.cout else "—",
                 "horloge": "—",
                 "attention": "—",
