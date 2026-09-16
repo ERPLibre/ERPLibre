@@ -393,6 +393,15 @@ tap on "y" is given by reflex; copying thirty-six characters makes you look at
 what you are destroying. Both act with the SHORT identifier, the only one the
 subcommands accept — the retyping is a guard, not an argument.
 
+**An agent's raw output goes to the terminal, because it is not text.**
+`claude logs` prints a SCREEN and not a log: hundreds of escape sequences,
+carriage returns, no line feed at all, and absolute cursor positions. Stripping
+the codes yields one unreadable line, so no table panel can render it. `j`
+suspends the application for as long as the tool paints, then a line asks for
+Enter to come back. What appears there is content — the conversation, the
+commands, what was read — and that same line says so. Nothing is kept: the
+output is never captured, so there is not even a copy that could be written.
+
 **The stream's column shows what situates, never what was said.** A call
 carries a shell command, a path, a URL — or free text: the prompt given to a
 subagent, a search pattern. The first three fit a table row without revealing

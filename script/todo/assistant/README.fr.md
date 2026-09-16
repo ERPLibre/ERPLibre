@@ -440,6 +440,16 @@ trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
 avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
 est une garde, pas un argument.
 
+**La sortie brute d'un agent va au terminal, parce qu'elle n'est pas du
+texte.** `claude logs` imprime un ÉCRAN et non un journal : des centaines de
+séquences d'échappement, des retours chariot, aucun saut de ligne, et des
+positions de curseur absolues. Dépouiller les codes rend une seule ligne
+illisible, donc aucun panneau de tableau n'y peut rien. `j` suspend
+l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
+revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
+qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
+n'est jamais capturée, donc il n'existe même pas de copie à écrire.
+
 **La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
 porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
 donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent

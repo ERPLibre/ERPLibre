@@ -398,6 +398,15 @@ tap on "y" is given by reflex; copying thirty-six characters makes you look at
 what you are destroying. Both act with the SHORT identifier, the only one the
 subcommands accept — the retyping is a guard, not an argument.
 
+**An agent's raw output goes to the terminal, because it is not text.**
+`claude logs` prints a SCREEN and not a log: hundreds of escape sequences,
+carriage returns, no line feed at all, and absolute cursor positions. Stripping
+the codes yields one unreadable line, so no table panel can render it. `j`
+suspends the application for as long as the tool paints, then a line asks for
+Enter to come back. What appears there is content — the conversation, the
+commands, what was read — and that same line says so. Nothing is kept: the
+output is never captured, so there is not even a copy that could be written.
+
 **The stream's column shows what situates, never what was said.** A call
 carries a shell command, a path, a URL — or free text: the prompt given to a
 subagent, a search pattern. The first three fit a table row without revealing
@@ -888,6 +897,16 @@ celui de huit caractères. Une frappe sur « o » se donne par réflexe ; recopi
 trente-six caractères oblige à regarder ce qu'on détruit. Les deux agissent
 avec l'identifiant COURT, le seul que les sous-commandes acceptent — la retape
 est une garde, pas un argument.
+
+**La sortie brute d'un agent va au terminal, parce qu'elle n'est pas du
+texte.** `claude logs` imprime un ÉCRAN et non un journal : des centaines de
+séquences d'échappement, des retours chariot, aucun saut de ligne, et des
+positions de curseur absolues. Dépouiller les codes rend une seule ligne
+illisible, donc aucun panneau de tableau n'y peut rien. `j` suspend
+l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
+revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
+qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
+n'est jamais capturée, donc il n'existe même pas de copie à écrire.
 
 **La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
 porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
