@@ -498,6 +498,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
     # personne ne décident du verdict de ce test.
     AGENTS = (
         {
+            # Ce qui identifie la rangée, jamais affiché : une faiseuse de
+            # lignes doit le rendre, et la fausse aussi.
+            "cle": "abcd1234",
             "id": "abcd1234",
             "projet": "projet",
             "etat": "",
@@ -1458,6 +1461,170 @@ class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
                 await pilote.press("enter")
                 await pilote.pause()
         self.assertEqual(envoyes, [])
+
+
+class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
+    """Une clé de rangée en double TUE l'écran, elle ne le dégrade pas.
+
+    `add_row` lève `DuplicateKey`, et une exception dans un gestionnaire de
+    message ferme l'application. Le flux était clé par l'HEURE affichée, à la
+    seconde : deux appels d'outil dans la même seconde suffisaient, ce qui est
+    l'ordinaire d'une session qui travaille.
+    """
+
+    def _monde(self, evenements):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        return (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                return_value=[],
+            ),
+            patch.object(t_ui, "transcriptions", lambda: []),
+            patch.object(jr, "lire_lignes", lambda: evenements),
+            patch.object(jr, "nettoyer", lambda *a, **k: None),
+            patch.object(oc, "lire_base", lambda: None),
+            patch.object(
+                t_ui.dl, "pour", lambda appel, **kw: t_ui.dl.Detail()
+            ),
+        )
+
+    def _appel(self, identifiant, ts):
+        return [
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_use_id": identifiant,
+                "tool_name": "Bash",
+                "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+                "ts": ts,
+            },
+            {
+                "hook_event_name": "PostToolUse",
+                "tool_use_id": identifiant,
+                "ts": ts + 10,
+                "duration_ms": 10,
+            },
+        ]
+
+    async def test_deux_appels_dans_la_meme_seconde_tiennent_l_ecran(self):
+        """Même milliseconde d'affichage, deux rangées, et l'écran vit."""
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        evenements = self._appel("un", 1_700_000_000_100) + self._appel(
+            "deux", 1_700_000_000_300
+        )
+        correctifs = self._monde(evenements)
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                for _ in range(len(app.VUES)):
+                    if app.VUES[app._vue] == "flux":
+                        break
+                    await pilote.press("v")
+                    await pilote.pause()
+                self.assertEqual(app.VUES[app._vue], "flux")
+                flux = app.query_one("#flux", DataTable)
+                self.assertEqual(flux.row_count, 2)
+                lignes = t_ui.lignes_flux(app._appels)
+                self.assertEqual(
+                    len({l["heure"] for l in lignes}),
+                    1,
+                    "les deux montrent bien la même heure",
+                )
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    def test_chaque_faiseuse_de_lignes_donne_une_cle_unique(self):
+        """La clé est un champ à part, jamais une colonne affichée.
+
+        Ce qui IDENTIFIE une rangée et ce qui la DÉCRIT sont deux choses : la
+        seconde se choisit pour se lire, et rien n'oblige deux lignes à s'y
+        distinguer.
+        """
+        from script.todo.assistant.agents import tui as t_ui
+
+        evenements = self._appel("un", 1_700_000_000_100) + self._appel(
+            "deux", 1_700_000_000_300
+        )
+        from script.todo.assistant.agents import journal as jr
+
+        appels = jr.apparier(evenements)
+        lignes = t_ui.lignes_flux(appels)
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(len({ligne["cle"] for ligne in lignes}), 2)
+
+    def test_les_cinq_faiseuses_de_lignes_rendent_une_cle(self):
+        """Toutes, et non celle qu'on vient de réparer.
+
+        Une faiseuse de lignes ajoutée plus tard sans clé ne lèverait qu'au
+        moment de peindre, sur la machine de quelqu'un.
+        """
+        from script.todo.assistant import claude_sessions as cs
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import statistiques as st
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        seance = oc.Seance(
+            identifiant="ses_aaaabbbbccccdddd",
+            repertoire="/un/depot/projet",
+            modifie=1_700_000_000_000,
+            resume=oc.Resume(entree=10, sortie=2),
+        )
+        session = cs.Session(
+            session_id="aaaaaaaa-1111-4111-8111-111111111111",
+            court="aaaaaaaa",
+            kind="background",
+            live=True,
+        )
+        appels = jr.apparier(self._appel("un", 1_700_000_000_100))
+        lots = {
+            "lignes": t_ui.lignes({"/x/y/aaaaaaaa.jsonl": st.Lecture()}),
+            "lignes_opencode": t_ui.lignes_opencode([seance]),
+            "lignes_flux": t_ui.lignes_flux(appels),
+            "lignes_outils": t_ui.lignes_outils(jr.par_outil(appels)),
+            "lignes_agents": t_ui.lignes_agents([session]),
+        }
+        for nom, lignes in lots.items():
+            self.assertTrue(lignes, nom)
+            for ligne in lignes:
+                self.assertIn("cle", ligne, nom)
+                self.assertTrue(ligne["cle"], nom)
+
+    async def test_une_cle_en_double_ne_ferme_plus_l_ecran(self):
+        """Le filet, pour la colonne qu'on choisira mal la prochaine fois."""
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde([])
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(160, 40)) as pilote:
+                await pilote.pause()
+                table = app.query_one("#outils", DataTable)
+                doublons = [
+                    dict.fromkeys(
+                        [c for c, _ in t_ui.COLONNES_OUTILS] + ["cle"],
+                        "pareil",
+                    )
+                    for _ in range(3)
+                ]
+                app._repeindre(table, doublons, t_ui.COLONNES_OUTILS, "cle")
+                self.assertEqual(table.row_count, 3)
+        finally:
+            for c in correctifs:
+                c.stop()
 
 
 class TestLaSortieBruteVaAuTerminal(unittest.IsolatedAsyncioTestCase):

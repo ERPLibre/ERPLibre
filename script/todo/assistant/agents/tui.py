@@ -220,6 +220,10 @@ def lignes(lectures, temps=None) -> list[dict]:
         attention = (temps or {}).get(session_de(chemin))
         sorties.append(
             {
+                # Ce qui IDENTIFIE la rangée, jamais affiché. Le chemin est
+                # unique par construction là où les huit premiers caractères
+                # d'un identifiant ne le sont que probablement.
+                "cle": chemin,
                 "id": f"{ICONES['claude']} {identifiant(chemin)}",
                 "projet": projet(chemin, a),
                 "tours": str(a.tours),
@@ -289,6 +293,7 @@ def lignes_opencode(seances) -> list[dict]:
         reutilisation = resume.reutilisation
         sorties.append(
             {
+                "cle": seance.identifiant,
                 "id": (
                     f"{ICONES['opencode']} "
                     f"{seance.identifiant.removeprefix('ses_')[:8]}"
@@ -401,6 +406,10 @@ def lignes_flux(
     derniers = sorted(appels, key=lambda a: a.debut_ms)[-limite:]
     return [
         {
+            # L'identifiant d'appel, et non l'heure affichée : celle-ci est à
+            # la seconde, et deux appels par seconde sont l'ordinaire d'une
+            # session qui travaille.
+            "cle": a.identifiant or f"{a.debut_ms}-{rang}",
             "heure": heure(a.debut_ms),
             "session": (a.session or "")[:8],
             "outil": a.outil or "—",
@@ -408,7 +417,7 @@ def lignes_flux(
             "issue": t(ISSUES.get(a.issue, "")) if ISSUES.get(a.issue) else "",
             "commande": _commande_vue(commandes, a.identifiant, largeur),
         }
-        for a in reversed(derniers)
+        for rang, a in enumerate(reversed(derniers))
     ]
 
 
@@ -529,6 +538,7 @@ def lignes_agents(agents) -> list[dict]:
     for session in agents or ():
         sorties.append(
             {
+                "cle": session.poignee or session.session_id,
                 "id": session.poignee,
                 "projet": os.path.basename((session.cwd or "").rstrip("/")),
                 "etat": (
@@ -570,6 +580,7 @@ def lignes_outils(par_outil) -> list[dict]:
     """
     return [
         {
+            "cle": p.outil or "—",
             "outil": p.outil or "—",
             "appels": str(p.appels),
             "mediane": duree(p.mediane_ms),
@@ -1258,6 +1269,14 @@ def run_tui(run_app: bool = True):
             Une ligne qui a disparu depuis le dernier tour ne se retrouve pas,
             et le curseur reste alors où Textual le met : l'agent visé n'existe
             plus, donc il n'y a rien à viser.
+
+            Une clé en double ne ferme PAS l'écran. `add_row` lève
+            `DuplicateKey`, et une exception dans un gestionnaire de message
+            ferme l'application entière : la rangée suivante n'est pas la
+            seule perdue, tout l'est. Le doublon est donc désambiguïsé par son
+            rang, au prix du curseur sur cette rangée-là. C'est un filet :
+            chaque faiseuse de lignes rend une clé qui identifie, distincte
+            des colonnes qui décrivent.
             """
             avant = None
             if table.row_count:
@@ -1268,10 +1287,13 @@ def run_tui(run_app: bool = True):
                 except Exception:
                     avant = None
             table.clear()
-            for ligne in lignes:
-                table.add_row(
-                    *[ligne[c] for c, _ in colonnes], key=str(ligne[cle])
-                )
+            vues = set()
+            for rang, ligne in enumerate(lignes):
+                marque = str(ligne[cle])
+                if marque in vues:
+                    marque = f"{marque}#{rang}"
+                vues.add(marque)
+                table.add_row(*[ligne[c] for c, _ in colonnes], key=marque)
             if avant is not None:
                 # `move_cursor` ne prend qu'un RANG : la clé se retraduit donc
                 # en index après le repeint, ce qui est précisément le point —
@@ -1289,12 +1311,12 @@ def run_tui(run_app: bool = True):
                 lignes(self._lectures, self._temps)
                 + lignes_opencode(self._seances),
                 self._colonnes,
-                "id",
+                "cle",
             )
             outils = self.query_one("#outils", DataTable)
             groupes = jr.par_outil(self._appels)
             self._repeindre(
-                outils, lignes_outils(groupes), COLONNES_OUTILS, "outil"
+                outils, lignes_outils(groupes), COLONNES_OUTILS, "cle"
             )
             flux = self.query_one("#flux", DataTable)
             # La liste PEINTE est gardée : c'est elle que le curseur indexe,
@@ -1310,12 +1332,12 @@ def run_tui(run_app: bool = True):
                     largeur=largeur_commande(self.size.width),
                 ),
                 COLONNES_FLUX,
-                "heure",
+                "cle",
             )
             agents = self.query_one("#agents", DataTable)
             self._agents_peints = list(self._agents)
             self._repeindre(
-                agents, lignes_agents(self._agents), COLONNES_AGENTS, "id"
+                agents, lignes_agents(self._agents), COLONNES_AGENTS, "cle"
             )
             self.query_one("#titre_outils", Static).update(
                 self._titre_du_panneau(groupes)
