@@ -258,6 +258,10 @@ class Descente(descente.Descente):
             "sshkey_path": "/root/.ssh/longtest.pub",
             "nameservers": dns,
             "start": True,
+            # Du CATALOGUE, jamais en dur : create_cmds lit cette clé, et un
+            # spec qui l'omet vaut SeaBIOS en silence — sur une image sans
+            # secteur d'amorçage BIOS, une VM « running » à la console muette.
+            "uefi": mod.requiert_uefi(DISTRO),
         }
         # La clé publique doit être un FICHIER sur le parent : « --sshkeys »
         # n'accepte pas la clé en ligne.

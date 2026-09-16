@@ -182,25 +182,6 @@ NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
     "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
 }
 
-# Les images qui n'ont AUCUN secteur d'amorçage BIOS : elles ne démarrent que
-# par UEFI.
-#
-# Ce chemin-ci amorce en UEFI pour TOUT LE MONDE et n'a donc jamais eu besoin
-# de le savoir ; celui de Proxmox part en SeaBIOS, et c'est lui qui lit cette
-# liste. Mesuré sur un Proxmox 9 : en SeaBIOS, une VM NixOS se déclare
-# « running » et sa console reste muette ; la même en OVMF démarre — systemd,
-# cloud-init, réseau.
-#
-# La liste reste COURTE plutôt que de basculer le défaut de tous : Debian 13,
-# mesurée sur le même hôte, démarre en SeaBIOS sans rien lui devoir.
-DISTROS_UEFI_SEUL: tuple[str, ...] = ("nixos",)
-
-
-def requiert_uefi(distro: str) -> bool:
-    """L'image de `distro` refuse-t-elle un amorçage BIOS hérité ?"""
-    return distro in DISTROS_UEFI_SEUL
-
-
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
@@ -1890,23 +1871,58 @@ def hostname_valide(nom: str) -> str:
 TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
 
 
-# Distributions dont la chaîne UEFI ne démarre pas sur les OVMF courants.
+# Le firmware IMPOSÉ par l'image, sur x86, distribution par distribution.
 #
-# L'image de Fedora charge et DÉMARRE son chargeur — le micrologiciel l'annonce
+# UNE table et deux valeurs, parce que les deux voies de déploiement partent
+# de défauts OPPOSÉS : celle de libvirt amorce en UEFI pour tout le monde,
+# celle de Proxmox part en SeaBIOS. Chaque valeur écarte donc un défaut
+# différent, et chacune nomme un fait de l'IMAGE — pas une préférence.
+#
+# « bios » — la chaîne UEFI de l'image ne démarre pas sur les OVMF courants.
+# Celle de Fedora charge et DÉMARRE son chargeur — le micrologiciel l'annonce
 # — puis se fige sans écrire un octet sur le disque. La même image en BIOS
 # démarre son noyau normalement : ce n'est donc ni l'image, ni la partition
 # EFI, dont le chemin de repli est bien là. Ni l'entropie ni la machine q35 n'y
 # changent rien.
 #
-# Le symptôme visible depuis le déploiement est muet : aucune console, aucun
-# bail DHCP, une VM « en cours d'exécution » qui ne fait rien. D'où cette table
-# plutôt qu'un diagnostic à refaire.
-BIOS_OBLIGATOIRE = {"fedora"}
+# « uefi » — l'image n'a AUCUN secteur d'amorçage BIOS. Mesuré sur un
+# Proxmox 9 : en SeaBIOS, une VM NixOS se déclare « running » et sa console
+# reste muette ; la même en OVMF démarre — systemd, cloud-init, réseau.
+#
+# Le symptôme est muet des deux côtés : aucune console, aucun bail DHCP, une
+# VM « en cours d'exécution » qui ne fait rien. D'où cette table plutôt qu'un
+# diagnostic à refaire.
+#
+# Elle reste COURTE plutôt que de renverser un défaut pour tous : Debian 13,
+# mesurée sur le même hôte, démarre en SeaBIOS sans rien devoir à l'UEFI.
+#
+# AVEUGLE À L'ARCHITECTURE : elle ne vaut que sur x86. Sur arm64 il n'y a pas
+# de SeaBIOS, et virt_install tranche par l'architecture avant d'arriver ici ;
+# la lecture Proxmox, elle, ne crée que des VM x86.
+FIRMWARE_IMPOSE: dict[str, str] = {"fedora": "bios", "nixos": "uefi"}
 
 
 def amorcage_bios(distro: str, demande: bool) -> bool:
-    """Faut-il amorcer en BIOS ? La demande explicite l'emporte toujours."""
-    return bool(demande) or distro in BIOS_OBLIGATOIRE
+    """Faut-il amorcer en BIOS hérité ?
+
+    La demande explicite l'emporte, SAUF sur une image sans secteur
+    d'amorçage BIOS : « --bios » ne peut pas en inventer un, et la VM se
+    déclarerait « running » avec une console muette. Un fait physique ne se
+    force pas ; l'appelant en est averti.
+    """
+    impose = FIRMWARE_IMPOSE.get(distro)
+    if impose == "uefi":
+        return False
+    return bool(demande) or impose == "bios"
+
+
+def requiert_uefi(distro: str) -> bool:
+    """L'image de `distro` refuse-t-elle un amorçage BIOS hérité ?
+
+    Lue par la voie Proxmox, qui part en SeaBIOS et doit donc savoir à qui
+    poser « --bios ovmf » et un disque EFI.
+    """
+    return FIRMWARE_IMPOSE.get(distro) == "uefi"
 
 
 def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
@@ -1925,11 +1941,15 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
     jour de tzdata sans qu'on s'en occupe ; « table » n'existe que pour qu'un
     test en fournisse une autre sans dépendre du tzdata de sa machine.
 
-    DEUX tours, et non un seul : un lien peut désigner un autre lien —
-    « Universal » mène à « UTC », qui mène à « Etc/UTC ». S'arrêter au premier
-    rendrait un nom qui reste un alias, donc le défaut qu'on répare. Au-delà
-    de deux, la table est incohérente et le nom d'origine vaut mieux qu'une
-    boucle.
+    DEUX tours, et non un seul. Le format AUTORISE qu'un lien désigne un
+    autre lien, et un seul tour rendrait alors un nom qui reste un alias —
+    le défaut même qu'on répare. Le tzdata publié n'en contient aucune : tous
+    ses liens visent une zone. Le second tour est donc une assurance, au prix
+    d'une recherche dans un dictionnaire. Au-delà de deux, la table est
+    incohérente et le nom d'origine vaut mieux qu'une boucle.
+
+    L'INVARIANT que la fonction tient, et que le nombre de tours sert : le nom
+    rendu n'est pas lui-même un alias de la table.
     """
     if not tz:
         return tz
@@ -1940,7 +1960,9 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
                 champs = ligne.split()
                 if len(champs) >= 3 and champs[0] == "L":
                     alias[champs[2]] = champs[1]
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # Le décodage aussi : un octet hors UTF-8 dans le fichier ferait
+        # échouer le déploiement ENTIER pour une traduction de confort.
         return tz
     for _ in range(2):
         tz = alias.get(tz, tz)
@@ -4476,7 +4498,7 @@ def virt_install(
         # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
         # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
         # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
-        # certaines distributions exigent — voir BIOS_OBLIGATOIRE.
+        # certaines distributions exigent — voir FIRMWARE_IMPOSE.
         # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
         # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
         cmd += [
@@ -5151,7 +5173,14 @@ def main() -> None:
     # rien d'autre qu'un avertissement de cloud-init ne le dise. Le nom de
     # DOMAINE, lui, peut le porter — les deux ne se ressemblent qu'en général.
     args.hostname = args.hostname or hostname_valide(args.name)
+    demande_bios = args.bios
     args.bios = amorcage_bios(args.distro, args.bios)
+    if demande_bios and not args.bios:
+        print(
+            f"\n  --bios ignoré : l'image {args.distro} n'a pas de secteur"
+            " d'amorçage BIOS. Forcé, elle se déclarerait « running » avec"
+            " une console muette."
+        )
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)

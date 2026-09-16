@@ -11,9 +11,15 @@ fuseau, la VM RESTE en UTC, et le module se solde par un échec qui ne se voit
 qu'aux horodatages, longtemps après le déploiement.
 
 Ce que ces tests gardent, et que la traduction ligne à ligne ne donne pas :
-un lien peut désigner un AUTRE lien — « Universal » mène à « UTC », qui mène
-à « Etc/UTC ». S'arrêter au premier rendrait un nom qui reste un alias, donc
-le défaut même qu'on répare.
+l'INVARIANT que le nom rendu n'est jamais lui-même un alias. Le format
+autorise qu'un lien désigne un autre lien, et s'arrêter au premier rendrait
+alors un nom qui reste un alias — le défaut même qu'on répare.
+
+La chaîne qui l'éprouve est FABRIQUÉE, et la table plus bas contredit sur ce
+point le tzdata publié, où « Universal » vise « Etc/UTC » directement : aucun
+lien n'y désigne un autre lien. L'inventer est la seule façon d'exercer le
+second tour, et la dernière classe vérifie l'invariant sur la VRAIE table,
+qu'une chaîne y apparaisse un jour ou non.
 
 La table est passée par le paramètre « table », qui existe exactement pour
 cela : un test qui lirait le tzdata de la machine qui l'exécute passerait ou
@@ -45,8 +51,9 @@ def _deploy_qemu():
 DQ = _deploy_qemu()
 
 # Une tzdata.zi réduite : les lignes « L <canonique> <alias> » sont les seules
-# qui portent un lien, le reste du fichier décrit les règles horaires. La
-# dernière paire enchaîne deux liens, ce qu'aucune autre n'éprouve.
+# qui portent un lien, le reste du fichier décrit les règles horaires. Les
+# deux dernières lignes enchaînent deux liens — un cas que le format autorise
+# et que le tzdata publié ne contient pas, d'où la fabrication.
 TABLE = """# tzdata.zi, extrait
 R d 1974 ma 1 - Ap Su>=1 2 1 D
 Z America/Toronto -5:17:32 - LMT 1895
@@ -95,11 +102,13 @@ class LaTraduction(unittest.TestCase):
         )
 
     def test_an_alias_of_an_alias_resolves(self):
-        """« Universal » pointe « UTC », qui pointe « Etc/UTC ».
+        """Dans CETTE table, « Universal » pointe « UTC », qui pointe
+        « Etc/UTC ».
 
-        C'est ce que la lecture ligne à ligne, qui rend au premier lien
-        trouvé, ne sait pas faire : elle rendrait « UTC », un alias que
-        l'image cloud peut très bien ne pas porter non plus.
+        Un seul tour rendrait « UTC », un alias que l'image cloud peut très
+        bien ne pas porter non plus. Le tzdata publié n'enchaîne aucun lien :
+        la chaîne est fabriquée pour exercer le second tour, le format
+        l'autorisant.
         """
         self.assertEqual(
             DQ.canonical_timezone("Universal", self.table), "Etc/UTC"
@@ -108,6 +117,27 @@ class LaTraduction(unittest.TestCase):
     def test_an_empty_zone_stays_empty(self):
         """Rien à traduire, et surtout rien à inventer."""
         self.assertEqual(DQ.canonical_timezone("", self.table), "")
+
+    def test_a_third_link_is_left_where_two_passes_reach(self):
+        """La BORNE, celle que la docstring annonce : deux tours, pas une
+        boucle. Une table qui enchaîne trois liens est incohérente, et s'y
+        arrêter vaut mieux que tourner sur une table qui se mord la queue."""
+        chemin = os.path.join(os.path.dirname(self.table), "trois.zi")
+        with open(chemin, "w", encoding="utf-8") as fh:
+            fh.write("L Etc/UTC A\nL A B\nL B C\n")
+        self.assertEqual(DQ.canonical_timezone("C", chemin), "A")
+
+    def test_a_byte_outside_utf8_does_not_stop_the_deployment(self):
+        """Le fichier est lu en UTF-8 strict. Un octet qui n'en est pas
+        lèverait une erreur de DÉCODAGE, qui n'est pas une erreur de
+        fichier : non rattrapée, elle ferait échouer tout le déploiement
+        pour une traduction de confort."""
+        chemin = os.path.join(os.path.dirname(self.table), "binaire.zi")
+        with open(chemin, "wb") as fh:
+            fh.write(b"L America/Toronto Canada/Eastern\n\xff\xfe\n")
+        self.assertEqual(
+            DQ.canonical_timezone("Canada/Eastern", chemin), "Canada/Eastern"
+        )
 
 
 class SansTable(unittest.TestCase):
@@ -149,13 +179,6 @@ class LesDeuxPointsDEcriture(unittest.TestCase):
         self.assertIn('TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"', self.SRC)
         self.assertIn("table: str = TZ_ALIASES", self.SRC)
 
-    def test_two_passes_and_not_one(self):
-        """Le tour unique rendrait un alias d'alias inchangé au deuxième
-        niveau : c'est précisément ce que ce fichier garde."""
-        i = self.SRC.index("def canonical_timezone(")
-        corps = self.SRC[i : i + 1800]
-        self.assertIn("for _ in range(2):", corps)
-
 
 class LeVraiFichier(unittest.TestCase):
     """Ce que la vraie table garantit, sur un hôte qui la porte."""
@@ -163,6 +186,28 @@ class LeVraiFichier(unittest.TestCase):
     def setUp(self):
         if not Path(DQ.TZ_ALIASES).exists():
             self.skipTest("hôte sans tzdata.zi")
+
+    def _liens(self):
+        alias = {}
+        with open(DQ.TZ_ALIASES, encoding="utf-8") as fh:
+            for ligne in fh:
+                champs = ligne.split()
+                if len(champs) >= 3 and champs[0] == "L":
+                    alias[champs[2]] = champs[1]
+        return alias
+
+    def test_no_alias_survives_the_translation(self):
+        """L'invariant, sur la vraie table et sur TOUS ses liens : le nom
+        rendu n'est pas lui-même un alias.
+
+        Ce test est celui qui compte le jour où le tzdata enchaînera deux
+        liens — il restera vert sans qu'on y touche, alors qu'une implémen-
+        tation à un seul tour deviendrait fausse ce jour-là."""
+        alias = self._liens()
+        self.assertTrue(alias, "table sans lien")
+        for nom in alias:
+            with self.subTest(alias=nom):
+                self.assertNotIn(DQ.canonical_timezone(nom), alias)
 
     def test_the_zone_written_exists_in_the_guest_tzdata(self):
         """L'épreuve qui compte : le nom rendu est un fichier de zoneinfo, ce
