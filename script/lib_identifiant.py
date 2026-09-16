@@ -83,6 +83,29 @@ EMAIL_PERMIS = re.compile(
 
 # Un segment entre chevrons ou une variable est un gabarit, pas un compte.
 HOME = re.compile(r"/(?:home|Users)/(?![<$\"'{])([\w.-]+)/")
+
+# UNE BASE SE NOMME DANS UN « -d ». C'est la forme sous laquelle un nom de
+# base réelle entre dans un commentaire : une recette collée depuis un
+# terminal, avec la base sur laquelle on l'a jouée. Les adresses, les
+# courriels et les chemins de compte étaient cherchés ; celui-là ne l'était
+# pas, et il ne se voyait que si le nom figurait dans la liste privée.
+BASE_NOMMEE = re.compile(r"(?:^|\s)-d\s+(?![<$\"'{])([A-Za-z_][\w.-]*)")
+
+# Ce qui ne désigne aucune base réelle : les noms que le dépôt emploie pour
+# ses propres exemples, ceux qu'un lecteur comprend comme un gabarit, et les
+# bases que le dépôt crée pour lui-même.
+BASE_PERMISE = re.compile(
+    r"^(?:db|base|database|nom|name|dbname|test|demo|exemple|sample"
+    r"|my|mon|ma|erplibre|odoo|postgres|template\d*|\$|\{)",
+    re.IGNORECASE,
+)
+
+# UN NOM DE BASE PORTE UNE STRUCTURE. Ceux qu'on trouve dans un parc
+# s'écrivent « client_env_date » ou « nom_version » : ils portent un tiret
+# bas ou un chiffre. Sans cette borne, « -d » suivi d'un mot de la phrase
+# qui l'entoure — « produit un -d vide dès que… » — compte pour une base, et
+# un rouge qui crie faux apprend à ignorer le rouge.
+BASE_STRUCTUREE = re.compile(r"[_\d]")
 # Des RÔLES que le dépôt définit lui-même — le compte de service dans les
 # conteneurs, celui des exemples — et non des personnes.
 HOME_PERMIS = frozenset(
@@ -217,6 +240,14 @@ def identifiants(texte, termes=(), exemples=()):
             trouves.append(
                 ("compte", f"/home/{trouve.group(1)}/", trouve.start())
             )
+
+    for trouve in BASE_NOMMEE.finditer(texte):
+        nom = trouve.group(1)
+        if nom in exemples or BASE_PERMISE.match(nom):
+            continue
+        if not BASE_STRUCTUREE.search(nom):
+            continue
+        trouves.append(("base", nom, trouve.start(1)))
 
     motif = motif_de_termes(tuple(termes))
     if motif:
