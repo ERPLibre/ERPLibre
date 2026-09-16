@@ -5141,6 +5141,10 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "attachment(s) whose content leaves no copy:": {
+        "fr": "pièce(s) dont le contenu part sans copie :",
+        "en": "attachment(s) whose content leaves no copy:",
+    },
     "file(s) the plan does not cover, left in place:": {
         "fr": "fichier(s) hors du plan, laissés en place :",
         "en": "file(s) the plan does not cover, left in place:",
