@@ -250,6 +250,74 @@ class TestLeRapportSeClotSurUnEchec(unittest.TestCase):
         self.assertEqual(len(ecrit["vms"]), 1)
 
 
+class TestLaContreEpreuveNommeSonEtape(unittest.TestCase):
+    """Une troisième VM en échec doit nommer son étape dans le rapport, comme
+    les deux premières : le résumé d'une série n'a sinon qu'un « échec »."""
+
+    def boucler(self, echoue):
+        import argparse
+        import json
+        import tempfile
+        from unittest import mock
+
+        args = argparse.Namespace(
+            dry_run=False,
+            sans_cache=False,
+            hors_ligne=True,
+            distro="debian",
+            version="12",
+            charge="minimum",
+        )
+        # Les deux premières VM réussissent ; la troisième échoue à l'appel
+        # nommé, c'est-à-dire au troisième appel de cette fonction.
+        appels = {"n": 0}
+
+        def selon(nom, reussi):
+            def f(*a, **k):
+                appels["n"] += nom == echoue
+                if nom == echoue and appels["n"] == 3:
+                    return "" if nom == "deployer" else False
+                return reussi
+
+            return f
+
+        with tempfile.TemporaryDirectory() as rep:
+            fichier = str(Path(rep) / "rapport.json")
+            rapport = {"_fichier": fichier, "vms": []}
+            with mock.patch.object(QC, "dire"), mock.patch.object(
+                QC, "noter_uuid"
+            ), mock.patch.object(QC, "eteindre"), mock.patch.object(
+                QC, "verdict", return_value=True
+            ), mock.patch.object(
+                QC, "couper_lamont", return_value=True
+            ), mock.patch.object(
+                QC, "rebrancher_lamont", create=True
+            ), mock.patch.object(
+                QC, "deployer", side_effect=selon("deployer", "10.0.0.1")
+            ), mock.patch.object(
+                QC, "attendre_ssh", side_effect=selon("attendre_ssh", True)
+            ), mock.patch.object(
+                QC,
+                "poser_les_paquets",
+                side_effect=selon("poser_les_paquets", True),
+            ):
+                code = QC._boucle(args, rapport, None, "", 0)
+            with open(fichier, encoding="utf-8") as fh:
+                return code, json.load(fh)
+
+    def test_chaque_etape_de_la_troisieme_vm_est_nommee(self):
+        for etape, mot in (
+            ("deployer", "-3 : déploiement"),
+            ("attendre_ssh", "-3 : ssh"),
+            ("poser_les_paquets", "-3 : paquets"),
+        ):
+            with self.subTest(etape=etape):
+                code, ecrit = self.boucler(etape)
+                self.assertEqual(code, 1)
+                self.assertEqual(ecrit.get("verdict"), "échec")
+                self.assertIn(mot, ecrit.get("etape_en_echec", ""))
+
+
 class TestLaTroisiemeVmNaitHorsLigne(unittest.TestCase):
     """Le déploiement coupe l'audit de npm d'une VM hors ligne : le test long
     doit le lui demander, comme le formulaire, sans quoi il mesure une VM que

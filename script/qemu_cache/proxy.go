@@ -423,6 +423,19 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		if cacheable && p.rejouerStatut(w, r, u, cleStatut, class) {
 			return
 		}
+		// Un HEAD sans statut gardé demande les en-têtes que rendrait le GET :
+		// le corps gardé pour ce GET les porte. zypper vérifie ainsi chaque
+		// dépôt avant de le lire, et un HEAD ne se garde jamais sous une clé
+		// portable ; sans ce repli, le dépôt dont le magasin tient l'index est
+		// déclaré invalide hors ligne. ServeContent n'écrit aucun corps pour
+		// un HEAD.
+		if cacheable && r.Method == http.MethodHead {
+			cleCorps := CleDe(http.MethodGet, u)
+			if !p.indexIncoherent(u, cleCorps) &&
+				p.serveFromStore(w, r, u, cleCorps, class, OutcomeStale) {
+				return
+			}
+		}
 		p.offlineMiss(
 			w, u, class, r.Method, clientDe(r.RemoteAddr), upErr,
 		)
