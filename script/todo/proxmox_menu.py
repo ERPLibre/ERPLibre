@@ -2101,6 +2101,19 @@ class ProxmoxMenuMixin:
             print(f"  {label}")
             install = {"branch": branch, "cmd": cmd, "label": label}
 
+        # LES RÉGLAGES DE L'INVITÉ, par la même invite que la voie libvirt.
+        # Cette voie n'en posait AUCUN : la VM naissait serveur nu, dans le
+        # magasin par défaut, sans outil, et son disque était taillé sans la
+        # marge d'un bureau — que « qm create » fige pour de bon. Le
+        # fragment est posé AVANT la création pour cette raison.
+        # La VM telle qu'on la décrit AVANT les réglages de l'invité :
+        # l'invite partagée renomme la machine selon le type choisi — sans
+        # suffixe, une VM graphique et sa jumelle serveur portent le même
+        # nom — et c'est ce nom-là qui doit voyager ensuite.
+        vm_demande = {"name": nom, "arch": arch, "distro": distro}
+        invite = self._deploy_ask_guest([vm_demande])
+        nom = vm_demande["name"]
+
         cle_locale = self._qemu_default_ssh_key()
         # Le DNS de l'hôte, pour les VM en adresse fixe : « --ipconfig0 » ne
         # porte aucun résolveur, et sans lui la machine route sans rien
@@ -2115,7 +2128,9 @@ class ProxmoxMenuMixin:
             "ram": memoire,
             "vcpus": vcpus,
             "disk": disque,
-            "desktop": "",
+            # Le type de VM vient de l'invite partagée : c'est lui qui
+            # décide du suffixe du nom et de la marge de disque.
+            "desktop": vm_demande.get("desktop") or "",
             "install_cmd": "",
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
@@ -2136,11 +2151,11 @@ class ProxmoxMenuMixin:
             "add_ssh_config": True,
             "install": install,
             "monitor": True,
-            "python_provider": "",
-            # La voie par questions ne demande pas le fuseau — l'écran le
-            # fait. Sans ce défaut, elle laissait la VM en UTC, alors que la
-            # voie libvirt reprend le fuseau de l'hôte depuis toujours.
-            "timezone": self._qemu_host_timezone(),
+            # LE FRAGMENT DE L'INVITÉ : fuseau, locale, type de VM,
+            # magasin, outils, interpréteur Python, agent de code et
+            # identité git. Les mêmes clés que l'écran, par les mêmes
+            # questions que la voie libvirt.
+            **invite,
             # LE FRAGMENT JUSQU'ICI : c'est cette spec que lit le guide, et
             # le guide qui rend puis arme les règles. Refuser le couple
             # incohérent sans la transmettre laissait cette voie créer la VM

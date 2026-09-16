@@ -20,6 +20,7 @@ laisse la ligne vide, sans message et sans erreur.
 Ni réseau, ni VM : les invites sont simulées, rien n'est créé.
 """
 
+import ast
 import contextlib
 import io
 import os
@@ -472,6 +473,16 @@ class TestLeRepliProxmoxPorteLaPostureJusquAuxRegles(unittest.TestCase):
         todo._pve_vms = lambda: []
         todo._qemu_default_ssh_key = lambda: ""
         todo._qemu_host_timezone = lambda: "Etc/UTC"
+        # Les réglages de l'invité, posés par l'invite partagée : le banc les
+        # bouchonne pour n'éprouver que ce qui atteint « qm create ».
+        todo._qemu_ask_timezone = lambda: "Etc/UTC"
+        todo._qemu_ask_locale = lambda: "C.UTF-8"
+        todo._qemu_ask_desktop = lambda: ""
+        todo._qemu_desktop_suffixes = lambda: {}
+        todo._qemu_ask_app_store = lambda _vms: "deb"
+        todo._qemu_ask_vm_tools = lambda _vms: ()
+        todo._qemu_ask_python_provider = lambda _a: ""
+        todo._qemu_ask_ai_tools = lambda _t: ("", "", "")
         todo._pve_print_summary = lambda *_a, **_k: None
         vues = []
         todo._pve_after_create = lambda _h, spec, *_a: vues.append(spec)
@@ -509,6 +520,76 @@ class TestLeRepliProxmoxPorteLaPostureJusquAuxRegles(unittest.TestCase):
         une relecture sait que la question a été posée."""
         vues = self.deployer(["n", "1", "", "", "n", ""])
         self.assertEqual("open", vues[0][S.POSTURE_KEY])
+
+
+class TestLesDeuxVoiesSansFormulaireSAccordent(unittest.TestCase):
+    """« Les deux interfaces produisent la MÊME spec » vaut aussi SANS
+    formulaire.
+
+    Les deux ÉCRANS partagent leurs réglages d'invité depuis `ExtrasMixin`,
+    et une garde tient leur parité. Les deux INVITES n'avaient rien de tel :
+    la voie libvirt posait les huit questions, la voie Proxmox aucune. Une
+    VM y naissait serveur nu, dans le magasin par défaut, sans outil, en
+    UTC — et son disque était taillé sans la marge d'un bureau, que
+    « qm create » fige pour de bon.
+
+    La garde est celle de la règle d'or, un cran plus haut : UNE invite
+    partagée, traversée par les deux voies. Les clés sont DÉRIVÉES de ce
+    qu'elle rend, jamais recopiées ici — une liste écrite à la main ne
+    grandit pas avec elle.
+    """
+
+    @staticmethod
+    def appels(fichier, fonction):
+        chemin = os.path.join(RACINE, "script", "todo", fichier)
+        with io.open(chemin, encoding="utf-8") as fh:
+            arbre = ast.parse(fh.read())
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.FunctionDef) and noeud.name == fonction:
+                return {
+                    n.func.attr
+                    for n in ast.walk(noeud)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                }
+        raise AssertionError(f"{fonction} introuvable dans {fichier}")
+
+    def test_both_prompt_paths_cross_the_shared_guest_prompt(self):
+        for fichier, fonction in (
+            ("qemu_deploy.py", "_qemu_collect_options_cli"),
+            ("proxmox_menu.py", "_pve_deploy_prompts"),
+        ):
+            with self.subTest(voie=fonction):
+                self.assertIn(
+                    "_deploy_ask_guest", self.appels(fichier, fonction)
+                )
+
+    def fragment(self):
+        """Ce que l'invite partagée rend, bouchons posés."""
+        todo = menu()
+        todo._qemu_ask_timezone = lambda: "Etc/UTC"
+        todo._qemu_ask_locale = lambda: "C.UTF-8"
+        todo._qemu_ask_desktop = lambda: ""
+        todo._qemu_desktop_suffixes = lambda: {}
+        todo._qemu_ask_app_store = lambda _vms: "deb"
+        todo._qemu_ask_vm_tools = lambda _vms: ()
+        todo._qemu_ask_python_provider = lambda _a: ""
+        todo._qemu_ask_ai_tools = lambda _t: ("", "", "")
+        with redirect_stdout(io.StringIO()):
+            return todo._deploy_ask_guest([{"name": "vm1", "arch": "amd64"}])
+
+    def test_the_shared_prompt_yields_more_than_a_timezone(self):
+        """Contrôle du banc : un fragment réduit à une clé rendrait
+        l'épreuve suivante verte sans rien tenir."""
+        self.assertGreaterEqual(len(self.fragment()), 8)
+
+    def test_every_guest_key_reaches_the_proxmox_spec(self):
+        vues = TestLeRepliProxmoxPorteLaPostureJusquAuxRegles.deployer(
+            self, ["n", "1", "", "", "n", ""]
+        )
+        self.assertEqual(1, len(vues))
+        manquantes = set(self.fragment()) - set(vues[0])
+        self.assertEqual(set(), manquantes)
 
 
 class TestLaPorteTextualDeProxmox(unittest.TestCase):

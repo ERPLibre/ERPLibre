@@ -414,19 +414,56 @@ class TestLeFuseauDUneVmProxmox(unittest.TestCase):
         self.assertEqual(self._pose({}), "")
 
     def test_the_prompt_path_still_gets_one(self):
-        # La voie par questions ne demande pas le fuseau ; sans défaut, elle
-        # laissait la VM en UTC alors que la voie libvirt reprend celui de
-        # l'hôte depuis toujours.
-        import re
+        """La voie par questions laissait la VM en UTC, là où la voie
+        libvirt reprend le fuseau de l'hôte depuis toujours.
+
+        Cette épreuve cherchait une LIGNE DE CODE — « "timezone":
+        self._qemu_host_timezone() » — et elle est tombée le jour où cette
+        voie s'est mise à POSER la question au lieu de prendre un défaut.
+        La propriété n'avait pas bougé, elle s'était renforcée : ce que le
+        motif tenait, c'était sa propre écriture.
+        """
+        import ast
         from pathlib import Path
 
         src = Path("script/todo/proxmox_menu.py").read_text(encoding="utf-8")
-        bloc = src[src.index("def _pve_deploy_prompts") :]
-        bloc = bloc[: bloc.index("_pve_after_create")]
+        for noeud in ast.walk(ast.parse(src)):
+            if (
+                isinstance(noeud, ast.FunctionDef)
+                and noeud.name == "_pve_deploy_prompts"
+            ):
+                appels = {
+                    n.func.attr
+                    for n in ast.walk(noeud)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                }
+                break
+        else:
+            raise AssertionError("_pve_deploy_prompts introuvable")
+        # Ou bien elle POSE la question par l'invite partagée, ou bien elle
+        # reprend le fuseau de l'hôte. Ce qui est interdit, c'est ni l'un
+        # ni l'autre — la VM démarre alors en UTC et on ne s'en aperçoit
+        # qu'aux horodatages.
         self.assertTrue(
-            re.search(r'"timezone":\s*self\._qemu_host_timezone\(\)', bloc),
+            appels & {"_deploy_ask_guest", "_qemu_host_timezone"},
             "le spec des invites doit porter un fuseau",
         )
+
+    def test_the_shared_prompt_is_what_carries_it(self):
+        """Contrôle positif : traverser l'invite partagée ne vaut que si
+        elle rend vraiment un fuseau."""
+        todo = todo_muet()
+        todo._qemu_ask_timezone = lambda: "America/Montreal"
+        todo._qemu_ask_locale = lambda: "C.UTF-8"
+        todo._qemu_ask_desktop = lambda: ""
+        todo._qemu_desktop_suffixes = lambda: {}
+        todo._qemu_ask_app_store = lambda _vms: "deb"
+        todo._qemu_ask_vm_tools = lambda _vms: ()
+        todo._qemu_ask_python_provider = lambda _a: ""
+        todo._qemu_ask_ai_tools = lambda _t: ("", "", "")
+        fragment = todo._deploy_ask_guest([{"name": "vm1", "arch": "amd64"}])
+        self.assertEqual("America/Montreal", fragment["timezone"])
 
 
 if __name__ == "__main__":

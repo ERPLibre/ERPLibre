@@ -76,6 +76,16 @@ def deployer(reponses, resolv=RESOLV):
     todo._qemu_pick_branch = lambda: "develop"
     todo._qemu_pick_install_profile = lambda _d: ("ERPLibre", INSTALL_CMD)
     todo._qemu_host_timezone = lambda: "Etc/UTC"
+    # Les réglages de l'invité, posés par l'invite partagée : le banc les
+    # bouchonne pour n'éprouver que ce qui atteint « qm create ».
+    todo._qemu_ask_timezone = lambda: "Etc/UTC"
+    todo._qemu_ask_locale = lambda: "C.UTF-8"
+    todo._qemu_ask_desktop = lambda: ""
+    todo._qemu_desktop_suffixes = lambda: {}
+    todo._qemu_ask_app_store = lambda _vms: "deb"
+    todo._qemu_ask_vm_tools = lambda _vms: ()
+    todo._qemu_ask_python_provider = lambda _a: ""
+    todo._qemu_ask_ai_tools = lambda _t: ("", "", "")
     todo._qemu_default_ssh_key = lambda: ""
     todo._pve_vms = lambda: []
     todo._pve_print_summary = lambda *_a, **_k: None
