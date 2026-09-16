@@ -5149,10 +5149,6 @@ TRANSLATIONS = {
         "fr": "fichier(s) hors du plan, laissés en place :",
         "en": "file(s) the plan does not cover, left in place:",
     },
-    "more": {
-        "fr": "de plus",
-        "en": "more",
-    },
     "Nested directory removed (it was empty).": {
         "fr": "Dossier imbriqué retiré (il était vide).",
         "en": "Nested directory removed (it was empty).",
