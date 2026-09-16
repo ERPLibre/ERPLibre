@@ -407,6 +407,18 @@ Enter to come back. What appears there is content — the conversation, the
 commands, what was read — and that same line says so. Nothing is kept: the
 output is never captured, so there is not even a copy that could be written.
 
+**The screen reads on a thread, and the figure that decided it is a tail.** A
+tick folds nineteen transcripts, the hook log, the Open Code database and the
+fleet: 230 ms median, 408 ms worst, a fifth of the two-second step during which
+no keystroke was seen. The average was not what settled it — listing agents is
+a subprocess with a fifteen-second timeout, and a silent tool froze the screen
+for that long, "q" included. The reading crosses the thread as a plain value
+sharing nothing; only the event loop touches a widget. A generation number
+discards the reading of a thread still working on the world before "r", and a
+tick landing while one is in flight is SKIPPED rather than queued — a queue on
+a slow machine grows without any tick ever showing the state of the moment.
+Measured after: 1.4 ms worst on the loop.
+
 **The stream's column shows what situates, never what was said.** A call
 carries a shell command, a path, a URL — or free text: the prompt given to a
 subagent, a search pattern. The first three fit a table row without revealing
@@ -907,6 +919,19 @@ l'application le temps que l'outil peigne, puis une ligne demande Entrée pour
 revenir. Ce qui paraît là est du contenu — la conversation, les commandes, ce
 qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
 n'est jamais capturée, donc il n'existe même pas de copie à écrire.
+
+**L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
+replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la
+flotte : 230 ms en médiane, 408 au pire, un cinquième du pas de deux secondes
+pendant lequel aucune touche n'était vue. Ce n'est pas la moyenne qui a
+tranché — le listage des agents est un sous-processus dont le délai est de
+quinze secondes, et un outil muet figeait l'écran d'autant, « q » compris. Le
+relevé traverse le fil comme une valeur qui ne partage rien ; seule la boucle
+d'événements touche un widget. Une génération fait jeter le relevé d'un fil qui
+travaille encore sur le monde d'avant « r », et un tour qui tombe pendant une
+lecture est SAUTÉ plutôt que mis en file — une file, sur une machine lente,
+grandit sans qu'aucun tour ne montre jamais l'état du moment. Mesuré après :
+1,4 ms au pire sur la boucle.
 
 **La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
 porte une commande shell, un chemin, une URL — ou du texte libre : l'invite

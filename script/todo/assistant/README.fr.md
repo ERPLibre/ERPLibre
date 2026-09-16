@@ -450,6 +450,19 @@ revenir. Ce qui paraît là est du contenu — la conversation, les commandes, c
 qui a été lu — et cette même ligne le dit. Rien n'en est gardé : la sortie
 n'est jamais capturée, donc il n'existe même pas de copie à écrire.
 
+**L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
+replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la
+flotte : 230 ms en médiane, 408 au pire, un cinquième du pas de deux secondes
+pendant lequel aucune touche n'était vue. Ce n'est pas la moyenne qui a
+tranché — le listage des agents est un sous-processus dont le délai est de
+quinze secondes, et un outil muet figeait l'écran d'autant, « q » compris. Le
+relevé traverse le fil comme une valeur qui ne partage rien ; seule la boucle
+d'événements touche un widget. Une génération fait jeter le relevé d'un fil qui
+travaille encore sur le monde d'avant « r », et un tour qui tombe pendant une
+lecture est SAUTÉ plutôt que mis en file — une file, sur une machine lente,
+grandit sans qu'aucun tour ne montre jamais l'état du moment. Mesuré après :
+1,4 ms au pire sur la boucle.
+
 **La colonne du flux montre ce qui situe, jamais ce qui a été dit.** Un appel
 porte une commande shell, un chemin, une URL — ou du texte libre : l'invite
 donnée à un sous-agent, un motif de recherche. Les trois premiers tiennent

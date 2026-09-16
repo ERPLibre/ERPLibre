@@ -402,6 +402,18 @@ Enter to come back. What appears there is content — the conversation, the
 commands, what was read — and that same line says so. Nothing is kept: the
 output is never captured, so there is not even a copy that could be written.
 
+**The screen reads on a thread, and the figure that decided it is a tail.** A
+tick folds nineteen transcripts, the hook log, the Open Code database and the
+fleet: 230 ms median, 408 ms worst, a fifth of the two-second step during which
+no keystroke was seen. The average was not what settled it — listing agents is
+a subprocess with a fifteen-second timeout, and a silent tool froze the screen
+for that long, "q" included. The reading crosses the thread as a plain value
+sharing nothing; only the event loop touches a widget. A generation number
+discards the reading of a thread still working on the world before "r", and a
+tick landing while one is in flight is SKIPPED rather than queued — a queue on
+a slow machine grows without any tick ever showing the state of the moment.
+Measured after: 1.4 ms worst on the loop.
+
 **The stream's column shows what situates, never what was said.** A call
 carries a shell command, a path, a URL — or free text: the prompt given to a
 subagent, a search pattern. The first three fit a table row without revealing
