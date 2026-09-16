@@ -5141,6 +5141,10 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "left alone:": {
+        "fr": "laissée(s) telle(s) quelle(s) :",
+        "en": "left alone:",
+    },
     "file(s) shown": {
         "fr": "fichier(s) montré(s)",
         "en": "file(s) shown",
