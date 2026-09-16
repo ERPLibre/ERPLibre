@@ -1747,6 +1747,90 @@ class TestLeGelTientDeBoutEnBout(unittest.IsolatedAsyncioTestCase):
                 await calme(pilote)
         self.assertEqual(envoyes, [("stop", "bbbbbbbb")])
 
+    async def test_relire_n_ouvre_pas_un_second_fil(self):
+        """« r » maintenu en ouvrait un par frappe, chacun relisant tout.
+
+        Le drapeau appartient au fil qui lit ; le baisser court-circuite le
+        garde « une seule lecture à la fois ».
+        """
+        import time as horloge
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        dedans, crete = [0], [0]
+        vrai = t_ui.relever
+
+        def lent(*a, **kw):
+            dedans[0] += 1
+            crete[0] = max(crete[0], dedans[0])
+            try:
+                horloge.sleep(0.25)
+                return vrai(*a, **kw)
+            finally:
+                dedans[0] -= 1
+
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                with patch.object(t_ui, "relever", lent):
+                    for _ in range(8):
+                        await pilote.press("r")
+                    await calme(pilote, tours=6)
+        self.assertEqual(crete[0], 1, "une seule lecture à la fois")
+        self.assertIsNone(app._lecture_en_cours, "et la place se rend")
+
+    async def test_le_rafraichissement_survit_a_un_r_en_plein_vol(self):
+        """La place se rend à celui qui la tenait, périmé ou non.
+
+        La lui refuser arrêtait l'écran POUR DE BON : plus aucun tour ne
+        pouvait partir, et rien ne le disait.
+        """
+        import time as horloge
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        vrai = t_ui.relever
+
+        def lent(*a, **kw):
+            horloge.sleep(0.3)
+            return vrai(*a, **kw)
+
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                with patch.object(t_ui, "relever", lent):
+                    app._tick()
+                    await pilote.pause()
+                    # « r » pendant que le fil lit encore.
+                    await pilote.press("r")
+                    await calme(pilote, tours=6)
+                tours = []
+                app._tick()
+                await calme(pilote)
+                self.assertIsNone(app._lecture_en_cours)
+                # Et un tour ordinaire repart.
+                app._flotte_a_relire = True
+                app._lire_flotte = staticmethod(lambda: tours.append(1) or [])
+                app._tick()
+                await calme(pilote)
+        self.assertEqual(tours, [1], "le rafraîchissement continue")
+
 
 class TestUnGesteNeFigePasLEcran(unittest.IsolatedAsyncioTestCase):
     """Les gestes passent par un sous-processus, comme les lectures.

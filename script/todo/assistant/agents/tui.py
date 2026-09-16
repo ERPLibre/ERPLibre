@@ -896,10 +896,12 @@ def run_tui(run_app: bool = True):
             # attendre. MONOTONE : celle du mur recule à un changement d'heure,
             # et la flotte cesserait d'être relue pendant tout le décalage.
             self._horloge = time.monotonic
-            # Une seule lecture à la fois, et la génération qui la date. « r »
-            # incrémente la génération, ce qui fait jeter le relevé d'un fil
-            # encore en train de lire le monde d'avant.
-            self._lecture_en_cours = False
+            # La place de lecture : elle porte la GÉNÉRATION du fil qui la
+            # tient, ou None quand elle est libre. Un simple booléen ne
+            # suffisait pas — celui qui rend la main doit pouvoir dire si la
+            # place est encore la sienne, sans quoi un relevé périmé la
+            # libérerait sous un fil qui lit toujours.
+            self._lecture_en_cours = None
             self._generation = 0
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
@@ -1476,10 +1478,15 @@ def run_tui(run_app: bool = True):
             """
             self._dire(t("Reading everything again…"))
             self._generation += 1
-            self._lecture_en_cours = False
             self._lectures = {}
             self._commandes = {}
             self._flotte_a_relire = True
+            # Le drapeau n'est PAS rabaissé : il appartient au fil qui lit
+            # encore, et le baisser ouvrirait un second fil par-dessus. Une
+            # touche maintenue en ouvrait un par frappe, chacun relisant tout
+            # depuis zéro et lançant son propre sous-processus. Le fil en vol
+            # rendra la main, son relevé sera jeté par la génération, et le
+            # tour suivant repartira du monde vide.
             self._tick()
 
         def _tick(self):
@@ -1493,12 +1500,12 @@ def run_tui(run_app: bool = True):
             sous-processus dont le délai est de quinze secondes, et un outil
             qui ne répond pas figeait l'écran d'autant, « q » compris.
             """
-            if self._lecture_en_cours:
+            if self._lecture_en_cours is not None:
                 # Un tour qui tombe pendant une lecture est SAUTÉ, et non mis
                 # en file : sur une machine lente, la file grandirait sans
                 # qu'aucun tour ne montre jamais l'état du moment.
                 return
-            self._lecture_en_cours = True
+            self._lecture_en_cours = self._generation
             maintenant = self._horloge()
             avec_flotte = (
                 self._flotte_a_relire or maintenant >= self._flotte_apres
@@ -1562,15 +1569,18 @@ def run_tui(run_app: bool = True):
         def _appliquer(self, generation, releve):
             """Poser le relevé sur l'écran. Toujours sur le fil de l'affichage.
 
-            Un relevé d'une génération périmée est JETÉ : « r » a tout remis à
-            zéro pendant que le fil lisait, et l'appliquer ressusciterait ce
-            qu'on venait d'oublier. Le drapeau appartient à la génération
-            courante, donc un relevé périmé n'y touche pas non plus — sans
-            quoi il ouvrirait un second fil pendant qu'un premier lit.
+            Deux choses, et elles ne se décident pas pareil. La PLACE se rend
+            à celui qui la tenait, périmé ou non : la lui refuser arrêtait le
+            rafraîchissement pour de bon dès qu'un « r » croisait une lecture.
+            Le RELEVÉ, lui, est jeté s'il décrit le monde d'avant « r » —
+            l'appliquer ressusciterait ce qu'on venait d'oublier — et le tour
+            que « r » voulait est redemandé aussitôt.
             """
+            if generation == self._lecture_en_cours:
+                self._lecture_en_cours = None
             if generation != self._generation:
+                self._tick()
                 return
-            self._lecture_en_cours = False
             self._lectures = releve.lectures
             self._appels = list(releve.appels)
             self._temps = releve.temps
@@ -1587,10 +1597,15 @@ def run_tui(run_app: bool = True):
                 self._tick()
 
         def _lecture_a_echoue(self, generation, message):
-            """Une lecture qui a levé le dit, et le rafraîchissement reprend."""
+            """Une lecture qui a levé le dit, et le rafraîchissement reprend.
+
+            La place se rend comme elle se rend après un relevé : un fil qui
+            meurt sans la libérer arrête l'écran sans un mot.
+            """
+            if generation == self._lecture_en_cours:
+                self._lecture_en_cours = None
             if generation != self._generation:
                 return
-            self._lecture_en_cours = False
             self._dire(message)
 
         @staticmethod
