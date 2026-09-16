@@ -650,6 +650,78 @@ COLONNES = (
 COLONNE_LARGEUR = 12
 
 
+# Les touches, et c'est la SEULE liste. Le pied de page, le panneau d'aide et
+# les numéros qui agissent la lisent tous, donc une touche ajoutée ne peut pas
+# manquer à l'un des trois — c'est arrivé : quatre touches sur onze tombaient
+# hors d'un pied de page de quatre-vingts colonnes, dont les deux qui
+# détruisent, et rien à l'écran ne disait qu'elles existaient.
+#
+# (touche, action, libellé du pied de page, ce que la touche fait)
+#
+# Les libellés du pied de page sont COURTS par contrainte de place : il tient
+# sur une ligne, et onze indications bavardes réclament le double d'un terminal
+# ordinaire. La phrase entière vit dans le panneau d'aide, qui a la place.
+TOUCHES_AFFICHAGE = (
+    ("q", "quit", "Quit", "Quit the screen"),
+    ("f", "gel", "Freeze", "Freeze the display; the reads go on underneath"),
+    ("r", "relire", "Read again", "Read everything again from the start"),
+    ("v", "vue", "Panel", "Switch the bottom panel"),
+    ("h", "aide", "Keys", "Show this panel"),
+)
+
+# Celles qui agissent sur la ligne SURLIGNÉE. Leur rang dans ce tuple est le
+# numéro que le panneau d'aide affiche et accepte, donc les réordonner change
+# ce que « 3 » fait : elles vont du geste qui ne coûte rien à celui que rien ne
+# répare.
+TOUCHES_LIGNE = (
+    (
+        "d",
+        "detail",
+        "Detail",
+        "Detail of the highlighted call (shows content)",
+    ),
+    ("j", "journal", "Output", "Raw output of the agent (shows content)"),
+    ("n", "lancer", "Start", "Start a detached agent"),
+    ("s", "arreter", "Stop", "Stop the highlighted agent"),
+    (
+        "l",
+        "relancer",
+        "Restart",
+        "Restart it on the current binary (confirms)",
+    ),
+    (
+        "x",
+        "supprimer",
+        "Delete",
+        "Delete it and its worktree (retype the identifier)",
+    ),
+    ("a", "attacher", "Attach", "Attach to it — this closes the screen"),
+)
+
+# Les chiffres que le panneau accepte : un par touche de ligne, dans l'ordre.
+CHIFFRES = tuple(str(rang + 1) for rang in range(len(TOUCHES_LIGNE)))
+
+
+def texte_de_l_aide(largeur=None) -> str:
+    """Le panneau des touches, en toutes lettres. Fonction PURE.
+
+    Bâti sur la table des touches et non recopié à côté : un panneau d'aide
+    qui se maintient à la main finit par décrire un écran qui n'existe plus,
+    et c'est justement l'écran qu'on vient consulter quand on ne sait plus.
+    """
+    lignes = [f"⌨  {t('Keys and actions')}", ""]
+    lignes.append(f"  {t('Display')}")
+    for touche, _action, _court, phrase in TOUCHES_AFFICHAGE:
+        lignes.append(f"    {touche}  {t(phrase)}")
+    lignes.append("")
+    lignes.append(f"  {t('On the highlighted row')}")
+    for rang, (touche, _a, _c, phrase) in enumerate(TOUCHES_LIGNE):
+        lignes.append(f"   [{rang + 1}] {touche}  {t(phrase)}")
+    lignes.append("")
+    lignes.append(f"  {t('A number acts · Esc closes')}")
+    return "\n".join(lignes)
+
+
 @dataclass(frozen=True)
 class Releve:
     """Ce qu'un tour de lecture rapporte du disque.
@@ -760,25 +832,20 @@ def run_tui(run_app: bool = True):
         #resume { height: auto; padding: 0 1; color: $text-muted; }
         #etat { height: auto; padding: 0 1; color: $warning; }
         #source { height: auto; padding: 0 1; color: $text-muted; }
+        #aide { height: auto; padding: 1 2; background: $panel; }
         DataTable { height: 1fr; }
         """
-        # Les libellés sont COURTS, et c'est une contrainte de place et non
-        # de goût : le pied de page tient sur une ligne à toute largeur, donc
-        # dix indications un peu bavardes réclament le double d'un terminal de
-        # quatre-vingts colonnes, et les dernières touches disparaissent. Sur
-        # un écran qui se pilote au clavier, une touche invisible n'existe pas.
+        # DÉRIVÉES de la table des touches, jamais recopiées : c'est la
+        # recopie qui avait laissé quatre touches sans mention nulle part.
+        #
+        # L'ordre compte. Le pied de page tient sur UNE ligne et se coupe à
+        # droite : sur quatre-vingts colonnes, onze indications en perdent
+        # quatre. Les cinq premières sont donc celles qui ne détruisent rien
+        # et « h », qui mène à toutes les autres — une touche invisible
+        # n'existe pas, sauf si une touche visible la nomme.
         BINDINGS = [
-            ("q", "quit", t("Quit")),
-            ("f", "gel", t("Freeze")),
-            ("r", "relire", t("Read again")),
-            ("v", "vue", t("Panel")),
-            ("n", "lancer", t("Start")),
-            ("s", "arreter", t("Stop")),
-            ("a", "attacher", t("Attach")),
-            ("j", "journal", t("Output")),
-            ("d", "detail", t("Detail")),
-            ("l", "relancer", t("Restart")),
-            ("x", "supprimer", t("Delete")),
+            (touche, action, t(court))
+            for touche, action, court, _ in TOUCHES_AFFICHAGE + TOUCHES_LIGNE
         ]
 
         # Le panneau du bas PERMUTE au lieu de s'empiler : un terminal n'a pas
@@ -851,6 +918,7 @@ def run_tui(run_app: bool = True):
             yield DataTable(id="flux", zebra_stripes=True)
             yield DataTable(id="agents", zebra_stripes=True)
             yield Input(id="saisie", placeholder="")
+            yield Static("", id="aide")
             yield Static("", id="detail")
             yield Static("", id="etat")
             yield Static("", id="source")
@@ -871,6 +939,7 @@ def run_tui(run_app: bool = True):
             self.query_one("#saisie", Input).display = False
             self.query_one("#etat", Static).display = False
             self.query_one("#detail", Static).display = False
+            self.query_one("#aide", Static).display = False
             self._montrer_la_vue()
             # Les journaux périmés partent à l'ouverture : c'est le seul
             # moment où quelqu'un regarde, donc le seul où le ménage ne
@@ -1103,6 +1172,10 @@ def run_tui(run_app: bool = True):
             # Ce qu'un geste précédent avait dit ne vaut plus pour celui-ci.
             self._dire(consigne)
 
+            # Le panneau des touches se ferme : ses chiffres et cette invite
+            # se disputeraient les mêmes frappes, et un « 3 » tapé dans une
+            # invite est un caractère, pas un numéro de menu.
+            self.query_one("#aide").display = False
             self._attente = attente
             champ = self.query_one("#saisie", Input)
             champ.placeholder = invite
@@ -1158,10 +1231,57 @@ def run_tui(run_app: bool = True):
             else:
                 self._dire(t("Nothing has been sent."))
 
+        def action_aide(self):
+            """Ouvrir ou fermer le panneau des touches.
+
+            Il existe parce que le pied de page MENT par omission : il tient
+            sur une ligne, se coupe à droite, et quatre touches sur onze
+            tombaient hors d'un terminal de quatre-vingts colonnes — dont les
+            deux qui détruisent. Rien à l'écran ne disait qu'elles existaient.
+
+            Il sert aussi de menu : un chiffre y agit sur la ligne surlignée,
+            pour qui ne veut pas apprendre onze lettres. Les deux sont la même
+            chose, et les séparer donnerait deux listes à tenir d'accord.
+            """
+            from textual.widgets import Static
+
+            volet = self.query_one("#aide", Static)
+            if volet.display:
+                volet.display = False
+                return
+            volet.update(texte_de_l_aide())
+            volet.display = True
+
+        def _agir_par_le_chiffre(self, chiffre):
+            """Exécuter l'action que le panneau numérote, et se refermer.
+
+            Se refermer fait partie du geste : c'est un menu, on choisit et il
+            s'efface. Le rang du chiffre EST celui de la touche dans la table,
+            donc rien ne se recopie et réordonner la table réordonne le menu.
+            """
+            rang = CHIFFRES.index(chiffre)
+            self.query_one("#aide").display = False
+            getattr(self, f"action_{TOUCHES_LIGNE[rang][1]}")()
+
         def on_key(self, evenement):
-            """Échap referme la saisie sans rien envoyer."""
+            """Échap referme ce qui est ouvert ; un chiffre agit depuis l'aide.
+
+            Les deux ne sont jamais ouverts ensemble — ouvrir la saisie ferme
+            le panneau — donc l'ordre des branches ne départage rien : il dit
+            seulement que la saisie est le cas le plus fréquent.
+            """
             if evenement.key == "escape" and self._attente is not None:
                 self._fermer_saisie()
+                evenement.stop()
+                return
+            if not self.query_one("#aide").display:
+                return
+            if evenement.key == "escape":
+                self.query_one("#aide").display = False
+                evenement.stop()
+                return
+            if evenement.key in CHIFFRES:
+                self._agir_par_le_chiffre(evenement.key)
                 evenement.stop()
 
         def _lancer_agent(self, invite):

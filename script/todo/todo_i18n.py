@@ -13015,6 +13015,74 @@ TRANSLATIONS = {
         "fr": "aucun posé",
         "en": "none installed",
     },
+    "Keys": {
+        "fr": "Touches",
+        "en": "Keys",
+    },
+    "Keys and actions": {
+        "fr": "Touches et actions",
+        "en": "Keys and actions",
+    },
+    "Display": {
+        "fr": "Affichage",
+        "en": "Display",
+    },
+    "On the highlighted row": {
+        "fr": "Sur la ligne surlignée",
+        "en": "On the highlighted row",
+    },
+    "A number acts · Esc closes": {
+        "fr": "Un chiffre agit · Échap ferme",
+        "en": "A number acts · Esc closes",
+    },
+    "Quit the screen": {
+        "fr": "Quitter l'écran",
+        "en": "Quit the screen",
+    },
+    "Freeze the display; the reads go on underneath": {
+        "fr": "Geler l'affichage ; les lectures continuent dessous",
+        "en": "Freeze the display; the reads go on underneath",
+    },
+    "Read everything again from the start": {
+        "fr": "Tout relire depuis le début",
+        "en": "Read everything again from the start",
+    },
+    "Switch the bottom panel": {
+        "fr": "Permuter le panneau du bas",
+        "en": "Switch the bottom panel",
+    },
+    "Show this panel": {
+        "fr": "Afficher ce panneau",
+        "en": "Show this panel",
+    },
+    "Detail of the highlighted call (shows content)": {
+        "fr": "Détail de l'appel surligné (montre du contenu)",
+        "en": "Detail of the highlighted call (shows content)",
+    },
+    "Raw output of the agent (shows content)": {
+        "fr": "Sortie brute de l'agent (montre du contenu)",
+        "en": "Raw output of the agent (shows content)",
+    },
+    "Start a detached agent": {
+        "fr": "Lancer un agent détaché",
+        "en": "Start a detached agent",
+    },
+    "Stop the highlighted agent": {
+        "fr": "Arrêter l'agent surligné",
+        "en": "Stop the highlighted agent",
+    },
+    "Restart it on the current binary (confirms)": {
+        "fr": "Le relancer sur le binaire courant (confirme)",
+        "en": "Restart it on the current binary (confirms)",
+    },
+    "Delete it and its worktree (retype the identifier)": {
+        "fr": "Le supprimer avec son arbre de travail (retaper l'identifiant)",
+        "en": "Delete it and its worktree (retype the identifier)",
+    },
+    "Attach to it — this closes the screen": {
+        "fr": "S'y attacher — ferme cet écran",
+        "en": "Attach to it — this closes the screen",
+    },
     "unreadable settings": {
         "fr": "réglages illisibles",
         "en": "unreadable settings",

@@ -1683,6 +1683,179 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
                 c.stop()
 
 
+class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
+    """Le pied de page ment par omission, et « h » est ce qui le rattrape.
+
+    Il tient sur UNE ligne et se coupe à droite : sur un terminal de
+    quatre-vingts colonnes, onze indications en perdaient quatre — dont les
+    deux qui détruisent. Rien à l'écran ne disait qu'elles existaient.
+    """
+
+    def test_le_pied_de_page_nomme_la_touche_qui_mene_aux_autres(self):
+        """La garde qui compte : ce qui tient dans un terminal ordinaire.
+
+        Quatre-vingts colonnes est la largeur d'un terminal qu'on n'a pas
+        élargi, et c'est là que le pied de page coupe. Peu importe combien de
+        touches y tiennent — il faut que « h » en soit, sans quoi les autres
+        n'existent pas.
+        """
+        from script.todo.assistant.agents import tui as t_ui
+
+        app = t_ui.run_tui(run_app=False)
+        largeur, visibles = 0, []
+        for touche, _action, libelle in app.BINDINGS:
+            largeur += len(f"{touche} {libelle}") + 2
+            if largeur > 80:
+                break
+            visibles.append(touche)
+        self.assertIn("h", visibles, "la touche d'aide doit rester visible")
+        self.assertIn("q", visibles, "et celle qui sort")
+
+    def test_les_touches_ne_sont_declarees_qu_une_fois(self):
+        """Le pied de page, le panneau et les numéros lisent la MÊME table.
+
+        C'est la recopie qui avait laissé quatre touches sans mention nulle
+        part ; un panneau d'aide tenu à la main décrit tôt ou tard un écran
+        qui n'existe plus, et c'est justement celui qu'on vient consulter.
+        """
+        from script.todo.assistant.agents import tui as t_ui
+
+        app = t_ui.run_tui(run_app=False)
+        table = t_ui.TOUCHES_AFFICHAGE + t_ui.TOUCHES_LIGNE
+        self.assertEqual([b[0] for b in app.BINDINGS], [t[0] for t in table])
+        aide = t_ui.texte_de_l_aide()
+        for touche, _action, _court, phrase in table:
+            self.assertIn(t(phrase), aide, touche)
+        for rang in range(len(t_ui.TOUCHES_LIGNE)):
+            self.assertIn(f"[{rang + 1}]", aide)
+
+    def test_chaque_touche_a_son_action(self):
+        """Une entrée de table sans méthode ne lèverait qu'à la frappe."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        app = t_ui.run_tui(run_app=False)
+        for touche, action, _c, _p in t_ui.TOUCHES_LIGNE:
+            self.assertTrue(
+                hasattr(app, f"action_{action}"), f"{touche} → {action}"
+            )
+
+    def test_les_libelles_sont_declares_dans_les_deux_langues(self):
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.todo_i18n import TRANSLATIONS
+
+        for _t, _a, court, phrase in (
+            t_ui.TOUCHES_AFFICHAGE + t_ui.TOUCHES_LIGNE
+        ):
+            self.assertIn(court, TRANSLATIONS, court)
+            self.assertIn(phrase, TRANSLATIONS, phrase)
+
+    def _monde(self):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        return (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                return_value=[],
+            ),
+            patch.object(t_ui, "transcriptions", lambda: []),
+            patch.object(jr, "lire_lignes", lambda: []),
+            patch.object(jr, "nettoyer", lambda *a, **k: None),
+            patch.object(oc, "lire_base", lambda: None),
+        )
+
+    async def test_h_ouvre_le_panneau_et_echap_le_ferme(self):
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 40)) as pilote:
+                await calme(pilote)
+                volet = app.query_one("#aide", Static)
+                self.assertFalse(volet.display, "fermé au montage")
+                await pilote.press("h")
+                await calme(pilote)
+                self.assertTrue(volet.display)
+                rendu = str(volet.render())
+                # Les touches que le pied de page perd à cette largeur.
+                for perdue in ("x", "l", "a"):
+                    self.assertIn(f" {perdue}  ", rendu, perdue)
+                await pilote.press("escape")
+                await calme(pilote)
+                self.assertFalse(volet.display)
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_un_chiffre_agit_et_referme_le_panneau(self):
+        """Le panneau est un menu : on choisit, il s'efface, l'action part."""
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 40)) as pilote:
+                await calme(pilote)
+                faits = []
+                rang = [
+                    r
+                    for r, t_l in enumerate(t_ui.TOUCHES_LIGNE)
+                    if t_l[0] == "n"
+                ][0]
+                app.action_lancer = lambda: faits.append("lancer")
+                await pilote.press("h")
+                await calme(pilote)
+                await pilote.press(str(rang + 1))
+                await calme(pilote)
+                self.assertEqual(faits, ["lancer"])
+                self.assertFalse(app.query_one("#aide", Static).display)
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_ouvrir_une_invite_ferme_le_panneau(self):
+        """Les deux se disputeraient les chiffres : un « 4 » tapé dans une
+        invite est un caractère, pas un numéro de menu."""
+        from textual.widgets import Input, Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 40)) as pilote:
+                await calme(pilote)
+                faits = []
+                app.action_arreter = lambda: faits.append("arreter")
+                await pilote.press("h")
+                await calme(pilote)
+                self.assertTrue(app.query_one("#aide", Static).display)
+                # « n » depuis le panneau ouvert : la touche agit, et l'invite
+                # qu'elle ouvre chasse le panneau.
+                await pilote.press("n")
+                await calme(pilote)
+                self.assertFalse(app.query_one("#aide", Static).display)
+                await pilote.press("4")
+                await calme(pilote)
+                self.assertEqual(faits, [], "aucun numéro n'a été lu")
+                self.assertEqual(app.query_one("#saisie", Input).value, "4")
+        finally:
+            for c in correctifs:
+                c.stop()
+
+
 class TestLaSortieBruteVaAuTerminal(unittest.IsolatedAsyncioTestCase):
     """`claude logs` imprime un ÉCRAN, et non un journal de lignes.
 
