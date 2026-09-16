@@ -280,7 +280,9 @@ class TestAccordAvecLInstallateur(unittest.TestCase):
 
     def test_meme_nom_de_service(self):
         texte = INSTALLATEUR.read_text(encoding="utf-8")
-        m = re.search(r"UNIT=\"/etc/systemd/system/([^\"]+)\"", texte)
+        # En début de ligne : « PURGE_UNIT=… » contient aussi « UNIT= », et
+        # désigne l'unité du nettoyage, pas celle du service.
+        m = re.search(r"^UNIT=\"/etc/systemd/system/([^\"]+)\"", texte, re.M)
         self.assertIsNotNone(m, "le nom de l'unité est introuvable")
         self.assertEqual(
             QemuDeployMixin.QEMU_CACHE_SERVICE,

@@ -51,6 +51,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - F5 also reads the previous offline runs of the same VM and warns « at least N addresses were missing », minus what the store holds now (`erplibre_go_qemu_cache --detient`, read-only, no root). **Deployment › QEMU cache › Fill what offline runs lacked** replays them online, through the cache
 - The install log names the commit the VM runs; offline, the recap says, branch by branch, which commit the cache's mirror will give
 - `long_test/qemu_cache.py --distro tous` (or a comma list) chains one campaign per catalogue system, destroys each system's VMs before the next, and ends on a table of verdict, durations and upstream bytes. A failure does not stop the series
+- The QEMU download cache can clean itself up every day: by age (`EL_PURGE_AGE`, e.g. `90j`) and by size ceiling (`EL_MAX_SIZE`, e.g. `50G`, the least recently served going first, objects and git mirrors alike). Both are off by default and set from **Deployment › QEMU cache › Automatic cleanup**, which previews what would go; `--purge-to-size` runs the ceiling by hand. A reinstall keeps the values chosen
 
 ## Changed
 

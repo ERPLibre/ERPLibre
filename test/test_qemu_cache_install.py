@@ -199,6 +199,88 @@ class TestUniteSystemd(unittest.TestCase):
         self.assertNotIn("/root/", self.unite, "l'unité porte le compte root")
 
 
+class TestNettoyageAutomatique(unittest.TestCase):
+    """Le minuteur de nettoyage, tel qu'il est ÉCRIT, et les réglages qu'une
+    réinstallation doit garder."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        unit = Path(cls.tmp) / "purge.service"
+        timer = Path(cls.tmp) / "purge.timer"
+        prelude = (
+            f'export EL_SRC_DIR="{SOURCES}"\n'
+            f'source <(sed "/^main \\"\\$@\\"/d" {SCRIPT})\n'
+            "systemctl() { :; }\n"
+            f'PURGE_UNIT="{unit}"\n'
+            f'PURGE_TIMER="{timer}"\n'
+            "ecrire_purge\n"
+        )
+        r = subprocess.run(
+            ["bash", "-c", prelude], capture_output=True, text=True
+        )
+        if r.returncode != 0 or not unit.is_file() or not timer.is_file():
+            raise AssertionError(f"minuteur non généré : {r.stdout}{r.stderr}")
+        cls.unite = unit.read_text(encoding="utf-8")
+        cls.minuteur = timer.read_text(encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_rien_ne_part_tant_que_les_reglages_sont_vides(self):
+        """Par défaut, manuel : chaque geste est gardé par son réglage."""
+        self.assertIn('[ -n "$$EL_PURGE_AGE" ]', self.unite)
+        self.assertIn('[ -n "$$EL_MAX_SIZE" ]', self.unite)
+
+    def test_les_deux_nettoyages_sont_appeles(self):
+        self.assertIn('--purge-older-than "$$EL_PURGE_AGE"', self.unite)
+        self.assertIn('--purge-to-size "$$EL_MAX_SIZE"', self.unite)
+
+    def test_les_variables_viennent_de_l_environnement_a_l_execution(self):
+        """« $$ » dans l'unité : systemd rend un « $ » au shell. Un « $ » seul
+        serait remplacé par systemd AVANT, à partir de rien."""
+        self.assertIn("EnvironmentFile=", self.unite)
+        self.assertNotRegex(self.unite, r"(?<!\$)\$EL_")
+
+    def test_sous_le_compte_du_service_et_durci(self):
+        self.assertRegex(self.unite, re.compile(r"^User=elqcache$", re.M))
+        for directive in (
+            "Type=oneshot",
+            "NoNewPrivileges=true",
+            "ProtectSystem=strict",
+        ):
+            self.assertIn(directive, self.unite)
+        self.assertIn("/var/cache/erplibre_go_qemu_cache", self.unite)
+
+    def test_le_minuteur_est_quotidien_et_rattrape_un_arret(self):
+        self.assertIn("OnCalendar=daily", self.minuteur)
+        self.assertIn("Persistent=true", self.minuteur)
+
+    def test_une_reinstallation_garde_les_reglages(self):
+        """Le fichier env est réécrit en entier : sans relecture, les réglages
+        choisis depuis le menu disparaîtraient en silence."""
+        conf = Path(self.tmp) / "conf"
+        conf.mkdir(exist_ok=True)
+        (conf / "env").write_text(
+            "EL_PURGE_AGE=90j\nEL_MAX_SIZE=50G\n", encoding="utf-8"
+        )
+
+        def lire(env_extra):
+            prelude = (
+                f'export EL_SRC_DIR="{SOURCES}" EL_CONF_DIR="{conf}"\n'
+                + env_extra
+                + f'source <(sed "/^main \\"\\$@\\"/d" {SCRIPT})\n'
+                'echo "$EL_PURGE_AGE|$EL_MAX_SIZE"\n'
+            )
+            return subprocess.run(
+                ["bash", "-c", prelude], capture_output=True, text=True
+            ).stdout.strip()
+
+        self.assertEqual(lire(""), "90j|50G")
+        self.assertEqual(lire("export EL_PURGE_AGE=\n"), "|50G")
+
+
 class TestSourcesGo(unittest.TestCase):
     def test_module_present(self):
         self.assertTrue(

@@ -71,6 +71,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - F5 also reads the previous offline runs of the same VM and warns « at least N addresses were missing », minus what the store holds now (`erplibre_go_qemu_cache --detient`, read-only, no root). **Deployment › QEMU cache › Fill what offline runs lacked** replays them online, through the cache
 - The install log names the commit the VM runs; offline, the recap says, branch by branch, which commit the cache's mirror will give
 - `long_test/qemu_cache.py --distro tous` (or a comma list) chains one campaign per catalogue system, destroys each system's VMs before the next, and ends on a table of verdict, durations and upstream bytes. A failure does not stop the series
+- The QEMU download cache can clean itself up every day: by age (`EL_PURGE_AGE`, e.g. `90j`) and by size ceiling (`EL_MAX_SIZE`, e.g. `50G`, the least recently served going first, objects and git mirrors alike). Both are off by default and set from **Deployment › QEMU cache › Automatic cleanup**, which previews what would go; `--purge-to-size` runs the ceiling by hand. A reinstall keeps the values chosen
 
 <!-- [fr] -->
 
@@ -114,6 +115,7 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - F5 lit aussi les essais hors ligne précédents de la même VM et prévient « au moins N adresses ont manqué », moins ce que le magasin détient désormais (`erplibre_go_qemu_cache --detient`, en lecture seule, sans root). **Déploiement › Cache QEMU › Combler ce qui a manqué hors ligne** les rejoue en ligne, à travers le cache
 - Le journal d'installation nomme le commit que la VM exécute ; hors ligne, le récapitulatif dit, branche par branche, quel commit le miroir du cache donnera
 - `long_test/qemu_cache.py --distro tous` (ou une liste séparée par des virgules) enchaîne une campagne par système du catalogue, défait les VM de chaque système avant le suivant, et finit sur un tableau des verdicts, durées et octets d'amont. Un échec n'arrête pas la série
+- Le cache de téléchargement QEMU peut se nettoyer chaque jour : par âge (`EL_PURGE_AGE`, ex. `90j`) et par plafond de taille (`EL_MAX_SIZE`, ex. `50G`, le moins récemment servi partant d'abord, objets et miroirs git confondus). Les deux sont désactivés par défaut et se règlent depuis **Déploiement › Cache QEMU › Nettoyage automatique**, qui montre ce qui partirait ; `--purge-to-size` applique le plafond à la main. Une réinstallation garde les valeurs choisies
 
 <!-- [en] -->
 ## Changed
