@@ -2621,5 +2621,139 @@ class TestUnInviteQueLAutoriteNAtteintPas(unittest.TestCase):
         self.assertNotIn("⚠", vu["ecrit"])
 
 
+class UnInviteImbriqueSortMasqueDerriereSonHote(unittest.TestCase):
+    """Une distribution sans magasin de confiance par fichier ne peut RIEN
+    recevoir, et le poser par déclaration arriverait trop tard : sur un
+    système déclaratif, la première reconstruction EST le premier
+    téléchargement.
+
+    Le remède est de ne pas intercepter. Mais l'invité imbriqué sort MASQUÉ
+    derrière son hôte : sur le pont d'ici, le cache ne voit que la MAC de
+    l'hôte Proxmox, et c'est donc elle qu'il faut excepter.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    class _Mod:
+        CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
+
+        @staticmethod
+        def cache_sans_autorite(distro):
+            return distro == "nixos"
+
+    def _poser(self, distro, domaines=("pve-local",), mac="52:54:00:ab:cd:ef"):
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {"cmd": None}
+        todo._qemu_import_module = lambda: self._Mod
+        todo._qemu_list_domains = lambda: list(domaines)
+        todo._qemu_domain_mac = lambda nom: mac
+
+        class Fini:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def faux_run(cmd, **kw):
+            vu["cmd"] = cmd
+            return Fini()
+
+        import subprocess as sp
+
+        vrai = sp.run
+        self.addCleanup(setattr, sp, "run", vrai)
+        sp.run = faux_run
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            vu["rendu"] = todo._pve_cache_bypass_hote(
+                {"target": "pve-local"}, {"distro": distro}
+            )
+        vu["ecrit"] = sortie.getvalue()
+        return vu
+
+    def test_a_guest_with_a_trust_store_is_left_alone(self):
+        """L'autorité suffit pour lui, et excepter son hôte lui retirerait le
+        cache sans rien lui rendre."""
+        vu = self._poser("debian")
+        self.assertFalse(vu["rendu"])
+        self.assertIsNone(vu["cmd"], "une commande lancée pour rien")
+
+    def test_a_module_that_will_not_load_does_not_stop_the_creation(self):
+        """Sans le module on ne sait pas si l'invité a un magasin de
+        confiance : l'autorité reste la voie par défaut, et la suite de la
+        création continue."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        todo._qemu_import_module = lambda: None
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(
+                todo._pve_cache_bypass_hote(
+                    {"target": "pve-local"}, {"distro": "nixos"}
+                )
+            )
+
+    def test_a_remote_host_never_crosses_this_bridge(self):
+        """Un hôte Proxmox qui ne vit pas ici n'est pas intercepté : rien à
+        excepter, et sa MAC ne nous appartient pas."""
+        vu = self._poser("nixos", domaines=())
+        self.assertFalse(vu["rendu"])
+        self.assertIsNone(vu["cmd"])
+
+    def test_the_host_mac_is_the_one_excepted(self):
+        """Celle de l'invité n'apparaît jamais sur ce pont : il est masqué."""
+        vu = self._poser("nixos")
+        self.assertTrue(vu["rendu"])
+        joint = " ".join(vu["cmd"])
+        self.assertIn("--bypass-add 52:54:00:ab:cd:ef", joint)
+        self.assertIn("--bypass-name pve-local", joint)
+
+    def test_the_decision_is_kept_for_the_log(self):
+        """Dit à l'écran ET gardé : la console défile, le journal reste."""
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vm = {"distro": "x"}
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            todo._pve_note(vm, "  ✓ une décision")
+        self.assertIn("une décision", sortie.getvalue())
+        self.assertEqual(["✓ une décision"], vm["notes"])
+
+    def test_the_menu_hands_them_to_the_installer(self):
+        """Gardées et non transmises, elles ne serviraient à personne."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        src = (racine / "script/todo/proxmox_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("notes={", src)
+        dep = (racine / "script/todo/qemu_deploy.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('entry["notes"] = list(notes[name])', dep)
+
+    def test_the_price_is_said(self):
+        """L'exception vaut pour TOUT ce que l'hôte relaie, ses propres
+        téléchargements compris. Le taire ferait chercher plus tard pourquoi
+        le cache ne sert plus cet hôte."""
+        vu = self._poser("nixos")
+        self.assertIn("pve-local", vu["ecrit"])
+        self.assertIn("✓", vu["ecrit"])
+        self.assertTrue(
+            len(vu["ecrit"].strip().splitlines()) >= 2,
+            f"le prix n'est pas dit : {vu['ecrit']!r}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

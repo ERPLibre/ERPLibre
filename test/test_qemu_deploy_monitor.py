@@ -215,6 +215,28 @@ class TestLeJournal(unittest.TestCase):
         self.assertIn(mon.t("VM start-up"), head)
         self.assertNotIn("Branche", head)
 
+    def test_what_the_host_decided_reaches_the_log(self):
+        """La console qui a dit la décision a défilé ; le journal est ce
+        qu'on rouvre quand l'installation a échoué. Sans ces lignes il ne
+        porte que le symptôme — des centaines de lignes de construction et
+        un certificat refusé, sans un mot sur ce qui l'a voulu."""
+        vm = dict(
+            self._vm(),
+            notes=[
+                "⚠ pas de magasin de confiance : nixos",
+                "✓ hôte soustrait au cache : pve-local",
+            ],
+        )
+        head = mon._log_header(vm, "develop", "2026-01-01 00:00:00")
+        self.assertIn(mon.t("Prepared by the host:"), head)
+        self.assertIn("pas de magasin de confiance", head)
+        self.assertIn("hôte soustrait au cache", head)
+
+    def test_a_log_without_notes_is_unchanged(self):
+        """Le cas ordinaire ne gagne pas une section vide."""
+        head = mon._log_header(self._vm(), "develop", "2026-01-01 00:00:00")
+        self.assertNotIn(mon.t("Prepared by the host:"), head)
+
     def test_the_prologue_says_what_actually_follows(self):
         """« installation ERPLibre en cours » alors que rien ne s'installe."""
         import tempfile

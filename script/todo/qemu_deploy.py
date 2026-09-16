@@ -366,6 +366,7 @@ class QemuDeployMixin:
         vm_tools=(),
         pve=None,
         meta=None,
+        notes=None,
         ai_agent="",
         guet_hors_ligne=False,
         deploy_started=None,
@@ -386,6 +387,8 @@ class QemuDeployMixin:
         `vm_tools` : outils cochés pour tout le parc, filtrés machine par
         machine (Android Studio n'existe qu'en x86_64, les extensions GNOME
         n'ont pas de sens sous Cinnamon).
+        `notes` : {nom: [lignes]} — ce que l'hôte a décidé pour cette VM
+        avant l'installation, recopié en tête de son journal.
         `meta` : {nom: (distro, version, arch)} quand l'appelant SAIT ce que
         sont ces VM. Sans elle, on le demande à virsh — juste ici, donc faux
         pour une VM qui vit sur un Proxmox distant."""
@@ -449,6 +452,11 @@ class QemuDeployMixin:
                 # connaît pas.
                 if (pve or {}).get(name):
                     entry["pve"] = pve[name]
+                # Ce que l'hôte a décidé AVANT de lancer l'installation :
+                # écrit en tête du journal, là où on le cherche quand ça a
+                # échoué. La console qui l'a dit a défilé depuis.
+                if (notes or {}).get(name):
+                    entry["notes"] = list(notes[name])
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle

@@ -146,5 +146,74 @@ class TestCompareDatabaseApplicationLogic(unittest.TestCase):
         self.assertEqual(len(s2.difference(s1)), 0)
 
 
+class UneDestructionNAnnonceQueCeQuElleAFait(unittest.TestCase):
+    """« make db_drop_all » composait une commande « parallel », jetait son
+    code de retour et imprimait la liste des bases comme détruites.
+
+    Le cas s'atteint dès que « parallel » manque du PATH : le shell rend 127,
+    pas une base n'est touchée, et l'opérateur passe à la suite en croyant
+    ses bases parties. Une destruction qui annonce un succès qu'elle n'a pas
+    obtenu est pire que celle qui échoue.
+    """
+
+    def _module(self):
+        import importlib.util
+
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "script/database/db_drop_all.py",
+        )
+        spec = importlib.util.spec_from_file_location("db_drop_all", chemin)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def _courir(self, code_destruction):
+        import contextlib
+
+        mod = self._module()
+
+        def faux_shell(cmd):
+            if "--list" in cmd:
+                return 0, "test_alpha\ntest_beta"
+            return code_destruction, (
+                "" if not code_destruction else "parallel: command not found"
+            )
+
+        mod.execute_shell = faux_shell
+
+        class Config:
+            database = ""
+            test_only = True
+
+        mod.get_config = lambda: Config()
+        sortie, erreur = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(sortie):
+            with contextlib.redirect_stderr(erreur):
+                code = mod.main()
+        return code, sortie.getvalue(), erreur.getvalue()
+
+    def test_a_failed_drop_is_not_announced_as_done(self):
+        code, sortie, erreur = self._courir(127)
+        self.assertEqual(127, code)
+        self.assertNotIn("Database deleted", sortie)
+        self.assertNotIn("test_alpha", sortie)
+
+    def test_the_cause_reaches_the_operator(self):
+        """Le code de retour seul laisserait chercher : la sortie du shell
+        nomme ce qui manque."""
+        _code, _sortie, erreur = self._courir(127)
+        self.assertIn("NOT deleted", erreur)
+        self.assertIn("parallel", erreur)
+
+    def test_a_real_drop_is_still_announced(self):
+        """Le cas ordinaire ne change pas : les bases détruites se disent."""
+        code, sortie, _erreur = self._courir(0)
+        self.assertEqual(0, code)
+        self.assertIn("Database deleted", sortie)
+        self.assertIn("test_alpha", sortie)
+        self.assertIn("test_beta", sortie)
+
+
 if __name__ == "__main__":
     unittest.main()
