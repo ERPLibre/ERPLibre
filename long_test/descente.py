@@ -37,7 +37,7 @@ from script.proxmox import proxmox_deploy as pve  # noqa: E402
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
 # descentes de piles différentes se disputeraient la RAM, le disque et
 # ~/.ssh/config aussi sûrement que deux de la même.
-SCRIPTS = ("deep_proxmox.py", "deep_qemu.py")
+SCRIPTS = ("deep_proxmox.py", "deep_qemu.py", "install_nixos.py")
 
 # Une étape bloquée ne doit pas bloquer le test : chaque appel est borné, et le
 # journal dit lequel a expiré. Généreux, parce que chaque étage est plus lent
@@ -750,22 +750,27 @@ def _lance_une_descente(pid):
     """`pid` exécute-t-il UN des scripts de descente — pas seulement le
     nomme-t-il ?
 
-    Par ARGUMENT, jamais par sous-chaîne. Constaté sur cette machine : un
-    « pgrep -f deep_proxmox.py » posé dans une boucle de surveillance donne un
-    shell dont la ligne de commande contient le motif, et le contrôle comptait
-    ce shell comme une descente — deux faux positifs sur trois. Un argument
-    qui SE TERMINE par le nom du fichier, lui, ne peut venir que d'un
-    interpréteur qu'on a lancé dessus.
+    Par ARGUMENT, jamais par sous-chaîne. Un « pgrep -f deep_proxmox.py » posé
+    dans une boucle de surveillance donne un shell dont la ligne de commande
+    contient le motif, et le contrôle comptait ce shell comme une descente —
+    deux faux positifs sur trois.
+
+    Et par NOM DE FICHIER, pas par suffixe. « endswith » prenait
+    « test_longtest_install_nixos.py » pour « install_nixos.py » : le fichier
+    de tests se déclarait descente en cours, et « --detruire » refusait de
+    travailler tant qu'il tournait. Le basename ne confond pas deux fichiers
+    dont l'un finit comme l'autre, et reconnaît toujours le chemin complet
+    qu'un interpréteur reçoit.
     """
     try:
         with open(f"/proc/{int(pid)}/cmdline", "rb") as fh:
             arguments = fh.read().split(b"\0")
     except (OSError, ValueError):
         return False
-    # Les DEUX scripts : deux descentes de piles différentes se disputent la
-    # RAM, le disque et ~/.ssh/config aussi sûrement que deux de la même.
-    attendus = tuple(nom.encode() for nom in SCRIPTS)
-    return any(a.endswith(attendus) for a in arguments)
+    # LES scripts, tous : deux tests longs se disputent la RAM, le disque et
+    # ~/.ssh/config aussi sûrement que deux descentes de la même pile.
+    attendus = {nom.encode() for nom in SCRIPTS}
+    return any(os.path.basename(a) in attendus for a in arguments)
 
 
 def descente_vivante(pid):

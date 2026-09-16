@@ -575,6 +575,52 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
         self.assertNotIn(faux.pid, self.dp.autre_descente())
 
+    def _argv0(self, nom):
+        """Un processus vivant dont argv[0] est `nom`, sans rien exécuter de
+        vrai.
+
+        `executable` sépare le binaire RÉELLEMENT lancé de ce que la ligne de
+        commande annonce : c'est elle que /proc publie, et donc elle que le
+        contrôle lit. Le faire par « sh -c 'exec -a …' » n'éprouvait rien — la
+        ligne de commande restait celle du shell, et le test passait à vide.
+        """
+        import subprocess
+
+        faux = subprocess.Popen([nom, "30"], executable=shutil.which("sleep"))
+        self.addCleanup(faux.kill)
+        # Le noyau publie la nouvelle ligne de commande à l'exec, pas au fork.
+        for _ in range(100):
+            try:
+                with open(f"/proc/{faux.pid}/cmdline", "rb") as fh:
+                    if fh.read().startswith(nom.encode()):
+                        break
+            except OSError:
+                pass
+            time.sleep(0.02)
+        return faux
+
+    def test_a_file_whose_name_merely_ends_like_one_is_not_a_descent(self):
+        """« endswith » prenait « test_longtest_install_nixos.py » pour
+        « install_nixos.py » : le fichier de tests se déclarait descente en
+        cours, et « --detruire » refusait de travailler tant qu'il tournait.
+
+        Le piège n'est pas propre à ce nom-là : tout script dont le nom
+        termine celui d'un test long y tombait."""
+        faux = self._argv0("/tmp/test_longtest_install_nixos.py")
+        self.assertFalse(self.dp._lance_une_descente(faux.pid))
+
+    def test_the_real_path_of_a_script_is_still_recognised(self):
+        """Le basename ne doit pas rendre le contrôle aveugle : un
+        interpréteur reçoit le CHEMIN du script, pas son nom nu."""
+        for chemin in (
+            "long_test/install_nixos.py",
+            "/home/x/long_test/deep_qemu.py",
+            "./deep_proxmox.py",
+        ):
+            with self.subTest(chemin=chemin):
+                faux = self._argv0(chemin)
+                self.assertTrue(self.dp._lance_une_descente(faux.pid))
+
     def _fausse_descente(self):
         """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
 
@@ -1113,18 +1159,38 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         self.assertIn("deep_qemu.py", src)
 
     def test_undoing_asks_each_stack_separately(self):
-        """Chacun ne connaît que ses rapports : lancer les deux ne peut pas
+        """Chacun ne connaît que ses rapports : lancer les trois ne peut pas
         faire détruire à l'un ce que l'autre a créé."""
         import inspect
 
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
         src = inspect.getsource(self.todo._longtest_defaire)
-        self.assertIn("deep_proxmox.py", src)
-        self.assertIn("deep_qemu.py", src)
+        self.assertIn("SCRIPTS_DEFAISABLES", src)
+        for script in ("deep_proxmox.py", "deep_qemu.py", "install_nixos.py"):
+            with self.subTest(script=script):
+                self.assertIn(script, SCRIPTS_DEFAISABLES)
         # À BLANC d'abord, toujours : un choix d'une touche ne doit pas mener
         # droit à « qm destroy --purge ».
         self.assertLess(
             src.index("--detruire --dry-run"), src.index('"--detruire"')
         )
+
+    def test_everything_the_lock_knows_can_be_undone(self):
+        """Le verrou (long_test/descente.py) et le défaire (le menu) portent
+        chacun la liste des tests longs, faute de pouvoir la partager : le
+        menu lance ces scripts en sous-processus et n'importe jamais
+        long_test/, qui traîne avec lui le module Proxmox.
+
+        L'inclusion, et non l'égalité : un test long que le verrou connaît
+        crée des machines, donc il DOIT être défaisable. L'inverse n'est pas
+        vrai — le menu défait aussi le test du cache, que le verrou ne
+        surveille pas. Exiger l'égalité ferait échouer ce test sur un écart
+        qui est un choix, pas une dérive."""
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
+        self.assertTrue(set(moteur.SCRIPTS) <= set(SCRIPTS_DEFAISABLES))
+        self.assertIn("install_nixos.py", moteur.SCRIPTS)
 
     def test_the_host_options_are_built_from_the_host_dict(self):
         self.assertEqual(

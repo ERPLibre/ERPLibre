@@ -235,5 +235,47 @@ class LeModule(unittest.TestCase):
         self.assertIn('"/include"', self.src)
 
 
+class LHoteSansGestionnaire(unittest.TestCase):
+    """Ce que le menu répond sur un système où rien ne s'installe.
+
+    « Aucun gestionnaire connu » est vrai sur NixOS et n'y mène nulle part :
+    la phrase seule ferme la porte, alors que deux gestes l'ouvrent — le shell
+    jetable pour essayer, la déclaration pour ce qui reste.
+    """
+
+    def setUp(self):
+        from script.todo import todo_install
+
+        self.ti = todo_install
+        self._vrai = todo_install.os_id
+        self.addCleanup(setattr, todo_install, "os_id", self._vrai)
+
+    def test_a_nixos_host_is_told_what_works_instead(self):
+        self.ti.os_id = lambda: "nixos"
+        conseil = self.ti.conseil_sans_gestionnaire()
+        self.assertIn("nix-shell -p", conseil)
+        self.assertIn("configuration.nix", conseil)
+
+    def test_nothing_is_invented_elsewhere(self):
+        """Sur une machine dont on ne sait rien, inventer un conseil vaut
+        moins que de se taire."""
+        for ident in ("debian", "fedora", "arch", ""):
+            with self.subTest(ident=ident):
+                self.ti.os_id = lambda ident=ident: ident
+                self.assertEqual("", self.ti.conseil_sans_gestionnaire())
+
+    def test_both_dead_ends_carry_it(self):
+        """Deux endroits impriment « aucun gestionnaire » : celui que tout le
+        menu partage, et celui de virt-viewer."""
+        for chemin in (
+            "script/todo/todo_install.py",
+            "script/todo/qemu_access.py",
+        ):
+            with self.subTest(chemin=chemin):
+                src = (RACINE / chemin).read_text(encoding="utf-8")
+                i = src.index("no known package manager here.")
+                self.assertIn("conseil_sans_gestionnaire", src[i : i + 400])
+
+
 if __name__ == "__main__":
     unittest.main()
