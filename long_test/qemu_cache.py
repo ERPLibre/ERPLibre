@@ -53,6 +53,7 @@ sys.path.insert(0, os.path.join(RACINE, "long_test"))
 sys.path.insert(0, RACINE)
 
 from descente import (  # noqa: E402
+    CACHE_CA,
     Descente,
     cle_publique,
     detruire_etage1,
@@ -95,7 +96,7 @@ DISTRO = "arch"
 VERSION = "latest"
 
 CLI = os.path.join(RACINE, "script/qemu/deploy_qemu.py")
-CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
+CA = CACHE_CA
 CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
 SERVICE = "erplibre-go-qemu-cache.service"
 CONF = "/etc/erplibre_go_qemu_cache/env"

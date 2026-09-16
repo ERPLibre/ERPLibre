@@ -37,7 +37,39 @@ from script.proxmox import proxmox_deploy as pve  # noqa: E402
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
 # descentes de piles différentes se disputeraient la RAM, le disque et
 # ~/.ssh/config aussi sûrement que deux de la même.
-SCRIPTS = ("deep_proxmox.py", "deep_qemu.py", "install_nixos.py")
+SCRIPTS = (
+    "deep_proxmox.py",
+    "deep_qemu.py",
+    "install_nixos.py",
+    "qemu_cache.py",
+)
+
+# L'autorité du cache de téléchargement, telle que le service l'écrit sur
+# l'hôte. Une seule définition pour tout long_test/ : une seconde dériverait
+# en silence, et un test qui pose la mauvaise autorité échoue comme s'il n'en
+# posait aucune.
+CACHE_CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
+
+
+def drapeaux_cache():
+    """Les drapeaux de cache à passer à la CLI QEMU pour une VM locale.
+
+    Le détournement est TRANSPARENT et vaut pour tout le pont libvirt : une
+    VM créée ici est interceptée qu'elle le demande ou non. Ne rien passer ne
+    la laisse donc pas en direct — elle reçoit un certificat qu'elle ne
+    reconnaît pas, et chaque téléchargement HTTPS échoue sur « self-signed
+    certificate in certificate chain » : l'image, puis le gestionnaire de
+    paquets, puis tout le reste de l'étage.
+
+    Deux issues, et elles se valent pour le test : approuver l'autorité quand
+    l'hôte en porte une, ou demander une exception par adresse MAC sinon. Sur
+    un hôte sans cache, l'exception ne fait rien et le dit — la CLI n'exige
+    pas d'installer un cache pour pouvoir s'en passer.
+    """
+    if os.path.isfile(CACHE_CA):
+        return ["--cache-ca", CACHE_CA]
+    return ["--cache-bypass"]
+
 
 # Une étape bloquée ne doit pas bloquer le test : chaque appel est borné, et le
 # journal dit lequel a expiré. Généreux, parce que chaque étage est plus lent
@@ -458,6 +490,7 @@ class Descente:
         pub = cle_publique()
         if pub:
             argv += ["--ssh-key", pub]
+        argv += drapeaux_cache()
         if self.dry_run:
             print("      " + " ".join(shlex.quote(a) for a in argv))
             return nom

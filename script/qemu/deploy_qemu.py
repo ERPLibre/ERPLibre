@@ -2799,6 +2799,32 @@ OFFLINE_BOOTCMD = [
 
 CACHE_CERT_NAME = "erplibre-cache.crt"
 
+# Les familles à qui AUCUN des trois gestes de CACHE_TRUST ne s'applique.
+#
+# « nix » en est une : NixOS n'a pas de dossier d'ancres inscriptible — /usr
+# n'y existe qu'en lecture seule et /etc est produit par le système —, aucune
+# commande de mise à jour du magasin, et son faisceau est un lien du store que
+# seule une reconstruction change. Y recopier une ligne calquée sur apt
+# rendrait le contrôle vert sans rien poser : la VM resterait interceptée et
+# sans autorité, c'est-à-dire muette sur chaque téléchargement HTTPS.
+#
+# Le détournement, lui, porte sur tout le pont. Une VM de ces familles doit
+# donc en être SOUSTRAITE, faute de quoi elle ne télécharge plus rien — et le
+# message qu'elle rendrait, « self-signed certificate in certificate chain »,
+# ne dit rien d'une famille sans magasin.
+CACHE_SANS_AUTORITE = frozenset({"nix"})
+
+
+def cache_sans_autorite(distro: str) -> bool:
+    """La VM de `distro` peut-elle recevoir l'autorité du cache ?
+
+    Non quand sa famille n'a pas de magasin de certificats où l'écrire. Le
+    déploiement l'exempte alors du détournement plutôt que de la laisser
+    échouer sur un certificat qu'elle ne peut pas apprendre.
+    """
+    famille = cache_family(distro)
+    return bool(famille) and famille in CACHE_SANS_AUTORITE
+
 
 def cache_family(distro: str) -> str:
     """Famille de gestionnaire de paquets d'un système du catalogue.
@@ -5237,6 +5263,18 @@ def main() -> None:
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
     # Avant la création, et non après : la VM télécharge dès cloud-init.
+    # Une famille sans magasin de certificats ne peut pas apprendre
+    # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
+    # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
+    # demandé à l'opérateur — c'est le catalogue qui sait.
+    if cache_sans_autorite(getattr(args, "distro", "")) and not getattr(
+        args, "cache_bypass", False
+    ):
+        args.cache_bypass = True
+        print(
+            f"\n  {args.distro} n'a pas de magasin de certificats :"
+            " la VM est soustraite au cache et téléchargera en direct."
+        )
     cache_bypass_apply(args, runner)
     virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:

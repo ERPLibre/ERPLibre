@@ -270,6 +270,36 @@ class LesDeuxCheminsLisentLaMemeSomme(unittest.TestCase):
         # et non se contenter d'un avertissement dans le journal.
         self.assertIn("&& echo", cmd)
 
+    def test_the_download_lands_on_its_final_name_only_when_complete(self):
+        """« wget -O » écrivait dans la CIBLE : une coupure — réseau, disque
+        plein, Ctrl-C — y figeait une image tronquée que le test de présence
+        acceptait à chaque déploiement suivant. Avec une somme, elle échouait
+        pour toujours sans dire quoi effacer ; sans somme, elle servait à
+        créer une VM.
+
+        Mesuré : un « .partiel » laissé par une coupure est repris et la
+        cible finit identique à l'amont."""
+        from script.proxmox import proxmox_deploy as pve
+
+        cmd = pve.image_fetch_cmd("http://x/i.qcow2", "i.qcow2")
+        self.assertIn("-O", cmd)
+        self.assertIn(".partiel", cmd)
+        # Le « mv » suit le téléchargement, et par « && » : un wget en échec
+        # ne doit RIEN mettre en place.
+        self.assertLess(cmd.index("wget"), cmd.index("mv "))
+        self.assertIn("&& mv ", cmd)
+
+    def test_a_fresh_download_is_checked_before_it_is_installed(self):
+        """Une image fausse ne doit jamais devenir celle que le prochain
+        déploiement trouvera « déjà présente »."""
+        from script.proxmox import proxmox_deploy as pve
+
+        cmd = pve.image_fetch_cmd(
+            "http://x/i.qcow2", "i.qcow2", sha256="c" * 64
+        )
+        i_somme = cmd.index("sha256sum")
+        self.assertLess(i_somme, cmd.index("mv "))
+
     def test_a_cached_image_is_verified_too(self):
         """Le cas qu'on veut prendre est un fichier substitué ou tronqué
         entre deux déploiements : le test de présence ne regarde que la
@@ -279,7 +309,11 @@ class LesDeuxCheminsLisentLaMemeSomme(unittest.TestCase):
         cmd = pve.image_fetch_cmd(
             "http://x/i.qcow2", "i.qcow2", sha256="b" * 64
         )
-        self.assertLess(cmd.index("fi"), cmd.index("sha256sum"))
+        # La DERNIÈRE vérification, celle qui porte sur le fichier en
+        # place : la première garde le téléchargement frais avant de
+        # l'installer, et se trouve donc AVANT le « fi ».
+        self.assertLess(cmd.index("fi"), cmd.rindex("sha256sum"))
+        self.assertEqual(2, cmd.count("sha256sum"))
 
     def test_nothing_is_appended_without_a_sum(self):
         from script.proxmox import proxmox_deploy as pve

@@ -2552,5 +2552,74 @@ class TestLAutoriteDUneVmProxmoxHorsLigne(unittest.TestCase):
         self.assertNotIn("NPM_CONFIG_AUDIT", rendus[False])
 
 
+class TestUnInviteQueLAutoriteNAtteintPas(unittest.TestCase):
+    """Une distribution dont le magasin de confiance n'a pas de forme par
+    fichier ne reçoit rien à poser.
+
+    On n'arrive ici que lorsque l'hôte Proxmox est lui-même une VM de ce pont
+    — c'est la condition de _pve_cache_ca. Son invité est donc détourné par
+    le cache, et sans autorité chaque téléchargement HTTPS échoue sur
+    « self-signed certificate in certificate chain ». Le taire déplace la
+    panne dans la VM, des minutes plus tard et sans sa cause.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    class _Sans:
+        @staticmethod
+        def cache_files(args):
+            return []
+
+    class _Avec:
+        @staticmethod
+        def cache_files(args):
+            return [
+                ("/usr/local/share/ca-certificates/x.crt", "0644", "PEM", "")
+            ]
+
+        @staticmethod
+        def cache_commands(args):
+            return ["update-ca-certificates"]
+
+    def _poser(self, mod, distro):
+        import contextlib
+        import io
+
+        todo = self._todo()
+        vu = {"ssh": []}
+        todo._qemu_import_module = lambda: mod
+        todo._pve_ssh = lambda cible, cmd, timeout=120: (
+            vu["ssh"].append(cmd) or (0, "")
+        )
+        with contextlib.redirect_stdout(io.StringIO()) as sortie:
+            vu["rendu"] = todo._pve_set_cache_ca(
+                "pve+vm-a", {"distro": distro}, "/var/lib/cache/ca.crt"
+            )
+        vu["ecrit"] = sortie.getvalue()
+        return vu
+
+    def test_la_distribution_sans_magasin_est_nommee(self):
+        vu = self._poser(self._Sans, "nixos")
+        self.assertFalse(vu["rendu"])
+        self.assertEqual([], vu["ssh"], "ssh lancé pour rien")
+        self.assertIn("⚠", vu["ecrit"])
+        self.assertIn("nixos", vu["ecrit"])
+
+    def test_celle_qui_en_a_un_le_pose_sans_avertir(self):
+        """L'avertissement ne doit pas se banaliser : le cas ordinaire sort
+        un « ✓ » et rien d'autre."""
+        vu = self._poser(self._Avec, "debian")
+        self.assertTrue(vu["rendu"])
+        self.assertEqual(1, len(vu["ssh"]))
+        self.assertIn("update-ca-certificates", vu["ssh"][0])
+        self.assertNotIn("⚠", vu["ecrit"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

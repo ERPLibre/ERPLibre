@@ -464,16 +464,49 @@ class TestAucunSystemeNestOublie(unittest.TestCase):
         )
 
     def test_chaque_famille_sait_poser_lautorite(self):
-        from script.qemu.deploy_qemu import CACHE_TRUST, DISTROS, cache_family
+        """Chaque famille du catalogue sait poser l'autorité, OU est
+        explicitement soustraite au détournement.
 
-        manquantes = sorted(
-            {cache_family(d) for d in DISTROS} - set(CACHE_TRUST)
+        Le détournement porte sur tout le pont : une famille qui ne sait pas
+        apprendre l'autorité et qu'on laisse passer n'échoue pas à
+        l'installation du certificat — elle échoue sur CHAQUE téléchargement,
+        avec un message qui ne dit rien de la cause.
+        """
+        from script.qemu.deploy_qemu import (
+            CACHE_SANS_AUTORITE,
+            CACHE_TRUST,
+            DISTROS,
+            cache_family,
         )
+
+        familles = {cache_family(d) for d in DISTROS} - {""}
+        manquantes = sorted(familles - set(CACHE_TRUST) - CACHE_SANS_AUTORITE)
         self.assertEqual(
             manquantes,
             [],
             f"familles sans commande de confiance : {manquantes}",
         )
+
+    def test_une_famille_exemptee_nest_pas_aussi_dans_la_table(self):
+        """Les deux listes s'excluent : une famille qui sait poser l'autorité
+        n'a rien à faire parmi les exemptées, et l'y laisser soustrairait au
+        cache une VM qui pouvait parfaitement en vivre."""
+        from script.qemu.deploy_qemu import CACHE_SANS_AUTORITE, CACHE_TRUST
+
+        self.assertEqual(set(), set(CACHE_TRUST) & CACHE_SANS_AUTORITE)
+
+    def test_une_exemptee_est_bien_soustraite_au_detournement(self):
+        """L'exemption ne vaut que si le déploiement la POSE : la déclarer et
+        laisser la VM sur le pont ne change rien à son sort."""
+        from script.qemu.deploy_qemu import cache_sans_autorite
+
+        self.assertTrue(cache_sans_autorite("nixos"))
+        for connue in ("debian", "ubuntu", "fedora", "arch", "opensuse"):
+            with self.subTest(distro=connue):
+                self.assertFalse(cache_sans_autorite(connue))
+        # Un système hors catalogue n'est pas « exempté » : il n'a pas de
+        # famille, et c'est une autre question que celle-ci.
+        self.assertFalse(cache_sans_autorite("inconnue"))
 
     def test_la_famille_vient_du_catalogue_et_nest_pas_recopiee(self):
         """Deux tables qui disent la même chose dérivent : c'est ce qui a

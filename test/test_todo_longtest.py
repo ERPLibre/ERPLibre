@@ -1176,20 +1176,19 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
             src.index("--detruire --dry-run"), src.index('"--detruire"')
         )
 
-    def test_everything_the_lock_knows_can_be_undone(self):
+    def test_the_two_copies_of_the_list_agree(self):
         """Le verrou (long_test/descente.py) et le défaire (le menu) portent
         chacun la liste des tests longs, faute de pouvoir la partager : le
         menu lance ces scripts en sous-processus et n'importe jamais
         long_test/, qui traîne avec lui le module Proxmox.
 
-        L'inclusion, et non l'égalité : un test long que le verrou connaît
-        crée des machines, donc il DOIT être défaisable. L'inverse n'est pas
-        vrai — le menu défait aussi le test du cache, que le verrou ne
-        surveille pas. Exiger l'égalité ferait échouer ce test sur un écart
-        qui est un choix, pas une dérive."""
+        L'égalité, dans les deux sens, et chacun de ses sens couvre une
+        panne : un test long absent du VERROU laisse une autre descente
+        détruire ses machines pendant qu'il tourne ; absent du DÉFAIRE, il
+        laisse ses VM derrière lui, sans rien pour les reprendre."""
         from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
 
-        self.assertTrue(set(moteur.SCRIPTS) <= set(SCRIPTS_DEFAISABLES))
+        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DEFAISABLES))
         self.assertIn("install_nixos.py", moteur.SCRIPTS)
 
     def test_the_host_options_are_built_from_the_host_dict(self):
@@ -1765,6 +1764,51 @@ class TestLeMenu(unittest.TestCase):
         src = inspect.getsource(TODO.prompt_execute_test)
         self.assertIn("prompt_execute_longtest", src)
         self.assertIn("Long tests", src)
+
+
+class LeCacheDeLEtage1(unittest.TestCase):
+    """L'étage 1 est une VM du pont libvirt local, et le cache détourne tout
+    ce pont. Ne rien lui passer ne la laisse pas en direct : elle est
+    interceptée sans autorité, et chaque téléchargement HTTPS de l'étage —
+    l'image, puis le gestionnaire de paquets — échoue sur « self-signed
+    certificate in certificate chain »."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="descente-ca-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.addCleanup(setattr, moteur, "CACHE_CA", moteur.CACHE_CA)
+
+    def test_the_authority_is_trusted_when_the_host_has_one(self):
+        ca = os.path.join(self.dossier, "ca.crt")
+        with open(ca, "w", encoding="utf-8") as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\n")
+        moteur.CACHE_CA = ca
+        self.assertEqual(["--cache-ca", ca], moteur.drapeaux_cache())
+
+    def test_a_host_without_one_asks_for_an_exception(self):
+        """L'exception par MAC, et non le silence : sur un hôte sans cache
+        elle ne fait rien et le dit, ce qui ne coûte qu'une ligne ; sur un
+        hôte qui en porte un, le silence coûte l'étage."""
+        moteur.CACHE_CA = os.path.join(self.dossier, "absent.crt")
+        self.assertEqual(["--cache-bypass"], moteur.drapeaux_cache())
+
+    def test_the_first_floor_passes_them(self):
+        """Les deux piles héritent de creer_etage1 : le drapeau posé là les
+        couvre toutes les deux."""
+        import inspect
+
+        src = inspect.getsource(moteur.Descente.creer_etage1)
+        self.assertIn("argv += drapeaux_cache()", src)
+
+    def test_the_long_tests_share_one_authority(self):
+        """Une seconde définition du chemin dériverait en silence, et poser
+        la mauvaise autorité échoue comme n'en poser aucune."""
+        import sys as _sys
+
+        _sys.path.insert(0, os.path.join(RACINE, "long_test"))
+        import qemu_cache
+
+        self.assertEqual(moteur.CACHE_CA, qemu_cache.CA)
 
 
 if __name__ == "__main__":

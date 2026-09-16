@@ -4530,10 +4530,6 @@ TRANSLATIONS = {
         "fr": "Partir d'une machine NixOS qu'on possède déjà",
         "en": "Use a NixOS machine you already have",
     },
-    "Choice (1-2, default 1): ": {
-        "fr": "Choix (1-2, défaut 1) : ",
-        "en": "Choice (1-2, default 1): ",
-    },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
         "en": "Nested QEMU depth: run it",
@@ -7271,6 +7267,14 @@ TRANSLATIONS = {
     "download cache authority not installed": {
         "fr": "autorité du cache de téléchargement non posée",
         "en": "download cache authority not installed",
+    },
+    "no trust store for this distribution, its downloads "
+    "will fail": {
+        "fr": (
+            "pas de magasin de confiance pour cette distribution, ses "
+            "téléchargements échoueront"
+        ),
+        "en": "no trust store for this distribution, its downloads will fail",
     },
     "Timezone": {
         "fr": "Fuseau horaire",

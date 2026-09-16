@@ -22,7 +22,10 @@ configuration ENTIÈRE, sans message : la VM démarre sans compte ni clé.
 """
 
 import importlib.util
+import os
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -47,10 +50,11 @@ def _deploy_qemu():
 DQ = _deploy_qemu()
 
 
-def _cloud_config(distro):
-    args = DQ.build_parser().parse_args(
-        ["--distro", distro, "--hostname", "x"]
-    )
+def _cloud_config(distro, cache_ca=""):
+    argv = ["--distro", distro, "--hostname", "x"]
+    if cache_ca:
+        argv += ["--cache-ca", cache_ca]
+    args = DQ.build_parser().parse_args(argv)
     return DQ.build_cloud_config(args, None, ["ssh-ed25519 AAAA essai"])
 
 
@@ -147,6 +151,86 @@ class LeSeedEntier(unittest.TestCase):
         self.assertEqual("ca", doc["keyboard"]["layout"])
         chemins = [f["path"] for f in doc["write_files"]]
         self.assertNotIn("/etc/default/keyboard", chemins)
+
+
+class LAutoriteDuCacheDansLeSeedAssemble(unittest.TestCase):
+    """Le clavier et l'autorité du cache arrivent par la MÊME clé.
+
+    Trois écritures se disputent « write_files: » — le guide, l'autorité du
+    cache, le clavier — et cloud-init n'en lit qu'UNE : un document qui porte
+    la clé deux fois garde la dernière, sans erreur ni message. Ce qui est
+    perdu ne se voit alors qu'à l'usage, chez l'invité, et seulement pour ce
+    qui en dépendait.
+
+    Les tests plus haut regardent les fonctions une à une ; ceux-ci regardent
+    le document ASSEMBLÉ, seul endroit où cette collision existe.
+    """
+
+    def setUp(self):
+        if yaml is None:
+            self.skipTest("PyYAML absent")
+        dossier = tempfile.mkdtemp(prefix="cache-ca-")
+        self.addCleanup(shutil.rmtree, dossier, ignore_errors=True)
+        # Une autorité INVENTÉE : cache_files exige « BEGIN CERTIFICATE » et
+        # ne lit rien d'autre du fichier. Reprendre celle d'un hôte réel
+        # figerait dans le dépôt le certificat d'une machine.
+        self.ca = os.path.join(dossier, "ca.crt")
+        with open(self.ca, "w", encoding="utf-8") as fh:
+            fh.write(
+                "-----BEGIN CERTIFICATE-----\nZXNzYWk=\n"
+                "-----END CERTIFICATE-----\n"
+            )
+
+    def _chemins(self, distro):
+        doc = yaml.safe_load(_cloud_config(distro, self.ca))
+        return [f["path"] for f in doc.get("write_files", [])]
+
+    def test_the_key_appears_exactly_once(self):
+        """Deux « write_files: » dans le même document : PyYAML garde le
+        second et jette le premier, sans rien dire."""
+        for distro in ("debian", "ubuntu", "fedora", "arch", "nixos"):
+            with self.subTest(distro=distro):
+                texte = _cloud_config(distro, self.ca)
+                lignes = texte.splitlines()
+                self.assertEqual(
+                    1, lignes.count("write_files:"), "\n".join(lignes[:5])
+                )
+
+    def test_the_authority_reaches_the_assembled_document(self):
+        """Ce qu'aucun test ne gardait : l'autorité peut disparaître du
+        document tout en restant correcte dans cache_files."""
+        for distro in ("debian", "ubuntu", "fedora", "arch", "opensuse"):
+            with self.subTest(distro=distro):
+                chemins = self._chemins(distro)
+                self.assertTrue(
+                    any(c.endswith(DQ.CACHE_CERT_NAME) for c in chemins),
+                    chemins,
+                )
+
+    def test_debian_keeps_both_the_keyboard_and_the_authority(self):
+        """La seule distribution qui demande les deux par write_files : si
+        une écriture en écrase une autre, c'est ici que cela se voit."""
+        chemins = self._chemins("debian")
+        self.assertIn("/etc/default/keyboard", chemins)
+        self.assertTrue(any(c.endswith(DQ.CACHE_CERT_NAME) for c in chemins))
+
+    def test_the_trust_command_reaches_runcmd(self):
+        """Le fichier posé sans la commande qui relit le magasin ne sert à
+        rien : les deux moitiés voyagent séparément."""
+        doc = yaml.safe_load(_cloud_config("debian", self.ca))
+        self.assertTrue(
+            any("update-ca-certificates" in str(c) for c in doc["runcmd"]),
+            doc["runcmd"],
+        )
+
+    def test_a_system_with_no_anchor_gets_nothing_and_keeps_the_rest(self):
+        """Un système déclaratif n'a pas d'ancre où écrire. Il ne reçoit donc
+        pas l'autorité — et le reste du document lui parvient quand même."""
+        doc = yaml.safe_load(_cloud_config("nixos", self.ca))
+        chemins = [f["path"] for f in doc.get("write_files", [])]
+        self.assertFalse([c for c in chemins if DQ.CACHE_CERT_NAME in c])
+        self.assertIn("users", doc)
+        self.assertEqual("ca", doc["keyboard"]["layout"])
 
 
 if __name__ == "__main__":
