@@ -121,6 +121,25 @@ class TestCommandeProduite(unittest.TestCase):
         todo._qemu_cache_active = lambda: actif and bool(ca)
         return todo._qemu_deploy_parts_for(self.vm(), spec, dry_run=True)
 
+    def test_hors_ligne_le_drapeau_offline(self):
+        """Hors ligne, la VM reçoit de quoi couper l'audit de npm."""
+        parts = self.parts(
+            {"install": None, "offline": True}, ca="/tmp/essai-ca.crt"
+        )
+        self.assertIn("--offline", parts)
+
+    def test_en_ligne_aucun_drapeau_offline(self):
+        parts = self.parts({"install": None}, ca="/tmp/essai-ca.crt")
+        self.assertNotIn("--offline", parts)
+
+    def test_une_vm_exceptee_n_a_pas_de_drapeau_offline(self):
+        """Elle ne traverse pas le cache : rien à couper chez elle."""
+        parts = self.parts(
+            {"install": None, "offline": True, "cache_bypass": True},
+            ca="/tmp/essai-ca.crt",
+        )
+        self.assertNotIn("--offline", parts)
+
     def test_service_arrete_aucun_drapeau(self):
         """Sans interception, l'autorité n'a rien à faire dans la VM."""
         parts = self.parts({"install": None}, ca="/tmp/ca.crt", actif=False)

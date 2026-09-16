@@ -33,10 +33,13 @@ from script.qemu.deploy_qemu import (  # noqa: E402
     CACHE_CERT_NAME,
     CACHE_ENV_VARS,
     CACHE_TRUST,
+    OFFLINE_ENV_VARS,
     cache_env_reload,
     cache_family,
     cache_files,
+    cache_commands,
     cache_runcmd,
+    langue_des_messages,
 )
 
 RULES_GO = RACINE / "script" / "qemu_cache" / "rules.go"
@@ -226,6 +229,48 @@ class TestLesVariablesRelues(unittest.TestCase):
             with self.subTest(contenu=contenu):
                 code, _, err = self.relire(contenu)
                 self.assertEqual(code, 0, err)
+
+
+class TestLeHorsLigneCoupeLAuditNpm(unittest.TestCase):
+    """Hors ligne, l'audit de npm interroge un service qu'aucun cache ne rejoue."""
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def commandes(self, offline):
+        args = faux_args(Path(self.tmp.name), "ubuntu")
+        args.offline = offline
+        return "\n".join(cache_commands(args))
+
+    def test_une_vm_hors_ligne_recoit_l_audit_coupe(self):
+        self.assertIn("NPM_CONFIG_AUDIT=false", self.commandes(True))
+
+    def test_une_vm_en_ligne_garde_son_audit(self):
+        self.assertNotIn("NPM_CONFIG_AUDIT", self.commandes(False))
+
+    def test_la_variable_est_relue_apres_cloud_init(self):
+        """Le « npm install » lancé sans sudo vit dans une session ouverte
+        avant que cloud-init n'écrive la variable."""
+        for var, _ in OFFLINE_ENV_VARS:
+            self.assertIn(var, cache_env_reload())
+
+
+class TestLaLangueDesMessagesDuCache(unittest.TestCase):
+    def test_l_option_du_deploiement_l_emporte(self):
+        self.assertEqual(
+            langue_des_messages(argparse.Namespace(lang="en")), "en"
+        )
+        self.assertEqual(
+            langue_des_messages(argparse.Namespace(lang="FR")), "fr"
+        )
+
+    def test_une_valeur_inconnue_rend_le_francais(self):
+        self.assertEqual(
+            langue_des_messages(argparse.Namespace(lang="de")), "fr"
+        )
 
 
 class TestAccordAvecLeGo(unittest.TestCase):
