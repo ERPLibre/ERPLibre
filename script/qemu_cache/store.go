@@ -272,7 +272,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 func (w *Writer) Commit(expected int64) error {
 	defer w.cleanup()
 	if expected >= 0 && w.written != expected {
-		return fmt.Errorf("corps tronqué : %d octets sur %d", w.written, expected)
+		return fmt.Errorf(T("corps tronqué : %d octets sur %d"), w.written, expected)
 	}
 	if err := w.tmp.Sync(); err != nil {
 		return err
@@ -406,9 +406,9 @@ func containsPart(name string) bool {
 func HumanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
-		return fmt.Sprintf("%d o", n)
+		return fmt.Sprintf(T("%d o"), n)
 	}
-	units := []string{"Kio", "Mio", "Gio", "Tio"}
+	units := []string{T("Kio"), T("Mio"), T("Gio"), T("Tio")}
 	v := float64(n)
 	for _, u := range units {
 		v /= unit
@@ -416,7 +416,7 @@ func HumanBytes(n int64) string {
 			return fmt.Sprintf("%.1f %s", v, u)
 		}
 	}
-	return fmt.Sprintf("%.1f Pio", v/unit)
+	return fmt.Sprintf(T("%.1f Pio"), v/unit)
 }
 
 // copyTee écrit dans le cache ET vers le client en une seule lecture de

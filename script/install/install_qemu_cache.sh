@@ -26,6 +26,8 @@ EL_TLS_PORT="${EL_TLS_PORT:-8899}"
 # arrive dès que 192.168.122 entre en collision, voit ses VM échapper au
 # détournement sans que rien ne le signale.
 EL_BRIDGE="${EL_BRIDGE:-}"
+# Langue des messages du service : « fr » ou « en », comme EL_LANG de todo.py.
+EL_LANG="${EL_LANG:-fr}"
 EL_SUBNET="${EL_SUBNET:-}"
 EL_NET="${EL_NET:-default}"
 EL_CACHE_DIR="${EL_CACHE_DIR:-/var/cache/erplibre_go_qemu_cache}"
@@ -264,6 +266,7 @@ EL_ACCESS_LOG=${EL_ACCESS_LOG}
 EL_EXCLUDE=${EL_EXCLUDE}
 EL_BYPASS_FILE=${EL_BYPASS_FILE}
 EL_GIT_MIRROR_DIR=${EL_GIT_MIRROR_DIR}
+EL_LANG=${EL_LANG}
 CONF
   chmod 0644 "${CONF_DIR}/env"
 }
