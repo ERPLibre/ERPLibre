@@ -1967,6 +1967,12 @@ class ProxmoxMenuMixin:
                 # commande distante : la VM naissait serveur nu, sans outils.
                 prod=bool(spec.get("prod")),
                 desktop=bureau,
+                # L'AGENT CHOISI, et non celui par défaut. Le choix se fait
+                # à l'écran et voyage jusqu'ici dans la spec — il était jeté
+                # à l'appel, et la VM recevait l'agent de repli quelle que
+                # soit la réponse. Rien ne le disait : les deux agents
+                # s'installent sans bruit.
+                ai_agent=spec.get("ai_agent") or "",
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
@@ -1996,6 +2002,9 @@ class ProxmoxMenuMixin:
                 vm.get("install_cmd") or commun,
                 bool(spec.get("prod")),
                 desktop=bureaux.get(vm["name"], ""),
+                # Même raison que la voie suivie : le choix est dans la
+                # spec, et il était jeté ici.
+                ai_agent=spec.get("ai_agent") or "",
                 python_provider=spec.get("python_provider") or "",
                 app_store=spec.get("app_store") or "deb",
                 vm_tools=spec.get("vm_tools") or (),
