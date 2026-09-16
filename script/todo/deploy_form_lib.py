@@ -416,8 +416,15 @@ def build_spec(vms, domains, form):
         # défaut — l'inverse ferait d'un formulaire incomplet une machine
         # qu'on croit protégée.
         "real_data": bool(form.get("real_data", False)),
-        # Au niveau du déploiement : l'agent choisi et l'identité git valent
-        # pour tout le parc, comme le fuseau ou le magasin d'applications.
+        # Au niveau du déploiement : l'agent choisi, l'identité git et la
+        # locale valent pour tout le parc, comme le fuseau ou le magasin
+        # d'applications.
+        #
+        # CETTE ASSEMBLÉE ÉNUMÈRE, donc elle oublie. Une clé posée par le
+        # socle et absente d'ici est perdue en silence : le formulaire la
+        # portait, « --locale » ne partait pas, et le déploiement retombait
+        # sur SON défaut — celui qui coûte un locale-gen dans l'invité.
+        "locale": form.get("locale", ""),
         "ai_agent": form.get("ai_agent", ""),
         "git_name": form.get("git_name", ""),
         "git_email": form.get("git_email", ""),

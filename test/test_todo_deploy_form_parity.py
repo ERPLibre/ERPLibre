@@ -303,10 +303,53 @@ class TestLaLocaleDesTroisVoies(unittest.TestCase):
         cls.qemu = releve(run_deploy_form, todo._qemu_form_context(mod))
         cls.pve = releve(run_proxmox_form, contexte_proxmox(todo))
 
+    @staticmethod
+    def assemblee(vu):
+        """La spec que le DÉPLOIEMENT reçoit, pas celle de l'écran.
+
+        Le banc capture `_form_values()`, un cran trop tôt : c'est
+        `build_spec` qui compose ce qui part, et elle ÉNUMÈRE — donc elle
+        oublie. La locale y était perdue alors qu'elle traversait
+        l'écran, et l'épreuve qui regardait l'écran ne pouvait pas le
+        voir.
+        """
+        from script.todo.deploy_form_lib import build_spec
+
+        return build_spec(CATALOGUE[:1], [], vu["spec"])
+
     def test_both_screens_carry_one(self):
         for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
             with self.subTest(ecran=nom):
-                self.assertTrue(vu["spec"].get("locale"), nom)
+                self.assertTrue(self.assemblee(vu).get("locale"), nom)
+
+    def test_the_assembly_loses_nothing_the_shared_base_poses(self):
+        """LA GARDE QUI AURAIT ATTRAPÉ LE TROU. `build_spec` énumère ses
+        clés une par une : une clé posée par le socle et absente de son
+        énumération est perdue EN SILENCE, et le déploiement retombe sur
+        ses propres défauts sans qu'un mot soit dit."""
+        from script.todo.deploy_form_extras import ExtrasMixin
+
+        pose = set(ExtrasMixin.extras_values(self._socle()))
+        for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
+            with self.subTest(ecran=nom):
+                self.assertEqual(set(), pose - set(self.assemblee(vu)), nom)
+
+    @staticmethod
+    def _socle():
+        """Un porteur du socle sans écran : la liste des clés ne dépend
+        pas des widgets, et c'est ce qu'on veut comparer."""
+        from script.todo.deploy_form_extras import ExtrasMixin
+
+        class Vide(ExtrasMixin):
+            vms = ()
+            rows = ()
+
+            def query_one(self, _s, *_a):
+                raise LookupError
+
+        vide = Vide()
+        vide.extras_init({})
+        return vide
 
     def test_they_carry_the_one_that_costs_nothing(self):
         """« C.UTF-8 » est le seul choix qui ne déclenche aucun
@@ -316,7 +359,9 @@ class TestLaLocaleDesTroisVoies(unittest.TestCase):
         for nom, vu in (("QEMU/KVM", self.qemu), ("Proxmox", self.pve)):
             with self.subTest(ecran=nom):
                 self.assertEqual(
-                    ExtrasMixin.LOCALE_DEFAUT, vu["spec"]["locale"], nom
+                    ExtrasMixin.LOCALE_DEFAUT,
+                    self.assemblee(vu)["locale"],
+                    nom,
                 )
 
     def test_it_is_not_the_deploy_script_own_default(self):
