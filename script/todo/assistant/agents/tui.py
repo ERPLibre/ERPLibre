@@ -30,6 +30,7 @@ from __future__ import annotations
 import glob
 import os
 import time
+from dataclasses import dataclass, field
 
 from script.todo.assistant.agents import detail as dl
 from script.todo.assistant.agents import journal as jr
@@ -55,11 +56,15 @@ FLUX_MAX = 60
 # lirait comme « cet appel n'a pas de commande ».
 DETAILS_PAR_TOUR = 8
 
-# Tous les combien la flotte est relue. Le listage passe par un SOUS-PROCESSUS
-# et coûte cent soixante millisecondes, soit la moitié de ce qu'un tour dépense
-# — et la lecture des transcriptions, elle, n'en coûte que cinq. Un agent ne
-# naît ni ne meurt toutes les deux secondes, donc la question se pose trois
-# fois moins souvent ; un geste qui en change l'état la repose tout de suite.
+# Tous les combien de PAS la flotte est relue — soit six secondes. Le listage
+# passe par un SOUS-PROCESSUS et coûte cent soixante millisecondes là où la
+# lecture incrémentale des transcriptions n'en coûte que cinq. Un agent ne naît
+# ni ne meurt toutes les deux secondes, donc la question se pose trois fois
+# moins souvent ; un geste qui en change l'état la repose tout de suite.
+#
+# La cadence se compte en TEMPS et non en tours : les tours s'enchaînent en
+# rafale tant que la colonne des commandes se remplit, et un compteur de tours
+# lancerait alors un sous-processus toutes les trois rafales.
 PAS_FLOTTE = 3
 
 # Ce que les cinq autres colonnes du flux occupent — heure, session, outil,
@@ -645,6 +650,82 @@ COLONNES = (
 COLONNE_LARGEUR = 12
 
 
+@dataclass(frozen=True)
+class Releve:
+    """Ce qu'un tour de lecture rapporte du disque.
+
+    Aucun widget, aucune référence à l'application : cet objet TRAVERSE un
+    fil, et tout ce qui le compose est recopié plutôt que partagé. C'est ce
+    qui permet de lire hors de la boucle d'événements sans course — le fil
+    produit, la boucle applique.
+    """
+
+    lectures: dict = field(default_factory=dict)
+    appels: tuple = ()
+    # None veut dire « les hooks ne sont pas posés », ce qui n'est pas
+    # « aucune session n'a travaillé ».
+    temps: dict | None = None
+    # None veut dire « la base d'Open Code n'a pas répondu ».
+    seances: list | None = None
+    # None veut dire « pas relue ce tour », par opposition à une liste vide
+    # qui veut dire « relue, et personne ne tourne ».
+    flotte: list | None = None
+    commandes: dict = field(default_factory=dict)
+
+
+def relever(
+    precedentes, *, besoins=(), avec_flotte=False, lire_flotte=None
+) -> Releve:
+    """Tout ce qu'un tour lit sur le disque. Ne touche à AUCUN widget.
+
+    C'est la fonction qui tourne sur le fil d'arrière-plan, et la raison
+    d'être de ce fil tient dans un chiffre : le listage des agents est un
+    sous-processus dont le délai est de quinze secondes. Lu sur la boucle
+    d'événements, un outil qui ne répond pas fige l'écran pour quinze
+    secondes — plus une touche, plus même « q ».
+
+    `precedentes` est `{chemin: Lecture}` du tour d'avant : la reprise
+    incrémentale évite de relire des mégaoctets. Le dictionnaire rendu est
+    RECONSTRUIT sur le listage du moment, donc une transcription effacée
+    quitte le tableau.
+
+    `besoins` est la liste d'appels dont la commande manque encore. Elle est
+    choisie par l'appelant, sur le fil de l'affichage, parce qu'elle dépend
+    de ce qui est à l'écran.
+    """
+    lectures = {
+        chemin: st.lire(chemin, precedentes.get(chemin))
+        for chemin in transcriptions()
+    }
+    # Le journal est relu en entier : il ne pèse que quelques lignes par
+    # appel d'outil, là où une transcription pèse des mégaoctets.
+    evenements = jr.lire_lignes()
+    appels = jr.apparier(evenements)
+    # Le temps d'ATTENTION vient du journal, pas de l'horloge de session :
+    # celle-ci compte aussi les heures où personne ne regardait.
+    temps = jr.temps_actif(evenements) or None
+    # La base d'Open Code se lit en moins d'une milliseconde. Son `export`,
+    # lui, coûte presque une seconde PAR séance et se tronque : il n'a rien à
+    # faire dans un écran vivant.
+    seances = oc.lire_base()
+    flotte = (lire_flotte or (lambda: []))() if avec_flotte else None
+    commandes = {}
+    for appel in besoins:
+        trouve = dl.pour(appel)
+        # La SORTIE n'est pas gardée : le cache ne sert qu'à la colonne, et
+        # retenir des réponses d'outil en mémoire serait garder ce que le
+        # paquet a promis de seulement montrer.
+        commandes[appel.identifiant] = (trouve.commande, trouve.colonnable)
+    return Releve(
+        lectures=lectures,
+        appels=tuple(appels),
+        temps=temps,
+        seances=seances,
+        flotte=flotte,
+        commandes=commandes,
+    )
+
+
 def colonnes_visibles(largeur_ecran, colonnes=None) -> tuple:
     """Les colonnes qui tiennent, dans l'ordre d'importance. Fonction PURE.
 
@@ -664,6 +745,7 @@ def run_tui(run_app: bool = True):
     chaque affichage, et Textual coûte près d'une seconde à l'import. Le CLI
     ne doit pas le payer pour un écran qu'on n'ouvre pas.
     """
+    from textual import work
     from textual.app import App, ComposeResult
     from textual.widgets import (
         DataTable,
@@ -737,11 +819,21 @@ def run_tui(run_app: bool = True):
             # Le redimensionnement arrive AVANT le montage : repeindre alors
             # remplirait des tableaux qui n'ont pas encore de colonnes.
             self._monte = False
-            # Le tour courant, et la demande de relire la flotte sans
-            # attendre : un geste qui lance ou arrête un agent doit se voir
-            # au tour suivant, pas trois tours plus tard.
-            self._tours = 0
+            # La demande de relire la flotte sans attendre : un geste qui
+            # lance ou arrête un agent doit se voir au tour suivant, pas trois
+            # tours plus tard. La cadence ordinaire se compte en TEMPS, sur
+            # une horloge monotone — celle du mur reculerait.
             self._flotte_a_relire = True
+            self._flotte_apres = 0.0
+            # L'horloge est un attribut pour qu'un test avance le temps sans
+            # attendre. MONOTONE : celle du mur recule à un changement d'heure,
+            # et la flotte cesserait d'être relue pendant tout le décalage.
+            self._horloge = time.monotonic
+            # Une seule lecture à la fois, et la génération qui la date. « r »
+            # incrémente la génération, ce qui fait jeter le relevé d'un fil
+            # encore en train de lire le monde d'avant.
+            self._lecture_en_cours = False
+            self._generation = 0
             # Ce que la ligne de saisie attend, ou None quand elle est fermée.
             self._attente: str | None = None
             # La session visée par la saisie en cours. Gardée à part parce que
@@ -834,11 +926,12 @@ def run_tui(run_app: bool = True):
             self._vue = (self._vue + 1) % len(self.VUES)
             self._fermer_le_detail()
             self._montrer_la_vue()
-            # Remplir TOUT DE SUITE : sans cela, la colonne des commandes
-            # reste en points de suspension jusqu'au tour suivant, soit deux
-            # secondes après qu'on a demandé à la voir.
-            self._completer_les_commandes()
             self._peindre()
+            # Demander TOUT DE SUITE ce que le nouveau panneau réclame : sans
+            # cela, la colonne des commandes reste en points de suspension
+            # jusqu'au tour suivant, soit deux secondes après qu'on a demandé
+            # à la voir.
+            self._tick()
 
         def _montrer_la_vue(self):
             """N'afficher que le panneau courant, et LUI donner le clavier.
@@ -1210,51 +1303,133 @@ def run_tui(run_app: bool = True):
         def action_relire(self):
             """Tout relire depuis le début, quand un doute vient sur un total.
 
-            L'écran se fige le temps de la relecture — plus d'une seconde sur
-            une machine qui porte quatre cents mégaoctets de transcriptions —
-            donc il le DIT avant de commencer. Un écran qui ne répond plus sans
-            rien annoncer se lit comme un écran mort.
+            La relecture coûte plus d'une seconde sur une machine qui porte
+            quatre cents mégaoctets de transcriptions. Elle se fait sur le
+            fil, donc l'écran répond pendant ce temps — mais il montre encore
+            les chiffres d'avant, et il le DIT plutôt que de laisser croire
+            que le total affiché est déjà le nouveau.
+
+            Le relevé d'un fil qui lisait encore le monde d'avant est jeté :
+            c'est à cela que sert la génération.
             """
             self._dire(t("Reading everything again…"))
+            self._generation += 1
+            self._lecture_en_cours = False
             self._lectures = {}
             self._commandes = {}
             self._flotte_a_relire = True
             self._tick()
 
         def _tick(self):
-            # Le dictionnaire est REBÂTI sur le listage du moment, et non
-            # complété : une transcription effacée sous l'écran — ménage du
-            # harnais, projet retiré, session reprise ailleurs — y gardait
-            # sinon sa ligne pour toute la durée de l'écran, avec des totaux
-            # que plus aucun fichier ne porte. La lecture précédente est
-            # passée à `lire`, donc rien ne se relit depuis le début.
-            self._lectures = {
-                chemin: st.lire(chemin, self._lectures.get(chemin))
-                for chemin in transcriptions()
-            }
-            # Le journal est relu en entier : il ne pèse que quelques lignes
-            # par appel d'outil, là où une transcription pèse des mégaoctets.
-            evenements = jr.lire_lignes()
-            self._appels = jr.apparier(evenements)
-            # Le temps d'ATTENTION vient du journal, pas de l'horloge de
-            # session : celle-ci compte aussi les heures où personne ne
-            # regardait. Sans hooks posés, il n'y a rien et la colonne le dit.
-            self._temps = jr.temps_actif(evenements) or None
-            # La base d'Open Code se lit en moins d'une milliseconde, donc
-            # elle tient dans un pas de deux secondes. Son `export`, lui, coûte
-            # presque une seconde PAR séance et se tronque : il n'a rien à
-            # faire dans un écran vivant.
-            self._seances = oc.lire_base()
-            # 0,15 s par tour, soit un quinzième du pas : c'est le prix d'un
-            # panneau qui dit ce qui TOURNE, que le disque ne porte pas.
-            if self._flotte_a_relire or self._tours % PAS_FLOTTE == 0:
-                self._flotte = self._lire_flotte()
-                self._agents = agents_detaches(self._flotte)
+            """Demander une lecture au fil d'arrière-plan, et rendre la main.
+
+            RIEN n'est lu ici. Tout ce que ce tour coûte — deux cent trente
+            millisecondes sur une machine de dix-neuf sessions et sept mille
+            appels, davantage quand la flotte se relit — se paie sur un fil,
+            pas sur la boucle d'événements. Le chiffre qui tranche n'est pas
+            la moyenne mais la queue : le listage des agents est un
+            sous-processus dont le délai est de quinze secondes, et un outil
+            qui ne répond pas figeait l'écran d'autant, « q » compris.
+            """
+            if self._lecture_en_cours:
+                # Un tour qui tombe pendant une lecture est SAUTÉ, et non mis
+                # en file : sur une machine lente, la file grandirait sans
+                # qu'aucun tour ne montre jamais l'état du moment.
+                return
+            self._lecture_en_cours = True
+            maintenant = self._horloge()
+            avec_flotte = (
+                self._flotte_a_relire or maintenant >= self._flotte_apres
+            )
+            if avec_flotte:
+                # La cadence de la flotte se compte en TEMPS et non en tours :
+                # les tours s'enchaînent en rafale tant que la colonne des
+                # commandes se remplit, et un compteur de tours lancerait
+                # alors un sous-processus toutes les trois rafales.
+                self._flotte_apres = maintenant + PAS * PAS_FLOTTE
                 self._flotte_a_relire = False
-            self._tours += 1
-            self._completer_les_commandes()
+            self._lire_en_fond(
+                self._generation,
+                dict(self._lectures),
+                self._besoins(),
+                avec_flotte,
+            )
+
+        def _besoins(self):
+            """Les appels dont la commande manque encore, et rien de plus.
+
+            Choisis ICI, sur le fil de l'affichage, parce que la réponse
+            dépend du panneau visible : on ne paie que ce qu'on regarde.
+            Quelques-uns par relevé, parce qu'une recherche coûte quarante
+            millisecondes — la colonne se remplit par vagues, chaque vague
+            en demandant une autre tant qu'il en manque.
+            """
+            if self.VUES[self._vue] != "flux":
+                return []
+            manquants = [
+                a
+                for a in sorted(self._appels, key=lambda x: -x.debut_ms)[
+                    :FLUX_MAX
+                ]
+                if a.identifiant and a.identifiant not in self._commandes
+            ]
+            return manquants[:DETAILS_PAR_TOUR]
+
+        @work(thread=True)
+        def _lire_en_fond(self, generation, lectures, besoins, avec_flotte):
+            """Le fil : il LIT, et ne touche à rien de ce qui est affiché.
+
+            L'exception est rattrapée ici parce qu'un fil qui meurt ne prévient
+            personne : le drapeau resterait levé et l'écran cesserait de se
+            rafraîchir, sans un mot.
+            """
+            try:
+                releve = relever(
+                    lectures,
+                    besoins=besoins,
+                    avec_flotte=avec_flotte,
+                    lire_flotte=self._lire_flotte,
+                )
+            except Exception as souci:
+                self.call_from_thread(
+                    self._lecture_a_echoue, generation, str(souci)
+                )
+                return
+            self.call_from_thread(self._appliquer, generation, releve)
+
+        def _appliquer(self, generation, releve):
+            """Poser le relevé sur l'écran. Toujours sur le fil de l'affichage.
+
+            Un relevé d'une génération périmée est JETÉ : « r » a tout remis à
+            zéro pendant que le fil lisait, et l'appliquer ressusciterait ce
+            qu'on venait d'oublier. Le drapeau appartient à la génération
+            courante, donc un relevé périmé n'y touche pas non plus — sans
+            quoi il ouvrirait un second fil pendant qu'un premier lit.
+            """
+            if generation != self._generation:
+                return
+            self._lecture_en_cours = False
+            self._lectures = releve.lectures
+            self._appels = list(releve.appels)
+            self._temps = releve.temps
+            self._seances = releve.seances
+            if releve.flotte is not None:
+                self._flotte = releve.flotte
+                self._agents = agents_detaches(releve.flotte)
+            self._commandes.update(releve.commandes)
             if not self._gele:
                 self._peindre()
+            if self._besoins():
+                # La vague suivante, tout de suite : sur un fil, remplir la
+                # colonne en une seconde ne coûte plus rien à l'écran.
+                self._tick()
+
+        def _lecture_a_echoue(self, generation, message):
+            """Une lecture qui a levé le dit, et le rafraîchissement reprend."""
+            if generation != self._generation:
+                return
+            self._lecture_en_cours = False
+            self._dire(message)
 
         @staticmethod
         def _repeindre(table, lignes, colonnes, cle):
@@ -1343,34 +1518,6 @@ def run_tui(run_app: bool = True):
                 self._titre_du_panneau(groupes)
             )
             self._resumer()
-
-        def _completer_les_commandes(self):
-            """Chercher quelques commandes manquantes, et seulement au besoin.
-
-            Seulement quand le flux est à l'écran : on ne paie que ce qu'on
-            regarde. Et quelques-unes par tour, parce qu'une recherche coûte
-            quarante millisecondes et que soixante d'un coup dépasseraient le
-            pas de rafraîchissement — la colonne se remplit sous les yeux
-            plutôt que de figer l'écran une fois.
-            """
-            if self.VUES[self._vue] != "flux":
-                return
-            manquants = [
-                a
-                for a in sorted(self._appels, key=lambda x: -x.debut_ms)[
-                    :FLUX_MAX
-                ]
-                if a.identifiant and a.identifiant not in self._commandes
-            ]
-            for appel in manquants[:DETAILS_PAR_TOUR]:
-                trouve = dl.pour(appel)
-                # La SORTIE n'est pas gardée : le cache ne sert qu'à la
-                # colonne, et retenir des réponses d'outil en mémoire serait
-                # garder ce que le paquet a promis de seulement montrer.
-                self._commandes[appel.identifiant] = (
-                    trouve.commande,
-                    trouve.colonnable,
-                )
 
         @staticmethod
         def _lire_flotte():

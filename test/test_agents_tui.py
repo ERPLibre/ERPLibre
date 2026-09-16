@@ -38,6 +38,20 @@ from script.todo.assistant.agents import tui
 from script.todo.todo_i18n import t
 
 
+async def calme(pilote, tours=3):
+    """Rendre la main jusqu'à ce que le fil de lecture ait posé son relevé.
+
+    Les lectures se font HORS de la boucle d'événements. Une simple pause
+    rend la main avant que le fil ait rien posé, et le test lirait un écran
+    encore vide. Plusieurs tours parce qu'un relevé en demande un autre tant
+    que la colonne des commandes n'est pas remplie.
+    """
+    for _ in range(tours):
+        await pilote.pause()
+        await pilote.app.workers.wait_for_complete()
+    await pilote.pause()
+
+
 def _lecture(**champs):
     return st.Lecture(agregat=st.Agregat(**champs))
 
@@ -583,10 +597,10 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 for touche in touches:
                     await pilote.press(touche)
-                    await pilote.pause()
+                    await calme(pilote)
                 return {
                     "vue": app.VUES[app._vue],
                     "resume": str(app.query_one("#resume", Static).render()),
@@ -657,18 +671,18 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 champ = app.query_one("#saisie", Input)
                 self.assertFalse(champ.display, "fermée au montage")
                 await pilote.press("n")
-                await pilote.pause()
+                await calme(pilote)
                 self.assertTrue(champ.display)
                 self.assertEqual(app._attente, app.INVITE)
                 self.assertEqual(
                     champ.placeholder, t("Prompt for the new agent:")
                 )
                 await pilote.press("escape")
-                await pilote.pause()
+                await calme(pilote)
                 self.assertFalse(champ.display)
                 self.assertIsNone(app._attente)
         finally:
@@ -693,22 +707,22 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 tableau = app.query_one("#tableau", DataTable)
                 large = len(tableau.columns)
                 self.assertEqual(tableau.row_count, 2)
                 await pilote.press("f")
-                await pilote.pause()
+                await calme(pilote)
                 peints = []
                 app._peindre = lambda: peints.append(1)
                 await pilote.resize_terminal(60, 40)
-                await pilote.pause()
+                await calme(pilote)
                 self.assertEqual(peints, [], "gelé veut dire gelé")
                 self.assertEqual(len(tableau.columns), large)
                 self.assertEqual(tableau.row_count, 2)
                 del app._peindre
                 await pilote.press("f")
-                await pilote.pause()
+                await calme(pilote)
                 self.assertLess(
                     len(tableau.columns),
                     large,
@@ -734,16 +748,16 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 volet = app.query_one("#detail", Static)
                 await pilote.press("v")
-                await pilote.pause()
+                await calme(pilote)
                 self.assertEqual(app.VUES[app._vue], "flux")
                 await pilote.press("d")
-                await pilote.pause()
+                await calme(pilote)
                 self.assertTrue(volet.display, "une ligne du flux est là")
                 await pilote.press("v")
-                await pilote.pause()
+                await calme(pilote)
                 self.assertFalse(volet.display)
                 self.assertEqual(str(volet.render()), "")
         finally:
@@ -767,12 +781,12 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 tableau = app.query_one("#tableau", DataTable)
                 self.assertEqual(tableau.row_count, 2, "une par harnais")
                 t_ui.transcriptions = lambda: []
                 app._tick()
-                await pilote.pause()
+                await calme(pilote)
                 self.assertEqual(app._lectures, {})
                 self.assertEqual(
                     tableau.row_count, 1, "la séance Open Code reste"
@@ -796,9 +810,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             envoyes = []
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: envoyes.append((sc, p))
-                await pilote.pause()
+                await calme(pilote)
                 await pilote.press("s")
-                await pilote.pause()
+                await calme(pilote)
                 # `#etat` et non `#source` : le second porte la phrase fixe
                 # sur la provenance des chiffres, que `_resumer` réécrit à
                 # chaque repeint et qui effaçait donc ce qu'on venait de dire.
@@ -825,12 +839,12 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             envoyes = []
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: envoyes.append((sc, p))
-                await pilote.pause()
+                await calme(pilote)
                 # Un agent est là, mais la vue courante n'est pas la sienne.
                 app._agents = [object()]
                 self.assertNotEqual(app.VUES[app._vue], "agents")
                 await pilote.press("s")
-                await pilote.pause()
+                await calme(pilote)
             self.assertEqual(envoyes, [])
         finally:
             for c in correctifs:
@@ -1266,21 +1280,21 @@ class TestLesDeuxGestesQuiCoutent(unittest.IsolatedAsyncioTestCase):
             app._lire_flotte = staticmethod(lambda: [session])
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: envoyes.append((sc, p))
-                await pilote.pause()
+                await calme(pilote)
                 for _ in t_ui.run_tui(run_app=False).VUES:
                     if app.VUES[app._vue] == "agents":
                         break
                     await pilote.press("v")
-                    await pilote.pause()
+                    await calme(pilote)
                 await pilote.press(touche)
-                await pilote.pause()
+                await calme(pilote)
                 champ = app.query_one("#saisie", Input)
                 from textual.widgets import Static
 
                 invite = str(app.query_one("#etat", Static).render())
                 champ.value = frappe
                 await pilote.press("enter")
-                await pilote.pause()
+                await calme(pilote)
         return invite, envoyes
 
     async def test_restarting_asks_for_a_yes(self):
@@ -1362,12 +1376,12 @@ class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
             app = t_ui.run_tui(run_app=False)
             app._lire_flotte = staticmethod(lambda: flotte)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 while app.VUES[app._vue] != "agents":
                     await pilote.press("v")
-                    await pilote.pause()
+                    await calme(pilote)
                 await pilote.press("a")
-                await pilote.pause()
+                await calme(pilote)
             return app.return_value
 
     async def test_attaching_hands_the_command_back(self):
@@ -1450,16 +1464,16 @@ class TestCeQueLEcranRendEnSortant(unittest.IsolatedAsyncioTestCase):
             app._lire_flotte = staticmethod(lambda: [sans_uuid])
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: envoyes.append((sc, p))
-                await pilote.pause()
+                await calme(pilote)
                 while app.VUES[app._vue] != "agents":
                     await pilote.press("v")
-                    await pilote.pause()
+                    await calme(pilote)
                 self.assertEqual(app._agent_choisi().poignee, "aaaaaaaa")
                 await pilote.press("x")
-                await pilote.pause()
+                await calme(pilote)
                 app.query_one("#saisie", Input).value = ""
                 await pilote.press("enter")
-                await pilote.pause()
+                await calme(pilote)
         self.assertEqual(envoyes, [])
 
 
@@ -1523,12 +1537,12 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 for _ in range(len(app.VUES)):
                     if app.VUES[app._vue] == "flux":
                         break
                     await pilote.press("v")
-                    await pilote.pause()
+                    await calme(pilote)
                 self.assertEqual(app.VUES[app._vue], "flux")
                 flux = app.query_one("#flux", DataTable)
                 self.assertEqual(flux.row_count, 2)
@@ -1611,7 +1625,7 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
         try:
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 table = app.query_one("#outils", DataTable)
                 doublons = [
                     dict.fromkeys(
@@ -1668,10 +1682,10 @@ class TestLaSortieBruteVaAuTerminal(unittest.IsolatedAsyncioTestCase):
             app._lire_flotte = staticmethod(lambda: list(flotte))
             async with app.run_test(size=(160, 40)) as pilote:
                 app._montrer_dans_le_terminal = montres.append
-                await pilote.pause()
+                await calme(pilote)
                 for touche in touches:
                     await pilote.press(touche)
-                    await pilote.pause()
+                    await calme(pilote)
                 etat = str(app.query_one("#etat", Static).render())
         return montres, etat
 
@@ -1782,17 +1796,17 @@ class TestLeCurseurEtLeClavier(unittest.IsolatedAsyncioTestCase):
             app._lire_flotte = staticmethod(lambda: flotte)
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: vises.append((sc, p))
-                await pilote.pause()
+                await calme(pilote)
                 while app.VUES[app._vue] != "agents":
                     await pilote.press("v")
-                    await pilote.pause()
+                    await calme(pilote)
                 focus = app.focused.id if app.focused else None
                 for geste in gestes:
                     if geste == "tour":
                         app._tick()
                     else:
                         await pilote.press(geste)
-                    await pilote.pause()
+                    await calme(pilote)
                 rang = app.query_one("#agents", DataTable).cursor_row
         return focus, rang, vises
 
@@ -1839,21 +1853,21 @@ class TestLeCurseurEtLeClavier(unittest.IsolatedAsyncioTestCase):
             app = t_ui.run_tui(run_app=False)
             app._lire_flotte = staticmethod(lambda: list(flotte))
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 while app.VUES[app._vue] != "agents":
                     await pilote.press("v")
-                    await pilote.pause()
+                    await calme(pilote)
                 await pilote.press("down")
                 await pilote.press("down")
-                await pilote.pause()
+                await calme(pilote)
                 # Le troisieme agent s en va. La flotte passe par un
                 # sous-processus et n est donc relue qu un tour sur
                 # PAS_FLOTTE : le nombre de tours est DÉRIVÉ de la constante,
                 # sans quoi l espacer à nouveau décalerait ce test.
                 app._lire_flotte = staticmethod(lambda: flotte[:2])
-                for _ in range(t_ui.PAS_FLOTTE):
-                    app._tick()
-                    await pilote.pause()
+                app._flotte_a_relire = True
+                app._tick()
+                await calme(pilote)
                 table = app.query_one("#agents", DataTable)
                 self.assertEqual(table.row_count, 2)
                 self.assertLess(table.cursor_row, 2)
@@ -1986,27 +2000,33 @@ class TestCeQueChaqueTourDepense(unittest.IsolatedAsyncioTestCase):
         ):
             app = t_ui.run_tui(run_app=False)
             app._lire_flotte = staticmethod(lambda: lectures.append(1) or [])
+            # Le temps est INJECTÉ : la cadence de la flotte se compte en
+            # secondes, et un test qui les attendrait vraiment durerait six
+            # secondes par cas.
+            horloge = [0.0]
+            app._horloge = lambda: horloge[0]
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 depart = len(lectures)
                 for geste in gestes:
                     if geste == "tour":
                         app._tick()
+                    elif geste == "le pas passe":
+                        horloge[0] += t_ui.PAS * t_ui.PAS_FLOTTE
                     else:
                         getattr(app, geste)()
-                    await pilote.pause()
+                    await calme(pilote)
                 return len(lectures) - depart
 
     async def test_the_fleet_is_not_listed_every_tick(self):
         from script.todo.assistant.agents import tui as t_ui
 
-        lectures = await self._compter(["tour"] * (t_ui.PAS_FLOTTE - 1))
+        lectures = await self._compter(["tour"] * (t_ui.PAS_FLOTTE + 2))
         self.assertEqual(lectures, 0)
 
     async def test_it_is_listed_again_after_the_step(self):
-        from script.todo.assistant.agents import tui as t_ui
-
-        lectures = await self._compter(["tour"] * t_ui.PAS_FLOTTE)
+        """Six secondes plus tard, la question se repose une fois."""
+        lectures = await self._compter(["le pas passe", "tour", "tour"])
         self.assertEqual(lectures, 1)
 
     async def test_reading_everything_again_asks_at_once(self):
@@ -2029,10 +2049,140 @@ class TestCeQueChaqueTourDepense(unittest.IsolatedAsyncioTestCase):
             app = t_ui.run_tui(run_app=False)
             app._lire_flotte = staticmethod(lambda: [])
             async with app.run_test(size=(160, 40)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 app._dire(t("Reading everything again…"))
                 dit = str(app.query_one("#etat", Static).render())
         self.assertIn(t("Reading everything again…"), dit)
+
+
+class TestLesLecturesSortentDeLaBoucle(unittest.IsolatedAsyncioTestCase):
+    """Lire sur la boucle d'événements, c'est parier sur le disque.
+
+    Le listage des agents est un SOUS-PROCESSUS dont le délai est de quinze
+    secondes. Lu sur la boucle, un outil qui ne répond pas fige l'écran
+    d'autant : plus une touche, plus même « q ». Le fil sépare le coût de la
+    lecture de la vivacité de l'écran.
+    """
+
+    async def test_un_listage_lent_ne_bloque_ni_le_tour_ni_les_touches(self):
+        import time as horloge
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        lent = 0.4
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await calme(pilote)
+                app._lire_flotte = staticmethod(
+                    lambda: horloge.sleep(lent) or []
+                )
+                app._flotte_a_relire = True
+                depart = horloge.perf_counter()
+                app._tick()
+                rendu = horloge.perf_counter() - depart
+                self.assertLess(
+                    rendu, lent / 4, "le tour rend la main tout de suite"
+                )
+                # Et l'écran répond PENDANT que le fil dort : la touche est
+                # traitée, le panneau change.
+                await pilote.press("v")
+                await pilote.pause()
+                self.assertEqual(app.VUES[app._vue], "flux")
+                await calme(pilote)
+
+    async def test_un_tour_qui_tombe_pendant_une_lecture_est_saute(self):
+        """Mis en file, les tours en retard s'accumuleraient sans qu'aucun ne
+        montre jamais l'état du moment."""
+        import time as horloge
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        lectures = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await calme(pilote)
+                app._lire_flotte = staticmethod(
+                    lambda: horloge.sleep(0.3) or lectures.append(1) or []
+                )
+                app._flotte_a_relire = True
+                app._tick()
+                for _ in range(5):
+                    app._flotte_a_relire = True
+                    app._tick()
+                await calme(pilote)
+        self.assertEqual(len(lectures), 1)
+
+    async def test_une_lecture_qui_leve_ne_tue_pas_le_rafraichissement(self):
+        """Un fil qui meurt ne prévient personne : le drapeau resterait levé
+        et l'écran cesserait de se rafraîchir, sans un mot."""
+        from textual.widgets import Static
+
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        def casse():
+            raise RuntimeError("le disque a dit non")
+
+        with patch.object(t_ui, "transcriptions", casse), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await calme(pilote)
+                self.assertFalse(app._lecture_en_cours)
+                self.assertIn(
+                    "le disque a dit non",
+                    str(app.query_one("#etat", Static).render()),
+                )
+
+    async def test_un_releve_perime_est_jete(self):
+        """« r » remet tout à zéro ; le fil lisait encore le monde d'avant, et
+        appliquer son relevé ressusciterait ce qu'on venait d'oublier."""
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import statistiques as st
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        with patch.object(
+            t_ui, "transcriptions", lambda: ["/x/y/aaaaaaaa.jsonl"]
+        ), patch.object(
+            st, "lire", lambda c, l=None: st.Lecture()
+        ), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(
+            jr, "nettoyer", lambda *a, **k: None
+        ), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await calme(pilote)
+                self.assertEqual(len(app._lectures), 1)
+                app._generation += 1
+                app._lectures = {}
+                app._appliquer(0, t_ui.Releve(lectures={"/x/y/z.jsonl": None}))
+                self.assertEqual(app._lectures, {})
 
 
 class TestAucunTestNeToucheLaMachine(unittest.IsolatedAsyncioTestCase):
@@ -2071,9 +2221,9 @@ class TestAucunTestNeToucheLaMachine(unittest.IsolatedAsyncioTestCase):
         ):
             app = t_ui.run_tui(run_app=False)
             async with app.run_test(size=(120, 30)) as pilote:
-                await pilote.pause()
+                await calme(pilote)
                 app._tick()
-                await pilote.pause()
+                await calme(pilote)
         self.assertEqual(lances, [])
 
 
