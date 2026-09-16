@@ -27,17 +27,18 @@ try:
 except ImportError:  # pragma: no cover - PyYAML absent du venv d'outils
     yaml = None
 
-# Une combinaison par distribution du catalogue, dont les DEUX produits
-# openSUSE : ils n'ont pas la même commande de mise à jour.
-COMBOS = (
-    ("ubuntu", "24.04", "amd64"),
-    ("debian", "12", "s390x"),
-    ("fedora", "43", "amd64"),
-    ("almalinux", "9", "arm64"),
-    ("rocky", "10", "amd64"),
-    ("opensuse", "16.0", "amd64"),
-    ("opensuse", "tumbleweed", "amd64"),
-    ("arch", "latest", "amd64"),
+# Un couple (distribution, version) par entrée du CATALOGUE, DÉRIVÉ de lui.
+# Écrite à la main, la liste ne grandissait pas avec le catalogue : une
+# distribution entière y manquait, guide jamais éprouvé — et le défaut d'un
+# guide ne se voit qu'une fois la VM déployée.
+#
+# Les versions comptent autant que les distributions : les deux produits
+# openSUSE n'ont pas la même commande de mise à jour. L'architecture, elle,
+# n'atteint que le titre, donc une seule suffit ici.
+COMBOS = tuple(
+    (distro, version, "amd64")
+    for distro in sorted(dq.DISTROS)
+    for version in dq.DISTROS[distro][0]
 )
 
 # Largeur d'un terminal standard. Au-delà, le guide se replie et devient
@@ -45,17 +46,50 @@ COMBOS = (
 TERM_WIDTH = 80
 
 
+# Le gestionnaire de paquets attendu par distribution. Il décide de TOUTES
+# les commandes du guide : une distribution qui hérite de celui d'une autre
+# affiche huit lignes qui échouent, sur une machine par ailleurs saine.
+GESTIONNAIRES = {
+    "ubuntu": "apt",
+    "debian": "apt",
+    "proxmox": "apt",
+    "fedora": "dnf",
+    "almalinux": "dnf",
+    "rocky": "dnf",
+    "opensuse": "zypper",
+    "arch": "pacman",
+}
+
+
+class TestLaTableSuitLeCatalogue(unittest.TestCase):
+    """Une distribution ajoutée au catalogue doit arriver ici SEULE.
+
+    La liste écrite à la main en manquait une entière, et rien ne le disait :
+    son guide n'était éprouvé nulle part, ni sa largeur, ni son YAML.
+    """
+
+    def test_every_catalogued_distro_has_a_combo(self):
+        self.assertEqual(
+            sorted(dq.DISTROS), sorted({d for d, _v, _a in COMBOS})
+        )
+
+    def test_every_catalogued_version_has_a_combo(self):
+        for distro in dq.DISTROS:
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    set(dq.DISTROS[distro][0]),
+                    {v for d, v, _a in COMBOS if d == distro},
+                )
+
+    def test_every_catalogued_distro_has_a_package_manager(self):
+        """Sans cette épreuve, la distribution manquante ne se signalerait
+        qu'au premier guide déployé — donc jamais ici."""
+        self.assertEqual(sorted(dq.DISTROS), sorted(GESTIONNAIRES))
+
+
 class TestMotdContent(unittest.TestCase):
     def test_each_distro_gets_its_package_manager(self):
-        expected = {
-            "ubuntu": "apt",
-            "debian": "apt",
-            "fedora": "dnf",
-            "almalinux": "dnf",
-            "rocky": "dnf",
-            "opensuse": "zypper",
-            "arch": "pacman",
-        }
+        expected = GESTIONNAIRES
         for distro, version, arch in COMBOS:
             motd = dq.build_motd(distro, version, arch)
             mgr = expected[distro]

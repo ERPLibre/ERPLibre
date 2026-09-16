@@ -87,6 +87,12 @@ def _deploy():
 
 DQ = _deploy()
 
+# Proxmox VE 9 est bâtie sur Debian 13 : c'est ce qui autorise sa ligne de
+# catalogue à recopier le nom de code et l'identifiant libosinfo de
+# celle-ci. Le lien est nommé ici pour que les épreuves l'épinglent à la
+# TABLE plutôt qu'au littéral qu'elle contient aujourd'hui.
+DEBIAN_SOUS_PVE9 = "13"
+
 # Somme publiée par l'amont sur « Install Proxmox VE on Debian 13 Trixie », et
 # recopiée ici EXPRÈS : deux copies indépendantes, c'est ce qui donne son sens
 # à un condensat épinglé. Si l'une change sans l'autre, ce test le dit.
@@ -137,8 +143,25 @@ class TestCatalogue(unittest.TestCase):
 
     def test_it_reuses_debians_osinfo(self):
         """Le système EST une Debian : libosinfo n'a pas d'entrée Proxmox, et
-        en inventer une ferait échouer virt-install."""
-        self.assertEqual("debian13", DQ.PROXMOX_VERSIONS["9"][1])
+        en inventer une ferait échouer virt-install.
+
+        Épinglé à la TABLE DEBIAN et non à un littéral : ce qui est copié se
+        vérifie contre son autorité, sans quoi l'épreuve reste verte le jour
+        où l'autorité change et où la copie, elle, ne bouge pas.
+        """
+        self.assertEqual(
+            DQ.DEBIAN_VERSIONS[DEBIAN_SOUS_PVE9][1],
+            DQ.PROXMOX_VERSIONS["9"][1],
+        )
+
+    def test_it_reuses_debians_code_name(self):
+        """Le nom de code choisit l'image téléchargée : divergent, il en
+        vise une qui n'existe pas, et le déploiement s'arrête au premier
+        téléchargement."""
+        self.assertEqual(
+            DQ.DEBIAN_VERSIONS[DEBIAN_SOUS_PVE9][0],
+            DQ.PROXMOX_VERSIONS["9"][0],
+        )
 
     def test_it_is_named_after_proxmox_not_after_the_key(self):
         self.assertEqual("Proxmox VE 9", DQ.distro_label("proxmox", "9"))
@@ -148,7 +171,14 @@ class TestCatalogue(unittest.TestCase):
 
 
 class TestLesDeuxCatalogues(unittest.TestCase):
-    """todo.py duplique le catalogue de deploy_qemu.py. Qu'ils s'accordent."""
+    """todo.py duplique le catalogue de deploy_qemu.py. Qu'ils s'accordent.
+
+    S'ACCORDER PORTE SUR TOUT CE QUI EST RECOPIÉ, et la copie porte les
+    versions et la version par défaut autant que les noms. Comparer les
+    seuls noms laissait passer une version ajoutée d'un côté — l'écran ne
+    la propose pas — et un défaut déplacé — l'écran en propose une autre
+    que celle que le déploiement retiendra.
+    """
 
     def test_the_menu_offers_every_distro_of_the_catalogue(self):
         menu = set(TODO._QEMU_DISTROS)
@@ -159,6 +189,26 @@ class TestLesDeuxCatalogues(unittest.TestCase):
             "les deux catalogues divergent : "
             f"menu seul {menu - catalogue}, deploy seul {catalogue - menu}",
         )
+
+    def test_the_menu_offers_every_version_of_each_distro(self):
+        """Une version ajoutée à la table et pas au menu n'est proposée
+        nulle part : elle existe pour le déploiement et pour personne."""
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    list(DQ.DISTROS[distro][0]),
+                    list(TODO._QEMU_DISTROS[distro][0]),
+                )
+
+    def test_the_menu_preselects_the_version_the_deploy_would_take(self):
+        """Le défaut du menu est ce qu'on obtient en tapant Entrée. Décalé
+        de celui de la table, l'écran annonce une version et le
+        déploiement en pose une autre, sans qu'un mot soit dit."""
+        for distro in sorted(DQ.DISTROS):
+            with self.subTest(distro=distro):
+                self.assertEqual(
+                    DQ.DISTROS[distro][1], TODO._QEMU_DISTROS[distro][1]
+                )
 
     def test_the_fallback_tuples_match_the_authoritative_table(self):
         """Le repli du menu est une COPIE, et une copie ne suit pas.
