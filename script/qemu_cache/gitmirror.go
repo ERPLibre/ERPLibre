@@ -165,17 +165,17 @@ func DepotDeURL(u *url.URL) (string, string, bool) {
 func (g *GitMirror) CheminMiroir(depot string) (string, error) {
 	u, err := url.Parse(depot)
 	if err != nil || u.Host == "" {
-		return "", fmt.Errorf("dépôt illisible %q", depot)
+		return "", fmt.Errorf(T("dépôt illisible %q"), depot)
 	}
 	chemin := strings.Trim(u.Path, "/")
 	chemin = strings.TrimSuffix(chemin, ".git")
 	if chemin == "" {
-		return "", fmt.Errorf("dépôt sans chemin %q", depot)
+		return "", fmt.Errorf(T("dépôt sans chemin %q"), depot)
 	}
 	// Un « .. » dans le chemin ferait écrire hors de la racine.
 	for _, seg := range strings.Split(chemin, "/") {
 		if seg == "." || seg == ".." || seg == "" {
-			return "", fmt.Errorf("chemin de dépôt refusé %q", depot)
+			return "", fmt.Errorf(T("chemin de dépôt refusé %q"), depot)
 		}
 	}
 	return filepath.Join(g.Dir, u.Host, chemin+".git"), nil
@@ -218,7 +218,7 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 	if !existe {
 		if !g.placeSuffisante() {
 			log.Printf(
-				"miroir refusé pour %s : moins de %s libres sur le disque",
+				T("miroir refusé pour %s : moins de %s libres sur le disque"),
 				depot, HumanBytes(g.PlancherLibre))
 			return "", false
 		}
@@ -342,8 +342,8 @@ func (g *GitMirror) sonderAmont(
 			g.figes = map[string]bool{}
 		}
 		g.figes[adresse] = true
-		log.Printf("miroir git : sonde de %s en échec (%v) ; ses miroirs"+
-			" sont servis sans rafraîchissement jusqu'à ce qu'il réponde",
+		log.Printf(T("miroir git : sonde de %s en échec (%v) ; ses miroirs"+
+			" sont servis sans rafraîchissement jusqu'à ce qu'il réponde"),
 			adresse, err)
 	}
 	return true
@@ -420,7 +420,7 @@ func (g *GitMirror) gitBorne(
 	)
 	sortie, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("git %s : %v : %s",
+		return fmt.Errorf(T("git %s : %v : %s"),
 			strings.Join(args, " "), err, court(string(sortie)))
 	}
 	return nil
@@ -684,7 +684,7 @@ func (g *GitMirror) Depots() []Depot {
 // mal formé ne doit pas pouvoir effacer autre chose.
 func (g *GitMirror) Retirer(chemin string) error {
 	if g == nil || g.Dir == "" {
-		return fmt.Errorf("miroir éteint")
+		return fmt.Errorf("%s", T("miroir éteint"))
 	}
 	abs, err := filepath.Abs(chemin)
 	if err != nil {
@@ -696,7 +696,7 @@ func (g *GitMirror) Retirer(chemin string) error {
 	}
 	if !strings.HasPrefix(abs, racine+string(os.PathSeparator)) ||
 		!strings.HasSuffix(abs, ".git") {
-		return fmt.Errorf("hors des miroirs : %s", chemin)
+		return fmt.Errorf(T("hors des miroirs : %s"), chemin)
 	}
 	v := g.verrou(abs)
 	v.Lock()

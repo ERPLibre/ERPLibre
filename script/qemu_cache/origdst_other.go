@@ -14,5 +14,5 @@ import (
 // connexion redirigée. Ailleurs, le tunnel opaque est impossible et le dire
 // vaut mieux que de deviner une adresse.
 func originalDst(net.Conn) (string, error) {
-	return "", errors.New("interception transparente : Linux seulement")
+	return "", errors.New(T("interception transparente : Linux seulement"))
 }

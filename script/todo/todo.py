@@ -615,6 +615,7 @@ class TODO(
         "_cache_exceptions": "Exceptions",
         "_cache_journaux": "Logs",
         "_cache_miroir_git": "Git mirrors",
+        "_cache_nettoyage_auto": "Automatic cleanup",
         "prompt_execute_qemu": "QEMU/KVM",
         "prompt_execute_proxmox": "Proxmox VE",
         "prompt_execute_vpn": "VPN",
@@ -1828,6 +1829,7 @@ class TODO(
             f"sudo EL_HTTP_PORT={http_port}"
             f" EL_TLS_PORT={tls_port}"
             f" EL_CACHE_DIR={cache_dir}"
+            f" EL_LANG={get_lang()}"
             f" bash {script_path}"
         )
         print(f"\n{t('Will execute:')} {cmd}\n")

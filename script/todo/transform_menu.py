@@ -971,7 +971,7 @@ class TransformMenuMixin:
 
         Le processus doit lire la source ET écrire la cible : il lui faut
         l'union des bibliothèques. La source seule laissait csv→xlsx
-        importer openpyxl sous l'interpréteur du CLI, qui ne l'a pas ; la
+        importer openpyxl sous l'interpréteur du CLI, qui peut ne pas l'avoir ; la
         cible seule enverrait un classeur au même interpréteur, qui ne sait
         pas le lire.
         """

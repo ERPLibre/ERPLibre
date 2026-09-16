@@ -39,6 +39,7 @@ stocké, et le journal doit dire sur quel instantané elle se bâtit.
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -66,6 +67,7 @@ from script.qemu import cache_offline  # noqa: E402
 from script.qemu.deploy_qemu import (  # noqa: E402
     DISTRO_PKG,
     DISTROS,
+    attente_cloud_final,
     cache_env_reload,
     distro_label,
 )
@@ -174,6 +176,9 @@ def avec_reprises(commande):
 ATTENDRE_CLOUD_INIT = (
     "if command -v cloud-init >/dev/null 2>&1; then"
     " sudo timeout 900 cloud-init status --wait >/dev/null 2>&1 || true; fi"
+    # « status --wait » rend la main dès que cloud-init se déclare en erreur,
+    # alors que son étape finale écrit encore : l'unité, elle, dit la vérité.
+    f"; {attente_cloud_final()}"
     # La session s'ouvre avant que cloud-init n'écrive les variables du cache :
     # sans les relire, un npm lancé sans sudo rejette l'autorité du cache.
     f"; {cache_env_reload()}"
@@ -622,8 +627,12 @@ def deployer(
     distro=DISTRO,
     version=VERSION,
     charge="minimum",
+    hors_ligne=False,
 ):
     """Une VM Arch, branchée sur le cache ou non. Rend son adresse, ou ''.
+
+    `hors_ligne` : la VM naît l'amont du cache coupé. Le déploiement y
+    désactive ce qu'aucun cache ne rejoue, comme le ferait le formulaire.
 
     Sans le cache, la VM télécharge en direct : c'est le TÉMOIN, la mesure de
     ce que coûte une installation quand rien n'est gardé. Un gain ne veut rien
@@ -645,6 +654,7 @@ def deployer(
         f" --ssh-key {shlex.quote(cle_publique())}"
         + (
             f" --cache-ca {shlex.quote(CA)}"
+            + (" --offline" if hors_ligne else "")
             if avec_cache
             else " --cache-bypass"
         )
@@ -683,6 +693,27 @@ def dans_la_vm(adresse, commande, delai, journal, montrer=False):
         f" -o ConnectTimeout=15 erplibre@{adresse} {shlex.quote(commande)}"
     )
     return executer(ssh, delai, journal, montrer=montrer)
+
+
+def eteindre(nom, journal, dry_run=False):
+    """Éteint une VM dont la mesure est faite, sans l'effacer.
+
+    Une VM de la charge « erplibre » tient 8 Gio de mémoire. Laissée allumée
+    pendant que la suivante s'installe, puis la troisième, elles s'additionnent,
+    et l'hôte manque de mémoire en pleine série. Éteinte, elle garde son disque
+    pour qui voudrait l'inspecter, et « --detruire » la retrouve par son nom.
+    Un échec d'extinction est dit et n'arrête rien : la mesure est déjà faite.
+    """
+    cmd = f"sudo -n virsh -c qemu:///system destroy {shlex.quote(nom)}"
+    if dry_run:
+        dire(f"  [à blanc] {cmd}", journal)
+        return
+    code, _ = executer(cmd, 120, journal)
+    if code:
+        dire(
+            f"  ⚠ {nom} : extinction impossible ({code}), elle reste allumée",
+            journal,
+        )
 
 
 def attendre_ssh(adresse, journal):
@@ -801,7 +832,24 @@ def verdict(premier, second, journal):
     vues1 = {l["url"] for l in p1}
 
     # Le critère : ce que les DEUX ont demandé ne doit pas être ressorti.
-    fautes = [l for l in p2 if l["url"] in vues1 and l.get("upstream")]
+    #
+    # Un REFUS de l'amont n'en est pas : un miroir qui range sa distribution
+    # sous un autre chemin répond 404 à chaque paquet, le client passe au
+    # miroir suivant, et le cache sert celui-là du disque. Il n'a rien livré
+    # que le cache aurait dû garder — un 404 figé masquerait le fichier publié
+    # ensuite. Le compter en faute fait échouer une mesure où tout a été servi.
+    refus = [
+        l
+        for l in p2
+        if l.get("upstream")
+        and isinstance(l.get("status"), int)
+        and l["status"] >= 400
+    ]
+    fautes = [
+        l
+        for l in p2
+        if l["url"] in vues1 and l.get("upstream") and l not in refus
+    ]
     # Ce que la seconde a découvert seule : légitime sur une publication
     # continue, montré pour que personne ne prenne un miroir qui bouge pour
     # une panne de cache.
@@ -874,6 +922,12 @@ def verdict(premier, second, journal):
         )
         for l in neufs[:5]:
             dire(f"    + {l['url'].rsplit('/', 1)[-1]}", journal)
+    if refus:
+        dire(
+            f"  ({len(refus)} refus de l'amont, non comptés : un miroir a"
+            " répondu par une erreur, le fichier est venu d'ailleurs)",
+            journal,
+        )
     if fautes:
         dire("", journal)
         dire(
@@ -933,13 +987,17 @@ def contre_epreuve(
 
     C'est ce qui distingue un cache d'une simple accélération : sans réseau,
     le déploiement tient encore sur l'index stocké.
+
+    Un échec note l'étape dans rapport["etape_en_echec"], comme la boucle le
+    fait pour les deux premières VM : le résumé d'une série la nomme.
     """
     dire("", journal)
     dire("  ── Contre-épreuve : amont coupé ──", journal)
+    nom = f"{base}-3"
     if not couper_lamont(journal, dry_run):
+        rapport["etape_en_echec"] = f"{nom} : coupure de l'amont"
         return False
     try:
-        nom = f"{base}-3"
         rapport["vms"].append(nom)
         ecrire_rapport(rapport)
         adresse = deployer(
@@ -949,13 +1007,18 @@ def contre_epreuve(
             distro=distro,
             version=version,
             charge=charge,
+            hors_ligne=True,
         )
         if not adresse:
+            rapport["etape_en_echec"] = f"{nom} : déploiement"
             return False
         noter_uuid(rapport, nom, dry_run)
         if not dry_run and not attendre_ssh(adresse, journal):
+            rapport["etape_en_echec"] = f"{nom} : ssh"
             return False
         ok = poser_les_paquets(adresse, journal, dry_run, distro, charge)
+        if not ok:
+            rapport["etape_en_echec"] = f"{nom} : paquets"
         if ok:
             dire(
                 "  ✓ la troisième VM s'est bâtie sans que le cache joigne"
@@ -1082,8 +1145,9 @@ def main(argv=None):
     parseur.add_argument(
         "--distro",
         default=DISTRO,
-        choices=sorted(systemes_mesurables()),
-        help=f"système des VM du test (défaut : {DISTRO})",
+        help=f"système des VM du test (défaut : {DISTRO}) ; « tous », ou une"
+        " liste séparée par des virgules, enchaîne une campagne par système :"
+        f" {', '.join(sorted(systemes_mesurables()))}",
     )
     parseur.add_argument(
         "--version",
@@ -1100,21 +1164,115 @@ def main(argv=None):
         " et d'Odoo 18, qui se compte en heures",
     )
     args = parseur.parse_args(argv)
-    # Vide veut dire « celle du catalogue » : la recopier ici la figerait, et
-    # le test installerait une version que le déploiement ne propose plus.
-    if not args.version:
-        args.version = DISTROS[args.distro][1]
 
     if args.rapport:
         return rapport_comparatif()
     if args.detruire:
         return detruire(args.dry_run)
 
+    try:
+        systemes = systemes_demandes(args.distro)
+    except ValueError as err:
+        parseur.error(str(err))
+    if len(systemes) > 1:
+        if args.version:
+            parseur.error(
+                "--version ne vaut que pour un seul système : chacun prend"
+                " celle du catalogue"
+            )
+        return campagne_par_systemes(args, systemes)
+    args.distro = systemes[0]
+    # Vide veut dire « celle du catalogue » : la recopier ici la figerait, et
+    # le test installerait une version que le déploiement ne propose plus.
+    if not args.version:
+        args.version = DISTROS[args.distro][1]
+    return une_campagne(args)[0]
+
+
+def systemes_demandes(valeur):
+    """Les systèmes que --distro désigne, dans l'ordre donné, sans doublon.
+
+    « tous » désigne chaque système mesurable, dans l'ordre alphabétique ; une
+    liste séparée par des virgules, ceux qu'elle nomme. Lève ValueError sur un
+    nom inconnu : le refus tombe avant qu'aucune machine ne soit créée, et non
+    au milieu d'une série de plusieurs heures.
+    """
+    connus = systemes_mesurables()
+    if (valeur or "").strip().lower() == "tous":
+        return sorted(connus)
+    noms = [n.strip() for n in (valeur or "").split(",") if n.strip()]
+    inconnus = [n for n in noms if n not in connus]
+    if not noms or inconnus:
+        raise ValueError(
+            f"système inconnu : {', '.join(inconnus) or repr(valeur)} ;"
+            f" connus : {', '.join(sorted(connus))}, ou « tous »"
+        )
+    return list(dict.fromkeys(noms))
+
+
+def campagne_par_systemes(args, systemes):
+    """Une campagne par système, l'une après l'autre, puis leur tableau.
+
+    Les machines d'un système sont défaites avant le suivant : trois VM par
+    système ne tiendraient pas toutes ensemble sur le disque de l'hôte. Un
+    échec n'arrête pas la série — le tableau doit montrer chaque système, et
+    c'est justement ce qu'on vient chercher quand l'un d'eux échoue.
+    """
+    resultats = []
+    for distro in systemes:
+        un = copy.copy(args)
+        un.distro, un.version = distro, DISTROS[distro][1]
+        print(f"\n  ══ {distro} {un.version} ══")
+        code, fichier = une_campagne(un)
+        resultats.append((distro, un.version, code, fichier))
+        if not args.dry_run:
+            detruire()
+    return resume_par_systemes(resultats)
+
+
+def resume_par_systemes(resultats):
+    """Le tableau d'une série : verdict, durées et octets d'amont de la seconde
+    VM par système. Rend 0 si chaque système a réussi, 1 sinon."""
+    print("\n  ── Par système ──\n")
+    print(
+        f"  {'système':<22}{'verdict':<10}{'VM 1':>8}{'VM 2':>8}"
+        f"{'amont VM 2':>14}  étape en échec"
+    )
+    tous_reussis = True
+    for distro, version, code, fichier in resultats:
+        rapport = {}
+        if fichier and os.path.exists(fichier):
+            try:
+                with open(fichier, encoding="utf-8") as fh:
+                    rapport = json.load(fh)
+            except (OSError, ValueError):
+                rapport = {}
+        durees = list((rapport.get("durees") or {}).values())
+        octets = list((rapport.get("octets") or {}).values())
+        rendu = rapport.get("verdict") or ("ok" if code == 0 else "échec")
+        tous_reussis = tous_reussis and code == 0 and rendu == "ok"
+        vm1 = f"{durees[0]:.0f}s" if durees else "—"
+        vm2 = f"{durees[1]:.0f}s" if len(durees) > 1 else "—"
+        amont = humain(octets[1].get("amont", 0)) if len(octets) > 1 else "—"
+        print(
+            f"  {distro + ' ' + str(version):<22}{rendu:<10}{vm1:>8}{vm2:>8}"
+            f"{amont:>14}  {rapport.get('etape_en_echec') or ''}"
+        )
+    print()
+    return 0 if tous_reussis else 1
+
+
+def une_campagne(args):
+    """Une campagne sur UN système : préalables, VM, mesure, contre-épreuve.
+
+    Rend (code, chemin du rapport) ; le chemin est vide quand la campagne
+    s'arrête avant d'avoir écrit un rapport.
+    """
     base = base_des_noms(args)
     journal = journal_neuf()
     dire(f"  journal : {journal}", journal)
     if not args.dry_run and not prealables(journal, base):
-        return 1
+        return 1, ""
 
     acces = journal_du_cache()
     if not acces:
@@ -1124,7 +1282,7 @@ def main(argv=None):
             journal,
         )
         if not args.dry_run:
-            return 1
+            return 1, ""
 
     rapport = {
         "_fichier": chemin_rapport(),
@@ -1151,7 +1309,10 @@ def main(argv=None):
     if acces and os.path.exists(acces):
         decalage = os.path.getsize(acces)
 
-    return _boucle(args, rapport, journal, acces, decalage)
+    return (
+        _boucle(args, rapport, journal, acces, decalage),
+        rapport["_fichier"],
+    )
 
 
 def _boucle(args, rapport, journal, acces, decalage):
@@ -1205,6 +1366,9 @@ def _boucle(args, rapport, journal, acces, decalage):
         }
         ecrire_rapport(rapport)
         dire(f"  VM {rang} : paquets posés en {duree:.0f} s", journal)
+        # Sa mesure est dans le rapport : allumée, elle ne sert plus à rien et
+        # tient sa mémoire pendant que la suivante s'installe.
+        eteindre(nom, journal, args.dry_run)
 
     ok = True
     if args.dry_run:
@@ -1235,7 +1399,9 @@ def _boucle(args, rapport, journal, acces, decalage):
             and ok
         )
 
-    return _clore(args, rapport, journal, ok)
+    return _clore(
+        args, rapport, journal, ok, rapport.pop("etape_en_echec", "")
+    )
 
 
 def _clore(args, rapport, journal, ok, etape=""):

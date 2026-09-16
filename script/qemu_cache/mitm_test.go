@@ -210,6 +210,7 @@ func TestPremierEnregistrementNonTLS(t *testing.T) {
 // produit une VM qui démarre et coupe. Seule la répétition les sépare.
 func TestUneCoupureIsoleeNeCondamnePas(t *testing.T) {
 	r := NewRefusals(nil)
+	r.Rafale = -1 // chaque coupure compte : c'est le SEUIL qu'on éprouve ici
 	coupure := errors.New("read: connection reset by peer")
 	for i := 1; i < r.Seuil; i++ {
 		if r.Echec("miroir.example", coupure) {
@@ -223,9 +224,14 @@ func TestUneCoupureIsoleeNeCondamnePas(t *testing.T) {
 
 func TestUneCoupureRepeteeFinitParCondamner(t *testing.T) {
 	r := NewRefusals(nil)
+	// Des coupures ESPACÉES, telles qu'un client qui réessaie les produit :
+	// l'horloge avance entre chacune, sans faire dormir le test.
+	horloge := time.Now()
+	r.Maintenant = func() time.Time { return horloge }
 	coupure := errors.New("EOF")
 	for i := 0; i < r.Seuil; i++ {
 		r.Echec("npm.example", coupure)
+		horloge = horloge.Add(10 * time.Second)
 	}
 	if !r.Has("npm.example") {
 		t.Error("un client qui échoue à chaque fois n'est jamais mis en" +
@@ -244,6 +250,7 @@ func TestUneCoupureRepeteeFinitParCondamner(t *testing.T) {
 func TestUnRefusDeTransportSeRouvre(t *testing.T) {
 	r := NewRefusals(nil)
 	r.Oubli = 50 * time.Millisecond
+	r.Rafale = -1
 	coupure := errors.New("local error: tls: bad record MAC")
 	for i := 0; i < r.Seuil; i++ {
 		r.Echec("miroir.example", coupure)
@@ -275,6 +282,7 @@ func TestLOubliRemetLeCompteAZero(t *testing.T) {
 		t.Run(nom, func(t *testing.T) {
 			r := NewRefusals(nil)
 			r.Oubli = 50 * time.Millisecond
+			r.Rafale = -1
 			for i := 0; i < r.Seuil; i++ {
 				r.Echec("registre.example", io.EOF)
 			}
@@ -307,6 +315,7 @@ func TestUnTunnelSansAmontSeRabatSurLeDechiffrement(t *testing.T) {
 
 	const hote = "registre.example.invalid"
 	r := NewRefusals(nil)
+	r.Rafale = -1
 	for i := 0; i < r.Seuil; i++ {
 		r.Echec(hote, io.EOF)
 	}
@@ -367,6 +376,7 @@ func TestLOubliEstActifParDefaut(t *testing.T) {
 // s'additionner jusqu'au seuil.
 func TestUneReussiteEffaceLeCompte(t *testing.T) {
 	r := NewRefusals(nil)
+	r.Rafale = -1
 	coupure := errors.New("EOF")
 	for i := 1; i < r.Seuil; i++ {
 		r.Echec("h.example", coupure)
@@ -377,6 +387,53 @@ func TestUneReussiteEffaceLeCompte(t *testing.T) {
 	}
 	if r.Has("h.example") {
 		t.Error("des incidents éloignés se sont additionnés")
+	}
+}
+
+// Une RAFALE est un seul incident. apt ouvre plusieurs connexions de front
+// vers un dépôt et ferme celles dont il ne se sert pas : trois coupures dans
+// la même seconde condamnaient l'hôte sans que rien n'ait rejeté notre
+// certificat. Le client repartait alors sur un tunnel opaque, et son
+// « apt-get update » y attendait jusqu'au délai — quatre heures.
+func TestUneRafaleDeCoupuresNeCondamnePas(t *testing.T) {
+	r := NewRefusals(nil)
+	horloge := time.Now()
+	r.Maintenant = func() time.Time { return horloge }
+	coupure := errors.New("read: connection reset by peer")
+
+	// Dix connexions fermées dans le même instant : un seul incident.
+	for i := 0; i < 10; i++ {
+		if r.Echec("deb.example", coupure) {
+			t.Fatalf("condamné sur la coupure %d d'une même rafale", i+1)
+		}
+	}
+	if r.Has("deb.example") {
+		t.Fatal("une rafale simultanée condamne l'hôte")
+	}
+
+	// Le temps passe : les coupures suivantes sont d'autres incidents, et le
+	// seuil finit par tomber.
+	for i := 1; i < r.Seuil; i++ {
+		horloge = horloge.Add(RafaleParDefaut + time.Second)
+		r.Echec("deb.example", coupure)
+	}
+	if !r.Has("deb.example") {
+		t.Error("des coupures espacées ne condamnent plus : un client qui" +
+			" rejette vraiment notre autorité ne passerait jamais en tunnel")
+	}
+}
+
+// Une ALERTE tranche tout de suite : le client a REGARDÉ notre certificat.
+// La rafale ne la retient pas : dix alertes d'affilée valent une décision.
+func TestUneAlerteTrancheMemeEnRafale(t *testing.T) {
+	r := NewRefusals(nil)
+	horloge := time.Now()
+	r.Maintenant = func() time.Time { return horloge }
+	if !r.Echec("epingleur.example", errRefus) {
+		t.Fatal("une alerte ne tranche pas dans le même instant qu'une autre")
+	}
+	if !r.Has("epingleur.example") {
+		t.Error("l'alerte n'est pas retenue")
 	}
 }
 

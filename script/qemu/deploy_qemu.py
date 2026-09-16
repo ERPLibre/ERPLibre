@@ -2507,10 +2507,14 @@ CACHE_TRUST = {
         "update-ca-trust",
         "/etc/pki/tls/certs/ca-bundle.crt",
     ),
+    # openSUSE n'écrit aucun « /etc/ssl/certs/ca-certificates.crt » : son
+    # faisceau est « ca-bundle.pem ». Une variable qui vise un fichier absent
+    # fait échouer pip sur « Could not find a suitable TLS CA certificate
+    # bundle », en ligne comme hors ligne.
     "zypper": (
         "/etc/pki/trust/anchors",
         "update-ca-certificates",
-        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/ssl/ca-bundle.pem",
     ),
 }
 
@@ -2522,6 +2526,26 @@ CACHE_TRUST = {
 # le premier hôte que le cache ne déchiffre pas, et le jour où le cache
 # disparaît alors que la VM garde sa variable.
 CACHE_ENV_VARS = ("PIP_CERT", "REQUESTS_CA_BUNDLE", "NODE_EXTRA_CA_CERTS")
+
+# Ce qu'une VM déployée l'amont du cache coupé reçoit en plus. L'audit de npm
+# interroge un service distant qu'aucun cache ne peut rejouer : hors ligne il
+# échoue à chaque installation sans rien vérifier. La variable reste dans la
+# VM après son installation ; un « npm config set audit true » la contredit.
+# Séparée de CACHE_ENV_VARS, que le binaire du cache recopie et que le test
+# d'accord avec le Go compare.
+OFFLINE_ENV_VARS = (("NPM_CONFIG_AUDIT", "false"),)
+
+# Ce qu'une VM déployée l'amont coupé exécute tôt au démarrage. Une image qui
+# active systemd-time-wait-sync — celle d'Arch — retient time-sync.target
+# jusqu'à la première synchronisation NTP, et « cloud-final » est ordonné
+# après : sans serveur de temps joignable, l'étape finale ne démarre jamais, ni
+# les clés d'hôte ssh qu'elle génère, et la VM reste sans ssh. L'arrêter lève
+# l'attente ; une image qui ne l'active pas n'en voit aucun effet. « bootcmd »
+# tourne à l'étape réseau de cloud-init, avant l'étape finale.
+OFFLINE_BOOTCMD = [
+    "bootcmd:",
+    "  - systemctl stop --no-block systemd-time-wait-sync.service || true",
+]
 
 CACHE_CERT_NAME = "erplibre-cache.crt"
 
@@ -2667,6 +2691,9 @@ def cache_bypass_apply(args: argparse.Namespace, runner: Runner) -> str:
     geste = (
         f"{shlex.quote(CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
         f" --bypass-name {shlex.quote(args.name)}"
+        # La commande passe par sudo, qui retire EL_LANG : la langue du
+        # message du binaire va donc en option.
+        f" --lang {shlex.quote(langue_des_messages(args))}"
     )
     if shutil.which("nft"):
         # Le binaire écrit le fichier et rend sur sa sortie le geste à chaud.
@@ -2679,6 +2706,20 @@ def cache_bypass_apply(args: argparse.Namespace, runner: Runner) -> str:
         runner.run(["systemctl", "restart", CACHE_SERVICE], privileged=True)
     print(f"  VM soustraite au cache : {mac}")
     return mac
+
+
+def langue_des_messages(args: argparse.Namespace) -> str:
+    """La langue des messages : --lang du déploiement, sinon celle de todo.py,
+    sinon le français. Rend toujours « fr » ou « en »."""
+    langue = (getattr(args, "lang", "") or "").strip().lower()
+    if not langue:
+        try:
+            from script.todo.todo_i18n import get_lang
+
+            langue = get_lang()
+        except Exception:
+            langue = "fr"
+    return "en" if langue.startswith("en") else "fr"
 
 
 def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
@@ -2742,7 +2783,47 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
             f"sh -c 'grep -q ^{var}= /etc/environment"
             f" || echo {var}={faisceau} >> /etc/environment'"
         )
+    gardees = list(CACHE_ENV_VARS)
+    if getattr(args, "offline", False):
+        for var, valeur in OFFLINE_ENV_VARS:
+            commandes.append(
+                f"sh -c 'grep -q ^{var}= /etc/environment"
+                f" || echo {var}={valeur} >> /etc/environment'"
+            )
+            gardees.append(var)
+    commandes.append(commande_sudoers(gardees))
     return commandes
+
+
+CACHE_SUDOERS = "/etc/sudoers.d/erplibre-cache"
+
+
+def commande_sudoers(variables, fichier: str = CACHE_SUDOERS) -> str:
+    """La commande qui fait traverser « sudo » aux variables du cache.
+
+    sudo remet l'environnement à zéro. Seul un module PAM qui relit
+    /etc/environment pour sudo y ramène les variables, et toutes les
+    distributions ne le configurent pas : sans lui, « sudo npm install -g »
+    rejette l'autorité du cache sur « self-signed certificate in certificate
+    chain », quand le même npm sans sudo l'accepte. « env_keep » les garde
+    partout, pourvu que la session appelante les porte — ce que
+    cache_env_reload lui assure.
+
+    Le fichier est écrit sous un nom à point, que sudo ignore, vérifié par
+    « visudo -c », puis renommé : un fichier invalide dans sudoers.d rendrait
+    sudo inutilisable sur toute la machine. Un échec — visudo absent, pas de
+    répertoire sudoers.d — retire le temporaire et ne fait pas échouer la
+    commande. Une variable par ligne, sans guillemets : la commande passe
+    telle quelle dans un « runcmd » YAML comme dans un « sh -c » par ssh.
+    """
+    dossier, nom = fichier.rsplit("/", 1)
+    tmp = f"{dossier}/.{nom}"
+    return (
+        f"sh -c 'for v in {' '.join(variables)};"
+        f" do echo Defaults env_keep += $v; done > {tmp}"
+        f" && chmod 0440 {tmp} && visudo -cf {tmp} && mv {tmp} {fichier}"
+        f" || rm -f {tmp}'"
+    )
 
 
 def cache_runcmd(args: argparse.Namespace) -> list[str]:
@@ -2765,10 +2846,39 @@ def cache_env_reload(fichier: str = "/etc/environment") -> str:
     séparateur final, sans effet quand le fichier est absent ou ne les porte
     pas, et qui ne fait pas échouer une commande sous « set -e ».
     """
-    motif = "|".join(CACHE_ENV_VARS)
+    motif = "|".join(CACHE_ENV_VARS + tuple(v for v, _ in OFFLINE_ENV_VARS))
     return (
         f'if [ -r {fichier} ]; then eval "$(grep -E "^({motif})=" {fichier}'
         ' | sed "s/^/export /")"; fi'
+    )
+
+
+def attente_cloud_final(bornes: int = 150) -> str:
+    """Attend que l'ÉTAPE FINALE de cloud-init ait fini d'écrire.
+
+    « cloud-init status --wait » rend la main dès que cloud-init se déclare en
+    ERREUR, et un module accessoire suffit à l'y mettre — une locale que
+    l'invité ne connaît pas, par exemple. Son étape finale, elle, continue :
+    c'est elle qui pose l'autorité du cache, les variables de /etc/environment
+    et le fichier sudoers. Une session ouverte dans cette seconde-là vit sans
+    ces variables pour toute sa durée — PAM ne relit plus le fichier — et
+    « sudo » n'a alors rien à conserver, si bien qu'un npm lancé par sudo
+    rejette l'autorité du cache sur « self-signed certificate in certificate
+    chain ».
+
+    L'unité tranche, mais PAS par « is-active » : cloud-final est un service
+    « oneshot » qui reste ACTIF une fois terminé — is-active y est vrai pour
+    toujours, et attendre là-dessus coûte la borne entière à chaque VM, sans
+    rien détecter. Seul « activating » dit que l'étape écrit encore.
+
+    Bornée à `bornes` tours de deux secondes. Sans effet là où l'unité n'existe
+    pas : « show » y rend un état vide ou « inactive », jamais « activating » —
+    une image sans cloud-init, ou une VM déjà installée, n'attendent rien.
+    """
+    return (
+        'n=0; while [ "$(systemctl show -p ActiveState --value'
+        ' cloud-final.service 2>/dev/null)" = activating ]; do n=$((n+1));'
+        f" [ $n -ge {bornes} ] && break; sleep 2; done"
     )
 
 
@@ -2891,6 +3001,8 @@ def build_cloud_config(
     # Active et démarre SSH quel que soit le nom du service (ssh sur
     # Debian/Ubuntu, sshd sur Fedora/Arch) — sans quoi la VM peut booter
     # sans SSH accessible.
+    if getattr(args, "offline", False):
+        lines += OFFLINE_BOOTCMD
     lines += ["runcmd:"]
     # En TÊTE : ce qui suit peut télécharger, et sans magasin de confiance à
     # jour un invité rejette le certificat que le cache présente.
@@ -3991,16 +4103,12 @@ def virt_install(
         "--network",
         args.network,
         "--console",
-        # Journal de console pour la voie installateur. Une console « pty »
-        # seule ne gardE rien : quand d-i échoue, il l'écrit à l'écran d'une
-        # VM que personne ne regarde, et il ne reste RIEN à lire ensuite —
-        # exactement « l'installation a échoué, pas de sortie pertinente ».
-        # Le fichier, lui, survit à l'arrêt du domaine.
-        (
-            f"pty,target_type={console_target},log.file={console_log}"
-            if installer
-            else f"pty,target_type={console_target}"
-        ),
+        # Journal de console, pour toutes les voies. Une console « pty » seule
+        # ne garde rien : quand d-i échoue, ou qu'une image cloud reste bloquée
+        # avant son serveur ssh, la VM l'écrit à un écran que personne ne
+        # regarde, et il ne reste RIEN à lire ensuite. Le fichier, lui, survit
+        # à l'arrêt du domaine.
+        f"pty,target_type={console_target},log.file={console_log}",
         # Canal virtio de l'agent invité (org.qemu.guest_agent.0) : permet à
         # virsh de piloter la VM SANS réseau (ex. étendre le FS invité après
         # un redimensionnement de disque). Inoffensif si l'agent est absent.
@@ -4478,6 +4586,13 @@ def build_parser() -> argparse.ArgumentParser:
         "téléchargement (erplibre_go_qemu_cache). Fourni, la VM approuve "
         "cette autorité dès son premier démarrage et ses téléchargements "
         "passent par le cache. Absent, rien n'est posé.",
+    )
+    g_cloud.add_argument(
+        "--offline",
+        action="store_true",
+        help="La VM est déployée l'amont du cache coupé : ce qu'aucun cache ne "
+        "peut rejouer y est désactivé, l'audit de npm d'abord. Sans effet "
+        "sans --cache-ca.",
     )
     g_cloud.add_argument(
         "--cache-bypass",

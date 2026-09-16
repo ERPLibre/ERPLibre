@@ -97,6 +97,7 @@ func (s *Store) Detenir(methode, brut string) Detention {
 		return d
 	}
 	if methode == "HEAD" && (class != ClassVolatile || PortableParChemin(u)) {
+		s.corpsDuGET(&d, u)
 		return d
 	}
 	d.Verdict = VerdictAbsent
@@ -106,8 +107,22 @@ func (s *Store) Detenir(methode, brut string) Detention {
 	}
 	if m, ok := s.lirePresent(CleStatut(methode, u)); ok && m.StatutSeul() {
 		d.Verdict, d.Statut, d.StockeLe = VerdictStatut, m.StatutReel(), m.StoredAt
+		return d
+	}
+	if methode == "HEAD" {
+		s.corpsDuGET(&d, u)
 	}
 	return d
+}
+
+// corpsDuGET marque « garde » un HEAD dont le GET de la même URL a son corps
+// en réserve : hors ligne, le service répond au HEAD avec les en-têtes de ce
+// corps, APRÈS le statut gardé du HEAD lui-même. Sans corps, le verdict reste
+// celui que l'appelant a posé.
+func (s *Store) corpsDuGET(d *Detention, u *url.URL) {
+	if m, ok := s.lirePresent(CleDe("GET", u)); ok && !m.StatutSeul() {
+		d.Verdict, d.Statut, d.StockeLe = VerdictGarde, m.StatutReel(), m.StoredAt
+	}
 }
 
 // lirePresent rend le méta d'une clé quand l'objet est complet : méta lisible

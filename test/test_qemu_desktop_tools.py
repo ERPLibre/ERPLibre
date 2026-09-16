@@ -1589,6 +1589,23 @@ class TestLeVerrouAptNeCoutePasDesMinutes(unittest.TestCase):
             "les variables sont relues avant que cloud-init les ait écrites",
         )
 
+    def test_lattente_suit_l_unite_et_non_le_seul_statut(self):
+        """cloud-init se déclare en erreur pour un module accessoire, et
+        « status --wait » rend alors la main pendant que son étape finale
+        écrit encore l'autorité du cache et les variables."""
+        from script.qemu.deploy_qemu import (
+            attente_cloud_final,
+            cache_env_reload,
+        )
+
+        attente = self.todo._qemu_cloud_init_wait()
+        self.assertIn(attente_cloud_final(), attente)
+        self.assertLess(
+            attente.index(attente_cloud_final()),
+            attente.index(cache_env_reload()),
+            "les variables sont relues avant la fin de l'étape qui les écrit",
+        )
+
     def test_le_nom_du_service_est_celui_que_le_deploiement_donne(self):
         """Deux noms qui divergent et l'attente ne trouve jamais rien."""
         from script.qemu import deploy_qemu

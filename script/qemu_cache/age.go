@@ -51,7 +51,7 @@ func LireGranularite(s string) (Granularite, error) {
 	case "mois", "month", "m":
 		return ParMois, nil
 	}
-	return "", fmt.Errorf("granularité inconnue %q : jour, semaine ou mois", s)
+	return "", fmt.Errorf(T("granularité inconnue %q : jour, semaine ou mois"), s)
 }
 
 // debutDeTranche ramène un instant au premier de sa tranche.
@@ -205,19 +205,19 @@ func (g *GitMirror) PurgerMiroirs(avant time.Time) (int, int64, error) {
 func LireDuree(s string) (time.Duration, error) {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "" {
-		return 0, fmt.Errorf("durée vide")
+		return 0, fmt.Errorf("%s", T("durée vide"))
 	}
 	if n, unite := s[:len(s)-1], s[len(s)-1]; unite == 'j' || unite == 'd' {
 		var jours float64
 		if _, err := fmt.Sscanf(n, "%g", &jours); err != nil || jours < 0 {
-			return 0, fmt.Errorf("durée illisible %q", s)
+			return 0, fmt.Errorf(T("durée illisible %q"), s)
 		}
 		return time.Duration(jours * 24 * float64(time.Hour)), nil
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d < 0 {
 		return 0, fmt.Errorf(
-			"durée illisible %q : essayer 30j, 12h, 90m", s)
+			T("durée illisible %q : essayer 30j, 12h, 90m"), s)
 	}
 	return d, nil
 }
@@ -228,16 +228,16 @@ func LireDuree(s string) (time.Duration, error) {
 // un fichier, un dépôt est un arbre — et un total commun cacherait qu'un seul
 // dépôt pèse plus que mille objets.
 func printAge(store *Store, miroir *GitMirror, gran Granularite) {
-	fmt.Printf("Âge du dernier usage, par %s.\n", gran)
+	fmt.Printf(T("Âge du dernier usage, par %s.\n"), T(string(gran)))
 	fmt.Printf(
-		"\nUn objet servi voit sa date remise à jour : « vieux » veut donc " +
-			"dire\n« n'a plus servi », et non « est entré il y a " +
-			"longtemps ».\n")
+		"%s", T("\nUn objet servi voit sa date remise à jour : « vieux » veut donc "+
+			"dire\n« n'a plus servi », et non « est entré il y a "+
+			"longtemps ».\n"))
 
 	ecrire := func(titre string, tranches []Tranche, quoi string) {
 		fmt.Printf("\n%s\n", titre)
 		if len(tranches) == 0 {
-			fmt.Println("  rien")
+			fmt.Println(T("  rien"))
 			return
 		}
 		var n int
@@ -251,9 +251,9 @@ func printAge(store *Store, miroir *GitMirror, gran Granularite) {
 		fmt.Printf("  %-12s %6d %-8s %10s\n", "total", n, quoi,
 			HumanBytes(octets))
 	}
-	ecrire("Objets du cache :", store.Tranches(gran), "objets")
+	ecrire(T("Objets du cache :"), store.Tranches(gran), T("objets"))
 	if miroir.Actif() {
-		ecrire("Dépôts en miroir :", miroir.Tranches(gran), "dépôts")
+		ecrire(T("Dépôts en miroir :"), miroir.Tranches(gran), T("dépôts"))
 	}
 }
 
@@ -270,7 +270,7 @@ func printPurgeABlanc(store *Store, miroir *GitMirror, avant time.Time) {
 			octets += tr.Octets
 		}
 	}
-	fmt.Printf("[à blanc] objets qui partiraient : %d, %s\n",
+	fmt.Printf(T("[à blanc] objets qui partiraient : %d, %s\n"),
 		n, HumanBytes(octets))
 
 	var nd int
@@ -281,7 +281,7 @@ func printPurgeABlanc(store *Store, miroir *GitMirror, avant time.Time) {
 			octd += d.Octets
 		}
 	}
-	fmt.Printf("[à blanc] dépôts qui partiraient : %d, %s\n",
+	fmt.Printf(T("[à blanc] dépôts qui partiraient : %d, %s\n"),
 		nd, HumanBytes(octd))
-	fmt.Println("[à blanc] rien n'a été effacé.")
+	fmt.Println(T("[à blanc] rien n'a été effacé."))
 }

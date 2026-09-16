@@ -4,8 +4,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -35,6 +37,7 @@ const (
 	// en réserve, et un refus gardé ne l'est pas.
 	OutcomeStoredStatus = "stored-status" // pris à l'amont, statut seul gardé
 	OutcomeStaleStatus  = "stale-status"  // amont muet, statut seul rejoué
+	OutcomeRevalidated  = "revalidated"   // l'amont confirme la copie (304), corps servi du disque
 )
 
 // AccessLog écrit une ligne JSON par requête. Un format à une ligne par
@@ -133,6 +136,11 @@ type Proxy struct {
 	// vise l'un d'eux sur une adresse de cette machine est une boucle. Vide,
 	// rien n'est refusé.
 	Ecoutes []int
+
+	// completions tient les clés dont le corps entier est en cours de prise
+	// (voir completer) ; enCours les compte, pour qui doit les attendre.
+	completions sync.Map
+	enCours     sync.WaitGroup
 }
 
 // NewProxy monte le client amont. Aucun délai GLOBAL n'est posé : une image
@@ -201,7 +209,7 @@ func absoluteURL(r *http.Request, scheme string) (*url.URL, error) {
 	}
 	host := r.Host
 	if host == "" {
-		return nil, fmt.Errorf("requête sans hôte : ni ligne absolue ni en-tête Host")
+		return nil, fmt.Errorf("%s", T("requête sans hôte : ni ligne absolue ni en-tête Host"))
 	}
 	u := *r.URL
 	u.Scheme = scheme
@@ -242,6 +250,11 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	if cacheable && class == ClassImmutable {
 		if p.serveFromStore(w, r, u, key, class, OutcomeHit) {
 			return
+		}
+		// La plage passe à l'amont et ne se garde pas ; le fichier entier est
+		// pris à part, pour que la plage suivante sorte du disque.
+		if partial && r.Method == "GET" {
+			p.completer(r, u, key, class)
 		}
 	}
 
@@ -287,6 +300,42 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		amont = sansCondition(r)
 	}
 
+	// Un index déjà gardé part avec SON validateur. L'amont reste juge de
+	// chaque requête — un index n'est jamais servi du disque sans son accord
+	// tant qu'il répond — mais une copie qu'il déclare à jour n'est pas
+	// retéléchargée : « 304 » ne porte aucun corps, et le nôtre sort du
+	// disque. Sans cela, chaque installation reprenait en entier des index
+	// de dizaines de mégaoctets qui n'avaient pas changé.
+	//
+	// L'ETag seul, jamais la date : sous « Vary: Accept », deux
+	// représentations d'une même URL partagent leur Last-Modified, et un
+	// « 304 » accordé sur la date validerait celle qui n'est pas gardée. Pas
+	// sous une clé portable non plus : partagée par tous les miroirs, elle
+	// présenterait à l'un le validateur d'un autre. La condition du client,
+	// quand il en pose une, reste la sienne.
+	//
+	// Sous « Vary: Accept », la représentation que CE client accepte a pu être
+	// rangée à part (voir CleVariante) : c'est son validateur qui part, et
+	// elle qui sort sur « 304 ».
+	cleVariante := ""
+	if cacheable && class == ClassVolatile && r.Method == "GET" && !partial {
+		cleVariante = CleVariante(key, r.Header.Get("Accept"))
+	}
+	varianteTenue := cleVariante != "" && p.Store.Detient(cleVariante)
+	cleRevalidee := key
+	if varianteTenue {
+		cleRevalidee = cleVariante
+	}
+	revalide := false
+	if cacheable && (detient || varianteTenue) && class == ClassVolatile &&
+		r.Method == "GET" && !partial && !conditionnelle && !PortableParChemin(u) {
+		if etag := p.etagGarde(cleRevalidee); etag != "" {
+			amont = r.Clone(r.Context())
+			amont.Header.Set("If-None-Match", etag)
+			revalide = true
+		}
+	}
+
 	// Un statut seul vit sous sa propre clé, que les lecteurs de corps ne
 	// calculent pas : voir CleStatut.
 	cleStatut := CleStatut(r.Method, u)
@@ -300,6 +349,19 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		(detient || conditionnelle || p.Store.TientStatut(cleStatut))
 
 	resp, upErr := p.fetch(amont, u, repli)
+	if upErr == nil && revalide && resp.StatusCode == http.StatusNotModified {
+		resp.Body.Close()
+		// Effacée entre-temps — par un nettoyage —, la copie ne sort plus :
+		// la requête repart sans condition, et le client reçoit le corps de
+		// l'amont plutôt qu'un « 304 » qu'il n'a pas demandé.
+		if p.serveFromStore(w, r, u, cleRevalidee, class, OutcomeRevalidated) {
+			if cleRevalidee != key {
+				p.Store.Toucher(key)
+			}
+			return
+		}
+		resp, upErr = p.fetch(r, u, repli)
+	}
 	// Une redirection est SUIVIE quand le nom du fichier demandé porte déjà
 	// son identité, et le contenu est gardé sous l'URL DEMANDÉE.
 	//
@@ -322,6 +384,13 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		// Un index plus récent que la signature qui l'annonce n'est PAS
 		// servi : voir indexIncoherent. Le client tombe alors sur le « 304 »
 		// qui le laisse garder ses listes, ou sur le refus qui suit.
+		// La représentation de CE client d'abord : la base porte la dernière
+		// rangée, qui peut être l'autre.
+		if cacheable && varianteTenue && !p.indexIncoherent(u, key) &&
+			p.serveFromStore(w, r, u, cleVariante, class, OutcomeStale) {
+			p.Store.Toucher(key)
+			return
+		}
 		if cacheable && !p.indexIncoherent(u, key) &&
 			p.serveFromStore(w, r, u, key, class, OutcomeStale) {
 			return
@@ -353,6 +422,19 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		// client qui détient sa copie garde son 304 plutôt qu'un refus.
 		if cacheable && p.rejouerStatut(w, r, u, cleStatut, class) {
 			return
+		}
+		// Un HEAD sans statut gardé demande les en-têtes que rendrait le GET :
+		// le corps gardé pour ce GET les porte. zypper vérifie ainsi chaque
+		// dépôt avant de le lire, et un HEAD ne se garde jamais sous une clé
+		// portable ; sans ce repli, le dépôt dont le magasin tient l'index est
+		// déclaré invalide hors ligne. ServeContent n'écrit aucun corps pour
+		// un HEAD.
+		if cacheable && r.Method == http.MethodHead {
+			cleCorps := CleDe(http.MethodGet, u)
+			if !p.indexIncoherent(u, cleCorps) &&
+				p.serveFromStore(w, r, u, cleCorps, class, OutcomeStale) {
+				return
+			}
 		}
 		p.offlineMiss(
 			w, u, class, r.Method, clientDe(r.RemoteAddr), upErr,
@@ -405,7 +487,7 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			m.Header.Del("Set-Cookie")
 		}
 		if cw, err = p.Store.NewWriter(cle, m); err != nil {
-			log.Printf("cache : écriture impossible pour %s : %v", u, err)
+			log.Printf(T("cache : écriture impossible pour %s : %v"), u, err)
 			cw = nil
 		}
 	}
@@ -444,12 +526,19 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 			attendu = 0
 		}
 		if cerr := cw.Commit(attendu); cerr != nil {
-			log.Printf("cache : %s non gardé : %v", u, cerr)
+			log.Printf(T("cache : %s non gardé : %v"), u, cerr)
 			outcome = OutcomeFetched
 		} else if statutSeul {
 			outcome = OutcomeStoredStatus
 		} else {
 			outcome = OutcomeStored
+			// La base est publiée telle qu'avant ; sa copie sous la variante
+			// garde cette représentation quand l'autre la remplacera.
+			if cleVariante != "" && varieSurAccept(resp.Header) {
+				if verr := p.Store.Copier(key, cleVariante); verr != nil {
+					log.Printf(T("cache : variante de %s non gardée : %v"), u, verr)
+				}
+			}
 		}
 	case !cacheable:
 		outcome = OutcomePassthrough
@@ -460,6 +549,112 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 		Outcome: outcome, Status: resp.StatusCode, Bytes: n, Upstream: true,
 		Client: clientDe(r.RemoteAddr),
 	})
+}
+
+// varieSurAccept dit si la réponse annonce varier selon l'en-tête Accept.
+// « Vary » est une liste de noms d'en-têtes, insensible à la casse, et peut
+// être répété.
+func varieSurAccept(h http.Header) bool {
+	for _, v := range h.Values("Vary") {
+		for _, nom := range strings.Split(v, ",") {
+			if strings.EqualFold(strings.TrimSpace(nom), "Accept") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// delaiCompletion borne la prise d'un corps entier en arrière-plan. Aucun
+// client n'attend cette prise : sans borne, un amont qui cesse d'envoyer au
+// milieu du corps la garderait ouverte pour toujours.
+const delaiCompletion = time.Hour
+
+// completer prend à l'amont, en arrière-plan, le corps ENTIER d'un fichier
+// figé dont un client n'a demandé qu'une plage, et le garde sous sa clé.
+//
+// dnf télécharge ses métadonnées zchunk par plages, et pacman reprend de même
+// un paquet interrompu : une plage ne se garde pas, si bien que sans cette
+// prise ces fichiers repartiraient à l'amont à chaque VM — et, amont coupé, ne
+// seraient pas là. Une fois gardé, le fichier sert toute plage depuis le
+// disque.
+//
+// Une seule prise par clé à la fois, et la requête du client ne l'attend pas.
+// Elle part sans plage ni condition, avec le seul agent de l'invité, et un
+// amont connu muet n'est pas recomposé. Une prise manquée se retente à la
+// plage suivante.
+func (p *Proxy) completer(r *http.Request, u *url.URL, key string, class Class) {
+	if _, deja := p.completions.LoadOrStore(key, true); deja {
+		return
+	}
+	entete := http.Header{}
+	if agent := r.Header.Get("User-Agent"); agent != "" {
+		entete.Set("User-Agent", agent)
+	}
+	p.enCours.Add(1)
+	go func() {
+		defer p.enCours.Done()
+		defer p.completions.Delete(key)
+		p.prendreEntier(u, key, class, entete)
+	}()
+}
+
+// attendreCompletions rend la main quand plus aucune prise n'est en cours.
+func (p *Proxy) attendreCompletions() {
+	p.enCours.Wait()
+}
+
+// prendreEntier fait la prise elle-même : un 200 entier, publié sous la clé
+// par le même écrivain que le chemin du client, taille annoncée vérifiée. Tout
+// autre statut, ou une clé devenue détenue entre-temps, ne publie rien.
+func (p *Proxy) prendreEntier(u *url.URL, key string, class Class, entete http.Header) {
+	ctx, annuler := context.WithTimeout(context.Background(), delaiCompletion)
+	defer annuler()
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return
+	}
+	req.Header = entete
+	resp, err := p.fetch(req, u, true)
+	if err != nil {
+		return
+	}
+	resp = p.suivreRedirections(req, u, resp)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || p.Store.Detient(key) {
+		return
+	}
+	cw, err := p.Store.NewWriter(key, Meta{
+		URL: u.String(), Method: "GET", Status: resp.StatusCode,
+		Header: resp.Header.Clone(), Class: class.String(),
+	})
+	if err != nil {
+		log.Printf(T("cache : écriture impossible pour %s : %v"), u, err)
+		return
+	}
+	n, err := io.Copy(cw, resp.Body)
+	if err != nil {
+		cw.Abort()
+		return
+	}
+	if err := cw.Commit(resp.ContentLength); err != nil {
+		log.Printf(T("cache : %s non gardé : %v"), u, err)
+		return
+	}
+	p.record(accessLine{
+		Method: "GET", URL: u.String(), Class: class.String(),
+		Outcome: OutcomeStored, Status: resp.StatusCode, Bytes: n, Upstream: true,
+	})
+}
+
+// etagGarde rend l'ETag du corps gardé sous la clé, ou "" : rien de gardé,
+// un statut seul, ou une réponse d'amont qui n'en portait pas.
+func (p *Proxy) etagGarde(key string) string {
+	m, err := p.Store.LireMeta(key)
+	if err != nil || m.StatutSeul() {
+		return ""
+	}
+	return m.Header.Get("ETag")
 }
 
 // serveFromStore rend vrai quand la réponse est partie du disque.
@@ -582,13 +777,13 @@ func (p *Proxy) offlineMiss(
 	cause error,
 ) {
 	msg := enCommentaire(fmt.Sprintf(
-		"erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
+		T("erplibre_go_qemu_cache : amont injoignable et rien en réserve.\n"+
 			"  demandé : %s\n"+
 			"  classe  : %s\n"+
 			"  cause   : %v\n"+
 			"%s"+
 			"Ce fichier n'a jamais traversé ce cache. Rétablir le réseau, ou\n"+
-			"déployer une VM identique à celle qui a rempli le cache.\n",
+			"déployer une VM identique à celle qui a rempli le cache.\n"),
 		u, class, cause, decrireMuet(cause)))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-ERPLibre-Cache", OutcomeOfflineMiss)
@@ -600,7 +795,7 @@ func (p *Proxy) offlineMiss(
 		Outcome: OutcomeOfflineMiss, Status: http.StatusGatewayTimeout,
 		Client: client,
 	})
-	log.Printf("hors ligne, absent du cache : %s", u)
+	log.Printf(T("hors ligne, absent du cache : %s"), u)
 }
 
 // maxRedirections borne la chaîne : une boucle de redirections tournerait

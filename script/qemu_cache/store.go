@@ -118,6 +118,60 @@ func CleDe(method string, u *url.URL) string {
 	return Key(method, u.String())
 }
 
+// CleVariante rend la clé d'une REPRÉSENTATION de l'objet rangé sous key,
+// celle que choisit l'en-tête Accept de la requête.
+//
+// Un amont qui répond « Vary: Accept » sert sous une même URL plusieurs corps
+// selon ce que le client accepte : une fiche de paquet complète ou abrégée.
+// Rangés sous la seule clé de l'URL, ils se remplacent l'un l'autre, si bien
+// qu'une installation qui demande les deux tour à tour les retélécharge
+// chaque fois. La clé de base reste écrite comme avant ; la variante s'y
+// ajoute. Rend "" pour un Accept vide : la requête n'en choisit aucune.
+func CleVariante(key, accept string) string {
+	accept = strings.Join(strings.Fields(strings.ToLower(accept)), " ")
+	if accept == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(key + " accept " + accept))
+	return hex.EncodeToString(sum[:])
+}
+
+// Copier publie sous dst le corps et les métadonnées rangés sous src, par le
+// même temporaire et le même renommage qu'une écriture ordinaire : une copie
+// interrompue ne laisse rien de visible. La date d'usage de src n'est pas
+// touchée.
+func (s *Store) Copier(src, dst string) error {
+	m, err := s.LireMeta(src)
+	if err != nil {
+		return err
+	}
+	_, bodyPath := s.paths(src)
+	f, err := os.Open(bodyPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	w, err := s.NewWriter(dst, *m)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(w, f); err != nil {
+		w.Abort()
+		return err
+	}
+	return w.Commit(m.Size)
+}
+
+// Toucher remet à maintenant la date d'usage du corps rangé sous key, s'il
+// existe. Servir une variante sert aussi l'objet de base : sans cela, un
+// nettoyage par âge retirerait la base qu'on sert encore par sa variante, et
+// --detient la dirait absente.
+func (s *Store) Toucher(key string) {
+	_, bodyPath := s.paths(key)
+	maintenant := time.Now()
+	_ = os.Chtimes(bodyPath, maintenant, maintenant)
+}
+
 // CleStatut rend la clé sous laquelle un STATUT SEUL est rangé et cherché.
 //
 // Un espace de clés à part, et non la clé du corps : un lecteur qui ne
@@ -272,7 +326,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 func (w *Writer) Commit(expected int64) error {
 	defer w.cleanup()
 	if expected >= 0 && w.written != expected {
-		return fmt.Errorf("corps tronqué : %d octets sur %d", w.written, expected)
+		return fmt.Errorf(T("corps tronqué : %d octets sur %d"), w.written, expected)
 	}
 	if err := w.tmp.Sync(); err != nil {
 		return err
@@ -406,9 +460,9 @@ func containsPart(name string) bool {
 func HumanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
-		return fmt.Sprintf("%d o", n)
+		return fmt.Sprintf(T("%d o"), n)
 	}
-	units := []string{"Kio", "Mio", "Gio", "Tio"}
+	units := []string{T("Kio"), T("Mio"), T("Gio"), T("Tio")}
 	v := float64(n)
 	for _, u := range units {
 		v /= unit
@@ -416,7 +470,7 @@ func HumanBytes(n int64) string {
 			return fmt.Sprintf("%.1f %s", v, u)
 		}
 	}
-	return fmt.Sprintf("%.1f Pio", v/unit)
+	return fmt.Sprintf(T("%.1f Pio"), v/unit)
 }
 
 // copyTee écrit dans le cache ET vers le client en une seule lecture de

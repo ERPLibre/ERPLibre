@@ -34,13 +34,42 @@ from urllib.parse import urljoin, urlsplit
 import click
 
 from script.qemu import cache_offline
-from script.todo.todo_i18n import t
+from script.todo.todo_i18n import get_lang, t
 
 # Ce que l'installateur pose. Ces chemins sont comparés à ceux du script par
 # un test : le menu qui chercherait ailleurs annoncerait un cache absent.
 CACHE_BIN = "/usr/local/bin/erplibre_go_qemu_cache"
+
+# Ce que le menu LIT dans les sorties du binaire, dans ses deux langues. Le
+# binaire traduit ses messages humains (catalogue_en.go) : une lecture qui ne
+# connaîtrait que le français deviendrait aveugle sur un service réglé en
+# anglais. test_qemu_cache_langue.py vérifie que le catalogue les porte.
+REFUS_APPRIS = ("tunnel opaque retenu pour", "opaque tunnel kept for")
+LIBELLES_TUS = (
+    "autorité",
+    "empreinte",
+    "exceptions",
+    "authority",
+    "fingerprint",
+)
+
+
+def option_langue(lue=False):
+    """L'option --lang à donner au binaire.
+
+    Une sortie AFFICHÉE suit la langue de todo.py. Une sortie LUE par ce
+    fichier est demandée en français, la langue dont il connaît les
+    libellés. L'option et non EL_LANG : sudo retire l'environnement.
+    """
+    return f"--lang {'fr' if lue else get_lang()}"
+
+
 CACHE_CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
 CACHE_SERVICE = "erplibre-go-qemu-cache.service"
+# Le nettoyage automatique : une unité ponctuelle et son minuteur quotidien,
+# posés par l'installateur, sans effet tant que leurs réglages sont vides.
+CACHE_SERVICE_PURGE = "erplibre-go-qemu-cache-purge.service"
+CACHE_MINUTEUR_PURGE = "erplibre-go-qemu-cache-purge.timer"
 CACHE_CONF = "/etc/erplibre_go_qemu_cache/env"
 CACHE_TABLE = "erplibre_qemu_cache"
 CACHE_BYPASS = "/etc/erplibre_go_qemu_cache/bypass"
@@ -88,6 +117,7 @@ MITM_GO = os.path.join("script", "qemu_cache", "mitm.go")
 # nombreuses, faute d'avoir été relue quand elles sont apparues.
 ORDRE_ISSUES = (
     "hit",
+    "revalidated",
     "mirror",
     "stored",
     "stale",
@@ -356,6 +386,7 @@ class QemuCacheMenuMixin:
             {"prompt_description": t("Cache - Fill what offline runs lacked")},
             {"prompt_description": t("Cache - Logs")},
             {"prompt_description": t("Cache - Copy it to another machine")},
+            {"prompt_description": t("Cache - Automatic cleanup")},
         ]
         help_info = self.fill_help_info(choices)
         while True:
@@ -385,6 +416,8 @@ class QemuCacheMenuMixin:
                 self._cache_journaux()
             elif status == "11":
                 self._cache_transfert()
+            elif status == "12":
+                self._cache_nettoyage_auto()
             else:
                 print(t("Command not found !"))
 
@@ -437,14 +470,14 @@ class QemuCacheMenuMixin:
         # ne mesure que les objets, et les dépôts git — qui pèsent bien plus —
         # disparaissent du seul endroit où l'on surveille la place.
         releve = self._cache_lire(
-            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}",
+            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" {option_langue()}",
             delai=60,
         )
         for ligne in [
             l
             for l in releve.split("\n")
-            if l.strip()
-            and not l.startswith(("autorité", "empreinte", "exceptions"))
+            if l.strip() and not l.startswith(LIBELLES_TUS)
         ][:5]:
             if ligne.strip():
                 print(f"  · {ligne.strip()}")
@@ -1338,7 +1371,7 @@ class QemuCacheMenuMixin:
         surveille la place, et quelques dépôts font l'essentiel du total."""
         cmd = (
             f"{CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" --git-mirror-list"
+            f" --git-mirror-list {option_langue()}"
         )
         print(f"{t('Will execute:')} {cmd}\n")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -1352,7 +1385,7 @@ class QemuCacheMenuMixin:
             return
         cmd = (
             f"sudo {CACHE_BIN} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" --git-mirror-remove {shlex.quote(nom)}"
+            f" --git-mirror-remove {shlex.quote(nom)} {option_langue()}"
         )
         print(f"\n{t('Will execute:')} {cmd}")
         print(f"  {t('It will be mirrored again when a VM needs it.')}")
@@ -1364,7 +1397,8 @@ class QemuCacheMenuMixin:
     def _cache_miroir_occupation(cls):
         """(nombre de dépôts, taille lisible) du miroir, lus du binaire."""
         for ligne in cls._cache_lire(
-            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}",
+            f"{CACHE_BIN} --status --git-mirror-dir {CACHE_MIROIR_GIT}"
+            f" {option_langue(lue=True)}",
             delai=120,
         ).split("\n"):
             if ligne.startswith("dépôts git"):
@@ -1439,7 +1473,7 @@ class QemuCacheMenuMixin:
         cmd = (
             f"{'sudo ' if sudo else ''}{CACHE_BIN}"
             f" --cache-dir {CACHE_DIR} --git-mirror-dir {CACHE_MIROIR_GIT}"
-            f" {options}"
+            f" {options} {option_langue()}"
         )
         print(f"{t('Will execute:')} {cmd}\n")
         self.execute.exec_command_live(cmd, source_erplibre=False)
@@ -1816,11 +1850,19 @@ class QemuCacheMenuMixin:
         """
         lire = (
             f"journalctl -u {CACHE_SERVICE} -o cat --no-pager"
-            " | grep -F 'tunnel opaque retenu pour'"
+            " | grep -F"
+            + "".join(f" -e {shlex.quote(r)}" for r in REFUS_APPRIS)
         )
         vu = cls._cache_lire(lire) + cls._cache_lire(f"sudo -n {lire}")
         return sorted(
-            set(re.findall(r"tunnel opaque retenu pour (\S+) \(", vu))
+            set(
+                re.findall(
+                    "(?:"
+                    + "|".join(map(re.escape, REFUS_APPRIS))
+                    + r") (\S+) \(",
+                    vu,
+                )
+            )
         )
 
     def _cache_exclus(self):
@@ -2040,6 +2082,139 @@ class QemuCacheMenuMixin:
                 print(f"        [{recu}] {etat}")
         print()
 
+    # ------------------------------------------------------------------
+    # [12] Nettoyage automatique
+    # ------------------------------------------------------------------
+
+    def _cache_nettoyage_auto(self):
+        """Le nettoyage automatique : un minuteur quotidien, sans effet tant
+        que ses deux réglages sont vides. Le nettoyage reste donc manuel par
+        défaut, et le régler ici suffit à l'activer, sans réinstaller."""
+        print(f"\n🧹 {t('Automatic cleanup of the cache')}")
+        choices = [
+            {"prompt_description": t("Cleanup - Set the age limit")},
+            {"prompt_description": t("Cleanup - Set the size ceiling")},
+            {"prompt_description": t("Cleanup - Preview now (dry run)")},
+            {"prompt_description": t("Cleanup - Run now")},
+        ]
+        help_info = self.fill_help_info(choices)
+        while True:
+            self._cache_nettoyage_etat()
+            status = click.prompt(help_info)
+            print()
+            if status == "0":
+                return False
+            elif status == "1":
+                self._cache_nettoyage_regler(
+                    "EL_PURGE_AGE",
+                    t("Not served since (e.g. 90j), empty to disable"),
+                    reglage_age_valide,
+                )
+            elif status == "2":
+                self._cache_nettoyage_regler(
+                    "EL_MAX_SIZE",
+                    t("Size ceiling (e.g. 50G), empty to disable"),
+                    reglage_taille_valide,
+                )
+            elif status == "3":
+                self._cache_nettoyage_lancer(a_blanc=True)
+            elif status == "4":
+                self._cache_nettoyage_lancer(a_blanc=False)
+            else:
+                print(t("Command not found !"))
+
+    def _cache_nettoyage_etat(self):
+        """Les deux réglages lus dans le fichier du service, et le minuteur."""
+        age = cache_offline.reglage("EL_PURGE_AGE", CACHE_CONF)
+        taille = cache_offline.reglage("EL_MAX_SIZE", CACHE_CONF)
+        print(f"  · {t('Age limit:')} {age or t('disabled')}")
+        print(f"  · {t('Size ceiling:')} {taille or t('disabled')}")
+        etat = self._cache_lire(f"systemctl is-enabled {CACHE_MINUTEUR_PURGE}")
+        etat = etat.strip().splitlines()[0] if etat.strip() else ""
+        if etat in ("enabled", "static"):
+            print(f"  · {t('Daily timer:')} {etat}")
+        else:
+            # Un cache posé avant que l'installateur ne pose le minuteur.
+            print(
+                f"  ✗ {t('Timer absent: reinstall the cache from entry 1.')}"
+            )
+        print()
+
+    def _cache_nettoyage_regler(self, cle, invite, valide):
+        """Demande une valeur, la vérifie, montre la commande et l'écrit après
+        confirmation. Une valeur vide désactive le réglage."""
+        valeur = click.prompt(invite, default="", show_default=False).strip()
+        if valeur and not valide(valeur):
+            print(f"  ✗ {t('Unreadable value:')} {valeur}\n")
+            return
+        cmd = commande_ecrire_reglage(cle, valeur)
+        print(f"{t('Will execute:')} {cmd}")
+        if not click.confirm(t("Write this setting?")):
+            return
+        self.execute.exec_command_live(cmd, source_erplibre=False)
+
+    def _cache_nettoyage_lancer(self, a_blanc):
+        """À blanc : ce que chaque réglage effacerait, lu sous le compte du
+        service. Sinon : l'unité du minuteur, lancée tout de suite."""
+        age = cache_offline.reglage("EL_PURGE_AGE", CACHE_CONF)
+        taille = cache_offline.reglage("EL_MAX_SIZE", CACHE_CONF)
+        if not age and not taille:
+            print(f"  {t('Nothing to do: both settings are empty.')}\n")
+            return
+        if not a_blanc:
+            cmd = (
+                f"sudo systemctl start {CACHE_SERVICE_PURGE}"
+                f" && sudo journalctl -u {CACHE_SERVICE_PURGE} -n 20 --no-pager"
+            )
+            print(f"{t('Will execute:')} {cmd}\n")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+            return
+        for option, valeur in (
+            ("--purge-older-than", age),
+            ("--purge-to-size", taille),
+        ):
+            if not valeur:
+                continue
+            cmd = (
+                f"sudo -u {cache_offline.SERVICE_USER} {CACHE_BIN}"
+                f" --cache-dir {CACHE_DIR} --git-mirror-dir {CACHE_MIROIR_GIT}"
+                f" {option} {shlex.quote(valeur)} --dry-run {option_langue()}"
+            )
+            print(f"{t('Will execute:')} {cmd}\n")
+            self.execute.exec_command_live(cmd, source_erplibre=False)
+
+
+def reglage_age_valide(valeur):
+    """Vrai si le binaire lira ce délai (voir LireDuree) : « 90j », « 12h »,
+    « 1h30m ». Un délai nul est refusé : il effacerait tout chaque jour."""
+    v = (valeur or "").strip().lower()
+    if not re.fullmatch(r"\d+(\.\d+)?[jd]|(\d+(\.\d+)?(ms|h|m|s))+", v):
+        return False
+    return any(c in "123456789" for c in v)
+
+
+def reglage_taille_valide(valeur):
+    """Vrai si le binaire lira cette taille (voir LireTaille) : « 50G »,
+    « 500M », « 1.5 T ». Une taille nulle est refusée."""
+    v = (valeur or "").strip().lower().replace(" ", "")
+    m = re.fullmatch(r"(\d+(\.\d+)?)([kmgt])?(io|ib|b|o)?", v)
+    return bool(m) and float(m.group(1)) > 0
+
+
+def commande_ecrire_reglage(cle, valeur, fichier=CACHE_CONF):
+    """La commande qui pose « cle=valeur » dans le fichier de réglages du
+    service : la ligne est remplacée si elle existe, ajoutée sinon. Une valeur
+    vide la laisse présente et vide, ce qui désactive le réglage. La valeur
+    est déjà validée : elle ne porte ni « | » ni guillemet."""
+    ligne = f"{cle}={valeur}"
+    f = shlex.quote(fichier)
+    script = (
+        f"if grep -q {shlex.quote('^' + cle + '=')} {f}; then"
+        f" sed -i {shlex.quote('s|^' + cle + '=.*|' + ligne + '|')} {f};"
+        f" else echo {shlex.quote(ligne)} >> {f}; fi"
+    )
+    return f"sudo sh -c {shlex.quote(script)}"
+
 
 def exclusions_declarees(racine):
     """Les hôtes que le cache passe d'office en tunnel, lus dans SA source.
@@ -2199,6 +2374,7 @@ def miroir_prefetch_cmd(fichier, environnement):
         CACHE_BIN,
         "--git-mirror-dir",
         CACHE_MIROIR_GIT,
+        option_langue(),
         "--git-mirror-prefetch",
         "/dev/stdin",
         "<",
@@ -2217,7 +2393,7 @@ def bypass_retrait_cmd(mac):
     """
     return (
         f"sudo {CACHE_BIN} --bypass-del {shlex.quote(mac)}"
-        f" --bypass-file {CACHE_BYPASS} | sudo nft -f -"
+        f" --bypass-file {CACHE_BYPASS} {option_langue()} | sudo nft -f -"
     )
 
 

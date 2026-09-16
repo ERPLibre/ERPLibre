@@ -139,6 +139,69 @@ class TestLaCharge(unittest.TestCase):
         i = QC.ATTENDRE_CLOUD_INIT.index("status --wait")
         self.assertIn(cache_env_reload(), QC.ATTENDRE_CLOUD_INIT[i:])
 
+    def test_lattente_suit_l_unite_et_non_le_seul_statut(self):
+        """« status --wait » rend la main dès que cloud-init se déclare en
+        erreur — un module accessoire y suffit — alors que son étape finale
+        écrit encore l'autorité du cache et les variables. Une session ouverte
+        à cette seconde-là vit sans elles, et « sudo » n'a rien à conserver :
+        « sudo npm » rejette alors le certificat du cache."""
+        from script.qemu.deploy_qemu import (
+            attente_cloud_final,
+            cache_env_reload,
+        )
+
+        attente = QC.ATTENDRE_CLOUD_INIT
+        self.assertIn("cloud-final", attente_cloud_final())
+        self.assertIn(attente_cloud_final(), attente)
+        self.assertLess(
+            attente.index(attente_cloud_final()),
+            attente.index(cache_env_reload()),
+            "les variables sont relues avant la fin de l'étape qui les écrit",
+        )
+
+    def test_lattente_de_l_unite_est_bornee_et_sans_effet_ailleurs(self):
+        """Une VM sans cloud-init ne doit pas payer l'attente, et une unité
+        qui ne finit jamais ne doit pas tenir la campagne indéfiniment."""
+        from script.qemu.deploy_qemu import attente_cloud_final
+
+        court = attente_cloud_final(3)
+        self.assertIn("[ $n -ge 3 ]", court)
+        self.assertIn("2>/dev/null", court)
+
+    def test_lattente_guette_activating_et_non_is_active(self):
+        """cloud-final est un « oneshot » qui reste ACTIF une fois terminé :
+        « is-active » y est vrai pour toujours. Attendre là-dessus paie la
+        borne entière sur chaque VM — cinq minutes — sans jamais rien
+        détecter. Seul « activating » dit que l'étape écrit encore."""
+        from script.qemu.deploy_qemu import attente_cloud_final
+
+        attente = attente_cloud_final()
+        self.assertIn("activating", attente)
+        self.assertNotIn("is-active", attente)
+
+    def test_lattente_de_l_unite_rend_la_main_sur_cette_machine(self):
+        """Jouée dans un vrai shell, hors VM : l'hôte n'a pas d'étape finale
+        en cours, et l'attente doit donc rendre la main tout de suite."""
+        import subprocess
+        import time
+
+        from script.qemu.deploy_qemu import attente_cloud_final
+
+        debut = time.monotonic()
+        res = subprocess.run(
+            ["sh", "-c", attente_cloud_final()],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(0, res.returncode, res.stderr[-200:])
+        self.assertLess(
+            time.monotonic() - debut,
+            5,
+            "l'attente tourne alors que rien n'écrit : elle guette un état"
+            " qu'un service oneshot garde pour toujours",
+        )
+
     def test_la_charge_est_du_shell_valide(self):
         """Une instruction collée sans séparateur casse la commande entière,
         et la VM ne dit alors pas pourquoi elle n'a rien installé."""
@@ -248,6 +311,252 @@ class TestLeRapportSeClotSurUnEchec(unittest.TestCase):
         code, ecrit = self.boucler("deployer")
         self.assertNotEqual(ecrit.get("verdict"), "ok")
         self.assertEqual(len(ecrit["vms"]), 1)
+
+
+class TestLaContreEpreuveNommeSonEtape(unittest.TestCase):
+    """Une troisième VM en échec doit nommer son étape dans le rapport, comme
+    les deux premières : le résumé d'une série n'a sinon qu'un « échec »."""
+
+    def boucler(self, echoue):
+        import argparse
+        import json
+        import tempfile
+        from unittest import mock
+
+        args = argparse.Namespace(
+            dry_run=False,
+            sans_cache=False,
+            hors_ligne=True,
+            distro="debian",
+            version="12",
+            charge="minimum",
+        )
+        # Les deux premières VM réussissent ; la troisième échoue à l'appel
+        # nommé, c'est-à-dire au troisième appel de cette fonction.
+        appels = {"n": 0}
+
+        def selon(nom, reussi):
+            def f(*a, **k):
+                appels["n"] += nom == echoue
+                if nom == echoue and appels["n"] == 3:
+                    return "" if nom == "deployer" else False
+                return reussi
+
+            return f
+
+        with tempfile.TemporaryDirectory() as rep:
+            fichier = str(Path(rep) / "rapport.json")
+            rapport = {"_fichier": fichier, "vms": []}
+            with mock.patch.object(QC, "dire"), mock.patch.object(
+                QC, "noter_uuid"
+            ), mock.patch.object(QC, "eteindre"), mock.patch.object(
+                QC, "verdict", return_value=True
+            ), mock.patch.object(
+                QC, "couper_lamont", return_value=True
+            ), mock.patch.object(
+                QC, "rebrancher_lamont", create=True
+            ), mock.patch.object(
+                QC, "deployer", side_effect=selon("deployer", "10.0.0.1")
+            ), mock.patch.object(
+                QC, "attendre_ssh", side_effect=selon("attendre_ssh", True)
+            ), mock.patch.object(
+                QC,
+                "poser_les_paquets",
+                side_effect=selon("poser_les_paquets", True),
+            ):
+                code = QC._boucle(args, rapport, None, "", 0)
+            with open(fichier, encoding="utf-8") as fh:
+                return code, json.load(fh)
+
+    def test_chaque_etape_de_la_troisieme_vm_est_nommee(self):
+        for etape, mot in (
+            ("deployer", "-3 : déploiement"),
+            ("attendre_ssh", "-3 : ssh"),
+            ("poser_les_paquets", "-3 : paquets"),
+        ):
+            with self.subTest(etape=etape):
+                code, ecrit = self.boucler(etape)
+                self.assertEqual(code, 1)
+                self.assertEqual(ecrit.get("verdict"), "échec")
+                self.assertIn(mot, ecrit.get("etape_en_echec", ""))
+
+
+class TestLaTroisiemeVmNaitHorsLigne(unittest.TestCase):
+    """Le déploiement coupe l'audit de npm d'une VM hors ligne : le test long
+    doit le lui demander, comme le formulaire, sans quoi il mesure une VM que
+    personne ne déploierait ainsi."""
+
+    def commande(self, **kw):
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire") as dit, mock.patch.object(
+            QC, "cle_publique", return_value="/tmp/cle.pub"
+        ):
+            QC.deployer("vm", None, dry_run=True, **kw)
+        return " ".join(str(a) for c in dit.call_args_list for a in c.args)
+
+    def test_la_vm_hors_ligne_recoit_offline(self):
+        self.assertIn("--offline", self.commande(hors_ligne=True))
+
+    def test_les_vm_en_ligne_n_en_recoivent_pas(self):
+        self.assertNotIn("--offline", self.commande())
+
+    def test_le_temoin_sans_cache_n_en_recoit_pas(self):
+        self.assertNotIn(
+            "--offline", self.commande(avec_cache=False, hors_ligne=True)
+        )
+
+    def test_la_contre_epreuve_le_demande(self):
+        import inspect
+
+        source = inspect.getsource(QC.contre_epreuve)
+        self.assertIn("hors_ligne=True", source)
+
+
+class TestPlusieursSystemes(unittest.TestCase):
+    """Une série de campagnes, un système après l'autre."""
+
+    def test_tous_designe_chaque_systeme_mesurable(self):
+        self.assertEqual(
+            QC.systemes_demandes("tous"), sorted(QC.systemes_mesurables())
+        )
+
+    def test_une_liste_garde_son_ordre_sans_doublon(self):
+        self.assertEqual(
+            QC.systemes_demandes("fedora, debian,fedora"), ["fedora", "debian"]
+        )
+
+    def test_un_nom_inconnu_est_refuse_avant_toute_machine(self):
+        with self.assertRaises(ValueError):
+            QC.systemes_demandes("fedora,haiku")
+
+    def lancer(self, argv, codes=None):
+        from unittest import mock
+
+        appels = []
+        codes = list(codes or [])
+
+        def campagne(a):
+            appels.append((a.distro, a.version))
+            return (codes.pop(0) if codes else 0), ""
+
+        with mock.patch.object(
+            QC, "une_campagne", side_effect=campagne
+        ), mock.patch.object(
+            QC,
+            "detruire",
+            side_effect=lambda *x, **k: appels.append("détruire"),
+        ), mock.patch(
+            "builtins.print"
+        ):
+            code = QC.main(argv)
+        return code, appels
+
+    def test_la_serie_defait_les_machines_entre_deux_systemes(self):
+        from script.qemu.deploy_qemu import DISTROS
+
+        code, appels = self.lancer(
+            [
+                "--distro",
+                "fedora,debian",
+                "--charge",
+                "erplibre",
+                "--hors-ligne",
+            ]
+        )
+        self.assertEqual(
+            appels,
+            [
+                ("fedora", DISTROS["fedora"][1]),
+                "détruire",
+                ("debian", DISTROS["debian"][1]),
+                "détruire",
+            ],
+        )
+        self.assertEqual(code, 0)
+
+    def test_un_echec_n_arrete_pas_la_serie(self):
+        code, appels = self.lancer(["--distro", "fedora,debian"], codes=[1, 0])
+        self.assertEqual(len([a for a in appels if a != "détruire"]), 2)
+        self.assertEqual(code, 1)
+
+    def test_a_blanc_rien_n_est_defait(self):
+        _, appels = self.lancer(["--distro", "fedora,debian", "--dry-run"])
+        self.assertNotIn("détruire", appels)
+
+    def test_la_version_est_refusee_pour_plusieurs_systemes(self):
+        from unittest import mock
+
+        with mock.patch("sys.stderr"), self.assertRaises(SystemExit):
+            QC.main(["--distro", "tous", "--version", "12"])
+
+    def test_un_seul_systeme_suit_le_chemin_d_avant(self):
+        from script.qemu.deploy_qemu import DISTROS
+
+        _, appels = self.lancer(["--distro", "ubuntu"])
+        self.assertEqual(appels, [("ubuntu", DISTROS["ubuntu"][1])])
+
+
+class TestUneVmMesureeEstEteinte(unittest.TestCase):
+    """Deux VM de 8 Gio allumées ensemble, puis trois, épuisent la mémoire de
+    l'hôte en pleine série : chacune s'éteint dès que sa mesure est faite."""
+
+    def test_chaque_vm_s_eteint_apres_sa_propre_mesure(self):
+        import argparse
+        import tempfile
+        from unittest import mock
+
+        ordre = []
+        args = argparse.Namespace(
+            dry_run=False,
+            sans_cache=False,
+            hors_ligne=False,
+            distro="debian",
+            version="12",
+            charge="erplibre",
+        )
+        with tempfile.TemporaryDirectory() as rep:
+            rapport = {"_fichier": str(Path(rep) / "r.json"), "vms": []}
+            with mock.patch.object(QC, "dire"), mock.patch.object(
+                QC, "noter_uuid"
+            ), mock.patch.object(
+                QC, "deployer", return_value="10.0.0.1"
+            ), mock.patch.object(
+                QC, "attendre_ssh", return_value=True
+            ), mock.patch.object(
+                QC,
+                "poser_les_paquets",
+                side_effect=lambda *a, **k: ordre.append("paquets") or True,
+            ), mock.patch.object(
+                QC,
+                "eteindre",
+                side_effect=lambda nom, *a, **k: ordre.append(nom),
+            ), mock.patch.object(
+                QC, "verdict", return_value=True
+            ):
+                QC._boucle(args, rapport, None, "", 0)
+        base = QC.base_des_noms(args)
+        self.assertEqual(
+            ordre, ["paquets", f"{base}-1", "paquets", f"{base}-2"]
+        )
+
+    def test_eteindre_n_efface_rien(self):
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire") as dit:
+            QC.eteindre("vm-essai", None, dry_run=True)
+        annonce = " ".join(str(a) for c in dit.call_args_list for a in c.args)
+        self.assertIn("destroy vm-essai", annonce)
+        self.assertNotIn("undefine", annonce)
+
+    def test_a_blanc_rien_n_est_lance(self):
+        from unittest import mock
+
+        with mock.patch.object(QC, "dire"), mock.patch.object(
+            QC, "executer"
+        ) as ex:
+            QC.eteindre("vm-essai", None, dry_run=True)
+        ex.assert_not_called()
 
 
 if __name__ == "__main__":

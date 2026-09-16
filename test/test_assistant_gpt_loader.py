@@ -24,6 +24,7 @@ temporaires, et le répertoire personnel est détourné là où il compte.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -394,7 +395,23 @@ class LaFrontiere(unittest.TestCase):
     """Le paquet doit rester importable sans le CLI."""
 
     def test_le_chargeur_n_importe_pas_todo(self):
-        self.assertNotIn("script.todo.todo", sys.modules)
+        # Dans un interpréteur NEUF : la suite complète importe todo par
+        # ailleurs, et le sys.modules de ce processus en garderait la trace
+        # quel que soit le module éprouvé ici.
+        sortie = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys, script.todo.assistant.gpt;"
+                " print('script.todo.todo' in sys.modules)",
+            ],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(sortie.returncode, 0, sortie.stderr)
+        self.assertEqual(sortie.stdout.strip(), "False")
 
 
 if __name__ == "__main__":

@@ -6459,6 +6459,70 @@ TRANSLATIONS = {
         "fr": "Lire l'erreur ci-dessus, la corriger, et relancer l'entrée 1.",
         "en": "Read the error above, fix it, and run entry 1.",
     },
+    "Cache - Automatic cleanup": {
+        "fr": "🧹 Cache - Nettoyage automatique",
+        "en": "🧹 Cache - Automatic cleanup",
+    },
+    "Automatic cleanup of the cache": {
+        "fr": "Nettoyage automatique du cache",
+        "en": "Automatic cleanup of the cache",
+    },
+    "Cleanup - Set the age limit": {
+        "fr": "⏳ Nettoyage - Régler l'âge limite",
+        "en": "⏳ Cleanup - Set the age limit",
+    },
+    "Cleanup - Set the size ceiling": {
+        "fr": "📏 Nettoyage - Régler le plafond de taille",
+        "en": "📏 Cleanup - Set the size ceiling",
+    },
+    "Cleanup - Preview now (dry run)": {
+        "fr": "🔍 Nettoyage - Voir ce qui partirait (à blanc)",
+        "en": "🔍 Cleanup - Preview now (dry run)",
+    },
+    "Cleanup - Run now": {
+        "fr": "🧹 Nettoyage - Lancer maintenant",
+        "en": "🧹 Cleanup - Run now",
+    },
+    "Age limit:": {
+        "fr": "Âge limite :",
+        "en": "Age limit:",
+    },
+    "Size ceiling:": {
+        "fr": "Plafond de taille :",
+        "en": "Size ceiling:",
+    },
+    "disabled": {
+        "fr": "désactivé",
+        "en": "disabled",
+    },
+    "Daily timer:": {
+        "fr": "Minuteur quotidien :",
+        "en": "Daily timer:",
+    },
+    "Timer absent: reinstall the cache from entry 1.": {
+        "fr": "Minuteur absent : réinstaller le cache par l'entrée 1.",
+        "en": "Timer absent: reinstall the cache from entry 1.",
+    },
+    "Not served since (e.g. 90j), empty to disable": {
+        "fr": "Pas servi depuis (ex. 90j), vide pour désactiver",
+        "en": "Not served since (e.g. 90j), empty to disable",
+    },
+    "Size ceiling (e.g. 50G), empty to disable": {
+        "fr": "Plafond de taille (ex. 50G), vide pour désactiver",
+        "en": "Size ceiling (e.g. 50G), empty to disable",
+    },
+    "Unreadable value:": {
+        "fr": "Valeur illisible :",
+        "en": "Unreadable value:",
+    },
+    "Write this setting?": {
+        "fr": "Écrire ce réglage ?",
+        "en": "Write this setting?",
+    },
+    "Nothing to do: both settings are empty.": {
+        "fr": "Rien à faire : les deux réglages sont vides.",
+        "en": "Nothing to do: both settings are empty.",
+    },
     "Cache - Copy it to another machine": {
         "fr": "📦 Cache - L'emporter sur une autre machine",
         "en": "📦 Cache - Copy it to another machine",
@@ -13191,9 +13255,7 @@ TRANSLATIONS = {
             "Pas de terminal pour saisir le mot de passe du coffre :"
             " coffre non ouvert."
         ),
-        "en": (
-            "No terminal to type the vault password: vault left closed."
-        ),
+        "en": ("No terminal to type the vault password: vault left closed."),
     },
     "Some gateways demand an embedded browser (SAML): openconnect stops on"
     " \u00ab No SSO handler \u00bb and a helper is needed for the web step. It is"

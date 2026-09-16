@@ -55,6 +55,11 @@ var immutableSuffixes = []string{
 	".pkg.tar.zst.sig", ".pkg.tar.xz.sig",
 	// écosystèmes Python et Node
 	".whl", ".tgz",
+	// métadonnées d'une distribution Python servies à part (PEP 658) : le nom
+	// est celui de l'archive suivi de « .metadata », sous le même chemin
+	// d'empreinte. Sans ces suffixes, « .metadata » ne correspond à rien et le
+	// fichier tombe dans le volatil par défaut, repris à chaque installation.
+	".whl.metadata", ".tar.gz.metadata", ".zip.metadata",
 	// images et supports d'installation
 	".qcow2", ".iso", ".img", ".raw", ".vmdk",
 	// archives amont
@@ -92,6 +97,20 @@ var volatileSuffixes = []string{
 // liste de miroirs tourne.
 var parEmpreinte = regexp.MustCompile(
 	`/by-hash/(MD5Sum|SHA1|SHA256|SHA512)/[0-9a-fA-F]{32,128}$`)
+
+// parEmpreinteDeDepot reconnaît une métadonnée de dépôt RPM nommée par
+// l'empreinte de son contenu : « …/repodata/<hexadécimal>-primary.xml.zck ».
+// Seul « repomd.xml » y est volatile : il désigne la version COURANTE de
+// chaque métadonnée par ce nom, si bien qu'un contenu nouveau porte un nom
+// nouveau. Le fichier nommé est aussi figé qu'un paquet.
+//
+// Volatile, il est repris en entier à chaque installation — un « primary »
+// pèse des dizaines de mégaoctets par dépôt. Et dnf télécharge un « .zck » par
+// plages, qu'aucun volatile ne garde : amont coupé, la VM suivante n'avait
+// rien. Figé, il sort du disque, et une plage y déclenche la prise du fichier
+// entier (voir completer).
+var parEmpreinteDeDepot = regexp.MustCompile(
+	`/repodata/[0-9a-fA-F]{32,128}-[^/]+$`)
 
 // dernierePublication reconnaît « /<propriétaire>/<dépôt>/releases/latest/
 // download/<fichier> » : un POINTEUR vers la dernière version publiée, dont
@@ -160,7 +179,7 @@ func Classify(u *url.URL) Class {
 	if dernierePublication.MatchString(u.Path) {
 		return ClassVolatile
 	}
-	if parEmpreinte.MatchString(u.Path) {
+	if parEmpreinte.MatchString(u.Path) || parEmpreinteDeDepot.MatchString(u.Path) {
 		return ClassImmutable
 	}
 	for _, n := range volatileNames {
@@ -202,7 +221,7 @@ func PortableParChemin(u *url.URL) bool {
 	// POSITIVE parce qu'aucune des tables suivantes ne le reconnaîtrait : une
 	// somme hexadécimale n'a pas d'extension, et retirer la seule exclusion ne
 	// suffirait donc pas à le rendre portable.
-	if parEmpreinte.MatchString(u.Path) {
+	if parEmpreinte.MatchString(u.Path) || parEmpreinteDeDepot.MatchString(u.Path) {
 		return true
 	}
 	name := strings.ToLower(path.Base(u.Path))

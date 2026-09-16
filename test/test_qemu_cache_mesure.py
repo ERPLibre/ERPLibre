@@ -42,20 +42,25 @@ def charger():
 QC = charger()
 
 
-def ligne(url, upstream, octets=1000, issue="stored", classe="immutable"):
+def ligne(
+    url, upstream, octets=1000, issue="stored", classe="immutable", statut=None
+):
     """Une ligne du journal d'accès du cache.
 
     La CLASSE est ce que le filtre lit désormais : c'est le cache qui décide
     si un fichier est figé, et la tenir ici en dur revenait à laisser un index
-    se faire passer pour un paquet.
+    se faire passer pour un paquet. Le STATUT n'est écrit que s'il est donné.
     """
-    return {
+    l = {
         "url": url,
         "upstream": upstream,
         "bytes": octets,
         "outcome": issue,
         "class": classe,
     }
+    if statut is not None:
+        l["status"] = statut
+    return l
 
 
 PAQUET_A = (
@@ -154,6 +159,31 @@ class TestVerdict(unittest.TestCase):
         """La première a rempli, la seconde n'a rien demandé : il n'y a pas
         de mesure, donc pas de succès."""
         self.assertFalse(QC.verdict([ligne(PAQUET_A, True)], [], None))
+
+    def test_un_miroir_qui_refuse_ne_fait_pas_echouer(self):
+        """Un miroir rangé sous un autre chemin répond 404 à chaque paquet ; le
+        client prend le fichier ailleurs, et le cache le sert du disque. Le
+        404 repart à l'amont aux deux VM sans que rien n'ait manqué."""
+        mauvais = PAQUET_A.replace("miroir.example", "autre.example/x")
+        premier = [
+            ligne(mauvais, True, octets=153, issue="fetched", statut=404),
+            ligne(PAQUET_A, True, statut=200),
+        ]
+        second = [
+            ligne(mauvais, True, octets=153, issue="fetched", statut=404),
+            ligne(PAQUET_A, False, issue="hit", statut=200),
+        ]
+        self.assertTrue(
+            QC.verdict(premier, second, None),
+            "le 404 d'un miroir a été compté comme un paquet ressorti",
+        )
+
+    def test_un_paquet_livre_deux_fois_reste_une_faute(self):
+        """Le refus est écarté, pas la réponse livrée : un 200 déjà vu qui
+        repart à l'amont fait toujours échouer."""
+        premier = [ligne(PAQUET_A, True, statut=200)]
+        second = [ligne(PAQUET_A, True, statut=200)]
+        self.assertFalse(QC.verdict(premier, second, None))
 
     def test_le_melange(self):
         premier = [ligne(PAQUET_A, True), ligne(PAQUET_B, True)]

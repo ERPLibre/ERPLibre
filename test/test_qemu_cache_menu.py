@@ -241,7 +241,7 @@ class TestSousMenusDuCache(unittest.TestCase):
         )
 
     def test_le_menu_du_cache(self):
-        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 11)
+        self.verifier("prompt_execute_qemu_cache", "_cache_systemctl", 12)
 
     def test_le_menu_du_service(self):
         self.verifier("_cache_service", "_cache_journal_service", 6)
@@ -251,6 +251,9 @@ class TestSousMenusDuCache(unittest.TestCase):
 
     def test_le_menu_des_miroirs(self):
         self.verifier("_cache_miroir_git", "_cache_miroir_remplir", 5)
+
+    def test_le_menu_du_nettoyage(self):
+        self.verifier("_cache_nettoyage_auto", "_cache_nettoyage_etat", 4)
 
     def test_le_menu_de_lage(self):
         self.verifier("_cache_age", "_cache_lancer", 5)
@@ -269,6 +272,7 @@ class TestSousMenusDuCache(unittest.TestCase):
             ("9", "_cache_combler"),
             ("10", "_cache_journaux"),
             ("11", "_cache_transfert"),
+            ("12", "_cache_nettoyage_auto"),
         ):
             self.assertRegex(
                 corps,
@@ -1048,6 +1052,76 @@ class TestCeQueChaqueMachineATire(unittest.TestCase):
             4,
             "un chemin du journal n'écrit pas le client",
         )
+
+
+class TestLesReglagesDuNettoyage(unittest.TestCase):
+    """Une valeur que le binaire ne lirait pas ferait échouer le minuteur chaque
+    nuit, sans que personne ne regarde son journal : elle est refusée ici."""
+
+    def test_les_delais_que_le_binaire_lit(self):
+        from script.todo.qemu_cache_menu import reglage_age_valide
+
+        for v in ("90j", "30d", "12h", "1h30m", "0.5j"):
+            self.assertTrue(reglage_age_valide(v), v)
+        for v in ("", "90", "jour", "0j", "-3j", "90j; rm -rf /"):
+            self.assertFalse(reglage_age_valide(v), v)
+
+    def test_les_tailles_que_le_binaire_lit(self):
+        from script.todo.qemu_cache_menu import reglage_taille_valide
+
+        for v in ("50G", "50Gio", "500M", "1.5 T", "1024"):
+            self.assertTrue(reglage_taille_valide(v), v)
+        for v in ("", "0G", "G", "50X", "50G|x"):
+            self.assertFalse(reglage_taille_valide(v), v)
+
+    def ecrire(self, contenu, cle, valeur):
+        import shlex
+        import subprocess
+        import tempfile
+
+        from script.todo.qemu_cache_menu import commande_ecrire_reglage
+
+        with tempfile.NamedTemporaryFile(
+            "w", delete=False, suffix=".env"
+        ) as fh:
+            fh.write(contenu)
+            chemin = fh.name
+        cmd = commande_ecrire_reglage(cle, valeur, chemin)
+        self.assertTrue(cmd.startswith("sudo sh -c "))
+        script = shlex.split(cmd[len("sudo ") :])[2]
+        subprocess.run(["sh", "-c", script], check=True)
+        with open(chemin, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_une_ligne_existante_est_remplacee(self):
+        rendu = self.ecrire(
+            "EL_LANG=fr\nEL_PURGE_AGE=30j\n", "EL_PURGE_AGE", "90j"
+        )
+        self.assertEqual(rendu, "EL_LANG=fr\nEL_PURGE_AGE=90j\n")
+
+    def test_une_ligne_absente_est_ajoutee(self):
+        rendu = self.ecrire("EL_LANG=fr\n", "EL_MAX_SIZE", "50G")
+        self.assertEqual(rendu, "EL_LANG=fr\nEL_MAX_SIZE=50G\n")
+
+    def test_une_valeur_vide_desactive(self):
+        rendu = self.ecrire("EL_MAX_SIZE=50G\n", "EL_MAX_SIZE", "")
+        self.assertEqual(rendu, "EL_MAX_SIZE=\n")
+
+    def test_sans_reglage_rien_n_est_lance(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        from script.todo import qemu_cache_menu as menu
+
+        faux = menu.QemuCacheMenuMixin.__new__(menu.QemuCacheMenuMixin)
+        faux.execute = mock.MagicMock()
+        with mock.patch.object(
+            menu.cache_offline, "reglage", return_value=""
+        ), contextlib.redirect_stdout(io.StringIO()):
+            for a_blanc in (True, False):
+                faux._cache_nettoyage_lancer(a_blanc=a_blanc)
+        faux.execute.exec_command_live.assert_not_called()
 
 
 if __name__ == "__main__":

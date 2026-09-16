@@ -26,6 +26,8 @@ EL_TLS_PORT="${EL_TLS_PORT:-8899}"
 # arrive dès que 192.168.122 entre en collision, voit ses VM échapper au
 # détournement sans que rien ne le signale.
 EL_BRIDGE="${EL_BRIDGE:-}"
+# Langue des messages du service : « fr » ou « en », comme EL_LANG de todo.py.
+EL_LANG="${EL_LANG:-fr}"
 EL_SUBNET="${EL_SUBNET:-}"
 EL_NET="${EL_NET:-default}"
 EL_CACHE_DIR="${EL_CACHE_DIR:-/var/cache/erplibre_go_qemu_cache}"
@@ -38,7 +40,19 @@ EL_BYPASS_FILE="${EL_BYPASS_FILE:-/etc/erplibre_go_qemu_cache/bypass}"
 EL_GIT_MIRROR_DIR="${EL_GIT_MIRROR_DIR:-${EL_CACHE_DIR:-/var/cache/erplibre_go_qemu_cache}/git}"
 
 BIN="/usr/local/bin/erplibre_go_qemu_cache"
-CONF_DIR="/etc/erplibre_go_qemu_cache"
+CONF_DIR="${EL_CONF_DIR:-/etc/erplibre_go_qemu_cache}"
+PURGE_UNIT="/etc/systemd/system/erplibre-go-qemu-cache-purge.service"
+PURGE_TIMER="/etc/systemd/system/erplibre-go-qemu-cache-purge.timer"
+
+# Les réglages de nettoyage choisis depuis le menu survivent à une
+# réinstallation : le fichier env est réécrit en entier, et les retrouver vides
+# changerait en silence le comportement choisi. Une valeur passée dans
+# l'environnement, même vide, l'emporte — c'est ainsi qu'on les désactive.
+reglage_existant() {
+  sed -n "s/^$1=//p" "${CONF_DIR}/env" 2>/dev/null | head -n 1
+}
+EL_PURGE_AGE="${EL_PURGE_AGE-$(reglage_existant EL_PURGE_AGE)}"
+EL_MAX_SIZE="${EL_MAX_SIZE-$(reglage_existant EL_MAX_SIZE)}"
 UNIT="/etc/systemd/system/erplibre-go-qemu-cache.service"
 SERVICE_USER="elqcache"
 GO_MIN_MAJOR=1
@@ -264,6 +278,13 @@ EL_ACCESS_LOG=${EL_ACCESS_LOG}
 EL_EXCLUDE=${EL_EXCLUDE}
 EL_BYPASS_FILE=${EL_BYPASS_FILE}
 EL_GIT_MIRROR_DIR=${EL_GIT_MIRROR_DIR}
+EL_LANG=${EL_LANG}
+# Nettoyage automatique, chaque jour ; vide = désactivé. Réglable depuis le
+# menu du cache de todo.py, sans réinstaller.
+# EL_PURGE_AGE : ce qui n'a pas servi depuis ce délai part (ex. 90j).
+# EL_MAX_SIZE : au-delà, le moins récemment servi part (ex. 50G).
+EL_PURGE_AGE=${EL_PURGE_AGE}
+EL_MAX_SIZE=${EL_MAX_SIZE}
 CONF
   chmod 0644 "${CONF_DIR}/env"
 }
@@ -322,6 +343,46 @@ UNITE
   systemctl daemon-reload
 }
 
+ecrire_purge() {
+  # Un minuteur quotidien qui ne fait RIEN tant que les deux réglages sont
+  # vides : le nettoyage reste manuel par défaut, et le régler suffit à
+  # l'activer, sans réinstaller. Sous le compte du service, propriétaire du
+  # magasin : un effacement en root laisserait des répertoires que le service
+  # ne pourrait plus écrire. « $$ » rend un « $ » au shell : la variable vient
+  # de l'EnvironmentFile au moment de l'exécution, jamais de ce script.
+  cat >"$PURGE_UNIT" <<UNITE
+[Unit]
+Description=Nettoyage automatique du cache de téléchargement ERPLibre
+After=erplibre-go-qemu-cache.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=${CONF_DIR}/env
+User=${SERVICE_USER}
+Group=${SERVICE_USER}
+ExecStart=/bin/sh -c 'if [ -n "\$\$EL_PURGE_AGE" ]; then ${BIN} --cache-dir "\$\$EL_CACHE_DIR" --git-mirror-dir "\$\$EL_GIT_MIRROR_DIR" --lang "\$\$EL_LANG" --purge-older-than "\$\$EL_PURGE_AGE"; fi; if [ -n "\$\$EL_MAX_SIZE" ]; then ${BIN} --cache-dir "\$\$EL_CACHE_DIR" --git-mirror-dir "\$\$EL_GIT_MIRROR_DIR" --lang "\$\$EL_LANG" --purge-to-size "\$\$EL_MAX_SIZE"; fi'
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=${EL_CACHE_DIR} ${EL_GIT_MIRROR_DIR}
+UNITE
+  cat >"$PURGE_TIMER" <<MINUTEUR
+[Unit]
+Description=Nettoyage quotidien du cache de téléchargement ERPLibre
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target
+MINUTEUR
+  chmod 0644 "$PURGE_UNIT" "$PURGE_TIMER"
+  systemctl daemon-reload
+}
+
 # ---------------------------------------------------------------------------
 
 main() {
@@ -334,6 +395,8 @@ main() {
   creer_autorite
   ecrire_config
   ecrire_unite
+  ecrire_purge
+  systemctl enable --now erplibre-go-qemu-cache-purge.timer >/dev/null 2>&1 || true
 
   systemctl enable erplibre-go-qemu-cache.service >/dev/null 2>&1 || true
   systemctl restart erplibre-go-qemu-cache.service

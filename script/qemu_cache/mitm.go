@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -58,12 +59,12 @@ func LoadOrCreateCA(dir string) (*CA, error) {
 	if certPEM, err := os.ReadFile(certPath); err == nil {
 		keyPEM, err := os.ReadFile(keyPath)
 		if err != nil {
-			return nil, fmt.Errorf("clé de l'autorité illisible : %w", err)
+			return nil, fmt.Errorf(T("clé de l'autorité illisible : %w"), err)
 		}
 		cb, _ := pem.Decode(certPEM)
 		kb, _ := pem.Decode(keyPEM)
 		if cb == nil || kb == nil {
-			return nil, errors.New("autorité illisible : PEM invalide")
+			return nil, errors.New(T("autorité illisible : PEM invalide"))
 		}
 		cert, err := x509.ParseCertificate(cb.Bytes)
 		if err != nil {
@@ -233,7 +234,26 @@ type Refusals struct {
 	// Seuil : combien de poignées de main de suite doivent échouer avant de
 	// conclure. Nul, la valeur par défaut s'applique.
 	Seuil int
+	// Rafale : deux coupures plus rapprochées que cela ne comptent que pour
+	// une. Nulle, la valeur par défaut s'applique ; négative, chaque coupure
+	// compte, ce dont un test se sert pour condamner sans attendre.
+	Rafale time.Duration
+	// Maintenant rend l'instant courant. Nulle, time.Now : un test injecte
+	// son horloge pour espacer des coupures sans dormir.
+	Maintenant func() time.Time
+	// dernier : quand a été COMPTÉE la dernière coupure d'un hôte, ce qui
+	// distingue une rafale d'un échec qui se répète.
+	dernier map[string]time.Time
 }
+
+// RafaleParDefaut : en deçà, deux poignées de main coupées sont le MÊME
+// incident.
+//
+// apt ouvre plusieurs connexions de front vers un dépôt et ferme celles dont
+// il ne se sert pas : trois coupures dans la même seconde atteignaient le
+// seuil sans que rien n'ait rejeté notre certificat. Un client qui refuse
+// vraiment réessaie et échoue encore, à des secondes de là.
+const RafaleParDefaut = 2 * time.Second
 
 // SeuilParDefaut : trois échecs de suite avant de renoncer à déchiffrer.
 //
@@ -269,8 +289,10 @@ func NewRefusals(static []string) *Refusals {
 		declares: map[string]bool{},
 		apprises: map[string]refus{},
 		echecs:   map[string]int{},
+		dernier:  map[string]time.Time{},
 		Oubli:    OubliParDefaut,
 		Seuil:    SeuilParDefaut,
+		Rafale:   RafaleParDefaut,
 	}
 	for _, h := range static {
 		if h = strings.TrimSpace(strings.ToLower(h)); h != "" {
@@ -309,7 +331,7 @@ func (r *Refusals) Has(host string) bool {
 	if vu.alerte {
 		return true
 	}
-	if r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
+	if r.Oubli > 0 && r.maintenant().Sub(vu.quand) >= r.Oubli {
 		r.oublier(host)
 		return false
 	}
@@ -322,6 +344,7 @@ func (r *Refusals) Has(host string) bool {
 func (r *Refusals) oublier(host string) {
 	delete(r.apprises, host)
 	delete(r.echecs, host)
+	delete(r.dernier, host)
 }
 
 // Echec note une poignée de main manquée et dit si l'hôte passe en tunnel.
@@ -343,19 +366,48 @@ func (r *Refusals) Echec(host string, raison error) bool {
 		seuil = SeuilParDefaut
 	}
 	alerte := estRefusTLS(raison)
+	maintenant := r.maintenant()
+	// Une rafale ne compte qu'une fois. Sans cela, un client qui ouvre
+	// plusieurs connexions de front et ferme les inutiles atteint le seuil
+	// seul : l'hôte passe en tunnel, le magasin cesse de le servir, et le
+	// client qui attend sur ce tunnel n'a plus rien pour s'en sortir.
+	if !alerte {
+		if precedent, vu := r.dernier[host]; vu &&
+			maintenant.Sub(precedent) < r.rafale() {
+			return false
+		}
+		r.dernier[host] = maintenant
+	}
 	r.echecs[host]++
 	if !alerte && r.echecs[host] < seuil {
 		return false
 	}
 	if _, deja := r.apprises[host]; !deja {
-		log.Printf("tunnel opaque retenu pour %s (%d échec(s)) : %v",
+		log.Printf(T("tunnel opaque retenu pour %s (%d échec(s)) : %v"),
 			host, r.echecs[host], raison)
 	}
 	// La NATURE est retenue avec l'instant : elle décide si ce refus se
 	// rouvrira. Un seuil atteint sur des coupures reste un soupçon, même
 	// répété trois fois.
-	r.apprises[host] = refus{quand: time.Now(), alerte: alerte}
+	r.apprises[host] = refus{quand: maintenant, alerte: alerte}
 	return true
+}
+
+// maintenant rend l'instant courant, celui de l'horloge injectée s'il y en a.
+func (r *Refusals) maintenant() time.Time {
+	if r.Maintenant != nil {
+		return r.Maintenant()
+	}
+	return time.Now()
+}
+
+// rafale rend la distance en deçà de laquelle deux coupures n'en font qu'une.
+// Négative, elle les fait toutes compter.
+func (r *Refusals) rafale() time.Duration {
+	if r.Rafale != 0 {
+		return r.Rafale
+	}
+	return RafaleParDefaut
 }
 
 // Reussite efface le compte d'un hôte : la coupure d'avant n'était qu'un
@@ -365,6 +417,7 @@ func (r *Refusals) Reussite(host string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.echecs, host)
+	delete(r.dernier, host)
 }
 
 func (r *Refusals) List() []string {
@@ -375,7 +428,7 @@ func (r *Refusals) List() []string {
 		out = append(out, h)
 	}
 	for h, vu := range r.apprises {
-		if !vu.alerte && r.Oubli > 0 && time.Since(vu.quand) >= r.Oubli {
+		if !vu.alerte && r.Oubli > 0 && r.maintenant().Sub(vu.quand) >= r.Oubli {
 			r.oublier(h)
 			continue
 		}
@@ -476,7 +529,7 @@ func (t *TLSFront) handle(c net.Conn) {
 		// Les traiter pareil condamnait un miroir de distribution au tunnel
 		// sur une seule coupure, et tout son trafic repartait à l'amont.
 		if !t.Refusals.Echec(host, err) {
-			log.Printf("poignée de main interrompue pour %s : %v", host, err)
+			log.Printf(T("poignée de main interrompue pour %s : %v"), host, err)
 		}
 		return
 	}
@@ -560,7 +613,7 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 	}
 	dst, err := origine(c)
 	if err != nil {
-		log.Printf("tunnel impossible pour %q : destination inconnue (%v)", host, err)
+		log.Printf(T("tunnel impossible pour %q : destination inconnue (%v)"), host, err)
 		return false
 	}
 	// Une connexion NON détournée — ouverte directement sur l'écoute — a pour
@@ -568,8 +621,8 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 	// où elle serait relayée de nouveau, sans fin : chaque tour ouvre une
 	// connexion, jusqu'à épuiser les descripteurs et arrêter le service.
 	if memeAdresse(dst, c.LocalAddr().String()) {
-		log.Printf("tunnel refusé pour %q : connexion non détournée, sa"+
-			" destination %s est cette écoute même", host, dst)
+		log.Printf(T("tunnel refusé pour %q : connexion non détournée, sa"+
+			" destination %s est cette écoute même"), host, dst)
 		t.Proxy.record(accessLine{
 			Method: "CONNECT", URL: "tcp://" + dst, Class: "tunnel",
 			Outcome: OutcomeError, Status: http.StatusLoopDetected,
@@ -581,10 +634,10 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 	if err != nil {
 		injoignable := estEchecDEtablissement(err)
 		if injoignable && host != "" {
-			log.Printf("tunnel vers %s : %v ; %s est déchiffré à la place",
+			log.Printf(T("tunnel vers %s : %v ; %s est déchiffré à la place"),
 				dst, err, host)
 		} else {
-			log.Printf("tunnel vers %s : %v", dst, err)
+			log.Printf(T("tunnel vers %s : %v"), dst, err)
 		}
 		return injoignable
 	}
@@ -596,10 +649,28 @@ func (t *TLSFront) tunnel(c net.Conn, host string) bool {
 		Client: clientDe(c.RemoteAddr().String()),
 	})
 
+	// Un tunnel qui se referme ne laissait AUCUNE trace : le client qui
+	// attendait dessus paraissait bloqué sans cause, et rien au journal ne
+	// disait lequel des deux bouts s'était taire. La durée et les octets par
+	// direction le disent — un tunnel qui meurt sans avoir rien rendu à
+	// l'invité est l'empreinte d'un amont qui coupe.
+	debut := time.Now()
+	var versAmont, versClient atomic.Int64
 	done := make(chan struct{}, 2)
-	go func() { io.Copy(up, c); done <- struct{}{} }()
-	go func() { io.Copy(c, up); done <- struct{}{} }()
+	go func() {
+		n, _ := io.Copy(up, c)
+		versAmont.Store(n)
+		done <- struct{}{}
+	}()
+	go func() {
+		n, _ := io.Copy(c, up)
+		versClient.Store(n)
+		done <- struct{}{}
+	}()
 	<-done
+	log.Printf(T("tunnel vers %s refermé après %s : %s vers l'amont, %s vers l'invité"),
+		dst, time.Since(debut).Round(time.Second),
+		HumanBytes(versAmont.Load()), HumanBytes(versClient.Load()))
 	return false
 }
 
@@ -612,11 +683,11 @@ func readFirstRecord(c net.Conn) ([]byte, error) {
 		return nil, err
 	}
 	if head[0] != 0x16 { // handshake
-		return nil, fmt.Errorf("ce n'est pas une poignée de main TLS (type %d)", head[0])
+		return nil, fmt.Errorf(T("ce n'est pas une poignée de main TLS (type %d)"), head[0])
 	}
 	n := int(head[3])<<8 | int(head[4])
 	if n <= 0 || n > 1<<16 {
-		return nil, fmt.Errorf("longueur d'enregistrement invraisemblable : %d", n)
+		return nil, fmt.Errorf(T("longueur d'enregistrement invraisemblable : %d"), n)
 	}
 	body := make([]byte, n)
 	if _, err := io.ReadFull(c, body); err != nil {

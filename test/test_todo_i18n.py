@@ -292,5 +292,22 @@ class TestAucuneCleRepetee(unittest.TestCase):
         self.assertEqual(len(self._cles()), len(todo_i18n.TRANSLATIONS))
 
 
+class TestChaqueCleDitSesDeuxLangues(unittest.TestCase):
+    """Une clé sans « fr » ou sans « en » ne lève rien au chargement.
+
+    t() retombe alors sur la clé elle-même, si bien que l'écran montre
+    l'anglais à qui a choisi le français, ou l'inverse, sans que rien ne le
+    signale.
+    """
+
+    def test_every_key_carries_fr_and_en(self):
+        manques = sorted(
+            k
+            for k, v in todo_i18n.TRANSLATIONS.items()
+            if not isinstance(v, dict) or "fr" not in v or "en" not in v
+        )
+        self.assertEqual(manques, [], "traductions incomplètes")
+
+
 if __name__ == "__main__":
     unittest.main()

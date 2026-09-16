@@ -40,7 +40,7 @@ const SentinelleAmonts = ".amonts-oublies"
 // errAmontConnuMuet dit qu'aucune connexion n'a été tentée : l'établissement
 // vers cet amont a échoué il y a moins d'une fenêtre.
 var errAmontConnuMuet = errors.New(
-	"amont connu muet : l'établissement vient d'échouer, il n'est pas retenté")
+	T("amont connu muet : l'établissement vient d'échouer, il n'est pas retenté"))
 
 // Joignabilite retient, par « hôte:port », l'instant du dernier
 // établissement de connexion manqué.
@@ -216,6 +216,6 @@ func decrireMuet(cause error) string {
 	if !errors.Is(cause, errAmontConnuMuet) {
 		return ""
 	}
-	return "L'établissement vers cet amont vient d'échouer : aucune connexion\n" +
-		"n'a été tentée pour cette requête, l'amont sera retenté sous peu.\n"
+	return T("L'établissement vers cet amont vient d'échouer : aucune connexion\n" +
+		"n'a été tentée pour cette requête, l'amont sera retenté sous peu.\n")
 }
