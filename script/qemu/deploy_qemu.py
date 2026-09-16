@@ -1706,34 +1706,111 @@ def verify_pinned_sha256(
     print(f"  Somme sha256 conforme à celle du dépôt ({attendu[:12]}…).")
 
 
-def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
-    """Vérifie l'empreinte via le SHA256SUMS publié dans le même répertoire."""
+# Où chaque distribution publie la somme de ses images, et avec quel
+# algorithme.
+#
+# Relevé sur les dépôts eux-mêmes, pas déduit. Les FORMATS se ressemblent —
+# « <empreinte>  <nom> », l'astérisque d'Ubuntu en plus — mais ni le nom du
+# fichier ni l'algorithme ne se devinent : Debian publie du sha512 quand tout
+# le reste est en sha256, les familles RHEL nomment leur fichier « CHECKSUM »
+# sans dire l'algorithme, et Arch comme openSUSE posent une somme PAR image
+# plutôt qu'un fichier de répertoire.
+#
+# « {image} » dans le nom désigne la somme voisine ; sans lui, le fichier est
+# cherché dans le répertoire de l'image.
+#
+# Fedora n'y est pas : son image porte un numéro de construction dans son
+# nom, et le fichier de sommes le porte aussi — il ne se déduit pas de l'URL
+# de l'image. Le dire plutôt que de vérifier à moitié.
+SUMS_SOURCE: dict[str, tuple[str, str]] = {
+    "ubuntu": ("SHA256SUMS", "sha256"),
+    "debian": ("SHA512SUMS", "sha512"),
+    "almalinux": ("CHECKSUM", "sha256"),
+    "rocky": ("CHECKSUM", "sha256"),
+    "opensuse": ("{image}.sha256", "sha256"),
+    "arch": ("{image}.SHA256", "sha256"),
+}
+
+
+def sums_url_for(url: str, distro: str) -> tuple[str, str]:
+    """(URL du fichier de sommes, algorithme) pour cette image, ou ("", "")."""
+    source = SUMS_SOURCE.get(distro)
+    if not source:
+        return "", ""
+    nom, algo = source
+    repertoire, image = url.rsplit("/", 1)
+    if "{image}" in nom:
+        return f"{repertoire}/{nom.format(image=image)}", algo
+    return f"{repertoire}/{nom}", algo
+
+
+def expected_sum(sums: str, filename: str) -> str:
+    """L'empreinte que `sums` donne pour `filename`, ou "".
+
+    Le nom est comparé au DERNIER champ, et en entier. Les six formats du
+    catalogue s'écrivent « <empreinte>  <nom> » — Ubuntu met une étoile
+    devant le sien, que l'on retire. Une comparaison par suffixe confondrait
+    « …-amd64.qcow2 » avec « …-ext4-amd64.qcow2 », qui vivent dans le même
+    fichier chez AlmaLinux : on rendrait alors la somme d'une autre image, et
+    la vérification échouerait en accusant l'image juste.
+
+    DEUX formes, et la seconde ne se devine pas : Rocky publie « SHA256
+    (<nom>) = <empreinte> », la forme des outils BSD, là où les cinq autres
+    écrivent l'empreinte en tête. Ne lire que la première rendait "" pour
+    Rocky, donc une image jamais vérifiée sans que rien ne le dise.
+
+    Un fichier signé porte aussi ses lignes de PGP, et le CHECKSUM de Rocky
+    des lignes de commentaire donnant la taille : ni les unes ni les autres
+    n'ont la forme attendue, et elles tombent d'elles-mêmes.
+    """
+    for ligne in sums.splitlines():
+        champs = ligne.split()
+        if len(champs) == 2:
+            empreinte, nom = champs
+            if nom.lstrip("*") == filename:
+                return empreinte
+        elif len(champs) == 4 and champs[2] == "=":
+            if champs[1].strip("()") == filename:
+                return champs[3]
+    return ""
+
+
+def verify_sha256(
+    url: str, image: Path, dry_run: bool, distro: str = "ubuntu"
+) -> None:
+    """Vérifie l'empreinte via les sommes que la distribution publie.
+
+    UN ÉCHEC DE RÉCUPÉRATION N'ARRÊTE PAS le déploiement, un écart si. Les
+    deux ne disent pas la même chose : un fichier de sommes injoignable est
+    une panne de disponibilité — miroir en travaux, réseau coupé — et refuser
+    de déployer pour cela rendrait la vérification plus coûteuse que le risque
+    qu'elle couvre. Une empreinte qui ne correspond PAS est une panne
+    d'intégrité, et elle arrête tout.
+    """
     if dry_run:
-        print("  [dry-run] vérification SHA256 ignorée")
+        print("  [dry-run] vérification des sommes ignorée")
         return
-    sums_url = url.rsplit("/", 1)[0] + "/SHA256SUMS"
+    sums_url, algo = sums_url_for(url, distro)
+    if not sums_url:
+        print(f"  Note : {distro} ne publie pas de sommes lisibles d'ici.")
+        return
     filename = url.rsplit("/", 1)[1]
-    print(f"  Vérification SHA256 via {sums_url}")
+    print(f"  Vérification {algo} via {sums_url}")
     try:
         with urllib.request.urlopen(  # noqa: S310
             sums_url, timeout=DOWNLOAD_TIMEOUT
         ) as resp:
             sums = resp.read().decode()
     except Exception as exc:  # pragma: no cover
-        sys.exit(f"Impossible de récupérer SHA256SUMS : {exc}")
+        print(f"  ⚠ sommes injoignables, image NON vérifiée : {exc}")
+        return
 
-    expected = next(
-        (
-            line.split()[0]
-            for line in sums.splitlines()
-            if line.strip().endswith(filename)
-        ),
-        None,
-    )
-    if expected is None:
-        sys.exit(f"Empreinte introuvable pour {filename} dans SHA256SUMS")
+    expected = expected_sum(sums, filename)
+    if not expected:
+        print(f"  ⚠ empreinte absente pour {filename}, image NON vérifiée")
+        return
 
-    h = hashlib.sha256()
+    h = hashlib.new(algo)
     with image.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
@@ -1742,10 +1819,10 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
             missing_ok=True
         )  # évite la réutilisation du cache corrompu
         sys.exit(
-            f"SHA256 NON conforme ! Image supprimée : {image}\n"
+            f"Somme {algo} NON conforme ! Image supprimée : {image}\n"
             f"  attendu : {expected}\n  obtenu  : {h.hexdigest()}"
         )
-    print("  SHA256 conforme.")
+    print(f"  Somme {algo} conforme.")
 
 
 def hash_password(plain: str) -> str:
@@ -4797,7 +4874,16 @@ def build_parser() -> argparse.ArgumentParser:
     g_img.add_argument(
         "--verify",
         action="store_true",
-        help="Vérifie l'empreinte SHA256 après téléchargement (recommandé).",
+        help="Sans effet : la vérification est désormais le DÉFAUT pour "
+        "toute distribution qui publie ses sommes. Gardé pour que les "
+        "commandes déjà écrites continuent de marcher.",
+    )
+    g_img.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Ne vérifie PAS l'image contre les sommes publiées par sa "
+        "distribution. À réserver aux essais hors ligne : une image "
+        "substituée sur un miroir passerait alors sans un mot.",
     )
 
     g_vm = p.add_argument_group("VM")
@@ -5191,13 +5277,16 @@ def main() -> None:
         args.distro, code, args.arch, args.version, args.dry_run
     )
     url = urls[0]
-    # --verify s'appuie sur un SHA256SUMS style Ubuntu ; Debian/Fedora
-    # publient des sommes dans un autre format -> on saute proprement.
-    do_verify = args.verify and args.distro == "ubuntu"
-    if args.verify and not do_verify:
+    # PAR DÉFAUT, et pour toute distribution qui publie ses sommes. C'était
+    # un drapeau, et réservé à Ubuntu : les huit autres images arrivaient
+    # sans que rien ne les vérifie, alors que leurs éditeurs publient tous
+    # une somme à côté. Le coût est une lecture du fichier téléchargé ; le
+    # risque couvert est une image substituée sur un miroir.
+    do_verify = not args.no_verify and args.distro in SUMS_SOURCE
+    if not args.no_verify and not do_verify:
         print(
-            f"  Note : --verify n'est pris en charge que pour ubuntu "
-            f"(ignoré pour {args.distro})."
+            f"  Note : aucune somme publiée n'est lisible d'ici pour "
+            f"{args.distro}."
         )
 
     # Chemin de l'image : déduit automatiquement si non fourni.
@@ -5222,7 +5311,7 @@ def main() -> None:
             args.distro, args.image_path, args.dry_run, tuple(urls)
         )
         if do_verify:
-            verify_sha256(url, args.image_path, args.dry_run)
+            verify_sha256(url, args.image_path, args.dry_run, args.distro)
         print("\nTerminé (téléchargement seul).")
         return
 
@@ -5339,7 +5428,7 @@ def main() -> None:
             args.distro, args.image_path, args.dry_run, tuple(urls)
         )
         if do_verify:
-            verify_sha256(url, args.image_path, args.dry_run)
+            verify_sha256(url, args.image_path, args.dry_run, args.distro)
 
         print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
         prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
