@@ -161,26 +161,22 @@ func TestDefautHorsLigneNommeLeFichier(t *testing.T) {
 	}
 }
 
-// Une requête partielle ne remplit pas le cache : un fragment ne sert à rien
-// à la demande suivante, et le garder comme un corps entier servirait un
-// paquet tronqué.
+// Une requête partielle ne garde jamais SON fragment : le garder comme un
+// corps entier servirait un paquet tronqué. Ce qui entre au cache est le corps
+// entier, pris à part (voir completion_test.go).
 func TestRequetePartielleNonGardee(t *testing.T) {
-	a := nouvelAmont(t, "0123456789")
+	a := nouvelAmontAPlages(t, "0123456789")
 	p := proxyDeTest(t)
 	chemin := "/x/paquet-1-1-x86_64.pkg.tar.zst"
 
-	r := httptest.NewRequest("GET", chemin, nil)
-	r.Host = a.hote()
-	r.Header.Set("Range", "bytes=0-4")
-	p.serve(httptest.NewRecorder(), r, "http")
-
-	// Une demande entière ensuite doit ressortir à l'amont.
-	w := demande(t, p, a.hote(), chemin)
-	if got := w.Header().Get("X-ERPLibre-Cache"); got == OutcomeHit {
-		t.Error("un fragment est entré au cache et a été servi comme un corps entier")
+	if w := demandePlage(t, p, a.hote(), chemin, "bytes=0-4"); w.Body.String() != "01234" {
+		t.Fatalf("plage : %q", w.Body.String())
 	}
-	if n := a.appels(); n != 2 {
-		t.Errorf("l'amont a reçu %d requêtes, attendu 2", n)
+	p.attendreCompletions()
+
+	w := demande(t, p, a.hote(), chemin)
+	if w.Body.String() != "0123456789" {
+		t.Errorf("demande entière servie %q : un fragment a été gardé", w.Body.String())
 	}
 }
 

@@ -4,8 +4,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -134,6 +136,11 @@ type Proxy struct {
 	// vise l'un d'eux sur une adresse de cette machine est une boucle. Vide,
 	// rien n'est refusé.
 	Ecoutes []int
+
+	// completions tient les clés dont le corps entier est en cours de prise
+	// (voir completer) ; enCours les compte, pour qui doit les attendre.
+	completions sync.Map
+	enCours     sync.WaitGroup
 }
 
 // NewProxy monte le client amont. Aucun délai GLOBAL n'est posé : une image
@@ -243,6 +250,11 @@ func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, scheme string) {
 	if cacheable && class == ClassImmutable {
 		if p.serveFromStore(w, r, u, key, class, OutcomeHit) {
 			return
+		}
+		// La plage passe à l'amont et ne se garde pas ; le fichier entier est
+		// pris à part, pour que la plage suivante sorte du disque.
+		if partial && r.Method == "GET" {
+			p.completer(r, u, key, class)
 		}
 	}
 
@@ -538,6 +550,88 @@ func varieSurAccept(h http.Header) bool {
 		}
 	}
 	return false
+}
+
+// delaiCompletion borne la prise d'un corps entier en arrière-plan. Aucun
+// client n'attend cette prise : sans borne, un amont qui cesse d'envoyer au
+// milieu du corps la garderait ouverte pour toujours.
+const delaiCompletion = time.Hour
+
+// completer prend à l'amont, en arrière-plan, le corps ENTIER d'un fichier
+// figé dont un client n'a demandé qu'une plage, et le garde sous sa clé.
+//
+// dnf télécharge ses métadonnées zchunk par plages, et pacman reprend de même
+// un paquet interrompu : une plage ne se garde pas, si bien que sans cette
+// prise ces fichiers repartiraient à l'amont à chaque VM — et, amont coupé, ne
+// seraient pas là. Une fois gardé, le fichier sert toute plage depuis le
+// disque.
+//
+// Une seule prise par clé à la fois, et la requête du client ne l'attend pas.
+// Elle part sans plage ni condition, avec le seul agent de l'invité, et un
+// amont connu muet n'est pas recomposé. Une prise manquée se retente à la
+// plage suivante.
+func (p *Proxy) completer(r *http.Request, u *url.URL, key string, class Class) {
+	if _, deja := p.completions.LoadOrStore(key, true); deja {
+		return
+	}
+	entete := http.Header{}
+	if agent := r.Header.Get("User-Agent"); agent != "" {
+		entete.Set("User-Agent", agent)
+	}
+	p.enCours.Add(1)
+	go func() {
+		defer p.enCours.Done()
+		defer p.completions.Delete(key)
+		p.prendreEntier(u, key, class, entete)
+	}()
+}
+
+// attendreCompletions rend la main quand plus aucune prise n'est en cours.
+func (p *Proxy) attendreCompletions() {
+	p.enCours.Wait()
+}
+
+// prendreEntier fait la prise elle-même : un 200 entier, publié sous la clé
+// par le même écrivain que le chemin du client, taille annoncée vérifiée. Tout
+// autre statut, ou une clé devenue détenue entre-temps, ne publie rien.
+func (p *Proxy) prendreEntier(u *url.URL, key string, class Class, entete http.Header) {
+	ctx, annuler := context.WithTimeout(context.Background(), delaiCompletion)
+	defer annuler()
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return
+	}
+	req.Header = entete
+	resp, err := p.fetch(req, u, true)
+	if err != nil {
+		return
+	}
+	resp = p.suivreRedirections(req, u, resp)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || p.Store.Detient(key) {
+		return
+	}
+	cw, err := p.Store.NewWriter(key, Meta{
+		URL: u.String(), Method: "GET", Status: resp.StatusCode,
+		Header: resp.Header.Clone(), Class: class.String(),
+	})
+	if err != nil {
+		log.Printf(T("cache : écriture impossible pour %s : %v"), u, err)
+		return
+	}
+	n, err := io.Copy(cw, resp.Body)
+	if err != nil {
+		cw.Abort()
+		return
+	}
+	if err := cw.Commit(resp.ContentLength); err != nil {
+		log.Printf(T("cache : %s non gardé : %v"), u, err)
+		return
+	}
+	p.record(accessLine{
+		Method: "GET", URL: u.String(), Class: class.String(),
+		Outcome: OutcomeStored, Status: resp.StatusCode, Bytes: n, Upstream: true,
+	})
 }
 
 // etagGarde rend l'ETag du corps gardé sous la clé, ou "" : rien de gardé,

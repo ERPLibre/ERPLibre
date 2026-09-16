@@ -209,6 +209,36 @@ func TestLesIndexParEmpreinteSontImmuables(t *testing.T) {
 	}
 }
 
+// Une métadonnée RPM nommée par sa somme est figée, quelle que soit sa
+// compression ; « repomd.xml », qui la désigne, reste volatile, et un nom sans
+// somme en tête garde la règle de son suffixe.
+func TestLesMetadonneesRPMParEmpreinteSontImmuables(t *testing.T) {
+	somme := strings.Repeat("0123456789abcdef", 4)
+	for _, nom := range []string{
+		somme + "-primary.xml.zck", somme + "-primary.xml.gz",
+		somme + "-updateinfo.xml.zst", somme + "-comps-BaseOS.x86_64.xml",
+	} {
+		u, _ := url.Parse("https://miroir.example/fedora/linux/updates/42/Everything/x86_64/repodata/" + nom)
+		if got := Classify(u); got != ClassImmutable {
+			t.Errorf("%s classé « %s », attendu « immutable »", nom, got)
+		}
+		if !PortableParChemin(u) {
+			t.Errorf("%s n'est pas jugé portable", nom)
+		}
+	}
+	for _, brut := range []string{
+		"https://miroir.example/fedora/repodata/repomd.xml",
+		"https://miroir.example/fedora/repodata/primary.xml.gz",
+		"https://miroir.example/fedora/repodata/pas-une-somme-primary.xml.zck",
+		"https://miroir.example/fedora/ailleurs/" + somme + "-primary.xml.zck",
+	} {
+		u, _ := url.Parse(brut)
+		if got := Classify(u); got != ClassVolatile {
+			t.Errorf("%s classé « %s », attendu « volatile »", brut, got)
+		}
+	}
+}
+
 // Le même index par empreinte, servi par deux miroirs. Sans clé portable,
 // changer de miroir vide le cache de ses index : une installation hors ligne
 // échoue alors sur des octets que le magasin détient pourtant, et le message
