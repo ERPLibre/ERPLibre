@@ -466,6 +466,13 @@ class SessionsClaudeCode(unittest.TestCase):
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
         ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
+        ), patch(
             "click.prompt", side_effect=["0"]
         ), patch(
             "script.todo.todo_telemetry.record"
@@ -497,6 +504,13 @@ class SessionsClaudeCode(unittest.TestCase):
         ), patch(
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
+        ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
         ), patch(
             "click.prompt", side_effect=[chiffre, "0"]
         ), patch(
@@ -543,6 +557,13 @@ class SessionsClaudeCode(unittest.TestCase):
         ), patch(
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
+        ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
         ), patch(
             "click.prompt", side_effect=[au_dela, "0"]
         ), patch(
@@ -1248,6 +1269,13 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
             "script.todo.assistant.harness.opencode.lire_base",
             return_value=[],
         ), patch(
+            "script.todo.assistant.agents.disque.mesurer", return_value=[]
+        ), patch(
+            "script.todo.assistant.agents.pose.etat",
+            return_value={"global": ("/g", []), "depot": ("/d", [])},
+        ), patch(
+            "script.todo.assistant.agents.mcp.declares", return_value=[]
+        ), patch(
             "click.prompt", side_effect=["0"]
         ), patch(
             "script.todo.todo_telemetry.record"
@@ -1258,6 +1286,48 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
         ):
             TODO().prompt_assistant_ia()
         self.assertEqual(lances, [])
+
+
+class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):
+    """Le menu des agents calcule cinq comptes, et chacun interroge la machine.
+
+    Deux étaient cousus — la flotte et la base d'Open Code — et trois ne
+    l'étaient pas : le volume du disque parcourt `~/.claude` en entier, l'état
+    des hooks ouvre ses réglages, et le compte MCP ouvre `~/.claude.json`, le
+    fichier qui porte les jetons des passerelles. Le verdict dépendait donc
+    de la machine de qui lance la suite, et sa durée aussi.
+    """
+
+    def test_building_the_menu_opens_nothing_under_the_real_home(self):
+        import builtins
+        import os as os_module
+
+        from script.todo.todo import TODO
+
+        maison = os.path.expanduser("~/.claude")
+        touches = []
+
+        vrai_open = builtins.open
+        vrai_walk = os_module.walk
+
+        def guette_open(fichier, *a, **kw):
+            if str(fichier).startswith(maison):
+                touches.append(str(fichier))
+                raise AssertionError(f"lecture du vrai ~/.claude : {fichier}")
+            return vrai_open(fichier, *a, **kw)
+
+        def guette_walk(chemin, *a, **kw):
+            if str(chemin).startswith(maison):
+                touches.append(str(chemin))
+                raise AssertionError(f"parcours du vrai ~/.claude : {chemin}")
+            return vrai_walk(chemin, *a, **kw)
+
+        with patch.object(builtins, "open", guette_open), patch.object(
+            os_module, "walk", guette_walk
+        ):
+            entrees = SessionsClaudeCode()._entrees()
+        self.assertEqual(touches, [])
+        self.assertTrue(entrees, "le menu s'est bien construit")
 
 
 class UnListageMuetNEstPasUneSessionVivante(unittest.TestCase):
