@@ -1469,6 +1469,24 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Role of this profile": {
+        "fr": "Rôle de ce profil",
+        "en": "Role of this profile",
+    },
+    "workshop: one works here, and what is laid here can be redone": {
+        "fr": "atelier : on y travaille, et ce qu'on y pose peut se refaire",
+        "en": "workshop: one works here, and what is laid here can be redone",
+    },
+    "authority: the one you start again from when the station burns": {
+        "fr": "autorité : celle dont on repart quand la station brûle",
+        "en": "authority: the one you start again from when the station"
+        " burns",
+    },
+    "AUTHORITY": {"fr": "AUTORITÉ", "en": "AUTHORITY"},
+    "Another profile is already the authority:": {
+        "fr": "Un autre profil est déjà l'autorité :",
+        "en": "Another profile is already the authority:",
+    },
     "Not a deployment target:": {
         "fr": "Ce n'est pas une cible de déploiement :",
         "en": "Not a deployment target:",
