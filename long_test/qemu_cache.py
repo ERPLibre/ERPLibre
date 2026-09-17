@@ -928,8 +928,8 @@ def verdict(premier, second, journal):
     dire(f"  tirés de l'amont : {octets_amont} octets", journal)
     if neufs:
         dire(
-            f"  ({len(neufs)} fichiers neufs : le miroir a publié entre les"
-            " deux déploiements, ce qui est normal sur Arch)",
+            f"  ({len(neufs)} fichiers neufs : publiés entre les deux"
+            " déploiements, ou rangés par un miroir sous un autre chemin)",
             journal,
         )
         for l in neufs[:5]:
