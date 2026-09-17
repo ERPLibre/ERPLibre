@@ -41,6 +41,7 @@ lui. Il rend 20 là où l'outillage manque, comme les autres épreuves longues.
 """
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -59,18 +60,87 @@ CONTENEUR = "erplibre-egress-confront"
 # L'image : la plus petite qui porte de quoi ouvrir une connexion.
 IMAGE = "docker.io/library/alpine:3"
 
-# Les deux destinations de l'épreuve, toutes deux dans les plages de
-# documentation (RFC 5737) : une NOMMÉE dans la liste, une hors liste. Elles
-# ne répondent pas — et c'est sans importance. Ce qui se mesure est la
-# différence entre « refusé tout de suite » et « pas de réponse » : la
-# première vient des règles, la seconde du réseau.
-AUTORISEE = "198.51.100.10"
-HORS_LISTE = "203.0.113.10"
+# LES DEUX DESTINATIONS RÉPONDENT, et c'est ce qui rend l'épreuve
+# concluante. Deux adresses qui ne répondent jamais rendent le même verdict
+# — un délai épuisé — qu'elles soient nommées ou non : on ne mesure alors
+# que le silence du réseau. Ici deux conteneurs ÉCOUTENT, à un adressage
+# près identiques, et la seule variable est la règle.
+#
+# Ces adresses vivent dans le réseau podman d'une instance jetable et
+# meurent avec elle. Elles ne désignent aucune machine du parc.
+RESEAU_TEMOIN = "10.89.0.0/24"
+AUTORISEE = "10.89.0.9"
+HORS_LISTE = "10.89.0.10"
+
+# Les deux écouteurs, et le réseau qui les porte. Le SONDEUR reste sur le
+# réseau par défaut : c'est ce qui fait traverser FORWARD à son trafic, et
+# FORWARD est exactement la chaîne qu'un verrou d'hôte laisse ouverte quand
+# il ne garde que OUTPUT.
+TEMOIN = "erplibre-egress-temoin"
+ECOUTEURS = (("ecouteur-nomme", AUTORISEE), ("ecouteur-hors", HORS_LISTE))
 
 
 # Podman d'abord : il ne demande pas de démon, donc la question 3 s'y
 # observe plus simplement.
 MOTEURS = ("podman", "docker")
+
+# L'instance qui sert de terrain. Un nom qui ne ressemble à rien du parc :
+# « --detruire » efface ce qu'il nomme.
+INSTANCE = "erplibre-egress-confront"
+
+# L'invité, le même que celui de la confrontation Lima : une seule image à
+# tenir à jour, et un système dont on sait qu'il porte apt.
+IMAGE_INVITE = (
+    "https://cloud-images.ubuntu.com/releases/24.04/release/"
+    "ubuntu-24.04-server-cloudimg-{arch}.img"
+)
+
+
+def script_de_terrain(regles: str) -> str:
+    """Le provisionnement de l'instance : outillage, image, PUIS règles.
+
+    L'ORDRE EST LA PIÈCE MAÎTRESSE. Une fois la sortie coupée, le registre
+    de conteneurs n'est plus joignable : tirer l'image APRÈS l'armement
+    échouerait, et la question qu'on vient poser ne pourrait plus se poser.
+    Le refus ressemblerait alors à un réseau absent, et l'on conclurait que
+    les règles marchent alors qu'on n'aurait rien mesuré.
+
+    C'est aussi ce qui rend l'épreuve honnête : l'image est là AVANT, donc
+    un refus mesuré ensuite vient des règles et de rien d'autre.
+    """
+    from script.posture import plan as posture_plan
+
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "set -eu",
+            "export DEBIAN_FRONTEND=noninteractive",
+            "# 1. L'outillage, tant que la sortie est encore libre.",
+            "apt-get update -qq",
+            "apt-get install -y -qq podman nftables >/dev/null",
+            "# 2. L'IMAGE AVANT LES RÈGLES : après, le registre est hors",
+            "#    d'atteinte et la question ne peut plus se poser.",
+            f"podman pull -q {IMAGE} >/dev/null",
+            "# 3. Les règles, par le même rendu que le déploiement.",
+            _sans_entete(posture_plan.provision_script(regles)),
+        ]
+    )
+
+
+def _sans_entete(script: str) -> str:
+    """Le corps d'un script, sans son shebang ni son « set ».
+
+    Le poseur de règles rend un script COMPLET — c'est ce qu'il doit faire
+    pour les backends qui l'exécutent seul. Embarqué au milieu d'un autre,
+    son en-tête ferait un shebang en commentaire et un « set » redit : rien
+    ne casse, mais ce qu'on relit ensuite ne se lit plus.
+    """
+    lignes = (script or "").splitlines()
+    while lignes and (
+        lignes[0].startswith("#!") or lignes[0].startswith("set ")
+    ):
+        lignes.pop(0)
+    return "\n".join(lignes)
 
 
 def moteur():
@@ -196,6 +266,112 @@ def depuis_le_conteneur(nom_moteur, adresse, dry_run):
     return jouer(argv, timeout=180)
 
 
+def _arch():
+    return "arm64" if os.uname().machine in ("arm64", "aarch64") else "amd64"
+
+
+def monter_le_terrain(regles, dry_run):
+    """Crée l'instance et y pose tout. Rend True si elle est debout.
+
+    UNE MACHINE JETABLE, et c'est la condition de l'épreuve. Ces règles se
+    chargent en « policy drop » : posées sur l'hôte, elles coupent la
+    session qui les pose et tout ce qui tourne à côté. Le script le disait
+    déjà et demandait un OUI ; il fabrique désormais le terrain lui-même.
+    """
+    from script.vm import lima
+
+    texte = lima.render_config(
+        IMAGE_INVITE.format(arch=_arch()),
+        arch=_arch(),
+        macos=os.uname().sysname == "Darwin",
+        provision_script=script_de_terrain(regles),
+    )
+    chemin = os.path.join(tempfile.gettempdir(), f"{INSTANCE}.yaml")
+    print("── le terrain ──")
+    print(f"  instance : {INSTANCE}   arch : {_arch()}")
+    print(f"  fichier  : {chemin}")
+    if dry_run:
+        print("  [à blanc] provisionnement qui serait posé :")
+        for ligne in script_de_terrain(regles).splitlines():
+            print(f"    │ {ligne}")
+        return False
+    with open(chemin, "w", encoding="utf-8") as fh:
+        fh.write(texte)
+    code, sortie = jouer(lima.start_argv(INSTANCE, chemin), timeout=1800)
+    print(f"  {'✓' if code == 0 else '✗'} démarrage : code {code}")
+    if code:
+        print(f"    {sortie.strip()[-600:]}")
+    return code == 0
+
+
+def dans_le_terrain(commande, timeout=180):
+    """(code, sortie) d'une commande lancée DANS l'instance."""
+    from script.vm import backend, verbs
+
+    handle = backend.lima_handle(INSTANCE)
+    ligne = f"{verbs.exec_prefix(handle)} {json.dumps(commande)}"
+    return jouer(["sh", "-c", ligne], timeout=timeout)
+
+
+def retirer_le_terrain():
+    """L'instance, et rien d'autre. Une instance oubliée reste
+    indéfiniment : rien ne la nomme ailleurs."""
+    from script.vm import lima
+
+    print(f"── retrait de l'instance « {INSTANCE} » ──")
+    for argv in (lima.stop_argv(INSTANCE), lima.delete_argv(INSTANCE)):
+        code, sortie = jouer(argv, timeout=300)
+        print(f"  {lima.display(argv)} -> {code} {sortie.strip()[:120]}")
+
+
+def poser_les_temoins():
+    """Deux conteneurs qui ÉCOUTENT, sur un réseau à eux. Vrai s'ils y sont.
+
+    Sur un réseau SÉPARÉ de celui du sondeur : container vers container à
+    travers deux ponts se route par l'invité, donc par FORWARD. Sur le même
+    pont, le trafic ne traverserait que le pont, et l'épreuve ne dirait rien
+    de la chaîne qu'elle vient éprouver.
+
+    Rien ici ne demande la sortie : l'image est déjà tirée, et créer un
+    réseau local ne sort pas de la machine. C'est pourquoi les témoins se
+    posent APRÈS l'armement sans que cela pose de question.
+    """
+    print("\n── les témoins ──")
+    code, _s = dans_le_terrain(
+        f"sudo podman network exists {TEMOIN}"
+        f" || sudo podman network create --subnet {RESEAU_TEMOIN} {TEMOIN}",
+        timeout=120,
+    )
+    if code:
+        return False
+    for nom, adresse in ECOUTEURS:
+        code, sortie = dans_le_terrain(
+            f"sudo podman rm -f {nom} >/dev/null 2>&1;"
+            f" sudo podman run -d --name {nom} --network {TEMOIN}"
+            f" --ip {adresse} {IMAGE}"
+            " sh -c 'while true; do echo ok | nc -l -p 443; done'",
+            timeout=180,
+        )
+        print(f"  {'✓' if code == 0 else '✗'} {nom} sur {adresse}")
+        if code:
+            print(f"    {sortie.strip()[-200:]}")
+            return False
+    return True
+
+
+def sonder(adresse):
+    """« PASSE » ou « BLOQUE », vu depuis un conteneur du réseau par défaut.
+
+    Le sondeur est JETABLE et sans nom fixe : un conteneur qui resterait
+    d'un tour à l'autre porterait l'état du tour précédent.
+    """
+    code, _sortie = dans_le_terrain(
+        f"sudo podman run --rm {IMAGE} timeout 4 nc -z {adresse} 443",
+        timeout=120,
+    )
+    return "PASSE" if code == 0 else "BLOQUE"
+
+
 def question_1_et_2(nom_moteur, dry_run):
     """La destination nommée passe, celle hors liste est refusée."""
     print("\n── 1 et 2 : ce qui passe, ce qui ne passe pas ──")
@@ -247,8 +423,72 @@ def main():
     analyseur = argparse.ArgumentParser(description=__doc__)
     analyseur.add_argument("--dry-run", action="store_true")
     analyseur.add_argument("--detruire", action="store_true")
+    analyseur.add_argument(
+        "--terrain",
+        choices=("lima", "hote"),
+        default="lima",
+        help=(
+            "où poser les règles. « lima » fabrique une instance jetable ;"
+            " « hote » les charge ICI et coupe la sortie de cette machine."
+        ),
+    )
     args = analyseur.parse_args()
 
+    if args.terrain == "lima":
+        return _sur_lima(args)
+    return _sur_lhote(args)
+
+
+def _sur_lima(args):
+    """Le terrain jetable : l'instance porte tout, l'hôte ne risque rien."""
+    from script.vm import lima
+
+    if not shutil.which(lima.LIMACTL) and not args.dry_run:
+        print(f"Outillage absent : {lima.LIMACTL}")
+        print("Rien n'a été tenté.")
+        return 20
+    if args.detruire:
+        retirer_le_terrain()
+        return 0
+    regles = regles_de_banc()
+    if not monter_le_terrain(regles, args.dry_run):
+        if args.dry_run:
+            _epilogue()
+        return 0
+    if not poser_les_temoins():
+        print("  ✗ les témoins ne sont pas debout : rien n'est concluant.")
+        return 0
+    print("\n── 1 et 2 : ce qui passe, ce qui ne passe pas, DANS l'invité ──")
+    verdicts = {}
+    for etiquette, adresse in (
+        ("nommée", AUTORISEE),
+        ("hors liste", HORS_LISTE),
+    ):
+        verdicts[etiquette] = sonder(adresse)
+        print(f"  {etiquette:11} {adresse} -> {verdicts[etiquette]}")
+    # LE VERDICT EST UNE DIFFÉRENCE, et il se lit sans interprétation : les
+    # deux écouteurs répondent, donc un refus ne peut venir que des règles.
+    conclusif = (
+        verdicts.get("nommée") == "PASSE"
+        and verdicts.get("hors liste") == "BLOQUE"
+    )
+    print(
+        f"  {'✓' if conclusif else '✗'} la chaîne forward attrape ce qu'un"
+        " conteneur émet, et laisse passer ce qui est nommé"
+    )
+    print("\n── 3 : après un redémarrage du moteur, DANS l'invité ──")
+    code, sortie = dans_le_terrain("sudo systemctl restart podman.socket")
+    print(f"  redémarrage -> {code} {sortie.strip()[:160]}")
+    code, _s = dans_le_terrain(
+        f"sudo nft list table inet {rules.TABLE} >/dev/null"
+    )
+    print(f"  notre table est-elle encore là -> {code == 0}")
+    _epilogue()
+    return 0
+
+
+def _sur_lhote(args):
+    """L'ancien terrain : ICI, et il coupe la sortie de cette machine."""
     nom_moteur, manques = outillage()
     if manques and not args.dry_run:
         print("Outillage absent : " + ", ".join(manques))
@@ -268,13 +508,17 @@ def main():
     question_1_et_2(nom_moteur, args.dry_run)
     if not args.dry_run:
         question_3(nom_moteur, args.dry_run)
+    _epilogue()
+    return 0
+
+
+def _epilogue():
     print(
         "\nCe que ces réponses lèvent — ou non : le jeton"
         f"\n« {rules.CONTAINERS_UNPROVEN} » de script/posture/rules.py, et"
         "\navec lui le champ covers_containers du registre."
         "\n\nÀ défaire ensuite : --detruire."
     )
-    return 0
 
 
 if __name__ == "__main__":
