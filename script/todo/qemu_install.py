@@ -205,8 +205,28 @@ class QemuInstallMixin:
                 "sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' "
                 "/etc/selinux/config 2>/dev/null || true; fi; "
             )
+        # NixOS est reconnu DANS la VM, et non d'après ce que l'hôte croit
+        # savoir : la même commande sert au déploiement, au test long et à un
+        # « --hote » qu'on n'a pas créé. /etc y est généré depuis le store et
+        # monté en lecture seule — le tee plus bas échoue sur « Read-only file
+        # system », et l'installation rend 1 à sa dernière étape après que
+        # tout le reste a réussi. L'unité vient du module déclaratif posé par
+        # « make install_os » ; il ne reste qu'à la relancer, une fois le
+        # dépôt en place.
+        nixos = (
+            "if [ -f /etc/os-release ] && grep -q '^ID=nixos' "
+            "/etc/os-release; then "
+            "if systemctl cat erplibre.service >/dev/null 2>&1; then "
+            "sudo systemctl restart erplibre.service; "
+            "else "
+            'echo "erplibre.service non déclaré : '
+            '« make install_os » pose le module NixOS qui le porte." >&2; '
+            "exit 1; fi; "
+            "else "
+        )
         return (
-            f'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); SVC_DIR="{svc_dir}"; '
+            nixos
+            + f'SVC_USER=$(whoami); SVC_GROUP=$(id -gn); SVC_DIR="{svc_dir}"; '
             + pre
             + selinux_shell
             + "sudo tee /etc/systemd/system/erplibre.service >/dev/null <<UNIT\n"
@@ -230,7 +250,8 @@ class QemuInstallMixin:
             "WantedBy=multi-user.target\n"
             "UNIT\n"
             "sudo systemctl daemon-reload; "
-            "sudo systemctl enable --now erplibre.service"
+            "sudo systemctl enable --now erplibre.service; "
+            "fi"
         )
 
     # Bureaux disponibles, par gestionnaire de paquets. Une seule source pour

@@ -177,4 +177,67 @@
     LIBRARY_PATH = "/run/current-system/sw/lib";
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
   };
+
+  # Le service ERPLibre, DÉCLARÉ et non écrit.
+  #
+  # Sur toute autre distribution l'installation dépose l'unité par
+  # « tee /etc/systemd/system/erplibre.service ». Ici /etc est généré depuis
+  # le store et monté en lecture seule : le tee échoue sur « Read-only file
+  # system », et l'installation entière rend 1 à sa dernière étape, après que
+  # tout le reste a réussi.
+  #
+  # « wantedBy » est l'équivalent déclaratif de « systemctl enable » :
+  # l'activation par lien symbolique écrirait elle aussi dans /etc.
+  #
+  # L'interpréteur vient du STORE et non de /bin. /bin et /usr/bin sont ici
+  # un montage FUSE d'envfs, et systemd résout l'exécutable d'ExecStart
+  # lui-même, hors de portée de ce montage : « /bin/bash » y rend
+  # « 203/EXEC, Unable to locate executable ». Avec Restart=always, l'unité
+  # boucle alors indéfiniment. La même raison vaut pour /usr/bin/env, donc
+  # le shebang de run.sh ne suffirait pas davantage.
+  #
+  # La première reconstruction déclare le service AVANT qu'ERPLibre ne soit
+  # installé, et son démarrage échoue alors — c'est attendu, et c'est
+  # exactement le cas que « nixos-rebuild rend 4 » recouvre. L'installation
+  # le relance une fois le dépôt en place.
+  systemd.services.erplibre = {
+    description = "ERPLibre";
+    requires = [ "postgresql.service" ];
+    after = [ "network.target" "network-online.target" "postgresql.service" ];
+    wantedBy = [ "multi-user.target" ];
+    # Une unité systemd ne reçoit PAS le PATH d'une session : le sien ne
+    # porte que coreutils, findutils, grep, sed et systemd.
+    #
+    # bash — run.sh lance odoo_bin.sh et lib_db_select.sh, dont le shebang est
+    # « #!/usr/bin/env bash ». env est là, bash non : « env: 'bash': No such
+    # file or directory », et run.sh s'arrête avant Odoo.
+    #
+    # python3 — la sonde de réveil tourne AVANT que odoo_bin.sh n'active le
+    # venv, donc avec le python du système. Son échec est silencieux
+    # (« 2>/dev/null ») : sans elle, la première page ouverte attendrait le
+    # chargement du registre sans que rien ne le dise.
+    path = with pkgs; [ bash python312 ];
+    # L'unité est déclarée par le module, donc démarrée par la
+    # reconstruction — qui a lieu PENDANT « make install_os », alors que la
+    # source d'Odoo n'arrive qu'à « make install_odoo_18 ». Sans condition,
+    # run.sh échoue sur un odoo-bin absent et « Restart = always » le rejoue
+    # toutes les cinq secondes jusqu'à ce que l'installation le pose — vingt
+    # et un échecs mesurés sur une pose ordinaire, et un « nixos-rebuild »
+    # qui rend 4 parce qu'une unité n'a pas démarré.
+    #
+    # Une CONDITION, et non une dépendance : systemd saute l'unité en le
+    # disant une fois, sans la marquer en échec, et la démarre d'elle-même
+    # au prochain déclenchement une fois le fichier là. Le motif évite de
+    # figer la version d'Odoo ici, où elle vieillirait en silence.
+    unitConfig.ConditionPathExistsGlob = "@EL_DIR@/odoo*/odoo/odoo-bin";
+    serviceConfig = {
+      Type = "simple";
+      User = "@EL_USER@";
+      WorkingDirectory = "@EL_DIR@";
+      ExecStart = "${pkgs.bash}/bin/bash @EL_DIR@/run.sh";
+      Restart = "always";
+      RestartSec = 5;
+      StandardOutput = "journal+console";
+    };
+  };
 }

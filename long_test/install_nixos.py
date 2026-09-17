@@ -312,10 +312,21 @@ def verifier(cible, journal, jump=""):
     """
     resultats = {}
 
+    # Par NOM EXACT, jamais par motif. envfs est un système de fichiers qui
+    # RÉSOUT à la demande et n'ÉNUMÈRE pas : « ls /usr/bin » y rend un
+    # répertoire vide alors que « /usr/bin/python3.12 » s'ouvre. Un glob passe
+    # par readdir, donc ne rend rien, et le contrôle déclarait absent ce qui
+    # est là — il éprouvait envfs de la seule façon dont envfs ne peut pas
+    # répondre.
+    #
+    # La version vient du dépôt plutôt que d'être écrite ici : c'est elle que
+    # l'installation a suivie, et une constante vieillirait à côté.
     chemins = sonder(
         cible,
         "for f in /bin/bash /usr/bin/env; do [ -e $f ] || exit 1; done;"
-        " ls /usr/bin/python3.* >/dev/null 2>&1 || exit 1; echo ok",
+        " v=$(cut -d. -f1,2 git/erplibre/.python-odoo-version 2>/dev/null);"
+        ' [ -n "$v" ] || v=3;'
+        ' [ -e "/usr/bin/python$v" ] || exit 1; echo ok',
         jump,
     )
     resultats["envfs"] = chemins == "ok"

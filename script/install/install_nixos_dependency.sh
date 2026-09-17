@@ -17,6 +17,11 @@ set -e
 . ./env_var.sh
 
 EL_USER=${USER}
+# Le répertoire du service, pris du checkout QUI POSE le module : « make
+# install_os » tourne à la racine du dépôt, et c'est ce dépôt-là que le
+# service doit lancer. Deviner « /home/$USER/git/erplibre » se tromperait sur
+# une installation de production, qui vit sous /opt.
+EL_DIR=${EL_DIR:-${PWD}}
 MODULE_SRC="conf/nixos/erplibre.nix"
 MODULE_DST="/etc/nixos/erplibre.nix"
 CONFIG="/etc/nixos/configuration.nix"
@@ -34,8 +39,9 @@ fi
 echo -e "\n---- Module ERPLibre pour NixOS ----"
 # Le nom du compte est substitué comme le user-data cloud-init l'est : le
 # module déclare un rôle PostgreSQL, et un rôle porte un nom.
-sed "s/@EL_USER@/${EL_USER}/g" "${MODULE_SRC}" | sudo tee "${MODULE_DST}" > /dev/null
-echo "  posé : ${MODULE_DST} (compte ${EL_USER})"
+sed -e "s/@EL_USER@/${EL_USER}/g" -e "s#@EL_DIR@#${EL_DIR}#g" \
+  "${MODULE_SRC}" | sudo tee "${MODULE_DST}" > /dev/null
+echo "  posé : ${MODULE_DST} (compte ${EL_USER}, dépôt ${EL_DIR})"
 
 if [ ! -f "${CONFIG}" ]; then
   echo "Configuration introuvable : ${CONFIG}"
