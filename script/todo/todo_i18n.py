@@ -12582,6 +12582,17 @@ TRANSLATIONS = {
         "fr": "le déplacement a échoué :",
         "en": "the move failed:",
     },
+    "mail_move_across_working": {
+        "fr": "Dépôt chez l'autre compte…",
+        "en": "Depositing in the other account…",
+    },
+    "mail_move_across_unconfirmed": {
+        "fr": ("Dépôt non confirmé : le message reste ici. Cible visée :"),
+        "en": (
+            "Deposit not confirmed: the message stays here. Intended"
+            " target:"
+        ),
+    },
     "mail_err_empty_failed": {
         "fr": "le vidage a échoué :",
         "en": "emptying failed:",

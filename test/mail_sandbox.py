@@ -321,7 +321,10 @@ class SandboxMailbox:
         self.uidvalidity = uidvalidity
         self.messages: list[SandboxMessage] = []
         self.listeners: list = []
-        self.appended: list[tuple[bytes, tuple]] = []
+        # (octets, drapeaux, date interne) tels que le SERVEUR les a reçus.
+        # La date en fait partie : un client qui l'oublie fait horodater le
+        # dépôt à maintenant, ce qui ne se voit nulle part ailleurs.
+        self.appended: list[tuple[bytes, tuple, object]] = []
 
     # -- recherche --------------------------------------------------------
 
@@ -366,10 +369,30 @@ class SandboxMailbox:
         cle = bytes(query[0]).upper()
         if cle == b"UID":
             return self._search_uid(bytes(query[1]), uid)
+        if cle == b"HEADER":
+            return self._search_header(
+                bytes(query[1]).lower(), bytes(query[2]).lower()
+            )
         if cle not in self.CLES_RECHERCHE:
             raise imap4.IllegalQueryError(query)
         terme = bytes(query[1]).lower() if len(query) > 1 else b""
         champ = self.CLES_RECHERCHE[cle]
+        return [
+            index
+            for index, message in enumerate(self.messages, start=1)
+            if terme in self._portion(message, champ).lower()
+        ]
+
+    def _search_header(self, champ: bytes, terme: bytes) -> list:
+        """`HEADER <champ> <valeur>` : les messages dont cet en-tête
+        contient `valeur`.
+
+        Le client s'en sert pour CONFIRMER qu'un message déposé par APPEND
+        est bien arrivé, en cherchant son Message-ID. Un bac à sable qui
+        répondrait « rien » à cette clé ferait croire à un dépôt perdu ;
+        un qui répondrait « tout » ferait détruire une source qui ne doit
+        pas l'être.
+        """
         return [
             index
             for index, message in enumerate(self.messages, start=1)
@@ -466,7 +489,7 @@ class SandboxMailbox:
         from twisted.internet import defer
 
         raw = body.read() if hasattr(body, "read") else body
-        self.appended.append((raw, tuple(flags)))
+        self.appended.append((raw, tuple(flags), date))
         self.deliver(raw, flags)
         return defer.succeed(len(self.messages))
 
