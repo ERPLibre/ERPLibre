@@ -105,6 +105,20 @@ def secret_ref(name: str) -> str:
     return f"kdbx:{SECRET_GROUP}/{name}"
 
 
+def mirror_secret_ref(name: str) -> str:
+    """Référence du jeton de MIROIR de ce profil, dans le coffre.
+
+    Le jeton de la forge ouvre la forge ; celui-ci ouvre l'amont vers
+    lequel elle pousse. Deux portes, deux clés : les confondre donnerait à
+    la forge un jeton qui écrit chez le tiers, ou l'inverse.
+
+    Même GROUPE que le jeton de forge — deux conventions dans un coffre le
+    rendent illisible dans KeePassXC, et un lecteur ne sait plus laquelle
+    chercher — et un titre distinct, dérivé du nom comme l'autre.
+    """
+    return f"kdbx:{SECRET_GROUP}/{name}-mirror"
+
+
 def load_all(config=None) -> list[dict]:
     """Tous les profils, dans l'ordre de fusion. Jamais None."""
     cfg = config or ConfigFile()
