@@ -562,29 +562,30 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
     CHEMIN = "/x/y/aaaaaaaa-1111-4111-8111-111111111111.jsonl"
     AUTRE_CHEMIN = "/x/y/bbbbbbbb-2222-4222-8222-222222222222.jsonl"
 
-    # Ce que le panneau des agents montre, injecté : la vraie flotte
-    # interrogerait l'outil, donc le réseau de personne et le PATH de
-    # personne ne décident du verdict de ce test.
-    AGENTS = (
-        {
-            # Ce qui identifie la rangée, jamais affiché : une faiseuse de
-            # lignes doit le rendre, et la fausse aussi.
-            "cle": "abcd1234",
-            "id": "abcd1234",
-            "projet": "projet",
-            "etat": "",
-            "branche": "une-branche",
-            "pid": "4242",
-        },
-        {
-            "cle": "efgh5678",
-            "id": "efgh5678",
-            "projet": "projet",
-            "etat": "",
-            "branche": "une-autre-branche",
-            "pid": "4243",
-        },
-    )
+    # La FLOTTE est injectée, et le panneau la peint lui-même. Coudre le
+    # rendu par-dessus une flotte vide donnait un monde qui se contredisait :
+    # deux rangées à l'écran, aucun agent derrière, un titre qui annonçait
+    # « aucun agent détaché » — et surtout des gardes qu'aucun test ne pouvait
+    # atteindre, puisque la liste PEINTE restait vide.
+    POIGNEES = ("abcd1234", "efgh5678")
+
+    @classmethod
+    def _flotte(cls):
+        from script.todo.assistant import claude_sessions as cs
+
+        return [
+            cs.Session(
+                session_id=f"{court}-1111-4111-8111-111111111111",
+                court=court,
+                kind="background",
+                status="busy",
+                live=True,
+                cwd="/un/depot/projet",
+                branch="une-branche",
+                pid=4242 + rang,
+            )
+            for rang, court in enumerate(cls.POIGNEES)
+        ]
 
     def _monde(self):
         """Les cinq lectures du disque, remplacées par de l'inventé."""
@@ -650,14 +651,13 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             # d'une instance ne change rien pour la suivante.
             patch(
                 "script.todo.assistant.claude_sessions.fleet",
-                return_value=[],
+                side_effect=lambda *a, **k: self._flotte(),
             ),
             patch.object(
                 t_ui,
                 "transcriptions",
                 lambda: [self.CHEMIN, self.AUTRE_CHEMIN],
             ),
-            patch.object(t_ui, "lignes_agents", lambda f: list(self.AGENTS)),
             patch.object(st, "lire", lambda c, l=None: st.Lecture()),
             patch.object(jr, "lire_lignes", lambda: evenements),
             patch.object(jr, "nettoyer", lambda *a, **k: None),
@@ -887,13 +887,19 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 c.stop()
 
     async def test_une_action_sans_agent_choisi_le_dit(self):
-        """Le panneau des agents est vide dans ce monde-ci : la touche doit
-        répondre, et surtout ne rien envoyer."""
+        """Panneau des agents VIDE : la touche doit répondre, et ne rien
+        envoyer. La flotte est vidée exprès pour ce cas-là — le monde
+        ordinaire en porte deux, sans quoi aucune garde n'est atteignable."""
         from textual.widgets import Static
 
         from script.todo.assistant.agents import tui as t_ui
 
-        correctifs = self._monde()
+        correctifs = self._monde() + (
+            patch(
+                "script.todo.assistant.claude_sessions.fleet",
+                return_value=[],
+            ),
+        )
         for c in correctifs:
             c.start()
         try:
@@ -902,6 +908,11 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: envoyes.append((sc, p))
                 await calme(pilote)
+                for _ in range(len(app.VUES)):
+                    if app.VUES[app._vue] == "agents":
+                        break
+                    await pilote.press("v")
+                    await calme(pilote)
                 await pilote.press("s")
                 await calme(pilote)
                 # `#etat` et non `#source` : le second porte la phrase fixe
@@ -931,8 +942,11 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             async with app.run_test(size=(160, 40)) as pilote:
                 app._lancer_action = lambda sc, p: envoyes.append((sc, p))
                 await calme(pilote)
-                # Un agent est là, mais la vue courante n'est pas la sienne.
-                app._agents = [object()]
+                # Deux agents sont PEINTS — le monde en porte, et le panneau
+                # les a. Seule la vue courante n'est pas la leur, et c'est la
+                # garde qu'on vérifie : amorcer une liste bidon la laissait
+                # sortir par « panneau vide » sans jamais l'atteindre.
+                self.assertEqual(len(app._agents_peints), 2)
                 self.assertNotEqual(app.VUES[app._vue], "agents")
                 await pilote.press("s")
                 await calme(pilote)
@@ -1730,6 +1744,171 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
         finally:
             for c in correctifs:
                 c.stop()
+
+
+class TestLeGestePorteSurCeQuiEstPeint(unittest.IsolatedAsyncioTestCase):
+    """Trois invariants qui séparent la ligne LUE de la ligne relue.
+
+    L'écran se rafraîchit sous les doigts, et un gel fige l'affichage pendant
+    que les lectures continuent. Ce que le curseur désigne est donc la liste
+    PEINTE, jamais la dernière lue. Les trois gestes concernés ne se rattrapent
+    pas : « s » n'a aucune confirmation, « a » ferme l'écran, et le volet de
+    détail est le seul endroit qui montre du contenu.
+
+    Aucun test ne les gardait : indexer la liste fraîche laissait la suite
+    entière au vert.
+    """
+
+    def _agent(self, court):
+        from script.todo.assistant import claude_sessions as cs
+
+        return cs.Session(
+            session_id=f"{court}-1111-4111-8111-111111111111",
+            court=court,
+            kind="background",
+            live=True,
+            cwd="/un/depot",
+            pid=42,
+        )
+
+    def _evenements(self, combien, depart=1_700_000_000_000):
+        lignes = []
+        for rang in range(combien):
+            marque = f"appel{rang}"
+            lignes += [
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_use_id": marque,
+                    "tool_name": "Bash",
+                    "session_id": "aaaaaaaa-1111-4111-8111-111111111111",
+                    "ts": depart + rang * 1000,
+                },
+                {
+                    "hook_event_name": "PostToolUse",
+                    "tool_use_id": marque,
+                    "ts": depart + rang * 1000 + 10,
+                    "duration_ms": 10,
+                },
+            ]
+        return lignes
+
+    async def test_sous_gel_le_geste_vise_l_agent_qu_on_lit(self):
+        """L'agent 1 s'arrête et un 4e démarre pendant le gel : « s » doit
+        partir sur celui que l'écran montre, pas sur celui que la flotte
+        fraîche met au même rang."""
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        flotte = [self._agent(c) for c in ("11111111", "22222222", "33333333")]
+        envoyes = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: list(flotte))
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                for _ in range(len(app.VUES)):
+                    if app.VUES[app._vue] == "agents":
+                        break
+                    await pilote.press("v")
+                    await calme(pilote)
+                await pilote.press("down")
+                await pilote.press("down")
+                await calme(pilote)
+                await pilote.press("f")
+                await calme(pilote)
+                # Le premier s'arrête, un quatrième démarre : au rang 2 de la
+                # flotte FRAÎCHE se trouve maintenant « 44444444 ».
+                flotte[:] = [
+                    self._agent(c)
+                    for c in ("22222222", "33333333", "44444444")
+                ]
+                app._flotte_a_relire = True
+                app._tick()
+                await calme(pilote)
+                await pilote.press("s")
+                await calme(pilote)
+        self.assertEqual(envoyes, [("stop", "33333333")])
+
+    async def test_sous_gel_le_volet_detaille_l_appel_qu_on_lit(self):
+        """Le volet est le seul endroit qui montre du contenu : il doit
+        montrer celui de la ligne surlignée, et d'aucune autre."""
+        from script.todo.assistant.agents import detail as dl
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        evenements = list(self._evenements(4))
+        demandes = []
+
+        def faux_detail(appel, **kw):
+            demandes.append(appel.identifiant)
+            return dl.Detail(outil="Bash", commande="echo x", genre="commande")
+
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: list(evenements)
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ), patch.object(
+            dl, "pour", faux_detail
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                for _ in range(len(app.VUES)):
+                    if app.VUES[app._vue] == "flux":
+                        break
+                    await pilote.press("v")
+                    await calme(pilote)
+                await pilote.press("down")
+                await calme(pilote)
+                # Le flux va du plus RÉCENT au plus ancien : le rang 1 est
+                # l'avant-dernier appel.
+                vise = app._appels_peints[1].identifiant
+                await pilote.press("f")
+                await calme(pilote)
+                # Deux appels neufs arrivent pendant le gel.
+                evenements.extend(
+                    self._evenements(2, depart=1_700_000_100_000)
+                )
+                app._tick()
+                await calme(pilote)
+                demandes.clear()
+                await pilote.press("d")
+                await calme(pilote)
+        self.assertEqual(demandes, [vise])
+
+    async def test_le_geste_ne_part_pas_d_un_panneau_qu_on_ne_voit_pas(self):
+        """Deux agents PEINTS, mais le panneau des outils à l'écran."""
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        envoyes = []
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: None
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(
+                lambda: [self._agent("11111111"), self._agent("22222222")]
+            )
+            async with app.run_test(size=(120, 40)) as pilote:
+                await calme(pilote)
+                app._lancer_action = lambda sc, p: envoyes.append((sc, p))
+                self.assertEqual(len(app._agents_peints), 2)
+                self.assertNotEqual(app.VUES[app._vue], "agents")
+                for touche in ("s", "l", "x", "a"):
+                    await pilote.press(touche)
+                    await calme(pilote)
+        self.assertEqual(envoyes, [])
 
 
 class TestAucunSousProcessusSurLaBoucle(unittest.TestCase):
