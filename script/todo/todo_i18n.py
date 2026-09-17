@@ -13023,6 +13023,16 @@ TRANSLATIONS = {
         "fr": "Envoyé, en attente de la réponse…",
         "en": "Sent, waiting for the answer…",
     },
+    "Open Code rows carry a database cost, stable over the whole session.": {
+        "fr": (
+            "Les rangées Open Code portent un coût de base, stable sur toute"
+            " la séance."
+        ),
+        "en": (
+            "Open Code rows carry a database cost, stable over the whole"
+            " session."
+        ),
+    },
     "Act": {
         "fr": "Agir",
         "en": "Act",

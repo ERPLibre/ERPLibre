@@ -95,6 +95,23 @@ class TestLaBarre(unittest.TestCase):
         """La pointe est le haut de l'échelle, donc le dernier bloc est plein."""
         self.assertTrue(tui.barre((1, 2, 3, 4, 5)).endswith("█"))
 
+    def test_a_long_growth_ends_full_too(self):
+        """Passé la largeur de la barre, la série s'échantillonne — et
+        échantillonner depuis le DÉBUT écartait le dernier tour.
+
+        Le bloc de droite montrait alors un tour d'avant, jusqu'à dix-neuf en
+        arrière sur une série pleine, pendant que la colonne « contexte » d'à
+        côté affiche celui de maintenant. Les deux se lisent ensemble.
+        """
+        for combien in (13, 24, 50, tui.BARRE * 20):
+            serie = tuple(range(1, combien + 1))
+            self.assertTrue(tui.barre(serie).endswith("█"), f"{combien} tours")
+
+    def test_the_last_turn_is_always_the_last_block(self):
+        """Une compaction au dernier tour doit se voir au bloc de droite."""
+        serie = tuple(range(1, 101)) + (1,)
+        self.assertEqual(tui.barre(serie)[-1], "▁")
+
     def test_a_drop_shows_lower_than_the_peak(self):
         dessin = tui.barre((100, 100, 10))
         self.assertEqual(dessin[-1], "▁")
@@ -376,6 +393,16 @@ class TestLesDeuxHarnaisDansLeMemeTableau(unittest.TestCase):
         self.assertIn("2", segment)
         self.assertIn("1.00 $", segment)
 
+    def test_the_last_number_of_the_segment_is_named(self):
+        """Les trois nombres de l'autre moitié sont nommés ; celui-ci était
+        nu, et rien ne disait que c'est un TOTAL de jetons — ni la même chose
+        que « invite », qui n'en est qu'une part. Un total faux passait donc
+        inaperçu."""
+        from script.todo.assistant.agents import tui as t_ui
+
+        segment = t_ui.resume_opencode([self._seance()])
+        self.assertIn(f"{t('tokens')} {t_ui.jetons(8_017)}", segment)
+
     def test_the_summary_says_nothing_when_there_is_nothing(self):
         """Un segment vide vaut mieux qu'un « 0 · 0.00 $ » sur une machine
         qui n'a pas Open Code : zéro se lit « mesuré, et nul »."""
@@ -489,6 +516,66 @@ class TestLesTroisColonnesDEchec(unittest.TestCase):
 
         for cle, libelle in t_ui.COLONNES_OUTILS:
             self.assertIn(libelle, TRANSLATIONS, libelle)
+
+
+class TestLaNoteDeProvenance(unittest.IsolatedAsyncioTestCase):
+    """La colonne « coût » porte deux provenances, la note en nommait une.
+
+    Le coût d'une séance Open Code est un champ de base, stable sur toute la
+    séance ; celui de Claude Code est le dernier segment lu, qu'une compaction
+    remet à zéro. Les deux se suivent dans la même colonne. Le paquet sait
+    qu'ils ne se comparent pas — c'est la raison d'être du segment séparé dans
+    le résumé — et la note d'écran promettait l'inverse pour tous.
+    """
+
+    async def _note(self, avec_open_code):
+        from script.todo.assistant.agents import journal as jr
+        from script.todo.assistant.agents import tui as t_ui
+        from script.todo.assistant.harness import opencode as oc
+
+        seances = (
+            [
+                oc.Seance(
+                    identifiant="ses_aaaabbbb",
+                    repertoire="/un/depot/projet",
+                    modifie=1_700_000_000_000,
+                    resume=oc.Resume(entree=10, cout=0.5),
+                )
+            ]
+            if avec_open_code
+            else None
+        )
+        with patch.object(t_ui, "transcriptions", lambda: []), patch.object(
+            jr, "lire_lignes", lambda: []
+        ), patch.object(jr, "nettoyer", lambda *a, **k: None), patch.object(
+            oc, "lire_base", lambda: seances
+        ):
+            app = t_ui.run_tui(run_app=False)
+            app._lire_flotte = staticmethod(lambda: [])
+            async with app.run_test(size=(160, 40)) as pilote:
+                await calme(pilote)
+                return str(app.query_one("#source").render())
+
+    async def test_with_open_code_the_note_names_both(self):
+        note = await self._note(True)
+        self.assertIn(
+            t(
+                "Open Code rows carry a database cost, stable over the whole"
+                " session."
+            ),
+            note,
+        )
+
+    async def test_without_it_the_note_stays_short(self):
+        """Une machine à un seul harnais n'a pas à lire l'exception."""
+        note = await self._note(False)
+        self.assertNotIn(
+            t(
+                "Open Code rows carry a database cost, stable over the whole"
+                " session."
+            ),
+            note,
+        )
 
 
 class TestLEnTeteNeContreditPasSesRangees(unittest.IsolatedAsyncioTestCase):

@@ -186,7 +186,13 @@ def barre(serie, largeur=BARRE) -> str:
     pointe = max(serie) or 1
     blocs = "▁▂▃▄▅▆▇█"
     pas = max(1, len(serie) // largeur)
-    echantillon = serie[::pas][-largeur:]
+    # L'échantillon est pris depuis la FIN. Échantillonner depuis le début
+    # écartait le dernier tour dès que le pas dépassait un, c'est-à-dire au
+    # vingt-cinquième : le bloc de droite montrait un tour d'avant, jusqu'à
+    # dix-neuf en arrière sur une série pleine, alors que la colonne
+    # « contexte » d'à côté affiche celui de maintenant. Les deux se lisent
+    # ensemble, et ils ne parlaient pas du même instant.
+    echantillon = serie[::-1][::pas][:largeur][::-1]
     # L'échelle porte la pointe sur le DERNIER bloc : diviser par « pointe + 1
     # » pour éviter la division par zéro décalait tout d'un cran, et le maximum
     # d'une série croissante ne se dessinait jamais plein.
@@ -348,7 +354,7 @@ def resume_opencode(seances) -> str:
     return (
         f" · {ICONES['opencode']} {len(resumes)}"
         f" · {t('cost')} {cout:.2f} $"
-        f" · {jetons(total)}"
+        f" · {t('tokens')} {jetons(total)}"
     )
 
 
@@ -1866,13 +1872,22 @@ def run_tui(run_app: bool = True):
                 + resume_opencode(self._seances)
                 + (f"  [{t('frozen')}]" if self._gele else "")
             )
-            self.query_one("#source", Static).update(
-                t(
-                    "Tokens are summed from each message. Cost and durations"
-                    " are read from the last cost-state, which a compaction"
-                    " resets."
-                )
+            note = t(
+                "Tokens are summed from each message. Cost and durations"
+                " are read from the last cost-state, which a compaction"
+                " resets."
             )
+            # La phrase ne vaut que pour l'un des deux harnais. Le coût d'une
+            # séance Open Code est un champ de base, stable sur toute la
+            # séance, là où celui de Claude Code est le dernier segment lu.
+            # Les deux se suivent dans la même colonne, et la note n'en
+            # décrivait qu'un. Elle ne s'allonge que s'il y a lieu.
+            if self._seances:
+                note += f" {ICONES['opencode']} " + t(
+                    "Open Code rows carry a database cost, stable over"
+                    " the whole session."
+                )
+            self.query_one("#source", Static).update(note)
 
     app = Telemetrie()
     if not run_app:
