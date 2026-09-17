@@ -20,6 +20,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -111,6 +112,102 @@ class TestCeQueLeGesteDetruit(unittest.TestCase):
         # ce qui compte est QUELLE colonne est remplacée.
         cible = sql.split("SET", 1)[1].split("=", 1)[0].strip()
         self.assertEqual("arch_db", cible)
+
+
+class TestUneCleDesigneUneCopiePARSITE(unittest.TestCase):
+    """`ir_ui_view` porte une ligne par site pour la même clé.
+
+    « --reset <clé> » rendait la copie de plus petit identifiant et
+    s'arrêtait là : les autres sites gardaient leur copie périmée et leur
+    page restait cassée, sous un message qui nommait la CLÉ — c'est-à-dire
+    l'ensemble entier.
+    """
+
+    #                 id   website_id   clé
+    SITES = ((11, 1), (12, 2), (13, 3))
+    CLE = "website_sale.product"
+
+    def vues(self, arch_copie="<t>vieux</t>"):
+        lignes = {
+            7: {
+                "id": 7,
+                "key": self.CLE,
+                "website_id": None,
+                "arch": "<t>module</t>",
+                "arch_column": "<t>module</t>",
+                "inherit_id": None,
+                "active": True,
+            }
+        }
+        for vid, site in self.SITES:
+            lignes[vid] = {
+                "id": vid,
+                "key": self.CLE,
+                "website_id": site,
+                "arch": arch_copie,
+                "arch_column": arch_copie,
+                "inherit_id": None,
+                "active": True,
+            }
+        return lignes
+
+    def test_every_site_copy_is_returned(self):
+        copies, twin = R.find_copies_by_key(self.vues(), self.CLE)
+        self.assertEqual(
+            [vid for vid, _s in self.SITES], [c["id"] for c in copies]
+        )
+        self.assertEqual(7, twin["id"])
+
+    def test_the_module_twin_is_the_one_without_a_site(self):
+        _copies, twin = R.find_copies_by_key(self.vues(), self.CLE)
+        self.assertIsNone(twin["website_id"])
+
+    def test_an_unknown_key_returns_no_copy(self):
+        copies, _twin = R.find_copies_by_key(self.vues(), "nulle.part")
+        self.assertEqual([], copies)
+
+    def test_the_order_is_stable(self):
+        """L'écran les liste ; un ordre qui bouge ferait relire la liste à
+        chaque exécution pour retrouver la même."""
+        premier = [
+            c["id"] for c in R.find_copies_by_key(self.vues(), self.CLE)[0]
+        ]
+        self.assertEqual(sorted(premier), premier)
+
+    def test_the_reset_touches_every_one_of_them(self):
+        """Le geste, et non seulement le relevé : c'est lui qui laissait
+        des sites derrière."""
+        import contextlib
+        import io
+
+        ecrits = []
+        vues = self.vues()
+        for nom, remplacant in (
+            ("run_psql", lambda db, sql: ecrits.append(sql) or []),
+            ("fetch_views", lambda db: vues),
+            ("analyse", lambda db: []),
+            ("backup", lambda db, c, d: "/dev/null"),
+        ):
+            avant = getattr(R, nom)
+            setattr(R, nom, remplacant)
+            self.addCleanup(setattr, R, nom, avant)
+        argv = [
+            "reset_stale_cow_views.py",
+            "-d",
+            "base",
+            "--reset",
+            self.CLE,
+            "--apply",
+        ]
+        with mock.patch.object(sys, "argv", argv):
+            with contextlib.redirect_stdout(io.StringIO()):
+                R.main()
+        # Une écriture par site, et chacune vise SON identifiant.
+        for vid, _site in self.SITES:
+            self.assertTrue(
+                any(f"c.id = {vid}" in sql for sql in ecrits),
+                f"le site {vid} n'a pas été réinitialisé",
+            )
 
 
 if __name__ == "__main__":
