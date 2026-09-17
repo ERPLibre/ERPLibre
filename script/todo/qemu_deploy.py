@@ -1128,14 +1128,6 @@ class QemuDeployMixin:
             lignes.append(
                 t("release pinned to %s, sha256 fixed in the repository") % tag
             )
-        if spec.get("install") and "nixos" in distros:
-            lignes.append(
-                "⚠ "
-                + t(
-                    "ERPLibre does not install on NixOS yet: the VM is"
-                    " created, the install fails"
-                )
-            )
         return lignes
 
     def _qemu_sudo_lines(self):

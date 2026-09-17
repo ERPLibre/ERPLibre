@@ -163,7 +163,9 @@ class CeQuiSeDitALEcran(unittest.TestCase):
             with self.subTest(distro=distro):
                 self.assertIsNone(DQ.image_source_note(distro))
 
-    def test_the_recap_shows_the_link_and_the_warning(self):
+    def test_the_recap_shows_where_the_image_comes_from(self):
+        """L'origine d'une image rebâtie par un tiers se dit AVANT de créer
+        quoi que ce soit : c'est la seule des neuf dans ce cas."""
         todo = TODO.__new__(TODO)
         spec = {
             "vms": [{"name": "vm", "distro": "nixos"}],
@@ -174,16 +176,40 @@ class CeQuiSeDitALEcran(unittest.TestCase):
         texte = " ".join(lignes)
         self.assertIn(DQ.NIXOS_IMAGE_TAG, texte)
         self.assertIn("https://", texte)
-        self.assertIn("ERPLibre", texte)
 
-    def test_without_an_install_the_warning_is_not_shown(self):
-        """Une VM NixOS sans installation ERPLibre n'a rien qui échoue : le
-        dire serait du bruit."""
+    def test_the_plan_no_longer_promises_the_install_will_fail(self):
+        """L'écran portait « ERPLibre ne s'installe pas encore sur NixOS ».
+        Il s'y installe, vérifié de bout en bout sur une VM — un avertissement
+        périmé sur le DERNIER écran avant de créer ne fait pas qu'induire en
+        erreur, il décourage d'essayer ce qui marche.
+
+        L'épreuve porte sur le texte RENDU et non sur la clé de traduction :
+        c'est ce que l'opérateur lit, et la clé pouvait partir en laissant la
+        phrase ailleurs."""
         todo = TODO.__new__(TODO)
-        spec = {"vms": [{"name": "vm", "distro": "nixos"}], "install": None}
-        with mock.patch.object(TODO, "_qemu_import_module", return_value=DQ):
-            lignes = todo._qemu_image_lines(spec)
-        self.assertNotIn("ERPLibre", " ".join(lignes))
+        for install in ({"branch": "develop"}, None):
+            spec = {
+                "vms": [{"name": "vm", "distro": "nixos"}],
+                "install": install,
+            }
+            with self.subTest(install=bool(install)):
+                with mock.patch.object(
+                    TODO, "_qemu_import_module", return_value=DQ
+                ):
+                    texte = " ".join(todo._qemu_image_lines(spec))
+                for interdit in ("ERPLibre", "échoue", "fails"):
+                    self.assertNotIn(interdit, texte)
+
+    def test_no_orphan_translation_is_left_behind(self):
+        """Une entrée que plus personne n'appelle vieillit sans qu'on le
+        sache, et réapparaît le jour où quelqu'un la recopie."""
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        i18n = (racine / "script/todo/todo_i18n.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("does not install on NixOS", i18n)
 
     def test_a_deployment_without_nixos_says_nothing(self):
         todo = TODO.__new__(TODO)
