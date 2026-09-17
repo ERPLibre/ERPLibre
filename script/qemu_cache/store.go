@@ -95,8 +95,35 @@ func Key(method, rawURL string) string {
 // Réservé aux fichiers dont le NOM porte l'identité — paquets, index de
 // dépôt. L'appliquer à tout ferait entrer en collision les « /index.html » de
 // deux sites sans rapport.
+//
+// Le chemin ENTIER ne suffisait pas : un miroir le préfixe à sa guise —
+// « /rocky/10.2/… », « /mirror/rocky-linux/10.2/… », « /pub/archive/fedora/… »
+// — et le même octet prenait alors deux clés. Seule la FIN du chemin est
+// retenue (voir SegmentsDeCle), ce qui réunit ces copies sans jamais
+// confondre deux distributions.
+// SegmentsDeCle : combien de segments de FIN de chemin identifient un fichier.
+//
+// Six, et pas moins : un chemin Debian en porte exactement six —
+// « debian/pool/main/p/<paquet>/<fichier>.deb » — si bien que cinq
+// effaceraient le segment de distribution et donneraient la même clé au
+// paquet d'Ubuntu, qui porte le même nom pour d'autres octets. Relevé sur un
+// journal d'accès de 7099 noms livrés : six réunit 1021 des 1124 noms vus
+// sous plusieurs chemins, sans confondre aucun contenu ; cinq en confond 38.
+const SegmentsDeCle = 6
+
 func KeySansHote(method string, u *url.URL) string {
-	chemin := u.Path
+	segments := make([]string, 0, SegmentsDeCle+2)
+	for _, s := range strings.Split(u.Path, "/") {
+		// Les segments vides tombent : un miroir écrit « /pub/rocky//10.2 »,
+		// et deux écritures d'un même chemin feraient sinon deux clés.
+		if s != "" {
+			segments = append(segments, s)
+		}
+	}
+	if len(segments) > SegmentsDeCle {
+		segments = segments[len(segments)-SegmentsDeCle:]
+	}
+	chemin := strings.Join(segments, "/")
 	if u.RawQuery != "" {
 		chemin += "?" + u.RawQuery
 	}

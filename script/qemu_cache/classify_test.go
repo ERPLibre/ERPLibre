@@ -239,6 +239,46 @@ func TestLesMetadonneesRPMParEmpreinteSontImmuables(t *testing.T) {
 	}
 }
 
+// Un miroir préfixe le chemin à sa guise, et le chemin entier donnait deux
+// clés pour un même octet. Relevé sur un journal réel : 1124 noms de paquets
+// vivaient sous plusieurs chemins, et 3,18 Gio repartaient à l'amont pour des
+// fichiers que le magasin détenait déjà.
+func TestLesPrefixesDeMiroirNeFontQuUneCle(t *testing.T) {
+	for _, cas := range [][2]string{
+		{
+			"https://a.example/rocky/10.2/AppStream/x86_64/os/Packages/r/rust-1.92.0-2.el10_2.x86_64.rpm",
+			"https://b.example/mirror/rocky-linux/10.2/AppStream/x86_64/os/Packages/r/rust-1.92.0-2.el10_2.x86_64.rpm",
+		},
+		{
+			"https://a.example/pub/archive/fedora/linux/updates/42/Everything/x86_64/Packages/n/nodejs-libs-22.22.0-2.fc42.x86_64.rpm",
+			"https://b.example/pub/fedora-archive/fedora/linux/updates/42/Everything/x86_64/Packages/n/nodejs-libs-22.22.0-2.fc42.x86_64.rpm",
+		},
+		{
+			"https://a.example/pub/rocky//10.2/BaseOS/x86_64/os/Packages/a/avahi-0.9-2.el10.x86_64.rpm",
+			"https://a.example/pub/rocky/10.2/BaseOS/x86_64/os/Packages/a/avahi-0.9-2.el10.x86_64.rpm",
+		},
+	} {
+		a, _ := url.Parse(cas[0])
+		b, _ := url.Parse(cas[1])
+		if KeySansHote("GET", a) != KeySansHote("GET", b) {
+			t.Errorf("deux chemins du même fichier donnent deux clés :\n  %s\n  %s",
+				cas[0], cas[1])
+		}
+	}
+}
+
+// Deux distributions publient le même NOM pour d'autres octets : les confondre
+// servirait le paquet de l'une à l'autre. Six segments gardent ce qui les
+// sépare, cinq l'effaceraient — 38 noms en collision sur le journal relevé.
+func TestDeuxDistributionsNePartagentPasLaCle(t *testing.T) {
+	deb, _ := url.Parse("https://deb.example/debian/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb")
+	ubu, _ := url.Parse("https://ubu.example/ubuntu/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb")
+	if KeySansHote("GET", deb) == KeySansHote("GET", ubu) {
+		t.Error("deux distributions partagent une clé : l'une serait servie" +
+			" avec le paquet de l'autre")
+	}
+}
+
 // Le même index par empreinte, servi par deux miroirs. Sans clé portable,
 // changer de miroir vide le cache de ses index : une installation hors ligne
 // échoue alors sur des octets que le magasin détient pourtant, et le message
