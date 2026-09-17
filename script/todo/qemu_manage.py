@@ -2602,6 +2602,10 @@ class QemuManageMixin:
             print(t("Cancelled."))
             return
 
+        # Ce qui est tombé, et ce que le garde d'identité a refusé. Nommer
+        # les deux : « toutes sauf une » et « toutes » se ressemblent trop
+        # dans une liste pour qu'un compte global les distingue.
+        faites, refusees = [], []
         for name in chosen:
             handle = preuves.get(name)
             # UN MENU QUI VIENT DE LIRE LA LISTE NE DÉSARME PAS. La
@@ -2637,8 +2641,20 @@ class QemuManageMixin:
                 # la place a été rendue.
                 print(f"  ⚠ {name} : {t('no disk file found for this VM')}")
             print(f"\n▶ {name}: {cmd}")
-            self.execute.exec_command_live(cmd, source_erplibre=False)
-        print(f"\n✅ {t('Deletion done.')}")
+            # LE CODE DE RETOUR EST LU, VM PAR VM. Le garde d'identité vit
+            # DANS la chaîne : si le nom a changé de porteur depuis
+            # l'affichage, la suite s'arrête avant d'effacer et rend un code
+            # non nul. Jeté, ce code faisait annoncer « suppression faite »
+            # sur une VM toujours debout — et sur une machine qu'on croit
+            # détruite, on réutilise le nom, l'adresse et le port.
+            code = self.execute.exec_command_live(cmd, source_erplibre=False)
+            (refusees if code else faites).append(name)
+        for name in refusees:
+            print(f"  ✗ {name} : {t('nothing was deleted.')}")
+        if faites:
+            print(f"\n✅ {t('Deleted:')} {', '.join(faites)}")
+        if not faites:
+            print(f"\n✗ {t('Nothing was deleted.')}")
 
     @staticmethod
     def _qemu_find_files(directory, pattern):

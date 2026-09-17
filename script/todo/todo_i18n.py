@@ -1541,6 +1541,15 @@ TRANSLATIONS = {
         "fr": "le suivi de champs qui ont cessé d'exister",
         "en": "tracking of fields that ceased to exist",
     },
+    "nothing was deleted.": {
+        "fr": "rien n'a été supprimé.",
+        "en": "nothing was deleted.",
+    },
+    "Deleted:": {"fr": "Supprimées :", "en": "Deleted:"},
+    "Nothing was deleted.": {
+        "fr": "Rien n'a été supprimé.",
+        "en": "Nothing was deleted.",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
@@ -5019,10 +5028,6 @@ TRANSLATIONS = {
     "Confirm deletion? (y/N): ": {
         "fr": "Confirmer l'effacement ? (o/N, défaut : non) : ",
         "en": "Confirm deletion? (y/N, default: no): ",
-    },
-    "Deletion done.": {
-        "fr": "Effacement terminé.",
-        "en": "Deletion done.",
     },
     "Clean up QEMU (orphan files)": {
         "fr": "🧹 Nettoyer QEMU (fichiers orphelins)",
