@@ -27,6 +27,7 @@ from script.todo.modem import calls as calls_mod
 from script.todo.modem import device as device_mod
 from script.todo.modem import diagnostic as diag_mod
 from script.todo.modem import messaging as sms_mod
+from script.todo.modem import messagerie_vocale as mv_mod
 from script.todo.modem import repondeur as rep_mod
 from script.todo.modem import sipgo as sipgo_mod
 from script.todo.modem import udev as udev_mod
@@ -61,8 +62,33 @@ def _bandeau():
         # carte qu'un serveur audio tient ouverte est vrai et inutile.
         f"  {t('modem_voice')}: "
         + (t("modem_voice_ok") if voix_ok else voix_motif.split(".")[0])
-        + f"  |  {t('modem_at_port')}: {reserve}"
+        + f"  |  {t('modem_at_port')}: {reserve}\n"
+        + f"  {t('modem_voicemail')}: {_etat_messagerie()}"
     )
+
+
+def _etat_messagerie() -> str:
+    """Le drapeau de la boite vocale de l'operateur, en une ligne.
+
+    La source est toujours dite : une lecture de la SIM est fraiche, un etat
+    laisse par le service a un age, et un etat trop vieux ne se presente pas
+    comme courant.
+    """
+    lecture = mv_mod.lire()
+    etat = lecture["etat"]
+    if etat == mv_mod.ATTENTE:
+        texte = t("modem_voicemail_waiting")
+    elif etat == mv_mod.VIDE:
+        texte = t("modem_voicemail_empty")
+    else:
+        return t("modem_voicemail_unknown") + (
+            " — " + lecture["detail"] if lecture["detail"] else "")
+    if lecture["source"] == "service":
+        texte += " (" + t("modem_voicemail_from_service") % mv_mod.age_lisible(
+            lecture["age"]) + ")"
+        if lecture["perime"]:
+            texte += " — " + t("modem_voicemail_stale")
+    return texte
 
 
 def _bandeau_voip():

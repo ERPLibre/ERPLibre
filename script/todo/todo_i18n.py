@@ -1872,6 +1872,31 @@ TRANSLATIONS = {
         "fr": '📥 Lire les SMS',
         "en": '📥 Read SMS messages',
     },
+    # Boite vocale de l'operateur
+    'modem_voicemail': {
+        "fr": 'Boite vocale',
+        "en": 'Voicemail',
+    },
+    'modem_voicemail_waiting': {
+        "fr": '📬 MESSAGE EN ATTENTE chez l\'operateur',
+        "en": '📬 MESSAGE WAITING at the operator',
+    },
+    'modem_voicemail_empty': {
+        "fr": '📭 aucun message',
+        "en": '📭 no message',
+    },
+    'modem_voicemail_unknown': {
+        "fr": '❔ etat inconnu',
+        "en": '❔ state unknown',
+    },
+    'modem_voicemail_from_service': {
+        "fr": 'lu par le service il y a %s',
+        "en": 'read by the service %s ago',
+    },
+    'modem_voicemail_stale': {
+        "fr": 'ANCIEN, le service ne lit peut-etre plus',
+        "en": 'STALE, the service may have stopped reading',
+    },
     # Repondeur du modem
     'modem_answering': {
         "fr": '📼 Repondeur — messages, annonce, sonneries',
