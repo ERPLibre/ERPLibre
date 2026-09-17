@@ -1216,6 +1216,33 @@ class TestLeMiroirAptDesVmProxmox(unittest.TestCase):
         self.assertIn("archive|security", vu["cmd"])
         self.assertNotIn("second.invalid", vu["cmd"])
 
+    def test_the_mirror_decision_reaches_the_log(self):
+        """La console défile ; le journal est ce qu'on rouvre le lendemain.
+
+        C'est en le rouvrant qu'on cherche quel miroir a été posé, le jour où
+        l'installation échoue plus bas sur des dépendances introuvables — un
+        message qui accuse le dépôt, jamais le miroir. Dite à l'écran seule,
+        la décision manquait à l'endroit exact où on la cherche.
+        """
+        for code, marque, porte in (
+            (0, "✓", "miroir.invalid"),
+            (7, "⚠", "(7)"),
+        ):
+            with self.subTest(code=code):
+                vm = {"distro": "ubuntu", "arch": "amd64"}
+                self._poser(vm, code=code)
+                notes = vm.get("notes") or []
+                self.assertEqual(len(notes), 1, notes)
+                self.assertTrue(notes[0].startswith(marque), notes[0])
+                self.assertIn(porte, notes[0])
+
+    def test_the_pinned_mirror_is_named_in_the_log(self):
+        """« posé » sans dire lequel n'apprend rien : c'est le NOM qu'on
+        vient chercher."""
+        vm = {"distro": "ubuntu", "arch": "amd64"}
+        self._poser(vm)
+        self.assertIn("miroir.invalid/ubuntu", (vm["notes"] or [""])[0])
+
     def test_les_deux_formats_de_sources_sont_couverts(self):
         """Le « .sources » deb822 des images récentes, et le
         « sources.list » des anciennes : n'en réécrire qu'un laisse l'autre

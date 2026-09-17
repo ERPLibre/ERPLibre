@@ -1980,10 +1980,13 @@ class ProxmoxMenuMixin:
             " /etc/apt/sources.list.d/*.list 2>/dev/null; true"
         )
         code, _o = self._pve_ssh(cible, geste, timeout=60)
+        # Au JOURNAL, pas seulement à la console : c'est en rouvrant le
+        # journal qu'on cherche quel miroir a été posé, le jour où la suite
+        # échoue sur des dépendances introuvables.
         if code:
-            print(f"  ⚠ {t('apt mirror not pinned')} ({code})")
+            self._pve_note(vm, f"  ⚠ {t('apt mirror not pinned')} ({code})")
             return False
-        print(f"  ✓ {t('apt mirror pinned')} : {miroir}")
+        self._pve_note(vm, f"  ✓ {t('apt mirror pinned')} : {miroir}")
         return True
 
     def _pve_set_gpu_groups(self, cible, utilisateur, mod=None):
