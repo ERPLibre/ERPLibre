@@ -260,12 +260,12 @@ def _refuse_la_posture(posture, destinations):
 #   sa table absente, et elle sort librement en portant son fichier de
 #   règles — l'apparence exacte du contraire.
 #
-#   CE QUI LE VOIT, ET CE QUI NE LE VOIT PAS. La voie libvirt relit : une
-#   fois au déploiement, et autant de fois qu'on le demande par l'entrée
-#   « vérifier une VM déployée, couche par couche ». Proxmox et Lima ne
-#   relisent JAMAIS — ni à la pose, ni à la demande. Le manque n'est donc
-#   pas « personne ne regarde » mais « rien ne regarde de soi-même », et il
-#   est entier sur deux chemins sur trois.
+#   CE QUI LE VOIT, ET CE QUI NE LE VOIT PAS. La sonde de `plan` existe et
+#   distingue ses quatre verdicts ; ce sont les chemins de livraison qui
+#   décident de l'appeler, et tous ne le font pas. Le manque n'est donc pas
+#   « personne ne regarde » — un écran de vérification relit à la demande —
+#   mais « rien ne regarde de soi-même » : entre deux lectures voulues, une
+#   machine dont le rechargement a cédé passe pour confinée.
 #
 #   LE RENDRE FATAL est à portée d'une directive — « FailureAction=poweroff »
 #   éteint bien la machine plutôt que de la laisser sortir, et la console

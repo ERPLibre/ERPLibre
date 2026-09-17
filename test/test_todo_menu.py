@@ -622,7 +622,7 @@ class TestDatabaseMenuNumbering(MenuCoherence, unittest.TestCase):
 
 
 class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
-    """Le menu Proxmox : dix-huit entrées, le même piège.
+    """Le menu Proxmox : dix-huit entrées numérotées, le même piège.
 
     Quatre d'entre elles mènent VOLONTAIREMENT à des méthodes du menu QEMU —
     c'est le même travail, et le refactor n'a pas dupliqué ce code. La table
@@ -664,6 +664,10 @@ class TestProxmoxMenuNumbering(MenuCoherence, unittest.TestCase):
         "List available images": "_qemu_list_images",
         "Proxmox - example sequence": "_pve_example",
         "Change the Proxmox host": "_pve_forget_host",
+        # DÉCLARÉE PAR « method » et posée en fin de liste : son numéro
+        # dépasse la chaîne d'elif, donc le repli lit la clé. C'est ce qui
+        # permet d'ajouter une entrée sans décaler les dix-huit autres.
+        "Verify a VM's egress posture": "_pve_verify_egress",
     }
 
 
