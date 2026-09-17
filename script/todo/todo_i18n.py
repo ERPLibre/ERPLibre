@@ -1546,10 +1546,6 @@ TRANSLATIONS = {
         "en": "nothing was deleted.",
     },
     "Deleted:": {"fr": "Supprimées :", "en": "Deleted:"},
-    "Nothing was deleted.": {
-        "fr": "Rien n'a été supprimé.",
-        "en": "Nothing was deleted.",
-    },
     "still in the file.": {
         "fr": "toujours dans le fichier.",
         "en": "still in the file.",

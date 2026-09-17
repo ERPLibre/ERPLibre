@@ -238,22 +238,35 @@ class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
                 return source.splitlines(), noeud
         raise AssertionError("_qemu_safe_shrink introuvable")
 
-    def test_no_abandon_after_the_fsck_claims_nothing_changed(self):
-        """Le contrôle porte sur la POSITION, que rien d'autre ne tient :
-        déplacer un abandon sous le fsck ne casse aucune autre épreuve."""
-        import re
+    def premier_fsck(self, lignes, fonction):
+        """La ligne du PREMIER fsck de la fonction.
 
-        lignes, fonction = self.corps()
+        DÉRIVÉE, et c'est la correction d'un piège. Le contrôle positif
+        d'en dessous bornait son intervalle par un numéro de ligne ÉCRIT EN
+        DUR : une modification quelconque plus haut dans le fichier
+        décalait la fonction sous cette borne, l'intervalle devenait vide,
+        et le test rougissait sur un changement qui ne le concernait pas.
+        Un garde qui rougit à tort est un garde qu'on apprend à désarmer.
+        """
         fscks = [
             n
             for n in range(fonction.lineno, fonction.end_lineno + 1)
             if '"e2fsck"' in lignes[n - 1] and "subprocess" in lignes[n - 1]
         ]
         self.assertTrue(fscks, "le fsck a disparu de la réduction")
-        premier = min(fscks)
+        return min(fscks)
+
+    def test_no_abandon_after_the_fsck_claims_nothing_changed(self):
+        """Le contrôle porte sur la POSITION, que rien d'autre ne tient :
+        déplacer un abandon sous le fsck ne casse aucune autre épreuve."""
+        import re
+
+        lignes, fonction = self.corps()
         fautifs = [
             n
-            for n in range(premier, fonction.end_lineno + 1)
+            for n in range(
+                self.premier_fsck(lignes, fonction), fonction.end_lineno + 1
+            )
             if re.search(r"changed=False", lignes[n - 1])
         ]
         self.assertEqual([], fautifs)
@@ -266,7 +279,9 @@ class TestUnFsckQuiAEcritNEstPasRien(unittest.TestCase):
         lignes, fonction = self.corps()
         avant = [
             n
-            for n in range(fonction.lineno, 2049)
+            for n in range(
+                fonction.lineno, self.premier_fsck(lignes, fonction)
+            )
             if re.search(r"changed=False", lignes[n - 1])
         ]
         self.assertTrue(avant, "plus aucun abandon ne rend la sauvegarde")
