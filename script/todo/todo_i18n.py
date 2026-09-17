@@ -1469,6 +1469,78 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Ask the package manager: it is the one that holds authority "
+    "here, and its signature chain covers the whole index, which is "
+    "stronger than a hand-copied checksum. If it answers that the "
+    "package does not exist, that route is shut — read a checksum "
+    "off a verified release and pin it in RELEASES.": {
+        "fr": "Demander au gestionnaire de paquets : c'est lui qui fait "
+        "autorité ici, et sa chaîne de signatures couvre l'index "
+        "entier, ce qui vaut mieux qu'une somme recopiée à la main. "
+        "S'il répond que le paquet n'existe pas, cette voie est fermée "
+        "— relever une somme sur une version vérifiée et l'épingler "
+        "dans RELEASES.",
+        "en": "Ask the package manager: it is the one that holds authority "
+        "here, and its signature chain covers the whole index, which is "
+        "stronger than a hand-copied checksum. If it answers that the "
+        "package does not exist, that route is shut — read a checksum "
+        "off a verified release and pin it in RELEASES.",
+    },
+    "Nobody runs the scheduler on a restored copy: measured 11 late "
+    "on an untouched source database.": {
+        "fr": "Personne ne fait tourner l'ordonnanceur sur une copie "
+        "restaurée : 11 en retard relevés sur une base source intacte.",
+        "en": "Nobody runs the scheduler on a restored copy: measured 11 late "
+        "on an untouched source database.",
+    },
+    "update_prod_to_dev deletes them on purpose; their absence here "
+    "proves nothing.": {
+        "fr": "update_prod_to_dev les supprime exprès ; leur absence ici ne "
+        "prouve rien.",
+        "en": "update_prod_to_dev deletes them on purpose; their absence here "
+        "proves nothing.",
+    },
+    "invoices became journal entries": {
+        "fr": "les factures sont devenues des écritures comptables",
+        "en": "invoices became journal entries",
+    },
+    "Discuss was renamed": {
+        "fr": "Discussion a été renommé",
+        "en": "Discuss was renamed",
+    },
+    "redirections were reworked": {
+        "fr": "les redirections ont été refondues",
+        "en": "redirections were reworked",
+    },
+    "tags became shared": {
+        "fr": "les étiquettes sont devenues partagées",
+        "en": "tags became shared",
+    },
+    "translations moved into jsonb columns": {
+        "fr": "les traductions sont passées dans des colonnes jsonb",
+        "en": "translations moved into jsonb columns",
+    },
+    "company-dependent values moved into jsonb columns": {
+        "fr": "les valeurs dépendantes de la société sont passées dans des "
+        "colonnes jsonb",
+        "en": "company-dependent values moved into jsonb columns",
+    },
+    "chart templates left the database": {
+        "fr": "les modèles de plan comptable ont quitté la base",
+        "en": "chart templates left the database",
+    },
+    "needaction became notifications": {
+        "fr": "needaction est devenu les notifications",
+        "en": "needaction became notifications",
+    },
+    "inventory adjustments became quants": {
+        "fr": "les ajustements d'inventaire sont devenus des quants",
+        "en": "inventory adjustments became quants",
+    },
+    "tracking of fields that ceased to exist": {
+        "fr": "le suivi de champs qui ont cessé d'exister",
+        "en": "tracking of fields that ceased to exist",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",

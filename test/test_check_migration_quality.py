@@ -2543,5 +2543,34 @@ class TestRunningATestFromTheScreen(Base):
         self.assertIn("No such file", sortie)
 
 
+class TestChaquePourquoiDeLaCarteEstTraduit(unittest.TestCase):
+    """La colonne « pourquoi » de SEMANTIC_MAP passe par `t(connu["why"])`.
+
+    La clé vient d'un enregistrement, pas du source : le garde général du
+    dépôt ne la voit pas. Les dix valeurs distinctes des dix-neuf entrées
+    s'affichaient donc en anglais sous des lignes françaises, dans le diff
+    de tables — l'écran qu'on regarde justement quand une migration
+    inquiète.
+
+    Les autres champs — table, into, kind — nomment des objets de la base
+    et ne se traduisent pas : « account_move » est le même mot partout.
+    """
+
+    def test_every_why_is_in_the_table(self):
+        absents = [
+            f"{entree.get('table')} : « {entree['why']} »"
+            for entree in quality.SEMANTIC_MAP
+            if entree.get("why")
+            and entree["why"] not in todo_i18n.TRANSLATIONS
+        ]
+        self.assertEqual([], absents)
+
+    def test_the_map_actually_carries_reasons(self):
+        """Une carte vidée passerait le test précédent sans rien garder."""
+        self.assertGreater(
+            len([e for e in quality.SEMANTIC_MAP if e.get("why")]), 10
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
