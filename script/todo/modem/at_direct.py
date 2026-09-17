@@ -11,6 +11,7 @@ modem des listes le temps qu'il resonde.
 
 Usage : at_direct.py <port> <commande AT> [commande AT...]
 """
+import fcntl
 import os
 import select
 import sys
@@ -19,6 +20,13 @@ import time
 
 #: Au-dela, le modem est considere muet sur cette commande.
 DELAI_REPONSE = 5.0
+
+#: Code de sortie quand un autre programme tient le port. Distinct de 1 pour
+#: que l'appelant sache que le modem n'est PAS en cause.
+CODE_PORT_TENU = 3
+
+#: Marque ecrite sur la sortie d'erreur dans ce cas, lisible sans le code.
+MARQUE_PORT_TENU = "PORT_TENU"
 
 VITESSE = termios.B115200
 
@@ -66,6 +74,17 @@ def main(argv):
     except OSError as e:
         print(f"{port} : {e}", file=sys.stderr)
         return 1
+    # Le MEME verrou que le service erplibre-sip-go. Un port serie s'ouvre
+    # autant de fois qu'on veut sans rien signaler : sans ce verrou, les
+    # commandes posees ici s'entrelaceraient avec celles du service, et une
+    # reponse partirait vers l'autre programme.
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        print(f"{MARQUE_PORT_TENU} : {port} est tenu par un autre programme"
+              " (le service erplibre-sip-go ?)", file=sys.stderr)
+        return CODE_PORT_TENU
     try:
         erreur = False
         for c in commandes:
