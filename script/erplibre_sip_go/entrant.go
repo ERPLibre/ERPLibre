@@ -54,6 +54,13 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 
 	var enCours bool
 	var muets int
+	// La messagerie de l'opérateur se lit dans la même boucle, et non dans
+	// une seconde : les deux passent par le même port, et deux boucles
+	// entrelaceraient leurs lectures avec celles d'un appel qui arrive.
+	messagerie := &VeilleMessagerie{
+		Lien: OuvrirLienOdoo(), Fichier: CheminÉtatMessagerie(),
+	}
+	var messagerieLueÀ time.Time
 	for {
 		select {
 		case <-ctx.Done():
@@ -75,6 +82,14 @@ func VeillerSurLesEntrants(ctx context.Context, m *Modem, o OptionsModem,
 		}
 		muets = 0
 		décrireLaLigne(appels)
+
+		// Seulement ligne libre : pendant une sonnerie ou une conversation,
+		// le port sert à l'appel, et le drapeau peut attendre une minute.
+		if !uneLigneTient(appels) && time.Since(messagerieLueÀ) >= CadenceMessagerie {
+			messagerieLueÀ = time.Now()
+			attente, err := m.LireAttenteMessagerie()
+			messagerie.Observer(attente, err, messagerieLueÀ)
+		}
 
 		numéro := m.AppelEntrant()
 		if numéro == "" {

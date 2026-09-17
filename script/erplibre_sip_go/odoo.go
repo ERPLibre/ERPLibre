@@ -44,6 +44,11 @@ const (
 
 	// NomAppareil sert à cloisonner les jetons anti-rejeu.
 	NomAppareil = "repondeur"
+
+	// VariableAppareil nomme la fiche de passerelle que ce modem représente.
+	// C'est la même que celle de l'agent SMS du modem : le même matériel ne
+	// doit pas apparaître sous deux fiches dans Odoo.
+	VariableAppareil = "ERPLIBRE_SMS_DEVICE"
 )
 
 // LienOdoo dit où joindre Odoo et avec quel secret.
@@ -51,6 +56,9 @@ type LienOdoo struct {
 	URL    string
 	Secret string
 	Client *http.Client
+	// Appareil est l'identifiant de la passerelle dans Odoo. Vide, ce qui
+	// dépend d'une fiche de passerelle ne part pas.
+	Appareil string
 }
 
 // OuvrirLienOdoo lit l'environnement. Rend nil quand rien n'est configuré.
@@ -63,21 +71,31 @@ func OuvrirLienOdoo() *LienOdoo {
 		return nil
 	}
 	return &LienOdoo{
-		URL:    url,
-		Secret: secret,
-		Client: &http.Client{Timeout: DélaiOdoo},
+		URL:      url,
+		Secret:   secret,
+		Client:   &http.Client{Timeout: DélaiOdoo},
+		Appareil: os.Getenv(VariableAppareil),
 	}
 }
 
-// envoyer signe la charge et rend la réponse décodée.
+// envoyer signe la charge au nom du répondeur et rend la réponse décodée.
 func (l *LienOdoo) envoyer(route string, charge map[string]any) (map[string]any, error) {
+	return l.envoyerComme(route, charge, NomAppareil)
+}
+
+// envoyerComme signe la charge au nom d'un appareil donné.
+//
+// Les routes de la passerelle retrouvent leur fiche PAR cet identifiant : il
+// doit être celui de la fiche, et non un nom de service.
+func (l *LienOdoo) envoyerComme(route string, charge map[string]any,
+	appareil string) (map[string]any, error) {
 	jeton := make([]byte, 16)
 	if _, err := rand.Read(jeton); err != nil {
 		return nil, err
 	}
 	charge["ts"] = time.Now().Unix()
 	charge["nonce"] = hex.EncodeToString(jeton)
-	charge["device"] = NomAppareil
+	charge["device"] = appareil
 
 	corps, err := json.Marshal(charge)
 	if err != nil {
@@ -253,4 +271,20 @@ func horodatageOdoo(rfc string) string {
 		return time.Now().UTC().Format("2006-01-02 15:04:05")
 	}
 	return instant.UTC().Format("2006-01-02 15:04:05")
+}
+
+// SignalerMessagerie transmet à la passerelle l'état de la boîte vocale.
+//
+// Sans lien ou sans fiche désignée, rien ne part et ce n'est pas une erreur :
+// l'état reste au journal du service, ce qui suffit à une installation sans
+// Odoo.
+func SignalerMessagerie(l *LienOdoo, attente bool, lu time.Time) error {
+	if l == nil || l.Appareil == "" {
+		return nil
+	}
+	_, err := l.envoyerComme("/erplibre_sms/voicemail", map[string]any{
+		"attente": attente,
+		"lu_le":   lu.UTC().Format("2006-01-02 15:04:05"),
+	}, l.Appareil)
+	return err
 }
