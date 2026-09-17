@@ -194,6 +194,24 @@
     CPATH = "/run/current-system/sw/include";
     LIBRARY_PATH = "/run/current-system/sw/lib";
     PKG_CONFIG_PATH = "/run/current-system/sw/lib/pkgconfig";
+  } // lib.optionalAttrs ("@EL_CA_BUNDLE@" != "") {
+    # L'autorité du cache de téléchargement, pour TOUTE session d'après
+    # l'installation — un « git pull » échouerait sinon sur un certificat
+    # qu'il ne reconnaît pas, comme le clone avant elle.
+    #
+    # La commande d'installation porte ces mêmes variables elle-même : elle
+    # tourne AVANT la première reconstruction, et aucun chemin PAM n'est
+    # inscriptible d'ici là. Les deux moitiés se relaient.
+    #
+    # « optionalAttrs » et non une valeur de repli : sur une machine sans
+    # cache le faisceau n'existe pas, et y pointer SSL_CERT_FILE couperait
+    # TLS partout.
+    SSL_CERT_FILE = "@EL_CA_BUNDLE@";
+    CURL_CA_BUNDLE = "@EL_CA_BUNDLE@";
+    GIT_SSL_CAINFO = "@EL_CA_BUNDLE@";
+    REQUESTS_CA_BUNDLE = "@EL_CA_BUNDLE@";
+    NODE_EXTRA_CA_CERTS = "@EL_CA_BUNDLE@";
+    PIP_CERT = "@EL_CA_BUNDLE@";
   };
 
   # Les réglages régionaux demandés au déploiement.

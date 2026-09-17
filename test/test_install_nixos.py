@@ -35,6 +35,22 @@ SCRIPT = RACINE / "script/install/install_nixos_dependency.sh"
 AIGUILLAGE = RACINE / "script/install/install_dev.sh"
 
 
+def _deploy_qemu():
+    """deploy_qemu.py chargé comme module, comme le fait todo.py."""
+    import importlib.util
+    import sys
+
+    sys.argv = ["todo.py"]
+    chemin = RACINE / "script/qemu/deploy_qemu.py"
+    spec = importlib.util.spec_from_file_location("deploy_qemu", chemin)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+DQ = _deploy_qemu()
+
+
 class LAiguillage(unittest.TestCase):
     def setUp(self):
         self.src = AIGUILLAGE.read_text(encoding="utf-8")
@@ -440,6 +456,126 @@ class LesReglagesRegionauxDemandes(unittest.TestCase):
         self.assertIn("glibc-locales", self.src)
 
 
+class LAutoriteAtteintToutCeQuiTelecharge(unittest.TestCase):
+    """nix a son fragment de service ; curl, git et le reste n'ont rien.
+
+    Les quatre familles impératives posent l'autorité dans le magasin du
+    système et tout la trouve seul. Ici l'autorité est un faisceau sous un
+    chemin inscriptible, que rien ne consulte sans qu'on le dise — et le
+    clone du dépôt échouait donc sur « self-signed certificate in
+    certificate chain » alors que nix, lui, téléchargeait très bien.
+
+    Deux moitiés qui se relaient : la commande d'installation porte ses
+    variables elle-même, car elle tourne AVANT la première reconstruction et
+    aucun chemin PAM n'est inscriptible d'ici là — mesuré, le pam_env de
+    sshd porte « readenv=0 » et son fichier est un lien vers le store. Le
+    module prend le relais pour les sessions d'après.
+    """
+
+    def setUp(self):
+        self.src = MODULE.read_text(encoding="utf-8")
+        self.script = SCRIPT.read_text(encoding="utf-8")
+
+    def _exports(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)._qemu_ca_exports()
+
+    def test_the_command_carries_them_itself(self):
+        exports = self._exports()
+        for var in ("SSL_CERT_FILE", "GIT_SSL_CAINFO", "CURL_CA_BUNDLE"):
+            with self.subTest(var=var):
+                self.assertIn(var, exports)
+
+    def test_nothing_is_exported_where_there_is_no_bundle(self):
+        """Pointer SSL_CERT_FILE sur un fichier absent couperait TLS partout,
+        et les quatre autres familles n'ont pas ce faisceau."""
+        self.assertIn("if [ -r ", self._exports())
+        # Un « if » et non un « && » : sous « set -e », une garde fausse en
+        # fin de liste ET-OU est un cas limite qui dépend du shell.
+        self.assertNotIn("] && export", self._exports())
+
+    def test_the_module_takes_over_afterwards(self):
+        """Sans cela un « git pull » plus tard échouerait comme le clone."""
+        self.assertIn("GIT_SSL_CAINFO", self.src)
+        self.assertIn("@EL_CA_BUNDLE@", self.src)
+
+    def test_a_machine_without_a_cache_declares_nothing(self):
+        """« optionalAttrs » et non un défaut : le faisceau n'existe pas
+        partout, et l'installeur laisse le marqueur vide dans ce cas."""
+        self.assertIn('lib.optionalAttrs ("@EL_CA_BUNDLE@" != "")', self.src)
+        self.assertIn(
+            '[ -r "${EL_CA_BUNDLE}" ] || EL_CA_BUNDLE=""', self.script
+        )
+
+
+class SudoNEffacePasLAutorite(unittest.TestCase):
+    """L'installation reconstruit le système par « sudo », et sudo remet
+    l'environnement à zéro.
+
+    Le fragment de service donné au démon nix ne couvre pas ce cas : mesuré
+    sur une VM, « sudo nix store info » rend « Store URL: local » et un
+    NIX_REMOTE vide. Le nix de root parle DIRECTEMENT au magasin local, sans
+    jamais passer par le démon — c'est lui qui télécharge, avec
+    l'environnement que sudo lui laisse, et il n'en laisse aucun.
+
+    Le mode de défaillance : chaque objet que la reconstruction doit chercher
+    est demandé sans l'autorité, et le seul journal est une répétition de
+    « unable to download ... narinfo: SSL peer certificate ... was not OK ».
+    Le système n'est pas activé, et rien ne nomme la cause.
+
+    Le remède est celui des autres familles, « Defaults env_keep », et non un
+    second : NixOS lit bien /etc/sudoers.d — son /etc/sudoers porte
+    « #includedir », le répertoire existe, et visudo est dans le PATH de root.
+    """
+
+    def _commandes(self):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".crt") as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\n")
+            fh.flush()
+            args = DQ.build_parser().parse_args(
+                ["--distro", "nixos", "--hostname", "x", "--cache-ca", fh.name]
+            )
+            return DQ.cache_commands(args)
+
+    def test_the_variables_cross_sudo(self):
+        joint = " ".join(self._commandes())
+        self.assertIn(DQ.CACHE_SUDOERS, joint)
+        self.assertIn("env_keep", joint)
+
+    def test_every_variable_the_session_exports_is_kept(self):
+        """Les deux listes sont lues ensemble ou pas du tout : une variable
+        exportée que sudo efface est exactement le défaut qu'on répare, et
+        une variable gardée que rien n'exporte ne garde rien."""
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        exportees = set(
+            re.findall(
+                r"(\w+)=/var/lib/erplibre/ca-bundle\.crt",
+                TODO.__new__(TODO)._qemu_ca_exports(),
+            )
+        )
+        self.assertTrue(exportees, "la commande n'exporte rien")
+        self.assertEqual(exportees, set(DQ.NIX_CA_VARS))
+
+    def test_the_rebuild_is_the_one_that_needs_it(self):
+        """Le garde-fou pointe la ligne qui justifie tout le reste : si la
+        reconstruction cessait de passer par sudo, ce mécanisme n'aurait plus
+        de raison d'être, et personne ne s'en apercevrait."""
+        self.assertIn(
+            "sudo nixos-rebuild switch",
+            SCRIPT.read_text(encoding="utf-8"),
+        )
+
+
 class LePortDOdooTraverseLePareFeu(unittest.TestCase):
     """NixOS active un pare-feu par défaut ; aucune des images cloud des
     quatre autres distributions n'en active un.
@@ -522,6 +658,70 @@ class LeMenuNEcritPasDansEtcSurNixos(unittest.TestCase):
         cmd = self._cmd()
         self.assertIn("systemctl cat erplibre.service", cmd)
         self.assertIn("make install_os", cmd)
+
+
+class LAutoriteEstExporteeApresQueCloudInitLAEcrite(unittest.TestCase):
+    """L'ordre entre l'attente et les exports, qui n'est pas un détail.
+
+    Le faisceau est écrit par cloud-init, et la session ssh est ouverte
+    AVANT lui : mesuré sur une VM, ssh est accepté à 13:18:27 et le fichier
+    apparaît à 13:18:28. Une garde « if [ -r … ] » évaluée en tête de
+    commande est donc fausse, n'exporte rien, et tout ce qui suit dans ce
+    shell perd l'autorité — le clone du dépôt échoue sur « self-signed
+    certificate » alors que nix, qui lit son fragment au moment de s'en
+    servir, télécharge très bien. Le symptôme accuse le réseau ; la cause est
+    une seconde d'écart.
+
+    Le remède est STRUCTUREL : les exports vivent dans l'attente elle-même,
+    à côté de la relecture des variables que les autres familles y font déjà.
+    Trois commandes distantes sont bâties à des endroits différents, et
+    aucune ne peut plus les oublier ni les mettre trop tôt.
+    """
+
+    def _todo(self):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.__new__(TODO)
+
+    def test_the_exports_live_inside_the_wait(self):
+        attente = self._todo()._qemu_cloud_init_wait()
+        self.assertIn("ca-bundle.crt", attente)
+
+    def test_they_come_after_the_unit_that_writes_the_bundle(self):
+        """« cloud-init status --wait » rend la main trop tôt : c'est
+        l'attente de l'unité finale qui garantit le fichier écrit."""
+        attente = self._todo()._qemu_cloud_init_wait()
+        self.assertLess(
+            attente.index("cloud-final"), attente.index("ca-bundle.crt")
+        )
+
+    def test_every_remote_command_carries_them_exactly_once(self):
+        """Les trois points de sortie — bureau seul, bureau et outils,
+        installation complète — passent tous par l'attente."""
+        todo = self._todo()
+        for cas in (
+            {"branch": None, "desktop": False},
+            {"branch": None, "desktop": True},
+            {"branch": "master", "desktop": False},
+        ):
+            with self.subTest(**cas):
+                cmd = todo._qemu_erplibre_remote_cmd(**cas)
+                self.assertEqual(
+                    cmd.count("if [ -r /var/lib/erplibre/ca-bundle.crt ]"),
+                    1,
+                    "les exports doivent y être, et une seule fois",
+                )
+
+    def test_no_caller_puts_them_back_in_front(self):
+        """Un appelant qui les rajouterait en tête ramènerait le défaut sans
+        que rien d'autre ne change."""
+        source = (RACINE / "script/todo/qemu_deploy.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("_qemu_ca_exports()", source)
 
 
 class LeServiceAttendQuOdooSoitLa(unittest.TestCase):

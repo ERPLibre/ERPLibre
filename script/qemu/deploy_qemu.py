@@ -3212,6 +3212,74 @@ OFFLINE_BOOTCMD = [
     "  - systemctl stop --no-block systemd-time-wait-sync.service || true",
 ]
 
+# NixOS n'a pas d'ancre de confiance PAR FICHIER : /etc est généré depuis le
+# store et monté en lecture seule, donc la forme de CACHE_TRUST — un
+# répertoire où déposer, une commande qui relit — n'y existe pas. Le
+# téléchargeur n'est pas non plus le même : mesuré, une LECTURE passe par le
+# client et honore une variable de session, mais RÉALISER une dérivation
+# passe par nix-daemon, qui ne la voit pas. Seul un fragment systemd
+# l'atteint.
+#
+# /run/systemd/system est un tmpfs, donc inscriptible quand /etc ne l'est
+# pas : le fragment y vit, et il prend effet sans reconstruction — ce qui est
+# tout l'enjeu, la première reconstruction étant elle-même le premier
+# téléchargement.
+#
+# Le faisceau est la CONCATÉNATION de celui du système et de l'autorité :
+# donner l'autorité seule ferait cesser d'approuver tout le reste.
+NIX_CA_DIR = "/var/lib/erplibre"
+NIX_CA_BUNDLE = f"{NIX_CA_DIR}/ca-bundle.crt"
+NIX_CA_SYSTEME = "/etc/ssl/certs/ca-certificates.crt"
+NIX_DROPIN = "/run/systemd/system/nix-daemon.service.d/10-erplibre-cache.conf"
+
+# Les variables qui portent le faisceau aux consommateurs d'une SESSION.
+#
+# Elles sont la seule voie ici : les quatre familles impératives déposent
+# l'autorité dans le magasin du système, que tout lit sans qu'on demande, et
+# qui SURVIT à sudo puisque ce n'est pas un environnement. NixOS n'a pas ce
+# magasin — /etc/ssl/certs est un lien vers le store — donc chaque
+# consommateur doit être pointé, et sudo les efface tous.
+NIX_CA_VARS = (
+    "SSL_CERT_FILE",
+    "CURL_CA_BUNDLE",
+    "GIT_SSL_CAINFO",
+    "REQUESTS_CA_BUNDLE",
+    "NODE_EXTRA_CA_CERTS",
+    "PIP_CERT",
+)
+
+
+def nix_trust_commands() -> list[str]:
+    """Ce qui fait approuver l'autorité du cache par nix, sans reconstruire.
+
+    Mesuré sur une VM interceptée : sans cela « nix-shell -p hello » échoue
+    sur « self-signed certificate in certificate chain » ; avec, la dérivation
+    est réalisée depuis cache.nixos.org à travers le cache, et le magasin
+    garde ses .narinfo — ce qui rend le hors ligne possible ensuite.
+    """
+    dossier = NIX_DROPIN.rsplit("/", 1)[0]
+    return [
+        f"mkdir -p {NIX_CA_DIR} {dossier}",
+        f"cat {NIX_CA_SYSTEME} {NIX_CA_DIR}/{CACHE_CERT_NAME}"
+        f" > {NIX_CA_BUNDLE}",
+        f"printf '[Service]\\nEnvironment=NIX_SSL_CERT_FILE=%s\\n"
+        f"Environment=CURL_CA_BUNDLE=%s\\n' {NIX_CA_BUNDLE} {NIX_CA_BUNDLE}"
+        f" > {NIX_DROPIN}",
+        "systemctl daemon-reload",
+        # Socket-activé : arrêter les deux fait reprendre l'environnement à
+        # la prochaine connexion.
+        "systemctl stop nix-daemon 2>/dev/null || true",
+        "systemctl restart nix-daemon.socket 2>/dev/null || true",
+        # ET sudo, sans quoi rien de ce que la commande exporte ne survit :
+        # « sudo nixos-rebuild switch » évalue la configuration en allant
+        # chercher des centaines de narinfo, et les demandait toutes sans
+        # l'autorité. Les autres familles n'en ont pas besoin pour la même
+        # raison qu'elles n'ont pas besoin des variables : leur magasin
+        # système n'est pas un environnement.
+        commande_sudoers(NIX_CA_VARS),
+    ]
+
+
 CACHE_CERT_NAME = "erplibre-cache.crt"
 
 # Les familles à qui AUCUN des trois gestes de CACHE_TRUST ne s'applique.
@@ -3227,7 +3295,11 @@ CACHE_CERT_NAME = "erplibre-cache.crt"
 # donc en être SOUSTRAITE, faute de quoi elle ne télécharge plus rien — et le
 # message qu'elle rendrait, « self-signed certificate in certificate chain »,
 # ne dit rien d'une famille sans magasin.
-CACHE_SANS_AUTORITE = frozenset({"nix"})
+# Plus aucune famille n'y figure. « nix » y était tant qu'on ne savait pas
+# lui donner l'autorité : il l'a désormais par un fragment systemd, mesuré.
+# La table reste, et le repli avec elle — une famille future sans magasin
+# retomberait dessus plutôt que d'être interceptée sans rien.
+CACHE_SANS_AUTORITE: frozenset = frozenset()
 
 
 def cache_sans_autorite(distro: str) -> bool:
@@ -3435,7 +3507,7 @@ def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     if getattr(args, "cache_bypass", False):
         return []
     famille = cache_family(args.distro)
-    if famille not in CACHE_TRUST:
+    if famille != "nix" and famille not in CACHE_TRUST:
         return []
     try:
         with open(args.cache_ca, encoding="utf-8") as fh:
@@ -3446,7 +3518,7 @@ def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
         return []
     if "BEGIN CERTIFICATE" not in pem:
         return []
-    anchors = CACHE_TRUST[famille][0]
+    anchors = NIX_CA_DIR if famille == "nix" else CACHE_TRUST[famille][0]
     return [(f"{anchors}/{CACHE_CERT_NAME}", "0644", pem, "")]
 
 
@@ -3467,7 +3539,15 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
     """
     if not cache_files(args):
         return []
-    _, commande, faisceau = CACHE_TRUST[cache_family(args.distro)]
+    famille = cache_family(args.distro)
+    # NixOS ne relit pas un magasin : il n'en a pas de la forme attendue. Ses
+    # gestes bâtissent un faisceau, le donnent au démon qui télécharge, et
+    # font traverser sudo aux variables qui le désignent. Pas /etc/environment
+    # en revanche : son pam_env porte « readenv=0 » et son fichier de
+    # configuration est un lien vers le store.
+    if famille == "nix":
+        return nix_trust_commands()
+    _, commande, faisceau = CACHE_TRUST[famille]
     commandes = [f"{commande} || true"]
     for var in CACHE_ENV_VARS:
         commandes.append(
@@ -3506,14 +3586,44 @@ def commande_sudoers(variables, fichier: str = CACHE_SUDOERS) -> str:
     répertoire sudoers.d — retire le temporaire et ne fait pas échouer la
     commande. Une variable par ligne, sans guillemets : la commande passe
     telle quelle dans un « runcmd » YAML comme dans un « sh -c » par ssh.
+
+    LE PROFIL DU SYSTÈME EST AJOUTÉ AU PATH. cloud-init ne donne à son
+    « runcmd » que le PATH de son propre service, et sur une distribution
+    déclarative celui-ci est une liste de chemins du store qui ne contient
+    pas sudo : visudo est alors introuvable, la vérification échoue, et le
+    garde-fou efface le fichier au lieu de le poser — sans rien dire, puisque
+    c'est précisément sa dégradation prévue. Le répertoire n'existe pas sur
+    les quatre familles impératives, où l'ajout ne change rien.
     """
     dossier, nom = fichier.rsplit("/", 1)
     tmp = f"{dossier}/.{nom}"
     return (
-        f"sh -c 'for v in {' '.join(variables)};"
+        f"sh -c 'PATH=$PATH:/run/current-system/sw/bin;"
+        f" for v in {' '.join(variables)};"
         f" do echo Defaults env_keep += $v; done > {tmp}"
         f" && chmod 0440 {tmp} && visudo -cf {tmp} && mv {tmp} {fichier}"
-        f" || rm -f {tmp}'"
+        f' || (rm -f {tmp}; echo "   ⚠ {t_sudoers_manque()}")\''
+    )
+
+
+def t_sudoers_manque() -> str:
+    """Ce que dit un sudoers non posé.
+
+    L'échec est VOLONTAIREMENT sans conséquence sur le déploiement — un
+    sudoers.d absent ne vaut pas de tout arrêter. Mais muet, il se paie plus
+    tard et ailleurs, sur un « self-signed certificate » que rien ne relie à
+    ce geste. La ligne nomme le seul effet qui compte, et ce qu'il faut
+    regarder.
+
+    TROIS CARACTÈRES INTERDITS, et chacun casse ailleurs. L'apostrophe ferme
+    la quote simple qui enveloppe toute la commande, et le shell distant
+    meurt sur « unexpected EOF ». « : » suivi d'une espace, une accolade ou un
+    crochet font lire au YAML de « runcmd » autre chose qu'un scalaire
+    simple. Le message ne les porte donc pas, et un test le vérifie.
+    """
+    return (
+        "sudoers non posé — visudo introuvable, "
+        "sudo perdra le faisceau du cache"
     )
 
 
@@ -5721,9 +5831,24 @@ def main() -> None:
     # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
     # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
     # demandé à l'opérateur — c'est le catalogue qui sait.
-    if cache_sans_autorite(getattr(args, "distro", "")) and not getattr(
-        args, "cache_bypass", False
-    ):
+    #
+    # JAMAIS HORS LIGNE, et c'est la même raison que sur la voie Proxmox :
+    # l'amont est alors coupé et le magasin est la SEULE source. Soustraire
+    # la VM ne la ferait pas télécharger en direct — cela ne lui laisserait
+    # RIEN. Les deux issues échouent pour une distribution sans magasin de
+    # certificats : exceptée, elle n'a plus de source ; interceptée, elle bute
+    # sur un certificat qu'elle ne reconnaît pas. Le dire AVANT vaut mieux
+    # qu'une heure d'installation pour y arriver.
+    sans_magasin = cache_sans_autorite(getattr(args, "distro", ""))
+    if sans_magasin and getattr(args, "offline", False):
+        print(
+            f"\n  ⚠ {args.distro} n'a pas de magasin de certificats, et"
+            " l'amont du cache est coupé."
+            "\n    Aucune source ne lui reste : l'exception la priverait du"
+            " magasin, et sans elle"
+            "\n    chaque téléchargement bute sur un certificat inconnu."
+        )
+    elif sans_magasin and not getattr(args, "cache_bypass", False):
         args.cache_bypass = True
         print(
             f"\n  {args.distro} n'a pas de magasin de certificats :"

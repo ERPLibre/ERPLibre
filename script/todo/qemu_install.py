@@ -429,6 +429,39 @@ class QemuInstallMixin:
     QEMU_DESKTOP_EXTRA_DISK_GB = 6
 
     @staticmethod
+    def _qemu_ca_exports():
+        """Donne l'autorité du cache à TOUT ce que la commande distante lance.
+
+        Les quatre familles impératives posent l'autorité dans le magasin du
+        système, et curl, git et le reste la trouvent seuls. NixOS n'a pas
+        d'ancre par fichier : l'autorité y est un faisceau sous un chemin
+        inscriptible, que rien ne consulte sans qu'on le dise — nix mis à
+        part, qui a son fragment de service.
+
+        PAS par /etc/environment : mesuré sur une VM, le pam_env de sshd porte
+        « readenv=0 » et son fichier de configuration est un lien vers le
+        store. Aucun chemin PAM n'est inscriptible avant la première
+        reconstruction, et c'est précisément avant elle que le clone a lieu.
+        La commande porte donc ses variables elle-même.
+
+        GARDÉ par l'existence du fichier : ailleurs il n'y en a pas, et
+        pointer SSL_CERT_FILE sur un fichier absent couperait TLS partout. Un
+        « if » et non un « && » : sous « set -e », une garde fausse en fin de
+        liste ET-OU est un cas limite qui dépend du shell.
+        """
+        faisceau = "/var/lib/erplibre/ca-bundle.crt"
+        variables = (
+            "SSL_CERT_FILE",
+            "CURL_CA_BUNDLE",
+            "GIT_SSL_CAINFO",
+            "REQUESTS_CA_BUNDLE",
+            "NODE_EXTRA_CA_CERTS",
+            "PIP_CERT",
+        )
+        export = " ".join(f"{v}={faisceau}" for v in variables)
+        return f"if [ -r {faisceau} ]; then export {export}; fi; "
+
+    @staticmethod
     def _qemu_cloud_init_wait():
         """Attend la fin de cloud-init, qui tient le verrou apt/dnf/pacman
         pendant sa phase « paquets ».
@@ -477,6 +510,14 @@ class QemuInstallMixin:
             # Les variables du cache sont écrites par cloud-init PENDANT
             # l'attente : cette session, ouverte avant, ne les a pas reçues.
             + cache_env_reload() + "; "
+            # ICI, et nulle part avant. Le faisceau que ces exports désignent
+            # est écrit par cloud-init lui aussi : mesuré sur une VM, la
+            # session ssh est acceptée une seconde avant qu'il existe, donc
+            # une garde évaluée en tête de commande est fausse et n'exporte
+            # rien. Tout ce qui suit perd alors l'autorité — le clone du dépôt
+            # échoue sur « self-signed certificate », quand nix, qui lit son
+            # fragment au moment de s'en servir, télécharge très bien.
+            + QemuInstallMixin._qemu_ca_exports()
         )
 
     @staticmethod

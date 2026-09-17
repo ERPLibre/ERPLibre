@@ -318,9 +318,9 @@ class TestLesVariablesTraversentSudo(unittest.TestCase):
             commande.index("mv /etc/sudoers.d/.essai /etc/sudoers.d/essai"),
         )
         self.assertIn("chmod 0440", commande)
-        self.assertTrue(
-            commande.rstrip("'").endswith("|| rm -f /etc/sudoers.d/.essai")
-        )
+        # Le temporaire part toujours, et l'échec se DIT : muet, il se paie
+        # plus tard sur un « self-signed certificate » que rien ne relie ici.
+        self.assertIn("|| (rm -f /etc/sudoers.d/.essai; echo ", commande)
 
     def test_le_contenu_ecrit_est_une_ligne_par_variable(self):
         """Joué dans un vrai shell, visudo remplacé : c'est le fichier produit
@@ -386,7 +386,16 @@ class TestLeHorsLigneNAttendPasLHeure(unittest.TestCase):
             self.assertTrue(ligne.rstrip().endswith("|| true"))
 
     def test_une_vm_en_ligne_garde_sa_synchronisation(self):
-        self.assertNotIn("bootcmd", self.config())
+        """La levée n'a lieu QUE hors ligne.
+
+        « Aucun bootcmd » l'a longtemps dit, parce que la levée était le seul.
+        Le locale en pose un autre depuis — il génère la locale demandée avant
+        que le module de cloud-init ne l'applique —, et l'absence GLOBALE ne
+        prouve donc plus rien. C'est la levée nommément qui doit manquer, et
+        c'est elle que cette classe garde."""
+        cmd = self.config().get("bootcmd") or []
+        aplati = " ".join(str(c) for c in cmd)
+        self.assertNotIn("systemd-time-wait-sync", aplati)
 
 
 class TestLaLangueDesMessagesDuCache(unittest.TestCase):
@@ -471,20 +480,44 @@ class TestAucunSystemeNestOublie(unittest.TestCase):
         apprendre l'autorité et qu'on laisse passer n'échoue pas à
         l'installation du certificat — elle échoue sur CHAQUE téléchargement,
         avec un message qui ne dit rien de la cause.
+
+        L'épreuve porte sur le COMPORTEMENT et non sur l'appartenance à une
+        table : « nix » ne pose pas l'autorité dans un répertoire d'ancres —
+        il n'en a pas — mais il la pose, par un fragment systemd. Compter les
+        entrées de CACHE_TRUST l'aurait déclaré manquant alors qu'il est
+        servi, et déclarerait manquante toute mécanique future.
         """
+        import tempfile
+
         from script.qemu.deploy_qemu import (
             CACHE_SANS_AUTORITE,
-            CACHE_TRUST,
             DISTROS,
+            build_parser,
+            cache_commands,
             cache_family,
         )
 
-        familles = {cache_family(d) for d in DISTROS} - {""}
-        manquantes = sorted(familles - set(CACHE_TRUST) - CACHE_SANS_AUTORITE)
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".crt", delete=False
+        ) as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\nZXNzYWk=\n")
+            fh.write("-----END CERTIFICATE-----\n")
+            ca = fh.name
+        muettes = []
+        for distro in DISTROS:
+            if not cache_family(distro):
+                continue
+            if cache_family(distro) in CACHE_SANS_AUTORITE:
+                continue
+            args = build_parser().parse_args(
+                ["--distro", distro, "--hostname", "x", "--cache-ca", ca]
+            )
+            if not cache_commands(args):
+                muettes.append(distro)
         self.assertEqual(
-            manquantes,
+            muettes,
             [],
-            f"familles sans commande de confiance : {manquantes}",
+            f"systèmes qui ne posent rien : {muettes}",
         )
 
     def test_une_famille_exemptee_nest_pas_aussi_dans_la_table(self):
@@ -495,17 +528,20 @@ class TestAucunSystemeNestOublie(unittest.TestCase):
 
         self.assertEqual(set(), set(CACHE_TRUST) & CACHE_SANS_AUTORITE)
 
-    def test_une_exemptee_est_bien_soustraite_au_detournement(self):
-        """L'exemption ne vaut que si le déploiement la POSE : la déclarer et
-        laisser la VM sur le pont ne change rien à son sort."""
-        from script.qemu.deploy_qemu import cache_sans_autorite
+    def test_plus_aucun_systeme_du_catalogue_nest_soustrait(self):
+        """L'exemption est le dernier recours, et plus personne n'y tombe.
 
-        self.assertTrue(cache_sans_autorite("nixos"))
-        for connue in ("debian", "ubuntu", "fedora", "arch", "opensuse"):
-            with self.subTest(distro=connue):
-                self.assertFalse(cache_sans_autorite(connue))
-        # Un système hors catalogue n'est pas « exempté » : il n'a pas de
-        # famille, et c'est une autre question que celle-ci.
+        NixOS y était tant qu'on ne savait pas lui donner l'autorité : /etc
+        est en lecture seule, et une déclaration arriverait après le premier
+        téléchargement. Il l'a désormais par un fragment systemd, ce qui le
+        fait ENTRER dans le cache au lieu de l'en soustraire — et sans cela le
+        hors ligne lui était fermé, le magasin étant alors la seule source.
+        """
+        from script.qemu.deploy_qemu import DISTROS, cache_sans_autorite
+
+        for distro in DISTROS:
+            with self.subTest(distro=distro):
+                self.assertFalse(cache_sans_autorite(distro))
         self.assertFalse(cache_sans_autorite("inconnue"))
 
     def test_la_famille_vient_du_catalogue_et_nest_pas_recopiee(self):
@@ -515,6 +551,209 @@ class TestAucunSystemeNestOublie(unittest.TestCase):
 
         for d, attendue in DISTRO_PKG.items():
             self.assertEqual(cache_family(d), attendue, d)
+
+
+class LeHorsLigneNeSousTraitPasUneDistributionSansMagasin(unittest.TestCase):
+    """Les deux ne se combinent pas, et c'est dit AVANT.
+
+    Hors ligne, l'amont est coupé et le magasin est la SEULE source.
+    Soustraire au cache une distribution sans magasin de certificats ne la
+    ferait pas télécharger en direct : cela ne lui laisserait RIEN. Et sans
+    l'exception, chaque téléchargement bute sur un certificat inconnu. Les
+    deux issues échouent — une heure plus tard, si personne ne le dit.
+    """
+
+    SRC = (RACINE / "script/qemu/deploy_qemu.py").read_text(encoding="utf-8")
+
+    def _bloc(self):
+        i = self.SRC.index("sans_magasin = cache_sans_autorite(")
+        return self.SRC[i : i + 1400]
+
+    def test_offline_is_tested_before_the_fallback(self):
+        """L'ordre EST la correction : l'ancien code posait l'exception sans
+        jamais regarder si l'amont était coupé."""
+        bloc = self._bloc()
+        self.assertLess(
+            bloc.index('getattr(args, "offline", False)'),
+            bloc.index("args.cache_bypass = True"),
+        )
+
+    def test_offline_never_exempts(self):
+        bloc = self._bloc()
+        avant = bloc[: bloc.index("args.cache_bypass = True")]
+        self.assertNotIn("args.cache_bypass = True", avant)
+        self.assertIn("elif sans_magasin", bloc)
+
+    def test_the_dead_end_is_named(self):
+        """Un refus qui ne dit pas pourquoi renvoie chercher dans la VM."""
+        bloc = self._bloc()
+        self.assertIn("Aucune source", bloc)
+
+
+class NixApprendLAutoriteSansReconstruire(unittest.TestCase):
+    """NixOS n'a pas d'ancre de confiance par fichier, et une déclaration
+    arriverait après le premier téléchargement — la première reconstruction
+    EST ce téléchargement.
+
+    Mesuré sur une VM interceptée : une LECTURE passe par le client nix et se
+    contente d'une variable de session, mais RÉALISER une dérivation passe
+    par nix-daemon, qui ne la voit pas. Un fragment systemd l'atteint, et
+    /run/systemd/system est un tmpfs — inscriptible quand /etc ne l'est pas.
+    """
+
+    def _args(self, distro="nixos"):
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".crt", delete=False
+        ) as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\nZXNzYWk=\n")
+            fh.write("-----END CERTIFICATE-----\n")
+        return build_parser().parse_args(
+            ["--distro", distro, "--hostname", "x", "--cache-ca", fh.name]
+        )
+
+    def test_the_authority_lands_where_it_can_be_written(self):
+        """/etc est généré depuis le store : y déposer échouerait."""
+        from script.qemu.deploy_qemu import NIX_CA_DIR, cache_files
+
+        chemins = [f[0] for f in cache_files(self._args())]
+        self.assertTrue(chemins)
+        for c in chemins:
+            with self.subTest(chemin=c):
+                self.assertTrue(c.startswith(NIX_CA_DIR))
+                self.assertFalse(c.startswith("/etc/"))
+
+    def test_the_bundle_keeps_the_system_authorities(self):
+        """Donner la seule autorité du cache ferait cesser d'approuver tout
+        le reste : le faisceau est une CONCATÉNATION."""
+        from script.qemu.deploy_qemu import NIX_CA_SYSTEME, cache_commands
+
+        joint = " ".join(cache_commands(self._args()))
+        self.assertIn(NIX_CA_SYSTEME, joint)
+        self.assertIn("cat ", joint)
+
+    def test_the_daemon_is_reached_not_the_session(self):
+        """La session suffit pour LIRE, jamais pour réaliser : c'est le démon
+        qui télécharge alors, et seul un fragment l'atteint."""
+        from script.qemu.deploy_qemu import NIX_DROPIN, cache_commands
+
+        joint = " ".join(cache_commands(self._args()))
+        self.assertIn(NIX_DROPIN, joint)
+        self.assertIn("NIX_SSL_CERT_FILE", joint)
+        self.assertIn("daemon-reload", joint)
+
+    def test_nothing_needs_a_rebuild(self):
+        """Tout l'enjeu : la première reconstruction est elle-même le premier
+        téléchargement."""
+        joint = " ".join(cache_commands(self._args()))
+        self.assertNotIn("nixos-rebuild", joint)
+
+    def test_the_other_families_are_untouched(self):
+        """Elles ont un répertoire d'ancres et une commande qui le relit."""
+        from script.qemu.deploy_qemu import NIX_DROPIN, cache_commands
+
+        for distro in ("debian", "ubuntu", "fedora", "arch", "opensuse"):
+            with self.subTest(distro=distro):
+                joint = " ".join(cache_commands(self._args(distro)))
+                self.assertNotIn(NIX_DROPIN, joint)
+                self.assertIn("/etc/environment", joint)
+
+
+class LesGestesSurvivententAuTransport(unittest.TestCase):
+    """Les commandes du cache voyagent par deux transports, et chacun a ses
+    caractères mortels.
+
+    Le premier est le « runcmd » de cloud-init, un scalaire simple de YAML :
+    un « : » suivi d'une espace, une accolade ou un crochet en tête y font
+    lire autre chose qu'une commande. Le second est « sh -c '…' », que la
+    moindre apostrophe referme — le shell distant meurt alors sur
+    « unexpected EOF », loin de la ligne fautive.
+
+    Aucun des deux ne se voit à la lecture du Python : la chaîne y est
+    correcte, et c'est sa TRAVERSÉE qui échoue. D'où ces épreuves, une par
+    transport, sur toutes les familles à la fois.
+    """
+
+    def setUp(self):
+        import tempfile
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def _familles(self):
+        """Une distribution par famille, nix compris — il est le seul dont
+        les gestes ne viennent pas de CACHE_TRUST."""
+        return ("debian", "ubuntu", "fedora", "arch", "opensuse", "nixos")
+
+    def test_every_runcmd_line_survives_a_yaml_parse(self):
+        for distro in self._familles():
+            with self.subTest(distro=distro):
+                lignes = cache_runcmd(faux_args(Path(self.tmp.name), distro))
+                charge = yaml.safe_load("runcmd:\n" + "\n".join(lignes))
+                self.assertEqual(
+                    charge["runcmd"],
+                    [l.removeprefix("  - ") for l in lignes],
+                    "le YAML ne rend pas la commande telle qu'elle est écrite",
+                )
+
+    def test_every_command_survives_a_real_shell(self):
+        """« sh -n » lit la commande sans rien exécuter : une quote non
+        refermée s'y voit, un rm -rf ne s'y joue pas."""
+        import subprocess
+
+        for distro in self._familles():
+            for commande in cache_commands(
+                faux_args(Path(self.tmp.name), distro)
+            ):
+                with self.subTest(distro=distro, debut=commande[:40]):
+                    res = subprocess.run(
+                        ["sh", "-n", "-c", commande],
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(res.returncode, 0, res.stderr)
+
+
+class LeSudoersAtteintVisudoLaOuIlEst(unittest.TestCase):
+    """Un système déclaratif ne met pas sudo dans le PATH de cloud-init.
+
+    Mesuré sur une VM : le « runcmd » hérite du PATH du service de
+    cloud-init, vingt-six chemins du magasin dont AUCUN ne porte sudo, et
+    /usr/bin/visudo n'existe pas non plus. La vérification échouait donc,
+    le garde-fou effaçait le fichier au lieu de le poser, et sudo continuait
+    de vider l'environnement — l'installation ne rendait plus qu'une
+    répétition de refus de certificat.
+
+    Le profil du système est le chemin que ces distributions garantissent ;
+    les quatre familles impératives ne l'ont pas, et l'ajout n'y change rien.
+    """
+
+    PROFIL = "/run/current-system/sw/bin"
+
+    def test_the_system_profile_is_on_the_path(self):
+        self.assertIn(self.PROFIL, commande_sudoers(["A"]))
+
+    def test_the_path_is_extended_not_replaced(self):
+        """Remplacer le PATH perdrait echo, chmod et mv, qui viennent du
+        magasin eux aussi et ne sont nulle part ailleurs."""
+        self.assertIn(f"PATH=$PATH:{self.PROFIL}", commande_sudoers(["A"]))
+
+    def test_a_failure_is_announced(self):
+        """Muet, l'échec se paie plus tard sur un « self-signed certificate »
+        que rien ne relie à ce geste."""
+        self.assertIn("echo ", commande_sudoers(["A"]).split("||")[-1])
+
+    def test_the_message_carries_none_of_the_deadly_characters(self):
+        """L'apostrophe referme la commande, et les trois autres font lire au
+        YAML autre chose qu'un scalaire simple."""
+        from script.qemu.deploy_qemu import t_sudoers_manque
+
+        message = t_sudoers_manque()
+        self.assertTrue(message)
+        for interdit in ("'", ": ", "{", "}", "[", "]"):
+            with self.subTest(interdit=interdit):
+                self.assertNotIn(interdit, message)
 
 
 if __name__ == "__main__":

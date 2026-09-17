@@ -223,12 +223,20 @@ class LAutoriteDuCacheDansLeSeedAssemble(unittest.TestCase):
             doc["runcmd"],
         )
 
-    def test_a_system_with_no_anchor_gets_nothing_and_keeps_the_rest(self):
-        """Un système déclaratif n'a pas d'ancre où écrire. Il ne reçoit donc
-        pas l'autorité — et le reste du document lui parvient quand même."""
+    def test_a_declarative_system_gets_it_where_it_can_be_written(self):
+        """Un système déclaratif n'a pas d'ancre PAR FICHIER, mais il reçoit
+        l'autorité quand même : sous un chemin inscriptible, /etc étant
+        généré depuis le store et monté en lecture seule.
+
+        Il l'a longtemps reçue nulle part, et c'est ce qui lui fermait le
+        hors ligne — le magasin est alors la seule source, et une VM
+        soustraite n'a plus rien."""
         doc = yaml.safe_load(_cloud_config("nixos", self.ca))
         chemins = [f["path"] for f in doc.get("write_files", [])]
-        self.assertFalse([c for c in chemins if DQ.CACHE_CERT_NAME in c])
+        autorite = [c for c in chemins if DQ.CACHE_CERT_NAME in c]
+        self.assertEqual(1, len(autorite), chemins)
+        self.assertFalse(autorite[0].startswith("/etc/"))
+        # Et le reste du document lui parvient toujours.
         self.assertIn("users", doc)
         self.assertEqual("ca", doc["keyboard"]["layout"])
 

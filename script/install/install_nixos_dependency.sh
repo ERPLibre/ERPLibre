@@ -30,6 +30,11 @@ lire_seed() {
   sudo grep -m1 -E "^${1}: " "${EL_CLOUD_CFG}" 2>/dev/null |
     cut -d" " -f2- | tr -d "\r" || true
 }
+# Le faisceau que cloud-init a bâti, s'il l'a fait : vide sur une machine
+# sans cache, et le module n'y déclare alors aucune variable — y pointer
+# couperait TLS partout.
+EL_CA_BUNDLE=/var/lib/erplibre/ca-bundle.crt
+[ -r "${EL_CA_BUNDLE}" ] || EL_CA_BUNDLE=""
 EL_LOCALE=${EL_LOCALE:-$(lire_seed locale)}
 EL_TZ=${EL_TZ:-$(lire_seed timezone)}
 MODULE_SRC="conf/nixos/erplibre.nix"
@@ -51,8 +56,10 @@ echo -e "\n---- Module ERPLibre pour NixOS ----"
 # module déclare un rôle PostgreSQL, et un rôle porte un nom.
 sed -e "s/@EL_USER@/${EL_USER}/g" -e "s#@EL_DIR@#${EL_DIR}#g" \
   -e "s/@EL_LOCALE@/${EL_LOCALE}/g" -e "s#@EL_TZ@#${EL_TZ}#g" \
+  -e "s#@EL_CA_BUNDLE@#${EL_CA_BUNDLE}#g" \
   "${MODULE_SRC}" | sudo tee "${MODULE_DST}" > /dev/null
 echo "  posé : ${MODULE_DST} (compte ${EL_USER}, dépôt ${EL_DIR})"
+echo "  autorité du cache : ${EL_CA_BUNDLE:-aucune}"
 echo "  régional : locale « ${EL_LOCALE:-non demandée} »," \
   "fuseau « ${EL_TZ:-non demandé} »"
 
