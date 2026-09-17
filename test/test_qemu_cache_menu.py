@@ -256,7 +256,9 @@ class TestSousMenusDuCache(unittest.TestCase):
         self.verifier("_cache_nettoyage_auto", "_cache_nettoyage_etat", 4)
 
     def test_le_menu_de_lage(self):
-        self.verifier("_cache_age", "_cache_lancer", 5)
+        """Six depuis qu'on peut oublier UNE entrée : les cinq autres
+        montrent l'âge ou effacent en gros, celle-là vise une URL."""
+        self.verifier("_cache_age", "_cache_lancer", 6)
 
     def test_letat_du_service_est_la_troisieme(self):
         """Sous le diagnostic, comme demandé : le décalage du guide et des
@@ -1122,6 +1124,52 @@ class TestLesReglagesDuNettoyage(unittest.TestCase):
             for a_blanc in (True, False):
                 faux._cache_nettoyage_lancer(a_blanc=a_blanc)
         faux.execute.exec_command_live.assert_not_called()
+
+
+class OublierUneUrlDepuisLeMenu(unittest.TestCase):
+    """Le seul geste qui vise UNE entrée.
+
+    « Effacer ce qui n'a plus servi » ne l'atteint jamais — le service
+    rajeunit un objet chaque fois qu'il le rend — et « tout effacer » coûte
+    le cache entier pour un fichier. Le cas qui l'appelle est une somme qui
+    ne correspond pas : le magasin sert alors les mêmes octets, et
+    retélécharger ne change rien puisque c'est lui qui répond.
+    """
+
+    def _src(self):
+        import inspect
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return inspect.getsource(TODO._cache_oublier_url)
+
+    def test_the_preview_comes_first(self):
+        """« --detient » répond à la même ligne, par la même clé, sans rien
+        modifier : un « absent » dit que l'URL n'est pas celle qu'on croit,
+        avant d'avoir effacé quoi que ce soit."""
+        src = self._src()
+        self.assertLess(src.index("--detient"), src.index("--oublie"))
+
+    def test_nothing_is_erased_without_a_yes(self):
+        src = self._src()
+        self.assertLess(src.index("confirm"), src.index("--oublie"))
+
+    def test_the_url_is_quoted(self):
+        """Une URL signée porte des « & » et des « ? » : non échappée, le
+        shell y verrait des opérateurs."""
+        self.assertIn("shlex.quote(url)", self._src())
+
+    def test_the_entry_is_offered_in_the_cleanup_menu(self):
+        from pathlib import Path
+
+        racine = Path(__file__).resolve().parent.parent
+        menu = (racine / "script/todo/qemu_cache_menu.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('t("Clean - Forget one URL")', menu)
+        self.assertIn("self._cache_oublier_url()", menu)
 
 
 if __name__ == "__main__":

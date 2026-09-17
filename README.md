@@ -53,6 +53,7 @@ Switch between versions with `make switch_odoo_18`, `make switch_odoo_16`, etc.
 - **AlmaLinux, Rocky Linux** : 9 and 10 — RHEL and CentOS Stream take the same path
 - **openSUSE** : Leap 16.0 and Tumbleweed
 - **Arch Linux** : rolling release
+- **NixOS** : 25.11 — the dependencies are DECLARED in `conf/nixos/erplibre.nix` and applied by `nixos-rebuild`, where the four other families install them one command at a time
 - **macOS** : through mise or pyenv
 - **Windows** : through WSL or Docker
 - **Architectures** : amd64, arm64 and s390x (IBM Z mainframe)
@@ -145,7 +146,7 @@ cd ERPLibre
 ```
 
 
-`make install_os` detects the distribution and picks the right dependency script: apt for Ubuntu, Linux Mint and Debian, dnf for Fedora and the RHEL family, zypper for openSUSE, pacman for Arch. See the supported platforms above.
+`make install_os` detects the distribution and picks the right dependency script: apt for Ubuntu, Linux Mint and Debian, dnf for Fedora and the RHEL family, zypper for openSUSE, pacman for Arch, and a declarative module for NixOS. See the supported platforms above.
 
 
 ```bash

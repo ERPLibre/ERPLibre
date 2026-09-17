@@ -352,6 +352,16 @@ def _log_header(vm: dict, branch: str, when: str) -> str:
     bar = "=" * 64
     titre = t("installation") if branch else t("VM start-up")
     ligne_branche = f"  Branche      : {branch}\n" if branch else ""
+    # Ce que l'hôte a décidé AVANT de lancer : l'autorité du cache posée ou
+    # non, l'exception, le miroir. Ces lignes sont dites à la console au
+    # moment où elles se prennent, et la console a défilé depuis. Le journal
+    # est ce qu'on rouvre quand l'installation a échoué — sans elles il ne
+    # porte que le symptôme.
+    notes = vm.get("notes") or []
+    bloc = ""
+    if notes:
+        corps = "\n".join(f"  {ligne}" for ligne in notes)
+        bloc = f"  {t('Prepared by the host:')}\n{corps}\n{bar}\n"
     return (
         f"{bar}\n"
         f"  ERPLibre — {titre}\n"
@@ -361,7 +371,9 @@ def _log_header(vm: dict, branch: str, when: str) -> str:
         f"  Architecture : {arch}\n"
         f"{ligne_branche}"
         f"  IP           : {vm['ip']}\n"
-        f"{bar}\n\n"
+        f"{bar}\n"
+        f"{bloc}"
+        f"\n"
     )
 
 

@@ -216,10 +216,11 @@ func (g *GitMirror) Assurer(ctx context.Context, depot string) (string, bool) {
 		return chemin, true
 	}
 	if !existe {
-		if !g.placeSuffisante() {
+		if libres, plancher, assez := g.placeSuffisante(); !assez {
 			log.Printf(
-				T("miroir refusé pour %s : moins de %s libres sur le disque"),
-				depot, HumanBytes(g.PlancherLibre))
+				T("miroir refusé pour %s : %s libres sous %s,"+
+					" plancher de %s"),
+				depot, HumanBytes(libres), g.Dir, HumanBytes(plancher))
 			return "", false
 		}
 		if err := os.MkdirAll(filepath.Dir(chemin), 0o755); err != nil {
@@ -611,12 +612,18 @@ func DepotsDuFichier(chemin string) ([]string, error) {
 // qu'une VM en cours de déploiement finisse, et pour que le système respire.
 const PlancherParDefaut int64 = 10 << 30
 
-// placeSuffisante dit s'il reste de quoi créer un miroir de plus.
+// placeSuffisante dit s'il reste de quoi créer un miroir de plus, et rend de
+// quoi le DIRE : (octets libres, plancher effectif, assez).
+//
+// Les trois valeurs et non le seul booléen : le refus est la seule trace que
+// l'opérateur verra, et un refus qui ne nomme ni le seuil ni la mesure envoie
+// chercher au mauvais endroit. Le plancher effectif n'est pas le champ —
+// laissé à zéro, il vaut PlancherParDefaut — et c'est celui-là qui a refusé.
 //
 // La place est relue à CHAQUE appel : le disque se remplit pendant qu'on le
 // remplit, et une valeur retenue au démarrage ne dirait rien de l'état où l'on
 // est rendu.
-func (g *GitMirror) placeSuffisante() bool {
+func (g *GitMirror) placeSuffisante() (int64, int64, bool) {
 	plancher := g.PlancherLibre
 	if plancher <= 0 {
 		plancher = PlancherParDefaut
@@ -624,10 +631,12 @@ func (g *GitMirror) placeSuffisante() bool {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(g.Dir, &st); err != nil {
 		// Illisible : on laisse passer plutôt que de bloquer sur une mesure
-		// qu'on ne sait pas faire.
-		return true
+		// qu'on ne sait pas faire. Le -1 dit « non mesuré », qu'aucun compte
+		// d'octets ne peut valoir.
+		return -1, plancher, true
 	}
-	return int64(st.Bavail)*int64(st.Bsize) > plancher
+	libres := int64(st.Bavail) * int64(st.Bsize)
+	return libres, plancher, libres > plancher
 }
 
 // Depot décrit un miroir tenu sur le disque.

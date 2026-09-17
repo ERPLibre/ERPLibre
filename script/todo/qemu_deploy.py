@@ -250,8 +250,42 @@ class QemuDeployMixin:
             "--auto-agree-with-licenses $PKGS; "
             "elif command -v yum >/dev/null 2>&1; then "
             "sudo yum makecache -q || true; sudo yum install -y $PKGS; "
-            "else echo 'Aucun gestionnaire de paquets "
-            "(apt/dnf/pacman/zypper/yum)'; exit 1; fi; "
+            # NixOS n'a aucun des cinq, et c'est là que l'installation
+            # s'arrêtait : « Aucun gestionnaire de paquets », avant même le
+            # clone. Le système est DÉCLARATIF, mais l'amorçage est le seul
+            # moment où on ne peut pas l'être — le module qui déclare git et
+            # make vit DANS le dépôt qu'il faut git pour cloner.
+            #
+            # Le profil de l'utilisateur tranche ce nœud : les outils y sont
+            # posés pour la durée du clone, et « make install_os » les
+            # redéclare ensuite pour le système entier. Rien n'est écrit dans
+            # /etc/nixos avant que le dépôt ne soit là pour le faire.
+            #
+            # « <nixpkgs> » et non un canal : l'utilisateur n'en a aucun sur
+            # cette image, là où NIX_PATH est posé pour tout le monde et
+            # pointe les canaux de root.
+            #
+            # Les noms sont ceux de nixpkgs, où make s'appelle gnumake — $PKGS
+            # porte les noms des quatre autres familles et ne vaut pas ici.
+            #
+            # python3 s'y ajoute, et seulement ici : les images des quatre
+            # autres familles l'embarquent — cloud-init est écrit en Python et
+            # le pose sur le PATH. Sur NixOS il vit dans le store, hors PATH,
+            # et « make install_os » s'arrêtait sur « env: python3: No such
+            # file or directory » à sa première recette. Sa version importe
+            # peu : l'installation choisit ensuite le Python d'Odoo, que le
+            # module déclare et que le profil du système porte, cherché avant
+            # celui de l'utilisateur.
+            + "elif command -v nix-env >/dev/null 2>&1; then "
+            "nix-env -f '<nixpkgs>' -iA git gnumake curl python3"
+            f"{self._qemu_editor_suffix()}; "
+            # Le PATH de cette commande distante a été figé à l'ouverture du
+            # shell SSH, avant que nix-env ne pose quoi que ce soit : sans
+            # cette ligne, le contrôle juste en dessous déclare git manquant
+            # sur une machine où il vient d'être installé.
+            'export PATH="$HOME/.nix-profile/bin:$PATH"; '
+            + "else echo 'Aucun gestionnaire de paquets "
+            "(apt/dnf/pacman/zypper/yum/nix)'; exit 1; fi; "
             # Vérifie explicitement que tout est là : erreur nette plutôt
             # qu'un « command not found » cryptique plus loin.
             "for t in curl git make; do command -v $t >/dev/null 2>&1 || "
@@ -332,6 +366,7 @@ class QemuDeployMixin:
         vm_tools=(),
         pve=None,
         meta=None,
+        notes=None,
         ai_agent="",
         guet_hors_ligne=False,
         deploy_started=None,
@@ -352,6 +387,8 @@ class QemuDeployMixin:
         `vm_tools` : outils cochés pour tout le parc, filtrés machine par
         machine (Android Studio n'existe qu'en x86_64, les extensions GNOME
         n'ont pas de sens sous Cinnamon).
+        `notes` : {nom: [lignes]} — ce que l'hôte a décidé pour cette VM
+        avant l'installation, recopié en tête de son journal.
         `meta` : {nom: (distro, version, arch)} quand l'appelant SAIT ce que
         sont ces VM. Sans elle, on le demande à virsh — juste ici, donc faux
         pour une VM qui vit sur un Proxmox distant."""
@@ -415,6 +452,11 @@ class QemuDeployMixin:
                 # connaît pas.
                 if (pve or {}).get(name):
                     entry["pve"] = pve[name]
+                # Ce que l'hôte a décidé AVANT de lancer l'installation :
+                # écrit en tête du journal, là où on le cherche quand ça a
+                # échoué. La console qui l'a dit a défilé depuis.
+                if (notes or {}).get(name):
+                    entry["notes"] = list(notes[name])
                 # Les outils imposent une commande PAR VM même quand tout le
                 # reste est commun : ils dépendent de l'architecture de la
                 # machine et de sa saveur de bureau, que seule cette boucle
@@ -1044,11 +1086,49 @@ class QemuDeployMixin:
         )
         print(f"  {t('~/.ssh/config:')} {cfg}")
         print(f"  {t('Parallelism:')} {spec['parallelism']} {t('at a time')}")
+        # Avant la ligne du mot de passe : le système de base d'une VM se dit
+        # AVANT de la créer, pas dans un journal d'installation.
+        for rang, ligne in enumerate(self._qemu_image_lines(spec)):
+            print(f"  {ligne}" if rang == 0 else f"     {ligne}")
         # DERNIÈRE ligne de la page, parce que l'invite de sudo tombe juste
         # après : elle n'explique rien d'elle-même, et un mot de passe tapé
         # sans savoir ce qu'il autorise est donné à l'aveugle.
         for rang, ligne in enumerate(self._qemu_sudo_lines()):
             print(f"  {ligne}" if rang == 0 else f"     {ligne}")
+
+    def _qemu_image_lines(self, spec):
+        """Ce qu'il faut savoir de l'image des VM retenues. Vide s'il n'y a
+        rien de particulier à en dire.
+
+        Les FAITS viennent de deploy_qemu, seule autorité sur l'image qu'il
+        télécharge ; leur mise en phrase revient au menu, qui parle deux
+        langues. Une distribution dont l'image vient d'un tiers se dit ici, et
+        une distribution où l'installation ERPLibre échouera encore aussi :
+        les deux se découvrent sinon après le déploiement.
+        """
+        distros = {vm.get("distro") for vm in spec.get("vms") or ()}
+        try:
+            mod = self._qemu_import_module()
+        except Exception:
+            return []
+        lignes = []
+        for distro in sorted(d for d in distros if d):
+            note = mod.image_source_note(distro)
+            if not note:
+                continue
+            url, tag = note
+            lignes.append(
+                t(
+                    "%s: image rebuilt by a third party, not published by the"
+                    " distribution"
+                )
+                % distro
+            )
+            lignes.append(url)
+            lignes.append(
+                t("release pinned to %s, sha256 fixed in the repository") % tag
+            )
+        return lignes
 
     def _qemu_sudo_lines(self):
         """Pourquoi le déploiement va demander le mot de passe. Vide s'il ne
@@ -1198,6 +1278,15 @@ class QemuDeployMixin:
         # ici plutôt qu'au petit bonheur, sinon l'installation se termine sur un
         # disque plein après une heure.
         extra += self._qemu_tools_disk_gb(vm_tools, arch, desktop, d)
+        # Ce que le guide de connexion annoncera. FILTRÉ par la machine, et
+        # non la liste cochée pour le parc : Android Studio n'existe qu'en
+        # x86_64 et les extensions GNOME n'ont pas de sens sans bureau —
+        # annoncer un outil qui ne sera pas posé enverrait chercher une
+        # commande absente. Rien n'est installé par deploy_qemu.py, qui ne
+        # s'en sert que pour écrire /etc/motd.
+        retenus = self._qemu_tools_for(vm_tools, arch, desktop, d)
+        if retenus:
+            parts += ["--vm-tools", ",".join(retenus)]
         # TOUJOURS, même sans supplément : sans le drapeau, deploy_qemu.py
         # reprend la taille par défaut du catalogue. Une VM réglée à 60 G mais
         # sans rien à installer repartait donc à 20 G, en silence.

@@ -20,6 +20,19 @@ import click
 
 from script.todo.todo_i18n import t
 
+# Les tests longs qui CRÉENT quelque chose, donc qui savent le défaire.
+#
+# Seconde copie de `long_test/descente.py::SCRIPTS`, et elle l'est faute de
+# mieux : ce module-ci vit dans script/todo/ et lance les tests longs en
+# sous-processus, sans jamais importer long_test/ — qui traîne avec lui le
+# module Proxmox. Là-bas la liste sert au VERROU, ici au défaire.
+SCRIPTS_DEFAISABLES = (
+    "deep_proxmox.py",
+    "deep_qemu.py",
+    "qemu_cache.py",
+    "install_nixos.py",
+)
+
 # Le répertoire des tests longs, à la racine du dépôt.
 LONGTEST_DIR = "long_test"
 
@@ -108,6 +121,12 @@ class LongTestMenuMixin:
                     "Download cache: measure, then cut the upstream"
                 )
             },
+            {
+                "prompt_description": t(
+                    "ERPLibre on NixOS: plan only (dry-run)"
+                )
+            },
+            {"prompt_description": t("ERPLibre on NixOS: run it")},
             {"prompt_description": t("Undo what the descent created")},
         ]
         # Le cache n'est pas une descente : ni profondeur, ni hôte de départ.
@@ -124,6 +143,11 @@ class LongTestMenuMixin:
             "2": ("deep_proxmox.py", True),
             "3": ("deep_qemu.py", True),
             "4": ("deep_qemu.py", True),
+            # 8 et 9, et non 5 et 6 : le cache occupe 5 à 7, et sa table est
+            # interrogée AVANT celle-ci. Les y laisser aurait rendu les
+            # entrées NixOS inatteignables — le menu aurait lancé le cache.
+            "8": ("install_nixos.py", True),
+            "9": ("install_nixos.py", True),
         }
         help_info = self.fill_help_info(choices)
         while True:
@@ -136,16 +160,21 @@ class LongTestMenuMixin:
                 continue
             if status in scripts:
                 script, demander = scripts[status]
-                # La profondeur est DEMANDÉE : c'est le réglage qui décide de
-                # la durée — au-delà de trois étages, tout est 15 à 30 fois
-                # plus lent, et cinq se comptent en heures.
-                args = f"--depth {self._longtest_depth()}"
-                if demander:
-                    args += self._longtest_depart(script)
-                if status in ("1", "3"):
+                if script == "install_nixos.py":
+                    # Pas de profondeur : une seule machine, et la question
+                    # est binaire — l'installation aboutit ou non.
+                    args = self._longtest_depart_nixos() if demander else ""
+                else:
+                    # La profondeur est DEMANDÉE : c'est le réglage qui décide
+                    # de la durée — au-delà de trois étages, tout est 15 à 30
+                    # fois plus lent, et cinq se comptent en heures.
+                    args = f"--depth {self._longtest_depth()}"
+                    if demander:
+                        args += self._longtest_depart(script)
+                if status in ("1", "3", "8"):
                     args += " --dry-run"
                 self._longtest_run(script, args)
-            elif status == "8":
+            elif status == "10":
                 self._longtest_defaire()
             else:
                 print(t("Command not found !"))
@@ -161,10 +190,29 @@ class LongTestMenuMixin:
         on lui fait faire cette liste à blanc pour qu'un choix d'une touche ne
         mène pas directement à un « qm destroy --purge ».
         """
-        for script in ("deep_proxmox.py", "deep_qemu.py", "qemu_cache.py"):
+        for script in SCRIPTS_DEFAISABLES:
             self._longtest_run(script, "--detruire --dry-run", demander=False)
             if self._is_yes(input(f"\n{t('Destroy all that? (y/N): ')}")):
                 self._longtest_run(script, "--detruire", demander=False)
+
+    def _longtest_depart_nixos(self):
+        """D'où part l'installation : une VM neuve, ou une machine NixOS
+        qu'on possède déjà.
+
+        La question n'est pas celle des descentes — il n'y a pas d'étage ici,
+        et un hôte fourni doit DÉJÀ porter NixOS : le script y installe
+        ERPLibre, il n'y installe pas le système.
+        """
+        print(f"\n{t('Where does the install run?')}")
+        print(f"  [1] {t('Create a fresh NixOS VM')} *")
+        print(f"  [2] {t('Use a NixOS machine you already have')}")
+        if input(t("Choice (1-2, default 1): ")).strip() != "2":
+            return ""
+        hote = self._longtest_hote_manuel()
+        if hote:
+            return self._longtest_args_hote(hote)
+        print(t("Cancelled."))
+        return ""
 
     def _longtest_depart(self, script):
         """D'où part la descente : une VM neuve, ou un hôte qu'on a déjà.

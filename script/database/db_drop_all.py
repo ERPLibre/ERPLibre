@@ -72,7 +72,17 @@ def main():
         cmd_end += f' "./odoo_bin.sh db --drop --database {db_name}"'
         lst_db_name.append(db_name)
     if cmd_end:
-        execute_shell(cmd_all + cmd_end)
+        code, sortie = execute_shell(cmd_all + cmd_end)
+        if code:
+            # Une destruction qui annonce un succès qu'elle n'a pas obtenu
+            # est pire que celle qui échoue : l'opérateur passe à la suite en
+            # croyant ses bases parties. Le cas s'atteint dès que « parallel »
+            # manque du PATH — le shell rend 127 et pas une base n'est
+            # touchée, pendant que la liste s'affiche.
+            print("Database NOT deleted :", file=sys.stderr)
+            if sortie:
+                print(sortie, file=sys.stderr)
+            return code
         print("Database deleted :")
         for db_name in lst_db_name:
             print(db_name)

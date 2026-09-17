@@ -575,6 +575,52 @@ class TestNeJamaisDetruireSousUneDescenteVivante(unittest.TestCase):
         self.assertFalse(self.dp._lance_une_descente(faux.pid))
         self.assertNotIn(faux.pid, self.dp.autre_descente())
 
+    def _argv0(self, nom):
+        """Un processus vivant dont argv[0] est `nom`, sans rien exécuter de
+        vrai.
+
+        `executable` sépare le binaire RÉELLEMENT lancé de ce que la ligne de
+        commande annonce : c'est elle que /proc publie, et donc elle que le
+        contrôle lit. Le faire par « sh -c 'exec -a …' » n'éprouvait rien — la
+        ligne de commande restait celle du shell, et le test passait à vide.
+        """
+        import subprocess
+
+        faux = subprocess.Popen([nom, "30"], executable=shutil.which("sleep"))
+        self.addCleanup(faux.kill)
+        # Le noyau publie la nouvelle ligne de commande à l'exec, pas au fork.
+        for _ in range(100):
+            try:
+                with open(f"/proc/{faux.pid}/cmdline", "rb") as fh:
+                    if fh.read().startswith(nom.encode()):
+                        break
+            except OSError:
+                pass
+            time.sleep(0.02)
+        return faux
+
+    def test_a_file_whose_name_merely_ends_like_one_is_not_a_descent(self):
+        """« endswith » prenait « test_longtest_install_nixos.py » pour
+        « install_nixos.py » : le fichier de tests se déclarait descente en
+        cours, et « --detruire » refusait de travailler tant qu'il tournait.
+
+        Le piège n'est pas propre à ce nom-là : tout script dont le nom
+        termine celui d'un test long y tombait."""
+        faux = self._argv0("/tmp/test_longtest_install_nixos.py")
+        self.assertFalse(self.dp._lance_une_descente(faux.pid))
+
+    def test_the_real_path_of_a_script_is_still_recognised(self):
+        """Le basename ne doit pas rendre le contrôle aveugle : un
+        interpréteur reçoit le CHEMIN du script, pas son nom nu."""
+        for chemin in (
+            "long_test/install_nixos.py",
+            "/home/x/long_test/deep_qemu.py",
+            "./deep_proxmox.py",
+        ):
+            with self.subTest(chemin=chemin):
+                faux = self._argv0(chemin)
+                self.assertTrue(self.dp._lance_une_descente(faux.pid))
+
     def _fausse_descente(self):
         """Un processus qui exécute VRAIMENT un « deep_proxmox.py ».
 
@@ -1113,18 +1159,37 @@ class TestLeMenuDesDeuxTests(unittest.TestCase):
         self.assertIn("deep_qemu.py", src)
 
     def test_undoing_asks_each_stack_separately(self):
-        """Chacun ne connaît que ses rapports : lancer les deux ne peut pas
+        """Chacun ne connaît que ses rapports : lancer les trois ne peut pas
         faire détruire à l'un ce que l'autre a créé."""
         import inspect
 
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
         src = inspect.getsource(self.todo._longtest_defaire)
-        self.assertIn("deep_proxmox.py", src)
-        self.assertIn("deep_qemu.py", src)
+        self.assertIn("SCRIPTS_DEFAISABLES", src)
+        for script in ("deep_proxmox.py", "deep_qemu.py", "install_nixos.py"):
+            with self.subTest(script=script):
+                self.assertIn(script, SCRIPTS_DEFAISABLES)
         # À BLANC d'abord, toujours : un choix d'une touche ne doit pas mener
         # droit à « qm destroy --purge ».
         self.assertLess(
             src.index("--detruire --dry-run"), src.index('"--detruire"')
         )
+
+    def test_the_two_copies_of_the_list_agree(self):
+        """Le verrou (long_test/descente.py) et le défaire (le menu) portent
+        chacun la liste des tests longs, faute de pouvoir la partager : le
+        menu lance ces scripts en sous-processus et n'importe jamais
+        long_test/, qui traîne avec lui le module Proxmox.
+
+        L'égalité, dans les deux sens, et chacun de ses sens couvre une
+        panne : un test long absent du VERROU laisse une autre descente
+        détruire ses machines pendant qu'il tourne ; absent du DÉFAIRE, il
+        laisse ses VM derrière lui, sans rien pour les reprendre."""
+        from script.todo.longtest_menu import SCRIPTS_DEFAISABLES
+
+        self.assertEqual(set(moteur.SCRIPTS), set(SCRIPTS_DEFAISABLES))
+        self.assertIn("install_nixos.py", moteur.SCRIPTS)
 
     def test_the_host_options_are_built_from_the_host_dict(self):
         self.assertEqual(
@@ -1699,6 +1764,51 @@ class TestLeMenu(unittest.TestCase):
         src = inspect.getsource(TODO.prompt_execute_test)
         self.assertIn("prompt_execute_longtest", src)
         self.assertIn("Long tests", src)
+
+
+class LeCacheDeLEtage1(unittest.TestCase):
+    """L'étage 1 est une VM du pont libvirt local, et le cache détourne tout
+    ce pont. Ne rien lui passer ne la laisse pas en direct : elle est
+    interceptée sans autorité, et chaque téléchargement HTTPS de l'étage —
+    l'image, puis le gestionnaire de paquets — échoue sur « self-signed
+    certificate in certificate chain »."""
+
+    def setUp(self):
+        self.dossier = tempfile.mkdtemp(prefix="descente-ca-")
+        self.addCleanup(shutil.rmtree, self.dossier, ignore_errors=True)
+        self.addCleanup(setattr, moteur, "CACHE_CA", moteur.CACHE_CA)
+
+    def test_the_authority_is_trusted_when_the_host_has_one(self):
+        ca = os.path.join(self.dossier, "ca.crt")
+        with open(ca, "w", encoding="utf-8") as fh:
+            fh.write("-----BEGIN CERTIFICATE-----\n")
+        moteur.CACHE_CA = ca
+        self.assertEqual(["--cache-ca", ca], moteur.drapeaux_cache())
+
+    def test_a_host_without_one_asks_for_an_exception(self):
+        """L'exception par MAC, et non le silence : sur un hôte sans cache
+        elle ne fait rien et le dit, ce qui ne coûte qu'une ligne ; sur un
+        hôte qui en porte un, le silence coûte l'étage."""
+        moteur.CACHE_CA = os.path.join(self.dossier, "absent.crt")
+        self.assertEqual(["--cache-bypass"], moteur.drapeaux_cache())
+
+    def test_the_first_floor_passes_them(self):
+        """Les deux piles héritent de creer_etage1 : le drapeau posé là les
+        couvre toutes les deux."""
+        import inspect
+
+        src = inspect.getsource(moteur.Descente.creer_etage1)
+        self.assertIn("argv += drapeaux_cache()", src)
+
+    def test_the_long_tests_share_one_authority(self):
+        """Une seconde définition du chemin dériverait en silence, et poser
+        la mauvaise autorité échoue comme n'en poser aucune."""
+        import sys as _sys
+
+        _sys.path.insert(0, os.path.join(RACINE, "long_test"))
+        import qemu_cache
+
+        self.assertEqual(moteur.CACHE_CA, qemu_cache.CA)
 
 
 if __name__ == "__main__":

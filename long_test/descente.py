@@ -37,7 +37,39 @@ from script.proxmox import proxmox_deploy as pve  # noqa: E402
 # Les scripts qui lancent une descente. Le verrou les cherche TOUS : deux
 # descentes de piles différentes se disputeraient la RAM, le disque et
 # ~/.ssh/config aussi sûrement que deux de la même.
-SCRIPTS = ("deep_proxmox.py", "deep_qemu.py")
+SCRIPTS = (
+    "deep_proxmox.py",
+    "deep_qemu.py",
+    "install_nixos.py",
+    "qemu_cache.py",
+)
+
+# L'autorité du cache de téléchargement, telle que le service l'écrit sur
+# l'hôte. Une seule définition pour tout long_test/ : une seconde dériverait
+# en silence, et un test qui pose la mauvaise autorité échoue comme s'il n'en
+# posait aucune.
+CACHE_CA = "/var/lib/erplibre_go_qemu_cache/ca.crt"
+
+
+def drapeaux_cache():
+    """Les drapeaux de cache à passer à la CLI QEMU pour une VM locale.
+
+    Le détournement est TRANSPARENT et vaut pour tout le pont libvirt : une
+    VM créée ici est interceptée qu'elle le demande ou non. Ne rien passer ne
+    la laisse donc pas en direct — elle reçoit un certificat qu'elle ne
+    reconnaît pas, et chaque téléchargement HTTPS échoue sur « self-signed
+    certificate in certificate chain » : l'image, puis le gestionnaire de
+    paquets, puis tout le reste de l'étage.
+
+    Deux issues, et elles se valent pour le test : approuver l'autorité quand
+    l'hôte en porte une, ou demander une exception par adresse MAC sinon. Sur
+    un hôte sans cache, l'exception ne fait rien et le dit — la CLI n'exige
+    pas d'installer un cache pour pouvoir s'en passer.
+    """
+    if os.path.isfile(CACHE_CA):
+        return ["--cache-ca", CACHE_CA]
+    return ["--cache-bypass"]
+
 
 # Une étape bloquée ne doit pas bloquer le test : chaque appel est borné, et le
 # journal dit lequel a expiré. Généreux, parce que chaque étage est plus lent
@@ -441,7 +473,12 @@ class Descente:
     def creer_etage1(self, res):
         """Une VM locale, par la CLI QEMU/KVM. Le seul étage sur du métal."""
         nom = self.nom_etage(1)
-        argv = [
+        # SOUS SUDO, comme le menu le fait : le dossier des images
+        # appartient à root en 755 sur une installation ordinaire de libvirt,
+        # et la CLI s'arrête à l'étape 1 sur « Permission refusée » avant
+        # d'avoir rien créé. Jamais à blanc — un essai qui n'écrit rien n'a
+        # aucune raison de demander un mot de passe.
+        argv = ([] if self.dry_run else ["sudo"]) + [
             os.path.join(RACINE, ".venv.erplibre/bin/python"),
             os.path.join(RACINE, "script/qemu/deploy_qemu.py"),
             "--distro",
@@ -458,6 +495,7 @@ class Descente:
         pub = cle_publique()
         if pub:
             argv += ["--ssh-key", pub]
+        argv += drapeaux_cache()
         if self.dry_run:
             print("      " + " ".join(shlex.quote(a) for a in argv))
             return nom
@@ -750,22 +788,27 @@ def _lance_une_descente(pid):
     """`pid` exécute-t-il UN des scripts de descente — pas seulement le
     nomme-t-il ?
 
-    Par ARGUMENT, jamais par sous-chaîne. Constaté sur cette machine : un
-    « pgrep -f deep_proxmox.py » posé dans une boucle de surveillance donne un
-    shell dont la ligne de commande contient le motif, et le contrôle comptait
-    ce shell comme une descente — deux faux positifs sur trois. Un argument
-    qui SE TERMINE par le nom du fichier, lui, ne peut venir que d'un
-    interpréteur qu'on a lancé dessus.
+    Par ARGUMENT, jamais par sous-chaîne. Un « pgrep -f deep_proxmox.py » posé
+    dans une boucle de surveillance donne un shell dont la ligne de commande
+    contient le motif, et le contrôle comptait ce shell comme une descente —
+    deux faux positifs sur trois.
+
+    Et par NOM DE FICHIER, pas par suffixe. « endswith » prenait
+    « test_longtest_install_nixos.py » pour « install_nixos.py » : le fichier
+    de tests se déclarait descente en cours, et « --detruire » refusait de
+    travailler tant qu'il tournait. Le basename ne confond pas deux fichiers
+    dont l'un finit comme l'autre, et reconnaît toujours le chemin complet
+    qu'un interpréteur reçoit.
     """
     try:
         with open(f"/proc/{int(pid)}/cmdline", "rb") as fh:
             arguments = fh.read().split(b"\0")
     except (OSError, ValueError):
         return False
-    # Les DEUX scripts : deux descentes de piles différentes se disputent la
-    # RAM, le disque et ~/.ssh/config aussi sûrement que deux de la même.
-    attendus = tuple(nom.encode() for nom in SCRIPTS)
-    return any(a.endswith(attendus) for a in arguments)
+    # LES scripts, tous : deux tests longs se disputent la RAM, le disque et
+    # ~/.ssh/config aussi sûrement que deux descentes de la même pile.
+    attendus = {nom.encode() for nom in SCRIPTS}
+    return any(os.path.basename(a) in attendus for a in arguments)
 
 
 def descente_vivante(pid):

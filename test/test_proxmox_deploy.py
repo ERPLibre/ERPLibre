@@ -403,6 +403,62 @@ class TestLesCommandes(unittest.TestCase):
         self.assertIn("if [ -s", cmd)
         self.assertIn("wget", cmd)
 
+    def test_a_substituted_image_names_what_to_do_first(self):
+        """Cet hôte peut être une VM derrière le cache de téléchargement :
+        effacer l'image la fera resservir à l'identique depuis le magasin.
+        L'entrée s'en retire d'abord, et l'échec le dit — c'est là que
+        l'opérateur se tient quand la somme lâche."""
+        cmd = pve.image_fetch_cmd(
+            "https://x/deb.qcow2", "deb.qcow2", sha256="ab" * 32
+        )
+        self.assertIn("--oublie", cmd)
+        self.assertIn("rm -f", cmd)
+        # Vers l'erreur standard : la sortie normale est lue par la machine.
+        self.assertIn(">&2", cmd)
+
+    def test_the_remedy_names_the_url_it_forgets(self):
+        """Le message dit de lancer cette commande EN PREMIER, et une
+        commande qu'on ne peut pas recopier telle quelle vaut moins que pas
+        de commande.
+
+        « printf %s » sans opérande n'écrit rien ; « --oublie » lit alors un
+        flux vide, n'efface rien et sort à 0. L'opérateur croit avoir purgé,
+        efface l'image, relance — et le magasin ressert les mêmes octets,
+        indéfiniment. Le succès silencieux est le pire des deux."""
+        url = "https://exemple.invalide/img/deb.qcow2"
+        cmd = pve.image_fetch_cmd(url, "deb.qcow2", sha256="ab" * 32)
+        self.assertIn(url, cmd)
+        oubli = cmd[cmd.index("printf") : cmd.index("--oublie")]
+        self.assertIn(url, oubli)
+        self.assertIn("GET ", oubli)
+
+    def test_the_remedy_survives_a_real_shell(self):
+        """Joué pour de vrai : c'est la LIGNE RENDUE qui compte, pas la
+        chaîne Python. Elle traverse deux quotages — celui de l'aide, puis
+        celui du « echo » qui la porte — et une interpolation tombée ne se
+        voit qu'ici."""
+        import subprocess
+
+        url = "https://exemple.invalide/img/deb.qcow2"
+        cmd = pve.image_fetch_cmd(url, "deb.qcow2", sha256="ab" * 32)
+        aide = cmd[cmd.index("echo 'rm -f") + len("echo ") :]
+        aide = aide[: aide.index(" >&2")]
+        rendu = subprocess.run(
+            ["sh", "-c", f"echo {aide}"], capture_output=True, text=True
+        )
+        self.assertEqual(rendu.returncode, 0, rendu.stderr)
+        self.assertIn(f"'GET {url}'", rendu.stdout)
+        # Le tube est complet : un « printf » nu ne serait pas recopiable.
+        self.assertIn("| sudo erplibre_go_qemu_cache --oublie", rendu.stdout)
+
+    def test_the_failure_is_still_a_failure(self):
+        """Un message n'absout pas : « false » garde le code de retour, sans
+        quoi le déploiement continuerait sur une image substituée."""
+        cmd = pve.image_fetch_cmd(
+            "https://x/deb.qcow2", "deb.qcow2", sha256="ab" * 32
+        )
+        self.assertIn("false;", cmd)
+
     def test_the_internal_bridge_never_touches_a_physical_nic(self):
         """Le point le plus important de ce module : ajouter l'interface au
         pont déplace l'adresse de l'hôte et coupe la session SSH — à distance,

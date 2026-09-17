@@ -1449,6 +1449,7 @@ class QemuCacheMenuMixin:
                 )
             },
             {"prompt_description": t("Clean - Everything")},
+            {"prompt_description": t("Clean - Forget one URL")},
         ]
         grains = {"1": "jour", "2": "semaine", "3": "mois"}
         help_info = self.fill_help_info(choices)
@@ -1465,6 +1466,8 @@ class QemuCacheMenuMixin:
                 self._cache_nettoyer_age()
             elif status == "5":
                 self._cache_nettoyer_tout()
+            elif status == "6":
+                self._cache_oublier_url()
             else:
                 print(t("Command not found !"))
 
@@ -1497,6 +1500,30 @@ class QemuCacheMenuMixin:
         if not click.confirm(t("Erase what is listed above?")):
             return
         self._cache_lancer(f"--purge-older-than {shlex.quote(delai)}")
+
+    def _cache_oublier_url(self):
+        """Retire UNE entrée, par son URL. Montrée d'abord, effacée ensuite.
+
+        Le seul geste qui vise une entrée : « effacer ce qui n'a plus servi »
+        n'atteint jamais un objet que le service rajeunit à chaque fois qu'il
+        le rend, et « tout effacer » coûte le cache entier pour un fichier.
+        Le cas qui l'appelle est une somme qui ne correspond pas — le magasin
+        continue alors de servir les mêmes octets, et retélécharger ne change
+        rien puisque c'est lui qui répond.
+
+        « --detient » AVANT, et c'est l'aperçu : il répond à la même ligne,
+        par la même clé, sans rien modifier. Un « absent » dit que l'URL n'est
+        pas celle qu'on croit, avant d'avoir effacé quoi que ce soit.
+        """
+        url = click.prompt(t("URL to forget (or METHOD URL)"), default="")
+        url = url.strip()
+        if not url:
+            return
+        print(f"\n  {t('What the store holds for it:')}\n")
+        self._cache_lancer(f"--detient <<< {shlex.quote(url)}", sudo=False)
+        if not click.confirm(t("Remove this entry from the store?")):
+            return
+        self._cache_lancer(f"--oublie <<< {shlex.quote(url)}")
 
     def _cache_nettoyer_tout(self):
         """Tout, objets ET dépôts. Montré à blanc d'abord, comme le reste."""

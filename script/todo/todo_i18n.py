@@ -3283,6 +3283,18 @@ TRANSLATIONS = {
         "fr": "virt-viewer manque ici ; installation.",
         "en": "virt-viewer is missing here; installing it.",
     },
+    # Là où « aucun gestionnaire » est vrai ET sans issue.
+    "NixOS: nix-shell -p <package> for one shell, or declare it in"
+    " /etc/nixos/configuration.nix": {
+        "fr": (
+            "NixOS : nix-shell -p <paquet> le temps d'un shell, ou le"
+            " déclarer dans /etc/nixos/configuration.nix"
+        ),
+        "en": (
+            "NixOS: nix-shell -p <package> for one shell, or declare it in"
+            " /etc/nixos/configuration.nix"
+        ),
+    },
     "no known package manager here.": {
         "fr": "aucun gestionnaire de paquets connu ici.",
         "en": "no known package manager here.",
@@ -4496,6 +4508,27 @@ TRANSLATIONS = {
     "Nested QEMU depth: plan only (dry-run)": {
         "fr": "Profondeur QEMU imbriqué : le plan seulement (à blanc)",
         "en": "Nested QEMU depth: plan only (dry-run)",
+    },
+    # ERPLibre installé sur NixOS, de bout en bout.
+    "ERPLibre on NixOS: plan only (dry-run)": {
+        "fr": "ERPLibre sur NixOS : le plan seulement (à blanc)",
+        "en": "ERPLibre on NixOS: plan only (dry-run)",
+    },
+    "ERPLibre on NixOS: run it": {
+        "fr": "ERPLibre sur NixOS : le lancer",
+        "en": "ERPLibre on NixOS: run it",
+    },
+    "Where does the install run?": {
+        "fr": "Où l'installation se fait-elle ?",
+        "en": "Where does the install run?",
+    },
+    "Create a fresh NixOS VM": {
+        "fr": "Créer une VM NixOS neuve",
+        "en": "Create a fresh NixOS VM",
+    },
+    "Use a NixOS machine you already have": {
+        "fr": "Partir d'une machine NixOS qu'on possède déjà",
+        "en": "Use a NixOS machine you already have",
     },
     "Nested QEMU depth: run it": {
         "fr": "Profondeur QEMU imbriqué : le lancer",
@@ -5763,6 +5796,21 @@ TRANSLATIONS = {
         "fr": "Outils d'assistance IA",
         "en": "AI coding tools",
     },
+    # Ce qu'il faut savoir de l'image d'une VM, dit avant de la créer.
+    "%s: image rebuilt by a third party, not published by the distribution": {
+        "fr": (
+            "%s : image reconstruite par un tiers, non publiée par la"
+            " distribution"
+        ),
+        "en": (
+            "%s: image rebuilt by a third party, not published by the"
+            " distribution"
+        ),
+    },
+    "release pinned to %s, sha256 fixed in the repository": {
+        "fr": "release épinglée sur %s, sha256 figée dans le dépôt",
+        "en": "release pinned to %s, sha256 fixed in the repository",
+    },
     # Pourquoi le déploiement demande un mot de passe, dit AVANT l'invite.
     "sudo password: asked when the deployment starts": {
         "fr": "Mot de passe sudo : demandé au lancement du déploiement, pour",
@@ -5804,6 +5852,40 @@ TRANSLATIONS = {
     "rtk, starship, one agent, git and Claude ready": {
         "fr": "rtk, starship, un agent, git et Claude prêts",
         "en": "rtk, starship, one agent, git and Claude ready",
+    },
+    # Nix posé dans une VM qui n'est pas NixOS, et l'installateur qui porte
+    # NixOS sur une autre machine.
+    "nix + nixos-anywhere": {
+        "fr": "nix + nixos-anywhere",
+        "en": "nix + nixos-anywhere",
+    },
+    "nix, flakes, and nixos-anywhere to install NixOS elsewhere": {
+        "fr": "nix, flakes et nixos-anywhere pour installer NixOS ailleurs",
+        "en": "nix, flakes, and nixos-anywhere to install NixOS elsewhere",
+    },
+    "the official multi-user installer, nix as a daemon": {
+        "fr": "l'installateur officiel multi-utilisateur, nix en démon",
+        "en": "the official multi-user installer, nix as a daemon",
+    },
+    "experimental-features: nix-command and flakes": {
+        "fr": "experimental-features : nix-command et flakes",
+        "en": "experimental-features: nix-command and flakes",
+    },
+    "nixos-anywhere, by nix profile install": {
+        "fr": "nixos-anywhere, par nix profile install",
+        "en": "nixos-anywhere, by nix profile install",
+    },
+    "it installs NixOS on any machine reachable over SSH": {
+        "fr": "il installe NixOS sur toute machine joignable en SSH",
+        "en": "it installs NixOS on any machine reachable over SSH",
+    },
+    "nixos-anywhere ready": {
+        "fr": "nixos-anywhere prêt",
+        "en": "nixos-anywhere ready",
+    },
+    "nixos-anywhere missing, see the log above": {
+        "fr": "nixos-anywhere absent, voir le journal ci-dessus",
+        "en": "nixos-anywhere missing, see the log above",
     },
     "Help": {
         "fr": "Aide",
@@ -7174,6 +7256,50 @@ TRANSLATIONS = {
     "download cache authority not installed": {
         "fr": "autorité du cache de téléchargement non posée",
         "en": "download cache authority not installed",
+    },
+    "Clean - Forget one URL": {
+        "fr": "Nettoyer - Oublier une URL",
+        "en": "Clean - Forget one URL",
+    },
+    "URL to forget (or METHOD URL)": {
+        "fr": "URL à oublier (ou MÉTHODE URL)",
+        "en": "URL to forget (or METHOD URL)",
+    },
+    "What the store holds for it:": {
+        "fr": "Ce que le magasin en tient :",
+        "en": "What the store holds for it:",
+    },
+    "Remove this entry from the store?": {
+        "fr": "Retirer cette entrée du magasin ?",
+        "en": "Remove this entry from the store?",
+    },
+    "Prepared by the host:": {
+        "fr": "Préparé par l'hôte :",
+        "en": "Prepared by the host:",
+    },
+    "host taken out of the download cache": {
+        "fr": "hôte soustrait au cache de téléchargement",
+        "en": "host taken out of the download cache",
+    },
+    "its own downloads stop being cached too.": {
+        "fr": "ses propres téléchargements cessent aussi d'être gardés.",
+        "en": "its own downloads stop being cached too.",
+    },
+    "download cache bypass not set": {
+        "fr": "exception au cache de téléchargement non posée",
+        "en": "download cache bypass not set",
+    },
+    "download cache: host MAC not found": {
+        "fr": "cache de téléchargement : MAC de l'hôte introuvable",
+        "en": "download cache: host MAC not found",
+    },
+    "no trust store for this distribution, its downloads "
+    "will fail": {
+        "fr": (
+            "pas de magasin de confiance pour cette distribution, ses "
+            "téléchargements échoueront"
+        ),
+        "en": "no trust store for this distribution, its downloads will fail",
     },
     "Timezone": {
         "fr": "Fuseau horaire",

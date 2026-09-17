@@ -171,6 +171,17 @@ PROXMOX_VERSIONS: dict[str, tuple[str, str, int, str]] = {
 PROXMOX_DEBIAN_BASE: dict[str, str] = {"9": "13"}
 
 # distro -> (table des versions, version par défaut).
+# NixOS ne publie AUCUNE image cloud : sa page de téléchargement offre des ISO,
+# des AMI Amazon et Docker, rien d'autre. L'image vient donc d'un tiers qui la
+# reconstruit depuis nixpkgs — d'où le TAG épinglé et la somme figée plus bas,
+# et d'où image_source_note(), qui le dit à l'écran avant de déployer.
+#
+# 40 Go et 2 Go de RAM là où Arch demande 20 et 1 : le store Nix garde chaque
+# génération du système et ne se purge qu'à la main (nix-collect-garbage).
+NIXOS_VERSIONS: dict[str, tuple[str, str, int, str]] = {
+    "25.11": ("25.11", "nixos-25.11", 2048, "40G"),
+}
+
 DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "ubuntu": (UBUNTU_VERSIONS, "24.04"),
     "debian": (DEBIAN_VERSIONS, "12"),
@@ -179,6 +190,7 @@ DISTROS: dict[str, tuple[dict[str, tuple[str, str, int, str]], str]] = {
     "rocky": (ROCKY_VERSIONS, "10"),
     "opensuse": (OPENSUSE_VERSIONS, "16.0"),
     "arch": (ARCH_VERSIONS, "latest"),
+    "nixos": (NIXOS_VERSIONS, "25.11"),
     "proxmox": (PROXMOX_VERSIONS, "9"),
 }
 
@@ -414,6 +426,18 @@ def gpu_install_args(node: str) -> list[str]:
 
 ARCH_CLOUD_BASE = "https://geo.mirror.pkgbuild.com/images/latest"
 
+# Image NixOS : release ÉPINGLÉE d'un tiers, jamais « latest ». Une release
+# qui bouge changerait le système de base d'un déploiement à l'autre, et
+# celle-ci n'est signée par personne — la somme ci-dessous est donc la nôtre,
+# relevée une fois à la revue, et vérifiée à chaque téléchargement.
+NIXOS_IMAGE_TAG = "2026.01.18-0057"
+NIXOS_IMAGE_BASE = (
+    "https://github.com/cloudnull/nixos-openstack/releases/download"
+)
+NIXOS_IMAGE_SHA256 = (
+    "9c7df1786106b3bcbed514d5c16e05b735a42642d3de0c51a690e7d8aba4ebc4"
+)
+
 CLOUD_IMG_BASE = "https://cloud-images.ubuntu.com"
 # Debian : cloud.debian.org est un redirecteur qui, selon le réseau, peut
 # renvoyer vers un miroir injoignable. On essaie donc plusieurs bases dans
@@ -538,6 +562,10 @@ def image_candidates(
     if distro == "arch":
         # Rolling release : image « latest » officielle (cloud-init inclus).
         return [f"{ARCH_CLOUD_BASE}/Arch-Linux-{a}-cloudimg.qcow2"]
+    if distro == "nixos":
+        # Un seul asset, sans architecture dans son nom : le tiers ne publie
+        # que x86_64, ce que ARCH_DISTRO_SUPPORT borne déjà.
+        return [f"{NIXOS_IMAGE_BASE}/{NIXOS_IMAGE_TAG}/nixos.qcow2"]
     raise ValueError(f"URL indisponible pour la distro {distro!r}")
 
 
@@ -585,6 +613,25 @@ def resolve_fedora_url(version: str, arch: str, dry_run: bool) -> str:
     )
 
 
+def image_source_note(distro: str) -> tuple[str, str] | None:
+    """(url, tag) quand l'image ne vient PAS de la distribution elle-même.
+
+    None pour tout le reste : on ne commente que ce qui sort de l'ordinaire,
+    et commenter chaque image noierait la seule qui le mérite.
+
+    NixOS ne publie aucune image cloud — sa page de téléchargement n'offre que
+    des ISO, des AMI Amazon et Docker. Celle-ci est donc reconstruite par un
+    tiers, à partir de nixpkgs. Ça se dit AVANT de déployer, pas après : le
+    système de base d'une VM n'est pas un détail d'implémentation.
+    """
+    if distro != "nixos":
+        return None
+    return (
+        f"{NIXOS_IMAGE_BASE}/{NIXOS_IMAGE_TAG}/nixos.qcow2",
+        NIXOS_IMAGE_TAG,
+    )
+
+
 def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
     """Nom de fichier local pour le cache d'image."""
     a = distro_arch(distro, arch)
@@ -600,6 +647,10 @@ def default_image_name(distro: str, code: str, arch: str, version: str) -> str:
         return f"debian-{PROXMOX_DEBIAN_BASE[version]}-genericcloud-{a}.qcow2"
     if distro == "arch":
         return f"arch-linux-{a}-cloudimg.qcow2"
+    if distro == "nixos":
+        # Le TAG est dans le nom : changer NIXOS_IMAGE_TAG retélécharge, au
+        # lieu de réutiliser une image qui ne répond plus à sa somme.
+        return f"nixos-{NIXOS_IMAGE_TAG}-{a}.qcow2"
     if distro == "opensuse":
         if version == "tumbleweed":
             return f"opensuse-tumbleweed-minimal-vm-{a}.qcow2"
@@ -1595,34 +1646,171 @@ def download_image(
     )
 
 
-def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
-    """Vérifie l'empreinte via le SHA256SUMS publié dans le même répertoire."""
-    if dry_run:
-        print("  [dry-run] vérification SHA256 ignorée")
+def pinned_sha256(distro: str) -> str:
+    """La somme que le DÉPÔT porte pour l'image de `distro`, ou "".
+
+    Lue par les deux chemins de déploiement : celui de qemu vérifie le
+    fichier qu'il vient de télécharger, celui de Proxmox fait vérifier sur
+    l'hôte distant. Deux copies de la somme dériveraient, et la copie oubliée
+    serait celle qui laisse passer une image que personne n'a regardée.
+    """
+    return NIXOS_IMAGE_SHA256 if distro == "nixos" else ""
+
+
+def verify_pinned_sha256(
+    distro: str, image: Path, dry_run: bool, urls: tuple = ()
+) -> None:
+    """Vérifie une image contre la somme que le DÉPÔT porte pour elle.
+
+    Sans rapport avec --verify, qui lit un SHA256SUMS publié par la
+    distribution : ici l'amont n'en publie aucun, la somme a été relevée une
+    fois à la revue, et c'est la seule chose qui distingue l'image revue de
+    n'importe quel fichier servi sous la même URL. Elle se vérifie donc
+    TOUJOURS, sans drapeau à passer.
+
+    Une somme qui ne correspond pas ARRÊTE le déploiement : continuer
+    reviendrait à installer un système que personne n'a regardé.
+    """
+    attendu = pinned_sha256(distro)
+    if not attendu or dry_run:
         return
-    sums_url = url.rsplit("/", 1)[0] + "/SHA256SUMS"
+    digest = hashlib.sha256()
+    with open(image, "rb") as fh:
+        for morceau in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(morceau)
+    obtenu = digest.hexdigest()
+    if obtenu != attendu:
+        # Le remède ORDINAIRE ne suffit pas derrière le cache : effacer le
+        # fichier le fait retélécharger, et c'est le cache qui resservira les
+        # mêmes octets, indéfiniment. Son entrée se retire d'abord — ni
+        # « --purge », qui efface tout, ni « --purge-older-than », qu'un objet
+        # servi ne vieillit jamais assez pour atteindre.
+        remede = ""
+        if urls:
+            lignes = "\n".join(f"GET {u}" for u in urls)
+            remede = (
+                "\n\n  Si un cache de téléchargement est en place, effacer le "
+                "fichier ne suffit pas : retirez-en l'entrée d'abord.\n"
+                f"    printf '%s\\n' {shlex.quote(lignes)} \\\n"
+                "      | sudo erplibre_go_qemu_cache --oublie"
+            )
+        sys.exit(
+            f"Erreur : l'image {image} ne correspond pas à la somme que le "
+            f"dépôt porte pour elle.\n"
+            f"  attendu : {attendu}\n"
+            f"  obtenu  : {obtenu}\n"
+            "  Supprimez le fichier pour le retélécharger. S'il revient "
+            "différent, l'amont a republié sous le même tag : le relire "
+            "avant de figer la nouvelle somme." + remede
+        )
+    print(f"  Somme sha256 conforme à celle du dépôt ({attendu[:12]}…).")
+
+
+# Où chaque distribution publie la somme de ses images, et avec quel
+# algorithme.
+#
+# Relevé sur les dépôts eux-mêmes, pas déduit. Les FORMATS se ressemblent —
+# « <empreinte>  <nom> », l'astérisque d'Ubuntu en plus — mais ni le nom du
+# fichier ni l'algorithme ne se devinent : Debian publie du sha512 quand tout
+# le reste est en sha256, les familles RHEL nomment leur fichier « CHECKSUM »
+# sans dire l'algorithme, et Arch comme openSUSE posent une somme PAR image
+# plutôt qu'un fichier de répertoire.
+#
+# « {image} » dans le nom désigne la somme voisine ; sans lui, le fichier est
+# cherché dans le répertoire de l'image.
+#
+# Fedora n'y est pas : son image porte un numéro de construction dans son
+# nom, et le fichier de sommes le porte aussi — il ne se déduit pas de l'URL
+# de l'image. Le dire plutôt que de vérifier à moitié.
+SUMS_SOURCE: dict[str, tuple[str, str]] = {
+    "ubuntu": ("SHA256SUMS", "sha256"),
+    "debian": ("SHA512SUMS", "sha512"),
+    "almalinux": ("CHECKSUM", "sha256"),
+    "rocky": ("CHECKSUM", "sha256"),
+    "opensuse": ("{image}.sha256", "sha256"),
+    "arch": ("{image}.SHA256", "sha256"),
+}
+
+
+def sums_url_for(url: str, distro: str) -> tuple[str, str]:
+    """(URL du fichier de sommes, algorithme) pour cette image, ou ("", "")."""
+    source = SUMS_SOURCE.get(distro)
+    if not source:
+        return "", ""
+    nom, algo = source
+    repertoire, image = url.rsplit("/", 1)
+    if "{image}" in nom:
+        return f"{repertoire}/{nom.format(image=image)}", algo
+    return f"{repertoire}/{nom}", algo
+
+
+def expected_sum(sums: str, filename: str) -> str:
+    """L'empreinte que `sums` donne pour `filename`, ou "".
+
+    Le nom est comparé au DERNIER champ, et en entier. Les six formats du
+    catalogue s'écrivent « <empreinte>  <nom> » — Ubuntu met une étoile
+    devant le sien, que l'on retire. Une comparaison par suffixe confondrait
+    « …-amd64.qcow2 » avec « …-ext4-amd64.qcow2 », qui vivent dans le même
+    fichier chez AlmaLinux : on rendrait alors la somme d'une autre image, et
+    la vérification échouerait en accusant l'image juste.
+
+    DEUX formes, et la seconde ne se devine pas : Rocky publie « SHA256
+    (<nom>) = <empreinte> », la forme des outils BSD, là où les cinq autres
+    écrivent l'empreinte en tête. Ne lire que la première rendait "" pour
+    Rocky, donc une image jamais vérifiée sans que rien ne le dise.
+
+    Un fichier signé porte aussi ses lignes de PGP, et le CHECKSUM de Rocky
+    des lignes de commentaire donnant la taille : ni les unes ni les autres
+    n'ont la forme attendue, et elles tombent d'elles-mêmes.
+    """
+    for ligne in sums.splitlines():
+        champs = ligne.split()
+        if len(champs) == 2:
+            empreinte, nom = champs
+            if nom.lstrip("*") == filename:
+                return empreinte
+        elif len(champs) == 4 and champs[2] == "=":
+            if champs[1].strip("()") == filename:
+                return champs[3]
+    return ""
+
+
+def verify_sha256(
+    url: str, image: Path, dry_run: bool, distro: str = "ubuntu"
+) -> None:
+    """Vérifie l'empreinte via les sommes que la distribution publie.
+
+    UN ÉCHEC DE RÉCUPÉRATION N'ARRÊTE PAS le déploiement, un écart si. Les
+    deux ne disent pas la même chose : un fichier de sommes injoignable est
+    une panne de disponibilité — miroir en travaux, réseau coupé — et refuser
+    de déployer pour cela rendrait la vérification plus coûteuse que le risque
+    qu'elle couvre. Une empreinte qui ne correspond PAS est une panne
+    d'intégrité, et elle arrête tout.
+    """
+    if dry_run:
+        print("  [dry-run] vérification des sommes ignorée")
+        return
+    sums_url, algo = sums_url_for(url, distro)
+    if not sums_url:
+        print(f"  Note : {distro} ne publie pas de sommes lisibles d'ici.")
+        return
     filename = url.rsplit("/", 1)[1]
-    print(f"  Vérification SHA256 via {sums_url}")
+    print(f"  Vérification {algo} via {sums_url}")
     try:
         with urllib.request.urlopen(  # noqa: S310
             sums_url, timeout=DOWNLOAD_TIMEOUT
         ) as resp:
             sums = resp.read().decode()
     except Exception as exc:  # pragma: no cover
-        sys.exit(f"Impossible de récupérer SHA256SUMS : {exc}")
+        print(f"  ⚠ sommes injoignables, image NON vérifiée : {exc}")
+        return
 
-    expected = next(
-        (
-            line.split()[0]
-            for line in sums.splitlines()
-            if line.strip().endswith(filename)
-        ),
-        None,
-    )
-    if expected is None:
-        sys.exit(f"Empreinte introuvable pour {filename} dans SHA256SUMS")
+    expected = expected_sum(sums, filename)
+    if not expected:
+        print(f"  ⚠ empreinte absente pour {filename}, image NON vérifiée")
+        return
 
-    h = hashlib.sha256()
+    h = hashlib.new(algo)
     with image.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
@@ -1631,10 +1819,10 @@ def verify_sha256(url: str, image: Path, dry_run: bool) -> None:
             missing_ok=True
         )  # évite la réutilisation du cache corrompu
         sys.exit(
-            f"SHA256 NON conforme ! Image supprimée : {image}\n"
+            f"Somme {algo} NON conforme ! Image supprimée : {image}\n"
             f"  attendu : {expected}\n  obtenu  : {h.hexdigest()}"
         )
-    print("  SHA256 conforme.")
+    print(f"  Somme {algo} conforme.")
 
 
 def hash_password(plain: str) -> str:
@@ -1776,23 +1964,58 @@ def hostname_valide(nom: str) -> str:
 TZ_ALIASES = "/usr/share/zoneinfo/tzdata.zi"
 
 
-# Distributions dont la chaîne UEFI ne démarre pas sur les OVMF courants.
+# Le firmware IMPOSÉ par l'image, sur x86, distribution par distribution.
 #
-# L'image de Fedora charge et DÉMARRE son chargeur — le micrologiciel l'annonce
+# UNE table et deux valeurs, parce que les deux voies de déploiement partent
+# de défauts OPPOSÉS : celle de libvirt amorce en UEFI pour tout le monde,
+# celle de Proxmox part en SeaBIOS. Chaque valeur écarte donc un défaut
+# différent, et chacune nomme un fait de l'IMAGE — pas une préférence.
+#
+# « bios » — la chaîne UEFI de l'image ne démarre pas sur les OVMF courants.
+# Celle de Fedora charge et DÉMARRE son chargeur — le micrologiciel l'annonce
 # — puis se fige sans écrire un octet sur le disque. La même image en BIOS
 # démarre son noyau normalement : ce n'est donc ni l'image, ni la partition
 # EFI, dont le chemin de repli est bien là. Ni l'entropie ni la machine q35 n'y
 # changent rien.
 #
-# Le symptôme visible depuis le déploiement est muet : aucune console, aucun
-# bail DHCP, une VM « en cours d'exécution » qui ne fait rien. D'où cette table
-# plutôt qu'un diagnostic à refaire.
-BIOS_OBLIGATOIRE = {"fedora"}
+# « uefi » — l'image n'a AUCUN secteur d'amorçage BIOS. Mesuré sur un
+# Proxmox 9 : en SeaBIOS, une VM NixOS se déclare « running » et sa console
+# reste muette ; la même en OVMF démarre — systemd, cloud-init, réseau.
+#
+# Le symptôme est muet des deux côtés : aucune console, aucun bail DHCP, une
+# VM « en cours d'exécution » qui ne fait rien. D'où cette table plutôt qu'un
+# diagnostic à refaire.
+#
+# Elle reste COURTE plutôt que de renverser un défaut pour tous : Debian 13,
+# mesurée sur le même hôte, démarre en SeaBIOS sans rien devoir à l'UEFI.
+#
+# AVEUGLE À L'ARCHITECTURE : elle ne vaut que sur x86. Sur arm64 il n'y a pas
+# de SeaBIOS, et virt_install tranche par l'architecture avant d'arriver ici ;
+# la lecture Proxmox, elle, ne crée que des VM x86.
+FIRMWARE_IMPOSE: dict[str, str] = {"fedora": "bios", "nixos": "uefi"}
 
 
 def amorcage_bios(distro: str, demande: bool) -> bool:
-    """Faut-il amorcer en BIOS ? La demande explicite l'emporte toujours."""
-    return bool(demande) or distro in BIOS_OBLIGATOIRE
+    """Faut-il amorcer en BIOS hérité ?
+
+    La demande explicite l'emporte, SAUF sur une image sans secteur
+    d'amorçage BIOS : « --bios » ne peut pas en inventer un, et la VM se
+    déclarerait « running » avec une console muette. Un fait physique ne se
+    force pas ; l'appelant en est averti.
+    """
+    impose = FIRMWARE_IMPOSE.get(distro)
+    if impose == "uefi":
+        return False
+    return bool(demande) or impose == "bios"
+
+
+def requiert_uefi(distro: str) -> bool:
+    """L'image de `distro` refuse-t-elle un amorçage BIOS hérité ?
+
+    Lue par la voie Proxmox, qui part en SeaBIOS et doit donc savoir à qui
+    poser « --bios ovmf » et un disque EFI.
+    """
+    return FIRMWARE_IMPOSE.get(distro) == "uefi"
 
 
 def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
@@ -1807,17 +2030,35 @@ def canonical_timezone(tz: str, table: str = TZ_ALIASES) -> str:
     La table des alias est « /usr/share/zoneinfo/tzdata.zi », dont chaque ligne
     de lien s'écrit « L <canonique> <alias> ». Absente ou illisible, le nom est
     rendu tel quel : un fuseau non traduit vaut mieux qu'un déploiement refusé.
+    Elle est lue de l'HÔTE plutôt que recopiée ici, et suit donc les mises à
+    jour de tzdata sans qu'on s'en occupe ; « table » n'existe que pour qu'un
+    test en fournisse une autre sans dépendre du tzdata de sa machine.
+
+    DEUX tours, et non un seul. Le format AUTORISE qu'un lien désigne un
+    autre lien, et un seul tour rendrait alors un nom qui reste un alias —
+    le défaut même qu'on répare. Le tzdata publié n'en contient aucune : tous
+    ses liens visent une zone. Le second tour est donc une assurance, au prix
+    d'une recherche dans un dictionnaire. Au-delà de deux, la table est
+    incohérente et le nom d'origine vaut mieux qu'une boucle.
+
+    L'INVARIANT que la fonction tient, et que le nombre de tours sert : le nom
+    rendu n'est pas lui-même un alias de la table.
     """
     if not tz:
         return tz
+    alias = {}
     try:
         with open(table, encoding="utf-8") as fh:
             for ligne in fh:
                 champs = ligne.split()
-                if len(champs) >= 3 and champs[0] == "L" and champs[2] == tz:
-                    return champs[1]
-    except OSError:
-        pass
+                if len(champs) >= 3 and champs[0] == "L":
+                    alias[champs[2]] = champs[1]
+    except (OSError, UnicodeDecodeError):
+        # Le décodage aussi : un octet hors UTF-8 dans le fichier ferait
+        # échouer le déploiement ENTIER pour une traduction de confort.
+        return tz
+    for _ in range(2):
+        tz = alias.get(tz, tz)
     return tz
 
 
@@ -1916,6 +2157,21 @@ def user_groups(distro: str, gpu: bool = False) -> str:
     return ", ".join(noms)
 
 
+def user_shell(distro: str) -> str:
+    """Shell de connexion du compte créé par cloud-init.
+
+    sshd REFUSE un compte dont le shell n'existe pas — « User <x> not allowed
+    because shell /bin/bash does not exist », avant même l'authentification,
+    et la VM est alors inaccessible bien qu'elle démarre et porte la clé.
+
+    NixOS ne peuple pas /bin : il n'y met que « sh », lui-même lien vers le
+    bash du store. C'est donc bash qu'on obtient, en mode POSIX, et non dash.
+    Ailleurs /bin/bash existe et reste préférable : sur Debian et Ubuntu,
+    /bin/sh EST dash, sans historique ni complétion.
+    """
+    return "/bin/sh" if distro == "nixos" else "/bin/bash"
+
+
 # --------------------------------------------------------------------------- #
 # Guide de connexion (/etc/motd) et identité git de la VM
 # --------------------------------------------------------------------------- #
@@ -1951,6 +2207,7 @@ DISTRO_LABELS: dict[str, str] = {
     "rocky": "Rocky Linux",
     "opensuse": "openSUSE",
     "arch": "Arch Linux",
+    "nixos": "NixOS",
     "proxmox": "Proxmox VE",
 }
 
@@ -1963,6 +2220,7 @@ DISTRO_PKG: dict[str, str] = {
     "rocky": "dnf",
     "opensuse": "zypper",
     "arch": "pacman",
+    "nixos": "nix",
     # Debian dessous : c'est apt qui sert, et le guide de connexion le dit.
     "proxmox": "apt",
 }
@@ -1991,6 +2249,30 @@ def distro_label(distro: str, version: str) -> str:
 # « list installed » sans tirets y échouent tous. Les formes longues passent
 # partout, et ne coûtent rien.
 PKG_GUIDE: dict[str, tuple[tuple[str, str, str], ...]] = {
+    # Rien ne s'y installe « pour de bon » par une commande : ce qui doit
+    # rester se DÉCLARE, et le guide le dit dans cet ordre.
+    "nix": (
+        (
+            "nix-shell -p <paquet>",
+            "essayer, le temps d'un shell",
+            "try it, for one shell",
+        ),
+        (
+            "/etc/nixos/configuration.nix",
+            "y déclarer ce qui reste",
+            "declare there what stays",
+        ),
+        (
+            "sudo nixos-rebuild switch",
+            "appliquer la déclaration",
+            "apply the declaration",
+        ),
+        (
+            "sudo nix-collect-garbage -d",
+            "libérer les générations",
+            "free the generations kept",
+        ),
+    ),
     "apt": (
         ("sudo apt update", "rafraîchir l'index", "refresh the index"),
         (
@@ -2055,6 +2337,282 @@ AUR_GUIDE: tuple[tuple[str, str, str], ...] = (
     ("yay -Ss <motif>", "chercher dans l'AUR", "search the AUR"),
     ("yay -Yc", "retirer les orphelins", "remove orphans"),
 )
+
+
+# Ce que NixOS change pour ERPLibre, et qu'aucune autre distribution ne
+# demande.
+#
+# Le piège est la deuxième ligne : /etc/nixos/erplibre.nix est RÉÉCRIT à
+# chaque « make install_os » — le script le pose par « sed | tee » depuis le
+# dépôt. Ce qu'on y ajoute disparaît à la mise à jour suivante, sans un mot,
+# et l'on cherche alors pourquoi une dépendance déclarée ne l'est plus. Le
+# fichier où l'on écrit SES déclarations est l'autre.
+#
+# « systemctl cat » plutôt qu'une ligne disant de ne pas faire : l'unité est
+# un lien vers le store, et la voir une fois dit mieux que toute explication
+# pourquoi « systemctl enable » n'a rien à faire ici.
+#
+# « --rollback » est ce qui rend l'édition SÛRE, et ne se devine pas : une
+# déclaration fautive se défait par une commande, là où les autres
+# distributions laissent un système à réparer à la main.
+#
+# « ls /bin » est le piège inverse d'une commande utile — il rend VIDE, et
+# pourtant /bin/bash s'exécute. envfs résout un nom à la demande sans jamais
+# énumérer, donc tout ce qui cherche par motif ne trouve rien, quand le nom
+# exact marche. Le Makefile tient par là (« SHELL := /bin/bash »), et une
+# sonde écrite en glob conclut à tort que l'interpréteur manque.
+#
+# Ce que ce bloc ne reprend PAS : nix-shell, nixos-rebuild switch et
+# nix-collect-garbage sont déjà dans le bloc du gestionnaire de paquets, qui
+# dit comment poser un logiciel. Ici on ne parle que de ce qu'ERPLibre change
+# à NixOS, et de ce que NixOS change à ERPLibre.
+NIXOS_GUIDE: tuple[tuple[str, str, str], ...] = (
+    (
+        "{el_dir}/conf/nixos/erplibre.nix",
+        "la déclaration, dans le dépôt",
+        "the declaration, in the checkout",
+    ),
+    (
+        "/etc/nixos/erplibre.nix",
+        "RÉÉCRITE par make install_os",
+        "REWRITTEN by make install_os",
+    ),
+    (
+        "/etc/nixos/configuration.nix",
+        "make install_os n'y touche pas",
+        "make install_os never touches it",
+    ),
+    (
+        "sudo nixos-rebuild switch --rollback",
+        "revenir à la génération d'avant",
+        "back to the previous generation",
+    ),
+    (
+        "nixos-version",
+        "version du système",
+        "the system version",
+    ),
+    (
+        "systemctl cat erplibre",
+        "vient du store, pas de /etc",
+        "from the store, not from /etc",
+    ),
+    (
+        "ls /bin",
+        "vide ; envfs résout sans lister",
+        "empty; envfs resolves, no list",
+    ),
+)
+
+
+def nixos_rows(el_dir: str) -> tuple[tuple[str, str, str], ...]:
+    """Le guide NixOS, sa racine d'installation substituée.
+
+    Le chemin du dépôt est le SEUL du bloc à ne pas être absolu, et le guide
+    est lu par quelqu'un qui vient d'entrer en ssh, donc posé dans son foyer.
+    Un chemin relatif l'envoie chercher un fichier là où il n'est pas.
+    """
+    return tuple(
+        (cmd.replace("{el_dir}", el_dir or "~/git/erplibre"), fr, en)
+        for cmd, fr, en in NIXOS_GUIDE
+    )
+
+
+# Les outils posés DANS la VM, et les quelques commandes qu'on tape en
+# entrant. Une entrée par clé du catalogue de script/todo/qemu_install.py ;
+# un test garde que toute clé d'ici y existe, sans quoi le guide annoncerait
+# un outil que le menu ne sait pas poser.
+#
+# Le TITRE de bloc est celui du guide, et non le libellé du catalogue : le
+# second nomme une case de menu, en anglais, quand le premier est lu dans la
+# langue de la VM.
+#
+# CE QUI EST ÉCRIT ICI DOIT ÊTRE VRAI SUR LA MACHINE. Le guide est lu par
+# quelqu'un qui vient d'entrer en ssh et qui va TAPER ces lignes : une
+# commande absente envoie chercher un binaire qui n'existe pas, ce qui coûte
+# plus qu'un guide muet. Chaque ligne a été confrontée au code qui l'installe.
+#
+# « {el_dir} » est remplacé par la racine de l'installation, comme dans le
+# bloc ERPLibre.
+TOOL_GUIDE: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
+    # nix POSÉ SUR UNE AUTRE DISTRIBUTION, et non NixOS : il n'y a ici ni
+    # /etc/nixos ni nixos-rebuild, et les lignes de NIXOS_GUIDE n'y valent
+    # pas. « profile add » et non « install » : l'alias est déprécié depuis
+    # nix 2.30, et l'installateur amont sert une version postérieure.
+    "nixanywhere": (
+        "nix + nixos-anywhere",
+        (
+            (
+                "/etc/nix/nix.conf",
+                "nix-command et flakes, activés",
+                "nix-command and flakes, enabled",
+            ),
+            (
+                "nix shell nixpkgs#<paquet>",
+                "essayer, le temps d'un shell",
+                "try it, for one shell",
+            ),
+            (
+                "nix profile add nixpkgs#<paquet>",
+                "l'ajouter à son profil",
+                "add it to your profile",
+            ),
+            (
+                "nixos-anywhere -f .#<hôte> root@<cible>",
+                "installer NixOS à distance",
+                "install NixOS remotely",
+            ),
+        ),
+    ),
+    "pycharm": (
+        "PyCharm",
+        (
+            (
+                "pycharm {el_dir}",
+                "ouvrir le dépôt dans l'IDE",
+                "open the checkout in the IDE",
+            ),
+            (
+                "make pycharm_configure",
+                "rejouer exécutions et exclusions du .idea",
+                "replay the .idea run configs and exclusions",
+            ),
+        ),
+    ),
+    "android": (
+        "Android Studio",
+        (
+            (
+                "studio",
+                "lancer Android Studio (alias : android-studio)",
+                "start Android Studio (alias: android-studio)",
+            ),
+            (
+                "grep -cE 'vmx|svm' /proc/cpuinfo",
+                "0 : pas de KVM imbriqué, l'émulateur ne tournera pas",
+                "0: no nested KVM, the emulator will not run",
+            ),
+        ),
+    ),
+    "avd": (
+        "Émulateur Android",
+        (
+            (
+                "~/android/emulator/emulator -avd erplibre",
+                "ouvrir l'AVD (par ssh -XC)",
+                "open the AVD (over ssh -XC)",
+            ),
+            (
+                "~/android/platform-tools/adb devices",
+                "voir l'émulateur en marche",
+                "see the running emulator",
+            ),
+            (
+                "id -nG | grep -w kvm",
+                "groupe kvm, sinon pas d'émulateur",
+                "kvm group, or no emulator",
+            ),
+        ),
+    ),
+    "mobile": (
+        "ERPLibre mobile",
+        (
+            (
+                "cd {el_dir}/mobile/erplibre_home_mobile",
+                "le dépôt de l'application mobile",
+                "the mobile app checkout",
+            ),
+            (
+                "npm test",
+                "rejouer les tests Vitest",
+                "replay the Vitest tests",
+            ),
+            (
+                "npm start",
+                "servir l'application sans Android ni émulateur",
+                "serve the app without Android or emulator",
+            ),
+            (
+                "tail -40 ~/erplibre-mobile-build.log",
+                "le journal détaillé de la compilation",
+                "the detailed build log",
+            ),
+        ),
+    ),
+    "forgejo": (
+        "Forgejo",
+        (
+            (
+                "http://<ip>:3000",
+                "forge git, compte et mot de passe erplibre",
+                "git forge, account and password erplibre",
+            ),
+            (
+                "sudo systemctl status forgejo",
+                "état du service",
+                "the service's state",
+            ),
+            (
+                "sudo journalctl -u forgejo -f",
+                "suivre son journal",
+                "follow its log",
+            ),
+        ),
+    ),
+    "gnome_ext": (
+        "Extensions GNOME",
+        (
+            (
+                "extension-manager",
+                "le gestionnaire d'extensions, sur le bureau",
+                "the extension manager, on the desktop",
+            ),
+            (
+                "gnome-extensions enable <uuid>",
+                "activer depuis le bureau",
+                "enable from the desktop",
+            ),
+            (
+                "dbus-run-session -- gnome-extensions enable <uuid>",
+                "activer depuis ssh",
+                "enable over ssh",
+            ),
+        ),
+    ),
+    "aidev": (
+        "Outils d'IA",
+        (
+            ("claude", "lancer l'agent de code", "start the coding agent"),
+            (
+                "ls ~/.claude/commands",
+                "les commandes /commit et /todo_* posées",
+                "the /commit and /todo_* commands installed",
+            ),
+            (
+                "rtk gain",
+                "les tokens économisés jusqu'ici",
+                "tokens saved so far",
+            ),
+            (
+                "starship --version",
+                "l'invite du shell, accrochée au démarrage",
+                "the shell prompt, hooked at startup",
+            ),
+        ),
+    ),
+}
+
+
+def tool_rows(cle: str, el_dir: str) -> tuple[str, tuple]:
+    """(libellé, lignes) d'un outil, sa racine d'installation substituée."""
+    entree = TOOL_GUIDE.get(cle)
+    if not entree:
+        return "", ()
+    libelle, lignes = entree
+    return libelle, tuple(
+        (cmd.replace("{el_dir}", el_dir or "~/git/erplibre"), fr, en)
+        for cmd, fr, en in lignes
+    )
 
 
 def zypper_guide(rolling: bool) -> tuple[tuple[str, str, str], ...]:
@@ -2240,6 +2798,7 @@ def build_motd(
     el_make: str = "",
     editor: str = "",
     desktop: bool = False,
+    tools: tuple = (),
 ) -> str:
     """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
 
@@ -2273,6 +2832,29 @@ def build_motd(
         body.append("")
         el_rows = erplibre_guide(el_dir, el_make, editor)
         body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
+    # UN BLOC PAR OUTIL POSÉ, titré de son libellé. La liste vient de
+    # l'appelant, filtrée par la machine : annoncer un outil que l'
+    # architecture ou l'absence de bureau écarte enverrait chercher une
+    # commande qui ne sera jamais là. L'ordre est celui de la table, pour que
+    # deux VM au même équipement rendent le même guide.
+    for cle in TOOL_GUIDE:
+        if cle not in (tools or ()):
+            continue
+        libelle, lignes = tool_rows(cle, el_dir)
+        if not lignes:
+            continue
+        body.append("")
+        body += motd_block(libelle, lignes, lang, gloss_col(lignes))
+    # Même règle que le bloc AUR : il ne paraît qu'avec une installation,
+    # parce que c'est elle qui pose le module dont ces lignes parlent.
+    if mgr == "nix" and el_dir:
+        body.append("")
+        body += motd_block(
+            _pick(("NixOS — déclaratif", "NixOS — declarative"), lang),
+            nixos_rows(el_dir),
+            lang,
+            gloss_col(nixos_rows(el_dir)),
+        )
     if desktop:
         body.append("")
         body += motd_block(
@@ -2426,6 +3008,89 @@ def build_gitconfig(name: str, email: str, editor: str) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+# Les images cloud dont le module « keyboard » de cloud-init ne peut pas
+# aboutir : il finit par « systemctl restart console-setup », service qui
+# n'existe que si le paquet console-setup est installé, et l'image
+# genericcloud de Debian ne le porte pas. Le réglage EST écrit avant cet
+# échec — dans /etc/default/keyboard, que localed et X relisent — mais
+# cloud-init se déclare en erreur, et ce mot masque les vraies pannes dans le
+# compte-rendu de déploiement.
+DISTROS_CLAVIER_PAR_FICHIER = ("debian",)
+
+# Un locale se génère à partir de /etc/locale.gen et de nulle part ailleurs :
+# « locale-gen xx_YY.UTF-8 » ne prend pas son argument pour une demande, il
+# ne relit que ce fichier. Une famille qui n'a pas ce fichier — Fedora, la
+# famille RHEL, openSUSE — embarque ses locales déjà générées.
+LOCALE_A_GENERER = re.compile(r"^[a-z]{2,3}_[A-Z]{2}(\.|@|$)")
+
+
+def locale_bootcmd_lines(locale: str) -> list[str]:
+    """« bootcmd » qui GÉNÈRE le locale avant que cloud-init ne l'applique.
+
+    Sur Debian, « update-locale LANG=xx_YY.UTF-8 » refuse un locale absent de
+    ceux qui sont générés — « invalid locale settings » — et le module
+    « locale » se solde par une erreur : la VM reste en C.UTF-8, sans autre
+    signe que le compte-rendu de cloud-init, et le décalage ne se voit qu'aux
+    messages, longtemps après.
+
+    « bootcmd » et non « runcmd » : il tourne à l'étape init, AVANT les
+    modules de configuration dont « locale » fait partie. runcmd viendrait
+    après, et n'aurait plus rien à rattraper.
+
+    Il tourne aussi à CHAQUE démarrage, d'où le premier grep : sans lui,
+    /etc/locale.gen s'allonge d'une ligne identique par boot.
+
+    La ligne est DÉCOMMENTÉE plutôt qu'ajoutée : le fichier porte déjà le
+    catalogue entier en commentaires, et l'ajouter en produirait un doublon —
+    cloud-init décommente ensuite la même, à l'étape d'après. Le doublon est
+    inoffensif mais il ment sur qui a écrit quoi. L'ajout reste le recours
+    pour un locale que le catalogue ne porte pas.
+    """
+    if not locale or not LOCALE_A_GENERER.match(locale):
+        return []
+    ligne = f"{locale} UTF-8"
+    corps = (
+        "[ -f /etc/locale.gen ] || exit 0; "
+        f"grep -qxF '{ligne}' /etc/locale.gen && exit 0; "
+        f"sed -i 's/^#[[:space:]]*{ligne}$/{ligne}/' /etc/locale.gen; "
+        f"grep -qxF '{ligne}' /etc/locale.gen "
+        f"|| echo '{ligne}' >> /etc/locale.gen; locale-gen"
+    )
+    return ["bootcmd:", f'  - [ sh, -c, "{corps}" ]']
+
+
+def keyboard_lines(distro: str, layout: str, variant: str) -> list[str]:
+    """Bloc « keyboard » de cloud-init, ou rien là où il échouerait."""
+    if distro in DISTROS_CLAVIER_PAR_FICHIER:
+        return []
+    return ["keyboard:", f"  layout: {layout}", f"  variant: {variant}"]
+
+
+def keyboard_files(
+    distro: str, layout: str, variant: str
+) -> list[tuple[str, str, str, str]]:
+    """/etc/default/keyboard écrit directement, là où cloud-init échoue.
+
+    C'est le fichier que le module de cloud-init aurait écrit, et celui que
+    localed et X relisent : le clavier d'une VM graphique est le même,
+    l'erreur de déploiement en moins.
+
+    La disposition de la CONSOLE texte n'est perdue pour personne : sur cette
+    image, ni console-setup ni systemd-vconsole-setup n'existent, et aucun
+    des deux chemins ne l'appliquait. Ce que cloud-init y écrivait était une
+    valeur que rien ne lisait.
+    """
+    if distro not in DISTROS_CLAVIER_PAR_FICHIER:
+        return []
+    contenu = (
+        "XKBMODEL=pc105\n"
+        f"XKBLAYOUT={layout}\n"
+        f"XKBVARIANT={variant}\n"
+        "XKBOPTIONS=\n"
+    )
+    return [("/etc/default/keyboard", "0644", contenu, "")]
+
+
 def write_files_lines(
     entries: list[tuple[str, str, str, str]],
 ) -> list[str]:
@@ -2547,7 +3212,105 @@ OFFLINE_BOOTCMD = [
     "  - systemctl stop --no-block systemd-time-wait-sync.service || true",
 ]
 
+# NixOS n'a pas d'ancre de confiance PAR FICHIER : /etc est généré depuis le
+# store et monté en lecture seule, donc la forme de CACHE_TRUST — un
+# répertoire où déposer, une commande qui relit — n'y existe pas. Le
+# téléchargeur n'est pas non plus le même : mesuré, une LECTURE passe par le
+# client et honore une variable de session, mais RÉALISER une dérivation
+# passe par nix-daemon, qui ne la voit pas. Seul un fragment systemd
+# l'atteint.
+#
+# /run/systemd/system est un tmpfs, donc inscriptible quand /etc ne l'est
+# pas : le fragment y vit, et il prend effet sans reconstruction — ce qui est
+# tout l'enjeu, la première reconstruction étant elle-même le premier
+# téléchargement.
+#
+# Le faisceau est la CONCATÉNATION de celui du système et de l'autorité :
+# donner l'autorité seule ferait cesser d'approuver tout le reste.
+NIX_CA_DIR = "/var/lib/erplibre"
+NIX_CA_BUNDLE = f"{NIX_CA_DIR}/ca-bundle.crt"
+NIX_CA_SYSTEME = "/etc/ssl/certs/ca-certificates.crt"
+NIX_DROPIN = "/run/systemd/system/nix-daemon.service.d/10-erplibre-cache.conf"
+
+# Les variables qui portent le faisceau aux consommateurs d'une SESSION.
+#
+# Elles sont la seule voie ici : les quatre familles impératives déposent
+# l'autorité dans le magasin du système, que tout lit sans qu'on demande, et
+# qui SURVIT à sudo puisque ce n'est pas un environnement. NixOS n'a pas ce
+# magasin — /etc/ssl/certs est un lien vers le store — donc chaque
+# consommateur doit être pointé, et sudo les efface tous.
+NIX_CA_VARS = (
+    "SSL_CERT_FILE",
+    "CURL_CA_BUNDLE",
+    "GIT_SSL_CAINFO",
+    "REQUESTS_CA_BUNDLE",
+    "NODE_EXTRA_CA_CERTS",
+    "PIP_CERT",
+)
+
+
+def nix_trust_commands() -> list[str]:
+    """Ce qui fait approuver l'autorité du cache par nix, sans reconstruire.
+
+    Mesuré sur une VM interceptée : sans cela « nix-shell -p hello » échoue
+    sur « self-signed certificate in certificate chain » ; avec, la dérivation
+    est réalisée depuis cache.nixos.org à travers le cache, et le magasin
+    garde ses .narinfo — ce qui rend le hors ligne possible ensuite.
+    """
+    dossier = NIX_DROPIN.rsplit("/", 1)[0]
+    return [
+        f"mkdir -p {NIX_CA_DIR} {dossier}",
+        f"cat {NIX_CA_SYSTEME} {NIX_CA_DIR}/{CACHE_CERT_NAME}"
+        f" > {NIX_CA_BUNDLE}",
+        f"printf '[Service]\\nEnvironment=NIX_SSL_CERT_FILE=%s\\n"
+        f"Environment=CURL_CA_BUNDLE=%s\\n' {NIX_CA_BUNDLE} {NIX_CA_BUNDLE}"
+        f" > {NIX_DROPIN}",
+        "systemctl daemon-reload",
+        # Socket-activé : arrêter les deux fait reprendre l'environnement à
+        # la prochaine connexion.
+        "systemctl stop nix-daemon 2>/dev/null || true",
+        "systemctl restart nix-daemon.socket 2>/dev/null || true",
+        # ET sudo, sans quoi rien de ce que la commande exporte ne survit :
+        # « sudo nixos-rebuild switch » évalue la configuration en allant
+        # chercher des centaines de narinfo, et les demandait toutes sans
+        # l'autorité. Les autres familles n'en ont pas besoin pour la même
+        # raison qu'elles n'ont pas besoin des variables : leur magasin
+        # système n'est pas un environnement.
+        commande_sudoers(NIX_CA_VARS),
+    ]
+
+
 CACHE_CERT_NAME = "erplibre-cache.crt"
+
+# Les familles à qui AUCUN des trois gestes de CACHE_TRUST ne s'applique.
+#
+# « nix » en est une : NixOS n'a pas de dossier d'ancres inscriptible — /usr
+# n'y existe qu'en lecture seule et /etc est produit par le système —, aucune
+# commande de mise à jour du magasin, et son faisceau est un lien du store que
+# seule une reconstruction change. Y recopier une ligne calquée sur apt
+# rendrait le contrôle vert sans rien poser : la VM resterait interceptée et
+# sans autorité, c'est-à-dire muette sur chaque téléchargement HTTPS.
+#
+# Le détournement, lui, porte sur tout le pont. Une VM de ces familles doit
+# donc en être SOUSTRAITE, faute de quoi elle ne télécharge plus rien — et le
+# message qu'elle rendrait, « self-signed certificate in certificate chain »,
+# ne dit rien d'une famille sans magasin.
+# Plus aucune famille n'y figure. « nix » y était tant qu'on ne savait pas
+# lui donner l'autorité : il l'a désormais par un fragment systemd, mesuré.
+# La table reste, et le repli avec elle — une famille future sans magasin
+# retomberait dessus plutôt que d'être interceptée sans rien.
+CACHE_SANS_AUTORITE: frozenset = frozenset()
+
+
+def cache_sans_autorite(distro: str) -> bool:
+    """La VM de `distro` peut-elle recevoir l'autorité du cache ?
+
+    Non quand sa famille n'a pas de magasin de certificats où l'écrire. Le
+    déploiement l'exempte alors du détournement plutôt que de la laisser
+    échouer sur un certificat qu'elle ne peut pas apprendre.
+    """
+    famille = cache_family(distro)
+    return bool(famille) and famille in CACHE_SANS_AUTORITE
 
 
 def cache_family(distro: str) -> str:
@@ -2744,7 +3507,7 @@ def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
     if getattr(args, "cache_bypass", False):
         return []
     famille = cache_family(args.distro)
-    if famille not in CACHE_TRUST:
+    if famille != "nix" and famille not in CACHE_TRUST:
         return []
     try:
         with open(args.cache_ca, encoding="utf-8") as fh:
@@ -2755,7 +3518,7 @@ def cache_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
         return []
     if "BEGIN CERTIFICATE" not in pem:
         return []
-    anchors = CACHE_TRUST[famille][0]
+    anchors = NIX_CA_DIR if famille == "nix" else CACHE_TRUST[famille][0]
     return [(f"{anchors}/{CACHE_CERT_NAME}", "0644", pem, "")]
 
 
@@ -2776,7 +3539,15 @@ def cache_commands(args: argparse.Namespace) -> list[str]:
     """
     if not cache_files(args):
         return []
-    _, commande, faisceau = CACHE_TRUST[cache_family(args.distro)]
+    famille = cache_family(args.distro)
+    # NixOS ne relit pas un magasin : il n'en a pas de la forme attendue. Ses
+    # gestes bâtissent un faisceau, le donnent au démon qui télécharge, et
+    # font traverser sudo aux variables qui le désignent. Pas /etc/environment
+    # en revanche : son pam_env porte « readenv=0 » et son fichier de
+    # configuration est un lien vers le store.
+    if famille == "nix":
+        return nix_trust_commands()
+    _, commande, faisceau = CACHE_TRUST[famille]
     commandes = [f"{commande} || true"]
     for var in CACHE_ENV_VARS:
         commandes.append(
@@ -2815,14 +3586,44 @@ def commande_sudoers(variables, fichier: str = CACHE_SUDOERS) -> str:
     répertoire sudoers.d — retire le temporaire et ne fait pas échouer la
     commande. Une variable par ligne, sans guillemets : la commande passe
     telle quelle dans un « runcmd » YAML comme dans un « sh -c » par ssh.
+
+    LE PROFIL DU SYSTÈME EST AJOUTÉ AU PATH. cloud-init ne donne à son
+    « runcmd » que le PATH de son propre service, et sur une distribution
+    déclarative celui-ci est une liste de chemins du store qui ne contient
+    pas sudo : visudo est alors introuvable, la vérification échoue, et le
+    garde-fou efface le fichier au lieu de le poser — sans rien dire, puisque
+    c'est précisément sa dégradation prévue. Le répertoire n'existe pas sur
+    les quatre familles impératives, où l'ajout ne change rien.
     """
     dossier, nom = fichier.rsplit("/", 1)
     tmp = f"{dossier}/.{nom}"
     return (
-        f"sh -c 'for v in {' '.join(variables)};"
+        f"sh -c 'PATH=$PATH:/run/current-system/sw/bin;"
+        f" for v in {' '.join(variables)};"
         f" do echo Defaults env_keep += $v; done > {tmp}"
         f" && chmod 0440 {tmp} && visudo -cf {tmp} && mv {tmp} {fichier}"
-        f" || rm -f {tmp}'"
+        f' || (rm -f {tmp}; echo "   ⚠ {t_sudoers_manque()}")\''
+    )
+
+
+def t_sudoers_manque() -> str:
+    """Ce que dit un sudoers non posé.
+
+    L'échec est VOLONTAIREMENT sans conséquence sur le déploiement — un
+    sudoers.d absent ne vaut pas de tout arrêter. Mais muet, il se paie plus
+    tard et ailleurs, sur un « self-signed certificate » que rien ne relie à
+    ce geste. La ligne nomme le seul effet qui compte, et ce qu'il faut
+    regarder.
+
+    TROIS CARACTÈRES INTERDITS, et chacun casse ailleurs. L'apostrophe ferme
+    la quote simple qui enveloppe toute la commande, et le shell distant
+    meurt sur « unexpected EOF ». « : » suivi d'une espace, une accolade ou un
+    crochet font lire au YAML de « runcmd » autre chose qu'un scalaire
+    simple. Le message ne les porte donc pas, et un test le vérifie.
+    """
+    return (
+        "sudoers non posé — visudo introuvable, "
+        "sudo perdra le faisceau du cache"
     )
 
 
@@ -2903,6 +3704,14 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                 args.erplibre_make,
                 editor,
                 bool(args.desktop),
+                # « getattr » et non « args.vm_tools » : la voie Proxmox
+                # bâtit ses arguments à la main, et un champ qui lui manque
+                # ferait avaler le guide par son « except Exception ».
+                tuple(
+                    c.strip()
+                    for c in getattr(args, "vm_tools", "").split(",")
+                    if c.strip()
+                ),
             ),
             "",
         )
@@ -2950,7 +3759,7 @@ def build_cloud_config(
         # Le privilège lui-même vient de la ligne « sudo: » ci-dessus, pas du
         # groupe : celui-ci n'est qu'une commodité.
         f"    groups: {user_groups(args.distro, gpu)}",
-        "    shell: /bin/bash",
+        f"    shell: {user_shell(args.distro)}",
         "    lock_passwd: false" if pw_hash else "    lock_passwd: true",
     ]
     if pw_hash:
@@ -2962,23 +3771,35 @@ def build_cloud_config(
 
     lines.append(f"ssh_pwauth: {'true' if pw_hash else 'false'}")
     lines.append(f"locale: {args.locale}")
-    lines.append(f"timezone: {args.timezone}")
+    # Canonicalisé ICI, au plus près de l'écriture : un fuseau passé
+    # explicitement en ligne de commande mérite la même traduction que celui
+    # de l'hôte.
+    lines.append(f"timezone: {canonical_timezone(args.timezone)}")
     if getattr(args, "distro", "ubuntu") == "ubuntu":
         lines += apt_mirror_lines(
             getattr(args, "arch", "amd64"),
             getattr(args, "apt_mirror", None),
             fixe=bool(getattr(args, "cache_ca", None)),
         )
-    lines += [
-        "keyboard:",
-        f"  layout: {args.keyboard_layout}",
-        f"  variant: {args.keyboard_variant}",
-    ]
+    distro = getattr(args, "distro", "ubuntu")
+    lines += locale_bootcmd_lines(args.locale)
+    lines += keyboard_lines(
+        distro, args.keyboard_layout, args.keyboard_variant
+    )
     # Guide de connexion et identité git : posés par cloud-init, donc présents
     # dès le PREMIER boot. C'est le point : ils sont là avant l'installation
     # d'ERPLibre, et encore là si elle échoue — le moment où l'on se connecte
     # justement à la main.
-    lines += write_files_lines(guide_files(args) + cache_files(args))
+    # Trois sources pour un seul bloc « write_files » : le guide de
+    # connexion, le clavier là où cloud-init ne sait pas le poser, et les
+    # fichiers du cache. write_files_lines reçoit UNE liste et n'émet qu'une
+    # clé : les concaténer ne peut pas produire le doublon qui ferait perdre
+    # le premier bloc en silence.
+    lines += write_files_lines(
+        guide_files(args)
+        + keyboard_files(distro, args.keyboard_layout, args.keyboard_variant)
+        + cache_files(args)
+    )
     # apt update/upgrade désactivés par défaut : sur un réseau lent/instable
     # ils font pendre cloud-init au 1er boot (et retardent la dispo SSH). SSH
     # est déjà présent dans les images cloud ; on l'active via runcmd sans apt.
@@ -3082,9 +3903,20 @@ def build_cloud_config(
 # network-config (cloud-init v2) : DHCP sur toute interface « e* ». Les images
 # Debian genericcloud ne configurent pas toujours le réseau sans ça (le NIC
 # reste down -> pas d'IP), contrairement à Ubuntu. Inoffensif pour Ubuntu.
-# La clé est « eth0 » car le renderer cloud-init d'Arch utilise la CLÉ comme
-# nom d'interface (en ignorant « match ») et l'image Arch nomme son NIC eth0 ;
-# Debian/Fedora/Ubuntu utilisent bien « match: name: e* » (leur en*).
+# La clé n'est pas partout un nom d'interface. Les renderers netplan et ENI
+# (Ubuntu, Debian) la tiennent pour une étiquette et désignent l'interface par
+# le « match » ; le renderer networkd (Arch, NixOS) IGNORE le « match » et
+# écrit la clé telle quelle en « Name= ». L'image Arch nomme son NIC eth0, ce
+# que la clé couvre ; une image qui le nomme enp0s2 reçoit un « Name=eth0 »
+# qui ne correspond à rien, systemd-networkd-wait-online attend alors sans
+# fin, et TOUT ce qui suit network-online.target reste en file — sshd-keygen,
+# cloud-init.service, cloud-config.service, sshd lui-même. La VM démarre,
+# applique la clé SSH, et n'est jamais joignable.
+#
+# Un glob en clé réglerait networkd et CASSERAIT netplan, qui refuse net :
+# « Definition ID 'e*' must not use globbing », cloud-init.service en échec,
+# aucun compte créé. Aucune valeur ne contente les deux renderers, d'où
+# network_config_for().
 NETWORK_CONFIG = (
     "version: 2\n"
     "ethernets:\n"
@@ -3096,10 +3928,36 @@ NETWORK_CONFIG = (
 )
 
 
+def network_config_for(distro: str) -> str | None:
+    """Le network-config à mettre dans le seed, ou None pour n'en pas mettre.
+
+    None n'est pas « pas de réseau » : privée de configuration réseau par sa
+    source de données, cloud-init produit son repli — DHCP sur la première
+    interface trouvée, désignée par son VRAI nom. C'est ce qu'il faut là où
+    le renderer prend la clé pour un nom d'interface et où ce nom n'est pas
+    connu d'avance.
+
+    NixOS est dans ce cas : son image nomme le NIC selon la machine émulée
+    (enp0s2 en q35, ens3 en i440fx). Arch a le même renderer mais nomme le
+    sien eth0, ce que la clé du document couvre : il garde donc le document,
+    et son réseau ne change pas.
+    """
+    return None if distro == "nixos" else NETWORK_CONFIG
+
+
 def build_seed(
-    cloud_cfg: str, hostname: str, seed_dest: Path, runner: Runner
+    cloud_cfg: str,
+    hostname: str,
+    seed_dest: Path,
+    runner: Runner,
+    network_config: str | None = NETWORK_CONFIG,
 ) -> None:
-    """Génère le seed.iso (cidata) et le copie vers seed_dest."""
+    """Génère le seed.iso (cidata) et le copie vers seed_dest.
+
+    `network_config` à None n'écrit PAS de document réseau dans le seed, et
+    c'est un réglage à part entière : cloud-init produit alors son repli,
+    DHCP sur la première interface trouvée. Voir network_config_for().
+    """
     meta_data = f"instance-id: {hostname}\nlocal-hostname: {hostname}\n"
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -3113,18 +3971,23 @@ def build_seed(
             print("  [dry-run] user-data qui serait généré :")
             print(textwrap.indent(cloud_cfg, "      "))
             print("  [dry-run] network-config :")
-            print(textwrap.indent(NETWORK_CONFIG, "      "))
+            print(
+                textwrap.indent(network_config, "      ")
+                if network_config
+                else "      (aucun : repli DHCP de cloud-init)"
+            )
         else:
             ud.write_text(cloud_cfg)
             md.write_text(meta_data)
-            nc.write_text(NETWORK_CONFIG)
+            if network_config:
+                nc.write_text(network_config)
 
         if runner.dry_run or shutil.which("cloud-localds"):
+            reseau = ["--network-config", str(nc)] if network_config else []
             runner.run(
                 [
                     "cloud-localds",
-                    "--network-config",
-                    str(nc),
+                    *reseau,
                     str(local_iso),
                     str(ud),
                     str(md),
@@ -3350,7 +4213,7 @@ def build_preseed(
         "d-i network-console/password password erplibre",
         "d-i network-console/password-again password erplibre",
         "d-i clock-setup/utc boolean true",
-        f"d-i time/zone string {args.timezone}",
+        f"d-i time/zone string {canonical_timezone(args.timezone)}",
         "d-i clock-setup/ntp boolean true",
         # Le disque est nommé : sur s390x virtio-ccw il n'y en a qu'un, mais
         # d-i pose quand même la question quand rien ne le désigne.
@@ -4146,7 +5009,7 @@ def virt_install(
         # Boot UEFI par défaut (x86) : Debian 13 (trixie) et les images cloud
         # récentes n'embarquent plus le chargeur BIOS/GRUB-pc et partent en
         # boucle « Booting... » en SeaBIOS. --bios force l'ancien BIOS, que
-        # certaines distributions exigent — voir BIOS_OBLIGATOIRE.
+        # certaines distributions exigent — voir FIRMWARE_IMPOSE.
         # Secure Boot DÉSACTIVÉ : le chargeur d'Arch (GRUB) n'est pas signé et
         # OVMF Secure Boot le refuse (« Access Denied » -> pas de boot).
         cmd += [
@@ -4383,7 +5246,16 @@ def build_parser() -> argparse.ArgumentParser:
     g_img.add_argument(
         "--verify",
         action="store_true",
-        help="Vérifie l'empreinte SHA256 après téléchargement (recommandé).",
+        help="Sans effet : la vérification est désormais le DÉFAUT pour "
+        "toute distribution qui publie ses sommes. Gardé pour que les "
+        "commandes déjà écrites continuent de marcher.",
+    )
+    g_img.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Ne vérifie PAS l'image contre les sommes publiées par sa "
+        "distribution. À réserver aux essais hors ligne : une image "
+        "substituée sur un miroir passerait alors sans un mot.",
     )
 
     g_vm = p.add_argument_group("VM")
@@ -4439,6 +5311,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="VM graphique : écran virtuel SPICE là où l'architecture le "
         "permet. Les paquets GNOME sont posés par la commande d'installation, "
         "pas ici.",
+    )
+    g_vm.add_argument(
+        "--vm-tools",
+        default="",
+        help="Clés des outils que la commande d'installation va poser, "
+        "séparées par des virgules. Ils ne sont PAS installés ici : la liste "
+        "ne sert qu'au guide de connexion, qui les annonce et donne les "
+        "quelques commandes dont on a besoin en entrant.",
     )
     g_vm.add_argument(
         "--gpu",
@@ -4777,13 +5657,16 @@ def main() -> None:
         args.distro, code, args.arch, args.version, args.dry_run
     )
     url = urls[0]
-    # --verify s'appuie sur un SHA256SUMS style Ubuntu ; Debian/Fedora
-    # publient des sommes dans un autre format -> on saute proprement.
-    do_verify = args.verify and args.distro == "ubuntu"
-    if args.verify and not do_verify:
+    # PAR DÉFAUT, et pour toute distribution qui publie ses sommes. C'était
+    # un drapeau, et réservé à Ubuntu : les huit autres images arrivaient
+    # sans que rien ne les vérifie, alors que leurs éditeurs publient tous
+    # une somme à côté. Le coût est une lecture du fichier téléchargé ; le
+    # risque couvert est une image substituée sur un miroir.
+    do_verify = not args.no_verify and args.distro in SUMS_SOURCE
+    if not args.no_verify and not do_verify:
         print(
-            f"  Note : --verify n'est pris en charge que pour ubuntu "
-            f"(ignoré pour {args.distro})."
+            f"  Note : aucune somme publiée n'est lisible d'ici pour "
+            f"{args.distro}."
         )
 
     # Chemin de l'image : déduit automatiquement si non fourni.
@@ -4804,8 +5687,11 @@ def main() -> None:
         )
         print(f"  Destination : {args.image_path}")
         download_image(urls, args.image_path, args.dry_run)
+        verify_pinned_sha256(
+            args.distro, args.image_path, args.dry_run, tuple(urls)
+        )
         if do_verify:
-            verify_sha256(url, args.image_path, args.dry_run)
+            verify_sha256(url, args.image_path, args.dry_run, args.distro)
         print("\nTerminé (téléchargement seul).")
         return
 
@@ -4820,7 +5706,14 @@ def main() -> None:
     # rien d'autre qu'un avertissement de cloud-init ne le dise. Le nom de
     # DOMAINE, lui, peut le porter — les deux ne se ressemblent qu'en général.
     args.hostname = args.hostname or hostname_valide(args.name)
+    demande_bios = args.bios
     args.bios = amorcage_bios(args.distro, args.bios)
+    if demande_bios and not args.bios:
+        print(
+            f"\n  --bios ignoré : l'image {args.distro} n'a pas de secteur"
+            " d'amorçage BIOS. Forcé, elle se déclarerait « running » avec"
+            " une console muette."
+        )
 
     pw_hash = resolve_password(args)
     ssh_keys = load_ssh_keys(args.ssh_key)
@@ -4911,20 +5804,56 @@ def main() -> None:
             f"\n== 1/5 Image cloud ({args.distro} {args.version} / {code}) =="
         )
         download_image(urls, args.image_path, args.dry_run)
+        verify_pinned_sha256(
+            args.distro, args.image_path, args.dry_run, tuple(urls)
+        )
         if do_verify:
-            verify_sha256(url, args.image_path, args.dry_run)
+            verify_sha256(url, args.image_path, args.dry_run, args.distro)
 
         print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
         prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
 
         print(f"\n== 4/5 Seed cloud-init {seed} ==")
         cloud_cfg = build_cloud_config(args, pw_hash, ssh_keys)
-        build_seed(cloud_cfg, args.hostname, seed, runner)
+        build_seed(
+            cloud_cfg,
+            args.hostname,
+            seed,
+            runner,
+            network_config_for(args.distro),
+        )
 
     resolved_osinfo = osinfo_arg(osinfo, args.distro)
     print(f"\n== 5/5 virt-install (--osinfo {resolved_osinfo}) ==")
     ensure_network(network_name(args.network), runner)
     # Avant la création, et non après : la VM télécharge dès cloud-init.
+    # Une famille sans magasin de certificats ne peut pas apprendre
+    # l'autorité du cache : on l'en SOUSTRAIT plutôt que de la laisser buter
+    # sur un certificat inconnu à chaque téléchargement. Décidé ici et non
+    # demandé à l'opérateur — c'est le catalogue qui sait.
+    #
+    # JAMAIS HORS LIGNE, et c'est la même raison que sur la voie Proxmox :
+    # l'amont est alors coupé et le magasin est la SEULE source. Soustraire
+    # la VM ne la ferait pas télécharger en direct — cela ne lui laisserait
+    # RIEN. Les deux issues échouent pour une distribution sans magasin de
+    # certificats : exceptée, elle n'a plus de source ; interceptée, elle bute
+    # sur un certificat qu'elle ne reconnaît pas. Le dire AVANT vaut mieux
+    # qu'une heure d'installation pour y arriver.
+    sans_magasin = cache_sans_autorite(getattr(args, "distro", ""))
+    if sans_magasin and getattr(args, "offline", False):
+        print(
+            f"\n  ⚠ {args.distro} n'a pas de magasin de certificats, et"
+            " l'amont du cache est coupé."
+            "\n    Aucune source ne lui reste : l'exception la priverait du"
+            " magasin, et sans elle"
+            "\n    chaque téléchargement bute sur un certificat inconnu."
+        )
+    elif sans_magasin and not getattr(args, "cache_bypass", False):
+        args.cache_bypass = True
+        print(
+            f"\n  {args.distro} n'a pas de magasin de certificats :"
+            " la VM est soustraite au cache et téléchargera en direct."
+        )
     cache_bypass_apply(args, runner)
     virt_install(args, disk, seed, resolved_osinfo, runner, installer)
     if installer:

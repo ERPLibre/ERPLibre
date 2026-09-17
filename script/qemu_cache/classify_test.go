@@ -298,3 +298,36 @@ func TestLesMetadonneesPythonSontPortables(t *testing.T) {
 		}
 	}
 }
+
+// Les objets de nix sont adressés par l'empreinte du chemin de store : leur
+// NOM est cette empreinte. Ils tombaient dans le volatil par défaut, donc
+// revalidés un par un contre l'amont — une installation NixOS en demande des
+// centaines, et aucun ne changera jamais.
+func TestLesObjetsDeNixSontImmuables(t *testing.T) {
+	for _, chemin := range []string{
+		"/kdb6ag6vg2vfkxy3k47zqy7jm0266dhn.narinfo",
+		"/nar/1abcd2efgh3ijkl4mnop5qrst6uvwx7y.nar.zst",
+		"/nar/1abcd2efgh3ijkl4mnop5qrst6uvwx7y.nar.xz",
+	} {
+		u, err := url.Parse("https://cache.nixos.org" + chemin)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c := Classify(u); c != ClassImmutable {
+			t.Errorf("%s : classe %v, attendu immuable", chemin, c)
+		}
+		// Le nom identifie le fichier sur TOUT miroir : la clé écarte l'hôte.
+		if !PortableParChemin(u) {
+			t.Errorf("%s : devrait se ranger sans son hôte", chemin)
+		}
+	}
+}
+
+// « nix-cache-info » n'est PAS adressé par une empreinte : c'est la
+// description du magasin amont, et elle peut changer. Elle reste volatile.
+func TestLaDescriptionDuMagasinNixResteVolatile(t *testing.T) {
+	u, _ := url.Parse("https://cache.nixos.org/nix-cache-info")
+	if c := Classify(u); c == ClassImmutable {
+		t.Errorf("nix-cache-info tenu pour immuable : %v", c)
+	}
+}

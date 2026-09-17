@@ -49,9 +49,9 @@ DISK_CONTENT = ("images", "rootdir")
 def ssh_argv(host: dict, remote: str, tty: bool = False) -> list:
     """Commande ssh complète pour exécuter `remote` sur l'hôte Proxmox.
 
-    `host` : {"target": "root@10.0.0.5", "jump": "rebond", "port": "22"} —
-    « target » suffit quand l'alias vient de ~/.ssh/config, qui porte déjà
-    l'utilisateur, le port et le ProxyJump.
+    `host` : {"target": "root@hyperviseur", "jump": "rebond", "port": "22"}
+    — « target » suffit quand l'alias vient de ~/.ssh/config, qui porte
+    déjà l'utilisateur, le port et le ProxyJump.
     """
     argv = ["ssh"]
     if not tty:
@@ -384,8 +384,8 @@ def ssh_server_ip(text: str) -> str:
     « client_ip client_port SERVER_ip server_port » : le troisième champ. C'est
     la seule adresse dont on SAIT qu'elle mène à la machine, rebond compris.
 
-    Les candidats habituels se trompent ici. Mesuré sur une Proxmox imbriquée :
-    « hostname -I » rend « 10.10.10.150 10.10.20.1 », et la seconde est le pont
+    Les candidats habituels se trompent ici. Sur une Proxmox imbriquée,
+    « hostname -I » rend PLUSIEURS adresses, et l'une d'elles est le pont
     interne que notre propre code vient de créer. La poser dans /etc/hosts
     ferait s'identifier le nœud par une adresse que personne ne joint.
     """
@@ -740,8 +740,8 @@ INTERNAL_BRIDGE = "vmbr0"
 INTERNAL_CIDR = "10.10.10.1/24"
 
 # Le réseau interne ne peut PAS être une constante : un Proxmox dans un
-# Proxmox hérite du réseau interne de son parent, et 10.10.10.1 y est
-# l'adresse de sa propre PASSERELLE. La poser sur son pont rend tout le /24
+# Proxmox hérite du réseau interne de son parent, et l'adresse de
+# INTERNAL_CIDR y est celle de sa propre PASSERELLE. La poser sur son pont rend tout le /24
 # local — la passerelle devient injoignable et la machine s'isole
 # instantanément, au milieu de la commande qui la configure. Vécu : « ifup »
 # n'a jamais rendu la main et la VM ne répondait plus, ni en ssh ni en ping.
@@ -760,8 +760,8 @@ INTERNAL_CANDIDATES = (
 )
 
 # Tout ce que l'hôte sait déjà d'IPv4 : ses adresses ET ses routes. Les deux,
-# parce qu'une route sans adresse locale suffit à créer le conflit — la route
-# par défaut « via 10.10.10.1 » en est l'exemple exact.
+# parce qu'une route sans adresse locale suffit à créer le conflit — une
+# route par défaut « via » la passerelle d'un parent en est l'exemple exact.
 USED_NETS_CMD = "ip -o -4 addr show; ip -4 route show"
 
 
@@ -926,7 +926,7 @@ def ipconfig_for(pont_info: dict, vmid: int) -> str:
 
 
 def ip_from_ipconfig(ipconfig: str) -> str:
-    """Adresse fixe d'un « ip=10.10.10.150/24,gw=… », ou '' si c'est du DHCP.
+    """Adresse fixe d'un « ip=192.0.2.50/24,gw=… », ou '' si c'est du DHCP.
 
     Quand c'est NOUS qui avons attribué l'adresse, la chercher ensuite est
     absurde : elle est connue avant que la VM ne démarre. La découverte (agent
@@ -936,20 +936,109 @@ def ip_from_ipconfig(ipconfig: str) -> str:
     return m.group(1) if m else ""
 
 
-def image_fetch_cmd(url: str, nom: str, repertoire: str = IMAGE_DIR) -> str:
+def image_fetch_cmd(
+    url: str, nom: str, repertoire: str = IMAGE_DIR, sha256: str = ""
+) -> str:
     """Télécharge l'image cloud SUR l'hôte Proxmox, une seule fois.
 
     C'est là que le disque de la VM sera écrit : faire descendre l'image chez
     soi pour la renvoyer ensuite doublerait le transfert. Le test de présence
     évite de retélécharger 325 Mio à chaque VM.
+
+    `sha256` : la somme que le dépôt porte pour cette image, quand il en a
+    une. Elle ne concerne que ce qu'aucune distribution ne publie — une image
+    rebâtie par un tiers —, et c'est la seule chose qui distingue celle qui a
+    été revue de n'importe quel fichier servi sous la même URL.
+
+    Vérifiée AUSSI quand l'image était déjà là : le cas qu'on veut prendre
+    est précisément celui d'un fichier substitué ou tronqué entre deux
+    déploiements, et le test de présence seul ne regarde que la taille.
+
+    Une somme qui ne correspond pas fait ÉCHOUER la commande, donc la suite :
+    continuer reviendrait à installer un système que personne n'a regardé.
     """
     cible = f"{repertoire}/{nom}"
-    return (
+    partiel = f"{cible}.partiel"
+    somme = lambda f: (  # noqa: E731 - une expression, pas une fonction
+        f"echo {shlex.quote(f'{sha256}  {f}')} | sha256sum -c -"
+    )
+    # Le téléchargement va dans un nom PROVISOIRE, et n'est renommé qu'une
+    # fois complet. « wget -O » écrivait dans la cible : une coupure —
+    # réseau, disque plein, Ctrl-C — y figeait une image tronquée que le
+    # « [ -s ] » ci-dessous acceptait à chaque déploiement suivant. Avec une
+    # somme, elle échouait pour toujours sans dire quoi effacer ; sans somme,
+    # elle servait à créer une VM.
+    recuperation = f"wget -nv -O {shlex.quote(partiel)} {shlex.quote(url)}"
+    if sha256:
+        # Vérifiée AVANT d'être mise en place : une image fausse ne devient
+        # jamais celle que le prochain déploiement trouvera « déjà présente ».
+        recuperation += f" && {somme(partiel)}"
+    recuperation += f" && mv {shlex.quote(partiel)} {shlex.quote(cible)}"
+
+    cmd = (
         f"mkdir -p {shlex.quote(repertoire)} && "
         f"if [ -s {shlex.quote(cible)} ]; then "
         f'echo "image déjà présente : {cible}"; else '
-        f"wget -nv -O {shlex.quote(cible)} {shlex.quote(url)}; "
+        f"{recuperation}; "
         f"fi"
+    )
+    if sha256:
+        # Et la cible elle-même, fraîche ou déjà en cache : le cas visé est un
+        # fichier substitué entre deux déploiements, qu'aucun test de présence
+        # ne voit.
+        #
+        # L'échec nomme le remède, parce que le remède ORDINAIRE ne suffit
+        # pas : cet hôte peut être une VM derrière le cache de
+        # téléchargement, et effacer l'image la fera resservir à l'identique
+        # depuis le magasin. L'entrée s'en retire d'abord — « --purge »
+        # efface tout, et « --purge-older-than » n'atteint jamais un objet
+        # que chaque service rajeunit.
+        # L'URL est DANS la commande proposée. Sans elle, « printf %s » n'a
+        # pas d'opérande, n'écrit rien, et « --oublie » lit un flux vide puis
+        # sort à 0 : l'opérateur croit avoir purgé, efface l'image, relance,
+        # et le magasin ressert les mêmes octets. Un remède qui réussit sans
+        # rien faire est pire que pas de remède.
+        aide = (
+            f"rm -f {shlex.quote(cible)} et relancer ;"
+            " derrière un cache de téléchargement, en retirer l'entrée"
+            " d'abord : printf '%s\\n' "
+            + shlex.quote(f"GET {url}")
+            + " | sudo erplibre_go_qemu_cache --oublie"
+        )
+        cmd += (
+            f" && {{ {somme(cible)} || {{ "
+            f"echo {shlex.quote(aide)} >&2; false; }}; }}"
+        )
+    return cmd
+
+
+def snippet_name(vmid: int) -> str:
+    """Le nom de l'extrait cloud-init d'une VM.
+
+    Porté par le VMID et non par le nom de la VM : deux VM peuvent porter le
+    même nom sur deux nœuds, jamais le même VMID sur un cluster. Un extrait
+    écrasé par un homonyme donnerait à une VM le compte d'une autre.
+    """
+    return f"erplibre-{int(vmid)}.yml"
+
+
+def snippet_write_cmd(storage: str, nom: str, contenu: str) -> str:
+    """Écrit un extrait cloud-init SUR l'hôte Proxmox, à l'endroit qu'il dit.
+
+    Le chemin n'est pas déduit : « pvesm path » le demande à Proxmox. Un
+    stockage « dir » range ses extraits sous son propre répertoire, et le
+    supposer en /var/lib/vz marcherait pour « local » et pour lui seul.
+
+    « printf '%s' » et non « echo » : le contenu est un YAML de plusieurs
+    dizaines de lignes, et echo interprète les séquences d'échappement sur
+    certains shells — un « \n » dans un mot de passe haché suffirait à le
+    corrompre en silence.
+    """
+    cible = f"{storage}:snippets/{nom}"
+    return (
+        f"f=$(pvesm path {shlex.quote(cible)}) && "
+        'mkdir -p "$(dirname "$f")" && '
+        f"printf '%s' {shlex.quote(contenu)} > \"$f\""
     )
 
 
@@ -970,18 +1059,29 @@ def create_cmds(vmid: int, spec: dict) -> list:
     # posé dans les deux cas, donc la console série ne se perd jamais ; seule
     # la nature de l'écran change.
     vga = "virtio-gl" if spec.get("gpu3d") else "serial0"
+    # UEFI seulement pour les images qui n'ont pas de secteur d'amorçage BIOS,
+    # jamais par défaut : mesuré sur un Proxmox 9, une VM NixOS créée en
+    # SeaBIOS se déclare « running » avec une console MUETTE, quand la même en
+    # OVMF démarre. Debian 13, sur le même hôte, démarre en SeaBIOS — d'où un
+    # marqueur par distribution plutôt qu'un défaut renversé pour tous.
+    #
+    # Secure Boot désactivé (« pre-enrolled-keys=0 ») pour la raison qui vaut
+    # déjà côté qemu : un chargeur non signé par les clés Microsoft est refusé,
+    # et l'image ne démarre pas du tout.
+    uefi = bool(spec.get("uefi"))
     cmds = [
         # 1. La coquille : processeur, mémoire, réseau, contrôleur, agent.
         "qm create {id} --name {nom} --memory {mem} --cores {cpu}"
         " --cpu host --ostype l26 --scsihw virtio-scsi-single"
         " --net0 virtio,bridge={pont} --agent enabled=1"
-        " --serial0 socket --vga {vga}".format(
+        " --serial0 socket --vga {vga}{bios}".format(
             id=vmid,
             nom=shlex.quote(nom),
             mem=int(spec["memory"]),
             cpu=int(spec["vcpus"]),
             pont=spec["bridge"],
             vga=vga,
+            bios=" --bios ovmf" if uefi else "",
         ),
         # 2. Le disque, importé DEPUIS l'image cloud. « import-from » (PVE 8+)
         #    remplace l'ancien « qm importdisk » en une seule étape et attache
@@ -991,18 +1091,58 @@ def create_cmds(vmid: int, spec: dict) -> list:
         # 3. Le lecteur cloud-init, et l'ordre d'amorçage. Sans « boot order »,
         #    Proxmox laisse le disque importé hors de la liste et la VM démarre
         #    sur le réseau.
-        f"qm set {vmid} --ide2 {stockage}:cloudinit"
+        #
+        #    Sur le bus SCSI et non en IDE, contrairement à ce que la
+        #    documentation de Proxmox montre : une image cloud bâtie pour
+        #    virtio seul n'a pas de pilote ATA, et le lecteur IDE lui est
+        #    INVISIBLE. Mesuré sur une image NixOS — /sys/block ne portait pas
+        #    de « sr0 », /dev/disk/by-label pas de « cidata », et cloud-init
+        #    passait aux sources RÉSEAU faute de trouver la locale : la VM
+        #    démarrait sans compte ni clé. Le même lecteur en scsi1 apparaît,
+        #    et le contrôleur virtio-scsi est déjà là pour le disque.
+        f"qm set {vmid} --scsi1 {stockage}:cloudinit"
         f" --boot order=scsi0 --bootdisk scsi0",
     ]
-    # 4. cloud-init : utilisateur, clé, réseau. La clé est un FICHIER sur
-    #    l'hôte — « --sshkeys » n'accepte pas la clé en ligne.
-    ci = (
-        f"qm set {vmid} --ciuser {shlex.quote(spec.get('user') or 'erplibre')}"
-    )
-    if spec.get("sshkey_path"):
-        ci += f" --sshkeys {shlex.quote(spec['sshkey_path'])}"
-    if spec.get("password"):
-        ci += f" --cipassword {shlex.quote(spec['password'])}"
+    if uefi:
+        # Le disque EFI porte les variables du firmware. Sans lui, « --bios
+        # ovmf » démarre quand même mais ne retient RIEN : l'entrée d'amorçage
+        # que l'invité écrit à sa première installation est perdue au
+        # redémarrage suivant.
+        cmds.append(
+            f"qm set {vmid} --efidisk0"
+            f" {stockage}:0,efitype=4m,pre-enrolled-keys=0"
+        )
+    # 4. cloud-init. Deux formes, et la première est celle qu'on veut.
+    #
+    # « --cicustom user= » quand un user-data est fourni : c'est CELUI du
+    # dépôt, le même que le chemin qemu envoie, avec son bloc « users: »
+    # explicite. « --ciuser » et « --sshkeys » s'en remettent au compte par
+    # DÉFAUT de l'image, et une image qui en déclare un autre les ignore —
+    # mesuré sur NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait
+    # avec ce compte-là, sans la clé, donc injoignable.
+    #
+    # Le réseau reste à Proxmox (« --ipconfig0 ») : « --cicustom user= » ne
+    # remplace que la moitié utilisateur du cloud-init.
+    if spec.get("user_data"):
+        cmds.append(
+            snippet_write_cmd(stockage, snippet_name(vmid), spec["user_data"])
+        )
+        ci = (
+            f"qm set {vmid} --cicustom"
+            f" user={stockage}:snippets/{snippet_name(vmid)}"
+        )
+    else:
+        # La forme d'avant, gardée pour qui n'a pas de user-data à donner.
+        # La clé est un FICHIER sur l'hôte — « --sshkeys » n'accepte pas la
+        # clé en ligne.
+        ci = (
+            f"qm set {vmid} --ciuser"
+            f" {shlex.quote(spec.get('user') or 'erplibre')}"
+        )
+        if spec.get("sshkey_path"):
+            ci += f" --sshkeys {shlex.quote(spec['sshkey_path'])}"
+        if spec.get("password"):
+            ci += f" --cipassword {shlex.quote(spec['password'])}"
     ci += f" --ipconfig0 {spec.get('ipconfig') or 'ip=dhcp'}"
     # « --ipconfig0 » ne porte PAS le DNS : une VM en adresse fixe n'a alors
     # aucun résolveur, et rien ne le dit. En DHCP le bail s'en charge.

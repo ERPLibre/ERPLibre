@@ -60,6 +60,14 @@ var immutableSuffixes = []string{
 	// d'empreinte. Sans ces suffixes, « .metadata » ne correspond à rien et le
 	// fichier tombe dans le volatil par défaut, repris à chaque installation.
 	".whl.metadata", ".tar.gz.metadata", ".zip.metadata",
+	// nix : le NOM porte l'empreinte du chemin de store, chez cache.nixos.org
+	// comme sur tout miroir. Un « <empreinte>.narinfo » décrit ce chemin-là et
+	// rien d'autre ; une dérivation modifiée porte une autre empreinte, donc
+	// un autre nom. Sans ces suffixes ils tombaient dans le volatil par
+	// défaut, revalidés un par un contre l'amont : une installation NixOS en
+	// demande des centaines, et c'est autant d'allers-retours pour des
+	// fichiers qui ne changeront jamais.
+	".narinfo", ".nar", ".nar.xz", ".nar.zst", ".nar.bz2",
 	// images et supports d'installation
 	".qcow2", ".iso", ".img", ".raw", ".vmdk",
 	// archives amont

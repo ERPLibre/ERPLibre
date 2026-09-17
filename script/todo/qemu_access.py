@@ -616,6 +616,9 @@ class QemuAccessMixin:
         cmd = todo_install.install_command(["virt-viewer"])
         if not cmd:
             print(f"  ⚠ {t('no known package manager here.')}")
+            conseil = todo_install.conseil_sans_gestionnaire()
+            if conseil:
+                print(f"    {conseil}")
             return False
         lisible = shlex.join(cmd)
         print(f"  {t('Will execute:')} {lisible}")

@@ -15,12 +15,14 @@ qu'elles réutilisent volontairement plutôt que de les redire."""
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import time
 
 import click
 
 from script.todo import todo_prefs
+from script.todo.qemu_privilege import virsh_argv
 from script.todo.todo_i18n import t
 
 
@@ -67,7 +69,8 @@ class ProxmoxMenuMixin:
 
     @staticmethod
     def _pve_label(host):
-        """« root@10.0.0.5 (par rebond) », pour l'afficher en tête de menu."""
+        """« root@hyperviseur (par rebond) », pour l'afficher en tête de
+        menu."""
         if not host:
             return ""
         lab = host.get("target", "?")
@@ -676,6 +679,33 @@ class ProxmoxMenuMixin:
                 return ""
             time.sleep(5)
 
+    def _pve_user_data(self, mod, distro, nom, cle_locale):
+        """Le user-data du DÉPÔT pour une VM Proxmox, ou "".
+
+        Le même que le chemin qemu envoie : un bloc « users: » explicite, avec
+        le nom du compte, son shell, son sudo et ses clés. « --ciuser » et
+        « --sshkeys » de Proxmox s'en remettent au compte par DÉFAUT de
+        l'image, et une image qui en déclare un autre les ignore — mesuré sur
+        NixOS, dont le cloud.cfg nomme « nixos » : la VM démarrait avec ce
+        compte-là, sans la clé, donc injoignable.
+
+        Rend "" quand la clé publique est illisible : mieux vaut retomber sur
+        la forme d'avant, qui pose au moins un compte, que d'écrire un
+        user-data sans aucun moyen d'entrer.
+        """
+        try:
+            with open(os.path.expanduser(cle_locale), encoding="utf-8") as fh:
+                cle = fh.read().strip()
+        except OSError as exc:
+            print(f"  ⚠ {t('SSH key unreadable:')} {exc}")
+            return ""
+        if not cle:
+            return ""
+        args = mod.build_parser().parse_args(
+            ["--distro", distro, "--hostname", nom, "--user", "erplibre"]
+        )
+        return mod.build_cloud_config(args, None, [cle])
+
     def _pve_push_key(self, chemin_local):
         """Recopie la clé publique SUR l'hôte : « qm set --sshkeys » attend un
         FICHIER là-bas, pas une clé en ligne."""
@@ -936,8 +966,8 @@ class ProxmoxMenuMixin:
         """Réseau du futur pont interne, CHOISI d'après l'hôte.
 
         Pas une constante : un Proxmox dans un Proxmox hérite du réseau
-        interne de son parent, et 10.10.10.1 y est l'adresse de sa propre
-        PASSERELLE. La poser sur son pont rend tout le /24 local, la
+        interne de son parent, et l'adresse de INTERNAL_CIDR y est celle
+        de sa propre PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
         commande qui la configure. Vécu : « ifup » n'a jamais rendu la main et
         la VM ne répondait plus, ni en ssh ni en ping."""
@@ -1043,9 +1073,9 @@ class ProxmoxMenuMixin:
         from script.proxmox import proxmox_deploy as pve
 
         host = self._pve_host(ask=False)
-        # Le réseau est LU sur l'hôte avant d'être proposé : l'annoncer
-        # 10.10.10.1/24 pour en poser un autre serait mentir sur l'écran même
-        # où l'on demande l'accord.
+        # Le réseau est LU sur l'hôte avant d'être proposé : annoncer le
+        # réseau par défaut pour en poser un autre serait mentir sur
+        # l'écran même où l'on demande l'accord.
         cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
@@ -1406,6 +1436,9 @@ class ProxmoxMenuMixin:
             "storage": spec["storage"],
             "bridge": spec["bridge"],
             "image": image,
+            # L'image qui n'a pas de secteur d'amorçage BIOS : le catalogue le
+            # sait, ce menu le transmet, et « qm create » en tire l'OVMF.
+            "uefi": mod.requiert_uefi(vm.get("distro") or ""),
             "user": spec.get("user") or "erplibre",
             "start": spec.get("start", True),
             "ipconfig": vm.get("ipconfig") or "ip=dhcp",
@@ -1419,9 +1452,21 @@ class ProxmoxMenuMixin:
         }
         if spec.get("sshkey_path"):
             detail["sshkey_path"] = spec["sshkey_path"]
-        return [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vm["vmid"], detail
-        )
+        # Le user-data du dépôt, pour TOUTES les distributions. La clé locale
+        # vient de la spec de l'écran ; sans elle, on retombe sur la forme
+        # d'avant, qui pose au moins un compte.
+        cle_locale = spec.get("ssh_key_local") or self._qemu_default_ssh_key()
+        if cle_locale:
+            detail["user_data"] = self._pve_user_data(
+                mod, vm.get("distro") or "", vm.get("name") or "", cle_locale
+            )
+        # La somme que le dépôt porte pour cette image, quand il en a une :
+        # c'est la seule chose qui distingue une image tierce revue de
+        # n'importe quel fichier servi sous la même URL.
+        somme = mod.pinned_sha256(vm.get("distro") or "")
+        return [
+            pve.image_fetch_cmd(url, image, sha256=somme)
+        ] + pve.create_cmds(vm["vmid"], detail)
 
     def _pve_deploy_spec(self, host, spec, mod, dry_run=False, coupee=False):
         """Exécute la spec rendue par l'écran.
@@ -1690,6 +1735,121 @@ class ProxmoxMenuMixin:
             return ""
         return self._qemu_cache_ca_path()
 
+    @staticmethod
+    def _pve_note(vm, ligne):
+        """Dit la ligne à l'écran ET la garde pour le journal de CETTE VM.
+
+        La console défile et se perd ; le journal est ce qu'on rouvre quand
+        l'installation a échoué, parfois le lendemain. Une décision prise ici
+        — l'autorité du cache posée ou non, l'exception — n'explique la panne
+        que si elle atteint le second. Sans cela le journal ne porte que le
+        symptôme : des centaines de lignes de construction et un certificat
+        refusé, sans un mot sur ce qui l'a voulu.
+        """
+        print(ligne)
+        vm.setdefault("notes", []).append(ligne.strip())
+
+    def _pve_cache_bypass_hote(self, host, vm, hors_ligne=False):
+        """Soustrait au cache l'hôte Proxmox qui porte un invité sans magasin.
+
+        Rend True quand l'exception est en place, False quand il n'y a rien à
+        faire ou qu'elle a échoué.
+
+        POURQUOI LA MAC DE L'HÔTE, ET NON CELLE DE L'INVITÉ. Un invité
+        imbriqué sort MASQUÉ derrière son hôte : sur le pont d'ici, le cache
+        ne voit jamais que la MAC de l'hôte Proxmox, et c'est donc elle
+        qu'il faut excepter. Mesuré des deux côtés — sans l'exception, une
+        requête de l'invité vers cache.nixos.org rend code 000 et
+        vérification SSL 19 ; avec, code 200 et vérification 0.
+
+        CE QUE COÛTE L'ABSENCE DE REMÈDE. Une distribution dont le magasin de
+        confiance n'a pas de forme par fichier ne peut pas recevoir
+        l'autorité, et poser celle-ci par déclaration arriverait trop tard :
+        sur un système déclaratif, la première reconstruction EST le premier
+        téléchargement. Le gestionnaire de paquets ne lit alors plus son cache
+        binaire, se rabat sur la construction depuis les sources — des
+        centaines de dérivations — et ces sources échouent pour la même
+        raison. L'installation part pour une heure avant de rendre 1.
+
+        CE QU'ELLE COÛTE. L'exception vaut pour TOUT ce que l'hôte relaie, y
+        compris ses propres téléchargements : il cesse de profiter du cache.
+        C'est le prix, et il est dit plutôt que subi.
+
+        JAMAIS HORS LIGNE. L'amont du cache est alors coupé et le magasin est
+        la SEULE source : excepter l'hôte ne le ferait pas télécharger en
+        direct, cela le priverait de tout — ses propres paquets compris. Les
+        deux issues échouent pour l'invité, mais celle-ci emporte l'hôte avec
+        lui. On garde donc le cache, et l'avertissement qui suit dit à
+        l'invité ce qui l'attend.
+        """
+        if hors_ligne:
+            return False
+        try:
+            mod = self._qemu_import_module()
+        except Exception:  # pragma: no cover - dépend du module
+            mod = None
+        if not mod:
+            # Un module qui ne se charge pas ne doit pas emporter la suite de
+            # la création : sans lui on ne sait pas si l'invité a un magasin
+            # de confiance, et l'autorité reste la voie par défaut.
+            return False
+        distro = vm.get("distro") or ""
+        if not mod.cache_sans_autorite(distro):
+            return False
+        nom = (host.get("target") or "").split("@")[-1]
+        if not nom or nom not in set(self._qemu_list_domains()):
+            # Un hôte Proxmox qui ne vit pas ici ne traverse pas ce pont.
+            return False
+        mac = self._qemu_domain_mac(nom)
+        if not mac:
+            self._pve_note(
+                vm, f"  ⚠ {t('download cache: host MAC not found')} : {nom}"
+            )
+            return False
+        geste = (
+            f"{shlex.quote(mod.CACHE_BIN)} --bypass-add {shlex.quote(mac)}"
+            f" --bypass-name {shlex.quote(nom)}"
+        )
+        # Le binaire écrit le fichier d'exceptions et rend sur sa sortie le
+        # geste à chaud ; sans nft, seul le redémarrage du service repose la
+        # chaîne entière.
+        if shutil.which("nft"):
+            cmd = ["sudo", "sh", "-c", f"{geste} | nft -f -"]
+        else:
+            cmd = ["sudo", "sh", "-c", geste]
+        try:
+            fini = subprocess.run(cmd, capture_output=True, text=True)
+        except (OSError, subprocess.SubprocessError) as souci:
+            print(f"  ⚠ {t('download cache bypass not set')} ({souci})")
+            return False
+        if fini.returncode:
+            print(
+                f"  ⚠ {t('download cache bypass not set')}"
+                f" ({fini.returncode})"
+            )
+            return False
+        self._pve_note(
+            vm, f"  ✓ {t('host taken out of the download cache')} : {nom}"
+        )
+        self._pve_note(
+            vm, f"    {t('its own downloads stop being cached too.')}"
+        )
+        return True
+
+    def _qemu_domain_mac(self, nom):
+        """Première MAC du domaine libvirt `nom`, ou ''."""
+        try:
+            res = subprocess.run(
+                virsh_argv("domiflist", nom),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        trouve = re.findall(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5}", res.stdout)
+        return trouve[0].lower() if trouve else ""
+
     def _pve_set_cache_ca(self, cible, vm, ca, hors_ligne=False):
         """Pose l'autorité du cache DANS la VM, par ssh.
 
@@ -1717,10 +1877,22 @@ class ProxmoxMenuMixin:
         )
         fichiers = mod.cache_files(args)
         if not fichiers:
-            # Distribution hors table, ou autorité illisible : la VM
-            # télécharge en direct, ce qui marche tant qu'aucune règle ne la
-            # vise. Poser le fichier au mauvais endroit ne marcherait pas et
-            # ne dirait rien.
+            # Une distribution dont le magasin de confiance n'a pas de forme
+            # par fichier — un système déclaratif n'a pas d'ancre où écrire —
+            # ou une autorité illisible. Poser le fichier au mauvais endroit
+            # ne marcherait pas.
+            #
+            # Mais le silence était faux : on n'arrive ici que lorsque l'hôte
+            # Proxmox est lui-même une VM de CE pont, donc ses invités sont
+            # détournés. Celui-ci n'aura rien pour reconnaître le cache, et
+            # chaque téléchargement HTTPS échouera sur « self-signed
+            # certificate in certificate chain » — plus tard, dans la VM,
+            # loin d'ici. C'est pourquoi il est nommé.
+            cle = (
+                "no trust store for this distribution, its downloads "
+                "will fail"
+            )
+            self._pve_note(vm, f"  ⚠ {t(cle)} : {vm.get('distro') or '?'}")
             return False
         morceaux = []
         for chemin, mode, contenu, _proprio in fichiers:
@@ -1738,7 +1910,7 @@ class ProxmoxMenuMixin:
                 f"  ⚠ {t('download cache authority not installed')} ({code})"
             )
             return False
-        print(f"  ✓ {t('download cache authority installed')}")
+        self._pve_note(vm, f"  ✓ {t('download cache authority installed')}")
         return True
 
     def _pve_attendre_ssh(self, cible, delai=300, pas=10):
@@ -1808,10 +1980,13 @@ class ProxmoxMenuMixin:
             " /etc/apt/sources.list.d/*.list 2>/dev/null; true"
         )
         code, _o = self._pve_ssh(cible, geste, timeout=60)
+        # Au JOURNAL, pas seulement à la console : c'est en rouvrant le
+        # journal qu'on cherche quel miroir a été posé, le jour où la suite
+        # échoue sur des dépendances introuvables.
         if code:
-            print(f"  ⚠ {t('apt mirror not pinned')} ({code})")
+            self._pve_note(vm, f"  ⚠ {t('apt mirror not pinned')} ({code})")
             return False
-        print(f"  ✓ {t('apt mirror pinned')} : {miroir}")
+        self._pve_note(vm, f"  ✓ {t('apt mirror pinned')} : {miroir}")
         return True
 
     def _pve_set_gpu_groups(self, cible, utilisateur, mod=None):
@@ -1877,6 +2052,18 @@ class ProxmoxMenuMixin:
             ),
             erplibre_make=self._qemu_make_target(cmd_install),
             desktop=bool(vm.get("desktop")),
+            # Les outils que le guide annoncera, FILTRÉS par cette machine
+            # comme la voie libvirt le fait : en annoncer un que l'
+            # architecture ou l'absence de bureau écarte enverrait chercher
+            # une commande qui ne sera jamais posée.
+            vm_tools=",".join(
+                self._qemu_tools_for(
+                    spec.get("vm_tools") or (),
+                    vm.get("arch") or "amd64",
+                    bool(vm.get("desktop")),
+                    vm.get("distro") or "",
+                )
+            ),
             no_git_identity=False,
             user=spec.get("user") or "erplibre",
         )
@@ -2128,9 +2315,19 @@ class ProxmoxMenuMixin:
                     # range ses index sous l'hôte demandé, et une VM qui en
                     # réclame un autre ne retrouve rien de ce qui est gardé.
                     self._pve_set_apt_mirror(vm["alias"], vm, mod_qemu)
-                    self._pve_set_cache_ca(
-                        vm["alias"], vm, ca_cache, hors_ligne=bool(coupee)
-                    )
+                    # Un invité dont le magasin de confiance n'a pas de forme
+                    # par fichier ne peut RIEN recevoir : on soustrait son
+                    # hôte au cache à la place. L'autorité n'est posée que
+                    # lorsqu'il y a quelqu'un pour la recevoir.
+                    if not self._pve_cache_bypass_hote(
+                        host, vm, hors_ligne=bool(coupee)
+                    ):
+                        self._pve_set_cache_ca(
+                            vm["alias"],
+                            vm,
+                            ca_cache,
+                            hors_ligne=bool(coupee),
+                        )
                 # Après la création, qui a posé l'écran accéléré : l'accès au
                 # nœud de rendu est une affaire de COMPTE, et il se donne
                 # dans l'invité.
@@ -2229,6 +2426,14 @@ class ProxmoxMenuMixin:
                         vm.get("arch") or "amd64",
                     )
                     for vm in joignables
+                },
+                # Ce que l'hôte a DÉCIDÉ pour chaque VM avant de lancer
+                # l'installation. Sans cela, le journal ne porte que le
+                # symptôme, et la cause reste sur une console qui défile.
+                notes={
+                    vm["name"]: vm.get("notes") or []
+                    for vm in joignables
+                    if vm.get("notes")
                 },
             )
             return resultat
@@ -2343,17 +2548,22 @@ class ProxmoxMenuMixin:
             "storage": stockage,
             "bridge": pont,
             "image": image,
+            "uefi": mod.requiert_uefi(distro),
             "user": "erplibre",
             "sshkey_path": "/root/.ssh/erplibre-deploy.pub",
+            # Le user-data du dépôt, pour TOUTES les distributions : un seul
+            # cloud-init à comprendre, et celui-là est déjà éprouvé.
+            "user_data": self._pve_user_data(mod, distro, nom, cle_locale),
             "start": True,
             # DHCP sur un pont qui donne sur le LAN, adresse FIXE sur un pont
             # interne : là, aucun serveur DHCP ne répondrait et la VM
             # resterait muette.
             "ipconfig": ipconfig,
         }
-        etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-            vmid, spec
-        )
+        somme = mod.pinned_sha256(distro)
+        etapes = [
+            pve.image_fetch_cmd(url, image, sha256=somme)
+        ] + pve.create_cmds(vmid, spec)
         if dry_run:
             print(f"\n── {t('Would run on')} {host['target']} ──")
             print(f"  # {t('SSH key ->')} {spec['sshkey_path']}")
@@ -2368,9 +2578,9 @@ class ProxmoxMenuMixin:
         if cle_locale and not self._pve_push_key(cle_locale):
             print(f"  ⚠ {t('SSH key not pushed: password login only.')}")
             spec.pop("sshkey_path", None)
-            etapes = [pve.image_fetch_cmd(url, image)] + pve.create_cmds(
-                vmid, spec
-            )
+            etapes = [
+                pve.image_fetch_cmd(url, image, sha256=somme)
+            ] + pve.create_cmds(vmid, spec)
         for cmd in etapes:
             code, _out = self._pve_show(cmd, timeout=1800)
             if code:
@@ -2683,4 +2893,10 @@ class ProxmoxMenuMixin:
         url = mod.image_url(distro, code, "amd64", version)
         nom = mod.default_image_name(distro, code, "amd64", version)
         print(f"\n  {nom}\n  {url}")
-        self._pve_show(pve.image_fetch_cmd(url, nom), timeout=1800)
+        # La somme, ici comme au déploiement : une image téléchargée d'avance
+        # est celle qu'un déploiement futur trouvera « déjà présente », et il
+        # ne la regardera pas mieux que celui-ci.
+        self._pve_show(
+            pve.image_fetch_cmd(url, nom, sha256=mod.pinned_sha256(distro)),
+            timeout=1800,
+        )

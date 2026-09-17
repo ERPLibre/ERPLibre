@@ -73,11 +73,23 @@ class UneSeuleAutorite(unittest.TestCase):
 
 class LeCatalogue(unittest.TestCase):
     def test_the_tool_exists_and_needs_no_desktop(self):
-        """On s'en sert en SSH : une VM serveur le prend aussi."""
+        """On s'en sert en SSH : une VM serveur le prend aussi, et aucune
+        architecture n'est exclue."""
         spec = TODO._QEMU_VM_TOOLS["aidev"]
         self.assertFalse(spec["needs_desktop"])
         self.assertEqual((), spec["arches"])
-        self.assertEqual((), spec["families"])
+
+    def test_it_is_bounded_to_the_imperative_families(self):
+        """Trois installateurs « curl | sh » qui posent des binaires liés
+        dynamiquement, plus des paquets par le gestionnaire du système :
+        aucun des deux gestes n'existe sur un système déclaratif, où ce qui
+        est installé à la main ne survit pas à la reconstruction."""
+        spec = TODO._QEMU_VM_TOOLS["aidev"]
+        self.assertEqual(("apt", "dnf", "pacman", "zypper"), spec["families"])
+        self.assertEqual(
+            [],
+            TODO._qemu_tools_for(("aidev",), "amd64", "", "nixos"),
+        )
 
     def test_it_is_posed_before_the_clone(self):
         """« before » est la phase où chaque outil se garde lui-même. En

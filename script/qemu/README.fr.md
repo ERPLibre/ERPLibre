@@ -1,9 +1,10 @@
 
-# QEMU/KVM — Déploiement de VM Linux (Ubuntu / Debian / Fedora)
+# QEMU/KVM — Déploiement de VM Linux
 
 `deploy_qemu.py` déploie une VM Linux (libvirt/KVM) à partir d'une image
 cloud officielle, via `qemu-img` + `cloud-init` + `virt-install`. Choisissez
-la distribution avec `--distro` (`ubuntu` par défaut, `debian`, `fedora`) et
+la distribution avec `--distro` (`ubuntu` par défaut, puis `debian`,
+`fedora`, `almalinux`, `rocky`, `opensuse`, `arch`, `nixos` et `proxmox`) et
 la version avec `--version` ; `--list-images` affiche tout le catalogue avec
 les specs minimales. Il :
 
@@ -297,12 +298,30 @@ bonne version, ne réécrit jamais un `app.ini` existant et ne recrée pas
 l'administrateur. `FORGEJO_VERSION`, `FORGEJO_HTTP_PORT`, `FORGEJO_ADMIN_USER`
 et quelques autres le règlent ; `--help` les énumère.
 
+Un septième, **Outils d'assistance IA**, pré-configure le shell où l'on
+travaille : tig, htop et vim, rtk et son hook global, starship, un agent —
+Claude Code ou opencode —, les réglages git, les hooks du dépôt et les
+commandes Claude. Rien là-dedans ne fait échouer la VM : chaque pose est
+bornée dans le temps et privée d'entrée standard, car un « curl | sh » qui
+pose une question pendrait un déploiement sans terminal pour lui répondre.
+
+Un huitième, **nix + nixos-anywhere**, est l'inverse de NixOS choisi dans le
+catalogue : il laisse une VM ordinaire capable d'INSTALLER NixOS sur une
+autre machine joignable en SSH. L'installateur officiel multi-utilisateur,
+les flakes activés, et `nixos-anywhere` dans le profil de l'utilisateur.
+L'option est grisée sur NixOS, où nix est déjà le système, et hors
+amd64/arm64.
+
 Chaque outil est filtré VM par VM — architecture, saveur de bureau et famille
 de paquets — et sa place disque s'ajoute au plan avant que rien ne soit créé.
 
 ## Principales options
 
-- `--distro` — `ubuntu` (défaut), `debian` ou `fedora`.
+- `--distro` — `ubuntu` (défaut), `debian`, `fedora`, `almalinux`,
+  `rocky`, `opensuse`, `arch`, `nixos` ou `proxmox`. NixOS est la seule
+  image qu'aucune distribution ne publie : elle est rebâtie par un tiers,
+  donc la version est épinglée, sa somme sha256 vérifiée à chaque
+  téléchargement, et l'origine dite avant que rien ne soit créé.
 - `--version` — version de la distro (défaut : celle par défaut de la distro).
 - `--list-images` — affiche toutes les distros/versions et leurs specs.
 - `--image-dir` — répertoire de cache des images (défaut
