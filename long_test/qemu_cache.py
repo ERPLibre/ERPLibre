@@ -826,11 +826,28 @@ def paquets_seulement(lignes):
     return [l for l in lignes if l.get("class") == "immutable"]
 
 
+def livre(ligne):
+    """La réponse a-t-elle livré le fichier ?
+
+    Un statut absent vaut oui : les journaux d'avant ne l'écrivaient pas
+    toujours, et le prendre pour un échec ferait disparaître des mesures
+    entières. Tout ce qui n'est pas une livraison — refus d'un miroir, « 504 »
+    d'un amont jugé muet — ne compte ni comme faute ni comme fichier déjà vu.
+    """
+    statut = ligne.get("status")
+    return not isinstance(statut, int) or 200 <= statut < 400
+
+
 def verdict(premier, second, journal):
     """Le critère, puis la manchette. Rend True si le cache a servi."""
     p1 = paquets_seulement(premier)
     p2 = paquets_seulement(second)
-    vues1 = {l["url"] for l in p1}
+    # « Déjà vue » suppose que la PREMIÈRE VM en a obtenu les octets. Un même
+    # paquet vit sous deux chemins selon le miroir, et la clé porte le chemin :
+    # la première peut recevoir « 504 » sur l'un — amont jugé muet — puis être
+    # servie du disque par l'autre. Le téléchargement honnête de la seconde sur
+    # le premier chemin n'est pas une faute : rien n'était rangé sous cette clé.
+    vues1 = {l["url"] for l in p1 if livre(l)}
 
     # Le critère : ce que les DEUX ont demandé ne doit pas être ressorti.
     #
@@ -839,13 +856,7 @@ def verdict(premier, second, journal):
     # miroir suivant, et le cache sert celui-là du disque. Il n'a rien livré
     # que le cache aurait dû garder — un 404 figé masquerait le fichier publié
     # ensuite. Le compter en faute fait échouer une mesure où tout a été servi.
-    refus = [
-        l
-        for l in p2
-        if l.get("upstream")
-        and isinstance(l.get("status"), int)
-        and l["status"] >= 400
-    ]
+    refus = [l for l in p2 if l.get("upstream") and not livre(l)]
     fautes = [
         l
         for l in p2
