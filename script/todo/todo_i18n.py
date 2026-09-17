@@ -1691,6 +1691,11 @@ TRANSLATIONS = {
         "en": "The forge pushes this repository nowhere.",
     },
     "never pushed": {"fr": "jamais poussé", "en": "never pushed"},
+    "Posture": {"fr": "Posture", "en": "Posture"},
+    "Verify a VM's egress posture, layer by layer": {
+        "fr": "Vérifier la posture de sortie d'une VM, couche par couche",
+        "en": "Verify a VM's egress posture, layer by layer",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
