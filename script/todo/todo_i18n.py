@@ -1469,6 +1469,14 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "egress rules did not load": {
+        "fr": "les règles de sortie ne se sont pas chargées",
+        "en": "egress rules did not load",
+    },
+    "Not installed: these are not confined.": {
+        "fr": "Rien n'est installé dessus : elles ne sont pas confinées.",
+        "en": "Not installed: these are not confined.",
+    },
     "Role of this profile": {
         "fr": "Rôle de ce profil",
         "en": "Role of this profile",

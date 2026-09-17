@@ -1338,13 +1338,15 @@ class TestLeGuideDeConnexion(unittest.TestCase):
         import io
 
         with contextlib.redirect_stdout(io.StringIO()):
-            ok = todo._pve_write_guide("hote+vm-a", vm, spec, mod)
-        vus["ok"] = ok
+            refus = todo._pve_write_guide("hote+vm-a", vm, spec, mod)
+        # "" = rien n'empêche d'installer. Voir la docstring de la méthode :
+        # elle rend la RAISON de refuser, pas un succès.
+        vus["refus"] = refus
         return vus
 
     def test_the_guide_goes_to_etc_motd_through_the_alias(self):
         vus = self._ecrit()
-        self.assertTrue(vus["ok"])
+        self.assertEqual("", vus["refus"])
         # Par l'ALIAS : lui seul porte le rebond vers le réseau interne.
         self.assertEqual(vus["cible"], "hote+vm-a")
         self.assertIn("/etc/motd", vus["remote"])
@@ -1390,8 +1392,12 @@ class TestLeGuideDeConnexion(unittest.TestCase):
             "install_cmd": "",
         }
         with contextlib.redirect_stdout(io.StringIO()) as sortie:
-            ok = todo._pve_write_guide("x", vm, {"user": "erplibre"}, mod)
-        self.assertFalse(ok)
+            refus = todo._pve_write_guide("x", vm, {"user": "erplibre"}, mod)
+        # DIT, MAIS PAS REFUSÉ. Cette spec ne demande aucune posture : le
+        # lot qui cède ne coûte qu'un guide, et un guide manquant n'est pas
+        # une promesse rompue. Le refus est éprouvé sous une posture, là où
+        # il change ce qui s'installe.
+        self.assertEqual("", refus)
         self.assertIn("⚠", sortie.getvalue())
 
 

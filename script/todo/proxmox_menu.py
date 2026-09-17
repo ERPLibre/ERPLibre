@@ -1575,6 +1575,9 @@ class ProxmoxMenuMixin:
     def _pve_write_guide(self, cible, vm, spec, mod):
         """Pose le guide de connexion et l'identité git DANS la VM.
 
+        Rend "" quand rien n'empêche d'installer sur cette VM, et sinon LA
+        RAISON de le refuser, en une phrase destinée à l'écran.
+
         La voie libvirt les livre par le « write_files » de cloud-init ;
         « qm set » n'offre pas cela, donc une VM Proxmox n'aurait AUCUN
         guide, quelle que soit sa distribution.
@@ -1582,6 +1585,15 @@ class ProxmoxMenuMixin:
         Même contenu, livrée par ssh une fois la VM debout : `guide_files` est
         la source unique, comme sa docstring le promet. Un seul appel, tous les
         fichiers.
+
+        LE LOT EST UN TOUT, ET SON ÉCHEC A DEUX SENS. Les fichiers et le
+        chargement des règles partent dans la même chaîne « && ». Sans
+        posture à tenir, l'échec ne coûte qu'un guide — on le dit, et on
+        continue. Avec une posture, il laisse une VM dont le fichier de
+        règles est peut-être posé et n'a PAS été chargé : elle sort
+        librement tout en donnant l'apparence du contraire. Installer
+        dessus tiendrait pour acquise une promesse que rien n'a vérifiée,
+        et c'est précisément le couple que ce dépôt refuse.
         """
         import types
 
@@ -1616,11 +1628,16 @@ class ProxmoxMenuMixin:
             egress_rules=regles,
             egress_unit_text=unite,
         )
+        # La raison de refuser, si le lot cède. Composée ICI, à côté de ce
+        # qui a été PROMIS : la recomposer chez l'appelant l'obligerait à
+        # redemander la posture, et une seconde lecture est une occasion de
+        # répondre autre chose.
+        refus = t("egress rules did not load") if regles else ""
         try:
             fichiers = mod.guide_files(args)
         except Exception as exc:  # pragma: no cover - dépend du module
             print(f"  ⚠ {t('guide not written')} : {exc}")
-            return False
+            return refus
         morceaux = []
         for chemin, mode, contenu, proprio in fichiers:
             q = shlex.quote(chemin)
@@ -1639,11 +1656,11 @@ class ProxmoxMenuMixin:
         code, _o = self._pve_ssh(cible, " && ".join(morceaux))
         if code:
             print(f"  ⚠ {t('guide not written')} ({code})")
-            return False
+            return refus
         print(f"  ✓ {t('connection guide written')}")
         if regles:
             print(f"  ✓ {t('egress rules posed and armed')}")
-        return True
+        return ""
 
     def _pve_egress_texts(self, spec, mod):
         """(règles, unité) que cette spec demande, ou ("", "").
@@ -1838,6 +1855,11 @@ class ProxmoxMenuMixin:
         # qu'on a RÉELLEMENT écrit, pas par le nom.
         alias = {}
         joignables = []
+        # Les VM jointes dont la posture n'a PAS pris, avec la raison. La
+        # liste est séparée de `joignables` parce que ces machines existent
+        # et doivent figurer au sommaire ; c'est l'installation qu'elles ne
+        # reçoivent pas, pas la mention.
+        non_confinees = []
         for vm in spec["vms"]:
             if vm["name"] not in reussies:
                 continue
@@ -1893,7 +1915,9 @@ class ProxmoxMenuMixin:
             # Le guide AVANT l'installation : il doit être là même si rien ne
             # s'installe, et l'installation ne le touche pas.
             if vm["alias"] and mod_qemu:
-                self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
+                refus = self._pve_write_guide(vm["alias"], vm, spec, mod_qemu)
+                if refus:
+                    non_confinees.append((vm["name"], refus))
             if vm["alias"]:
                 self._pve_set_timezone(vm["alias"], spec)
             joignables.append(vm)
@@ -1901,6 +1925,17 @@ class ProxmoxMenuMixin:
         # Rendu à l'appelant pour son sommaire : lui seul sait ce qui a été
         # RÉELLEMENT joint.
         resultat = list(joignables)
+        # LA RÈGLE D'OR, AU DERNIER INSTANT OÙ ELLE PEUT ENCORE TENIR. Une
+        # VM dont les règles de sortie ne se sont pas chargées n'est pas
+        # confinée. Elle reste dans le sommaire — elle EXISTE, et il faut
+        # aller la défaire — mais elle ne reçoit ni installation ni suivi :
+        # les deux se lisent comme une machine en service.
+        for nom, raison in non_confinees:
+            print(f"  ✗ {nom} : {raison}")
+        if non_confinees:
+            print(f"  ✗ {t('Not installed: these are not confined.')}")
+            ecartes = {nom for nom, _ in non_confinees}
+            joignables = [vm for vm in joignables if vm["name"] not in ecartes]
         # Le suivi vient du DÉPLOIEMENT, pas de l'installation — même règle
         # qu'en QEMU/KVM. Sans elle, la case « Suivre l'installation » ne
         # commandait rien : décochée, le tableau de bord s'ouvrait quand
