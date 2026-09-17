@@ -160,5 +160,100 @@ class LaVerificationEstLeDefaut(unittest.TestCase):
         self.assertIn("image.unlink", corps)
 
 
+class UneImageGardeeQuiAVieilli(unittest.TestCase):
+    """« latest » avance à chaque version mineure : l'image gardée cesse de
+    correspondre à la somme publiée sans que rien ne soit corrompu.
+
+    La supprimer puis abandonner coûtait la campagne entière — trente minutes
+    et trois VM — là où un seul téléchargement suffit. Un second écart, lui,
+    porte sur des octets neufs : c'est une panne d'intégrité, et elle arrête.
+    """
+
+    NOM = "ubuntu-24.04-server-cloudimg-amd64.img"
+    URL = f"https://miroir.invalid/d/{NOM}"
+
+    def jouer(
+        self,
+        sur_disque,
+        retelecharge=None,
+        publie=b"publie",
+        urls=("https://m/i",),
+    ):
+        """Rend (sorti, nombre de téléchargements, contenu final).
+
+        « publie » est ce que le fichier de sommes DÉCLARE ; « retelecharge »
+        ce qu'un nouveau téléchargement pose vraiment. Les confondre rend le
+        second écart impossible à éprouver : les octets repris concordent
+        alors toujours, et le cas « faux deux fois » n'existe plus.
+        """
+        import hashlib
+        import tempfile
+        from unittest import mock
+
+        pose = retelecharge if retelecharge is not None else publie
+        somme = hashlib.sha256(publie).hexdigest()
+        sums = f"{somme}  {self.NOM}\n".encode()
+
+        class Reponse:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+            def read(self_inner):
+                return sums
+
+        with tempfile.TemporaryDirectory() as d:
+            image = Path(d) / self.NOM
+            image.write_bytes(sur_disque)
+            appels = []
+
+            def faux_telechargement(urls_, dest, dry_run, timeout=None):
+                appels.append(tuple(urls_))
+                Path(dest).write_bytes(pose)
+
+            sorti = False
+            with mock.patch.object(
+                DQ.urllib.request, "urlopen", lambda *a, **k: Reponse()
+            ), mock.patch.object(DQ, "download_image", faux_telechargement):
+                try:
+                    DQ.verify_sha256(self.URL, image, False, "ubuntu", urls)
+                except SystemExit:
+                    sorti = True
+            final = image.read_bytes() if image.exists() else b""
+        return sorti, len(appels), final
+
+    def test_une_image_perimee_est_reprise_une_fois(self):
+        sorti, n, final = self.jouer(b"vieille", b"publie")
+        self.assertFalse(sorti, "une péremption arrête encore le déploiement")
+        self.assertEqual(
+            1, n, "l'image n'a pas été reprise exactement une fois"
+        )
+        self.assertEqual(b"publie", final)
+
+    def test_un_second_ecart_arrete_tout(self):
+        """Des octets fraîchement téléchargés qui ne concordent pas ne sont
+        plus une péremption : la vérification doit alors refuser."""
+        sorti, n, final = self.jouer(b"vieille", b"faux-aussi")
+        self.assertTrue(sorti, "une image fausse deux fois passe")
+        self.assertEqual(1, n, "la reprise boucle au lieu d'arrêter")
+        self.assertEqual(b"", final, "l'image fausse est restée sur le disque")
+
+    def test_sans_miroir_le_comportement_ne_change_pas(self):
+        """Appelée sans liste de miroirs — le mode épinglé, un appelant tiers
+        — la vérification garde sa forme d'avant : supprimer et sortir."""
+        sorti, n, final = self.jouer(b"vieille", b"publie", urls=())
+        self.assertTrue(sorti)
+        self.assertEqual(0, n)
+        self.assertEqual(b"", final)
+
+    def test_une_image_conforme_ne_declenche_rien(self):
+        sorti, n, final = self.jouer(b"publie", b"publie")
+        self.assertFalse(sorti)
+        self.assertEqual(0, n, "une image conforme a été retéléchargée")
+        self.assertEqual(b"publie", final)
+
+
 if __name__ == "__main__":
     unittest.main()
