@@ -51,6 +51,46 @@ def parse_ssh_blocks(content) -> dict:
     return blocs
 
 
+def ssh_config_without(content, noms):
+    """`content` privé des noms `noms`, par BLOCS. Fonction PURE.
+
+    UNE LIGNE « Host » PEUT EN PORTER PLUSIEURS, et c'est ce que le retrait
+    par expression régulière ne savait pas faire. Bâtie sur « ^Host <nom> »
+    suivi d'une fin de ligne, elle exigeait que le nom soit SEUL : une entrée
+    « Host a b » était donc annoncée orpheline, confirmée, et jamais retirée
+    — l'écran disait « nettoyage fait » sur un fichier intact.
+
+    L'inverse est aussi tenu : retirer le bloc entier parce qu'UN de ses noms
+    est orphelin emporterait les autres, qui mènent peut-être encore quelque
+    part. Un bloc ne disparaît que lorsqu'il ne lui reste aucun nom.
+
+    Les MOTIFS (« * », « ? ») sont conservés quoi qu'il arrive : ce sont des
+    règles et non des machines, `parse_ssh_blocks` ne les nomme pas, donc ils
+    ne peuvent pas être demandés — et un bloc qui n'a que des motifs reste.
+    """
+    a_retirer = set(noms or ())
+    sortie, garde_bloc = [], True
+    for ligne in (content or "").splitlines(keepends=True):
+        entete = re.match(r"^([ \t]*)Host([ \t]+)(.*?)([ \t]*)$", ligne)
+        if entete:
+            declares = entete.group(3).split()
+            restants = [n for n in declares if n not in a_retirer]
+            garde_bloc = bool(restants)
+            if garde_bloc:
+                sortie.append(
+                    f"{entete.group(1)}Host{entete.group(2)}"
+                    f"{' '.join(restants)}\n"
+                )
+            continue
+        # Le CORPS d'un bloc est indenté ; une ligne non indentée et non
+        # vide met fin au bloc, et ce qui suit ne dépend plus de lui.
+        if ligne.strip() and not ligne[:1].isspace():
+            garde_bloc = True
+        if garde_bloc:
+            sortie.append(ligne)
+    return "".join(sortie)
+
+
 def ssh_orphans(blocs, juge, prefixe="erplibre-"):
     """(gardées, orphelines) — chacune [(nom, raison)].
 
@@ -2963,18 +3003,25 @@ class QemuManageMixin:
         ):
             print(t("Cancelled."))
             return
-        for h in orphans:
-            pat = re.compile(
-                rf"(?m)^[ \t]*Host[ \t]+{re.escape(h)}[ \t]*\n"
-                r"(?:[ \t]+[^\n]*\n?)*"
-            )
-            content = pat.sub("", content)
+        content = ssh_config_without(content, orphans)
         content = content.strip("\n")
         content = content + "\n" if content else ""
         with open(cfg, "w", encoding="utf-8") as fh:
             fh.write(content)
         os.chmod(cfg, 0o600)
-        print(f"✅ {t('Cleanup done.')}")
+        # ON RELIT, ET C'EST LE FICHIER QUI RÉPOND. Annoncer d'après ce
+        # qu'on a demandé plutôt que d'après ce qui reste est exactement la
+        # panne d'ici : un nom partagé avec un autre sur la même ligne
+        # restait en place sous un « nettoyage fait ».
+        restants = set(parse_ssh_blocks(content))
+        tetues = [h for h in orphans if h in restants]
+        for h in tetues:
+            print(f"  ✗ {h} : {t('still in the file.')}")
+        partis = len(orphans) - len(tetues)
+        if partis:
+            print(f"✅ {t('Entries removed:')} {partis}")
+        if not partis:
+            print(f"✗ {t('Nothing was removed.')}")
 
     def _cleanup_stale_leases(self):
         """Baux DHCP libvirt dont la MAC n'appartient à aucune VM (best-effort :

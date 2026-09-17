@@ -1550,6 +1550,18 @@ TRANSLATIONS = {
         "fr": "Rien n'a été supprimé.",
         "en": "Nothing was deleted.",
     },
+    "still in the file.": {
+        "fr": "toujours dans le fichier.",
+        "en": "still in the file.",
+    },
+    "Entries removed:": {
+        "fr": "Entrées retirées :",
+        "en": "Entries removed:",
+    },
+    "Nothing was removed.": {
+        "fr": "Rien n'a été retiré.",
+        "en": "Nothing was removed.",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
