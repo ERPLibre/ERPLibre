@@ -1562,6 +1562,14 @@ TRANSLATIONS = {
         "fr": "Rien n'a été retiré.",
         "en": "Nothing was removed.",
     },
+    "attachment(s): delete them, or keep them?": {
+        "fr": "pièce(s) jointe(s) : les effacer, ou les garder ?",
+        "en": "attachment(s): delete them, or keep them?",
+    },
+    "view(s) stay: no backup covers them.": {
+        "fr": "vue(s) restent : aucune sauvegarde ne les couvre.",
+        "en": "view(s) stay: no backup covers them.",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
@@ -7722,10 +7730,6 @@ TRANSLATIONS = {
     "Unknown choice, nothing was reset.": {
         "fr": "Choix inconnu, rien n'a été réinitialisé.",
         "en": "Unknown choice, nothing was reset.",
-    },
-    "Delete these leftovers, or keep them?": {
-        "fr": "Effacer ces restes, ou les garder ?",
-        "en": "Delete these leftovers, or keep them?",
     },
     "Enter = keep": {
         "fr": "Entrée = garder",

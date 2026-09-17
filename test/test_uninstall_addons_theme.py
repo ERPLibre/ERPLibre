@@ -32,6 +32,9 @@ SCRIPT = os.path.join(REPO, "script", "addons", "uninstall_addons_theme.sh")
 sys.path.insert(0, os.path.join(REPO, "script", "addons"))
 import theme_leftover  # noqa: E402
 
+sys.path.insert(0, REPO)
+from script.todo import todo_i18n  # noqa: E402
+
 
 class TestTheScriptShape(unittest.TestCase):
     def source(self):
@@ -567,6 +570,65 @@ class TestExitCodes(unittest.TestCase):
             cwd=REPO,
         )
         self.assertEqual(done.returncode, 2, done.stdout)
+
+
+class TestLaQuestionNommeCeQuElleDetruit(unittest.TestCase):
+    """L'écran des restes liste DEUX ensembles sous un même titre.
+
+    Pièces jointes, et vues dont la clé nomme encore le thème. La question
+    portait sur « ces restes » ; seules les pièces jointes partaient, et les
+    vues restaient sans qu'un mot le dise. Un accord donné sur un ensemble
+    plus large que celui qu'on touche n'est pas un accord — dans un sens
+    comme dans l'autre.
+
+    Les vues RESTENT, et c'est le parti du dépôt : leur contenu peut être la
+    seule trace d'une personnalisation, et aucune sauvegarde ne les couvre.
+    """
+
+    PIECES = ["1|/theme_x/a.css|2026-01-01", "2|/theme_x/b.css|2026-01-01"]
+    VUES = ["7|theme_x.page|1", "8|theme_x.footer|1"]
+
+    def jouer(self, views, reponse="k"):
+        """Pose la question sans rien effacer, et rend (question, écran)."""
+        import contextlib
+        import io
+
+        vues = {}
+        tampon = io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            theme_leftover.prompt(
+                "base",
+                "theme_x",
+                list(self.PIECES),
+                list(views),
+                "/dev/null",
+                ask=lambda invite="": vues.setdefault("invite", invite)
+                or reponse,
+            )
+        return vues.get("invite", ""), tampon.getvalue()
+
+    def test_the_question_counts_the_attachments_it_deletes(self):
+        invite, _ecran = self.jouer(self.VUES)
+        self.assertIn(str(len(self.PIECES)), invite)
+
+    def test_the_question_never_claims_the_views(self):
+        """« ces restes » couvrait les deux listes de l'écran."""
+        invite, _ecran = self.jouer(self.VUES)
+        self.assertNotIn("leftover", invite.lower())
+        self.assertNotIn("reste", invite.lower())
+
+    def test_the_views_that_stay_are_counted_before_the_question(self):
+        """Dit après, l'accord aurait déjà été donné."""
+        _invite, ecran = self.jouer(self.VUES)
+        self.assertIn(str(len(self.VUES)), ecran)
+
+    def test_without_views_nothing_is_claimed_to_stay(self):
+        """Contrôle : une phrase imprimée toujours passerait le test d'à
+        côté sans rien garder."""
+        _invite, ecran = self.jouer([])
+        self.assertNotIn(
+            todo_i18n.t("view(s) stay: no backup covers them."), ecran
+        )
 
 
 if __name__ == "__main__":
