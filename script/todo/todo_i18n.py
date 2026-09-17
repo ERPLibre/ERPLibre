@@ -1610,6 +1610,87 @@ TRANSLATIONS = {
         "fr": "Lock de référence mis à jour :",
         "en": "Reference lock updated:",
     },
+    "Outbound mirrors": {
+        "fr": "Miroirs sortants",
+        "en": "Outbound mirrors",
+    },
+    "Forge - Declare which way a repository mirrors": {
+        "fr": "Forge - Déclarer dans quel sens un dépôt se miroite",
+        "en": "Forge - Declare which way a repository mirrors",
+    },
+    "Forge - Lay the outbound mirror on the forge": {
+        "fr": "Forge - Poser le miroir sortant sur la forge",
+        "en": "Forge - Lay the outbound mirror on the forge",
+    },
+    "Forge - Show a repository's outbound mirrors": {
+        "fr": "Forge - Montrer les miroirs sortants d'un dépôt",
+        "en": "Forge - Show a repository's outbound mirrors",
+    },
+    "inbound: it lives upstream, and the forge follows it": {
+        "fr": "entrant : il vit chez un amont, et la forge le suit",
+        "en": "inbound: it lives upstream, and the forge follows it",
+    },
+    "outbound: it lives here, and goes out to be seen": {
+        "fr": "sortant : il vit ici, et part se montrer",
+        "en": "outbound: it lives here, and goes out to be seen",
+    },
+    "The manifest derives:": {
+        "fr": "Le manifeste dérive :",
+        "en": "The manifest derives:",
+    },
+    "This site declares:": {
+        "fr": "Ce site déclare :",
+        "en": "This site declares:",
+    },
+    "This site declares nothing.": {
+        "fr": "Ce site ne déclare rien.",
+        "en": "This site declares nothing.",
+    },
+    "follow the manifest (remove the declaration)": {
+        "fr": "suivre le manifeste (retirer la déclaration)",
+        "en": "follow the manifest (remove the declaration)",
+    },
+    "follows the manifest again": {
+        "fr": "suit de nouveau le manifeste",
+        "en": "follows the manifest again",
+    },
+    "Repository number (empty to cancel): ": {
+        "fr": "Numéro du dépôt (vide pour annuler) : ",
+        "en": "Repository number (empty to cancel): ",
+    },
+    "not declared outbound; nothing laid.": {
+        "fr": "non déclaré sortant ; rien n'a été posé.",
+        "en": "not declared outbound; nothing laid.",
+    },
+    "Declare it first with the entry above.": {
+        "fr": "Le déclarer d'abord avec l'entrée au-dessus.",
+        "en": "Declare it first with the entry above.",
+    },
+    "Upstream address to push to: ": {
+        "fr": "Adresse de l'amont vers lequel pousser : ",
+        "en": "Upstream address to push to: ",
+    },
+    "Account on the upstream: ": {
+        "fr": "Compte chez l'amont : ",
+        "en": "Account on the upstream: ",
+    },
+    "Upstream token (not echoed): ": {
+        "fr": "Jeton de l'amont (non affiché) : ",
+        "en": "Upstream token (not echoed): ",
+    },
+    "Empty: nothing laid.": {
+        "fr": "Vide : rien n'a été posé.",
+        "en": "Empty: nothing laid.",
+    },
+    "a mirror already pushes there.": {
+        "fr": "un miroir pousse déjà vers là.",
+        "en": "a mirror already pushes there.",
+    },
+    "The forge pushes this repository nowhere.": {
+        "fr": "La forge ne pousse ce dépôt nulle part.",
+        "en": "The forge pushes this repository nowhere.",
+    },
+    "never pushed": {"fr": "jamais poussé", "en": "never pushed"},
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
