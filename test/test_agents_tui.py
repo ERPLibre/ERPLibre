@@ -674,8 +674,15 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             for rang, court in enumerate(cls.POIGNEES)
         ]
 
-    def _monde(self):
-        """Les cinq lectures du disque, remplacées par de l'inventé."""
+    def _monde(self, flotte=None):
+        """Les cinq lectures du disque, remplacées par de l'inventé.
+
+        `flotte` remplace celle du monde ordinaire. Elle est passée ICI et non
+        cousue par-dessus : deux `patch` sur la même cible s'empilent, et les
+        arrêter dans l'ordre où on les a démarrés RESTAURE LE PREMIER MOCK au
+        lieu de l'original — la couture survivait alors à son test et
+        contaminait toute la suite.
+        """
         from script.todo.assistant.agents import detail as dl
         from script.todo.assistant.agents import journal as jr
         from script.todo.assistant.agents import statistiques as st
@@ -738,7 +745,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             # d'une instance ne change rien pour la suivante.
             patch(
                 "script.todo.assistant.claude_sessions.fleet",
-                side_effect=lambda *a, **k: self._flotte(),
+                side_effect=lambda *a, **k: (
+                    self._flotte() if flotte is None else list(flotte)
+                ),
             ),
             patch.object(
                 t_ui,
@@ -795,7 +804,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                     },
                 }
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_l_ecran_se_monte_et_peint_ses_trois_tableaux(self):
@@ -864,7 +875,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(champ.display)
                 self.assertIsNone(app._attente)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_un_ecran_gele_le_reste_quand_la_fenetre_change(self):
@@ -907,7 +920,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                     "le dégel rattrape la largeur perdue",
                 )
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_le_volet_de_detail_se_ferme_avec_son_panneau(self):
@@ -939,7 +954,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(volet.display)
                 self.assertEqual(str(volet.render()), "")
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_une_transcription_effacee_quitte_le_tableau(self):
@@ -970,7 +987,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                     tableau.row_count, 2, "les séances Open Code restent"
                 )
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_une_action_sans_agent_choisi_le_dit(self):
@@ -981,12 +1000,7 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
 
         from script.todo.assistant.agents import tui as t_ui
 
-        correctifs = self._monde() + (
-            patch(
-                "script.todo.assistant.claude_sessions.fleet",
-                return_value=[],
-            ),
-        )
+        correctifs = self._monde(flotte=[])
         for c in correctifs:
             c.start()
         try:
@@ -1009,7 +1023,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(envoyes, [])
             self.assertIn(t("Pick a detached agent first."), dit)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_une_action_hors_du_panneau_des_agents_ne_part_pas(self):
@@ -1039,7 +1055,9 @@ class TestLEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
                 await calme(pilote)
             self.assertEqual(envoyes, [])
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_le_gel_se_dit_a_l_ecran(self):
@@ -1745,7 +1763,9 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
                     "les deux montrent bien la même heure",
                 )
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     def test_chaque_faiseuse_de_lignes_donne_une_cle_unique(self):
@@ -1829,7 +1849,9 @@ class TestDeuxLignesNeSeVolentPasLeurCle(unittest.IsolatedAsyncioTestCase):
                 app._repeindre(table, doublons, t_ui.COLONNES_OUTILS, "cle")
                 self.assertEqual(table.row_count, 3)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
 
@@ -1996,6 +2018,48 @@ class TestLeGestePorteSurCeQuiEstPeint(unittest.IsolatedAsyncioTestCase):
                     await pilote.press(touche)
                     await calme(pilote)
         self.assertEqual(envoyes, [])
+
+
+class TestLaSuiteNeSeContaminePasElleMeme(unittest.TestCase):
+    """Un correctif qui survit à son test fausse tous les suivants.
+
+    Deux `patch` sur la même cible s'empilent : le second sauvegarde le mock
+    du premier. Les arrêter dans l'ordre où on les a démarrés restaure donc le
+    PREMIER MOCK au lieu de l'original, et la couture reste installée pour
+    toute la suite — un test d'un autre fichier a vu passer une flotte de deux
+    agents inventés.
+    """
+
+    def test_a_patch_never_outlives_its_test(self):
+        from script.todo.assistant import claude_sessions as cs
+
+        self.assertFalse(
+            hasattr(cs.fleet, "mock_calls"),
+            "un correctif d'un autre test est encore posé",
+        )
+
+    def test_stopping_in_order_is_what_leaks(self):
+        """La démonstration, sur une cible inventée : c'est l'ORDRE qui
+        décide, et rien dans `patch` ne prévient."""
+        import types
+
+        cible = types.SimpleNamespace(valeur="origine")
+        un = patch.object(cible, "valeur", "premier")
+        deux = patch.object(cible, "valeur", "second")
+        un.start()
+        deux.start()
+        for correctif in (un, deux):
+            correctif.stop()
+        self.assertEqual(cible.valeur, "premier", "la fuite, démontrée")
+
+        cible.valeur = "origine"
+        un = patch.object(cible, "valeur", "premier")
+        deux = patch.object(cible, "valeur", "second")
+        un.start()
+        deux.start()
+        for correctif in reversed((un, deux)):
+            correctif.stop()
+        self.assertEqual(cible.valeur, "origine", "à rebours, rien ne reste")
 
 
 class TestAucunSousProcessusSurLaBoucle(unittest.TestCase):
@@ -2514,7 +2578,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                     "et l'écran revient",
                 )
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_permuter_le_panneau_ne_perce_pas_le_modal(self):
@@ -2541,7 +2607,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                     )
                 self.assertEqual(app.screen.max_scroll_y, 0)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_h_ouvre_le_panneau_et_echap_le_ferme(self):
@@ -2569,7 +2637,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 await calme(pilote)
                 self.assertFalse(volet.display)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_un_chiffre_agit_et_referme_le_panneau(self):
@@ -2599,7 +2669,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(faits, ["lancer"])
                 self.assertFalse(app.query_one("#aide", Static).display)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_echap_ferme_aussi_le_volet_de_detail(self):
@@ -2628,7 +2700,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(volet.display)
                 self.assertEqual(str(volet.render()), "")
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_echap_ferme_le_panneau_avant_le_volet(self):
@@ -2668,7 +2742,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 await calme(pilote)
                 self.assertFalse(volet.display)
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
     async def test_ouvrir_une_invite_ferme_le_panneau(self):
@@ -2700,7 +2776,9 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(faits, [], "aucun numéro n'a été lu")
                 self.assertEqual(app.query_one("#saisie", Input).value, "4")
         finally:
-            for c in correctifs:
+            # À REBOURS : deux correctifs sur la même cible s'empilent, et
+            # les défaire dans l'ordre restaurerait le premier mock.
+            for c in reversed(correctifs):
                 c.stop()
 
 
