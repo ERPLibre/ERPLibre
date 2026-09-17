@@ -2201,6 +2201,83 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
             patch.object(oc, "lire_base", lambda: None),
         )
 
+    async def test_le_panneau_tient_dans_un_terminal_de_24_lignes(self):
+        """Vingt-quatre lignes est la hauteur d'un terminal qu'on n'a pas
+        agrandi, et c'est là que le panneau doit tenir.
+
+        Empilé sous les tableaux, il réclamait six lignes de plus : ses trois
+        dernières entrées passaient sous le pli — dont les deux qui
+        détruisent — et rien ne signalait qu'il fallait défiler. Un panneau
+        qu'on ouvre parce qu'on ne sait plus ne peut pas cacher ce qu'il est
+        là pour montrer.
+        """
+        from textual.widgets import DataTable, Static
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 24)) as pilote:
+                await calme(pilote)
+                await pilote.press("h")
+                await calme(pilote)
+                self.assertTrue(app.query_one("#aide", Static).display)
+                self.assertEqual(
+                    app.screen.max_scroll_y,
+                    0,
+                    "le panneau doit tenir sans qu'on défile",
+                )
+                for nom in app.VUES + ("tableau",):
+                    self.assertFalse(
+                        app.query_one(f"#{nom}", DataTable).display, nom
+                    )
+                rendu = str(app.query_one("#aide", Static).render())
+                for phrase in (
+                    t("Delete it and its worktree (retype the identifier)"),
+                    t("Attach to it — this closes the screen"),
+                    t("A number acts · Esc closes"),
+                ):
+                    self.assertIn(phrase, rendu)
+                await pilote.press("escape")
+                await calme(pilote)
+                self.assertTrue(
+                    app.query_one("#tableau", DataTable).display,
+                    "et l'écran revient",
+                )
+        finally:
+            for c in correctifs:
+                c.stop()
+
+    async def test_permuter_le_panneau_ne_perce_pas_le_modal(self):
+        """« v » pendant que le panneau est ouvert ne doit pas rouvrir un
+        tableau sous lui : un seul endroit décide de leur affichage."""
+        from textual.widgets import DataTable
+
+        from script.todo.assistant.agents import tui as t_ui
+
+        correctifs = self._monde()
+        for c in correctifs:
+            c.start()
+        try:
+            app = t_ui.run_tui(run_app=False)
+            async with app.run_test(size=(80, 24)) as pilote:
+                await calme(pilote)
+                await pilote.press("h")
+                await calme(pilote)
+                await pilote.press("v")
+                await calme(pilote)
+                for nom in app.VUES:
+                    self.assertFalse(
+                        app.query_one(f"#{nom}", DataTable).display, nom
+                    )
+                self.assertEqual(app.screen.max_scroll_y, 0)
+        finally:
+            for c in correctifs:
+                c.stop()
+
     async def test_h_ouvre_le_panneau_et_echap_le_ferme(self):
         from textual.widgets import Static
 
@@ -2289,7 +2366,12 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 c.stop()
 
     async def test_echap_ferme_le_panneau_avant_le_volet(self):
-        """Dans l'ordre où les choses se sont posées, une par frappe."""
+        """Dans l'ordre où les choses se sont posées, une par frappe.
+
+        Le panneau étant modal, il masque le volet le temps qu'il est ouvert
+        et le rend en se fermant : la seconde frappe trouve donc le volet là
+        où la première l'avait laissé.
+        """
         from textual.widgets import Static
 
         from script.todo.assistant.agents import tui as t_ui
@@ -2307,11 +2389,15 @@ class TestLePanneauDesTouches(unittest.IsolatedAsyncioTestCase):
                 await pilote.press("h")
                 await calme(pilote)
                 aide = app.query_one("#aide", Static)
-                self.assertTrue(aide.display and volet.display)
+                # Le panneau est MODAL : il masque le volet en s'ouvrant, et
+                # le rend en se fermant. Sans cela il se retrouve empilé
+                # dessous et passe sous le pli d'un terminal court.
+                self.assertTrue(aide.display)
+                self.assertFalse(volet.display, "masqué par le modal")
                 await pilote.press("escape")
                 await calme(pilote)
                 self.assertFalse(aide.display)
-                self.assertTrue(volet.display, "une frappe, une fermeture")
+                self.assertTrue(volet.display, "rendu en se fermant")
                 await pilote.press("escape")
                 await calme(pilote)
                 self.assertFalse(volet.display)

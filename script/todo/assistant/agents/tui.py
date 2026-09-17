@@ -903,6 +903,8 @@ def run_tui(run_app: bool = True):
             # Les colonnes actuellement posées, pour ne les refaire que
             # lorsque la largeur en change le nombre.
             self._colonnes: tuple = ()
+            # Ce que le panneau modal a masqué, pour le rendre en se fermant.
+            self._caches: list = []
             # Le redimensionnement arrive AVANT le montage : repeindre alors
             # remplirait des tableaux qui n'ont pas encore de colonnes.
             self._monte = False
@@ -1041,12 +1043,21 @@ def run_tui(run_app: bool = True):
             visible — dont le curseur n'avait jamais bougé. « s » arrêtait le
             premier agent quel que soit celui qu'on croyait viser, et « s »
             est justement la seule action qui ne demande rien.
+
+            Pendant que le panneau des touches est ouvert, AUCUN tableau n'est
+            affiché : il est modal. C'est ici que cela se décide, et nulle part
+            ailleurs — deux endroits se contrediraient au premier « v ».
             """
+            modal = self.query_one("#aide").display
+            # Le tableau des sessions AUSSI : c'est un tableau, donc il
+            # échappe au masquage ordinaire, et il fait à lui seul la moitié
+            # de la hauteur.
+            self.query_one("#tableau", DataTable).display = not modal
             courant = self.VUES[self._vue]
             for nom in self.VUES:
                 table = self.query_one(f"#{nom}", DataTable)
-                table.display = nom == courant
-                if nom == courant:
+                table.display = not modal and nom == courant
+                if table.display:
                     table.focus()
 
         # Ce que la ligne de saisie attend, et ce que valider déclenche.
@@ -1212,7 +1223,8 @@ def run_tui(run_app: bool = True):
             # Le panneau des touches se ferme : ses chiffres et cette invite
             # se disputeraient les mêmes frappes, et un « 3 » tapé dans une
             # invite est un caractère, pas un numéro de menu.
-            self.query_one("#aide").display = False
+            if self.query_one("#aide").display:
+                self._fermer_l_aide()
             self._attente = attente
             champ = self.query_one("#saisie", Input)
             champ.placeholder = invite
@@ -1268,26 +1280,63 @@ def run_tui(run_app: bool = True):
             else:
                 self._dire(t("Nothing has been sent."))
 
+        # Ce qui reste à l'écran pendant que le panneau des touches est
+        # ouvert. L'en-tête situe, le pied de page porte les touches : ni l'un
+        # ni l'autre ne prend de hauteur au panneau.
+        GARDES_EN_MODAL = ("Header", "Footer")
+
         def action_aide(self):
-            """Ouvrir ou fermer le panneau des touches.
+            """Ouvrir ou fermer le panneau des touches. Il prend TOUT l'écran.
 
             Il existe parce que le pied de page MENT par omission : il tient
-            sur une ligne, se coupe à droite, et quatre touches
-            tombaient hors d'un terminal de quatre-vingts colonnes — dont les
-            deux qui détruisent. Rien à l'écran ne disait qu'elles existaient.
+            sur une ligne, se coupe à droite, et quatre touches tombaient hors
+            d'un terminal de quatre-vingts colonnes — dont les deux qui
+            détruisent. Rien à l'écran ne disait qu'elles existaient.
+
+            Modal, et pour la même raison. Empilé sous les tableaux, il
+            réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+            offre : ses trois dernières entrées passaient sous le pli, dont les
+            deux qui détruisent, et rien ne signalait qu'il fallait défiler. Un
+            panneau qu'on ouvre PARCE QU'ON NE SAIT PLUS ne peut pas cacher ce
+            qu'il est là pour montrer.
 
             Il sert aussi de menu : un chiffre y agit sur la ligne surlignée,
-            pour qui ne veut pas les apprendre. Les deux sont la même
-            chose, et les séparer donnerait deux listes à tenir d'accord.
+            pour qui ne veut pas les apprendre. Les deux sont la même chose, et
+            les séparer donnerait deux listes à tenir d'accord.
             """
-            from textual.widgets import Static
+            from textual.widgets import DataTable, Static
 
             volet = self.query_one("#aide", Static)
             if volet.display:
-                volet.display = False
+                self._fermer_l_aide()
                 return
             volet.update(texte_de_l_aide())
+            # Ce qui est masqué est DÉDUIT de ce qui est à l'écran, jamais
+            # énuméré : un widget ajouté plus tard repousserait le panneau
+            # sous le pli sans que personne y pense.
+            self._caches = [
+                widget
+                for widget in self.query("Screen > *")
+                if widget.display
+                and widget is not volet
+                and not isinstance(widget, DataTable)
+                and type(widget).__name__ not in self.GARDES_EN_MODAL
+            ]
+            for widget in self._caches:
+                widget.display = False
             volet.display = True
+            # Les tableaux se cachent par la fonction qui décide de leur
+            # affichage, et non ici : deux endroits qui en décideraient se
+            # contrediraient au premier « v ».
+            self._montrer_la_vue()
+
+        def _fermer_l_aide(self):
+            """Rendre l'écran à ce qu'il montrait avant le panneau."""
+            self.query_one("#aide").display = False
+            for widget in self._caches:
+                widget.display = True
+            self._caches = []
+            self._montrer_la_vue()
 
         def _agir_par_le_chiffre(self, chiffre):
             """Exécuter l'action que le panneau numérote, et se refermer.
@@ -1297,7 +1346,7 @@ def run_tui(run_app: bool = True):
             donc rien ne se recopie et réordonner la table réordonne le menu.
             """
             rang = CHIFFRES.index(chiffre)
-            self.query_one("#aide").display = False
+            self._fermer_l_aide()
             getattr(self, f"action_{TOUCHES_LIGNE[rang][1]}")()
 
         def on_key(self, evenement):
@@ -1317,13 +1366,12 @@ def run_tui(run_app: bool = True):
                 # volet en était exclu, et la seule façon de le refermer était
                 # de retrouver « d » — qui, à quatre-vingts colonnes, ne
                 # paraît pas toujours au pied de page.
-                for cible in ("#aide", "#detail"):
-                    volet = self.query_one(cible)
-                    if volet.display:
-                        if cible == "#detail":
-                            self._fermer_le_detail()
-                        else:
-                            volet.display = False
+                for cible, fermer in (
+                    ("#aide", self._fermer_l_aide),
+                    ("#detail", self._fermer_le_detail),
+                ):
+                    if self.query_one(cible).display:
+                        fermer()
                         evenement.stop()
                         return
                 return
