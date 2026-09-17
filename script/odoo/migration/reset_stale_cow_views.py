@@ -127,6 +127,13 @@ def fetch_views(database):
     )
     rows = {}
     for item in json.loads(raw.strip() or "[]"):
+        # THE COLUMN AS IT STANDS, kept beside the analysed arch. From 16.0
+        # ``arch_db`` is jsonb with one entry per language; ``normalise_arch``
+        # unwraps ONE of them, which is all the analysis needs and is NOT
+        # what a reset replaces — the UPDATE writes the whole column. A
+        # backup holding the unwrapped string could not put the other
+        # languages back.
+        item["arch_column"] = item.get("arch")
         item["arch"] = normalise_arch(item.get("arch"))
         rows[item["id"]] = item
     return rows
@@ -303,7 +310,16 @@ def show_diff(module_view, cow_view):
 
 
 def backup(database, cow_view, directory):
-    """Store the arch about to be replaced, and return the file path."""
+    """Store the column about to be replaced, and return the file path.
+
+    ``arch_db`` holds what the COLUMN holds, every language included — that
+    is what ``reset`` overwrites. Saving the unwrapped single-language
+    string instead would announce a backup that cannot undo the write.
+
+    ``arch`` keeps the unwrapped one beside it: it is what the diff on
+    screen showed, and a file that carries only the raw jsonb would be
+    unreadable to whoever opens it to re-apply the customization by hand.
+    """
     os.makedirs(directory, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     path = os.path.join(
@@ -317,7 +333,8 @@ def backup(database, cow_view, directory):
                 "key": cow_view["key"],
                 "website_id": cow_view["website_id"],
                 "saved_at": stamp,
-                "arch_db": cow_view["arch"],
+                "arch_db": cow_view.get("arch_column", cow_view["arch"]),
+                "arch": cow_view["arch"],
             },
             fh,
             indent=2,
