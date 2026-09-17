@@ -461,5 +461,210 @@ class LeGuideNixosSeVoitEtDitVrai(unittest.TestCase):
         self.assertIn("services.openssh.settings.PrintMotd = true;", module)
 
 
+class LeCheminDuDepotEstEntierDansLeGuide(unittest.TestCase):
+    """Le guide est lu par quelqu'un qui vient d'entrer en ssh, donc posé
+    dans son foyer, et qui va TAPER ce qu'il lit.
+
+    « conf/nixos/erplibre.nix » était la seule ligne du bloc à n'être ni un
+    chemin absolu ni une commande : depuis le foyer elle ne désigne rien, et
+    la racine change avec le profil — ~/git/erplibre en développement,
+    /opt/erplibre en production. Elle porte donc la racine, comme les autres
+    blocs le font déjà pour les leurs.
+    """
+
+    def _lignes(self, el_dir="~/git/erplibre"):
+        return dq.nixos_rows(el_dir)
+
+    def test_the_checkout_path_is_complete(self):
+        chemins = [c for c, _, _ in self._lignes() if "conf/nixos" in c]
+        self.assertEqual(len(chemins), 1)
+        self.assertTrue(chemins[0].startswith("~/git/erplibre/"), chemins[0])
+
+    def test_the_root_follows_the_profile(self):
+        """Écrire « ~/git/erplibre » en dur enverrait une machine de
+        production chercher un dépôt qui n'y est pas."""
+        chemins = [
+            c for c, _, _ in self._lignes("/opt/erplibre") if "conf/nixos" in c
+        ]
+        self.assertEqual(chemins, ["/opt/erplibre/conf/nixos/erplibre.nix"])
+
+    def test_a_missing_root_falls_back_rather_than_breaking(self):
+        """Un marqueur non substitué serait affiché tel quel."""
+        rendu = "\n".join(c for c, _, _ in self._lignes(""))
+        self.assertNotIn("{el_dir}", rendu)
+        self.assertIn("~/git/erplibre/conf/nixos/erplibre.nix", rendu)
+
+    def test_no_line_is_a_bare_relative_path(self):
+        """La règle que la ligne fautive violait, sur TOUTES les lignes : ce
+        qui n'est pas une commande est un chemin qu'on peut ouvrir d'où l'on
+        est."""
+        for cmd, _, _ in self._lignes():
+            with self.subTest(cmd=cmd):
+                if "/" not in cmd or " " in cmd:
+                    continue  # une commande, pas un chemin
+                self.assertTrue(
+                    cmd.startswith(("/", "~/")),
+                    f"{cmd} ne s'ouvre pas depuis le foyer",
+                )
+
+
+class LeGuideNixosDitCeQueNixosChange(unittest.TestCase):
+    """Ce que le bloc ajoute, et qui ne se devine pas.
+
+    Chaque ligne a été confrontée à une VM NixOS 25.11 vivante avant d'être
+    écrite : « nixos-version » rend bien sa version, « --rollback » est dans
+    le synopsis de nixos-rebuild, et « ls /bin » rend VIDE sur une machine où
+    /bin/bash s'exécute.
+
+    Une recherche de paquet a été ESSAYÉE puis écartée : « nix-env -qaP »
+    ne rend rien sur cette image, dont le canal n'est pas peuplé, et
+    « nix search » se met à tirer un canal entier. Un guide qui envoie taper
+    une commande muette coûte plus qu'un guide qui se tait.
+    """
+
+    def _motd(self, **kw):
+        return dq.build_motd(
+            "nixos", "25.11", "amd64", el_dir="~/git/erplibre", **kw
+        )
+
+    def test_the_safety_net_of_editing_is_named(self):
+        """Une déclaration fautive se défait par une commande ; ailleurs elle
+        laisse un système à réparer à la main."""
+        self.assertIn("nixos-rebuild switch --rollback", self._motd())
+
+    def test_the_version_is_reachable(self):
+        self.assertIn("nixos-version", self._motd())
+
+    def test_the_trap_of_an_empty_bin_is_told(self):
+        """envfs résout un nom sans jamais énumérer : tout ce qui cherche par
+        motif ne trouve rien, quand le nom exact marche."""
+        motd = self._motd()
+        self.assertIn("ls /bin", motd)
+        self.assertIn("envfs", motd)
+
+    def test_it_does_not_repeat_the_package_block(self):
+        """nix-shell, « nixos-rebuild switch » nu et nix-collect-garbage sont
+        déjà dans le bloc du gestionnaire de paquets. Les redire userait la
+        seule chose que ce bloc a — dire ce qui n'est écrit nulle part."""
+        commandes = [c for c, _, _ in dq.nixos_rows("~/git/erplibre")]
+        for deja in (
+            "nix-shell -p <paquet>",
+            "sudo nixos-rebuild switch",
+            "sudo nix-collect-garbage -d",
+        ):
+            with self.subTest(commande=deja):
+                self.assertNotIn(deja, commandes)
+
+    def test_both_languages_carry_every_line(self):
+        """Un bloc à moitié traduit se voit tout de suite, et fait douter du
+        reste."""
+        for _, fr, en in dq.nixos_rows("~/git/erplibre"):
+            with self.subTest(fr=fr):
+                self.assertTrue(fr.strip())
+                self.assertTrue(en.strip())
+                self.assertNotEqual(fr, en)
+
+
+class LesOutilsPosesSAnnoncent(unittest.TestCase):
+    """Le guide ne disait rien des outils installés dans la VM : on entrait
+    en ssh sans savoir que nix, PyCharm ou la forge étaient là, ni par quelle
+    commande s'en servir.
+
+    Ce qui est écrit doit être VRAI sur la machine : le lecteur va taper ces
+    lignes, et une commande absente coûte plus qu'un guide muet.
+    """
+
+    def _motd(self, tools, **kw):
+        return dq.build_motd(
+            "ubuntu",
+            "24.04",
+            "amd64",
+            el_dir="~/git/erplibre",
+            tools=tools,
+            **kw,
+        )
+
+    def test_only_what_was_installed_is_announced(self):
+        motd = self._motd(("pycharm",))
+        self.assertIn("PyCharm", motd)
+        self.assertNotIn("nixos-anywhere", motd)
+        self.assertNotIn("Forgejo", motd)
+
+    def test_a_vm_without_tools_gains_nothing(self):
+        """Le cas ordinaire ne doit pas gagner de bloc vide."""
+        motd = self._motd(())
+        for libelle, _lignes in dq.TOOL_GUIDE.values():
+            with self.subTest(libelle=libelle):
+                self.assertNotIn(libelle, motd)
+
+    def test_the_checkout_root_is_substituted(self):
+        """« {el_dir} » laissé tel quel ferait taper une accolade."""
+        motd = self._motd(("pycharm",), el_make="install_odoo_18")
+        self.assertIn("pycharm ~/git/erplibre", motd)
+        self.assertNotIn("{el_dir}", motd)
+
+    def test_nix_on_another_distribution_is_not_nixos(self):
+        """L'outil pose nix en démon SUR une distribution ordinaire : il n'y a
+        ni /etc/nixos ni nixos-rebuild, et reprendre les lignes du bloc NixOS
+        enverrait chercher des commandes qui n'existent pas ici."""
+        motd = self._motd(("nixanywhere",))
+        self.assertIn("nix shell nixpkgs#", motd)
+        self.assertNotIn("nixos-rebuild", motd)
+        self.assertNotIn("/etc/nixos", motd)
+
+    def test_the_deprecated_profile_verb_is_not_taught(self):
+        """« nix profile install » est un alias déprécié depuis nix 2.30, et
+        l'installateur amont sert une version postérieure : le proposer ferait
+        répondre un avertissement à qui le tape."""
+        motd = self._motd(("nixanywhere",))
+        self.assertIn("nix profile add", motd)
+        self.assertNotIn("nix profile install", motd)
+
+    def test_every_key_exists_in_the_catalogue(self):
+        """Une clé d'ici que le menu ne sait pas poser annoncerait un outil
+        qui n'arrivera jamais."""
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        for cle in dq.TOOL_GUIDE:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, TODO._QEMU_VM_TOOLS)
+
+    def test_the_menu_hands_over_the_filtered_list(self):
+        """La liste cochée vaut pour le parc ; celle-ci est filtrée par la
+        machine. Android Studio n'existe qu'en x86_64 et PyCharm veut un
+        bureau — les annoncer ailleurs enverrait chercher une commande qui ne
+        sera jamais posée."""
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        todo = TODO.__new__(TODO)
+        choisis = ("nixanywhere", "pycharm", "android")
+
+        def parts(arch, desktop):
+            p = todo._qemu_build_deploy_parts(
+                "ubuntu",
+                "24.04",
+                arch,
+                "vm",
+                4096,
+                2,
+                "40G",
+                None,
+                "develop",
+                desktop=desktop,
+                vm_tools=choisis,
+                dry_run=True,
+            )
+            return p[p.index("--vm-tools") + 1] if "--vm-tools" in p else ""
+
+        self.assertEqual("nixanywhere,pycharm,android", parts("amd64", True))
+        self.assertEqual("nixanywhere", parts("arm64", False))
+
+
 if __name__ == "__main__":
     unittest.main()

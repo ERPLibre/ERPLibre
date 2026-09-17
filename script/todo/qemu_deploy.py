@@ -1286,6 +1286,15 @@ class QemuDeployMixin:
         # ici plutôt qu'au petit bonheur, sinon l'installation se termine sur un
         # disque plein après une heure.
         extra += self._qemu_tools_disk_gb(vm_tools, arch, desktop, d)
+        # Ce que le guide de connexion annoncera. FILTRÉ par la machine, et
+        # non la liste cochée pour le parc : Android Studio n'existe qu'en
+        # x86_64 et les extensions GNOME n'ont pas de sens sans bureau —
+        # annoncer un outil qui ne sera pas posé enverrait chercher une
+        # commande absente. Rien n'est installé par deploy_qemu.py, qui ne
+        # s'en sert que pour écrire /etc/motd.
+        retenus = self._qemu_tools_for(vm_tools, arch, desktop, d)
+        if retenus:
+            parts += ["--vm-tools", ",".join(retenus)]
         # TOUJOURS, même sans supplément : sans le drapeau, deploy_qemu.py
         # reprend la taille par défaut du catalogue. Une VM réglée à 60 G mais
         # sans rien à installer repartait donc à 20 G, en silence.

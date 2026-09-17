@@ -2351,28 +2351,268 @@ AUR_GUIDE: tuple[tuple[str, str, str], ...] = (
 # « systemctl cat » plutôt qu'une ligne disant de ne pas faire : l'unité est
 # un lien vers le store, et la voir une fois dit mieux que toute explication
 # pourquoi « systemctl enable » n'a rien à faire ici.
+#
+# « --rollback » est ce qui rend l'édition SÛRE, et ne se devine pas : une
+# déclaration fautive se défait par une commande, là où les autres
+# distributions laissent un système à réparer à la main.
+#
+# « ls /bin » est le piège inverse d'une commande utile — il rend VIDE, et
+# pourtant /bin/bash s'exécute. envfs résout un nom à la demande sans jamais
+# énumérer, donc tout ce qui cherche par motif ne trouve rien, quand le nom
+# exact marche. Le Makefile tient par là (« SHELL := /bin/bash »), et une
+# sonde écrite en glob conclut à tort que l'interpréteur manque.
+#
+# Ce que ce bloc ne reprend PAS : nix-shell, nixos-rebuild switch et
+# nix-collect-garbage sont déjà dans le bloc du gestionnaire de paquets, qui
+# dit comment poser un logiciel. Ici on ne parle que de ce qu'ERPLibre change
+# à NixOS, et de ce que NixOS change à ERPLibre.
 NIXOS_GUIDE: tuple[tuple[str, str, str], ...] = (
     (
-        "conf/nixos/erplibre.nix",
-        "la déclaration d'ERPLibre, dans le dépôt",
-        "ERPLibre's declaration, in the repository",
+        "{el_dir}/conf/nixos/erplibre.nix",
+        "la déclaration, dans le dépôt",
+        "the declaration, in the checkout",
     ),
     (
         "/etc/nixos/erplibre.nix",
-        "sa copie — RÉÉCRITE par make install_os",
-        "its copy — REWRITTEN by make install_os",
+        "RÉÉCRITE par make install_os",
+        "REWRITTEN by make install_os",
     ),
     (
         "/etc/nixos/configuration.nix",
-        "vos déclarations à vous, qui restent",
-        "your own declarations, which do stay",
+        "make install_os n'y touche pas",
+        "make install_os never touches it",
+    ),
+    (
+        "sudo nixos-rebuild switch --rollback",
+        "revenir à la génération d'avant",
+        "back to the previous generation",
+    ),
+    (
+        "nixos-version",
+        "version du système",
+        "the system version",
     ),
     (
         "systemctl cat erplibre",
-        "l'unité vient du store, pas de /etc",
-        "the unit comes from the store, not /etc",
+        "vient du store, pas de /etc",
+        "from the store, not from /etc",
+    ),
+    (
+        "ls /bin",
+        "vide ; envfs résout sans lister",
+        "empty; envfs resolves, no list",
     ),
 )
+
+
+def nixos_rows(el_dir: str) -> tuple[tuple[str, str, str], ...]:
+    """Le guide NixOS, sa racine d'installation substituée.
+
+    Le chemin du dépôt est le SEUL du bloc à ne pas être absolu, et le guide
+    est lu par quelqu'un qui vient d'entrer en ssh, donc posé dans son foyer.
+    Un chemin relatif l'envoie chercher un fichier là où il n'est pas.
+    """
+    return tuple(
+        (cmd.replace("{el_dir}", el_dir or "~/git/erplibre"), fr, en)
+        for cmd, fr, en in NIXOS_GUIDE
+    )
+
+
+# Les outils posés DANS la VM, et les quelques commandes qu'on tape en
+# entrant. Une entrée par clé du catalogue de script/todo/qemu_install.py ;
+# un test garde que toute clé d'ici y existe, sans quoi le guide annoncerait
+# un outil que le menu ne sait pas poser.
+#
+# Le TITRE de bloc est celui du guide, et non le libellé du catalogue : le
+# second nomme une case de menu, en anglais, quand le premier est lu dans la
+# langue de la VM.
+#
+# CE QUI EST ÉCRIT ICI DOIT ÊTRE VRAI SUR LA MACHINE. Le guide est lu par
+# quelqu'un qui vient d'entrer en ssh et qui va TAPER ces lignes : une
+# commande absente envoie chercher un binaire qui n'existe pas, ce qui coûte
+# plus qu'un guide muet. Chaque ligne a été confrontée au code qui l'installe.
+#
+# « {el_dir} » est remplacé par la racine de l'installation, comme dans le
+# bloc ERPLibre.
+TOOL_GUIDE: dict[str, tuple[str, tuple[tuple[str, str, str], ...]]] = {
+    # nix POSÉ SUR UNE AUTRE DISTRIBUTION, et non NixOS : il n'y a ici ni
+    # /etc/nixos ni nixos-rebuild, et les lignes de NIXOS_GUIDE n'y valent
+    # pas. « profile add » et non « install » : l'alias est déprécié depuis
+    # nix 2.30, et l'installateur amont sert une version postérieure.
+    "nixanywhere": (
+        "nix + nixos-anywhere",
+        (
+            (
+                "/etc/nix/nix.conf",
+                "nix-command et flakes, activés",
+                "nix-command and flakes, enabled",
+            ),
+            (
+                "nix shell nixpkgs#<paquet>",
+                "essayer, le temps d'un shell",
+                "try it, for one shell",
+            ),
+            (
+                "nix profile add nixpkgs#<paquet>",
+                "l'ajouter à son profil",
+                "add it to your profile",
+            ),
+            (
+                "nixos-anywhere -f .#<hôte> root@<cible>",
+                "installer NixOS à distance",
+                "install NixOS remotely",
+            ),
+        ),
+    ),
+    "pycharm": (
+        "PyCharm",
+        (
+            (
+                "pycharm {el_dir}",
+                "ouvrir le dépôt dans l'IDE",
+                "open the checkout in the IDE",
+            ),
+            (
+                "make pycharm_configure",
+                "rejouer exécutions et exclusions du .idea",
+                "replay the .idea run configs and exclusions",
+            ),
+        ),
+    ),
+    "android": (
+        "Android Studio",
+        (
+            (
+                "studio",
+                "lancer Android Studio (alias : android-studio)",
+                "start Android Studio (alias: android-studio)",
+            ),
+            (
+                "grep -cE 'vmx|svm' /proc/cpuinfo",
+                "0 : pas de KVM imbriqué, l'émulateur ne tournera pas",
+                "0: no nested KVM, the emulator will not run",
+            ),
+        ),
+    ),
+    "avd": (
+        "Émulateur Android",
+        (
+            (
+                "~/android/emulator/emulator -avd erplibre",
+                "ouvrir l'AVD (par ssh -XC)",
+                "open the AVD (over ssh -XC)",
+            ),
+            (
+                "~/android/platform-tools/adb devices",
+                "voir l'émulateur en marche",
+                "see the running emulator",
+            ),
+            (
+                "id -nG | grep -w kvm",
+                "groupe kvm, sinon pas d'émulateur",
+                "kvm group, or no emulator",
+            ),
+        ),
+    ),
+    "mobile": (
+        "ERPLibre mobile",
+        (
+            (
+                "cd {el_dir}/mobile/erplibre_home_mobile",
+                "le dépôt de l'application mobile",
+                "the mobile app checkout",
+            ),
+            (
+                "npm test",
+                "rejouer les tests Vitest",
+                "replay the Vitest tests",
+            ),
+            (
+                "npm start",
+                "servir l'application sans Android ni émulateur",
+                "serve the app without Android or emulator",
+            ),
+            (
+                "tail -40 ~/erplibre-mobile-build.log",
+                "le journal détaillé de la compilation",
+                "the detailed build log",
+            ),
+        ),
+    ),
+    "forgejo": (
+        "Forgejo",
+        (
+            (
+                "http://<ip>:3000",
+                "forge git, compte et mot de passe erplibre",
+                "git forge, account and password erplibre",
+            ),
+            (
+                "sudo systemctl status forgejo",
+                "état du service",
+                "the service's state",
+            ),
+            (
+                "sudo journalctl -u forgejo -f",
+                "suivre son journal",
+                "follow its log",
+            ),
+        ),
+    ),
+    "gnome_ext": (
+        "Extensions GNOME",
+        (
+            (
+                "extension-manager",
+                "le gestionnaire d'extensions, sur le bureau",
+                "the extension manager, on the desktop",
+            ),
+            (
+                "gnome-extensions enable <uuid>",
+                "activer depuis le bureau",
+                "enable from the desktop",
+            ),
+            (
+                "dbus-run-session -- gnome-extensions enable <uuid>",
+                "activer depuis ssh",
+                "enable over ssh",
+            ),
+        ),
+    ),
+    "aidev": (
+        "Outils d'IA",
+        (
+            ("claude", "lancer l'agent de code", "start the coding agent"),
+            (
+                "ls ~/.claude/commands",
+                "les commandes /commit et /todo_* posées",
+                "the /commit and /todo_* commands installed",
+            ),
+            (
+                "rtk gain",
+                "les tokens économisés jusqu'ici",
+                "tokens saved so far",
+            ),
+            (
+                "starship --version",
+                "l'invite du shell, accrochée au démarrage",
+                "the shell prompt, hooked at startup",
+            ),
+        ),
+    ),
+}
+
+
+def tool_rows(cle: str, el_dir: str) -> tuple[str, tuple]:
+    """(libellé, lignes) d'un outil, sa racine d'installation substituée."""
+    entree = TOOL_GUIDE.get(cle)
+    if not entree:
+        return "", ()
+    libelle, lignes = entree
+    return libelle, tuple(
+        (cmd.replace("{el_dir}", el_dir or "~/git/erplibre"), fr, en)
+        for cmd, fr, en in lignes
+    )
 
 
 def zypper_guide(rolling: bool) -> tuple[tuple[str, str, str], ...]:
@@ -2558,6 +2798,7 @@ def build_motd(
     el_make: str = "",
     editor: str = "",
     desktop: bool = False,
+    tools: tuple = (),
 ) -> str:
     """Texte du /etc/motd de la VM. Fonction PURE : aucun I/O, donc testable.
 
@@ -2591,15 +2832,28 @@ def build_motd(
         body.append("")
         el_rows = erplibre_guide(el_dir, el_make, editor)
         body += motd_block("ERPLibre", el_rows, lang, gloss_col(el_rows))
+    # UN BLOC PAR OUTIL POSÉ, titré de son libellé. La liste vient de
+    # l'appelant, filtrée par la machine : annoncer un outil que l'
+    # architecture ou l'absence de bureau écarte enverrait chercher une
+    # commande qui ne sera jamais là. L'ordre est celui de la table, pour que
+    # deux VM au même équipement rendent le même guide.
+    for cle in TOOL_GUIDE:
+        if cle not in (tools or ()):
+            continue
+        libelle, lignes = tool_rows(cle, el_dir)
+        if not lignes:
+            continue
+        body.append("")
+        body += motd_block(libelle, lignes, lang, gloss_col(lignes))
     # Même règle que le bloc AUR : il ne paraît qu'avec une installation,
     # parce que c'est elle qui pose le module dont ces lignes parlent.
     if mgr == "nix" and el_dir:
         body.append("")
         body += motd_block(
             _pick(("NixOS — déclaratif", "NixOS — declarative"), lang),
-            NIXOS_GUIDE,
+            nixos_rows(el_dir),
             lang,
-            gloss_col(NIXOS_GUIDE),
+            gloss_col(nixos_rows(el_dir)),
         )
     if desktop:
         body.append("")
@@ -3340,6 +3594,9 @@ def guide_files(args: argparse.Namespace) -> list[tuple[str, str, str, str]]:
                 args.erplibre_make,
                 editor,
                 bool(args.desktop),
+                tuple(
+                    c.strip() for c in args.vm_tools.split(",") if c.strip()
+                ),
             ),
             "",
         )
@@ -4939,6 +5196,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="VM graphique : écran virtuel SPICE là où l'architecture le "
         "permet. Les paquets GNOME sont posés par la commande d'installation, "
         "pas ici.",
+    )
+    g_vm.add_argument(
+        "--vm-tools",
+        default="",
+        help="Clés des outils que la commande d'installation va poser, "
+        "séparées par des virgules. Ils ne sont PAS installés ici : la liste "
+        "ne sert qu'au guide de connexion, qui les annonce et donne les "
+        "quelques commandes dont on a besoin en entrant.",
     )
     g_vm.add_argument(
         "--gpu",
