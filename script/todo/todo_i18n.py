@@ -1578,6 +1578,26 @@ TRANSLATIONS = {
         "fr": "le fichier ne s'est pas relu, rien ne les a comptées",
         "en": "the file did not read back, nothing counted",
     },
+    "This file is not JSON:": {
+        "fr": "Ce fichier n'est pas du JSON :",
+        "en": "This file is not JSON:",
+    },
+    "Words must be a list or an object:": {
+        "fr": "Les mots doivent être une liste ou un objet :",
+        "en": "Words must be a list or an object:",
+    },
+    "This file declares no word:": {
+        "fr": "Ce fichier ne déclare aucun mot :",
+        "en": "This file declares no word:",
+    },
+    "JSON file of replacement words": {
+        "fr": "fichier JSON de mots de remplacement",
+        "en": "JSON file of replacement words",
+    },
+    "JSON file of words (empty for the built-in): ": {
+        "fr": "Fichier JSON de mots (vide pour ceux d'origine) : ",
+        "en": "JSON file of words (empty for the built-in): ",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",

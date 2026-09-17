@@ -4822,7 +4822,7 @@ class TODO(
             print(f"❌ {t('A whitelist with no model would do nothing.')}")
             return None
         mots = input(
-            f"💬 {t('Python file declaring MOTS (empty for the built-in): ')}"
+            f"💬 {t('JSON file of words (empty for the built-in): ')}"
         ).strip()
         if mots:
             if not os.path.isfile(os.path.expanduser(mots)):
