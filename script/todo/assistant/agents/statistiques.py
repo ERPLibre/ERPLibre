@@ -90,9 +90,13 @@ class Agregat:
     serie: tuple[int, ...] = ()
 
     # La plus grosse invite vue, GARDÉE À PART de la série. La série se
-    # tronque, donc son maximum ne connaît que la fenêtre ; une session de
-    # mille tours y perdait sa pointe et l'écart avec le contexte courant —
-    # le seul endroit où une compaction se lit — se refermait tout seul.
+    # tronque aux derniers SERIE_MAX, donc son maximum ne connaît que la
+    # fenêtre : sur une session de mille tours, la pointe se refermait toute
+    # seule sur le contexte courant. Ce champ répond à « jusqu'où est-elle
+    # montée », question qu'une série tronquée ne peut plus porter.
+    #
+    # `somme` ne le reporte PAS, et c'est délibéré : la plus grosse invite de
+    # la machine entière ne décrit aucune session et ne se compare à rien.
     pointe: int = 0
 
     # Deux champs de STRUCTURE, et les deux seuls : le répertoire de travail

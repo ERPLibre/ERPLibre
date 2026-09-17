@@ -213,14 +213,39 @@ class TestLaGardeNeTombeQueFermee(unittest.TestCase):
     """
 
     def test_a_listing_that_does_not_answer_offers_nothing(self):
+        """Les quatre silences, pris à la SOURCE et non cousus au verdict.
+
+        Coudre `live` sur None vérifiait trois fois la même chose : c'est la
+        lecture du listage qui doit rendre None sur chacune de ces sorties, et
+        une régression qui rendrait [] sur du non-JSON — la garde ouverte
+        qu'un correctif a justement fermée — passait inaperçue ici.
+        """
+        import subprocess
+
         from script.todo.todo import TODO
 
-        for muet in ("", "pas du json", '{"pid": 1}'):
-            with patch(
-                "script.todo.assistant.claude_sessions.live",
-                return_value=None,
-            ):
-                self.assertIsNone(TODO._claude_vivantes(), repr(muet))
+        muets = {
+            "sortie vide": ("", 0),
+            "code de sortie non nul": ('[{"pid": 1}]', 1),
+            "pas du json": ("pas du json", 0),
+            "json qui n'est pas une liste": ('{"pid": 1}', 0),
+        }
+        for quoi, (sortie, code) in muets.items():
+            fini = type("F", (), {"stdout": sortie, "returncode": code})
+            with patch.object(subprocess, "run", lambda *a, **k: fini):
+                self.assertIsNone(TODO._claude_vivantes(), quoi)
+
+    def test_a_timeout_also_answers_nothing(self):
+        """Le quatrième silence : l'outil qui ne rend pas la main."""
+        import subprocess
+
+        from script.todo.todo import TODO
+
+        def expire(*a, **k):
+            raise subprocess.TimeoutExpired("claude", 15)
+
+        with patch.object(subprocess, "run", expire):
+            self.assertIsNone(TODO._claude_vivantes())
 
     def test_a_listing_that_answers_nothing_is_an_empty_set(self):
         """L'outil a répondu « aucune » : les historiques sont retirables."""

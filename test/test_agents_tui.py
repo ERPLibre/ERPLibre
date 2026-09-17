@@ -3213,7 +3213,12 @@ class TestCeQueChaqueTourDepense(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self._compter(["action_relire"]), 1)
 
     async def test_reading_everything_again_says_so(self):
-        """Plus d'une seconde de gel sans un mot se lit comme un écran mort."""
+        """Une relecture sans un mot se lit comme un écran mort.
+
+        Le geste est PRESSÉ, et non simulé en appelant `_dire` : appeler
+        soi-même ce qu'on veut vérifier teste le porte-voix, pas le geste, et
+        laissait retirer le message d'`action_relire` sans rien casser.
+        """
         from textual.widgets import Static
 
         from script.todo.assistant.agents import journal as jr
@@ -3229,8 +3234,10 @@ class TestCeQueChaqueTourDepense(unittest.IsolatedAsyncioTestCase):
             app._lire_flotte = staticmethod(lambda: [])
             async with app.run_test(size=(160, 40)) as pilote:
                 await calme(pilote)
-                app._dire(t("Reading everything again…"))
+                await pilote.press("r")
+                await pilote.pause()
                 dit = str(app.query_one("#etat", Static).render())
+                await calme(pilote)
         self.assertIn(t("Reading everything again…"), dit)
 
 
