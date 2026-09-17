@@ -5141,6 +5141,30 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "authority declared:": {
+        "fr": "autorité déclarée :",
+        "en": "authority declared:",
+    },
+    "outbound mirrors declared:": {
+        "fr": "miroirs sortants déclarés :",
+        "en": "outbound mirrors declared:",
+    },
+    "The code carries the role and refuses two authorities; this": {
+        "fr": "Le code porte le rôle et refuse deux autorités ; ce",
+        "en": "The code carries the role and refuses two authorities; this",
+    },
+    " site declares none.": {
+        "fr": " site n'en déclare aucune.",
+        "en": " site declares none.",
+    },
+    "The code derives the direction and drives the push mirror;": {
+        "fr": "Le code dérive le sens et pilote le miroir sortant ;",
+        "en": "The code derives the direction and drives the push mirror;",
+    },
+    " this site declares no outbound one.": {
+        "fr": " ce site n'en déclare aucun.",
+        "en": " this site declares no outbound one.",
+    },
     "attachment(s) whose content leaves no copy:": {
         "fr": "pièce(s) dont le contenu part sans copie :",
         "en": "attachment(s) whose content leaves no copy:",
