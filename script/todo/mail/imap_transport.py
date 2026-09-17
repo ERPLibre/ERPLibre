@@ -360,6 +360,31 @@ class ImaplibTransport:
         liste = ",".join(str(u) for u in uids)
         try:
             self._ok(self.client.uid("COPY", liste, target), "COPY")
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"{t('mail_err_move_failed')} {exc}") from exc
+        return self.discard(uids)
+
+    def discard(self, uids: list[int]) -> bool:
+        """Retire du dossier sélectionné les messages NOMMÉS, et dit s'il a
+        pu le faire.
+
+        Le second temps de tout déplacement : la copie est arrivée quelque
+        part, la source n'a plus lieu d'être. Séparé de `move` parce qu'un
+        déplacement entre DEUX comptes ne peut pas copier — il dépose chez
+        l'autre par APPEND, puis appelle ceci.
+
+        `UID EXPUNGE` nomme ce qu'il retire. Sans UIDPLUS il ne reste que
+        l'EXPUNGE nu, qui emporterait aussi ce qu'un autre client a marqué
+        ailleurs dans ce dossier : la fonction s'en abstient, laisse les
+        messages barrés sur place, et rend `False` pour que l'appelant
+        puisse le dire.
+        """
+        if not uids:
+            return True
+        liste = ",".join(str(u) for u in uids)
+        try:
             self._ok(
                 self.client.uid("STORE", liste, "+FLAGS", "(\\Deleted)"),
                 "STORE +FLAGS",
@@ -443,13 +468,81 @@ class ImaplibTransport:
         """
         self._ok(self.client.delete(f'"{name}"'), f"DELETE {name}")
 
-    def append(self, folder: str, raw: bytes, flags: list[str]) -> None:
-        self._ok(
-            self.client.append(
-                f'"{folder}"', f"({' '.join(flags)})", None, raw
+    def append(
+        self, folder: str, raw: bytes, flags: list[str], date=None
+    ) -> None:
+        """Dépose un message dans `folder`.
+
+        `date` est la date INTERNE, celle que le serveur donne au message
+        déposé. Sans elle il l'horodate à maintenant, et un message venu
+        d'un autre compte remonterait en tête de la boîte comme s'il
+        arrivait à l'instant.
+
+        Un APPEND accepté ne prouve pas à lui seul que le message est
+        rangé là où on croit : c'est `contient_message_id` qui le
+        confirme, et c'est lui qu'interroge tout ce qui détruit ensuite la
+        source.
+
+        Toute panne du lien sort en `ImapError`, comme un refus du
+        serveur : l'appelant n'a qu'un genre d'échec à connaître.
+        """
+        try:
+            self._ok(
+                self.client.append(
+                    f'"{folder}"',
+                    f"({' '.join(flags)})",
+                    self._date_interne(date),
+                    raw,
+                ),
+                f"APPEND {folder}",
+            )
+        except ImapError:
+            raise
+        except Exception as exc:
+            raise ImapError(f"APPEND {folder} : {exc}") from exc
+
+    @staticmethod
+    def _date_interne(date):
+        """L'horodatage IMAP d'une date en secondes, ou rien.
+
+        `imaplib` accepte plusieurs formes ; celle qu'il fabrique lui-même
+        est la seule dont la mise en forme est sûre sur toutes les
+        locales.
+        """
+        if date is None:
+            return None
+        import imaplib
+
+        try:
+            return imaplib.Time2Internaldate(date)
+        except Exception:
+            # Une date aberrante ne doit pas empêcher le dépôt : le serveur
+            # horodatera à maintenant, ce qui est faux mais pas perdu.
+            return None
+
+    def contient_message_id(self, folder: str, msgid: str) -> bool:
+        """Vrai si `folder` contient déjà un message portant ce Message-ID.
+
+        Sert à CONFIRMER un dépôt quand le serveur n'a pas nommé ce qu'il
+        rangeait. La clé est `HEADER Message-ID`, pas `TEXT` : `TEXT`
+        trouverait aussi une réponse qui cite ce Message-ID dans son
+        `In-Reply-To`, et confirmer un dépôt qui n'a pas eu lieu ferait
+        détruire la source.
+
+        Un Message-ID vide ne prouve rien et rend `False` : c'est ce que
+        doit faire une vérification qui n'a rien à vérifier.
+        """
+        if not msgid:
+            return False
+        self.select(folder)
+        critere = msgid.encode("utf-8")
+        data = self._ok(
+            self.client.uid(
+                "SEARCH", None, b'HEADER Message-ID "' + critere + b'"'
             ),
-            f"APPEND {folder}",
+            "SEARCH HEADER",
         )
+        return bool((data[0] or b"").split())
 
     def logout(self) -> None:
         """Fermer proprement est souhaitable, pas indispensable : on n'échoue

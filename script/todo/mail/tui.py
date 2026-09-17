@@ -2186,15 +2186,29 @@ def run_tui(
                 self.set_status(t("mail_trash_offline"))
                 return
 
-            def ranger(cible):
-                if not cible:
+            def ranger(choix):
+                if not choix:
                     return
+                destination, cible = choix
+                if destination is session:
+                    self.run_worker(
+                        lambda: self._deplacer(
+                            session, source, cible, meta.uid
+                        ),
+                        thread=True,
+                    )
+                    return
+                self.set_status(t("mail_move_across_working"))
                 self.run_worker(
-                    lambda: self._deplacer(session, source, cible, meta.uid),
+                    lambda: self._deplacer_ailleurs(
+                        session, source, meta, destination, cible
+                    ),
                     thread=True,
                 )
 
-            self.push_screen(MoveScreen(session, source), ranger)
+            self.push_screen(
+                MoveScreen(session, source, self.sessions), ranger
+            )
 
         def action_trash_message(self) -> None:
             """`d` : déplace le message vers la corbeille du compte.
@@ -2326,6 +2340,74 @@ def run_tui(
             if etat.get("id") is not None:
                 session.store.forget_message(etat["id"], uid)
             self.call_from_thread(self._deplace, cible, vide)
+
+        def _deplacer_ailleurs(
+            self, session, source, meta, destination, cible
+        ) -> None:
+            """Le fil de travail d'un déplacement entre DEUX comptes.
+
+            Rien ne relie deux serveurs : le message est relu en entier,
+            DÉPOSÉ chez l'autre, puis seulement retiré d'ici. Un retrait
+            qui précéderait le dépôt perdrait le message pour de bon —
+            aucun serveur ne le rendrait, et il ne passerait par aucune
+            corbeille.
+
+            Le dépôt accepté ne suffit pas : on redemande au serveur s'il
+            contient bien ce Message-ID. Sans cette confirmation la source
+            RESTE, et l'écran le dit — un message en double se corrige, un
+            message disparu, non. Un message sans Message-ID n'est donc
+            jamais retiré de sa source : il n'y a rien à quoi le
+            reconnaître là-bas.
+            """
+            try:
+                with self._sync_lock:
+                    raw = session.syncer.fetch_body(source, meta.uid)
+                    drapeaux = [d for d in (meta.flags or "").split() if d]
+                    destination.syncer.transport.append(
+                        cible, raw, drapeaux, meta.date
+                    )
+                    arrive = destination.syncer.transport.contient_message_id(
+                        cible, meta.msgid
+                    )
+                    vide = False
+                    if arrive:
+                        session.syncer.transport.select(source)
+                        vide = session.syncer.transport.discard([meta.uid])
+            except Exception as exc:
+                _logger.exception(
+                    "déplacement vers %s/%s", destination.account.name, cible
+                )
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            if arrive:
+                etat = session.store.folder_state(source) or {}
+                if etat.get("id") is not None:
+                    session.store.forget_message(etat["id"], meta.uid)
+            try:
+                # Le message est chez l'autre compte : sans cette relecture
+                # il n'y apparaîtrait qu'à la prochaine passe complète.
+                destination.syncer.sync_one(cible)
+            except Exception:
+                _logger.exception("relecture de %s", cible)
+            self.call_from_thread(
+                self._deplace_ailleurs, destination, cible, arrive, vide
+            )
+
+        def _deplace_ailleurs(
+            self, destination, cible, arrive: bool, vide: bool
+        ) -> None:
+            nom = f"{destination.account.name} — {cible}"
+            if not arrive:
+                self.set_status(f"{t('mail_move_across_unconfirmed')} {nom}")
+            elif not vide:
+                self.set_status(
+                    f"{t('mail_trash_done')} {nom}"
+                    f" — {t('mail_trash_source_kept')}"
+                )
+            else:
+                self.set_status(f"{t('mail_trash_done')} {nom}")
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def _deplace(self, cible: str, vide: bool) -> None:
             message = f"{t('mail_trash_done')} {cible}"
@@ -2972,7 +3054,14 @@ def run_tui(
             self.dismiss(None)
 
     class MoveScreen(ModalScreen):
-        """La liste des dossiers où ranger le message, et rien d'autre.
+        """Les dossiers où ranger le message : ceux du compte, puis ceux
+        des autres.
+
+        Le compte du message vient en premier, sans être nommé — c'est le
+        cas courant, et préfixer chaque ligne du nom du compte ouvert
+        mangerait la largeur sans rien apprendre. Les dossiers d'un autre
+        compte portent le sien : un déplacement qui change de compte n'est
+        pas le même geste, et se lit.
 
         Distincte de `FolderScreen` (`F`), qui CRÉE et DÉTRUIT : mêler un
         choix anodin à des gestes destructeurs met la suppression d'un
@@ -2989,11 +3078,20 @@ def run_tui(
         #move_hint { height: auto; padding: 0 1; color: $text-muted; }
         """
 
-        def __init__(self, session, source: str):
+        def __init__(self, session, source: str, sessions=None):
             super().__init__()
             self.session = session
             self.source = source
-            self.dossiers: list[str] = []
+            # Le compte du message d'abord : c'est là que la plupart des
+            # rangements vont, et le curseur y est déjà.
+            self.sessions = [session] + [
+                autre
+                for autre in (sessions or [])
+                if autre is not session and autre.online
+            ]
+            # (session, dossier) — un nom de dossier ne suffit plus à
+            # désigner une cible dès que plusieurs comptes sont listés.
+            self.cibles: list = []
 
         def compose(self):
             with Vertical():
@@ -3004,23 +3102,39 @@ def run_tui(
             table = self.query_one("#move_list", DataTable)
             table.cursor_type = "row"
             table.add_columns(t("mail_folder_name"), t("mail_stats_total"))
-            try:
-                dossiers = self.session.store.folders()
-            except Exception as exc:
-                self.query_one("#move_hint", Static).update(
-                    Text(f"{t('mail_folder_error')} {exc}")
-                )
-                return
-            for dossier in dossiers:
-                if dossier["name"] == self.source:
+            for session in self.sessions:
+                try:
+                    dossiers = session.store.folders()
+                except Exception as exc:
+                    # Le cache d'un compte peut être fermé ou verrouillé :
+                    # les autres comptes restent proposables.
+                    _logger.exception("dossiers de %s", session.account.name)
+                    self.query_one("#move_hint", Static).update(
+                        Text(f"{t('mail_folder_error')} {exc}")
+                    )
                     continue
-                table.add_row(
-                    dossier["display"] or dossier["name"],
-                    str(dossier["total"] or 0),
-                    key=dossier["name"],
-                )
-                self.dossiers.append(dossier["name"])
+                ici = session is self.session
+                for dossier in dossiers:
+                    if ici and dossier["name"] == self.source:
+                        continue
+                    nom = dossier["display"] or dossier["name"]
+                    table.add_row(
+                        nom if ici else f"{session.account.name} — {nom}",
+                        str(dossier["total"] or 0),
+                        key=f"{session.account.name}\x1f{dossier['name']}",
+                    )
+                    self.cibles.append((session, dossier["name"]))
             table.focus()
+
+        @property
+        def dossiers(self) -> list:
+            """Les dossiers proposés, par leur seul nom.
+
+            Gardée pour ce qui ne s'intéresse qu'au contenu du compte
+            ouvert ; le choix, lui, passe par `cibles`, un nom de dossier
+            ne désignant rien à lui seul dès qu'il y a plusieurs comptes.
+            """
+            return [nom for _, nom in self.cibles]
 
         def action_cancel(self) -> None:
             self.dismiss(None)
@@ -3028,10 +3142,10 @@ def run_tui(
         def action_choose(self) -> None:
             table = self.query_one("#move_list", DataTable)
             if table.cursor_row is None or table.cursor_row >= len(
-                self.dossiers
+                self.cibles
             ):
                 return
-            self.dismiss(self.dossiers[table.cursor_row])
+            self.dismiss(self.cibles[table.cursor_row])
 
         def on_data_table_row_selected(self, event) -> None:
             self.action_choose()

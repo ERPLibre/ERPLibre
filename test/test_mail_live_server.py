@@ -427,13 +427,13 @@ class TestSentCopyLandsOnTheServer(MailSandboxCase):
         """Assertion sur les octets DÉPOSÉS, pas sur notre objet en mémoire :
         c'est la seconde porte par laquelle le Cci pourrait fuir."""
         self.file_the_copy()
-        stored, _flags = self.sent_box.appended[0]
+        stored, _flags, _date = self.sent_box.appended[0]
         self.assertNotIn(b"cache@example.org", stored)
         self.assertNotIn(b"X-ERPLibre-Bcc", stored)
 
     def test_the_flags_we_asked_for_reached_the_server(self):
         self.file_the_copy()
-        _stored, flags = self.sent_box.appended[0]
+        _stored, flags, _date = self.sent_box.appended[0]
         self.assertIn("\\Seen", flags)
 
     def test_the_copy_shows_up_in_the_list(self):

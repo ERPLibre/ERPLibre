@@ -453,6 +453,28 @@ apart from the folder screen on `F`, which creates and destroys: mixing an
 everyday gesture with destructive ones puts deleting a folder one key away
 from filing a message.
 
+The list also offers the folders of the **other open accounts**, each row
+carrying its account name; the message's own account comes first and is
+not named, since that is where most filing goes. An account that is
+offline is not offered at all — proposing an unreachable target would
+fail the gesture after the message had already been read back.
+
+Nothing links two servers, so a move across accounts is a different
+sequence: the message is read in full, deposited at the other end with
+`APPEND`, and only then removed here. Its flags and its original date
+travel with it — without the date the receiving server stamps it as
+arriving now, and it would climb to the top of the mailbox as if it were
+new mail.
+
+An accepted deposit is not proof on its own. The client asks the target
+server whether that folder now holds this `Message-ID`, and only a yes
+lets it remove the source. Anything else leaves the message here and says
+so: a duplicate can be cleaned up, a message that vanished cannot. The
+check is `HEADER Message-ID`, not a text search, because a reply quoting
+the identifier in its `In-Reply-To` would otherwise pass for the deposit.
+A message carrying no `Message-ID` is therefore never removed from its
+source — nothing would identify it at the other end.
+
 `D` empties that trash folder. This is the one gesture the client cannot
 repair: IMAP has no trash for what leaves a trash folder, and no
 synchronization pass brings it back. It therefore asks you to TYPE
@@ -689,9 +711,6 @@ stands and the next pass tries again.
 - **No client identifier** — the browser authorisation flow needs a
   `client_id` you register yourself; without one, an OAuth account is added
   from a token obtained elsewhere (see "Authenticating with OAuth").
-- **No moving across accounts** — `d` and `m` file a message within the
-  account it belongs to; a message cannot be moved from one account to
-  another.
 
 The design spec is not tracked in this tree; recover it from history with
 `git log --all -- "docs/superpowers/specs/*"` if you need what the remaining

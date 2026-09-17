@@ -483,6 +483,28 @@ part, distinct de celui des dossiers sur `F`, qui crée et détruit : mêler
 un geste quotidien à des gestes destructeurs met la suppression d'un
 dossier à une touche du rangement d'un message.
 
+La liste propose aussi les dossiers des **autres comptes ouverts**, chaque
+ligne portant le nom de son compte ; celui du message vient en premier et
+n'est pas nommé, puisque c'est là que va la plupart des rangements. Un
+compte hors ligne n'est pas proposé du tout — offrir une cible injoignable
+ferait échouer le geste après coup, le message déjà relu.
+
+Rien ne relie deux serveurs : un déplacement entre comptes est donc une
+autre suite. Le message est relu en entier, déposé chez l'autre par
+`APPEND`, et retiré d'ici seulement ensuite. Ses drapeaux et sa date
+d'origine voyagent avec lui — sans la date, le serveur d'arrivée
+l'horodate à maintenant et il remonte en tête de la boîte comme s'il
+venait d'arriver.
+
+Un dépôt accepté ne prouve rien à lui seul. Le client redemande au serveur
+d'arrivée si ce dossier contient bien ce `Message-ID`, et seul un oui lui
+permet de retirer la source. Tout le reste laisse le message ici et le
+dit : un doublon se corrige, un message disparu ne se rattrape pas. La
+vérification est `HEADER Message-ID` et non une recherche en texte, sinon
+une réponse qui cite l'identifiant dans son `In-Reply-To` passerait pour
+le dépôt. Un message sans `Message-ID` n'est donc jamais retiré de sa
+source : rien ne permettrait de le reconnaître là-bas.
+
 `D` vide cette corbeille. C'est le seul geste que le client ne sait pas
 réparer : IMAP n'a pas de corbeille pour ce qui sort d'une corbeille, et
 aucune passe de synchronisation ne le ramène. Il demande donc de TAPER
@@ -737,9 +759,6 @@ jeton en place vaut toujours et la passe suivante réessaie.
   navigateur exige un `client_id` que vous enregistrez vous-même ; sans lui,
   un compte OAuth s'ajoute à partir d'un jeton obtenu ailleurs (voir
   « S'authentifier par OAuth »).
-- **Pas de déplacement entre comptes** — `d` et `m` rangent un message
-  dans le compte auquel il appartient ; on ne peut pas en déplacer un d'un
-  compte vers un autre.
 
 Le devis de conception n'est pas suivi dans cet arbre ; retrouvez-le dans
 l'historique par `git log --all -- "docs/superpowers/specs/*"` si vous avez
