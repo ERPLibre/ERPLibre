@@ -456,10 +456,17 @@ quatre-vingts colonnes — la largeur d'une fenêtre qu'on n'a pas élargie —
 quatre touches sur onze tombaient hors champ, dont les deux qui détruisent.
 Rien à l'écran ne disait qu'elles existaient. `h` ouvre la liste entière en
 phrases, et un chiffre y agit sur la ligne surlignée pour qui ne veut pas
-apprendre onze lettres. Le pied de page, le panneau et les numéros lisent la
-MÊME table, puisque c'est la recopie qui avait laissé quatre touches sans
-mention nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi
-qu'on ajoute ensuite.
+les apprendre. Le pied de page, le panneau et les numéros lisent la MÊME
+table, puisque c'est la recopie qui avait laissé quatre touches sans mention
+nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi qu'on
+ajoute ensuite.
+
+Le panneau est MODAL, pour la raison même qui le fait exister. Empilé sous les
+tableaux, il réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+offre, donc ses trois dernières entrées — dont les deux qui détruisent —
+passaient sous le pli sans que rien ne le signale. Ce qu'il masque est déduit
+de ce qui est à l'écran plutôt qu'énuméré, et un test garde ses seize lignes
+dans quatre-vingts colonnes sur vingt-quatre.
 
 **L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
 replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la

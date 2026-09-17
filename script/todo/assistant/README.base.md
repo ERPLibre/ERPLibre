@@ -412,10 +412,15 @@ fits on one line and truncates on the right: on an eighty-column terminal —
 the width of a window nobody widened — four keys out of eleven fell off,
 including the two that destroy. Nothing on screen said they existed. `h` opens
 the whole list in sentences, and a number there acts on the highlighted row for
-anyone who would rather not learn eleven letters. The footer, the panel and the
-numbers read the SAME table, because it was the copy that left four keys
-mentioned nowhere; a test keeps `h` inside eighty columns whatever is added
-later.
+anyone who would rather not learn them. The footer, the panel and the numbers
+read the SAME table, because it was the copy that left four keys mentioned
+nowhere; a test keeps `h` inside eighty columns whatever is added later.
+
+The panel is MODAL, for the same reason it exists. Stacked under the tables it
+needed six more lines than a twenty-four-row terminal offers, so its last three
+entries — including the two that destroy — fell below the fold with nothing to
+signal it. What it hides is derived from what is on screen rather than listed,
+and a test keeps its sixteen lines inside eighty by twenty-four.
 
 **The screen reads on a thread, and the figure that decided it is a tail.** A
 tick folds nineteen transcripts, the hook log, the Open Code database and the
@@ -936,10 +941,17 @@ quatre-vingts colonnes — la largeur d'une fenêtre qu'on n'a pas élargie —
 quatre touches sur onze tombaient hors champ, dont les deux qui détruisent.
 Rien à l'écran ne disait qu'elles existaient. `h` ouvre la liste entière en
 phrases, et un chiffre y agit sur la ligne surlignée pour qui ne veut pas
-apprendre onze lettres. Le pied de page, le panneau et les numéros lisent la
-MÊME table, puisque c'est la recopie qui avait laissé quatre touches sans
-mention nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi
-qu'on ajoute ensuite.
+les apprendre. Le pied de page, le panneau et les numéros lisent la MÊME
+table, puisque c'est la recopie qui avait laissé quatre touches sans mention
+nulle part ; un test garde `h` dans les quatre-vingts colonnes quoi qu'on
+ajoute ensuite.
+
+Le panneau est MODAL, pour la raison même qui le fait exister. Empilé sous les
+tableaux, il réclamait six lignes de plus qu'un terminal de vingt-quatre n'en
+offre, donc ses trois dernières entrées — dont les deux qui détruisent —
+passaient sous le pli sans que rien ne le signale. Ce qu'il masque est déduit
+de ce qui est à l'écran plutôt qu'énuméré, et un test garde ses seize lignes
+dans quatre-vingts colonnes sur vingt-quatre.
 
 **L'écran lit sur un fil, et le chiffre qui l'a décidé est une queue.** Un tour
 replie dix-neuf transcriptions, le journal des hooks, la base d'Open Code et la

@@ -407,10 +407,15 @@ fits on one line and truncates on the right: on an eighty-column terminal —
 the width of a window nobody widened — four keys out of eleven fell off,
 including the two that destroy. Nothing on screen said they existed. `h` opens
 the whole list in sentences, and a number there acts on the highlighted row for
-anyone who would rather not learn eleven letters. The footer, the panel and the
-numbers read the SAME table, because it was the copy that left four keys
-mentioned nowhere; a test keeps `h` inside eighty columns whatever is added
-later.
+anyone who would rather not learn them. The footer, the panel and the numbers
+read the SAME table, because it was the copy that left four keys mentioned
+nowhere; a test keeps `h` inside eighty columns whatever is added later.
+
+The panel is MODAL, for the same reason it exists. Stacked under the tables it
+needed six more lines than a twenty-four-row terminal offers, so its last three
+entries — including the two that destroy — fell below the fold with nothing to
+signal it. What it hides is derived from what is on screen rather than listed,
+and a test keeps its sixteen lines inside eighty by twenty-four.
 
 **The screen reads on a thread, and the figure that decided it is a tail.** A
 tick folds nineteen transcripts, the hook log, the Open Code database and the
