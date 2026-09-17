@@ -10789,8 +10789,8 @@ TRANSLATIONS = {
     # demonstration qui echoue au milieu doit pouvoir reprendre la ou elle
     # s'est arretee plutot que tout recommencer.
     "sms_menu": {
-        "fr": "SMS - Passerelle mobile, demonstration de bout en bout",
-        "en": "SMS - Mobile gateway, end-to-end demonstration",
+        "fr": "💬 SMS - Passerelle mobile, demonstration de bout en bout",
+        "en": "💬 SMS - Mobile gateway, end-to-end demonstration",
     },
     "sms_title": {
         "fr": "Passerelle SMS",
@@ -11330,12 +11330,12 @@ TRANSLATIONS = {
     },
     # Courriel
     "mail_menu": {
-        "fr": "Courriel - Lire et envoyer du courriel",
-        "en": "Mail - Read and send email",
+        "fr": "📧 Courriel - Lire et envoyer du courriel",
+        "en": "📧 Mail - Read and send email",
     },
     "mail_ai_question": {
-        "fr": "Question IA - Poser une question à un modèle",
-        "en": "AI question - Ask a model a question",
+        "fr": "🤖 Question IA - Poser une question à un modèle",
+        "en": "🤖 AI question - Ask a model a question",
     },
     "mail_open_tui": {
         "fr": "Ouvrir le client courriel (TUI)",
