@@ -1469,6 +1469,22 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Not a deployment target:": {
+        "fr": "Ce n'est pas une cible de déploiement :",
+        "en": "Not a deployment target:",
+    },
+    "What the target is for": {
+        "fr": "Ce à quoi la cible sert",
+        "en": "What the target is for",
+    },
+    "ERPLibre is installed and served there": {
+        "fr": "ERPLibre y est installé et servi",
+        "en": "ERPLibre is installed and served there",
+    },
+    "it RECEIVES the backup archives": {
+        "fr": "elle REÇOIT les archives de sauvegarde",
+        "en": "it RECEIVES the backup archives",
+    },
     "Target name (lowercase, digits, - or _)": {
         "fr": "Nom de la cible (minuscules, chiffres, - ou _)",
         "en": "Target name (lowercase, digits, - or _)",
