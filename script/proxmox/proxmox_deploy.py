@@ -993,10 +993,17 @@ def image_fetch_cmd(
         # depuis le magasin. L'entrée s'en retire d'abord — « --purge »
         # efface tout, et « --purge-older-than » n'atteint jamais un objet
         # que chaque service rajeunit.
+        # L'URL est DANS la commande proposée. Sans elle, « printf %s » n'a
+        # pas d'opérande, n'écrit rien, et « --oublie » lit un flux vide puis
+        # sort à 0 : l'opérateur croit avoir purgé, efface l'image, relance,
+        # et le magasin ressert les mêmes octets. Un remède qui réussit sans
+        # rien faire est pire que pas de remède.
         aide = (
             f"rm -f {shlex.quote(cible)} et relancer ;"
             " derrière un cache de téléchargement, en retirer l'entrée"
-            f" d'abord : printf %s | sudo erplibre_go_qemu_cache --oublie"
+            " d'abord : printf '%s\\n' "
+            + shlex.quote(f"GET {url}")
+            + " | sudo erplibre_go_qemu_cache --oublie"
         )
         cmd += (
             f" && {{ {somme(cible)} || {{ "
