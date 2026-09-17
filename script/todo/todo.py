@@ -856,8 +856,20 @@ class TODO(
             elif status == "5":
                 self._pref_edit("vm_backend")
             elif status == "6":
-                n = todo_prefs.reset()
-                print(f"✅ {t('Preferences reset')} ({n})")
+                verdict, combien = todo_prefs.reset()
+                if verdict == todo_prefs.ECHEC_ECRITURE:
+                    print(
+                        f"✗ {t('Nothing erased: the file was not written.')}"
+                    )
+                elif verdict == todo_prefs.EFFACE_SANS_COMPTE:
+                    # « (0) » aurait dit « il n'y avait rien » sur un
+                    # fichier plein qu'on vient de remplacer.
+                    print(
+                        f"✅ {t('Preferences reset')} —"
+                        f" {t('the file did not read back, nothing counted')}"
+                    )
+                else:
+                    print(f"✅ {t('Preferences reset')} ({combien})")
             else:
                 print(t("Command not found !"))
 

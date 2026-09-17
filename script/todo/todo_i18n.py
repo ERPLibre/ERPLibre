@@ -1570,6 +1570,14 @@ TRANSLATIONS = {
         "fr": "vue(s) restent : aucune sauvegarde ne les couvre.",
         "en": "view(s) stay: no backup covers them.",
     },
+    "Nothing erased: the file was not written.": {
+        "fr": "Rien n'a été effacé : le fichier n'a pas été écrit.",
+        "en": "Nothing erased: the file was not written.",
+    },
+    "the file did not read back, nothing counted": {
+        "fr": "le fichier ne s'est pas relu, rien ne les a comptées",
+        "en": "the file did not read back, nothing counted",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
