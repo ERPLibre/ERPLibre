@@ -1776,7 +1776,11 @@ def expected_sum(sums: str, filename: str) -> str:
 
 
 def verify_sha256(
-    url: str, image: Path, dry_run: bool, distro: str = "ubuntu"
+    url: str,
+    image: Path,
+    dry_run: bool,
+    distro: str = "ubuntu",
+    urls: tuple[str, ...] = (),
 ) -> None:
     """Vérifie l'empreinte via les sommes que la distribution publie.
 
@@ -1810,17 +1814,32 @@ def verify_sha256(
         print(f"  ⚠ empreinte absente pour {filename}, image NON vérifiée")
         return
 
-    h = hashlib.new(algo)
-    with image.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    if h.hexdigest() != expected:
+    def empreinte() -> str:
+        h = hashlib.new(algo)
+        with image.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    obtenu = empreinte()
+    # Un écart sur une image GARDÉE ne prouve pas une substitution : le
+    # répertoire « latest » d'une distribution avance à chaque version
+    # mineure, et la somme publiée cesse alors de décrire celle du disque.
+    # Supprimer puis abandonner coûtait toute une campagne pour une simple
+    # péremption. L'image est reprise UNE fois ; un second écart, lui, porte
+    # sur des octets fraîchement téléchargés et arrête tout.
+    if obtenu != expected and urls:
+        print(f"  Somme {algo} NON conforme : image reprise une fois.")
+        image.unlink(missing_ok=True)
+        download_image(list(urls), image, dry_run)
+        obtenu = empreinte()
+    if obtenu != expected:
         image.unlink(
             missing_ok=True
         )  # évite la réutilisation du cache corrompu
         sys.exit(
             f"Somme {algo} NON conforme ! Image supprimée : {image}\n"
-            f"  attendu : {expected}\n  obtenu  : {h.hexdigest()}"
+            f"  attendu : {expected}\n  obtenu  : {obtenu}"
         )
     print(f"  Somme {algo} conforme.")
 
@@ -5731,7 +5750,13 @@ def main() -> None:
             args.distro, args.image_path, args.dry_run, tuple(urls)
         )
         if do_verify:
-            verify_sha256(url, args.image_path, args.dry_run, args.distro)
+            verify_sha256(
+                url,
+                args.image_path,
+                args.dry_run,
+                args.distro,
+                tuple(urls),
+            )
         print("\nTerminé (téléchargement seul).")
         return
 
@@ -5848,7 +5873,13 @@ def main() -> None:
             args.distro, args.image_path, args.dry_run, tuple(urls)
         )
         if do_verify:
-            verify_sha256(url, args.image_path, args.dry_run, args.distro)
+            verify_sha256(
+                url,
+                args.image_path,
+                args.dry_run,
+                args.distro,
+                tuple(urls),
+            )
 
         print(f"\n== 2-3/5 Disque de travail {disk} ({args.disk_size}) ==")
         prepare_disk(args.image_path, disk, args.disk_size, runner, args.force)
