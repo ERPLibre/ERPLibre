@@ -871,11 +871,32 @@ class ProxmoxMenuMixin:
         PASSERELLE. La poser sur son pont rend tout le /24 local, la
         passerelle devient injoignable, et la machine s'isole au milieu de la
         commande qui la configure : « ifup » ne rend pas la main, et plus rien
-        ne répond, ni en ssh ni en ping."""
+        ne répond, ni en ssh ni en ping.
+
+        Rend (réseau, raison) : l'un des deux est toujours vide. LE CODE DE
+        RETOUR DU RELEVÉ EST LU, parce que sa perte fabrique exactement la
+        réponse que cette fonction existe pour éviter. `pve.run` rend
+        (255, « timeout ») à l'expiration et (255, message) sur erreur
+        système ; ce message ne contient aucun réseau, donc `parse_used_nets`
+        n'en trouve AUCUN, donc « rien n'est pris », donc le PREMIER candidat
+        est rendu — celui-là même que l'hôte utilise peut-être déjà.
+
+        Les deux échecs sont NOMMÉS séparément. « Tous les candidats sont
+        pris » et « le relevé n'a pas abouti » mènent au même refus, mais pas
+        au même geste : le premier se corrige en libérant un réseau, le
+        second en cherchant pourquoi la commande distante a cédé."""
         from script.proxmox import proxmox_deploy as pve
 
-        _c, out = pve.run(host, pve.USED_NETS_CMD, 40)
-        return pve.pick_internal_cidr(out)
+        code, out = pve.run(host, pve.USED_NETS_CMD, 40)
+        if code:
+            lignes = pve.strip_ssh_noise(out).strip().splitlines()
+            detail = lignes[-1] if lignes else ""
+            raison = t("Could not read the networks this host uses.")
+            return "", f"{raison} {detail}".strip()
+        cidr = pve.pick_internal_cidr(out)
+        if not cidr:
+            return "", t("No free subnet left for an internal bridge.")
+        return cidr, ""
 
     def _pve_nat_ready(self, host):
         """(prêt ?, lignes à dire). La table NAT existe-t-elle sur cet hôte ?
@@ -946,9 +967,9 @@ class ProxmoxMenuMixin:
         raison = self._pve_nat_reason(host)
         if raison:
             return "", raison
-        cidr = self._pve_internal_cidr(host)
+        cidr, raison = self._pve_internal_cidr(host)
         if not cidr:
-            return "", t("No free subnet left for an internal bridge.")
+            return "", raison
         uplink = self._pve_uplink()
         for cmd in pve.bridge_setup_cmds(cidr=cidr, uplink=uplink):
             code, sortie = pve.run(host, cmd, 180)
@@ -977,11 +998,13 @@ class ProxmoxMenuMixin:
         # Le réseau est LU sur l'hôte avant d'être proposé : l'annoncer
         # 10.10.10.1/24 pour en poser un autre serait mentir sur l'écran même
         # où l'on demande l'accord.
-        cidr = self._pve_internal_cidr(host) if host else pve.INTERNAL_CIDR
+        cidr, raison = (
+            self._pve_internal_cidr(host) if host else (pve.INTERNAL_CIDR, "")
+        )
         print(f"\n  ⚠ {t('No network bridge on this host.')}")
         print(f"  {t('qm create needs one. Two ways:')}")
         if not cidr:
-            print(f"  ✗ {t('No free subnet left for an internal bridge.')}")
+            print(f"  ✗ {raison}")
             print(f"  {t('do it myself (bridge-ports <nic>, needs console)')}")
             return ""
         print(
@@ -1163,7 +1186,7 @@ class ProxmoxMenuMixin:
             # réseau qui sera RÉELLEMENT posé — il dépend de l'hôte.
             "internal_bridge": (
                 pve.INTERNAL_BRIDGE,
-                (self._pve_internal_cidr(host) if not ponts else "")
+                (self._pve_internal_cidr(host)[0] if not ponts else "")
                 or pve.INTERNAL_CIDR,
             ),
             "build_command": build_command,

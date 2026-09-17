@@ -1469,6 +1469,10 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Could not read the networks this host uses.": {
+        "fr": "Impossible de relever les réseaux que cet hôte utilise.",
+        "en": "Could not read the networks this host uses.",
+    },
     "egress rules did not load": {
         "fr": "les règles de sortie ne se sont pas chargées",
         "en": "egress rules did not load",
