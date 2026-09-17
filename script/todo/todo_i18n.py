@@ -1594,6 +1594,22 @@ TRANSLATIONS = {
         "fr": "Fichier JSON de mots (vide pour ceux d'origine) : ",
         "en": "JSON file of words (empty for the built-in): ",
     },
+    "mail_purge_failed": {
+        "fr": "le cache n'a pas été effacé :",
+        "en": "the cache was not erased:",
+    },
+    "The lock was not regenerated; nothing replaced.": {
+        "fr": "Le lock n'a pas été régénéré ; rien n'a été remplacé.",
+        "en": "The lock was not regenerated; nothing replaced.",
+    },
+    "No version in .erplibre-version; nothing replaced.": {
+        "fr": "Aucune version dans .erplibre-version ; rien remplacé.",
+        "en": "No version in .erplibre-version; nothing replaced.",
+    },
+    "Reference lock updated:": {
+        "fr": "Lock de référence mis à jour :",
+        "en": "Reference lock updated:",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",

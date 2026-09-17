@@ -2043,6 +2043,12 @@ class QemuManageMixin:
         # Sauvegarde OPTIONNELLE (défaut OUI) : permet de restaurer en cas
         # d'échec, et de tester la VM avant de la supprimer (proposé à la fin).
         self._shrink_backup = None
+        # LE VERDICT EST PROPRE À CETTE OPÉRATION. Posé par une restauration
+        # qui a échoué, il vit sur l'objet TODO, qui dure toute la session :
+        # sans cette remise à zéro, une réduction ULTÉRIEURE qui réussit se
+        # voyait refuser le redémarrage et proposer la suppression de sa
+        # sauvegarde — la pire combinaison, sur un disque sain.
+        self._shrink_disk_unsafe = False
         bak = None
         if self._qemu_ask_backup(disk):
             bak = f"{disk}.bak"
