@@ -367,6 +367,7 @@ preview pane on the right, with a status line at the bottom.
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
 | `*` | flag / unflag the selected message — the star other clients show |
+| `Shift+M` | mark the whole open folder read (asks first) |
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
 | `D` | empty the account's trash folder, permanently |
@@ -415,6 +416,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `*` | suivre / ne plus suivre le message — l'étoile des autres clients |
+| `Shift+M` | marquer lu tout le dossier ouvert (demande confirmation) |
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `m` | ranger le message sélectionné dans un dossier qu'on choisit |
 | `D` | vider la corbeille du compte, définitivement |
@@ -1129,6 +1131,39 @@ suivi ici, et réciproquement.
 La liste porte deux marques dans une colonne : `●` pour non lu, `★` pour
 suivi. Deux caractères et non un, parce qu'un message peut être les deux et
 qu'une marque unique en perdrait une.
+
+<!-- [en] -->
+## Reading a whole folder at once
+
+`Shift+M` marks every unread message of the open folder as read — the
+gesture a mailing-list mailbox calls for, where three hundred unread
+messages ask nothing of anyone. It asks first, and names how many: the
+gesture destroys nothing, but nothing undoes it conveniently either, since
+"make unread the ones that were" does not exist once the starting list is
+gone. A closed question, not a word to type: demanding a word here would
+wear out the vigilance kept for what destroys.
+
+It refuses while the account is offline, and that is not a shortcut: a sync
+pass reads flags back from the server, so a mark set without it would be
+undone at the next pass, silently. The server is told first and the cache
+follows, so a refusal leaves both saying the same thing.
+
+<!-- [fr] -->
+## Lire un dossier entier d'un coup
+
+`Shift+M` marque lus tous les messages non lus du dossier ouvert — le geste
+qu'appelle une boîte de listes de diffusion, où trois cents non-lus
+n'attendent rien de personne. Il demande d'abord, et dit combien : le geste
+ne détruit rien, mais rien ne le défait commodément non plus, « rendre non
+lus ceux qui l'étaient » n'existant pas une fois la liste de départ perdue.
+Une question fermée, pas un mot à taper : exiger un mot ici userait la
+vigilance qu'on garde pour ce qui détruit.
+
+Il refuse tant que le compte est hors ligne, et ce n'est pas une facilité :
+une passe de synchronisation relit les drapeaux depuis le serveur, donc un
+marquage posé sans lui serait défait à la passe suivante, en silence. Le
+serveur est prévenu d'abord et le cache suit, de sorte qu'un refus les
+laisse dire la même chose.
 
 <!-- [en] -->
 ## Saving an attachment

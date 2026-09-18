@@ -182,6 +182,7 @@ preview pane on the right, with a status line at the bottom.
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
 | `*` | flag / unflag the selected message — the star other clients show |
+| `Shift+M` | mark the whole open folder read (asks first) |
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
 | `D` | empty the account's trash folder, permanently |
@@ -547,6 +548,21 @@ desktop client show what is flagged here, and the reverse.
 The list carries two marks in one column: `●` for unread, `★` for flagged.
 Two characters and not one, because a message can be both, and showing a
 single mark would lose one of them.
+
+## Reading a whole folder at once
+
+`Shift+M` marks every unread message of the open folder as read — the
+gesture a mailing-list mailbox calls for, where three hundred unread
+messages ask nothing of anyone. It asks first, and names how many: the
+gesture destroys nothing, but nothing undoes it conveniently either, since
+"make unread the ones that were" does not exist once the starting list is
+gone. A closed question, not a word to type: demanding a word here would
+wear out the vigilance kept for what destroys.
+
+It refuses while the account is offline, and that is not a shortcut: a sync
+pass reads flags back from the server, so a mark set without it would be
+undone at the next pass, silently. The server is told first and the cache
+follows, so a refusal leaves both saying the same thing.
 
 ## Saving an attachment
 

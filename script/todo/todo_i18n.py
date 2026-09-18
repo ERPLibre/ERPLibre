@@ -12582,6 +12582,38 @@ TRANSLATIONS = {
         "fr": "le déplacement a échoué :",
         "en": "the move failed:",
     },
+    "mail_all_seen_binding": {
+        "fr": "Tout marquer lu",
+        "en": "Mark all read",
+    },
+    "mail_all_seen_ask": {
+        "fr": "Marquer lus tous les messages non lus de ce dossier :",
+        "en": "Mark every unread message of this folder as read:",
+    },
+    "mail_all_seen_offline": {
+        "fr": (
+            "Compte hors ligne : un marquage posé ici serait défait à la"
+            " prochaine synchronisation."
+        ),
+        "en": (
+            "Account offline: a mark set here would be undone by the next"
+            " synchronisation."
+        ),
+    },
+    "mail_all_seen_nothing": {
+        "fr": "Ce dossier n'a aucun message non lu.",
+        "en": "This folder has no unread message.",
+    },
+    "mail_all_seen_done": {
+        "fr": "Marqués lus :",
+        "en": "Marked read:",
+    },
+    "mail_confirm_hint": {
+        "fr": "Entrée pour confirmer, Échap pour renoncer.",
+        "en": "Enter to confirm, Escape to give up.",
+    },
+    "mail_confirm_yes": {"fr": "Confirmer", "en": "Confirm"},
+    "mail_confirm_no": {"fr": "Renoncer", "en": "Give up"},
     "mail_flagged_binding": {
         "fr": "Suivi (étoile)",
         "en": "Flag (star)",

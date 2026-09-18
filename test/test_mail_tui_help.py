@@ -29,14 +29,20 @@ from script.todo.mail.tui import Session
 
 
 def collapse(text: str) -> str:
-    """Le texte, espaces (et retours à la ligne) réduits à un seul espace.
+    """Le texte, espaces (et retours à la ligne) réduits à un seul espace,
+    barre de défilement retirée.
 
     Une description longue se replie sur plusieurs lignes DANS sa colonne :
     la chercher telle quelle dans le rendu échouerait alors sur un simple
     repli, pas sur une vraie absence. Rich replie aux limites de mots, donc
     cette normalisation la reconstitue.
+
+    La barre de défilement est DESSINÉE dans les mêmes cellules que le
+    texte, en caractères de bloc : une phrase qui passe à sa hauteur se
+    retrouve coupée par un « ▆ » au milieu d'un mot. Les retirer compare ce
+    qui est écrit, pas où la barre se trouvait ce jour-là.
     """
-    return re.sub(r"\s+", " ", text)
+    return re.sub(r"\s+", " ", re.sub(r"[\u2580-\u259f]", "", text))
 
 
 class HelpCase(unittest.IsolatedAsyncioTestCase):

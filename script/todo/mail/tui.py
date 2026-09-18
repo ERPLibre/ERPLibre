@@ -1219,6 +1219,7 @@ def run_tui(
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("asterisk", "toggle_flagged", t("mail_flagged_binding")),
+            Binding("M", "mark_all_seen", t("mail_all_seen_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
             Binding("c", "compose", t("mail_compose_binding")),
             Binding("a", "reply", t("mail_reply_binding")),
@@ -2700,6 +2701,74 @@ def run_tui(
                     self.set_status(f"{t('mail_flag_error')} {exc}")
             self.select_ref(self.current_ref)
 
+        def action_mark_all_seen(self) -> None:
+            """`M` : marque lu TOUT le dossier ouvert.
+
+            Exige d'être en ligne, et ce n'est pas une facilité : une passe
+            de synchronisation relit les drapeaux depuis le serveur, donc
+            un marquage posé hors ligne serait défait à la passe suivante.
+            Le dire vaut mieux que le laisser s'effacer tout seul.
+
+            Demande confirmation — le geste ne détruit rien, mais rien ne le
+            défait commodément : « rendre non lus ceux qui l'étaient »
+            n'existe pas, la liste de départ étant perdue.
+            """
+            if self.current_ref is None:
+                return
+            session = self.session_for(self.current_ref.account_name)
+            if session is None or not session.online:
+                self.set_status(t("mail_all_seen_offline"))
+                return
+            dossier = self.current_ref.folder_name
+            etat = session.store.folder_state(dossier) or {}
+            if etat.get("id") is None:
+                return
+            non_lus = session.store.count_unseen(etat["id"])
+            if not non_lus:
+                self.set_status(t("mail_all_seen_nothing"))
+                return
+
+            def confirme(oui):
+                if not oui:
+                    return
+                self.run_worker(
+                    lambda: self._tout_lire(session, dossier, etat["id"]),
+                    thread=True,
+                )
+
+            self.push_screen(
+                ConfirmScreen(
+                    f"{t('mail_all_seen_ask')} {non_lus}"
+                    f" ({self.current_ref.display})"
+                ),
+                confirme,
+            )
+
+        def _tout_lire(self, session, dossier, folder_id) -> None:
+            """Le fil de travail de `M` : le serveur d'abord, le cache
+            ensuite.
+
+            L'ordre habituel de ce client : un cache qui devancerait un
+            serveur ayant refusé afficherait un dossier lu qui reviendrait
+            non lu à la passe suivante.
+            """
+            try:
+                with self._sync_lock:
+                    session.syncer.transport.select(dossier)
+                    session.syncer.transport.store_flags_all(["\\Seen"], [])
+            except Exception as exc:
+                _logger.exception("tout marquer lu dans %s", dossier)
+                self.call_from_thread(self.set_status, str(exc))
+                return
+            combien = session.store.mark_all_seen(folder_id)
+            self.call_from_thread(self._tout_lu, combien)
+
+        def _tout_lu(self, combien: int) -> None:
+            self.set_status(f"{t('mail_all_seen_done')} {combien}")
+            self.reload_folders()
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
+
         def action_sync_current(self) -> None:
             self.run_worker(self.sync_current_worker, thread=True)
 
@@ -3366,6 +3435,41 @@ def run_tui(
 
         def on_data_table_row_selected(self, event) -> None:
             self.action_choose()
+
+    class ConfirmScreen(ModalScreen):
+        """Une question fermée : `Entrée` accepte, `Échap` renonce.
+
+        Distincte de `EmptyTrashScreen`, qui fait TAPER un mot : celle-ci
+        garde un geste qui ne détruit rien mais que rien ne défait
+        commodément. Exiger un mot pour ça userait la vigilance qu'on veut
+        garder intacte là où elle compte vraiment.
+        """
+
+        BINDINGS = [
+            Binding("escape", "refuse", t("mail_confirm_no")),
+            Binding("enter", "accepte", t("mail_confirm_yes")),
+        ]
+
+        CSS = """
+        #confirm_text { height: auto; padding: 1; }
+        """
+
+        def __init__(self, question: str):
+            super().__init__()
+            self.question = question
+
+        def compose(self):
+            with Vertical():
+                yield Static(
+                    Text(f"{self.question}\n\n{t('mail_confirm_hint')}"),
+                    id="confirm_text",
+                )
+
+        def action_refuse(self) -> None:
+            self.dismiss(False)
+
+        def action_accepte(self) -> None:
+            self.dismiss(True)
 
     class EmptyTrashScreen(ModalScreen):
         """La confirmation d'un geste qui ne se répare pas.
