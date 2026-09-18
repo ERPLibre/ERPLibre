@@ -565,6 +565,27 @@ def xoauth2_chain(user: str, token: str) -> bytes:
     return f"user={user}\x01auth=Bearer {token}\x01\x01".encode()
 
 
+def _delai_lecture() -> int:
+    """Le délai d'une lecture IMAP, en secondes.
+
+    Il borne CHAQUE lecture, pas la passe : un LIST qui dépasse marque la
+    socket comme morte pour Python, et toute lecture suivante échoue
+    aussitôt sans rien demander au serveur. Réglable parce que 30 secondes
+    suffisent partout sauf sur les boîtes les plus chargées.
+
+    Une préférence illisible ne doit pas empêcher de se connecter : toute
+    valeur qui n'est pas un entier positif retombe sur le défaut.
+    """
+    defaut = 30
+    try:
+        from script.todo import todo_prefs
+
+        valeur = int(todo_prefs.get("mail_timeout_sec", defaut))
+    except Exception:
+        return defaut
+    return valeur if valeur > 0 else defaut
+
+
 def connect(account, secret: str) -> ImaplibTransport:
     """Ouvre une connexion TLS et s'authentifie. Lève `ImapError` sur refus.
 
@@ -575,11 +596,12 @@ def connect(account, secret: str) -> ImaplibTransport:
     import imaplib
 
     conf = account.imap
+    delai = _delai_lecture()
     try:
         if conf.security == "ssl":
-            client = imaplib.IMAP4_SSL(conf.host, conf.port, timeout=30)
+            client = imaplib.IMAP4_SSL(conf.host, conf.port, timeout=delai)
         else:
-            client = imaplib.IMAP4(conf.host, conf.port, timeout=30)
+            client = imaplib.IMAP4(conf.host, conf.port, timeout=delai)
             if conf.security == "starttls":
                 client.starttls()
         if getattr(account, "auth", "login") == "oauth":

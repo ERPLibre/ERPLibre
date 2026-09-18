@@ -254,6 +254,18 @@ Sync happens:
   minutes; 0 disables it) — **but only while the TUI is open**. Close it
   and the timer goes with it; nothing syncs in the background afterward.
 
+A link that dies is replaced rather than carried. Each IMAP read is
+bounded by `mail_timeout_sec` seconds (default 30); when one is exceeded,
+Python marks that socket for good and every later read fails instantly
+with `cannot read from timed out object`, without asking the server
+anything. One slow `LIST` — which a large mailbox at a big provider does
+produce — used to condemn the account for the rest of the session, every
+pass failing in milliseconds on a link already dead, with restarting the
+client as the only cure and nothing saying so. The pass now reopens the
+link once and runs again. Raising `mail_timeout_sec` avoids the cut rather
+than repairing it; a server that answers *no* is not a dead link and is
+never retried.
+
 If the server reports a changed `UIDVALIDITY` for a folder (its UIDs no
 longer mean what they used to — typically after a server-side migration),
 that folder's cache is purged and resynced from scratch automatically. The
