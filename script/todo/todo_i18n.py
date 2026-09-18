@@ -1700,6 +1700,14 @@ TRANSLATIONS = {
         "fr": "Lima - Vérifier la posture de sortie d'une instance",
         "en": "Lima - Verify an instance's egress posture",
     },
+    "%s guard(s) pinned to the source text — read them again": {
+        "fr": "%s garde(s) épinglé(s) au texte du source — à relire",
+        "en": "%s guard(s) pinned to the source text — read them again",
+    },
+    "does a guard measure a property, or the spelling of the code": {
+        "fr": "un garde mesure-t-il une propriété, ou l'orthographe du code",
+        "en": "does a guard measure a property, or the spelling of the code",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",
