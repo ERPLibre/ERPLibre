@@ -45,6 +45,14 @@ SYNC_PARALLELE = 4
 # leur ouvert en permanence.
 SYNC_DOSSIERS_PARALLELE = 3
 
+# Messages chargés d'un coup dans la liste. Le dossier arrive par pages :
+# tout charger construirait autant de lignes qu'il y a de messages, à
+# chaque ouverture et à chaque frappe de recherche.
+PAGE = 500
+# Lignes avant le bas où la page suivante part. Attendre la dernière ferait
+# marquer un arrêt au défilement, le temps que le cache réponde.
+MARGE_PAGE = 20
+
 # Le mot à taper pour détruire un dossier. SANS ACCENT : il doit se taper
 # sur n'importe quelle disposition de clavier, y compris celle d'un poste
 # qu'on emprunte. Une question fermée se valide par réflexe ; un mot
@@ -1399,9 +1407,64 @@ def run_tui(
             session = self.session_for(ref.account_name)
             state = session.store.folder_state(ref.folder_name)
             self.metas = (
-                session.store.list_messages(state["id"]) if state else []
+                session.store.list_messages(state["id"], limit=PAGE)
+                if state
+                else []
             )
             self.refresh_list()
+
+        def charger_la_suite(self) -> bool:
+            """Ajoute la page suivante du dossier ouvert. Vrai si elle est
+            venue.
+
+            Le dossier n'est pas chargé d'un coup : une boîte de trente
+            mille messages construirait trente mille lignes à chaque
+            ouverture et à chaque frappe de recherche, là où l'écran répond
+            aujourd'hui tout de suite. Il arrive donc par pages, et c'est le
+            curseur qui approche du bas qui appelle la suivante — sans quoi
+            la liste s'arrêterait à la première page sans le dire, ce qui se
+            lit comme un cache incomplet.
+            """
+            if self.current_ref is None or self.query:
+                # Avec une requête, la liste n'est plus le dossier mais le
+                # résultat, qui a son propre plafond.
+                return False
+            session = self.session_for(self.current_ref.account_name)
+            if session is None:
+                return False
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            if not etat:
+                return False
+            suite = session.store.list_messages(
+                etat["id"], limit=PAGE, offset=len(self.metas)
+            )
+            if not suite:
+                return False
+            self.metas.extend(suite)
+            return True
+
+        def reste_a_charger(self) -> int:
+            """Ce que le CACHE tient encore et que la liste ne montre pas.
+
+            Le compte du cache, pas le `total` du dossier : celui-ci vient
+            du serveur et compte des messages dont le cache n'a parfois
+            aucun.
+            """
+            if self.current_ref is None:
+                return 0
+            session = self.session_for(self.current_ref.account_name)
+            if session is None:
+                return 0
+            etat = session.store.folder_state(self.current_ref.folder_name)
+            if not etat:
+                return 0
+            try:
+                return max(
+                    0,
+                    session.store.count_messages(etat["id"]) - len(self.metas),
+                )
+            except Exception:
+                return 0
 
         def action_cycle_list_mode(self) -> None:
             self.list_mode = tui_text.next_list_mode(
@@ -1611,8 +1674,14 @@ def run_tui(
             current = self.current_meta()
             current_cle = self._cle(current) if current is not None else None
             state = session.store.folder_state(self.current_ref.folder_name)
+            # AUTANT de messages qu'il y en avait : une passe de
+            # synchronisation ne doit pas rendre à la liste la taille d'une
+            # page, sous un curseur qui était descendu bien plus bas.
+            combien = max(PAGE, len(self.metas))
             self.metas = (
-                session.store.list_messages(state["id"]) if state else []
+                session.store.list_messages(state["id"], limit=combien)
+                if state
+                else []
             )
             self.refresh_list()
             if current_cle is None:
@@ -1653,7 +1722,30 @@ def run_tui(
                 self.select_ref(data)
 
         def on_data_table_row_highlighted(self, event) -> None:
+            self._charger_si_au_bas(event.cursor_row)
             self.show_preview()
+
+        def _charger_si_au_bas(self, ligne: int) -> None:
+            """Charge la page suivante quand le curseur en approche.
+
+            À quelques lignes du bas, PAS sur la dernière : la page arrive
+            alors avant qu'on la demande, et le défilement ne marque pas
+            d'arrêt.
+            """
+            if self.query or ligne is None:
+                return
+            if ligne < len(self.lignes_a_afficher()) - MARGE_PAGE:
+                return
+            if not self.charger_la_suite():
+                return
+            table = self.query_one("#list", DataTable)
+            position = table.cursor_row
+            self.refresh_list()
+            # `refresh_list` vide le tableau, donc le curseur : sans cette
+            # remise en place, charger la suite ramènerait en tête de liste
+            # celui qui descendait.
+            if position is not None and position < table.row_count:
+                table.move_cursor(row=position)
 
         def on_input_changed(self, event) -> None:
             if event.input.id != "search" or event.value == self.query:
