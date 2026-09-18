@@ -2785,8 +2785,48 @@ def motd_block(
     """
     out = [f"  {title}"]
     for cmd, gloss_fr, gloss_en in rows:
-        out.append(f"    {cmd.ljust(col)}{_pick((gloss_fr, gloss_en), lang)}")
+        out += _lignes_glose(cmd, _pick((gloss_fr, gloss_en), lang), col)
     return out
+
+
+# La largeur du cadre, bordure comprise. Un guide plus large qu'un terminal
+# ordinaire se replie tout seul, n'importe où, et l'alignement en deux
+# colonnes — la seule chose qui le rend lisible d'un coup d'œil — disparaît.
+MOTD_MAX_WIDTH = 80
+# Ce qui reste au contenu : build_motd ajoute quatre colonnes de cadre.
+MOTD_TEXT_WIDTH = MOTD_MAX_WIDTH - 4
+# En deçà, replier la glose en colonne donnerait des bribes de trois mots.
+MOTD_GLOSE_MIN = 24
+
+
+def _lignes_glose(cmd: str, glose: str, col: int) -> list[str]:
+    """Les lignes d'UNE entrée, repliées pour tenir dans MOTD_MAX_WIDTH.
+
+    DEUX MISES EN PAGE, et la place restante décide. Tant qu'il reste de quoi
+    écrire, la glose garde sa colonne et ses suites s'alignent dessous :
+    c'est cet alignement qui fait lire un bloc d'un coup d'œil. Quand la
+    commande est longue au point qu'il ne reste plus rien, la garder
+    donnerait des bribes — la glose passe alors sous sa commande, indentée de
+    six, et retrouve toute la largeur.
+
+    L'INDENTATION APPARTIENT À CETTE FONCTION. La laisser à l'appelant, qui
+    alignait toute suite sur la tête, annulait le second cas : la glose
+    repliée repartait à la colonne d'où elle venait d'être chassée.
+
+    Une glose vide ne rend que la commande : le bloc du système en a.
+    """
+    tete = f"    {cmd.ljust(col)}"
+    if not glose.strip():
+        return [tete.rstrip()]
+    place = MOTD_TEXT_WIDTH - len(tete)
+    if place >= MOTD_GLOSE_MIN:
+        morceaux = textwrap.wrap(glose, place)
+        return [tete + morceaux[0]] + [
+            " " * len(tete) + m for m in morceaux[1:]
+        ]
+    return [tete.rstrip()] + [
+        "      " + m for m in textwrap.wrap(glose, MOTD_TEXT_WIDTH - 6)
+    ]
 
 
 def build_motd(

@@ -149,24 +149,38 @@ class TestMotdErplibreSection(unittest.TestCase):
 
 class TestMotdLayout(unittest.TestCase):
     def test_never_wider_than_a_standard_terminal(self):
+        """Le guide ENTIER, outils et bureau compris.
+
+        L'épreuve ne portait que sur le guide nu, et laissait donc passer ce
+        qu'elle existait pour interdire : une VM équipée rendait 103 colonnes
+        — le cadre débordait, le terminal repliait où il voulait, et
+        l'alignement en deux colonnes, seule chose qui rend un guide lisible
+        d'un coup d'œil, disparaissait.
+        """
+        outils = tuple(dq.TOOL_GUIDE)
+        self.assertTrue(outils, "catalogue d'outils vide")
         for distro, version, arch in COMBOS:
             for lang in ("fr", "en"):
                 for el_dir in ("", "~/git/erplibre", "/opt/erplibre"):
-                    motd = dq.build_motd(
-                        distro,
-                        version,
-                        arch,
-                        lang,
-                        el_dir,
-                        "install_odoo_18" if el_dir else "",
-                        "vim" if el_dir else "",
-                    )
-                    for line in motd.splitlines():
-                        self.assertLessEqual(
-                            len(line),
-                            TERM_WIDTH,
-                            f"{distro} {version} {lang} {el_dir} : {line}",
+                    for equipee in (False, True):
+                        motd = dq.build_motd(
+                            distro,
+                            version,
+                            arch,
+                            lang,
+                            el_dir,
+                            "install_odoo_18" if el_dir else "",
+                            "vim" if el_dir else "",
+                            desktop=equipee,
+                            tools=outils if equipee else (),
                         )
+                        for line in motd.splitlines():
+                            self.assertLessEqual(
+                                len(line),
+                                TERM_WIDTH,
+                                f"{distro} {version} {lang} {el_dir} "
+                                f"outils={equipee} : {line}",
+                            )
 
     def test_the_frame_is_never_narrower_than_what_it_frames(self):
         for distro, version, arch in COMBOS:
@@ -664,6 +678,67 @@ class LesOutilsPosesSAnnoncent(unittest.TestCase):
 
         self.assertEqual("nixanywhere,pycharm,android", parts("amd64", True))
         self.assertEqual("nixanywhere", parts("arm64", False))
+
+
+class LaGloseSeReplieAuLieuDeDeborder(unittest.TestCase):
+    """Ce qui arrive à une entrée trop longue pour 80 colonnes.
+
+    Raccourcir les textes aurait tenu jusqu'au prochain outil ajouté ; c'est
+    la MISE EN PAGE qui porte désormais la règle, et elle vaut pour ce qui
+    n'est pas encore écrit.
+    """
+
+    def _lignes(self, cmd, glose, col=None):
+        return dq._lignes_glose(cmd, glose, col if col else len(cmd) + 2)
+
+    def test_a_short_entry_stays_on_one_line(self):
+        """Replier ce qui tient serait une régression à soi seul."""
+        lignes = self._lignes("make todo", "menu ERPLibre")
+        self.assertEqual(len(lignes), 1)
+        self.assertIn("make todo", lignes[0])
+        self.assertIn("menu ERPLibre", lignes[0])
+
+    def test_a_long_gloss_keeps_its_column(self):
+        """La suite s'aligne sous la glose, pas sous la commande : c'est
+        l'alignement qui fait lire un bloc d'un coup d'œil."""
+        lignes = self._lignes("npm start", "a " * 40, col=20)
+        self.assertGreater(len(lignes), 1)
+        debut = lignes[0].index("a a")
+        for suite in lignes[1:]:
+            self.assertEqual(suite[:debut], " " * debut, suite)
+            self.assertTrue(suite[debut:].strip())
+
+    def test_a_command_that_leaves_no_room_pushes_the_gloss_under_it(self):
+        """Au-delà d'un seuil, garder la colonne donnerait des bribes de
+        trois mots. La glose passe sous sa commande et retrouve la largeur."""
+        longue = "dbus-run-session -- gnome-extensions enable <uuid>"
+        lignes = self._lignes(longue, "activer depuis ssh")
+        self.assertEqual(lignes[0].strip(), longue)
+        self.assertEqual(lignes[1], "      activer depuis ssh")
+
+    def test_an_empty_gloss_yields_the_command_alone(self):
+        """Une entrée sans glose ne doit pas rendre une ligne d'espaces."""
+        lignes = self._lignes("hostname -I", "")
+        self.assertEqual(lignes, ["    hostname -I"])
+
+    def test_no_produced_line_exceeds_the_budget(self):
+        """L'invariant, sur des entrées fabriquées bien pires que celles du
+        catalogue : quoi qu'on lui donne, rien ne dépasse."""
+        for cmd, glose in (
+            ("a", "z " * 80),
+            ("x" * 60, "y " * 40),
+            ("x" * 70, "court"),
+            ("court", ""),
+        ):
+            with self.subTest(cmd=cmd[:12]):
+                for ligne in self._lignes(cmd, glose):
+                    self.assertLessEqual(len(ligne), dq.MOTD_TEXT_WIDTH, ligne)
+
+    def test_the_budget_leaves_room_for_the_frame(self):
+        """build_motd ajoute quatre colonnes de cadre : un budget égal à la
+        largeur ferait déborder le cadre de ce qu'il encadre."""
+        self.assertEqual(dq.MOTD_TEXT_WIDTH, dq.MOTD_MAX_WIDTH - 4)
+        self.assertEqual(dq.MOTD_MAX_WIDTH, TERM_WIDTH)
 
 
 if __name__ == "__main__":
