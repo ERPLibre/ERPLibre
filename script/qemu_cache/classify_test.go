@@ -239,10 +239,8 @@ func TestLesMetadonneesRPMParEmpreinteSontImmuables(t *testing.T) {
 	}
 }
 
-// Un miroir préfixe le chemin à sa guise, et le chemin entier donnait deux
-// clés pour un même octet. Relevé sur un journal réel : 1124 noms de paquets
-// vivaient sous plusieurs chemins, et 3,18 Gio repartaient à l'amont pour des
-// fichiers que le magasin détenait déjà.
+// Un miroir préfixe le chemin à sa guise, et le chemin entier donne alors
+// deux clés pour un même octet : le cache retélécharge ce qu'il détient.
 func TestLesPrefixesDeMiroirNeFontQuUneCle(t *testing.T) {
 	for _, cas := range [][2]string{
 		{
@@ -276,6 +274,55 @@ func TestDeuxDistributionsNePartagentPasLaCle(t *testing.T) {
 	if KeySansHote("GET", deb) == KeySansHote("GET", ubu) {
 		t.Error("deux distributions partagent une clé : l'une serait servie" +
 			" avec le paquet de l'autre")
+	}
+}
+
+// Un miroir d'Arch préfixe « archlinux/ », l'autre non : quatre et cinq
+// segments, trop courts pour la borne commune, qui les garde entiers et en
+// fait deux clés.
+func TestLesDeuxFormesDUnMiroirArchNeFontQuUneCle(t *testing.T) {
+	for _, cas := range [][2]string{
+		{
+			"https://geo.example/archlinux/core/os/x86_64/linux-7.2.4.arch1-2-x86_64.pkg.tar.zst",
+			"https://fastly.example/core/os/x86_64/linux-7.2.4.arch1-2-x86_64.pkg.tar.zst",
+		},
+		{
+			"https://geo.example/archlinux/extra/os/x86_64/llvm-libs-22.1.8-2-x86_64.pkg.tar.zst",
+			"https://fastly.example/extra/os/x86_64/llvm-libs-22.1.8-2-x86_64.pkg.tar.zst",
+		},
+	} {
+		a, _ := url.Parse(cas[0])
+		b, _ := url.Parse(cas[1])
+		if KeySansHote("GET", a) != KeySansHote("GET", b) {
+			t.Errorf("deux formes du même paquet donnent deux clés :\n  %s\n  %s",
+				cas[0], cas[1])
+		}
+	}
+}
+
+// La borne d'Arch s'arrête à quatre pour GARDER le nom du dépôt : trois ou
+// deux passeraient sur les données relevées, mais confondraient un paquet de
+// « core » avec celui de « extra » si les deux portaient un jour le même nom.
+func TestLaCleDArchGardeLeNomDuDepot(t *testing.T) {
+	a, _ := url.Parse("https://m.example/core/os/x86_64/outil-1.0-1-x86_64.pkg.tar.zst")
+	b, _ := url.Parse("https://m.example/extra/os/x86_64/outil-1.0-1-x86_64.pkg.tar.zst")
+	if KeySansHote("GET", a) == KeySansHote("GET", b) {
+		t.Error("deux dépôts d'Arch partagent une clé : le nom du dépôt est perdu")
+	}
+}
+
+// La borne courte ne vaut QUE pour la famille pacman : un « .deb » garde la
+// borne haute, faute de quoi le paquet de Debian et celui d'Ubuntu, qui
+// portent le même nom pour d'autres octets, se confondraient.
+func TestLaBorneCourteNeVautQuePourPacman(t *testing.T) {
+	deb, _ := url.Parse("https://deb.example/debian/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb")
+	ubu, _ := url.Parse("https://ubu.example/ubuntu/pool/main/p/poppler-data/poppler-data_0.4.12-1_all.deb")
+	if KeySansHote("GET", deb) == KeySansHote("GET", ubu) {
+		t.Error("la borne courte a débordé sur la famille deb")
+	}
+	if !estPaquetArch("linux-7.2.4.arch1-2-x86_64.pkg.tar.zst") ||
+		estPaquetArch("poppler-data_0.4.12-1_all.deb") {
+		t.Error("la reconnaissance de la famille pacman est fausse")
 	}
 }
 
