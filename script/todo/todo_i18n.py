@@ -12665,6 +12665,64 @@ TRANSLATIONS = {
     "mail_attachment_name": {"fr": "Nom", "en": "Name"},
     "mail_attachment_type": {"fr": "Type", "en": "Type"},
     "mail_attachment_size": {"fr": "Taille", "en": "Size"},
+    "social_err_account_needs_name": {
+        "fr": "Un compte social doit porter un nom.",
+        "en": "A social account needs a name.",
+    },
+    "social_err_invalid_account_name": {
+        "fr": ("Nom de compte refusé — il sert de nom de dossier au cache :"),
+        "en": "Account name refused — it names the cache folder:",
+    },
+    "social_err_unknown_platform": {
+        "fr": "Plateforme inconnue :",
+        "en": "Unknown platform:",
+    },
+    "social_err_needs_base_url": {
+        "fr": "Cette plateforme exige l'adresse de l'instance :",
+        "en": "This platform needs the address of the instance:",
+    },
+    "social_err_account_missing_field": {
+        "fr": "Compte social incomplet, champ absent :",
+        "en": "Incomplete social account, missing field:",
+    },
+    "social_err_accounts_from_the_future": {
+        "fr": "vient d'une version plus récente que celle-ci :",
+        "en": "comes from a newer version than this one:",
+    },
+    "social_err_duplicate_account_names": {
+        "fr": "Deux comptes sociaux portent le même nom :",
+        "en": "Two social accounts share the same name:",
+    },
+    "social_preset_note_mastodon": {
+        "fr": (
+            "Jeton créé dans Préférences › Développement › Nouvelle"
+            " application, portées « read » et « write »."
+        ),
+        "en": (
+            "Token created in Preferences > Development > New application,"
+            ' scopes "read" and "write".'
+        ),
+    },
+    "social_preset_note_bluesky": {
+        "fr": (
+            "Mot de passe d'application créé dans les réglages — jamais le"
+            " mot de passe du compte."
+        ),
+        "en": (
+            "App password created in the settings — never the account"
+            " password."
+        ),
+    },
+    "social_preset_note_linkedin": {
+        "fr": (
+            "Publication seulement : lire le fil d'un membre demande une"
+            " autorisation que LinkedIn n'accorde pas en libre-service."
+        ),
+        "en": (
+            "Publishing only: reading a member feed needs an access"
+            " LinkedIn does not grant self-serve."
+        ),
+    },
     "mail_move_across_working": {
         "fr": "Dépôt chez l'autre compte…",
         "en": "Depositing in the other account…",
