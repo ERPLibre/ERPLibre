@@ -115,6 +115,29 @@ tiendrait mieux, mais la signaler noierait le signal. Ce qu'il montre est un
 signal à relire, jamais une certitude : l'ordre de deux gestes, par exemple,
 ne se lit qu'ainsi.
 
+## Verdicts
+
+**Un verdict jeté se lit comme un succès.** Une fonction qui rend un code de
+retour, un refus ou un « je ne sais pas » le rend pour qu'on le lise ;
+appelée en instruction nue, sa réponse tombe et l'appelant continue comme si
+tout allait bien. C'est ainsi qu'un écran annonce une suppression qu'un garde
+venait de refuser, ou qu'une installation part sur une machine dont les
+règles de sortie ne se sont pas chargées.
+
+La preuve est DIFFÉRENTIELLE : un appel nu n'est signalé que là où la moitié
+au moins des autres appels du même fichier lisent la réponse. Ce dépôt dit
+donc lui-même ce qui compte, et une fonction qui traite sa propre panne —
+elle interroge, elle rejoue — reste muette sans qu'aucune liste d'exemptions
+ait à vieillir.
+
+```bash
+python3 script/analyse/check_discarded_verdict.py script/
+python3 script/analyse/check_discarded_verdict.py --staged
+```
+
+Un appelant a parfois raison d'ignorer ce que les autres lisent. Qu'il le
+dise, en une ligne, là où il le fait.
+
 ## Git
 - Branches : `develop` (développement), `master` (production)
 - Pas de submodules Git — utilise **Google Repo** pour les addons
