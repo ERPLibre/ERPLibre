@@ -22,10 +22,10 @@ from pathlib import Path
 
 from script.todo.todo_i18n import t
 
-# La v2 ajoute `auth` à chaque compte. Un fichier de v1 se relit sans rien
-# perdre — le champ manquant vaut « password », ce qu'un compte de v1 faisait
-# de toute façon.
-SCHEMA_VERSION = 2
+# La v2 ajoute `auth` à chaque compte, la v3 `signature`. Un fichier plus
+# ancien se relit sans rien perdre : le champ manquant prend son défaut, qui
+# est ce que faisait la version qui l'ignorait.
+SCHEMA_VERSION = 3
 SECURITIES = ("ssl", "starttls", "none")
 # « login » couvre le mot de passe du compte comme le mot de passe
 # d'application : du point de vue du transport, c'est le même dialogue LOGIN.
@@ -178,6 +178,9 @@ class Account:
     sent_folder: str = "Sent"
     enabled: bool = True
     auth: str = "login"
+    # Texte ajouté au bas d'un message écrit ou d'une réponse, séparé par le
+    # délimiteur « -- ». Rien de secret : il vit donc ici et non au coffre.
+    signature: str = ""
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -240,6 +243,7 @@ class Account:
                 sent_folder=d.get("sent_folder", "Sent"),
                 enabled=d.get("enabled", True),
                 auth=d.get("auth", "login"),
+                signature=d.get("signature", ""),
             )
         except (KeyError, TypeError) as exc:
             raise AccountError(

@@ -550,6 +550,24 @@ La liste porte deux marques dans une colonne : `●` pour non lu, `★` pour
 suivi. Deux caractères et non un, parce qu'un message peut être les deux et
 qu'une marque unique en perdrait une.
 
+## Signature
+
+Chaque compte peut porter une signature, réglée depuis `Courriel > Comptes
+> Signature d'un compte` — ligne par ligne, une ligne vide terminant la
+saisie, et ne rien écrire l'efface. Elle vit dans `accounts.json` : une
+signature se lit dans chaque message qui l'emporte, la cacher au coffre ne
+protégerait rien.
+
+Elle apparaît dans le formulaire d'écriture, sous ce qu'on écrit et après
+le délimiteur `-- ` — deux tirets, une espace, un saut de ligne, la forme
+dont les clients se servent pour replier ou griser ce qui suit. Être dans
+le formulaire plutôt qu'ajoutée à l'envoi permet de la relire et de la
+corriger avant qu'elle parte ; ajoutée au dernier moment, une signature
+fausse partirait sans que son auteur l'ait vue.
+
+Une réponse la porte sous le texte cité. Un transfert, non : le message
+transféré voyage avec la sienne.
+
 ## Lire un dossier entier d'un coup
 
 `Shift+M` marque lus tous les messages non lus du dossier ouvert — le geste
