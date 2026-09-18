@@ -29,6 +29,7 @@ from collections import deque
 
 from script.todo.modem import audio as audio_mod
 from script.todo.modem import calls as calls_mod
+from script.todo.modem import messaging as sms_mod
 from script.todo.modem import device as device_mod
 from script.todo.modem import sipgo as sipgo_mod
 
@@ -111,17 +112,73 @@ def barre(niveau, echelle):
     return "[" + "#" * n + "." * (10 - n) + "]"
 
 
-def lancer(index_modem, numero_initial=""):
+def _sens(message):
+    """📥 pour un message recu, 📤 pour un message envoye."""
+    return "📤" if (message.get("etat") or "") in ("sent", "sending") else "📥"
+
+
+def _quand(message):
+    """L'horodatage, d'ou qu'il vienne.
+
+    Un message RECU porte « timestamp », un message ENVOYE l'accuse de remise :
+    l'un des deux manque toujours, et n'en lire qu'un laisserait la moitie des
+    messages sans date.
+    """
+    brut = message.get("horodatage") or message.get("remis_le") or ""
+    return brut[:16].replace("T", " ")
+
+
+#: Le drapeau de la boite vocale se relit tout seul a cette cadence, hors
+#: appel : un message laisse pendant que le clavier est ouvert doit finir par
+#: se voir sans qu'on ait rien a demander.
+CADENCE_MESSAGERIE_S = 60
+
+#: Au-dela, la liste des SMS deborde de l'ecran et met une eternite a se
+#: lire : chaque message coute un appel a mmcli.
+LIMITE_SMS = 20
+
+#: Les champs de la boite vocale, publies par le binaire pendant un appel et
+#: lus directement sur la SIM le reste du temps.
+CHAMPS_MESSAGERIE = ("messagerie_connue", "messagerie_attente",
+                     "messagerie_numero")
+
+
+def etat_messagerie():
+    """L'etat de la boite vocale, lu sur la SIM. Vide si rien n'est lisible.
+
+    Le binaire ne publie cet etat que PENDANT un appel, puisqu'il tient alors
+    le port. Hors appel, le port est libre et c'est ici qu'on lit : sans cela,
+    le drapeau et le bouton n'apparaitraient jamais, le bouton ne s'affichant
+    justement qu'entre deux appels.
+    """
+    from script.todo.modem import messagerie_vocale as mv_mod
+
+    lecture = mv_mod.lire()
+    if lecture["etat"] == mv_mod.INCONNU:
+        return {}
+    numero, _raison = mv_mod.numero_messagerie()
+    return {"messagerie_connue": True,
+            "messagerie_attente": lecture["etat"] == mv_mod.ATTENTE,
+            "messagerie_numero": numero}
+
+
+def lancer(index_modem, numero_initial="", code_messagerie=""):
     """Ouvre le poste. Renvoie False si Textual n'est pas installé.
 
     `numero_initial` pre-remplit le numero sans l'appeler : l'appel reste un
     geste de l'utilisateur, qui voit ce qui va etre compose.
+
+    `code_messagerie` vient du coffre, ouvert par le menu avant d'arriver ici :
+    une interface plein ecran ne peut pas demander le mot de passe du coffre
+    sans le faire passer par ses propres champs. Absent, la recuperation se
+    refuse en le disant ; ecouter les messages deja recuperes reste possible.
     """
     try:
         from textual.app import App, ComposeResult
         from textual.containers import Horizontal, Vertical
-        from textual.widgets import (Button, Footer, Header, Log, Select,
-                                     Static, Switch)
+        from textual.screen import ModalScreen
+        from textual.widgets import (Button, Footer, Header, Input, Log,
+                                     Select, Static, Switch)
     except ImportError:
         return False
 
@@ -132,6 +189,54 @@ def lancer(index_modem, numero_initial=""):
     # l'interieur des widgets.
     listes = {"dev_entree": audio_mod.entrees(carte_modem),
               "dev_sortie": audio_mod.sorties(carte_modem)}
+
+    class CoffreScreen(ModalScreen):
+        """Demande le mot de passe du fichier KeePass, et rien d'autre.
+
+        Le coffre s'ouvre ICI : un mot de passe errone se lit sur ce
+        formulaire, la ou quelqu'un vient de le taper, plutot que plus tard
+        sous la forme d'une recuperation qui echoue sans raison visible.
+        """
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="coffre_boite"):
+                yield Static(t("modem_tui_vault_ask"), id="coffre_titre")
+                yield Input(password=True, id="coffre_mdp")
+                yield Static("", id="coffre_etat")
+                with Horizontal():
+                    yield Button(t("Ouvrir"), id="coffre_ok")
+                    yield Button(t("Annuler"), id="coffre_annuler")
+
+        def on_mount(self):
+            self.query_one("#coffre_mdp", Input).focus()
+
+        def on_button_pressed(self, event):
+            if (event.button.id or "") == "coffre_annuler":
+                self.dismiss("")
+                return
+            self._ouvrir()
+
+        def on_input_submitted(self, _event):
+            self._ouvrir()
+
+        def _ouvrir(self):
+            from script.todo.modem import code_messagerie as code_mod
+
+            etat = self.query_one("#coffre_etat", Static)
+            mot_de_passe = self.query_one("#coffre_mdp", Input).value
+            try:
+                coffre = code_mod.coffre_avec_mot_de_passe(mot_de_passe)
+                code = code_mod.lire(coffre) or ""
+            except Exception as exc:
+                etat.update(str(exc))
+                return
+            # Le mot de passe du coffre ne survit pas a ce formulaire : seul
+            # le code de la messagerie en sort.
+            mot_de_passe = None
+            if not code:
+                etat.update(t("modem_ans_fetch_no_code"))
+                return
+            self.dismiss(code)
 
     class Poste(App):
         CSS = """
@@ -170,7 +275,17 @@ def lancer(index_modem, numero_initial=""):
            rangee de touches et les boutons d'appel restent dessines mais
            deviennent incliquables, le clic atterrissant sur le journal. Le
            symptome ne ressemble pas a la cause — on croit a un bouton mort. */
-        #clavier, #audio, #signal { height: auto; }
+        #clavier, #audio, #signal, #repondeur, #sms { height: auto; }
+        /* Le detail d'un SMS est BORNE. Sans hauteur, un long message pousse
+           la rangee d'envoi hors de l'ecran, et le bouton devient
+           inatteignable sans que rien ne l'annonce. */
+        #sms_texte { height: 4; overflow-y: auto; }
+        /* Les champs DOIVENT declarer leur largeur : un Input la prend
+           entiere par defaut, et deux d'affilee poussent le bouton d'envoi
+           au-dela du bord droit, ou plus aucun clic ne l'atteint. */
+        #sms_pour    { width: 18; }
+        #sms_corps   { width: 1fr; }
+        #sms_envoyer { width: 14; }
         #signal  { width: 1fr; }
         .mesure  { width: 11; content-align: right middle; }
         .trace   { width: 26; content-align: left middle; }
@@ -181,18 +296,28 @@ def lancer(index_modem, numero_initial=""):
             ("f1", "vue_clavier", t("modem_tui_tab_keys")),
             ("f2", "vue_audio", t("modem_tui_tab_audio")),
             ("f3", "vue_signal", t("modem_tui_tab_signal")),
+            ("f4", "vue_repondeur", t("modem_tui_answering")),
+            ("f5", "rafraichir", t("modem_tui_refresh")),
+            ("f6", "vue_sms", t("modem_tui_sms")),
         ]
 
         def __init__(self):
             super().__init__()
             self.numero = numero_initial
+            # Lu AVANT que l'interface ne s'affiche : la lecture passe par le
+            # port AT, dont le delai ne depend pas de nous.
+            self.messagerie = etat_messagerie()
+            self.code_messagerie = code_messagerie
+            self.messages = []
+            self.sms = []
+            self.index_modem = index_modem
             self.pilote = None
             self.vue = "clavier"
             self.entrant_vu = ""
             # DERNIER etat publie par le binaire, et rien d'autre. Ce n'est
             # pas une seconde source de verite : c'est le cache de la
             # premiere, dont on a besoin pour calculer un increment.
-            self.dernier_etat = {}
+            self.dernier_etat = dict(self.messagerie)
             self.histoire_mic = deque(maxlen=HISTOIRE)
             self.histoire_hp = deque(maxlen=HISTOIRE)
 
@@ -224,6 +349,8 @@ def lancer(index_modem, numero_initial=""):
                     yield Button(t("Repondre"), id="repondre")
                     yield Button(t("Ajouter un appel"), id="ajouter")
                     yield Button(t("Raccrocher"), id="raccrocher")
+                    yield Button(t("modem_tui_voicemail"), id="messagerie")
+                    yield Button(t("modem_tui_answering"), id="vue_repondeur")
                     yield Button(t("Fusionner"), id="fusionner")
             with Vertical(id="audio"):
                 with Horizontal(classes="rang"):
@@ -295,13 +422,35 @@ def lancer(index_modem, numero_initial=""):
                     yield Switch(value=True, id="sw_filtre")
                     yield Static(t("modem_tui_ring"), classes="titre")
                     yield Switch(value=True, id="sw_sonnerie")
+            with Vertical(id="repondeur"):
+                with Horizontal(classes="rang"):
+                    yield Static(t("modem_tui_ans_erase_after"), classes="titre")
+                    yield Switch(value=True, id="sw_effacer")
+                    yield Button(t("modem_tui_ans_fetch"), id="recuperer")
+                with Horizontal(classes="rang"):
+                    yield Static(t("modem_tui_ans_saved"), classes="titre")
+                    yield Select([], allow_blank=True, id="messages")
+                with Horizontal(classes="rang"):
+                    yield Button(t("modem_tui_ans_play"), id="ecouter")
+                    yield Button(t("modem_tui_ans_erase"), id="effacer_local")
+                    yield Button(t("modem_tui_vault"), id="coffre")
+            with Vertical(id="sms"):
+                with Horizontal(classes="rang"):
+                    yield Static(t("modem_tui_sms_list"), classes="titre")
+                    yield Button("⟳", id="sms_relire", classes="pas")
+                    yield Select([], allow_blank=True, id="sms_choix")
+                yield Static("", id="sms_texte")
+                with Horizontal(classes="rang"):
+                    yield Input(placeholder=t("modem_tui_sms_to"), id="sms_pour")
+                    yield Input(placeholder=t("modem_tui_sms_body"), id="sms_corps")
+                    yield Button(t("modem_tui_sms_send"), id="sms_envoyer")
             yield Log(id="journal")
             yield Footer()
 
         def on_mount(self):
             self.title = t("Clavier du modem")
             self._montrer("clavier")
-            self._resumer({})
+            self._resumer(self.dernier_etat)
             self._peindre()
             self._maj_boutons()
             self._dire("·  " + t("modem_tui_typing"))
@@ -333,6 +482,16 @@ def lancer(index_modem, numero_initial=""):
                 ("ajouter", en_ligne),
                 ("raccrocher", ouvert),
                 ("fusionner", en_ligne and appels >= 2),
+                # Le numero vient de la SIM : sans lui, le bouton composerait
+                # dans le vide.
+                ("messagerie", not ouvert
+                 and bool(self.dernier_etat.get("messagerie_numero"))),
+                # Ecouter ce qui est deja recupere ne demande ni port ni
+                # reseau : le bouton reste donc atteignable hors appel.
+                ("vue_repondeur", not ouvert),
+                # Inutile quand le code est deja la : le bouton disparait
+                # plutot que de proposer un geste sans effet.
+                ("coffre", not self.code_messagerie),
             ):
                 self.query_one(f"#{ident}", Button).display = montrer
 
@@ -344,10 +503,15 @@ def lancer(index_modem, numero_initial=""):
             sans que rien ne l'annonce.
             """
             self.vue = vue
-            for nom in ("clavier", "audio", "signal"):
+            for nom in ("clavier", "audio", "signal", "repondeur", "sms"):
                 self.query_one(f"#{nom}").display = (nom == vue)
-                onglet = self.query_one(f"#tab_{nom}", Button)
-                onglet.variant = "primary" if nom == vue else "default"
+                # La vue Repondeur s'atteint par un bouton et n'a pas
+                # d'onglet : le bandeau en compte deja trois, et une
+                # quatrieme colonne les tasserait.
+                onglet = self.query(f"#tab_{nom}")
+                if onglet:
+                    onglet.first(Button).variant = (
+                        "primary" if nom == vue else "default")
 
         def _resumer(self, etat):
             """Ligne d'etat du son, visible dans les DEUX vues."""
@@ -362,7 +526,20 @@ def lancer(index_modem, numero_initial=""):
                 f"   {t('modem_tui_hp')} {voyant(etat.get('hp', True))}"
                 f" {etat.get('gain_hp', 100)}%"
                 f" {barre(etat.get('niveau_hp', 0), echelle)}"
+                + self._messagerie_vue(etat)
             )
+
+        def _messagerie_vue(self, etat):
+            """Le drapeau de la boite vocale de l'operateur, en deux signes.
+
+            Il vient du binaire et de nulle part ailleurs : c'est lui qui tient
+            le port du modem, donc le seul a pouvoir lire la SIM pendant qu'un
+            appel est possible. Tant qu'il n'a rien lu, on n'affiche RIEN —
+            une boite inconnue n'est pas une boite vide.
+            """
+            if not etat.get("messagerie_connue"):
+                return ""
+            return "   " + ("📬" if etat.get("messagerie_attente") else "📭")
 
         def action_vue_clavier(self):
             self._montrer("clavier")
@@ -372,6 +549,128 @@ def lancer(index_modem, numero_initial=""):
 
         def action_vue_signal(self):
             self._montrer("signal")
+
+        def _veiller_arriere_plan(self):
+            """Ce qui se relit tout seul : la boite vocale, et les SMS quand
+            leur vue est ouverte — un message entrant doit s'y montrer sans
+            qu'on pense a rafraichir."""
+            self._relire_messagerie()
+            if self.vue == "sms":
+                self._lister_sms()
+
+        def action_rafraichir(self):
+            """Relit ce que la vue courante montre, tout de suite.
+
+            La boite vocale est relue dans tous les cas : c'est elle qui change
+            sans qu'on fasse rien, un correspondant pouvant laisser un message
+            a l'instant meme.
+            """
+            self._dire("⟳  " + t("modem_tui_refresh"))
+            self._relire_messagerie()
+            if self.vue == "repondeur":
+                self._lister_messages()
+            elif self.vue == "sms":
+                self._lister_sms()
+
+        def action_vue_sms(self):
+            """Les SMS du modem, relus a chaque ouverture.
+
+            La lecture passe par ModemManager, qui tient ses propres ports :
+            elle marche donc meme pendant un appel, que le binaire conduit sur
+            le port AT.
+            """
+            self._montrer("sms")
+            self._lister_sms()
+
+        def _lister_sms(self):
+            """Remplit la liste dans un fil : chaque message coute un appel a
+            mmcli, et l'interface se figerait le temps de les lire tous."""
+            import threading
+
+            self.query_one("#sms_texte", Static).update(t("modem_tui_sms_reading"))
+
+            def lire():
+                messages = []
+                for ident, _sens in sms_mod.lister(self.index_modem)[:LIMITE_SMS]:
+                    details = sms_mod.lire(ident)
+                    if details:
+                        messages.append(details)
+                self.call_from_thread(self._poser_sms, messages)
+
+            threading.Thread(target=lire, daemon=True).start()
+
+        def _poser_sms(self, messages):
+            if not self._vivante():
+                return
+            self.sms = messages
+            liste = self.query_one("#sms_choix", Select)
+            liste.set_options([
+                ("%s %s  %s" % (_sens(m), m.get("numero", "?"), _quand(m)), i)
+                for i, m in enumerate(messages)
+            ])
+            if messages:
+                liste.value = 0
+                self._montrer_sms(0)
+            else:
+                self.query_one("#sms_texte", Static).update(t("modem_no_sms"))
+
+        def _envoyer_sms(self):
+            """Envoie un SMS par ModemManager, puis relit la liste.
+
+            Le numero est valide AVANT de partir : un numero mal forme s'en va
+            quand meme sur le reseau, et peut joindre quelqu'un qui n'a rien
+            demande.
+            """
+            import threading
+
+            numero = calls_mod.numero_valide(
+                self.query_one("#sms_pour", Input).value)
+            texte = self.query_one("#sms_corps", Input).value
+            if not numero:
+                self._dire("✖  " + t("Numéro invalide, appel refusé"))
+                return
+            if not texte.strip():
+                self._dire("✖  " + t("modem_tui_sms_empty"))
+                return
+            self._dire("▶  " + t("modem_tui_sms_sending"))
+
+            def envoyer():
+                ok, detail = sms_mod.envoyer(self.index_modem, "+" + numero, texte)
+                self.call_from_thread(self._fin_envoi_sms, ok, detail)
+
+            threading.Thread(target=envoyer, daemon=True).start()
+
+        def _fin_envoi_sms(self, ok, detail):
+            if not self._vivante():
+                return
+            if ok:
+                self._dire("✓  " + t("modem_tui_sms_sent"))
+                self.query_one("#sms_corps", Input).value = ""
+            else:
+                self._dire("✖  " + (detail or "").strip()[:200])
+            self._lister_sms()
+
+        def _montrer_sms(self, index):
+            message = self.sms[index]
+            self.query_one("#sms_texte", Static).update(
+                "%s %s — %s — %s\n%s" % (
+                    _sens(message), message.get("numero", "?"),
+                    message.get("etat", ""), _quand(message) or "—",
+                    message.get("texte", "")))
+
+        def on_select_changed(self, event):
+            if event.select.id == "sms_choix" and event.value is not Select.BLANK \
+                    and event.value is not None and self.sms:
+                self._montrer_sms(event.value)
+
+        def action_vue_repondeur(self):
+            """La vue Repondeur, et sa liste relue au passage.
+
+            Relue a CHAQUE ouverture : un message a pu etre recupere entre
+            deux, et une liste figee ferait croire qu'il manque.
+            """
+            self._montrer("repondeur")
+            self._lister_messages()
 
         def on_key(self, event):
             """Compose au clavier physique, sans desactiver les boutons.
@@ -432,6 +731,13 @@ def lancer(index_modem, numero_initial=""):
             """Reflète l'état publié par le binaire. SEULE source de vérité."""
             if not self._vivante():
                 return
+            # Un binaire qui ne publie pas ces champs — ou qui n'a pas
+            # encore lu la SIM — ne doit pas effacer ce qu'on sait deja.
+            for champ in CHAMPS_MESSAGERIE:
+                if champ not in etat and champ in self.dernier_etat:
+                    etat[champ] = self.dernier_etat[champ]
+                if champ in etat:
+                    self.messagerie[champ] = etat[champ]
             self.dernier_etat = etat
             self._resumer(etat)
             self._maj_boutons()
@@ -528,8 +834,11 @@ def lancer(index_modem, numero_initial=""):
             self.pilote = None
             if not self._vivante():
                 return
-            self.dernier_etat = {}
+            self.dernier_etat = dict(self.messagerie)
             self._maj_boutons()
+            # Le port vient de se liberer, et un message a pu etre laisse
+            # pendant l'appel : on relit, sans bloquer l'interface.
+            self._relire_messagerie()
             if not resultat:
                 self._dire("■  " + t("Appel terminé"))
                 return
@@ -582,6 +891,22 @@ def lancer(index_modem, numero_initial=""):
                 self._ajouter_appel()
             elif bouton == "fusionner":
                 self._fusionner()
+            elif bouton == "messagerie":
+                self._appeler_messagerie()
+            elif bouton == "vue_repondeur":
+                self.action_vue_repondeur()
+            elif bouton == "sms_relire":
+                self._lister_sms()
+            elif bouton == "sms_envoyer":
+                self._envoyer_sms()
+            elif bouton == "coffre":
+                self.push_screen(CoffreScreen(), self._coffre_ouvert)
+            elif bouton == "recuperer":
+                self._recuperer_message()
+            elif bouton == "ecouter":
+                self._ecouter_message()
+            elif bouton == "effacer_local":
+                self._effacer_message()
             elif bouton == "veille":
                 self._veiller()
             elif bouton == "repondre":
@@ -719,6 +1044,170 @@ def lancer(index_modem, numero_initial=""):
             sortie = self.query_one("#dev_sortie", Select).value
             return (entree if isinstance(entree, str) else "",
                     sortie if isinstance(sortie, str) else "")
+
+        def _lister_messages(self):
+            """Remplit la liste des messages deja recuperes."""
+            from script.todo.modem import recuperation as rec_mod
+
+            self.messages = rec_mod.lister_messages()
+            options = [
+                ("%s  %s s" % ((m.get("recupere_le") or "")[:19].replace("T", " "),
+                               m.get("duree_secondes") or "?"), index)
+                for index, m in enumerate(self.messages)
+            ]
+            liste = self.query_one("#messages", Select)
+            liste.set_options(options)
+            if options:
+                liste.value = 0
+
+        def _message_choisi(self):
+            liste = self.query_one("#messages", Select)
+            if liste.value is None or liste.value is Select.BLANK:
+                return None
+            return self.messages[liste.value]
+
+        def _ecouter_message(self):
+            """Joue le message sur la sortie audio de la MACHINE.
+
+            Pas sur la carte du modem : celle-ci est la ligne telephonique, et
+            y jouer un message le ferait entendre au correspondant.
+            """
+            import threading
+
+            message = self._message_choisi()
+            if not message:
+                self._dire("·  " + t("modem_ans_none"))
+                return
+            self._dire("▶  " + (message.get("fichier") or ""))
+
+            def jouer():
+                from script.todo.modem import repondeur as rep_mod
+
+                succes, plainte = rep_mod.jouer(message.get("fichier") or "")
+                if not succes:
+                    self.call_from_thread(self._dire, "✖  " + plainte)
+
+            threading.Thread(target=jouer, daemon=True).start()
+
+        def _effacer_message(self):
+            """Efface le message local. L'enregistrement complet de l'appel
+            reste : c'est la copie de secours, et le message est deja efface
+            chez l'operateur."""
+            from script.todo.modem import recuperation as rec_mod
+
+            message = self._message_choisi()
+            if not message:
+                return
+            rec_mod.effacer_message(message)
+            self._dire("🗑  " + t("modem_ans_deleted"))
+            self._lister_messages()
+
+        def _coffre_ouvert(self, code):
+            """Recoit le code lu dans le coffre, ou rien si on a renonce."""
+            if not code:
+                return
+            self.code_messagerie = code
+            self._dire("🔑  " + t("modem_tui_vault_ok"))
+            self._maj_boutons()
+
+        def _recuperer_message(self):
+            """Appelle la messagerie, extrait le message, et l'efface ou non.
+
+            Refuse pendant un appel : la recuperation a besoin du port du
+            modem, que l'appel en cours tient deja.
+            """
+            import threading
+
+            from script.todo.modem import recuperation as rec_mod
+
+            if self.pilote:
+                self._dire("✖  " + t("Un appel est deja en cours"))
+                return
+            if not self.code_messagerie:
+                self._dire("✖  " + t("modem_tui_ans_no_code"))
+                return
+            numero = self.dernier_etat.get("messagerie_numero") or ""
+            if not numero:
+                self._dire("✖  " + t("modem_tui_voicemail_unknown"))
+                return
+            effacer = self.query_one("#sw_effacer", Switch).value
+            recette = "recuperer_un_message" if effacer else "reperage_code_ecoute"
+            self._dire("▶  " + t("modem_ans_fetch_running"))
+
+            def travailler():
+                binaire = sipgo_mod.binaire() or ""
+                bilan, wav = rec_mod.jouer(recette, numero, self.code_messagerie,
+                                           binaire, device_mod.PORT_RESERVE)
+                message = ""
+                if wav:
+                    message = rec_mod.extraire_message(
+                        wav, bilan, rec_mod.dossier_messages())
+                self.call_from_thread(self._fin_recuperation, bilan, wav, message)
+
+            threading.Thread(target=travailler, daemon=True).start()
+
+        def _fin_recuperation(self, bilan, wav, message):
+            if not self._vivante():
+                return
+            from script.todo.modem import recuperation as rec_mod
+
+            for ligne in rec_mod.resume(bilan):
+                self._dire("   " + ligne)
+            if message:
+                self._dire("💾  " + message)
+            elif "garde" in (bilan.get("erreur") or ""):
+                # La garde arrete la recette quand trop peu de parole a ete
+                # entendue : la boite etait vide. Rien n'a ete efface, et il
+                # n'y avait rien a decouper.
+                self._dire("📭  " + t("modem_ans_fetch_empty"))
+            elif wav:
+                self._dire("·  " + t("modem_ans_fetch_no_cut"))
+            self._lister_messages()
+            self._relire_messagerie()
+
+        def _relire_messagerie(self):
+            """Relit la SIM dans un fil, puis rafraichit l'affichage.
+
+            Dans un fil parce que la lecture passe par le port AT : son
+            delai ne depend pas de nous, et l'interface se figerait juste
+            apres un raccrochage.
+            """
+            import threading
+
+            def lire():
+                etat = etat_messagerie()
+                if etat:
+                    self.call_from_thread(self._poser_messagerie, etat)
+
+            threading.Thread(target=lire, daemon=True).start()
+
+        def _poser_messagerie(self, etat):
+            if not self._vivante():
+                return
+            self.messagerie.update(etat)
+            self.dernier_etat.update(etat)
+            self._resumer(self.dernier_etat)
+            self._maj_boutons()
+            # Sans cette relecture, un message laisse pendant que le clavier
+            # est ouvert ne se verrait qu'au prochain lancement : l'etat n'est
+            # lu qu'au demarrage et a la fin d'un appel.
+            self.set_interval(CADENCE_MESSAGERIE_S, self._veiller_arriere_plan)
+
+        def _appeler_messagerie(self):
+            """Compose la messagerie de l'operateur et appelle.
+
+            Une fois en ligne, les touches du clavier partent en tonalites :
+            c'est ainsi qu'on donne le mot de passe et qu'on navigue dans le
+            menu.
+            """
+            numero = self.dernier_etat.get("messagerie_numero") or ""
+            if not numero:
+                self._dire("✖  " + t("modem_tui_voicemail_unknown"))
+                return
+            self.numero = numero
+            self._peindre()
+            self._dire("·  " + t("modem_tui_voicemail_hint"))
+            self._demander_appel()
 
         def _demander_appel(self):
             if self.pilote:

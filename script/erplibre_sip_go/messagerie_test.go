@@ -184,3 +184,29 @@ func TestLeCheminSuitLeRepertoireDEtat(t *testing.T) {
 		t.Fatalf("chemin %q", got)
 	}
 }
+
+// Le numero de la messagerie est celui que l'operateur a inscrit sur la SIM :
+// c'est le seul qui mene a coup sur a SA messagerie.
+func TestLeNumeroDeMessagerieSeLitSurLaSIM(t *testing.T) {
+	// Les reponses sont de la forme que rend un EC25.
+	for _, cas := range []struct {
+		réponse string
+		numéro  string
+		erreur  bool
+	}{
+		{"AT+CSVM?\r\n+CSVM: 1,\"+15145550199\",145\r\n\r\nOK", "+15145550199", false},
+		{"+CSVM: 0,\"\",129\r\nOK", "", true},
+		{"ERROR", "", true},
+	} {
+		g := motifCSVM.FindStringSubmatch(cas.réponse)
+		if cas.erreur {
+			if g != nil && g[1] != "0" && g[2] != "" {
+				t.Fatalf("%q accepté", cas.réponse)
+			}
+			continue
+		}
+		if g == nil || g[2] != cas.numéro {
+			t.Fatalf("%q lu %v", cas.réponse, g)
+		}
+	}
+}

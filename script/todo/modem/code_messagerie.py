@@ -94,3 +94,52 @@ def enregistrer(store, code: str) -> str:
 
 def effacer(store) -> None:
     store.delete(reference(store))
+
+
+class CoffreOuvert:
+    """Un gestionnaire de coffre dont le mot de passe est deja connu.
+
+    Le `KdbxManager` du CLI demande le mot de passe par `getpass`, qui n'a
+    nulle part ou s'afficher quand une interface plein ecran possede le
+    terminal. Celui-ci recoit le mot de passe saisi dans un formulaire.
+    """
+
+    def __init__(self, chemin: str, mot_de_passe: str):
+        self._chemin = chemin
+        self._mot_de_passe = mot_de_passe
+        self._kdbx = None
+
+    def get_kdbx(self):
+        if self._kdbx is None:
+            from pykeepass import PyKeePass
+
+            self._kdbx = PyKeePass(self._chemin, password=self._mot_de_passe)
+        return self._kdbx
+
+
+def chemin_kdbx(config=None) -> str:
+    """Le fichier KeePass declare dans la configuration, ou une chaine vide."""
+    import os
+
+    if config is None:
+        from script.config.config_file import ConfigFile
+
+        config = ConfigFile()
+    return os.path.expanduser(config.get_config_value(["kdbx", "path"]) or "")
+
+
+def coffre_avec_mot_de_passe(mot_de_passe: str, chemin: str = "", config=None):
+    """Ouvre le coffre MAINTENANT et rend de quoi y lire.
+
+    Ouvrir tout de suite plutot qu'a la premiere lecture fait apparaitre un
+    mot de passe errone la ou quelqu'un vient de le taper, et non plus tard
+    sous la forme d'une recuperation qui echoue sans raison visible.
+    """
+    from script.todo.mail.secrets import SecretError, SecretStore
+
+    chemin = chemin or chemin_kdbx(config)
+    if not chemin:
+        raise SecretError("aucun fichier KeePass n'est declare dans la configuration")
+    gestionnaire = CoffreOuvert(chemin, mot_de_passe)
+    gestionnaire.get_kdbx()
+    return SecretStore(kdbx_manager=gestionnaire, use_keyring=True)

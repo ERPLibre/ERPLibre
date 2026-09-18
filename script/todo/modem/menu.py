@@ -266,13 +266,31 @@ def _diagnostic():
             print("    " + ligne.strip())
 
 
-def _clavier():
+def _clavier(todo=None):
+    """Ouvre le clavier, avec le code de la messagerie s'il est atteignable.
+
+    Le code n'est lu QUE si le coffre est deja ouvert : demander son mot de
+    passe pour ouvrir un clavier de composition serait hors de propos, et
+    l'interface plein ecran ne peut pas le demander elle-meme. Sans lui, la
+    recuperation se refuse en le disant ; le reste du clavier fonctionne.
+    """
     index = _index_ou_plainte()
     if index is None:
         return
     from script.todo.modem import tui as tui_mod
 
-    if not tui_mod.lancer(index):
+    code = ""
+    manager = getattr(todo, "kdbx_manager", None)
+    if todo is not None and (manager is None or getattr(manager, "_kdbx", None)):
+        from script.todo.modem import code_messagerie as code_mod
+
+        try:
+            code = code_mod.lire(code_mod.coffre(todo)) or ""
+        except Exception:
+            # Coffre absent, ferme ou illisible : le clavier s'ouvre quand
+            # meme, et la recuperation dira ce qui manque.
+            code = ""
+    if not tui_mod.lancer(index, code_messagerie=code):
         print("  " + t("modem_tui_missing"))
 
 
@@ -541,6 +559,8 @@ def _repondeur_recuperer(todo):
             wav, bilan, os.path.join(rec_mod.racine(), rec_mod.DOSSIER_RELATIF, "messages"))
         if message:
             print("  " + t("modem_ans_fetch_message") % message)
+        elif "garde" in (bilan.get("erreur") or ""):
+            print("  " + t("modem_ans_fetch_empty"))
         else:
             print("  " + t("modem_ans_fetch_no_cut"))
 

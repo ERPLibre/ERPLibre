@@ -67,6 +67,25 @@ class TestCode(unittest.TestCase):
         self.assertFalse(code_mod.est_defini(store))
 
 
+class TestCoffreParFormulaire(unittest.TestCase):
+    """Le coffre ouvert avec un mot de passe saisi dans une interface plein
+    ecran, ou `getpass` n'a nulle part ou s'afficher."""
+
+    def test_sans_fichier_declare_on_le_dit(self):
+        config = mock.Mock()
+        config.get_config_value.return_value = ""
+        with self.assertRaises(SecretError):
+            code_mod.coffre_avec_mot_de_passe("mdp", config=config)
+
+    def test_le_coffre_s_ouvre_tout_de_suite(self):
+        """Un mot de passe errone doit se voir sur le formulaire, pas plus
+        tard sous la forme d'une recuperation qui echoue."""
+        with mock.patch.object(code_mod.CoffreOuvert, "get_kdbx",
+                               side_effect=ValueError("mot de passe errone")):
+            with self.assertRaises(ValueError):
+                code_mod.coffre_avec_mot_de_passe("mauvais", chemin="/coffre.kdbx")
+
+
 class TestCoffreSansKdbx(unittest.TestCase):
     def test_sans_chemin_kdbx_le_kdbx_n_est_pas_ouvert(self):
         """L'ouvrir sans chemin ferait surgir un selecteur graphique."""

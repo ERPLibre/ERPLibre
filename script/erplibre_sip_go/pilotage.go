@@ -46,6 +46,12 @@ type ÉtatCombiné struct {
 	GainMicMdm  int    `json:"gain_micro_modem"`
 	GainEcoMdm  int    `json:"gain_ecoute_modem"`
 	GainMicUnit int    `json:"gain_micro_unite"`
+	// La boîte vocale de l'OPÉRATEUR, lue sur la SIM. « Connue » distingue
+	// « pas de message » d'une lecture qui n'a pas encore eu lieu ou qui
+	// échoue : sans elle, une SIM muette s'afficherait comme une boîte vide.
+	MessagerieConnue  bool   `json:"messagerie_connue"`
+	MessagerieAttente bool   `json:"messagerie_attente"`
+	MessagerieNuméro  string `json:"messagerie_numero"`
 }
 
 // ToursParSignal espace les mesures de signal.
@@ -55,6 +61,11 @@ type ÉtatCombiné struct {
 // secondes suffit : la puissance reçue ne saute pas d'un cran par
 // cinquième de seconde.
 const ToursParSignal = 10
+
+// ToursParMessagerie espace les lectures de la SIM : une par minute. Le
+// drapeau se lève une vingtaine de secondes après le dépôt d'un message, et
+// le relire plus souvent n'annoncerait rien plus tôt.
+const ToursParMessagerie = 300
 
 // PiloteCombiné rend qui commande l'appel : le clavier, ou un programme.
 //
@@ -83,12 +94,28 @@ func PiloterCombiné(ctx context.Context, c *Combiné, raccrocher context.Cancel
 
 	tours := 0
 	dBm, détail := 0, ""
+	var msgConnue, msgAttente bool
+	msgNuméro := ""
+	if c.NuméroMessagerie != nil {
+		// Une seule fois : le numéro de la messagerie ne change pas d'une
+		// minute à l'autre, et chaque lecture occupe le port.
+		if numéro, err := c.NuméroMessagerie(); err == nil {
+			msgNuméro = numéro
+		}
+	}
 	publier := func() {
 		m, h := c.Niveaux()
 		gm, gh := c.Gains()
 		e, s := c.Périphériques()
 		if c.Signal != nil && tours%ToursParSignal == 0 {
 			dBm, détail = c.Signal()
+		}
+		// Ligne libre seulement : pendant une conversation, le port sert à
+		// l'appel, et le drapeau peut attendre la minute suivante.
+		if c.Messagerie != nil && tours%ToursParMessagerie == 0 && appelsVoix(c) <= 0 {
+			if attente, err := c.Messagerie(); err == nil {
+				msgConnue, msgAttente = true, attente
+			}
 		}
 		tours++
 		é := ÉtatCombiné{
@@ -103,6 +130,8 @@ func PiloterCombiné(ctx context.Context, c *Combiné, raccrocher context.Cancel
 			Sonnerie:   c.Sonnerie(),
 			GainMicMdm: c.GainMicroModemPosé(),
 			GainEcoMdm: c.GainÉcouteModemPosé(), GainMicUnit: GainMicroUnité,
+			MessagerieConnue: msgConnue, MessagerieAttente: msgAttente,
+			MessagerieNuméro: msgNuméro,
 		}
 		if b, err := json.Marshal(é); err == nil {
 			fmt.Println(string(b))

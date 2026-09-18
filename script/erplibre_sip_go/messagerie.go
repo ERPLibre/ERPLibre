@@ -40,7 +40,13 @@ const (
 
 	// BitMessagerieVocale est le premier bit du premier octet d'EF_MWIS.
 	BitMessagerieVocale = 0x01
+
+	// CommandeNuméroMessagerie lit le numéro que l'opérateur a inscrit sur la
+	// SIM. C'est le seul qui mène à coup sûr à SA messagerie.
+	CommandeNuméroMessagerie = "AT+CSVM?"
 )
+
+var motifCSVM = regexp.MustCompile(`\+CSVM:\s*(\d+),\s*"([^"]*)"`)
 
 var motifCRSM = regexp.MustCompile(`\+CRSM:\s*(\d+),\s*(\d+)(?:,\s*"([0-9A-Fa-f]*)")?`)
 
@@ -75,6 +81,25 @@ func (m *Modem) LireAttenteMessagerie() (bool, error) {
 		return false, err
 	}
 	return DécoderMWIS(rép)
+}
+
+// NuméroMessagerie rend le numéro à composer, ou une erreur.
+//
+// Un premier champ à zéro dit que la SIM n'en porte aucun : ce n'est pas une
+// panne, c'est une messagerie non provisionnée.
+func (m *Modem) NuméroMessagerie() (string, error) {
+	rép, err := m.Commande(CommandeNuméroMessagerie, 5*time.Second)
+	if err != nil {
+		return "", err
+	}
+	g := motifCSVM.FindStringSubmatch(rép)
+	if g == nil {
+		return "", fmt.Errorf("reponse CSVM illisible : %q", strings.TrimSpace(rép))
+	}
+	if g[1] == "0" || g[2] == "" {
+		return "", fmt.Errorf("aucun numero de messagerie inscrit sur la SIM")
+	}
+	return g[2], nil
 }
 
 // VeilleMessagerie retient ce qui a été vu et ce qui a été annoncé.

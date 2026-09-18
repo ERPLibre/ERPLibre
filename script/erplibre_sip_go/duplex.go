@@ -252,6 +252,12 @@ type Combiné struct {
 	Fusionner  func() error
 	Attente    func() error
 
+	// Messagerie lit sur la SIM si un message attend chez l'opérateur, et
+	// NuméroMessagerie le numéro à composer pour l'écouter. Absents hors du
+	// mode modem : un trunk SIP n'a pas de SIM.
+	Messagerie       func() (bool, error)
+	NuméroMessagerie func() (string, error)
+
 	// Touches envoie des tonalités DTMF pendant l'appel. Une messagerie
 	// d'opérateur se pilote ainsi — mot de passe, « 1 pour écouter » — et
 	// sans elles on entend l'accueil sans pouvoir aller plus loin.

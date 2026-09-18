@@ -68,7 +68,12 @@ def lire(ident):
     for cle, motif in (("numero", r"number:\s*(\S+)"),
                        ("texte", r"text:\s*(.+)"),
                        ("etat", r"state:\s*(\S+)"),
-                       ("horodatage", r"timestamp:\s*(\S+)")):
+                       # Un message RECU porte « timestamp », un message
+                       # ENVOYE porte « discharge timestamp » : l'accuse de
+                       # remise. Les deux disent quand, et l'un des deux
+                       # manque toujours.
+                       ("horodatage", r"(?<!discharge )timestamp:\s*(\S+)"),
+                       ("remis_le", r"discharge timestamp:\s*(\S+)")):
         m = re.search(motif, sortie)
         if m:
             res[cle] = m.group(1).strip()

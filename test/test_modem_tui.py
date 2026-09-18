@@ -19,13 +19,14 @@ l'affichage suit l'état publié plutôt qu'une copie locale.
 import asyncio
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 try:
     from textual.app import App
-    from textual.widgets import Button, Switch
+    from textual.widgets import Button, Input, Switch
 
     TEXTUAL = True
 except ImportError:  # pragma: no cover - Textual est optionnel
@@ -73,7 +74,7 @@ class PiloteInerte:
         return note
 
 
-def construire():
+def construire(messagerie=None):
     """Rend l'application que `lancer` aurait fait tourner.
 
     On intercepte `App.run` plutôt que de recopier la fabrique : recopier
@@ -89,7 +90,9 @@ def construire():
 
     App.run = faux_run
     try:
-        tui_mod.lancer(0)
+        with mock.patch.object(tui_mod, "etat_messagerie",
+                               return_value=dict(messagerie or {})):
+            tui_mod.lancer(0)
     except SystemExit:
         pass
     finally:
@@ -348,6 +351,353 @@ class PosteTelephonique(unittest.TestCase):
                 self.assertEqual(app.numero, "14#")
 
         asyncio.run(essai())
+
+    def test_la_boite_vocale_vient_du_binaire(self):
+        """La TUI ne peut pas lire la SIM : le binaire tient le port. Tant
+        qu'il n'a rien lu, on n'affiche rien — une boite inconnue n'est pas
+        une boite vide."""
+        app = construire()
+
+        def resume():
+            return str(app.query_one("#resume").render())
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                app._maj_etat({"type": "etat", "echelle_niveau": 8000})
+                await pilote.pause()
+                self.assertNotIn("📭", resume())
+                self.assertNotIn("📬", resume())
+
+                app._maj_etat({"type": "etat", "echelle_niveau": 8000,
+                               "messagerie_connue": True,
+                               "messagerie_attente": True})
+                await pilote.pause()
+                self.assertIn("📬", resume())
+
+                app._maj_etat({"type": "etat", "echelle_niveau": 8000,
+                               "messagerie_connue": True,
+                               "messagerie_attente": False})
+                await pilote.pause()
+                self.assertIn("📭", resume())
+
+        asyncio.run(essai())
+
+    def test_le_bouton_messagerie_compose_le_numero_de_la_sim(self):
+        """Sans numero publie, le bouton composerait dans le vide : il reste
+        cache."""
+        app = construire()
+
+        def visible():
+            return app.query_one("#messagerie", Button).display
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                app._maj_etat({"type": "etat", "echelle_niveau": 8000})
+                await pilote.pause()
+                self.assertFalse(visible())
+
+                app._maj_etat({"type": "etat", "echelle_niveau": 8000,
+                               "messagerie_numero": "+15145550199"})
+                await pilote.pause()
+                self.assertTrue(visible())
+
+                with mock.patch.object(app, "_demander_appel") as appeler:
+                    await pilote.click("#messagerie")
+                    await pilote.pause()
+                self.assertEqual(app.numero, "+15145550199")
+                appeler.assert_called_once()
+
+        asyncio.run(essai())
+
+    def test_hors_appel_la_boite_vocale_se_lit_sur_la_sim(self):
+        """Le binaire ne publie cet etat que PENDANT un appel, et le bouton
+        ne s'affiche qu'entre deux : sans lecture directe, il n'apparaitrait
+        jamais."""
+        app = construire({"messagerie_connue": True, "messagerie_attente": True,
+                          "messagerie_numero": "+15145550199"})
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                self.assertIn("📬", str(app.query_one("#resume").render()))
+                self.assertTrue(app.query_one("#messagerie", Button).display)
+
+        asyncio.run(essai())
+
+    def test_un_etat_publie_sans_messagerie_n_efface_pas_ce_qu_on_sait(self):
+        """Un binaire plus ancien, ou qui n'a pas encore lu la SIM, ne doit
+        pas faire disparaitre le drapeau."""
+        app = construire({"messagerie_connue": True, "messagerie_attente": True,
+                          "messagerie_numero": "+15145550199"})
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                app._maj_etat({"type": "etat", "echelle_niveau": 8000})
+                await pilote.pause()
+                self.assertIn("📬", str(app.query_one("#resume").render()))
+
+        asyncio.run(essai())
+
+    def test_la_vue_repondeur_liste_joue_et_efface(self):
+        """Ecouter ce qui est deja recupere ne demande ni port ni reseau."""
+        app = construire()
+        messages = [{"fichier": "/tmp/m1.wav", "recupere_le": "2026-09-18T01:48:00",
+                     "duree_secondes": 7.1},
+                    {"fichier": "/tmp/m2.wav", "recupere_le": "2026-09-17T09:00:00",
+                     "duree_secondes": 4.9}]
+        efface = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=messages):
+                    await pilote.click("#vue_repondeur")
+                    await pilote.pause()
+                    self.assertEqual(app.vue, "repondeur")
+                    # Effacer chez l'operateur est coche par defaut.
+                    self.assertTrue(app.query_one("#sw_effacer", Switch).value)
+
+                    with mock.patch("script.todo.modem.repondeur.jouer",
+                                    return_value=(True, "")) as jouer:
+                        await pilote.click("#ecouter")
+                        await pilote.pause()
+                        await asyncio.sleep(0.05)
+                    jouer.assert_called_once_with("/tmp/m1.wav")
+
+                    with mock.patch("script.todo.modem.recuperation.effacer_message",
+                                    side_effect=efface.append):
+                        await pilote.click("#effacer_local")
+                        await pilote.pause()
+        asyncio.run(essai())
+        self.assertEqual(efface, [messages[0]])
+
+    def test_f4_ouvre_le_repondeur_comme_le_bouton(self):
+        """Les deux chemins passent par la meme action : une liste relue d'un
+        cote et figee de l'autre ferait croire qu'un message manque."""
+        app = construire()
+        messages = [{"fichier": "/tmp/m.wav", "recupere_le": "2026-09-18T01:48:00",
+                     "duree_secondes": 4.3}]
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=messages) as lister:
+                    await pilote.press("f4")
+                    await pilote.pause()
+                    self.assertEqual(app.vue, "repondeur")
+                    lister.assert_called_once()
+                    # Les autres touches de vue continuent de fonctionner.
+                    await pilote.press("f1")
+                    await pilote.pause()
+                    self.assertEqual(app.vue, "clavier")
+
+        asyncio.run(essai())
+
+    def test_f6_liste_les_sms_du_modem(self):
+        """La lecture passe par ModemManager, qui tient ses propres ports :
+        elle marche meme pendant un appel conduit sur le port AT."""
+        app = construire()
+        messages = {"3": {"numero": "+15145550142", "texte": "coucou bobo",
+                          "etat": "received", "horodatage": "2026-09-18T01:00:00"},
+                    "4": {"numero": "+15145550199", "texte": "deuxieme",
+                          "etat": "sent", "horodatage": "2026-09-17T09:00:00"}}
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch.object(tui_mod.sms_mod, "lister",
+                                       return_value=[("3", "received"), ("4", "sent")]), \
+                        mock.patch.object(tui_mod.sms_mod, "lire",
+                                          side_effect=lambda i: messages[i]):
+                    await pilote.press("f6")
+                    await asyncio.sleep(0.1)
+                    await pilote.pause()
+                self.assertEqual(app.vue, "sms")
+                self.assertEqual(len(app.sms), 2)
+                texte = str(app.query_one("#sms_texte").render())
+                self.assertIn("coucou bobo", texte)
+                self.assertIn("+15145550142", texte)
+
+        asyncio.run(essai())
+
+    def test_f5_relit_la_boite_vocale_sans_rien_demander_d_autre(self):
+        """Un message laisse pendant que le clavier est ouvert ne se voyait
+        qu'au prochain lancement."""
+        app = construire()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch.object(
+                        tui_mod, "etat_messagerie",
+                        return_value={"messagerie_connue": True,
+                                      "messagerie_attente": True,
+                                      "messagerie_numero": "+15145550199"}) as lire:
+                    await pilote.press("f5")
+                    await asyncio.sleep(0.1)
+                    await pilote.pause()
+                lire.assert_called()
+                self.assertIn("📬", str(app.query_one("#resume").render()))
+
+        asyncio.run(essai())
+
+    def test_la_boite_vocale_se_relit_seule(self):
+        """Une minuterie la relit hors appel : sans elle, il faudrait penser
+        a rafraichir pour voir arriver un message."""
+        app = construire()
+        appels = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch.object(app, "_relire_messagerie",
+                                       side_effect=lambda: appels.append(1)):
+                    # La minuterie posee au montage, avancee a la main.
+                    for minuterie in app._timers if hasattr(app, "_timers") else []:
+                        pass
+                    app.action_rafraichir()
+                    await pilote.pause()
+                self.assertTrue(appels)
+
+        asyncio.run(essai())
+        source = open(tui_mod.__file__, encoding="utf-8").read()
+        self.assertIn("set_interval(CADENCE_MESSAGERIE_S", source)
+
+    def test_la_liste_sms_montre_le_sens_et_l_horodatage(self):
+        """Un message recu porte « timestamp », un envoye l'accuse de remise :
+        n'en lire qu'un laisserait la moitie des messages sans date."""
+        app = construire()
+        messages = {
+            "3": {"numero": "+15145550142", "texte": "coucou bobo",
+                  "etat": "received", "horodatage": "2026-09-18T01:00:12-04:00"},
+            "4": {"numero": "+15145550199", "texte": "salut",
+                  "etat": "sent", "remis_le": "2026-09-18T02:03:04-04:00"},
+        }
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch.object(tui_mod.sms_mod, "lister",
+                                       return_value=[("3", "received"), ("4", "sent")]), \
+                        mock.patch.object(tui_mod.sms_mod, "lire",
+                                          side_effect=lambda i: messages[i]):
+                    await pilote.press("f6")
+                    await asyncio.sleep(0.1)
+                    await pilote.pause()
+                detail = str(app.query_one("#sms_texte").render())
+                self.assertIn("📥", detail)
+                self.assertIn("2026-09-18 01:00", detail)
+                # Le message envoye porte sa date de remise.
+                app._montrer_sms(1)
+                detail = str(app.query_one("#sms_texte").render())
+                self.assertIn("📤", detail)
+                self.assertIn("2026-09-18 02:03", detail)
+
+        asyncio.run(essai())
+
+    def test_envoyer_un_sms_depuis_la_vue(self):
+        """Le numero est valide AVANT de partir : un numero mal forme s'en va
+        quand meme sur le reseau."""
+        app = construire()
+        envois = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch.object(tui_mod.sms_mod, "lister", return_value=[]), \
+                        mock.patch.object(tui_mod.sms_mod, "envoyer",
+                                          side_effect=lambda *a: (envois.append(a), (True, ""))[1]):
+                    await pilote.press("f6")
+                    await asyncio.sleep(0.1)
+                    app.query_one("#sms_pour", Input).value = "5145550142"
+                    app.query_one("#sms_corps", Input).value = "coucou bobo"
+                    await pilote.click("#sms_envoyer")
+                    await asyncio.sleep(0.15)
+                    await pilote.pause()
+                    self.assertEqual(envois, [(0, "+15145550142", "coucou bobo")])
+                    # Le champ se vide, pour ne pas envoyer deux fois.
+                    self.assertEqual(app.query_one("#sms_corps", Input).value, "")
+
+                    # Un numero mal forme n'atteint jamais le modem.
+                    envois.clear()
+                    app.query_one("#sms_pour", Input).value = "12"
+                    app.query_one("#sms_corps", Input).value = "essai"
+                    await pilote.click("#sms_envoyer")
+                    await asyncio.sleep(0.1)
+                    self.assertEqual(envois, [])
+
+        asyncio.run(essai())
+
+    def test_le_bouton_coffre_disparait_une_fois_le_code_connu(self):
+        """Le proposer sans effet ferait douter de ce qu'il a fait."""
+        app = construire()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=[]):
+                    await pilote.press("f4")
+                    await pilote.pause()
+                self.assertTrue(app.query_one("#coffre", Button).display)
+                app._coffre_ouvert("864209")
+                await pilote.pause()
+                self.assertEqual(app.code_messagerie, "864209")
+                self.assertFalse(app.query_one("#coffre", Button).display)
+
+        asyncio.run(essai())
+
+    def test_la_recuperation_refuse_sans_code(self):
+        """Une interface plein ecran ne peut pas demander le mot de passe du
+        coffre : sans code, elle le dit au lieu d'appeler pour rien."""
+        app = construire({"messagerie_numero": "+15145550199"})
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.jouer") as jouer, \
+                        mock.patch("script.todo.modem.recuperation.lister_messages",
+                                   return_value=[]):
+                    await pilote.click("#vue_repondeur")
+                    await pilote.pause()
+                    await pilote.click("#recuperer")
+                    await pilote.pause()
+                jouer.assert_not_called()
+
+        asyncio.run(essai())
+
+    def test_la_case_decide_de_la_recette(self):
+        """Cochee, la recette efface chez l'operateur ; decochee, elle ecoute
+        sans rien effacer."""
+        app = construire({"messagerie_numero": "+15145550199"})
+        app.code_messagerie = "1234"
+        recettes = []
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                with mock.patch("script.todo.modem.recuperation.lister_messages",
+                                return_value=[]), \
+                        mock.patch("script.todo.modem.recuperation.jouer",
+                                   side_effect=lambda r, *a: (recettes.append(r), ({}, ""))[1]), \
+                        mock.patch("script.todo.modem.recuperation.extraire_message",
+                                   return_value=""):
+                    await pilote.click("#vue_repondeur")
+                    await pilote.pause()
+                    await pilote.click("#recuperer")
+                    await asyncio.sleep(0.1)
+                    app.query_one("#sw_effacer", Switch).value = False
+                    await pilote.click("#recuperer")
+                    await asyncio.sleep(0.1)
+                    await pilote.pause()
+
+        asyncio.run(essai())
+        self.assertEqual(recettes, ["recuperer_un_message", "reperage_code_ecoute"])
 
     def test_le_numero_initial_est_pose_sans_appeler(self):
         """L'appel reste un geste : on voit le numero avant de composer."""
