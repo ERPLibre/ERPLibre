@@ -1218,6 +1218,7 @@ def run_tui(
             Binding("p", "cycle_scope", t("mail_scope_binding")),
             Binding("s", "mark_seen", t("mail_mark_seen_binding")),
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
+            Binding("asterisk", "toggle_flagged", t("mail_flagged_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
             Binding("c", "compose", t("mail_compose_binding")),
             Binding("a", "reply", t("mail_reply_binding")),
@@ -1606,7 +1607,7 @@ def run_tui(
             now = int(time.time())
             for meta, niveau in self.lignes_a_afficher():
                 table.add_row(
-                    "●" if tui_text.is_unread(meta.flags) else " ",
+                    self._marques(meta),
                     tui_text.truncate(tui_text.short_addr(meta.frm), 22),
                     tui_text.truncate(
                         ("  ↳ " * niveau)
@@ -1617,6 +1618,16 @@ def run_tui(
                     tui_text.format_date(meta.date, now),
                     key=self._cle(meta),
                 )
+
+        def _marques(self, meta) -> str:
+            """La colonne d'état : non-lu, suivi, ou les deux.
+
+            Deux caractères et non un : un message peut être non lu ET
+            suivi, et faire choisir une seule marque en perdrait une.
+            """
+            return ("●" if tui_text.is_unread(meta.flags) else " ") + (
+                "★" if tui_text.is_flagged(meta.flags) else " "
+            )
 
         def _provenance(self, meta) -> str:
             """« [Archives] » devant le sujet d'un résultat venu d'ailleurs.
@@ -2651,6 +2662,20 @@ def run_tui(
 
         def action_mark_unseen(self) -> None:
             self._set_flag("\\Seen", add=False)
+
+        def action_toggle_flagged(self) -> None:
+            """`*` : pose ou retire le drapeau « suivi ».
+
+            Une bascule et non deux touches : contrairement à lu/non lu, où
+            l'on veut souvent forcer l'état d'un message déjà dans l'autre,
+            le suivi se met et s'enlève sur le même message.
+            """
+            meta = self.current_meta()
+            if meta is None:
+                return
+            self._set_flag(
+                "\\Flagged", add=not tui_text.is_flagged(meta.flags)
+            )
 
         def _set_flag(self, flag: str, add: bool) -> None:
             meta = self.current_meta()

@@ -12582,6 +12582,10 @@ TRANSLATIONS = {
         "fr": "le déplacement a échoué :",
         "en": "the move failed:",
     },
+    "mail_flagged_binding": {
+        "fr": "Suivi (étoile)",
+        "en": "Flag (star)",
+    },
     "mail_attachment_hint": {
         "fr": "Quelle pièce jointe enregistrer ? Entrée choisit, Échap renonce.",
         "en": "Which attachment to save? Enter chooses, Escape gives up.",

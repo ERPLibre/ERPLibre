@@ -197,6 +197,15 @@ def is_unread(flags: str | None) -> bool:
     return "\\seen" not in (flags or "").lower()
 
 
+def is_flagged(flags: str | None) -> bool:
+    """Le drapeau « suivi » d'IMAP, que les clients affichent en étoile.
+
+    Comparé en minuscules comme `is_unread` : la casse des drapeaux
+    système n'est pas garantie d'un serveur à l'autre.
+    """
+    return "\\flagged" in (flags or "").lower()
+
+
 def fold(text: str) -> str:
     """Repli public : minuscules et accents retirés, pour comparer deux
     textes saisis par des humains. Le cache s'en sert aussi, d'où le nom

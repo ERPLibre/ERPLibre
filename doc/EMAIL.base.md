@@ -366,6 +366,7 @@ preview pane on the right, with a status line at the bottom.
 | `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
+| `*` | flag / unflag the selected message — the star other clients show |
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
 | `D` | empty the account's trash folder, permanently |
@@ -413,6 +414,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
+| `*` | suivre / ne plus suivre le message — l'étoile des autres clients |
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `m` | ranger le message sélectionné dans un dossier qu'on choisit |
 | `D` | vider la corbeille du compte, définitivement |
@@ -1100,6 +1102,33 @@ messages construirait trente mille lignes à chaque ouverture et à chaque
 frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
 recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
 liste a chargé.
+
+<!-- [en] -->
+## Following a message
+
+`*` flags the selected message, and `*` again unflags it — a toggle rather
+than two keys, because a flag is put on and taken off the same message,
+unlike read/unread where one often forces the state of a message already
+in the other. `\Flagged` is an IMAP system flag, so the phone and the
+desktop client show what is flagged here, and the reverse.
+
+The list carries two marks in one column: `●` for unread, `★` for flagged.
+Two characters and not one, because a message can be both, and showing a
+single mark would lose one of them.
+
+<!-- [fr] -->
+## Suivre un message
+
+`*` pose le drapeau « suivi » sur le message sélectionné, et `*` le
+retire — une bascule plutôt que deux touches, parce qu'un drapeau se met et
+s'ôte sur le même message, contrairement à lu/non lu où l'on veut souvent
+forcer l'état d'un message déjà dans l'autre. `\Flagged` est un drapeau
+système d'IMAP : le téléphone et le client de bureau montrent ce qui est
+suivi ici, et réciproquement.
+
+La liste porte deux marques dans une colonne : `●` pour non lu, `★` pour
+suivi. Deux caractères et non un, parce qu'un message peut être les deux et
+qu'une marque unique en perdrait une.
 
 <!-- [en] -->
 ## Saving an attachment

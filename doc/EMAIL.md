@@ -181,6 +181,7 @@ preview pane on the right, with a status line at the bottom.
 | `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
 | `s` / `u` | mark the selected message seen / unseen |
+| `*` | flag / unflag the selected message — the star other clients show |
 | `d` | move the selected message to the account's trash folder |
 | `m` | file the selected message into a folder you pick |
 | `D` | empty the account's trash folder, permanently |
@@ -534,6 +535,18 @@ messages construirait trente mille lignes à chaque ouverture et à chaque
 frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
 recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
 liste a chargé.
+
+## Following a message
+
+`*` flags the selected message, and `*` again unflags it — a toggle rather
+than two keys, because a flag is put on and taken off the same message,
+unlike read/unread where one often forces the state of a message already
+in the other. `\Flagged` is an IMAP system flag, so the phone and the
+desktop client show what is flagged here, and the reverse.
+
+The list carries two marks in one column: `●` for unread, `★` for flagged.
+Two characters and not one, because a message can be both, and showing a
+single mark would lose one of them.
 
 ## Saving an attachment
 

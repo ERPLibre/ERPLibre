@@ -193,6 +193,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
+| `*` | suivre / ne plus suivre le message — l'étoile des autres clients |
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `m` | ranger le message sélectionné dans un dossier qu'on choisit |
 | `D` | vider la corbeille du compte, définitivement |
@@ -534,6 +535,19 @@ Le nombre affiché par la confirmation vient du cache, et le dit. Le cache
 retarde toujours sur la corbeille — `d` la remplit côté serveur sans rien
 y ajouter localement — donc le nombre qui compte est celui annoncé
 ensuite : ce que le serveur a réellement retiré.
+
+## Suivre un message
+
+`*` pose le drapeau « suivi » sur le message sélectionné, et `*` le
+retire — une bascule plutôt que deux touches, parce qu'un drapeau se met et
+s'ôte sur le même message, contrairement à lu/non lu où l'on veut souvent
+forcer l'état d'un message déjà dans l'autre. `\Flagged` est un drapeau
+système d'IMAP : le téléphone et le client de bureau montrent ce qui est
+suivi ici, et réciproquement.
+
+La liste porte deux marques dans une colonne : `●` pour non lu, `★` pour
+suivi. Deux caractères et non un, parce qu'un message peut être les deux et
+qu'une marque unique en perdrait une.
 
 ## Enregistrer une pièce jointe
 
