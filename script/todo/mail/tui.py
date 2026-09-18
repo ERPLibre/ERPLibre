@@ -2811,8 +2811,21 @@ def run_tui(
             if not attachments:
                 self.set_status(t("mail_no_attachment"))
                 return
+            if len(attachments) == 1:
+                # Une seule : poser la question serait une frappe pour
+                # rien, et la réponse était déjà connue.
+                self._enregistrer(raw, attachments[0].index)
+                return
+            self.push_screen(
+                AttachmentScreen(attachments),
+                lambda index: (
+                    None if index is None else self._enregistrer(raw, index)
+                ),
+            )
+
+        def _enregistrer(self, raw: bytes, index: int) -> None:
             try:
-                target = save_attachment(raw, 0, "~/Téléchargements")
+                target = save_attachment(raw, index, "~/Téléchargements")
             except Exception as exc:
                 self.set_status(f"{t('mail_save_failed')} {exc}")
                 return
@@ -3261,6 +3274,70 @@ def run_tui(
             ):
                 return
             self.dismiss(self.cibles[table.cursor_row])
+
+        def on_data_table_row_selected(self, event) -> None:
+            self.action_choose()
+
+    class AttachmentScreen(ModalScreen):
+        """Laquelle des pièces jointes enregistrer.
+
+        `w` n'en connaissait qu'une : la première. Les autres restaient
+        inatteignables depuis le client, sans que rien ne dise qu'elles
+        existaient — le nombre s'affiche pourtant dans l'aperçu.
+
+        Ne s'ouvre qu'à partir de deux : poser la question pour une seule
+        serait une frappe de plus dont la réponse est connue d'avance.
+        """
+
+        BINDINGS = [
+            Binding("escape", "cancel", t("mail_attachment_close")),
+            Binding("enter", "choose", t("mail_attachment_choose")),
+        ]
+
+        CSS = """
+        #attach_list { height: 1fr; border: solid $panel; }
+        #attach_hint { height: auto; padding: 0 1; color: $text-muted; }
+        """
+
+        def __init__(self, attachments):
+            super().__init__()
+            self.attachments = list(attachments)
+
+        def compose(self):
+            with Vertical():
+                yield Static(Text(t("mail_attachment_hint")), id="attach_hint")
+                yield DataTable(id="attach_list")
+
+        def on_mount(self) -> None:
+            table = self.query_one("#attach_list", DataTable)
+            table.cursor_type = "row"
+            table.add_columns(
+                t("mail_attachment_name"),
+                t("mail_attachment_type"),
+                t("mail_attachment_size"),
+            )
+            for piece in self.attachments:
+                table.add_row(
+                    # Le nom vient du message, donc de n'importe qui : il
+                    # est tronqué pour l'affichage, et c'est
+                    # `save_attachment` qui le rend sûr à l'écriture.
+                    tui_text.truncate(piece.filename or "?", 48),
+                    piece.content_type or "?",
+                    tui_text.format_size(piece.size),
+                    key=str(piece.index),
+                )
+            table.focus()
+
+        def action_cancel(self) -> None:
+            self.dismiss(None)
+
+        def action_choose(self) -> None:
+            table = self.query_one("#attach_list", DataTable)
+            if table.cursor_row is None or table.cursor_row >= len(
+                self.attachments
+            ):
+                return
+            self.dismiss(self.attachments[table.cursor_row].index)
 
         def on_data_table_row_selected(self, event) -> None:
             self.action_choose()

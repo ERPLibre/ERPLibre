@@ -12582,6 +12582,15 @@ TRANSLATIONS = {
         "fr": "le déplacement a échoué :",
         "en": "the move failed:",
     },
+    "mail_attachment_hint": {
+        "fr": "Quelle pièce jointe enregistrer ? Entrée choisit, Échap renonce.",
+        "en": "Which attachment to save? Enter chooses, Escape gives up.",
+    },
+    "mail_attachment_close": {"fr": "Renoncer", "en": "Give up"},
+    "mail_attachment_choose": {"fr": "Enregistrer", "en": "Save"},
+    "mail_attachment_name": {"fr": "Nom", "en": "Name"},
+    "mail_attachment_type": {"fr": "Type", "en": "Type"},
+    "mail_attachment_size": {"fr": "Taille", "en": "Size"},
     "mail_move_across_working": {
         "fr": "Dépôt chez l'autre compte…",
         "en": "Depositing in the other account…",

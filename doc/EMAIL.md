@@ -188,7 +188,7 @@ preview pane on the right, with a status line at the bottom.
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
-| `w` | save the message's **first** attachment to `~/Téléchargements` (created if missing) |
+| `w` | save an attachment to `~/Téléchargements` (created if missing) |
 | `o` | open the outbox: what is waiting to leave (see "The outbox") |
 | `Shift+F` | open the folder screen: create, rename, delete (see "Managing folders") |
 | `i` | open the statistics screen (see "Statistics") |
@@ -519,6 +519,34 @@ messages would build thirty thousand rows on every open and every
 keystroke of a search, in a screen that answers instantly today. Searching
 is unaffected — a search looks at the whole cache, not at what the list
 has loaded.
+
+## Lire un long dossier
+
+Un dossier arrive par pages de 500 messages, le plus récent d'abord. La
+page suivante se charge d'elle-même quand le curseur arrive à vingt lignes
+du bas, de sorte que le défilement ne bute sur aucun mur — et le curseur
+reste où il était quand elle arrive. Une passe de synchronisation garde la
+profondeur déjà chargée plutôt que de ramener la liste à une page sous un
+curseur descendu bien plus bas.
+
+Ces pages existent parce que l'inverse est pire : une boîte de trente mille
+messages construirait trente mille lignes à chaque ouverture et à chaque
+frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
+recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
+liste a chargé.
+
+## Saving an attachment
+
+`w` saves an attachment of the selected message into `~/Téléchargements`,
+creating the folder if needed. With more than one attachment it opens the
+list — name, type, size — and `Enter` saves the one you point at; with a
+single one it saves without asking, since the question would have a known
+answer. It knew only the first one before, and a message carrying three
+showed three in the preview while handing over one.
+
+The file name comes from the message, so from anyone: only its base name
+is kept and nothing may be written outside the target folder.
+
 
 ## List views
 
