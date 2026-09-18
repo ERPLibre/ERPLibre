@@ -90,16 +90,21 @@ def carte_libre(carte):
     if not shutil.which("arecord"):
         return False, "arecord absent (paquet alsa-utils)"
     try:
+        # Le son capte part a la POUBELLE, et seule la sortie d'erreur est
+        # lue. arecord ecrit un son brut sur sa sortie standard : le lire
+        # comme du texte echoue des qu'un octet n'est pas de l'UTF-8 valide,
+        # donc des que la ligne n'est pas parfaitement silencieuse — une
+        # panne qui ne survient qu'une fois sur quelques-unes.
         r = subprocess.run(
             ["arecord", "-D", carte, "-f", "S16_LE", "-c", "1",
              "-r", "8000", "-t", "raw", "-d", "1"],
-            capture_output=True, text=True, timeout=15,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=15,
         )
     except (subprocess.TimeoutExpired, OSError) as e:
         return False, str(e)
+    erreurs = (r.stderr or b"").decode("utf-8", "replace").strip()
     if r.returncode != 0:
-        return False, (r.stderr or "").strip().splitlines()[-1:][0] \
-            if (r.stderr or "").strip() else "capture refusee"
+        return False, erreurs.splitlines()[-1] if erreurs else "capture refusee"
     return True, "carte libre"
 
 
