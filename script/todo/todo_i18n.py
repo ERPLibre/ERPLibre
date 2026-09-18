@@ -12477,6 +12477,32 @@ TRANSLATIONS = {
         "fr": "le déplacement a échoué :",
         "en": "the move failed:",
     },
+    "mail_account_signature": {
+        "fr": "✍ Signature d'un compte",
+        "en": "✍ Signature of an account",
+    },
+    "mail_signature_current": {
+        "fr": "Signature actuelle :",
+        "en": "Current signature:",
+    },
+    "mail_signature_prompt": {
+        "fr": (
+            "Nouvelle signature, ligne par ligne. Une ligne vide termine ;"
+            " ne rien écrire efface la signature."
+        ),
+        "en": (
+            "New signature, line by line. An empty line ends it; writing"
+            " nothing clears the signature."
+        ),
+    },
+    "mail_signature_saved": {
+        "fr": "Signature enregistrée.",
+        "en": "Signature saved.",
+    },
+    "mail_signature_cleared": {
+        "fr": "Signature effacée.",
+        "en": "Signature cleared.",
+    },
     "mail_all_seen_binding": {
         "fr": "Tout marquer lu",
         "en": "Mark all read",

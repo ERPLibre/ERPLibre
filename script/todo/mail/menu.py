@@ -325,6 +325,7 @@ def prompt_mail_accounts(todo) -> None:
 [4] {t("mail_account_template")}
 [5] {t("mail_account_test")}
 [6] {t("mail_account_token")}
+[7] {t("mail_account_signature")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
@@ -342,6 +343,8 @@ def prompt_mail_accounts(todo) -> None:
             _test_account(todo)
         elif status == "6":
             _set_oauth_token(todo)
+        elif status == "7":
+            _set_signature()
         else:
             print(t("Command not found !"))
 
@@ -524,6 +527,48 @@ def _set_oauth_token(todo) -> None:
         print(exc)
         return
     print(t("mail_token_saved"))
+
+
+def _set_signature() -> None:
+    """Change la signature d'un compte, lue ligne à ligne.
+
+    Une signature tient rarement sur une ligne : la saisie s'arrête à une
+    ligne VIDE plutôt qu'au premier retour, ce qui permet d'en écrire
+    plusieurs. La signature en place est affichée d'abord — la remplacer à
+    l'aveugle ferait perdre celle qu'on avait.
+
+    Une saisie vide EFFACE, et c'est voulu : sans quoi une signature posée
+    par erreur ne se retirerait qu'en éditant le fichier à la main. Le
+    menu le dit avant de lire.
+    """
+    account, accounts = _pick_account()
+    if account is None:
+        return
+    actuelle = getattr(account, "signature", "") or ""
+    if actuelle:
+        print(t("mail_signature_current"))
+        print(actuelle)
+    print(t("mail_signature_prompt"))
+    lignes = []
+    while True:
+        try:
+            ligne = input()
+        except EOFError:
+            break
+        if not ligne.strip():
+            break
+        lignes.append(ligne)
+    account.signature = "\n".join(lignes)
+    try:
+        mail_accounts.save(accounts)
+    except AccountError as exc:
+        print(exc)
+        return
+    print(
+        t("mail_signature_cleared")
+        if not account.signature
+        else t("mail_signature_saved")
+    )
 
 
 def _obtenir_jeton(todo, account) -> str:

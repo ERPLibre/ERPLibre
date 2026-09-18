@@ -549,6 +549,23 @@ The list carries two marks in one column: `●` for unread, `★` for flagged.
 Two characters and not one, because a message can be both, and showing a
 single mark would lose one of them.
 
+## Signature
+
+Each account can carry a signature, set from `Mail > Accounts > Signature
+of an account` — line by line, an empty line ending the entry, and writing
+nothing clearing it. It lives in `accounts.json`: a signature is read in
+every message it goes out with, so hiding it in the vault would protect
+nothing.
+
+It appears in the compose form, below what you write and after the `-- `
+delimiter — two dashes, a space, a newline, the form clients use to fold
+or grey out what follows. Being in the form rather than added on sending
+means it can be read and edited before it leaves; added at the last
+moment, a wrong signature would go out without its author ever seeing it.
+
+A reply carries it under the quoted text. A forward does not: the
+forwarded message travels with its own.
+
 ## Reading a whole folder at once
 
 `Shift+M` marks every unread message of the open folder as read — the

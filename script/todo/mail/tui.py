@@ -2926,10 +2926,36 @@ def run_tui(
                 return
             self.set_status(f"{t('mail_saved_to')} {target}")
 
+        @staticmethod
+        def _avec_signature(session, corps: str) -> str:
+            """`corps`, suivi de la signature du compte s'il en a une.
+
+            Le délimiteur est « -- » suivi d'une ESPACE puis d'un saut de
+            ligne, forme que les clients reconnaissent pour replier ou
+            griser une signature. L'espace en fin de ligne n'est pas une
+            coquille : sans elle, ce n'est plus un délimiteur mais deux
+            tirets ordinaires.
+
+            Elle arrive dans le formulaire, donc visible et modifiable
+            avant l'envoi — plutôt qu'ajoutée au dernier moment, où
+            personne ne l'aurait relue.
+            """
+            signature = (
+                getattr(session.account, "signature", "") or ""
+            ).strip("\n")
+            if not signature:
+                return corps
+            return f"{corps}\n\n-- \n{signature}"
+
         def action_compose(self) -> None:
             session = self._session_or_first()
             if session:
-                self.push_screen(ComposeScreen(session), self._after_compose)
+                self.push_screen(
+                    ComposeScreen(
+                        session, {"body": self._avec_signature(session, "")}
+                    ),
+                    self._after_compose,
+                )
 
         def action_reply(self) -> None:
             self._open_reply(reply_all=False)
@@ -2981,7 +3007,9 @@ def run_tui(
                         "to": draft["To"] or "",
                         "cc": draft["Cc"] or "",
                         "subject": draft["Subject"] or "",
-                        "body": draft.get_content(),
+                        "body": self._avec_signature(
+                            session, draft.get_content()
+                        ),
                         "in_reply_to": draft["In-Reply-To"],
                         "references": draft["References"],
                     },
