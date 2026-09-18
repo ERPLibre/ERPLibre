@@ -192,6 +192,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `/` | ouvre le champ de recherche : cherche dans tout le cache du dossier ouvert — et non dans les seuls messages affichés — sur sujet/de/à/extrait (voir « Recherche ») |
 | `Shift+S` | pose la même recherche au **serveur**, pour le dossier ouvert (voir « Recherche ») |
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
+| `x` | cocher / décocher le message sous le curseur (voir « Agir sur plusieurs ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `*` | suivre / ne plus suivre le message — l'étoile des autres clients |
 | `Shift+M` | marquer lu tout le dossier ouvert (demande confirmation) |
@@ -536,6 +537,31 @@ Le nombre affiché par la confirmation vient du cache, et le dit. Le cache
 retarde toujours sur la corbeille — `d` la remplit côté serveur sans rien
 y ajouter localement — donc le nombre qui compte est celui annoncé
 ensuite : ce que le serveur a réellement retiré.
+
+## Agir sur plusieurs messages
+
+`x` coche le message sous le curseur et descend d'une ligne, de sorte
+qu'une rafale de coches est une rafale de frappes. `d`, `m`, `s`, `u` et
+`*` agissent alors sur ce qui est coché — et sur le message sous le
+curseur quand rien ne l'est, si bien qu'un geste à un seul message ne
+coûte jamais une frappe de plus qu'avant. Les lignes cochées portent un
+`✓` à côté du point de non-lu et de l'étoile de suivi.
+
+Les messages d'un même dossier partent ensemble — un `COPY`, un retrait
+nommé — plutôt qu'un aller-retour chacun. Une recherche élargie mêle des
+dossiers et même des comptes dans une seule liste : le lot est donc
+regroupé d'après l'endroit où chaque message vit vraiment, jamais supposé.
+Un lot qui part vers un autre compte est déposé et confirmé message par
+message, rien ne reliant deux serveurs.
+
+`*` sur un lot prend le sens du groupe : il ne retire le suivi que si tout
+ce qui est coché l'a déjà. Basculer chacun de son côté rendrait le
+résultat imprévisible — un lot mi-suivi s'inverserait sans que rien ne
+dise dans quel état il finit.
+
+Ce qui a été traité cesse d'être coché. Le garder viserait la touche
+suivante sur des messages déjà partis, dont les UID ne veulent plus rien
+dire dans le dossier qu'ils ont quitté.
 
 ## Suivre un message
 

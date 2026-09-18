@@ -12503,6 +12503,18 @@ TRANSLATIONS = {
         "fr": "Signature effacée.",
         "en": "Signature cleared.",
     },
+    "mail_select_binding": {
+        "fr": "Cocher / décocher",
+        "en": "Select / unselect",
+    },
+    "mail_select_count": {
+        "fr": "Messages cochés :",
+        "en": "Messages selected:",
+    },
+    "mail_select_none": {
+        "fr": "Plus aucun message coché.",
+        "en": "No message selected any more.",
+    },
     "mail_all_seen_binding": {
         "fr": "Tout marquer lu",
         "en": "Mark all read",

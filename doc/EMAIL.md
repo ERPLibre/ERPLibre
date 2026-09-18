@@ -180,6 +180,7 @@ preview pane on the right, with a status line at the bottom.
 | `/` | open the search field: it searches the whole cache of the open folder — not just the messages on screen — over subject/from/to/snippet (see "Search") |
 | `Shift+S` | ask the **server** the same search, for the open folder (see "Search") |
 | `g` | cycle the message list: flat, by thread, unread only (see "List views") |
+| `x` | select / unselect the message under the cursor (see "Acting on several") |
 | `s` / `u` | mark the selected message seen / unseen |
 | `*` | flag / unflag the selected message — the star other clients show |
 | `Shift+M` | mark the whole open folder read (asks first) |
@@ -536,6 +537,30 @@ messages construirait trente mille lignes à chaque ouverture et à chaque
 frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
 recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
 liste a chargé.
+
+## Acting on several messages
+
+`x` selects the message under the cursor and moves down a line, so a run
+of them is a run of keystrokes. `d`, `m`, `s`, `u` and `*` then act on
+what is selected — and on the message under the cursor when nothing is,
+so a single-message gesture never costs a keystroke more than it used to.
+Selected rows carry a `✓` next to the unread dot and the flag star.
+
+Messages of one folder leave together — one `COPY`, one named removal —
+rather than one round trip each. A widened search mixes folders and even
+accounts in one list, so the batch is grouped by where each message
+actually lives, never assumed. A batch heading for another account is
+deposited and confirmed one message at a time, since nothing links two
+servers.
+
+`*` on a batch takes the group's meaning: it only unflags when every
+selected message is already flagged. Toggling each on its own would make
+the result unpredictable — a half-flagged batch would invert with nothing
+saying which state it ends in.
+
+What has been handled stops being selected. Keeping it would aim the next
+key at messages already gone, whose UIDs no longer mean anything in the
+folder they left.
 
 ## Following a message
 
