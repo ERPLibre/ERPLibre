@@ -10,7 +10,9 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import uuid
+import zipfile
 from subprocess import check_output
 
 sys.path.append(
@@ -245,6 +247,59 @@ def offer_tidy(check_filestore, rapport):
     print(f"✅ {len(remonter)} remontés, {len(doublons)} doublons supprimés.")
 
 
+
+def restore_env(image):
+    """L'environnement d'une restauration, dont un temporaire qui TIENT.
+
+    ODOO EXTRAIT DANS UN DOSSIER TEMPORAIRE, pas dans la base : il y écrit
+    « dump.sql » ET le filestore entier avant de charger quoi que ce soit.
+    Sur une machine où « /tmp » est un tmpfs — quelques gigaoctets de RAM,
+    souvent avec un quota par utilisateur —, une image de production n'y
+    tient pas, et l'extraction s'arrête sur « Disk quota exceeded » ou sur
+    « No space left ». Le message ne nomme ni le tmpfs ni la taille
+    manquante : il dit seulement que l'écriture a échoué.
+
+    La place NÉCESSAIRE est lue dans l'archive, décompressée, plutôt
+    qu'estimée depuis la taille du zip : un taux de compression varie du
+    simple au décuple selon qu'une base porte surtout du texte ou surtout
+    des pièces jointes déjà compressées.
+
+    Quand le dossier temporaire par défaut suffit, il est laissé tel quel —
+    il est plus rapide, étant en mémoire. Sinon « TMPDIR » désigne un
+    dossier voisin du répertoire de données, donc sur le disque qui
+    accueillera de toute façon le filestore restauré.
+    """
+    chemin = os.path.join("image_db", f"{image}.zip")
+    if not os.path.exists(chemin):
+        return None
+    with zipfile.ZipFile(chemin) as archive:
+        besoin = sum(
+            info.file_size
+            for info in archive.infolist()
+            if info.filename == "dump.sql"
+            or info.filename.startswith("filestore/")
+        )
+    defaut = tempfile.gettempdir()
+    libre = shutil.disk_usage(defaut).free
+    # Une marge d'un dixième : l'extraction n'est pas seule à écrire là.
+    if libre > besoin * 1.1:
+        return None
+    repli = os.path.join(os.path.expanduser("~"), ".cache", "erplibre_restore")
+    os.makedirs(repli, exist_ok=True)
+    _logger.info(
+        "## %s demande %.1f Go décompressés, %s n'en offre que %.1f :"
+        " extraction dans %s ##",
+        image,
+        besoin / 1073741824,
+        defaut,
+        libre / 1073741824,
+        repli,
+    )
+    env = dict(os.environ)
+    env["TMPDIR"] = repli
+    return env
+
+
 def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
     """Restaurer depuis l'image, ou cloner le cache déjà restauré.
 
@@ -260,7 +315,13 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --restore"
             f" --restore_image {config.image} --database {cache_database}"
         )
-        print(redact_secrets(check_output(arg.split(" ")).decode()))
+        print(
+            redact_secrets(
+                check_output(
+                    arg.split(" "), env=restore_env(config.image)
+                ).decode()
+            )
+        )
         verify_filestore(cache_database, config.image)
 
     if config.ignore_cache:
@@ -271,6 +332,10 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --restore --restore_image"
             f" {config.image} --database {config.database}"
         )
+        # Ce chemin EXTRAIT, donc il a le même besoin que le cache. Le
+        # clone, lui, ne décompresse rien : lui passer cet environnement
+        # ferait journaliser une extraction qui n'a pas lieu.
+        env = restore_env(config.image)
     else:
         _logger.info(
             f"## Clone cache {cache_database} to database {config.database} ##"
@@ -279,13 +344,14 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
             f"{arg_base} --clone --from_database"
             f" {cache_database} --database {config.database}"
         )
+        env = None
     if config.neutralize:
         arg += " --neutralize"
     # Le secret ne traverse plus argv (il est dans MASTER_PWD), mais la
     # commande peut porter d'autres options sensibles : on filtre quand
     # même, le coût est nul et la garantie ne dépend alors d'aucun appelant.
     print(redact_secrets(arg))
-    print(redact_secrets(check_output(arg.split(" ")).decode()))
+    print(redact_secrets(check_output(arg.split(" "), env=env).decode()))
     if config.ignore_cache:
         verify_filestore(config.database, config.image)
 
