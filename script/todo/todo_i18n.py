@@ -1696,6 +1696,10 @@ TRANSLATIONS = {
         "fr": "Vérifier la posture de sortie d'une VM, couche par couche",
         "en": "Verify a VM's egress posture, layer by layer",
     },
+    "Lima - Verify an instance's egress posture": {
+        "fr": "Lima - Vérifier la posture de sortie d'une instance",
+        "en": "Lima - Verify an instance's egress posture",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",

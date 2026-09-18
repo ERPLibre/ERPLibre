@@ -818,6 +818,7 @@ class TestLimaMenuNumbering(MenuCoherence, unittest.TestCase):
         "Lima - Delete an instance": "_lima_delete",
         "Lima - Open a shell in an instance": "_lima_shell",
         "Lima - Install ERPLibre in an instance": "_lima_install_erplibre",
+        "Lima - Verify an instance's egress posture": "_lima_verify_egress",
     }
 
 
