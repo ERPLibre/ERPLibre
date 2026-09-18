@@ -25,7 +25,7 @@ import (
 	"time"
 )
 
-const version = "0.2.14"
+const version = "0.2.15"
 
 func main() {
 	var (
@@ -95,6 +95,10 @@ func main() {
 				" seul, sans corps), absent ou non-cachable. Lecture seule :"+
 				" --cache-dir suffit, sans privilège, et l'âge des objets"+
 				" n'est pas touché"))
+		recle = flag.Bool("recle", false,
+			T("ranger à nouveau les objets du magasin sous la clé courante,"+
+				" et fondre les copies qu'un miroir portait sous plusieurs"+
+				" chemins ; service arrêté, et --dry-run pour ne que compter"))
 		oublie = flag.Bool("oublie", false,
 			T("lire des lignes « MÉTHODE URL » sur l'entrée standard et"+
 				" EFFACER du magasin ce que chacune désigne : le corps ET le"+
@@ -135,6 +139,21 @@ func main() {
 		if err := EcrireOublis(store, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "entrée illisible : %v\n", err)
 		}
+		return
+	}
+	// Même endroit, même raison : la passe ne touche que le magasin, et le
+	// service ne doit pas tourner pendant qu'elle renomme ce qu'il sert.
+	if *recle {
+		store := &Store{Dir: *cacheDir}
+		bilan, err := store.Recler(*dryRun)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, T("re-clé : %v\n"), err)
+			os.Exit(1)
+		}
+		if *dryRun {
+			fmt.Printf("%s", T("[à blanc] "))
+		}
+		fmt.Println(bilan.Ligne())
 		return
 	}
 
