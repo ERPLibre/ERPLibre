@@ -14,6 +14,7 @@ poser un drapeau `online = False`. Une boîte hors ligne reste lisible.
 
 from __future__ import annotations
 
+import imaplib
 import logging
 import threading
 import time
@@ -27,6 +28,14 @@ from script.todo.mail.store import Store, sweep_orphan_ephemeral
 # Comptes synchronisés de front. Un fil par compte transforme des attentes
 # réseau en série en une seule attente ; au-delà d'une poignée, les
 # fournisseurs refusent les connexions simultanées et le gain disparaît.
+# Ce qui signe un lien IMAP mort, par opposition à un serveur qui répond
+# non. `imaplib` laisse remonter les pannes de socket telles quelles :
+# `TimeoutError` est un `OSError`, et `IMAP4.abort` est ce qu'il lève quand
+# le dialogue est rompu en cours de commande. Aucune de ces trois ne se
+# répare en insistant sur le même lien ; toutes se réparent en en ouvrant
+# un autre.
+LIEN_MORT = (OSError, imaplib.IMAP4.abort)
+
 SYNC_PARALLELE = 4
 # Liens simultanés vers UN MÊME compte, pour que ses dossiers se
 # synchronisent ensemble. Un `imaplib` n'a qu'un dossier sélectionné à la
@@ -323,17 +332,26 @@ class Session:
         return self.syncer is not None
 
     def sync(self, progress=None):
-        """Une passe, avec UNE reprise si le serveur refuse le secret.
+        """Une passe, avec UNE reprise si le lien ne vaut plus rien.
 
-        Le lien IMAP est ouvert au démarrage et gardé ; un jeton d'accès,
-        lui, meurt au bout d'une heure. Sans reprise, le compte cesse de se
-        synchroniser jusqu'à ce que quelqu'un relance le client, et rien à
-        l'écran ne dit qu'il suffirait de rouvrir la connexion.
+        Deux façons pour un lien de cesser de servir, et les deux se
+        réparent pareil — en en ouvrant un autre :
 
-        Une seule reprise, et seulement pour un compte dont le secret peut
-        CHANGER : représenter le même mot de passe au même serveur donnerait
-        le même refus, et réessayer sans fin sur un serveur qui refuse pour
-        une autre raison ferait tourner le client indéfiniment.
+        Le SECRET a expiré. Le lien IMAP est ouvert au démarrage et gardé ;
+        un jeton d'accès, lui, meurt au bout d'une heure.
+
+        La SOCKET est morte. Une lecture qui dépasse le délai marque l'objet
+        socket de Python pour de bon : toute lecture suivante lève aussitôt
+        « cannot read from timed out object », sans rien demander au
+        serveur. Un seul LIST lent — Gmail en fait sur une boîte chargée —
+        condamnait alors le compte pour toute la durée du client, chaque
+        passe échouant en quelques millisecondes sur un lien déjà mort.
+        Relancer le client était le seul remède, et rien ne le disait.
+
+        Une seule reprise. Une erreur de PROTOCOLE (`ImapError` : le serveur
+        a répondu, et c'était non) n'en déclenche aucune — rouvrir n'y
+        changerait rien, et réessayer sans fin ferait tourner le client
+        indéfiniment.
         """
         if self.syncer is None:
             return None
@@ -348,8 +366,14 @@ class Session:
                 or self.connect_fn is None
             ):
                 raise
+            raison = "jeton refusé"
+        except LIEN_MORT as exc:
+            if self.connect_fn is None:
+                raise
+            raison = f"lien mort ({exc})"
         _logger.info(
-            "jeton refusé en cours de session : réouverture de %s",
+            "%s en cours de session : réouverture de %s",
+            raison,
             self.account.name,
         )
         try:

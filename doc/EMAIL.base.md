@@ -524,6 +524,18 @@ Sync happens:
   minutes; 0 disables it) — **but only while the TUI is open**. Close it
   and the timer goes with it; nothing syncs in the background afterward.
 
+A link that dies is replaced rather than carried. Each IMAP read is
+bounded by `mail_timeout_sec` seconds (default 30); when one is exceeded,
+Python marks that socket for good and every later read fails instantly
+with `cannot read from timed out object`, without asking the server
+anything. One slow `LIST` — which a large mailbox at a big provider does
+produce — used to condemn the account for the rest of the session, every
+pass failing in milliseconds on a link already dead, with restarting the
+client as the only cure and nothing saying so. The pass now reopens the
+link once and runs again. Raising `mail_timeout_sec` avoids the cut rather
+than repairing it; a server that answers *no* is not a dead link and is
+never retried.
+
 If the server reports a changed `UIDVALIDITY` for a folder (its UIDs no
 longer mean what they used to — typically after a server-side migration),
 that folder's cache is purged and resynced from scratch automatically. The
@@ -551,6 +563,18 @@ La synchronisation a lieu :
   5 minutes ; 0 la désactive) — **mais seulement tant que le TUI est
   ouvert**. Fermez-le et la minuterie part avec lui ; rien ne se
   synchronise en arrière-plan ensuite.
+
+Un lien qui meurt est remplacé, pas traîné. Chaque lecture IMAP est bornée
+par `mail_timeout_sec` secondes (défaut 30) ; passé ce délai, Python marque
+la socket pour de bon et toute lecture suivante échoue aussitôt par
+`cannot read from timed out object`, sans rien demander au serveur. Un seul
+`LIST` lent — ce qu'une grande boîte chez un gros fournisseur produit —
+condamnait le compte pour le reste de la session, chaque passe échouant en
+quelques millisecondes sur un lien déjà mort, relancer le client étant le
+seul remède et rien ne le disant. La passe rouvre désormais le lien une
+fois et recommence. Monter `mail_timeout_sec` évite la coupure plutôt que
+de la réparer ; un serveur qui répond *non* n'est pas un lien mort et n'est
+jamais réessayé.
 
 Si le serveur annonce un `UIDVALIDITY` changé pour un dossier (ses UID ne
 veulent plus dire ce qu'ils disaient — typiquement après une migration
