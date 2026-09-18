@@ -535,20 +535,19 @@ retarde toujours sur la corbeille — `d` la remplit côté serveur sans rien
 y ajouter localement — donc le nombre qui compte est celui annoncé
 ensuite : ce que le serveur a réellement retiré.
 
-## Lire un long dossier
+## Enregistrer une pièce jointe
 
-Un dossier arrive par pages de 500 messages, le plus récent d'abord. La
-page suivante se charge d'elle-même quand le curseur arrive à vingt lignes
-du bas, de sorte que le défilement ne bute sur aucun mur — et le curseur
-reste où il était quand elle arrive. Une passe de synchronisation garde la
-profondeur déjà chargée plutôt que de ramener la liste à une page sous un
-curseur descendu bien plus bas.
+`w` enregistre une pièce jointe du message sélectionné dans
+`~/Téléchargements`, créé au besoin. À partir de deux pièces, il ouvre la
+liste — nom, type, taille — et `Entrée` enregistre celle qu'on désigne ;
+à une seule, il enregistre sans rien demander, la question ayant une
+réponse connue d'avance. Il ne connaissait que la première auparavant, et
+un message qui en portait trois en montrait trois dans l'aperçu pour n'en
+donner qu'une.
 
-Ces pages existent parce que l'inverse est pire : une boîte de trente mille
-messages construirait trente mille lignes à chaque ouverture et à chaque
-frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
-recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
-liste a chargé.
+Le nom du fichier vient du message, donc de n'importe qui : on n'en garde
+que le nom de base, et rien ne peut s'écrire hors du dossier visé.
+
 
 ## Vues de la liste
 

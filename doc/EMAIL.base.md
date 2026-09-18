@@ -373,7 +373,7 @@ preview pane on the right, with a status line at the bottom.
 | `c` | compose a new message |
 | `a` / `Shift+A` | reply / reply all |
 | `f` | forward |
-| `w` | save the message's **first** attachment to `~/Téléchargements` (created if missing) |
+| `w` | save an attachment to `~/Téléchargements` (created if missing) |
 | `o` | open the outbox: what is waiting to leave (see "The outbox") |
 | `Shift+F` | open the folder screen: create, rename, delete (see "Managing folders") |
 | `i` | open the statistics screen (see "Statistics") |
@@ -1086,7 +1086,6 @@ keystroke of a search, in a screen that answers instantly today. Searching
 is unaffected — a search looks at the whole cache, not at what the list
 has loaded.
 
-<!-- [fr] -->
 ## Lire un long dossier
 
 Un dossier arrive par pages de 500 messages, le plus récent d'abord. La
@@ -1101,6 +1100,35 @@ messages construirait trente mille lignes à chaque ouverture et à chaque
 frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
 recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
 liste a chargé.
+
+<!-- [en] -->
+## Saving an attachment
+
+`w` saves an attachment of the selected message into `~/Téléchargements`,
+creating the folder if needed. With more than one attachment it opens the
+list — name, type, size — and `Enter` saves the one you point at; with a
+single one it saves without asking, since the question would have a known
+answer. It knew only the first one before, and a message carrying three
+showed three in the preview while handing over one.
+
+The file name comes from the message, so from anyone: only its base name
+is kept and nothing may be written outside the target folder.
+
+
+<!-- [fr] -->
+## Enregistrer une pièce jointe
+
+`w` enregistre une pièce jointe du message sélectionné dans
+`~/Téléchargements`, créé au besoin. À partir de deux pièces, il ouvre la
+liste — nom, type, taille — et `Entrée` enregistre celle qu'on désigne ;
+à une seule, il enregistre sans rien demander, la question ayant une
+réponse connue d'avance. Il ne connaissait que la première auparavant, et
+un message qui en portait trois en montrait trois dans l'aperçu pour n'en
+donner qu'une.
+
+Le nom du fichier vient du message, donc de n'importe qui : on n'en garde
+que le nom de base, et rien ne peut s'écrire hors du dossier visé.
+
 
 <!-- [en] -->
 ## List views
