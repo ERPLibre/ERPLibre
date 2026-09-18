@@ -260,12 +260,12 @@ def _refuse_la_posture(posture, destinations):
 #   sa table absente, et elle sort librement en portant son fichier de
 #   règles — l'apparence exacte du contraire.
 #
-#   CE QUI LE VOIT, ET CE QUI NE LE VOIT PAS. La sonde de `plan` existe et
-#   distingue ses quatre verdicts ; ce sont les chemins de livraison qui
-#   décident de l'appeler, et tous ne le font pas. Le manque n'est donc pas
-#   « personne ne regarde » — un écran de vérification relit à la demande —
-#   mais « rien ne regarde de soi-même » : entre deux lectures voulues, une
-#   machine dont le rechargement a cédé passe pour confinée.
+#   CE QUI LE VOIT, ET CE QUI NE LE VOIT PAS. La sonde de `plan` distingue
+#   ses quatre verdicts, et CHAQUE chemin de livraison l'offre désormais à
+#   la demande. Le manque n'est donc pas « personne ne regarde » mais
+#   « rien ne regarde de soi-même » : entre deux lectures voulues, une
+#   machine dont le rechargement a cédé passe pour confinée, et c'est
+#   l'opérateur qui doit penser à demander.
 #
 #   LE RENDRE FATAL est à portée d'une directive — « FailureAction=poweroff »
 #   éteint bien la machine plutôt que de la laisser sortir, et la console
