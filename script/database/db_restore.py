@@ -9,6 +9,7 @@ import logging
 import os
 import shutil
 import subprocess
+import struct
 import sys
 import tempfile
 import uuid
@@ -187,6 +188,51 @@ def get_list_db_cache(arg_base):
     return lst_db, lst_db_cache
 
 
+def verify_loaded(database):
+    """Une base restaurée porte-t-elle vraiment ses tables ?
+
+    LE SILENCE QUE CE CONTRÔLE ROMPT. Odoo restaure en lançant « psql »
+    avec sa sortie JETÉE (« stdout=DEVNULL, stderr=STDOUT »), et « psql »
+    rend ZÉRO même quand chaque instruction a échoué — sans
+    « ON_ERROR_STOP », une erreur SQL n'est pas un code de retour. Une
+    restauration peut donc s'annoncer réussie et laisser une base VIDE.
+
+    Le coût de ce silence n'est pas la base vide, c'est ce qui vient
+    après : le clone recopie le vide sans rien dire, puis la première
+    commande qui ouvre la copie échoue sur « Database not initialized » —
+    un message qui accuse la copie, à trois étapes de la cause.
+
+    Odoo crée d'ailleurs la base AVANT d'extraire : une extraction qui
+    échoue laisse elle aussi une base vide derrière elle, que la prochaine
+    tentative prendra pour un cache valide.
+
+    Le contrôle est délibérément grossier — l'existence d'une table du
+    noyau d'Odoo. Compter les modules ou comparer des chiffres demanderait
+    de savoir à quoi ressemble CETTE base ; « elle a des tables » suffit à
+    séparer une restauration d'un silence.
+    """
+    sql = (
+        "select count(*) from information_schema.tables"
+        " where table_schema = 'public' and table_name = 'ir_module_module'"
+    )
+    try:
+        out = check_output(
+            ["psql", "-tAqd", database, "-c", sql], stderr=subprocess.DEVNULL
+        ).decode()
+    except Exception as erreur:  # noqa: BLE001
+        raise SystemExit(
+            f"❌ {database} : impossible de vérifier la restauration"
+            f" ({erreur})"
+        ) from erreur
+    if out.strip() != "1":
+        raise SystemExit(
+            f"❌ {database} a été créée mais elle est VIDE : « psql » a rendu"
+            " zéro sans charger le dump. Relancez après avoir regardé la"
+            " place disponible ET le quota du dossier temporaire."
+        )
+    _logger.info(f"## {database} porte bien ses tables ##")
+
+
 def verify_filestore(database, image):
     """Contrôler qu'une restauration a bien posé ses fichiers.
 
@@ -248,6 +294,50 @@ def offer_tidy(check_filestore, rapport):
 
 
 
+def espace_utilisable(chemin):
+    """La place qu'on peut VRAIMENT écrire là, quota compris.
+
+    « shutil.disk_usage » rend la place du SYSTÈME DE FICHIERS. Un quota
+    par utilisateur est plus bas et ne s'y voit pas : une écriture échoue
+    alors sur « Disk quota exceeded » là où « df » annonçait des
+    gigaoctets libres. C'est le cas exact d'un « /tmp » en tmpfs monté
+    avec « usrquota ».
+
+    LE QUOTA SE LIT PAR « quotactl_fd » ET PAR LUI SEUL sur un système de
+    fichiers sans périphérique bloc : l'ancien « quotactl » exige un
+    « /dev/... » et rend « Block device required » sur un tmpfs. Les
+    outils « quota » ne sont pas toujours installés, et leur absence ne
+    dit rien sur la présence d'un quota — celui qui a coûté une soirée
+    était posé, actif, et invisible.
+
+    Sans quota, ou si l'appel n'est pas disponible, la place du système de
+    fichiers est rendue telle quelle : le pire cas est alors celui d'avant,
+    pas un refus de fonctionner.
+    """
+    libre = shutil.disk_usage(chemin).free
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        buf = ctypes.create_string_buffer(120)
+        fd = os.open(chemin, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            # 443 = quotactl_fd ; 0x800007 = Q_GETQUOTA ; 0 = USRQUOTA
+            code = libc.syscall(443, fd, (0x800007 << 8) | 0, os.getuid(), buf)
+        finally:
+            os.close(fd)
+        if code != 0:
+            return libre
+        dur, _doux, utilise = struct.unpack("<3Q", buf.raw[:24])
+        if not dur:
+            return libre
+        # La limite est en blocs de 1 Kio, l'usage courant en octets.
+        reste = dur * 1024 - utilise
+        return max(0, min(libre, reste))
+    except Exception:
+        return libre
+
+
 def restore_env(image):
     """L'environnement d'une restauration, dont un temporaire qui TIENT.
 
@@ -280,15 +370,15 @@ def restore_env(image):
             or info.filename.startswith("filestore/")
         )
     defaut = tempfile.gettempdir()
-    libre = shutil.disk_usage(defaut).free
+    libre = espace_utilisable(defaut)
     # Une marge d'un dixième : l'extraction n'est pas seule à écrire là.
     if libre > besoin * 1.1:
         return None
     repli = os.path.join(os.path.expanduser("~"), ".cache", "erplibre_restore")
     os.makedirs(repli, exist_ok=True)
     _logger.info(
-        "## %s demande %.1f Go décompressés, %s n'en offre que %.1f :"
-        " extraction dans %s ##",
+        "## %s demande %.1f Go décompressés, %s n'en laisse écrire que"
+        " %.1f (quota compris) : extraction dans %s ##",
         image,
         besoin / 1073741824,
         defaut,
@@ -322,6 +412,7 @@ def restore_or_clone(config, arg_base, cache_database, lst_db_cache):
                 ).decode()
             )
         )
+        verify_loaded(cache_database)
         verify_filestore(cache_database, config.image)
 
     if config.ignore_cache:
