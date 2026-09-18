@@ -68,3 +68,16 @@ func TestVoixEtDonnéesMêlées(t *testing.T) {
 		t.Fatalf("un seul appel vocal attendu, %d obtenus", voix)
 	}
 }
+
+// Un caractere inattendu dans AT+VTS rend ERROR au milieu de la sequence :
+// le filtre le refuse avant, en le nommant.
+func TestSeulesLesTouchesDUnClavierPassent(t *testing.T) {
+	if got, err := TouchesValides(" 1234*#a "); err != nil || got != "1234*#A" {
+		t.Fatalf("%q, %v", got, err)
+	}
+	for _, mauvais := range []string{"", "12x", "1 2", "+1"} {
+		if _, err := TouchesValides(mauvais); err == nil {
+			t.Fatalf("%q accepté", mauvais)
+		}
+	}
+}

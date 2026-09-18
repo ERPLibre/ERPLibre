@@ -465,6 +465,40 @@ var (
 // Le point-virgule final n'est pas décoratif : sans lui le modem tente un
 // appel de DONNÉES, qui échoue sur une ligne ordinaire avec un message qui
 // n'explique rien.
+// TouchesValides refuse ce qu'un clavier téléphonique n'a pas.
+//
+// Filtré AVANT le modem : un caractère inattendu dans AT+VTS rend ERROR et
+// arrête la séquence au milieu, sans dire lequel a gêné.
+func TouchesValides(touches string) (string, error) {
+	touches = strings.ToUpper(strings.TrimSpace(touches))
+	if touches == "" {
+		return "", fmt.Errorf("aucune touche")
+	}
+	for _, r := range touches {
+		if !strings.ContainsRune("0123456789*#ABCD", r) {
+			return "", fmt.Errorf("touche %q absente d'un clavier téléphonique", r)
+		}
+	}
+	return touches, nil
+}
+
+// EnvoyerTouches joue des tonalités DTMF sur l'appel en cours.
+//
+// Une touche par commande, et non la séquence d'un bloc : c'est la forme
+// que tous les micrologiciels acceptent, et une touche refusée s'y nomme.
+func (m *Modem) EnvoyerTouches(touches string) error {
+	valides, err := TouchesValides(touches)
+	if err != nil {
+		return err
+	}
+	for _, r := range valides {
+		if _, err := m.Commande(fmt.Sprintf("AT+VTS=%c", r), 5*time.Second); err != nil {
+			return fmt.Errorf("touche %c : %w", r, err)
+		}
+	}
+	return nil
+}
+
 func (m *Modem) Composer(numéro string) error {
 	_, err := m.Commande("ATD+"+numéro+";", 20*time.Second)
 	return err

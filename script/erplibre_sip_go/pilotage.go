@@ -200,6 +200,12 @@ func appliquerCommande(c *Combiné, ligne string, raccrocher context.CancelFunc)
 				slog.Warn("second appel refusé", "err", err)
 			}
 		}
+	case "touches":
+		if c.Touches != nil && arg != "" {
+			if err := c.Touches(arg); err != nil {
+				slog.Warn("touches refusées", "err", err)
+			}
+		}
 	case "fusionner":
 		if c.Fusionner != nil {
 			if err := c.Fusionner(); err != nil {

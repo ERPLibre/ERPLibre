@@ -203,6 +203,7 @@ func AppelerParModem(ctx context.Context, o OptionsModem) (Résultat, error) {
 			}
 			c.Composer = m.Composer
 			c.Fusionner = m.FusionnerAppels
+			c.Touches = m.EnvoyerTouches
 			c.Attente = m.MettreEnAttente
 			c.AppelsVoix = func() int { return compterVoix(m) }
 			// La console raccroche par ce contexte : « q » doit sortir de

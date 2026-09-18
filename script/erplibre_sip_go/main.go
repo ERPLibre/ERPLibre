@@ -64,6 +64,10 @@ func main() {
 		"avec -navigateur : renvoyer le son au lieu de composer par la SIM")
 	répondeurConf := flag.String("repondeur", "",
 		"fichier JSON de reglages du repondeur ; absent, aucun repondeur")
+	recette := flag.String("recette", "",
+		"avec -numero : jouer une recette de messagerie vocale (JSON) ; le code, s'il est demande, se lit sur l'entree standard")
+	enregistrer := flag.String("enregistrer", "",
+		"avec -recette : fichier WAV ou enregistrer toute la communication")
 	sansAuth := flag.Bool("sans-authentification", false,
 		"servir sans authentifier : n'a de sens que sur la boucle locale")
 	flag.Parse()
@@ -125,6 +129,31 @@ func main() {
 		TéléverserCeQuiAttend(lien, répondeur.Dossier)
 		if err := ServirNavigateur(ctx, *navigateur, options, *écho, gardien, répondeur); err != nil {
 			échouer(err.Error())
+		}
+		return
+	}
+	if *recette != "" {
+		r, err := ChargerRecette(*recette)
+		if err != nil {
+			échouer(err.Error())
+		}
+		code := ""
+		if r.DemandeCode() {
+			code = lireCode(os.Stdin)
+		}
+		bilan := RécupérerMessagerie(ctx, OptionsModem{
+			Port: *port, Carte: *carte, Numéro: *numéro, ModePCM: *modePCM,
+			AudMod: *audmod, Bruit: *bruit,
+		}, r, *enregistrer, code)
+		sortie, _ := json.MarshalIndent(bilan, "", "  ")
+		fmt.Println(string(sortie))
+		if *enregistrer != "" {
+			// Le bilan À CÔTÉ du son : la courbe et les instants des touches
+			// sont ce qui permet de régler la recette en relisant l'appel.
+			_ = os.WriteFile(CheminCompagnon(*enregistrer), append(sortie, '\n'), 0o600)
+		}
+		if bilan.Erreur != "" {
+			os.Exit(1)
 		}
 		return
 	}

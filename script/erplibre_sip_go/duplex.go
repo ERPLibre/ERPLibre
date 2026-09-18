@@ -252,6 +252,11 @@ type Combiné struct {
 	Fusionner  func() error
 	Attente    func() error
 
+	// Touches envoie des tonalités DTMF pendant l'appel. Une messagerie
+	// d'opérateur se pilote ainsi — mot de passe, « 1 pour écouter » — et
+	// sans elles on entend l'accueil sans pouvoir aller plus loin.
+	Touches func(string) error
+
 	// AppelEntrant rend le numéro qui sonne, vide sinon. Répondre décroche.
 	// Absents hors du mode veille : un appel sortant n'a personne à prendre.
 	AppelEntrant func() string

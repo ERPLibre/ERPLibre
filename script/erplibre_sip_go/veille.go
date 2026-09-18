@@ -82,6 +82,7 @@ func AttendreAppel(ctx context.Context, o OptionsModem) (Résultat, error) {
 	c.AppelsVoix = func() int { return compterVoix(m) }
 	c.Composer = m.Composer
 	c.Fusionner = m.FusionnerAppels
+	c.Touches = m.EnvoyerTouches
 	c.Attente = m.MettreEnAttente
 	c.AppelEntrant = m.AppelEntrant
 	c.lireRéglagesModem(m)
