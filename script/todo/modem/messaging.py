@@ -10,11 +10,35 @@ import re
 from .device import _run, mmcli_present
 
 
+def proprietes_sms(numero, texte):
+    """La chaine de proprietes de mmcli, ou (vide, raison).
+
+    L'analyseur de ModemManager coupe le texte a la premiere espace tant
+    qu'il n'est pas entre guillemets : sans eux, « coucou bobo » echoue sur
+    « Unexpected content (bobo) after value ». Entre guillemets, l'espace,
+    la virgule, le signe egal et les emoji passent.
+
+    Il n'ECHAPPE rien, en revanche : un texte qui porte a la fois le
+    guillemet double et l'apostrophe ne peut pas etre exprime. On le refuse
+    en le disant, plutot que d'alterer en silence ce que quelqu'un a ecrit.
+    """
+    if '"' in texte and "'" in texte:
+        return "", (
+            "le message contient a la fois \" et ' ; ModemManager n'a aucun "
+            "moyen de les distinguer. Retirez l'un des deux."
+        )
+    guillemet = "'" if '"' in texte else '"'
+    return "number=%s,text=%s%s%s" % (numero, guillemet, texte, guillemet), ""
+
+
 def envoyer(index, numero, texte):
     if not mmcli_present():
         return False, "mmcli absent."
+    proprietes, raison = proprietes_sms(numero, texte)
+    if raison:
+        return False, raison
     code, sortie = _run(
-        ["mmcli", "-m", str(index), f"--messaging-create-sms=number={numero},text={texte}"]
+        ["mmcli", "-m", str(index), "--messaging-create-sms=" + proprietes]
     )
     if code != 0:
         return False, sortie
