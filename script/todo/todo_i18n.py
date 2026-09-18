@@ -2060,6 +2060,35 @@ TRANSLATIONS = {
         "en": 'STALE, the service may have stopped reading',
     },
     # Repondeur du modem
+    # Sous-menus du menu Modem
+    'modem_menu_state': {
+        "fr": '📊 Etat et diagnostic',
+        "en": '📊 State and diagnosis',
+    },
+    'modem_menu_calls': {
+        "fr": '📞 Appels',
+        "en": '📞 Calls',
+    },
+    'modem_menu_sms': {
+        "fr": '💬 SMS',
+        "en": '💬 SMS',
+    },
+    'modem_menu_audio': {
+        "fr": '🔊 Son et peripheriques',
+        "en": '🔊 Sound and devices',
+    },
+    'modem_menu_voip': {
+        "fr": '🌐 Services VoIP',
+        "en": '🌐 VoIP services',
+    },
+    'modem_answering_short': {
+        "fr": 'Repondeur',
+        "en": 'Answering machine',
+    },
+    'modem_audio_rule_short': {
+        "fr": 'Regle audio',
+        "en": 'Audio rule',
+    },
     'modem_answering': {
         "fr": '📼 Repondeur — messages, annonce, sonneries',
         "en": '📼 Answering machine — messages, greeting, rings',

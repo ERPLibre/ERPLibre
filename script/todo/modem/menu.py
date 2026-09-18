@@ -63,7 +63,12 @@ def _bandeau():
         f"  {t('modem_voice')}: "
         + (t("modem_voice_ok") if voix_ok else voix_motif.split(".")[0])
         + f"  |  {t('modem_at_port')}: {reserve}\n"
-        + f"  {t('modem_voicemail')}: {_etat_messagerie()}"
+        + f"  {t('modem_voicemail')}: {_etat_messagerie()}\n"
+        # Ces deux etats vivaient a cote de leurs entrees, qui sont passees
+        # dans des sous-menus. Ils restent ici : savoir d'un coup d'oeil que
+        # le repondeur est eteint evite d'attendre en vain un message.
+        + f"  {t('modem_answering_short')}: {_etat_repondeur()}"
+        + f"  |  {t('modem_audio_rule_short')}: {_etat_regle_audio()}"
     )
 
 
@@ -121,72 +126,114 @@ def _bandeau_voip():
 
 
 def prompt_execute_modem(todo) -> None:
+    """Le menu Modem : ce qu'on ouvre souvent devant, le reste range.
+
+    Le clavier reste seul au premier ecran : c'est le seul outil qu'on ouvre
+    pour SE SERVIR du modem plutot que pour le regler. Les reglages systeme,
+    qui se posent une fois a l'installation, tiennent dans un sous-menu.
+    """
     while True:
         help_info = f"""{todo._menu_header()}
 {_bandeau()}
 {_bandeau_voip()}
 
-[1] {t("modem_status")}
-[2] {t("modem_diag")}
-[3] {t("modem_dialer")}
-[4] {t("modem_call")}
-[5] {t("modem_hangup")}
-[6] {t("modem_calls_list")}
-[7] {t("modem_sms_send")}
-[8] {t("modem_sms_list")}
-[9] {t("voip_install")}
-[10] {t("voip_status")}
-[11] {t("voip_call")}
-[12] {t("modem_uac_toggle")}
-[13] {t("modem_udev")}
-[14] {t("modem_probe_audio")}
-[15] {t("modem_audio_rule")} — {_etat_regle_audio()}
-[16] {t("modem_audio_try")}
-[17] {t("modem_gateway_agent")}
-[18] {t("modem_answering")} — {_etat_repondeur()}
+[1] {t("modem_dialer")}
+[2] {t("modem_menu_state")}
+[3] {t("modem_menu_calls")}
+[4] {t("modem_menu_sms")}
+[5] {t("modem_answering")}
+[6] {t("modem_menu_audio")}
+[7] {t("modem_menu_voip")}
 [0] {t("Back")}"""
         status = click.prompt(help_info)
         print()
         if status == "0":
             return
         elif status == "1":
-            _etat_detaille()
+            _clavier(todo)
         elif status == "2":
-            _diagnostic()
+            _sous_menu_etat()
         elif status == "3":
-            _clavier()
+            _sous_menu_appels(todo)
         elif status == "4":
-            _appeler()
+            _sous_menu_sms(todo)
         elif status == "5":
-            _raccrocher()
-        elif status == "6":
-            _lister_appels()
-        elif status == "7":
-            _envoyer_sms()
-        elif status == "8":
-            _lister_sms()
-        elif status == "9":
-            _installer_voip(todo)
-        elif status == "10":
-            _etat_voip()
-        elif status == "11":
-            _appel_voip(todo)
-        elif status == "12":
-            _basculer_uac()
-        elif status == "13":
-            _regle_udev()
-        elif status == "14":
-            _sonder_audio()
-        elif status == "15":
-            _regle_audio()
-        elif status == "17":
-            _passerelle(todo)
-        elif status == "16":
-            _essai_combine()
-        elif status == "18":
             _repondeur(todo)
+        elif status == "6":
+            _sous_menu_audio()
+        elif status == "7":
+            _sous_menu_voip(todo)
         else:
             print(t("Command not found !"))
+
+
+def _sous_menu(titre, entrees):
+    """Affiche un sous-menu et appelle ce qui est choisi.
+
+    `entrees` est une suite de (libelle, action). La numerotation se deduit de
+    l'ordre : une entree ajoutee au milieu ne peut pas se retrouver branchee
+    sur l'action d'une autre, ce qu'une chaine de conditions ecrite a la main
+    finit toujours par produire.
+    """
+    while True:
+        lignes = [f"  {titre}", ""]
+        for numero, (libelle, _action) in enumerate(entrees, start=1):
+            lignes.append(f"[{numero}] {libelle}")
+        lignes.append(f"[0] {t('Back')}")
+        choix = click.prompt("\n".join(lignes))
+        print()
+        if choix == "0":
+            return
+        if choix.isdigit() and 1 <= int(choix) <= len(entrees):
+            entrees[int(choix) - 1][1]()
+        else:
+            print(t("Command not found !"))
+
+
+def _sous_menu_etat():
+    _sous_menu(t("modem_menu_state"), (
+        (t("modem_status"), _etat_detaille),
+        (t("modem_diag"), _diagnostic),
+    ))
+
+
+def _sous_menu_appels(todo):
+    _sous_menu(t("modem_menu_calls"), (
+        (t("modem_call"), _appeler),
+        (t("modem_hangup"), _raccrocher),
+        (t("modem_calls_list"), _lister_appels),
+        (t("voip_call"), lambda: _appel_voip(todo)),
+    ))
+
+
+def _sous_menu_sms(todo):
+    _sous_menu(t("modem_menu_sms"), (
+        (t("modem_sms_send"), _envoyer_sms),
+        (t("modem_sms_list"), _lister_sms),
+        (t("modem_gateway_agent"), lambda: _passerelle(todo)),
+    ))
+
+
+def _sous_menu_audio():
+    """Les essais a cote des reglages qu'ils eprouvent.
+
+    Sonder le chemin audio et essayer le combine servent a regler le son :
+    ils sont plus utiles ici qu'entre une regle udev et une passerelle SMS.
+    """
+    _sous_menu(t("modem_menu_audio"), (
+        (t("modem_probe_audio"), _sonder_audio),
+        (t("modem_audio_try"), _essai_combine),
+        (t("modem_uac_toggle"), _basculer_uac),
+        (t("modem_audio_rule") + " — " + _etat_regle_audio(), _regle_audio),
+        (t("modem_udev"), _regle_udev),
+    ))
+
+
+def _sous_menu_voip(todo):
+    _sous_menu(t("modem_menu_voip"), (
+        (t("voip_install"), lambda: _installer_voip(todo)),
+        (t("voip_status"), _etat_voip),
+    ))
 
 
 def _index_ou_plainte():
