@@ -21,8 +21,37 @@ from pathlib import Path
 
 from script.todo.todo_i18n import t
 
-SCHEMA_VERSION = 1
+# La v2 ajoute `auth` à chaque compte, la v3 `signature`. Un fichier plus
+# ancien se relit sans rien perdre : le champ manquant prend son défaut, qui
+# est ce que faisait la version qui l'ignorait.
+SCHEMA_VERSION = 3
 SECURITIES = ("ssl", "starttls", "none")
+# « login » couvre le mot de passe du compte comme le mot de passe
+# d'application : du point de vue du transport, c'est le même dialogue LOGIN.
+# Le mot « password » est écarté À DESSEIN de cette valeur : un test vérifie
+# qu'il n'apparaît NULLE PART dans `accounts.json`, garde-fou volontairement
+# grossier contre un secret qui s'y glisserait, et une valeur portant ce mot
+# le désarmerait pour de bon.
+AUTHS = ("login", "oauth")
+
+# Les deux préréglages Microsoft passent par le même point de service : le
+# point « common » sert les comptes personnels comme les locataires, et un
+# seul enregistrement d'application couvre donc les deux.
+_OAUTH_MICROSOFT = {
+    "auth_url": (
+        "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+    ),
+    "token_url": (
+        "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    ),
+    # Trois portées : lire, envoyer, et le droit de rafraîchir sans
+    # redemander le consentement. Sans `offline_access`, il n'y a pas de
+    # jeton de rafraîchissement du tout.
+    "scope": (
+        "https://outlook.office.com/IMAP.AccessAsUser.All"
+        " https://outlook.office.com/SMTP.Send offline_access"
+    ),
+}
 
 PRESETS: dict[str, dict] = {
     "gmail": {
@@ -36,9 +65,48 @@ PRESETS: dict[str, dict] = {
         "sent_folder": "[Gmail]/Sent Mail",
         "app_password": True,
         "note_key": "mail_preset_note_gmail",
+        # Les points de service sont publics et stables ; l'IDENTITÉ du
+        # client, elle, n'est pas livrée ici — voir `oauth.settings_for`.
+        "oauth": {
+            "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            # La seule portée qui ouvre IMAP et SMTP. Google la classe
+            # « restreinte » : une application publiée qui la demande passe
+            # par sa vérification.
+            "scope": "https://mail.google.com/",
+        },
     },
+    # Les deux mondes Microsoft partagent leur hôte IMAP et PAS leur hôte
+    # d'envoi : un préréglage unique en servirait un sur deux, et l'autre
+    # échouerait à l'envoi seulement — après avoir relevé le courrier, donc
+    # sans que la cause saute aux yeux.
+    #
+    # La clé `outlook` reste celle du compte PERSONNEL : un `accounts.json`
+    # écrit avant la séparation la porte déjà, et la déplacer ferait pointer
+    # ces comptes vers un préréglage inconnu.
     "outlook": {
-        "label": "Microsoft / Outlook",
+        "label": "Microsoft / Outlook.com (personnel)",
+        "imap": {
+            "host": "outlook.office365.com",
+            "port": 993,
+            "security": "ssl",
+        },
+        "smtp": {
+            "host": "smtp-mail.outlook.com",
+            "port": 587,
+            "security": "starttls",
+        },
+        "sent_folder": "Sent Items",
+        # Microsoft a retiré l'authentification simple d'IMAP : un mot de
+        # passe d'application est de l'authentification simple, donc il est
+        # refusé lui aussi. Le drapeau dit « ce fournisseur prend un mot de
+        # passe d'application » — ici, il n'en prend plus aucun.
+        "app_password": False,
+        "note_key": "mail_preset_note_outlook",
+        "oauth": _OAUTH_MICROSOFT,
+    },
+    "microsoft365": {
+        "label": "Microsoft 365 (organisation)",
         "imap": {
             "host": "outlook.office365.com",
             "port": 993,
@@ -50,8 +118,9 @@ PRESETS: dict[str, dict] = {
             "security": "starttls",
         },
         "sent_folder": "Sent Items",
-        "app_password": True,
-        "note_key": "mail_preset_note_outlook",
+        "app_password": False,
+        "note_key": "mail_preset_note_microsoft365",
+        "oauth": _OAUTH_MICROSOFT,
     },
     "icloud": {
         "label": "Apple / iCloud",
@@ -107,6 +176,10 @@ class Account:
     cache_mode: str | None = None
     sent_folder: str = "Sent"
     enabled: bool = True
+    auth: str = "login"
+    # Texte ajouté au bas d'un message écrit ou d'une réponse, séparé par le
+    # délimiteur « -- ». Rien de secret : il vit donc ici et non au coffre.
+    signature: str = ""
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -124,10 +197,24 @@ class Account:
             raise AccountError(
                 f"{t('mail_err_unknown_cache_mode')} {self.cache_mode!r}"
             )
+        if self.auth not in AUTHS:
+            raise AccountError(
+                f"{t('mail_err_unknown_auth')} {self.auth!r}"
+                f" {t('mail_err_expected')} {AUTHS})"
+            )
 
     def cache_key_ref(self) -> str:
         """Référence de la clé de chiffrement, distincte du mot de passe."""
         return f"{self.secret_ref}/cache-key"
+
+    def refresh_token_ref(self) -> str:
+        """Référence du jeton OAuth, À CÔTÉ du mot de passe et non dessus.
+
+        Trois références distinctes pour un compte : le secret de connexion,
+        la clé du cache, le jeton. Les confondre ferait qu'un compte repassé
+        au mot de passe perdrait le sien, sans moyen de le retrouver.
+        """
+        return f"{self.secret_ref}/oauth-token"
 
     def from_header(self) -> str:
         return (
@@ -154,6 +241,8 @@ class Account:
                 cache_mode=d.get("cache_mode"),
                 sent_folder=d.get("sent_folder", "Sent"),
                 enabled=d.get("enabled", True),
+                auth=d.get("auth", "login"),
+                signature=d.get("signature", ""),
             )
         except (KeyError, TypeError) as exc:
             raise AccountError(
@@ -193,6 +282,7 @@ def account_from_preset(
     user: str | None = None,
     display_name: str = "",
     vault: str = "kdbx",
+    auth: str = "login",
 ) -> Account:
     preset = PRESETS.get(preset_key)
     if preset is None:
@@ -212,6 +302,7 @@ def account_from_preset(
         cache_mode=None,
         sent_folder=preset["sent_folder"],
         enabled=True,
+        auth=auth,
     )
 
 
@@ -228,6 +319,16 @@ def load(path: Path | None = None) -> list[Account]:
     if not isinstance(data, dict):
         raise AccountError(
             f"{path} {t('mail_err_should_contain_json_object')}"
+        )
+    # La version était ÉCRITE sans jamais être relue. Un fichier d'une
+    # version future se lisait alors champ par champ, perdant en silence ce
+    # que cette version ne connaît pas — puis se réécrivait amputé par-dessus
+    # l'original. Refuser rend le fichier réparable ; deviner le détruit.
+    version = data.get("version", SCHEMA_VERSION)
+    if isinstance(version, int) and version > SCHEMA_VERSION:
+        raise AccountError(
+            f"{path} {t('mail_err_accounts_from_the_future')}"
+            f" {version} > {SCHEMA_VERSION}"
         )
     return [Account.from_dict(d) for d in data.get("accounts", [])]
 

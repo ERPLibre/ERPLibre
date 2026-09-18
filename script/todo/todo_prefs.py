@@ -48,6 +48,12 @@ DEFAULTS = {
     # Rafraîchissement automatique des boîtes, en secondes, ACTIF seulement
     # tant que le TUI courriel est à l'écran. 0 désactive.
     "mail_refresh_sec": 300,
+    # Délai d'une lecture IMAP, en secondes. Il ne borne pas la passe mais
+    # CHAQUE lecture : un LIST lent sur une grande boîte le dépasse parfois
+    # — vu chez un grand fournisseur — et la socket est alors marquée morte
+    # par Python pour de bon. Le client rouvre désormais le lien, mais
+    # monter ce délai évite la coupure plutôt que de la réparer.
+    "mail_timeout_sec": 30,
     # Disposition des volets du client courriel (touche `v`). Voir
     # `script.todo.mail.tui.MAIL_LAYOUTS` pour les valeurs valides ;
     # `resolve_layout` y retombe sur "columns" si la valeur stockée n'en fait

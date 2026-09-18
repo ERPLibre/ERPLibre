@@ -301,6 +301,195 @@ class TestAccountScreenSavesAndGoesLive(TuiAccountCase):
             self.assertEqual(mail_accounts.load(), [])
 
 
+class TestTheFormKnowsAboutTokens(TuiAccountCase):
+    """Le formulaire du TUI doit offrir ce que le menu offre.
+
+    Sans cela, un compte Microsoft ne peut pas s'ajouter depuis le client :
+    le seul champ proposé est un mot de passe, que le fournisseur refuse.
+    """
+
+    async def _ouvrir(self, pilot, app):
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        return app.screen
+
+    async def test_a_microsoft_preset_switches_the_form_to_a_token(self):
+        from textual.widgets import Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_preset", Select).value = "outlook"
+            await pilot.pause()
+            auth = ecran.query_one("#acc_auth", Select)
+            self.assertEqual(auth.value, "oauth")
+            # Aucun choix à faire : le fournisseur n'accepte rien d'autre.
+            self.assertTrue(auth.disabled)
+
+    async def test_a_provider_without_oauth_offers_no_choice_either(self):
+        from textual.widgets import Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_preset", Select).value = "icloud"
+            await pilot.pause()
+            auth = ecran.query_one("#acc_auth", Select)
+            self.assertEqual(auth.value, "login")
+            self.assertTrue(auth.disabled)
+
+    async def test_gmail_leaves_the_choice_open(self):
+        from textual.widgets import Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_preset", Select).value = "gmail"
+            await pilot.pause()
+            auth = ecran.query_one("#acc_auth", Select)
+            self.assertEqual(auth.value, "login")
+            self.assertFalse(auth.disabled)
+
+    async def test_a_token_account_is_saved_under_its_own_reference(self):
+        from textual.widgets import Input, Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app)
+            ecran.query_one("#acc_name", Input).value = "travail"
+            ecran.query_one("#acc_email", Input).value = "moi@x.ca"
+            ecran.query_one("#acc_preset", Select).value = "outlook"
+            await pilot.pause()
+            ecran.query_one("#acc_password", Input).value = "jeton-collé"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+
+        compte = mail_accounts.load()[0]
+        self.assertEqual(compte.auth, "oauth")
+        self.assertEqual(
+            self.secret_store.get(compte.refresh_token_ref()), "jeton-collé"
+        )
+        # Et surtout PAS sur la référence du mot de passe.
+        self.assertIsNone(self.secret_store.get(compte.secret_ref))
+
+
+class TestAuthorisingFromTheTui(TuiAccountCase):
+    """Le formulaire du TUI mène le parcours d'autorisation, comme le menu.
+
+    Sans lui, quelqu'un qui vit dans le client doit en sortir pour ajouter
+    un compte OAuth — et le parcours qu'il y trouverait est celui que ce
+    client sait déjà faire.
+    """
+
+    async def _ouvrir(self, pilot, app, preset):
+        from textual.widgets import Select
+
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        ecran = app.screen
+        ecran.query_one("#acc_preset", Select).value = preset
+        await pilot.pause()
+        return ecran
+
+    async def test_the_button_is_offered_where_a_client_id_exists(self):
+        from textual.widgets import Button
+
+        self.config_file.set_config_value(
+            ["mail", "oauth", "gmail", "client_id"], "un-client"
+        )
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app, "gmail")
+            self.assertFalse(ecran.query_one("#acc_authorize", Button).display)
+            from textual.widgets import Select
+
+            ecran.query_one("#acc_auth", Select).value = "oauth"
+            await pilot.pause()
+            self.assertTrue(ecran.query_one("#acc_authorize", Button).display)
+
+    async def test_without_a_client_id_the_button_stays_hidden(self):
+        """Il ouvrirait une page qui répond « invalid_client » : la panne
+        se chercherait alors chez le fournisseur."""
+        from textual.widgets import Button, Select
+
+        app = await self._mounted_app()
+        async with app.run_test() as pilot:
+            ecran = await self._ouvrir(pilot, app, "gmail")
+            ecran.query_one("#acc_auth", Select).value = "oauth"
+            await pilot.pause()
+            self.assertFalse(ecran.query_one("#acc_authorize", Button).display)
+
+    async def test_the_flow_fills_the_secret_field(self):
+        from unittest.mock import patch
+
+        from textual.widgets import Button, Input
+
+        from script.todo.mail.oauth import TokenSet
+
+        self.config_file.set_config_value(
+            ["mail", "oauth", "outlook", "client_id"], "un-client"
+        )
+        jeu = TokenSet(
+            refresh_token="r-du-navigateur", access_token="a", expires_at=9e9
+        )
+        app = await self._mounted_app()
+        with patch("script.todo.mail.oauth.authorize", lambda *a, **k: jeu):
+            async with app.run_test() as pilot:
+                ecran = await self._ouvrir(pilot, app, "outlook")
+                ecran.query_one("#acc_email", Input).value = "moi@x.ca"
+                # Le formulaire défile : le bouton est sous la ligne de
+                # flottaison d'un terminal de test, comme il le serait d'un
+                # petit terminal réel.
+                ecran.query_one("#acc_authorize", Button).scroll_visible()
+                await pilot.pause()
+                await pilot.click("#acc_authorize")
+                await pilot.pause()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                self.assertEqual(
+                    ecran.query_one("#acc_password", Input).value,
+                    "r-du-navigateur",
+                )
+
+    async def test_a_refused_authorisation_is_said_and_fills_nothing(self):
+        """Le champ reste vide : un jeton à moitié écrit serait rangé au
+        coffre et refusé à chaque connexion."""
+        from unittest.mock import patch
+
+        from textual.widgets import Button, Input, Static
+
+        from script.todo.mail.oauth import OAuthError
+
+        self.config_file.set_config_value(
+            ["mail", "oauth", "outlook", "client_id"], "un-client"
+        )
+
+        def refuse(*a, **k):
+            raise OAuthError("autorisation refusée")
+
+        app = await self._mounted_app()
+        with patch("script.todo.mail.oauth.authorize", refuse):
+            async with app.run_test() as pilot:
+                ecran = await self._ouvrir(pilot, app, "outlook")
+                ecran.query_one("#acc_authorize", Button).scroll_visible()
+                await pilot.pause()
+                await pilot.click("#acc_authorize")
+                await pilot.pause()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
+                self.assertEqual(
+                    ecran.query_one("#acc_password", Input).value, ""
+                )
+                self.assertIn(
+                    "refusée",
+                    str(ecran.query_one("#account_status", Static).content),
+                )
+
+
 class TestVaultScreenFirst(TuiAccountCase):
     """Sans kdbx configuré, `VaultScreen` s'ouvre avant `AccountScreen`, et
     l'annuler annule tout le flux."""

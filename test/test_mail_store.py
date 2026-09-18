@@ -11,12 +11,14 @@ from script.todo.mail.accounts import account_from_preset
 from script.todo.mail.crypto import CryptoError, new_key
 from script.todo.mail.store import (
     EPHEMERAL_PREFIX,
+    SCHEMA_VERSION,
     MessageMeta,
     Store,
     StoreError,
     cache_root,
     folder_dirname,
     resolve_mode,
+    split_message_ids,
     sweep_orphan_ephemeral,
 )
 
@@ -131,6 +133,172 @@ class TestSchema(StoreCase):
         )
         again.open()
         again.close()
+
+
+class TestSchemaV2Migration(StoreCase):
+    """Les fils de discussion (phase 3) ajoutent deux colonnes.
+
+    `CREATE TABLE IF NOT EXISTS` ne touche pas une table déjà présente : un
+    cache créé avant la v2 ne les aurait JAMAIS eues sans migration, et sa
+    `schema_version` — écrite une fois, jamais relue — ne prouvait rien.
+    """
+
+    V2 = {"in_reply_to_hash", "references_hashes"}
+
+    def _colonnes(self):
+        return {
+            row["name"]
+            for row in self.store._db().execute("PRAGMA table_info(messages)")
+        }
+
+    def _index(self):
+        return {
+            row[0]
+            for row in self.store._db().execute(
+                "SELECT name FROM sqlite_master WHERE type='index'"
+            )
+        }
+
+    def _rendre_ancien(self):
+        """Ramène le cache ouvert à sa forme d'avant la v2."""
+        self.store._db().executescript(
+            """
+            CREATE TABLE m2 AS SELECT id, folder_id, uid, date, size, flags,
+              has_body, msgid_hash, sealed_msgid, sealed_from, sealed_to,
+              sealed_subject, sealed_snippet FROM messages;
+            DROP TABLE messages;
+            ALTER TABLE m2 RENAME TO messages;
+            UPDATE meta SET value='1' WHERE key='schema_version';
+            """
+        )
+        self.store._db().commit()
+
+    def _rouvrir(self):
+        self.store.close()
+        self.store = Store(
+            self.account,
+            mode=self.mode,
+            key=self.key,
+            base=Path(self.tmp.name),
+        )
+        self.store.open()
+
+    def test_a_fresh_cache_has_the_columns(self):
+        self.assertTrue(self.V2 <= self._colonnes())
+
+    def test_a_fresh_cache_has_the_index_too(self):
+        """L'index vivait d'abord dans SCHEMA, où il portait sur une colonne
+        que l'ancien cache n'avait pas encore : l'ouverture échouait. Le
+        déplacer après la migration risquait l'inverse — plus d'index sur un
+        cache neuf, qui ne migre rien."""
+        self.assertIn("idx_msg_reply", self._index())
+
+    def test_an_old_cache_gains_the_columns(self):
+        self._rendre_ancien()
+        self.assertFalse(self.V2 <= self._colonnes())
+        self._rouvrir()
+        self.assertTrue(self.V2 <= self._colonnes())
+
+    def test_migrating_loses_no_message(self):
+        folder_id = self.store.upsert_folder("INBOX", "INBOX", "inbox")
+        self.store.upsert_messages(folder_id, [meta(1), meta(2)])
+        self._rendre_ancien()
+        self._rouvrir()
+        apres = self.store.folder_state("INBOX")["id"]
+        self.assertEqual(len(self.store.list_messages(apres)), 2)
+
+    def test_the_version_stops_claiming_one(self):
+        self._rendre_ancien()
+        self._rouvrir()
+        ligne = (
+            self.store._db()
+            .execute("SELECT value FROM meta WHERE key='schema_version'")
+            .fetchone()
+        )
+        # Comparé à la constante et non à un littéral : la version monte à
+        # chaque schéma, et ce test porte sur le fait qu'elle CESSE de
+        # mentir, pas sur sa valeur du jour.
+        self.assertEqual(ligne[0], str(SCHEMA_VERSION))
+
+    def test_migrating_twice_is_harmless(self):
+        self._rendre_ancien()
+        self._rouvrir()
+        self._rouvrir()
+        self.assertTrue(self.V2 <= self._colonnes())
+
+
+class TestThreadHashes(StoreCase):
+    """Le cache stocke des EMPREINTES des Message-ID, jamais les
+    identifiants bruts : en mode chiffré, des identifiants en clair
+    permettraient de reconstituer qui répond à qui."""
+
+    def _rows(self):
+        folder_id = self.store.upsert_folder("INBOX", "INBOX", "inbox")
+        original = meta(1)
+        original.msgid = "<orig@x.ca>"
+        reponse = meta(2)
+        reponse.msgid = "<r1@x.ca>"
+        reponse.in_reply_to = "<orig@x.ca>"
+        reponse.references = "<a@x.ca> <orig@x.ca>"
+        self.store.upsert_messages(folder_id, [original, reponse])
+        return {
+            row["uid"]: row
+            for row in self.store._db().execute(
+                "SELECT uid, msgid_hash, in_reply_to_hash, references_hashes"
+                " FROM messages"
+            )
+        }
+
+    def test_a_reply_points_at_the_message_it_answers(self):
+        rows = self._rows()
+        self.assertEqual(rows[2]["in_reply_to_hash"], rows[1]["msgid_hash"])
+
+    def test_no_raw_message_id_is_stored_in_the_clear(self):
+        rows = self._rows()
+        for colonne in ("in_reply_to_hash", "references_hashes"):
+            self.assertNotIn("orig@x.ca", rows[2][colonne] or "")
+
+    def test_a_message_answering_nobody_stores_null(self):
+        """Le piège : hacher la chaîne vide donnerait à TOUS les messages
+        sans `In-Reply-To` la même empreinte, et ils se répondraient les
+        uns aux autres. NULL ne joint rien."""
+        self.assertIsNone(self._rows()[1]["in_reply_to_hash"])
+
+    def test_every_reference_gets_its_own_hash(self):
+        self.assertEqual(len(self._rows()[2]["references_hashes"].split()), 2)
+
+    def test_a_resync_fills_the_columns_of_an_existing_row(self):
+        """Le SEUL chemin par lequel les messages d'avant la v2 les
+        obtiendront : sans cet UPDATE, une resynchronisation les laisserait
+        vides pour toujours."""
+        folder_id = self.store.upsert_folder("INBOX", "INBOX", "inbox")
+        ancien = meta(1)
+        ancien.msgid = "<orig@x.ca>"
+        self.store.upsert_messages(folder_id, [ancien])
+        ancien.in_reply_to = "<autre@x.ca>"
+        self.store.upsert_messages(folder_id, [ancien])
+        ligne = (
+            self.store._db()
+            .execute("SELECT in_reply_to_hash FROM messages WHERE uid = 1")
+            .fetchone()
+        )
+        self.assertIsNotNone(ligne["in_reply_to_hash"])
+
+
+class TestSplitMessageIds(unittest.TestCase):
+    def test_splits_on_whitespace(self):
+        self.assertEqual(split_message_ids("<a@x> <b@y>"), ["<a@x>", "<b@y>"])
+
+    def test_tolerates_commas(self):
+        self.assertEqual(split_message_ids("<a@x>, <b@y>"), ["<a@x>", "<b@y>"])
+
+    def test_drops_fragments_without_angle_brackets(self):
+        """Un fragment sans chevrons n'est pas un Message-ID : le hacher
+        créerait un lien vers rien."""
+        self.assertEqual(split_message_ids("bruit <a@x> encore"), ["<a@x>"])
+
+    def test_empty_gives_nothing(self):
+        self.assertEqual(split_message_ids(""), [])
 
 
 class TestFolders(StoreCase):
