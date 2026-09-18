@@ -111,8 +111,12 @@ def barre(niveau, echelle):
     return "[" + "#" * n + "." * (10 - n) + "]"
 
 
-def lancer(index_modem):
-    """Ouvre le poste. Renvoie False si Textual n'est pas installé."""
+def lancer(index_modem, numero_initial=""):
+    """Ouvre le poste. Renvoie False si Textual n'est pas installé.
+
+    `numero_initial` pre-remplit le numero sans l'appeler : l'appel reste un
+    geste de l'utilisateur, qui voit ce qui va etre compose.
+    """
     try:
         from textual.app import App, ComposeResult
         from textual.containers import Horizontal, Vertical
@@ -181,7 +185,7 @@ def lancer(index_modem):
 
         def __init__(self):
             super().__init__()
-            self.numero = ""
+            self.numero = numero_initial
             self.pilote = None
             self.vue = "clavier"
             self.entrant_vu = ""
@@ -384,8 +388,7 @@ def lancer(index_modem):
                 return
             caractere = event.character or ""
             if caractere in TOUCHES_FRAPPEES:
-                self.numero += caractere
-                self._peindre()
+                self._touche(caractere)
                 event.stop()
             elif event.key == "enter":
                 self._demander_appel()
@@ -539,6 +542,30 @@ def lancer(index_modem):
 
         # ----- actions ---------------------------------------------------
 
+        def _en_conversation(self):
+            """Une conversation est-elle etablie ?
+
+            Meme regle que pour les boutons : en veille le binaire tourne sans
+            conversation, sa seule presence ne suffit donc pas.
+            """
+            return self.pilote is not None and bool(
+                self.dernier_etat.get("en_ligne", True))
+
+        def _touche(self, caractere):
+            """Une touche du clavier, frappee ou cliquee.
+
+            Pendant une conversation elle part AUSSI en tonalite, comme sur
+            tout telephone : c'est ce qui permet de piloter une messagerie. Elle
+            reste ajoutee au numero, pour qu'« Ajouter un appel » garde de quoi
+            composer ; le prix est que le correspondant entend les chiffres
+            d'un second numero, ce qu'un telephone ordinaire fait aussi.
+            """
+            if self._en_conversation():
+                self.pilote.touches(caractere)
+                self._dire("♪  " + t("modem_tui_dtmf") + " " + caractere)
+            self.numero += caractere
+            self._peindre()
+
         def action_effacer(self):
             self.numero = self.numero[:-1]
             self._peindre()
@@ -546,8 +573,7 @@ def lancer(index_modem):
         def on_button_pressed(self, event):
             bouton = event.button.id or ""
             if bouton.startswith("k"):
-                self.numero += chr(int(bouton[1:]))
-                self._peindre()
+                self._touche(chr(int(bouton[1:])))
             elif bouton == "appeler":
                 self._demander_appel()
             elif bouton == "raccrocher":

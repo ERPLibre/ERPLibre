@@ -137,3 +137,28 @@ def age_lisible(secondes: int) -> str:
     if secondes < 5400:
         return "%s min" % round(secondes / 60)
     return "%s h" % round(secondes / 3600)
+
+
+#: Numero de la messagerie, tel que la SIM le declare.
+COMMANDE_NUMERO = "AT+CSVM?"
+
+_MOTIF_CSVM = re.compile(r'\+CSVM:\s*(\d+),\s*"([^"]*)"')
+
+
+def numero_messagerie(commande_at=None) -> tuple:
+    """Rend (numero, explication) ; numero vide quand il est inconnu.
+
+    Le numero est celui que l'operateur a inscrit sur la SIM, et non une
+    valeur saisie : c'est la seule qui mene a coup sur a SA messagerie.
+    """
+    if commande_at is None:
+        from script.todo.modem import device
+
+        commande_at = device.commande_at
+    ok, texte = commande_at([COMMANDE_NUMERO])
+    if MARQUE_PORT_TENU in (texte or ""):
+        return "", "port tenu par le service erplibre-sip-go : arretez-le d'abord"
+    trouve = _MOTIF_CSVM.search(texte or "")
+    if not trouve or trouve.group(1) == "0" or not trouve.group(2):
+        return "", "aucun numero de messagerie inscrit sur la SIM"
+    return trouve.group(2), ""

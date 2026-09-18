@@ -151,6 +151,42 @@ class TestLecture(unittest.TestCase):
         self.assertEqual(mv.age_lisible(7200), "2 h")
 
 
+class TestNumeroDeMessagerie(unittest.TestCase):
+    def test_le_numero_inscrit_sur_la_sim_est_rendu(self):
+        rep = 'AT+CSVM?\n+CSVM: 1,"+15145550199",145\n\nOK\n'
+        self.assertEqual(mv.numero_messagerie(lambda _c: (True, rep)),
+                         ("+15145550199", ""))
+
+    def test_une_messagerie_desactivee_n_a_pas_de_numero(self):
+        numero, raison = mv.numero_messagerie(
+            lambda _c: (True, '+CSVM: 0,"",129\nOK'))
+        self.assertEqual(numero, "")
+        self.assertIn("aucun numero", raison)
+
+    def test_port_tenu_dit_quoi_arreter(self):
+        """Le clavier aurait besoin du meme port : le dire avant de l'ouvrir."""
+        numero, raison = mv.numero_messagerie(
+            lambda _c: (False, "PORT_TENU : tenu"))
+        self.assertEqual(numero, "")
+        self.assertIn("erplibre-sip-go", raison)
+
+
+class TestTouchesDuPilote(unittest.TestCase):
+    """Le client ecarte ce qu'un clavier telephonique n'a pas : le binaire
+    refuserait la sequence entiere pour un seul caractere de trop."""
+
+    def test_seules_les_touches_valides_partent(self):
+        from script.todo.modem.sipgo import PiloteAppel
+
+        envoye = []
+        pilote = PiloteAppel.__new__(PiloteAppel)
+        pilote.commander = lambda ligne: envoye.append(ligne) or True
+        self.assertTrue(pilote.touches("1 2x#a"))
+        self.assertEqual(envoye, ["touches 12#A"])
+        self.assertFalse(pilote.touches("xyz"))
+        self.assertEqual(len(envoye), 1)
+
+
 class TestVerrouDuPort(unittest.TestCase):
     """L'outil AT de la TUI prend le MEME verrou que le service.
 

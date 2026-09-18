@@ -170,5 +170,44 @@ class TestAnnonce(unittest.TestCase):
         self.assertIn("introuvable", plainte)
 
 
+class TestEcouteOperateur(unittest.TestCase):
+    """L'ecoute d'un message recupere : jouer, puis proposer d'effacer."""
+
+    def test_ecouter_puis_effacer(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.modem import menu
+
+        message = {"fichier": "/tmp/m.wav", "recupere_le": "2026-09-18T01:48:00",
+                   "duree_secondes": 7.1, "enregistrement_complet": "/tmp/appel.wav"}
+        effaces = []
+        sortie = io.StringIO()
+        with mock.patch.object(menu.rep_mod, "jouer", return_value=(True, "")) as jouer, \
+                mock.patch("script.todo.modem.recuperation.effacer_message",
+                           side_effect=effaces.append), \
+                mock.patch("builtins.input", side_effect=["1", "o"]), \
+                redirect_stdout(sortie):
+            menu._repondeur_messages_recuperes([message])
+        jouer.assert_called_once_with("/tmp/m.wav")
+        self.assertEqual(effaces, [message])
+        self.assertIn("/tmp/appel.wav", sortie.getvalue())
+
+    def test_rien_n_est_efface_sans_reponse_affirmative(self):
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.modem import menu
+
+        effaces = []
+        with mock.patch.object(menu.rep_mod, "jouer", return_value=(True, "")), \
+                mock.patch("script.todo.modem.recuperation.effacer_message",
+                           side_effect=effaces.append), \
+                mock.patch("builtins.input", side_effect=["1", ""]), \
+                redirect_stdout(io.StringIO()):
+            menu._repondeur_messages_recuperes([{"fichier": "/tmp/m.wav"}])
+        self.assertEqual(effaces, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -323,6 +323,52 @@ class PosteTelephonique(unittest.TestCase):
 
         asyncio.run(essai())
 
+    def test_en_ligne_les_touches_partent_en_tonalites(self):
+        """Une messagerie d'operateur se pilote au clavier : mot de passe,
+        « 1 pour ecouter ». Hors appel, un chiffre ne fait que composer."""
+        app = construire()
+
+        async def essai():
+            async with app.run_test(size=TAILLE) as pilote:
+                await pilote.pause()
+                await pilote.press("1")
+                await pilote.pause()
+                self.assertEqual(app.numero, "1")
+
+                app.pilote = PiloteInerte()
+                app._maj_etat({"type": "etat", "en_ligne": True,
+                               "appels_voix": 1, "echelle_niveau": 8000})
+                await pilote.pause()
+                await pilote.press("4")
+                await pilote.click("#k35")
+                await pilote.pause()
+                envoyees = [a[0] for nom, a in app.pilote.recu if nom == "touches"]
+                self.assertEqual(envoyees, ["4", "#"])
+                # Le numero garde les chiffres, pour « Ajouter un appel ».
+                self.assertEqual(app.numero, "14#")
+
+        asyncio.run(essai())
+
+    def test_le_numero_initial_est_pose_sans_appeler(self):
+        """L'appel reste un geste : on voit le numero avant de composer."""
+        capture = {}
+        vrai_run = App.run
+
+        def faux_run(self, *a, **k):
+            capture["app"] = self
+            raise SystemExit
+
+        App.run = faux_run
+        try:
+            tui_mod.lancer(0, numero_initial="+15145550142")
+        except SystemExit:
+            pass
+        finally:
+            App.run = vrai_run
+        app = capture["app"]
+        self.assertEqual(app.numero, "+15145550142")
+        self.assertIsNone(app.pilote)
+
     def test_les_chiffres_n_appartiennent_pas_aux_autres_vues(self):
         """Ailleurs, un chiffre appartient au widget qui a le focus.
 

@@ -1872,6 +1872,168 @@ TRANSLATIONS = {
         "fr": '📥 Lire les SMS',
         "en": '📥 Read SMS messages',
     },
+    'modem_tui_dtmf': {
+        "fr": 'touche envoyee :',
+        "en": 'tone sent:',
+    },
+    'modem_ans_erplibre': {
+        "fr": '📼 Repondeur ERPLibre',
+        "en": '📼 ERPLibre answering machine',
+    },
+    'modem_ans_operator': {
+        "fr": '📞 Boite vocale de l\'operateur',
+        "en": '📞 Operator voicemail',
+    },
+    'modem_ans_count': {
+        "fr": '%s message(s)',
+        "en": '%s message(s)',
+    },
+    'modem_ans_operator_how': {
+        "fr": ('Le clavier s\'ouvre sur la messagerie (%s). Appuyez sur '
+               'Appeler ; une fois en ligne, les touches partent en tonalites '
+               'pour le mot de passe et les choix du menu.'),
+        "en": ('The dialer opens on the voicemail (%s). Press Call; once '
+               'connected, keys are sent as tones for the password and the '
+               'menu choices.'),
+    },
+    'modem_ans_pin': {
+        "fr": '🔑 Code de la boite vocale de l\'operateur',
+        "en": '🔑 Operator voicemail code',
+    },
+    'modem_ans_pin_set': {
+        "fr": 'defini dans le coffre',
+        "en": 'stored in the vault',
+    },
+    'modem_ans_pin_unset': {
+        "fr": 'non defini',
+        "en": 'not set',
+    },
+    'modem_ans_pin_locked': {
+        "fr": 'coffre ferme',
+        "en": 'vault locked',
+    },
+    'modem_ans_pin_why': {
+        "fr": ('Le code sert a recuperer automatiquement les messages de '
+               'l\'operateur. Il est range dans le coffre du CLI, comme les '
+               'mots de passe courriel, et n\'est jamais affiche.'),
+        "en": ('The code is used to fetch operator messages automatically. It '
+               'is kept in the CLI vault, like mail passwords, and is never '
+               'displayed.'),
+    },
+    'modem_ans_pin_enter': {
+        "fr": 'Saisir ou remplacer le code',
+        "en": 'Enter or replace the code',
+    },
+    'modem_ans_pin_delete': {
+        "fr": 'Effacer le code du coffre',
+        "en": 'Delete the code from the vault',
+    },
+    'modem_ans_pin_ask': {
+        "fr": 'Code de la boite vocale : ',
+        "en": 'Voicemail code: ',
+    },
+    'modem_ans_pin_confirm': {
+        "fr": 'Confirmez le code : ',
+        "en": 'Confirm the code: ',
+    },
+    'modem_ans_pin_mismatch': {
+        "fr": 'Les deux saisies different : rien n\'est enregistre.',
+        "en": 'The two entries differ: nothing saved.',
+    },
+    'modem_ans_pin_saved': {
+        "fr": 'Code enregistre dans le coffre (%s).',
+        "en": 'Code saved in the vault (%s).',
+    },
+    'modem_ans_pin_keyring': {
+        "fr": 'trousseau du systeme',
+        "en": 'system keyring',
+    },
+    'modem_ans_pin_deleted': {
+        "fr": 'Code efface du coffre.',
+        "en": 'Code deleted from the vault.',
+    },
+    'modem_ans_fetched': {
+        "fr": '💾 Messages recuperes de l\'operateur',
+        "en": '💾 Messages fetched from the operator',
+    },
+    'modem_ans_full_kept': {
+        "fr": 'L\'enregistrement complet de l\'appel est garde : %s',
+        "en": 'The full call recording is kept: %s',
+    },
+    'modem_ans_fetch': {
+        "fr": '📥 Recuperer les messages de l\'operateur',
+        "en": '📥 Fetch operator messages',
+    },
+    'modem_ans_fetch_reperage': {
+        "fr": ('Reperage : appel de la messagerie, code puis #, puis 1, et '
+               'ecoute de 90 s. Rien n\'est efface. Le service erplibre-sip-go '
+               'doit etre arrete.'),
+        "en": ('Survey: voicemail call, code then #, then 1, and 90 s of '
+               'listening. Nothing is deleted. The erplibre-sip-go service '
+               'must be stopped.'),
+    },
+    'modem_ans_fetch_silence_risk': {
+        "fr": ('Limite : le 7 part apres %s s de silence, pour attendre la fin du '
+               'menu. Si l\'appelant a laisse un silence de plus de %s s dans son '
+               'message, le 7 partira au milieu : le debut est enregistre, mais le '
+               'message est EFFACE chez l\'operateur et la suite est perdue. En cas '
+               'de doute, utilisez le reperage, qui n\'efface rien.'),
+        "en": ('Limit: key 7 is sent after %s s of silence, to wait for the end of '
+               'the menu. If the caller left a silence longer than %s s in the '
+               'message, 7 will be sent mid-message: the beginning is recorded, but '
+               'the message is DELETED at the operator and the rest is lost. When '
+               'in doubt, use the survey, which deletes nothing.'),
+    },
+    'modem_ans_fetch_one': {
+        "fr": 'Recuperer un message, puis l\'effacer chez l\'operateur',
+        "en": 'Fetch one message, then delete it at the operator',
+    },
+    'modem_ans_fetch_survey': {
+        "fr": 'Reperage : ecouter sans rien effacer',
+        "en": 'Survey: listen without deleting anything',
+    },
+    'modem_ans_fetch_no_flag': {
+        "fr": 'La SIM ne signale aucun message en attente.',
+        "en": 'The SIM reports no waiting message.',
+    },
+    'modem_ans_fetch_delete_warn': {
+        "fr": ('Le message sera enregistre, PUIS efface chez l\'operateur (touche '
+               '7). L\'effacement n\'a lieu que si l\'annonce, le message et le '
+               'menu ont ete entendus ; sinon l\'appel s\'arrete sans effacer.'),
+        "en": ('The message will be recorded, THEN deleted at the operator (key '
+               '7). Deletion only happens if the announcement, the message and '
+               'the menu were heard; otherwise the call stops without deleting.'),
+    },
+    'modem_ans_fetch_message': {
+        "fr": 'Message extrait : %s',
+        "en": 'Extracted message: %s',
+    },
+    'modem_ans_fetch_no_cut': {
+        "fr": ('Decoupe non reconnue : l\'enregistrement complet ci-dessus est '
+               'la copie a garder.'),
+        "en": ('Cut not recognised: the full recording above is the copy to '
+               'keep.'),
+    },
+    'modem_ans_fetch_running': {
+        "fr": 'Appel en cours, jusqu\'a deux minutes et demie...',
+        "en": 'Call in progress, up to two and a half minutes...',
+    },
+    'modem_ans_fetch_file': {
+        "fr": 'Enregistrement : %s',
+        "en": 'Recording: %s',
+    },
+    'modem_ans_fetch_no_code': {
+        "fr": 'Aucun code de messagerie : saisissez-le d\'abord par [6].',
+        "en": 'No voicemail code: enter it first with [6].',
+    },
+    'modem_ans_fetch_no_port': {
+        "fr": 'Port AT reserve absent : posez la regle udev du modem.',
+        "en": 'Reserved AT port missing: install the modem udev rule.',
+    },
+    'modem_ans_fetch_no_binary': {
+        "fr": 'Service introuvable : %s',
+        "en": 'Service not found: %s',
+    },
     # Boite vocale de l'operateur
     'modem_voicemail': {
         "fr": 'Boite vocale',

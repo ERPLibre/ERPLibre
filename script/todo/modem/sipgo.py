@@ -442,6 +442,18 @@ class PiloteAppel:
         """Ajoute un second appel. Le reseau met le premier en attente."""
         return self.commander(f"composer {numero}")
 
+    def touches(self, touches):
+        """Joue des tonalites DTMF sur l'appel en cours.
+
+        C'est ainsi qu'on pilote une messagerie d'operateur : mot de passe,
+        « 1 pour ecouter ». Les caracteres hors clavier telephonique sont
+        ecartes ICI, avant de partir : le binaire les refuserait en bloc.
+        """
+        propres = "".join(c for c in str(touches).upper() if c in "0123456789*#ABCD")
+        if not propres:
+            return False
+        return self.commander("touches " + propres)
+
     def fusionner(self):
         """Reunit l'appel actif et celui en attente, DANS le reseau."""
         return self.commander("fusionner")

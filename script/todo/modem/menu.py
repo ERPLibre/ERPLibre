@@ -184,7 +184,7 @@ def prompt_execute_modem(todo) -> None:
         elif status == "16":
             _essai_combine()
         elif status == "18":
-            _repondeur()
+            _repondeur(todo)
         else:
             print(t("Command not found !"))
 
@@ -321,7 +321,7 @@ def _etat_repondeur() -> str:
     return etat
 
 
-def _repondeur():
+def _repondeur(todo=None):
     while True:
         reglages = rep_mod.lire()
         annonce = reglages.get("annonce") or "aucune"
@@ -333,6 +333,8 @@ def _repondeur():
 [3] {t("modem_ans_greeting_play")}
 [4] {t("modem_ans_rings")}
 [5] {t("modem_ans_toggle")}
+[6] {t("modem_ans_pin")} — {_etat_code_messagerie(todo)}
+[7] {t("modem_ans_fetch")}
 [0] {t("Back")}"""
         choix = click.prompt(help_info)
         print()
@@ -348,11 +350,236 @@ def _repondeur():
             _repondeur_sonneries()
         elif choix == "5":
             _repondeur_basculer()
+        elif choix == "6":
+            _repondeur_code(todo)
+        elif choix == "7":
+            _repondeur_recuperer(todo)
         else:
             print(t("Command not found !"))
 
 
+def _etat_code_messagerie(todo) -> str:
+    """« defini » ou « non defini », et JAMAIS le code lui-meme.
+
+    Ouvrir le kdbx peut demander son mot de passe : on ne le fait pas pour un
+    simple affichage, seulement quand le coffre est deja ouvert.
+    """
+    from script.todo.modem import code_messagerie as code_mod
+
+    manager = getattr(todo, "kdbx_manager", None)
+    if manager is not None and not getattr(manager, "_kdbx", None):
+        return t("modem_ans_pin_locked")
+    try:
+        store = code_mod.coffre(todo)
+    except Exception:
+        return t("modem_ans_pin_unset")
+    return t("modem_ans_pin_set") if code_mod.est_defini(store) else t(
+        "modem_ans_pin_unset")
+
+
+def _repondeur_code(todo):
+    """Saisir, remplacer ou effacer le code de la boite vocale.
+
+    Saisi deux fois, sans echo : une faute de frappe ne se voit pas a l'ecran,
+    et un code faux ferait echouer chaque recuperation sans dire pourquoi.
+    """
+    import getpass
+
+    from script.todo.mail.secrets import SecretError
+    from script.todo.modem import code_messagerie as code_mod
+
+    print("  " + t("modem_ans_pin_why"))
+    print(f"  [1] {t('modem_ans_pin_enter')}")
+    print(f"  [2] {t('modem_ans_pin_delete')}")
+    print(f"  [0] {t('Back')}")
+    choix = input("  > ").strip()
+    try:
+        if choix == "1" and todo is not None and not code_mod.kdbx_configure(todo):
+            # Meme parcours que le courriel : proposer de creer ou de choisir
+            # un fichier KeePass. Refuse, le trousseau systeme prend le relais
+            # s'il chiffre — sinon rien n'est enregistre.
+            from script.todo.mail.menu import _ensure_kdbx
+
+            _ensure_kdbx(todo)
+        store = code_mod.coffre(todo)
+        if choix == "1":
+            code = getpass.getpass("  " + t("modem_ans_pin_ask"))
+            if not code:
+                return
+            if getpass.getpass("  " + t("modem_ans_pin_confirm")) != code:
+                print("  " + t("modem_ans_pin_mismatch"))
+                return
+            ref = code_mod.enregistrer(store, code)
+            print("  " + t("modem_ans_pin_saved") % (
+                "KeePass" if ref.startswith("kdbx:") else t("modem_ans_pin_keyring")))
+        elif choix == "2":
+            code_mod.effacer(store)
+            print("  " + t("modem_ans_pin_deleted"))
+    except code_mod.CodeInvalide as exc:
+        print("  " + str(exc))
+    except SecretError as exc:
+        print("  " + str(exc))
+
+
+def _repondeur_recuperer(todo):
+    """Appeler la messagerie de l'operateur et jouer une recette.
+
+    Pour l'instant, le seul mode est le REPERAGE : code, `1`, puis ecoute sans
+    rien effacer. Il mesure ou finit un message et combien dure le silence du
+    menu qui suit, ce qu'il faut connaitre avant de confier le `7` — qui
+    efface pour de bon — a une machine.
+    """
+    import os
+
+    from script.todo.mail.secrets import SecretError
+    from script.todo.modem import code_messagerie as code_mod
+    from script.todo.modem import recuperation as rec_mod
+
+    if not device_mod.port_reserve():
+        print("  " + t("modem_ans_fetch_no_port"))
+        return
+    numero, raison = mv_mod.numero_messagerie()
+    if not numero:
+        print("  " + raison)
+        return
+    try:
+        code = code_mod.lire(code_mod.coffre(todo))
+    except SecretError as exc:
+        print("  " + str(exc))
+        return
+    if not code:
+        print("  " + t("modem_ans_fetch_no_code"))
+        return
+    binaire = os.path.expanduser("~/.local/bin/erplibre-sip-go")
+    if not os.path.exists(binaire):
+        print("  " + t("modem_ans_fetch_no_binary") % binaire)
+        return
+
+    # Le risque AVANT le choix, et non seulement a la confirmation : c'est
+    # la limite de l'automatisation, et elle decide de l'option a prendre.
+    silence = rec_mod.silence_avant_effacement_s(
+        rec_mod.charger_recette("recuperer_un_message"))
+    if silence is not None:
+        print("  ⚠ " + t("modem_ans_fetch_silence_risk") % (
+            str(silence).replace(".", ","), str(silence).replace(".", ",")))
+        print()
+    print(f"  [1] {t('modem_ans_fetch_one')}")
+    print(f"  [2] {t('modem_ans_fetch_survey')}")
+    print(f"  [0] {t('Back')}")
+    choix = input("  > ").strip()
+    if choix not in ("1", "2"):
+        return
+    recette = "recuperer_un_message" if choix == "1" else "reperage_code_ecoute"
+    if choix == "1":
+        if mv_mod.lire()["etat"] != mv_mod.ATTENTE:
+            print("  " + t("modem_ans_fetch_no_flag"))
+            if not click.confirm("  " + t("modem_continue"), default=False):
+                return
+        print("  " + t("modem_ans_fetch_delete_warn"))
+        if not click.confirm("  " + t("modem_continue"), default=False):
+            return
+    else:
+        print("  " + t("modem_ans_fetch_reperage"))
+        if not click.confirm("  " + t("modem_continue"), default=True):
+            return
+    print("  " + t("modem_ans_fetch_running"))
+    bilan, wav = rec_mod.jouer(recette, numero, code, binaire, device_mod.PORT_RESERVE)
+    del code
+    for ligne in rec_mod.resume(bilan):
+        print("  " + ligne)
+    if wav and os.path.exists(wav):
+        print("  " + t("modem_ans_fetch_file") % wav)
+    if choix == "1" and wav:
+        message = rec_mod.extraire_message(
+            wav, bilan, os.path.join(rec_mod.racine(), rec_mod.DOSSIER_RELATIF, "messages"))
+        if message:
+            print("  " + t("modem_ans_fetch_message") % message)
+        else:
+            print("  " + t("modem_ans_fetch_no_cut"))
+
+
 def _repondeur_messages():
+    """Deux repondeurs, deux facons d'ecouter : on choisit d'abord lequel.
+
+    Le repondeur ERPLibre garde des fichiers, qui se listent et se jouent. La
+    boite de l'operateur ne garde rien ici : elle s'ecoute en l'appelant. Les
+    montrer cote a cote, chacun avec son etat, dit ou regarder avant d'ouvrir.
+    """
+    nombre = len(rep_mod.lister())
+    print(f"  [1] {t('modem_ans_erplibre')} — "
+          + (t("modem_ans_count") % nombre if nombre else t("modem_ans_none")))
+    print(f"  [2] {t('modem_ans_operator')} — {_etat_messagerie()}")
+    from script.todo.modem import recuperation as rec_mod
+
+    recuperes = rec_mod.lister_messages()
+    print(f"  [3] {t('modem_ans_fetched')} — "
+          + (t("modem_ans_count") % len(recuperes) if recuperes
+             else t("modem_ans_none")))
+    print(f"  [0] {t('Back')}")
+    choix = input("  > ").strip()
+    if choix == "1":
+        _repondeur_messages_erplibre()
+    elif choix == "2":
+        _repondeur_messagerie_operateur()
+    elif choix == "3":
+        _repondeur_messages_recuperes(recuperes)
+
+
+def _repondeur_messages_recuperes(messages):
+    """Ecouter les messages deja recuperes, puis proposer de les effacer.
+
+    Ceux-ci sont DEJA effaces chez l'operateur : le fichier local en est la
+    seule copie, avec l'enregistrement complet de l'appel qui le contient.
+    L'effacement est donc propose apres l'ecoute, une fois qu'on sait si le
+    message servait.
+    """
+    from script.todo.modem import recuperation as rec_mod
+
+    if not messages:
+        print("  " + t("modem_ans_none"))
+        return
+    for index, message in enumerate(messages, start=1):
+        print("  [%d] %s  %s s" % (
+            index,
+            (message.get("recupere_le") or "")[:19].replace("T", " "),
+            message.get("duree_secondes") or "?"))
+    print()
+    choix = input("  " + t("modem_ans_play") + " > ").strip()
+    if not choix.isdigit() or not 1 <= int(choix) <= len(messages):
+        return
+    message = messages[int(choix) - 1]
+    succes, plainte = rep_mod.jouer(message.get("fichier") or "")
+    if not succes:
+        print("  " + plainte)
+        return
+    if input("  " + t("modem_ans_delete") + " > ").strip().lower() in ("o", "y"):
+        rec_mod.effacer_message(message)
+        print("  " + t("modem_ans_deleted"))
+        print("  " + t("modem_ans_full_kept") % (message.get("enregistrement_complet") or "?"))
+
+
+def _repondeur_messagerie_operateur():
+    """Ouvre le clavier sur le numero de la messagerie, sans l'appeler.
+
+    L'appel reste un geste : l'utilisateur voit le numero avant de composer.
+    Une fois en ligne, les touches du clavier partent en tonalites, ce qui
+    permet de donner le mot de passe et de naviguer dans la messagerie.
+    """
+    index = _index_ou_plainte()
+    if index is None:
+        return
+    numero, raison = mv_mod.numero_messagerie()
+    if not numero:
+        print("  " + raison)
+        return
+    print("  " + t("modem_ans_operator_how") % numero)
+    from script.todo.modem import tui as tui_mod
+
+    if not tui_mod.lancer(index, numero_initial=numero):
+        print("  " + t("modem_tui_missing"))
+
+
+def _repondeur_messages_erplibre():
     """Liste, ecoute, puis propose d'effacer ce qu'on vient d'entendre.
 
     L'effacement est propose APRES l'ecoute et non a cote : c'est le moment ou
