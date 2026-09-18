@@ -106,10 +106,32 @@ func Key(method, rawURL string) string {
 // Six, et pas moins : un chemin Debian en porte exactement six —
 // « debian/pool/main/p/<paquet>/<fichier>.deb » — si bien que cinq
 // effaceraient le segment de distribution et donneraient la même clé au
-// paquet d'Ubuntu, qui porte le même nom pour d'autres octets. Relevé sur un
-// journal d'accès de 7099 noms livrés : six réunit 1021 des 1124 noms vus
-// sous plusieurs chemins, sans confondre aucun contenu ; cinq en confond 38.
+// paquet d'Ubuntu, qui porte le même nom pour d'autres octets.
 const SegmentsDeCle = 6
+
+// SegmentsDeCleArch : les paquets d'Arch en demandent moins.
+//
+// Un miroir d'Arch sert « archlinux/core/os/x86_64/<paquet> » là où un autre
+// sert « core/os/x86_64/<paquet> » : quatre et cinq segments, donc plus COURTS
+// que la borne commune, qui les garde alors entiers et en fait deux clés.
+//
+// Quatre, et non moins : la clé garde ainsi le nom du dépôt — « core »,
+// « extra » — et ne perd que le segment décoratif du miroir. Deux ou trois
+// réuniraient les mêmes copies, mais effaceraient cette distinction sans
+// nécessité.
+//
+// Le cas est sûr là où celui de Debian ne l'est pas : Ubuntu reprend les
+// paquets de Debian en gardant leur version, si bien qu'un même nom « .deb »
+// porte deux contenus selon la distribution. Un espace de noms partagé exige
+// la borne haute ; celui d'Arch n'appartient qu'à lui.
+const SegmentsDeCleArch = 4
+
+// estPaquetArch reconnaît un paquet de la famille pacman à son nom.
+func estPaquetArch(nom string) bool {
+	nom = strings.ToLower(nom)
+	return strings.HasSuffix(nom, ".pkg.tar.zst") ||
+		strings.HasSuffix(nom, ".pkg.tar.xz")
+}
 
 func KeySansHote(method string, u *url.URL) string {
 	segments := make([]string, 0, SegmentsDeCle+2)
@@ -120,8 +142,12 @@ func KeySansHote(method string, u *url.URL) string {
 			segments = append(segments, s)
 		}
 	}
-	if len(segments) > SegmentsDeCle {
-		segments = segments[len(segments)-SegmentsDeCle:]
+	borne := SegmentsDeCle
+	if len(segments) > 0 && estPaquetArch(segments[len(segments)-1]) {
+		borne = SegmentsDeCleArch
+	}
+	if len(segments) > borne {
+		segments = segments[len(segments)-borne:]
 	}
 	chemin := strings.Join(segments, "/")
 	if u.RawQuery != "" {
