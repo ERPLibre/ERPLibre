@@ -141,6 +141,59 @@ class TestDecoupe(unittest.TestCase):
         fondre au-dela collerait les deux."""
         self.assertLess(rec.PONT_DECOUPE_MS, 800)
 
+    def test_l_annonce_collee_au_message_se_coupe_sur_sa_duree(self):
+        """L'operateur n'y laisse parfois aucun blanc mesurable. La duree de
+        l'annonce, stable d'un appel a l'autre, donne alors la coupure."""
+        bilan = {
+            "evenements": [{"ms": 23600, "quoi": "étape 4 : touches 1"}],
+            # annonce + message colles (10,9 s), puis le menu (29,9 s).
+            "courbe_crete_100ms": courbe(
+                (False, 25.5), (True, 10.9), (False, 0.7), (True, 29.9),
+                (False, 6.2), (True, 18.2)),
+        }
+        debut, fin, methode = rec.bornes_et_methode(bilan)
+        self.assertEqual(methode, "duree de l'annonce")
+        # Le message occupe la fin du bloc : apres les 7,3 s d'annonce.
+        self.assertGreaterEqual(debut, 25500 + 7300 - 1000)
+        self.assertLessEqual(fin, 36400 + 500)
+
+    def test_le_message_colle_au_menu_se_coupe_sur_la_duree_du_menu(self):
+        """L'autre fusion : le menu enchaine sans blanc apres le message."""
+        bilan = {
+            "evenements": [{"ms": 24000, "quoi": "étape 4 : touches 1"}],
+            # annonce (7,3 s), puis message + menu colles (34,0 s).
+            "courbe_crete_100ms": courbe(
+                (False, 25.8), (True, 7.3), (False, 1.0), (True, 34.0),
+                (False, 6.3), (True, 8.5)),
+        }
+        debut, fin, methode = rec.bornes_et_methode(bilan)
+        self.assertEqual(methode, "duree du menu")
+        # Le menu occupe les 29,9 dernieres secondes du bloc.
+        self.assertLessEqual(fin, 68100 - 29900 + 500)
+        self.assertGreaterEqual(debut, 33100 - 300)
+
+    def test_la_methode_est_notee_a_cote_du_message(self):
+        """Savoir si la coupure vient d'un silence ou d'une duree estimee
+        change ce qu'on croit de l'extrait."""
+        import wave
+
+        bilan = {
+            "evenements": [{"ms": 3300, "quoi": "étape 4 : touches 1"}],
+            "courbe_crete_100ms": courbe(
+                (False, 6.3), (True, 7.3), (False, 1.2), (True, 2.8),
+                (False, 1.8), (True, 29.8), (False, 5.5)),
+        }
+        with tempfile.TemporaryDirectory() as dossier:
+            source = os.path.join(dossier, "appel.wav")
+            with wave.open(source, "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(8000)
+                w.writeframes(b"\x00\x00" * 8000 * 60)
+            sortie = rec.extraire_message(source, bilan, os.path.join(dossier, "m"))
+            with open(os.path.splitext(sortie)[0] + ".json", encoding="utf-8") as flux:
+                self.assertEqual(json.load(flux)["decoupe"], "silence")
+
     def test_une_structure_inconnue_ne_se_decoupe_pas(self):
         """Mieux vaut garder l'enregistrement complet que decouper au hasard."""
         b = self.bilan()

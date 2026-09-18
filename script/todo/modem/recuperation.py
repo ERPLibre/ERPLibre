@@ -57,6 +57,16 @@ SILENCE_MENU_MS = 4000
 #: collerait les deux, et il n'y aurait plus de quoi les distinguer.
 PONT_DECOUPE_MS = 600
 
+#: Durees mesurees sur une messagerie reelle, stables d'un appel a l'autre :
+#: l'annonce (date et numero de l'appelant) et le menu qui suit le message.
+#: Elles servent quand le silence ne separe pas deux parties : l'operateur
+#: enchaine parfois sans laisser de blanc mesurable.
+DUREE_ANNONCE_MS = 7300
+DUREE_MENU_MS = 29900
+
+#: Tolerance autour de ces durees. Au-dela, la plage contient autre chose.
+TOLERANCE_DUREE = 0.10
+
 #: Ce qui commence moins de ce delai apres la touche est la fin de la phrase
 #: en cours, et non la reponse a la touche.
 REPRISE_APRES_TOUCHE_MS = 300
@@ -198,6 +208,12 @@ def depart_ms(index: int, pas: int) -> int:
 
 
 def bornes_du_message(bilan: dict):
+    """Les bornes seules, sans la methode. Voir `bornes_et_methode`."""
+    trouve = bornes_et_methode(bilan)
+    return (trouve[0], trouve[1]) if trouve else None
+
+
+def bornes_et_methode(bilan: dict):
     """Rend (debut_ms, fin_ms) du message dans l'enregistrement, ou None.
 
     La messagerie joue, apres le « 1 » : une annonce (date, numero de
@@ -230,13 +246,32 @@ def bornes_du_message(bilan: dict):
         if suivant - fin >= SILENCE_MENU_MS:
             menu = i
             break
-    if menu is None or menu < 2:
+    if menu is None or menu < 1:
         return None
-    annonce_fin = plages[0][1]
-    menu_debut = plages[menu][0]
+    if menu >= 2:
+        # Le cas franc : l'annonce, le message et le menu sont separes par
+        # des silences mesurables.
+        annonce_fin, menu_debut, methode = plages[0][1], plages[menu][0], "silence"
+    elif _tient_dans(plages[1], DUREE_MENU_MS):
+        # L'annonce et le message se sont colles : leur silence commun est
+        # plus court que ce qu'on sait mesurer. La duree de l'annonce, stable
+        # chez cet operateur, donne la coupure.
+        annonce_fin = plages[0][0] + DUREE_ANNONCE_MS
+        menu_debut, methode = plages[0][1], "duree de l'annonce"
+    else:
+        # Le message s'est colle au MENU : c'est la duree du menu, tout aussi
+        # stable, qui dit ou le message s'arrete.
+        annonce_fin = plages[0][1]
+        menu_debut, methode = plages[1][1] - DUREE_MENU_MS, "duree du menu"
     debut = max(0, annonce_fin - MARGE_DECOUPE_MS + AJUSTEMENT_DEBUT_MS)
     fin = menu_debut + MARGE_DECOUPE_MS + AJUSTEMENT_FIN_MS
-    return (debut, fin) if fin > debut else None
+    return (debut, fin, methode) if fin > debut else None
+
+
+def _tient_dans(plage, duree_ms):
+    """La plage dure-t-elle a peu pres `duree_ms` ?"""
+    mesure = plage[1] - plage[0]
+    return abs(mesure - duree_ms) <= duree_ms * TOLERANCE_DUREE
 
 
 def extraire_message(wav: str, bilan: dict, dossier: str, maintenant=None):
@@ -245,10 +280,10 @@ def extraire_message(wav: str, bilan: dict, dossier: str, maintenant=None):
     Rend le chemin ecrit, ou "" quand la structure n'a pas ete reconnue ;
     l'enregistrement complet reste alors la seule copie, et il est garde.
     """
-    bornes = bornes_du_message(bilan)
-    if not bornes or not os.path.exists(wav):
+    trouve = bornes_et_methode(bilan)
+    if not trouve or not os.path.exists(wav):
         return ""
-    debut, fin = bornes
+    debut, fin, methode = trouve
     os.makedirs(dossier, mode=0o700, exist_ok=True)
     horodatage = (maintenant or datetime.datetime.now()).strftime("%Y%m%d-%H%M%S")
     sortie = os.path.join(dossier, "message-%s.wav" % horodatage)
@@ -265,6 +300,9 @@ def extraire_message(wav: str, bilan: dict, dossier: str, maintenant=None):
             "source": "messagerie de l'operateur",
             "recupere_le": (maintenant or datetime.datetime.now()).isoformat(),
             "duree_secondes": round((fin - debut) / 1000, 1),
+            # Comment les bornes ont ete trouvees : par les silences, ou par
+            # une duree connue quand l'operateur n'en laisse pas.
+            "decoupe": methode,
             "fichier": sortie,
             "enregistrement_complet": wav,
         }, flux, indent=1, ensure_ascii=False)

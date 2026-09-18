@@ -2008,6 +2008,12 @@ TRANSLATIONS = {
         "fr": 'Message extrait : %s',
         "en": 'Extracted message: %s',
     },
+    'modem_ans_fetch_empty': {
+        "fr": ('Aucun message dans la boite : rien n\'a ete efface. La garde a '
+               'arrete l\'appel avant la touche 7.'),
+        "en": ('No message in the box: nothing was deleted. The guard stopped '
+               'the call before key 7.'),
+    },
     'modem_ans_fetch_no_cut': {
         "fr": ('Decoupe non reconnue : l\'enregistrement complet ci-dessus est '
                'la copie a garder.'),
@@ -2034,32 +2040,102 @@ TRANSLATIONS = {
         "fr": 'Service introuvable : %s',
         "en": 'Service not found: %s',
     },
-    # Boite vocale de l'operateur
-    'modem_voicemail': {
-        "fr": 'Boite vocale',
-        "en": 'Voicemail',
+    'modem_tui_refresh': {
+        "fr": '⟳ Rafraichir',
+        "en": '⟳ Refresh',
     },
-    'modem_voicemail_waiting': {
-        "fr": '📬 MESSAGE EN ATTENTE chez l\'operateur',
-        "en": '📬 MESSAGE WAITING at the operator',
+    'modem_tui_sms': {
+        "fr": '💬 SMS',
+        "en": '💬 SMS',
     },
-    'modem_voicemail_empty': {
-        "fr": '📭 aucun message',
-        "en": '📭 no message',
+    'modem_tui_sms_to': {
+        "fr": 'Numero',
+        "en": 'Number',
     },
-    'modem_voicemail_unknown': {
-        "fr": '❔ etat inconnu',
-        "en": '❔ state unknown',
+    'modem_tui_sms_body': {
+        "fr": 'Message',
+        "en": 'Message',
     },
-    'modem_voicemail_from_service': {
-        "fr": 'lu par le service il y a %s',
-        "en": 'read by the service %s ago',
+    'modem_tui_sms_send': {
+        "fr": '📤 Envoyer',
+        "en": '📤 Send',
     },
-    'modem_voicemail_stale': {
-        "fr": 'ANCIEN, le service ne lit peut-etre plus',
-        "en": 'STALE, the service may have stopped reading',
+    'modem_tui_sms_sending': {
+        "fr": 'Envoi en cours...',
+        "en": 'Sending...',
     },
-    # Repondeur du modem
+    'modem_tui_sms_sent': {
+        "fr": 'SMS envoye.',
+        "en": 'SMS sent.',
+    },
+    'modem_tui_sms_empty': {
+        "fr": 'Message vide : rien n\'est envoye.',
+        "en": 'Empty message: nothing is sent.',
+    },
+    'modem_tui_sms_list': {
+        "fr": 'SMS du modem',
+        "en": 'Modem SMS',
+    },
+    'modem_tui_sms_reading': {
+        "fr": 'Lecture des SMS...',
+        "en": 'Reading SMS...',
+    },
+    'modem_tui_vault': {
+        "fr": '🔑 Coffre',
+        "en": '🔑 Vault',
+    },
+    'modem_tui_vault_ask': {
+        "fr": 'Mot de passe du fichier KeePass :',
+        "en": 'KeePass file password:',
+    },
+    'modem_tui_vault_ok': {
+        "fr": 'Code de la messagerie lu dans le coffre.',
+        "en": 'Voicemail code read from the vault.',
+    },
+    'modem_tui_answering': {
+        "fr": '📼 Repondeur',
+        "en": '📼 Answering machine',
+    },
+    'modem_tui_ans_erase_after': {
+        "fr": 'Effacer chez l\'operateur apres extraction',
+        "en": 'Delete at the operator after extraction',
+    },
+    'modem_tui_ans_fetch': {
+        "fr": '📥 Recuperer',
+        "en": '📥 Fetch',
+    },
+    'modem_tui_ans_saved': {
+        "fr": 'Messages recuperes',
+        "en": 'Fetched messages',
+    },
+    'modem_tui_ans_play': {
+        "fr": '▶ Ecouter',
+        "en": '▶ Play',
+    },
+    'modem_tui_ans_erase': {
+        "fr": '🗑 Effacer ici',
+        "en": '🗑 Delete here',
+    },
+    'modem_tui_ans_no_code': {
+        "fr": ('Code de la messagerie indisponible : ouvrez le coffre depuis '
+               'le menu Repondeur avant d\'ouvrir le clavier.'),
+        "en": ('Voicemail code unavailable: open the vault from the Answering '
+               'menu before opening the dialer.'),
+    },
+    'modem_tui_voicemail': {
+        "fr": '📮 Messagerie',
+        "en": '📮 Voicemail',
+    },
+    'modem_tui_voicemail_unknown': {
+        "fr": 'Aucun numero de messagerie inscrit sur la SIM.',
+        "en": 'No voicemail number stored on the SIM.',
+    },
+    'modem_tui_voicemail_hint': {
+        "fr": ('Une fois en ligne, les touches partent en tonalites : mot de '
+               'passe, puis choix du menu.'),
+        "en": ('Once connected, keys are sent as tones: password, then menu '
+               'choices.'),
+    },
     # Sous-menus du menu Modem
     'modem_menu_state': {
         "fr": '📊 Etat et diagnostic',
@@ -2089,108 +2165,32 @@ TRANSLATIONS = {
         "fr": 'Regle audio',
         "en": 'Audio rule',
     },
-    'modem_tui_voicemail': {
-        "fr": '📮 Messagerie',
-        "en": '📮 Voicemail',
+    # Boite vocale de l'operateur
+    'modem_voicemail': {
+        "fr": 'Boite vocale',
+        "en": 'Voicemail',
     },
-    'modem_tui_voicemail_unknown': {
-        "fr": 'Aucun numero de messagerie inscrit sur la SIM.',
-        "en": 'No voicemail number stored on the SIM.',
+    'modem_voicemail_waiting': {
+        "fr": '📬 MESSAGE EN ATTENTE chez l\'operateur',
+        "en": '📬 MESSAGE WAITING at the operator',
     },
-    'modem_tui_voicemail_hint': {
-        "fr": ('Une fois en ligne, les touches partent en tonalites : mot de '
-               'passe, puis choix du menu.'),
-        "en": ('Once connected, keys are sent as tones: password, then menu '
-               'choices.'),
+    'modem_voicemail_empty': {
+        "fr": '📭 aucun message',
+        "en": '📭 no message',
     },
-    'modem_tui_answering': {
-        "fr": '📼 Repondeur',
-        "en": '📼 Answering machine',
+    'modem_voicemail_unknown': {
+        "fr": '❔ etat inconnu',
+        "en": '❔ state unknown',
     },
-    'modem_tui_refresh': {
-        "fr": '⟳ Peripheriques',
-        "en": '⟳ Devices',
+    'modem_voicemail_from_service': {
+        "fr": 'lu par le service il y a %s',
+        "en": 'read by the service %s ago',
     },
-    'modem_tui_sms': {
-        "fr": '💬 SMS',
-        "en": '💬 SMS',
+    'modem_voicemail_stale': {
+        "fr": 'ANCIEN, le service ne lit peut-etre plus',
+        "en": 'STALE, the service may have stopped reading',
     },
-    'modem_tui_sms_list': {
-        "fr": 'SMS du modem',
-        "en": 'Modem SMS',
-    },
-    'modem_tui_sms_to': {
-        "fr": 'Numero',
-        "en": 'Number',
-    },
-    'modem_tui_sms_body': {
-        "fr": 'Message',
-        "en": 'Message',
-    },
-    'modem_tui_sms_send': {
-        "fr": '📤 Envoyer',
-        "en": '📤 Send',
-    },
-    'modem_tui_sms_sending': {
-        "fr": 'Envoi en cours...',
-        "en": 'Sending...',
-    },
-    'modem_tui_sms_sent': {
-        "fr": 'SMS envoye.',
-        "en": 'SMS sent.',
-    },
-    'modem_tui_sms_empty': {
-        "fr": 'Message vide : rien n\'est envoye.',
-        "en": 'Empty message: nothing is sent.',
-    },
-    'modem_tui_sms_reading': {
-        "fr": 'Lecture des SMS...',
-        "en": 'Reading SMS...',
-    },
-    'modem_tui_vault': {
-        "fr": '🔑 Coffre',
-        "en": '🔑 Vault',
-    },
-    'modem_tui_vault_ask': {
-        "fr": 'Mot de passe du fichier KeePass :',
-        "en": 'KeePass file password:',
-    },
-    'modem_tui_vault_ok': {
-        "fr": 'Code de la messagerie lu dans le coffre.',
-        "en": 'Voicemail code read from the vault.',
-    },
-    'modem_tui_ans_erase_after': {
-        "fr": 'Effacer chez l\'operateur apres extraction',
-        "en": 'Delete at the operator after extraction',
-    },
-    'modem_tui_ans_fetch': {
-        "fr": '📥 Recuperer',
-        "en": '📥 Fetch',
-    },
-    'modem_tui_ans_saved': {
-        "fr": 'Messages recuperes',
-        "en": 'Fetched messages',
-    },
-    'modem_tui_ans_play': {
-        "fr": '▶ Ecouter',
-        "en": '▶ Play',
-    },
-    'modem_tui_ans_erase': {
-        "fr": '🗑 Effacer ici',
-        "en": '🗑 Delete here',
-    },
-    'modem_tui_ans_no_code': {
-        "fr": ('Code de la messagerie indisponible : ouvrez le coffre depuis '
-               'le menu Repondeur avant d\'ouvrir le clavier.'),
-        "en": ('Voicemail code unavailable: open the vault from the Answering '
-               'menu before opening the dialer.'),
-    },
-    'modem_ans_fetch_empty': {
-        "fr": ('Aucun message dans la boite : rien n\'a ete efface. La garde a '
-               'arrete l\'appel avant la touche 7.'),
-        "en": ('No message in the box: nothing was deleted. The guard stopped '
-               'the call before key 7.'),
-    },
+    # Repondeur du modem
     'modem_answering': {
         "fr": '📼 Repondeur — messages, annonce, sonneries',
         "en": '📼 Answering machine — messages, greeting, rings',
