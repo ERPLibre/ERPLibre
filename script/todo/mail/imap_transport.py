@@ -450,6 +450,28 @@ class ImaplibTransport:
                 "STORE -FLAGS",
             )
 
+    def store_flags_all(self, add: list[str], remove: list[str]) -> None:
+        """Pose ou retire des drapeaux sur TOUT le dossier sélectionné.
+
+        `1:*` en UID : la plage ouverte évite d'énumérer des dizaines de
+        milliers d'identifiants dans une commande, qu'un serveur peut
+        refuser pour sa seule longueur.
+        """
+        if add:
+            self._ok(
+                self.client.uid(
+                    "STORE", "1:*", "+FLAGS", f"({' '.join(add)})"
+                ),
+                "STORE +FLAGS 1:*",
+            )
+        if remove:
+            self._ok(
+                self.client.uid(
+                    "STORE", "1:*", "-FLAGS", f"({' '.join(remove)})"
+                ),
+                "STORE -FLAGS 1:*",
+            )
+
     def create_folder(self, name: str) -> None:
         self._ok(self.client.create(f'"{name}"'), f"CREATE {name}")
 

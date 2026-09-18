@@ -1219,6 +1219,35 @@ class Store:
         )
         db.commit()
 
+    @_locked
+    def mark_all_seen(self, folder_id: int) -> int:
+        """Pose `\\Seen` sur tout le dossier, et rend le nombre de lignes
+        qui ont changé.
+
+        Le compte est celui des messages qui étaient NON LUS : c'est ce que
+        l'écran annonce, et le total du dossier ne le dirait pas.
+
+        `flags` est en clair même en mode chiffré — c'est la condition qui
+        permet de compter les non-lus en SQL — donc la mise à jour se fait
+        ici plutôt que ligne à ligne en Python.
+        """
+        db = self._db()
+        non_lus = db.execute(
+            "SELECT COUNT(*) FROM messages"
+            " WHERE folder_id = ? AND flags NOT LIKE '%\\Seen%' ESCAPE '\\'",
+            (folder_id,),
+        ).fetchone()[0]
+        if not non_lus:
+            return 0
+        db.execute(
+            "UPDATE messages SET flags ="
+            " TRIM(COALESCE(flags, '') || ' \\Seen')"
+            " WHERE folder_id = ? AND flags NOT LIKE '%\\Seen%' ESCAPE '\\'",
+            (folder_id,),
+        )
+        db.commit()
+        return non_lus
+
     def _row_to_meta(self, row) -> MessageMeta:
         return MessageMeta(
             uid=row["uid"],

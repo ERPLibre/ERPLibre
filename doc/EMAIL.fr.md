@@ -194,6 +194,7 @@ centre, et un aperçu à droite, avec une ligne de statut en bas.
 | `g` | change de vue de liste : à plat, par fil, non lus seulement (voir « Vues de la liste ») |
 | `s` / `u` | marquer le message sélectionné lu / non lu |
 | `*` | suivre / ne plus suivre le message — l'étoile des autres clients |
+| `Shift+M` | marquer lu tout le dossier ouvert (demande confirmation) |
 | `d` | déplacer le message sélectionné vers la corbeille du compte |
 | `m` | ranger le message sélectionné dans un dossier qu'on choisit |
 | `D` | vider la corbeille du compte, définitivement |
@@ -548,6 +549,22 @@ suivi ici, et réciproquement.
 La liste porte deux marques dans une colonne : `●` pour non lu, `★` pour
 suivi. Deux caractères et non un, parce qu'un message peut être les deux et
 qu'une marque unique en perdrait une.
+
+## Lire un dossier entier d'un coup
+
+`Shift+M` marque lus tous les messages non lus du dossier ouvert — le geste
+qu'appelle une boîte de listes de diffusion, où trois cents non-lus
+n'attendent rien de personne. Il demande d'abord, et dit combien : le geste
+ne détruit rien, mais rien ne le défait commodément non plus, « rendre non
+lus ceux qui l'étaient » n'existant pas une fois la liste de départ perdue.
+Une question fermée, pas un mot à taper : exiger un mot ici userait la
+vigilance qu'on garde pour ce qui détruit.
+
+Il refuse tant que le compte est hors ligne, et ce n'est pas une facilité :
+une passe de synchronisation relit les drapeaux depuis le serveur, donc un
+marquage posé sans lui serait défait à la passe suivante, en silence. Le
+serveur est prévenu d'abord et le cache suit, de sorte qu'un refus les
+laisse dire la même chose.
 
 ## Enregistrer une pièce jointe
 
