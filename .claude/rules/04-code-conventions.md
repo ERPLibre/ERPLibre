@@ -118,7 +118,7 @@ ne se lit qu'ainsi.
 ## Verdicts
 
 **Un verdict jeté se lit comme un succès.** Une fonction qui rend un code de
-retour, un refus ou un « je ne sais pas » le rend pour qu'on le lise ;
+retour, un refus ou un « contenu inconnu » le rend pour qu'on le lise ;
 appelée en instruction nue, sa réponse tombe et l'appelant continue comme si
 tout allait bien. C'est ainsi qu'un écran annonce une suppression qu'un garde
 venait de refuser, ou qu'une installation part sur une machine dont les
