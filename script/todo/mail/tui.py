@@ -1220,6 +1220,11 @@ def run_tui(
             Binding("u", "mark_unseen", t("mail_mark_unseen_binding")),
             Binding("asterisk", "toggle_flagged", t("mail_flagged_binding")),
             Binding("M", "mark_all_seen", t("mail_all_seen_binding")),
+            # `x` et NON `space` : `Tree` — l'arbre des dossiers, qui a le
+            # focus au démarrage — lie déjà l'espace au repli d'un nœud et
+            # le consomme avant les liaisons de l'application. `x` est
+            # aussi la touche que les clients web emploient pour cocher.
+            Binding("x", "toggle_selection", t("mail_select_binding")),
             Binding("w", "save_attachment", t("mail_save_attachment_binding")),
             Binding("c", "compose", t("mail_compose_binding")),
             Binding("a", "reply", t("mail_reply_binding")),
@@ -1256,6 +1261,11 @@ def run_tui(
             self.metas = []
             self.query = ""
             self.search_scope = "folder"
+            # Les messages cochés, par leur clé de ligne. Un dictionnaire et
+            # non un ensemble : le message lui-même doit survivre au
+            # rechargement de la liste, sans quoi cocher puis synchroniser
+            # perdrait ce qu'on avait désigné.
+            self.selection = {}
             # Lue ici, PAS dans `on_mount` : `compose()` a besoin de la
             # classe CSS de disposition dès le premier rendu, avant que
             # `on_mount` ne tourne. `resolve_layout` protège contre une
@@ -1626,8 +1636,10 @@ def run_tui(
             Deux caractères et non un : un message peut être non lu ET
             suivi, et faire choisir une seule marque en perdrait une.
             """
-            return ("●" if tui_text.is_unread(meta.flags) else " ") + (
-                "★" if tui_text.is_flagged(meta.flags) else " "
+            return (
+                ("✓" if self._cle(meta) in self.selection else " ")
+                + ("●" if tui_text.is_unread(meta.flags) else " ")
+                + ("★" if tui_text.is_flagged(meta.flags) else " ")
             )
 
         def _provenance(self, meta) -> str:
@@ -1710,6 +1722,57 @@ def run_tui(
                 # dans le vide.
                 return
             table.move_cursor(row=row_index)
+
+        def action_toggle_selection(self) -> None:
+            """`x` : coche ou décoche le message sous le curseur.
+
+            Le curseur descend d'une ligne ensuite : cocher se fait en
+            rafale, et remonter d'une ligne après chaque coche serait le
+            geste le plus fatigant de l'écran.
+            """
+            meta = self.current_meta()
+            if meta is None:
+                return
+            cle = self._cle(meta)
+            if cle in self.selection:
+                del self.selection[cle]
+            else:
+                self.selection[cle] = meta
+            table = self.query_one("#list", DataTable)
+            ligne = table.cursor_row
+            self.refresh_list()
+            if ligne is not None and ligne + 1 < table.row_count:
+                table.move_cursor(row=ligne + 1)
+            elif ligne is not None and ligne < table.row_count:
+                table.move_cursor(row=ligne)
+            self.set_status(
+                f"{t('mail_select_count')} {len(self.selection)}"
+                if self.selection
+                else t("mail_select_none")
+            )
+
+        def cibles(self) -> list:
+            """Ce sur quoi la prochaine touche agit : les cochés, ou celui
+            sous le curseur.
+
+            Une sélection vide ne veut pas dire « rien » mais « ce qui est
+            désigné » : sans cela, chaque touche exigerait de cocher
+            d'abord, et le geste à un seul message coûterait une frappe de
+            plus qu'avant.
+            """
+            if self.selection:
+                return list(self.selection.values())
+            meta = self.current_meta()
+            return [meta] if meta is not None else []
+
+        def _vider_selection(self) -> None:
+            """À la fin d'un lot : ce qui a été traité n'est plus désigné.
+
+            Le garder ferait agir la touche suivante sur des messages déjà
+            partis ailleurs — et sur un déplacement, sur des UID qui ne
+            valent plus rien dans leur dossier d'origine.
+            """
+            self.selection = {}
 
         def current_meta(self):
             table = self.query_one("#list", DataTable)
@@ -2305,10 +2368,10 @@ def run_tui(
             La liste ne propose PAS le dossier courant : s'y déplacer ne
             ferait rien, et le proposer laisse croire le contraire.
             """
-            meta = self.current_meta()
-            if meta is None or self.current_ref is None:
+            metas = self.cibles()
+            if not metas or self.current_ref is None:
                 return
-            session, source = self.meta_origin(meta)
+            session, source = self.meta_origin(metas[0])
             if session is None or not session.online:
                 self.set_status(t("mail_trash_offline"))
                 return
@@ -2317,25 +2380,86 @@ def run_tui(
                 if not choix:
                     return
                 destination, cible = choix
-                if destination is session:
-                    self.run_worker(
-                        lambda: self._deplacer(
-                            session, source, cible, meta.uid
-                        ),
-                        thread=True,
-                    )
-                    return
                 self.set_status(t("mail_move_across_working"))
+                self._vider_selection()
                 self.run_worker(
-                    lambda: self._deplacer_ailleurs(
-                        session, source, meta, destination, cible
-                    ),
+                    lambda: self._ranger_lot(metas, destination, cible),
                     thread=True,
                 )
 
             self.push_screen(
                 MoveScreen(session, source, self.sessions), ranger
             )
+
+        def _ranger_lot(self, metas, destination, cible) -> None:
+            """Range un lot dans `destination`/`cible`, chaque message
+            depuis SON dossier.
+
+            Les messages d'un même dossier partent ensemble — un COPY, un
+            retrait — plutôt qu'un aller-retour par message. Une recherche
+            élargie en mêle de plusieurs dossiers et même de plusieurs
+            comptes : le regroupement est donc fait ici, et non supposé.
+            """
+            groupes = {}
+            for meta in metas:
+                session, dossier = self.meta_origin(meta)
+                if session is None:
+                    continue
+                groupes.setdefault((id(session), dossier), (session, []))
+                groupes[(id(session), dossier)][1].append(meta)
+            faits, erreur, vide_partout = 0, None, True
+            for (_, dossier), (session, lot) in groupes.items():
+                if session is destination:
+                    try:
+                        with self._sync_lock:
+                            session.syncer.transport.select(dossier)
+                            vide = session.syncer.transport.move(
+                                [m.uid for m in lot], cible
+                            )
+                    except Exception as exc:
+                        _logger.exception("rangement vers %s", cible)
+                        erreur = erreur or exc
+                        continue
+                    vide_partout = vide_partout and vide
+                    etat = session.store.folder_state(dossier) or {}
+                    if etat.get("id") is not None:
+                        for meta in lot:
+                            session.store.forget_message(etat["id"], meta.uid)
+                    faits += len(lot)
+                    continue
+                # Vers un AUTRE compte : aucun COPY ne relie deux serveurs,
+                # chaque message est déposé puis confirmé un par un.
+                for meta in lot:
+                    fait, souci = self._deplacer_ailleurs(
+                        session, dossier, meta, destination, cible, seul=False
+                    )
+                    erreur = erreur or souci
+                    if fait:
+                        faits += 1
+                    else:
+                        vide_partout = False
+            self.call_from_thread(
+                self._lot_range, cible, faits, len(metas), erreur, vide_partout
+            )
+
+        def _lot_range(
+            self, cible, faits, demandes, erreur, vide_partout
+        ) -> None:
+            if erreur is not None:
+                self.set_status(str(erreur))
+            elif faits < demandes:
+                self.set_status(
+                    f"{t('mail_trash_done')} {cible} — {faits}/{demandes}"
+                )
+            elif not vide_partout:
+                self.set_status(
+                    f"{t('mail_trash_done')} {cible}"
+                    f" — {t('mail_trash_source_kept')}"
+                )
+            else:
+                self.set_status(f"{t('mail_trash_done')} {cible} ({faits})")
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def action_trash_message(self) -> None:
             """`d` : déplace le message vers la corbeille du compte.
@@ -2345,10 +2469,10 @@ def run_tui(
             qu'APRÈS l'accord du serveur : le devancer ferait revenir à la
             passe suivante un message disparu de l'écran.
             """
-            meta = self.current_meta()
-            if meta is None or self.current_ref is None:
+            metas = self.cibles()
+            if not metas or self.current_ref is None:
                 return
-            session, source = self.meta_origin(meta)
+            session, source = self.meta_origin(metas[0])
             if session is None or not session.online:
                 self.set_status(t("mail_trash_offline"))
                 return
@@ -2358,11 +2482,21 @@ def run_tui(
                 # que personne n'a demandé.
                 self.set_status(t("mail_trash_no_folder"))
                 return
-            if source == corbeille:
+            # Un lot peut mêler des dossiers : ceux qui sont DÉJÀ dans la
+            # corbeille du compte sont écartés plutôt que de faire échouer
+            # le geste entier.
+            restants = [
+                m
+                for m in metas
+                if self.meta_origin(m)[1] != corbeille
+                or self.meta_origin(m)[0] is not session
+            ]
+            if not restants:
                 self.set_status(t("mail_trash_already_there"))
                 return
+            self._vider_selection()
             self.run_worker(
-                lambda: self._deplacer(session, source, corbeille, meta.uid),
+                lambda: self._ranger_lot(restants, session, corbeille),
                 thread=True,
             )
 
@@ -2448,29 +2582,9 @@ def run_tui(
             if self.current_ref is not None:
                 self.select_ref(self.current_ref)
 
-        def _deplacer(self, session, source, cible, uid) -> None:
-            """Le fil de travail que `d` et `m` partagent.
-
-            Le cache n'est touché qu'APRÈS l'accord du serveur : le devancer
-            ferait disparaître de l'écran un message qui reviendrait à la
-            passe suivante.
-            """
-            try:
-                with self._sync_lock:
-                    session.syncer.transport.select(source)
-                    vide = session.syncer.transport.move([uid], cible)
-            except Exception as exc:
-                _logger.exception("déplacement vers %s", cible)
-                self.call_from_thread(self.set_status, str(exc))
-                return
-            etat = session.store.folder_state(source) or {}
-            if etat.get("id") is not None:
-                session.store.forget_message(etat["id"], uid)
-            self.call_from_thread(self._deplace, cible, vide)
-
         def _deplacer_ailleurs(
-            self, session, source, meta, destination, cible
-        ) -> None:
+            self, session, source, meta, destination, cible, seul=True
+        ) -> tuple:
             """Le fil de travail d'un déplacement entre DEUX comptes.
 
             Rien ne relie deux serveurs : le message est relu en entier,
@@ -2504,8 +2618,9 @@ def run_tui(
                 _logger.exception(
                     "déplacement vers %s/%s", destination.account.name, cible
                 )
-                self.call_from_thread(self.set_status, str(exc))
-                return
+                if seul:
+                    self.call_from_thread(self.set_status, str(exc))
+                return False, exc
             if arrive:
                 etat = session.store.folder_state(source) or {}
                 if etat.get("id") is not None:
@@ -2516,9 +2631,33 @@ def run_tui(
                 destination.syncer.sync_one(cible)
             except Exception:
                 _logger.exception("relecture de %s", cible)
+            if not seul:
+                # Dans un lot, c'est l'appelant qui parle à l'écran : cent
+                # messages ne doivent pas écrire cent fois dans la barre
+                # d'état, chacun effaçant le précédent. La CAUSE remonte
+                # quand même — « 0 sur 1 » sans le refus du serveur ne dit
+                # pas quoi corriger.
+                return bool(arrive and vide), None
             self.call_from_thread(
                 self._deplace_ailleurs, destination, cible, arrive, vide
             )
+            return bool(arrive and vide), None
+
+        def _deplace_ailleurs(
+            self, destination, cible, arrive: bool, vide: bool
+        ) -> None:
+            nom = f"{destination.account.name} — {cible}"
+            if not arrive:
+                self.set_status(f"{t('mail_move_across_unconfirmed')} {nom}")
+            elif not vide:
+                self.set_status(
+                    f"{t('mail_trash_done')} {nom}"
+                    f" — {t('mail_trash_source_kept')}"
+                )
+            else:
+                self.set_status(f"{t('mail_trash_done')} {nom}")
+            if self.current_ref is not None:
+                self.select_ref(self.current_ref)
 
         def _deplace_ailleurs(
             self, destination, cible, arrive: bool, vide: bool
@@ -2670,35 +2809,57 @@ def run_tui(
             Une bascule et non deux touches : contrairement à lu/non lu, où
             l'on veut souvent forcer l'état d'un message déjà dans l'autre,
             le suivi se met et s'enlève sur le même message.
+
+            Sur un lot, le sens de la bascule est celui du GROUPE : on ne
+            retire que si tout est déjà suivi. Basculer chacun de son côté
+            rendrait le résultat imprévisible — un lot mi-suivi
+            s'inverserait sans que rien ne dise dans quel état il finit.
             """
-            meta = self.current_meta()
-            if meta is None:
+            metas = self.cibles()
+            if not metas:
                 return
-            self._set_flag(
-                "\\Flagged", add=not tui_text.is_flagged(meta.flags)
-            )
+            tous = all(tui_text.is_flagged(m.flags) for m in metas)
+            self._set_flag("\\Flagged", add=not tous)
 
         def _set_flag(self, flag: str, add: bool) -> None:
-            meta = self.current_meta()
-            if meta is None or self.current_ref is None:
+            """Pose ou retire `flag` sur ce que `cibles()` désigne.
+
+            Le cache d'abord, le serveur ensuite, et un refus du serveur se
+            DIT sans défaire le cache : un drapeau est la seule chose que
+            la passe suivante corrige d'elle-même, en relisant l'état du
+            serveur. C'est ce qui distingue ce chemin du rangement, où le
+            cache ne doit jamais devancer.
+            """
+            metas = self.cibles()
+            if not metas or self.current_ref is None:
                 return
-            session, dossier = self.meta_origin(meta)
-            if session is None:
-                return
-            state = session.store.folder_state(dossier)
-            flags = set(meta.flags.split()) if meta.flags else set()
-            flags.add(flag) if add else flags.discard(flag)
-            session.store.update_flags(
-                state["id"], meta.uid, " ".join(sorted(flags))
-            )
-            if session.online:
+            erreur = None
+            for meta in metas:
+                session, dossier = self.meta_origin(meta)
+                if session is None:
+                    continue
+                state = session.store.folder_state(dossier)
+                if not state:
+                    continue
+                flags = set(meta.flags.split()) if meta.flags else set()
+                flags.add(flag) if add else flags.discard(flag)
+                session.store.update_flags(
+                    state["id"], meta.uid, " ".join(sorted(flags))
+                )
+                if not session.online:
+                    continue
                 try:
                     session.syncer.transport.select(dossier)
                     session.syncer.transport.store_flags(
                         meta.uid, [flag] if add else [], [] if add else [flag]
                     )
                 except Exception as exc:
-                    self.set_status(f"{t('mail_flag_error')} {exc}")
+                    # Le premier refus suffit à le dire : un lot de cent
+                    # messages sur un serveur fâché en afficherait cent.
+                    erreur = erreur or exc
+            if erreur is not None:
+                self.set_status(f"{t('mail_flag_error')} {erreur}")
+            self._vider_selection()
             self.select_ref(self.current_ref)
 
         def action_mark_all_seen(self) -> None:
