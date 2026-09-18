@@ -37,6 +37,12 @@ import (
 // d'une campagne qui tournerait en même temps ne voudrait rien dire.
 
 // Reclassement compte ce qu'une passe a fait.
+//
+// Ce sont des ÉVÉNEMENTS, non des objets, et leur somme dépasse donc le nombre
+// d'objets lus : une copie déjà rangée sous la clé courante est comptée
+// « inchangée » quand le parcours la visite, puis « fondue » si une copie plus
+// récente vient prendre sa place. Les additionner pour retrouver « lus » est
+// une erreur de lecture, pas une erreur de compte.
 type Reclassement struct {
 	Lus        int
 	Deplaces   int
