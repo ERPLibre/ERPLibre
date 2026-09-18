@@ -11643,15 +11643,15 @@ TRANSLATIONS = {
         "en": "📧 Mail - Read and send email",
     },
     "mail_open_tui": {
-        "fr": "Ouvrir le client courriel (TUI)",
-        "en": "Open the mail client (TUI)",
+        "fr": "📬 Ouvrir le client courriel (TUI)",
+        "en": "📬 Open the mail client (TUI)",
     },
-    "mail_accounts_menu": {"fr": "Comptes", "en": "Accounts"},
+    "mail_accounts_menu": {"fr": "👤 Comptes", "en": "👤 Accounts"},
     "mail_sync_now": {
-        "fr": "Synchroniser maintenant",
-        "en": "Synchronise now",
+        "fr": "🔄 Synchroniser maintenant",
+        "en": "🔄 Synchronise now",
     },
-    "mail_cache_menu": {"fr": "Cache", "en": "Cache"},
+    "mail_cache_menu": {"fr": "💾 Cache", "en": "💾 Cache"},
     "mail_account_list": {"fr": "Lister les comptes", "en": "List accounts"},
     "mail_account_add": {"fr": "Ajouter un compte", "en": "Add an account"},
     "mail_account_delete": {
@@ -11908,8 +11908,8 @@ TRANSLATIONS = {
         "en": "no account selected",
     },
     "mail_stats_menu": {
-        "fr": "Statistiques",
-        "en": "Statistics",
+        "fr": "📊 Statistiques",
+        "en": "📊 Statistics",
     },
     "mail_kdbx_none_configured": {
         "fr": "Aucun fichier kdbx n'est configuré.",
