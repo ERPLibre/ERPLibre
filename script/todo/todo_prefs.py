@@ -115,10 +115,18 @@ def get(key: str, default=None):
     return load().get(key, default)
 
 
-def set(key: str, value) -> None:  # noqa: A001 - API voulue : prefs.set(...)
+def set(key: str, value) -> bool:  # noqa: A001 - API voulue : prefs.set(...)
+    """Retient cette préférence. Dit si elle a été ÉCRITE.
+
+    Le verdict de l'écriture était jeté ici alors que `reset` le lisait : une
+    préférence qu'on vient de choisir pouvait ne pas être gardée — disque
+    plein, fichier sans droit d'écriture — et l'écran suivant montrait
+    l'ancienne valeur sans un mot. L'appelant décide si cela l'arrête ; il ne
+    peut plus l'ignorer sans le savoir.
+    """
     data = load()
     data[key] = value
-    _save(data)
+    return _save(data)
 
 
 def reset() -> tuple:

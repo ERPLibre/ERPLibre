@@ -1708,6 +1708,18 @@ TRANSLATIONS = {
         "fr": "un garde mesure-t-il une propriété, ou l'orthographe du code",
         "en": "does a guard measure a property, or the spelling of the code",
     },
+    "read %s times here, ignored %s": {
+        "fr": "lu %s fois ici, ignoré %s",
+        "en": "read %s times here, ignored %s",
+    },
+    "%s verdict(s) dropped where this file reads them — read again": {
+        "fr": "%s verdict(s) jeté(s) là où ce fichier les lit — à relire",
+        "en": "%s verdict(s) dropped where this file reads them — read again",
+    },
+    "a verdict dropped where the same file reads it": {
+        "fr": "un verdict jeté là où le même fichier le lit",
+        "en": "a verdict dropped where the same file reads it",
+    },
     "Could not read the networks this host uses.": {
         "fr": "Impossible de relever les réseaux que cet hôte utilise.",
         "en": "Could not read the networks this host uses.",

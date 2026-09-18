@@ -47,6 +47,16 @@ OUTILS = (
         ),
     },
     {
+        "script": "check_discarded_verdict.py",
+        "titre": "verdicts jetés là où le fichier les lit ailleurs",
+        "pied": (
+            "  🟡 Ce dépôt LIT cette réponse ailleurs. Jetée, elle se lit"
+            " comme\n     un succès — un refus annoncé comme une"
+            " suppression faite.\n     Un appelant peut avoir raison de"
+            " l'ignorer : qu'il le dise."
+        ),
+    },
+    {
         "script": "check_guard_shape.py",
         "titre": "gardes épinglés au texte du source",
         "pied": (

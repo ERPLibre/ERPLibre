@@ -49,13 +49,18 @@ import re
 import subprocess
 import sys
 
-RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if RACINE not in sys.path:
-    sys.path.insert(0, RACINE)
+_ICI = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _ICI not in sys.path:
+    sys.path.insert(0, _ICI)
 
+from script.analyse.lib_check import (  # noqa: E402
+    RACINE,
+    etend,
+    fichiers_indexes,
+    peindre,
+    relatif,
+)
 from script.todo.todo_i18n import t  # noqa: E402
-
-SUFFIXES = (".py",)
 
 # Ce qui rend le TEXTE d'un module. `getsourcefile` est là parce qu'il ouvre
 # la porte à une lecture juste après, et que la chercher séparément la
@@ -72,20 +77,6 @@ COMPARE = ("assertIn", "assertNotIn", "assertRegex", "assertNotRegex")
 # parenthèses vides restent un câblage ; dès qu'un argument y entre, c'est
 # la forme de l'appel qui est épinglée et non son existence.
 NOM = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:\(\)?)?$")
-
-# Ce qui n'est pas balayé : ce qui n'est pas à nous, et ce qui n'est pas lu.
-IGNORES = (
-    ".git/",
-    ".venv",
-    "__pycache__/",
-    "addons/",
-    "node_modules/",
-)
-
-
-def a_balayer(chemin: str) -> bool:
-    nu = chemin.replace(os.sep, "/")
-    return not any(motif in nu for motif in IGNORES)
 
 
 def _nom_appele(noeud) -> str:
@@ -182,7 +173,7 @@ def inspect(chemin: str):
             for fragment in _fragments(n)[:1]:
                 trouvailles.append(
                     {
-                        "file": os.path.relpath(chemin, RACINE),
+                        "file": relatif(chemin),
                         "line": n.lineno,
                         "function": fonction.name,
                         "excerpt": fragment[:64],
@@ -191,64 +182,24 @@ def inspect(chemin: str):
     return sorted(trouvailles, key=lambda f: (f["file"], f["line"]))
 
 
-def fichiers_indexes():
-    """Les fichiers ajoutés à l'index git, filtrés sur les suffixes lus."""
-    sortie = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-        capture_output=True,
-        text=True,
-        cwd=RACINE,
-    )
-    chemins = []
-    for nom in sortie.stdout.split("\n"):
-        nom = nom.strip()
-        if (
-            nom.endswith(SUFFIXES)
-            and a_balayer(nom)
-            and os.path.isfile(os.path.join(RACINE, nom))
-        ):
-            chemins.append(os.path.join(RACINE, nom))
-    return chemins
-
-
-def etend(chemins):
-    """Les fichiers lisibles d'une liste de chemins, répertoires parcourus."""
-    trouves = []
-    for chemin in chemins:
-        if os.path.isdir(chemin):
-            for base, _sous, noms in os.walk(chemin):
-                if not a_balayer(base + "/"):
-                    continue
-                for nom in sorted(noms):
-                    complet = os.path.join(base, nom)
-                    if nom.endswith(SUFFIXES) and a_balayer(complet):
-                        trouves.append(complet)
-        elif chemin.endswith(SUFFIXES) and a_balayer(chemin):
-            trouves.append(chemin)
-    return trouves
-
-
 def render(trouvailles, colour=True):
     """Le rapport, groupé par fichier."""
     if not trouvailles:
         return ""
-
-    def peindre(texte, code):
-        return f"\033[{code}m{texte}\033[0m" if colour else texte
 
     lignes = []
     fichier = None
     for f in trouvailles:
         if f["file"] != fichier:
             fichier = f["file"]
-            lignes.append(peindre(fichier, "1"))
+            lignes.append(peindre(fichier, "1", colour))
         lignes.append(
             f"  🟡 {f['line']:>5}  {f['function'][:34]:<34} « {f['excerpt']} »"
         )
     lignes.append("")
     lignes.append(
         t("%s guard(s) pinned to the source text — read them again")
-        % peindre(len(trouvailles), "33")
+        % peindre(len(trouvailles), "33", colour)
     )
     return "\n".join(lignes)
 
