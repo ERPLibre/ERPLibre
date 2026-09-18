@@ -1314,6 +1314,24 @@ class Store:
         return [r[0] for r in rows]
 
     @_locked
+    def count_messages(self, folder_id: int) -> int:
+        """Combien de messages le CACHE tient pour ce dossier.
+
+        À ne pas confondre avec le `total` du dossier, qui est celui du
+        SERVEUR : une boîte à peine synchronisée annonce des milliers de
+        messages dont le cache n'a encore aucun. C'est ce compte-ci qui dit
+        s'il reste une page à charger.
+        """
+        return (
+            self._db()
+            .execute(
+                "SELECT COUNT(*) FROM messages WHERE folder_id = ?",
+                (folder_id,),
+            )
+            .fetchone()[0]
+        )
+
+    @_locked
     def count_unseen(self, folder_id: int) -> int:
         """Les non-lus. `flags` est en clair, donc c'est du SQL, pas du déchiffrement."""
         return (

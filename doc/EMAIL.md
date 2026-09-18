@@ -505,6 +505,21 @@ cache always lags behind the trash folder — `d` fills it on the server
 without adding anything locally — so the number that matters is the one
 reported afterwards: what the server actually removed.
 
+## Reading a long folder
+
+A folder arrives in pages of 500 messages, newest first. The next page
+loads by itself as the cursor comes within twenty rows of the bottom, so
+scrolling never stops at a wall — and the cursor stays where it was when
+it arrives. A sync pass keeps the depth already loaded rather than
+shrinking the list back to one page under a cursor that had gone further
+down.
+
+Pages exist because the alternative is worse: a mailbox of thirty thousand
+messages would build thirty thousand rows on every open and every
+keystroke of a search, in a screen that answers instantly today. Searching
+is unaffected — a search looks at the whole cache, not at what the list
+has loaded.
+
 ## List views
 
 `g` cycles the message list through three views:

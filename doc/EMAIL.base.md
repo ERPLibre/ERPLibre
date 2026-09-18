@@ -1071,6 +1071,38 @@ y ajouter localement — donc le nombre qui compte est celui annoncé
 ensuite : ce que le serveur a réellement retiré.
 
 <!-- [en] -->
+## Reading a long folder
+
+A folder arrives in pages of 500 messages, newest first. The next page
+loads by itself as the cursor comes within twenty rows of the bottom, so
+scrolling never stops at a wall — and the cursor stays where it was when
+it arrives. A sync pass keeps the depth already loaded rather than
+shrinking the list back to one page under a cursor that had gone further
+down.
+
+Pages exist because the alternative is worse: a mailbox of thirty thousand
+messages would build thirty thousand rows on every open and every
+keystroke of a search, in a screen that answers instantly today. Searching
+is unaffected — a search looks at the whole cache, not at what the list
+has loaded.
+
+<!-- [fr] -->
+## Lire un long dossier
+
+Un dossier arrive par pages de 500 messages, le plus récent d'abord. La
+page suivante se charge d'elle-même quand le curseur arrive à vingt lignes
+du bas, de sorte que le défilement ne bute sur aucun mur — et le curseur
+reste où il était quand elle arrive. Une passe de synchronisation garde la
+profondeur déjà chargée plutôt que de ramener la liste à une page sous un
+curseur descendu bien plus bas.
+
+Ces pages existent parce que l'inverse est pire : une boîte de trente mille
+messages construirait trente mille lignes à chaque ouverture et à chaque
+frappe de recherche, dans un écran qui répond aujourd'hui tout de suite. La
+recherche n'est pas concernée — elle regarde tout le cache, pas ce que la
+liste a chargé.
+
+<!-- [en] -->
 ## List views
 
 `g` cycles the message list through three views:
