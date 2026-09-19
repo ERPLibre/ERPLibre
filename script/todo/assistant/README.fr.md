@@ -47,6 +47,44 @@ frappe UN chemin, et seulement chez le logiciel qui distingue les deux.
 `/model` choisit un autre modèle sur le même serveur — `/model <texte>`
 filtre, parce qu'une liste de plusieurs centaines ne se choisit pas à l'œil.
 
+## Ce qu'un tour coûte, et où cela va
+
+La réponse arrive EN FLUX, jeton par jeton, et c'est ce qui rend le délai du
+premier jeton observable — la seule mesure qui sépare un serveur lent d'un
+modèle lent, et qu'aucun relevé pris après coup ne retrouve. Un pied de ligne
+clôt chaque réponse avec sa durée, ses comptes de jetons, son débit et ce
+délai.
+
+Deux de ces nombres viennent d'ICI et deux viennent du SERVEUR, et cette
+différence décide de ce qu'on a le droit d'afficher. La durée et le délai du
+premier jeton se lisent à l'horloge de cette machine et existent toujours. Les
+comptes de jetons viennent du serveur, qui ne les envoie pas toujours : un flux
+ne les porte que si l'option les a demandés, et tous les logiciels ne
+l'honorent pas. Un compte absent est INCONNU et s'affiche en tiret, jamais en
+zéro — un zéro se lirait comme un serveur à l'arrêt juste après qu'il a
+répondu.
+
+`/tui` ouvre l'écran vivant : le tableau des durées, la conversation
+elle-même — les questions ET les réponses, celle du moment se remplissant à
+mesure — et une saisie pour poser la suivante. La génération tourne sur un
+FIL, jamais sur la boucle d'événements — une génération dure des minutes, et
+sur la boucle l'écran gèle entier, touches comprises, sans que rien ne dise
+qu'il est vivant. Pendant qu'une réponse arrive, l'écran compte les FRAGMENTS
+et les caractères, qu'il observe lui-même ; le compte de jetons et le débit ne
+paraissent qu'une fois que le serveur les a envoyés.
+
+Ses raccourcis évitent les lettres nues, et ce n'est pas un goût : la saisie
+garde le focus pendant toute la vie de l'écran, puisque c'est de là qu'on pose
+ses questions, donc une lettre nue s'écrit dans le champ au lieu d'atteindre
+son action — et le raccourci passe pour mort sans que rien ne le signale.
+`escape` rend la main, `ctrl+t` replie les durées pour laisser sa place au
+texte, `ctrl+c` sort.
+
+Chaque tour ajoute aussi une ligne à un journal JSONL mensuel sous
+`private/` : durées, comptes, modèle servi, outil, raison de fin. Il ne porte
+AUCUN texte d'échange — une empreinte courte de la question y regroupe les
+répétitions — et `private/` devient public avec un fork public.
+
 ## Une adresse ne devient jamais du texte de prompt
 
 Un alias SSH, un nom d'hôte, une adresse IP, un nom de VM désignent des
@@ -542,6 +580,8 @@ nul ».
 | `backends.py` | parler à une destination : un serveur HTTP, ou le CLI `claude` |
 | `chat.py` | les tours d'une conversation, et les commandes qui la pilotent |
 | `discover.py` | quels couples (hôte, port) méritent une reconnaissance, et la frappe |
+| `mesure.py` | ce qu'un tour a coûté, et la ligne qu'il écrit sous `private/` |
+| `perf_tui.py` | l'écran vivant : le tableau des tours, le flux, la saisie |
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |

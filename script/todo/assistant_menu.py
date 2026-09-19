@@ -42,6 +42,8 @@ import click
 
 from script.todo.assistant import capabilities as llm_caps
 from script.todo.assistant import fingerprint as llm_fp
+from script.todo.assistant import mesure as llm_mesure
+from script.todo.assistant import perf_tui as llm_perf
 from script.todo.assistant import servers as llm_servers
 from script.todo.todo_i18n import t
 
@@ -56,6 +58,7 @@ COMMANDES_PHASE_1 = (
     "/gpt",
     "/srv",
     "/model",
+    "/tui",
     "/ctx",
     "/m",
     "/save",
@@ -117,6 +120,8 @@ class AssistantMenuMixin:
                 "gpt": None,
                 "gpts": None,
                 "tunnels": None,
+                "seance": "",
+                "mesures": [],
             }
         return self._llm_session
 
@@ -3065,6 +3070,9 @@ class AssistantMenuMixin:
                 conversation, invite = ouvrir(serveur)
                 print(f"✅ {self._llm_label(serveur)}")
                 continue
+            if commande == "/tui":
+                self._llm_tui(conversation, serveur, outil)
+                continue
             if commande == "/ctx":
                 for message in conversation.last_sent:
                     print(f"  [{message['role']}] {message['content']}")
@@ -3079,23 +3087,123 @@ class AssistantMenuMixin:
                 continue
             if not reste.strip():
                 continue
-            tour = conversation.ask(reste)
+            tour, prise = self._llm_tour(conversation, serveur, outil, reste)
             if tour.role == "error":
                 print(f"⚠ {tour.text}")
                 self._llm_say_served(serveur)
                 continue
-            print(tour.text)
             if tour.interrupted:
                 print(f"⏹ {t('answer interrupted')}")
-            # Le pied de ligne existe pour une réponse qui a défilé : il dit
-            # sa longueur et où l'écrire. Sous deux lignes, il n'apprend rien
-            # et le pluriel sonnerait faux.
+            # Le pied de ligne dit ce que la réponse a coûté et où l'écrire.
+            # Il paraît à CHAQUE tour depuis qu'il porte des mesures : la
+            # longueur seule n'apprenait rien sous deux lignes, un débit et
+            # un délai de premier jeton en apprennent autant sur une ligne
+            # que sur trente.
             lignes = len(tour.text.splitlines())
-            if lignes > 1:
-                print(
-                    f"── {lignes} {t('lines')} ·"
-                    f" {t('/save to write it to a file')} ──"
-                )
+            print(
+                f"── {lignes} {t('lines')} · {llm_perf.pied(prise)}"
+                f" · {t('/save to write it to a file')} ──"
+            )
+
+    def _llm_tour(self, conversation, serveur, outil, question):
+        """Un tour posé AU FIL, mesuré et journalisé. Rend (tour, mesure).
+
+        Le texte s'imprime fragment par fragment plutôt qu'en un bloc, et
+        c'est ce qui rend le délai du premier jeton observable : c'est lui
+        qui sépare un serveur lent d'un modèle lent, et aucune mesure prise
+        après coup ne le retrouve.
+
+        Un backend qui ne diffuse pas n'appelle jamais le fil ; sa réponse
+        s'imprime alors entière, et le délai reste inconnu plutôt que nul.
+        """
+        import time
+
+        mesures = self._llm_mesures()
+        debut = time.monotonic()
+        premier = [None]
+
+        def au_fil(morceau):
+            if premier[0] is None:
+                premier[0] = time.monotonic() - debut
+            print(morceau, end="", flush=True)
+
+        tour = conversation.ask(question, on_chunk=au_fil)
+        duree = time.monotonic() - debut
+        if premier[0] is None:
+            # Rien n'est passé par le fil : personne n'a encore rien imprimé.
+            print(tour.text)
+        else:
+            # Le dernier fragment ne finit pas la ligne, et l'invite suivante
+            # se collerait à la fin de la réponse.
+            print()
+        mesures.append(
+            llm_mesure.mesurer(
+                seance=self._llm_seance(),
+                rang=len(mesures) + 1,
+                serveur=serveur,
+                outil=outil,
+                question=question,
+                duree=duree,
+                premier=premier[0],
+                faits=conversation.last_meta,
+                interrompu=bool(tour.interrupted),
+                erreur="BackendError" if tour.role == "error" else "",
+            )
+        )
+        prise = mesures[-1]
+        try:
+            llm_mesure.ecrire(prise)
+        except Exception:  # noqa: BLE001
+            # Compter ne doit jamais interrompre une conversation.
+            pass
+        return tour, prise
+
+    def _llm_mesures(self):
+        """Les mesures de cette séance, créées à la première demande.
+
+        `setdefault` et non un accès direct : un état de session fabriqué à
+        la main n'a pas de raison de porter toutes les cases, et une case
+        absente dit « aucun tour encore », jamais une panne.
+        """
+        return self._llm_state().setdefault("mesures", [])
+
+    def _llm_seance(self):
+        """L'identifiant opaque de cette séance de conversation.
+
+        Il relie les tours d'une même séance dans le journal sans rien dire
+        de la machine ni de l'utilisateur : un rang seul ne les relierait pas
+        d'un fichier mensuel à l'autre, et une heure de départ nommerait
+        quand quelqu'un était devant son écran.
+        """
+        import uuid
+
+        etat = self._llm_state()
+        if not etat.get("seance"):
+            etat["seance"] = uuid.uuid4().hex[:12]
+        return etat["seance"]
+
+    def _llm_tui(self, conversation, serveur, outil):
+        """L'écran vivant : le tableau des tours, le flux, la saisie.
+
+        L'écran REPREND la conversation en cours — même objet, même
+        historique — et la liste des mesures est partagée : les tours posés
+        là comptent dans la même séance, et revenir à l'invite texte ne perd
+        ni l'un ni l'autre.
+        """
+        from script.todo import textual_setup
+        from script.todo.assistant import perf_tui as llm_ecran
+
+        if not textual_setup.ensure():
+            return
+        mesures = self._llm_mesures()
+        llm_ecran.run_tui(
+            conversation,
+            serveur,
+            mesures=mesures,
+            outil=outil,
+            seance=self._llm_seance(),
+            depart=len(mesures),
+        )
 
     @staticmethod
     def _llm_quiet_http():

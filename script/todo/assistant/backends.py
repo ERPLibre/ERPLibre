@@ -51,6 +51,18 @@ TIMEOUT = 300.0
 # relance une génération entière chez qui la paie.
 MAX_RETRIES = 1
 
+# Ce qu'il faut demander pour qu'un flux rende ses comptes de jetons. Un envoi
+# d'un seul bloc les porte toujours ; un flux, non, et cela dépend du
+# logiciel : certains joignent leur trame d'usage sans qu'on demande rien,
+# d'autres n'en envoient AUCUNE tant que l'option n'est pas là. Sans elle,
+# une part des serveurs ne permet aucun calcul de débit.
+#
+# L'option est celle de l'API que tous ces serveurs imitent, et le client la
+# transmet sans la relire ; un serveur qui l'ignore rend simplement ce qu'il
+# rendait, et un flux sans compte se lit comme un compte INCONNU, jamais
+# comme un zéro.
+STREAM_USAGE = {"stream_options": {"include_usage": True}}
+
 # Le budget d'un aller-retour `claude -p`, qui inclut le démarrage du CLI.
 CLAUDE_TIMEOUT = 600
 
@@ -265,7 +277,7 @@ class HttpBackend:
         """
         morceaux: list[str] = []
         faits = {"model": self.model, "usage": {}, "finish_reason": ""}
-        flux = self._create(appel, stream=True)
+        flux = self._create(appel, stream=True, **STREAM_USAGE)
         try:
             for evenement in flux:
                 faits["model"] = (

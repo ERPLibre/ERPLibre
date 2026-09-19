@@ -12604,6 +12604,90 @@ TRANSLATIONS = {
         "fr": "tunnels SSH",
         "en": "SSH tunnels",
     },
+    "turn": {
+        "fr": "tour",
+        "en": "turn",
+    },
+    "answer": {
+        "fr": "réponse",
+        "en": "answer",
+    },
+    "tok/s": {
+        "fr": "j/s",
+        "en": "tok/s",
+    },
+    "first token": {
+        "fr": "1er jeton",
+        "en": "first token",
+    },
+    "end": {
+        "fr": "fin",
+        "en": "end",
+    },
+    "error": {
+        "fr": "erreur",
+        "en": "error",
+    },
+    "cut": {
+        "fr": "coupé",
+        "en": "cut",
+    },
+    "no turn yet": {
+        "fr": "aucun tour pour l'instant",
+        "en": "no turn yet",
+    },
+    "%s total": {
+        "fr": "%s au total",
+        "en": "%s total",
+    },
+    "token": {
+        "fr": "jeton",
+        "en": "token",
+    },
+    "%s without a count": {
+        "fr": "%s sans compte",
+        "en": "%s without a count",
+    },
+    "%s tok/s": {
+        "fr": "%s j/s",
+        "en": "%s tok/s",
+    },
+    "first at %s": {
+        "fr": "1er à %s",
+        "en": "first at %s",
+    },
+    "fragment": {
+        "fr": "fragment",
+        "en": "fragment",
+    },
+    "fragments": {
+        "fr": "fragments",
+        "en": "fragments",
+    },
+    "character": {
+        "fr": "caractère",
+        "en": "character",
+    },
+    "Your question": {
+        "fr": "Votre question",
+        "en": "Your question",
+    },
+    "back": {
+        "fr": "retour",
+        "en": "back",
+    },
+    "timings": {
+        "fr": "durées",
+        "en": "timings",
+    },
+    "interrupt": {
+        "fr": "interrompre",
+        "en": "interrupt",
+    },
+    "open the live screen, with the timings of each turn": {
+        "fr": "ouvrir l'écran vivant, avec les durées de chaque tour",
+        "en": "open the live screen, with the timings of each turn",
+    },
     "loaded": {
         "fr": "chargé",
         "en": "loaded",
