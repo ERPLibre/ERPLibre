@@ -9,13 +9,21 @@ une connexion. Qui répond derrière un port ouvert est la question de
 serveur — un connecteur injecté suffit à parcourir un /24 entier sans émettre
 un paquet.
 
-Quatre sources répondent à « où chercher ». Deux sont locales à ce module —
-les réseaux que la machine porte, et la table de voisinage. Deux sont
-INJECTÉES : l'énumération des VM libvirt et la résolution d'un alias SSH
-existent déjà comme méthodes de la classe TODO, et ce paquet n'a pas le droit
-d'importer `todo.py`. Elles arrivent donc en arguments nommés, et leur
-absence rend une LISTE VIDE plutôt qu'une erreur : une source qu'on n'a pas
-branchée est une source qui n'a rien à dire, pas une panne du menu.
+Cinq sources répondent à « où chercher ». Deux sont locales à ce module —
+les réseaux que la machine porte, et la table de voisinage. Trois sont
+INJECTÉES : l'énumération des VM libvirt, la résolution d'un alias SSH et
+les tunnels qu'un alias déclare existent déjà comme méthodes de la classe
+TODO, et ce paquet n'a pas le droit d'importer `todo.py`. Elles arrivent donc
+en arguments nommés, et leur absence rend une LISTE VIDE plutôt qu'une
+erreur : une source qu'on n'a pas branchée est une source qui n'a rien à
+dire, pas une panne du menu.
+
+**Un tunnel déclaré est une cible, et elle est ici.** Un service derrière un
+pare-feu qui ne laisse passer que le 22 ne répond sur aucun de ses ports vus
+du dehors : il répond sur la BOUCLE LOCALE, au bout d'un `LocalForward`. Une
+source qui ne sonde que le nom d'hôte distant d'un alias annonce donc vide un
+hôte qui sert trois modèles. Les tunnels déclarés sont lus chez ssh, qui les
+résout, et sondés d'ici comme des ports locaux.
 
 **Le noyau est interrogé, jamais deviné.** Le préfixe d'un réseau se lit dans
 `ip`, qui le connaît, et non dans une adresse, d'où il ne se déduit pas. Un
@@ -57,6 +65,11 @@ from dataclasses import dataclass
 
 from script.todo.assistant import fingerprint
 
+# La borne d'un numéro de port est un fait du protocole, et `servers` la
+# porte déjà pour la saisie à la main. L'importer plutôt que la réécrire
+# garde une seule définition là où deux dériveraient en silence.
+from script.todo.assistant.servers import MAX_PORT
+
 # Ce qu'un /24 porte d'hôtes utilisables, et donc le plafond d'un balayage.
 # Plus large est refusé : le temps croît linéairement, et une plage que
 # personne n'a désignée décrit des machines que personne n'a désignées.
@@ -66,8 +79,8 @@ MAX_HOSTS = 254
 # ces fils attendent le réseau, ils ne calculent pas, et le nombre de cœurs
 # n'a aucun rapport avec le nombre de connexions qu'une machine peut tenir en
 # attente. `sweep` plafonne à `min(len(jobs), workers)`, donc une valeur plus
-# grande que le nombre de sondes ne change RIEN : un /24 sur onze ports en
-# compte 2 794, et 4 096, 8 192 ou 16 384 ouvriers y donnent tous une vague et
+# grande que le nombre de sondes ne change RIEN : un /24 sur douze ports en
+# compte 3 048, et 4 096, 8 192 ou 16 384 ouvriers y donnent tous une vague et
 # la même durée.
 #
 # La durée suit `plafond(sondes / ouvriers) × délai`. Le compromis retenu à
@@ -131,6 +144,35 @@ ROUTE_DEV = re.compile(r"\bdev\s+(\S+)")
 SSH_PATTERN_CHARS = ("*", "?")
 SSH_NEGATION = "!"
 
+# L'adresse qu'on sonde pour atteindre un tunnel lié sans adresse propre.
+LOOPBACK = "127.0.0.1"
+
+# Son pendant IPv6, et la raison qu'il existe. Une liaison IPv6 EXPLICITE ne
+# se replie PAS sur la boucle locale v4 : ssh pose `IPV6_V6ONLY` sur cet
+# écouteur, donc le port existe sur « ::1 » et pas sur « 127.0.0.1 ». Les
+# confondre lit un tunnel monté comme un tunnel absent, et propose de remonter
+# ce qui tourne déjà — ce que `ExitOnForwardFailure` fait alors échouer sur
+# « Address already in use ».
+LOOPBACK6 = "::1"
+
+# Le mot-clé résolu qui déclare un tunnel local. `ssh -G` le rend une fois
+# par tunnel, en minuscules, et c'est pourquoi sa lecture exige un résolveur
+# qui garde les RÉPÉTITIONS : une valeur par mot-clé n'en montre qu'un.
+SSH_FORWARD_KEY = "localforward"
+
+# Les extrémités de liaison que ssh lie sur les DEUX familles d'adresses, et
+# qui se sondent donc par la boucle locale v4. Le champ vide est le port nu,
+# dont le défaut est la boucle locale ; « * » est le joker de ssh_config, et
+# « 0.0.0.0 » celui qu'on écrit en toutes lettres. Les retenir telles quelles
+# rendrait des cibles que le résolveur de noms doit encore traduire, ou que
+# rien ne traduit du tout.
+SSH_BIND_ANY = ("", "*", "localhost", "0.0.0.0")
+
+# Les liaisons qui désignent cette machine en IPv6 SEULEMENT. Le joker « :: »
+# en fait partie : il n'est pas le pendant de « * », parce que l'écouteur
+# qu'il ouvre n'accepte rien en v4.
+SSH_BIND_ANY6 = ("::", "::1")
+
 
 @dataclass(frozen=True)
 class Interface:
@@ -146,6 +188,31 @@ class Interface:
     name: str
     cidr: str
     is_bridge: bool
+
+
+@dataclass(frozen=True)
+class Forward:
+    """Un tunnel local qu'un alias SSH déclare, tel que ssh le résout.
+
+    `bind` et `local_port` sont l'extrémité à sonder D'ICI, et la seule des
+    deux qui existe sans que rien ne tourne : un tunnel se déclare dans un
+    fichier, il ne s'ouvre qu'une fois `ssh` lancé. Un port local fermé dit
+    donc « déclaré, non monté », et non « pas de serveur ».
+
+    `host` et `port` nomment ce que le tunnel atteint de l'autre côté. Ils ne
+    servent qu'à situer la destination pour un lecteur : rien ne les sonde
+    d'ici, puisque les joindre directement est précisément ce que le tunnel
+    existe pour contourner.
+
+    `alias` est ce qui monte le tunnel, donc ce qu'une invite peut proposer
+    de lancer.
+    """
+
+    alias: str
+    bind: str
+    local_port: int
+    host: str
+    port: int
 
 
 def _c_env():
@@ -388,6 +455,151 @@ def ssh_hosts(
     return found
 
 
+def ssh_forwards(*, list_aliases=None, resolve_all=None) -> list[Forward]:
+    """Les tunnels locaux que déclare la configuration SSH.
+
+    `list_aliases()` rend les noms déclarés et `resolve_all(alias)` la
+    configuration résolue par `ssh -G` en {mot-clé: [valeurs]}. Les deux sont
+    INJECTÉS — ce sont des méthodes de la classe TODO, que ce paquet
+    n'importe pas — et leur absence rend une liste VIDE sans erreur.
+
+    Le résolveur exigé est celui qui garde les RÉPÉTITIONS, et c'est la seule
+    contrainte particulière de cette source : `localforward` paraît une fois
+    par tunnel, et le résolveur qui ne garde qu'une valeur par mot-clé — celui
+    qui convient à `identityfile`, dont la première entrée est celle qui
+    compte — réduit trois tunnels à un.
+
+    Trois formes ne rendent aucune cible sondable et sortent. Un tunnel sur
+    SOCKET UNIX lie un chemin et non un port, donc rien n'a de port à frapper.
+    Un port illisible ou hors bornes ne se sonde pas davantage. Et un même
+    port local déclaré deux fois ne désigne qu'un écouteur, puisque le second
+    `ssh` échouerait à le lier : le premier déclaré est retenu.
+
+    L'ordre est celui des alias, puis celui des tunnels dans chaque alias.
+    """
+    if list_aliases is None or resolve_all is None:
+        return []
+    try:
+        aliases = list_aliases() or []
+    except Exception:
+        # Un fichier absent rend déjà [] chez l'énumérateur du dépôt ; un
+        # énumérateur injecté lève ce qu'il veut, et c'est la même chose.
+        return []
+    found: list[Forward] = []
+    seen_aliases: set[str] = set()
+    taken: set[tuple[str, int]] = set()
+    for alias in aliases:
+        if not _is_machine(alias) or alias in seen_aliases:
+            continue
+        seen_aliases.add(alias)
+        for value in _ssh_values(alias, resolve_all, SSH_FORWARD_KEY):
+            forward = _forward(alias, value)
+            if forward is None:
+                continue
+            here = (forward.bind, forward.local_port)
+            if here in taken:
+                continue
+            taken.add(here)
+            found.append(forward)
+    return found
+
+
+def _ssh_values(alias, resolve_all, key) -> list[str]:
+    """Les valeurs d'un mot-clé résolu, ou une liste vide.
+
+    Absorbe tout ce qu'un résolveur injecté peut rendre à la place d'un
+    dictionnaire de listes : lever, rendre None, rendre un type inattendu ou
+    ranger une chaîne nue là où une liste est attendue. Aucun n'est une
+    raison d'empêcher les autres alias d'être lus.
+    """
+    try:
+        config = resolve_all(alias)
+    except Exception:
+        return []
+    if not isinstance(config, dict):
+        return []
+    values = config.get(key)
+    if isinstance(values, str):
+        return [values]
+    if not isinstance(values, (list, tuple)):
+        return []
+    return [one for one in values if isinstance(one, str)]
+
+
+def _forward(alias: str, value: str):
+    """Un `Forward` lu dans une valeur de `localforward` résolue, ou None.
+
+    Fonction PURE. `ssh -G` normalise la directive en deux champs séparés
+    par un blanc — l'extrémité d'ici, puis celle de là-bas — et crochète
+    toute adresse, ce qui est ce qui rend une adresse IPv6 lisible : sans les
+    crochets, ses deux-points et celui du port ne se distinguent pas.
+
+    L'extrémité d'ici prend deux formes, un port nu ou une liaison
+    complète ; celle de là-bas est toujours complète.
+    """
+    fields = value.split()
+    if len(fields) != 2:
+        return None
+    bind, local_port = _endpoint(fields[0])
+    host, port = _endpoint(fields[1])
+    if local_port is None:
+        return None
+    return Forward(
+        alias=alias,
+        bind=_bind(bind),
+        local_port=local_port,
+        host=host,
+        port=port or 0,
+    )
+
+
+def _bind(bind: str) -> str:
+    """L'adresse par laquelle on joint UNE extrémité de tunnel. Pure.
+
+    Une liaison qui ne nomme aucune adresse se ramène à la boucle locale de
+    SA famille, et une liaison qui en nomme une est rendue telle quelle :
+    ssh écoute là et nulle part ailleurs.
+
+    La famille compte, et c'est la seule subtilité. Les jokers v4 et le port
+    nu ouvrent un écouteur que la boucle locale v4 joint ; le joker v6 ouvre
+    un écouteur marqué `IPV6_V6ONLY`, que seule la boucle locale v6 joint.
+    Ramener le second sur « 127.0.0.1 » lit un tunnel monté comme absent.
+    """
+    plie = bind.lower()
+    if plie in SSH_BIND_ANY:
+        return LOOPBACK
+    if plie in SSH_BIND_ANY6:
+        return LOOPBACK6
+    return bind
+
+
+def _endpoint(field: str) -> tuple[str, int | None]:
+    """(adresse, port) d'un champ de tunnel résolu. Fonction PURE.
+
+    Rend un port `None` quand le champ n'en porte pas de lisible : un chemin
+    de socket Unix, un port vide, un port qui n'est pas un nombre, ou un
+    nombre hors des bornes d'un port. L'adresse est rendue sans ses crochets,
+    et vide quand le champ est un port nu.
+
+    La coupe se fait au DERNIER deux-points, sans quoi une adresse IPv6 se
+    couperait à son premier groupe.
+    """
+    text = (field or "").strip()
+    if ":" not in text:
+        return "", _port(text)
+    address, _, port = text.rpartition(":")
+    return address.strip().lstrip("[").rstrip("]"), _port(port)
+
+
+def _port(text: str):
+    """Un numéro de port lu dans du texte, ou None s'il n'en est pas un."""
+    try:
+        port = int(text)
+    except (TypeError, ValueError):
+        return None
+    return port if 0 < port <= MAX_PORT else None
+
+
 def neigh_hosts(text: str) -> list[str]:
     """Les adresses qui ont PARLÉ, lues dans « ip neigh ». Fonction PURE.
 
@@ -419,7 +631,7 @@ def neigh_hosts(text: str) -> list[str]:
 def plan_sweep(cidr: str, ports=None, *, skip=()) -> list[tuple[str, int]]:
     """Les couples (adresse, port) à frapper sur `cidr`. Fonction PURE.
 
-    `ports` vaut les onze ports de `fingerprint` en son absence. `skip`
+    `ports` vaut les douze ports de `fingerprint` en son absence. `skip`
     retire des adresses, et sert d'abord aux adresses de la machine
     elle-même : sans ce retrait, un balayage se reconnaît lui-même et la
     passerelle d'un pont est offerte comme un serveur découvert.

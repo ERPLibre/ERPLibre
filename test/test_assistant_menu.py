@@ -27,6 +27,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+from script.todo import todo as todo_module
 from script.todo.todo_i18n import t
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1286,6 +1287,253 @@ class LOuvertureDuMenuNeLanceRien(unittest.TestCase):
         ):
             TODO().prompt_assistant_ia()
         self.assertEqual(lances, [])
+
+
+class LesTunnelsDansLeBalayage(unittest.TestCase):
+    """Ce qu'un `LocalForward` déclaré change pour la recherche de serveur.
+
+    Un service derrière un pare-feu qui ne laisse passer que le port de ssh
+    n'ouvre aucun port vu du dehors. Sonder le nom d'hôte de son alias rend
+    « aucun serveur » sur un hôte qui en sert trois, et c'est un faux négatif
+    présenté comme un fait. L'extrémité locale de la redirection répond, elle,
+    et son port ne se devine pas : aucune liste ne contient un numéro que
+    l'utilisateur a choisi.
+
+    Deux régressions silencieuses sont visées ici. Le PRODUIT CARTÉSIEN : un
+    port de tunnel croisé avec les autres adresses frappe des portes que
+    personne n'a déclarées. Et le TUNNEL MORT pris pour une absence : la
+    déclaration prouve que quelqu'un a désigné ce service, seul le processus
+    qui porte la redirection manque.
+    """
+
+    def _todo(self):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        todo._llm_session = None
+        return todo
+
+    @staticmethod
+    def _tunnels():
+        from script.todo.assistant.discover import Forward
+
+        return [
+            Forward(
+                alias="azurite.invalid",
+                bind="127.0.0.1",
+                local_port=49731,
+                host="192.0.2.31",
+                port=8000,
+            ),
+            Forward(
+                alias="azurite.invalid",
+                bind="127.0.0.1",
+                local_port=49732,
+                host="192.0.2.31",
+                port=8001,
+            ),
+        ]
+
+    def test_un_tunnel_est_un_couple_precis_jamais_un_produit(self):
+        """Le port d'un tunnel appartient à UNE extrémité. Le croiser avec
+        les hôtes distants frapperait des portes que personne n'a nommées, et
+        multiplierait le balayage par le nombre de tunnels."""
+        from script.todo.assistant import discover as llm_disc
+        from script.todo.assistant import fingerprint as llm_fp
+
+        todo = self._todo()
+        vus = []
+        with patch.object(
+            llm_disc, "sweep", lambda jobs, **kw: vus.extend(jobs) or []
+        ), patch("click.prompt", side_effect=["n"]), patch(
+            "script.todo.todo_telemetry.record"
+        ), patch(
+            "builtins.print"
+        ):
+            todo._llm_probe_and_keep(["192.0.2.21"], tunnels=self._tunnels())
+        self.assertEqual(len(llm_fp.PORTS) + 2, len(vus))
+        self.assertIn(("127.0.0.1", 49731), vus)
+        self.assertIn(("127.0.0.1", 49732), vus)
+        for port in (49731, 49732):
+            self.assertNotIn(("192.0.2.21", port), vus)
+
+    def test_un_tunnel_qui_repond_ne_pose_aucune_question(self):
+        """Le montage ne se propose que devant un port fermé : demander
+        devant un tunnel vivant ferait une question par recherche."""
+        todo = self._todo()
+        with patch("click.prompt", side_effect=AssertionError("question")):
+            repris = todo._llm_mount_tunnels(
+                self._tunnels(),
+                [("127.0.0.1", 49731), ("127.0.0.1", 49732)],
+            )
+        self.assertEqual([], repris)
+
+    def test_un_tunnel_mort_se_dit_et_ne_monte_rien_sans_oui(self):
+        """Rien n'est lancé sans un oui, et les tunnels d'un alias sont
+        groupés : ssh en monte toutes les redirections d'un coup, donc une
+        question par port en poserait trois pour un seul oui."""
+        import io
+        import subprocess
+        from contextlib import redirect_stdout
+
+        lances = []
+
+        def refuser(argv, *a, **kw):
+            lances.append(argv)
+            raise AssertionError(f"sous-processus lancé : {argv}")
+
+        todo = self._todo()
+        sortie = io.StringIO()
+        with patch("click.prompt", side_effect=["n"]), patch.object(
+            subprocess, "run", refuser
+        ), redirect_stdout(sortie):
+            repris = todo._llm_mount_tunnels(self._tunnels(), [])
+        self.assertEqual([], lances)
+        self.assertEqual([], repris)
+        self.assertIn("azurite.invalid", sortie.getvalue())
+        self.assertEqual(1, sortie.getvalue().count("azurite.invalid"))
+
+    def test_un_oui_monte_l_alias_avec_le_garde_fou_de_ssh(self):
+        """Sans `ExitOnForwardFailure`, un ssh détaché rend 0 alors qu'aucune
+        redirection n'a pu être liée : le menu annoncerait un tunnel monté
+        devant un port fermé, ce qui est le cas courant du port déjà pris."""
+        import subprocess
+
+        from script.todo.assistant import discover as llm_disc
+
+        lances = []
+
+        def faux_ssh(argv, *a, **kw):
+            lances.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        todo = self._todo()
+        with patch("click.prompt", side_effect=["o"]), patch.object(
+            subprocess, "run", faux_ssh
+        ), patch.object(
+            llm_disc, "sweep", lambda jobs, **kw: list(jobs)
+        ), patch(
+            "builtins.print"
+        ):
+            repris = todo._llm_mount_tunnels(self._tunnels(), [])
+        self.assertEqual(1, len(lances), "un ssh par alias, pas par tunnel")
+        self.assertIn("-o", lances[0])
+        self.assertIn("ExitOnForwardFailure=yes", lances[0])
+        self.assertIn("-f", lances[0])
+        self.assertIn("-N", lances[0])
+        self.assertEqual("azurite.invalid", lances[0][-1])
+        # Les redirections sont celles de l'entrée, jamais recopiées en
+        # argument : les réécrire les ferait diverger du fichier.
+        self.assertNotIn("-L", lances[0])
+        self.assertEqual([("127.0.0.1", 49731), ("127.0.0.1", 49732)], repris)
+
+    def test_un_ssh_qui_echoue_le_dit_et_ne_reprend_rien(self):
+        import io
+        import subprocess
+        from contextlib import redirect_stdout
+
+        def ssh_rate(argv, *a, **kw):
+            return subprocess.CompletedProcess(argv, 255, "", "Address in use")
+
+        todo = self._todo()
+        sortie = io.StringIO()
+        with patch("click.prompt", side_effect=["o"]), patch.object(
+            subprocess, "run", ssh_rate
+        ), redirect_stdout(sortie):
+            repris = todo._llm_mount_tunnels(self._tunnels(), [])
+        self.assertEqual([], repris)
+        self.assertIn("Address in use", sortie.getvalue())
+
+    def test_les_ports_de_la_boucle_locale_portent_ceux_des_tunnels(self):
+        """Sans eux, « Ici » ne frappe que des numéros connus d'avance, et un
+        poste dont les modèles arrivent par tunnel n'y trouve rien."""
+        from script.todo.assistant import fingerprint as llm_fp
+
+        todo = self._todo()
+        with patch.object(todo, "_llm_tunnels", lambda: self._tunnels()):
+            ports = todo._llm_loopback_ports()
+        self.assertEqual(len(ports), len(set(ports)))
+        for port in llm_fp.PORTS:
+            self.assertIn(port, ports)
+        self.assertIn(49731, ports)
+        self.assertIn(49732, ports)
+
+    def test_un_tunnel_sur_un_port_deja_balaye_ne_prete_pas_son_nom(self):
+        """Le cas qui ferait croire à l'utilisateur qu'il parle à distance.
+
+        Un tunnel déclaré sur un port que le balayage frappait DÉJÀ n'ajoute
+        aucune cible, et surtout n'en nomme aucune : ce qui répond là peut
+        tout aussi bien être le service local qui occupe ce port — celui-là
+        même qui empêche le tunnel de se lier. L'étiquette porterait alors
+        le nom d'une machine distante devant un serveur d'ici.
+        """
+        from script.todo.assistant import discover as llm_disc
+        from script.todo.assistant import fingerprint as llm_fp
+        from script.todo.assistant.discover import Forward
+
+        port_connu = llm_fp.PORTS[0]
+        tunnels = [
+            Forward(
+                alias="azurite.invalid",
+                bind="127.0.0.1",
+                local_port=port_connu,
+                host="192.0.2.31",
+                port=port_connu,
+            )
+        ]
+        gardes = {}
+        empreinte = llm_fp.Fingerprint("ollama", "0.0.0", ("modele-local",))
+        with patch.object(
+            llm_disc, "sweep", lambda jobs, **kw: [("127.0.0.1", port_connu)]
+        ), patch.object(
+            llm_fp, "collect", lambda *a, **kw: {"/": (200, b"x")}
+        ), patch.object(
+            llm_fp, "identify", lambda *a, **kw: empreinte
+        ), patch.object(
+            todo_module.TODO,
+            "_llm_get_config",
+            lambda self, keys: [],
+        ), patch.object(
+            todo_module.TODO,
+            "_llm_set_config",
+            lambda self, keys, val: gardes.update({"v": val}),
+        ), patch(
+            "click.prompt", side_effect=["o"]
+        ), patch(
+            "builtins.print"
+        ):
+            self._todo()._llm_probe_and_keep(["127.0.0.1"], tunnels=tunnels)
+        etiquettes = [entree["label"] for entree in gardes["v"]]
+        self.assertEqual(1, len(etiquettes))
+        self.assertNotIn("azurite.invalid", etiquettes[0])
+        self.assertIn("ollama", etiquettes[0])
+
+    def test_l_etiquette_d_une_trouvaille_par_tunnel_porte_l_alias(self):
+        """Derrière un tunnel, tout est sur la boucle locale et seul le port
+        change : trois lignes identiques à un chiffre près ne se choisissent
+        pas. L'alias situe, le modèle départage."""
+        from script.todo.assistant.fingerprint import Fingerprint
+        from script.todo.todo import TODO
+
+        empreinte = Fingerprint("vllm", "0.0.0", ("modele-invente",))
+        self.assertEqual(
+            "azurite.invalid · vllm modele-invente",
+            TODO._llm_found_label(
+                "azurite.invalid", "127.0.0.1", 49731, empreinte
+            ),
+        )
+        # Sans alias, l'adresse et le port restent la seule chose qui sépare
+        # deux serveurs du même logiciel.
+        self.assertEqual(
+            "vllm (192.0.2.21:8000)",
+            TODO._llm_found_label("", "192.0.2.21", 8000, empreinte),
+        )
+        # Un logiciel sans modèle annoncé ne laisse pas d'espace en fin.
+        muet = Fingerprint("exo", "", ())
+        self.assertEqual(
+            "azurite.invalid · exo",
+            TODO._llm_found_label("azurite.invalid", "127.0.0.1", 49731, muet),
+        )
 
 
 class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):

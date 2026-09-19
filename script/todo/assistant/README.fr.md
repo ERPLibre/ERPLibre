@@ -9,11 +9,11 @@ savoir faire, garde ceux qu'on a choisis, et tient la conversation.
 
 C'est la seule chose à comprendre avant de lire une ligne du code. Le port
 8080 héberge llama.cpp, LocalAI **et** Open WebUI ; le port 5000 héberge
-text-generation-webui **et** TabbyAPI ; `/v1/models` est servi par onze des
-douze familles. Un port ouvre donc la question — il n'y répond jamais.
+text-generation-webui **et** TabbyAPI ; `/v1/models` est servi par douze des
+treize familles. Un port ouvre donc la question — il n'y répond jamais.
 
-L'identité se lit dans le **corps** d'une réponse, par une échelle de treize
-étages sur onze ports, arrêt au premier accord. L'ordre de cette échelle
+L'identité se lit dans le **corps** d'une réponse, par une échelle de quatorze
+étages sur douze ports, arrêt au premier accord. L'ordre de cette échelle
 porte tout le raisonnement. LocalAI réémet l'API native d'Ollama **en
 entier** — `/api/tags`, `/api/show`, `/api/ps`, `/api/version` — jusqu'à la
 chaîne `Ollama is running` sur `/`. Les points de terminaison qui ressemblent
@@ -77,10 +77,11 @@ plusieurs lignes devient autant de tours, et une ligne collée valant `0`
 déclencherait sinon une entrée de menu.
 
 La découverte d'hôtes au-delà de la boucle locale — domaines QEMU,
-`~/.ssh/config`, balayage du `/24` local — repose sur quatre sources, dont
-deux sont INJECTÉES : l'énumération des domaines libvirt et la résolution d'un
-alias SSH existent déjà comme méthodes de la classe du CLI, que ce paquet n'a
-pas le droit d'importer.
+`~/.ssh/config`, tunnels déclarés, balayage du `/24` local — repose sur cinq
+sources, dont trois sont INJECTÉES : l'énumération des domaines libvirt, la
+résolution d'un alias SSH et la lecture de ses redirections existent déjà
+comme méthodes de la classe du CLI, que ce paquet n'a pas le droit
+d'importer.
 
 Un serveur vit souvent sur un réseau que cette machine ne PORTE pas, joignable
 par la passerelle : quand le CLI tourne dans une machine virtuelle, le
@@ -99,11 +100,25 @@ ne se déduit pas de la latence mesurée.
 
 ## Trouver un serveur qui n'est pas là
 
-Quatre sources répondent à « où chercher » : la boucle locale, les domaines
-QEMU de cette machine, les hôtes de `~/.ssh/config`, et un `/24` balayé. Deux
-d'entre elles sont INJECTÉES — énumérer les domaines libvirt et résoudre un
-alias SSH sont déjà des méthodes de la classe du CLI, que ce paquet n'a pas le
-droit d'importer.
+Cinq sources répondent à « où chercher » : la boucle locale, les domaines
+QEMU de cette machine, les hôtes de `~/.ssh/config`, les tunnels que ces
+hôtes déclarent, et un `/24` balayé. Trois d'entre elles sont INJECTÉES —
+énumérer les domaines libvirt, résoudre un alias SSH et lire les
+redirections qu'il déclare sont déjà des méthodes de la classe du CLI, que
+ce paquet n'a pas le droit d'importer.
+
+Un tunnel déclaré est une cible, et elle est ICI. Un service derrière un
+pare-feu qui ne laisse passer que le port de ssh n'ouvre rien qui se voie du
+dehors : il répond sur la boucle locale, au bout d'un `LocalForward`. Sonder
+le seul nom d'hôte d'un alias annonce donc vide un hôte qui sert des modèles.
+Le port ne se devine pas davantage — aucune liste ne contient un numéro que
+l'utilisateur a choisi — d'où sa lecture là où ssh le résout. Cette lecture
+exige le résolveur qui GARDE les répétitions : celui qui ne garde qu'une
+valeur par mot-clé convient à `identityfile`, dont la première entrée est
+celle qui compte, et il réduit en silence trois tunnels déclarés à un seul.
+Un tunnel déclaré dont le port local est fermé n'est pas une absence de
+serveur mais un tunnel à monter, et il est proposé comme tel ; rien n'est
+lancé sans un oui.
 
 Un serveur vit souvent sur un réseau que cette machine ne PORTE pas, joignable
 par la passerelle : quand le CLI tourne dans une machine virtuelle, le

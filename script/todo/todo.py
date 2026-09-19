@@ -2053,11 +2053,20 @@ class TODO(
         return hosts
 
     @staticmethod
-    def _ssh_resolve(alias):
-        """Configuration RÉSOLUE de l'alias, telle que ssh la voit (ssh -G).
+    def _ssh_resolve_all(alias):
+        """Configuration RÉSOLUE de l'alias, TOUTES ses valeurs (ssh -G).
+
+        Rend {mot-clé en minuscules: [valeurs, dans l'ordre de la sortie]},
+        et {} quand ssh ne répond pas, expire ou refuse l'alias.
 
         On délègue à ssh au lieu de relire le fichier : lui seul connaît les
         Include, les Match, l'ordre des motifs et ses propres défauts.
+
+        Les LISTES sont ce qui sépare ce lecteur de `_ssh_resolve`. Plusieurs
+        mots-clés de ssh_config se répètent légitimement : `identityfile`
+        déclare plusieurs clés, `localforward` plusieurs tunnels. Une seule
+        valeur par mot-clé fait disparaître tout ce qui suit la première, et
+        un hôte qui ouvre trois tunnels n'en annonce alors qu'un.
         """
         try:
             res = subprocess.run(
@@ -2074,10 +2083,23 @@ class TODO(
         out = {}
         for ligne in res.stdout.splitlines():
             cle, _, val = ligne.strip().partition(" ")
-            # ssh -G répète « identityfile » : la PREMIÈRE est celle qui compte.
-            if cle and val and cle.lower() not in out:
-                out[cle.lower()] = val
+            if cle and val:
+                out.setdefault(cle.lower(), []).append(val)
         return out
+
+    @staticmethod
+    def _ssh_resolve(alias):
+        """Configuration résolue de l'alias, UNE valeur par mot-clé.
+
+        La PREMIÈRE gagne, et c'est ce qu'attendent ses lecteurs : devant un
+        `identityfile` répété, la première entrée est celle que ssh présente
+        en premier. Ce qui a besoin des répétitions appelle
+        `_ssh_resolve_all`, dont cette vue n'est que le premier élément.
+        """
+        return {
+            cle: valeurs[0]
+            for cle, valeurs in TODO._ssh_resolve_all(alias).items()
+        }
 
     def _sshfs_command(self, alias, mount_point, resolved=None):
         """(commande sshfs, alias contourné ?) pour monter cet alias.

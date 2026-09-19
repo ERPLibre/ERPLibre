@@ -24,7 +24,7 @@ Bearer` dans une TRACE, ce qui est le dernier rempart et non le premier.
 pour la même raison. `claude_argv` bâtit donc l'argv SANS l'invite, et
 l'appelant écrit la question sur stdin.
 
-Onze des douze familles de serveurs exposent `/v1/chat/completions` à
+Douze des treize familles de serveurs exposent `/v1/chat/completions` à
 l'identique : un seul client `openai` les couvre toutes, pointé sur ce que
 `servers.base_url()` rend. C'est aussi ce client qu'un test injecte pour
 parler à un vrai serveur de boucle locale plutôt qu'à un double.
