@@ -222,6 +222,13 @@ rev = "24.8.0"
 [tool.poetry.dependencies.flanker]
 git = "https://github.com/mathben/flanker.git"
 rev = "update_imghdr_python3"
+# « validator » apporte « dnsq », que « flanker.addresslib.address »
+# importe au premier appel de « validate_address ». Odoo passe par là dès
+# qu'un courriel est validé — « crm » le fait au chargement de ses données
+# — et l'absence du paquet lève « ModuleNotFoundError » au milieu de
+# l'installation, donc aucune base neuve ne se construit. Sans flanker du
+# tout, Odoo retombe sur « email_normalize » ; à demi installé, il casse.
+extras = [ "validator",]
 
 [tool.poetry.dependencies.fsspec]
 extras = [ "s3",]
