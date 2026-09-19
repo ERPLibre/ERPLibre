@@ -211,6 +211,25 @@ FIXTURES: dict[str, dict[str, tuple[int, bytes]]] = {
         # par défaut du cadre web qui le sert, donc l'étage Jan ne s'y
         # accorde pas.
         "/node_id": (200, b'"pair-invente-pour-le-test"'),
+        # Ce qu'il tient CHARGÉ, par opposition à son catalogue : une seule
+        # instance, dont le catalogue ci-dessous porte aussi le nom. C'est
+        # l'écart entre les deux que la lecture doit rendre.
+        "/state/instances": (
+            200,
+            json.dumps(
+                {
+                    "instance-inventee": {
+                        "MlxRingInstance": {
+                            "instanceId": "instance-inventee",
+                            "shardAssignments": {
+                                "modelId": "famille-inventee/modele-007",
+                                "runnerToShard": {},
+                            },
+                        }
+                    }
+                }
+            ).encode(),
+        ),
         "/openapi.json": (
             200,
             b'{"info":{"title":"FastAPI","version":"0.1.0"}}',

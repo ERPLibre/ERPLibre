@@ -29,6 +29,24 @@ transport, et n'émet que des GET, sans corps et sans en-tête
 `Authorization` : un balayage ne doit pouvoir ni charger un modèle, ni
 dépenser un jeton.
 
+## Annoncer un modèle n'est pas le servir
+
+Un catalogue dit ce qu'un serveur SAIT faire tourner ; il ne dit pas ce qu'il
+tient en mémoire. Un moteur réparti annonce des centaines de modèles et n'en
+garde qu'un chargé à la fois, donc retenir le premier du catalogue ouvre une
+conversation dont chaque question rend un refus — et le refus n'arrive
+qu'APRÈS la première question. `Fingerprint` porte donc `models` et `served`
+séparément, et un `served` VIDE se lit « le serveur ne le dit pas », jamais
+« rien n'est servable » : presque aucun n'expose de point de terminaison qui
+réponde à la question, et prendre leur silence pour un refus les rendrait
+tous inutilisables.
+
+Ce qui est chargé change pendant qu'on s'en sert, donc la question se repose
+à l'ouverture d'une conversation et non une fois pour toutes. Cette lecture
+frappe UN chemin, et seulement chez le logiciel qui distingue les deux.
+`/model` choisit un autre modèle sur le même serveur — `/model <texte>`
+filtre, parce qu'une liste de plusieurs centaines ne se choisit pas à l'œil.
+
 ## Une adresse ne devient jamais du texte de prompt
 
 Un alias SSH, un nom d'hôte, une adresse IP, un nom de VM désignent des

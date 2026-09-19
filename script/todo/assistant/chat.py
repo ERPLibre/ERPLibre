@@ -45,6 +45,9 @@ COMMANDS: dict[str, str] = {
     "/srv": (
         "change server, history CLEARED — the model is no longer the same"
     ),
+    "/model": (
+        "change model on this server, history CLEARED; /model <text> filters"
+    ),
     "/ctx": "show again what was sent",
     "/m": 'multi-line entry, end with a single "." line',
     "/save": "write the conversation to a file",

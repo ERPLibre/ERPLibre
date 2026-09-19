@@ -1536,6 +1536,296 @@ class LesTunnelsDansLeBalayage(unittest.TestCase):
         )
 
 
+class LeModeleServiEtLeModeleAnnonce(unittest.TestCase):
+    """Un serveur peut ANNONCER plus de modèles qu'il n'en SERT.
+
+    Un moteur qui répartit l'inférence sur plusieurs machines énumère tout ce
+    qu'il SAIT faire tourner — des centaines d'entrées — et n'en tient qu'une
+    poignée chargée. Retenir le premier du catalogue ouvre une conversation
+    dont chaque question rend un refus, et le refus n'arrive qu'APRÈS la
+    première question : rien, avant, ne distingue ce serveur d'un serveur sain.
+
+    Ce que ces tests défendent tient en deux phrases. Ce qui est CHARGÉ change
+    pendant qu'on s'en sert, donc la question se repose à l'ouverture et non
+    une fois pour toutes. Et un serveur qui ne dit rien ne dit PAS que rien
+    n'est servable : prendre son silence pour un refus les rendrait tous
+    inutilisables.
+
+    Ces tests sont les premiers à faire tourner la boucle de conversation
+    elle-même. Elle lit par `input`, jamais par `click.prompt`, et un
+    `EOFError` en fin de scénario la referme comme le ferait Ctrl+D.
+    """
+
+    SERVI = "famille-inventee/modele-charge"
+    AUTRE = "famille-inventee/modele-dormant"
+
+    def _serveur(self, modele):
+        from script.todo.assistant import servers as llm_servers
+
+        return llm_servers.Server(
+            handle="server-1",
+            label="essai",
+            host="127.0.0.1",
+            port=9,
+            software="exo",
+            model=modele,
+            hosting="loopback",
+            secret_ref="",
+        )
+
+    def _todo(self, serveur, connus=None, ecrits=None):
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        todo._llm_session = {
+            "serveur": serveur,
+            "sonde": [],
+            "confirmes": set(),
+            "contextes": set(),
+            "gpt": None,
+            "gpts": None,
+            "tunnels": [],
+        }
+        todo._llm_get_config = lambda keys: list(connus or [])
+        todo._llm_set_config = lambda keys, val: (
+            ecrits.update({"v": val}) if ecrits is not None else None
+        )
+        return todo
+
+    def _jouer(self, todo, lignes, servis):
+        """La boucle de conversation, sans réseau ni serveur.
+
+        Rend (sortie, modèles confiés au backend) — le second est ce qui
+        prouve qu'un changement de modèle a bien atteint ce qui parle, et
+        non seulement l'affichage.
+        """
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant import fingerprint as llm_fp
+
+        modeles = []
+
+        class FauxBackend:
+            keeps_history = False
+
+            def __init__(self, cible, modele, **_kw):
+                modeles.append(modele)
+                self.model = modele
+
+            def send(self, messages, *, on_chunk=None):
+                return "une réponse", {"model": self.model}
+
+        entrees = list(lignes)
+
+        def lire(_invite=""):
+            if not entrees:
+                raise EOFError
+            return entrees.pop(0)
+
+        sortie = io.StringIO()
+        with patch.object(
+            llm_backends, "HttpBackend", FauxBackend
+        ), patch.object(
+            llm_fp, "collect_served", lambda *a, **kw: servis
+        ), patch(
+            "builtins.input", lire
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ), redirect_stdout(
+            sortie
+        ):
+            todo._llm_conversation()
+        return sortie.getvalue(), modeles
+
+    def test_un_modele_qui_n_est_plus_charge_est_remplace_et_dit(self):
+        """Le remplacement est SILENCIEUX s'il ne se dit pas, et l'invite
+        nommerait alors un modèle que personne n'a choisi."""
+        todo = self._todo(self._serveur(self.AUTRE))
+        sortie, modeles = self._jouer(todo, ["bonjour"], (self.SERVI,))
+        self.assertEqual([self.SERVI], modeles)
+        self.assertIn(self.AUTRE, sortie)
+        self.assertIn(self.SERVI, sortie)
+
+    def test_un_serveur_muet_sur_la_question_garde_son_modele(self):
+        """`served` vide se lit « il ne le dit pas ». La plupart des serveurs
+        n'exposent rien qui réponde, et leur imposer un changement les
+        priverait du modèle qu'on avait retenu."""
+        todo = self._todo(self._serveur(self.AUTRE))
+        sortie, modeles = self._jouer(todo, ["bonjour"], ())
+        self.assertEqual([self.AUTRE], modeles)
+        self.assertNotIn(t("It serves: %s") % self.SERVI, sortie)
+
+    def test_un_modele_deja_servi_ne_declenche_aucun_message(self):
+        todo = self._todo(self._serveur(self.SERVI))
+        sortie, modeles = self._jouer(todo, ["bonjour"], (self.SERVI,))
+        self.assertEqual([self.SERVI], modeles)
+        self.assertNotIn("ℹ", sortie)
+
+    def test_slash_model_refait_le_backend_avec_le_modele_choisi(self):
+        """Le backend FIGE son modèle à la construction, et l'invite le nomme
+        à chaque tour : changer l'un sans l'autre laisserait l'utilisateur
+        parler à un modèle que l'écran ne nomme pas."""
+        from script.todo.assistant import fingerprint as llm_fp
+
+        empreinte = llm_fp.Fingerprint(
+            "exo", "", (self.AUTRE, self.SERVI), frozenset(), (self.SERVI,)
+        )
+        todo = self._todo(self._serveur(self.SERVI))
+        with patch.object(
+            llm_fp, "identify", lambda *a, **kw: empreinte
+        ), patch.object(llm_fp, "collect", lambda *a, **kw: {}), patch(
+            "click.prompt", side_effect=["2"]
+        ):
+            sortie, modeles = self._jouer(
+                todo, ["/model", "bonjour"], (self.SERVI,)
+            )
+        # Deux constructions : l'ouverture, puis le changement.
+        self.assertEqual([self.SERVI, self.AUTRE], modeles)
+        self.assertIn(self.AUTRE, sortie)
+
+    def test_slash_model_filtre_par_le_texte_qui_suit(self):
+        """Un moteur réparti annonce des centaines de modèles, et le dépôt
+        n'a ni pagination ni défilement piloté : une liste de cette longueur
+        ne se choisit pas."""
+        from script.todo.assistant import fingerprint as llm_fp
+
+        empreinte = llm_fp.Fingerprint(
+            "exo",
+            "",
+            ("famille-inventee/alpha", "famille-inventee/beta"),
+            frozenset(),
+            (),
+        )
+        todo = self._todo(self._serveur("famille-inventee/alpha"))
+        with patch.object(
+            llm_fp, "identify", lambda *a, **kw: empreinte
+        ), patch.object(llm_fp, "collect", lambda *a, **kw: {}), patch(
+            "click.prompt", side_effect=["1"]
+        ):
+            sortie, modeles = self._jouer(todo, ["/model beta"], ())
+        self.assertIn("famille-inventee/beta", sortie)
+        self.assertNotIn("[2]", sortie)
+        self.assertEqual(
+            ["famille-inventee/alpha", "famille-inventee/beta"], modeles
+        )
+
+    def test_un_filtre_sans_correspondance_ne_change_rien(self):
+        from script.todo.assistant import fingerprint as llm_fp
+
+        empreinte = llm_fp.Fingerprint(
+            "exo", "", ("famille-inventee/alpha",), frozenset(), ()
+        )
+        todo = self._todo(self._serveur("famille-inventee/alpha"))
+        with patch.object(
+            llm_fp, "identify", lambda *a, **kw: empreinte
+        ), patch.object(llm_fp, "collect", lambda *a, **kw: {}):
+            sortie, modeles = self._jouer(todo, ["/model zeta"], ())
+        self.assertIn(t("No model under that name on this server."), sortie)
+        self.assertEqual(["famille-inventee/alpha"], modeles)
+
+    def test_un_refus_nomme_ce_que_le_serveur_sert_vraiment(self):
+        """Une panne de réseau et un modèle absent se ressemblent dans le
+        texte d'une erreur, dont la forme appartient à chaque logiciel : on
+        repose la question au serveur au lieu de lire son message."""
+        todo = self._todo(self._serveur(self.AUTRE))
+        sortie = self._refus(todo, (self.SERVI,))
+        self.assertIn(t("This server does not serve %s.") % self.AUTRE, sortie)
+        self.assertIn(t("It serves: %s") % self.SERVI, sortie)
+
+    def test_un_refus_sans_contradiction_ne_raconte_rien(self):
+        """Le modèle demandé EST servi : la panne est ailleurs, et prétendre
+        le contraire enverrait chercher au mauvais endroit."""
+        todo = self._todo(self._serveur(self.SERVI))
+        sortie = self._refus(todo, (self.SERVI,))
+        self.assertNotIn(t("It serves: %s") % self.SERVI, sortie)
+
+    def _refus(self, todo, servis):
+        """La boucle, avec un backend qui refuse toute question."""
+        import io
+        from contextlib import redirect_stdout
+
+        from script.todo.assistant import backends as llm_backends
+        from script.todo.assistant import fingerprint as llm_fp
+        from script.todo.assistant.backends import BackendError
+
+        class Refus:
+            keeps_history = False
+
+            def __init__(self, cible, modele, **_kw):
+                self.model = modele
+
+            def send(self, messages, *, on_chunk=None):
+                raise BackendError("404 - no instance found")
+
+        entrees = ["bonjour"]
+
+        def lire(_invite=""):
+            if not entrees:
+                raise EOFError
+            return entrees.pop(0)
+
+        sortie = io.StringIO()
+        with patch.object(llm_backends, "HttpBackend", Refus), patch.object(
+            llm_fp, "collect_served", lambda *a, **kw: servis
+        ), patch.object(
+            todo_module.TODO, "_llm_resolve_model", lambda self, s: s
+        ), patch(
+            "builtins.input", lire
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ), redirect_stdout(
+            sortie
+        ):
+            todo._llm_conversation()
+        return sortie.getvalue()
+
+    def test_le_modele_retenu_a_la_decouverte_est_un_modele_servi(self):
+        from script.todo.assistant import fingerprint as llm_fp
+        from script.todo.todo import TODO
+
+        avec = llm_fp.Fingerprint(
+            "exo", "", (self.AUTRE, self.SERVI), frozenset(), (self.SERVI,)
+        )
+        self.assertEqual(self.SERVI, TODO._llm_default_model(avec))
+        # Un serveur qui ne distingue rien retombe sur son catalogue.
+        sans = llm_fp.Fingerprint("vllm", "", (self.AUTRE,), frozenset(), ())
+        self.assertEqual(self.AUTRE, TODO._llm_default_model(sans))
+        self.assertEqual("", TODO._llm_default_model(llm_fp.Fingerprint()))
+
+    def test_un_modele_choisi_est_ecrit_sur_le_serveur_qui_lui_repond(self):
+        """Un choix explicite mérite de survivre au menu ; il ne doit
+        atteindre que l'entrée dont l'hôte ET le port correspondent."""
+        voisin = {
+            "label": "voisin",
+            "host": "127.0.0.1",
+            "port": 10,
+            "software": "vllm",
+            "model": "intact",
+            "hosting": "loopback",
+            "secret_ref": "",
+        }
+        cible = dict(voisin, port=9, label="cible", model="ancien")
+        ecrits = {}
+        todo = self._todo(
+            self._serveur(self.SERVI), connus=[cible, voisin], ecrits=ecrits
+        )
+        todo._llm_remember_model(self._serveur(self.SERVI))
+        garde = {entree["port"]: entree["model"] for entree in ecrits["v"]}
+        self.assertEqual(self.SERVI, garde[9])
+        self.assertEqual("intact", garde[10])
+
+    def test_un_serveur_non_enregistre_n_en_cree_aucun(self):
+        """Le repli distant et celui qu'offre la sonde de la boucle locale ne
+        sont pas des serveurs enregistrés : un choix de modèle ne doit pas
+        les faire naître sur le disque."""
+        ecrits = {}
+        todo = self._todo(self._serveur(self.SERVI), connus=[], ecrits=ecrits)
+        todo._llm_remember_model(self._serveur(self.SERVI))
+        self.assertEqual({}, ecrits)
+
+
 class LaSuiteNOuvrePasLeVraiClaude(unittest.TestCase):
     """Le menu des agents calcule cinq comptes, et chacun interroge la machine.
 

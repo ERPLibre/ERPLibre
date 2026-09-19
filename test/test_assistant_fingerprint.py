@@ -274,6 +274,65 @@ class Signatures(unittest.TestCase):
         self.assertGreater(CATALOG_CAP, 4 * len(CATALOGUE_LONG))
         self.assertLessEqual(CATALOG_CAP, 1 << 20)
 
+    def test_annoncer_et_servir_ne_sont_pas_la_meme_chose(self):
+        """Le mode de défaillance : une conversation qui ne rend qu'un refus.
+
+        Un moteur réparti annonce tout ce qu'il SAIT faire tourner et n'en
+        tient qu'une poignée en mémoire. Retenir le premier du catalogue
+        ouvre une conversation dont chaque question rend « no instance
+        found », et le refus n'arrive qu'APRÈS la première question.
+        """
+        fp = identify(FIXTURES["exo"], port=8080)
+        self.assertEqual(("famille-inventee/modele-007",), fp.served)
+        self.assertGreater(len(fp.models), 1)
+        # Ce qu'il sert n'est PAS ce qu'il annonce en premier : sans cela le
+        # test passerait alors même que la distinction serait perdue.
+        self.assertNotEqual(fp.models[0], fp.served[0])
+        self.assertIn(fp.served[0], fp.models)
+
+    def test_un_serveur_qui_ne_dit_rien_ne_sert_pas_rien(self):
+        """`served` vide se lit « il ne le dit pas », jamais « rien n'est
+        servable » : l'immense majorité n'expose aucun point de terminaison
+        qui réponde, et prendre leur silence pour un refus les rendrait tous
+        inutilisables."""
+        for famille in ("vllm", "ollama", "llamacpp", "lmstudio"):
+            with self.subTest(famille=famille):
+                fp = identify(FIXTURES[famille], port=8080)
+                self.assertEqual((), fp.served)
+                self.assertTrue(fp.software)
+
+    def test_une_instance_abimee_n_emporte_pas_les_autres(self):
+        """Un corps de tiers : rien de sa forme n'est garanti, et aucune
+        entrée illisible ne doit faire disparaître les voisines."""
+        import json
+
+        from script.todo.assistant.fingerprint import (
+            EXO_INSTANCES,
+            served_models,
+        )
+
+        corps = json.dumps(
+            {
+                "a": "pas un mapping",
+                "b": {"Genre": {"shardAssignments": {"modelId": ""}}},
+                "c": {"Genre": {"shardAssignments": "pas un mapping"}},
+                "d": {"Genre": {"shardAssignments": {"modelId": "vivant"}}},
+                "e": {"Genre": {"shardAssignments": {"modelId": "vivant"}}},
+            }
+        ).encode()
+        self.assertEqual(
+            ("vivant",),
+            served_models("exo", {EXO_INSTANCES: (200, corps)}),
+        )
+        # Un corps absent, vide ou hostile ne lève pas non plus.
+        for abime in (b"", b"<html>", b"[]", b"null"):
+            with self.subTest(abime=abime):
+                self.assertEqual(
+                    (),
+                    served_models("exo", {EXO_INSTANCES: (200, abime)}),
+                )
+        self.assertEqual((), served_models("exo", {}))
+
     def test_un_401_sur_le_chemin_model_singulier_est_un_accord(self):
         fp = identify(FIXTURES["tabbyapi"])
         self.assertEqual(fp.software, "tabbyapi")
