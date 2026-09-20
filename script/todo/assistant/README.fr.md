@@ -48,7 +48,7 @@ position de passer.
 
 ## Le menu
 
-`Assistant › LLM` porte six entrées.
+`Assistant › LLM` porte sept entrées.
 
 | Entrée | Ce qu'elle fait |
 |--------|-----------------|
@@ -58,6 +58,7 @@ position de passer.
 | Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
 | Modèles sur un serveur | poser ou retirer un modèle là où la famille le permet ; les présents se choisissent par lettre |
+| Installer ERPLibre sur une cible | un chemin local ou un hôte de `~/.ssh/config`, refusé quand quoi que ce soit est déjà là |
 
 Les entrées se choisissent par numéro, le catalogue par LETTRE. Une seconde
 liste numérotée juste après un menu numéroté invite à retaper une entrée de
@@ -162,6 +163,28 @@ vivant, ni résultat négatif, ni journal horodaté**. La liste de qui a répond
 parmi les 254 adresses d'un `/24` décrit des machines que personne n'a
 désignées, là où un serveur retenu en désigne une seule, volontairement.
 
+## Une installation déjà là n'est jamais écrasée
+
+Le chemin est sondé **avant** toute écriture, et **ce qui n'a pas été lu compte
+pour OCCUPÉ**. Un hôte injoignable, une clé refusée et un lien coupé rendent
+tous une sortie vide, et aucun ne prouve que le chemin est libre ; lire le
+silence comme une autorisation détruit le travail de quelqu'un. La sonde
+imprime donc un jeton en dernier et sans condition, et son absence est le
+refus.
+
+Un répertoire non vide suffit à refuser, marqueur ou non — ce qui s'y trouve
+appartient à quelqu'un, ERPLibre ou non. Six marqueurs nomment l'occupant
+quand c'est un ERPLibre, car aucun n'est présent dans tous les cas : un arbre
+poussé par rsync n'a pas de dépôt, un clone frais n'a pas les fichiers de
+version — ils se génèrent à l'installation et ne suivent pas le dépôt —, et
+une pose interrompue n'a ni l'un ni l'autre.
+
+Les deux méthodes ne posent pas la même chose. Le clone donne à la cible son
+propre dépôt, à la branche demandée ; la copie lui donne cet arbre-ci. **La
+copie emporte `.git`**, contrairement à `make ssh_push` : l'installation lance
+`update_manifest_local_dev.sh`, qui sert le dépôt local par `git daemon` et
+résout sa révision par `git symbolic-ref`. Un arbre sans dépôt s'y arrête.
+
 ## Ce qu'une famille accepte n'est pas ce qu'une autre accepte
 
 Treize familles se reconnaissent et cinq seulement savent poser **et** retirer
@@ -176,6 +199,31 @@ ailleurs, et on ne l'atteint que par un choix explicite du menu. Aucun de ses
 chemins ne figure dans le plan de découverte, qui reste en GET seul — un
 balayage ne doit pouvoir ni charger un modèle ni dépenser un jeton — et un test
 le vérifie.
+
+## Ce qui voyage vers une installation neuve, et ce qui ne voyage jamais
+
+La question se pose une fois, et y répondre finement donne un numéro par
+article : un par serveur connu, puis les commandes Claude Code, puis la liste
+des noms interdits.
+
+Une ligne par serveur plutôt qu'une pour la liste : la classe d'hébergement est
+par serveur et change de sens d'une machine à l'autre — une entrée `loopback`
+déplacée ailleurs désigne la boucle locale de la cible.
+
+Les **commandes Claude Code ne se copient pas**. Elles se posent depuis le
+checkout que la cible vient de recevoir, à la version qu'elle exécute, et rien
+du `~/.claude` d'ici ne part.
+
+Le fichier de configuration privé n'est **jamais** recopié en bloc : il porte
+aussi le mot de passe du coffre et les profils VPN. La charge se bâtit clé par
+clé, voyage sur l'**entrée standard** — une adresse en ligne de commande se lit
+dans un journal comme dans la table des processus — et s'écrit là-bas par
+`set_config_value`, le seul écrivain autorisé.
+
+La liste des noms interdits est le seul article qui déplace des noms de clients
+sur une machine neuve. Elle n'est jamais prise par « tout » et ne voyage que
+nommée. Son absence là-bas **refuse tout envoi vers un tiers**, ce qui est un
+défaut de configuration et non une panne.
 
 ## Les sessions Claude Code de la machine
 
@@ -216,6 +264,7 @@ séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
 | `models.py` | poser et retirer un modèle : la seule écriture du paquet |
+| `deploy.py` | où va un ERPLibre, et ce qui refuse le chemin |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et

@@ -26,6 +26,7 @@ import os
 import subprocess
 import sys
 import unittest
+import unittest.mock
 from unittest.mock import patch
 
 from script.todo.todo_i18n import t
@@ -120,15 +121,15 @@ class Cablage(unittest.TestCase):
         mock_llm.assert_not_called()
 
     def test_six_dispatche_vers_les_modeles_seulement(self):
-        """La section « Déploiement » ne consomme aucun numéro : `[6]` suit
-        la fiche du serveur, et les cinq entrées d'avant gardent les
-        leurs."""
+        """La section « Déploiement » ne consomme aucun numéro : `[6]` et
+        `[7]` suivent la fiche du serveur, et les cinq entrées d'avant
+        gardent les leurs."""
         from script.todo.todo import TODO
 
         todo = TODO()
         with patch.object(TODO, "_llm_models") as mock_models, patch.object(
-            TODO, "_llm_server_card"
-        ) as mock_carte, patch(
+            TODO, "_llm_deploy"
+        ) as mock_deploy, patch(
             "script.todo.assistant.fingerprint.collect", return_value={}
         ), patch(
             "script.todo.assistant.servers.load", return_value=[]
@@ -139,12 +140,38 @@ class Cablage(unittest.TestCase):
         ):
             todo.prompt_assistant_llm()
         mock_models.assert_called_once_with()
-        mock_carte.assert_not_called()
+        mock_deploy.assert_not_called()
 
-    def test_l_ecran_des_modeles_se_situe_dans_le_fil(self):
+    def test_sept_dispatche_vers_le_deploiement_seulement(self):
         from script.todo.todo import TODO
 
-        for methode, miette in (("_llm_models", "Models"),):
+        todo = TODO()
+        with patch.object(TODO, "_llm_models") as mock_models, patch.object(
+            TODO, "_llm_deploy"
+        ) as mock_deploy, patch(
+            "script.todo.assistant.fingerprint.collect", return_value={}
+        ), patch(
+            "script.todo.assistant.servers.load", return_value=[]
+        ), patch(
+            "click.prompt", side_effect=["7", "0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_assistant_llm()
+        mock_deploy.assert_called_once_with()
+        mock_models.assert_not_called()
+
+    def test_les_deux_ecrans_neufs_se_situent_dans_le_fil(self):
+        from script.todo.todo import TODO
+
+        for methode, miette in (
+            ("_llm_models", "Models"),
+            ("_llm_deploy", "Deploy"),
+            ("_llm_deploy_cible", "Target"),
+            ("_llm_deploy_alias", "SSH"),
+            ("_llm_deploy_methode", "Method"),
+            ("_llm_transfert_choix", "Transfer"),
+        ):
             with self.subTest(methode):
                 self.assertEqual(TODO._MENU_LABELS.get(methode), miette)
 
@@ -163,6 +190,74 @@ class Cablage(unittest.TestCase):
         ):
             todo._llm_models()
         mock_servers.assert_called_once_with()
+
+    def test_la_liste_des_noms_ne_cite_pas_le_tilde(self):
+        """Tout ce que la fonctionnalité écrit passe par `chemin_shell` : le
+        citer ferait atterrir la liste des noms de clients dans un répertoire
+        NOMMÉ « ~ », hors de l'arbre posé, pendant que l'écran annoncerait un
+        succès."""
+        import tempfile
+
+        from script.todo.assistant import deploy as llm_deploy
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        cible = llm_deploy.Cible("cible-1", "atelier-nord", "~/erplibre")
+        vus = []
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".txt", delete=False
+        ) as fh:
+            # Une liste INVENTÉE : le fichier réel porte des noms de clients,
+            # et le poste qui lance la suite n'en a pas forcément un.
+            fh.write("fonderie-exemple\n")
+            liste = fh.name
+        try:
+            with patch(
+                "script.lib_identifiant.NOMS_INTERDITS", liste
+            ), patch.object(
+                TODO,
+                "_llm_pousser",
+                side_effect=lambda c, b, e: vus.append(b),
+            ), patch(
+                "script.todo.todo_telemetry.record"
+            ):
+                todo._llm_transfert_noms(cible)
+        finally:
+            os.unlink(liste)
+        self.assertTrue(vus, "aucun bloc n'a été poussé")
+        self.assertNotIn("'~", vus[0])
+        self.assertIn('"$HOME"/erplibre', vus[0])
+        # Le fichier porte des noms de clients : il ne dépend pas du umask.
+        self.assertIn("chmod 600", vus[0])
+        self.assertIn("chmod 700", vus[0])
+
+    def test_une_installation_ratee_ne_transfere_rien(self):
+        """La garde rejouée sort en 3, et une pose ratée sort autrement :
+        dans les deux cas il n'y a rien là-bas à configurer."""
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        todo.execute = unittest.mock.MagicMock()
+        todo.execute.exec_command_live.return_value = 3
+        reponses = iter(
+            [
+                "1",
+                "/tmp/el-absent-xyz",
+                "1",
+                "master",
+                "0",
+                "/tmp/el-absent-xyz",
+            ]
+        )
+        with patch(
+            "click.prompt", side_effect=lambda *a, **k: next(reponses)
+        ), patch("script.todo.todo_telemetry.record"), patch(
+            "script.todo.assistant.servers.load", return_value=[]
+        ), patch.object(
+            TODO, "_llm_transfert_poser"
+        ) as mock_poser:
+            todo._llm_deploy()
+        mock_poser.assert_not_called()
 
     def test_le_sous_menu_s_ouvre_sans_aucun_serveur_configure(self):
         """Une machine sans serveur est le cas de la PREMIÈRE utilisation.
