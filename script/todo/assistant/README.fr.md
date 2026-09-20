@@ -77,8 +77,18 @@ Ses raccourcis évitent les lettres nues, et ce n'est pas un goût : la saisie
 garde le focus pendant toute la vie de l'écran, puisque c'est de là qu'on pose
 ses questions, donc une lettre nue s'écrit dans le champ au lieu d'atteindre
 son action — et le raccourci passe pour mort sans que rien ne le signale.
-`escape` rend la main, `ctrl+t` replie les durées pour laisser sa place au
-texte, `ctrl+c` sort.
+`escape` rend la main, `ctrl+t` replie les durées, `f2` ouvre les réglages,
+`ctrl+c` sort.
+
+`f2` garde ce qu'on choisit dans les préférences de l'utilisateur, jamais dans
+le dépôt : le thème parmi ceux que livre Textual, une couleur pour les
+questions et une pour les réponses — un rôle du thème ou un hexadécimal
+saisi, pour qu'une teinte choisie sur fond sombre ne disparaisse pas sur fond
+clair — les colonnes de durées à montrer, l'heure de chaque tour, et
+l'affichage du RAISONNEMENT d'un modèle qui réfléchit. Ces jetons-là sont
+comptés et payés dans les jetons de réponse tout en restant invisibles : une
+réponse courte peut coûter dix fois sa longueur, et le débit décrit alors un
+travail que rien à l'écran ne justifie.
 
 Chaque tour ajoute aussi une ligne à un journal JSONL mensuel sous
 `private/` : durées, comptes, modèle servi, outil, raison de fin. Il ne porte

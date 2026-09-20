@@ -12676,6 +12676,50 @@ TRANSLATIONS = {
         "fr": "retour",
         "en": "back",
     },
+    "theme": {
+        "fr": "thème",
+        "en": "theme",
+    },
+    "question colour": {
+        "fr": "couleur des questions",
+        "en": "question colour",
+    },
+    "answer colour": {
+        "fr": "couleur des réponses",
+        "en": "answer colour",
+    },
+    "show reasoning": {
+        "fr": "montrer le raisonnement",
+        "en": "show reasoning",
+    },
+    "timings at start": {
+        "fr": "durées au démarrage",
+        "en": "timings at start",
+    },
+    "time of each turn": {
+        "fr": "heure de chaque tour",
+        "en": "time of each turn",
+    },
+    "text colour": {
+        "fr": "couleur du texte",
+        "en": "text colour",
+    },
+    "column": {
+        "fr": "colonne",
+        "en": "column",
+    },
+    "options": {
+        "fr": "options",
+        "en": "options",
+    },
+    "Colour in hexadecimal, or empty": {
+        "fr": "Couleur en hexadécimal, ou vide",
+        "en": "Colour in hexadecimal, or empty",
+    },
+    "h: type a colour · enter: cycle · escape: close": {
+        "fr": "h : saisir une couleur · entrée : faire tourner · échap : fermer",
+        "en": "h: type a colour · enter: cycle · escape: close",
+    },
     "timings": {
         "fr": "durées",
         "en": "timings",

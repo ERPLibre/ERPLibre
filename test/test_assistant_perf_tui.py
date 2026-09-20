@@ -290,6 +290,136 @@ class LaTranscription(unittest.TestCase):
         self.assertEqual("", pf.echange(None))
 
 
+class LesReglages(unittest.TestCase):
+    """Ce qu'on garde d'une séance à l'autre, et ce qu'on en fait."""
+
+    def test_une_couleur_illisible_ne_ferme_pas_l_ecran(self):
+        """La valeur vient d'un fichier que l'utilisateur peut éditer à la
+        main. Une chaîne qui n'est ni un rôle ni une couleur rendrait un
+        balisage que Rich refuse, et le rendu qui lève ferme l'application."""
+        for bon in ("$accent", "#7aa2f7", "#abc", ""):
+            with self.subTest(bon=bon):
+                self.assertEqual(bon, pf.resoudre_couleur(bon))
+        for mauvais in ("bleu", "#gg0000", "#12345", 42, None, ["#fff"]):
+            with self.subTest(mauvais=mauvais):
+                self.assertEqual("", pf.resoudre_couleur(mauvais))
+
+    def test_un_theme_disparu_retombe_sur_un_theme_qui_existe(self):
+        """Une préférence est un souhait ; la liste que porte la version
+        installée fait foi."""
+        themes = ("textual-dark", "nord")
+        self.assertEqual("nord", pf.resoudre_theme("nord", themes))
+        self.assertEqual("textual-dark", pf.resoudre_theme("parti", themes))
+        self.assertEqual("nord", pf.resoudre_theme("x", ("nord",)))
+
+    def test_les_colonnes_ne_sont_jamais_vides_ni_desordonnees(self):
+        """Un tableau sans colonne ne montre rien, et un ordre venu des
+        préférences ferait de la place à « fin » avant « durée »."""
+        self.assertEqual(pf.COLONNES[:2], pf.resoudre_colonnes([]))
+        self.assertEqual(pf.COLONNES[:2], pf.resoudre_colonnes("bêtise"))
+        voulues = pf.resoudre_colonnes(["fin", "duree", "rang"])
+        self.assertEqual(
+            ["rang", "duree", "fin"], [cle for cle, _t in voulues]
+        )
+
+    def test_les_valeurs_bouclent_quand_on_les_fait_tourner(self):
+        """Une dernière valeur qui bloque oblige à revenir en arrière pour
+        retrouver la première, et rien ne dit qu'on est au bout."""
+        themes = ("a", "b", "c")
+        self.assertEqual("a", pf.tourner("choix", "c", 1, themes))
+        self.assertEqual("c", pf.tourner("choix", "a", -1, themes))
+        self.assertEqual(pf.ROLES[0], pf.tourner("couleur", pf.ROLES[-1], 1))
+        self.assertFalse(pf.tourner("oui", True))
+        self.assertTrue(pf.tourner("colonne", False))
+
+    def test_une_valeur_inconnue_repart_du_debut_sans_lever(self):
+        self.assertEqual("a", pf.tourner("choix", "absent", 1, ("a", "b")))
+
+    def test_chaque_reglage_a_sa_ligne_et_chaque_colonne_la_sienne(self):
+        lignes = pf.reglages({}, ("textual-dark",))
+        cles = [ligne["cle"] for ligne in lignes]
+        for cle, _libelle, _genre in pf.REGLAGE_LIGNES:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, cles)
+        for cle, _titre in pf.COLONNES:
+            with self.subTest(colonne=cle):
+                self.assertIn(f"{pf.CLE_COLONNE}{cle}", cles)
+        self.assertTrue(all(ligne["libelle"].strip() for ligne in lignes))
+
+    def test_un_fichier_de_preferences_abime_rend_des_lignes_quand_meme(self):
+        for abime in (None, [], "texte", {"assistant_tui_theme": 7}):
+            with self.subTest(abime=abime):
+                self.assertTrue(pf.reglages(abime, ("textual-dark",)))
+
+
+class LesDeuxListesDeReglages(unittest.TestCase):
+    """Les défauts sont écrits DEUX fois, et doivent concorder.
+
+    L'écran porte les siens pour rester lisible sans le CLI ; le module des
+    préférences porte les mêmes parce que c'est lui que l'écran de
+    configuration du CLI énumère — une clé absente de là-bas n'y paraît pas,
+    et un défaut qui diverge fait répondre deux valeurs à la même question
+    selon qui la pose.
+    """
+
+    def test_chaque_reglage_de_l_ecran_est_connu_des_preferences(self):
+        from script.todo import todo_prefs
+
+        self.assertEqual(
+            [], [cle for cle in pf.REGLAGES if cle not in todo_prefs.DEFAULTS]
+        )
+
+    def test_les_defauts_des_deux_cotes_sont_les_memes(self):
+        from script.todo import todo_prefs
+
+        ecarts = {
+            cle: (pf.REGLAGES[cle], todo_prefs.DEFAULTS.get(cle))
+            for cle in pf.REGLAGES
+            if todo_prefs.DEFAULTS.get(cle) != pf.REGLAGES[cle]
+        }
+        self.assertEqual({}, ecarts)
+
+
+class LeBalisageDuTexte(unittest.TestCase):
+    """Ce que Rich lirait comme une balise, et qui vient d'un modèle."""
+
+    def test_les_crochets_d_une_reponse_survivent_au_rendu(self):
+        """Une réponse porte volontiers des crochets — une note, un extrait
+        de code, un tableau. Rich les lirait comme des balises : le texte
+        disparaîtrait en partie, ou le rendu lèverait et fermerait l'écran.
+        """
+        from textual.content import Content
+
+        class Tour:
+            def __init__(self, texte):
+                self.role = "assistant"
+                self.text = texte
+                self.interrupted = False
+                self.reasoning = ""
+
+        pieges = (
+            "voir [1] et [/b]",
+            "tableau [bold]gras[/bold]",
+            "liste [a] [b] [c]",
+            "[#ff0000]rouge[/]",
+            "crochet seul [",
+            "a [/] b",
+        )
+        for brut in pieges:
+            with self.subTest(brut=brut):
+                rendu = Content.from_markup(pf.echange([Tour(brut)])).plain
+                self.assertEqual(brut, rendu)
+
+    def test_une_couleur_posee_teinte_sans_manger_le_texte(self):
+        from textual.content import Content
+
+        balise = pf.teinter("du [texte]", "$accent")
+        self.assertEqual("du [texte]", Content.from_markup(balise).plain)
+        self.assertIn("$accent", balise)
+        # Le rôle du thème DOIT survivre au rendu : c'est lui qui teinte.
+        self.assertTrue(Content.from_markup(balise).spans)
+
+
 class LesClesDeTraduction(unittest.TestCase):
     """La garde AST du menu ne balaie QUE `assistant_menu.py`.
 
@@ -332,6 +462,7 @@ class FauxBackend:
     def __init__(self, morceaux=("bon", "jour"), usage=None):
         self.morceaux = morceaux
         self.usage = usage or {"prompt_tokens": 7, "completion_tokens": 2}
+        self.reasoning = ""
 
     def send(self, messages, *, on_chunk=None):
         for morceau in self.morceaux:
@@ -341,7 +472,26 @@ class FauxBackend:
             "model": SERVEUR.model,
             "usage": dict(self.usage),
             "finish_reason": "stop",
+            "reasoning": self.reasoning,
         }
+
+
+class FauxPrefs:
+    """Des préférences en mémoire, pour qu'aucun test n'écrive chez l'utilisateur.
+
+    Le vrai module écrit dans ~/.erplibre : un test qui l'emploierait
+    changerait le thème de la personne qui lance la suite, et lirait le sien
+    plutôt qu'un défaut connu.
+    """
+
+    def __init__(self, **valeurs):
+        self.valeurs = dict(valeurs)
+
+    def get(self, cle, defaut=None):
+        return self.valeurs.get(cle, defaut)
+
+    def set(self, cle, valeur):
+        self.valeurs[cle] = valeur
 
 
 async def calme(pilote, tours=3):
@@ -363,7 +513,7 @@ async def calme(pilote, tours=3):
 class LEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
     """Le montage, la saisie, le flux et le retour — avec un vrai pilote."""
 
-    def _app(self, mesures=None, backend=None):
+    def _app(self, mesures=None, backend=None, prefs=None):
         from script.todo.assistant import chat as llm_chat
 
         conversation = llm_chat.Conversation(backend or FauxBackend())
@@ -373,6 +523,8 @@ class LEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             mesures=mesures if mesures is not None else [],
             seance="seance-inventee",
             journal=lambda _m: None,
+            prefs=prefs if prefs is not None else FauxPrefs(),
+            montre=lambda: "09:42",
             run_app=False,
         )
 
@@ -422,6 +574,7 @@ class LEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             seance="seance-inventee",
             depart=len(mesures),
             journal=lambda _m: None,
+            prefs=FauxPrefs(),
             run_app=False,
         )
         async with app.run_test(size=(160, 40)) as pilote:
@@ -518,6 +671,117 @@ class LEcranTourneVraiment(unittest.IsolatedAsyncioTestCase):
             vu = str(app.query_one("#echange").render())
         self.assertIn("une question inventée", vu)
         self.assertIn("bonsoir", vu)
+
+    async def test_le_panneau_s_ouvre_avec_le_focus_et_une_ligne_visee(self):
+        """Le focus DOIT bouger, et une ligne DOIT être surlignée : sans le
+        premier, les flèches vont au champ de question ; sans la seconde,
+        « entrée » n'a rien à viser et le panneau passe pour cassé."""
+        app = self._app()
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            self.assertFalse(app.query_one("#reglages").display)
+            await pilote.press("f2")
+            await pilote.pause()
+            panneau = app.query_one("#reglages")
+            self.assertTrue(panneau.display)
+            self.assertTrue(panneau.has_focus)
+            self.assertEqual(0, panneau.highlighted)
+
+    async def test_un_reglage_change_s_applique_et_se_garde(self):
+        """L'application sans l'écriture se perd au prochain démarrage, et
+        rien ne dit pourquoi."""
+        prefs = FauxPrefs()
+        app = self._app(prefs=prefs)
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            depart = app.theme
+            await pilote.press("f2")
+            await pilote.pause()
+            await pilote.press("enter")
+            await pilote.pause()
+            self.assertNotEqual(depart, app.theme)
+        self.assertEqual(app.theme, prefs.get("assistant_tui_theme"))
+
+    async def test_echap_ferme_le_panneau_avant_de_fermer_l_ecran(self):
+        """Une touche qui ferme l'écran entier alors qu'un panneau est
+        ouvert fait perdre la conversation pour un réglage qu'on voulait
+        seulement quitter."""
+        app = self._app()
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            await pilote.press("f2")
+            await pilote.pause()
+            await pilote.press("escape")
+            await pilote.pause()
+            self.assertFalse(app.query_one("#reglages").display)
+            self.assertTrue(app.is_running)
+            self.assertTrue(app.query_one("#saisie").has_focus)
+
+    async def test_la_lettre_h_appartient_a_la_question_hors_du_panneau(self):
+        """Elle n'ouvre la saisie de couleur que lorsque le panneau a le
+        focus ; partout ailleurs elle s'écrit dans la question."""
+        app = self._app()
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            await pilote.press("h")
+            await pilote.pause()
+            self.assertEqual("h", app.query_one("#saisie").value)
+            self.assertFalse(app.query_one("#hexa").display)
+
+    async def test_une_couleur_tapee_a_la_main_est_gardee(self):
+        prefs = FauxPrefs()
+        app = self._app(prefs=prefs)
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            await pilote.press("f2")
+            await pilote.pause()
+            await pilote.press("down")
+            await pilote.pause()
+            await pilote.press("h")
+            await pilote.pause()
+            self.assertTrue(app.query_one("#hexa").display)
+            app.query_one("#hexa").value = "#7aa2f7"
+            await pilote.press("enter")
+            await pilote.pause()
+        self.assertEqual("#7aa2f7", prefs.get("assistant_tui_question"))
+
+    async def test_le_raisonnement_ne_parait_que_s_il_est_demande(self):
+        """Un modèle qui raisonne fait payer ces jetons sans qu'on les voie ;
+        les montrer est un choix, pas un défaut."""
+        pensee = "une réflexion inventée"
+        backend = FauxBackend(morceaux=("répo", "nse"))
+        backend.reasoning = pensee
+        app = self._app(
+            backend=backend,
+            prefs=FauxPrefs(assistant_tui_raisonnement=False),
+        )
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            app.query_one("#saisie").value = "une question inventée"
+            await pilote.press("enter")
+            await calme(pilote)
+            self.assertNotIn(pensee, str(app.query_one("#echange").render()))
+            await pilote.press("f2")
+            await pilote.pause()
+            for _ in range(3):
+                await pilote.press("down")
+            await pilote.press("enter")
+            await pilote.pause()
+            self.assertIn(pensee, str(app.query_one("#echange").render()))
+
+    async def test_une_colonne_retiree_quitte_le_tableau(self):
+        prefs = FauxPrefs()
+        app = self._app(mesures=[une_mesure()], prefs=prefs)
+        async with app.run_test(size=(160, 45)) as pilote:
+            await calme(pilote)
+            avant = len(app.query_one("#tours").columns)
+            await pilote.press("f2")
+            await pilote.pause()
+            for _ in range(len(pf.REGLAGE_LIGNES)):
+                await pilote.press("down")
+            await pilote.press("enter")
+            await pilote.pause()
+            self.assertEqual(avant - 1, len(app.query_one("#tours").columns))
 
     async def test_un_terminal_etroit_ne_pose_que_ce_qui_tient(self):
         app = self._app(mesures=[une_mesure()])

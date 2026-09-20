@@ -63,6 +63,14 @@ MAX_RETRIES = 1
 # comme un zéro.
 STREAM_USAGE = {"stream_options": {"include_usage": True}}
 
+# Le champ où un modèle qui RAISONNE met ses jetons de réflexion. Ils ne
+# rejoignent jamais le texte de la réponse, et c'est voulu des deux côtés :
+# le serveur les sépare, et les renvoyer dans l'historique du tour suivant
+# ferait payer une deuxième fois une réflexion déjà faite. Ils sont pourtant
+# COMPTÉS dans les jetons de réponse, donc sans eux le débit décrit un
+# travail qu'on ne voit nulle part.
+REASONING_FIELD = "reasoning_content"
+
 # Le budget d'un aller-retour `claude -p`, qui inclut le démarrage du CLI.
 CLAUDE_TIMEOUT = 600
 
@@ -140,6 +148,15 @@ def readable(exc: Exception) -> str:
         if extra and extra not in detail:
             detail = f"{detail} ({extra})"
     return one_line(detail)
+
+
+def _texte(valeur) -> str:
+    """Une valeur de champ ramenée à du texte, vide si ce n'en est pas.
+
+    Un serveur peut rendre `null`, un objet ou un nombre là où le protocole
+    annonce une chaîne ; aucun de ces cas ne doit faire lever le transport.
+    """
+    return valeur if isinstance(valeur, str) else ""
 
 
 def _usage(usage) -> dict:
@@ -265,6 +282,9 @@ class HttpBackend:
             "model": getattr(reponse, "model", "") or self.model,
             "usage": _usage(getattr(reponse, "usage", None)),
             "finish_reason": raison,
+            "reasoning": _texte(
+                getattr(choix[0].message, REASONING_FIELD, None)
+            ),
         }
         return texte, faits
 
@@ -276,7 +296,13 @@ class HttpBackend:
         texte reçu est gardé.
         """
         morceaux: list[str] = []
-        faits = {"model": self.model, "usage": {}, "finish_reason": ""}
+        pensees: list[str] = []
+        faits = {
+            "model": self.model,
+            "usage": {},
+            "finish_reason": "",
+            "reasoning": "",
+        }
         flux = self._create(appel, stream=True, **STREAM_USAGE)
         try:
             for evenement in flux:
@@ -288,6 +314,10 @@ class HttpBackend:
                     faits["usage"] = usage
                 for choix in evenement.choices or ():
                     delta = getattr(choix, "delta", None)
+                    pensee = _texte(getattr(delta, REASONING_FIELD, None))
+                    if pensee:
+                        pensees.append(pensee)
+                        faits["reasoning"] = "".join(pensees)
                     morceau = getattr(delta, "content", None) or ""
                     if morceau:
                         morceaux.append(morceau)
@@ -303,6 +333,7 @@ class HttpBackend:
             except Exception:
                 pass
             raise Interrupted("".join(morceaux), faits) from None
+        faits["reasoning"] = "".join(pensees)
         return "".join(morceaux), faits
 
 

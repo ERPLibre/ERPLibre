@@ -79,7 +79,16 @@ Its shortcuts avoid bare letters, and that is not a taste: the input keeps the
 focus for the screen's whole life, since that is where questions are typed, so
 a bare letter is written into the field instead of reaching its action — and
 the shortcut passes for dead with nothing to say so. `escape` goes back,
-`ctrl+t` folds the timings away to give the text its room, `ctrl+c` leaves.
+`ctrl+t` folds the timings away, `f2` opens the settings, `ctrl+c` leaves.
+
+`f2` keeps what you choose in your own preferences, never in the repository:
+the theme among those Textual ships, a colour for questions and one for
+answers — a theme role or a typed hex, so a shade picked on a dark background
+does not vanish on a light one — which timing columns to show, the time of
+each turn, and whether the REASONING of a model that thinks is displayed.
+Those thinking tokens are counted and paid in the answer's token count while
+being invisible: a short answer can cost ten times its length, and the
+throughput then describes work nothing on screen accounts for.
 
 Each turn also appends one line to a monthly JSONL journal under `private/`:
 timings, counts, model served, tool, end reason. It carries NO text of the
@@ -630,8 +639,18 @@ Ses raccourcis évitent les lettres nues, et ce n'est pas un goût : la saisie
 garde le focus pendant toute la vie de l'écran, puisque c'est de là qu'on pose
 ses questions, donc une lettre nue s'écrit dans le champ au lieu d'atteindre
 son action — et le raccourci passe pour mort sans que rien ne le signale.
-`escape` rend la main, `ctrl+t` replie les durées pour laisser sa place au
-texte, `ctrl+c` sort.
+`escape` rend la main, `ctrl+t` replie les durées, `f2` ouvre les réglages,
+`ctrl+c` sort.
+
+`f2` garde ce qu'on choisit dans les préférences de l'utilisateur, jamais dans
+le dépôt : le thème parmi ceux que livre Textual, une couleur pour les
+questions et une pour les réponses — un rôle du thème ou un hexadécimal
+saisi, pour qu'une teinte choisie sur fond sombre ne disparaisse pas sur fond
+clair — les colonnes de durées à montrer, l'heure de chaque tour, et
+l'affichage du RAISONNEMENT d'un modèle qui réfléchit. Ces jetons-là sont
+comptés et payés dans les jetons de réponse tout en restant invisibles : une
+réponse courte peut coûter dix fois sa longueur, et le débit décrit alors un
+travail que rien à l'écran ne justifie.
 
 Chaque tour ajoute aussi une ligne à un journal JSONL mensuel sous
 `private/` : durées, comptes, modèle servi, outil, raison de fin. Il ne porte

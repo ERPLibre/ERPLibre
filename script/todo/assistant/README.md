@@ -74,7 +74,16 @@ Its shortcuts avoid bare letters, and that is not a taste: the input keeps the
 focus for the screen's whole life, since that is where questions are typed, so
 a bare letter is written into the field instead of reaching its action — and
 the shortcut passes for dead with nothing to say so. `escape` goes back,
-`ctrl+t` folds the timings away to give the text its room, `ctrl+c` leaves.
+`ctrl+t` folds the timings away, `f2` opens the settings, `ctrl+c` leaves.
+
+`f2` keeps what you choose in your own preferences, never in the repository:
+the theme among those Textual ships, a colour for questions and one for
+answers — a theme role or a typed hex, so a shade picked on a dark background
+does not vanish on a light one — which timing columns to show, the time of
+each turn, and whether the REASONING of a model that thinks is displayed.
+Those thinking tokens are counted and paid in the answer's token count while
+being invisible: a short answer can cost ten times its length, and the
+throughput then describes work nothing on screen accounts for.
 
 Each turn also appends one line to a monthly JSONL journal under `private/`:
 timings, counts, model served, tool, end reason. It carries NO text of the

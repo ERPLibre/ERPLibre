@@ -32,7 +32,7 @@ DEFAULTS = {
     "migration_ui": "ask",
     # Balayage de découverte des serveurs LLM : connexions en vol. Sert
     # seulement quand il est INFÉRIEUR au nombre de sondes, le balayage
-    # plafonnant à celui-ci — un /24 sur onze ports en compte 2 794. Monter
+    # plafonnant à celui-ci — un /24 sur douze ports en compte 3 048. Monter
     # raccourcit en groupant les vagues ; descendre allège la salve sur un
     # commutateur qui perd des paquets sous charge.
     "assistant_sweep_workers": 1024,
@@ -41,6 +41,29 @@ DEFAULTS = {
     # milliseconde se manque à 0,05 s. Le descendre annonce des réseaux vides
     # qui ne le sont pas.
     "assistant_sweep_timeout": 0.30,
+    # Apparence de l'écran vivant de la conversation LLM (touche F2). Le
+    # thème est un des thèmes livrés par Textual ; les deux couleurs sont un
+    # rôle du thème (« $accent ») ou une couleur hexadécimale. Voir
+    # `script.todo.assistant.perf_tui`, dont les résolveurs retombent sur un
+    # défaut devant toute valeur qu'ils ne reconnaissent pas.
+    "assistant_tui_theme": "textual-dark",
+    "assistant_tui_question": "$accent",
+    "assistant_tui_reponse": "",
+    # Les jetons de réflexion d'un modèle qui raisonne : comptés et payés
+    # dans les jetons de réponse, invisibles tant qu'on ne les demande pas.
+    "assistant_tui_raisonnement": False,
+    # Le tableau des durées au démarrage, et les colonnes qu'il porte.
+    "assistant_tui_durees": True,
+    "assistant_tui_horodatage": False,
+    "assistant_tui_colonnes": [
+        "rang",
+        "duree",
+        "invite",
+        "reponse",
+        "debit",
+        "premier",
+        "fin",
+    ],
     # Cache courriel : mode par DÉFAUT. Un compte peut le surcharger via
     # sa clé `cache_mode` dans accounts.json ; `null` là-bas veut dire
     # « hérite d'ici ». Valeurs : clear | encrypted | ephemeral.

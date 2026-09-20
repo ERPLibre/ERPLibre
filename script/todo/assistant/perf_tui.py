@@ -28,6 +28,8 @@ pas répondu « zéro ». Le tiret est ce qui empêche une moyenne de le compter
 """
 from __future__ import annotations
 
+import re
+
 from script.todo.todo_i18n import t
 
 # Les colonnes du tableau des tours, dans l'ordre d'importance. Le rang et la
@@ -220,45 +222,276 @@ def pied(mesure) -> str:
     return " · ".join(parts)
 
 
+# Les réglages de l'écran, et leur défaut. Ils vivent dans les préférences de
+# l'utilisateur — ~/.erplibre — et non dans le dépôt : l'apparence d'un écran
+# appartient à qui le regarde, pas au projet.
+REGLAGES = {
+    "assistant_tui_theme": "textual-dark",
+    "assistant_tui_question": "$accent",
+    "assistant_tui_reponse": "",
+    "assistant_tui_raisonnement": False,
+    "assistant_tui_durees": True,
+    "assistant_tui_horodatage": False,
+    "assistant_tui_colonnes": [cle for cle, _titre in COLONNES],
+}
+
+# Les rôles de couleur qu'un thème définit. Les nommer plutôt que de figer
+# une valeur est ce qui garde l'écran lisible quand le thème change : un bleu
+# choisi sur fond sombre disparaît sur fond clair, un rôle suit.
+ROLES = (
+    "$accent",
+    "$primary",
+    "$secondary",
+    "$success",
+    "$warning",
+    "$error",
+    "$text-muted",
+    "",
+)
+
+# Une couleur écrite à la main. Trois ou six chiffres hexadécimaux, ce que
+# tout terminal en couleurs vraies comprend. Rien d'autre n'est accepté :
+# une chaîne libre qui n'est ni un rôle ni une couleur rendrait un balisage
+# que Rich refuse, et l'écran se fermerait sur l'exception.
+HEXA = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def resoudre_couleur(valeur) -> str:
+    """Une couleur utilisable, ou la chaîne vide. Fonction PURE.
+
+    La chaîne vide veut dire « la couleur du texte », et c'est un choix
+    valide : le corps d'une réponse n'a pas besoin d'être teinté pour se
+    distinguer d'une question qui, elle, porte un chevron.
+
+    Tout ce qui n'est ni un rôle du thème ni une couleur hexadécimale rend la
+    chaîne vide plutôt que de lever : la valeur vient d'un fichier que
+    l'utilisateur peut éditer à la main, et un écran qui refuse de s'ouvrir
+    sur une faute de frappe est pire qu'un écran sans couleur.
+    """
+    if not isinstance(valeur, str):
+        return ""
+    valeur = valeur.strip()
+    if valeur in ROLES:
+        return valeur
+    return valeur if HEXA.match(valeur) else ""
+
+
+def resoudre_theme(valeur, disponibles) -> str:
+    """Un nom de thème que Textual connaît, ou celui par défaut. PURE.
+
+    Un thème retiré d'une version à l'autre ne doit pas empêcher l'écran de
+    s'ouvrir : la préférence est un souhait, la liste fait foi.
+    """
+    defaut = REGLAGES["assistant_tui_theme"]
+    liste = tuple(disponibles or ())
+    if isinstance(valeur, str) and valeur in liste:
+        return valeur
+    return defaut if defaut in liste or not liste else liste[0]
+
+
+def resoudre_colonnes(valeur) -> tuple:
+    """Les colonnes retenues, dans l'ordre d'importance. Fonction PURE.
+
+    Jamais vide et jamais dans l'ordre du fichier : un tableau sans colonne
+    ne montre rien, et un ordre venu des préférences ferait de la place à
+    « fin » avant « durée » sur un terminal étroit.
+    """
+    voulues = valeur if isinstance(valeur, (list, tuple)) else ()
+    gardees = tuple((cle, titre) for cle, titre in COLONNES if cle in voulues)
+    return gardees or COLONNES[:2]
+
+
+def resoudre_oui(valeur, defaut=False) -> bool:
+    """Un booléen lu dans un fichier éditable à la main. Fonction PURE."""
+    return valeur if isinstance(valeur, bool) else defaut
+
+
+def teinter(texte, couleur) -> str:
+    """Le texte en balisage Rich, sa couleur posée. Fonction PURE.
+
+    Le texte est ÉCHAPPÉ, et c'est la seule chose qui compte ici : une
+    réponse de modèle porte volontiers des crochets — une note en bas de
+    page, un extrait de code, un tableau — et le rendu les lirait comme des
+    balises. Le texte disparaîtrait alors en partie, ou le rendu lèverait,
+    ce qui ferme l'écran entier.
+
+    L'échappement est celui de TEXTUAL et non celui de Rich, parce que c'est
+    Textual qui analysera la chaîne : les deux balisages se ressemblent mais
+    ne se recouvrent pas — un rôle de thème comme « $accent » n'est une
+    balise que pour l'un des deux, et l'autre lève sur la fermeture qui le
+    suit.
+    """
+    from textual.markup import escape
+
+    brut = escape(texte or "")
+    return f"[{couleur}]{brut}[/]" if couleur else brut
+
+
 # Ce qui ouvre une question dans la transcription. Le même chevron que
 # l'invite texte : l'écran et l'invite montrent la même conversation, et deux
 # marques différentes feraient croire à deux fils.
 MARQUE_QUESTION = "▸ "
 
 
-def echange(turns, question="", reponse="") -> str:
+def echange(
+    turns,
+    question="",
+    reponse="",
+    *,
+    couleur_question="",
+    couleur_reponse="",
+    raisonnement=False,
+    heures=(),
+) -> str:
     """La conversation, telle qu'elle se lit. Fonction PURE.
+
+    Rend du BALISAGE Rich, et tout ce qui vient du modèle ou de
+    l'utilisateur y est échappé : une réponse porte volontiers des crochets,
+    que Rich lirait comme des balises.
 
     `turns` sont les tours déjà clos, en couples question-réponse ; `question`
     et `reponse` portent celui qui arrive, et la réponse y grandit à chaque
-    fragment.
+    fragment. `heures` donne une étiquette d'heure par tour, à l'index du
+    tour ; une chaîne vide n'en met aucune.
 
-    Les durées disent ce qu'un tour a coûté, jamais ce qui s'est dit : un
-    écran qui ne montrerait que des chiffres obligerait à quitter pour relire
-    la réponse qu'on vient de demander, et l'historique meurt avec le menu.
+    `raisonnement` montre les jetons de réflexion d'un modèle qui raisonne.
+    Ils sont comptés dans les jetons de réponse et payés comme eux : les
+    taire fait décrire au débit un travail qu'on ne voit nulle part. Ils sont
+    grisés, parce qu'ils accompagnent la réponse sans en être.
 
     Un tour COUPÉ garde son texte et se marque : ce qui est arrivé a été
     payé, et le lire comme une réponse entière ferait croire le modèle plus
     bref qu'il n'est.
     """
     parties = []
-    for tour in turns or ():
+    for rang, tour in enumerate(turns or ()):
         role = getattr(tour, "role", "")
         texte = getattr(tour, "text", "") or ""
+        heure = heures[rang] if rang < len(heures) else ""
         if role == "user":
-            parties.append(f"{MARQUE_QUESTION}{texte}")
+            parties.append(_demande(texte, couleur_question, heure))
         elif role == "assistant":
+            if raisonnement:
+                pensee = getattr(tour, "reasoning", "") or ""
+                if pensee:
+                    parties.append(teinter(pensee, "$text-muted"))
             marque = (
                 f"  [{t('cut')}]"
                 if getattr(tour, "interrupted", False)
                 else ""
             )
-            parties.append(f"{texte}{marque}")
+            parties.append(teinter(texte + marque, couleur_reponse))
     if question:
-        parties.append(f"{MARQUE_QUESTION}{question}")
+        parties.append(_demande(question, couleur_question, ""))
     if reponse:
-        parties.append(reponse)
+        parties.append(teinter(reponse, couleur_reponse))
     return "\n\n".join(parties)
+
+
+def _demande(texte, couleur, heure="") -> str:
+    """Une question, son chevron et son heure. Fonction PURE.
+
+    L'heure précède le chevron et n'est pas teintée : elle situe le tour, et
+    la couleur de la question sert à la distinguer de la réponse, pas à
+    peindre tout ce qui se trouve sur la ligne.
+    """
+    tete = f"{heure} " if heure else ""
+    return f"{tete}{teinter(MARQUE_QUESTION + texte, couleur)}"
+
+
+# Le préfixe d'un réglage de COLONNE. Les colonnes se règlent une par une,
+# donc leur clé se fabrique ; la nommer d'un préfixe est ce qui permet de la
+# reconnaître sans tenir une seconde liste à jour.
+CLE_COLONNE = "colonne:"
+
+# Les réglages du panneau, dans l'ordre où ils paraissent : ce qui change
+# tout l'écran d'abord, ce qui ajuste un détail ensuite. Le troisième champ
+# dit comment la valeur se fait tourner.
+REGLAGE_LIGNES = (
+    ("assistant_tui_theme", "theme", "choix"),
+    ("assistant_tui_question", "question colour", "couleur"),
+    ("assistant_tui_reponse", "answer colour", "couleur"),
+    ("assistant_tui_raisonnement", "show reasoning", "oui"),
+    ("assistant_tui_durees", "timings at start", "oui"),
+    ("assistant_tui_horodatage", "time of each turn", "oui"),
+)
+
+# La largeur du libellé d'un réglage, pour que les valeurs s'alignent. Un
+# panneau dont les valeurs zigzaguent se relit mot à mot.
+LIBELLE_LARGEUR = 26
+
+
+def reglages(valeurs, themes=()) -> list[dict]:
+    """Les lignes du panneau de personnalisation. Fonction PURE.
+
+    Rend un dictionnaire par réglage : sa clé, son libellé prêt à afficher,
+    sa valeur résolue et le genre de tour qu'il accepte. Les colonnes du
+    tableau y figurent une par une, parce qu'on en garde ou en retire une, et
+    non un ensemble.
+    """
+    valeurs = valeurs if isinstance(valeurs, dict) else {}
+    lus = []
+    for cle, libelle, genre in REGLAGE_LIGNES:
+        brut = valeurs.get(cle, REGLAGES[cle])
+        if genre == "choix":
+            valeur = resoudre_theme(brut, themes)
+            montre = valeur
+        elif genre == "couleur":
+            valeur = resoudre_couleur(brut)
+            montre = valeur or t("text colour")
+        else:
+            valeur = resoudre_oui(brut, REGLAGES[cle])
+            montre = t("yes") if valeur else t("no")
+        lus.append(
+            {
+                "cle": cle,
+                "genre": genre,
+                "valeur": valeur,
+                "libelle": f"{t(libelle):<{LIBELLE_LARGEUR}}{montre}",
+            }
+        )
+    gardees = [
+        cle
+        for cle, _titre in resoudre_colonnes(
+            valeurs.get(
+                "assistant_tui_colonnes", REGLAGES["assistant_tui_colonnes"]
+            )
+        )
+    ]
+    for cle, titre in COLONNES:
+        vu = cle in gardees
+        lus.append(
+            {
+                "cle": f"{CLE_COLONNE}{cle}",
+                "genre": "colonne",
+                "valeur": vu,
+                "libelle": (
+                    f"{t('column') + ' ' + t(titre):<{LIBELLE_LARGEUR}}"
+                    f"{t('yes') if vu else t('no')}"
+                ),
+            }
+        )
+    return lus
+
+
+def tourner(genre, valeur, sens=1, themes=()) -> object:
+    """La valeur suivante d'un réglage qu'on fait tourner. Fonction PURE.
+
+    Les listes BOUCLENT : un panneau où la dernière valeur bloque oblige à
+    revenir en arrière pour retrouver la première, et rien ne dit qu'on est
+    au bout.
+    """
+    if genre in ("oui", "colonne"):
+        return not resoudre_oui(valeur, False)
+    liste = tuple(themes or ()) if genre == "choix" else ROLES
+    if not liste:
+        return valeur
+    try:
+        rang = liste.index(valeur)
+    except ValueError:
+        rang = 0
+        sens = 0
+    return liste[(rang + sens) % len(liste)]
 
 
 def en_cours(fragments, caracteres, ecoule, premier) -> str:
@@ -296,6 +529,8 @@ def run_tui(
     depart=0,
     journal=None,
     horloge=None,
+    montre=None,
+    prefs=None,
     run_app: bool = True,
 ):
     """L'écran. `run_app=False` rend l'application sans la lancer, pour test.
@@ -314,13 +549,30 @@ def run_tui(
     from textual import work
     from textual.app import App, ComposeResult
     from textual.containers import VerticalScroll
-    from textual.widgets import DataTable, Footer, Header, Input, Static
+    from textual.theme import BUILTIN_THEMES
+    from textual.widgets import (
+        DataTable,
+        Footer,
+        Header,
+        Input,
+        OptionList,
+        Static,
+    )
+
+    from script.todo import todo_prefs
 
     from script.todo.assistant import mesure as ms
 
     mesures = [] if mesures is None else mesures
     journal = ms.ecrire if journal is None else journal
     horloge = time.monotonic if horloge is None else horloge
+    # Deux horloges, et elles ne sont pas interchangeables. `horloge` est
+    # MONOTONE et mesure des durées : celle du mur recule à un changement
+    # d'heure, ce qui rendrait une durée négative. `montre` donne l'heure
+    # qu'il est, qui ne se déduit d'aucune mesure monotone.
+    montre = (lambda: time.strftime("%H:%M")) if montre is None else montre
+    prefs = todo_prefs if prefs is None else prefs
+    THEMES = tuple(sorted(BUILTIN_THEMES))
 
     class Perf(App):
         """Le tableau des tours, le flux en cours, et la question suivante."""
@@ -329,6 +581,8 @@ def run_tui(
         #entete, #resume, #etat { height: auto; padding: 0 1; }
         #echange { height: auto; padding: 0 1; }
         #defile { height: 1fr; }
+        #reglages { height: auto; max-height: 60%; }
+        #aide-options { height: auto; padding: 0 1; color: $text-muted; }
         DataTable { height: auto; max-height: 40%; }
         """
 
@@ -337,8 +591,9 @@ def run_tui(
         # questions — donc une lettre nue n'atteint jamais un raccourci : elle
         # s'écrit dans le champ, et le raccourci passe pour mort.
         BINDINGS = [
-            ("escape", "quit", t("back")),
+            ("escape", "fermer", t("back")),
             ("ctrl+t", "durees", t("timings")),
+            ("f2", "options", t("options")),
             ("ctrl+c", "interrompre", t("interrupt")),
         ]
 
@@ -352,6 +607,8 @@ def run_tui(
             self._fragments = 0
             self._texte = ""
             self._question = ""
+            self._reglages = dict(REGLAGES)
+            self._heures = []
             self._rang = depart
 
         def compose(self) -> ComposeResult:
@@ -362,15 +619,47 @@ def run_tui(
             with VerticalScroll(id="defile"):
                 yield Static("", id="echange")
             yield Static("", id="etat")
+            yield OptionList(id="reglages")
+            yield Static(
+                t("h: type a colour · enter: cycle · escape: close"),
+                id="aide-options",
+            )
+            yield Input(
+                id="hexa", placeholder=t("Colour in hexadecimal, or empty")
+            )
             yield Input(id="saisie", placeholder=t("Your question"))
             yield Footer()
 
         def on_mount(self) -> None:
+            self._fermer_options()
+            self._lire_reglages()
             self._poser_les_colonnes()
             self._peindre()
             self._ecrire_echange()
             self._monte = True
             self.query_one("#saisie", Input).focus()
+
+        def _lire_reglages(self) -> None:
+            """Relit les préférences et applique ce qui se voit tout de suite.
+
+            Une préférence illisible ne doit jamais empêcher l'écran de
+            s'ouvrir : chaque valeur passe par son résolveur, qui retombe sur
+            un défaut plutôt que de lever.
+            """
+            lus = {}
+            for cle in REGLAGES:
+                try:
+                    lus[cle] = prefs.get(cle, REGLAGES[cle])
+                except Exception:  # noqa: BLE001
+                    lus[cle] = REGLAGES[cle]
+            self._reglages = lus
+            self.theme = resoudre_theme(lus["assistant_tui_theme"], THEMES)
+            table = self.query_one("#tours", DataTable)
+            table.display = resoudre_oui(lus["assistant_tui_durees"], True)
+            self.query_one("#resume", Static).display = table.display
+
+        def _valeur(self, cle):
+            return self._reglages.get(cle, REGLAGES.get(cle))
 
         def on_resize(self, _evenement=None) -> None:
             # Avant le montage, la taille n'est pas encore celle du terminal :
@@ -383,7 +672,10 @@ def run_tui(
             """Les colonnes qui tiennent. Ne les refait QUE si leur nombre
             change : les recréer à chaque tour remettrait le curseur en tête.
             """
-            voulues = colonnes_visibles(self.size.width)
+            voulues = colonnes_visibles(
+                self.size.width,
+                resoudre_colonnes(self._valeur("assistant_tui_colonnes")),
+            )
             if voulues == self._colonnes:
                 return
             table = self.query_one("#tours", DataTable)
@@ -415,9 +707,152 @@ def run_tui(
                     getattr(conversation, "turns", ()),
                     self._question,
                     self._texte,
+                    couleur_question=resoudre_couleur(
+                        self._valeur("assistant_tui_question")
+                    ),
+                    couleur_reponse=resoudre_couleur(
+                        self._valeur("assistant_tui_reponse")
+                    ),
+                    raisonnement=resoudre_oui(
+                        self._valeur("assistant_tui_raisonnement")
+                    ),
+                    heures=self._heures,
                 )
             )
             self.query_one("#defile", VerticalScroll).scroll_end(animate=False)
+
+        def _fermer_options(self) -> None:
+            """Cache le panneau et rend le focus à la question."""
+            for quoi in ("#reglages", "#aide-options", "#hexa"):
+                self.query_one(quoi).display = False
+            if self._monte:
+                self.query_one("#saisie", Input).focus()
+
+        def action_fermer(self) -> None:
+            """Échap ferme le panneau s'il est ouvert, l'écran sinon.
+
+            La même touche pour les deux, en cascade : une touche qui ferme
+            l'écran entier alors qu'un panneau est ouvert fait perdre la
+            conversation pour un réglage qu'on voulait seulement quitter.
+            """
+            if self.query_one("#reglages").display:
+                self._fermer_options()
+                return
+            self.exit(None)
+
+        def action_options(self) -> None:
+            """Ouvre le panneau de personnalisation, et lui donne le focus.
+
+            Le focus DOIT bouger : la saisie le garde le reste du temps, et
+            sans ce déplacement les flèches et « entrée » iraient au champ de
+            question au lieu du panneau.
+            """
+            panneau = self.query_one("#reglages", OptionList)
+            if panneau.display:
+                self._fermer_options()
+                return
+            self._peindre_options()
+            panneau.display = True
+            self.query_one("#aide-options").display = True
+            panneau.focus()
+
+        def _peindre_options(self) -> None:
+            """Repose les lignes du panneau, le curseur là où il était."""
+            panneau = self.query_one("#reglages", OptionList)
+            avant = panneau.highlighted
+            panneau.clear_options()
+            self._lignes_options = reglages(self._reglages, THEMES)
+            panneau.add_options(
+                [ligne["libelle"] for ligne in self._lignes_options]
+            )
+            # Une ligne EST surlignée dès l'ouverture, sans quoi « entrée »
+            # et « h » n'ont rien à viser : le panneau s'ouvre, répond aux
+            # flèches, et passe pour cassé à la première frappe.
+            if avant is not None and avant < len(self._lignes_options):
+                panneau.highlighted = avant
+            elif self._lignes_options:
+                panneau.highlighted = 0
+
+        def on_option_list_option_selected(self, evenement) -> None:
+            """Entrée fait tourner la valeur du réglage surligné."""
+            self._changer(evenement.option_index)
+
+        def _changer(self, rang, sens=1) -> None:
+            """Fait tourner un réglage, l'écrit, et l'applique aussitôt.
+
+            L'écriture précède l'application : un thème appliqué mais non
+            gardé se perd au prochain démarrage, et rien ne dit pourquoi.
+            """
+            lignes = getattr(self, "_lignes_options", ())
+            if rang is None or not 0 <= rang < len(lignes):
+                return
+            ligne = lignes[rang]
+            if ligne["genre"] == "colonne":
+                self._basculer_colonne(ligne["cle"][len(CLE_COLONNE) :])
+            else:
+                self._poser(
+                    ligne["cle"],
+                    tourner(ligne["genre"], ligne["valeur"], sens, THEMES),
+                )
+            self._peindre_options()
+
+        def _basculer_colonne(self, colonne) -> None:
+            gardees = [
+                cle
+                for cle, _titre in resoudre_colonnes(
+                    self._valeur("assistant_tui_colonnes")
+                )
+            ]
+            if colonne in gardees:
+                gardees.remove(colonne)
+            else:
+                gardees.append(colonne)
+            self._poser("assistant_tui_colonnes", gardees)
+
+        def _poser(self, cle, valeur) -> None:
+            """Garde un réglage et le rend visible sans rouvrir l'écran."""
+            self._reglages[cle] = valeur
+            try:
+                prefs.set(cle, valeur)
+            except Exception:  # noqa: BLE001
+                # Un disque plein ne doit pas faire perdre la conversation :
+                # le réglage vaut alors pour cette séance seulement.
+                pass
+            if cle == "assistant_tui_theme":
+                self.theme = resoudre_theme(valeur, THEMES)
+            elif cle == "assistant_tui_durees":
+                garde = resoudre_oui(valeur, True)
+                self.query_one("#tours", DataTable).display = garde
+                self.query_one("#resume", Static).display = garde
+            elif cle == "assistant_tui_colonnes":
+                self._colonnes = ()
+                self._poser_les_colonnes()
+                self._peindre()
+            self._ecrire_echange()
+
+        def on_key(self, evenement) -> None:
+            """« h » saisit une couleur à la main, panneau ouvert.
+
+            La touche n'est lue QUE lorsque le panneau a le focus : partout
+            ailleurs elle appartient à la question qu'on est en train de
+            taper.
+            """
+            if evenement.key != "h":
+                return
+            panneau = self.query_one("#reglages", OptionList)
+            if not panneau.has_focus:
+                return
+            lignes = getattr(self, "_lignes_options", ())
+            rang = panneau.highlighted
+            if rang is None or not 0 <= rang < len(lignes):
+                return
+            if lignes[rang]["genre"] != "couleur":
+                return
+            evenement.stop()
+            champ = self.query_one("#hexa", Input)
+            champ.value = str(lignes[rang]["valeur"] or "")
+            champ.display = True
+            champ.focus()
 
         def action_durees(self) -> None:
             """Replier le tableau des durées pour rendre sa place au texte.
@@ -431,6 +866,9 @@ def run_tui(
             self.query_one("#resume", Static).display = table.display
 
         def on_input_submitted(self, evenement) -> None:
+            if evenement.input.id == "hexa":
+                self._poser_couleur(evenement.value)
+                return
             texte = (evenement.value or "").strip()
             evenement.input.value = ""
             if not texte or self._occupe:
@@ -467,6 +905,37 @@ def run_tui(
                 self.call_from_thread(self._fini, None, texte, souci)
                 return
             self.call_from_thread(self._fini, tour, texte, None)
+
+        def _poser_couleur(self, brut) -> None:
+            """Range la couleur tapée dans le réglage surligné.
+
+            Une saisie que le résolveur refuse retombe sur « couleur du
+            texte » : elle est rendue telle quelle à l'écran, donc la faute
+            se voit au lieu de se deviner.
+            """
+            lignes = getattr(self, "_lignes_options", ())
+            panneau = self.query_one("#reglages", OptionList)
+            rang = panneau.highlighted
+            if rang is not None and 0 <= rang < len(lignes):
+                self._poser(lignes[rang]["cle"], resoudre_couleur(brut))
+            champ = self.query_one("#hexa", Input)
+            champ.display = False
+            self._peindre_options()
+            panneau.focus()
+
+        def _noter_heures(self) -> None:
+            """Donne son heure au tour qui vient d'entrer dans l'historique.
+
+            L'heure se pose par INDEX de tour et non par rang de mesure : un
+            tour en panne ne rejoint pas l'historique, donc les deux suites
+            se décalent dès la première erreur.
+            """
+            tours = getattr(conversation, "turns", ())
+            maintenant = montre()
+            while len(self._heures) < len(tours):
+                rang = len(self._heures)
+                role = getattr(tours[rang], "role", "")
+                self._heures.append(maintenant if role == "user" else "")
 
         def _fragment(self, morceau) -> None:
             """Un fragment arrivé. Seul `call_from_thread` mène ici."""
@@ -518,6 +987,7 @@ def run_tui(
                 interrompu=bool(getattr(tour, "interrupted", False)),
                 erreur=erreur,
             )
+            self._noter_heures()
             mesures.append(prise)
             try:
                 journal(prise)
