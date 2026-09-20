@@ -278,7 +278,7 @@ class Plan(unittest.TestCase):
         self,
     ):
         self.assertEqual(len(PORTS), len(set(PORTS)))
-        self.assertEqual(len(PORTS), 11)
+        self.assertEqual(len(PORTS), 12)
         self.assertIn(GPT4ALL_PORT, PORTS)
 
 

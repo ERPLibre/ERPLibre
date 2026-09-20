@@ -57,6 +57,7 @@ PORTS: tuple[int, ...] = (
     3000,
     8081,
     5002,
+    52415,
 )
 
 # Le plafond de lecture par réponse. Une page d'administration de routeur ou
@@ -306,7 +307,28 @@ def _llamacpp_proxy(bodies, port, host):
     return None
 
 
-# Étage 12 — GPT4All, par élimination : rien au-dessus n'a reconnu, le port
+# Étage 12 — exo, une grappe d'inférence répartie sur plusieurs machines. Les
+# deux chemins sont exigés ENSEMBLE : « /v1/feature-flags » porte la clé
+# « disaggregation », du vocabulaire propre à exo, et « /node_id » rend
+# l'identifiant du nœud.
+#
+# Le catalogue porte pourtant la marque la plus nette — `owned_by` vaut
+# « exo » sur chaque entrée, comme « llamacpp » à l'étage précédent — et il
+# est pourtant inutilisable : exo publie plus de cent fiches de modèles, ce
+# qui dépasse BODY_CAP. Tronqué, le corps ne s'analyse plus, et un étage bâti
+# sur lui ne reconnaîtrait jamais rien. La reconnaissance se joue donc sur
+# deux corps courts.
+def _exo(bodies, port, host):
+    flags = _json(bodies, "/v1/feature-flags")
+    if not isinstance(flags, dict) or "disaggregation" not in flags:
+        return None
+    node = _json(bodies, "/node_id")
+    if isinstance(node, str) and node:
+        return ""
+    return "" if _text(node, "node_id") else None
+
+
+# Étage 13 — GPT4All, par élimination : rien au-dessus n'a reconnu, le port
 # est le sien, et une liste OpenAI est bien là. Le port seul ne suffit pas —
 # une page d'administration écoute aussi sur des ports d'application.
 def _gpt4all(bodies, port, host):
@@ -318,7 +340,7 @@ def _gpt4all(bodies, port, host):
     return None
 
 
-# Étage 13 — OpenAI distant, tranché par le nom d'hôte. Aucun balayage ne
+# Étage 14 — OpenAI distant, tranché par le nom d'hôte. Aucun balayage ne
 # l'atteint : c'est la configuration qui le nomme.
 def _openai(bodies, port, host):
     if host.strip().lower().rstrip(".") == OPENAI_HOST:
@@ -341,6 +363,7 @@ LADDER: tuple[Probe, ...] = (
     Probe("textgen_webui", ("/v1/internal/model/info",), _textgen_webui),
     Probe("tabbyapi", ("/v1/model", "/v1/template/list"), _tabbyapi),
     Probe("llamacpp", ("/v1/models",), _llamacpp_proxy),
+    Probe("exo", ("/v1/feature-flags", "/node_id"), _exo),
     Probe("gpt4all", ("/v1/models",), _gpt4all),
     Probe("openai", (), _openai),
 )
