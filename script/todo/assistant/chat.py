@@ -3,10 +3,11 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """La conversation : les tours, en mémoire, et les commandes qui la pilotent.
 
-L'historique vit dans cet objet et NULLE PART ailleurs : rien ici n'ouvre un
-fichier. Il meurt avec le menu, et `/save` — dont l'écriture appartient au
-menu — est le seul moyen d'en garder une trace, ce qui doit se dire AVANT la
-conversation qui méritait d'être gardée.
+L'historique vit dans cet objet, et RIEN ICI n'ouvre un fichier. Il meurt
+pourtant moins qu'avant : le menu écrit chaque tour dans la séance gardée, au
+fil, et sait recharger ces tours pour reprendre une conversation. Cette
+écriture appartient au menu et à lui seul — ce module tient la conversation,
+il ne décide pas de ce qui survit.
 
 Deux subtilités que la forme de la boucle impose :
 

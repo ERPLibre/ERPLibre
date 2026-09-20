@@ -19,11 +19,13 @@ le paquet, lui, doit rester importable seul — est vérifiée dans
 `_menu_header()` enregistre une télémétrie dans `~/.erplibre` : tout test qui
 appelle une méthode de menu la neutralise, sinon il écrit pour de vrai.
 
-Un SECOND écrivain a le même piège, et il est plus discret : un tour de
-conversation ajoute une ligne au journal des mesures, sous `private/`. Un test
-qui fait tourner la boucle sans neutraliser `mesure.ecrire` y laisse des tours
-qui n'ont jamais eu lieu — durée nulle, comptes absents — au milieu de vraies
-mesures, et rien ne les distingue à la relecture.
+DEUX autres écrivains ont le même piège, et ils sont plus discrets : un tour
+de conversation ajoute une ligne au journal des mesures ET une paire de lignes
+à la séance gardée, sous `~/.erplibre`. Un test qui fait tourner la boucle y
+laisse des tours qui n'ont jamais eu lieu — durée nulle, comptes absents — au
+milieu de vrais, et rien ne les distingue à la relecture. Les deux sont donc
+détournés vers un dossier temporaire pour TOUT le fichier, par `setUpModule` :
+un correctif posé dans chaque aide ne protège que les tests déjà écrits.
 """
 from __future__ import annotations
 
@@ -34,7 +36,38 @@ import unittest
 from unittest.mock import patch
 
 from script.todo import todo as todo_module
+from script.todo.assistant import mesure as _mesure
+from script.todo.assistant import sessions as _sessions
 from script.todo.todo_i18n import t
+
+# Les DEUX écrivains que la boucle de conversation nourrit, détournés pour
+# tout le fichier. Chacun vise le dossier personnel de qui lance la suite —
+# le journal des mesures et les séances gardées — et un test qui les
+# oublierait y laisserait des tours qui n'ont jamais eu lieu, au milieu de
+# vrais. Les détourner ICI couvre aussi les tests qu'on écrira demain, là où
+# un correctif par aide ne couvre que ceux d'aujourd'hui.
+_ECRIVAINS = []
+
+
+def setUpModule():
+    import tempfile
+
+    _ECRIVAINS.append(tempfile.TemporaryDirectory())
+    racine = _ECRIVAINS[0].name
+    _ECRIVAINS.append(_sessions.BASE)
+    _sessions.BASE = (racine, "sessions")
+    _ECRIVAINS.append(_mesure.ecrire)
+    _mesure.ecrire = lambda mesure, **kw: _mesure.__dict__["_vrai_ecrire"](
+        mesure, racine=racine
+    )
+    _mesure.__dict__["_vrai_ecrire"] = _ECRIVAINS[2]
+
+
+def tearDownModule():
+    _mesure.ecrire = _ECRIVAINS[2]
+    _sessions.BASE = _ECRIVAINS[1]
+    _ECRIVAINS[0].cleanup()
+
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

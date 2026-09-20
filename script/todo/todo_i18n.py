@@ -12676,6 +12676,24 @@ TRANSLATIONS = {
         "fr": "retour",
         "en": "back",
     },
+    "New conversation": {
+        "fr": "✨ Nouvelle conversation",
+        "en": "✨ New conversation",
+    },
+    "Resume": {
+        "fr": "Reprendre",
+        "en": "Resume",
+    },
+    "%s resumed": {
+        "fr": "%s repris",
+        "en": "%s resumed",
+    },
+    "Every turn is written under ~/.erplibre, and nowhere else.": {
+        "fr": (
+            "Chaque tour est écrit sous ~/.erplibre, et nulle part ailleurs."
+        ),
+        "en": "Every turn is written under ~/.erplibre, and nowhere else.",
+    },
     "theme": {
         "fr": "thème",
         "en": "theme",
