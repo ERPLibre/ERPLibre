@@ -28,6 +28,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `check_comment_hygiene.py` signals a fully qualified machine name in a comment, as a re-read signal and never a finding: a BARE host name is mechanically indistinguishable from an ordinary word, so the absence of a signal proves nothing about names. The copyright header, the RFC 2606 domains and any address carried by a URL are left alone
 
 - `Assistant › LLM › Deployment` — install or remove a model on a known server, where its family allows it. Thirteen families are described and only five install and remove over HTTP; two install without removing, and six do neither because their model is chosen when the process starts. A family that offers nothing says what it does instead of offering a button that answers 404. Posing is the only write in a package read-only everywhere else, and none of its paths is reachable from a scan
+- `Assistant › LLM › Deployment` — put an ERPLibre on a local path or on a host of `~/.ssh/config`, by cloning at a chosen branch or by copying this checkout. A path that already carries anything is refused by name and nothing is touched: six markers are read, because a tree pushed by rsync has no repository and a fresh clone has no version files, and a probe that read nothing counts as occupied. The install then offers to carry the LLM configuration over, everything or one number per item; the known servers travel on standard input so no address reaches a command line, and the Claude Code commands are posed from the target's own checkout
 
 ## Changed
 

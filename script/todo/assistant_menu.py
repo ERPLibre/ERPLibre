@@ -34,7 +34,9 @@ défilement piloté.
 """
 from __future__ import annotations
 
+import json
 import os
+import subprocess
 import time
 from dataclasses import replace
 
@@ -870,6 +872,7 @@ class AssistantMenuMixin:
                 },
                 {"section": t("Deployment")},
                 {"prompt_description": self._llm_models_label()},
+                {"prompt_description": t("Install ERPLibre on a target")},
             ]
             try:
                 status = click.prompt(self.fill_help_info(choices))
@@ -891,6 +894,8 @@ class AssistantMenuMixin:
                 self._llm_server_card()
             elif status == "6":
                 self._llm_models()
+            elif status == "7":
+                self._llm_deploy()
             else:
                 print(t("Command not found !"))
 
@@ -1875,6 +1880,494 @@ class AssistantMenuMixin:
             return ""
         entree = kp.find_entries_by_title(titre, first=True)
         return getattr(entree, "password", "") or ""
+
+    # ------------------------------------------------------------------
+    # Poser un ERPLibre sur une cible
+
+    def _llm_deploy(self):
+        """Poser un ERPLibre sur cette machine ou sur un hôte de ~/.ssh/config.
+
+        Tout se demande AVANT de rien lancer — la cible, la méthode, le
+        chemin, la branche, le transfert — pour qu'une pose qui dure de
+        longues minutes tourne ensuite sans surveillance.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        cible = self._llm_deploy_cible()
+        if cible is None:
+            return
+        # La sonde AVANT la méthode : le verdict ne dépend pas d'elle, et un
+        # chemin occupé refuse alors sans avoir fait répondre à trois écrans.
+        if not self._llm_deploy_libre(cible):
+            return
+        methode = self._llm_deploy_methode(cible)
+        if methode is None:
+            return
+        commande = self._llm_deploy_commande(cible, methode)
+        if commande is None:
+            return
+        transfert = self._llm_transfert_choix(cible)
+        if transfert is None:
+            return
+        print(f"{t('Will execute:')} {commande}")
+        try:
+            frappe = click.prompt(
+                t("Type the target path in full to install there:"),
+                prompt_suffix=" ",
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if frappe != cible.path:
+            print(t("Destination not retyped — nothing was sent."))
+            return
+        code = self.execute.exec_command_live(
+            commande, source_erplibre=False, single_source_erplibre=True
+        )
+        # La garde rejouée dans le bloc sort en 3, et une installation ratée
+        # sort autrement : dans les deux cas il n'y a rien là-bas à
+        # configurer. Transférer quand même poserait la liste des serveurs —
+        # et, si on l'a demandée, celle des noms interdits — sur un hôte où
+        # aucun ERPLibre n'a été posé.
+        if code:
+            print(f"⛔ {t('The install failed — nothing was transferred.')}")
+            return
+        if transfert:
+            self._llm_transfert_poser(cible, transfert)
+        print(f"✅ {llm_deploy.resume(cible)}")
+
+    def _llm_deploy_cible(self):
+        """Où poser : un chemin d'ici, ou un hôte de ~/.ssh/config.
+
+        Rend None quand l'utilisateur renonce. L'alias choisi n'est jamais
+        résolu en adresse : ssh lit lui-même l'utilisateur, le port et le
+        ProxyJump de son entrée.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        choices = [
+            {"section": t("Target")},
+            {"prompt_description": t("A path on this machine")},
+            {"prompt_description": t("A host of ~/.ssh/config")},
+        ]
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        print()
+        if status == "1":
+            alias = ""
+        elif status == "2":
+            alias = self._llm_deploy_alias()
+            if not alias:
+                return None
+        else:
+            if status != "0":
+                print(t("Command not found !"))
+            return None
+        try:
+            chemin = click.prompt(
+                t("Path on the target"),
+                default=llm_deploy.CHEMIN_DEFAUT,
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        if not chemin:
+            print(t("Nothing to do."))
+            return None
+        if llm_deploy.tilde_etranger(chemin):
+            # Personne ici ne sait où vit le compte d'autrui sur la cible :
+            # la sonde et l'écriture cesseraient de juger le même répertoire.
+            print(f"⛔ {t('Only ~/ is expanded — give a full path.')}")
+            return None
+        return llm_deploy.Cible(handle="cible-1", alias=alias, path=chemin)
+
+    def _llm_deploy_alias(self):
+        """L'alias choisi dans ~/.ssh/config, ou "" si l'on renonce.
+
+        La lecture ne suit pas `Include` : un alias déclaré dans un fichier
+        inclus n'apparaît pas ici, alors que ssh le résoudrait. L'écran
+        accepte donc aussi un nom TAPÉ, faute de quoi une entrée parfaitement
+        valide serait inatteignable.
+        """
+        alias = self._ssh_config_hosts()
+        if not alias:
+            print(t("~/.ssh/config absent — nothing to probe"))
+        choices = [{"section": t("SSH")}] + [
+            {"prompt_description": nom} for nom in alias
+        ]
+        choices.append({"prompt_description": t("Type a name")})
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return ""
+        print()
+        if status == "0":
+            return ""
+        try:
+            rang = int(status)
+        except ValueError:
+            print(t("Command not found !"))
+            return ""
+        if 1 <= rang <= len(alias):
+            return alias[rang - 1]
+        if rang == len(alias) + 1:
+            try:
+                tape = click.prompt(t("Type a name")).strip()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return ""
+            # ssh n'accepte pas « -- » : un nom qui s'ouvre sur un tiret est
+            # lu comme une option, et « -o ProxyCommand=… » exécuterait une
+            # commande avant même que l'écran ait demandé confirmation.
+            if tape.startswith("-"):
+                print(f"⛔ {t('A name cannot begin with a dash.')}")
+                return ""
+            return tape
+        print(t("Command not found !"))
+        return ""
+
+    def _llm_deploy_methode(self, cible):
+        """Cloner depuis git, ou recopier cet arbre-ci. None si l'on renonce.
+
+        Rend ("clone", branche) ou ("copie", ""). La copie emporte `.git`,
+        sans quoi l'installation ne saurait pas résoudre la branche de son
+        manifeste.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        choices = [
+            {"section": t("Install")},
+            {"prompt_description": t("Clone from git")},
+            {"prompt_description": t("Copy this checkout")},
+        ]
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        print()
+        if status == "1":
+            try:
+                branche = click.prompt(
+                    t("Branch to clone"),
+                    default=llm_deploy.BRANCHE_DEFAUT,
+                ).strip()
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return None
+            return ("clone", branche or llm_deploy.BRANCHE_DEFAUT)
+        if status == "2":
+            return ("copie", "")
+        if status != "0":
+            print(t("Command not found !"))
+        return None
+
+    def _llm_deploy_libre(self, cible):
+        """Vrai quand le chemin est libre. Sonde AVANT toute écriture.
+
+        Ce qui n'a pas été lu compte pour occupé : une sortie vide se produit
+        aussi bien sur un hôte injoignable que sur une clé refusée, et aucun
+        des deux ne prouve qu'il n'y a rien là-bas.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        if cible.alias:
+            code, sortie = self._ssh_run(
+                cible.alias, llm_deploy.sonde_shell(cible.path)
+            )
+            etat = llm_deploy.lire_sonde(code, sortie)
+            vus = llm_deploy.marqueurs_vus(sortie)
+        else:
+            etat = llm_deploy.etat_local(cible.path)
+            vus = []
+        if etat == llm_deploy.LIBRE:
+            return True
+        if etat == llm_deploy.MUET:
+            avis = t("The probe said nothing — the path counts as occupied:")
+            print(f"⛔ {avis} {cible.path}")
+            return False
+        if etat == llm_deploy.ERPLIBRE:
+            trace = f" ({', '.join(vus)})" if vus else ""
+            print(
+                f"⛔ {t('An ERPLibre is already there — nothing was touched:')}"
+                f" {cible.path}{trace}"
+            )
+            return False
+        print(
+            f"⛔ {t('Something is already there — nothing was touched:')}"
+            f" {cible.path}"
+        )
+        return False
+
+    def _llm_deploy_commande(self, cible, methode):
+        """Le bloc shell qui posera l'installation, ou None.
+
+        La copie vers un hôte distant part d'ICI : rsync pousse l'arbre, puis
+        ssh lance l'installation là-bas. Le clone, lui, tourne entièrement
+        chez la cible.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        genre, branche = methode
+        make = self.ERPLIBRE_ODOO_TARGET
+        if genre == "clone":
+            bloc = llm_deploy.bloc_clone(
+                cible.path,
+                git_url=self.ERPLIBRE_GIT_URL,
+                branche=branche,
+                cible_make=make,
+            )
+            if cible.alias:
+                return llm_deploy.bloc_distant(cible.alias, bloc)
+            return bloc
+        if cible.alias:
+            return llm_deploy.bloc_copie(cible, cible_make=make)
+        return llm_deploy.bloc_local_copie(cible.path, cible_make=make)
+
+    def _ssh_run(self, alias, commande, timeout=20):
+        """(code, sortie) d'une commande courte chez `alias`, sans invite.
+
+        `BatchMode` refuse toute question : un hôte qui demanderait un mot de
+        passe bloquerait le menu sur une invite que personne ne voit venir.
+        La commande part en UN SEUL argument, que l'interpréteur de là-bas
+        relit une fois et une seule.
+
+        Seule la sortie STANDARD est rendue. Un avertissement de ssh — clé
+        d'hôte apprise, bannière — sort sur l'erreur, et le confondre avec le
+        texte de la sonde laisserait un message étranger porter un marqueur.
+        """
+        try:
+            res = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    f"ConnectTimeout={timeout}",
+                    alias,
+                    commande,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 12,
+                env=self._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError):
+            return 255, ""
+        return res.returncode, res.stdout
+
+    # ------------------------------------------------------------------
+    # Le transfert de la configuration LLM
+
+    def _llm_transfert_choix(self, cible):
+        """Ce qui voyagera vers l'installation neuve. None si l'on renonce.
+
+        Rend une liste d'articles, vide quand l'utilisateur dit non. La
+        question se pose AVANT la pose, pour que celle-ci tourne sans
+        surveillance.
+        """
+        articles = self._llm_transfert_articles()
+        if not articles:
+            return []
+        choices = [
+            {"section": t("Transfer")},
+            {"prompt_description": t("Everything")},
+            {"prompt_description": t("Choose…")},
+        ]
+        print(
+            f"{t('Transfer the LLM configuration to the new installation?')}"
+        )
+        try:
+            status = click.prompt(self.fill_help_info(choices))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        print()
+        if status == "0":
+            return []
+        if status == "1":
+            return [a for a in articles if not a["reserve"]]
+        if status != "2":
+            print(t("Command not found !"))
+            return None
+        return self._llm_transfert_granulaire(articles)
+
+    def _llm_transfert_granulaire(self, articles):
+        """Un numéro par article, plusieurs numéros à la fois.
+
+        Les articles RÉSERVÉS ne sont jamais pris par « tout » : celui qui
+        porte la liste des noms interdits déplace des noms de clients sur une
+        machine neuve, et ne part que nommé un par un.
+        """
+        etiquettes = []
+        for rang, article in enumerate(articles, 1):
+            garde = "  ⚠" if article["reserve"] else ""
+            print(f"[{rang}] {article['label']}{garde}")
+            if article["glose"]:
+                print(f"      {article['glose']}")
+            etiquettes.append(str(rang))
+        try:
+            reponse = click.prompt(t("Choose…"))
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return None
+        pris = self._parse_index_selection(reponse, etiquettes)
+        if reponse.strip() and not pris:
+            # Une saisie qu'on ne sait pas lire n'est pas un « rien » : la
+            # confondre avec lui ferait passer un doigt qui a glissé pour une
+            # décision, sans un mot.
+            print(t("Command not found !"))
+            return None
+        return [articles[int(n) - 1] for n in pris]
+
+    def _llm_transfert_articles(self):
+        """Ce qui PEUT voyager, un article par ligne de l'écran granulaire.
+
+        Un serveur par ligne, et non une ligne pour la liste : la classe
+        d'hébergement est par serveur et change de sens d'une machine à
+        l'autre, et un seul oui/non forcerait à déplacer un tiers pour
+        déplacer une boucle locale.
+
+        Les commandes Claude Code ne se COPIENT pas : elles se posent depuis
+        le dépôt que la cible vient de recevoir, donc à la version qu'elle
+        exécute, et sans le nom ni le courriel de l'opérateur d'ici.
+        """
+        connus = llm_servers.load(get_config=self._llm_get_config)
+        articles = []
+        for serveur in connus:
+            glose = t(self._llm_hosting_key(serveur.hosting))
+            if serveur.hosting == "loopback":
+                glose = f"{glose} — {t('points at the target own loopback')}"
+            articles.append(
+                {
+                    "genre": "serveur",
+                    "label": f"{serveur.label} — {self._llm_label(serveur)}",
+                    "glose": glose,
+                    "reserve": False,
+                    "valeur": serveur,
+                }
+            )
+        articles.append(
+            {
+                "genre": "claude",
+                "label": t("The Claude Code commands"),
+                "glose": t("posed from the target own checkout"),
+                "reserve": False,
+                "valeur": None,
+            }
+        )
+        articles.append(
+            {
+                "genre": "noms",
+                "label": t("The forbidden-names list"),
+                "glose": t(
+                    "carries client, database and host names; without it no"
+                    " third-party send is allowed"
+                ),
+                "reserve": True,
+                "valeur": None,
+            }
+        )
+        return articles
+
+    def _llm_transfert_poser(self, cible, articles):
+        """Porter les articles retenus sur l'installation qu'on vient de poser.
+
+        La liste des serveurs part par l'ENTRÉE STANDARD et jamais par la
+        ligne de commande : elle porte des adresses, et une ligne de commande
+        se lit dans un journal comme dans la table des processus. L'écran, lui,
+        n'annonce que les poignées.
+
+        Le fichier privé n'est JAMAIS recopié en bloc : il porte aussi le mot
+        de passe du coffre et les profils VPN. La charge se bâtit clé par clé,
+        et l'écriture passe par `set_config_value` de là-bas.
+        """
+        from script.todo.assistant import deploy as llm_deploy
+
+        serveurs = [a["valeur"] for a in articles if a["genre"] == "serveur"]
+        if serveurs:
+            charge = llm_deploy.payload_serveurs(serveurs)
+            bloc = llm_deploy.bloc_ecrire_config(
+                cible.path, list(llm_servers.CONFIG_KEYS)
+            )
+            if self._llm_pousser(cible, bloc, json.dumps(charge)):
+                for serveur in serveurs:
+                    print(f"  ✅ {llm_servers.redacted(serveur)}")
+        if any(a["genre"] == "claude" for a in articles):
+            bloc = llm_deploy.bloc_commandes_claude(
+                cible.path, self._QEMU_AIDEV_CLAUDE_CMDS
+            )
+            if self._llm_pousser(cible, bloc, ""):
+                print(f"  ✅ {t('The Claude Code commands')}")
+        if any(a["genre"] == "noms" for a in articles):
+            self._llm_transfert_noms(cible)
+
+    def _llm_transfert_noms(self, cible):
+        """Porter la liste des noms interdits, lue ici, écrite là-bas.
+
+        C'est le seul article qui déplace des noms de clients sur une machine
+        neuve. Il ne part que nommé, jamais par « tout », et son absence
+        là-bas REFUSE tout envoi vers un tiers — ce qui est un défaut de
+        configuration et non une panne.
+        """
+        from script.lib_identifiant import NOMS_INTERDITS
+        from script.todo.assistant import deploy as llm_deploy
+
+        try:
+            with open(NOMS_INTERDITS, encoding="utf-8") as fh:
+                contenu = fh.read()
+        except OSError:
+            print(f"  ⚠ {t('The forbidden-names list')} — {t('Not found')}")
+            return
+        # `chemin_shell` et non `shlex.quote` : citer le tilde lui ôte son
+        # sens, et le fichier atterrirait dans un répertoire NOMMÉ « ~ »,
+        # hors de l'arbre posé, pendant que l'écran annoncerait un succès.
+        racine = llm_deploy.chemin_shell(cible.path)
+        # 0700 et 0600 comme `set_config_value` ailleurs : ce fichier porte
+        # des noms de clients, et le umask du compte distant ne le protège
+        # pas de lui-même.
+        bloc = (
+            f"mkdir -p {racine}/private && "
+            f"chmod 700 {racine}/private && "
+            f"touch {racine}/private/noms_interdits.txt && "
+            f"chmod 600 {racine}/private/noms_interdits.txt && "
+            f"cat > {racine}/private/noms_interdits.txt"
+        )
+        if self._llm_pousser(cible, bloc, contenu):
+            print(f"  ✅ {t('The forbidden-names list')}")
+
+    def _llm_pousser(self, cible, bloc, entree):
+        """Exécuter un bloc chez la cible, sa charge sur l'ENTRÉE STANDARD.
+
+        Ici comme là-bas : un chemin local se traite par le même chemin de
+        code qu'un alias SSH, la seule différence étant l'enveloppe `ssh`.
+        Rien de la charge n'entre dans un argument.
+        """
+        argv = (
+            ["ssh", "-o", "BatchMode=yes", cible.alias, bloc]
+            if cible.alias
+            else ["bash", "-c", bloc]
+        )
+        try:
+            res = subprocess.run(
+                argv,
+                input=entree,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env=self._qemu_c_env(),
+            )
+        except (OSError, subprocess.SubprocessError) as souci:
+            print(f"  ⛔ {souci}")
+            return False
+        if res.returncode != 0:
+            print(f"  ⛔ {res.stderr.strip()[:200]}")
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Les sessions Claude Code de la machine

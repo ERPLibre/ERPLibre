@@ -13856,13 +13856,19 @@ TRANSLATIONS = {
     # « models », « still waiting for » et « Type an address » servent aussi
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
-    # Assistant LLM — poser et retirer un modèle sur un serveur connu.
-    # « Deployment », « Models », « model », « models » et « Destination not
-    # retyped — nothing was sent. » servent aussi ici et sont définies plus
-    # haut : les redéfinir écraserait la première sans rien lever.
+    # Assistant LLM — déploiement : poser un modèle sur un serveur connu,
+    # poser un ERPLibre sur une cible, porter la configuration. « Deployment »,
+    # « Target », « Install », « Models », « model », « models »,
+    # « Will execute: », « Existing checkout kept, not updated: » et
+    # « Destination not retyped — nothing was sent. » servent aussi ici et sont
+    # définies plus haut : les redéfinir écraserait la première sans rien lever.
     "Models on a server": {
         "fr": "📦 Modèles sur un serveur",
         "en": "Models on a server",
+    },
+    "Install ERPLibre on a target": {
+        "fr": "🚀 Installer ERPLibre sur une cible",
+        "en": "Install ERPLibre on a target",
     },
     "nothing offered here": {
         "fr": "rien d'offert ici",
@@ -13891,6 +13897,94 @@ TRANSLATIONS = {
     "Pulling — Ctrl+C interrupts": {
         "fr": "Pose en cours — Ctrl+C interrompt",
         "en": "Pulling — Ctrl+C interrupts",
+    },
+    "A path on this machine": {
+        "fr": "Un chemin sur cette machine",
+        "en": "A path on this machine",
+    },
+    "A host of ~/.ssh/config": {
+        "fr": "Un hôte de ~/.ssh/config",
+        "en": "A host of ~/.ssh/config",
+    },
+    "Type a name": {
+        "fr": "Taper un nom",
+        "en": "Type a name",
+    },
+    "SSH": {
+        "fr": "SSH",
+        "en": "SSH",
+    },
+    "Clone from git": {
+        "fr": "Cloner depuis git",
+        "en": "Clone from git",
+    },
+    "Copy this checkout": {
+        "fr": "Copier ce checkout",
+        "en": "Copy this checkout",
+    },
+    "Path on the target": {
+        "fr": "Chemin sur la cible",
+        "en": "Path on the target",
+    },
+    "Branch to clone": {
+        "fr": "Branche à cloner",
+        "en": "Branch to clone",
+    },
+    "Type the target path in full to install there:": {
+        "fr": "Tape le chemin de la cible en entier pour y installer :",
+        "en": "Type the target path in full to install there:",
+    },
+    "An ERPLibre is already there — nothing was touched:": {
+        "fr": "Un ERPLibre est déjà là — rien n'a été touché :",
+        "en": "An ERPLibre is already there — nothing was touched:",
+    },
+    "Something is already there — nothing was touched:": {
+        "fr": "Quelque chose est déjà là — rien n'a été touché :",
+        "en": "Something is already there — nothing was touched:",
+    },
+    "The probe said nothing — the path counts as occupied:": {
+        "fr": "La sonde n'a rien dit — le chemin compte pour occupé :",
+        "en": "The probe said nothing — the path counts as occupied:",
+    },
+    "Transfer": {
+        "fr": "Transfert",
+        "en": "Transfer",
+    },
+    "Transfer the LLM configuration to the new installation?": {
+        "fr": "Transférer la configuration LLM vers la nouvelle installation ?",
+        "en": "Transfer the LLM configuration to the new installation?",
+    },
+    "Everything": {
+        "fr": "Tout",
+        "en": "Everything",
+    },
+    "Choose…": {
+        "fr": "Choisir…",
+        "en": "Choose…",
+    },
+    "points at the target own loopback": {
+        "fr": "désigne la boucle locale de la cible",
+        "en": "points at the target own loopback",
+    },
+    "The Claude Code commands": {
+        "fr": "Les commandes Claude Code",
+        "en": "The Claude Code commands",
+    },
+    "posed from the target own checkout": {
+        "fr": "posées depuis le checkout de la cible",
+        "en": "posed from the target own checkout",
+    },
+    "The forbidden-names list": {
+        "fr": "La liste des noms interdits",
+        "en": "The forbidden-names list",
+    },
+    "carries client, database and host names; without it no third-party send is allowed": {
+        "fr": "porte des noms de clients, de bases et d'hôtes ; sans elle aucun envoi vers un tiers n'est permis",
+        "en": "carries client, database and host names; without it no third-party send is allowed",
+    },
+    "Not found": {
+        "fr": "Introuvable",
+        "en": "Not found",
     },
     "Model posed.": {
         "fr": "Modèle posé.",
@@ -13947,6 +14041,18 @@ TRANSLATIONS = {
     "A remote provider serves its own models.": {
         "fr": "Un fournisseur distant sert ses propres modèles.",
         "en": "A remote provider serves its own models.",
+    },
+    "Only ~/ is expanded — give a full path.": {
+        "fr": "Seul ~/ est développé — donne un chemin complet.",
+        "en": "Only ~/ is expanded — give a full path.",
+    },
+    "A name cannot begin with a dash.": {
+        "fr": "Un nom ne peut pas commencer par un tiret.",
+        "en": "A name cannot begin with a dash.",
+    },
+    "The install failed — nothing was transferred.": {
+        "fr": "L'installation a échoué — rien n'a été transféré.",
+        "en": "The install failed — nothing was transferred.",
     },
     "The stream stopped before the end.": {
         "fr": "Le flux s'est arrêté avant la fin.",
