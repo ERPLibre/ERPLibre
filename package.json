@@ -6,6 +6,7 @@
   "homepage": "https://erplibre.ca",
   "devDependencies": {
     "@prettier/plugin-xml": "==2.2.0",
+    "jsdom": "==30.1.0",
     "prettier": "==2.8.8"
   }
 }
