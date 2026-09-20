@@ -61,6 +61,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Le journal d'installation porte ce que l'hôte a décidé avant de lancer : l'autorité du cache de téléchargement posée ou refusée, l'exception, le miroir. Ces lignes se disaient sur une console qui défile, pendant que le fichier qu'on rouvre après un échec ne portait que le symptôme — sur un invité sans magasin de confiance, un certificat refusé, des centaines de dérivations à construire et six cents lignes d'erreurs, sans un mot sur la cause
 - Une entrée du cache de téléchargement s'oublie depuis le menu, sous « Âge et nettoyage ». Le binaire savait déjà le faire ; le menu n'offrait que les deux purges en gros, dont aucune ne vise un objet — « effacer ce qui n'a plus servi » n'atteint jamais celui que le service rajeunit chaque fois qu'il le rend, et « tout effacer » coûte le cache entier pour un fichier. `--detient` passe d'abord et fait l'aperçu : même ligne, même clé, sans rien modifier
 
+- `Assistant › LLM › Déploiement` — poser ou retirer un modèle sur un serveur connu, là où sa famille le permet. Treize familles sont décrites et cinq seulement posent et retirent en HTTP ; deux posent sans retirer, et six ne font ni l'un ni l'autre, leur modèle se choisissant au lancement du processus. Une famille qui n'offre rien dit ce qu'elle fait au lieu d'offrir un bouton qui rend 404. La pose est la seule écriture d'un paquet en lecture seule partout ailleurs, et aucun de ses chemins n'est atteignable depuis un balayage
+
 ## Modifié
 
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond

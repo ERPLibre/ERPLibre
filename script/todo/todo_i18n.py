@@ -13311,12 +13311,12 @@ TRANSLATIONS = {
         "en": "Which technology?",
     },
     "VPN - Create a profile from a site preset": {
-        "fr": "\U0001F3DB VPN - Créer un profil à partir d'un préréglage de site",
-        "en": "\U0001F3DB VPN - Create a profile from a site preset",
+        "fr": "\U0001f3db VPN - Créer un profil à partir d'un préréglage de site",
+        "en": "\U0001f3db VPN - Create a profile from a site preset",
     },
     "VPN - Import an AnyConnect profile (.xml)": {
-        "fr": "\U0001F4E5 VPN - Importer un profil AnyConnect (.xml)",
-        "en": "\U0001F4E5 VPN - Import an AnyConnect profile (.xml)",
+        "fr": "\U0001f4e5 VPN - Importer un profil AnyConnect (.xml)",
+        "en": "\U0001f4e5 VPN - Import an AnyConnect profile (.xml)",
     },
     "An AnyConnect profile usually sits in"
     " /opt/cisco/secureclient/vpn/profile/ (or .../anyconnect/profile/).": {
@@ -14464,6 +14464,114 @@ TRANSLATIONS = {
     # « models », « still waiting for » et « Type an address » servent aussi
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
+    # Assistant LLM — poser et retirer un modèle sur un serveur connu.
+    # « Deployment », « Models », « model », « models » et « Destination not
+    # retyped — nothing was sent. » servent aussi ici et sont définies plus
+    # haut : les redéfinir écraserait la première sans rien lever.
+    "Models on a server": {
+        "fr": "📦 Modèles sur un serveur",
+        "en": "Models on a server",
+    },
+    "nothing offered here": {
+        "fr": "rien d'offert ici",
+        "en": "nothing offered here",
+    },
+    "Install a model": {
+        "fr": "Poser un modèle",
+        "en": "Install a model",
+    },
+    "Remove a model": {
+        "fr": "Retirer un modèle",
+        "en": "Remove a model",
+    },
+    "No model on this server.": {
+        "fr": "Aucun modèle sur ce serveur.",
+        "en": "No model on this server.",
+    },
+    "Model name": {
+        "fr": "Nom du modèle",
+        "en": "Model name",
+    },
+    "Type the model name in full to remove it:": {
+        "fr": "Tape le nom du modèle en entier pour le retirer :",
+        "en": "Type the model name in full to remove it:",
+    },
+    "Pulling — Ctrl+C interrupts": {
+        "fr": "Pose en cours — Ctrl+C interrompt",
+        "en": "Pulling — Ctrl+C interrupts",
+    },
+    "Model posed.": {
+        "fr": "Modèle posé.",
+        "en": "Model posed.",
+    },
+    "Model removed.": {
+        "fr": "Modèle retiré.",
+        "en": "Model removed.",
+    },
+    "The pull is running at the server.": {
+        "fr": "La pose continue chez le serveur.",
+        "en": "The pull is running at the server.",
+    },
+    "The server refused:": {
+        "fr": "Le serveur a refusé :",
+        "en": "The server refused:",
+    },
+    "The server said nothing.": {
+        "fr": "Le serveur n'a rien dit.",
+        "en": "The server said nothing.",
+    },
+    "No model name given.": {
+        "fr": "Aucun nom de modèle donné.",
+        "en": "No model name given.",
+    },
+    "This server does not offer model management.": {
+        "fr": "Ce serveur n'offre pas la gestion des modèles.",
+        "en": "This server does not offer model management.",
+    },
+    "This server needs a key — set it on the server card.": {
+        "fr": "Ce serveur exige une clé — pose-la sur la fiche du serveur.",
+        "en": "This server needs a key — set it on the server card.",
+    },
+    "Jan installs its models from its own desktop application.": {
+        "fr": "Jan installe ses modèles depuis sa propre application de bureau.",
+        "en": "Jan installs its models from its own desktop application.",
+    },
+    "GPT4All serves what its desktop application already loaded.": {
+        "fr": "GPT4All sert ce que son application de bureau a déjà chargé.",
+        "en": "GPT4All serves what its desktop application already loaded.",
+    },
+    "KoboldCpp serves one model chosen when its process started.": {
+        "fr": "KoboldCpp sert un modèle choisi au lancement de son processus.",
+        "en": "KoboldCpp serves one model chosen when its process started.",
+    },
+    "Text generation web UI downloads its models from its own host.": {
+        "fr": "Text generation web UI télécharge ses modèles depuis son propre hôte.",
+        "en": "Text generation web UI downloads its models from its own host.",
+    },
+    "vLLM serves one model chosen when its process started.": {
+        "fr": "vLLM sert un modèle choisi au lancement de son processus.",
+        "en": "vLLM serves one model chosen when its process started.",
+    },
+    "A remote provider serves its own models.": {
+        "fr": "Un fournisseur distant sert ses propres modèles.",
+        "en": "A remote provider serves its own models.",
+    },
+    "The stream stopped before the end.": {
+        "fr": "Le flux s'est arrêté avant la fin.",
+        "en": "The stream stopped before the end.",
+    },
+    "LM Studio has no endpoint that deletes weights.": {
+        "fr": "LM Studio n'a aucun point de terminaison qui supprime des poids.",
+        "en": "LM Studio has no endpoint that deletes weights.",
+    },
+    "TabbyAPI has no endpoint that deletes weights.": {
+        "fr": "TabbyAPI n'a aucun point de terminaison qui supprime des poids.",
+        "en": "TabbyAPI has no endpoint that deletes weights.",
+    },
+    "EXO removes the model card, never the weights it downloaded.": {
+        "fr": "EXO retire la fiche du modèle, jamais les poids téléchargés.",
+        "en": "EXO removes the model card, never the weights it downloaded.",
+    },
     # Transform data - fichiers externes
     "Transform data - Transform your data": {
         "fr": "🪄 Transform data - Transformer vos données",

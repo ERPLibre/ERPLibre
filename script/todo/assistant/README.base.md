@@ -51,7 +51,7 @@ past.
 
 ## The menu
 
-`Assistant › LLM` carries five entries.
+`Assistant › LLM` carries six entries.
 
 | Entry | What it does |
 |-------|--------------|
@@ -60,6 +60,7 @@ past.
 | Known servers | list, pick, add by hand, delete |
 | Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
+| Models on a server | install or remove a model where the family allows it; present ones are picked by letter |
 
 Entries are picked by number, the catalogue by LETTER. A second numbered list
 right after a numbered menu invites retyping a menu entry, and this repository
@@ -161,6 +162,20 @@ result, no timestamped log**. The list of who answered among the 254
 addresses of a `/24` describes machines nobody designated, where a retained
 server designates exactly one, on purpose.
 
+## What a family accepts is not what another accepts
+
+Thirteen families are recognised and only five install **and** remove over
+HTTP. Two install without removing — their weights live in a directory the
+server does not expose. Six do neither: their model is chosen when the process
+starts, or dropped in a directory by hand. The table in `models.py`
+carries that, and a family that offers nothing says so with its reason rather
+than being offered a button that answers 404.
+
+Installing is the **only** write in a package that is read-only everywhere
+else, and it is reached only by an explicit menu choice. None of its paths
+appears in the discovery plan, which stays GET-only — a sweep must be able
+neither to load a model nor to spend a token — and a test pins it.
+
 ## The machine's Claude Code sessions
 
 A session open elsewhere already holds a piece of work, and asking it one
@@ -198,6 +213,7 @@ underscores all into dashes and so cannot be inverted.
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
+| `models.py` | installing and removing a model: the only write in the package |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and
@@ -255,7 +271,7 @@ position de passer.
 
 ## Le menu
 
-`Assistant › LLM` porte cinq entrées.
+`Assistant › LLM` porte six entrées.
 
 | Entrée | Ce qu'elle fait |
 |--------|-----------------|
@@ -264,6 +280,7 @@ position de passer.
 | Serveurs connus | lister, choisir, ajouter à la main, supprimer |
 | Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
+| Modèles sur un serveur | poser ou retirer un modèle là où la famille le permet ; les présents se choisissent par lettre |
 
 Les entrées se choisissent par numéro, le catalogue par LETTRE. Une seconde
 liste numérotée juste après un menu numéroté invite à retaper une entrée de
@@ -368,6 +385,21 @@ vivant, ni résultat négatif, ni journal horodaté**. La liste de qui a répond
 parmi les 254 adresses d'un `/24` décrit des machines que personne n'a
 désignées, là où un serveur retenu en désigne une seule, volontairement.
 
+## Ce qu'une famille accepte n'est pas ce qu'une autre accepte
+
+Treize familles se reconnaissent et cinq seulement savent poser **et** retirer
+en HTTP. Deux posent sans retirer — leurs poids vivent dans un répertoire que
+le serveur n'expose pas. Six ne savent ni l'un ni l'autre : leur modèle se
+choisit au lancement du processus, ou se dépose à la main. La
+table de `models.py` porte cela, et une famille qui n'offre rien le dit avec sa
+raison plutôt que de se voir proposer un bouton qui rendra 404.
+
+La pose est la **seule** écriture d'un paquet en lecture seule partout
+ailleurs, et on ne l'atteint que par un choix explicite du menu. Aucun de ses
+chemins ne figure dans le plan de découverte, qui reste en GET seul — un
+balayage ne doit pouvoir ni charger un modèle ni dépenser un jeton — et un test
+le vérifie.
+
 ## Les sessions Claude Code de la machine
 
 Une session ouverte ailleurs porte déjà le contexte d'un travail, et lui poser
@@ -406,6 +438,7 @@ séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
+| `models.py` | poser et retirer un modèle : la seule écriture du paquet |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et

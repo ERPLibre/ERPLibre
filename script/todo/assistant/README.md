@@ -46,7 +46,7 @@ past.
 
 ## The menu
 
-`Assistant › LLM` carries five entries.
+`Assistant › LLM` carries six entries.
 
 | Entry | What it does |
 |-------|--------------|
@@ -55,6 +55,7 @@ past.
 | Known servers | list, pick, add by hand, delete |
 | Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
+| Models on a server | install or remove a model where the family allows it; present ones are picked by letter |
 
 Entries are picked by number, the catalogue by LETTER. A second numbered list
 right after a numbered menu invites retyping a menu entry, and this repository
@@ -156,6 +157,20 @@ result, no timestamped log**. The list of who answered among the 254
 addresses of a `/24` describes machines nobody designated, where a retained
 server designates exactly one, on purpose.
 
+## What a family accepts is not what another accepts
+
+Thirteen families are recognised and only five install **and** remove over
+HTTP. Two install without removing — their weights live in a directory the
+server does not expose. Six do neither: their model is chosen when the process
+starts, or dropped in a directory by hand. The table in `models.py`
+carries that, and a family that offers nothing says so with its reason rather
+than being offered a button that answers 404.
+
+Installing is the **only** write in a package that is read-only everywhere
+else, and it is reached only by an explicit menu choice. None of its paths
+appears in the discovery plan, which stays GET-only — a sweep must be able
+neither to load a model nor to spend a token — and a test pins it.
+
 ## The machine's Claude Code sessions
 
 A session open elsewhere already holds a piece of work, and asking it one
@@ -193,6 +208,7 @@ underscores all into dashes and so cannot be inverted.
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
+| `models.py` | installing and removing a model: the only write in the package |
 | `../assistant_menu.py` | the mixin: asking and displaying, outside the package |
 
 None of these modules imports `todo.py`, which costs close to a second and

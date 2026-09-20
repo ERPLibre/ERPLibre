@@ -587,6 +587,7 @@ class TODO(
         "_llm_servers": "Servers",
         "_llm_search": "Search",
         "_llm_search_remote": "Over SSH",
+        "_llm_models": "Models",
         "prompt_install": "Install",
         "prompt_execute_function": "Automation",
         "prompt_execute_code": "Code",

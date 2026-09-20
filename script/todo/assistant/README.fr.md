@@ -48,7 +48,7 @@ position de passer.
 
 ## Le menu
 
-`Assistant › LLM` porte cinq entrées.
+`Assistant › LLM` porte six entrées.
 
 | Entrée | Ce qu'elle fait |
 |--------|-----------------|
@@ -57,6 +57,7 @@ position de passer.
 | Serveurs connus | lister, choisir, ajouter à la main, supprimer |
 | Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
+| Modèles sur un serveur | poser ou retirer un modèle là où la famille le permet ; les présents se choisissent par lettre |
 
 Les entrées se choisissent par numéro, le catalogue par LETTRE. Une seconde
 liste numérotée juste après un menu numéroté invite à retaper une entrée de
@@ -161,6 +162,21 @@ vivant, ni résultat négatif, ni journal horodaté**. La liste de qui a répond
 parmi les 254 adresses d'un `/24` décrit des machines que personne n'a
 désignées, là où un serveur retenu en désigne une seule, volontairement.
 
+## Ce qu'une famille accepte n'est pas ce qu'une autre accepte
+
+Treize familles se reconnaissent et cinq seulement savent poser **et** retirer
+en HTTP. Deux posent sans retirer — leurs poids vivent dans un répertoire que
+le serveur n'expose pas. Six ne savent ni l'un ni l'autre : leur modèle se
+choisit au lancement du processus, ou se dépose à la main. La
+table de `models.py` porte cela, et une famille qui n'offre rien le dit avec sa
+raison plutôt que de se voir proposer un bouton qui rendra 404.
+
+La pose est la **seule** écriture d'un paquet en lecture seule partout
+ailleurs, et on ne l'atteint que par un choix explicite du menu. Aucun de ses
+chemins ne figure dans le plan de découverte, qui reste en GET seul — un
+balayage ne doit pouvoir ni charger un modèle ni dépenser un jeton — et un test
+le vérifie.
+
 ## Les sessions Claude Code de la machine
 
 Une session ouverte ailleurs porte déjà le contexte d'un travail, et lui poser
@@ -199,6 +215,7 @@ séparateurs, les points et les tirets bas en tirets et ne s'inverse donc pas.
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
+| `models.py` | poser et retirer un modèle : la seule écriture du paquet |
 | `../assistant_menu.py` | le mixin : demander et afficher, hors du paquet |
 
 Aucun de ces modules n'importe `todo.py`, qui coûte près d'une seconde et

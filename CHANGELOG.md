@@ -61,6 +61,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The install log carries what the host decided before launching: the download cache authority placed or refused, the bypass, the mirror. Those lines were said on a console that scrolls away, while the file reopened after a failure held only the symptom — on a guest with no trust store, a refused certificate, hundreds of derivations to build and six hundred lines of errors, without a word on the cause
 - One entry of the download cache can be forgotten from the menu, under « Age and cleanup ». The binary could already do it; the menu offered only the two bulk purges, neither of which reaches a single object — « erase what has not served » never reaches one the service rejuvenates each time it serves it, and « erase everything » costs the whole cache for one file. `--detient` runs first and is the preview: same line, same key, nothing modified
 
+- `Assistant › LLM › Deployment` — install or remove a model on a known server, where its family allows it. Thirteen families are described and only five install and remove over HTTP; two install without removing, and six do neither because their model is chosen when the process starts. A family that offers nothing says what it does instead of offering a button that answers 404. Posing is the only write in a package read-only everywhere else, and none of its paths is reachable from a scan
+
 ## Changed
 
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers
