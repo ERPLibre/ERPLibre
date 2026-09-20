@@ -868,6 +868,8 @@ class AssistantMenuMixin:
                         f"{t('Server card')}  ({t('what it says it can do')})"
                     )
                 },
+                {"section": t("Deployment")},
+                {"prompt_description": self._llm_models_label()},
             ]
             try:
                 status = click.prompt(self.fill_help_info(choices))
@@ -887,6 +889,8 @@ class AssistantMenuMixin:
                 self._llm_search()
             elif status == "5":
                 self._llm_server_card()
+            elif status == "6":
+                self._llm_models()
             else:
                 print(t("Command not found !"))
 
@@ -1670,6 +1674,207 @@ class AssistantMenuMixin:
             "lan": "local network",
             "global": "third party",
         }.get(hosting, "third party")
+
+    # ------------------------------------------------------------------
+    # Les modèles d'un serveur connu
+
+    def _llm_models_label(self):
+        """L'étiquette de l'entrée modèles, et ce qu'elle promet.
+
+        Dire dès le menu qu'une famille n'offre rien évite d'ouvrir un écran
+        pour n'y trouver qu'un refus. Sans serveur, l'étiquette le dit aussi :
+        l'entrée reste choisissable et mène à la liste des serveurs.
+        """
+        from script.todo.assistant import models as llm_models
+
+        serveur = self._llm_current()
+        if serveur is None:
+            glose = t("no server yet")
+        elif not llm_models.gere(serveur.software):
+            glose = t("nothing offered here")
+        else:
+            glose = self._llm_label(serveur)
+        return f"{t('Models on a server')}  ({glose})"
+
+    def _llm_models(self):
+        """Poser ou retirer un modèle sur le serveur en usage.
+
+        Sans serveur, l'entrée tombe dans la liste des serveurs plutôt que
+        d'imprimer une erreur : une entrée de menu n'a jamais de raison
+        d'être une impasse.
+        """
+        from script.todo.assistant import models as llm_models
+
+        serveur = self._llm_current()
+        if serveur is None:
+            print(t("no server yet"))
+            self._llm_servers()
+            return
+        table = llm_models.famille(serveur.software)
+        if table is None or not (table.pose or table.retrait):
+            raison = table.raison_pose if table else llm_models.REFUS_FAMILLE
+            print(f"⛔ {t(raison)}")
+            return
+        jeton = self._llm_server_token(serveur)
+        while True:
+            print(f"  {serveur.label} — {self._llm_label(serveur)}")
+            presents = llm_models.listing(serveur, jeton=jeton)
+            self._llm_models_show(presents)
+            choices = [
+                {"section": t("Models")},
+                {"prompt_description": t("Install a model")},
+                {"prompt_description": t("Remove a model")},
+            ]
+            try:
+                status = click.prompt(self.fill_help_info(choices))
+            except (KeyboardInterrupt, click.exceptions.Abort):
+                print()
+                return
+            print()
+            if status == "0":
+                return
+            if status == "1":
+                self._llm_model_pose(serveur, jeton)
+            elif status == "2":
+                self._llm_model_retrait(serveur, jeton, presents)
+            else:
+                print(t("Command not found !"))
+
+    def _llm_models_show(self, presents):
+        """Ce que le serveur porte déjà, choisi par LETTRE.
+
+        Le menu qui suit numérote ses entrées ; une seconde liste numérotée
+        juste avant invite à retaper un numéro de menu.
+        """
+        if not presents:
+            print(f"  {t('No model on this server.')}")
+            return
+        marques = [
+            f"{LETTRES[rang]}) {nom}"
+            for rang, nom in enumerate(presents[: len(LETTRES)])
+        ]
+        print(f"  {self._llm_count(len(presents), 'model', 'models')} :")
+        print(f"    {'  '.join(marques)}")
+
+    def _llm_model_pose(self, serveur, jeton):
+        """Poser un modèle, sa destination retapée d'abord.
+
+        Une pose tire plusieurs gigaoctets sur une machine qui n'est pas
+        toujours celle-ci, et un serveur classé tiers est tenu pour tel ici
+        comme ailleurs : la confirmation est celle de tout premier envoi.
+        """
+        from script.todo.assistant import models as llm_models
+
+        if not self._llm_confirm_third_party(serveur):
+            return
+        try:
+            nom = click.prompt(t("Model name")).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if not nom:
+            print(t("Nothing to do."))
+            return
+        print(f"🔎 {t('Pulling — Ctrl+C interrupts')}", flush=True)
+        issue = llm_models.pose(
+            serveur,
+            nom,
+            jeton=jeton,
+            sur_evenement=self._llm_models_printer,
+        )
+        self._llm_models_verdict(issue, serveur)
+
+    def _llm_model_retrait(self, serveur, jeton, presents):
+        """Retirer un modèle, son nom retapé en entier.
+
+        Un retrait est irréversible chez le serveur, et les poids se
+        retéléchargent par gigaoctets : recopier le nom oblige à regarder ce
+        qu'on retire, là où « o » se tape par réflexe.
+        """
+        from script.todo.assistant import models as llm_models
+
+        table = llm_models.famille(serveur.software)
+        if table is not None and table.retrait is None:
+            print(f"⛔ {t(table.raison_retrait)}")
+            return
+        if not presents:
+            print(t("No model on this server."))
+            return
+        try:
+            # La lettre DÉSIGNE, la frappe CONFIRME. Désigner seul suffirait à
+            # perdre des gigaoctets sur une touche voisine ; retaper seul
+            # ferait recopier un nom long depuis l'écran du dessus.
+            choix = click.prompt(t("Remove a model")).strip()
+            rang = self._llm_rang(choix, len(presents))
+            if rang is None:
+                print(t("Command not found !"))
+                return
+            vise = presents[rang]
+            frappe = click.prompt(
+                t("Type the model name in full to remove it:"),
+                prompt_suffix=" ",
+            ).strip()
+        except (KeyboardInterrupt, click.exceptions.Abort):
+            print()
+            return
+        if frappe != vise:
+            print(t("Destination not retyped — nothing was sent."))
+            return
+        self._llm_models_verdict(
+            llm_models.retrait(serveur, frappe, jeton=jeton), serveur
+        )
+
+    def _llm_models_verdict(self, issue, serveur):
+        """Dire ce qu'a donné une pose ou un retrait, et périmer le cache.
+
+        Les marques ✅/⚠️/⛔ du catalogue gpt se lisent dans un cache dont la
+        clé porte le modèle : sans cette péremption, un modèle fraîchement
+        posé garderait les verdicts de l'ancien.
+        """
+        detail = f" {issue.brut}" if issue.brut else ""
+        if issue.note:
+            detail += f" {t(issue.note)}"
+        if issue.ok:
+            print(f"✅ {t(issue.detail)}{detail}")
+            state = self._llm_state()
+            state["caps"] = None
+            state["caps_cle"] = None
+        else:
+            print(f"⛔ {t(issue.detail)}{detail}")
+
+    def _llm_models_printer(self, event):
+        """Rendre un événement de pose. Le module n'imprime pas lui-même."""
+        genre = event[0]
+        if genre == "etat":
+            print(f"  ✓ {event[1]}")
+        elif genre == "octets":
+            part = 100 * event[1] // max(event[2], 1)
+            print(f"  ⏳ {part}%")
+        elif genre == "fini":
+            print(f"  ✅ {event[1]}")
+
+    def _llm_server_token(self, serveur):
+        """La clé de ce serveur, lue dans le coffre, ou une chaîne vide.
+
+        `secret_ref` vaut « kdbx:<titre d'entrée> » : la clé elle-même n'est
+        jamais dans la configuration. Elle reste en mémoire du processus et
+        n'entre dans aucun argument — /proc expose la ligne de commande de
+        chaque processus à tout compte de la machine.
+
+        Un coffre absent ou fermé rend une chaîne vide plutôt que de lever :
+        une famille qui accepte une clé sans l'exiger répond quand même.
+        """
+        reference = (serveur.secret_ref or "").strip()
+        if not reference.startswith("kdbx:"):
+            return ""
+        titre = reference[len("kdbx:") :].strip()
+        if not titre:
+            return ""
+        kp = self.kdbx_manager.get_kdbx()
+        if not kp:
+            return ""
+        entree = kp.find_entries_by_title(titre, first=True)
+        return getattr(entree, "password", "") or ""
 
     # ------------------------------------------------------------------
     # Les sessions Claude Code de la machine

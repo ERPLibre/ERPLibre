@@ -13856,6 +13856,499 @@ TRANSLATIONS = {
     # « models », « still waiting for » et « Type an address » servent aussi
     # ici et sont définies plus haut : les redéfinir écraserait la première
     # sans rien lever.
+    # Assistant LLM — poser et retirer un modèle sur un serveur connu.
+    # « Deployment », « Models », « model », « models » et « Destination not
+    # retyped — nothing was sent. » servent aussi ici et sont définies plus
+    # haut : les redéfinir écraserait la première sans rien lever.
+    "Models on a server": {
+        "fr": "📦 Modèles sur un serveur",
+        "en": "Models on a server",
+    },
+    "nothing offered here": {
+        "fr": "rien d'offert ici",
+        "en": "nothing offered here",
+    },
+    "Install a model": {
+        "fr": "Poser un modèle",
+        "en": "Install a model",
+    },
+    "Remove a model": {
+        "fr": "Retirer un modèle",
+        "en": "Remove a model",
+    },
+    "No model on this server.": {
+        "fr": "Aucun modèle sur ce serveur.",
+        "en": "No model on this server.",
+    },
+    "Model name": {
+        "fr": "Nom du modèle",
+        "en": "Model name",
+    },
+    "Type the model name in full to remove it:": {
+        "fr": "Tape le nom du modèle en entier pour le retirer :",
+        "en": "Type the model name in full to remove it:",
+    },
+    "Pulling — Ctrl+C interrupts": {
+        "fr": "Pose en cours — Ctrl+C interrompt",
+        "en": "Pulling — Ctrl+C interrupts",
+    },
+    "Model posed.": {
+        "fr": "Modèle posé.",
+        "en": "Model posed.",
+    },
+    "Model removed.": {
+        "fr": "Modèle retiré.",
+        "en": "Model removed.",
+    },
+    "The pull is running at the server.": {
+        "fr": "La pose continue chez le serveur.",
+        "en": "The pull is running at the server.",
+    },
+    "The server refused:": {
+        "fr": "Le serveur a refusé :",
+        "en": "The server refused:",
+    },
+    "The server said nothing.": {
+        "fr": "Le serveur n'a rien dit.",
+        "en": "The server said nothing.",
+    },
+    "No model name given.": {
+        "fr": "Aucun nom de modèle donné.",
+        "en": "No model name given.",
+    },
+    "This server does not offer model management.": {
+        "fr": "Ce serveur n'offre pas la gestion des modèles.",
+        "en": "This server does not offer model management.",
+    },
+    "This server needs a key — set it on the server card.": {
+        "fr": "Ce serveur exige une clé — pose-la sur la fiche du serveur.",
+        "en": "This server needs a key — set it on the server card.",
+    },
+    "Jan installs its models from its own desktop application.": {
+        "fr": "Jan installe ses modèles depuis sa propre application de bureau.",
+        "en": "Jan installs its models from its own desktop application.",
+    },
+    "GPT4All serves what its desktop application already loaded.": {
+        "fr": "GPT4All sert ce que son application de bureau a déjà chargé.",
+        "en": "GPT4All serves what its desktop application already loaded.",
+    },
+    "KoboldCpp serves one model chosen when its process started.": {
+        "fr": "KoboldCpp sert un modèle choisi au lancement de son processus.",
+        "en": "KoboldCpp serves one model chosen when its process started.",
+    },
+    "Text generation web UI downloads its models from its own host.": {
+        "fr": "Text generation web UI télécharge ses modèles depuis son propre hôte.",
+        "en": "Text generation web UI downloads its models from its own host.",
+    },
+    "vLLM serves one model chosen when its process started.": {
+        "fr": "vLLM sert un modèle choisi au lancement de son processus.",
+        "en": "vLLM serves one model chosen when its process started.",
+    },
+    "A remote provider serves its own models.": {
+        "fr": "Un fournisseur distant sert ses propres modèles.",
+        "en": "A remote provider serves its own models.",
+    },
+    "The stream stopped before the end.": {
+        "fr": "Le flux s'est arrêté avant la fin.",
+        "en": "The stream stopped before the end.",
+    },
+    "LM Studio has no endpoint that deletes weights.": {
+        "fr": "LM Studio n'a aucun point de terminaison qui supprime des poids.",
+        "en": "LM Studio has no endpoint that deletes weights.",
+    },
+    "TabbyAPI has no endpoint that deletes weights.": {
+        "fr": "TabbyAPI n'a aucun point de terminaison qui supprime des poids.",
+        "en": "TabbyAPI has no endpoint that deletes weights.",
+    },
+    "EXO removes the model card, never the weights it downloaded.": {
+        "fr": "EXO retire la fiche du modèle, jamais les poids téléchargés.",
+        "en": "EXO removes the model card, never the weights it downloaded.",
+    },
+    # Transform data - fichiers externes
+    "Transform data - Transform your data": {
+        "fr": "🪄 Transform data - Transformer vos données",
+        "en": "🪄 Transform data - Transform your data",
+    },
+    "Source file": {
+        "fr": "📁 Fichier source",
+        "en": "📁 Source file",
+    },
+    "Transform your data: read, describe, then copy.": {
+        "fr": "Transformer vos données : lire, décrire, puis en tirer une copie.",
+        "en": "Transform your data: read, describe, then copy.",
+    },
+    "Source": {
+        "fr": "📁 Source",
+        "en": "📁 Source",
+    },
+    "Anonymise an Odoo database or a backup": {
+        "fr": "🎭 Anonymiser une base Odoo ou une sauvegarde",
+        "en": "🎭 Anonymise an Odoo database or a backup",
+    },
+    "The database ITSELF is modified; no copy.": {
+        "fr": "La base ELLE-MÊME est modifiée ; aucune copie.",
+        "en": "The database ITSELF is modified; no copy.",
+    },
+    "Nothing was written; no backup was drawn.": {
+        "fr": "Rien n'a été écrit ; aucune sauvegarde n'a été tirée.",
+        "en": "Nothing was written; no backup was drawn.",
+    },
+    "Backup name (Enter to accept): ": {
+        "fr": "Nom de la sauvegarde (Entrée pour accepter) : ",
+        "en": "Backup name (Enter to accept): ",
+    },
+    "Backup written: ": {
+        "fr": "Sauvegarde écrite : ",
+        "en": "Backup written: ",
+    },
+    "Database kept: ": {
+        "fr": "Base conservée : ",
+        "en": "Database kept: ",
+    },
+    "Gone already, only in the register:": {
+        "fr": "Déjà disparue(s), seulement au registre :",
+        "en": "Gone already, only in the register:",
+    },
+    "Use Database to drop one.": {
+        "fr": "Passer par Database pour en détruire une.",
+        "en": "Use Database to drop one.",
+    },
+    "Advanced options? (y/N): ": {
+        "fr": "Options avancées ? (o/N) : ",
+        "en": "Advanced options? (y/N): ",
+    },
+    "every sheet": {
+        "fr": "toutes les feuilles",
+        "en": "every sheet",
+    },
+    "no column left untouched": {
+        "fr": "aucune colonne laissée intacte",
+        "en": "no column left untouched",
+    },
+    "column(s) left untouched, chosen on screen": {
+        "fr": "colonne(s) laissée(s) intacte(s), choisies à l'écran",
+        "en": "column(s) left untouched, chosen on screen",
+    },
+    "numbers replaced, widths kept": {
+        "fr": "nombres remplacés, largeurs gardées",
+        "en": "numbers replaced, widths kept",
+    },
+    "numbers replaced within the measured extent": {
+        "fr": "nombres remplacés dans l'étendue mesurée",
+        "en": "numbers replaced within the measured extent",
+    },
+    "text replaced": {
+        "fr": "texte remplacé",
+        "en": "text replaced",
+    },
+    "the header row is left readable": {
+        "fr": "la ligne d'en-tête reste lisible",
+        "en": "the header row is left readable",
+    },
+    "sheet(s) with no header row on screen": {
+        "fr": "feuille(s) sans en-tête à l'écran : leur 1re ligne est de la donnée",
+        "en": "sheet(s) with no header row on screen: their 1st row is data",
+    },
+    "no seed: not reproducible": {
+        "fr": "aucune graine : non reproductible",
+        "en": "no seed: not reproducible",
+    },
+    "Taken as given:": {
+        "fr": "Pris tel quel :",
+        "en": "Taken as given:",
+    },
+    "Anonymise the logins too? (y/N): ": {
+        "fr": "Anonymiser aussi les identifiants de connexion ? (o/N) : ",
+        "en": "Anonymise the logins too? (y/N): ",
+    },
+    "Keeping the digit count drops the measured extent.": {
+        "fr": "Garder le nombre de chiffres abandonne l'étendue mesurée.",
+        "en": "Keeping the digit count drops the measured extent.",
+    },
+    "Not neutralized: this copy can send mail and run": {
+        "fr": "Non neutralisée : cette copie peut envoyer du courriel et faire tourner",
+        "en": "Not neutralized: this copy can send mail and run",
+    },
+    "its crons from this machine.": {
+        "fr": "ses crons depuis cette machine.",
+        "en": "its crons from this machine.",
+    },
+    "Databases produced": {
+        "fr": "🗄 Bases produites",
+        "en": "🗄 Databases produced",
+    },
+    "External files: read, describe, then draw a copy.": {
+        "fr": "Fichiers externes : lire, décrire, puis en tirer une copie.",
+        "en": "External files: read, describe, then draw a copy.",
+    },
+    "Environment": {
+        "fr": "🧰 Environnement",
+        "en": "🧰 Environment",
+    },
+    "Open a file and read its report": {
+        "fr": "📖 Ouvrir un fichier et lire son rapport",
+        "en": "📖 Open a file and read its report",
+    },
+    "Install the reading environment": {
+        "fr": "📦 Installer l'environnement de lecture",
+        "en": "📦 Install the reading environment",
+    },
+    "What can this machine read?": {
+        "fr": "🩺 Que sait lire cette machine ?",
+        "en": "🩺 What can this machine read?",
+    },
+    "Copies produced": {
+        "fr": "🗂 Copies produites",
+        "en": "🗂 Copies produced",
+    },
+    "A dedicated environment is required to read this format.": {
+        "fr": "Un environnement dédié est nécessaire pour lire ce format.",
+        "en": "A dedicated environment is required to read this format.",
+    },
+    "Create it now? (Y/n): ": {
+        "fr": "Le créer maintenant ? (O/n) : ",
+        "en": "Create it now? (Y/n): ",
+    },
+    "The environment is ready.": {
+        "fr": "L'environnement est prêt.",
+        "en": "The environment is ready.",
+    },
+    "Creation finished but the libraries are still missing.": {
+        "fr": "Création terminée mais les bibliothèques manquent toujours.",
+        "en": "Creation finished but the libraries are still missing.",
+    },
+    "python -m venv exited with": {
+        "fr": "python -m venv a rendu",
+        "en": "python -m venv exited with",
+    },
+    "Access files need a system package.": {
+        "fr": "Les fichiers Access demandent un paquet système.",
+        "en": "Access files need a system package.",
+    },
+    "readable": {
+        "fr": "lisible",
+        "en": "readable",
+    },
+    "not readable": {
+        "fr": "non lisible",
+        "en": "not readable",
+    },
+    "Contents do not match the extension: read as ": {
+        "fr": "Le contenu ne correspond pas à l'extension : lu comme ",
+        "en": "Contents do not match the extension: read as ",
+    },
+    "Encoding detected by ": {
+        "fr": "Encodage détecté par ",
+        "en": "Encoding detected by ",
+    },
+    "Delimiter detected by ": {
+        "fr": "Délimiteur détecté par ",
+        "en": "Delimiter detected by ",
+    },
+    "bom": {
+        "fr": "BOM",
+        "en": "BOM",
+    },
+    "chardet": {
+        "fr": "chardet",
+        "en": "chardet",
+    },
+    "sniffer": {
+        "fr": "sniffer",
+        "en": "sniffer",
+    },
+    "mesure": {
+        "fr": "mesure",
+        "en": "measurement",
+    },
+    "repli": {
+        "fr": "repli",
+        "en": "fallback",
+    },
+    "sheet(s)": {
+        "fr": "feuille(s)",
+        "en": "sheet(s)",
+    },
+    "chart sheet(s)": {
+        "fr": "feuille(s) graphique",
+        "en": "chart sheet(s)",
+    },
+    "hidden": {
+        "fr": "masquée",
+        "en": "hidden",
+    },
+    "formula(s)": {
+        "fr": "formule(s)",
+        "en": "formula(s)",
+    },
+    "formula(s) holding a text literal": {
+        "fr": "formule(s) portant un littéral texte",
+        "en": "formula(s) holding a text literal",
+    },
+    "distinct value(s)": {
+        "fr": "valeur(s) distincte(s)",
+        "en": "distinct value(s)",
+    },
+    "VBA macros present": {
+        "fr": "Macros VBA présentes",
+        "en": "VBA macros present",
+    },
+    "No VBA macro": {
+        "fr": "Aucune macro VBA",
+        "en": "No VBA macro",
+    },
+    "pivot table(s)": {
+        "fr": "tableau(x) croisé(s)",
+        "en": "pivot table(s)",
+    },
+    "chart(s) with cached series": {
+        "fr": "graphique(s) à séries en cache",
+        "en": "chart(s) with cached series",
+    },
+    "image(s) and drawing(s)": {
+        "fr": "image(s) et dessin(s)",
+        "en": "image(s) and drawing(s)",
+    },
+    "external link(s)": {
+        "fr": "lien(s) externe(s)",
+        "en": "external link(s)",
+    },
+    "cell hyperlink(s)": {
+        "fr": "hyperlien(s) de cellule",
+        "en": "cell hyperlink(s)",
+    },
+    "comment(s)": {
+        "fr": "commentaire(s)",
+        "en": "comment(s)",
+    },
+    "comment author(s)": {
+        "fr": "auteur(s) de commentaire",
+        "en": "comment author(s)",
+    },
+    "header(s)/footer(s)": {
+        "fr": "en-tête(s)/pied(s)",
+        "en": "header(s)/footer(s)",
+    },
+    "validation(s)": {
+        "fr": "validation(s)",
+        "en": "validation(s)",
+    },
+    "conditional format(s)": {
+        "fr": "mise(s) en forme conditionnelle(s)",
+        "en": "conditional format(s)",
+    },
+    "Text outside cells": {
+        "fr": "Texte hors cellules",
+        "en": "Text outside cells",
+    },
+    "Author": {
+        "fr": "Auteur",
+        "en": "Author",
+    },
+    "Link targets": {
+        "fr": "Cibles des liens",
+        "en": "Link targets",
+    },
+    "named range(s)": {
+        "fr": "plage(s) nommée(s)",
+        "en": "named range(s)",
+    },
+    "Anonymisable": {
+        "fr": "Anonymisable",
+        "en": "Anonymisable",
+    },
+    "word(s) in the pool": {
+        "fr": "mot(s) dans le vivier",
+        "en": "word(s) in the pool",
+    },
+    "Left intact": {
+        "fr": "Laissé intact",
+        "en": "Left intact",
+    },
+    "date(s)": {
+        "fr": "date(s)",
+        "en": "date(s)",
+    },
+    "boolean(s)": {
+        "fr": "booléen(s)",
+        "en": "boolean(s)",
+    },
+    "error value(s)": {
+        "fr": "valeur(s) d'erreur",
+        "en": "error value(s)",
+    },
+    "binary value(s)": {
+        "fr": "valeur(s) binaire(s)",
+        "en": "binary value(s)",
+    },
+    "This format stores no formula readable here.": {
+        "fr": "Ce format ne stocke aucune formule lisible ici.",
+        "en": "This format stores no formula readable here.",
+    },
+    "saved query(ies)": {
+        "fr": "requête(s) enregistrée(s)",
+        "en": "saved query(ies)",
+    },
+    "Access saved queries are readable here.": {
+        "fr": "Les requêtes enregistrées d'Access sont lisibles ici.",
+        "en": "Access saved queries are readable here.",
+    },
+    "Install it by hand to read Access saved queries.": {
+        "fr": "L'installer à la main pour lire les requêtes enregistrées d'Access.",
+        "en": "Install it by hand to read Access saved queries.",
+    },
+    "Saved queries cannot be counted here: install mdbtools to know whether this file holds any.": {
+        "fr": "Les requêtes enregistrées ne peuvent pas être comptées ici : installer mdbtools pour savoir si ce fichier en porte.",
+        "en": "Saved queries cannot be counted here: install mdbtools to know whether this file holds any.",
+    },
+    "Saved queries are not carried over to the copy.": {
+        "fr": "Les requêtes enregistrées ne sont pas reprises dans la copie.",
+        "en": "Saved queries are not carried over to the copy.",
+    },
+    "Saved queries are not readable in pure Python.": {
+        "fr": "Les requêtes enregistrées ne sont pas lisibles en pur Python.",
+        "en": "Saved queries are not readable in pure Python.",
+    },
+    "Only 20 fallback words are available: randomwordfr is missing.": {
+        "fr": "Seuls 20 mots de repli sont disponibles : randomwordfr est absent.",
+        "en": "Only 20 fallback words are available: randomwordfr is missing.",
+    },
+    "0 to cancel": {
+        "fr": "0 pour annuler",
+        "en": "0 to cancel",
+    },
+    "Anonymise this file? (y/N): ": {
+        "fr": "Anonymiser ce fichier ? (o/N) : ",
+        "en": "Anonymise this file? (y/N): ",
+    },
+    "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ": {
+        "fr": "Convertir en même temps ? (xlsx/csv/json/xml, vide = garder) : ",
+        "en": "Convert at the same time? (xlsx/csv/json/xml, empty = keep): ",
+    },
+    "Sheets to process (empty = all): ": {
+        "fr": "Feuilles à traiter (vide = toutes) : ",
+        "en": "Sheets to process (empty = all): ",
+    },
+    "Columns to leave untouched (empty = none): ": {
+        "fr": "Colonnes à laisser intactes (vide = aucune) : ",
+        "en": "Columns to leave untouched (empty = none): ",
+    },
+    "Numbers keep their digit count, so the column's measured extent no longer bounds them: a rate or a year can leave its range.": {
+        "fr": "Les nombres gardent leur nombre de chiffres, donc l'étendue mesurée de la colonne ne les borne plus : un taux ou une année peut sortir de sa plage.",
+        "en": "Numbers keep their digit count, so the column's measured extent no longer bounds them: a rate or a year can leave its range.",
+    },
+    "draw a number of the same width; drops the extent": {
+        "fr": "tirer un nombre de même largeur ; abandonne l'étendue",
+        "en": "draw a number of the same width; drops the extent",
+    },
+    "left in clear, numeric and unique:": {
+        "fr": "laissée(s) en clair, numérique(s) et unique(s) :",
+        "en": "left in clear, numeric and unique:",
+    },
+    "Keep the digit count? (y/N): ": {
+        "fr": "Garder le nombre de chiffres ? (o/N) : ",
+        "en": "Keep the digit count? (y/N): ",
+    },
     # Apertus (script/todo/assistant_menu.py, script/todo/assistant/apertus*.py).
     # Les libellés d'étape servent AUSSI de clé de reprise côté
     # `apertus.py` : les renommer invalide les progressions gardées.

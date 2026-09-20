@@ -134,7 +134,7 @@ past.
 
 ## The menu
 
-`Assistant › LLM` carries five entries.
+`Assistant › LLM` carries six entries.
 
 | Entry | What it does |
 |-------|--------------|
@@ -143,6 +143,7 @@ past.
 | Known servers | list, pick, add by hand, delete |
 | Search for a server… | six sources, from the loopback to a typed network |
 | Server card | what the server in use announces it can do |
+| Models on a server | install or remove a model where the family allows it; present ones are picked by letter |
 
 **Apertus does not add a sixth.** Its entry sits one level up, in
 `Assistant › AI`, in the same **Direct model** section as `LLM servers`, and
@@ -269,6 +270,20 @@ Nothing else is written — **no scan report, no liveness table, no negative
 result, no timestamped log**. The list of who answered among the 254
 addresses of a `/24` describes machines nobody designated, where a retained
 server designates exactly one, on purpose.
+
+## What a family accepts is not what another accepts
+
+Thirteen families are recognised and only five install **and** remove over
+HTTP. Two install without removing — their weights live in a directory the
+server does not expose. Six do neither: their model is chosen when the process
+starts, or dropped in a directory by hand. The table in `models.py`
+carries that, and a family that offers nothing says so with its reason rather
+than being offered a button that answers 404.
+
+Installing is the **only** write in a package that is read-only everywhere
+else, and it is reached only by an explicit menu choice. None of its paths
+appears in the discovery plan, which stays GET-only — a sweep must be able
+neither to load a model nor to spend a token — and a test pins it.
 
 ## The machine's Claude Code sessions
 
@@ -575,6 +590,7 @@ were showing "0 ms" and "+0/−0", which reads "measured, and nil".
 | `gpt.py` | the catalogue: loading, refusing, and never crashing the menu |
 | `context.py` | what a declared context may read, and what the gate allows |
 | `claude_sessions.py` | the machine's Claude Code sessions: which live, which resume |
+| `models.py` | installing and removing a model: the only write in the package |
 | `harness/registre.py` | which agent harnesses this machine carries, and what is missing from the others |
 | `harness/claude.py` | the argv of a detached agent's five subcommands, and what each one costs |
 | `harness/opencode.py` | Open Code's sessions and their cost, read only, and the three shapes its output takes |
@@ -732,7 +748,7 @@ position de passer.
 
 ## Le menu
 
-`Assistant › LLM` porte cinq entrées.
+`Assistant › LLM` porte six entrées.
 
 | Entrée | Ce qu'elle fait |
 |--------|-----------------|
@@ -741,6 +757,7 @@ position de passer.
 | Serveurs connus | lister, choisir, ajouter à la main, supprimer |
 | Chercher un serveur… | six sources, de la boucle locale à un réseau saisi |
 | Fiche du serveur | ce que le serveur en usage annonce savoir faire |
+| Modèles sur un serveur | poser ou retirer un modèle là où la famille le permet ; les présents se choisissent par lettre |
 
 **Apertus n'en ajoute pas une sixième.** Son entrée est un cran au-dessus,
 dans `Assistant › IA`, dans la même section **Modèle direct** que `Serveurs
@@ -895,6 +912,21 @@ Rien d'autre n'est écrit — **ni rapport de balayage, ni table de qui est
 vivant, ni résultat négatif, ni journal horodaté**. La liste de qui a répondu
 parmi les 254 adresses d'un `/24` décrit des machines que personne n'a
 désignées, là où un serveur retenu en désigne une seule, volontairement.
+
+## Ce qu'une famille accepte n'est pas ce qu'une autre accepte
+
+Treize familles se reconnaissent et cinq seulement savent poser **et** retirer
+en HTTP. Deux posent sans retirer — leurs poids vivent dans un répertoire que
+le serveur n'expose pas. Six ne savent ni l'un ni l'autre : leur modèle se
+choisit au lancement du processus, ou se dépose à la main. La
+table de `models.py` porte cela, et une famille qui n'offre rien le dit avec sa
+raison plutôt que de se voir proposer un bouton qui rendra 404.
+
+La pose est la **seule** écriture d'un paquet en lecture seule partout
+ailleurs, et on ne l'atteint que par un choix explicite du menu. Aucun de ses
+chemins ne figure dans le plan de découverte, qui reste en GET seul — un
+balayage ne doit pouvoir ni charger un modèle ni dépenser un jeton — et un test
+le vérifie.
 
 ## Les sessions Claude Code de la machine
 
@@ -1227,6 +1259,7 @@ nul ».
 | `gpt.py` | le catalogue : charger, refuser, et ne jamais casser le menu |
 | `context.py` | ce qu'un contexte déclaré peut lire, et ce que la porte autorise |
 | `claude_sessions.py` | les sessions Claude Code de la machine : lesquelles vivent |
+| `models.py` | poser et retirer un modèle : la seule écriture du paquet |
 | `harness/registre.py` | quels harnais d'agent cette machine porte, et ce qui manque aux autres |
 | `harness/claude.py` | l'argv des cinq sous-commandes d'un agent détaché, et ce que chacune coûte |
 | `harness/opencode.py` | les séances d'Open Code et leur coût, en lecture seule, et les trois formes que prend sa sortie |

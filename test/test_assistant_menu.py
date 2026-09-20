@@ -159,6 +159,51 @@ class Cablage(unittest.TestCase):
         mock_mail.assert_called_once()
         mock_llm.assert_not_called()
 
+    def test_six_dispatche_vers_les_modeles_seulement(self):
+        """La section « Déploiement » ne consomme aucun numéro : `[6]` suit
+        la fiche du serveur, et les cinq entrées d'avant gardent les
+        leurs."""
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch.object(TODO, "_llm_models") as mock_models, patch.object(
+            TODO, "_llm_server_card"
+        ) as mock_carte, patch(
+            "script.todo.assistant.fingerprint.collect", return_value={}
+        ), patch(
+            "script.todo.assistant.servers.load", return_value=[]
+        ), patch(
+            "click.prompt", side_effect=["6", "0"]
+        ), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo.prompt_assistant_llm()
+        mock_models.assert_called_once_with()
+        mock_carte.assert_not_called()
+
+    def test_l_ecran_des_modeles_se_situe_dans_le_fil(self):
+        from script.todo.todo import TODO
+
+        for methode, miette in (("_llm_models", "Models"),):
+            with self.subTest(methode):
+                self.assertEqual(TODO._MENU_LABELS.get(methode), miette)
+
+    def test_les_modeles_tombent_dans_les_serveurs_quand_il_n_y_en_a_pas(
+        self,
+    ):
+        """Une entrée de menu n'a jamais de raison d'être une impasse : sans
+        serveur, l'écran des modèles mène à celui des serveurs."""
+        from script.todo.todo import TODO
+
+        todo = TODO()
+        with patch.object(TODO, "_llm_servers") as mock_servers, patch(
+            "script.todo.assistant.fingerprint.collect", return_value={}
+        ), patch("script.todo.assistant.servers.load", return_value=[]), patch(
+            "script.todo.todo_telemetry.record"
+        ):
+            todo._llm_models()
+        mock_servers.assert_called_once_with()
+
     def test_le_sous_menu_s_ouvre_sans_aucun_serveur_configure(self):
         """Une machine sans serveur est le cas de la PREMIÈRE utilisation.
 

@@ -27,6 +27,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Exécution › GPT code › Claude Code` — lister les sessions de la machine, en interroger une avec des outils en lecture seule, ou la reprendre dans son propre terminal. Une copie est branchée par défaut, deux écritures sur une même session perdant une branche
 - `check_comment_hygiene.py` signale un nom de machine pleinement qualifié dans un commentaire, en signal à relire et jamais en trouvaille : un nom d'hôte NU ne se distingue mécaniquement pas d'un mot ordinaire, donc l'absence de signal ne prouve rien sur les noms. L'en-tête de copyright, les domaines de la RFC 2606 et toute adresse portée par une URL sont laissés tranquilles
 
+- `Assistant › LLM › Déploiement` — poser ou retirer un modèle sur un serveur connu, là où sa famille le permet. Treize familles sont décrites et cinq seulement posent et retirent en HTTP ; deux posent sans retirer, et six ne font ni l'un ni l'autre, leur modèle se choisissant au lancement du processus. Une famille qui n'offre rien dit ce qu'elle fait au lieu d'offrir un bouton qui rend 404. La pose est la seule écriture d'un paquet en lecture seule partout ailleurs, et aucun de ses chemins n'est atteignable depuis un balayage
+
 ## Modifié
 
 - `Assistant › [1]` n'envoie plus chaque question à une seule API distante sur un modèle figé : elle interroge le serveur configuré, et ne retombe sur le distant que lorsqu'aucun serveur local ne répond

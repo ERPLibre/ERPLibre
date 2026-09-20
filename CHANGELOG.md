@@ -27,6 +27,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Execute › GPT code › Claude Code` — list the machine's sessions, ask one a question with read-only tools, or resume one in its own terminal. A copy is branched by default, since two writers on one session lose a branch
 - `check_comment_hygiene.py` signals a fully qualified machine name in a comment, as a re-read signal and never a finding: a BARE host name is mechanically indistinguishable from an ordinary word, so the absence of a signal proves nothing about names. The copyright header, the RFC 2606 domains and any address carried by a URL are left alone
 
+- `Assistant › LLM › Deployment` — install or remove a model on a known server, where its family allows it. Thirteen families are described and only five install and remove over HTTP; two install without removing, and six do neither because their model is chosen when the process starts. A family that offers nothing says what it does instead of offering a button that answers 404. Posing is the only write in a package read-only everywhere else, and none of its paths is reachable from a scan
+
 ## Changed
 
 - `Assistant › [1]` no longer sends every question to a single remote API on a fixed model: it asks whichever server is configured, and falls back to the remote one only when no local server answers

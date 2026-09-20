@@ -47,6 +47,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Execute › GPT code › Claude Code` — list the machine's sessions, ask one a question with read-only tools, or resume one in its own terminal. A copy is branched by default, since two writers on one session lose a branch
 - `check_comment_hygiene.py` signals a fully qualified machine name in a comment, as a re-read signal and never a finding: a BARE host name is mechanically indistinguishable from an ordinary word, so the absence of a signal proves nothing about names. The copyright header, the RFC 2606 domains and any address carried by a URL are left alone
 
+- `Assistant › LLM › Deployment` — install or remove a model on a known server, where its family allows it. Thirteen families are described and only five install and remove over HTTP; two install without removing, and six do neither because their model is chosen when the process starts. A family that offers nothing says what it does instead of offering a button that answers 404. Posing is the only write in a package read-only everywhere else, and none of its paths is reachable from a scan
+
 <!-- [fr] -->
 
 - Des préréglages de site pour le VPN : un `.json` porte la passerelle d'un site, son protocole et son groupe de connexion, et ni identifiant ni secret, si bien qu'il peut circuler. Lus depuis `conf/vpn_presets/`, puis depuis un `private/vpn/presets/` ignoré par git, puis depuis tout répertoire listé dans `vpn_preset_paths` ; sur un même identifiant le plus tardif gagne, et un site corrige un gabarit livré sans toucher de fichier suivi
@@ -64,6 +66,8 @@ au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Un contexte LECTURE SEULE déclaré par outil, fichiers et commandes autorisées, montré et confirmé avant le premier envoi, borné en taille et en durée, et balayé à la recherche de données identifiantes. La limite du balayage est dite : il voit les adresses, les courriels et les chemins de compte, pas les noms
 - `Exécution › GPT code › Claude Code` — lister les sessions de la machine, en interroger une avec des outils en lecture seule, ou la reprendre dans son propre terminal. Une copie est branchée par défaut, deux écritures sur une même session perdant une branche
 - `check_comment_hygiene.py` signale un nom de machine pleinement qualifié dans un commentaire, en signal à relire et jamais en trouvaille : un nom d'hôte NU ne se distingue mécaniquement pas d'un mot ordinaire, donc l'absence de signal ne prouve rien sur les noms. L'en-tête de copyright, les domaines de la RFC 2606 et toute adresse portée par une URL sont laissés tranquilles
+
+- `Assistant › LLM › Déploiement` — poser ou retirer un modèle sur un serveur connu, là où sa famille le permet. Treize familles sont décrites et cinq seulement posent et retirent en HTTP ; deux posent sans retirer, et six ne font ni l'un ni l'autre, leur modèle se choisissant au lancement du processus. Une famille qui n'offre rien dit ce qu'elle fait au lieu d'offrir un bouton qui rend 404. La pose est la seule écriture d'un paquet en lecture seule partout ailleurs, et aucun de ses chemins n'est atteignable depuis un balayage
 
 <!-- [en] -->
 ## Changed
