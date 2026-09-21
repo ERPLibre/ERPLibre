@@ -731,7 +731,7 @@ class TestLaBonneMachine(unittest.TestCase):
     lanceur détaché ré-résout l'adresse de la VM à chaque tour par virsh, qui
     a répondu avec le domaine local : ERPLibre + Odoo se sont installés sur la
     MAUVAISE machine, et le journal l'affichait sans que rien n'alerte
-    (« → 192.168.123.118 »).
+    (« → 198.51.100.118 »).
 
     Pour une VM distante, l'alias ~/.ssh/config est la seule vérité : il
     porte le rebond par l'hôte Proxmox.
@@ -808,7 +808,7 @@ class TestOuVaLaCommande(unittest.TestCase):
     qui ne trompent pas.
     """
 
-    LOCALE = {"name": "vm-a", "ip": "192.168.123.118"}
+    LOCALE = {"name": "vm-a", "ip": "198.51.100.118"}
     DISTANTE = {
         "name": "vm-a",
         "ip": "pve1+vm-a",
@@ -823,7 +823,7 @@ class TestOuVaLaCommande(unittest.TestCase):
 
     def test_ssh_to_a_local_vm_uses_its_address(self):
         self.assertIn(
-            "erplibre@192.168.123.118", mon.vm_ssh_prefix(self.LOCALE)
+            "erplibre@198.51.100.118", mon.vm_ssh_prefix(self.LOCALE)
         )
         self.assertNotIn("-J", mon.vm_ssh_prefix(self.LOCALE))
 

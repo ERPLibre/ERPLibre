@@ -71,7 +71,7 @@ class TestBuildMessage(unittest.TestCase):
     def test_from_without_display_name(self):
         acc = account_from_preset("perso", "moi@x.ca", "generic")
         msg = build_message(
-            acc, "a@y.ca", "S", "B", date=FIXED_DATE, msgid=FIXED_MSGID
+            acc, "a@example.com", "S", "B", date=FIXED_DATE, msgid=FIXED_MSGID
         )
         self.assertEqual(msg["From"], "moi@x.ca")
 
@@ -86,7 +86,7 @@ class TestBuildMessage(unittest.TestCase):
     def test_accented_subject_survives(self):
         msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "Devis révisé",
             "B",
             date=FIXED_DATE,
@@ -126,7 +126,9 @@ class TestBuildMessage(unittest.TestCase):
         self.assertEqual(self.build()["Message-ID"], FIXED_MSGID)
 
     def test_generated_message_id_when_absent(self):
-        msg = build_message(self.acc, "a@y.ca", "S", "B", date=FIXED_DATE)
+        msg = build_message(
+            self.acc, "a@example.com", "S", "B", date=FIXED_DATE
+        )
         self.assertTrue(msg["Message-ID"].startswith("<"))
 
     def test_empty_recipient_raises(self):
@@ -147,7 +149,7 @@ class TestAttachments(unittest.TestCase):
     def test_message_becomes_multipart(self):
         msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
             attachments=[self.pdf],
@@ -159,7 +161,7 @@ class TestAttachments(unittest.TestCase):
     def test_filename_is_kept(self):
         msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
             attachments=[self.pdf],
@@ -172,7 +174,7 @@ class TestAttachments(unittest.TestCase):
     def test_content_type_is_guessed(self):
         msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
             attachments=[self.pdf],
@@ -187,7 +189,7 @@ class TestAttachments(unittest.TestCase):
         blob.write_bytes(b"\x00\x01")
         msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
             attachments=[blob],
@@ -201,7 +203,7 @@ class TestAttachments(unittest.TestCase):
         with self.assertRaises(SmtpError):
             build_message(
                 self.acc,
-                "a@y.ca",
+                "a@example.com",
                 "S",
                 "B",
                 attachments=[Path(self.tmp.name) / "absent.pdf"],
@@ -212,7 +214,7 @@ class TestAttachments(unittest.TestCase):
     def test_body_still_readable(self):
         msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "S",
             "Bonjour Alice",
             attachments=[self.pdf],
@@ -347,40 +349,41 @@ class TestRecipients(unittest.TestCase):
     def test_collects_to_cc_and_bcc(self):
         msg = build_message(
             account(),
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
-            cc=["b@y.ca"],
+            cc=["b@example.com"],
             bcc=["c@y.ca"],
             date=FIXED_DATE,
             msgid=FIXED_MSGID,
         )
         self.assertEqual(
-            sorted(recipients(msg)), ["a@y.ca", "b@y.ca", "c@y.ca"]
+            sorted(recipients(msg)),
+            ["a@example.com", "b@example.com", "c@y.ca"],
         )
 
     def test_strips_display_names(self):
         msg = build_message(
             account(),
-            "Alice <a@y.ca>",
+            "Alice <a@example.com>",
             "S",
             "B",
             date=FIXED_DATE,
             msgid=FIXED_MSGID,
         )
-        self.assertEqual(recipients(msg), ["a@y.ca"])
+        self.assertEqual(recipients(msg), ["a@example.com"])
 
     def test_deduplicates(self):
         msg = build_message(
             account(),
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
-            cc=["a@y.ca"],
+            cc=["a@example.com"],
             date=FIXED_DATE,
             msgid=FIXED_MSGID,
         )
-        self.assertEqual(recipients(msg), ["a@y.ca"])
+        self.assertEqual(recipients(msg), ["a@example.com"])
 
 
 class TestSend(unittest.TestCase):
@@ -388,7 +391,7 @@ class TestSend(unittest.TestCase):
         self.acc = account()
         self.msg = build_message(
             self.acc,
-            "a@y.ca",
+            "a@example.com",
             "S",
             "B",
             bcc=["c@y.ca"],
@@ -401,8 +404,8 @@ class TestSend(unittest.TestCase):
         served = send(self.acc, self.msg, smtp)
         _, from_addr, to_addrs = smtp.sent[0]
         self.assertEqual(from_addr, "moi@x.ca")
-        self.assertEqual(sorted(to_addrs), ["a@y.ca", "c@y.ca"])
-        self.assertEqual(sorted(served), ["a@y.ca", "c@y.ca"])
+        self.assertEqual(sorted(to_addrs), ["a@example.com", "c@y.ca"])
+        self.assertEqual(sorted(served), ["a@example.com", "c@y.ca"])
 
     def test_failure_is_wrapped(self):
         with self.assertRaises(SmtpError):
@@ -415,7 +418,12 @@ class TestSend(unittest.TestCase):
 
     def test_no_recipient_raises_before_the_network(self):
         msg = build_message(
-            self.acc, "a@y.ca", "S", "B", date=FIXED_DATE, msgid=FIXED_MSGID
+            self.acc,
+            "a@example.com",
+            "S",
+            "B",
+            date=FIXED_DATE,
+            msgid=FIXED_MSGID,
         )
         del msg["To"]
         smtp = FakeSmtp()
@@ -431,7 +439,7 @@ class TestWithoutBcc(unittest.TestCase):
     def setUp(self):
         self.msg = build_message(
             account(),
-            "a@y.ca",
+            "a@example.com",
             "Devis",
             "Bonjour",
             bcc=["secret@y.ca"],
@@ -451,7 +459,12 @@ class TestWithoutBcc(unittest.TestCase):
 
     def test_message_without_bcc_is_returned_as_is(self):
         plain = build_message(
-            account(), "a@y.ca", "S", "B", date=FIXED_DATE, msgid=FIXED_MSGID
+            account(),
+            "a@example.com",
+            "S",
+            "B",
+            date=FIXED_DATE,
+            msgid=FIXED_MSGID,
         )
         self.assertIs(without_bcc(plain), plain)
 
