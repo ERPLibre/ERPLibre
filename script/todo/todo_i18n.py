@@ -1085,6 +1085,104 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
+    "Deploy › Proxmox VE reaches a remote host from here.": {
+        "fr": "Deploy › Proxmox VE joint un hôte distant depuis ici.",
+        "en": "Deploy › Proxmox VE reaches a remote host from here.",
+    },
+    "VM backend": {"fr": "Backend de VM", "en": "VM backend"},
+    "Backend:": {"fr": "Backend :", "en": "Backend:"},
+    "Network posture": {
+        "fr": "Posture réseau",
+        "en": "Network posture",
+    },
+    "Withheld: egress rules did not hold on": {
+        "fr": "Retenu : les règles de sortie n'ont pas tenu sur",
+        "en": "Withheld: egress rules did not hold on",
+    },
+    "Nothing is installed there.": {
+        "fr": "Rien n'y est installé.",
+        "en": "Nothing is installed there.",
+    },
+    "Egress rules loaded.": {
+        "fr": "Règles de sortie chargées.",
+        "en": "Egress rules loaded.",
+    },
+    "Egress rules did not load.": {
+        "fr": "Les règles de sortie ne se sont pas chargées.",
+        "en": "Egress rules did not load.",
+    },
+    "Read cloud-init output in the guest.": {
+        "fr": "Lire la sortie de cloud-init dans l'invité.",
+        "en": "Read cloud-init output in the guest.",
+    },
+    "The guest image has no nftables.": {
+        "fr": "L'image de l'invité n'a pas nftables.",
+        "en": "The guest image has no nftables.",
+    },
+    "Pick an image that ships it: none is installed here.": {
+        "fr": "Choisir une image qui le porte : rien n'est installé ici.",
+        "en": "Pick an image that ships it: none is installed here.",
+    },
+    "Egress rules could not be read.": {
+        "fr": "Les règles de sortie n'ont pas pu être lues.",
+        "en": "Egress rules could not be read.",
+    },
+    "Reading the table needs root on the guest.": {
+        "fr": "Lire la table demande root sur l'invité.",
+        "en": "Reading the table needs root on the guest.",
+    },
+    "The guest answered nothing.": {
+        "fr": "L'invité n'a rien répondu.",
+        "en": "The guest answered nothing.",
+    },
+    "Check the guest is up, then check again.": {
+        "fr": "Vérifier que l'invité est levé, puis recommencer.",
+        "en": "Check the guest is up, then check again.",
+    },
+    "VM backends": {"fr": "Backends de VM", "en": "VM backends"},
+    "Deploy - VM backends (which one this machine uses)": {
+        "fr": "🖥  Deploy - Backends de VM (lequel cette machine emploie)",
+        "en": "🖥  Deploy - VM backends (which one this machine uses)",
+    },
+    "This choice informs and preselects; no deployment path drives another backend yet.": {
+        "fr": "Ce choix informe et préselectionne ; aucun chemin de déploiement ne pilote encore un autre backend.",
+        "en": "This choice informs and preselects; no deployment path drives another backend yet.",
+    },
+    "chosen": {"fr": "choisi", "en": "chosen"},
+    "In use:": {"fr": "Employé :", "en": "In use:"},
+    "never run against the real tool: only unit tests cover it": {
+        "fr": "jamais confronté au vrai outil : seules des épreuves"
+        " unitaires le couvrent",
+        "en": "never run against the real tool: only unit tests cover" " it",
+    },
+    "Automatic (decided by the system)": {
+        "fr": "Automatique (décidé par le système)",
+        "en": "Automatic (decided by the system)",
+    },
+    "libvirt/QEMU - this machine": {
+        "fr": "libvirt/QEMU - cette machine",
+        "en": "libvirt/QEMU - this machine",
+    },
+    "Proxmox VE - a remote host": {
+        "fr": "Proxmox VE - un hôte distant",
+        "en": "Proxmox VE - a remote host",
+    },
+    "Lima - for macOS, never run against the tool": {
+        "fr": "Lima - pour macOS, jamais confronté à l'outil",
+        "en": "Lima - for macOS, never run against the tool",
+    },
+    "Here it drives the same hypervisor as libvirt; it earns its place on"
+    " macOS.": {
+        "fr": "Ici il pilote le même hyperviseur que libvirt ; c'est sur"
+        " macOS qu'il gagne sa place.",
+        "en": "Here it drives the same hypervisor as libvirt; it earns its"
+        " place on macOS.",
+    },
+    "libvirt does not exist here: no /dev/kvm, and no Linux bridges.": {
+        "fr": "libvirt n'existe pas ici : ni /dev/kvm, ni ponts Linux.",
+        "en": "libvirt does not exist here: no /dev/kvm, and no Linux"
+        " bridges.",
+    },
     "Layers": {"fr": "Couches", "en": "Layers"},
     "Host key not known yet.": {
         "fr": "Clé d'hôte pas encore connue.",

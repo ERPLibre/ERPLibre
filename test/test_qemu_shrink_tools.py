@@ -104,11 +104,26 @@ class TestPackageTable(ShrinkToolsBase):
                     f"{family} : aucun paquet connu pour « {binaire} »",
                 )
 
-    def test_the_overrides_cover_exactly_the_known_families(self):
-        """Une famille connue de todo_install sans surcharge ici proposerait
-        « gdisk » à un Arch, qui ne l'a pas."""
-        self.assertEqual(set(TODO._SHRINK_PKG_FAMILY), set(FAMILIES))
-        self.assertEqual(set(todo_install.FAMILIES), set(FAMILIES))
+    def test_the_overrides_cover_every_system_family(self):
+        """Une famille système sans surcharge ici proposerait « gdisk » à
+        un Arch, qui ne l'a pas."""
+        systeme = {
+            f
+            for f in todo_install.FAMILIES
+            if f not in todo_install.USER_LEVEL
+        }
+        self.assertEqual(set(TODO._SHRINK_PKG_FAMILY), systeme)
+        self.assertEqual(systeme, set(FAMILIES))
+
+    def test_a_user_level_family_is_deliberately_absent(self):
+        """L'omission est AFFIRMÉE, pas laissée en creux. Ces deux outils
+        découpent un qcow2 que libvirt monte en local, et cette pile
+        n'existe pas là où le gestionnaire est celui d'un utilisateur — y
+        nommer un paquet laisserait croire que le rétrécissement s'y fait."""
+        self.assertTrue(todo_install.USER_LEVEL)
+        for famille in todo_install.USER_LEVEL:
+            with self.subTest(famille=famille):
+                self.assertNotIn(famille, TODO._SHRINK_PKG_FAMILY)
 
     def test_sgdisk_is_the_one_that_changes_name(self):
         """Le cas qui a motivé la table, gardé explicitement."""

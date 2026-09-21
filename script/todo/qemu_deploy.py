@@ -11,14 +11,58 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import subprocess
+import tempfile
 import threading
 import time
+from typing import NamedTuple
 
-from script.todo import todo_prefs
+from script.posture import destinations as posture_destinations
+from script.posture import plan as posture_plan
+from script.posture import registry as posture_registry
+from script.posture import rules as posture_rules
+from script.posture import spec as posture_spec
+from script.todo import host_os, todo_prefs, vm_backend_choice
+from script.todo import devstack_report as report
 from script.todo.qemu_privilege import sudo_prefix
 from script.todo.todo_i18n import get_lang, t
+from script.vm import backend as vm_backend
+
+# Les options ssh de la relecture des règles. Une VM neuve n'a pas de clé
+# d'hôte connue, et son adresse se réutilise d'un déploiement au suivant :
+# la vérification refuserait une machine neuve à chaque fois. BatchMode
+# interdit toute invite — une sonde qui attend une réponse bloque le
+# déploiement sur une question que personne ne voit.
+EGRESS_SSH_OPTS = (
+    "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    " -o ConnectTimeout=15 -o BatchMode=yes"
+)
+
+
+class EgressFiles(NamedTuple):
+    """Les deux fichiers rendus, ou deux chaînes vides.
+
+    Deux et non un : les règles disent CE QUI passe, l'unité dit QUAND
+    elles sont chargées. Poser les premières sans la seconde ne confine que
+    jusqu'au premier redémarrage.
+    """
+
+    rules: str
+    unit: str
+
+
+class EgressOutcome(NamedTuple):
+    """Ce que la relecture a conclu pour un parc.
+
+    `code` agrège les couches, `unconfined` NOMME les machines : agréger
+    seul perdrait ce qui sert, puisque la suite du déploiement se décide
+    machine par machine et non pour le parc entier.
+    """
+
+    code: int
+    unconfined: tuple
 
 
 class _SansInternetImpossible(Exception):
@@ -131,7 +175,7 @@ class QemuDeployMixin:
         # « make install_os » installe. Liée par « && » et NON gardée, pour que
         # son échec soit celui de la VM.
         after_cmd = self._qemu_tools_remote_cmd(tools, prod, "after")
-        # APRÈS le make, et c'est mesuré : sur un dépôt cloné mais pas installé,
+        # APRÈS le make : sur un dépôt cloné mais pas installé,
         # PyCharm n'écrit AUCUN .idea — son configurateur d'interpréteur Python
         # échoue faute de venv, et il renonce. Le même appel sur un dépôt
         # installé l'écrit en cinq minutes : erplibre.iml, misc.xml,
@@ -144,7 +188,7 @@ class QemuDeployMixin:
             self._qemu_pycharm_project_cmd(prod)
             # Le venv du dépôt, comme le fait update_env_version.
             # pycharm_update() : le script importe xmltodict, absent du python
-            # système. Mesuré : « make pycharm_configure » s'arrêtait sur
+            # système : « make pycharm_configure » s'arrête sur
             # « No module named 'xmltodict' ».
             + "./.venv.erplibre/bin/python "
             "./script/ide/pycharm_configuration.py --init || true; "
@@ -1296,14 +1340,232 @@ class QemuDeployMixin:
         parts.append("--dry-run" if dry_run else "-y")
         return parts
 
-    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False):
+    # La clé sous laquelle le site nomme l'adresse de chaque rôle. Le
+    # dépôt sait de QUOI une machine a besoin ; ceci dit OÙ, et c'est une
+    # donnée de site — elle vit dans la configuration privée, le seul des
+    # trois fichiers fusionnés qui ne soit pas suivi.
+    EGRESS_BOOK_KEY = "egress_destinations"
+
+    @staticmethod
+    def _egress_probe_command(ip, user="erplibre"):
+        """La ligne ssh qui relit les règles d'une VM. Rend une CHAÎNE.
+
+        Elle n'exécute rien : c'est ce qui permet de l'éprouver depuis une
+        station et de la MONTRER avant de la lancer.
+        """
+        sonde = posture_plan.probe_command()
+        return f"ssh {EGRESS_SSH_OPTS} {user}@{ip} {shlex.quote(sonde)}"
+
+    @staticmethod
+    def _egress_layers(verdict):
+        """Le verdict de la relecture, réparti sur la couche qu'il concerne.
+
+        Chacun se corrige d'un côté différent : une table absente se
+        recharge, un analyseur absent se choisit avec l'image, un droit
+        manquant s'accorde, et un silence est un problème de transport où
+        le pare-feu n'a jamais été mesuré.
+
+        UN DROIT MANQUANT COMPTE POUR UNE PANNE, et non pour un retrait
+        propre : la machine a reçu une posture qui promet un confinement, et
+        une vérification qui n'aboutit pas ne doit pas se lire comme un
+        succès. Le retrait propre est réservé au silence, où rien n'a été
+        sondé du tout.
+        """
+        if verdict == posture_plan.LOADED:
+            return (
+                report.layer_verdict(
+                    "firewall", report.DS_OK, t("Egress rules loaded.")
+                ),
+            )
+        if verdict == posture_plan.TABLE_ABSENT:
+            return (
+                report.layer_verdict(
+                    "firewall",
+                    report.DS_ERR,
+                    t("Egress rules did not load."),
+                    t("Read cloud-init output in the guest."),
+                ),
+            )
+        if verdict == posture_plan.TOOL_ABSENT:
+            return (
+                report.layer_verdict(
+                    "guest",
+                    report.DS_ERR,
+                    t("The guest image has no nftables."),
+                    t("Pick an image that ships it: none is installed here."),
+                ),
+            )
+        if verdict == posture_plan.NO_PRIVILEGE:
+            return (
+                report.layer_verdict(
+                    "firewall",
+                    report.DS_ERR,
+                    t("Egress rules could not be read."),
+                    t("Reading the table needs root on the guest."),
+                ),
+            )
+        return (
+            report.layer_verdict(
+                "transport",
+                report.DS_SKIP,
+                t("The guest answered nothing."),
+                t("Check the guest is up, then check again."),
+            ),
+        )
+
+    @staticmethod
+    def _egress_read(commande):
+        """Joue la sonde et rend sa sortie. Le SEUL geste impur d'ici.
+
+        Ne lève pas : une panne de transport est un silence, que la lecture
+        du verdict traite déjà — et un déploiement qui vient de réussir ne
+        doit pas s'interrompre parce qu'une relecture n'a pas abouti.
+        """
+        try:
+            fini = subprocess.run(
+                commande,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        return (fini.stdout or "") + (fini.stderr or "")
+
+    @staticmethod
+    def _egress_keep(deployed, unconfined):
+        """Les machines sur lesquelles la suite a le droit de poser.
+
+        Une liste À PART, et non `deployed` amputée : celle-ci compte ce
+        qui a été déployé, et le sommaire final la lit. Les confondre
+        ferait disparaître du décompte des machines bien réelles.
+        """
+        return [nom for nom in deployed if nom not in unconfined]
+
+    def _qemu_probe_egress(self, deployed, ip_map, lire=None):
+        """Relit les règles de chaque VM déployée et écrit le verdict.
+
+        Le chargement échoue DANS l'invité sans que l'hôte l'apprenne :
+        l'attente de cloud-init lit son état pour cesser d'attendre, jamais
+        pour le dire. Sans cette relecture, une machine dont l'image n'a pas
+        l'analyseur se déploie en annonçant un confinement que rien ne tient.
+
+        `lire` rend la lecture remplaçable, donc la décision vérifiable sans
+        machine.
+
+        SEULE UNE TABLE LUE COMPTE POUR UN CONFINEMENT. Une VM dont
+        l'adresse n'a pas été résolue, ou qui n'a rien répondu, est nommée
+        parmi les non confinées : ce qui n'a pas été lu vaut « non », et
+        l'inverse ferait passer un silence pour une garantie.
+        """
+        lire = lire or self._egress_read
+        verdicts = []
+        sans_regles = []
+        for nom in deployed:
+            ip = ip_map.get(nom)
+            lu = posture_plan.UNREAD
+            if ip:
+                lu = posture_plan.parse_probe(
+                    lire(self._egress_probe_command(ip))
+                )
+            if lu != posture_plan.LOADED:
+                sans_regles.append(nom)
+            couches = self._egress_layers(lu)
+            print(f"\n  🔒 {nom} — {t('Network posture')}")
+            print(report.render_layers(couches))
+            verdicts.extend(couches)
+        return EgressOutcome(
+            report.aggregate_layers(verdicts), tuple(sans_regles)
+        )
+
+    def _qemu_egress_rules(self, spec):
+        """Le texte des règles que cette spec demande, ou une chaîne vide.
+
+        Vide n'est pas un échec : trois postures sur quatre n'ont pas de
+        liste bornée, et la plupart des déploiements ne posent rien.
+
+        Ce qui est refusé ici, c'est l'inverse — une posture qui EN attend
+        et dont le site n'a pas nommé les adresses. La laisser passer
+        déploierait une machine qui ne joint pas sa forge, et le manque se
+        découvrirait sur la machine plutôt que devant l'écran.
+        """
+        posture = posture_spec.posture_of(spec)
+        if posture is None:
+            raise vm_backend.VmBackendError(
+                f"Déploiement : posture « {posture_spec.posture_name(spec)} »"
+                " inconnue. Déployer en sortie libre une spec qui demandait"
+                " du confinement serait le sens inverse de la demande."
+            )
+        if not posture_destinations.has_bounded_list(posture):
+            return ""
+        carnet = self.config_file.get_config(self.EGRESS_BOOK_KEY) or {}
+        cibles = posture_destinations.destinations_for(posture, carnet)
+        return posture_rules.render_egress(posture, cibles)
+
+    @contextlib.contextmanager
+    def _qemu_egress_file(self, spec):
+        """Le chemin d'un fichier de règles, le temps du bloc.
+
+        Chaîne vide quand la posture n'en attend pas : un déploiement qui ne
+        confine rien ne doit pas payer un fichier.
+
+        Le contenu nomme les adresses internes du site : il ne traîne pas
+        après coup.
+        """
+        texte = self._qemu_egress_rules(spec)
+        if not texte:
+            yield EgressFiles("", "")
+            return
+        with contextlib.ExitStack() as pile:
+            regles = pile.enter_context(self._fichier_ephemere(texte, ".nft"))
+            unite = pile.enter_context(
+                self._fichier_ephemere(posture_plan.unit_text(), ".service")
+            )
+            yield EgressFiles(regles, unite)
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _fichier_ephemere(texte, suffixe):
+        """Un fichier écrit pour la durée du bloc, puis retiré.
+
+        Écrit par mkstemp — un nom composé serait un chemin PRÉVISIBLE — et
+        retiré dans tous les cas, y compris quand le déploiement s'arrête
+        au milieu.
+        """
+        descripteur, chemin = tempfile.mkstemp(
+            prefix="erplibre-egress-", suffix=suffixe
+        )
+        try:
+            with os.fdopen(descripteur, "w", encoding="utf-8") as fichier:
+                fichier.write(texte)
+            yield chemin
+        finally:
+            with contextlib.suppress(OSError):
+                os.unlink(chemin)
+
+    def _qemu_deploy_parts_for(self, vm, spec, dry_run=False, egress=""):
         """Commande deploy_qemu.py d'une VM de la spec.
 
         POINT DE PASSAGE UNIQUE des deux interfaces : le formulaire TUI et les
         invites en ligne produisent la même spec, donc forcément la même
-        commande. C'est ce qui rend leur divergence vérifiable par un test."""
+        commande. C'est ce qui rend leur divergence vérifiable par un test.
+
+        C'est donc AUSSI l'endroit où un backend que ce chemin ne sait pas
+        piloter doit s'arrêter. Ce chemin est libvirt de bout en bout — il
+        vérifie /dev/kvm puis énumère les domaines par virsh — et laisser
+        passer une autre description produirait un déploiement libvirt sous
+        un faux nom, ou une exception au milieu du travail. Le refus nomme
+        le backend, et il est inatteignable par l'écran d'aujourd'hui : il
+        attend celui de demain."""
+        demande = spec.get("backend") or vm_backend.LIBVIRT
+        if demande != vm_backend.LIBVIRT:
+            raise vm_backend.VerbNotImplemented(
+                f"Déploiement : ce chemin ne pilote que"
+                f" « {vm_backend.LIBVIRT} », pas « {demande} »."
+            )
         install = spec.get("install")
-        return self._qemu_build_deploy_parts(
+        parts = self._qemu_build_deploy_parts(
             vm["distro"],
             vm["version"],
             vm["arch"],
@@ -1355,6 +1617,13 @@ class QemuDeployMixin:
             cache_bypass=bool(spec.get("cache_bypass")),
             offline=bool(spec.get("offline")),
         )
+        # Le fichier de règles est POSÉ par le déploiement, pas rendu par
+        # lui : il reçoit un chemin déjà écrit, et n'a rien à savoir des
+        # postures. Absent, la commande est celle d'avant, mot pour mot.
+        if egress and egress.rules:
+            parts += ["--egress-file", egress.rules]
+            parts += ["--egress-unit", egress.unit]
+        return parts
 
     # Où l'installateur du cache pose son autorité. Un test compare cette
     # valeur au défaut du script d'installation : les deux séparées, la case
@@ -1537,8 +1806,8 @@ class QemuDeployMixin:
 
         « Même architecture que l'hôte » ne veut pas dire accélérée : dans une
         VM sans virtualisation imbriquée, libvirt bascule en TCG sans le dire.
-        Mesuré : une VM s390x sur un hôte s390x lui-même invité KVM est sortie
-        en « <domain type='qemu'> » et a démarré en 7 min 30. Le savoir avant
+        Une VM s390x sur un hôte s390x lui-même invité KVM sort en
+        « <domain type='qemu'> » et démarre en 7 min 30. Le savoir avant
         d'attendre vaut mieux que de chercher la cause après."""
         try:
             mod = self._qemu_import_module()
@@ -1593,7 +1862,11 @@ class QemuDeployMixin:
 
         TOUT ce qui exige sudo (liste des domaines) ou le réseau (branches)
         est fait ICI, pendant que le terminal est encore à nous : une invite
-        de mot de passe pendant que Textual affiche casserait l'écran."""
+        de mot de passe pendant que Textual affiche casserait l'écran.
+
+        Le backend employé se résout ICI pour la même raison : la sonde du
+        PATH est une lecture de la machine, et l'écran ne doit pas en faire
+        au milieu de son affichage."""
         native = self._native_arch()
         arches = ["amd64", "arm64", "s390x"]
         if native not in arches:
@@ -1644,6 +1917,18 @@ class QemuDeployMixin:
             # Sans service actif rien n'intercepte, et une case sans effet
             # est ce que ce menu a déjà eu, à tort.
             "cache_offert": self._qemu_cache_active(),
+            # Le backend employé, résolu ici : l'écran l'AFFICHE et ne le
+            # choisit pas. Un choix qu'on ne peut pas honorer — ce chemin ne
+            # pilote que le local — vaut moins qu'un choix absent.
+            "backend": vm_backend_choice.effective(
+                todo_prefs.get("vm_backend"),
+                host_os.host_os(),
+                bool(shutil.which("limactl")),
+            ),
+            # Les postures dans l'ordre du registre, du plus libre au plus
+            # contraint : on descend vers la contrainte, on n'y tombe pas.
+            "postures": posture_registry.posture_names(),
+            "posture": posture_registry.DEFAULT_POSTURE,
             "host_cpu": os.cpu_count() or 2,
             "free_ram": self._host_free_ram_mb(),
             # La place du système de fichiers qui portera les qcow2. Mesurée
@@ -2109,7 +2394,7 @@ class QemuDeployMixin:
 
     def _qemu_ask_locale(self):
         """Locale des VM. « C.UTF-8 » par défaut : les autres déclenchent un
-        locale-gen dans l'invité, mesuré à 36 s sur s390x — payé à chaque
+        locale-gen dans l'invité, 36 s sur s390x — payé à chaque
         déploiement pour un confort dont une VM jetable n'a pas besoin."""
         default = "C.UTF-8"
         answer = input(f"{t('Locale for the VMs')} ({default}): ").strip()
@@ -2825,37 +3110,47 @@ class QemuDeployMixin:
         parallelism = spec["parallelism"]
         n_jobs = len(pending)
 
-        # Jobs numérotés (k/N) : l'ID suit l'ORDRE de préparation, stable même
-        # si les résultats reviennent dans le désordre (exécution parallèle).
-        jobs = []  # (id, name, parts)
-        for k, vm in enumerate(pending, 1):
-            parts = self._qemu_deploy_parts_for(vm, spec, dry_run=False)
-            jobs.append((f"{k}/{n_jobs}", vm["name"], parts))
+        # Le fichier de règles vit exactement le temps du déploiement :
+        # il porte les adresses internes du site, et il est retiré même
+        # si le parc s'arrête au milieu. Vide quand la posture n'attend
+        # rien, ce qui est le cas de la plupart des déploiements.
+        egress_pose = EgressFiles("", "")
+        with self._qemu_egress_file(spec) as egress:
+            egress_pose = egress
+            # Jobs numérotés (k/N) : l'ID suit l'ORDRE de
+            # préparation, stable même si les résultats reviennent
+            # dans le désordre (exécution parallèle).
+            jobs = []  # (id, name, parts)
+            for k, vm in enumerate(pending, 1):
+                parts = self._qemu_deploy_parts_for(
+                    vm, spec, dry_run=False, egress=egress
+                )
+                jobs.append((f"{k}/{n_jobs}", vm["name"], parts))
 
-        deploy_start = time.time()
-        n_ok = 0
-        if jobs:
-            workers = min(parallelism, len(jobs))
-            print(
-                f"\n{t('Deploying')} {len(jobs)} VM "
-                f"({t('parallel jobs:')} {workers})…"
-            )
-            if todo_prefs.get("qemu_deploy_progress") == "tui":
-                outcome = self._qemu_deploy_jobs_tui(jobs, workers)
-            else:
-                outcome = None
-            if outcome is None:
-                outcome = self._qemu_deploy_jobs_cli(jobs, workers)
-            for name, rc, _out, _secs in outcome:
-                if rc == 0:
-                    deployed.append(name)
-                    n_ok += 1
-            print(
-                f"\n{t('Deploy summary:')} {n_ok} OK, "
-                f"{len(jobs) - n_ok} {t('failed')}, "
-                f"{len(jobs)} {t('VMs')}, "
-                f"{self._fmt_dur(time.time() - deploy_start)}"
-            )
+            deploy_start = time.time()
+            n_ok = 0
+            if jobs:
+                workers = min(parallelism, len(jobs))
+                print(
+                    f"\n{t('Deploying')} {len(jobs)} VM "
+                    f"({t('parallel jobs:')} {workers})…"
+                )
+                if todo_prefs.get("qemu_deploy_progress") == "tui":
+                    outcome = self._qemu_deploy_jobs_tui(jobs, workers)
+                else:
+                    outcome = None
+                if outcome is None:
+                    outcome = self._qemu_deploy_jobs_cli(jobs, workers)
+                for name, rc, _out, _secs in outcome:
+                    if rc == 0:
+                        deployed.append(name)
+                        n_ok += 1
+                print(
+                    f"\n{t('Deploy summary:')} {n_ok} OK, "
+                    f"{len(jobs) - n_ok} {t('failed')}, "
+                    f"{len(jobs)} {t('VMs')}, "
+                    f"{self._fmt_dur(time.time() - deploy_start)}"
+                )
 
         # 6) Résolution des IP EN PARALLÈLE (réutilisée pour ssh_config +
         # install) : une boucle EN SÉRIE bloquait plusieurs minutes par VM
@@ -2863,7 +3158,12 @@ class QemuDeployMixin:
         ip_map = {}
         # `desktop` compte aussi : sans IP résolue, l'installation du bureau
         # n'aurait aucune VM à joindre.
-        if deployed and (add_ssh_config or install_branch or desktop):
+        # Les règles posées se RELISENT, donc l'adresse est nécessaire même
+        # quand rien d'autre ne la demandait : sans elle, la relecture ne
+        # joindrait aucune VM et rendrait un silence pour tout le parc.
+        if deployed and (
+            add_ssh_config or install_branch or desktop or egress_pose.rules
+        ):
             labels = {
                 nm: f"{k}/{len(deployed)}" for k, nm in enumerate(deployed, 1)
             }
@@ -2879,6 +3179,31 @@ class QemuDeployMixin:
                     self._write_ssh_config_entry(
                         name, "erplibre", ip, identity_file=identity
                     )
+
+        # Ce sur quoi la suite a le droit de poser, distinct de ce qui a
+        # été déployé : le sommaire final compte le second, et une machine
+        # écartée reste une machine déployée.
+        a_installer = list(deployed)
+
+        # 6 bis) Relecture des règles posées. Après la résolution des IP,
+        # parce qu'elle en a besoin, et avant l'installation : une machine
+        # qui n'a pas chargé ses règles doit se voir AVANT qu'on y pose
+        # quoi que ce soit.
+        if egress_pose.rules and deployed:
+            releve = self._qemu_probe_egress(deployed, ip_map)
+            if releve.unconfined:
+                # RIEN ne se pose sur une machine qui devait être confinée
+                # et ne l'est pas. Elle existe, elle est jointe, et c'est
+                # justement pourquoi continuer l'installerait derrière une
+                # promesse que la machine ne tient pas. Elle est écartée
+                # une par une : les autres ont chargé leurs règles et n'ont
+                # pas à payer pour elle.
+                print(
+                    f"\n⛔ {t('Withheld: egress rules did not hold on')}"
+                    f" {', '.join(releve.unconfined)}"
+                )
+                print(f"   {t('Nothing is installed there.')}")
+                a_installer = self._egress_keep(a_installer, releve.unconfined)
 
         # 7) Installation ERPLibre (clone + make) et/ou bureau GNOME. Le bureau
         # ne dépend PAS d'ERPLibre : une VM peut être voulue graphique et nue.
@@ -2901,7 +3226,7 @@ class QemuDeployMixin:
             if monitor:
                 # Installs détachées en parallèle + dashboard Textual.
                 self._qemu_install_erplibre_monitored(
-                    deployed,
+                    a_installer,
                     branch_map if branch_multi else install_branch,
                     ip_map,
                     cmd_map if cmd_multi else base_cmd,
@@ -2922,7 +3247,7 @@ class QemuDeployMixin:
                     f"\n{t('Installing ERPLibre on each VM')} "
                     f"({install_branch})…"
                 )
-                for name in deployed:
+                for name in a_installer:
                     self._qemu_install_erplibre_vm(
                         name,
                         ssh_key,
