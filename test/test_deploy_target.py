@@ -285,6 +285,43 @@ class TestLAllerRetourSurDisque(CibleSurDisque):
         self.assertEqual(["equipe", "essai"], sorted(D.names()))
         self.assertEqual(["essai"], [t["name"] for t in D.private_targets()])
 
+    def test_correcting_a_shared_target_replaces_it(self):
+        """Sans la déduplication, la fusion AJOUTE une seconde entrée du même
+        nom, la lecture rend l'ancienne, et la correction s'annonce faite
+        sans l'être."""
+        with open(self.base, "w") as fh:
+            json.dump(
+                {D.CONFIG_KEY: [{"name": "equipe", "target": "m.example"}]}, fh
+            )
+        D.save({"name": "equipe", "target": "corrigee.example"})
+        self.assertEqual(["equipe"], D.names())
+        self.assertEqual("corrigee.example", D.load("equipe")["target"])
+
+    def test_a_correction_keeps_the_rank_of_what_it_replaces(self):
+        """Le rang est ce qu'on tape : le voir bouger ferait choisir
+        l'autre."""
+        with open(self.base, "w") as fh:
+            json.dump(
+                {
+                    D.CONFIG_KEY: [
+                        {"name": "aa", "target": "a.example"},
+                        {"name": "bb", "target": "b.example"},
+                    ]
+                },
+                fh,
+            )
+        D.save({"name": "aa", "target": "corrigee.example"})
+        self.assertEqual(["aa", "bb"], D.names())
+
+    def test_deleting_a_correction_brings_the_shared_one_back(self):
+        with open(self.base, "w") as fh:
+            json.dump(
+                {D.CONFIG_KEY: [{"name": "equipe", "target": "m.example"}]}, fh
+            )
+        D.save({"name": "equipe", "target": "corrigee.example"})
+        self.assertTrue(D.delete("equipe"))
+        self.assertEqual("m.example", D.load("equipe")["target"])
+
     def test_an_entry_without_a_name_is_filtered_out(self):
         """Impossible à choisir, à modifier et à supprimer."""
         with open(self.base, "w") as fh:
@@ -296,6 +333,50 @@ class TestLAllerRetourSurDisque(CibleSurDisque):
             json.dump({}, fh)
         self.assertEqual([], D.load_all())
         self.assertIsNone(D.load("essai"))
+
+
+class TestLaCibleRetenue(CibleSurDisque):
+    """Le NOM est retenu ; la fiche est relue à chaque fois."""
+
+    def setUp(self):
+        super().setUp()
+        self.prefs = {}
+        patcheur = patch.multiple(
+            "script.remote.deploy_target.todo_prefs",
+            get=lambda cle, defaut=None: self.prefs.get(cle, defaut),
+            set=lambda cle, valeur: self.prefs.__setitem__(cle, valeur),
+        )
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
+
+    def test_nothing_selected_answers_none(self):
+        """Un None dit à l'écran qu'il a une question à poser."""
+        self.assertIsNone(D.selected())
+
+    def test_what_is_selected_comes_back(self):
+        D.save(VALIDE)
+        D.select("essai")
+        self.assertEqual("compte@machine.example", D.selected()["target"])
+
+    def test_editing_the_target_moves_the_selection_with_it(self):
+        """LA raison de ne garder que le nom : une fiche recopiée
+        nommerait encore l'ancienne adresse après une modification."""
+        D.save(VALIDE)
+        D.select("essai")
+        D.save(dict(VALIDE, target="autre.example"))
+        self.assertEqual("autre.example", D.selected()["target"])
+
+    def test_a_deleted_target_is_asked_for_again_and_does_not_crash(self):
+        D.save(VALIDE)
+        D.select("essai")
+        D.delete("essai")
+        self.assertIsNone(D.selected())
+
+    def test_forgetting_takes_an_empty_name(self):
+        D.save(VALIDE)
+        D.select("essai")
+        D.select("")
+        self.assertIsNone(D.selected())
 
 
 if __name__ == "__main__":
