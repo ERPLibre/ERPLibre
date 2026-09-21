@@ -44,7 +44,6 @@ from script.vm.backend import (
     group_by_host,
     handle_of,
     is_hosted,
-    libvirt_handle,
     pve_handle,
     resolves_locally,
 )
@@ -2332,19 +2331,6 @@ def _read_pvestats(vms, now=None):
     return dict(stats), ok
 
 
-def web_tunnel_argv(info, port=18069, cible_port=8069):
-    """argv d'un tunnel local vers le port web d'une VM distante, ou None.
-
-    Relais vers `script.vm.verbs.web_access`, qui rend aussi l'URL — les
-    deux se décidaient séparément et pouvaient donc se contredire.
-    """
-    info = dict(info or {})
-    return (
-        list(vm_verbs.web_access(pve_handle(info), port, cible_port).tunnel)
-        or None
-    )
-
-
 def vm_ssh_prefix(vm, tty=False) -> str:
     """« ssh … » pour entrer dans CETTE VM, adresse comprise.
 
@@ -2359,15 +2345,6 @@ def vm_ssh_prefix(vm, tty=False) -> str:
     return vm_verbs.ssh_prefix(
         handle_of(vm), user=vm_user(vm), options=SSH_OPTS, tty=tty
     )
-
-
-def pve_host_cmd(info, remote, tty=False) -> str:
-    """Commande shell qui exécute `remote` SUR l'hôte Proxmox d'une VM.
-
-    Relais vers `script.vm.verbs.host_command`, qui le fait pour tous les
-    backends. Ce nom reste pour les appelants qui le connaissent ici.
-    """
-    return vm_verbs.host_command(pve_handle(info), remote, tty)
 
 
 def arm_balloon(names) -> None:
@@ -2659,21 +2636,8 @@ def pve_identity_guard(vmid: int, name: str) -> str:
     return vm_verbs.identity_guard(pve_handle({"vmid": vmid}, name), tr=t)
 
 
-def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
-    """Efface une VM sur son hôte PROXMOX, par son VMID.
-
-    « virsh undefine <nom> » y aurait effacé le domaine LOCAL homonyme — le
-    même piège que partout ailleurs, avec la pire conséquence.
-
-    `name` arme le garde d'identité (voir `pve_identity_guard`) : sans lui, la
-    commande efface le VMID quoi qu'il porte aujourd'hui."""
-    return vm_verbs.delete_command(
-        pve_handle(info, name), with_disks=purge, tr=t
-    )
-
-
 def delete_suite_pve(vmid: int, name: str = "", purge: bool = True) -> str:
-    """Le shell que delete_vm_cmd_pve joue SUR l'hôte : le garde d'identité
+    """Le shell que la suppression joue SUR l'hôte : le garde d'identité
     si `name` est connu, puis l'arrêt et la destruction du VMID."""
     return vm_verbs.pve_delete_suite(
         pve_handle({"vmid": vmid}, name), purge, tr=t
@@ -2745,8 +2709,8 @@ def recreate_delete_cmd_pve(info, name, spec) -> str:
     """La suite d'effacement, envoyée à l'hôte de la VM. Le stockage, le
     pont et la 3D sont ceux que la spec gardée réclamera à la recréation."""
     spec = spec or {}
-    return pve_host_cmd(
-        info,
+    return vm_verbs.host_command(
+        pve_handle(info),
         recreate_delete_suite_pve(
             int((info or {}).get("vmid") or 0),
             name,
@@ -2866,19 +2830,6 @@ def _refus_autre_domaine(name: str) -> str:
             " Nothing was deleted."
         )
     ).format(name=_dq(name), seen="$vu")
-
-
-def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
-    """Efface la VM sur l'HÔTE local : arrêt, retrait de la définition, puis
-    les disques à la demande.
-
-    Relais vers `script.vm.verbs.delete_command`. `uuid` arme le garde : un
-    nom de domaine se réemploie, l'UUID naît et meurt avec le domaine.
-    """
-    handle = libvirt_handle(name, uuid=uuid)
-    return vm_verbs.delete_command(
-        handle, with_disks, sudo_prefix(), URI, tr=t
-    )
 
 
 def recreate_delete_cmd(name: str, uuid: str) -> str:
@@ -4624,15 +4575,15 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 if refus:
                     self.notify(refus, severity="error")
                     return
-                info = vm.get("pve")
+                # Le garde d'identité tourne sur l'HÔTE de la VM Proxmox, la
+                # seule autorité sur son VMID ; une VM locale a déjà prouvé
+                # son UUID dans _db_restore_refusal.
+                fiche = handle_of(vm)
                 garde = (
-                    pve_host_cmd(
-                        info,
-                        pve_identity_guard(
-                            int(info.get("vmid") or 0), vm["name"]
-                        ),
+                    vm_verbs.host_command(
+                        fiche, vm_verbs.identity_guard(fiche)
                     )
-                    if info
+                    if vm.get("pve")
                     else ""
                 )
                 self._run_in_vm(

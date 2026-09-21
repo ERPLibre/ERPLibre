@@ -166,6 +166,9 @@ class TestLaCli(unittest.TestCase):
         todo._qemu_default_ssh_key = lambda: "/k.pub"
         todo._qemu_ask_timezone = lambda: "UTC"
         todo._qemu_ask_locale = lambda: "C.UTF-8"
+        # La règle d'or a ses propres épreuves : ses deux questions ne sont
+        # pas l'objet de celle-ci.
+        todo._deploy_ask_posture = lambda *a, **k: {}
         vu = {}
 
         def arret(vms_):

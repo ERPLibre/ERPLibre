@@ -6,8 +6,15 @@ import datetime
 import getpass
 import logging
 import os
+import shlex
 
-from script.database import backup_verify, backup_witness
+from script.database import (
+    backup_ship,
+    backup_verify,
+    backup_witness,
+    drill_guard,
+)
+from script.remote import appliance_ssh, deploy_target
 from script.todo.todo_i18n import t
 
 _logger = logging.getLogger(__name__)
@@ -36,49 +43,106 @@ except Exception:
 
 
 class DatabaseManager:
-    def __init__(self, execute, fill_help_info) -> None:
+    def __init__(self, execute, fill_help_info, image_name=None) -> None:
         self._execute = execute
         self._fill_help_info = fill_help_info
+        # CE QUE db_restore ATTEND d'un fichier choisi au navigateur,
+        # composé par le menu qui sait déjà le faire : un nom sous
+        # image_db/. Injecté comme `fill_help_info`, parce que le composeur
+        # pose une question quand le fichier vient d'ailleurs — et qu'un
+        # écran pose les questions. Le repli ne sait que dépouiller, ce qui
+        # suffit à un appelant qui ne parcourt rien.
+        self._image_name = image_name or self._bare_image_name
         self._dir_path: str | None = None
+
+    @staticmethod
+    def _bare_image_name(zip_path: str) -> str:
+        """Le nom d'une image, sans son répertoire ni son « .zip »."""
+        nom = os.path.basename(zip_path or "")
+        return nom[:-4] if nom.endswith(".zip") else nom
 
     def _on_dir_selected(self, path: str) -> None:
         self._dir_path = path
 
-    def _list_databases(self) -> list | None:
-        """Les bases que PostgreSQL expose, ou None quand il n'y en a pas.
+    def _list_databases(self) -> tuple[bool, list]:
+        """(a-t-on pu lire, les bases). DEUX réponses, jamais confondues.
 
-        Le code de retour de « db list » est vérifié AVANT de construire le
-        menu. Sans cette vérification, un PostgreSQL injoignable ne se distingue
-        pas d'une base absente : la sortie et l'erreur sont fusionnées dans le
-        même flux (`stderr=STDOUT`, execute.py), donc les lignes de la trace
-        d'appel deviendraient les entrées du menu, et « Traceback (most recent
-        call last): » un nom de base rendu à l'appelant.
+        Zéro base EST une réponse ; une liste illisible n'en est pas une.
+        Les rendre par une seule valeur fausse laisse un appelant qui
+        détruit conclure « il n'y a rien à écraser » d'un PostgreSQL muet.
+
+        Le code de retour est vérifié : la sortie et l'erreur sont fusionnées
+        dans le même flux (`stderr=STDOUT`, execute.py), donc sans lui les
+        lignes d'une trace d'appel deviennent des noms de base.
         """
-        cmd_server = "./odoo_bin.sh db list"
         status, output = self._execute.exec_command_live(
-            cmd_server,
+            "./odoo_bin.sh db list",
             return_status_and_output=True,
             quiet=True,
             source_erplibre=False,
             single_source_erplibre=True,
         )
         if status:
-            print(f"❌ {t('Cannot list the databases (exit code): ')}{status}")
+            print(
+                f"\u274c {t('Cannot list the databases (exit code): ')}"
+                f"{status}"
+            )
             print(f"   {t('Is PostgreSQL running?')}")
             for line in output[-5:]:
                 print(f"   {line}")
-            return None
+            return False, []
+        return True, [a.strip() for a in output if a.strip()]
 
-        databases = [a.strip() for a in output if a.strip()]
-        if not databases:
-            print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
-            return None
-        return databases
+    def _may_destroy(self, database_name: str) -> bool:
+        """Le feu vert avant d'écraser une base. Faux arrête tout.
+
+        LE POINT DE PASSAGE de l'étage interactif. Restaurer DÉTRUIT la
+        base cible, dont le nom est du texte libre : la collision était
+        imprimée et jamais questionnée.
+
+        Trois réponses, et la troisième est la seule qui demande quelque
+        chose. Une base absente n'a rien à protéger. Une base d'exercice —
+        drapeau de neutralisation ou compte d'essai — passe, et la ligne
+        le DIT : muette, elle ne distingue plus une base reconnue d'une
+        base que rien n'a lue. Tout le reste fait retaper le nom, parce que
+        recopier oblige à regarder ce qu'on détruit là où « o » se tape par
+        réflexe.
+
+        L'étage LOT n'en veut pas : une base fraîchement restaurée n'a ni
+        drapeau ni compte d'essai, donc elle se lit réelle, et la garde y
+        refuserait les dizaines de cibles make qui recyclent leurs noms.
+        """
+        lisible, bases = self._list_databases()
+        if not lisible:
+            # Ne pas savoir n'est pas savoir qu'il n'y a rien.
+            print(f"\u274c {t('Nothing is destroyed without reading first.')}")
+            return False
+        if database_name not in bases:
+            return True
+        if drill_guard.is_drill_database(database_name):
+            print(
+                f"\u2139\ufe0f  {t('Drill database: overwriting it is safe.')}"
+            )
+            return True
+        print(
+            f"\u26a0\ufe0f  {t('This database will be ERASED: ')}"
+            f"{database_name}"
+        )
+        retape = input(
+            f"\U0001f4ac {t('Retype its name to confirm: ')}"
+        ).strip()
+        if retape != database_name:
+            print(t("Database deletion cancelled."))
+            return False
+        return True
 
     def select_database(self) -> str | bool:
         """Faire choisir UNE base parmi celles que PostgreSQL expose."""
-        databases = self._list_databases()
+        lisible, databases = self._list_databases()
+        if not lisible:
+            return False
         if not databases:
+            print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
             return False
 
         choices = [{"prompt_description": a} for a in databases]
@@ -106,8 +170,11 @@ class DatabaseManager:
         en entier et redemandée : effacer « ce qui était valide » d'une
         saisie fautive détruirait une base que l'on n'a peut-être pas visée.
         """
-        databases = self._list_databases()
+        lisible, databases = self._list_databases()
+        if not lisible:
+            return []
         if not databases:
+            print(f"ℹ️  {t('No database on this PostgreSQL server.')}")
             return []
 
         choices = [{"prompt_description": a} for a in databases]
@@ -232,7 +299,13 @@ class DatabaseManager:
         if status == "1":
             file_name = self._ask_image_db_file_name(path_image_db)
         else:
-            file_name = self.open_file_image_db()
+            self._dir_path = ""
+            self.open_file_image_db()
+            # Le CHEMIN choisi, et non son seul nom : un fichier pris hors
+            # d'image_db/ n'y est pas, et le composeur le dit.
+            file_name = (
+                self._image_name(self._dir_path) if self._dir_path else ""
+            )
         if not file_name:
             print(t("No backup selected, nothing restored."))
             return
@@ -248,7 +321,13 @@ class DatabaseManager:
         if not database_name:
             database_name = default_database_name
 
-        for commande in self._restore_commands(file_name, database_name):
+        cible, commandes = self._restore_commands(file_name, database_name)
+        # APRÈS les questions, qui peuvent encore renommer la cible
+        # (« _neutralize »), et AVANT la première commande : restaurer
+        # DÉTRUIT la base cible, dont le nom est du texte libre.
+        if not self._may_destroy(cible):
+            return
+        for commande in commandes:
             status, _output_lines = self._execute.exec_command_live(
                 commande,
                 return_status_and_output=True,
@@ -284,7 +363,8 @@ class DatabaseManager:
             print(f"❌ {t('No such file in image_db:')} {nom}")
 
     def _restore_commands(self, file_name, database_name):
-        """Poser toutes les questions, puis rendre les commandes, dans l'ordre.
+        """Poser toutes les questions, puis rendre (la base cible, les
+        commandes dans l'ordre).
 
         Les questions viennent AVANT la première commande : la restauration
         et les mises à jour durent, et l'on peut s'éloigner une fois la
@@ -296,6 +376,9 @@ class DatabaseManager:
         développement (compte test/test, courriel et sauvegardes coupés).
         La mise à jour « avant » se place entre les deux : ces modules
         s'installent alors sur des modules déjà au niveau du code.
+
+        Les deux noms sont CITÉS : ils traversent une commande exécutée par
+        bash, où un point-virgule tapé au clavier ouvre une commande.
         """
         cache = _oui(
             input(
@@ -340,26 +423,25 @@ class DatabaseManager:
                 )
             )
 
-        restore = (
-            f"python3 ./script/database/db_restore.py -d {database_name} "
-        )
+        base = shlex.quote(database_name)
+        restore = f"python3 ./script/database/db_restore.py -d {base} "
         if neutraliser:
             restore += "--neutralize "
         if not cache:
             restore += "--ignore_cache "
-        restore += f"--image {file_name}"
-        update_all = f"./script/addons/update_addons_all.sh {database_name}"
+        restore += f"--image {shlex.quote(file_name)}"
+        update_all = f"./script/addons/update_addons_all.sh {base}"
 
         commandes = [restore]
         if avant:
             commandes.append(update_all)
         if neutraliser:
             commandes.append(
-                f"./script/addons/update_prod_to_dev.sh {database_name}"
+                f"./script/addons/update_prod_to_dev.sh {base}"
             )
         if apres:
             commandes.append(update_all)
-        return commandes
+        return database_name, commandes
 
     def duplicate_database(self) -> None:
         """Copier une base, et proposer de la neutraliser.
@@ -495,6 +577,45 @@ class DatabaseManager:
             print(f"ℹ️  {t('Finding not recorded: ')}{souci}")
         return constat
 
+    def _backup_ship(self, constat, path, name) -> None:
+        """Dépose la sauvegarde chez la cible, ou DIT qu'il n'y en a pas.
+
+        LE CROCHET ÉTAIT PLANTÉ, ET VIDE. « backup-target » est dans le
+        socle des destinations de sortie, avec son port et sa raison — « la
+        cible des sauvegardes, l'ouvrir en sortie est ce qui permet de
+        sauvegarder sans monter le disque de la machine sur l'hôte » — et
+        rien ne le remplissait : le pare-feu d'une machine confinée ouvrait
+        cette porte sur le vide.
+
+        Une archive qui n'a pas passé les contrôles ICI ne part pas : en
+        déposer ailleurs une qu'on sait abîmée remplirait la cible de
+        copies inutilisables, et ferait croire à une sauvegarde.
+        """
+        if not constat or constat.verdict != backup_verify.SOUND:
+            return
+        cibles = [
+            cible
+            for cible in deploy_target.load_all()
+            if cible.get("kind") == deploy_target.KIND_BACKUP
+        ]
+        if not cibles:
+            # UNE FOIS, et en nommant où la créer. Se taire ferait qu'une
+            # sauvegarde qui ne part nulle part ne se distingue plus d'une
+            # sauvegarde qui part.
+            print(f"\u2139\ufe0f  {t('No backup target is configured.')}")
+            print(f"   {t('Create one in:')} {t('Deployment targets')}")
+            return
+        cible = deploy_target.with_defaults(cibles[0])
+        depot = backup_ship.ship(
+            cible,
+            deploy_target.fiche(cible),
+            path,
+            name,
+            run=appliance_ssh.run,
+        )
+        marque = "✅" if depot.verdict == backup_ship.SHIPPED else "⚠️"
+        print(f"{marque}  {cible['name']} : {depot.verdict} {depot.detail}")
+
     def create_backup_from_database(
         self, show_remote_list: bool = True
     ) -> None:
@@ -532,7 +653,12 @@ class DatabaseManager:
                 f"{backup_name}"
             )
             return
-        self.verify_and_witness(self.backup_archive(backup_name), backup_name)
+        archive = self.backup_archive(backup_name)
+        constat = self.verify_and_witness(archive, backup_name)
+        # ET AILLEURS. Une sauvegarde qui ne vit que sur la machine qui l'a
+        # produite n'en est pas une : le 3-2-1 reste à une copie, un
+        # support, zéro hors-site tant que rien ne la déplace.
+        self._backup_ship(constat, archive, backup_name)
 
     def open_file_image_db(self) -> str:
         self._dir_path = ""

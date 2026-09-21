@@ -93,6 +93,30 @@ sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
     --ssh-key ~/.ssh/id_ed25519.pub -y
 ```
 
+## Confiner une machine créée en direct
+
+**Ce script pose ce qu'on lui DONNE ; il ne connaît pas les postures.**
+Appelé sans règles de sortie, la machine qu'il crée a une **sortie libre** —
+quelle que soit l'intention. Ce n'est pas un oubli : le rendu se fait
+ailleurs, et c'est le menu qui le fait d'ordinaire.
+
+La règle d'or — le couple *(posture, données réelles)* — est tenue au point
+de passage unique du menu. **Une machine créée en direct la contourne**, et
+ne doit donc pas porter de données réelles.
+
+Les règles se rendent et se passent. Le paquet posture les écrit, le moteur
+les pose et les arme au premier démarrage :
+
+```bash
+python3 -c "from script.posture import registry, rules, plan; \
+  open('/tmp/egress.nft','w').write( \
+    rules.render_egress(registry.get_posture('connected'), ())); \
+  open('/tmp/egress.service','w').write(plan.unit_text())"
+
+sudo ./script/qemu/deploy_qemu.py --name test-vm --version 24.04 \
+    --egress-file /tmp/egress.nft --egress-unit /tmp/egress.service
+```
+
 Catalogue, par architecture (`deploy_qemu.py` fait autorité) :
 
 | Distro | Versions | amd64 | arm64 | s390x |

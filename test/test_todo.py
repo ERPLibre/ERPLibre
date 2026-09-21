@@ -1068,7 +1068,11 @@ class TestRestoreFromDatabase(unittest.TestCase):
     """Réponses, dans l'ordre : source, fichier, nom, cache, neutraliser,
     puis la mise à jour — avant ET après la neutralisation, ou une seule
     sans. Le dossier courant est un dépôt jetable dont image_db/ porte
-    « backup.zip »."""
+    « backup.zip ».
+
+    La garde de destruction lit la liste des bases (« db list ») avant la
+    première commande : cette lecture ne détruit rien, elle est donc
+    simulée vide et écartée des commandes comptées."""
 
     def setUp(self):
         self.dossier = tempfile.mkdtemp(prefix="el_restore_")
@@ -1088,8 +1092,8 @@ class TestRestoreFromDatabase(unittest.TestCase):
             todo.db_manager._execute.exec_command_live.return_value = (0, [])
         else:
             todo.db_manager._execute.exec_command_live.side_effect = [
-                (statut, []) for statut in statuts
-            ]
+                (0, [])
+            ] + [(statut, []) for statut in statuts]
         with patch("builtins.input", side_effect=reponses):
             todo.db_manager.restore_from_database()
         return [
@@ -1097,6 +1101,7 @@ class TestRestoreFromDatabase(unittest.TestCase):
             for appel in (
                 todo.db_manager._execute.exec_command_live.call_args_list
             )
+            if "db list" not in appel[0][0]
         ]
 
     def test_restore_by_filename(self):
@@ -1222,7 +1227,10 @@ class TestRestoreFromDatabase(unittest.TestCase):
         ordre = []
         todo.db_manager._execute = MagicMock()
         todo.db_manager._execute.exec_command_live.side_effect = (
-            lambda *a, **k: ordre.append("cmd") or (0, [])
+            lambda commande, **k: ordre.append(
+                "lecture" if "db list" in commande else "cmd"
+            )
+            or (0, [])
         )
 
         reponses = iter(["1", "backup", "mydb", "", "y", "o", "o"])
@@ -1233,7 +1241,7 @@ class TestRestoreFromDatabase(unittest.TestCase):
 
         with patch("builtins.input", side_effect=repondre):
             todo.db_manager.restore_from_database()
-        self.assertEqual(["question"] * 7 + ["cmd"] * 4, ordre)
+        self.assertEqual(["question"] * 7 + ["lecture"] + ["cmd"] * 4, ordre)
 
     def test_a_failed_step_stops_the_chain(self):
         cmds = self.restaurer(

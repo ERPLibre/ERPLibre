@@ -52,14 +52,13 @@ class TestLesCinqCodes(unittest.TestCase):
     def test_they_are_pairwise_distinct(self):
         self.assertEqual(5, len(set(R.CODES)))
 
-    def test_every_code_has_a_mark_and_a_token(self):
+    def test_every_code_has_a_mark(self):
         self.assertEqual(
             5, len(R.CODES), "vocabulaire vidé : rien n'est prouvé"
         )
         for code in R.CODES:
             with self.subTest(code=code):
                 self.assertIn(code, R.MARKS)
-                self.assertNotEqual("unexpected", R.code_token(code))
 
     def test_report_tells_the_five_apart(self):
         en_francais(self)
@@ -71,7 +70,7 @@ class TestLesCinqCodes(unittest.TestCase):
     def test_an_unknown_code_is_named_not_hidden(self):
         en_francais(self)
         self.assertIn("7", R.report(7))
-        self.assertEqual("unexpected", R.code_token(7))
+        self.assertIn(R.MARKS.get(7, "?"), R.report(7))
 
 
 class TestLePireGagne(unittest.TestCase):

@@ -458,7 +458,16 @@ class TestLeSuivi(AsyncCase):
     async def test_a_proxmox_delete_shows_a_summary_and_reaches_the_log(self):
         lances, sortie = await self.supprime(pve=PVE)
         self.assertEqual(
-            [["bash", "-c", mon.delete_vm_cmd_pve(PVE, name="vm-a")]], lances
+            [
+                [
+                    "bash",
+                    "-c",
+                    mon.vm_verbs.delete_command(
+                        mon.pve_handle(PVE, "vm-a"), tr=mon.t
+                    ),
+                ]
+            ],
+            lances,
         )
         self.assertIn("→ ssh erplibre@hote-essai (sudo)", sortie)
         self.assertIn("qm config 101 = vm-a", sortie)
@@ -993,8 +1002,8 @@ class TestLaCommandeDEffacementPve(unittest.TestCase):
 
     def lance(self, gpu3d=False, **env_vm):
         # Le PATH ci-dessous perd la doublure du lanceur : ce faux sudo
-        # refuse. La suite tourne déjà sous le sudo de pve_host_cmd, elle
-        # n'en appelle aucun.
+        # refuse. La suite tourne déjà sous le sudo de
+        # vm_verbs.host_command, elle n'en appelle aucun.
         (self.bin / "sudo").write_text("#!/bin/sh\nexit 1\n")
         (self.bin / "sudo").chmod(0o755)
         self.journal.write_text("")

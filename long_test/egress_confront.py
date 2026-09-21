@@ -141,6 +141,22 @@ def poser(texte, dry_run):
         for ligne in texte.splitlines():
             print(f"    │ {ligne}")
         return False
+    # CE QUI VA ÊTRE COUPÉ, DIT AVANT DE LE COUPER. Ces règles se chargent
+    # dans le jeu de l'HÔTE, sans espace de noms, en « policy drop » sur
+    # output comme sur forward. La seule destination nommée est une adresse
+    # de documentation : la machine perd donc sa sortie entière, et une
+    # session ssh tombe avec elle — y compris celle qui lit ces lignes.
+    # Le rappel de « --detruire » n'arrivait qu'à la fin, c'est-à-dire sur
+    # un terminal qui pouvait déjà ne plus rien afficher.
+    print()
+    print("  ⚠  Ces règles se chargent sur CETTE machine, pas dans un")
+    print("     espace de noms. Sortie coupée sauf la destination nommée,")
+    print("     donc une session ssh tombe avec le reste.")
+    print("     À défaire : ./long_test/egress_confront.py --detruire")
+    print("     Une machine JETABLE est le seul endroit raisonnable.")
+    if input("\n  Charger quand même ? (tapez OUI) : ").strip() != "OUI":
+        print("  Rien n'a été chargé.")
+        return False
     with tempfile.NamedTemporaryFile(
         "w", suffix=".nft", delete=False
     ) as fichier:

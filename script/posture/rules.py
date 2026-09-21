@@ -119,7 +119,29 @@ def _lignes_destination(destination):
     return lignes
 
 
-def _lignes_chaine(nom, accroche, destinations):
+def _lignes_ports(posture):
+    """Les règles d'une posture qui borne ses PORTS et rien d'autre.
+
+    Aucun `daddr` : c'est la différence, et elle se lit. Aucun mot de
+    famille non plus — la table est `inet`, donc une ligne sans adresse
+    vaut pour IPv4 et IPv6, là où une destination doit se séparer par
+    famille puisque ses réseaux le sont.
+
+    Les numéros repassent par la porte de `allowlist` : un port hors bornes
+    est refusé au même endroit qu'un port de symbole, quel que soit le
+    chemin qui l'a écrit.
+    """
+    lignes = []
+    for protocole, ports in posture.egress_ports:
+        if protocole not in allowlist.PROTOCOLS:
+            _refuse(f"« {posture.name} » : protocole « {protocole} » inconnu.")
+        propres = allowlist.checked_ports(posture.name, ports)
+        liste = ", ".join(str(port) for port in propres)
+        lignes.append(f"        {protocole} dport {{ {liste} }} accept")
+    return lignes
+
+
+def _lignes_chaine(nom, accroche, posture, destinations):
     lignes = [
         f"    chain {nom} {{",
         f"        type filter hook {accroche} priority 0; policy drop;",
@@ -129,6 +151,11 @@ def _lignes_chaine(nom, accroche, destinations):
         lignes.append('        oif "lo" accept')
     for destination in destinations:
         lignes.extend(_lignes_destination(destination))
+    # DANS LES DEUX CHAÎNES, comme les destinations : ce que la machine
+    # atteint, ce qu'elle relaie l'atteint aussi. Les réserver à `output`
+    # priverait les conteneurs de tout réseau sans que rien ne le dise.
+    if not destinations and posture is not None and posture.ports_bounded:
+        lignes.extend(_lignes_ports(posture))
     lignes.append("    }")
     return lignes
 
@@ -136,13 +163,18 @@ def _lignes_chaine(nom, accroche, destinations):
 def wants_rules(posture) -> bool:
     """Cette posture demande-t-elle un jeu de règles ?
 
-    DEUX RAISONS D'EN VOULOIR, ET UNE SEULE ÉTAIT CONSULTÉE. Une liste
+    TROIS RAISONS D'EN VOULOIR, ET UNE SEULE ÉTAIT CONSULTÉE. Une liste
     bornée en donne une : il y a des adresses à nommer. Une sortie COUPÉE
     en donne une autre, et le rendu la sert depuis toujours — « policy
     drop », la boucle locale, les connexions déjà établies. Ne demander que
     la première laissait « local-only » se déployer avec la sortie ENTIÈRE :
     la posture qui promet le plus était la seule à ne rien poser, et rien ne
     le disait.
+
+    Des PORTS bornés en donnent la troisième. Ce qui la refusait était
+    l'absence de FORME et non l'absence de politique : sans un rendu qui
+    ouvre des ports SANS nommer d'adresse, un fichier n'aurait pu que mimer
+    une liste blanche portant la sortie entière.
 
     Le prédicat vit ICI et non dans `destinations` parce que c'est ce
     fichier qui décide des refus : `wants_rules` est faux exactement là où
@@ -161,8 +193,9 @@ def wants_rules(posture) -> bool:
     if posture.egress == "nat":
         return False
     # Des destinations non bornées se liraient comme une liste blanche
-    # portant la sortie entière.
-    return bool(posture.destinations_bounded)
+    # portant la sortie entière — à moins que ce soient les PORTS qui
+    # soient bornés, auquel cas le rendu n'écrit aucune adresse.
+    return bool(posture.destinations_bounded or posture.ports_bounded)
 
 
 def _refuse_la_posture(posture, destinations):
@@ -176,6 +209,18 @@ def _refuse_la_posture(posture, destinations):
             " le nom de la posture dément."
         )
     if not posture.destinations_bounded:
+        # LA FORME « PORTS SEULS » : rien à nommer, donc une liste reçue
+        # est une contradiction et le refus tient. Vide, le rendu ouvre des
+        # ports vers n'importe où, ce que le fichier écrit en toutes
+        # lettres au lieu de le déguiser en liste blanche.
+        if posture.ports_bounded and not destinations:
+            if not posture.egress_ports:
+                _refuse(
+                    f"« {posture.name} » borne ses ports et n'en déclare"
+                    " aucun. Le fichier ne porterait que « policy drop »,"
+                    " sous un nom qui promet une sortie bornée."
+                )
+            return
         _refuse(
             f"« {posture.name} » borne ses ports, pas ses destinations. Un"
             " fichier de règles la ferait lire comme une liste blanche,"
@@ -285,7 +330,7 @@ def unenforced(posture, after_boot: bool = False) -> tuple:
         # rien n'arrive en retard. La sortie coupée, elle, en a une — ses
         # règles arrivent par le même canal tardif que les autres.
         return () if posture.egress == "nat" else fenetre
-    if not posture.destinations_bounded:
+    if not (posture.destinations_bounded or posture.ports_bounded):
         # Seul jeton : le reste porterait sur un rendu qui n'existe pas, et
         # une fenêtre ne s'ouvre pas sur des règles qu'on ne pose jamais.
         return (NO_RENDERING,)
@@ -300,12 +345,23 @@ def render_egress(posture, destinations=()) -> str:
     """
     destinations = _destinations_controlees(destinations)
     _refuse_la_posture(posture, destinations)
+    # L'EN-TÊTE DIT OÙ VIT LA SOURCE, et elle n'est pas la même selon la
+    # forme : ce fichier se relit sur la machine des mois plus tard, et y
+    # annoncer une liste de destinations enverrait chercher ce qu'une
+    # posture à ports bornés n'a pas.
+    source = (
+        "# déploiement, et les ports viennent de la posture."
+        if not destinations
+        and posture.ports_bounded
+        and not posture.destinations_bounded
+        else "# déploiement, et la liste des destinations vit dans la"
+        " configuration."
+    )
     lignes = [
         "#!/usr/sbin/nft -f",
         f"# Généré par ERPLibre — posture « {posture.name} ».",
         "# Ne pas modifier ici : le fichier est réécrit à chaque",
-        "# déploiement, et la liste des destinations vit dans la",
-        "# configuration.",
+        source,
         "",
         f"table inet {TABLE}",
         f"delete table inet {TABLE}",
@@ -315,6 +371,6 @@ def render_egress(posture, destinations=()) -> str:
     for index, (nom, accroche) in enumerate(CHAINES):
         if index:
             lignes.append("")
-        lignes.extend(_lignes_chaine(nom, accroche, destinations))
+        lignes.extend(_lignes_chaine(nom, accroche, posture, destinations))
     lignes.append("}")
     return "\n".join(lignes) + "\n"

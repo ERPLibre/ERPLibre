@@ -90,24 +90,32 @@ class TestLApercuMontreCeQueLaSpecPorte(unittest.TestCase):
     """Une spec réduite perdait une douzaine de champs, et l'aperçu
     affirmait montrer ce qui serait lancé."""
 
-    def apercu(self, **extra):
+    def apercu(self, todo=None, **extra):
         import io as tampon_io
         from contextlib import redirect_stdout
 
         spec = spec_de(**extra)
         tampon = tampon_io.StringIO()
         with redirect_stdout(tampon):
-            menu()._qemu_print_dry_run(spec)
+            (todo or menu())._qemu_print_dry_run(spec)
         return tampon.getvalue()
 
     def test_what_it_prints_is_what_the_gate_returns(self):
         """L'invariant qui ne peut pas se tromper sur l'orthographe d'une
-        option : la ligne imprimée EST l'argv de la porte, mot pour mot."""
+        option : la ligne imprimée EST l'argv de la porte, mot pour mot.
+
+        Le MÊME menu des deux côtés : l'empreinte du mot de passe porte un
+        sel tiré au hasard, et seule la mémoire du menu la rend identique
+        d'un appel à l'autre — c'est elle que l'aperçu et le déploiement
+        partagent."""
         import shlex
 
+        todo = menu()
         spec = spec_de(timezone="Etc/UTC", gpu3d=True, git_name="Banc")
-        attendu = menu()._qemu_deploy_parts_for(VM_UNE, spec, dry_run=True)
-        vu = self.apercu(timezone="Etc/UTC", gpu3d=True, git_name="Banc")
+        attendu = todo._qemu_deploy_parts_for(VM_UNE, spec, dry_run=True)
+        vu = self.apercu(
+            todo, timezone="Etc/UTC", gpu3d=True, git_name="Banc"
+        )
         lignes = [l.strip() for l in vu.splitlines() if "deploy_qemu" in l]
         self.assertEqual(1, len(lignes), vu)
         self.assertEqual(attendu, shlex.split(lignes[0]))
@@ -210,8 +218,12 @@ class TestChaqueVoieTransmetLaSpecEntiere(unittest.TestCase):
 
     def test_the_line_path_collects_the_options_first(self):
         """Avant la collecte, l'aperçu n'a rien à montrer et fabrique une
-        spec réduite : l'ordre EST la correction."""
-        corps = self._corps("_qemu_deploy")
+        spec réduite : l'ordre EST la correction.
+
+        L'ordre se lit dans la méthode qui DÉCIDE — celle que son appelant
+        entoure du rattrapage de la règle d'or, et qui porte donc les deux
+        voies."""
+        corps = self._corps("_qemu_deploy_decided")
         collecte = self._rang(corps, "_qemu_collect_options_cli")
         apercu = self._rang(corps, "_qemu_print_dry_run")
         self.assertIsNotNone(collecte)

@@ -79,15 +79,6 @@ def _lire(chemin) -> dict:
     return carnet if isinstance(carnet, dict) else {}
 
 
-def by_source() -> dict:
-    """{source: {rôle: entrée}} pour les trois fichiers.
-
-    Sert à DIRE d'où vient chaque adresse. Un écran qui les additionne sans
-    le dire laisse croire qu'il peut toutes les retirer.
-    """
-    return {source: _lire(chemin) for source, chemin in _fichiers().items()}
-
-
 def tracked_roles() -> tuple:
     """Les rôles écrits dans le fichier SUIVI, qu'il ne doit pas porter.
 

@@ -21,12 +21,12 @@ existent déjà.
 
 import json
 import os
+import re
 import sys
 import unittest
 
-sys.path.append(
-    os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-)
+RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(RACINE)
 
 from script.forge import api  # noqa: E402
 from script.forge.api import ForgeClient  # noqa: E402
@@ -389,6 +389,58 @@ class TestCeQueLeClientEnvoie(unittest.TestCase):
         appelant, session = client(ReponseFausse(200, "{}"))
         appelant.whoami()
         self.assertEqual(api.TIMEOUT, session.appels[0]["timeout"])
+
+
+class TestLaDocumentationSuitLeVocabulaire(unittest.TestCase):
+    """Le README recopie le vocabulaire clos des verdicts.
+
+    Une copie ne suit pas ce qu'elle copie. Un verdict ajouté à `VERDICTS`
+    et absent du README se lit comme un verdict qui n'existe pas ; un
+    verdict retiré du code et laissé dans le README envoie chercher une
+    cause qui ne peut plus se produire. Les deux se lisent comme une liste
+    complète, puisqu'une liste ne dit pas qu'elle est amputée.
+
+    Le contrôle porte sur la SOURCE bilingue et sur CHAQUE langue : rendre
+    à nouveau écraserait une correction faite dans un `.md`, et une moitié
+    complète masquerait l'autre.
+    """
+
+    @classmethod
+    def moities(cls):
+        chemin = os.path.join(RACINE, "script", "forge", "README.base.md")
+        with open(chemin, encoding="utf-8") as fichier:
+            source = fichier.read()
+        anglais, _sep, francais = source.partition("<!-- [fr] -->")
+        return anglais, francais
+
+    def test_every_verdict_is_named_in_both_languages(self):
+        for moitie in self.moities():
+            for verdict in api.VERDICTS:
+                with self.subTest(langue=moitie[:30], verdict=verdict):
+                    self.assertIn("`%s`" % verdict, moitie)
+
+    @classmethod
+    def paragraphe_du_vocabulaire(cls, moitie):
+        """Le bloc entier, pas la ligne.
+
+        Le vocabulaire s'étale sur trois lignes de texte rendu. Filtrer sur
+        la ligne qui porte un verdict connu ne lit qu'un tiers du bloc, et
+        un mot inventé sur l'une des deux autres échappe au contrôle.
+        """
+        for bloc in moitie.split("\n\n"):
+            if "`already-exists`" in bloc:
+                return bloc
+        raise AssertionError("le paragraphe du vocabulaire a disparu")
+
+    def test_no_verdict_is_named_that_the_code_dropped(self):
+        """Chaque mot-code du paragraphe doit exister dans le code."""
+        for moitie in self.moities():
+            bloc = self.paragraphe_du_vocabulaire(moitie)
+            cites = re.findall(r"`([a-z][a-z-]*)`", bloc)
+            self.assertEqual(len(api.VERDICTS), len(cites), bloc)
+            for mot in cites:
+                with self.subTest(langue=moitie[:30], mot=mot):
+                    self.assertIn(mot, api.VERDICTS)
 
 
 class TestLeModuleNAfficheRienEtNOuvrePasLeCoffre(unittest.TestCase):

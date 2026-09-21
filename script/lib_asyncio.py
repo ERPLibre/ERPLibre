@@ -44,27 +44,6 @@ async def run_command_get_output(*args, cwd=None):
     return stdout.decode()
 
 
-async def run_shell_get_output(cmd, cwd=None):
-    if cwd is not None:
-        process = await asyncio.create_subprocess_shell(
-            cmd,
-            # stdout must a pipe to be accessible as process.stdout
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
-    else:
-        process = await asyncio.create_subprocess_shell(
-            cmd,
-            # stdout must a pipe to be accessible as process.stdout
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    # Wait for the subprocess to finish
-    stdout, stderr = await process.communicate()
-    return stdout.decode()
-
-
 async def run_command_get_output_and_status(*args, cwd=None):
     if cwd is not None:
         process = await asyncio.create_subprocess_exec(

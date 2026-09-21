@@ -123,17 +123,3 @@ def record(verification, now=None) -> dict:
     data[os.path.abspath(verification.path)] = entree
     _ecrire(data)
     return entree
-
-
-def age_seconds(path, now=None):
-    """Depuis combien de temps ce fichier a-t-il été constaté ? None sinon.
-
-    None et zéro ne sont pas la même chose : l'un dit que personne n'a
-    jamais regardé, l'autre qu'on vient de le faire.
-    """
-    entree = entries().get(os.path.abspath(path))
-    if not entree:
-        return None
-    vu = datetime.strptime(entree["checked_at"], "%Y-%m-%dT%H:%M:%SZ")
-    vu = vu.replace(tzinfo=timezone.utc)
-    return int(((now or datetime.now(timezone.utc)) - vu).total_seconds())
