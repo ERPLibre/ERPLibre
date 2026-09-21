@@ -76,10 +76,14 @@ echo "Create docker ${ERPLIBRE_DOCKER_PROD_VERSION}"
 
 # Rewrite docker-compose
 ./script/docker/docker_update_version.py --version=${ERPLIBRE_VERSION} --base=${ERPLIBRE_DOCKER_BASE} --prod=${ERPLIBRE_DOCKER_PROD} --ignore_edit_docker
+# LU TOUT DE SUITE. « $? » ne survit pas à la commande suivante, et une
+# AFFECTATION en est une : lu après « ARGS=… », il valait le code de
+# l'affectation, toujours zéro — la garde ne pouvait donc jamais se
+# déclencher, et un docker-compose non réécrit partait en construction.
+retVal=$?
 
 ARGS="${ARGS} --build-arg ERPLIBRE_VERSION=${ERPLIBRE_VERSION_MAIN} --build-arg ODOO_VERSION=${ODOO_VERSION} --build-arg POETRY_VERSION=${POETRY_VERSION} --build-arg ERPLIBRE_IMAGE_NAME=${ERPLIBRE_VERSION} --build-arg PYTHON_VERSION=${PYTHON_VERSION}"
 
-retVal=$?
 if [[ $retVal -ne 0 ]]; then
   echo -e "${Red}Error${Color_Off} ./script/docker/docker_build.sh when execute docker_update_version.py"
   exit 1

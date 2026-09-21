@@ -481,13 +481,25 @@ class TestASkipThatHidesAFailure(unittest.TestCase):
         self.assertIn("loud", source[debut : debut + 400])
 
     def test_the_migration_asks_for_it_when_it_neutralized(self):
+        """`required` porte ce que la migration SAIT de cette base — et
+        elle doit le savoir DE LA BASE.
+
+        Cette épreuve épinglait le test du NOM, donc le défaut lui-même :
+        un nom se choisit à la main, et l'écran de duplication proposait
+        « <source>_neutralize » avant même de demander s'il fallait
+        neutraliser. Une copie qui déclinait gardait ce nom, passait ici
+        pour neutralisée, et l'on s'y authentifiait.
+
+        « database.is_neutralized » est le drapeau qu'Odoo pose lui-même.
+        """
         import inspect
 
         from script.todo.todo_upgrade import TodoUpgrade
 
         source = inspect.getsource(TodoUpgrade.prompt_smoke_public_url)
         self.assertIn("--internal-required", source)
-        self.assertIn('"_neutralize" in database_name', source)
+        self.assertIn("neutralize_state", source)
+        self.assertNotIn('"_neutralize" in database_name', source)
 
     def test_the_migration_says_UP_FRONT_what_will_be_browsed(self):
         # Un saut annoncé en une ligne à la fin d'un long rapport ne se

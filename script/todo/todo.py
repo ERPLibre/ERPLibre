@@ -195,10 +195,6 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "./script/todo/todo.json"
-CONFIG_OVERRIDE_FILE = "./private/todo/todo.json"
-LOGO_ASCII_FILE = "./script/todo/logo_ascii.txt"
-
 
 class TODO(
     # L'ordre est celui de la lecture, pas de la résolution : aucun nom n'est
@@ -4583,6 +4579,12 @@ class TODO(
         from script.todo import auto_ask
 
         lignes = rapport["groups"]["dead_field"]
+        # LE NOMBRE DE LA QUESTION EST CELUI DU DELETE. Le résumé
+        # ci-dessous compte des FICHIERS — il est dédoublonné par
+        # « store_fname » — et la suppression porte sur des LIGNES. Demander
+        # l'accord sur le premier pour effacer le second obtenait un « oui »
+        # sur un chiffre que rien ne reliait au geste.
+        ids = filestore.purge_dead_ids(rapport)
         sql = filestore.purge_dead_sql(rapport)
         if not sql:
             print(f"ℹ️  {t('Nothing to purge.')}")
@@ -4590,8 +4592,16 @@ class TODO(
         print()
         for texte in filestore.summarise(lignes):
             print(f"   {texte}")
+        if len(ids) != len(lignes):
+            # L'ÉCART SE DIT. Sans cette ligne, le résumé et la question
+            # portent deux nombres différents sans que rien n'explique
+            # lequel décide.
+            print(
+                f"   {len(lignes)} {t('file(s) shown')} →"
+                f" {len(ids)} {t('row(s) to delete')}"
+            )
         question = (
-            f"💬 {t('Delete these')} {len(lignes)}"
+            f"💬 {t('Delete these')} {len(ids)}"
             f" {t('attachment row(s) for good?')} (y/N) : "
         )
         if auto_ask.ask(question, default="n").strip().lower() not in (
@@ -4643,6 +4653,7 @@ class TODO(
         ).strip().lower() not in ("y", "yes", "o"):
             print(f"ℹ️  {t('Nothing was moved.')}")
             return False
+        dossier = filestore.nested_dir(rapport)
         deplaces, effaces = 0, 0
         for source, cible in remonter:
             os.makedirs(os.path.dirname(cible), exist_ok=True)
@@ -4651,13 +4662,29 @@ class TODO(
         for source, _cible in doublons:
             os.remove(source)
             effaces += 1
-        dossier = filestore.nested_dir(rapport)
-        if dossier:
-            shutil.rmtree(dossier, ignore_errors=True)
         print(
             f"✅ {deplaces} {t('moved up')}, {effaces}"
             f" {t('duplicate(s) removed')}."
         )
+        # ON NOMME, ON N'EFFACE PAS. Le plan ne connaît qu'une forme — un
+        # répertoire de deux caractères, puis des fichiers. Un fichier posé
+        # à la racine du nid, ou un niveau de plus, lui est invisible :
+        # jamais compté, jamais montré, jamais consenti. Le retirer d'un
+        # bloc les emportait, et « ignore_errors » taisait ce qui résistait
+        # pendant que la ligne de succès s'imprimait quand même.
+        restes = filestore.tidy_nested_leftovers(dossier)
+        if restes:
+            print(
+                f"⚠  {len(restes)}"
+                f" {t('file(s) the plan does not cover, left in place:')}"
+            )
+            for chemin in restes[:10]:
+                print(f"     {chemin}")
+            if len(restes) > 10:
+                print(f"     … {len(restes) - 10} {t('more')}")
+            print(f"   {t('Directory:')} {dossier}")
+        elif filestore.drop_empty_tree(dossier):
+            print(f"   {t('Nested directory removed (it was empty).')}")
         return True
 
     def _analyse_offer_install(self, database, rapport):
@@ -5374,6 +5401,18 @@ class TODO(
                 f"⚠  {t('Not neutralized: this copy can send mail and run')}"
                 f" {t('its crons from this machine.')}"
             )
+
+        # LA MÊME PORTE QUE L'AUTRE CHEMIN INTERACTIF, et elle vit dans une
+        # seule fonction : restaurer DÉTRUIT la base cible, dont le nom est
+        # du texte libre. Ce chemin-ci ne la consultait pas, et une base de
+        # production disparaissait sur une faute de frappe dans le nom par
+        # défaut — pendant que le chemin jumeau refusait la même base.
+        #
+        # APRÈS le suffixe de neutralisation : c'est le nom que db_restore
+        # efface. Garder celui qu'on a tapé protégerait une base que rien
+        # ne touche et laisserait tomber celle qu'on écrase.
+        if not self.db_manager._may_destroy(database):
+            return None
 
         status, _ = self.execute.exec_command_live(
             f"python3 ./script/database/db_restore.py -d {database} "

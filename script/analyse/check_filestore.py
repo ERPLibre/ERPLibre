@@ -46,6 +46,7 @@ Codes de sortie : 0 rien d'irrécupérable, 1 des trouvailles, 2 échec.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -591,6 +592,22 @@ def summarise(groupe):
     ]
 
 
+def purge_dead_ids(rapport) -> list:
+    """Les identifiants que la purge efface, triés et dédoublonnés.
+
+    UN SEUL ENDROIT LES COMPTE. L'écran demandait l'accord sur la taille
+    d'un GROUPE, qui compte des fichiers, tandis que le DELETE portait sur
+    ces identifiants-là, qui comptent des lignes. Les deux nombres
+    diffèrent par construction : `dead_ids` reçoit aussi les pièces dont le
+    fichier est présent mais le champ mort — elles n'entrent dans aucun
+    groupe — et il est rempli AVANT la déduplication par « store_fname ».
+
+    Un accord humain obtenu sur le petit nombre autorisait l'effacement du
+    grand, et rien dans la question ne le laissait voir.
+    """
+    return sorted(set(rapport.get("dead_ids") or []))
+
+
 def purge_dead_sql(rapport):
     """Le SQL qui efface les lignes dont le champ n'existe plus, ou "".
 
@@ -599,7 +616,7 @@ def purge_dead_sql(rapport):
     porte, et rejouer ce raisonnement en SQL laisserait la porte ouverte
     à effacer autre chose que ce qui a été montré.
     """
-    ids = sorted(set(rapport.get("dead_ids") or []))
+    ids = purge_dead_ids(rapport)
     if not ids:
         return ""
     liste = ", ".join(str(i) for i in ids)
@@ -655,6 +672,44 @@ def tidy_nested_plan(rapport):
                 (complet, os.path.join(rapport["root"], deux, nom))
             )
     return remonter, doublons
+
+
+def tidy_nested_leftovers(dossier) -> list:
+    """Ce qui reste sous le nid et que le plan ne couvre PAS.
+
+    `tidy_nested_plan` ne connaît qu'une forme : un répertoire de deux
+    caractères, puis des fichiers. Tout le reste — un fichier posé à la
+    racine du nid, un niveau de plus, un nid dans le nid — lui est
+    invisible. Il n'est donc ni compté, ni montré, ni consenti.
+
+    ON NOMME, ON N'EFFACE PAS : retirer le nid d'un bloc emportait ces
+    fichiers-là, et « ignore_errors » faisait taire ce qui résistait
+    pendant que la ligne de succès s'imprimait. Les chemins sont rendus
+    RELATIFS au nid : c'est ce qu'on lit à l'écran, et un chemin absolu y
+    porterait le compte de qui l'a lancé.
+    """
+    if not dossier or not os.path.isdir(dossier):
+        return []
+    restes = []
+    for racine, _dossiers, fichiers in os.walk(dossier):
+        for nom in sorted(fichiers):
+            restes.append(os.path.relpath(os.path.join(racine, nom), dossier))
+    return sorted(restes)
+
+
+def drop_empty_tree(dossier) -> bool:
+    """Retire le nid s'il ne porte plus AUCUN fichier. Vrai s'il est parti.
+
+    Sans « ignore_errors » : un répertoire qui résiste est une nouvelle, et
+    la taire ferait imprimer la ligne de succès sur un rangement qui n'a
+    pas eu lieu.
+    """
+    if not dossier or not os.path.isdir(dossier):
+        return False
+    if tidy_nested_leftovers(dossier):
+        return False
+    shutil.rmtree(dossier)
+    return True
 
 
 def main(argv=None):

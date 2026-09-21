@@ -21,6 +21,7 @@ import glob
 import os
 import re
 import subprocess
+import tempfile
 import unittest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -103,6 +104,64 @@ class TestExecutableBit(unittest.TestCase):
                 imported.add(node.module)
         self.assertIn("subprocess", imported)
         self.assertNotIn("stat", imported)
+
+
+class TestAucuneGardeNeLitLeCodeDUneAffectation(unittest.TestCase):
+    """« $? » ne survit pas à la commande suivante, et une AFFECTATION en
+    est une.
+
+    Lu après « ARGS=… », il valait le code de l'affectation — toujours zéro.
+    La garde qui suivait ne pouvait donc jamais se déclencher, et un
+    docker-compose non réécrit partait en construction sans un mot.
+
+    Une commande préfixée d'une variable — « EL_PHASE=setup ./script.sh » —
+    n'est PAS une affectation : son « $? » est bien celui de la commande, et
+    le détecteur doit l'écarter. C'est le faux positif qui l'éprouve.
+    """
+
+    # Une affectation PURE : un nom, une valeur, et RIEN d'autre.
+    PURE = re.compile(r"""^\s*\w+=(?:"[^"]*"|'[^']*'|[^\s;&|]*)\s*$""")
+    CAPTURE = re.compile(r"^\s*\w+=\$\?\s*$")
+
+    @classmethod
+    def gardes_mortes(cls, racine):
+        out = []
+        for dossier, _sous, fichiers in os.walk(racine):
+            for nom in sorted(fichiers):
+                if not nom.endswith(".sh"):
+                    continue
+                chemin = os.path.join(dossier, nom)
+                with open(chemin, encoding="utf-8", errors="replace") as fic:
+                    lignes = fic.read().splitlines()
+                for i, ligne in enumerate(lignes):
+                    if not cls.CAPTURE.match(ligne):
+                        continue
+                    j = i - 1
+                    while j >= 0 and (
+                        not lignes[j].strip()
+                        or lignes[j].strip().startswith("#")
+                    ):
+                        j -= 1
+                    if j >= 0 and cls.PURE.match(lignes[j]):
+                        out.append(f"{os.path.relpath(chemin, REPO)}:{i + 1}")
+        return out
+
+    def test_the_detector_tells_an_assignment_from_a_prefixed_command(self):
+        """SANS CE CONTRÔLE, le détecteur peut être cassé dans un sens ou
+        dans l'autre sans que rien ne le dise : trop large, il accuse les
+        commandes préfixées ; trop étroit, il ne voit plus rien."""
+        bac = tempfile.mkdtemp()
+        mort = os.path.join(bac, "mort.sh")
+        with open(mort, "w", encoding="utf-8") as fic:
+            fic.write('faire_un_truc\nARGS="x"\nretVal=$?\n')
+        vivant = os.path.join(bac, "vivant.sh")
+        with open(vivant, "w", encoding="utf-8") as fic:
+            fic.write("EL_PHASE=setup ./script.sh\nretVal=$?\n")
+        vus = self.gardes_mortes(bac)
+        self.assertEqual(["mort.sh:3"], [v.split("/")[-1] for v in vus])
+
+    def test_no_shell_script_reads_the_status_of_an_assignment(self):
+        self.assertEqual([], self.gardes_mortes(os.path.join(REPO, "script")))
 
 
 class TestAucunDrapeauAccepteEnSilence(unittest.TestCase):

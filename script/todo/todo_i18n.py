@@ -5969,6 +5969,62 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "file(s) the plan does not cover, left in place:": {
+        "fr": "fichier(s) hors du plan, laissés en place :",
+        "en": "file(s) the plan does not cover, left in place:",
+    },
+    "more": {
+        "fr": "de plus",
+        "en": "more",
+    },
+    "Nested directory removed (it was empty).": {
+        "fr": "Dossier imbriqué retiré (il était vide).",
+        "en": "Nested directory removed (it was empty).",
+    },
+    "Locale": {
+        "fr": "Locale",
+        "en": "Locale",
+    },
+    "left alone:": {
+        "fr": "laissée(s) telle(s) quelle(s) :",
+        "en": "left alone:",
+    },
+    "file(s) shown": {
+        "fr": "fichier(s) montré(s)",
+        "en": "file(s) shown",
+    },
+    "row(s) to delete": {
+        "fr": "ligne(s) à supprimer",
+        "en": "row(s) to delete",
+    },
+    "Could not read the neutralization flag.": {
+        "fr": "Le drapeau de neutralisation n'a pas pu être lu.",
+        "en": "Could not read the neutralization flag.",
+    },
+    "does not carry the neutralization flag, so there is": {
+        "fr": "ne porte pas le drapeau de neutralisation, donc il n'y a",
+        "en": "does not carry the neutralization flag, so there is",
+    },
+    "no test user to sign in with.": {
+        "fr": "aucun utilisateur de test avec qui se connecter.",
+        "en": "no test user to sign in with.",
+    },
+    "This name says neutralized, and it is not.": {
+        "fr": "Ce nom annonce une neutralisation qui n'a pas eu lieu.",
+        "en": "This name says neutralized, and it is not.",
+    },
+    "This VM gets NO egress rule:": {
+        "fr": "Cette VM n'aura AUCUNE règle de sortie :",
+        "en": "This VM gets NO egress rule:",
+    },
+    "It runs with free egress, despite its posture.": {
+        "fr": "Elle tourne en sortie libre, malgré sa posture.",
+        "en": "It runs with free egress, despite its posture.",
+    },
+    "margin for what will be installed": {
+        "fr": "marge pour ce qui sera installé",
+        "en": "margin for what will be installed",
+    },
     "Total RAM (all running):": {
         "fr": "RAM totale (toutes actives) :",
         "en": "Total RAM (all running):",
@@ -13213,9 +13269,9 @@ TRANSLATIONS = {
         "fr": "Rien n'est détruit sans avoir lu d'abord.",
         "en": "Nothing is destroyed without reading first.",
     },
-    "Drill database: overwriting it is safe.": {
-        "fr": "Base d'exercice : l'écraser ne coûte rien.",
-        "en": "Drill database: overwriting it is safe.",
+    "Drill database: destroying it is safe.": {
+        "fr": "Base d'exercice : la détruire ne coûte rien.",
+        "en": "Drill database: destroying it is safe.",
     },
     "This database will be ERASED: ": {
         "fr": "Cette base va être EFFACÉE : ",
