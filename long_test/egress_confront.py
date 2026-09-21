@@ -419,6 +419,17 @@ def detruire(nom_moteur):
         print(f"  {' '.join(argv)} -> {code} {sortie.strip()[:120]}")
 
 
+# CE QUE RENDENT LES SORTIES, et le vocabulaire est clos. 0 : l'épreuve est
+# allée jusqu'au bout. OUTILLAGE : de quoi la mener manque, rien n'a été
+# tenté. NON_CONCLUANTE : quelque chose l'a arrêtée AVANT qu'elle mesure —
+# un refus de charger les règles, des témoins qui ne répondent pas.
+# Confondre 0 et NON_CONCLUANTE ferait lire « concluant » sur une épreuve
+# qui n'a rien confronté, et l'épilogue invite à lever un jeton de posture
+# sur cette lecture.
+SORTIE_OUTILLAGE = 20
+SORTIE_NON_CONCLUANTE = 30
+
+
 def main():
     analyseur = argparse.ArgumentParser(description=__doc__)
     analyseur.add_argument("--dry-run", action="store_true")
@@ -446,7 +457,7 @@ def _sur_lima(args):
     if not shutil.which(lima.LIMACTL) and not args.dry_run:
         print(f"Outillage absent : {lima.LIMACTL}")
         print("Rien n'a été tenté.")
-        return 20
+        return SORTIE_OUTILLAGE
     if args.detruire:
         retirer_le_terrain()
         return 0
@@ -457,7 +468,7 @@ def _sur_lima(args):
         return 0
     if not poser_les_temoins():
         print("  ✗ les témoins ne sont pas debout : rien n'est concluant.")
-        return 0
+        return SORTIE_NON_CONCLUANTE
     print("\n── 1 et 2 : ce qui passe, ce qui ne passe pas, DANS l'invité ──")
     verdicts = {}
     for etiquette, adresse in (
@@ -493,7 +504,7 @@ def _sur_lhote(args):
     if manques and not args.dry_run:
         print("Outillage absent : " + ", ".join(manques))
         print("Rien n'a été tenté.")
-        return 20
+        return SORTIE_OUTILLAGE
     if nom_moteur is None:
         # À blanc, l'absence de moteur ne doit pas arrêter l'affichage :
         # c'est justement la station où l'on relit ce qui SERAIT fait.
@@ -504,7 +515,16 @@ def _sur_lhote(args):
         return 0
 
     texte = regles_de_banc()
-    poser(texte, args.dry_run)
+    # LE REFUS ARRÊTE TOUT. « tapez OUI » n'est pas une formalité : sans
+    # règles chargées, les sondes mesurent une machine ordinaire et rendent
+    # deux fois « passe ». Cela se lit comme une confrontation concluante
+    # alors que rien n'a été confronté — et l'épilogue invite à lever un
+    # jeton de posture sur cette lecture.
+    #
+    # À BLANC, `poser` rend faux par construction : l'affichage EST le but,
+    # et la suite continue pour montrer ce qui serait fait.
+    if not poser(texte, args.dry_run) and not args.dry_run:
+        return SORTIE_NON_CONCLUANTE
     question_1_et_2(nom_moteur, args.dry_run)
     if not args.dry_run:
         question_3(nom_moteur, args.dry_run)
