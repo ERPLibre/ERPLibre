@@ -9,9 +9,10 @@ produit d'un geste — créer une société, cocher une case, charger un plan
 comptable. Une migration n'en fait aucun : le nettoyage des orphelins les
 emporte et rien ne les remet.
 
-Mesuré sur une chaîne 12 → 18 réelle : 1 liste de prix en 16, 0 en 17,
-alors que le groupe compte six membres ; 1 modèle de rapprochement en 12,
-0 dès la 13, pour trois journaux de trésorerie.
+Sur une chaîne 12 → 18, la liste de prix disparaît à la 17 et le modèle de
+rapprochement dès la 13, alors que le groupe des listes et les journaux de
+trésorerie, eux, sont toujours là. Ce sont ces deux marches qu'il faut
+connaître : l'absence y devient normale à lire et anormale à garder.
 
 Ce que l'outil doit surtout savoir faire, c'est SE TAIRE : sans le groupe
 des listes de prix, sans journal de trésorerie, ou sur une base qui n'a
@@ -19,9 +20,12 @@ ni vente ni comptabilité, l'absence est normale et le dire serait du
 bruit qu'on apprendrait à ignorer.
 """
 
+import io
 import os
 import sys
 import unittest
+from contextlib import redirect_stdout
+from unittest import mock
 
 sys.path.append(
     os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -142,6 +146,87 @@ class TestTheReport(unittest.TestCase):
         self.assertIn("0 → 1", texte)
         self.assertIn("0 → 4", texte)
         self.assertNotIn("--apply", texte)
+
+
+class TestCeQueLeVerbeRendVRAIMENT(unittest.TestCase):
+    """La charge était compilée et grepée ; personne n'appelait `main`.
+
+    Or c'est `main` qui DÉCIDE : il refuse une base d'une autre version
+    avant qu'un Odoo y écrive, il distingue un rapport en échec d'un
+    rapport vide, et surtout il juge la réparation sur le compte D'APRÈS —
+    annoncer « recréé » sans regarder ferait découvrir l'absence au
+    premier devis. Aucun de ces quatre codes n'était tenu.
+
+    Ni base ni shell Odoo : les deux portes du module sont bouchonnées.
+    """
+
+    def lancer(self, argv, rapport=None, souci=None, leve=None):
+        appels = {}
+
+        def faux_shell(base, config, charge, echo=None):
+            appels["charge"] = charge
+            if leve:
+                raise RuntimeError(leve)
+            return rapport or {}
+
+        with mock.patch.object(
+            conf.database_cleanup,
+            "require_matching_version",
+            return_value=souci,
+        ):
+            with mock.patch.object(
+                conf.database_cleanup, "run_shell", faux_shell
+            ):
+                with redirect_stdout(io.StringIO()) as tampon:
+                    code = conf.main(argv)
+        return code, tampon.getvalue(), appels
+
+    def test_a_database_of_another_version_is_refused_before_anything(self):
+        """Un Odoo d'une autre version ÉCRIT dans la base avant d'échouer :
+        le refus doit tomber avant que le shell soit ouvert."""
+        code, _ecran, appels = self.lancer(
+            ["-d", "base"], souci="version qui ne correspond pas"
+        )
+        self.assertEqual(2, code)
+        self.assertNotIn("charge", appels)
+
+    def test_a_shell_that_blows_up_is_not_a_success(self):
+        code, _e, _a = self.lancer(["-d", "base"], leve="shell mort")
+        self.assertEqual(2, code)
+
+    def test_an_error_in_the_report_is_not_a_success(self):
+        code, _e, _a = self.lancer(
+            ["-d", "base"], rapport={"error": "sql cassé"}
+        )
+        self.assertEqual(2, code)
+
+    def test_nothing_missing_is_the_only_zero_without_apply(self):
+        code, _e, _a = self.lancer(["-d", "base"], rapport={})
+        self.assertEqual(0, code)
+
+    def test_reporting_only_never_pushes_the_live_payload(self):
+        """Sans --apply, la charge poussée doit être celle qui n'écrit
+        pas : l'inverse réparerait une base qu'on voulait seulement lire."""
+        _c, _e, appels = self.lancer(["-d", "base"], rapport={})
+        self.assertIn("DRY = True", appels["charge"])
+
+    def test_applying_pushes_the_live_payload(self):
+        _c, _e, appels = self.lancer(["-d", "base", "--apply"], rapport={})
+        self.assertIn("DRY = False", appels["charge"])
+
+    def test_a_repair_that_left_something_behind_is_not_a_success(self):
+        """Le compte D'APRÈS : annoncer « recréé » sans regarder ferait
+        découvrir l'absence au premier devis."""
+        # Le groupe est actif et rien n'a été recréé : la liste manque
+        # AVANT comme APRÈS. C'est le seul cas où « --apply » a tourné et
+        # n'a pourtant rien laissé.
+        rapport = {
+            "pricelist_group": True,
+            "pricelist_before": 0,
+            "pricelist_after": 0,
+        }
+        code, _e, _a = self.lancer(["-d", "base", "--apply"], rapport=rapport)
+        self.assertEqual(1, code)
 
 
 class TestTheOrmScript(unittest.TestCase):

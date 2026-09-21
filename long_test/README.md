@@ -6,7 +6,9 @@ them, and take hours. They live here and **not** in `test/`, which the unit
 runner sweeps: `./script/test/run_unit_test.sh` must stay runnable in seconds
 on any machine, including one without virtualisation.
 
-Run them from the menu — `TODO › Execute › Test › Long tests` — or directly.
+The two depth descents run from the menu — `TODO › Execute › Test ›
+Long tests`. The two confrontations run **directly**: the menu does not
+carry them, and one of them cuts this machine's network.
 
 ## lima_confront.py — the backend nobody has ever run
 
@@ -43,6 +45,14 @@ start-up.
 It needs privilege: loading a ruleset and reading a table both require it, and
 `nft -c`, which only parses, already fails without it. It exits 20 where the
 tooling is missing.
+
+**It cuts THIS machine's egress.** The ruleset loads into the host's own
+tables — no namespace — with `policy drop` on output and forward, and the one
+named destination is a documentation address that does not exist. An ssh
+session drops with everything else, including the one reading the output. It
+asks for a typed `OUI` before loading, and a **disposable** machine is the
+only reasonable place to run it. `--dry-run` renders the file and loads
+nothing.
 
 ```
 ./long_test/egress_confront.py             # the three questions

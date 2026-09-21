@@ -78,18 +78,23 @@ class TestCeQuiEstRenduEtCeQuiNeLEstPas(unittest.TestCase):
     def test_a_posture_that_asks_for_nothing_renders_nothing(self):
         """La plupart des déploiements sont là, et ne doivent rien payer.
 
-        « local-only » N'EN FAIT PLUS PARTIE, et cette épreuve l'y rangeait
-        — elle épinglait donc le défaut comme le comportement attendu. Une
-        sortie coupée n'a aucune adresse à nommer, mais elle veut des
-        règles : « policy drop » est précisément ce qu'elle promet. Sans
-        elles, la posture la plus confinée se déployait avec la sortie
-        entière.
+        DEUX POSTURES EN SONT SORTIES, et cette épreuve les y rangeait —
+        elle épinglait donc le défaut comme le comportement attendu. Une
+        sortie coupée n'a aucune adresse à nommer mais veut des règles :
+        « policy drop » est précisément ce qu'elle promet. Des ports bornés
+        n'ont pas d'adresse non plus et en veulent aussi. Ne reste que la
+        sortie libre, qui ne promet rien et n'a donc rien à tenir.
         """
-        for nom in ("open", "connected"):
-            with self.subTest(posture=nom):
-                self.assertEqual(
-                    "", menu(CARNET)._qemu_egress_rules(spec_de(nom))
-                )
+        self.assertEqual("", menu(CARNET)._qemu_egress_rules(spec_de("open")))
+
+    def test_bounded_ports_render_without_asking_the_address_book(self):
+        """Le contrôle qui manque quand une posture cesse de ne rien
+        rendre : sans lui, la retirer de la boucle ci-dessus ne prouverait
+        rien de ce qu'elle fait désormais."""
+        rendu = menu({})._qemu_egress_rules(spec_de("connected"))
+        self.assertIn("policy drop", rendu)
+        self.assertIn("dport", rendu)
+        self.assertNotIn("daddr", rendu)
 
     def test_a_cut_egress_does_render_and_drops(self):
         """Le contrôle qui manquait. Ce que le déploiement pose désormais

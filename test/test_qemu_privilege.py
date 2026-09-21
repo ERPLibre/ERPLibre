@@ -185,6 +185,10 @@ class LUriEstToujoursExplicite(unittest.TestCase):
         for chemin in (
             "script/todo/qemu_manage.py",
             "script/todo/qemu_install_monitor.py",
+            # LE TROU N'ÉTAIT PAS DANS LE GARDE, IL ÉTAIT DANS SA LISTE.
+            # Ce fichier compose le dernier message d'un déploiement, et
+            # c'est là que la commande conseillée oubliait l'URI.
+            "script/todo/qemu_deploy.py",
         ):
             source = Path(chemin).read_text(encoding="utf-8")
             for num, ligne in enumerate(source.splitlines(), 1):

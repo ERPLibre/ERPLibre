@@ -6,8 +6,10 @@
 CE QUE CE MODULE EXISTE POUR EMPÊCHER. Le registre s'interdit un « nom
 rassurant » — il a retiré une posture qui déclarait une liste blanche sans
 liste, parce qu'elle « donnait l'assurance du contraire ». Un profil qui
-afficherait « VM Connecté » sans dire que rien n'applique sa politique
-vendrait exactement cette assurance-là, un étage plus haut.
+afficherait un nom accueillant sans dire ce que sa posture applique
+vendrait exactement cette assurance-là, un étage plus haut. Aucune posture
+du registre n'est aujourd'hui dans ce cas, et une épreuve le tient : le
+garde doit rester sans emploi.
 
 `rules.unenforced()` est le mécanisme que le dépôt a bâti contre ça, et rien
 ne le lisait. Ces épreuves tiennent qu'un profil le LIT et le DIT.
@@ -18,14 +20,44 @@ Ni réseau, ni VM : tout est pur.
 import os
 import sys
 import unittest
+from unittest import mock
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
 from script.posture import registry as R  # noqa: E402
 from script.posture import rules  # noqa: E402
+from script.posture import spec as S  # noqa: E402
 from script.todo import todo_i18n  # noqa: E402
 from script.todo import vm_profiles as V  # noqa: E402
+
+# UNE POSTURE QUI DÉCLARE SANS APPLIQUER. Le registre n'en porte plus
+# aucune : « restricted » en était une et il l'a retirée, et « connected »
+# borne désormais ses ports pour de vrai. La branche qui la nomme reste,
+# parce que c'est elle qui empêcherait la SUIVANTE de passer pour un
+# confinement. On la fabrique donc, plutôt que de laisser le garde sans
+# épreuve.
+DECLAREE_SANS_MECANISME = R.Posture(
+    name="declaree",
+    network_kind="nat",
+    egress="allowlist",
+    destinations_bounded=False,
+    ports_bounded=False,
+    dns="host",
+    egress_enforced=False,
+    covers_containers=False,
+    forward_agent=False,
+    host_keys="throwaway",
+    cloud=False,
+    needs_forge=False,
+    name_suffix="-declaree",
+)
+
+
+def inscrite(posture=DECLAREE_SANS_MECANISME):
+    """La pose au registre le temps d'un bloc : les deux fonctions sous
+    épreuve prennent un NOM et le résolvent là."""
+    return mock.patch.dict(R.POSTURES, {posture.name: posture})
 
 
 class CasDeProfil(unittest.TestCase):
@@ -107,13 +139,22 @@ class TestCeQueChaqueProfilApplique(CasDeProfil):
         phrase = V.enforcement("open")
         self.assertIn("Nothing is confined", phrase)
 
-    def test_the_one_nothing_applies_says_INTENTION_ONLY(self):
+    def test_a_posture_that_declares_without_applying_says_so(self):
         """LE PIRE DES DEUX MONDES, et ce que ce module existe pour
         montrer : une politique déclarée sans mécanisme se comporte comme
         l'absence de politique, en donnant l'assurance du contraire."""
-        phrase = V.enforcement("connected")
+        with inscrite():
+            phrase = V.enforcement("declaree")
         self.assertIn("INTENTION ONLY", phrase)
         self.assertIn("free egress", phrase)
+
+    def test_no_registered_posture_declares_without_applying(self):
+        """Le garde ci-dessus doit rester SANS EMPLOI : une posture du
+        registre qui l'atteindrait serait un nom rassurant, et le registre
+        en a déjà retiré un."""
+        for nom in R.posture_names():
+            with self.subTest(posture=nom):
+                self.assertNotIn("INTENTION ONLY", V.enforcement(nom))
 
     def test_the_two_that_install_rules_say_so(self):
         for nom in ("paranoid", "local-only"):
@@ -121,8 +162,14 @@ class TestCeQueChaqueProfilApplique(CasDeProfil):
                 self.assertIn("Rules are written", V.enforcement(nom))
 
     def test_the_three_answers_do_not_collide(self):
-        """Trois états, et les confondre est tout le défaut."""
-        phrases = {V.enforcement(n) for n in R.posture_names()}
+        """Trois états, et les confondre est tout le défaut. Le troisième
+        n'a plus de porteur au registre : il se fabrique, il ne se
+        suppose pas."""
+        with inscrite():
+            phrases = {
+                V.enforcement(n)
+                for n in list(R.posture_names()) + ["declaree"]
+            }
         self.assertEqual(3, len(phrases), phrases)
 
     def test_an_unknown_posture_deploys_nothing_and_says_it(self):
@@ -157,7 +204,15 @@ class TestLesEcartsSontDitsEtNonTus(CasDeProfil):
             V.gap_sentence("jeton-jamais-declare")
 
     def test_the_posture_nothing_applies_has_a_gap(self):
-        self.assertIn(rules.NO_RENDERING, V.gaps("connected"))
+        with inscrite():
+            self.assertIn(rules.NO_RENDERING, V.gaps("declaree"))
+
+    def test_the_bounded_ports_have_the_two_of_their_mechanism(self):
+        """Elle rend désormais : ses écarts sont ceux d'un jeu posé."""
+        ecarts = V.gaps("connected")
+        self.assertIn(rules.RELOAD_FAILURE_UNSEEN, ecarts)
+        self.assertIn(rules.CONTAINERS_UNPROVEN, ecarts)
+        self.assertNotIn(rules.NO_RENDERING, ecarts)
 
     def test_the_bounded_allowlist_has_the_two_of_its_mechanism(self):
         ecarts = V.gaps("paranoid")
@@ -210,19 +265,81 @@ class TestCeQueLeSelecteurOffre(CasDeProfil):
         self.assertIsNone(V.by_label("Jamais vu"))
 
 
+class TestCeQueLeSelecteurOffreAUneDonneeReelle(CasDeProfil):
+    """La liste offerte et la règle d'or disent la MÊME chose.
+
+    Un sélecteur qui propose une posture que le déploiement refusera fait
+    taper douze réponses de plus avant de le dire. Le filtre est donc
+    DÉDUIT du même prédicat que la garde, jamais d'une seconde liste.
+    """
+
+    def test_without_the_question_the_list_is_what_it_was(self):
+        """Sans argument, rien ne change : les appelants d'avant le filtre
+        continuent d'offrir les quatre profils."""
+        self.assertEqual(V.choices(), V.choices(real_data=False))
+
+    def test_real_data_keeps_only_what_the_registry_allows(self):
+        for _libelle, posture in V.choices(real_data=True):
+            with self.subTest(posture=posture):
+                self.assertTrue(R.allows_real_data(R.get_posture(posture)))
+
+    def test_today_only_the_cut_egress_carries_real_data(self):
+        """Les trois autres échouent sur `egress_enforced` ou sur
+        `destinations_bounded` — le prédicat les déduit, personne ne les
+        déclare."""
+        self.assertEqual(
+            [("local-webui", "local-only")], V.choices(real_data=True)
+        )
+
+    def test_the_offered_never_form_a_couple_the_guard_refuses(self):
+        """L'invariant du filtre : ce qu'il offre, la garde l'accepte. Les
+        deux lisent `allows_real_data`, et cette épreuve tient qu'ils ne
+        divergent pas."""
+        for _libelle, posture in V.choices(real_data=True):
+            with self.subTest(posture=posture):
+                self.assertEqual(
+                    S.OK,
+                    S.check({S.POSTURE_KEY: posture, S.REAL_DATA_KEY: True}),
+                )
+
+    def test_what_is_withheld_is_the_rest_and_nothing_else(self):
+        """Une partition : rien ne se perd et rien ne se double. Et chaque
+        moitié garde l'ordre du registre, du plus libre au plus contraint —
+        un écran qui les réaffiche ne réordonne rien."""
+        tous = V.choices()
+        offerts = V.choices(real_data=True)
+        retenus = V.withheld(real_data=True)
+        self.assertEqual(sorted(tous), sorted(offerts + retenus))
+        self.assertEqual([c for c in tous if c in offerts], offerts)
+        self.assertEqual([c for c in tous if c in retenus], retenus)
+
+    def test_nothing_is_withheld_when_the_answer_is_no(self):
+        self.assertEqual([], V.withheld(real_data=False))
+
+    def test_the_withheld_keep_their_label_so_a_screen_can_name_them(self):
+        """Elles s'affichent avec leur raison plutôt que de disparaître :
+        une liste qui se tait laisse croire que la posture n'existe pas."""
+        libelles = [libelle for libelle, _p in V.withheld(real_data=True)]
+        self.assertEqual(["Sandbox", "VM Connecté", "VM paranoid"], libelles)
+
+
 class TestQuiDemandeUnCarnetDAdresses(CasDeProfil):
     """Un carnet vide fait REFUSER le déploiement, et le dire devant
-    l'écran vaut mieux que de le découvrir sur la machine."""
+    l'écran vaut mieux que de le découvrir sur la machine.
+
+    UNE SEULE FONCTION répond, et c'est celle qui NOMME ce qui manque : un
+    prédicat booléen à côté d'elle disait moins en attirant autant.
+    """
 
     def test_only_the_bounded_allowlist_asks_for_one(self):
         demandeurs = [
-            nom for nom in R.posture_names() if V.bounded_addresses(nom)
+            nom for nom in R.posture_names() if V.missing_addresses(nom, {})
         ]
         self.assertEqual(["paranoid"], demandeurs)
 
     def test_the_cut_egress_asks_for_none(self):
         """Elle ne joint rien : lui demander des adresses serait absurde."""
-        self.assertFalse(V.bounded_addresses("local-only"))
+        self.assertEqual((), V.missing_addresses("local-only", {}))
 
 
 class TestLeModuleNAfficheRien(CasDeProfil):
@@ -287,9 +404,12 @@ class TestLaLigneQuUnEcranEcrit(CasDeProfil):
                     self.assertIn(V.gap_sentence(jeton), V.screen_line(nom))
 
     def test_the_line_that_matters_most_says_it_plainly(self):
-        """« VM Connecté » est le seul profil dont le nom rassure et dont
-        rien ne tient la promesse."""
-        self.assertIn("INTENTION ONLY", V.screen_line("connected"))
+        """La ligne d'une posture dont le nom rassure et dont rien ne tient
+        la promesse. Aucune n'est dans ce cas au registre, et c'est
+        justement ce que la ligne doit rendre visible le jour où une y
+        entre."""
+        with inscrite():
+            self.assertIn("INTENTION ONLY", V.screen_line("declaree"))
 
     def test_it_reads_in_both_languages(self):
         """Une phrase non traduite passerait inaperçue en anglais et
@@ -736,6 +856,56 @@ class TestLeCoupleProfilEtInstallation(CasDeProfil):
         phrase = V.INSTALL_SENTENCES[V.SERVES_NOTHING]
         self.assertIn("no Odoo", phrase)
         self.assertIn("serve nothing", phrase)
+
+
+class TestLaMoitieInstallationDuProfilServi(CasDeProfil):
+    """« local-webui » tenait sa posture et ne servait rien.
+
+    Le nom promet une interface servie ; la sortie coupée est tenue depuis
+    longtemps, et l'autre moitié — la rendre joignable depuis l'hôte —
+    n'existait pas. Le renvoi de port était écrit et sans appelant.
+
+    DEUX CONDITIONS, et aucune ne se déduit de l'autre. Le profil doit
+    promettre une interface, et l'installation choisie doit poser Odoo :
+    renvoyer un port vers une machine qui ne sert rien promet une page qui
+    n'existe pas.
+    """
+
+    ODOO = "install_odoo_all_version"
+
+    def test_the_profile_that_promises_a_screen_gets_its_forward(self):
+        renvois = V.web_forward("local-only", self.ODOO)
+        self.assertEqual((("local", "18069 localhost:8069"),), renvois)
+
+    def test_a_profile_that_promises_nothing_gets_none(self):
+        """Lui en donner un ferait croire à une interface que son nom ne
+        promet pas."""
+        for nom in ("open", "connected", "paranoid"):
+            with self.subTest(posture=nom):
+                self.assertEqual((), V.web_forward(nom, self.ODOO))
+
+    def test_a_promise_without_odoo_gets_none_either(self):
+        """C'est le même couple que l'écran avertit déjà : le profil promet
+        une interface, l'installation n'en pose aucune."""
+        self.assertEqual((), V.web_forward("local-only", "install_dev"))
+        self.assertEqual((), V.web_forward("local-only", ""))
+
+    def test_the_ports_are_the_ones_the_repository_already_chose(self):
+        """18069 sur l'hôte, 8069 dans l'invité : c'est le couple que
+        `web_access` emploie déjà. En choisir un autre ferait deux
+        conventions pour la même chose."""
+        import inspect
+
+        from script.vm import verbs
+
+        signature = inspect.signature(verbs.web_access)
+        self.assertEqual(V.WEB_HOST_PORT, signature.parameters["port"].default)
+        self.assertEqual(
+            V.WEB_GUEST_PORT, signature.parameters["service"].default
+        )
+
+    def test_an_unknown_posture_gets_none_and_does_not_raise(self):
+        self.assertEqual((), V.web_forward("jamais-vue", self.ODOO))
 
 
 class TestLaMarqueEstNommeeUneFois(CasDeProfil):
