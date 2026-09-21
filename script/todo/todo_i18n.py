@@ -1127,25 +1127,135 @@ TRANSLATIONS = {
         "fr": "🔒 SSH - Configurer nginx + SSL",
         "en": "🔒 SSH - Configure nginx + SSL",
     },
-    "Remote host (user@hostname or hostname): ": {
-        "fr": "Hôte distant (user@hostname ou hostname) : ",
-        "en": "Remote host (user@hostname or hostname): ",
+    "Layers": {"fr": "Couches", "en": "Layers"},
+    "Host key not known yet.": {
+        "fr": "Clé d'hôte pas encore connue.",
+        "en": "Host key not known yet.",
     },
-    "SSH user (default: erplibre): ": {
-        "fr": "Utilisateur SSH (défaut: erplibre) : ",
-        "en": "SSH user (default: erplibre): ",
+    "Record it, then check again.": {
+        "fr": "L'enregistrer, puis revérifier.",
+        "en": "Record it, then check again.",
     },
-    "SSH port (default: 22): ": {
-        "fr": "Port SSH (défaut: 22) : ",
-        "en": "SSH port (default: 22): ",
+    "No answer.": {"fr": "Aucune réponse.", "en": "No answer."},
+    "Check the address and the SSH access.": {
+        "fr": "Vérifier l'adresse et l'accès SSH.",
+        "en": "Check the address and the SSH access.",
     },
-    "SSH key path (default: ~/.ssh/id_rsa, empty for none): ": {
-        "fr": "Chemin de la clé SSH (défaut: ~/.ssh/id_rsa, vide pour aucune) : ",
-        "en": "SSH key path (default: ~/.ssh/id_rsa, empty for none): ",
+    "SSH gets through.": {"fr": "SSH passe.", "en": "SSH gets through."},
+    "ERPLibre is not at that path.": {
+        "fr": "ERPLibre n'est pas à ce chemin.",
+        "en": "ERPLibre is not at that path.",
     },
-    "Remote path (default: ~/erplibre_deploy_2): ": {
-        "fr": "Chemin distant (défaut: ~/erplibre_deploy_2) : ",
-        "en": "Remote path (default: ~/erplibre_deploy_2): ",
+    "Push the files, then install.": {
+        "fr": "Pousser les fichiers, puis installer.",
+        "en": "Push the files, then install.",
+    },
+    "Unexpected verdict.": {
+        "fr": "Verdict inattendu.",
+        "en": "Unexpected verdict.",
+    },
+    "Elevation available.": {
+        "fr": "Élévation disponible.",
+        "en": "Elevation available.",
+    },
+    "Root account.": {"fr": "Compte root.", "en": "Root account."},
+    "No passwordless sudo.": {
+        "fr": "Pas de sudo sans mot de passe.",
+        "en": "No passwordless sudo.",
+    },
+    "Two verbs need it; the nine others do not.": {
+        "fr": "Deux verbes en ont besoin ; les neuf autres, non.",
+        "en": "Two verbs need it; the nine others do not.",
+    },
+    "Remember it on the target? (y/N)": {
+        "fr": "La retenir sur la cible ? (o/N)",
+        "en": "Remember it on the target? (y/N)",
+    },
+    "A make target is required!": {
+        "fr": "Une cible make est obligatoire !",
+        "en": "A make target is required!",
+    },
+    "A domain name is required!": {
+        "fr": "Un nom de domaine est obligatoire !",
+        "en": "A domain name is required!",
+    },
+    "SSH - Choose the target machine": {
+        "fr": "🎯 SSH - Choisir la machine visée",
+        "en": "🎯 SSH - Choose the target machine",
+    },
+    "Deployment targets": {
+        "fr": "Cibles de déploiement",
+        "en": "Deployment targets",
+    },
+    "No target selected yet.": {
+        "fr": "Aucune cible retenue pour l'instant.",
+        "en": "No target selected yet.",
+    },
+    "None yet: [a] adds the first one.": {
+        "fr": "Aucune pour l'instant : [a] ajoute la première.",
+        "en": "None yet: [a] adds the first one.",
+    },
+    "Add": {"fr": "Ajouter", "en": "Add"},
+    "Edit": {"fr": "Modifier", "en": "Edit"},
+    "Delete": {"fr": "Supprimer", "en": "Delete"},
+    "Forget the selection": {
+        "fr": "Oublier la sélection",
+        "en": "Forget the selection",
+    },
+    "Selection forgotten.": {
+        "fr": "Sélection oubliée.",
+        "en": "Selection forgotten.",
+    },
+    "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "Target name (lowercase, digits, - or _)": {
+        "fr": "Nom de la cible (minuscules, chiffres, - ou _)",
+        "en": "Target name (lowercase, digits, - or _)",
+    },
+    "Address: user@host, or a ~/.ssh/config alias": {
+        "fr": "Adresse : compte@hôte, ou un alias de ~/.ssh/config",
+        "en": "Address: user@host, or a ~/.ssh/config alias",
+    },
+    "Jump host (empty: connect directly)": {
+        "fr": "Machine de rebond (vide : connexion directe)",
+        "en": "Jump host (empty: connect directly)",
+    },
+    "SSH port (empty: let ssh decide)": {
+        "fr": "Port SSH (vide : laisser ssh décider)",
+        "en": "SSH port (empty: let ssh decide)",
+    },
+    "Private key path (empty: ~/.ssh/config decides)": {
+        "fr": "Chemin de la clé privée (vide : ~/.ssh/config décide)",
+        "en": "Private key path (empty: ~/.ssh/config decides)",
+    },
+    "Remote path where ERPLibre lives": {
+        "fr": "Chemin distant où vit ERPLibre",
+        "en": "Remote path where ERPLibre lives",
+    },
+    "Domain served over HTTPS (empty: not served)": {
+        "fr": "Domaine servi en HTTPS (vide : pas servi)",
+        "en": "Domain served over HTTPS (empty: not served)",
+    },
+    "Admin email for the certificate": {
+        "fr": "Courriel d'administration pour le certificat",
+        "en": "Admin email for the certificate",
+    },
+    "Target refused: ": {"fr": "Cible refusée : ", "en": "Target refused: "},
+    "Target saved: ": {
+        "fr": "Cible enregistrée : ",
+        "en": "Target saved: ",
+    },
+    "It becomes the selected target.": {
+        "fr": "Elle devient la cible retenue.",
+        "en": "It becomes the selected target.",
+    },
+    "Delete target": {"fr": "Supprimer la cible", "en": "Delete target"},
+    "Target deleted.": {"fr": "Cible supprimée.", "en": "Target deleted."},
+    "Not deletable here: this target comes from a shared configuration"
+    " file.": {
+        "fr": "Pas supprimable ici : cette cible vient d'un fichier de"
+        " configuration partagé.",
+        "en": "Not deletable here: this target comes from a shared"
+        " configuration file.",
     },
     "Make target to run remotely: ": {
         "fr": "Cible make à exécuter à distance : ",

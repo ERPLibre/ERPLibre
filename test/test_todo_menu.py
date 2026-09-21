@@ -650,6 +650,9 @@ class TestDeploySshMenuNumbering(MenuCoherence, unittest.TestCase):
         "SSH - Run make target": "_deploy_ssh_make",
         "SSH - Install systemd service": "_deploy_ssh_install_systemd",
         "SSH - Configure nginx": "_deploy_ssh_install_nginx",
+        # Déclarée par « method » : son rang n'entre pas dans le calcul, et
+        # c'est pourquoi les onze qui la précèdent n'ont pas bougé.
+        "SSH - Choose the target machine": "_deploy_ssh_targets",
     }
 
 
