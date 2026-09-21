@@ -150,3 +150,30 @@ test_addons_project_sale_link_specific_file:
 	./odoo_bin.sh db --drop --database test_addons_project_sale_link
 	./script/addons/install_addons_dev.sh test_addons_project_sale_link project_sale_link
 	./test.sh -d test_addons_project_sale_link --db-filter test_addons_project_sale_link -i project_sale_link --test-file=odoo18.0/addons/OCA_project/project_sale_link/tests/test_project_sale_link.py
+
+##############################
+# Gardes du module event table #
+##############################
+# Le venv Odoo porte les DEUX versions dans son nom : le retrouver par un
+# glob plutôt que le composer, la version de Python changeant sans que ces
+# cibles n'aient à le savoir.
+PYTHON_ODOO = $(shell ls -d .venv.odoo*/bin/python 2>/dev/null | head -1)
+EVENT_TABLE = odoo$(ODOO_VERSION)/addons/ERPLibre_erplibre_addons/erplibre_event_table
+
+# Les trois gardes qui tournent en quelques secondes, sans navigateur ni
+# base : la géométrie pure sous node, la compilation de chaque gabarit Owl,
+# et le jumelage de visual_table_size avec son équivalent JavaScript. make
+# interrompt la recette au premier code non nul, donc l'un OU l'autre suffit
+# à faire échouer la cible.
+.PHONY: test_event_table
+test_event_table:
+	node $(EVENT_TABLE)/static/tests/run_geometry_under_node.mjs
+	node $(EVENT_TABLE)/static/tests/check_templates_compile.mjs
+	$(PYTHON_ODOO) script/test/run_module_unit_test.py erplibre_event_table.tests.test_visual_table_size_matches_js
+
+# Les mêmes, plus la suite de composants dans un vrai navigateur. Elle est
+# la seule à voir un rendu, et la seule à exiger une instance qui répond et
+# un Firefox installé — d'où sa cible propre, hors de la boucle d'écriture.
+.PHONY: test_event_table_full
+test_event_table_full: test_event_table
+	./.venv.erplibre/bin/python $(EVENT_TABLE)/selenium/run_hoot_tests.py --url http://127.0.0.1:18069 --headless --use_firefox_driver --no_dark_mode
