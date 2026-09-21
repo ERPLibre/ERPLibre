@@ -65,11 +65,12 @@ le voisinage de l'hôte (`ip neigh`), qui ne demande rien à l'invité.
 
 ## Le menu, entrée par entrée
 
-Les dix-sept entrées de QEMU/KVM ont leur équivalent. Quatre sont le **même
-code**, parce que c'est le même travail : rouvrir le suivi d'installation, le
-tunnel bureau distant, l'émulateur Android et le catalogue d'images. Elles
-atteignent les invités Proxmox par les entrées `~/.ssh/config` que l'entrée 13
-écrit, avec l'hôte Proxmox en ProxyJump.
+Chaque entrée de QEMU/KVM a son équivalent — les compter ici vieillirait
+dès qu'une s'ajoute, et c'est arrivé. Quatre sont le **même code**, parce que
+c'est le même travail : rouvrir le suivi d'installation, le tunnel bureau
+distant, l'émulateur Android et le catalogue d'images. Elles atteignent les
+invités Proxmox par les entrées `~/.ssh/config` qu'écrit l'entrée de
+configuration SSH, avec l'hôte Proxmox en ProxyJump.
 
 ```text
 [1] Déployer une VM        [8]  Redimensionner un disque   [15] Émulateur Android *

@@ -111,9 +111,9 @@ def used_names(content):
 RE_DEF = re.compile(r"^\s*\$([a-zA-Z][\w-]*)\s*:", re.M)
 
 # Une variable peut aussi être LIÉE sans être définie : paramètre de mixin ou
-# de fonction, variable de boucle. Les ignorer donnait six faux positifs sur
-# le seul fichier mesuré — $bottom, $counter, $off, $on, $right, $value — et
-# un détecteur qui crie à tort finit ignoré, ce qui vaut moins que rien.
+# de fonction, variable de boucle. Les ignorer fait crier le détecteur sur des
+# noms parfaitement définis, et un détecteur qui crie à tort finit ignoré, ce
+# qui vaut moins que rien.
 RE_PARAM = re.compile(r"@(?:mixin|function)\s+[\w-]+\s*\(([^)]*)\)")
 RE_EACH = re.compile(r"@each\s+([^i]+?)\s+in\s", re.S)
 RE_FOR = re.compile(r"@for\s+\$([\w-]+)\s+from\s")
@@ -361,10 +361,9 @@ def running_odoo_dir():
 def reset_supported(odoo_dir=None):
     """Cette version sait-elle faire reset_asset ?
 
-    Mesuré : `web_editor.assets` et `reset_asset` n'existent qu'à partir de
-    13.0. Lancé sous odoo12.0, l'appel lève « KeyError: 'web_editor.assets' »
-    et ne change rien — c'est arrivé sur une vraie migration, et le correctif
-    a été cru appliqué alors qu'il avait échoué.
+    `web_editor.assets` et `reset_asset` n'existent qu'à partir de 13.0.
+    Lancé sous odoo12.0, l'appel lève « KeyError: 'web_editor.assets' » et
+    ne change rien : le correctif se croit appliqué alors qu'il a échoué.
 
     On regarde les sources plutôt qu'un numéro : c'est ce qui répondra.
     """

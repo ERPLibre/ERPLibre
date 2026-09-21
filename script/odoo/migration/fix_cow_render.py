@@ -10,20 +10,20 @@ d'héritage de l'autre. C'est celui qui arrête la migration elle-même, et
 c'est pour cela qu'on le cherche AVANT de partir.
 
 Deux autres modes la laissent finir sans un mot et n'apparaissent qu'à
-l'ouverture de la page. Mesurés sur une migration 12 → 18 réelle :
+l'ouverture de la page, sur une chaîne 12 → 18 :
 
   ancrage manquant   une vue héritière cherche `//t[@t-set='x']` dans la
-                     copie. Le module a gagné cet ancrage en chemin — ici
-                     au palier 14 → 15 — et sa propre vue héritière a
-                     suivi ; la copie, elle, n'est jamais réécrite,
-                     c'est une page d'utilisateur. Quatre paliers plus
-                     tard /contact rendait 500, et rien ne l'avait dit.
+                     copie. Le module gagne cet ancrage en chemin — au
+                     palier 14 → 15 — et sa propre vue héritière suit ;
+                     la copie, elle, n'est jamais réécrite, c'est une
+                     page d'utilisateur. Quatre paliers plus tard elle
+                     rend 500, et rien ne l'a annoncé.
 
   t-call pendant     la copie appelle un gabarit que la version cible ne
-                     livre plus. `website.company_description` a disparu
-                     en 18 : les deux copies qui l'appelaient rendaient
-                     500, l'une d'elles pour CETTE raison seulement une
-                     fois son ancrage remis.
+                     livre plus. `website.company_description` n'existe
+                     plus en 18 : une copie qui l'appelle rend 500, et
+                     pour l'une d'elles c'est la seule raison qui reste
+                     une fois son ancrage remis.
 
 Le premier se répare : l'ancrage existe dans la vue module de même clé,
 on le remet là où le module le place. Le second ne se répare pas — un
@@ -89,8 +89,8 @@ def arch_is_jsonb(database):
 
 # `arch_db` est un jsonb d'UNE ENTRÉE PAR LANGUE depuis la 17. N'en lire
 # qu'une — et surtout n'en écrire qu'une — laisse la page cassée dans
-# toutes les autres : mesuré sur /contact, réparé en en_US et toujours en
-# 500 parce que le site rend en fr_CA.
+# toutes les autres : réparer en en_US laisse un 500 là où le site rend
+# en fr_CA.
 def arch_expr(jsonb):
     return "arch_db" if jsonb else "json_build_object('', arch_db)"
 
@@ -376,8 +376,7 @@ def write_arch_sql(vue_id, langues, jsonb):
     """La mise à jour, TOUTES les langues d'un coup.
 
     Réécrire une seule entrée du jsonb laisse la page cassée dans les
-    autres : mesuré sur /contact, réparé en en_US et toujours en 500
-    parce que le site rend en fr_CA.
+    autres : réparer en en_US laisse un 500 là où le site rend en fr_CA.
 
     Dollar-quoting, parce qu'un arch porte une apostrophe à presque
     chaque attribut. Le marqueur est assez long pour qu'aucun gabarit ne

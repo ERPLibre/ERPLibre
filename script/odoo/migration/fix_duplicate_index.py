@@ -7,17 +7,15 @@
 Odoo 17 a changé sa convention de nommage : `make_index_name` rend
 désormais `{table}__{colonne}_index` — deux soulignés — là où les
 versions d'avant écrivaient `{table}_{colonne}_index`. Le nouvel index
-est créé, l'ancien reste. Mesuré sur une chaîne 12 → 18 :
-
-    test_neutralize (12)   1 paire
-    _16                    3
-    _17                  370      ← la bascule
-    _18                  365
+est créé, l'ancien reste. Le palier 17 fait la bascule : les paliers
+d'avant ne laissent qu'une poignée de paires, celui-ci en laisse plusieurs
+centaines, et le 18 les garde toutes.
 
 Inerte à la lecture, coûteux à l'écriture : chaque INSERT et chaque
-UPDATE sur ces tables entretient deux arbres B identiques. Ici 9,6 Mo et
-une base vide ; sur une production le coût croît avec les lignes. C'est
-le seul défaut de cette famille qui empire tout seul.
+UPDATE sur ces tables entretient deux arbres B identiques. Sur une base
+vide, les doublons pèsent déjà une dizaine de mégaoctets ; le coût croît
+ensuite avec les lignes. C'est le seul défaut de cette famille qui empire
+tout seul.
 
 Ce que l'outil REFUSE de toucher, et pourquoi :
 

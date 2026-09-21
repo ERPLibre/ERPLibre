@@ -19,11 +19,14 @@ import threading
 import time
 from typing import NamedTuple
 
+from script.lib_valid import ValidationError
 from script.posture import destinations as posture_destinations
 from script.posture import plan as posture_plan
 from script.posture import rules as posture_rules
 from script.posture import spec as posture_spec
-from script.todo import deploy_verify
+from script.todo import (
+    deploy_verify,
+)
 from script.todo import devstack_report as report
 from script.todo import (
     egress_book,
@@ -1654,7 +1657,26 @@ class QemuDeployMixin:
         # donnerait un déploiement réussi derrière lequel la fuite ne se
         # verrait jamais.
         carnet = egress_book.read(self.config_file)
-        cibles = posture_destinations.destinations_for(posture, carnet)
+        try:
+            cibles = posture_destinations.destinations_for(posture, carnet)
+        except ValidationError as manque:
+            # LE TYPE QUE LES APPELANTS GUETTENT. Le refus est légitime —
+            # déployer sans ces adresses ferait découvrir le manque SUR la
+            # machine — mais il traversait le programme entier jusqu'au
+            # Makefile : le déploiement libvirt ne guette que les refus de
+            # backend, et le menu Lima ne guettait rien.
+            #
+            # Et il dit OÙ réparer : nommer le rôle manquant sans dire où
+            # le poser laisse chercher dans vingt-trois écrans.
+            chemin = self.menu_path(
+                "run",
+                "prompt_execute",
+                "prompt_execute_deploy",
+                "prompt_execute_egress_book",
+            )
+            raise vm_backend.VmBackendError(
+                f"{manque} {t('Set it in:')} {chemin}"
+            ) from manque
         return posture_rules.render_egress(posture, cibles)
 
     @contextlib.contextmanager
@@ -1712,8 +1734,14 @@ class QemuDeployMixin:
         vérifie /dev/kvm puis énumère les domaines par virsh — et laisser
         passer une autre description produirait un déploiement libvirt sous
         un faux nom, ou une exception au milieu du travail. Le refus nomme
-        le backend, et il est inatteignable par l'écran d'aujourd'hui : il
-        attend celui de demain.
+        le backend.
+
+        IL EST ATTEIGNABLE. La description porte le backend RÉSOLU depuis la
+        préférence, et la préférence se règle à l'écran : « pve » ou « lima »
+        y arrivent depuis n'importe quel hôte, et « automatique » suffit sur
+        un poste Apple, où la résolution rend « lima ». L'écran de la
+        préférence dit donc ce refus, faute de quoi il se lit comme une
+        panne.
 
         `sudo_n` : la commande commence par « sudo -n ». Sans ticket valide,
         sudo échoue alors au lieu d'afficher une invite de mot de passe, que

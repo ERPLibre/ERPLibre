@@ -52,7 +52,16 @@ BACKENDS = (LIBVIRT, PVE, LIMA)
 # épreuves unitaires. « Non éprouvé » ne veut pas dire douteux : il veut dire
 # NON CONFRONTÉ, et un écran qui ne le dit pas laisse croire l'inverse. La
 # même distinction que les pilotes de tunnel portent déjà.
-PROVEN = {LIBVIRT: True, PVE: True, LIMA: False}
+#
+# Ce que « éprouvé » exige : le cycle de vie ENTIER joué contre l'outil —
+# créer, démarrer, inventorier, exécuter une suite, arrêter, supprimer — et
+# non une lecture du code. Un défaut ne se voit pas autrement : la
+# description d'instance que le dépôt rendait se relisait parfaitement en
+# YAML et ne démarrait pas, le champ « arch » ayant son propre vocabulaire.
+#
+# La valeur par défaut d'un backend ABSENT de cette table est « non
+# éprouvé » : le doute penche du côté qui ne promet rien.
+PROVEN = {LIBVIRT: True, PVE: True, LIMA: True}
 
 
 def is_proven(backend) -> bool:

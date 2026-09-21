@@ -65,28 +65,60 @@ ODOO_BACKUP_URL="${ODOO_URL}/web/database/backup"
 # --- Curl Command to Download Database ---
 echo "Starting Odoo database backup for '${DATABASE_NAME}' from '${ODOO_BACKUP_URL}' to path '${OUTPUT_FILE_PATH}'..."
 
+# Le nom DÉFINITIF ne paraît qu'au bout. Une redirection crée le fichier
+# avant le premier octet : un transfert coupé laisserait sinon, sous le nom
+# d'une sauvegarde, une archive tronquée — au seul endroit où l'on ira
+# chercher le jour d'une panne.
+PARTIAL_FILE_PATH="${OUTPUT_FILE_PATH}.partial"
+trap 'rm -f -- "$PARTIAL_FILE_PATH"' EXIT
+
+# --fail : SANS LUI, curl rend ZÉRO sur un 404 ou un 500 et écrit la page
+# d'erreur dans le fichier. Le script annonçait alors « successfully » sur
+# quelques dizaines d'octets de HTML nommés « .zip », et la sauvegarde
+# manquante se découvrait le jour de la restauration.
+CURL_COMMON=(
+  --fail
+  --location
+  -X POST
+  -F "master_pwd=$MASTER_PWD"
+  -F "name=$DATABASE_NAME"
+  -F "backup_format=$BACKUP_FORMAT"
+  -o "$PARTIAL_FILE_PATH"
+)
+
 if [ "$QUIET_MODE" = false ]; then
-  curl -X POST \
-    -F "master_pwd=$MASTER_PWD" \
-    -F "name=$DATABASE_NAME" \
-    -F "backup_format=$BACKUP_FORMAT" \
-    -o "$OUTPUT_FILE_PATH" \
-    --progress-bar \
-    "$ODOO_BACKUP_URL"
+  curl "${CURL_COMMON[@]}" --progress-bar "$ODOO_BACKUP_URL"
 else
-  curl -X POST \
-    -F "master_pwd=$MASTER_PWD" \
-    -F "name=$DATABASE_NAME" \
-    -F "backup_format=$BACKUP_FORMAT" \
-    -o "$OUTPUT_FILE_PATH" \
-    "$ODOO_BACKUP_URL"
+  curl "${CURL_COMMON[@]}" --silent --show-error "$ODOO_BACKUP_URL"
 fi
+CURL_STATUS=$?
 
 # --- Verification ---
-if [[ $? -eq 0 ]]; then
-  echo "Backup completed successfully!"
-  echo "File saved to: $OUTPUT_FILE_PATH"
-else
-  echo "Backup failed. Please check the logs." >&2
+if [[ $CURL_STATUS -ne 0 ]]; then
+  echo "Backup failed (curl exited ${CURL_STATUS}). Nothing was kept." >&2
   exit 1
 fi
+
+# LE CODE HTTP NE SUFFIT PAS. Odoo répond 200 avec une page d'erreur quand
+# le mot de passe maître est refusé : « --fail » ne voit rien, et seul le
+# contenu tranche. Un zip commence par « PK ».
+if [[ ! -s "$PARTIAL_FILE_PATH" ]]; then
+  echo "Backup failed: the server sent an empty body." >&2
+  exit 1
+fi
+if [[ "$BACKUP_FORMAT" == "zip" ]] \
+  && [[ "$(head -c 2 -- "$PARTIAL_FILE_PATH")" != "PK" ]]; then
+  echo "Backup failed: the server sent no archive." >&2
+  echo "First bytes: $(head -c 120 -- "$PARTIAL_FILE_PATH")" >&2
+  exit 1
+fi
+
+# Renommage dans le même répertoire, donc atomique : il n'existe aucun
+# instant où le nom final désigne autre chose qu'une archive complète.
+if ! mv -f -- "$PARTIAL_FILE_PATH" "$OUTPUT_FILE_PATH"; then
+  echo "Backup failed: could not put the archive in place." >&2
+  exit 1
+fi
+
+echo "Backup completed successfully!"
+echo "File saved to: $OUTPUT_FILE_PATH"

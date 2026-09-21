@@ -4,10 +4,10 @@
 
 """Une migration peut réussir et servir quand même des 500.
 
-Mesuré sur une vraie migration 12 → 13 : tous les modules chargés, aucune
-erreur au journal, et pourtant deux pages publiques sur trente-trois
-répondaient 500 — un billet de blogue et /contactus. Rien ne les distinguait
-avant de les demander.
+Sur une migration 12 → 13, tous les modules se chargent, le journal ne porte
+aucune erreur, et deux pages publiques sur trente-trois répondent quand même
+500 — un billet de blogue et /contactus. Rien ne les distingue avant de les
+demander.
 
 La liste vient du sitemap, celle qu'Odoo publie pour les moteurs de
 recherche. Elle ne se lit PAS depuis « odoo-bin shell » : enumerate_pages()
@@ -237,10 +237,10 @@ class TestTheCulpritViewsAreNamed(unittest.TestCase):
         self.assertIn("2841", rebuilt[0][2])
 
     def test_both_the_parent_and_the_child_are_proposed(self):
-        # LE défaut mesuré sur /contactus : le parent (3281) était IDENTIQUE
-        # à sa vue module, et c'est l'enfant (3282) qui portait l'arch
-        # périmée. Ne nommer que le parent envoyait réinitialiser une copie
-        # qui allait déjà bien, et la page restait en 500.
+        # Le défaut typique, sur /contactus : le parent (3281) est
+        # IDENTIQUE à sa vue module, et c'est l'enfant (3282) qui porte
+        # l'arch périmée. Ne nommer que le parent envoie réinitialiser une
+        # copie qui va déjà bien, et la page reste en 500.
         lst_failure = [("http://h/contactus", 500, [], "http://h/contactus")]
         log = ["[view_id: 3282, model: n/a, parent_id: 3281]"]
         rebuilt = smoke.attach_missing_parents(lst_failure, log)
@@ -264,10 +264,10 @@ class TestARenderFailureNamesItsTemplate(unittest.TestCase):
     """Une QWebException ne porte pas de bloc [view_id …] : elle nomme le
     gabarit.
 
-    Mesuré au palier 17 : une copie figée appelait `submenu.clean_url()`,
-    méthode renommée `_clean_url()` par la version. 34 URL sur 37 rendaient
-    500, et l'outil répondait « aucune vue parente nommée » — il ne lisait
-    que le contexte d'héritage, absent ici.
+    Au palier 17, une copie figée appelle `submenu.clean_url()`, méthode
+    renommée `_clean_url()` par la version : 34 URL sur 37 rendent 500, et
+    l'outil qui ne lit que le contexte d'héritage — absent ici — répond
+    « aucune vue parente nommée ».
     """
 
     def test_the_template_line_is_read(self):
@@ -328,9 +328,9 @@ class TestTheServerIsKilledForReal(unittest.TestCase):
     """« ./run.sh » est un script bash : il ne transmet pas les signaux."""
 
     def test_it_starts_its_own_process_group(self):
-        # Sans cela, terminate() tue l'enveloppe et laisse odoo-bin vivant.
-        # Mesuré : six serveurs orphelins, un par essai, et les essais
-        # suivants interrogeaient sans le savoir celui d'avant.
+        # Sans cela, terminate() tue l'enveloppe et laisse odoo-bin vivant :
+        # un serveur orphelin par essai, et les essais suivants interrogent
+        # sans le savoir celui d'avant.
         import inspect
 
         source = inspect.getsource(smoke.start_server)

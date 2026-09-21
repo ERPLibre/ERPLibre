@@ -35,9 +35,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from script.todo import lima_menu, todo_i18n  # noqa: E402
 from script.todo.lima_menu import LimaMenuMixin  # noqa: E402
-from script.todo.lima_menu import (TOOL_SENTENCES, config_path, instance_line,
-                                   tool_sentence)
+from script.todo.lima_menu import (
+    TOOL_SENTENCES,
+    config_path,
+    instance_line,
+    tool_sentence,
+)
 from script.todo.todo_i18n import t  # noqa: E402
+from script.vm import backend as vm_backend  # noqa: E402
 from script.vm import lima as L  # noqa: E402
 from script.vm import lima_install as I  # noqa: E402
 
@@ -65,6 +70,19 @@ class MenuDeBanc(LimaMenuMixin):
 
     def _is_yes(self, reponse):
         return (reponse or "").strip().lower() in ("o", "oui", "y", "yes")
+
+    # Le composeur de chemin de menu vit sur TODO, comme la table qu'il
+    # lit. Le banc tire la VRAIE méthode plutôt que d'en inventer une :
+    # un chemin bouchonné passerait sur un menu renommé, ce qui est
+    # exactement ce que ce composeur existe pour attraper.
+    @staticmethod
+    def menu_path(*fonctions):
+        import sys
+
+        sys.argv = ["todo.py"]
+        from script.todo.todo import TODO
+
+        return TODO.menu_path(*fonctions)
 
     # Les deux voisins que le vrai menu tient du mixin de déploiement : le
     # banc déclare ce qu'il fournit plutôt que de monter tout TODO.
@@ -517,6 +535,56 @@ class TestLEcranNePrometPasPlusQueLaTable(CasDeMenu):
                 self.assertTrue(lima_menu.TOOL_SENTENCES.get(refus))
 
 
+class TestUnCarnetVideNeTuePasLeMenu(CasDeMenu):
+    """Choisir « paranoid » sans carnet tuait le programme.
+
+    La posture nomme sept rôles ; sans adresse pour eux, le rendu des
+    règles refuse — à juste titre, car déployer sans elles ferait
+    découvrir le manque SUR la machine. Mais la levée traversait le menu,
+    le répartiteur et la boucle principale jusqu'au Makefile : trace de
+    pile, « Error 1 », et la session perdue.
+
+    Rien n'est créé à ce stade. Le refus se montre et rend la main au
+    menu, où le carnet est à deux entrées de là.
+    """
+
+    def creer(self, leve):
+        menu = MenuDeBanc()
+        menu._lima_ask_name = lambda: "essai"
+        menu._deploy_ask_posture = lambda: {"posture": "paranoid"}
+        menu._lima_image = lambda arch: "http://hote.invalid/i.img"
+
+        def refuser(_fragment):
+            raise leve
+
+        menu._qemu_egress_rules = refuser
+        tampon = _io.StringIO()
+        with contextlib.redirect_stdout(tampon):
+            menu._lima_create()
+        return tampon.getvalue()
+
+    def test_a_refused_posture_does_not_kill_the_program(self):
+        ecran = self.creer(
+            vm_backend.VmBackendError("« dns-resolver » n'a pas d'adresse")
+        )
+        self.assertIn("✗", ecran)
+        self.assertIn("dns-resolver", ecran)
+
+    def test_nothing_is_written_when_the_rules_are_refused(self):
+        """Une configuration écrite sans ses règles serait une instance
+        qui promet un confinement qu'elle n'a pas."""
+        menu = MenuDeBanc()
+        menu._lima_ask_name = lambda: "essai"
+        menu._deploy_ask_posture = lambda: {"posture": "paranoid"}
+        menu._lima_image = lambda arch: "http://hote.invalid/i.img"
+        menu._qemu_egress_rules = lambda _f: (_ for _ in ()).throw(
+            vm_backend.VmBackendError("pas d'adresse")
+        )
+        with contextlib.redirect_stdout(_io.StringIO()):
+            menu._lima_create()
+        self.assertEqual([], menu.execute.joues)
+
+
 class TestLeNomEstValide(CasDeMenu):
     def demander(self, saisie):
         menu = MenuDeBanc()
@@ -806,13 +874,31 @@ class TestLesDeuxEntreesQuiNeDifferentQueParUnMot(CasDeMenu):
             texte = sortie(menu.prompt_execute_lima)
         self.assertIn("not found", texte)
 
-    def test_the_screen_says_the_backend_is_unproven_every_pass(self):
-        """Une note vue au premier passage ne tient pas au dixième."""
+    def test_an_unproven_backend_is_flagged_on_every_pass(self):
+        """Une note vue au premier passage ne tient pas au dixième.
+
+        Le backend est POSÉ non éprouvé : le sien l'a été depuis, et une
+        épreuve qui attendrait la note dans le dépôt tel qu'il est ne
+        garderait plus rien — juste au moment où un autre backend pourrait
+        arriver sans confrontation.
+        """
+        menu = MenuDeBanc()
+        menu.fill_help_info = lambda choix: "> "
+        with patch.dict(vm_backend.PROVEN, {vm_backend.LIMA: False}):
+            with patch.object(lima_menu.click, "prompt", side_effect=["0"]):
+                texte = sortie(menu.prompt_execute_lima)
+        self.assertIn("*", texte)
+
+    def test_a_proven_backend_carries_no_note(self):
+        """Contrôle positif, et c'est l'état RÉEL du dépôt : la note part
+        d'elle-même, sans qu'un écran soit retouché. La garder affichée
+        enverrait choisir un autre backend pour une raison éteinte."""
+        self.assertTrue(vm_backend.is_proven(vm_backend.LIMA))
         menu = MenuDeBanc()
         menu.fill_help_info = lambda choix: "> "
         with patch.object(lima_menu.click, "prompt", side_effect=["0"]):
             texte = sortie(menu.prompt_execute_lima)
-        self.assertIn("*", texte)
+        self.assertNotIn("*", texte)
 
 
 if __name__ == "__main__":

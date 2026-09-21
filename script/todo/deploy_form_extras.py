@@ -527,9 +527,9 @@ class ExtrasMixin:
 
         Ce que ces trois partagent, et qui n'est pas évident : poser
         « value= » au montage fait émettre un Changed que Textual délivre
-        APRÈS coup, et un verrou temporel ne l'attrape pas — mesuré, les
-        champs de chaque VM se retrouvaient surchargés dès l'affichage et le
-        profil x1..x4 devenait inopérant. On compare donc à ce que le modèle
+        APRÈS coup, et un verrou temporel ne l'attrape pas : les champs de
+        chaque VM se retrouvent surchargés dès l'affichage, et le profil
+        x1..x4 devient inopérant. On compare donc à ce que le modèle
         dit DÉJÀ : une valeur identique n'est pas une saisie, c'est l'écho.
 
         Cas limite assumé : choisir explicitement la valeur que le profil

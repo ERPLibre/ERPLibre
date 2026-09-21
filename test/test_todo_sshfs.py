@@ -3,16 +3,16 @@
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl)
 """Montage sshfs : ne rien annoncer qui n'ait eu lieu, et dire pourquoi.
 
-Le symptôme rapporté : « read: Connection reset by peer », « code : 1 », et
-juste après « Monté sur /tmp/sshfs_… », la commande pour démonter et celle
-pour ouvrir le répertoire dans un explorateur. Le montage n'avait pas eu lieu.
+Le symptôme : « read: Connection reset by peer », « code : 1 », et juste
+après « Monté sur /tmp/sshfs_… », la commande pour démonter et celle pour
+ouvrir le répertoire dans un explorateur. Le montage n'a pas eu lieu.
 
 La cause, elle, est plus profonde : sshfs lit « a+b » comme un CHAÎNAGE
 d'hôtes — « ssh a, puis ssh b depuis a » — et ne consulte donc jamais
 ~/.ssh/config pour l'alias entier. Or c'est todo.py qui nomme les VM
 découvertes « rebond+domaine », et la seconde moitié de ce nom est un domaine
-libvirt, pas un alias SSH du rebond. Ces alias-là, les plus utiles, étaient
-les seuls que sshfs ne pouvait pas monter.
+libvirt, pas un alias SSH du rebond. Ces alias-là, les plus utiles, sont
+les seuls que sshfs ne sait pas monter.
 
 Ce que ces tests gardent :
 
@@ -323,7 +323,7 @@ class TestFlux(unittest.TestCase):
         return out.getvalue(), crees, retires
 
     def test_a_failed_mount_announces_nothing_mounted(self):
-        """Le cœur du problème rapporté : « Monté sur … » après un code 1."""
+        """Le cœur du problème : « Monté sur … » après un code 1."""
         todo = self._todo(1)
         sortie, _crees, _retires = self._joue(todo, CONFIG, "2")
         self.assertNotIn(t("Mounted on: "), sortie)
