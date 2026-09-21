@@ -10,10 +10,12 @@ qu'une fiche d'hôte produit comme ligne ssh, ce que « privilège » enveloppe
 exactement, et ce que « jouer » rend quand rien ne répond.
 """
 
+import io
 import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 from unittest.mock import patch
 
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
@@ -251,6 +253,72 @@ class TestJouerNeLevePas(unittest.TestCase):
         with patch.object(A.subprocess, "run", side_effect=espion):
             A.run({"target": "appliance"}, "qm list")
         self.assertEqual("qm list", vues[0][-1])
+
+
+class TestLaCommandePeutRecevoirUnFlux(unittest.TestCase):
+    """Déposer un fichier là-bas se fait par l'entrée standard.
+
+    UN SEUL CONTRAT D'EXÉCUTION. Le privilège, le délai rendu en
+    « (255, timeout) », l'erreur système rendue en 255 et le dépouillement
+    du bruit ssh vivent ICI. Un envoi de fichier qui se composerait à côté
+    perdrait les quatre, et le premier échec distant se lirait comme une
+    réussite muette.
+    """
+
+    def test_without_a_stream_nothing_changes(self):
+        vus = {}
+
+        def faux(argv, **kw):
+            vus.update(kw)
+            return type(
+                "R", (), {"returncode": 0, "stdout": "", "stderr": ""}
+            )()
+
+        with mock.patch.object(A.subprocess, "run", faux):
+            A.run({"target": "h"}, "echo")
+        self.assertIsNone(vus.get("stdin"))
+
+    def test_the_stream_reaches_the_remote_command(self):
+        vus = {}
+
+        def faux(argv, **kw):
+            vus.update(kw)
+            return type(
+                "R", (), {"returncode": 0, "stdout": "", "stderr": ""}
+            )()
+
+        flux = io.BytesIO(b"des octets")
+        with mock.patch.object(A.subprocess, "run", faux):
+            code, _sortie = A.run({"target": "h"}, "cat > la", entree=flux)
+        self.assertEqual(0, code)
+        self.assertIs(flux, vus.get("stdin"))
+
+    def test_a_stream_does_not_lose_the_privilege_wrapping(self):
+        vus = {}
+
+        def faux(argv, **kw):
+            vus["argv"] = argv
+            return type(
+                "R", (), {"returncode": 0, "stdout": "", "stderr": ""}
+            )()
+
+        with mock.patch.object(A.subprocess, "run", faux):
+            A.run(
+                {"target": "h", "sudo": "sudo"},
+                "cat > la",
+                entree=io.BytesIO(b""),
+            )
+        self.assertIn("sudo", " ".join(vus["argv"]))
+
+    def test_a_stream_does_not_lose_the_timeout_verdict(self):
+        def leve(argv, **kw):
+            raise A.subprocess.TimeoutExpired(argv, 1)
+
+        with mock.patch.object(A.subprocess, "run", leve):
+            self.assertEqual(
+                (255, "timeout"),
+                A.run({"target": "h"}, "cat > la", entree=io.BytesIO(b"")),
+            )
 
 
 class TestLeModuleNeSaitRienDuProduit(unittest.TestCase):

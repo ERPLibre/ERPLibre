@@ -70,6 +70,11 @@ class Posture(NamedTuple):
     `forward_agent` : l'agent SSH peut-il être transféré ? Faux se traduit
     par un REFUS écrit, et non par une omission — omettre laisse croire que
     la question ne s'est pas posée.
+
+    `egress_ports` : les ports qu'une posture à ports bornés ouvre vers
+    n'importe quelle destination, en couples (protocole, ports). Vide sur
+    une posture qui nomme des destinations : là, ce sont les ports du
+    symbole qui font foi, et une seconde source les contredirait.
     """
 
     name: str
@@ -85,6 +90,7 @@ class Posture(NamedTuple):
     cloud: bool
     needs_forge: bool
     name_suffix: str
+    egress_ports: tuple = ()
 
 
 # `restricted` N'EXISTE PAS ICI, et c'est délibéré. Il déclarait une politique
@@ -127,6 +133,15 @@ POSTURES = {
         cloud=True,
         needs_forge=True,
         name_suffix="-connected",
+        # CE QU'ELLE OUVRE, et vers n'importe où : borner des ports n'est
+        # pas borner des destinations, et le rendu le dit sans mimer une
+        # liste blanche. Chaque port paie un rôle que la posture joindrait
+        # autrement — 53 le résolveur de l'hôte, 123 l'heure sans laquelle
+        # TLS échoue, 22 la forge et les sauvegardes, 80 et 443 les miroirs
+        # de paquets et l'index Python. Les ports d'un SEUL rôle — 3000,
+        # 4000, 8200 — restent fermés : ouverts vers l'Internet entier ils
+        # ne borneraient plus rien.
+        egress_ports=(("udp", (53, 123)), ("tcp", (22, 80, 443))),
     ),
     # Paranoïde : destinations ET ports bornés, DNS par un résolveur nommé.
     # L'agent SSH est REFUSÉ : le transférer donnerait à la machine confinée

@@ -112,16 +112,6 @@ organization:
             )
 
 
-def get_list_fork_repo(upstream_url, github_token):
-    gh = GitHub(token=github_token)
-    parsed_url = parse(upstream_url)
-    status, user = gh.user.get()
-
-    # response = gh.repos[user['login']][parsed_url.repo].forks.get(sort="newest")
-    response = gh.repos["odoo"][parsed_url.repo].forks.get(sort="newest")
-    print(response)
-
-
 def fork_and_clone_repo(
     upstream_url,
     github_token,

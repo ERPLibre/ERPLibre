@@ -42,6 +42,13 @@ ARCH = "arm64"
 # Ce qu'`uname` rend sur une machine Apple Silicon, et qui doit se traduire.
 UNAME_ARCH = "aarch64"
 
+# Le MÊME processeur, écrit par le champ « arch » d'une description
+# d'instance. L'outil n'accepte que ce jeton-là et refuse le démarrage sur
+# « arm64 », que l'image, elle, porte dans son nom. Trois vocabulaires pour
+# une machine : c'est leur ACCORD DE SENS qui se vérifie ici, jamais leur
+# orthographe — l'exiger identique ferait rendre au champ un mot refusé.
+ARCH_CONFIG = "aarch64"
+
 
 def image(arch):
     """L'URL d'image cloud, par la convention DÉJÀ EN SERVICE du dépôt.
@@ -99,12 +106,13 @@ class TestLeBackendQuAppleObtient(unittest.TestCase):
         resolu = vm_backend_choice.effective("auto", HOTE, limactl=False)
         self.assertNotEqual(B.LIBVIRT, resolu)
 
-    def test_the_screen_says_this_backend_is_not_proven(self):
-        """C'est le seul du dépôt dans cet état, et un écran muet
-        là-dessus laisse croire l'inverse."""
-        self.assertFalse(B.is_proven(B.LIMA))
+    def test_the_screen_no_longer_flags_this_backend(self):
+        """Le socle a joué le cycle entier contre l'outil ; l'étoile dirait
+        désormais le contraire de ce qui est, et enverrait choisir libvirt
+        — qui n'existe pas sur un poste Apple."""
+        self.assertTrue(B.is_proven(B.LIMA))
         lignes = vm_backend_choice.render("auto", HOTE, True)
-        self.assertTrue(any("*" in ligne for ligne in lignes), lignes)
+        self.assertFalse(any("*" in ligne for ligne in lignes), lignes)
 
 
 class TestLaRouteDAcquisitionSurApple(unittest.TestCase):
@@ -154,21 +162,31 @@ class TestLaConfigurationQuAppleObtient(unittest.TestCase):
 
         charge = yaml.safe_load(self.rendre())
         self.assertEqual(L.VM_TYPE_MACOS, charge["vmType"])
-        self.assertEqual(ARCH, charge["arch"])
+        self.assertEqual(ARCH_CONFIG, charge["arch"])
 
     def test_the_arch_agrees_between_the_config_and_the_image(self):
         """L'ACCORD QUE NUL MAILLON NE VOIT. Une architecture juste dans la
         configuration et fausse dans l'URL démarre une image amd64 sous
         Virtualization.framework sur un Apple Silicon, et l'outil échoue
-        sans nommer la cause."""
+        sans nommer la cause.
+
+        L'accord porte sur le SENS : l'image s'appelle « arm64 » chez son
+        éditeur, le champ d'instance dit « aarch64 », et les deux désignent
+        le même processeur. Exiger le même mot des deux côtés ferait poser
+        dans le champ un jeton que l'outil refuse, ou dans l'URL un nom de
+        fichier qui n'existe pas."""
         import yaml
 
         charge = yaml.safe_load(self.rendre())
-        self.assertEqual(ARCH, charge["arch"])
+        self.assertEqual(ARCH_CONFIG, charge["arch"])
         emplacement = charge["images"][0]["location"]
         self.assertIn(ARCH, emplacement)
         self.assertNotIn("amd64", emplacement)
-        self.assertEqual(ARCH, charge["images"][0]["arch"])
+        self.assertNotIn("x86_64", emplacement)
+        self.assertEqual(ARCH_CONFIG, charge["images"][0]["arch"])
+        # Le sens, et non le mot : les deux orthographes se rejoignent par
+        # la traduction du point de passage.
+        self.assertEqual(ARCH_CONFIG, L.config_arch(ARCH))
 
     def test_nothing_of_the_host_is_mounted(self):
         """L'outil monte par défaut le répertoire personnel dans l'invité :
@@ -213,10 +231,13 @@ class TestLeCheminEntierSeTient(unittest.TestCase):
         chemin = config_path("apple-de-banc")
         argv = L.start_argv("apple-de-banc", chemin)
         # Ce qui compte : la commande porte la configuration qu'on vient de
-        # rendre, et cette configuration porte l'architecture du poste.
+        # rendre, et cette configuration porte l'architecture du poste —
+        # chaque maillon dans SON vocabulaire. `uname` dit « aarch64 », le
+        # dépôt « arm64 », l'image « arm64 », le champ d'instance
+        # « aarch64 ». Le chemin ne tient que si chaque passage traduit.
         self.assertEqual(chemin, argv[-1])
         self.assertIn("apple-de-banc", argv)
-        self.assertIn(f"arch: {jeton}", texte)
+        self.assertIn(f"arch: {L.config_arch(jeton)}", texte)
         self.assertIn(jeton, image(jeton))
         self.assertIn(chemin, L.display(argv))
 

@@ -28,15 +28,8 @@ from pathlib import Path
 from script.todo.qemu_privilege import LIBVIRT_URI as URI
 from script.todo.qemu_privilege import sudo_prefix, virsh_argv
 from script.vm import verbs as vm_verbs
-from script.vm.backend import (
-    LIBVIRT,
-    group_by_host,
-    handle_of,
-    is_hosted,
-    libvirt_handle,
-    pve_handle,
-    resolves_locally,
-)
+from script.vm.backend import (LIBVIRT, group_by_host, handle_of, is_hosted,
+                               resolves_locally)
 
 try:
     from script.todo.todo_i18n import t
@@ -1748,19 +1741,6 @@ def _read_pvestats(vms, now=None):
     return dict(stats), ok
 
 
-def web_tunnel_argv(info, port=18069, cible_port=8069):
-    """argv d'un tunnel local vers le port web d'une VM distante, ou None.
-
-    Relais vers `script.vm.verbs.web_access`, qui rend aussi l'URL — les
-    deux se décidaient séparément et pouvaient donc se contredire.
-    """
-    info = dict(info or {})
-    return (
-        list(vm_verbs.web_access(pve_handle(info), port, cible_port).tunnel)
-        or None
-    )
-
-
 def vm_ssh_prefix(vm) -> str:
     """« ssh … » pour entrer dans CETTE VM, adresse comprise.
 
@@ -1768,15 +1748,6 @@ def vm_ssh_prefix(vm) -> str:
     tous les backends.
     """
     return vm_verbs.ssh_prefix(handle_of(vm), options=SSH_OPTS)
-
-
-def pve_host_cmd(info, remote, tty=False) -> str:
-    """Commande shell qui exécute `remote` SUR l'hôte Proxmox d'une VM.
-
-    Relais vers `script.vm.verbs.host_command`, qui le fait pour tous les
-    backends. Ce nom reste pour les appelants qui le connaissent ici.
-    """
-    return vm_verbs.host_command(pve_handle(info), remote, tty)
 
 
 def arm_balloon(names) -> None:
@@ -1913,27 +1884,6 @@ def restart_odoo_cmd() -> str:
     )
 
 
-def pve_identity_guard(vmid: int, name: str) -> str:
-    """Shell qui S'ARRÊTE si le VMID ne porte plus ce nom.
-
-    Relais vers `script.vm.verbs.identity_guard`, qui pose la même question
-    à chaque backend avec la clé et la preuve qui lui sont propres.
-    """
-    return vm_verbs.identity_guard(pve_handle({"vmid": vmid}, name))
-
-
-def delete_vm_cmd_pve(info, purge: bool = True, name: str = "") -> str:
-    """Efface une VM sur son hôte PROXMOX, par son VMID.
-
-    Relais vers `script.vm.verbs.delete_command`. `name` arme le garde
-    d'identité ; sans lui, la commande efface le VMID quoi qu'il porte
-    aujourd'hui.
-    """
-    info = dict(info or {})
-    handle = pve_handle(info, name)
-    return vm_verbs.delete_command(handle, with_disks=purge)
-
-
 def delete_lines(vm) -> list:
     """Ce qui va RÉELLEMENT disparaître, dit selon l'endroit où la VM vit.
 
@@ -1967,32 +1917,14 @@ def delete_lines(vm) -> list:
     ]
 
 
-def delete_vm_cmd(name: str, with_disks: bool, uuid: str = "") -> str:
-    """Efface la VM sur l'HÔTE local : arrêt, retrait de la définition, puis
-    les disques à la demande.
-
-    Relais vers `script.vm.verbs.delete_command`. `uuid` arme le garde : un
-    nom de domaine se réemploie, l'UUID naît et meurt avec le domaine.
-    """
-    handle = libvirt_handle(name, uuid=uuid)
-    return vm_verbs.delete_command(handle, with_disks, sudo_prefix(), URI)
-
-
 def run_monitor(manifest_path: str, run_app: bool = True):
     """Ouvre le dashboard Textual sur un manifeste d'installation. `run_app`
     à False renvoie l'instance sans la lancer (tests headless)."""
     from textual.app import App, ComposeResult
     from textual.containers import Horizontal, Vertical
     from textual.screen import ModalScreen
-    from textual.widgets import (
-        Button,
-        Checkbox,
-        DataTable,
-        Footer,
-        Header,
-        RichLog,
-        Static,
-    )
+    from textual.widgets import (Button, Checkbox, DataTable, Footer, Header,
+                                 RichLog, Static)
 
     manifest = json.loads(Path(manifest_path).read_text())
     started = manifest.get("started", time.time())

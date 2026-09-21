@@ -25,6 +25,35 @@ from script.todo import qemu_install_monitor as mon  # noqa: E402
 from script.vm import backend as vm_backend  # noqa: E402
 from script.vm import verbs as vm_verbs  # noqa: E402
 
+
+def suppression(fiche):
+    """La commande que l'écran lance VRAIMENT.
+
+    La poignée vient de l'IDENTITÉ de la fiche, et c'est elle qui choisit
+    le backend. Les relais d'avant construisaient toujours une poignée
+    libvirt : les épreuves gardaient donc un chemin que la production ne
+    prend pas, sur un verbe qui efface des VM et des disques.
+    """
+    return vm_verbs.delete_command(
+        vm_backend.handle_of(fiche),
+        with_disks=True,
+        sudo=mon.sudo_prefix(),
+        uri=mon.URI,
+    )
+
+
+def tunnel_web(info, port=18069, cible=8069):
+    """L'argv du tunnel, ou None — comme l'écran le lit."""
+    return (
+        list(
+            vm_verbs.web_access(
+                vm_backend.pve_handle(dict(info or {})), port, cible
+            ).tunnel
+        )
+        or None
+    )
+
+
 # Une fiche d'hôte Proxmox de banc : les préfixes d'exécution viennent du
 # backend, comme en production, et non d'un littéral écrit dans ce fichier.
 FICHE_PVE_DE_BANC = vm_backend.pve_handle(
@@ -625,8 +654,8 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
     machine, à l'instant d'effacer."""
 
     def test_a_proxmox_delete_checks_the_vmid_still_bears_the_name(self):
-        cmd = mon.delete_vm_cmd_pve(
-            {"target": "pve9", "vmid": 101}, name="vm-a"
+        cmd = suppression(
+            {"name": "vm-a", "pve": {"target": "pve9", "vmid": 101}}
         )
         self.assertIn("qm config 101", cmd)
         self.assertIn("exit 1", cmd)
@@ -642,7 +671,7 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         """Que le garde REFUSE bien se prouve en l'exécutant, et cette
         preuve-là vit avec le verbe (test_vm_verbs). Ici on vérifie que le
         relais produit une commande gardée, sans épingler son rendu."""
-        cmd = mon.delete_vm_cmd("vm-a", True, "5d55d05a-1e77")
+        cmd = suppression({"name": "vm-a", "uuid": "5d55d05a-1e77"})
         self.assertIn("vm-a", cmd)
         self.assertIn("5d55d05a-1e77", cmd)
         self.assertIn("domuuid", cmd)
@@ -652,10 +681,10 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         # Un manifeste écrit avant ce correctif n'a pas d'UUID. Refuser toute
         # suppression y serait une régression : on retombe sur la protection
         # d'avant, la confirmation à deux mains.
-        cmd = mon.delete_vm_cmd("vm-a", True)
+        cmd = suppression({"name": "vm-a"})
         self.assertNotIn("domuuid", cmd)
         self.assertIn("undefine vm-a", cmd)
-        sans_nom = mon.delete_vm_cmd_pve({"target": "pve9", "vmid": 101})
+        sans_nom = suppression({"pve": {"target": "pve9", "vmid": 101}})
         self.assertNotIn("qm config", sans_nom)
         self.assertIn("qm destroy 101", sans_nom)
 
@@ -668,7 +697,9 @@ class TestEffacerDepuisUnSuiviRouvert(unittest.TestCase):
         refusé un nom périmé et laissé passer le bon."""
         import subprocess
 
-        garde = mon.pve_identity_guard(101, "vm-a")
+        garde = vm_verbs.identity_guard(
+            vm_backend.pve_handle({"vmid": 101}, "vm-a")
+        )
         for vu, attendu in (("vm-a", 0), ("autre-vm", 1)):
             res = subprocess.run(
                 [
@@ -925,8 +956,10 @@ class TestOuVaLaCommande(unittest.TestCase):
         self.assertIn("erplibre@pve1+vm-a", mon.vm_ssh_prefix(vm))
 
     def test_the_console_of_a_remote_vm_is_qm_terminal(self):
-        cmd = mon.pve_host_cmd(
-            self.DISTANTE["pve"], "qm terminal 101", tty=True
+        cmd = vm_verbs.host_command(
+            vm_backend.pve_handle(dict(self.DISTANTE["pve"])),
+            "qm terminal 101",
+            tty=True,
         )
         self.assertIn("ssh -t", cmd)
         self.assertIn("qm terminal 101", cmd)
@@ -935,7 +968,10 @@ class TestOuVaLaCommande(unittest.TestCase):
         self.assertNotIn("virsh", cmd)
 
     def test_a_host_without_sudo_is_not_wrapped(self):
-        cmd = mon.pve_host_cmd({"target": "root@pve1", "sudo": ""}, "qm list")
+        cmd = vm_verbs.host_command(
+            vm_backend.pve_handle({"target": "root@pve1", "sudo": ""}),
+            "qm list",
+        )
         self.assertNotIn("sh -c", cmd)
 
 
@@ -990,7 +1026,7 @@ class TestLeWebEtLaSuppression(unittest.TestCase):
     }
 
     def test_the_web_view_tunnels_through_the_host(self):
-        argv = mon.web_tunnel_argv(self.INFO)
+        argv = tunnel_web(self.INFO)
         self.assertEqual(argv[-1], "erplibre-proxmox-9")
         self.assertIn("-L", argv)
         self.assertIn("18069:10.10.10.151:8069", argv)
@@ -999,23 +1035,23 @@ class TestLeWebEtLaSuppression(unittest.TestCase):
         self.assertNotIn("-f", argv)
 
     def test_a_local_vm_needs_no_tunnel(self):
-        self.assertIsNone(mon.web_tunnel_argv(None))
-        self.assertIsNone(mon.web_tunnel_argv({"target": "pve1"}))
+        self.assertIsNone(tunnel_web(None))
+        self.assertIsNone(tunnel_web({"target": "pve1"}))
 
     def test_the_jump_of_the_host_is_chained(self):
-        argv = mon.web_tunnel_argv(dict(self.INFO, jump="rebond"))
+        argv = tunnel_web(dict(self.INFO, jump="rebond"))
         self.assertIn("-J", argv)
         self.assertIn("rebond", argv)
 
     def test_deleting_a_remote_vm_uses_its_vmid(self):
-        cmd = mon.delete_vm_cmd_pve(self.INFO)
+        cmd = suppression({"pve": self.INFO})
         self.assertIn("qm destroy 101", cmd)
         self.assertIn("--purge", cmd)
         # « virsh undefine <nom> » aurait effacé le domaine LOCAL homonyme.
         self.assertNotIn("virsh", cmd)
 
     def test_deleting_a_local_vm_is_unchanged(self):
-        cmd = mon.delete_vm_cmd("vm-a", True)
+        cmd = suppression({"name": "vm-a"})
         self.assertIn("undefine vm-a", cmd)
         self.assertIn("/var/lib/libvirt/images/vm-a.qcow2", cmd)
 

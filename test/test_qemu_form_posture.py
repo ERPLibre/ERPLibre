@@ -57,8 +57,8 @@ def contexte():
 
 class TestLaSpecLaTransporte(unittest.TestCase):
     def test_a_mute_spec_means_the_freest_posture(self):
-        """Les invites en ligne n'en posent pas : leur déploiement doit
-        valoir exactement ce qu'il valait."""
+        """Une spec écrite avant que les postures existent n'en nomme
+        aucune, et doit continuer de se déployer comme avant."""
         self.assertEqual(
             R.DEFAULT_POSTURE, build_spec([], [], FORM)["posture"]
         )

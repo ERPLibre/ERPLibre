@@ -34,18 +34,13 @@ import shlex
 from datetime import datetime, timezone
 
 from script import lib_valid as valid
-
 # Le MODULE, pas la constante : `CONFIG_OVERRIDE_PRIVATE_FILE` importée par
 # valeur figerait le chemin à l'import, et les tests — qui le déplacent dans
 # un répertoire temporaire — écriraient dans le vrai fichier de l'utilisateur.
 from script.config import config_file as config_module
 from script.config.config_file import ConfigFile
-from script.lib_valid import (  # noqa: F401
-    HOST_RE,
-    NAME_RE,
-    SERVER_RE,
-    ValidationError,
-)
+from script.lib_valid import (HOST_RE, NAME_RE, SERVER_RE,  # noqa: F401
+                              ValidationError)
 from script.remote import appliance_ssh, host_probe
 from script.todo import todo_prefs
 
@@ -57,7 +52,11 @@ CONFIG_KEY = "deploy_targets"
 # jour où un second transport arrive, et il faudrait alors deviner d'après
 # les champs présents.
 KIND_SSH = "erplibre-ssh"
-KINDS = (KIND_SSH,)
+# Le second genre, et le champ l'attendait. Même transport, même fiche, un
+# usage distinct : celle-ci REÇOIT les sauvegardes au lieu de recevoir un
+# déploiement, et les confondre ferait déployer sur le dépôt d'archives.
+KIND_BACKUP = "backup-ssh"
+KINDS = (KIND_SSH, KIND_BACKUP)
 
 # Ce que le Makefile de déploiement pose déjà comme défaut. Le répéter ici
 # n'est pas une duplication mais un CONTRAT : une cible qui omet le chemin se
