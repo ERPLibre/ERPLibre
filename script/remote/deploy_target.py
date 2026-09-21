@@ -30,6 +30,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
+from datetime import datetime, timezone
 
 from script import lib_valid as valid
 
@@ -44,7 +46,8 @@ from script.lib_valid import (  # noqa: F401
     SERVER_RE,
     ValidationError,
 )
-from script.remote import host_probe
+from script.remote import appliance_ssh, host_probe
+from script.todo import todo_prefs
 
 # La clé de section, dans les trois fichiers de configuration.
 CONFIG_KEY = "deploy_targets"
@@ -100,16 +103,28 @@ def with_defaults(target: dict) -> dict:
 
 
 def load_all(config=None) -> list[dict]:
-    """Toutes les cibles, dans l'ordre de fusion. Jamais None.
+    """Toutes les cibles, une par nom, dans l'ordre de fusion. Jamais None.
 
     Une entrée sans nom est écartée : elle serait impossible à choisir, à
     modifier et à supprimer, et resterait là sans que rien ne la nomme.
+
+    DÉDUPLIQUÉES PAR NOM, la dernière l'emportant. La fusion ÉTEND les
+    listes : corriger une cible venue du fichier partagé ajoutait une
+    seconde entrée du même nom au lieu de la remplacer, et la lecture
+    rendait toujours l'ancienne — la correction s'annonçait faite sans
+    l'être. La dernière est celle du fichier privé, qui est bien celle qui
+    doit primer ; elle garde la place de celle qu'elle remplace, pour que le
+    rang affiché ne bouge pas sous les doigts.
     """
     cfg = config or ConfigFile()
     data = cfg.get_config(CONFIG_KEY)
     if not isinstance(data, list):
         return []
-    return [t for t in data if isinstance(t, dict) and t.get("name")]
+    par_nom = {}
+    for cible in data:
+        if isinstance(cible, dict) and cible.get("name"):
+            par_nom[cible["name"]] = cible
+    return list(par_nom.values())
 
 
 def load(name: str, config=None) -> dict | None:
@@ -202,19 +217,31 @@ def validate(target: dict) -> dict:
     _port(full)
     valid.path(full, "identity", "Clé privée", required=False)
     valid.path(full, "path", "Chemin distant")
-    # Le domaine est un nom d'hôte SEUL : « compte@domaine » finirait dans la
-    # requête de certificat et dans la configuration nginx.
-    valid.text(full, "domain", "Domaine", required=False, pattern=HOST_RE)
+    full.update(validate_service(full.get("domain"), full.get("admin_email")))
+
+    _constate(full)
+    return full
+
+
+def validate_service(domain, admin_email) -> dict:
+    """Le domaine servi et son courriel, validés SEULS.
+
+    Séparés du reste pour que l'écran qui les demande au moment de poser un
+    certificat puisse les refuser avant de partir en ssh, sans avoir une
+    cible entière sous la main. Le domaine est un nom d'hôte seul :
+    « compte@domaine » finirait dans la requête de certificat et dans la
+    configuration nginx.
+    """
+    fiche = {"domain": domain, "admin_email": admin_email}
+    valid.text(fiche, "domain", "Domaine", required=False, pattern=HOST_RE)
     valid.text(
-        full,
+        fiche,
         "admin_email",
         "Courriel d'administration",
         required=False,
         pattern=_EMAIL_RE,
     )
-
-    _constate(full)
-    return full
+    return fiche
 
 
 def _port(full: dict) -> None:
@@ -261,6 +288,101 @@ def _constate(full: dict) -> None:
             " Attendu 2026-01-31T14:05:00Z."
         )
     full["last_probe"] = date
+
+
+# La cible RETENUE est une préférence d'écran, pas une donnée de site : elle
+# vit donc avec les autres préférences et non dans l'inventaire. Seul le NOM
+# est gardé — recopier la fiche la ferait vieillir dès qu'on modifie la
+# cible, et l'écran nommerait une machine qui a changé d'adresse.
+PREF_KEY = "deploy_ssh_target"
+
+
+def selected(config=None) -> dict | None:
+    """La cible retenue, RELUE de l'inventaire, ou None.
+
+    Rend None aussi quand le nom retenu ne désigne plus rien : une cible
+    supprimée ne doit pas faire échouer l'écran, seulement se faire
+    redemander.
+    """
+    nom = todo_prefs.get(PREF_KEY) or ""
+    return load(str(nom), config) if nom else None
+
+
+def select(name: str) -> None:
+    """Retient le nom de la cible, ou l'oublie si `name` est vide."""
+    todo_prefs.set(PREF_KEY, str(name or ""))
+
+
+# Le fichier que TOUT checkout ERPLibre porte, et rien d'autre. C'est la
+# preuve du produit : une adresse saisie à la main peut désigner n'importe
+# quelle machine, et un chemin quelconque n'importe quel dossier.
+VERSION_FILE = ".erplibre-semver-version"
+# La version est reconnue à sa FORME. « cat » sur un dossier qui n'est pas un
+# ERPLibre peut rendre n'importe quoi, et prendre ce n'importe quoi pour une
+# version ferait annoncer le produit présent là où il n'est pas.
+_RE_VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+
+
+def remote_path(path: str) -> str:
+    """Le chemin cité pour le shell distant, en laissant vivre le tilde.
+
+    Tout citer empêcherait « ~ » de désigner le compte visé — c'est le shell
+    d'en face qui sait où il est. Ne rien citer couperait un chemin qui porte
+    une espace. On cite donc ce qui SUIT le tilde, et lui seul reste nu.
+    """
+    propre = str(path or "")
+    if propre.startswith("~/"):
+        return "~/" + shlex.quote(propre[2:])
+    return shlex.quote(propre)
+
+
+def probe_command(path: str) -> str:
+    """La commande qui PROUVE qu'un ERPLibre vit à ce chemin.
+
+    L'erreur du shell distant est GARDÉE, et non jetée : « No such file or
+    directory » nomme le chemin exact qu'on a cherché, ce qui est justement
+    la réponse utile quand le produit n'est pas là. Elle ne risque pas de
+    passer pour une version — `parse_version` reconnaît celle-ci à sa forme,
+    et non au simple fait qu'une ligne soit là.
+    """
+    return f"cat {remote_path(path)}/{VERSION_FILE}"
+
+
+def parse_version(sortie: str) -> str:
+    """La version lue sur la machine, ou « » si ce n'en est pas une."""
+    propre = appliance_ssh.strip_ssh_noise(sortie or "")
+    for ligne in propre.splitlines():
+        ligne = ligne.strip()
+        if _RE_VERSION.match(ligne):
+            return ligne
+    return ""
+
+
+def stamp(now=None) -> str:
+    """L'horodatage UTC à la seconde que porte une cible sondée.
+
+    Injectable pour qu'une épreuve puisse figer l'instant : sans cela, elle
+    comparerait à une horloge qui avance pendant qu'elle lit.
+    """
+    moment = now or datetime.now(timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def record_probe(target: dict, verdict, now=None) -> dict:
+    """Écrit sur la cible ce que la sonde a constaté, et la rend.
+
+    Le constat vit AVEC la fiche : rouvrir l'écran sans re-sonder doit
+    pouvoir dire ce qu'on savait, et depuis quand.
+    """
+    return save(
+        dict(
+            target,
+            verdict=verdict.kind,
+            version=verdict.version,
+            sudo=verdict.sudo.strip(),
+            last_probe=stamp(now),
+        )
+    )
 
 
 def fiche(target: dict) -> dict:

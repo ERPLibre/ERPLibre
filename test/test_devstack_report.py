@@ -314,5 +314,58 @@ class TestLeModuleResteUneBibliotheque(unittest.TestCase):
         self.assertEqual({"script"}, racines - set(sys.stdlib_module_names))
 
 
+class TestLeRenduDesCouches(unittest.TestCase):
+    """Le bloc qui dit LAQUELLE a tenu, et non un seul code."""
+
+    def test_nothing_probed_says_so_rather_than_looking_fine(self):
+        """Un bloc muet se lirait comme « tout va bien »."""
+        rendu = R.render_layers([])
+        self.assertIn(R.MARKS[R.DS_SKIP], rendu)
+        self.assertIn("-", rendu)
+
+    def test_each_layer_gets_its_mark_and_its_detail(self):
+        rendu = R.render_layers(
+            [
+                R.layer_verdict("transport", R.DS_OK, "passe"),
+                R.layer_verdict("service", R.DS_ERR, "absent", "installer"),
+            ]
+        )
+        self.assertIn(f"{R.MARKS[R.DS_OK]} transport", rendu)
+        self.assertIn(f"{R.MARKS[R.DS_ERR]} service", rendu)
+        self.assertIn("passe", rendu)
+        self.assertIn("installer", rendu)
+
+    def test_the_layer_token_is_rendered_raw(self):
+        """LAYERS le prescrit : traduit, il tomberait sur une clé existante
+        dont l'émoji casse la colonne."""
+        for couche in R.LAYERS:
+            with self.subTest(couche=couche):
+                rendu = R.render_layers([R.layer_verdict(couche, R.DS_OK, "")])
+                self.assertIn(f" {couche} ", rendu)
+
+    def test_a_remedy_is_shown_only_where_something_failed(self):
+        """Contrôle positif : un remède sous une ligne verte est du bruit."""
+        rendu = R.render_layers(
+            [R.layer_verdict("transport", R.DS_OK, "passe", "inutile")]
+        )
+        self.assertNotIn("inutile", rendu)
+
+    def test_the_columns_line_up_across_layers(self):
+        """Deux noms de longueur différente doivent poser leur détail au
+        même endroit, sinon la colonne cesse de se lire."""
+        rendu = R.render_layers(
+            [
+                R.layer_verdict("dns", R.DS_OK, "REPERE"),
+                R.layer_verdict("transport", R.DS_OK, "REPERE"),
+            ]
+        )
+        colonnes = {
+            ligne.index("REPERE")
+            for ligne in rendu.splitlines()
+            if "REPERE" in ligne
+        }
+        self.assertEqual(1, len(colonnes), rendu)
+
+
 if __name__ == "__main__":
     unittest.main()

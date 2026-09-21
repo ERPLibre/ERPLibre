@@ -97,11 +97,21 @@ class TestLeRebondAtteintTout(MakeDisponible):
 class TestLaLigneSshExacte(MakeDisponible):
     """Ce que produit une invocation nue, figé au caractère près."""
 
-    PREFIXE = "ssh -p 22 -o StrictHostKeyChecking=accept-new"
+    PREFIXE = "ssh -o StrictHostKeyChecking=accept-new"
 
     def test_a_bare_invocation_produces_the_expected_line(self):
         sortie = recette("ssh_check")
         self.assertIn(f"{self.PREFIXE} erplibre@machine.example", sortie)
+
+    def test_no_port_is_forced_when_none_is_asked_for(self):
+        """« -p 22 » posé en dur écrase le Port qu'un alias déclare, et rend
+        injoignable par ces verbes une machine que « ssh <alias> » joint."""
+        self.assertNotIn("-p", recette("ssh_check"))
+
+    def test_the_port_travels_when_it_is_given(self):
+        """Contrôle positif : l'option existe toujours."""
+        sortie = recette("ssh_check", SSH_PORT="2222")
+        self.assertIn(f"{self.PREFIXE} -p 2222 erplibre@", sortie)
 
     def test_the_key_lands_between_the_options_and_the_account(self):
         sortie = recette("ssh_check", SSH_KEY="~/.ssh/deploiement")
@@ -110,10 +120,26 @@ class TestLaLigneSshExacte(MakeDisponible):
             sortie,
         )
 
+    def test_the_three_options_keep_a_fixed_order(self):
+        sortie = recette(
+            "ssh_check", SSH_PORT="2222", SSH_KEY="cle", SSH_JUMP="bastion"
+        )
+        self.assertIn(f"{self.PREFIXE} -p 2222 -i cle -J bastion ", sortie)
+
     def test_an_empty_option_leaves_no_gap_behind(self):
         """Une espace posée hors du $(if ...) reste dans la ligne quand
         l'option est vide, et se voit à chaque lecture du développement."""
         self.assertNotIn(f"{self.PREFIXE}  ", recette("ssh_check"))
+
+
+class TestLaVerificationExecuteCeQuelleAnnonce(MakeDisponible):
+    def test_uname_is_run_and_not_printed(self):
+        """Enfermé dans la chaîne de « echo », il s'affichait au lieu de
+        s'exécuter : la commande annonçait un contrôle qu'elle ne faisait
+        pas, et rendait 0 sur une machine dont on ne savait rien."""
+        sortie = recette("ssh_check")
+        self.assertIn("' && uname -a", sortie)
+        self.assertNotIn("uname -a'", sortie)
 
 
 class TestLaGardeSurLHote(MakeDisponible):
