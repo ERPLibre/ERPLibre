@@ -1808,6 +1808,11 @@ class TestDeployMenuNumbering(MenuCoherence, unittest.TestCase):
         "QEMU cache - Download mirror for local VMs": "prompt_execute_qemu_cache",
         "Deploy - Install Asterisk VoIP server": "_deploy_asterisk_server",
         "VPN - Tunnels": "prompt_execute_vpn",
+        # NEUVIÈME, déclarée par « method » : son rang n'entre pas dans le
+        # calcul, et c'est pourquoi les huit qui la précèdent n'ont pas
+        # bougé — dont les rangs 6 et 7, qu'une épreuve Proxmox cherche en
+        # chaînes littérales.
+        "Deploy - VM backends": "_deploy_vm_backends",
     }
 
 

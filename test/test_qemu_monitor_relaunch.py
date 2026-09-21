@@ -36,6 +36,7 @@ sys.path.insert(0, str(RACINE / "test"))
 from async_case import AsyncCase  # noqa: E402
 
 from script.todo import qemu_install_monitor as mon  # noqa: E402
+from script.vm import backend  # noqa: E402
 
 COMMANDE = "set -e; make install_os && make install_odoo_18"
 # Les messages se comparent à leur traduction : la langue du poste décide.
@@ -122,11 +123,11 @@ class TestRelaunchInstall(Base):
         self.finit(chemin, "vm-a", 1)
         mon.relaunch_install(chemin, "vm-a")
         (args, kw) = self.lanceur.appels[-1]
-        self.assertEqual("10.0.0.1", args[0])
+        self.assertEqual("10.0.0.1", args[0].address)
         self.assertTrue(args[1].endswith(COMMANDE))
         self.assertTrue(args[1].startswith("if pgrep"))
         self.assertEqual("/cle", kw["identity"])
-        self.assertFalse(kw["pve"])
+        self.assertEqual(backend.LIBVIRT, args[0].backend)
         self.assertTrue(kw["installs"])
         self.assertEqual("", kw["reboot"])
 
@@ -176,7 +177,7 @@ class TestRelaunchInstall(Base):
         chemin = self.session([{"name": "vm-a", "ip": "10.0.0.1"}])
         self.finit(chemin, "vm-a", 1)
         mon.relaunch_install(chemin, "vm-a", ip="10.0.0.7")
-        self.assertEqual("10.0.0.7", self.lanceur.appels[-1][0][0])
+        self.assertEqual("10.0.0.7", self.lanceur.appels[-1][0][0].address)
         entree = json.loads(Path(chemin).read_text())["vms"][0]
         self.assertEqual("ssh erplibre@10.0.0.7", entree["ssh"])
 
@@ -186,9 +187,9 @@ class TestRelaunchInstall(Base):
         )
         self.finit(chemin, "vm-p", 1)
         mon.relaunch_install(chemin, "vm-p", ip="10.0.0.7")
-        (args, kw) = self.lanceur.appels[-1]
-        self.assertEqual("alias-p", args[0])
-        self.assertTrue(kw["pve"])
+        (args, _kw) = self.lanceur.appels[-1]
+        self.assertEqual("alias-p", args[0].alias)
+        self.assertEqual(backend.PVE, args[0].backend)
 
     def test_une_session_hors_ligne_est_refusee(self):
         chemin = self.session(
@@ -384,7 +385,7 @@ class TestLeSuivi(AsyncCase):
             await pilot.click("#c_yes")
             await app.workers.wait_for_complete()
             await pilot.pause()
-            lances = sorted(a[3] for a, _kw in self.lanceur.appels)
+            lances = sorted(a[0].name for a, _kw in self.lanceur.appels)
             self.assertEqual(["vm-a", "vm-c"], lances)
 
     async def test_annuler_ne_relance_rien(self):

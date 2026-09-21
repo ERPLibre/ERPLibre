@@ -181,7 +181,12 @@ class TestWrapper(unittest.TestCase):
             vus["argv"] = argv
 
         with mock.patch.object(mon.subprocess, "Popen", faux_popen):
-            mon._launch_one("cible", "true", "/dev/null", "vm-essai", **kw)
+            mon._launch_one(
+                mon.libvirt_handle("vm-essai", ip="cible"),
+                "true",
+                "/dev/null",
+                **kw,
+            )
         return vus["argv"][-1]
 
     def test_natif_sans_avertissement_de_lenteur(self):
