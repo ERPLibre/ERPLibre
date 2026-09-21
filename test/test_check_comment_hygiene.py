@@ -651,9 +651,10 @@ class TestLaProseEstLueEnEntier(unittest.TestCase):
         trouvailles = hygiene.inspect(
             "vhost.txt", source=source, termes=["machine-de-site"]
         )
-        # Ce nom est AUSSI pleinement qualifié : l'outil le signale des deux
-        # façons. L'épreuve tient la trouvaille « nom privé », celle que la
-        # liste de noms interdits produit, sans figer les autres.
+        # LE NOM PRIVÉ EST TROUVÉ, et non « lui seul » : la même chaîne
+        # porte aussi un suffixe de service, que l'outil nomme par ailleurs.
+        # Épingler la liste entière ferait rougir ce contrôle à chaque motif
+        # ajouté — alors que ce qu'il tient est la LECTURE du gabarit.
         self.assertIn("nom privé", [f["pattern"] for f in trouvailles])
 
     def test_le_meme_gabarit_lu_comme_du_shell_ne_verrait_rien(self):
@@ -799,8 +800,8 @@ class TestLesNomsDHote(unittest.TestCase):
 
     def test_un_nom_pleinement_qualifie(self):
         self.assertEqual(
-            self._noms("# le service tourne sur garance-01.interne.lan"),
-            ["garance-01.interne.lan"],
+            self._noms("# le service tourne sur genevrier-07.interne.lan"),
+            ["genevrier-07.interne.lan"],
         )
 
     def test_un_domaine_de_client(self):
@@ -849,7 +850,7 @@ class TestLesNomsDHote(unittest.TestCase):
     def test_la_famille_est_un_signal_a_relire(self):
         """Le genre décide de l'icône et de --identifying-only."""
         trouvailles = hygiene.inspect(
-            "essai.py", source='"""Sur garance-01.interne.lan."""\n'
+            "essai.py", source='"""Sur genevrier-07.interne.lan."""\n'
         )
         self.assertEqual(genres(trouvailles), {"nom"})
         durs = [f for f in trouvailles if f["kind"] == "identifiant"]
@@ -859,7 +860,7 @@ class TestLesNomsDHote(unittest.TestCase):
         with tempfile.NamedTemporaryFile(
             "w", suffix=".py", delete=False, encoding="utf-8"
         ) as fh:
-            fh.write('"""Sur garance-01.interne.lan."""\n')
+            fh.write('"""Sur genevrier-07.interne.lan."""\n')
             chemin = fh.name
         try:
             sortie = subprocess.run(
@@ -874,7 +875,7 @@ class TestLesNomsDHote(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(sortie.returncode, 0)
-            self.assertNotIn("garance-01", sortie.stdout)
+            self.assertNotIn("genevrier-07", sortie.stdout)
         finally:
             os.unlink(chemin)
 

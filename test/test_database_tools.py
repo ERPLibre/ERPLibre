@@ -6,9 +6,11 @@ import csv
 import io
 import json
 import os
+import sys
 import tempfile
 import unittest
 import zipfile
+from unittest import mock
 from unittest.mock import patch
 
 from script.database.migrate.process_backup_file import process_zip
@@ -323,12 +325,20 @@ class UneDestructionNAnnonceQueCeQuElleAFait(unittest.TestCase):
             )
 
         mod.execute_shell = faux_shell
+        # LE CONTRÔLE D'EXERCICE EST NEUTRALISÉ ICI, et lui seul : sans base
+        # à interroger, il refuse tout, et le script s'arrête AVANT ce que
+        # cette classe tient — l'annonce de ce qui a vraiment été détruit.
+        # Ce que le contrôle refuse et pourquoi s'éprouve dans ses propres
+        # tests, avec une base sous la main.
+        mod._verdict = lambda _db, force=False: mod.drill_guard.DRILL
 
-        class Config:
-            database = ""
-            test_only = True
-
-        mod.get_config = lambda: Config()
+        # LA CONFIG VIENT DE L'ANALYSEUR D'OPTIONS, et non d'une classe qui
+        # recopie ses champs. Une option ajoutée à l'outil manquait au banc,
+        # et ces épreuves levaient AttributeError avant d'atteindre ce
+        # qu'elles tiennent — l'annonce de ce qui a été détruit.
+        with mock.patch.object(sys, "argv", ["db_drop_all.py", "--test_only"]):
+            config = mod.get_config()
+        mod.get_config = lambda: config
         sortie, erreur = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(sortie):
             with contextlib.redirect_stderr(erreur):

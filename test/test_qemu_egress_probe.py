@@ -249,27 +249,26 @@ class TestLeChainageDansLeDeploiement(unittest.TestCase):
 
     @staticmethod
     def _si_gardes_par(nom_variable):
-        """Les « if » de `_qemu_run_spec` dont la condition lit `nom`.
+        """Les « if » du déploiement QEMU dont la condition lit `nom`.
 
         La PRÉSENCE d'un appel ne prouve rien : posé sous une condition
         toujours fausse, il reste dans l'arbre et ne s'exécute jamais. Ce
         qui compte est donc la garde, pas la ligne.
+
+        CHERCHÉ DANS TOUT LE FICHIER, et non dans une fonction nommée : le
+        corps du déploiement a été scindé en enveloppe et corps, et la
+        garde ne tenait plus rien — elle lisait une fonction devenue
+        longue de dix lignes, et rendait zéro « if » sans rien dire. La
+        variable, elle, est locale à ce corps où qu'il vive.
         """
         import ast
 
         chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
         with open(chemin, encoding="utf-8") as fichier:
             arbre = ast.parse(fichier.read())
-        corps = [
-            noeud
-            for noeud in ast.walk(arbre)
-            if isinstance(noeud, ast.FunctionDef)
-            and noeud.name == "_qemu_run_spec"
-        ]
-        assert len(corps) == 1, "_qemu_run_spec introuvable"
         return [
             noeud
-            for noeud in ast.walk(corps[0])
+            for noeud in ast.walk(arbre)
             if isinstance(noeud, ast.If)
             and any(
                 isinstance(n, ast.Name) and n.id == nom_variable
@@ -322,15 +321,13 @@ class TestLeChainageDansLeDeploiement(unittest.TestCase):
         chemin = os.path.join(RACINE, "script", "todo", "qemu_deploy.py")
         with open(chemin, encoding="utf-8") as fichier:
             arbre = ast.parse(fichier.read())
-        corps = [
-            n
-            for n in ast.walk(arbre)
-            if isinstance(n, ast.FunctionDef) and n.name == "_qemu_run_spec"
-        ][0]
-
+        # LE FICHIER ENTIER, et non une fonction nommée : le corps du
+        # déploiement a été scindé, et viser son ancien nom rendait zéro
+        # appel — donc vert sur « l'installation ne touche plus la liste
+        # non filtrée » alors que plus rien n'était regardé.
         suivi = [
             n
-            for n in ast.walk(corps)
+            for n in ast.walk(arbre)
             if isinstance(n, ast.Call)
             and isinstance(n.func, ast.Attribute)
             and n.func.attr == "_qemu_install_erplibre_monitored"
@@ -342,7 +339,7 @@ class TestLeChainageDansLeDeploiement(unittest.TestCase):
 
         boucles = [
             n
-            for n in ast.walk(corps)
+            for n in ast.walk(arbre)
             if isinstance(n, ast.For)
             and isinstance(n.iter, ast.Name)
             and any(
