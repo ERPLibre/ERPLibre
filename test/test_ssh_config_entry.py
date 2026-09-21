@@ -258,11 +258,53 @@ class TestUneValeurNePeutPasAjouterDeDirective(ConfigSsh):
                 {"also_drop": (self.PIEGE,)},
             ),
         )
-        self.assertEqual(7, len(champs))
         for nom, args, kwargs in champs:
             with self.subTest(champ=nom):
                 with self.assertRaises(ValueError):
                     self.ecrire(*args, **kwargs)
+
+    # Ce que l'écrivain accepte et que ce tableau ne pique PAS, avec la
+    # raison. Une liste d'exclusions sans raison redevient un nombre
+    # déguisé — et c'est le compte qu'elle remplace.
+    HORS_PIQURE = {
+        "host_keys": "prend un mot du vocabulaire de ssh, pas un texte",
+        "forward_agent": "un booléen ne porte pas de saut de ligne",
+        "forwards": "piqué plus bas, par sa propre épreuve",
+    }
+
+    def test_the_table_covers_every_value_the_writer_accepts(self):
+        """« CHAQUE valeur écrite » se lit dans la SIGNATURE.
+
+        Le compte — « sept » — comparait un tableau littéral à sa propre
+        longueur : il ne disait rien du huitième paramètre, et une valeur
+        ajoutée à l'écrivain n'était piquée par personne. Or une seule
+        suffit : dans ce fichier, une ligne est une directive.
+        """
+        import inspect
+
+        parametres = {
+            nom
+            for nom in inspect.signature(
+                self.menu._write_ssh_config_entry
+            ).parameters
+            if nom != "self"
+        }
+        piques = {
+            "host",
+            "user",
+            "ip",
+            "proxy_jump",
+            "identity_file",
+            "also_drop",
+        }
+        self.assertEqual(parametres, piques | set(self.HORS_PIQURE))
+
+    def test_nothing_is_left_unpricked_without_a_reason(self):
+        """Contrôle positif : tout verser dans « hors piqûre »
+        satisferait l'épreuve ci-dessus sans rien tenir."""
+        for nom, raison in self.HORS_PIQURE.items():
+            with self.subTest(champ=nom):
+                self.assertTrue(raison.strip())
 
     def test_a_carriage_return_is_refused_too(self):
         """Certains éditeurs en produisent, et ssh coupe la ligne dessus."""

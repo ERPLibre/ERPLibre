@@ -1495,6 +1495,48 @@ TRANSLATIONS = {
         "en": "Selection forgotten.",
     },
     "Which target?": {"fr": "Quelle cible ?", "en": "Which target?"},
+    "egress rules did not load": {
+        "fr": "les règles de sortie ne se sont pas chargées",
+        "en": "egress rules did not load",
+    },
+    "Not installed: these are not confined.": {
+        "fr": "Rien n'est installé dessus : elles ne sont pas confinées.",
+        "en": "Not installed: these are not confined.",
+    },
+    "Role of this profile": {
+        "fr": "Rôle de ce profil",
+        "en": "Role of this profile",
+    },
+    "workshop: one works here, and what is laid here can be redone": {
+        "fr": "atelier : on y travaille, et ce qu'on y pose peut se refaire",
+        "en": "workshop: one works here, and what is laid here can be redone",
+    },
+    "authority: the one you start again from when the station burns": {
+        "fr": "autorité : celle dont on repart quand la station brûle",
+        "en": "authority: the one you start again from when the station"
+        " burns",
+    },
+    "AUTHORITY": {"fr": "AUTORITÉ", "en": "AUTHORITY"},
+    "Another profile is already the authority:": {
+        "fr": "Un autre profil est déjà l'autorité :",
+        "en": "Another profile is already the authority:",
+    },
+    "Not a deployment target:": {
+        "fr": "Ce n'est pas une cible de déploiement :",
+        "en": "Not a deployment target:",
+    },
+    "What the target is for": {
+        "fr": "Ce à quoi la cible sert",
+        "en": "What the target is for",
+    },
+    "ERPLibre is installed and served there": {
+        "fr": "ERPLibre y est installé et servi",
+        "en": "ERPLibre is installed and served there",
+    },
+    "it RECEIVES the backup archives": {
+        "fr": "elle REÇOIT les archives de sauvegarde",
+        "en": "it RECEIVES the backup archives",
+    },
     "Target name (lowercase, digits, - or _)": {
         "fr": "Nom de la cible (minuscules, chiffres, - ou _)",
         "en": "Target name (lowercase, digits, - or _)",
@@ -5969,13 +6011,37 @@ TRANSLATIONS = {
         "fr": "disque",
         "en": "disk",
     },
+    "authority declared:": {
+        "fr": "autorité déclarée :",
+        "en": "authority declared:",
+    },
+    "outbound mirrors declared:": {
+        "fr": "miroirs sortants déclarés :",
+        "en": "outbound mirrors declared:",
+    },
+    "The code carries the role and refuses two authorities; this": {
+        "fr": "Le code porte le rôle et refuse deux autorités ; ce",
+        "en": "The code carries the role and refuses two authorities; this",
+    },
+    " site declares none.": {
+        "fr": " site n'en déclare aucune.",
+        "en": " site declares none.",
+    },
+    "The code derives the direction and drives the push mirror;": {
+        "fr": "Le code dérive le sens et pilote le miroir sortant ;",
+        "en": "The code derives the direction and drives the push mirror;",
+    },
+    " this site declares no outbound one.": {
+        "fr": " ce site n'en déclare aucun.",
+        "en": " this site declares no outbound one.",
+    },
+    "attachment(s) whose content leaves no copy:": {
+        "fr": "pièce(s) dont le contenu part sans copie :",
+        "en": "attachment(s) whose content leaves no copy:",
+    },
     "file(s) the plan does not cover, left in place:": {
         "fr": "fichier(s) hors du plan, laissés en place :",
         "en": "file(s) the plan does not cover, left in place:",
-    },
-    "more": {
-        "fr": "de plus",
-        "en": "more",
     },
     "Nested directory removed (it was empty).": {
         "fr": "Dossier imbriqué retiré (il était vide).",

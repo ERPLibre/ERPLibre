@@ -754,14 +754,43 @@ class TestTheMigrationRunsItBeforeTheSmokeTest(unittest.TestCase):
 
         return inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
 
-    def test_it_runs_before_both_smoke_tests(self):
-        source = self.source()
-        self.assertEqual(source.count("prompt_database_cleanup"), 2)
-        for _ in range(2):
-            nettoyage = source.index("prompt_database_cleanup")
-            mesure = source.index("prompt_smoke_public_url")
-            self.assertLess(nettoyage, mesure)
-            source = source[mesure + 1 :]
+    def test_it_runs_before_every_smoke_test(self):
+        """UN NETTOYAGE PAR CONTRÔLE DE FUMÉE, et le compte se dérive.
+
+        Le « 2 » ignorait le nombre de contrôles : un troisième ajouté au
+        parcours partait sans nettoyage préalable, et la garde restait
+        verte. L'autorité est dans la MÊME fonction, gratuite à lire.
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from script.todo.todo_upgrade import TodoUpgrade
+
+        arbre = ast.parse(
+            textwrap.dedent(
+                inspect.getsource(TodoUpgrade.execute_odoo_upgrade)
+            )
+        )
+        lignes = {"prompt_database_cleanup": [], "prompt_smoke_public_url": []}
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.Call):
+                nom = getattr(noeud.func, "attr", "") or getattr(
+                    noeud.func, "id", ""
+                )
+                if nom in lignes:
+                    lignes[nom].append(noeud.lineno)
+        fumees = sorted(lignes["prompt_smoke_public_url"])
+        nettoyages = sorted(lignes["prompt_database_cleanup"])
+        self.assertTrue(fumees, "plus aucun contrôle de fumée n'est lancé")
+        self.assertEqual(
+            len(fumees),
+            len(nettoyages),
+            f"{len(nettoyages)} nettoyage(s) pour {len(fumees)} contrôle(s)",
+        )
+        for rang, (nettoyage, fumee) in enumerate(zip(nettoyages, fumees), 1):
+            with self.subTest(controle=rang):
+                self.assertLess(nettoyage, fumee)
 
     def test_it_gets_a_real_terminal(self):
         import inspect

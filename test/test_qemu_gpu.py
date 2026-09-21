@@ -900,5 +900,49 @@ class TestHostNetworks(unittest.TestCase):
             self.assertEqual(attendu, got, reponse)
 
 
+class TestLeJetonReseauNeSeRendPasBrut(unittest.TestCase):
+    """virt-install lit le premier mot d'un jeton comme un TYPE.
+
+    « direct:eno1 » — ce que `hw_state` relit d'une VM en macvtap, et que
+    la liste déroulante offre ensuite à TOUTES les machines — produisait
+    « <interface type="direct:eno1"> », que libvirt refuse. Mesuré contre
+    l'outil, sur le pilote d'essai.
+
+    Un jeton SANS deux-points est déjà un type valide et se rend tel quel :
+    « user » donne « <interface type="user"> ».
+    """
+
+    ATTENDUS = (
+        ("network:default", "network=default"),
+        ("bridge:virbr0", "bridge=virbr0"),
+        ("direct:eno1", "type=direct,source=eno1,source_mode=bridge"),
+        ("user", "user"),
+        ("", ""),
+    )
+
+    def test_each_token_becomes_what_virt_install_understands(self):
+        for jeton, attendu in self.ATTENDUS:
+            with self.subTest(jeton=jeton):
+                self.assertEqual(attendu, hw.net_spec(jeton))
+
+    def test_a_macvtap_token_never_becomes_a_type(self):
+        """LE DÉFAUT MESURÉ : rendu brut, le jeton entier devenait le type
+        de l'interface."""
+        self.assertNotEqual("direct:eno1", hw.net_spec("direct:eno1"))
+        self.assertTrue(hw.net_spec("direct:eno1").startswith("type=direct,"))
+
+    def test_an_unknown_kind_is_refused_rather_than_passed_through(self):
+        """Le vocabulaire est CLOS : un type inconnu rendu brut redonne
+        exactement le défaut qu'on vient de fermer, un mot plus tard."""
+        with self.assertRaises(ValueError):
+            hw.net_spec("macvtap:eno1")
+
+    def test_the_mode_is_named_and_not_left_to_the_default(self):
+        """Sans mode explicite libvirt applique « vepa », qui exige un
+        commutateur qui sait se répondre à lui-même : le parc se coupe en
+        silence sur un commutateur ordinaire."""
+        self.assertIn("source_mode=bridge", hw.net_spec("direct:eno1"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
