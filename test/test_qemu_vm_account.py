@@ -577,11 +577,12 @@ class TestSession(unittest.TestCase):
 
     def test_ssh_prefix_uses_the_account(self):
         self.assertTrue(
-            mon.vm_ssh_prefix({"ip": "192.0.2.7", "user": "essai"}).endswith(
-                " essai@192.0.2.7"
-            )
+            mon.vm_ssh_prefix(
+                {"name": "vm-a", "ip": "192.0.2.7", "user": "essai"}
+            ).endswith(" essai@192.0.2.7")
         )
         pve_vm = {
+            "name": "vm-a",
             "user": "essai",
             "pve": {"target": "root@hote", "addr": "192.0.2.50"},
         }
