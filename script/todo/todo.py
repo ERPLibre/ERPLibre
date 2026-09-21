@@ -147,6 +147,7 @@ from script.todo import (
     claude_reglages,
     dev_tools,
     healthcheck,
+    host_os,
     install_non_interactif,
     ssh_config,
     todo_etat,
@@ -157,6 +158,7 @@ from script.todo import (
 from script.todo.assistant_menu import AssistantMenuMixin
 from script.todo.container_menu import ContainerMenuMixin
 from script.todo.database_manager import DatabaseManager
+from script.todo.devstack_menu import DevstackMenuMixin
 from script.todo.git_fork_menu import GitForkMenuMixin
 from script.todo.git_repo_menu import GitRepoMenuMixin, gel_des_sources
 from script.todo.install_update_menu import InstallUpdateMenuMixin
@@ -270,6 +272,7 @@ class TODO(
     SealMenuMixin,
     SshKeyMenuMixin,
     SystemMenuMixin,
+    DevstackMenuMixin,
 ):
     def __init__(self):
         self.dir_path = None
@@ -420,12 +423,13 @@ class TODO(
 
 ── {t("Deployment, network & security")} ──
 [18] {t("Deploy - Deploy ERPLibre locally")}
-[19] {t("Network - Network tools")}
-[20] {t("Security - Dependency audit and key generation")}
-[21] {t("Docker / Podman - Container engines")}
+[19] {t("Devstack - development and test stack")}
+[20] {t("Network - Network tools")}
+[21] {t("Security - Dependency audit and key generation")}
+[22] {t("Docker / Podman - Container engines")}
 
 ── {t("System")} ──
-[22] {t("System - Diagnostic and disk space")}
+[23] {t("System - Diagnostic and disk space")}
 {retour(t("Back"))}
 """
         while True:
@@ -506,18 +510,22 @@ class TODO(
                 if status is not False:
                     return
             elif status == "19":
-                status = self.prompt_execute_network()
+                status = self.prompt_execute_devstack()
                 if status is not False:
                     return
             elif status == "20":
-                status = self.prompt_execute_security()
+                status = self.prompt_execute_network()
                 if status is not False:
                     return
             elif status == "21":
-                status = self.prompt_execute_container()
+                status = self.prompt_execute_security()
                 if status is not False:
                     return
             elif status == "22":
+                status = self.prompt_execute_container()
+                if status is not False:
+                    return
+            elif status == "23":
                 status = self.prompt_execute_system()
                 if status is not False:
                     return
@@ -1350,6 +1358,7 @@ class TODO(
         "_container_erplibre": "ERPLibre container",
         "prompt_execute_test": "Test",
         "prompt_execute_longtest": "Long test",
+        "prompt_execute_devstack": "Devstack",
         "prompt_configuration": "Configuration",
     }
 
@@ -1713,6 +1722,33 @@ class TODO(
         help_info += help_end
         return help_info
 
+    def _menu_dispatch_extra(self, choices, status):
+        """Joue l'entrée que « status » désigne parmi celles qu'aucun « elif »
+        codé en dur ne traite, et rend True si elle a été jouée.
+
+        Prend la liste affichée et le numéro tapé. Les sections ne consomment
+        pas de numéro : le rang se calcule sur les entrées réelles, comme
+        fill_help_info les numérote — sans ce filtre, une greffe posée après
+        une deuxième section joue la commande d'à côté. Une entrée qui porte
+        « method » appelle cette méthode de la classe ; les autres passent par
+        execute_from_configuration. Rend False sur un numéro hors borne ou non
+        numérique, à charge de l'appelant de le dire.
+        """
+        try:
+            rang = int(status)
+        except ValueError:
+            return False
+        reelles = [c for c in choices if not c.get("section")]
+        if not 0 < rang <= len(reelles):
+            return False
+        entree = reelles[rang - 1]
+        methode = entree.get("method")
+        if methode:
+            getattr(self, methode)()
+        else:
+            self.execute_from_configuration(entree)
+        return True
+
     def prompt_execute_instance(self):
         # TODO proposer le déploiement à distance
         # TODO proposer l'exécution de docker
@@ -1902,6 +1938,14 @@ class TODO(
                 )
             },
         ]
+        # Greffe de todo.json, comme les menus QEMU/KVM et Git : une entrée
+        # ajoutée ici s'affiche APRÈS les huit entrées codées en dur, donc son
+        # numéro dépasse la chaîne d'elif et le repli la joue. Sans cette clé,
+        # étendre Deploy demande de modifier ce fichier et de décaler la
+        # chaîne à la main.
+        config_entries = self.config_file.get_config("deploy_from_makefile")
+        if config_entries:
+            choices.extend(config_entries)
         help_info = self.fill_help_info(choices)
 
         while True:
@@ -1931,7 +1975,7 @@ class TODO(
                 self._deploy_asterisk_server()
             elif status == "11":
                 self.prompt_execute_vpn()
-            else:
+            elif not self._menu_dispatch_extra(choices, status):
                 print(t("Command not found !"))
 
     def prompt_execute_deploy_ssh(self):
@@ -1984,19 +2028,13 @@ class TODO(
 
     @staticmethod
     def _native_arch():
-        """Architecture native de l'hôte, en jeton de deploy_qemu.py
-        (amd64/arm64/s390x). Défaut amd64 si indéterminée."""
-        try:
-            machine = os.uname().machine
-        except (AttributeError, OSError):
-            machine = ""
-        return {
-            "x86_64": "amd64",
-            "amd64": "amd64",
-            "aarch64": "arm64",
-            "arm64": "arm64",
-            "s390x": "s390x",
-        }.get(machine, "amd64")
+        """Architecture native de l'hôte, en jeton amd64/arm64/s390x.
+
+        Reste une méthode : une dizaine d'appelants la lisent sur la classe,
+        et des tests la remplacent pour figer l'architecture. Le calcul, lui,
+        vit dans host_os — il en existait deux copies identiques.
+        """
+        return host_os.arch_token()
 
     @staticmethod
     def _port_in_use(port):
@@ -3110,8 +3148,9 @@ class TODO(
     # a » — et ne consulte donc PAS ~/.ssh/config pour l'alias entier. Or c'est
     # todo.py qui nomme les VM découvertes « jump+domaine » (voir la marche
     # SSH) : ce sont les alias les plus utiles, et les seuls que sshfs échoue à
-    # monter tel quel : le montage échoue, la seconde moitié du nom étant un
-    # domaine libvirt et non un alias SSH du rebond.
+    # monter tel quel. Le montage échoue alors sur « read: Connection reset by
+    # peer », la seconde moitié du nom étant un domaine libvirt et non un alias
+    # SSH du rebond.
     SSHFS_CHAIN_SEP = "+"
 
     # Options à rendre à sshfs quand on contourne l'alias : exactement celles
@@ -3541,147 +3580,103 @@ class TODO(
         }
 
     def _build_ssh_make_cmd(self, target, params, extra=None):
-        """Build a make SSH command string from params dict."""
+        """Ligne « make » complète, chaque valeur citée pour le shell.
+
+        Les guillemets posés à la main ne protègent que d'une espace : une
+        valeur portant elle-même un guillemet, un point-virgule ou un accent
+        grave refermait la citation et le reste devenait des commandes. Le
+        danger grandit à mesure que ces valeurs cessent d'être retapées à
+        chaque fois pour être relues d'un fichier.
+
+        La citation est SIMPLE, ce qui laisse le tilde intact : c'est le
+        shell distant qui sait où est le compte visé, pas celui d'ici.
+        """
         parts = [f"make {target}"]
-        for k, v in params.items():
-            if v:
-                parts.append(f'{k}="{v}"')
-        if extra:
-            for k, v in extra.items():
-                if v:
-                    parts.append(f'{k}="{v}"')
+        for source in (params, extra or {}):
+            for cle, valeur in source.items():
+                if valeur:
+                    parts.append(f"{cle}={shlex.quote(str(valeur))}")
         return " ".join(parts)
 
-    def _deploy_ssh_check(self):
+    def _deploy_ssh_verb(self, cible_make, demander=None):
+        """Joue un verbe de déploiement sur l'hôte, et dit ce qu'il lance.
+
+        Les onze verbes ne diffèrent que par leur cible « make » et, pour
+        deux d'entre eux, par une question de plus. Onze copies du même corps
+        se corrigent une par une, et la onzième s'oublie : la citation des
+        valeurs, l'annonce avant exécution et la garde sur l'abandon vivent
+        donc à un seul endroit.
+
+        `demander` est posée APRÈS la connexion, dans l'ordre où l'écran les
+        enchaîne. Elle rend les variables de plus, ou None pour renoncer.
+        """
         params = self._get_ssh_params()
         if not params:
             return
-        cmd = self._build_ssh_make_cmd("ssh_check", params)
+        extra = {}
+        if demander is not None:
+            extra = demander()
+            if extra is None:
+                return
+        cmd = self._build_ssh_make_cmd(cible_make, params, extra=extra)
         print(f"{t('Will execute:')} {cmd}")
         self.execute.exec_command_live(
             cmd, source_erplibre=False, single_source_erplibre=True
         )
+
+    def _deploy_ssh_check(self):
+        self._deploy_ssh_verb("ssh_check")
 
     def _deploy_ssh_push(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_push", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_push")
 
     def _deploy_ssh_install(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_install", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_install")
 
     def _deploy_ssh_run(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_run", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_run")
 
     def _deploy_ssh_stop(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_stop", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_stop")
 
     def _deploy_ssh_restart(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_restart", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_restart")
 
     def _deploy_ssh_status(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_status", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_status")
 
     def _deploy_ssh_logs(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_logs", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_logs")
 
     def _deploy_ssh_make(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        target = click.prompt(
+        self._deploy_ssh_verb("ssh_make", demander=self._ask_make_target)
+
+    def _ask_make_target(self):
+        cible = click.prompt(
             t("Make target to run remotely: "), prompt_suffix=""
         ).strip()
-        if not target:
+        if not cible:
             print(t("SSH host is required!"))
-            return
-        cmd = self._build_ssh_make_cmd(
-            "ssh_make", params, extra={"SSH_TARGET": target}
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+            return None
+        return {"SSH_TARGET": cible}
 
     def _deploy_ssh_install_systemd(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
-        cmd = self._build_ssh_make_cmd("ssh_install_systemd", params)
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        self._deploy_ssh_verb("ssh_install_systemd")
 
     def _deploy_ssh_install_nginx(self):
-        params = self._get_ssh_params()
-        if not params:
-            return
+        self._deploy_ssh_verb("ssh_install_nginx", demander=self._ask_domain)
+
+    def _ask_domain(self):
         domain = click.prompt(
             t("Domain name (e.g.: example.com): "), prompt_suffix=""
         ).strip()
         if not domain:
             print(t("SSH host is required!"))
-            return
+            return None
         email = click.prompt(
             t("Admin email for SSL certificate: "), prompt_suffix=""
         ).strip()
-        cmd = self._build_ssh_make_cmd(
-            "ssh_install_nginx",
-            params,
-            extra={"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email},
-        )
-        print(f"{t('Will execute:')} {cmd}")
-        self.execute.exec_command_live(
-            cmd, source_erplibre=False, single_source_erplibre=True
-        )
+        return {"SSH_DOMAIN": domain, "SSH_ADMIN_EMAIL": email}
 
     def prompt_execute_code(self):
         print(f"🤖 {t('What do you need for development?')}")
@@ -4612,9 +4607,15 @@ class TODO(
             with open(dest_file, encoding="utf-8", errors="replace") as fh:
                 identite = self._IDENTITE_GIT.search(fh.read())
             if identite:
-                content = content.replace(
-                    "Your Name", identite.group("nom")
-                ).replace("your@email.com", identite.group("courriel"))
+                # La substitution passe par l'expression qui a LU l'identité,
+                # et non par le nom et l'adresse que le gabarit donne en
+                # exemple : changés là-bas, ils ne correspondraient plus, et
+                # la copie repartirait avec l'exemple à la place du courriel
+                # de son auteur. La lambda rend le remplacement littéral,
+                # qu'aucun « \ » du nom ne soit lu comme un renvoi.
+                content = self._IDENTITE_GIT.sub(
+                    lambda _trouve: identite.group(0), content
+                )
             with open(dest_file, "w", encoding="utf-8") as fh:
                 fh.write(content)
         except OSError as e:
@@ -4880,7 +4881,7 @@ class TODO(
             if personalize:
                 name = input(t("Enter your full name: ")).strip()
                 email = input(t("Enter your email: ")).strip()
-                content = content.replace("your@email.com", email)
+                content = content.replace("your@example.com", email)
                 content = content.replace("Your Name", name)
 
             os.makedirs(dest_dir, exist_ok=True)

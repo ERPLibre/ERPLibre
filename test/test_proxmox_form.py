@@ -2828,6 +2828,7 @@ class TestLaRecreationProxmox(unittest.TestCase):
         """Le suivi lit le terminal pendant la création : un ssh qui en
         hériterait lui volerait des frappes."""
         from script.proxmox import proxmox_deploy as pve
+        from script.remote import appliance_ssh
         from script.todo import proxmox_menu, qemu_deploy
 
         todo = self._todo()
@@ -2837,7 +2838,9 @@ class TestLaRecreationProxmox(unittest.TestCase):
             vus.append(k.get("stdin"))
             return mock.Mock(returncode=0, stdout="", stderr="")
 
-        with mock.patch.object(pve.subprocess, "run", run):
+        # Le transport ssh vit dans script/remote/ : c'est son subprocess
+        # que `pve.run` atteint.
+        with mock.patch.object(appliance_ssh.subprocess, "run", run):
             pve.run({"target": "pve1"}, "true")
         with mock.patch.object(proxmox_menu.subprocess, "run", run):
             todo._pve_ssh("pve1+vm-a", "true")

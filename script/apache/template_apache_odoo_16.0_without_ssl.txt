@@ -1,5 +1,5 @@
 <VirtualHost *:80>
-    ServerAdmin USER@EMAIL.ca
+    ServerAdmin USER@EXAMPLE.COM
     ServerName DOMAIN.ca
 
     ProxyRequests Off

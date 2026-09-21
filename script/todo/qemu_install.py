@@ -3114,7 +3114,7 @@ class QemuInstallMixin:
     # VM remplace : une ligne « git -c user.name=… » qu'on recopie.
     _QEMU_AIDEV_PLACEHOLDERS = (
         ("Your Name", "user.name"),
-        ("your@email.com", "user.email"),
+        ("your@example.com", "user.email"),
     )
 
     def _qemu_aidev_identity_cmd(self):
