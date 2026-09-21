@@ -92,14 +92,23 @@ class TestCeQueLEcranPropose(unittest.TestCase):
     def setUpClass(cls):
         cls.ctx = contexte()
 
+    @property
+    def offertes(self):
+        """Les noms de posture offerts, dans l'ordre où l'écran les met.
+
+        Lus sur la clé que l'écran LIT VRAIMENT. Une seconde clé qui
+        n'aurait plus que des épreuves pour lecteurs pourrait tomber en
+        panne sans que rien ne le dise."""
+        return [nom for _libelle, nom in self.ctx["posture_choices"]]
+
     def test_the_context_offers_every_posture_of_the_registry(self):
         """Une liste écrite à la main perdrait la cinquième le jour où
         elle arrive, sans que rien ne le dise."""
-        self.assertEqual(R.posture_names(), list(self.ctx["postures"]))
+        self.assertEqual(R.posture_names(), self.offertes)
 
     def test_the_order_goes_from_freest_to_most_bounded(self):
         """On descend vers la contrainte, on n'y tombe pas par défaut."""
-        self.assertEqual(R.DEFAULT_POSTURE, self.ctx["postures"][0])
+        self.assertEqual(R.DEFAULT_POSTURE, self.offertes[0])
         self.assertEqual(R.DEFAULT_POSTURE, self.ctx["posture"])
 
     def _monte(self, choix=None, essais=()):

@@ -22,6 +22,8 @@ import unittest
 RACINE = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(RACINE)
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from script.vm import backend as B  # noqa: E402
 from script.vm import verbs as V  # noqa: E402
 
@@ -830,6 +832,96 @@ class TestCeQuiATourneContreUneVraieMachine(unittest.TestCase):
         for nom in B.BACKENDS:
             with self.subTest(backend=nom):
                 self.assertIn(nom, B.PROVEN)
+
+
+class TestLaLigneQuUnHumainRecopie(unittest.TestCase):
+    """La TROISIÈME forme, que `ssh_prefix` nommait déjà en creux.
+
+    Son propre message le dit : « la forme diffère selon qu'on veut une
+    session ou une commande ». `exec_prefix` rend la commande — il finit par
+    « bash -c » — et le recopier ouvrirait un shell qui attend une commande
+    qui ne vient jamais. Il manquait le verbe de la SESSION, et le tableau
+    de bord composait donc « ssh compte@… » à la main pour toute machine, y
+    compris celles qui ne s'atteignent pas par ssh.
+    """
+
+    LIMA = B.lima_handle("essai")
+    LIBVIRT = B.libvirt_handle("vm-locale", uuid="u-u-i-d", ip="192.0.2.10")
+
+    def test_an_instance_is_entered_by_its_own_tool(self):
+        self.assertEqual("limactl shell essai", V.connect_command(self.LIMA))
+
+    def test_a_local_vm_is_entered_by_ssh(self):
+        """Le CONTRASTE : sans lui, une épreuve qui cherche « limactl »
+        passerait aussi sur un verbe devenu constant."""
+        ligne = V.connect_command(self.LIBVIRT)
+        self.assertIn("ssh ", ligne)
+        self.assertIn("192.0.2.10", ligne)
+        self.assertNotIn("limactl", ligne)
+
+    def test_the_session_form_carries_nothing_a_human_cannot_use(self):
+        """LES DEUX FORMES DIFFÈRENT AUTREMENT SELON LE BACKEND, et c'est
+        pourquoi un seul verbe ne pouvait pas les rendre.
+
+        Sur l'instance, la commande finit par « bash -c » : recopiée, elle
+        ouvre un shell qui attend une commande qui ne vient jamais. Sur une
+        VM locale, elle porte « $ip » — une VARIABLE de shell que
+        l'enveloppe détachée définit, et qui ne vaut rien dans le terminal
+        de qui recopie.
+        """
+        self.assertNotIn("bash -c", V.connect_command(self.LIMA))
+        self.assertIn("bash -c", V.exec_prefix(self.LIMA))
+        self.assertNotIn("$ip", V.connect_command(self.LIBVIRT))
+        self.assertIn("$ip", V.exec_prefix(self.LIBVIRT))
+
+    def test_the_session_form_names_a_real_target(self):
+        """C'est la seule chose qu'un tableau de bord peut afficher pour
+        qu'on la recopie."""
+        self.assertIn("192.0.2.10", V.connect_command(self.LIBVIRT))
+        self.assertIn("essai", V.connect_command(self.LIMA))
+
+    def test_it_answers_where_ssh_prefix_refuses(self):
+        """C'est tout l'objet du verbe : le backend sans adresse a bien une
+        façon d'entrer, et il n'y a rien à refuser."""
+        with self.assertRaises(B.VerbNotImplemented):
+            V.ssh_prefix(self.LIMA)
+        self.assertTrue(V.connect_command(self.LIMA))
+
+    def test_no_identity_is_no_line(self):
+        with self.assertRaises(B.VerbNotImplemented):
+            V.connect_command(None)
+
+    def test_an_unknown_backend_is_refused_and_not_guessed(self):
+        """Composer une ligne ssh pour un quatrième nom donnerait une
+        commande visant une machine dont personne n'a dit qu'elle en
+        acceptait une."""
+        inconnu = self.LIBVIRT._replace(backend="jamais-vu")
+        with self.assertRaises(B.VerbNotImplemented):
+            V.connect_command(inconnu)
+
+    def test_the_tool_name_is_written_in_one_place(self):
+        """Ce fichier le nommait en dur DEUX fois — la session et la
+        commande — et deux littéraux voisins cessent de correspondre au
+        premier ajustement. Le module de l'outil le nomme, lui."""
+        import os
+
+        from code_literals import literals_in_file
+
+        chemin = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "script",
+            "vm",
+            "verbs.py",
+        )
+        litteraux = literals_in_file(chemin, "limactl")
+        self.assertEqual([], litteraux, litteraux)
+
+    def test_both_forms_agree_on_which_instance(self):
+        """Une session ouverte sur une instance et une commande jouée sur
+        une autre serait le pire des deux mondes."""
+        session = V.connect_command(self.LIMA)
+        commande = V.exec_prefix(self.LIMA)
+        self.assertTrue(commande.startswith(session), (session, commande))
 
 
 if __name__ == "__main__":

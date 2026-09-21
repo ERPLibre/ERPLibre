@@ -139,7 +139,13 @@ def list_install_runs() -> list:
     return runs
 
 
-def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
+def _reboot_steps(
+    log_q: str,
+    motif: str,
+    prefixe: str,
+    sonde: str,
+    tours: int = REBOOT_TOURS,
+) -> str:
     """Shell qui redémarre la VM, attend son retour, et vérifie son noyau.
 
     Trois choses valent d'être dites.
@@ -155,6 +161,15 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
     `tours` est un paramètre pour que ce shell soit ÉPROUVABLE : un garde
     qu'on ne sait pas exécuter s'ouvre le jour où il casse.
 
+    `prefixe` et `sonde` VIENNENT DU BACKEND et ne sont plus écrits ici.
+    Ce shell composait « ssh compte@$ip » en clair, deux fois : une VM qui
+    ne s'atteint pas par ssh y recevait donc une commande visant un hôte
+    ssh nommé comme elle, et le « || true » de l'ordre de redémarrage
+    avalait l'échec sans un mot. La sonde est SÉPARÉE de l'ordre parce
+    qu'elle exige en plus « BatchMode » : une invite de mot de passe dans
+    la boucle d'attente la ferait tourner cent quatre-vingts fois pour
+    rien.
+
     Et l'échec est un vrai échec : sans le noyau attendu, l'hyperviseur n'a ni
     table NAT ni module bridge. Le dire ✅ serait le mensonge qui a coûté deux
     jours à le comprendre."""
@@ -167,7 +182,7 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
         f"echo {shlex.quote('== ' + msg_reboot + ' ==')} >> {log_q}; "
         # « || true » : la session MEURT avec le redémarrage, et son code 255
         # ne dit rien de l'ordre lui-même.
-        f'ssh {SSH_OPTS_BATCH} "erplibre@$ip" '
+        f"{prefixe} "
         # « sudo -n » : cette enveloppe tourne DÉTACHÉE, sans terminal. Un
         # sudo qui demande son mot de passe échoue alors tout de suite au lieu
         # d'attendre une frappe que personne ne fera.
@@ -176,7 +191,7 @@ def _reboot_steps(log_q: str, motif: str, tours: int = REBOOT_TOURS) -> str:
         f"echo {shlex.quote('   ' + msg_wait)} >> {log_q}; "
         "krn=''; "
         f"for i in $(seq 1 {tours}); do sleep ${{ERPLIBRE_REBOOT_SLEEP:-5}}; "
-        f'k=$(ssh {SSH_OPTS_BATCH} -o BatchMode=yes "erplibre@$ip" '
+        f"k=$({sonde} "
         "'uname -r' 2>/dev/null); "
         f'case "$k" in *{motif}*) krn="$k"; break;; esac; '
         "if [ $((i % 6)) -eq 0 ]; then "
@@ -394,7 +409,11 @@ def _launch_one(
         f'echo "   → $ip" >> {log_q}; '
         f"{exec_prefixe} {shlex.quote(remote_cmd)} "
         f">> {log_q} 2>&1; rc=$?; "
-        + (_reboot_steps(log_q, reboot) if reboot else "")
+        + (
+            _reboot_steps(log_q, reboot, exec_prefixe, sonde_prefixe)
+            if reboot
+            else ""
+        )
         + f'echo "{EXIT_MARKER} $rc" >> {log_q}'
     )
     # setsid -f : le process survit à la fermeture du menu / du dashboard.
@@ -539,8 +558,12 @@ def launch_installs(
         # plus le même pour toutes. `remote_cmd` reste le défaut, ce qui laisse
         # intacts les appelants qui n'en fournissent qu'une.
         cmd_vm = vm.get("remote_cmd") or remote_cmd
+        # UNE fiche pour les trois usages qui suivent : la relire trois fois
+        # laisserait trois vérités possibles si le dictionnaire bougeait
+        # entre-temps, et c'est la preuve d'identité qui en souffrirait.
+        fiche = handle_of(vm)
         _launch_one(
-            handle_of(vm),
+            fiche,
             cmd_vm,
             log_path,
             installs=bool(branch),
@@ -557,7 +580,12 @@ def launch_installs(
             "version": vm.get("version"),
             "arch": vm.get("arch"),
             "log": log_path,
-            "ssh": f"ssh erplibre@{vm['ip']}",
+            # LA LIGNE VIENT DU BACKEND. Composée à la main, elle disait
+            # « ssh compte@… » de toute machine — y compris de celles qui ne
+            # s'atteignent pas par ssh. Le tableau de bord l'affiche pour
+            # qu'on la recopie : fausse, elle échoue chez qui la recopie, et
+            # le message de ssh ne dit pas que le backend était le mauvais.
+            "ssh": vm_verbs.connect_command(fiche),
             # Ce que relaunch_install rejoue à l'identique. La commande ne
             # porte aucun secret — le cache, son autorité et la coupure hors
             # ligne sont des arguments de la CRÉATION, pas de l'installation —
@@ -586,9 +614,7 @@ def launch_installs(
         # Rouvert des semaines plus tard, le suivi ne peut plus le savoir —
         # et c'est elle qui armera le garde de la suppression.
         entree.update(
-            vm_verbs.identity_fields(
-                vm_verbs.arm(handle_of(vm), probe=local_uuid)
-            )
+            vm_verbs.identity_fields(vm_verbs.arm(fiche, probe=local_uuid))
         )
         entries.append(entree)
     if session:
@@ -785,7 +811,7 @@ def relaunch_install(session: str, name: str, ip: str = "") -> dict:
                 )
         if ip and not vm.get("pve"):
             vm["ip"] = ip
-            vm["ssh"] = f"ssh erplibre@{ip}"
+            vm["ssh"] = vm_verbs.connect_command(handle_of(vm))
         ancien = _next_rotation(vm["log"])
         os.replace(vm["log"], ancien)
         try:
@@ -3566,7 +3592,7 @@ def run_monitor(manifest_path: str, run_app: bool = True, todo=None):
                 ip = await asyncio.to_thread(virsh_ip, vm["name"])
                 if ip and ip != vm.get("ip"):
                     vm["ip"] = ip
-                    vm["ssh"] = f"ssh erplibre@{ip}"
+                    vm["ssh"] = vm_verbs.connect_command(handle_of(vm))
                     changed = True
             if changed:
                 self._refresh_ssh()

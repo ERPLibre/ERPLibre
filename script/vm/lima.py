@@ -36,6 +36,12 @@ MOUNTS_VIDES = "mounts: []"
 # n'a pas Virtualization.framework fait échouer le démarrage.
 VM_TYPE_MACOS = "vz"
 
+# Le bloc qui donne une adresse joignable depuis l'hôte. UNE constante,
+# parce que `render_config` l'écrit et `config_limits` le relit : deux
+# littéraux voisins cesseraient de correspondre au premier ajustement, et
+# l'écran annoncerait « joignable » sur une instance qui ne l'est pas.
+NETWORK_SHARED = "  - lima: shared"
+
 
 def render_config(
     image: str,
@@ -91,9 +97,45 @@ def render_config(
             "# Adresse joignable depuis l'hôte. Passe par socket_vmnet, qui",
             "# demande une installation privilégiée à part.",
             "networks:",
-            "  - lima: shared",
+            NETWORK_SHARED,
         ]
     return "\n".join(lignes) + "\n"
+
+
+def config_limits(rendered: str) -> tuple:
+    """Ce que la configuration RENDUE n'offre pas, lu dans son texte.
+
+    TROIS QUESTIONS VOISINES, et un écran a besoin de celle-ci.
+    `unenforceable` répond « que promet cette POSTURE que la configuration
+    ne tient pas ». `host_limits` répond « que cet HÔTE ne peut pas offrir
+    du tout ». Celle-ci répond « que CETTE configuration n'offre pas », et
+    c'est la seule que le lecteur d'un écran de création veut savoir : sur
+    macOS, l'adresse joignable est POSSIBLE, et pourtant elle n'est pas là
+    si personne ne l'a demandée.
+
+    Lue dans le TEXTE et non déduite des arguments : c'est la seule forme
+    qui ne peut pas mentir. Un jour où le rendu cesserait d'écrire le bloc —
+    parce que la demande a été ignorée sur cet hôte — une déduction faite
+    sur les arguments dirait encore « joignable ».
+    """
+    return () if NETWORK_SHARED in (rendered or "") else ("reachable-address",)
+
+
+def host_limits(macos: bool = False) -> tuple:
+    """Ce qu'une instance ne sait pas offrir SUR CET HÔTE, posture ou non.
+
+    QUESTION DISTINCTE de `unenforceable`, qui répond « que promet cette
+    POSTURE que la configuration ne tient pas ». Ici il n'y a pas de
+    posture : c'est l'hôte qui borne, et le dire ne demande pas d'avoir
+    choisi un profil. Un écran qui montre une configuration avant de la
+    jouer a besoin de celle-ci, pas de l'autre.
+
+    Sans socket_vmnet — qui n'existe que sur macOS — l'invité SORT mais ne
+    se laisse pas joindre. C'est la seule limite que l'hôte impose à lui
+    seul, et `unenforceable` la reprend d'ici plutôt que d'en garder une
+    copie.
+    """
+    return () if macos else ("reachable-address",)
 
 
 def unenforceable(posture, macos: bool = False) -> tuple:
@@ -120,10 +162,94 @@ def unenforceable(posture, macos: bool = False) -> tuple:
     # l'instance.
     if posture.destinations_bounded:
         manques.append("destinations-bounded")
-    # Sans socket_vmnet, l'invité sort mais ne se laisse pas joindre.
-    if not macos:
-        manques.append("reachable-address")
+    # Ce que l'hôte borne à lui seul, lu d'un seul endroit.
+    manques.extend(host_limits(macos))
     return tuple(manques)
+
+
+# Le binaire de l'outil. Nommé une fois : un jour où il s'appellerait
+# autrement, ou vivrait ailleurs, il n'y a qu'ici à toucher.
+LIMACTL = "limactl"
+
+# CE QUI REND UN DÉMARRAGE JOUABLE DEPUIS UN MENU. Sans « --tty=false »,
+# l'outil ouvre une conversation — un éditeur sur la configuration, une
+# question à confirmer. Un menu qui la reçoit se figeait sur une invite que
+# personne ne voit, et il ne reste que Ctrl-C.
+SANS_INVITE = "--tty=false"
+
+# « -f » sur l'arrêt et sur la suppression : les deux posent sinon leur
+# propre question. L'écran a déjà demandé, et le redemander là où la sortie
+# n'est plus lue revient à ne rien demander.
+SANS_QUESTION = "-f"
+
+# Les actions du cycle de vie, vocabulaire clos. Ce ne sont PAS
+# « suspend »/« resume » : `verbs.power_command` les refuse pour ce backend
+# exprès, parce qu'un arrêt n'est pas une pause — confondre les deux perd
+# l'état d'une VM qu'on croyait seulement mettre de côté.
+LIFECYCLE = ("start", "stop", "delete")
+
+
+def list_argv() -> list:
+    """L'inventaire, en JSON. Rend un ARGV, donc aucun shell n'intervient.
+
+    « --json » et non la sortie tabulée : cette dernière change de colonnes
+    selon la version, et l'analyser reviendrait à parier sur une mise en
+    page. `parse_instances` lit ce que cet appel rend.
+    """
+    return [LIMACTL, "list", "--json"]
+
+
+def start_argv(name: str, config: str = "") -> list:
+    """Démarre l'instance, en la créant depuis `config` s'il est donné.
+
+    Le chemin de configuration vient EN DERNIER, comme un argument
+    positionnel, parce que c'est ainsi que l'outil le prend. Sans lui,
+    l'appel démarre une instance déjà décrite.
+    """
+    argv = [LIMACTL, "start", "--name", str(name), SANS_INVITE]
+    if config:
+        argv.append(str(config))
+    return argv
+
+
+def stop_argv(name: str) -> list:
+    """Arrête l'instance. Ce n'est pas une pause : l'état vif est perdu."""
+    return [LIMACTL, "stop", SANS_QUESTION, str(name)]
+
+
+def delete_argv(name: str) -> list:
+    """Détruit l'instance et son disque. Sans retour.
+
+    L'écran qui appelle DOIT avoir fait retaper le nom : « -f » retire la
+    dernière question, et un nom mal tapé détruit alors sans un mot.
+    """
+    return [LIMACTL, "delete", SANS_QUESTION, str(name)]
+
+
+def shell_argv(name: str, remote: str = "") -> list:
+    """Ouvre un shell dans l'instance, ou y joue une suite de commandes.
+
+    « bash -c » est indispensable pour une SUITE : l'outil exécute des
+    arguments, si bien que « a && b » lui arriverait comme une liste de mots.
+    Sans `remote`, c'est une session interactive et « bash -c » n'a rien à
+    faire là — il attendrait une commande qui ne vient pas.
+    """
+    argv = [LIMACTL, "shell", str(name)]
+    if remote:
+        argv += ["--", "bash", "-c", str(remote)]
+    return argv
+
+
+def display(argv) -> str:
+    """La commande telle qu'on la MONTRE avant de la jouer.
+
+    `shlex.join` et non un espace : une valeur qui porte une espace se
+    relirait comme deux arguments, et la ligne affichée ne serait plus celle
+    qui s'exécute — ce qui est pire que ne rien montrer.
+    """
+    import shlex
+
+    return shlex.join(str(mot) for mot in argv or ())
 
 
 # Ce que l'inventaire de Lima rend, et ce qu'on en garde. Les autres champs

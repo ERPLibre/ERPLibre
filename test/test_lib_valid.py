@@ -93,6 +93,78 @@ class TestIlNeNommeAucunDomaine(unittest.TestCase):
             self.assertNotIn(mot, source)
 
 
+class TestUnBooleenEcrit(unittest.TestCase):
+    """« false » est une CHAÎNE, et `bool("false")` vaut vrai.
+
+    Une configuration se tape à la main et se recopie d'un exemple : la
+    chaîne y arrive naturellement là où le JSON attendait un littéral. Un
+    drapeau qui protège quelque chose se retrouve alors levé par celui qui
+    croyait l'abaisser, et rien ne le dit.
+
+    Ce que ça coûte, en clair : « default_route » d'un profil VPN capte tout
+    le trafic et coupe la session SSH en cours ; « allow_plaintext » d'un
+    profil de forge envoie un jeton d'API en clair sur le réseau. Les deux
+    sont faux par défaut, et les deux se lisent par ici.
+    """
+
+    def test_a_real_boolean_passes_through(self):
+        self.assertTrue(V.flag({"k": True}, "k"))
+        self.assertFalse(V.flag({"k": False}, "k"))
+
+    def test_the_written_falses_are_false(self):
+        for ecrit in ("false", "0", "no", "off", "non", "faux", ""):
+            with self.subTest(ecrit=ecrit):
+                self.assertFalse(V.flag({"k": ecrit}, "k"))
+
+    def test_the_written_trues_are_true(self):
+        """Contrôle positif : tout rendre faux retirerait l'usage."""
+        for ecrit in ("true", "1", "yes", "on", "oui", "vrai"):
+            with self.subTest(ecrit=ecrit):
+                self.assertTrue(V.flag({"k": ecrit}, "k"))
+
+    def test_case_and_padding_do_not_decide(self):
+        """« FALSE » et « Off » viennent d'un fichier écrit par un humain."""
+        for ecrit in ("FALSE", " false ", "Off", "\tNON\n"):
+            with self.subTest(ecrit=ecrit):
+                self.assertFalse(V.flag({"k": ecrit}, "k"))
+
+    def test_a_word_that_is_neither_is_refused_and_not_guessed(self):
+        """Deviner ferait dépendre une posture d'une faute de frappe."""
+        for ecrit in ("nope", "vrai?", "2", "-1", "y"):
+            with self.subTest(ecrit=ecrit):
+                with self.assertRaises(V.ValidationError):
+                    V.flag({"k": ecrit}, "k")
+
+    def test_a_missing_key_is_false_and_does_not_raise(self):
+        """Un drapeau absent d'un profil est un drapeau baissé."""
+        self.assertFalse(V.flag({}, "k"))
+        self.assertFalse(V.flag({"k": None}, "k"))
+
+    def test_non_text_values_keep_python_truth(self):
+        """Un 0, une liste vide, un None disent tous « non » ; un 1 dit
+        « oui ». Rien à réinventer pour ces cas-là."""
+        for valeur, attendu in (
+            (0, False),
+            (1, True),
+            ([], False),
+            ([0], True),
+            (0.0, False),
+        ):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(attendu, V.flag({"k": valeur}, "k"))
+
+    def test_it_normalises_in_place_like_its_neighbours(self):
+        """Les appelants relisent `record[key]`, pas la valeur rendue."""
+        record = {"k": "false"}
+        V.flag(record, "k")
+        self.assertIs(False, record["k"])
+
+    def test_the_two_lists_never_overlap(self):
+        """Un mot dans les deux rendrait la première liste consultée
+        gagnante, ce qui est un ordre et non une règle."""
+        self.assertEqual(set(), set(V.ECRITS_VRAIS) & set(V.ECRITS_FAUX))
+
+
 class TestLAncienNomAttrapeToujours(unittest.TestCase):
     """Neuf appelants écrivent `except ProfileError` depuis avant le
     partage : ils doivent attraper ce que le générique lève."""
