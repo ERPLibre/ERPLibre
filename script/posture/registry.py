@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-# Le genre de réseau libvirt que la posture demande. « isolated » n'a pas de
+# Le genre de réseau que la posture demande. « isolated » n'a pas de
 # route vers l'extérieur du tout ; « nat » sort par l'hôte.
 NETWORK_KINDS = ("isolated", "nat")
 

@@ -226,6 +226,27 @@ def run_deploy_form(ctx, run_app: bool = True):
             yield Header()
             with Horizontal(id="body"):
                 with VerticalScroll(id="fields"):
+                    # Une LIGNE, et non un choix : ce chemin ne pilote que
+                    # le backend local, et offrir une main qu'on ne peut pas
+                    # jouer vaut moins que de dire laquelle est en jeu. Elle
+                    # se change dans Deploy › Backends de VM.
+                    yield Static(
+                        f"{t('Backend:')} {ctx.get('backend', '')}",
+                        id="t_backend",
+                        classes="grouptitle",
+                    )
+                    # La posture est un CHOIX, là où le backend n'est qu'une
+                    # ligne : celle-ci, ce chemin sait l'honorer. Elle est
+                    # au niveau du déploiement, juste sous la machine, parce
+                    # qu'elle décrit le réseau de la machine et non ce qu'on
+                    # installe dedans.
+                    yield Static(t("Network posture"), classes="grouptitle")
+                    yield Select(
+                        [(nom, nom) for nom in ctx.get("postures", ())],
+                        value=ctx.get("posture") or Select.BLANK,
+                        allow_blank=False,
+                        id="f_posture",
+                    )
                     yield Static(t("Architecture"), classes="grouptitle")
                     with RadioSet(id="f_arch"):
                         for a in arches:
@@ -692,9 +713,9 @@ def run_deploy_form(ctx, run_app: bool = True):
 
             Le verrou couvre TOUT le montage : poser « value= » sur un Select
             fait émettre un Changed à Textual, que on_select_changed prenait
-            pour une saisie. Résultat mesuré — les trois champs de CHAQUE VM
-            recevaient une surcharge dès l'affichage, le profil x1..x4 ne
-            pouvait plus rien changer, et toutes les lignes portaient la
+            pour une saisie. Les trois champs de CHAQUE VM reçoivent alors
+            une surcharge dès l'affichage, le profil x1..x4 ne peut plus rien
+            changer, et toutes les lignes portent la
             marque ✎. Il est relâché après le rafraîchissement, une fois ces
             messages consommés."""
             self._syncing = True
@@ -939,9 +960,9 @@ def run_deploy_form(ctx, run_app: bool = True):
                     return
                 # Poser « value= » au montage fait émettre un Changed que
                 # Textual délivre APRÈS coup : un verrou temporel ne l'attrape
-                # pas — mesuré, les trois champs de chaque VM se retrouvaient
-                # surchargés dès l'affichage et le profil x1..x4 devenait
-                # inopérant. On compare donc à ce que le modèle dit déjà : une
+                # pas : les trois champs de chaque VM se retrouvent surchargés
+                # dès l'affichage et le profil x1..x4 devient inopérant. On
+                # compare donc à ce que le modèle dit déjà : une
                 # valeur identique n'est pas une saisie, c'est l'écho.
                 #
                 # Cas limite assumé : choisir explicitement la valeur que le
@@ -1097,6 +1118,13 @@ def run_deploy_form(ctx, run_app: bool = True):
                 }
             key = self.query_one("#f_key", Input).value.strip()
             return {
+                # Il vient du CONTEXTE et d'aucun widget : l'écran l'affiche
+                # et ne le choisit pas. La spec le porte quand même, pour que
+                # le point de passage du déploiement puisse refuser ce qu'il
+                # ne sait pas piloter.
+                "backend": ctx.get("backend", ""),
+                # Elle, l'écran la CHOISIT : ce chemin sait la poser.
+                "posture": self.query_one("#f_posture", Select).value,
                 # Le suivi est demandé au NIVEAU DU DÉPLOIEMENT, pas de
                 # l'installation : décocher ERPLibre emportait la case avec
                 # elle, et le tableau de bord ne s'ouvrait plus du tout.
